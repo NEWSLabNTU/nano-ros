@@ -5,5 +5,8 @@
     "nros_rmw::ClientTrait::take_response"
   ],
   "verdict": "divergence",
+  "retired_names": [
+    "try_recv_reply"
+  ],
   "why": "rclrs's `call` returns a future. Ours (`ClientTrait::send_request` + `ClientTrait::take_response`, or the C++ `Client::call`) drives the executor. (CORRECTED 2026-09-04, phase-417: this said `try_recv_reply`, retired by phase-379 W6 decision 1; the live name is the one this row's own `provides` already carried.) See `cpp:Client::async_send_request`."
 }

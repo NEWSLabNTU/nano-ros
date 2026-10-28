@@ -1,5 +1,10 @@
 {
   "key": "rust:Executor::ros_time_source_handle",
   "verdict": "extension",
+  "foreign_names": [
+    "TimeSource",
+    "attachNode",
+    "detachNode"
+  ],
   "why": "phase-425 W3b -- the `HandleId` of the `/clock` subscription THIS executor installed for `use_sim_time`, or `None`. rclrs 0.7.0 ships no `/clock` subscriber at any level: its ROS-time surface is `ClockSource::set_ros_time_override` plus `Clock::with_source`, i.e. the PUSH side, and who subscribes is the application's problem. There is therefore nothing to correlate against -- and rclcpp's `TimeSource`, the nearest thing ROS 2 has, exposes `attachNode`/`detachNode` and not the subscription either. Ours exists because the EXECUTOR owns the subscription: `use_sim_time` is reconciled every spin so a runtime `ros2 param set <node> use_sim_time true` works, and \"did the reconciliation loop subscribe twice?\" is a question only a handle that is stable across spins can answer. The predicate form is `rust:Executor::ros_time_source_installed`. Behind the `sim-time` feature, which is why this row did not exist until 2026-09-12: `sim-time` was not in the parity extractor's `NROS_FEATURES`, so the subject was on no measured surface and the row could not be written at all. phase-430 W7 called these rows \"still owed, deliberately\" for exactly that reason -- issue 1351."
 }

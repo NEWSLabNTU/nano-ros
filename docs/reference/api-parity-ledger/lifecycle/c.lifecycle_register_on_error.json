@@ -1,5 +1,8 @@
 {
   "key": "c:lifecycle_register_on_error",
   "verdict": "extension",
+  "retired_names": [
+    "Option_LifecycleCallbackFnCtx"
+  ],
   "why": "see `c:lifecycle_register_on_shutdown`; `on_error` is REP-2002's error-processing hook, which rclc has no registration slot for. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `rclc_lifecycle_callback_t` typedef."
 }

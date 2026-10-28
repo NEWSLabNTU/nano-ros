@@ -1,5 +1,5 @@
 {
   "key": "rust:MAX_CELL_ENTITIES",
   "verdict": "extension",
-  "why": "phase-391 W5 -- knob-driven const (`NROS_MAX_CELL_ENTITIES`, default 8): capacity of the heapless per-cell entity registry that replaced the `Vec` one."
+  "why": "phase-391 W5 -- knob-driven const (`NROS_RUNTIME_MAX_CELL_ENTITIES`, default 8): capacity of the heapless per-cell entity registry that replaced the `Vec` one."
 }

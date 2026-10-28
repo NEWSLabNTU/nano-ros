@@ -6,5 +6,8 @@
     "text": "`ParameterValue` can still HOLD a byte or string array, so ported code that"
   },
   "verdict": "divergence",
+  "foreign_names": [
+    "nav2_velocity_smoother"
+  ],
   "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. A type tag, the three scalar slots and ONE pointer to a hosted heap block holding the string or array, so the layout is the same in every arm (`check-cpp-capability-layout`); freestanding keeps the scalar constructors and accessors. `declare_parameter(name, ParameterValue)` dispatches on the tag to the typed `declare_parameter<T>`, so the store, the contract check and the node keying are one implementation. THE BOUND: the store's array FFI carries bool, integer and double arrays only, so a byte or string array can be HELD but declaring one answers `PARAMETER_NOT_SET`; a wrong-type read answers the zero value. Previous text: the value half of `cpp:Parameter`, with the same allocator problem: `get<std::string>()` and `to_value_msg()` both hand back owned storage. Rust's `ParameterValue` is the no-allocator equivalent (heapless `String`/`Vec`, accessors that return borrows); C++ has no counterpart."
 }

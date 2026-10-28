@@ -1,5 +1,9 @@
 {
   "key": "rust:Executor::has_park_primitive",
   "verdict": "extension",
+  "retired_names": [
+    "spin_nominal",
+    "wake_source"
+  ],
   "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 W7. Whether a platform park primitive is installed. Load-bearing rather than informational: a park that waits on its own fresh object is NOT breakable by the backend's listener, and installing one makes latency WORSE — once a port has parked, the transport drain drops to non-blocking, so an unbreakable park sleeps out its full deadline with data already waiting."
 }

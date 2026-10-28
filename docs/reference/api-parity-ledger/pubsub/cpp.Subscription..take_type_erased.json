@@ -7,5 +7,8 @@
     "status": "resolved"
   },
   "verdict": "declined",
+  "retired_names": [
+    "Subscription::try_recv_raw"
+  ],
   "why": "CORRECTED 2026-08-26 (phase-379 W5), re-verdicted rename -> declined. The previous text pointed this row at `Subscription::try_recv_raw`, which belongs to `cpp:PollSubscription::take_serialized` -- one method cannot carry two names, and the byte-oriented signature (`uint8_t*, size_t, size_t&`) makes it the SERIALIZED half. This row has no ours-half and never had one.\n`take_type_erased(void * message_out, MessageInfo&)` erases over a DESERIALIZED ROS message struct, not over bytes; rclcpp's own doc says it exists to facilitate 'using the subscriptions in a type agnostic way using SubscriptionBase::create_message() and SubscriptionBase::handle_message()'. Every one of those collaborators is already declined in this shard -- `cpp:Subscription::create_message`, `create_serialized_message`, `handle_message`, `handle_serialized_message`, `return_message`, `return_serialized_message`, `is_serialized`, `use_take_shared_method` -- so declining the take that serves them is the consistent verdict, not a new decision. Our C++ has no `void *`-over-message-struct erasure anywhere: `Subscription<M>::try_recv(M&)` is a template on the concrete type, and our only erasure is BYTES.\nNot a gap: a runtime type-erased take needs rosidl typesupport resolved at runtime and a heap-allocated message struct to take into, which is exactly what `cpp:Subscription::create_message` declines for the no-allocator reason."
 }

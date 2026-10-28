@@ -198,7 +198,7 @@ static const size_t ACTION_NAME_MAX = 256;
 /// stored integer means the same thing on both. (Until issue 1637 these were
 /// 0-based and CamelCase: `Reject = 0`, `AcceptAndExecute = 1`, ...)
 ///
-/// The FFI below is 0-based (`RCLC_C_GOAL_REJECT = 0` in `component.h`),
+/// The FFI below is 0-based (`RCLC_GOAL_REJECT = 0` in `rclc/detail/nros_generated.h`),
 /// because a zero-initialised decision slot must mean reject. That integer
 /// is not this enum: convert with `rclcpp_action::to_ffi(GoalResponse)`, NEVER with a
 /// `static_cast<int32_t>` — the cast yields upstream's value, and the FFI
@@ -221,15 +221,15 @@ enum class GoalResponse : int8_t {
 /// Upstream's enum, value for value: `rclcpp_action::CancelResponse` is
 /// `int8_t` with `REJECT = 1, ACCEPT = 2`, and so is this one (0-based and
 /// CamelCase until issue 1637). The FFI is
-/// 0-based (`RCLC_C_CANCEL_REJECT = 0`): convert with
+/// 0-based (`RCLC_CANCEL_REJECT = 0`): convert with
 /// `rclcpp_action::to_ffi(CancelResponse)`, never with a `static_cast<int32_t>`.
 enum class CancelResponse : int8_t {
     REJECT = 1,
     ACCEPT = 2,
 };
 
-/// The FFI discriminant of a goal decision — `RCLC_C_GOAL_REJECT` (0),
-/// `RCLC_C_GOAL_ACCEPT_AND_EXECUTE` (1), `RCLC_C_GOAL_ACCEPT_AND_DEFER` (2).
+/// The FFI discriminant of a goal decision — `RCLC_GOAL_REJECT` (0),
+/// `RCLC_GOAL_ACCEPT_AND_EXECUTE` (1), `RCLC_GOAL_ACCEPT_AND_DEFER` (2).
 /// This is the value a raw component callback (`create_action_server_raw`)
 /// returns. Anything outside upstream's three values maps to reject, the
 /// FFI's own answer for "nobody decided".
@@ -239,8 +239,8 @@ constexpr int32_t to_ffi(GoalResponse r) {
                                                    : 0;
 }
 
-/// The FFI discriminant of a cancel decision — `RCLC_C_CANCEL_REJECT` (0),
-/// `RCLC_C_CANCEL_ACCEPT` (1). Anything but `ACCEPT` maps to reject.
+/// The FFI discriminant of a cancel decision — `RCLC_CANCEL_REJECT` (0),
+/// `RCLC_CANCEL_ACCEPT` (1). Anything but `ACCEPT` maps to reject.
 constexpr int32_t to_ffi(CancelResponse r) {
     return (r == CancelResponse::ACCEPT) ? 1 : 0;
 }

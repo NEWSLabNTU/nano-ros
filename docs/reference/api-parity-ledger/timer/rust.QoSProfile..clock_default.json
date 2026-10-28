@@ -1,5 +1,8 @@
 {
   "key": "rust:QoSProfile::clock_default",
   "verdict": "extension",
+  "retired_names": [
+    "QosSettings"
+  ],
   "why": "the clock QoS preset. Originally filed as a `rename` whose entire rationale was the owning type's spelling (ours `QosSettings` vs rclrs's `QoSProfile`); that rename LANDED 2026-08-27 (phase-379 W5), so nothing about the name differs any more. What remains is that rclrs exposes no clock preset on `QoSProfile` at all -- rclcpp has the concept as a separate `ClockQoS` type (see `cpp:ClockQoS`), rclrs has neither -- so ours is an addition, not a renaming. Re-verdicted rename->extension when the type rename resolved."
 }

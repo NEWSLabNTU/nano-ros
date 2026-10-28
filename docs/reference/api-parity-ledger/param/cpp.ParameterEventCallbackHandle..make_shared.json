@@ -2,5 +2,8 @@
   "key": "cpp:ParameterEventCallbackHandle::make_shared",
   "disposition": "absent",
   "verdict": "declined",
+  "foreign_names": [
+    "RCLCPP_SMART_PTR_DEFINITIONS"
+  ],
   "why": "`RCLCPP_SMART_PTR_DEFINITIONS` factories. The handler builds the handle (`add_parameter_event_callback` returns its `SharedPtr`); `std::make_shared<rclcpp::ParameterEventCallbackHandle>()` works on a hosted build where a caller wants one. See `cpp:ParameterEventCallbackHandle` (issue 2024)."
 }

@@ -2,5 +2,5 @@
   "key": "c:lifecycle_trigger_transition_by_label",
   "disposition": "absent",
   "verdict": "declined",
-  "why": "label-keyed transition lookup. The label mapping does exist here -- `from_msg_transition_label` in `nros-node/src/lifecycle_services.rs` resolves the label a `ChangeState` request carries, including the generic `\"shutdown\"` -- but only inside the service layer, where a label actually arrives on the wire. A C caller has `NROS_LIFECYCLE_TRANSITION_*` constants and needs no string compare."
+  "why": "label-keyed transition lookup. The label mapping does exist here -- `from_msg_transition_label` in `nros-node/src/lifecycle_services.rs` resolves the label a `ChangeState` request carries, including the generic `\"shutdown\"` -- but only inside the service layer, where a label actually arrives on the wire. A C caller has `RCLC_LIFECYCLE_TRANSITION_*` constants and needs no string compare."
 }

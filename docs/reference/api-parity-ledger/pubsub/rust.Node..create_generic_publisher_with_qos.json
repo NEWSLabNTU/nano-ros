@@ -1,5 +1,8 @@
 {
   "key": "rust:Node::create_generic_publisher_with_qos",
   "verdict": "extension",
+  "retired_names": [
+    "NodeCtx"
+  ],
   "why": "issue 0306 -- `rust:Node::create_generic_publisher` with an explicit profile; see that row for the verdict. The two exist separately because the declarative runtime carries a node's profile in `EntityMetadata::qos` and the default-QoS constructor used to drop it on the floor.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
 }

@@ -1,5 +1,8 @@
 {
   "key": "cpp:Node::create_subscription_with_info",
   "verdict": "extension",
+  "foreign_names": [
+    "function_traits"
+  ],
   "why": "a subscription whose callback also receives `MessageInfo`. rclcpp expresses this by callback ARITY -- a two-argument callback gets the info -- which needs `function_traits` introspection over a `std::function`; with plain fn-pointers the choice has to be an explicit entry point."
 }

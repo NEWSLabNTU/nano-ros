@@ -179,16 +179,30 @@ verdict is one of:
               cannot outlive its prose. Not a place for a live quote that is
               wrong: fix the prose.
 
-`retired_names` -- C-prefixed names in `why` that no longer exist, named on
-              purpose as HISTORY (phase-515 W0.b). `--check` reads every
-              backticked span starting `rclc_`, `rcl_` or `nros_` and requires
-              the name to exist: in either side's extraction, or as a code
-              identifier (comments stripped) in a tracked source under
-              `packages/` or the upstream surfaces. A span ending in `*`, `{`
-              or `_` is a PREFIX and must begin some live name. W0.a's arity
-              check could not see these, because it judges only names the
-              extraction knows -- so a row describing a deleted function as
-              live passed it.
+`retired_names` -- names in `why` that do not exist, named on purpose:
+              HISTORY ("it was `NodeCtx` until phase-483"), a stated
+              absence ("rclrs has no `Node::get_graph_change_event`") or a
+              hypothetical (phase-515 W0.b for C names, W0.c for C++ and
+              Rust). `--check` reads every backticked span that is
+              CODE-SHAPED -- C-prefixed (`rclc_`, `rcl_`, `nros_`), a `::`
+              path, or an identifier holding `_` or a capital or followed by
+              `(` -- and requires the name to exist: in either side's
+              extraction, as a code identifier (comments stripped; NAME
+              tokens only in Python) in a tracked source under `packages/`,
+              `examples/`, `scripts/`, `just/`, `cmake/` or the upstream
+              surfaces, as a tracked file's stem, or as a ledger field. Each
+              segment of a path must exist. A span ending in `*`, `{` or `_`
+              is a PREFIX and must begin some live name; one starting `_` is a
+              SUFFIX and must end one. An unqualified name also resolves
+              through the C prefixes a C key drops (`cdr_write_string` is
+              `rclc_cdr_write_string`). Not judged: a lone lowercase word
+              (`epoll`), a span followed by `.`, `/` or `-` (a file or path),
+              a commit id, rcutils / micro-ROS / Zephyr / compiler names by
+              prefix, and paths into `std`, a `*_msgs` package or another
+              named third-party namespace. W0.a's arity check could not see
+              any of this, because it judges only names the extraction
+              knows -- so a row describing a deleted function as live passed
+              it.
 
               "Renamed from `nros_client_init_polling` by phase-487 W2" is
               legitimate, and a heuristic cannot read tense, so the row
@@ -196,9 +210,18 @@ verdict is one of:
 
                 "retired_names": ["nros_client_init_polling"]
 
-              A listed name the `why` no longer contains is red, and so is a
-              listed name that EXISTS -- a live name is not history. Not a
+              Listing a path segment (`NodeCtx`) covers every path through
+              it. A listed name the `why` no longer contains is red, and so is
+              a listed name that EXISTS -- a live name is not history. Not a
               place for a current-tense claim that is wrong: fix the prose.
+              A row carrying `retired` is history throughout and is not read.
+
+`foreign_names` -- names in `why` from code the check cannot read: an rcl or
+              rclcpp internal outside the extracted headers
+              (`result_timeout`, `QoSCheckCompatibilityException`), another
+              RMW's source (`check_for_service_reader_writer`), an
+              application (`nav2_velocity_smoother`). Same two rules as
+              `retired_names`: named in the `why`, and not live here.
 
 `envelope` -- where an `adopt-bounded` row's envelope is WRITTEN (issue 1637).
 

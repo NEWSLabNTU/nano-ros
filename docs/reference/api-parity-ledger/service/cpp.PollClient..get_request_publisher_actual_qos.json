@@ -1,5 +1,8 @@
 {
   "key": "cpp:PollClient::get_request_publisher_actual_qos",
   "verdict": "extension",
+  "retired_names": [
+    "callback_mode_"
+  ],
   "why": "phase-456 W9 — an UPSTREAM name on an ours-only type; see `cpp:PollClient::get_service_name` for why that earns a row rather than inheriting `cpp:PollClient`'s verdict. Issue 1437 put this pair on `rclcpp::Client<S>` and the split gave the poll half a second copy.\n\nTHE CLIENT COMES OUT THE WAY THE SERVICE DID, not the way the subscription did, and the contrast is the point. W2b had to leave `get_actual_qos` OFF the dispatch `Subscription<M>` — it holds only `sched_handle_id_`, so reaching the arena would have meant inventing a signature that takes an executor, and that refusal is ledgered at `cpp:Subscription::get_actual_qos`, whose own text names this item as what should unblock it. A client has no such problem: issue 1437 already gave the dispatch half `executor_` beside `handle_id_`, and `nros_cpp_service_client_get_actual_qos` serves both roads (`storage` for the owner, `(executor, handle_id)` for the arena entry). So BOTH halves answer on upstream's no-argument spelling, with no weakening and no gap row owed for this pair. This half passes `storage_`; the dispatch half passes `(executor_, handle_id_)`; the `callback_mode_` branch 1437 needed inside one class is gone from both.\n\nONE create builds TWO endpoints that negotiate against different peers, so this and its sibling are two answers and neither stands for the other. This one is the REQUEST endpoint — the publisher that sends calls (`rmw_client_request_publisher_get_actual_qos`)."
 }

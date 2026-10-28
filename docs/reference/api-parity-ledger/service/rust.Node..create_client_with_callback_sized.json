@@ -1,5 +1,8 @@
 {
   "key": "rust:Node::create_client_with_callback_sized",
   "verdict": "divergence",
+  "retired_names": [
+    "NodeCtx"
+  ],
   "why": "`rust:Node::create_client_with_callback` with the request and reply buffer bounds supplied as const generics instead of defaulted. Same `_sized` convention as `rust:NodeHandle::create_client_sized` and the rest of the family: the buffers are STATIC, so their size is part of the type rather than a runtime argument, and rclrs allocates per call and needs no such spelling.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
 }

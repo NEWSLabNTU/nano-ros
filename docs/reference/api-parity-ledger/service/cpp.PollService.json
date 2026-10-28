@@ -1,5 +1,8 @@
 {
   "key": "cpp:PollService",
   "verdict": "extension",
+  "retired_names": [
+    "callback_mode_"
+  ],
   "why": "phase-456 W5 — the poll-style service server, split out of `Service<S>`, exactly as W2b split `nros::PollSubscription<M>` out of `Subscription<M>`. Ours-only because of its OWNERSHIP, not its method names: the caller declares it in its own frame, it holds the `RmwServiceServer` in `storage_`, nothing dispatches, and the caller drains it with `take_request()` / `send_response()`. Upstream has no such entity — `rclcpp::Node::create_service` REQUIRES a handler and the node owns the result.\n\nWHY IT WAS SPLIT, and the reason is the same one measured for subscriptions. One class served both owners behind a `callback_mode_` flag, and `storage_` is filled only on the poll path — the arena owns the server on the other one. So `take_request()` on a callback-mode object handed `NROS_SERVICE_SERVER_SIZE` value-initialized zero bytes to `nros_cpp_service_server_take_request_raw`, with `initialized_` true and nothing on the path checking. Splitting the types makes that call unwritable rather than merely discouraged.\n\nAND IT UNBLOCKED THE ALIAS. W3 recorded the blocker: `create_service<S>(name, qos)` with no handler returned `Service<S>::SharedPtr` and existed to be `->take_request()`'d, so one alias could not be both an arena handle and a pointer to a poll object. It returns `nros::Owned<PollService<S>>` now, and `Service<S>::SharedPtr` is `nros::ServiceHandle<S>`."
 }

@@ -1,5 +1,5 @@
 {
   "key": "rust:TransitionResult",
   "verdict": "extension",
-  "why": "OUR LANGUAGES DISAGREE: one enum, three names -- Rust `TransitionResult`, C++ `CallbackReturn` (rclcpp's word, see `cpp:CallbackReturn`), C `NROS_LIFECYCLE_RET_*`. Same three values in the same order (`Success`/`Failure`/`Error`), the return of every transition callback. rclrs 0.5.1 has no lifecycle support whatsoever -- the whole stage reports zero theirs-only rows in the Rust lane -- so every Rust item here is an extension by definition; see `rust:Lifecycle` for the scenario."
+  "why": "OUR LANGUAGES DISAGREE: one enum, three names -- Rust `TransitionResult`, C++ `CallbackReturn` (rclcpp's word, see `cpp:CallbackReturn`), C `RCLC_LIFECYCLE_RET_*`. Same three values in the same order (`Success`/`Failure`/`Error`), the return of every transition callback. rclrs 0.5.1 has no lifecycle support whatsoever -- the whole stage reports zero theirs-only rows in the Rust lane -- so every Rust item here is an extension by definition; see `rust:Lifecycle` for the scenario."
 }

@@ -1,5 +1,8 @@
 {
   "key": "rust:Node::install_ros_time_source_on",
   "verdict": "divergence",
+  "retired_names": [
+    "NodeCtx"
+  ],
   "why": "`rust:Node::install_ros_time_source` against a topic other than `/clock` -- a remapped or namespaced clock, which is what a launch file creates when two simulations share a graph. See that row for the verdict, the constraint, and why `sim-time` kept both entry points off the measured surface until issue 1351.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
 }

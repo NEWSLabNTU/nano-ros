@@ -1,5 +1,8 @@
 {
   "key": "rust:Node::create_timer_on_clock",
   "verdict": "divergence",
+  "retired_names": [
+    "NodeCtx"
+  ],
   "why": "phase-430 W4 -- the clock axis on the imperative node handle, beside `create_timer_in_group`. Same verdict and same reason as `rust:Executor::register_timer_on_clock`: rclrs has the capability as a per-site OPTION on `Node::create_timer_repeating` (`IntoTimerOptions`, `declined` above) and ours is a distinct verb, because a non-`Steady` timer reads a clock on every poll and that cost belongs at the call site. `create_timer_on_clock_in_group` is the callback-group form; the group and the clock are independent axes.\n\nKEY CORRECTED 2026-09-12 (issue 1351). This row was `rust:Node::create_timer_on_clock` and was written before the extractor could reach `NodeCtx` at all, so its key was GUESSED against the schema's own instruction -- \"run the report to get the spelling; do not guess it\". The guess was wrong in a way nothing could report: the correlator folds `NodeCtx` onto `Node` (`TYPE_SYNONYMS` in `scripts/api_parity/correlate.py`), so the tool emits `Node::create_timer_on_clock` and would never have met the old key. A row recorded ahead of its tool and a row for a name that does not exist are the same object, which is what 1351 was filed about.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
 }

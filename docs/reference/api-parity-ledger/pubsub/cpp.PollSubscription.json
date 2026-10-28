@@ -1,5 +1,8 @@
 {
   "key": "cpp:PollSubscription",
   "verdict": "extension",
+  "retired_names": [
+    "callback_mode_"
+  ],
   "why": "phase-456 W2b — the poll-style subscription, split out of `Subscription<M>`. Ours-only because of its OWNERSHIP, not its method names: a caller declares it in its own frame, it holds the `RmwSubscriber` in `storage_`, nothing dispatches, and the caller drains it with `take()`. Upstream has no such entity — every `rclcpp::Subscription` is owned by the node and driven by an executor, and upstream's poll shape is a `WaitSet` reporting an executor-owned entity ready, not a subscriber the caller stores.\n\nWHY IT WAS SPLIT, measured. One class served both owners behind a `callback_mode_` flag, and `storage_` is filled only on the poll path — the arena owns the subscriber on the other one. So a `take()` on a callback-mode object passed 656 value-initialized zero bytes to `nros_cpp_subscription_take_serialized`, which does `&mut *(storage as *mut RmwSubscriber)` (`packages/api/nros-cpp/src/subscription.rs`). `initialized_` was true, so nothing refused. `rclcpp/rclcpp.hpp` described that call as answering `NotInitialized`; it did not."
 }

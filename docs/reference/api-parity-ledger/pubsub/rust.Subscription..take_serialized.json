@@ -1,5 +1,8 @@
 {
   "key": "rust:Subscription::take_serialized",
   "verdict": "extension",
+  "retired_names": [
+    "try_recv_raw"
+  ],
   "why": "the byte form of `rust:Subscription::take`, and ours-only against the RUST reference for the same reason that row is: rclrs's subscription API is callback/worker-driven and its `take_*` methods are private. The NAME follows rcl (`rcl_take_serialized_message`) and rclcpp (`Subscription::take_serialized`). Renamed from `try_recv_raw` by phase-379 W6 decision 1 (2026-09-03) -- a clean break with no deprecation shim, because a rename in Rust breaks IMPLEMENTORS of the RMW traits rather than callers and a compile error is what a backend author wants."
 }

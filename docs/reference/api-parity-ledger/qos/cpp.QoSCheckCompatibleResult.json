@@ -2,5 +2,8 @@
   "key": "cpp:QoSCheckCompatibleResult",
   "disposition": "absent",
   "verdict": "declined",
+  "foreign_names": [
+    "QoSCheckCompatibilityException"
+  ],
   "why": "RxO compatibility between a publisher profile and a subscription profile. Answering it needs the REMOTE endpoint's offered QoS, which arrives through discovery; we have static peers and no dynamic discovery, so there is no second profile to compare against. What we check instead is a different question with the same name-shape: `QoSProfile::validate_against(Session::supported_qos_policies())` compares the requested profile with what the LINKED BACKEND can honour and makes the create call return `INCOMPATIBLE_QOS` (RFC-0036, no silent downgrade). `QoSCheckCompatibleResult` additionally carries a `std::string reason`, which the freestanding build has no allocator for, and `qos_check_compatible` reports failure by throwing `QoSCheckCompatibilityException` (-fno-exceptions, RFC-0018). A user loses the \"will these two endpoints talk?\" pre-flight; they get a create-time error instead. OUR LANGUAGES DISAGREE on the replacement: `supported_qos_policies` is Rust-only, so a C or C++ caller cannot ask the backend-capability question in advance at all -- see `rust:Session::supported_qos_policies`."
 }

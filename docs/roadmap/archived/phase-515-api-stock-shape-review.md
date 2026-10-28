@@ -9,9 +9,9 @@ and language. The one ledger `gap` P3's re-verdict found,
 `cpp:ParameterCallbackHandle`, was closed after the archive by
 [issue 2114](../../issues/archived/2114-cpp-parameter-callback-handle-name-taken.md)
 (2026-10-29): the name is upstream's event-handler handle again, and the
-on-set token is `rclcpp::OnSetParametersCallbackToken`. Still not
-measured (W0.b): C++ and Rust names without a C prefix, and stale names in
-code comments.
+on-set token is `rclcpp::OnSetParametersCallbackToken`. W0.c (2026-10-29)
+extended the retired-name check to C++ and Rust names. Still not measured:
+stale names in code comments (2,311 references across `packages/`, see W0.c).
 
 Opened from a review of the
 `api-parity` report on main `1a30bcbb22`. The work items below are candidates:
@@ -197,6 +197,52 @@ rcl headers the extraction does not read (`rcl/remap.h`,
 script. **Still not measured:** C++ and Rust names without a C prefix, and stale
 names in CODE comments (the generated header still documents
 `nros_lifecycle_register_on_*`).
+
+**W0.c — LANDED 2026-10-29: C++ and Rust names.** `--check` now judges every
+CODE-SHAPED backticked span, not only the C-prefixed ones: a `::` path (each
+segment must exist), or an identifier that holds `_` or a capital or is called.
+A lone lowercase word, a file name, a commit id and names from rcutils, Zephyr,
+`std` or a `*_msgs` package are not judged. The known set grew to match what
+rows cite: `examples/`, `scripts/` (NAME tokens only), `just/`, `cmake/`,
+tracked file stems, and the ledger's own fields. An unqualified name also
+resolves through the prefix a C key drops (`cdr_write_string`). Another
+project's name goes in a new `foreign_names` list (SCHEMA.md), and a row
+carrying `retired` is history throughout and is skipped.
+
+Measured first: 313 findings in 245 rows. They came from 140 names. Three
+reach fixes came out of measuring, each of which had hidden real names:
+
+- The comment stripper did not know string literals. A `"/**"` glob in
+  `ros_args.rs` swallowed 840 lines of code.
+- Whole-line `#` comments in `.just`/`.toml`/`.cmake` counted as code.
+- A string literal in Python is not evidence. The checks keep tables of
+  retired spellings (`TYPE_SYNONYMS = {"NodeCtx": ...}`), and counting their
+  keys hid every row still calling the node handle `NodeCtx`.
+
+The sweep corrected the prose of 59 rows:
+
+| was | now |
+| --- | --- |
+| `nros::NodeCtx` / `NodeCtx::get_*` named as the shipped node handle (16 rows) | `nros::Node` / `Node::` (phase-483 W2) |
+| `NROS_LIFECYCLE_{STATE,TRANSITION,RET}_*`, `nros_executor_lifecycle_*`, `NROS_RET_*` | the `RCLC_` / `rclc_` names (phase-492) |
+| `NROS_C_GOAL_*` / `NROS_C_CANCEL_*` in `component.h` | `RCLC_GOAL_*` / `RCLC_CANCEL_*` in `nros_generated.h`; `server.hpp`'s comments named the never-shipped `RCLC_C_*` spelling and are corrected too |
+| `NROS_COMPONENT_SLOT_BYTES` and three sibling knobs | `NROS_RUNTIME_*` |
+| "no `PUBLICATION_MATCHED` event anywhere in the tree" (5 rows) | issue 1972 added it; noted, verdict unchanged |
+| `rcl_action_server_t`'s polling state | moved to `rclc_polling_action_server_t` (phase-487 W4) |
+| C reads one of four boot-config fields | issue 0794 gave C all four |
+| `init_with_launch*` / `ContextSource::Launch` | deleted by issue 1931 |
+| `nros::host_env`, `DeserializeBorrowed`, `nros_log::nros_error!`, `owned_entities_`, `NOT_FOUND`, `ACTUALQOS` | the live name, or a dated note |
+
+The rest is history listed in `retired_names` (152 entries) or another
+project's name in `foreign_names` (64). CLAUDE.md's issue-0589 entry named the
+removed `nros_error!` macro and now names `log_error!`.
+
+**Still not measured, and the next step: CODE comments.** The same resolver
+over comments in tracked sources under `packages/` finds 2,311 references to
+1,414 names. 238 of those references (95 names) are C-prefixed and sit in the
+C/C++ API alone, 60 of them in `nros_generated.h`. A comment has no
+`retired_names` list beside it, so a gate needs either a ratchet baseline or an
+inline history marker first, and that is a design decision rather than a sweep.
 
 ### C — rclc / rcl
 

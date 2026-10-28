@@ -1,5 +1,8 @@
 {
   "key": "rust:nros_trace_throttle_at",
   "verdict": "extension",
+  "retired_names": [
+    "rclrs::log_trace"
+  ],
   "why": "CORRECTED 2026-09-04 (phase-417 stage 6): this carried `provides: [\"rclrs::log_trace\"]`, and **`rclrs::log_trace` does not exist** -- rclrs's severity family stops at `debug`. The arrow was generated mechanically as `rclrs::log_<severity>` from the macro name during the throttle re-verdict, without checking the target resolves. That is the exact failure the `provides` authoring pass avoided by hand-writing every arrow, where two independent agents rejected ~76% of mechanically proposed candidates.\n\nThere is no upstream counterpart at TRACE, so this is an `extension`, not a re-map. See `rust:nros_trace`: rclrs has five severities and we have six.\n\nphase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe `_at` form takes the caller's `now_ns`. It exists because a target without `nros-log/platform-clock` has no time base, and a throttle with no clock admits EVERY record -- so the clock-reading form is a `compile_error!` there and this is the form that still works."
 }

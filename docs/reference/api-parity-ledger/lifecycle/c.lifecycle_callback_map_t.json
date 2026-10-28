@@ -1,5 +1,8 @@
 {
   "key": "c:lifecycle_callback_map_t",
   "verdict": "divergence",
+  "foreign_names": [
+    "RCLC_LIFECYCLE_MAX_NUMBER_OF_STATES"
+  ],
   "why": "rclc's callback table is `bool[100] + int(*[100])(void)` indexed by transition id (its own `RCLC_LIFECYCLE_MAX_NUMBER_OF_STATES` comment says 'highest transition id: 99') -- roughly 900 bytes to hold at most six live entries. Ours is six named `Option<fn>` slots, because the REP-2002 transition set is closed and known at compile time. Constraint: static entity storage on a device where the whole executor arena is measured in kilobytes."
 }

@@ -2,5 +2,8 @@
   "key": "rust:SpinOptions::poll_interval",
   "bucket": "ours-only",
   "verdict": "divergence",
+  "retired_names": [
+    "spin_blocking"
+  ],
   "why": "phase-427 -- how long ONE iteration of `Executor::spin` / `spin_forever` may wait on the transport. The platform constraint is RFC-0002: one executor per RTOS task, driven by a poll loop, not a wait set an OS can block a thread on. So the quantum is a real number a caller has to be able to set -- it is the granularity at which `cancel()`, `timeout` and `max_callbacks` are OBSERVED -- and rclrs's `SpinOptions` has no field for it because its executor has no such quantum. It lives on the options type rather than becoming a second verb so that the divergence sits in ONE type a ported rclrs file already names, instead of forcing a rename on the `spin` line. Defaults to `DEFAULT_SPIN_POLL_INTERVAL` (10 ms), the value `spin_blocking` carried as a private const; `Default` is hand-written rather than derived because `Duration::default()` is ZERO and the derive would have turned every `SpinOptions::default()` in the tree into a busy-poll that still passed every functional test."
 }
