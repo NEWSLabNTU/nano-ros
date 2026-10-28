@@ -1,7 +1,9 @@
 # Phase 514 — Network and middleware configuration in three layers
 
-**Status (2026-10-25). W1, W2, W4, W6 landed; W3a and W3b in review; W5
-in review, its cells passing.** W1: every board descriptor states `[board.net] stack` and
+**Status (2026-10-29). W1–W6 landed; every issue filed against the phase is
+resolved (2047, 2048, 2051, 2062, 2096, 2116, 2117). Its two stated gaps are
+filed: issues 2123 (C/C++ session specs carry no properties) and 2124 (a
+lone `[[domain]]` is not the default session).** W1: every board descriptor states `[board.net] stack` and
 `links`, from one link vocabulary (`LINK_KINDS`, a superset of the image
 `TRANSPORT_KINDS`). W2: an image's address lives in the board network file
 its `os_config` names; all 78 in-tree rows moved, each resolving
@@ -19,12 +21,12 @@ replaces it on hosted builds. W3b: the file is named (`[image] rmw_config`,
 road, a bridged domain's file travels as that session's properties, and the
 `bridge-cyclonedds` example is U5. W5 needs a host with `vcan0` to verify.
 Implements
-[RFC-0109](../design/0109-network-config-layers.md). Opened with the RFC so
+[RFC-0109](../../design/0109-network-config-layers.md). Opened with the RFC so
 its work and phase-206's leftovers have one home.
 
-**Prior:** [phase-206](archived/phase-206-multi-homing-transport-interfaces.md)
+**Prior:** [phase-206](phase-206-multi-homing-transport-interfaces.md)
 (the RMW user-config passthrough, W1–W5 landed; its two open acceptance items
-are replaced here), [phase-497](archived/phase-497-networks-have-owners.md)
+are replaced here), [phase-497](phase-497-networks-have-owners.md)
 (built RFC-0103 D10, whose surviving parts this phase re-sources).
 
 ## Work items
@@ -141,8 +143,9 @@ bringup's own only for an image that overrides a bridged domain, and picked
 by `nros::main!` from `NROS_IMAGE` (issue 2062, resolved).
 
 Not done, stated: a C++ `NrosCppSessionSpec` carries no properties (a C/C++
-multi-session image has no per-domain file), and a lone `[[domain]]` is not
-yet an image's default session (spelled `[system] rmw_config` meanwhile).
+multi-session image has no per-domain file — issue 2123), and a lone
+`[[domain]]` is not yet an image's default session (spelled `[system]
+rmw_config` meanwhile — issue 2124).
 
 ### W4 — retire the keys RFC-0109 moves
 
@@ -252,3 +255,18 @@ The RFC-0109 examples that the tree can build (Linux, Zephyr native_sim and
 mps2-an385-zephyr, NuttX QEMU, the FreeRTOS / ThreadX / bare-metal reference
 boards) build with the new shape, and the U5 bridge shape (two domains, two
 RMW files, one bridge) builds on Linux.
+
+Measured (2026-10-29), at `e0f81b4ac` (after the last phase-514 merge, #2788):
+
+- Tier 2 (`run-matrix.yml` run 40643270547, the 1-wise cover over every
+  platform, language and RMW) BUILT every cell it reached and ran them; its two
+  real failures are issues 2121 and 2122, neither in phase-514 code.
+- U5: `nros sync && nros build linux` in `examples/workspaces/bridge-cyclonedds`
+  builds, and the generated `nros-bridge.toml` carries each domain's file as
+  that session's properties (the zenoh domain's `connect`/`mode`, the Cyclone
+  domain's `config` XML). Its runtime cells skip on the tier-2 runner (no ROS
+  peer), so they ran last in W3b, not here.
+- Not booted by any lane: the four bins whose `config.toml` issue 2047 moved
+  to the board network file form (`logging-smoke-*`,
+  `condvar-contract-freertos-mps2`) — tier 2 resolves them out of lane and
+  skips. The parse they depend on is unit-tested (`parse_direct_toml`).
