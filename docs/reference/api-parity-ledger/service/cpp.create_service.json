@@ -5,5 +5,8 @@
     "status": "not-a-rename"
   },
   "verdict": "divergence",
+  "retired_names": [
+    "make_service"
+  ],
   "why": "RETRACTED as a rename 2026-09-04; see `cpp:create_client` for the shared cause (issue 0818's `#ifdef NROS_CPP_STD` blind spot). `nros::create_service` existed at `std_compat.hpp:138`, in the since-DELETED header, and `Node::create_service<S>` at `node.hpp:449`/`:467`; `make_service` exists nowhere.\n\nOne structural difference beyond the client's: rclcpp's free `create_service` REQUIRES a `CallbackT&&` (six required parameters), while our free form is poll-style and the callback form is the member overload at `node.hpp:467`.\n\nphase-442 W2 (2026-09-11) — `std_compat.hpp` is DELETED, so any sentence above naming that header describes a spelling that no longer exists. It was a third orphaned vocabulary: free functions shadowing the `Node` methods a ported file calls, dead in every shipping configuration, and RFC-0096 removed the layer it belonged to. The always-available spelling is the method."
 }

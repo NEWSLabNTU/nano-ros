@@ -1,5 +1,8 @@
 {
   "key": "cpp:Node::ffi_handle",
   "verdict": "extension",
+  "foreign_names": [
+    "get_rcl_node_handle"
+  ],
   "why": "the opaque pointer the C API and the generated entry point pass around. It is the C++/C seam, not something a ported node calls; rclcpp's analogue would be `get_rcl_node_handle`, which we decline (see `c:node_get_rmw_handle`)."
 }

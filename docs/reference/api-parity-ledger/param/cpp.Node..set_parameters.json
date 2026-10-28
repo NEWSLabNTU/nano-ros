@@ -6,5 +6,8 @@
     "text": "`set_parameter(parameter)` — through the same store write a remote"
   },
   "verdict": "divergence",
+  "foreign_names": [
+    "nav2_velocity_smoother"
+  ],
   "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. Hosted: `set_parameters(parameters)` returns one outcome per element, in order, each the same store write `ros2 param set` takes, so the on-set callbacks vote. THE BOUND: the outcome is a nano-ros struct with upstream's `successful` and `reason` fields, not the generated `SetParametersResult` (which lives in the user's build), and a string or byte array is refused. Previous text: RE-VERDICTED phase-417 W4.a. was `gap`. the non-atomic write half: upstream takes `std::vector<rclcpp::Parameter>` and returns a `std::vector<SetParametersResult>`, one verdict per element. `Node::set_parameters_atomically` DOES ship (phase-417 W4.a) over `rclcpp::ParameterWrite`, so the capability is reachable; what is declined is the per-element-result vector, which needs `SetParametersResult`. Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
 }

@@ -898,7 +898,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   no message. Armed in EVERY native_sim image (identical Kconfig in cells that pass), fires only
   when a Rust std stdio call is finally reached — so a diagnostic makes an error path LESS
   informative. C `printf` is safe (picolibc console hook, not the POSIX fdtable), which is why it
-  stayed latent. Write `nros_log::nros_error!(nros_log::get_logger("<crate>"), …)`: it lands on
+  stayed latent. Write `nros_log::log_error!(nros_log::get_logger("<crate>"), …)`: it lands on
   `LOG_ERR`/`printk`, never fatal, and reaches `no_std` targets that every `cfg(feature = "std")`
   arm silently skipped. Do NOT gate the CALL SITE on `not(platform-zephyr)` — that was the
   workaround, and it discards the information exactly where a return code is all you get. Gated by

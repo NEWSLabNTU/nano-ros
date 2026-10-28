@@ -1,5 +1,9 @@
 {
   "key": "cpp:PollSubscription::take_serialized_with_attachment",
   "verdict": "extension",
+  "retired_names": [
+    "callback_mode_",
+    "try_recv_raw_with_attachment"
+  ],
   "why": "receive with the transport attachment (zenoh carries the source timestamp and publisher GID there rather than in the payload). rcl's equivalent information arrives in `rmw_message_info_t`; ours is exposed separately because only one backend populates it. Renamed from `try_recv_raw_with_attachment` by phase-379 W6 decision 1 (2026-09-03).\n\nphase-456 W2b — this row moved from `cpp:Subscription::take_serialized_with_attachment`. The method did not change; the class it lives on did. `Subscription<M>` served both the dispatch and the poll owner behind a `callback_mode_` flag, and every method here dereferences `storage_`, which only the poll owner has."
 }

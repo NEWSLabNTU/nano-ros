@@ -2,5 +2,8 @@
   "key": "rust:SpinOptions::stop_on_first_error",
   "bucket": "ours-only",
   "verdict": "divergence",
+  "retired_names": [
+    "spin_blocking"
+  ],
   "why": "phase-427 -- end the spin at the first pass in which a callback failed. The platform constraint is the absence of an allocator: rclrs collects every callback error into the `Vec<RclrsError>` its `spin` returns and the caller picks one with `.first_error()`; we cannot hold a vector, so `Executor::spin` returns `Result<(), NodeError>` carrying the FIRST error and counting the rest in `SpinOnceResult`. A channel that holds one error has to say when it stops looking, which is this flag. `false` by default, which is the pre-phase-427 behaviour and what the 27 migrated `spin_blocking` call sites were promised. On `spin_forever` it can only REPORT -- a `-> !` loop has nowhere to return an error to -- and the doc comment says so rather than dropping the request silently."
 }

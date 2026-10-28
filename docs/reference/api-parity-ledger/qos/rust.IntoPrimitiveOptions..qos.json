@@ -2,5 +2,8 @@
   "key": "rust:IntoPrimitiveOptions::qos",
   "disposition": "adopt",
   "verdict": "divergence",
+  "retired_names": [
+    "SubscriberOptions"
+  ],
   "why": "ADOPTED 2026-10-27 (phase-515 R1): `qos` on `IntoPrimitiveOptions`, rclrs's name and arguments; see `rust:IntoPrimitiveOptions`. PRIOR ROW: rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a `QoSProfile` associated const assigned to `PublisherOptions::qos`/`SubscriptionOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape. CORRECTED 2026-09-04 (phase-379 W6): this row said `SubscriberOptions`, which is not the type -- it is `SubscriptionOptions` (`nros-node/src/node.rs`, re-exported by `nros`) -- and called the presets named CONSTRUCTORS. They are associated CONSTS on `QoSProfile` (`QOS_PROFILE_DEFAULT`, `QOS_PROFILE_SENSOR_DATA`, `QOS_PROFILE_SYSTEM_DEFAULT` and six more, `nros-rmw/src/traits.rs:735-831`); eight of those nine are also re-exported from `nros` as free consts under the same names, `QOS_PROFILE_PX4` being the one that is not. The distinction matters to this row: rclrs's shorthand is a METHOD on an options trait, and a const is not something a blanket impl could be hung off."
 }

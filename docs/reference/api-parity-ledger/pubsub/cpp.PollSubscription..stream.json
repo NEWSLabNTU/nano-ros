@@ -1,5 +1,8 @@
 {
   "key": "cpp:PollSubscription::stream",
   "verdict": "extension",
+  "retired_names": [
+    "callback_mode_"
+  ],
   "why": "the receive half of `publish_streamed`; see `c:publisher_publish_streamed`.\n\nphase-456 W2b — this row moved from `cpp:Subscription::stream`. The method did not change; the class it lives on did. `Subscription<M>` served both the dispatch and the poll owner behind a `callback_mode_` flag, and every method here dereferences `storage_`, which only the poll owner has."
 }

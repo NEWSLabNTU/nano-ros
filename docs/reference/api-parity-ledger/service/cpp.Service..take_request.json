@@ -4,5 +4,8 @@
     "nros::PollService::take_request"
   ],
   "verdict": "divergence",
+  "retired_names": [
+    "try_recv_request"
+  ],
   "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence: the name now MATCHES (`Service<S>::take_request`, renamed from `try_recv_request`), and what the report still calls a difference is the second parameter's TYPE. rclcpp's is `rmw_request_id_t&`; ours is a bare `int64_t&` sequence number, because a nano-ros client keeps ONE call in flight (the `in_flight` flag and `reset_in_flight()` on the handle) rather than a correlation table with a writer GUID in it -- the same constraint `c:send_request` and `rust:RequestId` record.\n\nAMENDED 2026-09-21 (phase-456 W5): the name no longer matches, because ours moved to `nros::PollService<S>::take_request`. The divergence above — the correlation token — is unchanged and is still what this row is about; what changed is which of OUR types carries it.\n\nWHY, and it is the ownership rather than the name. Upstream's `rclcpp::Service::take_request` is reached on a NODE-OWNED server that an executor has reported ready. We have two service servers and upstream has one: the dispatch server, which the Rust arena owns and which a ported file declares as `Service<S>::SharedPtr`, and the poll server, which the caller declares in its own frame and drains itself. The upstream NAME went to the dispatch half; the VERB went with the storage it reads. Keeping `take_request()` on the dispatch class is what shipped until W5, and it compiled into an unfilled `RmwServiceServer` rather than refusing — `initialized_` was true on that path and nothing checked. Exactly the finding W2b measured one entity over; see `cpp:Subscription::take`."
 }

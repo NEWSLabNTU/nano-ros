@@ -1,5 +1,9 @@
 {
   "key": "rust:Executor::last_park",
   "verdict": "extension",
+  "retired_names": [
+    "spin_nominal",
+    "wake_source"
+  ],
   "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436. The bound the last park used, and which source won it. Paired with `last_park_achieved_us`; both are reported because a cadence that cannot be waited in must not be presented as if it were met."
 }

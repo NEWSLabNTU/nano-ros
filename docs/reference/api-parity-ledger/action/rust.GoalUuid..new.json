@@ -2,5 +2,8 @@
   "key": "rust:GoalUuid::new",
   "bucket": "ours-only",
   "verdict": "extension",
+  "foreign_names": [
+    "Uuid"
+  ],
   "why": "a goal id from its 16 bytes. rclrs's `GoalUuid` is constructed from a `Uuid`; ours is `no_std` with no `uuid` crate, so the bytes are the constructor. Filed 2026-10-27 (phase-515 R8) when `GoalId` took rclrs's name `GoalUuid`, which made its members correlate."
 }

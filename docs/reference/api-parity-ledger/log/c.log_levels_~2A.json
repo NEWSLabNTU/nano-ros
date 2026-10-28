@@ -2,5 +2,8 @@
   "key": "c:log_levels_*",
   "bucket": "theirs-only",
   "verdict": "divergence",
+  "foreign_names": [
+    "shrink_to_size"
+  ],
   "why": "rcl's `rcl_log_levels_t` is a heap-allocated growable array of (logger name, severity) pairs with an `rcl_allocator_t` member, populated from `--ros-args --log-level`; `init` / `fini` / `copy` / `shrink_to_size` are its memory lifecycle and nothing else. Constraints: no allocator and no argv (RFC-0045). Ours is a per-`Logger` `AtomicU8` threshold living inside the `'static Logger` itself (`nros_log::Logger::{level, set_level, is_enabled}`) reached through a bounded 32-entry intern table (`nros_log::MAX_LOGGERS`), so there is no separate collection to allocate, copy, shrink or free. The compile-time half of the same knob is the `NROS_LOG_MAX_LEVEL` knob (issue 1037; formerly the `max-level-*` Cargo features), checked by the `const fn severity_enabled_at_compile_time` the macros expand into. The one member of this family that is a CAPABILITY rather than memory management has its own row -- see `c:log_levels_add_logger_setting`."
 }

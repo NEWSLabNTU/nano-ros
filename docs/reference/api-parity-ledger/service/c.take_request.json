@@ -3,7 +3,8 @@
   "disposition": "absent",
   "verdict": "declined",
   "retired_names": [
-    "nros_service_take_request"
+    "nros_service_take_request",
+    "try_recv_request"
   ],
   "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> declined. The inconsistency this row recorded is gone: C said TAKE for a service request and TRY_RECV for a subscription, C++ said `try_recv_request` for both. All three languages now say `take_request`, and the subscription side says `take`. What is left against `rcl_take_request` is rcl's free-function spelling versus our module-prefixed `rclc_polling_service_take_request_raw` (spelled `nros_service_take_request{,_raw}` before phase-487 W2) -- `c:get_zero_initialized_publisher`'s precedent, which argues for keeping ours. See `c:take`."
 }

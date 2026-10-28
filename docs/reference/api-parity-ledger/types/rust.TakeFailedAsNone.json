@@ -2,5 +2,8 @@
   "key": "rust:TakeFailedAsNone",
   "disposition": "absent",
   "verdict": "declined",
+  "retired_names": [
+    "NanoRosError"
+  ],
   "why": "rclrs/src/error.rs, not its action model -- this row previously said `part of its action/goal model, see rust:AcceptedGoal`, which was a mis-file: the trait turns a take that failed into `Ok(None)`. It exists because rclrs's take path reports an empty queue as an ERROR; ours reports emptiness as `Ok(false)` / `None` (issue 0757's audit), so there is nothing to convert back. Same decision and same reason as `rust:RclrsErrorFilter`. We DID carry a copy -- phase-16 cloned both traits into nros-core's `error` module against `NanoRosError` -- and issue 0783 deleted it with the error type it was written for: no fallible call in the user API ever returned that error, so the adapter had no `Result` to adapt."
 }

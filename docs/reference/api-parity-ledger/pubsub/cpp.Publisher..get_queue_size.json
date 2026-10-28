@@ -2,5 +2,5 @@
   "key": "cpp:Publisher::get_queue_size",
   "disposition": "absent",
   "verdict": "declined",
-  "why": "reads the history depth back off the publisher. Compile-time here; see `ACTUALQOS`."
+  "why": "reads the history depth back off the publisher. Compile-time here, so the name is declined; the runtime readback of what the backend granted is `get_actual_qos().depth()` (issue 1437)."
 }

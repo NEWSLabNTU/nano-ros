@@ -2,5 +2,9 @@
   "key": "rust:Client::notify_on_service_ready",
   "disposition": "absent",
   "verdict": "declined",
+  "retired_names": [
+    "poll_server_discovery",
+    "start_server_discovery"
+  ],
   "why": "needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport. The event form is a `ClientTrait::service_is_ready` check between spins -- phase-428 W13 deleted the asynchronous `start_server_discovery` / `poll_server_discovery` pair (issue 1087): the zenoh backend now keeps a matched-server set fed by liveliness PUT/DELETE, so readiness is a synchronous read, as it is upstream."
 }

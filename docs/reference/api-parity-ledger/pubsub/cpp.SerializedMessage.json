@@ -12,5 +12,8 @@
     "status": "resolved"
   },
   "verdict": "divergence",
+  "retired_names": [
+    "Subscription::try_recv_raw"
+  ],
   "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), rename -> divergence. The row deferred on 'settle the word first', but the word cannot settle it: a rename needs two names, and there is no ours-side type to rename. `rclcpp::SerializedMessage` is an OWNING, GROWABLE byte buffer -- constructor, `reserve`, `capacity`, `size`, `get_rcl_serialized_message`, `release_rcl_serialized_message`, wrapping `rcl_serialized_message_t` behind an allocator. Ours is a caller-owned `(uint8_t*, size_t)` pair at every call site (`Publisher::publish_raw(const uint8_t*, size_t)`, `PollSubscription::take_serialized(uint8_t*, size_t, size_t&)` (phase-456 W2b moved the taking API off `Subscription`), `rclc_publish_raw`), with no wrapper type, because there is no allocator to own a growable buffer and no exceptions to report a failed grow. That is a shape change with a named platform constraint, which is what divergence means.\nThe SERIALIZED -> RAW question (`c:take_serialized_message`) is about METHOD names and does not reach this row either way: whichever word wins, we still have no type here. If nano-ros ever introduces one, that is a NEW-TYPE decision made under whatever naming is in force then -- not a rename of this row. Six member rows inherit this verdict. (CORRECTED 2026-09-04, phase-417: the call-site list named `Subscription::try_recv_raw`, retired by phase-379 W6 decision 1; the live spelling is `take_serialized`, which this row's own `provides` already carried.)"
 }

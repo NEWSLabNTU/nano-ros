@@ -2,5 +2,8 @@
   "key": "cpp:Subscription::is_serialized",
   "disposition": "absent",
   "verdict": "declined",
+  "retired_names": [
+    "try_recv_raw"
+  ],
   "why": "asks whether this subscription was created in serialized mode, because rclcpp decides the take path from it at runtime. Ours are separate entry points (`PollSubscription::take` vs `PollSubscription::take_serialized` since phase-456 W2b), so the caller already knows. (CORRECTED 2026-09-04, phase-417: this named `try_recv` / `try_recv_raw`, retired by phase-379 W6 decision 1 and live only as `[[deprecated]]` forwarders.)"
 }

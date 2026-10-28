@@ -1,5 +1,8 @@
 {
   "key": "cpp:PollService::get_request_subscription_actual_qos",
   "verdict": "extension",
+  "retired_names": [
+    "callback_mode_"
+  ],
   "why": "phase-456 W5 — an UPSTREAM name on an ours-only type; see `cpp:PollService::get_service_name` for why that earns a row rather than inheriting `cpp:PollService`'s verdict. Issue 1437 put this pair on `rclcpp::Service<S>` and the split gave the poll half a second copy.\n\nTHE SERVICE COMES OUT THE OTHER WAY FROM THE SUBSCRIPTION, and the contrast is the point. W2b had to leave `get_actual_qos` OFF the dispatch `Subscription<M>` — it holds only `sched_handle_id_`, so reaching the arena would have meant inventing a signature that takes an executor, and that refusal is ledgered at `cpp:Subscription::get_actual_qos`. A service has no such problem: issue 1437 already gave the dispatch half `executor_` beside `handle_id_`, and `nros_cpp_service_server_get_actual_qos` serves both roads (`storage` for the owner, `(executor, handle_id)` for the arena). So BOTH halves answer on upstream's no-argument spelling, with no weakening and no gap row owed. This half passes `storage_`; the dispatch half passes `(executor_, handle_id_)`; the `callback_mode_` branch 1437 needed inside one class is gone from both.\n\nONE create builds TWO endpoints that negotiate against different peers, so this and its sibling are two answers and neither stands for the other. This one is the REQUEST endpoint — the subscription that receives calls (`rmw_service_request_subscription_get_actual_qos`)."
 }

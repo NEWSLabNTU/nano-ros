@@ -1,5 +1,8 @@
 {
   "key": "c:lifecycle_register_on_shutdown",
   "verdict": "extension",
+  "retired_names": [
+    "Option_LifecycleCallbackFnCtx"
+  ],
   "why": "rclc registers only four transitions (configure/activate/deactivate/cleanup); we register all six, matching rclcpp's `LifecycleNodeInterface`. An embedded node needs `on_shutdown` most of all -- it is where a device parks an actuator before the image stops. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `rclc_lifecycle_callback_t` typedef."
 }

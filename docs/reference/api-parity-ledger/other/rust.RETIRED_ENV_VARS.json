@@ -1,5 +1,8 @@
 {
   "key": "rust:RETIRED_ENV_VARS",
   "verdict": "extension",
-  "why": "phase-484 W8c — `nros::RETIRED_ENV_VARS: &[(&str, &str)]` (`packages/api/nros/src/retired_env.rs`): the `(retired, replacement)` pairs `ZENOH_LOCATOR` -> `NROS_LOCATOR` and `ZENOH_MODE` -> `NROS_SESSION_MODE`, deprecated in release 0.5.0-nros2 and now REFUSED. ONE table for both hosted env readers (`nros::env` and the `getenv` twin `nros::host_env`); a set name is `BootConfigError::RetiredEnvVar` / `InitError::RetiredEnvVar`, never ignored, because an ignored locator dials the default router and reads as \"no delivery\". Public so a test can set the retired name without spelling it (gate `check-retired-runtime-aliases` refuses any other reader). rclrs has no counterpart: it never had the aliases."
+  "retired_names": [
+    "nros::host_env"
+  ],
+  "why": "phase-484 W8c — `nros::RETIRED_ENV_VARS: &[(&str, &str)]` (`packages/api/nros/src/retired_env.rs`): the `(retired, replacement)` pairs `ZENOH_LOCATOR` -> `NROS_LOCATOR` and `ZENOH_MODE` -> `NROS_SESSION_MODE`, deprecated in release 0.5.0-nros2 and now REFUSED. ONE table for the hosted env reader (`nros::env`, on `getenv`; CORRECTED 2026-10-29 (phase-515 W0.c): this said both readers, but the `std::env` reader and its `getenv` twin `nros::host_env` are one since phase-359 W10 stage B); a set name is `BootConfigError::RetiredEnvVar` / `InitError::RetiredEnvVar`, never ignored, because an ignored locator dials the default router and reads as \"no delivery\". Public so a test can set the retired name without spelling it (gate `check-retired-runtime-aliases` refuses any other reader). rclrs has no counterpart: it never had the aliases."
 }

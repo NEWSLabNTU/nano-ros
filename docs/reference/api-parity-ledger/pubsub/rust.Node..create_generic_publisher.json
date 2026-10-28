@@ -1,5 +1,8 @@
 {
   "key": "rust:Node::create_generic_publisher",
   "verdict": "extension",
+  "retired_names": [
+    "NodeCtx"
+  ],
   "why": "type-erased pub/sub BY NAME: the caller supplies the type name and the RIHS type hash, and the payload stays CDR bytes. rclrs 0.7.0 has no counterpart under any spelling (measured: zero `generic` identifiers in `docs/reference/api-surface/rclrs.json`); its type-erased family is the dynamic-message one (`Node::create_dynamic_publisher` / `create_dynamic_subscription`, `declined` here), and that is a different capability -- loading typesupport by name at RUNTIME needs a dynamic loader and a heap, which is the reason `cpp:Node::create_generic_publisher` states for declining rclcpp's identically-named method. Ours is the weaker thing that survives the constraint: nothing is introspected, the name and hash are DATA the caller already holds, and a bridge or relay moves bytes it never deserialises (`packages/testing/nros-tests/bins/bridge-zenoh-to-*`). An `extension` against rclrs, not an adoption of rclcpp's name -- the contract is not rclcpp's, which is exactly why the C++ lane declines that spelling instead of shipping it.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
 }
