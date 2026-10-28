@@ -669,6 +669,15 @@ mod deadline_tests {
 /// stale TCP TIME_WAIT entries from blocking subsequent test connections.
 #[cfg(unix)]
 pub fn graceful_kill_process_group(handle: &mut Child) {
+    graceful_kill_process_group_within(handle, Duration::from_secs(2));
+}
+
+/// [`graceful_kill_process_group`] with a caller-chosen grace period.
+/// Returns `true` when the group leader exited on SIGTERM alone, `false`
+/// when the grace ran out and it took SIGKILL — a caller measuring what a
+/// CLEAN shutdown emits needs that answer, since a SIGKILL emits nothing.
+#[cfg(unix)]
+pub fn graceful_kill_process_group_within(handle: &mut Child, grace: Duration) -> bool {
     let pid = handle.id() as libc::pid_t;
 
     // Try graceful shutdown first (SIGTERM)
@@ -676,12 +685,12 @@ pub fn graceful_kill_process_group(handle: &mut Child) {
         libc::kill(-pid, libc::SIGTERM);
     }
 
-    // Wait up to 2s for graceful exit
+    // Wait up to `grace` for graceful exit
     let start = std::time::Instant::now();
     loop {
         match handle.try_wait() {
-            Ok(Some(_)) => return, // exited cleanly
-            Ok(None) if start.elapsed() < Duration::from_secs(2) => {
+            Ok(Some(_)) => return true, // exited cleanly
+            Ok(None) if start.elapsed() < grace => {
                 std::thread::sleep(Duration::from_millis(50));
             }
             _ => break, // timeout or error → force kill
@@ -700,6 +709,7 @@ pub fn graceful_kill_process_group(handle: &mut Child) {
     // (Linux-only, with the `/proc`-backed ledger itself.)
     #[cfg(target_os = "linux")]
     group_ledger::forget(pid);
+    false
 }
 
 /// Fallback for non-unix: kill just the direct child.
@@ -713,6 +723,13 @@ pub fn kill_process_group(handle: &mut Child) {
 #[cfg(not(unix))]
 pub fn graceful_kill_process_group(handle: &mut Child) {
     kill_process_group(handle);
+}
+
+/// Fallback for non-unix: no SIGTERM to offer, so never a clean exit.
+#[cfg(not(unix))]
+pub fn graceful_kill_process_group_within(handle: &mut Child, _grace: Duration) -> bool {
+    kill_process_group(handle);
+    false
 }
 
 /// Managed process with automatic cleanup

@@ -836,7 +836,7 @@ fn xrce_a_peer_leaving_fires_the_graph_change_guard() {
     // talker's own last `ros_discovery_info` sample, which only a clean
     // shutdown publishes (measured: SIGINT and SIGTERM both fire the edge,
     // SIGKILL never does).
-    talker.terminate();
+    let clean = talker.terminate();
 
     let rest = probe
         .wait_for_all_output(Duration::from_secs(45))
@@ -845,7 +845,9 @@ fn xrce_a_peer_leaving_fires_the_graph_change_guard() {
     let out = format!("{armed}{rest}");
     assert!(
         out.contains(nros_tests::output::GRAPH_PROBE_CHANGE_FIRED),
-        "the stock talker leaving must reach the XRCE graph-change guard:\n{out}"
+        "the stock talker leaving must reach the XRCE graph-change guard (talker exited \
+         on SIGTERM alone: {clean}; `false` means it took SIGKILL and never published its \
+         last ros_discovery_info sample):\n{out}"
     );
 }
 

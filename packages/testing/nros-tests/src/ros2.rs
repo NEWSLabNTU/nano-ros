@@ -2288,8 +2288,17 @@ rclpy.spin(node)
     /// its `ros_discovery_info` without them — the only departure signal a
     /// peer that sees no DDS discovery (XRCE) can receive. `kill` is SIGKILL
     /// and gives the node no chance to say so.
-    pub fn terminate(&mut self) {
-        crate::process::graceful_kill_process_group(&mut self.handle);
+    ///
+    /// The grace is 10 s, not the 2 s every teardown path uses: a cold first
+    /// `ros2 run` on a loaded host can take longer than 2 s to shut Fast-DDS
+    /// down, and the SIGKILL that ends the grace discards the very sample a
+    /// caller of this method is waiting for. Returns `true` when the group
+    /// leader exited on SIGTERM alone, so a test can say which happened.
+    pub fn terminate(&mut self) -> bool {
+        crate::process::graceful_kill_process_group_within(
+            &mut self.handle,
+            Duration::from_secs(10),
+        )
     }
 
     /// Kill the process
