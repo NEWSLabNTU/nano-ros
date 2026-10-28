@@ -790,12 +790,16 @@ inline ParameterDescriptor parameter_descriptor() {
     return d;
 }
 
-/// The token `remove_on_set_parameters_callback` takes.
+/// The token the token form of `add_on_set_parameters_callback` writes and
+/// `remove_on_set_parameters_callback(token)` takes.
 ///
-/// rclcpp returns an owning `ParameterCallbackHandle` shared_ptr whose
-/// destruction unregisters. With no allocator there is nothing to own, so this
-/// is a plain token and unregistering is explicit.
-using ParameterCallbackHandle = uint16_t;
+/// rclcpp returns an owning `OnSetParametersCallbackHandle` shared_ptr whose
+/// destruction unregisters; the hosted overload here does too
+/// (`node_interfaces::OnSetParametersCallbackHandle`). The token form has no
+/// allocator, so there is nothing to own: this is a plain slot id and
+/// unregistering is explicit. A nano-ros name: `rclcpp::ParameterCallbackHandle`
+/// is upstream's `ParameterEventHandler` handle (issue 2114).
+using OnSetParametersCallbackToken = uint16_t;
 
 } // namespace rclcpp
 
@@ -805,12 +809,12 @@ namespace detail {
 inline Result node_param_add_on_set_callback(const nros_cpp_node_t* node,
                                              ::rclcpp::OnSetParametersCallbackType callback,
                                              void* context,
-                                             ::rclcpp::ParameterCallbackHandle* out_handle) {
+                                             ::rclcpp::OnSetParametersCallbackToken* out_handle) {
     return Result(nros_cpp_node_add_on_set_params_callback(node, callback, context, out_handle));
 }
 
 inline Result node_param_remove_on_set_callback(const nros_cpp_node_t* node,
-                                                ::rclcpp::ParameterCallbackHandle handle) {
+                                                ::rclcpp::OnSetParametersCallbackToken handle) {
     return Result(nros_cpp_node_remove_on_set_params_callback(node, handle));
 }
 

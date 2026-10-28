@@ -7,5 +7,5 @@
     "nros::Node::remove_on_set_parameters_callback"
   ],
   "verdict": "declined",
-  "why": "The `make_shared` / `make_unique` factories rclcpp generates for its owning callback handle. Ours is `rclcpp::ParameterCallbackHandle = uint16_t`, a plain token: with no allocator there is nothing to own and nothing whose destruction could unregister, so `remove_on_set_parameters_callback(handle)` is explicit. A factory for an integer would be a name with nothing behind it. phase-417 W4.a."
+  "why": "The `make_shared` / `make_unique` factories rclcpp generates (`RCLCPP_SMART_PTR_DEFINITIONS`) for `ParameterCallbackHandle`. Ours (issue 2114) is a plain struct: build one with `std::make_shared<rclcpp::ParameterCallbackHandle>()`, which is what `add_parameter_callback` does; nothing outside the handler constructs one in upstream either. CORRECTED 2026-10-29 (issue 2114): this row said ours was a `uint16_t` token; the token is now `rclcpp::OnSetParametersCallbackToken`. phase-417 W4.a."
 }

@@ -211,8 +211,8 @@ using ParamTypeFn =
     rclcpp::ParameterType (rclcpp_lifecycle::detail::LifecycleEngine::*)(const char*) const;
 using SetAtomicFn = rclcpp::Result (rclcpp_lifecycle::detail::LifecycleEngine::*)(
     const rclcpp::ParameterWrite*, ::size_t);
-using RemoveCbFn =
-    rclcpp::Result (rclcpp_lifecycle::detail::LifecycleEngine::*)(rclcpp::ParameterCallbackHandle);
+using RemoveCbFn = rclcpp::Result (rclcpp_lifecycle::detail::LifecycleEngine::*)(
+    rclcpp::OnSetParametersCallbackToken);
 
 constexpr HasParamFn has_parameter_ = &rclcpp_lifecycle::detail::LifecycleEngine::has_parameter;
 constexpr UndeclareFn undeclare_parameter_ =

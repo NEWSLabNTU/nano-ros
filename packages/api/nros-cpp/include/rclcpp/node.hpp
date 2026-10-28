@@ -351,7 +351,7 @@ struct OnSetParametersCallbackHandle {
 
     OnParametersSetCallbackType callback;
     const nros_cpp_node_t* node;
-    ParameterCallbackHandle token;
+    OnSetParametersCallbackToken token;
     bool registered;
 };
 #endif // NROS_CPP_STD
@@ -1558,10 +1558,10 @@ class Node {
     /// and unregistering is explicit. `Result::FULL` when every slot is taken
     /// — a refusal, never a silent eviction of somebody else's hook.
     Result add_on_set_parameters_callback(OnSetParametersCallbackType callback, void* context,
-                                          ParameterCallbackHandle& out_handle);
+                                          OnSetParametersCallbackToken& out_handle);
 
     /// `rclcpp::Node::remove_on_set_parameters_callback(handle)`.
-    Result remove_on_set_parameters_callback(ParameterCallbackHandle handle);
+    Result remove_on_set_parameters_callback(OnSetParametersCallbackToken handle);
 
 #ifdef NROS_CPP_STD // hosted-family: parameter-interop
     // ---- issue 2056: upstream's value-object parameter surface --------------

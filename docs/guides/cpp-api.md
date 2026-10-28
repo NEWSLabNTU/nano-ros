@@ -537,9 +537,8 @@ name means this node, and a relative one resolves against this node's
 namespace. A parameter callback sees new and changed values, never deletions.
 An event callback receives the type it takes, so `rcl_interfaces` must be
 generated for the image. The per-parameter handle is
-`ParameterEventHandler::ParameterCallbackHandle`, because
-`rclcpp::ParameterCallbackHandle` is the on-set token here.
-`get_parameter(s)_from_event` are absent. A freestanding build refuses the
+`rclcpp::ParameterCallbackHandle`, as upstream (the handler's nested
+`ParameterEventHandler::ParameterCallbackHandle` names the same type). A freestanding build refuses the
 handler at compile time; there, subscribe to `/parameter_events` with
 `create_subscription` yourself.
 

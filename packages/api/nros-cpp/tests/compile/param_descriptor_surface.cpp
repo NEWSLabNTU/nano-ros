@@ -113,7 +113,7 @@ inline void instantiate(rclcpp::Node& node) {
     r = node.set_parameters_atomically(writes, 2);
 
     // the accept/reject hook, register and unregister
-    rclcpp::ParameterCallbackHandle handle = 0;
+    rclcpp::OnSetParametersCallbackToken handle = 0;
     r = node.add_on_set_parameters_callback(refuse_negative_rate, nullptr, handle);
     r = node.remove_on_set_parameters_callback(handle);
 
