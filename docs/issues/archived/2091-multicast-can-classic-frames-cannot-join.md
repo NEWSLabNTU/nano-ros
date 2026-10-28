@@ -11,7 +11,7 @@ resolved_in: "zenoh-pico fork nano-ros-1.10.1 2594f6b4 (pinned by this fix's PR)
 related: [phase-514, 2096, 0080, 0081, 0083]
 ---
 
-**Home: [phase-514](../../roadmap/phase-514-network-config-layers.md)** (found
+**Home: [phase-514](../../roadmap/archived/phase-514-network-config-layers.md)** (found
 while measuring W5).
 
 ## Measured

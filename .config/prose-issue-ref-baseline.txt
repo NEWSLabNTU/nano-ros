@@ -53,6 +53,12 @@
 #         keyed without the entity facts). Issue 1684 cites it as what blocked
 #         the tier-1 fixture build. REMOVE THIS ROW when #1707 merges.
 #
+#   2121  IN FLIGHT — filed on PR #2796 (tier-2 reds on main after the #2094
+#         fix). phase-514's acceptance note cites it as one of the two real
+#         tier-2 failures, neither in phase-514 code. REMOVE THIS ROW when
+#         #2796 merges.
+#
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
+docs/roadmap/archived/phase-514-network-config-layers.md:2121
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110

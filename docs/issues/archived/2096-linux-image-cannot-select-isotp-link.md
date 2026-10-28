@@ -11,7 +11,7 @@ resolved_in: "the PR that archives this file (fix/2096-link-features)"
 related: [phase-514, 2091, 0083]
 ---
 
-**Home: [phase-514](../../roadmap/phase-514-network-config-layers.md)** — the
+**Home: [phase-514](../../roadmap/archived/phase-514-network-config-layers.md)** — the
 layer that states a board's `links` (W1) and an image's locator (W2/W4).
 
 ## Measured

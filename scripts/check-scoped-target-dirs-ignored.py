@@ -15,6 +15,12 @@ to a list somebody remembers to extend. One direction only: a suffix a recipe
 asks for must be ignored. The reverse is not a defect -- an entry may outlive
 its call site, and a stale ignore line costs nothing.
 
+A suffix built from an interpolation (`board-transport-variants-{name}` in a
+Python f-string, `foo-${x}` in shell) names a FAMILY of dirs, so it is
+satisfied by a glob entry covering it (`/target-board-transport-variants-*/`).
+Python callers are scanned too: issue 2116's gate reached the helper from a
+`.py` file, which this scan could not see, so its ignore line was hand-added.
+
 Self-tests run on the normal path (CLAUDE.md: a gate that works is not a gate
 that runs).
 """
@@ -31,6 +37,7 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+import fnmatch
 
 # Issue 0986 — this file builds a throwaway repository with `git init`, and an
 # inherited `GIT_DIR` makes that rewrite the CALLER's repository instead. Every
@@ -39,10 +46,14 @@ import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
 
-CALL = re.compile(r"nros_scoped_target_dir\s+([A-Za-z0-9][A-Za-z0-9_.-]*)")
+CALL = re.compile(r"nros_scoped_target_dir\s+([A-Za-z0-9][A-Za-z0-9_.{}$-]*)")
+# An interpolation in a suffix -- `{expr}` (Python f-string), `${var}` or `$var`
+# (shell) -- stands for any text, so the suffix becomes a glob.
+INTERPOLATION = re.compile(r"\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\{[^}]*\}")
 # The helper's own definition and its doc block spell the name; they are not calls.
-DEFINING_FILE = "scripts/build/cargo.sh"
-SCANNED_SUFFIXES = (".sh", ".just")
+# Nor are this gate's self-test fixtures, now that `.py` is scanned.
+EXCLUDED_FILES = ("scripts/build/cargo.sh", "scripts/check-scoped-target-dirs-ignored.py")
+SCANNED_SUFFIXES = (".sh", ".just", ".py")
 SCANNED_NAMES = ("justfile",)
 # A tree with no scoped dir at all means the harvest broke, not that the tree is
 # clean: three recipes use one today, and `check workspace-all` is one of them.
@@ -57,7 +68,7 @@ def tracked_files(root: Path) -> list[Path]:
     for rel in out.split("\0"):
         if not rel:
             continue
-        if rel == DEFINING_FILE:
+        if rel in EXCLUDED_FILES:
             continue
         name = rel.rsplit("/", 1)[-1]
         if rel.endswith(SCANNED_SUFFIXES) or name in SCANNED_NAMES:
@@ -100,13 +111,31 @@ def ignored_entries(root: Path) -> set[str]:
     return entries
 
 
+def as_glob(suffix: str) -> str:
+    """The suffix with every interpolation turned into `*`."""
+    return INTERPOLATION.sub("*", suffix)
+
+
+def covered(wanted: str, entries: set[str]) -> bool:
+    """Is `wanted` (`/target-<suffix>/`, maybe holding `*`) ignored by an entry?
+
+    An exact line covers it; so does a glob entry that matches it with every
+    `*` read as a literal stand-in, i.e. a glob at least as wide as the family.
+    """
+    if wanted in entries:
+        return True
+    probe = wanted.replace("*", "x")
+    return any("*" in e and fnmatch.fnmatchcase(probe, e) for e in entries)
+
+
 def check(root: Path) -> tuple[list[str], int, int]:
     sites = call_sites(root)
     entries = ignored_entries(root)
     findings = []
     for rel, line, suffix in sorted(set(sites)):
+        suffix = as_glob(suffix)
         wanted = f"/target-{suffix}/"
-        if wanted not in entries:
+        if not covered(wanted, entries):
             findings.append(
                 f"{rel}:{line}: `nros_scoped_target_dir {suffix}` writes "
                 f"`target-{suffix}/` at the repo root, and the root `.gitignore` "
@@ -192,6 +221,42 @@ def self_test() -> int:
         "/target/\n",
         {"just/x.just": '  echo "# not a comment" ; CARGO_TARGET_DIR="$(nros_scoped_target_dir alpha)"\n'},
         1,
+    )
+    case(
+        "a Python f-string call site with no glob entry is caught",
+        "/target/\n",
+        {"scripts/x.py": 'cmd = f"nros_scoped_target_dir fam-{name}"\n'},
+        1,
+    )
+    case(
+        "a Python f-string call site covered by a glob entry is clean",
+        "/target/\n/target-fam-*/\n",
+        {"scripts/x.py": 'cmd = f"nros_scoped_target_dir fam-{name}"\n'},
+        0,
+    )
+    case(
+        "a glob narrower than the family does not cover it",
+        "/target/\n/target-fam-a*/\n",
+        {"scripts/x.py": 'cmd = f"nros_scoped_target_dir fam-{name}"\n'},
+        1,
+    )
+    case(
+        "a shell interpolation is a family too",
+        "/target/\n/target-fam-*/\n",
+        {"just/x.just": '  D="$(nros_scoped_target_dir fam-${board})"\n'},
+        0,
+    )
+    case(
+        "a literal suffix is covered by a glob entry",
+        "/target/\n/target-fam-*/\n",
+        {"just/x.just": '  D="$(nros_scoped_target_dir fam-one)"\n'},
+        0,
+    )
+    case(
+        "a Python comment naming the helper is not a call site",
+        "/target/\n",
+        {"scripts/x.py": '# nros_scoped_target_dir alpha\n'},
+        0,
     )
     case(
         "an untracked file is out of scope",
