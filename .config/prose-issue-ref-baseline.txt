@@ -59,6 +59,5 @@
 #         #2796 merges.
 #
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
-docs/roadmap/archived/phase-514-network-config-layers.md:2121
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
