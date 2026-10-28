@@ -1045,6 +1045,14 @@ build a project pinned to an older release, and the book (W2) should name the
 file. `nros new` does not write it, by D9's design (pin on first BUILD, not on
 scaffold), which this phase keeps.
 
+## Issues homed here (2026-10-29)
+
+* [2137](../issues/archived/2137-nros-build-never-takes-the-census.md),
+  resolved. Promise 2 (one build) did not hold for any cross image whose model
+  folds in a contract. `nros build --all` refused it with `census missing`,
+  because only the fixture pre-pass took a census. `nros build` now takes it
+  itself before the plan generates anything.
+
 ## Order and dependencies
 
 * W1 now (docs). W5 before W2's release cut; W2's book move after the release

@@ -661,6 +661,23 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             continue;
         }
 
+        // ---- stage 3.4 — the census a CROSS image will be checked against --
+        //
+        // Issue 2137 — `nros build` is the orchestrator, so it takes the
+        // census itself, before anything in this image is generated (stage
+        // 3.5 reads it for the callback slots) and before the check that
+        // reads it (stage 4 on the cargo/west-Rust roads, the configure on
+        // the cmake road). Until this, only the fixture pre-pass took one,
+        // so the documented user flow — `nros sync && nros build` — refused
+        // every cross image whose model folds in a contract with `census
+        // missing`, on a fresh clone and on a copy-out alike. Issue 0641's
+        // reason not to build the native image applies to a CONFIGURE; this
+        // is the driver one level up, which runs the host build as a
+        // separate process before any configure starts.
+        if !args.dry_run && census_take_is_ours(descriptor.platform) {
+            crate::cmd::entity_census::take_for_build(&root, &qual, args.offline);
+        }
+
         // ---- stage 3.5 — the RESOLVE phase (RFC-0094 D1, phase-439 W2) ---
         //
         // ONE PLACE DECIDES A KNOB, every other place reads it. Between "is the
@@ -2223,6 +2240,13 @@ fn plan_single_package_cmake(
     missing.retain(|m| m.remedy != "nros sync");
     if !missing.is_empty() {
         eyre::bail!("{}", crate::builder::preflight::report(&missing));
+    }
+    // Issue 2137 -- the leaf half of the workspace road's stage 3.4: a leaf
+    // whose components read their entities from the census (`entities =
+    // "census"`, issue 1556) has its configure refuse without a fresh one,
+    // and before this only the fixture pre-pass took it.
+    if !args.dry_run && decl.entities_from_census() && census_take_is_ours(descriptor.platform) {
+        crate::cmd::entity_census::take_leaf_for_build(root);
     }
 
     let build_dir = format!("build/{image_id}/cmake");
@@ -5739,6 +5763,33 @@ fn effective_images(
         .collect()
 }
 
+/// Issue 2137 — whether `nros build` takes the census of this image itself.
+///
+/// A HOST image is the census producer and is never asked for one. A run
+/// under the fixture pre-pass (`NROS_CENSUS_PREPASS=done`,
+/// `scripts/build/census-prepass.sh`) has already taken every census, and its
+/// platform stages run in PARALLEL, so a take from inside one of them would be
+/// a second build of the native tree racing the native stage's own; there, a
+/// census that is still missing is a refusal for the check to report.
+pub(crate) fn census_take_is_ours(
+    platform: crate::orchestration::board_descriptor::PlatformKind,
+) -> bool {
+    census_take_is_ours_given(platform, std::env::var_os(CENSUS_PREPASS_ENV).as_deref())
+}
+
+/// [`census_take_is_ours`] with the pre-pass variable passed in, so the rule
+/// is testable without mutating the process environment.
+fn census_take_is_ours_given(
+    platform: crate::orchestration::board_descriptor::PlatformKind,
+    prepass: Option<&std::ffi::OsStr>,
+) -> bool {
+    platform != crate::orchestration::board_descriptor::PlatformKind::Posix
+        && prepass.is_none_or(|v| v != "done")
+}
+
+/// The variable the fixture pre-pass exports once it has taken every census.
+const CENSUS_PREPASS_ENV: &str = "NROS_CENSUS_PREPASS";
+
 /// Issue 1419 -- does `nros build` stage 4 check this image's census?
 ///
 /// Exactly the images no CONFIGURE checks: a CROSS image whose road calls no
@@ -7261,6 +7312,37 @@ mod stage4_census_tests {
             Driver::Cargo,
             PlatformKind::Posix,
             false
+        ));
+    }
+
+    /// Issue 2137 -- `nros build` takes the census of every CROSS image
+    /// itself, on every driver, because the check that follows (stage 4, or
+    /// the cmake configure) only reads one. Before, nothing on the user's
+    /// `nros sync && nros build` road produced it, so `features`'
+    /// `zephyr_rust_qos` refused `census missing` even right after
+    /// `--all` had built its host sibling `linux_rust_qos`.
+    #[test]
+    fn nros_build_takes_the_census_of_every_cross_image() {
+        use super::census_take_is_ours_given;
+        use std::ffi::OsStr;
+        for cross in [
+            PlatformKind::Zephyr,
+            PlatformKind::ThreadxLinux,
+            PlatformKind::Freertos,
+        ] {
+            assert!(census_take_is_ours_given(cross, None), "{cross:?}");
+            assert!(
+                census_take_is_ours_given(cross, Some(OsStr::new(""))),
+                "{cross:?}: only `done` hands the take to the pre-pass"
+            );
+        }
+        // The host image is the producer: it is never asked for a census.
+        assert!(!census_take_is_ours_given(PlatformKind::Posix, None));
+        // Under the fixture pre-pass every census is already taken, and the
+        // stages run in parallel: a take there would race the native stage.
+        assert!(!census_take_is_ours_given(
+            PlatformKind::Zephyr,
+            Some(OsStr::new("done"))
         ));
     }
 }
