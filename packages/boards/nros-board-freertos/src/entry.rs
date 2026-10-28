@@ -520,9 +520,11 @@ where
         B::exit_failure();
     }
 
-    // issue 1197 — the one-shot heap high-water reporter. Priority 0, strictly
-    // below the app (3) and the transport band (4), so it never takes the CPU
-    // from work that is running; it deletes itself after its single line.
+    // issue 1197 — the one-shot heap high-water reporter. Priority 1, one above
+    // the idle task and strictly below the app (3) and the transport band (4),
+    // so it never takes the CPU from work that is running; it deletes itself
+    // after its single line. Not 0: sharing slices with IDLE, whose hook is a
+    // WFI, starved the C twin under QEMU icount for ~30 s a sample (issue 2111).
     // A failure to create it is NOT fatal: it is an instrument, and an image
     // that boots without it is still a working image.
     let heap_ret = unsafe {
@@ -531,7 +533,7 @@ where
             c"heappeak".as_ptr().cast(),
             HEAP_PEAK_TASK_STACK,
             core::ptr::null_mut(),
-            0,
+            1,
         )
     };
     if heap_ret != 0 {
