@@ -1,15 +1,16 @@
 ---
 id: 2100
 title: "host-tests' tier-1 gates outgrow the GitHub-hosted runner's disk: the 26 concurrent check-build gates leave ~110 G against ~75 G free"
-status: open
+status: resolved
 type: bug
 area: [ci, build]
 severity: medium
 found: 2026-10-27
-related: [phase-466, 1353, 2052]
+related: [phase-466, 1353, 2052, 2130]
+resolved_in: "PR #2754 (2026-10-27)"
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-27.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-27.
 
 ## Measured
 
@@ -89,3 +90,13 @@ prints since #2717 should show `build/example-lint`, `packages/cli/target`
 and `build/corrosion-cargo` small. `live-peer`'s host job is the same class but
 a different population: its fixture build, not these gates. If it still runs
 out of disk, it gets its own item.
+
+## Verified (2026-10-29)
+
+The first scheduled `host-tests` run after #2754, run 40625461704
+(2026-10-28), passed its tier-1 gates job. The after-report read
+`68% used, 48G free`, against 0 bytes free on the four failing nights.
+
+`live-peer`'s host job still ran out of disk on 2026-10-28. As said above,
+that is a different population (its fixture build and cells), so it is
+[issue 2130](../2130-live-peer-host-job-disk-exhausted.md), not this one.

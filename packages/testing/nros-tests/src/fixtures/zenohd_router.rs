@@ -22,6 +22,17 @@ fn lease_ephemeral_port() -> std::io::Result<crate::port_lease::PortLease> {
     crate::port_lease::lease_port(crate::port_lease::Transport::Tcp)
 }
 
+/// Issue 2125 — how long a router start waits for another test's router on the
+/// same baked port. Longer than the longest cell holding one (the quiet-link
+/// cell's 75 s window plus a cold QEMU boot), and inside the 360 s the QEMU
+/// groups' slow-timeouts allow.
+const NAMED_PORT_WAIT: Duration = Duration::from_secs(240);
+
+fn wait_for_named_port(port: u16) -> TestResult<Option<crate::port_lease::PortLease>> {
+    crate::port_lease::wait_for_port(crate::port_lease::Transport::Tcp, port, NAMED_PORT_WAIT)
+        .map_err(|e| TestError::ProcessFailed(format!("router port {port}: {e}")))
+}
+
 /// Which `RUST_LOG` filter this router runs under, if any.
 ///
 /// ONE place decides it, for every constructor (issue 1394):
@@ -435,7 +446,9 @@ impl ZenohRouter {
             ));
         }
 
-        // Kill any orphaned zenohd from a previous test run
+        // Issue 2125 — a live router on this port belongs to a test running the
+        // same baked image; wait for it. Only then is a listener an orphan.
+        let lease = wait_for_named_port(port)?;
         kill_listeners_on_port(port);
 
         let locator = format!("tcp/{}:{}", bind_addr, port);
@@ -473,7 +486,7 @@ impl ZenohRouter {
             port,
             tls: false,
             launch,
-            _lease: None,
+            _lease: lease,
         })
     }
 
@@ -550,6 +563,7 @@ impl ZenohRouter {
         cert_path: &std::path::Path,
         key_path: &std::path::Path,
     ) -> TestResult<Self> {
+        let lease = wait_for_named_port(port)?;
         kill_listeners_on_port(port);
 
         // issue 0408 — listen DUAL-STACK, not IPv4-only. Clients reach this
@@ -606,7 +620,7 @@ impl ZenohRouter {
             port,
             tls: true,
             launch,
-            _lease: None,
+            _lease: lease,
         })
     }
 
