@@ -50,3 +50,9 @@ run-side lane keeps its cell (the 0828 build/run lane split:
 `nros_lane_build_lane` vs `CiLane::run_scope`, and
 `lane_build_covers_run::every_unskippable_row_is_in_its_lane_build`), make the
 two agree, and show the cell green in a tier-2 run.
+
+## Sighting, 2026-10-28
+
+- Run: run-matrix 40643270547 (main at `e0f81b4ac`, after #2764 merged).
+
+- Job: 122666117078, `tier 2 (1-wise matrix)`. The same MISSING panic as before, at `fixtures/binaries/mod.rs:770`, for `…/freertos/thumbv7m-none-eabi/nros-minsizerel/loan-copy-sub`. Merging #2764 did not close it.
