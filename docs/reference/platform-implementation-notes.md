@@ -267,12 +267,12 @@ Consequences and rules:
   4-slot ring evicts most of a batched callback burst, keeping its newest
   samples — issue 1979). User-facing decision
   tree: book "TX Throughput & Latency Tuning" page.
-- **`Z_CONFIG_SOCKET_TIMEOUT` must stay short on Zephyr (100 ms, like the unix
-  port).** At 5000 ms the client's ~3.3 s lease keepalives miss the 10 s lease and
+- **`Z_CONFIG_SOCKET_TIMEOUT` must stay short (100 ms on every port).** At 5000 ms the client's ~3.3 s lease keepalives miss the 10 s lease and
   zenohd silently drops the session — the image keeps spinning against a dead
   transport (boot-time declares crawl at one per recv window, then everything
   wedges). Fork patch in `zenoh-pico/include/zenoh-pico/config.h` (+ the
-  `zenoh_generic_config.h` twin); NuttX intentionally keeps 5000.
+  `zenoh_generic_config.h` twin). NuttX kept 5000 until 2026-10-29 (issue
+  2094); on the fixed clock it takes 100 too, and its cells ran 2–16x faster.
 - **A zenoh image's socket receive MUST time out, and on Zephyr that takes
   `CONFIG_NET_CONTEXT_RCVTIMEO`** (issue 2105). zenoh-pico 1.10's executor
   thread runs the lease, keep-alive and query timeouts only between
@@ -292,8 +292,8 @@ Consequences and rules:
   always references. Before this, every executor wake-up was stack garbage,
   and a NuttX link with no traffic lost its session at the 60 s lease while
   every cell with traffic passed. Count nanoseconds in `uint64_t`: 32 bits
-  wraps every 4.29 s. With a 5 s socket timeout, NuttX timers fire up to
-  ~10 s late (keep-alives every 25–30 s), which the 60 s lease absorbs.
+  wraps every 4.29 s. With the old 5 s socket timeout NuttX timers fired up
+  to ~10 s late (keep-alives every 25–30 s); at 100 ms the bound is ~200 ms.
 - **Intra-image pub→sub needs `Z_FEATURE_LOCAL_SUBSCRIBER=1`** (set by
   `zephyr/cmake/nros_rmw_zenoh.cmake` on Zephyr; the generated
   `zenoh_generic_config.h` from `nros-zpico-build` sets it for every
