@@ -208,8 +208,8 @@ class PortedServiceNode : public rclcpp::Node {
         // phase-426 W4 — `this->parameters()` IS GONE, and this probe is where
         // its absence is pinned. It returned a reference to the node's OWN
         // `nros::ParameterServer`, described as the escape hatch "for the C-API
-        // helpers that take an `nros_parameter_server_t*`" — of which there are
-        // none: `nros_executor_register_parameter_services` takes the executor.
+        // helpers that take an `rclc_parameter_server_t*`" — of which there are
+        // none: ~~`nros_executor_register_parameter_services`~~ takes the executor.
         // With the node-local store deleted there is nothing to hand out. The
         // three calls above reach the store `ros2 param get` reads, which is
         // what the escape hatch was reaching for and never got.

@@ -7,7 +7,7 @@
 //!   direct use by `no_std` consumers.
 //! * `pub static __NROS_SIZE_FOO: [u8; FOO_SIZE] = [0; FOO_SIZE];` — an
 //!   array-sized static whose *symbol storage size* in the compiled rlib
-//!   equals `FOO_SIZE`. `nros-c`/`nros-cpp` build scripts read the sizes out
+//!   equals FOO_SIZE. `nros-c`/`nros-cpp` build scripts read the sizes out
 //!   via [`nros_sizes_build::extract_sizes`](../../../nros-sizes-build/index.html)
 //!   to derive opaque-storage macros for the generated C/C++ headers.
 //!
@@ -47,7 +47,7 @@ mod rmw_sizes {
     // monomorphised fn-pointer static. The monomorphisation's v0
     // mangled symbol name contains both the name ("NAME") *and* the
     // const-generic value (the size) — e.g. demangles as
-    // `nros::sizes::rmw_sizes::__nros_size_PUBLISHER_SIZE::<48>`.
+    // nros::sizes::rmw_sizes::__nros_size_PUBLISHER_SIZE::<48>.
     // Symbol names survive LTO because the linker still needs them,
     // even when the object file is LLVM bitcode and `object::parse`
     // can't read symbol byte sizes. The original `__NROS_SIZE_<NAME>`
@@ -181,8 +181,8 @@ mod rmw_sizes {
     // size_of::<ActionServerInternalLayout>()`.
     //
     // phase-487 W4 removed five fields from both: a second copy of the
-    // server's callback record (`c_goal_callback`, `c_cancel_callback`,
-    // `c_accepted_callback`, `c_context`) and `server_ptr`, which pointed back
+    // server's callback record (~~`c_goal_callback`~~, ~~`c_cancel_callback`~~,
+    // ~~`c_accepted_callback`~~, `c_context`) and `server_ptr`, which pointed back
     // to the struct containing it. The trampolines read the server's own
     // record now.
     use core::ffi::c_void;

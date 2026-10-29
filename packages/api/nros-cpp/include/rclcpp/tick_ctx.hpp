@@ -32,11 +32,11 @@
  *
  * ## Stub contract (until M-F.4.a)
  *
- * Until the codegen-side `GenClientDispatch` impl lands in `nros-cli`
+ * Until the codegen-side ~~`GenClientDispatch`~~ impl lands in `nros-cli`
  * (Phase 212.M-F.4.a) and the generated runtime starts passing a real
  * non-null tick-ctx handle, both raw FFI symbols return
- * `NROS_CPP_RET_ERROR` (matching the Rust `UnsupportedClients` stub in
- * `nros-node`'s `ExecutorComponentRuntime::run_ticks`). The symbols
+ * `NROS_CPP_RET_ERROR` (matching the Rust ~~`UnsupportedClients`~~ stub in
+ * `nros-node`'s ~~`ExecutorComponentRuntime::run_ticks`~~). The symbols
  * exist + are callable; C++ user code can write tick bodies against the
  * typed wrappers today, and the runtime will surface `ErrorCode::Error`
  * until the generated dispatch reaches them.
@@ -59,7 +59,7 @@
 
 namespace rclcpp {
 
-/// Client-side dispatch handle handed to `ExecutableComponent::tick`.
+/// Client-side dispatch handle handed to ~~`ExecutableComponent::tick`~~.
 ///
 /// Mirrors the Rust `nros::TickCtx` substrate (Phase 212.M-F.4). The
 /// generated runtime constructs one per spin and hands it to the
@@ -70,7 +70,7 @@ namespace rclcpp {
 ///
 /// Component code never sees the executor directly — the substrate
 /// keeps that detail inside the runtime. Until the codegen-side
-/// `GenClientDispatch` impl lands (M-F.4.a) every call returns
+/// ~~`GenClientDispatch`~~ impl lands (M-F.4.a) every call returns
 /// `ErrorCode::Error`; the surface is stable so user `tick` bodies can
 /// be written against it today.
 class TickCtx {

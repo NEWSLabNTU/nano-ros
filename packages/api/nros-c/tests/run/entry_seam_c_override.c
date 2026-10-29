@@ -2,7 +2,7 @@
  * `nros_board_network_wait()`, the affordance the weak default exists for.
  *
  * A board or Entry app that must block until the link / DHCP lease is ready
- * (e.g. ASI's `configure_network()` prologue) defines this symbol strongly and
+ * (e.g. ASI's ~~`configure_network()`~~ prologue) defines this symbol strongly and
  * the linker prefers it over the weak body in `<rclc/detail/main.h>`. Linked beside
  * `entry_seam_c_linkage.c`, the marker below MUST appear — the `check-c` lane
  * greps for it, so a change that made the weak body unoverridable (or that

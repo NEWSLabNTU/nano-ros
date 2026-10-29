@@ -71,7 +71,7 @@ impl Default for rcl_guard_condition_t {
 
 impl rcl_guard_condition_t {
     // `get_callback` / `get_context` lived here and are gone with phase-417
-    // W4.e: their one caller was `nros_executor_add_guard_condition`, reading
+    // W4.e: their one caller was ~~`nros_executor_add_guard_condition`~~, reading
     // back the pair a separate `set_callback` had stored so it could build the
     // registration closure. The closure is built from the creation call's own
     // arguments now, so there is nothing to read back.
@@ -123,8 +123,8 @@ pub extern "C" fn rcl_get_zero_initialized_guard_condition() -> rcl_guard_condit
 /// a wake with no work attached; `context` is handed back to it unchanged.
 ///
 /// **This replaced three calls, and until 2026-09-18 the first two produced an
-/// INERT object.** `nros_guard_condition_init(guard, support)` only zeroed
-/// fields — nothing reached the arena until `nros_executor_add_guard_condition`
+/// INERT object.** ~~`nros_guard_condition_init(guard, support)`~~ only zeroed
+/// fields — nothing reached the arena until ~~`nros_executor_add_guard_condition`~~
 /// ran, so between the two the handle read `handle_id == SIZE_MAX` and a
 /// trigger fell back to a local flag no executor watches. Binding the callback
 /// after the fact was also the shape we already REFUSE in C++ at
@@ -178,7 +178,7 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
     // `rclc_node_resolve_name` gives for the remap table.
     //
     // The predicate is "is this node BOUND to an executor". It used to be
-    // spelled out here because `is_multi_session()` also required
+    // spelled out here because ~~`is_multi_session()`~~ also required
     // `node_id != 0` and got the answer WRONG — the FIRST node
     // `rclc_executor_node_init` builds takes slot 0 (the primary slot;
     // `executor_param_node_keying.c` asserts exactly that), and a node's right
@@ -257,7 +257,7 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
 /// set, not at this name.
 ///
 /// The callback is an EDGE and carries nothing. "What changed" is answered by
-/// re-reading the graph (`nros_node_get_names`, `nros_count_publishers`, …);
+/// re-reading the graph (~~`nros_node_get_names`~~, `rcl_count_publishers`, …);
 /// delivering a diff would mean buffering the graph, which is the cache a
 /// small target cannot afford, and the ABI slot has said so since phase-376
 /// W4.
@@ -427,7 +427,7 @@ pub unsafe extern "C" fn rcl_trigger_guard_condition(
 /// writes** — and it had to, from the moment creation became registration. The
 /// local `triggered` byte this used to read was only ever written by the
 /// fallback path of an UNREGISTERED guard, so with the retirement of
-/// `nros_guard_condition_init` it would have answered `false` for every guard
+/// `rcl_guard_condition_init` it would have answered `false` for every guard
 /// condition that exists: a reader that compiles, runs, and is always wrong.
 /// The executor CONSUMES the flag when it dispatches, so this answers "set and
 /// not yet dispatched"; a caller that both polls this and spins the executor is
@@ -592,7 +592,7 @@ mod tests {
         assert!(guard.context.is_null());
     }
 
-    // phase-417 W4.e — `nros_guard_condition_init` / `_set_callback` are
+    // phase-417 W4.e — ~~`nros_guard_condition_init`~~ / `_set_callback` are
     // RETIRED. Their null-argument tests became these three, on the verb that
     // replaced them; the behavioural half (a created guard is REGISTERED, and a
     // trigger from another thread wakes the executor) needs a live executor and
@@ -742,7 +742,7 @@ mod tests {
         }
     }
 
-    // `test_guard_condition_fini_not_init` used to live here, asserting
+    // ~~`test_guard_condition_fini_not_init`~~ used to live here, asserting
     // `RCL_RET_NOT_INIT` for a zero-initialised handle. It PINNED the
     // divergence rather than recording it — rcl returns OK for exactly that
     // case. Replaced by `guard_condition_fini_is_idempotent` above
@@ -799,7 +799,7 @@ mod tests {
         }
     }
 
-    // `test_guard_condition_set_callback_*` (three of them) lived here and are
+    // ~~`test_guard_condition_set_callback_*`~~ (three of them) lived here and are
     // gone with the verb: a callback is bound at CREATION now, which is the
     // constraint C++ already enforced at
     // `GuardCondition::set_on_trigger_callback` and C contradicted. What they

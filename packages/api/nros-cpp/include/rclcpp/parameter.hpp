@@ -11,7 +11,7 @@
  *
  * Until now this header also defined `nros::ParameterServer<Capacity,
  * SeqSlots, SeqPoolBytes>`: a second parameter STORE, inline on the caller,
- * over the caller-storage C `nros_parameter_server_t`. The first half of W4
+ * over the caller-storage C ~~`nros_parameter_server_t`~~. The first half of W4
  * deleted the two node-owned stores (`rclcpp::Node`'s inline member and
  * `ComponentNode`'s facade) so a parameter declared in C++ lands in the one
  * `nros_params::ParameterServer` the six `rcl_interfaces/srv/...` servers read

@@ -20,7 +20,7 @@
  * WHY THE TAKING API LIVES HERE — phase-456 W5, following W2b
  *
  * It used to live on `rclcpp::Service<S>`, which served BOTH ownership models
- * behind a `callback_mode_` flag. On the dispatch path the arena owns the
+ * behind a ~~`callback_mode_`~~ flag. On the dispatch path the arena owns the
  * server and `storage_` is never filled, so `take_request()` on a
  * callback-mode object handed `NROS_SERVICE_SERVER_SIZE` value-initialized
  * zero bytes to `nros_cpp_service_server_take_request_raw`. Nothing on that
@@ -166,7 +166,7 @@ template <typename S> class PollService {
     /// back — see @ref Publisher::get_actual_qos.
     ///
     /// This half OWNS its `RmwServiceServer`, so it passes `storage_` and the
-    /// `callback_mode_` branch issue 1437 needed is gone. See
+    /// ~~`callback_mode_`~~ branch issue 1437 needed is gone. See
     /// @ref rclcpp::Service::get_request_subscription_actual_qos for why the
     /// dispatch half answers too, which is where the service differs from the
     /// subscription W2b split the same way.

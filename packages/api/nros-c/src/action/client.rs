@@ -151,7 +151,7 @@ pub struct rcl_action_client_t {
 /// The C counterpart of C++'s `nros::PollingActionClient<A>`. `_opaque` holds
 /// an `ActionClientCore` from `rclc_polling_action_client_init` until
 /// `rclc_polling_action_client_fini`. Zero-initialised is UNINITIALIZED.
-/// Until phase-487 it was the `NROS_ACTION_CLIENT_STATE_POLLING` state of
+/// Until phase-487 it was the ~~`NROS_ACTION_CLIENT_STATE_POLLING`~~ state of
 /// `rcl_action_client_t`.
 #[repr(C)]
 pub struct rclc_polling_action_client_t {
@@ -546,7 +546,7 @@ pub unsafe extern "C" fn rclc_action_client_action_server_is_ready(
 /// Send a goal (blocking convenience).
 ///
 /// Calls `rclc_action_send_goal_async` then spins the executor until the
-/// goal is accepted/rejected or timeout. Never calls `zpico_get` directly —
+/// goal is accepted/rejected or timeout. Never calls ~~`zpico_get`~~ directly —
 /// all I/O is driven by the executor's `spin_once`.
 ///
 /// Like the runtime's `Promise::wait`, this is syntactic sugar over async + spin.
@@ -680,7 +680,7 @@ pub unsafe extern "C" fn rclc_action_cancel_goal(
 /// Request result of a goal (blocking convenience).
 ///
 /// Calls `rclc_action_get_result_async` then spins the executor until the
-/// result arrives or timeout. Never calls `zpico_get` directly.
+/// result arrives or timeout. Never calls ~~`zpico_get`~~ directly.
 #[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
 pub unsafe extern "C" fn rclc_action_get_result(

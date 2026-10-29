@@ -10,8 +10,8 @@ and language. The one ledger `gap` P3's re-verdict found,
 [issue 2114](../../issues/archived/2114-cpp-parameter-callback-handle-name-taken.md)
 (2026-10-29): the name is upstream's event-handler handle again, and the
 on-set token is `rclcpp::OnSetParametersCallbackToken`. W0.c (2026-10-29)
-extended the retired-name check to C++ and Rust names. W0.d (in progress,
-2026-10-29) holds code comments to the same rule, one area at a time.
+extended the retired-name check to C++ and Rust names. W0.d (2026-10-29)
+holds code comments under `packages/` and `examples/` to the same rule.
 
 Opened from a review of the
 `api-parity` report on main `1a30bcbb22`. The work items below are candidates:
@@ -244,7 +244,7 @@ C/C++ API alone, 60 of them in `nros_generated.h`. A comment has no
 `retired_names` list beside it, so a gate needs either a ratchet baseline or an
 inline history marker first, and that is a design decision rather than a sweep.
 
-**W0.d — IN PROGRESS: code comments.** Maintainer ruling 2026-10-29: an INLINE
+**W0.d — LANDED 2026-10-29: code comments.** Maintainer ruling 2026-10-29: an INLINE
 marker, not a ratchet baseline. A comment names history by striking it,
 ~~`old_name`~~, which rustdoc renders struck and a reader of plain source reads
 as "gone". `just check comment-names` (`scripts/check/check-comment-names.py`,
@@ -264,9 +264,16 @@ or Rust source in its SCOPE:
 - a placeholder (`Node::create_X`, `foo_pkg`) is not judged.
 
 Measured on main `d7851e77ae` with packages/ and examples/ in scope: 2,365
-references to 1,430 names. The scope widens one area per pull request; it is a
-list of directories already swept, not a baseline, and nothing inside it is
-exempt.
+references to 1,430 names. The scope widened one area per pull request and
+now covers both trees; it was a list of directories already swept, never a
+baseline.
+
+**Left open:** where a sweep could not cheaply tell what replaced a gone
+name, it struck the name and left the sentence alone, so some comments still
+say something in the present tense about a struck name ("Drives
+~~`NROS_FEATURE_THREADS`~~"). The gate is satisfied by those — the name is
+marked gone — but the prose around them still wants a rewrite; grep `~~\``
+to find them.
 
 | Pull request | Scope added | Findings | Struck | Foreign names | Renamed or reworded |
 | --- | --- | --- | --- | --- | --- |
@@ -276,6 +283,7 @@ exempt.
 | 4 | `packages/testing` | 290 | 163 | 56 | the rest |
 | 5 | `packages/core` | 297 | 138 | 62 | the rest |
 | 6 | `packages/rmw` | 388 | 122 | 167 | the rest |
+| 7 | `packages/api` | 529 | 317 | 52 | the rest |
 
 ### C — rclc / rcl
 

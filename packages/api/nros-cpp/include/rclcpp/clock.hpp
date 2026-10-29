@@ -6,7 +6,7 @@
  * @ingroup grp_clock
  * @brief `rclcpp::Clock` — reads the current time, mirroring upstream's `rclcpp::Clock`.
  *
- * Issue 0789. A thin C++ face over the `nros_clock_*` C surface (RFC-0073
+ * Issue 0789. A thin C++ face over the `rclc_clock_*` C surface (RFC-0073
  * defines the platform clock contract underneath it); this header invents no
  * capability of its own.
  */
@@ -19,7 +19,7 @@
 
 #include "rclcpp/time.hpp"
 
-// The `nros_clock_*` entry points. `nros_generated.h` carries its own
+// The `rclc_clock_*` entry points. `nros_generated.h` carries its own
 // `extern "C"` guard.
 #include "rclc/types.h"
 
@@ -50,14 +50,14 @@ class Context; // rclcpp.hpp; `sleep_until` / `sleep_for` take one.
 /// ```
 ///
 /// Copyable and trivially destructible on purpose. `rcl_clock_t` owns no
-/// allocation and no handle — `nros_clock_fini` only marks the struct shut
+/// allocation and no handle — `rcl_clock_fini` only marks the struct shut
 /// down — so unlike `rclcpp::Clock` (which finalises an `rcl_clock_t` holding
 /// an allocator) there is nothing for a destructor to release.
 ///
 /// A `RCL_ROS_TIME` clock can be driven by a simulator's or a bag
 /// player's `/clock` (issue 0789): `ros_time_is_active()` reports whether it
 /// is, `started()` whether a sample has arrived. The switches that INSTALL a
-/// time are the C ones (`nros_set_ros_time_override` and friends) rather than
+/// time are the C ones (`rcl_set_ros_time_override` and friends) rather than
 /// members here, because the override is process-global — one simulated clock
 /// per image, as in Rust — and hanging a global's setter off an instance would
 /// read as per-clock state.

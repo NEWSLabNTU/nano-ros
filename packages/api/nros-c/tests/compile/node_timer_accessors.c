@@ -31,7 +31,7 @@ int main(void) {
 
     /* `bool`, not `rcl_ret_t`: rcl's `rcl_node_is_valid` is a predicate, and
      * a predicate over a handle we hold cannot fail to answer. phase-417
-     * stage 6 gave it rcl's NAME too — the old `nros_node_is_valid` is a
+     * stage 6 gave it rcl's NAME too — the old ~~`nros_node_is_valid`~~ is a
      * deprecated forwarder in `<rclc/node.h>`. */
     bool (*p_is_valid)(const struct rcl_node_t*) = rcl_node_is_valid;
 

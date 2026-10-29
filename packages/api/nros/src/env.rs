@@ -19,7 +19,7 @@
 //! with a C library, and issue 1763 measured what happens when they stop
 //! honouring `$ROS_DOMAIN_ID` (parallel cells shared a domain and heard each
 //! other). There used to be two readers — this one on `std::env` and
-//! `host_env` on `getenv` — with the same variables and rules; they are one
+//! ~~`host_env`~~ on `getenv` — with the same variables and rules; they are one
 //! now, and `nros` needs no `std` to be a hosted edge. The edge is "a C library
 //! is linked", which on this tree is `target_os = "linux"`; a cross target has
 //! no `getenv` and this module does not exist there.

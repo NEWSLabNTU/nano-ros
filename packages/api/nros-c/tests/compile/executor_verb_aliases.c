@@ -11,7 +11,7 @@
  *
  * The guard-condition pair left this probe in phase-417 W4.e: the node is the
  * owner and `rclc_node_create_guard_condition` is the one creation shape, so
- * `nros_executor_add_guard_condition` and its `register_*` alias are retired
+ * ~~`nros_executor_add_guard_condition`~~ and its `register_*` alias are retired
  * rather than migrated. A retired name has nothing to pin here.
  *
  * Compile-only (no main): the assertion is that these names resolve with these
@@ -35,7 +35,7 @@ static rcl_ret_t (*const kAddClient)(struct rclc_executor_t*,
 static rcl_ret_t (*const kOldTimer)(struct rclc_executor_t*,
                                     struct rcl_timer_t*) = rclc_executor_register_timer;
 /* `rclc_executor_register_timer` is the one member of this family whose target
- * moved. Phase-417 stage 6 made `nros_executor_add_timer` a deprecated
+ * moved. Phase-417 stage 6 made ~~`nros_executor_add_timer`~~ a deprecated
  * forwarder onto `rclc_executor_add_timer`, so for one release the macro
  * resolved through TWO deprecations; step B retired that forwarder and the
  * macro now names `rclc_executor_add_timer` directly. It therefore no longer
@@ -52,7 +52,7 @@ const void* nros_executor_verb_alias_probe(void) {
     (void)kAddClient;
     (void)kOldTimer;
     /* The alias must name the same entity as the new spelling.
-     * `nros_executor_register_service` went with its two-argument target in
+     * ~~`nros_executor_register_service`~~ went with its two-argument target in
      * phase-487 W2, so the timer is the pair left to compare. */
     return (kOldTimer == kAddTimer) ? (const void*)kAddTimer : (const void*)0;
 }

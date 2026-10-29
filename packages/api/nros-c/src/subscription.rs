@@ -52,7 +52,7 @@ pub type rclc_subscription_validated_callback_t = Option<
 /// * `data` / `len` — received CDR bytes.
 /// * `attachment` / `attachment_len` — the sample's wire attachment
 ///   (`attachment_len == 0` ⇒ none). Cross-RMW bridges read the
-///   `bridge_origin` tag from it. Valid only during the call.
+///   bridge_origin tag from it. Valid only during the call.
 /// * `context` — user-provided context pointer.
 pub type rclc_subscription_info_callback_t = Option<
     unsafe extern "C" fn(
@@ -71,7 +71,7 @@ pub enum rclc_subscription_state_t {
     /// Not initialized
     RCLC_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
     /// Initialized. For a `rcl_subscription_t` the subscriber entity is
-    /// created later, by `nros_executor_add_subscription_*`, inside the
+    /// created later, by `rclc_executor_add_subscription_*`, inside the
     /// executor arena. For a `rclc_polling_subscription_t` the subscriber is
     /// live in the struct's own storage.
     RCLC_SUBSCRIPTION_STATE_INITIALIZED = 1,
@@ -125,12 +125,12 @@ pub struct rcl_subscription_t {
     /// [`rclc_subscription_init_with_options`]. `0` = inherit the
     /// executor / Node default (no explicit bind), matching the
     /// `rcl_node_options_t::sched_context_id` convention. When non-zero,
-    /// `nros_executor_add_subscription_*` binds the freshly-created
+    /// `rclc_executor_add_subscription_*` binds the freshly-created
     /// handle to this SC after registration.
     pub options: rcl_subscription_options_t,
     /// issue 1437 — the `rclc_executor_t` holding this subscription's arena
     /// entry, or NULL before registration. Set beside
-    /// [`handle_id`](Self::handle_id) by `nros_executor_add_subscription_*`:
+    /// [`handle_id`](Self::handle_id) by `rclc_executor_add_subscription_*`:
     /// the pair is the same `(executor_ptr, arena_entry_index)` that
     /// `ServiceServerInternal` and `ServiceClientInternal` carry.
     ///
@@ -167,7 +167,7 @@ impl Default for rcl_subscription_t {
 /// event registrations) from `rclc_polling_subscription_init*` until
 /// `rclc_polling_subscription_fini`. Zero-initialised is UNINITIALIZED.
 ///
-/// It was the `NROS_SUBSCRIPTION_STATE_POLLING` state of
+/// It was the ~~`NROS_SUBSCRIPTION_STATE_POLLING`~~ state of
 /// `rcl_subscription_t` until phase-487, which made every dispatched
 /// subscription carry this storage unused.
 #[repr(C)]
@@ -240,7 +240,7 @@ pub struct rcl_subscription_options_t {
     /// bind), matching the `rcl_node_options_t::sched_context_id`
     /// convention. A non-zero value must be an id previously returned
     /// from `rclc_executor_create_sched_context`; the bind is applied by
-    /// `nros_executor_add_subscription_*` once the handle exists. Has
+    /// ~~`nros_executor_add_subscription_*`~~ once the handle exists. Has
     /// no effect on the L1 polling path.
     pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved — needs a with-info arena path (Phase 189.M3.4), not yet
@@ -304,7 +304,7 @@ pub extern "C" fn rcl_subscription_get_default_options() -> rcl_subscription_opt
 /// Initialize a subscription with default QoS (RELIABLE, KEEP_LAST(10)).
 ///
 /// rclc's `rclc_subscription_init_default`, in rclc's argument order and at
-/// rclc's ARITY (phase-417 stage 6). The old `nros_subscription_init` carried
+/// rclc's ARITY (phase-417 stage 6). The old ~~`nros_subscription_init`~~ carried
 /// two extra arguments — `callback` and `context` — and RFC-0089 records why
 /// they are gone from here:
 ///
@@ -328,7 +328,7 @@ pub extern "C" fn rcl_subscription_get_default_options() -> rcl_subscription_opt
 /// 2026-09-04). It costs a ported call site nothing — the argument comes from
 /// our codegen either way.
 ///
-/// The six-argument `nros_subscription_init` is GONE (phase-417 stage 6 step
+/// The six-argument ~~`nros_subscription_init`~~ is GONE (phase-417 stage 6 step
 /// B retired it), and since phase-487 no init entry point takes a callback:
 /// the subscription struct no longer has anywhere to keep one, because the
 /// executor arena owns it.
@@ -363,7 +363,7 @@ pub unsafe extern "C" fn rclc_subscription_init_default(
 /// rclc's `rclc_subscription_init` shape: `(subscription, node, type, topic,
 /// qos)`. phase-487 W1 removed the `callback` and `context` this took
 /// between the topic and the QoS. The struct stored them only for
-/// the (since removed) three-argument `nros_executor_add_subscription` to read back, and the arena kept its own
+/// the (since removed) three-argument ~~`nros_executor_add_subscription`~~ to read back, and the arena kept its own
 /// copies; the callback is now supplied at registration, by
 /// `rclc_executor_add_subscription_raw` / `_typed` / `_with_info`.
 ///
@@ -417,7 +417,7 @@ pub unsafe extern "C" fn rclc_subscription_init_with_qos(
         *qos
     };
 
-    // Subscriber creation is deferred to `nros_executor_add_subscription_*`,
+    // Subscriber creation is deferred to `rclc_executor_add_subscription_*`,
     // which creates it inside the executor arena.
     subscription.handle_id = usize::MAX;
     // issue 1437 — the index and the arena it indexes are ONE fact;
@@ -435,7 +435,7 @@ pub unsafe extern "C" fn rclc_subscription_init_with_qos(
 /// default) and the non-QoS axes ride in `options` (NULL = defaults).
 /// Behaves exactly like [`rclc_subscription_init_with_qos`] except that
 /// a non-zero `options->sched_context` is stashed on the subscription so
-/// that `nros_executor_add_subscription_*` binds the resulting
+/// that ~~`nros_executor_add_subscription_*`~~ binds the resulting
 /// executor handle to that scheduling context once the handle is known
 /// (entity creation is deferred to registration, so the handle does not
 /// exist at init time). `options->message_info` is RESERVED and ignored
@@ -475,7 +475,7 @@ pub unsafe extern "C" fn rclc_subscription_init_with_options(
 
     // Stash the requested scheduling-context slot. The handle does not
     // exist yet (entity creation + handle assignment happen in
-    // `nros_executor_add_subscription_*`), so the actual
+    // `rclc_executor_add_subscription_*`), so the actual
     // `bind_handle_to_sched_context` call is deferred to there. `0`
     // means "inherit the default" and is a no-op. `message_info` is
     // reserved (Phase 189.M3.4) and intentionally ignored.
@@ -592,7 +592,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_init_with_qos(
     let _ = (&type_buf, type_len, &hash_buf, hash_len, &qos_value);
 
     // Resolve the SOURCE topic name to its wire name. The L2 (callback) path
-    // gets this from `nros_executor_add_subscription_*`; the L1 path creates the
+    // gets this from `rclc_executor_add_subscription_*`; the L1 path creates the
     // entity right here and so never reached that seam — the same gap
     // `rclc_publisher_init_with_qos` had, and the reason both are fixed
     // together rather than at the site the sweep reported.

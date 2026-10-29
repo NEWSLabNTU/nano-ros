@@ -24,10 +24,10 @@
 //!
 //! ## Contract (M-F.4.c)
 //!
-//! Until the codegen-side `GenClientDispatch` impl lands (M-F.4.a) and the
+//! Until the codegen-side ~~`GenClientDispatch`~~ impl lands (M-F.4.a) and the
 //! generated runtime starts passing a real non-null tick-ctx handle, both
 //! FFI symbols return `NROS_CPP_RET_ERROR` — matching the
-//! [`UnsupportedClients`] stub on the Rust side
+//! ~~`UnsupportedClients`~~ stub on the Rust side
 //! (`NodeDeclError::Runtime` for every method). The symbols exist + are
 //! callable; the runtime returns an error until codegen + BSP plumbing
 //! reach them. C++ user code can write tick bodies against the typed
@@ -84,10 +84,10 @@ pub unsafe extern "C" fn nros_cpp_tick_ctx_call_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    // M-F.4.c contract: until the codegen-side `GenClientDispatch` impl
+    // M-F.4.c contract: until the codegen-side ~~`GenClientDispatch`~~ impl
     // lands (M-F.4.a) and the generated runtime passes a real non-null
     // tick-ctx handle, return `NROS_CPP_RET_ERROR` for every well-formed
-    // call. Matches the `UnsupportedClients` stub in `nros-node`'s
+    // call. Matches the ~~`UnsupportedClients`~~ stub in `nros-node`'s
     // `ExecutorNodeRuntime::run_ticks` which routes every method to
     // `NodeDeclError::Runtime`. The symbol exists + is callable; the
     // runtime returns an error until plumbing reaches it.
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn send_goal_raw_well_formed_returns_stub_error() {
         // M-F.4.c stub contract: well-formed call returns RET_ERROR until
-        // the codegen-side `GenClientDispatch` impl lands.
+        // the codegen-side ~~`GenClientDispatch`~~ impl lands.
         let goal = [0u8; 8];
         let mut goal_id = [0xffu8; 16];
         let sentinel = 0xdeadbeefusize as *mut c_void;

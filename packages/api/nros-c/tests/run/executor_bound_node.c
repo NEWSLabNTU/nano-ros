@@ -3,7 +3,7 @@
  *
  * `rclc_executor_node_init` stores the slot `NodeBuilder::build()` returns, and
  * the FIRST node an executor builds takes slot 0 (`executor_param_node_keying.c`
- * asserts that in words). `rcl_node_t::is_multi_session()` also required
+ * asserts that in words). ~~`rcl_node_t::is_multi_session()`~~ also required
  * `node_id != 0`, so a node bound through the very call that binds it read as a
  * LEGACY node whenever it was the only one — the commonest shape in the tree.
  *

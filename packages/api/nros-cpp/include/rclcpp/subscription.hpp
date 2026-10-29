@@ -230,7 +230,7 @@ template <typename M> class Subscription {
     /// invokes the handler during `spin_once()` on each new sample.
     using TypedSubscriptionFn = void (*)(const M& msg);
     using TypedSubscriptionFnWithCtx = void (*)(const M& msg, void* ctx);
-    // Phase 189.M3.4 — callback-with-attachment handler (`bridge_origin` etc.).
+    // Phase 189.M3.4 — callback-with-attachment handler (bridge_origin etc.).
     using TypedSubscriptionInfoFn = void (*)(const M& msg, const uint8_t* attachment,
                                              size_t attachment_len);
     // Phase 269 W3 — callback-with-integrity handler: receives the deserialized
@@ -440,7 +440,7 @@ template <typename M> class Subscription {
     // GONE, with the taking API that was their only reader. On this path the
     // arena owns the subscriber, so those bytes were never filled, and
     // `take()` reinterpreted them (`&mut *(storage as *mut RmwSubscriber)`)
-    // rather than refusing. `callback_mode_` went with them: it distinguished
+    // rather than refusing. ~~`callback_mode_`~~ went with them: it distinguished
     // the two owners inside one class, and there is one owner here now.
     char topic_name_[::rclcpp::SUBSCRIPTION_TOPIC_NAME_MAX];
     bool initialized_;
@@ -509,7 +509,7 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
     ffi_options.sched_context = sched;
     // phase-456 W7 — state the bound. `M` is a template parameter of this
     // function, so the number was always available here; leaving it at the
-    // option default put this registration on issue 1319's `c_raw_no_hint` row
+    // option default put this registration on issue 1319's ~~`c_raw_no_hint`~~ row
     // while the sizing descriptor credited the entry with a supplied hint.
     ffi_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
     nros_cpp_ret_t ret = nros_cpp_subscription_register(
@@ -924,7 +924,7 @@ inline Result register_subscription_capturing(::rclcpp::Node& node, const char* 
                                               const QoS& qos, const Fn& fn, size_t* out_handle_id) {
     // phase-456 W8 — the per-entry capture budget this used to assert is GONE.
     // It read `sizeof(Fn) <= NROS_CPP_CALLBACK_CAPACITY + 2 * sizeof(void*)` and
-    // named `CALLBACK_CAPTURE_BYTES`, an arena constant that no longer exists:
+    // named ~~`CALLBACK_CAPTURE_BYTES`~~, an arena constant that no longer exists:
     // the runtime allocates exactly `capture_len` bytes now, so there is no
     // cross-language number for the two sides to agree about and nothing here
     // to assert. `InplaceFn`'s own capacity `static_assert` is untouched and is

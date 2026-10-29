@@ -2,7 +2,7 @@
 /// @brief Phase 240.1 (RFC-0043) — stateful component-object binding helpers.
 ///
 /// The declarative Entry path used to record string descriptors + a
-/// synthesizing interpreter (`EntryNodeRuntime`). RFC-0043 routes it to the real
+/// synthesizing interpreter (~~`EntryNodeRuntime`~~). RFC-0043 routes it to the real
 /// executor instead: a component is a **stateful object** that binds its real
 /// callbacks **by identity** (no string names), and `spin_once` dispatches them.
 ///
@@ -51,7 +51,7 @@ namespace rclcpp {
 /// callback during `spin_once`. (Thin wrapper over `nros_cpp_subscription_register`.)
 ///
 /// `rx_bytes` has NO DEFAULT — phase-456 W7. It used to default to 0, and 0 is
-/// the `c_raw_no_hint` registration row: priced at the executor's closure
+/// the ~~`c_raw_no_hint`~~ registration row: priced at the executor's closure
 /// buffer rather than at the message, and invisible to the sizing descriptor,
 /// which credits every C/C++ entry with a supplied hint. A caller with a
 /// message type in scope passes `rclcpp::rx_buffer_capacity<M>::value` (or the
@@ -440,7 +440,7 @@ inline void Node::create_subscription_in_group(const ::rclcpp::CallbackGroup& gr
     nros_cpp_subscription_options_t sub_options = nros_cpp_subscription_default_options();
     sub_options.callback_group = group.get_name();
     // phase-456 W7 — `M` is in scope, so this states the bound rather than
-    // taking the `c_raw_no_hint` row. It read 0 until now, which made the
+    // taking the ~~`c_raw_no_hint`~~ row. It read 0 until now, which made the
     // grouped form cost the closure buffer where the ungrouped
     // `create_subscription_in` (through `bind_subscription`) costs the type.
     sub_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);

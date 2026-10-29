@@ -136,7 +136,7 @@ namespace rclcpp {
 // The enumerators are upstream's and SCOPED (phase-483 W1): one
 // `SystemDefault` and one `Unknown` per policy, reached as
 // `rclcpp::ReliabilityPolicy::Unknown`. The prefixed spellings
-// (`ReliabilityUnknown`, `LivelinessNone`) existed only because these were
+// (~~`ReliabilityUnknown`~~, ~~`LivelinessNone`~~) existed only because these were
 // unscoped enums, and the bare `rclcpp::Reliable` form went with them.
 
 /// Reliability policy. Matches DDS `RELIABILITY_QOS_POLICY` and
@@ -185,7 +185,7 @@ enum class HistoryPolicy : int {
 ///
 /// `SystemDefault` is discriminant 0, the value rmw gives
 /// `RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT`; this enumerator was spelled
-/// `LivelinessNone` before phase-483. `ManualByNode` is ours-only — rmw
+/// ~~`LivelinessNone`~~ before phase-483. `ManualByNode` is ours-only — rmw
 /// deprecated it, so rclcpp's `LivelinessPolicy` does not list it.
 enum class LivelinessPolicy : int {
     SystemDefault = 0,
@@ -266,7 +266,7 @@ constexpr QoS qos_from_ffi(const nros_cpp_qos_t& f);
 /// lifespan, liveliness kind + lease, avoid_ros_namespace_conventions).
 /// Backends advertise per-policy support; entities created with a
 /// profile the active backend can't honour return
-/// `NROS_CPP_RET_INCOMPATIBLE_QOS` synchronously at create time.
+/// ~~`NROS_CPP_RET_INCOMPATIBLE_QOS`~~ synchronously at create time.
 ///
 /// Phase 379 W5 — the policy enums moved to namespace scope, the getters
 /// return them instead of `int`, and the three time windows take and return
@@ -626,13 +626,13 @@ namespace detail {
 //   * `avoid_ros_namespace_conventions` is `false` upstream, `0` here.
 //   * liveliness is `RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT` upstream, and
 //     `rclcpp::QoS` now defaults to `LivelinessPolicy::SystemDefault`, which is our spelling of
-//     that sentinel. It defaulted to `LivelinessAutomatic` — "what every
+//     that sentinel. It defaulted to ~~`LivelinessAutomatic`~~ — "what every
 //     reference RMW folds that sentinel to" — under a
 //     `nros-qos-mirror-deviation` record whose own reason was that this
 //     surface and `nros-c`'s "move together with the C ABI or not at all".
 //     They moved together (issue 1329): this constructor, `nros-c`'s
 //     `NROS_QOS_*` statics and (until phase-492 W4) `component.h`'s
-//     `rclc_c_qos_default()`.
+//     ~~`rclc_c_qos_default()`~~.
 //
 //     The forcing argument is issue 1329's per-backend QoS mask. XRCE honours
 //     no liveliness, so an AUTOMATIC default would have made

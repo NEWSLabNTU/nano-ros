@@ -55,7 +55,7 @@
 //! `rmw-cffi` vtable; the concrete backend (zenoh / xrce / cyclonedds) enters
 //! the link graph via the board crate (embedded), the board-less app's own
 //! `nros-rmw-*` dep (native), or the `nros-c`/`nros-cpp` staticlib root (D3),
-//! and self-registers through the `RMW_INIT_ENTRIES` walker at `Executor::open`.
+//! and self-registers through the ~~`RMW_INIT_ENTRIES`~~ walker at `Executor::open`.
 //! The concrete session type is resolved automatically; advanced users can
 //! access it via `nros::internals::RmwSession`.
 //!
@@ -100,7 +100,7 @@
 // by the board / staticlib root via an `nros-platform` dep, and nros-node picks
 // the kernel primitive at runtime (C2 wake-probe).
 // Only `rmw-cffi` is exposed at this layer; the cffi shim selects the
-// concrete backend at the C ABI level via the `RMW_INIT_ENTRIES` walker.
+// concrete backend at the C ABI level via the ~~`RMW_INIT_ENTRIES`~~ walker.
 
 // At most one ROS edition (RFC-0056 — the axis is compile-time exclusive).
 #[cfg(any(
@@ -143,7 +143,7 @@ extern crate self as nros;
 // Phase 249 P1 — `__register_linked_rmw()` (a Phase 248 C5c no-op kept only so the
 // `nros::main!` framework's call sites compiled) is REMOVED along with those call
 // sites. Backend registration never routed through the backend-agnostic `nros` crate:
-// hosted auto-registers via the `RMW_INIT_ENTRIES` walk at `Executor::open`; embedded
+// hosted auto-registers via the ~~`RMW_INIT_ENTRIES`~~ walk at `Executor::open`; embedded
 // boards perform the explicit `<backend>::register()` in their boot path (C5a). One
 // Rust trigger = the board/app explicit register (phase-249).
 
@@ -288,7 +288,7 @@ pub use nros_core::{
 // that used the old surface FAILS TO COMPILE against the new binding rather
 // than silently changing where its records go. That is the RFC-0089 rule
 // applied to our own rename, and it is why this is a re-binding with a named
-// escape hatch instead of a quiet swap. The escape hatch was `LogCrateLogger`,
+// escape hatch instead of a quiet swap. The escape hatch was ~~`LogCrateLogger`~~,
 // deprecated on arrival and deleted by phase-482 W6.
 pub use nros_log::{
     DEFAULT_LOGGER, LogSink, Logger, MAX_LOGGERS, Record as LogRecord, Severity, ThrottleState,
@@ -338,7 +338,7 @@ pub use nros_core::heapless;
 pub use nros_node::{IntoPrimitiveOptions, PrimitiveOptions};
 
 // Phase 212.M.5.a.2 — executor-backed runtime entry points.
-// (`component_register_symbol` retired in the Phase 212.N.7 closing
+// (~~`component_register_symbol`~~ retired in the Phase 212.N.7 closing
 // sweep — the helper had no live callers after the BSP baker + macro
 // extern emit were deleted.)
 pub use node::{
@@ -984,7 +984,7 @@ pub use nros_rmw::SessionMode;
 //
 // These ALIAS the associated consts rather than restating them. `nros::qos`
 // below is a second, hand-written copy of the same presets that predates them;
-// `qos_presets_agree` in the test module asserts the two never drift, which is
+// ~~`qos_presets_agree`~~ in the test module asserts the two never drift, which is
 // the hand-mirror class (issues 0088/0160/0245) one layer up.
 /// `rmw_qos_profile_default` — reliable, volatile, keep-last(10).
 pub const QOS_PROFILE_DEFAULT: QoSProfile = QoSProfile::QOS_PROFILE_DEFAULT;
@@ -1068,7 +1068,7 @@ pub mod qos {
 pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 
 // Phase 248 C7 step 1 — the `nros::platform::zephyr` module (the
-// `wait_for_network` FFI wrapper) RELOCATED to `nros-platform`
+// ~~`wait_for_network`~~ FFI wrapper) RELOCATED to `nros-platform`
 // (`nros_platform::zephyr::wait_network`); callers reference it via
 // `::nros_platform::zephyr::wait_network`. nros no longer hosts a platform
 // helper module. (The `zephyr_component_main!` macro relocation is C7 step 2.)
@@ -1171,7 +1171,7 @@ pub mod internals {
         // Phase 155.B — propagate the real `TransportError` instead of
         // collapsing every backend failure to `ConnectionFailed`. The
         // C-side `rclc_support_init` decodes the variant into a
-        // specific `NROS_RET_*` code so "init -> -X" tells the user
+        // specific `RCLC_RET_*` code so "init -> -X" tells the user
         // which precondition the backend rejected.
         // issue 1050 defect (3) — the selector ARRIVES here now. It used to be
         // read from `$NROS_RMW` on the spot, which is why a baked one could not
@@ -1222,9 +1222,9 @@ pub use nros_node::{
 //
 // There is deliberately NO numeric code type beside them. A Rust caller matches
 // a flat enum; the numeric vocabulary is the C ABI's `rcl_ret_t` /
-// `NROS_RET_*` (0, -1..-16), which is its own space and not `rcl_ret_t`'s.
+// `RCLC_RET_*` (0, -1..-16), which is its own space and not `rcl_ret_t`'s.
 // nros-core carried an `rcl_ret_t` mirror (`RclReturnCode`) and an error that
-// wrapped it (`NanoRosError`); neither was ever reachable from this facade and
+// wrapped it (~~`NanoRosError`~~); neither was ever reachable from this facade and
 // neither had a producer, so issue 0783 deleted them rather than exporting a
 // type a user could name and never receive. RFC-0036's Errors row now describes
 // what these two are.
@@ -1322,7 +1322,7 @@ pub use nros_node::{
 };
 
 // phase-271 (issue #110) — per-entry executor sizing helper: the orchestration
-// codegen's `build_executor` sizes its backing to the system's callback count
+// codegen's ~~`build_executor`~~ sizes its backing to the system's callback count
 // via `nros::arena_size_for(CALLBACK_COUNT)` + `ExecutorSizing`, replacing the
 // workspace-global `NROS_EXECUTOR_MAX_CBS`.
 #[cfg(feature = "rmw-cffi")]
@@ -1356,7 +1356,7 @@ pub const fn __rx_bound<M: nros_serdes::schema::Message>() -> Option<usize> {
 }
 
 // Phase 173.5 — board config traits. `BoardConfig` (read locator /
-// domain). `BoardTransportConfig` was removed with its dead
+// domain). ~~`BoardTransportConfig`~~ was removed with its dead
 // setters (issue 1064); the live path is the deploy overlay.
 pub use nros_platform::BoardConfig;
 

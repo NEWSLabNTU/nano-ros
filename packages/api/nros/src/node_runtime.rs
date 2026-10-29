@@ -28,7 +28,7 @@
 //! typed entries use. The codegen `run_plan(runtime)` body + `nros::main!`
 //! owned-spin loop drive one `register(runtime)?` per launch-XML `<node>`,
 //! then `runtime.spin()`. (The retired Phase 212.M.5.a four-fn-ptr BSP-baker
-//! ABI — `register_dispatch_slot` / `nros_run_components` — is gone.)
+//! ABI — `register_dispatch_slot` / ~~`nros_run_components`~~ — is gone.)
 //!
 //! ## Coverage today (Phase 212.M.5.a.2)
 //!
@@ -91,7 +91,7 @@ const MAX_SINK_NODES: usize = 4;
 
 // phase-391 W5 (amended by W5-endgame step 2a): the per-cell registry bound,
 // PER KIND, is the `MAX_CELL_ENTITIES` knob — now spelled as `ComponentCell`'s
-// const-parameter DEFAULTS rather than a shared `CELL_REG_CAP` const, so the
+// const-parameter DEFAULTS rather than a shared ~~`CELL_REG_CAP`~~ const, so the
 // macro can name tighter per-class bounds while every existing spelling keeps
 // the knob-capped layout. Was `DEFAULT_MAX_METADATA_ENTITIES` (32), borrowed
 // from the metadata twin — but that figure is per-PLAN-shaped and made every
@@ -133,7 +133,7 @@ use crate::{
     },
 };
 
-// Phase 212.N.7 closing sweep — `component_register_symbol` retired
+// Phase 212.N.7 closing sweep — ~~`component_register_symbol`~~ retired
 // (no live callers after the BSP baker + macro extern emit were
 // removed). The former re-export here is gone.
 
@@ -203,9 +203,9 @@ impl<C: ExecutableNode> ComponentSlot for TypedSlot<C> {
     }
 }
 
-// Phase 258 (Track 2, w5) — `BspDispatchSlot` (the type-erased
+// Phase 258 (Track 2, w5) — ~~`BspDispatchSlot`~~ (the type-erased
 // four-fn-ptr BSP dispatch slot) is gone with the retired
-// `register_dispatch_slot` / `nros_run_components` BSP-baker path. The
+// `register_dispatch_slot` / ~~`nros_run_components`~~ BSP-baker path. The
 // only remaining `ComponentSlot` impl is `TypedSlot<C>` above (used by
 // `register_node` / `register_node_borrowed` / `install_node_typed`).
 
@@ -419,7 +419,7 @@ struct ComponentCell<
     publishers: RefCell<heapless::Vec<(IdStr, EmbeddedRawPublisher), PUBS>>,
     // Phase 212.M-F.23 — declarative service/action CLIENT + action-SERVER
     // handles, keyed by stable entity id, resolved during tick dispatch.
-    // Mirror of the orchestration `GenClientDispatch`/`GenActionExec` arrays,
+    // Mirror of the orchestration ~~`GenClientDispatch`~~/~~`GenActionExec`~~ arrays,
     // but built at registration time on the single-node runtime. Service- and
     // action-SERVER request/goal dispatch is owned by the executor (the
     // trampolines registered in `create_entity`); only the action-server
@@ -820,7 +820,7 @@ struct CellResolver<'a> {
 impl PublisherResolver for CellResolver<'_> {
     fn publish_raw(&self, entity_id: &str, data: &[u8]) -> NodeResult<()> {
         // issue 0736 — the two arms report DIFFERENT failures. A miss on
-        // `lookup_publisher` means this component declared no publisher for the
+        // ~~`lookup_publisher`~~ means this component declared no publisher for the
         // entity, so nothing ever reached the transport; a `publish_raw` error
         // means the transport had the sample and refused it. Both used to
         // return `Runtime`, which is why a console full of "publish FAILED"
@@ -861,7 +861,7 @@ fn apply_timer_ops(cell: &dyn CellView, exec_ptr: *mut Executor<'static>) {
     });
 }
 
-// Phase 212.M-F.23 — the `UnsupportedActions` / `UnsupportedClients` tick-side
+// Phase 212.M-F.23 — the ~~`UnsupportedActions`~~ / ~~`UnsupportedClients`~~ tick-side
 // stubs are retired. Real service/action client + action-server dispatch on the
 // single-node runtime lives in `RuntimeClientDispatch` / `RuntimeActions`
 // (below), wired into `run_ticks`.
@@ -1248,8 +1248,8 @@ impl ExecutorNodeRuntime {
     }
 
     // Phase 258 (Track 2, w5) — `register_dispatch_slot` (the four-fn-ptr
-    // BSP registration) is gone with the retired `register_dispatch_slot_dyn`
-    // bridge + `nros_run_components`. Owned-spin / BSP entries now register
+    // BSP registration) is gone with the retired ~~`register_dispatch_slot_dyn`~~
+    // bridge + ~~`nros_run_components`~~. Owned-spin / BSP entries now register
     // through `install_node_typed` (the uniform install seam).
 
     /// Drive one executor iteration + a `tick` per registered
@@ -1289,7 +1289,7 @@ impl ExecutorNodeRuntime {
     ///
     /// # Strategy — linear scan
     ///
-    /// Each registered slot's `dispatch_fn` is the codegen-emitted
+    /// Each registered slot's ~~`dispatch_fn`~~ is the codegen-emitted
     /// `d()` trampoline from `nros::node!()` (see
     /// `packages/core/nros-macros/src/lib.rs`). That trampoline calls
     /// `<NodeTy as ExecutableNode>::on_callback`, whose body
@@ -1502,7 +1502,7 @@ unsafe extern "C" fn component_drop_trampoline<
 // per-boot `RuntimeCtx::runtime` slot. The owned-spin entry reaches the live
 // executor through `executor_handle()` (a raw pointer crosses the layering wall
 // cleanly) and installs via `nros::__macro::install_node_typed`. Phase 258 (w5) retired
-// the old `register_dispatch_slot_dyn` four-fn-ptr bridge.
+// the old ~~`register_dispatch_slot_dyn`~~ four-fn-ptr bridge.
 
 #[cfg(feature = "alloc")]
 impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
@@ -2372,7 +2372,7 @@ fn dispatch_into_cell_with_integrity(
 // like the executor) holding the owning `ComponentCell` + the declared
 // callback ids. Each trampoline rebuilds a `CallbackCtx` and routes into the
 // component's `on_callback`, exactly as the orchestration codegen's
-// `svc_tramp_*` / `goal_tramp_*` do for the Entry path.
+// svc_tramp_* / goal_tramp_* do for the Entry path.
 // =============================================================================
 
 /// Leaked context for a service-server arena callback.
@@ -2507,7 +2507,7 @@ unsafe extern "C" fn action_accepted_trampoline(
 }
 
 /// Tick-side service/action CLIENT dispatch — the single-node runtime's mirror
-/// of the orchestration `GenClientDispatch`. Resolves the per-component client
+/// of the orchestration ~~`GenClientDispatch`~~. Resolves the per-component client
 /// handle arrays + a `*mut Executor<'static>` (the tick borrows `&components` while
 /// needing `&mut executor`, so the executor is reached through a raw pointer,
 /// reborrowed `&mut` per call; no aliasing — `executor` and `components` are
@@ -2624,7 +2624,7 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
     }
 }
 
-/// Tick-side action-SERVER execution — mirror of `GenActionExec`. Lets a
+/// Tick-side action-SERVER execution — mirror of ~~`GenActionExec`~~. Lets a
 /// component complete goals / publish feedback / enumerate active goals from
 /// its `tick` via `TickCtx`.
 struct RuntimeActions<'a> {
@@ -2684,9 +2684,9 @@ impl ActionExecutor for RuntimeActions<'_> {
     }
 }
 
-// Phase 258 (Track 2, w5) — the typed BSP fn-ptr aliases (`NodeRegisterFn` /
-// `NodeInitFn` / `NodeDispatchFn` / `NodeTickFn`) are gone with the retired
-// `register_dispatch_slot` / `nros_run_components` BSP-baker path. The
+// Phase 258 (Track 2, w5) — the typed BSP fn-ptr aliases (~~`NodeRegisterFn`~~ /
+// ~~`NodeInitFn`~~ / ~~`NodeDispatchFn`~~ / ~~`NodeTickFn`~~) are gone with the retired
+// `register_dispatch_slot` / ~~`nros_run_components`~~ BSP-baker path. The
 // macro-emitted `register(runtime)` wrapper now installs via the
 // `install_node_typed` seam (Track 2 w4).
 
@@ -3069,7 +3069,7 @@ where
     unsafe { install_node_typed_with_launch_in(executor, store, &[], None, &[], &[]) }
 }
 
-// Phase 258 (Track 2, w5) — `nros_run_components` (the BSP shim that registered
+// Phase 258 (Track 2, w5) — ~~`nros_run_components`~~ (the BSP shim that registered
 // every component via the four-fn-ptr `register_dispatch_slot` then spun) is
 // gone. It had no callers; owned-spin / BSP entries register through the
 // `install_node_typed` seam + drive `ExecutorNodeRuntime::spin`.

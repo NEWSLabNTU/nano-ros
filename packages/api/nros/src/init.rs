@@ -64,7 +64,7 @@
 //! (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `NROS_SESSION_MODE`,
 //! `RMW_IMPLEMENTATION`) and, through [`init_with_args`] / [`Context::new`],
 //! per-process `--ros-args`. (Issue 1917 retired the runtime-overlay
-//! placeholder and, with issue 1931, the `init_with_launch*` entry points
+//! placeholder and, with issue 1931, the ~~`init_with_launch*`~~ entry points
 //! named after it.)
 
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]

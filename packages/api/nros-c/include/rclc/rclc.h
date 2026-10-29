@@ -31,7 +31,7 @@
  * headers are internal (phase-492, maintainer ruling 2026-10-13). */
 #include "rclc/component.h"
 #include "rclc/detail/cdr.h"
-/* issue 0795 — the RFC-0033 zero-copy reader (`nros_cdr_borrow_*`,
+/* issue 0795 — the RFC-0033 zero-copy reader (`rclc_cdr_borrow_*`,
  * `rclc_view_str_t`, the `rclc_le_slice_view_*_t` family). Reached only
  * from generated message headers until now, so a user who included the
  * umbrella had no zero-copy read path and the C surface read as lacking one. */

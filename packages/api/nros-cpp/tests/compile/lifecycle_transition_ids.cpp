@@ -8,7 +8,7 @@
 //
 //   1. the C++ enum carries the UPSTREAM numbers (transcribed below from
 //      `/opt/ros/humble/share/lifecycle_msgs/msg/Transition.msg`);
-//   2. the C++ enum and the C `NROS_LIFECYCLE_TRANSITION_*` macros agree, so a
+//   2. the C++ enum and the C `RCLC_LIFECYCLE_TRANSITION_*` macros agree, so a
 //      mixed C/C++ image cannot hold two id spaces — the failure mode a
 //      translate-at-the-C++-boundary fix would have created;
 //   3. `shutdown()` resolves its transition from the CURRENT state, exhaustively.

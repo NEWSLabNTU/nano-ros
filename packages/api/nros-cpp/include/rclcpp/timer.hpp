@@ -567,7 +567,7 @@ using TimerInfoCallbackType = InplaceFn<void(const TimerInfo&)>;
 
 // phase-476 W2 deleted `detail::WallTimer`, the heap cell (a `std::function`
 // plus an `rclcpp::Timer`) that gave a capturing timer callback a stable address
-// and that the node kept alive through `owned_entities`. The callable now lives
+// and that the node kept alive through ~~`owned_entities`~~. The callable now lives
 // in the executor arena (`nros_cpp_timer_create_capturing`), destroyed when the
 // timer is released, and the returned handle is two words.
 

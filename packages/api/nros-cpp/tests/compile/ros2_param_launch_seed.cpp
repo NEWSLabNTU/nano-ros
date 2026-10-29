@@ -9,13 +9,13 @@
 // seeded launch parameters into THAT one, so `declare_parameter` had to reach
 // across and adopt the seeded value or a launch parameter would be dead
 // weight. Two helpers did that reaching — `rclcpp::detail::
-// adopt_executor_param_seed` in C++14 and `ComponentNode::adopt_launch_seed_`
+// adopt_executor_param_seed` in C++14 and ~~`ComponentNode::adopt_launch_seed_`~~
 // in C++17 `if constexpr` — and this TU was the only thing that compiled
 // either, because no other probe defines the macro.
 //
 // W4 deleted both C++ stores and both helpers. There is ONE store now, the
 // executor's, and adoption is what it already answers: `declare` reports
-// `ALREADY_EXISTS` for a name the seed put there and the facade reads it back.
+// ALREADY_EXISTS for a name the seed put there and the facade reads it back.
 // So the branch this file was written to reach no longer exists.
 //
 // It is still worth compiling. `NROS_SYSTEM_PARAM_SERVICES` is what a bringup
@@ -62,7 +62,7 @@ inline void declare_every_seedable_type(rclcpp::Node& node) {
 
 // A launch parameter reaches the node because `declare_parameter` declares into
 // the store the seed was written to and reads back what is there --
-// `ALREADY_EXISTS` then a get, no copying between stores. Reading them back
+// ALREADY_EXISTS then a get, no copying between stores. Reading them back
 // through the two-argument form, plus a set and a `has`, pins the whole
 // forwarder set in the configuration that actually links it.
 inline void read_back(rclcpp::Node& node) {

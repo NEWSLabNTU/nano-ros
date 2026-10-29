@@ -503,7 +503,7 @@ class Executor {
     /// Issue 0338 — this verb used to mean the OPPOSITE here: `spin` was the
     /// BOUNDED form and there was no way to say "spin forever" on an executor,
     /// while `spin` blocks until shutdown in rclcpp, in the C API
-    /// (`nros_executor_spin`) and in Rust. A user porting rclcpp code wrote
+    /// (~~`nros_executor_spin`~~) and in Rust. A user porting rclcpp code wrote
     /// `exec.spin()` and it did not compile; reaching for `spin(ms)` instead
     /// silently returned early. The bounded form is now [`spin_for`].
     ///

@@ -183,7 +183,7 @@ template <typename S> class Service {
     /// *callback-style* service (rclcpp dispatch model). The handler fills
     /// `response` from `request`; the executor sends the reply during spin.
     ///
-    /// phase-456 W3 deleted the `TypedServiceFnWithCtx` sibling. It was
+    /// phase-456 W3 deleted the ~~`TypedServiceFnWithCtx`~~ sibling. It was
     /// write-only state: the SFINAE guard on `Node::create_service` admits only
     /// a `void(*)(const Request&, Response&)`, so no overload could ever set it,
     /// and the `else if` branch that read it in the trampoline was unreachable.
@@ -328,7 +328,7 @@ template <typename S> class Service {
     ///
     /// `storage` is always NULL here: a dispatch service owns no
     /// `RmwServiceServer`, so `(executor_, handle_id_)` is the only road. The
-    /// `callback_mode_ ? nullptr : storage_` branch this replaced existed
+    /// ~~`callback_mode_ ? nullptr : storage_`~~ branch this replaced existed
     /// because one class served two owners; `rclcpp::PollService<S>` takes the
     /// other arm and passes its `storage_` unconditionally.
     ::rclcpp::QoS actual_qos_half(bool request) const {

@@ -6,7 +6,7 @@
  * @ingroup grp_clock
  * @brief `rclcpp::Time` — a timestamp, mirroring upstream's `rclcpp::Time`.
  *
- * Issue 0789. `rclc_time_t` and the `nros_time_*` arithmetic have existed in C
+ * Issue 0789. `rclc_time_t` and the `rclc_time_*` arithmetic have existed in C
  * since the C API shipped; this is the C++ face over them, so
  * `msg.header.stamp` can be filled from `node.now()` instead of by hand.
  */

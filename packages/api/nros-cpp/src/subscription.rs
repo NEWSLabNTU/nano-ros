@@ -542,7 +542,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_capturing(
 /// arena dispatch + sched binding as `nros_cpp_subscription_register`, but routed
 /// through `add_arena_subscription_c_info_callback` so the trampoline receives
 /// `(data, len, attachment, attachment_len, ctx)`. Cross-RMW bridges read the
-/// `bridge_origin` tag from the attachment.
+/// bridge_origin tag from the attachment.
 ///
 /// # Safety
 /// All non-NULL pointers must be valid; `callback` must be a valid trampoline;
@@ -1064,7 +1064,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_validated(
 /// `node.subscription(t).generic(..).message_info()` builder: writes the
 /// payload into `out_data` and the attachment into `out_att`. `*out_att_len`
 /// is `0` when the sample carried no attachment. Cross-RMW bridges read the
-/// `bridge_origin` tag from the attachment.
+/// bridge_origin tag from the attachment.
 ///
 /// # Safety
 /// `storage` must be a valid subscription storage. `out_data` /`out_att` must

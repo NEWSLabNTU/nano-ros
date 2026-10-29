@@ -52,7 +52,7 @@
  * forwarder whose BODY mis-wires its arguments compiles cleanly under plain
  * `-std=c11` -- and under `-Wall -Wextra` too. That was measured, not assumed:
  * mutating `rclc_node_init_default` to forward positionally (the way a macro
- * alias would, dropping the reorder onto `nros_node_init`) left this TU at
+ * alias would, dropping the reorder onto `rcl_node_init`) left this TU at
  * rc=0 with only `note: expected 'const struct rclc_support_t *' but argument
  * is of type 'const char *'` to show for it.
  *

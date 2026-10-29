@@ -1,7 +1,7 @@
 // phase-417 W4.c — the executor lifecycle verbs must agree across our own three
 // languages, and C++ was the one that could not stop a spin at all.
 //
-// Measured before this landed: C had `nros_executor_stop`; Rust had
+// Measured before this landed: C had ~~`nros_executor_stop`~~; Rust had
 // `Executor::halt` / `is_halted`; C++ had NEITHER — `spin()` looped on
 // `while (initialized_)` and only `shutdown()` cleared that, and `shutdown()`
 // calls `nros_cpp_fini`. So the standard rclcpp clean-shutdown idiom

@@ -6,7 +6,7 @@
 // the `on_*` transition hooks (matching
 // `rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface`); the base binds
 // the REP-2002 services and bridges each transition to your override. The C
-// state machine (`nros_executor_lifecycle_*`) does all the work — this class is
+// state machine (`rclc_executor_lifecycle_*`) does all the work — this class is
 // a thin, allocation-free wrapper (RFC-0019).
 
 /**
@@ -47,7 +47,7 @@
 // nros_cpp_lifecycle_callback_t typedef), all cbindgen-generated
 // from nros-cpp/src/lifecycle_shim.rs.
 #include "rclcpp/detail/nros_cpp_ffi.h"
-// phase-417 W4.f — `nros_lifecycle_transition_{label,start_state,goal_state}`
+// phase-417 W4.f — `rclc_lifecycle_transition_{label,start_state,goal_state}`
 // and `rclc_lifecycle_transition_graph`, the in-process view of the REP-2002
 // table. They are PURE functions over `nros_core::lifecycle`, so `Transition`
 // below stores an id and nothing else: the labels and the two states have ONE
@@ -85,7 +85,7 @@ enum class LifecycleState : uint8_t {
 /// `trigger_transition(lifecycle_msgs::msg::Transition::TRANSITION_CLEANUP)`
 /// — i.e. `2` — on an Inactive node was silently ACTIVATING it and getting
 /// `Result::ok` back. The numbering is now upstream's everywhere: here, in
-/// `NROS_LIFECYCLE_TRANSITION_*`, in `nros_core::lifecycle`, and on the wire.
+/// `RCLC_LIFECYCLE_TRANSITION_*`, in `nros_core::lifecycle`, and on the wire.
 ///
 /// Prefer these names over the raw byte; `trigger_transition` accepts either.
 enum class LifecycleTransition : uint8_t {
@@ -471,8 +471,8 @@ class LifecycleEngine {
     //
     // rclcpp lets a user register a transition callback instead of overriding a
     // virtual, and all three of our languages had that capability except this
-    // one: C has `nros_lifecycle_register_on_*` and
-    // `nros_executor_lifecycle_register_on_*`, Rust has
+    // one: C has `rclc_lifecycle_register_on_*` and
+    // `rclc_executor_lifecycle_register_on_*`, Rust has
     // `LifecyclePollingNode::register_on_*` and the `LifecycleCallbacks` trait,
     // and C++ exposed only the overrides — even though `register_services()`
     // already calls `nros_cpp_lifecycle_register_on_*` one layer down. Six
@@ -1253,7 +1253,7 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
     /// Upstream's `publish(std::unique_ptr<M, D>)` (phase-488; Nav2's
-    /// `TwistPublisher` writes `pub_->publish(std::move(msg))`). Dropped when
+    /// ~~`TwistPublisher`~~ writes `pub_->publish(std::move(msg))`). Dropped when
     /// inactive, like the by-reference form; otherwise
     /// `rclcpp::Publisher<M>::publish(std::unique_ptr)`, which refuses null.
     template <typename D>::rclcpp::detail::PublishResult publish(::std::unique_ptr<M, D> msg) {
@@ -1343,7 +1343,7 @@ class LifecycleNodeInterface {
 ///  * Construction cannot throw (RFC-0018). A failed construction leaves
 ///    `ok()` false, as `rclcpp::Node`'s does.
 ///  * One managed node per executor: the REP-2002 state machine lives on the
-///    executor (`nros_executor_lifecycle_*`).
+///    executor (`rclc_executor_lifecycle_*`).
 ///  * Not movable: the engine's managed-entity list points into this object.
 ///  * `register_on_*` takes a function pointer and a context, not a
 ///    `std::function`.

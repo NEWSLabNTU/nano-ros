@@ -676,10 +676,10 @@ unsafe fn publish_staged<const N: usize>(
 /// * `RCLC_RET_PUBLISH_FAILED` on backend failure — INCLUDING a payload
 ///   larger than the fallback's ~4 KiB staging buffer, and a `chunk_cb`
 ///   that reports 0 written before `*out_total_len` bytes have been
-///   produced. This line used to name a `NROS_RET_`-prefixed
+///   produced. This line used to name a ~~`NROS_RET_`~~-prefixed
 ///   `BUFFER_TOO_SMALL` (issue 1126): `rcl_ret_t` has never defined
 ///   one — the constant is `NROS_RMW_RET_BUFFER_TOO_SMALL`, on the RMW ABI
-///   (`nros_rmw_ret_t`), and a C caller writing the documented comparison
+///   (~~`nros_rmw_ret_t`~~), and a C caller writing the documented comparison
 ///   got an undeclared identifier with nothing pointing back here. The
 ///   backend errors collapse to one code on the way out, so the two
 ///   causes are NOT distinguishable by the caller; for this entry point
@@ -829,7 +829,7 @@ pub const NROS_PUBLISHER_GID_SIZE: usize = 24;
 /// * `out_gid` — buffer of at least `gid_capacity` bytes, filled on
 ///   `RCL_RET_OK`
 /// * `gid_capacity` — how many bytes `out_gid` can hold. CHECKED, not
-///   assumed. The C surface has no `nros_gid_t`, so the out-param is a bare
+///   assumed. The C surface has no ~~`nros_gid_t`~~, so the out-param is a bare
 ///   `uint8_t *` that carries no width of its own, and the callee's only
 ///   alternative to a capacity argument is to write 24 bytes on the caller's
 ///   word. The width is also not a constant that has held still: the Rust
@@ -915,7 +915,7 @@ pub unsafe extern "C" fn rclc_publisher_get_gid(
 /// and there this call refuses (below). The surface every backend serves is
 /// `rclc_publisher_publish_streamed` and its receive twin
 /// `process_raw_in_place`: no feature, no token, no arena, no size ceiling.
-/// It makes one payload copy on zenoh, as `rclc_publish` does — what it saves
+/// It makes one payload copy on zenoh, as `rcl_publish` does — what it saves
 /// is the full-size staging buffer, not the copy. See issue 0814.
 ///
 /// On success, `*out_buf` points at `*out_cap` writable bytes the
@@ -941,7 +941,7 @@ pub unsafe extern "C" fn rclc_publisher_get_gid(
 /// * `RCLC_RET_NOT_ALLOWED` (`-12`) — this publisher cannot loan at
 ///   all. PERMANENT (issue 0814): the backend's vtable exposes no loan
 ///   slot, which cannot change while the publisher lives. Do NOT retry —
-///   take a non-loan path: `rclc_publish`, or
+///   take a non-loan path: `rcl_publish`, or
 ///   `rclc_publisher_publish_streamed`, which needs no token, no arena and
 ///   no heap.
 /// * `RCL_RET_INVALID_ARGUMENT` on NULL pointers or zero `requested_len`.
@@ -1192,7 +1192,7 @@ impl rcl_publisher_t {
     /// third live value, so `INITIALIZED` really is the whole of "usable"
     /// here. It carries the helper anyway so the class has ONE spelling and a
     /// future state has one place to be added — the sibling entities each grew
-    /// a `POLLING` (and the client a `REGISTERED`) that their predicates were
+    /// a ~~`POLLING`~~ (and the client a `REGISTERED`) that their predicates were
     /// never taught about.
     pub(crate) const fn is_usable(&self) -> bool {
         matches!(
@@ -1447,7 +1447,7 @@ mod name_resolution_tests {
         // The call `rclc_polling_subscription_init_with_qos` makes.
         let subscription_side = unsafe { resolve_entity_name_on_node(&node, "chatter") }
             .expect("a relative name on a named node must resolve");
-        // What the executor-registration path (`nros_executor_add_subscription_*`
+        // What the executor-registration path (`rclc_executor_add_subscription_*`
         // → `Executor::resolve_entity_name_for`) computes for the same input.
         let registration_side =
             nros_node::names::resolve_name("chatter", "talker", "/ns", core::iter::empty())

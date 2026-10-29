@@ -3,12 +3,12 @@
  *
  * Before 1609 the C API had no executor-remove call for any entity, and
  * `rcl_action_server_fini` / `rcl_action_client_fini` reset only the C
- * struct: the arena entry `nros_executor_add_action_*` registered stayed live
+ * struct: the arena entry `rclc_executor_add_action_*` registered stayed live
  * with its callback `context` naming that struct, the action's RMW entities
  * stayed advertised, and `handle_count` never came back down. Issue 1496 gave
  * the executor arena its release path and the C++ tier used it from its
  * destructors; this is the C twin, through
- * `nros_executor_remove_action_{server,client}`.
+ * `rclc_executor_remove_action_{server,client}`.
  *
  * Every shape of the defect compiles — `fini` returning RCL_RET_OK while
  * leaving the entry is the defect — so only a run can see it. Three numbers,

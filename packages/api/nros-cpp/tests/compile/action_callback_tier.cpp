@@ -113,8 +113,8 @@ static_assert(::rclcpp_action::to_ffi(::rclcpp_action::CancelResponse::REJECT) =
 // ACCEPT_AND_DEFER = 3 }`, `CancelResponse : int8_t { REJECT = 1, ACCEPT = 2 }`),
 // reachable under upstream's namespace, and the 0-based FFI discriminant is
 // reached ONLY through `to_ffi` (a zero-initialised FFI slot means reject):
-// 0/1/2 are `NROS_C_GOAL_{REJECT,ACCEPT_AND_EXECUTE,ACCEPT_AND_DEFER}` and 0/1
-// `NROS_C_CANCEL_{REJECT,ACCEPT}` in nros-c's `component.h`.
+// 0/1/2 are `RCLC_GOAL_{REJECT,ACCEPT_AND_EXECUTE,ACCEPT_AND_DEFER}` and 0/1
+// `RCLC_CANCEL_{REJECT,ACCEPT}` in nros-c's `component.h`.
 static_assert(
     std::is_same<std::underlying_type<::rclcpp_action::GoalResponse>::type, int8_t>::value,
     "GoalResponse is int8_t, as upstream's is");

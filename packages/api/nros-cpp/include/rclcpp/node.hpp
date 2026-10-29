@@ -142,7 +142,7 @@
 // `<rclc/detail/request_id.h>` share).
 struct rmw_request_id_t;
 
-// phase-476 W3 — the hosted-node macro (`NROS_CPP_` + `NODE_HOSTED`) IS GONE. It was the
+// phase-476 W3 — the hosted-node macro (`NROS_CPP_` + ~~`NODE_HOSTED`~~) IS GONE. It was the
 // conjunction of all four capability probes, wrapped around every hosted-shape member at once. Each
 // member now names the ONE capability its signature actually uses: the `std::string`-keyed
 // forwarders `NROS_CPP_HAS_STD_STRING`, the `std::shared_ptr` spellings `NROS_CPP_HAS_SHARED_PTR`,
@@ -150,7 +150,7 @@ struct rmw_request_id_t;
 // `<vector>` or `<functional>` any more. The rule it served is unchanged: a
 // probe gates METHODS, never a member.
 
-// `NROS_RCLCPP_MAX_PARAMS` IS GONE (phase-426 W4). It sized an inline
+// ~~`NROS_RCLCPP_MAX_PARAMS`~~ IS GONE (phase-426 W4). It sized an inline
 // `nros::ParameterServer` on the merged node's hosted block — a SECOND
 // parameter store, node-local, which `ros2 param get` could not see and a
 // sibling node did not share. The member is deleted and the facade forwards to
@@ -374,7 +374,7 @@ struct OnSetParametersCallbackHandle {
 ///
 /// Issue 1456 — it also carries the node's LAUNCH-DECLARED IDENTITY, and that
 /// is what makes an `rclcpp`-shape component reachable from a launch file at
-/// all. That shape constructs its own node (`Comp(h) : Node(h, "talker")`), so
+/// all. That shape constructs its own node (Comp(h) : Node(h, "talker")), so
 /// the entry has no `create_node` call to pass a name and a namespace to — the
 /// only thing it hands the component is this handle. Measured before the fix,
 /// on a real bus, for a plan declaring `name="alpha" namespace="/island"`:
@@ -655,7 +655,7 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
 #endif
 }
 
-// phase-476 W3 — `detail::NodeHosted` IS GONE. It was the lazily allocated
+// phase-476 W3 — ~~`detail::NodeHosted`~~ IS GONE. It was the lazily allocated
 // block behind `Node::hosted_`, and by W3 it held one member:
 // `rclcpp::NodeOptions`, a type with no data members (every accessor is a
 // REFUSE-LOUD template, `options.hpp`). Allocating a heap block to store an
@@ -917,7 +917,7 @@ class Node {
     /// So a component whose class hardcodes a DIFFERENT name than the launch
     /// file declares is named by the LAUNCH FILE, which is the only answer that
     /// lets one component class be instantiated twice in one launch file: two
-    /// `Comp(h) : Node(h, "talker")` objects would otherwise both be `/talker`.
+    /// Comp(h) : Node(h, "talker") objects would otherwise both be `/talker`.
     /// It is upstream's order too — `-r __node:=alpha` outranks the literal an
     /// `rclcpp::Node` subclass passes its base.
     ///
@@ -1875,7 +1875,7 @@ class Node {
     /// Phase 235.A — internal: raw FFI node handle for the Entry-pkg
     /// NodeContext runtime.
     ///
-    /// The declarative `NodeContextOps` boundary (`<nros/node_pkg.hpp>`)
+    /// The declarative ~~`NodeContextOps`~~ boundary (`<nros/node_pkg.hpp>`)
     /// is **type-erased** — entities arrive as descriptor *strings*
     /// (`type_name` / `type_hash`), with no message type `M` available
     /// at the op-function-pointer callsite. The native runtime in
@@ -2247,7 +2247,7 @@ class Node {
     /// callback overload above (so `options.sched_context` is functional), but the
     /// handler is invoked as `callback(const M&, const uint8_t* attachment, size_t
     /// attachment_len)`; `attachment_len == 0` means the sample carried none.
-    /// Cross-RMW bridges read the `bridge_origin` tag from the attachment.
+    /// Cross-RMW bridges read the bridge_origin tag from the attachment.
     ///
     /// Argument order follows the callback-style `create_subscription` above:
     /// `qos` before `callback`, and mandatory (Row 12 of the phase-467 RMW
@@ -2293,7 +2293,7 @@ class Node {
     /// the caller's own storage, drained with `take_request()` /
     /// `send_response()`; the dispatch overload below registers a handler into
     /// the executor arena and the caller invokes nothing. One class used to be
-    /// both, behind a `callback_mode_` flag, which meant `take_request()` was
+    /// both, behind a ~~`callback_mode_`~~ flag, which meant `take_request()` was
     /// offered on objects whose storage the arena never filled.
     ///
     /// @tparam S  Service type (must define nested Request and Response with TYPE_NAME/TYPE_HASH).
@@ -2332,7 +2332,7 @@ class Node {
     /// `call_polling()` and probed with `wait_for_service()`; the dispatch
     /// overload below registers a response handler into the executor arena and
     /// the caller's one verb is `async_send_request`. One class used to be both,
-    /// behind a `callback_mode_` flag, which meant `wait_for_service()` was
+    /// behind a ~~`callback_mode_`~~ flag, which meant `wait_for_service()` was
     /// offered on objects whose storage the arena never filled.
     ///
     /// @tparam S  Service type (must define nested Request and Response with TYPE_NAME/TYPE_HASH).
@@ -3059,7 +3059,7 @@ class Node {
     // Unconditional (one enum), so the layout stays probe-independent.
     ::rclcpp::NodeOptions options_;
     // phase-476 W3 — `void* hosted_` and its lazy `hosted()` accessor are gone
-    // with `detail::NodeHosted` (see there): the block's last member was an
+    // with ~~`detail::NodeHosted`~~ (see there): the block's last member was an
     // empty `NodeOptions`. `sizeof(Node)` loses that pointer on EVERY target,
     // so the layout stays probe-independent.
 

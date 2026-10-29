@@ -22,7 +22,7 @@
  * "`rcl_action_client_init` takes no QoS and IS the default form" — which
  * says the CAPABILITY corresponds, not that the name may be missing. RFC-0089
  * is explicit that a correspondence is a reason to take the spelling, so a
- * ported `rclc_action` file compiles on this line instead of on a diff.
+ * ported rclc_action file compiles on this line instead of on a diff.
  *
  * **The argument order is rclc's, and that is the whole reason this exists as
  * a separate name rather than as a rename of rcl_action_client_init():**

@@ -27,7 +27,7 @@
  * WHY THE DRAINING API LIVES HERE — phase-456 W9, following W2b and W5
  *
  * It used to live on `rclcpp::Client<S>`, which served BOTH ownership models
- * behind a `callback_mode_` flag. On the dispatch path the arena owns the client
+ * behind a ~~`callback_mode_`~~ flag. On the dispatch path the arena owns the client
  * and `storage_` is never filled, so `wait_for_service()` on a callback-mode
  * object handed `NROS_SERVICE_CLIENT_SIZE` value-initialized zero bytes to
  * `nros_cpp_service_client_wait_for_service` — whose own doc comment says
@@ -405,7 +405,7 @@ template <typename S> class PollClient {
     /// Send a request and block until a reply is received.
     ///
     /// Spins the executor internally (like the runtime's `Promise::wait`).
-    /// Never calls `zpico_get` — all I/O is driven by `spin_once`.
+    /// Never calls ~~`zpico_get`~~ — all I/O is driven by `spin_once`.
     ///
     /// @param req          Request to send.
     /// @param resp         Output response struct (filled on success).
@@ -490,7 +490,7 @@ template <typename S> class PollClient {
     /// back — see @ref Publisher::get_actual_qos.
     ///
     /// This half OWNS its `RmwServiceClient`, so it passes `storage_` and the
-    /// `callback_mode_` branch issue 1437 needed is gone. See
+    /// ~~`callback_mode_`~~ branch issue 1437 needed is gone. See
     /// @ref rclcpp::Client::get_request_publisher_actual_qos for why the
     /// dispatch half answers too — the client comes out the way the SERVICE did
     /// and not the way the subscription did, because issue 1437 gave both

@@ -78,7 +78,7 @@
 // So the conjunction is removed rather than kept as a fallback, and the five
 // consumers that need the porting surface make the request out loud -- the
 // rclcpp compat shim, the phase-417 ported-surface probes, the four refusal
-// probes, the `cpp_compat_snippets` compile-check arm, and this gate's own
+// probes, the ~~`cpp_compat_snippets`~~ compile-check arm, and this gate's own
 // hosted arm.
 
 #if defined(NROS_CPP_STD) // hosted-family: capability-definition

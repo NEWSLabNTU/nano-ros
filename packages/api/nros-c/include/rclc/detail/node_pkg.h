@@ -38,7 +38,7 @@ extern "C" {
  * the NodeEntityDescriptor structs) is retired; the EntryNodeRuntime
  * interpreter that consumed it is gone. Typed C components use
  * `<rclc/component.h>` (RCLC_C_COMPONENT). This header now only carries the
- * shared `rcl_ret_t` + `NROS_RET_*` C return surface above. */
+ * shared `rcl_ret_t` + `RCLC_RET_*` C return surface above. */
 
 #ifdef __cplusplus
 }

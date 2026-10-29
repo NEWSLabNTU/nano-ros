@@ -2068,7 +2068,7 @@ pub unsafe extern "C" fn rclc_executor_trigger_index(
 // Handle registration — delegated to nros-node Executor
 // ============================================================================
 
-/// The registration road every `nros_executor_add_subscription*` that takes a
+/// The registration road every `rclc_executor_add_subscription*` that takes a
 /// `rcl_subscription_t` shares — issue 1668.
 ///
 /// Validates both objects, reads the subscription's topic / type / hash / QoS
@@ -2442,7 +2442,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription(
 ///
 /// This is the raw-path sibling of [`rclc_executor_add_subscription_with_context`].
 /// `rclc_subscription_init_default` takes no callback (rclc's arity), so the
-/// byte callback that used to ride on `nros_subscription_init` is supplied at
+/// byte callback that used to ride on ~~`nros_subscription_init`~~ is supplied at
 /// registration, which is where rclc supplies it
 /// (`rclc_executor_add_subscription`). The name keeps the `nros_` prefix
 /// deliberately: rclc's `add_subscription` delivers a DESERIALIZED message into
@@ -2452,7 +2452,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription(
 ///
 /// The arena entry owns `callback` and `context` from here on; the
 /// subscription struct keeps neither (phase-487 W1). This replaced the
-/// three-argument `nros_executor_add_subscription`, which dispatched the
+/// three-argument ~~`nros_executor_add_subscription`~~, which dispatched the
 /// callback an init call had stored in the struct.
 ///
 /// # Returns
@@ -2513,7 +2513,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw(
 ///
 /// `node` may be NULL (legacy single-Node path) or a Node created via
 /// `rclc_executor_node_init` (routes to that Node's session). `qos` may be NULL
-/// (defaults). Cross-RMW bridges read the `bridge_origin` tag from the
+/// (defaults). Cross-RMW bridges read the bridge_origin tag from the
 /// attachment for echo suppression.
 ///
 /// # Safety
@@ -3000,7 +3000,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer_in_group(
 /// callback HERE rather than at `*_init`.
 ///
 /// `rclc_service_init_default` takes no callback (rclc's arity), so the handler
-/// that used to ride on `nros_service_init` is supplied at registration — the
+/// that used to ride on ~~`nros_service_init`~~ is supplied at registration — the
 /// call rclc calls `rclc_executor_add_service`. The `nros_` prefix is kept for
 /// the same reason as `rclc_executor_add_subscription_raw`: rclc's
 /// `rclc_executor_add_service` carries caller-owned `request_msg` /
@@ -3012,7 +3012,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer_in_group(
 ///
 /// The arena entry owns `callback` and `context`; the service struct keeps
 /// neither (phase-487 W2). This replaced the two-argument
-/// `nros_executor_add_service`, which dispatched a callback an init call had
+/// ~~`nros_executor_add_service`~~, which dispatched a callback an init call had
 /// stored in the struct.
 ///
 /// # Returns
@@ -3371,7 +3371,7 @@ unsafe extern "C" fn typed_client_trampoline(
 /// response callback: each reply is deserialised into `response_msg` through
 /// the client's descriptor and `callback(response_msg)` runs, as rclc's does.
 /// `response_msg` is the caller's and must outlive the registration. Requests
-/// go out with `rclc_client_send_request` as before;
+/// go out with ~~`rclc_client_send_request`~~ as before;
 /// `rclc_client_set_response_callback` replaces the typed callback with a raw
 /// one.
 ///
@@ -3707,7 +3707,7 @@ unsafe fn attach_client_with(
     }
 }
 
-// `nros_executor_add_guard_condition` was RETIRED by phase-417 W4.e, with no
+// ~~`nros_executor_add_guard_condition`~~ was RETIRED by phase-417 W4.e, with no
 // forwarder (RFC-0089 stage 6 step B). It was the third of three calls a C
 // caller had to make, and the only one that did anything: `init` and
 // `set_callback` left the object inert, so a guard condition was unregistered —
@@ -4144,7 +4144,7 @@ pub unsafe extern "C" fn rclc_executor_remove_action_client(
     )
 }
 
-/// The executor-side tail every `nros_executor_remove_*` shares — issues 1609,
+/// The executor-side tail every `rclc_executor_remove_*` shares — issues 1609,
 /// 1631. ONE spelling, so no remover can clear the trigger table and forget
 /// `handle_count`, or the reverse.
 ///
@@ -4168,7 +4168,7 @@ fn forget_removed_handle(
 /// Remove a subscription from the executor — issue 1631, rclc's
 /// `rclc_executor_remove_subscription`.
 ///
-/// Every `nros_executor_add_subscription*` that takes a
+/// Every `rclc_executor_add_subscription*` that takes a
 /// `rcl_subscription_t` registers an arena entry and records it in the
 /// subscription; `rcl_subscription_fini` is handed only the subscription, so
 /// it cannot undo the executor's side. This does, the way
@@ -4807,7 +4807,7 @@ pub unsafe extern "C" fn rclc_executor_spin_one_period(
 /// Ask a spinning executor to stop — `rclcpp::Executor::cancel` /
 /// `rcl`'s context shutdown, phase-417 W4.c.
 ///
-/// Renamed from `nros_executor_stop`, whose deprecated `static inline`
+/// Renamed from ~~`nros_executor_stop`~~, whose deprecated `static inline`
 /// forwarder in `<rclc/executor.h>` was retired by phase-417 stage 6 step B.
 /// Three of our own languages had three answers to "stop spinning"; `cancel`
 /// is ROS 2's.
@@ -5496,7 +5496,7 @@ pub type rclc_shutdown_callback_handle_t = u32;
 
 /// The value no successful registration ever produces.
 //
-// A LITERAL, not `u32::MAX` and not `Something as u32`: cbindgen silently DROPS
+// A LITERAL, not `u32::MAX` and not Something as u32: cbindgen silently DROPS
 // a constant whose initializer it cannot evaluate, and a constant that is
 // missing from the header is worse than one that is wrong — C compiles until
 // someone uses it. The `const _` below is what keeps the literal honest.

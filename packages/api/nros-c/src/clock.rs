@@ -273,7 +273,7 @@ pub unsafe extern "C" fn rclc_clock_get_now_time(
 }
 
 /// Get the current time from a clock as a nanosecond count — rcl's contract
-/// (`rcl_time_point_value_t *`). phase-492 W1.b: was `rclc_clock_get_now_ns`.
+/// (`rcl_time_point_value_t *`). phase-492 W1.b: was ~~`rclc_clock_get_now_ns`~~.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_clock_get_now(
     clock: *const rcl_clock_t,

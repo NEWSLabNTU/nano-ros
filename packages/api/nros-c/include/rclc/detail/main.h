@@ -14,7 +14,7 @@
  *      empty-expansion macro the user's TU may carry as a doc / IDE
  *      hint. Declarative only; cmake fn drives codegen.
  *
- *   2. `nros_board_native_run(nros_node_register_fn entry)` — the
+ *   2. ~~`nros_board_native_run(nros_node_register_fn entry)`~~ — the
  *      C-FFI Board adapter the generated TU calls. Owns the
  *      `rclcpp::init_in() → entry(context) → rclcpp::spin_in() →
  *      rclcpp::shutdown_in()` lifecycle.
@@ -227,7 +227,7 @@ NROS_PUBLIC int32_t nros_board_native_run_tiers_in(const char* session_name,
  * at boot (`CONFIG_NET_CONFIG_AUTO_INIT` — static IP / DHCP), and NuttX brings
  * eth0 up before `app_main`, so neither needs an explicit wait. A board crate
  * or Entry app that must block until the link / DHCP lease is ready (e.g.
- * ASI's `configure_network()` prologue) provides a STRONG definition of this
+ * ASI's ~~`configure_network()`~~ prologue) provides a STRONG definition of this
  * symbol, which the linker prefers over the weak default. Mirrors the
  * weak-default discipline already used for `nros_app_register_backends`.
  *
@@ -557,7 +557,7 @@ NROS_PUBLIC int32_t nros_board_freertos_run_levels_in(
  * phase-280), so there is no network bring-up. `locator` is the connect
  * endpoint; `domain_id` is the ROS domain id; `session_name` names the primary
  * session. Defined in nros-board-nuttx-qemu (compiled by the board's
- * build.rs via `nuttx_platform_build::compile_run_tiers_seam`). */
+ * build.rs via `nuttx_platform_build::compile_entry_seams`). */
 NROS_PUBLIC int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id,
                                                const char* session_name,
                                                const nros_native_tier_spec_t* tiers,

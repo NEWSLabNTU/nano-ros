@@ -29,9 +29,9 @@
  * handler's own `__Storage`.
  *
  * Before W5.e this file could not have existed: the pack emitted
- * `_get_type_support`, `_get_type_name`, `_get_type_hash` and the four
+ * _get_type_support, `_get_type_name`, `_get_type_hash` and the four
  * `_serialize`/`_deserialize` entry points, and NOTHING that joined them to
- * `nros_service_init`. Every C service in the tree therefore called CDR by
+ * `rclc_service_init`. Every C service in the tree therefore called CDR by
  * hand at the top and bottom of its handler.
  */
 

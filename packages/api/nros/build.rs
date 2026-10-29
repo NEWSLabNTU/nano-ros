@@ -135,7 +135,7 @@ fn main() {
     //
     // Issue 1655 -- that declared fact is the sizing descriptor's `[image]
     // cell_entities` now (composed where `derive` counts it, folded by D12 on a
-    // multi-entry runtime). The `NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES`
+    // multi-entry runtime). The ~~`NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES`~~
     // carrier that used to deliver it retired once the knob diff with it
     // dropped was zero on three images; the cargo-leaf road still writes the
     // knob itself, which is the env rung above.
