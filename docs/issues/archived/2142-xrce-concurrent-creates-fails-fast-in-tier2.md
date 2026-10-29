@@ -1,11 +1,12 @@
 ---
 id: 2142
 title: "`xrce_concurrent_entities` failed in 0.169 s in the 2026-10-29 tier-2 run after passing in 5.4 s the night before; the lane suppresses failure output, so the panic text was never recorded"
-status: open
+status: resolved
 type: bug
 area: [rmw-xrce, ci]
 severity: medium
 found: 2026-10-29
+resolved: 2026-10-29
 related: [1734, 2106, 2120, 2135, 2108]
 ---
 
@@ -80,3 +81,30 @@ a finding.
 A smaller, separate fix: a feature lane that suppresses failure output turns
 every red into a no-verdict. The lane should print failure output, or upload
 its junit, so the next red carries its own diagnosis.
+
+## Resolution (2026-10-29)
+
+The 07:08 nightly's `tier 2 nightly (pairwise cover)` job (run 40833557587,
+job 123313013381) hit the same failure and did print the panic:
+
+> panicked at packages/testing/nros-tests/tests/xrce_concurrent_entities.rs:230:9:
+> assertion `left == right` failed: round 0: two concurrent creates were handed the same subscriber slot
+>   left: 1
+>  right: 8
+
+All eight subscriptions reported ONE slot, which is not what a race looks like.
+The test reads each slot through `SubscriberStatePrefix`, a hand-written
+`#[repr(C)]` mirror of the leading fields of `xrce_subscriber_state`
+(`internal.h`). #2108 (`8d6493df05`) inserted `uint32_t qos_deadline_ms`
+between `session_state` and `slot`, and the mirror was not updated. Its `slot`
+field therefore read the deadline word, which is the same for every
+subscription on one profile. The shim was never at fault, and the candidate
+list above was a lead that did not pan out except for #2108.
+
+So this was neither issue 1734 returning nor a setup failure. The 0.17 s fail
+time is just a short test that asserts once, at the end of round 0.
+
+Fixed by adding `_qos_deadline_ms: u32` to the mirror, with a comment naming
+this issue, in the same commit that archives this file. The follow-up on
+`--failure-output never` still stands: the 06:20 run's lane printed nothing,
+and only the 07:08 run carried the message.
