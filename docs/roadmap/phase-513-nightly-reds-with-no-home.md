@@ -1,9 +1,9 @@
 # Phase 513 — Nightly and merge-queue reds with no home
 
-**Status (2026-10-24). In progress.** R1 and R2 are fixed on main (#2579);
-their acceptance is a tier-2 nightly, because this bench is aarch64 and Zephyr
-3.7's `native_sim` builds only on an x86 host. R5's instrumentation, R6 and R7
-are in review. R3, R4 and the rest of R5 wait on CI evidence.
+**Status (2026-10-29). In progress.** R2, R5, R6 and R7 are done. R1 is fixed
+on main, and its acceptance waits on issue 2139: the shared observer its cell
+needs is out of lane on every tier-2 nightly. R3 waits on a nightly scheduled
+on newslab-server-241. R4 waits on attributing issue 1991's remaining rows.
 
 **Prior:** none. This phase gathers open issues whose phases were archived
 while the issue stayed open, plus one new red found while reading them.
@@ -36,6 +36,13 @@ feature (`NanoRosRuntimeCrate.cmake`). The Zephyr lane now does the same.
 **Done when** a tier-2 nightly builds `build-ws-mixed-entry-zenoh` and the
 Zephyr mixed cell of `entry_e2e` runs.
 
+No tier-2 nightly can meet that as the lanes stand (2026-10-29). Nightly
+40648207713 skipped the cell as out of lane before it asked about the cell's
+own fixture. The C observer the seven `EntryPubsub` cells share, the
+`workspace-c-native-robot2` row at `linux,c,zenoh`, is not in the pairwise
+cover. That gap is [issue 2139](../issues/2139-entry-cells-shared-peer-out-of-lane.md),
+and R1 waits on it.
+
 ### R2 — Zephyr's kernel arm defines the whole lock ABI — DONE 2026-10-29
 
 [Issue 2032](../issues/archived/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md),
@@ -66,6 +73,11 @@ move. What remains is the evidence the issue asks for.
 passes `check-lock` with the six leaves checked. The job log should show each
 leaf being seeded.
 
+Still waiting on the runner, not on the code (2026-10-29). The two nightlies of
+2026-10-28 (jobs 122643934268 and 122681868613) both ran on
+`nano-ros-runner-newslab-118-server` and printed `check-lock: 114 lock(s),
+0 drift(s)`. A run on 241 has not been scheduled since the fix.
+
 ### R4 — read the tier-2 nightly's failures, and file each cause
 
 [Issue 1991](../issues/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md).
@@ -77,9 +89,9 @@ what stop it now.
 **Done when** each of the issue's rows 4–14 is filed or attributed from that
 night's text.
 
-### R5 — tell a late reconnect from a hung one
+### R5 — tell a late reconnect from a hung one — DONE 2026-10-29
 
-[Issue 1976](../issues/1976-zenoh-reconnect-resume-exceeds-75s-in-queue.md).
+[Issue 1976](../issues/archived/1976-zenoh-reconnect-resume-exceeds-75s-in-queue.md), resolved.
 
 `declares_keep_running_across_a_reconnect` should log how long the resume
 actually took, even when it passes. Then queue runs carry the distribution, and
@@ -98,6 +110,12 @@ bench: first declare and full resume both 39.85 s after the restart.
 
 **Done when** the test prints the measured resume time on success (landed),
 and the issue records the distribution from at least one merge-queue batch.
+
+Recorded from 100 merge-queue `test-unit` jobs, 2026-10-26 to 2026-10-29:
+all passed, between 40.1 s and 40.8 s (p99 40.6 s), against the 75 s wait.
+Every one postdates the zenoh-pico 1.10.1 move, which replaced the reconnect
+path the 2026-10-18 overrun ran through. Neither the "load" fix nor the "hang"
+fix is needed; the issue says when to reopen.
 
 ### R6 — a gate for a port arm that is short of the ABI
 
@@ -145,7 +163,8 @@ stood before #2579, the gate reports the umbrella line issue 2010 was about.
 | [2032](../issues/archived/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md) | R2 | medium |
 | [1941](../issues/1941-zephyr-rust-leaf-locks-drift-after-seed.md) | R3 | medium |
 | [1991](../issues/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md) | R4 | medium |
-| [1976](../issues/1976-zenoh-reconnect-resume-exceeds-75s-in-queue.md) | R5 | medium |
+| [2139](../issues/2139-entry-cells-shared-peer-out-of-lane.md) | R1 (blocks its acceptance) | medium |
+| [1976](../issues/archived/1976-zenoh-reconnect-resume-exceeds-75s-in-queue.md) | R5 | medium (resolved) |
 
 ## Not in this phase
 
