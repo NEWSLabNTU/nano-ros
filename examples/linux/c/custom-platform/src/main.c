@@ -185,8 +185,8 @@ static void demo_guard_condition(void) {
     printf("\n=== Guard Condition Demo ===\n");
 
     // ONE call, on the NODE, with the callback bound at creation — phase-417
-    // W4.e. This example used to make three (`nros_guard_condition_init`,
-    // `nros_guard_condition_set_callback`, `nros_executor_add_guard_condition`)
+    // W4.e. This example used to make three (~~`nros_guard_condition_init`~~,
+    // ~~`nros_guard_condition_set_callback`~~, ~~`nros_executor_add_guard_condition`~~)
     // and stopped after two, so the guard condition it printed as "initialized"
     // was never registered with anything: the SIGINT handler's trigger set a
     // byte in the struct and no executor ever looked at it. Every call returned

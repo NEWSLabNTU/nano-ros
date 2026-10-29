@@ -219,11 +219,11 @@ vocabulary! {
     /// The third row is phase-457 W3's: the in-place question is TWO axes, not
     /// one, and until W3 only the backend's was asked.
     ///
-    /// `c_typed_hint` and `rust_typed_descriptors` described the SAME
+    /// ~~`c_typed_hint`~~ and ~~`rust_typed_descriptors`~~ described the SAME
     /// registration and differed only in the fourth; they are
-    /// [`Self::TypedBound`]. `rust_typed_schemaless` and `c_raw_no_hint` are
+    /// [`Self::TypedBound`]. ~~`rust_typed_schemaless`~~ and ~~`c_raw_no_hint`~~ are
     /// both "no bound reachable at this site"; they are [`Self::Unbounded`].
-    /// `rust_typed_in_place` loses the language word it never earned and
+    /// ~~`rust_typed_in_place`~~ loses the language word it never earned and
     /// becomes [`Self::InPlace`].
     ///
     /// The language has NOT stopped being EVIDENCE for the BOUND — the
@@ -490,7 +490,7 @@ vocabulary! {
     /// `[image] infra_families` — which of the runtime's own service families
     /// the image builds: the ROS parameter services (six servers per node) and
     /// the REP-2002 lifecycle services (five per executor). The spellings are
-    /// the four the `NROS_DECLARED_INFRA_QUERYABLES` carrier used, which this
+    /// the four the ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier used, which this
     /// field retired; [`crate::infra::declared_families`] parses them, so the
     /// two readers that price these servers keep one parser.
     ///

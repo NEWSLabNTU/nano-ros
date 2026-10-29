@@ -158,4 +158,4 @@ nros::node!(FibonacciClient);
 // compile this; the cargo `main.rs` path is gone. It is thin — the board owns
 // executor open, RMW registration, and the spin loop; the `nros::node!()`-emitted
 // `register` declares the FibonacciClient. No manual `Executor::open` /
-// `register_rmw` / spin loop / hardcoded locator in the example.
+// ~~`register_rmw`~~ / spin loop / hardcoded locator in the example.

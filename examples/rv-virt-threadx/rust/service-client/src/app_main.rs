@@ -28,7 +28,7 @@ nros_board_threadx_qemu_riscv64::app_main!(crate::register);
 
 // phase-361 W8.e / issue 0594 — the backend REQUIRES the heap; it does not
 // silently enable it. Build as `--features rmw-cyclonedds,alloc` (the cmake
-// path spells both in `nros_threadx_rv64_rust_cyclone_app`).
+// path spells both in `nros_threadx_rv64_rust_app`).
 //
 // It lives in this glue module, not in `lib.rs`, for the reason stated at the
 // top of this file: `lib.rs` is LOGIC and `example_portability` requires it to

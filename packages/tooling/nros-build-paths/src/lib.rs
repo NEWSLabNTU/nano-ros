@@ -862,7 +862,7 @@ pub fn nuttx_dir() -> PathBuf {
 /// The Tonbandgeraet trace library's `tband/` directory.
 ///
 /// phase-484 W2 — located as `[source.tonbandgeraet]` like every other source
-/// tree; this used to read a `TBAND_DIR` that `just/sdk-env.just` exported.
+/// tree; this used to read a ~~`TBAND_DIR`~~ that `just/sdk-env.just` exported.
 pub fn tband_dir() -> PathBuf {
     located_or_checkout("tonbandgeraet", "third-party/tracing/Tonbandgeraet").join("tband")
 }

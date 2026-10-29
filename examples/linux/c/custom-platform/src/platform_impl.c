@@ -38,7 +38,7 @@
  *
  * `nros_platform_register_log_writer` is intentionally omitted: like the POSIX
  * port, this reference writes logs directly (to stderr), so it has no
- * board-registered writer hook. Platforms whose `log_write` is a thin
+ * board-registered writer hook. Platforms whose `nros_platform_log_write` is a thin
  * dispatcher (FreeRTOS / ThreadX / bare-metal UART) implement it instead.
  */
 

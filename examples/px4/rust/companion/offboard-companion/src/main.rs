@@ -41,8 +41,8 @@ use px4_msgs::msg::{OffboardControlMode, VehicleOdometry};
 // The companion is the peer of PX4's uxrce_dds_client; no platform scope.
 extern crate nros_platform_cffi as _;
 
-// Phase 248 C6 — force-link the xrce backend rlib so its `RMW_INIT_ENTRIES`
-// self-register section survives pruning (the board-less app owns its backend,
+// Phase 248 C6 — force-link the xrce backend's
+// `nros_rmw_xrce_cffi::register` so it survives pruning (the board-less app owns its backend,
 // no `nros/rmw-xrce` umbrella feature). This is the only RMW this example
 // supports, so the backend dep (and this force-link) are unconditional
 // (phase-277 W3.b).

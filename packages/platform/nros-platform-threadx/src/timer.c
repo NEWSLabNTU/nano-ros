@@ -35,7 +35,7 @@ typedef struct {
 #endif
 /* Issue 1131 — the registry is how a `ULONG` expiration_input finds its
  * wrapper, so a slot is the ONLY way a timer can exist on this port. At 0
- * `registry_claim` can never succeed, so `nros_platform_timer_create` returns
+ * `registry_claim` can never succeed, so `nros_platform_timer_create_*` returns
  * NULL for every timer the image asks for, forever — an image with no timers
  * asks for none and pays nothing extra, so 0 saves 32 pointers and costs the
  * whole timer ABI. Below the `#ifndef`, never above: an undefined identifier

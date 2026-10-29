@@ -393,7 +393,7 @@ pub struct WhenMatcher {
     /// the given value, resolved through the RFC-0049 ladder (platform, then
     /// the board's own `[capabilities]` rung, board winning).
     ///
-    /// **Absent is not false**, the rule `resolve_transport` already applies to
+    /// **Absent is not false**, the rule the retired ~~`resolve_transport`~~ applied to
     /// the same table: an UNDECLARED capability matches neither `true` nor
     /// `false`, so a matcher naming one is inert on a platform nobody has
     /// described. That is what keeps `capability = { ip_stack = true }` from
@@ -860,7 +860,7 @@ mod capability_matcher_tests {
         assert!(!matches(&want_false, "thumbv7m-none-eabi", true, &on));
     }
 
-    /// Absent is not false — the rule `resolve_transport` already applies to
+    /// Absent is not false — the rule the retired ~~`resolve_transport`~~ applied to
     /// the same table. An undeclared capability matches NEITHER arm, so a
     /// platform nobody has described keeps building exactly as it did.
     #[test]

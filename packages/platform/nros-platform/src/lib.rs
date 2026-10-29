@@ -43,8 +43,8 @@ pub use board::{
 };
 // Phase 313 W1 (issue #0243) — the deprecated `NodeRuntime` crate-root alias is
 // removed; consumers use `NodeDispatchRuntime`.
-// Phase 212.N.2 — `NetworkError` is the return type any external
-// `NetworkWait` impl carries, so it needs to be reachable at the
+// Phase 212.N.2 — `NetworkError` is the error a board's link-up wait
+// reports, so it needs to be reachable at the
 // crate root. The `board` module stays private; this re-export keeps
 // the boundary clean.
 pub use board::network::NetworkError;

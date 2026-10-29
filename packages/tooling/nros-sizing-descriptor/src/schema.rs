@@ -872,7 +872,7 @@ impl Image {
     /// Issue 1655 — the APPLICATION's queryables a service server claims:
     /// declared service servers plus three per action server (its
     /// `send_goal` / `cancel_goal` / `get_result` channels) — `local_query_servers` in the entity derivation, the
-    /// number `NROS_DECLARED_SERVICE_SERVERS` carried until issue 1649 retired
+    /// number ~~`NROS_DECLARED_SERVICE_SERVERS`~~ carried until issue 1649 retired
     /// it onto this field.
     ///
     /// A field, not a sum a consumer computes from `service_server_entities`
@@ -918,7 +918,7 @@ impl Image {
     /// and XRCE's service-server slots multiply by it
     /// (`nros_sizing_descriptor::infra::infra_service_servers`).
     ///
-    /// The `NROS_DECLARED_NODES` carrier's descriptor home (phase-486 W9). A
+    /// The ~~`NROS_DECLARED_NODES`~~ carrier's descriptor home (phase-486 W9). A
     /// model-only fact, so it is stated by an image with no wiring too, which
     /// is what lets the carrier retire: under RFC-0100's 2026-10-10 ruling a
     /// stated fact earns a file whatever it came from.
@@ -927,7 +927,7 @@ impl Image {
     }
 
     /// Which of the runtime's own service families the image builds (see
-    /// [`InfraFamilies`]). The `NROS_DECLARED_INFRA_QUERYABLES` carrier's
+    /// [`InfraFamilies`]). The ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier's
     /// descriptor home: a MODEL fact (the bringup's `features`, plus, on a
     /// cargo leaf, the service features its own `nros` dependency enables), so
     /// an image with no wiring states it too.

@@ -4,7 +4,7 @@
  * Header source of truth: `<nros/platform.h>` (`nros-platform-cffi`).
  *
  * Each `nros_platform_*` symbol below maps to the closest POSIX
- * primitive. The intent is parity with `PosixPlatform`'s Rust impl
+ * primitive. The intent is parity with ~~`PosixPlatform`~~'s Rust impl
  * (`packages/platform/nros-platform-posix/src/lib.rs`); the two share
  * the same canonical ABI and may not be linked into the same binary
  * (duplicate `#[no_mangle]` symbols / `extern "C"` definitions).
@@ -154,7 +154,7 @@ void nros_platform_yield_now(void) {
 
 /* ---- Random ---- */
 /*
- * The Rust `PosixPlatform` uses a deterministic xorshift seeded from
+ * The Rust ~~`PosixPlatform`~~ uses a deterministic xorshift seeded from
  * a fixed constant for reproducibility; matching that exactly keeps
  * the two ports observable-equivalent for tests.
  */
@@ -264,7 +264,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
 
     /* phase-364 W3 — `attr` is read now rather than ignored. This port used to
      * do `(void) attr;`, which is why a caller could not ask for a stack size
-     * and why phase-359 W7 wrote `nros_nuttx_spawn_tier` in C to get one: NuttX
+     * and why phase-359 W7 wrote ~~`nros_nuttx_spawn_tier`~~ in C to get one: NuttX
      * runs this very port, so the shim existed to reach `pthread_attr_t` from a
      * caller the ABI gave no way to express it. */
     const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;

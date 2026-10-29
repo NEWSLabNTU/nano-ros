@@ -66,6 +66,16 @@ api-parity-ledger:
     @python3 scripts/api-parity.py --self-test
     @python3 scripts/gen-api-comparison.py --self-test
 
+# phase-515 W0.d — a code comment may not quote a symbol that exists nowhere.
+# The ledger's prose has been held to the tree since W0.b/W0.c; comments under
+# `packages/` and `examples/` quoted 2,365 names that resolved nowhere when this
+# was written. History is struck inline (~~`old_name`~~), another project's
+# name is listed in `scripts/check/comment-foreign-names.txt`. The scope widens
+# one area per pull request (`SCOPE` in the script) until it covers both trees.
+[group("check")]
+comment-names:
+    @python3 scripts/check/check-comment-names.py
+
 # Every `nros…` identifier the book quotes must exist in the tree. The
 # 2026-08-21 persona review's dominant failure class was prose naming renamed
 # or never-existing symbols (max_callbacks_per_spin, nros_board_init_clocks,

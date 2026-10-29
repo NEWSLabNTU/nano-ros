@@ -39,7 +39,7 @@
 //!
 //! The legacy traits in `nros-board-common::board_init`
 //! (`Board`, `BoardInit`, `BoardPrint`, `BoardExit`, `BoardEntry`,
-//! `DirectExec`, `run`) stay as-is during the transition. Phase
+//! ~~`DirectExec`~~, `run`) stay as-is during the transition. Phase
 //! 212.N.7 retires the M.5.a FreeRTOS BSP baker and migrates every
 //! Node pkg to the new shape; at that point the legacy
 //! `nros-board-common` traits become `pub use` re-exports of this

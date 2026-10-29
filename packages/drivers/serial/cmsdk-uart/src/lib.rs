@@ -16,8 +16,8 @@
 //!
 //! The crate ships an IRQ servicing entry point — [`handle_tx_irq`]
 //! — that board crates wire into their `#[interrupt] fn UARTTX0()`.
-//! Pairs with an opt-in `wfi`-loop inside [`CmsdkUart::write`] guarded
-//! by the `irq_driven_tx` feature. Default-off because the QEMU
+//! It is meant to pair with an opt-in `wfi`-loop inside
+//! [`CmsdkUart::write`] behind a feature that does not exist yet, because the QEMU
 //! CMSDK model's TX-IRQ timing didn't pass the
 //! `test_qemu_serial_pubsub_e2e` handshake in the initial
 //! integration pass — the zenoh InitSyn write succeeds but the
@@ -59,7 +59,7 @@ const STATE_RX_FULL: u32 = 1 << 1;
 const CTRL_TX_EN: u32 = 1 << 0;
 const CTRL_RX_EN: u32 = 1 << 1;
 // IRQ-enable bits. Currently only referenced by [`handle_tx_irq`]
-// + the (default-off) `irq_driven_tx` future write path.
+// + the IRQ-driven write path that is not written yet.
 #[allow(dead_code)]
 const CTRL_TX_INT_EN: u32 = 1 << 2;
 #[allow(dead_code)]
@@ -132,8 +132,7 @@ impl CmsdkUart {
 /// Board crates wire `#[interrupt] fn UARTTX0()` (or `UARTTX1` /
 /// `UARTTX2`/…) that calls this with the matching base address.
 /// Clears the pending TX status bit. Pairs with the IRQ-driven
-/// write path (currently behind the default-off `irq_driven_tx`
-/// path — the polled fallback remains the active TX implementation
+/// write path, which is not written yet — the polled fallback remains the active TX implementation
 /// until the QEMU-CMSDK timing puzzle is resolved).
 #[inline]
 pub fn handle_tx_irq(base: usize) {

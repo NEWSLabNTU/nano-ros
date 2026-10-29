@@ -55,7 +55,7 @@ pub struct ExSpinOnceGhost(SpinOnceGhost);
 
 /// State after the zenoh-pico callback writes to the buffer.
 ///
-/// Models `subscriber_callback_with_attachment` (shim.rs:897-949).
+/// Models ~~`subscriber_callback_with_attachment`~~ (shim.rs:897-949).
 ///
 /// **Pre-fix behavior** (before 31.6):
 /// ```ignore
@@ -335,12 +335,12 @@ proof fn all_trigger_starvation(ready: Seq<bool>, k: int)
 
 /// **Proof 7: `timer_non_starvation`**
 ///
-/// Within any `spin_once()` call, `process_timers(delta_ms)` is always
+/// Within any `spin_once()` call, ~~`process_timers(delta_ms)`~~ is always
 /// invoked — regardless of whether the trigger evaluates to true or false.
 ///
-/// Both execution paths invoke `process_timers`:
-/// - Path A (trigger false): `process_timers` at executor.rs:1205
-/// - Path B (trigger true): `process_timers` at executor.rs:1225
+/// Both execution paths invoke ~~`process_timers`~~:
+/// - Path A (trigger false): ~~`process_timers`~~ at executor.rs:1205
+/// - Path B (trigger true): ~~`process_timers`~~ at executor.rs:1225
 ///
 /// Real-time relevance: Timer-driven control loops (PID, watchdog) fire
 /// on schedule. Timers are never starved by trigger gating.
@@ -367,7 +367,7 @@ proof fn timer_non_starvation(trigger_result: bool, timers_path_a: usize, timers
 /// **Proof 8: `executor_progress_under_any`**
 ///
 /// Under `Trigger::Any`, if at least one subscription has data,
-/// the trigger fires (path B), and if `process_subscriptions()` succeeds
+/// the trigger fires (path B), and if ~~`process_subscriptions()`~~ succeeds
 /// for at least one subscription, then `subscriptions_processed >= 1`.
 ///
 /// Combines:
@@ -413,7 +413,7 @@ proof fn executor_progress_under_any(
 
 /// State after the **fixed** callback writes to the buffer.
 ///
-/// Models `subscriber_callback_with_attachment` after the 31.6 fix (shim.rs:918-943).
+/// Models ~~`subscriber_callback_with_attachment`~~ after the 31.6 fix (shim.rs:918-943).
 ///
 /// Key difference from `callback_pre_fix`: oversized messages set `overflow = true`
 /// instead of silently truncating to `buf_capacity`.
@@ -561,7 +561,7 @@ proof fn no_silent_truncation(msg_len: usize, buf_capacity: usize, rx_buf_len: u
 
 /// State after the **post-40.4** callback that checks `locked` before writing.
 ///
-/// Models `subscriber_callback_with_attachment` after the 40.4 lock addition:
+/// Models ~~`subscriber_callback_with_attachment`~~ after the 40.4 lock addition:
 /// ```ignore
 /// if buffer.locked.load(Ordering::Acquire) {
 ///     return;  // drop message — reader is processing

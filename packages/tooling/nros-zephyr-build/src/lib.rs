@@ -364,7 +364,7 @@ pub fn kconfig_key_for(env_name: &str) -> String {
 /// ONE build-time knob, resolved once — the tree's only knob ladder.
 ///
 /// phase-468 W4. Eight build scripts across eight crates used to re-assemble
-/// this by hand out of `knob_usize` / `dotconfig_usize` / a bare `env::var`,
+/// this by hand out of ~~`knob_usize`~~ / ~~`dotconfig_usize`~~ / a bare `env::var`,
 /// and they disagreed in ways nothing reported: which Kconfig key a knob got,
 /// whether a platform/board rung was consulted at all, and whether an
 /// unreadable `$DOTCONFIG` stopped the build (issue 1134) or silently did not.
@@ -440,7 +440,7 @@ impl<'a> Knob<'a> {
     /// between them. `nros-rmw-xrce-cffi` refuses, on the reasoning that
     /// someone typed the value in this shell and falling through to a default
     /// answers a question they did not ask. Every other reader treats it as
-    /// absent, which is what `knob_usize` did and what the RANGE checks beside
+    /// absent, which is what ~~`knob_usize`~~ did and what the RANGE checks beside
     /// those call sites are written against. Unifying them would change a
     /// value, and this box is about who reads.
     #[must_use]
@@ -484,8 +484,8 @@ impl<'a> Knob<'a> {
             // the normal case and the next rung down is the right answer.
             KnobSource::AbsentFromConfig => None,
             // Issue 1134 — `DOTCONFIG` names a file we cannot read. This used
-            // to be `.unwrap_or(default)` in `knob_usize` and a plain `None` in
-            // `dotconfig_usize`, indistinguishable from the arm above, and that
+            // to be `.unwrap_or(default)` in ~~`knob_usize`~~ and a plain `None` in
+            // ~~`dotconfig_usize`~~, indistinguishable from the arm above, and that
             // conflation is the bug: every knob silently takes its crate
             // default and the image is built to sizes its configuration never
             // asked for. A 64 KiB platform heap under a 448 KiB executor arena
@@ -494,7 +494,7 @@ impl<'a> Knob<'a> {
             //
             // phase-468 W4 — the refusal now reaches EVERY reader. Three of
             // them (`nros-node`, `nros-params`, `nros-rmw-xrce-cffi`) went
-            // through `dotconfig_usize`, whose doc comment said in as many
+            // through ~~`dotconfig_usize`~~, whose doc comment said in as many
             // words that its callers could not tell the two apart.
             KnobSource::ConfigUnreadable(path, why) => panic!(
                 "nros-zephyr-build: DOTCONFIG={path} could not be read ({why}), so \

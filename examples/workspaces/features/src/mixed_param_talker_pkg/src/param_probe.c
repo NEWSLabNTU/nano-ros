@@ -3,7 +3,7 @@
 ///        one C++ declared, on the SAME node.
 ///
 /// Compiled as C (`-std=c11`), linked into a package whose component is C++.
-/// That is the point: W5's claim is that `nros_parameter_*`'s executor-backed
+/// That is the point: W5's claim is that `rclc_parameter_*`'s executor-backed
 /// family (rclc's parameter API, since phase-492 W4) and `rclcpp::Node`'s parameter methods "point
 /// at the SAME table, so C and C++ cannot disagree about what a node's parameters are", and until
 /// this file there was no image where both languages touched one node's store. `c_params` and

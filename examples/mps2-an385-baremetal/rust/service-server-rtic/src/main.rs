@@ -4,7 +4,7 @@
 //! `[image.*] board = "rtic-mps2-an385"`, resolves the RTIC
 //! board (`nros-board-mps2-an385`), and emits the `#[rtic::app]` boot
 //! scaffold that brings up hardware/network, opens the executor, registers the
-//! linked RMW, and runs the `service_server_rtic_pkg` node's `register` + RTIC
+//! linked RMW, and runs this package's node `register` + RTIC
 //! dispatch loop. Locator/domain come from the deploy overlay — no hardcoded
 //! `Config`, no manual `Executor::open`, no hand-written `handle_request` loop.
 

@@ -2,7 +2,7 @@
 //! [`PlatformThreading`]'s wake primitive.
 //!
 //! Wraps a fixed-size, aligned scratch buffer so the executor can
-//! drop a `PlatformWake<P>` into a struct field without having to
+//! drop a `Wake<P>` into a struct field without having to
 //! call `nros_platform_wake_storage_size()` at compile time.
 //! `WAKE_STORAGE_BYTES` is sized to cover every supported
 //! platform's binary semaphore (POSIX `sem_t` ~32 B, Zephyr

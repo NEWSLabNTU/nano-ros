@@ -65,7 +65,7 @@ pub fn run() {
         true,
     );
 
-    // Phase 257 (Stage-3) — the legacy `nros_board_native_run` C-FFI adapter
+    // Phase 257 (Stage-3) — the legacy ~~`nros_board_native_run`~~ C-FFI adapter
     // (a no-op sleep-spin with no executor, for the retired declarative entry)
     // is deleted. The typed C entry uses `nros_board_native_run_components`
     // (defined in nros-cpp), driving the real executor.

@@ -199,7 +199,7 @@ fn condvar_signal_wakes_waiter() {
         let m = m_addr as *mut c_void;
         assert_eq!(CffiPlatform::mutex_lock(m), 0);
         // Wait for the signal — in a loop, which also absorbs a spurious wakeup.
-        // Bounded: the unbounded `condvar_wait` left the ABI (issue 1196). The
+        // Bounded: the unbounded ~~`condvar_wait`~~ left the ABI (issue 1196). The
         // deadline is far enough that only a missing signal reaches it, and
         // reaching it fails the test instead of hanging it.
         let deadline_ms = CffiPlatform::clock_ns() / 1_000_000 + 10_000;

@@ -557,7 +557,7 @@ fn write_to(root: PathBuf, relative: &Path, contents: &str) {
 }
 
 /// Check that the C header nros-cpp derives agrees with the one nros-c's build
-/// script wrote — issue 1824 (formerly `write_header_if_absent_or_verify`,
+/// script wrote — issue 1824 (formerly ~~`write_header_if_absent_or_verify`~~,
 /// phase-308 follow-up).
 ///
 /// `nros-cpp` probes the runtime's sizes itself and renders the c-format

@@ -45,7 +45,7 @@
 //!
 //! # Status (Phase 84.F4)
 //!
-//! The platform ZSTs (`PosixPlatform`, `ZephyrPlatform`, etc.) do **not**
+//! The platform ZSTs (~~`PosixPlatform`~~, `ZephyrPlatform`, etc.) do **not**
 //! currently implement these traits — every platform exposes its methods
 //! as *inherent* `impl Platform { fn foo() {} }` blocks, and shim crates
 //! dispatch by name match. 84.F4 migrates each platform to `impl
@@ -225,7 +225,7 @@ pub trait PlatformSleep {
 /// The default bare-metal impl is `core::hint::spin_loop()` (a pure
 /// CPU hint: emits `YIELD` / `PAUSE` / `WFE` depending on the arch,
 /// safe everywhere). Board crates that have armed an IRQ source may
-/// opt in to deep idle (`wfi`) via a separate `BoardIdle` hook — not
+/// opt in to deep idle (`wfi`) via a separate BoardIdle hook — not
 /// part of this trait because calling `wfi` without an IRQ source
 /// deadlocks.
 pub trait PlatformYield {
@@ -306,7 +306,7 @@ pub enum SchedPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimerError {
     /// The active platform doesn't expose a periodic-timer surface
-    /// (e.g. bare-metal without a board-side `SysTickHook`).
+    /// (e.g. bare-metal without a board-side SysTickHook).
     Unsupported,
     /// `period_us` is below the platform's minimum timer resolution
     /// or above its maximum representable interval.
@@ -403,7 +403,7 @@ pub trait PlatformScheduler {
     }
 
     /// Pin the calling thread to the CPUs whose bit is set in
-    /// `cpu_mask`. Default returns [`SchedError::Unsupported`] —
+    /// `_cpu_mask`. Default returns [`SchedError::Unsupported`] —
     /// platforms with affinity APIs override.
     fn set_affinity(_cpu_mask: u32) -> Result<(), SchedError> {
         Err(SchedError::Unsupported)
@@ -460,7 +460,7 @@ pub trait PlatformTime {
 //
 // Handle types are opaque `*mut c_void` to match the shape zenoh-pico
 // passes across the FFI boundary. The original draft had typed wrappers
-// (`TaskHandle`, `MutexHandle`, ...) but every shipped platform used
+// (~~`TaskHandle`~~, ~~`MutexHandle`~~, ...) but every shipped platform used
 // `*mut c_void` internally and the shim never materialised the typed
 // forms — keeping them in the trait would have required a pointless
 // cast at every impl site. (F4.1 / F4.5 decision, 2026-04-24.)
@@ -596,7 +596,7 @@ pub trait PlatformThreading {
     /// this returns. Returns 0 when signalled, 1 on timeout and -1 on error
     /// (issue 1906). The remaining time rounds UP to the port's tick.
     ///
-    /// The ONLY condvar wait: the unbounded `condvar_wait` was removed from
+    /// The ONLY condvar wait: the unbounded ~~`condvar_wait`~~ was removed from
     /// the platform ABI (issue 1196, phase-436 D2). A caller whose contract
     /// is unbounded loops over bounded waits, re-testing its predicate.
     fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;

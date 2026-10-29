@@ -4,7 +4,7 @@
 //! `[image.*] board = "mps2-an385-baremetal"`, resolves the
 //! bare-metal board, and emits the `#[cortex_m_rt::entry]` boot scaffold that
 //! brings up the UART link, opens the executor, registers the linked RMW, and
-//! runs `serial_talker_pkg`'s node. The board is built with the `serial`
+//! runs this package's node. The board is built with the `serial`
 //! feature (Cargo.toml) so `run_with_deploy` boots `Config::serial_default`;
 //! the deploy overlay supplies the `serial/UART_0#…` locator. No hand-written
 //! `run(Config::serial_default(), …)` closure, no manual `Executor::open`.

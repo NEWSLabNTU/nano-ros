@@ -1,6 +1,6 @@
 //! [`NetworkError`] — the vocabulary for a link-up failure.
 //!
-//! **The `NetworkWait` TRAIT was removed in phase-206 W4 (issue 1067).** It had
+//! **The ~~`NetworkWait`~~ TRAIT was removed in phase-206 W4 (issue 1067).** It had
 //! one implementation and no callers, and the one place that would have called
 //! it — the `nros::main!` Zephyr arm — deliberately routed around it, because
 //! `ZephyrBoard::wait_link_up` calls `net_if_is_up` / `k_msleep`, `static

@@ -1,5 +1,5 @@
 //! Declarative XRCE talker node — RMW/platform/transport-agnostic logic
-//! (phase-244.D1). Identical application shape to `serial_talker_pkg`; the only
+//! (phase-244.D1). Identical application shape to the serial-talker example; the only
 //! difference is the *transport* (XRCE-over-UART), which is a board-build +
 //! deploy-overlay concern (the entry builds the board with the `xrce-transport`
 //! feature + declares `rmw = "xrce"` over `transport = "serial"`, so

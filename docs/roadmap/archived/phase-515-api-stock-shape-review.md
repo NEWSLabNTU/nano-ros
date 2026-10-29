@@ -10,8 +10,8 @@ and language. The one ledger `gap` P3's re-verdict found,
 [issue 2114](../../issues/archived/2114-cpp-parameter-callback-handle-name-taken.md)
 (2026-10-29): the name is upstream's event-handler handle again, and the
 on-set token is `rclcpp::OnSetParametersCallbackToken`. W0.c (2026-10-29)
-extended the retired-name check to C++ and Rust names. Still not measured:
-stale names in code comments (2,311 references across `packages/`, see W0.c).
+extended the retired-name check to C++ and Rust names. W0.d (in progress,
+2026-10-29) holds code comments to the same rule, one area at a time.
 
 Opened from a review of the
 `api-parity` report on main `1a30bcbb22`. The work items below are candidates:
@@ -243,6 +243,34 @@ over comments in tracked sources under `packages/` finds 2,311 references to
 C/C++ API alone, 60 of them in `nros_generated.h`. A comment has no
 `retired_names` list beside it, so a gate needs either a ratchet baseline or an
 inline history marker first, and that is a design decision rather than a sweep.
+
+**W0.d — IN PROGRESS: code comments.** Maintainer ruling 2026-10-29: an INLINE
+marker, not a ratchet baseline. A comment names history by striking it,
+~~`old_name`~~, which rustdoc renders struck and a reader of plain source reads
+as "gone". `just check comment-names` (`scripts/check/check-comment-names.py`,
+fast lane, 1.7 s) judges every backtick name in a comment of a tracked C, C++
+or Rust source in its SCOPE:
+
+- an unstruck name must resolve through the ledger check's index (code with
+  its comments stripped, plus what a tracked shell script defines, plus
+  `zephyr/` and `integrations/`);
+- a struck name must NOT exist here — the marker states tense, so a live name
+  under it is a finding;
+- another project's name is listed once in
+  `scripts/check/comment-foreign-names.txt`, grouped by project; a listed name
+  that resolves here or that no comment quotes any more is a finding;
+- `CONFIG_NROS_*` must be a `config` in a tracked Kconfig; any other
+  `CONFIG_*` is the RTOS's;
+- a placeholder (`Node::create_X`, `foo_pkg`) is not judged.
+
+Measured on main `d7851e77ae` with packages/ and examples/ in scope: 2,365
+references to 1,430 names. The scope widens one area per pull request; it is a
+list of directories already swept, not a baseline, and nothing inside it is
+exempt.
+
+| Pull request | Scope added | Findings | Struck | Foreign names | Renamed or reworded |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `examples/`, `packages/{drivers,platform,tooling,verification}` | 286 | 88 | 91 | the rest |
 
 ### C — rclc / rcl
 

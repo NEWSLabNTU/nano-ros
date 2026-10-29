@@ -81,5 +81,5 @@ nros::node!(Listener);
 // kernel via `BoardEntry::run`. phase-369 — BOTH RMWs build through CMake and
 // compile this; the cargo `main.rs` path is gone. It is thin — the board owns
 // executor open, RMW registration, and the spin loop; the `nros::node!()`-emitted
-// `register` declares the Listener. No manual `Executor::open` / `register_rmw` /
+// `register` declares the Listener. No manual `Executor::open` / ~~`register_rmw`~~ /
 // spin loop / hardcoded locator in the example (Phase 245 / issue 0049 P1/P3/P4/P6).

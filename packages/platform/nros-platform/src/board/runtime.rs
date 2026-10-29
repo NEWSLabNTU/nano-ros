@@ -58,8 +58,8 @@ pub struct SignaledCallback<'a> {
 }
 
 // Phase 258 (Track 2, w5) — the opaque per-Node `extern "Rust" fn()` aliases
-// (`NodeRegisterFn` / `NodeInitFn` / `NodeDispatchFn` / `NodeTickFn`) are gone.
-// They anchored the retired `register_dispatch_slot_dyn` four-fn-ptr bridge
+// (~~`NodeRegisterFn`~~ / ~~`NodeInitFn`~~ / ~~`NodeDispatchFn`~~ / ~~`NodeTickFn`~~) are gone.
+// They anchored the retired ~~`register_dispatch_slot_dyn`~~ four-fn-ptr bridge
 // (owned-spin declarative register), which the install seam replaced — Rust
 // owned-spin now registers via `RuntimeCtx::runtime.executor_handle()` +
 // `nros::__macro::install_node_typed` like the C/C++ typed entries.
@@ -157,7 +157,7 @@ pub trait NodeDispatchRuntime {
     /// owned-spin entry, so a Node pkg's `register(runtime)` wrapper can call
     /// the uniform `__nros_component_<pkg>_install(.., executor, ..)` seam
     /// (`nros::__macro::install_node_typed`) instead of the retired opaque-fn-ptr
-    /// `register_dispatch_slot_dyn` bridge. A pointer crosses the
+    /// ~~`register_dispatch_slot_dyn`~~ bridge. A pointer crosses the
     /// `nros-platform` → `nros` layering wall cleanly (the concrete
     /// `ExecutorNodeRuntime` lives in `nros`; this trait can't name it).
     ///

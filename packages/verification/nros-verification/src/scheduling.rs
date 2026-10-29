@@ -38,7 +38,7 @@
 /// representation: `ready[i] ⟺ bits & (1 << i) != 0`.  The bitmask
 /// invariants are separately verified by Kani harnesses in
 /// `nros-node/src/executor/types.rs` (`snapshot_all_ready_correct`,
-/// `snapshot_any_ready_correct`, `snapshot_is_ready_correct`).
+/// `snapshot_any_ready_correct`, `snapshot_is_ready_consistent`).
 ///
 /// ## Remaining limitations
 ///

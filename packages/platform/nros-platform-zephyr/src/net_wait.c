@@ -2,7 +2,7 @@
  * Phase 200.1 — RMW-independent Zephyr network-wait primitive.
  *
  * Relocated here from `zpico-zephyr/src/zpico_zephyr.c` (where it was
- * `zpico_zephyr_wait_network`, mis-filed in the zenoh-pico support crate only
+ * ~~`zpico_zephyr_wait_network`~~, mis-filed in the zenoh-pico support crate only
  * because zenoh was the first Zephyr backend) + de-duplicated from
  * `xrce-zephyr/src/xrce_zephyr.c`. It touches only Zephyr's `net_if` /
  * net_mgmt / conn_mgr APIs — no RMW. Compiled in every RMW build (this crate's

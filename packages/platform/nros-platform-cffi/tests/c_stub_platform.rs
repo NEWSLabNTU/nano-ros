@@ -164,7 +164,7 @@ fn every_category_dispatches_through_cffi_platform() {
     assert!(counter(StubCategory::Condvar) >= 5, "condvar dispatch");
     // clock 3 (ns, resolution, epoch) + alloc 3 + sleep 3 + yield 1 + random 5
     // (4x random_u + random_fill) + time 1 + task 6 + mutex 10 + condvar 5 = 37.
-    // (Condvar was 6 until issue 1196 removed the unbounded `condvar_wait`.)
+    // (Condvar was 6 until issue 1196 removed the unbounded ~~`condvar_wait`~~.)
     // Each number is the count of DISTINCT calls in the body above; recount
     // there before changing one here.
     assert_eq!(counter(StubCategory::Total), 37, "total = 37 fn calls");
