@@ -1,6 +1,6 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-29). Open; W1, W4, W8 and W12 done; W12–W17 opened from the maintainer's rulings on the Left lists; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
+**Status (2026-10-29). Open; W1, W4, W8, W12 and W13 done; W12–W17 opened from the maintainer's rulings on the Left lists; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
@@ -1189,6 +1189,31 @@ second road on four platforms would double what W10 must replay.
 asserts their text against the catalog), and `nros new --image zephyr
 --board <zephyr board>` in a Rust workspace writes an entry `nros build`
 plans.
+
+**Done (2026-10-29).** The refusal prints the commands, and the "Zephyr Rust
+gets a scaffold" half was already there.
+
+* **Zephyr Rust already has a scaffold.** `nros new entry <name> --platform
+  zephyr` writes a Zephyr entry package for a Rust workspace, with its
+  `[image.*]` row, and `integration-zephyr.md` § The entry already teaches it.
+  W2's **Left** line ("Zephyr Rust has no scaffold at all") was stale, so no
+  new `--image` scaffold was written. The refusal names `nros new entry`
+  instead.
+* **The refusal.** `nros new <name> --platform <p> --lang rust` on FreeRTOS,
+  NuttX, ThreadX or Zephyr prints
+  `nros new <name> --workspace --lang rust`, `cd <name>`, then one
+  `nros new --image <id> --board <board>` per board the catalog has for the
+  platform, or `nros new entry zephyr_entry --platform zephyr`. It also names
+  the platform's chapter. The boards come from
+  `BoardCatalog::boards_for_platform`, the list `default_board_for_platform`
+  already chose from. ThreadX has two boards, so it gets two lines, each with
+  its own image id.
+* **Test.** `a_rust_workspace_platform_prints_the_commands_with_catalog_boards`
+  checks that every printed board resolves back to itself through the same
+  `--board` resolution `nros new` uses.
+* **Measured.** The printed commands were run as printed for all four
+  platforms, and each wrote its image. `nros build <image> --dry-run` then
+  planned the FreeRTOS, ThreadX (`threadx_linux`) and NuttX images.
 
 ### W14 — one QEMU ladder, shared by the CLI and the test harness (S)
 

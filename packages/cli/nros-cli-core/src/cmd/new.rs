@@ -772,6 +772,33 @@ pub fn run(args: Args) -> Result<()> {
                      `[image.*] board` in its system.toml afterwards"
                 );
             }
+            if RUST_WORKSPACE_PLATFORMS.contains(&platform.as_str()) {
+                let cwd = std::env::current_dir()?;
+                let root =
+                    crate::orchestration::nano_ros_root::resolve(None, &cwd).ok_or_else(|| {
+                        eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help())
+                    })?;
+                let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+                    .map_err(|e| eyre::eyre!("board catalog under {}: {e}", root.display()))?;
+                let lines = rust_workspace_commands(&catalog, &name, &platform);
+                bail!(
+                    "nros new: a Rust node on --platform {platform} is built as a workspace — a \
+                     node package plus an entry the image is built from — not as a single \
+                     package. Start one with:\n\n{}\n\n(book: getting-started/{}.md)",
+                    lines
+                        .iter()
+                        .map(|l| format!("  {l}"))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    if platform == "zephyr" {
+                        "integration-zephyr"
+                    } else if platform == "nuttx" {
+                        "integration-nuttx"
+                    } else {
+                        platform.as_str()
+                    }
+                );
+            }
             None
         }
         nros_lang::Language::C | nros_lang::Language::Cpp => {
@@ -808,6 +835,51 @@ fn package_dir(args: &Args, name: &str) -> PathBuf {
     args.destination_directory
         .as_ref()
         .map_or_else(|| PathBuf::from(name), |d| d.join(name))
+}
+
+/// The platforms whose Rust image is a node library plus an entry crate, so
+/// `nros new --lang rust` writes no single package for them (phase-517 W13).
+const RUST_WORKSPACE_PLATFORMS: [&str; 4] = ["freertos", "nuttx", "threadx", "zephyr"];
+
+/// phase-517 W13 — what `nros new <name> --platform <p> --lang rust` says for
+/// a platform whose Rust image is a workspace: the commands that start one,
+/// with the platform's boards filled in from the catalog. The refusal used to
+/// name an in-tree example directory, which a user with no checkout does not
+/// have.
+pub(crate) fn rust_workspace_commands(
+    catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+    name: &str,
+    platform: &str,
+) -> Vec<String> {
+    let mut v = vec![
+        format!("nros new {name} --workspace --lang rust"),
+        format!("cd {name}"),
+    ];
+    if platform == "zephyr" {
+        v.push("nros new entry zephyr_entry --platform zephyr".to_string());
+        return v;
+    }
+    let boards: Vec<String> = match catalog.default_board_for_platform(platform) {
+        Ok(d) => vec![d.canonical_name().to_string()],
+        // Several boards (threadx): one line each, the reader picks.
+        Err(_) => catalog
+            .boards_for_platform(platform)
+            .into_iter()
+            .map(|d| d.canonical_name().to_string())
+            .collect(),
+    };
+    // One board: the image is named after the platform. Several: one image
+    // per board, named after it, so the lines can all be run.
+    let several = boards.len() > 1;
+    for b in boards {
+        let id = if several {
+            b.replace('-', "_")
+        } else {
+            platform.to_string()
+        };
+        v.push(format!("nros new --image {id} --board {b}"));
+    }
+    v
 }
 
 /// The `board` a C/C++ project scaffold for `--platform <platform>` writes
@@ -1071,5 +1143,47 @@ mod project_board_tests {
             .unwrap_err()
             .to_string();
         assert!(e.contains("ambiguous"), "{e}");
+    }
+
+    /// phase-517 W13 — `nros new --platform <p> --lang rust` on a workspace
+    /// platform prints the commands that start one, with the catalog's boards
+    /// filled in: one board where the platform has one, each where it has
+    /// several, and the entry scaffold on Zephyr. Every printed board must
+    /// resolve back to a descriptor of that platform.
+    #[test]
+    fn a_rust_workspace_platform_prints_the_commands_with_catalog_boards() {
+        let cat = BoardCatalog::load(&repo_root()).expect("catalog");
+        for p in RUST_WORKSPACE_PLATFORMS {
+            let lines = rust_workspace_commands(&cat, "my_ws", p);
+            assert_eq!(lines[0], "nros new my_ws --workspace --lang rust", "{p}");
+            assert_eq!(lines[1], "cd my_ws", "{p}");
+            if p == "zephyr" {
+                assert_eq!(
+                    lines[2..],
+                    ["nros new entry zephyr_entry --platform zephyr"]
+                );
+                continue;
+            }
+            let images: Vec<&String> = lines[2..].iter().collect();
+            assert!(!images.is_empty(), "{p}: no --image line");
+            for l in images {
+                let board = l
+                    .strip_prefix("nros new --image ")
+                    .and_then(|rest| rest.split_once(" --board "))
+                    .map(|(_, b)| b)
+                    .unwrap_or_else(|| panic!("{p}: not an --image line: {l}"));
+                assert_eq!(
+                    project_board(&cat, p, Some(board)).unwrap(),
+                    board,
+                    "{p}: printed board {board} does not resolve to itself"
+                );
+            }
+        }
+        let threadx = rust_workspace_commands(&cat, "w", "threadx");
+        assert!(threadx.len() >= 4, "threadx has two boards: {threadx:?}");
+        assert_eq!(
+            rust_workspace_commands(&cat, "w", "freertos")[2],
+            "nros new --image freertos --board mps2-an385-freertos"
+        );
     }
 }
