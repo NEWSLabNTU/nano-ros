@@ -36,14 +36,14 @@ case "$answered" in
 esac
 # Fetching the pinned release runs its install.sh, which fronts
 # `~/.nros/bin/nros` at the NEWEST installed version, never at the fetched
-# one for being fetched. (Here the newest is 0.6.0-nros4 itself: the probe's
-# own asset is versioned 0.0.0-probe, which sorts first.)
+# one for being fetched. Both versions here are known, so the expected front
+# is stated rather than found by listing the store: the probe's own asset is
+# 0.0.0-probe, which sorts below 0.6.0-nros4.
 installed="$(readlink -f "$HOME/.nros/bin/nros")"
-newest="$(ls "$HOME/.nros/sdk/nros" | sort -V | tail -1)"
 case "$installed" in
-    */sdk/nros/"$newest"/*) ;;
+    */sdk/nros/0.6.0-nros4/*) ;;
     *)
-        echo "PROBE FAIL: ~/.nros/bin/nros fronts $installed, not the newest installed release ($newest)" >&2
+        echo "PROBE FAIL: ~/.nros/bin/nros fronts $installed, not the newest installed release (0.6.0-nros4 above 0.0.0-probe)" >&2
         exit 1
         ;;
 esac
