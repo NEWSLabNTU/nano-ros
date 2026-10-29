@@ -307,7 +307,7 @@ static rmw_ret_t take_one(const rmw_subscription_t* subscriber, rmw_mut_byte_spa
     // 233.6 — the action `goal_id` is a fixed `octet[16]` on both the IDL and
     // the Rust runtime side (ROS 2 `unique_identifier_msgs/UUID`), so the wire
     // bytes already match what the Rust read path expects; the old
-    // `insert_goal_id_len_at` adapter was removed with its publisher mirror.
+    // ~~`insert_goal_id_len_at`~~ adapter was removed with its publisher mirror.
     const uint32_t total = ddsi_serdata_size(d);
     if (buf_len < total) {
         ddsi_serdata_unref(d);
@@ -472,7 +472,7 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
     // to return one: the contract says "partial drains MUST use the count form,
     // not error-out". So the status is parked on the subscription and the next
     // take delivers it. The old body's `err = NROS_RMW_RET_BUFFER_TOO_SMALL`
-    // followed by `if (err < 0)` was unreachable — every `nros_rmw_ret_t` is
+    // followed by `if (err < 0)` was unreachable — every ~~`nros_rmw_ret_t`~~ is
     // non-negative, which is why the callers negate — AND would have been the
     // wrong fix if reached, trading a silent drop for a contract violation.
     size_t produced = 0;
@@ -518,7 +518,7 @@ rmw_ret_t subscription_take_sequence(const rmw_subscription_t* subscriber, uint8
     if (n < 0) {
         // issue 0773 — the helper returns a COUNT (>= 0) or a negated status.
         // Testing `< 0` only works because of that negation: every
-        // `nros_rmw_ret_t` value is non-negative since phase-376 W3.d step B.
+        // ~~`nros_rmw_ret_t`~~ value is non-negative since phase-376 W3.d step B.
         return static_cast<rmw_ret_t>(-n);
     }
     *taken = static_cast<size_t>(n);

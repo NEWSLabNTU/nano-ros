@@ -1483,7 +1483,7 @@ int32_t zpico_init(void);\n";
         assert!(header.contains("#define Z_FEATURE_LINK_ISOTP 0"));
         assert!(header.contains("#define Z_FEATURE_LINK_CUSTOM 1"));
         assert!(header.contains("#define Z_FEATURE_UNSTABLE_API"));
-        // phase-337 W7.b — both were 0 only under the `orin_spe` flag this
+        // phase-337 W7.b — both were 0 only under the ~~`orin_spe`~~ flag this
         // signature used to carry; with the board gone they are unconditional.
         assert!(header.contains("#define Z_FEATURE_ENCODING_VALUES 1"));
         assert!(header.contains("#define Z_FEATURE_AUTO_RECONNECT 1"));

@@ -145,7 +145,7 @@ mod hosted_tests {
 
 /// phase-486 — `[image] infra_families`, the runtime's own service families,
 /// from the named descriptor, in the four spellings the retired
-/// `NROS_DECLARED_INFRA_QUERYABLES` carrier used (the rules below keep their
+/// ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier used (the rules below keep their
 /// one parser, `nros_sizing_descriptor::infra`). `None` -- no descriptor, or
 /// the field absent -- is that carrier's absence: assume both families when
 /// SIZING, and do not check a FLOOR.
@@ -173,7 +173,7 @@ fn described_infra_families() -> Option<String> {
 ///
 /// The application's own count is the sizing descriptor's `[image]
 /// service_server_queryables` (issue 1655); it used to arrive as the
-/// `NROS_DECLARED_SERVICE_SERVERS` carrier, retired by issue 1649. The infrastructure counts are added
+/// ~~`NROS_DECLARED_SERVICE_SERVERS`~~ carrier, retired by issue 1649. The infrastructure counts are added
 /// HERE rather than by whoever computes that figure, because codegen sees the
 /// user's entities and never the runtime's: deriving the total from the app's
 /// service count alone is issue 0460's defect exactly.
@@ -202,7 +202,7 @@ fn resolve_queryable_default() -> QueryableSizing {
     // script when either moves.
     // phase-426 W3 — the parameter services are PER NODE, so the image's node
     // count is a term in this pool. phase-486 W9 retired its carrier
-    // (`NROS_DECLARED_NODES`) onto the descriptor's `[image] model_nodes`; the
+    // (~~`NROS_DECLARED_NODES`~~) onto the descriptor's `[image] model_nodes`; the
     // descriptor file's content edge (`load_for_build_script`) re-runs this
     // script when it moves.
     // Issue 1649 -- the application's service-server count and the
@@ -285,13 +285,13 @@ fn resolve_queryable_default() -> QueryableSizing {
 /// Measured 2026-09-20:
 /// `examples/qemu-armv7a-nuttx/{c,cpp}/action-server` are the only two leaves
 /// in the tree that DECLARE their entities, `nros ws entity-facts --leaf`
-/// answered `SERVICE_SERVERS=3 / INFRA=none` for both, the table was sized to
+/// answered ~~`SERVICE_SERVERS=3 / INFRA=none`~~ for both, the table was sized to
 /// exactly those three, and the `/status` cache queryable was the fourth.
 /// Every other action leaf declares nothing, falls to the undeclared budget of
 /// eight, and boots on the headroom — so the images that described themselves
 /// were the ones that failed.
 ///
-/// That road's carrier was `NROS_DECLARED_TL_PUBLISHERS`, composed from the
+/// That road's carrier was ~~`NROS_DECLARED_TL_PUBLISHERS`~~, composed from the
 /// same rule. Issue 1649 retired it: every road names a descriptor now, and
 /// dropping the carrier was zero-diff on each (cmake, the Zephyr west road,
 /// the standalone NuttX leaves, the cargo workspace image). With no descriptor
@@ -322,7 +322,7 @@ fn transient_local_publishers() -> usize {
 /// descriptor's, ONLY beside a stated infrastructure term, else none. A rule
 /// over values so the west-road case is testable in-process (see the comment
 /// at the call site for why the pairing matters). Issue 1649 retired the
-/// `NROS_DECLARED_SERVICE_SERVERS` carrier that answered where the descriptor
+/// ~~`NROS_DECLARED_SERVICE_SERVERS`~~ carrier that answered where the descriptor
 /// did not: every road that carried it names a descriptor, and the drop was
 /// zero-diff on each.
 fn app_count_from(
@@ -348,7 +348,7 @@ fn described_service_server_queryables() -> Option<usize> {
 /// phase-486 W9 -- `[image] model_nodes`, the count the parameter services are
 /// registered over, from the named descriptor. `None` (no descriptor, or the
 /// field absent) is read by [`declared_nodes`] as ONE node, which is what the
-/// retired `NROS_DECLARED_NODES` carrier's absence meant. Spelled as the
+/// retired ~~`NROS_DECLARED_NODES`~~ carrier's absence meant. Spelled as the
 /// carrier's text so the rules below keep their one parser.
 fn described_model_nodes() -> Option<String> {
     let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
@@ -602,8 +602,8 @@ fn queryable_default_from(
     hosted: bool,
 ) -> usize {
     // Issue 1429 — `stated` at the boundary. An empty carrier reaching the
-    // `Some` arm below panics `NROS_DECLARED_SERVICE_SERVERS="" is not a
-    // count`, which is the sibling of the panic that took the C/C++ templates
+    // `Some` arm below panicked on an empty ~~`NROS_DECLARED_SERVICE_SERVERS`~~
+    // ("is not a count"), which is the sibling of the panic that took the C/C++ templates
     // down and differs only in which road happened to abstain.
     let (declared, infra) = (stated(declared), stated(infra));
     let app = match declared {
@@ -784,7 +784,7 @@ mod queryable_default_tests {
     fn an_empty_declared_carrier_states_nothing_and_is_not_a_build_failure() {
         // (The transient-local carrier this test opened on retired with issue
         // 1649.) The node carrier has the same panic on the same road:
-        // `NROS_ENTITY_NODES_MAX` is emitted through the identical cmake idiom.
+        // ~~`NROS_ENTITY_NODES_MAX`~~ is emitted through the identical cmake idiom.
         assert_eq!(
             declared_nodes(Some("")),
             declared_nodes(None),
@@ -1305,7 +1305,7 @@ const GRAPH_KEYEXPR_BYTES: usize = 141;
 /// Bytes needed to cache `entities` liveliness keyexprs.
 ///
 /// Pure, with the environment lifted out, so the arithmetic is testable without
-/// a build — the shape `facts_from_model` uses one crate over.
+/// a build — the shape ~~`facts_from_model`~~ uses one crate over.
 ///
 /// Floored at one keyexpr: `zpico.c` refuses a cache under 1 byte with an
 /// `#error` (issue 1015), and a stated 0 is a claim about the DOMAIN ("no other
@@ -1514,7 +1514,7 @@ pub fn run() {
     // The selector is a PATH, so it is not fingerprinted as a string (issue
     // 0491) — the manifest FILES it selects are watched by `rerun-if-changed`.
     //
-    // phase-412 — `ZPICO_PLATFORMS_TOML`, a single-FILE override of the retired
+    // phase-412 — ~~`ZPICO_PLATFORMS_TOML`~~, a single-FILE override of the retired
     // central manifest, used to outrank it. Nothing set it: the drift-gate test
     // it was added for moved to `NROS_PLATFORMS_DIR`, and a second override for
     // the same job is a second authority that silently wins. Deleted rather
@@ -1789,7 +1789,7 @@ pub fn run() {
     // phase-290 — resolve the zenoh.tx knob set through the ladder. Board
     // deltas ride `NROS_BOARD_TOML` (a board package's nros-board.toml path,
     // exported by the build orchestration when a board is in play). In
-    // legacy single-file mode (`ZPICO_PLATFORMS_TOML`) there is no knob
+    // legacy single-file mode (~~`ZPICO_PLATFORMS_TOML`~~) there is no knob
     // layer — env-only, byte-identical to pre-290.
     // `NROS_BOARD_TOML` is a PATH (issue 0491): the file it names is watched
     // with `rerun-if-changed` where it is loaded, a few lines below.
@@ -2296,7 +2296,7 @@ pub fn run() {
             .define("NROS_PLATFORM_ALIASES", None)
             .warnings(true);
         // Phase 160 (ESP32 talker fix, supersedes Phase 156 / 159 /
-        // 160.C `USES_UNIX` skip-list) — alias TU's network section is
+        // 160.C ~~`USES_UNIX`~~ skip-list) — alias TU's network section is
         // only safe to emit on bare-metal. Every other platform pulls a
         // vendor `system/<rtos>/network.c` into `extra_sources` that
         // provides `_z_open_tcp` / `_z_send_tcp` / etc. with the
@@ -3075,7 +3075,7 @@ fn build_c_shim(
 /// platform's own `arch_profiles` / `compile` / `required_env` (phase-349 W2b).
 /// Replaces the five per-RTOS functions (`build_zenoh_pico_{embedded,
 /// orin_spe, freertos, nuttx, threadx}` — historical names) and the POSIX
-/// `build_zenoh_pico_native` body. Per-platform deltas all come from
+/// ~~`build_zenoh_pico_native`~~ body. Per-platform deltas all come from
 /// the manifest: defines, required env vars, include paths
 /// (interpolated `{env:VAR}` / `{nros}` / `{src}` / `{out}`),
 /// conditional include paths (`when.target_match` /

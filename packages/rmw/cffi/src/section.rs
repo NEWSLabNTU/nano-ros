@@ -23,7 +23,7 @@
 //! registration call.
 //!
 //! This replaces the phase-128 `linkme` distributed-slice walker
-//! (`RMW_INIT_ENTRIES` + `nros_rmw_cffi_walk_init_section`), removed in
+//! (~~`RMW_INIT_ENTRIES`~~ + ~~`nros_rmw_cffi_walk_init_section`~~), removed in
 //! phase-249 P4b.1 (RFC-0042 §D3.3).
 //!
 //! # C / C++ backends

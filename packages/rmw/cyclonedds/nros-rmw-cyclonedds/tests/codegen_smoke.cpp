@@ -2,7 +2,7 @@
 //
 // Exercises the full flow:
 //   1. CMake calls `idlc` on `tests/types/test_string.idl` → emits
-//      `test_string.{c,h}` with `nros_test_msg_TestString_desc`.
+//      `test_string.{c,h}` with nros_test_msg_TestString_desc.
 //   2. `nros_rmw_cyclonedds_idlc_compile(... TYPE_NAME ...)` emits a
 //      `_register.c` constructor that calls
 //      `nros_rmw_cyclonedds_register_descriptor(...)` at static init.

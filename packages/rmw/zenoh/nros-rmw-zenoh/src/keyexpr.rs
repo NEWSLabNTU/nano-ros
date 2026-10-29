@@ -69,7 +69,7 @@ impl TopicKeyExpr for TopicInfo<'_> {
 ///
 /// nano-ros' raw service API takes the ROS-style `pkg/srv/Type` (every call
 /// site in this tree passes that form, and it is what `ros2 service call`
-/// prints), but rmw_zenoh keys carry the mangled `pkg::srv::dds_::Type_`.
+/// prints), but rmw_zenoh keys carry the mangled pkg::srv::dds_::Type_.
 /// Leaving it unmangled does not merely look wrong: `/` is a zenoh keyexpr
 /// SEPARATOR, so `example_interfaces/srv/AddTwoInts` splits the key into three
 /// extra segments and nothing lines up with the fields a peer expects. That is

@@ -209,7 +209,7 @@ int main() {
     //
     // Two consequences, neither removed by issue 0970: a deserialiser must
     // tolerate trailing bytes (nros-serdes reads by position, so it does), and
-    // a receive buffer sized from a type's exact `MAX_SERIALIZED_SIZE` can be
+    // a receive buffer sized from a type's exact `<TYPE>_MAX_SERIALIZED_SIZE` can be
     // up to 3 bytes short of what a remote peer delivers. See issue 0964.
     if (n != cdr_len) {
         std::fprintf(stderr, "round-trip size mismatch: pub=%zu sub=%zu\n", cdr_len, n);

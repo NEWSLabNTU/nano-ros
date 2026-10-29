@@ -16,7 +16,7 @@
 //!
 //! The C++ TU is responsible for:
 //!
-//! 1. Walking the flattened `FieldDescriptor[]` + `FieldKindDescriptor[]`
+//! 1. Walking the flattened `NrosFieldDescriptor[]` + `NrosFieldKindDescriptor[]`
 //!    arrays.
 //! 2. Calling Cyclone's `ddsi_dynamic_type_*` constructors to build
 //!    nested types bottom-up.
@@ -150,7 +150,7 @@ unsafe extern "C" {
     ///
     /// * `type_name` — NUL-terminated ROS type name in
     ///   `package/msg/Type` form (the bridge mangles it to the
-    ///   `package::msg::dds_::Type_` Cyclone shape internally).
+    ///   package::msg::dds_::Type_ Cyclone shape internally).
     /// * `fields` / `field_count` — top-level field descriptors.
     /// * `kinds` / `kind_count` — flattened recursive-kind table.
     /// * `out_err` — set to a [`BridgeError`] (or a Cyclone

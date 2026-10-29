@@ -12,7 +12,7 @@
  *
  *   - Threading primitives (`_z_task_*`, `_z_mutex_*`, `_z_condvar_*`)
  *     because zenoh-pico declares them with opaque `[u8; N]` storage
- *     that does not match `nros_platform_task_t` shapes 1:1.
+ *     that does not match ~~`nros_platform_task_t`~~ shapes 1:1.
  *   - smoltcp / serial / IVC bridge hooks (`smoltcp_clock_now_ms`,
  *     `_z_open_serial_from_dev`, IVC helpers) — per-board / per-rtos.
  *
@@ -410,7 +410,7 @@ int8_t _z_condvar_wait(void *cv, void *m) {
  *
  * A NULL deadline is an error, not an unbounded wait. No zenoh-pico caller
  * passes one (each passes `&deadline`), and upstream's own implementations
- * dereference it unconditionally. Falling back to `condvar_wait` here was
+ * dereference it unconditionally. Falling back to ~~`condvar_wait`~~ here was
  * a contract this shim invented, and it was the second unbounded wait the
  * issue-1196 gate had to exempt. */
 int8_t _z_condvar_wait_until(void *cv, void *m, const uint64_t *abstime_ms) {

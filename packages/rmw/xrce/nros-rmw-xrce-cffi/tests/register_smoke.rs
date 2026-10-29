@@ -24,7 +24,7 @@ fn register_resolves_and_returns() {
 }
 
 // Phase 128.B.3 — `nros-rmw-xrce-cffi` now depends on
-// `nros-rmw-cffi` (for the `RMW_INIT_ENTRIES` distributed slice),
+// `nros-rmw-cffi` (for the ~~`RMW_INIT_ENTRIES`~~ distributed slice),
 // so the real `nros_rmw_cffi_register_named` symbol is linked into
 // the test binary by default. The old hand-written stub became a
 // duplicate-symbol link error and is removed.

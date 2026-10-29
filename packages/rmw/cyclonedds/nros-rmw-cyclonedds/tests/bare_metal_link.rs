@@ -157,7 +157,7 @@ fn bare_metal_no_alloc_symbols() {
     // Runs the companion shell script `tests/alloc_free_audit.sh`,
     // which (1) builds the crate for `thumbv7m-none-eabi`, (2) runs
     // `nm` on the resulting rlib, (3) fails if any
-    // `_ZN5alloc…` / `__rust_alloc…` symbols leaked in.
+    // _ZN5alloc… / `__rust_alloc…` symbols leaked in.
     require_bare_metal_target();
     // Issue 1160 — this used to `eprintln!("[SKIPPED] …")` and `return`, which
     // reports PASS. `alloc_free_audit.sh` IS the `nm` scan; with no `nm` there

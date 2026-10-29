@@ -40,7 +40,7 @@
 // The one exception, and it is a property of Cyclone rather than of this code:
 // `<Thread>` is a LIST element (multiplicity 0), so a later token does not
 // replace an earlier entry of the same `Name` — it APPENDS one, and
-// `lookup_thread_properties` (`src/core/ddsi/src/q_thread.c:280-288`) returns
+// ~~`lookup_thread_properties`~~ (`src/core/ddsi/src/q_thread.c:280-288`) returns
 // the FIRST match. A user who re-states a thread this baseline already names
 // therefore does not override its stack size. That is the safe direction for
 // the setting whose loss this phase is about, but it is a real limit; a user
@@ -59,7 +59,7 @@
 // receive threads, and — because no domain was composed — a
 // `CONFIG_NROS_CYCLONE_CONFIG_XML` that reached nothing. Since issue 1633 ddsrt
 // allocates from the nros heap (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`, 1 MiB with
-// Cyclone), so the receive buffer alone (1,048,576 + the 48-byte `nn_rbuf`
+// Cyclone), so the receive buffer alone (1,048,576 + the 48-byte ~~`nn_rbuf`~~
 // header = the measured 1,048,624-byte request) no longer fit, and the FVP
 // image aborted in `dds_create_participant`. Being a simulator is not what
 // makes the baseline right; being an RTOS image with a sized heap is. The

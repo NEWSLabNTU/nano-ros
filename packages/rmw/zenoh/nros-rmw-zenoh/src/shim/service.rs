@@ -2076,7 +2076,7 @@ impl ClientTrait for ZenohServiceClient {
     /// `rmw_service_server_is_available`: the middleware already knows which
     /// endpoints are matched, and no query is issued at call time. So the
     /// answer is synchronous, CURRENT, and can go from true back to false —
-    /// the property issue 1087 was about, which the `server_seen` latch this
+    /// the property issue 1087 was about, which the ~~`server_seen`~~ latch this
     /// replaces did not have (set on the first liveliness reply, never
     /// cleared, so a server that died read available for the client's
     /// lifetime).

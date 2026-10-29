@@ -142,7 +142,7 @@ namespace nros_rmw_cyclonedds {
 // ---------------------------------------------------------------------------
 // issue 0773 — length-or-status in ONE int32_t, after the codes went positive.
 //
-// Phase 376 W3.d step B renumbered `nros_rmw_ret_t` to upstream rmw's values,
+// Phase 376 W3.d step B renumbered ~~`nros_rmw_ret_t`~~ to upstream rmw's values,
 // which are all NON-NEGATIVE (`ERROR` = 1, `INVALID_ARGUMENT` = 11, the
 // extensions 1000+). Every helper below returns "byte count, or a status" in a
 // single `int32_t`, and every caller tested `< 0` / `<= 0` for the status —
@@ -302,7 +302,7 @@ struct ClientState {
     uint64_t my_guid{0};
     ServiceAtomicI64 next_seq{0};
     // Issue 0778 — the sequence ids this client is waiting on. Was a single
-    // `pending_seq`, so a second send ABANDONED the first: it overwrote the one
+    // ~~`pending_seq`~~, so a second send ABANDONED the first: it overwrote the one
     // id, and `take_response` then dropped the older reply as "for a different
     // in-flight call". Now a set, so N calls can be outstanding and each reply
     // retires its own.
@@ -431,7 +431,7 @@ struct DdsSequenceInt32 {
     bool _release;
 };
 
-// (Issue #68) `insert_goal_id_len_at` was removed: it re-inserted a pre-233.6
+// (Issue #68) ~~`insert_goal_id_len_at`~~ was removed: it re-inserted a pre-233.6
 // `uint32(16)` goal_id length prefix on the service-request receive path, which a
 // real `rcl_action` peer never sends and the post-233.6 action core no longer
 // reads. See `split_wire_header`.
@@ -491,7 +491,7 @@ int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
     // length prefix here. ROS 2 `rcl_action` (over rmw_cyclonedds_cpp) serialises
     // the SendGoal/GetResult request's `goal_id` as a fixed `uint8[16]` array — no
     // length prefix — and the nano action core now reads it that way too
-    // (`action_core::read_goal_id`, post-233.6). The old `insert_goal_id_len_at`
+    // (`action_core::read_goal_id`, post-233.6). The old ~~`insert_goal_id_len_at`~~
     // call mirrored the pre-233.6 prefixed framing; 233.6 dropped the subscriber.cpp
     // insert mirror but missed THIS service-request site, so a real rcl_action client's
     // goal arrived with a spurious `10 00 00 00` before the UUID → `order` read 4 bytes
@@ -519,7 +519,7 @@ int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
 // Two per-type adapters go with it, both artefacts of the round trip rather than
 // of the wire. The `_SendGoal_*` / `_GetResult_Request_` branch memcpy'd the
 // payload onto a typed struct because the stream reader mishandled it, and
-// `write_fibonacci_get_result_response` hand-built the generated C layout because
+// ~~`write_fibonacci_get_result_response`~~ hand-built the generated C layout because
 // `dds_stream_read_sample` CRASHES on that type (phase 171.0.b). Nothing reads a
 // stream here now, so neither has anything to work around.
 rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
@@ -554,7 +554,7 @@ rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
 //
 // The per-type adapters that stood in front of this are gone with it. They
 // existed because the typed round trip mangled particular action messages; there
-// is no round trip now, so `Fibonacci_GetResult_Response_` needs no hand-built
+// is no round trip now, so Fibonacci_GetResult_Response_ needs no hand-built
 // struct and `_SendGoal_*` needs no memcpy branch. `ros2_action_e2e` is what
 // makes their removal checkable — both directions against a real ROS 2 peer.
 //
@@ -1395,7 +1395,7 @@ static int32_t service_take_response_raw_len(const rmw_client_t* client, uint8_t
     if (wire_is_status(user_len)) return user_len;
 
     // Issue 0778 — accept a reply for ANY request this client is waiting on,
-    // and retire that one. It used to compare against a single `pending_seq`,
+    // and retire that one. It used to compare against a single ~~`pending_seq`~~,
     // so a reply to anything but the newest send was dropped here as "for a
     // different in-flight call" — the other half of the abandon.
     if (got_id.guid == state->my_guid && release_outstanding(state, got_id.seq)) {

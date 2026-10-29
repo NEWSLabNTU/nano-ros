@@ -360,7 +360,7 @@ static atomic_uint g_session_zid_counter;
 #endif
 
 // Reply context of one pending get slot (`pending_gets[i].ctx`). Phase-502 W3
-// deleted the blocking `zpico_get`, the only user of a stack-allocated context
+// deleted the blocking ~~`zpico_get`~~, the only user of a stack-allocated context
 // and of the mutex/condvar pair it carried.
 // ZPICO_GET_REPLY_BUF_SIZE is provided via -D compiler flag from build.rs
 
@@ -3453,7 +3453,7 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
     // resets the buffer the read future compacts (issue #247's frame loss).
     //
     // issue 1512 / issue 0387's class — a QUIET tick returns 0, never an error:
-    // `nros_executor_spin_period` gives up after SPIN_ERROR_TOLERANCE failed
+    // `rclc_executor_spin_period` gives up after SPIN_ERROR_TOLERANCE failed
     // rounds, and an idle spin is not a failure. Only a session zenoh-pico has
     // closed is reported.
     s->spin_delivered = false;

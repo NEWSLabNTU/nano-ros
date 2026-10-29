@@ -46,7 +46,7 @@ fn zenoh_vtable_monomorphised_with_every_slot() {
 /// Returns the locator string the tests should connect to. `None` if
 /// the zenohd binary isn't built (caller should skip).
 ///
-/// Issue 0573 — this used to be a private `RouterHandle` that spawned zenohd
+/// Issue 0573 — this used to be a private ~~`RouterHandle`~~ that spawned zenohd
 /// with a bare `Command::spawn()`. That copy leaked a router on EVERY run: it
 /// armed no `PR_SET_PDEATHSIG`, so nextest's SIGKILL left an orphan, and its
 /// `impl Drop` was dead code because Rust never drops a `static`. Eleven such

@@ -53,7 +53,7 @@ fn main() {
     // The builtin partition is drawn from the sizing descriptor (whose content
     // edge `load_for_build_script` places) or, on the Zephyr resolver road,
     // from the carrier below. Issue 1649 retired the
-    // `NROS_DECLARED_SERVICE_SERVERS` carrier that used to be watched here.
+    // ~~`NROS_DECLARED_SERVICE_SERVERS`~~ carrier that used to be watched here.
     // issue 1485 -- the Zephyr resolver road's answer to the same question.
     println!("cargo:rerun-if-env-changed=NROS_ENTITY_APP_QUERYABLES");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");
@@ -73,13 +73,13 @@ fn main() {
     // phase-455 W5 / issue 1341 — the TRANSIENT_LOCAL retention pool.
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_MAX_TL_PUBLISHERS");
     // (The retention pool's DECLARED demand used to arrive as the
-    // `NROS_DECLARED_TL_PUBLISHERS` carrier on a road with no descriptor;
+    // ~~`NROS_DECLARED_TL_PUBLISHERS`~~ carrier on a road with no descriptor;
     // issue 1649 retired it -- every road names one.)
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_TL_RETAIN_BYTES");
     // Issue 1709 -- the retention DEPTH, the third factor of that pool.
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_TL_RETAIN_DEPTH");
     // issue 1498 -- the retention SLOT's declared size, for the CMake road
-    // (`_nros_payload_facts_env`); the leaf road reads it off the descriptor.
+    // (~~`_nros_payload_facts_env`~~); the leaf road reads it off the descriptor.
 
     // Phase 214.C.3 — default coordinated with
     // `packages/core/nros-node/build.rs::NROS_SUBSCRIPTION_BUFFER_SIZE`
@@ -177,7 +177,7 @@ fn main() {
     //
     // The SLOT is the ladder its siblings use: a stated
     // `NROS_PARAM_SERVICE_INBOX_BYTES` wins, otherwise the contract's declared
-    // parameters bound it (`declared_param_request_max`), otherwise the
+    // parameters bound it (~~`declared_param_request_max`~~), otherwise the
     // user-service slot stands, which is today's behaviour.
     //
     // The DEPTH is 1 and not the transport's 4: one parameter client sends one
@@ -305,8 +305,8 @@ fn main() {
     // `nros_derive_message_bound_knobs()` derives this correctly on every lane
     // and, before 1122, only the Zephyr lane could deliver it; the number was
     // computed, written to disk and discarded everywhere else. It now travels
-    // as `NROS_DECLARED_LARGE_SUBSCRIBERS`, on the same lane-independent
-    // carrier `NROS_DECLARED_SERVICE_SERVERS` already uses.
+    // as ~~`NROS_DECLARED_LARGE_SUBSCRIBERS`~~, on the same lane-independent
+    // carrier ~~`NROS_DECLARED_SERVICE_SERVERS`~~ already uses.
     //
     // It is the DEFAULT and not the value, so rung 1 of the ladder survives: a
     // consumer who names `ZPICO_MAX_LARGE_SUBSCRIBERS` still wins. Setting the
@@ -644,7 +644,7 @@ fn declared_action_queryables(desc: Option<&SizingDescriptor>) -> usize {
 ///
 /// **The same two inputs the TABLE was sized from, and no others.** Both terms
 /// are read exactly as `nros-zpico-build` reads them --
-/// `NROS_DECLARED_SERVICE_SERVERS` for the application (an action server's
+/// ~~`NROS_DECLARED_SERVICE_SERVERS`~~ for the application (an action server's
 /// three channels are three service servers on that road, which is why
 /// neither side adds an action term of its own), and the transient-local
 /// publishers descriptor-first with their carrier behind it. A subtraction is
@@ -892,14 +892,14 @@ fn declared_ring_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
 /// sized from the same rule on the same road -- counted every transient-local
 /// publisher. Measured on the Autoware Safety Island (Zephyr, west): table 31,
 /// pool 2, five latched publishers, and the third `create_publisher` failed at
-/// boot. `NROS_DECLARED_TL_PUBLISHERS` is that road's carrier (the CMake road
+/// boot. ~~`NROS_DECLARED_TL_PUBLISHERS`~~ is that road's carrier (the CMake road
 /// composes it in `NanoRosEntityFacts.cmake`, the Zephyr resolver forwards the
 /// entity inventory's `NROS_DERIVED_TL_PUBLISHERS` under the same name), and
 /// `nros-zpico-build` already reads it for the table. The descriptor still
 /// wins when both are present, as it does there.
 fn transient_local_publisher_demand(desc: Option<&SizingDescriptor>) -> Option<usize> {
     // Issue 1649 -- no descriptor, no declared demand: the
-    // `NROS_DECLARED_TL_PUBLISHERS` carrier that answered here is retired.
+    // ~~`NROS_DECLARED_TL_PUBLISHERS`~~ carrier that answered here is retired.
     let desc = desc?;
     match nros_sizing_descriptor::transient_local_publishers(desc) {
         Fact::Stated(n) => Some(n),
@@ -927,7 +927,7 @@ fn transient_local_publisher_demand(desc: Option<&SizingDescriptor>) -> Option<u
 ///   transient_local_retain_bytes`, the largest bound over its transient-local
 ///   publisher rows. A refusal is printed, because a refusal that reaches no
 ///   log is a default nobody chose (D6).
-/// * **No descriptor**: nothing. The CMake road's `NROS_DECLARED_TL_RETAIN_BYTES`
+/// * **No descriptor**: nothing. The CMake road's ~~`NROS_DECLARED_TL_RETAIN_BYTES`~~
 ///   retired onto the descriptor (issue 1649) -- every road with a
 ///   transient-local publisher names one -- and the Zephyr resolver
 ///   forwards the derivation as the knob `ZPICO_TL_RETAIN_BYTES` itself.
@@ -1054,7 +1054,7 @@ const ACTION_FAMILY: InboxFamily = &[EndpointKind::ActionServer, EndpointKind::A
 /// and for nothing else -- so `wire_bound_bytes` was REFUSED on every service
 /// and action row and this function returned `None` every time. phase-461 W3
 /// prices those types (`BoundInventory::record_service` / `record_action`) and
-/// `sizing_descriptor::wire_type_of` joins on them, so the refusal below now
+/// ~~`sizing_descriptor::wire_type_of`~~ joins on them, so the refusal below now
 /// means what it says: something in the closure genuinely has no bound.
 fn declared_service_request_bytes(
     desc: Option<&SizingDescriptor>,
@@ -1181,7 +1181,7 @@ fn env_usize_rung(name: &str, rung: Option<usize>, default: usize) -> usize {
 /// our CMake lanes (a bare `cargo build`, a Rust leaf) and every configure
 /// whose message-bound join REFUSED or answered on the `closure` basis. The
 /// carrier is only written under `derived` + `subscribed`
-/// (`_nros_payload_facts_env` in `cmake/NanoRosEntityFacts.cmake`), so an
+/// (~~`_nros_payload_facts_env`~~ in `cmake/NanoRosEntityFacts.cmake`), so an
 /// absent variable is "no answer" and never "zero".
 ///
 /// That distinction is the whole point: `0` is a legal and meaningful value

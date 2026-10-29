@@ -1,7 +1,7 @@
 /* Phase 115.K.2.2 — subscriber path.
  *
- * Mirrors the Rust impl's `XrceSession::create_subscriber` /
- * `XrceSubscriber::take_serialized`. Single-slot ringbuffer: callbacks
+ * Mirrors the Rust impl's ~~`XrceSession::create_subscriber`~~ /
+ * ~~`XrceSubscriber::take_serialized`~~. Single-slot ringbuffer: callbacks
  * overwrite stale data; oversize messages flag overflow and drop.
  *
  * The topic callback dispatches by datareader_id to the matching

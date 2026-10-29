@@ -10,7 +10,7 @@
 //!
 //! Linking: the archive is meant to sit next to `libnros_c.a` at
 //! the CMake site (`NanoRos::NanoRos` pulls it in via
-//! `find_dependency(NrosRmwZenohStaticlib)` once the install rules
+//! ~~`find_dependency(NrosRmwZenohStaticlib)`~~ once the install rules
 //! land — A.1.x.4.b). Because both archives carry their own copy
 //! of `compiler_builtins`, downstream links require
 //! `--allow-multiple-definition` (GNU ld / lld).

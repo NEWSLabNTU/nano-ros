@@ -77,7 +77,7 @@ const _: () = assert!(MAX_NESTED_DEPTH >= 1, "MAX_NESTED_DEPTH must be at least 
 /// Per-name buffer size for the on-stack NUL-terminated copies the
 /// builder hands to the C bridge. 64 bytes covers every ROS field
 /// name (typically ≤ 32) and every Cyclone-mangled type name
-/// (`pkg::msg::dds_::Type_`, ≤ ~60 bytes). Total stack budget:
+/// (pkg::msg::dds_::Type_, ≤ ~60 bytes). Total stack budget:
 /// `(MAX_FIELDS + MAX_KINDS) × NAME_SLOT_LEN` — 20 KiB at default
 /// (64 + 256 = 320 slots × 64 B). Tune via the MAX_* knobs if your
 /// schema's names exceed this.

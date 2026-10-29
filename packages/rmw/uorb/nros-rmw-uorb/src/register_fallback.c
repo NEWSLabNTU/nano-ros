@@ -6,7 +6,7 @@
  * `nros_rmw_cffi_register_named`, so `vtable.cpp`'s registration call would be
  * an unresolved symbol.
  *
- * This used to define the UNNAMED `nros_rmw_cffi_register`, which `vtable.cpp`
+ * This used to define the UNNAMED ~~`nros_rmw_cffi_register`~~, which `vtable.cpp`
  * stopped calling when the named registry landed (phase 104.B.2), so the
  * fallback satisfied nothing. phase-482 W6 deleted the unnamed entry point and
  * moved the fallback to the symbol that is actually called. This weak

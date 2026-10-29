@@ -1,7 +1,7 @@
 // Phase 117.7.B concurrent-call correlation test.
 //
 // Two clients fire 5 calls each at the same service in tight
-// succession. Server replies with `request_payload[0] + 100`
+// succession. Server replies with request_payload[0] + 100
 // (so each reply is uniquely tied to its request payload). Each
 // client must receive only its own replies, in order — without
 // the (client_id, seq) envelope correlation, replies would

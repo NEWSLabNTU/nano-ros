@@ -174,7 +174,7 @@ mod static_subscriber_storage {
             // never reaches the error text. The name does both.
             //
             // REMEDY: raise `NROS_RMW_SUBSCRIBER_SLOT_BYTES` to at least the second
-            // operand — env, `CONFIG_NROS_RMW_SUBSCRIBER_SLOT_BYTES`, or
+            // operand — env, ~~`CONFIG_NROS_RMW_SUBSCRIBER_SLOT_BYTES`~~, or
             // `[knobs.rmw] subscriber_slot_bytes` on the platform or board.
             // `NROS_RMW_SUBSCRIBER_SLOTS` is NOT the lever: it multiplies the same
             // too-small width, at `SLOT_SIZE` bytes of `.bss` a slot.
@@ -452,7 +452,7 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QoSProfile {
     }
 }
 
-// Phase 376 W5/B1 — `session_node_name` and `session_namespace` are GONE with
+// Phase 376 W5/B1 — ~~`session_node_name`~~ and ~~`session_namespace`~~ are GONE with
 // the `entity_view` fabrication they served. They read the OWNING NODE's
 // identity off a session struct the shim rewrote per call, which is how node
 // identity reached a backend before the node itself did.
@@ -1565,7 +1565,7 @@ unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
 //     trait callback dereferences as `*const LivelinessChangedStatus` /
 //     `*const CountStatus`, the cffi callback dereferences as the matching
 //     union member. The field-by-field layout matches today (see the
-//     `_event_payload_layout_match` const-asserts below).
+//     ~~`_event_payload_layout_match`~~ const-asserts below).
 //   * *mut c_void       ↔ *mut c_void   — identical.
 //
 // Therefore the cffi callback can be transmuted into a trait callback
