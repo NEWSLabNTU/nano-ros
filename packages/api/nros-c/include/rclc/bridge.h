@@ -84,6 +84,9 @@ typedef void* rclc_executor_handle_t;
  * - `NROS_RMW_RET_NO_BACKEND` — `specs_len == 0`.
  * - `NROS_RMW_RET_UNKNOWN_BACKEND` — a spec named a backend that
  *   was not linked in.
+ * - `NROS_RMW_RET_INVALID_ARGUMENT` — a spec's `properties` table is
+ *   refused (NULL with a non-zero length, or more rows than one session
+ *   open carries); nothing is opened, and the table is never truncated.
  * - `NROS_RMW_RET_ERROR` — backend rejected the open.
  */
 int32_t rclc_init_multi(const rclc_session_spec_t* specs, size_t specs_len,

@@ -108,6 +108,10 @@ above became a tool rather than a template.
   in `NrosCppSessionSpec` compiles, and the zenoh rows match that bringup's
   `nros-bridge.toml`.
 
-**Not covered.** `rclc_init_multi`'s reader has no runtime test. It lives in
-`nros-bridge` behind `cffi`, which no merge lane links into a probe. It calls
-the same `lent_session_properties` that the C++ probe exercises.
+- Runtime (added after the fix merged): `rclc_init_multi_session_properties_runtime.c`
+  in `just check cpp` runs the C reader. `rclc_init_multi` lives in
+  `nros-bridge` behind `cffi` and reaches a C binary only through `nros-cpp`'s
+  `bridge` feature, so the lane builds that archive shape in its own target
+  dir. Same three cases as the C++ probe. Negative controls, measured: the
+  spec's rows dropped -> 5 failures; every spec handed the first spec's rows
+  -> 3 failures.
