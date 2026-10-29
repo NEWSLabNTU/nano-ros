@@ -404,10 +404,12 @@ fn run_tool(
     // phase-517 W6 — the QEMU ladder (issue 1851), the CLI's twin of
     // `nros_qemu_bin`: what `nros build` prints for a QEMU board.
     let (path, rung) = if name.starts_with("qemu-system-") {
-        use crate::orchestration::qemu_bin::{Ctx, QemuBin, locate};
-        match locate(name, &Ctx::for_sdk(Some(sdk_root))) {
+        use crate::orchestration::qemu_bin::{QemuBin, for_sdk, locate};
+        match locate(name, &for_sdk(Some(sdk_root))) {
             QemuBin::Found { path, rung } => (path, rung),
-            QemuBin::Missing { why } => bail!("{why}"),
+            // `RefusedPrefix` needs `StalePrefix::Refuse`, which the CLI never
+            // asks for; reported like a miss if that ever changes.
+            QemuBin::Missing { why } | QemuBin::RefusedPrefix { why, .. } => bail!("{why}"),
             // The store builds no QEMU for this target: the host's, from
             // `$PATH`, is the only answer there is.
             QemuBin::Host { why } => match std::env::var_os("PATH").and_then(|p| {

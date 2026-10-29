@@ -1206,6 +1206,31 @@ the CLI being built.
 * `orchestration::qemu_bin` and `nros_tests::qemu::qemu_system_path` are
   re-exports of the crate's functions, not second spellings.
 
+**Done (2026-10-29).** New crate `packages/tooling/nros-qemu-ladder`, with no
+dependencies and host-only. It holds `locate` (`QEMU_SYSTEM_<ARCH>`, then the
+checkout's pinned project prefix, then the pinned store, plus the
+store-target-list `Host` answer) and `board_line` for NuttX arm `virt`, NuttX
+rv-virt and ThreadX riscv64. `orchestration::qemu_bin` now re-exports the crate,
+keeping only `for_sdk` (the CLI's inputs, read from the index) and
+`store_targets`. `nros_tests::qemu::qemu_system_path` builds a `Ctx` and calls
+the same `locate`. `QemuProcess::start_nuttx_virt`, `start_nuttx_riscv` and
+`start_riscv64_virt` launch `board_line`, and `build_next::derived_qemu`
+returns it. The differences are now policy inputs, not code: a stale prefix is
+`StalePrefix::Skip` in the CLI and `Refuse` (panic) in the harness, and only
+the harness falls back to `$PATH`. Two drifts were reconciled. First, the CLI
+printed `-netdev … -kernel <img>` while the harness ran `-kernel <img> -netdev
+…`; both now use the harness order. Second, the CLI's ThreadX line had no MAC;
+it now pins peer 0's `52:54:00:12:34:56`, which is the firmware's
+`Config::default()` and QEMU's own first-NIC default, so the guest sees the
+same address. The harness's `QEMU_SYSTEM_*` override now also ignores an empty
+value, as the CLI did. Tests: the crate pins the three lines verbatim;
+`nros_tests::qemu::launchers_boot_the_shared_board_lines` and
+`build_next::boards_without_a_runner_get_the_harness_qemu_or_a_chapter` each
+assert that their side's full command equals the crate's line. **Left:** the
+harness's multicast and `dgram` NuttX/ThreadX launchers (sibling-pair
+networking that the CLI never prints) still spell their machine blocks by
+hand.
+
 ### W15 — `threadx-linux` retries its session open like the QEMU boards (S)
 
 **Decision.** This is fixed in the platform, not by documenting "start the

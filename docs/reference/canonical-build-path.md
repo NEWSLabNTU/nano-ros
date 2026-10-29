@@ -218,7 +218,7 @@ fix, each with a gate that refuses a new hand-written path:
   [--checkout-only]`, `nros locate tool`, and in Rust
   `nros_cli_in_checkout` / `launch_resolver_from` (issue 1850,
   `check-host-tool-path-literals`);
-- QEMU: `nros_qemu_bin` and `qemu_system_path` (issue 1851,
+- QEMU: `nros_qemu_bin` and the `nros-qemu-ladder` crate (CLI + tests; issue 1851,
   `check-qemu-one-ladder`);
 - the generated-header directory names: `nros locate artifact` and
   `cmake/NanoRosArtifactLayout.cmake`, which read `nros_build_paths::artifact`
