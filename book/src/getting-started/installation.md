@@ -319,6 +319,32 @@ it in the SDK store the configure stops and names this command.
 | `nros setup zephyr` | the Zephyr west workspace + Zephyr SDK bits |
 | `nros setup mps2-an385-baremetal` | bare-metal `arm-none-eabi-gcc` + qemu |
 
+### Provision a whole workspace
+
+Once you have a workspace, you do not need to name its boards. Run
+`nros setup` with no board at the workspace root (the directory that
+holds `src/`), or pass `--workspace <dir>`:
+
+```bash
+cd my_ws
+nros setup --dry-run   # the plan: every image's board and RMW, then the OS packages
+nros setup             # provision it
+```
+
+It reads every `system.toml` in the workspace and provisions each
+`[image.*]`'s board and RMW in one plan. For a zenoh image it reports
+ROS's `rmw_zenohd`: the path it found, or the apt packages that provide
+it. It then lists the OS packages the workspace itself names, which are
+its build types' host tools (for example `cmake` for `ament_cmake`) and
+any `<depend>` that is a system key, and prints the install command.
+Add `--sudo` to run that command. `--check` only reports.
+
+Every `<depend>` must resolve before anything is fetched. A name that is
+not a package in the workspace, a message package, a system key, a
+package your ROS install provides or a rosdep key stops `nros setup`.
+The error names the `package.xml` that declares it, which is the same
+check `nros build` makes.
+
 Every board also needs a **Rust toolchain**, whatever language you write:
 the runtime your project links is compiled from source when you first
 configure. If the host has neither `rustup` nor `rustc` + `cargo`,

@@ -86,7 +86,7 @@ nros setup zephyr                        # the Zephyr SDK + RMW transport source
 | `--list` | list every package in the index + its version |
 | `--licenses` | show license-gated packages + how to install them |
 | `--system` | resolve the OS-package closure for this host's package manager and PRINT the one install command (it never runs it without `--sudo`) |
-| `--workspace [<path>]` | plan from what the workspace at `<path>` (default `.`) declares — its `package.xml` dependencies, build types and the boards its `[image.*]` rows name; prints the plan, installs nothing |
+| `--workspace [<path>]` | provision what the workspace at `<path>` (default `.`) declares: every `[image.*]`'s board and RMW, then the OS packages its build types and `<depend>`s name (installed with `--sudo`, otherwise printed). An unresolvable `<depend>` stops it before any fetch. Bare `nros setup` at a workspace root is the same; `--check` only reports |
 | `--role <role>` | narrow `--system` to entries of this role (repeatable) |
 | `--check` | run presence probes instead of installing; exits 1 when anything is missing. With `--system`, the OS packages only; alone, every declared class |
 | `--sudo` | EXECUTE the plan's composed OS-package install command instead of printing it — with a `<board>` (its tools' and sources' `system = [..]`, before any download), `--workspace`, `--system`, or a `--tool` that declares OS build deps. Any other selector refuses it, naming these |
