@@ -51,6 +51,20 @@ jobs:
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
+      # Both of these were missing here while the gate job ran them, so the
+      # census measured a poorer environment than the lane it describes: on
+      # 2026-10-29 `cmake_platform_matrix` failed here on "the pinned Corrosion
+      # is not in the SDK store", while the same target passes in the gate.
+      - name: Provision clang-format (as the gate job does)
+        run: |
+          source ./activate.sh
+          just setup-clang-format
+
+      - name: Provision Corrosion (as the gate job does)
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
       - name: Provision compile-tier sources (as the gate job does)
         run: |
           source ./activate.sh
