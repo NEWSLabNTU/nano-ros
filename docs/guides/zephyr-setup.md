@@ -129,7 +129,7 @@ just zephyr talker
 
 ```bash
 # Terminal 1
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2
 zephyr-workspace/build-listener/zephyr/zephyr.exe --seed=2000
@@ -152,7 +152,7 @@ Connects to a zenoh router. Requires POSIX API for zenoh-pico threads.
 ```ini
 CONFIG_NROS=y
 # CONFIG_NROS_RMW_ZENOH=y  # default, can be omitted
-CONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:7456"
+CONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:7447"
 CONFIG_POSIX_API=y
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=32
 CONFIG_MAX_PTHREAD_COND_COUNT=16
@@ -223,7 +223,7 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `CONFIG_NROS_ZENOH_LOCATOR` | string | `"tcp/127.0.0.1:7456"` | Router address |
+| `CONFIG_NROS_ZENOH_LOCATOR` | string | `"tcp/127.0.0.1:7447"` | Router address |
 | `CONFIG_NROS_ZENOH_MULTI_THREAD` | bool | y | Zenoh-pico multithreading |
 | `CONFIG_NROS_ZENOH_PUBLICATION` | bool | y | Publication support |
 | `CONFIG_NROS_ZENOH_SUBSCRIPTION` | bool | y | Subscription support |
@@ -293,7 +293,7 @@ just zephyr build-all       # Build everything
 | Issue | Solution |
 |-------|----------|
 | `west: command not found` | Run `pip3 install --user west` and add `~/.local/bin` to PATH |
-| `Connection refused` | Start `zenohd` / `MicroXRCEAgent` on the host loopback (e.g. `tcp/127.0.0.1:7456`) |
+| `Connection refused` | Start `zenohd` / `MicroXRCEAgent` on the host loopback (e.g. `tcp/127.0.0.1:7447`) |
 | `Build fails` | Source environment: `source ../nano-ros-workspace/env.sh` |
 | `XRCE Agent not found` | Install: `just setup` (installs MicroXRCEAgent) |
 | Zenoh mutex exhaustion | Increase `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (default 5 is too low) |
@@ -319,7 +319,7 @@ emulated L2/L3 stack to configure, no static IP, and no bridge.
 │             ▼                              ▼                │
 │   ┌────────────────────┐       ┌────────────────────────┐   │
 │   │ zenohd             │       │ MicroXRCEAgent         │   │
-│   │ tcp/127.0.0.1:7456 │       │ udp/127.0.0.1:2018     │   │
+│   │ tcp/127.0.0.1:7447 │       │ udp/127.0.0.1:2018     │   │
 │   └────────────────────┘       └────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
