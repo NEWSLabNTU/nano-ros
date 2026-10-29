@@ -577,7 +577,14 @@ pub fn run(args: Args) -> Result<()> {
         // re-discovered, so the probe and the provisioner cannot disagree
         // about where a checkout is.
         let root = index_path.parent().map(std::path::Path::to_path_buf);
-        return run_system(&index, args.check, args.sudo, root.as_deref(), &args.roles);
+        return run_system(
+            &index,
+            args.check,
+            args.sudo,
+            root.as_deref(),
+            &args.roles,
+            None,
+        );
     }
     // #0390 — must precede the generic `--check` below: `--build-sources --check`
     // is its own preflight, not the all-deps doctor pass.
@@ -2892,12 +2899,21 @@ fn run_probe_in(
 /// sudo-less remainder of a setup flow; issue 0368 F1). `--check` reports
 /// probe results and exits 1 on any missing (the doctor surface). `--sudo`
 /// executes the composed command.
+/// The part of the OS-package closure one caller asks for: the `[prereq.*]`
+/// keys it names, and the `nros setup` arguments that ask for exactly them
+/// again (for the printed `--sudo` re-run line).
+struct SystemScope<'a> {
+    keys: std::collections::BTreeSet<String>,
+    rerun: &'a [&'a str],
+}
+
 fn run_system(
     index: &SdkIndex,
     check_only: bool,
     run_sudo: bool,
     repo_root: Option<&std::path::Path>,
     roles: &[String],
+    only: Option<&SystemScope<'_>>,
 ) -> Result<()> {
     // W4's retirement notice, WIRED — the step phase-383 W1.f skipped, which is
     // why that deprecation reached nobody.
@@ -2919,9 +2935,29 @@ fn run_system(
     for r in roles {
         rerun_argv.extend(["--role", r.as_str()]);
     }
-    let system_rerun = sudo_rerun_line(&rerun_argv);
+    let system_rerun = match only {
+        Some(scope) => sudo_rerun_line(scope.rerun),
+        None => sudo_rerun_line(&rerun_argv),
+    };
 
     let mut prereqs = index.prereqs();
+    if let Some(scope) = only {
+        // phase-517 W4 — a workspace asks for the keys IT names (its builders'
+        // host tools and its `<depend>`s), not the index's whole `[prereq.*]`
+        // set, which also carries every other board's cross toolchain.
+        prereqs.retain(|k, _| scope.keys.contains(k));
+        if !prereqs.is_empty() {
+            let names: Vec<&str> = prereqs.keys().map(String::as_str).collect();
+            println!(
+                "nros setup: OS packages the workspace names: {}",
+                names.join(", ")
+            );
+        }
+        if prereqs.is_empty() {
+            println!("nros setup: the workspace names no OS package beyond its boards' own.");
+            return Ok(());
+        }
+    }
     if !roles.is_empty() {
         // Narrowing is by ROLE, not by name: `just setup linux` wants the host
         // facts, and telling that user about `gcc-riscv64-unknown-elf` is noise
@@ -5724,7 +5760,17 @@ fn run_workspace_install(
     args: &Args,
 ) -> Result<()> {
     let root = index_path.parent().map(std::path::Path::to_path_buf);
-    run_workspace_scan(index, ws, root.as_deref())?;
+    let keys = run_workspace_scan(index, ws, root.as_deref())?;
+    // phase-517 W4 — every `<depend>` resolves through the ladder `nros build`
+    // refuses on, so a name `nros setup` cannot provision stops HERE, before
+    // anything is fetched, and not at the first build. One ladder: a second
+    // spelling of it is what issue 1509 rules out.
+    let found = crate::builder::discover::discover(ws, &[]).map_err(|e| eyre::eyre!("{e}"))?;
+    // The nano-ros root by `nros build`'s own ladder: the index may be a fetched
+    // copy whose directory holds no SDK.
+    let nano_ros_root = crate::orchestration::nano_ros_root::resolve(None, ws);
+    crate::cmd::build::check_declared_depends(ws, &found.packages, nano_ros_root.as_deref())
+        .map_err(|e| eyre::eyre!("nros setup: {e}"))?;
     if args.check {
         return Ok(());
     }
@@ -5771,7 +5817,19 @@ fn run_workspace_install(
             }
         }
     }
-    run_system(index, false, args.sudo, root.as_deref(), &[])
+    let ws_arg = ws.display().to_string();
+    let rerun = ["--workspace", ws_arg.as_str()];
+    run_system(
+        index,
+        false,
+        args.sudo,
+        root.as_deref(),
+        &[],
+        Some(&SystemScope {
+            keys,
+            rerun: &rerun,
+        }),
+    )
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -5860,11 +5918,14 @@ fn workspace_package_xmls(ws: &std::path::Path) -> Vec<std::path::PathBuf> {
     out
 }
 
+/// Print what a workspace declares, and return the `[prereq.*]` keys it names:
+/// its builders' host tools and its `<depend>`s that are system keys (role
+/// `package` or `buildtool`). Those keys are the workspace's own OS closure.
 fn run_workspace_scan(
     index: &SdkIndex,
     ws: &std::path::Path,
     repo_root: Option<&std::path::Path>,
-) -> Result<()> {
+) -> Result<std::collections::BTreeSet<String>> {
     use crate::orchestration::{prereq_resolve as pr, sdk_index::PrereqRole};
 
     let files = workspace_package_xmls(ws);
@@ -6169,7 +6230,14 @@ fn run_workspace_scan(
         "\n{not_prereq} declared name(s) are workspace packages, generated messages or \
          ROS packages — not system prerequisites."
     );
-    Ok(())
+    let mut keys: std::collections::BTreeSet<String> = host_tools.into_keys().collect();
+    keys.extend(
+        package_role
+            .iter()
+            .chain(&buildtool_role)
+            .map(|(name, _)| (*name).clone()),
+    );
+    Ok(keys)
 }
 
 #[cfg(test)]
@@ -6222,6 +6290,35 @@ mod workspace_scan_tests {
         assert!(
             boards.iter().any(|(k, _)| k == "linux"),
             "the host image plans as `linux`: {boards:?}"
+        );
+    }
+
+    /// phase-517 W4 — a workspace's OS closure is the keys IT names (its
+    /// builders' host tools), not the index's whole `[prereq.*]` set, which
+    /// also carries every other board's cross toolchain.
+    #[test]
+    fn a_workspace_asks_only_for_the_os_keys_it_names() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root");
+        let index = SdkIndex::load(&root.join("nros-sdk-index.toml")).expect("index");
+        let keys = run_workspace_scan(&index, &root.join("examples/workspaces/c"), Some(root))
+            .expect("scan");
+        assert!(
+            keys.contains("cmake"),
+            "an ament_cmake workspace names cmake: {keys:?}"
+        );
+        let all = index.prereqs();
+        assert!(
+            keys.iter().all(|k| all.contains_key(k)),
+            "every key is a [prereq.*] key: {keys:?}"
+        );
+        assert!(
+            keys.len() < all.len(),
+            "the closure is narrowed: {} of {}",
+            keys.len(),
+            all.len()
         );
     }
 

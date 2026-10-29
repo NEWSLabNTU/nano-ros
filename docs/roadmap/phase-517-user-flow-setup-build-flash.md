@@ -1,6 +1,6 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-26). Open; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
+**Status (2026-10-29). Open; W1 and W8 done; W4's three left items closed, its probe still open; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
@@ -125,6 +125,15 @@ check to `book/src` if it does not already cover it.
 
 **Done when** each bullet is fixed, the gate is on the fast line, and its
 self-test fails on a planted `nros setup native`.
+
+**Done (2026-10-25, confirmed 2026-10-29).** `82d50ea0ee` fixed every bullet
+and added `check-book-board-names`. It is on the fast line
+(`check-gate-lists.py --list fast` names it), and its self-test fails on a
+planted `nros setup native`, `posix`, an unknown key, `board = "native"` and
+`--platform native`. `check-book-links` already covered `book/src`. Re-checked
+2026-10-29: every cited site reads correctly, `cli.md` documents `sdk-root`,
+`locate`, `store`, `toolchain`, `pin` and `update`, and no first-node chapter
+says "Path B … equivalent".
 
 ### W2 — cut a release; the book's front door is the installed CLI (decided, then L)
 
@@ -404,6 +413,39 @@ report-only. Measured in `examples/workspaces/c` with `--dry-run`. Left:
 own keys; (2) an unknown `<depend>` is counted, not refused — telling a ROS
 package from a typo needs the ament index; (3) no `--yes`, because nothing asks
 for confirmation (`nros setup <board>` never did either).
+
+**The three items, closed (2026-10-29):**
+
+1. The OS closure is the workspace's own keys. `run_workspace_scan` returns
+   the `[prereq.*]` keys the workspace names: its build types' host tools, and
+   its `<depend>`s whose role is `package` or `buildtool`. `run_system` asks
+   only for those, prints them (`nros setup: OS packages the workspace names:
+   clang, cmake`), and its `--sudo` re-run line is `nros setup --workspace
+   <dir> --sudo`. Measured with `--dry-run`: `examples/workspaces/c` asks for
+   `clang, cmake`, `examples/workspaces/rust` for `cargo, clang, cmake`, where
+   the index's whole set is every board's toolchain too. Test:
+   `a_workspace_asks_only_for_the_os_keys_it_names`.
+2. An unknown `<depend>` is refused, before anything is fetched and in
+   `--check` too. `nros setup` runs `nros build`'s own ladder
+   (`check_declared_depends`, phase-398 W3), so the two verbs cannot disagree
+   about a name. The ament rung is the one that tells a ROS package from a
+   typo; the ladder already had it. Measured: a scaffolded workspace with
+   `<depend>std_msgz</depend>` stops with `1 <depend> name(s) resolve to
+   nothing: std_msgz — declared by ./src/talker_pkg/package.xml`, and the
+   same workspace without it passes `--check` with and without
+   `AMENT_PREFIX_PATH`.
+3. No `--yes`: closed, not built. `nros setup` never asks for confirmation:
+   store installs need no root and run, and OS packages are printed unless
+   `--sudo` is given. A flag that skips a prompt nobody shows would be a
+   no-op.
+
+`installation.md` gained "Provision a whole workspace", and `cli.md`'s
+`--workspace` row no longer says it installs nothing.
+
+**Still open:** the installed-track probe in "Done when" (no track runs a
+two-image workspace yet), and `first-project.md` still says `nros setup linux
+--rmw cyclonedds`. That line is the probed linux track's step, so it changes
+together with a probe run.
 
 **No checkout:** the plan is computed from the project's config files and the
 installed SDK alone; nothing in it reads or asks for a nano-ros checkout.
@@ -721,6 +763,13 @@ AUTHORED; sync WRITES the rows rather than only checking them.
 
 **Not done:** the scaffold still names `nros` registry-style (by the
 resolution above), and the selection dep is unchanged (already generated).
+
+**Done (confirmed 2026-10-29).** Both remaining lines are the accepted
+resolution, not gaps. Measured against the done-when on a fresh `nros new
+pkgr --platform linux --lang rust`: the `Cargo.toml` names no message crate
+and no selection dep, and `nros sync` writes `std_msgs = { path =
+"generated/std_msgs", default-features = false }  # nros-managed` from the
+`package.xml`'s `<depend>`. Adding a `<depend>` is one edit.
 
 ### W9 — flash and run, per platform, honestly (M)
 

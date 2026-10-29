@@ -5386,7 +5386,7 @@ pub(crate) fn collect_images(
 /// `NROS_ALLOW_UNRESOLVED_DEPS=1` downgrades it to a warning. That is an escape
 /// hatch for a tree mid-migration, not a mode — it names itself in the output
 /// so a build that used it cannot be mistaken for one that passed.
-fn check_declared_depends(
+pub(crate) fn check_declared_depends(
     root: &std::path::Path,
     packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
     nano_ros_root: Option<&std::path::Path>,
