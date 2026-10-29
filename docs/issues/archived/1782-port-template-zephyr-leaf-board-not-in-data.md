@@ -8,7 +8,7 @@ severity: low
 found: 2026-10-10
 related: [issue-1764, phase-482, issue-1296, issue-1308, phase-452, phase-518]
 resolved: 2026-10-29
-resolved_in: "TBD"
+resolved_in: "#2821"
 ---
 
 **Home: [phase-452](../roadmap/phase-452-copy-out-front-door.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
