@@ -56,7 +56,7 @@ use nros_lang::Language;
 /// One pack's manifest, as declared in `packs/entry/<surface>/pack.toml`.
 ///
 /// `deny_unknown_fields` (phase-494): a pack is now DATA the renderer acts on,
-/// so a misspelt key — `c_abi_runner` for `c_abi_runners` — must fail the
+/// so a misspelt key — c_abi_runner for `c_abi_runners` — must fail the
 /// parse rather than silently take the default and render a pack that does
 /// not do what its author wrote.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]

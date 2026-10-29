@@ -155,7 +155,7 @@ use eyre::Result;
 /// already refused `resolve-deps`.
 ///
 /// TWO OF THEM FAIL SILENTLY, which is why this is worse than another red lane.
-/// `nros_resolve_board_facts` and `nros_read_entity_facts` degrade a refusal to
+/// `nros_resolve_board_facts` and ~~`nros_read_entity_facts`~~ degrade a refusal to
 /// `message(STATUS …)` + `return()` and let the build continue with an EMPTY
 /// facts environment — the 0460 class, a knob that reaches one lane and not the
 /// other, and unobservable in a log that only echoes a failed leaf's tail.

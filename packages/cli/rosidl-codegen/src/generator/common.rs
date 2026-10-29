@@ -335,7 +335,7 @@ fn element_type_of(ft: &FieldType) -> Option<&FieldType> {
 /// `reader.read_<x>()` / `writer.write_<x>()` (phase-432 W2.5a).
 ///
 /// A per-language SPELLING of a neutral fact, which is the shape W2.5b names as
-/// a language's whole Rust surface area. It replaces `primitive_to_cdr_method`
+/// a language's whole Rust surface area. It replaces ~~`primitive_to_cdr_method`~~
 /// at the nros builder, and the two agree by construction: `CdrOp` is exactly
 /// as coarse as this mapping — `Byte`, `Char` and `UInt8` all lower to
 /// `CdrOp::U8` and all three spelled `"u8"`.
@@ -1181,7 +1181,7 @@ pub(super) fn build_cpp_ffi_field(
         };
 
     // Compute repr(C) type
-    // phase-335 step 2 — `repr_c_type` / `view_repr_type` are composed in the pack
+    // phase-335 step 2 — `cpp_repr_c_type` / `cpp_view_repr_type` are composed in the pack
     // by the `cpp_repr_c_type` / `cpp_view_repr_type` filters from the neutral
     // facts below; the builder no longer spells them. `element_repr_type`
     // (`elem_repr_c`) stays here — it also feeds the Rust-side SequenceStructDef.

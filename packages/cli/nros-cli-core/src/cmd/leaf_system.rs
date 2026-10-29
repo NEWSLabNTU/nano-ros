@@ -278,7 +278,7 @@ pub fn rows(
         ("NROS_LEAF_LOCATOR", s(&net.locator)),
         // RFC-0103 D10f (phase-497 W2) — the image's resolved network, the
         // text `nros_board_net_c` renders the C initializer from. Empty when
-        // the image states no interface. It replaced `NROS_LEAF_IP` /
+        // the image states no interface. It replaced ~~`NROS_LEAF_IP`~~ /
         // `_GATEWAY` / `_NETMASK`, which nothing on the cmake road read.
         (
             "NROS_LEAF_IMAGE_NET",

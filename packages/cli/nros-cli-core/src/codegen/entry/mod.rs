@@ -72,7 +72,7 @@ pub type Lang = nros_lang::Language;
 /// Resolved plan handed to one of the three emitters.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Plan {
-    /// Board key from [`PlanInput::board`]; `"linux"` (the host board) by default.
+    /// Board key from `plan_from_model`'s `board` argument; `"linux"` (the host board) by default.
     pub board: String,
     /// Per-node entries in launch-file order (top-scope first, then
     /// each `<group>`'s children). Duplicates per `(pkg, exec)` are
@@ -113,7 +113,7 @@ pub struct Plan {
     pub session: BakedSession,
 }
 
-// phase-326 (issue 0364): `Plan::for_host` / `Plan::hosts` / `PlanNode.host`
+// phase-326 (issue 0364): ~~`Plan::for_host`~~ / `Plan::hosts` / `PlanNode.host`
 // are gone. They partitioned a multi-host launch at BAKE time from the
 // `<node machine="…">` attribute — ROS 1 roslaunch syntax ROS 2 rejects.
 // Multi-host is now a resolve-time launch argument (`host:=<id>` + `if=`
@@ -190,7 +190,7 @@ pub struct PlanNode {
     /// Resolved sched-context/tier index. `None` until W4 resolves tiers. (#119)
     pub sched_context: Option<u8>,
     /// Phase 273 (RFC-0047 W2) — group → tier bindings from `system.toml
-    /// [[component]].group_tiers`. Populated by `plan_from_launch` when the
+    /// [[component]].group_tiers`. Populated by `plan_from_model` when the
     /// matching `[[component]]` carries `group_tiers`. Used by `resolve_plan_sched`
     /// to assign each callback group's tier directly, without needing
     /// `[[node_overrides]]`.
@@ -204,7 +204,7 @@ pub struct PlanNode {
 }
 
 impl PlanNode {
-    // Phase 258 (Track 2, follow-up) — `register_symbol()` (the dead
+    // Phase 258 (Track 2, follow-up) — ~~`register_symbol()`~~ (the dead
     // `__nros_component_<pkg>_register` mangled-symbol string) is gone. The
     // post-257 entries link `__nros_component_<pkg>_install`, not `_register`;
     // nothing consumed this string.
@@ -293,8 +293,8 @@ fn board_has_run_tiers(board: &str) -> bool {
         .is_some_and(|r| r.run_tiers.is_some())
 }
 
-// phase-494 W2 — the view structs that lived here (`ServicesView`,
-// `DeclsView`, `QosRowView`, `TierView`, `SchedView`, `BootConfigView`) and
+// phase-494 W2 — the view structs that lived here (~~`ServicesView`~~,
+// ~~`DeclsView`~~, ~~`QosRowView`~~, ~~`TierView`~~, ~~`SchedView`~~, ~~`BootConfigView`~~) and
 // their builders are `nros_entry_lower`'s `LoweredEntry` image types now, built
 // by `lower.rs`. They were the shared half of a projection each emitter also
 // made privately; the projection is one function, and the packs render its
@@ -500,7 +500,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // phase-486 W3 — PLACEMENT only, no board slice. A node absent from a
     // non-empty `execution.deploy` was placed on another machine (`[host.*]`
     // with `nodes = [..]`), so this image does not run it. The board half —
-    // `Deploy.target` / `Mcu` / `extra.kind`, read here and in `nros::main!`
+    // `Deploy.target` / ~~`Mcu`~~ / `extra.kind`, read here and in `nros::main!`
     // (issue 0358's duplicate) — is gone: only `[deploy.<n>] board` wrote it,
     // no tracked bringup has one, no other realizer read it, and rlm stopped
     // writing it (model-boundary W6). ONE rule, shared with the macro.
@@ -544,7 +544,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             .ok_or_else(|| eyre::eyre!("model node '{fqn}' has neither exec nor plugin"))?;
         // #276 (model path) — project `params_files` YAML under the inline
         // `<param>` values. The launch path has its own projection
-        // (`resolve_node_params`), but every live bake now goes through the
+        // (~~`resolve_node_params`~~), but every live bake now goes through the
         // MODEL, so the projection has to exist here too.
         let resolved: Vec<(String, String)> = inst
             .resolved_params(fqn)
@@ -616,7 +616,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // phase-462 W2 -- the contract is the SOURCE of `deadline_policy`, and
     // this is where it becomes one. From here the word rides the ordinary
     // tier road: `resolve_tiers` -> `ResolvedTier::deadline_policy` ->
-    // `tier_views`/`sched_view` -> the baked entry ->
+    // ~~`tier_views`~~/~~`sched_view`~~ -> the baked entry ->
     // `SchedContext::from_tier_policy` -> `DeadlineAction`. Agreement with an
     // authored string was already checked above, so an insert here either
     // supplies what the tier table omitted or restates what it agreed to.

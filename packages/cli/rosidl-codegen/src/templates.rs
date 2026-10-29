@@ -422,7 +422,7 @@ pub struct CField {
     pub name: String,
     /// RFC-0068 Stage 3 — the neutral facts the `c_type` / `c_array_suffix` pack
     /// filters compose the C type string from (phase-335 step 2), replacing the
-    /// pre-baked `c_type` / `array_suffix` strings. `field_type` is the parsed
+    /// pre-baked `c_type` / `c_array_suffix` strings. `field_type` is the parsed
     /// type; `is_configurable` marks an unbounded string/sequence whose storage
     /// was resolved; `cap` is that resolved capacity; `current_package` is the
     /// generating package (the `NamespacedType { package: None }` fallback).
@@ -550,7 +550,7 @@ pub struct MessageCHeaderTemplate<'a> {
     pub unbounded_reason: Option<String>,
     /// issue 0896 Q2 — the same fact as a C IDENTIFIER, so a compiler error
     /// that mentions it names the type and the member:
-    /// `NROS_UNBOUNDED__std_msgs_msg_string__field_data`. An identifier cannot
+    /// NROS_UNBOUNDED__std_msgs_msg_string__field_data. An identifier cannot
     /// hold `.` or `(`, so the prose form above carries what this cannot.
     pub unbounded_token: Option<String>,
 }
@@ -704,7 +704,7 @@ pub struct CppFfiField {
     pub name: String,
     /// RFC-0068 step 2 — the `cpp_repr_c_type` / `cpp_view_repr_type` pack filters
     /// compose the Rust repr(C) type from these neutral facts (was the pre-baked
-    /// `repr_c_type` / `view_repr_type`). `struct_name` is the parent message
+    /// `cpp_repr_c_type` / `cpp_view_repr_type`). `struct_name` is the parent message
     /// struct (the sequence repr is a generated `{struct}_{field}_seq_t` name);
     /// `cap` the resolved capacity; `current_package` the nested self-ref.
     pub field_type: rosidl_parser::FieldType,
@@ -768,7 +768,7 @@ pub struct CppField {
     pub name: String,
     /// RFC-0068 step 2 — the `cpp_type` / `cpp_array_suffix` pack filters compose
     /// the C++ header type from these neutral facts (was the pre-baked `cpp_type`
-    /// / `array_suffix`). `cap = Some(n)` is an owned-with-capacity string/seq;
+    /// / `c_array_suffix`). `cap = Some(n)` is an owned-with-capacity string/seq;
     /// `is_heap` the heap bridge; `current_package` the self-ref fallback.
     pub field_type: rosidl_parser::FieldType,
     pub is_heap: bool,

@@ -16,13 +16,16 @@ _mutex_tx
 _z_link_clear
 _z_link_free
 _z_link_send_t_msg
+_z_query
 _z_transport_unicast_handle_frag
 max_links
 socket_wait_event
+z_serialize_uint32
 z_task_wrapper
 zp_read
 
 # FreeRTOS kernel
+ARM_CM4F
 BlockLink_t
 INCLUDE_uxTaskGetStackHigh
 Queue_t
@@ -72,9 +75,11 @@ portMUX_TYPE
 
 # ThreadX and NetX Duo
 NX_RAND
+NX_USER_FILE
 TX_ENABLE_EXECUTION_CHANGE_NOTIFY
 TX_EXECUTION_PROFILE_ENABLE
 TX_MEMSET
+TX_USER_FILE
 _tx_byte_allocate
 _tx_byte_release
 _tx_execution_
@@ -89,10 +94,14 @@ tx_semaphore
 tx_timer_change
 
 # Zephyr
+CONF_FILE_BUILD_TYPE
+SB_CONFIG_BOOTLOADER_MCUBOOT
+Zephyr_DIR
 _system_heap
 arch_proc_id
 atomic_set
 cpu_mask_mod
+hal_nxp
 log_msg_runtime_create
 net_if_ipv4_select_src_iface
 net_mgmt_event_handler_t
@@ -100,6 +109,7 @@ posix_to_zephyr_priority
 sys_heap
 sys_heap_
 uart_poll_in
+warn_assign_undef
 z_impl_k_thread_stack_space_get
 z_stack_space_get
 
@@ -117,16 +127,20 @@ sporadic_alloc_repl
 task_create
 
 # CycloneDDS
+cdds_request_header_t
 ddsrt_gettid
 thread_states_init
 
 # POSIX, Linux, libc and newlib
+ETXTBSY
 IFNAMSIZ
 INADDR_NONE
 PTHREAD_PRIO_NONE
+SHLVL
 SIOCGIFFLAGS
 SIOCSIFDSTADDR
 SIOCSIFNETMASK
+SSH_AUTH_SOCK
 STDOUT_FILENO
 _POSIX_THREAD_PRIO_INHERIT
 _RETARGETABLE_LOCKING
@@ -168,25 +182,37 @@ YIELD
 
 # The DDS specification
 DcpsDomainParticipant
+data_representation
 
-# NVIDIA Tegra FSP and Autoware
+# NVIDIA Tegra FSP, Autoware and Nav2
 autoware_sentinel
 ivc_init_channels_ccplex
 print_msg
 
 # ROS 2
+InteractiveMarker
 action_tutorials
+calculate_type_hash
+convert_camel_case_to_lower_case_underscore
+expand_template
+get_idl_type
+manual_composition
+rosidl_runtime_c__type_description__FieldType
 set_logger_level
 
 # Rust: std, cargo, rustc and clippy lints, cc-rs, embassy, smoltcp, Verus
 CARGO_INCREMENTAL
 CARGO_PROFILE_NROS_RELWITHDEBINFO_INCREMENTAL
 CXX_thumbv7m_none_eabi
+E0152
 LineWriter
-RUSTC_WRAPPER
+Literal::u8_suffixed
 Stdout
 UnitDependencyInfoChanged
 c_variadic
+clippy::if_same_then_else
+clippy::manual_contains
+clippy::unnecessary_sort_by
 embassy_sync::channel::Channel
 external_body
 fn_to_numeric_cast
@@ -196,7 +222,36 @@ is_flag_supported
 lang_start
 leave_multicast_group
 panic_impl
+result_large_err
+unnecessary_sort_by
 unused_doc_comments
 
+# Rust crates: eyre, pyo3, quick-xml, minijinja, ros-launch-manifest
+Attribute::unescape_value
+Context::with_context
+ContextCompat
+DeployBlock
+EndpointProps::buffer
+FromPyObject
+TemplateData
+get_filter
+ros_launch_manifest_model::system_config::DeployBlock
+skip_from_py_object
+with_context
+
+# CMake, Corrosion, ESP-IDF components, PlatformIO, PX4
+AUTOPILOT_HOST
+COMPARE
+COMPONENT_OVERRIDEN_DIR
+COMPONENT_SOURCE
+FindRust
+default_envs
+workspace_toml_dir
+
+# Python
+OrderedDict
+unicode_escape
+
 # git
+GIT_INDEX_FILE
 GIT_OBJECT_DIRECTORY

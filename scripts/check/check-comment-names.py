@@ -30,8 +30,9 @@ The rule, for every comment in a tracked C, C++ or Rust source in SCOPE:
   cannot rot into a blanket exemption.
 
   The index also holds what a tracked shell script defines (a function, an
-  assigned or exported variable), since `scripts/lib/*.sh` is a library the
-  comments cite.
+  assigned or exported variable) and the upper-case variables it reads
+  (`${NROS_INSTALL_URL:-...}`), since `scripts/` is a library and an
+  environment interface the comments cite.
 
   A Kconfig symbol is judged by its own rule: `CONFIG_NROS_<X>` must be a
   `config NROS_<X>` in a tracked Kconfig file, and any other `CONFIG_<X>` is
@@ -64,6 +65,7 @@ _spec.loader.exec_module(ap)
 SCOPE = (
     "examples",
     "packages/boards",
+    "packages/cli",
     "packages/drivers",
     "packages/platform",
     "packages/tooling",
@@ -79,6 +81,9 @@ KNOWN_ROOTS = ("packages", "examples", "scripts", "just", "cmake", "zephyr", "in
 # does not open a comment (the 840-line swallow `api-parity.py` records).
 COMMENT_RE = ap.CODE_COMMENT_RE
 STRUCK_RE = re.compile(r"~~(.+?)~~")
+# `[~~`gone`~~]` is an intra-doc link to a name that is gone: rustdoc reports it
+# as unresolved, so the marker goes on plain text, never inside a link.
+STRUCK_LINK_RE = re.compile(r"\[~~`")
 PLACEHOLDER_RE = re.compile(r"(?:^|_|::)(?:X|N|NN|XX|XXX|xxx|foo|bar|baz)(?:_|$|::)|^(?:my_|My[A-Z])")
 
 
@@ -90,14 +95,19 @@ SHELL_DEF_RE = re.compile(
     r"|(?:export[ \t]+|local[ \t]+|readonly[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=)", re.M)
 
 
+SHELL_READ_RE = re.compile(r"\$\{?([A-Z][A-Z0-9_]*)")
+
+
 def shell_definitions():
     files = subprocess.run(["git", "-C", ROOT, "ls-files", "--", "*.sh", "*.bash", "activate*"],
                            capture_output=True, text=True, check=True).stdout.split()
     out = set()
     for rel in files:
         with open(os.path.join(ROOT, rel), errors="ignore") as fh:
-            for m in SHELL_DEF_RE.finditer(fh.read()):
+            text = fh.read()
+            for m in SHELL_DEF_RE.finditer(text):
                 out.add(m.group(1) or m.group(2) or m.group(3))
+            out.update(SHELL_READ_RE.findall(text))
     return out
 
 
@@ -143,6 +153,8 @@ def comment_names(text):
         if m.group(1):
             continue
         comment, base = m.group(0), m.start()
+        for link in STRUCK_LINK_RE.finditer(comment):
+            out.append((text.count("\n", 0, base + link.start()) + 1, "[~~", "", "link"))
         struck = [(s.start(1), s.end(1)) for s in STRUCK_RE.finditer(comment)]
         for q in ap.quoted_name_matches(comment):
             pos = q.start()
@@ -163,13 +175,24 @@ def check_text(rel, text, index, foreign, seen_foreign, symbols=frozenset()):
     findings = []
     for line, name, tail, struck in comment_names(text):
         where = "%s:%d" % (rel, line)
+        if struck == "link":
+            findings.append("%s: a struck name inside an intra-doc link (`[~~`...`~~]`) "
+                            "is a link to a gone item; drop the brackets" % where)
+            continue
         if PLACEHOLDER_RE.search(name):
             continue
         if name in foreign:
             seen_foreign.add(name)
             continue
         if struck:
-            if exists_exactly(index, name):
+            if name.startswith("CONFIG_"):
+                # A Kconfig symbol is live when a Kconfig declares it; a refusal
+                # table naming the retired spelling does not make it live.
+                live = (name[len("CONFIG_"):].startswith("NROS")
+                        and kconfig_verdict(name, tail, symbols))
+            else:
+                live = exists_exactly(index, name)
+            if live:
                 findings.append("%s: ~~`%s`~~ is struck as history but EXISTS; unstrike it, "
                                 "or name what replaced it" % (where, name))
             continue
@@ -241,6 +264,9 @@ def self_test():
     expect("our Kconfig symbol", "// `CONFIG_NROS_MAX_TIERS`\n", 0)
     expect("gone Kconfig symbol", "// `CONFIG_NROS_GONE`\n", 1)
     expect("RTOS Kconfig symbol", "// `CONFIG_HEAP_MEM_POOL_SIZE`\n", 0)
+    expect("struck retired Kconfig symbol", "// ~~`CONFIG_NROS_GONE`~~\n", 0)
+    expect("struck live Kconfig symbol", "// ~~`CONFIG_NROS_MAX_TIERS`~~\n", 1)
+    expect("struck inside an intra-doc link", "/// see [~~`gone_fn`~~]\n", 1)
     expect("placeholder", "// each `Node::create_X<T>` and `foo_pkg`\n", 0)
     expect("string literal is not a comment", 'let s = "// `gone_fn`";\n', 0)
     expect("literal does not open a comment", 'let g = "/**"; let h = `gone_fn`;\n', 0)

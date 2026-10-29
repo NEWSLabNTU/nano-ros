@@ -408,10 +408,10 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // Phase 212.F.2 spec-named regression tests. The spec brief lists four
-    // tests by exact name; three (`rejects_cargo_toml_in_bringup`,
-    // `rejects_cmakelists_in_bringup`, `rejects_src_dir_in_bringup`) match
+    // tests by exact name; three (rejects_cargo_toml_in_bringup,
+    // rejects_cmakelists_in_bringup, rejects_src_dir_in_bringup) match
     // the pre-existing names above 1:1. The fourth one
-    // (`accepts_clean_bringup`) maps onto `accepts_pure_declarative_bringup`,
+    // (`accepts_clean_bringup`) maps onto accepts_pure_declarative_bringup,
     // which we keep, plus add the spec-named alias below + coverage for the
     // broadened forbidden-dir list (`include/`, `lib/`).
     // -----------------------------------------------------------------------

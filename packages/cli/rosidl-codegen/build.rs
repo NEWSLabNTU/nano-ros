@@ -63,11 +63,11 @@ impl Pack {
     /// `Surface` variant.
     ///
     /// Upper-camel per WORD, not just the first letter: a pack directory named
-    /// with an underscore would otherwise generate `My_lang`, and
+    /// with an underscore would otherwise generate My_lang, and
     /// `non_camel_case_types` is a warning — i.e. an ERROR under the `-D
     /// warnings` every `check` lane runs. A new pack's directory name must not
     /// be able to break the build of a crate its author never opened. (Measured
-    /// while proving discovery: a throwaway `zz_probe` pack did exactly that.)
+    /// while proving discovery: a throwaway zz_probe pack did exactly that.)
     fn variant(&self) -> String {
         self.dir
             .split(['_', '-'])
@@ -266,7 +266,7 @@ fn main() {
 
     // Every `.jinja` on disk must be claimed by some manifest. A file nobody
     // renders parses, looks wired, and emits nothing — the same check the entry
-    // side's `every_pack_file_is_registered` makes, moved to build time because
+    // side's ~~`every_pack_file_is_registered`~~ makes, moved to build time because
     // here it can refuse to compile.
     let claimed: BTreeSet<String> = packs
         .iter()

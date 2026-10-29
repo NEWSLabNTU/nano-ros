@@ -9,7 +9,7 @@
 //! regressions that no other test would have:
 //!
 //! * a macro extraction that swapped the serialize and deserialize bodies
-//!   (a substring collision: `replace("SER_BODY")` matched inside `DESER_BODY`);
+//!   (a substring collision: `replace("SER_BODY")` matched inside DESER_BODY);
 //! * a trailing newline appended to six templates, which changed the last byte of
 //!   every generated file in the tree.
 //!

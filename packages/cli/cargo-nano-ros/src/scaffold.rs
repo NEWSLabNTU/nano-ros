@@ -593,7 +593,7 @@ log = {{ version = "0.4", default-features = false }}
     //
     // The previous body targeted the `Component*` trait family that phase
     // 212.N.12 retired on 2026-06-03 (`Component` -> `Node`,
-    // `ComponentContext` -> `NodeContext`, `ComponentResult` -> `NodeResult`,
+    // ~~`ComponentContext`~~ -> `NodeContext`, ~~`ComponentResult`~~ -> `NodeResult`,
     // `nros::component!` deleted), so `nros new --component --lang rust`
     // emitted a package that compiled by neither documented route for three
     // and a half months. Nothing noticed because the scaffold tests assert

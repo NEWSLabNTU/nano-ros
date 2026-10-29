@@ -2,7 +2,7 @@
 //! → `nros check`) and the metadata-mode component build (`nros metadata
 //! --build`). Salvaged from the retired `orchestration_e2e.rs`, whose other 15
 //! tests exercised the standalone generated-system-package build path
-//! (`orchestration::build::build_generated_package`) — a pipeline with no
+//! (~~`orchestration::build::build_generated_package`~~) — a pipeline with no
 //! production entry since phase-222 removed the `nros build`/`nros run` verbs
 //! (retired together with this suite's repair; see archived issue 0202).
 //!
@@ -20,7 +20,7 @@
 //!
 //! Old-suite path rot fixed here (the #202 root cause): the fixture helpers
 //! counted `Path::ancestors()` from the crate's PRE-phase-218 location —
-//! `codegen_root` landed on `packages/` (→ `packages/testing_workspaces/...`)
+//! ~~`codegen_root`~~ landed on `packages/` (→ `packages/testing_workspaces/...`)
 //! and `nano_ros_workspace` walked past the repo root entirely. The crate
 //! lives at `packages/cli/nros-cli-core`, so the CLI sub-workspace root is
 //! `ancestors().nth(1)` and the nano-ros repo root `ancestors().nth(3)`.

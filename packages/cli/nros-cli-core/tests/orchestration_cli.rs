@@ -161,7 +161,7 @@ topics:
 /// component via `component_nros.toml` but never produced its
 /// source-metadata JSON (most common cause: missing
 /// `nros::component!` export) is the host-side surface for
-/// `ComponentError::MissingExport`. The `metadata` command must
+/// ~~`ComponentError::MissingExport`~~. The `metadata` command must
 /// surface that case with the canonical diagnostic string instead of
 /// silently producing an empty `metadata/` directory.
 /// Verifies the orchestration metadata command flags a missing component export.

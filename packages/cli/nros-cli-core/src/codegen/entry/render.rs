@@ -87,7 +87,7 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
 /// than merely agreeing with it by inspection (phase-432 W3.2).
 ///
 /// `#[cfg(test)]` because that check IS a unit test — `pack.rs`'s
-/// `manifests_and_the_registry_describe_the_same_templates`, its only caller,
+/// ~~`manifests_and_the_registry_describe_the_same_templates`~~, its only caller,
 /// inside that file's `#[cfg(test)] mod tests`. `--all-targets` still builds
 /// the plain lib, where an un-gated accessor with no runtime caller is
 /// genuinely dead code and `-D warnings` says so: this took `check-build` red
@@ -133,7 +133,7 @@ mod tests {
         }
     }
 
-    // `every_pack_file_is_registered` lived here until phase-494 W1. Its rule
+    // ~~`every_pack_file_is_registered`~~ lived here until phase-494 W1. Its rule
     // — every `.jinja` under `packs/entry/` is rendered by something — is now
     // refused at COMPILE time by `build_entry_packs.rs`, which generates the
     // registry from the manifests and fails the build on an unclaimed file.

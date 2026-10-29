@@ -129,7 +129,7 @@ impl<'de> Deserialize<'de> for StorageMode {
 }
 
 impl StorageMode {
-    // Issue 0343 — `is_phase1_supported()` used to live here, claiming only
+    // Issue 0343 — ~~`is_phase1_supported()`~~ used to live here, claiming only
     // `inline` (then spelled `owned`) was supported. It had NO production callers (only its own unit
     // test asserted on it), and its claim had become false: messages DO
     // implement heap and view. A predicate nobody calls, asserting
@@ -144,8 +144,8 @@ impl StorageMode {
     // | `view`   | yes            | yes         | yes           | NO         |
     //
     // Enforced by: `field_to_nros_field_with_mode` / `build_c_field` /
-    // `cpp_storage_for_field` (per-language shape support, `UnsupportedStorageMode`)
-    // and `ensure_owned_storage_for_payload` (srv/action, which have no
+    // ~~`cpp_storage_for_field`~~ (per-language shape support, `UnsupportedStorageMode`)
+    // and ~~`ensure_owned_storage_for_payload`~~ (srv/action, which have no
     // `is_heap` branches in their templates —
     // `UnsupportedStorageModeForPayload`). Covered by
     // `tests/srv_action_storage_mode_gate.rs`.

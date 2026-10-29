@@ -16,7 +16,7 @@ use parity_ledger::assert_message_dir_parity;
 // humble, so all nine tests took their "Skipping" arm and the suite reported
 // PASS over work it never did.
 //
-// Issue 1160 — the local `ros_dir`/`ros_file` pair that used to sit here handed
+// Issue 1160 — the local ~~`ros_dir`~~/~~`ros_file`~~ pair that used to sit here handed
 // back a path that MIGHT NOT EXIST, so every test opened with two guards, both
 // exiting PASS and both printing `[NO-ROS]` — the second of them on hosts that
 // have ROS. `ros_input`/`ros_input_dir` in `parity_helpers` own that verdict

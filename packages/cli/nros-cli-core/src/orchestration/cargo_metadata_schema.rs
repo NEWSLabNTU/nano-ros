@@ -1233,7 +1233,7 @@ impl SystemToml {
     /// [`select_default_images`] picks → `None` (the sole-`[deploy.<t>]` rung
     /// retired with the table, phase-486 W8).
     ///
-    /// Phase 256 / issue 0951. It was `resolve_target` until the name was the
+    /// Phase 256 / issue 0951. It was ~~`resolve_target`~~ until the name was the
     /// last thing here still asserting the retired concept: what it returns is
     /// an image id, `[system].default_target` no longer decides anything, and
     /// `--target` survives only as an alias. A function whose name says

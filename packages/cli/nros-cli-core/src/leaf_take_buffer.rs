@@ -13,7 +13,7 @@
 //!
 //! [`crate::leaf_payload_classes`] derives over what the leaf SUBSCRIBES to.
 //! This one may not: the CMake derivation states the rule at the site
-//! (`BASIS closure, always. Narrowing this one is the under-derivation.`) and
+//! (BASIS closure, always. Narrowing this one is the under-derivation.) and
 //! the reason is structural — one global size serves every entity, the C/C++
 //! path is type-erased, and `DEFAULT_TX_BUF` aliases it, so a type this image
 //! only PUBLISHES still has to fit. Deriving it from the subscribed set would

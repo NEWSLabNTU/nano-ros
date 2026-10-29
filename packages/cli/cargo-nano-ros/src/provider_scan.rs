@@ -213,7 +213,7 @@ pub fn default_search_path(nano_ros_root: Option<&Path>, workspace: &Path) -> Ve
 /// The environment variable that appends roots to the search path.
 ///
 /// colcon's `--base-paths` in source-time form, and named for what it holds
-/// rather than for a family: `NROS_RMW_PATH` would need a sibling per kind, and
+/// rather than for a family: NROS_RMW_PATH would need a sibling per kind, and
 /// a fifth provider family would then need a fifth variable nobody sets.
 pub const PACKAGE_PATH_ENV: &str = "NROS_PACKAGE_PATH";
 

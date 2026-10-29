@@ -1184,7 +1184,7 @@ pub fn c_type_spelling(
     c_type_for_field(field_type, current_package)
 }
 
-/// RFC-0068 Stage 3 — the C `array_suffix` spelling (companion to
+/// RFC-0068 Stage 3 — the C `c_array_suffix` spelling (companion to
 /// [`c_type_spelling`]).
 pub fn c_array_suffix_spelling(
     field_type: &FieldType,
@@ -1243,11 +1243,11 @@ pub fn c_type_for_constant(field_type: &FieldType) -> String {
     }
 }
 
-/// The C CDR writer for a lowered scalar op — `nros_cdr_<x>` in the C pack
+/// The C CDR writer for a lowered scalar op — `rclc_cdr_<x>` in the C pack
 /// (phase-432 W2.5a).
 ///
 /// A per-language SPELLING of a neutral fact, the C twin of
-/// `cdr_op_rust_method`. It replaces `c_cdr_write_method` at the C field
+/// `cdr_op_rust_method`. It replaces ~~`c_cdr_write_method`~~ at the C field
 /// builder, and the two agree by construction: `CdrOp` is exactly as coarse as
 /// this mapping — `Byte`, `Char` and `UInt8` all lower to `CdrOp::U8` and all
 /// three spelled `"write_u8"`.
@@ -1303,7 +1303,7 @@ pub const CPP_DEFAULT_STRING_CAPACITY: usize = 256;
 pub const CPP_DEFAULT_SEQUENCE_CAPACITY: usize = 64;
 
 /// Get the Rust `#[repr(C)]` type for a field (for C++ FFI glue)
-/// RFC-0068 Stage 3 — the C++ FFI `repr_c_type` (Rust repr(C) mirror) spelling as
+/// RFC-0068 Stage 3 — the C++ FFI `cpp_repr_c_type` (Rust repr(C) mirror) spelling as
 /// a function a pack filter calls (phase-335 step 2). Reproduces
 /// `build_cpp_ffi_field`'s branch. A sequence maps to its generated named struct
 /// `{struct}_{field}_seq_t`; a heap string to the shared pointer-trio; otherwise
@@ -1337,7 +1337,7 @@ pub fn cpp_repr_c_type_spelling(
 }
 
 /// RFC-0068 Stage 3 — the `{Msg}ViewRepr` field type: borrowed → the shared
-/// `nros_cpp_borrow_t`, else the owned `repr_c_type` (companion to
+/// `nros_cpp_borrow_t`, else the owned `cpp_repr_c_type` (companion to
 /// [`cpp_repr_c_type_spelling`]).
 #[allow(clippy::too_many_arguments)]
 pub fn cpp_view_repr_type_spelling(
@@ -1572,7 +1572,7 @@ pub fn cpp_type_spelling(
     }
 }
 
-/// RFC-0068 Stage 3 — the C++ header `array_suffix` (companion to
+/// RFC-0068 Stage 3 — the C++ header `cpp_array_suffix` (companion to
 /// [`cpp_type_spelling`]); empty for a borrowed field.
 pub fn cpp_array_suffix_spelling(field_type: &FieldType, is_view: bool) -> String {
     if is_view {
@@ -1610,7 +1610,7 @@ pub fn compute_serialized_size_max(fields: &[super::templates::CppFfiField]) -> 
         } else if field.is_string {
             // String: 4 (len) + capacity + 1 (null) + 3 (pad). phase-335 step 2 —
             // read the resolved `string_capacity` directly (it equals the `[u8; N]`
-            // this used to parse out of the now-filter-composed `repr_c_type`; a
+            // this used to parse out of the now-filter-composed `cpp_repr_c_type`; a
             // heap string carries the default, matching the old `else` branch).
             size += 4 + field.string_capacity + 1 + 3;
         } else if field.is_array {

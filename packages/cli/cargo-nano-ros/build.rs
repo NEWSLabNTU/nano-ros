@@ -3,7 +3,7 @@
 //! RFC-0071: a backend declares itself in `nros-rmw.toml`; nothing central
 //! enumerates backends. This build script globs the in-tree descriptors and
 //! emits the table `rmw_resolver.rs` used to hold as a hand-written `match`
-//! (`KNOWN_RMW`, `canonical_rmw`, `resolve_rmw`).
+//! (~~`KNOWN_RMW`~~, `canonical_rmw`, `resolve_rmw`).
 //!
 //! Compile-time rather than runtime on purpose:
 //!

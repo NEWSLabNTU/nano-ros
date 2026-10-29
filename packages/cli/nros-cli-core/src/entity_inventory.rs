@@ -169,9 +169,9 @@ use crate::queue_depth::{
 ///
 /// **5** (phase-454 W3, issue 1256): the OTHER THREE QoS policies. The contract
 /// has been able to state `reliability`, `durability` and `history` per endpoint
-/// for four phases; `depth_of` read the depth and dropped them. They now travel
+/// for four phases; ~~`depth_of`~~ read the depth and dropped them. They now travel
 /// as `NROS_ENTITY_DECLARED_{RELIABILITY,DURABILITY,HISTORY}[_PUBLISHER]` with
-/// per-kind undeclared counts and their own `_QOS_POLICY_STATUS`. Bumps for the
+/// per-kind undeclared counts and their own _QOS_POLICY_STATUS. Bumps for the
 /// familiar reason -- absence of a list in a version-4 fragment is an older
 /// CLI's silence, not "no endpoint declared" -- and for a second one that is
 /// NOT merely additive: `NROS_ENTITY_DECLARED_DEPTH_STATUS` can now read
@@ -402,7 +402,7 @@ impl EntityKind {
 /// than assume, on the safe side of its own question.
 ///
 /// They were stated, resolved and dropped for four phases: the contract schema
-/// has carried all four since `QosDecl` existed, `effective_qos` resolves them
+/// has carried all four since `QosDecl` existed, ~~`effective_qos`~~ resolves them
 /// per endpoint into the SystemModel, and `from_model` read `qos.depth` and
 /// nothing else. The one with a live defect behind it is `history`: a
 /// `keep_all` endpoint was priced at whatever `depth` said, which is a silent
@@ -1175,8 +1175,8 @@ impl DeclaredIngress {
 ///
 /// A MEASURED fact, never a knob: no compiler sees it. It enters the budget
 /// derivation (`REST = burst x (10^6/rate_hz - c)`) and the two resolve-time
-/// checks ([`check_rx_ingress`]). RFC-0074 measured `worst_gap = 0.940 ms x
-/// FRAMES + 11.0 ms` on the FreeRTOS mps2-an385 QEMU lane, at ONE payload
+/// checks ([`check_rx_ingress`]). RFC-0074 measured worst_gap = 0.940 ms x
+/// FRAMES + 11.0 ms on the FreeRTOS mps2-an385 QEMU lane, at ONE payload
 /// size; a larger payload almost certainly costs more, so one `c` per board is
 /// an approximation the RFC states and this fact inherits.
 ///
@@ -1526,7 +1526,7 @@ fn floor_by_declaration(model: &[EntityDecl], declared: &[EntityDecl]) -> Vec<En
 /// MIRRORS of the action multipliers in
 /// `nros_node::executor::action`. The CLI cannot depend on `nros-node`, so
 /// these are copies, and `check-infra-queryable-counts` holds each to the
-/// creation calls that decide it. (`cmd::entity_facts` held a second copy of
+/// creation calls that decide it. (~~`cmd::entity_facts`~~ held a second copy of
 /// `ACTION_SERVER_QUERYABLES` until issue 1649 retired the carrier it fed.)
 ///
 /// They exist because a declared action is ONE entity that costs SEVERAL
@@ -1647,7 +1647,7 @@ pub fn model_declares_lifecycle_block(model: &nros_orchestration_ir::overlay::Lo
 
 impl InfraServices {
     /// What a resolved model declares. An unrecognised feature is not one of
-    /// these and is ignored, as `entity_facts` has always done.
+    /// these and is ignored, as ~~`entity_facts`~~ has always done.
     ///
     /// Issue 1688 -- the lifecycle family has TWO spellings in a model, and
     /// this read one of them. `features = ["lifecycle"]` reaches
@@ -1697,7 +1697,7 @@ impl InfraServices {
 
     /// The `[image] infra_families` statement of these two switches -- the
     /// spelling the descriptor carries and both zenoh and XRCE build scripts
-    /// parse (it was the `NROS_DECLARED_INFRA_QUERYABLES` carrier's until
+    /// parse (it was the ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier's until
     /// phase-486). One place spells the four strings: the vocabulary.
     pub fn families(self) -> nros_sizing_descriptor::InfraFamilies {
         nros_sizing_descriptor::InfraFamilies::from_switches(self.param_services, self.lifecycle)
@@ -2015,7 +2015,7 @@ pub struct DerivedEntityKnobs {
     ///   language, which the tier term below covers.
     /// * the C / C++ entry pack creates **one per tier**, through
     ///   `nros_cpp_create_sched_context_from_policy` into `__nros_sc_ids[N]`,
-    ///   where `N` is the resolved tier table's length (`SchedView::n`).
+    ///   where `N` is the resolved tier table's length (~~`SchedView::n`~~).
     ///
     /// So the demand is `1 + <SCs the schedule creates>`: the `1` is slot 0,
     /// which `create_sched_context` reserves for the default Fifo context and
@@ -6024,7 +6024,7 @@ impl EntityInventory {
                 // partitions the table into the runtime's builtin inbox and the
                 // application's, and on the Zephyr resolver road this is the
                 // only carrier of the application's half: the CMake road's
-                // `NROS_DECLARED_SERVICE_SERVERS` (retired by issue 1649 onto
+                // ~~`NROS_DECLARED_SERVICE_SERVERS`~~ (retired by issue 1649 onto
                 // the descriptor) never reached a west build, so the builtin
                 // inbox was sized for a family and allocated zero times.
                 s.push_str(&format!(
@@ -6333,7 +6333,7 @@ fn render_received(what: &str, prose: &str, r: &ReceivedTypes) -> String {
 /// the scope its one consumer already assumed. Two other consumers assumed it
 /// too and narrowed BY HAND: `to_declared_qos_header` filters
 /// `kind == Subscription` before emitting a row (a publisher and a subscription
-/// on one topic would be two rows with one key), and `_nros_qos_depth_env` in
+/// on one topic would be two rows with one key), and ~~`_nros_qos_depth_env`~~ in
 /// `cmake/NanoRosEntityFacts.cmake` takes a MAX over the list to bill a
 /// subscription's receive region. A depth for a kind none of them price
 /// belongs in a variable none of them read.
@@ -6814,7 +6814,7 @@ pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) 
                 // PREPROCESSOR -- and a macro parameter of the caller is not
                 // substituted inside a separately-defined row macro: `#define
                 // ROW(t, tp, d) ... q_type ...` sees `q_type` as an ordinary
-                // identifier, never as `LOOKUP`'s argument. Measured on gcc 15
+                // identifier, never as LOOKUP's argument. Measured on gcc 15
                 // and clang 20: `use of undeclared identifier 'q_type'`. The
                 // query therefore has to travel THROUGH the list, which means
                 // the list takes it.
@@ -8990,7 +8990,7 @@ execution:
             cmake.contains("set(NROS_DERIVED_TL_PUBLISHERS 1)\n"),
             "{cmake}"
         );
-        // The refusal half is `a_silent_publisher_refuses_the_transient_local_count`
+        // The refusal half is ~~`a_silent_publisher_refuses_the_transient_local_count`~~
         // in `from_model_tests`, beside the model it reads.
     }
 
@@ -9938,7 +9938,7 @@ contracts:
     ///
     /// The acceptance, measured rather than asserted by construction: take one
     /// image, read every input `nros-node/build.rs::subs_arena` and
-    /// `_nros_qos_depth_env` use to size the subscription arena, then add a
+    /// ~~`_nros_qos_depth_env`~~ use to size the subscription arena, then add a
     /// publisher depth to the SAME image and read them again. Every one of
     /// them must be byte-identical -- the publisher's declaration is invisible
     /// to the subscription terms, which is the whole point of the split.
@@ -9948,7 +9948,7 @@ contracts:
     /// first failed on exactly that line (1 -> 0, because the publisher that
     /// declared stopped being silent), which is a true statement about the
     /// image and would have been a false input to a subscription price.
-    /// `_nros_qos_depth_env` was the one consumer still guarding on it and now
+    /// ~~`_nros_qos_depth_env`~~ was the one consumer still guarding on it and now
     /// reads `..._SUBSCRIPTION`, so no publisher fact reaches a subscription
     /// number. Adding the broad count back here would re-assert the coupling
     /// this wave removed.
@@ -10685,7 +10685,7 @@ contracts:
     ///
     /// The same acceptance W2 measured, against this wave's addition: take one
     /// image, read every input `nros-node/build.rs::subs_arena` and
-    /// `_nros_qos_depth_env` use to size the subscription arena, then add the
+    /// ~~`_nros_qos_depth_env`~~ use to size the subscription arena, then add the
     /// three policies to the SAME image and read them again. Every line must be
     /// byte-identical.
     ///

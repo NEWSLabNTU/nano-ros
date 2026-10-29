@@ -872,7 +872,7 @@ fn schema_build_json(
         // derivation, so the plan and the build cannot differ about what a
         // board compiles to.
         //
-        // It matters more than a provenance string: `is_hosted_target` below
+        // It matters more than a provenance string: ~~`is_hosted_target`~~ below
         // tests `build.target.contains("linux")` to choose hosted vs bare
         // metal, and `metadata_build` reads it to decide `-Z build-std`. An
         // embedded image falling back to the host default is silently built as
@@ -1505,7 +1505,7 @@ impl CallbackIdLookup {
     }
 }
 
-/// Phase 256 W4.2 — one `sched_binding` per callback. The planner emits no tiers,
+/// Phase 256 W4.2 — one ~~`sched_binding`~~ per callback. The planner emits no tiers,
 /// so every callback binds to the implicit `default_executor` with the pre-172.G
 /// `priority: null` + `source: "source_metadata"` shape. The codegen tools rewrite
 /// these bindings when they resolve tiers from `system.toml`.
@@ -1914,8 +1914,8 @@ fn schema_interfaces(instances: &[Value]) -> Vec<Value> {
 
 /// Phase 172.B — infer callback execution chains from the topic dataflow graph.
 ///
-/// An edge `K1 -> K2` (over topic `T`) exists when `K1`'s instance publishes `T`
-/// and `K2` is the subscriber callback bound to `T`. An instance's *producing*
+/// An edge K1 -> K2 (over topic `T`) exists when K1's instance publishes `T`
+/// and K2 is the subscriber callback bound to `T`. An instance's *producing*
 /// callbacks (its subscriber + timer callbacks — the things that run and may in
 /// turn publish) are the sources of edges out of that instance; the plan does
 /// not record which specific callback publishes which topic, so every producing
@@ -4252,7 +4252,7 @@ mod tests {
     ///
     /// `[image.*]` carries no `target` (RFC-0065 D9), so without this the plan
     /// falls back to the host default and an embedded image is silently
-    /// planned as hosted — `is_hosted_target` tests
+    /// planned as hosted — ~~`is_hosted_target`~~ tests
     /// `build.target.contains("linux")`, and `metadata_build` reads the same
     /// field to decide `-Z build-std`.
     #[test]
@@ -6380,7 +6380,7 @@ topics:
 
     /// Phase 256 W4.2 — the planner emits no tiers: every callback runs on the
     /// implicit `default_executor`, with the `group` name preserved for the codegen
-    /// tools. The `sched_binding` carries the pre-172.G null-priority /
+    /// tools. The ~~`sched_binding`~~ carries the pre-172.G null-priority /
     /// source_metadata fallback shape (the codegen tools rewrite it on tier resolve).
     #[test]
     fn schema_callbacks_and_bindings_default_to_implicit_executor() {

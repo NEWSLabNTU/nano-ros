@@ -44,7 +44,7 @@ use super::board_descriptor::BoardDescriptor;
 ///
 /// `/` separates the hwv2 `<board>/<soc>/<variant>` triple. `@` and `.` are
 /// here for the REVISION form: a revision is spelled `board@1.5` on the command
-/// line and `board_1_5` in the per-revision file names, so a rule that handled
+/// line and board_1_5 in the per-revision file names, so a rule that handled
 /// only `/` would silently look for a file nobody writes.
 pub fn flatten_board_id(id: &str) -> String {
     id.chars()

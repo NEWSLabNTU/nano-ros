@@ -38,7 +38,7 @@ pub struct NrosPlan {
     /// declared `[param_services]` axis lowers this on so the generated entry
     /// carries `nros/param-services` and the runtime registers the services on
     /// the first declared parameter. (It used to be distinguished from a
-    /// `param_persistence` sibling; issue 0080 retired that, so the SERVER is
+    /// ~~`param_persistence`~~ sibling; issue 0080 retired that, so the SERVER is
     /// now the only parameter capability a plan carries.)
     /// Additive; absent ⇒ no server, omitted so plans stay byte-identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -627,8 +627,8 @@ pub struct PlanSchedContext {
 /// Phase 173.5 — physical transport a `[[transport]]` entry selects.
 /// The kind always comes from `nros.toml`; the per-kind value (ip /
 /// baudrate / device) lands wherever that platform's net stack reads it
-/// (board `Config` for `NanoRosOwned`, an RTOS config fragment for
-/// `RtosOwned` — see [`super::generate`] / Phase 173.7).
+/// (board `Config` for ~~`NanoRosOwned`~~, an RTOS config fragment for
+/// ~~`RtosOwned`~~ — see [`super::generate`] / Phase 173.7).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TransportKind {
@@ -772,7 +772,7 @@ pub struct PlanBuildOptions {
     /// *appends* to its computed flags (every zenoh-pico/XRCE/net.c/lwIP
     /// `cc::Build`, no build.rs edit): `debug = true` adds `-g` without disturbing
     /// the opt level → the C-side of the "debug one layer" case. `opt_level` →
-    /// `NROS_CC_OPT` (build scripts that honor it override their hardcoded opt; 204.9).
+    /// ~~`NROS_CC_OPT`~~ (build scripts that honor it override their hardcoded opt; 204.9).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cc: Option<PlanCcOverrides>,
     /// Phase 195.C — workspace root, populated at generate time (NOT part of
@@ -807,7 +807,7 @@ pub struct PlanCargoOverrides {
 }
 
 /// Phase 204.15 (increment 3) — `[build.cc]` per-layer override for the C/C++
-/// toolchain. Applied via `CFLAGS`/`CXXFLAGS` env (cc-rs appends) + `NROS_CC_OPT`,
+/// toolchain. Applied via `CFLAGS`/`CXXFLAGS` env (cc-rs appends) + ~~`NROS_CC_OPT`~~,
 /// so it reaches every `cc::Build` without a build.rs edit.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

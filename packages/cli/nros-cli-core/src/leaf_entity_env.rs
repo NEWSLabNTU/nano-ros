@@ -737,7 +737,7 @@ pub const DERIVED_CLOSURE_ENV_KEYS: &[&str] = &["NROS_SUBSCRIPTION_BUFFER_SIZE"]
 /// count is issue 0460's rule: a count computed here would have to restate
 /// those costs, and a second statement of them is how they drift.
 ///
-/// Until phase-445 W1 this was `NOT_DERIVED_NEEDS_INFRA_COUNT`, and the knob
+/// Until phase-445 W1 this was ~~`NOT_DERIVED_NEEDS_INFRA_COUNT`~~, and the knob
 /// was simply withheld: the inventory this road builds comes from the probe or
 /// a `[[component]] entities` declaration, which cannot see whether the image
 /// carries the parameter and lifecycle service families, so a bare count was
@@ -986,7 +986,7 @@ pub fn manifest_infra(leaf: &Path) -> (bool, bool) {
 /// and the consumer keeps its undeclared budget (both assumed), the large
 /// direction.
 ///
-/// This rode to the consumers as the `NROS_DECLARED_INFRA_QUERYABLES` carrier
+/// This rode to the consumers as the ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier
 /// until phase-486, which retired it onto the leaf's sizing descriptor
 /// (`[image] infra_families`, written from this same function). It is NOT the
 /// descriptor's `[params] store` view (`sizing_descriptor::leaf_store_infra`),
@@ -1007,7 +1007,7 @@ pub fn leaf_infra(
 /// The leaf's resolved SystemModel, or `None` when `nros sync` has not
 /// resolved one.
 ///
-/// phase-454 W12 split this out of the old `leaf_model_facts`: the sizing
+/// phase-454 W12 split this out of the old ~~`leaf_model_facts`~~: the sizing
 /// descriptor needs the MODEL itself (`contract_join` reads its per-endpoint QoS and its
 /// per-node remaps), not the `NROS_DECLARED_*` projection of it. Split rather
 /// than duplicated — the two callers read the file separately, which is fine,

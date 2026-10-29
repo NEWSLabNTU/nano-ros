@@ -73,7 +73,7 @@ pub struct ArtifactNames {
     /// `STD_MSGS__MSG__INT32_H_` (C) / `STD_MSGS_MSG_INT32_HPP` (C++).
     pub include_guard: String,
     /// The prefix every generated constant macro for this type carries:
-    /// `std_msgs__msg__Int32` (C, then `__<CONST>`) / `STD_MSGS_MSG_INT32`.
+    /// `std_msgs__msg__Int32` (C, then `__<CONST>`) / STD_MSGS_MSG_INT32.
     pub constant_prefix: String,
     /// `int32.h` (C, under `<pkg>/msg/`) / `std_msgs_msg_int32.hpp`.
     pub header: String,

@@ -35,7 +35,7 @@ pub struct Capability {
     /// BOARD crate carries (target 3). `None` ⇒ the axis is entry-umbrella-only
     /// (no backend wire behaviour), e.g. `param_services`.
     pub backend_feature: Option<&'static str>,
-    // phase-347 W4 — `backends_supporting: &["zenoh"]` USED TO LIVE HERE. A
+    // phase-347 W4 — ~~`backends_supporting: &["zenoh"]`~~ USED TO LIVE HERE. A
     // central registry listing which backends support a capability is core
     // naming backends (RFC-0071), and it made offering `safety` from a
     // third-party backend impossible without editing this file. The relation is

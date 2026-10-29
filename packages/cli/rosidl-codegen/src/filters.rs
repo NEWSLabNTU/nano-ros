@@ -137,7 +137,7 @@ pub struct FilterSet {
     pub register: fn(&mut Environment<'_>),
 }
 
-/// The one filter that belongs to no language: the ROS `CamelCase` ->
+/// The one filter that belongs to no language: the ROS CamelCase ->
 /// `snake_case` naming convention, shared by the C, C++ and Rust surfaces.
 const NEUTRAL: FilterSet = FilterSet {
     language: None,

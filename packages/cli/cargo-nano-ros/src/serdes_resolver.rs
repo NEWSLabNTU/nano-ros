@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn the_build_script_xml_reader_ignores_commented_out_announcements() {
         // The real parser asserts this too
-        // (`package_xml::tests::commented_out_provision_is_ignored`); the two
+        // (`package_xml::tests::commented_out_provision_is_not_a_provision`); the two
         // must agree, which is the point of the cross-check test above.
         let xml = r#"<export>
   <!-- <nano_ros_provides kind="serdes" name="ghost"/> -->

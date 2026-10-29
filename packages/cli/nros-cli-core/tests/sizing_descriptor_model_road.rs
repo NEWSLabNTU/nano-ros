@@ -481,8 +481,8 @@ fn scratch(name: &str) -> PathBuf {
 
 /// phase-486 W9 -- an image whose model describes NO wiring states the two
 /// facts its retired carriers used to send: `[image] model_nodes`
-/// (`NROS_DECLARED_NODES`) and, given the closure's bound tables,
-/// `[types] max_wire_bound_bytes` (`NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`).
+/// (~~`NROS_DECLARED_NODES`~~) and, given the closure's bound tables,
+/// `[types] max_wire_bound_bytes` (~~`NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`~~).
 ///
 /// Both are MODEL facts, so the unwired file must state what the wired one
 /// states for the same model: the same node count and the same closure maximum.
@@ -533,7 +533,7 @@ fn an_unwired_image_states_the_retired_carriers_facts_as_the_wired_road_does() {
     assert_eq!(with_tables.desc.image.model_nodes().stated(), Some(&nodes));
     assert_eq!(wired.desc.image.model_nodes().stated(), Some(&nodes));
     // phase-486 -- and the service families, the retired
-    // `NROS_DECLARED_INFRA_QUERYABLES` carrier's fact, the same on both.
+    // ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier's fact, the same on both.
     let families = infra.families();
     assert_eq!(
         with_tables.desc.image.infra_families().stated(),

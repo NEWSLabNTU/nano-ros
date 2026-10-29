@@ -1042,7 +1042,7 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
     // 3. Read the board's provisioning contract.
     //
     //    RFC-0064 R5 D6 — from the DESCRIPTOR, resolved through the board
-    //    catalog by name. It used to come from `load_provisioning_contract`,
+    //    catalog by name. It used to come from ~~`load_provisioning_contract`~~,
     //    which read `[package.metadata.nros.board]` if a Cargo.toml carried one
     //    and fell back to parsing `board.cmake`: two faces of the same facts,
     //    one of which had zero producers in the whole tree.

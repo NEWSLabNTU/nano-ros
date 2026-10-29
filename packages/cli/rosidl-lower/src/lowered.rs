@@ -162,7 +162,7 @@ pub struct LoweredField {
     // No `align` and no `plain` here, deliberately (issue 1422). Both existed
     // only to feed `LoweredType::plain`, "POD-blit eligible", which no renderer,
     // inventory carrier, cmake variable or gate ever read; `align` was a
-    // `NESTED_ALIGN_STANDIN` for every nested field, so it was not a per-target
+    // ~~`NESTED_ALIGN_STANDIN`~~ for every nested field, so it was not a per-target
     // answer anyone could have used. A surface that needs a real alignment needs
     // a real per-target one. The tree's ONE fixed-layout predicate is
     // `nros_serdes::size::SizeBound::plain` — see that field's note for why a
@@ -295,7 +295,7 @@ pub struct LoweredType {
 /// Lower a resolved message under the capacity `config`.
 ///
 /// Target-agnostic: nothing here depends on pointer width or enum width, and
-/// phase-432 W1.1 removed the `TargetProfile` that suggested otherwise. Layout
+/// phase-432 W1.1 removed the ~~`TargetProfile`~~ that suggested otherwise. Layout
 /// is the target compiler's to decide; where two languages must AGREE on a
 /// representation, the generated source pins it (RFC-0091 §5).
 pub fn lower(resolved: &ResolvedMessage, config: &CapacityResolver) -> LoweredType {
@@ -401,7 +401,7 @@ fn lower_field(
 /// The CDR op of an array/sequence element, or `None` when the element is a
 /// nested struct (which has no single op).
 ///
-/// Was `element_facts`, returning an alignment and a plainness flag beside the
+/// Was ~~`element_facts`~~, returning an alignment and a plainness flag beside the
 /// op; issue 1422 removed both from the IR, so the op is all that is left.
 fn element_op_of(elem: &FieldType) -> Option<CdrOp> {
     match elem {
@@ -503,10 +503,10 @@ string<=8    str_bounded
         );
     }
 
-    /// phase-432 W1.1 — the negative control for deleting `TargetProfile`,
+    /// phase-432 W1.1 — the negative control for deleting ~~`TargetProfile`~~,
     /// narrowed by issue 1422 to what is left to hold.
     ///
-    /// Its ancestor `same_resolved_message_lowers_differently_per_target`
+    /// Its ancestor ~~`same_resolved_message_lowers_differently_per_target`~~
     /// asserted that a nested field's `align` was 8 on host and 4 on arm-eabi,
     /// which is why that profile READ as target-critical; W1.1 replaced it with
     /// "align cannot change an outcome here", because `align` fed only
@@ -681,7 +681,7 @@ string<=8    str_bounded
     /// Issue 1422 — `lower` carries the fields and the Resolve facts, and no
     /// layout claim of its own.
     ///
-    /// This replaces `struct_not_plain_when_mixed_alignment_or_strings`, which
+    /// This replaces ~~`struct_not_plain_when_mixed_alignment_or_strings`~~, which
     /// asserted `LoweredType::plain` over three shapes. That flag and the
     /// per-field `align`/`plain` it was computed from had no reader anywhere —
     /// and, measured against the tree's ONE fixed-layout predicate

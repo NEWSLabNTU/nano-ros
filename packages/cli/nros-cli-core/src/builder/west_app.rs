@@ -258,7 +258,7 @@ pub struct CmakeApp {
     /// tokens and an unknown one falls through to the HOST default, which emits
     /// `int main(int, char**)` where the Zephyr kernel declares
     /// `extern int main(void)`. The hand-written files all say `zephyr` and
-    /// `zephyr_cyclonedds_entry`'s header records the measurement.
+    /// ~~`zephyr_cyclonedds_entry`~~'s header records the measurement.
     pub deploy: String,
     /// `PANIC` — RFC-0077 policy, when the image declares one.
     pub panic: Option<String>,
@@ -311,7 +311,7 @@ fn declares_feature(dir: &Path, feature: &str) -> bool {
 /// A cmake `project()` identifier for this image.
 ///
 /// The hand-written applications spell it by hand
-/// (`nros_zephyr_workspace_entry_rs`, `nros_zephyr_ws_qos_entry_rs`, …), which
+/// (~~`nros_zephyr_workspace_entry_rs`~~, ~~`nros_zephyr_ws_qos_entry_rs`~~, …), which
 /// is a name nobody reads and no two of them agree on. Derived from the two
 /// things that actually identify the application — the workspace directory and
 /// the image — so it is unique across a west build root, which is the only
@@ -924,7 +924,7 @@ mod tests {
 
     /// phase-461 W6 -- the `params` axis states the STORE, as a seed does,
     /// and leaves the services' symbol `n`: that is what makes nros-params
-    /// reserve no service sets (`PARAM_SERVICES_SERVED`).
+    /// reserve no service sets (`NROS_CAPABILITY_PARAM_SERVICES`).
     #[test]
     fn the_params_axis_states_the_store_and_not_the_services() {
         let s = render_cmakelists(&WestApp {

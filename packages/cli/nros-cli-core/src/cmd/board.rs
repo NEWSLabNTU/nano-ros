@@ -218,7 +218,7 @@ struct BoardInfo {
 
 /// Resolve `name` to its descriptor through the board CATALOG.
 ///
-/// Not by a path convention. `locate_board_crate` below still exists for the
+/// Not by a path convention. `resolve` below still exists for the
 /// consumers that need a directory, but resolution by NAME must go through the
 /// catalog, or `nros board info <alias>` and a build of the same alias answer
 /// differently — which is what a board resolving only as an alias on another

@@ -109,7 +109,7 @@ fn listed(head: &str, files: &[String]) -> String {
 
 /// One sentence per stamp input that moved, naming the input and what to do.
 ///
-/// Every arm is tagged `ATTRIBUTES:` because that tag is what
+/// Every arm is tagged "ATTRIBUTES:" because that tag is what
 /// `check-stale-cli-attribution` joins against `source_stamp::STAMP_INPUTS`, in
 /// both directions: a stamp input with no arm is a refusal that has to guess,
 /// and an arm naming no input is a rule about something that stopped existing.

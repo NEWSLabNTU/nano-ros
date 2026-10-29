@@ -227,7 +227,7 @@ pub enum BoundState {
 /// precisely why the pad now reaches the buffer sizing instead of being absorbed
 /// by a re-encode.
 ///
-/// This is deliberately NOT folded into the type's own bound. `MAX_SERIALIZED_SIZE`
+/// This is deliberately NOT folded into the type's own bound. `<TYPE>_MAX_SERIALIZED_SIZE`
 /// answers "how big is this message", and issue 0964 exists because that number
 /// had been fudged before; the answer stays exact. Framing is a property of the
 /// transport, so it is applied where a RECEIVE BUFFER is sized and nowhere else.

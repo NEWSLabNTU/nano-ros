@@ -618,7 +618,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     ));
 
     // ThreadX: tiers declared, `run_tiers` unavailable — the sched-context
-    // wiring (`create_sched_context_from_policy`, `bind_node_name_sched`,
+    // wiring (`nros_cpp_create_sched_context_from_policy`, `bind_node_name_sched`,
     // `bind_group_sched`) that no other row emits.
     out.push((
         "cpp_threadx_tiers",
@@ -767,7 +767,7 @@ fn render(p: &Plan, emitter: Emitter) -> Result<String, String> {
     }
 }
 
-/// phase-509 P2 -- the ranks the `*Ranked` cases seed: `fast` most urgent.
+/// phase-509 P2 -- the ranks the *Ranked cases seed: `fast` most urgent.
 fn golden_node_ranks() -> Vec<(String, u8)> {
     vec![
         ("/fast".to_string(), 0),
@@ -776,7 +776,7 @@ fn golden_node_ranks() -> Vec<(String, u8)> {
     ]
 }
 
-/// The contract monitor rows every `*Monitored` case renders with — one rate
+/// The contract monitor rows every *Monitored case renders with — one rate
 /// row and one age row per node the monitored plans construct (`talker` /
 /// `listener` single-executor, `ctrl` / `telem` tiered), plus one row for a
 /// node NO plan constructs, which the lowering must drop. The lowering slices
@@ -1148,7 +1148,7 @@ fn sched_call_checks(src: &str) -> ([usize; 3], Vec<String>) {
 /// packs, on every board the C pack renders for.
 ///
 /// issue 1283 left this open: both packs checked
-/// `create_sched_context_from_policy` but discarded the result of the two
+/// `nros_cpp_create_sched_context_from_policy` but discarded the result of the two
 /// `bind_*_sched` calls, so a full binding table still ran the group on the
 /// default sched context, silently — issue 1172's class, one level up from
 /// where 1172 fixed it. Plans: the group split (every board) and, on ThreadX,

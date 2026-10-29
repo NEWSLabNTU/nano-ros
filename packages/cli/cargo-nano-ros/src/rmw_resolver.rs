@@ -141,7 +141,7 @@ impl std::error::Error for UnknownRmw {}
 /// delegates here so there is one source of truth for RMW name recognition.
 /// Does `backend`'s descriptor declare `capability`?
 ///
-/// phase-347 W4 — the inverse of the old `Capability::backends_supporting`
+/// phase-347 W4 — the inverse of the old ~~`Capability::backends_supporting`~~
 /// list. The backend declares what it offers in `[rmw.capabilities]`; nothing
 /// central enumerates the pairing, so a third-party backend can offer a
 /// capability nano-ros has never heard of.
@@ -154,7 +154,7 @@ pub fn backend_declares_capability(backend: &str, capability: &str) -> bool {
 
 /// Every backend whose descriptor declares `capability`, canonical names.
 ///
-/// phase-347 W4 — replaces `Capability::backends_supporting`, whose only
+/// phase-347 W4 — replaces ~~`Capability::backends_supporting`~~, whose only
 /// consumer was a diagnostic listing "which backends carry this". Derived, so
 /// the message cannot go stale the way the list did.
 pub fn backends_declaring(capability: &str) -> Vec<&'static str> {

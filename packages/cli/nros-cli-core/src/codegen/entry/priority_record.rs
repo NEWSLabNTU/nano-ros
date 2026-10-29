@@ -399,7 +399,7 @@ fn write_if_changed(path: &Path, text: &str) -> Result<()> {
     std::fs::write(path, text).wrap_err_with(|| format!("write `{}`", path.display()))
 }
 
-/// `pool.app` -> `POOL_APP`: upper case, every other character `_`.
+/// `pool.app` -> POOL_APP: upper case, every other character `_`.
 fn macro_name(s: &str) -> String {
     s.chars()
         .map(|c| {
