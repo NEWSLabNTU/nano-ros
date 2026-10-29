@@ -297,6 +297,7 @@ install it yet
 ([issue 2151](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2151-zephyr-rust-target-not-provisioned.md)):
 
 ```bash probe=40 variant=native-sim-rust
+. "$HOME/.cargo/env"     # the rustup `nros setup` installed (Installation)
 rustup target add x86_64-unknown-none
 export NROS_ZEPHYR_WORKSPACE="$PWD"
 cd ..
