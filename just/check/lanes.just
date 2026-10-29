@@ -1448,6 +1448,9 @@ cpp: cpp-fmt
     # issue 2023 -- the `param-services` shape `parameter_events_runtime` links;
     # derived here, before the export below, for the same reason as the two above.
     pe_dir="$(nros_scoped_target_dir check-cpp-param-services)"
+    # issue 2123 -- the `bridge` shape (`rclc_init_multi`) the C probe links;
+    # derived here, before the export below, for the same reason as the three above.
+    br_dir="$(nros_scoped_target_dir check-cpp-bridge)"
     gen="$(nros_scoped_target_dir check-cpp)"
     export CARGO_TARGET_DIR="$gen"
     # issue 1852 — the per-build header dirs, ASKED, never joined by hand.
@@ -2430,6 +2433,36 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/init_multi_session_properties_runtime
+    # issue 2123 -- the C reader of the same rows: `rclc_init_multi`, which
+    # lives in `nros-bridge` and reaches a C or C++ binary only through
+    # `nros-cpp`'s `bridge` feature, so it needs its own archive shape in its
+    # own target dir (one dir per feature shape, as the `param-services` build
+    # below). Same three cases as the C++ probe, compiled as C by `cc`.
+    # Negative controls, measured: the spec's rows dropped
+    # (`.properties(&[])`) -> 5 failures; every spec handed the FIRST spec's
+    # rows (`&props[0]`) -> 3 failures.
+    test -f packages/api/nros-cpp/tests/compile/rclc_init_multi_session_properties_runtime.c || { \
+        echo "ERROR: rclc_init_multi_session_properties_runtime.c is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - rclc_init_multi gives each session its own RMW properties (runtime, issue 2123)"
+    CARGO_TARGET_DIR="$br_dir" \
+        nros_cargo_placed "$br_dir/placed" nros-cpp nros-c -- build -p nros-cpp \
+        --no-default-features --features "{{C_API_SHIPPED_FEATURES}},bridge" --quiet
+    # profile-literal-ok: unprofiled: a plain `cargo build`, so `<dir>/debug/` IS
+    # its derived output dir.
+    br_lib="$br_dir/debug/libnros_cpp.a"
+    cc -std=c11 -Wall -Wextra -Werror \
+        -I"$(nros_locate_artifact c-include --placed-dir "$br_dir/placed")" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/rclc_init_multi_session_properties_runtime \
+        packages/api/nros-cpp/tests/compile/rclc_init_multi_session_properties_runtime.c \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$br_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/rclc_init_multi_session_properties_runtime
     # issue 2023 — a served C++ node PUBLISHES `/parameter_events`: the
     # start-up event, then one frame per set / declare / undeclare, each naming
     # the node's FQN, read back from the stub's last published payload. Needs a

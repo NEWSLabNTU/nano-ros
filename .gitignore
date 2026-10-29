@@ -141,6 +141,8 @@ nros-sdk.lock
 /target-check-cpp-cyclone-embedded/
 # Issue 2023 -- nros-cpp with param-services, for parameter_events_runtime.
 /target-check-cpp-param-services/
+# Issue 2123 -- nros-cpp with bridge, for rclc_init_multi_session_properties_runtime.
+/target-check-cpp-bridge/
 
 # Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed
 examples/**/target-*/
