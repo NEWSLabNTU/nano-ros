@@ -1045,6 +1045,23 @@ build a project pinned to an older release, and the book (W2) should name the
 file. `nros new` does not write it, by D9's design (pin on first BUILD, not on
 scaffold), which this phase keeps.
 
+**Done (2026-10-30): the evidence.** `just probe pinned` (track `installed`,
+variant `pinned`; a `probe-platforms.yml` matrix row) runs installation.md's
+"Pinning a version" blocks in a container with no checkout: the probe's own
+asset is installed, a project writes `nros-toolchain.toml` pinning
+`0.6.0-nros4`, and inside it `nros toolchain manifest` answers from
+`sdk/nros/0.6.0-nros4/` (the launcher fetched that release through its own
+`install.sh`); then `nros new --workspace`, `nros setup linux`, `nros sync` and
+`nros build` run under the pin. `verify-installed-pinned.sh` checks that the pin
+file is unchanged, the pinned toolchain still answers, the global front is the
+newest installed release (install.sh's rule, not "the one just fetched"), and no
+nano-ros checkout reached the host. Green on run 40928169451. One difference
+from W16's wording: the installed CLI here is the probe build (`0.0.0-probe`),
+which sorts BELOW the pin, so this proves "a project pinned to a release other
+than the installed one builds with the pinned one". The "newer CLI installed"
+shape needs the W16 release; it is the same track with only the installed
+asset changed.
+
 ### Decisions on the open "Left" items (maintainer, 2026-10-29)
 
 The work items above landed; each carries a **Left** list. The maintainer
