@@ -79,11 +79,15 @@ unsafe extern "C" {
 }
 
 /// The leading fields of the shim's `xrce_subscriber_state` (`internal.h`):
-/// the session it belongs to, then the slot it claimed. Read only to compare
-/// slot ADDRESSES — two live subscriptions on one slot is the 1711 race.
+/// the session it belongs to, the profile's deadline (issue 2108), then the
+/// slot it claimed. Read only to compare slot ADDRESSES — two live
+/// subscriptions on one slot is the 1711 race. A field inserted ahead of
+/// `slot` in the C struct must be mirrored here, or every subscription reads
+/// the same neighbouring field and the test reports a shared slot (issue 2142).
 #[repr(C)]
 struct SubscriberStatePrefix {
     _session_state: *mut c_void,
+    _qos_deadline_ms: u32,
     slot: *mut c_void,
 }
 
