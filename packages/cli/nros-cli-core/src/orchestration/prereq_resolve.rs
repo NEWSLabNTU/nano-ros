@@ -32,7 +32,7 @@
 //! says so in its own doc ("Includes names that are not workspace packages
 //! (`std_msgs`); ordering ignores those rather than failing"). The first run of
 //! this resolver over the tree found three `<exec_depend>` entries naming
-//! packages that DO NOT EXIST — `reliable_talker_pkg`, `qos_listener_pkg`,
+//! packages that DO NOT EXIST — ~~`reliable_talker_pkg`~~, ~~`qos_listener_pkg`~~,
 //! `param_talker_pkg`, stale since a rename — in workspaces that build green.
 //! Nothing had ever looked.
 //!

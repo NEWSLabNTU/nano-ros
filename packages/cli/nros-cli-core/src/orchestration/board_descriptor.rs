@@ -176,7 +176,7 @@ impl PlatformKind {
     /// [`executor_sizing::board_honors_entry_sizing`](nros_orchestration_ir::executor_sizing::board_honors_entry_sizing),
     /// which answers the same question in the entry board-KEY namespace. Both
     /// route to [`BoardFamily::honors_entry_sizing`], so the two namespaces
-    /// cannot disagree about one fact; `board_key_and_platform_kind_agree`
+    /// cannot disagree about one fact; ~~`board_key_and_platform_kind_agree`~~
     /// (in `model_ingest`) holds them together over every board key.
     pub fn honors_entry_sizing(self) -> bool {
         self.board_family()
@@ -228,7 +228,7 @@ pub enum EntryKind {
     ZephyrStaticlib,
 }
 
-// phase-351 W6 — `NetStack` (`rtos-owned` / `nanoros-owned`) is GONE. It was
+// phase-351 W6 — ~~`NetStack`~~ (`rtos-owned` / `nanoros-owned`) is GONE. It was
 // parsed and never read from the day it was added, and it answered the wrong
 // question: "who brings up NIC+IP", not "which stack", so nothing could act on
 // it. `supported_netstacks` (W4) answers the question consumers actually ask
@@ -325,8 +325,8 @@ pub struct BoardCapabilities {
     /// Board provides atomic load/store. Drives `NROS_PLATFORM_HAS_ATOMICS`.
     #[serde(default)]
     pub atomics: bool,
-    /// Board has threads + a mutex. Drives `NROS_FEATURE_THREADS` /
-    /// `NROS_PLATFORM_HAS_MUTEX`.
+    /// Board has threads + a mutex. Drives ~~`NROS_FEATURE_THREADS`~~ /
+    /// ~~`NROS_PLATFORM_HAS_MUTEX`~~.
     #[serde(default)]
     pub threads: bool,
 }
@@ -357,7 +357,7 @@ impl BoardCapabilities {
     }
 }
 
-/// One board profile. Mirrors the old hardcoded `PlatformProfile` +
+/// One board profile. Mirrors the old hardcoded ~~`PlatformProfile`~~ +
 /// `BoardEntry`, but every field is owned data read from `nros-board.toml`.
 /// RFC-0049 promised this: "Unknown keys fail loud with the valid-key list
 /// (`deny_unknown_fields`, the RFC-0033 precedent)" (RFC-0049 §"Schema"). It
@@ -1012,7 +1012,7 @@ impl BoardFile {
 
 /// `platform = "orin-spe"` is refused by name rather than left to serde's
 /// "unknown variant" list. The Orin SPE is a BOARD over FreeRTOS (NVIDIA's
-/// FSP kernel), never a platform of its own (RFC-0064): the `OrinSpe` kind it
+/// FSP kernel), never a platform of its own (RFC-0064): the ~~`OrinSpe`~~ kind it
 /// replaced built such a descriptor as bare-metal. Phase-418 is deferred.
 const RETIRED_ORIN_SPE_PLATFORM: &str = "`platform = \"orin-spe\"` is not a platform: the Orin SPE \
      runs FreeRTOS (NVIDIA's FSP), so its descriptor states `platform = \"freertos\"`. \
@@ -2999,7 +2999,7 @@ entry_kind = "zephyr-staticlib"
     /// phase-418 (deferred) — `orin-spe` is no platform kind: the SPE is a
     /// board over FreeRTOS. A descriptor naming it is refused with the
     /// platform it should state, instead of being built as bare-metal (what
-    /// the retired `OrinSpe` kind did).
+    /// the retired ~~`OrinSpe`~~ kind did).
     #[test]
     fn orin_spe_platform_is_refused_naming_freertos() {
         let err = BoardFile::parse(

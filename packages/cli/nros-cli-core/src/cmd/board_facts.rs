@@ -301,7 +301,7 @@ fn resolve_one(
     Ok(out)
 }
 
-/// `freertos_plus_tcp` / `nuttx-apps` → `FREERTOS_PLUS_TCP` / `NUTTX_APPS`.
+/// `freertos_plus_tcp` / `nuttx-apps` → FREERTOS_PLUS_TCP / NUTTX_APPS.
 fn env_key(name: &str) -> String {
     name.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })

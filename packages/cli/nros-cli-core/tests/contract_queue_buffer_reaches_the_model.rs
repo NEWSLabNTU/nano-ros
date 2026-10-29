@@ -159,7 +159,7 @@ fn the_model_carries_the_buffer_discipline() {
 /// what survives is a `node_paths` entry with `output` AND the trigger in the
 /// `sched` crate's adjacent `kind`/`value` shape. `from_model` still recovers
 /// the rate from what the timer PUBLISHES (the convention
-/// `mapper_input::pub_rate_hz` used); reading it from here is issue 1339's
+/// ~~`mapper_input::pub_rate_hz`~~ used); reading it from here is issue 1339's
 /// consumer half, and phase-495 W2 retires the convention on the mapper side.
 #[test]
 fn the_model_carries_a_paths_trigger_rate() {

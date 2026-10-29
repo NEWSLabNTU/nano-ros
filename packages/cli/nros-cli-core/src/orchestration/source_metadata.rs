@@ -66,7 +66,7 @@ pub struct SourceNode {
     /// sidecar emitted before these existed must still parse. An empty vector
     /// from an OLD sidecar is indistinguishable from a component that genuinely
     /// has no clients, which is why the consumer keys on the sidecar's presence
-    /// rather than on the count being zero — see `entity_facts`.
+    /// rather than on the count being zero — see ~~`entity_facts`~~.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub action_clients: Vec<SourceClient>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

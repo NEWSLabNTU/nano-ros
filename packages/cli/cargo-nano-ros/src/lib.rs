@@ -37,7 +37,7 @@ pub mod atomic_file;
 pub mod cache;
 pub mod capability_resolver;
 pub mod config_patcher;
-// Phase 212.K.7.1 — `cyclonedds_emit` (msg-crate-side cyclonedds
+// Phase 212.K.7.1 — ~~`cyclonedds_emit`~~ (msg-crate-side cyclonedds
 // feature + descriptor build.rs) is retired. Generated msg crates are
 // RMW-agnostic; cyclonedds type registration happens at runtime
 // inside `nros-rmw-cyclonedds` via the `nros-serdes` schema API
@@ -286,7 +286,7 @@ pub struct GenerateConfig {
     pub verbose: bool,
     /// ROS 2 edition for type hash format ("humble" or "iron")
     pub ros_edition: String,
-    /// Package name remap: `old_pkg_name → new_crate_name`.
+    /// Package name remap: old_pkg_name → new_crate_name.
     ///
     /// Renames the generated crate, its directory, cross-package `use` references,
     /// and Cargo.toml dependency names. Used by nano-ros to generate

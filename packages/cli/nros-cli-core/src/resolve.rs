@@ -1111,7 +1111,7 @@ mod tests {
     /// single answer" only if the projection a build actually reads says the
     /// same thing. Written as an identity over `value_rows()` rather than a
     /// hand-listed pairing, so a knob added to one transport and not the other
-    /// reds this instead of drifting quietly (the `NROS_DERIVED_NROS_MAX_*`
+    /// reds this instead of drifting quietly (the ~~`NROS_DERIVED_NROS_MAX_*`~~
     /// class, which cmake resolves to EMPTY rather than to an error).
     /// phase-496 W1 -- the monitor rows, which only a model states, travel
     /// on BOTH transports with the same numbers: the island's 14 rate rows and

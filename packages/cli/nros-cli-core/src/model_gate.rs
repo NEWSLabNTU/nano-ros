@@ -554,7 +554,7 @@ pub fn infer_bringup_dir(model: &Path) -> Option<PathBuf> {
     candidates.into_iter().find(|c| is_bringup(c))
 }
 
-/// `YYYYMMDDTHHMMSSZ` from the system clock; no date crate for one stamp.
+/// YYYYMMDDTHHMMSSZ from the system clock; no date crate for one stamp.
 fn utc_stamp() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

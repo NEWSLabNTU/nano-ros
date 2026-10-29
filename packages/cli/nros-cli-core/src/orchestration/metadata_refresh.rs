@@ -839,7 +839,7 @@ pub fn fresh_probe_rows(
 /// (the planner, model ingest, `nros metadata`) — globs `*.json` in it. So a
 /// rename left the old component's sidecar behind and the next sync composed
 /// it into the image: measured on `bins/in-place-subscriptions` after
-/// `five_listener` → `eight_listener`, 13 subscription rows for an image
+/// ~~`five_listener`~~ → `eight_listener`, 13 subscription rows for an image
 /// registering 8, and `ARENA_SIZE = 162,936` where the image needs 10,240.
 ///
 /// Pruned here, at the one writer, rather than filtered at four readers: the
@@ -950,7 +950,7 @@ fn unprobeable_marker(sidecar: &Path) -> PathBuf {
 
 /// Has this component's probe already failed, at this exact key?
 ///
-/// Issue 1578 retired `unprobeable_key` (the package digest plus the CLI stamp,
+/// Issue 1578 retired ~~`unprobeable_key`~~ (the package digest plus the CLI stamp,
 /// C/C++ only) into [`probe_inputs_key`], which every freshness decision now
 /// shares. Its reason survives inside that function: a NEGATIVE marker keyed
 /// on less than what could fix the probe hides a repair. What changed is that

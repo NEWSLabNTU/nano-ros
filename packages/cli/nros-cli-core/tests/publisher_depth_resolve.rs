@@ -5,7 +5,7 @@
 //! pinned `nros-launch-resolve` over a launch file and its provider-sidecar
 //! contract, exactly as `nros sync` would. Both halves have to work for the
 //! declaration to reach the build, and only one of them was ever broken --
-//! `pub_contract` in the resolver has carried publisher QoS all along, and
+//! ~~`pub_contract`~~ in the resolver has carried publisher QoS all along, and
 //! `from_model` dropped it on arrival.
 //!
 //! The fixture states a depth on one publisher and one subscriber and leaves

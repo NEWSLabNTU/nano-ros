@@ -460,7 +460,7 @@ pub fn generate_package(
     // * `build.rs` — prints the same document as `cargo:` metadata;
     // * `links = "nros_msgs_<pkg>"` in the manifest — which is what makes cargo
     //   hand that metadata to a DEPENDENT's build script, as
-    //   `DEP_NROS_MSGS_<PKG>_BOUNDS_JSON`.
+    //   DEP_NROS_MSGS_<PKG>_BOUNDS_JSON.
     //
     // That is the channel `nros-c`'s build script already reads
     // `DEP_NROS_NODE_MAX_CBS` / `DEP_NROS_NODE_RX_BUF_SIZE` on. A message crate
@@ -800,7 +800,7 @@ fn generate_cargo_toml(
     // declare `version = "*"`, so the constant costs nothing at resolution time.
     // phase-403 W6 — `links` is declared here purely as cargo's METADATA
     // channel: it is what makes the `cargo:` lines this crate's `build.rs`
-    // prints reach a dependent's build script as `DEP_NROS_MSGS_<PKG>_*`. No
+    // prints reach a dependent's build script as DEP_NROS_MSGS_<PKG>_*. No
     // native library is linked. `nros-node` uses `links = "nros_node"` the same
     // way, and `nros-c` reads `DEP_NROS_NODE_RX_BUF_SIZE` off it.
     //

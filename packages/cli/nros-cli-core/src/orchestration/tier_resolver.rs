@@ -218,7 +218,7 @@ fn metadata_doc_paths(ws_root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// A `build` / `build-board` / `build_native` style directory. Name-based
+/// A `build` / `build-board` / build_native style directory. Name-based
 /// because that is the only thing that distinguishes a build tree before it is
 /// opened, and opening every directory is the cost this bound exists to avoid.
 fn is_build_dir(p: &Path) -> bool {

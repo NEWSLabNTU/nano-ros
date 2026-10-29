@@ -1296,7 +1296,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                             // The SAME candidate search the Rust entry uses:
                             // DEPLOY is what the macro looks up, and an image is
                             // not always named after a board.
-                            // The BOARD, verbatim — not `macro_deploy_token`.
+                            // The BOARD, verbatim — not ~~`macro_deploy_token`~~.
                             //
                             // That function answers for the RUST macro's board
                             // table, which is keyed on tokens like `freertos`
@@ -3852,7 +3852,7 @@ pub(crate) fn registry_patches_from(
 /// the same derivation `facade::image_backends` and the MACRO's `bridge_rmws`
 /// both make. The crate name is then read out of the BOARD crate's own
 /// `rmw-<x> = ["dep:<crate>"]` feature rather than from a table here. That is
-/// deliberate: the macro carries its own three-arm `rmw_crate_ident`, and a
+/// deliberate: the macro carries its own three-arm ~~`rmw_crate_ident`~~, and a
 /// fourth copy would be the extra spelling that drifts. The board's answers
 /// agree with the macro's today (`zenoh` → `nros_rmw_zenoh`, `cyclonedds` →
 /// `nros_rmw_cyclonedds_sys`, `xrce` → `nros_rmw_xrce_cffi`), and if one ever
@@ -5217,7 +5217,7 @@ fn cmake_deploy_token(text: &str) -> Option<String> {
 /// so a host provisioned the way `just zephyr setup` provisions today could
 /// not `nros build` a west image (issue 1767 item 7). `NROS_ZEPHYR_WORKSPACE`
 /// is the established spelling — an earlier version of this invented
-/// `NROS_WEST_WORKSPACE`, which would have been one more name for one thing.
+/// NROS_WEST_WORKSPACE, which would have been one more name for one thing.
 fn zephyr_base(root: &std::path::Path, flag: Option<&std::path::Path>) -> Option<PathBuf> {
     let line = zephyr_line(std::env::var("NROS_ZEPHYR_VERSION").ok());
     zephyr_base_with(
@@ -6315,7 +6315,7 @@ mod zephyr_workspace_flag_tests {
 /// things a unit test of a pure function cannot: that clap spells the flags the
 /// way colcon does, and that `plan_builds` actually applies them. This crate
 /// has shipped a lint with four passing unit tests and no production caller
-/// before (`deprecation_wiring_tests`, below), which is why the wiring gets its
+/// before (`selection_wiring_tests`, below), which is why the wiring gets its
 /// own assertions rather than being assumed.
 #[cfg(test)]
 mod selection_wiring_tests {

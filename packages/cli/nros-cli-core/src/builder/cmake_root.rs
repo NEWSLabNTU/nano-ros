@@ -163,7 +163,7 @@ pub fn render(
         // emits the `generated/<pkg>` crate the node packages depend on.
         //
         // The hand-written roots knew this and left these packages out of
-        // `_ws_subdirs` by hand, with a comment saying why; the derivation had
+        // ~~`_ws_subdirs`~~ by hand, with a comment saying why; the derivation had
         // only "has a CMakeLists" and swept them back in. On a host WITH ROS
         // that configures and looks fine, which is why it landed — it fails
         // only where tier 1 is contracted to run, on a host with no ROS.

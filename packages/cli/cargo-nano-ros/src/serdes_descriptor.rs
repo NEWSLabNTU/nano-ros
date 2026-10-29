@@ -171,7 +171,7 @@ pub fn cargo_package_name(text: &str) -> Option<String> {
 ///
 /// The `build.rs` half of the "two readers of one file" note at the top of this
 /// module. Comments are stripped first, because a commented-out announcement is
-/// not an announcement — `package_xml::tests::commented_out_provision_is_ignored`
+/// not an announcement — `package_xml::tests::commented_out_provision_is_not_a_provision`
 /// asserts exactly that of the real parser, and a second reader that disagreed
 /// would announce a name no scan can find.
 #[must_use]

@@ -11,7 +11,7 @@
 //! `ros-launch-manifest-sched::TierDef` (authoring + model schema, both
 //! projects vendor it) and `nros-orchestration-ir::TierDef` (the no_std
 //! resolver input the proc-macro also uses). This module is the ONE
-//! conversion point; `tier_roundtrip_covers_every_field` is the
+//! conversion point; ~~`tier_roundtrip_covers_every_field`~~ is the
 //! mirror-drift guard (issue-0160 lesson, applied cross-repo).
 
 use std::{collections::BTreeMap, path::Path};
@@ -661,7 +661,7 @@ fn count_cyclonedds_registered_types(model: &nros_orchestration_ir::overlay::Loa
     // Issue 1268 — the model names what an ENTRY wires; the six parameter
     // services (and, since issue 1293, the lifecycle family) are the
     // EXECUTOR's, so they are counted from the same feature
-    // predicate `entity_facts` and the queryable counts use, not from a second
+    // predicate ~~`entity_facts`~~ and the queryable counts use, not from a second
     // reading of `execution.features`.
     let infra = crate::entity_inventory::InfraServices::from_model(model, None);
     ty::count_dds_types(model, |_| true) + ty::infra_types(infra.param_services, infra.lifecycle)

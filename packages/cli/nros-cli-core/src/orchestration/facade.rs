@@ -508,7 +508,7 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> R
 /// the selection package exports (RFC-0071 D11, phase-506 W2).
 ///
 /// `nros::main!` used to hold a closed `match` from backend name to crate
-/// (`rmw_crate_ident`, issue 1298), which named three of the four backends.
+/// (~~`rmw_crate_ident`~~, issue 1298), which named three of the four backends.
 /// The call now comes from each backend's own `[rmw.provides.cargo]` statement
 /// and is written here, where the image's backend set is known.
 ///
@@ -676,7 +676,7 @@ fn derive(
     // Emitting it unconditionally is not a silent mistake, it is a hard cargo
     // error that killed the whole zephyr fixture lane:
     //
-    //     package `zephyr_entry_nros_selection` depends on `nros-board-zephyr`
+    //     package zephyr_entry_nros_selection depends on `nros-board-zephyr`
     //     with feature `rmw-zenoh` but `nros-board-zephyr` does not have that
     //     feature. available features: tiers, zephyr-edf
     //

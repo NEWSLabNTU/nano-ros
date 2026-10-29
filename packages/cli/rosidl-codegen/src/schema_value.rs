@@ -3,7 +3,7 @@
 //!
 //! # Why a value and not a second size calculation
 //!
-//! The C headers need a per-type `MAX_SERIALIZED_SIZE`, and the obvious way to
+//! The C headers need a per-type `<TYPE>_MAX_SERIALIZED_SIZE`, and the obvious way to
 //! get one is to walk the rosidl AST adding up field widths. That would be a
 //! SECOND implementation of a rule that already exists in
 //! `nros_serdes::size`, and a serialized-size rule is exactly the kind that

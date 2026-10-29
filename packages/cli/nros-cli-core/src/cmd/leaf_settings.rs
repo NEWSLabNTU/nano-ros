@@ -1179,7 +1179,7 @@ pub fn write_shared(
     // text `nros::main!`'s deploy overlay bakes and a board that boots a C app
     // from its own `main.rs` reads (`nros_board_mps2_an385::Config::from_image`).
     // Resolved against the board descriptor the fact layer above just named.
-    // It replaced `NROS_ENTRY_IP` / `_GATEWAY` / `_NETMASK`.
+    // It replaced ~~`NROS_ENTRY_IP`~~ / `_GATEWAY` / `_NETMASK`.
     if !img.decl.network.net.is_empty() {
         let board_net = match path_env.get("NROS_BOARD_TOML") {
             Some(p) => crate::orchestration::image_net::board_net(p, &img.board)

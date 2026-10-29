@@ -2,8 +2,8 @@
 //! [`LoweredEntry`] a pack renders from.
 //!
 //! phase-494 W2 / RFC-0091 §6b. Until this module the C and C++ emitters each
-//! projected the plan into their OWN view structs (`CEntryView` and four
-//! siblings, `CppEntryView` and six), and a seventh family of shared views
+//! projected the plan into their OWN view structs (~~`CEntryView`~~ and four
+//! siblings, ~~`CppEntryView`~~ and six), and a seventh family of shared views
 //! lived in `mod.rs`. Read side by side they were one projection written
 //! twice — same tier setups, same per-executor index, same rows, binds, boot
 //! config and services — differing only where a language spells something.
@@ -114,8 +114,8 @@ fn node_name(n: &PlanNode) -> &str {
 
 /// The namespace a plan node's entities register under — the ONE derivation.
 ///
-/// Issue 1443 — this had three authored copies (`tier_group_keys`'s `ns_of`,
-/// `sched_view`'s `node_ns`, and `node_binds` inline) and a FOURTH answer
+/// Issue 1443 — this had three authored copies (`tier_group_keys`'s ~~`ns_of`~~,
+/// ~~`sched_view`~~'s `node_ns`, and `node_binds` inline) and a FOURTH answer
 /// spelled as the literal `"/"` in both entry packs' `node_create` call. So a
 /// launch node under `/island` was BOUND to its scheduling context by
 /// `(name, "/island")` and CREATED at `(name, "/")` three lines away — which

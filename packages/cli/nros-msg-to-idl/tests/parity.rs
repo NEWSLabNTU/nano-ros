@@ -15,7 +15,7 @@
 //!
 //! Known divergences flagged by Phase 212.O.7 (NOT fixed here):
 //!
-//! - **Non-ASCII comment bytes** (`KNOWN_DIVERGENCE_NON_ASCII`): the
+//! - **Non-ASCII comment bytes** (KNOWN_DIVERGENCE_NON_ASCII): the
 //!   python passes each `# … <comment>` through
 //!   `s.encode().decode('unicode_escape')`, which re-interprets the
 //!   UTF-8 bytes of any non-ASCII character as separate Latin-1
@@ -28,7 +28,7 @@
 //!   chooses how to reconcile (port `unicode_escape` into Rust, or
 //!   drop the python pass and assert ASCII-only comments upstream).
 //!
-//! Out-of-scope (documented divergences, see `srv_and_action_*` tests):
+//! Out-of-scope (documented divergences, see ~~`srv_and_action_*`~~ tests):
 //!
 //! - `.srv` files: the python script emits a single combined IDL with
 //!   two `module dds_` blocks under one `module srv`. The Rust port

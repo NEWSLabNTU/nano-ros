@@ -654,7 +654,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                  services."
             ),
             // Phase 257 (Stage-3) — the non-typed C/C++ entry (the synthesizing
-            // `EntryNodeRuntime` interpreter) is retired; every C/C++ entry is now
+            // ~~`EntryNodeRuntime`~~ interpreter) is retired; every C/C++ entry is now
             // typed (`--typed`, real executor).
             entry_codegen::Lang::Cpp | entry_codegen::Lang::C => bail!(
                 "non-typed --lang {} entry is retired (phase-257): pass `TYPED` to \
@@ -680,7 +680,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
 /// Refuse a language whose entry pack the generic renderer cannot drive —
 /// BEFORE the metadata is read, the point this verb has always refused it.
 ///
-/// phase-494 — this was `typed_entry_emitter`, an exhaustive `match` from a
+/// phase-494 — this was ~~`typed_entry_emitter`~~, an exhaustive `match` from a
 /// language to one of two Rust emitters. There are no emitters now: a language
 /// is typed-renderable exactly when the pack that declares it renders a
 /// `LoweredEntry` (`context = "lowered-entry"`), so the answer is READ from the

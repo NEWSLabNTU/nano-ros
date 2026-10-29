@@ -207,7 +207,7 @@ pub struct EntityInventoryArgs {
 /// Build the inventory from one parsed metadata document.
 ///
 /// A pure function over the document, with file IO lifted out, for the reason
-/// the retired `facts_from_model` was: a sizing rule verified by reading is how
+/// the retired ~~`facts_from_model`~~ was: a sizing rule verified by reading is how
 /// this campaign's other defects survived.
 fn inventory_from_metadata(source: &str, doc: &MetadataDoc) -> Result<EntityInventory> {
     let mut inv = EntityInventory::new(source);

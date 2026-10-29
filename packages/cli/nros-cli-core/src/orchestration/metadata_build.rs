@@ -5,7 +5,7 @@
 //! against the in-memory `MetadataRecorder` (no transport, no RTOS task), and
 //! serializes the recorder via `to_source_metadata_json`. This is the "compile
 //! each component in a host-side metadata mode and invoke its entry path with a
-//! fake `ComponentContext`" step from the workflow design — the input `nros
+//! fake ~~`ComponentContext`~~" step from the workflow design — the input `nros
 //! metadata` collects + the planner consumes.
 //!
 //! Scope (chosen 2026-05-28): the **driver** only. Hardening this execution
@@ -249,7 +249,7 @@ fn path_tag(p: &Path) -> String {
 /// different component crate). What moves is the cargo target dir, which used to
 /// be `<harness>/target` — a private, full host build of the component and its
 /// whole dependency graph, once per component. Measured 2026-08-12: **108 dirs,
-/// 82.4 GiB**, and 162 of those trees held 312 `libnros_core` rlibs with only
+/// 82.4 GiB**, and 162 of those trees held 312 libnros_core rlibs with only
 /// **16 distinct `-C metadata` identities**, i.e. 296 literal repeats.
 ///
 /// Resolution, widest sharing first:

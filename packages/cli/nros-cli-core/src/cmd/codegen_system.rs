@@ -1068,7 +1068,7 @@ fn emit_bake_tree(
         &render_system_config_cmake(&bringup.system),
     )?;
     // Phase 258 (Track 2, follow-up): the `system_main.c` C-baker emit (extern
-    // `nros_component_<name>_register()` decls + a `nros_system_main()` that
+    // `nros_component_<name>_register()` decls + a ~~`nros_system_main()`~~ that
     // called them) is retired — the NULL-context ThreadX baker that compiled it
     // was dropped in Phase 246, and the `_register` symbols are gone post-257.
     // Adapters route through the typed `_install` carrier + `nros::main!`.
@@ -2264,7 +2264,7 @@ execution:
 
         // As `zephyr/cmake/nros_system_generate.cmake` calls it: no --target,
         // the application directory named. `zephyr_app` is not derivable from
-        // the image id (a GENERATED entry would be `zephyr_native_sim_entry`),
+        // the image id (a GENERATED entry would be zephyr_native_sim_entry),
         // which is the case `entry =` exists for.
         let out = dir.join("build/for_entry");
         let app = dir.join("zephyr_app").display().to_string();

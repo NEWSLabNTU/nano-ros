@@ -248,7 +248,7 @@ fn bridge_endpoint_session_idx(
 /// `session_idx`), then per forwarded topic, per ordered endpoint pair `(i→j)`,
 /// a generic publisher on `j` plus a generic+`MessageInfo` subscription on `i`
 /// whose callback re-publishes through it. Echo/loop suppression: every forward
-/// stamps the bridge's `bridge_origin`; a subscription drops samples already
+/// stamps the bridge's bridge_origin; a subscription drops samples already
 /// carrying its own bridge's origin (the `nros-bridge` codec). The node-centric
 /// builder is the Phase 189.M1 surface; the planner emits one `[[transport]]`
 /// per distinct bridge endpoint and only forwards declared topics, so the
@@ -327,10 +327,10 @@ fn render_register_bridges_fn(out: &mut String, plan: &NrosPlan) {
 ///     `Executor::open_multi(&SESSION_SPECS)`.
 ///   * `register_bridges(executor)` — the RFC-0009 relay (one bridge node per
 ///     endpoint via `session_idx`, a generic sub→pub per `(topic, ordered
-///     endpoint pair)` with `nros-bridge` `bridge_origin` echo suppression).
+///     endpoint pair)` with `nros-bridge` bridge_origin echo suppression).
 ///
 /// This is the single source of truth for the bridge relay codegen (the dead
-/// `build_generated_package` entry path that emitted the same shape inline was
+/// ~~`build_generated_package`~~ entry path that emitted the same shape inline was
 /// removed with `orchestration::generate`).
 pub fn render_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
     if !plan.build.is_bridge() {

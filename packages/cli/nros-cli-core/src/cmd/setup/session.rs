@@ -1143,7 +1143,7 @@ fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
 }
 
 /// Execute `plan` as a pipeline of up to `jobs` steps — RFC-0099 D7 /
-/// phase-447 E3. Replaces E2's `run_sequential`, and nothing else changed
+/// phase-447 E3. Replaces E2's ~~`run_sequential`~~, and nothing else changed
 /// around it: resolution, the ask and [`SessionRun::finish`] are as E2 left
 /// them.
 ///

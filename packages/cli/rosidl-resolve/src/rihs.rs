@@ -40,11 +40,11 @@ pub mod type_id {
     pub const WSTRING: u8 = 18;
     pub const BOUNDED_STRING: u8 = 21;
 
-    /// `scalar_id + 48` → fixed ARRAY of that scalar.
+    /// scalar_id + 48 → fixed ARRAY of that scalar.
     pub const ARRAY_OFFSET: u8 = 48;
-    /// `scalar_id + 96` → BOUNDED_SEQUENCE of that scalar.
+    /// scalar_id + 96 → BOUNDED_SEQUENCE of that scalar.
     pub const BOUNDED_SEQUENCE_OFFSET: u8 = 96;
-    /// `scalar_id + 144` → UNBOUNDED_SEQUENCE of that scalar.
+    /// scalar_id + 144 → UNBOUNDED_SEQUENCE of that scalar.
     pub const UNBOUNDED_SEQUENCE_OFFSET: u8 = 144;
 }
 
@@ -1180,7 +1180,7 @@ mod tests {
     // hash a live Jazzy (`ros-jazzy-rosidl-*`, 2026-10) reported for
     // `px4_msgs/msg/DebugKeyValue` built from the pinned PX4 tree's `.msg`
     // (`ros2 topic info -v`); the old CHAR (13) mapping gave
-    // `RIHS01_9f784632…`, which no ROS 2 peer computes.
+    // RIHS01_9f784632…, which no ROS 2 peer computes.
     #[test]
     fn msg_char_hashes_as_uint8_like_rosidl() {
         use rosidl_parser::ast::FieldType as Ast;

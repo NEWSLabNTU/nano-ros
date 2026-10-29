@@ -647,7 +647,7 @@ fn discover_package(root: &Path) -> Result<Package> {
     // what `<node pkg="…"/>` in the launch XML references. ROS convention
     // makes `package.xml` `<name>` the canonical pkg key; Cargo.toml
     // `[package].name` is often a *crate* name that diverges (e.g.
-    // `talker_pkg` vs `talker_pkg_component`). Drive synthesis from the
+    // `talker_pkg` vs talker_pkg_component). Drive synthesis from the
     // package.xml name so `find_source_metadata` matches.
     let cargo_component_metadata = discover_cargo_component_metadata(root, &parsed.name)?;
     let cmake_component_metadata = discover_cmake_node_metadata(root, &parsed.name)?;
@@ -1529,7 +1529,7 @@ fn synthesise_summary(
     // a build tree drops on disk).
     // M-F.17 fix: launch XML `<node exec="…"/>` references the component
     // name (e.g. `talker`), not the cargo pkg / crate name (e.g.
-    // `talker_pkg_component`). When a `[[bin]] name = component_name`
+    // talker_pkg_component). When a `[[bin]] name = component_name`
     // exists, that's the executable — clean Application-pkg case. For a
     // staticlib Component pkg (no `[[bin]]`), the executable IS the
     // component name (it's the symbolic identity the launcher resolves;

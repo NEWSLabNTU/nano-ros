@@ -8,7 +8,7 @@
 //! descriptor to the numbers that boot needs.
 //!
 //! **What this asserts, and why it is the acceptance rather than "a file was
-//! written".** `NROS_DECLARED_TL_PUBLISHERS` was the carrier that fixed 1378,
+//! written".** ~~`NROS_DECLARED_TL_PUBLISHERS`~~ was the carrier that fixed 1378,
 //! and until issue 1649 this test required the descriptor to AGREE with it,
 //! because a second derivation of one number agrees until the day it does not
 //! (issue 1025). Issue 1649 measured the two interchangeable on every road and

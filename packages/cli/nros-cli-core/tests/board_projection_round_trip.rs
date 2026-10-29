@@ -168,7 +168,7 @@ fn every_zephyr_board_projects_its_descriptor_exactly() {
         projected += 1;
     }
 
-    // The failure mode this whole file exists to avoid. `phase215_f` passed
+    // The failure mode this whole file exists to avoid. ~~`phase215_f`~~ passed
     // green while examining nothing.
     assert!(
         projected > 0,

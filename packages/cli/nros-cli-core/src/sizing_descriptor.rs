@@ -417,7 +417,7 @@ pub struct DescriptorInputs<'a> {
     /// only when the contract's declarations answer it on their own.
     pub infra: Option<InfraServices>,
     /// phase-486 -- `[image] infra_families`: which runtime service families
-    /// the image builds, as its `NROS_DECLARED_INFRA_QUERYABLES` carrier used
+    /// the image builds, as its ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier used
     /// to say. Not always [`Self::infra`]'s: the cargo leaf unions in the
     /// families its manifest compiles (`leaf_entity_env::leaf_infra`), where
     /// the store view keeps `param_services` only where it is compiled in.
@@ -630,7 +630,7 @@ fn endpoint_kind(k: EntityKind) -> Option<EndpointKind> {
 /// It exists because the road that FAILED has no descriptor to read. Measured
 /// 2026-09-20 on `examples/qemu-armv7a-nuttx/c/action-server`, the image issue
 /// 1378 was filed against: `nros ws entity-facts --leaf` answered
-/// `NROS_DECLARED_SERVICE_SERVERS=3` / `INFRA_QUERYABLES=none`, the zenoh
+/// ~~`NROS_DECLARED_SERVICE_SERVERS=3`~~ / ~~`INFRA_QUERYABLES=none`~~, the zenoh
 /// backend sized `ZPICO_MAX_QUERYABLES=3` from exactly that, and the action
 /// server's own `/status` cache queryable was the FOURTH declaration — `Full`,
 /// at boot, with `rclc_executor_attach_action_server` returning -1. The cargo-leaf
@@ -1493,7 +1493,7 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
             }
         }
     }
-    // phase-486 W9 -- the `NROS_DECLARED_NODES` carrier's home. A MODEL fact,
+    // phase-486 W9 -- the ~~`NROS_DECLARED_NODES`~~ carrier's home. A MODEL fact,
     // not an inventory one, so it is stated beside a derivation or a refusal
     // alike, and on an image with no wiring (`compose_unwired`): the count the
     // parameter services multiply by is `structure.nodes`, whatever the
@@ -2196,7 +2196,7 @@ pub enum Wiring<'a> {
         params: &'a ParamDeclarations,
         infra: InfraServices,
         /// phase-486 W9 -- `[image] model_nodes`: `Some` wherever the
-        /// `NROS_DECLARED_NODES` carrier used to be sent for this image (every
+        /// ~~`NROS_DECLARED_NODES`~~ carrier used to be sent for this image (every
         /// resolved model: `structure.nodes`, the MAX over a runtime's models),
         /// `None` where it was not -- a standalone leaf that declares no
         /// entities, whose declaration is the opt-in.
@@ -2627,10 +2627,10 @@ fn write_model_descriptor(
 /// wiring at all.
 ///
 /// * `[image] model_nodes` -- `structure.nodes`, always (phase-486 W9: the
-///   `NROS_DECLARED_NODES` carrier's home);
+///   ~~`NROS_DECLARED_NODES`~~ carrier's home);
 /// * `[types] max_wire_bound_bytes` -- the closure maximum `RX_BUF` is sized
 ///   from, when the caller handed the bound tables its configure registered
-///   (the cmake roads; phase-486 W9, the `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`
+///   (the cmake roads; phase-486 W9, the ~~`NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`~~
 ///   carrier's home). It is a property of what the image LINKS, so wiring has
 ///   nothing to do with it. A refusal is written only where tables were handed,
 ///   which is where the carrier's own guard ran; a road with none leaves the
@@ -4409,7 +4409,7 @@ mod tests {
     ///
     /// Before W3 the in-place row was composed from the `rmw` name alone, so both
     /// rows read `in_place` and both would be priced at NO receive region.
-    /// `executor::tests::a_generic_subscription_on_an_in_place_backend_still_claims_a_full_region`
+    /// ~~`executor::tests::a_generic_subscription_on_an_in_place_backend_still_claims_a_full_region`~~
     /// is what the second one costs at run time: `NodeError::BufferTooSmall` at a
     /// registration the arena oracle passed. Mutation-tested by restoring the
     /// pre-W3 arm (`(_, _, InPlace) => InPlace`), which reds on `/generic`.

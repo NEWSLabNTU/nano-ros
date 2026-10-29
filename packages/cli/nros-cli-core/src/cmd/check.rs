@@ -304,6 +304,6 @@ board = \"linux\"
 
 // Phase 172 — `[[bridge]]` per-node routing is now emitted by the generator
 // (`register_bridges`: a bridge node per endpoint session + the generic-sub →
-// generic-pub relay with `bridge_origin` echo suppression), so the former
+// generic-pub relay with bridge_origin echo suppression), so the former
 // "routing not yet emitted" warning is gone. `[[domain]]` routing landed in
 // Phase 172.K.5.
