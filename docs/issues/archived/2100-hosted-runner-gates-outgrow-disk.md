@@ -99,4 +99,4 @@ The first scheduled `host-tests` run after #2754, run 40625461704
 
 `live-peer`'s host job still ran out of disk on 2026-10-28. As said above,
 that is a different population (its fixture build and cells), so it is
-[issue 2130](../2130-live-peer-host-job-disk-exhausted.md), not this one.
+[issue 2130](2130-live-peer-host-job-disk-exhausted.md), not this one.

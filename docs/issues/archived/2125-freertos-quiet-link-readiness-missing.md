@@ -1,15 +1,16 @@
 ---
 id: 2125
 title: "Two rtos_e2e cells that run one baked image start routers on one port, and the second start kills the first one's router"
-status: open
+status: resolved
 type: bug
 area: [testing, ci]
 severity: medium
 found: 2026-10-29
 related: [phase-466, 2094, 2126, 0470]
+resolved: 2026-10-29
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-29.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-29.
 
 ## Measured
 
@@ -64,3 +65,9 @@ Unit tests: `a_named_port_waits_for_its_holder_and_is_handed_over` and
 
 A tier-2 nightly where both cells pass. Their logs should show `port <n>: held
 by pid … — waiting` when they overlap, and no `killing orphaned process`.
+
+## Resolution
+
+Fixed in #2802 (5afe413c3c): a router start waits for the port baked into the image, so two cells running one image no longer start routers on one port.
+
+Confirmed by the tier-2 nightly of 2026-10-29, run [40833557587](https://github.com/NEWSLabNTU/nano-ros/actions/runs/40833557587): `test_rtos_quiet_link_keeps_its_session` passed on FreeRTOS (169.8 s), threadx-linux (147.4 s) and NuttX (81.3 s). The run's only real failure was an unrelated XRCE test.
