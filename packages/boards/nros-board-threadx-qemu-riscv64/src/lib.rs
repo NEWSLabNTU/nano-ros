@@ -99,12 +99,12 @@ _start:
 pub use config::Config;
 pub use node::init_hardware;
 
-// Phase 313 W-threadx (#0243) — the legacy `nros_board_common::board_init` family
+// Phase 313 W-threadx (#0243) — the legacy ~~`nros_board_common::board_init`~~ family
 // (`BoardInit`/`BoardPrint`/`BoardExit` + the free `node::run`) is RETIRED for
 // this board; the live path is `nros_platform::board::{BoardInit, BoardEntry, …}`
 // below, plus the no-session `run_bare` for logging fixtures. `ThreadxConfig`
 // stays — a config trait the NEW family driver (`nros_board_threadx::run_*`)
-// consumes, not part of `board_init`.
+// consumes, not part of ~~`board_init`~~.
 use nros_board_common::ThreadxConfig;
 
 /// Per-board marker for trait dispatch.

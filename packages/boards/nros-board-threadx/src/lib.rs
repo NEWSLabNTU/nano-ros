@@ -41,9 +41,7 @@
 //! - `init_hardware()` — board-specific init (default no-op;
 //!   overlay re-exports a vendor version).
 //! - `#[no_mangle]` hooks the overlay implements:
-//!   - `nros_board_init_clocks()` — clock tree + pin mux.
 //!   - `nros_board_init_eth()` — NetX-Duo `NX_IP_DRIVER` binding.
-//!   - `nros_board_init_extra_drivers()` — sensors / displays.
 //!
 //! ## Phase 212.N status
 //!
@@ -64,7 +62,6 @@
 //! | `NETX_DIR` | none (required) | NetX-Duo source root. |
 //! | `NETX_CONFIG_DIR` | overlay's `config/` | `nx_user.h` directory. |
 //! | `THREADX_CFLAGS` | none | Extra compiler flags (overlay sets per-arch). |
-//! | `BOARD_LINKER_SCRIPT_DIR` | none | Overlay's linker-script dir, added to link search path. |
 
 // Phase 152.2.B.4 — both ThreadX overlays now `no_std`
 // (152.4.B-prep refactor on `-linux`), so the crate flips
@@ -99,10 +96,10 @@ mod sizes {
 mod entry;
 
 // Phase 313 W-finalize (#0243) — the legacy generic `node::run<B>` (+ the
-// `nros_board_common::board_init` trait re-exports) is RETIRED. Every ThreadX
+// ~~`nros_board_common::board_init`~~ trait re-exports) is RETIRED. Every ThreadX
 // board moved to `run_bare` / the `nros_platform::board::BoardEntry` path
 // (entry.rs), which is independent of `node.rs`; the file is gone. `ThreadxConfig`
-// (a config trait, not `board_init`) stays.
+// (a config trait, not ~~`board_init`~~) stays.
 
 pub use entry::{run_app_thread, run_bare, run_entry, run_tiers_entry};
 pub use nros_board_common::ThreadxConfig;

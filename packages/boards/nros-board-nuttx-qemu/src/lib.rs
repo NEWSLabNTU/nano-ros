@@ -16,7 +16,7 @@
 //! `NUTTX_*` env in each `[[board]]` entry of `nros-board.toml`, and the two
 //! FFI subcrates (`nros-nuttx-ffi` / `nros-nuttx-riscv-ffi`) whose
 //! `.cargo/config.toml` carries the target triple. The one *semantic* delta
-//! phase-322 found is [`SLIRP_DEFAULT_IP`], which matches each board's
+//! phase-322 found is the guest IP, which matches each board's
 //! defconfig `NETINIT` address and is therefore also an arch fact, not a fork.
 //!
 //! ## Architecture
@@ -74,7 +74,7 @@ pub use config::Config;
 
 /// Per-board marker for trait dispatch.
 ///
-/// Phase 313 W-nuttx (#0243) — the legacy `nros_board_common::board_init`
+/// Phase 313 W-nuttx (#0243) — the legacy ~~`nros_board_common::board_init`~~
 /// impls (`BoardInit`/`BoardPrint`/`BoardExit` + the free `node::run`) are
 /// RETIRED for this board; the live path is the `nros_platform::board`
 /// trait set in [`mod entry_212n`] (`BoardInit`, `BoardPrint`, `BoardExit`,
@@ -91,7 +91,7 @@ pub type QemuRvVirt = NuttxQemu;
 
 // Issue 2048 — the C `nros-nuttx-ffi` entry reports the kernel's `eth0`
 // address before `app_main()` exactly as the Rust `BoardEntry` path does. It
-// used to push one in (`configure_entry_eth0`, issue #130); NuttX owns that
+// used to push one in (~~`configure_entry_eth0`~~, issue #130); NuttX owns that
 // interface (RFC-0109 D2), so nothing here writes it any more.
 pub use node::ETH0_REPORT_PREFIX;
 #[cfg(target_os = "nuttx")]

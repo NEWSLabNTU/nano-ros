@@ -9,7 +9,7 @@
  *   - the LAN9118 netif registration + poll (the strong overrides for
  *     `network_glue.c`'s weak `nros_board_*` hooks)
  *
- * W5.c removed `nros_freertos_diag_network` — ~180 lines of raw LAN9118 CSR
+ * W5.c removed ~~`nros_freertos_diag_network`~~ — ~180 lines of raw LAN9118 CSR
  * pokes and a hand-assembled ARP frame, duplicated into the retired
  * `startup.c` as well, and called from no path in either lane. The technique
  * it demonstrated is written up in

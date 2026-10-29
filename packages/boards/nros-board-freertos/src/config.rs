@@ -164,7 +164,7 @@ impl Config {
     /// The shared `FreeRTOSConfig.h` sets `configMAX_PRIORITIES = 8`,
     /// so the output range is 0–7.
     ///
-    /// Mapping: `freertos_pri = round(normalized * 7 / 31)` (linear,
+    /// Mapping: freertos_pri = round(normalized * 7 / 31) (linear,
     /// round-to-nearest). The rounding matters: `FreertosScheduling`'s
     /// defaults were normalized FROM the old raw constants expecting
     /// this map to round-trip (16 ≈ 3.6 → 4, the historical

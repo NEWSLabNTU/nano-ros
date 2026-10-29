@@ -1,6 +1,6 @@
 //! Shared `build.rs` helpers for the FreeRTOS + lwIP board family.
 //!
-//! phase-337 W5.d — `configure_arm_cm3` / `add_freertos_includes` /
+//! phase-337 W5.d — ~~`configure_arm_cm3`~~ / `add_freertos_includes` /
 //! `add_lwip_includes` existed twice (`nros-board-freertos/build.rs` and
 //! `nros-board-mps2-an385-freertos/build.rs`), and the copies had already
 //! diverged: the family crate resolved cflags from the `[arch.*]` profiles

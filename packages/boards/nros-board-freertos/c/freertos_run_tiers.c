@@ -3,7 +3,7 @@
  *
  * Implements `nros_board_freertos_run_tiers`, the FreeRTOS analog of the native
  * `nros_board_native_run_tiers`: opens ONE RMW session on the calling task (the
- * startup.c `app_task`), runs the boot tier's setup, then CHAIN-spawns the
+ * startup.c `app_task_entry`), runs the boot tier's setup, then CHAIN-spawns the
  * remaining tiers (each with a borrowed executor sharing the session) so their
  * setups serialize (issue #144), and runs the boot tier on the caller.
  *
@@ -436,7 +436,7 @@ static void freertos_tier_task(void* arg) {
      * `nros_cpp_executor_set_min_stack_headroom` inside the tier's setup then
      * overwrites this, so declared beats derived by ordering alone.
      *
-     * Spawned tiers only. The boot tier runs on the caller (`app_task`, a
+     * Spawned tiers only. The boot tier runs on the caller (`app_task_entry`, a
      * 512 KiB stack this layer never sized), so a bound derived from its spec
      * would be measured against the wrong stack. */
     if (nros_cpp_executor_derive_min_stack_headroom(ctx->executor_storage, ctx->stack_bytes) != 0) {
@@ -711,7 +711,7 @@ int32_t nros_board_freertos_run_tiers_ns(const char* locator, uint8_t domain_id,
 
 /*
  * Issue 1568 — the runner, over caller-supplied executor storage, and the one a
- * generated tiered freertos entry calls (`CAbiRunners::run_tiers_takes_storage`).
+ * generated tiered freertos entry calls (`CAbiRunners::takes_executor_storage`).
  * Zephyr's shape (issue 1551), so the three RTOS runners take storage one way.
  *
  * `executor_storage` holds `n_tiers` blocks of `storage_stride` bytes; block 0
@@ -754,7 +754,7 @@ static size_t freertos_boot_tier_index(const nros_tier_spec_t* tiers, size_t n_t
 /*
  * Issue 1598 — the runner, over caller-supplied executor storage AND
  * caller-supplied task memory, and the one a generated tiered FreeRTOS entry
- * calls (`CAbiRunners::takes_tier_task_memory`).
+ * calls (`CAbiRunners::tier_task_memory`).
  *
  * `task_memory` is indexed by TIER (`task_memory[i]` is `tiers[i]`'s), NULL
  * for "none" — then every tier task is `xTaskCreate`d as before. When given,
@@ -885,7 +885,7 @@ int32_t nros_board_freertos_run_tiers_tasks_in(const char* locator, uint8_t doma
     freertos_apply_core_pin(NULL, boot->name, boot->core_plus1);
 
     /* No derived stack-headroom bound for the boot tier here, unlike Zephyr.
-     * It runs on the caller (`app_task`), and FreeRTOS offers no way to ask a
+     * It runs on the caller (`app_task_entry`), and FreeRTOS offers no way to ask a
      * task how large its stack IS — `uxTaskGetStackHighWaterMark` reports what
      * is left, not what it was taken against, which is the same asymmetry
      * `check_stack_headroom` cites for why the bound must be declared. Zephyr
@@ -913,7 +913,7 @@ int32_t nros_board_freertos_run_tiers_tasks_in(const char* locator, uint8_t doma
      *
      *   1. It adopted nothing at all. `nros_freertos_set_current_task_priority`
      *      was called only from the Rust arm, so a C or C++ boot tier kept
-     *      whatever priority `app_task` was created at and its declared
+     *      whatever priority `app_task_entry` was created at and its declared
      *      `[tiers.*.freertos] priority` did not hold for the tier the boot
      *      task actually runs.
      *   2. The ORDER. `boot` is the LEAST urgent tier, so every tier spawned
@@ -1081,7 +1081,7 @@ static int freertos_spawn_next_level(void* scheduler, const nros_tier_spec_t* re
 
 /* freertos_level_task -- a WORKER over the core's one executor (the boot
  * level's): open the level, run its setup on the owner, spawn the next level
- * (issue #144: setups never overlap), then loop on `level_spin_once`. */
+ * (issue #144: setups never overlap), then loop on `nros_cpp_level_spin_once`. */
 static void freertos_level_task(void* arg) {
     nros_freertos_level_ctx_t* ctx = (nros_freertos_level_ctx_t*)arg;
     (void)freertos_apply_tier_priority(ctx->name, ctx->priority);
@@ -1293,7 +1293,7 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
     if (boot->n_groups > 0 && boot->groups != NULL) {
         nros_cpp_executor_set_active_groups(boot_storage, boot->groups, boot->n_groups);
     }
-    /* The boot level runs on the caller's task (`app_task`), whose size this
+    /* The boot level runs on the caller's task (`app_task_entry`), whose size this
      * layer never set: seated with no stack, as on the host. */
     if (nros_cpp_level_adopt(scheduler, freertos_tier_level(boot), boot_storage, 0u, boot->name) !=
         0) {

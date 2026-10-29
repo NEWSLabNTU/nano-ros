@@ -133,7 +133,7 @@ fn install_uart_logger<B: BoardPrint>() {
     fn print_via_board<B: BoardPrint>(args: core::fmt::Arguments<'_>) {
         B::println(args);
     }
-    // Cast through a fn pointer then a raw pointer — `fn_item as usize` directly
+    // Cast through a fn pointer then a raw pointer — fn_item as usize directly
     // trips the `fn_to_numeric_cast` lint (`-D warnings`).
     let f: fn(core::fmt::Arguments<'_>) = print_via_board::<B>;
     LOG_PRINT_FN.store(f as *const () as usize, Ordering::Relaxed);
@@ -163,7 +163,7 @@ unsafe extern "C" {
     /// through the ULONG input to a C trampoline. `stack_bytes` (0 ⇒ the
     /// overlay's app-stack size) is `tx_byte_allocate`d from the shared byte
     /// pool (same as the boot app thread). `preempt_threshold < 0` ⇒
-    /// `= priority` (no threshold); `>= 0` is the native `non_preempt_scope`
+    /// `= priority` (no threshold); `>= 0` is the native non_preempt_scope
     /// value. Returns 0 on success, -1 on failure.
     /// `time_slice_us` (#0266): 0 ⇒ `TX_NO_TIME_SLICE` (FIFO-until-block, the
     /// ThreadX default); nonzero requests round-robin among same-priority tiers

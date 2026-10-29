@@ -313,7 +313,7 @@ int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id
 
 /*
  * Issue 1568 — the runner over CALLER-SUPPLIED executor storage, and the one a
- * generated C entry calls (`CAbiRunners::run_components_takes_storage`).
+ * generated C entry calls (`CAbiRunners::takes_executor_storage`).
  *
  * The same method as every tiered runner (`nros_board_<rtos>_run_tiers_in`)
  * with one block: the entry emits a file-scope `.bss` static sized from the

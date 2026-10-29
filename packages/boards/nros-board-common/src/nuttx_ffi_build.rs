@@ -96,7 +96,7 @@ pub fn run_nuttx() {
 
     // Phase 238.C — mixed C/C++ app build. A NuttX C example registers a
     // declarative C node (`Talker.c`, C-linkage `__nros_component_<pkg>_register`)
-    // but is driven by the header-only C++ `EntryNodeRuntime` (the generated
+    // but is driven by a generated C++ entry (the generated
     // entry is a `.cpp`). cc-rs compiles every file in one `cc::Build` with a
     // single language, so a `.c` extra under a `.cpp` main would be forced to
     // C++ — mangling the C node's register symbol. Compile `.c` sources in a
@@ -323,7 +323,7 @@ pub fn run_nuttx() {
 
     // phase-281 W3-nuttx (C lane) — generated C interface serdes TUs
     // (`std_msgs_msg_int32.c` defining `std_msgs_msg_int32_init/serialize`, etc.),
-    // compiled into a SINGLE `app_iface` archive emitted LAST so its `-l` flag lands
+    // compiled into a SINGLE app_iface archive emitted LAST so its `-l` flag lands
     // AFTER every `app_pkg_*` on the link line. The node TUs (in `app_pkg_*`) REFERENCE
     // these serdes, and a static archive's objects are pulled only to satisfy references
     // seen EARLIER on the line — so the archive DEFINING the serdes must come after the

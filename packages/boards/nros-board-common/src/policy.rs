@@ -257,7 +257,7 @@ impl LinkPolicy {
     /// IVC-only — no Ethernet, no serial, no TLS; the link layer is an
     /// inter-processor mailbox and only IVC + custom transports are valid.
     ///
-    /// phase-337 W7.b — was `orin_spe()`, named for the one board that used it.
+    /// phase-337 W7.b — was ~~`orin_spe()`~~, named for the one board that used it.
     /// The board is gone; the POLICY is not board-specific (any AMP mailbox
     /// target has this shape), so it keeps the capability name instead.
     ///

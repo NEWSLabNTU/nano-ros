@@ -35,7 +35,7 @@
 //! - `exit_success` / `exit_failure` call `std::process::exit`.
 //! - There is no device bring-up step — POSIX sockets are open as
 //!   soon as `init_hardware` returns. This used to be phrased as the
-//!   absence of a `TransportBringup` / `NetworkWait` impl; phase-206
+//!   absence of a ~~`TransportBringup`~~ / ~~`NetworkWait`~~ impl; phase-206
 //!   W4 removed those traits (issue 1067), so the absence is now
 //!   universal and this board's point is simply that it needs no
 //!   bring-up at all.
@@ -72,7 +72,7 @@
 
 // Phase 248 C5a (#60 T4) — the BOARD is the RMW selection point. Under its
 // own `rmw-zenoh` feature it force-links the zenoh backend rlib so the
-// backend's `RMW_INIT_ENTRIES` self-register section survives stable-Rust
+// backend's `register` survives stable-Rust
 // rlib pruning and reaches the final binary, WITHOUT relying on the `nros`
 // umbrella's `rmw-zenoh` feature. Mirrors the `__FORCE_LINK_ZENOH` static in
 // `nros/src/lib.rs` (referencing `register` keeps both the symbol and its
@@ -518,12 +518,12 @@ impl LinuxBoard {
         // If executor open fails (no RMW backend linked, or the configured
         // router/peer is unreachable), we fall back to
         // [`nros_platform::NullNodeRuntime`] so the setup closure still runs. The
-        // fall-back errors loud on any `register_dispatch_slot_dyn` call.
+        // fall-back errors loud on any ~~`register_dispatch_slot_dyn`~~ call.
         // Issue #98 — route the single-node launch overlay through the W1
         // resolver (RFC-0045 precedence model A): env > baked > compiled default.
         // `locator` and `domain` stay `None` so env keeps authority over them
         // (issue #48 preserved).
-        // issue 0687 — the ONE `hosted_env = true` in the tree, now spelled as
+        // issue 0687 — the ONE ~~`hosted_env = true`~~ in the tree, now spelled as
         // what it is: this board runs on a host, so it resolves through the
         // edge that reads the environment. Every other board passed `false`.
         //

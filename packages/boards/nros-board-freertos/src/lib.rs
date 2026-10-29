@@ -11,7 +11,7 @@
 //! ## Status
 //!
 //! - 152.1.A — scaffolding crate (façade).
-//! - 152.1.B.1 — `STARTUP_C` const split into three checked-in C
+//! - 152.1.B.1 — ~~`STARTUP_C`~~ const split into three checked-in C
 //!   files.
 //! - 152.1.B.2 — board-Ethernet weak-hook contract
 //!   (`nros_board_register_netif` + `nros_board_poll_netif`).
@@ -64,7 +64,7 @@ mod entry;
 mod error;
 
 // Phase 313 W-finalize (#0243) — the legacy generic `node::run<B>` (+ its
-// `nros_board_common::board_init` trait re-exports) is RETIRED. Every FreeRTOS
+// ~~`nros_board_common::board_init`~~ trait re-exports) is RETIRED. Every FreeRTOS
 // board moved to `run_bare` / the `nros_platform::board::BoardEntry` path
 // (entry.rs), which is independent of `node.rs`; the file is gone.
 

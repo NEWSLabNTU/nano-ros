@@ -6,27 +6,50 @@
 # finding: drop it. A name of OURS that is gone is never listed here; strike
 # it in the comment instead (~~`old_name`~~).
 
-# zenoh-pico
+# zenoh-pico and the zenoh protocol
+InitAck
+OpenSyn
 Z_MALLOC_FUNCTION
 _Z_ERR_TRANSPORT_TX_FAILED
+_mutex_rx
+_mutex_tx
 _z_link_clear
+_z_link_free
 _z_link_send_t_msg
 _z_transport_unicast_handle_frag
+max_links
 socket_wait_event
+z_task_wrapper
 zp_read
 
 # FreeRTOS kernel
 BlockLink_t
+INCLUDE_uxTaskGetStackHigh
+Queue_t
+StaticQueue_t
+StaticSemaphore_t
+TCB_t
 configPRINTF
+configUSE_NEWLIB_REENTRANT
 errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY
+pcHead
 portENTER_CRITICAL
 prvIsFreeRTOSThread
 pvPortRealloc
+pxPortInitialiseStack
+taskYIELD
 traceFREE
 traceMALLOC
+ucQueueType
+uxQueueNumber
+uxTCBNumber
+uxTaskNumber
+vPortStartFirstTask
+vTaskGetInfo
 vTaskSuspendAll
 xBlockSize
 xHeapStructSize
+xMinimumEverFreeBytesRemaining
 xSemaphoreBinary
 xSemaphoreHandle
 xTaskResumeAll
@@ -35,20 +58,30 @@ xTimerPendFunctionCall
 # lwIP
 MEMP_NETDB
 memp_free
+sys_arch_netconn_sem_get
+tcpip_msg
+tcpip_thread
 
-# ESP-IDF
+# ESP-IDF and esp-rs
 esp_log_write
 esp_system_abort
 heap_caps_malloc
 heap_caps_realloc
+init_logger
 portMUX_TYPE
 
 # ThreadX and NetX Duo
+NX_RAND
+TX_ENABLE_EXECUTION_CHANGE_NOTIFY
+TX_EXECUTION_PROFILE_ENABLE
 TX_MEMSET
 _tx_byte_allocate
 _tx_byte_release
+_tx_execution_
+_tx_execution_thread_enter
 _tx_linux_mutex
 _tx_linux_thread_entry
+_txe_event_flags_delete
 bsd_initialize
 nx_bsd_in_addr_t
 tx_block_release
@@ -57,7 +90,9 @@ tx_timer_change
 
 # Zephyr
 _system_heap
+arch_proc_id
 atomic_set
+cpu_mask_mod
 log_msg_runtime_create
 net_if_ipv4_select_src_iface
 net_mgmt_event_handler_t
@@ -69,21 +104,49 @@ z_impl_k_thread_stack_space_get
 z_stack_space_get
 
 # NuttX
+NETINIT
+NETINIT_
 NSEC_PER_TICK
+_SIOC
+_eronly
+builtin_for_index
+builtin_isavail
 clean_context
 kmm_malloc
+sporadic_alloc_repl
+task_create
 
-# POSIX, libc and newlib
+# CycloneDDS
+ddsrt_gettid
+thread_states_init
+
+# POSIX, Linux, libc and newlib
+IFNAMSIZ
 INADDR_NONE
 PTHREAD_PRIO_NONE
+SIOCGIFFLAGS
+SIOCSIFDSTADDR
+SIOCSIFNETMASK
+STDOUT_FILENO
 _POSIX_THREAD_PRIO_INHERIT
+_RETARGETABLE_LOCKING
 _SC_HOST_NAME_MAX
 _impure_data
 _reclaim_reent
 _strtol_r
+_unlink_r
+_write_r
+io_destroy
+lldiv_t
 pthread_attr_getstack
 pthread_mutex
+register_fini
 timer_getoverrun
+
+# C and C++ toolchains
+R_RISCV_PCREL_HI20
+_GLIBCXX_USE_CLOCK_MONOTONIC
+include_next
 
 # QEMU and glib
 can_receive
@@ -91,7 +154,13 @@ g_source
 lan9118_receive
 qemu_net_queue
 
-# Arm: CMSIS, instructions, the STM32 reference manual
+# Arm: CMSIS, semihosting, instructions, the STM32 reference manual
+ADP_Stopped_ApplicationExit
+CPS
+SYS_EXIT
+SYS_EXIT_EXTENDED
+SYS_OPEN
+SYS_WRITE
 SystemCoreClock
 USARTDIV
 WFE
@@ -109,20 +178,25 @@ print_msg
 action_tutorials
 set_logger_level
 
-# Rust: std, cargo, cc-rs, embassy, smoltcp, Verus
+# Rust: std, cargo, rustc and clippy lints, cc-rs, embassy, smoltcp, Verus
 CARGO_INCREMENTAL
 CARGO_PROFILE_NROS_RELWITHDEBINFO_INCREMENTAL
 CXX_thumbv7m_none_eabi
+LineWriter
 RUSTC_WRAPPER
+Stdout
 UnitDependencyInfoChanged
 c_variadic
 embassy_sync::channel::Channel
 external_body
+fn_to_numeric_cast
 get_base_compiler
 handle_alloc_error
 is_flag_supported
 lang_start
 leave_multicast_group
+panic_impl
+unused_doc_comments
 
 # git
 GIT_OBJECT_DIRECTORY

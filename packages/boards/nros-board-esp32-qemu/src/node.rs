@@ -327,7 +327,7 @@ pub fn init_hardware(config: &Config) {
 /// opening an `Executor` session, then spins forever (ESP32 has no host exit;
 /// the harness kills QEMU once it sees the output). The new-family replacement
 /// for the retired legacy `run(Config, closure)` (which routed through
-/// `nros_board_common::run` + the `nros_board_common::board_init` traits).
+/// `nros_board_common::run` + the ~~`nros_board_common::board_init`~~ traits).
 ///
 /// This is a free fn — NOT a method on the `rmw-zenoh`-gated
 /// [`crate::Esp32QemuEntry`] — so the no-RMW logging smoke can reach it.

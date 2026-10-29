@@ -148,7 +148,7 @@
  * `nros_freertos_init_network`); zenoh-pico's tasks now do too, from
  * `z_task_wrapper` in the vendored fork. Measured before that fix:
  * `sys_arch_netconn_sem_get()` returned NULL for `zpico_read` and for
- * `zpico_lease`.
+ * ~~`zpico_lease`~~.
  *
  * So all three move together — FULLDUPLEX, SEM_PER_THREAD, and a
  * `lwip_socket_thread_init()` in every socket-using task. Changing one alone
