@@ -1,7 +1,8 @@
 ---
 id: 2140
 title: "A copy of `zephyr-byo/app` does not build with `nros build`: `Talker.c` includes `std_msgs/std_msgs.h`, which nothing in the app generates"
-status: open
+status: resolved
+resolved_in: "2026-10-29"
 type: bug
 area: [examples, zephyr]
 severity: low
@@ -9,7 +10,7 @@ found: 2026-10-29
 related: [1782, phase-452]
 ---
 
-**Home: [phase-452](../roadmap/phase-452-copy-out-front-door.md)** — found by
+**Home: [phase-452](../../roadmap/phase-452-copy-out-front-door.md)** — found by
 the copy-out gate the day issue 1782 gave it a Zephyr road.
 
 ## What was measured
@@ -54,3 +55,35 @@ plus the `std_msgs` dependency in `package.xml`), then drop the gate's
 nano-ros-zephyr-example`, the NSOS overlay) is a second question: decide
 whether `nros build` in the copy is a supported road for this template at
 all, and say so in the README.
+
+## Resolution (2026-10-29)
+
+Two defects, the second hidden behind the first.
+
+1. **The build did not declare what the source includes.** `app/CMakeLists.txt`
+   now takes the `examples/zephyr/c/talker` shape (`find_package(nano_ros)` +
+   `find_package(std_msgs)`) and `package.xml` declares `<depend>std_msgs</depend>`.
+   A copy then compiles and links `zephyr.exe`.
+2. **The image it built SEGFAULTed at boot.** With nothing selecting the native_sim
+   offloaded sockets, Zephyr picked the TAP driver
+   (`<err> eth_posix: Cannot create zeth (0)`, then a core dump). Every in-tree
+   native_sim leaf carries `boards/native_sim_native_64.conf` (18 identical
+   copies under `examples/zephyr/`), which Zephyr merges itself on the `nros
+   build` road; this app did not. It does now.
+
+Measured on a copy made outside the repo, against
+`~/.nros/workspaces/zephyr/3.7`: `nros sync && nros build` exits 0, and the
+image, run beside `ros2 run rmw_zenoh_cpp rmw_zenohd` listening on 7447,
+printed `Published: 0` … `Published: 10` in 12 s. The README now names `nros
+build` as a supported road beside its `west build` one, and its router line and
+`Talker.c`'s comment say 7447 (the Kconfig default), not 7456.
+
+`check-template-copy-out`'s `KNOWN_UNBUILDABLE` row for this app is gone; the
+table is empty.
+
+Not done here: the 18 copies of `boards/native_sim_native_64.conf` name
+`CONFIG_ETH_NATIVE_POSIX`, a Zephyr 3.7 symbol (4.4 renamed it
+`ETH_NATIVE_TAP`, which `cmake/zephyr/native-sim-line-4.4.conf` handles for the
+fixture lanes). Folding them into the generic `zephyr` board package, the way
+issue 1782 folded the mps2 tail, needs a per-line choice the board-files rule
+does not have.

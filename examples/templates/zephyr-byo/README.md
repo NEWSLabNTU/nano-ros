@@ -17,8 +17,9 @@ nano-ros-app/            # this repo (the west manifest repo)
 └── app/                 # the application
     ├── CMakeLists.txt   # find_package(Zephyr) + nano_ros_node_register(TYPED C)
     ├── system.toml      # the image: board + RMW (zenoh); the module renders it
-    ├── package.xml      # the package `nros sync` scans (system.toml needs one)
+    ├── package.xml      # the package `nros sync` scans; depends on std_msgs
     ├── prj.conf         # CONFIG_NROS=y + Zephyr's own settings
+    ├── boards/native_sim_native_64.conf  # NSOS: host sockets, no TAP device
     └── src/Talker.c     # std_msgs/Int32 talker on /chatter (typed C component)
 ```
 After `west update` the workspace gains `zephyr/` and `modules/nano-ros/`
@@ -58,9 +59,15 @@ done
 export NROS_STD_MSGS_DIR=/opt/ros/humble/share/std_msgs
 overlay="$PWD/modules/nano-ros/cmake/zephyr/native-sim-line-3.7.conf"   # NSOS, 3.7 line
 west build -b native_sim/native/64 nano-ros-app/app -- -DCONF_FILE="prj.conf;$overlay"
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &       # the router, from ROS
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &       # the router, from ROS
 ./build/zephyr/zephyr.exe            # → "Published: 1", "Published: 2", …
 ```
+
+Or let `nros` drive the same build: `cd nano-ros-app/app && nros sync && nros
+build --zephyr-workspace "$PWD/../.."`. It builds `native_sim/native/64` (the
+generic `zephyr` board in `system.toml`) with Zephyr merging
+`boards/native_sim_native_64.conf` itself, so no overlay is passed by hand.
+`check-template-copy-out` builds a copy of this app that way (issue 2140).
 
 `nros` on PATH is auto-resolved as the codegen tool. A real board (e.g.
 `qemu_cortex_a9`) swaps `-b`, the SDK target, and drops the native_sim overlay;
