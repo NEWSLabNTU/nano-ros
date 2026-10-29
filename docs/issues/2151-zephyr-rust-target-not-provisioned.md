@@ -39,16 +39,28 @@ path:
   `nros build` preflight checks a board's `target`, and a Zephyr board has
   none, because west decides it.
 
+## The same class: libclang
+
+Once the target was installed, the probe's next run (40915996754) stopped in
+`zephyr-sys`'s build script: bindgen reported `Unable to find libclang`.
+zephyr-lang-rust generates bindings from Zephyr's headers, so a Rust Zephyr
+image needs `libclang-dev` on the host. A C image does not, and nothing in
+`nros setup zephyr` asks for it. Both prerequisites are what a Rust image on
+Zephyr needs beyond a C one, so both belong in the same board fact.
+
 ## Workaround
 
-The chapter's Rust block runs `rustup target add x86_64-unknown-none`
-before the build (`book/src/getting-started/integration-zephyr.md`).
+The chapter's Rust block installs `libclang-dev` and runs
+`rustup target add x86_64-unknown-none` before the build (`book/src/getting-started/integration-zephyr.md`).
 
 ## Fix direction
 
 * State the triple each Zephyr board's Rust build compiles for once, in the
   board descriptor (`[board.provisioning] rust_targets`). native_sim/64 →
   `x86_64-unknown-none`, mps2-an385 → `thumbv7m-none-eabi`, and so on.
+* Ask for `libclang-dev` the way the index asks for any host system
+  package (`system = [...]`), only when the workspace has a Rust Zephyr
+  image.
 * Have both `nros setup zephyr` and `nros setup` at a workspace root
   (phase-517 W4) install them when the workspace has a Rust Zephyr image.
 * Have the `nros build` preflight check them the way it checks a cross
