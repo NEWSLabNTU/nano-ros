@@ -34,10 +34,16 @@ case "$answered" in
         exit 1
         ;;
 esac
+# Fetching the pinned release runs its install.sh, which fronts
+# `~/.nros/bin/nros` at the NEWEST installed version, never at the fetched
+# one for being fetched. (Here the newest is 0.6.0-nros4 itself: the probe's
+# own asset is versioned 0.0.0-probe, which sorts first.)
 installed="$(readlink -f "$HOME/.nros/bin/nros")"
+newest="$(ls "$HOME/.nros/sdk/nros" | sort -V | tail -1)"
 case "$installed" in
-    */sdk/nros/0.6.0-nros4/*)
-        echo "PROBE FAIL: the pin moved the installed front ($installed); it must only redirect inside the project" >&2
+    */sdk/nros/"$newest"/*) ;;
+    *)
+        echo "PROBE FAIL: ~/.nros/bin/nros fronts $installed, not the newest installed release ($newest)" >&2
         exit 1
         ;;
 esac

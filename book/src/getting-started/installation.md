@@ -499,6 +499,7 @@ and everything after it builds with that release:
 nros new pinned_ws --workspace
 cd pinned_ws
 nros setup linux --rmw cyclonedds
+nros sync
 nros build
 ```
 
