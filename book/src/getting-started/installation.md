@@ -472,6 +472,36 @@ nros pin
 nros pin 0.6.0-nros4
 ```
 
+The pin is a file, `nros-toolchain.toml`, beside your project — commit it.
+With one in a directory, every `nros` you run there (or below it) is the
+pinned release: the `nros` on PATH hands the command to the pinned one,
+fetching it with that release's own `install.sh` the first time. A project
+pinned to an older release than the one you installed, from nothing:
+
+```bash probe=40 track=installed variant=pinned
+mkdir pinned_app && cd pinned_app
+printf '[toolchain]\nversion = "0.6.0-nros4"\n' > nros-toolchain.toml
+```
+
+Ask which release answers here — the pinned one, fetched on first use:
+
+```bash probe=50 probe-run=600 track=installed variant=pinned
+nros toolchain manifest
+```
+
+```text probe-expect=50 variant=pinned
+sdk/nros/0.6.0-nros4/share/nros/manifest.toml
+```
+
+and everything after it builds with that release:
+
+```bash probe=60 track=installed variant=pinned
+nros new pinned_ws --workspace
+cd pinned_ws
+nros setup linux --rmw cyclonedds
+nros build
+```
+
 `nros pin <version>` reports the **codegen delta** between the two
 releases before it writes anything, so an upgrade that would invalidate
 already-generated bindings warns first; re-run `nros sync` after one
