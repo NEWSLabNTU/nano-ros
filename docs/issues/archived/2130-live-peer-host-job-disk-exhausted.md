@@ -1,15 +1,16 @@
 ---
 id: 2130
 title: "`live-peer`'s host job runs out of disk on the GitHub-hosted runner: its fixture build takes 106 G free below 49 G before the cells start"
-status: open
+status: resolved
 type: bug
 area: [ci, build]
 severity: medium
 found: 2026-10-29
 related: [phase-466, 2100, 1846]
+resolved: 2026-10-29
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-29.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-29.
 
 ## Measured
 
@@ -92,3 +93,9 @@ The other lever, still unused:
   only 4 `[[fixture]]` row ids as literals. They reach the rest through
   resolver helpers keyed on a path and an RMW, and most of those rows have
   no `id`.
+
+## Resolution
+
+Fixed in #2805 (39e844300b): after each fixture build, `live-peer` releases compile intermediates with `scripts/ci/release-fixture-intermediates.sh`.
+
+Confirmed on 2026-10-29: `live-peer regression` run [40816464981](https://github.com/NEWSLabNTU/nano-ros/actions/runs/40816464981) passed, the first green run since this issue was filed.

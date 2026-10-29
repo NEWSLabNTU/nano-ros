@@ -1,15 +1,16 @@
 ---
 id: 2128
 title: "nros-params' `!verdict.is_ok()` passes stable clippy and fails the pinned nightly's, so only the scheduled feature sweep saw it"
-status: open
+status: resolved
 type: bug
 area: [ci, lint]
 severity: low
 found: 2026-10-29
 related: [phase-466, 2104]
+resolved: 2026-10-29
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-29.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-29.
 
 ## Measured
 
@@ -53,3 +54,11 @@ would close that gap, at a cost this issue does not measure.
 ## What would close it
 
 A scheduled `host-tests` run whose per-feature clippy job passes.
+
+## Resolution
+
+Fixed in #2802 (5afe413c3c): the check uses the `?` form the pinned nightly's clippy accepts.
+
+Confirmed on 2026-10-29: `host-tests` run [40810937288](https://github.com/NEWSLabNTU/nano-ros/actions/runs/40810937288)'s `per-feature clippy (host + cross)` job passed. Locally, the reproduction above (`cargo +nightly-2026-04-11 clippy -p nros-params --features alloc --target thumbv7m-none-eabi -- -D warnings`) exits 0.
+
+The gap noted under "Not fixed" is unchanged: a lint only the nightly reports still reaches `main` and is first seen by the scheduled sweep.

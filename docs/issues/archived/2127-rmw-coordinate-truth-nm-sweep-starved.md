@@ -1,15 +1,16 @@
 ---
 id: 2127
 title: "`a_rows_rmw_is_the_backend_its_artifact_linked` ran its 8-thread `nm` sweep counted as one nextest thread, and a loaded runner left 16 rows unread"
-status: open
+status: resolved
 type: bug
 area: [testing, ci]
 severity: low
 found: 2026-10-29
 related: [phase-466, 1984, 1690]
+resolved: 2026-10-29
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-29.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-29.
 
 ## Measured
 
@@ -44,3 +45,9 @@ host. The budgets are unchanged.
 A `run-matrix` tier-2 run on runner 118 where this test passes. The line it
 prints says how long the sweep took; it was 5.6-6.9 s on the passing runs
 before 2026-10-28.
+
+## Resolution
+
+Fixed in #2802 (5afe413c3c): the `nm` sweep declares its 8 threads to nextest.
+
+Confirmed on 2026-10-29: `a_rows_rmw_is_the_backend_its_artifact_linked` passed in 0.60 to 0.72 s in `run-matrix` run [40828659447](https://github.com/NEWSLabNTU/nano-ros/actions/runs/40828659447) and the tier-2 nightly run [40833557587](https://github.com/NEWSLabNTU/nano-ros/actions/runs/40833557587).
