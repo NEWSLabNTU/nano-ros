@@ -499,6 +499,11 @@ pub struct MockServiceClient {
     /// Issue 2009 — the id the pre-loaded reply reports instead, set by
     /// [`load_reply_for`](Self::load_reply_for).
     pub pending_reply_seq: Cell<Option<i64>>,
+    /// Issue 2136 — the info the pre-loaded reply reports, set by
+    /// [`load_reply_info`](Self::load_reply_info); taken with the reply.
+    pub pending_reply_info: Cell<nros_core::ServiceInfo>,
+    /// Issue 2136 — the info of the reply the last take returned.
+    pub last_reply_info: Cell<nros_core::ServiceInfo>,
     /// phase-444 — the service this client was created on.
     service_name: MockName,
 }
@@ -516,8 +521,15 @@ impl MockServiceClient {
             next_seq: Cell::new(0),
             last_sent_seq: Cell::new(None),
             pending_reply_seq: Cell::new(None),
+            pending_reply_info: Cell::new(nros_core::ServiceInfo::NOT_REPORTED),
+            last_reply_info: Cell::new(nros_core::ServiceInfo::NOT_REPORTED),
             service_name: MockName::new(service_name),
         }
+    }
+
+    /// Issue 2136 — the info the next taken reply reports.
+    pub fn load_reply_info(&self, info: nros_core::ServiceInfo) {
+        self.pending_reply_info.set(info);
     }
 
     /// The service this client was created on.
@@ -560,6 +572,10 @@ impl ClientTrait for MockServiceClient {
             Some((data, len)) => {
                 reply_buf[..len].copy_from_slice(&data[..len]);
                 self.pending_reply.set(None);
+                self.last_reply_info.set(
+                    self.pending_reply_info
+                        .replace(nros_core::ServiceInfo::NOT_REPORTED),
+                );
                 // The mock answers whatever it was last asked, unless the
                 // reply was loaded for a named request (issue 2009).
                 let seq = self
@@ -570,6 +586,10 @@ impl ClientTrait for MockServiceClient {
             }
             None => Ok(None),
         }
+    }
+
+    fn response_info(&self) -> nros_core::ServiceInfo {
+        self.last_reply_info.get()
     }
 }
 

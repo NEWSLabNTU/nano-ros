@@ -1,0 +1,5 @@
+{
+  "key": "rust:Promise::wait_with_info",
+  "verdict": "divergence",
+  "why": "issue 2136 (2026-10-29) -- `Promise::wait` plus the reply's `nros::ServiceInfo`; see `rust:Promise::take_with_info` for what it carries and `rust:Promise::wait` for why the executor is driven rather than awaited."
+}

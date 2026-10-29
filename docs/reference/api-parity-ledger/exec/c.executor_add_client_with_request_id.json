@@ -1,6 +1,10 @@
 {
   "key": "c:executor_add_client_with_request_id",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "rclc ships a second registration entry point whose callback also receives the `rmw_request_id_t`. Ours has one registration verb: the correlation token is an `int64_t` sequence number that `rclc_polling_client_send_request_raw` returns and `rclc_polling_service_send_response_raw` takes back (see the service stage's `cpp:Client::create_request_header`), and it belongs to the ENTITY, not to a second `add_*` overload. A registration entry point per callback shape is the `executor-owns-no-entity-storage` rule seen from the executor's side."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc/detail/nros_generated.h",
+    "text": "ADOPT-BOUNDED as [`rclc_executor_add_client`]: a reply that does not"
+  },
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-29 (issue 2136): `rclc_executor_add_client_with_request_id(executor, client, response_msg, rclc_client_callback_with_request_id_t)`, rclc's four arguments: `rclc_executor_add_client` whose callback also gets `rmw_request_id_t *request_id`, rclc's `(msg, request_id)` order. `request_id->sequence_number` is the sequence number the request went out under (what the reply was matched on, issue 2009) on every backend; `request_id->writer_guid` is this client's request-writer GUID where the backend reports it through the vtable's new `take_response_with_info` slot (zenoh from the reply attachment, Cyclone DDS from the echoed request header), all zero where it cannot (XRCE-DDS: the Agent owns the request writer). The registration is `rclc_executor_add_client`'s with a second trampoline, carried on the client's arena entry as `request_id_callback` and dispatched in place of the plain callback; `rclc_client_set_response_callback` replaces both, and `rclc_client_call` saves and restores both. ENVELOPE (stated on the declaration): as `rclc_executor_add_client` -- a reply that does not deserialise is dropped without a callback; a descriptor with no response deserialiser is `RCL_RET_UNSUPPORTED`; the timestamps are not surfaced in C. Test: `packages/api/nros-c/tests/run/typed_service_client.c` (step 5). PRIOR ROW (superseded, declined): ours had one client registration verb and the correlation token belonged to the entity, so a second `add_*` overload was refused; the vtable gave a client no request id to hand over until issue 2136."
 }

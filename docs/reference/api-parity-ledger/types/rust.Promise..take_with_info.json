@@ -1,0 +1,5 @@
+{
+  "key": "rust:Promise::take_with_info",
+  "verdict": "divergence",
+  "why": "issue 2136 (2026-10-29) -- `Promise::take` plus the reply's `nros::ServiceInfo`: rclrs's `client.call::<_, (Response, ServiceInfo)>(request)` output shape, and upstream `rmw_take_response`'s `rmw_service_info_t`. `request_id` is the request the reply answers (this client's GID and its sequence number), `source_timestamp` the server's send time, `received_timestamp` this client's receive time, each `None` where the backend cannot report it (zenoh all three; Cyclone DDS `request_id` + `source_timestamp`; XRCE-DDS `received_timestamp` only), read from `ClientTrait::response_info`, which the runtime fills through the vtable's `take_response_with_info` slot. Divergence for the same reasons as `rust:ServiceInfo` (every field an `Option`, `nros::Time` rather than `SystemTime`) and `rust:Promise::wait` (the promise is polled, not awaited on a runtime)."
+}

@@ -288,9 +288,10 @@ pub use executor::{
     DOMAIN_ID_MAX, EnvRung, ExecutorConfig, ExecutorSemantics, GuardCondition, HandleId, HandleSet,
     InvocationMode, NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, NodeError,
     RawAcceptedCallback, RawCancelCallback, RawGoalCallback, RawRequestId, RawResponseCallback,
-    RawServiceCallback, RawServiceRequestIdCallback, RawSubscriptionCallback, ReadinessSnapshot,
-    ShutdownCallbackFn, ShutdownCallbackHandle, ShutdownPhase, SpinOnceResult, SpinOptions,
-    SpinPeriodPollingResult, Trigger, baked_domain_from_c_abi,
+    RawResponseRequestIdCallback, RawServiceCallback, RawServiceRequestIdCallback,
+    RawSubscriptionCallback, ReadinessSnapshot, ShutdownCallbackFn, ShutdownCallbackHandle,
+    ShutdownPhase, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger,
+    baked_domain_from_c_abi,
 };
 // Issue 1971 -- the launch remap table (RFC-0107 step 1).
 pub use executor::{
