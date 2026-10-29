@@ -640,6 +640,28 @@ mod tests {
             e.contains("no `[[bridge]]` opens") && e.contains("[system] rmw_config"),
             "a file nothing reads is refused: {e}"
         );
+
+        // Issue 2124 — with no file, the domain's `rmw` and `id` were what
+        // nothing read: accepted, and silently not the image's session.
+        let e = write("[[domain]]\nname = \"lone\"\nrmw = \"cyclonedds\"\nid = 7\n")
+            .check_rmw_files(&d)
+            .unwrap_err();
+        assert!(
+            e.contains("no `[[bridge]]` opens")
+                && e.contains("`lone`")
+                && e.contains("[system] rmw")
+                && e.contains("domain_id"),
+            "a session nothing opens is refused, naming the default session's keys: {e}"
+        );
+        let e = write(
+            "[[domain]]\nname = \"lone\"\nrmw = \"xrce\"\nlocator = \"udp/127.0.0.1:8888\"\n",
+        )
+        .check_rmw_files(&d)
+        .unwrap_err();
+        assert!(
+            e.contains("no `[[bridge]]` opens") && e.contains("[system] locator"),
+            "a lone domain's locator names its default-session home: {e}"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 

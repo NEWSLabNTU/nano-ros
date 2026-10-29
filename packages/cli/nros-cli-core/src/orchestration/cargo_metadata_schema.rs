@@ -1349,21 +1349,29 @@ impl SystemToml {
     pub fn check_rmw_files(&self, dir: &std::path::Path) -> Result<(), String> {
         for d in &self.domains {
             // A `[[domain]]` is a session a `[[bridge]]` opens; the image's
-            // default session takes `rmw_config` (RFC-0109 D6 amendment,
-            // phase-514 W3b). A file on a domain nothing opens would be read
-            // by nothing, which reads exactly like one that applied.
+            // default session is spelled in `[system]` / `[image.<id>]`
+            // (RFC-0109 D6 amendment, phase-514 W3b). A domain nothing opens
+            // is read by nothing — not its file, and not its `rmw`, `id` or
+            // `locator` either (issue 2124) — which reads exactly like one
+            // that applied, so every such domain is refused.
             let opened = self.bridges.iter().any(|b| {
                 [&b.from, &b.to]
                     .iter()
                     .any(|e| e.rsplit(':').next() == Some(d.name.as_str()))
             });
-            if d.config.is_some() && !opened {
+            if !opened {
+                let what = match (&d.config, &d.locator) {
+                    (Some(c), _) => format!("names `config = \"{c}\"`"),
+                    (None, Some(l)) => format!("names `locator = \"{l}\"`"),
+                    (None, None) => format!("declares `rmw = \"{}\"`, `id = {}`", d.rmw, d.id),
+                };
                 return Err(format!(
-                    "`[[domain]]` `{}` names `config = \"{}\"`, but no `[[bridge]]` opens that \
-                     domain, so nothing would read the file — a single-session image's file is \
-                     `[system] rmw_config` (or `[image.<id>] rmw_config`) (RFC-0109 D6)",
+                    "`[[domain]]` `{}` {what}, but no `[[bridge]]` opens that domain, so \
+                     nothing would read it — a `[[domain]]` is a bridged session; a \
+                     single-session image's session is `[system] rmw`, `[system] domain_id` \
+                     and `[system] rmw_config` (or `[system] locator`), each overridable per \
+                     `[image.<id>]` (RFC-0109 D6)",
                     d.name,
-                    d.config.as_deref().unwrap_or_default()
                 ));
             }
             self.domain_file(dir, &d.name, None)?;

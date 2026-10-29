@@ -3,7 +3,7 @@
 **Status (2026-10-29). W1–W6 landed; every issue filed against the phase is
 resolved (2047, 2048, 2051, 2062, 2096, 2116, 2117). Its two stated gaps are
 filed: issues 2123 (C/C++ session specs carry no properties) and 2124 (a
-lone `[[domain]]` is not the default session).** W1: every board descriptor states `[board.net] stack` and
+lone `[[domain]]` is not the default session — resolved: refused).** W1: every board descriptor states `[board.net] stack` and
 `links`, from one link vocabulary (`LINK_KINDS`, a superset of the image
 `TRANSPORT_KINDS`). W2: an image's address lives in the board network file
 its `os_config` names; all 78 in-tree rows moved, each resolving
@@ -144,8 +144,9 @@ by `nros::main!` from `NROS_IMAGE` (issue 2062, resolved).
 
 Not done, stated: a C++ `NrosCppSessionSpec` carries no properties (a C/C++
 multi-session image has no per-domain file — issue 2123), and a lone
-`[[domain]]` is not yet an image's default session (spelled `[system]
-rmw_config` meanwhile — issue 2124).
+`[[domain]]` is not an image's default session — settled as refused rather
+than adopted, the default session being spelled `[system] rmw_config` (issue
+2124, resolved).
 
 ### W4 — retire the keys RFC-0109 moves
 
