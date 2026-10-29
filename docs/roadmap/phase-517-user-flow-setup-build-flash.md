@@ -1,6 +1,6 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-29). Open; W1 and W8 done; W4's three left items closed, its probe still open; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
+**Status (2026-10-29). Open; W1, W4 and W8 done; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
@@ -403,7 +403,7 @@ becomes the rosdep-shaped front door:
 `nros build`'s preflight refusal (`check_declared_depends`, `build.rs:5396`)
 then names `nros setup` (no args) instead of a board.
 
-**Done (2026-10-25), with three items left:** plain `nros setup` at a workspace
+**Done (2026-10-25); the three items left then are closed below:** plain `nros setup` at a workspace
 root (a `package.xml` there or in a child of `src/`) is `nros setup --workspace
 .`; it prints the report, provisions every image's `(board, rmw)` in one store
 plan, reports ROS's `rmw_zenohd` for a zenoh image (found, or the apt names),
@@ -442,10 +442,26 @@ for confirmation (`nros setup <board>` never did either).
 `installation.md` gained "Provision a whole workspace", and `cli.md`'s
 `--workspace` row no longer says it installs nothing.
 
-**Still open:** the installed-track probe in "Done when" (no track runs a
-two-image workspace yet), and `first-project.md` still says `nros setup linux
---rmw cyclonedds`. That line is the probed linux track's step, so it changes
-together with a probe run.
+**Done (2026-10-29): the probe.** `just probe workspace` replays
+installation.md's "Provision a whole workspace" (`probe=30..50
+variant=workspace`) in a clean `ros:humble` container on the installed
+release:
+1. a Rust zenoh workspace plus `[image.freertos]` (`nros new --image`);
+2. one bare `nros setup`;
+3. `nros sync && nros build --all`.
+
+`verify-installed-workspace.sh` then asserts that both ELFs exist, that `nros
+setup --check` finds nothing missing, and that no checkout appeared on the
+host. GREEN on probe-platforms run 40793777845: setup reported `rmw_zenohd` and
+asked only for `cargo`, and the build wrote `linux_entry` and
+`freertos_entry`. The weekly lane carries it as a matrix entry, and the other
+eight tracks were green in the same run.
+
+`first-project.md` teaches the command first. A probed `nros setup` step
+follows the scaffold, and the page no longer asks for `nros setup linux --rmw
+cyclonedds`. GREEN on probe run 40795130689, both tracks: the installed track's
+bare setup printed `linux — all packages already present` and asked for
+`clang, cmake`.
 
 **No checkout:** the plan is computed from the project's config files and the
 installed SDK alone; nothing in it reads or asks for a nano-ros checkout.
