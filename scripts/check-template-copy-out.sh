@@ -116,6 +116,13 @@ cd "$repo_root" || exit 2
 templates_dir="examples/templates"
 gate="template-copy-out"
 
+# Sub-projects with an OPEN issue saying their copy does not build, keyed by
+# project label, valued by the reason the skip ledger prints. Each row names
+# its issue and is deleted by the change that closes it.
+declare -A KNOWN_UNBUILDABLE=(
+    [zephyr-byo/app]="known not to build from a copy — Talker.c includes std_msgs/std_msgs.h, which the app never generates (issue 2140)"
+)
+
 # Every tracked template DIRECTORY, one per line. `NF > 3` is what makes it a
 # directory rather than a file: `examples/templates/README.md` has three fields
 # and is not a template, and reporting it as one made the skip list read as if
@@ -450,11 +457,22 @@ build_cross() {
             nros_check_unverified "$gate" "$label ($board): Zephyr not provisioned — no west workspace resolves (just zephyr setup)" || return 5
             return 4
         fi
+        # A known defect of ONE template, named by its issue, is a NOT VERIFIED
+        # with that reason -- never a pass, and never a blanket skip of the
+        # road (which is what hid issue 2140 behind 1782).
+        local known="${KNOWN_UNBUILDABLE[$label]:-}"
+        if [ -n "$known" ]; then
+            nros_check_unverified "$gate" "$label ($board): $known" || return 5
+            return 4
+        fi
         # Issue 1782: the leaf names its board package (`mps2-an385-zephyr`),
         # which lowers to the west board AND carries the board's Kconfig, and
         # its image's `os_config` names the rest. So the road is the one a user
-        # runs: `nros build` in the leaf, against the resolved west workspace.
+        # runs: `nros sync` + `nros build` in the leaf, against the resolved
+        # west workspace.
         rc=0
+        (cd "$proj" && "$nros" sync) >> "$log" 2>&1 || rc=$?
+        [ "$rc" -eq 0 ] || return 1
         (cd "$proj" && "$nros" build --zephyr-workspace "$zws") >> "$log" 2>&1 || rc=$?
         [ "$rc" -eq 0 ] || return 1
         return 0

@@ -103,8 +103,11 @@ Direction 1, as the 2026-10-26 section confirmed.
   all `zephyr/`) say `board = "mps2-an385-zephyr"` and
   `os_config = ["prj-zenoh.conf"]`; their READMEs and `prj.conf` headers no
   longer spell a tail.
-- **`check-template-copy-out`** builds a Zephyr sub-project with `nros build`
-  in the copied leaf instead of reporting it NOT VERIFIED.
+- **`check-template-copy-out`** builds a Zephyr sub-project with `nros sync`
+  + `nros build` in the copied leaf instead of reporting it NOT VERIFIED.
+  That surfaced a defect the blanket skip had hidden: a copy of
+  `zephyr-byo/app` does not compile (issue 2140), so that one project is
+  NOT VERIFIED by name (`KNOWN_UNBUILDABLE`) until 2140 closes.
 
 Measured: `cp -r examples/templates/cpp-port-minimal-publisher` to a scratch
 directory outside the checkout, then `nros build --zephyr-workspace
