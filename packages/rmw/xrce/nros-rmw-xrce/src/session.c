@@ -530,6 +530,11 @@ uint64_t xrce_now_ms(void) {
     return nros_platform_clock_ns() / 1000000u;
 }
 
+int64_t xrce_wall_clock_ns(void) {
+    uint64_t ns = nros_platform_time_now_ns();
+    return ns > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)ns;
+}
+
 uint32_t xrce_deadline_period(uint32_t requested, uint32_t qos_deadline_ms) {
     uint32_t p = requested != 0 ? requested : qos_deadline_ms;
     return p == NROS_RMW_DURATION_INFINITE_MS ? 0u : p;

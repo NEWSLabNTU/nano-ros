@@ -240,6 +240,33 @@ fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
         "GID should not be all zeros (should contain real publisher ID)"
     );
 
+    // Issue 2135 — each message reports when the subscriber RECEIVED it: the
+    // ring producer's wall-clock stamp, set (non-zero), and not before the
+    // talker's source stamp on the same host clock.
+    let ts_rx: Vec<(i64, i64)> = output
+        .lines()
+        .filter(|l| l.contains(nros_tests::output::MESSAGE_INFO_LOG_PREFIX))
+        .filter_map(|l| {
+            let field = |k: &str| {
+                l.split_whitespace()
+                    .find_map(|f| f.strip_prefix(k))
+                    .and_then(|v| v.parse::<i64>().ok())
+            };
+            Some((field("ts=")?, field("rx=")?))
+        })
+        .collect();
+    assert!(
+        ts_rx.len() >= 2,
+        "the observer printed no `ts=` / `rx=` pairs:\n{output}"
+    );
+    for (ts, rx) in &ts_rx {
+        assert!(
+            *rx > 0 && *rx >= *ts && *rx - *ts < 10_000_000_000,
+            "received timestamp rx={rx} is unset, before the source stamp ts={ts}, or \
+             implausibly late (issue 2135)"
+        );
+    }
+
     eprintln!(
         "[PASS] Zero-copy MessageInfo: {} messages, seq monotonic, GID consistent ({})",
         seq_values.len(),

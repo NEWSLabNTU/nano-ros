@@ -32,7 +32,7 @@
 //! One line per received message:
 //!
 //! ```text
-//! seq=<publication_sequence_number> gid=<hex> ts=<source_timestamp_nanos>
+//! seq=<publication_sequence_number> gid=<hex> ts=<source_timestamp_nanos> rx=<received_timestamp_nanos>
 //! ```
 //!
 //! `seq` and `gid` are what the test asserts on (monotonic sequence, stable
@@ -89,11 +89,14 @@ fn main() {
                     // MessageInfo-shaped callback can see
                     // (`nros_tests::output::MESSAGE_INFO_LOG_PREFIX`).
                     info!("I heard: [{}]", msg.data);
+                    // `rx` (issue 2135) — when the backend RECEIVED it,
+                    // wall-clock ns; 0 when the backend did not stamp it.
                     info!(
-                        "seq={} gid={} ts={}",
+                        "seq={} gid={} ts={} rx={}",
                         mi.publication_sequence_number(),
                         gid,
                         mi.source_timestamp().to_nanos(),
+                        mi.received_timestamp().to_nanos(),
                     );
                 }
                 // Fail LOUD rather than printing a line the test would parse as

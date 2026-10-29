@@ -111,3 +111,11 @@ add_executable(nros_rmw_xrce_gid gid.c)
 target_link_libraries(nros_rmw_xrce_gid PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_gid COMMAND nros_rmw_xrce_gid)
+
+# Issue 2135 — `received_timestamp` on a taken sample and a taken request: the
+# ARRIVAL time on the platform wall clock, stamped in the topic / request
+# callback. No agent: arrivals are injected through those callbacks.
+add_executable(nros_rmw_xrce_received_timestamp received_timestamp.c)
+target_link_libraries(nros_rmw_xrce_received_timestamp PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_received_timestamp COMMAND nros_rmw_xrce_received_timestamp)

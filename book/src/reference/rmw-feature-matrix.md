@@ -43,7 +43,7 @@ automatically as backends land implementations.
 | Matched-endpoint counts | — | — | wired | — |
 | Actual-QoS read-back | wired | wired | wired | wired |
 | Wait-for-acked | — | — | — | — |
-| Take-with-info | wired | — | wired | — |
+| Take-with-info | wired | wired | wired | — |
 | Entity new-data callbacks | wired | wired | wired | — |
 | Graph introspection (names/types/counts) | wired | — | wired | — |
 | Service-graph counts (`count_clients` / `count_services`) | wired | — | wired | — |

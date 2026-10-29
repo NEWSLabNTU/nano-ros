@@ -62,6 +62,7 @@ void xrce_topic_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
          * flag, which the take reports as NROS_RMW_RET_MESSAGE_TOO_LARGE. */
         entry->overflow =
             !xrce_stage_inbound(entry->data, XRCE_SUBSCRIBER_BUFFER_SIZE, ub, len, &entry->len);
+        entry->recv_ns = xrce_wall_clock_ns(); /* issue 2135 */
         slot->write_idx = (uint16_t)((slot->write_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);
         slot->count++;
         /* Issue 2108 — a takeable arrival ends the requested-deadline period. */
@@ -287,7 +288,8 @@ static rmw_ret_t xrce_subscription_destroy_locked(rmw_subscription_t* subscriber
 }
 
 static rmw_ret_t xrce_subscription_take_locked(const rmw_subscription_t* subscriber,
-                                               rmw_mut_byte_span_t* out, bool* taken) {
+                                               rmw_mut_byte_span_t* out, bool* taken,
+                                               int64_t* recv_ns_out) {
     /* phase-406 W2 — by pointer: `capacity` in, `len` out. */
     if (out == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     uint8_t* buf = out->data;
@@ -326,6 +328,9 @@ static rmw_ret_t xrce_subscription_take_locked(const rmw_subscription_t* subscri
         slot->locked = false;
         *out_len = entry->len;
         *taken = true;
+        if (recv_ns_out != NULL) {
+            *recv_ns_out = entry->recv_ns;
+        }
         ret = NROS_RMW_RET_OK;
     }
     entry->len = 0;
@@ -441,8 +446,33 @@ rmw_ret_t xrce_subscription_take(const rmw_subscription_t* subscriber, rmw_mut_b
                                  bool* taken) {
     xrce_session_state_t* st = XRCE_ST_OF(xrce_subscriber_state, subscriber);
     xrce_session_lock(st);
-    rmw_ret_t ret = xrce_subscription_take_locked(subscriber, out, taken);
+    rmw_ret_t ret = xrce_subscription_take_locked(subscriber, out, taken, NULL);
     xrce_session_unlock(st);
+    return ret;
+}
+
+/* Issue 2135 — upstream `rmw_take_with_info`. The Agent delivers a topic
+ * sample as bare CDR (no SampleInfo, no writer GUID, no source timestamp), so
+ * the one field this client knows is when the topic callback received it, on
+ * the platform wall clock as upstream stamps it. Everything else is "not
+ * reported": zero, and the sequence numbers UNSUPPORTED. */
+rmw_ret_t xrce_subscription_take_with_info(const rmw_subscription_t* subscriber,
+                                           rmw_mut_byte_span_t* out, bool* taken,
+                                           rmw_message_info_t* message_info) {
+    if (message_info == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_subscriber_state, subscriber);
+    xrce_session_lock(st);
+    int64_t recv_ns = 0;
+    rmw_ret_t ret = xrce_subscription_take_locked(subscriber, out, taken, &recv_ns);
+    xrce_session_unlock(st);
+    if (ret == NROS_RMW_RET_OK && *taken) {
+        memset(message_info, 0, sizeof(*message_info));
+        message_info->received_timestamp = (rmw_time_point_value_t)recv_ns;
+        message_info->publication_sequence_number = RMW_MESSAGE_INFO_SEQUENCE_NUMBER_UNSUPPORTED;
+        message_info->reception_sequence_number = RMW_MESSAGE_INFO_SEQUENCE_NUMBER_UNSUPPORTED;
+    }
     return ret;
 }
 

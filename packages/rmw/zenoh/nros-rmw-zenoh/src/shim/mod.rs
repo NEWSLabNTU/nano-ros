@@ -509,19 +509,52 @@ pub struct MessageInfo {
     pub timestamp_ns: i64,
     /// Publisher's Global Identifier
     pub publisher_gid: [u8; RMW_GID_SIZE],
+    /// Issue 2135 — when this subscriber RECEIVED the sample, wall-clock ns
+    /// since the Unix epoch, stamped by the ring producer (the sample
+    /// callback), as `rmw_zenoh_cpp` stamps `received_timestamp`. 0 = not
+    /// stamped (no wall clock, or not read from a ring slot).
+    pub received_timestamp_ns: i64,
 }
 
 impl MessageInfo {
     /// Parse MessageInfo from raw attachment data
     ///
-    /// Returns None if no attachment or if parsing fails.
+    /// Returns None if no attachment or if parsing fails. The attachment
+    /// carries no receive time, so `received_timestamp_ns` is 0.
     pub fn from_attachment(attachment: &[u8]) -> Option<Self> {
         RmwAttachment::deserialize(attachment).map(|att| Self {
             sequence_number: att.sequence_number,
             timestamp_ns: att.timestamp,
             publisher_gid: att.rmw_gid,
+            received_timestamp_ns: 0,
         })
     }
+
+    /// Issue 2135 — this message's metadata in the runtime's shape: the
+    /// attachment's three fields plus the receive stamp.
+    pub(crate) fn to_core(self) -> nros_core::MessageInfo {
+        let mut info = nros_core::MessageInfo::new();
+        info.set_publication_sequence_number(self.sequence_number);
+        info.set_source_timestamp(nros_core::Time::from_nanos(self.timestamp_ns));
+        info.set_received_timestamp(nros_core::Time::from_nanos(self.received_timestamp_ns));
+        // 16 on the wire (`rmw_zenoh_cpp`'s attachment layout, which
+        // cannot move), 24 in the field. One spelling of the padding.
+        info.set_publisher_gid(nros_core::pad_publisher_gid(&self.publisher_gid));
+        info
+    }
+}
+
+/// Issue 2135 — the platform's wall clock in ns since the Unix epoch, the
+/// clock upstream stamps `received_timestamp` from (`system_clock::now()` in
+/// `rmw_zenoh_cpp`). 0 when the platform has none, which every reader treats
+/// as "not stamped".
+pub(crate) fn wall_clock_ns() -> i64 {
+    unsafe extern "C" {
+        fn nros_platform_time_now_ns() -> u64;
+    }
+    // SAFETY: a platform-ABI symbol every port defines; no arguments.
+    let ns = unsafe { nros_platform_time_now_ns() };
+    ns.min(i64::MAX as u64) as i64
 }
 
 // ============================================================================

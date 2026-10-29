@@ -228,6 +228,13 @@ typedef struct zpico_ring_desc_t {
    * for a ring no session produces into.
    */
   void *lock_session;
+  /**
+   * Issue 2135 — `slot_count` entries: the wall-clock time (ns since the
+   * Unix epoch, `nros_platform_time_now_ns`) the producer received each
+   * slot's sample, upstream `rmw_message_info_t::received_timestamp`.
+   * 0 when the platform has no wall clock. NULL: not recorded.
+   */
+  int64_t *recv_ns;
 } zpico_ring_desc_t;
 
 /**

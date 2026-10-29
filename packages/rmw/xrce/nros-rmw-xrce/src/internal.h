@@ -471,6 +471,8 @@ typedef struct xrce_subscriber_ring_entry {
     uint8_t data[XRCE_SUBSCRIBER_BUFFER_SIZE];
     size_t len;
     bool overflow;
+    /* Issue 2135 — when the topic callback received it (`xrce_wall_clock_ns`). */
+    int64_t recv_ns;
 } xrce_subscriber_ring_entry;
 
 typedef struct xrce_subscriber_slot {
@@ -508,6 +510,8 @@ typedef struct xrce_service_request_entry {
     size_t len;
     bool overflow;
     SampleIdentity sample_id;
+    /* Issue 2135 — when the request callback received it. */
+    int64_t recv_ns;
 } xrce_service_request_entry;
 
 /* Service-server slot — request inbox RING + deferred-reply token table. */
@@ -992,6 +996,11 @@ size_t xrce_service_qos_xml(char* out, size_t cap, bool replier, const char* ser
  * Every function takes `now_ms` (monotonic) rather than reading the clock, so
  * a test can drive time; the entry points pass `xrce_now_ms()`. */
 uint64_t xrce_now_ms(void);
+/* Issue 2135 — the platform WALL clock, ns since the Unix epoch, for
+ * `received_timestamp` (upstream stamps `system_clock::now()`); 0 when the
+ * platform has none, which is "not stamped". Not `xrce_now_ms`, which is the
+ * monotonic clock deadlines are measured on. */
+int64_t xrce_wall_clock_ns(void);
 /* The period a registration asks for: `requested`, else the profile's, else
  * none. 0 and NROS_RMW_DURATION_INFINITE_MS both mean "no deadline". */
 uint32_t xrce_deadline_period(uint32_t requested, uint32_t qos_deadline_ms);
@@ -1157,6 +1166,11 @@ xrce_subscription_create(const rmw_node_t* node, const rmw_message_type_support_
 rmw_ret_t xrce_subscription_destroy(rmw_subscription_t* subscriber);
 rmw_ret_t xrce_subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* out,
                                  bool* taken);
+/* Issue 2135 — `take` plus the sample's `rmw_message_info_t`: the receive time
+ * only; nothing else about a sample reaches an XRCE client library. */
+rmw_ret_t xrce_subscription_take_with_info(const rmw_subscription_t* subscriber,
+                                           rmw_mut_byte_span_t* out, bool* taken,
+                                           rmw_message_info_t* message_info);
 rmw_ret_t xrce_subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data);
 /* Phase 231 (RFC-0038) — zero-copy in-place take over the XRCE static ring. */
 rmw_ret_t xrce_subscription_supports_in_place(rmw_subscription_t* subscriber, bool* out_supports);

@@ -791,12 +791,12 @@ are evidence for what the protocol allows.
 | graph: names, types, endpoint info, counts | `get_topic_names_and_types`, `get_service_names_and_types`, the four `*_names_and_types_by_node`, `get_{publishers,subscriptions}_info_by_topic`, `count_{publishers,subscribers,clients,services}` | protocol cannot | discovery lives on the Agent's participant; the client has no builtin-topic readers and no enumeration request | UNSUPPORTED unless built with `RMW_UXRCE_GRAPH`, which reads the micro-ROS Agent's own `ros_to_microros_graph` topic — not published by the stock Micro XRCE-DDS Agent nano-ros uses |
 | graph: node names + change edge | `get_node_names`, `node_get_graph_guard_condition` | **filled** ([issue 2106](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2106-xrce-node-enumeration-from-ros-discovery-info.md)) | node names are DATA on `ros_discovery_info`, an ordinary topic the client subscribes to through the Agent (created on first use): the answer is this session's nodes plus every DDS-RMW participant's, the edge fires on a changed sample or a local node change. Bounds: DDS peers only (a bridged zenoh peer publishes no such sample); a participant that dies without a clean shutdown stays listed (no discovery-loss reaches the client); a sample past `XRCE_GRAPH_MAX_PEERS` / `XRCE_GRAPH_MAX_PEER_NODES` is refused and the query answers ERROR. Measured live against a stock `rmw_fastrtps_cpp` talker | as above |
 | matched counts | `publisher_count_matched_subscriptions`, `subscription_count_matched_publishers` | protocol cannot | matching happens between the Agent's entities and remote ones; nothing reports it to the client | `RMW_UXRCE_GRAPH` only, from the graph topic |
-| granted QoS | the six `*_get_actual_qos` | **filled** ([issue 2107](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2107-xrce-get-actual-qos.md)) | no read-back request exists, so the answer is derived — and MEASURED against the pinned Agent with a stock peer reading each endpoint's discovered QoS. A BIN-created DataWriter/DataReader holds exactly the four `uxrQoS_t` fields sent plus Fast-DDS defaults (deadline/lifespan infinite, liveliness AUTOMATIC); an Agent-side XML default profile does not reach it (the Agent copies `DATAWRITER_QOS_DEFAULT` into a local, and Fast-DDS substitutes the profile only for the sentinel's address). A requester/replier does NOT hold what was asked: the client library drops its QoS and the Agent builds both endpoints from fixed attributes (writers RELIABLE + TRANSIENT_LOCAL, readers RELIABLE + VOLATILE), which is what those four slots report. Depth reaches no peer: reported only when sent, else UNKNOWN | returns the stored creation profile — for a service, not what the Agent built |
+| granted QoS | the six `*_get_actual_qos` | **filled** ([issue 2107](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2107-xrce-get-actual-qos.md)) | no read-back request exists, so the answer is derived — and MEASURED against the pinned Agent with a stock peer reading each endpoint's discovered QoS. A BIN-created DataWriter/DataReader holds exactly the four `uxrQoS_t` fields sent plus Fast-DDS defaults (deadline/lifespan infinite, liveliness AUTOMATIC); an Agent-side XML default profile does not reach it (the Agent copies `DATAWRITER_QOS_DEFAULT` into a local, and Fast-DDS substitutes the profile only for the sentinel's address). A requester/replier created from BIN does NOT hold what was asked (the client library drops its QoS and the Agent builds both endpoints from fixed attributes: writers RELIABLE + TRANSIENT_LOCAL, readers RELIABLE + VOLATILE), so since issue 2120 it is created from XML, which the Agent applies; the four slots report what the XML carried, or that fixed profile after a BIN fallback. Depth reaches no peer: reported only when sent, else UNKNOWN | returns the stored creation profile — for a service, not what the Agent built |
 | status events: liveliness, incompatible QoS, matched; manual liveliness | `subscription_event_init`, `publisher_event_init`, `subscription_take_event`, `publisher_take_event`, `publisher_assert_liveliness` | protocol cannot | DDS status is on the Agent's entities; no XRCE submessage carries it; the Agent's writer asserts its own liveliness | `rmw_*_event_init` UNSUPPORTED |
 | status events: deadline | the same slots for the two DEADLINE kinds, plus `next_deadline_ms`, `event_type_is_supported` | **filled** ([issue 2108](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2108-xrce-deadline-event-emulation.md)) | both deadlines are local facts (time since the last takeable arrival / last publish), counted client-side and fired from `drive_io`; `next_deadline_ms` hands the executor the earliest expiry; `event_type_is_supported` is true for the two DEADLINE kinds only; this earned the DEADLINE QoS bit. The Agent's entity still offers/requests an infinite deadline, so a peer matching on deadline sees none. Measured live through the Agent | UNSUPPORTED |
 | session wake | `set_wake_callback` | protocol cannot | the client has no background thread; nothing arrives outside `drive_io`, which the executor itself calls | no equivalent |
 | per-entity new-data callbacks | `subscription_set_on_new_message_callback`, `service_set_on_new_request_callback`, `client_set_on_new_response_callback` | **filled** ([issue 2109](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2109-xrce-per-entity-new-data-callbacks.md)) | every arrival callback names its entity (`uxrObjectId`), so the registered callback fires from inside `drive_io`, once per takeable arrival with 1, under the session lock (a replaced, cleared or destroyed registration never fires again). Measured live: an arrival through the Agent marks its own subscription's ready bit and no other | UNSUPPORTED |
-| take with info | `take_with_info` | protocol cannot | `uxrOnTopicFunc` carries no writer GUID and no source timestamp; the only fields left are local stamps, not worth a slot | ignores `message_info` |
+| take with info | `take_with_info` | **filled** (issue 2135), receive time only | `uxrOnTopicFunc` carries no writer GUID and no source timestamp, so those stay "not reported"; `received_timestamp` is a local fact upstream also stamps locally (`system_clock::now()` in `rmw_zenoh_cpp`), so the topic callback stamps it on the platform wall clock | ignores `message_info` |
 | request info | `take_request_with_info` | **filled** | `uxrOnRequestFunc` DOES carry the request's `SampleIdentity` (issue 2081, measured live in issue 2088) | fills the request id |
 | identity | `get_gid_for_publisher`, `get_gid_for_client` | **filled** ([issue 2110](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2110-xrce-gid-for-publisher-and-client.md)) | the protocol hands back no GUID, but `src/graph.c` derives each tracked endpoint's DDS GID (probe + Fast-DDS entity counter, issue 1292) and lists it in `ros_discovery_info`; the slots answer that GID (a client's is its request writer, the GUID a server reads in the request id), UNSUPPORTED for an endpoint it could not key. Measured live against `ros2 topic info --verbose` | copies the XRCE object id into the gid (matches no DDS GID) |
 | server availability | `service_server_is_available` | protocol cannot | needs matched-replier state the Agent keeps; a `create_requester` ack says only that the client's own endpoints exist (see `vtable.c`) | UNSUPPORTED |
@@ -916,6 +916,19 @@ fields — but through a different seam:
   payload. Either way the `message_info()` builder sees the same
   `MessageInfo`.
 
+`received_timestamp` follows upstream's meaning: the subscriber's own wall
+clock (`nros_platform_time_now_ns`, ns since the Unix epoch) when the sample
+ARRIVED, the clock and the moment `rmw_zenoh_cpp` stamps
+(`system_clock::now()` in its sample callback). Zero means "not stamped"
+(issue 2135):
+
+| backend | `received_timestamp` on a sample |
+| --- | --- |
+| zenoh-pico | stamped by the ring producer (the sample callback) |
+| XRCE-DDS | stamped by the topic callback, inside `drive_io` |
+| Cyclone DDS | 0 — Cyclone 0.10's sample info has no reception time, and a stamp at take time is a different fact. Humble `rmw_cyclonedds_cpp` writes 0 for the same reason; Jazzy's stamps the take time |
+| uORB | 0 |
+
 ### Publisher identity: one GID, from one source
 
 Upstream exposes `rmw_get_gid_for_publisher(pub, out_gid)` and stamps
@@ -927,7 +940,7 @@ publisher that sent a message. nano-ros does both, and — since issue
 | --- | --- |
 | zenoh-pico | XXH3-128 of the entity's liveliness keyexpr, 16 bytes zero-extended to 24 — `rmw_zenoh_cpp`'s own derivation, so a stock peer's `ros2 topic info --verbose` prints the same GID |
 | cyclonedds | the DDS writer GUID, 16 bytes zero-extended; the take path reports it through the `take_with_info` slot |
-| XRCE-DDS | `get_gid()`: the DDS GUID graph.c derives for the endpoint (probed participant prefix + the Agent's endpoint counter, issue 1292), 16 bytes zero-extended — the GID `ros_discovery_info` lists and a stock `ros2 topic info --verbose` prints (issue 2110). No metadata on a take: a topic sample carries no writer GUID through the Agent |
+| XRCE-DDS | `get_gid()`: the DDS GUID graph.c derives for the endpoint (probed participant prefix + the Agent's endpoint counter, issue 1292), 16 bytes zero-extended — the GID `ros_discovery_info` lists and a stock `ros2 topic info --verbose` prints (issue 2110). No GID on a take: a topic sample carries no writer GUID through the Agent (the take reports only its receive time, issue 2135) |
 | uORB | `UNSUPPORTED`; no metadata on a take |
 
 The field is **24 bytes**, upstream's `RMW_GID_STORAGE_SIZE`. The 16 is
@@ -967,13 +980,17 @@ request id, timestamp 0 = not stamped), and the runtime turns each zero into
 
 | backend | channel | `request_id` | `source_timestamp` | `received_timestamp` |
 | --- | --- | --- | --- | --- |
-| zenoh-pico | Rust adapter side table (issue 1942) | from the query attachment (`rmw_zenoh_cpp` layout) | from the attachment | not reported |
-| Cyclone DDS | `take_request_with_info` | request-header GUID + publication handle, header sequence (stock `rmw_cyclonedds_cpp` layout) | the DDS sample's source timestamp | not reported |
-| XRCE-DDS | `take_request_with_info` | the Agent's `SampleIdentity` (client request-writer GUID + sequence), as `rmw_microxrcedds` fills it | not reported — no timestamp reaches the client library | not reported |
+| zenoh-pico | Rust adapter side table (issue 1942) | from the query attachment (`rmw_zenoh_cpp` layout) | from the attachment | stamped by the queryable callback (issue 2135) |
+| Cyclone DDS | `take_request_with_info` | request-header GUID + publication handle, header sequence (stock `rmw_cyclonedds_cpp` layout) | the DDS sample's source timestamp | not reported — Cyclone 0.10 has no reception time (Humble upstream writes 0 too) |
+| XRCE-DDS | `take_request_with_info` | the Agent's `SampleIdentity` (client request-writer GUID + sequence), as `rmw_microxrcedds` fills it | not reported — no timestamp reaches the client library | stamped by the request callback (issue 2135) |
 | uORB | — | uORB has no services | — | — |
 
-**No backend reports `received_timestamp`.** The field exists for upstream
-parity and is always zero here.
+`received_timestamp` is the server's own wall clock
+(`nros_platform_time_now_ns`) when the request arrived, which is what
+`rmw_zenoh_cpp` stamps (`system_clock::now()` when the query arrives); it
+is zero on a platform with no wall clock. The client side's response info
+has no slot at all (`take_response` returns the sequence number only), so a
+client sees neither timestamp.
 
 What an application sees:
 

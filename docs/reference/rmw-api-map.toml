@@ -605,9 +605,11 @@ upstream's `rmw_service_info_t` (the requesting client's `request_id` and the tw
 timestamps) is carried by the sibling slot `take_request_with_info` (issue 2081), which \
 takes a caller-owned `rmw_service_info_t *` field for field, exactly upstream's shape. \
 The runtime dispatches through it whenever a backend fills it: Cyclone DDS reports \
-`request_id` and `source_timestamp`, XRCE-DDS `request_id`; the zenoh backend reports \
-`request_id` and `source_timestamp` through the Rust adapter's side table instead \
-(issue 1942). No backend reports `received_timestamp`. A field not reported is zero."""
+`request_id` and `source_timestamp`, XRCE-DDS `request_id` and `received_timestamp`; \
+the zenoh backend reports `request_id`, `source_timestamp` and `received_timestamp` \
+through the Rust adapter's side table instead (issue 1942). `received_timestamp` is the \
+server's wall clock when the request arrived, as `rmw_zenoh_cpp` stamps it (issue 2135); \
+Cyclone 0.10 has no reception time and reports none. A field not reported is zero."""
 
 [[arg_rule]]
 match = "rmw_service_info_t"
