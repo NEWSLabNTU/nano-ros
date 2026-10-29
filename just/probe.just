@@ -100,6 +100,11 @@ zephyr: (platform "zephyr")
 [group("main")]
 workspace: (platform "workspace")
 
+# phase-517 W11: installation.md "Pinning a version" — a project pinned to an
+# older release; the installed nros must fetch and run the pinned one.
+[group("main")]
+pinned: (platform "pinned")
+
 # Same probe on a NON-Debian, NON-bash host (issue 0373). The book's install
 # path was only ever exercised on ubuntu+bash, which is how an apt-only prereq
 # block, a `just` contradiction, an unactionable ROS warning and a zsh-fatal
