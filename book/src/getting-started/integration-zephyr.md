@@ -291,12 +291,14 @@ package plus a Zephyr entry, which `nros new entry` scaffolds (see
 [The entry: `nros new entry`](#the-entry-nros-new-entry)). From the west
 workspace above, beside it:
 
-zephyr-lang-rust compiles the app for the triple the Zephyr board implies,
-`x86_64-unknown-none` for native_sim/64, and `nros setup zephyr` does not
-install it yet
+zephyr-lang-rust needs two things the C app does not: libclang, for the
+bindings it generates from Zephyr's headers, and the Rust target the Zephyr
+board implies (`x86_64-unknown-none` for native_sim/64). `nros setup zephyr`
+installs neither yet
 ([issue 2151](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2151-zephyr-rust-target-not-provisioned.md)):
 
 ```bash probe=40 variant=native-sim-rust
+sudo apt-get install -y --no-install-recommends libclang-dev
 . "$HOME/.cargo/env"     # the rustup `nros setup` installed (Installation)
 rustup target add x86_64-unknown-none
 export NROS_ZEPHYR_WORKSPACE="$PWD"
