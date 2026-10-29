@@ -310,11 +310,11 @@ fn test_qemu_lan9118_driver() {
 // QEMU Availability Tests
 // =============================================================================
 //
-// `test_qemu_detection` / `test_arm_toolchain_detection` removed: each read one
+// ~~`test_qemu_detection`~~ / ~~`test_arm_toolchain_detection`~~ removed: each read one
 // `is_*_available()` boolean and printed it, asserting nothing, so both passed
 // on a host with neither installed ("this test just verifies the detection
 // works" — but a detection that returns `false` also "works"). The identical
-// `test_arm_toolchain_detection` lived in `platform.rs` too. Both probes stay
+// ~~`test_arm_toolchain_detection`~~ lived in `platform.rs` too. Both probes stay
 // where they can actually fail: the `unmet!` guards on the real QEMU tests
 // above. Forbidden repo-wide by `check-no-vacuous-tests`.
 
@@ -526,7 +526,7 @@ fn test_qemu_baremetal_capi_e2e(
     );
 }
 
-// (Phase 182.3) `test_qemu_bsp_both_build` + `test_qemu_serial_{talker,listener}_builds`
+// (Phase 182.3) ~~`test_qemu_bsp_both_build`~~ + `test_qemu_serial_{talker,listener}_builds`
 // removed — build-only, covered by `build-all` (the serial talker/listener are
 // also built+run by `test_qemu_serial_pubsub_e2e` below).
 

@@ -110,7 +110,7 @@ const EXPECTED: &[(usize, &str, &str, Kind)] = &[
         // `.first_error()?` because ours returns `Result<(), NodeError>` where
         // upstream returns `Vec<RclrsError>` (no allocator; ledger row
         // `rust:Executor::spin`). This line also carried a rename when W10
-        // was written — ours was `spin_blocking`, because `spin` was taken by
+        // was written — ours was ~~`spin_blocking`~~, because `spin` was taken by
         // `spin(Duration) -> !` — and phase-427 W11 (`cf4b6aada`) gave the
         // `SpinOptions` form upstream's name, so the method is the same word
         // on both sides and the line differs only by the `?`.

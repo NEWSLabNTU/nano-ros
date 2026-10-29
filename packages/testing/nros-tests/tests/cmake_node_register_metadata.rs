@@ -1,6 +1,6 @@
 //! §212.L.9 cmake-fn metadata — `nano_ros_node_register` emits
 //! `nros-metadata.json` with the expected component entries.
-//! (`nano_ros_deploy` + its `l9_deploy` fixture were retired post-287 —
+//! (`nano_ros_deploy` + its ~~`l9_deploy`~~ fixture were retired post-287 —
 //! the deploy/rmw tuple lives in package.xml.)
 //!
 //! The cmake configure runs in the **build stage** — two cmake fixtures

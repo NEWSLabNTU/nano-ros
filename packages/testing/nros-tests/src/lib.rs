@@ -124,7 +124,7 @@ macro_rules! lane_skip {
 ///
 /// The ONE Rust spelling. Five matrix aggregators independently wrote
 /// `msg.contains("[SKIPPED]")`, which is the BARE marker: `[SKIPPED:lane]` does
-/// not contain that substring, so every classed skip `skip_class!` produced
+/// not contain that substring, so every classed skip ~~`skip_class!`~~ produced
 /// was filed as a FAILED cell. That turned five lane skips into five tier-2
 /// reds, and the junit rewriter could not rescue them because by then the
 /// marker sat nested inside an aggregate panic body rather than starting it.
@@ -356,7 +356,7 @@ fn domain_discovery_port_busy(domain: u8) -> bool {
             continue;
         };
         for line in body.lines().skip(1) {
-            // `sl  local_address rem_address …` — local is `HEXADDR:HEXPORT`.
+            // `sl  local_address rem_address …` — local is HEXADDR:HEXPORT.
             let Some(local) = line.split_whitespace().nth(1) else {
                 continue;
             };

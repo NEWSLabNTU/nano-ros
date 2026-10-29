@@ -149,7 +149,7 @@ fn rust_entry_sees_a_prj_conf_edit() {
     );
 }
 
-/// The C half is the one that had NO check at all: `zephyr_staticlib_dep_file`
+/// The C half is the one that had NO check at all: ~~`zephyr_staticlib_dep_file`~~
 /// looks for `librustapp.d`, a C-only image has none, and the helper returned
 /// `Ok` — "missing `.d` → existence-only fallback".
 #[test]

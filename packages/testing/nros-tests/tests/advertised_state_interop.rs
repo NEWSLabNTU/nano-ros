@@ -31,7 +31,7 @@
 //!
 //! Because there is no other side to drive. Three of these six slots have NO
 //! consumer anywhere outside `nros-rmw-cyclonedds/tests/graph_counts.cpp` — no
-//! Rust method on `Publisher`, no `nros_publisher_*` C entry, no dispatcher in
+//! Rust method on `Publisher`, no `rcl_publisher_*` C entry, no dispatcher in
 //! `nros-rmw-cffi`; `publisher_get_actual_qos` has exactly one caller, which
 //! logs a downgrade warning and discards the profile. The probe's own module
 //! doc carries the consequence: this proves the SLOTS against a live peer, not

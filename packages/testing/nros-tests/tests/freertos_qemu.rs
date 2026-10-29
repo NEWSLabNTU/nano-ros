@@ -73,14 +73,14 @@ fn require_freertos() {
 // Prerequisite detection tests (always run)
 // =============================================================================
 
-// `test_freertos_detection` removed: it read five `is_*_available()` booleans
+// ~~`test_freertos_detection`~~ removed: it read five `is_*_available()` booleans
 // and printed them, asserting nothing, so it reported PASS on a host with no
 // FreeRTOS, no lwIP, no arm-none-eabi-gcc, no QEMU and no zenohd. All five
 // probes stay load-bearing as the `unmet!` guards on the real tests, where a
 // `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================
-// (Phase 182.3) `test_freertos_all_examples_build` removed — it rebuilt every
+// (Phase 182.3) ~~`test_freertos_all_examples_build`~~ removed — it rebuilt every
 // FreeRTOS example, exactly what `build-all` / `build-test-fixtures` does
 // before `test-all` (the `_require-fixtures` preflight gates on it). The
 // per-role binaries are consumed by the `rtos_e2e` Platform__Freertos tests.

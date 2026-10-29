@@ -1,7 +1,7 @@
 //! Phase 244.D1 — bare-metal `nros::main!()` BoardEntry E2E node.
 //!
 //! Self-contained standalone fixture (issue 0100): the node logic lives in this
-//! crate's `lib.rs` (was a sibling `qemu_baremetal_e2e_pkg`); `main.rs` is the
+//! crate's `lib.rs` (was a sibling ~~`qemu_baremetal_e2e_pkg`~~); `main.rs` is the
 //! `nros::main!()` Form-1 Entry dispatching to this crate's `register`.
 //!
 //! Platform/RMW-agnostic application logic (RFC-0024 shape): registers a

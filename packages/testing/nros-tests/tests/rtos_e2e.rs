@@ -600,7 +600,7 @@ fn binaries(platform: Platform, lang: Lang, variant: Variant) -> BinaryPair {
 ///   var / toolchain missing. Per CLAUDE.md, this must not silently turn into
 ///   a false PASS either.
 fn require_cell_runnable(platform: Platform, lang: Lang, variant: Variant) {
-    // Issue 1135 — this was `maybe_skip(..) -> bool` and its three callers wrote
+    // Issue 1135 — this was ~~`maybe_skip(..) -> bool`~~ and its three callers wrote
     // `if maybe_skip(..) { return; }`. `skip_reason` returns `None` for every
     // combination today, so the `true` arm was unreachable and the guard branch
     // dead — but the branch is the live defect's shape: the moment someone
@@ -644,7 +644,7 @@ fn build_pair(platform: Platform, lang: Lang, variant: Variant) -> (&'static Pat
 /// server has actually announced itself.
 ///
 /// The pub/sub shape starts its two instances in parallel on NuttX and MUST
-/// keep doing so — the reason, from the `start_pair` helper this replaced: the
+/// keep doing so — the reason, from the ~~`start_pair`~~ helper this replaced: the
 /// NuttX Rust binaries boot slowly, and giving the listener the usual 20 s
 /// head-start expires its session before the talker finishes booting. That
 /// reasoning is sound for PUB/SUB, where a subscriber joining late still
@@ -868,7 +868,7 @@ const COVERED_LEASE_SECS: u32 = 14;
 /// The count assertion below cannot separate "one node re-dialled on a timer"
 /// from "a link dropped once" — see [`MAX_ROUTER_SESSIONS`] — but the SPACING
 /// can: a lapse repeats every `2 x lease`, a drop happens once. This is a
-/// DIAGNOSTIC and never an assertion: it parses `HH:MM:SS` out of the router's
+/// DIAGNOSTIC and never an assertion: it parses HH:MM:SS out of the router's
 /// third-party log lines, which is exactly the kind of text RFC-0075 says we do
 /// not control, so a parse miss must cost information and not a verdict.
 fn session_open_spacing(log: &str) -> String {

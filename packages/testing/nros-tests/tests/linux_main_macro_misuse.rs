@@ -79,7 +79,7 @@ fn retired_board_arg_emits_compile_error_naming_the_metadata_key() -> TestResult
     )
 }
 
-/// The `unknown_board` overlay is the template's `system.toml` with ONE line
+/// The unknown_board overlay is the template's `system.toml` with ONE line
 /// changed. Issue 1656 turned a `sed` rewrite into a file, which made it an input
 /// the row's signature hashes — and made it able to drift from the template it
 /// copies. Reads sources only.

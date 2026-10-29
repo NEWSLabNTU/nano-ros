@@ -19,7 +19,7 @@
 //! that do NOT move with demo-banner changes, so promoting them to the SSoT
 //! would couple unrelated tests to it:
 //!
-//! * `nuttx_qemu` — kernel boot markers (`nsh>`, `NuttShell`, `NuttX`): a
+//! * nuttx_qemu — kernel boot markers (`nsh>`, `NuttShell`, `NuttX`): a
 //!   platform boot probe, not delivery.
 //! * `platform` — QEMU/target config tokens (`arm`, `lm3s6965evb`,
 //!   `semihosting`, `thumb`): not runtime node output at all.

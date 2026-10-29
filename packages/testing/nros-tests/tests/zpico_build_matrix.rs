@@ -51,7 +51,7 @@ fn zpico_sys_has_no_cmake_dep() {
         .lines()
         .filter(|line| {
             // Match the `cmake` crate exactly, not e.g. `cmake-rs`
-            // or `cmake_macros`. cargo tree formats deps as
+            // or cmake_macros. cargo tree formats deps as
             // `<name> v<ver>` so we anchor on a trailing space + 'v'.
             let trimmed = line.trim_start();
             trimmed.starts_with("cmake v") || trimmed == "cmake"

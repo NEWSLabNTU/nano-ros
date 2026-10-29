@@ -43,7 +43,7 @@ use std::{path::PathBuf, time::Duration};
 // Detection Tests
 // =============================================================================
 
-// `test_ros2_dds_detection` removed: it read two `is_*_available()` booleans
+// ~~`test_ros2_dds_detection`~~ removed: it read two `is_*_available()` booleans
 // and printed them, asserting nothing, so it reported PASS on a host with no
 // ROS 2 and no rmw_fastrtps_cpp. Both probes stay load-bearing as the `unmet!`
 // guards on the real interop tests, where a `false` stops the run. Forbidden
@@ -350,7 +350,7 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     // issue 0741 — snapshot the bus BEFORE teardown, and only on failure.
     //
     // Three hosts now agree on every static axis, down to the `libfastrtps` /
-    // `librmw_fastrtps_cpp` binaries being byte-identical, and still disagree on
+    // librmw_fastrtps_cpp binaries being byte-identical, and still disagree on
     // the verdict. If the software is the same, what differs is who else is on
     // the bus — and the failure's mechanism allows exactly that: the reply
     // reader sizes its history from a max-serialized-size learned AT DISCOVERY,

@@ -7,7 +7,7 @@
 //!
 //! Pattern 1 (`nros::node!`) is covered by the existing component
 //! macro tests in Phase 172.W.3 (`nros-macros` unit tests +
-//! `component_runtime_*` integration suites) — not re-asserted here.
+//! ~~`component_runtime_*`~~ integration suites) — not re-asserted here.
 //!
 //! These tests mutate process env vars. To avoid cross-test leakage
 //! they run sequentially through a process-wide mutex (`cargo test`

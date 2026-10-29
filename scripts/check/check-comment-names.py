@@ -68,6 +68,7 @@ SCOPE = (
     "packages/cli",
     "packages/drivers",
     "packages/platform",
+    "packages/testing",
     "packages/tooling",
     "packages/verification",
 )

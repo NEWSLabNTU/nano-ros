@@ -2,7 +2,7 @@
 //!
 //! The planner's lowering of `qos_overrides.<topic>.<role>.<policy>` launch
 //! params into the entry's `&'static [QoSOverride]` table is covered by unit
-//! tests (`plan_system_lowers_qos_overrides`, `render_sub_qos_expr_bakes_*`).
+//! tests (`plan_system_lowers_qos_overrides`, ~~`render_sub_qos_expr_bakes_*`~~).
 //! What those can't show is the LAST link: that the baked table actually
 //! changes a running entity's QoS and the entity still delivers. This test
 //! closes that gap.

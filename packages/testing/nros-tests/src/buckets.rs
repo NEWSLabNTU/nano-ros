@@ -269,7 +269,7 @@ mod tests {
     /// `just` recipe. The justfile tier recipes are the ladder the bucket map
     /// declares, so a renamed/removed tier recipe (or a new rung with no recipe)
     /// fails HERE rather than leaving the SSoT map pointing at a command that no
-    /// longer exists. Mirrors `ci_lane`'s `build_fanout_names_every_module…` — the
+    /// longer exists. Mirrors `ci_lane`'s ~~`build_fanout_names_every_module…`~~ — the
     /// justfile is a checked consumer of the Rust-side ladder.
     #[test]
     fn ci_tier_ladder_matches_justfile_recipes() {

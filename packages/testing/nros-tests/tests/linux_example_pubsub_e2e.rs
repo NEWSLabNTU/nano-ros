@@ -79,7 +79,7 @@ fn listener_bin(l: ML) -> &'static str {
 /// The listener's delivery marker. Run-proved 2026-08-04: the native talker/
 /// listener demos (all three languages) default to the STRING topic and print
 /// `I heard:` — the C listener's `Received:` (Int32) arm is only taken under
-/// `NROS_SUB_TYPE=int32`, which the plain example pair does not set. (The
+/// ~~`NROS_SUB_TYPE=int32`~~, which the plain example pair does not set. (The
 /// per-lang split this replaced made c/cpp/zenoh falsely fail.)
 fn listener_prefix(_l: ML) -> &'static str {
     LISTENER_LOG_PREFIX

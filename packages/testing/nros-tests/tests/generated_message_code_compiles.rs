@@ -19,16 +19,16 @@
 //! ## What that buys, beyond obeying the rule
 //!
 //! * The compile is shared and cached. `cargo test -p rosidl-codegen` paid
-//!   10.7 s for 267 tests, **9.9 s of it in `test_check_no_warnings` alone**;
+//!   10.7 s for 267 tests, **9.9 s of it in ~~`test_check_no_warnings`~~ alone**;
 //!   `check-cli-tests` is a required check on every pull request and paid that
 //!   per push. The fixture costs ~36 s cold, once per `build-test-fixtures`,
 //!   in one row of a jobserver-parallel lane.
 //! * A crate-level `deny` reaches ALL FOUR messages. Each old test generated
-//!   ONE message and carried its own attributes, so `test_check_no_warnings`
+//!   ONE message and carried its own attributes, so ~~`test_check_no_warnings`~~
 //!   asserted "no warnings" over `Point` (`int32`/`float64`) — the one shape
 //!   with no String field, and therefore the one that could not produce the
 //!   `invalid_value` warning its two String-carrying siblings did produce.
-//! * Clippy's verdict is now a verdict. `test_clippy_no_warnings` ran
+//! * Clippy's verdict is now a verdict. ~~`test_clippy_no_warnings`~~ ran
 //!   `-W clippy::all` and failed only if clippy's stderr contained the
 //!   substring `"error"` — i.e. every clippy WARNING, which is all that
 //!   invocation could emit, passed. Denying the lints in the crate under check

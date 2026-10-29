@@ -3,7 +3,7 @@
 //! Declares a single node. The BSP baker links this pkg's mangled
 //! register symbol (`__nros_component_talker_pkg_register`, emitted by
 //! `nros::node!()`) into the firmware and dispatches it from
-//! `nros_system_run`. The M.5.a.2 BSP-side `DeclarativeSlot` does
+//! ~~`nros_system_run`~~. The M.5.a.2 BSP-side ~~`DeclarativeSlot`~~ does
 //! not fire timer / subscription callbacks today (M.5.a.4 follow-up)
 //! so a typed publisher / timer here would add link-time weight
 //! without execution coverage; the node-only declaration exercises

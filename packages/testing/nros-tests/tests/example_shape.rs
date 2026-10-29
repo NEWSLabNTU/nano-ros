@@ -46,7 +46,7 @@
 //!
 //! Adding a directory to the skip set without lifting the underlying
 //! migration block requires a phase-doc update + a comment in
-//! `IS_MIGRATED_WAVE` below.
+//! ~~`IS_MIGRATED_WAVE`~~ below.
 
 use std::{
     collections::BTreeSet,
@@ -608,7 +608,7 @@ fn component_or_application_classification_present() {
         if !cargo.is_file() {
             // C / C++ leaves don't carry a `[package.metadata.nros.*]`
             // table — their classification rides on the cmake fn
-            // (`nano_ros_component()` / `nano_ros_application()`)
+            // (~~`nano_ros_component()`~~ / ~~`nano_ros_application()`~~)
             // invoked by `CMakeLists.txt`. Asserted by Test 6.
             continue;
         }
@@ -831,7 +831,7 @@ fn pre_212_files_forbidden_in_migrated_examples() {
         // artifacts the codegen path used to drop next to a pkg).
         // They belong in `$OUT_DIR/nros-gen/` or `target/nros-metadata/`,
         // never tracked next to a Cargo.toml. Aligns with sibling
-        // `phase212_examples_canonical_shape` test's same check.
+        // ~~`phase212_examples_canonical_shape`~~ test's same check.
         //
         // TRACKED, not present. `.gitignore:131` already ignores
         // `examples/**/metadata/*.json`, and `nros sync` WRITES one per Node
@@ -1072,7 +1072,7 @@ fn zephyr_leaf_buildrs_uses_shared_bake() {
     //
     // 9 -> 7 (phase-470 W5.b2, issue 1288): the last TWO Rust Zephyr
     // applications are generated — `realtime-rust`'s `zephyr_entry` and
-    // `safety`'s `zephyr_rust_safety_entry` — for the same reason and with the
+    // `safety`'s zephyr_rust_safety_entry — for the same reason and with the
     // same consequence for this walk. What remains under `examples/` is the six
     // standalone leaves plus `zephyr_entry_robot1`, which W5.b1 declined on
     // purpose: it is the one in-tree image whose `[image.*] entry` key is

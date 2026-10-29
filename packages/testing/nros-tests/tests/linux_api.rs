@@ -5,17 +5,17 @@
 //! suite. `just linux build-fixtures` stages these under isolated
 //! `build-<rmw>/` dirs so tests do not compile or overwrite native
 //! archives at runtime. Language-agnostic tests are generated as two cases
-//! (`::case_1_C` and `::case_2_Cpp`) via `#[rstest]`; language-specific
+//! (::case_1_C and ::case_2_Cpp) via `#[rstest]`; language-specific
 //! tests (interop tests that always pair with Rust, the C++ goal-rejection
 //! test, the C action blocking case) stay as named functions below.
 //!
 //! **Bucket (phase-329 W4):** genuine one-offs no matrix cell covers, and stays
-//! — cross-LANGUAGE interop pairs (`*_interop_*`, `c_rust_*`), the RFC-0041
+//! — cross-LANGUAGE interop pairs (`*_interop_*`, c_rust_*), the RFC-0041
 //! callback-shape variants (`*_callback`), the C++ goal-rejection path, the MIXED
 //! cyclone pairs (rust talker ↔ c/cpp listener), and the threadx-linux ↔ native
 //! cross-PLATFORM cyclone interop. The four same-language delivery cases that
-//! duplicated the matrix consumers (`test_native_talker_listener_communication`
-//! rust-zenoh pubsub; `test_native_service_communication` c/cpp-zenoh service;
+//! duplicated the matrix consumers (~~`test_native_talker_listener_communication`~~
+//! rust-zenoh pubsub; ~~`test_native_service_communication`~~ c/cpp-zenoh service;
 //! `test_native_cyclonedds_{service,action}` c/cpp-cyclone) were FOLDED into
 //! `linux_example_pubsub_e2e` / `linux_example_reqresp_e2e` (phase-329 W4).
 //!
@@ -279,7 +279,7 @@ fn test_native_action_server_starts(
 /// Callback service client (C or C++) vs the stock same-language service
 /// server. Proves the RFC-0041 callback receive path E2E: replies arrive
 /// through the typed response handler dispatched at `spin_once`
-/// (`nros_executor_spin_some` / `rclcpp::spin_once`) — no Promise/Future poll.
+/// (`rclc_executor_spin_some` / `rclcpp::spin_once`) — no Promise/Future poll.
 /// Both `service-client-callback` variants log the demo result line
 /// (`Result of add_two_ints: N`) from inside the registered callback, so its
 /// presence proves the callback dispatched.
@@ -879,7 +879,7 @@ fn next_cyclonedds_domain() -> String {
     // concurrent tests: every process restarts it at the same base and they all
     // collide on one domain (observed: a C action server `Executing goal [1]`
     // *and* `[2]` from a concurrent C++ client → the C client's result is stolen
-    // and it never reaches `Final result`). Delegate to the PID-seeded allocator
+    // and it never reaches Final result). Delegate to the PID-seeded allocator
     // that is unique across concurrent nextest processes (concurrently-spawned
     // tests have near-consecutive PIDs, so `(pid % 232) + 1` is collision-free).
     nros_tests::unique_ros_domain_id().to_string()

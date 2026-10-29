@@ -267,7 +267,7 @@ pub fn attribute<'a>(rows: &'a [GroupRow], rel: &Path) -> Option<(&'a GroupRow, 
 /// row's platform is not migrated (or the path belongs to no cargo row).
 ///
 /// This module reads NOTHING from the environment. It had a
-/// `sharing_possible()` short-circuit for one commit — "`NROS_FIXTURE_SHARED_
+/// ~~`sharing_possible()`~~ short-circuit for one commit — "`NROS_FIXTURE_SHARED_
 /// PLATFORMS` empty ⇒ no row can be shared, so skip the subprocess" — and
 /// `tests/fixture_group_resolution.rs` immediately falsified it: the shell
 /// spells the default `${NROS_FIXTURE_SHARED_PLATFORMS:-baremetal}`,
@@ -592,7 +592,7 @@ pub fn group_dir(slug: &str) -> PathBuf {
 /// The one shared group dir a platform produces, for resolvers that know a
 /// platform and a binary name but no manifest row.
 ///
-/// This is the replacement for `fixture_shared_target_dir(platform)`, which
+/// This is the replacement for ~~`fixture_shared_target_dir(platform)`~~, which
 /// hardcoded `build/cargo-fixtures/<platform>` and so could express only the
 /// DEFAULT group. It now asks the export, and — critically — FAILS when the
 /// platform produces more than one group instead of silently answering for the

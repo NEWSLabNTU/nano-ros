@@ -2,7 +2,7 @@
 //!
 //! Every runtime e2e lane in `nros-tests` is a **cell** of this table:
 //! (platform × language × RMW × workload × kind). The parametrized matrix
-//! consumers (`example_e2e`, `workspace_e2e`, …) iterate [`CELLS`]; the
+//! consumers (`example_e2e`, ~~`workspace_e2e`~~, …) iterate [`CELLS`]; the
 //! isolation allocator ([`crate::alloc`]) derives each cell's port/domain;
 //! the coverage gate cross-checks `examples/fixtures.toml` against this
 //! table in BOTH directions. A gap in coverage is a visible
@@ -103,7 +103,7 @@ impl PlatformId {
             PlatformId::ThreadxRiscv64 => 6,
             PlatformId::Esp32Qemu => 7,
             PlatformId::QemuBaremetal => 8,
-            // 9 was `Stm32F4` until phase-337 W7.a. Renumbering `Fvp`/`Px4`
+            // 9 was ~~`Stm32F4`~~ until phase-337 W7.a. Renumbering `Fvp`/`Px4`
             // down into the gap is free: both carry ZERO Runtime cells, so no
             // fixture image, locator or domain was ever baked from their band.
             //
@@ -333,7 +333,7 @@ impl Lang {
     /// The axis token — the spelling used in fixture paths, cell labels and
     /// failure messages.
     ///
-    /// phase-373 W3: eight tests carried a byte-identical private `lang_str`
+    /// phase-373 W3: eight tests carried a byte-identical private ~~`lang_str`~~
     /// for this. A pure mapping over an enum this crate owns belongs on the
     /// enum, where a new variant makes the compiler ask about it once rather
     /// than leaving eight copies to be found by hand.
@@ -1064,7 +1064,7 @@ pub const CELLS: &[Cell] = &[
     // A6 — `baremetal_run_plan_runtime`: the `nros::main!()` boot road.
     cell(QemuBaremetal,   Rust, Zenoh, BoardEntryBoot, Example, Runtime),
 
-    // phase-337 W7.a — the three `Stm32F4` BuildOnly cells left with the board.
+    // phase-337 W7.a — the three ~~`Stm32F4`~~ BuildOnly cells left with the board.
     // They were `BuildOnly`, i.e. ZERO Runtime, so the removal costs no
     // coverage: `check-board-tiers` requires a Runtime cell for tier 1/2 and
     // this platform could never have one (no hardware in the rack, no QEMU
@@ -1348,7 +1348,7 @@ pub fn answered_cells() -> impl Iterator<Item = &'static Cell> {
 }
 
 /// The test binary that answers each Runtime cell — RFC-0051 §7c, phase-510
-/// W3 (which generalised phase-329 W1's five-file `W1Consumer`).
+/// W3 (which generalised phase-329 W1's five-file ~~`W1Consumer`~~).
 ///
 /// Every Runtime cell has exactly ONE consumer ([`consumer_of`] is total over
 /// Runtime cells, gated by `every_runtime_cell_has_a_consumer`), and every

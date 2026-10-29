@@ -483,7 +483,7 @@ fn runtime_propagates_init_failure(zenohd_unique: ZenohRouter) {
 // Note on absent e2e pub→sub test
 // =============================================================================
 //
-// The task RFC names an `executor_component_runtime_drives_talker_listener_e2e`
+// The task RFC names an executor_component_runtime_drives_talker_listener_e2e
 // integration test. zenoh-pico has a "write filter" caveat documented inline
 // at `tests/trigger_conditions.rs:5`: in-process zenoh pub/sub doesn't work
 // regardless of whether the endpoints share a session or run in distinct

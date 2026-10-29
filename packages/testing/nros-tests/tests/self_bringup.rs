@@ -17,7 +17,7 @@
 
 use std::{fs, path::Path, process::Command};
 
-// issue 0381 — the pre-296 `play_launch_parser_available()` gate is GONE:
+// issue 0381 — the pre-296 ~~`play_launch_parser_available()`~~ gate is GONE:
 // `nros plan`'s self-bringup path synthesises the model in-process
 // (plan.rs `synthesise_self_model`) and never shells to the parser, so a
 // parser-availability skip only hid these tests on every host without it.
@@ -106,7 +106,7 @@ fn nros_plan_self_bringup_emits_plan_json() {
         .expect("spawn nros plan");
     // Full planning success requires source-metadata; we only assert the
     // resolver-output (`record.json`) was written — same convention as
-    // `phase212_l6_launch_synth`.
+    // ~~`phase212_l6_launch_synth`~~.
     let record_path = out_dir.join("record.json");
     assert!(
         record_path.is_file(),

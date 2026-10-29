@@ -131,7 +131,7 @@ fn subsets() -> Vec<(String, BTreeSet<Coord>)> {
 /// The skippability here is derived from the PRODUCTION attribution functions,
 /// never from a column the build also reads. A cross-check whose two sides
 /// consume one computation cannot catch a bug in that computation — a
-/// `lane_skippable` column was tried here first and passed the mutation it
+/// ~~`lane_skippable`~~ column was tried here first and passed the mutation it
 /// existed to catch, because mutating the shared function moved both sides
 /// together. Independence is the point; this is the `check-rmw-api-parity` /
 /// `check-rmw-abi-shape` pairing, not a second spelling of one rule.

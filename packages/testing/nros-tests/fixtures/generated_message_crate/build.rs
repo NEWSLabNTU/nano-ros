@@ -31,7 +31,7 @@ use rosidl_codegen::generate_message_package;
 use rosidl_parser::parse_message;
 use std::{collections::BTreeSet, env, fs, path::PathBuf};
 
-/// `SimpleMsg` -> `simple_msg`, the module name the emitted code itself uses
+/// `SimpleMsg` -> simple_msg, the module name the emitted code itself uses
 /// for a message (the emitter's `to_snake_case` is not public API and these
 /// four names are plain CamelCase).
 fn snake_case(name: &str) -> String {
@@ -105,7 +105,7 @@ fn main() {
         // clones, so `clippy::all` is denied over the idiomatic layer with
         // nothing exempted, and a returning clone is a red here.
         //
-        // The old `test_clippy_no_warnings` saw none of this twice over: it
+        // The old ~~`test_clippy_no_warnings`~~ saw none of this twice over: it
         // generated `TestMsg` (`int32` + `string`), which has no array field,
         // and it only failed on the substring `"error"` in clippy's stderr —
         // clippy WARNINGS, which is all `-W clippy::all` can produce, read as
@@ -126,7 +126,7 @@ fn main() {
     // (a `NonNull` inside), so rustc's `invalid_value` fires on a property of
     // the STAND-IN rather than of the emitter.
     //
-    // This is also why the old `test_check_no_warnings` could pass: it
+    // This is also why the old ~~`test_check_no_warnings`~~ could pass: it
     // generated `Point` (`int32 x` / `float64 y`), the one message shape with
     // no String field, so the warning its two String-carrying siblings
     // provoked was never in its crate. `deny(warnings)` reaches all four here,

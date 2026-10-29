@@ -10,10 +10,10 @@
 //!
 //! | old test | what it asserted | where it lives now |
 //! | --- | --- | --- |
-//! | `test_simple_message_compiles` | `SimpleMsg` type-checks | `msgs/SimpleMsg.msg` + this crate compiling |
-//! | `test_message_with_arrays_compiles` | `[5]` / `[32]` arrays type-check under serde | `msgs/ArrayMsg.msg` |
-//! | `test_check_no_warnings` | emitted code is warning-free | `#![deny(warnings)]` below, over ALL four |
-//! | `test_clippy_no_warnings` | emitted code is clippy-clean | builder `cargo-clippy` + `#![deny(clippy::all)]`, over ALL four |
+//! | ~~`test_simple_message_compiles`~~ | `SimpleMsg` type-checks | `msgs/SimpleMsg.msg` + this crate compiling |
+//! | ~~`test_message_with_arrays_compiles`~~ | `[5]` / `[32]` arrays type-check under serde | `msgs/ArrayMsg.msg` |
+//! | ~~`test_check_no_warnings`~~ | emitted code is warning-free | `#![deny(warnings)]` below, over ALL four |
+//! | ~~`test_clippy_no_warnings`~~ | emitted code is clippy-clean | builder `cargo-clippy` + `#![deny(clippy::all)]`, over ALL four |
 //!
 //! The old clippy test also could not fail the way its name promised: it
 //! grepped clippy's stderr for the substring `"error"`, so a clippy WARNING —

@@ -33,7 +33,7 @@
 //! a ROS 2 user would, with `ZENOH_SESSION_CONFIG_URI` (D6a: it replaces the
 //! baked file whole), and its Cyclone session opens with the domain's own XML
 //! — which Cyclone refused as an unknown session property before W3b. The
-//! nested case keeps `NROS_BRIDGE_S0_LOCATOR`, which replaces the file too.
+//! nested case keeps ~~`NROS_BRIDGE_S0_LOCATOR`~~, which replaces the file too.
 //!
 //! Skips cleanly when `zenohd` is absent, or when this run's lane does not
 //! select the fixtures' coordinates.
@@ -88,7 +88,7 @@ const CYCLONE_NODE: &str = "S1";
 /// Resolve the Int32 sink built for cyclonedds.
 ///
 /// issue 0449 — this used to drive `examples/linux/c/listener` with
-/// `NROS_SUB_TYPE=int32`, a runtime message-type switch that existed ONLY for
+/// ~~`NROS_SUB_TYPE=int32`~~, a runtime message-type switch that existed ONLY for
 /// this test. The examples follow the ROS demos, which publish
 /// `std_msgs/String`; a test that needs a different payload uses a test bin.
 /// `bins/int32-sink` gained the cyclone axis so this could stop bending an
@@ -120,7 +120,7 @@ fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
 fn spawn_zenoh_talker(bin: &Path, locator: &str) -> ManagedProcess {
     let mut cmd = Command::new(bin);
     // Match the Int32 bridge/listener (issue #183): publish std_msgs/Int32.
-    // phase-338 W3 — this used the native rust talker with `NROS_PUB_TYPE=int32`;
+    // phase-338 W3 — this used the native rust talker with ~~`NROS_PUB_TYPE=int32`~~;
     // that switch moved to `bins/header-chatter-talker`, which publishes Int32 on
     // /chatter natively, so the example can drop its test-only branching.
     cmd.env("RUST_LOG", "info").env("NROS_LOCATOR", locator);

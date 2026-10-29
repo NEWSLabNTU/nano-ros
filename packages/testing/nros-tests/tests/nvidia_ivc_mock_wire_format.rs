@@ -1,6 +1,6 @@
 //! Phase 100.8 / 11.3.A — NVIDIA IVC mock wire-format E2E test.
 //!
-//! phase-337 W7.b renamed this from `orin_spe_mock_ivc`: it never tested the
+//! phase-337 W7.b renamed this from ~~`orin_spe_mock_ivc`~~: it never tested the
 //! `nros-board-orin-spe` board (RFC-0064 R3 measured exactly that — "proves the
 //! IVC wire format on POSIX, NOT the board"), so the board's deletion leaves it
 //! fully intact. What it pins is the `nvidia-ivc` driver's frame protocol,

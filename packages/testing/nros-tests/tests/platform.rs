@@ -14,15 +14,15 @@ use std::process::Command;
 // Zephyr example presence/build is covered by `just zephyr build-fixtures` +
 // the zephyr.rs e2e tests.
 //
-// Same rule, applied to the rest of the file: `test_arm_toolchain_detection`,
-// `test_qemu_arm_detection`, `test_zephyr_environment_detection`,
-// `test_west_detection` and `test_zephyr_workspace_detection` were removed
+// Same rule, applied to the rest of the file: ~~`test_arm_toolchain_detection`~~,
+// ~~`test_qemu_arm_detection`~~, ~~`test_zephyr_environment_detection`~~,
+// ~~`test_west_detection`~~ and ~~`test_zephyr_workspace_detection`~~ were removed
 // because they asserted NOTHING — each read one `is_*_available()` boolean and
 // printed it, so all five reported PASS on a host with no toolchain, no QEMU
 // and no Zephyr. A probe that cannot fail is not coverage; the same probes are
 // load-bearing where they belong, as the `unmet!` guards on the real tests
 // below. `check-no-vacuous-tests` now forbids the shape repo-wide.
-// (`test_arm_toolchain_detection` also existed verbatim in `emulator.rs` —
+// (~~`test_arm_toolchain_detection`~~ also existed verbatim in `emulator.rs` —
 // two copies of a test that could not fail.)
 
 // =============================================================================

@@ -26,7 +26,7 @@
 //!
 //! **The decision was re-made 260 times.** Skip-or-fail is one rule, and a rule
 //! restated at every call site is a rule with 260 chances to differ. One file
-//! had already noticed and written a private `skip_missing_fixture`; it was
+//! had already noticed and written a private ~~`skip_missing_fixture`~~; it was
 //! used by that file alone, and it matched on prose too.
 //!
 //! # The shape of the fix

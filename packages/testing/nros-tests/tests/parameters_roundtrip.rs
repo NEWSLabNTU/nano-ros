@@ -8,7 +8,7 @@
 //!
 //! phase-426 W4 — the examples moved onto THE parameter store. They used to
 //! exercise a caller-owned second store (`rclcpp::ParameterServer<8>` in C++, an
-//! `nros_parameter_server_t` over a static array in C), whose contents the six
+//! ~~`nros_parameter_server_t`~~ over a static array in C), whose contents the six
 //! `rcl_interfaces/srv/*` servers could not read — so both shipped the exact
 //! defect this phase exists to remove. They are ROS nodes now, which is why
 //! this test needs a router: parameters belong to a node, a node needs a

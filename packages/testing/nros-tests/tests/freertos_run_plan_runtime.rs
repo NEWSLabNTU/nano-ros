@@ -1,7 +1,7 @@
 //! Phase 212.O.1 — `freertos_board_run_executes_run_plan` runtime gate.
 //!
 //! FreeRTOS-side analog of the posix sibling
-//! `phase212_n_entry_poc_runs::entry_poc_boots_through_board_entry_run`
+//! ~~`phase212_n_entry_poc_runs::entry_poc_boots_through_board_entry_run`~~
 //! (`tests/phase212_n_entry_poc_runs.rs:66`).
 //!
 //! The sibling gates that `main()` reaches `<LinuxBoard as BoardEntry>::run`'s
@@ -101,7 +101,7 @@ fn entry_zenohd_port(entry: &str) -> u16 {
     FREERTOS.zenohd_port_for(variant, TestLang::Rust)
 }
 
-/// FreeRTOS Entry pkg fixture dir for `<entry>` (e.g. `talker_entry`).
+/// FreeRTOS Entry pkg fixture dir for `<entry>` (e.g. talker_entry).
 fn entry_dir(entry: &str) -> PathBuf {
     project_root()
         .join("examples/mps2-an385-freertos/rust")
@@ -280,7 +280,7 @@ fn freertos_board_run_executes_run_plan() {
 }
 
 // The five sibling roles — `listener`, `service-{server,client}` and
-// `action-{server,client}` — each had their own `_entry_boots_and_connects`
+// `action-{server,client}` — each had their own _entry_boots_and_connects
 // test here. All five were removed: six QEMU boots asserting one board's
 // banner.
 //

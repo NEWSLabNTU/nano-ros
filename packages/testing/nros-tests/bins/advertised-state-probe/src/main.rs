@@ -22,7 +22,7 @@
 //! There was no higher layer to drive. `publisher_count_matched_subscriptions`,
 //! `subscription_count_matched_publishers` and `get_gid_for_publisher` have NO
 //! consumer anywhere in the tree outside `tests/graph_counts.cpp` — no Rust
-//! `Publisher` method, no `nros_publisher_*` C entry, no dispatcher in
+//! `Publisher` method, no `rcl_publisher_*` C entry, no dispatcher in
 //! `nros-rmw-cffi`. `publisher_get_actual_qos` has exactly one caller
 //! (`CffiSession::create_publisher`), which logs a downgrade warning and
 //! throws the profile away; the subscription and the four service/client

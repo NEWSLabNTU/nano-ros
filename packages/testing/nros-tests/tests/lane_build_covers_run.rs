@@ -460,7 +460,7 @@ fn an_all_build_satisfies_every_lane() {
 ///
 /// # What this used to assert, and why it was wrong (issue 1314)
 ///
-/// It was `a_native_build_satisfies_the_tier1_run`, and its reason was "tier 1
+/// It was ~~`a_native_build_satisfies_the_tier1_run`~~, and its reason was "tier 1
 /// narrows its run to host binaries, which is exactly what that build
 /// produces". phase-395 W19 retired that premise on BOTH sides —
 /// `CiLane::Tier1::run_scope()` became `LaneCoords`, `nros_lane_build_lane

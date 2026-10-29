@@ -180,11 +180,11 @@ fn require_esp32_networked() {
 /// bare-metal session-init path, NOT a networking/OpenETH RX-TX issue.
 ///
 /// Not yet root-caused (needs instrumented QEMU runs, ~250 s each). Ruled out
-/// so far: stale global `g_config` (zpico.c re-runs `z_config_default` per
+/// so far: stale global ~~`g_config`~~ (zpico.c re-runs `z_config_default` per
 /// call); a non-NUL-terminated locator/property value (all are NUL-terminated
-/// stack buffers in `SmoltcpSession::new`); a too-small main stack (~18 KB:
+/// stack buffers in ~~`SmoltcpSession::new`~~); a too-small main stack (~18 KB:
 /// `_stack_start` 0x3fcce400 − `_stack_end` 0x3fcc9a4c — the ~4.2 KB
-/// `SmoltcpSession::new` frame, key_bufs/val_bufs 2×256×8, is large but the
+/// ~~`SmoltcpSession::new`~~ frame, key_bufs/val_bufs 2×256×8, is large but the
 /// fault is a deref of an all-ones *pointer value*, not a run-off-into-guard).
 /// Open leads: the `connect_with_retry` closure re-invoking
 /// `zpico_init_with_config` (re-entrancy over shared globals), or esp32 heap
@@ -525,7 +525,7 @@ fn test_esp32_workspace_entry_e2e() {
     // Entry's own in-process listener sees nothing; no same-session
     // zenoh loopback).
     // phase-338 W3 — was the EXAMPLE (`native/rust/listener`) with a test-only
-    // `NROS_SUB_TYPE=int32` switch. That switch moved to `bins/int32-sink`,
+    // ~~`NROS_SUB_TYPE=int32`~~ switch. That switch moved to `bins/int32-sink`,
     // which subscribes Int32 natively, so the example can drop its branching.
     // Readiness is unchanged ("Waiting for"); the per-message marker is not —
     // the sink prints "Received:", the example printed "I heard:".

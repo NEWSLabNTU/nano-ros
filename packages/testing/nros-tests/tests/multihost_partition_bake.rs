@@ -1,7 +1,7 @@
 //! Multi-host partition — RESOLVE-time (phase-326, issue 0364).
 //!
 //! `<node machine="…">` was ROS 1 roslaunch syntax; ROS 2 rejects it, so the
-//! bake-time partition (`Plan::for_host`, `nros codegen entry --host`,
+//! bake-time partition (~~`Plan::for_host`~~, `nros codegen entry --host`,
 //! `nros::main!(host = …)`) is gone. The partition now happens when the
 //! launch file is RESOLVED: `multihost.launch.xml` declares
 //! `<arg name="host" default="all"/>` and gates each node with an
@@ -14,7 +14,7 @@
 //!    (`resolving_with_host_arg_partitions_the_model`);
 //! 2. the COMMITTED per-host models carry their own binding (`meta.args`)
 //!    and only their host's nodes, in all four example workspaces
-//!    (`committed_per_host_models_carry_their_binding`) — `nros sync`
+//!    (~~`committed_per_host_models_carry_their_binding`~~) — `nros sync`
 //!    replays `meta.args` on refresh, so a model whose binding went missing
 //!    would silently re-resolve as the default (`all`) configuration;
 //! 3. each language's BUILT per-host entry registers only that host's nodes,

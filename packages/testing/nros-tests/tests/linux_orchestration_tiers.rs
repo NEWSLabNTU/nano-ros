@@ -35,7 +35,7 @@ fn multi_tier_main_macro_emits_run_tiers_and_compiles() -> nros_tests::TestResul
 /// `nros::main!(launch = "<bringup>[:file]")` is the SUPPORTED entry spelling
 /// (phase-330 W7): an entry names its INPUT and the build owns the model.
 ///
-/// issue 1620 — this was `native_orchestration_misuse::launch_arm_resolves_the_bringup`,
+/// issue 1620 — this was ~~`native_orchestration_misuse::launch_arm_resolves_the_bringup`~~,
 /// which staged this same fixture, wrote the same `main.rs` line the fixture
 /// already commits, and ran `cargo check` at TEST time — so it compiled what the
 /// `orch_tiers_multi` build row already builds, and hard-FAILED where the

@@ -1,7 +1,7 @@
 //! phase-329 W2 — THE realtime-dim matrix consumer (RFC-0051 §6a).
 //!
 //! Consolidates the ten hand-written `*_applied.rs` files — `{zephyr,nuttx,
-//! threadx,freertos,posix}_core_pin_applied`, `zephyr_edf_deadline_applied`
+//! threadx,freertos,posix}_core_pin_applied`, ~~`zephyr_edf_deadline_applied`~~
 //! (×3 langs), `nuttx_{sporadic_budget,tier_priority}_applied`,
 //! `threadx_{preempt_threshold,time_slice}_applied` — into ONE parametrized test
 //! over `matrix::SCHED_CELLS`. Each cell boots a `ws-realtime-*` fixture (the
@@ -29,7 +29,7 @@
 //!   preempt-threshold / time-slice — the fixture bakes exactly one such tier).
 //! - **EachTierOrFailNote** — accept marker OR loud failure note, per DECLARING
 //!   TIER and per DECLARED VALUE (nuttx tier-priority). Phase-358 W4 replaced
-//!   the whole-log `AcceptOrFailNote` with this: one tier's line satisfied it
+//!   the whole-log ~~`AcceptOrFailNote`~~ with this: one tier's line satisfied it
 //!   for the entire image, so the cell stayed green through issue 0579 while
 //!   the boot tier's declared priority was dropped. A per-tier dim needs a
 //!   per-tier assert.
@@ -160,7 +160,7 @@ enum Shape {
     /// issue 0579 / phase-358 W4 — EVERY listed `(tier, declared priority)`
     /// adopted its OWN declared value, or said loudly why not.
     ///
-    /// Replaces `AcceptOrFailNote`, which asked only whether the accept marker
+    /// Replaces ~~`AcceptOrFailNote`~~, which asked only whether the accept marker
     /// or the failure note appeared ANYWHERE in the log, so on a fixture with
     /// several declaring tiers it only ever proved that SOME tier adopted
     /// SOMETHING. That is how #579 lived: the spawned `low`

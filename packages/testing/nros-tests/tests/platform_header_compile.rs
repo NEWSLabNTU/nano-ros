@@ -71,7 +71,7 @@ fn platform_headers_compile_per_capability() -> TestResult<()> {
     Ok(())
 }
 
-/// #38 negative gate — bare-metal default is `NROS_NO_DYNAMIC_MEMORY`, so the
+/// #38 negative gate — bare-metal default is ~~`NROS_NO_DYNAMIC_MEMORY`~~, so the
 /// canonical malloc/free are ABSENT and the heap containers MUST NOT compile. Both
 /// directions of #38 are thus asserted (this + the `platform_hdr_baremetal_has_malloc`
 /// positive fixture), so a regression in either the gate or the fix is caught.

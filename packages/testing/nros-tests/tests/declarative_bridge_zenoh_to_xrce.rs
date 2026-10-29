@@ -20,7 +20,7 @@
 //!
 //! The entry BAKES its endpoints; phase-267 #113 overrides them at runtime so the
 //! test uses an ephemeral zenohd + a unique agent + a unique cyclone domain
-//! (`NROS_BRIDGE_S0_LOCATOR` / `NROS_BRIDGE_S1_LOCATOR` / `NROS_BRIDGE_S1_DOMAIN`).
+//! (~~`NROS_BRIDGE_S0_LOCATOR`~~ / ~~`NROS_BRIDGE_S1_LOCATOR`~~ / ~~`NROS_BRIDGE_S1_DOMAIN`~~).
 //! The agent's DDS participant joins the XRCE-client-requested domain, so the
 //! bridge egress and the listener share it.
 //!
@@ -104,7 +104,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
     // won't match a String sub.
     //
     // phase-338 W3 — this drove the EXAMPLE (`linux/rust/listener`) with a
-    // test-only `NROS_SUB_TYPE=int32` switch, because `bins/int32-sink` was
+    // test-only ~~`NROS_SUB_TYPE=int32`~~ switch, because `bins/int32-sink` was
     // hardcoded to zenoh and could not serve an XRCE test. The sink now carries
     // the same `rmw-*` axis the examples do, so the example is free of the
     // switch. Marker moves with the binary: the sink prints "Received:"
@@ -132,7 +132,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
         .to_path_buf();
     let mut talker_cmd = Command::new(&talker_binary);
     // Match the Int32 bridge/listener (issue #183): publish std_msgs/Int32.
-    // phase-338 W3 — this used the native rust talker with `NROS_PUB_TYPE=int32`;
+    // phase-338 W3 — this used the native rust talker with ~~`NROS_PUB_TYPE=int32`~~;
     // that switch moved to `bins/header-chatter-talker`, which publishes Int32 on
     // /chatter natively, so the example can drop its test-only branching.
     talker_cmd

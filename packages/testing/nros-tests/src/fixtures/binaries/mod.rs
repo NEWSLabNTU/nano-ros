@@ -628,7 +628,7 @@ pub fn require_prebuilt_artifact(path: &Path, remedy: &str) -> TestResult<PathBu
 ///
 /// issue 1129 / phase-450 W1 — this was inline in `require_prebuilt_binary_checks`
 /// and `require_prebuilt_workspace_binary` had NONE of it: no `.build-failed`
-/// marker check, no `NROS_FIXTURES_OPTIONAL` skip, and — the one that matters —
+/// marker check, no ~~`NROS_FIXTURES_OPTIONAL`~~ skip, and — the one that matters —
 /// no `gate_promised_fixtures()` panic. So for every workspace-fixture call site
 /// a GATED run returned a plain `Err`, which the call site turned into
 /// `[SKIPPED] … not built`, and the lane greened having run nothing. That is the
@@ -695,7 +695,7 @@ fn absent_fixture_verdict(binary_path: &Path, remedy: &str) -> TestResult<PathBu
 ///   reaches it through ONE helper with three call sites, and a defaulting wrapper
 ///   left the other 73 signatures alone.
 ///
-/// (`NROS_FIXTURES_OPTIONAL`, the light tier's opt-out, used to be a third
+/// (~~`NROS_FIXTURES_OPTIONAL`~~, the light tier's opt-out, used to be a third
 /// input here. It turned an absent fixture into a skip, which is exactly the
 /// skip-and-pass issue 1758 retired, so it is gone rather than kept as a knob.)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1177,7 +1177,7 @@ pub enum Rmw {
     /// Phase 11W — Cyclone DDS. Today exercised by the Zephyr
     /// `prj-cyclonedds.conf` overlay path; native / FreeRTOS /
     /// ThreadX wiring follows once those platforms grow a
-    /// cyclonedds backend. (Phase 171.A removed the dead `Rmw::Dds`
+    /// cyclonedds backend. (Phase 171.A removed the dead ~~`Rmw::Dds`~~
     /// dust-DDS variant — dust-DDS retired in Phase 169.)
     Cyclonedds,
 }
@@ -2380,7 +2380,7 @@ fn require_prebuilt_workspace_binary(
     if !binary_path.exists() {
         // issue 1129 / phase-450 W1 — the same verdict the binary/row resolvers
         // give. This branch used to return a bare `Err`, with no `.build-failed`
-        // marker check, no `NROS_FIXTURES_OPTIONAL` skip and no
+        // marker check, no ~~`NROS_FIXTURES_OPTIONAL`~~ skip and no
         // `gate_promised_fixtures()` panic — so on a GATED run every workspace
         // call site laundered it into `[SKIPPED] … not built` and the lane
         // greened having run nothing. 21 of the tree's 61 laundering sites
@@ -2907,7 +2907,7 @@ pub fn build_native_workspace_rust_entry_robot1() -> TestResult<&'static Path> {
                 "rust",
                 // phase-383 W9.b — GENERATED entry: the row names `[image.linux_robot1]`
                 // and the package name is derived (`<image>_entry`), so this is
-                // `linux_robot1_entry`, not the pre-migration `native_entry_robot1`.
+                // `linux_robot1_entry`, not the pre-migration ~~`native_entry_robot1`~~.
                 "linux_robot1_entry",
             )
         })
@@ -3006,7 +3006,7 @@ pub fn build_native_workspace_c_entry_robot1() -> TestResult<&'static Path> {
                 "c",
                 // phase-383 W10.a — GENERATED entry: the row names
                 // `[image.linux_robot1]` and the name is derived
-                // (`<image>_entry`), not the pre-migration `native_entry_robot1`.
+                // (`<image>_entry`), not the pre-migration ~~`native_entry_robot1`~~.
                 "linux_robot1_entry",
             )
         })
@@ -3173,7 +3173,7 @@ pub fn build_native_workspace_mixed_qos_talker_entry() -> TestResult<&'static Pa
 }
 
 /// phase-263 B4 (QoS, MIXED) — the QoS-override LISTENER single-node entry (cached). The C
-/// `qos_listener_pkg` reused verbatim, driven by a C++ TYPED entry carrier + prints `Received: N`.
+/// ~~`qos_listener_pkg`~~ reused verbatim, driven by a C++ TYPED entry carrier + prints `Received: N`.
 pub fn build_native_workspace_mixed_qos_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_MIXED_QOS_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -3231,7 +3231,7 @@ pub fn build_native_workspace_mixed_custom_msg_talker_entry() -> TestResult<&'st
 }
 
 /// phase-263 B6 (custom-msg, MIXED) — the workspace-local `custom_msgs/Reading` LISTENER single-node
-/// entry (cached). The C `reading_listener_pkg` reused verbatim, driven by a C++ TYPED entry carrier.
+/// entry (cached). The C ~~`reading_listener_pkg`~~ reused verbatim, driven by a C++ TYPED entry carrier.
 pub fn build_native_workspace_mixed_custom_msg_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_MIXED_CUSTOM_MSG_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -3525,7 +3525,7 @@ pub fn build_nuttx_workspace_c_realtime_entry() -> TestResult<&'static Path> {
 /// #199 follow-up — the 2-tier **C++** realtime NuttX rv-virt (riscv32) entry
 /// (`realtime-cpp/src/riscv_nuttx_entry`), the riscv sibling of the arm
 /// `workspace-cpp-nuttx-realtime` entry. Built by `just nuttx
-/// build-riscv-c-workspaces`; consumed by `realtime_tiers_cpp_riscv_nuttx_e2e`.
+/// build-riscv-c-workspaces`; consumed by ~~`realtime_tiers_cpp_riscv_nuttx_e2e`~~.
 pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
     static NUTTX_RISCV_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NUTTX_RISCV_WORKSPACE_CPP_REALTIME_ENTRY_BINARY
@@ -3543,7 +3543,7 @@ pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static P
 /// #199 follow-up — the 2-tier **C** realtime NuttX rv-virt (riscv32) entry
 /// (`realtime-c/src/riscv_nuttx_entry`), the riscv sibling of
 /// [`build_nuttx_workspace_c_realtime_entry`]. Built by `just nuttx
-/// build-riscv-c-workspaces`; consumed by `realtime_tiers_c_riscv_nuttx_e2e`.
+/// build-riscv-c-workspaces`; consumed by ~~`realtime_tiers_c_riscv_nuttx_e2e`~~.
 pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Path> {
     static NUTTX_RISCV_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NUTTX_RISCV_WORKSPACE_C_REALTIME_ENTRY_BINARY
@@ -4565,11 +4565,11 @@ pub fn build_native_param_two_node_talker_cyclonedds() -> TestResult<&'static Pa
 /// ([`crate::output::INT32_LISTENER_LOG_PREFIX`]) per message.
 /// phase-338 W3 — resolved PER RMW. The bin was hardcoded to zenoh, which is
 /// why the zenoh->xrce declarative bridge e2e still drove the EXAMPLE with a
-/// test-only `NROS_SUB_TYPE=int32` switch; it now carries the same
+/// test-only ~~`NROS_SUB_TYPE=int32`~~ switch; it now carries the same
 /// `rmw-{zenoh,xrce}` axis the examples do.
 ///
 /// issue 0449 — cyclonedds joined them, which is what let
-/// `examples/linux/c/listener` drop its `NROS_SUB_TYPE` type switch: the
+/// `examples/linux/c/listener` drop its ~~`NROS_SUB_TYPE`~~ type switch: the
 /// zenoh->cyclonedds bridge e2e was the last caller that needed an Int32
 /// listener speaking a transport this bin could not.
 /// phase-381 — resolve the prebuilt `graph-probe` fixture (cached).
@@ -5344,7 +5344,7 @@ fn zephyr_build_root() -> PathBuf {
     crate::zephyr::zephyr_build_root()
 }
 
-// issue 1016 — `build_zephyr_rust_example_rmw` stood here and named
+// issue 1016 — ~~`build_zephyr_rust_example_rmw`~~ stood here and named
 // `build-rs-<case>-<rmw>`. That is the `rs` LANG TAG issue 0539 retired from
 // both producers when the build side stopped spelling it: the west lane writes
 // `build-rust-<case>-<rmw>` and `fixtures-manifest.py west-leaves` models only

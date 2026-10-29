@@ -251,7 +251,7 @@ fn assert_counts_a_ros2_service(output: &str) {
 // ---------------------------------------------------------------------------
 //
 // The two cases above answer "can this node READ the graph". Neither can see
-// the defect Row 8 closed: `rmw_vtable_t::node_get_graph_guard_condition` has
+// the defect Row 8 closed: `nros_rmw_vtable_t::node_get_graph_guard_condition` has
 // existed since phase-376 W4, no backend filled it, and eleven green
 // enumeration slots are entirely compatible with a runtime that is never told
 // the graph moved. Reading is polling; this is the push.

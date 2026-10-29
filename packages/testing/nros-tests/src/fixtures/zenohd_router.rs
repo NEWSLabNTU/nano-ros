@@ -43,7 +43,7 @@ fn wait_for_named_port(port: u16) -> TestResult<Option<crate::port_lease::PortLe
 /// 3. else nothing, and the router's output goes to null sinks unless
 ///    `NROS_TEST_LOGS` asks for a file.
 ///
-/// That is exactly the precedence `rtos_e2e`'s `enable_router_session_log`
+/// That is exactly the precedence `rtos_e2e`'s ~~`enable_router_session_log`~~
 /// used to get by writing `ZENOHD_LOG` only when it was unset — expressed as a
 /// fallback here rather than as a guarded `set_var` in a threaded test binary.
 fn resolve_router_log_filter(caller_filter: Option<&str>) -> Option<String> {
@@ -140,7 +140,7 @@ fn paired_zenoh_library_dir(router: &std::path::Path) -> Option<std::path::PathB
 /// Pairing the zenoh ([`paired_zenoh_library_dir`]) is only part of running the
 /// router. Measured in the self-hosted runner image, where `ROS_DISTRO` names
 /// the install and nothing sourced it: `rmw_zenohd` has no RUNPATH, so it also
-/// needs `librmw`, `librcutils` and `libament_index_cpp` from `<prefix>/lib`,
+/// needs `librmw`, `librcutils` and libament_index_cpp from `<prefix>/lib`,
 /// and with those it ABORTS on `Environment variable 'AMENT_PREFIX_PATH' is not
 /// set or empty` -- it finds its default config through the ament index. The
 /// `ROS_DISTRO` step of [`crate::process::ros_zenohd_path`] exists for exactly
@@ -729,7 +729,7 @@ pub fn zenohd_unique() -> ZenohRouter {
 /// The three outcomes this phase allows for a lane that used to spawn our
 /// vendored router are: run routerless, run on `rmw_zenohd`, or stop with a
 /// reason naming what is missing. This is the third. It was a `capability`
-/// skip and was named `or_skip`; since issue 1758 a missing prerequisite is an
+/// skip and was named ~~`or_skip`~~; since issue 1758 a missing prerequisite is an
 /// `unmet!` red, and a lane that does not mean to run the test narrows its
 /// scope instead.
 ///
