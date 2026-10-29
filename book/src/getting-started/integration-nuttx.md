@@ -184,7 +184,10 @@ plus the name `nano_ros_add_executable` gives it), and `nros build` prints it
 with the QEMU line that boots it. Rust starts as a workspace image
 (`nros new --image nuttx --board qemu-armv7a-nuttx`, then `nros sync` and
 `nros build nuttx`); its ELF is under the entry's target dir, which `nros
-build` prints. `nros build <image> --dry-run` shows the native commands.
+build` prints. That road does not build end to end from `nros build` yet: the
+Rust build needs a configured NuttX kernel, which only the C/C++ road
+configures
+([issue 2149](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2149-nuttx-rust-workspace-no-nightly.md)). `nros build <image> --dry-run` shows the native commands.
 
 **NuttX's own build — the integration shell in a NuttX-managed tree.** NuttX
 owns the build verb there, `make` from the configured kernel, the way Zephyr

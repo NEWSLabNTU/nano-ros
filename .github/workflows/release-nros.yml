@@ -165,6 +165,11 @@ jobs:
           # CPython pyo3 already links.
           cargo build --release \
               --manifest-path packages/cli/nros-launch-resolve/Cargo.toml
+          # phase-517 W17 — the build profiler, which `build-profiling.md` told a
+          # user to `cargo install` from the SDK root. A root-workspace member
+          # with no native deps (serde only), so the release builds it like any
+          # host tool and ships it beside `nros`.
+          cargo build --release --locked -p nros-build-profile
           # phase-429 W5 — the binary must match the checkout it was built from.
           # A release is the one artifact where nobody downstream can re-check
           # this, so it is asserted here rather than assumed.
@@ -250,6 +255,7 @@ jobs:
           # PROBING that floor before download is RFC-0099 D1, not this line.
           cp packages/cli/nros-launch-resolve/target/release/nros-launch-resolve \
               "$stage/bin/nros-launch-resolve"
+          cp target/release/nros-build-profile "$stage/bin/nros-build-profile"
           printf '%s\n' '${{ inputs.version }}' >"$stage/share/nros/VERSION"
           cp nros-sdk-index.toml "$stage/share/nros/nros-sdk-index.toml"
           # phase-440 W7 / RFC-0095 D8 job 2: the launcher fetches a pinned
@@ -324,6 +330,10 @@ jobs:
           # starts" are different questions and the loader answers the second
           # before `main`.
           "$RUNNER_TEMP/probe/bin/nros-launch-resolve" --version
+          # phase-517 W17 — fronted beside `nros`, and it runs. `--help`
+          # exits 2 (usage), so the check is on what it prints.
+          prof_help="$("$RUNNER_TEMP/probe/bin/nros-build-profile" --help 2>&1 || true)"
+          grep -q "nros-build-profile" <<<"$prof_help"
           # RFC-0097 D7 — the manifest must survive the install and be READ back
           # by the installed binary, from the file, at the prefix it landed in.
           # An asset whose manifest the CLI cannot read is an asset for which

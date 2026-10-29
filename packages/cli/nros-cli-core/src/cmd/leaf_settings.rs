@@ -110,6 +110,9 @@ pub struct LeafImage {
     pub target: Option<String>,
     /// The descriptor's `cargo_config` template.
     pub cargo_config: Option<String>,
+    /// The Rust channel the board builds with (`RUSTUP_TOOLCHAIN`), issue 2149
+    /// — [`crate::builder::preflight::board_rust_channel`].
+    pub rust_channel: Option<String>,
     /// phase-462 W6c -- the board's `[board.rx]` per-frame receive cost, for
     /// the read-task budget derivation and its checks. `None`: `c = 0`.
     pub rx_cost: Option<crate::entity_inventory::RxFrameCost>,
@@ -290,6 +293,7 @@ fn leaf_image_from_decl(
         platform,
         target: d.target.clone(),
         cargo_config: d.cargo_config.clone(),
+        rust_channel: crate::builder::preflight::board_rust_channel(d, Some(nano_ros_root)),
         rx_cost: d.rx,
         decl,
     }))
@@ -1813,6 +1817,7 @@ mod tests {
             platform: "posix".into(),
             target: None,
             cargo_config: None,
+            rust_channel: None,
             rx_cost: None,
             config_path: settings_path(Path::new("/w/examples/talker"), "linux"),
         };

@@ -43,7 +43,7 @@ With the `nros` CLI on PATH ([Installation](./installation.md) —
 `install.sh` puts it in `~/.nros/bin`), provision the ThreadX flavour you
 need (+ the RMW; `--rmw` defaults to zenoh). The POSIX-sim flavour:
 
-```bash probe=30 variant=linux
+```bash probe=30 variant=linux,linux-c
 nros setup threadx-linux --rmw zenoh
 ```
 
@@ -63,7 +63,7 @@ Micro-XRCE-DDS agent (installed by `nros setup … --rmw xrce`).
 names two boards, so `nros new` asks which one (`--board`) and refuses
 without it:
 
-```bash
+```bash probe=40 variant=linux-c
 nros new tx_talker --platform threadx --lang c --board threadx-linux   # or rv-virt-threadx; --lang cpp
 cd tx_talker
 ```
@@ -80,7 +80,7 @@ tx_talker/
 starts as a workspace (single-package Rust scaffolding is not offered
 for ThreadX — `nros new` says so and names the alternative):
 
-```bash probe=40
+```bash probe=40 variant=linux,riscv64
 nros new tx_ws --workspace --lang rust --rmw zenoh
 cd tx_ws
 nros new --image tx_linux --board threadx-linux       # hosted flavour
@@ -198,7 +198,7 @@ Slirp's default `10.0.2.2` gateway just like the FreeRTOS QEMU flow.
 C / C++, in the scaffolded package (`tx_talker/`, where `nros new` left
 you; no `nros sync` — its message bindings are a CMake-time output):
 
-```bash
+```bash probe=50 variant=linux-c
 nros build
 ```
 
@@ -243,13 +243,13 @@ that runs it: the binary itself for `threadx-linux`, and for
 (ROS's `rmw_zenohd`), on the port your image's `locator` names — 7447 when
 it names none, as a scaffolded image; 9000 in the example above:
 
-```bash probe=60 probe-run=60 probe-keep variant=linux
+```bash probe=60 probe-run=60 probe-keep variant=linux,linux-c
 source /opt/ros/humble/setup.bash
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
-```text probe-expect=60 variant=linux
+```text probe-expect=60 variant=linux,linux-c
 Started Zenoh router with id
 ```
 
@@ -267,9 +267,19 @@ I heard: 0
 ...
 ```
 
-The C / C++ package's image is `./build/threadx/cmake/tx_talker`, run from
-`tx_talker/` (board `threadx-linux`). The scaffolded C talker is the in-tree
-example's: it prints `Publishing: 'Hello World: 1'`, `…: 2`, … once a second.
+The C / C++ package's image, from `tx_talker/` (board `threadx-linux`):
+
+```bash probe=70 probe-run=120 variant=linux-c
+./build/threadx/cmake/tx_talker
+```
+
+The scaffolded C talker is the in-tree example's, publishing `std_msgs/String`
+once a second:
+
+```text probe-expect=70 variant=linux-c
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
+```
 
 ## Run on QEMU (RISC-V 64)
 

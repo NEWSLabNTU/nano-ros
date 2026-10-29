@@ -11,7 +11,15 @@ adds no `nros` build/test command — `nros` stays setup + codegen.
 
 ## Installing it
 
-The profiler ships as source in the SDK root; install it once with cargo:
+`install.sh` puts it on your PATH beside `nros` (`~/.nros/bin/nros-build-profile`),
+so there is nothing to install:
+
+```bash
+nros-build-profile --help
+```
+
+Release `0.6.0-nros4` and older ship it as source in the SDK root only;
+install it from there once with cargo:
 
 ```bash
 cargo install --locked --path "$(nros sdk-root)/packages/testing/nros-build-profile"

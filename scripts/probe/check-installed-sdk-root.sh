@@ -75,4 +75,11 @@ nros_grep_q "via this toolchain's own share/nano-ros" /tmp/sdk-root.explain \
 # libpython and "the file is there" is not "it starts".
 "$nros_store/bin/nros-launch-resolve" --version >/dev/null \
     || probe_fail "\$NROS_HOME/bin/nros-launch-resolve is missing or does not start — every workspace configure needs it"
+# phase-517 W17 — the build profiler ships beside `nros` and is fronted. Its
+# `--help` exits 2 (usage), so the check is on what it prints.
+prof_help="$("$nros_store/bin/nros-build-profile" --help 2>&1 || true)"
+case "$prof_help" in
+    *"usage: nros-build-profile"*) ;;
+    *) probe_fail "\$NROS_HOME/bin/nros-build-profile is missing or does not start — build-profiling.md runs it from PATH" ;;
+esac
 echo "probe: the SDK root is the release's own ($sdk_root); no checkout on this machine"

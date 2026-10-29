@@ -1321,8 +1321,53 @@ pinned-project probe is green in `probe-platforms.yml`.
   other language gets its own probe variant (`variant=` blocks, as the
   workspace track does), so both roads are replayed.
 
+**Progress (2026-10-29).**
+
+* **`nros-build-profile` ships.**
+  * `release-nros.yml` builds it (a root-workspace host tool, serde only),
+    stages it beside `nros`, and smoke-runs it after the install.
+  * `install.sh` fronts it the way it fronts `nros-launch-resolve`, when the
+    asset carries one.
+  * The installed track's `check-installed-sdk-root.sh` asserts it runs.
+  * `build-profiling.md` says it is on PATH, and keeps `cargo install` for
+    `0.6.0-nros4` and older.
+* **Sources with no checkout.** The rule is in `sdk_store::source_dir_of`: a
+  `[source.*]` with no `location` lands under the SDK root. That is the same
+  path W10 measured for the NuttX sources. It cannot be measured on a host
+  with a checkout, because the in-tree binary's own checkout outranks
+  `NROS_REPO_DIR` and `NROS_WORKSPACE_ROOT` (tried: it provisioned into the
+  worktree). So `verify-installed-workspace.sh` now runs
+  `nros setup --source` for `tonbandgeraet`, `px4-rs` and `cyclonedds-src` on
+  the installed track, and asserts each lands non-empty under
+  `$(nros sdk-root)`.
+* **`west nros` is checkout-only, said so.** West loads extension commands
+  from a manifest project, and the installed SDK root is a versioned store
+  directory no `west.yml` names. `integration-zephyr.md` now says so and gives
+  the installed spelling, `nros build --zephyr-workspace <dir>`.
+* **The other language road per chapter.** Three new installed tracks, each
+  its own `variant=` set of book blocks (`variant=` lists, so shared steps
+  carry both tags):
+  * `freertos-c`: the C package on MPS2-AN385, booted and echoed as
+    `std_msgs/String`. The Rust blocks are now `variant=rust`.
+  * `threadx-linux-c`: the C package on the Linux simulator.
+  * `zephyr-rust`: the workspace plus `nros new entry`, built with
+    `NROS_ZEPHYR_WORKSPACE`, run as `zephyr.exe`.
+
+  All three are in `just probe` and in `probe-platforms.yml`, and all three
+  extract; `check-book-probe-tracks` covers 12 chapters.
+* **NuttX Rust: not replayable yet, issue 2149.** Measured locally: the
+  scaffolded workspace image failed at `core`, because the cargo road ran
+  the default toolchain for a `toolchain = "nightly"` board. That is fixed:
+  `board_rust_channel` gives `RUSTUP_TOOLCHAIN` to both cargo handoffs. The
+  build then stops at `nuttx/config.h`, because nothing configures the
+  kernel on the cargo road. The chapter now says so, and no NuttX Rust track
+  is added until issue 2149 lands.
+
 ## Issues homed here (2026-10-29)
 
+* [2149](../issues/2149-nuttx-rust-workspace-no-nightly.md), open. A NuttX
+  Rust workspace image does not build from `nros build`. The nightly half is
+  fixed (W17); the kernel-configure half is open.
 * [2137](../issues/archived/2137-nros-build-never-takes-the-census.md),
   resolved. Promise 2 (one build) did not hold for any cross image whose model
   folds in a contract. `nros build --all` refused it with `census missing`,
