@@ -268,8 +268,8 @@ I heard: 0
 ```
 
 The C / C++ package's image is `./build/threadx/cmake/tx_talker`, run from
-`tx_talker/` (board `threadx-linux`). The scaffolded C talker publishes once
-and returns: `tx_talker: published 0 on /chatter`.
+`tx_talker/` (board `threadx-linux`). The scaffolded C talker is the in-tree
+example's: it prints `Publishing: 'Hello World: 1'`, `…: 2`, … once a second.
 
 ## Run on QEMU (RISC-V 64)
 

@@ -119,7 +119,16 @@ fn is_cli_input(rel: &str) -> bool {
         // pull in the `tests/fixtures/**` board and orchestration manifests,
         // and a fixture edit would then stale the CLI and force a rebuild for
         // nothing — the cost this predicate exists to avoid.
-        || rel.ends_with("askama.toml"))
+        || rel.ends_with("askama.toml")
+        // phase-517 W12 — a TEMPLATE TREE is consumed whole by `include_str!`,
+        // whatever the file's extension: `nros new`'s role templates
+        // (`cargo-nano-ros/templates/roles/*.{rs,c,cpp,hpp}`) and the workspace
+        // scaffold's copy-out templates (`examples/templates/*`, whose
+        // `README.md` / `.gitignore` / `.colcon_workspace` it embeds). Watching
+        // only `.rs` here left a `.c` template edit reading `fresh`, so
+        // `setup-cli` kept the binary that still emitted the old file.
+        || rel.starts_with("examples/templates/")
+        || rel.contains("/templates/"))
         && !rel.contains("/third-party/")
         && !rel.contains("/testing_workspaces/")
 }
@@ -670,6 +679,9 @@ mod tests {
             // decides WHICH templates askama compiles in — the `.jinja`
             // argument one file over.
             "packages/cli/rosidl-bindgen/askama.toml",
+            // embedded by `include_str!` (phase-517 W12)
+            "packages/cli/cargo-nano-ros/templates/roles/c/client.component.c",
+            "examples/templates/multi-node-workspace/README.md",
         ] {
             assert!(is_cli_input(watched), "should be a CLI input: {watched}");
         }
@@ -689,6 +701,64 @@ mod tests {
                 "should NOT be a CLI input: {ignored}"
             );
         }
+    }
+
+    /// Every file a CLI source embeds with `include_str!` / `include_bytes!`
+    /// is an input — read from the TREE, so a new embedded file the rule does
+    /// not cover fails here rather than reading `fresh` after an edit
+    /// (phase-517 W12). Embeds of test fixtures (`/tests/`) are test-only.
+    #[test]
+    fn every_embedded_file_is_watched() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root");
+        let Some(listing) = git(&root, &["ls-files", "--", "packages/cli"]) else {
+            panic!(
+                "`git ls-files` failed under {} — this test reads the tracked tree",
+                root.display()
+            )
+        };
+        let mut seen = 0usize;
+        for rel in listing.lines().filter(|l| {
+            l.ends_with(".rs")
+                && l.contains("/src/")
+                && !l.contains("/third-party/")
+                && !l.contains("/testing_workspaces/")
+        }) {
+            let Ok(text) = std::fs::read_to_string(root.join(rel)) else {
+                continue;
+            };
+            for macro_name in ["include_str!(\"", "include_bytes!(\""] {
+                for chunk in text.split(macro_name).skip(1) {
+                    let Some(target) = chunk.split('"').next() else {
+                        continue;
+                    };
+                    if target.ends_with(".rs") || target.contains("/tests/") {
+                        continue;
+                    }
+                    let joined = root
+                        .join(rel)
+                        .parent()
+                        .expect("file has a dir")
+                        .join(target);
+                    let Ok(abs) = joined.canonicalize() else {
+                        continue;
+                    };
+                    let embedded = abs
+                        .strip_prefix(&root)
+                        .expect("embedded file inside the checkout")
+                        .to_string_lossy()
+                        .into_owned();
+                    assert!(
+                        is_cli_input(&embedded),
+                        "{rel} embeds {embedded}, which the source stamp does not watch"
+                    );
+                    seen += 1;
+                }
+            }
+        }
+        assert!(seen > 0, "no embedded file found — did the scan move?");
     }
 
     /// The literal above would agree with itself forever if the rule changed

@@ -133,11 +133,42 @@ nros init                 # writes ./CMakePresets.json
 cmake --preset qemu-armv7a-nuttx
 ```
 
-### `nros new <name> --platform <plat> [--rmw <rmw>] [--lang <lang>] [--use-case <case>] [--ros-edition <e>] [--force]`
+### `nros new <name> --platform <plat> [--template <role>] [--rmw <rmw>] [--lang <lang>] [--ros-edition <e>] [--force]`
 
-Scaffold a new nano-ros project. Emits a colcon-compatible
-`package.xml` plus a hello-world Rust / C / C++ skeleton tuned for the
-chosen platform.
+Scaffold a new nano-ros package: a colcon-compatible `package.xml`, a
+`system.toml`, and one Rust / C / C++ node for the chosen platform. The node
+is the `--template` role, the in-tree example of that role under the
+package's names:
+
+| `--template` | Node | Interface |
+|---|---|---|
+| `talker` (default) | publishes `Hello World: N` once a second | `std_msgs/String` on `/chatter` |
+| `listener` | logs what `/chatter` carries | `std_msgs/String` on `/chatter` |
+| `server` | adds two integers | `example_interfaces/srv/AddTwoInts` on `/add_two_ints` |
+| `client` | calls the server once it is up | `example_interfaces/srv/AddTwoInts` on `/add_two_ints` |
+| `action-server` | computes a Fibonacci sequence, with feedback | `example_interfaces/action/Fibonacci` on `/fibonacci` |
+| `action-client` | sends one goal, logs feedback and the result | `example_interfaces/action/Fibonacci` on `/fibonacci` |
+
+The roles and interfaces are the ROS 2 demos' (`demo_nodes_cpp`'s talker and
+listener, `add_two_ints_server` / `_client`, the Fibonacci action pair), so a
+scaffolded node talks to the demo it is named after. `--template` applies to
+`--component` too.
+
+The package flags follow `ros2 pkg create`:
+
+| Flag | Writes | Default |
+|---|---|---|
+| `--node-name <name>` | the node's ROS name | the package name (`-` spelled `_`); for `--component`, the role's demo node name |
+| `--dependencies <pkg>...` | extra `<depend>` rows, after the role's interface package | none |
+| `--license <id>` | `<license>` | `Apache-2.0` |
+| `--description <text>` | `<description>` | a one-line summary |
+| `--maintainer-name` / `--maintainer-email` | `<maintainer>` | `git config user.name` / `user.email` |
+| `--destination-directory <dir>` | where the package directory is created | the current directory |
+
+`ros2 pkg create --build-type` has no counterpart: `--lang` decides the
+package's build type (cargo for Rust, CMake for C/C++). `--library-name` has none
+either: `--component` is the library shape. `--use-case` is retired and
+refused, naming `--template`.
 
 **Workspace mode:** `nros new <name> --workspace [--lang <lang>] [--rmw <rmw>]`
 scaffolds a multi-node workspace instead — two node packages (`talker_pkg`,
@@ -154,7 +185,7 @@ add embedded targets afterwards with `nros new --image <name> --board <b>`.
 | `--lang` | `rust`, `c`, `cpp` | `rust` (`cpp` with `--workspace`) |
 | `--ros-edition` | `humble`, `iron`, `jazzy` | `humble` |
 | `--workspace` | scaffold the multi-node workspace above | off |
-| `--use-case` | `talker`, `listener`, `service`, `action` | `talker` |
+| `--template` | `talker`, `listener`, `server`, `client`, `action-server`, `action-client` | `talker` |
 | `--force` | overwrite an existing directory | off |
 
 `--platform native` and `--platform posix` are refused with a hint naming

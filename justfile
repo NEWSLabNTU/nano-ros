@@ -3900,7 +3900,7 @@ acceptance: setup-cli
     nros="$(nros_cli_bin)"
     work="$repo/tmp/acceptance"
     rm -rf "$work"; mkdir -p "$work"; cd "$work"
-    "$nros" new accept_app --platform linux --lang rust --use-case talker
+    "$nros" new accept_app --platform linux --lang rust --template talker
     cd accept_app
     "$nros" sync
     cargo build

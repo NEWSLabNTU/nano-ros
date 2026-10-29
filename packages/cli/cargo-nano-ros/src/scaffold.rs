@@ -1,13 +1,14 @@
 //! Project scaffolder — promoted out of `main.rs` so `nros-cli` and any
 //! other front-end can share it.
 //!
-//! v1 emits a colcon-compatible hello-world per `<lang> × <platform>`.
-//! Use-case (`talker` / `listener` / `service` / `action`) and RMW-choice
-//! diversification arrives once the `templates/` tree lands; until then
-//! both fields are accepted for forward-compat but only surfaced in the
-//! "Next steps" output.
+//! Emits a colcon-compatible package per `<lang> × <platform>`, whose node is
+//! the `--template` role ([`Role`], phase-517 W12): the in-tree role example
+//! for that language and shape, under the package's names.
 
 use nros_lang::Language;
+
+pub use crate::node_role::Role;
+use crate::node_role::{Names, render};
 
 use crate::rmw_resolver;
 use eyre::{Result, bail};
@@ -20,11 +21,71 @@ use std::{
 // `nros-cli-core`, which this crate does not depend on, by `include!`).
 include!("../../../tooling/nros-build-paths/src/git_env.rs");
 
-/// Issue 0249 — maintainer line for generated `package.xml`. Sourced from
+/// What a scaffold writes into `package.xml` beyond its name — the
+/// `ros2 pkg create` flags `nros new` takes (phase-517 W12): `--description`,
+/// `--license`, `--maintainer-name`, `--maintainer-email` and
+/// `--dependencies`.
+#[derive(Debug, Clone, Default)]
+pub struct PackageMeta {
+    /// `<description>`; `None` writes the scaffold's own one-liner.
+    pub description: Option<String>,
+    /// `<license>`; `None` is `Apache-2.0`.
+    pub license: Option<String>,
+    /// `<maintainer>`; `None` asks `git config` (issue 0249).
+    pub maintainer_name: Option<String>,
+    pub maintainer_email: Option<String>,
+    /// Extra `<depend>` rows, after the role's own interface package.
+    pub dependencies: Vec<String>,
+}
+
+/// The scaffold's `package.xml` (format 3): `depends` first (the role's
+/// interface package), then `meta.dependencies`, each once.
+fn package_xml(
+    name: &str,
+    default_description: &str,
+    meta: &PackageMeta,
+    depends: &[&str],
+    build_type: &str,
+) -> String {
+    let mut deps: Vec<&str> = Vec::new();
+    for d in depends
+        .iter()
+        .copied()
+        .chain(meta.dependencies.iter().map(String::as_str))
+    {
+        if !deps.contains(&d) {
+            deps.push(d);
+        }
+    }
+    let depend_rows: String = deps
+        .iter()
+        .map(|d| format!("  <depend>{d}</depend>\n"))
+        .collect();
+    format!(
+        r#"<?xml version="1.0"?>
+<package format="3">
+  <name>{name}</name>
+  <version>0.1.0</version>
+  <description>{description}</description>
+  {maintainer}
+  <license>{license}</license>
+{depend_rows}  <export>
+    <build_type>{build_type}</build_type>
+  </export>
+</package>
+"#,
+        description = meta.description.as_deref().unwrap_or(default_description),
+        maintainer = maintainer_xml(meta),
+        license = meta.license.as_deref().unwrap_or("Apache-2.0"),
+    )
+}
+
+/// Issue 0249 — maintainer line for generated `package.xml`. Taken from
+/// `--maintainer-name` / `--maintainer-email` when given, else from
 /// `git config user.name`/`user.email` so scaffolded packages carry the real
 /// author; falls back to an instructional placeholder (never `TODO@todo.com`,
 /// which shipped verbatim through colcon/bloom surfaces).
-fn maintainer_xml() -> String {
+fn maintainer_xml(meta: &PackageMeta) -> String {
     fn git_config(key: &str) -> Option<String> {
         let out = nros_git_command("git")
             .args(["config", key])
@@ -36,8 +97,14 @@ fn maintainer_xml() -> String {
         let v = String::from_utf8(out.stdout).ok()?.trim().to_string();
         (!v.is_empty()).then_some(v)
     }
-    let name = git_config("user.name");
-    let email = git_config("user.email");
+    let name = meta
+        .maintainer_name
+        .clone()
+        .or_else(|| git_config("user.name"));
+    let email = meta
+        .maintainer_email
+        .clone()
+        .or_else(|| git_config("user.email"));
     match (name, email) {
         (Some(n), Some(e)) => format!(r#"<maintainer email="{e}">{n}</maintainer>"#),
         (Some(n), None) => format!(r#"<maintainer email="you@example.com">{n}</maintainer>"#),
@@ -182,7 +249,13 @@ pub struct ScaffoldConfig {
     /// ROS edition (`humble`|`iron`|`jazzy`|`rolling`) → the `ros-<edition>`
     /// cargo feature on the scaffolded package (phase-304 W2b, RFC-0056).
     pub ros_edition: String,
-    pub use_case: String,
+    /// The node role (`--template`).
+    pub template: Role,
+    /// The node's ROS name (`--node-name`); `None` is the role's demo node
+    /// name (`talker`, `add_two_ints_server`, …): a component is reused, and
+    /// the launch file that runs it names each instance.
+    pub node_name: Option<String>,
+    pub meta: PackageMeta,
     pub force: bool,
     /// The `[image.<platform>] board` to write, already resolved by the caller
     /// through the board catalog (phase-517 W2 — `nros new` derives the
@@ -265,6 +338,7 @@ pub fn scaffold_package_at(dir: &Path, cfg: &ScaffoldConfig) -> Result<()> {
     // `nros::main!()`, `nros sync` and the colcon task all read this one file.
     let is_cxx = matches!(cfg.lang, Language::C | Language::Cpp);
     let build_type = if is_cxx { "nros_cmake" } else { "nros_cargo" };
+    let node = node_name_for(&cfg.name, cfg.node_name.as_deref())?;
 
     fs::create_dir_all(dir.join("src"))?;
     fs::write(
@@ -277,36 +351,45 @@ pub fn scaffold_package_at(dir: &Path, cfg: &ScaffoldConfig) -> Result<()> {
             rmw.cmake_value,
             &cfg.ros_edition,
             cfg.board.as_deref(),
+            cfg.template,
+            &node,
         ),
     )?;
 
-    let package_xml = format!(
-        r#"<?xml version="1.0"?>
-<package format="3">
-  <name>{name}</name>
-  <version>0.1.0</version>
-  <description>{name} — nano-ros {platform} package</description>
-  {maintainer}
-  <license>Apache-2.0</license>
-  <depend>std_msgs</depend>
-  <export>
-    <build_type>{build_type}</build_type>
-  </export>
-</package>
-"#,
-        name = cfg.name,
-        platform = cfg.platform,
-        maintainer = maintainer_xml(),
-    );
-    fs::write(dir.join("package.xml"), package_xml)?;
+    fs::write(
+        dir.join("package.xml"),
+        package_xml(
+            &cfg.name,
+            &format!("{} — nano-ros {} package", cfg.name, cfg.platform),
+            &cfg.meta,
+            &[cfg.template.interface_package()],
+            build_type,
+        ),
+    )?;
 
     // phase-469 — exhaustive over the enumeration. A new `Language` variant is
     // a compile error HERE, where somebody has to write its template, instead
     // of an "Unknown language" at run time.
     match cfg.lang {
-        Language::Rust => scaffold_rust(&cfg.name, &cfg.platform, edition_feature, &dir)?,
-        Language::C => scaffold_c(&cfg.name, &cfg.platform, rmw.cmake_value, &dir)?,
-        Language::Cpp => scaffold_cpp(&cfg.name, &cfg.platform, rmw.cmake_value, &dir)?,
+        Language::Rust => scaffold_rust(
+            &cfg.name,
+            &cfg.platform,
+            edition_feature,
+            &dir,
+            cfg.template,
+            &node,
+        )?,
+        Language::C | Language::Cpp if cfg.platform == "zephyr" => {
+            scaffold_zephyr(&cfg.name, cfg.lang, &dir, cfg.template, &node)?
+        }
+        Language::C | Language::Cpp => scaffold_cxx_executable(
+            &cfg.name,
+            cfg.lang,
+            &cfg.platform,
+            &dir,
+            cfg.template,
+            &node,
+        )?,
     }
 
     println!("✓ Created nano-ros package '{}'", cfg.name);
@@ -314,17 +397,35 @@ pub fn scaffold_package_at(dir: &Path, cfg: &ScaffoldConfig) -> Result<()> {
     println!("  Platform : {}", cfg.platform);
     println!("  RMW      : {}", cfg.rmw);
     println!(
-        "  Use case : {} (template diversification: TODO)",
-        cfg.use_case
+        "  Template : {} — {}",
+        cfg.template.name(),
+        cfg.template.summary()
     );
+    println!("  Node     : {node}");
     println!("  Build    : {build_type}");
     println!();
     println!("Next steps:");
-    for line in next_steps(&cfg.name, cfg.lang, &cfg.platform) {
+    // The directory, not the package name: `--destination-directory` puts it
+    // somewhere else.
+    for line in next_steps(&dir.display().to_string(), cfg.lang, &cfg.platform) {
         println!("  {line}");
     }
 
     Ok(())
+}
+
+/// The node's ROS name: `--node-name` (validated) or the package name with
+/// `-` spelled `_`.
+fn node_name_for(package: &str, given: Option<&str>) -> Result<String> {
+    let node = given.map_or_else(|| package.replace('-', "_"), str::to_string);
+    crate::node_role::validate_node_name(&node)
+        .map_err(|e| eyre::eyre!("nros new --node-name: {e}"))?;
+    Ok(node)
+}
+
+/// A component's node name: `--node-name`, else the role's demo node name.
+fn component_node_name(cfg: &ComponentScaffoldConfig) -> Result<String> {
+    node_name_for(cfg.template.demo_node_name(), cfg.node_name.as_deref())
 }
 
 /// The "Next steps" a scaffolded package prints — the build flow the book
@@ -394,6 +495,8 @@ pub fn next_steps(name: &str, lang: Language, platform: &str) -> Vec<String> {
 /// `ros_edition` is stated for every language (issue 2079): the declaration
 /// is the one carrier, and both roads lower it — the selection package for a
 /// Rust leaf (issue 1305), the leaf reader for C/C++ (issue 2087).
+// Each argument is one field of the file it writes.
+#[allow(clippy::too_many_arguments)]
 fn scaffold_system_toml(
     name: &str,
     lang: Language,
@@ -402,6 +505,8 @@ fn scaffold_system_toml(
     rmw_value: &str,
     ros_edition: &str,
     resolved_board: Option<&str>,
+    role: Role,
+    node: &str,
 ) -> String {
     let self_bringup =
         lang == Language::Rust && matches!(spec.kind, PlatformKind::SelfBringup { .. });
@@ -423,11 +528,12 @@ fn scaffold_system_toml(
     // A Zephyr C/C++ app is a TYPED component the module's carrier boots by
     // identity (integration-zephyr.md), so it names it like the self-bringup.
     let zephyr_component = lang != Language::Rust && platform == "zephyr";
+    let class = role.class();
     let component = if zephyr_component {
         format!(
-            "\n# The component the Zephyr typed carrier boots — src/Talker.*'s\n\
-             # `{}::Talker`.\n\
-             [[component]]\npkg = \"{name}\"\nclass = \"{}::Talker\"\nname = \"talker\"\n",
+            "\n# The component the Zephyr typed carrier boots — src/{class}.*'s\n\
+             # `{}::{class}`.\n\
+             [[component]]\npkg = \"{name}\"\nclass = \"{}::{class}\"\nname = \"{node}\"\n",
             name.replace('-', "_"),
             name.replace('-', "_")
         )
@@ -443,8 +549,8 @@ fn scaffold_system_toml(
             ""
         };
         format!(
-            "\n# The node `nros::main!()` boots — this crate's own `nros::node!(Talker)`.\n\
-             {dispatch}[[component]]\npkg = \"{name}\"\nclass = \"{}::Talker\"\nname = \"{name}\"\n\
+            "\n# The node `nros::main!()` boots — this crate's own `nros::node!({class})`.\n\
+             {dispatch}[[component]]\npkg = \"{name}\"\nclass = \"{}::{class}\"\nname = \"{node}\"\n\
              {dispatch_key}",
             name.replace('-', "_")
         )
@@ -464,10 +570,12 @@ fn scaffold_system_toml(
 #[derive(Debug, Clone)]
 pub struct ComponentScaffoldConfig {
     pub name: String,
-    /// Node flavor: `talker` / `listener` / `service` / `action`. Template
-    /// diversification is TODO — today every flavor emits the publisher+timer
-    /// shape, named after the flavor.
-    pub use_case: String,
+    /// The node role (`--template`).
+    pub template: Role,
+    /// The node's ROS name (`--node-name`); `None` is the package name with
+    /// `-` spelled `_`.
+    pub node_name: Option<String>,
+    pub meta: PackageMeta,
     /// Source language. `rust` lands the planned-mode `nros::Component` shape;
     /// `c` / `cpp` land the typed component shape (RFC-0043) in the RFC-0048
     /// ament spelling: `find_package(nano_ros REQUIRED)` +
@@ -490,15 +598,20 @@ pub struct ComponentScaffoldConfig {
 /// executable ← component short name, `exported_symbol` ← `nros_component_<n>`,
 /// `crate_name` ← package) and `[overrides]` defaults to empty (Phase 172 W.3).
 pub fn scaffold_component(cfg: &ComponentScaffoldConfig) -> Result<()> {
+    scaffold_component_at(&PathBuf::from(&cfg.name), cfg)
+}
+
+/// [`scaffold_component`] into `dir` (the package is still named `cfg.name`).
+pub fn scaffold_component_at(dir: &Path, cfg: &ComponentScaffoldConfig) -> Result<()> {
     match cfg.lang {
-        Language::Rust => scaffold_component_rust(cfg),
-        Language::Cpp => scaffold_component_cpp(cfg),
-        Language::C => scaffold_component_c(cfg),
+        Language::Rust => scaffold_component_rust(dir, cfg),
+        Language::Cpp => scaffold_component_cpp(dir, cfg),
+        Language::C => scaffold_component_c(dir, cfg),
     }
 }
 
-fn scaffold_component_rust(cfg: &ComponentScaffoldConfig) -> Result<()> {
-    let dir = PathBuf::from(&cfg.name);
+fn scaffold_component_rust(dir: &Path, cfg: &ComponentScaffoldConfig) -> Result<()> {
+    let dir = dir.to_path_buf();
     if dir.exists() {
         if !cfg.force {
             bail!(
@@ -511,36 +624,23 @@ fn scaffold_component_rust(cfg: &ComponentScaffoldConfig) -> Result<()> {
     fs::create_dir_all(dir.join("src"))?;
 
     let crate_name = cfg.name.replace('-', "_");
-    let module = &cfg.use_case; // constrained by the CLI to a valid Rust ident
+    // The node's ROS name, which is also the component id's module segment.
+    let module = &component_node_name(cfg)?;
     // The node TYPE. `nros::node!()` and `[package.metadata.nros.node] class`
-    // both name it, and every in-tree Node pkg names it after the node. Not
-    // `Component`: that is the trait it implements (phase-483 W2).
-    let class_name = {
-        let mut c = module.chars();
-        match c.next() {
-            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-            None => String::from("Node"),
-        }
-    };
+    // both name it — the role's type (phase-517 W12). Not `Component`: that is
+    // the trait it implements (phase-483 W2).
+    let class_name = cfg.template.class();
 
-    let package_xml = format!(
-        r#"<?xml version="1.0"?>
-<package format="3">
-  <name>{name}</name>
-  <version>0.1.0</version>
-  <description>{name} — nano-ros reusable component.</description>
-  {maintainer}
-  <license>Apache-2.0</license>
-  <depend>std_msgs</depend>
-  <export>
-    <build_type>nros_cargo</build_type>
-  </export>
-</package>
-"#,
-        name = cfg.name,
-        maintainer = maintainer_xml(),
-    );
-    fs::write(dir.join("package.xml"), package_xml)?;
+    fs::write(
+        dir.join("package.xml"),
+        package_xml(
+            &cfg.name,
+            &format!("{} — nano-ros reusable component.", cfg.name),
+            &cfg.meta,
+            &[cfg.template.interface_package()],
+            "nros_cargo",
+        ),
+    )?;
 
     let cargo_toml = format!(
         r#"[package]
@@ -575,106 +675,18 @@ nros = {{ version = "*", default-features = false, features = [
     "rmw-cffi",
     "macros",
 ] }}
+nros-log = {{ version = "*", default-features = false }}
 # Message crates come from package.xml: each <depend> on a message package
 # becomes a `# nros-managed` path row below when you run `nros sync` (or
 # `nros build`). Edit package.xml, not this table (RFC-0098, phase-517 W8).
-# A node logs through the `log` facade; the board registers the sink at boot.
-log = {{ version = "0.4", default-features = false }}
 "#,
         name = cfg.name,
-        crate_name = crate_name,
-        class_name = class_name,
-        module = module,
     );
     fs::write(dir.join("Cargo.toml"), cargo_toml)?;
 
-    // phase-452 W2 / issue 1412 — written against the LIVE API and matched to
-    // what the C++ component template demonstrates.
-    //
-    // The previous body targeted the `Component*` trait family that phase
-    // 212.N.12 retired on 2026-06-03 (`Component` -> `Node`,
-    // ~~`ComponentContext`~~ -> `NodeContext`, ~~`ComponentResult`~~ -> `NodeResult`,
-    // `nros::component!` deleted), so `nros new --component --lang rust`
-    // emitted a package that compiled by neither documented route for three
-    // and a half months. Nothing noticed because the scaffold tests assert
-    // substrings and never build the result — issue 1058, whose C++ half was
-    // fixed and whose Rust half was never examined.
-    //
-    // A rename alone would NOT have been enough, which is the same trap
-    // phase-417 fell into one language over: `create_node` also lost its
-    // `NodeId` first argument (that form is `create_node_with_id` now), and a
-    // node declaring a callback must impl `ExecutableNode` or the generated
-    // runtime has no body to dispatch to.
-    //
-    // Feature parity with the C++ component template, deliberately: the same
-    // `std_msgs/Int32` on `/chatter`, the same 1 Hz period, the same counter
-    // state, and a log line on success where C++ prints one.
-    let lib_rs = format!(
-        r#"#![no_std]
-
-//! `{name}` — a reusable nano-ros Node pkg (planned mode).
-//!
-//! `nros plan` and Entry codegen link this crate into a system and call the
-//! `register` trampoline `nros::node!()` exports. Platform + RMW are chosen at
-//! Entry-package build time, not here — this crate names neither.
-//!
-//! `register()` declares the node, a publisher and a 1 Hz timer;
-//! `ExecutableNode::on_callback` publishes a counter on every tick.
-
-use nros::{{
-    Callback, CallbackCtx, ExecutableNode, Component, NodeContext, DeclarativeNode, NodeOptions, NodeResult,
-    TimerDuration,
-}};
-use std_msgs::msg::Int32;
-
-/// {class_name} — counter state plus a chatter publish on every tick.
-pub struct {class_name};
-
-impl Component for {class_name} {{
-    const NAME: &'static str = "{module}";
-
-    /// Exact bounds: one publisher (a timer needs no registry slot).
-    /// Declaring them stops this node paying for capacity it never fills.
-    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0, 0);
-
-    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {{
-        let mut node = ctx.create_node(NodeOptions::new("{module}"))?;
-        let publisher = node.create_publisher_for_topic::<Int32>("/chatter")?;
-        node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
-        node.callback_for_name("on_tick")
-            .publishes_entity(&publisher)?;
-        Ok(())
-    }}
-}}
-
-impl ExecutableNode for {class_name} {{
-    /// Monotonic counter — the next int32 to publish.
-    type State = i32;
-
-    fn init() -> Self::State {{
-        0
-    }}
-
-    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {{
-        if callback.as_str() == "on_tick" {{
-            let msg = Int32 {{ data: *state }};
-            let _ = ctx.publish_to_topic::<Int32, 8>("/chatter", &msg);
-            log::info!("{module} publishing chatter seq={{}}", *state);
-            *state = state.wrapping_add(1);
-        }}
-    }}
-}}
-
-// Exports the register / init / dispatch trampolines the Entry pkg links.
-// The type lives at the CRATE ROOT with no module segment — the shape
-// `nros::node!(Class)` and the manifest's `class` key both assume.
-nros::node!({class_name});
-"#,
-        name = cfg.name,
-        module = module,
-        class_name = class_name,
-    );
-    fs::write(dir.join("src/lib.rs"), lib_rs)?;
+    // The role's node (phase-517 W12) — the same template every Rust scaffold
+    // writes, so a component and a package of one role are one program.
+    fs::write(dir.join("src/lib.rs"), rust_node_lib(cfg.template, module))?;
 
     // Folded `[component]` manifest (Phase 172 W.1). Minimal — no `[linkage]`
     // (derived) and no `[overrides]` (defaults to empty). The `crate::module`
@@ -722,8 +734,8 @@ source_metadata = "metadata/{module}.json"
 /// `configure` creates a `Publisher` + binds a member timer callback by
 /// identity (no string descriptor, no interpreter) — the typed Entry
 /// constructs the object + calls `configure(node)` on the real executor.
-fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
-    let dir = PathBuf::from(&cfg.name);
+fn scaffold_component_cpp(dir: &Path, cfg: &ComponentScaffoldConfig) -> Result<()> {
+    let dir = dir.to_path_buf();
     if dir.exists() {
         if !cfg.force {
             bail!(
@@ -739,30 +751,23 @@ fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
     fs::create_dir_all(dir.join("include").join(cfg.name.replace('-', "_")))?;
 
     // Pkg name → namespace + class. `my-talker` → ns `my_talker`, class
-    // `Talker` (PascalCase of use_case). §212.L.4 class prefix must equal
+    // the role's class. §212.L.4 class prefix must equal
     // PROJECT_NAME (sanitised), so the namespace = the sanitised pkg name.
     let pkg_sym = cfg.name.replace('-', "_");
-    let class_name = use_case_to_pascal(&cfg.use_case);
-    let node_name = &cfg.use_case;
+    let class_name = cfg.template.class();
+    let node_name = &component_node_name(cfg)?;
+    let iface = cfg.template.interface_package();
 
-    let package_xml = format!(
-        r#"<?xml version="1.0"?>
-<package format="3">
-  <name>{name}</name>
-  <version>0.1.0</version>
-  <description>{name} — nano-ros C++ Node pkg.</description>
-  {maintainer}
-  <license>Apache-2.0</license>
-  <depend>std_msgs</depend>
-  <export>
-    <build_type>nros_cmake</build_type>
-  </export>
-</package>
-"#,
-        name = cfg.name,
-        maintainer = maintainer_xml(),
-    );
-    fs::write(dir.join("package.xml"), package_xml)?;
+    fs::write(
+        dir.join("package.xml"),
+        package_xml(
+            &cfg.name,
+            &format!("{} — nano-ros C++ Node pkg.", cfg.name),
+            &cfg.meta,
+            &[iface],
+            "nros_cmake",
+        ),
+    )?;
 
     let cmake = format!(
         r#"cmake_minimum_required(VERSION 3.22)
@@ -773,7 +778,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(nano_ros REQUIRED)
-find_package(std_msgs REQUIRED)
+find_package({iface} REQUIRED)
 
 # Typed component (RFC-0043). No add_executable, no `main()`; the linked
 # Entry pkg's typed runtime constructs this class + calls `configure(node)`
@@ -784,86 +789,27 @@ nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name}
     DEPLOY  linux)
 
 # The verb generated the package.xml `<depend>` closure as INTERFACE libs
-# (`std_msgs__nano_ros_cpp` etc.) carrying the generated headers' include
-# dirs + FFI-glue link. The typed `Publisher<Int32>` needs them.
+# (`{iface}__nano_ros_cpp` etc.) carrying the generated headers' include
+# dirs + FFI-glue link. The typed component's messages need them.
 target_link_libraries({pkg_sym}_{node_name}_component
-    PUBLIC std_msgs__nano_ros_cpp)
+    PUBLIC {iface}__nano_ros_cpp)
 "#,
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
 
-    let class_hpp = format!(
-        // phase-483 W1 -- the template writes `rclcpp::` only. phase-417 W-B3 had
-        // kept it on `::nros::` because three of the four names did not exist under
-        // `rclcpp::` then; they are defined there now, and `nros::` is gone.
-        r#"#pragma once
-
-#include <rclcpp/rclcpp.hpp>
-
-#include "std_msgs.hpp"
-
-namespace {pkg_sym} {{
-
-/// {class_name} — a typed component (RFC-0043). `configure` creates a
-/// publisher on `/chatter` and binds the member `on_tick` (by identity, no
-/// name) as a 1 Hz timer callback that publishes a real counter. The typed
-/// Entry constructs this object + calls `configure(node)`; the executor
-/// dispatches `on_tick` during `spin_once`.
-class {class_name} {{
-    ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
-    ::rclcpp::Timer timer_;
-    int count_ = 0;
-
-    void on_tick(); // real body; bound via &{class_name}::on_tick (no name)
-
-  public:
-    ::rclcpp::Result configure(::rclcpp::Node& node);
-}};
-
-}} // namespace {pkg_sym}
-"#,
-    );
-    fs::write(
-        dir.join("include")
-            .join(&pkg_sym)
-            .join(format!("{class_name}.hpp")),
-        class_hpp,
+    // The role's typed component (phase-517 W12). The header lives at
+    // `include/<pkg>/<Class>.hpp` so the typed Entry can
+    // `#include "<pkg>/<Class>.hpp"` (nano_ros_node_register adds `include/`).
+    write_typed_component(
+        Language::Cpp,
+        cfg.template,
+        &pkg_sym,
+        node_name,
+        &dir.join("src"),
+        &dir.join("include").join(&pkg_sym),
+        &format!("{pkg_sym}/{class_name}.hpp"),
     )?;
-
-    let class_cpp = format!(
-        r#"// Generated by `nros new {name} --component --lang cpp`.
-//
-// Typed component (RFC-0043). `configure` creates a `Publisher<Int32>` on
-// `/chatter` + binds the member `on_tick` by identity as a 1 Hz timer; the
-// callback publishes a real counter. No string descriptor, no interpreter.
-
-#include "{pkg_sym}/{class_name}.hpp"
-
-#include <cstdio>
-
-namespace {pkg_sym} {{
-
-void {class_name}::on_tick() {{
-    std_msgs::msg::Int32 m;
-    m.data = count_++;
-    if (pub_.publish(m).ok()) {{
-        std::printf("Published: %d\n", m.data);
-    }}
-}}
-
-::rclcpp::Result {class_name}::configure(::rclcpp::Node& node) {{
-    std::setvbuf(stdout, nullptr, _IONBF, 0);
-    ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
-    if (!r.ok()) return r;
-    // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
-    return node.create_wall_timer<{class_name}, &{class_name}::on_tick>(timer_, 1000, this);
-}}
-
-}} // namespace {pkg_sym}
-"#,
-        name = cfg.name,
-    );
-    fs::write(dir.join(format!("src/{class_name}.cpp")), class_cpp)?;
+    write_codegen_caps(&dir, cfg.template)?;
 
     println!("✓ Created nano-ros C++ Node pkg '{}'", cfg.name);
     println!("  Class     : {pkg_sym}::{class_name}");
@@ -889,8 +835,8 @@ void {class_name}::on_tick() {{
 /// `/chatter` publisher + 1 Hz timer that publishes a CDR-encoded Int32. The
 /// typed Entry's `__nros_c_component_<pkg>_{create,configure}` calls run it on
 /// the real executor — no declarative descriptor, no interpreter.
-fn scaffold_component_c(cfg: &ComponentScaffoldConfig) -> Result<()> {
-    let dir = PathBuf::from(&cfg.name);
+fn scaffold_component_c(dir: &Path, cfg: &ComponentScaffoldConfig) -> Result<()> {
+    let dir = dir.to_path_buf();
     if dir.exists() {
         if !cfg.force {
             bail!(
@@ -903,29 +849,20 @@ fn scaffold_component_c(cfg: &ComponentScaffoldConfig) -> Result<()> {
     fs::create_dir_all(dir.join("src"))?;
 
     let pkg_sym = cfg.name.replace('-', "_");
-    let class_name = use_case_to_pascal(&cfg.use_case);
-    let node_name = &cfg.use_case;
-    let state_ty = format!("{pkg_sym}_t");
-    let configure_fn = format!("{node_name}_configure");
+    let class_name = cfg.template.class();
+    let node_name = &component_node_name(cfg)?;
+    let iface = cfg.template.interface_package();
 
-    let package_xml = format!(
-        r#"<?xml version="1.0"?>
-<package format="3">
-  <name>{name}</name>
-  <version>0.1.0</version>
-  <description>{name} — nano-ros C Node pkg.</description>
-  {maintainer}
-  <license>Apache-2.0</license>
-  <depend>std_msgs</depend>
-  <export>
-    <build_type>nros_cmake</build_type>
-  </export>
-</package>
-"#,
-        name = cfg.name,
-        maintainer = maintainer_xml(),
-    );
-    fs::write(dir.join("package.xml"), package_xml)?;
+    fs::write(
+        dir.join("package.xml"),
+        package_xml(
+            &cfg.name,
+            &format!("{} — nano-ros C Node pkg.", cfg.name),
+            &cfg.meta,
+            &[iface],
+            "nros_cmake",
+        ),
+    )?;
 
     let cmake = format!(
         r#"cmake_minimum_required(VERSION 3.22)
@@ -936,10 +873,10 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 find_package(nano_ros REQUIRED)
-find_package(std_msgs REQUIRED)
+find_package({iface} REQUIRED)
 
 # Typed C component (RFC-0043), written against the C API with the generated
-# `std_msgs` bindings (declared in package.xml). `DEPLOY linux` also builds a
+# `{iface}` bindings (declared in package.xml). `DEPLOY linux` also builds a
 # standalone runnable single-node ELF via the typed C carrier.
 nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
     SOURCES src/{class_name}.c
@@ -948,60 +885,18 @@ nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
 
-    let source = format!(
-        r#"// Generated by `nros new {name} --component --lang c`.
-//
-// Typed C component (RFC-0043). `{configure_fn}` creates a `/chatter`
-// publisher + a 1 Hz timer publishing an Int32 counter, with the C API.
-// `RCLC_C_COMPONENT` emits the C-ABI factory/configure the typed Entry calls;
-// it runs on the real executor — no declarative descriptor, no interpreter.
-
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
-
-#include <rcl/rcl.h>
-#include <rclc/executor.h>
-#include <rclc/rclc.h>
-#include <std_msgs/msg/int32.h>
-
-typedef struct {{
-    rcl_publisher_t pub;
-    rcl_timer_t timer;
-    int32_t count;
-}} {state_ty};
-
-static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {{
-    {state_ty}* self = RCLC_CONTAINER_OF(timer, {state_ty}, timer);
-    (void)last_call_time;
-    std_msgs__msg__Int32 msg = {{.data = self->count}};
-    if (rcl_publish(&self->pub, &msg, NULL) == RCL_RET_OK) {{
-        printf("Published: %d\n", (int)self->count);
-    }}
-    self->count++;
-}}
-
-static rcl_ret_t {configure_fn}(rcl_node_t* node, rclc_executor_t* executor, {state_ty}* self) {{
-    self->count = 0;
-    self->pub = rcl_get_zero_initialized_publisher();
-    rcl_ret_t rc = rclc_publisher_init_default(
-        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter");
-    if (rc != RCL_RET_OK) {{
-        return rc;
-    }}
-    self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_default(&self->timer, NULL, 1000000000ULL, on_tick);
-    if (rc != RCL_RET_OK) {{
-        return rc;
-    }}
-    return rclc_executor_add_timer(executor, &self->timer);
-}}
-
-RCLC_C_COMPONENT({state_ty}, {configure_fn})
-"#,
-        name = cfg.name,
-    );
-    fs::write(dir.join(format!("src/{class_name}.c")), source)?;
+    // The role's typed component (phase-517 W12).
+    let src_dir = dir.join("src");
+    write_typed_component(
+        Language::C,
+        cfg.template,
+        &pkg_sym,
+        node_name,
+        &src_dir,
+        &src_dir,
+        "",
+    )?;
+    write_codegen_caps(&dir, cfg.template)?;
 
     println!("✓ Created nano-ros C Node pkg '{}'", cfg.name);
     println!("  Class     : {pkg_sym}::{class_name}");
@@ -1021,31 +916,31 @@ RCLC_C_COMPONENT({state_ty}, {configure_fn})
     Ok(())
 }
 
-/// Map `talker` → `Talker`, `service-server` → `ServiceServer`.
-fn use_case_to_pascal(s: &str) -> String {
-    s.split(['_', '-'])
-        .filter(|p| !p.is_empty())
-        .map(|p| {
-            let mut chars = p.chars();
-            match chars.next() {
-                Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect()
-}
-
 /// Issue 0333 defect 2 — emit a *runnable* Rust starter in the current blessed
 /// idiom, dispatched by platform kind. Deferred platforms are rejected earlier
 /// in [`scaffold_package`], so only [`PlatformKind::Hosted`] and
 /// [`PlatformKind::SelfBringup`] reach here.
-fn scaffold_rust(name: &str, platform: &str, edition_feature: &str, dir: &Path) -> Result<()> {
+fn scaffold_rust(
+    name: &str,
+    platform: &str,
+    edition_feature: &str,
+    dir: &Path,
+    role: Role,
+    node: &str,
+) -> Result<()> {
     let spec = platform_spec(platform)?;
+    let lib_rs = rust_node_lib(role, node);
     match &spec.kind {
-        PlatformKind::Hosted => scaffold_rust_hosted(name, dir),
-        PlatformKind::SelfBringup { runtime } => {
-            scaffold_rust_self_bringup(name, &spec, runtime, edition_feature, platform, dir)
-        }
+        PlatformKind::Hosted => scaffold_rust_hosted(name, dir, &lib_rs),
+        PlatformKind::SelfBringup { runtime } => scaffold_rust_self_bringup(
+            name,
+            &spec,
+            runtime,
+            edition_feature,
+            platform,
+            dir,
+            &lib_rs,
+        ),
         // Rejected before any file is written (see `scaffold_package`).
         PlatformKind::Deferred { .. } => {
             unreachable!("Deferred platforms bail in scaffold_package")
@@ -1093,7 +988,7 @@ codegen-units = 1
 /// `lib.rs` is the node, `main.rs` is `nros::main!(spin = "forever")`, and the
 /// board, RMW and ROS edition reach the build through the selection package,
 /// so the manifest names none of them.
-fn scaffold_rust_hosted(name: &str, dir: &Path) -> Result<()> {
+fn scaffold_rust_hosted(name: &str, dir: &Path, lib_rs: &str) -> Result<()> {
     let selection = selection_dep(name);
     let cargo_toml = format!(
         r#"[package]
@@ -1108,7 +1003,7 @@ publish = false
 name = "{name}"
 path = "src/main.rs"
 
-# `lib.rs` IS the node (`nros::node!(Talker)` emits `register`); `main.rs` is
+# `lib.rs` IS the node (its `nros::node!(..)` emits `register`); `main.rs` is
 # the one-line `nros::main!()` entry that boots it.
 [lib]
 path = "src/lib.rs"
@@ -1141,7 +1036,7 @@ nros::main!(spin = "forever");
 "#
     );
     fs::write(dir.join("src/main.rs"), main_rs)?;
-    fs::write(dir.join("src/lib.rs"), talker_node_lib(name))?;
+    fs::write(dir.join("src/lib.rs"), lib_rs)?;
     Ok(())
 }
 
@@ -1156,6 +1051,7 @@ fn scaffold_rust_self_bringup(
     edition_feature: &str,
     platform: &str,
     dir: &Path,
+    lib_rs: &str,
 ) -> Result<()> {
     let board_crate = spec.board_crate;
     let deploy = spec.deploy_token;
@@ -1218,7 +1114,7 @@ path = "src/main.rs"
 test = false
 bench = false
 
-# Self-bringup shape (issue 0100): `lib.rs` IS the node (`nros::node!(Talker)`
+# Self-bringup shape (issue 0100): `lib.rs` IS the node (its `nros::node!(..)`
 # emits `register`); `main.rs` is the one-line `nros::main!()` Form-1 entry that
 # dispatches to this same crate's `register`.
 [lib]
@@ -1247,85 +1143,25 @@ nros-log = {{ version = "*", default-features = false }}
     );
     fs::write(dir.join("Cargo.toml"), cargo_toml)?;
     fs::write(dir.join("src/main.rs"), main_rs)?;
-    fs::write(dir.join("src/lib.rs"), talker_node_lib(name))?;
+    fs::write(dir.join("src/lib.rs"), lib_rs)?;
 
     write_default_config_toml(dir)?;
     write_cargo_config(dir, platform)?;
     Ok(())
 }
 
-/// The shared `lib.rs` node for every Rust starter — a `std_msgs/String`
-/// talker (`Node` + `ExecutableNode` + `nros::node!`), copied from the tracked
-/// `examples/mps2-an385-baremetal/rust/talker/src/lib.rs`. RMW/platform-agnostic:
-/// the same node compiles under every board, hosted included (issue 2079).
-fn talker_node_lib(name: &str) -> String {
-    format!(
-        r#"//! Declarative talker node — RMW/platform-agnostic application logic.
-//!
-//! `nros::node!(Talker)` emits the `register` fn that `nros::main!()` (in
-//! `main.rs`) dispatches to. The boot scaffold (reset -> BoardEntry -> executor
-//! -> spin) is owned by `nros::main!()` + the board crate; none of it is here.
-//!
-//! Publishes `std_msgs/String` ("Hello World: N") on `/chatter` once a second.
-
-#![no_std]
-
-use core::fmt::Write as _;
-
-use nros::{{
-    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Component, NodeContext, DeclarativeNode, NodeResult,
-    TickCtx, TimerDuration,
-}};
-use nros_log::{{Logger, log_error, log_info}};
-use std_msgs::msg::String as StringMsg;
-
-static LOGGER: Logger = Logger::new("{name}");
-
-pub struct Talker;
-
-impl Component for Talker {{
-    const NAME: &'static str = "{name}";
-
-    // issue 0857 — the cell registries this class fills, exactly: (publishers,
-    // service servers, service clients, action clients, action servers). Undeclared
-    // means `NROS_RUNTIME_MAX_CELL_ENTITIES` per kind, in `.bss`, twice over.
-    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0, 0);
-
-    const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
-
-    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {{
-        nros_log::register_logger(&LOGGER);
-        let mut node = ctx.create_node(nros::NodeOptions::new("{name}"))?;
-        node.create_publisher_for_topic::<StringMsg>("/chatter")?;
-        node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
-        Ok(())
-    }}
-}}
-
-impl ExecutableNode for Talker {{
-    type State = i32;
-
-    fn init() -> Self::State {{
-        0
-    }}
-
-    fn on_callback(state: &mut i32, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {{
-        if callback.as_str() == "on_tick" {{
-            *state = state.wrapping_add(1);
-            let mut msg = StringMsg::default();
-            let _ = write!(msg.data, "Hello World: {{}}", *state);
-            match ctx.publish_to_topic::<StringMsg, 64>("/chatter", &msg) {{
-                Ok(()) => log_info!(&LOGGER, "Publishing: '{{}}'", msg.data),
-                Err(e) => log_error!(&LOGGER, "Publish failed: {{:?}}", e),
-            }}
-        }}
-    }}
-
-    fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {{}}
-}}
-
-nros::node!(Talker);
-"#
+/// The `lib.rs` node for every Rust scaffold — the role's template
+/// ([`Role::rust_node`], copied from `examples/linux/rust/<role>`), which is
+/// RMW/platform-agnostic: the same node compiles under every board, hosted
+/// included (issue 2079).
+fn rust_node_lib(role: Role, node: &str) -> String {
+    render(
+        role.rust_node(),
+        &Names {
+            node,
+            ns: "",
+            header: "",
+        },
     )
 }
 
@@ -1385,164 +1221,122 @@ rustflags = [
     Ok(())
 }
 
-fn scaffold_c(name: &str, platform: &str, rmw_value: &str, dir: &Path) -> Result<()> {
-    let _ = rmw_value;
-    if platform == "zephyr" {
-        return scaffold_zephyr(name, Language::C, dir);
+/// The RFC-0033 capacity a C/C++ talker or listener needs for the stock
+/// `std_msgs/String` it carries, beside `package.xml` — where the in-tree
+/// examples state it (`examples/linux/cpp/listener/nros-codegen.toml`). The
+/// type states no serialized-size bound, so a subscription cannot be sized
+/// from it until the consumer says how big it may be (issue 0964); the C++
+/// listener refuses to compile without one.
+fn write_codegen_caps(dir: &Path, role: Role) -> Result<()> {
+    if role.interface_package() != "std_msgs" {
+        return Ok(());
     }
+    fs::write(
+        dir.join("nros-codegen.toml"),
+        "# The capacity of the stock `std_msgs/String` this node carries (RFC-0033).\n\
+         # The type states no serialized-size bound, so the consumer states one here,\n\
+         # beside package.xml. 256 is generous for the demo's one-line payloads.\n\
+         [fields]\n\"std_msgs/String.data\" = 256\n",
+    )?;
+    Ok(())
+}
+
+/// A C or C++ package on every platform but Zephyr: a plain executable whose
+/// `main` is the role's template ([`Role::main_source`], copied from
+/// `examples/linux/{c,cpp}/<role>` — the in-tree role mains are byte-identical
+/// across platforms, so one template serves them all).
+fn scaffold_cxx_executable(
+    name: &str,
+    lang: Language,
+    platform: &str,
+    dir: &Path,
+    role: Role,
+    node: &str,
+) -> Result<()> {
+    let iface = role.interface_package();
+    let (languages, std_line, src) = match lang {
+        Language::C => (
+            "C CXX",
+            "set(CMAKE_C_STANDARD 11)\nset(CMAKE_C_STANDARD_REQUIRED ON)",
+            "src/main.c",
+        ),
+        _ => (
+            "C CXX",
+            "set(CMAKE_CXX_STANDARD 14)\nset(CMAKE_CXX_STANDARD_REQUIRED ON)",
+            "src/main.cpp",
+        ),
+    };
     let cmake = format!(
         r#"cmake_minimum_required(VERSION 3.22)
-project({name} VERSION 0.1.0 LANGUAGES C CXX)
+project({name} VERSION 0.1.0 LANGUAGES {languages})
 
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_STANDARD_REQUIRED ON)
+{std_line}
 
 # RFC-0048 — ament shape. Board + RMW live in the system.toml beside this
 # file (RFC-0098 D3); find_package(nano_ros) reads it.
 find_package(nano_ros REQUIRED)
-find_package(std_msgs REQUIRED)
+find_package({iface} REQUIRED)
 
-nano_ros_add_executable({name} src/main.c)
-ament_target_dependencies({name} std_msgs)
+nano_ros_add_executable({name} {src})
+ament_target_dependencies({name} {iface})
 
 install(TARGETS {name} DESTINATION lib/${{PROJECT_NAME}})
 ament_package()
 "#,
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
+    fs::write(
+        dir.join(src),
+        render(
+            role.main_source(lang),
+            &Names {
+                node,
+                ns: "",
+                header: "",
+            },
+        ),
+    )?;
 
-    let main_c = format!(
-        r#"// Generated by `nros new {name} --lang c`.
-//
-// Minimal nano-ros C talker — publishes one `std_msgs/Int32` message on
-// `/chatter`, then returns. Swap the body for your own logic; see
-// `examples/linux/c/talker/src/main.c` for a fuller shape (timer,
-// executor, signal handler).
-
-#include <stdio.h>
-
-#include <rcl/rcl.h>
-#include <rclc/rclc.h>
-#include <std_msgs/msg/int32.h>
-
-int main(int argc, char** argv) {{
-    rcl_allocator_t allocator = rcl_get_default_allocator();
-    rclc_support_t support = rclc_support_get_zero_initialized();
-    if (rclc_support_init(&support, argc, (const char* const*)argv, &allocator) != RCL_RET_OK) {{
-        fprintf(stderr, "rclc_support_init failed\n");
-        return 1;
-    }}
-
-    rcl_node_t node = rcl_get_zero_initialized_node();
-    if (rclc_node_init_default(&node, "{name}", "/", &support) != RCL_RET_OK) {{
-        fprintf(stderr, "rclc_node_init_default failed\n");
-        return 1;
-    }}
-
-    rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
-    if (rclc_publisher_init_default(&pub, &node,
-                                    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-                                    "/chatter") != RCL_RET_OK) {{
-        fprintf(stderr, "rclc_publisher_init_default failed\n");
-        return 1;
-    }}
-
-    std_msgs__msg__Int32 msg = {{0}};
-    msg.data = 0;
-    (void)rcl_publish(&pub, &msg, NULL);
-    printf("{name}: published 0 on /chatter\n");
-
-    rcl_publisher_fini(&pub, &node);
-    rcl_node_fini(&node);
-    rclc_support_fini(&support);
-    return 0;
-}}
-"#,
-    );
-    fs::write(dir.join("src/main.c"), main_c)?;
-
+    write_codegen_caps(dir, role)?;
     if needs_scaffolded_nros_toml(platform) {
         write_default_config_toml(dir)?;
     }
     Ok(())
 }
 
-fn scaffold_cpp(name: &str, platform: &str, rmw_value: &str, dir: &Path) -> Result<()> {
-    let _ = rmw_value;
-    if platform == "zephyr" {
-        return scaffold_zephyr(name, Language::Cpp, dir);
+/// Write a role's typed component sources into `src_dir` (and, for C++, its
+/// header into `header_dir`): `<Class>.c`, or `<Class>.hpp` + `<Class>.cpp`.
+/// `header_include` is how the source includes the header. Returns the
+/// source file's name.
+fn write_typed_component(
+    lang: Language,
+    role: Role,
+    ns: &str,
+    node: &str,
+    src_dir: &Path,
+    header_dir: &Path,
+    header_include: &str,
+) -> Result<String> {
+    let class = role.class();
+    let names = Names {
+        node,
+        ns,
+        header: header_include,
+    };
+    match lang {
+        Language::C => {
+            let file = format!("{class}.c");
+            fs::write(src_dir.join(&file), render(role.c_component(), &names))?;
+            Ok(file)
+        }
+        _ => {
+            let (hpp, cpp) = role.cpp_component();
+            fs::write(header_dir.join(format!("{class}.hpp")), render(hpp, &names))?;
+            let file = format!("{class}.cpp");
+            fs::write(src_dir.join(&file), render(cpp, &names))?;
+            Ok(file)
+        }
     }
-    let cmake = format!(
-        r#"cmake_minimum_required(VERSION 3.22)
-project({name} VERSION 0.1.0 LANGUAGES C CXX)
-
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# RFC-0048 — ament shape. Board + RMW live in the system.toml beside this
-# file (RFC-0098 D3); find_package(nano_ros) reads it.
-find_package(nano_ros REQUIRED)
-find_package(std_msgs REQUIRED)
-
-nano_ros_add_executable({name} src/main.cpp)
-ament_target_dependencies({name} std_msgs)
-
-install(TARGETS {name} DESTINATION lib/${{PROJECT_NAME}})
-ament_package()
-"#,
-    );
-    fs::write(dir.join("CMakeLists.txt"), cmake)?;
-
-    let main_cpp = format!(
-        r#"// Generated by `nros new {name} --lang cpp`.
-//
-// Minimal nano-ros C++ talker — publishes one `std_msgs/Int32` message on
-// `/chatter`, then returns. Swap the body for your own logic; see
-// `examples/linux/cpp/talker/src/main.cpp` for a fuller shape (timer,
-// executor, signal handler).
-
-#include <cstdio>
-
-#include <rclcpp/rclcpp.hpp>
-#include "std_msgs.hpp"
-
-int main(int argc, char** argv) {{
-    (void)argc;
-    (void)argv;
-
-    if (auto r = rclcpp::init_in(); !r.ok()) {{
-        std::fprintf(stderr, "rclcpp::init failed: %d\n", r.raw());
-        return 1;
-    }}
-
-    rclcpp::Node node;
-    if (auto r = rclcpp::create_node(node, "{name}"); !r.ok()) {{
-        std::fprintf(stderr, "create_node failed: %d\n", r.raw());
-        return 1;
-    }}
-
-    rclcpp::Publisher<std_msgs::msg::Int32> pub;
-    if (auto r = node.create_publisher(pub, "/chatter"); !r.ok()) {{
-        std::fprintf(stderr, "create_publisher failed: %d\n", r.raw());
-        return 1;
-    }}
-
-    std_msgs::msg::Int32 msg;
-    msg.data = 0;
-    (void)pub.publish(msg);
-    std::printf("{name}: published 0 on /chatter\n");
-
-    rclcpp::shutdown();
-    return 0;
-}}
-"#,
-    );
-    fs::write(dir.join("src/main.cpp"), main_cpp)?;
-
-    if needs_scaffolded_nros_toml(platform) {
-        write_default_config_toml(dir)?;
-    }
-    Ok(())
 }
 
 /// phase-517 — a Zephyr C/C++ project is a stock Zephyr application
@@ -1554,24 +1348,35 @@ int main(int argc, char** argv) {{
 /// plus `CONFIG_NROS=y`. The host shape configured as a plain CMake project
 /// and refused with `nros_feature_set: unknown PLATFORM 'zephyr'`.
 ///
-/// The board, RMW and component are the `system.toml` beside it; the network
-/// is Kconfig, so no `nros.toml` is written.
-fn scaffold_zephyr(name: &str, lang: Language, dir: &Path) -> Result<()> {
+/// The component is the role's typed-component template (phase-517 W12). The
+/// board, RMW and component are the `system.toml` beside it; the network is
+/// Kconfig, so no `nros.toml` is written.
+fn scaffold_zephyr(name: &str, lang: Language, dir: &Path, role: Role, node: &str) -> Result<()> {
     let ident = name.replace('-', "_");
-    let (src, register) = match lang {
-        Language::Cpp => (
-            "src/Talker.cpp",
-            format!(
-                "nros_components_register_node(talker_lib\n    HEADER Talker.hpp\n    \
-                 PLUGIN {ident}::Talker\n    EXECUTABLE talker\n    SHAPE configure\n    TYPED)\n"
-            ),
+    let class = role.class();
+    let iface = role.interface_package();
+    let src_dir = dir.join("src");
+    let file = write_typed_component(
+        lang,
+        role,
+        &ident,
+        node,
+        &src_dir,
+        &src_dir,
+        &format!("{class}.hpp"),
+    )?;
+    // The book's spelling (`talker_lib`): named after the role, not the node.
+    let lib = format!("{}_lib", role.name().replace('-', "_"));
+    let register = match lang {
+        Language::Cpp => format!(
+            "nros_components_register_node({lib}\n    HEADER {class}.hpp\n    \
+             PLUGIN {ident}::{class}\n    EXECUTABLE {node}\n    SHAPE configure\n    TYPED)\n\n\
+             if(TARGET {iface}__nano_ros_cpp)\n    \
+             target_link_libraries({lib} PUBLIC {iface}__nano_ros_cpp)\nendif()\n"
         ),
-        _ => (
-            "src/Talker.c",
-            format!(
-                "nros_components_register_node(talker_lib\n    PLUGIN {ident}::Talker\n    \
-                 EXECUTABLE talker\n    SHAPE configure\n    TYPED)\n"
-            ),
+        _ => format!(
+            "nros_components_register_node({lib}\n    PLUGIN {ident}::{class}\n    \
+             EXECUTABLE {node}\n    SHAPE configure\n    TYPED)\n"
         ),
     };
     let cmake = format!(
@@ -1584,17 +1389,22 @@ find_package(Zephyr REQUIRED HINTS $ENV{{ZEPHYR_BASE}})
 project({name})
 
 find_package(nano_ros REQUIRED)
-find_package(std_msgs REQUIRED)
+find_package({iface} REQUIRED)
 
 # A TYPED component: the module's Zephyr carrier generates the entry and calls
 # the component's `configure` — no hand-written main().
-nano_ros_auto_add_library(talker_lib STATIC {src})
+nano_ros_auto_add_library({lib} STATIC src/{file})
 
 {register}"#
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
+    fs::write(dir.join("prj.conf"), ZEPHYR_PRJ_CONF)?;
+    write_codegen_caps(dir, role)?;
+    Ok(())
+}
 
-    let prj = r#"# Zephyr's own settings. nano-ros's half (RMW, endpoint, domain, knobs) is
+/// The `prj.conf` a Zephyr C/C++ scaffold writes.
+const ZEPHYR_PRJ_CONF: &str = r#"# Zephyr's own settings. nano-ros's half (RMW, endpoint, domain, knobs) is
 # system.toml's: the module renders it into a fragment merged AFTER this file,
 # so a CONFIG_NROS_* line here would be dead.
 
@@ -1630,117 +1440,6 @@ CONFIG_NET_PKT_TX_COUNT=32
 CONFIG_NET_BUF_RX_COUNT=64
 CONFIG_NET_BUF_TX_COUNT=64
 "#;
-    fs::write(dir.join("prj.conf"), prj)?;
-
-    match lang {
-        Language::Cpp => {
-            let hpp = format!(
-                r#"// Generated by `nros new {name} --platform zephyr --lang cpp`.
-// A typed component: the Zephyr carrier constructs it and calls configure().
-#pragma once
-
-#include <rclcpp/rclcpp.hpp>
-
-#include "std_msgs.hpp"
-
-namespace {ident} {{
-
-class Talker {{
-    ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
-    ::rclcpp::Timer timer_;
-    int count_ = 0;
-
-    void on_tick();
-
-  public:
-    ::rclcpp::Result configure(::rclcpp::Node& node);
-}};
-
-}} // namespace {ident}
-"#
-            );
-            fs::write(dir.join("src/Talker.hpp"), hpp)?;
-            let cpp = format!(
-                r#"// Generated by `nros new {name} --platform zephyr --lang cpp`.
-// Publishes an Int32 counter on /chatter every 500 ms.
-#include "Talker.hpp"
-
-#include <cstdio>
-
-namespace {ident} {{
-
-void Talker::on_tick() {{
-    std_msgs::msg::Int32 m;
-    m.data = count_++;
-    if (pub_.publish(m).ok()) {{
-        std::printf("Published: %d\n", (int)m.data);
-    }}
-}}
-
-::rclcpp::Result Talker::configure(::rclcpp::Node& node) {{
-    ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
-    if (!r.ok()) return r;
-    return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 500, this);
-}}
-
-}} // namespace {ident}
-"#
-            );
-            fs::write(dir.join("src/Talker.cpp"), cpp)?;
-        }
-        _ => {
-            let c = format!(
-                r#"// Generated by `nros new {name} --platform zephyr --lang c`.
-// A typed C component: `talker_configure` creates a publisher on /chatter and
-// a timer that publishes an Int32 counter each tick. `RCLC_C_COMPONENT` emits
-// the C-ABI factory/configure the Zephyr typed carrier calls.
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
-
-#include <rclc/rclc.h>
-#include <std_msgs/msg/int32.h>
-
-typedef struct {{
-    rcl_publisher_t pub;
-    rcl_timer_t timer;
-    int32_t count;
-}} talker_t;
-
-static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {{
-    talker_t* self = RCLC_CONTAINER_OF(timer, talker_t, timer);
-    (void)last_call_time;
-    std_msgs__msg__Int32 msg = {{.data = self->count}};
-    if (rcl_publish(&self->pub, &msg, NULL) == RCL_RET_OK) {{
-        printf("Published: %d\n", (int)self->count);
-    }}
-    self->count++;
-}}
-
-static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor, talker_t* self) {{
-    self->count = 0;
-    self->pub = rcl_get_zero_initialized_publisher();
-    rcl_ret_t rc = rclc_publisher_init_default(
-        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter");
-    if (rc != RCL_RET_OK) {{
-        return rc;
-    }}
-    self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_default(&self->timer, NULL, 500000000ULL, on_tick);
-    if (rc != RCL_RET_OK) {{
-        return rc;
-    }}
-    return rclc_executor_add_timer(executor, &self->timer);
-}}
-
-RCLC_C_COMPONENT(talker_t, talker_configure)
-"#
-            );
-            fs::write(dir.join("src/Talker.c"), c)?;
-        }
-    }
-    Ok(())
-}
 
 /// Does this platform need a scaffolded `nros.toml`?
 ///
@@ -1800,7 +1499,15 @@ mod tests {
     #[test]
     fn rust_scaffold_hosted_names_no_board_rmw_or_edition() {
         let d = tmp();
-        scaffold_rust("my-app", "linux", "ros-jazzy", d.path()).unwrap();
+        scaffold_rust(
+            "my-app",
+            "linux",
+            "ros-jazzy",
+            d.path(),
+            Role::Talker,
+            "my_app",
+        )
+        .unwrap();
         let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
         let doc: toml::Value = toml.parse().expect("scaffolded manifest parses");
         let deps = doc["dependencies"].as_table().unwrap();
@@ -1835,7 +1542,8 @@ mod tests {
         // system.toml `scaffold_package` writes (RFC-0098 D3), so it does not
         // appear in the CMakeLists.
         let dc = tmp();
-        scaffold_c("bar", "linux", "cyclonedds", dc.path()).unwrap();
+        scaffold_cxx_executable("bar", Language::C, "linux", dc.path(), Role::Talker, "bar")
+            .unwrap();
         let cm = fs::read_to_string(dc.path().join("CMakeLists.txt")).unwrap();
         assert!(
             cm.contains("find_package(nano_ros REQUIRED)"),
@@ -1855,7 +1563,15 @@ mod tests {
         );
 
         let dpp = tmp();
-        scaffold_cpp("baz", "linux", "xrce", dpp.path()).unwrap();
+        scaffold_cxx_executable(
+            "baz",
+            Language::Cpp,
+            "linux",
+            dpp.path(),
+            Role::Talker,
+            "baz",
+        )
+        .unwrap();
         let cm = fs::read_to_string(dpp.path().join("CMakeLists.txt")).unwrap();
         assert!(
             cm.contains("nano_ros_add_executable(baz src/main.cpp)"),
@@ -1863,7 +1579,7 @@ mod tests {
         );
         // Both starters include the API at upstream's paths.
         let c_src = fs::read_to_string(dc.path().join("src/main.c")).unwrap();
-        assert!(c_src.contains("#include <rcl/rcl.h>") && c_src.contains("#include <rclc/rclc.h>"));
+        assert!(c_src.contains("#include <rclc/"), "{c_src}");
         let cpp_src = fs::read_to_string(dpp.path().join("src/main.cpp")).unwrap();
         assert!(
             cpp_src.contains("#include <rclcpp/rclcpp.hpp>"),
@@ -1882,7 +1598,9 @@ mod tests {
             platform: "linux".to_string(),
             rmw: "dust-dds".to_string(),
             ros_edition: "humble".to_string(),
-            use_case: "talker".to_string(),
+            template: Role::Talker,
+            node_name: None,
+            meta: PackageMeta::default(),
             force: false,
             board: None,
         };
@@ -1909,6 +1627,8 @@ mod tests {
             "zenoh",
             "jazzy",
             None,
+            Role::Talker,
+            "node",
         );
         let doc: toml::Table = bm.parse().expect("parses");
         assert_eq!(doc["system"]["rmw"].as_str(), Some("zenoh"));
@@ -1931,6 +1651,8 @@ mod tests {
             "xrce",
             "humble",
             Some("mps2-an385-freertos"),
+            Role::Talker,
+            "node",
         );
         let doc: toml::Table = cf.parse().expect("parses");
         assert_eq!(doc["system"]["ros_edition"].as_str(), Some("humble"));
@@ -1954,6 +1676,8 @@ mod tests {
             "zenoh",
             "humble",
             None,
+            Role::Talker,
+            "node",
         );
         let doc: toml::Table = h.parse().expect("parses");
         let c = &doc["component"].as_array().unwrap()[0];
@@ -2012,7 +1736,7 @@ mod tests {
             ("esp32", "nros-board-esp32-qemu", true),
         ] {
             let d = tmp();
-            scaffold_rust("app", platform, "ros-jazzy", d.path()).unwrap();
+            scaffold_rust("app", platform, "ros-jazzy", d.path(), Role::Talker, "app").unwrap();
             let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
             assert!(
                 !toml.contains("# TODO: add board crate"),
@@ -2086,7 +1810,9 @@ mod tests {
                 platform: platform.to_string(),
                 rmw: "zenoh".to_string(),
                 ros_edition: "humble".to_string(),
-                use_case: "talker".to_string(),
+                template: Role::Talker,
+                node_name: None,
+                meta: PackageMeta::default(),
                 force: false,
                 board: None,
             };
@@ -2155,7 +1881,9 @@ mod scaffold_flow_tests {
             platform: "zephyr".to_string(),
             rmw: "zenoh".to_string(),
             ros_edition: "humble".to_string(),
-            use_case: "talker".to_string(),
+            template: Role::Talker,
+            node_name: None,
+            meta: PackageMeta::default(),
             force: false,
             board: Some("zephyr".to_string()),
         }

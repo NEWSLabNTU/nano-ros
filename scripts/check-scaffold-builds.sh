@@ -100,7 +100,7 @@
 # seen to fail is not evidence.
 #
 # Usage: check-scaffold-builds.sh [--list | --self-test | --locator-self-test]
-#                                 [<lang>_<mode> ...]
+#                                 [<lang>_<mode>_<role> ...]
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -120,24 +120,46 @@ nros_bin() {
     printf '%s' "$b"
 }
 
-# The `--lang` values the CLI itself declares, one per line.
-discover_langs() {
-    local nros
+# The values the CLI itself declares for one `nros new` flag, one per line:
+# the `[possible values: ...]` of the help block that starts at `<flag>`, and
+# ends at the next option.
+discover_values() {
+    local flag="$1" nros
     nros="$(nros_bin)" || return 1
     [ -n "$nros" ] || return 1
     "$nros" new --help 2>&1 \
-        | sed -n '/--lang <LANG>/,/--use-case/p' \
+        | awk -v flag="$flag" '
+            index($0, flag " <") && !inside { inside = 1; print; next }
+            inside && /^ +--?[a-z]/ { exit }
+            inside { print }' \
         | sed -n 's/.*\[possible values: \([^]]*\)\].*/\1/p' \
         | tr ',' '\n' \
         | tr -d ' ' \
         | sed '/^$/d'
 }
 
+# The `--lang` values the CLI itself declares, one per line.
+discover_langs() { discover_values --lang; }
+
+# The `--template` roles (phase-517 W12), one per line.
+discover_roles() { discover_values --template; }
+
+# `<lang>_<mode>_<role>`, the role spelled with `_` (it is also the package
+# name). Every role in project mode, which is the shape a user starts from;
+# the talker in component mode too — the component shape takes the same
+# per-role template files as the Zephyr app, and building all six roles twice
+# per language doubles the gate's cost for sources the project mode does not
+# share. Each role's typed component is compiled by the unit tests' render
+# check only; a build of one is `<lang>_component_<role>` by name.
 variants() {
-    local lang
+    local lang role
     while IFS= read -r lang; do
         [ -n "$lang" ] || continue
-        printf '%s_component\n%s_project\n' "$lang" "$lang"
+        printf '%s_component_talker\n' "$lang"
+        while IFS= read -r role; do
+            [ -n "$role" ] || continue
+            printf '%s_project_%s\n' "$lang" "${role//-/_}"
+        done < <(discover_roles)
     done < <(discover_langs)
 }
 
@@ -147,13 +169,18 @@ scaffold_one() {
     local variant="$1" parent="$2" log="$3" nros lang mode rc
     nros="$(nros_bin)" || return 3
     [ -n "$nros" ] || return 3
-    lang="${variant%_*}"
-    mode="${variant##*_}"
+    local role rest
+    lang="${variant%%_*}"
+    rest="${variant#*_}"
+    mode="${rest%%_*}"
+    role="${rest#*_}"
+    [ "$role" != "$rest" ] || role=talker
+    role="${role//_/-}"
     rc=0
     if [ "$mode" = "component" ]; then
-        ( cd "$parent" && "$nros" new "$variant" --component --lang "$lang" ) > "$log" 2>&1 || rc=$?
+        ( cd "$parent" && "$nros" new "$variant" --component --lang "$lang" --template "$role" ) > "$log" 2>&1 || rc=$?
     else
-        ( cd "$parent" && "$nros" new "$variant" --platform linux --lang "$lang" ) > "$log" 2>&1 || rc=$?
+        ( cd "$parent" && "$nros" new "$variant" --platform linux --lang "$lang" --template "$role" ) > "$log" 2>&1 || rc=$?
     fi
     return "$rc"
 }
@@ -574,14 +601,31 @@ fi
 
 wanted=("$@")
 selected=()
-for v in "${all[@]}"; do
-    if [ "${#wanted[@]}" -gt 0 ]; then
-        hit=0
-        for w in "${wanted[@]}"; do [ "$w" = "$v" ] && { hit=1; break; }; done
-        [ "$hit" -eq 1 ] || continue
-    fi
-    selected+=("$v")
-done
+if [ "${#wanted[@]}" -eq 0 ]; then
+    selected=("${all[@]}")
+else
+    # A named variant need not be in the default set: any
+    # `<lang>_<component|project>_<role>` the CLI declares builds by name, so a
+    # role's typed component can be compiled on demand.
+    mapfile -t langs < <(discover_langs)
+    mapfile -t roles < <(discover_roles)
+    for w in "${wanted[@]}"; do
+        ok=0
+        for l in "${langs[@]}"; do
+            for m in component project; do
+                [ "$w" = "${l}_${m}" ] && ok=1
+                for r in "${roles[@]}"; do
+                    [ "$w" = "${l}_${m}_${r//-/_}" ] && ok=1
+                done
+            done
+        done
+        if [ "$ok" -ne 1 ]; then
+            echo "check-scaffold-builds: \`$w\` is not <lang>_<component|project>_<role>" >&2
+            exit 2
+        fi
+        selected+=("$w")
+    done
+fi
 
 if [ "$mode" = "list" ]; then
     echo "scaffold variants (languages from \`nros new --help\`, modes component + project):"

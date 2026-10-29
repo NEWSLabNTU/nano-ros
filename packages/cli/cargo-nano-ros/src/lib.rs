@@ -50,6 +50,7 @@ pub mod dependency_parser;
 // cffi feature). `build.rs` shares this exact file via `#[path]`, so the
 // generator and the library cannot be two spellings of one rule.
 pub mod derived_descriptor;
+pub mod node_role;
 pub mod package_discovery;
 pub mod package_xml;
 pub mod provider_scan;

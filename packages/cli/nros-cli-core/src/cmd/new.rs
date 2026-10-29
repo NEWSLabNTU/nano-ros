@@ -2,14 +2,16 @@
 //!
 //! Forwards to `cargo_nano_ros::scaffold::scaffold_package` so the CLI
 //! stays in lockstep with the shared scaffolding implementation.
-//! Use-case (`talker` / `listener` / `service` / `action`) and RMW-choice
-//! diversification are accepted at the CLI for forward-compat but
-//! currently affect only the printed "Next steps" banner — full
-//! per-use-case template trees land alongside the Phase 112 example
-//! sweep.
+//!
+//! The node is the `--template` role (phase-517 W12), and the package flags
+//! mirror `ros2 pkg create`: `--node-name`, `--dependencies`, `--license`,
+//! `--description`, `--maintainer-name`, `--maintainer-email` and
+//! `--destination-directory`. `--build-type` is not taken (`--lang` decides
+//! it) and neither is `--library-name` (`--component` is the library shape).
 
 use cargo_nano_ros::scaffold::{
-    ComponentScaffoldConfig, ScaffoldConfig, scaffold_component, scaffold_package,
+    ComponentScaffoldConfig, PackageMeta, Role, ScaffoldConfig, scaffold_component_at,
+    scaffold_package_at,
 };
 use clap::Args as ClapArgs;
 use eyre::{Result, bail};
@@ -94,9 +96,53 @@ pub struct Args {
     #[arg(long, value_parser = ["rust", "c", "cpp"])]
     pub lang: Option<String>,
 
-    /// Use case template
-    #[arg(long = "use-case", value_parser = ["talker", "listener", "service", "action"], default_value = "talker")]
-    pub use_case: String,
+    /// The node the package holds: a talker (std_msgs/String on /chatter), a
+    /// listener, an AddTwoInts `server` / `client`, or a Fibonacci
+    /// `action-server` / `action-client` — the roles of the ROS demos, under
+    /// the demos' own interfaces. Default: `talker`.
+    #[arg(long, value_parser = template_values())]
+    pub template: Option<String>,
+
+    /// RETIRED (phase-517 W12): `--template`. Parsed, hidden, so it is refused
+    /// naming its replacement instead of with clap's bare "unexpected argument".
+    #[arg(long = "use-case", hide = true)]
+    pub use_case: Option<String>,
+
+    /// The node's ROS name (as `ros2 pkg create --node-name`). Default: the
+    /// package name (`-` spelled `_`); for `--component`, the role's demo node
+    /// name (`talker`, `add_two_ints_server`, …).
+    #[arg(long = "node-name")]
+    pub node_name: Option<String>,
+
+    /// Extra `<depend>` packages for package.xml, after the template's own
+    /// interface package (as `ros2 pkg create --dependencies`). Space- or
+    /// comma-separated.
+    #[arg(long, num_args = 1.., value_delimiter = ',')]
+    pub dependencies: Vec<String>,
+
+    /// package.xml `<license>` (as `ros2 pkg create --license`). Default:
+    /// `Apache-2.0`.
+    #[arg(long)]
+    pub license: Option<String>,
+
+    /// package.xml `<description>` (as `ros2 pkg create --description`).
+    #[arg(long)]
+    pub description: Option<String>,
+
+    /// package.xml maintainer name (as `ros2 pkg create --maintainer-name`).
+    /// Default: `git config user.name`.
+    #[arg(long = "maintainer-name")]
+    pub maintainer_name: Option<String>,
+
+    /// package.xml maintainer email (as `ros2 pkg create --maintainer-email`).
+    /// Default: `git config user.email`.
+    #[arg(long = "maintainer-email")]
+    pub maintainer_email: Option<String>,
+
+    /// Directory to create the package in (as `ros2 pkg create
+    /// --destination-directory`). Default: the current directory.
+    #[arg(long = "destination-directory")]
+    pub destination_directory: Option<PathBuf>,
 
     /// Phase 172 W.3 — scaffold a planned-mode **component** (a reusable
     /// library node with an `nros::Component` + a folded `[component]`
@@ -188,6 +234,86 @@ fn language_arg(flag: Option<&str>, default: nros_lang::Language) -> Result<nros
     }
 }
 
+/// The `--template` values: the roles, in [`Role::ALL`] order.
+fn template_values() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(Role::ALL.map(Role::name))
+}
+
+/// phase-517 W12 — `--use-case` is REFUSED, naming `--template`. It accepted
+/// `talker`/`listener`/`service`/`action` and wrote a talker for every one, so
+/// mapping it silently would keep a word whose only behaviour was a TODO.
+fn refuse_use_case(use_case: Option<&str>) -> Result<()> {
+    let Some(u) = use_case else { return Ok(()) };
+    let now = match u {
+        "service" => "`--template server` (or `--template client`)".to_string(),
+        "action" => "`--template action-server` (or `--template action-client`)".to_string(),
+        other if Role::parse(other).is_some() => format!("`--template {other}`"),
+        _ => "`--template <role>`".to_string(),
+    };
+    bail!(
+        "nros new: `--use-case` is retired: write {now}. The roles are {}.",
+        Role::ALL.map(Role::name).join(", ")
+    );
+}
+
+/// The `--template` role, the node name and the package metadata a package or
+/// component scaffold takes.
+fn package_args(args: &Args) -> Result<(Role, Option<String>, PackageMeta)> {
+    let role = match args.template.as_deref() {
+        // clap has already restricted the value to `Role::ALL`.
+        Some(t) => Role::parse(t).ok_or_else(|| eyre::eyre!("nros new: unknown --template {t}"))?,
+        None => Role::Talker,
+    };
+    let dependencies = args
+        .dependencies
+        .iter()
+        .flat_map(|d| d.split_whitespace())
+        .map(str::to_string)
+        .collect();
+    Ok((
+        role,
+        args.node_name.clone(),
+        PackageMeta {
+            description: args.description.clone(),
+            license: args.license.clone(),
+            maintainer_name: args.maintainer_name.clone(),
+            maintainer_email: args.maintainer_email.clone(),
+            dependencies,
+        },
+    ))
+}
+
+/// The package flags, set: a mode that writes no package (`--workspace`,
+/// `--image`, `nros new node`, …) refuses them rather than ignore them.
+fn package_flags_given(args: &Args) -> Vec<&'static str> {
+    let mut v = Vec::new();
+    if args.template.is_some() {
+        v.push("--template");
+    }
+    if args.node_name.is_some() {
+        v.push("--node-name");
+    }
+    if !args.dependencies.is_empty() {
+        v.push("--dependencies");
+    }
+    if args.license.is_some() {
+        v.push("--license");
+    }
+    if args.description.is_some() {
+        v.push("--description");
+    }
+    if args.maintainer_name.is_some() {
+        v.push("--maintainer-name");
+    }
+    if args.maintainer_email.is_some() {
+        v.push("--maintainer-email");
+    }
+    if args.destination_directory.is_some() {
+        v.push("--destination-directory");
+    }
+    v
+}
+
 /// The `--platform` choices offered (and listed by `--help`).
 const OFFERED_PLATFORMS: [&str; 6] = [
     "linux",
@@ -237,6 +363,28 @@ fn refuse_retired_platform(platform: Option<&str>) -> Result<()> {
 
 pub fn run(args: Args) -> Result<()> {
     refuse_retired_platform(args.platform.as_deref())?;
+    refuse_use_case(args.use_case.as_deref())?;
+    // Every mode returning before project/component mode writes no package,
+    // so the package flags are refused there (phase-517 W12).
+    let package_mode = !args.workspace
+        && args.image.is_none()
+        && args.host.is_none()
+        && args.deploy.is_none()
+        && !matches!(
+            args.name.as_ref().and_then(|p| p.to_str()),
+            Some("platform" | "board" | "node" | "entry" | "system")
+        );
+    if !package_mode {
+        let given = package_flags_given(&args);
+        if !given.is_empty() {
+            bail!(
+                "nros new: {} {} for a package (`nros new <name> --platform <p>`) or a \
+                 `--component`; this mode writes no package",
+                given.join(", "),
+                if given.len() == 1 { "is" } else { "are" }
+            );
+        }
+    }
     // phase-290 W4.b — package-scaffold modes: `nros new platform <name>` /
     // `nros new board <name> --for-platform <p>`.
     let keyword = args.name.as_ref().and_then(|p| p.to_str());
@@ -589,15 +737,24 @@ pub fn run(args: Args) -> Result<()> {
         // of an identical refusal inside `scaffold_component`. Parsing once
         // leaves one answer and no copies.
         let lang = language_arg(args.lang.as_deref(), nros_lang::Language::Rust)?;
-        return scaffold_component(&ComponentScaffoldConfig {
-            name,
-            use_case: args.use_case,
-            lang,
-            force: args.force,
-        });
+        let (template, node_name, meta) = package_args(&args)?;
+        let dir = package_dir(&args, &name);
+        return scaffold_component_at(
+            &dir,
+            &ComponentScaffoldConfig {
+                name,
+                template,
+                node_name,
+                meta,
+                lang,
+                force: args.force,
+            },
+        );
     }
 
     // Project mode.
+    let (template, node_name, meta) = package_args(&args)?;
+    let dir = package_dir(&args, &name);
     let platform = args
         .platform
         .ok_or_else(|| eyre::eyre!("`nros new <name>` requires `--platform <p>`"))?;
@@ -628,16 +785,29 @@ pub fn run(args: Args) -> Result<()> {
             Some(project_board(&catalog, &platform, args.board.as_deref())?)
         }
     };
-    scaffold_package(&ScaffoldConfig {
-        name,
-        lang,
-        platform,
-        rmw: args.rmw.unwrap_or_else(|| "zenoh".to_string()),
-        ros_edition: args.ros_edition,
-        use_case: args.use_case,
-        force: args.force,
-        board,
-    })
+    scaffold_package_at(
+        &dir,
+        &ScaffoldConfig {
+            name,
+            lang,
+            platform,
+            rmw: args.rmw.unwrap_or_else(|| "zenoh".to_string()),
+            ros_edition: args.ros_edition,
+            template,
+            node_name,
+            meta,
+            force: args.force,
+            board,
+        },
+    )
+}
+
+/// Where a package or component is created: `<--destination-directory>/<name>`,
+/// else `<name>` under the current directory.
+fn package_dir(args: &Args, name: &str) -> PathBuf {
+    args.destination_directory
+        .as_ref()
+        .map_or_else(|| PathBuf::from(name), |d| d.join(name))
 }
 
 /// The `board` a C/C++ project scaffold for `--platform <platform>` writes

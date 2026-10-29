@@ -286,7 +286,7 @@ one launch graph.
 Scaffold a C++ Node pkg with:
 
 ```bash
-$ nros new --component my-talker --lang cpp --use-case talker
+$ nros new --component my-talker --lang cpp --template talker
 ✓ Created nano-ros C++ Node pkg 'my-talker'
   Class     : my_talker::Talker
   Node      : talker
@@ -420,7 +420,7 @@ syntax the user types into the two package roles.
 
 | Command | Output |
 |---|---|
-| `nros new --component <name> --lang cpp --use-case talker` | C++ Node pkg; `--component` is the compatibility scaffold flag |
+| `nros new --component <name> --lang cpp --template talker` | C++ Node pkg; `--component` is the compatibility scaffold flag |
 | `nros new system <name>_bringup --components a,b` | Bringup pkg (language-agnostic — works for both Rust and C++ workspaces) |
 | `nros new <name> --lang cpp --platform linux` | A standalone single-package *project* — its own `CMakeLists.txt` and its own `system.toml`; the copy-out shape, not a workspace member |
 | `nros new entry <name> --platform zephyr` | A Zephyr application package + its `[image.*]` row. The verb accepts no other platform: everywhere else the entry is generated |

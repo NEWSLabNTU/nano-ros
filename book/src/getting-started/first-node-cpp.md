@@ -83,14 +83,14 @@ rclcpp program; the build reaches it from the platform's entry, as for C.
 Write that exact signature: the build declares the renamed function with it,
 so another form fails at link naming `nros_ported_main(int, char**)`.
 
-The scaffolded `src/main.cpp` is the smallest rclcpp program that does
-something: it creates a node and a `std_msgs/Int32` publisher on
-`/chatter`, publishes one message, prints
-`cpp_talker: published 0 on /chatter`,
-and exits. A talker that keeps publishing adds a timer and a spin, as in
-the full
-[`examples/linux/cpp/talker/src/main.cpp`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/cpp/talker/src/main.cpp)
-on GitHub, which you can paste over the scaffold's `main.cpp`.
+The scaffolded `src/main.cpp` is the ROS 2 demo talker in C++, the same
+program as
+[`examples/linux/cpp/talker/src/main.cpp`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/cpp/talker/src/main.cpp):
+it creates a node, a `std_msgs/String` publisher on `/chatter` and a 1 s
+wall timer, and publishes `Hello World: N` until you stop it. `--template`
+picks a different node: `listener`, `server` / `client` (AddTwoInts) or
+`action-server` / `action-client` (Fibonacci), each the in-tree example of
+that role.
 
 The body uses typed `rclcpp::Publisher<M>` / `rclcpp::Subscription<M>`
 wrappers over the C ABI:
@@ -225,9 +225,7 @@ ros2 run rmw_zenoh_cpp rmw_zenohd
 # 2. Run the talker:
 cd cpp_talker
 ./build/linux/cmake/cpp_talker
-# Expected from the scaffold (it publishes once, then exits):
-#   cpp_talker: published 0 on /chatter
-# Expected from the full examples/linux/cpp/talker main.cpp:
+# Expected output:
 #   nros C++ Talker
 #   ===================
 #   Node created: talker
@@ -247,11 +245,10 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
-**Readiness signal.** The scaffold prints its one line as soon as the
-session opens. The full example, within ~6 seconds (session open + the
-first 1 s timer tick), prints `Publishing: 'Hello World: 1'` — Rust + C
+**Readiness signal.** Within ~6 seconds (session open + the first 1 s
+timer tick), the talker prints `Publishing: 'Hello World: 1'` — Rust + C
 + C++ all start the count at 1, matching the official ROS 2 demo
-talker. If neither appears in 30 seconds:
+talker. If it does not appear in 30 seconds:
 
 1. Confirm the router is running (terminal 1). Without it,
    `rclcpp::init_in` returns `-100` (TransportError) — the
@@ -262,13 +259,14 @@ talker. If neither appears in 30 seconds:
 
 ## GitHub source
 
-The full talker, to read or to paste over the scaffold:
+The talker the scaffold copies:
 [`examples/linux/cpp/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/talker)
 
 ## Next
 
-- Add a subscription:
-  [`examples/linux/cpp/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/listener)
+- Add a subscriber: `nros new cpp_listener --platform linux --lang cpp --template listener`
+  (the same program as
+  [`examples/linux/cpp/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/listener)).
 - Services + actions:
   [`service-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/service-client),
   [`action-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/action-client)

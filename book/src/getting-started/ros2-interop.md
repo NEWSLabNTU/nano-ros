@@ -73,11 +73,10 @@ ros2 topic pub /chatter std_msgs/msg/Int32 "{data: 42}" --qos-reliability best_e
 ```
 
 Among the workspace talker's own messages, the listener logs
-`I heard: 42` for each one ROS 2 publishes. A standalone listener — the
-shape of
-[`examples/linux/rust/listener`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/listener)
-on GitHub — is not a scaffold `nros new` offers yet: `--use-case
-listener` still writes a talker.
+`I heard: 42` for each one ROS 2 publishes. A standalone listener is `nros new my_listener --platform linux --template
+listener`, the same node as
+[`examples/linux/rust/listener`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/listener);
+it subscribes to `std_msgs/String` on `/chatter`, the demo talker's topic.
 
 ## Discovery
 
