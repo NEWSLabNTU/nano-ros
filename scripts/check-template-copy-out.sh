@@ -119,9 +119,8 @@ gate="template-copy-out"
 # Sub-projects with an OPEN issue saying their copy does not build, keyed by
 # project label, valued by the reason the skip ledger prints. Each row names
 # its issue and is deleted by the change that closes it.
-declare -A KNOWN_UNBUILDABLE=(
-    [zephyr-byo/app]="known not to build from a copy — Talker.c includes std_msgs/std_msgs.h, which the app never generates (issue 2140)"
-)
+# Empty since issue 2140 (zephyr-byo/app) closed.
+declare -A KNOWN_UNBUILDABLE=()
 
 # Every tracked template DIRECTORY, one per line. `NF > 3` is what makes it a
 # directory rather than a file: `examples/templates/README.md` has three fields

@@ -7,6 +7,8 @@
   <maintainer email="example@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
 
+  <depend>std_msgs</depend>
+
   <export>
     <build_type>nros_cmake</build_type>
   </export>

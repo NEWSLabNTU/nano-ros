@@ -106,8 +106,8 @@ Direction 1, as the 2026-10-26 section confirmed.
 - **`check-template-copy-out`** builds a Zephyr sub-project with `nros sync`
   + `nros build` in the copied leaf instead of reporting it NOT VERIFIED.
   That surfaced a defect the blanket skip had hidden: a copy of
-  `zephyr-byo/app` does not compile (issue 2140), so that one project is
-  NOT VERIFIED by name (`KNOWN_UNBUILDABLE`) until 2140 closes.
+  `zephyr-byo/app` did not compile (issue 2140, since resolved), so that one
+  project was NOT VERIFIED by name (`KNOWN_UNBUILDABLE`) until 2140 closed.
 
 Measured: `cp -r examples/templates/cpp-port-minimal-publisher` to a scratch
 directory outside the checkout, then `nros build --zephyr-workspace
