@@ -143,8 +143,8 @@ const _: () = {
 /// The return value is a REP-2002 `TransitionResult`
 /// ([`RCLC_LIFECYCLE_RET_OK`] = 0, [`RCLC_LIFECYCLE_RET_FAILURE`] = 1,
 /// [`RCLC_LIFECYCLE_RET_ERROR`] = 2). `context` is the pointer most recently
-/// handed to a `nros_lifecycle_register_on_*` /
-/// `nros_executor_lifecycle_register_on_*` call — all six slots on one state
+/// handed to a `rclc_lifecycle_register_on_*` /
+/// `rclc_executor_lifecycle_register_on_*` call — all six slots on one state
 /// machine share a single context.
 ///
 /// `NULL` clears the slot.
@@ -168,7 +168,7 @@ pub type rclc_lifecycle_callback_t = Option<unsafe extern "C" fn(context: *mut c
 /// The `storage` field holds a [`LifecyclePollingNodeCtx`] placed into a
 /// `u64` array to keep C-ABI struct layout predictable for C callers.
 /// Treat the struct as opaque — use [`rclc_lifecycle_get_current_state`] and the
-/// `nros_lifecycle_register_on_*` functions to interact with it.
+/// `rclc_lifecycle_register_on_*` functions to interact with it.
 #[repr(C)]
 pub struct rcl_lifecycle_state_machine_t {
     /// Whether the state machine has been initialised.
@@ -224,7 +224,7 @@ pub extern "C" fn rclc_lifecycle_get_zero_initialized() -> rcl_lifecycle_state_m
 /// transition callbacks, and it is NOT bound to a node and registers no ROS 2
 /// services. A node that should answer `ros2 lifecycle set|get|list` uses the
 /// executor-scoped family instead — `rclc_executor_register_lifecycle_services`
-/// plus `nros_executor_lifecycle_*`.
+/// plus `rclc_executor_lifecycle_*`.
 ///
 /// Issue 0792: this took a `const rcl_node_t *node` until it was noticed that
 /// the pointer was only NULL-checked and never stored. The parameter is gone
@@ -234,7 +234,7 @@ pub extern "C" fn rclc_lifecycle_get_zero_initialized() -> rcl_lifecycle_state_m
 /// executor's own session, keeps them in the executor's `LifecycleRuntimeState`,
 /// and relies on the executor's spin loop to poll them — none of which a
 /// caller-held `rcl_lifecycle_state_machine_t` has access to or can be given
-/// by a node pointer. The removed `nros_make_node_a_lifecycle_node` alias went
+/// by a node pointer. The removed ~~`nros_make_node_a_lifecycle_node`~~ alias went
 /// with it for the same reason: it could not do what its name said.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_lifecycle_init(sm: *mut rcl_lifecycle_state_machine_t) -> rcl_ret_t {
@@ -366,7 +366,7 @@ pub unsafe extern "C" fn rclc_lifecycle_register_on_error(
     register(sm, LifecycleCallbackSlot::Error, cb, context)
 }
 
-// `nros_make_node_a_lifecycle_node` used to live here as a documented alias for
+// ~~`nros_make_node_a_lifecycle_node`~~ used to live here as a documented alias for
 // `rclc_lifecycle_init`, matching rclc's `rclc_make_node_a_lifecycle_node`.
 // Issue 0792 removed it: it forwarded the node pointer to a function that only
 // NULL-checked it, so a function named "make node a lifecycle node" did not make
@@ -417,7 +417,7 @@ mod service_backed {
     ///
     /// After this call, `ros2 lifecycle set|get|list|nodes` can drive the
     /// executor-owned state machine. Register transition callbacks via
-    /// `nros_executor_lifecycle_register_on_*` and inspect the state via
+    /// `rclc_executor_lifecycle_register_on_*` and inspect the state via
     /// `rclc_executor_lifecycle_get_current_state`.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_executor_register_lifecycle_services(

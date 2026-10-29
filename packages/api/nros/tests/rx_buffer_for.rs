@@ -53,7 +53,7 @@ fn a_bounded_type_sizes_itself() {
 }
 
 /// Phase-403 W0 INVERTS this test. It was
-/// `an_unbounded_type_keeps_the_configured_default`, and it asserted the exact
+/// ~~`an_unbounded_type_keeps_the_configured_default`~~, and it asserted the exact
 /// behaviour that is now refused.
 ///
 /// The old rule read phase 380 as licensing the configured default: `None`

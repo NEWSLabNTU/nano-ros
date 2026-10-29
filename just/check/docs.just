@@ -70,8 +70,8 @@ api-parity-ledger:
 # The ledger's prose has been held to the tree since W0.b/W0.c; comments under
 # `packages/` and `examples/` quoted 2,365 names that resolved nowhere when this
 # was written. History is struck inline (~~`old_name`~~), another project's
-# name is listed in `scripts/check/comment-foreign-names.txt`. The scope widens
-# one area per pull request (`SCOPE` in the script) until it covers both trees.
+# name is listed in `scripts/check/comment-foreign-names.txt`. Scope: all of
+# `packages/` and `examples/`.
 [group("check")]
 comment-names:
     @python3 scripts/check/check-comment-names.py

@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Phase 155.B — collapse `nros_rmw::TransportError` into the closest
-/// matching `NROS_RET_*` so the C-side `rclc_support_init` error log
+/// matching `RCLC_RET_*` so the C-side `rclc_support_init` error log
 /// (`init -> -X`) tells the user which precondition the backend
 /// rejected. Anything not directly classifiable falls back to
 /// `RCL_RET_ERROR` (-1) — the legacy value, preserving the existing
@@ -368,7 +368,7 @@ pub unsafe extern "C" fn rclc_support_init_rmw(
         },
     };
     // issue 0687 — the environment rung comes from the hosted edge now. This
-    // call passed `hosted_env: true` unconditionally and relied on the core's
+    // call passed ~~`hosted_env: true`~~ unconditionally and relied on the core's
     // `env` cfg to make it inert on a target build; the cfg is HERE now, where
     // the capability is, so a no-`env` C image says so instead of asking for a
     // rung that cannot exist.
@@ -394,7 +394,7 @@ pub unsafe extern "C" fn rclc_support_init_rmw(
     }
 
     // Phase 128.C.2 — RMW-blind support init. Every linked backend
-    // self-registers via the `RMW_INIT_ENTRIES` linker section
+    // self-registers via the ~~`RMW_INIT_ENTRIES`~~ linker section
     // (linkme on the Rust side, `NROS_RMW_REGISTER_BACKEND` macro on
     // the C/C++ side). The walker fires inside the matching
     // `nros::internals::open_session` / `Executor::open` call below;
@@ -404,7 +404,7 @@ pub unsafe extern "C" fn rclc_support_init_rmw(
     // Phase 155.B.4 — Phase 128.C.2's "no longer needed" assumption
     // doesn't hold on RTOS targets `linkme` doesn't recognise:
     // FreeRTOS, NuttX, Zephyr, ESP-IDF all silently skip the
-    // distributed-slice entry, so `walk_init_section` finds zero
+    // distributed-slice entry, so ~~`walk_init_section`~~ finds zero
     // backends and `get_vtable()` returns
     // `TransportError::InvalidArgument` (registry empty). The
     // sibling `nros_cpp_init` still calls
@@ -463,7 +463,7 @@ pub unsafe extern "C" fn rclc_support_init_rmw(
                 RCL_RET_OK
             }
             // Phase 155.B — surface the inner `TransportError` variant
-            // as a specific `NROS_RET_*` code so a fresh
+            // as a specific `RCLC_RET_*` code so a fresh
             // `rclc_support_init -> -X` log line tells the user which
             // precondition the backend rejected, instead of every
             // failure mode collapsing to RCL_RET_ERROR (-1).
@@ -593,7 +593,7 @@ impl rclc_support_t {
 /// Resolve boot config, with the environment rung when this build has the
 /// `env` capability.
 ///
-/// issue 0687 — `ExecutorConfig::try_resolve` used to take `hosted_env: bool`
+/// issue 0687 — `ExecutorConfig::try_resolve` used to take ~~`hosted_env: bool`~~
 /// and read the process environment inside the core crate. The core takes
 /// values now, so the cfg that decides whether there IS an environment lives at
 /// the edge that has one.

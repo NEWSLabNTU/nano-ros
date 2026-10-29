@@ -113,7 +113,7 @@ mod metadata_backend;
 static _KEEP_C_SURFACE: &[unsafe extern "C" fn()] = &nros_c::c_surface_anchor::C_SURFACE_ANCHOR;
 
 // Issue 0436 — same DCE class, for the multi-RMW bridge ABI. `nros-bridge` is an
-// rlib dep whose `rclc_init_multi` / `nros_pubsub_bridge_*` exports nothing in
+// rlib dep whose `rclc_init_multi` / `rclc_pubsub_bridge_*` exports nothing in
 // this crate calls, so rustc drops them from `libnros_cpp.a` and a C++ binary that
 // includes `<rclcpp/bridge.hpp>` fails to link. Reference them from the staticlib
 // ROOT to keep them (the FORCE_LINK pattern `metadata_backend` uses too).
@@ -206,7 +206,7 @@ mod shutdown;
 // `TickCtx::send_goal_raw` seams added in Phase 212.M-F.4 (`d15565efe`).
 // Always-on (no rmw-cffi gate) because the stub error path is independent
 // of any RMW backend — the symbols exist + return `NROS_CPP_RET_ERROR`
-// until the codegen-side `GenClientDispatch` impl lands (M-F.4.a).
+// until the codegen-side ~~`GenClientDispatch`~~ impl lands (M-F.4.a).
 mod tick_ctx;
 
 // ============================================================================
@@ -217,7 +217,7 @@ mod tick_ctx;
 pub type nros_cpp_ret_t = c_int;
 
 // Issue #229 — ONE return-code numbering across all three spaces: these
-// constants are value-identical to nros-c's `NROS_RET_*` (and to C++
+// constants are value-identical to nros-c's `RCLC_RET_*` (and to C++
 // `rclcpp::ErrorCode`); `Result(any C code)` is correct by identity. The
 // static_assert pin tables in nros-cpp's result.hpp / parameter.hpp fail
 // the build on any re-divergence. (Pre-#229 this space numbered -4..-8
@@ -307,10 +307,10 @@ const fn u64s_for<T>() -> usize {
 // Phase 87.6: `CppPublisher` removed — the FFI stores an `RmwPublisher`
 // handle directly, sized via `NROS_PUBLISHER_SIZE` from the `nros` probe
 // (see packages/api/nros-cpp/build.rs).
-// Phase 87.6: `CppSubscription` removed — the FFI stores an
+// Phase 87.6: ~~`CppSubscription`~~ removed — the FFI stores an
 // `RmwSubscriber` handle directly, sized via `NROS_SUBSCRIBER_SIZE` from
 // the `nros` probe.
-// Phase 87.6: `CppServiceServer` and `CppServiceClient` removed — the FFI
+// Phase 87.6: ~~`CppServiceServer`~~ and ~~`CppServiceClient`~~ removed — the FFI
 // stores `RmwServiceServer` / `RmwServiceClient` handles directly, sized
 // via `NROS_SERVICE_SERVER_SIZE` / `NROS_SERVICE_CLIENT_SIZE` from the
 // `nros` probe.
@@ -320,7 +320,7 @@ const fn u64s_for<T>() -> usize {
 // / `CppActionClientLayout` via the probe; see action.rs for the
 // layout-mirror equality asserts.
 
-// Phase 87.6: `CPP_GUARD_HANDLE_OPAQUE_U64S` removed — the C++
+// Phase 87.6: ~~`CPP_GUARD_HANDLE_OPAQUE_U64S`~~ removed — the C++
 // `rclcpp::GuardCondition` class sizes its `storage_` from
 // `NROS_GUARD_CONDITION_SIZE` (`size_of::<GuardCondition>()`
 // probed from the nros rlib).
@@ -615,8 +615,8 @@ pub use executor_config::CPP_EXECUTOR_OPAQUE_U64S;
 // clear error instead of silently overflowing caller-provided storage.
 #[cfg(feature = "rmw-cffi")]
 const _: () = {
-    // Phase 87.6: `CppPublisher`, `CppSubscription`, `CppServiceServer`,
-    // and `CppServiceClient` assertions removed — all four now use
+    // Phase 87.6: `CppPublisher`, ~~`CppSubscription`~~, ~~`CppServiceServer`~~,
+    // and ~~`CppServiceClient`~~ assertions removed — all four now use
     // thin-wrapper storage sized from the Rust SSoT (`NROS_*_SIZE`
     // probes in the generated header).
     // Phase 87.6: `GuardCondition` assertion removed — storage
@@ -1585,7 +1585,7 @@ unsafe fn init_rmw_over(
 // returned rc=") that explain why it is not working, on the flavours where
 // they are hardest to obtain by other means.
 //
-// Hosted output does not move: the POSIX port's `log_write` writes to stderr,
+// Hosted output does not move: the POSIX port's `nros_platform_log_write` writes to stderr,
 // the same stream `eprintln!` used. It gains an `[ERROR] nros_cpp:` prefix,
 // which no test matches against — nothing greps these lines today, and the
 // harness matchers are substring checks rather than line anchors.
@@ -1636,7 +1636,7 @@ pub(crate) use cpp_info;
 /// `TransportError` variant fails to compile here until someone decides what the
 /// C++ caller should see.
 ///
-/// `TRANSPORT_ERROR` is kept for the cases that genuinely ARE the transport:
+/// ~~`TRANSPORT_ERROR`~~ is kept for the cases that genuinely ARE the transport:
 /// the connection, the peer, the wire, and a backend-specific string this layer
 /// cannot interpret.
 #[cfg(feature = "rmw-cffi")]
@@ -3695,7 +3695,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_fully_qualified_name(
 ///
 /// Resolved through `Executor::node_session_mut(node_id)`, i.e. the same
 /// session a publisher created on this node would be built against. A node
-/// created with `nros_cpp_node_init_ex(..., rmw = "xrce")` sits on its own
+/// created with ~~`nros_cpp_node_init_ex(..., rmw = "xrce")`~~ sits on its own
 /// session in the executor's table, so an image with two such nodes gets two
 /// answers from this one function — which is the case a compile-time constant
 /// (`nros_node::IMAGE_SERIALIZATION_FORMAT`, the generated
@@ -3828,7 +3828,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_logger(
 /// `"nros"`.
 ///
 /// The nodes here are `nros_cpp_node_t` values built by hand rather than by
-/// `nros_cpp_node_init`, because the accessor reads exactly one field — the
+/// ~~`nros_cpp_node_init`~~, because the accessor reads exactly one field — the
 /// name — and node creation needs a live executor and a backend session. The
 /// full node-lifecycle form of this claim is
 /// `nros_node::executor::tests::two_nodes_on_one_executor_emit_under_their_own_names`.
@@ -4123,7 +4123,7 @@ pub unsafe extern "C" fn nros_cpp_spin_for(
 /// `/clock` wakes when SIMULATED time arrives, which no wall budget can say.
 ///
 /// Returns `NROS_CPP_RET_OK` once the clock reaches the deadline (immediately
-/// if it already has), the first non-OK `spin_once` (`REENTRANT` from inside a
+/// if it already has), the first non-OK `spin_once` (~~`REENTRANT`~~ from inside a
 /// callback), or `NROS_CPP_RET_TIMEOUT` when a guarded termination signal ends
 /// the wait early.
 ///
@@ -6017,7 +6017,7 @@ pub struct nros_cpp_mode_deadline_t {
 /// least `(n_modes + 1) * (NROS_CPP_MODE_TABLE_STORAGE + n_base_deadlines *
 /// NROS_CPP_MODE_DEADLINE_STORAGE) + n_row_modes * n_rows *
 /// NROS_CPP_MODE_ROW_STORAGE + n_age_modes * n_ages * NROS_CPP_MODE_AGE_STORAGE`
-/// bytes, where `n_row_modes` / `n_age_modes` count the modes with rows (ages)
+/// bytes, where ~~`n_row_modes`~~ / ~~`n_age_modes`~~ count the modes with rows (ages)
 /// of their own; a mode that aliases the base costs only its table.
 #[cfg(feature = "rmw-cffi")]
 #[repr(C)]
@@ -7357,7 +7357,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_lock(
 /// [`nros_cpp_executor_set_lock`] installed the port's thread identity
 /// (`k_current_get`, `pthread_self`), so a pass releases it around each user
 /// callback and around its park: the levels' workers then preempt each
-/// other's callbacks. Call it after `set_lock`, while no second thread can
+/// other's callbacks. Call it after `nros_cpp_executor_set_lock`, while no second thread can
 /// reach the executor. `INVALID_ARGUMENT` with no lock installed.
 ///
 /// # Safety
@@ -7444,7 +7444,7 @@ pub extern "C" fn nros_cpp_level_count() -> u8 {
 }
 
 /// phase-509 P7 — the low 32 bits of the executor clock, in microseconds, at
-/// `level`'s latest spin, written to `*out_us`; `NOT_FOUND` while it has not
+/// `level`'s latest spin, written to `*out_us`; NOT_FOUND while it has not
 /// spun. Compare two with a wrapping difference.
 ///
 /// # Safety
@@ -7690,7 +7690,7 @@ pub unsafe extern "C" fn nros_cpp_scheduler_open(
     handle
 }
 
-/// Seat `executor` at `level`. `ALREADY_EXISTS` for a seated level,
+/// Seat `executor` at `level`. ALREADY_EXISTS for a seated level,
 /// `INVALID_ARGUMENT` for a level past the scheduler's count.
 #[cfg(feature = "rmw-cffi")]
 fn seat_level(
@@ -8887,7 +8887,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
 /// crosses C as `*mut c_void`.
 ///
 /// `groups` and `session` are held as `usize` for the same reason the previous
-/// `SendUsize` wrapper existed: raw pointers are not `Send`, and this value
+/// ~~`SendUsize`~~ wrapper existed: raw pointers are not `Send`, and this value
 /// moves to another task.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 struct NativeTierCtx {
@@ -10326,7 +10326,7 @@ compile_error!(
 /// Resolve boot config, with the environment rung when this build has the
 /// `env` capability.
 ///
-/// issue 0687 — `ExecutorConfig::try_resolve` used to take `hosted_env: bool`
+/// issue 0687 — `ExecutorConfig::try_resolve` used to take ~~`hosted_env: bool`~~
 /// and read the process environment inside the core crate. The core takes
 /// values now, so the cfg that decides whether there IS an environment lives at
 /// the edge that has one.

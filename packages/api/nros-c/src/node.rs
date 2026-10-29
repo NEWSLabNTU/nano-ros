@@ -229,7 +229,7 @@ pub struct rcl_node_t {
     /// Phase 156 / 104.C.8.b — executor pointer for the executor-bound
     /// dispatch path. `rclc_executor_node_init` populates this when
     /// the Node is bound; per-entity `nros_*_init` paths
-    /// (`rclc_publisher_init_default`, `nros_subscription_init`, etc.) branch
+    /// (`rclc_publisher_init_default`, `rclc_subscription_init`, etc.) branch
     /// on `rcl_node_t::is_executor_bound` — i.e. on this pointer ALONE — to
     /// route through `Executor::node_session_mut(NodeId)` instead of the legacy
     /// support-based dispatch. NULL = legacy single-Node path
@@ -390,7 +390,7 @@ pub extern "C" fn rcl_get_zero_initialized_node() -> rcl_node_t {
 /// is silent-by-default for out-of-tree callers who do not build with our
 /// flags. Renaming makes a stale call fail on the IDENTIFIER, which C does
 /// diagnose fatally, and that is the whole guard now: phase-417 stage 6 step B
-/// retired the `nros_node_init` forwarder, so the old identifier resolves to
+/// retired the ~~`nros_node_init`~~ forwarder, so the old identifier resolves to
 /// nothing. While it existed it was a `static inline` naming each parameter
 /// and never a macro, because a macro would have forwarded positionally and
 /// silently built a node with its name in the support slot.
@@ -670,7 +670,7 @@ pub unsafe extern "C" fn rcl_node_get_namespace(node: *const rcl_node_t) -> *con
 ///   name so long the join cannot be represented
 /// * `RCLC_RET_FULL` — `buf_len` is too small; `out_len` says what is needed.
 ///   `FULL` and not `BUFFER_TOO_SMALL` because `rcl_ret_t` has no such code:
-///   that one exists on the RMW ABI (`nros_rmw_ret_t`). It was CITED by a doc
+///   that one exists on the RMW ABI (~~`nros_rmw_ret_t`~~). It was CITED by a doc
 ///   comment on `rclc_publisher_publish_streamed`, which returns
 ///   `RCLC_RET_PUBLISH_FAILED` instead — corrected under issue 1126, so this
 ///   is now the only place the two ABIs' spellings are contrasted. Naming a
@@ -893,7 +893,7 @@ pub unsafe extern "C" fn rclc_node_get_rmw_implementation_identifier(
 /// Phase 88.12 — return the `nros::Logger` keyed on this node's name.
 ///
 /// The returned handle is opaque from the C side; pass it to
-/// `nros_log_info(...)` / `nros_log_warn(...)` / etc. (declared in
+/// ~~`nros_log_info(...)`~~ / ~~`nros_log_warn(...)`~~ / etc. (declared in
 /// `<rclc/log.h>`). The lifetime is `'static` — loggers live for the
 /// process; callers must NOT free the returned pointer.
 ///
@@ -1043,7 +1043,7 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const rcl_node_t) -> bool {
     if !node_ref.support.is_null() && !crate::support::rclc_support_is_valid(node_ref.support) {
         return false;
     }
-    // NOT `is_multi_session()`: that also requires `node_id != 0`, and whether
+    // NOT ~~`is_multi_session()`~~: that also requires `node_id != 0`, and whether
     // a node's context is alive does not depend on how many siblings share its
     // executor. The primary slot is a node like any other (issue 1384 is the
     // same predicate misused one class over).
@@ -1209,8 +1209,8 @@ pub unsafe extern "C" fn rclc_node_resolve_name(
 /// C entity-init paths that create their entity EAGERLY.
 ///
 /// **Why this exists.** Most C entities are created at REGISTRATION, not at
-/// init: `nros_subscription_init` only records the request and
-/// `nros_executor_add_subscription_*` builds the entity — and that path resolves
+/// init: `rclc_subscription_init` only records the request and
+/// `rclc_executor_add_subscription_*` builds the entity — and that path resolves
 /// the name (`executor.rs`, eight sites, `Executor::resolve_entity_name`).
 /// Publishers and polling subscriptions have no registration step, so they
 /// create inside `*_init` and never reached that seam. The result was a
@@ -1233,7 +1233,7 @@ pub unsafe extern "C" fn rclc_node_resolve_name(
 ///   Identity comes from the executor's `NodeRecord` when it has one, because
 ///   that is the identity the remap table is KEYED on; the caller's struct is
 ///   the fallback, not the preference.
-/// * legacy node (`rclc_node_init_default` / `nros_node_init`) → expansion
+/// * legacy node (`rclc_node_init_default` / ~~`nros_node_init`~~) → expansion
 ///   only. There is no executor, and `declare_remap` is an executor call, so
 ///   there are no rules to drop — unlike `rclc_node_resolve_name`, which is
 ///   ASKED for the rules and must refuse when it cannot read them.
@@ -1392,7 +1392,7 @@ impl rcl_node_t {
     /// initialised via `rclc_node_init_default` / `rclc_node_init_ex` (the
     /// legacy support-based path, which reaches no executor at all).
     ///
-    /// **This was `is_multi_session`, and it also required `node_id != 0`**
+    /// **This was ~~`is_multi_session`~~, and it also required `node_id != 0`**
     /// (issue 1384). The first node an executor builds takes slot 0 —
     /// `NodeId::PRIMARY`, which `tests/run/executor_param_node_keying.c`
     /// asserts in words — so a node bound through the very call that binds it
@@ -1407,7 +1407,7 @@ impl rcl_node_t {
     /// one node or eight.
     ///
     /// ONE spelling, on purpose. `rclc_node_create_guard_condition` and
-    /// `parameter.rs`'s `node_key` had each written their own
+    /// `parameter.rs`'s node_key had each written their own
     /// `executor.is_null()` test beside this one, which is how two of the three
     /// were right while this one was wrong.
     #[inline]
@@ -1430,8 +1430,8 @@ impl rcl_node_t {
 /// leaves `support` NULL **on purpose**, so sending an executor-bound node down
 /// the legacy arm reads a NULL support, answers `None`, and every C entity
 /// created EAGERLY rather than at registration — `rclc_publisher_init_default`
-/// and its QoS/options siblings, the polling subscription, `nros_service_init`,
-/// `nros_client_init` — failed `RCL_RET_NOT_INIT` before reaching the backend.
+/// and its QoS/options siblings, the polling subscription, `rclc_service_init`,
+/// ~~`nros_client_init`~~ — failed `RCL_RET_NOT_INIT` before reaching the backend.
 /// That is what the old `node_id != 0` term did to every single-node C image.
 ///
 /// Returns `None` when any lookup fails so callers can map to
@@ -1917,7 +1917,7 @@ mod accessor_tests {
     /// The context question does not depend on how many nodes share the
     /// executor, so the PRIMARY slot is asked it too.
     ///
-    /// The pre-fix arm was reached only behind `is_multi_session()`, which also
+    /// The pre-fix arm was reached only behind ~~`is_multi_session()`~~, which also
     /// requires `node_id != 0` — that predicate's own defect is issue 1384, and
     /// this fix does not depend on it: `rcl_node_is_valid` no longer reads it.
     #[test]

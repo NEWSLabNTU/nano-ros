@@ -19,7 +19,7 @@
 /*
  * Issue 0338 — the entity-registration family is spelled `nros_executor_add_*`,
  * matching rclc (`rclc_executor_add_subscription` / `_add_timer` /
- * `_add_client` / ...). It used to be `nros_executor_register_*` for every kind
+ * `_add_client` / ...). It used to be ~~`nros_executor_register_*`~~ for every kind
  * EXCEPT `add_client`, which kept the rclc spelling — so the family was not even
  * internally consistent and a C user could not guess the verb.
  *
@@ -28,7 +28,7 @@
  * recompile is all a consumer needs. Code compiled against the old SYMBOLS must
  * be rebuilt.
  *
- * phase-417 stage 6 step B — the `nros_executor_add_timer` forwarder this
+ * phase-417 stage 6 step B — the ~~`nros_executor_add_timer`~~ forwarder this
  * macro used to route through is DELETED, so `rclc_executor_register_timer`
  * now names `rclc_executor_add_timer` directly. It is the only member of the
  * family whose target moved: every other `nros_executor_add_*` here is a live
@@ -36,14 +36,14 @@
  * one macro — it used to warn on the way through, and now resolves silently
  * until the 0338 aliases are themselves retired.
  *
- * phase-487 W1 — `nros_executor_register_subscription` is gone with its target:
- * the three-argument `nros_executor_add_subscription` dispatched a callback the
+ * phase-487 W1 — ~~`nros_executor_register_subscription`~~ is gone with its target:
+ * the three-argument ~~`nros_executor_add_subscription`~~ dispatched a callback the
  * subscription struct stored, and that struct no longer stores one. Its
  * replacement takes the callback, `rclc_executor_add_subscription_raw`, so the
  * alias could not forward without changing arity. `_in_group` kept its alias
  * and gained the same two arguments. phase-487 W2 retired
- * `nros_executor_register_service` the same way: its target, the two-argument
- * `nros_executor_add_service`, is gone, and `rclc_executor_add_service_raw`
+ * ~~`nros_executor_register_service`~~ the same way: its target, the two-argument
+ * ~~`nros_executor_add_service`~~, is gone, and `rclc_executor_add_service_raw`
  * takes the callback.
  */
 #ifndef NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES

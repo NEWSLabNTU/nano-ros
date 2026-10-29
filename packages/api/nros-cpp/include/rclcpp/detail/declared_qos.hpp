@@ -482,7 +482,7 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
 
 /// Issue 1608 -- @ref NROS_ASSERT_DECLARED_DEPTH for a PUBLISHER: the same four
 /// arguments and the same two-statement expansion, against the publisher rows
-/// (`contracts.pub_endpoints.<ep>.qos`). There is no `NROS_PUBLISH` macro form
+/// (`contracts.pub_endpoints.<ep>.qos`). There is no ~~`NROS_PUBLISH`~~ macro form
 /// -- `create_publisher_in` is a plain call -- so this is written BESIDE that
 /// call, exactly as @ref NROS_ASSERT_DECLARED_QOS is written beside a
 /// `bind_subscription`. A non-constant call site is held to the same rows at

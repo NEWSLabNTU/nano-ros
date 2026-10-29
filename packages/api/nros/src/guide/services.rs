@@ -57,7 +57,7 @@
 //! ```
 //!
 //! The Promise and `spin_async()` APIs use only `core::future` — no
-//! external runtime dependency.  They work on `no_std`/`no_alloc` targets.
+//! external runtime dependency.  They work on `no_std`/no_alloc targets.
 //! For async combinators (`select`, `join`), add `embassy-futures`.
 //!
 //! See `examples/linux/rust/service-client-async/` (tokio) for a complete

@@ -9,7 +9,7 @@
 // `target_compile_features(nros-cpp-headers INTERFACE cxx_std_17)`), because
 // that is what ROS 2 Humble's own `rclcpp` exports (phase-426 W4 retired the
 // construct-specific half of this claim: `component_node.hpp`'s `if constexpr`
-// left with `adopt_launch_seed_`). `just check cpp` still parses
+// left with ~~`adopt_launch_seed_`~~). `just check cpp` still parses
 // this header at `-std=c++14 -ffreestanding`, so the subset is enforced and
 // not merely claimed.
 //

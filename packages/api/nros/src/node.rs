@@ -30,7 +30,7 @@ use crate::{
     },
 };
 
-// Phase 212.N.7 step-6 closing sweep — `component_register_symbol`
+// Phase 212.N.7 step-6 closing sweep — ~~`component_register_symbol`~~
 // removed. It built the legacy `__nros_component_<pkg>_register`
 // symbol name for the M.5.a BSP baker to look up by literal. step-6
 // retired the macro emit + step-4 deleted the FreeRTOS BSP baker
@@ -112,7 +112,7 @@ pub enum NodeDeclError {
     ///
     /// issue 0736 — split out of [`Self::Runtime`], which the publish path
     /// returned for BOTH "the transport rejected the sample" and "there is no
-    /// such publisher": `lookup_publisher(...).unwrap_or(Err(Runtime))`. Those
+    /// such publisher": ~~`lookup_publisher(...).unwrap_or(Err(Runtime))`~~. Those
     /// are different bugs in different layers with different fixes, and from a
     /// serial console they were the same line. Exactly the conflation #572
     /// removed one level out, where discarding the result made "the timer never
@@ -2370,7 +2370,7 @@ pub trait ActionExecutor {
 ///
 /// Mirrors the sibling [`ActionExecutor`] (server-side ops). Splitting
 /// client vs server keeps each trait small + lets the codegen-side
-/// `GenClientDispatch` impl resolve client handles independently from
+/// ~~`GenClientDispatch`~~ impl resolve client handles independently from
 /// server handles.
 pub trait ClientDispatch {
     /// Issue a service-client request on `service_entity` carrying CDR

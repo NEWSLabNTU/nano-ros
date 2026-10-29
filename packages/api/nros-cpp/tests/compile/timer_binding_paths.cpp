@@ -25,7 +25,7 @@
 // a `-Werror=deprecated-declarations` build belongs.
 //
 // Compiled c++17 rather than c++14 because `ComponentNode` is the tree's one
-// `if constexpr` user (`adopt_launch_seed_`), which is the C++17 floor
+// `if constexpr` user (~~`adopt_launch_seed_`~~), which is the C++17 floor
 // `check-cxx-standard-floor` records.
 
 #include <rclcpp/rclcpp.hpp>

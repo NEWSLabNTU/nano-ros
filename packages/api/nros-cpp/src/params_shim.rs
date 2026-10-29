@@ -1055,9 +1055,9 @@ pub unsafe extern "C" fn nros_cpp_node_has_param(
 // (`BoolArray` / `IntegerArray` / `DoubleArray`); a string array has no C++
 // facade to serve.
 //
-// Values are COPIED into the store, unlike `nros-c`'s `nros_parameter_*_array`,
+// Values are COPIED into the store, unlike `nros-c`'s `rclc_parameter_*_array`,
 // which records a borrowed pointer the caller must keep alive. That difference
-// is the whole reason the C++ store needed its own `seq_pool_` — with the Rust
+// is the whole reason the C++ store needed its own ~~`seq_pool_`~~ — with the Rust
 // store owning the elements, the pool goes too.
 
 /// Declare a double-array parameter on this node, copying `len` elements.

@@ -115,8 +115,8 @@ RMW_RET_* and the VALUES differ. Include one."
  *   "a compile-time arena is full; rebuild it larger". Same shape, different
  *   REMEDY, so a ported handler would do the wrong thing while compiling
  *   cleanly. Refused rather than approximated.
- * - `RCL_RET_SUBSCRIPTION_TAKE_FAILED` / `_CLIENT_TAKE_FAILED` /
- *   `_SERVICE_TAKE_FAILED` — our take entry points report "nothing available"
+ * - `RCL_RET_SUBSCRIPTION_TAKE_FAILED` / _CLIENT_TAKE_FAILED /
+ *   _SERVICE_TAKE_FAILED — our take entry points report "nothing available"
  *   as a byte COUNT (`int32_t`), not as an `rcl_ret_t`; there is no code to
  *   map onto.
  * - `RCL_RET_ALREADY_INIT`, `RCL_RET_ALREADY_SHUTDOWN`,
@@ -285,7 +285,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * So a C reorder is silent-by-default for exactly the callers it must not be
  * silent for — out-of-tree consumers, who do not build with our flags. A
  * rename makes the stale call fail on the IDENTIFIER, which C does diagnose
- * fatally. Step B retired the old `nros_node_init` forwarder, so that is now
+ * fatally. Step B retired the old ~~`nros_node_init`~~ forwarder, so that is now
  * the ONLY diagnostic a stale call gets — an unknown identifier, not a
  * deprecation naming its replacement. The reorder is the reason the identifier
  * had to change at all: had the name been kept, a stale four-argument call
@@ -346,7 +346,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * Until phase-515 ours was `void (*)(rcl_timer_t *, void *context)`: two
  * parameters, both leading with the timer, and the SECOND carrying entirely
  * different information. A ported timer callback was a different FUNCTION, so
- * the init took a distinct name (`rclc_timer_init_with_context`) rather than
+ * the init took a distinct name (~~`rclc_timer_init_with_context`~~) rather than
  * compile-and-differ under rclc's.
  *
  * phase-515 decision D2 took rclc's contract and removed ours. The context
@@ -371,7 +371,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *     (issue #505), measured from the previous due point.
  *
  * The clock goes where rcl puts it, SECOND (phase-430 W1 took that position
- * under the name `rclc_timer_init_on_clock` while the contract still
+ * under the name ~~`rclc_timer_init_on_clock`~~ while the contract still
  * differed). Jazzy's call info (`rcl_timer_call_info_t`) reaches a callback
  * registered with `rclc_timer_init_with_info(timer, clock, period, cb,
  * autostart)` rather than through `rcl_timer_call_with_info`, a dispatch call
@@ -444,7 +444,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * move is to name the shape a faithful alias needs and wait for it". It had
  * SHIPPED — on 2026-09-04, in the very commit that wrote the sentence (W5.a and
  * W5.b landed together) — and the name sketched here as the thing to wait for,
- * `nros_subscription_typed_callback_t`, is the shipped one with two words
+ * ~~`nros_subscription_typed_callback_t`~~, is the shipped one with two words
  * swapped. A reader following this section would have concluded a capability
  * was missing and written their own CDR, which is the failure the whole
  * campaign exists to remove. Everything below is read off the header rather
@@ -461,7 +461,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *             const void *msg, void *context);
  *
  * Same two parameters, same order, same meanings. It was our
- * `rclc_typed_subscription_callback_t` plus an alias here; phase-492 W1.b gave
+ * ~~`rclc_typed_subscription_callback_t`~~ plus an alias here; phase-492 W1.b gave
  * the definition rclc's name, and per RFC-0089 rule 1 the twin is deleted, not
  * aliased. A nano-ros program names it without a compat header.
  */

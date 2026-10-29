@@ -1,7 +1,7 @@
 //! The C parameter server — rclc's `rclc_parameter_server_t` API over the
 //! executor's parameter store (RFC-0105, phase-491).
 //!
-//! ONE family. It replaces three: the caller-storage `nros_parameter_server_t`
+//! ONE family. It replaces three: the caller-storage ~~`nros_parameter_server_t`~~
 //! (a second store no `ros2 param` service read — issue 0793), the
 //! `nros_executor_*_param*` family (served, but with none of rclc's names), and
 //! C's use of the C++ `nros_cpp_*_param*` shim.

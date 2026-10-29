@@ -4,8 +4,8 @@
  *
  * A compile-and-run probe, not a signature probe, because every shape of this
  * defect compiles. The shape it replaced was three calls —
- * `nros_guard_condition_init(guard, support)`, `_set_callback(...)`,
- * `nros_executor_add_guard_condition(exec, guard)` — and the first two produced
+ * ~~`nros_guard_condition_init(guard, support)`~~, `_set_callback(...)`,
+ * ~~`nros_executor_add_guard_condition(exec, guard)`~~ — and the first two produced
  * an object that was INERT: nothing reached the executor's arena until the
  * third ran, so `handle_id` stayed `SIZE_MAX` and a trigger landed on a local
  * byte no executor watches. The one in-tree C caller did the first two and

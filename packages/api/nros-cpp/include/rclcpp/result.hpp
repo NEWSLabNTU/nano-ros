@@ -107,7 +107,7 @@ namespace rclcpp {
 /// Error codes returned by nros-cpp functions.
 ///
 /// Values match the C `nros_cpp_ret_t` enum in `<nros/nros_cpp_generated.h>`.
-/// Issue #229 — value-identical to the C `NROS_RET_*` codes AND the
+/// Issue #229 — value-identical to the C `RCLC_RET_*` codes AND the
 /// `NROS_CPP_RET_*` FFI codes (one numbering across all three spaces), so
 /// `Result(<any C-ABI return>)` is correct by identity. The static_assert
 /// pin tables below and in parameter.hpp fail the build on re-divergence.

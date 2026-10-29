@@ -1,6 +1,6 @@
 // issue 2011 — a C++ action client's futures are keyed by their GOAL.
 //
-// Before this, `get_result_future` read `RESULT_STASH`, a process-global
+// Before this, `get_result_future` read ~~`RESULT_STASH`~~, a process-global
 // one-slot buffer shared by every C++ action client, and `send_goal_future`
 // raced the executor's dispatch for its own reply: a reply the arena took
 // during `Future::wait`'s `spin_once` went to a callback and never reached the

@@ -14,7 +14,7 @@
  * with the `nros-bridge` cargo package) in addition to its usual
  * `libnros_c.a` + per-backend static libs.
  *
- * Wire-level loop protection (`bridge_origin` attachment field) is
+ * Wire-level loop protection (bridge_origin attachment field) is
  * NOT implemented on the C side because the underlying Rust bridge
  * currently uses a payload-hash dedup ring (see
  * `nros_bridge::PubSubBridge` rustdoc). The semantics are identical;
@@ -38,7 +38,7 @@ extern "C" {
  *
  * Mirrors `nros_node::executor::SessionSpec`. `rmw` MUST match a
  * backend the binary linked in (i.e. one that contributed an entry
- * to `RMW_INIT_ENTRIES`); spelling errors surface as
+ * to ~~`RMW_INIT_ENTRIES`~~); spelling errors surface as
  * `NROS_RMW_RET_UNKNOWN_BACKEND` at the matching `init_multi` call.
  */
 /**

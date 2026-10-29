@@ -5,7 +5,7 @@
  * surface (ledger rows `c:take`, `c:take_serialized_message`,
  * `c:take_request`, `c:take_response`), with `_raw` -> `_serialized` for the
  * pre-CDR byte form because that is ROS 2's word for it, and kept the old
- * spellings one release as `NROS_DEPRECATED_MSG` `static inline` forwarders.
+ * spellings one release as ~~`NROS_DEPRECATED_MSG`~~ `static inline` forwarders.
  * Phase-417 stage 6 step B retired those, so what this TU pins is the live
  * half alone.
  *
@@ -26,7 +26,7 @@
 
 /* The live entry points, with the documented signatures. The subscription
  * drains and the `_raw` service/client drains take the POLLED types: since
- * phase-487 a polled entity is `nros_polling_<kind>_t`, and the dispatched
+ * phase-487 a polled entity is `rclc_polling_<kind>_t`, and the dispatched
  * struct has no entity of its own to take from. */
 static int32_t (*const k_new_sub_take_serialized)(struct rclc_polling_subscription_t*, uint8_t*,
                                                   size_t) =

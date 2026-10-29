@@ -695,7 +695,7 @@ typedef enum rclc_subscription_state_t {
   RCLC_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
   /**
    * Initialized. For a `rcl_subscription_t` the subscriber entity is
-   * created later, by `nros_executor_add_subscription_*`, inside the
+   * created later, by `rclc_executor_add_subscription_*`, inside the
    * executor arena. For a `rclc_polling_subscription_t` the subscriber is
    * live in the struct's own storage.
    */
@@ -1122,7 +1122,7 @@ typedef struct rclc_node_ref_t {
  * The C counterpart of C++'s `nros::PollingActionClient<A>`. `_opaque` holds
  * an `ActionClientCore` from `rclc_polling_action_client_init` until
  * `rclc_polling_action_client_fini`. Zero-initialised is UNINITIALIZED.
- * Until phase-487 it was the `NROS_ACTION_CLIENT_STATE_POLLING` state of
+ * Until phase-487 it was the ~~`NROS_ACTION_CLIENT_STATE_POLLING`~~ state of
  * `rcl_action_client_t`.
  */
 typedef struct rclc_polling_action_client_t {
@@ -1667,7 +1667,7 @@ typedef struct rcl_node_t {
    * Phase 156 / 104.C.8.b — executor pointer for the executor-bound
    * dispatch path. `rclc_executor_node_init` populates this when
    * the Node is bound; per-entity `nros_*_init` paths
-   * (`rclc_publisher_init_default`, `nros_subscription_init`, etc.) branch
+   * (`rclc_publisher_init_default`, `rclc_subscription_init`, etc.) branch
    * on `rcl_node_t::is_executor_bound` — i.e. on this pointer ALONE — to
    * route through `Executor::node_session_mut(NodeId)` instead of the legacy
    * support-based dispatch. NULL = legacy single-Node path
@@ -1816,7 +1816,7 @@ typedef struct rclc_wake_state_t {
  * an `ActionServerCore` (five channels, goal table, buffers) from
  * `rclc_polling_action_server_init` until
  * `rclc_polling_action_server_fini`. Zero-initialised is UNINITIALIZED.
- * Until phase-487 it was the `NROS_ACTION_SERVER_STATE_POLLING` state of
+ * Until phase-487 it was the ~~`NROS_ACTION_SERVER_STATE_POLLING`~~ state of
  * `rcl_action_server_t`.
  */
 typedef struct rclc_polling_action_server_t {
@@ -1970,7 +1970,7 @@ typedef struct rcl_action_server_options_t {
  * "not registered yet". Use `is_handle_set()` to check.
  *
  * phase-487 W4 — this used to carry a SECOND copy of the server's callback
- * record (`c_goal_callback`, `c_cancel_callback`, `c_accepted_callback`,
+ * record (~~`c_goal_callback`~~, ~~`c_cancel_callback`~~, ~~`c_accepted_callback`~~,
  * `c_context`) plus a `server_ptr` back to the struct that contains it, so
  * the trampolines could take `&_internal` as their context. The trampolines
  * take the server itself now and read the one record it already has.
@@ -2278,7 +2278,7 @@ typedef struct rcl_subscription_options_t {
    * bind), matching the `rcl_node_options_t::sched_context_id`
    * convention. A non-zero value must be an id previously returned
    * from `rclc_executor_create_sched_context`; the bind is applied by
-   * `nros_executor_add_subscription_*` once the handle exists. Has
+   * ~~`nros_executor_add_subscription_*`~~ once the handle exists. Has
    * no effect on the L1 polling path.
    */
   rclc_sched_context_id_t sched_context;
@@ -2367,14 +2367,14 @@ typedef struct rcl_subscription_t {
    * [`rclc_subscription_init_with_options`]. `0` = inherit the
    * executor / Node default (no explicit bind), matching the
    * `rcl_node_options_t::sched_context_id` convention. When non-zero,
-   * `nros_executor_add_subscription_*` binds the freshly-created
+   * `rclc_executor_add_subscription_*` binds the freshly-created
    * handle to this SC after registration.
    */
   struct rcl_subscription_options_t options;
   /**
    * issue 1437 — the `rclc_executor_t` holding this subscription's arena
    * entry, or NULL before registration. Set beside
-   * [`handle_id`](Self::handle_id) by `nros_executor_add_subscription_*`:
+   * [`handle_id`](Self::handle_id) by `rclc_executor_add_subscription_*`:
    * the pair is the same `(executor_ptr, arena_entry_index)` that
    * `ServiceServerInternal` and `ServiceClientInternal` carry.
    *
@@ -2743,7 +2743,7 @@ typedef void (*rclc_subscription_raw_callback_t)(const uint8_t *data, size_t len
  * * `data` / `len` — received CDR bytes.
  * * `attachment` / `attachment_len` — the sample's wire attachment
  *   (`attachment_len == 0` ⇒ none). Cross-RMW bridges read the
- *   `bridge_origin` tag from it. Valid only during the call.
+ *   bridge_origin tag from it. Valid only during the call.
  * * `context` — user-provided context pointer.
  */
 typedef void (*rclc_subscription_info_callback_t)(const uint8_t *data,
@@ -2826,7 +2826,7 @@ typedef void (*rclc_timer_callback_with_info_t)(struct rcl_timer_t *timer,
  * rclc's `rclc_timer_init_default(timer, support, period, callback)` takes
  * them at init, before any executor exists, and a removed timer can be added
  * again, so they stay. phase-487 W3 removed the one field that was a copy,
- * `last_call_time_ns`: written by init and reset, read by nothing, and stale
+ * ~~`last_call_time_ns`~~: written by init and reset, read by nothing, and stale
  * for any timer the executor ran (issue 1049). phase-515 C1 removed the
  * `context` pointer with the callback contract that carried it.
  */
@@ -3317,7 +3317,7 @@ typedef struct rcl_guard_condition_t {
  * The `storage` field holds a [`LifecyclePollingNodeCtx`] placed into a
  * `u64` array to keep C-ABI struct layout predictable for C callers.
  * Treat the struct as opaque — use [`rclc_lifecycle_get_current_state`] and the
- * `nros_lifecycle_register_on_*` functions to interact with it.
+ * `rclc_lifecycle_register_on_*` functions to interact with it.
  */
 typedef struct rcl_lifecycle_state_machine_t {
   /**
@@ -3340,8 +3340,8 @@ typedef struct rcl_lifecycle_state_machine_t {
  * The return value is a REP-2002 `TransitionResult`
  * ([`RCLC_LIFECYCLE_RET_OK`] = 0, [`RCLC_LIFECYCLE_RET_FAILURE`] = 1,
  * [`RCLC_LIFECYCLE_RET_ERROR`] = 2). `context` is the pointer most recently
- * handed to a `nros_lifecycle_register_on_*` /
- * `nros_executor_lifecycle_register_on_*` call — all six slots on one state
+ * handed to a `rclc_lifecycle_register_on_*` /
+ * `rclc_executor_lifecycle_register_on_*` call — all six slots on one state
  * machine share a single context.
  *
  * `NULL` clears the slot.
@@ -3368,7 +3368,7 @@ typedef uint8_t (*rclc_lifecycle_callback_t)(void *context);
  * so it has no arena slot: `_opaque` holds a `RawServiceServer` from
  * `rclc_polling_service_init` until `rclc_polling_service_fini`.
  * Zero-initialised is UNINITIALIZED. Until phase-487 it was the
- * `NROS_SERVICE_STATE_POLLING` state of `rcl_service_t`, which made every
+ * ~~`NROS_SERVICE_STATE_POLLING`~~ state of `rcl_service_t`, which made every
  * dispatched server carry this storage unused.
  */
 typedef struct rclc_polling_service_t {
@@ -3392,7 +3392,7 @@ typedef struct rclc_polling_service_t {
  * The C counterpart of C++'s `nros::PollClient<S>`. `_opaque` holds a
  * `RawServiceClient` from `rclc_polling_client_init` until
  * `rclc_polling_client_fini`. Zero-initialised is UNINITIALIZED. Until
- * phase-487 it was the `NROS_CLIENT_STATE_POLLING` state of
+ * phase-487 it was the ~~`NROS_CLIENT_STATE_POLLING`~~ state of
  * `rcl_client_t`.
  */
 typedef struct rclc_polling_client_t {
@@ -3430,7 +3430,7 @@ typedef void (*rclc_response_callback_t)(const uint8_t *response, size_t respons
  * event registrations) from `rclc_polling_subscription_init*` until
  * `rclc_polling_subscription_fini`. Zero-initialised is UNINITIALIZED.
  *
- * It was the `NROS_SUBSCRIPTION_STATE_POLLING` state of
+ * It was the ~~`NROS_SUBSCRIPTION_STATE_POLLING`~~ state of
  * `rcl_subscription_t` until phase-487, which made every dispatched
  * subscription carry this storage unused.
  */
@@ -4071,7 +4071,7 @@ rcl_ret_t rclc_clock_get_now_time(const struct rcl_clock_t *clock,
 
 /**
  * Get the current time from a clock as a nanosecond count — rcl's contract
- * (`rcl_time_point_value_t *`). phase-492 W1.b: was `rclc_clock_get_now_ns`.
+ * (`rcl_time_point_value_t *`). phase-492 W1.b: was ~~`rclc_clock_get_now_ns`~~.
  */
 NROS_PUBLIC rcl_ret_t rcl_clock_get_now(const struct rcl_clock_t *clock, int64_t *nanoseconds);
 
@@ -4570,7 +4570,7 @@ bool rclc_action_client_action_server_is_ready(const struct rcl_action_client_t 
  * Send a goal (blocking convenience).
  *
  * Calls `rclc_action_send_goal_async` then spins the executor until the
- * goal is accepted/rejected or timeout. Never calls `zpico_get` directly —
+ * goal is accepted/rejected or timeout. Never calls ~~`zpico_get`~~ directly —
  * all I/O is driven by the executor's `spin_once`.
  *
  * Like the runtime's `Promise::wait`, this is syntactic sugar over async + spin.
@@ -4605,7 +4605,7 @@ rcl_ret_t rclc_action_cancel_goal(struct rcl_action_client_t *client,
  * Request result of a goal (blocking convenience).
  *
  * Calls `rclc_action_get_result_async` then spins the executor until the
- * result arrives or timeout. Never calls `zpico_get` directly.
+ * result arrives or timeout. Never calls ~~`zpico_get`~~ directly.
  */
 NROS_PUBLIC
 rcl_ret_t rclc_action_get_result(struct rcl_action_client_t *client,
@@ -5067,7 +5067,7 @@ rcl_ret_t rclc_action_execute(struct rcl_action_server_t *server,
  * out-param and keeps the return code for "did the query work". This
  * replaces the pair `rclc_action_server_get_active_goal_count(server)
  * -> size_t` (answered 0 on every error) and
- * `nros_action_server_active_goal_count_raw(server) -> int32_t`
+ * ~~`nros_action_server_active_goal_count_raw(server) -> int32_t`~~
  * (negative = error code), each of which collapsed the two channels
  * into one value.
  *
@@ -5370,7 +5370,7 @@ rcl_ret_t rclc_action_server_fini(rclc_action_server_t *action_server,
  * * `rclc_polling_action_server_publish_feedback_raw` — push feedback.
  * * `rclc_polling_action_server_complete_goal_raw` — terminate (SUCCEEDED /
  *   ABORTED / CANCELED).
- * * `nros_polling_action_server_try_handle_cancel_raw` /
+ * * ~~`nros_polling_action_server_try_handle_cancel_raw`~~ /
  *   `_try_handle_get_result_raw` — service cancel / get_result RPCs.
  *
  * # Safety
@@ -5453,7 +5453,7 @@ int32_t rclc_polling_action_server_try_recv_goal_request_raw(struct rclc_polling
 
 /**
  * Phase 122.3.c.6.b — L1 polling: accept a goal received via
- * `try_recv_goal_request_raw`.
+ * ~~`try_recv_goal_request_raw`~~.
  */
 NROS_PUBLIC
 rcl_ret_t rclc_polling_action_server_accept_goal_raw(struct rclc_polling_action_server_t *server,
@@ -5462,7 +5462,7 @@ rcl_ret_t rclc_polling_action_server_accept_goal_raw(struct rclc_polling_action_
 
 /**
  * Phase 122.3.c.6.b — L1 polling: reject a goal received via
- * `try_recv_goal_request_raw`.
+ * ~~`try_recv_goal_request_raw`~~.
  */
 NROS_PUBLIC
 rcl_ret_t rclc_polling_action_server_reject_goal_raw(struct rclc_polling_action_server_t *server,
@@ -6406,7 +6406,7 @@ rcl_ret_t rclc_executor_add_subscription(struct rclc_executor_t *executor,
  *
  * This is the raw-path sibling of [`rclc_executor_add_subscription_with_context`].
  * `rclc_subscription_init_default` takes no callback (rclc's arity), so the
- * byte callback that used to ride on `nros_subscription_init` is supplied at
+ * byte callback that used to ride on ~~`nros_subscription_init`~~ is supplied at
  * registration, which is where rclc supplies it
  * (`rclc_executor_add_subscription`). The name keeps the `nros_` prefix
  * deliberately: rclc's `add_subscription` delivers a DESERIALIZED message into
@@ -6416,7 +6416,7 @@ rcl_ret_t rclc_executor_add_subscription(struct rclc_executor_t *executor,
  *
  * The arena entry owns `callback` and `context` from here on; the
  * subscription struct keeps neither (phase-487 W1). This replaced the
- * three-argument `nros_executor_add_subscription`, which dispatched the
+ * three-argument ~~`nros_executor_add_subscription`~~, which dispatched the
  * callback an init call had stored in the struct.
  *
  * # Returns
@@ -6453,7 +6453,7 @@ rcl_ret_t rclc_executor_add_subscription_raw(struct rclc_executor_t *executor,
  *
  * `node` may be NULL (legacy single-Node path) or a Node created via
  * `rclc_executor_node_init` (routes to that Node's session). `qos` may be NULL
- * (defaults). Cross-RMW bridges read the `bridge_origin` tag from the
+ * (defaults). Cross-RMW bridges read the bridge_origin tag from the
  * attachment for echo suppression.
  *
  * # Safety
@@ -6569,7 +6569,7 @@ rcl_ret_t rclc_executor_add_timer_in_group(struct rclc_executor_t *executor,
  * callback HERE rather than at `*_init`.
  *
  * `rclc_service_init_default` takes no callback (rclc's arity), so the handler
- * that used to ride on `nros_service_init` is supplied at registration — the
+ * that used to ride on ~~`nros_service_init`~~ is supplied at registration — the
  * call rclc calls `rclc_executor_add_service`. The `nros_` prefix is kept for
  * the same reason as `rclc_executor_add_subscription_raw`: rclc's
  * `rclc_executor_add_service` carries caller-owned `request_msg` /
@@ -6581,7 +6581,7 @@ rcl_ret_t rclc_executor_add_timer_in_group(struct rclc_executor_t *executor,
  *
  * The arena entry owns `callback` and `context`; the service struct keeps
  * neither (phase-487 W2). This replaced the two-argument
- * `nros_executor_add_service`, which dispatched a callback an init call had
+ * ~~`nros_executor_add_service`~~, which dispatched a callback an init call had
  * stored in the struct.
  *
  * # Returns
@@ -6707,7 +6707,7 @@ rcl_ret_t rclc_executor_add_service_with_context(struct rclc_executor_t *executo
  * response callback: each reply is deserialised into `response_msg` through
  * the client's descriptor and `callback(response_msg)` runs, as rclc's does.
  * `response_msg` is the caller's and must outlive the registration. Requests
- * go out with `rclc_client_send_request` as before;
+ * go out with ~~`rclc_client_send_request`~~ as before;
  * `rclc_client_set_response_callback` replaces the typed callback with a raw
  * one.
  *
@@ -6856,7 +6856,7 @@ rcl_ret_t rclc_executor_remove_action_client(struct rclc_executor_t *executor,
  * Remove a subscription from the executor — issue 1631, rclc's
  * `rclc_executor_remove_subscription`.
  *
- * Every `nros_executor_add_subscription*` that takes a
+ * Every `rclc_executor_add_subscription*` that takes a
  * `rcl_subscription_t` registers an arena entry and records it in the
  * subscription; `rcl_subscription_fini` is handed only the subscription, so
  * it cannot undo the executor's side. This does, the way
@@ -7001,7 +7001,7 @@ rcl_ret_t rclc_executor_spin_one_period(struct rclc_executor_t *executor,
  * Ask a spinning executor to stop — `rclcpp::Executor::cancel` /
  * `rcl`'s context shutdown, phase-417 W4.c.
  *
- * Renamed from `nros_executor_stop`, whose deprecated `static inline`
+ * Renamed from ~~`nros_executor_stop`~~, whose deprecated `static inline`
  * forwarder in `<rclc/executor.h>` was retired by phase-417 stage 6 step B.
  * Three of our own languages had three answers to "stop spinning"; `cancel`
  * is ROS 2's.
@@ -7309,8 +7309,8 @@ NROS_PUBLIC struct rcl_guard_condition_t rcl_get_zero_initialized_guard_conditio
  * a wake with no work attached; `context` is handed back to it unchanged.
  *
  * **This replaced three calls, and until 2026-09-18 the first two produced an
- * INERT object.** `nros_guard_condition_init(guard, support)` only zeroed
- * fields — nothing reached the arena until `nros_executor_add_guard_condition`
+ * INERT object.** ~~`nros_guard_condition_init(guard, support)`~~ only zeroed
+ * fields — nothing reached the arena until ~~`nros_executor_add_guard_condition`~~
  * ran, so between the two the handle read `handle_id == SIZE_MAX` and a
  * trigger fell back to a local flag no executor watches. Binding the callback
  * after the fact was also the shape we already REFUSE in C++ at
@@ -7363,7 +7363,7 @@ rcl_ret_t rclc_node_create_guard_condition(struct rcl_node_t *node,
  * set, not at this name.
  *
  * The callback is an EDGE and carries nothing. "What changed" is answered by
- * re-reading the graph (`nros_node_get_names`, `nros_count_publishers`, …);
+ * re-reading the graph (~~`nros_node_get_names`~~, `rcl_count_publishers`, …);
  * delivering a diff would mean buffering the graph, which is the cache a
  * small target cannot afford, and the ABI slot has said so since phase-376
  * W4.
@@ -7443,7 +7443,7 @@ NROS_PUBLIC rcl_ret_t rcl_trigger_guard_condition(struct rcl_guard_condition_t *
  * writes** — and it had to, from the moment creation became registration. The
  * local `triggered` byte this used to read was only ever written by the
  * fallback path of an UNREGISTERED guard, so with the retirement of
- * `nros_guard_condition_init` it would have answered `false` for every guard
+ * `rcl_guard_condition_init` it would have answered `false` for every guard
  * condition that exists: a reader that compiles, runs, and is always wrong.
  * The executor CONSUMES the flag when it dispatches, so this answers "set and
  * not yet dispatched"; a caller that both polls this and spins the executor is
@@ -7505,7 +7505,7 @@ NROS_PUBLIC struct rcl_lifecycle_state_machine_t rclc_lifecycle_get_zero_initial
  * transition callbacks, and it is NOT bound to a node and registers no ROS 2
  * services. A node that should answer `ros2 lifecycle set|get|list` uses the
  * executor-scoped family instead — `rclc_executor_register_lifecycle_services`
- * plus `nros_executor_lifecycle_*`.
+ * plus `rclc_executor_lifecycle_*`.
  *
  * Issue 0792: this took a `const rcl_node_t *node` until it was noticed that
  * the pointer was only NULL-checked and never stored. The parameter is gone
@@ -7515,7 +7515,7 @@ NROS_PUBLIC struct rcl_lifecycle_state_machine_t rclc_lifecycle_get_zero_initial
  * executor's own session, keeps them in the executor's `LifecycleRuntimeState`,
  * and relies on the executor's spin loop to poll them — none of which a
  * caller-held `rcl_lifecycle_state_machine_t` has access to or can be given
- * by a node pointer. The removed `nros_make_node_a_lifecycle_node` alias went
+ * by a node pointer. The removed ~~`nros_make_node_a_lifecycle_node`~~ alias went
  * with it for the same reason: it could not do what its name said.
  */
 NROS_PUBLIC rcl_ret_t rclc_lifecycle_init(struct rcl_lifecycle_state_machine_t *sm);
@@ -7645,7 +7645,7 @@ NROS_PUBLIC rcl_ret_t rclc_lifecycle_transition_graph(const uint8_t **out_ids, s
  *
  * After this call, `ros2 lifecycle set|get|list|nodes` can drive the
  * executor-owned state machine. Register transition callbacks via
- * `nros_executor_lifecycle_register_on_*` and inspect the state via
+ * `rclc_executor_lifecycle_register_on_*` and inspect the state via
  * `rclc_executor_lifecycle_get_current_state`.
  */
 NROS_PUBLIC rcl_ret_t rclc_executor_register_lifecycle_services(struct rclc_executor_t *executor);
@@ -7782,7 +7782,7 @@ NROS_PUBLIC struct rcl_node_t rcl_get_zero_initialized_node(void);
  * is silent-by-default for out-of-tree callers who do not build with our
  * flags. Renaming makes a stale call fail on the IDENTIFIER, which C does
  * diagnose fatally, and that is the whole guard now: phase-417 stage 6 step B
- * retired the `nros_node_init` forwarder, so the old identifier resolves to
+ * retired the ~~`nros_node_init`~~ forwarder, so the old identifier resolves to
  * nothing. While it existed it was a `static inline` naming each parameter
  * and never a macro, because a macro would have forwarded positionally and
  * silently built a node with its name in the support slot.
@@ -7942,7 +7942,7 @@ NROS_PUBLIC const char *rcl_node_get_namespace(const struct rcl_node_t *node);
  *   name so long the join cannot be represented
  * * `RCLC_RET_FULL` — `buf_len` is too small; `out_len` says what is needed.
  *   `FULL` and not `BUFFER_TOO_SMALL` because `rcl_ret_t` has no such code:
- *   that one exists on the RMW ABI (`nros_rmw_ret_t`). It was CITED by a doc
+ *   that one exists on the RMW ABI (~~`nros_rmw_ret_t`~~). It was CITED by a doc
  *   comment on `rclc_publisher_publish_streamed`, which returns
  *   `RCLC_RET_PUBLISH_FAILED` instead — corrected under issue 1126, so this
  *   is now the only place the two ABIs' spellings are contrasted. Naming a
@@ -8050,7 +8050,7 @@ NROS_PUBLIC const char *rclc_node_get_rmw_implementation_identifier(const struct
  * Phase 88.12 — return the `nros::Logger` keyed on this node's name.
  *
  * The returned handle is opaque from the C side; pass it to
- * `nros_log_info(...)` / `nros_log_warn(...)` / etc. (declared in
+ * ~~`nros_log_info(...)`~~ / ~~`nros_log_warn(...)`~~ / etc. (declared in
  * `<rclc/log.h>`). The lifetime is `'static` — loggers live for the
  * process; callers must NOT free the returned pointer.
  *
@@ -8428,10 +8428,10 @@ rcl_ret_t rcl_publish(const struct rcl_publisher_t *publisher,
  * * `RCLC_RET_PUBLISH_FAILED` on backend failure — INCLUDING a payload
  *   larger than the fallback's ~4 KiB staging buffer, and a `chunk_cb`
  *   that reports 0 written before `*out_total_len` bytes have been
- *   produced. This line used to name a `NROS_RET_`-prefixed
+ *   produced. This line used to name a ~~`NROS_RET_`~~-prefixed
  *   `BUFFER_TOO_SMALL` (issue 1126): `rcl_ret_t` has never defined
  *   one — the constant is `NROS_RMW_RET_BUFFER_TOO_SMALL`, on the RMW ABI
- *   (`nros_rmw_ret_t`), and a C caller writing the documented comparison
+ *   (~~`nros_rmw_ret_t`~~), and a C caller writing the documented comparison
  *   got an undeclared identifier with nothing pointing back here. The
  *   backend errors collapse to one code on the way out, so the two
  *   causes are NOT distinguishable by the caller; for this entry point
@@ -8511,7 +8511,7 @@ NROS_PUBLIC rcl_ret_t rcl_publisher_assert_liveliness(const struct rcl_publisher
  * * `out_gid` — buffer of at least `gid_capacity` bytes, filled on
  *   `RCL_RET_OK`
  * * `gid_capacity` — how many bytes `out_gid` can hold. CHECKED, not
- *   assumed. The C surface has no `nros_gid_t`, so the out-param is a bare
+ *   assumed. The C surface has no ~~`nros_gid_t`~~, so the out-param is a bare
  *   `uint8_t *` that carries no width of its own, and the callee's only
  *   alternative to a capacity argument is to write 24 bytes on the caller's
  *   word. The width is also not a constant that has held still: the Rust
@@ -8560,7 +8560,7 @@ rcl_ret_t rclc_publisher_get_gid(const struct rcl_publisher_t *publisher,
  * and there this call refuses (below). The surface every backend serves is
  * `rclc_publisher_publish_streamed` and its receive twin
  * `process_raw_in_place`: no feature, no token, no arena, no size ceiling.
- * It makes one payload copy on zenoh, as `rclc_publish` does — what it saves
+ * It makes one payload copy on zenoh, as `rcl_publish` does — what it saves
  * is the full-size staging buffer, not the copy. See issue 0814.
  *
  * On success, `*out_buf` points at `*out_cap` writable bytes the
@@ -8586,7 +8586,7 @@ rcl_ret_t rclc_publisher_get_gid(const struct rcl_publisher_t *publisher,
  * * `RCLC_RET_NOT_ALLOWED` (`-12`) — this publisher cannot loan at
  *   all. PERMANENT (issue 0814): the backend's vtable exposes no loan
  *   slot, which cannot change while the publisher lives. Do NOT retry —
- *   take a non-loan path: `rclc_publish`, or
+ *   take a non-loan path: `rcl_publish`, or
  *   `rclc_publisher_publish_streamed`, which needs no token, no arena and
  *   no heap.
  * * `RCL_RET_INVALID_ARGUMENT` on NULL pointers or zero `requested_len`.
@@ -8811,7 +8811,7 @@ NROS_PUBLIC struct rcl_service_t rcl_get_zero_initialized_service(void);
  *
  * phase-487 W2 removed the `callback` and `context` this took between the
  * name and the QoS: the struct stored them only for the (since removed)
- * two-argument `nros_executor_add_service` to read back, while the arena
+ * two-argument ~~`nros_executor_add_service`~~ to read back, while the arena
  * entry kept its own copies. The callback is supplied at registration, by
  * `rclc_executor_add_service_raw` or a generated
  * `<Srv>_executor_add_service`, as rclc supplies it at
@@ -8826,7 +8826,7 @@ rcl_ret_t rclc_service_init_with_qos(struct rcl_service_t *service,
 
 /**
  * rclc's `rclc_service_init_default`, in rclc's argument order and at rclc's
- * ARITY (phase-417 stage 6). The old `nros_service_init` carried `callback`
+ * ARITY (phase-417 stage 6). The old ~~`nros_service_init`~~ carried `callback`
  * and `context` in positions 5 and 6; RFC-0089 records that the binding site
  * was never mandated (RFC-0041 governs the DISPATCH MODEL, and
  * `executor-owns-no-entity-storage` is defined nowhere), so the callback moves
@@ -8836,7 +8836,7 @@ rcl_ret_t rclc_service_init_with_qos(struct rcl_service_t *service,
  * 2026-09-04: a rosidl typesupport's members are its contract, including a
  * `func` dispatcher we do not have.
  *
- * The six-argument `nros_service_init` is GONE (phase-417 stage 6 step B
+ * The six-argument ~~`nros_service_init`~~ is GONE (phase-417 stage 6 step B
  * retired it), and since phase-487 no init entry point takes a callback.
  *
  * # Safety
@@ -9035,7 +9035,7 @@ rcl_ret_t rclc_polling_service_send_response_raw(struct rclc_polling_service_t *
  * Report a typed service/client glue failure as an `ERROR` log record.
  *
  * Called by the generated `static inline` trampolines. `error` is one of the
- * `NROS_SERVICE_TYPED_ERR_*` codes above; `type_name` is the service type's
+ * `RCLC_SERVICE_TYPED_ERR_*` codes above; `type_name` is the service type's
  * own `<Srv>_get_type_name()`, so the record names the type without the
  * generated header having to duplicate any string.
  *
@@ -9440,7 +9440,7 @@ NROS_PUBLIC bool rclc_client_service_is_ready(const struct rcl_client_t *client)
  * Send a service request asynchronously (Phase 82).
  *
  * Non-blocking. The reply is delivered via the registered
- * `response_callback` during `rclc_executor_spin_some`. The user must
+ * ~~`response_callback`~~ during `rclc_executor_spin_some`. The user must
  * have previously registered the client with `rclc_executor_attach_client`.
  *
  * # Returns
@@ -9703,7 +9703,7 @@ NROS_PUBLIC struct rcl_subscription_options_t rcl_subscription_get_default_optio
  * Initialize a subscription with default QoS (RELIABLE, KEEP_LAST(10)).
  *
  * rclc's `rclc_subscription_init_default`, in rclc's argument order and at
- * rclc's ARITY (phase-417 stage 6). The old `nros_subscription_init` carried
+ * rclc's ARITY (phase-417 stage 6). The old ~~`nros_subscription_init`~~ carried
  * two extra arguments — `callback` and `context` — and RFC-0089 records why
  * they are gone from here:
  *
@@ -9727,7 +9727,7 @@ NROS_PUBLIC struct rcl_subscription_options_t rcl_subscription_get_default_optio
  * 2026-09-04). It costs a ported call site nothing — the argument comes from
  * our codegen either way.
  *
- * The six-argument `nros_subscription_init` is GONE (phase-417 stage 6 step
+ * The six-argument ~~`nros_subscription_init`~~ is GONE (phase-417 stage 6 step
  * B retired it), and since phase-487 no init entry point takes a callback:
  * the subscription struct no longer has anywhere to keep one, because the
  * executor arena owns it.
@@ -9760,7 +9760,7 @@ rcl_ret_t rclc_subscription_init_default(struct rcl_subscription_t *subscription
  * rclc's `rclc_subscription_init` shape: `(subscription, node, type, topic,
  * qos)`. phase-487 W1 removed the `callback` and `context` this took
  * between the topic and the QoS. The struct stored them only for
- * the (since removed) three-argument `nros_executor_add_subscription` to read back, and the arena kept its own
+ * the (since removed) three-argument ~~`nros_executor_add_subscription`~~ to read back, and the arena kept its own
  * copies; the callback is now supplied at registration, by
  * `rclc_executor_add_subscription_raw` / `_typed` / `_with_info`.
  *
@@ -9783,7 +9783,7 @@ rcl_ret_t rclc_subscription_init_with_qos(struct rcl_subscription_t *subscriptio
  * default) and the non-QoS axes ride in `options` (NULL = defaults).
  * Behaves exactly like [`rclc_subscription_init_with_qos`] except that
  * a non-zero `options->sched_context` is stashed on the subscription so
- * that `nros_executor_add_subscription_*` binds the resulting
+ * that ~~`nros_executor_add_subscription_*`~~ binds the resulting
  * executor handle to that scheduling context once the handle is known
  * (entity creation is deferred to registration, so the handle does not
  * exist at init time). `options->message_info` is RESERVED and ignored
@@ -10378,7 +10378,7 @@ NROS_PUBLIC struct rcl_timer_t rcl_get_zero_initialized_timer(void);
  * [`rcl_timer_callback_t`]. Until phase-515 this name was refused, because
  * ours handed the callback a `void *context` where rclc hands it the time
  * since its last call; D2 took rclc's contract and removed ours
- * (`rclc_timer_init_with_context`).
+ * (~~`rclc_timer_init_with_context`~~).
  *
  * The timer is scheduled against the executor's monotonic spin delta — what
  * rclcpp spells `create_wall_timer`: a paused simulator does not pause it.
@@ -10435,7 +10435,7 @@ rcl_ret_t rclc_timer_init_default2(struct rcl_timer_t *timer,
  * against `clock` (phase-430 W1; rcl's NAME since phase-515 C1).
  *
  * `rcl_timer_init(timer, clock, context, period, callback, allocator)`.
- * Until phase-515 this was `rclc_timer_init_on_clock`, taking rcl's argument
+ * Until phase-515 this was ~~`rclc_timer_init_on_clock`~~, taking rcl's argument
  * ORDER but not its name, because the callback contract differed; D2 took
  * rcl's contract, so the name followed.
  *
@@ -10620,7 +10620,7 @@ NROS_PUBLIC uint64_t rclc_timer_get_period(const struct rcl_timer_t *timer);
  * * OVERDUE. rcl's header: "a negative value indicates the timer call is
  *   overdue by that amount". Unsigned cannot express it, so lateness read as
  *   `0` — which is also what "fires now" reads as.
- * * the SOURCE OF TRUTH. It computed from `rcl_timer_t::last_call_time_ns`
+ * * the SOURCE OF TRUTH. It computed from ~~`rcl_timer_t::last_call_time_ns`~~
  *   (removed by phase-487 W3), which the timer init and `rcl_timer_reset`
  *   wrote and no dispatch path ever updated, so for any timer the executor was actually running the
  *   answer was permanently `0` (issue 1049). It forwards to the arena now, the
@@ -10678,7 +10678,7 @@ rcl_ret_t rcl_timer_get_time_until_next_call(const struct rcl_timer_t *timer,
 NROS_PUBLIC rcl_ret_t rcl_timer_is_canceled(const struct rcl_timer_t *timer, bool *is_canceled);
 
 /**
- * Would this timer fire on the next `nros_executor_spin_*` pass?
+ * Would this timer fire on the next `rclc_executor_spin_*` pass?
  *
  * rcl's `rcl_timer_is_ready(timer, bool *)`. Gap `c:timer_is_ready` records
  * that Rust had the predicate and C did not.
@@ -10710,7 +10710,7 @@ NROS_PUBLIC rcl_ret_t rcl_timer_is_ready(const struct rcl_timer_t *timer, bool *
  *
  * Forwards to `Executor::timer_elapsed_us`, the arena's `elapsed_us`
  * counter. **This is why the accessor could not read `rcl_timer_t` and had
- * to reach the executor:** `rcl_timer_t::last_call_time_ns` was written by
+ * to reach the executor:** ~~`rcl_timer_t::last_call_time_ns`~~ was written by
  * the timer init and `rcl_timer_reset` and by nothing else — no
  * dispatch path updated it — so a struct-local computation answered `0` for
  * every timer that had ever fired. phase-487 W3 removed the field.
@@ -10836,7 +10836,7 @@ rcl_ret_t rcl_timer_exchange_period(const struct rcl_timer_t *timer,
  * * `RCL_RET_NOT_INIT` if the timer is uninitialised, finalised, or not
  *   registered with an executor — nothing is advancing its clock, so it has no
  *   next call rather than a next call of zero
- * * whatever `rclc_clock_get_now_ns` reports for a timer whose attached clock
+ * * whatever ~~`rclc_clock_get_now_ns`~~ reports for a timer whose attached clock
  *   is not readable
  *
  * # Safety

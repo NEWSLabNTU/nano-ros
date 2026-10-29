@@ -166,7 +166,7 @@ template <typename S> class Client {
     /// `spin_once` when a reply arrives for a request sent via
     /// `async_send_request`.
     ///
-    /// phase-456 W3 deleted the `TypedResponseFnWithCtx` sibling, for the
+    /// phase-456 W3 deleted the ~~`TypedResponseFnWithCtx`~~ sibling, for the
     /// reason stated on `Service<S>::TypedServiceFn`: the SFINAE guard on
     /// `Node::create_client` admits only a `void(*)(const Response&)`, so no
     /// overload could set it and the branch reading it was unreachable.
@@ -181,7 +181,7 @@ template <typename S> class Client {
     /// a callback per REQUEST. Ours returns a `Result` and the handler is bound
     /// once, at registration — ledgered at `cpp:Client::async_send_request`,
     /// divergence / adopt. What changed in phase-456 W9 is only that the
-    /// `callback_mode_` check is gone with the flag: every `rclcpp::Client<S>`
+    /// ~~`callback_mode_`~~ check is gone with the flag: every `rclcpp::Client<S>`
     /// is a dispatch client now, and the future-style road is
     /// `rclcpp::PollClient<S>`.
     Result async_send_request(const RequestType& req) {
@@ -417,7 +417,7 @@ template <typename S> class Client {
     ///
     /// `storage` is always NULL here: a dispatch client owns no
     /// `RmwServiceClient`, so `(executor_, handle_id_)` is the only road. The
-    /// `callback_mode_ ? nullptr : storage_` branch this replaced existed
+    /// ~~`callback_mode_ ? nullptr : storage_`~~ branch this replaced existed
     /// because one class served two owners; `rclcpp::PollClient<S>` takes the
     /// other arm and passes its `storage_` unconditionally.
     ::rclcpp::QoS actual_qos_half(bool request) const {

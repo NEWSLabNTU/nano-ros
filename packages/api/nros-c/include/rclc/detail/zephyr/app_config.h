@@ -54,8 +54,8 @@ typedef struct {
     struct {
         uint32_t app_priority;
         /* The transport's receive task -- zenoh-pico 1.10's executor thread,
-         * which also runs the lease and keep-alive. The `keepalive_priority` /
-         * `keepalive_stack_bytes` fields that sized a separate lease task are
+         * which also runs the lease and keep-alive. The ~~`keepalive_priority`~~ /
+         * ~~`keepalive_stack_bytes`~~ fields that sized a separate lease task are
          * gone with that task (RFC-0110 D2); an initializer naming one fails to
          * compile, which is the refusal. */
         uint32_t rx_priority;
@@ -105,7 +105,7 @@ static const nros_app_config_t NROS_APP_CONFIG = {
  * M-F.10 is who POPULATES the symbol:
  *
  *   - Before: per-binary `app_config.h` was emitted by the cmake
- *     codegen `nano_ros_generate_config_header()` from a per-example
+ *     codegen ~~`nano_ros_generate_config_header()`~~ from a per-example
  *     `nros.toml`, baking a TU-local `static const` at every include
  *     site.
  *

@@ -1,11 +1,11 @@
 /*
  * The service reply entry point, pinned by SIGNATURE.
  *
- * Phase 379 W5 renamed the reply verb `send_reply` -> `send_response` (rcl,
+ * Phase 379 W5 renamed the reply verb ~~`send_reply`~~ -> `send_response` (rcl,
  * rclcpp and rclrs all say `send_response`) and kept two old spellings one
- * release as `NROS_DEPRECATED_MSG` `static inline` forwarders:
- * `nros_service_send_reply_raw` (the plain rename) and
- * `nros_service_send_response` (a permanent RCL_RET_NOT_INIT stub from before
+ * release as ~~`NROS_DEPRECATED_MSG`~~ `static inline` forwarders:
+ * ~~`nros_service_send_reply_raw`~~ (the plain rename) and
+ * ~~`nros_service_send_response`~~ (a permanent RCL_RET_NOT_INIT stub from before
  * the polling API, forwarded so the un-suffixed name could not read like a
  * second, working entry point). Phase-417 stage 6 step B retired both, so what
  * this TU pins is the live name alone.

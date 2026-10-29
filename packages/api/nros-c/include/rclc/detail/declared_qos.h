@@ -33,7 +33,7 @@
  *
  * `q_type` inside `ROW`'s replacement list is an ordinary identifier. Macro
  * parameters are substituted only in the replacement list of the macro that
- * DECLARES them, so `LOOKUP`'s arguments never reach `ROW`, and both gcc and
+ * DECLARES them, so LOOKUP's arguments never reach `ROW`, and both gcc and
  * clang report `use of undeclared identifier 'q_type'` (measured). The query
  * therefore has to travel THROUGH the list, which is exactly what the generator
  * emits beside the C++ form:

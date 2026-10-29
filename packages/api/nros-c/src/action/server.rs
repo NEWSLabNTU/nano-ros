@@ -221,7 +221,7 @@ impl rclc_action_server_rclc_state_t {
 /// an `ActionServerCore` (five channels, goal table, buffers) from
 /// `rclc_polling_action_server_init` until
 /// `rclc_polling_action_server_fini`. Zero-initialised is UNINITIALIZED.
-/// Until phase-487 it was the `NROS_ACTION_SERVER_STATE_POLLING` state of
+/// Until phase-487 it was the ~~`NROS_ACTION_SERVER_STATE_POLLING`~~ state of
 /// `rcl_action_server_t`.
 #[repr(C)]
 pub struct rclc_polling_action_server_t {
@@ -293,7 +293,7 @@ impl rcl_action_server_t {
 /// "not registered yet". Use `is_handle_set()` to check.
 ///
 /// phase-487 W4 — this used to carry a SECOND copy of the server's callback
-/// record (`c_goal_callback`, `c_cancel_callback`, `c_accepted_callback`,
+/// record (~~`c_goal_callback`~~, ~~`c_cancel_callback`~~, ~~`c_accepted_callback`~~,
 /// `c_context`) plus a `server_ptr` back to the struct that contains it, so
 /// the trampolines could take `&_internal` as their context. The trampolines
 /// take the server itself now and read the one record it already has.
@@ -898,7 +898,7 @@ pub unsafe extern "C" fn rclc_action_execute(
 /// out-param and keeps the return code for "did the query work". This
 /// replaces the pair `rclc_action_server_get_active_goal_count(server)
 /// -> size_t` (answered 0 on every error) and
-/// `nros_action_server_active_goal_count_raw(server) -> int32_t`
+/// ~~`nros_action_server_active_goal_count_raw(server) -> int32_t`~~
 /// (negative = error code), each of which collapsed the two channels
 /// into one value.
 ///
@@ -1654,7 +1654,7 @@ pub unsafe extern "C" fn rclc_action_server_fini(
 /// * `rclc_polling_action_server_publish_feedback_raw` — push feedback.
 /// * `rclc_polling_action_server_complete_goal_raw` — terminate (SUCCEEDED /
 ///   ABORTED / CANCELED).
-/// * `nros_polling_action_server_try_handle_cancel_raw` /
+/// * ~~`nros_polling_action_server_try_handle_cancel_raw`~~ /
 ///   `_try_handle_get_result_raw` — service cancel / get_result RPCs.
 ///
 /// # Safety
@@ -2036,7 +2036,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_try_recv_goal_request_raw(
 }
 
 /// Phase 122.3.c.6.b — L1 polling: accept a goal received via
-/// `try_recv_goal_request_raw`.
+/// ~~`try_recv_goal_request_raw`~~.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_server_accept_goal_raw(
     server: *mut rclc_polling_action_server_t,
@@ -2065,7 +2065,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_accept_goal_raw(
 }
 
 /// Phase 122.3.c.6.b — L1 polling: reject a goal received via
-/// `try_recv_goal_request_raw`.
+/// ~~`try_recv_goal_request_raw`~~.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_server_reject_goal_raw(
     server: *mut rclc_polling_action_server_t,
@@ -2413,7 +2413,7 @@ unsafe fn set_action_server_wake_callback(
     }
 }
 
-// `nros_action_server_active_goal_count_raw` lived here until
+// ~~`nros_action_server_active_goal_count_raw`~~ lived here until
 // phase-379 W6 decision 3 merged it into
 // `rclc_action_server_get_active_goal_count`, which now branches on
 // `state` to serve the polling tier too. The old spelling survived one

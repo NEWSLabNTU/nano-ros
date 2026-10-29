@@ -134,7 +134,7 @@ pub(crate) struct CppActionServer {
 
 // Layout-mirror equivalence (Phase 87.11): the real `CppActionServer`
 // must have the same byte size as `nros::sizes::CppActionServerLayout`,
-// which is what `NROS_CPP_ACTION_SERVER_SIZE` is sized to. Any field
+// which is what `NROS_CPP_ACTION_SERVER_STORAGE_SIZE` is sized to. Any field
 // shape change here requires a paired update in
 // `packages/api/nros/src/sizes.rs::CppActionServerLayout`.
 const _: () = assert!(
@@ -1059,7 +1059,7 @@ fn frame_for_callback(data: &[u8], framed: &mut [u8; DEFAULT_RX_BUF_SIZE]) -> us
 }
 
 // Issue 2011 — the feedback and result trampolines FORWARD, and keep nothing.
-// They used to copy every payload into `FEEDBACK_STASH` / `RESULT_STASH`, two
+// They used to copy every payload into ~~`FEEDBACK_STASH`~~ / ~~`RESULT_STASH`~~, two
 // `static mut` single slots shared by every C++ action client in the process,
 // which `try_recv_feedback` / `try_recv_result` (and so every
 // `get_result_future`) read back: two goals, or two clients, read each other's
@@ -1723,7 +1723,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
 
     // Issue 2011 — this reads only feedback the executor has NOT dispatched:
     // during `spin_once` the arena takes it off the wire and hands it to the
-    // client's feedback callback. The process-global `FEEDBACK_STASH` that used
+    // client's feedback callback. The process-global ~~`FEEDBACK_STASH`~~ that used
     // to catch those (for every client at once) is gone;
     // `rclcpp_action::Client<A>` keeps its own latest-feedback slot, filled by
     // the callback it installs.
@@ -1886,7 +1886,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
     // callback), and says nothing about WHICH goal it is for. The future
     // `rclcpp_action::Client<A>::get_result_future` returns no longer reads it:
     // it is keyed by goal id and fed by the callback the client installs. The
-    // process-global `RESULT_STASH` this used to read first — one slot shared
+    // process-global ~~`RESULT_STASH`~~ this used to read first — one slot shared
     // by every C++ action client, which is how two futures read each other's
     // result — is gone.
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
@@ -2020,9 +2020,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_relocate(
 
 /// Send a goal asynchronously (non-blocking).
 ///
-/// Uses `send_goal_raw` (zpico_get_start) instead of `send_goal_blocking`.
+/// Uses `send_goal_raw` (zpico_get_start) instead of ~~`send_goal_blocking`~~.
 /// The goal response arrives via the callback registered with
-/// `nros_cpp_action_client_register_async`, invoked during `spin_once`.
+/// ~~`nros_cpp_action_client_register_async`~~, invoked during `spin_once`.
 ///
 /// # Safety
 /// All pointers must be valid.
@@ -2064,8 +2064,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal_async(
 /// Request a goal result asynchronously (non-blocking).
 ///
 /// Uses `send_get_result_request` (zpico_get_start) instead of
-/// `get_result_blocking`. The result arrives via the result callback
-/// registered with `nros_cpp_action_client_register_async`.
+/// ~~`get_result_blocking`~~. The result arrives via the result callback
+/// registered with ~~`nros_cpp_action_client_register_async`~~.
 ///
 /// # Safety
 /// All pointers must be valid.
@@ -2993,7 +2993,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_try_recv_goal_request_raw(
 }
 
 /// Phase 122.3.d — L1 polling: accept a goal received via
-/// `try_recv_goal_request_raw`.
+/// ~~`try_recv_goal_request_raw`~~.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_accept_goal_raw(
     storage: *mut c_void,
@@ -3085,7 +3085,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal_raw(
 
 /// Phase 122.3.c.6.d / .d — L1 polling: peek a pending
 /// cancel-goal request. Writes goal_id + sequence_number +
-/// current_status (matches `nros_cpp_goal_status_t` discriminants).
+/// current_status (matches ~~`nros_cpp_goal_status_t`~~ discriminants).
 /// Returns `1` on peek, `0` if none pending, negative on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_try_recv_cancel_request_raw(

@@ -5,7 +5,7 @@
  * @file node_parameters.hpp
  * @ingroup grp_parameter
  * @brief `rclcpp::detail::node_param_*` — typed forwarders from a C++ node onto
- *        the executor's parameter store, across the `nros_cpp_node_param_*`
+ *        the executor's parameter store, across the ~~`nros_cpp_node_param_*`~~
  *        FFI.
  *
  * ## Why this header exists (phase-426 W4, RFC-0089)
@@ -365,7 +365,7 @@ inline bool node_param_has(const nros_cpp_node_t* node, const char* name) {
 //
 // The store OWNS the elements (`heapless::Vec` in its slot), so there is no
 // pool to keep alive here and no borrow for the caller to outlive - which is
-// what `nros::ParameterServer`'s `seq_pool_` existed to provide and why it
+// what `nros::ParameterServer`'s ~~`seq_pool_`~~ existed to provide and why it
 // left with the class. `std::vector<bool>` is absent for the reason it was
 // absent before: it has no `data()`. `Seq<bool, N>` is NOT - its storage is a
 // plain `bool[N]`, so it has one.
@@ -712,7 +712,7 @@ namespace rclcpp {
 /// `rclcpp::ParameterType` — the `rcl_interfaces/msg/ParameterType` codes,
 /// under upstream's own name and with upstream's own enumerator spellings.
 ///
-/// phase-417 W4.a — C had `nros_parameter_type_t` and Rust had
+/// phase-417 W4.a — C had `rclc_parameter_type_t` and Rust had
 /// `ParameterType`, both mirroring the same message, and C++ named neither, so
 /// a ported file that wrote `rclcpp::ParameterType::PARAMETER_DOUBLE` did not
 /// compile and no C++ accessor could have returned one.

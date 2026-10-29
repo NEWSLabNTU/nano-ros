@@ -9,7 +9,7 @@
 //! - `NROS_PLATFORM_ZEPHYR` - Zephyr RTOS
 //! - `NROS_PLATFORM_FREERTOS` - FreeRTOS
 //! - `NROS_PLATFORM_BAREMETAL` - Bare-metal (user provides time/sleep)
-//! - `NROS_PLATFORM_CUSTOM` - User provides all functions
+//! - ~~`NROS_PLATFORM_CUSTOM`~~ - User provides all functions
 
 // ============================================================================
 // FFI Declarations (for no_std)
@@ -72,7 +72,7 @@ pub fn get_time_ns() -> u64 {
 /// caller stamping a message with this on target was getting time-since-boot
 /// presented as time-since-1970.
 ///
-/// That sentence used to name `nros_platform_time_since_epoch_*` as the symbols
+/// That sentence used to name ~~`nros_platform_time_since_epoch_*`~~ as the symbols
 /// providing it. Issue 0532 retired them, so the doc comment was left asserting
 /// that a pair nothing defines is implemented everywhere — four lines above the
 /// comment explaining their deletion. Naming the FACT rather than the spelling

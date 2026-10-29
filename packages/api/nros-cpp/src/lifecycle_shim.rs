@@ -91,7 +91,7 @@ pub unsafe extern "C" fn nros_cpp_register_lifecycle_services_for_node(
 ///
 /// (This comment used to read "Configure=1, Activate=2, Deactivate=3,
 /// Cleanup=4, Shutdown=5, ErrorProcessed=6" — three of those were nano-ros's
-/// own numbering and `ErrorProcessed=6` was never a transition at all.)
+/// own numbering and ~~`ErrorProcessed=6`~~ was never a transition at all.)
 ///
 /// # Safety
 /// `executor` must be a valid, live `CppContext*`. Any registered transition

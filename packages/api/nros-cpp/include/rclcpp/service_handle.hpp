@@ -46,7 +46,7 @@ namespace rclcpp {
 /// which owns its own `RmwServiceServer` in caller storage. It is
 /// `rclcpp::PollService<S>` now (`rclcpp/polling_service.hpp`), for the reason W2b
 /// split `rclcpp::PollSubscription<M>` out: one class serving two ownership
-/// models behind a `callback_mode_` flag offers every caller the other one's
+/// models behind a ~~`callback_mode_`~~ flag offers every caller the other one's
 /// method set, and on the dispatch path those methods read storage the arena
 /// never filled.
 ///

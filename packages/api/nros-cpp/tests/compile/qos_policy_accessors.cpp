@@ -8,7 +8,7 @@
 //   D3  the four policy enums are PUBLIC and at NAMESPACE scope, under
 //       rclcpp's names — `rclcpp::ReliabilityPolicy` etc.
 //   D4  the getters return those enums instead of `int`, so `reliability()`
-//       replaces `reliability_raw()`.
+//       replaces ~~`reliability_raw()`~~.
 //   D5  the three time windows take and return `rclcpp::Duration`, so
 //       `deadline()` / `lifespan()` / `liveliness_lease_duration()` replace
 //       the `_ms`-suffixed pair.
@@ -58,7 +58,7 @@ static_assert(static_cast<int>(rclcpp::LivelinessPolicy::SystemDefault) == 0 &&
 
 // SCOPED, as rclcpp's are (phase-483 W1). In `rclcpp::` an unscoped
 // `KeepLast` enumerator would collide with upstream's `rclcpp::KeepLast`
-// profile helper, and the prefixed `LivelinessManualByTopic` spellings existed
+// profile helper, and the prefixed ~~`LivelinessManualByTopic`~~ spellings existed
 // only to keep unscoped enumerators apart.
 static_assert(!std::is_convertible<rclcpp::ReliabilityPolicy, int>::value,
               "the policy enums are enum class, as upstream's");

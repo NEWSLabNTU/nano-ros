@@ -69,7 +69,7 @@ _Static_assert(NROS_DECLARED_DEPTH_OR(NROS_DECLARED_DEPTH("std_msgs/msg/Bool", "
 /* -- The macro, in the shape a C node's setup writes ----------------------- */
 
 /* The DEPTH a C call site states. A literal in a macro argument is the one
- * shape that survives to `_Static_assert`: `nros_qos_default()`'s `.depth` is a
+ * shape that survives to `_Static_assert`: ~~`nros_qos_default()`~~'s `.depth` is a
  * struct field, and `RCLC_QOS_DEFAULT` is an `extern const` object resolved at
  * link time, so neither is a constant expression. Naming the number once, as a
  * macro, is what lets the build check it -- and it is the same discipline the

@@ -252,7 +252,7 @@ type RawClient = nros_node::RawServiceClient<
 /// so it has no arena slot: `_opaque` holds a `RawServiceServer` from
 /// `rclc_polling_service_init` until `rclc_polling_service_fini`.
 /// Zero-initialised is UNINITIALIZED. Until phase-487 it was the
-/// `NROS_SERVICE_STATE_POLLING` state of `rcl_service_t`, which made every
+/// ~~`NROS_SERVICE_STATE_POLLING`~~ state of `rcl_service_t`, which made every
 /// dispatched server carry this storage unused.
 #[repr(C)]
 pub struct rclc_polling_service_t {
@@ -321,7 +321,7 @@ pub extern "C" fn rcl_get_zero_initialized_service() -> rcl_service_t {
 ///
 /// phase-487 W2 removed the `callback` and `context` this took between the
 /// name and the QoS: the struct stored them only for the (since removed)
-/// two-argument `nros_executor_add_service` to read back, while the arena
+/// two-argument ~~`nros_executor_add_service`~~ to read back, while the arena
 /// entry kept its own copies. The callback is supplied at registration, by
 /// `rclc_executor_add_service_raw` or a generated
 /// `<Srv>_executor_add_service`, as rclc supplies it at
@@ -379,7 +379,7 @@ pub unsafe extern "C" fn rclc_service_init_with_qos(
 }
 
 /// rclc's `rclc_service_init_default`, in rclc's argument order and at rclc's
-/// ARITY (phase-417 stage 6). The old `nros_service_init` carried `callback`
+/// ARITY (phase-417 stage 6). The old ~~`nros_service_init`~~ carried `callback`
 /// and `context` in positions 5 and 6; RFC-0089 records that the binding site
 /// was never mandated (RFC-0041 governs the DISPATCH MODEL, and
 /// `executor-owns-no-entity-storage` is defined nowhere), so the callback moves
@@ -389,7 +389,7 @@ pub unsafe extern "C" fn rclc_service_init_with_qos(
 /// 2026-09-04: a rosidl typesupport's members are its contract, including a
 /// `func` dispatcher we do not have.
 ///
-/// The six-argument `nros_service_init` is GONE (phase-417 stage 6 step B
+/// The six-argument ~~`nros_service_init`~~ is GONE (phase-417 stage 6 step B
 /// retired it), and since phase-487 no init entry point takes a callback.
 ///
 /// # Safety
@@ -978,7 +978,7 @@ unsafe fn bounded_cstr(ptr: *const c_char, max: usize) -> &'static [u8] {
 /// Report a typed service/client glue failure as an `ERROR` log record.
 ///
 /// Called by the generated `static inline` trampolines. `error` is one of the
-/// `NROS_SERVICE_TYPED_ERR_*` codes above; `type_name` is the service type's
+/// `RCLC_SERVICE_TYPED_ERR_*` codes above; `type_name` is the service type's
 /// own `<Srv>_get_type_name()`, so the record names the type without the
 /// generated header having to duplicate any string.
 ///
@@ -1265,7 +1265,7 @@ impl Default for rcl_client_t {
 /// The C counterpart of C++'s `nros::PollClient<S>`. `_opaque` holds a
 /// `RawServiceClient` from `rclc_polling_client_init` until
 /// `rclc_polling_client_fini`. Zero-initialised is UNINITIALIZED. Until
-/// phase-487 it was the `NROS_CLIENT_STATE_POLLING` state of
+/// phase-487 it was the ~~`NROS_CLIENT_STATE_POLLING`~~ state of
 /// `rcl_client_t`.
 #[repr(C)]
 pub struct rclc_polling_client_t {
@@ -2219,7 +2219,7 @@ pub unsafe extern "C" fn rclc_client_service_is_ready(client: *const rcl_client_
 /// Send a service request asynchronously (Phase 82).
 ///
 /// Non-blocking. The reply is delivered via the registered
-/// `response_callback` during `rclc_executor_spin_some`. The user must
+/// ~~`response_callback`~~ during `rclc_executor_spin_some`. The user must
 /// have previously registered the client with `rclc_executor_attach_client`.
 ///
 /// # Returns
@@ -2540,7 +2540,7 @@ pub unsafe extern "C" fn rclc_client_call(
     // at line ~763) so the next `rclc_client_call` doesn't bounce off
     // RCLC_RET_BAD_SEQUENCE. Without this, a single slow-first-RPC
     // timeout cascades every subsequent blocking call on the same
-    // client — which is exactly what NuttX `lang_2_C` rtos_e2e flakes
+    // client — which is exactly what NuttX lang_2_C rtos_e2e flakes
     // hit on QEMU cold-boot: call [1] times out because the server
     // queryable isn't ready, calls [2–4] all return BAD_SEQUENCE, the
     // test sees 0 responses and fails even though the server came up
@@ -2717,7 +2717,7 @@ mod verification {
         );
     }
 
-    // Phase 189.M3.3.a — `init_with_options` stashes the requested sched-context
+    // Phase 189.M3.3.a — ~~`init_with_options`~~ stashes the requested sched-context
     // slot on the service (the executor applies the bind at register time). A
     // NULL options pointer leaves the default (0 = inherit).
     #[kani::proof]
@@ -2884,7 +2884,7 @@ mod verification {
 
     // -- Service Client Harnesses --
 
-    // Phase 189.M3.3.a — client `init_with_options` mirrors the service: stash
+    // Phase 189.M3.3.a — client ~~`init_with_options`~~ mirrors the service: stash
     // the requested sched-context slot (bind applied at register time).
     #[kani::proof]
     #[kani::unwind(5)]
@@ -3179,7 +3179,7 @@ mod verification {
 // through the executor arena, where `_internal = (executor_ptr,
 // arena_entry_index)` points; the polled `rclc_polling_service_t` /
 // `rclc_polling_client_t` (phase-487 W2) read their inline entity through
-// their own four `nros_polling_*` accessors below.
+// their own four `rclc_polling_*` accessors below.
 // ============================================================================
 
 /// The `(request, response)` grant of a dispatched service, or the status to

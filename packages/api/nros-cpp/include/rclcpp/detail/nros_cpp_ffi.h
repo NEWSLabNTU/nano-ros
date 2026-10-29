@@ -878,7 +878,7 @@ typedef struct nros_cpp_mode_t {
  * least `(n_modes + 1) * (NROS_CPP_MODE_TABLE_STORAGE + n_base_deadlines *
  * NROS_CPP_MODE_DEADLINE_STORAGE) + n_row_modes * n_rows *
  * NROS_CPP_MODE_ROW_STORAGE + n_age_modes * n_ages * NROS_CPP_MODE_AGE_STORAGE`
- * bytes, where `n_row_modes` / `n_age_modes` count the modes with rows (ages)
+ * bytes, where ~~`n_row_modes`~~ / ~~`n_age_modes`~~ count the modes with rows (ages)
  * of their own; a mode that aliases the base costs only its table.
  */
 typedef struct nros_cpp_mode_tables_t {
@@ -2208,7 +2208,7 @@ nros_cpp_ret_t nros_cpp_node_get_fully_qualified_name(const struct nros_cpp_node
  *
  * Resolved through `Executor::node_session_mut(node_id)`, i.e. the same
  * session a publisher created on this node would be built against. A node
- * created with `nros_cpp_node_init_ex(..., rmw = "xrce")` sits on its own
+ * created with ~~`nros_cpp_node_init_ex(..., rmw = "xrce")`~~ sits on its own
  * session in the executor's table, so an image with two such nodes gets two
  * answers from this one function — which is the case a compile-time constant
  * (`nros_node::IMAGE_SERIALIZATION_FORMAT`, the generated
@@ -2317,7 +2317,7 @@ nros_cpp_ret_t nros_cpp_spin_for(void *handle, uint32_t duration_ms, int32_t pol
  * `/clock` wakes when SIMULATED time arrives, which no wall budget can say.
  *
  * Returns `NROS_CPP_RET_OK` once the clock reaches the deadline (immediately
- * if it already has), the first non-OK `spin_once` (`REENTRANT` from inside a
+ * if it already has), the first non-OK `spin_once` (~~`REENTRANT`~~ from inside a
  * callback), or `NROS_CPP_RET_TIMEOUT` when a guarded termination signal ends
  * the wait early.
  *
@@ -3108,7 +3108,7 @@ nros_cpp_ret_t nros_cpp_executor_set_lock(void *handle,
  * [`nros_cpp_executor_set_lock`] installed the port's thread identity
  * (`k_current_get`, `pthread_self`), so a pass releases it around each user
  * callback and around its park: the levels' workers then preempt each
- * other's callbacks. Call it after `set_lock`, while no second thread can
+ * other's callbacks. Call it after `nros_cpp_executor_set_lock`, while no second thread can
  * reach the executor. `INVALID_ARGUMENT` with no lock installed.
  *
  * # Safety
@@ -3153,7 +3153,7 @@ uint8_t nros_cpp_level_count(void);
 
 /**
  * phase-509 P7 — the low 32 bits of the executor clock, in microseconds, at
- * `level`'s latest spin, written to `*out_us`; `NOT_FOUND` while it has not
+ * `level`'s latest spin, written to `*out_us`; NOT_FOUND while it has not
  * spun. Compare two with a wrapping difference.
  *
  * # Safety
@@ -4444,7 +4444,7 @@ nros_cpp_ret_t nros_cpp_subscription_take_validated(void *storage,
  * `node.subscription(t).generic(..).message_info()` builder: writes the
  * payload into `out_data` and the attachment into `out_att`. `*out_att_len`
  * is `0` when the sample carried no attachment. Cross-RMW bridges read the
- * `bridge_origin` tag from the attachment.
+ * bridge_origin tag from the attachment.
  *
  * # Safety
  * `storage` must be a valid subscription storage. `out_data` /`out_att` must
@@ -5413,9 +5413,9 @@ nros_cpp_ret_t nros_cpp_action_client_relocate(void *old_storage, void *new_stor
 /**
  * Send a goal asynchronously (non-blocking).
  *
- * Uses `send_goal_raw` (zpico_get_start) instead of `send_goal_blocking`.
+ * Uses `send_goal_raw` (zpico_get_start) instead of ~~`send_goal_blocking`~~.
  * The goal response arrives via the callback registered with
- * `nros_cpp_action_client_register_async`, invoked during `spin_once`.
+ * ~~`nros_cpp_action_client_register_async`~~, invoked during `spin_once`.
  *
  * # Safety
  * All pointers must be valid.
@@ -5429,8 +5429,8 @@ nros_cpp_ret_t nros_cpp_action_client_send_goal_async(void *handle,
  * Request a goal result asynchronously (non-blocking).
  *
  * Uses `send_get_result_request` (zpico_get_start) instead of
- * `get_result_blocking`. The result arrives via the result callback
- * registered with `nros_cpp_action_client_register_async`.
+ * ~~`get_result_blocking`~~. The result arrives via the result callback
+ * registered with ~~`nros_cpp_action_client_register_async`~~.
  *
  * # Safety
  * All pointers must be valid.
@@ -5672,7 +5672,7 @@ int32_t nros_cpp_action_server_try_recv_goal_request_raw(void *storage,
 
 /**
  * Phase 122.3.d — L1 polling: accept a goal received via
- * `try_recv_goal_request_raw`.
+ * ~~`try_recv_goal_request_raw`~~.
  */
 nros_cpp_ret_t nros_cpp_action_server_accept_goal_raw(void *storage,
                                                       const uint8_t (*goal_id)[16],
@@ -5705,7 +5705,7 @@ nros_cpp_ret_t nros_cpp_action_server_complete_goal_raw(void *storage,
 /**
  * Phase 122.3.c.6.d / .d — L1 polling: peek a pending
  * cancel-goal request. Writes goal_id + sequence_number +
- * current_status (matches `nros_cpp_goal_status_t` discriminants).
+ * current_status (matches ~~`nros_cpp_goal_status_t`~~ discriminants).
  * Returns `1` on peek, `0` if none pending, negative on error.
  */
 int32_t nros_cpp_action_server_try_recv_cancel_request_raw(void *storage,
@@ -5907,7 +5907,7 @@ nros_cpp_ret_t nros_cpp_register_lifecycle_services_for_node(const struct nros_c
  *
  * (This comment used to read "Configure=1, Activate=2, Deactivate=3,
  * Cleanup=4, Shutdown=5, ErrorProcessed=6" — three of those were nano-ros's
- * own numbering and `ErrorProcessed=6` was never a transition at all.)
+ * own numbering and ~~`ErrorProcessed=6`~~ was never a transition at all.)
  *
  * # Safety
  * `executor` must be a valid, live `CppContext*`. Any registered transition

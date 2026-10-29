@@ -16,7 +16,9 @@ Z_LINK_TYPE_CUSTOM
 Z_LOCALITY_SESSION_LOCAL
 Z_MALLOC_FUNCTION
 _Z_ERR_CONFIG_LOCATOR_INVALID
+_Z_ERR_SESSION_CLOSED
 _Z_ERR_SYSTEM_GENERIC
+_Z_ERR_SYSTEM_OUT_OF_MEMORY
 _Z_ERR_TRANSPORT_OPEN_FAILED
 _Z_ERR_TRANSPORT_RX_FAILED
 _Z_ERR_TRANSPORT_TX_FAILED
@@ -27,6 +29,7 @@ _declaration_cache
 _mutex_rx
 _mutex_transport
 _mutex_tx
+_reconnecting
 _transmitted
 _z_cache_declaration
 _z_connect_serial
@@ -171,6 +174,8 @@ net_if_ipv4_select_src_iface
 net_mgmt_event_handler_t
 posix_exit
 posix_to_zephyr_priority
+stdinout_fd_op_vtable
+stdinout_write_vmeth
 sys_heap
 sys_heap_
 uart_poll_in
@@ -258,6 +263,7 @@ HRTICK_DL
 IFNAMSIZ
 INADDR_NONE
 INT64_MIN
+INT_MAX
 LD_PRELOAD
 O_EXCL
 PTHREAD_PRIO_NONE
@@ -290,8 +296,13 @@ timer_getoverrun
 # C and C++ toolchains
 NOLOAD
 R_RISCV_PCREL_HI20
+_GLIBCXX_CHRONO
 _GLIBCXX_USE_CLOCK_MONOTONIC
+_Sp_counted_deleter
+bad_function_call
+bad_weak_ptr
 include_next
+target_type
 
 # QEMU and glib
 can_receive
@@ -314,26 +325,55 @@ YIELD
 
 # The DDS specification
 DATA_FRAG
+DURABILITY_QOS_POLICY
 D_CDR2_LE
 DcpsDomainParticipant
+HISTORY_QOS_POLICY
+LIVELINESS_QOS_POLICY
+RELIABILITY_QOS_POLICY
 data_representation
 
 # NVIDIA Tegra FSP, Autoware and Nav2
+DiagnosedPublisher
+DiagnosedPublisher::publish
+InterProcessPollingSubscriber::takeData
 aon_echo
+autoware_external_cmd_selector
+autoware_package
 autoware_sentinel
+autoware_utils
+autoware_utils::InterProcessPollingSubscriber
+declare_or_get_parameter
 ivc_init_channels_ccplex
+nav2_util
+nav2_velocity_smoother
 print_msg
+takeNewData
 
 # ROS 2
 BAD_PARAMETER
+BoundedVector
 ClockType::ROS_TIME
 GetTransitionGraph
 HISTORY_SYSTEM_DEFAULT
 InteractiveMarker
+NOT_ALLOWED
 NodeEntitiesInfo_
+NodeGraph::get_client_names_and_types_by_node
+NodeGraph::get_publisher_names_and_types_by_node
 ParticipantEntitiesInfo
 QosPresets::PARAMETERS
+RCLCPP_SMART_PTR_DEFINITIONS
 RCLCPP_TRACE_THROTTLE
+RCL_RET_ALREADY_INIT
+RCL_RET_ALREADY_SHUTDOWN
+RCL_RET_BAD_ALLOC
+RCL_RET_MISMATCHED_RMW_ID
+RCL_RET_TIMER_CANCELED
+RCL_RET_TIMER_INVALID
+RCL_RET_WAIT_SET_
+RCL_SET_ERROR_MSG_WITH_FORMAT_STRING
+RCL_WARN_UNUSED
 RELIABILITY_SYSTEM_DEFAULT
 RMW_ZENOH_DEFAULT_
 RMW_ZENOH_DEFAULT_HISTORY_DEPTH
@@ -366,14 +406,17 @@ qos_profile_update_best_available_for_services
 qos_to_keyexpr
 rcl_logging_rosout_add_sublogger
 rcl_logging_rosout_output_handler
+rcl_node_init_with_options
 rclc_parameter_server_set_service_callback
 rclcpp::TimeSource
+resolve_path
 result_timeout
 rmw_dds_common::msg::ParticipantEntitiesInfo
 rmw_take_response_request
 rmw_take_ser_int
 rosidl_runtime_c__type_description__FieldType
 rosidl_typesupport_c
+send_request_async
 set_logger_level
 simplified_XXH3_128bits
 validate_parameter_setting
@@ -396,6 +439,7 @@ Stdout
 Timer::after_secs
 TryStreamExt::try_next
 UnitDependencyInfoChanged
+align8
 alloc::alloc::handle_alloc_error
 alloc_error_handler
 alloc_error_hook
@@ -405,11 +449,13 @@ clippy::format_in_format_args
 clippy::if_same_then_else
 clippy::manual_contains
 clippy::unnecessary_sort_by
+compile_fail
 default_alloc_error_hook
 default_constructed_unit_structs
 deref_addrof
 embassy_futures::select
 embassy_sync::channel::Channel
+explicit_auto_deref
 external_body
 fn_call_width
 fn_to_numeric_cast
@@ -423,7 +469,9 @@ leave_multicast_group
 linkme::distributed_slice
 map_ceil
 modulo_one
+needless_borrow
 panic_impl
+portable_atomic_unsafe_assume_single_core
 proc_macro::tracked_env::var
 proc_macro::tracked_path::path
 result_large_err

@@ -4,8 +4,8 @@
  *
  * `rosidl_runtime_c__<prim>__Sequence` is `{data, size, capacity}` over memory
  * the CALLER owns. The names are rosidl's, after its `.msg` -> IDL mapping:
- * `float32[]` is `float__Sequence`, `float64[]` `double__Sequence`, `byte[]`
- * `octet__Sequence`, `bool[]` `boolean__Sequence`, `char[]` `uint8__Sequence`;
+ * `float32[]` is float__Sequence, `float64[]` double__Sequence, `byte[]`
+ * octet__Sequence, `bool[]` boolean__Sequence, `char[]` uint8__Sequence;
  * the `.msg` spellings are aliased as rosidl aliases them.
  *
  * Guarded with upstream's include guard: a translation unit that already has

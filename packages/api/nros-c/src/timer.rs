@@ -99,7 +99,7 @@ pub enum rclc_timer_state_t {
 /// rclc's `rclc_timer_init_default(timer, support, period, callback)` takes
 /// them at init, before any executor exists, and a removed timer can be added
 /// again, so they stay. phase-487 W3 removed the one field that was a copy,
-/// `last_call_time_ns`: written by init and reset, read by nothing, and stale
+/// ~~`last_call_time_ns`~~: written by init and reset, read by nothing, and stale
 /// for any timer the executor ran (issue 1049). phase-515 C1 removed the
 /// `context` pointer with the callback contract that carried it.
 #[repr(C)]
@@ -179,7 +179,7 @@ pub extern "C" fn rcl_get_zero_initialized_timer() -> rcl_timer_t {
 /// [`rcl_timer_callback_t`]. Until phase-515 this name was refused, because
 /// ours handed the callback a `void *context` where rclc hands it the time
 /// since its last call; D2 took rclc's contract and removed ours
-/// (`rclc_timer_init_with_context`).
+/// (~~`rclc_timer_init_with_context`~~).
 ///
 /// The timer is scheduled against the executor's monotonic spin delta — what
 /// rclcpp spells `create_wall_timer`: a paused simulator does not pause it.
@@ -258,7 +258,7 @@ pub unsafe extern "C" fn rclc_timer_init_default2(
 /// against `clock` (phase-430 W1; rcl's NAME since phase-515 C1).
 ///
 /// `rcl_timer_init(timer, clock, context, period, callback, allocator)`.
-/// Until phase-515 this was `rclc_timer_init_on_clock`, taking rcl's argument
+/// Until phase-515 this was ~~`rclc_timer_init_on_clock`~~, taking rcl's argument
 /// ORDER but not its name, because the callback contract differed; D2 took
 /// rcl's contract, so the name followed.
 ///
@@ -556,7 +556,7 @@ pub unsafe extern "C" fn rcl_timer_fini(timer: *mut rcl_timer_t) -> rcl_ret_t {
     RCL_RET_OK
 }
 
-// `rcl_timer_is_ready` and `nros_timer_call` were previously exposed
+// `rcl_timer_is_ready` and ~~`nros_timer_call`~~ were previously exposed
 // as public C symbols for users who wanted to drive timers manually.
 // The executor arena now owns timer readiness evaluation and callback
 // dispatch end-to-end (see `packages/api/nros-c/src/executor.rs`'s
@@ -616,7 +616,7 @@ pub unsafe extern "C" fn rclc_timer_get_period(timer: *const rcl_timer_t) -> u64
 /// * OVERDUE. rcl's header: "a negative value indicates the timer call is
 ///   overdue by that amount". Unsigned cannot express it, so lateness read as
 ///   `0` — which is also what "fires now" reads as.
-/// * the SOURCE OF TRUTH. It computed from `rcl_timer_t::last_call_time_ns`
+/// * the SOURCE OF TRUTH. It computed from ~~`rcl_timer_t::last_call_time_ns`~~
 ///   (removed by phase-487 W3), which the timer init and `rcl_timer_reset`
 ///   wrote and no dispatch path ever updated, so for any timer the executor was actually running the
 ///   answer was permanently `0` (issue 1049). It forwards to the arena now, the
@@ -701,7 +701,7 @@ unsafe fn time_until_next_call_ns_of(timer: &rcl_timer_t) -> Result<i64, rcl_ret
 // installs — the same pair `rcl_timer_cancel` and `rcl_timer_reset` have
 // always used. That indirection is why these were gaps: a registered timer's
 // live state is the arena's, not this struct's, and this struct's copy is
-// stale by construction (nothing wrote `last_call_time_ns` after
+// stale by construction (nothing wrote ~~`last_call_time_ns`~~ after
 // registration, and phase-487 W3 removed it). Reading the arena is a forward to the source of truth, not
 // a second one (RFC-0002 / RFC-0019).
 //
@@ -773,7 +773,7 @@ pub unsafe extern "C" fn rcl_timer_is_canceled(
     RCL_RET_OK
 }
 
-/// Would this timer fire on the next `nros_executor_spin_*` pass?
+/// Would this timer fire on the next `rclc_executor_spin_*` pass?
 ///
 /// rcl's `rcl_timer_is_ready(timer, bool *)`. Gap `c:timer_is_ready` records
 /// that Rust had the predicate and C did not.
@@ -827,7 +827,7 @@ pub unsafe extern "C" fn rcl_timer_is_ready(
 ///
 /// Forwards to `Executor::timer_elapsed_us`, the arena's `elapsed_us`
 /// counter. **This is why the accessor could not read `rcl_timer_t` and had
-/// to reach the executor:** `rcl_timer_t::last_call_time_ns` was written by
+/// to reach the executor:** ~~`rcl_timer_t::last_call_time_ns`~~ was written by
 /// the timer init and `rcl_timer_reset` and by nothing else — no
 /// dispatch path updated it — so a struct-local computation answered `0` for
 /// every timer that had ever fired. phase-487 W3 removed the field.
@@ -1024,7 +1024,7 @@ pub unsafe extern "C" fn rcl_timer_exchange_period(
 /// * `RCL_RET_NOT_INIT` if the timer is uninitialised, finalised, or not
 ///   registered with an executor — nothing is advancing its clock, so it has no
 ///   next call rather than a next call of zero
-/// * whatever `rclc_clock_get_now_ns` reports for a timer whose attached clock
+/// * whatever ~~`rclc_clock_get_now_ns`~~ reports for a timer whose attached clock
 ///   is not readable
 ///
 /// # Safety
@@ -1084,7 +1084,7 @@ mod tests {
     /// phase-417 W5.c — "no executor" is reported, not answered as zero.
     ///
     /// This is the whole reason the accessor forwards to the arena instead of
-    /// reading `rcl_timer_t`: the struct's `last_call_time_ns` (removed by
+    /// reading `rcl_timer_t`: the struct's ~~`last_call_time_ns`~~ (removed by
     /// phase-487 W3) was written by `init`/`reset` and by nothing else, so a
     /// struct-local computation returned `0` for every timer — including this one, which has no elapsed
     /// time at all rather than an elapsed time of zero (issue 1008's shape).

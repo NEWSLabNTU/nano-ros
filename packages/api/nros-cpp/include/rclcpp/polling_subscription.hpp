@@ -27,7 +27,7 @@
  * WHY THE TAKING API LIVES HERE — phase-456 W2b
  *
  * It used to live on `Subscription<M>`, which served BOTH ownership models
- * behind a `callback_mode_` flag. On the dispatch path the arena owns the
+ * behind a ~~`callback_mode_`~~ flag. On the dispatch path the arena owns the
  * subscriber and `storage_` is never filled, so `take()` on a callback-mode
  * object reached
  *
@@ -219,7 +219,7 @@ template <typename M> class PollSubscription {
     /// (non-blocking) — the C++ poll-side analog of the Rust
     /// `node.subscription(t).generic(..).message_info()` builder
     /// (Phase 189.M3.4b). The attachment carries out-of-band tags such as a
-    /// cross-RMW bridge's `bridge_origin`; `out_att_len` is 0 when the sample
+    /// cross-RMW bridge's bridge_origin; `out_att_len` is 0 when the sample
     /// carried none.
     ///
     /// @param buf          Buffer to receive CDR payload.
@@ -380,7 +380,7 @@ template <typename M> class PollSubscription {
     /// rather than your request echoed back.
     ///
     /// phase-456 W2b: issue 1437 wrote this to answer on BOTH roads from one
-    /// class, branching on `callback_mode_` to pass either `storage_` or
+    /// class, branching on ~~`callback_mode_`~~ to pass either `storage_` or
     /// `(executor, handle_id)`. This half owns its subscriber, so it passes
     /// `storage_` and the branch is gone. The DISPATCH half cannot answer it
     /// yet — it holds no executor, only `sched_handle_id_` — and inventing a

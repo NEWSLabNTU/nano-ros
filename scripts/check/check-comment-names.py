@@ -41,9 +41,9 @@ The rule, for every comment in a tracked C, C++ or Rust source in SCOPE:
   A placeholder (`Node::create_X`, `foo_pkg`, `param_NN_`) is not a symbol and
   is not judged.
 
-SCOPE is the directories swept so far. It widens one area per pull request
-until it covers `packages/` and `examples/` whole; it is not a baseline, and a
-directory in it carries no exemption.
+SCOPE is `packages/` and `examples/` whole. It was widened one area per pull
+request while the comments were swept (phase-515 W0.d); it was never a
+baseline, and nothing inside it is exempt.
 
 Buildless, tracked files only; `--self-test` runs both directions of every
 rule and runs first on every check.
@@ -64,15 +64,7 @@ _spec.loader.exec_module(ap)
 
 SCOPE = (
     "examples",
-    "packages/boards",
-    "packages/cli",
-    "packages/core",
-    "packages/drivers",
-    "packages/platform",
-    "packages/rmw",
-    "packages/testing",
-    "packages/tooling",
-    "packages/verification",
+    "packages",
 )
 FOREIGN_LIST = os.path.join(HERE, "comment-foreign-names.txt")
 # The ledger check's roots plus the two trees a comment cites that the ledger

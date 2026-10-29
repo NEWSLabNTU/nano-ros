@@ -648,7 +648,7 @@ namespace rclcpp {
 
 namespace detail {
 
-// phase-426 W4 — `adopt_executor_param_seed` IS GONE, along with the store it
+// phase-426 W4 — ~~`adopt_executor_param_seed`~~ IS GONE, along with the store it
 // existed to reconcile.
 //
 // It re-read every launch-seeded parameter out of the EXECUTOR's store and
@@ -660,7 +660,7 @@ namespace detail {
 //
 // With one store there is nothing to reconcile: `declare_parameter` declares
 // into the store the seed was written to, finds the name already present, and
-// reads back the seeded value. The adoption is the FFI's `ALREADY_EXISTS`
+// reads back the seeded value. The adoption is the FFI's ALREADY_EXISTS
 // path, not a helper — and it is now one path rather than two that could
 // disagree.
 
@@ -815,8 +815,8 @@ namespace rclcpp {
 //
 // `parameters()` IS GONE (phase-426 W4). It handed out a reference to the node's
 // own `nros::ParameterServer`, described as the escape hatch for "the C-API
-// helpers that take an `nros_parameter_server_t*`" - and no such helper
-// existed: `nros_executor_register_parameter_services` takes the executor,
+// helpers that take an `rclc_parameter_server_t*`" - and no such helper
+// existed: ~~`nros_executor_register_parameter_services`~~ takes the executor,
 // never a standalone store. That class is deleted now too, so there is nothing
 // to return and nothing that took it. A node's parameters are reached through
 // `declare_parameter` / `get_parameter` / `set_parameter`, which name the store
@@ -1324,7 +1324,7 @@ create_subscription_dispatch(::rclcpp::Node& node, const char* topic, const ::rc
     //
     // This used to `make_shared` a `detail::SubscriptionCallback<M>` cell whose
     // only job was to give a capturing lambda a stable address, push it into
-    // `owned_entities` to keep it alive, and hand back a `shared_ptr` aliasing
+    // ~~`owned_entities`~~ to keep it alive, and hand back a `shared_ptr` aliasing
     // into it. W1 put the capture in the arena entry, so the cell has nothing
     // left to hold; W2 stops pretending the result is a pointer to an object.
     //
@@ -1482,7 +1482,7 @@ template <typename S, typename F, typename>
 inline typename Service<S>::SharedPtr Node::create_service(const char* name, F callback,
                                                            const ::rclcpp::QoS& qos) {
     // phase-456 W5 — the arena owns the server and (W3) the handler, so this
-    // allocates nothing and there is no cell to retain. The `owned_entities`
+    // allocates nothing and there is no cell to retain. The ~~`owned_entities`~~
     // push that used to stand here was LOAD-BEARING while the arena held
     // `&*s` — dropping the caller's pointer would have dangled it — and became
     // pure retention when W3 moved the context to the handler.
@@ -1585,7 +1585,7 @@ template <typename S, typename F, typename>
 inline typename Client<S>::SharedPtr Node::create_client(const char* name, F callback,
                                                          const ::rclcpp::QoS& qos) {
     // phase-456 W9 — the arena owns the client and (W3) the handler, so this
-    // allocates nothing and there is no cell to retain. The `owned_entities`
+    // allocates nothing and there is no cell to retain. The ~~`owned_entities`~~
     // push that used to stand here was LOAD-BEARING while the arena held
     // `&*c` — dropping the caller's pointer would have dangled it — and became
     // pure retention when W3 moved the context to the handler. Same removal W5
@@ -1842,7 +1842,7 @@ create_timer(NodeT&& node, ::rclcpp::Clock* clock, ::std::chrono::duration<Rep, 
 ///
 /// Re-declaring is not an error: a launch-seeded parameter is DECLARED before
 /// user code runs, and upstream's contract is that `declare` adopts the
-/// override. That adoption is now the store's own `ALREADY_EXISTS` answer
+/// override. That adoption is now the store's own ALREADY_EXISTS answer
 /// followed by the read-back below, rather than a helper that copied a value
 /// between two stores. On any other failure the code default is returned.
 
@@ -1984,7 +1984,7 @@ inline Result Node::describe_parameter(const char* name, ParameterDescriptor& ou
     out.description = description;
     out.additional_constraints = constraints;
 
-    // The range, read through whichever accessor the TYPE picks. `NOT_FOUND`
+    // The range, read through whichever accessor the TYPE picks. NOT_FOUND
     // from it means "no range", which is not a failure of `describe`.
     if (type == ::rclcpp::param_type::INTEGER) {
         out.has_range =

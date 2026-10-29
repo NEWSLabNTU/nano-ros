@@ -11,7 +11,7 @@
  * server)` answered 0 for every error, and the polling-tier `int32_t
  * nros_action_server_active_goal_count_raw(server)` doubled a negative return
  * as the error code. The `_raw` one survived a release as an
- * `NROS_DEPRECATED_MSG` `static inline` forwarder keeping its `int32_t`
+ * ~~`NROS_DEPRECATED_MSG`~~ `static inline` forwarder keeping its `int32_t`
  * tri-state; phase-417 stage 6 step B retired it.
  *
  * The callback-tier spelling never had a forwarder and could not have one: it
