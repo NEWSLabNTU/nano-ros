@@ -910,6 +910,10 @@ static size_t user_len_of_wire(size_t wire_total) {
 //
 // Bytes are written little-endian, which is what upstream's `memcpy` of the
 // two host-order words produces on every little-endian host.
+//
+// Issue 2136 — a client's reply is filled by the SAME rule (upstream's client
+// and server share `rmw_take_response_request`): the reply's header is the
+// echoed request header, and the sample info is the reply sample's.
 static void fill_service_info(const RequestId& id, const dds_sample_info_t& si,
                               rmw_service_info_t* out) {
     std::memset(out, 0, sizeof(*out));
@@ -1339,7 +1343,8 @@ rmw_ret_t service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t r
 
 static int32_t service_take_response_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
                                              size_t reply_buf_len, int64_t* seq_out,
-                                             size_t* refused) {
+                                             size_t* refused,
+                                             rmw_service_info_t* info_out = nullptr) {
     if (client == nullptr || client->backend_data == nullptr || reply_buf == nullptr) {
         return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     }
@@ -1383,7 +1388,8 @@ static int32_t service_take_response_raw_len(const rmw_client_t* client, uint8_t
     // `take_serialized` is on the subscription side.
     uint8_t wire_rep[kWireScratch];
     size_t wire_total = 0;
-    int32_t wlen = take_typed_wire(state->reader, wire_rep, sizeof(wire_rep), &wire_total);
+    dds_sample_info_t si{};
+    int32_t wlen = take_typed_wire(state->reader, wire_rep, sizeof(wire_rep), &wire_total, &si);
     if (wire_is_status(wlen) && wire_status_code(wlen) == NROS_RMW_RET_BUFFER_TOO_SMALL) {
         *refused = user_len_of_wire(wire_total);
     }
@@ -1400,6 +1406,13 @@ static int32_t service_take_response_raw_len(const rmw_client_t* client, uint8_t
     // different in-flight call" — the other half of the abandon.
     if (got_id.guid == state->my_guid && release_outstanding(state, got_id.seq)) {
         if (seq_out != nullptr) *seq_out = got_id.seq;
+        // Issue 2136 — the reply's `rmw_service_info_t`, the way stock
+        // `rmw_cyclonedds_cpp` fills it on a client (`rmw_take_response`
+        // shares `rmw_take_response_request` with the server): the reply's
+        // echoed request header (this client's guid and the request's seq)
+        // and the reply sample's publication handle and source timestamp. No
+        // received timestamp in Cyclone 0.10.
+        if (info_out != nullptr) fill_service_info(got_id, si, info_out);
         return user_len;
     }
     // Genuinely not ours: another client's guid, or a late reply to a call we
@@ -1414,8 +1427,9 @@ static int32_t service_take_response_raw_len(const rmw_client_t* client, uint8_t
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t* reply,
-                                int64_t* seq_out, bool* taken) {
+static rmw_ret_t service_take_response_impl(const rmw_client_t* client,
+                                            rmw_mut_byte_span_t* reply, int64_t* seq_out,
+                                            bool* taken, rmw_service_info_t* info_out) {
     if (reply == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -1426,7 +1440,8 @@ rmw_ret_t service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t*
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     size_t refused = NROS_RMW_TAKE_LEN_UNKNOWN;
-    int32_t n = service_take_response_raw_len(client, reply_buf, reply_buf_len, seq_out, &refused);
+    int32_t n = service_take_response_raw_len(client, reply_buf, reply_buf_len, seq_out, &refused,
+                                              info_out);
     if (wire_is_status(n)) {
         const rmw_ret_t st = wire_status_code(n);
         // Issue 1632 — the size the refused reply needed.
@@ -1442,6 +1457,20 @@ rmw_ret_t service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t*
     *out_len = (size_t)n;
     *taken = true;
     return NROS_RMW_RET_OK;
+}
+
+rmw_ret_t service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t* reply,
+                                int64_t* seq_out, bool* taken) {
+    return service_take_response_impl(client, reply, seq_out, taken, nullptr);
+}
+
+/* Issue 2136 — `take_response` plus the reply's `rmw_service_info_t`, written
+ * only when a reply was taken (`fill_service_info`). */
+rmw_ret_t service_take_response_with_info(const rmw_client_t* client,
+                                          rmw_mut_byte_span_t* reply, int64_t* seq_out,
+                                          bool* taken, rmw_service_info_t* service_info) {
+    if (service_info == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    return service_take_response_impl(client, reply, seq_out, taken, service_info);
 }
 
 /* phase-393 W1 (issue 0823) — the four DDS entities behind a client or a

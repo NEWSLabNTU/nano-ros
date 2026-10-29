@@ -1529,7 +1529,7 @@ impl Session for InfoSession {
     type PublisherHandle = NoopPublisher;
     type SubscriptionHandle = NoopSubscriber;
     type ServiceHandle = InfoServer;
-    type ClientHandle = NoopClient;
+    type ClientHandle = InfoClient;
 
     fn create_publisher(
         &mut self,
@@ -1560,7 +1560,10 @@ impl Session for InfoSession {
         _service: &ServiceInfo,
         _qos: QoSProfile,
     ) -> Result<Self::ClientHandle, Self::Error> {
-        Ok(NoopClient)
+        Ok(InfoClient {
+            taken: 0,
+            info: nros_rmw::ServiceRequestInfo::NOT_REPORTED,
+        })
     }
     fn close(&mut self) -> Result<(), Self::Error> {
         Ok(())
@@ -1638,5 +1641,86 @@ fn a_rust_backends_request_info_crosses_the_seam() {
     );
 
     drop(server);
+    let _ = Session::close(&mut session);
+}
+
+// ----------------------------------------------------------------------------
+// Issue 2136 — a Rust backend's per-REPLY `ServiceInfo` crosses the seam too,
+// through the adapter's `take_response_with_info` trampoline (no side table:
+// the slot has a struct to write).
+// ----------------------------------------------------------------------------
+
+struct InfoClient {
+    taken: u32,
+    info: nros_rmw::ServiceRequestInfo,
+}
+
+/// What `InfoClient` reports for its FIRST reply; the second reports nothing.
+const SEAM_RESPONSE_INFO: nros_rmw::ServiceRequestInfo = nros_rmw::ServiceRequestInfo {
+    source_timestamp: Some(nros_rmw::Time::new(91, 7)),
+    received_timestamp: Some(nros_rmw::Time::new(92, 8)),
+    request_id: Some(nros_rmw::RequestId {
+        writer_guid: [0xC3; nros_rmw::REQUEST_WRITER_GUID_SIZE],
+        sequence_number: 1,
+    }),
+};
+
+impl ClientTrait for InfoClient {
+    type Error = TransportError;
+    fn send_request_raw(&mut self, _data: &[u8]) -> Result<i64, Self::Error> {
+        Ok(1)
+    }
+    fn take_response_raw(&mut self, buf: &mut [u8]) -> Result<Option<(usize, i64)>, Self::Error> {
+        self.taken += 1;
+        self.info = if self.taken == 1 {
+            SEAM_RESPONSE_INFO
+        } else {
+            nros_rmw::ServiceRequestInfo::NOT_REPORTED
+        };
+        buf[0] = 0xCD;
+        Ok(Some((1, i64::from(self.taken))))
+    }
+    fn response_info(&self) -> nros_rmw::ServiceRequestInfo {
+        self.info
+    }
+}
+
+#[test]
+fn a_rust_backends_response_info_crosses_the_seam() {
+    // SAFETY: NUL-terminated literal; registration is idempotent.
+    let rc = unsafe { RustBackendAdapter::<InfoRmw>::register_named(c"cli-info-seam".as_ptr()) };
+    assert_eq!(rc, NROS_RMW_RET_OK, "register_named");
+    let config = RmwConfig {
+        locator: "tcp/127.0.0.1:7447",
+        mode: nros_rmw::SessionMode::Client,
+        domain_id: 0,
+        node_name: "probe",
+        namespace: "",
+        properties: &[],
+    };
+    let mut session = CffiRmw::open_with_rmw("cli-info-seam", &config).expect("open_with_rmw");
+    let descriptor = ServiceInfo::new("/cli_info", "T", "H");
+    let mut client = session
+        .create_client(&descriptor, QoSProfile::services_default())
+        .expect("create_client");
+
+    assert_eq!(
+        client.response_info(),
+        nros_rmw::ServiceRequestInfo::NOT_REPORTED
+    );
+
+    let mut buf = [0u8; 16];
+    assert_eq!(client.take_response_raw(&mut buf).unwrap(), Some((1, 1)));
+    assert_eq!(buf[0], 0xCD);
+    assert_eq!(client.response_info(), SEAM_RESPONSE_INFO);
+
+    // The second reply reported nothing: NOT_REPORTED, not the first's.
+    assert_eq!(client.take_response_raw(&mut buf).unwrap(), Some((1, 2)));
+    assert_eq!(
+        client.response_info(),
+        nros_rmw::ServiceRequestInfo::NOT_REPORTED
+    );
+
+    drop(client);
     let _ = Session::close(&mut session);
 }
