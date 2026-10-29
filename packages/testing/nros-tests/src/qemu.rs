@@ -178,6 +178,18 @@ pub fn is_qemu_riscv32_virt_available() -> bool {
     qemu_system_has_machine("qemu-system-riscv32", "virt")
 }
 
+/// Whether the Zephyr `qemu_cortex_a53` SMP boot can run: its binary
+/// (`qemu-system-aarch64` through [`qemu_system_path`]) with the `virt`
+/// machine.
+///
+/// Issue 2113 — the `[tool.qemu]` store build targets arm and riscv64 only, so
+/// this binary comes from the `qemu-system-aarch64` prereq (apt's
+/// `qemu-system-arm` package ships it). Without one the boot used to die as a
+/// bare ENOENT at spawn, naming no tool.
+pub fn is_qemu_aarch64_virt_available() -> bool {
+    qemu_system_has_machine("qemu-system-aarch64", "virt")
+}
+
 /// `qemu-system-arm` through [`qemu_system_path`].
 pub fn qemu_system_arm_path() -> std::ffi::OsString {
     qemu_system_path("qemu-system-arm")
