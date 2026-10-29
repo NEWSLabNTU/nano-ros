@@ -84,6 +84,12 @@ nuttx-riscv: (platform "nuttx-riscv")
 [group("main")]
 zephyr: (platform "zephyr")
 
+# phase-517 W4: not a platform chapter, but it rides the same harness. One bare
+# `nros setup` for a Linux and a FreeRTOS image, then `nros build --all`.
+# book/src/getting-started/installation.md — "Provision a whole workspace".
+[group("main")]
+workspace: (platform "workspace")
+
 # Same probe on a NON-Debian, NON-bash host (issue 0373). The book's install
 # path was only ever exercised on ubuntu+bash, which is how an apt-only prereq
 # block, a `just` contradiction, an unactionable ROS warning and a zsh-fatal

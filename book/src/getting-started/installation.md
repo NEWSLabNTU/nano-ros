@@ -323,12 +323,29 @@ it in the SDK store the configure stops and names this command.
 
 Once you have a workspace, you do not need to name its boards. Run
 `nros setup` with no board at the workspace root (the directory that
-holds `src/`), or pass `--workspace <dir>`:
+holds `src/`), or pass `--workspace <dir>`. `nros setup --dry-run`
+prints the plan without fetching anything.
 
-```bash
-cd my_ws
-nros setup --dry-run   # the plan: every image's board and RMW, then the OS packages
-nros setup             # provision it
+For example, a Rust workspace with a Linux image and a FreeRTOS image,
+both on zenoh:
+
+```bash probe=30 track=installed variant=workspace
+nros new two_ws --workspace --lang rust --rmw zenoh
+cd two_ws
+nros new --image freertos --board mps2-an385-freertos   # adds [image.freertos]
+```
+
+One `nros setup` provisions both boards:
+
+```bash probe=40 track=installed variant=workspace
+nros setup
+```
+
+Then every image builds, with nothing else to install:
+
+```bash probe=50 track=installed variant=workspace
+nros sync
+nros build --all
 ```
 
 It reads every `system.toml` in the workspace and provisions each

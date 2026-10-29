@@ -47,7 +47,8 @@
 #   PROBE_PLATFORM   installed track: which chapter is replayed after the
 #                    install — linux (default, first-project.md) | baremetal |
 #                    freertos | threadx-linux | threadx-riscv64 | nuttx-arm | nuttx-riscv |
-#                    zephyr (phase-517 W10; see the case table below)
+#                    zephyr (phase-517 W10) | workspace (installation.md's
+#                    two-image workspace run, phase-517 W4; see the case table below)
 #   PROBE_EXTRACT_ONLY=<path>  extract the probe script to <path> and exit
 #                    (drift check — no docker, no execution)
 #
@@ -156,17 +157,23 @@ case "$PROBE_PLATFORM" in
     nuttx-arm)       PLATFORM_CHAPTER=book/src/getting-started/integration-nuttx.md; PROBE_VARIANT=arm ;;
     nuttx-riscv)     PLATFORM_CHAPTER=book/src/getting-started/integration-nuttx.md; PROBE_VARIANT=riscv ;;
     zephyr)          PLATFORM_CHAPTER=book/src/getting-started/integration-zephyr.md; PROBE_VARIANT=native-sim ;;
-    *) echo "probe: unknown PROBE_PLATFORM '$PROBE_PLATFORM' (want linux|baremetal|freertos|threadx-linux|threadx-riscv64|nuttx-arm|nuttx-riscv|zephyr)" >&2; exit 2 ;;
+    # phase-517 W4 — not a platform: installation.md's "Provision a whole
+    # workspace" run, one bare `nros setup` for a Linux and a FreeRTOS image,
+    # then `nros build --all` with nothing else installed.
+    workspace)       PLATFORM_CHAPTER=book/src/getting-started/installation.md; PROBE_VARIANT=workspace ;;
+    *) echo "probe: unknown PROBE_PLATFORM '$PROBE_PLATFORM' (want linux|baremetal|freertos|threadx-linux|threadx-riscv64|nuttx-arm|nuttx-riscv|zephyr|workspace)" >&2; exit 2 ;;
 esac
 if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
     echo "probe: PROBE_PLATFORM=$PROBE_PLATFORM is an installed-track chapter (user chapters have no checkout track — phase-517 W2)" >&2
     exit 2
 fi
 if [[ "$PROBE_TRACK" = "installed" ]]; then
-    CHAPTERS=(
-        book/src/getting-started/installation.md
-        "$PLATFORM_CHAPTER"
-    )
+    CHAPTERS=(book/src/getting-started/installation.md)
+    # The workspace run lives IN installation.md; listing it twice would
+    # extract every step twice.
+    if [[ "$PLATFORM_CHAPTER" != "${CHAPTERS[0]}" ]]; then
+        CHAPTERS+=("$PLATFORM_CHAPTER")
+    fi
     PROBE_RMW="cyclonedds"
     VERIFIER="verify-installed-first-project.sh"
     BOOK_TRACK=installed
@@ -186,7 +193,9 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         # which the probe runs as written; installation.md's generic
         # `nros setup <board>` line is the one step that chapter replaces.
         SETUP_SUBST=": the $PROBE_PLATFORM chapter provisions its own board, in its own setup step"
+        [[ "$PROBE_PLATFORM" = workspace ]] && SETUP_SUBST=": the workspace run provisions every image with one bare nros setup"
         VERIFIER="verify-installed-platform.sh"
+        [[ "$PROBE_PLATFORM" = workspace ]] && VERIFIER="verify-installed-workspace.sh"
         # The QEMU chapters dial ROS's `rmw_zenohd` (RFC-0075: nano-ros ships
         # no router), so the reader they describe has a ROS 2 install. The
         # user container is that host: the release's own base plus ROS — the
