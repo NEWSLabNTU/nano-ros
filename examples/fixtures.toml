@@ -2071,6 +2071,17 @@ rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/service-info-server"
 image = "linux_xrce"
 
+# issue 2136 — a service CLIENT's `take_response_with_info`, measured against
+# a stock `rmw_zenoh_cpp` server (`interop_e2e::interop::case_11_zenoh_service_
+# response_info`). A bin, not the service-client example: the Node API hands a
+# reply to its callback without its ServiceInfo.
+[[fixture]]
+id = "service-info-client-zenoh"
+platform = "linux"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/service-info-client"
+image = "linux"
+
 # issue 0466 — native rust CycloneDDS talker/listener. These two are consumed by
 # `test_native_cyclonedds_rust_talker_to_listener` /
 # `..._talker_to_rust_listener` (tests/linux_api.rs, via

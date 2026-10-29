@@ -326,12 +326,13 @@ issue = "2088"
 
 [[verdict]]
 cell = "native-service-rust-zenoh-r2n"
-date = "2026-09-07"
+date = "2026-10-29"
 verdict = "pass"
-tests = ["interop::case_04_zenoh_service_nano_server", "interop::case_05_zenoh_service_ros2_server"]
+tests = ["interop::case_04_zenoh_service_nano_server", "interop::case_05_zenoh_service_ros2_server", "interop::case_11_zenoh_service_response_info"]
 run = "cargo nextest run -p nros-tests --test interop_e2e"
-where = "ros2 distrobox, Humble, tree with #684 + #692"
-evidence = "2 case(s) produced a result in interop_e2e.xml"
+where = "ros2 distrobox, Humble, tree with issue 2136's service-info-client"
+evidence = "3 case(s) produced a result in junit.xml"
+issue = "2136"
 
 [[verdict]]
 cell = "native-slirp-pubsub-cpp-cyclone-n2r"

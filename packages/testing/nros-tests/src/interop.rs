@@ -787,7 +787,7 @@ const fn unowned(test: &'static str, case: &'static str, reason: &'static str) -
 /// the moment the map becomes necessary.
 #[rustfmt::skip]
 pub const CASE_CELLS: &[CaseOwner] = &[
-    // ── interop_e2e — five cells, nine cases ────────────────────────────
+    // ── interop_e2e — five cells, eleven cases ────────────────────────────
     // Each row is `scenario_coord()`'s answer for that case's `Scenario`
     // (tests/interop_e2e.rs), and those five coordinates are distinct, so the
     // assignment is the one the per-case tripwire already asserts — written
@@ -806,6 +806,9 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     // phase-516 W1c — a ros2 flood through the router rule to the nano
     // listener: ROS-2-to-nano on the pubsub cell, like case_02.
     co("interop_e2e", "interop::case_10_zenoh_pubsub_router_downsampling", "native-pubsub-rust-zenoh-n2r"),
+    // issue 2136 — a stock rmw_zenoh_cpp server answering the nano client,
+    // which asserts each reply's `ServiceInfo` (`take_response_with_info`).
+    co("interop_e2e", "interop::case_11_zenoh_service_response_info",     "native-service-rust-zenoh-r2n"),
 
     // ── pubsub_freertos_an536_cyclone_ros2_interop_e2e — phase-441 W6 ───
     // The talker cell and the fragmented-sample listener (issue 0917): one

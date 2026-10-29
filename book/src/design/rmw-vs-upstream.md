@@ -798,6 +798,7 @@ are evidence for what the protocol allows.
 | per-entity new-data callbacks | `subscription_set_on_new_message_callback`, `service_set_on_new_request_callback`, `client_set_on_new_response_callback` | **filled** ([issue 2109](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2109-xrce-per-entity-new-data-callbacks.md)) | every arrival callback names its entity (`uxrObjectId`), so the registered callback fires from inside `drive_io`, once per takeable arrival with 1, under the session lock (a replaced, cleared or destroyed registration never fires again). Measured live: an arrival through the Agent marks its own subscription's ready bit and no other | UNSUPPORTED |
 | take with info | `take_with_info` | **filled** (issue 2135), receive time only | `uxrOnTopicFunc` carries no writer GUID and no source timestamp, so those stay "not reported"; `received_timestamp` is a local fact upstream also stamps locally (`system_clock::now()` in `rmw_zenoh_cpp`), so the topic callback stamps it on the platform wall clock | ignores `message_info` |
 | request info | `take_request_with_info` | **filled** | `uxrOnRequestFunc` DOES carry the request's `SampleIdentity` (issue 2081, measured live in issue 2088) | fills the request id |
+| response info | `take_response_with_info` | **filled** (issue 2136), receive time only | `uxrOnReplyFunc` names the reply's request by the client's own request id, not by a `SampleIdentity`: the request writer is the Agent's, so its GUID never reaches the client and the request id stays "not reported" (its sequence number is reported, and is what the runtime matched the reply on); no source timestamp; the reply callback stamps `received_timestamp` | fills the sequence number only |
 | identity | `get_gid_for_publisher`, `get_gid_for_client` | **filled** ([issue 2110](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2110-xrce-gid-for-publisher-and-client.md)) | the protocol hands back no GUID, but `src/graph.c` derives each tracked endpoint's DDS GID (probe + Fast-DDS entity counter, issue 1292) and lists it in `ros_discovery_info`; the slots answer that GID (a client's is its request writer, the GUID a server reads in the request id), UNSUPPORTED for an endpoint it could not key. Measured live against `ros2 topic info --verbose` | copies the XRCE object id into the gid (matches no DDS GID) |
 | server availability | `service_server_is_available` | protocol cannot | needs matched-replier state the Agent keeps; a `create_requester` ack says only that the client's own endpoints exist (see `vtable.c`) | UNSUPPORTED |
 | loans | `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`, `take_loaned_message`, `return_loaned_message_from_subscription`, `take_loaned_message_with_info` | protocol cannot (in the loan's shape) | a stream buffer is reused by the next `uxr_run_session_*`, so it cannot back a view that outlives the call; the zero-copy capability ships as `publish_streamed` and `process_raw_in_place` instead | UNSUPPORTED |
@@ -953,7 +954,7 @@ publication *handle* in `message_info.publisher_gid`, not the writer
 GUID it reports everywhere else, so its take-side gid matches no gid
 query. Ours reports the GUID.
 
-### Service request info: a sibling slot, server side only (issue 2081)
+### Service info: a sibling slot on each side (issues 2081, 2136)
 
 Upstream's `rmw_take_request` fills an `rmw_service_info_t` beside the
 request: the client's `request_id` (writer GUID + the sequence number that
@@ -988,9 +989,7 @@ request id, timestamp 0 = not stamped), and the runtime turns each zero into
 `received_timestamp` is the server's own wall clock
 (`nros_platform_time_now_ns`) when the request arrived, which is what
 `rmw_zenoh_cpp` stamps (`system_clock::now()` when the query arrives); it
-is zero on a platform with no wall clock. The client side's response info
-has no slot at all (`take_response` returns the sequence number only), so a
-client sees neither timestamp.
+is zero on a platform with no wall clock.
 
 What an application sees:
 
@@ -1017,12 +1016,41 @@ What an application sees:
   request header; the two-argument handler does not. As in C, the
   timestamps are not surfaced.
 
-**The client side gets none of this.** `take_response` returns the reply
-bytes and the `sequence_id` that `send_request` handed out, which is what the
-runtime matches a reply against (issue 0778). There is no
-`take_response_with_info` slot, no backend reports the reply's timestamps or
-the server's identity, and no client API surfaces them — upstream
-`rmw_take_response`'s `request_header` has no counterpart.
+**The client side has the same split (issue 2136).** `take_response`
+returns the reply bytes and the `sequence_id` that `send_request` handed
+out, which is what the runtime matches a reply against (issue 0778).
+**`take_response_with_info`** (optional, appended) is the same take plus a
+caller-owned `rmw_service_info_t *` — upstream `rmw_take_response`'s
+`request_header`. Its fields mean what a client's mean upstream: the
+`request_id` the reply answers (this client's request-writer GUID and the
+sequence number of its request), the SERVER's clock when it sent the reply,
+and this client's clock when the reply arrived.
+
+| backend | `request_id` | `source_timestamp` | `received_timestamp` |
+| --- | --- | --- | --- |
+| zenoh-pico | from the reply attachment (`rmw_zenoh_cpp` layout: the client's gid and sequence number) | from the attachment — the replier's send time; our server restamps the request attachment it echoes | stamped by the reply callback, as `rmw_zenoh_cpp`'s `ZenohReply` is |
+| Cyclone DDS | the echoed request header's GUID + the reply sample's publication handle, header sequence (stock `rmw_cyclonedds_cpp`, which shares one take for both sides) | the reply sample's source timestamp | not reported — Cyclone 0.10 has no reception time |
+| XRCE-DDS | not reported — the Agent owns the request writer, so its GUID never reaches the client (the sequence number is still matched on) | not reported | stamped by the reply callback |
+| uORB | — | — | — |
+
+What an application sees on the client side:
+
+- **Rust.** `Promise::take_with_info()` / `wait_with_info()` return the
+  reply with its `nros::ServiceInfo` — rclrs's
+  `client.call::<_, (Response, ServiceInfo)>(..)`, every field an `Option`:
+  ```rust
+  let mut promise = client.call(&request)?;
+  let (reply, info) = promise.wait_with_info(&mut executor, timeout)?;
+  if let (Some(sent), Some(got)) = (info.source_timestamp, info.received_timestamp) {
+      log::info!("reply took {} ns on the wire", got.to_nanos() - sent.to_nanos());
+  }
+  ```
+- **C.** `rclc_executor_add_client_with_request_id` passes the callback an
+  `rmw_request_id_t *`, rclc's shape: the sequence number the reply was
+  matched on, and the writer GUID where the backend reports it. The
+  timestamps are not surfaced in C.
+- **C++.** Not surfaced yet: the rclcpp client has no `take_response`
+  family to carry a request header (tracked as issue 2148).
 
 ## See also
 

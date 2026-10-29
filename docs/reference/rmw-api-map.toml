@@ -431,6 +431,9 @@ reason = "decomposed (issue 2081): `take_request` carries the payload and the re
 [rmw_take_response]
 where = "vtable"
 nano = "take_response"
+status = "re-mapped"
+answers = ["take_response", "take_response_with_info"]
+reason = "decomposed (issue 2136), the client twin of `rmw_take_request`: `take_response` carries the reply and the `sequence_id` the runtime matches it on; `take_response_with_info` carries the same take plus upstream's `rmw_service_info_t` (the request id it answers, the reply's timestamps). The runtime takes through the second whenever a backend fills it."
 
 [rmw_take_sequence]
 where = "vtable"
@@ -614,12 +617,19 @@ Cyclone 0.10 has no reception time and reports none. A field not reported is zer
 [[arg_rule]]
 match = "rmw_service_info_t"
 symbols = ["rmw_take_response"]
-title = "the sequence number only — no service info on the client side"
+title = "the sequence number beside, the metadata in a sibling slot"
 why = """`take_response` returns only `int64_t *seq_out`, the `sequence_id` \
 `send_request` handed out, which is what the runtime matches a reply against (issue \
-0778). Nothing else from upstream's `rmw_service_info_t` crosses on the client side: \
-there is no `take_response_with_info` slot, no backend reports the reply's timestamps \
-or the server's identity, and no client API surfaces them."""
+0778). The rest of upstream's `rmw_service_info_t` — the `request_id` the reply answers \
+(this client's request-writer GUID and its sequence number), the server's send time and \
+the client's receive time — is carried by the sibling slot `take_response_with_info` \
+(issue 2136), caller-owned and field for field. The runtime dispatches through it \
+whenever a backend fills it: zenoh reports all three (the reply attachment and the reply \
+callback's wall-clock stamp, as `rmw_zenoh_cpp`); Cyclone DDS `request_id` and \
+`source_timestamp` (stock `rmw_cyclonedds_cpp`'s layout; 0.10 has no reception time); \
+XRCE-DDS `received_timestamp` only, because the Agent owns the request writer and its GUID \
+never reaches the client. Rust reads it through `Promise::take_with_info`, C through \
+`rclc_executor_add_client_with_request_id`. A field not reported is zero."""
 
 [[arg_rule]]
 match = "rmw_request_id_t"

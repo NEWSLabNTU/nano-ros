@@ -52,6 +52,7 @@ use nros_tests::{
         Ros2Process, ZenohRouter, build_native_c_example_rmw, build_ros2_string_interop,
         lifecycle_node_binary, listener_binary, require_ros2, require_ros2_cyclonedds,
         ros2_env_setup_with_locator, service_client_binary, service_server_binary, talker_binary,
+        zenoh_service_info_client_binary,
     },
     matrix::{Lang, PlatformId, Rmw, Workload},
     output, unmet,
@@ -100,6 +101,10 @@ enum Scenario {
     /// without the `downsampling` rule the listener's declared ingress lowers
     /// to (phase-516 W1c, RFC-0074 enforcement point 1).
     ZenohRouterDownsampling,
+    /// zenoh: a stock `rmw_zenoh_cpp` (rclpy) AddTwoInts server answers the
+    /// nano `service-info-client`, which reports each reply's `ServiceInfo`
+    /// (issue 2136, `take_response_with_info`).
+    ZenohServiceResponseInfo,
 }
 
 impl Scenario {
@@ -137,7 +142,7 @@ fn scenario_coord(s: Scenario) -> (PlatformId, Lang, Rmw, Workload) {
         | ZenohPubsubRos2ToNano
         | ZenohPubsubStockDemoToNano
         | ZenohRouterDownsampling => (Lang::Rust, Rmw::Zenoh, Workload::Pubsub),
-        ZenohServiceNanoServer | ZenohServiceRos2Server => {
+        ZenohServiceNanoServer | ZenohServiceRos2Server | ZenohServiceResponseInfo => {
             (Lang::Rust, Rmw::Zenoh, Workload::Service)
         }
         CyclonePubsubNanoToRos2 | CyclonePubsubRos2ToNano => {
@@ -399,6 +404,12 @@ fn flood_count(router: &ZenohRouter, note: &str) -> usize {
     note: "phase-516 W1c: the router rule a declared `ingress` lowers to drops a \
            ros2 flood to the declared rate before the nano subscriber decodes it; \
            the same flood without the rule is the negative control",
+})]
+#[case::zenoh_service_response_info(Cell {
+    scenario: Scenario::ZenohServiceResponseInfo,
+    note: "issue 2136: the nano client reads each stock reply's rmw_service_info_t \
+           (its own request id from the reply attachment, the server's send stamp, \
+           its own receive stamp) through take_response_with_info",
 })]
 fn interop(#[case] cell: Cell) {
     // Issue 0352 / phase-324 W4.d — per-case binding: the coordinate this case
@@ -723,6 +734,87 @@ fn interop(#[case] cell: Cell) {
                 0,
                 "a request went out before the server was discoverable.\nnano output:\n{out}"
             );
+        }
+
+        // ── zenoh service: ros2 server → nano client's response info ─────
+        Scenario::ZenohServiceResponseInfo => {
+            let wall_ns = || {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("wall clock after 1970")
+                    .as_nanos() as i64
+            };
+            let router = start_zenoh_router();
+            let locator = router.locator();
+            let mut ros2_server =
+                match Ros2Process::add_two_ints_server(&locator, DEFAULT_ROS_DISTRO) {
+                    Ok(p) => p,
+                    Err(e) => unmet!("ROS 2 service server could not start: {e}"),
+                };
+            let started_ns = wall_ns();
+            let mut client = spawn_nano_zenoh(
+                &zenoh_service_info_client_binary(),
+                "service-info-client",
+                &locator,
+            );
+            let out =
+                client.collect_until(output::RESPONSE_INFO_DONE_MARKER, Duration::from_secs(40));
+            let finished_ns = wall_ns();
+            ros2_server.kill();
+            client.kill();
+
+            // The stock server copies the request attachment's sequence number
+            // and gid into its reply and stamps its own send time
+            // (`rmw_zenoh_cpp` `send_response`), so each reply names THIS
+            // client's request: one non-zero gid across replies, sequence
+            // numbers 1..=n in order, and a source stamp that is the server's
+            // (inside the run) with the client's receive stamp after it.
+            let lines: Vec<&str> = out
+                .lines()
+                .filter_map(|l| l.find(output::RESPONSE_INFO_LOG_PREFIX).map(|i| &l[i..]))
+                .collect();
+            assert!(
+                lines.len() >= 3,
+                "expected 3 `{}` lines from the nano client ({}); a reply whose backend \
+                 reported no request id prints `RESPONSE_INFO ABSENT`.\nnano output:\n{out}",
+                output::RESPONSE_INFO_LOG_PREFIX,
+                cell.note
+            );
+            let field = |line: &str, key: &str| -> String {
+                line.split_whitespace()
+                    .find_map(|t| t.strip_prefix(key))
+                    .unwrap_or_else(|| panic!("`{key}` missing from `{line}`"))
+                    .to_string()
+            };
+            for line in &lines {
+                eprintln!("measured: {line}");
+            }
+            let guid0 = field(lines[0], "guid=");
+            assert!(
+                guid0.len() == 32 && guid0 != "0".repeat(32),
+                "the reply's request id must carry the client's 16-byte gid, got `{guid0}`"
+            );
+            for (i, line) in lines.iter().take(3).enumerate() {
+                assert_eq!(field(line, "guid="), guid0, "one client, one gid: `{line}`");
+                assert_eq!(
+                    field(line, "seq="),
+                    (i + 1).to_string(),
+                    "the reply answers the client's request #{}: `{line}`",
+                    i + 1
+                );
+                assert_eq!(field(line, "sum="), (i as i64 + 10).to_string(), "`{line}`");
+                let source: i64 = field(line, "source_ts=")
+                    .parse()
+                    .unwrap_or_else(|_| panic!("source_ts not reported: `{line}`"));
+                let received: i64 = field(line, "received_ts=")
+                    .parse()
+                    .unwrap_or_else(|_| panic!("received_ts not reported: `{line}`"));
+                assert!(
+                    started_ns <= source && source <= received && received <= finished_ns,
+                    "stamps out of order or outside the run [{started_ns}, {finished_ns}]: \
+                     source {source}, received {received} — `{line}`"
+                );
+            }
         }
 
         // ── cyclone pubsub: nano talker → ros2 topic echo ────────────────
