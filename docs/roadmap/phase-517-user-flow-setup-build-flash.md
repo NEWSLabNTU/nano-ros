@@ -1166,6 +1166,23 @@ retry policy.
 started after it (a test that starts the router second), and its W10 track
 stays green.
 
+**Done (2026-10-29).** The premise was half right: every board, ThreadX
+included, already opens through ONE bounded retry
+(`nros-rmw-zenoh`'s `Context::connect_with_retry`, 10 attempts 300 ms apart).
+What ThreadX lacked was the wait. Its backoff was `zpico_spin_once` on the
+session being opened, which returns `ZPICO_ERR_SESSION` at once on a session
+that is not open, so the ten attempts ran back to back and the ~3 s budget
+became the 0.13 s the sweep saw. ThreadX has had a real `z_sleep_ms`
+(`tx_thread_sleep`) since the platform alias TU, so the backoff and the open
+lock's wait are now the platform sleep on every platform and the ThreadX
+special case is deleted. That fixes the ThreadX riscv64 QEMU board too, which
+shares the code. New cell `test_rtos_session_open_outlasts_a_late_router`
+(`rtos_e2e`, threadx-linux) leases the listener image's baked router port,
+starts the image, waits 1 s, then starts the router. Measured: it fails 3/3
+before the fix (`Executor::open failed: Transport(ConnectionFailed)`) and
+passes 5/5 after it in about 2.4 s. The threadx-linux Rust pub/sub, service
+and action cells still pass. The W10 track itself was not re-run here.
+
 ### W16 — cut the next release; prove the project pin (maintainer dispatch, then S)
 
 **Decision.** The next release is cut after W12–W15 land on `main`, so it

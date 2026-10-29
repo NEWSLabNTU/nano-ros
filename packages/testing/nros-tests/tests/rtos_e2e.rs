@@ -1363,6 +1363,81 @@ fn test_rtos_quiet_link_keeps_its_session(
     );
 }
 
+/// How long the image runs with NO router before this cell starts one.
+///
+/// Above the 0.13 s a collapsed retry used to last (phase-517 W15: ten connect
+/// attempts back to back, because the ThreadX backoff was a `zpico_spin_once`
+/// on a session not yet open), and well inside the bounded ~3 s budget
+/// `connect_with_retry` grants (`10 x 300 ms`) minus a router start.
+const LATE_ROUTER_DELAY: Duration = Duration::from_millis(1000);
+
+/// phase-517 W15 — the image comes up FIRST and the router SECOND, and the
+/// image still connects.
+///
+/// Every other cell starts the router before the image, so none of them can
+/// see whether the session open retries at all: on threadx-linux it did not,
+/// in effect, and an image started a moment before its router failed with
+/// `zpico Session -> ConnectionFailed` 0.13 s in. The QEMU boards hide the same
+/// defect behind a cold boot that outlasts any router start. This is the
+/// ordering a user hits by hand (`nros run` in one terminal, the router in
+/// another).
+///
+/// The router port is the listener image's baked one, so it is LEASED for the
+/// whole cell before the image starts: otherwise the image could reach a
+/// concurrent cell's router on the same port and pass without retrying.
+#[rstest]
+fn test_rtos_session_open_outlasts_a_late_router(
+    #[values(Platform::ThreadxLinux)] platform: Platform,
+) {
+    let lang = Lang::Rust;
+    require_cell_runnable(platform, lang, Variant::Pubsub);
+    let (_talker_bin, listener_bin) = build_pair(platform, lang, Variant::Pubsub);
+
+    let port = platform.zenohd_port_for(Variant::Pubsub, lang);
+    let _lease = nros_tests::port_lease::wait_for_port(
+        nros_tests::port_lease::Transport::Tcp,
+        port,
+        Duration::from_secs(240),
+    )
+    .unwrap_or_else(|e| panic!("{platform} late router: cannot lease port {port}: {e}"));
+    assert!(
+        std::net::TcpStream::connect(("127.0.0.1", port)).is_err(),
+        "{platform} late router: something already listens on port {port} although this \
+         cell holds its lease — an orphaned router from a killed run. This cell would \
+         connect to it and prove nothing; stop it and re-run."
+    );
+
+    let mut listener = platform
+        .start_process(listener_bin, 1, "late-router-listener", lang)
+        .expect("Failed to start listener");
+    let early = listener.collect_until("\u{0}never printed\u{0}", LATE_ROUTER_DELAY);
+
+    // `ZenohRouter` sees this process already holds the port and takes no
+    // second lease (`port_lease::wait_for_port` -> `Ok(None)`).
+    let zenohd = platform
+        .zenoh_router_start(Variant::Pubsub, lang, None)
+        .expect("Failed to start zenohd");
+
+    let ready_marker = listener_ready_marker(platform, lang);
+    let boot = listener.collect_until(ready_marker, boot_budget(platform));
+    let listener_cmd = listener.command_line();
+    listener.kill();
+    let output = format!("{early}{boot}");
+    assert!(
+        output.contains(ready_marker),
+        "{platform} late router: the image started {LATE_ROUTER_DELAY:?} before its router \
+         and never reported `{ready_marker}` — its session open did not outlast the gap, \
+         so it is not retrying (or its backoff does not sleep; phase-517 W15).\n\
+         Router:   {} (port {})\n\
+         Listener: {}\n\
+         Listener output:\n{}",
+        zenohd.launch_line(),
+        zenohd.port(),
+        listener_cmd,
+        output,
+    );
+}
+
 #[rstest]
 fn test_rtos_service_e2e(
     #[values(
