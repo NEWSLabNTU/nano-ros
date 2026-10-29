@@ -280,8 +280,8 @@ static const nros_rmw_vtable_t kVtable = {
 
 rmw_ret_t nros_rmw_xrce_register(void) {
     /* Phase 104.B.2 — register under the canonical name "xrce" so
-     * bridge code (and `Executor::create_node_with_rmw("name", "xrce",
-     * ...)`) can resolve this backend through the named registry. */
+     * bridge code (and the former
+     * ~~`Executor::create_node_with_rmw`~~) can resolve this backend through the named registry. */
     return nros_rmw_cffi_register_named(kXrceImplementationIdentifier, &kVtable);
 }
 

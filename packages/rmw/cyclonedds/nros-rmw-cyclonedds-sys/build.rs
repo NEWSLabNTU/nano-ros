@@ -20,9 +20,9 @@ fn main() {
 
     // Phase 214.S.2 — emit a presence marker via `links = "cyclonedds"`
     // so any direct dependent's build script sees
-    // `DEP_CYCLONEDDS_PRESENT=1` and can flip its own rustc-cfg.
+    // ~~`DEP_CYCLONEDDS_PRESENT=1`~~ and can flip its own rustc-cfg.
     // `nros-node` uses this to auto-fire the K.7.6.b
-    // `cyclonedds_register::register_type::<M>()` hook in typed
+    // ~~`cyclonedds_register::register_type::<M>()`~~ hook in typed
     // creators without a `nros-node/rmw-cyclonedds` feature flag.
     println!("cargo:present=1");
 
@@ -211,7 +211,7 @@ fn vendored_build() {
 /// which have three spellings for one directory; a count has one.
 #[cfg(feature = "vendored")]
 fn forward_derived_knobs(cc: &mut cc::Build) {
-    // `MAX_DESCRIPTOR_TYPES` is the static `Entry g_entries[N]` in
+    // ~~`MAX_DESCRIPTOR_TYPES`~~ is the static `Entry g_entries[N]` in
     // `descriptors.cpp`. Over the cap, `register_descriptor` DROPS a type from a
     // static constructor that cannot report, and the operator meets it much later
     // as `publisher_create` returning UNSUPPORTED. The other three size the

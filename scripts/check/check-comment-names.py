@@ -69,6 +69,7 @@ SCOPE = (
     "packages/core",
     "packages/drivers",
     "packages/platform",
+    "packages/rmw",
     "packages/testing",
     "packages/tooling",
     "packages/verification",

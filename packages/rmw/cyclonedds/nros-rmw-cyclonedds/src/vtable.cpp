@@ -377,7 +377,7 @@ using namespace nros_rmw_cyclonedds;
 // about a NULL here is a missing capability.
 //
 // This note covers the TWO `*_event_init` constants below and nothing else.
-// `kAssertPublisherLiveliness` used to sit under it as a third NULL, which is
+// ~~`kAssertPublisherLiveliness`~~ used to sit under it as a third NULL, which is
 // how issue 1231 got filed: manual liveliness is not an event hook, needs no
 // callback context, and none of the argument above applied to it. That slot is
 // wired now — see `publisher_assert_liveliness` in `publisher.cpp`.
@@ -624,7 +624,7 @@ extern "C" rmw_ret_t nros_rmw_cyclonedds_register(void) {
 
 // Phase 128.B.4 — `.nros_rmw_init` self-registration via the canonical
 // macro from <nros/rmw_vtable.h>. The runtime walker
-// (`nros_rmw_cffi_walk_init_section`) discovers this entry on first
+// (~~`nros_rmw_cffi_walk_init_section`~~) discovers this entry on first
 // `rclcpp::init` and calls `nros_rmw_cyclonedds_register` — the C/C++
 // side gets full nameless dispatch (no `#ifdef NROS_RMW_CYCLONEDDS`
 // chain anywhere). Static-lib link with `--whole-archive` ensures the

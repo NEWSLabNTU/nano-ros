@@ -96,7 +96,7 @@ fn cyclonedds_type_descriptor_registrar(
 /// registrar into the generic [`nros_rmw`] seam.
 ///
 /// Call once during backend initialisation, before any Executor opens.
-/// The Cyclone `-sys` shim drives this from its `RMW_INIT_ENTRIES`
+/// The Cyclone `-sys` shim drives this from its ~~`RMW_INIT_ENTRIES`~~
 /// self-registration (and from `register()`), so the platform/RMW-
 /// agnostic core (`nros-node`) reaches Cyclone's descriptor builder
 /// purely through `nros_rmw::register_type_descriptor` — no named

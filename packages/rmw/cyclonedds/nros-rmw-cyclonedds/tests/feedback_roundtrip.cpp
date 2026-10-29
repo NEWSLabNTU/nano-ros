@@ -8,8 +8,8 @@
 // Since 233.6 the action `goal_id` is a fixed `octet[16]` on both the wire
 // and the IDL (ROS 2 `unique_identifier_msgs/UUID`), so the publisher and
 // subscriber pass it straight through — the old `[4 u32=16]` length-prefix
-// strip/reinsert adapter (`strip_feedback_goal_id_prefix` /
-// `insert_goal_id_len_at`) was removed. This proves the generic
+// strip/reinsert adapter (~~`strip_feedback_goal_id_prefix`~~ /
+// ~~`insert_goal_id_len_at`~~) was removed. This proves the generic
 // `dds_stream_read_sample` path round-trips the
 // `[octet goal_id[16]; sequence<int32> sequence;]` IDL shape — the same IDL
 // the action runtime carries on the live wire.
@@ -90,7 +90,7 @@ int main() {
     // Cyclone-IDL UUID is the inline 16-byte fixed array (matches the
     // wire-format expectation of `dds_stream_read_sample`). Rust ships
     // a `[4 u32=16]` length prefix before those 16 bytes; the
-    // publisher's `strip_feedback_goal_id_prefix` helper removes it so
+    // publisher's ~~`strip_feedback_goal_id_prefix`~~ helper removes it so
     // the body lines up with the descriptor.
     NrosFieldKindDescriptor kinds[] = {
         // kinds[0] — array<uint8, 16>
@@ -123,7 +123,7 @@ int main() {
            "unexpected typename %s", desc->m_typename);
 
     // Register under the action backend's lookup table so
-    // `publisher_create` / `subscriber_create` can find it.
+    // `publisher_create` / ~~`subscriber_create`~~ can find it.
     nros_rmw_cyclonedds_register_descriptor(desc->m_typename, desc);
 
     rmw_session_t s{};

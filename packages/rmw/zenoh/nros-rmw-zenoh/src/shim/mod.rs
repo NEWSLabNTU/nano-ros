@@ -116,7 +116,7 @@ pub(crate) const LOCATOR_BUFFER_SIZE: usize = 128;
 /// no_std / bare-metal builds (e.g. esp32-c3, 18 KB stack) carry only small
 /// property values (scouting/listen/zid) and have no TLS; the full 256 ×
 /// `MAX_SESSION_PROPERTIES` × 2 (key+val) = 4 KB stack frame in
-/// `SmoltcpSession::new` overflows the small stack into `.bss` (issue #64), so
+/// ~~`SmoltcpSession::new`~~ overflows the small stack into `.bss` (issue #64), so
 /// shrink it there. 64 covers every embedded property value.
 #[cfg(feature = "std")]
 pub(crate) const CONFIG_PROPERTY_SIZE: usize = 256;
@@ -332,7 +332,7 @@ pub fn signal_executor_wake() {
 /// Wait for a wake signal or timeout.
 ///
 /// Returns `true` if woken by a signal, `false` on timeout.
-/// Used by `BasicExecutor::spin()` to sleep efficiently between iterations.
+/// Used by ~~`BasicExecutor::spin()`~~ to sleep efficiently between iterations.
 #[cfg(feature = "std")]
 pub fn wait_for_executor_wake(timeout: core::time::Duration) -> bool {
     let (lock, cvar) = &*EXECUTOR_WAKE;
@@ -574,7 +574,7 @@ const LIVELINESS_PREFIX: &str = "@ros2_lv";
 const PROTO_VERSION_NODE: &str = "0/0";
 /// The `<node_id>/<entity_id>` pair a DISCOVERY query must not pin (issue 0890).
 ///
-/// There is no `PROTO_VERSION_TOPIC` any more. The name was always wrong: the
+/// There is no ~~`PROTO_VERSION_TOPIC`~~ any more. The name was always wrong: the
 /// two chunks are a node id and an ENTITY id, not a protocol version, and
 /// issue 0292 measured what pinning them costs — every entity of an action
 /// server collided at id 11 in `rmw_zenoh_cpp`'s graph cache and deduped to
@@ -1555,7 +1555,7 @@ mod tests {
 
     /// Issue 0890 — a DISCOVERY wildcard must match an entity whatever its id.
     ///
-    /// The wildcard builders used to put `PROTO_VERSION_TOPIC` ("0/11") in the
+    /// The wildcard builders used to put ~~`PROTO_VERSION_TOPIC`~~ ("0/11") in the
     /// `<node_id>/<entity_id>` position. Issue 0292 had already measured what
     /// that literal costs on the DECLARATION side — every entity of an action
     /// server collided at id 11 and deduped to one — and fixed the four
@@ -1598,7 +1598,7 @@ mod tests {
     /// pins it to what a stock `add_two_ints_server` actually declares —
     /// `liveliness_utils.cpp:396-431` (`Entity::Entity`): enclave BEFORE
     /// namespace (the header docstring at `liveliness_utils.hpp:88` omits it),
-    /// the DDS type spelling `pkg::srv::dds_::Type_` with the `Response_`
+    /// the DDS type spelling pkg::srv::dds_::Type_ with the `Response_`
     /// suffix stripped (`rmw_service_data.cpp:74-87`), the humble hash
     /// constant (`rmw_service_data.cpp:89-91`), and a QoS string whose
     /// default-valued fields are EMPTY (`qos_to_keyexpr`, `:237-298`).

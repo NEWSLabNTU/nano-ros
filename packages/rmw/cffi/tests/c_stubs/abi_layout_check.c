@@ -5,7 +5,7 @@
  * in the `include/nros` headers and the Rust `#[repr(C)]` mirrors in
  * `src/lib.rs` are kept in lockstep by hand, with no codegen. These
  * `_Static_assert`s pin the C-side widths at compile time; the Rust
- * half lives in the `abi_layout` `const _: () = { assert!(...) }`
+ * half lives in the ~~`abi_layout`~~ `const _: () = { assert!(...) }`
  * block in `src/lib.rs`. If a future edit changes one side's layout
  * without the other, exactly one of these two guards fails the build —
  * closing the drift class that #238 slipped through (an event-kind
@@ -31,7 +31,7 @@
  * `#[repr(C)]` (tracks the C ABI per-target), never a fixed
  * `#[repr(u8)]`/`#[repr(i32)]`. On ARM EABI the same enum is 1 byte on
  * BOTH sides — that target is not checked here (see the Rust
- * `abi_layout` block, which gates its width pin to non-ARM). */
+ * ~~`abi_layout`~~ block, which gates its width pin to non-ARM). */
 _Static_assert(sizeof(rmw_event_type_t) == 4,
                "rmw_event_type_t must be C-int-sized host-side (issue #238)");
 

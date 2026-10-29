@@ -37,7 +37,7 @@ typedef struct xrce_posix_serial_bridge {
     int fd;
 } xrce_posix_serial_bridge;
 
-/* Map an integer baud-rate to a termios `Bxxx` constant. Returns 0 if
+/* Map an integer baud-rate to a termios Bxxx constant. Returns 0 if
  * the baud is unsupported by termios on the current platform. */
 static speed_t baud_to_speed(long baud) {
     switch (baud) {

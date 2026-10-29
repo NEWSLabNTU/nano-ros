@@ -159,7 +159,7 @@ impl ZenohId {
         Self { id: bytes }
     }
 
-    // `to_hex_string()` removed — was dead code requiring `alloc`.
+    // ~~`to_hex_string()`~~ removed — was dead code requiring `alloc`.
     // Use `to_hex_bytes()` instead (alloc-free, writes into caller-provided buffer).
 
     /// Format the ID into a fixed-size buffer (for no_std)

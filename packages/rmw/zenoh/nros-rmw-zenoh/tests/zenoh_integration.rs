@@ -290,7 +290,7 @@ fn a_taken_sample_reports_when_it_was_received() {
 /// phase-328 (issue 0348) — two independent zpico sessions in ONE process
 /// deliver across each other through the router.
 ///
-/// This replaces `second_session_open_in_one_process_is_refused` (issue 0347's
+/// This replaces ~~`second_session_open_in_one_process_is_refused`~~ (issue 0347's
 /// honest stop-gap). 0347 made a second `ZenohTransport::open` FAIL rather than
 /// memset the first session's registration tables out from under it; 0348 adds
 /// the actual capability. `zpico.c`'s `g_session` and every per-session `g_*`

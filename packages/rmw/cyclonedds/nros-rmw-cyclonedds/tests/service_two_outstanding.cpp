@@ -1,7 +1,7 @@
 // Issue 0778 — TWO requests in flight at once, from one client.
 //
 // This is the case the backend could not express before 2026-08-25. A single
-// `pending_seq` meant the second `send_request` overwrote the first, and
+// ~~`pending_seq`~~ meant the second `send_request` overwrote the first, and
 // `take_response` then dropped the older reply as "for a different in-flight
 // call". Both halves of the abandon were silent: the caller saw one reply and
 // had no way to know the other request had been discarded rather than lost in

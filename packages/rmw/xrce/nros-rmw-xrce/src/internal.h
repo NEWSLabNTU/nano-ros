@@ -10,7 +10,7 @@
  * inside that struct; entity shells get a pointer to the matching slot
  * via their `backend_data` field. Mirrors the design ground truth in
  * `packages/rmw/xrce/nros-rmw-xrce/src/lib.rs` but without the
- * module-static `XrceSessionState` it relies on.
+ * module-static ~~`XrceSessionState`~~ it relies on.
  */
 
 #include "nros/platform.h"
@@ -344,7 +344,7 @@ static inline void nros_xrce_free(void* ptr) {
  * from full (XRCE_SUBSCRIBER_RING_DEPTH). On full, the callback
  * drops the newest message (preserves in-order delivery of buffered
  * msgs); on overflow length the per-entry `overflow` flag is set so
- * `take_serialized` can surface `MESSAGE_TOO_LARGE`.
+ * `take_serialized` can surface MESSAGE_TOO_LARGE.
  *
  * TODO 115.K.2.x: deadline tracking, async wakers. The Rust impl carries
  * `deadline_cb`, `last_msg_at_ms`, etc. Skipped here per K.2 scope.
@@ -353,7 +353,7 @@ static inline void nros_xrce_free(void* ptr) {
 /* Phase 160.H.1 — depth 32 (was bumped 4 → 16 upstream first; raised
  * to 32 after re-testing 100Hz burst behaviour). The XRCE Agent
  * batches all queued outbound messages onto the subscriber's input
- * stream in a single `run_session_time(timeout_ms)` window — the
+ * stream in a single ~~`run_session_time(timeout_ms)`~~ window — the
  * callback fires once per Data frame and the listener can't
  * `take_serialized`-drain in between because they all execute inside
  * the same `uxr_run_session_time` call. So the ring must hold an
@@ -504,7 +504,7 @@ typedef struct xrce_reply_token {
 } xrce_reply_token;
 
 /* One buffered request in the service-server inbox ring. Its bytes are the
- * slot's (`xrce_service_request_data`): issue 1808 gave the two families
+ * slot's (~~`xrce_service_request_data`~~): issue 1808 gave the two families
  * buffers of different sizes, so an entry cannot carry an array of its own. */
 typedef struct xrce_service_request_entry {
     size_t len;
@@ -900,7 +900,7 @@ void xrce_session_unlock(xrce_session_state_t* st);
 void xrce_session_free(xrce_session_state_t* st);
 
 /* Allocate the next entity id of the given type. Mirrors the Rust
- * impl's `alloc_entity_id`. */
+ * impl's ~~`alloc_entity_id`~~. */
 uxrObjectId xrce_alloc_entity_id(xrce_session_state_t* st, uint8_t type);
 
 /* Run the agent until all `count` request statuses are received,
@@ -1248,7 +1248,7 @@ rmw_ret_t xrce_posix_udp_init(xrce_session_state_t* st, const char* host, const 
  * It superseded two per-platform TUs. `xrce_posix_udp_init` above is
  * still compiled (`backend_posix` in xrce-sources.txt) so a caller
  * that resolves the older symbol keeps working. Its Zephyr twin
- * `xrce_zephyr_udp_init` is GONE (issue 1073): 129.C.1 deleted the
+ * ~~`xrce_zephyr_udp_init`~~ is GONE (issue 1073): 129.C.1 deleted the
  * `platform-zephyr` feature that compiled `transport_zephyr_udp.c`
  * AND turned off the `UCLIENT_PLATFORM_ZEPHYR` its whole body sat
  * behind, so the symbol has been absent from every archive since —

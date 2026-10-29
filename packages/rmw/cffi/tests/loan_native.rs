@@ -1,7 +1,7 @@
 //! Phase 124.A.8 — native zero-copy loan path test.
 //!
 //! Counterpart to `loan_fallback.rs`. Verifies that a backend exposing
-//! the `pub_loan` / `pub_commit` / `pub_discard` vtable slots routes
+//! the `pub_loan` / `pub_commit` / ~~`pub_discard`~~ vtable slots routes
 //! `SlotLending::try_lend_slot` through them instead of falling back
 //! to the arena. Together the two test files cover the "native" and
 //! "fallback" halves of the loan path.

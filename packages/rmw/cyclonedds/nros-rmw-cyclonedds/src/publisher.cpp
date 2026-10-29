@@ -14,7 +14,7 @@
 // rather than being parsed for its XCDR version and then regenerated.
 //
 // Phase 212.K.7.4.d retired the per-action manual ops-walking fast
-// paths (`publish_goal_status_array` + `publish_fibonacci_feedback`).
+// paths (~~`publish_goal_status_array`~~ + ~~`publish_fibonacci_feedback`~~).
 // Those hardcoded `desc->m_ops[N]` offset reads under the assumption
 // the descriptor was produced by the idlc static codegen; the K.7.4.b
 // dynamic bridge emits structurally-identical-but-shifted op streams,
@@ -66,7 +66,7 @@ struct PubState {
     /// Issue 1269 — the graph this writer is listed in, so destroying the
     /// publisher takes its GID back out of `ros_discovery_info`.
     GraphState* graph{nullptr};
-    /// Issue 1972 — what `PUBLICATION_MATCHED` / `PUBLISHER_INCOMPATIBLE_TYPE`
+    /// Issue 1972 — what PUBLICATION_MATCHED / `PUBLISHER_INCOMPATIBLE_TYPE`
     /// last reported (see `EventSeen`).
     EventSeen matched_seen{};
     EventSeen incompatible_seen{};

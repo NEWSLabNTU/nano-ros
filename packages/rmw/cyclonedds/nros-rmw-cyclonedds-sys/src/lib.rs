@@ -95,7 +95,7 @@ pub fn register() -> Result<(), RegisterError> {
     }
 }
 
-// Phase 128.B.3 / 128.H.2 — `RMW_INIT_ENTRIES` self-registration
+// Phase 128.B.3 / 128.H.2 — ~~`RMW_INIT_ENTRIES`~~ self-registration
 // via `nros_rmw_register_backend!` (RTOS-target-safe; gated off
 // during `cargo test` to avoid double-registration in unit tests).
 #[cfg(not(test))]

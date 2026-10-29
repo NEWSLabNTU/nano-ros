@@ -1,7 +1,7 @@
 /* Phase 115.K.2.3 — service server / client paths.
  *
- * Mirrors the Rust impl's `XrceSession::create_service_server` /
- * `XrceServiceServer::send_response` / `XrceServiceClient::send_request_raw`
+ * Mirrors the Rust impl's ~~`XrceSession::create_service_server`~~ /
+ * ~~`XrceServiceServer::send_response`~~ / ~~`XrceServiceClient::send_request_raw`~~
  * shape. The requester / replier is created from XML so its QoS reaches
  * both endpoints (issue 2120; BIN drops it); with no QoS given, the
  * services-default profile (reliable / volatile / keep-last(10)).

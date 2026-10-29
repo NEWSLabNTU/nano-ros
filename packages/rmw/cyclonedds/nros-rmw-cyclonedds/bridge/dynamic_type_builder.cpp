@@ -242,7 +242,7 @@ bool primitive_type(uint8_t kind, uint32_t& type) {
 // ── Type-name mangling ──────────────────────────────────────────────
 //
 // `pkg/msg/Name` → `pkg::msg::dds_::Name_`
-// `pkg/srv/Name_Request` → `pkg::srv::dds_::Name_Request_`
+// `pkg/srv/Name_Request` → pkg::srv::dds_::Name_Request_
 // Names already in mangled form (containing `::`) pass through.
 //
 // Returns the malloc'd mangled copy (caller frees with `ddsrt_free`),
@@ -308,7 +308,7 @@ char* mangle_type_name(const char* raw) {
 // up to three extras for EXT / BST / BSQ); nested struct ops follow
 // after the top-level `RTS`.
 //
-// `MAX_OPS` caps total compiled words. Generous enough for several
+// ~~`MAX_OPS`~~ caps total compiled words. Generous enough for several
 // hundred fields including a few nested structs.
 constexpr size_t kMaxOpsWords = 4096;
 
@@ -333,7 +333,7 @@ bool emit_kind_block(OpsBuilder& ops, uint32_t kind_idx, const NrosFieldKindDesc
 // have emitted their ops + DDS_OP_RTS, the nested type bodies are
 // appended in `kinds[]` order using `kind_idx` as the recursion root.
 //
-// Records (`emit_jsr_patch`) the absolute word offsets that need to
+// Records (~~`emit_jsr_patch`~~) the absolute word offsets that need to
 // be backfilled with the actual JSR delta once the nested body is
 // emitted. This keeps the encoder single-pass.
 
@@ -400,7 +400,7 @@ struct NestedTable {
 
 // Build the entire ops stream (top-level fields + nested bodies).
 //
-// `field_kinds_emit_queue` carries the set of nested struct kind
+// ~~`field_kinds_emit_queue`~~ carries the set of nested struct kind
 // indices that still need their body emitted; we process them
 // breadth-first and patch up the JSR deltas as we go.
 struct BuildContext {

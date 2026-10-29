@@ -64,8 +64,8 @@ const COMPILED_TREES: &[&str] = &["uxr", "ucdr", "backend"];
 const VENDOR_BUILD_POINTER: &str = "nros-xrce-vendor-build.txt";
 
 // phase-420 W9 — this script OWNS NO CONFIGURATION VALUE either. The MTU
-// defaults that used to live here as `XRCE_TRANSPORT_MTU_DEFAULT` /
-// `XRCE_SERIAL_MTU_DEFAULT`, every other `@TOKEN@` the two upstream
+// defaults that used to live here as ~~`XRCE_TRANSPORT_MTU_DEFAULT`~~ /
+// ~~`XRCE_SERIAL_MTU_DEFAULT`~~, every other `@TOKEN@` the two upstream
 // `config.h.in` templates take, every `#cmakedefine` toggle, and every knob's
 // minimum are read from `packages/rmw/xrce/xrce-config.txt`, which
 // `nros-rmw-xrce/CMakeLists.txt` reads too. Same remedy as the source list one
@@ -173,7 +173,7 @@ fn main() {
         target_os.as_str(),
         "linux" | "macos" | "freebsd" | "netbsd" | "openbsd"
     );
-    // 129.C.1 — `transport_zephyr_udp` was superseded by `transport_nros_udp`,
+    // 129.C.1 — ~~`transport_zephyr_udp`~~ was superseded by `transport_nros_udp`,
     // so upstream's Zephyr platform is off everywhere. That used to be a
     // `let feat_zephyr = false;` here feeding a dead `else if` branch in the
     // header generator; phase-420 W9 moved it to `flag uxr
@@ -506,7 +506,7 @@ fn main() {
 // NROS-XRCE-VERSIONS-BEGIN
 /// The vendored tree's OWN statement of its version — issue 1069.
 ///
-/// `MICROCDR_VERSION_STR` compiled as `"2.0.2"` here and `"2.4.1"` under the
+/// ~~`MICROCDR_VERSION_STR`~~ compiled as `"2.0.2"` here and `"2.4.1"` under the
 /// CMake lane, for one tree that is 2.0.2: the versions were hand-restated in
 /// four places (both lanes, plus two `nros-sdk-index.toml` rows) and disagreed.
 /// Correcting the literals would have left the same four literals, so both
@@ -593,7 +593,7 @@ fn vendored_project_version(cmakelists: &std::path::Path, project: &str) -> [Str
 ///
 /// ONE implementation for both templates, and the CMake lane's `configure_file`
 /// calls are the twin. Before this there were four: a hand-written
-/// `generate_ucdr_config` and `generate_uxr_config` here, and two
+/// ~~`generate_ucdr_config`~~ and ~~`generate_uxr_config`~~ here, and two
 /// `configure_file`s there, each restating the token values. The two lanes
 /// already disagreed about the version (issue 1069) for exactly that reason.
 ///
@@ -1576,7 +1576,7 @@ fn xrce_demand_selftest() {
             .set_reliability(rel)
             .set_depth(depth)
             .set_wire_bound_bytes(bound)
-            // phase-456 W8 collapsed the five rows to three. `rust_typed_schemaless`
+            // phase-456 W8 collapsed the five rows to three. ~~`rust_typed_schemaless`~~
             // was "no bound reachable at this site", which is `Unbounded` — the
             // row this selftest wants, because it is the one that claims the
             // closure buffer and so derives a demand to assert against.

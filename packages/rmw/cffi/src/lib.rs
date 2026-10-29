@@ -88,7 +88,7 @@ fn trace_open_enabled() -> bool {
 
 // Anchor every C-stub-transport symbol so they survive
 // `--gc-sections` when integration tests link against
-// `libnros_rmw_cffi`. Only compiled when the c-stub-test feature
+// libnros_rmw_cffi. Only compiled when the c-stub-test feature
 // is on; otherwise no C anchor + no toolchain dep.
 #[cfg(feature = "c-stub-test")]
 unsafe extern "C" {
@@ -691,7 +691,7 @@ pub fn event_kind_from_c(k: NrosRmwEventKind) -> nros_rmw::EventKind {
 // an event, and when the backend leaves `*_event_init` NULL the registration
 // is recorded HERE and satisfied by polling `*_take_event` from the entity's
 // ordinary data path. That is exactly how zenoh already behaves one layer
-// down — its shim fires registered callbacks from `has_data` / `try_recv_raw`
+// down — its shim fires registered callbacks from `has_data` / ~~`try_recv_raw`~~
 // and from `publish_raw` — so an application sees the same API and the same
 // delivery points on either backend.
 //
@@ -1248,7 +1248,7 @@ fn clear_cffi_message_info(key: usize) {
 ///
 /// Issue 0349 — the list is CORE TRANSPORT only. It originally also required
 /// `publisher_event_init`, `subscription_event_init` and
-/// `publisher_assert_liveliness` (then `register_*_event` / `assert_publisher_liveliness`),
+/// `publisher_assert_liveliness` (then `register_*_event` / ~~`assert_publisher_liveliness`~~),
 /// which refused the **xrce backend outright**:
 /// its vtable NULLs all three deliberately, alongside ~14 other optional
 /// capability slots this list correctly never required, so
@@ -1258,7 +1258,7 @@ fn clear_cffi_message_info(key: usize) {
 /// Those three are QoS-event and liveliness CAPABILITIES, not transport — and
 /// the slots are `Option<fn>` precisely because C nullability encodes "not
 /// provided" (RFC-0054). Requiring a slot whose type says it is optional was
-/// the contradiction. `assert_publisher_liveliness`' own dispatch site had
+/// the contradiction. ~~`assert_publisher_liveliness`~~' own dispatch site had
 /// documented "NULL function pointer = backend doesn't support manual
 /// liveliness" the whole time, while the code `.expect()`ed it.
 ///
@@ -1499,7 +1499,7 @@ pub fn backend_registered() -> bool {
 }
 
 /// Phase 104.B — internal access to the registry for the Rust-side
-/// adapter. `nros-node`'s `register_active_backend` removal already
+/// adapter. `nros-node`'s ~~`register_active_backend`~~ removal already
 /// switched to `backend_registered()` for the presence check; this
 /// returns the vtable for any single-backend fast-path callers.
 fn default_vtable() -> Option<&'static NrosRmwVtable> {
@@ -3973,7 +3973,7 @@ impl CffiPublisher {
 /// Phase 124.A — writable slot returned by
 /// [`CffiPublisher::try_lend_slot`]. Holds the backend's raw buffer
 /// and opaque token until `commit_slot` consumes it or `Drop` fires
-/// `pub_discard`.
+/// ~~`pub_discard`~~.
 #[cfg(feature = "lending")]
 pub struct CffiSlot<'a> {
     buf: *mut u8,
@@ -4147,7 +4147,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
         };
         let len = slot.cursor;
         let token = slot.token;
-        // `slot` drops here without firing `pub_discard` because
+        // `slot` drops here without firing ~~`pub_discard`~~ because
         // `publisher` is `None`.
         let ret = unsafe { commit(&view, token, len) };
         if ret != NROS_RMW_RET_OK {
@@ -5045,7 +5045,7 @@ impl nros_rmw::Subscription for CffiSubscription {
             return Err(status);
         }
         // Issue 1164 — the second poll point, mirroring the zenoh shim, which
-        // fires its subscription events from `try_recv_raw` as well as from
+        // fires its subscription events from ~~`try_recv_raw`~~ as well as from
         // `has_data`. A caller that only takes still sees its events.
         self.poll_status_events();
         let mut view = self.make_view();

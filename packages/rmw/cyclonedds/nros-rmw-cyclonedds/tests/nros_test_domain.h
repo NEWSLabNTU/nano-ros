@@ -101,7 +101,7 @@
 /// Mirrors `nros_tests::domain_discovery_port_busy`: RTPS derives its ports from
 /// the domain arithmetically, so "somebody is on domain d" is answerable locally
 /// without joining the bus — every participant there binds `7400 + 250*d`.
-/// /proc/net/udp's second column is `HEXADDR:HEXPORT`.
+/// /proc/net/udp's second column is HEXADDR:HEXPORT.
 ///
 /// Answers `false` when the tables cannot be read (a non-Linux host, a container
 /// without /proc): unknown must not read as busy, or every domain looks taken

@@ -49,7 +49,7 @@
 //! # Loop protection (phase 128.F.4)
 //!
 //! Wire-level loop protection would prefer the ROS 2 attachment
-//! mechanism (`bridge_origin` field), but the per-backend
+//! mechanism (bridge_origin field), but the per-backend
 //! `publish_raw_with_attachment` ABI is not yet on the public Rust
 //! surface — that lands in phase 129 alongside the platform / link
 //! feature cleanup. Until then, [`PubSubBridge`] uses a
@@ -91,7 +91,7 @@ mod cffi;
 /// never references — so `<rclcpp/bridge.hpp>`'s `MultiExecutor` compiled but failed
 /// to link, and a PX4 module could not reach the bridge API at all. The root
 /// references THIS from a `#[used]` static, which keeps the objects (and with them
-/// the whole `rclc_init_multi` / `nros_pubsub_bridge_*` surface) in the archive.
+/// the whole `rclc_init_multi` / ~~`nros_pubsub_bridge_*`~~ surface) in the archive.
 ///
 /// Mirrors `nros_c::c_surface_anchor::C_SURFACE_ANCHOR`.
 #[cfg(feature = "cffi")]
@@ -202,7 +202,7 @@ impl LoopGuard {
     }
 }
 
-/// Phase 128.F.4 — wire-level `bridge_origin` attachment tag.
+/// Phase 128.F.4 — wire-level bridge_origin attachment tag.
 ///
 /// Layout written by [`encode_bridge_origin`]:
 ///
@@ -244,7 +244,7 @@ pub fn encode_bridge_origin(origin: &[u8], out: &mut [u8]) -> usize {
     BRIDGE_ORIGIN_HEADER_LEN + copy
 }
 
-/// Parse a `bridge_origin` attachment block. Returns the origin
+/// Parse a bridge_origin attachment block. Returns the origin
 /// bytes when the input matches our magic + version; otherwise
 /// `None` (caller treats as "no bridge origin present" — the
 /// attachment may belong to ROS safety / seq-num / other consumers).
@@ -406,7 +406,7 @@ impl<const RX_BUF: usize, const TX_BUF: usize, const CONV_BUF: usize>
         let conv = self.conv;
         let origin_bytes = origin.as_bytes();
         // Phase 128.F.4 — wire-level attachment scratch buffers for
-        // `bridge_origin` reads / writes. 64 bytes covers any
+        // bridge_origin reads / writes. 64 bytes covers any
         // backend name we ship (`zenoh`/`dds`/`xrce`/`cyclonedds`)
         // with room for the tag header.
         let mut att_in = [0u8; 64];
@@ -418,7 +418,7 @@ impl<const RX_BUF: usize, const TX_BUF: usize, const CONV_BUF: usize>
             };
             // Wire-level filter — when the backend natively carries
             // attachments AND a paired bridge stamped
-            // `bridge_origin=<our origin>`, drop here. Empty origin
+            // bridge_origin=<our origin>, drop here. Empty origin
             // disables (single-direction bridges).
             if !origin.is_empty()
                 && att_len > 0

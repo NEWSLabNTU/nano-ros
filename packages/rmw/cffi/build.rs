@@ -200,7 +200,7 @@ fn emit_max_backends(rungs: &RmwKnobs, sizing: Option<&SizingDescriptor>) {
 /// executor then surfaced as an opaque `SubscriberCreationFailed`.
 fn emit_subscriber_slots(sizing: Option<&SizingDescriptor>) {
     // NO ladder rung, deliberately: phase-412 W1 derives this from the
-    // entity inventory (`COUNT_SUBSCRIPTION`). Two campaigns resolving one
+    // entity inventory (`NROS_ENTITY_COUNT_SUBSCRIPTION`). Two campaigns resolving one
     // knob is the drift issue 0938 cost, so this one keeps env -> Kconfig ->
     // builtin and takes its platform answer from the derivation instead.
     // issue 1199 — the rung is the DECLARED count cmake derived for this image.
@@ -221,7 +221,7 @@ fn emit_subscriber_slots(sizing: Option<&SizingDescriptor>) {
     // there), and a third mirror of it, in a build script no gate scans, is how
     // an image with an action gets sized short.
     //
-    // Its `NROS_DECLARED_RMW_SUBSCRIBER_SLOTS` carrier RETIRED (issue 1649):
+    // Its ~~`NROS_DECLARED_RMW_SUBSCRIBER_SLOTS`~~ carrier RETIRED (issue 1649):
     // every C/C++ CMake road names a descriptor now -- a multi-entry configure
     // its shared runtime's (RFC-0100 D12) -- and the knob diff with the carrier
     // dropped was zero.
@@ -265,7 +265,7 @@ fn emit_subscriber_slots(sizing: Option<&SizingDescriptor>) {
 /// user fact answers "how big is a backend's private state struct", so there is
 /// nothing for the descriptor to state and a `derived_rung` here would be
 /// inventing a number. It takes the RFC-0049 ladder instead — env,
-/// `CONFIG_NROS_RMW_SUBSCRIBER_SLOT_BYTES`, `[knobs.rmw] subscriber_slot_bytes`,
+/// ~~`CONFIG_NROS_RMW_SUBSCRIBER_SLOT_BYTES`~~, `[knobs.rmw] subscriber_slot_bytes`,
 /// then this builtin. `NROS_RUNTIME_COMPONENT_SLOT_BYTES` is the same quantity
 /// one layer up (the component pool) and resolves exactly this way.
 ///
@@ -374,7 +374,7 @@ fn maybe_build_c_stub() {
 
     // ABI-layout single-source-of-truth (issue #238 / #239): a header
     // TU of `_Static_assert`s that pin the C-side widths of the RMW
-    // mirror. Its Rust counterpart is the `abi_layout` const-assert
+    // mirror. Its Rust counterpart is the ~~`abi_layout`~~ const-assert
     // block in `src/lib.rs`. If either side's layout drifts, exactly
     // one guard fails the build. Compiled against the public headers.
     // issue 0779 — `../../core/nros-rmw-abi`, the same correction the comment 30

@@ -31,7 +31,7 @@ typedef void* orb_advert_t;
 /** Topic descriptor.
  *
  *  Mirrors PX4 1.16+'s `orb_metadata` (platforms/common/uORB/uORB.h) field for
- *  field — message versioning replaced the pre-1.16 `o_fields` inspector-schema
+ *  field — message versioning replaced the pre-1.16 ~~`o_fields`~~ inspector-schema
  *  tail with `message_hash` + `o_id` + `o_queue`. The backend only reads the
  *  `o_name` / `o_size` / `o_size_no_padding` prefix (and real PX4 module builds
  *  shadow this struct with the upstream header anyway), but the full 6-field

@@ -177,7 +177,7 @@ pub struct ZenohSession {
     /// the executor through the cffi vtable. Invoked by
     /// `drive_io` after work was observed; the runtime cb does
     /// flag-write + condvar-signal atomically so the executor
-    /// wakes from `wake_cv` instead of polling on a deadline.
+    /// wakes from ~~`wake_cv`~~ instead of polling on a deadline.
     wake_cb: core::sync::atomic::AtomicPtr<core::ffi::c_void>,
     wake_ctx: core::sync::atomic::AtomicPtr<core::ffi::c_void>,
     /// Issue #0292 — monotonic per-session entity id for the `<node_id>/<id>`
@@ -1610,7 +1610,7 @@ impl Session for ZenohSession {
         }
         // Phase 124.B.3 — when zenoh's spin_once observed any work
         // (n > 0), call the runtime-supplied wake callback so the
-        // executor's `wake_cv` is signalled (flag-write +
+        // executor's ~~`wake_cv`~~ is signalled (flag-write +
         // condvar-signal happen atomically inside the cb).
         // Best-effort: if the cb hasn't been installed yet the
         // executor still drains via its deadline-bound cv-wait.
