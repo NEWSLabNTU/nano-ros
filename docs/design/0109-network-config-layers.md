@@ -4,7 +4,7 @@ title: "Network and middleware configuration in three layers: the OS owns the
   devices, the RMW's own file owns the wiring, nano-ros owns only ROS-level facts"
 status: Draft
 since: 2026-10
-last-reviewed: 2026-10-24
+last-reviewed: 2026-10-29
 implements-tracked-by: [phase-514]
 supersedes: []
 superseded-by: null
@@ -212,8 +212,10 @@ builder.
 
 ### D6 — `system.toml` shape
 
-- **`[[domain]]` is the only spelling of a session.** Fields: `name`, `rmw`,
-  `id`, and `config = "rmw/<file>"` (the RMW's own file, layer 2).
+- **`[[domain]]` is the spelling of a bridged session.** Fields: `name`,
+  `rmw`, `id`, and `config = "rmw/<file>"` (the RMW's own file, layer 2). A
+  `[[domain]]` no `[[bridge]]` opens is refused (amendment 2026-10-29, issue
+  2124): the default session is spelled in `[system]` / `[image.<id>]`, below.
 - **An image with no `[[domain]]` has one implicit default domain**, built
   from `[system] rmw` / `domain_id` and the image's own `rmw` / `domain_id`
   overrides (RFC-0103 §3, unchanged), whose wiring is `[image] rmw_config`
@@ -320,11 +322,14 @@ interfaces, and wiring uses those names.
      conventional file. A NAMED file that does not exist is refused, never
      read as "no file"; a backend with no file format (XRCE) refuses one,
      naming `locator`.
-  2. **A `[[domain]]` is a session a `[[bridge]]` opens.** The examples above
-     that show a lone `[[domain]] main` as an image's session are spelled
-     `[system] rmw_config` until a lone domain becomes the default session;
-     a `[[domain]] config` that no bridge opens is refused, because nothing
-     would read it. A named domain has no conventional file (the convention
+  2. **A `[[domain]]` is a session a `[[bridge]]` opens.** One no bridge
+     opens is refused whatever it states — `config`, `locator`, or only
+     `rmw` / `id` — because nothing would read it. A lone domain does NOT
+     become the default session (issue 2124, 2026-10-29): the launch
+     resolver reads only `[system] rmw` / `domain_id`, so a second spelling
+     of the default session would make the two `system.toml` readers
+     disagree (phase-486 W8a), and it would link the domain's backend into
+     an image that opens no session on it. A named domain has no conventional file (the convention
      is the default session's). `rmw_config = { <domain> = "<file>" }`
      overrides one domain's file and must name a declared domain; it travels
      in that image's own bridge configuration, `nros-bridge.<image>.toml`,
@@ -391,11 +396,10 @@ file is shown once where it is the same everywhere.
 
 **Linux (host OS owns everything below ROS).**
 ```toml
-[[domain]]
-name = "main"
+[system]
 rmw = "cyclonedds"
-id = 3
-config = "rmw/cyclonedds.xml"
+domain_id = 3
+rmw_config = "rmw/cyclonedds.xml"            # or none: the conventional file
 
 [image.host]
 board = "linux"
@@ -416,11 +420,7 @@ settings. No network lines in it.
 board = "mps2-an385-zephyr"
 os_config = ["prj.conf", "prj-net.conf"]     # Zephyr owns eth0
 rmw = "zenoh"
-
-[[domain]]
-name = "main"
-rmw = "zenoh"
-config = "rmw/zenoh.json5"
+rmw_config = "rmw/zenoh.json5"               # the conventional name; may be omitted
 ```
 ```
 # prj-net.conf — Zephyr's own language
@@ -553,18 +553,18 @@ link). Stated, not promised.
 `config` binding its own interface (`#iface=eth0`, `#iface=eth1`), joined by a
 `[[bridge]]` if anything crosses.
 
-**U8 — XRCE agent.** No file format; the domain's `locator` is the owner:
+**U8 — XRCE agent.** No file format; the session's `locator` is the owner:
 ```toml
-[[domain]]
-name = "main"
+[system]
 rmw = "xrce"
-id = 0
+domain_id = 0
 locator = "udp/192.168.1.5:8888"
 ```
 
 **U9 — one image, QEMU run vs lab deployment.** `[image.<id>.run] nic =
 "slirp"` for the run; the router differs, so the lab image names a different
-wiring file: `rmw_config = { main = "rmw/zenoh-lab.json5" }`.
+wiring file: `rmw_config = "rmw/zenoh-lab.json5"` on that image (a bridged
+domain's file is overridden as `rmw_config = { <domain> = "<file>" }`).
 
 **U10 — a fleet sharing one wiring file.** One `config` for every image; per-
 robot differences are hostnames (peers) or DHCP, never addresses nano-ros owns.
