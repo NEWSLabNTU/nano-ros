@@ -234,6 +234,13 @@ run_with_make() {
     if [ -x "$(nros sdk-path make)/bin/make" ] && \
        "$(nros sdk-path make)/bin/make" --version | head -1 | grep -q "4.4"; then
         make_bin="$(nros sdk-path make)/bin/make"
+        # issue 2119 — the rows find their make by NAME: a cargo row whose
+        # build script configures cmake "Unix Makefiles" (`cyclonedds-sys`)
+        # caches PATH's `gmake` and joins THIS make's fifo jobserver, which the
+        # system make 4.3 cannot parse. Pool and children share one make.
+        # shellcheck source=scripts/build/jobserver-pool.sh
+        source scripts/build/jobserver-pool.sh
+        export PATH="$(nros_pinned_tool_path_prefix "$make_bin"):$PATH"
     fi
 
     # issue 1403 — THIS make is the one observed stalled (`threadx_linux

@@ -77,6 +77,26 @@ nros_pinned_ninja() {
     printf '%s\n' "$dir/bin/ninja"
 }
 
+# The PATH prefix a pool's CHILDREN need — issue 2119 (1638's class, one
+# driver further). A pool runs the pinned make by ABSOLUTE path, but its
+# children find their make by NAME: a cmake "Unix Makefiles" configure caches
+# whatever `gmake` (searched before `make`) PATH resolves, and that make joins
+# the pool's `--jobserver-auth=fifo:` as a client. The system make 4.3 cannot
+# parse a fifo jobserver and dies with `invalid --jobserver-auth string`. So a
+# script that runs the pinned make with `-j` puts THAT make's directory first —
+# derived from the make it runs, never resolved a second time — plus the pinned
+# ninja's (>= 1.13, the half that joins a fifo jobserver) when it exists.
+# Prints `<make dir>[:<ninja dir>]`; use as `export PATH="$(nros_pinned_tool_path_prefix
+# "$make_bin"):$PATH"`. Gate: `check-pinned-make-path-exported`.
+nros_pinned_tool_path_prefix() {
+    local make_bin="${1:?make binary}" prefix ninja
+    prefix="$(dirname "$make_bin")"
+    if ninja="$(nros_pinned_ninja)"; then
+        prefix="$prefix:$(dirname "$ninja")"
+    fi
+    printf '%s\n' "$prefix"
+}
+
 nros_pool_available() {
     local units="$2"
     [ "${NROS_JOBSERVER:-}" = "1" ] && return 1
@@ -167,11 +187,18 @@ nros_pool_run() {
     # `just linux check` in another terminal is the case this guard exists for.
     # `nros_pool_guard_name` is the one spelling, and the selftest
     # (`subtree_guard.sh`) drives `nros_pool_run` itself, not the name.
+    #
+    # issue 2119 — the units find the SAME make by name (see
+    # `nros_pinned_tool_path_prefix`). Set on the pool's own command, not
+    # exported, so the caller's shell keeps its PATH after the pool returns.
+    local pinned_make
+    pinned_make="$(nros_pinned_make)"
     nros_guard_exec "$(nros_pool_guard_name "$label")" \
         python3 "$repo_root/scripts/build/make-stall-watchdog.py" \
         --label "jobserver-pool $label" --diag-dir "$work_root" -- \
         env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
-        "$(nros_pinned_make)" -j"$pool_jobs" --jobserver-style=fifo \
+        PATH="$(nros_pinned_tool_path_prefix "$pinned_make"):$PATH" \
+        "$pinned_make" -j"$pool_jobs" --jobserver-style=fifo \
         -f "$makefile" || rc=$?
     rm -f "$makefile"
     return $rc

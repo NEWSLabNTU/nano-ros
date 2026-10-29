@@ -250,6 +250,14 @@ make-stall-watchdog:
 jobserver-makes-watched:
     @python3 scripts/check-jobserver-makes-watched.py
 
+# Issue 2119 (1638's class) — a script that runs the PINNED make as a jobserver
+# puts that make's directory first on PATH before the run, so a child that finds
+# `gmake`/`make` by name (a cmake "Unix Makefiles" configure) joins the fifo
+# pool with the same make 4.4, not the system 4.3. Same detector as the gate
+# above; one helper, `nros_pinned_tool_path_prefix`. Static, with a self-test.
+pinned-make-path-exported:
+    @python3 scripts/check-pinned-make-path-exported.py
+
 # Issue 1264 — `nros_platform_rmws` (and the fixture-id-guard functions above,
 # which share its `nros_manifest_query` helper) must report a manifest parser
 # that failed to even START as a PARSER failure, never as "this platform/id

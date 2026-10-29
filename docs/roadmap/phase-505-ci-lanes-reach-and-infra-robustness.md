@@ -1,5 +1,7 @@
 # Phase 505 — every gate runs somewhere, and a red names the code
 
+**Status (2026-10-29). #2119 is resolved: the fixture pools put the pinned make first on `PATH` for their children.**
+
 **Status (2026-10-28). W2 gains #2119, filed today: the cargo fixture pool's children find the system gmake in a worktree.**
 
 **Status (2026-10-27). #2052 is resolved: `8b95e90dd6` had already fixed it
@@ -118,11 +120,16 @@ phase's. Build speed is phase-489's.
       other tests in the binary advance, so `node-std-tests` goes red under
       parallel load. Resolved: the tests call the logger with a count of
       their own and find their line by buffer size.
-- [ ] [#2119](../issues/2119-fixture-make-pool-children-find-system-gmake.md):
+- [x] [#2119](../issues/archived/2119-fixture-make-pool-children-find-system-gmake.md):
       `fixtures-build.sh` runs the pinned make 4.4 without putting it on
       `PATH`, so a cargo row's cmake child caches the system gmake 4.3 and
       dies on the fifo jobserver — in a worktree only (issue 1638's class,
-      a fourth driver).
+      a fourth driver). Resolved: `fixtures-build.sh` and the fifth site,
+      `nros_pool_run` in `jobserver-pool.sh`, put that make's directory on
+      `PATH` through one helper, `nros_pinned_tool_path_prefix`. Gate:
+      `check pinned-make-path-exported`. The hand prepend that "did not
+      help" had prepended `/bin`, because the parent shell's `nros` could not
+      read this worktree's index.
 
 ### W3 — a stopped or failed lane says so, with the cause
 
@@ -170,4 +177,4 @@ ejection from a cause listed here.
 | [#2066](../issues/archived/2066-linux-sched-deadline-throttle-unverified.md) | Homed 2026-10-26 from archived phase-509. The `SCHED_DEADLINE` throttle needs `CAP_SYS_NICE`, which no lane has, so that half of the level budget is run by nothing. Resolved 2026-10-27 by a recorded manual run with `CAP_SYS_NICE` (docker): it found the C/C++ level runner losing its reservation to the spawner's `SCHED_FIFO` write (fixed) and throttle checks tighter than a tick-enforced kernel (loosened), archived. No lane claims `rt-sched` yet. |
 | [#2067](../issues/archived/2067-freertos-level-kernel-slicing-off-not-booted.md) | Homed 2026-10-26 from archived phase-509. No lane boots a FreeRTOS level image and reads its time-slicing line, so the kernel setting is built and never checked. Resolved 2026-10-27: `realtime_tiers_e2e` asserts the line OFF on the C, C++ and Rust level rows, archived. |
 | [#2082](../issues/archived/2082-dropped-take-log-test-races-the-global-counter.md) | Resolved 2026-10-26. A `ci gate` unit test asserted on a global counter other tests share, so the queue could eject a batch for load, not code. |
-| [#2119](../issues/2119-fixture-make-pool-children-find-system-gmake.md) | Filed 2026-10-28. The cargo fixture pool runs a pinned make 4.4 while its children find the system gmake 4.3; red in every linked worktree. W2. |
+| [#2119](../issues/archived/2119-fixture-make-pool-children-find-system-gmake.md) | Filed 2026-10-28. The cargo fixture pool runs a pinned make 4.4 while its children find the system gmake 4.3; red in every linked worktree. W2. Resolved 2026-10-29: every pinned-jobserver script puts that make first on `PATH` (gate `pinned-make-path-exported`). |
