@@ -2071,6 +2071,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-qemu-ladder"
+version = "0.6.0"
+
+[[package]]
 name = "nros-rcl-interfaces"
 version = "0.0.0"
 dependencies = [
@@ -2287,6 +2291,7 @@ dependencies = [
  "nros-orchestration-ir",
  "nros-platform",
  "nros-platform-cffi",
+ "nros-qemu-ladder",
  "nros-rcl-interfaces",
  "nros-rmw",
  "nros-rmw-cffi",

@@ -17,5 +17,6 @@ packages/tooling/nros-build-paths
 packages/tooling/nros-cargo-profile
 packages/tooling/nros-cc-flags
 packages/tooling/nros-platform-config
+packages/tooling/nros-qemu-ladder
 packages/tooling/nros-sizing-descriptor
 packages/tooling/nros-zephyr-build

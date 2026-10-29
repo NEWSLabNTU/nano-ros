@@ -42,21 +42,24 @@ use std::{
 };
 
 /// Issue 1851 — the ONE ladder for a QEMU system binary (`qemu-system-arm`,
-/// `qemu-system-riscv64`, `qemu-system-aarch64`, …):
+/// `qemu-system-riscv64`, `qemu-system-aarch64`, …), the harness's spelling of
+/// [`nros_qemu_ladder::locate`] (phase-517 W14 — the CLI's printed run commands
+/// call the same function):
 ///
 ///   1. `QEMU_SYSTEM_<ARCH>` (e.g. `QEMU_SYSTEM_ARM`) — developer override /
 ///      CI pin.
 ///   2. The project-local prefix `<project_root>/build/qemu/bin/` (made by
-///      `just qemu setup-qemu` / `just linux setup`).
+///      `just qemu setup-qemu` / `just linux setup`); a prefix that is not the
+///      pinned version PANICS here (issue 0930 — a test must not run on an
+///      emulator nobody chose), where the CLI skips it.
 ///   3. The `nros setup` store, at the PINNED `[tool.qemu]` version.
-///   4. `$PATH`, so a host that never ran setup still produces the documented
-///      `[SKIPPED]` rather than an exec error.
+///   4. `$PATH` — harness-only; the CLI has no such rung. So a host that never
+///      ran setup still produces the documented precondition report rather
+///      than an exec error.
 ///
 /// Its shell twin is `nros_qemu_bin` (`scripts/lib/qemu-bin.sh`); the two must
 /// answer alike, which is why neither the tests nor the recipes may launch a
-/// `qemu-system-*` by bare name (gate `check-qemu-one-ladder`). Before this,
-/// the ARM resolver had all four rungs while the RISC-V and AArch64 launchers
-/// here and every `just` recipe had one or two each.
+/// `qemu-system-*` by bare name (gate `check-qemu-one-ladder`).
 pub fn qemu_system_path(exe: &str) -> std::ffi::OsString {
     qemu_system_path_in(exe, "qemu", true)
 }
@@ -69,69 +72,88 @@ pub(crate) fn qemu_system_path_in(
     tool: &str,
     project_prefix: bool,
 ) -> std::ffi::OsString {
-    let arch = exe.strip_prefix("qemu-system-").unwrap_or(exe);
-    let var = format!("QEMU_SYSTEM_{}", arch.to_ascii_uppercase());
-    if let Some(env) = std::env::var_os(&var) {
-        return env;
-    }
-    if project_prefix {
+    let pin = nros_build_paths::sdk_pinned_version(tool);
+    let getenv = |k: &str| std::env::var_os(k);
+    let ctx = nros_qemu_ladder::Ctx {
+        getenv: &getenv,
         // phase-334 W2.b step 2 — the Rust mirror of `nros_build_dir`.
-        let prefix = crate::build_dir(crate::kind::QEMU, &[]);
-        let local = prefix.join("bin").join(exe);
-        if local.exists() {
-            if let Err(why) = project_prefix_matches_pin(&prefix, tool) {
-                panic!(
-                    "{} is not the QEMU the index pins: {why}. A test must not run on \
-                     an emulator nobody chose (issue 0930) -- re-provision it with \
-                     `just qemu setup-qemu`, or remove {} to use the store copy",
-                    local.display(),
-                    prefix.display()
-                );
+        project_prefix: project_prefix.then(|| crate::build_dir(crate::kind::QEMU, &[])),
+        store_dir: pin
+            .as_ref()
+            .map(|v| crate::store_root().join("sdk").join(tool).join(v)),
+        pin,
+        // No index reader here: every target is taken as the store's, which for
+        // a target it does not build ends at rung 4 either way.
+        store_targets: None,
+        stale_prefix: nros_qemu_ladder::StalePrefix::Refuse,
+    };
+    match nros_qemu_ladder::locate(exe, &ctx) {
+        nros_qemu_ladder::QemuBin::Found { path, rung } => {
+            if rung == "store" {
+                // The store copy must also LOAD (`[tool.qemu] system`).
+                if let Some(checked) = crate::nros_store_bin(tool, exe) {
+                    return checked.into_os_string();
+                }
             }
-            return local.into_os_string();
+            path.into_os_string()
+        }
+        nros_qemu_ladder::QemuBin::RefusedPrefix { path, why } => panic!(
+            "{} is not the QEMU the index pins: {why}. A test must not run on \
+             an emulator nobody chose (issue 0930) -- re-provision it with \
+             `just qemu setup-qemu`, or remove {} to use the store copy",
+            path.display(),
+            path.parent()
+                .and_then(std::path::Path::parent)
+                .unwrap_or(&path)
+                .display()
+        ),
+        nros_qemu_ladder::QemuBin::Missing { .. } | nros_qemu_ladder::QemuBin::Host { .. } => {
+            std::ffi::OsString::from(exe)
         }
     }
-    if let Some(store) = crate::nros_store_bin(tool, exe) {
-        return store.into_os_string();
-    }
-    std::ffi::OsString::from(exe)
+}
+
+/// A [`Command`] for `line` booting `kernel` — the binary through
+/// [`qemu_system_path`], the arguments from [`nros_qemu_ladder::board_line`].
+/// The CLI's printed run command comes from the same line (phase-517 W14).
+pub fn board_line_cmd(line: &nros_qemu_ladder::Line, kernel: &Path) -> Command {
+    let mut cmd = qemu_system_cmd(line.exe);
+    cmd.args(&line.before_kernel)
+        .arg(kernel)
+        .args(&line.after_kernel);
+    cmd
 }
 
 /// Issue 0930 — whether the project prefix holds the version `[tool.<tool>]`
-/// pins, read from the `.nros-provenance` marker `nros setup --prefix` writes.
-///
-/// The prefix is ONE directory across pin bumps (the store is keyed by
-/// version, so its rung cannot go stale), and nothing else re-checks it: a
-/// binary built before a patch landed kept answering. No marker is a prefix
-/// nobody can date, which is refused the same way. With no readable pin there
-/// is nothing to compare against, and the prefix is taken as chosen.
-pub(crate) fn project_prefix_matches_pin(
-    prefix: &std::path::Path,
-    tool: &str,
-) -> Result<(), String> {
-    let Some(pin) = nros_build_paths::sdk_pinned_version(tool) else {
-        return Ok(());
+/// pins ([`nros_qemu_ladder::prefix_matches_pin`] against this checkout's pin).
+/// The ladder asks it itself; this spelling is for the unit test below.
+#[cfg(test)]
+pub(crate) fn project_prefix_matches_pin(prefix: &Path, tool: &str) -> Result<(), String> {
+    nros_qemu_ladder::prefix_matches_pin(
+        prefix,
+        nros_build_paths::sdk_pinned_version(tool).as_deref(),
+    )
+}
+
+/// The line [`QemuProcess::start_nuttx_virt`] /[`QemuProcess::start_nuttx_riscv`]
+/// boot: user networking, or no NIC for a boot-only image.
+pub fn nuttx_virt_line(board: nros_qemu_ladder::Board, networking: bool) -> nros_qemu_ladder::Line {
+    let net = if networking {
+        nros_qemu_ladder::Net::User { mac: None }
+    } else {
+        nros_qemu_ladder::Net::None
     };
-    let marker = prefix.join(".nros-provenance");
-    let Ok(text) = std::fs::read_to_string(&marker) else {
-        return Err(format!(
-            "it has no {} (it was not installed by `nros setup`), so its version is \
-             unknown; the index pins {pin}",
-            marker.display()
-        ));
-    };
-    let held = text.lines().find_map(|l| {
-        let (k, v) = l.split_once('=')?;
-        (k.trim() == "version").then(|| v.trim().trim_matches('"').to_string())
-    });
-    match held {
-        Some(v) if v == pin => Ok(()),
-        Some(v) => Err(format!("it holds {v}; the index pins {pin}")),
-        None => Err(format!(
-            "{} names no version; the index pins {pin}",
-            marker.display()
-        )),
-    }
+    nros_qemu_ladder::board_line(board, net)
+}
+
+/// The line [`QemuProcess::start_riscv64_virt`] boots for `peer_index` (its MAC
+/// is the firmware's preset for that peer).
+pub fn threadx_riscv64_line(peer_index: u8) -> nros_qemu_ladder::Line {
+    let mac = nros_qemu_ladder::threadx_riscv64_mac(peer_index);
+    nros_qemu_ladder::board_line(
+        nros_qemu_ladder::Board::ThreadxRiscv64,
+        nros_qemu_ladder::Net::User { mac: Some(&mac) },
+    )
 }
 
 /// A fresh [`Command`] for [`qemu_system_path`]`(exe)`.
@@ -1046,39 +1068,12 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-M",
-            "virt",
-            "-cpu",
-            "cortex-a7",
-            "-nographic",
-            // Sync virtual clock with wall-clock so sleep()/timeouts run
-            // at real-time rates (matches the interactive `just nuttx
-            // talker` recipe in just/nuttx.just).
-            "-icount",
-            "shift=auto",
-            "-kernel",
-        ])
-        .arg(binary);
-
-        if networking {
-            // NuttX's defconfig enables CONFIG_DRIVERS_VIRTIO_MMIO, so the
-            // NIC must be attached to the virtio-mmio transport — not
-            // virtio-net-pci, which is what `-nic user` defaults to on the
-            // ARM virt machine. Use explicit `-netdev user` + `-device
-            // virtio-net-device` to force the MMIO path so NuttX's driver
-            // actually probes and configures the interface.
-            cmd.args([
-                "-netdev",
-                "user,id=net0",
-                "-device",
-                "virtio-net-device,netdev=net0",
-            ]);
-        } else {
-            cmd.args(["-nic", "none"]);
-        }
-
+        // phase-517 W14 — the line is the ONE the CLI prints too (the
+        // virtio-mmio NIC and `-icount` reasons live with it).
+        let mut cmd = board_line_cmd(
+            &nuttx_virt_line(nros_qemu_ladder::Board::NuttxArmVirt, networking),
+            binary,
+        );
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
@@ -1101,30 +1096,10 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = qemu_system_cmd("qemu-system-riscv32");
-        cmd.args([
-            "-M",
-            "virt",
-            "-bios",
-            "none",
-            "-nographic",
-            "-icount",
-            "shift=auto",
-            "-kernel",
-        ])
-        .arg(binary);
-
-        if networking {
-            cmd.args([
-                "-netdev",
-                "user,id=net0",
-                "-device",
-                "virtio-net-device,netdev=net0",
-            ]);
-        } else {
-            cmd.args(["-nic", "none"]);
-        }
-
+        let mut cmd = board_line_cmd(
+            &nuttx_virt_line(nros_qemu_ladder::Board::NuttxRvVirt, networking),
+            binary,
+        );
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
@@ -1246,30 +1221,7 @@ impl QemuProcess {
             )));
         }
 
-        let mac = format!("52:54:00:12:34:{:02x}", 0x56u8 + peer_index);
-
-        let mut cmd = qemu_system_cmd("qemu-system-riscv64");
-        cmd.args([
-            "-M",
-            "virt",
-            "-m",
-            "256M",
-            "-bios",
-            "none",
-            "-nographic",
-            "-global",
-            "virtio-mmio.force-legacy=false",
-            "-kernel",
-        ])
-        .arg(binary);
-
-        cmd.args(["-netdev", "user,id=net0"]);
-        let device_arg = format!(
-            "virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac={}",
-            mac
-        );
-        cmd.args(["-device", &device_arg]);
-
+        let mut cmd = board_line_cmd(&threadx_riscv64_line(peer_index), binary);
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
@@ -1703,6 +1655,44 @@ mod tests {
         );
         mark(&pin);
         assert_eq!(project_prefix_matches_pin(d.path(), "qemu"), Ok(()));
+    }
+
+    /// phase-517 W14 — the three launchers boot exactly the line the shared
+    /// crate states (the CLI's printed run command asserts the same against
+    /// it in `nros-cli-core`'s `cmd::build_next`), with the program from the
+    /// ONE ladder.
+    #[test]
+    fn launchers_boot_the_shared_board_lines() {
+        use nros_qemu_ladder::{Board, Net, board_line, threadx_riscv64_mac};
+        let kernel = Path::new("/img/nuttx");
+        let rendered =
+            |line: &nros_qemu_ladder::Line| render_command(&board_line_cmd(line, kernel));
+        let expected = |line: nros_qemu_ladder::Line| {
+            let mut words = vec![qemu_system_path(line.exe).to_string_lossy().into_owned()];
+            words.extend(line.argv("/img/nuttx"));
+            words.join(" ")
+        };
+        let user = Net::User { mac: None };
+        assert_eq!(
+            rendered(&nuttx_virt_line(Board::NuttxArmVirt, true)),
+            expected(board_line(Board::NuttxArmVirt, user))
+        );
+        assert_eq!(
+            rendered(&nuttx_virt_line(Board::NuttxRvVirt, true)),
+            expected(board_line(Board::NuttxRvVirt, user))
+        );
+        assert_eq!(
+            rendered(&nuttx_virt_line(Board::NuttxRvVirt, false)),
+            expected(board_line(Board::NuttxRvVirt, Net::None))
+        );
+        let mac = threadx_riscv64_mac(0);
+        assert_eq!(
+            rendered(&threadx_riscv64_line(0)),
+            expected(board_line(
+                Board::ThreadxRiscv64,
+                Net::User { mac: Some(&mac) }
+            ))
+        );
     }
 
     #[test]

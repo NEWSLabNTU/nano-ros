@@ -2435,7 +2435,7 @@ fn print_next_steps(args: &Args, plans: &[ResolvedBuild]) {
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_default();
     let nros_root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
-    let ctx = crate::orchestration::qemu_bin::Ctx::for_sdk(nros_root.as_deref());
+    let ctx = crate::orchestration::qemu_bin::for_sdk(nros_root.as_deref());
     let qemu = |exe: &str| crate::orchestration::qemu_bin::locate(exe, &ctx);
     for p in plans {
         let Some(d) = &p.descriptor else {

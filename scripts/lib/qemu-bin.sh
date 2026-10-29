@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 # qemu-bin.sh — which QEMU system binary to run (issue 1851).
 #
-# One ladder, the shell twin of `nros_tests::qemu::qemu_system_path`:
+# One ladder, the shell twin of `nros_qemu_ladder::locate` (the Rust crate the
+# CLI and `nros_tests::qemu::qemu_system_path` both call, phase-517 W14):
 #
 #   1. `QEMU_SYSTEM_<ARCH>` (e.g. `QEMU_SYSTEM_ARM`) — an explicit override.
 #   2. The project-local prefix `build/qemu/bin` ($NROS_KIND_QEMU; made by

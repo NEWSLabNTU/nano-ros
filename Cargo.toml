@@ -61,6 +61,9 @@ members = [
     # on them, so without this the class is invisible until someone builds on a
     # gcc >= 14 host.
     "packages/tooling/nros-cc-flags",
+    # phase-517 W14 — the ONE QEMU ladder + per-board boot lines, shared by the
+    # `nros` CLI (its own workspace, reached as a path dep) and nros-tests.
+    "packages/tooling/nros-qemu-ladder",
     # Phase 221.A.2 — shared build-script helpers for nros-c/nros-cpp.
     "packages/tooling/nros-build-helpers",
     "packages/tooling/nros-cbindgen-headers",

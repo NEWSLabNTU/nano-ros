@@ -1,0 +1,25 @@
+[package]
+name        = "nros-qemu-ladder"
+version.workspace = true
+edition     = "2024"
+publish     = false
+description = "The ONE QEMU ladder: which qemu-system-<arch> runs an image, and each QEMU board's argument line."
+license     = "MIT OR Apache-2.0"
+
+# issue 0287 — HOST-ONLY, same reason as `nros-build-paths`: it is consumed by
+# the `nros` CLI and the test harness, both of which run on the host, and
+# `just check workspace-embedded` builds every workspace member for a thumb
+# target. Declaring it here keeps the exclude list derived
+# (scripts/build/host-only-members.sh).
+[package.metadata.nros]
+host-only = true
+host-only-reason = "QEMU lookup + launch lines for the host-side CLI and test harness"
+
+[lib]
+path = "src/lib.rs"
+
+# No dependencies, deliberately: both consumers gather their own inputs (an
+# index reader on the CLI side, `nros_build_paths` on the harness side) and
+# hand them in, so the ladder is testable without an environment, a checkout
+# or a store, and adding it moves neither lockfile beyond its own entry.
+[dependencies]

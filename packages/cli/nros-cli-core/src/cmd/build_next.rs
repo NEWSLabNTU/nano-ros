@@ -240,68 +240,36 @@ fn cargo_runner(d: &BoardDescriptor) -> Option<Vec<String>> {
     }
 }
 
-/// The QEMU invocation a board with no cargo `runner` boots under — the one
-/// the test harness uses (`nros_tests::qemu::QemuProcess::start_nuttx_virt` /
-/// `start_nuttx_riscv` / `start_riscv64_virt`), minus test-only flags. Keyed
-/// on the descriptor's platform and triple. `-kernel` is last; the artifact
-/// follows it.
-fn derived_qemu(d: &BoardDescriptor) -> Option<Vec<&'static str>> {
+/// The QEMU invocation a board with no cargo `runner` boots under — the
+/// shared line (`nros_qemu_ladder::board_line`, phase-517 W14) the test
+/// harness launches too (`nros_tests::qemu::QemuProcess::start_nuttx_virt` /
+/// `start_nuttx_riscv` / `start_riscv64_virt`). Keyed on the descriptor's
+/// platform and triple. ThreadX riscv64 gets peer 0's MAC — the firmware's
+/// `Config::default()`, and the harness's talker/server.
+fn derived_qemu(d: &BoardDescriptor) -> Option<nros_qemu_ladder::Line> {
+    use nros_qemu_ladder::{Board, Net, board_line, threadx_riscv64_mac};
     let triple = d
         .target
         .as_deref()
         .map(triple_of_build_target)
         .unwrap_or("");
-    let virtio_net = [
-        "-netdev",
-        "user,id=net0",
-        "-device",
-        "virtio-net-device,netdev=net0",
-    ];
-    let mut v: Vec<&'static str> = match d.platform {
-        PlatformKind::Nuttx if triple.starts_with("armv7a") => vec![
-            "qemu-system-arm",
-            "-M",
-            "virt",
-            "-cpu",
-            "cortex-a7",
-            "-nographic",
-            "-icount",
-            "shift=auto",
-        ],
-        PlatformKind::Nuttx if triple.starts_with("riscv32") => vec![
-            "qemu-system-riscv32",
-            "-M",
-            "virt",
-            "-bios",
-            "none",
-            "-nographic",
-            "-icount",
-            "shift=auto",
-        ],
-        PlatformKind::ThreadxRiscv64 => {
-            return Some(vec![
-                "qemu-system-riscv64",
-                "-M",
-                "virt",
-                "-m",
-                "256M",
-                "-bios",
-                "none",
-                "-nographic",
-                "-global",
-                "virtio-mmio.force-legacy=false",
-                "-netdev",
-                "user,id=net0",
-                "-device",
-                "virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0",
-                "-kernel",
-            ]);
+    let user = Net::User { mac: None };
+    match d.platform {
+        PlatformKind::Nuttx if triple.starts_with("armv7a") => {
+            Some(board_line(Board::NuttxArmVirt, user))
         }
-        _ => return None,
-    };
-    v.extend(virtio_net);
-    v.push("-kernel");
-    Some(v)
+        PlatformKind::Nuttx if triple.starts_with("riscv32") => {
+            Some(board_line(Board::NuttxRvVirt, user))
+        }
+        PlatformKind::ThreadxRiscv64 => {
+            let mac = threadx_riscv64_mac(0);
+            Some(board_line(
+                Board::ThreadxRiscv64,
+                Net::User { mac: Some(&mac) },
+            ))
+        }
+        _ => None,
+    }
 }
 
 /// A shell word: quoted when it holds anything a shell would split or expand.
@@ -316,12 +284,13 @@ fn shell_word(s: &str) -> String {
     }
 }
 
-/// `argv` as a command line, with a leading `qemu-system-*` resolved through
-/// the ONE ladder. When no rung answers, the command asks `nros locate` for it
-/// at paste time and a note says how to provision it — never `$PATH`.
+/// `argv` (then `artifact`, when given) as a command line, with a leading
+/// `qemu-system-*` resolved through the ONE ladder. When no rung answers, the
+/// command asks `nros locate` for it at paste time and a note says how to
+/// provision it — never `$PATH`.
 fn qemu_line(
     argv: &[String],
-    artifact: &Path,
+    artifact: Option<&Path>,
     qemu: &dyn Fn(&str) -> QemuBin,
     notes: &mut Vec<String>,
 ) -> String {
@@ -330,7 +299,9 @@ fn qemu_line(
         if i == 0 && a.starts_with("qemu-system-") {
             match qemu(a) {
                 QemuBin::Found { path, .. } => words.push(shell_word(&path.display().to_string())),
-                QemuBin::Missing { why } => {
+                // `RefusedPrefix` needs `StalePrefix::Refuse`, which the CLI
+                // never asks for; treated as a miss if that ever changes.
+                QemuBin::Missing { why } | QemuBin::RefusedPrefix { why, .. } => {
                     notes.push(why);
                     words.push(format!("\"$(nros locate tool {a})\""));
                 }
@@ -343,7 +314,9 @@ fn qemu_line(
             words.push(shell_word(a));
         }
     }
-    words.push(shell_word(&artifact.display().to_string()));
+    if let Some(artifact) = artifact {
+        words.push(shell_word(&artifact.display().to_string()));
+    }
     words.join(" ")
 }
 
@@ -449,13 +422,14 @@ pub fn next_steps(
         return out;
     }
     if let Some(argv) = cargo_runner(d) {
-        let line = qemu_line(&argv, &artifact, qemu, &mut out.notes);
+        let line = qemu_line(&argv, Some(&artifact), qemu, &mut out.notes);
         out.commands.push(("run".into(), line));
         return out;
     }
-    if let Some(argv) = derived_qemu(d) {
-        let argv: Vec<String> = argv.into_iter().map(str::to_string).collect();
-        let line = qemu_line(&argv, &artifact, qemu, &mut out.notes);
+    if let Some(board) = derived_qemu(d) {
+        let mut argv = vec![board.exe.to_string()];
+        argv.extend(board.argv(&artifact.display().to_string()));
+        let line = qemu_line(&argv, None, qemu, &mut out.notes);
         out.commands.push(("run on QEMU".into(), line));
         return out;
     }
@@ -908,22 +882,34 @@ mod tests {
             profile_dir: "debug".into(),
             bin: Some("e".into()),
         };
+        // phase-517 W14 — the printed command IS the shared board line (the
+        // test harness's launchers assert the same against it in
+        // `nros_tests::qemu`), with the program from the ladder.
+        use nros_qemu_ladder::{Board, Net, board_line, threadx_riscv64_mac};
+        let expected = |line: nros_qemu_ladder::Line, kernel: &str| {
+            let mut words = vec![format!("/store/sdk/qemu/11.0/bin/{}", line.exe)];
+            words.extend(line.argv(kernel));
+            words.join(" ")
+        };
+        let user = Net::User { mac: None };
         let s = next_steps(
             &plan("nuttx", Driver::Cargo, out("armv7a-nuttx-eabihf")),
             &descriptor(&cat, "nuttx"),
             &store_qemu,
         );
-        assert!(
-            s.commands[0].1.starts_with(
-                "/store/sdk/qemu/11.0/bin/qemu-system-arm -M virt -cpu cortex-a7 -nographic"
-            ),
-            "{:?}",
-            s.commands
+        assert_eq!(
+            s.commands[0].1,
+            expected(
+                board_line(Board::NuttxArmVirt, user),
+                "/t/armv7a-nuttx-eabihf/debug/e"
+            )
         );
         assert!(
             s.commands[0]
                 .1
-                .ends_with("-kernel /t/armv7a-nuttx-eabihf/debug/e")
+                .starts_with("/store/sdk/qemu/11.0/bin/qemu-system-arm -M virt -cpu cortex-a7"),
+            "{:?}",
+            s.commands
         );
 
         let s = next_steps(
@@ -935,10 +921,12 @@ mod tests {
             &descriptor(&cat, "nuttx-riscv"),
             &store_qemu,
         );
-        assert!(
-            s.commands[0]
-                .1
-                .contains("qemu-system-riscv32 -M virt -bios none")
+        assert_eq!(
+            s.commands[0].1,
+            expected(
+                board_line(Board::NuttxRvVirt, user),
+                "/t/riscv32imac-unknown-nuttx-elf/debug/e"
+            )
         );
 
         let s = next_steps(
@@ -950,10 +938,13 @@ mod tests {
             &descriptor(&cat, "threadx-riscv64"),
             &store_qemu,
         );
-        assert!(
-            s.commands[0]
-                .1
-                .contains("qemu-system-riscv64 -M virt -m 256M")
+        let mac = threadx_riscv64_mac(0);
+        assert_eq!(
+            s.commands[0].1,
+            expected(
+                board_line(Board::ThreadxRiscv64, Net::User { mac: Some(&mac) }),
+                "/t/riscv64gc-unknown-none-elf/debug/e"
+            )
         );
 
         let s = next_steps(
@@ -1110,10 +1101,11 @@ mod tests {
         let none = |_: &str| None;
         let ctx = Ctx {
             getenv: &none,
-            build_root: None,
+            project_prefix: None,
             pin: None,
             store_dir: Some(store.clone()),
             store_targets: Some(targets.clone()),
+            stale_prefix: qemu_bin::StalePrefix::Skip,
         };
         let qemu = |e: &str| qemu_bin::locate(e, &ctx);
         let cat = catalog();

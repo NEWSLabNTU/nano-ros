@@ -845,6 +845,7 @@ dependencies = [
  "nros-msg-to-idl",
  "nros-orchestration-ir",
  "nros-pkg-index",
+ "nros-qemu-ladder",
  "nros-sizing-descriptor",
  "nros-zenoh-session-config",
  "nros-zephyr-build",
@@ -954,6 +955,10 @@ dependencies = [
  "serde",
  "toml",
 ]
+
+[[package]]
+name = "nros-qemu-ladder"
+version = "0.6.0"
 
 [[package]]
 name = "nros-rmw"
