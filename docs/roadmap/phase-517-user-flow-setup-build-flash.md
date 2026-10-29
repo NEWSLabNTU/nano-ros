@@ -1,6 +1,6 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-29). Open; W1, W4 and W8 done; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
+**Status (2026-10-29). Open; W1, W4 and W8 done; W12–W17 opened from the maintainer's rulings on the Left lists; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
@@ -1045,6 +1045,162 @@ build a project pinned to an older release, and the book (W2) should name the
 file. `nros new` does not write it, by D9's design (pin on first BUILD, not on
 scaffold), which this phase keeps.
 
+### Decisions on the open "Left" items (maintainer, 2026-10-29)
+
+The work items above landed; each carries a **Left** list. The maintainer
+ruled on the ones that needed a design choice, and the rest are recorded as
+small items. Each becomes one of W12–W17 below.
+
+### W12 — a real template per node role, named like `ros2 pkg create` (M)
+
+**Decision.** Every node role gets its own template. The flag is renamed,
+and the scaffold also takes the `ros2 pkg create` flags that apply to it, so
+a ROS developer's muscle memory carries over.
+
+`--use-case` was the wrong name and the wrong promise. It accepted `talker`,
+`listener`, `service` and `action`, wrote a talker for all four, and printed
+"template diversification: TODO". `ros2 pkg create` has no role flag: it
+takes `--node-name` and writes one hello-world node. colcon has no scaffold
+verb at all (`nros build` already mirrors colcon's `--packages-select` /
+`--packages-up-to`). So the role flag is ours to name, and the names come
+from the ROS demos a reader already runs (`ros2 run demo_nodes_cpp talker`,
+`add_two_ints_server`, `fibonacci_action_server`):
+
+* **`--template <role>`**, with roles `talker`, `listener`, `server`,
+  `client`, `action-server` and `action-client`. The default is `talker`.
+  Interfaces are the demos' own: `std_msgs/String` on `/chatter`,
+  `example_interfaces/srv/AddTwoInts` on `/add_two_ints`, and
+  `example_interfaces/action/Fibonacci` on `/fibonacci`. The scaffold's
+  `package.xml` depends on the package the role uses.
+* **`--use-case` is refused, naming `--template`.** It is parsed but hidden,
+  the way `--platform native` is (phase-500 W5). An alias that silently maps
+  would keep a word whose only behaviour was a TODO.
+* **Taken from `ros2 pkg create`:**
+  * `--node-name <name>`: the node's ROS name. The default is the package
+    name.
+  * `--dependencies <pkg>…`: extra `<depend>` rows, which `nros sync`
+    turns into message crates for Rust.
+  * `--license`, `--description`, `--maintainer-name` and
+    `--maintainer-email`: written into `package.xml`. The maintainer falls
+    back to `git config`, as it does today.
+  * `--destination-directory <dir>`: the parent directory to create the
+    package in.
+* **Not taken.**
+  * `--build-type`: `--lang` already decides it (`nros_cargo` or
+    `nros_cmake`), and a second spelling could disagree with it.
+  * `--package-format`: always 3.
+  * `--library-name`: `--component` is the library shape.
+
+Each role is a real program, not a renamed talker:
+
+* **The timer-driven roles publish or call on a timer.** These are
+  `talker`, `client` and `action-client`. The C/C++ talker no longer
+  publishes once and exits.
+* **The other roles serve or log what they receive.** These are
+  `listener`, `server` and `action-server`.
+* **The code comes from the in-tree role examples** under
+  `examples/linux/{rust,c,cpp}/`, the same logic with the scaffold's names.
+
+Every scaffold shape takes every role: a Rust package, a C/C++ package on
+each offered platform, a Zephyr C/C++ app, and `--component`. Where a shape
+cannot take a role, `nros new` refuses it before writing a file and names the
+shapes that can.
+
+**Gate:** `check-scaffold-builds` discovers the roles from `nros new --help`
+the way it discovers languages, and compiles every language × role. Unit
+tests pin the refusal of `--use-case` and that each role's `package.xml`
+names its interface package.
+
+**Done when** each role builds in each language on Linux through
+`check-scaffold-builds`, a scaffolded talker and listener exchange messages
+(one probe), and the book's first-node chapters scaffold the listener with
+`--template listener` instead of pasting a full example over a talker.
+
+### W13 — Rust off Linux and bare metal stays a workspace; Zephyr Rust gets an image (S)
+
+**Decision.** There is no single-package Rust scaffold for FreeRTOS, NuttX,
+ThreadX or Zephyr. Those platforms use a node library plus an entry crate,
+and the book already teaches that as a workspace plus `nros new --image`. A
+second road on four platforms would double what W10 must replay.
+
+* **The refusal names the commands.** `nros new --platform freertos --lang
+  rust` keeps refusing, and now prints the exact `nros new <ws> --workspace
+  --lang rust` and `nros new --image <id> --board <board>` lines, with the
+  platform's default board filled in. Today it names an in-tree example
+  directory, which a user with no checkout does not have.
+* **Zephyr Rust gets an `--image` scaffold.** It is the one platform where
+  the workspace road has no Rust entry scaffold, and its chapter points at a
+  GitHub example instead.
+
+**Done when** the refusal's printed commands run as printed (a unit test
+asserts their text against the catalog), and `nros new --image zephyr
+--board <zephyr board>` in a Rust workspace writes an entry `nros build`
+plans.
+
+### W14 — one QEMU ladder, shared by the CLI and the test harness (S)
+
+**Decision.** One small crate holds the QEMU binary lookup and the per-board
+argument lines. The test harness used to keep its own copy, and the CLI
+copied the harness's lines out (W6 **Left**). It is a library dependency, so
+tests do not shell out to the `nros` binary, which would make them depend on
+the CLI being built.
+
+**Done when**
+* `nros build`'s printed QEMU commands and `nros_tests::qemu` call one
+  function;
+* a test asserts that both produce the same command for NuttX arm `virt`,
+  NuttX rv-virt and ThreadX riscv64;
+* `orchestration::qemu_bin` and `nros_tests::qemu::qemu_system_path` are
+  re-exports of the crate's functions, not second spellings.
+
+### W15 — `threadx-linux` retries its session open like the QEMU boards (S)
+
+**Decision.** This is fixed in the platform, not by documenting "start the
+router first". The `threadx-linux` image opens its zenoh session once, so a
+router started seconds earlier, as in the reader's second terminal, races it.
+That race showed as one red in the W10 eight-way sweep. The QEMU boards retry
+their open, which hides the same race there. All of them get the same bounded
+retry policy.
+
+**Done when** the `threadx-linux` image opens its session against a router
+started after it (a test that starts the router second), and its W10 track
+stays green.
+
+### W16 — cut the next release; prove the project pin (maintainer dispatch, then S)
+
+**Decision.** The next release is cut after W12–W15 land on `main`, so it
+carries them. Two things wait for it:
+
+* **`integrations/` for installed users.** The PX4 and NuttX chapters copy
+  from `$(nros sdk-root)/integrations/`, which `0.6.0-nros4` predates (W2
+  **Left**).
+* **W11's evidence.** With a release newer than `0.6.0-nros4`, a probe track
+  builds a project whose `nros-toolchain.toml` pins `0.6.0-nros4` while the
+  newer CLI is installed. The launcher must fetch the pinned toolchain and
+  build with it.
+
+**Done when** the release is published, `[tool.nros]` pins it, and the
+pinned-project probe is green in `probe-platforms.yml`.
+
+### W17 — small items (S each)
+
+* **`nros-build-profile` ships as a binary in the release asset.**
+  `build-profiling.md` stops telling the reader to `cargo install` it from
+  the SDK root.
+* **Sources with no checkout.** Measure `nros setup --source px4-rs`,
+  `cyclonedds-src` and `tonbandgeraet` with no checkout, as W10 did for the
+  NuttX sources. Record where each lands, and fix or refuse any whose `dest`
+  needs a checkout.
+* **`west nros` from the installed SDK.** Either give it a spelling that
+  works there, or have `board-crate-import.md` say it is checkout-only.
+  `west.yml`'s `self: west-commands:` needs a literal path, and the SDK root
+  is versioned.
+* **The other language's road per chapter.** W10 replays one road per
+  chapter: the Rust workspace for FreeRTOS and ThreadX, the C package for
+  NuttX and Zephyr. Each chapter's "same flags, its own ELF" line for the
+  other language gets its own probe variant (`variant=` blocks, as the
+  workspace track does), so both roads are replayed.
+
 ## Issues homed here (2026-10-29)
 
 * [2137](../issues/archived/2137-nros-build-never-takes-the-census.md),
@@ -1064,6 +1220,8 @@ scaffold), which this phase keeps.
   the book and the CLI say the same thing.
 * W8 starts with its design note; no code before it is accepted.
 * W10 last per platform, after that platform's W7/W9 text is final.
+* W12–W15 and W17 are independent of each other. W16's release cut waits for
+  W12–W15 on `main`, and its pinned-project probe waits for the release.
 
 ## Non-goals
 
