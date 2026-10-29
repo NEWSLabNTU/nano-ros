@@ -611,6 +611,12 @@ image = "linux_robot1"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
+# Issue 2139 — this listener is also the shared observer of `entry_e2e`'s RTOS
+# `EntryPubsub` cells (`spawn_c_listener_observer`), so it is in a lane whenever
+# one of those cells is, not only when `linux,c,zenoh` is. `serves` lists the
+# cells' coordinates; `entry_e2e`'s
+# `c_listener_observer_serves_every_cell_that_uses_it` keeps it equal to the
+# set of cells that spawn it.
 [[workspace_fixture]]
 id = "workspace-c-native-robot2"
 platform = "linux"
@@ -621,6 +627,19 @@ bringup = "src/demo_bringup"
 image = "linux_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
+serves = [
+    "freertos,c,zenoh",
+    "freertos,cpp,zenoh",
+    "freertos,mixed,zenoh",
+    "nuttx,c,zenoh",
+    "threadx-linux,c,zenoh",
+    "threadx-linux,cpp,zenoh",
+    "threadx-linux,mixed,zenoh",
+    "threadx-riscv64,c,zenoh",
+    "zephyr,c,zenoh",
+    "zephyr,cpp,zenoh",
+    "zephyr,mixed,zenoh",
+]
 
 # phase-263 B6 (custom-msg, C) — the workspace-local custom-message cross-process demo
 # (C projection of ws-custom-msg-rust). A C talker publishes `custom_msgs/Reading` (declared

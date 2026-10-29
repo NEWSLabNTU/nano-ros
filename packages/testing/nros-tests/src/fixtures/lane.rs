@@ -46,9 +46,12 @@
 //! # One computation, stated precisely
 //!
 //! ```text
-//! BUILD  skips row R  ⟺  row_coord(R) ∉ lane_coords     (fixtures-manifest.py --coords-from)
-//! RUN    skips row R  ⟺  row_coord(R) ∉ lane_coords     (this module)
+//! BUILD  skips row R  ⟺  ({row_coord(R)} ∪ serves(R)) ∩ lane_coords = ∅   (fixtures-manifest.py --coords-from)
+//! RUN    skips row R  ⟺  ({row_coord(R)} ∪ serves(R)) ∩ lane_coords = ∅   (this module)
 //! ```
+//!
+//! `serves(R)` is empty for almost every row. A peer row names the coordinates
+//! of the cells that use it (issue 2139), so it is in every lane one of them is.
 //!
 //! Same predicate, same `row_coord`, same coordinate file. That is the
 //! non-negotiable issue 0482 leaves behind: build-set and run-set must derive
@@ -116,6 +119,9 @@ pub struct Row {
     pub id: String,
     /// Repo-relative dir the row's artifacts land in (`row_artifact_root`).
     pub artifact_root: String,
+    /// Issue 2139 — the coordinates of the cells that use this row as a peer
+    /// (`row_serves`). Empty for almost every row.
+    pub serves: Vec<Coord>,
 }
 
 impl Row {
@@ -174,10 +180,10 @@ pub fn manifest_rows() -> &'static [Row] {
             let f: Vec<&str> = line.split('\x1f').collect();
             assert_eq!(
                 f.len(),
-                8,
-                "unexpected `coords` record shape (expected 8 \\x1f-separated \
+                9,
+                "unexpected `coords` record shape (expected 9 \\x1f-separated \
                  fields: kind, platform, lang, rmw, dir, id, artifact_root, \
-                 builder): {line:?}"
+                 builder, serves): {line:?}"
             );
             // phase-350 W1 — `west` rows are OUT of the coordinate-narrowed run
             // set, because they are out of the coordinate-narrowed BUILD set:
@@ -201,10 +207,25 @@ pub fn manifest_rows() -> &'static [Row] {
                 dir: f[4].to_string(),
                 id: f[5].to_string(),
                 artifact_root: f[6].to_string(),
+                serves: parse_serves(f[8]),
             });
         }
         rows
     })
+}
+
+/// Parse the `coords` record's `serves` field: `;`-separated
+/// `platform,lang,rmw` triples, empty for a row that serves no other cell.
+pub fn parse_serves(field: &str) -> Vec<Coord> {
+    field
+        .split(';')
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            let p: Vec<&str> = s.split(',').collect();
+            assert_eq!(p.len(), 3, "unexpected `serves` coordinate {s:?}");
+            (p[0].to_string(), p[1].to_string(), p[2].to_string())
+        })
+        .collect()
 }
 
 /// One `builder = "west"` leaf: its west build-dir NAME and its coordinate.
@@ -516,8 +537,13 @@ pub fn attribute_workspace_id(fixture_id: &str) -> Option<&'static Row> {
 /// against `fixtures-manifest.py list --coords-from`, which is the build-side
 /// selection, without an environment variable or a fixture. That comparison is
 /// the invariant this module exists for; see `tests/lane_run_narrowing.rs`.
+///
+/// Issue 2139 — a row is also in the lane when a coordinate it `serves` is:
+/// the same test as `row_in_coords` in `fixtures-manifest.py`, so a peer the
+/// build includes for a consuming cell is one the run resolves rather than
+/// skips.
 pub fn is_in_lane(row: &Row, coords: &BTreeSet<Coord>) -> bool {
-    coords.contains(&row.coord)
+    coords.contains(&row.coord) || row.serves.iter().any(|c| coords.contains(c))
 }
 
 /// Is an ABSENT artifact for `row` a broken promise in this run? Issue 1620.
@@ -1112,6 +1138,7 @@ mod tests {
             dir: "examples/linux/rust/talker".into(),
             id: String::new(),
             artifact_root: root.into(),
+            serves: Vec::new(),
         };
         let bin = Path::new("examples/linux/rust/talker/target/x/talker");
 
@@ -1158,6 +1185,37 @@ mod tests {
             attribute_path_in(&ws, bin).map(|r| r.coord_str()),
             Some("linux,rust,zenoh".to_string())
         );
+    }
+
+    /// Issue 2139 — a row is in a lane through a coordinate it SERVES, and
+    /// only through one: the observer of an RTOS cell must resolve when that
+    /// cell's coordinate is selected, and stay out of a lane that selects none
+    /// of them.
+    #[test]
+    fn a_served_coordinate_puts_a_peer_row_in_lane() {
+        let c = |p: &str, l: &str| (p.to_string(), l.to_string(), "zenoh".to_string());
+        let row = Row {
+            kind: "workspace_fixture".into(),
+            coord: c("linux", "c"),
+            dir: "examples/workspaces/c".into(),
+            id: "observer".into(),
+            artifact_root: String::new(),
+            serves: parse_serves("zephyr,mixed,zenoh;nuttx,c,zenoh"),
+        };
+        let lane = |cs: &[Coord]| cs.iter().cloned().collect::<BTreeSet<Coord>>();
+        assert!(
+            is_in_lane(&row, &lane(&[c("linux", "c")])),
+            "own coordinate"
+        );
+        assert!(
+            is_in_lane(&row, &lane(&[c("zephyr", "mixed")])),
+            "served coordinate"
+        );
+        assert!(
+            !is_in_lane(&row, &lane(&[c("zephyr", "c"), c("linux", "rust")])),
+            "neither its own nor a served coordinate"
+        );
+        assert!(parse_serves("").is_empty());
     }
 
     #[test]

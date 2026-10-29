@@ -118,7 +118,7 @@ fn fixture_coords() -> (BTreeMap<Coord, CoordRows>, Vec<String>) {
     let mut coords: BTreeMap<Coord, CoordRows> = BTreeMap::new();
     let mut unmapped = Vec::new();
     for line in stdout.lines().filter(|l| !l.is_empty()) {
-        // <kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>\x1f<id>\x1f<artifact_root>
+        // <kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>\x1f<id>\x1f<artifact_root>\x1f<builder>\x1f<serves>
         // (`artifact_root` is phase-340 W3's other run-narrowing column; this
         // gate does not read it, but the length assert pins the SHAPE so a
         // column added or dropped fails here rather than silently shifting
@@ -127,8 +127,8 @@ fn fixture_coords() -> (BTreeMap<Coord, CoordRows>, Vec<String>) {
         let f: Vec<&str> = line.split('\x1f').collect();
         assert_eq!(
             f.len(),
-            8,
-            "unexpected `coords` record shape (expected 8 \\x1f-separated fields): {line:?}"
+            9,
+            "unexpected `coords` record shape (expected 9 \\x1f-separated fields): {line:?}"
         );
         let (table, p, l, r, dir, id) = (f[0], f[1], f[2], f[3], f[4], f[5]);
         let is_ws = table == "workspace_fixture";

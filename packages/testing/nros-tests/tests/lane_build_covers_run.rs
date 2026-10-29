@@ -606,7 +606,7 @@ fn every_fixture_row_is_reachable_through_the_coordinate_filter() {
     let mut plain_rows = 0usize;
     for line in coords_text.lines().filter(|l| !l.is_empty()) {
         let f: Vec<&str> = line.split('\x1f').collect();
-        assert_eq!(f.len(), 8, "unexpected coords record: {line:?}");
+        assert_eq!(f.len(), 9, "unexpected coords record: {line:?}");
         triples.insert(format!("{},{},{}", f[1], f[2], f[3]));
         if f[0] == "fixture" {
             plain_rows += 1;
