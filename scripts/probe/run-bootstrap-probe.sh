@@ -161,7 +161,11 @@ case "$PROBE_PLATFORM" in
     # workspace" run, one bare `nros setup` for a Linux and a FreeRTOS image,
     # then `nros build --all` with nothing else installed.
     workspace)       PLATFORM_CHAPTER=book/src/getting-started/installation.md; PROBE_VARIANT=workspace ;;
-    *) echo "probe: unknown PROBE_PLATFORM '$PROBE_PLATFORM' (want linux|baremetal|freertos|threadx-linux|threadx-riscv64|nuttx-arm|nuttx-riscv|zephyr|workspace)" >&2; exit 2 ;;
+    # phase-517 W11/W16 — installation.md's "Pinning a version": a project
+    # pinned to an OLDER release than the one installed, so the installed
+    # `nros` must hand off to the pinned one, fetching it first.
+    pinned)          PLATFORM_CHAPTER=book/src/getting-started/installation.md; PROBE_VARIANT=pinned ;;
+    *) echo "probe: unknown PROBE_PLATFORM '$PROBE_PLATFORM' (want linux|baremetal|freertos|threadx-linux|threadx-riscv64|nuttx-arm|nuttx-riscv|zephyr|workspace|pinned)" >&2; exit 2 ;;
 esac
 if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
     echo "probe: PROBE_PLATFORM=$PROBE_PLATFORM is an installed-track chapter (user chapters have no checkout track — phase-517 W2)" >&2
@@ -194,8 +198,10 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         # `nros setup <board>` line is the one step that chapter replaces.
         SETUP_SUBST=": the $PROBE_PLATFORM chapter provisions its own board, in its own setup step"
         [[ "$PROBE_PLATFORM" = workspace ]] && SETUP_SUBST=": the workspace run provisions every image with one bare nros setup"
+        [[ "$PROBE_PLATFORM" = pinned ]] && SETUP_SUBST=": the pinned project provisions through the pinned release, in its own step"
         VERIFIER="verify-installed-platform.sh"
         [[ "$PROBE_PLATFORM" = workspace ]] && VERIFIER="verify-installed-workspace.sh"
+        [[ "$PROBE_PLATFORM" = pinned ]] && VERIFIER="verify-installed-pinned.sh"
         # The QEMU chapters dial ROS's `rmw_zenohd` (RFC-0075: nano-ros ships
         # no router), so the reader they describe has a ROS 2 install. The
         # user container is that host: the release's own base plus ROS — the

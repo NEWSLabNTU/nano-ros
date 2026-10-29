@@ -80,6 +80,7 @@ jobs:
           - nuttx-riscv
           - zephyr
           - workspace
+          - pinned
     steps:
       - uses: actions/checkout@v4
       - name: Install just (if absent)
