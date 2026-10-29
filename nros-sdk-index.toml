@@ -2224,6 +2224,21 @@ pacman = ["qemu-system-arm"]
 brew = ["qemu"]
 check = { cmd = "qemu-system-arm" }
 
+# issue 2113 — the Zephyr qemu_cortex_a53 SMP cells (sched_dims
+# `CorePinPlacement/zephyr/c`). The `[tool.qemu]` store build is configured
+# `--target-list=arm-softmmu,riscv64-softmmu`, so it has no aarch64 system
+# emulator, and the boot resolves this one from PATH. Debian/Ubuntu ship it in
+# the same package as `qemu-system-arm`; the machine it boots (`virt`,
+# GICv3, two A53s) is in every packaged QEMU this index supports.
+[prereq.qemu-system-aarch64]
+role = "infra"
+why = "Zephyr qemu_cortex_a53 SMP cells; the [tool.qemu] dist builds no aarch64 target (issue 2113)"
+apt = ["qemu-system-arm"]
+dnf = ["qemu-system-aarch64"]
+pacman = ["qemu-system-aarch64"]
+brew = ["qemu"]
+check = { cmd = "qemu-system-aarch64" }
+
 [prereq.qemu-system-misc]
 role = "infra"
 why = "RISC-V QEMU lanes (threadx-riscv64, nuttx rv-virt)"

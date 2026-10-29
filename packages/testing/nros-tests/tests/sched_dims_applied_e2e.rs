@@ -719,6 +719,18 @@ fn run_cell(cell: &SchedCell) {
 
     let log: String = match ex.boot {
         Boot::ZephyrQemuA53Smp => {
+            // Issue 2113 -- ask for the emulator before booting, so a host
+            // without one names the missing tool rather than failing the
+            // spawn with a bare `No such file or directory`.
+            if !nros_tests::qemu::is_qemu_aarch64_virt_available() {
+                nros_tests::unmet!(
+                    "[{platform} {lang}] qemu-system-aarch64 with the `virt` machine is not \
+                     available, so the Zephyr qemu_cortex_a53 SMP image cannot boot. The \
+                     `[tool.qemu]` store build has no aarch64 target; install the \
+                     `qemu-system-aarch64` prereq (apt `qemu-system-arm`), or point \
+                     QEMU_SYSTEM_AARCH64 at one (issue 2113)."
+                );
+            }
             let mut z = ZephyrProcess::start(&entry, ZephyrPlatform::QemuCortexA53Smp)
                 .unwrap_or_else(|e| panic!("[{platform} {lang}] boot zephyr a53 smp: {e}"));
             let l = z.wait_for_pattern(ex.stem, timeout);

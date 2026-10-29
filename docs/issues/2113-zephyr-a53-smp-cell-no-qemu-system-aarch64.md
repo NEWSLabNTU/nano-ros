@@ -53,3 +53,34 @@ There are two separate defects here:
 - **Provide the emulator.** Either add `aarch64-softmmu` to `[tool.qemu]`'s `--target-list` (with a smoke row for `bin/qemu-system-aarch64`), or provision it from the distribution package in the runner image (a runner is a container, so this is an image fix and not a host install).
 - **Add the precondition.** Before the a53 SMP boot, check `qemu_system_has_machine("qemu-system-aarch64", "virt")`, so a host without it reports which tool is missing.
 - **Acceptance:** `CorePinPlacement/zephyr/c` passes in a tier-2 nightly.
+
+## Fixed in the tree, 2026-10-29 (still open)
+
+Both halves are in, and the issue stays open until the acceptance nightly.
+
+- **The emulator.** `nros-sdk-index.toml` has a new row,
+  `[prereq.qemu-system-aarch64]`: on apt it is `qemu-system-arm`, the same
+  package as the 32-bit emulator, and on dnf and pacman it is
+  `qemu-system-aarch64`. `scripts/ci/runner-container.sh` adds it to
+  `PREREQ_KEYS`, so the generated runner Dockerfile installs it. The
+  distribution package was chosen over widening `[tool.qemu]`'s
+  `--target-list`. Widening it would rebuild the store QEMU on every host for
+  one cell, and the `virt` machine with two A53s is in every packaged QEMU this
+  index supports. **The runner image has to be rebuilt by its operator**
+  (`scripts/ci/runner-container.sh --build`, then `--run`). Until then the
+  nightly runs the old image and the cell still fails, now with the message
+  below.
+- **The precondition.** `nros_tests::qemu::is_qemu_aarch64_virt_available()`
+  asks `qemu_system_has_machine("qemu-system-aarch64", "virt")`. The
+  `Boot::ZephyrQemuA53Smp` arm in `sched_dims_applied_e2e.rs` calls it before
+  `ZephyrProcess::start`, and when it fails it reports `nros_tests::unmet!`
+  naming the emulator, the store build's missing target and the prereq. The
+  check sits in the test and not in `ZephyrProcess::start`: placed there, it
+  sat beside that function's fixture-existence guard, and
+  `check-fixture-require` read it as one more existence-guarded skip. Inside `sched_dims`, an unmet
+  precondition still counts as a failure (issue 1758), so the cell stays red
+  on a runner without the emulator. The difference is that the red now names
+  the tool.
+
+**Acceptance is unchanged:** `CorePinPlacement/zephyr/c` passes in a tier-2
+nightly that runs on a rebuilt runner image.
