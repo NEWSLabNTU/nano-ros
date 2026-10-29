@@ -160,3 +160,47 @@ Not done, deliberately: item 2 (size `budget`/`pool` from `MemAvailable`).
 Its cause is unattributed and its cap unmeasured, so it would be a guess
 defending against a symptom that has stopped. Reopen with a kernel-log
 record of an `oom-kill` naming `rustc` or `cc1` if that changes.
+
+## Recurrence (2026-10-29) — recorded, not reopened
+
+The reopen condition, a kernel-log `oom-kill` record, could not be collected,
+so this stays `wontfix`. This section records the sighting so the next one has
+a baseline.
+
+Nightly run **40821701967** (schedule 05:08 UTC, main `3bb7c43cc`), job
+**123275417356** `tier 2 nightly (pairwise cover)`, on
+`nano-ros-runner-newslab-server-241`. The run started at 05:09:00Z, and the
+fixture build reported:
+
+```
+build-test-fixtures: budget=24, make-jobs=5, pool=4×6 + zephyr=24 (solo)
+```
+
+Step `ci tier2-nightly [1/5] check::default` then failed after 49m43s, at
+08:40:33Z. Ten of its eleven failed gates ended `rc=137`, all at the same
+moment (each ran 2,502–2,594 s): `cpp`, `cli-tests`,
+`required-features-tests`, `workspace-all`, `scaffold-builds`,
+`test-targets`, `staticlib-symbols`, `template-copy-out`,
+`workspace-features` and `linux-check`. The eleventh, `node-std-tests`,
+ended `rc=1`. Its own tests passed (`822 passed; 0 failed`), and then
+`could not compile nros-node (lib test)` followed `sccache: Compile
+terminated by signal 9`. The log has 10 `signal 9` lines and no
+`No space left on device`. The run's verdict was
+`check-build (parallel): 11 of 28 gate(s) FAILED`.
+
+Differences from the 10-14 sighting:
+
+- **Budget was 24, not 48**, so halving the pool did not prevent it.
+- **Runner 241 is a container on a shared host**: 24 cores, 125 GiB RAM, no
+  swap, and at check time about 63 GiB `MemAvailable` with other users'
+  builds running. A kill under memory pressure here can be caused by load
+  outside the runner, which the job cannot see or budget for.
+- **The kernel log is readable only with group `adm` or `systemd-journal`**
+  (`journalctl -k` printed only that notice; `dmesg` returned `Operation not
+  permitted`). The maintenance session that recorded this has neither, so
+  item 1 needs someone with that group on host 241.
+
+The same night's 07:08 run (40833557587) also ran its tier-2 pairwise job
+(123313013381, 07:24–08:38Z), on `nano-ros-runner-newslab-118-server`, a
+different host. That job reached its tests and failed only on issue 2142,
+so the kill is not explained by those two jobs sharing a host.
