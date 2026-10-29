@@ -247,9 +247,9 @@ extern void* nros_cpp_scheduler_open(uint8_t core, uint8_t n_levels, void* owner
 extern int nros_cpp_level_adopt(void* scheduler, uint8_t level, void* executor, size_t stack_bytes,
                                 const char* name);
 /* phase-509 P9b (RFC-0108 "As built in P9b") -- a level is a WORKER over the
- * core's ONE executor (the owner's): `level_open` seats its record and wake
+ * core's ONE executor (the owner's): `nros_cpp_level_open` seats its record and wake
  * object, the level's setup then registers its nodes on the owner's handle,
- * and the worker loops on `level_spin_once`. The owner's executor carries the
+ * and the worker loops on `nros_cpp_level_spin_once`. The owner's executor carries the
  * port's recursive priority-inheriting mutex and this thread identity, so a
  * pass releases it around each callback and park: the levels preempt each
  * other on one executor. */

@@ -392,7 +392,7 @@ void tx_application_define(void *first_unused_memory)
  * ULONG width. A
  * `preempt_threshold` of `-1` means "= priority" (no preemption-threshold
  * effect); a value `0..TX_MAX_PRIORITIES-1` is ThreadX's native
- * `non_preempt_scope` realization (RFC-0052) — a thread with a threshold
+ * non_preempt_scope realization (RFC-0052) — a thread with a threshold
  * higher-priority (lower-number) than its own priority cannot be preempted by
  * threads at or below that threshold. `tx_thread_create` applies the threshold
  * directly (no separate `tx_thread_preemption_change` needed at creation).

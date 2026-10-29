@@ -11,7 +11,7 @@
 //!
 //! * the push wrote the value the kernel had already applied — phase-514 W4
 //!   generates `BOARD_NET_*` from that same `defconfig`, and no image, fixture
-//!   row or entry bake (`NROS_IP`) states another address;
+//!   row or entry bake (~~`NROS_IP`~~) states another address;
 //! * the reseed fed the IP, which is the SAME `10.0.2.15` in every guest, so
 //!   it gave every guest the same seed; and the zenoh session ZID on NuttX is
 //!   not drawn from `/dev/urandom` at all (`zpico_fill_session_zid`'s generic
@@ -99,7 +99,7 @@ fn read_eth0_ipv4() -> Result<[u8; 4], core::ffi::c_int> {
 }
 
 // Phase 313 W-nuttx (#0243) — the legacy free `run(Config, closure)` (a session
-// opener over the retired `nros_board_common::board_init` traits) is GONE. The
+// opener over the retired ~~`nros_board_common::board_init`~~ traits) is GONE. The
 // live entry is `<NuttxQemu as nros_platform::board::BoardEntry>::run`
 // (entry_212n.rs), used by `nros::main!`; NuttX dispatches the logging/init-only
 // fixtures' plain `fn main` directly via `nsh_main`, so they need no board entry.

@@ -60,8 +60,8 @@ mod tickless;
 pub mod xrce_transport;
 
 // Phase 248 C5a (#60 T4) — the board owns XRCE backend linking. Force-link the
-// `nros-rmw-xrce-cffi` backend rlib so its `RMW_INIT_ENTRIES` self-register
-// section survives stable-Rust rlib pruning and reaches the binary, WITHOUT a
+// `nros-rmw-xrce-cffi` backend rlib so its `register`
+// survives stable-Rust rlib pruning and reaches the binary, WITHOUT a
 // consumer naming the backend. Mirrors `__FORCE_LINK_XRCE` in `nros/src/lib.rs`
 // (referencing `register` keeps both the symbol and its linker section alive).
 // On bare-metal (`target_os = "none"`) the section walker is a no-op, so the XRCE
@@ -97,7 +97,7 @@ pub use nros_platform_mps2_an385::timing::{CycleCounter, MonotonicClock};
 // phase-337 W6.a — the folded RTIC surface at the crate root, so
 // `board_path_for("rtic-mps2-an385")` and the proc-macro's
 // `take_dispatch_consumer` path stay one segment deep (they were
-// `::nros_board_rtic_mps2_an385::{RticMps2An385, take_dispatch_consumer}`).
+// ~~`::nros_board_rtic_mps2_an385::{RticMps2An385, take_dispatch_consumer}`~~).
 #[cfg(feature = "rtic")]
 pub use rtic::{
     QUEUE_CAPACITY, RticBoot, RticMps2An385, RticRuntime, SignaledCallbackEnvelope,

@@ -10,7 +10,7 @@
  * FreeRTOS POSIX simulator is that board. Splitting was the alternative to a
  * second copy of `xTaskCreate` in a second file.
  *
- * Phase 152.1.B.1 — extracted from build.rs's `STARTUP_C` const.
+ * Phase 152.1.B.1 — extracted from build.rs's ~~`STARTUP_C`~~ const.
  * Phase 152.1.B.2 — board-specific Ethernet init lifted to the
  * weak `nros_board_register_netif` / `nros_board_poll_netif`
  * hooks the overlay implements (see `board_mps2.c` for the

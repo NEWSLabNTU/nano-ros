@@ -168,7 +168,7 @@ impl Config {
     /// RTIC examples' own guest address (`.10`) and router port (`7450`).
     ///
     /// phase-337 W6 folded `nros-board-rtic-mps2-an385` into this crate; this
-    /// preset is that crate's `qemu_config()`, which was a second `Default`-
+    /// preset is that crate's ~~`qemu_config()`~~, which was a second `Default`-
     /// shaped function in a sibling crate — the divergence was invisible until
     /// a node failed to reach the router at runtime. Naming it is the fix: the
     /// two plans now sit three lines apart with the runner each one matches

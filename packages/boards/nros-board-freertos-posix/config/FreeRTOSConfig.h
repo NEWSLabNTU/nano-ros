@@ -22,7 +22,7 @@
  *   - Recursive mutexes (the RMW's own locking)
  *   - Static AND dynamic allocation: the POSIX port needs static for the idle
  *     and timer task memory (see `c/freertos_posix_hooks.c`), and dynamic for
- *     every task nano-ros creates through `nros_platform_task_create`.
+ *     every task nano-ros creates through `nros_platform_task_init`.
  *   - Timer service (executor timers)
  */
 

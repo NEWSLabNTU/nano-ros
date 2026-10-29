@@ -271,6 +271,7 @@ exempt.
 | Pull request | Scope added | Findings | Struck | Foreign names | Renamed or reworded |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `examples/`, `packages/{drivers,platform,tooling,verification}` | 286 | 88 | 91 | the rest |
+| 2 | `packages/boards` | 190 | 53 | 70 | the rest |
 
 ### C — rclc / rcl
 

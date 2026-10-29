@@ -8,7 +8,7 @@
  * `g_builtins[]` / `g_builtin_count` and REFERENCES every registered
  * app's `*_main`. When the apps tree was last `make export`ed with the
  * nano-ros C/C++ example apps staged into `apps/external/`, that table
- * references `nuttx_c_talker_main`, `nros_cpp_init`, ... — C/C++ FFI
+ * references ~~`nuttx_c_talker_main`~~, `nros_cpp_init`, ... — C/C++ FFI
  * symbols a Rust-only image does not provide. libc's
  * `lib_builtin_forindex.o` references `g_builtins`, so `builtin_list.o`
  * gets pulled, dragging in all those example objects -> undefined

@@ -30,7 +30,7 @@
 //!
 //! The 212.N migration has LANDED, so the shapes this section used to
 //! list in parallel are down to one: the config-carrying `run` /
-//! `run_generic` pair is gone, and so is the `BoardInit` trait
+//! ~~`run_generic`~~ pair is gone, and so is the `BoardInit` trait
 //! `nros-board-common` once declared — it is
 //! [`nros_platform::BoardInit`] now.
 //!
@@ -233,7 +233,7 @@ pub mod sys {
     /// Spawn a detached tier task with an explicit stack size (issue 0246).
     ///
     /// phase-364 W3 — this now goes through the ABI's own `task_init`, with a
-    /// `nros_platform_task_attr_t`. It used to call `nros_nuttx_spawn_tier`, a
+    /// `nros_platform_task_attr_t`. It used to call ~~`nros_nuttx_spawn_tier`~~, a
     /// bespoke C shim in `nuttx_run_tiers.c`, written for one reason: the ABI
     /// had no portable way to ask for a stack size, and building a
     /// `pthread_attr_t` from Rust is issue 0570 (a 20-byte Rust mirror met
@@ -387,8 +387,8 @@ macro_rules! println {
     ($($arg:tt)*) => { $crate::nros_nuttx_println!($($arg)*) };
 }
 
-// Phase 313 W-nuttx (#0243) — the legacy `nros_board_common::board_init` path is
-// RETIRED for the NuttX family: the generic `run_generic<B>` shim, the
+// Phase 313 W-nuttx (#0243) — the legacy ~~`nros_board_common::board_init`~~ path is
+// RETIRED for the NuttX family: the generic ~~`run_generic<B>`~~ shim, the
 // `nros_board_common::BoardInit` re-export it consumed, and the (since removed) `reference-qemu`
 // scaffolding re-export of the per-board free `run` are all gone. The live entries
 // are the `nros_platform`-shaped `run_entry` / `run_tiers` below (consumed by
@@ -422,7 +422,7 @@ macro_rules! println {
 /// 2. 5-second NuttX virtio-net warm-up — kernel `NETINIT_*` runs
 ///    synchronously before `main`, but link-up isn't atomic;
 ///    `connect_timeout` doesn't observe a partially-up interface.
-///    Same magic number `run` / `run_generic` use.
+///    Same magic number `run` uses.
 /// 3. Flush stdout (NuttX line-buffers around `write(2)`).
 /// 4. Build a [`nros_platform::RuntimeCtx`]. Today this is the
 ///    [`nros_platform::RuntimeCtx::with_runtime`] placeholder; the codegen
@@ -461,7 +461,7 @@ macro_rules! println {
 /// ## SDK availability
 ///
 /// Compiled only when `std` is reachable — gated on the same
-/// `target_os = "nuttx"` predicate as [`run_generic`], so a bare
+/// `target_os = "nuttx"` predicate as `run`, so a bare
 /// `cargo check` without a NuttX target skips this body. The `run_entry`
 /// symbol therefore only exists in builds that can actually call it.
 /// Route panics to STDOUT (issue 0572; extended to `run_tiers` by issue 0583).
@@ -544,7 +544,7 @@ pub extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
 // `nuttx_spin_tier_forever`, `NUTTX_TIER_STACK_DEFAULT_BYTES`).
 //
 // It did not before, and the reason is issue 0579's class again: the gate ONE
-// line above this fn belonged to `install_stdout_panic_hook`, which sat between
+// line above this fn belonged to ~~`install_stdout_panic_hook`~~, which sat between
 // the two, so `run_entry` looked gated in context while being ungated in fact.
 // Nothing noticed because a host build still had `std`, so the ungated body
 // compiled; with the family on `no_std` it stops compiling off-target and its
@@ -580,7 +580,7 @@ where
 
     // NuttX virtio-net needs a brief warm-up after kernel
     // `NETINIT_*` before `connect()` succeeds. Magic number matches
-    // `run` / `run_generic`; future work could probe link state
+    // `run`; future work could probe link state
     // via `SIOCGIFFLAGS` instead.
     sys::sleep_secs(5);
 
@@ -1403,7 +1403,7 @@ fn nuttx_spin_tier_forever(
 ) -> ! {
     // issue 0572 — which wait the executor's spin will take. The primary
     // (session-owning) executor sleeps in the wake primitive when the backend
-    // installed a wake callback; a borrowed one polls. `storage_size() == 0`
+    // installed a wake callback; a borrowed one polls. `nros_platform_wake_storage_size() == 0`
     // means no platform wake primitive is linked and the executor falls back to
     // a std `Condvar` — which on NuttX is the documented hang (this port's spin
     // is supposed to use `sem_timedwait`).

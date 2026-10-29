@@ -58,7 +58,7 @@ extern crate zpico_sys;
 // traits + provides a thin non-generic `run()` wrapper.
 pub use nros_board_freertos::{BaseConfig, Config};
 
-// Phase 313 W-freertos (#0243) — the legacy `nros_board_common::board_init`
+// Phase 313 W-freertos (#0243) — the legacy ~~`nros_board_common::board_init`~~
 // family (`BoardInit`/`BoardPrint`/`BoardExit` + the free `run`/`init_hardware`)
 // is RETIRED for this board; the live path is
 // `nros_platform::board::{BoardInit, BoardEntry, …}` below, plus the no-session

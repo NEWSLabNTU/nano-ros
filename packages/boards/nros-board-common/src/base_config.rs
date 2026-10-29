@@ -125,7 +125,7 @@ impl BaseConfig {
 /// Free function as well as [`BaseConfig::prefix`] because the boards that
 /// think in CIDR need the conversion where they have a bare `[u8; 4]` and no
 /// `BaseConfig` — `nros-board-mps2-an385`'s deploy-overlay merge, for one.
-/// Both MPS2 crates had grown their own popcount `mask_to_prefix` (phase-337
+/// Both MPS2 crates had grown their own popcount ~~`mask_to_prefix`~~ (phase-337
 /// W6); this is the one spelling they now share.
 pub const fn prefix_from_netmask(netmask: [u8; 4]) -> u8 {
     let bits = u32::from_be_bytes(netmask);

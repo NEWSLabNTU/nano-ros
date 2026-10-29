@@ -7,7 +7,7 @@
 //! Zephyr, so the usual `<Board as BoardEntry>::run(setup)` shape
 //! does not apply here.
 //!
-//! This crate therefore implements **only [`NetworkWait`]** over
+//! This crate therefore implements **only a link-up wait** over
 //! `<zephyr/net/net_if.h>`. The user app's Rust `extern "C" fn main`
 //! (declared from the Zephyr Rust app template) calls
 //! [`ZephyrBoard::wait_link_up`] before opening any RMW session and
@@ -29,21 +29,23 @@
 //!
 //! ## Why a no-op [`BoardInit`] / [`BoardPrint`] / [`BoardExit`]?
 //!
-//! The 212.N.1 trait surface declares `NetworkWait: super::Board` —
-//! i.e. any `NetworkWait` impl carries the full
-//! `BoardInit + BoardPrint + BoardExit` super-trait. Two options:
+//! The 212.N.1 trait surface declared a ~~`NetworkWait`~~ trait with a
+//! `super::Board` super-trait, so its impl had to carry the full
+//! `BoardInit + BoardPrint + BoardExit` set. Two options were weighed:
 //!
 //! - **(a)** Provide trivial no-op impls of `BoardInit` / `BoardPrint`
 //!   / `BoardExit` for `ZephyrBoard` in *this* crate. Documented as
 //!   "unused — Zephyr's `main` handles hardware init, printk, and
 //!   exit; these exist only to satisfy the trait bound."
-//! - **(b)** Loosen `NetworkWait` in `nros-platform` to drop the
+//! - **(b)** Loosen that trait in `nros-platform` to drop the
 //!   `: super::Board` super-trait.
 //!
-//! We pick **(a)**: a local, contained workaround that does not
-//! ripple into `nros-platform` and leaves room for a future Zephyr
-//! `BoardEntry` story (e.g. Phase 212.N.7 once the legacy zephyr-rust
-//! main wrapper is replaced).
+//! phase-206 W4 (issue 1067) later deleted the trait; the no-op impls
+//! below are what remains of option **(a)**, which was picked as a
+//! local, contained workaround that does not ripple into
+//! `nros-platform` and leaves room for a future Zephyr `BoardEntry`
+//! story (e.g. Phase 212.N.7 once the legacy zephyr-rust main wrapper
+//! is replaced).
 //!
 //! ## Build surface
 //!
@@ -65,9 +67,8 @@ use nros_platform::{BoardExit, BoardInit, BoardPrint, NetworkError};
 
 /// Zephyr family board marker.
 ///
-/// Implements [`NetworkWait`] only. The mandatory super-trait
-/// (`BoardInit` + `BoardPrint` + `BoardExit`) is satisfied by
-/// no-op stubs — see crate-level docs for the rationale.
+/// Implements a link-up wait only. `BoardInit` + `BoardPrint` +
+/// `BoardExit` are no-op stubs — see crate-level docs for the rationale.
 pub struct ZephyrBoard;
 
 // issue #128 (half 2) — per-tier multi-task entry (`ZephyrBoard::run_tiers`).
@@ -120,7 +121,7 @@ const LINK_UP_DEADLINE_MS: i32 = 30_000;
 
 // phase-206 W4 (issue 1067) — an INHERENT method, not a trait impl.
 //
-// The `NetworkWait` trait had one implementation (this one) and no callers: the
+// The ~~`NetworkWait`~~ trait had one implementation (this one) and no callers: the
 // `nros::main!` Zephyr arm deliberately calls `nros_platform::zephyr::
 // wait_network` instead, because the functions below are `static inline` Zephyr
 // headers with no link symbol and the native_sim final link fails on them. A
@@ -179,9 +180,9 @@ impl ZephyrBoard {
 // -- Trivial super-trait impls (unused; satisfy the trait bound) -------------
 //
 // Zephyr owns `main` and the boot/print/exit lifecycle, so these are
-// never invoked through this crate. They exist solely so the
-// `NetworkWait: Board` super-trait bound in `nros-platform` is
-// satisfied for `ZephyrBoard`.
+// never invoked through this crate. They were added so the
+// ~~`NetworkWait`~~ trait's `Board` super-trait bound in `nros-platform`
+// was satisfied for `ZephyrBoard`; that trait is gone (phase-206 W4).
 
 impl BoardInit for ZephyrBoard {
     /// Unused on Zephyr — `main` already ran kernel + driver init by

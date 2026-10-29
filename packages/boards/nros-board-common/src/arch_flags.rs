@@ -42,7 +42,7 @@ pub fn arch_matches(arch: &ArchEntry, target: &str) -> bool {
 /// Returns `None` for an out-of-tree consumer, whose caller must fall back to
 /// an explicit env var rather than guessing.
 ///
-/// phase-468 W1 — this was `config_root() -> Option<PathBuf>`, ONE root, and
+/// phase-468 W1 — this was ~~`config_root() -> Option<PathBuf>`~~, ONE root, and
 /// that is issue 1486's defect a third time over. `PlatformsTree` searches
 /// `packages/platform` and then `config`; this returned whichever of the two it
 /// found a descriptor in FIRST, which is always `packages/platform`, so
@@ -294,7 +294,7 @@ mod tests {
     ///
     /// phase-468 W1 / issue 1486's class. `bare-metal` lives in `config/`, the
     /// SECOND root, and it declares three `[arch.*]` profiles. Under the old
-    /// one-root `config_root()` this lookup answered `Ok(None)` — "declares no
+    /// one-root ~~`config_root()`~~ this lookup answered `Ok(None)` — "declares no
     /// profile that admits this triple" — about a file declaring exactly such a
     /// profile, and nothing in the tree asked, because the only live caller
     /// happens to live in the first root.

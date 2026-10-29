@@ -5,7 +5,7 @@
 //! `exit_success` / `exit_failure` / `enable_wfi_idle`, so all it added was the
 //! framework-owned entry surface — the deferred-callback SPSC queue, the
 //! [`RticBoardEntry`] impl, and the CMSDK dual-timer tick. What it *also* carried
-//! was a second board `Config` builder and a second `mask_to_prefix`, which
+//! was a second board `Config` builder and a second ~~`mask_to_prefix`~~, which
 //! drifted from this crate's (see [`crate::Config::qemu_slirp`]).
 //!
 //! The [`RticMps2An385`] ZST stays a distinct type from [`crate::Mps2An385`]:

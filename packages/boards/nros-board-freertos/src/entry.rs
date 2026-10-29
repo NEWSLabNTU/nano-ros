@@ -156,7 +156,7 @@ fn install_uart_logger<B: BoardPrint>() {
     fn print_via_board<B: BoardPrint>(args: core::fmt::Arguments<'_>) {
         B::println(args);
     }
-    // Cast through a fn pointer then a raw pointer — `fn_item as usize` directly
+    // Cast through a fn pointer then a raw pointer — fn_item as usize directly
     // trips the `fn_to_numeric_cast` lint (`-D warnings`).
     let f: fn(core::fmt::Arguments<'_>) = print_via_board::<B>;
     LOG_PRINT_FN.store(f as *const () as usize, Ordering::Relaxed);
@@ -490,7 +490,7 @@ where
         // (linkme is a no-op + the flat image runs no `.init_array`), so without
         // this explicit, idempotent call `resolve_backend` finds no transport and
         // `Executor::open` fails with `Transport(ConnectionFailed)`. Replaces the
-        // prior reliance on `nros::__register_linked_rmw()` via `nros/rmw-zenoh`.
+        // prior reliance on ~~`nros::__register_linked_rmw()`~~ via `nros/rmw-zenoh`.
         if let Err(err) = ::nros_rmw_zenoh::register() {
             B::println(format_args!(
                 "nros: zenoh RMW backend register failed: {:?}",

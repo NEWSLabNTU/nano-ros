@@ -16,8 +16,8 @@
 //! | `port/src/tx_thread_stack_build.S`    | `…/ports/risc-v64/gnu/src/tx_thread_stack_build.S` |
 //! | `port/src/tx_thread_system_return.S`  | `…/ports/risc-v64/gnu/src/tx_thread_system_return.S` |
 //!
-//! Each file keeps its upstream MIT header and its own `Original:` /
-//! `Based on:` line; this table is the index, those headers are the record.
+//! Each file keeps its upstream MIT header and its own "Original:" /
+//! "Based on:" line; this table is the index, those headers are the record.
 //!
 //! # Why the fork exists (the `ULONG` rationale)
 //!

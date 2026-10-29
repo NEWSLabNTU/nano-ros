@@ -63,6 +63,7 @@ _spec.loader.exec_module(ap)
 
 SCOPE = (
     "examples",
+    "packages/boards",
     "packages/drivers",
     "packages/platform",
     "packages/tooling",

@@ -83,7 +83,7 @@ pub fn run_platform() {
     // is `+bundle`, which folds the platform objects INTO the consuming crate's
     // rlib (`libnros_board_nuttx_qemu.rlib`). On the final link line that
     // rlib precedes the `nros_platform_*` REFERENCERS (`libnros_rmw_zenoh`,
-    // `libzpico_sys`), so GNU ld's single archive pass drops the platform
+    // libzpico_sys), so GNU ld's single archive pass drops the platform
     // members (nothing references them yet) and the referencers then fail with
     // `undefined reference to nros_platform_*`. See issue-0048.
     platform.cargo_metadata(false);
@@ -120,7 +120,7 @@ pub fn run_platform() {
     // It does NOT move the port after the referencers. rustc puts a `-bundle`
     // lib's `-l` right after the crate that declared it, not after every rlib
     // (measured, issue 2103), and the referencers (`libnros_rmw_zenoh`,
-    // `libzpico_sys`) can still follow it. What resolves them is
+    // libzpico_sys) can still follow it. What resolves them is
     // `+whole-archive`, which pulls the whole port (platform.c + net.c) at that
     // point, so the order no longer matters (RFC-0042 D3). cc's auto
     // search-path is suppressed too, so re-emit OUT_DIR as the search dir.
@@ -147,7 +147,7 @@ pub fn run_platform() {
 /// `nros_board_nuttx_run_tiers`, so this seam must be whole-archived into the
 /// final NuttX kernel image.
 ///
-/// `seam_src` is the calling board crate's run-tiers C file (kept in the board
+/// Each of `seam_srcs` is a calling board crate's run-tiers C file (kept in the board
 /// crate's `c/`, next to the board that owns the entry). The seam
 /// forward-declares every FFI symbol it uses (`nros_cpp_*`, `nros_platform_*`)
 /// so it needs only the NuttX headers (`pthread.h` / `sched.h`) on the include

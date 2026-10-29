@@ -36,8 +36,8 @@ pub extern "C" fn main(_argc: i32, _argv: *const *const core::ffi::c_char) -> i3
 
     // Issue 2048 — NuttX owns `eth0` (RFC-0109 D2): the kernel brought it up
     // from its `defconfig` before `nsh_main` reached us. This used to push an
-    // address in (issue #130, `configure_entry_eth0` from a never-baked
-    // `NROS_IP`/`NROS_GATEWAY`/`NROS_PREFIX`); it now reports what the kernel
+    // address in (issue #130, ~~`configure_entry_eth0`~~ from a never-baked
+    // ~~`NROS_IP`~~/~~`NROS_GATEWAY`~~/~~`NROS_PREFIX`~~); it now reports what the kernel
     // applied, the same line the Rust entry path prints.
     nros_board_nuttx_qemu::report_kernel_eth0();
 

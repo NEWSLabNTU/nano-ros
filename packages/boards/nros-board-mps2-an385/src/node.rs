@@ -508,7 +508,7 @@ pub fn init_hardware(config: &Config) {
 /// board-level session. Lives here in `node.rs` (always compiled), NOT behind
 /// the `board-entry` feature, so the no-umbrella bench can reach it. The
 /// new-family replacement for the retired legacy `run(Config, closure)` (which
-/// routed through `nros_board_common::run` + the `board_init` traits).
+/// routed through `nros_board_common::run` + the ~~`board_init`~~ traits).
 pub fn run_bare<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,

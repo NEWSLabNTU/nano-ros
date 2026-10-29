@@ -388,7 +388,7 @@ int nros_nuttx_apply_current_priority(const char* name, uint32_t priority) {
     return 0;
 }
 
-/* phase-364 W3 — `nros_nuttx_spawn_tier` is GONE.
+/* phase-364 W3 — ~~`nros_nuttx_spawn_tier`~~ is GONE.
  *
  * phase-359 W7 added it because the platform ABI had no portable way to ask for
  * a stack size, and building a `pthread_attr_t` from Rust is issue 0570. W3
@@ -741,7 +741,7 @@ int32_t nros_board_nuttx_run_tiers_ns(const char* locator, uint8_t domain_id,
 
 /*
  * Issue 1568 — the runner, over caller-supplied executor storage, and the one a
- * generated tiered nuttx entry calls (`CAbiRunners::run_tiers_takes_storage`).
+ * generated tiered nuttx entry calls (`CAbiRunners::takes_executor_storage`).
  * Zephyr's shape (issue 1551), so the three RTOS runners take storage one way.
  *
  * `executor_storage` holds `n_tiers` blocks of `storage_stride` bytes; block 0
@@ -1073,7 +1073,7 @@ static uint8_t nuttx_level_sched_policy(void* scheduler, const nros_tier_spec_t*
 
 /* A WORKER over the core's one executor (the boot level's): open the level,
  * run its setup on the owner, spawn the next level (issue #144: setups never
- * overlap), then loop on `level_spin_once`. */
+ * overlap), then loop on `nros_cpp_level_spin_once`. */
 static void* nuttx_level_thread(void* arg) {
     nros_nuttx_level_ctx_t* ctx = (nros_nuttx_level_ctx_t*)arg;
     (void)nros_nuttx_apply_current_priority(ctx->name,
