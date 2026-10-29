@@ -1694,8 +1694,42 @@ pub struct ZenohServiceClient {
     /// Issue 1632 — the size of the reply the last `take_response_raw`
     /// refused as too big, for [`ClientTrait::refused_response_len`].
     refused_len: Option<usize>,
+    /// Issue 2136 — the metadata of the reply the last `take_response_raw`
+    /// returned, for [`ClientTrait::response_info`].
+    response_info: nros_rmw::ServiceRequestInfo,
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
+}
+
+/// Issue 2136 — a reply's [`ServiceRequestInfo`](nros_rmw::ServiceRequestInfo)
+/// from its attachment and the time the reply callback stamped.
+///
+/// The attachment is `rmw_zenoh_cpp`'s reply layout: the sequence number of
+/// the request it answers, the replier's send time in nanoseconds, and the
+/// REQUESTING client's gid (a stock server copies both from the request; ours
+/// echoes the request's attachment with the send time restamped). So
+/// `request_id` is this client's own gid and sequence number, as upstream's
+/// client reports it. All three are reported when it parses and none when it
+/// does not. `received_ns` is the reply callback's wall-clock stamp, 0 when
+/// the platform has none.
+pub(crate) fn response_info_from_reply(
+    attachment: &[u8],
+    received_ns: i64,
+) -> nros_rmw::ServiceRequestInfo {
+    let mut info = match super::RmwAttachment::deserialize(attachment) {
+        Some(att) => nros_rmw::ServiceRequestInfo {
+            source_timestamp: (att.timestamp != 0)
+                .then(|| nros_rmw::Time::from_nanos(att.timestamp)),
+            received_timestamp: None,
+            request_id: Some(nros_rmw::RequestId {
+                writer_guid: att.rmw_gid,
+                sequence_number: att.sequence_number,
+            }),
+        },
+        None => nros_rmw::ServiceRequestInfo::NOT_REPORTED,
+    };
+    info.received_timestamp = (received_ns != 0).then(|| nros_rmw::Time::from_nanos(received_ns));
+    info
 }
 
 /// Issue 0153 — platform clock → attachment source_timestamp, in
@@ -1774,6 +1808,7 @@ impl ZenohServiceClient {
             entity_waker: AtomicWaker::new(),
             granted_qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
             refused_len: None,
+            response_info: nros_rmw::ServiceRequestInfo::NOT_REPORTED,
             _phantom: PhantomData,
         })
     }
@@ -1971,6 +2006,10 @@ impl ClientTrait for ZenohServiceClient {
         self.refused_len
     }
 
+    fn response_info(&self) -> nros_rmw::ServiceRequestInfo {
+        self.response_info
+    }
+
     fn take_response_raw(
         &mut self,
         reply_buf: &mut [u8],
@@ -2004,15 +2043,19 @@ impl ClientTrait for ZenohServiceClient {
         let mut hit_idx: Option<usize> = None;
         let mut hit_len: usize = 0;
         let mut hit_seq: i64 = 0;
+        // Issue 2136 — the hit's attachment and receive stamp.
+        let mut hit_att = [0u8; RMW_ATTACHMENT_SIZE];
+        let mut hit_meta = crate::zpico::ReplyMeta::default();
         let mut hard_err: Option<Self::Error> = None;
         // Issue 1632 — a reply that ARRIVED and did not fit `reply_buf`.
         let mut refused: Option<(usize, Option<usize>)> = None;
         for (idx, &(handle, seq)) in self.pending_handles.iter().enumerate().rev() {
-            match context.get_check(handle, reply_buf) {
-                Ok(Some(len)) => {
+            match context.get_check_info(handle, reply_buf, &mut hit_att) {
+                Ok(Some((len, meta))) => {
                     hit_idx = Some(idx);
                     hit_len = len;
                     hit_seq = seq;
+                    hit_meta = meta;
                     break;
                 }
                 Ok(None) => continue,
@@ -2053,6 +2096,8 @@ impl ClientTrait for ZenohServiceClient {
             // in-flight request disappear when the first one replied.
             let answered = self.pending_handles[idx].1;
             self.pending_handles.retain(|&(_, seq)| seq != answered);
+            self.response_info =
+                response_info_from_reply(&hit_att[..hit_meta.att_len], hit_meta.recv_ns);
             return Ok(Some((hit_len, hit_seq)));
         }
 
@@ -2200,6 +2245,54 @@ pub(super) mod tests {
         let mut foreign = [0u8; RMW_ATTACHMENT_SIZE];
         foreign[16] = 24; // a gid length rmw_zenoh_cpp never writes
         assert!(!request_info_from_attachment(&foreign).is_reported());
+    }
+
+    /// Issue 2136 — a reply's info: the request id and the replier's send
+    /// time from the attachment, the receive time from the callback stamp.
+    #[test]
+    fn response_info_reads_the_reply_attachment_and_stamp() {
+        let gid = [0x4Du8; RMW_GID_SIZE];
+        let mut att = [0u8; RMW_ATTACHMENT_SIZE];
+        super::super::RmwAttachment {
+            sequence_number: 3,
+            timestamp: 1_700_000_000_000_000_010,
+            rmw_gid: gid,
+        }
+        .serialize(&mut att);
+
+        let info = response_info_from_reply(&att, 1_700_000_000_000_000_020);
+        assert_eq!(
+            info.request_id,
+            Some(nros_rmw::RequestId {
+                writer_guid: gid,
+                sequence_number: 3,
+            })
+        );
+        assert_eq!(
+            info.source_timestamp,
+            Some(nros_rmw::Time::from_nanos(1_700_000_000_000_000_010))
+        );
+        assert_eq!(
+            info.received_timestamp,
+            Some(nros_rmw::Time::from_nanos(1_700_000_000_000_000_020))
+        );
+    }
+
+    /// Issue 2136 — no attachment and no wall clock is nothing reported; a
+    /// stamp alone is reported on its own.
+    #[test]
+    fn response_info_without_attachment_reports_only_the_stamp() {
+        assert_eq!(
+            response_info_from_reply(&[], 0),
+            nros_rmw::ServiceRequestInfo::NOT_REPORTED
+        );
+        let only_stamp = response_info_from_reply(&[], 5);
+        assert_eq!(only_stamp.request_id, None);
+        assert_eq!(only_stamp.source_timestamp, None);
+        assert_eq!(
+            only_stamp.received_timestamp,
+            Some(nros_rmw::Time::from_nanos(5))
+        );
     }
 
     /// Issue 1195 / phase-436 D1 — a reply arriving on the read task must wake

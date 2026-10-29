@@ -187,6 +187,10 @@ static const nros_rmw_vtable_t kVtable = {
      * call_raw slot; this pair is the one request/reply path. */
     .send_request = xrce_service_send_request_raw,
     .take_response = xrce_service_take_response,
+    /* Issue 2136 — the reply's receive time and the request id it answers
+     * (sequence number only: the Agent owns the request writer, so its GUID
+     * never reaches the client library). No source timestamp. */
+    .take_response_with_info = xrce_service_take_response_with_info,
 
     /* ---- Phase 108 / 110.0 / 104.C.6.b hooks (deferred) ---- */
     /* Issue 2108 — the two DEADLINE kinds, emulated client-side (session.c);

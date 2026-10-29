@@ -409,7 +409,11 @@ typedef struct nros_rmw_vtable_t {
      *  errors positive.)
      *
      *  Issue 1632 — on `NROS_RMW_RET_BUFFER_TOO_SMALL`, `reply->len` is the
-     *  size the reply NEEDED, as for `take_request`. */
+     *  size the reply NEEDED, as for `take_request`.
+     *
+     *  A backend that has the rest of upstream's `rmw_service_info_t` (the
+     *  reply's timestamps, the request id it answers) reports it through
+     *  `take_response_with_info` (issue 2136). */
     rmw_ret_t (*take_response)(const rmw_client_t *client,
         rmw_mut_byte_span_t *reply, int64_t *seq_out, bool *taken);
 
@@ -1523,6 +1527,36 @@ typedef struct nros_rmw_vtable_t {
      *  metadata for a Rust backend and none for a C/C++ one. */
     rmw_ret_t (*take_request_with_info)(const rmw_service_t *server,
         rmw_mut_byte_span_t *request, int64_t *seq_out, bool *taken,
+        rmw_service_info_t *service_info);
+
+    /** Upstream `rmw_take_response`, with its `rmw_service_info_t`.
+     *
+     *  Issue 2136 — optional, appended. The client twin of
+     *  `take_request_with_info`: `take_response` plus the reply's metadata,
+     *  written to caller-owned storage —
+     *
+     *  - `request_id`: the request this reply answers, as upstream's client
+     *    sees it — the CLIENT's own request-writer GUID and the sequence
+     *    number of its request;
+     *  - `source_timestamp`: the SERVER's clock when it sent the reply;
+     *  - `received_timestamp`: this client's clock when the reply arrived.
+     *
+     *  Deviations from upstream, declared: the payload is bytes, as for
+     *  `take_response`; and `*seq_out` stays beside the struct, because it is
+     *  what the runtime matches a reply against (issue 2009) whether or not
+     *  the backend can report the rest.
+     *
+     *  Every other rule is `take_response`'s: `*taken`, `reply->len`,
+     *  `*seq_out` and `*service_info` are written only on `NROS_RMW_RET_OK`
+     *  with `*taken = true`; a field the backend cannot report is zero (see
+     *  `rmw_service_info_t`), and a request id whose writer GUID is all zero
+     *  is "not reported" however its sequence number reads.
+     *
+     *  DISPATCHED when non-NULL: the runtime takes every reply through this
+     *  slot and keeps the struct as the client's response info. A NULL slot
+     *  falls back to `take_response`, and the reply reports nothing. */
+    rmw_ret_t (*take_response_with_info)(const rmw_client_t *client,
+        rmw_mut_byte_span_t *reply, int64_t *seq_out, bool *taken,
         rmw_service_info_t *service_info);
 
 } nros_rmw_vtable_t;

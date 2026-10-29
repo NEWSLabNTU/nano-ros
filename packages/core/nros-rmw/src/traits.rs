@@ -4326,6 +4326,24 @@ pub trait ClientTrait {
         None
     }
 
+    /// Issue 2136 — the metadata of the reply the most recent successful
+    /// [`take_response_raw`](Self::take_response_raw) returned: upstream
+    /// `rmw_take_response`'s `rmw_service_info_t`, the client twin of
+    /// [`ServiceTrait::request_info`].
+    ///
+    /// - `request_id` — the request this reply answers: this client's own GID
+    ///   and the sequence number of its request;
+    /// - `source_timestamp` — when the SERVER sent the reply, on its clock;
+    /// - `received_timestamp` — when this client received it, on its clock.
+    ///
+    /// Read it after a take and before the next one. **A field the backend
+    /// cannot report is `None`**, and the default — for a backend with no
+    /// per-reply metadata at all — is
+    /// [`ServiceInfo::NOT_REPORTED`](nros_core::ServiceInfo::NOT_REPORTED).
+    fn response_info(&self) -> nros_core::ServiceInfo {
+        nros_core::ServiceInfo::NOT_REPORTED
+    }
+
     /// Send a typed service request without waiting for a reply (non-blocking).
     ///
     /// Serializes the request into `req_buf` and calls

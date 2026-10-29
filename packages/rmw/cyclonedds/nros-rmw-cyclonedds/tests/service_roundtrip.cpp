@@ -18,6 +18,11 @@
 // the sequence number `send_request` gave the client (not the server's reply
 // token), and the DDS source timestamp; no received timestamp (Cyclone 0.10
 // has none, and stock `rmw_cyclonedds_cpp` writes 0 too).
+//
+// Issue 2136 — and the client takes the reply through
+// `take_response_with_info`: the reply's request id names THIS client's
+// request (the same header guid the server saw, the client's sequence number),
+// with the reply sample's source timestamp, and again no received timestamp.
 
 #include <chrono>
 #include <cstdio>
@@ -32,6 +37,7 @@
 namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
 int64_t g_client_seq = -1;
+rmw_service_info_t g_reply_info;
 
 void put_le64(uint8_t *out, int64_t v) {
     for (int i = 0; i < 8; ++i) {
@@ -63,9 +69,15 @@ rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, u
     }
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline) {
-        size_t n = 0;
         bool took = false;
-        rmw_ret_t rc = nros_test_take_response(g_vt, cli, rep, rep_cap, nullptr, &n, &took);
+        /* Issue 2136 — through the info slot. */
+        rmw_mut_byte_span_t span{rep, rep_cap, 0};
+        int64_t answered = -1;
+        rmw_ret_t rc = g_vt->take_response_with_info(cli, &span, &answered, &took, &g_reply_info);
+        size_t n = span.len;
+        if (rc == NROS_RMW_RET_OK && took && answered != g_client_seq) {
+            return NROS_RMW_RET_ERROR;
+        }
         if (rc != NROS_RMW_RET_OK) {
             return rc;
         }
@@ -216,6 +228,28 @@ int main() {
         return 9;
     }
     (void)token;
+
+    // Issue 2136 — the reply's info names the request it answers.
+    if (std::memcmp(g_reply_info.request_id.writer_guid, info.request_id.writer_guid, 8) != 0) {
+        std::fprintf(stderr, "reply request_id.writer_guid's header guid is not the client's\n");
+        return 10;
+    }
+    if (g_reply_info.request_id.sequence_number != g_client_seq) {
+        std::fprintf(stderr, "reply request_id.sequence_number %lld != the client's %lld\n",
+                     static_cast<long long>(g_reply_info.request_id.sequence_number),
+                     static_cast<long long>(g_client_seq));
+        return 11;
+    }
+    if (g_reply_info.source_timestamp < info.source_timestamp ||
+        g_reply_info.received_timestamp != 0) {
+        std::fprintf(stderr,
+                     "reply timestamps: source %lld (want >= the request's %lld), received %lld "
+                     "(want 0)\n",
+                     static_cast<long long>(g_reply_info.source_timestamp),
+                     static_cast<long long>(info.source_timestamp),
+                     static_cast<long long>(g_reply_info.received_timestamp));
+        return 12;
+    }
 
     g_vt->destroy_client(&cli);
     g_vt->destroy_service(&srv);

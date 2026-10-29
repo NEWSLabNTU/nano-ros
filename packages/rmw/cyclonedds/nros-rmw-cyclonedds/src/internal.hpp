@@ -381,6 +381,9 @@ rmw_ret_t service_send_request_raw(const rmw_client_t *client,
                                         int64_t *sequence_id);
 rmw_ret_t service_take_response(const rmw_client_t *client, rmw_mut_byte_span_t *reply,
                                      int64_t *seq_out, bool *taken);
+rmw_ret_t service_take_response_with_info(const rmw_client_t *client,
+                                          rmw_mut_byte_span_t *reply, int64_t *seq_out,
+                                          bool *taken, rmw_service_info_t *service_info);
 
 } // namespace nros_rmw_cyclonedds
 

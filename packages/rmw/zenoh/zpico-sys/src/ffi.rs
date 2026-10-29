@@ -915,6 +915,28 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// Issue 2136 — `zpico_get_check`, plus the reply's metadata.
+    ///
+    /// Copies the reply's rmw attachment into `att_out` (up to `att_cap`
+    /// bytes; one that does not fit reads as none, `*att_len_out = 0`) and the
+    /// wall-clock time it arrived into `*recv_ns_out` (0 = no wall clock).
+    /// The out-parameters are written only on a positive return; any may be
+    /// NULL. Upstream `rmw_take_response`'s `rmw_service_info_t`.
+    #[unsafe(no_mangle)]
+    #[allow(clippy::too_many_arguments)]
+    pub extern "C" fn zpico_get_check_info(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+        _reply_buf: *mut u8,
+        _reply_buf_size: usize,
+        _att_out: *mut u8,
+        _att_cap: usize,
+        _att_len_out: *mut usize,
+        _recv_ns_out: *mut i64,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
     /// Issue 1632 — the length of the reply a pending get received.
     ///
     /// For the caller `zpico_get_check` refused with `ZPICO_ERR_FULL`: that

@@ -1,4 +1,5 @@
 /* Issue 2135 — `received_timestamp` on a taken sample and a taken request.
+ * Issue 2136 — and on a taken REPLY, through `take_response_with_info`.
  *
  * No agent. An arrival is injected through the callbacks micro-XRCE-DDS-Client
  * calls from inside `drive_io` (`xrce_topic_callback`, `xrce_request_callback`),
@@ -61,6 +62,8 @@ int main(void) {
     }
     CHECK(g_vtable->take_with_info != NULL, "the take_with_info slot is filled");
     CHECK(g_vtable->take_request_with_info != NULL, "the take_request_with_info slot is filled");
+    CHECK(g_vtable->take_response_with_info != NULL,
+          "the take_response_with_info slot is filled");
     if (failures != 0) {
         return 1;
     }
@@ -164,6 +167,56 @@ int main(void) {
     CHECK(sinfo.source_timestamp == 0, "service: source_timestamp not reported (0)");
     CHECK(sinfo.request_id.sequence_number == 3 && sinfo.request_id.writer_guid[0] == 0x01,
           "service: the request id is still the SampleIdentity's");
+
+    /* ---- service reply (issue 2136) ---- */
+    xrce_service_client_slot* cslot = &st->service_client_slots[0];
+    cslot->active = true;
+    cslot->requester_id = 11;
+    xrce_service_client_state cs;
+    memset(&cs, 0, sizeof(cs));
+    cs.session_state = st;
+    cs.slot = cslot;
+    rmw_client_t cli;
+    memset(&cli, 0, sizeof(cli));
+    cli.backend_data = &cs;
+
+    before = now_ns();
+    ucdr_init_buffer(&ub, g_payload, sizeof(g_payload));
+    /* request_id 0 is the READ that delivered it; reply_id 7 is the request
+     * this answers (issue 2026). */
+    xrce_reply_callback(NULL, uxr_object_id(11, UXR_REQUESTER_ID), 0, 7, &ub, sizeof(g_payload),
+                        st);
+    after = now_ns();
+    pause_ms(50);
+
+    rmw_service_info_t rinfo;
+    memset(&rinfo, 0x5a, sizeof(rinfo));
+    seq = -1;
+    taken = false;
+    span.capacity = sizeof(buf);
+    span.len = 0;
+    rc = g_vtable->take_response_with_info(&cli, &span, &seq, &taken, &rinfo);
+    CHECK(rc == NROS_RMW_RET_OK && taken && seq == 7, "client: the reply to request 7 is taken");
+    printf("        window [%lld, %lld], received %lld\n", (long long)before, (long long)after,
+           (long long)rinfo.received_timestamp);
+    CHECK(rinfo.received_timestamp >= before && rinfo.received_timestamp <= after,
+          "client: received_timestamp is the ARRIVAL, inside the injection window");
+    CHECK(rinfo.source_timestamp == 0, "client: source_timestamp not reported (0)");
+    int8_t zero_guid[sizeof(rinfo.request_id.writer_guid)];
+    memset(zero_guid, 0, sizeof(zero_guid));
+    CHECK(rinfo.request_id.sequence_number == 7 &&
+              memcmp(rinfo.request_id.writer_guid, zero_guid, sizeof(zero_guid)) == 0,
+          "client: request id carries the sequence, no writer GUID (the Agent owns it)");
+
+    /* An empty take writes nothing; NULL info is refused. */
+    memset(&rinfo, 0x5a, sizeof(rinfo));
+    taken = true;
+    rc = g_vtable->take_response_with_info(&cli, &span, &seq, &taken, &rinfo);
+    CHECK(rc == NROS_RMW_RET_OK && !taken && rinfo.received_timestamp == 0x5a5a5a5a5a5a5a5aLL,
+          "client: an empty take is OK, not taken, info untouched");
+    CHECK(g_vtable->take_response_with_info(&cli, &span, &seq, &taken, NULL) ==
+              NROS_RMW_RET_INVALID_ARGUMENT,
+          "client: NULL info is INVALID_ARGUMENT");
 
     nros_xrce_free(st);
     if (failures != 0) {

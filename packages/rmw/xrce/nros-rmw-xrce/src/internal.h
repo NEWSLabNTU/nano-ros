@@ -550,6 +550,10 @@ typedef struct xrce_service_client_slot {
      * its `request_id`, which names the read that delivered the reply) and
      * reported out of `take_response` as the sequence id. */
     uint16_t reply_request_id;
+    /* Issue 2136 — when `xrce_reply_callback` buffered the reply, wall-clock
+     * ns since the Unix epoch (0 = no wall clock), upstream
+     * `rmw_service_info_t::received_timestamp` on the client side. */
+    int64_t recv_ns;
     bool active;
     /* Issue 2109 — `client_set_on_new_response_callback`'s registration. */
     rmw_event_callback_t on_new;
@@ -1212,6 +1216,11 @@ rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client, rmw_byte_spa
                                         int64_t* sequence_id);
 rmw_ret_t xrce_service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t* reply,
                                      int64_t* seq_out, bool* taken);
+/* Issue 2136 — `xrce_service_take_response` plus the reply's
+ * `rmw_service_info_t`. */
+rmw_ret_t xrce_service_take_response_with_info(const rmw_client_t* client,
+                                               rmw_mut_byte_span_t* reply, int64_t* seq_out,
+                                               bool* taken, rmw_service_info_t* service_info);
 
 void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t request_id,
                            SampleIdentity* sample_id, struct ucdrBuffer* ub, uint16_t length,

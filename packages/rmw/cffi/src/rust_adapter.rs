@@ -601,6 +601,10 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         // is the one request/reply path; the blocking `call_raw` slot is gone.
         send_request: Some(send_request_trampoline::<R>),
         take_response: Some(take_response_trampoline::<R>),
+        // Issue 2136 — the reply's metadata, from `ClientTrait::response_info`.
+        // Installed for every Rust backend: one that reports nothing hands
+        // back the all-zero struct, which reads as `NOT_REPORTED`.
+        take_response_with_info: Some(take_response_with_info_trampoline::<R>),
         subscription_event_init: Some(subscription_event_init_trampoline::<R>),
         publisher_event_init: Some(publisher_event_init_trampoline::<R>),
         publisher_assert_liveliness: Some(publisher_assert_liveliness_trampoline::<R>),
@@ -1513,6 +1517,58 @@ unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
     seq_out: *mut i64,
     taken: *mut bool,
 ) -> NrosRmwRet {
+    unsafe { take_response_impl::<R>(client, reply, seq_out, taken, core::ptr::null_mut()) }
+}
+
+/// Issue 2136 — `take_response` plus the reply's `rmw_service_info_t`, from
+/// the backend's [`ClientTrait::response_info`] for the reply just taken.
+unsafe extern "C" fn take_response_with_info_trampoline<R: RustBackend>(
+    client: *const NrosRmwClient,
+    reply: *mut crate::generated::rmw_mut_byte_span_t,
+    seq_out: *mut i64,
+    taken: *mut bool,
+    service_info: *mut crate::generated::rmw_service_info_t,
+) -> NrosRmwRet {
+    if service_info.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    unsafe { take_response_impl::<R>(client, reply, seq_out, taken, service_info) }
+}
+
+/// Issue 2136 — [`nros_rmw::ServiceRequestInfo`] → `rmw_service_info_t`, the
+/// inverse of `service_info_from_raw`: `None` becomes the ABI's zero.
+fn service_info_to_raw(
+    info: &nros_rmw::ServiceRequestInfo,
+    out: &mut crate::generated::rmw_service_info_t,
+) {
+    out.source_timestamp = info.source_timestamp.map_or(0, |t| t.to_nanos());
+    out.received_timestamp = info.received_timestamp.map_or(0, |t| t.to_nanos());
+    match info.request_id {
+        Some(id) => {
+            for (dst, src) in out
+                .request_id
+                .writer_guid
+                .iter_mut()
+                .zip(id.writer_guid.iter())
+            {
+                *dst = *src as i8;
+            }
+            out.request_id.sequence_number = id.sequence_number;
+        }
+        None => {
+            out.request_id.writer_guid = [0; 16];
+            out.request_id.sequence_number = 0;
+        }
+    }
+}
+
+unsafe fn take_response_impl<R: RustBackend>(
+    client: *const NrosRmwClient,
+    reply: *mut crate::generated::rmw_mut_byte_span_t,
+    seq_out: *mut i64,
+    taken: *mut bool,
+    service_info: *mut crate::generated::rmw_service_info_t,
+) -> NrosRmwRet {
     // Phase 376 W3.b/W3.d step A — upstream `rmw_take_response`'s shape;
     // phase-406 W2 — one span in place of the buf/len/out_len triple.
     if reply.is_null() || taken.is_null() {
@@ -1536,6 +1592,12 @@ unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
                 if !seq_out.is_null() {
                     *seq_out = seq;
                 }
+            }
+            if !service_info.is_null() {
+                // SAFETY: checked non-null; caller-owned for the call.
+                service_info_to_raw(&ClientTrait::response_info(c), unsafe {
+                    &mut *service_info
+                });
             }
             NROS_RMW_RET_OK
         }

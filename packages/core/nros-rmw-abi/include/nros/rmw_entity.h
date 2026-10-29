@@ -334,16 +334,22 @@ typedef struct rmw_request_id_t {
 
 /** Per-request metadata — upstream `rmw_service_info_t`, field for field.
  *
- *  Issue 2081. Filled by `take_request_with_info`. As in `rmw_message_info_t`,
- *  a field the backend cannot report is ZERO: a timestamp of 0 means "not
- *  stamped", and an all-zero `request_id.writer_guid` means the request id is
- *  not reported. The runtime turns each into `None`, never into a value. */
+ *  Issue 2081. Filled by `take_request_with_info` for a request and, since
+ *  issue 2136, by `take_response_with_info` for a reply. As in
+ *  `rmw_message_info_t`, a field the backend cannot report is ZERO: a
+ *  timestamp of 0 means "not stamped", and an all-zero
+ *  `request_id.writer_guid` means the request id is not reported. The runtime
+ *  turns each into `None`, never into a value.
+ *
+ *  The timestamps are the SENDER's and the RECEIVER's, as upstream's are: for
+ *  a request, the client's send time and the server's arrival time; for a
+ *  reply, the server's send time and the client's arrival time. */
 typedef struct rmw_service_info_t {
-    /** Client's clock when the request was sent, ns. 0 = not reported. */
+    /** Sender's clock when the message was sent, ns. 0 = not reported. */
     rmw_time_point_value_t source_timestamp;
-    /** Server's clock when the request was received, ns. 0 = not reported. */
+    /** Receiver's clock when the message was received, ns. 0 = not reported. */
     rmw_time_point_value_t received_timestamp;
-    /** Who sent the request. */
+    /** The request: who sent it, and its client-assigned sequence number. */
     rmw_request_id_t request_id;
 } rmw_service_info_t;
 

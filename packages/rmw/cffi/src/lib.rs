@@ -329,6 +329,7 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     get_gid_for_client: None,
     event_type_is_supported: None,
     take_request_with_info: None,
+    take_response_with_info: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
@@ -3289,6 +3290,7 @@ impl Session for CffiSession {
             response_qos: qos_unknown_c(),
             refused_len: None,
             entity_waker: WakerSlot::new(),
+            response_info: ServiceRequestInfo::NOT_REPORTED,
         };
         let svc_ptr = to_c_str(service.name, &mut cli_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut cli_state.type_name_buf);
@@ -5572,6 +5574,9 @@ pub struct CffiClient {
     refused_len: Option<usize>,
     /// Issue 1940 — see [`CffiSubscription`]'s field of the same name.
     entity_waker: WakerSlot,
+    /// Issue 2136 — the metadata of the reply the last `take_response_raw`
+    /// returned, for [`ClientTrait::response_info`].
+    response_info: ServiceRequestInfo,
 }
 
 impl CffiClient {
@@ -5666,7 +5671,21 @@ impl ClientTrait for CffiClient {
         let mut taken = false;
         // Issue 2009 — see `send_request_raw`.
         let mut seq: i64 = generated::NROS_RMW_SEQUENCE_ID_UNKNOWN;
-        let rc = unsafe { f(&view, &mut reply_span, &mut seq, &mut taken) };
+        // Issue 2136 — a backend that fills `take_response_with_info` reports
+        // the reply's metadata in this caller-owned struct; one that does not
+        // is taken through `take_response` and reports nothing.
+        // SAFETY: an all-zero `rmw_service_info_t` is valid and means "nothing
+        // reported"; the backend overwrites it on a take.
+        let mut raw_info: generated::rmw_service_info_t = unsafe { core::mem::zeroed() };
+        let with_info = self.vtable.take_response_with_info;
+        let rc = unsafe {
+            match with_info {
+                Some(take_with_info) => {
+                    take_with_info(&view, &mut reply_span, &mut seq, &mut taken, &mut raw_info)
+                }
+                None => f(&view, &mut reply_span, &mut seq, &mut taken),
+            }
+        };
         if rc != NROS_RMW_RET_OK {
             if rc == NROS_RMW_RET_BUFFER_TOO_SMALL {
                 self.refused_len = refused_len_from_span(reply_span.len, reply_buf.len());
@@ -5676,6 +5695,13 @@ impl ClientTrait for CffiClient {
         if !taken {
             return Ok(None);
         }
+        // Issue 2136 — this reply's metadata: the slot's struct when the
+        // backend fills the slot, `NOT_REPORTED` when it does not.
+        self.response_info = if with_info.is_some() {
+            service_info_from_raw(&raw_info)
+        } else {
+            ServiceRequestInfo::NOT_REPORTED
+        };
         let out_len = reply_span.len;
         let len = checked_take_len(out_len, reply_buf.len())
             .inspect_err(|_| self.refused_len = Some(out_len))?;
@@ -5684,6 +5710,10 @@ impl ClientTrait for CffiClient {
 
     fn refused_response_len(&self) -> Option<usize> {
         self.refused_len
+    }
+
+    fn response_info(&self) -> ServiceRequestInfo {
+        self.response_info
     }
 
     fn service_is_ready(&self) -> Result<bool, TransportError> {
@@ -6695,6 +6725,152 @@ mod tests {
         let mut buf = [0u8; 16];
         assert!(server.take_request(&mut buf).unwrap().is_some());
         assert_eq!(server.request_info(), ServiceRequestInfo::NOT_REPORTED);
+    }
+
+    // Issue 2136 — a C backend that fills `take_response_with_info` is HEARD
+    // on the client side too.
+
+    unsafe extern "C" fn info_take_response(
+        _: *const NrosRmwClient,
+        _: *mut crate::generated::rmw_mut_byte_span_t,
+        _: *mut i64,
+        _: *mut bool,
+    ) -> NrosRmwRet {
+        // Never reached: a backend with the info slot is taken through it.
+        NROS_RMW_RET_ERROR
+    }
+
+    unsafe extern "C" fn info_take_response_with_info(
+        _: *const NrosRmwClient,
+        reply: *mut crate::generated::rmw_mut_byte_span_t,
+        seq_out: *mut i64,
+        taken: *mut bool,
+        info: *mut crate::generated::rmw_service_info_t,
+    ) -> NrosRmwRet {
+        unsafe {
+            (*reply).len = 4;
+            *seq_out = 42; // the correlation id, as `take_response` reports it
+            *taken = true;
+            (*info).source_timestamp = 1_700_000_000_000_000_002; // server's send
+            (*info).received_timestamp = 1_700_000_000_000_000_003; // our arrival
+            (*info).request_id.writer_guid = INFO_GUID;
+            (*info).request_id.sequence_number = 42;
+        }
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn zero_take_response_with_info(
+        _: *const NrosRmwClient,
+        reply: *mut crate::generated::rmw_mut_byte_span_t,
+        seq_out: *mut i64,
+        taken: *mut bool,
+        info: *mut crate::generated::rmw_service_info_t,
+    ) -> NrosRmwRet {
+        unsafe {
+            (*reply).len = 4;
+            *seq_out = 1;
+            *taken = true;
+            // A sequence number with no GUID is not a reported request id.
+            (*info).request_id.sequence_number = 1;
+        }
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn plain_take_response(
+        _: *const NrosRmwClient,
+        reply: *mut crate::generated::rmw_mut_byte_span_t,
+        seq_out: *mut i64,
+        taken: *mut bool,
+    ) -> NrosRmwRet {
+        unsafe {
+            (*reply).len = 4;
+            *seq_out = 5;
+            *taken = true;
+        }
+        NROS_RMW_RET_OK
+    }
+
+    static RESPONSE_INFO_VTABLE: NrosRmwVtable = NrosRmwVtable {
+        take_response: Some(info_take_response),
+        take_response_with_info: Some(info_take_response_with_info),
+        ..STUB_VTABLE
+    };
+    static ZERO_RESPONSE_INFO_VTABLE: NrosRmwVtable = NrosRmwVtable {
+        take_response: Some(info_take_response),
+        take_response_with_info: Some(zero_take_response_with_info),
+        ..STUB_VTABLE
+    };
+    static PLAIN_RESPONSE_VTABLE: NrosRmwVtable = NrosRmwVtable {
+        take_response: Some(plain_take_response),
+        take_response_with_info: None,
+        ..STUB_VTABLE
+    };
+
+    fn info_client(vtable: &'static NrosRmwVtable) -> CffiClient {
+        CffiClient {
+            vtable,
+            service_name_buf: [0u8; NAME_BUF_LEN],
+            type_name_buf: [0u8; NAME_BUF_LEN],
+            backend_data: 0x2136_0001usize as *mut c_void,
+            request_qos: qos_unknown_c(),
+            response_qos: qos_unknown_c(),
+            refused_len: None,
+            entity_waker: WakerSlot::new(),
+            response_info: ServiceRequestInfo::NOT_REPORTED,
+        }
+    }
+
+    /// Issue 2136 — the slot is dispatched in place of `take_response`, and
+    /// its struct becomes `response_info()`.
+    #[test]
+    fn take_response_with_info_reports_the_replys_metadata() {
+        let mut client = info_client(&RESPONSE_INFO_VTABLE);
+        let mut buf = [0u8; 16];
+        let (len, seq) = client
+            .take_response_raw(&mut buf)
+            .expect("the slot answers OK")
+            .expect("a reply was taken");
+        assert_eq!((len, seq), (4, 42));
+        let info = client.response_info();
+        let id = info.request_id.expect("a non-zero GUID is a reported id");
+        let mut want = [0u8; REQUEST_WRITER_GUID_SIZE];
+        for (d, s) in want.iter_mut().zip(INFO_GUID.iter()) {
+            *d = *s as u8;
+        }
+        assert_eq!(id.writer_guid, want);
+        assert_eq!(id.sequence_number, 42);
+        assert_eq!(
+            info.source_timestamp,
+            Some(nros_rmw::Time::from_nanos(1_700_000_000_000_000_002))
+        );
+        assert_eq!(
+            info.received_timestamp,
+            Some(nros_rmw::Time::from_nanos(1_700_000_000_000_000_003))
+        );
+    }
+
+    /// Issue 2136 — an all-zero struct (a bare sequence number included) is
+    /// "nothing reported".
+    #[test]
+    fn take_response_with_info_zero_struct_is_not_reported() {
+        let mut client = info_client(&ZERO_RESPONSE_INFO_VTABLE);
+        let mut buf = [0u8; 16];
+        assert!(client.take_response_raw(&mut buf).unwrap().is_some());
+        assert_eq!(client.response_info(), ServiceRequestInfo::NOT_REPORTED);
+    }
+
+    /// Issue 2136 — a backend without the slot reports nothing, and a reply
+    /// taken after an informed one does not inherit its metadata.
+    #[test]
+    fn take_response_without_the_slot_reports_nothing() {
+        let mut client = info_client(&PLAIN_RESPONSE_VTABLE);
+        client.response_info = ServiceRequestInfo {
+            source_timestamp: Some(nros_rmw::Time::from_nanos(9)),
+            ..ServiceRequestInfo::NOT_REPORTED
+        };
+        let mut buf = [0u8; 16];
+        assert_eq!(client.take_response_raw(&mut buf).unwrap(), Some((4, 5)));
+        assert_eq!(client.response_info(), ServiceRequestInfo::NOT_REPORTED);
     }
 
     #[test]
