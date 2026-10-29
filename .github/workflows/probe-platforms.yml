@@ -74,11 +74,14 @@ jobs:
         platform:
           - baremetal
           - freertos
+          - freertos-c
           - threadx-linux
           - threadx-riscv64
+          - threadx-linux-c
           - nuttx-arm
           - nuttx-riscv
           - zephyr
+          - zephyr-rust
           - workspace
     steps:
       - uses: actions/checkout@v4

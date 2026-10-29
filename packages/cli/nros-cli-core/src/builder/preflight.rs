@@ -94,10 +94,7 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
             // preflight refused a host whose nightly HAD `rust-src` because the
             // default did not, and would have passed one whose nightly lacked it.
             Provisioning::BuildStd => {
-                let channel = (board.toolchain
-                    == crate::orchestration::board_descriptor::Toolchain::Nightly)
-                    .then(|| pinned_nightly(nano_ros_root))
-                    .flatten();
+                let channel = board_rust_channel(board, nano_ros_root);
                 if !rust_component_installed("rust-src", channel.as_deref()) {
                     let on = channel
                         .as_deref()
@@ -227,7 +224,7 @@ fn target_provisioning(nano_ros_root: Option<&Path>, target: &str) -> Provisioni
 /// them, which is what pins Corrosion's configure). Read from that listing
 /// because it is what an INSTALLED SDK root ships; `tools/` is not staged.
 /// `None` when unreadable: the check then asks rustup's default, as before.
-fn pinned_nightly(nano_ros_root: Option<&Path>) -> Option<String> {
+pub(crate) fn pinned_nightly(nano_ros_root: Option<&Path>) -> Option<String> {
     let text = std::fs::read_to_string(nano_ros_root?.join("config/rust-toolchains.txt")).ok()?;
     text.lines()
         .map(str::trim)
@@ -235,6 +232,22 @@ fn pinned_nightly(nano_ros_root: Option<&Path>) -> Option<String> {
         .filter_map(|l| l.split_whitespace().next())
         .find(|c| c.starts_with("nightly-"))
         .map(str::to_string)
+}
+
+/// The Rust channel cargo must build `board` with: the pinned nightly for a
+/// `toolchain = "nightly"` board (its `cargo_config` carries `[unstable]
+/// build-std`, which a stable cargo ignores — and then fails with `can't find
+/// crate for core`), else `None` (whatever rustup picks). Issue 2149: the
+/// preflight asked this channel for `rust-src` while the build itself ran on
+/// the default, so a NuttX Rust image from `nros build` could not compile.
+#[must_use]
+pub(crate) fn board_rust_channel(
+    board: &BoardDescriptor,
+    nano_ros_root: Option<&Path>,
+) -> Option<String> {
+    (board.toolchain == crate::orchestration::board_descriptor::Toolchain::Nightly)
+        .then(|| pinned_nightly(nano_ros_root))
+        .flatten()
 }
 
 /// Whether `rustup` reports a COMPONENT as installed (on `toolchain`, or the
@@ -543,5 +556,23 @@ mod tests {
         assert!(r.contains("nros setup a"), "{r}");
         assert!(r.contains("nros setup b"), "{r}");
         assert!(r.contains("nothing was built"), "{r}");
+    }
+
+    /// Issue 2149 — a `toolchain = "nightly"` board builds on the pinned
+    /// nightly (what the cargo handoffs set as `RUSTUP_TOOLCHAIN`), a stable
+    /// board names no channel. Read against the in-tree catalog and the
+    /// shipped `config/rust-toolchains.txt`.
+    #[test]
+    fn a_nightly_board_builds_on_the_pinned_nightly() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let cat = BoardCatalog::load(&root).expect("catalog");
+        let nuttx =
+            crate::cmd::board_facts::resolve_board(&cat, "qemu-armv7a-nuttx").expect("nuttx board");
+        let channel = board_rust_channel(nuttx, Some(&root)).expect("a nightly channel");
+        assert!(channel.starts_with("nightly-"), "{channel}");
+        assert_eq!(Some(channel), pinned_nightly(Some(&root)));
+        let freertos = crate::cmd::board_facts::resolve_board(&cat, "mps2-an385-freertos")
+            .expect("freertos board");
+        assert_eq!(board_rust_channel(freertos, Some(&root)), None);
     }
 }

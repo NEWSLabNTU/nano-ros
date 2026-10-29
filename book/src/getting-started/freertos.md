@@ -35,7 +35,7 @@ NOT installed — it comes from your ROS 2 install (RFC-0075).
 
 **C / C++** is a single package — `nros new` scaffolds it:
 
-```bash
+```bash probe=40 variant=c
 nros new fr_talker --platform freertos --lang c      # or --lang cpp
 cd fr_talker
 ```
@@ -56,7 +56,7 @@ for you (`--board` names another).
 starts as a workspace (single-package Rust scaffolding is not offered
 for FreeRTOS — `nros new` says so and names the alternative):
 
-```bash probe=40
+```bash probe=40 variant=rust
 nros new fr_ws --workspace --lang rust --rmw zenoh
 cd fr_ws
 nros new --image freertos --board mps2-an385-freertos   # adds [image.freertos]
@@ -137,7 +137,7 @@ you). No `nros sync`: a C or C++ leaf's message bindings are a CMake-time
 output. `nros build` passes the board's cross-toolchain file and the SDK
 root:
 
-```bash
+```bash probe=50 variant=c
 nros build
 ```
 
@@ -145,7 +145,7 @@ Rust, in the workspace (`fr_ws/`). `nros sync` first: it writes the
 generated message bindings and the resolved launch model the entry is
 built from. Without it the build stops at its preflight naming sync:
 
-```bash probe=50
+```bash probe=50 variant=rust
 nros sync
 nros build freertos
 ```
@@ -219,7 +219,7 @@ Started Zenoh router with id
 mps2-an385-freertos` installed it), with the LAN9118 on Slirp and the
 `-icount` the test harness uses. From the workspace (`fr_ws/`):
 
-```bash probe=70 probe-run=120 probe-keep
+```bash probe=70 probe-run=120 probe-keep variant=rust
 "$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
     -icount shift=auto \
     -semihosting-config enable=on,target=native \
@@ -230,7 +230,7 @@ mps2-an385-freertos` installed it), with the LAN9118 on Slirp and the
 The workspace image runs the scaffold's talker and listener in one board,
 so it prints both sides of `/chatter` (a `std_msgs/Int32` counter from 0):
 
-```text probe-expect=70
+```text probe-expect=70 variant=rust
 Network ready.
 [INFO] Publishing: 0
 [INFO] I heard: 0
@@ -239,21 +239,45 @@ Network ready.
 ...
 ```
 
-The C / C++ package's image boots with the same flags and its own ELF,
-`-kernel build/freertos/cmake/fr_talker` from `fr_talker/`. The scaffolded C
-talker is the in-tree
-[example's `main.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-freertos/c/talker/src/main.c):
-it prints `Publishing: 'Hello World: 1'`, `…: 2`, … once a second.
+The C / C++ package's image boots with the same flags and its own ELF, from
+`fr_talker/`:
+
+```bash probe=70 probe-run=120 probe-keep variant=c
+"$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
+    -icount shift=auto \
+    -semihosting-config enable=on,target=native \
+    -kernel build/freertos/cmake/fr_talker \
+    -nic user,model=lan9118
+```
+
+The scaffolded C talker is the in-tree
+[example's `main.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-freertos/c/talker/src/main.c),
+publishing `std_msgs/String` once a second:
+
+```text probe-expect=70 variant=c
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
+```
 
 **3. A stock ROS 2 peer.** The talker publishes best-effort; stock `ros2 topic
 echo` defaults to RELIABLE, so the QoS-mismatched echo silently delivers
 nothing. Force best-effort to receive:
 
-```bash probe=80 probe-run=90
+```bash probe=80 probe-run=90 variant=rust
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
+
+The C talker publishes `std_msgs/String`:
+
+```bash probe=80 probe-run=90 variant=c
+source /opt/ros/humble/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+```
+
+Either prints a `data:` line per message:
 
 ```text probe-expect=80
 data:

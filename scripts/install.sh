@@ -249,6 +249,11 @@ front_args="--front bin/nros"
 if [ -x "$prefix/bin/nros-launch-resolve" ]; then
     front_args="$front_args --front bin/nros-launch-resolve"
 fi
+# phase-517 W17 — the build profiler, on the same terms: an asset from
+# `0.6.0-nros4` or older does not carry it.
+if [ -x "$prefix/bin/nros-build-profile" ]; then
+    front_args="$front_args --front bin/nros-build-profile"
+fi
 # shellcheck disable=SC2086
 # Word-splitting is intended: $front_args is a flag list built above.
 "$prefix/bin/nros" sdk-front nros $front_args >/dev/null \

@@ -34,4 +34,26 @@ if [ -n "$marker_hits" ]; then
     exit 1
 fi
 
+# phase-517 W17 — the index sources with no `location = "store"` and no
+# chapter that reaches them, measured with no checkout: where each one lands.
+# Their `dest` is SDK-root-relative, so they must land inside the installed
+# SDK root (as W10 measured for the NuttX sources), never in a checkout.
+echo '=== probe verify: checkout-located index sources provision into the SDK root ==='
+sdk_root="$(nros sdk-root)"
+for pair in \
+    tonbandgeraet:third-party/tracing/Tonbandgeraet \
+    px4-rs:third-party/px4/px4-rs \
+    cyclonedds-src:third-party/dds/cyclonedds; do
+    src="${pair%%:*}" dest="${pair#*:}"
+    if ! nros setup --source "$src"; then
+        echo "PROBE FAIL: nros setup --source $src failed with no checkout" >&2
+        exit 1
+    fi
+    if [ -z "$(ls -A "$sdk_root/$dest" 2>/dev/null)" ]; then
+        echo "PROBE FAIL: nros setup --source $src left $sdk_root/$dest empty" >&2
+        exit 1
+    fi
+    echo "  $src -> $sdk_root/$dest"
+done
+
 echo "PROBE PASS: installed release -> nros new (linux + freertos images) -> one nros setup -> nros build --all, with no nano-ros checkout on the host"

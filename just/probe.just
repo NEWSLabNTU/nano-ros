@@ -64,6 +64,11 @@ baremetal: (platform "baremetal")
 [group("main")]
 freertos: (platform "freertos")
 
+# book/src/getting-started/freertos.md — the C package on the same board
+# (phase-517 W17: the chapter's other language road).
+[group("main")]
+freertos-c: (platform "freertos-c")
+
 # book/src/getting-started/threadx.md — the Linux simulator flavour.
 [group("main")]
 threadx-linux: (platform "threadx-linux")
@@ -71,6 +76,11 @@ threadx-linux: (platform "threadx-linux")
 # book/src/getting-started/threadx.md — the RISC-V 64 QEMU flavour.
 [group("main")]
 threadx-riscv64: (platform "threadx-riscv64")
+
+# book/src/getting-started/threadx.md — the C package on the Linux simulator
+# (phase-517 W17).
+[group("main")]
+threadx-linux-c: (platform "threadx-linux-c")
 
 # book/src/getting-started/integration-nuttx.md — QEMU Arm `virt`.
 [group("main")]
@@ -83,6 +93,11 @@ nuttx-riscv: (platform "nuttx-riscv")
 # book/src/getting-started/integration-zephyr.md — native_sim.
 [group("main")]
 zephyr: (platform "zephyr")
+
+# book/src/getting-started/integration-zephyr.md — the Rust workspace on
+# native_sim (phase-517 W17).
+[group("main")]
+zephyr-rust: (platform "zephyr-rust")
 
 # phase-517 W4: not a platform chapter, but it rides the same harness. One bare
 # `nros setup` for a Linux and a FreeRTOS image, then `nros build --all`.

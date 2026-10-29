@@ -1165,6 +1165,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // the registry pin set, so `update --workspace` keeps every
                 // pinned version the manifests accept instead of resolving the
                 // registry fresh.
+                let rust_channel =
+                    crate::builder::preflight::board_rust_channel(descriptor, Some(nros_root));
                 let had_lock = manifest_dir.join("Cargo.lock").is_file();
                 crate::orchestration::registry_pins::seed(&manifest_dir, Some(nros_root))?;
                 if lock_is_ours || !had_lock {
@@ -1179,7 +1181,10 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     if args.offline {
                         u.push("--offline".to_string());
                     }
-                    cargo_prepare = Some(Handoff::new("cargo", u).in_dir(&root));
+                    cargo_prepare = Some(with_rust_channel(
+                        Handoff::new("cargo", u).in_dir(&root),
+                        rust_channel.as_deref(),
+                    ));
                 }
                 if let Some(build_dir) = &shared_class {
                     // `build.build-dir` (cargo 1.91+): intermediates per class,
@@ -1217,7 +1222,10 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // which is where a user's own toolchain preference belongs
                 // (RFC-0098 D1) — and why the per-image settings are never put
                 // in one.
-                Some(Handoff::new("cargo", a).in_dir(&root))
+                Some(with_rust_channel(
+                    Handoff::new("cargo", a).in_dir(&root),
+                    rust_channel.as_deref(),
+                ))
             }
             Driver::CMake => {
                 // Unlike cargo, cmake imposes no root/member hierarchy rule, so
@@ -2076,7 +2084,10 @@ fn plan_leaf_image(
         if args.offline {
             u.push("--offline".to_string());
         }
-        Handoff::new("cargo", u).in_dir(&cwd)
+        with_rust_channel(
+            Handoff::new("cargo", u).in_dir(&cwd),
+            img.rust_channel.as_deref(),
+        )
     });
     if args.offline {
         a.push("--frozen".to_string());
@@ -2116,7 +2127,10 @@ fn plan_leaf_image(
         board: img.board.clone(),
         platform: img.platform.clone(),
         driver: Driver::Cargo,
-        handoff: Some(Handoff::new("cargo", a).in_dir(&cwd)),
+        handoff: Some(with_rust_channel(
+            Handoff::new("cargo", a).in_dir(&cwd),
+            img.rust_channel.as_deref(),
+        )),
         rmw: img.decl.rmw.clone(),
         entry_package: Some(img.package.clone()),
         target: img.target.clone(),
@@ -5813,6 +5827,16 @@ pub(crate) fn stage4_checks_census(
     }
 }
 
+/// Issue 2149 — run a cargo handoff on the board's Rust channel when it has
+/// one (`RUSTUP_TOOLCHAIN`, the pinned nightly of a `toolchain = "nightly"`
+/// board). Without it the `[unstable] build-std` the board's settings carry is
+/// ignored by a stable cargo, and a tier-3 target fails at `core`.
+fn with_rust_channel(h: Handoff, channel: Option<&str>) -> Handoff {
+    match channel {
+        Some(c) => h.with_env("RUSTUP_TOOLCHAIN", c),
+        None => h,
+    }
+}
 #[cfg(test)]
 mod effective_images_tests {
     use super::effective_images;

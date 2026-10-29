@@ -202,7 +202,7 @@ Zephyr's own host tools come first — `west` and the build tools
 [Zephyr's Getting Started](https://docs.zephyrproject.org/3.7.0/develop/getting_started/index.html)
 lists; `nros setup` installs no system packages. On Debian/Ubuntu:
 
-```bash probe=30 variant=native-sim
+```bash probe=30 variant=native-sim,native-sim-rust
 sudo apt-get install -y --no-install-recommends git cmake ninja-build gperf \
     device-tree-compiler python3-pip python3-venv xz-utils file wget
 pip3 install --user west
@@ -211,7 +211,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Provision the board and RMW (the Zephyr SDK, zenoh-pico, mbedtls):
 
-```bash probe=32 variant=native-sim
+```bash probe=32 variant=native-sim,native-sim-rust
 nros setup zephyr --rmw zenoh
 export ZEPHYR_SDK_INSTALL_DIR="$(nros sdk-path zephyr-sdk --require)"
 ```
@@ -220,7 +220,7 @@ A west workspace that pins Zephyr 3.7 and fetches only the modules nano-ros's
 boards build with (`nros setup zephyr` lists them; `import: true` would fetch
 every vendor HAL, ~2.5 GB more):
 
-```bash probe=34 variant=native-sim
+```bash probe=34 variant=native-sim,native-sim-rust
 mkdir -p my_zephyr_ws/manifest && cd my_zephyr_ws
 cat > manifest/west.yml <<'WEST_YML'
 manifest:
@@ -260,13 +260,13 @@ Run it against a router on the host's loopback — `native_sim` uses the host's
 sockets, and the image dials `tcp/127.0.0.1:7447` unless `system.toml` states a
 `locator`:
 
-```bash probe=60 probe-run=60 probe-keep variant=native-sim
+```bash probe=60 probe-run=60 probe-keep variant=native-sim,native-sim-rust
 source /opt/ros/humble/setup.bash
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
-```text probe-expect=60 variant=native-sim
+```text probe-expect=60 variant=native-sim,native-sim-rust
 Started Zenoh router with id
 ```
 
@@ -278,6 +278,35 @@ Started Zenoh router with id
 Publishing: 'Hello World: 1'
 Publishing: 'Hello World: 2'
 ...
+```
+
+**The same talker in Rust.** A Rust image on Zephyr is a workspace: a node
+package plus a Zephyr entry, which `nros new entry` scaffolds (see
+[The entry: `nros new entry`](#the-entry-nros-new-entry)). From the west
+workspace above, beside it:
+
+```bash probe=40 variant=native-sim-rust
+export NROS_ZEPHYR_WORKSPACE="$PWD"
+cd ..
+nros new rs_ws --workspace --lang rust --rmw zenoh
+cd rs_ws
+nros new entry zephyr_entry --platform zephyr
+nros sync
+nros build demo_bringup:zephyr_entry
+```
+
+With the router above running, run the image `nros build` wrote (it prints
+this path):
+
+```bash probe=70 probe-run=120 variant=native-sim-rust
+./build/zephyr-zenoh/demo_bringup__zephyr_entry_west/zephyr/zephyr.exe
+```
+
+The workspace's talker and listener run in the one image:
+
+```text probe-expect=70 variant=native-sim-rust
+Publishing: 0
+I heard: 0
 ```
 
 ## Configure
@@ -700,7 +729,18 @@ No `ZEPHYR_BASE`, no `NROS_ZEPHYR_WORKSPACE`, no `--zephyr-workspace`. Every
 argument after `nros` is passed straight through, so anything `nros` accepts
 works here unchanged.
 
-It picks up automatically in any workspace whose manifest lists nano-ros.
+It picks up automatically in any workspace whose manifest lists nano-ros —
+a checkout of this repository, or a mirror of a release you vendor (see
+[Pin and mirror a release](./vendored-tree.md)). **With the installed SDK alone
+there is no `west nros`:** west reads extension commands from a manifest
+project, and the installed SDK root is a versioned directory under `~/.nros`
+that no `west.yml` can name. Name the Zephyr workspace to `nros` instead,
+which is what `west nros` does for you:
+
+```bash
+nros build --zephyr-workspace ~/zephyr-workspace demo_bringup:zephyr
+```
+
 `west nros` is now the only nano-ros west extension: `west fvp` shared that
 route until RFC-0064 revision 5 retired it, since its body was environment
 wiring in front of the stock `west build -t run`. Two things worth knowing:
