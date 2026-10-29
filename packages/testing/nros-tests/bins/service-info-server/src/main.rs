@@ -20,7 +20,7 @@
 //! (`nros_tests::output::SERVICE_SERVER_READY_MARKER`) and then, per request:
 //!
 //! ```text
-//! REQUEST_ID guid=<32 hex digits> seq=<client sequence number> a=<a> b=<b>
+//! REQUEST_ID guid=<32 hex digits> seq=<client sequence number> a=<a> b=<b> received_ts=<ns|absent>
 //! ```
 //!
 //! (`nros_tests::output::SERVICE_INFO_LOG_PREFIX`). A request whose backend
@@ -77,8 +77,14 @@ fn main() {
                             .iter()
                             .map(|b| format!("{b:02x}"))
                             .collect::<std::string::String>();
+                        // Issue 2135 — when the backend RECEIVED the request,
+                        // wall-clock ns, or `absent` when it reported none.
+                        let received = info
+                            .received_timestamp
+                            .map(|t| t.to_nanos().to_string())
+                            .unwrap_or_else(|| "absent".into());
                         info!(
-                            "REQUEST_ID guid={guid} seq={} a={} b={}",
+                            "REQUEST_ID guid={guid} seq={} a={} b={} received_ts={received}",
                             id.sequence_number, req.a, req.b
                         );
                     }

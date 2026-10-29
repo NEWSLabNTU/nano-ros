@@ -129,6 +129,11 @@ pub struct zpico_ring_desc_t {
     /// producers. Set by `zpico_declare_subscriber_ring`; NULL (no lock)
     /// for a ring no session produces into.
     pub lock_session: *mut c_void,
+    /// Issue 2135 — `slot_count` entries: the wall-clock time (ns since the
+    /// Unix epoch, `nros_platform_time_now_ns`) the producer received each
+    /// slot's sample, upstream `rmw_message_info_t::received_timestamp`.
+    /// 0 when the platform has no wall clock. NULL: not recorded.
+    pub recv_ns: *mut i64,
 }
 
 // These extern declarations import the zpico C functions.

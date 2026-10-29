@@ -442,7 +442,10 @@ fn parse_request_id_line(line: &str) -> Option<([u8; 16], i64)> {
 ///   mis-split copy of the 12-byte prefix / 3-byte key / 1-byte kind fails here,
 ///   which "non-zero" alone would not catch.
 ///
-/// No timestamps: none reach an XRCE client library (`xrce_fill_service_info`).
+/// * **each request carries its receive time** (issue 2135) — the backend's
+///   own wall-clock stamp from the request callback, inside the window this
+///   test ran in. The SOURCE timestamp is not reported: none reaches an XRCE
+///   client library (`xrce_fill_service_info`).
 #[rstest]
 fn test_xrce_service_reports_the_stock_clients_request_id(
     xrce_service_info_server_binary: PathBuf,
@@ -451,6 +454,13 @@ fn test_xrce_service_reports_the_stock_clients_request_id(
 
     require_xrce_agent();
     require_ros2_dds();
+    let wall_ns = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("wall clock after 1970")
+            .as_nanos() as i64
+    };
+    let started_ns = wall_ns();
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
@@ -574,6 +584,33 @@ fn test_xrce_service_reports_the_stock_clients_request_id(
         guid[15], 0x03,
         "the GUID's last byte is not a keyless user writer's entity kind (0x03) — the \
          3-byte key / 1-byte kind split of the entity id is wrong\n{context}"
+    );
+    // Issue 2135 — every request reports when the backend received it, on the
+    // wall clock, between this test's start and the server's last line.
+    let ended_ns = wall_ns();
+    let received: Vec<Option<i64>> = server_output
+        .lines()
+        .filter(|l| l.contains(nros_tests::output::SERVICE_INFO_LOG_PREFIX))
+        .map(|l| {
+            l.split_whitespace()
+                .find_map(|f| f.strip_prefix("received_ts="))
+                .and_then(|v| v.parse::<i64>().ok())
+        })
+        .collect();
+    assert!(
+        !received.is_empty() && received.iter().all(Option::is_some),
+        "a request reported no received_timestamp (`received_ts=absent`, issue 2135): \
+         {received:?}\n{context}"
+    );
+    let received: Vec<i64> = received.into_iter().flatten().collect();
+    assert!(
+        received.iter().all(|t| started_ns <= *t && *t <= ended_ns),
+        "a received_timestamp is outside this test's wall-clock window \
+         [{started_ns}, {ended_ns}]: {received:?}\n{context}"
+    );
+    assert!(
+        received.windows(2).all(|w| w[0] < w[1]),
+        "received_timestamps from a 2 Hz client are not increasing: {received:?}\n{context}"
     );
     eprintln!(
         "[PASS] XRCE ServiceInfo: {} requests, seq 1..={}, writer guid {}",

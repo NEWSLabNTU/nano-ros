@@ -40,8 +40,9 @@ use super::signal_executor_wake;
 pub(super) const SERVICE_REQUEST_RING_DEPTH: usize = SERVICE_INBOX_DEPTH;
 
 /// One ring entry's bookkeeping: the request's length in its slot, the
-/// reply-correlation token, and the overflow flag. 12 bytes on a 32-bit
-/// target, and it stays PER ENTRY whatever storage the ring is over.
+/// reply-correlation token, the overflow flag and the receive time. 20 bytes
+/// on a 32-bit target, and it stays PER ENTRY whatever storage the ring is
+/// over.
 pub struct InboxEntry {
     /// Length of valid data in the slot.
     pub(super) len: AtomicUsize,
@@ -49,6 +50,13 @@ pub struct InboxEntry {
     pub(super) seq: AtomicSeqCounter,
     /// Set when the incoming request exceeded the slot.
     pub(super) overflow: AtomicBool,
+    /// Issue 2135 — when the queryable callback received the request,
+    /// wall-clock ns since the Unix epoch (0 = no wall clock), upstream
+    /// `rmw_service_info_t::received_timestamp`. Two 32-bit halves: a
+    /// 32-bit target has no 64-bit atomic, and the ring's `tail` Release /
+    /// Acquire is what publishes them, as it publishes `seq`.
+    recv_ns_lo: portable_atomic::AtomicU32,
+    recv_ns_hi: portable_atomic::AtomicU32,
 }
 
 impl InboxEntry {
@@ -57,7 +65,23 @@ impl InboxEntry {
             len: AtomicUsize::new(0),
             seq: AtomicSeqCounter::new(0),
             overflow: AtomicBool::new(false),
+            recv_ns_lo: portable_atomic::AtomicU32::new(0),
+            recv_ns_hi: portable_atomic::AtomicU32::new(0),
         }
+    }
+
+    /// Issue 2135 — record the receive time (producer, before `tail`).
+    pub(super) fn set_recv_ns(&self, ns: i64) {
+        let v = ns as u64;
+        self.recv_ns_lo.store(v as u32, Ordering::Relaxed);
+        self.recv_ns_hi.store((v >> 32) as u32, Ordering::Relaxed);
+    }
+
+    /// Issue 2135 — the receive time (consumer, after `tail`).
+    pub(super) fn recv_ns(&self) -> i64 {
+        let lo = u64::from(self.recv_ns_lo.load(Ordering::Acquire));
+        let hi = u64::from(self.recv_ns_hi.load(Ordering::Acquire));
+        ((hi << 32) | lo) as i64
     }
 }
 
@@ -465,6 +489,9 @@ fn store(buffer: &ServiceBuffer, tail: usize, payload: &[u8], seq: SeqScalar) {
     let index = tail % ring.depth();
     let slot = ring.entry(index);
     slot.seq.store(seq, Ordering::Relaxed);
+    // Issue 2135 — stamped in the callback, as `rmw_zenoh_cpp` stamps a
+    // query's receive time; published by the Release below like `seq`.
+    slot.set_recv_ns(super::wall_clock_ns());
     if payload_len > ring.slot_bytes() {
         // Request exceeds the slot - flag overflow, skip payload. The length
         // is kept: the take reports it (`refused_request_len`).
@@ -1014,9 +1041,9 @@ pub struct ZenohServiceServer {
 /// too (issue 0153): the CLIENT's sequence number, its source timestamp in
 /// nanoseconds, and its 16-byte gid. All three are reported when it parses and
 /// none when it does not (no attachment, a short one, a foreign gid length) —
-/// never a zero standing in for an unknown. `received_timestamp` is not
-/// reported: the zenoh query carries no receive time, and the queryable
-/// callback does not stamp one.
+/// never a zero standing in for an unknown. `received_timestamp` is not in
+/// the attachment: `take_request` fills it from the time the queryable
+/// callback stamped on the ring entry (issue 2135).
 pub(crate) fn request_info_from_attachment(attachment: &[u8]) -> nros_rmw::ServiceRequestInfo {
     match super::RmwAttachment::deserialize(attachment) {
         Some(att) => nros_rmw::ServiceRequestInfo {
@@ -1412,6 +1439,7 @@ impl ServiceTrait for ZenohServiceServer {
 
         #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
         let seq: i64 = slot.seq.load(Ordering::Acquire).into();
+        let received_ns = slot.recv_ns();
         pop();
 
         // Issue 1942 — `seq` names the reply slot holding this request's
@@ -1427,6 +1455,10 @@ impl ServiceTrait for ZenohServiceServer {
             Some(len) => request_info_from_attachment(&attachment[..len.min(attachment.len())]),
             None => nros_rmw::ServiceRequestInfo::NOT_REPORTED,
         };
+        // Issue 2135 — the receive time is this server's own fact, so it is
+        // reported whether or not the attachment parsed. 0 = no wall clock.
+        self.request_info.received_timestamp =
+            (received_ns != 0).then(|| nros_rmw::Time::from_nanos(received_ns));
 
         Ok(Some(ServiceRequest {
             data: &buf[..len],
@@ -1675,14 +1707,9 @@ pub struct ZenohServiceClient {
 /// field as `ServiceInfo::source_timestamp`, where a nano-ros client's request
 /// read as sent a million times too early. Nothing read it before.
 fn current_timestamp_ns(fallback_seq: i64) -> i64 {
-    unsafe extern "C" {
-        fn nros_platform_time_now_ns() -> u64;
-    }
-    let ns = unsafe { nros_platform_time_now_ns() };
-    if ns == 0 {
-        fallback_seq
-    } else {
-        ns.min(i64::MAX as u64) as i64
+    match super::wall_clock_ns() {
+        0 => fallback_seq,
+        ns => ns,
     }
 }
 

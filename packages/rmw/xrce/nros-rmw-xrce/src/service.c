@@ -118,6 +118,7 @@ void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t 
         e->overflow = !xrce_stage_inbound(xrce_request_entry_bytes(slot, slot->req_write_idx),
                                           slot->entry_cap, ub, len, &e->len);
         e->sample_id = *sample_id;
+        e->recv_ns = xrce_wall_clock_ns(); /* issue 2135 */
         slot->req_write_idx =
             (uint16_t)((slot->req_write_idx + 1) % XRCE_SERVICE_REQUEST_RING_DEPTH);
         slot->req_count++;
@@ -416,9 +417,11 @@ static rmw_ret_t xrce_service_destroy_locked(rmw_service_t* server) {
  * `rmw_microxrcedds` fills it: the Agent hands each request its DDS
  * `SampleIdentity`, whose `writer_guid` (12-byte prefix + 4-byte entity id) is
  * the requesting client's 16-byte request-writer GUID and whose sequence number
- * is that client's. No timestamp reaches the client library, so both stay 0
- * ("not reported"). */
-static void xrce_fill_service_info(const SampleIdentity* id, rmw_service_info_t* out) {
+ * is that client's. No SOURCE timestamp reaches the client library, so it
+ * stays 0 ("not reported"); the RECEIVE time is this client's own fact,
+ * stamped by the request callback (issue 2135). */
+static void xrce_fill_service_info(const SampleIdentity* id, int64_t recv_ns,
+                                   rmw_service_info_t* out) {
     memset(out, 0, sizeof(*out));
     memcpy(out->request_id.writer_guid, id->writer_guid.guidPrefix.data, 12);
     memcpy(out->request_id.writer_guid + 12, id->writer_guid.entityId.entityKey, 3);
@@ -426,6 +429,7 @@ static void xrce_fill_service_info(const SampleIdentity* id, rmw_service_info_t*
     out->request_id.sequence_number =
         (int64_t)(((uint64_t)(uint32_t)id->sequence_number.high << 32) |
                   (uint64_t)id->sequence_number.low);
+    out->received_timestamp = (rmw_time_point_value_t)recv_ns;
 }
 
 static rmw_ret_t xrce_service_take_request_len(const rmw_service_t* server, uint8_t* buf,
@@ -485,7 +489,7 @@ static rmw_ret_t xrce_service_take_request_len(const rmw_service_t* server, uint
     slot->reply_tokens[reply_idx].sample_id = e->sample_id;
     slot->reply_tokens[reply_idx].in_use = true;
     if (info_out != NULL) {
-        xrce_fill_service_info(&e->sample_id, info_out);
+        xrce_fill_service_info(&e->sample_id, e->recv_ns, info_out);
     }
     if (seq_out != NULL) {
         *seq_out = (int64_t)reply_idx;

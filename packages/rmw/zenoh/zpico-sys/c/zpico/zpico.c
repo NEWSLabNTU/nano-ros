@@ -1400,6 +1400,19 @@ void zpico_ring_consume_head(zpico_ring_desc_t* r) {
     _zpico_ring_unlock(r);
 }
 
+/* Issue 2135 — the slot's receive time, upstream's `received_timestamp`:
+ * rmw_zenoh_cpp stamps `system_clock::now()` in the sample callback, which is
+ * this producer. Wall clock, the same clock a publisher's attachment
+ * `source_timestamp` is read from, so `received - source` is a latency. A
+ * platform with no wall clock returns 0, which the consumer reports as "not
+ * stamped". */
+static void _zpico_ring_stamp(zpico_ring_desc_t* r, intptr_t slot) {
+    if (r->recv_ns != NULL) {
+        uint64_t ns = nros_platform_time_now_ns();
+        r->recv_ns[slot] = ns > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)ns;
+    }
+}
+
 int32_t zpico_ring_push_bytes(zpico_ring_desc_t* r, const uint8_t* payload, size_t len) {
     if (r == NULL || r->head == NULL || len == 0) {
         return ZPICO_ERR_INVALID;
@@ -1417,6 +1430,7 @@ int32_t zpico_ring_push_bytes(zpico_ring_desc_t* r, const uint8_t* payload, size
     memcpy(r->payload_base + (size_t)slot * r->payload_stride, payload, len);
     r->payload_len[slot] = len;
     r->att_len[slot] = 0;
+    _zpico_ring_stamp(r, slot);
     _zpico_ring_commit(r, advance);
     _zpico_ring_unlock(r);
     return 0;
@@ -1506,6 +1520,7 @@ static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
         }
     }
     r->att_len[slot] = att_written;
+    _zpico_ring_stamp(r, slot);
 
     _zpico_ring_commit(r, advance);
     zpico_slot_unlock(s);

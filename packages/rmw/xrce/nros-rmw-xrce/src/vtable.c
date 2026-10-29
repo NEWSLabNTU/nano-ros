@@ -163,6 +163,8 @@ static const nros_rmw_vtable_t kVtable = {
     .destroy_subscription = xrce_subscription_destroy,
     .take = xrce_subscription_take,
     .has_data = xrce_subscription_has_data,
+    /* Issue 2135 — the receive time; the rest of the info is not reported. */
+    .take_with_info = xrce_subscription_take_with_info,
 
     /* ---- Service ---- */
     .create_service = xrce_service_create,

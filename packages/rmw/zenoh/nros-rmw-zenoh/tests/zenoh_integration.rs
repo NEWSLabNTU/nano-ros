@@ -218,6 +218,75 @@ fn test_pubsub_loopback() {
     session.close().expect("Failed to close session");
 }
 
+/// Issue 2135 — a taken sample reports when it was RECEIVED: the ring
+/// producer's stamp on the platform wall clock (`rmw_zenoh_cpp` stamps
+/// `system_clock::now()` in its sample callback), not the take's own time.
+///
+/// The take runs well after the arrival, so a stamp taken at take time lands
+/// after `arrived_by_ns` and fails the upper bound.
+#[test]
+fn a_taken_sample_reports_when_it_was_received() {
+    unsafe extern "C" {
+        fn nros_platform_time_now_ns() -> u64;
+    }
+    let now = || unsafe { nros_platform_time_now_ns() } as i64;
+
+    let router = router();
+    let locator = router.locator();
+    let config = TransportConfig {
+        locator: Some(locator.as_str()),
+        mode: SessionMode::Client,
+        properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
+    };
+    let mut session = ZenohTransport::open(&config)
+        .unwrap_or_else(|e| panic!("could not open a client session on {locator}: {e:?}"));
+    let topic = TopicInfo::new("test/received_timestamp", "Int32", "hash123");
+    let mut subscriber = session
+        .create_subscription(&topic, QoSProfile::default())
+        .expect("create_subscription");
+    let publisher = session
+        .create_publisher(&topic, QoSProfile::default())
+        .expect("create_publisher");
+    thread::sleep(Duration::from_millis(500));
+
+    let sent_ns = now();
+    publisher
+        .publish_raw(&[0x00, 0x01, 0x00, 0x00, 7, 0, 0, 0])
+        .expect("publish_raw");
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !subscriber.has_data() {
+        let _ = session.spin_once(10);
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the sample never arrived"
+        );
+    }
+    let arrived_by_ns = now();
+    thread::sleep(Duration::from_millis(200));
+
+    let mut buf = [0u8; 64];
+    let (_, info) = subscriber
+        .take_serialized_with_info(&mut buf)
+        .expect("take_serialized_with_info")
+        .expect("the sample is takeable");
+    let info = info.expect("a sample from a nano-ros publisher carries its attachment");
+    let received_ns = info.received_timestamp().to_nanos();
+    let source_ns = info.source_timestamp().to_nanos();
+    assert!(
+        sent_ns <= received_ns && received_ns <= arrived_by_ns,
+        "received timestamp {received_ns} ns is outside [publish {sent_ns}, arrival seen \
+         {arrived_by_ns}] — the take (200 ms later) is not the receive"
+    );
+    assert!(
+        received_ns >= source_ns,
+        "received {received_ns} before the publisher's source stamp {source_ns}"
+    );
+    session.close().expect("close");
+}
+
 /// phase-328 (issue 0348) — two independent zpico sessions in ONE process
 /// deliver across each other through the router.
 ///
@@ -1982,9 +2051,18 @@ fn a_service_request_reports_its_clients_identity() {
         "source timestamp {source_ns} ns is outside the send window \
          [{before_ns}, {after_ns}] — a client stamping milliseconds reads ~1e6 too early"
     );
-    assert_eq!(
-        info.received_timestamp, None,
-        "zenoh carries no receive time; it is not invented"
+    // Issue 2135 — the receive time is the queryable callback's own stamp, on
+    // the same wall clock: after the send began, before the take returned,
+    // and not before the client's source stamp.
+    let taken_ns = unsafe { nros_platform_time_now_ns() } as i64;
+    let received = info
+        .received_timestamp
+        .expect("the queryable callback stamps the receive time");
+    let received_ns = i64::from(received.sec) * 1_000_000_000 + i64::from(received.nanosec);
+    assert!(
+        before_ns <= received_ns && received_ns <= taken_ns && received_ns >= source_ns,
+        "received timestamp {received_ns} ns is outside [send start {before_ns}, take \
+         {taken_ns}] or before the source stamp {source_ns}"
     );
 
     // Answer it, so the reply slot is released.

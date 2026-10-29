@@ -62,6 +62,9 @@ pub(super) struct SubscriberBuffer {
     pub(super) ring_len: [usize; SUBSCRIBER_RING_DEPTH],
     /// Per-slot attachment byte length.
     pub(super) ring_att_len: [usize; SUBSCRIBER_RING_DEPTH],
+    /// Issue 2135 — per-slot receive time (wall-clock ns, 0 = not stamped),
+    /// written by the C producer beside the attachment.
+    pub(super) ring_recv_ns: [i64; SUBSCRIBER_RING_DEPTH],
     /// Consumer counter — advanced only by the Rust shim.
     pub(super) ring_head: AtomicUsize,
     /// Producer counter — advanced only by the C shim.
@@ -93,6 +96,7 @@ impl SubscriberBuffer {
             ring_att: [[0u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE]; SUBSCRIBER_RING_DEPTH],
             ring_len: [0usize; SUBSCRIBER_RING_DEPTH],
             ring_att_len: [0usize; SUBSCRIBER_RING_DEPTH],
+            ring_recv_ns: [0i64; SUBSCRIBER_RING_DEPTH],
             ring_head: AtomicUsize::new(0),
             ring_tail: AtomicUsize::new(0),
             ring_claimed: AtomicUsize::new(0),
@@ -110,6 +114,7 @@ impl SubscriberBuffer {
                 claimed: core::ptr::null_mut(),
                 full_drops: core::ptr::null_mut(),
                 lock_session: core::ptr::null_mut(),
+                recv_ns: core::ptr::null_mut(),
             },
             waker: AtomicWaker::new(),
             session_index: portable_atomic::AtomicI32::new(-1),
@@ -170,6 +175,7 @@ impl SubscriberBuffer {
             // Set by `zpico_declare_subscriber_ring` for a ring a session
             // produces into.
             lock_session: core::ptr::null_mut(),
+            recv_ns: self.ring_recv_ns.as_mut_ptr(),
         };
     }
 
@@ -194,6 +200,20 @@ impl SubscriberBuffer {
     /// Payload slot capacity (the size-class stride) for this subscriber.
     pub(super) fn payload_stride(&self) -> usize {
         self.ring_desc.payload_stride
+    }
+
+    /// Issue 2135 — the metadata of ring slot `slot`: its attachment's
+    /// fields and the time the producer received it. `None` when the slot
+    /// carries no parseable attachment, as before.
+    pub(super) fn slot_info(&self, slot: usize) -> Option<MessageInfo> {
+        let attachment_len = self.ring_att_len[slot];
+        if attachment_len == 0 {
+            return None;
+        }
+        MessageInfo::from_attachment(&self.ring_att[slot][..attachment_len]).map(|mut info| {
+            info.received_timestamp_ns = self.ring_recv_ns[slot];
+            info
+        })
     }
 }
 
@@ -1657,12 +1677,7 @@ impl ZenohSubscriber {
 
         buf[..len].copy_from_slice(buffer.payload_slot(slot, len));
 
-        let attachment_len = buffer.ring_att_len[slot];
-        let message_info = if attachment_len > 0 {
-            MessageInfo::from_attachment(&buffer.ring_att[slot][..attachment_len])
-        } else {
-            None
-        };
+        let message_info = buffer.slot_info(slot);
 
         buffer.consume_head();
 
@@ -1855,20 +1870,7 @@ impl Subscription for ZenohSubscriber {
         let len = buffer.ring_len[slot];
 
         // Parse attachment (small: 33-37 bytes) into the core MessageInfo.
-        let attachment_len = buffer.ring_att_len[slot];
-        let core_info = if attachment_len > 0 {
-            MessageInfo::from_attachment(&buffer.ring_att[slot][..attachment_len]).map(|zi| {
-                let mut info = nros_core::MessageInfo::new();
-                info.set_publication_sequence_number(zi.sequence_number);
-                info.set_source_timestamp(nros_core::Time::from_nanos(zi.timestamp_ns));
-                // 16 on the wire (`rmw_zenoh_cpp`'s attachment layout, which
-                // cannot move), 24 in the field. One spelling of the padding.
-                info.set_publisher_gid(nros_core::pad_publisher_gid(&zi.publisher_gid));
-                info
-            })
-        } else {
-            None
-        };
+        let core_info = buffer.slot_info(slot).map(MessageInfo::to_core);
 
         f(buffer.payload_slot(slot, len), core_info);
 
@@ -1963,13 +1965,7 @@ impl Subscription for ZenohSubscriber {
         // Delegate to the inherent method which parses the zenoh attachment
         match self.take_with_info(buf)? {
             Some((len, zenoh_info)) => {
-                let core_info = zenoh_info.map(|zi| {
-                    let mut info = nros_core::MessageInfo::new();
-                    info.set_publication_sequence_number(zi.sequence_number);
-                    info.set_source_timestamp(nros_core::Time::from_nanos(zi.timestamp_ns));
-                    info.set_publisher_gid(nros_core::pad_publisher_gid(&zi.publisher_gid));
-                    info
-                });
+                let core_info = zenoh_info.map(MessageInfo::to_core);
                 Ok(Some((len, core_info)))
             }
             None => Ok(None),

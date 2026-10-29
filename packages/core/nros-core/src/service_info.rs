@@ -22,10 +22,14 @@
 //!
 //! | backend | `request_id` | `source_timestamp` | `received_timestamp` |
 //! | --- | --- | --- | --- |
-//! | zenoh | from the query attachment (`rmw_zenoh_cpp` layout) | from the attachment | `None` |
+//! | zenoh | from the query attachment (`rmw_zenoh_cpp` layout) | from the attachment | the queryable callback's wall-clock stamp |
 //! | Cyclone DDS | request header guid + publication handle, header seq (stock `rmw_cyclonedds_cpp`'s layout) | the DDS sample's source timestamp | `None` (Cyclone 0.10 has none) |
-//! | XRCE-DDS | the Agent's `SampleIdentity` (client writer GUID + sequence) | `None` | `None` |
+//! | XRCE-DDS | the Agent's `SampleIdentity` (client writer GUID + sequence) | `None` | the request callback's wall-clock stamp |
 //! | a C-ABI backend without `take_request_with_info` | `None` | `None` | `None` |
+//!
+//! `received_timestamp` is upstream's: the server's wall clock (ns since the
+//! Unix epoch) when the request arrived (issue 2135); `None` on a platform
+//! with no wall clock.
 //!
 //! A C-ABI backend reports through the vtable's `take_request_with_info` slot
 //! (issue 2081), whose `rmw_service_info_t` spells "not reported" as zero; the
