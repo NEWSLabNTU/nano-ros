@@ -4036,9 +4036,8 @@ static void get_reply_handler(z_loaned_reply_t* reply, void* ctx) {
             memcpy(rctx->buf, data, len);
             rctx->len = len;
             /* Issue 2136 — the reply's metadata, before `received` publishes
-             * it. The receive stamp is rmw_zenoh_cpp's
-             * `ZenohReply::get_received_timestamp`: wall clock, in the reply
-             * callback, which is this one. */
+             * it. The receive stamp is what rmw_zenoh_cpp's reply object
+             * records: wall clock, in the reply callback, which is this one. */
             {
                 uint64_t ns = nros_platform_time_now_ns();
                 rctx->recv_ns = ns > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)ns;
