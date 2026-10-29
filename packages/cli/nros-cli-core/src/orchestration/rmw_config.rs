@@ -298,6 +298,52 @@ pub fn default_session_file(
     }
 }
 
+/// Issue 2123 — bridged domain `domain`'s session properties as a C header,
+/// for a hand-written multi-session C/C++ caller (`nros_cpp_init_multi`,
+/// `rclc_init_multi`): the SAME answer the Rust road writes into
+/// `nros-bridge.toml` (`SystemToml::domain_file`, image `image`'s override
+/// first, then [`RmwFile::session_properties`]), rendered by
+/// [`nros_orchestration_ir::session_properties::c_table`]. Returns the file it
+/// came from, so a build can re-run when it changes, and the header text.
+///
+/// # Errors
+///
+/// The `system.toml` does not parse or fails its checks (a domain no bridge
+/// opens is refused there — issue 2124), no such domain is declared, the
+/// domain names no RMW file, or the table cannot be written in C.
+pub fn domain_session_header(
+    dir: &Path,
+    domain: &str,
+    image: Option<&str>,
+    row_type: &str,
+    symbol: &str,
+) -> Result<(PathBuf, String), String> {
+    let path = dir.join("system.toml");
+    let raw = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+        toml::from_str(&raw).map_err(|e| format!("{}: {e}", path.display()))?;
+    sys.check_rmw_files(dir)?;
+    if !sys.domains.iter().any(|d| d.name == domain) {
+        let known: Vec<&str> = sys.domains.iter().map(|d| d.name.as_str()).collect();
+        return Err(format!(
+            "{}: no `[[domain]]` `{domain}` (declared: {known:?})",
+            path.display()
+        ));
+    }
+    let Some(file) = sys.domain_file(dir, domain, image)? else {
+        return Err(format!(
+            "{}: `[[domain]]` `{domain}` names no RMW file (`config`), so it has no session \
+             properties to write — its session is its `locator`",
+            path.display()
+        ));
+    };
+    let props = file.session_properties()?;
+    let origin = format!("`{}` (domain `{domain}`)", file.path.display());
+    let header =
+        nros_orchestration_ir::session_properties::c_table(&props, row_type, symbol, &origin)?;
+    Ok((file.path, header))
+}
+
 /// RFC-0109 D9 check 3 — a `verbatim-xml` (CycloneDDS) `<Domain id="…">`
 /// other than `any` or the image's own domain configures a domain the image
 /// never joins.
@@ -454,6 +500,70 @@ mod tests {
     const ZEN_LAB: &str = "{ connect: { endpoints: ['tcp/10.0.0.1:7447'] } }";
     const ZEN_QEMU: &str = "{ connect: { endpoints: ['tcp/10.0.2.2:7447'] } }";
     const CYC_ANY: &str = "<CycloneDDS><Domain id=\"any\"><General/></Domain></CycloneDDS>";
+
+    /// Issue 2123 — a bridged domain's table as a C header, from the same
+    /// resolution the Rust road's `nros-bridge.toml` takes: the zenoh domain's
+    /// file lowered to rows, the Cyclone domain's carried whole as `config`,
+    /// an image override winning, and the refusals naming what is missing.
+    #[test]
+    fn a_bridged_domains_properties_are_written_as_a_c_header() {
+        let d = dir(
+            "domain-header",
+            &[
+                ("rmw/zenoh-can.json5", ZEN_LAB),
+                ("rmw/zenoh-qemu.json5", ZEN_QEMU),
+                ("rmw/cyclonedds-eth.xml", CYC_ANY),
+                (
+                    "system.toml",
+                    "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+                     [[domain]]\nname = \"ecu\"\nrmw = \"zenoh\"\nconfig = \"rmw/zenoh-can.json5\"\n\
+                     [[domain]]\nname = \"ctl\"\nrmw = \"cyclonedds\"\n\
+                     config = \"rmw/cyclonedds-eth.xml\"\n\
+                     [[domain]]\nname = \"agent\"\nrmw = \"xrce\"\nlocator = \"udp/127.0.0.1:8888\"\n\
+                     [[bridge]]\nname = \"gw\"\nfrom = \"zenoh:ecu\"\nto = \"cyclonedds:ctl\"\n\
+                     [[bridge]]\nname = \"x\"\nfrom = \"ecu\"\nto = \"agent\"\n\
+                     [image.gw]\nboard = \"linux\"\n\
+                     [image.sim]\nboard = \"linux\"\n\
+                     [image.sim.rmw_config]\necu = \"rmw/zenoh-qemu.json5\"\n",
+                ),
+            ],
+        );
+        let (src, h) =
+            domain_session_header(&d, "ecu", None, "nros_cpp_session_property_t", "ecu").unwrap();
+        assert!(src.ends_with("rmw/zenoh-can.json5"), "{}", src.display());
+        assert!(
+            h.contains("static const nros_cpp_session_property_t ecu["),
+            "{h}"
+        );
+        assert!(h.contains("\"tcp/10.0.0.1:7447\""), "{h}");
+
+        let (_, h) =
+            domain_session_header(&d, "ecu", Some("sim"), "nros_cpp_session_property_t", "ecu")
+                .unwrap();
+        assert!(
+            h.contains("\"tcp/10.0.2.2:7447\""),
+            "an image override wins: {h}"
+        );
+
+        let (_, h) =
+            domain_session_header(&d, "ctl", None, "rclc_session_property_t", "ctl").unwrap();
+        assert!(
+            h.contains("{\"config\", \"<CycloneDDS><Domain id=\\\"any\\\">"),
+            "a document the backend parses travels whole, escaped: {h}"
+        );
+
+        let e = domain_session_header(&d, "nope", None, "t", "s").unwrap_err();
+        assert!(
+            e.contains("no `[[domain]]` `nope`") && e.contains("ecu"),
+            "{e}"
+        );
+        let e = domain_session_header(&d, "agent", None, "t", "s").unwrap_err();
+        assert!(
+            e.contains("names no RMW file") && e.contains("locator"),
+            "{e}"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     /// RFC-0109 D6 (phase-514 W3b) — the default session's file: the image's
     /// `rmw_config`, else `[system] rmw_config`, else the convention; a named

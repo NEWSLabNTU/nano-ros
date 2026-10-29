@@ -1703,7 +1703,7 @@ cpp: cpp-fmt
     # to `c++`: the driver picks the language by EXTENSION, and `c++ foo.c`
     # compiles C as C++, which mangles `nros_stub_rmw_register` and fails to
     # link against the `extern "C"` declaration in the header.
-    for _tu in executor_cancel_runtime executor_node_members_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime jazzy_small_accessors_runtime timer_call_info_runtime status_event_setters_runtime; do \
+    for _tu in executor_cancel_runtime executor_node_members_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime jazzy_small_accessors_runtime timer_call_info_runtime status_event_setters_runtime init_multi_session_properties_runtime; do \
         test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
             echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -2409,6 +2409,27 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/status_event_setters_runtime
+    # issue 2123 — `nros_cpp_init_multi` hands EACH session its own RMW
+    # properties (`NrosCppSessionSpec::properties`, a bridged domain's file
+    # lowered on the host), read back from the stub's per-session record:
+    # three specs, three different tables (one empty), plus the NULL-rows and
+    # oversized refusals. Negative control, measured: the spec's rows dropped
+    # (`properties: &[]` restored) -> 5 failures; every spec handed the FIRST
+    # spec's rows -> 3 failures.
+    echo "  - nros_cpp_init_multi gives each session its own RMW properties (runtime, issue 2123)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/init_multi_session_properties_runtime \
+        packages/api/nros-cpp/tests/compile/init_multi_session_properties_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/init_multi_session_properties_runtime
     # issue 2023 — a served C++ node PUBLISHES `/parameter_events`: the
     # start-up event, then one frame per set / declare / undeclare, each naming
     # the node's FQN, read back from the stub's last published payload. Needs a

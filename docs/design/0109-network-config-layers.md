@@ -338,6 +338,10 @@ interfaces, and wiring uses those names.
      can open two domains with two files: a `session-json5` file lowered, a
      `verbatim-xml` one as its whole text under the one neutral key
      `config` (`nros_orchestration_ir::session_properties::DOCUMENT`).
+     A hand-written C/C++ multi-session caller gets the same table as a
+     header (`nros ws session-properties`, CMake
+     `nros_session_properties_header()`) and hands it to
+     `NrosCppSessionSpec` / `rclc_session_spec_t` `properties` (issue 2123).
      Cyclone takes that key in place of its baked document, under the
      baseline and under `CYCLONEDDS_URI`; every other key is still refused.
      Composition is Cyclone's own: a scalar the environment states wins,

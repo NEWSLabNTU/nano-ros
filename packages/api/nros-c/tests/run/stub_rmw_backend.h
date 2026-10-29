@@ -53,6 +53,17 @@ uint32_t nros_stub_rmw_sessions_opened(void);
  *  entity REGISTERED on, as opposed to the one its node was bound to. */
 int32_t nros_stub_rmw_last_entity_session(void);
 
+/** Issue 2123 — how many properties session N (0-based, in open order) was
+ *  opened with: 0 for none, -1 when no such session has opened or it carried
+ *  more rows than the stub records (4). */
+int32_t nros_stub_rmw_session_property_count(uint32_t session);
+
+/** Issue 2123 — row @p i of the properties session N was opened with, as the
+ *  stub's own COPIES (the runtime lends the rows for the open only). False when
+ *  out of range. */
+bool nros_stub_rmw_session_property(uint32_t session, size_t i, const char** key,
+                                    const char** value);
+
 /** How many times the executor drove the stub's I/O. A spin that never reached
  *  the backend is a probe that measured nothing. */
 uint32_t nros_stub_rmw_drive_io_calls(void);

@@ -200,6 +200,7 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
         | cmd::ws::Sub::EntityInventory(_)
         | cmd::ws::Sub::LeafSystem(_)
         | cmd::ws::Sub::RmwConfig(_)
+        | cmd::ws::Sub::SessionProperties(_)
         | cmd::ws::Sub::SizingDescriptor(_)
         | cmd::ws::Sub::WestLeafSizing(_)
         | cmd::ws::Sub::RmwDispatch(_)

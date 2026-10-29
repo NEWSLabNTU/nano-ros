@@ -418,7 +418,51 @@ for path in TASK_MEM_C_MIRRORS:
         print(f"  canonical ({TIER_CANONICAL}): {task_mem_canonical}", file=sys.stderr)
         print(f"  mirror ({path}): {got}", file=sys.stderr)
 
+# ---------------------------------------------------------------------------
+# Family 4 — the multi-session spec (issues 0436 + 2123): `rclc_session_spec_t`
+# (`<rclc/bridge.h>`, hand-written), `NrosCppSessionSpec` (cbindgen) and the
+# bridge's Rust `NrosSessionSpec`, kept field for field equal so one struct
+# feeds either `rclc_init_multi` or `nros_cpp_init_multi`. Issue 2123 appended
+# `properties` / `properties_len` to all three; a mirror that misses an append
+# passes a SHORTER struct, and the reader takes stack garbage for the table.
+# The two row types are one layout under two names, so they normalize to one.
+# ---------------------------------------------------------------------------
+
+SPEC_C = "packages/api/nros-c/include/rclc/bridge.h"
+SPEC_CPP = "packages/api/nros-cpp/include/rclcpp/detail/nros_cpp_ffi.h"
+SPEC_RUST = "packages/rmw/bridge/src/cffi.rs"
+SPEC_ROW_NORMALIZE = {
+    "const struct nros_cpp_session_property_t *": "const session_property_t *",
+    "const rclc_session_property_t *": "const session_property_t *",
+}
+
+
+def spec_decls(body):
+    out = []
+    for d in decls(body):
+        for old, new in SPEC_ROW_NORMALIZE.items():
+            d = d.replace(old, new)
+        out.append(d)
+    return out
+
+
+spec_c = spec_decls(last_typedef_body(SPEC_C, "rclc_session_spec_t"))
+_m = re.search(r"typedef struct NrosCppSessionSpec \{(.*?)\n\} NrosCppSessionSpec;",
+               read(SPEC_CPP), re.S)
+if not _m:
+    sys.exit(f"check-ffi-struct-mirrors: 'NrosCppSessionSpec' not found in {SPEC_CPP}")
+spec_cpp = spec_decls(_m.group(1))
+if spec_cpp != spec_c:
+    fail(f"session-spec mirror DRIFTED: {SPEC_CPP} against {SPEC_C}")
+    print(f"  rclc_session_spec_t: {spec_c}", file=sys.stderr)
+    print(f"  NrosCppSessionSpec:  {spec_cpp}", file=sys.stderr)
+spec_rust = rust_field_names(SPEC_RUST, "NrosSessionSpec")
+spec_names = [c_field_name(d) for d in spec_c]
+if spec_rust != spec_names:
+    fail(f"session-spec mirror DRIFTED: {SPEC_RUST} against {SPEC_C}")
+    report_names(f"NrosSessionSpec ({SPEC_RUST})", spec_rust, spec_names)
+
 sys.exit(1 if failed else 0)
 PY
 
-echo "FFI struct mirrors in sync (qos.hpp + nros_native_tier_spec_t ×8)."
+echo "FFI struct mirrors in sync (qos.hpp + nros_native_tier_spec_t ×8 + the session spec ×3)."

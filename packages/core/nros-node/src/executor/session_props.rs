@@ -151,10 +151,106 @@ pub fn with_session_properties<R>(
     f(&rows)
 }
 
+/// Read a table a caller LENDS for one multi-session open (issue 2123): the
+/// C/C++ spelling of [`crate::SessionSpec::properties`], `rows`/`len` straight
+/// off `NrosCppSessionSpec` or `rclc_session_spec_t`. Writes the rows into the
+/// front of `out` and returns how many; `rows` NULL with `len == 0` is no
+/// table. Refuses (writing nothing usable) a NULL `rows` with `len > 0` or a
+/// row that does not read ([`BadSessionProperties::Row`]), and more rows than
+/// one session open carries or than `out` holds ([`BadSessionProperties::TooMany`]).
+///
+/// Unlike [`set_session_properties`] the table need not be `'static`: a
+/// session open hands the properties to its backend and keeps none of them.
+///
+/// # Safety
+/// `rows` must point at `len` rows that, with every string they point at, are
+/// valid and unwritten for `'a`.
+pub unsafe fn lent_session_properties<'a>(
+    rows: *const SessionProperty,
+    len: usize,
+    out: &mut [(&'a str, &'a str)],
+) -> Result<usize, BadSessionProperties> {
+    if len == 0 {
+        return Ok(0);
+    }
+    if rows.is_null() {
+        return Err(BadSessionProperties::Row(0));
+    }
+    if len > MAX_SESSION_PROPERTIES || len > out.len() {
+        return Err(BadSessionProperties::TooMany(len));
+    }
+    // SAFETY: the caller's contract.
+    let rows = unsafe { core::slice::from_raw_parts(rows, len) };
+    for (i, (r, slot)) in rows.iter().zip(out.iter_mut()).enumerate() {
+        let s = |p: *const c_char| -> Option<&'a str> {
+            if p.is_null() {
+                None
+            } else {
+                // SAFETY: the caller's contract -- non-NULL, NUL-terminated,
+                // live for `'a`.
+                unsafe { CStr::from_ptr(p) }.to_str().ok()
+            }
+        };
+        *slot = (
+            s(r.key).ok_or(BadSessionProperties::Row(i))?,
+            s(r.value).ok_or(BadSessionProperties::Row(i))?,
+        );
+    }
+    Ok(len)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::string::{String, ToString};
+
+    #[test]
+    fn a_lent_table_reads_into_the_callers_buffer_and_refuses_what_does_not_read() {
+        let rows = [
+            SessionProperty::new(c"mode", c"client"),
+            SessionProperty::new(c"connect", c"tcp/10.0.0.1:7447"),
+        ];
+        let mut out = [("", ""); 4];
+        let n = unsafe { lent_session_properties(rows.as_ptr(), rows.len(), &mut out) };
+        assert_eq!(n, Ok(2));
+        assert_eq!(
+            out[..2],
+            [("mode", "client"), ("connect", "tcp/10.0.0.1:7447")]
+        );
+
+        assert_eq!(
+            unsafe { lent_session_properties(core::ptr::null(), 0, &mut out) },
+            Ok(0),
+            "NULL with no rows is no table"
+        );
+        assert_eq!(
+            unsafe { lent_session_properties(core::ptr::null(), 1, &mut out) },
+            Err(BadSessionProperties::Row(0))
+        );
+        let bad = [
+            SessionProperty::new(c"mode", c"client"),
+            SessionProperty {
+                key: c"connect".as_ptr(),
+                value: core::ptr::null(),
+            },
+        ];
+        assert_eq!(
+            unsafe { lent_session_properties(bad.as_ptr(), bad.len(), &mut out) },
+            Err(BadSessionProperties::Row(1))
+        );
+        let mut one = [("", ""); 1];
+        assert_eq!(
+            unsafe { lent_session_properties(rows.as_ptr(), rows.len(), &mut one) },
+            Err(BadSessionProperties::TooMany(2)),
+            "more rows than the buffer holds is refused, never truncated"
+        );
+        let many = [SessionProperty::new(c"k", c"v"); MAX_SESSION_PROPERTIES + 1];
+        let mut big = [("", ""); MAX_SESSION_PROPERTIES + 1];
+        assert_eq!(
+            unsafe { lent_session_properties(many.as_ptr(), many.len(), &mut big) },
+            Err(BadSessionProperties::TooMany(MAX_SESSION_PROPERTIES + 1))
+        );
+    }
 
     #[test]
     fn a_table_installs_and_an_explicit_list_wins() {

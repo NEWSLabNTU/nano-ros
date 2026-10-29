@@ -187,3 +187,60 @@ inline constexpr const char* k${_BACKEND_UC}_config = R\"NROSXML(${_body})NROSXM
         set(${_NBR_RESULT} "${_out}" PARENT_SCOPE)
     endif()
 endfunction()
+
+# Issue 2123 — a bridged `[[domain]]`'s RMW session properties as a C header,
+# for a hand-written multi-session C/C++ caller (`nros_cpp_init_multi` with
+# `NrosCppSessionSpec::properties`, `rclc_init_multi` with
+# `rclc_session_spec_t::properties`). The table is the CLI's answer
+# (`nros ws session-properties`): the domain's RMW file lowered on the host
+# (RFC-0109 D8), the same rows `nros sync` writes into `nros-bridge.toml` for a
+# Rust image. Nothing about the file's format is spelled here.
+#
+#   nros_session_properties_header(
+#       BRINGUP <dir>   DOMAIN <name>   SYMBOL <c_ident>   OUT <header>
+#       [IMAGE <id>]    [ROW_TYPE nros_cpp_session_property_t|rclc_session_property_t])
+#
+# Writes `static const <ROW_TYPE> <SYMBOL>[N]` and `<SYMBOL>_LEN` to OUT at
+# configure time; the CLI, the `system.toml` and the domain's file are
+# re-configure edges, so editing the file rebakes the header (issue 1018).
+function(nros_session_properties_header)
+    cmake_parse_arguments(_NSP "" "BRINGUP;DOMAIN;SYMBOL;OUT;IMAGE;ROW_TYPE" "" ${ARGN})
+    foreach(_req BRINGUP DOMAIN SYMBOL OUT)
+        if(NOT _NSP_${_req})
+            message(FATAL_ERROR "nros_session_properties_header: ${_req} is required")
+        endif()
+    endforeach()
+    if(NOT _NSP_ROW_TYPE)
+        set(_NSP_ROW_TYPE nros_cpp_session_property_t)
+    endif()
+    if(NOT COMMAND nros_resolve_cli)
+        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosCli.cmake")
+    endif()
+    nros_resolve_cli(_nros CONTEXT "a bridged domain's session properties (issue 2123)")
+    set(_img "${_NSP_IMAGE}")
+    if(NOT _img AND DEFINED NROS_IMAGE)
+        set(_img "${NROS_IMAGE}")
+    endif()
+    set(_img_arg "")
+    if(_img)
+        set(_img_arg --image "${_img}")
+    endif()
+    execute_process(
+        COMMAND "${_nros}" ws session-properties "${_NSP_BRINGUP}"
+                --domain "${_NSP_DOMAIN}" --symbol "${_NSP_SYMBOL}"
+                --row-type "${_NSP_ROW_TYPE}" --out "${_NSP_OUT}" ${_img_arg}
+        OUTPUT_VARIABLE _o
+        ERROR_VARIABLE _e
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(COMMAND nros_codegen_tool_reconfigure)
+        nros_codegen_tool_reconfigure("${_nros}")
+    endif()
+    _nros_rmw_config_depend("${_NSP_BRINGUP}/system.toml")
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR "nano-ros: ${_NSP_BRINGUP}/system.toml: ${_e}")
+    endif()
+    if(_o MATCHES "NROS_RMW_CONFIG_FILE=([^\n]*)")
+        _nros_rmw_config_depend("${CMAKE_MATCH_1}")
+    endif()
+endfunction()
