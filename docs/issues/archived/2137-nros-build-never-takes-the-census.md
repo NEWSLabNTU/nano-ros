@@ -8,7 +8,7 @@ severity: medium
 found: 2026-10-27
 related: [1419, phase-463, phase-517, phase-452]
 resolved: 2026-10-29
-resolved_in: "PR fix-features-zephyr-qos-census"
+resolved_in: "#2820"
 ---
 
 ## What
