@@ -13,7 +13,11 @@ extern crate alloc;
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::ffi::{CStr, c_char};
 
-use nros_node::executor::{Executor, SessionSpec};
+use nros_node::{
+    MAX_SESSION_PROPERTIES, SessionProperty,
+    executor::{Executor, SessionSpec},
+    lent_session_properties,
+};
 use nros_rmw_cffi::{
     NROS_RMW_RET_ERROR, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_NO_BACKEND, NROS_RMW_RET_OK,
     NrosRmwRet,
@@ -31,6 +35,11 @@ pub struct NrosSessionSpec {
     pub domain_id: u32,
     pub node_name: *const c_char,
     pub namespace_: *const c_char,
+    /// Issue 2123 — this session's RMW properties (`rclc_session_property_t`,
+    /// one layout with `nros_node::SessionProperty`). NULL with
+    /// `properties_len == 0` = none; read during `rclc_init_multi` only.
+    pub properties: *const SessionProperty,
+    pub properties_len: usize,
 }
 
 /// Owned handle returned by [`rclc_init_multi`]. Trait-object façade
@@ -93,7 +102,26 @@ pub unsafe extern "C" fn rclc_init_multi(
     // Snapshot every C string into owned `String`s so the executor's
     // borrowed views stay valid past this call.
     let mut owned: Vec<String> = Vec::with_capacity(specs_len * 4);
-    let mut rust_specs: Vec<SessionSpec<'static>> = Vec::with_capacity(specs_len);
+    // Issue 2123 — each spec's properties, read for the call (a session open
+    // keeps none of them, so they borrow the caller's rows).
+    let mut props: Vec<Vec<(&str, &str)>> = Vec::with_capacity(specs_len);
+    for i in 0..specs_len {
+        let spec = unsafe { &*specs.add(i) };
+        let mut rows = alloc::vec![("", ""); spec.properties_len.min(MAX_SESSION_PROPERTIES)];
+        // SAFETY: the caller's contract on `specs` (`<rclc/bridge.h>`).
+        match unsafe { lent_session_properties(spec.properties, spec.properties_len, &mut rows) } {
+            Ok(n) => rows.truncate(n),
+            Err(e) => {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros_rmw_bridge"),
+                    "rclc_init_multi: spec {i}'s properties: {e}"
+                );
+                return NROS_RMW_RET_INVALID_ARGUMENT;
+            }
+        }
+        props.push(rows);
+    }
+    let mut rust_specs: Vec<SessionSpec<'_>> = Vec::with_capacity(specs_len);
 
     for i in 0..specs_len {
         let spec = unsafe { &*specs.add(i) };
@@ -131,7 +159,8 @@ pub unsafe extern "C" fn rclc_init_multi(
             SessionSpec::new(r_ref, l_ref)
                 .domain_id(spec.domain_id)
                 .node_name(n_ref)
-                .namespace(if ns_ref.is_empty() { "/" } else { ns_ref }),
+                .namespace(if ns_ref.is_empty() { "/" } else { ns_ref })
+                .properties(&props[i]),
         );
     }
 

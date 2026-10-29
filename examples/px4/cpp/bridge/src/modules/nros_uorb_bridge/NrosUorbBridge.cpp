@@ -187,17 +187,19 @@ bool NrosUorbBridge::init() {
     size_t n_specs = 0;
 
     if (probe != nullptr && strcmp(probe, "zenoh") == 0) {
-        specs[0] = NrosCppSessionSpec{NROS_BRIDGE_RMW, out_locator, 0, "px4_probe", nullptr};
+        specs[0] =
+            NrosCppSessionSpec{NROS_BRIDGE_RMW, out_locator, 0, "px4_probe", nullptr, nullptr, 0};
         n_specs = 1;
 
     } else if (probe != nullptr && strcmp(probe, "uorb") == 0) {
-        specs[0] = NrosCppSessionSpec{"uorb", "", 0, "px4_probe", nullptr};
+        specs[0] = NrosCppSessionSpec{"uorb", "", 0, "px4_probe", nullptr, nullptr, 0};
         n_specs = 1;
 
     } else {
         // specs[0] is PRIMARY: uORB, the inward side.
-        specs[0] = NrosCppSessionSpec{"uorb", "", 0, "px4_bridge_in", nullptr};
-        specs[1] = NrosCppSessionSpec{NROS_BRIDGE_RMW, out_locator, 0, "px4_bridge_out", nullptr};
+        specs[0] = NrosCppSessionSpec{"uorb", "", 0, "px4_bridge_in", nullptr, nullptr, 0};
+        specs[1] = NrosCppSessionSpec{NROS_BRIDGE_RMW, out_locator, 0, "px4_bridge_out",
+                                      nullptr,         nullptr,     0};
         n_specs = 2;
     }
 

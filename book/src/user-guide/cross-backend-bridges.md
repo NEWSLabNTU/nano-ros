@@ -157,6 +157,39 @@ exec.register_subscription_on<std_msgs::String>(ingress, "/chatter",
     [&pub](const auto& msg) { pub->publish(msg); });
 ```
 
+### A bridged domain's RMW file, from C / C++
+
+A Rust bridge entry gets each `[[domain]]`'s `config` file through
+`nros-bridge.toml`. A hand-written C or C++ multi-session caller
+(`nros_cpp_init_multi`, `rclc_init_multi`) asks for the same table at
+configure time and hands it to the session spec:
+
+```cmake
+nros_session_properties_header(
+    BRINGUP ${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup
+    DOMAIN  zen
+    SYMBOL  zen_props
+    OUT     ${CMAKE_BINARY_DIR}/gen/zen_props.h)   # ROW_TYPE rclc_session_property_t for rclc
+```
+
+```cpp
+#include "zen_props.h"   // static const nros_cpp_session_property_t zen_props[N]; zen_props_LEN
+
+NrosCppSessionSpec specs[2] = {
+    {"uorb", "", 0, "bridge_in", nullptr, nullptr, 0},
+    {"zenoh", "", 0, "bridge_out", nullptr, zen_props, zen_props_LEN},
+};
+nros_cpp_init_multi(specs, 2, storage);
+```
+
+The file is lowered on the host, exactly as for the Rust road
+(RFC-0109 D8): a zenoh JSON5 file becomes its session keys, a Cyclone
+XML file travels whole under `config`. Editing the file re-runs the
+configure. `nros ws session-properties <bringup> --domain <name>
+--symbol <ident> --out <header>` is the same answer without CMake.
+`rclcpp::SessionSpec::with_properties(rows)` sets it on the C++
+`MultiExecutor` wrapper.
+
 ## `NROS_RMW` environment variable
 
 When a binary links multiple backends, **set `NROS_RMW` to

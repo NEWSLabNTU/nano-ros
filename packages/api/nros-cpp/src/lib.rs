@@ -1947,9 +1947,49 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
     if specs_len > MAX_SPECS {
         return NROS_CPP_RET_FULL;
     }
+    // Issue 2123 — every spec's properties, read into ONE pool for the call
+    // (a session open keeps none of them). Twice one session's cap: a bridge
+    // names two or three sessions with a few rows each, and a per-spec array
+    // would put `MAX_SPECS` full tables on the caller's stack.
+    const MAX_ROWS: usize = 2 * nros_node::MAX_SESSION_PROPERTIES;
+    let mut pool: [(&str, &str); MAX_ROWS] = [("", ""); MAX_ROWS];
+    let mut lens = [0usize; MAX_SPECS];
+    let mut used = 0usize;
+    for (i, len) in lens.iter_mut().take(specs_len).enumerate() {
+        let spec = unsafe { &*specs.add(i) };
+        // SAFETY: the caller's contract on `specs`; the two row types share
+        // one layout (asserted at `nros_cpp_set_session_properties`).
+        let read = unsafe {
+            nros_node::lent_session_properties(
+                spec.properties.cast::<nros_node::SessionProperty>(),
+                spec.properties_len,
+                &mut pool[used..],
+            )
+        };
+        match read {
+            Ok(n) => {
+                *len = n;
+                used += n;
+            }
+            Err(e) => {
+                cpp_diag!(
+                    "nros_cpp_init_multi: spec {i}'s properties: {e} (all specs together carry at \
+                     most {MAX_ROWS})"
+                );
+                return match e {
+                    nros_node::BadSessionProperties::TooMany(_) => NROS_CPP_RET_FULL,
+                    nros_node::BadSessionProperties::Row(_) => NROS_CPP_RET_INVALID_ARGUMENT,
+                };
+            }
+        }
+    }
+    let mut rest: &[(&str, &str)] = &pool[..used];
+
     let mut owned: [Option<nros_node::executor::SessionSpec<'_>>; MAX_SPECS] = Default::default();
     for (i, slot) in owned.iter_mut().take(specs_len).enumerate() {
         let spec = unsafe { &*specs.add(i) };
+        let (properties, tail) = rest.split_at(lens[i]);
+        rest = tail;
         let rmw = match unsafe { cstr_to_str(spec.rmw) } {
             Some(s) => s,
             None => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -1978,9 +2018,8 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
             domain_id: spec.domain_id,
             node_name,
             namespace,
-            // A C++ spec carries no RMW file; a bridge's per-domain file
-            // reaches the Rust bridge runner (`nros-bridge.toml`) only.
-            properties: &[],
+            // Issue 2123 — the domain's own RMW file, as the caller lent it.
+            properties,
         });
     }
     let mut flat: [nros_node::executor::SessionSpec<'_>; MAX_SPECS] =
@@ -2031,6 +2070,14 @@ pub struct NrosCppSessionSpec {
     pub node_name: *const c_char,
     /// Session-default namespace. NULL = "/".
     pub namespace_: *const c_char,
+    /// Issue 2123 — this session's RMW properties: its domain's RMW file,
+    /// lowered on the host (RFC-0109 D8; `nros ws session-properties` writes
+    /// the table). NULL with `properties_len == 0` = none. Read during
+    /// `nros_cpp_init_multi` only; the rows and their strings must outlive
+    /// that call.
+    pub properties: *const nros_cpp_session_property_t,
+    /// Number of rows in `properties`.
+    pub properties_len: usize,
 }
 
 /// Is this storage a LIVE nros context?

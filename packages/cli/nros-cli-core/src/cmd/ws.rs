@@ -173,6 +173,16 @@ pub enum Sub {
     #[command(name = "rmw-config")]
     RmwConfig(RmwConfigArgs),
 
+    /// Issue 2123 — a bridged `[[domain]]`'s RMW session properties as a C
+    /// header, for a hand-written multi-session C/C++ caller: its RMW file
+    /// lowered on the host (RFC-0109 D8), the same answer `nros sync` writes
+    /// into `nros-bridge.toml` for a Rust image. Writes
+    /// `static const <type> <symbol>[N]` and `<symbol>_LEN` to `--out`, and
+    /// prints `NROS_RMW_CONFIG_FILE=<path>` (the source, for a build's
+    /// re-run edge). CMake: `nros_session_properties_header()`.
+    #[command(name = "session-properties")]
+    SessionProperties(SessionPropertiesArgs),
+
     /// phase-497 W3 (RFC-0103 D10a) — the QEMU `-nic` value for a leaf's
     /// image: its `[image.<id>.run] nic` (SLIRP, bridge or TAP), the board's NIC
     /// `--model`, the image's MAC. An image that states no network gets QEMU's
@@ -809,6 +819,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::CheckLock(a) => run_check_lock(a),
         Sub::LeafSystem(a) => crate::cmd::leaf_system::run(a),
         Sub::RmwConfig(a) => run_rmw_config(a),
+        Sub::SessionProperties(a) => run_session_properties(a),
         Sub::QemuNic(a) => crate::cmd::leaf_system::qemu_nic(a),
         Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),
         Sub::EntityCensus(a) => crate::cmd::entity_census::run(a),
@@ -8734,6 +8745,50 @@ pub struct RmwConfigArgs {
     /// `--rmw` agrees on.
     #[arg(long)]
     pub image: Option<String>,
+}
+
+/// `nros ws session-properties` arguments.
+#[derive(Debug, clap::Args)]
+pub struct SessionPropertiesArgs {
+    /// The bringup directory holding `system.toml`.
+    pub path: std::path::PathBuf,
+    /// The bridged `[[domain]]` whose session this table opens.
+    #[arg(long)]
+    pub domain: String,
+    /// The image this build is, when it overrides the domain's file
+    /// (`[image.<id>] rmw_config = { <domain> = "<file>" }`).
+    #[arg(long)]
+    pub image: Option<String>,
+    /// The C identifier of the table.
+    #[arg(long)]
+    pub symbol: String,
+    /// The row type: `nros_cpp_session_property_t` (for `NrosCppSessionSpec`)
+    /// or `rclc_session_property_t` (for `rclc_session_spec_t`).
+    #[arg(long, default_value = "nros_cpp_session_property_t")]
+    pub row_type: String,
+    /// The header to write. Rewritten only when its text changes.
+    #[arg(long)]
+    pub out: std::path::PathBuf,
+}
+
+fn run_session_properties(a: SessionPropertiesArgs) -> Result<()> {
+    let image = a.image.as_deref().filter(|i| !i.is_empty());
+    let (src, header) = crate::orchestration::rmw_config::domain_session_header(
+        &a.path,
+        &a.domain,
+        image,
+        &a.row_type,
+        &a.symbol,
+    )
+    .map_err(|e| eyre::eyre!("{e}"))?;
+    if std::fs::read_to_string(&a.out).ok().as_deref() != Some(header.as_str()) {
+        if let Some(parent) = a.out.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&a.out, header)?;
+    }
+    println!("NROS_RMW_CONFIG_FILE={}", src.display());
+    Ok(())
 }
 
 fn run_rmw_config(a: RmwConfigArgs) -> Result<()> {

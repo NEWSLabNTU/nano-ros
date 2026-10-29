@@ -462,6 +462,23 @@ typedef struct nros_cpp_node_t {
 } nros_cpp_node_t;
 
 /**
+ * One baked RMW session property as the generated C/C++ entry emits it
+ * (RFC-0109 D8, phase-514 W3): two NUL-terminated strings with static
+ * lifetime (literals in the entry's `.rodata`), lowered at build time from
+ * the bringup's own `rmw/<backend>` file.
+ */
+typedef struct nros_cpp_session_property_t {
+  /**
+   * The backend's property name (`connect`, `listen`, `mode`, ...).
+   */
+  const char *key;
+  /**
+   * Its value.
+   */
+  const char *value;
+} nros_cpp_session_property_t;
+
+/**
  * Issue 0436 — C mirror of `nros_node::executor::SessionSpec`, matching
  * `rclc_session_spec_t` in `<rclc/bridge.h>` field for field so a caller can use
  * either entry point with one struct.
@@ -487,6 +504,18 @@ typedef struct NrosCppSessionSpec {
    * Session-default namespace. NULL = "/".
    */
   const char *namespace_;
+  /**
+   * Issue 2123 — this session's RMW properties: its domain's RMW file,
+   * lowered on the host (RFC-0109 D8; `nros ws session-properties` writes
+   * the table). NULL with `properties_len == 0` = none. Read during
+   * `nros_cpp_init_multi` only; the rows and their strings must outlive
+   * that call.
+   */
+  const struct nros_cpp_session_property_t *properties;
+  /**
+   * Number of rows in `properties`.
+   */
+  size_t properties_len;
 } NrosCppSessionSpec;
 
 /**
@@ -953,23 +982,6 @@ typedef struct nros_cpp_launch_remap_t {
    */
   const char *to;
 } nros_cpp_launch_remap_t;
-
-/**
- * One baked RMW session property as the generated C/C++ entry emits it
- * (RFC-0109 D8, phase-514 W3): two NUL-terminated strings with static
- * lifetime (literals in the entry's `.rodata`), lowered at build time from
- * the bringup's own `rmw/<backend>` file.
- */
-typedef struct nros_cpp_session_property_t {
-  /**
-   * The backend's property name (`connect`, `listen`, `mode`, ...).
-   */
-  const char *key;
-  /**
-   * Its value.
-   */
-  const char *value;
-} nros_cpp_session_property_t;
 
 /**
  * phase-503 — what the reaction hook receives: the C spelling of

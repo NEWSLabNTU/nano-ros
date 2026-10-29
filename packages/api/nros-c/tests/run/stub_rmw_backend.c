@@ -20,6 +20,54 @@ static uint32_t s_sessions_opened = 0;
 static int32_t s_last_entity_session = -1;
 static uint32_t s_drive_io_calls = 0;
 
+/* Issue 2123 — the properties each session was opened with, COPIED: the
+ * runtime lends `rmw_session_options_t::properties` for the call only, so a
+ * probe reading them after the open must not read the caller's rows. Indexed
+ * like `s_sessions` (open order, wrapping). `count` is -1 for a session opened
+ * with more rows than fit, so an overflow can never read as a short table. */
+#define STUB_MAX_RECORDED_PROPERTIES 4
+#define STUB_PROPERTY_TEXT 128
+static struct {
+    int32_t count;
+    char key[STUB_MAX_RECORDED_PROPERTIES][STUB_PROPERTY_TEXT];
+    char value[STUB_MAX_RECORDED_PROPERTIES][STUB_PROPERTY_TEXT];
+} s_session_properties[STUB_MAX_SESSIONS];
+
+static void copy_text(char* dst, const char* src) {
+    size_t n = src == NULL ? 0 : strlen(src);
+    if (n >= STUB_PROPERTY_TEXT) n = STUB_PROPERTY_TEXT - 1;
+    if (n > 0) memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
+static void record_session_properties(uint32_t slot, const rmw_session_options_t* options) {
+    size_t n = (options == NULL || options->properties == NULL) ? 0 : options->property_count;
+    if (n > STUB_MAX_RECORDED_PROPERTIES) {
+        s_session_properties[slot].count = -1;
+        return;
+    }
+    for (size_t i = 0; i < n; i++) {
+        copy_text(s_session_properties[slot].key[i], options->properties[i].key);
+        copy_text(s_session_properties[slot].value[i], options->properties[i].value);
+    }
+    s_session_properties[slot].count = (int32_t)n;
+}
+
+int32_t nros_stub_rmw_session_property_count(uint32_t session) {
+    if (session >= s_sessions_opened) return -1;
+    return s_session_properties[session % STUB_MAX_SESSIONS].count;
+}
+
+bool nros_stub_rmw_session_property(uint32_t session, size_t i, const char** key,
+                                    const char** value) {
+    if (session >= s_sessions_opened || key == NULL || value == NULL) return false;
+    int32_t count = s_session_properties[session % STUB_MAX_SESSIONS].count;
+    if (count < 0 || i >= (size_t)count) return false;
+    *key = s_session_properties[session % STUB_MAX_SESSIONS].key[i];
+    *value = s_session_properties[session % STUB_MAX_SESSIONS].value[i];
+    return true;
+}
+
 /* The last name an entity slot was asked to create under. Recorded even though
  * every slot REFUSES, because the refusal happens after the name has been
  * resolved: this is the only place a test can read the wire name the runtime
@@ -128,7 +176,7 @@ static rmw_ret_t stub_create_session(const char* locator, uint8_t mode, uint32_t
     (void)mode;
     (void)domain_id;
     (void)node_name;
-    (void)options;
+    record_session_properties(s_sessions_opened % STUB_MAX_SESSIONS, options);
     /* The runtime treats a NULL `backend_data` as "no session"; anything
      * non-NULL and stable will do, and nothing dereferences it here. */
     out->backend_data = &s_sessions[s_sessions_opened % STUB_MAX_SESSIONS];

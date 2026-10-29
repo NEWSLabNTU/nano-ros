@@ -210,8 +210,8 @@ pub use scheduler::{Band, BandWaitFn, BandWaiter, BandWorker, WorkerWakeFn};
 // outside the crate could receive a value it cannot name or match on.
 pub use launch_remap::{BadLaunchRemap, LaunchRemap, launch_remaps, set_launch_remaps};
 pub use session_props::{
-    BadSessionProperties, MAX_SESSION_PROPERTIES, SessionProperty, session_properties,
-    set_session_properties, with_session_properties,
+    BadSessionProperties, MAX_SESSION_PROPERTIES, SessionProperty, lent_session_properties,
+    session_properties, set_session_properties, with_session_properties,
 };
 #[cfg(any(has_rmw, test))]
 pub use spin::SessionHandle;

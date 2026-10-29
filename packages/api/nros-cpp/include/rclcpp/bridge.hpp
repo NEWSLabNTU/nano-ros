@@ -39,6 +39,12 @@ struct SessionSpec {
     uint32_t domain_id = 0;
     std::string node_name;
     std::string namespace_;
+    /// Issue 2123 -- this session's RMW properties (its domain's RMW file,
+    /// lowered on the host: the table `nros ws session-properties` writes).
+    /// Borrowed, not copied: the rows must outlive the `MultiExecutor`
+    /// construction that reads them.
+    const rclc_session_property_t* properties = nullptr;
+    size_t properties_len = 0;
 
     SessionSpec(std::string rmw_, std::string locator_)
         : rmw(::rclcpp::tr::forward_rvalue(rmw_)), locator(::rclcpp::tr::forward_rvalue(locator_)) {
@@ -55,6 +61,14 @@ struct SessionSpec {
     SessionSpec& with_namespace(std::string ns) {
         namespace_ = ::rclcpp::tr::forward_rvalue(ns);
         return *this;
+    }
+    SessionSpec& with_properties(const rclc_session_property_t* rows, size_t len) {
+        properties = rows;
+        properties_len = len;
+        return *this;
+    }
+    template <size_t N> SessionSpec& with_properties(const rclc_session_property_t (&rows)[N]) {
+        return with_properties(rows, N);
     }
 };
 
@@ -74,6 +88,8 @@ class MultiExecutor {
                 s.domain_id,
                 s.node_name.empty() ? nullptr : s.node_name.c_str(),
                 s.namespace_.empty() ? nullptr : s.namespace_.c_str(),
+                s.properties,
+                s.properties_len,
             });
         }
         last_ret_ = rclc_init_multi(c_specs.data(), c_specs.size(), &handle_);

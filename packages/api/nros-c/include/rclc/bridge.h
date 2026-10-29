@@ -41,12 +41,28 @@ extern "C" {
  * to `RMW_INIT_ENTRIES`); spelling errors surface as
  * `NROS_RMW_RET_UNKNOWN_BACKEND` at the matching `init_multi` call.
  */
+/**
+ * @brief One RMW session property (issue 2123): a backend property name and
+ *        its value, as `nros ws session-properties` writes a domain's RMW file
+ *        lowered on the host (RFC-0109 D8). Same layout as
+ *        `nros_cpp_session_property_t`.
+ */
+typedef struct {
+    const char* key;   /**< The backend's property name (`connect`, `mode`, ...). */
+    const char* value; /**< Its value. */
+} rclc_session_property_t;
+
 typedef struct {
     const char* rmw;        /**< Canonical backend name, e.g. "zenoh". */
     const char* locator;    /**< Backend-specific locator string. NULL = empty. */
     uint32_t domain_id;     /**< ROS domain id. 0 unless otherwise. */
     const char* node_name;  /**< Session-default node name. NULL = empty. */
     const char* namespace_; /**< Session-default namespace. NULL = "/". */
+    /** Issue 2123 -- this session's RMW properties (its domain's RMW file).
+     *  NULL with `properties_len == 0` = none. Read during `rclc_init_multi`
+     *  only; the rows and their strings must outlive that call. */
+    const rclc_session_property_t* properties;
+    size_t properties_len; /**< Number of rows in `properties`. */
 } rclc_session_spec_t;
 
 /**

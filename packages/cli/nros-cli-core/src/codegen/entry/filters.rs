@@ -26,7 +26,9 @@ use minijinja::{Environment, Error, ErrorKind};
 /// filter, never an IR field: C, Rust and Zig literals escape differently, so
 /// there is no neutral "already escaped" value.)
 fn c_str(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    // Issue 2123 — the one C escaper: controls too, so a value holding a
+    // newline (a document carried whole) stays one literal.
+    nros_orchestration_ir::session_properties::c_string_body(s)
 }
 
 /// A ROS package name as an identifier — `nros_entry_lower::sanitize_pkg`,
