@@ -59,7 +59,7 @@
 
 use nros_tests::{
     ci_lane::{CiLane, cells, coords},
-    fixtures::lane::{manifest_rows, west_leaves},
+    fixtures::lane::{Coord, is_in_lane, manifest_rows, west_leaves},
     matrix::PlatformId,
 };
 use std::collections::BTreeSet;
@@ -112,10 +112,29 @@ fn main() {
         Some("--modules") => {
             // Deduped: `nuttx` owns both NuttxArm and NuttxRiscv, `zephyr` owns
             // both ZephyrNativeSim and Fvp — one job each, not two.
-            let mods: BTreeSet<&str> = cells(lane)
+            let mut mods: BTreeSet<&str> = cells(lane)
                 .iter()
                 .map(|c| c.platform.just_module())
                 .collect();
+            // Issue 2139 — a peer row is in the lane through a coordinate it
+            // SERVES, and its own platform's module must then build it: the
+            // C observer of the RTOS entry cells is a Linux row, and a lane
+            // with those cells and no Linux cell would otherwise schedule no
+            // module that builds it, then fail resolving it.
+            let selected: BTreeSet<Coord> = coords(lane)
+                .iter()
+                .filter_map(|c| {
+                    let p: Vec<&str> = c.split(',').collect();
+                    (p.len() == 3).then(|| (p[0].into(), p[1].into(), p[2].into()))
+                })
+                .collect();
+            mods.extend(
+                manifest_rows()
+                    .iter()
+                    .filter(|r| !r.serves.is_empty() && is_in_lane(r, &selected))
+                    .filter_map(|r| PlatformId::from_fixture_token(&r.coord.0))
+                    .map(|p| p.just_module()),
+            );
             for m in mods {
                 println!("{m}");
             }

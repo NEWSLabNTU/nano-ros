@@ -959,3 +959,53 @@ fn run_cell(pcell: &MCell) {
         }
     }
 }
+
+/// Issue 2139 — the C observer's `serves` list in `examples/fixtures.toml` is
+/// exactly the set of cells that spawn it.
+///
+/// That list is what puts `workspace-c-native-robot2` in a lane that selects
+/// one of those cells (`fixtures-manifest.py` `row_in_coords` on the build side,
+/// `lane::is_in_lane` on the run side). A cell missing from it skips as out of
+/// lane on every night, which is how seven cells went unrun; an entry with no
+/// cell builds the observer for nothing. Reads the manifest and `exec_for`
+/// only, so it needs no fixture.
+#[test]
+fn c_listener_observer_serves_every_cell_that_uses_it() {
+    let row = nros_tests::fixtures::lane::attribute_workspace_id("workspace-c-native-robot2")
+        .expect("examples/fixtures.toml has no `workspace-c-native-robot2` row");
+    let declared: std::collections::BTreeSet<_> = row.serves.iter().cloned().collect();
+    let used: std::collections::BTreeSet<_> = nros_tests::matrix::CELLS
+        .iter()
+        .filter(|c| consumer_of(c) == Some(Consumer::Entry) && matches!(c.tier, MT::Runtime))
+        .filter(|c| {
+            matches!(
+                exec_for(c.platform, c.lang, c.workload).proof,
+                Proof::ChatterToCListener { .. }
+            )
+        })
+        .map(|c| {
+            (
+                c.platform.fixture_tokens()[0].to_string(),
+                c.lang.as_str().to_string(),
+                format!("{:?}", c.rmw).to_lowercase(),
+            )
+        })
+        .collect();
+    assert!(!used.is_empty(), "no cell spawns the C listener observer");
+    let fmt = |s: &std::collections::BTreeSet<nros_tests::fixtures::lane::Coord>| {
+        s.iter()
+            .map(|(p, l, r)| format!("\"{p},{l},{r}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let missing: std::collections::BTreeSet<_> = used.difference(&declared).cloned().collect();
+    let extra: std::collections::BTreeSet<_> = declared.difference(&used).cloned().collect();
+    assert!(
+        missing.is_empty() && extra.is_empty(),
+        "`workspace-c-native-robot2`'s `serves` in examples/fixtures.toml does not match \
+         the cells that spawn it.\n  add (these cells skip as out of lane without it): {}\n  \
+         remove (no cell uses the observer there): {}",
+        fmt(&missing),
+        fmt(&extra)
+    );
+}

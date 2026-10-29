@@ -1062,6 +1062,44 @@ def row_coord(entry):
     )
 
 
+def row_serves(entry):
+    """The coordinates of the cells that use this row as a PEER — issue 2139.
+
+    A row's own coordinate says where its binary runs, which is not always where
+    it is needed. `workspace-c-native-robot2` is a Linux listener, and it is the
+    shared observer of eleven `entry_e2e` cells on five RTOS platforms. With only
+    `row_coord` to go on, a lane that selected those cells but not
+    `linux,c,zenoh` neither built the observer nor let the cells run, so every
+    tier-2 nightly skipped them as out of lane.
+
+    `serves = ["zephyr,mixed,zenoh", ...]` names those cells' coordinates. A row
+    is in a lane when its own coordinate OR one it serves is selected, on the
+    build side here and on the run side in `nros_tests::fixtures::lane`, which
+    reads this list through the `coords` record. `entry_e2e`'s
+    `c_listener_observer_serves_every_cell_that_uses_it` holds the list to the
+    cells that actually spawn the observer.
+    """
+    out = []
+    for s in entry.get("serves") or []:
+        parts = tuple(x.strip() for x in str(s).split(","))
+        if len(parts) != 3 or not all(parts):
+            _fail(entry, f"`serves` entry {s!r} is not `platform,lang,rmw`")
+        out.append(parts)
+    return out
+
+
+def row_in_coords(entry, coords):
+    """Is this row selected by `coords`? THE lane predicate over one row.
+
+    True when the row's own coordinate is in `coords`, or one it `serves` is
+    (issue 2139). Every lane filter goes through here, and the run side's
+    `lane::is_in_lane` is the same test.
+    """
+    if row_coord(entry) in coords:
+        return True
+    return any(c in coords for c in row_serves(entry))
+
+
 def matches_filters(entry, args, *, for_probe=False, all_entries=None, kind="fixture"):
     # `skip_build` rows stay in the manifest for documentation/inventory but
     # are intentionally NOT built as fixtures (e.g. an incomplete example).
@@ -1096,7 +1134,7 @@ def matches_filters(entry, args, *, for_probe=False, all_entries=None, kind="fix
         return False
     coords_from = getattr(args, "coords_from", None)
     if coords_from:
-        if row_coord(entry) not in _coords_for(coords_from):
+        if not row_in_coords(entry, _coords_for(coords_from)):
             # Issue 0828 — out of the cover, but only OMIT it if the run could
             # have skipped it. An unattributable row (shared artifact root) is
             # run at every lane, so omitting it builds a lane whose own tests
@@ -1599,6 +1637,12 @@ def validate_workspace_fixture(entry):
     if lang not in FIXTURE_LANGS:
         _fail(entry, f"unsupported workspace fixture lang {lang!r}")
 
+    # Issue 2139 — a served coordinate must be another row's coordinate, never
+    # this one's own (that says nothing), and must parse.
+    for c in row_serves(entry):
+        if c == row_coord(entry):
+            _fail(entry, f"`serves` names the row's own coordinate {','.join(c)!r}")
+
     # Issue 0482 — the same vocabulary check `validate_fixture` makes. Both
     # tables carry coordinates and a typo has the same consequence in either:
     # the row lands on a coordinate no lane selects and no matrix cell holds, so
@@ -1972,7 +2016,7 @@ def main():
             # zephyr lane could previously only be taken or left as a MODULE, so
             # `lane=tier2` -- which needs two zephyr coordinates -- built all 70
             # leaves and serial-added ~40 min to the sweep (issue 0509).
-            if a.coords_from and row_coord(e) not in _coords_for(a.coords_from):
+            if a.coords_from and not row_in_coords(e, _coords_for(a.coords_from)):
                 continue
             # The isolation triple is emitted when the row AUTHORED one, not
             # when the role happens to be a role leaf: the mps2 witness leaves
@@ -2055,7 +2099,7 @@ def main():
 
     if a.command == "coords":
         # Issue 0482. One
-        # `<kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>\x1f<id>\x1f<artifact_root>\x1f<builder>`
+        # `<kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>\x1f<id>\x1f<artifact_root>\x1f<builder>\x1f<serves>`
         # line per BUILDABLE row of both coordinate-bearing tables, with the
         # coordinate resolved by `row_coord` — the same function the lane filter
         # uses. `skip_build` rows are omitted for the same reason
@@ -2078,6 +2122,11 @@ def main():
         # be able to tell them apart from a cargo/cmake row it CAN skip. Without
         # this field the consumer would have to re-derive the builder from
         # `lang`, which is the proxy phase-344 W2 already found wrong.
+        #
+        # Issue 2139 — `serves` rides along so the run side's lane predicate is
+        # this file's `row_in_coords`, not just `row_coord`: the coordinates the
+        # row is a peer for, `;`-separated, each `platform,lang,rmw`. Empty for
+        # almost every row.
         fixture_rows = load(a.manifest)
         workspace_rows = load_workspace_fixtures(a.manifest)
         for kind, rows in (
@@ -2099,6 +2148,7 @@ def main():
                             str(e.get("id", "")),
                             row_artifact_root(e),
                             row_builder(e),
+                            ";".join(",".join(c) for c in row_serves(e)),
                         )
                     )
                     + "\n"
