@@ -416,6 +416,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | issue | why it belongs here |
 | --- | --- |
 | [#1782](../issues/archived/1782-port-template-zephyr-leaf-board-not-in-data.md) | A copy-out template names the generic `zephyr` board, so `check-template-copy-out` cannot derive its build. **Resolved 2026-10-29**: the templates name `mps2-an385-zephyr`, whose package now owns the QEMU Kconfig tail, and the gate builds the copy with `nros build`. |
+| [#2140](../issues/2140-zephyr-byo-template-copy-does-not-build.md) | Found by that gate the day it could build Zephyr: a copy of `zephyr-byo/app` does not compile (`std_msgs/std_msgs.h` never generated). Reported NOT VERIFIED by name until fixed. |
 
 ## Issues homed here (2026-10-25)
 
