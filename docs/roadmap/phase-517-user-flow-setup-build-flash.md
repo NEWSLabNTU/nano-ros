@@ -1367,6 +1367,10 @@ pinned-project probe is green in `probe-platforms.yml`.
     holds that too.
 
   The `workspace` track's source assertions passed in the same run.
+  The second run (40910156964) got past Kconfig and stopped at `core` for
+  `x86_64-unknown-none`, the triple zephyr-lang-rust picks for native_sim/64,
+  which no `nros setup` path installs: issue 2151. The chapter's Rust block
+  adds it with `rustup` until that lands.
 * **NuttX Rust: not replayable yet, issue 2149.** Measured locally: the
   scaffolded workspace image failed at `core`, because the cargo road ran
   the default toolchain for a `toolchain = "nightly"` board. That is fixed:
@@ -1377,6 +1381,9 @@ pinned-project probe is green in `probe-platforms.yml`.
 
 ## Issues homed here (2026-10-29)
 
+* [2151](../issues/2151-zephyr-rust-target-not-provisioned.md), open.
+  `nros setup zephyr` does not install the Rust target a Zephyr Rust image
+  compiles for (found by W17's `zephyr-rust` track).
 * [2149](../issues/2149-nuttx-rust-workspace-no-nightly.md), open. A NuttX
   Rust workspace image does not build from `nros build`. The nightly half is
   fixed (W17); the kernel-configure half is open.
