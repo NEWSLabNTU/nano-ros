@@ -1458,6 +1458,15 @@ fn zpico_c_inputs(
     // `config/*/nros-platform.toml`, neither under `zpico-sys/c` nor a `.c`/`.h`,
     // so a platform-config edit used to slip past this gate entirely.
     let recorded = zpico_recorded_inputs(build_dir);
+    // issue 2138 — the recorded set has the same unclearable case issue 1710
+    // closed for the cargo arm: an edit the build script re-ran over and that
+    // changed nothing it emits. See `zpico_recorded_link_cover`.
+    if let Some(covered) = zpico_recorded_link_cover(build_dir, &recorded, bin_mtime) {
+        for _ in 0..covered {
+            staleness::note_link_covered();
+        }
+        return (None, Vec::new());
+    }
     if !recorded.is_empty() {
         let newer = recorded
             .iter()
@@ -1482,6 +1491,75 @@ fn zpico_c_inputs(
     let c_root = zpico_manifest_dir().join("c");
     let newer = newest_source_after(&c_root, bin_mtime);
     (newer, vec![c_root])
+}
+
+/// issue 2138 — whether the binary already links what `zpico-sys`'s build
+/// script last produced from `recorded`, and if so how many inputs that answers.
+///
+/// `recorded` names DIRECTORIES as well as files (`nros-zpico-build/src`), so
+/// an edit to a build-dependency crate reaches this arm too. When that edit
+/// changes nothing the script emits, the build ends correctly with an old
+/// binary: cargo re-runs the script and rebuilds the staticlib, cmake's
+/// `copy_if_different` keeps the old copy, and ninja relinks nothing. The
+/// content arm then sees a source whose bytes really changed and calls the
+/// fixture STALE, and no build can clear it (measured: `rosout-talker-c`, nine
+/// consecutive verdicts against `nros-zpico-build/src/lib.rs`).
+///
+/// Answered here, not compared, when both hold:
+///
+/// 1. every build-script `output` is at least as new as everything under every
+///    recorded path — the script ran after the last edit;
+/// 2. some cargo unit of this build both postdates that `output` and passes
+///    [`cargo_unit_link_cover`] — the staticlib built from the script's result
+///    is what the binary links.
+///
+/// Anything short of both returns `None`, and the recorded set goes through
+/// the normal arm.
+fn zpico_recorded_link_cover(
+    build_dir: &Path,
+    recorded: &[PathBuf],
+    bin_mtime: std::time::SystemTime,
+) -> Option<usize> {
+    if recorded.is_empty() {
+        return None;
+    }
+    let scope = CargoScope::of(build_dir);
+    let mut script_ran: Option<std::time::SystemTime> = None;
+    for output in find_build_script_outputs(build_dir, "zpico-sys-", &scope, 0) {
+        let m = fs::metadata(&output).ok()?.modified().ok()?;
+        script_ran = Some(script_ran.map_or(m, |s| s.min(m)));
+    }
+    let script_ran = script_ran?;
+    for input in recorded {
+        if newest_mtime_under(input, 0)? > script_ran {
+            return None; // (1) an input moved after the script's last run
+        }
+    }
+    let linked = cargo_unit_dep_files(build_dir).into_iter().any(|dep_file| {
+        let after_script = fs::metadata(dep_file.with_extension("a"))
+            .and_then(|m| m.modified())
+            .is_ok_and(|m| m >= script_ran);
+        after_script && cargo_unit_link_cover(build_dir, &dep_file, bin_mtime).is_some()
+    });
+    linked.then_some(recorded.len()) // (2)
+}
+
+/// The newest mtime of `p` or of anything under it. `None` when something
+/// cannot be read, so a caller deciding "nothing moved" fails toward the
+/// normal arm. Bounded; symlinks are not followed.
+fn newest_mtime_under(p: &Path, depth: usize) -> Option<std::time::SystemTime> {
+    const MAX_DEPTH: usize = 12;
+    let meta = fs::symlink_metadata(p).ok()?;
+    let mut newest = meta.modified().ok()?;
+    if meta.is_dir() {
+        if depth > MAX_DEPTH {
+            return None;
+        }
+        for entry in fs::read_dir(p).ok()?.flatten() {
+            newest = newest.max(newest_mtime_under(&entry.path(), depth + 1)?);
+        }
+    }
+    Some(newest)
 }
 
 /// `zpico-sys`'s manifest dir — the base a RELATIVE `rerun-if-changed` entry is
@@ -8602,6 +8680,110 @@ mod tests {
         // No copy at all: "not shown", never "covered".
         fs::remove_file(&copy).unwrap();
         assert_eq!(cargo_unit_link_cover(&tmp, &dep_file, bin_mtime), None);
+
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    /// issue 2138 — an edit to a build-script DEPENDENCY that changes nothing
+    /// the script emits is answered by the build, the zpico arm's twin of
+    /// issue 1710.
+    ///
+    /// Measured: after a `nros-zpico-build/src/lib.rs` edit, `zpico-sys`'s
+    /// build script re-ran, cargo rebuilt `libnros_cpp.a`, nothing relinked,
+    /// and the recorded DIRECTORY `nros-zpico-build/src` made `rosout-talker-c`
+    /// read STALE nine times running. Hermetic, mtimes set explicitly; each
+    /// negative case breaks exactly one condition.
+    #[test]
+    fn a_build_script_rerun_the_binary_links_answers_its_recorded_inputs() {
+        use std::time::{Duration, SystemTime};
+        let root = project_root();
+        // `zpico_c_inputs` reads only a build dir whose name says zenoh.
+        let tmp = root.join("tmp/issue-2138-probe-build-zenoh");
+        let _ = fs::remove_dir_all(&tmp);
+
+        let t = |secs: u64| SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000 + secs);
+        let set_mtime = |p: &Path, when: SystemTime| {
+            fs::File::open(p).unwrap().set_modified(when).unwrap();
+        };
+
+        let profile = tmp.join("cargo/nros-cpp-image_be6e1/x86_64-unknown-linux-gnu/release");
+        let script = profile.join("build/zpico-sys-6d12d708b33503b2");
+        fs::create_dir_all(&script).unwrap();
+        fs::create_dir_all(profile.join("deps")).unwrap();
+        let copy_dir = tmp.join("nano_ros/packages/api/nros-cpp");
+        fs::create_dir_all(&copy_dir).unwrap();
+        // The recorded input is a DIRECTORY, as `nros-zpico-build/src` is.
+        let dep_src = tmp.join("nros-zpico-build/src");
+        fs::create_dir_all(&dep_src).unwrap();
+        let lib_rs = dep_src.join("lib.rs");
+        fs::write(&lib_rs, "// a comment the script never reads\n").unwrap();
+        let output = script.join("output");
+        fs::write(
+            &output,
+            format!("cargo:rerun-if-changed={}\n", dep_src.display()),
+        )
+        .unwrap();
+        let archive = profile.join("libnros_cpp.a");
+        let copy = copy_dir.join("libnros_cpp.a");
+        let binary = tmp.join("rosout_talker_c");
+        fs::write(&archive, b"!<arch>\nsame bytes").unwrap();
+        fs::write(&copy, b"!<arch>\nsame bytes").unwrap();
+        fs::write(&binary, b"ELF").unwrap();
+        let dep_file = profile.join("libnros_cpp.d");
+        fs::write(
+            &dep_file,
+            format!("{}: {}\n", archive.display(), lib_rs.display()),
+        )
+        .unwrap();
+
+        // Link at 02:30, the edit at 04:53, then the 09:43 rebuild: the script
+        // re-ran, cargo rebuilt the archive byte-identical, nothing relinked.
+        set_mtime(&copy, t(0));
+        set_mtime(&binary, t(1));
+        set_mtime(&lib_rs, t(100));
+        set_mtime(&dep_src, t(100));
+        set_mtime(&output, t(200));
+        set_mtime(&archive, t(250));
+        set_mtime(&dep_file, t(250));
+        let bin_mtime = t(1);
+        let recorded = vec![dep_src.clone()];
+
+        assert_eq!(
+            zpico_recorded_link_cover(&tmp, &recorded, bin_mtime),
+            Some(1),
+            "the script re-ran after the edit and the binary links its result"
+        );
+        let (newer, candidates) = zpico_c_inputs(&binary, bin_mtime);
+        assert!(
+            newer.is_none() && candidates.is_empty(),
+            "a covered recorded set is answered, not compared: {newer:?} {candidates:?}"
+        );
+
+        // (1) the dependency moved after the script's last run.
+        set_mtime(&lib_rs, t(300));
+        assert_eq!(zpico_recorded_link_cover(&tmp, &recorded, bin_mtime), None);
+        assert_eq!(
+            zpico_c_inputs(&binary, bin_mtime).0.as_deref(),
+            Some(lib_rs.canonicalize().unwrap().as_path()),
+            "an uncovered recorded set falls back to the normal arm"
+        );
+        set_mtime(&lib_rs, t(100));
+
+        // (2) the archive predates the script's run: cargo never rebuilt it.
+        set_mtime(&archive, t(150));
+        assert_eq!(zpico_recorded_link_cover(&tmp, &recorded, bin_mtime), None);
+        set_mtime(&archive, t(250));
+
+        // (2) the linked copy differs: the rebuild DID change the code.
+        fs::write(&copy, b"!<arch>\nold bytes").unwrap();
+        set_mtime(&copy, t(0));
+        assert_eq!(zpico_recorded_link_cover(&tmp, &recorded, bin_mtime), None);
+
+        // No build-script output: "not shown", never "covered".
+        fs::write(&copy, b"!<arch>\nsame bytes").unwrap();
+        set_mtime(&copy, t(0));
+        fs::remove_file(&output).unwrap();
+        assert_eq!(zpico_recorded_link_cover(&tmp, &recorded, bin_mtime), None);
 
         fs::remove_dir_all(&tmp).unwrap();
     }

@@ -1,11 +1,13 @@
 ---
 id: 2138
 title: "The fixture staleness probe reads a C image as STALE after an edit to `nros-zpico-build`, a build-script crate whose change relinks nothing"
-status: open
+status: resolved
 type: bug
 area: [testing, build]
 severity: low
 found: 2026-10-29
+resolved: 2026-10-30
+resolved_in: "fix/2138-build-dep-probe"
 related: [0445, 1710, 1954]
 ---
 
@@ -66,3 +68,33 @@ sources. The exact path was NOT traced.
   its `probe:` line says it did.
 - **Acceptance:** after a `nros-zpico-build` edit that changes nothing on Linux,
   and a `build-test-fixtures lane=linux`, both cells run.
+
+## Resolved, 2026-10-30
+
+The guess under "Reading" was wrong about where the verdict came from. The
+cargo arm DID cover `libnros_cpp.d` (that is the 1552). The verdict came from
+the zpico arm, which reads what `zpico-sys`'s build script recorded. That set
+names the DIRECTORY `nros-zpico-build/src`, the arm expands it, and it finds
+`lib.rs` newer than the binary. Issue 1710's link cover was applied only in
+the cargo arm, so nothing answered the recorded set.
+
+`zpico_recorded_link_cover` now answers it when both hold:
+
+1. every `zpico-sys` build-script `output` is at least as new as everything
+   under every recorded path, so the script ran after the last edit;
+2. some cargo staticlib of the build postdates that `output` and passes
+   `cargo_unit_link_cover`, so the binary links the script's result.
+
+Otherwise the recorded set goes through the normal arm as before. The answered
+inputs count in the `probe:` line's "answered by a byte-identical relink".
+
+Acceptance, measured on this host: after `just build-test-fixtures lane=linux`,
+a comment appended to `nros-zpico-build/src/lib.rs`, and a second
+`build-test-fixtures lane=linux`, `rosout_talker_c` kept its 00:58 mtime
+against the 02:34 edit, and both cells ran and passed:
+`qos_event_interop::c_matched_and_liveliness_callbacks_follow_stock_ros2_peers`
+(24.6 s) and `rosout_interop::a_c_log_call_reaches_ros2_topic_echo_rosout`
+(29.3 s). Unit test
+`a_build_script_rerun_the_binary_links_answers_its_recorded_inputs` breaks each
+condition in turn. Disabling the new call makes it fail.
+
