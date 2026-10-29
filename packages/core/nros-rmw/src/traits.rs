@@ -913,7 +913,7 @@ pub const DEPTH_SYSTEM_DEFAULT: u32 = 0;
 /// That ordering is load-bearing on the zenoh path: the profile is serialised
 /// into the liveliness-token keyexpr that a ROS `rmw_zenoh_cpp` peer parses
 /// out of the graph (`nros-rmw-zenoh/src/keyexpr.rs`). Upstream resolves in
-/// `best_available_qos` before the entity and its token exist, so its tokens
+/// best_available_qos before the entity and its token exist, so its tokens
 /// never carry a sentinel; ours must not either, or we advertise `0:0:0,0` to
 /// peers as though it were a policy.
 ///
@@ -1364,7 +1364,7 @@ qos_profiles! {
 //   Every application-facing preset used to state AUTOMATIC where upstream
 //   states the SYSTEM_DEFAULT sentinel. W10 moved this table and
 //   `rmw_entity.h` onto the sentinel and could not move the remaining three —
-//   `nros-c`'s `NROS_QOS_*`, `rclc_c_qos_default()` and `nros::QoS`'s
+//   `nros-c`'s `NROS_QOS_*`, ~~`rclc_c_qos_default()`~~ and `nros::QoS`'s
 //   constructor — because `liveliness_kind` crosses the C ABI as its
 //   discriminant, so flipping one surface alone makes a C caller's default and
 //   a Rust caller's default differ in a field cyclonedds puts on the wire. All
@@ -1372,7 +1372,7 @@ qos_profiles! {
 //
 //   MEASURED consequences of the move, 2026-09-05 and re-read 2026-09-12:
 //     - cyclonedds: wire-identical. `nros_rmw_cyclonedds::make_dds_qos`
-//       (`qos.cpp`; the name here read `nros_rmw_cyclonedds_qos_apply` until
+//       (`qos.cpp`; the name here read ~~`nros_rmw_cyclonedds_qos_apply`~~ until
 //       phase-428 W9 went looking for it — no such symbol has ever existed)
 //       calls `dds_qset_liveliness` only when the kind is
 //       NOT the sentinel, and Cyclone's own reader/writer default IS
@@ -1461,7 +1461,7 @@ impl QoSProfile {
     /// 10 — and it is what a tool setting many parameters at once depends on.
     ///
     /// **RENAMED in phase-417 G6, and the old spelling is GONE.** It was
-    /// `parameters_default`, an ours-only word for a name rclrs has; the
+    /// ~~`parameters_default`~~, an ours-only word for a name rclrs has; the
     /// ledger carried the pair as `rust:QoSProfile::parameters_default`
     /// (`rename` — ours is the one that should change) and
     /// `rust:QoSProfile::parameter_services_default` (`gap`). Adding the
@@ -2375,7 +2375,7 @@ pub trait Session {
     /// phase-467 Row 8 — install (or clear, when `callback` is `None`) the
     /// callback the backend fires when the ROS GRAPH changes.
     ///
-    /// The Rust twin of `rmw_vtable_t::node_get_graph_guard_condition`, which
+    /// The Rust twin of `nros_rmw_vtable_t::node_get_graph_guard_condition`, which
     /// is upstream's `rmw_node_get_graph_guard_condition` under the
     /// `set_wake_callback` shape: upstream RETURNS a guard condition the caller
     /// adds to a wait set, we have no wait set, and a guard condition here is
@@ -2656,7 +2656,7 @@ impl QoSProfile {
 
     /// Compute the set of QoS policies actually requested by this profile.
     ///
-    /// Zero-valued time fields and `LivelinessKind::None` count as "not
+    /// Zero-valued time fields and ~~`LivelinessKind::None`~~ count as "not
     /// requesting" the corresponding policy — the cheap default.
     ///
     /// issue 0829 — the four `CORE` bits (reliability, durability, history,
@@ -3194,7 +3194,7 @@ pub trait Publisher {
     /// Receivers can read it back via
     /// [`Subscription::take_serialized_with_attachment`].
     ///
-    /// Primary use case: cross-RMW bridges stamp a `bridge_origin`
+    /// Primary use case: cross-RMW bridges stamp a bridge_origin
     /// tag (the source backend's RMW name) so a paired return
     /// bridge can deterministically drop echoed frames.
     ///
@@ -3534,7 +3534,7 @@ pub trait Subscription {
     /// Default body falls back to [`take_serialized`](Self::take_serialized)
     /// and reports a 0-length attachment. Backends with native
     /// attachment support override to populate `att_buf`. Cross-RMW
-    /// bridges use the attachment to read the `bridge_origin` tag
+    /// bridges use the attachment to read the bridge_origin tag
     /// stamped by the sending side.
     fn take_serialized_with_attachment(
         &mut self,
@@ -4425,7 +4425,7 @@ pub trait ClientTrait {
         false
     }
 
-    // phase-428 W13 — the `start_server_discovery` / `poll_server_discovery`
+    // phase-428 W13 — the ~~`start_server_discovery`~~ / ~~`poll_server_discovery`~~
     // pair was DELETED here. It existed because the only zenoh backend could
     // answer "is a server up?" only by issuing a `z_liveliness_get`, which is
     // start-then-poll, so the synchronous `service_is_ready` below had nothing
@@ -4583,7 +4583,7 @@ pub trait Transport {
 /// inside the factory value and hand that over to the session at
 /// `open` time. All in-repo backends also implement
 /// [`Default`]; most callers spell this as
-/// `BackendRmw::default().open(&config)`.
+/// ~~`BackendRmw::default().open(&config)`~~.
 pub trait Rmw {
     /// Session type returned by [`open`](Rmw::open)
     type Session: Session;

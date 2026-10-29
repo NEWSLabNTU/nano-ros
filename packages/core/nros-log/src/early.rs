@@ -67,7 +67,7 @@
 //!
 //! ## Cost, and how to decline it
 //!
-//! `EARLY_DEPTH * (format buffer + name + header)` of static RAM, all of it in
+//! EARLY_DEPTH * (format buffer + name + header) of static RAM, all of it in
 //! `.bss`. The depth is the `NROS_LOG_EARLY_RECORDS` knob (issue 1037; builtin
 //! 4, resolved by `build.rs` on the RFC-0049 ladder — it replaced the
 //! `early-records-<N>` features), because a 64 KB MCU and a Linux host do not

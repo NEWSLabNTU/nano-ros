@@ -193,7 +193,7 @@ impl MessageInfo {
 /// Surfaced on the generic (type-erased) subscription path
 /// (`node.subscription(t).generic(..).message_info().build(cb)` — the
 /// `FnMut(&[u8], &RawMessageInfo)` callback). The attachment carries
-/// out-of-band tags such as the cross-RMW bridge's `bridge_origin`
+/// out-of-band tags such as the cross-RMW bridge's bridge_origin
 /// (read via [`attachment`](Self::attachment) for echo suppression).
 ///
 /// The `'a` lifetime ties the borrowed attachment to the dispatch call;

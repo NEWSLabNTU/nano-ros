@@ -31,7 +31,7 @@ pub struct DerivedSchedule {
     /// (`derived-<node>`, or `derived-level-<k>` for a level of several
     /// nodes; phase-509 P5). These are NEW
     /// tiers, for nodes whose groups name no tier at all; the caller MERGES
-    /// them into whatever the model authored (see [`ADDS`](DerivedSchedule)).
+    /// them into whatever the model authored (see [`DerivedSchedule`]).
     pub tiers: BTreeMap<String, TierDef>,
     /// One override per derived node, binding its callback groups to its
     /// level's tier.

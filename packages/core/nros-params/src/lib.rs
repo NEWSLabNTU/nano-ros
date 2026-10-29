@@ -56,8 +56,8 @@ extern crate alloc;
 
 pub(crate) mod config;
 // phase-359 W10 / issue 0080 — `persist` is GONE. It held the parameter
-// PERSISTENCE seam (`ParamStore`, `NullParamStore`, `ParamStoreError`,
-// `FileParamStore`), which 0080 ruled a non-goal in July: nano-ros does not
+// PERSISTENCE seam (`ParamStore`, ~~`NullParamStore`~~, ~~`ParamStoreError`~~,
+// ~~`FileParamStore`~~), which 0080 ruled a non-goal in July: nano-ros does not
 // persist parameters on-device, and launch-baked defaults are the supported
 // model. Runtime get/set/describe — the `server` module — stay.
 // phase-446 W6 -- what each node's contract declares, looked up when the code

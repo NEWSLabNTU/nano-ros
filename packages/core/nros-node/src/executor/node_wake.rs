@@ -66,7 +66,7 @@ unsafe impl Sync for NodeWake {}
 
 impl NodeWake {
     /// Allocate + init. Returns `None` if the platform provider
-    /// reports the primitive unavailable (`storage_size() == 0`)
+    /// reports the primitive unavailable (`nros_platform_wake_storage_size() == 0`)
     /// or if `wake_init` returns non-zero.
     pub(crate) fn new() -> Option<Self> {
         // SAFETY: probe functions are documented pure (no global

@@ -141,7 +141,7 @@ mod tests {
     /// PROBE ships, so it is what every Rust image's declared subscriptions are
     /// PRICED at.
     ///
-    /// It was `neither_declarative_shape_dispatches_in_place_today` until issue
+    /// It was ~~`neither_declarative_shape_dispatches_in_place_today`~~ until issue
     /// 1340 flipped the raw arm, and that rename is the point: this test is
     /// where a change of price is said out loud. A declared non-safety
     /// subscription now states `in_place`, so on zenoh and XRCE it claims no

@@ -652,7 +652,7 @@ mod tests {
     /// With NO port linked there is no clock, and all three types say so with
     /// the one counter they were given — issue 1334.
     ///
-    /// This replaces `test_system_clock_returns_nonzero`, which asserted
+    /// This replaces ~~`test_system_clock_returns_nonzero`~~, which asserted
     /// `now.sec > 0` for `Clock::system()` in exactly this shape. That claim
     /// was false from the day phase-359 W10 removed the `std::time` arm — a
     /// portless build reads the counter, which is 0 — and nobody saw it,

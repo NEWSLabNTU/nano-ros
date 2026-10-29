@@ -551,7 +551,7 @@ const DECLARED_WORST_PARAM_REQUEST: usize = match crate::config::DECLARED_PARAM_
 };
 
 /// The same gate for the EXECUTOR-side pair, which until now was only a unit
-/// test (`the_derived_size_fits_the_worst_messages`).
+/// test (~~`the_derived_size_fits_the_worst_messages`~~).
 const _: () = assert!(
     inbox_fits(PARAM_SERVICE_BUFFER_SIZE, DECLARED_WORST_PARAM_REQUEST)
         || !crate::config::PARAM_SERVICE_BUFFER_STATED,
@@ -572,7 +572,7 @@ const _: () = assert!(
 /// registered node still gets one set, under its own implicit primary
 /// identity, which is why the floor is 1.
 ///
-/// Issue 1468 — was `MAX_PARAM_SERVICE_SETS`. The parameter family is not the
+/// Issue 1468 — was ~~`MAX_PARAM_SERVICE_SETS`~~. The parameter family is not the
 /// only one that counts sets this way: the lifecycle family's ring count is
 /// its five queryables over exactly these sets, and it always was. The old
 /// name said "parameter" about a number that is the node table's, which is

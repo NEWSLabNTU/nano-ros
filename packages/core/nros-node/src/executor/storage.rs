@@ -1238,7 +1238,7 @@ mod tests {
     /// returns by value.
     ///
     /// Deltas rather than absolute sizes, the shape
-    /// `the_default_subscription_buffer_is_unchanged` uses: a total says
+    /// ~~`the_default_subscription_buffer_is_unchanged`~~ uses: a total says
     /// nothing about which knob moved it, while the difference between two
     /// sizings isolates exactly one knob's per-slot width.
     #[test]

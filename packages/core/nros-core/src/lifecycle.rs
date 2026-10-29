@@ -101,7 +101,7 @@ impl LifecycleState {
 /// # The discriminants ARE `lifecycle_msgs/msg/Transition` (issue 1099)
 ///
 /// These numbers are not ours to choose. They cross the C ABI as
-/// `NROS_LIFECYCLE_TRANSITION_*`, they are what
+/// `RCLC_LIFECYCLE_TRANSITION_*`, they are what
 /// `nros::LifecycleNode::trigger_transition(uint8_t)` accepts, and they are
 /// what a `ChangeState` request carries on the wire — so a caller reaching any
 /// one of those surfaces with a literal must get the transition ROS 2 would
@@ -121,7 +121,7 @@ impl LifecycleState {
 /// and `8` is now rejected rather than silently meaning error recovery.
 ///
 /// Do not renumber these. `nros_c::lifecycle` re-asserts every one against its
-/// `NROS_LIFECYCLE_TRANSITION_*` literal (issue 0792), and `nros-node`'s
+/// `RCLC_LIFECYCLE_TRANSITION_*` literal (issue 0792), and `nros-node`'s
 /// `transition_wire` / `from_msg_transition_id` are now identity functions that
 /// a test pins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -392,7 +392,7 @@ mod tests {
     ///
     /// The table below is transcribed from
     /// `/opt/ros/humble/share/lifecycle_msgs/msg/Transition.msg`; it is the
-    /// contract every id-taking surface inherits (`NROS_LIFECYCLE_TRANSITION_*`,
+    /// contract every id-taking surface inherits (`RCLC_LIFECYCLE_TRANSITION_*`,
     /// `nros::LifecycleNode::trigger_transition`, `ChangeState.transition.id`).
     ///
     /// Before the fix this failed on FOUR of eight rows: `2` was `Activate`,

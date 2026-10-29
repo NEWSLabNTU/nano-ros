@@ -1,6 +1,6 @@
 //! Per-type descriptor registration — generic seam (Phase 248 C2).
 //!
-//! (issue #225 — formerly `cyclonedds_register`: the seam was already
+//! (issue #225 — formerly ~~`cyclonedds_register`~~: the seam was already
 //! backend-agnostic in behavior; the module/cfg names now match. Cyclone DDS
 //! is simply the first descriptor-needing tenant, named only in prose.)
 //!
@@ -21,7 +21,7 @@
 //! [`nros_rmw::register_type_descriptor`] seam. The Cyclone backend
 //! installs its registrar from its own crate
 //! (`nros-rmw-cyclonedds::install_descriptor_registrar`, driven by the
-//! `-sys` shim's `RMW_INIT_ENTRIES` self-registration); zenoh / xrce
+//! `-sys` shim's ~~`RMW_INIT_ENTRIES`~~ self-registration); zenoh / xrce
 //! install nothing, so the seam is a no-op there.
 //!
 //! # cfg gating (auto-detected, not feature-gated)

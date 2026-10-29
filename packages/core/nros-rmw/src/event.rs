@@ -7,7 +7,7 @@
 //!
 //! Events fire from inside [`Session::drive_io`](crate::Session::drive_io)
 //! on the executor thread, the same as message callbacks. They count
-//! against the executor's `max_callbacks_per_spin` cap (Phase 105) the
+//! against the executor's ~~`max_callbacks_per_spin`~~ cap (Phase 105) the
 //! same way.
 //!
 //! See `book/src/concepts/status-events.md` for the user-facing
@@ -19,7 +19,7 @@
 //! Iron/Jazzy's `*_MATCHED` and `*_INCOMPATIBLE_TYPE` kinds are appended
 //! after the Tier-1 set ([`EventKind::PublicationMatched`] onward), with
 //! payloads [`MatchedStatus`] and [`IncompatibleTypeStatus`]. Upstream's
-//! `QOS_INCOMPATIBLE` is still surfaced synchronously at create time as
+//! QOS_INCOMPATIBLE is still surfaced synchronously at create time as
 //! `TransportError::IncompatibleQos` (`NROS_RMW_RET_INCOMPATIBLE_QOS` at the
 //! C boundary); no runtime event for it.
 

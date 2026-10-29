@@ -6,7 +6,7 @@
 //! and hands it to the [`crate::Logger`]'s dispatcher.
 //!
 //! Compile-time ceiling: macros below
-//! [`crate::compile_time_ceiling`](super::severity_enabled_at_compile_time)
+//! [`severity_enabled_at_compile_time`](super::severity_enabled_at_compile_time)
 //! expand to `()` — the format call is dead-code-eliminated.
 //!
 //! ## Naming (RFC-0089, settled 2026-09-04)
@@ -27,10 +27,10 @@
 //! [`log_fatal!`](crate::log_fatal) — which is what this module now exports.
 //! (They carry an explicit target because `#[macro_export]` puts a macro at
 //! the CRATE ROOT, not in the module whose file declares it.) The pre-rename
-//! `nros_debug!` .. `nros_fatal!` forwarders, and the
+//! ~~`nros_debug!`~~ .. ~~`nros_fatal!`~~ forwarders, and the
 //! `deprecate-legacy-names` feature that armed their `#[deprecated]`, were
 //! removed in phase-417 W-B5 once every in-tree call site had moved. There is
-//! no `log_trace!`: see below.
+//! no log_trace!: see below.
 //!
 //! **A name takes rclrs's spelling exactly when rclrs HAS that name.** Two
 //! families deliberately keep the `nros_` prefix, because inventing a name
@@ -204,7 +204,7 @@ macro_rules! nros_trace {
 ///
 /// `rclrs::log_debug!`'s spelling — see the module note on RFC-0089's
 /// "each language follows its own upstream" rule. The pre-rename
-/// `nros_debug!` forwarder was removed in phase-417 W-B5.
+/// ~~`nros_debug!`~~ forwarder was removed in phase-417 W-B5.
 #[macro_export]
 macro_rules! log_debug {
     ($logger:expr, $($arg:tt)+) => {
@@ -218,7 +218,7 @@ macro_rules! log_debug {
 ///
 /// `rclrs::log_info!`'s spelling — see the module note on RFC-0089's
 /// "each language follows its own upstream" rule. The pre-rename
-/// `nros_info!` forwarder was removed in phase-417 W-B5.
+/// ~~`nros_info!`~~ forwarder was removed in phase-417 W-B5.
 #[macro_export]
 macro_rules! log_info {
     ($logger:expr, $($arg:tt)+) => {
@@ -232,7 +232,7 @@ macro_rules! log_info {
 ///
 /// `rclrs::log_warn!`'s spelling — see the module note on RFC-0089's
 /// "each language follows its own upstream" rule. The pre-rename
-/// `nros_warn!` forwarder was removed in phase-417 W-B5.
+/// ~~`nros_warn!`~~ forwarder was removed in phase-417 W-B5.
 #[macro_export]
 macro_rules! log_warn {
     ($logger:expr, $($arg:tt)+) => {
@@ -246,7 +246,7 @@ macro_rules! log_warn {
 ///
 /// `rclrs::log_error!`'s spelling — see the module note on RFC-0089's
 /// "each language follows its own upstream" rule. The pre-rename
-/// `nros_error!` forwarder was removed in phase-417 W-B5.
+/// ~~`nros_error!`~~ forwarder was removed in phase-417 W-B5.
 #[macro_export]
 macro_rules! log_error {
     ($logger:expr, $($arg:tt)+) => {
@@ -260,7 +260,7 @@ macro_rules! log_error {
 ///
 /// `rclrs::log_fatal!`'s spelling — see the module note on RFC-0089's
 /// "each language follows its own upstream" rule. The pre-rename
-/// `nros_fatal!` forwarder was removed in phase-417 W-B5.
+/// ~~`nros_fatal!`~~ forwarder was removed in phase-417 W-B5.
 #[macro_export]
 macro_rules! log_fatal {
     ($logger:expr, $($arg:tt)+) => {
@@ -295,7 +295,7 @@ macro_rules! log_fatal {
 // while reading at the call site exactly like a working throttle. RFC-0089:
 // never compile and differ.
 //
-// WHY THIS FAMILY KEEPS THE `nros_` PREFIX. rclrs has no `log_info_throttle!`
+// WHY THIS FAMILY KEEPS THE `nros_` PREFIX. rclrs has no log_info_throttle!
 // to follow: its throttle is a MODIFIER on the one macro, and since phase-515
 // R3 ours is too — `log_info!(logger.throttle(d), …)` through `ToLogParams`
 // (`crate::log_params`). That reversed the three ledger rows this note used to

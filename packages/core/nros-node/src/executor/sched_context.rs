@@ -7,7 +7,7 @@
 //!
 //! 110.B.a (this commit) lands the type surface + `EdfReadySet`. The
 //! Executor builder methods (`create_sched_context`,
-//! `register_subscription_in`, ...) and the cbindgen / C / C++ wrappers
+//! ~~`register_subscription_in`~~, ...) and the cbindgen / C / C++ wrappers
 //! land in 110.B.b once the const-generic `Executor<MAX_HANDLES,
 //! MAX_SC>` reshape is sorted.
 
@@ -70,7 +70,7 @@ pub enum SchedClass {
 }
 
 /// Criticality bucket for [`SchedContext`]. Phase 110.C uses this to
-/// pick which `BucketedFifoSet` / `BucketedEdfSet` slot a callback
+/// pick which ~~`BucketedFifoSet`~~ / `BucketedEdfSet` slot a callback
 /// dispatches through; later phases (110.D) map it to OS priority.
 ///
 /// Default `Normal` keeps existing single-bucket workloads unchanged
@@ -154,9 +154,9 @@ pub const MAX_CONTRACT_RANK: u8 = (DISPATCH_LEVELS - 3) as u8;
 
 /// How an EDF deadline is interpreted relative to a callback firing.
 ///
-/// - `Released`: deadline is `release_time + period`. Default for
+/// - `Released`: deadline is release_time + period. Default for
 ///   timer-triggered callbacks.
-/// - `Activated`: deadline is `activation_time + relative_deadline`.
+/// - `Activated`: deadline is activation_time + relative_deadline.
 ///   Default for event-triggered subscriptions.
 /// - `Inherited`: deadline travels in the message header — latency-
 ///   aware pipelines extract it per-message at dispatch time.
@@ -250,7 +250,7 @@ pub struct SchedContext {
     pub deadline_policy: DeadlinePolicy,
     /// Phase 110.F — the OS-level priority this context's callbacks are meant
     /// to run at: generated entries record their tier's kernel priority here
-    /// (`create_sched_context_from_policy`). `0` (default) means none.
+    /// (`nros_cpp_create_sched_context_from_policy`). `0` (default) means none.
     ///
     /// Recorded, not acted on by the executor. The opt-in per-callback worker
     /// pool that ran an `os_pri > 0` callback on an elevated thread is retired
@@ -280,7 +280,7 @@ pub struct SchedContext {
 }
 
 /// Phase 110.E.b — atomic sporadic-server state for ISR-driven
-/// refill. ISR / timer-thread context calls `refill_thunk` to top up
+/// refill. ISR / timer-thread context calls refill_thunk to top up
 /// the budget; spin_once reads atomically without any `&mut` access.
 ///
 /// Replaces the polled-clock `SporadicState` shape on platforms with
@@ -308,7 +308,7 @@ pub struct AtomicSporadicState {
     /// callbacks, and `last_overrun_us` carries the worst-case
     /// observation for tuning. Both reset by `clear_overrun_stats`.
     pub overrun_count: portable_atomic::AtomicU32,
-    /// WORST overrun amount seen (`measured_us - budget_us`) since the
+    /// WORST overrun amount seen (measured_us - budget_us) since the
     /// last `clear_overrun_stats`; `0` when none has been observed.
     ///
     /// This used to `store` the most RECENT overrun while its doc claimed

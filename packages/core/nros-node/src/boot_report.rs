@@ -123,7 +123,7 @@ pub const VERSION: u32 = 11;
 /// `NROS_EXECUTOR_ARENA_SIZE` for an arena that was 28% used.
 ///
 /// Append only; `the_alloc_arena_codes_match_the_record` states the numbers
-/// `read-boot-report.py`'s `ALLOC_ARENA` restates.
+/// `read-boot-report.py`'s ~~`ALLOC_ARENA`~~ restates.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum AllocArena {
@@ -1188,7 +1188,7 @@ mod tests {
         assert_eq!(KnobSource::CommandLine as u32, 6);
     }
 
-    /// Issue 1573 -- `read-boot-report.py`'s `ALLOC_ARENA` restates these.
+    /// Issue 1573 -- `read-boot-report.py`'s ~~`ALLOC_ARENA`~~ restates these.
     #[test]
     fn the_alloc_arena_codes_match_the_record() {
         assert_eq!(AllocArena::None as u32, 0);

@@ -177,7 +177,7 @@ impl core::fmt::Display for RosArgsError<'_> {
 const UNSUPPORTED_FLAGS: &[&str] = &["-e", "--enclave", "--log-level", "--log-config-file"];
 
 /// rcl's log-switch flags are `--enable-<suffix>` / `--disable-<suffix>` over
-/// these three suffixes (`RCL_LOG_*_FLAG_SUFFIX`).
+/// these three suffixes (RCL_LOG_*_FLAG_SUFFIX).
 const LOG_SWITCH_SUFFIXES: &[&str] = &["stdout-logs", "rosout-logs", "external-lib-logs"];
 
 fn is_log_switch(token: &str) -> bool {

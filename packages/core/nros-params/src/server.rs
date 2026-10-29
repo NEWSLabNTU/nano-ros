@@ -2334,7 +2334,7 @@ mod tests {
     #[test]
     fn test_unset_clears_the_value_and_reports_success() {
         // phase-359 W10 / issue 0080 — what survives of
-        // `test_dirty_tracks_value_changes_not_declarations`. That test existed
+        // ~~`test_dirty_tracks_value_changes_not_declarations`~~. That test existed
         // for the persistence flush's dirty flag, which is deleted with the
         // seam; but it carried the crate's ONLY coverage of `unset`, so the
         // assertion moves here rather than going out with the flag.

@@ -46,7 +46,7 @@ pub(crate) use crate::timer::{TimerCallInfo, TimerClockSource};
 // whether or not the feature is on; the `#[cfg]` lives here, once, instead of
 // wrapping every hook site.
 
-/// Emit `callback_start(handle)` immediately before invoking a user callback.
+/// Emit callback_start(handle) immediately before invoking a user callback.
 #[cfg(feature = "trace-callbacks")]
 #[inline]
 fn trace_cb_start(desc_idx: u8) {
@@ -85,7 +85,7 @@ fn timer_tick_traced(_desc_idx: u8) -> bool {
     false
 }
 
-/// Emit `callback_end(handle)` immediately after a user callback returns.
+/// Emit callback_end(handle) immediately after a user callback returns.
 #[cfg(feature = "trace-callbacks")]
 #[inline]
 fn trace_cb_end(desc_idx: u8) {
@@ -111,7 +111,7 @@ pub(crate) enum EntryKind {
 /// What a registration site calls the callback it is registering.
 ///
 /// Phase 8 (`docs/design/callback_tracing.rst`) — the payload of the
-/// `nros_callback_register` event, resolved to a string only inside the
+/// nros_callback_register event, resolved to a string only inside the
 /// feature-gated emitter so a build without `trace-callbacks` pays nothing
 /// for the two synthesised forms.
 ///
@@ -139,7 +139,7 @@ pub(crate) enum TraceName<'a> {
     TimerPeriod(u64),
     /// An entry with no name anywhere in the executor, rendered
     /// `<label>#<slot>` — `guard#3`, `sub#7`. The slot index is exactly what
-    /// the runtime `callback_start` / `callback_end` events key on, so this
+    /// the runtime callback_start / callback_end events key on, so this
     /// label is not a placeholder: it is the identity, spelled out.
     Slot(&'static str, usize),
 }
@@ -1175,7 +1175,7 @@ mod arena_model_tests {
     ///
     /// The direction that shipped the bug is the other one, and it has no
     /// TOTAL assertion available here: a slot priced BELOW `RX_BUF` is correct
-    /// for a `c_typed_hint` or `rust_typed_descriptors` registration and 1,848
+    /// for a ~~`c_typed_hint`~~ or ~~`rust_typed_descriptors`~~ registration and 1,848
     /// bytes per subscription short for the other two, and which one this image
     /// takes is composed from the entry's language and the linked backend —
     /// neither of which the runtime can read out of a `cfg`. That is why the
@@ -2014,7 +2014,7 @@ pub(crate) unsafe fn sub_buffered_view_has_data<B, F>(ptr: *const u8) -> bool {
 // Raw buffered subscription with attachment / MessageInfo (Phase 189.M1)
 // ============================================================================
 
-/// Staging cap for a raw subscription's wire attachment (`bridge_origin`
+/// Staging cap for a raw subscription's wire attachment (bridge_origin
 /// tags and similar are small). Attachment bytes longer than this are
 /// truncated by the backend's `take_serialized_with_attachment`.
 pub(crate) const RAW_INFO_ATT_CAP: usize = 256;
@@ -2348,12 +2348,12 @@ pub(crate) unsafe fn sub_buffered_raw_safety_c_has_data(ptr: *const u8) -> bool 
 /// Buffered subscription entry for C-style raw callbacks (function pointer + context).
 ///
 /// Same as `SubBufferedRawEntry` but uses `RawSubscriptionCallback` instead of
-/// a Rust closure. Used by the C API and by `register_subscription_raw_*` methods.
+/// a Rust closure. Used by the C API and by ~~`register_subscription_raw_*`~~ methods.
 ///
 /// # Where the caller's capture went — phase-456 W8
 ///
 /// Phase-456 W1 put the caller's capture INSIDE this struct, as a fixed
-/// `[u8; CALLBACK_CAPTURE_BYTES]` with `CALLBACK_CAPTURE_BYTES` equal to a C++
+/// `[u8; CALLBACK_CAPTURE_BYTES]` with ~~`CALLBACK_CAPTURE_BYTES`~~ equal to a C++
 /// macro's value by construction. That made a number an ABI agreement between
 /// two languages, with a runtime `BufferTooSmall` as the only thing standing
 /// between a disagreement and a corrupted dispatch — a failure mode reachable

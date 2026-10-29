@@ -2,7 +2,7 @@
 //!
 //! `ReadySet` is the queue + selection layer between `spin_once`'s
 //! readiness scan, which fills it, and its dispatch loop, which drains it.
-//! (Phase 110.A also defined `Activator` and `Dispatcher` traits for those two
+//! (Phase 110.A also defined ~~`Activator`~~ and ~~`Dispatcher`~~ traits for those two
 //! halves; they were never wired and phase-397 W4 deleted them.)
 //!
 //! 110.A ships only `FifoReadySet` (registration-order, bit-for-bit
@@ -24,7 +24,7 @@
 //! The const-generic `N` caps the number of distinct `DescIdx` values
 //! the set can track. Phase 110.A holds N = 64 to match the existing
 //! `u64` readiness bitmap width; future MAX_HANDLES bumps will widen
-//! the storage accordingly (likely `BitSet<N>`).
+//! the storage accordingly (likely a bit set of N handles).
 
 use super::types::{ActiveJob, DescIdx};
 
@@ -269,7 +269,7 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
 }
 
 // =============================================================================
-// Phase 110.C — `BucketedFifoSet<NB, N>` + `BucketedEdfSet<NB, N>`
+// Phase 110.C — ~~`BucketedFifoSet<NB, N>`~~ + `BucketedEdfSet<NB, N>`
 // =============================================================================
 //
 // Splits a ready set across `NB` priority buckets (defaults to 3:
@@ -293,7 +293,7 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
 /// lowest bit first, so equal levels keep registration order exactly as the
 /// three-bucket set this replaces did.
 ///
-/// It replaced `BucketedFifoSet<3, N>`, whose bucket was the sched context's
+/// It replaced ~~`BucketedFifoSet<3, N>`~~, whose bucket was the sched context's
 /// `Priority` alone: every callback of one tier sat in `Normal` and ran in
 /// registration order, whatever rank the contract gave its node. The level is
 /// [`Priority::dispatch_level`](super::sched_context::Priority::dispatch_level),

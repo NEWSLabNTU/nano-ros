@@ -49,7 +49,7 @@
 //!
 //! `FieldType::WString` / `FieldType::BoundedWString` reach
 //! [`SchemaError::Unsupported`], because [`crate::cdr::CdrReader`] has no
-//! wide-string primitive to read them WITH — there is no `read_wstring`, in
+//! wide-string primitive to read them WITH — there is no read_wstring, in
 //! either direction. No message in `packages/interfaces/*` uses one, so this is
 //! a hole in the CDR codec that the schema walk inherits rather than one it
 //! introduces.

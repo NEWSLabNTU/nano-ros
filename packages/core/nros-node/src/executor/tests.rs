@@ -27,7 +27,7 @@ use nros_params::ParameterServerOps as _; // phase-515 R10 stage 2
 ///
 /// The lock is only half the fix. It orders the tests that MEAN to touch the
 /// flag; what stopped every other test from touching it by accident is
-/// `Executor::sim_time_declared`, because `reconcile_ros_time_source` runs on
+/// ~~`Executor::sim_time_declared`~~, because `reconcile_ros_time_source` runs on
 /// every `spin_once` of every executor.
 #[cfg(feature = "sim-time")]
 struct SimTimeGuard {
@@ -213,7 +213,7 @@ use crate::{
 /// Issue 0355 — a live-but-idle session (`MockSession::drive_io` returns
 /// `Ok(())` with no data) must NEVER accumulate `session_io_failures`, no matter
 /// how many idle spins elapse. The C spin loops
-/// (`nros_executor_spin`/`nros_executor_spin_period`) gate their dead-session
+/// (`rclc_executor_spin`/`rclc_executor_spin_period`) gate their dead-session
 /// bail on this counter; the bug was that they instead counted `spin_some`'s
 /// idle `RCL_RET_TIMEOUT`, so a healthy C listener that idled longer than
 /// `SPIN_ERROR_TOLERANCE * period` before its publisher was discovered got
@@ -585,7 +585,7 @@ fn qos_with_depth(depth: u32) -> QoSProfile {
 
 /// phase-392 W3c -- what a subscription that names NO number is charged.
 ///
-/// This test was `the_default_subscription_buffer_is_unchanged` and asserted the
+/// This test was ~~`the_default_subscription_buffer_is_unchanged`~~ and asserted the
 /// opposite: that a non-opted-in subscription still paid `DEFAULT_RX_BUF_SIZE`
 /// per slot. W3c is the decision to invert that -- `.rx_buffer_from_type()`'s
 /// own doc named it ("sizing every subscription from its type by default would
@@ -598,7 +598,7 @@ fn qos_with_depth(depth: u32) -> QoSProfile {
 /// correct: it derives where `MessageForRmw` carries a schema (a backend
 /// declaring `type-descriptors`) and answers `None` where it does not, and the
 /// wiring under test -- "the choke point charges exactly what the default
-/// derivation says" -- is the same claim either way. `arm_note` puts the arm in
+/// derivation says" -- is the same claim either way. arm_note puts the arm in
 /// the failure message so a red is never ambiguous about which one ran.
 ///
 /// Two depths rather than one absolute number, because the entry STRUCT's size
@@ -703,7 +703,7 @@ fn executor_with_arena(session: MockSession, arena: usize) -> Executor<'static> 
 ///   `RegistrationPath::Unbounded` — a site that states no bound, against a
 ///   backend that buffers. phase-456 W8 collapsed the five rows to three and
 ///   took the language out of their names; the C half of this row used to be
-///   `CRawNoHint` and was reachable on EVERY backend, because the C path never
+///   ~~`CRawNoHint`~~ and was reachable on EVERY backend, because the C path never
 ///   consulted the in-place capability. It does now, so on zenoh or XRCE a C
 ///   registration takes `InPlace` like a Rust one.
 /// * **the subscribed class below the closure bound** — `MODELLED_SLOT`
@@ -811,8 +811,8 @@ fn a_schemaless_subscription_outgrows_an_arena_priced_at_its_types_bound() {
 /// Issue 1340 -- a GENERIC subscription on a backend that dispatches in place
 /// claims no receive region, so it fits an arena priced at the in-place row.
 ///
-/// This test used to be `a_generic_subscription_on_an_in_place_backend_still_
-/// claims_a_full_region` and pinned the OPPOSITE. The generic path -- what a
+/// This test used to be a_generic_subscription_on_an_in_place_backend_still_
+/// claims_a_full_region and pinned the OPPOSITE. The generic path -- what a
 /// declarative component and the cross-RMW bridge both lower to -- allocated
 /// `buffered_region(depth, RX_BUF)` even on a backend that could hand it the
 /// sample out of its own slot, so an arena priced at what an in-place
@@ -1231,7 +1231,7 @@ fn info_arena_delta(hint: usize) -> usize {
 /// The saving, measured: the slot tracks the hint byte for byte.
 ///
 /// Two hints rather than one absolute number, for the same reason
-/// `the_default_subscription_buffer_is_unchanged` uses two depths -- the
+/// ~~`the_default_subscription_buffer_is_unchanged`~~ uses two depths -- the
 /// difference isolates the payload slot from everything else the registration
 /// claims.
 #[test]
@@ -2404,7 +2404,7 @@ fn dispatch_levels_reserve_the_ends_for_the_buckets() {
 /// phase-509 P3 -- three ranked nodes, one subscription each: `a` (rank 1)
 /// and `c` (rank 2) are ready at the scan; `b` (rank 0) is not, and `a`'s
 /// callback makes it ready. Returns the dispatch order of one `spin_once` as
-/// node letters. `a_readies` lets `a` ready `a` again instead of `b`.
+/// node letters. a_readies lets `a` ready `a` again instead of `b`.
 fn repick_order(
     reprobe: bool,
     semantics: Option<ExecutorSemantics>,
@@ -3485,7 +3485,7 @@ fn the_achieved_park_is_reported_separately_from_the_request() {
 fn the_quantization_audit_sees_the_declared_cadence_not_the_park_bound() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
     // The cap only bites when the timer is SHORTER than the budget, so that
-    // is the case to test: a 33 ms timer under `spin_default`'s 50 ms. If the
+    // is the case to test: a 33 ms timer under ~~`spin_default`~~'s 50 ms. If the
     // audit followed the cap it would compare 33 ms against 33 ms — an exact
     // multiple — and stay silent on a tier whose grid genuinely quantizes.
     executor
@@ -3546,7 +3546,7 @@ fn a_timer_deadline_shortens_a_longer_caller_budget() {
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
 
-    // 50 ms is `spin_default`'s budget; the timer is due in 10 ms.
+    // 50 ms is ~~`spin_default`~~'s budget; the timer is due in 10 ms.
     let bound_us = executor.next_wake_bound_us(50_000);
     assert_eq!(
         bound_us, 10_000,
@@ -5442,7 +5442,7 @@ private_test_clock!(timer_readiness_clock);
 /// phase-417 W5.c — `timer_is_ready` / `timer_elapsed_us` must report what the
 /// DISPATCHER is about to do, not a second opinion about it.
 ///
-/// These two exist because the C accessors `nros_timer_is_ready` and
+/// These two exist because the C accessors `rcl_timer_is_ready` and
 /// `rcl_timer_get_time_since_last_call` were filed as gaps: the state was
 /// already in the arena and nothing exposed it. The risk in exposing it is a
 /// readiness answer that drifts from `arena::timer_try_process`'s own guard,
@@ -5559,7 +5559,7 @@ private_test_clock!(time_until_next_clock);
 /// phase-417 G6 — `timer_time_until_next_call_ns` is SIGNED, and the sign is
 /// the answer.
 ///
-/// The assertions moved here from `nros-c`'s `remaining_period_ns` when the
+/// The assertions moved here from `nros-c`'s ~~`remaining_period_ns`~~ when the
 /// subtraction became the executor's: `cpp:Timer::time_until_trigger` reads
 /// it too, and two crates deriving `period - elapsed` is how the sign
 /// convention and the microsecond scaling come to disagree. rcl's header:
@@ -6394,7 +6394,7 @@ fn spin_returns_the_first_callback_error_when_asked_to_stop() {
 }
 
 /// The negative control, and the reason the field defaults to `false`: 27 call
-/// sites were migrated from `spin_blocking` on the promise that the default
+/// sites were migrated from ~~`spin_blocking`~~ on the promise that the default
 /// behaviour did not move. A counted-and-continue error is still the default.
 #[test]
 fn spin_continues_past_a_callback_error_by_default() {
@@ -10844,7 +10844,7 @@ fn a_pre_shutdown_hook_sees_a_live_session_and_an_on_shutdown_hook_sees_a_closed
     assert_eq!(runs(&fixture.post), 1, "drop re-ran the on-shutdown hook");
 }
 
-/// Issue 0790 — the C API's `nros_executor_fini` drops the executor in place
+/// Issue 0790 — the C API's `rclc_executor_fini` drops the executor in place
 /// and never calls `close()`. If `Drop` did not sweep the tables the whole
 /// facility would be silently inert for every C entry, which is the failure
 /// mode this repo calls a museum binary: the code is there, the gate is green,
@@ -14575,7 +14575,7 @@ private_test_clock!(t4_overrun_clock);
 /// so `timer-overrun-runtime` has nothing to say and the one verdict is the
 /// latency rule's. In INIT its first tick overruns (start-up
 /// work), and its third tick enters RUN and calls
-/// `monitor::request_monitor_arming()` -- the island's `INIT_DONE` point. In
+/// `monitor::request_monitor_arming()` -- the island's INIT_DONE point. In
 /// RUN one tick overruns deliberately, by busy-waiting past the budget.
 ///
 /// Asserted: before arming nothing is stored and the suppressed count

@@ -116,7 +116,7 @@ use core::{
 
 use super::arena::{EntryKind, TraceName};
 
-/// `nros_callback_register(handle, kind, name)` — once, at registration.
+/// nros_callback_register(handle, kind, name) — once, at registration.
 pub const MARKER_REGISTER: u32 = 16;
 /// Legacy untagged name chunk: 4 bytes, bound to the register event it
 /// FOLLOWED. Never emitted any more, and reserved rather than reused so a
@@ -130,9 +130,9 @@ pub const MARKER_NAME_LEGACY: u32 = 17;
 /// precisely the failure this instrumentation exists to prevent, and the same
 /// reason the application marker enum reserves its retired values.
 pub const MARKER_NAME: u32 = 20;
-/// `callback_start(handle)` — immediately before the callback is invoked.
+/// callback_start(handle) — immediately before the callback is invoked.
 pub const MARKER_START: u32 = 18;
-/// `callback_end(handle)` — immediately after it returns.
+/// callback_end(handle) — immediately after it returns.
 pub const MARKER_END: u32 = 19;
 
 // phase-474 I1 -- the violation markers. Defined beside the rule table in
@@ -151,7 +151,7 @@ pub const MARKER_TAKE_STAMP_SEC: u32 = 26;
 /// [`MARKER_TAKE_STAMP_SEC`].
 pub const MARKER_TAKE_STAMP_NSEC: u32 = 27;
 
-/// Names longer than this are truncated. Matches the decoder's `CB_NAME_MAX`;
+/// Names longer than this are truncated. Matches the decoder's CB_NAME_MAX;
 /// both sides must agree or the tail of a long name is read as a chunk of
 /// the next registration's.
 pub const NAME_MAX: usize = 64;
@@ -282,7 +282,7 @@ fn stream_name(sink: TraceSink, handle: usize, name: &str) {
     }
 }
 
-/// Emit `nros_callback_register(handle, kind, name)` plus the name chunks.
+/// Emit nros_callback_register(handle, kind, name) plus the name chunks.
 ///
 /// Called once per executor entry, from the single `emplace_entry` choke
 /// point every registration site funnels through. Init-time, so the cost of
@@ -329,7 +329,7 @@ pub(crate) fn register(handle: usize, kind: EntryKind, name: TraceName<'_>) {
     stream_name(sink, handle, text);
 }
 
-/// `callback_start(handle)` — immediately before a leaf callback is invoked.
+/// callback_start(handle) — immediately before a leaf callback is invoked.
 ///
 /// O(1), allocation-free, lock-free; one relaxed-ordering pointer load plus
 /// the sink call. No state is kept across the pair, which is what makes it
@@ -344,7 +344,7 @@ pub(crate) fn start(handle: u8) {
     }
 }
 
-/// `callback_end(handle)` — immediately after the callback returns.
+/// callback_end(handle) — immediately after the callback returns.
 ///
 /// See [`start`]. A callback that panics or long-jumps out skips its `end`;
 /// the decoder counts that as an unbalanced span rather than a duration.

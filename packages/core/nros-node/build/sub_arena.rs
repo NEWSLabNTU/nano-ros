@@ -169,7 +169,7 @@ pub(crate) fn row_slot_bytes(row: &SubEndpoint, rx_buf_size: usize) -> usize {
 ///
 /// phase-456 W8 collapsed five rows to these three: two of the five named the
 /// caller's LANGUAGE rather than anything about the registration, and the two
-/// that took `RX_BUF` (`rust_typed_schemaless`, `c_raw_no_hint`) were one fact
+/// that took `RX_BUF` (~~`rust_typed_schemaless`~~, ~~`c_raw_no_hint`~~) were one fact
 /// said twice.
 ///
 /// The last two are an UNDER-size, which lands as `NodeError::BufferTooSmall`

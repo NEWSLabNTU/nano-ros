@@ -6,7 +6,7 @@
 //! # Overview
 //!
 //! Timers allow scheduling periodic or one-shot callbacks. In embedded environments
-//! without background threads, timers must be processed manually via `process_timers()`.
+//! without background threads, timers must be processed manually via ~~`process_timers()`~~.
 //!
 //! # Timer Modes
 //!
@@ -530,7 +530,7 @@ impl TimerState {
 /// A handle to a timer stored in a node
 ///
 /// This is a lightweight handle that references a timer by index.
-/// The actual timer state is stored in the `ConnectedNode`.
+/// The actual timer state is stored in the ~~`ConnectedNode`~~.
 ///
 /// # Type Parameters
 ///

@@ -695,7 +695,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Some(sel) => reroot_through(&board_path, sel),
         None => board_path,
     };
-    // The board crate's root path (`::nros_board_x` or `::<sel>::nros_board_x`),
+    // The board crate's root path (::nros_board_x or `::<sel>::nros_board_x`),
     // for items the entry reaches through the board's own re-exports.
     let board_crate_root: proc_macro2::TokenStream = {
         let mut p = board_path.clone();
@@ -841,9 +841,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let mut bridge_rmws: Vec<String> = Vec::new();
     // phase-432 W2.4 — the per-node runtime bake, ONE struct per node.
     //
-    // This was FOUR parallel vectors — `node_param_bakes` (phase-264 W4a),
-    // `node_qos_bakes` (issue #52), `node_identity_bakes` (phase-268 W1),
-    // `node_remap_bakes` (phase-305 W3 / issue 0255) — each indexed
+    // This was FOUR parallel vectors — ~~`node_param_bakes`~~ (phase-264 W4a),
+    // ~~`node_qos_bakes`~~ (issue #52), ~~`node_identity_bakes`~~ (phase-268 W1),
+    // ~~`node_remap_bakes`~~ (phase-305 W3 / issue 0255) — each indexed
     // positionally against `pkg_idents` and each pushed from a different arm.
     // Two failure modes went with that shape: an arm that pushes to three of
     // four silently shifts every later node's identity, and a fifth feature
@@ -1032,7 +1032,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // contains only that host's nodes.)
         // phase-486 W3 -- PLACEMENT only: the same rule as the CLI's
         // `plan_from_model`, from the same function. The board half
-        // (`Deploy.target` / `Mcu` / `extra.kind`) is gone with its only
+        // (`Deploy.target` / ~~`Mcu`~~ / `extra.kind`) is gone with its only
         // producer, `[deploy.<n>] board`.
         let keep = |fqn: &str| nros_orchestration_ir::overlay::placed_here(&model, fqn);
 
@@ -1449,7 +1449,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
         // Lifecycle autostart + param-services capability from the model.
         // `lifecycle_code` is the u8 boot-transition level (0 none / 1
-        // configure / 2 active), same encoding as `read_lifecycle_autostart`.
+        // configure / 2 active), same encoding as ~~`read_lifecycle_autostart`~~.
         let model_caps = model_capabilities(&model)
             .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
         lifecycle_code = model_caps.lifecycle_code;
@@ -2508,7 +2508,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
                 // Phase 249 P1 — RMW register is board-owned (Phase 248 C5a); the
                 // backend-agnostic `nros` crate cannot register (no backend dep), so
-                // the former no-op `::nros::__register_linked_rmw()` emit is removed.
+                // the former no-op ~~`::nros::__register_linked_rmw()`~~ emit is removed.
 
                 // Open the executor + wrap it in the dispatch runtime, then
                 // register each launch-named Node pkg through a `RuntimeCtx`
@@ -2939,21 +2939,21 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             //
             // - `__nros_spin_task(executor)` — long-lived task that
             //   drives the executor. The real body will dequeue from
-            //   the board's `CALLBACK_CHANNEL` and invoke per-Node
+            //   the board's ~~`CALLBACK_CHANNEL`~~ and invoke per-Node
             //   trampolines; today it parks on `Timer::after_secs` so
             //   the macro emit compiles standalone. The dequeue +
             //   trampoline-lookup integration lands alongside the
             //   B.3-equivalent RTIC `__nros_spin` body fill — the
             //   trampoline registration story spans the macro, the
             //   `nros::node!()` emit, and
-            //   `register_dispatch_slot_dyn`, which is substantial
+            //   ~~`register_dispatch_slot_dyn`~~, which is substantial
             //   integration work for a separate follow-up.
             //
             // - `__nros_dispatch_task(runtime)` — long-lived task that
             //   calls `runtime.spin_once(timeout_ms)` in a loop with an
             //   `embassy_time` yield between iterations. Same
             //   placeholder shape as the spin task — the
-            //   `register_dispatch_slot_dyn(...)` registration call
+            //   ~~`register_dispatch_slot_dyn(...)`~~ registration call
             //   (the `run_plan(&mut runtime)` story) is the
             //   integration work deferred to the same follow-up.
             //
@@ -2978,7 +2978,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 /// per-callback routing (once plumbed via the
                 /// `ExecutorNodeRuntime::dispatch_callback` sink in
                 /// `packages/api/nros/src/node_runtime.rs`) can drain
-                /// the board's static `CALLBACK_CHANNEL` between
+                /// the board's static ~~`CALLBACK_CHANNEL`~~ between
                 /// executor iterations. Collapsing the two tasks into
                 /// one gives the spin + drain loops a single coherent
                 /// borrow over both halves.
@@ -2992,8 +2992,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 ///      (Ethernet driver, user-spawned tasks) run.
                 ///
                 /// What's still placeholder: a dequeue + dispatch
-                /// step. `EmbassyRuntime` owns a `&'static` borrow
-                /// of the board's private `CALLBACK_CHANNEL`, but
+                /// step. ~~`EmbassyRuntime`~~ owns a `&'static` borrow
+                /// of the board's private ~~`CALLBACK_CHANNEL`~~, but
                 /// no public accessor exposes the receiver half today
                 /// — adding one is the next 216.C follow-up, paired
                 /// with the per-Node trampoline registry (linkme) and
@@ -3012,10 +3012,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         );
                         // Phase 216 final dispatch wiring — drain
                         // every envelope the board's
-                        // `CALLBACK_CHANNEL` has queued this cycle
+                        // ~~`CALLBACK_CHANNEL`~~ has queued this cycle
                         // and forward each one through
                         // `Executor::dispatch_callback`.
-                        // `EmbassyRuntime::take()` (Phase 216
+                        // ~~`EmbassyRuntime::take()`~~ (Phase 216
                         // final, sibling of the RTIC SPSC `dequeue`
                         // path) is non-blocking so the spin loop
                         // keeps yielding even when no callback is
@@ -3058,7 +3058,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     // executor)` shape, populating the executor's
                     // dispatch-slot table before the
                     // `__nros_run_task` is spawned to drain the
-                    // board's `CALLBACK_CHANNEL`.
+                    // board's ~~`CALLBACK_CHANNEL`~~.
                     #( #framework_register_dispatch_calls )*
                     spawner.spawn(__nros_run_task(executor, runtime)).unwrap();
                 }
@@ -6026,7 +6026,7 @@ mod framework_ssot_tests {
         let mut hosted = 0;
         let mut freestanding = 0;
         for key in nros_orchestration_ir::board_path_keys() {
-            // The exact composition `main_impl` performs.
+            // The exact composition ~~`main_impl`~~ performs.
             let links_std = nros_orchestration_ir::board_entry_links_std(key).unwrap_or(true);
             let rendered = hosted_std_scaffold_ts(links_std).to_string();
             let names_std = rendered.contains("std");

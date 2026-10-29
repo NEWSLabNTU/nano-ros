@@ -241,7 +241,7 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
 /// - ESP32 — Phase 225.O: CI-runnable ESP32-C3 QEMU (OpenETH) board, routed
 ///   through `Framework::Esp32` emit shape in the proc-macro.
 /// - Zephyr — Phase 225.P: Zephyr owns `main`; the board ZST impls
-///   `NetworkWait` only (NOT `BoardEntry`). The proc-macro routes through
+///   ~~`NetworkWait`~~ only (NOT `BoardEntry`). The proc-macro routes through
 ///   `Framework::Zephyr` and emits a `rust_main` staticlib export.
 /// - RTIC — phase-337 W6.a: the RTIC entry surface moved INTO
 ///   `nros-board-mps2-an385` (its `rtic` feature); the ZST kept its name. The
