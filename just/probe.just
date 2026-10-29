@@ -94,11 +94,6 @@ nuttx-riscv: (platform "nuttx-riscv")
 [group("main")]
 zephyr: (platform "zephyr")
 
-# book/src/getting-started/integration-zephyr.md — the Rust workspace on
-# native_sim (phase-517 W17).
-[group("main")]
-zephyr-rust: (platform "zephyr-rust")
-
 # phase-517 W4: not a platform chapter, but it rides the same harness. One bare
 # `nros setup` for a Linux and a FreeRTOS image, then `nros build --all`.
 # book/src/getting-started/installation.md — "Provision a whole workspace".

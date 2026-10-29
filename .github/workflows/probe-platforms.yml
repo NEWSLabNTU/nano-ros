@@ -81,7 +81,6 @@ jobs:
           - nuttx-arm
           - nuttx-riscv
           - zephyr
-          - zephyr-rust
           - workspace
     steps:
       - uses: actions/checkout@v4

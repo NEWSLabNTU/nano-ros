@@ -1344,33 +1344,40 @@ pinned-project probe is green in `probe-platforms.yml`.
   from a manifest project, and the installed SDK root is a versioned store
   directory no `west.yml` names. `integration-zephyr.md` now says so and gives
   the installed spelling, `nros build --zephyr-workspace <dir>`.
-* **The other language road per chapter.** Three new installed tracks, each
-  its own `variant=` set of book blocks (`variant=` lists, so shared steps
-  carry both tags):
+* **The other language road per chapter.** There are two new installed
+  tracks, each its own `variant=` set of book blocks. Steps both languages
+  share carry both tags.
   * `freertos-c`: the C package on MPS2-AN385, booted and echoed as
-    `std_msgs/String`. The Rust blocks are now `variant=rust`.
+    `std_msgs/String`. The chapter's Rust blocks are now `variant=rust`.
   * `threadx-linux-c`: the C package on the Linux simulator.
-  * `zephyr-rust`: the workspace plus `nros new entry`, built with
-    `NROS_ZEPHYR_WORKSPACE`, run as `zephyr.exe`.
 
-  All three are in `just probe` and in `probe-platforms.yml`, and all three
-  extract; `check-book-probe-tracks` covers 12 chapters.
-  The first `probe-platforms` run on the branch (40902931965) had
-  `freertos-c` and `threadx-linux-c` green and `zephyr-rust` red. Two
-  defects surfaced there:
-  * the chapter's west manifest did not fetch `zephyr-lang-rust`
-    (`CONFIG_RUST` undefined). It now names the module at the revision
-    `west.yml` pins, and a test holds the two equal;
-  * `nros new entry`'s native_sim conf set NSOS without
-    `CONFIG_NET_DRIVERS=y`, so Kconfig dropped it and aborted. The conf now
-    carries every line of the SDK's `native-sim-line-3.7.conf`, and a test
-    holds that too.
+  Both are in `just probe` and in `probe-platforms.yml`, and both are green
+  on the branch: runs 40902931965, 40910156964, 40913246178, 40915996754 and
+  40918377304. The `workspace` track's source assertions were green in the
+  same runs.
+* **Zephyr Rust: not replayable yet, issue 2152.** A third track,
+  `zephyr-rust` (the workspace plus `nros new entry`, run as `zephyr.exe`),
+  was added. It was then withdrawn after six runs, each of which got one
+  step further:
+  * **Run 40902931965** stopped at Kconfig, on two defects, both now fixed
+    and each held by a test:
+    * the chapter's west manifest did not fetch `zephyr-lang-rust`. It now
+      names the module at the revision `west.yml` pins.
+    * `nros new entry`'s native_sim conf turned on NSOS without
+      `CONFIG_NET_DRIVERS=y`. The conf now carries every line of the SDK's
+      `native-sim-line-3.7.conf`.
+  * **Runs 40910156964–40921005534** found that the host prerequisites a
+    Rust Zephyr image needs beyond a C one are installed by no `nros setup`
+    path: the `x86_64-unknown-none` target, `clang` and `libclang-dev`.
+    That is issue 2151. Until it lands, the chapter's Rust steps install
+    them by hand (with the setup-installed rustup put on PATH).
+  * **The last run** compiled through bindgen and stopped in `nros::main!`.
+    The scaffolded entry never gets its `<pkg>_nros_selection` package,
+    because the facade writer reads only path dependencies and the scaffold
+    writes registry-style ones. That is issue 2152.
 
-  The `workspace` track's source assertions passed in the same run.
-  The second run (40910156964) got past Kconfig and stopped at `core` for
-  `x86_64-unknown-none`, the triple zephyr-lang-rust picks for native_sim/64,
-  which no `nros setup` path installs: issue 2151. The chapter's Rust block
-  adds it with `rustup` until that lands.
+  Those Rust steps are plain text again, with a pointer to issue 2152, and
+  the track is out of the matrix until that lands.
 * **NuttX Rust: not replayable yet, issue 2149.** Measured locally: the
   scaffolded workspace image failed at `core`, because the cargo road ran
   the default toolchain for a `toolchain = "nightly"` board. That is fixed:
@@ -1381,6 +1388,10 @@ pinned-project probe is green in `probe-platforms.yml`.
 
 ## Issues homed here (2026-10-29)
 
+* [2152](../issues/2152-zephyr-entry-scaffold-no-selection.md), open. A
+  Zephyr entry from `nros new entry` never gets its selection package, so
+  it does not compile outside a checkout (found by W17's `zephyr-rust`
+  track).
 * [2151](../issues/2151-zephyr-rust-target-not-provisioned.md), open.
   `nros setup zephyr` does not install the Rust target a Zephyr Rust image
   compiles for (found by W17's `zephyr-rust` track).
