@@ -1,0 +1,5 @@
+{
+  "key": "c:client_callback_with_request_id_t",
+  "verdict": "extension",
+  "why": "rclc's own `rclc_client_callback_with_request_id_t` (`void (*)(const void *, rmw_request_id_t *)`), the callback of `rclc_executor_add_client_with_request_id`, adopted 2026-10-29 (issue 2136). As for `c:client_callback_t`, the extractor records rclc's executor_handle aliases on neither side as a pair, so the report sees only ours; the contract is identical."
+}

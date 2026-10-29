@@ -2947,6 +2947,21 @@ impl<T> Promise<'_, T> {
     /// both are non-blocking and both report emptiness without failing, so
     /// nothing asked for the other word. Renamed as a clean break, no shim.
     pub fn take(&mut self) -> Result<Option<T>, NodeError> {
+        Ok(self.take_with_info()?.map(|(reply, _info)| reply))
+    }
+
+    /// [`take`](Self::take), plus the reply's [`ServiceInfo`](nros_core::ServiceInfo)
+    /// — issue 2136.
+    ///
+    /// rclrs's `client.call::<_, (Response, ServiceInfo)>(..)`, and upstream
+    /// `rmw_take_response`'s `rmw_service_info_t`: `request_id` is the
+    /// request this reply answers (this client's GID and the sequence number
+    /// of its request), `source_timestamp` is when the SERVER sent the reply,
+    /// on its clock, and `received_timestamp` is when this client received
+    /// it. As for a service callback's info, a field the backend cannot report
+    /// is `None` — see [`nros_core::ServiceInfo`] for which backend fills
+    /// which.
+    pub fn take_with_info(&mut self) -> Result<Option<(T, nros_core::ServiceInfo)>, NodeError> {
         // Phase 120: NoData (no reply yet) is the steady-state polling
         // condition — map to Ok(None) instead of ServiceRequestFailed.
         // Issue 2009 — only the reply naming this promise's request; stale
@@ -2957,10 +2972,13 @@ impl<T> Promise<'_, T> {
             Err(e) => return Err(NodeError::Transport(e)),
         } {
             Some((len, _seq)) => {
+                // Issue 2136 — read before anything else can take on this
+                // handle: the info describes the reply just matched.
+                let info = nros_rmw::ClientTrait::response_info(&*self.handle);
                 let reply = (self.parse)(&self.reply_buffer[..len])?;
                 // Reply consumed — allow the client to issue another call.
                 *self.in_flight_flag = false;
-                Ok(Some(reply))
+                Ok(Some((reply, info)))
             }
             None => Ok(None),
         }
@@ -2986,6 +3004,17 @@ impl<T> Promise<'_, T> {
         executor: &mut super::Executor,
         timeout: core::time::Duration,
     ) -> Result<T, NodeError> {
+        Ok(self.wait_with_info(executor, timeout)?.0)
+    }
+
+    /// [`wait`](Self::wait), plus the reply's
+    /// [`ServiceInfo`](nros_core::ServiceInfo) — issue 2136. See
+    /// [`take_with_info`](Self::take_with_info).
+    pub fn wait_with_info(
+        &mut self,
+        executor: &mut super::Executor,
+        timeout: core::time::Duration,
+    ) -> Result<(T, nros_core::ServiceInfo), NodeError> {
         let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
         let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
         let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
@@ -2993,7 +3022,7 @@ impl<T> Promise<'_, T> {
         // Always spin at least once so a zero-timeout still polls.
         loop {
             executor.spin_once(budget.next_spin_interval(spin_interval));
-            if let Some(result) = self.take()? {
+            if let Some(result) = self.take_with_info()? {
                 return Ok(result);
             }
             if !budget.tick() {

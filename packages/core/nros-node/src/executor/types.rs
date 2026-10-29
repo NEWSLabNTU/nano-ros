@@ -1498,6 +1498,35 @@ pub type RawServiceRequestIdCallback = unsafe extern "C" fn(
 pub type RawResponseCallback =
     unsafe extern "C" fn(data: *const u8, len: usize, context: *mut core::ffi::c_void);
 
+/// Issue 2136 — [`RawResponseCallback`] that also receives the id of the
+/// request the reply answers, as rclc's
+/// `rclc_client_callback_with_request_id_t` does.
+///
+/// `request_id.sequence_number` is the id the request went out under (what
+/// the reply was matched on, issue 2009), always; `writer_guid` is this
+/// client's request-writer GUID where the backend reports it
+/// (`take_response_with_info`), all zero where it does not.
+///
+/// # Safety
+/// As [`RawResponseCallback`]; `request_id` is valid for the call only.
+pub type RawResponseRequestIdCallback = unsafe extern "C" fn(
+    data: *const u8,
+    len: usize,
+    request_id: *mut RawRequestId,
+    context: *mut core::ffi::c_void,
+);
+
+impl RawRequestId {
+    /// Issue 2136 — the id a reply's callback receives: `seq`, the id the
+    /// reply was matched on, with the writer GUID from `info` when the backend
+    /// reported one.
+    pub fn for_response(info: &nros_core::ServiceInfo, seq: i64) -> Self {
+        let mut id = Self::from_service_info(info);
+        id.sequence_number = seq;
+        id
+    }
+}
+
 /// Raw action goal callback that receives CDR bytes without deserialization.
 ///
 /// # Safety

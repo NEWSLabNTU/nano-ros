@@ -711,6 +711,35 @@ static rmw_ret_t stub_take_response(const rmw_client_t* client, rmw_mut_byte_spa
     return NROS_RMW_RET_OK;
 }
 
+/* Issue 2136 — the writer GUID `take_response_with_info` reports for every
+ * reply (all zero = not reported, the default), beside the reply's own id. */
+static int8_t s_reply_writer_guid[16];
+
+void nros_stub_rmw_set_reply_writer_guid(const int8_t guid[16]) {
+    if (guid == NULL) {
+        memset(s_reply_writer_guid, 0, sizeof(s_reply_writer_guid));
+    } else {
+        memcpy(s_reply_writer_guid, guid, sizeof(s_reply_writer_guid));
+    }
+}
+
+static rmw_ret_t stub_take_response_with_info(const rmw_client_t* client,
+                                              rmw_mut_byte_span_t* reply, int64_t* seq_out,
+                                              bool* taken, rmw_service_info_t* service_info) {
+    if (service_info == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    int64_t seq = NROS_RMW_SEQUENCE_ID_UNKNOWN;
+    bool took = false;
+    rmw_ret_t rc = stub_take_response(client, reply, &seq, &took);
+    if (taken != NULL) *taken = took;
+    if (rc != NROS_RMW_RET_OK || !took) return rc;
+    if (seq_out != NULL && s_ids_supported) *seq_out = seq;
+    memset(service_info, 0, sizeof(*service_info));
+    memcpy(service_info->request_id.writer_guid, s_reply_writer_guid,
+           sizeof(s_reply_writer_guid));
+    service_info->request_id.sequence_number = s_ids_supported ? seq : 0;
+    return NROS_RMW_RET_OK;
+}
+
 bool nros_stub_rmw_stage_reply_for(int64_t seq, const uint8_t* data, size_t len) {
     if (s_reply_count >= STUB_REPLY_SLOTS) return false;
     if (len > sizeof(s_replies[0].data) || (len > 0 && data == NULL)) return false;
@@ -765,6 +794,7 @@ void nros_stub_rmw_reset_client(void) {
     s_outstanding = 0;
     s_max_outstanding = 0;
     s_ids_supported = true;
+    memset(s_reply_writer_guid, 0, sizeof(s_reply_writer_guid));
 }
 
 uint32_t nros_stub_rmw_requests_sent(void) {
@@ -979,6 +1009,7 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .destroy_client = stub_destroy_client,
     .send_request = stub_send_request,
     .take_response = stub_take_response,
+    .take_response_with_info = stub_take_response_with_info,
     .service_server_is_available = stub_service_server_is_available,
     .set_wake_callback = stub_set_wake_callback,
     .supported_qos_policies = stub_supported_qos_policies,
@@ -1010,6 +1041,7 @@ int32_t nros_stub_rmw_register_without_message_info(const char* name) {
     s_no_info_vtable = STUB_VTABLE;
     s_no_info_vtable.take_with_info = NULL;
     s_no_info_vtable.take_request_with_info = NULL;
+    s_no_info_vtable.take_response_with_info = NULL;
     return (int32_t)nros_rmw_cffi_register_named(name, &s_no_info_vtable);
 }
 
