@@ -364,6 +364,12 @@ static atomic_uint g_session_zid_counter;
 // and of the mutex/condvar pair it carried.
 // ZPICO_GET_REPLY_BUF_SIZE is provided via -D compiler flag from build.rs
 
+/* Issue 2136 — room for a reply's rmw attachment: [seq i64][ts i64][gid len
+ * u8][gid 16], 33 bytes, the layout rmw_zenoh_cpp writes and our servers echo.
+ * A longer (foreign) attachment is not stored, and the reply reports no
+ * metadata rather than a truncated one. */
+#define ZPICO_REPLY_ATTACHMENT_CAP 33
+
 typedef struct {
     uint8_t buf[ZPICO_GET_REPLY_BUF_SIZE];
     size_t len;
@@ -406,6 +412,16 @@ typedef struct {
      * failure this phase exists to avoid. */
     bool collect;
     uint32_t entry_count;
+    /* Issue 2136 — the stored reply's metadata, upstream `rmw_take_response`'s
+     * `rmw_service_info_t`: its attachment (rmw_zenoh_cpp's layout, which
+     * carries the request's sequence number, the replier's send time and the
+     * requesting client's gid) and the wall-clock time the reply arrived.
+     * `att_len = 0`: the reply had no attachment, or one that does not fit.
+     * `recv_ns = 0`: no wall clock. Written before `received` is published,
+     * so `zpico_get_check_info` reads them under the same Acquire. */
+    uint8_t att[ZPICO_REPLY_ATTACHMENT_CAP];
+    size_t att_len;
+    int64_t recv_ns;
 } get_reply_ctx_t;
 
 /* phase-381 / issue 0903 — the GRAPH CACHE.
@@ -4019,6 +4035,27 @@ static void get_reply_handler(z_loaned_reply_t* reply, void* ctx) {
         if (len <= ZPICO_GET_REPLY_BUF_SIZE) {
             memcpy(rctx->buf, data, len);
             rctx->len = len;
+            /* Issue 2136 — the reply's metadata, before `received` publishes
+             * it. The receive stamp is rmw_zenoh_cpp's
+             * `ZenohReply::get_received_timestamp`: wall clock, in the reply
+             * callback, which is this one. */
+            {
+                uint64_t ns = nros_platform_time_now_ns();
+                rctx->recv_ns = ns > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)ns;
+            }
+            rctx->att_len = 0;
+            const z_loaned_bytes_t* att = z_sample_attachment(sample);
+            if (att != NULL) {
+                z_owned_slice_t att_slice;
+                if (z_bytes_to_slice(att, &att_slice) == 0) {
+                    size_t alen = z_slice_len(z_slice_loan(&att_slice));
+                    if (alen <= ZPICO_REPLY_ATTACHMENT_CAP) {
+                        memcpy(rctx->att, z_slice_data(z_slice_loan(&att_slice)), alen);
+                        rctx->att_len = alen;
+                    }
+                    z_slice_drop(z_slice_move(&att_slice));
+                }
+            }
             __atomic_store_n(&rctx->received, true, __ATOMIC_SEQ_CST);
             g_diag_reply_received_set++;
         } else {
@@ -4149,6 +4186,8 @@ int32_t zpico_get_start_with_attachment(zpico_session_t* session, const char* ke
     ps->ctx.received = false;
     ps->ctx.done = false;
     ps->ctx.reply_count = 0;
+    ps->ctx.att_len = 0; /* issue 2136 */
+    ps->ctx.recv_ns = 0;
     ps->in_use = true;
 
     z_view_keyexpr_t ke;
@@ -4820,6 +4859,17 @@ int32_t zpico_liveliness_get_check(zpico_session_t* session, int32_t handle) {
 
 int32_t zpico_get_check(zpico_session_t* session, int32_t handle, uint8_t* reply_buf,
                         size_t reply_buf_size) {
+    return zpico_get_check_info(session, handle, reply_buf, reply_buf_size, NULL, 0, NULL, NULL);
+}
+
+/* Issue 2136 — `zpico_get_check`, plus the reply's attachment and receive time,
+ * copied out in the same step that consumes the reply (the slot may be released
+ * by it). `att_out` may be NULL (then nothing is copied and `*att_len_out`
+ * reads 0); `att_len_out` and `recv_ns_out`, when non-NULL, are written only
+ * on a positive return. An attachment larger than `att_cap` reads as none. */
+int32_t zpico_get_check_info(zpico_session_t* session, int32_t handle, uint8_t* reply_buf,
+                             size_t reply_buf_size, uint8_t* att_out, size_t att_cap,
+                             size_t* att_len_out, int64_t* recv_ns_out) {
     struct zpico_session* s = (struct zpico_session*)session;
     g_diag_get_check_calls++;
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
@@ -4850,6 +4900,18 @@ int32_t zpico_get_check(zpico_session_t* session, int32_t handle, uint8_t* reply
         }
         memcpy(reply_buf, ps->ctx.buf, ps->ctx.len);
         int32_t len = (int32_t)ps->ctx.len;
+        if (att_len_out != NULL) {
+            size_t alen = ps->ctx.att_len;
+            if (att_out != NULL && alen > 0 && alen <= att_cap) {
+                memcpy(att_out, ps->ctx.att, alen);
+                *att_len_out = alen;
+            } else {
+                *att_len_out = 0;
+            }
+        }
+        if (recv_ns_out != NULL) {
+            *recv_ns_out = ps->ctx.recv_ns;
+        }
         // Only release slot if dropper has also fired; otherwise the old
         // z_get's dropper callback still references this slot and would
         // corrupt it if the slot were reused before the dropper fires.
@@ -5022,8 +5084,27 @@ static int32_t _zpico_query_reply_impl(zpico_session_t* session, int32_t queryab
         if (query_att != NULL && z_bytes_len(query_att) > 0) {
             z_owned_slice_t att_slice;
             if (z_bytes_to_slice(query_att, &att_slice) == 0) {
-                if (z_bytes_copy_from_buf(&attachment_bytes, z_slice_data(z_slice_loan(&att_slice)),
-                                          z_slice_len(z_slice_loan(&att_slice))) == 0) {
+                const uint8_t* att_data = z_slice_data(z_slice_loan(&att_slice));
+                size_t att_len = z_slice_len(z_slice_loan(&att_slice));
+                /* Issue 2136 — the reply's `source_timestamp` is the REPLIER's
+                 * send time, as rmw_zenoh_cpp's server writes it
+                 * (`send_response`), not the client's request time an echo
+                 * would carry. In the rmw layout ([seq i64][ts i64][gid len]
+                 * [gid]) restamp bytes 8..16, little-endian, with this server's
+                 * wall clock; a platform with no wall clock keeps the echo. */
+                uint8_t restamped[ZPICO_REPLY_ATTACHMENT_CAP];
+                uint64_t now_ns = nros_platform_time_now_ns();
+                if (att_len == ZPICO_REPLY_ATTACHMENT_CAP && now_ns != 0) {
+                    memcpy(restamped, att_data, att_len);
+                    if (now_ns > (uint64_t)INT64_MAX) {
+                        now_ns = (uint64_t)INT64_MAX;
+                    }
+                    for (int b = 0; b < 8; b++) {
+                        restamped[8 + b] = (uint8_t)(now_ns >> (8 * b));
+                    }
+                    att_data = restamped;
+                }
+                if (z_bytes_copy_from_buf(&attachment_bytes, att_data, att_len) == 0) {
                     options.attachment = z_bytes_move(&attachment_bytes);
                 }
                 z_slice_drop(z_slice_move(&att_slice));

@@ -2065,10 +2065,66 @@ fn a_service_request_reports_its_clients_identity() {
          {taken_ns}] or before the source stamp {source_ns}"
     );
 
-    // Answer it, so the reply slot is released.
+    // Issue 2136 — answer it, and the CLIENT reads the reply's info: the id
+    // of its own request (its gid and sequence number), the SERVER's send
+    // time, and its own receive time.
+    assert_eq!(
+        client.response_info(),
+        nros_rmw::ServiceRequestInfo::NOT_REPORTED,
+        "no reply taken yet, nothing to report"
+    );
+    let reply_before_ns = unsafe { nros_platform_time_now_ns() } as i64;
     server
         .send_response(reply_seq, &[0x00, 0x01, 0x00, 0x00, 8, 0, 0, 0])
         .expect("send_response");
+    let reply_after_ns = unsafe { nros_platform_time_now_ns() } as i64;
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let (_, answered) = loop {
+        let _ = session.spin_once(10);
+        if let Some(hit) = client
+            .take_response_raw(&mut buf)
+            .expect("take_response_raw")
+        {
+            break hit;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the reply never reached the client through the router at {locator}"
+        );
+    };
+    let reply_taken_ns = unsafe { nros_platform_time_now_ns() } as i64;
+    assert_eq!(answered, client_seq);
+    let rinfo = client.response_info();
+    let rid = rinfo
+        .request_id
+        .expect("a reply carries the id of the request it answers");
+    assert_eq!(rid.sequence_number, client_seq, "the client's own sequence");
+    assert_eq!(
+        &rid.writer_guid[..],
+        &client_gid[..16],
+        "the request writer is this client"
+    );
+    let rsource = rinfo
+        .source_timestamp
+        .expect("the reply attachment carries the replier's send time");
+    let rsource_ns = i64::from(rsource.sec) * 1_000_000_000 + i64::from(rsource.nanosec);
+    // The negative control for the server's restamp: an ECHOED request
+    // attachment carries the client's send time, which is before the server
+    // even took the request.
+    assert!(
+        reply_before_ns <= rsource_ns && rsource_ns <= reply_after_ns,
+        "reply source timestamp {rsource_ns} ns is outside the server's send window \
+         [{reply_before_ns}, {reply_after_ns}] — an echo of the request's stamp reads {source_ns}"
+    );
+    let rreceived = rinfo
+        .received_timestamp
+        .expect("the reply callback stamps the receive time");
+    let rreceived_ns = i64::from(rreceived.sec) * 1_000_000_000 + i64::from(rreceived.nanosec);
+    assert!(
+        rsource_ns <= rreceived_ns && rreceived_ns <= reply_taken_ns,
+        "reply received timestamp {rreceived_ns} ns is outside [server send {rsource_ns}, \
+         take {reply_taken_ns}]"
+    );
     drop(client);
     drop(server);
     session.close().expect("Failed to close session");

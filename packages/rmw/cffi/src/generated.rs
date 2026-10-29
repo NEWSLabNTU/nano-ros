@@ -133,15 +133,15 @@ pub struct rmw_request_id_t {
     #[doc = " The client-assigned sequence number of this request."]
     pub sequence_number: i64,
 }
-#[doc = " Per-request metadata — upstream `rmw_service_info_t`, field for field.\n\n  Issue 2081. Filled by `take_request_with_info`. As in `rmw_message_info_t`,\n  a field the backend cannot report is ZERO: a timestamp of 0 means \"not\n  stamped\", and an all-zero `request_id.writer_guid` means the request id is\n  not reported. The runtime turns each into `None`, never into a value."]
+#[doc = " Per-request metadata — upstream `rmw_service_info_t`, field for field.\n\n  Issue 2081. Filled by `take_request_with_info` for a request and, since\n  issue 2136, by `take_response_with_info` for a reply. As in\n  `rmw_message_info_t`, a field the backend cannot report is ZERO: a\n  timestamp of 0 means \"not stamped\", and an all-zero\n  `request_id.writer_guid` means the request id is not reported. The runtime\n  turns each into `None`, never into a value.\n\n  The timestamps are the SENDER's and the RECEIVER's, as upstream's are: for\n  a request, the client's send time and the server's arrival time; for a\n  reply, the server's send time and the client's arrival time."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rmw_service_info_t {
-    #[doc = " Client's clock when the request was sent, ns. 0 = not reported."]
+    #[doc = " Sender's clock when the message was sent, ns. 0 = not reported."]
     pub source_timestamp: rmw_time_point_value_t,
-    #[doc = " Server's clock when the request was received, ns. 0 = not reported."]
+    #[doc = " Receiver's clock when the message was received, ns. 0 = not reported."]
     pub received_timestamp: rmw_time_point_value_t,
-    #[doc = " Who sent the request."]
+    #[doc = " The request: who sent it, and its client-assigned sequence number."]
     pub request_id: rmw_request_id_t,
 }
 #[doc = " Full DDS-shaped QoS profile.\n\n Matches the field set of upstream `rmw_qos_profile_t`. Backends\n advertise per-policy support via the runtime's\n `supported_qos_policies()` query; entities created with a profile\n the active backend can't honour return\n `NROS_RMW_RET_INCOMPATIBLE_QOS` synchronously at create time\n — no silent downgrade.\n\n Zero-valued fields (\"off\") preserve the cheap default for apps\n that don't request the policy:\n  - `deadline_ms = 0`            → infinite deadline (no check).\n  - `lifespan_ms = 0`            → infinite lifespan (no expiry).\n  - `liveliness_kind = NONE`     → no liveliness tracking.\n  - `liveliness_lease_ms = 0`    → infinite lease.\n\n **Boundary semantics (phase-301, issue 0241).** Durations are u32\n MILLISECONDS; that width is part of the contract:\n  - `0` = unset/no-check (matches upstream `RMW_QOS_*_DEFAULT`, the\n    zero time — a \"real 0-duration\" is inexpressible upstream too).\n  - `NROS_RMW_DURATION_INFINITE_MS` = explicit infinite.\n  - Callers lowering finer-grained times MUST round sub-ms values UP\n    to 1 ms (rounding down would silently turn a real deadline into\n    \"no deadline\") and MUST reject values past the u32-ms range\n    (other than the infinite sentinel) at create time\n    (`NROS_RMW_RET_INVALID_ARGUMENT`) — never clamp.\n\n `depth` is `uint16_t` (max 65 535). Embedded ROS application queue\n depths are typically 1–100; the 16-bit width saves two bytes per\n entity vs the upstream 32-bit choice. A requested depth the width\n cannot represent is a create-time error, never a silent saturate\n (phase-301, issue 0241).\n\n **Pure policy mirror (phase-301, issue 0240).** Transport hints\n (`tx_express`, `rx_buffer_hint`) moved OUT of this struct into\n `rmw_publisher_options_t` / `rmw_subscription_options_t` —\n the upstream `rmw_publisher_options_t` / `rmw_subscription_options_t`\n home for exactly that class. QoS carries DDS policy only; hint growth\n no longer churns this ABI."]
@@ -508,7 +508,7 @@ pub struct nros_rmw_vtable_t {
             sequence_id: *mut i64,
         ) -> rmw_ret_t,
     >,
-    #[doc = " Upstream `rmw_take_response`. Same shape and the same\n  declared deviations as `take_request`.\n\n  `*seq_out` is the `sequence_id` of the request this reply answers,\n  written only when `*taken` is true. It is the other half of issue\n  0778: handing the id out at send time is useless if it does not come\n  back. Mirrors `take_request`'s `seq_out`, which the SERVER side has\n  always had — the asymmetry was the tell.\n\n  Issue 2009 — the runtime delivers a reply ONLY to the request whose id\n  it carries, and drops a reply whose request was cancelled or is not\n  pending. `*seq_out` is pre-set to `NROS_RMW_SEQUENCE_ID_UNKNOWN`; a\n  reply that comes back with it is delivered only when one request is\n  pending on the client.\n\n  (The paragraph that used to sit here described `>= 0` = bytes and\n  \"other negative = backend error\", the pre-W3.d shape, three phases\n  after step A moved the count to an out-parameter and step B made the\n  errors positive.)\n\n  Issue 1632 — on `NROS_RMW_RET_BUFFER_TOO_SMALL`, `reply->len` is the\n  size the reply NEEDED, as for `take_request`."]
+    #[doc = " Upstream `rmw_take_response`. Same shape and the same\n  declared deviations as `take_request`.\n\n  `*seq_out` is the `sequence_id` of the request this reply answers,\n  written only when `*taken` is true. It is the other half of issue\n  0778: handing the id out at send time is useless if it does not come\n  back. Mirrors `take_request`'s `seq_out`, which the SERVER side has\n  always had — the asymmetry was the tell.\n\n  Issue 2009 — the runtime delivers a reply ONLY to the request whose id\n  it carries, and drops a reply whose request was cancelled or is not\n  pending. `*seq_out` is pre-set to `NROS_RMW_SEQUENCE_ID_UNKNOWN`; a\n  reply that comes back with it is delivered only when one request is\n  pending on the client.\n\n  (The paragraph that used to sit here described `>= 0` = bytes and\n  \"other negative = backend error\", the pre-W3.d shape, three phases\n  after step A moved the count to an out-parameter and step B made the\n  errors positive.)\n\n  Issue 1632 — on `NROS_RMW_RET_BUFFER_TOO_SMALL`, `reply->len` is the\n  size the reply NEEDED, as for `take_request`.\n\n  A backend that has the rest of upstream's `rmw_service_info_t` (the\n  reply's timestamps, the request id it answers) reports it through\n  `take_response_with_info` (issue 2136)."]
     pub take_response: ::core::option::Option<
         unsafe extern "C" fn(
             client: *const rmw_client_t,
@@ -929,6 +929,16 @@ pub struct nros_rmw_vtable_t {
         unsafe extern "C" fn(
             server: *const rmw_service_t,
             request: *mut rmw_mut_byte_span_t,
+            seq_out: *mut i64,
+            taken: *mut bool,
+            service_info: *mut rmw_service_info_t,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_take_response`, with its `rmw_service_info_t`.\n\n  Issue 2136 — optional, appended. The client twin of\n  `take_request_with_info`: `take_response` plus the reply's metadata,\n  written to caller-owned storage —\n\n  - `request_id`: the request this reply answers, as upstream's client\n    sees it — the CLIENT's own request-writer GUID and the sequence\n    number of its request;\n  - `source_timestamp`: the SERVER's clock when it sent the reply;\n  - `received_timestamp`: this client's clock when the reply arrived.\n\n  Deviations from upstream, declared: the payload is bytes, as for\n  `take_response`; and `*seq_out` stays beside the struct, because it is\n  what the runtime matches a reply against (issue 2009) whether or not\n  the backend can report the rest.\n\n  Every other rule is `take_response`'s: `*taken`, `reply->len`,\n  `*seq_out` and `*service_info` are written only on `NROS_RMW_RET_OK`\n  with `*taken = true`; a field the backend cannot report is zero (see\n  `rmw_service_info_t`), and a request id whose writer GUID is all zero\n  is \"not reported\" however its sequence number reads.\n\n  DISPATCHED when non-NULL: the runtime takes every reply through this\n  slot and keeps the struct as the client's response info. A NULL slot\n  falls back to `take_response`, and the reply reports nothing."]
+    pub take_response_with_info: ::core::option::Option<
+        unsafe extern "C" fn(
+            client: *const rmw_client_t,
+            reply: *mut rmw_mut_byte_span_t,
             seq_out: *mut i64,
             taken: *mut bool,
             service_info: *mut rmw_service_info_t,

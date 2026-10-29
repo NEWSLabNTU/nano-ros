@@ -1034,6 +1034,24 @@ int32_t zpico_get_check(struct zpico_session_t *_session,
                         size_t _reply_buf_size);
 
 /**
+ * Issue 2136 — `zpico_get_check`, plus the reply's metadata.
+ *
+ * Copies the reply's rmw attachment into `att_out` (up to `att_cap`
+ * bytes; one that does not fit reads as none, `*att_len_out = 0`) and the
+ * wall-clock time it arrived into `*recv_ns_out` (0 = no wall clock).
+ * The out-parameters are written only on a positive return; any may be
+ * NULL. Upstream `rmw_take_response`'s `rmw_service_info_t`.
+ */
+int32_t zpico_get_check_info(struct zpico_session_t *_session,
+                             int32_t _handle,
+                             uint8_t *_reply_buf,
+                             size_t _reply_buf_size,
+                             uint8_t *_att_out,
+                             size_t _att_cap,
+                             size_t *_att_len_out,
+                             int64_t *_recv_ns_out);
+
+/**
  * Issue 1632 — the length of the reply a pending get received.
  *
  * For the caller `zpico_get_check` refused with `ZPICO_ERR_FULL`: that

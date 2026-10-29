@@ -478,6 +478,18 @@ unsafe extern "C" {
         reply_buf: *mut u8,
         reply_buf_size: usize,
     ) -> i32;
+    // Issue 2136 — `zpico_get_check` plus the reply's attachment and receive time.
+    #[allow(clippy::too_many_arguments)]
+    pub fn zpico_get_check_info(
+        session: *mut zpico_session_t,
+        handle: i32,
+        reply_buf: *mut u8,
+        reply_buf_size: usize,
+        att_out: *mut u8,
+        att_cap: usize,
+        att_len_out: *mut usize,
+        recv_ns_out: *mut i64,
+    ) -> i32;
     // Issue 1632 — the size of a reply `zpico_get_check` refused as too big.
     pub fn zpico_get_reply_len(session: *mut zpico_session_t, handle: i32) -> i32;
 

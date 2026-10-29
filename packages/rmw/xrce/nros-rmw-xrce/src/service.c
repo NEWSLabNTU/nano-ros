@@ -152,6 +152,7 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
          * included; see `xrce_stage_inbound`. */
         slot->overflow =
             !xrce_stage_inbound(slot->data, XRCE_SERVICE_REPLY_BUFFER_SIZE, ub, len, &slot->len);
+        slot->recv_ns = xrce_wall_clock_ns(); /* issue 2136 */
         slot->has_reply = true;
         xrce_fire_on_new(slot->on_new, slot->on_new_user); /* issue 2109 */
         return;
@@ -659,7 +660,8 @@ static rmw_ret_t xrce_service_send_request_raw_locked(const rmw_client_t* client
 
 static rmw_ret_t xrce_service_take_response_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
                                                     size_t reply_buf_len, int64_t* seq_out,
-                                                    size_t* out_len) {
+                                                    size_t* out_len,
+                                                    rmw_service_info_t* info_out) {
     if (out_len == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     *out_len = 0;
     if (client == NULL || client->backend_data == NULL) {
@@ -694,6 +696,18 @@ static rmw_ret_t xrce_service_take_response_raw_len(const rmw_client_t* client, 
     if (seq_out != NULL) {
         *seq_out = (int64_t)slot->reply_request_id;
     }
+    /* Issue 2136 — the reply's `rmw_service_info_t`, as much of it as reaches
+     * the client library: the receive time `xrce_reply_callback` stamped, and
+     * the sequence number of the request it answers. The request writer's
+     * GUID does not (the Agent owns that DataWriter, and an XRCE reply names
+     * its request by the client's own request id), so `writer_guid` stays
+     * zero and the runtime reports no request id; no source timestamp
+     * reaches the client either. */
+    if (info_out != NULL) {
+        memset(info_out, 0, sizeof(*info_out));
+        info_out->request_id.sequence_number = (int64_t)slot->reply_request_id;
+        info_out->received_timestamp = (rmw_time_point_value_t)slot->recv_ns;
+    }
     *out_len = len;
     return NROS_RMW_RET_OK;
 }
@@ -706,7 +720,7 @@ static rmw_ret_t xrce_service_take_response_raw_len(const rmw_client_t* client, 
  * `taken = false` with OK. */
 static rmw_ret_t xrce_service_take_response_locked(const rmw_client_t* client,
                                                    rmw_mut_byte_span_t* reply, int64_t* seq_out,
-                                                   bool* taken) {
+                                                   bool* taken, rmw_service_info_t* info_out) {
     if (reply == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -719,8 +733,8 @@ static rmw_ret_t xrce_service_take_response_locked(const rmw_client_t* client,
     *out_len = 0;
     *taken = false;
     size_t n = 0;
-    rmw_ret_t rc =
-        xrce_service_take_response_raw_len(client, reply_buf, reply_buf_len, seq_out, &n);
+    rmw_ret_t rc = xrce_service_take_response_raw_len(client, reply_buf, reply_buf_len, seq_out,
+                                                      &n, info_out);
     if (rc == NROS_RMW_RET_NO_DATA) {
         return NROS_RMW_RET_OK;
     }
@@ -996,7 +1010,20 @@ rmw_ret_t xrce_service_take_response(const rmw_client_t* client, rmw_mut_byte_sp
                                      int64_t* seq_out, bool* taken) {
     xrce_session_state_t* st = XRCE_ST_OF(xrce_service_client_state, client);
     xrce_session_lock(st);
-    rmw_ret_t ret = xrce_service_take_response_locked(client, reply, seq_out, taken);
+    rmw_ret_t ret = xrce_service_take_response_locked(client, reply, seq_out, taken, NULL);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+/* Issue 2136 — `take_response` plus the reply's `rmw_service_info_t`, written
+ * only when a reply was taken. */
+rmw_ret_t xrce_service_take_response_with_info(const rmw_client_t* client,
+                                               rmw_mut_byte_span_t* reply, int64_t* seq_out,
+                                               bool* taken, rmw_service_info_t* service_info) {
+    if (service_info == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_service_client_state, client);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_service_take_response_locked(client, reply, seq_out, taken, service_info);
     xrce_session_unlock(st);
     return ret;
 }

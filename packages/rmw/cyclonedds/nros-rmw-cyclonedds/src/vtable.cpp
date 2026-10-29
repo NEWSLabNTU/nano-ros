@@ -558,6 +558,10 @@ const nros_rmw_vtable_t kVtable = {
      * source timestamp, as stock `rmw_cyclonedds_cpp` reports them; body in
      * `service.cpp`. */
     /*take_request_with_info*/ service_take_request_with_info,
+    /* Issue 2136 — the reply's request id (header guid + publication handle,
+     * header seq) and source timestamp, as stock `rmw_cyclonedds_cpp`
+     * reports them for a reply; body in `service.cpp`. */
+    /*take_response_with_info*/ service_take_response_with_info,
 };
 
 } // namespace

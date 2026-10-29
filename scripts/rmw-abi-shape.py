@@ -261,6 +261,24 @@ ADDED = {
             "(`request_id.sequence_number`). Bytes for the typed request, as `take_request`"
         ),
     ),
+    "take_response_with_info": Added(
+        ret="rmw_ret_t",
+        args=(
+            "const rmw_client_t *",
+            "rmw_mut_byte_span_t *",
+            "int64_t *",
+            "bool *",
+            "rmw_service_info_t *",
+        ),
+        why=(
+            "issue 2136 — upstream `rmw_take_response` WITH its `rmw_service_info_t`, the client "
+            "twin of `take_request_with_info`. `take_response` (its grouped answer) returns the "
+            "reply and its `*seq_out` only; this adds the request id the reply answers and the "
+            "reply's timestamps. Not the same slot because `seq_out` is what the runtime "
+            "correlates on whether or not a backend can report the rest. Bytes for the typed "
+            "response, as `take_response`"
+        ),
+    ),
     "drive_io": Added(
         ret="rmw_ret_t",
         args=("rmw_session_t *", "int32_t"),

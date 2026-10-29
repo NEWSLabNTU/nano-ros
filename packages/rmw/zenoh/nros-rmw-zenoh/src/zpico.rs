@@ -256,6 +256,15 @@ impl Drop for Queryable {
 /// (`ZPICO_MAX_SESSIONS`, default 1) — issue 0348 / phase-328. The raw
 /// `handle` pointer also makes `Context` `!Send`/`!Sync`, matching the
 /// old `PhantomData<*const ()>` marker.
+/// Issue 2136 — what [`Context::get_check_info`] reports beside a reply.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReplyMeta {
+    /// Bytes of the reply's attachment copied into the caller's buffer.
+    pub att_len: usize,
+    /// Wall-clock ns when the reply arrived; 0 = no wall clock.
+    pub recv_ns: i64,
+}
+
 pub struct Context {
     handle: *mut zpico_session_t,
 }
@@ -1054,6 +1063,43 @@ impl Context {
 
         if ret > 0 {
             Ok(Some(ret as usize))
+        } else if ret == 0 {
+            Ok(None)
+        } else {
+            if ret == -9 {
+                return Err(ZpicoError::Timeout);
+            }
+            Err(ZpicoError::from_code(ret))
+        }
+    }
+
+    /// Issue 2136 — [`get_check`](Self::get_check), plus the reply's metadata:
+    /// its rmw attachment, copied into `att_buf` (length in the returned
+    /// [`ReplyMeta`]; 0 when it had none or one that does not fit), and the
+    /// wall-clock time it arrived (0 = no wall clock).
+    pub fn get_check_info(
+        &self,
+        handle: i32,
+        reply_buf: &mut [u8],
+        att_buf: &mut [u8],
+    ) -> Result<Option<(usize, ReplyMeta)>> {
+        let mut att_len: usize = 0;
+        let mut recv_ns: i64 = 0;
+        let ret = ffi_guard(|| unsafe {
+            zpico_sys::zpico_get_check_info(
+                self.handle,
+                handle,
+                reply_buf.as_mut_ptr(),
+                reply_buf.len(),
+                att_buf.as_mut_ptr(),
+                att_buf.len(),
+                &mut att_len,
+                &mut recv_ns,
+            )
+        });
+
+        if ret > 0 {
+            Ok(Some((ret as usize, ReplyMeta { att_len, recv_ns })))
         } else if ret == 0 {
             Ok(None)
         } else {
