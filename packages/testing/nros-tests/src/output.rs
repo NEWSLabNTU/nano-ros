@@ -148,6 +148,16 @@ pub const MESSAGE_INFO_LOG_PREFIX: &str = "seq=";
 /// the backend reported no request id, which this prefix does not match.
 pub const SERVICE_INFO_LOG_PREFIX: &str = "REQUEST_ID guid=";
 
+/// issue 2136 — the per-reply `ServiceInfo` line emitted by the
+/// `service-info-client` bin
+/// (`RESPONSE_INFO guid=<32 hex> seq=<n> source_ts=<ns|absent> received_ts=<ns|absent> sum=<s>`).
+/// The bin is the one producer; it prints `RESPONSE_INFO ABSENT …` instead when
+/// the backend reported no request id, which this prefix does not match.
+pub const RESPONSE_INFO_LOG_PREFIX: &str = "RESPONSE_INFO guid=";
+
+/// issue 2136 — what the `service-info-client` bin prints after its last call.
+pub const RESPONSE_INFO_DONE_MARKER: &str = "RESPONSE_INFO done";
+
 /// issue 2120 — the env var that picks the `service-info-server` bin's
 /// service QoS (`default` | `best_effort`), so a stock peer can read back
 /// what both endpoints were created with.

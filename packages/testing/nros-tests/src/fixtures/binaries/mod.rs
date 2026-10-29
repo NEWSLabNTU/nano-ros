@@ -7105,6 +7105,36 @@ pub fn build_xrce_service_info_server() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// issue 2136 — the `service-info-client` bin built for zenoh: an AddTwoInts
+/// client that waits each reply out with `Promise::wait_with_info` and prints
+/// its `ServiceInfo` ([`crate::output::RESPONSE_INFO_LOG_PREFIX`]). A bin
+/// rather than the service-client example because the Node API hands a reply
+/// to its callback without its `ServiceInfo`.
+pub fn build_zenoh_service_info_client() -> TestResult<&'static Path> {
+    static ZENOH_BIN: OnceCell<PathBuf> = OnceCell::new();
+    ZENOH_BIN
+        .get_or_try_init(|| {
+            let row = crate::fixtures::groups::select_rmw_row(
+                "packages/testing/nros-tests/bins/service-info-client",
+                Rmw::Zenoh,
+            )?;
+            let rel = PathBuf::from(format!(
+                "{}/service-info-client",
+                cargo_target_profile_dir()
+            ));
+            require_prebuilt_row_binary_fresh(row, &rel)
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the zenoh service-info-client binary path.
+#[rstest::fixture]
+pub fn zenoh_service_info_client_binary() -> PathBuf {
+    build_zenoh_service_info_client()
+        .require("zenoh service-info-client")
+        .to_path_buf()
+}
+
 /// rstest fixture that provides the XRCE service-info-server binary path.
 #[rstest::fixture]
 pub fn xrce_service_info_server_binary() -> PathBuf {
