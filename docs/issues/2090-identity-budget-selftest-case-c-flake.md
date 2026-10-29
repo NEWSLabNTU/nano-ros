@@ -54,3 +54,24 @@ self-test's temp tree being shared rather than per invocation.
 Make case (c) print the script's output when it fails, so the next occurrence
 names its own reading; then either reproduce it under `check-fast`'s
 parallelism and fix the shared state, or show it cannot recur.
+
+## Second sighting (2026-10-29)
+
+Push gate run **40889496628** on main `d8daf0330`, job **123502240409**
+`check / fast (every event)`, on a GitHub-hosted runner:
+
+> FAIL (c): filtered on the sidecar without saying the build was partial
+>
+> check-fast (parallel): 1 of 491 gate(s) FAILED
+
+The same failing branch as the first sighting. It passed in five consecutive
+local runs on the same commit. The merge-queue batch that produced that tree
+(#2832's) passed it too, and re-running the failed job (attempt 2,
+job 123525046968) passed. Nothing changed between the red and the green.
+
+Two sightings in four days, both on hosted runners under `check-fast`'s
+parallel scheduler, both on the second branch.
+
+Done here: item 1 of "What would close it". Case (c) now prints the script's
+output, prefixed `(c) |`, on either failure branch, so the next occurrence
+records which reading it took.

@@ -230,11 +230,16 @@ if [ "${1:-}" = "--self-test" ]; then
     printf '2010-01-01T00:00:00Z\n' > "$_st_stamp_c.started"
     _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_tmp/tree" NROS_FIXTURE_STAMP="$_st_stamp_c" \
         bash "$0" 2>&1 || true)"
+    # Issue 2090: case (c) has failed twice in CI and never locally, and the
+    # verdict line alone cannot say which reading the script took. On failure,
+    # print the output it was judged on.
     if nros_grep_q 'NO started_at' <<<"$_st_out"; then
         echo "  FAIL (c): the sidecar bound was ignored and the whole tree counted" >&2
+        printf '%s\n' "$_st_out" | sed 's/^/    (c) | /' >&2
         _st_fails=$((_st_fails + 1))
     elif ! nros_grep_q 'PARTIAL build' <<<"$_st_out"; then
         echo "  FAIL (c): filtered on the sidecar without saying the build was partial" >&2
+        printf '%s\n' "$_st_out" | sed 's/^/    (c) | /' >&2
         _st_fails=$((_st_fails + 1))
     else
         echo "  ok   (c) a sidecar bound is used, and says the build did not finish"
