@@ -297,7 +297,7 @@ impl StagingBufferGhost {
         }
     }
 
-    /// Models `socket_recv` / `udp_socket_recv` (bridge.rs:582-610, 737-764).
+    /// Models `tcp_recv` / `udp_recv` (bridge.rs:582-610, 737-764).
     ///
     /// Copies `min(available, user_buf_len)` bytes from `rx_buf[rx_pos..]`,
     /// advances `rx_pos`. When `rx_pos >= rx_len`, resets both to 0.
@@ -319,7 +319,7 @@ impl StagingBufferGhost {
         to_copy
     }
 
-    /// Models `socket_send` / `udp_socket_send` (bridge.rs:614-637, 769-794).
+    /// Models `tcp_send` / `udp_send` (bridge.rs:614-637, 769-794).
     ///
     /// Appends `min(available_space, data_len)` bytes at `tx_buf[tx_len..]`,
     /// advances `tx_len`. Note: `tx_pos` is NOT modified (only poll drains TX).
@@ -981,7 +981,7 @@ pub struct PublishChainGhost {
 
 /// Ghost model of `spin_once()` control flow.
 ///
-/// Models the two execution paths in `PollingExecutor::spin_once()`
+/// Models the two execution paths in `Executor::spin_once()`
 /// (executor.rs:1178-1229):
 ///
 /// ```ignore

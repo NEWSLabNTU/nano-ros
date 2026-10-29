@@ -1,0 +1,128 @@
+# Names from other projects that a code comment may quote
+# (`scripts/check/check-comment-names.py`, phase-515 W0.d).
+#
+# One name per line, grouped by the project it belongs to. A name listed here
+# that resolves in this tree, or that no comment in scope quotes any more, is a
+# finding: drop it. A name of OURS that is gone is never listed here; strike
+# it in the comment instead (~~`old_name`~~).
+
+# zenoh-pico
+Z_MALLOC_FUNCTION
+_Z_ERR_TRANSPORT_TX_FAILED
+_z_link_clear
+_z_link_send_t_msg
+_z_transport_unicast_handle_frag
+socket_wait_event
+zp_read
+
+# FreeRTOS kernel
+BlockLink_t
+configPRINTF
+errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY
+portENTER_CRITICAL
+prvIsFreeRTOSThread
+pvPortRealloc
+traceFREE
+traceMALLOC
+vTaskSuspendAll
+xBlockSize
+xHeapStructSize
+xSemaphoreBinary
+xSemaphoreHandle
+xTaskResumeAll
+xTimerPendFunctionCall
+
+# lwIP
+MEMP_NETDB
+memp_free
+
+# ESP-IDF
+esp_log_write
+esp_system_abort
+heap_caps_malloc
+heap_caps_realloc
+portMUX_TYPE
+
+# ThreadX and NetX Duo
+TX_MEMSET
+_tx_byte_allocate
+_tx_byte_release
+_tx_linux_mutex
+_tx_linux_thread_entry
+bsd_initialize
+nx_bsd_in_addr_t
+tx_block_release
+tx_semaphore
+tx_timer_change
+
+# Zephyr
+_system_heap
+atomic_set
+log_msg_runtime_create
+net_if_ipv4_select_src_iface
+net_mgmt_event_handler_t
+posix_to_zephyr_priority
+sys_heap
+sys_heap_
+uart_poll_in
+z_impl_k_thread_stack_space_get
+z_stack_space_get
+
+# NuttX
+NSEC_PER_TICK
+clean_context
+kmm_malloc
+
+# POSIX, libc and newlib
+INADDR_NONE
+PTHREAD_PRIO_NONE
+_POSIX_THREAD_PRIO_INHERIT
+_SC_HOST_NAME_MAX
+_impure_data
+_reclaim_reent
+_strtol_r
+pthread_attr_getstack
+pthread_mutex
+timer_getoverrun
+
+# QEMU and glib
+can_receive
+g_source
+lan9118_receive
+qemu_net_queue
+
+# Arm: CMSIS, instructions, the STM32 reference manual
+SystemCoreClock
+USARTDIV
+WFE
+YIELD
+
+# The DDS specification
+DcpsDomainParticipant
+
+# NVIDIA Tegra FSP and Autoware
+autoware_sentinel
+ivc_init_channels_ccplex
+print_msg
+
+# ROS 2
+action_tutorials
+set_logger_level
+
+# Rust: std, cargo, cc-rs, embassy, smoltcp, Verus
+CARGO_INCREMENTAL
+CARGO_PROFILE_NROS_RELWITHDEBINFO_INCREMENTAL
+CXX_thumbv7m_none_eabi
+RUSTC_WRAPPER
+UnitDependencyInfoChanged
+c_variadic
+embassy_sync::channel::Channel
+external_body
+get_base_compiler
+handle_alloc_error
+is_flag_supported
+lang_start
+leave_multicast_group
+
+# git
+GIT_OBJECT_DIRECTORY

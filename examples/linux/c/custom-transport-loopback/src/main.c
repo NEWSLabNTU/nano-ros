@@ -166,7 +166,7 @@ static void timer_callback(rcl_timer_t* timer, int64_t last_call_time) {
     (void)last_call_time;
     ctx->message.data = ctx->tick++;
     // Phase 212.M native/c sweep — replace the never-defined
-    // `nros_publisher_publish` symbol with the canonical typed
+    // ~~`nros_publisher_publish`~~ symbol with the canonical typed
     // `rcl_publish` (phase-492 W8, as the talker does).
     (void)rcl_publish(ctx->publisher, &ctx->message, NULL);
 }
@@ -208,7 +208,7 @@ int main(int argc, char** argv) {
      *    Active RMW backend (zenoh-pico) routes every wire frame
      *    through our ops above. */
     (void)rcl_clock_init(RCL_SYSTEM_TIME, &app.clock, NULL);
-    /* phase-426 W4 — the `nros_parameter_server_t` that stood here is GONE. It
+    /* phase-426 W4 — the ~~`nros_parameter_server_t`~~ that stood here is GONE. It
      * was initialised and never touched again: no declare, no get, no set. A
      * caller-storage store is a SECOND store (`ros2 param` reads the
      * executor's), so the one thing it demonstrated to a reader copying this

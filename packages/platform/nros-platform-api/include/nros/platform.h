@@ -178,7 +178,7 @@ uint64_t nros_platform_clock_ns(void);
 uint64_t nros_platform_clock_resolution_ns(void);
 
 /* RFC-0073 / phase-352 W6 — `nros_platform_clock_ms` and
- * `nros_platform_clock_us` are RETIRED. They were kept for one release as
+ * ~~`nros_platform_clock_us`~~ are RETIRED. They were kept for one release as
  * `static inline` wrappers behind NROS_PLATFORM_LEGACY_CLOCK_UNITS; both
  * the wrappers and the escape hatch are now gone. Callers divide
  * `nros_platform_clock_ns()` themselves — and a caller that hand-declares
@@ -390,9 +390,9 @@ void     nros_platform_random_fill(void *buf, size_t len);
  *  remainder by 1000000000. */
 uint64_t nros_platform_time_now_ns(void);
 
-/* Issue 0532 item 5 — `nros_platform_time_now_ms`,
- * `nros_platform_time_since_epoch_secs` and
- * `nros_platform_time_since_epoch_nanos` are RETIRED, the same way
+/* Issue 0532 item 5 — ~~`nros_platform_time_now_ms`~~,
+ * ~~`nros_platform_time_since_epoch_secs`~~ and
+ * ~~`nros_platform_time_since_epoch_nanos`~~ are RETIRED, the same way
  * phase-352 W6 retired `clock_ms` / `clock_us` rather than keeping
  * wrappers. A caller that hand-declares any of the three is caught by
  * `scripts/check-retired-platform-clock-symbols.py`. */
@@ -488,7 +488,7 @@ typedef struct {
 /** True when `p` came from `NROS_PLATFORM_PRIORITY_RAW`. */
 #define NROS_PLATFORM_PRIORITY_IS_RAW(p) \
     ((p) <= -0x40000000 && (p) != NROS_PLATFORM_PRIORITY_INHERIT)
-/** The raw value `p` carries. Only valid when `IS_RAW(p)`. */
+/** The raw value `p` carries. Only valid when `NROS_PLATFORM_PRIORITY_IS_RAW(p)`. */
 #define NROS_PLATFORM_PRIORITY_RAW_VALUE(p) (-0x40000000 - (int32_t) (p))
 
 /** Fill `attr` with the defaults — equivalent to passing `NULL` to

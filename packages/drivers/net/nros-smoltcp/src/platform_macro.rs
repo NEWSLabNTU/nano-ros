@@ -56,7 +56,7 @@ macro_rules! __define_smoltcp_platform_impl {
 
             use $crate::{CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS, SmoltcpBridge};
 
-            /// Per-call UDP receive timeout, updated by `udp_set_recv_timeout`.
+            /// Per-call UDP receive timeout, updated by `set_recv_timeout`.
             static mut UDP_RECV_TIMEOUT_MS: u64 = SOCKET_TIMEOUT_MS;
 
             // ---- C struct layouts (must match bare-metal/platform.h) ----

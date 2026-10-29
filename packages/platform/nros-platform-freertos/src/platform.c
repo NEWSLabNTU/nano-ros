@@ -17,7 +17,7 @@
  *   - Tasks        — xTaskCreate + vTaskDelete. ZTask storage shape
  *                    matches zenoh-pico's `_z_task_t` (4 pointers).
  *   - Mutexes      — xSemaphoreCreate{Mutex,RecursiveMutex} stored
- *                    inside a `ZMutex` (single-pointer storage).
+ *                    inside a `_z_mutex_t` (single-pointer storage).
  *   - Condvars     — mutex + counting-semaphore + waiters counter
  *                    (matches the Rust impl + zenoh-pico's _z_condvar_t
  *                    layout).
@@ -583,7 +583,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
     t->arg = arg;
 
     /* Phase 121.3.freertos-parity — defaults match the deleted Rust
-     * impl (`DEFAULT_PRIORITY=3`, `DEFAULT_STACK_DEPTH=5120` words).
+     * impl (~~`DEFAULT_PRIORITY=3`~~, ~~`DEFAULT_STACK_DEPTH=5120`~~ words).
      * configMINIMAL_STACK_SIZE = 256 words is too small for zenoh-pico
      * RTPS / message parsing — task overflows the stack silently and
      * the binary appears to hang in zenoh-pico's read loop. */

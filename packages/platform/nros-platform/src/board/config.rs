@@ -21,8 +21,8 @@
 //! The trait stays minimal on purpose: each board's transport-specific
 //! knobs (MAC address, WiFi credentials, UART base) remain on the
 //! concrete `Config` struct as ordinary fields. Adding
-//! transport-specific extension traits (e.g. `EthernetConfig`,
-//! `WifiConfig`, `SerialConfig`) is a follow-up that can land
+//! transport-specific extension traits (e.g. EthernetConfig,
+//! WifiConfig, SerialConfig) is a follow-up that can land
 //! without changing this trait.
 
 /// Universal board configuration accessors.
@@ -46,14 +46,14 @@ pub trait BoardConfig {
     fn domain_id(&self) -> u32;
 }
 
-// `BoardTransportConfig` was removed here (issue 1064). It carried
-// `set_ipv4` / `set_baudrate` — five and two real board implementations, and
+// ~~`BoardTransportConfig`~~ was removed here (issue 1064). It carried
+// ~~`set_ipv4`~~ / `set_baudrate` — five and two real board implementations, and
 // ZERO callers: its only writer was the orchestration generator deleted with
 // the standalone-package pipeline in `11a00b0f8` (#202).
 //
 // The live path is the DEPLOY OVERLAY, and it is strictly better: `DeployOverlay`
 // carries `ip`, `gateway`, `netmask`, `locator`, `domain_id` and `transport`
-// (a superset — `gateway` is what the removed `set_gateway` was for), it is
+// (a superset — `gateway` is what the removed ~~`set_gateway`~~ was for), it is
 // applied by `BoardEntry::run_with_deploy`, and it is actually READ —
 // `nros-board-common/src/base_config.rs` does it for the whole family, and
 // esp32-qemu, mps2-an385 and nuttx-qemu read it directly.

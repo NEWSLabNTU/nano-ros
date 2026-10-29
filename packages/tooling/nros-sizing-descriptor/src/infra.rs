@@ -11,11 +11,11 @@
 //!
 //! * the descriptor's `[image] infra_families` — which families are compiled
 //!   in: `none`, `param`, `lifecycle` or `param+lifecycle` (`all` is a
-//!   synonym). It arrived as `NROS_DECLARED_INFRA_QUERYABLES` until phase-486;
+//!   synonym). It arrived as ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ until phase-486;
 //!   the build scripts pass its tag here, the same four spellings.
 //! * the descriptor's `[image] model_nodes` — how many nodes; the parameter
 //!   family registers once PER NODE (phase-426 W3), the lifecycle family once
-//!   per executor. It arrived as `NROS_DECLARED_NODES` until phase-486 W9; the
+//!   per executor. It arrived as ~~`NROS_DECLARED_NODES`~~ until phase-486 W9; the
 //!   build scripts pass it here in that carrier's spelling, a decimal count.
 //!
 //! The arithmetic lived in `nros-zpico-build` alone, and XRCE's build had no

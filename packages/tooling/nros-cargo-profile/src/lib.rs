@@ -608,7 +608,7 @@ mod tests {
         // preset whose name extends another preset's name with a word that is
         // also a cargo profile KEY produces an AMBIGUOUS variable.
         // `nros-relwithdebinfo-incremental` + `inherits` and `nros-relwithdebinfo`
-        // + `incremental_inherits` are the same string; cargo picks the latter
+        // + incremental_inherits are the same string; cargo picks the latter
         // and dies with `could not load config key profile.nros-relwithdebinfo`.
         // Found in phase-340 W1 by shipping exactly that name.
         //

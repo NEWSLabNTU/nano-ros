@@ -13,7 +13,7 @@ extern "C" {
  *
  * These belong to the platform layer, not any RMW. Phase 200.1 relocated the
  * network-wait helper here from the zenoh-pico support crate (`zpico-zephyr`,
- * where it was historically mis-filed as `zpico_zephyr_wait_network` only
+ * where it was historically mis-filed as ~~`zpico_zephyr_wait_network`~~ only
  * because zenoh was the first Zephyr backend) — so every RMW build (zenoh /
  * XRCE / CycloneDDS) gets one canonical copy.
  */

@@ -54,7 +54,7 @@ fn main() {
     // Kconfig via `$DOTCONFIG`, then the platform/board rung". It does not:
     // `memory()` has NO Kconfig rung and never had one. So on every build that
     // exports `NROS_PLATFORM_NAME` — which is every build the nros road drives
-    // — the `knob_usize` arm was unreachable and `CONFIG_NROS_ZEPHYR_HEAP_SIZE`
+    // — the ~~`knob_usize`~~ arm was unreachable and `CONFIG_NROS_ZEPHYR_HEAP_SIZE`
     // reached the C lane and not this one. Issue 0460, in the knob that sizes
     // the Zephyr heap.
     //

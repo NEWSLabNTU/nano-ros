@@ -3,7 +3,7 @@
 //! FFI callback.
 //!
 //! Previously each board (MPS2-AN385, ESP32, ESP32-QEMU, STM32F4) kept
-//! its own `static mut GLOBAL_IFACE` / `GLOBAL_SOCKETS` / `GLOBAL_DEVICE`
+//! its own `static mut GLOBAL_IFACE` / ~~`GLOBAL_SOCKETS`~~ / ~~`GLOBAL_DEVICE`~~
 //! trio with hand-rolled `set_network_state` / `clear_network_state` /
 //! `smoltcp_network_poll` functions — four near-identical 63-line files.
 //! [`NetworkState<D>`] collapses them to a `const` constructor plus
@@ -87,7 +87,7 @@ impl<D: 'static> NetworkState<D> {
 
     /// Drive one smoltcp poll cycle. No-op if any pointer is null.
     ///
-    /// Use this when `D: Device` — e.g. `Lan9118`, `OpenEth`, `WifiDevice`.
+    /// Use this when `D: Device` — e.g. `Lan9118`, `OpenEth`, WifiDevice.
     ///
     /// # Safety
     /// See [`set`][Self::set] — the installed pointers must still be valid.

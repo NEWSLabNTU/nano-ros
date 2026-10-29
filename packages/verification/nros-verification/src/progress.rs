@@ -6,8 +6,8 @@
 ///
 /// ## Module structure
 ///
-/// - **Spec functions**: Model `process_subscriptions`, `process_services`,
-///   `process_timers`, and the full `spin_once` control flow.
+/// - **Spec functions**: Model ~~`process_subscriptions`~~, `process_services`,
+///   ~~`process_timers`~~, and the full `spin_once` control flow.
 ///
 /// - **Delivery guarantee proofs**: Every ready subscription/service is
 ///   consumed or reported as an error. Timers fire unconditionally.
@@ -46,7 +46,7 @@ pub open spec fn count_true(s: Seq<bool>) -> nat
     }
 }
 
-/// Model of `process_subscriptions` — processes all subscriptions sequentially.
+/// Model of ~~`process_subscriptions`~~ — processes all subscriptions sequentially.
 ///
 /// For each subscription: if `has_data[i]` is true, it is consumed (callback
 /// invoked). The function returns the count of successfully processed
@@ -85,7 +85,7 @@ pub open spec fn process_services_spec(has_request: Seq<bool>) -> (nat, Seq<bool
     )
 }
 
-/// Model of `process_timers` — fires all ready timers.
+/// Model of ~~`process_timers`~~ — fires all ready timers.
 ///
 /// A timer fires if `elapsed[i] + delta >= period[i]`.
 /// Returns the count of timers that fired.
@@ -179,7 +179,7 @@ proof fn count_true_all_false(s: Seq<bool>)
 /// **Proof 1: `subscription_delivery_guarantee`**
 ///
 /// If `has_data[k] == true` and the trigger fires, then
-/// `process_subscriptions` processes at least one subscription
+/// ~~`process_subscriptions`~~ processes at least one subscription
 /// (subs_processed >= 1), and `has_data[k]` is cleared to false.
 ///
 /// Real-time relevance: Ready subscription data is never silently ignored

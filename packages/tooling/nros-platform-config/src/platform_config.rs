@@ -566,7 +566,7 @@ impl BuildRungs {
     ///
     /// WHAT THIS USED TO DO, and why the number moved (phase-468 W1).
     ///
-    /// This was `or_builtin_rungs`, and its rule was the opposite: an absent
+    /// This was ~~`or_builtin_rungs`~~, and its rule was the opposite: an absent
     /// descriptor warned and fell through to the builtin knob defaults, because
     /// three of the platforms this tree builds — `threadx-linux`, `esp32`,
     /// `zephyr` — had no descriptor at all, and phase-400 W6 had turned that
@@ -828,7 +828,7 @@ impl BuildRungs {
     /// and its one build-script consumer needed a Kconfig rung the ladder does
     /// not have — so `nros-platform/build.rs` had to pick ONE of them, wrote
     /// `memory_value(..).unwrap_or_else(|| knob_usize(..))`, and on every build
-    /// where a platform name is exported the `knob_usize` arm is unreachable:
+    /// where a platform name is exported the ~~`knob_usize`~~ arm is unreachable:
     /// `CONFIG_NROS_ZEPHYR_HEAP_SIZE` reached the C lane and not the Rust one,
     /// which is issue 0460 in the knob whose whole job is the Zephyr heap.
     ///
@@ -1019,7 +1019,7 @@ pub struct ParamKnobs {
 ///
 /// `NROS_RMW_SUBSCRIBER_SLOTS` is deliberately NOT here. It sits in the same
 /// build script and looks identical, but phase-412 W1 derives it from the
-/// entity inventory (`COUNT_SUBSCRIPTION`), and a knob two campaigns resolve is
+/// entity inventory (`NROS_ENTITY_COUNT_SUBSCRIPTION`), and a knob two campaigns resolve is
 /// the drift issue 0938 cost. Checked before writing this rather than after.
 ///
 /// `subscriber_slot_bytes` IS here, and is the other half of that same pool

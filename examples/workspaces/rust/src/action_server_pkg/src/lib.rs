@@ -12,7 +12,7 @@
 //! Note: the declarative app-node shape does not surface the goal *payload* at
 //! tick time (only the goal IDs), so the server emits a fixed-`ORDER` sequence
 //! rather than the per-goal requested order — the same shape the embedded
-//! `action_server_rtic_pkg` reference uses. The companion `action_client_pkg`
+//! action-server-rtic example uses. The companion `action_client_pkg`
 //! requests `order = 10`; this server returns the canonical 0..=10 sequence.
 
 #![no_std]

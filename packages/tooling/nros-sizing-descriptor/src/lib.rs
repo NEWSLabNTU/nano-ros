@@ -128,7 +128,7 @@ pub fn transient_local_publishers(desc: &SizingDescriptor) -> Fact<usize> {
 /// Issue 1655 — the largest QoS depth any SUBSCRIPTION declares, guarded on
 /// every one of them declaring.
 ///
-/// The rule `NROS_DECLARED_MAX_QOS_DEPTH` carried, given ONE spelling here so
+/// The rule ~~`NROS_DECLARED_MAX_QOS_DEPTH`~~ carried, given ONE spelling here so
 /// a consumer reads the descriptor rather than restating the reduction:
 ///
 /// * [`Fact::Stated`] — the maximum, when EVERY subscription row states its
@@ -934,7 +934,7 @@ mod tests {
         assert_eq!(transient_local_publishers(&d), Fact::Stated(2));
     }
 
-    /// Issue 1655 -- the guarded MAX the `NROS_DECLARED_MAX_QOS_DEPTH` carrier
+    /// Issue 1655 -- the guarded MAX the ~~`NROS_DECLARED_MAX_QOS_DEPTH`~~ carrier
     /// delivered, given one spelling: every subscription states a depth, or no
     /// answer.
     #[test]

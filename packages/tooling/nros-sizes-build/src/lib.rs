@@ -439,8 +439,8 @@ fn find_dep_rlib_isolated(
     // outer build does. Without this the nested cargo fails
     // `error[E0463]: can't find crate for core`, the probe falls back to the
     // filesystem watch (which loses a timing race against the slow
-    // std-from-source compile), and the consumer drops to the committed
-    // `NUTTX_FALLBACK_SIZES` — which silently rots below the real
+    // std-from-source compile), and the consumer dropped to the committed
+    // ~~`NUTTX_FALLBACK_SIZES`~~ — which silently rots below the real
     // `size_of::<Executor>()` and trips the `EXECUTOR_OPAQUE_U64S too small`
     // const assertion.
     //
@@ -1201,7 +1201,7 @@ const KNOBS_THAT_CANNOT_CHANGE_A_SIZE: &[(&str, &str)] = &[
     ),
     ("NROS_LAN9118_LWIP_DIR", "vendored driver source dir"),
     ("NROS_VIRTIO_NET_NETX_DIR", "vendored driver source dir"),
-    // `NROS_ESP_IDF_WORKSPACE` and `NROS_ESP_IDF_ENV_SHIM` were here until
+    // ~~`NROS_ESP_IDF_WORKSPACE`~~ and ~~`NROS_ESP_IDF_ENV_SHIM`~~ were here until
     // phase-468 W2 retired the ESP-IDF port. Nothing exports them now, so the
     // rows excluded a name no probe could ever see — inert, but a dead
     // declaration, which is the class this phase exists to remove.
@@ -1641,7 +1641,7 @@ fn extract_sizes_with(
 ///
 /// Invokes `$(rustc --print sysroot)/lib/rustlib/$TRIPLE/bin/llvm-nm
 /// --demangle` against the rlib, then regex-matches lines like
-/// `nros::sizes::rmw_sizes::__nros_size_PUBLISHER_SIZE::<48>` — the
+/// nros::sizes::rmw_sizes::__nros_size_PUBLISHER_SIZE::<48> — the
 /// capture groups are the NAME and the const-generic SIZE value.
 /// Fails when `llvm-nm` is absent or errors; `extract_sizes` turns that into
 /// an error naming the component (issue 2064), never an empty map.

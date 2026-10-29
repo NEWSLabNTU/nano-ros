@@ -40,7 +40,7 @@ unsafe extern "C" {
 // target we care about (sem_t is ~32 bytes on Linux x86_64, ~16 on
 // macOS pthread_cond_t+mutex+flag layout). 256 bytes is overkill on
 // purpose so the test doesn't have to allocate. The runtime probe
-// (`storage_size()`) is asserted below.
+// (`nros_platform_wake_storage_size()`) is asserted below.
 #[repr(align(16))]
 struct WakeBuf([MaybeUninit<u8>; 256]);
 

@@ -6,8 +6,8 @@
 /// (reliable + VOLATILE + keep-last-10) the committed `c_talker_pkg` uses, this
 /// builds an `rclc_qos_t` with reliability=RELIABLE, durability=TRANSIENT_LOCAL,
 /// history=KEEP_LAST, depth=1 and passes it to `rclc_publisher_init_with_qos`. QoS is a per-entity
-/// contract set in code (no launch `qos_overrides`); the matching `qos_listener_pkg` declares the
-/// SAME profile via `qos_profile()` so the two endpoints connect.
+/// contract set in code (no launch `qos_overrides`); the matching `mixed_qos_listener_pkg` declares
+/// the SAME profile via `qos_profile()` so the two endpoints connect.
 ///
 /// `qos_talker_configure` creates the QoS-tagged publisher on /chatter + a
 /// 1 Hz timer that publishes an Int32 counter via the generated C serializer

@@ -341,7 +341,7 @@ static mut BRIDGE_STATE: BridgeState = BridgeState { initialized: false };
 // crate) push group addresses into a small queue here; `poll` drains it
 // at the start of each iteration.
 //
-// `MAX_MULTICAST_PENDING` covers the SPDP / SEDP set (one builtin
+// `MAX_MULTICAST_GROUPS` covers the SPDP / SEDP set (one builtin
 // multicast group + a handful of user-topic groups) with headroom.
 // `MULTICAST_JOINED` tracks groups already passed to the interface so
 // repeated `mcast_listen` calls on the same address don't spam the
@@ -487,8 +487,8 @@ pub fn poll_diagnostics() -> (u32, u32, u32, u32) {
 }
 
 /// Phase 127.D — extended counters: (rx_drained, tcp_recv_out).
-/// `rx_drained` = bytes transferred socket.recv_slice → RX staging.
-/// `tcp_recv_out` = bytes returned to caller by `tcp_recv` (= bytes
+/// rx_drained = bytes transferred socket.recv_slice → RX staging.
+/// tcp_recv_out = bytes returned to caller by `tcp_recv` (= bytes
 /// zenoh-pico actually read off the staging buffer).
 pub fn rx_diagnostics() -> (u32, u32) {
     use portable_atomic::Ordering;
@@ -500,7 +500,7 @@ pub fn rx_diagnostics() -> (u32, u32) {
 
 /// Snapshot of poll-callback registration diagnostics.
 ///
-/// Returns `(registered, set_calls, lost_polls_after_set)`. `lost_polls_after_set`
+/// Returns `(registered, set_calls, lost_polls_after_set)`. lost_polls_after_set
 /// increments when `do_poll` observes no registered callback after an earlier
 /// `set_poll_callback` call.
 pub fn poll_callback_diagnostics() -> (bool, u32, u32) {

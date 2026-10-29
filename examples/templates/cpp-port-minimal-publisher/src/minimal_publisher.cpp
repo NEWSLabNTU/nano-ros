@@ -2,7 +2,7 @@
 //
 // minimal_publisher.cpp — the canonical ROS 2 "minimal publisher" tutorial
 // node, vendored UNMODIFIED. (Source pattern from the ROS 2 tutorials —
-// `Writing a simple publisher and subscriber (C++)`.)
+// "Writing a simple publisher and subscriber (C++)".)
 //
 // Phase 209.G iter 2: proves an unmodified ROS-2-generic C++ source compiles
 // + links + runs against nano-ros, with only the build-script glue prepended

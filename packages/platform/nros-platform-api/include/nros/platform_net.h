@@ -36,7 +36,7 @@ extern "C" {
  *
  * # Optional capabilities
  *
- *  `udp_listen` and `udp_multicast_*` are optional. A platform that
+ *  `nros_platform_udp_listen` and `udp_multicast_*` are optional. A platform that
  *  doesn't implement them supplies a stub that returns -1 (or
  *  `(size_t) -1` on the read/send variants); higher layers detect
  *  the failure and fall back. `network_poll` exists for platforms
@@ -176,7 +176,7 @@ void nros_platform_network_poll(void);
  *   - ThreadX:      `typedef struct { INT fd; } nros_threadx_socket_t;`
  *   - FreeRTOS+lwIP same shape.
  *
- * This accessor lets callers (e.g. zpico-sys's `get_session_fd`
+ * This accessor lets callers (e.g. zpico-sys's ~~`get_session_fd`~~
  * helper used by the read-task wakeup path on ThreadX-Linux) read
  * the fd without depending on the per-RTOS struct typedef being
  * visible at compile time. Static-inline so it has zero call

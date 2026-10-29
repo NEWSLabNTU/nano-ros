@@ -85,7 +85,7 @@ fn generate_config(
     // is gone (Phase 118.B closure of Phase 87.6).
     let _ = dep_usize("DEP_NROS_NODE_ARENA_SIZE");
     // phase-382 W3' -- the carved parameter store, an input to the probed
-    // executor size (see `shared::dep_watch`).
+    // executor size.
     let _ = watch_param_store_shape();
 
     // CppContext = Executor + domain_id (u32) + padding. Phase 118.B —
@@ -147,7 +147,7 @@ fn generate_config(
     // from `nros::sizes::CppActionServerLayout` /
     // `CppActionClientLayout` via the same probe path used for everything
     // else. The probe values land in `nros_cpp_config_generated.h` as
-    // `NROS_CPP_ACTION_SERVER_SIZE` / `NROS_CPP_ACTION_CLIENT_SIZE`.
+    // `NROS_CPP_ACTION_SERVER_STORAGE_SIZE` / `NROS_CPP_ACTION_CLIENT_STORAGE_SIZE`.
     // Rust-side asserts in `nros-cpp/src/action.rs` ensure the layout
     // mirror in `nros::sizes` stays byte-equivalent to the real
     // `CppActionServer` / `CppActionClient`.
@@ -255,7 +255,7 @@ fn generate_config(
     // Phase 119.3: source-tree header is a committed STUB that errors
     // out (see `include/rclcpp/detail/nros_cpp_config_generated.h`). Real header
     // gets written PER-BUILD to a variant-slug subdir under the cargo
-    // target directory; `nros_cpp_setup()` CMake function finds it.
+    // target directory, where the CMake build finds it.
     if exact_executor == 0 {
         // `cargo check --no-default-features` / `cargo doc` path —
         // probe yielded nothing. Skip writing the per-build header.

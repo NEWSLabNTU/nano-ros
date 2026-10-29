@@ -619,7 +619,7 @@ uint64_t nros_platform_time_now_ns(void)              { return 0; }
  * pointer beside the control block without any caller knowing.
  */
 
-/* phase-364 W3 — `nros_threadx_task_attr_t` deleted; the ABI defines
+/* phase-364 W3 — ~~`nros_threadx_task_attr_t`~~ deleted; the ABI defines
  * `nros_platform_task_attr_t` for every port. */
 
 /* phase-364 W3 — task storage is a WRAPPER, not a bare `TX_THREAD`.
@@ -961,7 +961,7 @@ int8_t nros_platform_mutex_rec_unlock(void *m)   { return nros_platform_mutex_un
  *   spurious wake, which condvar semantics allow and every caller's
  *   predicate loop absorbs.
  *
- * Issue 1906. This was a bare TX_SEMAPHORE, so `signal_all` could put only
+ * Issue 1906. This was a bare TX_SEMAPHORE, so `nros_platform_condvar_signal_all` could put only
  * one token: with two waiters the second slept forever, and zenoh-pico
  * broadcasts on close and notifier drop. A signal with nobody waiting also
  * banked a token, so later waits returned at once. Counting waiters fixes

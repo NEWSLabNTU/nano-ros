@@ -1803,8 +1803,13 @@ def _python_names(text):
         return set()
 
 
+# Lists of OTHER projects' names: indexing one would make every entry "ours".
+FOREIGN_NAME_LISTS = ("scripts/check/comment-foreign-names.txt",)
+
+
 def known_identifiers(records, roots=("packages", "examples", "scripts", "just", "cmake",
-                                     "docs/reference/api-surface", "docs/reference/editions")):
+                                     "docs/reference/api-surface", "docs/reference/editions"),
+                      exclude=FOREIGN_NAME_LISTS):
     """Every identifier a ledger row may name as CURRENT: each segment of every
     extracted record (ours and theirs, all languages, both editions) plus every
     identifier token in the tracked sources under `roots` -- macros, crate
@@ -1820,7 +1825,7 @@ def known_identifiers(records, roots=("packages", "examples", "scripts", "just",
     # A test or probe is cited by its file's stem (`ros2_refuse_generic_by_name_probe`).
     known.update(os.path.splitext(os.path.basename(rel))[0] for rel in files)
     for rel in files:
-        if not rel.endswith(KNOWN_NAME_EXTS):
+        if not rel.endswith(KNOWN_NAME_EXTS) or rel in exclude:
             continue
         try:
             with open(os.path.join(ROOT, rel), errors="ignore") as fh:
@@ -1878,13 +1883,22 @@ def quoted_names(why):
     it is not judged; nor is a commit id, an external name, or a path into an
     external namespace."""
     out, seen = [], set()
-    for match in QUOTED_NAME_RE.finditer(why):
+    for match in quoted_name_matches(why):
         name, tail = match.group(1), match.group(2)
-        if not tail and why[match.end():match.end() + 1] in (".", "/", "-"):
-            continue  # a file or a path (`rclcpp_compat.hpp`), not a symbol
         if (name, tail) in seen:
             continue
         seen.add((name, tail))
+        out.append((name, tail))
+    return out
+
+
+def quoted_name_matches(text):
+    """Every `QUOTED_NAME_RE` match in `text` that `quoted_names` judges, in
+    order and with repeats, so a caller that reports a LINE can have one."""
+    for match in QUOTED_NAME_RE.finditer(text):
+        name, tail = match.group(1), match.group(2)
+        if not tail and text[match.end():match.end() + 1] in (".", "/", "-"):
+            continue  # a file or a path (`rclcpp_compat.hpp`), not a symbol
         root = name.split("::", 1)[0]
         if "::" in name:
             if root in EXTERNAL_NAMESPACES or root.endswith("_msgs"):
@@ -1894,8 +1908,7 @@ def quoted_names(why):
                 continue
             if "_" not in name and name.islower() and tail != "(":
                 continue
-        out.append((name, tail))
-    return out
+        yield match
 
 
 class _NameIndex:
