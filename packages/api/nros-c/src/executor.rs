@@ -3471,8 +3471,8 @@ unsafe extern "C" fn typed_client_request_id_trampoline(
 ///
 /// [`rclc_executor_add_client`] whose callback also receives the id of the
 /// request each reply answers, as rclc's does: `request_id->sequence_number`
-/// is the sequence number the request went out under (the one
-/// `rclc_client_send_request` reports and the reply was matched on), and
+/// is the sequence number the request went out under (the one the reply was
+/// matched on), and
 /// `request_id->writer_guid` is this client's request-writer GUID where the
 /// backend reports it through `take_response_with_info` (zenoh, Cyclone DDS),
 /// all zero where it does not (XRCE-DDS, whose Agent owns the writer).
