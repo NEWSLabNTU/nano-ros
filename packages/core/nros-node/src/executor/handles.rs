@@ -243,11 +243,11 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// without a per-publisher staging copy. Saves on RAM-constrained
     /// nodes that publish multi-KB payloads.
     ///
-    /// The `writer` closure receives a `StreamWriter` mutable
-    /// reference and uses `StreamWriter::write` / `extend` /
-    /// `reserved_len` to fill the slot in chunks. The total
+    /// The `writer` closure receives a ~~`StreamWriter`~~ mutable
+    /// reference and uses ~~`StreamWriter::write`~~ / `extend` /
+    /// reserved_len to fill the slot in chunks. The total
     /// payload length must be declared up-front via
-    /// `StreamWriter::reserve_total`; the backend allocates that
+    /// ~~`StreamWriter::reserve_total`~~; the backend allocates that
     /// many bytes in its outbound buffer before any chunks land.
     ///
     /// Backends without a native stream slot fall through to a
@@ -1016,7 +1016,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// `nros-rmw` does this delegation.
     ///
     /// Primary use case: cross-RMW bridges stamp the source backend's
-    /// RMW name as `bridge_origin` so a paired return bridge can drop
+    /// RMW name as bridge_origin so a paired return bridge can drop
     /// echoed frames deterministically.
     pub fn publish_serialized_with_attachment(
         &self,
@@ -3040,7 +3040,7 @@ impl<T> Promise<'_, T> {
     /// `poll_until_ready(yield_fn)` instead actively polls
     /// `take()` on each turn and awaits the caller-supplied
     /// yield future between attempts. The yield gives the executor
-    /// a chance to run other ready tasks (typically a `spin_task`
+    /// a chance to run other ready tasks (typically a spin_task
     /// that drives the backend runtime via `executor.spin_once()`),
     /// which in turn pumps the listener future. On the `std` path
     /// this devolves to a fast poll-then-yield loop with no

@@ -155,7 +155,7 @@ pub(crate) struct SubscriptionOpen {
 // idiom) so `emplace_entry` reads identically whether or not the feature is
 // on, and the `#[cfg]` lives in exactly one place.
 
-/// Emit `nros_callback_register(handle, kind, name)` for a newly installed
+/// Emit nros_callback_register(handle, kind, name) for a newly installed
 /// executor entry.
 #[cfg(feature = "trace-callbacks")]
 #[inline]
@@ -586,7 +586,7 @@ impl<'s> Executor<'s> {
 /// Phase 128.F.1 — per-backend session declaration for
 /// [`Executor::open_multi`]. Each spec names an RMW backend (must
 /// match one a backend registered under via
-/// `nros_rmw_cffi_register_named` / the `RMW_INIT_ENTRIES` linker
+/// `nros_rmw_cffi_register_named` / the ~~`RMW_INIT_ENTRIES`~~ linker
 /// section) and the locator + domain id to open against it.
 #[cfg(feature = "rmw-cffi")]
 #[derive(Clone, Copy)]
@@ -1232,7 +1232,7 @@ impl WakeCtx {
 /// * **Thread-safe**: callable from any thread. The cb is lock-free
 ///   on the cv path — no mutex held during `notify_all`. Lost-wakeup
 ///   is prevented by the waiter checking `wake_flag` under
-///   `wake_mu` via the `wait_timeout_while` predicate.
+///   ~~`wake_mu`~~ via the `wait_timeout_while` predicate.
 /// * **NOT async-signal-safe on POSIX**: `pthread_cond_signal`
 ///   isn't on the POSIX async-signal-safe function list. For POSIX
 ///   signal handler wake, use a `signalfd` + select pattern in a
@@ -1928,7 +1928,7 @@ pub struct Executor<'s> {
     pub(crate) major_frame_us: u32,
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
-    /// Node name for entities created via `register_subscription`/`register_service`.
+    /// Node name for entities created via ~~`register_subscription`~~/`register_service`.
     /// Empty means unset — no liveliness tokens will be declared.
     pub(crate) node_name: heapless::String<64>,
     /// Phase 228.C — per-tier callback-group filter. Wildcard (register every
@@ -2120,7 +2120,7 @@ pub struct Executor<'s> {
     /// Phase 124.B.2 — wake condvar paired with `wake_flag`. The
     /// runtime-supplied wake callback (`nros_rmw_runtime_wake_cb` in
     /// nros-rmw-cffi) writes `wake_flag = true` AND signals
-    /// `wake_cv` atomically under `wake_mu`. `spin_once` blocks on
+    /// ~~`wake_cv`~~ atomically under ~~`wake_mu`~~. `spin_once` blocks on
     /// the cv with a deadline instead of calling `drive_io` with the
     /// user's timeout — sub-poll-period wake latency.
     ///
@@ -2933,7 +2933,7 @@ pub type NextDeadlineFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> u
 /// work: `nros-baremetal-common`'s own note says `wfi` with no pending
 /// interrupt deadlocks, so a board must arm a timer compare BEFORE waiting.
 /// A `sleep(duration)` seam cannot express that — the sleeper does not know
-/// whether anyone armed an interrupt. `park_until(deadline)` does, because the
+/// whether anyone armed an interrupt. ~~`park_until(deadline)`~~ does, because the
 /// deadline is exactly what the compare is armed to.
 pub type ParkUntilFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void, deadline_us: u64) -> i8;
 
@@ -3161,7 +3161,7 @@ impl<'s> Executor<'s> {
 
     /// Set the node name and namespace used for liveliness tokens.
     ///
-    /// Called by `open()` to propagate config values. When `register_subscription`
+    /// Called by `open()` to propagate config values. When ~~`register_subscription`~~
     /// or `register_service` creates entities, these values are attached to the
     /// Phase 156 — record the primary session's backend identity
     /// (rmw name + locator) so `NodeBuilder::resolve_session_slot`
@@ -4374,7 +4374,7 @@ impl<'s> Executor<'s> {
     /// The park used to be bounded by the caller's timeout narrowed by exactly
     /// one input, the BACKEND's `next_deadline_ms`. A registered timer is a
     /// deadline the EXECUTOR owns, and nothing let it shorten the sleep — so
-    /// `spin_default`'s 50 ms slept straight past a 10 ms timer, and the
+    /// ~~`spin_default`~~'s 50 ms slept straight past a 10 ms timer, and the
     /// activations then arrived in the burst issue 0505 describes.
     ///
     /// This is the `min` over the deadline sources phase-436 names. The
@@ -5122,7 +5122,7 @@ impl<'s> Executor<'s> {
     /// THE monotonic-µs read. phase-359 W4 — every consumer goes through here.
     ///
     /// Before this there were FIVE spellings of "what time is it": this one,
-    /// `last_spin_end: Instant`, and two ad-hoc `static EPOCH: OnceLock<Instant>`
+    /// ~~`last_spin_end: Instant`~~, and two ad-hoc `static EPOCH: OnceLock<Instant>`
     /// blocks — plus `PlatformClock`, which nothing called because `Executor` is
     /// deliberately non-generic and the trait's methods are associated fns.
     ///
@@ -5516,7 +5516,7 @@ impl<'s> Executor<'s> {
     /// Phase 110.G — apply a declarative cyclic schedule.
     ///
     /// One-shot helper that wraps the underlying primitives:
-    /// validates the schedule (`major_frame > 0`, no overlapping
+    /// validates the schedule (major_frame > 0, no overlapping
     /// windows, every window fits inside the major frame), sets the
     /// executor's major-frame length, then materialises one
     /// `SchedContext` per window with `class = TimeTriggered` +
@@ -6169,7 +6169,7 @@ impl<'s> Executor<'s> {
     /// Returns a Linux `eventfd` that callers (typically POSIX
     /// signal handlers) can `write(fd, &1u64, 8)` to from any
     /// context, including signal handlers. A runtime-owned worker
-    /// thread reads the fd and signals `wake_cv`, unblocking
+    /// thread reads the fd and signals ~~`wake_cv`~~, unblocking
     /// `spin_once`.
     ///
     /// The worker thread is spawned lazily on first call and
@@ -6335,7 +6335,7 @@ impl<'s> Executor<'s> {
         // issue 0801 (second half) — the executor's domain, NOT a literal 0.
         // 429d5a581 fixed the ELEVEN arena `TopicInfo`s and left the THREE
         // `NodeHandle::new` sites, so an entity created through a node HANDLE
-        // (`with_node`, `node`, `node_on`) still declared on domain 0 while the
+        // (`with_node`, `node`, ~~`node_on`~~) still declared on domain 0 while the
         // arena path declared on the configured one. Same split the issue is
         // about, one constructor over: `loan_e2e` publishes through a handle and
         // subscribes through the arena, so it delivered on domain 0 and on
@@ -7420,7 +7420,7 @@ impl<'s> Executor<'s> {
     /// Set the executor-level trigger condition.
     ///
     /// Controls which handles must be ready before `spin_once` dispatches
-    /// callbacks. Defaults to [`Trigger::AnyReady`](crate::Trigger).
+    /// callbacks. Defaults to [`Trigger::Any`](crate::Trigger).
     pub fn set_trigger(&mut self, trigger: Trigger) {
         self.trigger = trigger;
     }
@@ -7523,7 +7523,7 @@ impl<'s> Executor<'s> {
     /// rounded up to the arena's `u64` grain. 0 for no capture.
     ///
     /// phase-476 W0 — a capture used to be a SEPARATE arena allocation
-    /// (`stow_capture` over `arena_alloc_bytes`), which `release_entry` never
+    /// (~~`stow_capture`~~ over ~~`arena_alloc_bytes`~~), which `release_entry` never
     /// gave back: it frees exactly the region `emplace_entry` recorded, and that
     /// was the entry's. Placing the capture at the END of the entry's own
     /// trailing region puts it inside the recorded region, so releasing the
@@ -8159,7 +8159,7 @@ impl<'s> Executor<'s> {
     ///
     /// phase-8 (`docs/design/callback_tracing.rst`) — the ONE choke point
     /// every registration site funnels through, so the
-    /// `nros_callback_register(handle, kind, name)` event is emitted once,
+    /// nros_callback_register(handle, kind, name) event is emitted once,
     /// here, rather than at the 25 sites that build a `CallbackMeta`. The
     /// design's registration half is deliberately EXHAUSTIVE across every
     /// `EntryKind` even though the leaf hooks are staged: a callback that was
@@ -8980,7 +8980,7 @@ impl<'s> Executor<'s> {
     /// carrying the sample's wire **attachment** (Phase 189.M1).
     ///
     /// Backs the `node.subscription(t).generic(..).message_info().build(cb)`
-    /// builder — the cross-RMW bridge reads the `bridge_origin` tag from
+    /// builder — the cross-RMW bridge reads the bridge_origin tag from
     /// `info.attachment()` for echo suppression. One sample per
     /// `spin_once`; the attachment is staged in a flat per-entry buffer
     /// (cap `RAW_INFO_ATT_CAP`).
@@ -9163,7 +9163,7 @@ impl<'s> Executor<'s> {
     ///   the example.
     ///
     /// The arena-store + vtable wiring is identical to
-    /// `register_subscription_buffered_raw`; the only thing that varies is
+    /// ~~`register_subscription_buffered_raw`~~; the only thing that varies is
     /// where the handle came from. Callback fires on every message
     /// delivery during [`spin_once`](Self::spin_once); bytes are
     /// passed as `&[u8]`.
@@ -11736,7 +11736,7 @@ impl<'s> Executor<'s> {
     /// phase-417 W5.c — added because the state was already here and nothing
     /// exposed it, which is why `c:timer_get_time_since_last_call` and
     /// `c:timer_is_ready` were both filed as gaps. The C forwarders
-    /// (`rcl_timer_get_time_since_last_call`, `nros_timer_is_ready`) read
+    /// (`rcl_timer_get_time_since_last_call`, `rcl_timer_is_ready`) read
     /// this; RFC-0019 puts the answer in Rust and only the spelling in the
     /// wrapper.
     pub(crate) fn timer_elapsed_us(&self, id: HandleId) -> Option<u64> {
@@ -11780,7 +11780,7 @@ impl<'s> Executor<'s> {
     /// phase-417 G6. THE computation, and it has to be: rcl's own pair are
     /// `next_call_time` and `next_call_time - now`, so upstream cannot have
     /// them disagree either. Before this it lived in `nros-c`
-    /// (`remaining_period_ns` + `time_until_next_call_ns_of`), and the C++
+    /// (~~`remaining_period_ns`~~ + `time_until_next_call_ns_of`), and the C++
     /// half of `cpp:Timer::time_until_trigger` would have been a second
     /// derivation of the same subtraction in a second crate — the shape
     /// CLAUDE.md's "fix the CLASS, add ONE shared helper rather than a second
@@ -12571,7 +12571,7 @@ impl<'s> Executor<'s> {
             // Phase 141.B.2 — capture T1 at subscription dispatch
             // entry. Probe pairs it with the most recent T0 from
             // `nros_rmw_runtime_wake_cb` (std + alloc variants)
-            // and pushes `T1 - T0` onto the ring buffer 141.C
+            // and pushes T1 - T0 onto the ring buffer 141.C
             // drains. No-op when the probe feature is off or
             // no cycle reader is installed. Other entry kinds
             // (Service / Timer / GuardCondition) skip the probe
@@ -13105,7 +13105,7 @@ impl<'s> Executor<'s> {
         // phase-436 W1 (issue 1192) — and by the next TIMER deadline, which is
         // the one class of deadline the executor itself owns. Before this the
         // park was bounded by the caller's budget narrowed only by the
-        // BACKEND's next event, so `spin_default`'s 50 ms slept straight past
+        // BACKEND's next event, so ~~`spin_default`~~'s 50 ms slept straight past
         // a registered 10 ms timer.
         //
         // Attribution is recorded here rather than derived later: this is the
@@ -13124,7 +13124,7 @@ impl<'s> Executor<'s> {
         // waiting HERE, on the bound every source agreed on, and the transport
         // is then drained non-blockingly.
         //
-        // This is the path bare metal needs: `park_until(deadline)` can arm a
+        // This is the path bare metal needs: ~~`park_until(deadline)`~~ can arm a
         // timer compare before `wfi`, which `sleep(duration)` cannot express —
         // and `nros-baremetal-common` notes that `wfi` with no pending
         // interrupt deadlocks, so arming first is not optional there.
@@ -13435,7 +13435,7 @@ impl<'s> Executor<'s> {
     /// phase-427 — was `spin(Duration) -> !`, which squatted on rclrs's name
     /// with a different contract (a ported `executor.spin(SpinOptions)` line
     /// had to be renamed by hand, the one edit on the tutorial's happy path
-    /// that no real difference forced). `spin_default()` went with it: it named
+    /// that no real difference forced). ~~`spin_default()`~~ went with it: it named
     /// a 50 ms poll interval and had zero call sites, and the interval is now
     /// [`SpinOptions::poll_interval`], defaulting to
     /// [`DEFAULT_SPIN_POLL_INTERVAL`](super::types::DEFAULT_SPIN_POLL_INTERVAL).
@@ -14124,11 +14124,11 @@ impl<'s> Executor<'s> {
         out
     }
 
-    // phase-359 W10 / issue 0080 — `enable_parameter_persistence{,_with}` are
+    // phase-359 W10 / issue 0080 — ~~`enable_parameter_persistence{,_with}`~~ are
     // GONE with the seam they attached. Issue 0080 ruled on-device parameter
     // persistence a non-goal in July and listed both by name; nothing in the
     // tree ever called them, and the only backend that could be passed
-    // (`FileParamStore`) is deleted. Runtime get/set/describe stay — it is the
+    // (~~`FileParamStore`~~) is deleted. Runtime get/set/describe stay — it is the
     // PERSISTENCE half that was dropped.
 }
 
@@ -14678,7 +14678,7 @@ impl<'s> Executor<'s> {
     /// Install `-p` / `--params-file` parameter overrides — phase-482 W5.
     ///
     /// They are applied when a parameter is DECLARED: the declaration's value
-    /// is replaced by the override's, typed by it (`apply_argv_param_override`).
+    /// is replaced by the override's, typed by it (~~`apply_argv_param_override`~~).
     /// So an override reaches a parameter on every road that declares through
     /// this executor — C, C++ and Rust — including the launch file's baked
     /// values, which the generated entry declares through the same seam.
@@ -16221,7 +16221,7 @@ impl<'s> Executor<'s> {
     ///   a `timeout` on a build with no clock is an ERROR, not a silent
     ///   never-ending loop (issue 0709).
     ///
-    /// phase-427 — this method was `spin_blocking`. `spin` was taken by the
+    /// phase-427 — this method was ~~`spin_blocking`~~. `spin` was taken by the
     /// `-> !` task body, which is now [`spin_forever`](Self::spin_forever).
     ///
     /// Runs until one of:
@@ -16245,7 +16245,7 @@ impl<'s> Executor<'s> {
     /// executor.spin(SpinOptions::spin_once())?;
     /// ```
     pub fn spin(&mut self, opts: SpinOptions) -> Result<(), NodeError> {
-        // phase-427 — was a private `POLL_INTERVAL` const; it is
+        // phase-427 — was a private ~~`POLL_INTERVAL`~~ const; it is
         // `SpinOptions::poll_interval` now, defaulting to the same 10 ms, so
         // `spin` and `spin_forever` read one value instead of two literals.
         let poll_interval = opts.poll_interval;
@@ -16568,7 +16568,7 @@ impl<'s> Executor<'s> {
 }
 
 /// Phase 110.E.b — opaque per-platform timer handle. Stores the
-/// raw platform handle (POSIX `timer_t` boxed via `PosixTimerHandle`,
+/// raw platform handle (POSIX `timer_t` boxed via ~~`PosixTimerHandle`~~,
 /// FreeRTOS `TimerHandle_t`, etc.) plus a destroy thunk so the
 /// Executor can clean up without being generic over the platform.
 ///
@@ -16753,8 +16753,8 @@ impl<'s> Drop for Executor<'s> {
     fn drop(&mut self) {
         // Issue 0790 — a teardown that never went through `close()` still gets
         // its ordered shutdown hooks, and gets them in the SAME order. The C
-        // API's `nros_executor_fini` is exactly that path: it drops the
-        // executor in place and leaves the session to `nros_support_fini`, so
+        // API's `rclc_executor_fini` is exactly that path: it drops the
+        // executor in place and leaves the session to `rclc_support_fini`, so
         // without this the whole facility would be silently inert for every C
         // entry. Entities are still live at the top of `drop` — the component
         // cells and the arena entries below are what tears them down — so this

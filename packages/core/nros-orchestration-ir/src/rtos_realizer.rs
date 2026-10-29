@@ -14,7 +14,7 @@
 //! v1 realizes the dims available from the model today: **urgency** (from the
 //! ranking order), **activation** (Timer/Event from the path triggers),
 //! **deadline** (`max_latency_ms`), and **budget** (`exec_ms`, when a path
-//! carries a WCET). `non_preempt_scope` and `placement` are `NotRequested`
+//! carries a WCET). non_preempt_scope and `placement` are `NotRequested`
 //! until the derivation supplies them (later waves).
 
 use ros_launch_manifest_sched::{
@@ -25,7 +25,7 @@ use std::collections::BTreeMap;
 use crate::priority_plan::PriorityPlan;
 
 /// A board's scheduling capabilities — what the realizer may target natively.
-/// The `PlatformSched`/board seam (W5.3) supplies this per board; here it is a
+/// The PlatformSched/board seam (W5.3) supplies this per board; here it is a
 /// plain descriptor the realizer reads.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SchedCaps {
@@ -637,7 +637,7 @@ pub fn realize_rtos(
     // Issue 0259 — system-level utilisation, the other quantitative term W1's
     // WCETs unlock.
     //
-    // `U_i = C_i / T_i` is the fraction of a processor a periodic task needs.
+    // U_i = C_i / T_i is the fraction of a processor a periodic task needs.
     // Summed, it is a NECESSARY condition in the same family as the per-node
     // check above: a taskset demanding more than one processor cannot run on
     // one, whatever the priorities. Reported only when it EXCEEDS capacity,
@@ -1175,7 +1175,7 @@ mod tests {
     /// issue 1427 - an EMPTY application pool is REFUSED, never clamped into
     /// the band below it.
     ///
-    /// The pre-0852 transport band (`READ_PRIORITY=16` on the 0..255 scale)
+    /// The pre-0852 transport band (~~`READ_PRIORITY=16`~~ on the 0..255 scale)
     /// resolves `transport = [14, 14]` on the island's image, which leaves
     /// `app = [15, 14]` - no priority at all. The clamp used to hand both
     /// nodes k_thread **14**, measured: a derived tier at the transport's own

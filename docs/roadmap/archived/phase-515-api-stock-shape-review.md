@@ -274,6 +274,7 @@ exempt.
 | 2 | `packages/boards` | 190 | 53 | 70 | the rest |
 | 3 | `packages/cli` | 276 | 136 | 50 | the rest |
 | 4 | `packages/testing` | 290 | 163 | 56 | the rest |
+| 5 | `packages/core` | 297 | 138 | 62 | the rest |
 
 ### C — rclc / rcl
 

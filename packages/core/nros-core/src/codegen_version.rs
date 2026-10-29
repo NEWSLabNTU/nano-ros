@@ -114,7 +114,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// ADDITIVE on the surface generated code names, plus one APPEND to a struct
 /// nothing generated declares. The additions are six new C entry points
 /// (`nros_{publisher,subscription}_get_actual_qos` and the four service /
-/// client halves) and two enumerators on each of the four `nros_qos_*_t`
+/// client halves) and two enumerators on each of the four ~~`nros_qos_*_t`~~
 /// enums (`UNKNOWN`, and `SYSTEM_DEFAULT` on three of them), appended so every
 /// existing discriminant keeps its value. The append is `_executor` on
 /// `rcl_subscription_t`, placed after `_opaque` so every existing field
@@ -175,7 +175,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// `rclc_subscription_init_best_effort`, whose body forwards to
 /// `rclc_subscription_init_with_qos` and lost the two `NULL`s that function no
 /// longer takes. Generated C does not call either: a message header's typed
-/// registration is `rclc_executor_add_subscription_typed_sized`, whose
+/// registration is ~~`rclc_executor_add_subscription_typed_sized`~~, whose
 /// signature is unchanged, and it passes `struct rcl_subscription_t *`, whose
 /// layout shrank but which generated code never dereferences. A version-10
 /// tree therefore still compiles and runs.
@@ -208,7 +208,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// `rclc_action_type_t` gained codec slots and the generated
 /// `<pkg>__<sub>__<Name>__nros_type` fills them; the typed helpers
 /// (`<Msg>_publish`, `<Msg>_executor_add_subscription*`, `_subscribe*`) and
-/// `rclc_executor_add_subscription_typed{,_sized}` retired for `rcl_publish`
+/// ~~`rclc_executor_add_subscription_typed{,_sized}`~~ retired for `rcl_publish`
 /// and rclc's six-argument `rclc_executor_add_subscription_with_context`. A
 /// version-13 C tree names a descriptor layout and entry points this runtime
 /// no longer has, so it is refused by version. Rust and C++ trees are
@@ -277,7 +277,7 @@ pub const NROS_CODEGEN_VERSION_MIN: u32 = 18;
 /// Does `emitted` fall in the range this runtime accepts?
 ///
 /// The ONE comparison. Rust call sites reach it through
-/// `nros_node::codegen_version_check`, the CLI through `abi_guard`; neither
+/// ~~`nros_node::codegen_version_check`~~, the CLI through `abi_guard`; neither
 /// re-spells the bounds.
 #[must_use]
 pub const fn accepts(emitted: u32) -> bool {

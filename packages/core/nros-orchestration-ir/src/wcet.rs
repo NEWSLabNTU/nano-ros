@@ -16,7 +16,7 @@
 //! *The Worst-Case Execution Time Problem*). Measurement-based estimates are
 //! optimistic by an unknown amount.
 //!
-//! An earlier version of this module converted `max_cycles` straight into
+//! An earlier version of this module converted max_cycles straight into
 //! `exec_ms` and called the result a WCET. That is issue 0259's failure wearing
 //! better clothes: 0259 is about an ABSENT number counted as zero, and this
 //! would have been an UNDER-estimate counted as measured. Both make a chain

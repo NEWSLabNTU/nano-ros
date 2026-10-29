@@ -111,7 +111,7 @@ pub struct SpinPeriodResult {
 
 /// Default per-iteration budget handed to `spin_once` by the spin loops.
 ///
-/// phase-427 — the value `spin_blocking` carried as a private `POLL_INTERVAL`
+/// phase-427 — the value ~~`spin_blocking`~~ carried as a private ~~`POLL_INTERVAL`~~
 /// const before [`SpinOptions::poll_interval`] made it a field. It is named
 /// here because two verbs (`Executor::spin`, `Executor::spin_forever`) now
 /// share it, and a second literal is how the two would drift apart.
@@ -477,7 +477,7 @@ impl<'a> ExecutorConfig<'a> {
     /// ## The attribute is ARMED BY A FEATURE — `deprecate-node-name-setter`
     ///
     /// The same shape `nros-log`'s `deprecate-legacy-names` had for the
-    /// `nros_info!` → `log_info!` rename, and for the same reason: this
+    /// ~~`nros_info!`~~ → `log_info!` rename, and for the same reason: this
     /// workspace sets `warnings = "deny"` (root `Cargo.toml`,
     /// `[workspace.lints.rust]`), so an always-armed `#[deprecated]` is not a
     /// warning here — it is 65 hard compile errors across 47 files, in tests,
@@ -588,7 +588,7 @@ pub struct BootConfig<'a> {
 
 /// The environment rung of precedence model A, as VALUES.
 ///
-/// issue 0687 — `try_resolve` used to take `hosted_env: bool` and read the
+/// issue 0687 — `try_resolve` used to take ~~`hosted_env: bool`~~ and read the
 /// process environment itself, which is why this crate needed `std`. A rung is
 /// a set of values, not a place they come from: the hosted edge
 /// (`nros::env::resolve_hosted`) reads `$NROS_LOCATOR`, `$ROS_DOMAIN_ID`,
@@ -599,7 +599,7 @@ pub struct BootConfig<'a> {
 ///
 /// `None` on a field means "the environment did not speak" — resolution falls
 /// through to `baked`, then to the compiled default. The old bool's
-/// `hosted_env=false` is `None` here at the whole-rung level.
+/// ~~`hosted_env=false`~~ is `None` here at the whole-rung level.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct EnvRung<'a> {
     /// `$NROS_LOCATOR` (the retired `ZENOH_LOCATOR` is refused at the edge).
@@ -1378,7 +1378,7 @@ pub type TypedSubscriptionCallback =
 /// `FnMut(&[u8], &RawMessageInfo)` builder path). `attachment` is valid
 /// for `attachment_len` bytes during the call; `attachment_len == 0`
 /// means the sample carried no attachment. Cross-RMW bridges read the
-/// `bridge_origin` tag from it.
+/// bridge_origin tag from it.
 ///
 /// # Safety
 /// `data` is valid for `len` bytes and `attachment` for `attachment_len`
@@ -1655,7 +1655,7 @@ pub struct GuardCondition {
     /// builds the executor sets this to `nros_rmw_runtime_wake_cb`
     /// with `ctx` pointing at the executor's WakeCtx. `trigger`
     /// invokes it after writing the arena flag so a `spin_once`
-    /// blocked on `wake_cv` resumes immediately (sub-poll wake
+    /// blocked on ~~`wake_cv`~~ resumes immediately (sub-poll wake
     /// latency). Bare/no-std builds leave it `None` — the arena
     /// flag is observed on the next spin iteration as before.
     wake_cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
@@ -1951,7 +1951,7 @@ pub fn default_epoch_us_fn() -> Option<fn() -> u64> {
 
 /// RFC-0052 W3b.2 — the default wall-clock source: µs since the UNIX epoch.
 ///
-/// phase-359 W10 — this was `std_epoch_us`, `std`-gated, `SystemTime`. It is
+/// phase-359 W10 — this was ~~`std_epoch_us`~~, `std`-gated, `SystemTime`. It is
 /// the same story the monotonic clock had one commit ago: `rmw-cffi` means a
 /// platform port is linked, every port exports the wall clock, so a hosted
 /// build reads the same source an embedded one does. `SystemTime` survives

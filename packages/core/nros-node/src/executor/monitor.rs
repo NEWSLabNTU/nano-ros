@@ -12,7 +12,7 @@
 //! ring the entry glue drains into the `nros-diagnostics` reporter.
 //!
 //! W3b.5 adds three more rules on the same drain:
-//! - `max-age-runtime` — subscriber take-age (`epoch_now - header.stamp`
+//! - `max-age-runtime` — subscriber take-age (epoch_now - header.stamp
 //!   peeked from the raw CDR buffer at `RosMessage::STAMP_OFFSET`,
 //!   recorded into a [`SubMonitorCell`] on the take path).
 //! - `max-latency-runtime` — node-path (take → publish) latency: the
@@ -65,14 +65,14 @@ pub struct PubMonitorCell {
     /// (swap 0) by the latency check.
     pub max_latency_us: AtomicU32,
     /// Age of the stamp this publisher last put ON THE WIRE, in
-    /// microseconds: `epoch_now - outgoing header.stamp`.
+    /// microseconds: epoch_now - outgoing header.stamp.
     ///
     /// Distinct from `max_latency_us`, which times this node's own
     /// take→publish work. This says how old the DATA is that the node just
     /// published, which is the quantity a chain is made of.
     ///
     /// It exists to answer a question `max-age-runtime` cannot. That rule
-    /// measures `epoch_now - stamp` on the TAKE path, so if every node in a
+    /// measures epoch_now - stamp on the TAKE path, so if every node in a
     /// chain propagates the original stamp -- the usual ROS convention, each
     /// node copying its input's stamp to its output -- the age at the final
     /// consumer already IS the end-to-end latency. If any node re-stamps
@@ -119,7 +119,7 @@ impl PubMonitorCell {
 }
 
 /// One contracted subscriber's take-age accumulator (W3b.5). The take
-/// path records `epoch_now - header.stamp` per message (fetch_max); the
+/// path records epoch_now - header.stamp per message (fetch_max); the
 /// age check drains it (swap 0) per window.
 #[derive(Debug, Default)]
 pub struct SubMonitorCell {

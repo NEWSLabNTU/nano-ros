@@ -217,7 +217,7 @@ impl Default for LifecyclePollingNode {
 
 /// Lifecycle callback taking a user context pointer (`no_std`, C FFI shape).
 ///
-/// Returns a `u8` matching the C `NROS_LIFECYCLE_RET_*` constants
+/// Returns a `u8` matching the C `RCLC_LIFECYCLE_RET_*` constants
 /// (`0 = Success`, `1 = Failure`, `2 = Error`). Any unknown value is
 /// coerced to [`TransitionResult::Error`] inside
 /// [`LifecyclePollingNodeCtx::trigger_transition`].

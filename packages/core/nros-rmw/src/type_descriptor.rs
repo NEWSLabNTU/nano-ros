@@ -60,7 +60,7 @@ static REGISTRAR: Mutex<Option<TypeDescriptorRegistrar>> = Mutex::new(None);
 ///
 /// Called by the descriptor-needing backend during its initialisation
 /// (for Cyclone DDS: `nros_rmw_cyclonedds::install_descriptor_registrar`,
-/// driven by the backend's `RMW_INIT_ENTRIES` self-registration). Idempotent
+/// driven by the backend's ~~`RMW_INIT_ENTRIES`~~ self-registration). Idempotent
 /// — a second install overwrites the slot, which is what re-registering the
 /// same backend does.
 pub fn set_type_descriptor_registrar(registrar: Option<TypeDescriptorRegistrar>) {

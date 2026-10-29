@@ -51,7 +51,7 @@
 //!
 //! # Why the static tables below are not a second spelling of the descriptors
 //!
-//! They would be, if nothing compared them. `plans_match_the_descriptors` (in
+//! They would be, if nothing compared them. ~~`plans_match_the_descriptors`~~ (in
 //! this module's tests) parses every `[board.priority_plan]` /
 //! `[priority_plan]` table in the tree and asserts this file agrees with it,
 //! so the descriptor stays the source and this table stays a projection of it.
@@ -624,7 +624,7 @@ mod tests {
         assert_eq!(for_target.nth_app_priority(0), Some(5));
     }
 
-    /// The pre-0852 band (`READ_PRIORITY=16` on the 0-255 scale) resolves the
+    /// The pre-0852 band (~~`READ_PRIORITY=16`~~ on the 0-255 scale) resolves the
     /// STALE transport band the tier-2 lane tripped over: k_thread 14, the
     /// least urgent preemptive priority, which leaves `pool.app` EMPTY. It is
     /// reported as a zero-width pool rather than silently allocated into.

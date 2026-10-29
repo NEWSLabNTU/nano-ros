@@ -52,7 +52,7 @@ fn main() {
         "NROS_MAX_PARAMETERS",
         rungs.max_parameters,
         // Issue 1649 -- the descriptor's `[params]` alone; the
-        // `NROS_DECLARED_MAX_PARAMETERS` carrier retired onto it.
+        // ~~`NROS_DECLARED_MAX_PARAMETERS`~~ carrier retired onto it.
         contract(params.map(|p| p.max_parameters()), None),
         32,
     );
@@ -366,7 +366,7 @@ fn need(
     fact: Option<nros_sizing_descriptor::Fact<nros_sizing_descriptor::CapacityNeed>>,
 ) -> Option<Need> {
     // Issue 1649 -- the descriptor is the ONE road. The
-    // `NROS_DECLARED_PARAM_NEEDS_*` carriers (cmake configure, Zephyr resolver)
+    // ~~`NROS_DECLARED_PARAM_NEEDS_*`~~ carriers (cmake configure, Zephyr resolver)
     // were retired: zero-diff with them dropped on both, the descriptor named.
     // A `Refused` or `Absent` need reads as "no need", as for an image that
     // declares no `params:`.

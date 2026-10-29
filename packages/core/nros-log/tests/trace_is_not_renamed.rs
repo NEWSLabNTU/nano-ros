@@ -2,11 +2,11 @@
 //!
 //! RFC-0089's rule is "a name takes rclrs's spelling exactly when rclrs HAS
 //! that name". rclrs's severity macros stop at `debug`, so there is no
-//! `log_trace!` to follow, and inventing one would claim an upstream twin that
+//! log_trace! to follow, and inventing one would claim an upstream twin that
 //! does not exist. TRACE is ours (ledger `rust:nros_trace`, verdict
 //! `extension`), so it keeps a name that says so.
 //!
-//! This test outlived the removal of the `nros_debug!` .. `nros_fatal!`
+//! This test outlived the removal of the ~~`nros_debug!`~~ .. ~~`nros_fatal!`~~
 //! forwarders on purpose. Those five had rclrs twins and were retired with the
 //! `deprecate-legacy-names` feature; `nros_trace!` did not and was not. The
 //! assertion is written down rather than left to a comment because the
@@ -76,7 +76,7 @@ fn drain_for(logger_name: &str) -> Vec<Seen> {
 }
 
 /// `nros_trace!` is NOT renamed: rclrs stops at `debug`, so there is no
-/// `log_trace!` to follow. Asserts the macro still exists under that name AND
+/// log_trace! to follow. Asserts the macro still exists under that name AND
 /// still delivers a TRACE record attributed to this call site.
 #[test]
 fn trace_keeps_our_prefix_because_rclrs_has_no_trace() {

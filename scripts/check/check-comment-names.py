@@ -66,6 +66,7 @@ SCOPE = (
     "examples",
     "packages/boards",
     "packages/cli",
+    "packages/core",
     "packages/drivers",
     "packages/platform",
     "packages/testing",

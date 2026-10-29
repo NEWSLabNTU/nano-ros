@@ -317,7 +317,7 @@ pub struct LeafSystem {
     /// them here, in the file it already states everything else in.
     ///
     /// ABSENT MEANS NONE, exactly as it does for a bringup —
-    /// `cmd::entity_facts::declared_infra` reads an empty `execution.features`
+    /// ~~`cmd::entity_facts::declared_infra`~~ reads an empty `execution.features`
     /// as `"none"` for every model in this tree. The claim is worth exactly as
     /// much as the `entities` declaration beside it, which is why it is read
     /// only where that declaration exists.

@@ -271,7 +271,7 @@ fn subs_arena(
         // cmake hands a list over as `;`-separated; be liberal about `,` too.
         .split([';', ','])
         // The depth follows the LAST `=`, so a topic containing one does not
-        // shift the field -- the same rule `_nros_qos_depth_env` states in
+        // shift the field -- the same rule ~~`_nros_qos_depth_env`~~ states in
         // `cmake/NanoRosEntityFacts.cmake`.
         .filter_map(|t| t.rsplit_once('='))
         .filter_map(|(head, d)| {
@@ -447,7 +447,7 @@ fn main() {
     // `needs-type-descriptors`, which the lowering enables when the selected
     // backend declares `type-descriptors` in its `nros-rmw.toml`. It was
     // `__cyclonedds-link`: a core feature named after one backend, flipping a
-    // seam that was already capability-shaped. No `DEP_CYCLONEDDS_*` `links=`
+    // seam that was already capability-shaped. No DEP_CYCLONEDDS_* `links=`
     // probe anymore: the agnostic core has no Cargo dep on the Cyclone
     // crates, so there is no direct edge for cargo's `DEP_*` env-var
     // hand-off. The descriptor registration is a generic vtable seam
@@ -526,7 +526,7 @@ fn main() {
     // issue 1595 / phase-486 W9 -- the descriptor's `[types]
     // max_wire_bound_bytes` is that closure maximum (RFC-0100 Amendment 1), and
     // since W9 an image with no wiring states it too, so the
-    // `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` carrier cmake used to send
+    // ~~`NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`~~ carrier cmake used to send
     // retired. A refused or absent fact (some type in the closure carried no
     // bound) leaves the crate default; a stated rung still wins.
     let rx_buf_size = env_usize_described(
@@ -897,7 +897,7 @@ fn main() {
     // `NROS_SUBSCRIBER_BUFFER_SIZE` -- the backend-agnostic spelling, which is
     // also what the Kconfig symbol has always been called -- so this reads the
     // receive class and not the closure. (This comment said "NOT WIRED YET" and
-    // named `ZPICO_SUBSCRIBER_BUFFER_SIZE` for two phases after the rename;
+    // named ~~`ZPICO_SUBSCRIBER_BUFFER_SIZE`~~ for two phases after the rename;
     // issue 1255's "Also stale".) The island's build shows it: `PUBSUB_REGION =
     // 9768` is 11 x 880 + 88, the 880 receive class, not the 1,496 closure.
     //
@@ -945,7 +945,7 @@ fn main() {
     // property of the declaration, and this lane cannot see it.
     //
     // SUBSCRIPTION-scoped and not the broad count, for the two reasons
-    // `_nros_qos_depth_env` states: the broad count spans kinds this number
+    // ~~`_nros_qos_depth_env`~~ states: the broad count spans kinds this number
     // does not price (issue 1227's measurement, 18 against 11), and since
     // phase-454 W2 a PUBLISHER's contract can move it -- so guarding a
     // subscription price on it would let a publisher declaration resize a
@@ -974,7 +974,7 @@ fn main() {
     // Issue 1655 -- the declared rung is the DESCRIPTOR's
     // (`nros_sizing_descriptor::max_subscription_depth`: the largest
     // subscription depth, refused unless every subscription states one). It
-    // replaced the `NROS_DECLARED_MAX_QOS_DEPTH` carrier, which delivered the
+    // replaced the ~~`NROS_DECLARED_MAX_QOS_DEPTH`~~ carrier, which delivered the
     // same guarded MAX reduced a second time in cmake.
     let pubsub_depth = env_usize(
         "NROS_PUBSUB_QOS_DEPTH",
@@ -2014,7 +2014,7 @@ fn declared_qos_rows(
         }
         // `type|topic=depth`. The depth follows the LAST `=`, so a topic
         // containing one does not shift the field -- the same rule
-        // `_nros_qos_depth_env` states in `cmake/NanoRosEntityFacts.cmake` and
+        // ~~`_nros_qos_depth_env`~~ states in `cmake/NanoRosEntityFacts.cmake` and
         // `subs_arena` follows above.
         let malformed = || -> ! {
             panic!(
@@ -2162,7 +2162,7 @@ struct DeclaredRow {
 /// The same mapping `nros_cli_core::entity_inventory::dds_type_name` applies
 /// when it renders the C/C++ header. Two implementations of one mapping is a
 /// drift surface; this one exists because a build script cannot depend on the
-/// CLI, and `declared_qos::rows_carry_both_spellings` pins the shape.
+/// CLI, and ~~`declared_qos::rows_carry_both_spellings`~~ pins the shape.
 fn dds_type_name(ros: &str) -> String {
     let parts: Vec<&str> = ros.split('/').collect();
     if parts.len() != 3 || parts.iter().any(|p| p.is_empty()) {

@@ -7,6 +7,7 @@
 # it in the comment instead (~~`old_name`~~).
 
 # zenoh-pico and the zenoh protocol
+DownsamplingItemConf
 InitAck
 OpenSyn
 PublicationCache
@@ -23,14 +24,17 @@ _z_f_link_tcp
 _z_link_clear
 _z_link_free
 _z_link_send_t_msg
-_z_query
 _z_locators_by_scout
 _z_open
+_z_query
+_z_slist_new
 _z_transport_unicast_handle_frag
 _zp_unicast_lease_task
+g_session
 max_links
 next_lease
 socket_wait_event
+z_publisher_put_options::attachment
 z_serialize_uint32
 z_task_wrapper
 zp_read
@@ -106,11 +110,12 @@ tx_timer_change
 
 # Zephyr
 CONF_FILE_BUILD_TYPE
-SB_CONFIG_BOOTLOADER_MCUBOOT
-Zephyr_DIR
 GpioPin::new
 LOG_MODE_IMMEDIATE
+POSIX_TO_ZEPHYR_PRIORITY
 QEMU_FLAGS_
+SB_CONFIG_BOOTLOADER_MCUBOOT
+Zephyr_DIR
 _system_heap
 arch_proc_id
 atomic_set
@@ -143,23 +148,28 @@ sporadic_alloc_repl
 task_create
 
 # CycloneDDS
-cdds_request_header_t
 DomainGain
 ParticipantGain
 UnicastDataOffset
 UnicastMetaOffset
+cdds_request_header_t
+create_readwrite_qos
+dds_stream
+dds_take
 ddsi_udp_create_conn
 ddsrt_gettid
+fixed_size
 thread_states_init
 validate_history_qospolicy
 
 # POSIX, Linux, libc and newlib
-ETXTBSY
 AF_UNIX
 EM_RISCV
+ETXTBSY
 HRTICK_DL
 IFNAMSIZ
 INADDR_NONE
+INT64_MIN
 LD_PRELOAD
 O_EXCL
 PTHREAD_PRIO_NONE
@@ -178,6 +188,7 @@ _reclaim_reent
 _strtol_r
 _unlink_r
 _write_r
+eventfd_write
 io_destroy
 lldiv_t
 pthread_attr_getstack
@@ -188,6 +199,7 @@ register_fini
 timer_getoverrun
 
 # C and C++ toolchains
+NOLOAD
 R_RISCV_PCREL_HI20
 _GLIBCXX_USE_CLOCK_MONOTONIC
 include_next
@@ -213,6 +225,7 @@ YIELD
 
 # The DDS specification
 DATA_FRAG
+D_CDR2_LE
 DcpsDomainParticipant
 data_representation
 
@@ -223,51 +236,84 @@ ivc_init_channels_ccplex
 print_msg
 
 # ROS 2
+ClockType::ROS_TIME
+GetTransitionGraph
 InteractiveMarker
+ParticipantEntitiesInfo
+QosPresets::PARAMETERS
+RCLCPP_TRACE_THROTTLE
+RMW_ZENOH_DEFAULT_HISTORY_DEPTH
+TimeSource
 action_tutorials
+action_tutorials_py
 calculate_type_hash
+call_async
 convert_camel_case_to_lower_case_underscore
 expand_template
 get_idl_type
-manual_composition
-rosidl_runtime_c__type_description__FieldType
-ParticipantEntitiesInfo
-action_tutorials
-action_tutorials_py
-call_async
+get_rmw_implementation_identifier
 get_ros_domain_id
 if_condition
+is_cancel_requested
+manual_composition
+max_serialized_size_T
+qos_profile_get_best_available_for_
+qos_profile_update_best_available_for_services
+rcl_logging_rosout_add_sublogger
+rcl_logging_rosout_output_handler
+rclc_parameter_server_set_service_callback
+rclcpp::TimeSource
+result_timeout
+rosidl_runtime_c__type_description__FieldType
+rosidl_typesupport_c
 set_logger_level
+validate_parameter_setting
 
 # Rust: std, cargo, rustc and clippy lints, cc-rs, embassy, smoltcp, Verus
+Box::try_new
 CARGO_INCREMENTAL
 CARGO_PROFILE_NROS_RELWITHDEBINFO_INCREMENTAL
 CXX_thumbv7m_none_eabi
+E0080
 E0152
+E0252
 LineWriter
 Literal::u8_suffixed
+Spacing
+Spacing::Joint
 Stdout
+Timer::after_secs
+TryStreamExt::try_next
 UnitDependencyInfoChanged
+alloc::alloc::handle_alloc_error
+alloc_error_handler
+alloc_error_hook
 c_variadic
+clippy::cast_slice_different_sizes
+clippy::format_in_format_args
 clippy::if_same_then_else
 clippy::manual_contains
 clippy::unnecessary_sort_by
-E0252
-LineWriter
-Stdout
-UnitDependencyInfoChanged
-c_variadic
-clippy::format_in_format_args
+default_alloc_error_hook
+default_constructed_unit_structs
+deref_addrof
+embassy_futures::select
 embassy_sync::channel::Channel
 external_body
 fn_to_numeric_cast
 get_base_compiler
 handle_alloc_error
+invalid_type_param_default
 is_flag_supported
 lang_start
 leave_multicast_group
+linkme::distributed_slice
 panic_impl
+proc_macro::tracked_env::var
+proc_macro::tracked_path::path
 result_large_err
+tracked_path
+try_reserve
 unnecessary_sort_by
 unused_doc_comments
 
@@ -296,12 +342,14 @@ workspace_toml_dir
 # Python
 OrderedDict
 unicode_escape
+
 # Micro XRCE-DDS and PX4
 DELETE_CLIENT
 UXRCE_DDS_DOM_ID
 UXRCE_DDS_PRT
 UXR_VERBOSE_LEVEL_TRACE
 on_full_input_buffer
+optional_history_depth
 rcS
 read_format_data
 rmw_microxrcedds
@@ -314,8 +362,13 @@ m_typeSize
 related_sample_identity
 
 # play_launch and ros-launch-manifest
+MapperMiss::requires_detection
 UPDATE_RANKED_PLAN_SNAPSHOT
 core_id
+host_name
+max_response
+node_exec_ms
+rt_priority_band
 
 # git
 GIT_INDEX_FILE

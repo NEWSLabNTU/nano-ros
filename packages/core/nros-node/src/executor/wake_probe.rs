@@ -3,10 +3,10 @@
 //! Two probe points on the executor's wake path:
 //!
 //! - [`on_wake`]: called from `nros_rmw_runtime_wake_cb` (std +
-//!   alloc-mode variants). Captures `T0` — the cycle count at
+//!   alloc-mode variants). Captures T0 — the cycle count at
 //!   "transport notified executor".
 //! - [`on_dispatch`]: called from the arena dispatch site when a
-//!   subscription bit fires. Reads `T1` — "subscription callback
+//!   subscription bit fires. Reads T1 — "subscription callback
 //!   ran" — and stores `(T1 - T0)` in the lock-free ring at
 //!   [`SAMPLES`].
 //!
@@ -53,7 +53,7 @@ static SAMPLES: [AtomicU64; PROBE_SAMPLE_CAP] = [const { AtomicU64::new(0) }; PR
 /// "ring wrapped 10× since boot".
 static WRITE_IDX: AtomicU32 = AtomicU32::new(0);
 
-/// Most-recent `T0` (wake-cb entry cycle count). `on_dispatch`
+/// Most-recent T0 (wake-cb entry cycle count). `on_dispatch`
 /// reads + clears via swap so a wake that fires but never
 /// dispatches doesn't pollute the next pairing. `0` is the
 /// "no pending wake" sentinel.
@@ -99,7 +99,7 @@ fn read_cycles() -> Option<u64> {
 /// Called from `nros_rmw_runtime_wake_cb` (both std + alloc
 /// variants). Captures the entry cycle count into
 /// `LAST_WAKE_TICKS` so the matching `on_dispatch` can compute
-/// `T1 - T0`.
+/// T1 - T0.
 ///
 /// O(1), allocation-free, lock-free. Safe to call from any
 /// context the wake-cb itself is safe in (notably NOT ISR-safe
@@ -119,7 +119,7 @@ pub fn on_wake() {
 
 /// Called at the top of arena dispatch when a subscription bit
 /// fires (`packages/core/nros-node/src/executor/spin.rs`
-/// dispatch loop). Computes `T1 - T0` and pushes it into the
+/// dispatch loop). Computes T1 - T0 and pushes it into the
 /// ring buffer. No-op if no pending wake (paired `on_wake`
 /// already drained, or no wake fired since the last dispatch).
 ///
@@ -248,7 +248,7 @@ impl Histogram {
     }
 
     /// Compute the percentile bucket edge. Returns `(edge_ns,
-    /// rank)` where `edge_ns` is the upper bound of the bucket
+    /// rank)` where edge_ns is the upper bound of the bucket
     /// the `pct`-th sample lands in. `pct` is `[0, 100]`; values
     /// outside saturate. Useful for on-device P99 reporting
     /// (logging the bucket edge avoids needing the host harness
@@ -350,7 +350,7 @@ pub type HistogramEdges = [(u64, u32); HISTOGRAM_BUCKETS];
 ///
 /// Returns `(buckets, total)` where `buckets` is a length-
 /// [`HISTOGRAM_BUCKETS`] array of `(edge_ns, count)`. Caller can
-/// pass through to [`p99_ns`] etc. Returns `Err(&'static str)`
+/// pass through to [`percentile_ns`] etc. Returns `Err(&'static str)`
 /// when the format doesn't match the v1 contract.
 // phase-359 W10 — no `std` in the body: `str::lines`, `str::parse` and
 // `&'static str` errors are all `core`. The gate was describing WHO calls this

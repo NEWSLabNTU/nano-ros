@@ -161,7 +161,7 @@ static SLOT: Mutex<Option<NrosTransportOps>> = Mutex::new(None);
 /// after `Rmw::open` is implementation-defined, which is also what the
 /// C entry point `rclc_set_custom_transport` documents. This line
 /// used to say backends "reject re-registration with
-/// `ALREADY_INIT`" — `rmw_ret.h` defines no such code
+/// ALREADY_INIT" — `rmw_ret.h` defines no such code
 /// (issue 1126), so the sentence promised both a behaviour and a
 /// constant that do not exist.
 ///

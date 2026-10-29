@@ -3227,7 +3227,7 @@ mod tests {
     /// phase-382 W1' measured, in one line.
     ///
     /// The dominant local of every streaming handler is one internal
-    /// `ParameterValue` — the value `read_parameter_value` builds for the
+    /// `ParameterValue` — the value ~~`read_parameter_value`~~ builds for the
     /// parameter in flight. It replaces a by-value `SetParametersRequest` on
     /// the calling task's stack. This is a DOMINANT-LOCAL bound, not a full
     /// stack profile.

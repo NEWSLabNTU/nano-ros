@@ -83,15 +83,15 @@ pub mod clock;
 /// whole character is that it is silent.
 pub mod codegen_version;
 // issue 0783 — there is no `error` module here any more, and its absence is the
-// decision. It held `NanoRosError { code: RclReturnCode, context, nested }`, a
+// decision. It held ~~`NanoRosError { code: RclReturnCode, context, nested }`~~, a
 // phase-16 rclrs-shaped error, plus `RclReturnCode` (an `rcl_ret_t` numeric
-// mirror), `ErrorContext`, `NestedError`, `NanoRosErrorFilter` and
+// mirror), ~~`ErrorContext`~~, ~~`NestedError`~~, ~~`NanoRosErrorFilter`~~ and
 // `TakeFailedAsNone`. Phase 84.D1 settled `NodeError` (nros-node) as the single
 // user-facing error and deferred "folding NanoRosError into NodeError"; the fold
 // never happened and nothing ever called the type. It was reachable from no
 // public API: the `nros` facade never re-exported it, and this crate's own
 // `RosAction::register_protocol_types` returns `Result<(), ()>` with a comment
-// saying it cannot name an error type — with `NanoRosError` sitting in the same
+// saying it cannot name an error type — with ~~`NanoRosError`~~ sitting in the same
 // crate. RFC-0036's Errors row described it as the Rust user error for two
 // years, which is the cost this deletion removes.
 pub mod lifecycle;

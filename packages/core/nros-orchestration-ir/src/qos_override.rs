@@ -146,7 +146,7 @@ pub const MODELLED_POLICIES: [(&str, bool); 8] = [
 // `qos_overrides.*` parameters. The launch CONTRACT states the same three
 // policies in the same three vocabularies (`QosDecl::{reliability, durability,
 // history}` in the pinned `ros-launch-manifest`), and nano-ros dropped them at
-// `depth_of` -- issue 1256.
+// ~~`depth_of`~~ -- issue 1256.
 //
 // W3 makes them travel, which means a SECOND reader of the same spellings. A
 // second reader is a second vocabulary unless it is the same function, and this

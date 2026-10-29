@@ -243,7 +243,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
     let node_ty = parse_macro_input!(input as Path);
 
     // Phase 212.N.7 step-3.4 — the package-name string handed to
-    // `register_dispatch_slot_dyn` (diagnostics) +
+    // ~~`register_dispatch_slot_dyn`~~ (diagnostics) +
     // `RuntimeError::ComponentRegister` is the sanitised pkg-name used by
     // the codegen-emitted `run_plan` to reference each Node pkg, so
     // the two strings round-trip 1:1.
@@ -503,7 +503,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
         /// same `nros::__macro::install_node_typed` path the C / C++ typed entries
         /// use — via a raw `*mut Executor` the runtime sink exposes
         /// (`executor_handle()`), replacing the legacy opaque four-fn-ptr
-        /// `register_dispatch_slot_dyn` bridge. The installed component
+        /// ~~`register_dispatch_slot_dyn`~~ bridge. The installed component
         /// enrolls in the executor's tick registry, so service-client /
         /// action poll nodes tick (phase-257 D2 closed for owned-spin too).
         ///
