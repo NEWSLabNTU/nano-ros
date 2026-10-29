@@ -12,7 +12,7 @@
 //!
 //! This replaces the orphaned+bit-rotted `tests/borrowed_{c,cpp}_e2e.sh` (#0423).
 //! The two rots that killed those — the RFC-0042 platform.h move and the
-//! `nros_config_variant_sz_*` guard (a standalone `nros-c` can't size the executor,
+//! ~~`nros_config_variant_sz_*`~~ guard (a standalone `nros-c` can't size the executor,
 //! so its archive lacks the anchor the config header imports) — are handled in the
 //! recipe: it adds the nros-platform-api include and links a matching WEAK variant
 //! anchor (the guard is EXECUTOR-size-based, and borrowed views touch only the CDR

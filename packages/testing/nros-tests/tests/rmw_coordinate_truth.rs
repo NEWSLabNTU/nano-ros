@@ -1,6 +1,6 @@
 //! A fixture row's `rmw` must be what the artifact actually LINKED (issue 0831).
 //!
-//! `row_coord()` puts an RMW in every row's coordinate, `nros_lane` selects on
+//! `row_coord()` puts an RMW in every row's coordinate, `nros_lane_build_lane` selects on
 //! it, and tier 2 reports coverage per coordinate. None of that ever looked at
 //! the binary. It was wrong for two rows and had been for as long as they
 //! existed: `workspace-rust-native-cyclonedds` and `workspace-rust-native-xrce`

@@ -273,6 +273,7 @@ exempt.
 | 1 | `examples/`, `packages/{drivers,platform,tooling,verification}` | 286 | 88 | 91 | the rest |
 | 2 | `packages/boards` | 190 | 53 | 70 | the rest |
 | 3 | `packages/cli` | 276 | 136 | 50 | the rest |
+| 4 | `packages/testing` | 290 | 163 | 56 | the rest |
 
 ### C — rclc / rcl
 

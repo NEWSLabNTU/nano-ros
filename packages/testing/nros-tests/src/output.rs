@@ -61,7 +61,7 @@ pub const TALKER_READY_MARKER: &str = TALKER_LOG_PREFIX;
 pub const LISTENER_READY_MARKER: &str = "Subscriber created for topic:";
 
 /// Readiness marker for the SAFETY chatter listener
-/// (`safety_chatter_listener`), which prints
+/// (~~`safety_chatter_listener`~~), which prints
 /// `Safety subscriber created for topic: /chatter`.
 ///
 /// Deliberately a separate constant rather than a prefix of
@@ -661,7 +661,7 @@ pub const FREERTOS_ASSERT_FAILED: &str = "FreeRTOS ASSERT FAILED";
 /// definition. Kept as a constant here rather than a literal at the grep site
 /// because a slimmed banner has broken ~10 tests before; kept as a MIRROR rather
 /// than a re-export because `nros-tests` reaches this module without the zenoh
-/// backend in every feature set. `pool_exhaustion_marker_matches_the_backend`
+/// backend in every feature set. ~~`pool_exhaustion_marker_matches_the_backend`~~
 /// (in the consuming test) asserts the two agree wherever both are present.
 pub const ZENOH_SESSION_POOL_EXHAUSTED: &str = "zenoh session pool exhausted";
 
@@ -1146,8 +1146,8 @@ pub const THREADX_PREEMPT_MARKER: &str = "nros: preempt threshold set tier=";
 
 /// Emitted by the Zephyr board when the kernel ACCEPTED a tier's CPU pin
 /// (phase-296 W5.11, the `placement` dim). MIRRORS the `::log::info!` prefix
-/// in `nros-board-zephyr/src/entry_tiers.rs` (`apply_tier_core_pin`) AND the
-/// `printk` literal in the C/C++ arm's `zephyr_apply_core_pin`
+/// in `nros-board-zephyr/src/entry_tiers.rs` (`apply_boot_tier_core_pin`) AND the
+/// `printk` literal in the C/C++ arm's `zephyr_apply_boot_core_pin`
 /// (`nros-board-zephyr/c/zephyr_run_tiers.c`) — keep all three in lockstep
 /// (the no_std board crate cannot depend on this crate).
 pub const ZEPHYR_CORE_PIN_MARKER: &str = "nros: core pin tier=";

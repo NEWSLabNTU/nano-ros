@@ -1236,7 +1236,7 @@ pub fn get_prebuilt_zephyr_example(
 /// `<build_root>/build-ws-rs-entry-zenoh/zephyr/zephyr.exe`.
 const ZEPHYR_WORKSPACE_ENTRY_BUILD_DIR: &str = "build-ws-rs-entry-zenoh";
 
-/// Source-tree key handed to [`is_binary_stale`] for the workspace Entry.
+/// Source-tree key handed to ~~`is_binary_stale`~~ for the workspace Entry.
 /// It is not a `decode_alias` name (the Entry has no role/RMW alias), so
 /// the decoder falls through to `None` — which makes staleness watch the
 /// whole `examples/workspaces/rust` tree plus every shared core/rmw crate
@@ -1311,7 +1311,7 @@ fn core_crate_is_watched(crate_name: &str, lang_api_crate: Option<&str>) -> bool
 /// The one implementation of "is this Zephyr image older than the sources it was
 /// built from", keyed on a source DIRECTORY rather than an example alias.
 ///
-/// Issue 0466 — this used to be reachable only through an `is_binary_stale`
+/// Issue 0466 — this used to be reachable only through an ~~`is_binary_stale`~~
 /// wrapper keyed on a `decode_alias` NAME, so it covered the per-example leaves and
 /// exactly ONE workspace entry. Every other entry (params, lifecycle, qos,
 /// safety, multihost, the three realtime ones, and the C/C++/mixed entries) went
@@ -1324,7 +1324,7 @@ fn core_crate_is_watched(crate_name: &str, lang_api_crate: Option<&str>) -> bool
 /// failed with product-level assertions that sent two sessions (0460, then this
 /// one) looking at the product instead of the image.
 ///
-/// Worse for C and C++: `zephyr_staticlib_dep_file` looks for `librustapp.d`, a
+/// Worse for C and C++: ~~`zephyr_staticlib_dep_file`~~ looks for `librustapp.d`, a
 /// C-only image has none, and the helper then returns `Ok` — those entries had
 /// NO freshness check at all, only an existence check.
 ///

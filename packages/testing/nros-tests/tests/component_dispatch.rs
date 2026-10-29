@@ -5,7 +5,7 @@
 //! wrapper through the uniform `install_node_typed` seam: it reads the executor
 //! handle from `RuntimeCtx::runtime.executor_handle()` and enrolls the
 //! component into the executor's tick registry (the same seam the C/C++ typed
-//! entries use), replacing the retired four-fn-ptr `register_dispatch_slot_dyn`
+//! entries use), replacing the retired four-fn-ptr ~~`register_dispatch_slot_dyn`~~
 //! bridge.
 //!
 //! This test covers that path end-to-end (callback fires + the publisher

@@ -163,7 +163,7 @@ fn ros_edition_interop(#[case] rmw: Rmw, #[case] workload: Workload, #[case] dir
         // ── pub/sub (std_msgs/String on /chatter) ────────────────────────────
         //
         // phase-338 W3 — these two cases used to force the examples onto Int32
-        // with `NROS_PUB_TYPE` / `NROS_SUB_TYPE`. The type was arbitrary here
+        // with ~~`NROS_PUB_TYPE`~~ / ~~`NROS_SUB_TYPE`~~. The type was arbitrary here
         // (the edition axis is about type_hash + keyexpr format, not the
         // payload), so both now use the examples' DEFAULT `std_msgs/String` —
         // the official ROS 2 demo type — and the test-only switch is gone.

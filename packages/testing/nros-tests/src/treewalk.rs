@@ -19,7 +19,7 @@
 //!
 //! What the divergence cost:
 //!
-//! - `examples_canonical_shape` walked 48 cargo target dirs and blew past
+//! - ~~`examples_canonical_shape`~~ walked 48 cargo target dirs and blew past
 //!   nextest's 60s timeout — but only on a machine that had run the native RMW
 //!   sweep, so it stayed green on fresh checkouts and failed for whoever was
 //!   doing the work.

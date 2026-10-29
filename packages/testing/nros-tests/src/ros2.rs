@@ -1074,7 +1074,7 @@ pub struct TopicEndpoint {
 /// Every endpoint in a `ros2 topic info -v` report, in the order listed.
 ///
 /// Issue 0690 — [`topic_endpoint_block`] returns the FIRST block of a kind, and
-/// a topic can carry more than one. `case_08_c_qos` failed in-sweep and passed
+/// a topic can carry more than one. case_08_c_qos failed in-sweep and passed
 /// solo with the publisher advertising exactly the C default profile, which is
 /// what reading a FOREIGN endpoint's profile looks like; the same binaries
 /// passed and failed, so it was never a product regression.
@@ -2407,7 +2407,7 @@ QoS profile:
 ";
 
         // Positional reads the foreign block — the default profile, which is
-        // what `case_08_c_qos` reported when it failed in-sweep.
+        // what case_08_c_qos reported when it failed in-sweep.
         let positional = topic_endpoint_block(FOREIGN_FIRST, "PUBLISHER").unwrap();
         assert!(
             positional.contains("Durability: VOLATILE"),
@@ -2549,7 +2549,7 @@ mod fingerprint_tests {
 /// Who else is on the DDS bus, captured WHILE the peers are still alive.
 ///
 /// Issue 0741 — the failing host and two passing hosts have now matched on every
-/// static axis, including the `libfastrtps` / `librmw_fastrtps_cpp` binaries
+/// static axis, including the `libfastrtps` / librmw_fastrtps_cpp binaries
 /// byte for byte. If the software is identical, the remaining difference is
 /// what ELSE is on the bus, and that is not something a version comparison can
 /// reach.

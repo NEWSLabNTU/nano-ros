@@ -3,9 +3,9 @@
 //! Consolidates the per-cell native workspace-workload files —
 //! `{c_,cpp_,mixed_}custom_msg_workspace_e2e`,
 //! `{,c_,cpp_,mixed_}logging_workspace_e2e`,
-//! `{c_,cpp_,mixed_}qos_workspace_e2e`, `lifecycle_workspace_e2e` +
-//! `cpp_c_lifecycle_autostart_e2e`, and `safety_workspace_e2e` +
-//! `cpp_c_safety_integrity_e2e` — into one parametrized test over the
+//! `{c_,cpp_,mixed_}qos_workspace_e2e`, ~~`lifecycle_workspace_e2e`~~ +
+//! ~~`cpp_c_lifecycle_autostart_e2e`~~, and ~~`safety_workspace_e2e`~~ +
+//! ~~`cpp_c_safety_integrity_e2e`~~ — into one parametrized test over the
 //! native `Workload::{CustomMsg,Logging,Qos,Lifecycle,Safety,Remap}` workspace
 //! cells of the test matrix (`nros_tests::matrix`). The task list named
 //! only the two rust lifecycle/safety files, but the C/C++ halves of those
@@ -744,7 +744,7 @@ fn run_cell(pcell: &MCell) {
                 //
                 // `topic_endpoint_block` returns the FIRST block of a kind, so
                 // any other publisher on `/chatter` could be the one asserted
-                // against. That is what `case_08_c_qos` did when it failed
+                // against. That is what case_08_c_qos did when it failed
                 // in-sweep and passed solo: the profile it printed was exactly
                 // the C default profile, i.e. somebody else's endpoint.
                 //

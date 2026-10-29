@@ -78,7 +78,7 @@ extern "C" fn main() -> ! {
             .node_mut(nid)
             .create_subscription::<Int32, _>(TOPIC, |_msg: &Int32| {
                 // The probe's `on_dispatch` hook fires before this runs and
-                // captures `T1 - T0`; we also count deliveries for loop exit.
+                // captures T1 - T0; we also count deliveries for loop exit.
                 RX.fetch_add(1, Ordering::Relaxed);
             })?;
 

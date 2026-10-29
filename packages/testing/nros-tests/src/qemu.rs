@@ -963,7 +963,7 @@ impl QemuProcess {
             // Pin egress to lo so the host kernel loops mcast back
             // to the sibling QEMU. Requires
             // `sudo ip route add 230.10.0.0/16 dev lo` on the host;
-            // `require_mcast_route` below prints a clear hint when
+            // ~~`require_mcast_route`~~ below prints a clear hint when
             // missing.
             &format!("socket,id=net0,mcast={mcast_addr_port},localaddr=127.0.0.1"),
             "-device",

@@ -5,7 +5,7 @@
 //! agreement is only worth what a gate proves, so rlm ships the fixture and
 //! the byte-for-byte `RankedPlan` snapshot both consumers compare against:
 //! rlm's own `derive/tests/parity.rs`, play_launch's
-//! `every_contract_fixture_ranks_to_its_committed_plan`, and this file.
+//! ~~`every_contract_fixture_ranks_to_its_committed_plan`~~, and this file.
 //!
 //! Provenance. Both files under
 //! `fixtures/contract_derived_chain_parity/` are copies of

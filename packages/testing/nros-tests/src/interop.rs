@@ -53,7 +53,7 @@ pub enum BuildChannel {
 impl BuildChannel {
     /// The `just` recipe that builds this channel's artifacts — NAMED, not
     /// invoked. Gated against the justfile by G2 the way `PlatformId::just_module`
-    /// is by `just_module_names_a_real_module`.
+    /// is by ~~`just_module_names_a_real_module`~~.
     pub const fn build_recipe(self) -> &'static str {
         match self {
             BuildChannel::LinuxFixtures => "just linux build-fixtures",
@@ -658,7 +658,7 @@ pub const CELLS: &[InteropCell] = &[
     // against a keyexpr OUR OWN builder produced.
     //
     // Note what our ABI does NOT have: an incompatible-QoS kind. Upstream's
-    // `RMW_EVENT_OFFERED_QOS_INCOMPATIBLE` / `REQUESTED_QOS_INCOMPATIBLE` have no
+    // `RMW_EVENT_OFFERED_QOS_INCOMPATIBLE` / REQUESTED_QOS_INCOMPATIBLE have no
     // counterpart in `rmw_event_type_t`, so the cheapest event to provoke from a
     // stock peer is not one we can represent.
     ic("native-qos-event-rust-zenoh-r2n",
@@ -719,7 +719,7 @@ pub const NO_CELL: &str = "(no cell — evidence for none)";
 /// (`scripts/check-interop-verdicts.py`) attributed a junit case to the BINARY,
 /// so every case of `interop_e2e` was evidence — and counter-evidence — for all
 /// five of its cells at once: one failing case (issue 1190's
-/// `case_2_zenoh_pubsub_ros2_to_nano`) refused a recording for the four cells
+/// case_2_zenoh_pubsub_ros2_to_nano) refused a recording for the four cells
 /// whose own cases had all passed.
 ///
 /// A coordinate cannot do this job. `native-action-rust-cyclone-{r2n,n2r}` are
@@ -792,7 +792,7 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     // (tests/interop_e2e.rs), and those five coordinates are distinct, so the
     // assignment is the one the per-case tripwire already asserts — written
     // where a tool without a compiler can read it. Direction does NOT split a
-    // cell: `case_02`/`case_03`/`case_10` run ROS-2-to-nano against the cell whose id ends
+    // cell: case_02/case_03/case_10 run ROS-2-to-nano against the cell whose id ends
     // `-n2r`, exactly as `coords_for` collapses the two.
     co("interop_e2e", "interop::case_01_zenoh_pubsub_nano_to_ros2",      "native-pubsub-rust-zenoh-n2r"),
     co("interop_e2e", "interop::case_02_zenoh_pubsub_ros2_to_nano",      "native-pubsub-rust-zenoh-n2r"),
@@ -804,7 +804,7 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     co("interop_e2e", "interop::case_08_cyclone_service_nano_server",    "native-service-c-cyclone-r2n"),
     co("interop_e2e", "interop::case_09_zenoh_lifecycle_full_cycle",     "native-lifecycle-rust-zenoh"),
     // phase-516 W1c — a ros2 flood through the router rule to the nano
-    // listener: ROS-2-to-nano on the pubsub cell, like `case_02`.
+    // listener: ROS-2-to-nano on the pubsub cell, like case_02.
     co("interop_e2e", "interop::case_10_zenoh_pubsub_router_downsampling", "native-pubsub-rust-zenoh-n2r"),
 
     // ── pubsub_freertos_an536_cyclone_ros2_interop_e2e — phase-441 W6 ───

@@ -1,7 +1,7 @@
 //! issue 0096 (regression guard) — runtime E2E for the IN-PROCESS (same-executor,
 //! same zenoh session) declarative `AddTwoInts` service round-trip.
 //!
-//! This is the in-process sibling of `service_roundtrip_xprocess_e2e`. Where that test
+//! This is the in-process sibling of ~~`service_roundtrip_xprocess_e2e`~~. Where that test
 //! boots the server and client as two SEPARATE processes (the cross-process topology that
 //! always worked), this one boots BOTH `add_server` and `add_client` on one executor via
 //! `linux_service_inprocess_entry` (`service_inprocess.launch.xml`) — a single process

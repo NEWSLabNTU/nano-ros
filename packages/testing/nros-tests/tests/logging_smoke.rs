@@ -92,7 +92,7 @@ fn strip_clock(output: &str) -> String {
 /// issue 0422 — the `qemu` in the NAME is load-bearing, for the reason spelled
 /// out on `logging_smoke_threadx_linux_captures_stderr` below. The token must
 /// come from the `PlatformId` variant's LEADING word, which for this fixture is
-/// `QemuBaremetal` -> `qemu`. It was named `mps2_baremetal`, and neither `mps2`
+/// `QemuBaremetal` -> `qemu`. It was named ~~`mps2_baremetal`~~, and neither `mps2`
 /// nor `baremetal` is a token: `FreertosMps2` contributes `freertos`, so `mps2`
 /// never enters the set at all. Tier 1 therefore selected this test and failed
 /// it on a fixture only `just qemu build-fixtures` produces.
@@ -240,8 +240,8 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
 /// issue 0407 — the `threadx_linux` token in the NAME is load-bearing, not
 /// decoration. `scripts/test/lane-filter.sh` excludes a platform's cases from
 /// another lane by matching platform tokens in the binary AND test names
-/// (issue 0357), and every sibling here carries one (`freertos_mps2`,
-/// `nuttx_qemu_arm`, `threadx_riscv64`, `esp32_qemu`, `qemu_baremetal_mps2`).
+/// (issue 0357), and every sibling here carries one (freertos_mps2,
+/// nuttx_qemu_arm, `threadx_riscv64`, `esp32_qemu`, qemu_baremetal_mps2).
 ///
 /// That list was wrong when first written: it counted the bare-metal test as
 /// tokenised on the strength of `mps2`, which is NOT a token — `FreertosMps2`

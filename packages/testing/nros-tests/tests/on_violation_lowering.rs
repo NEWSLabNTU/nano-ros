@@ -45,7 +45,7 @@ use ros_launch_manifest_model::SystemModel;
 
 /// One contracted node, one declared tier, one reaction path.
 ///
-/// `MISS` and `TIER_POLICY` are substituted so the three cases differ by
+/// `MISS` and TIER_POLICY are substituted so the three cases differ by
 /// exactly the line under test.
 fn fixture(miss: &str, tier_policy: &str) -> String {
     format!(

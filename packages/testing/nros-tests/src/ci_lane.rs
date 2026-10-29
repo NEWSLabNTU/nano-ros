@@ -1237,8 +1237,8 @@ _tier-build:
             );
 
             // nextest's `~` is a case-SENSITIVE substring match and the harnesses
-            // disagree on spelling: rstest emits `platform_1_Platform__Freertos`,
-            // hand-rolled matrices emit `case_05_zephyr_rust`. One spelling
+            // disagree on spelling: rstest emits platform_1_Platform__Freertos,
+            // hand-rolled matrices emit case_05_zephyr_rust. One spelling
             // silently covers half the suite.
             let mut cap = family.clone();
             cap[..1].make_ascii_uppercase();

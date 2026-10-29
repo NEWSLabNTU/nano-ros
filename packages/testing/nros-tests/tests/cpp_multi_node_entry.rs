@@ -6,7 +6,7 @@
 //! Configuring + building `examples/templates/multi-node-workspace-cpp/` produces
 //! a generated TU that constructs each launch node's **component object** + calls
 //! `configure(node)` + `LinuxBoard::run_components` — NOT the legacy
-//! register-symbol → `EntryNodeRuntime` interpreter call.
+//! register-symbol → ~~`EntryNodeRuntime`~~ interpreter call.
 //!
 //! The cmake configure + build run in the **build stage** — the
 //! `cpp_robot_entry` cmake fixture (`compile-check-fixtures.sh`, run by
@@ -222,7 +222,7 @@ fn multi_node_workspace_cpp_typed_pubsub_e2e(
 ///     dropped the #104 primary token when per-node tokens with different names
 ///     appeared.
 ///
-/// Single-node coverage: `test_discovery_node_visible` in `rmw_interop.rs`
+/// Single-node coverage: ~~`test_discovery_node_visible`~~ in `rmw_interop.rs`
 /// already asserts a single-node talker entry shows `/talker` (gate keep-primary
 /// branch); no new test needed here.
 #[rstest::rstest]

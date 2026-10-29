@@ -5,7 +5,7 @@
 //!
 //! `ws-lifecycle-cpp`'s `linux_managed_entry` boots `ManagedTalker`, a managed node
 //! written with the wrapper (NOT the phase-269 entry-autostart codegen — its
-//! `managed_bringup` has no `[lifecycle]` block). In its install hook the node
+//! ~~`managed_bringup`~~ has no `[lifecycle]` block). In its install hook the node
 //! `bind()`s the executor, `register_services()` (binding the `on_*` trampolines), and
 //! `autostart(rclcpp_lifecycle::LifecycleState::Active)` — driving Configure→Activate through the
 //! wrapper so the rclcpp-shape overrides fire.

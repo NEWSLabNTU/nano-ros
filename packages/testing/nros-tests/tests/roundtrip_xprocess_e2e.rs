@@ -510,7 +510,7 @@ fn run_cell(pcell: &MCell) {
 ///
 /// `add_server` / `add_client` come from `service_server_pkg` /
 /// `service_client_pkg` via `@NROS_ENTRY_NODE_NAME@`; they are the two entries
-/// `native_c_service` already runs together, so this needs no new fixture.
+/// native_c_service already runs together, so this needs no new fixture.
 #[test]
 fn two_template_built_entries_register_distinct_names() {
     let server = build_native_workspace_c_service_server_entry()

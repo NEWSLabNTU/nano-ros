@@ -26,7 +26,7 @@
 //!   write filter closed).
 //!
 //! Cell nuances carried over (see each case's `note`): the native
-//! `cpp_rclcpp` cell is the issue-#124 proof that IS-A-node rclcpp-shape
+//! cpp_rclcpp cell is the issue-#124 proof that IS-A-node rclcpp-shape
 //! components land on their tier via the phase-272 `node_name →
 //! sched_context` table; the nuttx cells pin `NuttxBoard::run_tiers`
 //! (pthread per tier, phase-281/285/#199); the zephyr cells pin
@@ -551,8 +551,8 @@ fn guest_console(guest: &mut Guest) -> String {
 ///
 /// Issue 0570 — the first cut printed only the LAST 25 lines, which is right for
 /// a guest that simply stopped producing and WRONG for one that crashed: a NuttX
-/// assertion dump is hundreds of lines (`stack_dump:` hex pages, then
-/// `dump_tasks:`), so a 25-line tail lands in the middle of the hex and the line
+/// assertion dump is hundreds of lines ("stack_dump:" hex pages, then
+/// "dump_tasks:"), so a 25-line tail lands in the middle of the hex and the line
 /// that names the cause — the assertion, its file:line, the exception — has
 /// scrolled off the top. That cost a whole diagnosis: 0570 was filed as a stack
 /// overflow read off the task table in the tail, and the 8x stack raise that

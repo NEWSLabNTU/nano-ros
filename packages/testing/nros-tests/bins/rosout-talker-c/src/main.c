@@ -2,7 +2,7 @@
  * issue 1589 — the C twin of `bins/rosout-talker`.
  *
  * Logs through its NODE's logger (RFC-0102 D4: on Humble only node loggers
- * reach `/rosout`) and pumps `nros_rosout_*` from its spin loop, printing the
+ * reach `/rosout`) and pumps `rclc_rosout_*` from its spin loop, printing the
  * same markers the Rust probe prints so `rosout_interop.rs` reads all three
  * languages with one set of assertions.
  *

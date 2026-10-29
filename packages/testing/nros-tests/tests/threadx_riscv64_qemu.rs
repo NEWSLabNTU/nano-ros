@@ -76,14 +76,14 @@ fn require_threadx_riscv64() {
 // Prerequisite detection tests (always run)
 // =============================================================================
 
-// `test_threadx_riscv64_detection` removed: it read five `is_*_available()`
+// ~~`test_threadx_riscv64_detection`~~ removed: it read five `is_*_available()`
 // booleans and printed them, asserting nothing, so it reported PASS on a host
 // with no ThreadX, no NetX Duo, no riscv64 gcc, no QEMU and no zenohd. All five
 // probes stay load-bearing as the `unmet!` guards on the real tests, where a
 // `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================
-// (Phase 182.3) `test_threadx_riscv64_all_examples_build` removed — it rebuilt
+// (Phase 182.3) ~~`test_threadx_riscv64_all_examples_build`~~ removed — it rebuilt
 // every ThreadX-RV64 example, which `build-all` / `build-test-fixtures` already
 // do before `test-all` (the `_require-fixtures` preflight). The per-role
 // binaries are consumed by the `rtos_e2e` Platform__ThreadxRiscv64 tests.
@@ -112,7 +112,7 @@ fn require_threadx_riscv64() {
 /// `nano-ros`@`12b4af2c`), and the nano-ros Cyclone subscriber allocates its
 /// RX take buffer from the ddsrt heap rather than libc (`std::calloc` returns
 /// NULL on the unwired ThreadX libc heap; 177.26.RX.2). The earlier
-/// `register_subscription -> -1` symptom closed under 177.28.
+/// ~~`register_subscription -> -1`~~ symptom closed under 177.28.
 ///
 /// Transport: prefers `-netdev dgram` (QEMU ≥ 7.2 — point-to-point AF_UNIX
 /// pair, CI-isolated). On older QEMU it falls back to `-netdev socket,mcast`
@@ -237,8 +237,8 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
 /// `run_app_thread(Config::default())` boot ran every image with the same
 /// MAC/IP/domain (identity collapse), and the domain never matched the
 /// fixture bake. `Config::default()` now applies the build-env identity
-/// (`NROS_APP_NET_{IP,MAC}_LAST`, `NROS_DOMAIN_ID` — set per-example by
-/// `nros_threadx_rv64_rust_cyclone_app`), so the pair boots as
+/// (~~`NROS_APP_NET_{IP,MAC}_LAST`~~, `NROS_DOMAIN_ID` — set per-example by
+/// ~~`nros_threadx_rv64_rust_cyclone_app`~~), so the pair boots as
 /// 10.0.2.40/:56 (talker) + 10.0.2.41/:57 (listener) on the fixture domain.
 ///
 /// The QEMU device MACs mirror the firmware bake (same convention as the C

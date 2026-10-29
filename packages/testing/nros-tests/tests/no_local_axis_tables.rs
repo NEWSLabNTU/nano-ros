@@ -3,7 +3,7 @@
 //! RFC-0051 declares ONE generated matrix: `matrix::CELLS` (+ `SCHED_CELLS`) and
 //! `interop::CELLS`. The pre-295 regression was files hand-defining their OWN
 //! `const CELLS` axis table over the same platform×lang×rmw vocabulary, so adding
-//! a coordinate in one place silently missed the others (`platform_header_matrix`
+//! a coordinate in one place silently missed the others (~~`platform_header_matrix`~~
 //! was the last such second spelling — converted in W5). This gate keeps it from
 //! regrowing: no `const`/`static` axis TABLE may live outside the two SSoT files.
 //!

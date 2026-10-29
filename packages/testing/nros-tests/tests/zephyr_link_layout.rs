@@ -136,7 +136,7 @@ impl Elf {
 
     /// The baked boot config. The C entry's is a file-scope `static const`
     /// compiled as C++ by the typed entry, so its local symbol is mangled
-    /// (`_ZL16NROS_BOOT_CONFIG`); the Rust one is `#[no_mangle]`.
+    /// (_ZL16NROS_BOOT_CONFIG); the Rust one is `#[no_mangle]`.
     fn boot_config(&self) -> Option<&Symbol> {
         self.symbols.iter().find(|s| {
             s.shndx != 0

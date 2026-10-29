@@ -60,7 +60,7 @@ fn main() {
         nros::rosout::qos_bounded()
     };
     // RFC-0102 D4 — records come from the NODE's logger, as a real node's do.
-    // A free logger (this fixture used one, `rosout_probe`) is published by no
+    // A free logger (this fixture used one, ~~`rosout_probe`~~) is published by no
     // ROS release: rcl publishes only through a publisher correlated with a
     // node's logger, and the `/rosout` queue is now scoped to match.
     let (rosout, probe) = {

@@ -97,7 +97,7 @@ pub fn require_riscv32_target() {
     }
 }
 
-// `require_zenoh_pico_riscv` removed — Phase 84.F4 replaced the
+// ~~`require_zenoh_pico_riscv`~~ removed — Phase 84.F4 replaced the
 // standalone `build/esp32-zenoh-pico/libzenohpico.a` path with
 // `zpico-sys/build.rs::build_zenoh_pico_embedded`, which cross-
 // compiles zenoh-pico during the example's cargo build.

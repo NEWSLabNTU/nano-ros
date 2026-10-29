@@ -39,7 +39,7 @@ fn nano_ros_node_register_rejects_unqualified_class() -> TestResult<()> {
 
 #[test]
 fn nano_ros_application_rejects_embedded_deploy() -> TestResult<()> {
-    // `nano_ros_application` (the 212.N.6 shim) was retired in 287-W8; the
+    // ~~`nano_ros_application`~~ (the 212.N.6 shim) was retired in 287-W8; the
     // live spelling of the same misuse is `nano_ros_entry`.
     let out = outcome("cmake_entry_rejects_embedded_deploy")?;
     assert!(
@@ -47,7 +47,7 @@ fn nano_ros_application_rejects_embedded_deploy() -> TestResult<()> {
         "expected cmake configure to fail on embedded DEPLOY in Application"
     );
     let err = &out.stderr;
-    // `nano_ros_application` is now a deprecated shim → `nano_ros_entry`; accept
+    // ~~`nano_ros_application`~~ is now a deprecated shim → `nano_ros_entry`; accept
     // the entry-layer board-centric wording or the legacy L.2 wording.
     assert!(
         err.contains("native-only")
@@ -67,7 +67,7 @@ fn nano_ros_application_rejects_embedded_deploy() -> TestResult<()> {
 /// unrelated ones: with no keyword in the grammar, `ENTITIES` written after a
 /// multi-value keyword is SWALLOWED into it (`SOURCES src/dummy.cpp ENTITIES
 /// sub:…` would compile a source file named `ENTITIES`), and written anywhere
-/// else it lands in `_NRC_UNPARSED_ARGUMENTS`, which nothing reads — a silent
+/// else it lands in _NRC_UNPARSED_ARGUMENTS, which nothing reads — a silent
 /// drop of a declaration the caller believes is sizing its pools. Both must
 /// refuse, and an `IN_LIST ARGN` test is the only thing that catches both.
 #[test]

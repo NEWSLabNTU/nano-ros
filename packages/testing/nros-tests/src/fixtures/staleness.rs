@@ -62,7 +62,7 @@ pub enum Exemption {
     /// edited tracked source, and those ARE in the dep graph. Without this,
     /// `just ci` re-staled the very fixtures its own check phase probed fresh.
     CargoOutDir,
-    // Issue 1824 retired a third, `ConfigHeaderStamp` (issue 1461): the
+    // Issue 1824 retired a third, ~~`ConfigHeaderStamp`~~ (issue 1461): the
     // `.h.stamp` sidecar beside the shared target-dir config header. Neither
     // file is written any more, so nothing it matched can reach a probe.
 }
@@ -638,7 +638,7 @@ pub(crate) fn candidates_changed_content_policy(
 // and each caller applies its own policy — the same split
 // `candidates_changed_content_policy` already makes for `first_sight_is_fresh`.
 
-/// Split a cargo dep-info dependency list (`DEP DEP …`) into paths, honouring
+/// Split a cargo dep-info dependency list (DEP DEP …) into paths, honouring
 /// make-style backslash escapes (`\ ` for a space in a path, `\\` for a
 /// literal backslash). Cargo emits every dependency on the single rule line
 /// after `TARGET: `.

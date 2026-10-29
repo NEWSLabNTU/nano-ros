@@ -10,7 +10,7 @@
 //! Coverage:
 //! - POSIX dispatch (configure + build + `nros_platform_link_app`) lives in
 //!   `cmake_add_subdirectory::cmake_add_subdirectory_smoke` — Phase 182.2
-//!   merged the near-identical `cmake_platform_posix` cell into it (same
+//!   merged the near-identical ~~`cmake_platform_posix`~~ cell into it (same
 //!   clean configure+build of the same stack). This file keeps only the
 //!   non-overlapping bare-metal FATAL_ERROR check below.
 //! - Cross-compile platforms (zephyr, freertos, nuttx, threadx) are NOT
@@ -47,7 +47,7 @@ use nros_tests::{TestResult, fixtures::require_compile_verdict};
 #[test]
 fn cmake_platform_threadx_requires_board() -> TestResult<()> {
     // Phase 150.D — rewritten from the original
-    // `cmake_platform_baremetal_requires_board` after Phase 138
+    // ~~`cmake_platform_baremetal_requires_board`~~ after Phase 138
     // collapsed "baremetal" into per-board platform values
     // (`freertos_armcm3`, `threadx_linux`, `threadx_riscv64`,
     // `threadx`+board, …). The only platform whose CMakeLists.txt

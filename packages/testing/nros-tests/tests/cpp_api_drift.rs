@@ -12,7 +12,7 @@
 //!     `compile-check-fixtures.sh` (run by `build-test-fixtures`), which stamps
 //!     `.compile-ok`. The tests assert the stamps, and a missing stamp is a
 //!     FAILURE in the full tier (`[SKIPPED]` only under
-//!     `NROS_FIXTURES_OPTIONAL=1`) — see `assert_snippet_compiled`. The build
+//!     ~~`NROS_FIXTURES_OPTIONAL=1`~~) — see `assert_snippet_compiled`. The build
 //!     stage still does not block `build-test-fixtures` on a snippet that will
 //!     not compile; reporting it is this file's job, and until issue 1032 it
 //!     was not being done.
@@ -121,7 +121,7 @@ fn examples_cpp_have_no_retired_symbols() {
 ///
 /// `?` rather than a bare `assert!`, because the tier policy the old code threw
 /// away already lives in `require_compile_check`: hard-fail in the full tier,
-/// `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL=1`. This restores that policy
+/// `[SKIPPED]` under ~~`NROS_FIXTURES_OPTIONAL=1`~~. This restores that policy
 /// instead of writing a second one — the sibling consumer
 /// (`platform_header_compile.rs`) has always done it this way.
 fn assert_snippet_compiled(id: &str) -> TestResult<()> {
@@ -138,8 +138,8 @@ fn assert_snippet_compiled(id: &str) -> TestResult<()> {
     Ok(())
 }
 
-// Phase-257 Stage-3b — the `declared_node_typed_helpers` snippet exercised the
-// retired declarative seam (`DeclaredNode`/`DeclaredEntity`/`DeclaredCallback`);
+// Phase-257 Stage-3b — the ~~`declared_node_typed_helpers`~~ snippet exercised the
+// retired declarative seam (`DeclaredNode`/`DeclaredEntity`/~~`DeclaredCallback`~~);
 // removed with the seam. The typed surface is guarded by the component examples
 // (`configure(Node&)` + `Publisher<M>` + `bind_timer`).
 

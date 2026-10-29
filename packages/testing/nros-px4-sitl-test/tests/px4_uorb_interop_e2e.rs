@@ -12,8 +12,8 @@
 //! nano-ros. Its output carries the decoded field values, so a garbled layout
 //! shows up as wrong values rather than as a passing test.
 //!
-//! (The deleted `px4_e2e` made exactly that mistake — it drove `nros_listener` +
-//! `nros_talker`, two nano-ros modules, and asserted one logged `recv:`. Issue
+//! (The deleted ~~`px4_e2e`~~ made exactly that mistake — it drove ~~`nros_listener`~~ +
+//! ~~`nros_talker`~~, two nano-ros modules, and asserted one logged `recv:`. Issue
 //! 0356.)
 //!
 //! ## No build here

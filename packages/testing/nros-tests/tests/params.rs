@@ -19,7 +19,7 @@ use std::{process::Command, time::Duration};
 // Parameter Declaration Tests
 // =============================================================================
 
-// (Phase 182.3) `test_talker_with_params_builds` removed — it only asserted
+// (Phase 182.3) ~~`test_talker_with_params_builds`~~ removed — it only asserted
 // the parameterised talker compiled, covered by the fixture build (the
 // manifest builds bins/param-chatter-talker) + the param e2e tests below
 // (which spawn that binary via the shared `build_native_param_talker` resolver).

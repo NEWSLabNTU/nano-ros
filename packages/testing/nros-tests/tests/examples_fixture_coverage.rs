@@ -26,9 +26,9 @@
 //! 2. Zephyr role driver — `scripts/build/zephyr-fixture-leaves.sh` +
 //!    `fixture-matrix.sh` build `zephyr/{c,cpp,rust}/{6 roles}`.
 //! 3. `scripts/build/compile-check-fixtures.sh` — every `examples/…` token
-//!    (the `CARGO_CHECK_EXAMPLES` cross-check dirs etc.), read live.
+//!    (the ~~`CARGO_CHECK_EXAMPLES`~~ cross-check dirs etc.), read live.
 //! 4. Test-driven builders — dirs a test harness builds directly rather than
-//!    via a manifest row (e.g. freertos `talker_entry` via
+//!    via a manifest row (e.g. freertos talker_entry via
 //!    `freertos_run_plan_runtime.rs`). Enumerated in `TEST_DRIVEN_BUILDERS`.
 //!
 //! ## Tracked exceptions (`ALLOWLIST`)
@@ -48,7 +48,7 @@ use std::{
 /// Top-level `examples/` children skipped wholesale.
 const SKIP_TOP_LEVEL: &[&str] = &["templates"];
 
-// phase-350 W1.c — the `ZEPHYR_LANGS` x `ZEPHYR_ROLES` constants that lived
+// phase-350 W1.c — the ~~`ZEPHYR_LANGS`~~ x ~~`ZEPHYR_ROLES`~~ constants that lived
 // here are GONE. They were the THIRD spelling of the zephyr matrix: the bash
 // loops in `fixture-matrix.sh` were the second, `examples/fixtures.toml` is the
 // first and only one now. This gate reads the rows (`lane::west_leaves()`), so

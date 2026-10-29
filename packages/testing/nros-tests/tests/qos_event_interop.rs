@@ -23,7 +23,7 @@
 //!    to our own entity changes it.
 //! 2. The token is written by `rmw_zenoh_cpp` and matched by our wildcard
 //!    (`Ros2Liveliness::publisher_keyexpr_wildcard`). The tree's only existing
-//!    check of that wildcard — `shim/mod.rs`, `wildcard_matches_any_entity_id`
+//!    check of that wildcard — `shim/mod.rs`, ~~`wildcard_matches_any_entity_id`~~
 //!    and friends — matches it against a keyexpr **our own builder produced**.
 //!    That is precisely the shape of check that was green throughout issue
 //!    0903, where twelve `produced`, mutation-tested, parity-clean graph slots
@@ -34,7 +34,7 @@
 //! The obvious QoS event to provoke from a stock peer is incompatible QoS — a
 //! RELIABLE requester against a BEST_EFFORT offerer. **Our ABI has no such
 //! event kind.** `rmw_event_type_t` is `LIVELINESS_CHANGED`,
-//! `REQUESTED_DEADLINE_MISSED`, `MESSAGE_LOST`, `LIVELINESS_LOST`,
+//! `REQUESTED_DEADLINE_MISSED`, MESSAGE_LOST, `LIVELINESS_LOST`,
 //! `OFFERED_DEADLINE_MISSED` — upstream's `RMW_EVENT_OFFERED_QOS_INCOMPATIBLE`
 //! and `RMW_EVENT_REQUESTED_QOS_INCOMPATIBLE` have no counterpart, so there is
 //! nothing to register a callback for and nothing to assert.

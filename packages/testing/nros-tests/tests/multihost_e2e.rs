@@ -2,8 +2,8 @@
 //! (RFC-0051).
 //!
 //! Consolidates the 5 per-cell multihost runtime files
-//! (`multihost_runtime_e2e`, `{c,cpp,mixed}_multihost_e2e`,
-//! `multihost_zephyr_entry_e2e`) into one parametrized test over the
+//! (~~`multihost_runtime_e2e`~~, `{c,cpp,mixed}_multihost_e2e`,
+//! ~~`multihost_zephyr_entry_e2e`~~) into one parametrized test over the
 //! `Workload::Multihost` cells of the test matrix (`nros_tests::matrix`).
 //! The SOURCE-level half of the story — resolving with `host:=robotN`
 //! yields a per-host model and `nros codegen entry --model` emits an entry
@@ -29,7 +29,7 @@
 //! - **Listener-stdout cells** (C/C++/mixed robot2): the listener prints
 //!   `Received: <n>` per delivered message; ≥3 proves delivery.
 //!
-//! The `zephyr_rust` cell (phase-276 W6 / #102 H1) swaps robot1 for the
+//! The zephyr_rust cell (phase-276 W6 / #102 H1) swaps robot1 for the
 //! Zephyr native_sim image of the SAME per-host entry — one embedded host +
 //! one native host meeting at zenohd.
 //!

@@ -678,7 +678,7 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
 // Detection Tests
 // =============================================================================
 
-// `test_zenohd_detection` removed: it read `is_zenohd_available()` and printed
+// ~~`test_zenohd_detection`~~ removed: it read `is_zenohd_available()` and printed
 // it, asserting nothing, so it reported PASS on a host with no router at all.
 // The probe stays load-bearing as the `unmet!` guard on the real tests, where a
 // `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.

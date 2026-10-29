@@ -232,7 +232,7 @@ enum FileKind {
 /// the comparison. Un-split packages are therefore compared whole, and their
 /// divergence shows up as the W3 work it is.
 ///
-/// issue 1512 — the condition used to be spelled `has_lib`, i.e. "is there a
+/// issue 1512 — the condition used to be spelled ~~`has_lib`~~, i.e. "is there a
 /// `src/lib.rs`", which is a PROXY for the rule and not the rule. It held while
 /// every split package split into two RUST files. It stops holding for a leaf
 /// whose node logic is C and whose `main.rs` is nothing but the boot chain

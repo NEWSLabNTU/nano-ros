@@ -9,16 +9,27 @@
 # zenoh-pico and the zenoh protocol
 InitAck
 OpenSyn
+PublicationCache
+UDP_CONFIG_IFACE_KEY
 Z_MALLOC_FUNCTION
+_Z_ERR_CONFIG_LOCATOR_INVALID
+_Z_ERR_SYSTEM_GENERIC
 _Z_ERR_TRANSPORT_TX_FAILED
 _mutex_rx
 _mutex_tx
+_transmitted
+_z_f_link_open_udp_multicast
+_z_f_link_tcp
 _z_link_clear
 _z_link_free
 _z_link_send_t_msg
 _z_query
+_z_locators_by_scout
+_z_open
 _z_transport_unicast_handle_frag
+_zp_unicast_lease_task
 max_links
+next_lease
 socket_wait_event
 z_serialize_uint32
 z_task_wrapper
@@ -97,14 +108,19 @@ tx_timer_change
 CONF_FILE_BUILD_TYPE
 SB_CONFIG_BOOTLOADER_MCUBOOT
 Zephyr_DIR
+GpioPin::new
+LOG_MODE_IMMEDIATE
+QEMU_FLAGS_
 _system_heap
 arch_proc_id
 atomic_set
 cpu_mask_mod
 hal_nxp
 log_msg_runtime_create
+net_config
 net_if_ipv4_select_src_iface
 net_mgmt_event_handler_t
+posix_exit
 posix_to_zephyr_priority
 sys_heap
 sys_heap_
@@ -128,15 +144,27 @@ task_create
 
 # CycloneDDS
 cdds_request_header_t
+DomainGain
+ParticipantGain
+UnicastDataOffset
+UnicastMetaOffset
+ddsi_udp_create_conn
 ddsrt_gettid
 thread_states_init
+validate_history_qospolicy
 
 # POSIX, Linux, libc and newlib
 ETXTBSY
+AF_UNIX
+EM_RISCV
+HRTICK_DL
 IFNAMSIZ
 INADDR_NONE
+LD_PRELOAD
+O_EXCL
 PTHREAD_PRIO_NONE
 SHLVL
+SHN_UNDEF
 SIOCGIFFLAGS
 SIOCSIFDSTADDR
 SIOCSIFNETMASK
@@ -154,6 +182,8 @@ io_destroy
 lldiv_t
 pthread_attr_getstack
 pthread_mutex
+pthread_setaffinity
+ptrace_scope
 register_fini
 timer_getoverrun
 
@@ -166,6 +196,7 @@ include_next
 can_receive
 g_source
 lan9118_receive
+mcast_addr
 qemu_net_queue
 
 # Arm: CMSIS, semihosting, instructions, the STM32 reference manual
@@ -181,10 +212,12 @@ WFE
 YIELD
 
 # The DDS specification
+DATA_FRAG
 DcpsDomainParticipant
 data_representation
 
 # NVIDIA Tegra FSP, Autoware and Nav2
+aon_echo
 autoware_sentinel
 ivc_init_channels_ccplex
 print_msg
@@ -198,6 +231,12 @@ expand_template
 get_idl_type
 manual_composition
 rosidl_runtime_c__type_description__FieldType
+ParticipantEntitiesInfo
+action_tutorials
+action_tutorials_py
+call_async
+get_ros_domain_id
+if_condition
 set_logger_level
 
 # Rust: std, cargo, rustc and clippy lints, cc-rs, embassy, smoltcp, Verus
@@ -213,6 +252,12 @@ c_variadic
 clippy::if_same_then_else
 clippy::manual_contains
 clippy::unnecessary_sort_by
+E0252
+LineWriter
+Stdout
+UnitDependencyInfoChanged
+c_variadic
+clippy::format_in_format_args
 embassy_sync::channel::Channel
 external_body
 fn_to_numeric_cast
@@ -251,6 +296,26 @@ workspace_toml_dir
 # Python
 OrderedDict
 unicode_escape
+# Micro XRCE-DDS and PX4
+DELETE_CLIENT
+UXRCE_DDS_DOM_ID
+UXRCE_DDS_PRT
+UXR_VERBOSE_LEVEL_TRACE
+on_full_input_buffer
+rcS
+read_format_data
+rmw_microxrcedds
+uxr_next_input_reliable_buffer_available
+uxr_ping_agent_attempts
+
+# Fast-DDS
+PREALLOCATED_MEMORY_MODE
+m_typeSize
+related_sample_identity
+
+# play_launch and ros-launch-manifest
+UPDATE_RANKED_PLAN_SNAPSHOT
+core_id
 
 # git
 GIT_INDEX_FILE

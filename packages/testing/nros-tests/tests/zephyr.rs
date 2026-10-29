@@ -8,7 +8,7 @@
 //! the historical boot smokes as [`boot_smoke`] cells. The zephyr cyclone
 //! runtime family previously split across
 //! `tests/zephyr_cyclonedds_native_sim_e2e.rs` (pubsub + service e2e, rust
-//! boot smokes; ex-`phase_118_collapse`) now lives HERE — one home per
+//! boot smokes; ex-~~`phase_118_collapse`~~) now lives HERE — one home per
 //! family, that file is retired.
 //!
 //! Isolation, preserved 1:1 from the per-cell tests (until the phase-295 W4
@@ -124,7 +124,7 @@ fn rmw_str(r: Rmw) -> &'static str {
 }
 
 /// Resolve a prebuilt Zephyr native_sim example image for
-/// (lang, case, rmw), or skip. Missing OR stale (`is_binary_stale`) west
+/// (lang, case, rmw), or skip. Missing OR stale (~~`is_binary_stale`~~) west
 /// images skip with the `just zephyr build-fixtures` remedy — tests never
 /// build fixtures in their bodies (Phase 179.I).
 fn resolve_example(lang: Lang, case: &str, rmw: Rmw) -> PathBuf {
@@ -852,7 +852,7 @@ fn boot_smoke(#[case] smoke: Smoke) {
 // Availability probe (bespoke — informational)
 // =============================================================================
 
-// `test_zephyr_availability_checks` removed. Its own last line said what was
+// ~~`test_zephyr_availability_checks`~~ removed. Its own last line said what was
 // wrong with it — "These are informational - don't fail if Zephyr isn't set
 // up" — which is a description of something that is not a test: it printed the
 // workspace path and one boolean and asserted nothing, so it reported PASS with
@@ -1679,7 +1679,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     // is baked into the wire keyexpr) or the router never matches it.
     //
     // phase-338 W3 — this was the EXAMPLE (`linux/rust/listener`) with a
-    // test-only `NROS_SUB_TYPE=int32` switch; the switch moved to
+    // test-only ~~`NROS_SUB_TYPE=int32`~~ switch; the switch moved to
     // `bins/int32-sink`, which subscribes Int32 natively. Readiness is
     // unchanged ("Waiting for"); the per-message marker is not — the sink
     // prints "Received:", the example printed "I heard:".

@@ -9,7 +9,7 @@
 //! **Cycle-detection and include depth-cap enforcement moved to
 //! `ros-launch-resolve`** (RFC-0060 layer 2 owns include expansion since
 //! phase-296; `nros plan` no longer parses launch XML). The former
-//! `cycle_rejected_with_clear_diagnostic` and `depth_cap_rejects_over_16`
+//! ~~`cycle_rejected_with_clear_diagnostic`~~ and ~~`depth_cap_rejects_over_16`~~
 //! tests drove the deleted parse path through `nros plan` and were removed
 //! (issue 0381); those behaviors are tested in the resolver's own repo.
 
