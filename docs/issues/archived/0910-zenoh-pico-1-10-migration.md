@@ -2,13 +2,15 @@
 id: 910
 title: "migrating to zenoh-pico 1.10: the serial layer moved, `config.h` is no
   longer shipped, and our config generator is 54 knobs behind"
-status: open
+status: resolved
+resolved: 2026-10-29
+resolved_in: "feat/508-close (phase-508 closed)"
 type: task
 area: rmw, build
 related: [phase-415, issue-0852, issue-0882, phase-508]
 ---
 
-**Home: [phase-508](../roadmap/phase-508-zenoh-pico-1-10-migration.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". It had no home after phase-355 was archived on 2026-10-12, because no active phase fit.
+**Home: [phase-508](../../roadmap/archived/phase-508-zenoh-pico-1-10-migration.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". It had no home after phase-355 was archived on 2026-10-12, because no active phase fit.
 
 ## Why
 
@@ -38,7 +40,7 @@ Two branches on the fork (`jerry73204/zenoh-pico`), both off `upstream/main`:
   `_z_zephyr_uart_read`, which busy-spins on `uart_poll_in` with no timeout, no
   yield and no `uart_err_check`, and returns `len` regardless. All three are
   defects we hit and fixed on our own port; the third is
-  [issue 0852](archived/0852-zephyr-serial-rx-is-polled-and-overruns.md), where a silent overrun cost a long investigation that
+  [issue 0852](0852-zephyr-serial-rx-is-polled-and-overruns.md), where a silent overrun cost a long investigation that
   ended in a bug report against an innocent peer.
 - **`nros-integration`** — `serial-fixes` plus a passthrough
   `include/zenoh-pico/config.h`, which upstream no longer ships. Not for
@@ -104,7 +106,7 @@ read already has the deadline, the `k_yield()` and the issue-0852 interrupt-driv
 RX that commit lacks.
 
 The 1.7.2 -> 1.8.0 port is surveyed in
-[phase 415](../roadmap/archived/phase-415-zenoh-pico-1-8-0-patch-line.md): 85 files apply
+[phase 415](../../roadmap/archived/phase-415-zenoh-pico-1-8-0-patch-line.md): 85 files apply
 clean, **42 conflict**, 2 moved, and one genuine name collision — our added
 `session/keyexpr.h` versus upstream's `protocol/keyexpr.h` moved to the same
 path. That is a decision, not a merge.
@@ -136,7 +138,7 @@ The practical consequence, found by building 1.8.0 the upstream way during the
 port: anything we write into `config.h` alone is erased by the first `cmake`
 configure. Two knobs were in that position and are now in `config.h.in`; the
 `#ifndef` wrapping from `49012370` still is not (118 lines). Details and the
-sweep command are in [phase-415](../roadmap/archived/phase-415-zenoh-pico-1-8-0-patch-line.md).
+sweep command are in [phase-415](../../roadmap/archived/phase-415-zenoh-pico-1-8-0-patch-line.md).
 
 ## Update 2026-10-24 — ROS Humble now ships 1.10.1, so 1.10 is the target again
 
@@ -148,7 +150,7 @@ to zenoh-c 1.10.1 plus few fixes"; 0.1.9's read "zenoh-c 1.8.0 plus few fixes".
 The jazzy, kilted and rolling branches of `ros2/rmw_zenoh` are on 1.10.1 too,
 though jazzy (0.2.11) and kilted (0.6.8) have not released it yet. The full
 table and its sources are in
-[phase-508](../roadmap/phase-508-zenoh-pico-1-10-migration.md).
+[phase-508](../../roadmap/archived/phase-508-zenoh-pico-1-10-migration.md).
 
 Under the same tracking rule that made 1.8.0 the target, the target is now
 **1.10.1**, and this issue is queued work again rather than a cost record.
@@ -505,3 +507,21 @@ are in RFC-0110 "Results". In short: four of the five questions are
 answered. The NuttX quiet-link keep-alive is a defect of its own, and it is
 filed as issue 2094. A NuttX listener with no traffic loses its session at
 the 60 s lease, and FreeRTOS and Zephyr native_sim do not.
+
+## Resolved, 2026-10-29
+
+The pin is `f90e7388`, zenoh-pico 1.10.1, on the fork's `nano-ros-1.10.1`
+branch, since `48addebabc` (2026-10-26). Phase-508's acceptance was measured
+on it: the tier-2 nightly of 2026-10-28 had no failure from the move, the
+Zephyr serial link cell passes, and the zenoh interop binaries pass 30 of 30
+against both Humble's 0.1.9 router and a 0.1.11 (zenoh 1.10.1) overlay. The
+results are in
+[phase-508](../../roadmap/archived/phase-508-zenoh-pico-1-10-migration.md)
+"Acceptance".
+
+Left as it is: the old `nano-ros` branch (the 1.8 line) holds 93 commits that
+are not on `nano-ros-1.10.1`, because the rebase replayed or dropped them rather
+than moving them. The 2026-10-25 rebase section accounts for the commits the
+branch had then. The three newest were ported to the new line afterwards. Nobody has
+compared the two branches commit by commit since, so a fix that landed on the
+1.8 line later than that would need porting by hand.

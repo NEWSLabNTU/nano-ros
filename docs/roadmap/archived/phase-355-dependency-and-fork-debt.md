@@ -163,7 +163,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0910](../../issues/0910-zenoh-pico-1-10-migration.md) | migrating to zenoh-pico 1.10: the serial layer moved and `config.h` is no longer generated the same way — carried-fork debt coming due — **unhomed 2026-10-12** (no active phase fits) |
+| [#0910](../../issues/archived/0910-zenoh-pico-1-10-migration.md) | migrating to zenoh-pico 1.10: the serial layer moved and `config.h` is no longer generated the same way — carried-fork debt coming due — **unhomed 2026-10-12** (no active phase fits) |
 
 ## Issues formerly homed here (survey 2026-09-11; re-homed or resolved 2026-10-12)
 
