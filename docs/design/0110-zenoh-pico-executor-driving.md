@@ -14,8 +14,8 @@ superseded-by: null
 
 **Status:** Draft (2026-10-24). Written before any code. It decides how
 `zpico.c` drives zenoh-pico once the pin moves to 1.10.1
-([phase-508](../roadmap/phase-508-zenoh-pico-1-10-migration.md),
-[issue 0910](../issues/0910-zenoh-pico-1-10-migration.md)).
+([phase-508](../roadmap/archived/phase-508-zenoh-pico-1-10-migration.md),
+[issue 0910](../issues/archived/0910-zenoh-pico-1-10-migration.md)).
 
 ## Summary
 

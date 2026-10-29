@@ -1,20 +1,13 @@
 # Phase 508 — move the zenoh-pico fork onto 1.10
 
-**Status (2026-10-25). In progress, and now the TRACKED target: ROS Humble
-ships zenoh 1.10.1, so the target is 1.10.1, not "1.10" in general. The port
-survey is done (22 conflicting files, half of phase-415's 42), and a 1.8.0
-image interoperates with a 1.10.1 `rmw_zenohd` (27 of 27 interop tests, the
-same as against 1.8.0), so the move is planned work, not a fix. A second
-survey found the move is bigger than a rebase: upstream 1.9 replaced the read
-and lease threads with an async executor, and renamed the platform link ABI,
-so `zpico.c`'s session driving and every platform's link shims change too
-(issue 0910's second-pass survey). On 2026-10-25 the patch line was rebased
-onto 1.10.1 and the config generator brought up to its knobs, both on local
-branches: the fork branch waits for the maintainer to push it, and the pin
-cannot move until `zpico.c` and the link shims are re-ported (issue 0910's
-2026-10-25 rebase section).** The phase
+**Status (2026-10-29). Done, and archived. The fork's patch line is
+`nano-ros-1.10.1`, pushed and tracked by `.gitmodules`, and the superproject pins
+`f90e7388` (zenoh-pico 1.10.1) since `48addebabc` (2026-10-26). `zpico.c` drives
+upstream's executor (RFC-0110, Stable), the platform link shims use the renamed
+link ABI, and the lease-task knobs are refused. The acceptance below was measured
+on 2026-10-28 and 2026-10-29. Issue 0910 is resolved.** The phase
 was opened on 2026-10-17 to give issue 0910 a home after
-[phase-355](archived/phase-355-dependency-and-fork-debt.md) was archived on
+[phase-355](phase-355-dependency-and-fork-debt.md) was archived on
 2026-10-12. At that point the move was parked: issue 0910's 2026-09-04 update
 ruled 1.10 the wrong target, because we track the zenoh ROS ships and Humble
 then shipped 1.8.0. That premise no longer holds (next section).
@@ -49,7 +42,7 @@ is the newest release.
 
 ## What the migration is
 
-[Issue 0910](../issues/0910-zenoh-pico-1-10-migration.md) has the measurements,
+[Issue 0910](../../issues/archived/0910-zenoh-pico-1-10-migration.md) has the measurements,
 taken from the pre-phase-415 pin (`dac320e3`, 1.7.2), so its counts overstate
 the gap from today's 1.8.0 line and are re-measured by the second work item.
 Our fork's pin is behind upstream, and upstream has since restructured the
@@ -86,7 +79,7 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       2 redesign (#0899 teardown, the read-task frame budget), 2 depend on how
       single-thread builds poll. Issue 0910's second-pass survey has the table.
 - [x] Decide how each build drives the executor. DONE 2026-10-27: RFC-0110 is Stable. Drafted 2026-10-24 as
-      [RFC-0110](../design/0110-zenoh-pico-executor-driving.md): THREAD mode
+      [RFC-0110](../../design/0110-zenoh-pico-executor-driving.md): THREAD mode
       (POSIX, Zephyr, NuttX, FreeRTOS) runs the one executor thread, which
       replaces the read and lease tasks; CALLER mode (bare metal, ThreadX)
       runs a bounded `zp_spin_once` loop, and ThreadX gets a fork patch to
@@ -95,18 +88,18 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       of five hold (the `MAX_TASKS` floor is 5, ThreadX tiers pass, stack
       peaks are under 2.3 KiB, and app threads do not spawn in steady
       state). The NuttX quiet-link keep-alive FAILED, which was
-      [issue 2094](../issues/archived/2094-nuttx-quiet-link-keepalive-starves-under-executor.md).
+      [issue 2094](../../issues/archived/2094-nuttx-quiet-link-keepalive-starves-under-executor.md).
       It was FIXED 2026-10-27: NuttX linked the alias TU's `uint64_t` clock
       against `unix.h`'s `struct timespec`, and once the right clock was
       linked it wrapped every 4.29 s. A quiet NuttX link now holds one
       session, with keep-alives every 25–30 s.
-      [Issue 2105](../issues/archived/2105-zephyr-cortex-m-timed-future-never-rewakes.md)
+      [Issue 2105](../../issues/archived/2105-zephyr-cortex-m-timed-future-never-rewakes.md)
       was the same failure on Zephyr, FIXED 2026-10-27. Zephyr honours
       `SO_RCVTIMEO` only under `CONFIG_NET_CONTEXT_RCVTIMEO`, so on a
       native-IP image the executor's receive never timed out and its timers
       ran only when the router spoke. `NROS_RMW_ZENOH` now selects the
       option, and `zpico.c` refuses a build without it.
-- [ ] Rebase the fork's `nano-ros` patch line onto upstream 1.10.1, keeping the
+- [x] Rebase the fork's `nano-ros` patch line onto upstream 1.10.1, keeping the
       patches as individual commits (CLAUDE.md, vendored-fork workflow). Drop
       each patch that upstream now carries, and record each drop. Redesign
       `ae59aa48` (#0899) and `00f8e2f0` (frame budget) for the executor rather
@@ -114,8 +107,8 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       (70 commits on `1.10.1`) in the superproject's zenoh-pico module store,
       not yet on the fork remote. Every one of the 92 commits is accounted for
       in issue 0910's 2026-10-25 section. Builds upstream-style on Linux in
-      five feature sets, with upstream's unit tests passing. Checked off when
-      the branch is pushed.
+      five feature sets, with upstream's unit tests passing. PUSHED: the
+      fork's `nano-ros-1.10.1` is at `f90e7388`, and `.gitmodules` tracks it.
 - [x] Re-port nano-ros's platform link shims to 1.10.1's renamed link ABI:
       the alias TU, `zpico-serial`'s FFI, the `extra_sources` rows in
       `nros-rmw.toml`, and our CAN, ISO-TP, IVC and custom links. DONE
@@ -147,7 +140,7 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       `ZPICO_LEASE_TASK_PRIORITY` and the lease half of
       `zpico_set_task_config` are gone; the transport band is
       `{executor, poll}`.
-- [ ] Generate `config.h` the way upstream does, and close the gap between the
+- [x] Generate `config.h` the way upstream does, and close the gap between the
       knobs upstream defines and the ones our generator emits. Stop emitting
       `Z_FEATURE_PERIODIC_TASKS`, which 1.10.1 removed. DONE ON A LOCAL BRANCH
       2026-10-25 (`feat/508-zenoh-1.10-knobs`, commit "state the knobs
@@ -157,7 +150,8 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       such knob the generator does not state. The fork carries the header a
       default configure writes, for builds that do not run its CMake. The
       branch does not build against the 1.8.0 pin, so it lands with the bump.
-- [ ] Move our Zephyr serial implementation into upstream's layout as
+      LANDED as `170a729ff5`.
+- [x] Move our Zephyr serial implementation into upstream's layout as
       `src/link/transport/serial/uart_zephyr.c`, keeping its interrupt-driven
       and async receive paths, and take upstream's serial protocol framing
       where it matches ours. Upstream's 129-line backend does not replace it.
@@ -166,10 +160,16 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       serial protocol layer, because receiving whole frames by interrupt or
       DMA depends on owning it. The wire format is upstream's either way.
       Checked off when a Zephyr serial image builds and passes its cells.
-- [ ] Extend upstream's `tty_posix.c` with the baud rates above `B230400`
+      DONE 2026-10-29: the fork carries it as `dab92980`, and on the new pin
+      `serial_only_rust_image_links_without_ip_stack` passes. That link
+      witness is the only Zephyr serial cell; no cell boots a Zephyr serial
+      image.
+- [x] Extend upstream's `tty_posix.c` with the baud rates above `B230400`
       that ours supports (up to 921600), then drop our POSIX serial code. DONE
       on the fork branch (the port of `e2b48046`); checked off with the push.
-- [ ] Bump the superproject pin forward only, after the fork branch is pushed.
+      PUSHED: `tty_posix.c` on `nano-ros-1.10.1` maps `B460800` and `B921600`.
+- [x] Bump the superproject pin forward only, after the fork branch is pushed.
+      DONE 2026-10-26 in `48addebabc`: `dac320e3` (1.8.0) to `f90e7388` (1.10.1).
 
 ## Acceptance
 
@@ -177,8 +177,27 @@ Issue 0910 is resolved. Tier 2's zenoh cells and the Zephyr serial cells pass
 on the new pin, and an image interoperates with the `rmw_zenohd` of Humble's
 `rmw_zenoh_cpp` 0.1.11 (zenoh 1.10.1).
 
+Results, all on pin `f90e7388`:
+
+- **Tier 2.** Nightly 40648207713 (2026-10-28, main at `e0f81b4ac5`) ran 3365
+  tests with 5 real failures, and none comes from the move. The WCET bench is
+  fixed in #2813, the an536 Cyclone cell in #2809, and the FreeRTOS quiet-link
+  cell (issue 2125) in `5afe413c3c`. The ThreadX-Linux Rust pub/sub cell (issue
+  2126) is a harness defect. The `sched_dims` Zephyr Cortex-A53 cell is issue
+  2113, a runner image with no `qemu-system-aarch64`.
+- **Zephyr serial.** `serial_only_rust_image_links_without_ip_stack` passes. It
+  is the only Zephyr serial cell.
+- **Interop.** The six zenoh live-peer binaries (`interop_e2e`,
+  `graph_interop`, `rosout_interop`, `ros2_action_e2e`'s zenoh cells,
+  `params_per_node_interop`, `qos_event_interop`) pass 30 of 30 against both
+  Humble's `rmw_zenoh_cpp` 0.1.9 router (zenoh 1.8.0) and a 0.1.11 overlay
+  (router and `ros2` peer both on zenoh 1.10.1), with 3 skipped in each.
+  Two cells first read STALE: the staleness probe named a host build-script
+  crate the C images do not link, and `ninja` had nothing to relink. They
+  passed when run past the probe; the probe defect is filed separately.
+
 ## Issues homed here (2026-10-17)
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0910](../issues/0910-zenoh-pico-1-10-migration.md) | The migration itself. Phase-355 was archived without it, and nothing else fits. |
+| [#0910](../../issues/archived/0910-zenoh-pico-1-10-migration.md) | The migration itself. Phase-355 was archived without it, and nothing else fits. |
