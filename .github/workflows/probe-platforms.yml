@@ -79,6 +79,7 @@ jobs:
           - nuttx-arm
           - nuttx-riscv
           - zephyr
+          - workspace
     steps:
       - uses: actions/checkout@v4
       - name: Install just (if absent)

@@ -4,9 +4,8 @@ One command scaffolds a working multi-node workspace; two more build and
 run it. C++ and CMake, publishing on your machine, with **nothing else
 running** — no router, no daemon, no ROS 2 installation.
 
-This assumes the two-step [install](installation.md) is done (`nros` on
-your PATH — a release installed with `scripts/install.sh` — and
-`nros setup linux --rmw cyclonedds` run once).
+This assumes the [install](installation.md) is done: `nros` is on your
+PATH, a release installed with `scripts/install.sh`.
 
 ## Scaffold
 
@@ -30,6 +29,19 @@ There is no entry package and no root `CMakeLists.txt`: the binary is
 *generated* from the bringup's `system.toml` when you build. What each
 directory is *for* is the next chapter,
 [Anatomy of What You Just Built](anatomy.md). You don't need it to run.
+
+## Provision
+
+Inside the workspace, `nros setup` needs no board name. It reads every
+`[image.*]` in the workspace's `system.toml` files and installs what those
+images need: here, the Linux host build on Cyclone DDS.
+
+```bash probe=55 track=installed
+nros setup
+```
+
+If you already ran `nros setup linux --rmw cyclonedds`, it finds everything
+present and installs nothing.
 
 ## Build
 
