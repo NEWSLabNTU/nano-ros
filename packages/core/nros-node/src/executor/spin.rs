@@ -11141,6 +11141,7 @@ impl<'s> Executor<'s> {
                     pending: false,
                     reply_ready: core::sync::atomic::AtomicBool::new(false),
                     callback,
+                    request_id_callback: None,
                     context,
                     sequences: super::arena::ClientSequences::new(),
                 },

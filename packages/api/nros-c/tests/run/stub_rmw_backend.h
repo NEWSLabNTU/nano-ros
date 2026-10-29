@@ -39,7 +39,8 @@ int32_t nros_stub_rmw_register_as(const char* name);
 /** Issue 2074 — register the stub under @p name WITHOUT its `take_with_info`
  *  slot, so a sample carries no metadata channel at all (the XRCE / uORB
  *  case). Lets a probe tell "nothing reported" apart from "zeros reported".
- *  Issue 2081 — `take_request_with_info` is left out too. */
+ *  Issue 2081 — `take_request_with_info` is left out too, and (issue 2136)
+ *  `take_response_with_info`. */
 int32_t nros_stub_rmw_register_without_message_info(const char* name);
 
 /** Issue 1405 — sessions this stub has opened since process start. Session N
@@ -143,6 +144,11 @@ uint32_t nros_stub_rmw_requests_sent(void);
  *  stub has no sender for (never sent, or older than its last 64 requests)
  *  goes to whichever client asks first. */
 bool nros_stub_rmw_stage_reply_for(int64_t seq, const uint8_t* data, size_t len);
+
+/** Issue 2136 — the request-writer GUID `take_response_with_info` reports
+ *  beside each reply's id (NULL or all zero: not reported, the default).
+ *  Cleared by `nros_stub_rmw_reset_client`. */
+void nros_stub_rmw_set_reply_writer_guid(const int8_t guid[16]);
 
 /** Issue 2009 — the id the stub assigned to the most recent request. */
 int64_t nros_stub_rmw_last_request_seq(void);

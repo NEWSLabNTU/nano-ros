@@ -3107,6 +3107,15 @@ pub type rclc_service_callback_with_context_t = Option<
 /// storage (phase-515 C3).
 pub type rclc_client_callback_t = Option<unsafe extern "C" fn(response: *const core::ffi::c_void)>;
 
+/// rclc's `rclc_client_callback_with_request_id_t` (issue 2136): the response
+/// in the caller's own message storage, and the id of the request it answers.
+pub type rclc_client_callback_with_request_id_t = Option<
+    unsafe extern "C" fn(
+        response: *const core::ffi::c_void,
+        request_id: *mut crate::service::rmw_request_id_t,
+    ),
+>;
+
 /// The user callback a typed service dispatches to — one of rclc's three.
 #[derive(Clone, Copy)]
 enum TypedServiceCallback {
@@ -3419,7 +3428,103 @@ pub unsafe extern "C" fn rclc_executor_add_client(
             core::mem::size_of::<TypedClientCapture>(),
         )
     };
-    unsafe { attach_client_with(executor, client, Some(typed_client_trampoline), Some(bytes)) }
+    unsafe {
+        attach_client_with(
+            executor,
+            client,
+            Some(typed_client_trampoline),
+            None,
+            Some(bytes),
+        )
+    }
+}
+
+/// What issue 2136's typed request-id client trampoline needs: the caller's
+/// response storage, the descriptor's deserialiser and rclc's callback.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TypedClientRequestIdCapture {
+    response: *mut core::ffi::c_void,
+    response_deserialize: unsafe extern "C" fn(*const u8, usize, *mut core::ffi::c_void) -> i32,
+    callback: unsafe extern "C" fn(*const core::ffi::c_void, *mut crate::service::rmw_request_id_t),
+}
+
+/// The typed request-id client's dispatch: deserialise the reply into the
+/// caller's storage and hand it, with the request id, to rclc's callback. A
+/// reply that does not deserialise is dropped without a callback.
+unsafe extern "C" fn typed_client_request_id_trampoline(
+    data: *const u8,
+    len: usize,
+    request_id: *mut nros_node::RawRequestId,
+    context: *mut core::ffi::c_void,
+) {
+    // SAFETY: `context` is the arena copy of this entry's capture.
+    let cap = unsafe { &*(context as *const TypedClientRequestIdCapture) };
+    if unsafe { (cap.response_deserialize)(data, len, cap.response) } == 0 {
+        // `rmw_request_id_t` is an alias of `RawRequestId` (same layout).
+        unsafe { (cap.callback)(cap.response, request_id.cast()) };
+    }
+}
+
+/// rclc's `rclc_executor_add_client_with_request_id(executor, client,
+/// response_msg, callback)` — issue 2136.
+///
+/// [`rclc_executor_add_client`] whose callback also receives the id of the
+/// request each reply answers, as rclc's does: `request_id->sequence_number`
+/// is the sequence number the request went out under (the one
+/// `rclc_client_send_request` reports and the reply was matched on), and
+/// `request_id->writer_guid` is this client's request-writer GUID where the
+/// backend reports it through `take_response_with_info` (zenoh, Cyclone DDS),
+/// all zero where it does not (XRCE-DDS, whose Agent owns the writer).
+///
+/// ADOPT-BOUNDED as [`rclc_executor_add_client`]: a reply that does not
+/// deserialise is dropped without a callback.
+///
+/// # Returns
+/// As [`rclc_executor_add_client`].
+///
+/// # Safety
+/// As [`rclc_executor_add_client`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_client_with_request_id(
+    executor: *mut rclc_executor_t,
+    client: *mut rcl_client_t,
+    response_msg: *mut core::ffi::c_void,
+    callback: rclc_client_callback_with_request_id_t,
+) -> rcl_ret_t {
+    let Some(callback) = callback else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    if client.is_null() || response_msg.is_null() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let Some(response_deserialize) =
+        (unsafe { (*client).type_support.as_ref() }).and_then(|t| t.response_deserialize)
+    else {
+        return RCL_RET_UNSUPPORTED;
+    };
+    let capture = TypedClientRequestIdCapture {
+        response: response_msg,
+        response_deserialize,
+        callback,
+    };
+    // SAFETY: a `Copy` value of plain pointers, read as its own bytes for the
+    // arena to copy; the copy is read back only as this type.
+    let bytes = unsafe {
+        core::slice::from_raw_parts(
+            &capture as *const TypedClientRequestIdCapture as *const u8,
+            core::mem::size_of::<TypedClientRequestIdCapture>(),
+        )
+    };
+    unsafe {
+        attach_client_with(
+            executor,
+            client,
+            None,
+            Some(typed_client_request_id_trampoline),
+            Some(bytes),
+        )
+    }
 }
 
 /// Issue 2081 — the two raw service callback shapes one registration body
@@ -3603,7 +3708,7 @@ pub unsafe extern "C" fn rclc_executor_attach_client(
     // one-shot capture in and out of it. Until W2 the entry held a trampoline
     // whose context was the `rcl_client_t` itself, so a late reply read the C
     // struct (issue 1631's use-after-free).
-    unsafe { attach_client_with(executor, client, None, None) }
+    unsafe { attach_client_with(executor, client, None, None, None) }
 }
 
 /// The one client registration body: [`rclc_executor_attach_client`] with no
@@ -3613,6 +3718,7 @@ unsafe fn attach_client_with(
     executor: *mut rclc_executor_t,
     client: *mut rcl_client_t,
     cb: Option<nros_node::RawResponseCallback>,
+    request_id_cb: Option<nros_node::RawResponseRequestIdCallback>,
     capture: Option<&[u8]>,
 ) -> rcl_ret_t {
     validate_not_null!(executor, client);
@@ -3674,6 +3780,14 @@ unsafe fn attach_client_with(
 
         match result {
             Ok(handle_id) => {
+                // Issue 2136 — the request-id shape rides beside the plain
+                // one, with the same capture as its context.
+                if request_id_cb.is_some() {
+                    match rust_exec.service_client_entry_mut(handle_id.slot()) {
+                        Some(entry) => entry.request_id_callback = request_id_cb,
+                        None => return RCL_RET_ERROR,
+                    }
+                }
                 record_trigger_entity(
                     &mut executor._handle_entities,
                     handle_id,

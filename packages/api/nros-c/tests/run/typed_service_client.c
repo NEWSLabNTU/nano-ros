@@ -6,6 +6,7 @@
  *     rclc_executor_add_service_with_request_id(&exec, &srv, &req, &resp, cb);
  *     rclc_executor_add_service_with_context(&exec, &srv, &req, &resp, cb, ctx);
  *     rclc_executor_add_client(&exec, &cli, &resp, cb);
+ *     rclc_executor_add_client_with_request_id(&exec, &cli, &resp, cb);
  *
  * The executor deserialises through the entity's descriptor, so the callbacks
  * see the caller's own message storage. Asserted here:
@@ -17,7 +18,10 @@
  *   3. a staged reply reaches the client's callback deserialised into `resp`,
  *      with `msgin == &resp`;
  *   4. a descriptor with no codec is UNSUPPORTED, and a NULL callback or
- *      message is INVALID_ARGUMENT.
+ *      message is INVALID_ARGUMENT;
+ *   5. (issue 2136) the client with_request_id form sees the id of the request
+ *      the reply answers: the sequence number it was matched on, and the
+ *      writer GUID the backend's `take_response_with_info` reported.
  */
 
 #include "stub_rmw_backend.h"
@@ -130,6 +134,16 @@ static void on_with_ctx(const void* req, void* resp, void* context) {
     s_ctx_calls++;
     s_seen_ctx = context;
     ((int32_msg_t*)resp)->data = -((const int32_msg_t*)req)->data;
+}
+
+static int s_client_id_calls = 0;
+static int32_t s_client_id_seen = 0;
+static rmw_request_id_t s_client_id;
+
+static void on_reply_with_id(const void* msgin, rmw_request_id_t* request_id) {
+    s_client_id_calls++;
+    s_client_id_seen = ((const int32_msg_t*)msgin)->data;
+    s_client_id = *request_id;
 }
 
 static void on_reply(const void* msgin) {
@@ -259,6 +273,57 @@ int main(void) {
     CHECK(s_client_calls == 1, "the client callback ran once");
     CHECK(s_client_msgin == &s_client_resp, "msgin is the caller's own storage");
     CHECK(s_client_seen == 10, "the reply was deserialised into it");
+
+    /* 5. Issue 2136 — a typed request-id client. The executor holds four
+     * handles, all taken: retire the plain service to make room. */
+    CHECK_RET(rclc_executor_remove_service(&executor, &plain), RCL_RET_OK,
+              "the plain service is removed to make room");
+    rcl_ret_t (*add_client_id)(rclc_executor_t*, rcl_client_t*, void*,
+                               rclc_client_callback_with_request_id_t) =
+        rclc_executor_add_client_with_request_id;
+    rcl_client_t client_id = rcl_get_zero_initialized_client();
+    static int32_msg_t s_client_id_resp;
+    CHECK_RET(rclc_client_init_default(&client_id, &node, &SRV_TYPE, "/id_client"), RCL_RET_OK,
+              "request-id client created");
+    CHECK_RET(add_client_id(&executor, &client_id, &s_client_id_resp, NULL),
+              RCL_RET_INVALID_ARGUMENT, "a NULL request-id client callback is refused");
+    CHECK_RET(add_client_id(&executor, &client_id, &s_client_id_resp, on_reply_with_id),
+              RCL_RET_OK, "typed request-id client registered");
+
+    nros_stub_rmw_reset_client();
+    int8_t guid[16];
+    for (int i = 0; i < 16; i++)
+        guid[i] = (int8_t)(0x40 + i);
+    nros_stub_rmw_set_reply_writer_guid(guid);
+    cdr_int32(frame, 6);
+    CHECK_RET(rclc_client_send_request_async(&client_id, frame, sizeof frame), RCL_RET_OK,
+              "request-id client request sent");
+    const int64_t sent_seq = nros_stub_rmw_last_request_seq();
+    cdr_int32(frame, 12);
+    CHECK(nros_stub_rmw_stage_reply_for(sent_seq, frame, sizeof frame), "stage the id reply");
+    pump(&executor);
+    CHECK(s_client_id_calls == 1, "the request-id client callback ran once");
+    CHECK(s_client_id_seen == 12, "the id reply was deserialised");
+    CHECK(s_client_id.sequence_number == sent_seq,
+          "the request id carries the sequence the reply was matched on");
+    CHECK(memcmp(s_client_id.writer_guid, guid, sizeof(guid)) == 0,
+          "the request id carries the writer GUID the backend reported");
+
+    /* A backend that reports no GUID: the sequence still arrives, the GUID is
+     * all zero ("not reported"). */
+    nros_stub_rmw_reset_client();
+    cdr_int32(frame, 7);
+    CHECK_RET(rclc_client_send_request_async(&client_id, frame, sizeof frame), RCL_RET_OK,
+              "second request-id client request sent");
+    const int64_t sent_seq2 = nros_stub_rmw_last_request_seq();
+    cdr_int32(frame, 14);
+    CHECK(nros_stub_rmw_stage_reply_for(sent_seq2, frame, sizeof frame), "stage the 2nd reply");
+    pump(&executor);
+    int8_t zero[16] = {0};
+    CHECK(s_client_id_calls == 2 && s_client_id_seen == 14, "the second reply reached it");
+    CHECK(s_client_id.sequence_number == sent_seq2 &&
+              memcmp(s_client_id.writer_guid, zero, sizeof(zero)) == 0,
+          "no reported GUID reads all zero, the sequence still set");
 
     if (s_failures != 0) {
         fprintf(stderr, "typed_service_client: %d failure(s)\n", s_failures);

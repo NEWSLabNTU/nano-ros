@@ -3213,6 +3213,13 @@ typedef struct rcl_client_t {
 typedef void (*rclc_client_callback_t)(const void *response);
 
 /**
+ * rclc's `rclc_client_callback_with_request_id_t` (issue 2136): the response
+ * in the caller's own message storage, and the id of the request it answers.
+ */
+typedef void (*rclc_client_callback_with_request_id_t)(const void *response,
+                                                       rmw_request_id_t *request_id);
+
+/**
  * Scheduling-context descriptor passed to
  * [`rclc_executor_create_sched_context`].
  *
@@ -6730,6 +6737,33 @@ rcl_ret_t rclc_executor_add_client(struct rclc_executor_t *executor,
                                    struct rcl_client_t *client,
                                    void *response_msg,
                                    rclc_client_callback_t callback);
+
+/**
+ * rclc's `rclc_executor_add_client_with_request_id(executor, client,
+ * response_msg, callback)` — issue 2136.
+ *
+ * [`rclc_executor_add_client`] whose callback also receives the id of the
+ * request each reply answers, as rclc's does: `request_id->sequence_number`
+ * is the sequence number the request went out under (the one
+ * `rclc_client_send_request` reports and the reply was matched on), and
+ * `request_id->writer_guid` is this client's request-writer GUID where the
+ * backend reports it through `take_response_with_info` (zenoh, Cyclone DDS),
+ * all zero where it does not (XRCE-DDS, whose Agent owns the writer).
+ *
+ * ADOPT-BOUNDED as [`rclc_executor_add_client`]: a reply that does not
+ * deserialise is dropped without a callback.
+ *
+ * # Returns
+ * As [`rclc_executor_add_client`].
+ *
+ * # Safety
+ * As [`rclc_executor_add_client`].
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_client_with_request_id(struct rclc_executor_t *executor,
+                                                   struct rcl_client_t *client,
+                                                   void *response_msg,
+                                                   rclc_client_callback_with_request_id_t callback);
 
 /**
  * Add a service client to the executor (Phase 82).

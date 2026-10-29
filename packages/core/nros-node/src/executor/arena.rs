@@ -16,9 +16,9 @@ use super::{
     types::{
         InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback,
         RawCancelResponseCallback, RawFeedbackCallback, RawGoalCallback, RawGoalResponseCallback,
-        RawMessageDeserializeFn, RawRequestId, RawResponseCallback, RawResultCallback,
-        RawServiceCallback, RawServiceRequestIdCallback, RawSubscriptionCallback,
-        RawSubscriptionInfoCallback, TypedSubscriptionCallback,
+        RawMessageDeserializeFn, RawRequestId, RawResponseCallback, RawResponseRequestIdCallback,
+        RawResultCallback, RawServiceCallback, RawServiceRequestIdCallback,
+        RawSubscriptionCallback, RawSubscriptionInfoCallback, TypedSubscriptionCallback,
     },
 };
 use crate::session;
@@ -484,6 +484,10 @@ pub struct ServiceClientRawArenaEntry<const REPLY_BUF: usize> {
     /// Checked by `try_process` to avoid blind polling.
     pub reply_ready: core::sync::atomic::AtomicBool,
     pub callback: Option<RawResponseCallback>,
+    /// Issue 2136 — when set, dispatched IN PLACE of `callback`, with the id
+    /// of the request the reply answers (rclc's
+    /// `rclc_executor_add_client_with_request_id`). Same `context`.
+    pub request_id_callback: Option<RawResponseRequestIdCallback>,
     pub context: *mut core::ffi::c_void,
     /// Issue 2009 — the ids of the call in flight; see the type docs.
     pub sequences: ClientSequences,
@@ -508,7 +512,7 @@ impl<const REPLY_BUF: usize> ServiceClientRawArenaEntry<REPLY_BUF> {
     /// another request. On a match every generation of the call is retired,
     /// so the replies the other generations still draw are dropped too.
     pub fn take_reply(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
-        take_client_reply(&mut self.handle, buf, &mut self.sequences)
+        Ok(take_client_reply(&mut self.handle, buf, &mut self.sequences)?.map(|(len, _)| len))
     }
 }
 
@@ -525,16 +529,17 @@ pub(crate) fn record_client_send(seqs: &mut ClientSequences, seq: i64, resend: b
 }
 
 /// Issue 2009 — [`ServiceClientRawArenaEntry::take_reply`]'s rule.
+/// Returns the reply's length and the id it was matched on.
 pub(crate) fn take_client_reply(
     handle: &mut session::RmwServiceClient,
     buf: &mut [u8],
     seqs: &mut ClientSequences,
-) -> Result<Option<usize>, TransportError> {
+) -> Result<Option<(usize, i64)>, TransportError> {
     match nros_rmw::take_correlated(handle, buf, seqs)? {
-        Some((len, _seq, ())) => {
+        Some((len, seq, ())) => {
             // The remaining generations answer a call that is now complete.
             seqs.clear();
-            Ok(Some(len))
+            Ok(Some((len, seq)))
         }
         None => Ok(None),
     }
@@ -3607,7 +3612,7 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     // it to and `pending` was cleared — so a C component that sent a request
     // and polled from a timer never saw a single reply while the server
     // answered every one. Leave it in the handle for the poll.
-    if entry.callback.is_none() {
+    if entry.callback.is_none() && entry.request_id_callback.is_none() {
         return Ok(false);
     }
 
@@ -3623,8 +3628,21 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
         ..
     } = &mut *entry;
     match take_client_reply(handle, reply_buffer, sequences) {
-        Ok(Some(len)) => {
+        Ok(Some((len, seq))) => {
             entry.pending = false;
+            // Issue 2136 — the request-id shape, when registered, in place of
+            // the plain one. The id is read before anything else takes on
+            // this handle, so it describes this reply.
+            if let Some(cb) = entry.request_id_callback {
+                let mut id = RawRequestId::for_response(
+                    &nros_rmw::ClientTrait::response_info(&entry.handle),
+                    seq,
+                );
+                trace_cb_start(desc_idx);
+                unsafe { cb(entry.reply_buffer.as_ptr(), len, &mut id, entry.context) };
+                trace_cb_end(desc_idx);
+                return Ok(true);
+            }
             // Phase 8 — hooked inside the `Some(cb)` arm. A client with no
             // callback never reaches here (see above); the not-pending and
             // `Ok(None)` paths return before this point too.
@@ -3704,7 +3722,7 @@ where
         ..
     } = &mut entry.hdr;
     match take_client_reply(handle, reply_buffer, sequences) {
-        Ok(Some(len)) => {
+        Ok(Some((len, _seq))) => {
             entry.hdr.pending = false;
             let mut reader = CdrReader::new_with_header(&entry.hdr.reply_buffer[..len])
                 .map_err(|_| TransportError::DeserializationError)?;

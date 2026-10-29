@@ -1865,9 +1865,30 @@ pub unsafe extern "C" fn rclc_polling_client_take_response_raw_seq(
 // Service Client async pair + setters (Phase 82)
 // ============================================================================
 
-/// The `(callback, context)` pair in this client's arena entry, or `None` if
-/// the client is not REGISTERED. With `set`, the pair is replaced first and
-/// the NEW pair returned.
+/// The callbacks in a client's arena entry: the plain response callback, issue
+/// 2136's request-id one (dispatched in its place when set), and their shared
+/// context.
+#[derive(Clone, Copy)]
+struct ClientEntryCallbacks {
+    callback: rclc_response_callback_t,
+    request_id_callback: Option<nros_node::RawResponseRequestIdCallback>,
+    context: *mut c_void,
+}
+
+impl ClientEntryCallbacks {
+    /// A plain callback, replacing whatever the entry held (a typed
+    /// request-id registration included).
+    fn plain(callback: rclc_response_callback_t, context: *mut c_void) -> Self {
+        Self {
+            callback,
+            request_id_callback: None,
+            context,
+        }
+    }
+}
+
+/// The callbacks in this client's arena entry, or `None` if the client is not
+/// REGISTERED. With `set`, they are replaced first and the NEW ones returned.
 ///
 /// # Safety
 /// `client._internal.executor_ptr`, when set, must point to the live
@@ -1875,8 +1896,8 @@ pub unsafe extern "C" fn rclc_polling_client_take_response_raw_seq(
 #[cfg(feature = "rmw-cffi")]
 unsafe fn client_entry_callback(
     client: &rcl_client_t,
-    set: Option<(rclc_response_callback_t, *mut c_void)>,
-) -> Option<(rclc_response_callback_t, *mut c_void)> {
+    set: Option<ClientEntryCallbacks>,
+) -> Option<ClientEntryCallbacks> {
     if client.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED {
         return None;
     }
@@ -1887,19 +1908,24 @@ unsafe fn client_entry_callback(
     let exec_t = unsafe { &mut *(internal.executor_ptr as *mut rclc_executor_t) };
     let mut exec = crate::executor::get_executor(exec_t);
     let entry = unsafe { exec.service_client_entry_mut(internal.arena_entry_index as usize) }?;
-    if let Some((callback, context)) = set {
-        entry.callback = callback;
-        entry.context = context;
+    if let Some(cbs) = set {
+        entry.callback = cbs.callback;
+        entry.request_id_callback = cbs.request_id_callback;
+        entry.context = cbs.context;
     }
-    Some((entry.callback, entry.context))
+    Some(ClientEntryCallbacks {
+        callback: entry.callback,
+        request_id_callback: entry.request_id_callback,
+        context: entry.context,
+    })
 }
 
 /// No RMW, no arena entry to read.
 #[cfg(not(feature = "rmw-cffi"))]
 unsafe fn client_entry_callback(
     client: &rcl_client_t,
-    set: Option<(rclc_response_callback_t, *mut c_void)>,
-) -> Option<(rclc_response_callback_t, *mut c_void)> {
+    set: Option<ClientEntryCallbacks>,
+) -> Option<ClientEntryCallbacks> {
     let _ = (client, set);
     None
 }
@@ -1931,7 +1957,10 @@ pub unsafe extern "C" fn rclc_client_set_response_callback(
 
     #[cfg(feature = "rmw-cffi")]
     {
-        match client_entry_callback(&*client, Some((callback, context))) {
+        match client_entry_callback(
+            &*client,
+            Some(ClientEntryCallbacks::plain(callback, context)),
+        ) {
             Some(_) => RCL_RET_OK,
             None => RCL_RET_NOT_INIT,
         }
@@ -2456,7 +2485,8 @@ pub unsafe extern "C" fn rclc_client_call(
     // on every exit. The entry cannot be missing: the state check above
     // guarantees a registration, and `remove_client` (the only release)
     // cannot run while this call holds the thread.
-    let Some((orig_cb, orig_ctx)) = client_entry_callback(client_ref, None) else {
+    // Issue 2136 — all of it, a typed request-id registration included.
+    let Some(orig) = client_entry_callback(client_ref, None) else {
         return RCL_RET_NOT_INIT;
     };
 
@@ -2472,10 +2502,13 @@ pub unsafe extern "C" fn rclc_client_call(
     }
     client_entry_callback(
         client_ref,
-        Some((Some(blocking_response_cb), ptr::null_mut())),
+        Some(ClientEntryCallbacks::plain(
+            Some(blocking_response_cb),
+            ptr::null_mut(),
+        )),
     );
     let restore = |client_ref: &rcl_client_t| {
-        client_entry_callback(client_ref, Some((orig_cb, orig_ctx)));
+        client_entry_callback(client_ref, Some(orig));
     };
 
     let send = rclc_client_send_request_async(client, request_data, request_len);

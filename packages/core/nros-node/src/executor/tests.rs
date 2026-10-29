@@ -8572,6 +8572,43 @@ fn test_promise_try_recv_returns_none_then_some() {
     assert_eq!(reply.sum, 99);
 }
 
+/// Issue 2136 — `Promise::take_with_info` hands back the reply's info, the
+/// one the backend reported for THAT reply; `take` keeps its old shape.
+#[test]
+fn promise_take_with_info_reports_the_replys_info() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let mut node = executor.create_node("test").unwrap();
+    let mut client = node.create_client::<TestService>("/test_svc").unwrap();
+
+    let mut promise = client.call(&TestServiceRequest { a: 1 }).unwrap();
+    assert!(promise.take_with_info().unwrap().is_none());
+
+    let seq = promise.handle.last_sent_seq.get().unwrap();
+    let info = nros_core::ServiceInfo {
+        source_timestamp: Some(nros_core::Time::from_nanos(1_000)),
+        received_timestamp: Some(nros_core::Time::from_nanos(2_000)),
+        request_id: Some(nros_core::RequestId {
+            writer_guid: [0x21; nros_core::REQUEST_WRITER_GUID_SIZE],
+            sequence_number: seq,
+        }),
+    };
+    let (reply_buf, reply_len) = encode_test_reply(7);
+    promise.handle.load_reply_info(info);
+    promise.handle.load_reply_for(seq, reply_buf, reply_len);
+    let (reply, got) = promise.take_with_info().unwrap().unwrap();
+    assert_eq!(reply.sum, 7);
+    assert_eq!(got, info);
+
+    // The next call's reply reported nothing: NOT_REPORTED, not the last one's.
+    let mut promise = client.call(&TestServiceRequest { a: 2 }).unwrap();
+    let seq = promise.handle.last_sent_seq.get().unwrap();
+    let (reply_buf, reply_len) = encode_test_reply(8);
+    promise.handle.load_reply_for(seq, reply_buf, reply_len);
+    let (_, got) = promise.take_with_info().unwrap().unwrap();
+    assert_eq!(got, nros_core::ServiceInfo::NOT_REPORTED);
+}
+
 /// A CDR `{ i32 }` reply in a mock-sized buffer (issue 2009 tests).
 fn encode_test_reply(sum: i32) -> ([u8; 256], usize) {
     let mut reply_buf = [0u8; 256];
