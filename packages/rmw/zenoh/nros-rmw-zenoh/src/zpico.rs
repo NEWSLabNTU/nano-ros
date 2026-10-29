@@ -303,6 +303,26 @@ fn acquire_session_slot() -> Result<*mut zpico_sys::zpico_session_t> {
     Ok(handle)
 }
 
+/// zenoh-pico's platform sleep — on every platform, ThreadX included.
+///
+/// phase-517 W15: ThreadX used to be cfg'd out of this on the belief that it
+/// had no sleep outside the cooperative spin path. It has had one since the
+/// platform alias TU (`platform_aliases.c`: `z_sleep_ms` ->
+/// `nros_platform_sleep_ms` -> `tx_thread_sleep`), and the substitute the
+/// connect backoff got — `zpico_spin_once` on the session being opened —
+/// returns `ZPICO_ERR_SESSION` at once on a session that is not open yet, so
+/// it never slept. Every connect retry then ran back to back, and the bounded
+/// ~3 s budget collapsed to the cost of ten refused TCP connects (0.13 s on
+/// threadx-linux), which a router started a moment earlier loses.
+fn sleep_ms(ms: usize) {
+    unsafe extern "C" {
+        fn z_sleep_ms(time: usize) -> i8;
+    }
+    unsafe {
+        let _ = z_sleep_ms(ms);
+    }
+}
+
 /// Issue 1835 — one session OPEN at a time, process-wide.
 ///
 /// Opening a session is not reentrant on three counts, all process-global:
@@ -319,18 +339,6 @@ fn acquire_session_slot() -> Result<*mut zpico_sys::zpico_session_t> {
 /// makes the three one critical section. An open is rare and a waiter is
 /// waiting on someone else's connect, so it sleeps between tries rather than
 /// spinning; with one thread, as on every embedded image, it never waits.
-/// zenoh-pico's platform sleep. ThreadX has none outside the cooperative spin
-/// path, so its callers spin or drive `zpico_spin_once` instead.
-#[cfg(not(feature = "platform-threadx"))]
-fn sleep_ms(ms: usize) {
-    unsafe extern "C" {
-        fn z_sleep_ms(time: usize) -> i8;
-    }
-    unsafe {
-        let _ = z_sleep_ms(ms);
-    }
-}
-
 static OPEN_LOCK: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
 
 struct OpenGuard;
@@ -342,10 +350,7 @@ impl OpenGuard {
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
         {
-            #[cfg(not(feature = "platform-threadx"))]
             sleep_ms(1);
-            #[cfg(feature = "platform-threadx")]
-            core::hint::spin_loop();
         }
         OpenGuard
     }
@@ -365,22 +370,13 @@ impl Context {
     /// # Errors
     ///
     /// Returns an error if initialization or session opening fails.
-    /// Backoff between connect attempts. Mirrors the service-client retry's
-    /// platform split: a real `z_sleep_ms` everywhere except ThreadX, whose
-    /// sleep is driven through the cooperative spin path.
+    /// Backoff between connect attempts: a real platform sleep on every
+    /// platform. It must NOT be `zpico_spin_once` — the session is not open
+    /// between attempts, so that returns at once and the backoff is zero (see
+    /// [`sleep_ms`], phase-517 W15).
     #[inline]
-    fn connect_backoff_ms(session: *mut zpico_session_t, ms: usize) {
-        #[cfg(not(feature = "platform-threadx"))]
-        {
-            let _ = session;
-            sleep_ms(ms);
-        }
-        #[cfg(feature = "platform-threadx")]
-        {
-            unsafe {
-                let _ = zpico_sys::zpico_spin_once(session, ms as u32);
-            }
-        }
+    fn connect_backoff_ms(ms: usize) {
+        sleep_ms(ms);
     }
 
     /// Run an `init + open` attempt with a bounded retry on a transient connect
@@ -400,7 +396,6 @@ impl Context {
     /// blocking C client path has. Bounded (~3 s worst case) so a genuinely
     /// wrong locator still fails promptly. See phase-177 G4 connect-churn note.
     fn connect_with_retry(
-        session: *mut zpico_session_t,
         mut attempt: impl FnMut() -> core::result::Result<(), (ZpicoError, bool)>,
     ) -> Result<()> {
         const MAX_ATTEMPTS: u32 = 10;
@@ -414,7 +409,7 @@ impl Context {
                     if !retryable || i + 1 == MAX_ATTEMPTS {
                         return Err(last_err);
                     }
-                    Self::connect_backoff_ms(session, BACKOFF_MS);
+                    Self::connect_backoff_ms(BACKOFF_MS);
                 }
             }
         }
@@ -426,7 +421,7 @@ impl Context {
             let _open = OpenGuard::acquire();
             // Acquire a pool slot up front; release it on any init/open failure.
             let handle = acquire_session_slot()?;
-            let connect = Self::connect_with_retry(handle, || {
+            let connect = Self::connect_with_retry(|| {
                 // Safety: locator is a valid byte slice, cast to c_char for C string
                 let ret = unsafe { zpico_init(handle, locator.as_ptr().cast()) };
                 if ret < 0 {
@@ -497,7 +492,7 @@ impl Context {
         }
         ffi_guard(|| {
             let handle = acquire_session_slot()?;
-            let connect = Self::connect_with_retry(handle, || {
+            let connect = Self::connect_with_retry(|| {
                 // Read the locator from its constant static address (not a
                 // captured pointer) so the retry survives the backoff clobber.
                 let locator_ptr: *const core::ffi::c_char = if unsafe { LOC_VALID } {
