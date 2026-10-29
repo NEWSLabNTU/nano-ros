@@ -551,6 +551,9 @@ fn render_board_conf(board: &str) -> Option<String> {
 # created as root — so this is what makes a fresh scaffold runnable by an
 # ordinary user.
 CONFIG_ETH_NATIVE_POSIX=n
+# NSOS is a net DRIVER: without this its symbol is dropped ("assigned the
+# value 'y' but got the value 'n'") and the build aborts on the warning.
+CONFIG_NET_DRIVERS=y
 CONFIG_NET_SOCKETS_OFFLOAD=y
 CONFIG_NET_NATIVE_OFFLOADED_SOCKETS=y
 
@@ -635,5 +638,56 @@ CONFIG_MAX_PTHREAD_MUTEX_COUNT=64
             "# {other} backend.\nCONFIG_NROS_RMW_{}=y\n",
             other.to_uppercase()
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Issue 2149's sibling, found by phase-517 W17's `zephyr-rust` probe: the
+    /// entry's native_sim conf set NSOS without `CONFIG_NET_DRIVERS=y`, so
+    /// Kconfig dropped it and aborted. It must carry every setting of the
+    /// SDK's own native_sim overlay, `cmake/zephyr/native-sim-line-3.7.conf`
+    /// — the file the C quick start passes as `EXTRA_CONF_FILE`.
+    #[test]
+    fn native_sim_board_conf_carries_the_sdk_overlay() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let sdk = std::fs::read_to_string(root.join("cmake/zephyr/native-sim-line-3.7.conf"))
+            .expect("SDK native_sim overlay");
+        let ours = render_board_conf("native_sim/native/64").expect("a native_sim conf");
+        for line in sdk
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("CONFIG_"))
+        {
+            assert!(
+                ours.lines().any(|l| l.trim() == line),
+                "the entry's native_sim conf lacks `{line}`:\n{ours}"
+            );
+        }
+    }
+
+    /// The Zephyr chapter's quick-start manifest names `zephyr-lang-rust` at a
+    /// literal revision (a Rust entry builds only with it, phase-517 W17); it
+    /// must be the revision nano-ros's own `west.yml` pins, or the book drifts
+    /// off the supported (zephyr × zephyr-lang-rust) pair on the next bump.
+    #[test]
+    fn the_zephyr_chapter_pins_the_rust_module_west_yml_pins() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let rev_after = |text: &str| -> Option<String> {
+            let i = text.find("- name: zephyr-lang-rust")?;
+            text[i..].lines().take(5).find_map(|l| {
+                l.trim()
+                    .strip_prefix("revision:")
+                    .map(|r| r.trim().to_string())
+            })
+        };
+        let west = std::fs::read_to_string(root.join("west.yml")).expect("west.yml");
+        let book =
+            std::fs::read_to_string(root.join("book/src/getting-started/integration-zephyr.md"))
+                .expect("chapter");
+        let pinned = rev_after(&west).expect("west.yml pins zephyr-lang-rust");
+        assert_eq!(rev_after(&book).as_deref(), Some(pinned.as_str()));
     }
 }

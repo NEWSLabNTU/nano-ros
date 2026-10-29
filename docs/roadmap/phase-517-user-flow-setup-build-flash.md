@@ -1355,6 +1355,18 @@ pinned-project probe is green in `probe-platforms.yml`.
 
   All three are in `just probe` and in `probe-platforms.yml`, and all three
   extract; `check-book-probe-tracks` covers 12 chapters.
+  The first `probe-platforms` run on the branch (40902931965) had
+  `freertos-c` and `threadx-linux-c` green and `zephyr-rust` red. Two
+  defects surfaced there:
+  * the chapter's west manifest did not fetch `zephyr-lang-rust`
+    (`CONFIG_RUST` undefined). It now names the module at the revision
+    `west.yml` pins, and a test holds the two equal;
+  * `nros new entry`'s native_sim conf set NSOS without
+    `CONFIG_NET_DRIVERS=y`, so Kconfig dropped it and aborted. The conf now
+    carries every line of the SDK's `native-sim-line-3.7.conf`, and a test
+    holds that too.
+
+  The `workspace` track's source assertions passed in the same run.
 * **NuttX Rust: not replayable yet, issue 2149.** Measured locally: the
   scaffolded workspace image failed at `core`, because the cargo road ran
   the default toolchain for a `toolchain = "nightly"` board. That is fixed:

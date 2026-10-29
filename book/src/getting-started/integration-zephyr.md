@@ -233,6 +233,12 @@ manifest:
       revision: v3.7.0
       import:
         name-allowlist: [cmsis, picolibc, mbedtls, tinycrypt, mcuboot, net-tools]
+    # Rust support: only a Rust app builds with it. Pinned to the revision
+    # nano-ros's own west.yml pins for the 3.7 line (it has no release tags).
+    - name: zephyr-lang-rust
+      remote: zephyrproject-rtos
+      revision: 404fcefdbab0f2711cd342a1fab9d2eda52a1ba9
+      path: modules/lang/rust
   self:
     path: manifest
 WEST_YML
