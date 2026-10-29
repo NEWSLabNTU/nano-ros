@@ -73,3 +73,10 @@ Which of these is the gap is not measured yet:
    helper, not in this one entry.
 3. Acceptance: a tier-2 nightly where `build-ws-mixed-entry-zenoh` builds,
    and `entry_e2e`'s zephyr mixed cell runs.
+
+## Acceptance is blocked, 2026-10-29
+
+The tier-2 nightly cannot run this issue's cell yet. The cell skips because
+its shared observer `workspace-c-native-robot2` (`linux,c,zenoh`) is out of
+lane, before its own fixture is resolved. See
+[issue 2139](2139-entry-cells-shared-peer-out-of-lane.md).
