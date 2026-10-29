@@ -198,24 +198,24 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
             board_crate: "nros-board-mps2-an385-freertos",
             deploy_token: "freertos",
             kind: PlatformKind::Deferred {
-                reason: "the tracked shape is a split node-lib + `*-entry` bin pair; \
-                         see examples/mps2-an385-freertos/rust/ (issue 0333 follow-up)",
+                reason: "the image is a node package plus an entry crate, so it is a workspace: \
+                         `nros new <ws> --workspace --lang rust`, then `nros new --image`",
             },
         },
         "nuttx" => PlatformSpec {
             board_crate: "nros-board-nuttx-qemu",
             deploy_token: "nuttx",
             kind: PlatformKind::Deferred {
-                reason: "the tracked shape is a split node-lib + `*-entry` bin pair; \
-                         see examples/qemu-armv7a-nuttx/rust/ (issue 0333 follow-up)",
+                reason: "the image is a node package plus an entry crate, so it is a workspace: \
+                         `nros new <ws> --workspace --lang rust`, then `nros new --image`",
             },
         },
         "threadx" => PlatformSpec {
             board_crate: "nros-board-threadx-linux",
             deploy_token: "threadx-linux",
             kind: PlatformKind::Deferred {
-                reason: "the tracked shape is a split node-lib + `*-entry` bin pair; \
-                         see examples/threadx-linux/rust/ (issue 0333 follow-up)",
+                reason: "the image is a node package plus an entry crate, so it is a workspace: \
+                         `nros new <ws> --workspace --lang rust`, then `nros new --image`",
             },
         },
         "zephyr" => PlatformSpec {
@@ -224,7 +224,8 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
             kind: PlatformKind::Deferred {
                 reason: "Zephyr builds through west/Kconfig with \
                          `nros::zephyr_component_main!` in a lib-only crate, not a plain \
-                         cargo binary; see examples/zephyr/rust/ (issue 0333 follow-up)",
+                         cargo binary: `nros new <ws> --workspace --lang rust`, then \
+                         `nros new entry zephyr_entry --platform zephyr`",
             },
         },
         other => bail!(
@@ -315,9 +316,7 @@ pub fn scaffold_package_at(dir: &Path, cfg: &ScaffoldConfig) -> Result<()> {
         && let PlatformKind::Deferred { reason } = spec.kind
     {
         bail!(
-            "nros new: single-package Rust scaffolding for --platform {} is not available \
-             yet — {reason}. Use linux or baremetal for a runnable Rust \
-             starter today.",
+            "nros new: there is no single-package Rust scaffold for --platform {} — {reason}.",
             cfg.platform
         );
     }
@@ -1818,7 +1817,8 @@ mod tests {
             };
             let err = scaffold_package(&cfg).expect_err("deferred platform must bail");
             assert!(
-                err.to_string().contains("not available yet"),
+                err.to_string().contains("no single-package Rust scaffold")
+                    && err.to_string().contains("--workspace --lang rust"),
                 "{platform}: {err}"
             );
             assert!(

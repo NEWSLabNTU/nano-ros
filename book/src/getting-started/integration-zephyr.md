@@ -1106,8 +1106,10 @@ dirs on GitHub are **copy-out clean** — each is a complete application
 back into the nano-ros repository, so its files are a starting point to
 copy into your own app tree. The release does not ship `examples/`;
 `nros new <name> --platform zephyr --lang <c|cpp>` scaffolds a minimal
-C or C++ app instead (single-package Rust scaffolding is not offered for
-Zephyr yet — start a Rust app from the example).
+C or C++ app instead. A Rust app is a workspace: `nros new <ws> --workspace
+--lang rust`, then `nros new entry zephyr_entry --platform zephyr` (see
+[The entry: `nros new entry`](#the-entry-nros-new-entry)); `nros new --platform
+zephyr --lang rust` refuses and prints those commands.
 
 Cyclone `idlc` and the descriptor-gen scripts are located via the module's
 exported cache vars (`NROS_CYCLONE_IDLC`, `NROS_CYCLONE_SCRIPTS_DIR`,

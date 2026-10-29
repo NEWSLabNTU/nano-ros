@@ -39,8 +39,8 @@ trap 'rm -rf "$scratch"' EXIT
 # `baremetal`, not `freertos`: since `fix(#333)` (2026-07-28) `nros new` REFUSES
 # freertos for Rust —
 #
-#   nros new: single-package Rust scaffolding for --platform freertos is not
-#   available yet — the tracked shape is a split node-lib + `*-entry` bin pair
+#   nros new: a Rust node on --platform freertos is built as a workspace (the
+#   refusal prints the `nros new --workspace` and `--image` commands)
 #
 # which is deliberate (that shape has no single-package template), but this job
 # was not moved with it and has failed on every run since. Any platform the CLI

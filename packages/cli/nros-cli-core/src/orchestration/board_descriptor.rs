@@ -1586,6 +1586,25 @@ impl BoardDescriptor {
 }
 
 impl BoardCatalog {
+    /// The boards a `--platform <platform>` word could mean: the platform's
+    /// boards that answer to the word itself when any do (`freertos` →
+    /// `mps2-an385-freertos`), else every board of the platform (`threadx` →
+    /// `rv-virt-threadx`, `threadx-linux`). [`Self::default_board_for_platform`]
+    /// is this list when it has one entry.
+    pub fn boards_for_platform(&self, platform: &str) -> Vec<&BoardDescriptor> {
+        let on_platform: Vec<&BoardDescriptor> = self
+            .descriptors
+            .iter()
+            .filter(|d| d.platform.cmake_deploy() == Some(platform))
+            .collect();
+        let named: Vec<&BoardDescriptor> = on_platform
+            .iter()
+            .copied()
+            .filter(|d| d.answers_to(platform))
+            .collect();
+        if named.is_empty() { on_platform } else { named }
+    }
+
     /// The board `nros new --platform <platform>` scaffolds for when no
     /// `--board` is given (phase-517 W2) — DERIVED, never a table: among the
     /// descriptors whose C/C++ platform ([`PlatformKind::cmake_deploy`]) is
@@ -1597,17 +1616,7 @@ impl BoardCatalog {
     /// Linux simulator and the qemu-riscv64 board, and picking one would be a
     /// guess the user has to discover.
     pub fn default_board_for_platform(&self, platform: &str) -> Result<&BoardDescriptor, String> {
-        let on_platform: Vec<&BoardDescriptor> = self
-            .descriptors
-            .iter()
-            .filter(|d| d.platform.cmake_deploy() == Some(platform))
-            .collect();
-        let named: Vec<&BoardDescriptor> = on_platform
-            .iter()
-            .copied()
-            .filter(|d| d.answers_to(platform))
-            .collect();
-        let candidates = if named.is_empty() { on_platform } else { named };
+        let candidates = self.boards_for_platform(platform);
         match candidates.as_slice() {
             [d] => Ok(d),
             [] => Err(format!(
