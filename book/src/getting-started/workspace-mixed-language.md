@@ -159,8 +159,8 @@ deprecated expert override, and a *committed* one is banned outright (gate
 
 ```sh
 # Current compatibility scaffold for Node pkgs:
-nros new --component c_talker_pkg --lang c --use-case talker
-nros new --component cpp_listener_pkg --lang cpp --use-case listener
+nros new --component c_talker_pkg --lang c --template talker
+nros new --component cpp_listener_pkg --lang cpp --template listener
 nros new system demo_bringup --components c_talker_pkg,cpp_listener_pkg
 ```
 

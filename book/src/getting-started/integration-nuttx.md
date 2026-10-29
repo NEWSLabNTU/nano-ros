@@ -250,16 +250,16 @@ Started Zenoh router with id
 ```
 
 An image `nros build` produced starts its application itself. The scaffolded
-C talker publishes once and returns, so it prints one line:
+C talker is the in-tree
+[example's `main.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-armv7a-nuttx/c/talker/src/main.c),
+so it publishes `Hello World: N` once a second:
 
 ```text probe-expect=70 variant=arm
-my_app: published 0 on /chatter
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
 ```
 
-Paste the
-[example's `main.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-armv7a-nuttx/c/talker/src/main.c)
-over it for a talker that publishes `Hello World: N` on a timer, which a stock
-ROS 2 peer can then echo:
+A stock ROS 2 peer can echo it:
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -283,10 +283,9 @@ QEMU exits via Ctrl-A x.
 
 **Readiness signal.** Once the image boots (a make-built kernel: once
 you type the app's NSH command, e.g. `nuttx_c_talker`), expect its first
-line on the NSH console within ~6 seconds — the scaffold's one
-`published 0` line, or `Publishing: 'Hello World: 1'` from the in-tree
-Rust, C and C++ talkers, which start the count at 1 like the official
-ROS 2 demo talker. If no
+line on the NSH console within ~6 seconds — `Publishing: 'Hello World: 1'`
+from the scaffolded and in-tree Rust, C and C++ talkers, which start the
+count at 1 like the official ROS 2 demo talker. If no
 `Publishing:` line:
 
 1. Confirm the app actually ran — `ps` should show your task.
@@ -333,7 +332,8 @@ boot it:
 ```
 
 ```text probe-expect=70 variant=riscv
-my_app: published 0 on /chatter
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
 ```
 
 ## Auto-configure glue (NSH built-in registration)

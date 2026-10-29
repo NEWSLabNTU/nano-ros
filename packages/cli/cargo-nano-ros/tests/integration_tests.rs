@@ -736,7 +736,9 @@ mod component_scaffold {
         std::env::set_current_dir(tmp.path()).unwrap();
         let result = scaffold_component(&ComponentScaffoldConfig {
             name: "my-comp".to_string(),
-            use_case: "talker".to_string(),
+            template: cargo_nano_ros::scaffold::Role::Talker,
+            node_name: None,
+            meta: Default::default(),
             lang: nros_lang::Language::Rust,
             force: false,
         });
@@ -800,15 +802,19 @@ mod component_scaffold {
         assert!(dir.join("package.xml").is_file());
     }
 
+    /// phase-517 W12 — `--template server --node-name adder` writes the
+    /// server ROLE (its type, its interface) under the given node name.
     #[test]
-    fn scaffold_component_uses_the_use_case_as_the_node_module() {
+    fn scaffold_component_writes_the_template_role_under_the_node_name() {
         let _g = CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
         let prev = std::env::current_dir().unwrap();
         std::env::set_current_dir(tmp.path()).unwrap();
         let result = scaffold_component(&ComponentScaffoldConfig {
             name: "svc".to_string(),
-            use_case: "service".to_string(),
+            template: cargo_nano_ros::scaffold::Role::Server,
+            node_name: Some("adder".to_string()),
+            meta: Default::default(),
             lang: nros_lang::Language::Rust,
             force: false,
         });
@@ -816,11 +822,24 @@ mod component_scaffold {
         result.expect("scaffold_component");
 
         let nros_toml = fs::read_to_string(tmp.path().join("svc/nros.toml")).unwrap();
-        assert!(nros_toml.contains(r#"component = "svc::service""#));
+        assert!(
+            nros_toml.contains(r#"component = "svc::adder""#),
+            "{nros_toml}"
+        );
+        assert!(
+            nros_toml.contains(r#"class = "svc::AddTwoIntsServer""#),
+            "{nros_toml}"
+        );
         let lib = fs::read_to_string(tmp.path().join("svc/src/lib.rs")).unwrap();
-        // The use case names the NODE and its type, not a module.
-        assert!(lib.contains(r#"const NAME: &'static str = "service""#));
-        assert!(lib.contains("impl Component for Service"));
+        assert!(
+            lib.contains(r#"const NAME: &'static str = "adder""#),
+            "{lib}"
+        );
+        assert!(lib.contains("impl Component for AddTwoIntsServer"), "{lib}");
+        assert!(lib.contains("use example_interfaces::srv::"), "{lib}");
+        let xml = fs::read_to_string(tmp.path().join("svc/package.xml")).unwrap();
+        assert!(xml.contains("<depend>example_interfaces</depend>"), "{xml}");
+        assert!(!xml.contains("<depend>std_msgs</depend>"), "{xml}");
     }
 
     #[test]
@@ -831,7 +850,9 @@ mod component_scaffold {
         std::env::set_current_dir(tmp.path()).unwrap();
         let result = scaffold_component(&ComponentScaffoldConfig {
             name: "c-talker".to_string(),
-            use_case: "talker".to_string(),
+            template: cargo_nano_ros::scaffold::Role::Talker,
+            node_name: None,
+            meta: Default::default(),
             lang: nros_lang::Language::C,
             force: false,
         });
@@ -849,7 +870,7 @@ mod component_scaffold {
         assert!(cmake.contains("nano_ros_add_node(talker CLASS c_talker::Talker TYPED"));
 
         let source = fs::read_to_string(dir.join("src/Talker.c")).unwrap();
-        assert!(source.contains("RCLC_C_COMPONENT(c_talker_t, talker_configure)"));
+        assert!(source.contains("RCLC_C_COMPONENT(talker_t, talker_configure)"));
         // The C API at rcl/rclc's include paths only: `<nros/*.h>` is internal,
         // and `<rclc/rclc.h>` carries `RCLC_C_COMPONENT`.
         assert!(
@@ -884,7 +905,9 @@ mod component_scaffold {
         std::env::set_current_dir(tmp.path()).unwrap();
         let result = scaffold_component(&ComponentScaffoldConfig {
             name: "cpp-talker".to_string(),
-            use_case: "talker".to_string(),
+            template: cargo_nano_ros::scaffold::Role::Talker,
+            node_name: None,
+            meta: Default::default(),
             lang: nros_lang::Language::Cpp,
             force: false,
         });

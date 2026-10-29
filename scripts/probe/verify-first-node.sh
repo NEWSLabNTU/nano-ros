@@ -107,3 +107,39 @@ done
 kill "$rs_pid" 2>/dev/null || true
 
 echo "PROBE PASS: scaffolded Rust workspace published on a pristine host, no router running"
+
+# phase-517 W12: `--template` writes the role, so a scaffolded talker and a
+# scaffolded listener exchange messages. Two single-package Rust scaffolds on
+# cyclonedds (no router), each built the way the book builds one. The listener
+# must print the talker's own payload, which only a real subscription can.
+echo '=== probe verify: scaffolded talker -> scaffolded listener ==='
+pair=/tmp/probe_template_pair
+rm -rf "$pair"
+mkdir -p "$pair"
+for role in talker listener; do
+    ( cd "$pair" && nros new "tpl_$role" --platform linux --rmw cyclonedds --template "$role" )
+    ( cd "$pair/tpl_$role" && nros sync && nros build )
+done
+"${NROS_DEADLINE[@]}" 60 "$pair/tpl_listener/build/linux/target/debug/tpl_listener" \
+    >/tmp/template_listener.log 2>&1 &
+listener_pid=$!
+"${NROS_DEADLINE[@]}" 60 "$pair/tpl_talker/build/linux/target/debug/tpl_talker" \
+    >/tmp/template_talker.log 2>&1 &
+talker_pid=$!
+deadline=$((SECONDS + 45))
+until grep -q "I heard: \[Hello World: " /tmp/template_listener.log; do
+    if ! kill -0 "$listener_pid" 2>/dev/null || ! kill -0 "$talker_pid" 2>/dev/null; then
+        echo "PROBE FAIL: a scaffolded node exited before the listener heard the talker"
+        tail -20 /tmp/template_talker.log /tmp/template_listener.log
+        exit 1
+    fi
+    if ((SECONDS >= deadline)); then
+        echo "PROBE FAIL: the scaffolded listener heard nothing from the scaffolded talker in 45 s"
+        tail -20 /tmp/template_talker.log /tmp/template_listener.log
+        exit 1
+    fi
+    sleep 2
+done
+kill "$talker_pid" "$listener_pid" 2>/dev/null || true
+
+echo "PROBE PASS: --template talker and --template listener exchange messages"

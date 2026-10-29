@@ -94,14 +94,14 @@ strong `nros_app_register_backends()` stub (calling
 `nros_rmw_zenoh_register()` for the zenoh image above). Which RMW that
 is comes from `[system] rmw`, not from a `-D` on the command line.
 
-The scaffolded `src/main.c` is the smallest rclc program that does
-something: it opens a session, creates a node and a `std_msgs/Int32`
-publisher on `/chatter`, publishes one message, prints
-`c_talker: published 0 on /chatter` and exits. A talker that keeps
-publishing adds a timer and an executor, as in the outline below and in
-the full
-[`examples/linux/c/talker/src/main.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/c/talker/src/main.c)
-on GitHub, which you can paste over the scaffold's `main.c`.
+The scaffolded `src/main.c` is the ROS 2 demo talker in C, the same program
+as
+[`examples/linux/c/talker/src/main.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/c/talker/src/main.c):
+it opens a session, creates a node, a `std_msgs/String` publisher on
+`/chatter` and a 1 s timer, and publishes `Hello World: N` from the timer
+callback until you stop it. `--template` picks a different node:
+`listener`, `server` / `client` (AddTwoInts) or `action-server` /
+`action-client` (Fibonacci), each the in-tree example of that role.
 
 The C entry point is **`int main(int argc, char **argv)`**, as in any rclc
 program. On a board the C runtime does not call `main`, so the build compiles
@@ -210,9 +210,7 @@ ros2 run rmw_zenoh_cpp rmw_zenohd
 # 2. Run the talker:
 cd c_talker
 ./build/linux/cmake/c_talker
-# Expected output (the scaffold publishes once, then exits):
-#   c_talker: published 0 on /chatter
-# The full examples/linux/c/talker publishes once a second:
+# Expected output, once a second:
 #   Publishing: 'Hello World: 1'
 #   Publishing: 'Hello World: 2'
 #   …
@@ -222,19 +220,14 @@ source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
-# Force best-effort to receive. With the full example's main.c
-# (std_msgs/String, once a second):
+# Force best-effort to receive:
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
-# With the scaffold (one std_msgs/Int32): start the echo FIRST, then
-# terminal 2, with the type it publishes:
-#   ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
-**Readiness signal.** The scaffold prints its one line as soon as the
-session opens. The full example, within ~6 seconds (session open + the
-first 1 s timer tick), prints `Publishing: 'Hello World: 1'` on stdout —
+**Readiness signal.** Within ~6 seconds (session open + the first 1 s
+timer tick), the talker prints `Publishing: 'Hello World: 1'` on stdout —
 Rust + C + C++ all start the count at 1, matching the official ROS 2
-demo talker. If neither appears in 30 seconds:
+demo talker. If it does not appear in 30 seconds:
 
 1. Confirm the router is running (terminal 1). Without it,
    `rclc_support_init` returns immediately with `-4`
@@ -246,13 +239,14 @@ demo talker. If neither appears in 30 seconds:
 
 ## GitHub source
 
-The full talker, to read or to paste over the scaffold:
+The talker the scaffold copies:
 [`examples/linux/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/talker)
 
 ## Next
 
-- Add a subscription:
-  [`examples/linux/c/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/listener)
+- Add a subscriber: `nros new c_listener --platform linux --lang c --template listener`
+  (the same program as
+  [`examples/linux/c/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/listener)).
 - Service / action shapes:
   [`service-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/service-client),
   [`action-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/action-client)

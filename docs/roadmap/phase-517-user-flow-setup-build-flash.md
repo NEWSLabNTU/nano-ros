@@ -1,6 +1,6 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-29). Open; W1, W4 and W8 done; W12–W17 opened from the maintainer's rulings on the Left lists; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
+**Status (2026-10-29). Open; W1, W4, W8 and W12 done; W12–W17 opened from the maintainer's rulings on the Left lists; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
@@ -1115,6 +1115,59 @@ names its interface package.
 `check-scaffold-builds`, a scaffolded talker and listener exchange messages
 (one probe), and the book's first-node chapters scaffold the listener with
 `--template listener` instead of pasting a full example over a talker.
+
+**Done (2026-10-29).** `nros new --template <role>` and the `ros2 pkg create`
+flags landed as decided.
+
+* **Templates.** The roles are files under
+  `packages/cli/cargo-nano-ros/templates/roles/{rust,c,cpp}/`: the Rust
+  declarative node, the C/C++ executable and the C/C++ typed component, each
+  copied from the in-tree role example (`examples/linux/<lang>/<role>`,
+  `examples/workspaces/{c,cpp}/src/<role>_pkg`) with the names replaced by
+  tokens. The C/C++ role mains are byte-identical across platforms, which is
+  why one executable template serves every non-Zephyr platform.
+  * The typed talker and listener use `std_msgs/String`, like every other
+    shape. The workspace components they came from use `Int32`, so a
+    scaffolded talker would not have reached a scaffolded listener of the
+    other shape.
+  * The Rust nodes log through `nros_log`, as the Rust scaffold always did.
+  * Test-only knobs in the examples (`NROS_FIB_STEP_TICKS`,
+    `NROS_TEST_GOAL_ORDER`) are not carried into the templates.
+* **`nros-codegen.toml` for a C/C++ talker or listener.** A C/C++ talker or
+  listener scaffold writes the `std_msgs/String.data = 256` capacity, beside
+  `package.xml`, where the in-tree examples state it. The C++ listener does
+  not compile without it (issue 0964's static assertion), and the gate below
+  caught exactly that.
+* **Node names.** A package's node defaults to the package name. A component's
+  node defaults to the role's demo node name (`talker`,
+  `add_two_ints_server`, …), which is what `--component` wrote before.
+* **Refusals.**
+  * `--use-case` is refused, naming the matching `--template` (`service` →
+    `server` or `client`).
+  * A package flag passed to a mode that writes no package (`--workspace`,
+    `--image`, `nros new node`, …) is refused rather than ignored.
+* **Gate.** `check-scaffold-builds` discovers the roles from `nros new --help`
+  and compiles every role in project mode for every language, plus the talker
+  in component mode: 21 variants, all OK. Any other
+  `<lang>_component_<role>` builds by name. Measured on 2026-10-29: the
+  ten remaining component roles (C and C++) all build, after the C client
+  lost the `/sum` republish its workspace original carried (it needed
+  `std_msgs`, which the role does not depend on).
+* **Probe.** `verify-first-node.sh` scaffolds `--template talker` and
+  `--template listener` as two Rust packages on cyclonedds and asserts that
+  the listener prints the talker's payload. Measured locally:
+  `I heard: [Hello World: 1]`, then `[Hello World: 2]`.
+* **Book.** These chapters drop the "publishes once and exits" output and the
+  "paste the example over it" step:
+  * `first-node-c.md`, `first-node-cpp.md`;
+  * `freertos.md`, `threadx.md`;
+  * `integration-nuttx.md` (both `probe-expect` blocks now
+    `Publishing: 'Hello World: N'`);
+  * `integration-zephyr.md` (its `probe-expect` block);
+  * `ros2-interop.md` (the standalone listener is
+    `--template listener`).
+
+  `reference/cli.md` documents the roles and the `ros2 pkg create` flags.
 
 ### W13 — Rust off Linux and bare metal stays a workspace; Zephyr Rust gets an image (S)
 

@@ -241,10 +241,9 @@ Network ready.
 
 The C / C++ package's image boots with the same flags and its own ELF,
 `-kernel build/freertos/cmake/fr_talker` from `fr_talker/`. The scaffolded C
-talker publishes once and returns, so it prints one line,
-`fr_talker: published 0 on /chatter`; paste the
-[example's `main.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-freertos/c/talker/src/main.c)
-over it for a timer-driven talker.
+talker is the in-tree
+[example's `main.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-freertos/c/talker/src/main.c):
+it prints `Publishing: 'Hello World: 1'`, `…: 2`, … once a second.
 
 **3. A stock ROS 2 peer.** The talker publishes best-effort; stock `ros2 topic
 echo` defaults to RELIABLE, so the QoS-mismatched echo silently delivers

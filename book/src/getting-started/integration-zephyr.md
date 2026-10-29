@@ -275,8 +275,8 @@ Started Zenoh router with id
 ```
 
 ```text probe-expect=70 variant=native-sim
-Published: 0
-Published: 1
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
 ...
 ```
 

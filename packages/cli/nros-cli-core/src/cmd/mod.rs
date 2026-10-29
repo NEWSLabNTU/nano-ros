@@ -80,8 +80,9 @@ pub enum Cmd {
     /// materialising. One way — `nros build` stops regenerating it.
     Materialize(materialize::Args),
 
-    /// Scaffold a new nano-ros project (talker / listener / service / action)
-    New(new::Args),
+    /// Scaffold a new nano-ros package (`--template`: talker, listener, server,
+    /// client, action-server, action-client), workspace, image or component
+    New(Box<new::Args>),
 
     /// Generate Rust / C / C++ message bindings from `package.xml`
     Generate(generate::Args),
