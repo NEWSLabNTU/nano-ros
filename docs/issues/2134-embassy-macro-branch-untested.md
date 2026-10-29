@@ -6,7 +6,7 @@ type: tech-debt
 area: [macros, boards, embedded]
 severity: low
 found: 2026-10-29
-related: [0248, 0415]
+related: [0248, 0415, 2143, 2144, 2145, 2146, 2150]
 ---
 
 ## What
@@ -45,6 +45,64 @@ replaces `spin_async()`'s self-waking loop. Two ways to resolve it:
   at least "it still compiles" is checked. This keeps an unexercised runtime
   path, which RFC-0112 D3 says not to do. It would need a ruling that a seam
   with a compile cell is an acceptable exception.
+
+## Worked comparison (2026-10-29)
+
+The same one-listener app, written each way.
+
+**Keep.** The app is `nros::main!();` plus `[image.embassy] board = "…"` in
+`system.toml`, and gets component install, the run plan, the deploy overlay and
+deferred-dispatch registration from the model. But a board crate must exist
+first: an `EmbassyBoardEntry` impl (spawner, executor, a `NodeDispatchRuntime`
+with its channel, all hardware and network bring-up), the
+`[package.metadata.nros.board] framework = "embassy"` row and a `build.rs`
+calling `nros_build::emit_board_framework()`. And what the branch emits today is
+itself a poll loop:
+
+```rust
+loop {
+    let _ = executor.spin_once(Duration::from_millis(1)); // blocks the Embassy thread up to 1 ms
+    while let Some(env) = runtime.take() { executor.dispatch_callback(..) }
+    Timer::after_millis(1).await;                         // fixed 1 ms tick
+}
+```
+
+So it wakes every millisecond when idle and stalls every other Embassy task for
+up to 1 ms a cycle (issue 2145's defect, emitted). Its comments also still call
+`dispatch_callback` a "no-op stub", which has been false since the executor
+grew real dispatch slots.
+
+**Demote, today's API.** A hand-written `#[embassy_executor::main]` opens the
+`Executor`, creates its nodes, and spawns a task that loops
+`spin_some(Duration::ZERO)` then `Timer::after_millis(1).await`. Already better
+than the emitted loop (never blocks inside a poll), still a 1 ms tick. It loses
+the `system.toml` assembly, and callbacks run inline because deferred dispatch
+needs the macro's node ABI (issue 2146).
+
+**Demote, after 2143 + 2144.** The task waits on
+`select(notified, Timer::at(next_deadline))` and sleeps until there is work.
+This is the first shape that is correct, and it is independent of Embassy:
+the same loop serves any async host.
+
+**A setup-only macro (issue 2150).** Split what `nros::main!` emits into the
+assembly every host wants (`nros_setup(&mut Executor)`, from `system.toml`) and
+the loop that differs per framework (the host keeps it). That gives a recipe
+the Keep option's assembly UX with no Embassy-specific code in nano-ros, and
+it is where 2146 is easiest to solve.
+
+| | Keep | Demote (today) | Demote + 2150 |
+|---|---|---|---|
+| App code | ~5 lines | ~40–80 + hand wiring | ~20 |
+| `system.toml`-driven | yes | no | yes |
+| Board crate required | yes | no | no |
+| Idle behaviour | 1 ms poll, blocks | 1 ms poll | sleeps (after 2143/2144) |
+| Deferred dispatch | yes | no (2146) | yes |
+| Embassy-specific code kept | ~136 macro lines + trait | none | none |
+| CI-checkable | needs a board | std-arch executor | std-arch executor |
+
+Recommendation recorded for the ruling: demote now, the 2143/2144 loop next,
+issue 2150 to restore the assembly for every host. Keep only if an Embassy
+board arrives with a cell and an owner, and then rewrite its emitted loop.
 
 ## Owner
 
