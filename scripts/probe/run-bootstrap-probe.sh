@@ -161,6 +161,7 @@ case "$PROBE_PLATFORM" in
     nuttx-arm)       PLATFORM_CHAPTER=book/src/getting-started/integration-nuttx.md; PROBE_VARIANT=arm ;;
     nuttx-riscv)     PLATFORM_CHAPTER=book/src/getting-started/integration-nuttx.md; PROBE_VARIANT=riscv ;;
     zephyr)          PLATFORM_CHAPTER=book/src/getting-started/integration-zephyr.md; PROBE_VARIANT=native-sim ;;
+    zephyr-rust)     PLATFORM_CHAPTER=book/src/getting-started/integration-zephyr.md; PROBE_VARIANT=native-sim-rust ;;
     # phase-517 W4 — not a platform: installation.md's "Provision a whole
     # workspace" run, one bare `nros setup` for a Linux and a FreeRTOS image,
     # then `nros build --all` with nothing else installed.
@@ -169,7 +170,7 @@ case "$PROBE_PLATFORM" in
     # pinned to a release other than the installed one, so the installed
     # `nros` must hand off to the pinned one, fetching it first.
     pinned)          PLATFORM_CHAPTER=book/src/getting-started/installation.md; PROBE_VARIANT=pinned ;;
-    *) echo "probe: unknown PROBE_PLATFORM '$PROBE_PLATFORM' (want linux|baremetal|freertos|freertos-c|threadx-linux|threadx-riscv64|threadx-linux-c|nuttx-arm|nuttx-riscv|zephyr|workspace|pinned)" >&2; exit 2 ;;
+    *) echo "probe: unknown PROBE_PLATFORM '$PROBE_PLATFORM' (want linux|baremetal|freertos|freertos-c|threadx-linux|threadx-riscv64|threadx-linux-c|nuttx-arm|nuttx-riscv|zephyr|zephyr-rust|workspace|pinned)" >&2; exit 2 ;;
 esac
 if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
     echo "probe: PROBE_PLATFORM=$PROBE_PLATFORM is an installed-track chapter (user chapters have no checkout track — phase-517 W2)" >&2

@@ -29,6 +29,12 @@ default_transport = "ethernet"
 # `armfvp` drives Zephyr's stock `cmake/emu/armfvp.cmake`, which spawns
 # `FVP_BaseR_AEMv8R` with UART on stdout, given `ARMFVP_BIN_PATH`.
 runner = "armfvp"
+# Issue 2151 — what a RUST image for this board needs beyond a C one.
+# zephyr-lang-rust picks the triple from the Zephyr board at build time, and
+# runs bindgen over Zephyr's headers (clang for its builtin headers,
+# libclang-dev for the library bindgen loads).
+rust_target = "aarch64-unknown-none"
+rust_prereqs = ["clang", "libclang-dev"]
 
 [board.provisioning]
 zephyr_line = "3.7"

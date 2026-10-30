@@ -628,7 +628,25 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         // ---- stage 3 ----------------------------------------------------
         // Before anything is generated or compiled: a missing prerequisite
         // fails HERE, naming the command that fixes it (RFC-0065 D2).
-        let missing = crate::builder::preflight::check(descriptor, &root, nano_ros_root.as_deref());
+        let mut missing =
+            crate::builder::preflight::check(descriptor, &root, nano_ros_root.as_deref());
+        // Issue 2151 — a Rust image on Zephyr compiles for the triple
+        // zephyr-lang-rust picks and runs bindgen, neither of which a C image
+        // needs.
+        if platform == "zephyr" && !image_has_non_rust(&image, &bringup_dir) {
+            let index = nano_ros_root.as_deref().and_then(|r| {
+                crate::orchestration::sdk_index::SdkIndex::load(&r.join("nros-sdk-index.toml")).ok()
+            });
+            missing.extend(crate::builder::preflight::check_zephyr_rust(
+                descriptor,
+                |keys| {
+                    index
+                        .as_ref()
+                        .map(|i| crate::cmd::setup::missing_prereqs(i, keys))
+                        .unwrap_or_default()
+                },
+            ));
+        }
         if !missing.is_empty() {
             eyre::bail!("{}", crate::builder::preflight::report(&missing));
         }

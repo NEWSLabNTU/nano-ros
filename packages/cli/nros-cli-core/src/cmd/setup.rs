@@ -914,13 +914,40 @@ fn board_rust_needs(
             continue;
         }
         if let Some(n) = crate::builder::preflight::rust_need(d, Some(sdk_root)) {
-            let row = (channel, n);
+            let row = (channel.clone(), n);
+            if !out.contains(&row) {
+                out.push(row);
+            }
+        }
+        // Issue 2151 — a Zephyr board has no `target` (west picks the C
+        // lane's), but a Rust image on it compiles for the triple
+        // zephyr-lang-rust picks, which the board states. Installed whatever
+        // the image language: one `rustup target add` is cheap, and a later
+        // Rust image then builds without another setup.
+        if let Some(t) = d.zephyr.as_ref().and_then(|z| z.rust_target_for_host()) {
+            let row = (channel, crate::builder::preflight::RustNeed::Target(t));
             if !out.contains(&row) {
                 out.push(row);
             }
         }
     }
     out
+}
+
+/// Issue 2151 — the `[prereq.*]` keys among `keys` this host is missing, by
+/// the probe `nros setup --check` runs. A key the index does not declare, or
+/// whose probe cannot answer here, is never reported.
+pub(crate) fn missing_prereqs(index: &SdkIndex, keys: &[String]) -> Vec<String> {
+    let prereqs = index.prereqs();
+    keys.iter()
+        .filter(|k| {
+            matches!(
+                prereq_state(index, &prereqs, k, None, false),
+                PrereqState::Missing
+            )
+        })
+        .cloned()
+        .collect()
 }
 
 /// Resolve the board's `[board.cmake] toolchain_file` and write
@@ -5760,7 +5787,7 @@ fn run_workspace_install(
     args: &Args,
 ) -> Result<()> {
     let root = index_path.parent().map(std::path::Path::to_path_buf);
-    let keys = run_workspace_scan(index, ws, root.as_deref())?;
+    let mut keys = run_workspace_scan(index, ws, root.as_deref())?;
     // phase-517 W4 — every `<depend>` resolves through the ladder `nros build`
     // refuses on, so a name `nros setup` cannot provision stops HERE, before
     // anything is fetched, and not at the first build. One ladder: a second
@@ -5783,6 +5810,12 @@ fn run_workspace_install(
             problems.join("\n  ")
         );
     }
+    keys.extend(rust_image_prereqs(
+        index,
+        root.as_deref(),
+        &boards,
+        &found.packages,
+    ));
     println!();
     if boards.is_empty() {
         println!(
@@ -5830,6 +5863,42 @@ fn run_workspace_install(
             rerun: &rerun,
         }),
     )
+}
+
+/// Issue 2151 — the host prerequisites a Rust image needs on the workspace's
+/// boards beyond a C one (`[board.zephyr] rust_prereqs`: zephyr-lang-rust's
+/// bindgen needs `clang` and `libclang-dev`). Asked only when the workspace
+/// holds a Rust package, so a C-only Zephyr workspace is asked for nothing new.
+fn rust_image_prereqs(
+    index: &SdkIndex,
+    sdk_root: Option<&Path>,
+    boards: &[(String, Option<String>)],
+    packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
+) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    if !packages
+        .iter()
+        .any(|p| !crate::routing::route(p).cmake_subdir)
+    {
+        return out;
+    }
+    let Some(catalog) =
+        sdk_root.and_then(|r| crate::orchestration::board_descriptor::BoardCatalog::load(r).ok())
+    else {
+        return out;
+    };
+    let is_key = |k: &str| index.board.contains_key(k);
+    for d in catalog.descriptors() {
+        let Some(key) = d.setup_key(&is_key) else {
+            continue;
+        };
+        if boards.iter().any(|(b, _)| *b == key)
+            && let Some(z) = &d.zephyr
+        {
+            out.extend(z.rust_prereqs.iter().cloned());
+        }
+    }
+    out
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]

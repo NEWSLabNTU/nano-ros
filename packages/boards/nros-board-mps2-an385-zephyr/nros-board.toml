@@ -21,6 +21,12 @@ supported_netstacks = []
 
 [board.zephyr]
 west_board = "mps2_an385"
+# Issue 2151 — what a RUST image for this board needs beyond a C one.
+# zephyr-lang-rust picks the triple from the Zephyr board at build time, and
+# runs bindgen over Zephyr's headers (clang for its builtin headers,
+# libclang-dev for the library bindgen loads).
+rust_target = "thumbv7m-none-eabi"
+rust_prereqs = ["clang", "libclang-dev"]
 # Derived, so absent on purpose: prj.conf and
 # `boards/<west_board with / and @ as _>.{conf,overlay}`,
 # present-if-exists. State `runner` only if it differs from what

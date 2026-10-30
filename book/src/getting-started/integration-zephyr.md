@@ -202,7 +202,7 @@ Zephyr's own host tools come first — `west` and the build tools
 [Zephyr's Getting Started](https://docs.zephyrproject.org/3.7.0/develop/getting_started/index.html)
 lists; `nros setup` installs no system packages. On Debian/Ubuntu:
 
-```bash probe=30 variant=native-sim
+```bash probe=30 variant=native-sim,native-sim-rust
 sudo apt-get install -y --no-install-recommends git cmake ninja-build gperf \
     device-tree-compiler python3-pip python3-venv xz-utils file wget
 pip3 install --user west
@@ -211,7 +211,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Provision the board and RMW (the Zephyr SDK, zenoh-pico, mbedtls):
 
-```bash probe=32 variant=native-sim
+```bash probe=32 variant=native-sim,native-sim-rust
 nros setup zephyr --rmw zenoh
 export ZEPHYR_SDK_INSTALL_DIR="$(nros sdk-path zephyr-sdk --require)"
 ```
@@ -220,7 +220,7 @@ A west workspace that pins Zephyr 3.7 and fetches only the modules nano-ros's
 boards build with (`nros setup zephyr` lists them; `import: true` would fetch
 every vendor HAL, ~2.5 GB more):
 
-```bash probe=34 variant=native-sim
+```bash probe=34 variant=native-sim,native-sim-rust
 mkdir -p my_zephyr_ws/manifest && cd my_zephyr_ws
 cat > manifest/west.yml <<'WEST_YML'
 manifest:
@@ -266,13 +266,13 @@ Run it against a router on the host's loopback — `native_sim` uses the host's
 sockets, and the image dials `tcp/127.0.0.1:7447` unless `system.toml` states a
 `locator`:
 
-```bash probe=60 probe-run=60 probe-keep variant=native-sim
+```bash probe=60 probe-run=60 probe-keep variant=native-sim,native-sim-rust
 source /opt/ros/humble/setup.bash
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
-```text probe-expect=60 variant=native-sim
+```text probe-expect=60 variant=native-sim,native-sim-rust
 Started Zenoh router with id
 ```
 
@@ -287,29 +287,25 @@ Publishing: 'Hello World: 2'
 ```
 
 **The same talker in Rust.** A Rust image on Zephyr is a workspace: a node
-package plus a Zephyr entry, which `nros new entry` scaffolds. This road
-does not build outside a nano-ros checkout yet: the scaffolded entry never
-gets the selection package its `nros::main!` needs
-([issue 2152](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2152-zephyr-entry-scaffold-no-selection.md)).
-The steps are (see
+package plus a Zephyr entry, which `nros new entry` scaffolds (see
 [The entry: `nros new entry`](#the-entry-nros-new-entry)). From the west
-workspace above, beside it:
+workspace above, beside it.
 
-zephyr-lang-rust needs two things the C app does not: clang and libclang, for the
-bindings it generates from Zephyr's headers, and the Rust target the Zephyr
-board implies (`x86_64-unknown-none` for native_sim/64). `nros setup zephyr`
-installs neither yet
-([issue 2151](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2151-zephyr-rust-target-not-provisioned.md)):
+zephyr-lang-rust needs two things the C app does not: the Rust target the
+Zephyr board implies (`x86_64-unknown-none` for native_sim/64 on an x86_64
+host), and clang and libclang, for the bindings it generates from Zephyr's
+headers. `nros setup` in the workspace installs the target, and with `--sudo`
+the two packages (without it, it prints the install command). `nros build`
+refuses a Rust Zephyr image that lacks either, naming the command.
 
-```bash
-sudo apt-get install -y --no-install-recommends clang libclang-dev
-. "$HOME/.cargo/env"     # the rustup `nros setup` installed (Installation)
-rustup target add x86_64-unknown-none
+```bash probe=40 variant=native-sim-rust
+. "$HOME/.cargo/env"     # the cargo `nros setup` installed (Installation)
 export NROS_ZEPHYR_WORKSPACE="$PWD"
 cd ..
 nros new rs_ws --workspace --lang rust --rmw zenoh
 cd rs_ws
 nros new entry zephyr_entry --platform zephyr
+nros setup --sudo
 nros sync
 nros build demo_bringup:zephyr_entry
 ```
@@ -317,13 +313,13 @@ nros build demo_bringup:zephyr_entry
 With the router above running, run the image `nros build` wrote (it prints
 this path):
 
-```bash
+```bash probe=70 probe-run=120 variant=native-sim-rust
 ./build/zephyr-zenoh/demo_bringup__zephyr_entry_west/zephyr/zephyr.exe
 ```
 
 The workspace's talker and listener run in the one image:
 
-```text
+```text probe-expect=70 variant=native-sim-rust
 Publishing: 0
 I heard: 0
 ```

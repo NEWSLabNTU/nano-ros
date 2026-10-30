@@ -134,6 +134,50 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
     out
 }
 
+/// Issue 2151 — what a RUST image on a Zephyr board needs beyond a C one: the
+/// triple zephyr-lang-rust compiles it for (`[board.zephyr] rust_target`), and
+/// the host prerequisites its bindgen run needs (`rust_prereqs`, checked by
+/// `missing_prereqs` — the `nros setup --check` probe). Without this the build
+/// failed inside cargo with `can't find crate for core`, then inside
+/// `zephyr-sys`'s build script with `Unable to find libclang`.
+///
+/// Both remedies are `nros setup`, which installs the target for the board and
+/// asks for the prerequisites when the workspace holds a Rust package; the
+/// target's own `rustup` line is named too, since it needs no privilege.
+#[must_use]
+pub fn check_zephyr_rust(
+    board: &BoardDescriptor,
+    missing_prereqs: impl Fn(&[String]) -> Vec<String>,
+) -> Vec<Missing> {
+    let mut out = Vec::new();
+    let Some(z) = board.zephyr.as_ref() else {
+        return out;
+    };
+    if let Some(target) = z.rust_target_for_host()
+        && !rust_target_installed(&target)
+    {
+        out.push(Missing {
+            what: format!(
+                "Rust target `{target}` (a Rust image on board `{}`)",
+                board.names[0]
+            ),
+            remedy: format!("rustup target add {target}"),
+        });
+    }
+    let absent = missing_prereqs(&z.rust_prereqs);
+    if !absent.is_empty() {
+        out.push(Missing {
+            what: format!(
+                "host package(s) {} (bindgen in a Rust image on board `{}`)",
+                absent.join(", "),
+                board.names[0]
+            ),
+            remedy: "nros setup --sudo".to_string(),
+        });
+    }
+    out
+}
+
 /// What rustup must add for `board`'s cross target — the same rule [`check`]
 /// refuses a build by, so `nros setup <board>` installs exactly what that check
 /// would ask for (phase-517 W10): a prebuilt `rust-std` for an ordinary
@@ -574,5 +618,43 @@ mod tests {
         let freertos = crate::cmd::board_facts::resolve_board(&cat, "mps2-an385-freertos")
             .expect("freertos board");
         assert_eq!(board_rust_channel(freertos, Some(&root)), None);
+    }
+
+    /// Issue 2151 — a Rust image on a Zephyr board is refused before anything
+    /// compiles when the triple zephyr-lang-rust picks, or the host packages
+    /// its bindgen needs, are absent; and a board stating neither adds nothing.
+    #[test]
+    fn a_rust_zephyr_image_names_its_target_and_host_packages() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root).unwrap();
+        let mut board = catalog
+            .descriptors()
+            .iter()
+            .find(|d| d.answers_to("zephyr"))
+            .expect("the native_sim descriptor")
+            .clone();
+        let z = board.zephyr.as_ref().unwrap();
+        assert_eq!(
+            z.rust_target_for_host(),
+            Some(format!("{}-unknown-none", std::env::consts::ARCH)),
+            "native_sim's Rust triple follows the host"
+        );
+        assert_eq!(z.rust_prereqs, vec!["clang", "libclang-dev"]);
+
+        board.zephyr.as_mut().unwrap().rust_target = Some("nros-not-a-real-triple".into());
+        let got = check_zephyr_rust(&board, |keys| keys.to_vec());
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert_eq!(got[0].remedy, "rustup target add nros-not-a-real-triple");
+        assert!(
+            got[1].what.contains("clang, libclang-dev"),
+            "{}",
+            got[1].what
+        );
+        assert_eq!(got[1].remedy, "nros setup --sudo");
+
+        let z = board.zephyr.as_mut().unwrap();
+        z.rust_target = None;
+        z.rust_prereqs.clear();
+        assert!(check_zephyr_rust(&board, |keys| keys.to_vec()).is_empty());
     }
 }

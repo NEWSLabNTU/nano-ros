@@ -81,6 +81,7 @@ jobs:
           - nuttx-arm
           - nuttx-riscv
           - zephyr
+          - zephyr-rust
           - workspace
           - pinned
     steps:
