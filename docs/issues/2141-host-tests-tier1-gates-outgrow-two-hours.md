@@ -69,3 +69,45 @@ defensible:
 
 Close this issue when a scheduled `host-tests` run completes `tier-1 gates`
 inside its cap, with the cap's headroom stated.
+
+## Second night: the gates alone now pass two hours, and `check build` is where the time goes (2026-10-30)
+
+The scheduled `host-tests` run 40996190687 (2026-10-30 03:13 UTC, `093456b7e`)
+was cancelled the same way. Job 123869758695 `tier-1 gates (just check)`:
+
+> The job has exceeded the maximum execution time of 2h0m0s
+
+Two numbers are different from the first night:
+
+- **The time before the gates shrank.** Step `just ci tier1 gates` started at
+  03:24:29, 10.5 minutes into the job (it was about 38 minutes on 10-29). It
+  was still running at 05:14:03 when it was killed. So the gates step alone ran
+  **1h49m and did not finish**. That rules out a slow setup as the cause: the
+  gates themselves no longer fit in the cap.
+- **This time the gates log was uploaded.** The `Upload tier-1 gates log` step
+  runs after the cancellation, so artifact `host-tier1-gates-ci-logs` holds
+  `ci-tier1-gates.log` (7,826 lines). That answers the first-night gap ("this
+  run says nothing about which gate was slow").
+
+What the log says:
+
+- `check::default` started at 03:26:25Z. Its recipe is
+  `cli-fresh fast api-parity probe-workspace-caps build`.
+- `check-fast` finished: `483 gate(s) ran at -P4 ... busy 2246s over wall 567s`.
+  That is about 9.5 minutes. Its slowest gate was `declared-qos-registration`
+  at 124 s.
+- The api-parity output (`c vs rclc+rcl` / `cpp vs rclcpp` / `rust vs rclrs`)
+  and the `probe-workspace-caps` checks (`all 5 checks passed`) follow it.
+- **The log ends there.** The only recipe left in `check::default` is
+  `build`, and the log has no output from it. So `just check build` ran from
+  shortly after the api-parity and probe steps until the kill, which is well
+  over an hour.
+
+The disk report after the kill reads
+`66% used, 50G free — 21G target; 13G build`, so this is not disk (issue 1353).
+
+That narrows what would close this issue. The choice is about `check build`
+inside `ci tier1 gates`: give it its own job (the issue 1651 shape), or measure
+it and raise `timeout-minutes` by a stated margin. `check-fast` is not the
+budget problem. A useful next step is per-gate timing for `check build`, to
+match what `check-fast` already prints.
