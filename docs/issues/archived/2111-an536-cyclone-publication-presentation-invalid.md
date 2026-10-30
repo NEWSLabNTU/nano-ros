@@ -1,7 +1,8 @@
 ---
 id: 2111
 title: "A ROS 2 Cyclone peer rejects the mps3-an536 FreeRTOS Cyclone talker's publication: PRESENTATION parameter invalid"
-status: open
+status: resolved
+resolved: 2026-10-30
 type: bug
 area: [cyclonedds, freertos, interop, qos]
 severity: medium
@@ -134,3 +135,32 @@ on main `e0f81b4ac5` (2026-10-28), passed
 `nros_freertos_an536_cyclone_publisher_stays_reachable_from_ros2`. No commit in
 `bca02e9ee..e0f81b4ac5` names it. It stays open until two more live-peer nights
 are green, or it reappears and can be bisected.
+
+## Resolution (2026-10-30): not reproduced, closed on the criterion above
+
+The PRESENTATION rejection was seen once, in live-peer run 40448779789 on
+`bca02e9ee` (2026-10-27). The same cell then passed on three consecutive
+scheduled live-peer nights, each in the job that runs it ("rows whose board is
+NOT this runner (ci image)"), and none of their logs carries a
+`PRESENTATION` or `invalid parameter list` line from the host's Cyclone:
+
+| run | main | job | cell |
+| --- | --- | --- | --- |
+| 40631028259 (2026-10-28) | `e0f81b4ac5` | — | PASS (recorded above) |
+| 40816464981 (2026-10-29) | `3bb7c43cc4` | 123259119486 | PASS, 78.3 s |
+| 41001586102 (2026-10-30) | `093456b7e2` | 123887524410 | PASS, 77.6 s |
+
+That is the "two more live-peer nights green" this issue set as its closing
+condition. It was never bisected, because it never reproduced: no commit in
+`bca02e9ee..e0f81b4ac5` touches the QoS records, the Cyclone fork or the an536
+board, and nano-ros never writes a PRESENTATION policy (the fork's
+`ddsi_default_qos` supplies it, `git grep -i presentation -- packages/rmw/cyclonedds`
+finds nothing). The two garbage booleans (`0x08`, `0x36`) therefore came from
+memory the guest's Cyclone serialised, not from a setting of ours, and the
+cause is unknown. If the rejection reappears, reopen this with the run id, and
+bisect from the last green night with the single cell
+(`pubsub_freertos_an536_cyclone_ros2_interop_e2e`), checking the fixture's mtime
+against the blamed commit first.
+
+The tier-2 sightings (2 and 3) were a different defect, fixed in
+`a24c07ccf8` (the starved boot peak reporter) as recorded above.
