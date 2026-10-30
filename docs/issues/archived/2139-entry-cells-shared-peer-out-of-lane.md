@@ -7,7 +7,7 @@ area: [testing, ci]
 severity: medium
 found: 2026-10-29
 resolved: 2026-10-30
-resolved_in: \"nightly 41018247377 (phase-513)\"
+resolved_in: "nightly 41018247377 (phase-513)"
 related: [2010, 2004, 0828, phase-513]
 ---
 

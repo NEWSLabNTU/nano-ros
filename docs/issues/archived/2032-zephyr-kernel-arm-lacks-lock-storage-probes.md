@@ -11,7 +11,7 @@ resolved: 2026-10-29
 resolved_in: "f1e6bdc006"
 ---
 
-**Home: [phase-513](../../roadmap/phase-513-nightly-reds-with-no-home.md)** — R2.
+**Home: [phase-513](../../roadmap/archived/phase-513-nightly-reds-with-no-home.md)** — R2.
 
 ## Measured
 

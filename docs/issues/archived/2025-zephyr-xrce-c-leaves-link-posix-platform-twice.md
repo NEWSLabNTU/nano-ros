@@ -9,7 +9,7 @@ found: 2026-10-24
 related: [issue-2032, issue-0282, issue-1824, phase-513]
 ---
 
-**Home: [phase-513](../../roadmap/phase-513-nightly-reds-with-no-home.md)** — R2, through #2032.
+**Home: [phase-513](../../roadmap/archived/phase-513-nightly-reds-with-no-home.md)** — R2, through #2032.
 
 ## Retired as a duplicate of #2032
 

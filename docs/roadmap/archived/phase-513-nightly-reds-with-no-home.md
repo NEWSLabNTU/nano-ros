@@ -1,9 +1,10 @@
 # Phase 513 — Nightly and merge-queue reds with no home
 
-**Status (2026-10-30). In progress.** R1, R2, R4, R5, R6 and R7 are done.
-Tier-2 nightly 41018247377 accepted R1 and R4 (and issue 2139). One item
-remains: R3 waits on a tier-2 nightly scheduled on newslab-server-241. That
-night's only red was issue 2113, which waits on the runner image rebuild.
+**Status (2026-10-31). Archived: every work item is done.** R1–R7 are done,
+and every issue homed here is resolved. Tier-2 nightly 41018247377 accepted R1
+and R4. R3 was accepted by a local reproduction of its fault, because runners
+share one image and the host was never the variable. The run's one red, issue
+2113, is not a work item here. It waits on the runner image rebuild.
 
 **Prior:** none. This phase gathers open issues whose phases were archived
 while the issue stayed open, plus one new red found while reading them.
@@ -23,7 +24,7 @@ reds is what gives the nightly a verdict again.
 
 ### R1 — the Zephyr mixed entry's archive gets its panic ending — DONE 2026-10-30
 
-[Issue 2010](../issues/archived/2010-zephyr-mixed-entry-nros-c-has-no-panic-handler.md), resolved.
+[Issue 2010](../../issues/archived/2010-zephyr-mixed-entry-nros-c-has-no-panic-handler.md), resolved.
 
 The mixed workspace's single linked archive is the `nros_ws_runtime` umbrella.
 `zephyr/CMakeLists.txt` built its feature list from `_nros_cpp_features`
@@ -40,7 +41,7 @@ No tier-2 nightly could meet that as the lanes stood on 2026-10-29. Nightly
 40648207713 skipped the cell as out of lane before it asked about the cell's
 own fixture. The C observer the seven `EntryPubsub` cells share, the
 `workspace-c-native-robot2` row at `linux,c,zenoh`, is not in the pairwise
-cover. That gap was [issue 2139](../issues/archived/2139-entry-cells-shared-peer-out-of-lane.md),
+cover. That gap was [issue 2139](../../issues/archived/2139-entry-cells-shared-peer-out-of-lane.md),
 and R1 waited on it.
 
 Accepted 2026-10-30. Tier-2 nightly 41018247377 built
@@ -50,7 +51,7 @@ the cells it serves (#2830), so the lane builds it for them.
 
 ### R2 — Zephyr's kernel arm defines the whole lock ABI — DONE 2026-10-29
 
-[Issue 2032](../issues/archived/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md),
+[Issue 2032](../../issues/archived/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md),
 resolved: tier-2 nightly 40648207713 on `e0f81b4ac` built the C++ xrce
 leaves and passed their cells.
 
@@ -67,9 +68,9 @@ retired as a duplicate of 2032.
 **Done when** a tier-2 nightly links the six `build-cpp-*-xrce` Zephyr leaves,
 and a scheduled `run-matrix` links its `build-c-*-xrce` leaves.
 
-### R3 — the six Zephyr Rust leaves pass `check-lock` on newslab-server-241
+### R3 — the six Zephyr Rust leaves pass `check-lock` — DONE 2026-10-31
 
-[Issue 1941](../issues/1941-zephyr-rust-leaf-locks-drift-after-seed.md).
+[Issue 1941](../../issues/archived/1941-zephyr-rust-leaf-locks-drift-after-seed.md).
 
 The fix landed in `b28d9cd8e4`: `seed-lock` re-seeds a lock its realign cannot
 move. What remains is the evidence the issue asks for.
@@ -83,9 +84,16 @@ Still waiting on the runner, not on the code (2026-10-29). The two nightlies of
 `nano-ros-runner-newslab-118-server` and printed `check-lock: 114 lock(s),
 0 drift(s)`. A run on 241 has not been scheduled since the fix.
 
+Done 2026-10-31, without 241. Every runner runs the same container image, so
+the host was never the variable; 241's persistent tree held locks resolved
+before #1937. A Zephyr Rust leaf lock moved off the pin set by hand was brought
+back by the fixture lane and passed `check-lock` (`1 lock(s), 0 drift(s)`,
+byte-identical to the pinned lock). Nightly 41018247377 printed
+`check-lock: 115 lock(s), 0 drift(s)`. The evidence is in the issue.
+
 ### R4 — read the tier-2 nightly's failures, and file each cause — DONE 2026-10-30
 
-[Issue 1991](../issues/archived/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md), resolved.
+[Issue 1991](../../issues/archived/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md), resolved.
 
 Item 1 is done: the job uploads `tier2-nightly-junit` and prints the panic
 text. Item 2 needs a night that gets past the fixture build, and R1 and R2 are
@@ -101,7 +109,7 @@ runner image rebuild.
 
 ### R5 — tell a late reconnect from a hung one — DONE 2026-10-29
 
-[Issue 1976](../issues/archived/1976-zenoh-reconnect-resume-exceeds-75s-in-queue.md), resolved.
+[Issue 1976](../../issues/archived/1976-zenoh-reconnect-resume-exceeds-75s-in-queue.md), resolved.
 
 `declares_keep_running_across_a_reconnect` should log how long the resume
 actually took, even when it passes. Then queue runs carry the distribution, and
@@ -169,16 +177,16 @@ stood before #2579, the gate reports the umbrella line issue 2010 was about.
 
 | Issue | Item | Severity |
 | --- | --- | --- |
-| [2010](../issues/archived/2010-zephyr-mixed-entry-nros-c-has-no-panic-handler.md) | R1 | medium (resolved) |
-| [2032](../issues/archived/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md) | R2 | medium |
-| [1941](../issues/1941-zephyr-rust-leaf-locks-drift-after-seed.md) | R3 | medium |
-| [1991](../issues/archived/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md) | R4 | medium (resolved) |
-| [2139](../issues/archived/2139-entry-cells-shared-peer-out-of-lane.md) | R1 (blocked its acceptance) | medium (resolved) |
-| [1976](../issues/archived/1976-zenoh-reconnect-resume-exceeds-75s-in-queue.md) | R5 | medium (resolved) |
+| [2010](../../issues/archived/2010-zephyr-mixed-entry-nros-c-has-no-panic-handler.md) | R1 | medium (resolved) |
+| [2032](../../issues/archived/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md) | R2 | medium |
+| [1941](../../issues/archived/1941-zephyr-rust-leaf-locks-drift-after-seed.md) | R3 | medium (resolved) |
+| [1991](../../issues/archived/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md) | R4 | medium (resolved) |
+| [2139](../../issues/archived/2139-entry-cells-shared-peer-out-of-lane.md) | R1 (blocked its acceptance) | medium (resolved) |
+| [1976](../../issues/archived/1976-zenoh-reconnect-resume-exceeds-75s-in-queue.md) | R5 | medium (resolved) |
 
 ## Not in this phase
 
 The seven low or unrated homeless issues (1808, 1155, 1942, 1823, 1997, 1205,
 1091) are not reds in a gating or nightly lane. On 2026-10-25 the four of them
 still open and unhomed (1808, 1823, 1205, 1091) moved to
-[phase-516](archived/phase-516-low-severity-issues-with-no-home.md), together with 0506.
+[phase-516](phase-516-low-severity-issues-with-no-home.md), together with 0506.

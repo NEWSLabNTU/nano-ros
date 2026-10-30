@@ -1,15 +1,17 @@
 ---
 id: 1941
 title: "The six Zephyr Rust example leaves still drift from the pin set after #1937 seeds them, and the drift check stops the tier-2 nightly's fixture build"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [build, ci, examples]
 related: [issue-1937, issue-1924, phase-513]
 found: 2026-10-17
+resolved: 2026-10-31
+resolved_in: "b28d9cd8e4 (phase-513 R3)"
 ---
 
-**Home: [phase-513](../roadmap/phase-513-nightly-reds-with-no-home.md)** — R3.
+**Home: [phase-513](../../roadmap/archived/phase-513-nightly-reds-with-no-home.md)** — R3.
 
 ## What happened
 
@@ -185,3 +187,35 @@ The previous nights' tier-2 nightly builds failed earlier, at issue 2025's
 Zephyr link inside the same fixture build, so they may never have reached this
 post-build check. Whether this drift is new, or was hidden behind 2025, is NOT
 established.
+
+## Resolved, 2026-10-31
+
+The acceptance above asked for a nightly on newslab-server-241. That host was
+never the variable. Every runner runs the same container image, and 241 failed
+only because its persistent fixture tree still held leaf locks resolved before
+#1937. What has to be shown is that the fixture lane brings such a lock back
+onto the pin set, on any host. That is now shown in two ways.
+
+**The fault, reproduced and cleared locally** (head `de75865960`):
+
+1. `examples/zephyr/rust/talker/Cargo.lock` was moved off the pin set by
+   hand (`serde` 1.0.228 to 1.0.229, the first drift this issue listed).
+   `nros ws check-lock` on the leaf reported `1 lock(s), 1 drift(s)`.
+2. The fixture lane built that one leaf:
+   `NROS_ZEPHYR_FIXTURE_FILTER='build-rust-talker-zenoh$' just zephyr build-fixtures`,
+   with `NROS_LEAF_LOCK_LEDGER` set. The build passed and relinked
+   `build-rust-talker-zenoh/zephyr/zephyr.exe`, and the ledger named the leaf.
+3. `nros ws check-lock --ledger <ledger>` reported `1 lock(s), 0 drift(s)`.
+   The lock was byte-identical to the one it had before step 1, so the west
+   build's own `cargo` run kept what the seed wrote.
+
+**The nightly ledger check is clean.** Tier-2 nightly 41018247377
+(2026-10-30, newslab-118) built the six Zephyr Rust leaves and printed
+`check-lock: 115 lock(s), 0 drift(s)`, as did both nightlies of 2026-10-28.
+The fourth sighting's 28 non-Zephyr drifts (`libc`, `serde_json`) have not
+come back in any of those runs.
+
+The unit test
+`drift::tests::a_leaf_cargo_cannot_resolve_alone_is_reseeded_instead_of_left_drifting`
+pins the cause measured on 241: a leaf that cargo cannot resolve alone is
+reseeded rather than left drifting.
