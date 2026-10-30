@@ -123,7 +123,7 @@ pub unsafe extern "C" fn rclc_init_multi(
     }
     let mut rust_specs: Vec<SessionSpec<'_>> = Vec::with_capacity(specs_len);
 
-    for i in 0..specs_len {
+    for (i, spec_props) in props.iter().enumerate() {
         let spec = unsafe { &*specs.add(i) };
         let rmw = unsafe { cstr_or_empty(spec.rmw) };
         let locator = unsafe { cstr_or_empty(spec.locator) };
@@ -160,7 +160,7 @@ pub unsafe extern "C" fn rclc_init_multi(
                 .domain_id(spec.domain_id)
                 .node_name(n_ref)
                 .namespace(if ns_ref.is_empty() { "/" } else { ns_ref })
-                .properties(&props[i]),
+                .properties(spec_props),
         );
     }
 
