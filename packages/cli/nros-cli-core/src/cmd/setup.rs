@@ -5810,9 +5810,11 @@ fn run_workspace_install(
             problems.join("\n  ")
         );
     }
+    // The SDK root, not the index's directory: under `NROS_INDEX_URL` the
+    // index is a fetched copy beside no board catalog.
     keys.extend(rust_image_prereqs(
         index,
-        root.as_deref(),
+        nano_ros_root.as_deref(),
         &boards,
         &found.packages,
     ));
