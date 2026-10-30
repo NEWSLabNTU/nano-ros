@@ -1,11 +1,12 @@
 ---
 id: 2149
 title: "A NuttX Rust workspace image does not build from `nros build`: the cargo road ignored the board's nightly, and nothing configures the kernel first"
-status: open
+status: resolved
 type: bug
 area: [cli, nuttx, build]
 severity: medium
 found: 2026-10-29
+resolved: 2026-10-30
 related: [phase-517]
 ---
 
@@ -49,7 +50,7 @@ channel at all, so the target's `core` was never built.
 The preflight asks the same function. Measured: the command now reads
 `RUSTUP_TOOLCHAIN=nightly-2026-04-11 cargo build …` and compiles past `core`.
 
-### 2. Nothing configures the NuttX kernel before the Rust build (open)
+### 2. Nothing configures the NuttX kernel before the Rust build (fixed)
 
 ```text
 third-party/nuttx/nuttx/include/stdint.h:30:10: fatal error: nuttx/config.h: No such file or directory
@@ -72,3 +73,29 @@ runs.
 
 Either way, the chapter's Rust paragraph is not true until this lands. Phase
 517 W17 adds no NuttX Rust probe track until it does.
+
+## Resolution
+
+The first fix direction, from the board's own facts. A NuttX image on the
+cargo road (workspace entry or single-package leaf) carries a kernel step,
+which runs before the cargo prepare and is printed by `--dry-run`:
+`scripts/nuttx/build-nuttx.sh` from the SDK root. This is the script the
+in-tree fixture build runs, and it is a no-op when the export is current.
+Its inputs:
+
+* `NUTTX_DEFCONFIG` is `[board.net] kernel_config`, the file the board crate
+  already reads its network from;
+* the `NUTTX_*` rows of the board's `cargo_config` `[env]`;
+* `NUTTX_DIR` / `NUTTX_APPS_DIR` come from `nros locate`.
+
+The probe then found the same class one layer down. `nros-platform-nuttx`'s
+`required_env` still demanded `NUTTX_DIR`, and zpico-sys panicked on it.
+That was the one source tree phase-484 W2c left there, though every reader
+already located it through the ladder. The row is gone. A sweep found only
+board CONFIG directories left in any platform's `required_env`.
+
+Evidence: the chapter's Rust paragraph is a probe block. The new installed
+`nuttx-arm-rust` track scaffolds the workspace image, builds it, boots it on
+QEMU and expects the talker and listener; it is green on run 41051046857.
+`a_nuttx_board_configures_its_kernel_from_its_own_facts` covers the step's
+inputs for both arches.
