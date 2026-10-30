@@ -52,7 +52,22 @@ fn main() {
     // - BUILD_IDLC=ON: host `idlc` shipped alongside the lib.
     // - ENABLE_{SSL,SECURITY,SHM}=OFF + BUILD_{TESTING,DOCS,EXAMPLES}=OFF:
     //   trim build time (matches just/cyclonedds.just).
-    let dst = cmake::Config::new(&src)
+    let mut cfg = cmake::Config::new(&src);
+    // issue 2058 — a "Unix Makefiles" build caches whichever make PATH
+    // resolves, and under the fixture drivers' FIFO jobserver a system make
+    // 4.3 stops with `invalid --jobserver-auth string`. Name the pinned make
+    // (constructed from the index pin, never searched) so the nested build
+    // JOINS the pool instead.
+    match nros_build_paths::jobserver::make_program() {
+        nros_build_paths::jobserver::MakeProgram::Pinned(make) => {
+            cfg.define("CMAKE_MAKE_PROGRAM", &make);
+        }
+        nros_build_paths::jobserver::MakeProgram::AmbientUnderFifo(why) => {
+            println!("cargo:warning=cyclonedds-sys: {why}");
+        }
+        nros_build_paths::jobserver::MakeProgram::Ambient => {}
+    }
+    let dst = cfg
         .define("CMAKE_BUILD_TYPE", "Release")
         .define("ENABLE_LTO", "OFF")
         .define("BUILD_SHARED_LIBS", "OFF")

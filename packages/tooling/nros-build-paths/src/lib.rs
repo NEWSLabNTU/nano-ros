@@ -1045,6 +1045,10 @@ version = \"not-this-one\"
 /// phase-484 W6b, RFC-0103 D7.
 pub mod artifact;
 
+/// Which `make` a build script's nested CMake build runs, so it can join an
+/// inherited FIFO jobserver — issue 2058.
+pub mod jobserver;
+
 /// Which `portable/` directory a FreeRTOS port name means — phase-349 W3.
 /// `FREERTOS_PORT` is upstream's enum; the pairing is read from upstream.
 pub mod freertos_port;
