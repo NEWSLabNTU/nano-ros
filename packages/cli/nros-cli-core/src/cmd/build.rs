@@ -3708,6 +3708,8 @@ fn write_entry_facade(
         bringup_dir,
         &sys,
         facade_root,
+        // A generated entry names every runtime crate by path.
+        None,
     )
 }
 

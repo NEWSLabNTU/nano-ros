@@ -2871,6 +2871,7 @@ fn generate_facade_crates(
     ws_root: &std::path::Path,
     scan: &[WsPkg],
     build_root: &std::path::Path,
+    sdk_root: Option<&std::path::Path>,
     verbose: bool,
 ) -> Result<()> {
     // The bringup: the package that declares the system. More than one is a
@@ -2948,6 +2949,7 @@ fn generate_facade_crates(
             &bringup.dir,
             &sys,
             &facade_root,
+            sdk_root,
         )
         .wrap_err_with(|| format!("sync: facade for {pkg_name}"))?
         else {
@@ -3517,7 +3519,17 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     let model_dir = model_dir.or_else(|| Some(ws_root.join("build").join("nros").join("models")));
     resolve_system_models(&scan, args.verbose, model_dir.as_deref())?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
-    generate_facade_crates(&ws_root, &scan, &build_root, args.verbose)?;
+    // The root the patch table points into, so a registry-style runtime dep
+    // resolves to the same crate for the facade as for cargo (issue 2152).
+    let facade_sdk_root =
+        crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &ws_root);
+    generate_facade_crates(
+        &ws_root,
+        &scan,
+        &build_root,
+        facade_sdk_root.as_deref(),
+        args.verbose,
+    )?;
 
     // phase-348 W3 — the provider index, beside the models under
     // `<ws>/build/nros/`. Written HERE rather than after the Rust-consumer
