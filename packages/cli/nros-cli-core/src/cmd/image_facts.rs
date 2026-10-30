@@ -289,6 +289,7 @@ mod tests {
             profile: None,
             cmake_build_dir: None,
             capabilities: capabilities.iter().map(|c| c.to_string()).collect(),
+            kernel: None,
             configure: None,
             record: Default::default(),
             output: None,

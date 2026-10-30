@@ -162,7 +162,7 @@ the kernel and apps sources), then scaffold a C / C++ package — `nros new`
 writes `board = "qemu-armv7a-nuttx"`, the platform's default board — and build
 it:
 
-```bash probe=30 variant=arm
+```bash probe=30 variant=arm,arm-rust
 nros setup qemu-armv7a-nuttx --rmw zenoh --sudo
 ```
 
@@ -181,13 +181,22 @@ nros build
 
 The kernel ELF lands at `build/nuttx/cmake/my_app` (`build/<image>/cmake/`
 plus the name `nano_ros_add_executable` gives it), and `nros build` prints it
-with the QEMU line that boots it. Rust starts as a workspace image
-(`nros new --image nuttx --board qemu-armv7a-nuttx`, then `nros sync` and
-`nros build nuttx`); its ELF is under the entry's target dir, which `nros
-build` prints. That road does not build end to end from `nros build` yet: the
-Rust build needs a configured NuttX kernel, which only the C/C++ road
-configures
-([issue 2149](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2149-nuttx-rust-workspace-no-nightly.md)). `nros build <image> --dry-run` shows the native commands.
+with the QEMU line that boots it. `nros build <image> --dry-run` shows the
+native commands.
+
+Rust starts as a workspace image. `nros build` configures and exports the
+NuttX kernel from the board's defconfig first (the same step the C/C++ road
+runs inside its configure; a current export is a no-op), then builds the
+entry with the board's pinned nightly. Its ELF is under the entry's target
+dir, which `nros build` prints:
+
+```bash probe=40 variant=arm-rust
+nros new nx_ws --workspace --lang rust --rmw zenoh
+cd nx_ws
+nros new --image nuttx --board qemu-armv7a-nuttx
+nros sync
+nros build nuttx
+```
 
 **NuttX's own build — the integration shell in a NuttX-managed tree.** NuttX
 owns the build verb there, `make` from the configured kernel, the way Zephyr

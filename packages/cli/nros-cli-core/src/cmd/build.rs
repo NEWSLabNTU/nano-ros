@@ -253,6 +253,12 @@ pub struct ResolvedBuild {
     /// never RUNS a native tool and `--dry-run` can PRINT it. [`run`] performs it.
     pub configure: Option<Handoff>,
 
+    /// Issue 2149 — the NuttX kernel configure + export a cargo-built NuttX
+    /// image compiles and links against, run before [`Self::configure`]. The
+    /// cmake road's board module provisions it; the cargo road had no such
+    /// stage, so the board crate's C failed on `nuttx/config.h`.
+    pub kernel: Option<Handoff>,
+
     /// phase-485 W3 (RFC-0104 D4) — what the finished build leaves to read
     /// for the project lock: the cargo roots it resolved and the build
     /// directories whose records say which sources it read.
@@ -660,6 +666,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         // generated root (4).
         if planning == Planning::Query {
             out.push(ResolvedBuild {
+                kernel: None,
                 configure: None,
                 cmake_build_dir: cmake_build_dir_for(driver, &platform, &image, &bringup_dir),
                 qualified: qual,
@@ -1876,7 +1883,15 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             }
         };
 
+        // Issue 2149 — the cargo road's NuttX kernel stage (the cmake road's
+        // board module provisions its own).
+        let nuttx_kernel = match (driver, nano_ros_root.as_deref()) {
+            (Driver::Cargo, Some(nr)) => nuttx_kernel_step(descriptor, nr)
+                .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?,
+            _ => None,
+        };
         out.push(ResolvedBuild {
+            kernel: nuttx_kernel,
             configure: cmake_configure.or(cargo_prepare),
             cmake_build_dir: cmake_build_dir_for(driver, &platform, &image, &bringup_dir),
             qualified: qual,
@@ -2061,6 +2076,7 @@ fn plan_leaf_image(
             profile: None,
             cmake_build_dir: None,
             capabilities: owned_caps(root),
+            kernel: None,
             configure: None,
             record: Default::default(),
             output: None,
@@ -2094,6 +2110,9 @@ fn plan_leaf_image(
         crate::orchestration::registry_pins::seed(&img.leaf, Some(&nros_root))?,
         crate::orchestration::registry_pins::Seed::Seeded { .. }
     );
+    // Issue 2149 — the NuttX kernel stage, as on the workspace cargo road.
+    let leaf_kernel = nuttx_kernel_step(descriptor, &nros_root)
+        .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
     let prepare = (!had_lock && seeded).then(|| {
         // `a` is `build --manifest-path <m> --config <c>`: the same root and
         // the same settings, resolved instead of built.
@@ -2154,6 +2173,7 @@ fn plan_leaf_image(
         target: img.target.clone(),
         profile: None,
         cmake_build_dir: None,
+        kernel: leaf_kernel,
         configure: prepare,
         record: crate::orchestration::project_lock::BuildRecord {
             project: root.to_path_buf(),
@@ -2319,6 +2339,7 @@ fn plan_single_package_cmake(
         profile: None,
         cmake_build_dir: Some(build_dir),
         capabilities: owned_caps(root),
+        kernel: None,
         configure: Some(Handoff::new("cmake", a).in_dir(root)),
         record: crate::orchestration::project_lock::BuildRecord {
             project: root.to_path_buf(),
@@ -2787,6 +2808,9 @@ fn drive(
             );
         };
         if dry_run {
+            if let Some(k) = &p.kernel {
+                println!("{}", k.display());
+            }
             if let Some(cfg) = &p.configure {
                 println!("{}", cfg.display());
             }
@@ -2797,6 +2821,9 @@ fn drive(
         // than during planning so planning never spawns a native tool — the
         // property that makes `--dry-run` trivially correct instead of a second
         // code path. (Planning does WRITE generated files; issue 1716.)
+        if let Some(k) = &p.kernel {
+            run_kernel_step(k)?;
+        }
         if let Some(cfg) = &p.configure {
             run_configure(cfg)?;
         }
@@ -3063,6 +3090,7 @@ fn plan_packages(
             profile: None,
             cmake_build_dir: None,
             capabilities: Vec::new(),
+            kernel: None,
             configure,
             record: crate::orchestration::project_lock::BuildRecord {
                 project: root.to_path_buf(),
@@ -5846,6 +5874,105 @@ pub(crate) fn stage4_checks_census(
     }
 }
 
+/// Issue 2149 — the NuttX kernel step for a cargo-built image on `descriptor`:
+/// `scripts/nuttx/build-nuttx.sh` from the SDK root, which configures the
+/// kernel from the board's own defconfig and exports it (idempotent: it
+/// self-guards on the kernel HEAD and the defconfig hash, so a current export
+/// is a fast no-op). The same script the in-tree fixture build runs, fed from
+/// the board's facts rather than a recipe:
+///
+/// * the defconfig is `[board.net] kernel_config`, the file the board crate
+///   already reads its network from (issue 2064), so the kernel and the crate
+///   cannot disagree about which configuration they are;
+/// * the per-arch inputs (`NUTTX_CROSS`, `NUTTX_BOARD_MAKEDEFS`, …) are the
+///   `NUTTX_*` rows of the board's `cargo_config` `[env]`, the ones cargo
+///   hands its build scripts;
+/// * the trees are `nros locate`'s answer for `nuttx-kernel` / `nuttx-apps`.
+///
+/// `None` for any other platform.
+fn nuttx_kernel_step(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    nros_root: &Path,
+) -> Result<Option<Handoff>> {
+    use crate::orchestration::board_descriptor::PlatformKind;
+    if descriptor.platform != PlatformKind::Nuttx {
+        return Ok(None);
+    }
+    let board = &descriptor.names[0];
+    let Some(src) = descriptor.source.as_deref() else {
+        return Ok(None);
+    };
+    let desc_path = nros_root.join(src);
+    let net = crate::orchestration::image_net::board_net(&desc_path, board)
+        .map_err(|e| eyre::eyre!("NuttX board `{board}`: {e}"))?;
+    let Some(rel) = net.kernel_config else {
+        eyre::bail!(
+            "NuttX board `{board}` states no `[board.net] kernel_config` in {}, so \
+             `nros build` has no defconfig to configure its kernel from",
+            desc_path.display()
+        );
+    };
+    let defconfig = desc_path
+        .parent()
+        .map_or_else(|| PathBuf::from(&rel), |d| d.join(&rel));
+    let script = nros_root.join("scripts/nuttx/build-nuttx.sh");
+    if !script.is_file() {
+        eyre::bail!(
+            "NuttX board `{board}`: {} is missing, so the kernel cannot be \
+             configured (an SDK root that predates issue 2149?)",
+            script.display()
+        );
+    }
+    let mut h = Handoff::new("bash", [script.into_os_string()])
+        .with_env("NUTTX_DEFCONFIG", defconfig.into_os_string());
+    for (k, v) in nuttx_env_rows(descriptor.cargo_config.as_deref()) {
+        h = h.with_env(k, v);
+    }
+    if let Ok(index) =
+        crate::orchestration::sdk_index::SdkIndex::load(&nros_root.join("nros-sdk-index.toml"))
+    {
+        for (env, source) in [
+            ("NUTTX_DIR", "nuttx-kernel"),
+            ("NUTTX_APPS_DIR", "nuttx-apps"),
+        ] {
+            if let Ok(p) = crate::cmd::locate::locate_source(&index, nros_root, source) {
+                h = h.with_env(env, p.into_os_string());
+            }
+        }
+    }
+    Ok(Some(h))
+}
+
+/// The `NUTTX_*` string rows of a board `cargo_config`'s `[env]`.
+fn nuttx_env_rows(cargo_config: Option<&str>) -> Vec<(String, String)> {
+    let Some(table) = cargo_config
+        .and_then(|c| c.parse::<toml::Table>().ok())
+        .and_then(|t| t.get("env").and_then(|e| e.as_table()).cloned())
+    else {
+        return Vec::new();
+    };
+    table
+        .iter()
+        .filter(|(k, _)| k.starts_with("NUTTX_"))
+        .filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string())))
+        .collect()
+}
+
+/// Run [`nuttx_kernel_step`]'s handoff, naming the step when it fails.
+fn run_kernel_step(h: &Handoff) -> Result<()> {
+    let status = h
+        .command()
+        .status()
+        .wrap_err_with(|| format!("spawn {}", h.display()))?;
+    if !status.success() {
+        eyre::bail!(
+            "NuttX kernel configure/export failed ({status}): {}",
+            h.display()
+        );
+    }
+    Ok(())
+}
+
 /// Issue 2149 — run a cargo handoff on the board's Rust channel when it has
 /// one (`RUSTUP_TOOLCHAIN`, the pinned nightly of a `toolchain = "nightly"`
 /// board). Without it the `[unstable] build-std` the board's settings carry is
@@ -6544,6 +6671,7 @@ mod multi_image_drive_tests {
             profile: None,
             cmake_build_dir: None,
             capabilities: Vec::new(),
+            kernel: None,
             configure: None,
             record: Default::default(),
             output: None,
@@ -7802,5 +7930,73 @@ mod model_door_tests {
         let (_ws, bringup, _rel) = bringup_with_marker();
         assert!(crate::leaf_entity_env::leaf_model_path(&bringup).is_err());
         assert!(crate::leaf_entity_env::leaf_model(&bringup).is_none());
+    }
+}
+
+#[cfg(test)]
+mod nuttx_kernel_step_tests {
+    use super::*;
+
+    fn catalog_board(name: &str) -> crate::orchestration::board_descriptor::BoardDescriptor {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+            .unwrap()
+            .descriptors()
+            .iter()
+            .find(|d| d.names.iter().any(|n| n == name))
+            .unwrap_or_else(|| panic!("no `{name}` descriptor"))
+            .clone()
+    }
+
+    fn env_of(h: &Handoff, key: &str) -> Option<String> {
+        h.env
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.to_string_lossy().into_owned())
+    }
+
+    /// Issue 2149 — a cargo-built NuttX image configures its kernel from the
+    /// board's own defconfig and per-arch rows, and nothing else gets the step.
+    #[test]
+    fn a_nuttx_board_configures_its_kernel_from_its_own_facts() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+
+        let arm = nuttx_kernel_step(&catalog_board("qemu-armv7a-nuttx"), &root)
+            .unwrap()
+            .expect("a NuttX board has a kernel step");
+        assert!(
+            arm.display().contains("scripts/nuttx/build-nuttx.sh"),
+            "{}",
+            arm.display()
+        );
+        let defconfig = env_of(&arm, "NUTTX_DEFCONFIG").unwrap();
+        assert!(
+            defconfig.ends_with("nuttx-config/arm/defconfig"),
+            "{defconfig}"
+        );
+        assert!(Path::new(&defconfig).is_file(), "{defconfig}");
+
+        let riscv = nuttx_kernel_step(&catalog_board("rv-virt-nuttx"), &root)
+            .unwrap()
+            .expect("a NuttX board has a kernel step");
+        assert!(
+            env_of(&riscv, "NUTTX_DEFCONFIG")
+                .unwrap()
+                .ends_with("nuttx-config/riscv/defconfig")
+        );
+        assert_eq!(
+            env_of(&riscv, "NUTTX_CROSS").as_deref(),
+            Some("riscv-none-elf-gcc")
+        );
+        assert_eq!(
+            env_of(&riscv, "NUTTX_BOARD_MAKEDEFS").as_deref(),
+            Some("boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs")
+        );
+
+        assert!(
+            nuttx_kernel_step(&catalog_board("linux"), &root)
+                .unwrap()
+                .is_none()
+        );
     }
 }
