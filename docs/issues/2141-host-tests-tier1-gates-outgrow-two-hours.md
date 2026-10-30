@@ -111,3 +111,53 @@ inside `ci tier1 gates`: give it its own job (the issue 1651 shape), or measure
 it and raise `timeout-minutes` by a stated margin. `check-fast` is not the
 budget problem. A useful next step is per-gate timing for `check build`, to
 match what `check-fast` already prints.
+
+## Fix: the build lane runs as two shards on two runners (2026-10-30)
+
+The measured cause is the build lane's size on one 4-vCPU runner, not one
+slow gate. `check-build`'s own summary from the last run that finished
+(40625461704, 2026-10-28):
+
+| gate | wall |
+| --- | --- |
+| `linux-check` | 54.1 min |
+| `template-copy-out` | 36.8 min |
+| `scaffold-builds` | 15.4 min |
+| `test-targets` | 15.1 min |
+| `cli-tests` | 12.6 min |
+
+> busy 13658s over wall 4132s at -P4 => 3.3x effective parallelism
+
+So the lane needed about 69 minutes of wall time, and on 2026-10-26 it needed
+67 minutes (busy 15072 s over wall 3991 s). The two slowest gates alone are
+91 minutes of busy time sharing one runner. Its gate list did not change
+between the 10-28 run and the 10-30 run (the same 29 recipes), so the growth
+past the cap is in the gates' own cost, which this change does not measure.
+
+What changed:
+
+- **`host-tests`' `gates` job is a two-entry matrix**
+  (`tier-1 gates (just check) [1/2]` and `[2/2]`), each with its own
+  120-minute cap. Shard 1 runs `just ci tier1 gates`. Shard 2 runs
+  `just check build`. Both set `NROS_BUILD_GATE_SHARD=<k>/2`, which only the
+  build lane reads, so shard 1 runs the fast lane, api-parity and
+  probe-workspace-caps as before plus half the build gates.
+- **`scripts/build/gate-shard.py`** splits the derived build list
+  heaviest first, using the measured times in `.config/build-gate-weights.txt`.
+  Every gate lands in exactly one shard whatever the weights say. A gate with
+  no weight gets the median, and a stale row is ignored, so a stale weights
+  file costs balance and never coverage. Today's split puts `linux-check` in
+  shard 1 and `template-copy-out` in shard 2.
+- **`NROS_GATE_PROGRESS=1`** makes `run-gates-parallel.sh` print
+  `check-build: done <gate> rc=N <ms>ms` as each gate ends. Before this, the
+  lane's timings were printed only after the last gate, so a killed job's log
+  said nothing about which gates had finished. The job sets it.
+- Artifact names and the concurrency group carry the shard number. Only
+  shard 1 saves the message-bindings cache.
+
+Not done: `gate.yml`'s scheduled `check build` job runs the same build lane
+every night at 02:00 UTC, an hour before this one. That duplication was
+already there and is a separate decision.
+
+Close when a scheduled `host-tests` run completes both shards inside their
+caps. Record each shard's wall time and its headroom.

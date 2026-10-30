@@ -275,16 +275,30 @@ jobs:
   # It needs what `gate.yml`'s nightly compile tier needs and nothing more: the
   # CLI, `just setup linux` (which also builds `nros-launch-resolve`), the
   # `cxx-syntax` compile-check fixtures and the example message bindings.
+  #
+  # Issue 2141 — the job is TWO shards now. One runner stopped fitting:
+  # `check build` alone ran 69 minutes wall on 2026-10-28 (run 40625461704;
+  # busy 3.8 h at -P4), and on 2026-10-29 and 2026-10-30 the job hit its
+  # 120-minute cap with `check build` still running. Its two slowest gates,
+  # `linux-check` (54 min) and `template-copy-out` (37 min), shared the runner.
+  # Shard 1 runs `just ci tier1 gates` (fast, api-parity, probe-workspace-caps
+  # and half the build lane); shard 2 runs the other half of the build lane.
+  # `scripts/build/gate-shard.py` puts every build gate in exactly one shard,
+  # so the two jobs together still run all of `just check`.
   gates:
-    name: tier-1 gates (just check)
+    name: tier-1 gates (just check) [${{ matrix.shard }}/2]
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     # The work moved here measured 62 minutes inside the integration job
     # (check-fast 788 s + check-build 2942 s wall, run 37176625915), plus ~8
     # minutes of provisioning. 120 is a ceiling with ~70 % headroom over that,
     # the issue-1492 argument: a number this repository owns.
     timeout-minutes: 120
     concurrency:
-      group: host-tests-gates-${{ github.ref }}-${{ github.event_name }}
+      group: host-tests-gates-${{ matrix.shard }}-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -399,8 +413,9 @@ jobs:
       # Saved right after the verb, not at job end, so the entry holds exactly
       # what the verb produced. Skipped on an EXACT hit (the entry already says
       # this); a prefix hit saves, because the verb refreshed part of it.
+      # Shard 1 saves; two shards saving one key race for nothing.
       - name: Save the message bindings + probe sidecars
-        if: ${{ steps.generate-bindings.outcome == 'success' && steps.bindings-cache.outputs.cache-hit != 'true' && !cancelled() }}
+        if: ${{ matrix.shard == 1 && steps.generate-bindings.outcome == 'success' && steps.bindings-cache.outputs.cache-hit != 'true' && !cancelled() }}
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.bindings-key.outputs.paths }}
@@ -418,13 +433,13 @@ jobs:
         if: ${{ !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: disk-transcript-before-tier1-gates
+          name: disk-transcript-before-tier1-gates-${{ matrix.shard }}
           path: ${{ env.NROS_DISK_TRANSCRIPT }}
           if-no-files-found: ignore
           retention-days: 7
 
       - name: just ci tier1 gates
-        if: ${{ !cancelled() }}
+        if: ${{ matrix.shard == 1 && !cancelled() }}
         env:
           CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
           # Issue 2100 — release each gate's build output once its verdict is
@@ -433,6 +448,11 @@ jobs:
           # has after reclaim. linux-check, cli-tests and template-copy-out
           # held 67 G of it. A cold lane gives up nothing by not keeping it.
           NROS_CI_PRUNE_GATE_OUTPUTS: "1"
+          # Issue 2141 — which half of the build lane this job runs, and a
+          # line per gate as it ends, so a job killed at its cap still says
+          # which gates finished.
+          NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/2
+          NROS_GATE_PROGRESS: "1"
         run: |
           source ./activate.sh
           mkdir -p build/ci-logs
@@ -440,7 +460,33 @@ jobs:
           just ci tier1 gates > build/ci-logs/ci-tier1-gates.log 2>&1
           rc=$?
           set -e
-          echo "::group::ci tier1 gates output (tail)"; tail -200 build/ci-logs/ci-tier1-gates.log; echo "::endgroup::"
+          echo "::group::tier-1 gates output (tail)"; tail -200 build/ci-logs/ci-tier1-gates.log; echo "::endgroup::"
+          exit $rc
+
+      # Shard 2: the other half of the build lane (issue 2141).
+      - name: just check build (shard 2 of the build lane)
+        if: ${{ matrix.shard == 2 && !cancelled() }}
+        env:
+          CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
+          # Issue 2100 — release each gate's build output once its verdict is
+          # in (scripts/build/gate-prune.sh). The 26 gates run at once, and
+          # their output summed to ~110 G against the ~75 G this hosted runner
+          # has after reclaim. linux-check, cli-tests and template-copy-out
+          # held 67 G of it. A cold lane gives up nothing by not keeping it.
+          NROS_CI_PRUNE_GATE_OUTPUTS: "1"
+          # Issue 2141 — which half of the build lane this job runs, and a
+          # line per gate as it ends, so a job killed at its cap still says
+          # which gates finished.
+          NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/2
+          NROS_GATE_PROGRESS: "1"
+        run: |
+          source ./activate.sh
+          mkdir -p build/ci-logs
+          set +e
+          just check build > build/ci-logs/ci-tier1-gates.log 2>&1
+          rc=$?
+          set -e
+          echo "::group::build lane shard 2 output (tail)"; tail -200 build/ci-logs/ci-tier1-gates.log; echo "::endgroup::"
           exit $rc
 
       - name: Disk report (after tier-1 gates) — issue 1353
@@ -451,7 +497,7 @@ jobs:
         if: ${{ always() && env.NROS_DISK_TRANSCRIPT != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: disk-transcript-after-tier1-gates
+          name: disk-transcript-after-tier1-gates-${{ matrix.shard }}
           path: ${{ env.NROS_DISK_TRANSCRIPT }}
           if-no-files-found: ignore
           retention-days: 7
@@ -460,7 +506,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: host-tier1-gates-ci-logs
+          name: host-tier1-gates-ci-logs-${{ matrix.shard }}
           path: build/ci-logs/
           if-no-files-found: ignore
           retention-days: 7
