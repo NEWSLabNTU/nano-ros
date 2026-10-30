@@ -170,7 +170,7 @@ type, fixed by qualifying the quote). Corrected, with a dated note in each row:
 | `rust:ParameterBuilder::new` | `(&mut ParameterServer, name)` | `(&mut ParameterServer, NodeKey, name)` |
 | `c:executor_add_{subscription,service}_raw` | cite `rclc_executor_add_subscription_typed` + per-message macro | `rclc_executor_add_subscription_with_context` (found by hand; names, not arity) |
 
-**W0.b — OPEN: retired NAMES.** The arity check judges only names the
+**W0.b — LANDED 2026-10-27: retired NAMES.** The arity check judges only names the
 extraction knows, so a quote of a deleted function passes. Measured over the C
 prefixes alone (`rclc_`, `rcl_`, `nros_` in backticks, resolved against both
 surfaces plus every token in our installed headers): **100 distinct names in
@@ -179,7 +179,8 @@ CORRECTED notes), some are not C symbols (crate names, Rust functions, macros),
 and some are stale current-tense claims like the `_typed` pair above, which is
 1012's tense problem again. W0.a's escape field generalises to it (a
 `retired_names` list beside `retired_quotes`), and the sweep is that list plus a
-prose fix for each stale one. Not started; C++ and Rust names are not measured.
+prose fix for each stale one. (As opened, C++ and Rust names were not measured;
+W0.c measured them.)
 **LANDED 2026-10-27.** `--check` now resolves every backticked `rclc_` / `rcl_` /
 `nros_` span against both extractions plus every CODE identifier (comments
 stripped) in tracked sources under `packages/` and the upstream surfaces; a
@@ -195,8 +196,8 @@ verbs), the rest history listed in `retired_names`. Three upstream names live in
 rcl headers the extraction does not read (`rcl/remap.h`,
 `rcl/logging_rosout.h`, `rcl_lifecycle`) and are allowed by a named set in the
 script. **Still not measured:** C++ and Rust names without a C prefix, and stale
-names in CODE comments (the generated header still documents
-`nros_lifecycle_register_on_*`).
+names in CODE comments (the generated header still documented
+`nros_lifecycle_register_on_*`). W0.c and W0.d below closed both.
 
 **W0.c — LANDED 2026-10-29: C++ and Rust names.** `--check` now judges every
 CODE-SHAPED backticked span, not only the C-prefixed ones: a `::` path (each
@@ -450,7 +451,7 @@ not a shape choice. **Resolved 2026-10-24:** the arena entry has a cancel-respon
 slot, C registers it, and `rclc_action_client_set_cancel_response_callback` is new.
 The C++ half (taking replies in the spin) is issue 2034, **resolved 2026-10-25**: the C++ client registers the slot and the spin feeds its `async_cancel_*` futures and callbacks.
 
-**C8 — open renames (5):** `rcl_publish_serialized_message` (ours
+**C8 — renames (5), all landed:** `rcl_publish_serialized_message` (ours
 `rclc_publish_raw`), `rcl_service_server_is_available`,
 `client_server_available`, `executor_handle_invocation_t`,
 `action_server_get_active_goal_count`. Land each, or re-verdict it with a
@@ -460,7 +461,7 @@ name and three arguments (`RCL_RET_UNSUPPORTED` when the backend cannot tell);
 shapes one release. That supersedes the 2026-09-03 target of reshaping
 `rclc_client_service_is_ready` in place, an ABI break C cannot alias. The
 other two, `executor_handle_invocation_t` and `action_server_get_active_goal_count`,
-are already `landed` records. Open: `rcl_publish_serialized_message`.
+are already `landed` records. That left `rcl_publish_serialized_message`, below.
 
 **C8 `rcl_publish_serialized_message` LANDED 2026-10-27** as the ledger's settled
 word swap, not upstream's type: C `rclc_publish_serialized`, C++
@@ -573,7 +574,7 @@ repeatably (issue 0278, the analog of `autoware_utils::InterProcessPollingSubscr
 One composes the other, so there is nothing to fold; `polling_subscription.hpp`
 states the choice under "WHICH ONE DO I WANT".
 
-**P8 — open renames (5):** `rclcpp_action::create_server` /
+**P8 — renames (5), all landed or re-verdicted:** `rclcpp_action::create_server` /
 `create_client` (ours `Node::create_action_server` / `_client`),
 `create_subscription`, `create_server`, `Client::service_is_ready`. **Re-read 2026-10-27:** `create_subscription` and
 `Client::service_is_ready` are `landed` records (where our old name went), not
@@ -679,7 +680,7 @@ landed with C3 as rclc's `rclc_executor_add_service_with_request_id` ([issue
 2089](../../issues/archived/2089-c-typed-service-request-id.md), resolved
 2026-10-27).
 
-**R8 — open renames (33).** `UndeclaredParameters` → `Parameters`,
+**R8 — renames (33), all landed 2026-10-27.** `UndeclaredParameters` → `Parameters`,
 `GoalId` → `GoalUuid`, `CancelReturnCode`, `QoSProfile::{deadline,lifespan,
 liveliness_lease}_duration`, `ValueConversionError`, `SetParameterResult`,
 `ActionClientCore::is_server_ready`, and their members. Land each, or
