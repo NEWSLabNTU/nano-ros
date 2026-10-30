@@ -73,10 +73,15 @@ board-side half.
   `Executor::spin_async()` here: it no longer blocks the Embassy thread
   inside a poll (issue 2145), but it still wakes itself on every poll, so
   it is a busy loop that never lets the Embassy executor sleep.
-- **Deferred dispatch.** Callbacks run inline, inside `spin_some`, on the spin
-  task. Handing a callback off to a framework-owned task needs the
-  `nros::node!` node ABI (issue 2146). Keep callbacks short, or have them
-  signal an `embassy_sync` channel that another task drains.
+- **Deferred dispatch across tasks.** Callbacks run inline, inside
+  `spin_some`, unless you mark them with `Executor::set_deferred`; then the
+  spin queues them and calls your `set_defer_notifier` function, and
+  `run_deferred()` runs them (see
+  [Deferring callbacks without the macros](../internals/dispatch-strategy.md#deferring-callbacks-without-the-macros)).
+  Both calls need `&mut Executor`, so with the executor moved into the spin
+  task the drain runs in that task too. To run work in ANOTHER task, keep
+  callbacks short and have them signal an `embassy_sync` channel that task
+  drains.
 - **`system.toml` assembly.** Nodes are created by hand. Issue 2150 splits the
   model-driven assembly out of `nros::main!` so a host-driven entry can reuse
   it.

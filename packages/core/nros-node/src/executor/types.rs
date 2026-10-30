@@ -2924,3 +2924,13 @@ mod verification {
         assert_eq!(one_fires, anyof_fires);
     }
 }
+
+/// Issue 2146 (RFC-0112 D2, Defer) -- the notifier
+/// `Executor::set_defer_notifier` installs: called with the host's context and
+/// the [`HandleId`] of a deferred callback that has just been queued.
+///
+/// Runs on the spinning thread, inside `spin_once`. It must not block, and it
+/// has no way to reach the executor; what it is for is waking or pending the
+/// host task that will call `Executor::run_deferred` or
+/// `Executor::run_deferred_handle`.
+pub type DeferNotify = fn(ctx: *mut core::ffi::c_void, handle: HandleId);

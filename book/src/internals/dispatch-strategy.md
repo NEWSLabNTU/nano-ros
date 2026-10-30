@@ -219,6 +219,53 @@ using `_static` is allowed — but Deferred → closure is rejected.
 Zero migration cost for pre-216 Node pkgs (all defaulted to Inline)
 and a forced-correct API for the Deferred path.
 
+## Deferring callbacks without the macros
+
+`Node::DISPATCH` and the RTIC queue above belong to `nros::node!` nodes. A
+host that builds its executor by hand (a Tier 0 integration, RFC-0112 D2) defers
+callbacks through the executor itself, with three calls and no macro-private
+type (issue 2146):
+
+```rust
+use nros::{Executor, HandleId};
+
+// 1. Mark the callbacks the host wants to run in its own task(s).
+let sub: HandleId = node.create_subscription::<Int32, _>("/chatter", on_chatter)?;
+executor.set_deferred(sub, true);
+
+// 2. Learn when one is queued. A plain fn and a context pointer; it runs on
+//    the spinning thread, inside the pass, and must not block.
+fn on_queued(ctx: *mut core::ffi::c_void, handle: HandleId) {
+    let _ = (ctx, handle); // pend / wake the task that owns `handle`
+}
+executor.set_defer_notifier(on_queued, core::ptr::null_mut());
+
+// 3. In the spin task: spin as usual. A ready deferred callback is QUEUED
+//    and notified, never run here.
+executor.spin_once(core::time::Duration::from_millis(10));
+
+// In the host's task: run what is queued, all of it or one callback.
+executor.run_deferred();            // every queued callback, slot order
+executor.run_deferred_handle(sub);  // just this one (per-priority tasks)
+```
+
+The rules:
+
+- The queue is one bit per callback slot, so it allocates nothing. A callback
+  that is already queued is not queued or notified again; a drain runs it once,
+  and that dispatch takes what an inline dispatch would have. Data left behind
+  is found by the next spin, which queues it again.
+- A deferred callback takes no part in the spin's `Trigger`.
+- Timers cannot be deferred (`set_deferred` returns `false`): a timer's
+  readiness is decided inside its own dispatch.
+- It is a different hook from `set_ready_notifier` (issue 2144). That one
+  fires when data arrives and says "spin now"; the defer notifier fires during
+  the spin and says which callback to run. A host that sleeps until work
+  arrives uses both.
+- The drain needs `&mut Executor`, like `spin_once`. On a single-thread host
+  (Embassy, a superloop) that is the same task; across tasks, the executor is
+  the shared resource the host already guards for spinning.
+
 ## The `__nros_node_<pkg>_dispatch_strategy()` ABI symbol
 
 The `nros::node!()` macro emits, per Node pkg:

@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::clear_defer_notifier",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 2146 / RFC-0112 D2 (Defer) -- deferred dispatch for a hand-written host: remove the notifier; deferred callbacks keep being queued. See `rust:Executor::set_deferred`."
+}

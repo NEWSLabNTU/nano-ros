@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::is_deferred",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 2146 / RFC-0112 D2 (Defer) -- deferred dispatch for a hand-written host: whether a handle is deferred. See `rust:Executor::set_deferred`."
+}

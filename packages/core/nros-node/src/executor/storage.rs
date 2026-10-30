@@ -1428,6 +1428,11 @@ mod tests {
                 // (`Worker::registering_sched`), one byte that tipped the
                 // worker's padding; scales with nothing.
                 + size_of::<u32>()
+                // Issue 2146 -- the deferred-dispatch queue: the deferred and
+                // queued slot masks (one `u64` each, whatever MAX_CBS is, as
+                // the ready word) and the host's optional `(notifier, ctx)`.
+                + 2 * size_of::<u64>()
+                + size_of::<Option<(super::super::types::DeferNotify, *mut core::ffi::c_void)>>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],
