@@ -49,10 +49,10 @@ use nros_tests::{
     count_pattern,
     fixtures::{
         DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, Rmw as FixtureRmw, Ros2DdsProcess,
-        Ros2Process, ZenohRouter, build_native_c_example_rmw, build_ros2_string_interop,
-        lifecycle_node_binary, listener_binary, require_ros2, require_ros2_cyclonedds,
-        ros2_env_setup_with_locator, service_client_binary, service_server_binary, talker_binary,
-        zenoh_service_info_client_binary,
+        Ros2Process, ZenohRouter, build_cmake_leaf_rmw, build_native_c_example_rmw,
+        build_ros2_string_interop, lifecycle_node_binary, listener_binary, require_ros2,
+        require_ros2_cyclonedds, ros2_env_setup_with_locator, service_client_binary,
+        service_server_binary, talker_binary, zenoh_service_info_client_binary,
     },
     matrix::{Lang, PlatformId, Rmw, Workload},
     output, unmet,
@@ -105,6 +105,10 @@ enum Scenario {
     /// nano `service-info-client`, which reports each reply's `ServiceInfo`
     /// (issue 2136, `take_response_with_info`).
     ZenohServiceResponseInfo,
+    /// zenoh: the same stock server answers the C++ `service-info-client-cpp`,
+    /// which takes each reply with `PollClient::take_response(response,
+    /// request_header)` and reports the `rmw_request_id_t` (issue 2148).
+    ZenohServiceResponseHeaderCpp,
 }
 
 impl Scenario {
@@ -149,6 +153,8 @@ fn scenario_coord(s: Scenario) -> (PlatformId, Lang, Rmw, Workload) {
             (Lang::C, Rmw::Cyclonedds, Workload::Pubsub)
         }
         CycloneServiceNanoServer => (Lang::C, Rmw::Cyclonedds, Workload::Service),
+        // issue 2148 — the nano side is the C++ `bins/service-info-client-cpp`.
+        ZenohServiceResponseHeaderCpp => (Lang::Cpp, Rmw::Zenoh, Workload::Service),
         ZenohLifecycle => (Lang::Rust, Rmw::Zenoh, Workload::Lifecycle),
     };
     (PlatformId::Linux, lang, rmw, workload)
@@ -410,6 +416,12 @@ fn flood_count(router: &ZenohRouter, note: &str) -> usize {
     note: "issue 2136: the nano client reads each stock reply's rmw_service_info_t \
            (its own request id from the reply attachment, the server's send stamp, \
            its own receive stamp) through take_response_with_info",
+})]
+#[case::zenoh_service_response_header_cpp(Cell {
+    scenario: Scenario::ZenohServiceResponseHeaderCpp,
+    note: "issue 2148: the C++ client's PollClient::take_response(response, \
+           request_header) hands out each stock reply's rmw_request_id_t (its own \
+           request's sequence number and its request-writer GUID)",
 })]
 fn interop(#[case] cell: Cell) {
     // Issue 0352 / phase-324 W4.d — per-case binding: the coordinate this case
@@ -817,6 +829,69 @@ fn interop(#[case] cell: Cell) {
             }
         }
 
+        // ── zenoh service: ros2 server → C++ client's request header ─────
+        Scenario::ZenohServiceResponseHeaderCpp => {
+            let bin = build_cmake_leaf_rmw(
+                "packages/testing/nros-tests/bins/service-info-client-cpp",
+                "service_info_client_cpp",
+                FixtureRmw::Zenoh,
+            )
+            .require("prebuilt service-info-client-cpp");
+            let router = start_zenoh_router();
+            let locator = router.locator();
+            let mut ros2_server =
+                match Ros2Process::add_two_ints_server(&locator, DEFAULT_ROS_DISTRO) {
+                    Ok(p) => p,
+                    Err(e) => unmet!("ROS 2 service server could not start: {e}"),
+                };
+            let mut client = spawn_nano_zenoh(&bin, "service-info-client-cpp", &locator);
+            let out =
+                client.collect_until(output::RESPONSE_INFO_DONE_MARKER, Duration::from_secs(40));
+            ros2_server.kill();
+            client.kill();
+
+            // The stock server copies the request attachment's sequence number
+            // and gid into its reply (`rmw_zenoh_cpp` `send_response`), so each
+            // header names THIS client's request: one non-zero gid across
+            // replies, and the sequence numbers its requests went out under,
+            // 1..=n in order (the client sends one at a time).
+            let lines: Vec<&str> = out
+                .lines()
+                .filter_map(|l| l.find(output::RESPONSE_INFO_LOG_PREFIX).map(|i| &l[i..]))
+                .collect();
+            assert!(
+                lines.len() >= 3,
+                "expected 3 `{}` lines from the C++ client ({}); a header whose backend \
+                 reported no GUID prints `RESPONSE_INFO ABSENT`.\nnano output:\n{out}",
+                output::RESPONSE_INFO_LOG_PREFIX,
+                cell.note
+            );
+            let field = |line: &str, key: &str| -> String {
+                line.split_whitespace()
+                    .find_map(|t| t.strip_prefix(key))
+                    .unwrap_or_else(|| panic!("`{key}` missing from `{line}`"))
+                    .to_string()
+            };
+            for line in &lines {
+                eprintln!("measured: {line}");
+            }
+            let guid0 = field(lines[0], "guid=");
+            assert!(
+                guid0.len() == 32 && guid0 != "0".repeat(32),
+                "the header must carry the client's 16-byte gid, got `{guid0}`"
+            );
+            for (i, line) in lines.iter().take(3).enumerate() {
+                assert_eq!(field(line, "guid="), guid0, "one client, one gid: `{line}`");
+                assert_eq!(
+                    field(line, "seq="),
+                    (i + 1).to_string(),
+                    "the reply answers the client's request #{}: `{line}`",
+                    i + 1
+                );
+                assert_eq!(field(line, "sum="), (i as i64 + 10).to_string(), "`{line}`");
+            }
+        }
+
         // ── cyclone pubsub: nano talker → ros2 topic echo ────────────────
         Scenario::CyclonePubsubNanoToRos2 => {
             let domain = nros_tests::unique_ros_domain_id();
@@ -1052,6 +1127,8 @@ fn cases_bound_to_interop_cells() {
             (Linux, C, Cyclonedds, Pubsub),
             (Linux, C, Cyclonedds, Service),
             (Linux, Rust, Zenoh, Lifecycle),
+            // issue 2148 — the C++ client's request header (case_12).
+            (Linux, Cpp, Zenoh, Service),
         ],
     );
 }

@@ -315,6 +315,16 @@ where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "1 case(s) produced a result in interop_e2e.xml"
 
 [[verdict]]
+cell = "native-service-cpp-zenoh-n2r"
+date = "2026-10-30"
+verdict = "pass"
+tests = ["interop::case_12_zenoh_service_response_header_cpp"]
+run = "cargo nextest run -p nros-tests --test interop_e2e case_12"
+where = "ros2 distrobox, Humble, tree with issue 2148's service-info-client-cpp"
+evidence = "1 case(s) produced a result in junit.xml"
+issue = "2148"
+
+[[verdict]]
 cell = "native-service-rust-xrce-r2n"
 date = "2026-10-27"
 verdict = "pass"

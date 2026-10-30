@@ -40,7 +40,12 @@
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 22 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 20 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config | 37 | 35 | 69 % |
-//! | tier 3 | everything | 253 | 51 | 100 % |
+//! | tier 3 | everything | 254 | 51 | 100 % |
+//!
+//! Re-measured 2026-10-30 (issue 2148): the C++ service-client interop cell
+//! (`native-service-cpp-zenoh-n2r`) joined at an existing coordinate. Tiers 1,
+//! 2 and nightly did not move; tier 3 went 253 -> 254 cells over the same 51
+//! coordinates.
 //!
 //! Re-measured 2026-10-28 (issue 2106): the XRCE graph interop cell
 //! (`native-graph-rust-xrce-r2n`) joined at an existing coordinate. Tiers 1, 2
@@ -1081,8 +1086,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 253,
-            "the table's tier-3 cell count (253) is stale; recomputed {total_cells}"
+            total_cells, 254,
+            "the table's tier-3 cell count (254) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 51,

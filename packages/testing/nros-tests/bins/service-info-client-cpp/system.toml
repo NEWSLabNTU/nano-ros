@@ -1,0 +1,17 @@
+# issue 2148 — the C++ service-client response-info probe (fixture row
+# `service-info-client-cpp-zenoh`, interop_e2e case_12).
+
+[system]
+name = "service_info_client_cpp"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "service_info_client_cpp"
+class = "service_info_client_cpp::Client"
+name = "add_two_ints_info_client"
+
+# Host build. The locator and domain stay runtime env on native
+# (`NROS_LOCATOR` / `ROS_DOMAIN_ID`).
+[image.linux]
+board = "linux"

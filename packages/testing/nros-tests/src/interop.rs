@@ -250,6 +250,13 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-service-rust-zenoh-r2n",
        c(Linux, Rust, Zenoh, Service, Interop, Runtime),
        LinuxFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
+    // issue 2148 — the C++ service client against a stock server: its nano
+    // side is `bins/service-info-client-cpp` (fixture row
+    // `service-info-client-cpp-zenoh`), which reads each reply's
+    // `rmw_request_id_t` through `PollClient::take_response`.
+    ic("native-service-cpp-zenoh-n2r",
+       c(Linux, Cpp, Zenoh, Service, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "interop_e2e"),
     // phase-433 W3 — the cyclone half is C, not Rust. `interop_e2e`'s three
     // cyclone cases spawn `nano_cyclone_c_binary(...)`: `c_talker`,
     // `c_listener`, `c_service_server` out of `examples/linux/c/`. These rows
@@ -787,7 +794,7 @@ const fn unowned(test: &'static str, case: &'static str, reason: &'static str) -
 /// the moment the map becomes necessary.
 #[rustfmt::skip]
 pub const CASE_CELLS: &[CaseOwner] = &[
-    // ── interop_e2e — five cells, eleven cases ────────────────────────────
+    // ── interop_e2e — six cells, twelve cases ─────────────────────────────
     // Each row is `scenario_coord()`'s answer for that case's `Scenario`
     // (tests/interop_e2e.rs), and those five coordinates are distinct, so the
     // assignment is the one the per-case tripwire already asserts — written
@@ -809,6 +816,9 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     // issue 2136 — a stock rmw_zenoh_cpp server answering the nano client,
     // which asserts each reply's `ServiceInfo` (`take_response_with_info`).
     co("interop_e2e", "interop::case_11_zenoh_service_response_info",     "native-service-rust-zenoh-r2n"),
+    // issue 2148 — the same stock server answering the C++ client, which
+    // reads each reply's request header (`PollClient::take_response`).
+    co("interop_e2e", "interop::case_12_zenoh_service_response_header_cpp", "native-service-cpp-zenoh-n2r"),
 
     // ── pubsub_freertos_an536_cyclone_ros2_interop_e2e — phase-441 W6 ───
     // The talker cell and the fragmented-sample listener (issue 0917): one
