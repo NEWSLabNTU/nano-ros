@@ -4410,8 +4410,10 @@ mod tests {
     /// Before W3 the in-place row was composed from the `rmw` name alone, so both
     /// rows read `in_place` and both would be priced at NO receive region.
     /// ~~`executor::tests::a_generic_subscription_on_an_in_place_backend_still_claims_a_full_region`~~
-    /// is what the second one costs at run time: `NodeError::BufferTooSmall` at a
-    /// registration the arena oracle passed. Mutation-tested by restoring the
+    /// measured what the second one cost at run time: `NodeError::BufferTooSmall`
+    /// at a registration the arena oracle passed. (Issue 1340 has since made that
+    /// subscription claim no region:
+    /// `a_generic_subscription_on_an_in_place_backend_claims_no_receive_region`.) Mutation-tested by restoring the
     /// pre-W3 arm (`(_, _, InPlace) => InPlace`), which reds on `/generic`.
     ///
     /// The observed `false` does not become a refusal: it FALLS THROUGH to the

@@ -568,9 +568,12 @@ related_sample_identity
 MapperMiss::requires_detection
 UPDATE_RANKED_PLAN_SNAPSHOT
 core_id
+effective_qos
+every_contract_fixture_ranks_to_its_committed_plan
 host_name
 max_response
 node_exec_ms
+pub_contract
 rt_priority_band
 
 # git

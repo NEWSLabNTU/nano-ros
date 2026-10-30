@@ -123,7 +123,7 @@ int main() {
            "unexpected typename %s", desc->m_typename);
 
     // Register under the action backend's lookup table so
-    // `publisher_create` / ~~`subscriber_create`~~ can find it.
+    // `publisher_create` / `subscription_create` can find it.
     nros_rmw_cyclonedds_register_descriptor(desc->m_typename, desc);
 
     rmw_session_t s{};

@@ -8,9 +8,9 @@
  * `xrce_session_state` per session, malloc'd at `open`, parked in
  * `rmw_session_t::backend_data`). Per-entity state lives in slots
  * inside that struct; entity shells get a pointer to the matching slot
- * via their `backend_data` field. Mirrors the design ground truth in
- * `packages/rmw/xrce/nros-rmw-xrce/src/lib.rs` but without the
- * module-static ~~`XrceSessionState`~~ it relies on.
+ * via their `backend_data` field. It began as the design of the retired
+ * Rust impl (`packages/rmw/xrce/nros-rmw-xrce/src/lib.rs`), minus the
+ * module-static ~~`XrceSessionState`~~ that impl relied on.
  */
 
 #include "nros/platform.h"
@@ -504,7 +504,8 @@ typedef struct xrce_reply_token {
 } xrce_reply_token;
 
 /* One buffered request in the service-server inbox ring. Its bytes are the
- * slot's (~~`xrce_service_request_data`~~): issue 1808 gave the two families
+ * slot's (the per-slot request buffer, not a shared ~~`xrce_service_request_data`~~
+ * array): issue 1808 gave the two families
  * buffers of different sizes, so an entry cannot carry an array of its own. */
 typedef struct xrce_service_request_entry {
     size_t len;
@@ -904,7 +905,7 @@ void xrce_session_unlock(xrce_session_state_t* st);
 void xrce_session_free(xrce_session_state_t* st);
 
 /* Allocate the next entity id of the given type. Mirrors the Rust
- * impl's ~~`alloc_entity_id`~~. */
+ * impl's ~~`alloc_entity_id`~~ (that impl is retired). */
 uxrObjectId xrce_alloc_entity_id(xrce_session_state_t* st, uint8_t type);
 
 /* Run the agent until all `count` request statuses are received,

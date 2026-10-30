@@ -2492,7 +2492,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                         .unwrap_or_else(|| std::path::PathBuf::from("system_model.yaml"));
                     // NAMESPACE BY BRINGUP. A flat output dir collides the
                     // moment a workspace has two bringups: `ws-lifecycle-cpp`
-                    // has `demo_bringup` and ~~`managed_bringup`~~, both producing
+                    // had `demo_bringup` and ~~`managed_bringup`~~, both producing
                     // `system_model.yaml`, and the second silently overwrote the
                     // first. It presented as "regeneration dropped a node",
                     // which is exactly the kind of false loss that would have
@@ -4018,8 +4018,8 @@ fn codegen_workspace_pkg(
     // Codegen emits <out_dir>/<pkg>/{Cargo.toml,src/} with sibling `path =
     // "../<dep>"` deps. We keep that flat layout (no extra `rust/`
     // nesting) so the relative paths between generated crates resolve
-    // correctly without a rewrite pass. Our ~~`nros_generator_rs`~~ prefix
-    // already namespaces by language — the extra `rust/` colcon adds is
+    // correctly without a rewrite pass. This output tree holds Rust crates
+    // only, so it is already per-language — the extra `rust/` colcon adds is
     // there to coexist with `<pkg>/c/`, `<pkg>/cpp/`, etc. inside the
     // same generator's output, which we don't have.
     Ok(())

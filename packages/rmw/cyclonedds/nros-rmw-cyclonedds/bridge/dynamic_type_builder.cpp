@@ -308,7 +308,7 @@ char* mangle_type_name(const char* raw) {
 // up to three extras for EXT / BST / BSQ); nested struct ops follow
 // after the top-level `RTS`.
 //
-// ~~`MAX_OPS`~~ caps total compiled words. Generous enough for several
+// `kMaxOpsWords` caps total compiled words. Generous enough for several
 // hundred fields including a few nested structs.
 constexpr size_t kMaxOpsWords = 4096;
 
@@ -400,7 +400,7 @@ struct NestedTable {
 
 // Build the entire ops stream (top-level fields + nested bodies).
 //
-// ~~`field_kinds_emit_queue`~~ carries the set of nested struct kind
+// `BuildContext::queue` carries the set of nested struct kind
 // indices that still need their body emitted; we process them
 // breadth-first and patch up the JSR deltas as we go.
 struct BuildContext {

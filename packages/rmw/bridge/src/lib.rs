@@ -91,7 +91,7 @@ mod cffi;
 /// never references — so `<rclcpp/bridge.hpp>`'s `MultiExecutor` compiled but failed
 /// to link, and a PX4 module could not reach the bridge API at all. The root
 /// references THIS from a `#[used]` static, which keeps the objects (and with them
-/// the whole `rclc_init_multi` / ~~`nros_pubsub_bridge_*`~~ surface) in the archive.
+/// the whole `rclc_init_multi` / `rclc_pubsub_bridge_create` / … surface) in the archive.
 ///
 /// Mirrors `nros_c::c_surface_anchor::C_SURFACE_ANCHOR`.
 #[cfg(feature = "cffi")]

@@ -784,7 +784,7 @@ mod queryable_default_tests {
     fn an_empty_declared_carrier_states_nothing_and_is_not_a_build_failure() {
         // (The transient-local carrier this test opened on retired with issue
         // 1649.) The node carrier has the same panic on the same road:
-        // ~~`NROS_ENTITY_NODES_MAX`~~ is emitted through the identical cmake idiom.
+        // ~~`NROS_ENTITY_NODES_MAX`~~ was emitted through the identical cmake idiom.
         assert_eq!(
             declared_nodes(Some("")),
             declared_nodes(None),
@@ -1305,7 +1305,7 @@ const GRAPH_KEYEXPR_BYTES: usize = 141;
 /// Bytes needed to cache `entities` liveliness keyexprs.
 ///
 /// Pure, with the environment lifted out, so the arithmetic is testable without
-/// a build — the shape ~~`facts_from_model`~~ uses one crate over.
+/// a build — the shape the CLI's retired ~~`facts_from_model`~~ used.
 ///
 /// Floored at one keyexpr: `zpico.c` refuses a cache under 1 byte with an
 /// `#error` (issue 1015), and a stated 0 is a claim about the DOMAIN ("no other

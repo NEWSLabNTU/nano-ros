@@ -1777,7 +1777,8 @@ fn every_board_family_derives_its_boot_shape_once() {
 /// already defines one.
 ///
 /// ThreadX is the one board the two former branch chains disagreed about,
-/// and it is kept out of the per-tier chain by ~~`use_run_tiers`~~. Pinning it
+/// and it is kept out of the per-tier chain by `Plan::executor_shape`: the
+/// board has no `run_tiers` (issue 1286). Pinning it
 /// here means the shared derivation is right about it on its own terms,
 /// rather than by an argument about a condition elsewhere.
 #[test]

@@ -43,15 +43,16 @@
 //!   in their respective traits; call sites disambiguate via the
 //!   qualified path.
 //!
-//! # Status (Phase 84.F4)
+//! # Who implements these traits
 //!
-//! The platform ZSTs (~~`PosixPlatform`~~, `ZephyrPlatform`, etc.) do **not**
-//! currently implement these traits — every platform exposes its methods
-//! as *inherent* `impl Platform { fn foo() {} }` blocks, and shim crates
-//! dispatch by name match. 84.F4 migrates each platform to `impl
-//! PlatformX for Platform { fn foo() {} }` one trait at a time, with the
-//! shims switching to `<P as PlatformX>::foo()`. Until that work is
-//! complete the traits here are a target specification.
+//! The bare-metal Rust ports (`Mps2An385Platform`, `Esp32QemuPlatform`,
+//! `Stm32f4Platform`) implement them, and `nros_platform_export!` exports
+//! those impls over the C platform ABI; `CffiPlatform` implements them in
+//! the other direction, over that ABI. The hosted and RTOS ports (POSIX,
+//! Zephyr, FreeRTOS, NuttX, ThreadX) are C (`nros-platform-<rtos>/src/
+//! platform.c`). Their Rust ZSTs, ~~`PosixPlatform`~~ among them, are gone,
+//! and with them the Phase 84.F4 plan that would have moved each one from
+//! inherent methods onto these traits.
 
 // phase-359 W10 — the ONE Rust-side spawn helper for the task ABI this crate
 // defines. It lived in `nros-node::executor::platform_task`, private, which

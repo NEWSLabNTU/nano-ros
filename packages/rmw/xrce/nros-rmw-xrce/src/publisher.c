@@ -1,6 +1,6 @@
 /* Phase 115.K.2.2 — publisher path.
  *
- * Mirrors the Rust impl's ~~`XrceSession::create_publisher`~~ /
+ * Ported from the retired Rust impl's ~~`XrceSession::create_publisher`~~ /
  * ~~`XrcePublisher::publish_raw`~~ shape; bin-create only (no QoS XML
  * fallback in the C backend — see internal.h for the K.2 scope
  * gaps).

@@ -87,7 +87,7 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
 /// than merely agreeing with it by inspection (phase-432 W3.2).
 ///
 /// `#[cfg(test)]` because that check IS a unit test — `pack.rs`'s
-/// ~~`manifests_and_the_registry_describe_the_same_templates`~~, its only caller,
+/// `every_entry_template_is_its_own_packs_template`, its only caller,
 /// inside that file's `#[cfg(test)] mod tests`. `--all-targets` still builds
 /// the plain lib, where an un-gated accessor with no runtime caller is
 /// genuinely dead code and `-D warnings` says so: this took `check-build` red

@@ -5,7 +5,8 @@
 //! against the in-memory `MetadataRecorder` (no transport, no RTOS task), and
 //! serializes the recorder via `to_source_metadata_json`. This is the "compile
 //! each component in a host-side metadata mode and invoke its entry path with a
-//! fake ~~`ComponentContext`~~" step from the workflow design — the input `nros
+//! fake context" step from the workflow design (the context was
+//! ~~`ComponentContext`~~ then; phase-483 W3 hands `register` an `nros::Node`) — the input `nros
 //! metadata` collects + the planner consumes.
 //!
 //! Scope (chosen 2026-05-28): the **driver** only. Hardening this execution

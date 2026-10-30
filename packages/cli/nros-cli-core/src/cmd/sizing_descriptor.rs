@@ -792,7 +792,8 @@ pub(crate) fn leaf_declaration(dir: &std::path::Path) -> Result<LeafDeclaration>
             )
         })?;
 
-    // The DECLARATION is the opt-in, exactly as in ~~`cmd::entity_facts::facts_from_leaf`~~.
+    // The DECLARATION is the opt-in, as it was in the retired
+    // ~~`cmd::entity_facts::facts_from_leaf`~~.
     // A leaf nobody described gets NO descriptor: an all-refused file would move
     // the `[meta] basis` every consumer guards on in order to say nothing, which
     // is phase-454 W12's control and holds on this road too.
@@ -878,9 +879,9 @@ pub(crate) fn leaf_declaration(dir: &std::path::Path) -> Result<LeafDeclaration>
         inventory.insert(row);
     }
     // Issue 1270 — the runtime's own service families, from the SAME key a
-    // bringup states them in. `InfraServices::from_features` is what
-    // ~~`facts_from_leaf`~~ reads, so the two roads cannot come to disagree about
-    // which spelling turns a family on.
+    // bringup states them in. `InfraServices::from_features` is also what
+    // `InfraServices::from_model` reads on the model road, so the two roads
+    // cannot come to disagree about which spelling turns a family on.
     inventory.set_infra(crate::entity_inventory::InfraServices::from_features(
         &system.features,
         system.components.len(),

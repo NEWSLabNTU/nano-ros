@@ -89,7 +89,7 @@ typedef struct nros_rmw_xrce_transport_ops_t {
 /**
  * Phase 115.K.2.4 — install a custom-transport vtable for the XRCE
  * backend's `custom://` locator path. After this call returns OK,
- * ~~`xrce_session_open`~~ invoked with a locator starting `custom://`
+ * `xrce_session_create` invoked with a locator starting `custom://`
  * routes through `uxr_set_custom_transport_callbacks` +
  * `uxr_init_custom_transport` instead of UDP.
  *

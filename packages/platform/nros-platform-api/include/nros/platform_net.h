@@ -176,11 +176,12 @@ void nros_platform_network_poll(void);
  *   - ThreadX:      `typedef struct { INT fd; } nros_threadx_socket_t;`
  *   - FreeRTOS+lwIP same shape.
  *
- * This accessor lets callers (e.g. zpico-sys's ~~`get_session_fd`~~
- * helper used by the read-task wakeup path on ThreadX-Linux) read
- * the fd without depending on the per-RTOS struct typedef being
- * visible at compile time. Static-inline so it has zero call
- * overhead and ships with the header — no extra TU to link.
+ * This accessor reads the fd without depending on the per-RTOS struct
+ * typedef being visible at compile time. Its one caller was zpico-sys's
+ * ~~`get_session_fd`~~ helper (the read-task wakeup path on
+ * ThreadX-Linux), and nothing in the tree calls it now. Static-inline
+ * so it has zero call overhead and ships with the header — no extra TU
+ * to link.
  *
  * Returns -1 if `sock` is NULL. Otherwise returns the leading
  * `int` (which platforms treat as -1 for an unbound socket).

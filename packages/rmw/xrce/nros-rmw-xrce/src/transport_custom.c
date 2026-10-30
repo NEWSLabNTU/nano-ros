@@ -16,10 +16,10 @@
  *
  *  2. `nros_rmw_xrce_init_custom_transport(framing)` —
  *     drains whatever the runtime registered via
- *     `rclc_set_custom_transport`. Requires
- *     ~~`nros_rmw_take_custom_transport()`~~ from `nros-rmw-cffi`; that
- *     symbol is not yet exported, so this path returns
- *     `NROS_RMW_RET_UNSUPPORTED`. See docs/reference/xrce-known-limitations.md.
+ *     `rclc_set_custom_transport`. It needs a C way to take those ops:
+ *     the taker is Rust-only (`nros_rmw::take_custom_transport`), and the
+ *     C export planned for it, ~~`nros_rmw_take_custom_transport()`~~,
+ *     never landed, so this path returns `NROS_RMW_RET_UNSUPPORTED`. See docs/reference/xrce-known-limitations.md.
  */
 
 #include "nros_rmw_xrce.h"
@@ -114,9 +114,10 @@ rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
 
 rmw_ret_t nros_rmw_xrce_init_custom_transport(int framing) {
     (void)framing;
-    /* Phase 115.K.2.4 gap: ~~`nros_rmw_take_custom_transport()`~~ is not
-     * yet exported by nros-rmw-cffi. Until that lands, callers must
-     * use `nros_rmw_xrce_set_custom_transport_ops` directly. */
+    /* Phase 115.K.2.4 gap: there is no C export that takes the runtime's
+     * registered ops (the planned ~~`nros_rmw_take_custom_transport()`~~
+     * never landed). Callers use `nros_rmw_xrce_set_custom_transport_ops`
+     * directly. */
     return NROS_RMW_RET_UNSUPPORTED;
 }
 

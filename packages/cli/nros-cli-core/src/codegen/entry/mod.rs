@@ -543,9 +543,9 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             })
             .ok_or_else(|| eyre::eyre!("model node '{fqn}' has neither exec nor plugin"))?;
         // #276 (model path) — project `params_files` YAML under the inline
-        // `<param>` values. The launch path has its own projection
-        // (~~`resolve_node_params`~~), but every live bake now goes through the
-        // MODEL, so the projection has to exist here too.
+        // `<param>` values. The retired launch path had its own projection
+        // (~~`resolve_node_params`~~); every live bake goes through the MODEL,
+        // so the projection lives here.
         let resolved: Vec<(String, String)> = inst
             .resolved_params(fqn)
             .iter()
@@ -616,7 +616,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // phase-462 W2 -- the contract is the SOURCE of `deadline_policy`, and
     // this is where it becomes one. From here the word rides the ordinary
     // tier road: `resolve_tiers` -> `ResolvedTier::deadline_policy` ->
-    // ~~`tier_views`~~/~~`sched_view`~~ -> the baked entry ->
+    // `lower_tiers`/`lower_sched` (`lower.rs`) -> the baked entry ->
     // `SchedContext::from_tier_policy` -> `DeadlineAction`. Agreement with an
     // authored string was already checked above, so an insert here either
     // supplies what the tier table omitted or restates what it agreed to.

@@ -266,7 +266,7 @@ fn main() {
 
     // Every `.jinja` on disk must be claimed by some manifest. A file nobody
     // renders parses, looks wired, and emits nothing — the same check the entry
-    // side's ~~`every_pack_file_is_registered`~~ makes, moved to build time because
+    // side's ~~`every_pack_file_is_registered`~~ made, moved to build time because
     // here it can refuse to compile.
     let claimed: BTreeSet<String> = packs
         .iter()

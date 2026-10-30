@@ -265,8 +265,10 @@ fn emit_subscriber_slots(sizing: Option<&SizingDescriptor>) {
 /// user fact answers "how big is a backend's private state struct", so there is
 /// nothing for the descriptor to state and a `derived_rung` here would be
 /// inventing a number. It takes the RFC-0049 ladder instead — env,
-/// ~~`CONFIG_NROS_RMW_SUBSCRIBER_SLOT_BYTES`~~, `[knobs.rmw] subscriber_slot_bytes`,
-/// then this builtin. `NROS_RUNTIME_COMPONENT_SLOT_BYTES` is the same quantity
+/// `[knobs.rmw] subscriber_slot_bytes`, then this builtin. It has no Kconfig
+/// rung: the knob registry spells ~~`CONFIG_NROS_RMW_SUBSCRIBER_SLOT_BYTES`~~
+/// but does not put the knob in its Kconfig set, so `zephyr/Kconfig` declares
+/// no such symbol. `NROS_RUNTIME_COMPONENT_SLOT_BYTES` is the same quantity
 /// one layer up (the component pool) and resolves exactly this way.
 ///
 /// **No floor here, deliberately** (RFC-0100 D7, issues 1015/1033). The only
@@ -373,10 +375,10 @@ fn maybe_build_c_stub() {
     .compile("nros_c_stub_transport");
 
     // ABI-layout single-source-of-truth (issue #238 / #239): a header
-    // TU of `_Static_assert`s that pin the C-side widths of the RMW
-    // mirror. Its Rust counterpart is the ~~`abi_layout`~~ const-assert
-    // block in `src/lib.rs`. If either side's layout drifts, exactly
-    // one guard fails the build. Compiled against the public headers.
+    // TU of `_Static_assert`s that pin the C-side widths of the RMW ABI.
+    // Its Rust counterpart, the ~~`abi_layout`~~ const-assert block, went
+    // when RFC-0054 replaced the hand mirror with bindgen output of the same
+    // headers. Compiled against the public headers.
     // issue 0779 — `../../core/nros-rmw-abi`, the same correction the comment 30
     // lines above already made for the `rerun-if-changed` spelling. 0490 fixed
     // that site and left this one, and the two failed DIFFERENTLY, which is why

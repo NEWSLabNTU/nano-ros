@@ -154,8 +154,9 @@ use eyre::Result;
 /// none of which sets `WORKING_DIRECTORY`, so every one inherits the cwd that
 /// already refused `resolve-deps`.
 ///
-/// TWO OF THEM FAIL SILENTLY, which is why this is worse than another red lane.
-/// `nros_resolve_board_facts` and ~~`nros_read_entity_facts`~~ degrade a refusal to
+/// TWO OF THEM FAILED SILENTLY, which is why this was worse than another red
+/// lane. `nros_resolve_board_facts` and ~~`nros_read_entity_facts`~~ (retired
+/// since) degraded a refusal to
 /// `message(STATUS …)` + `return()` and let the build continue with an EMPTY
 /// facts environment — the 0460 class, a knob that reaches one lane and not the
 /// other, and unobservable in a log that only echoes a failed leaf's tail.

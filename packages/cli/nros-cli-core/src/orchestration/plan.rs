@@ -625,10 +625,10 @@ pub struct PlanSchedContext {
 }
 
 /// Phase 173.5 — physical transport a `[[transport]]` entry selects.
-/// The kind always comes from `nros.toml`; the per-kind value (ip /
-/// baudrate / device) lands wherever that platform's net stack reads it
-/// (board `Config` for ~~`NanoRosOwned`~~, an RTOS config fragment for
-/// ~~`RtosOwned`~~ — see [`super::generate`] / Phase 173.7).
+/// The kind always comes from `nros.toml`. Phase 173.7's generator routed
+/// the per-kind value (ip / baudrate / device) to the board `Config`
+/// (~~`NanoRosOwned`~~) or an RTOS config fragment (~~`RtosOwned`~~); both
+/// the generator (#202) and that NIC-ownership split (phase-206 W5) are gone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TransportKind {
@@ -771,8 +771,10 @@ pub struct PlanBuildOptions {
     /// layer. `debug`/`cflags` are exported as `CFLAGS`/`CXXFLAGS` which `cc-rs`
     /// *appends* to its computed flags (every zenoh-pico/XRCE/net.c/lwIP
     /// `cc::Build`, no build.rs edit): `debug = true` adds `-g` without disturbing
-    /// the opt level → the C-side of the "debug one layer" case. `opt_level` →
-    /// ~~`NROS_CC_OPT`~~ (build scripts that honor it override their hardcoded opt; 204.9).
+    /// the opt level → the C-side of the "debug one layer" case. `opt_level`
+    /// went to ~~`NROS_CC_OPT`~~ (204.9). The generator that exported all three
+    /// was retired with #202, and nothing applies this block now: it parses,
+    /// and changes no build (issue 2153).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cc: Option<PlanCcOverrides>,
     /// Phase 195.C — workspace root, populated at generate time (NOT part of
@@ -807,8 +809,9 @@ pub struct PlanCargoOverrides {
 }
 
 /// Phase 204.15 (increment 3) — `[build.cc]` per-layer override for the C/C++
-/// toolchain. Applied via `CFLAGS`/`CXXFLAGS` env (cc-rs appends) + ~~`NROS_CC_OPT`~~,
-/// so it reaches every `cc::Build` without a build.rs edit.
+/// toolchain. It was applied via `CFLAGS`/`CXXFLAGS` env (cc-rs appends) +
+/// ~~`NROS_CC_OPT`~~ by the generator #202 retired; nothing applies it now (see
+/// `PlanBuildOptions::cc`, issue 2153).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanCcOverrides {

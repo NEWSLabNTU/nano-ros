@@ -3866,12 +3866,11 @@ pub(crate) fn registry_patches_from(
 /// the same derivation `facade::image_backends` and the MACRO's `bridge_rmws`
 /// both make. The crate name is then read out of the BOARD crate's own
 /// `rmw-<x> = ["dep:<crate>"]` feature rather than from a table here. That is
-/// deliberate: the macro carries its own three-arm ~~`rmw_crate_ident`~~, and a
-/// fourth copy would be the extra spelling that drifts. The board's answers
-/// agree with the macro's today (`zenoh` → `nros_rmw_zenoh`, `cyclonedds` →
-/// `nros_rmw_cyclonedds_sys`, `xrce` → `nros_rmw_xrce_cffi`), and if one ever
-/// stops agreeing the build fails with the missing name rather than silently
-/// linking the wrong backend.
+/// deliberate: a table here would be one more spelling of a fact the board
+/// already states. (The macro carried a three-arm one, ~~`rmw_crate_ident`~~,
+/// until issue 1298 moved it to each backend's `[rmw.provides.cargo]`.) If the
+/// board ever names a crate that is not there, the build fails with the missing
+/// name rather than silently linking the wrong backend.
 ///
 /// **Message crates.** `nros sync` writes `<bringup>/nros-bridge.toml` with a
 /// `[[register_type]] rust_path = "std_msgs::msg::Header"` per non-flat egress
