@@ -679,11 +679,16 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `k_malloc`s per socket, so "nothing allocates from the kernel heap" is a claim
   about the WHOLE image, not about nano-ros). Gate: `check-kconfig-overridden-values`
   (a ratchet — shared board fragments are legitimately an override layer).
-  **And the per-leaf `examples/zephyr/**/boards/*.conf` are NEVER merged** — 18
-  dead files whose content is duplicated in `cmake/zephyr/native-sim-line-*.conf`,
-  which is what actually applies. Read the build's own `Merged configuration`
-  lines before editing a conf; a fix in the wrong file changes nothing and looks
-  like it should.
+  **Whether a leaf's `boards/<board>.conf` is merged depends on the ROAD, not the
+  file** — Zephyr picks it up only when `CONF_FILE` is UNSET (or names a single
+  `prj_<x>.conf`; `configuration_files.cmake`). The fixture lane sets `CONF_FILE`,
+  so there the leaf copy is dead and `cmake/zephyr/native-sim-line-<v>.conf` /
+  `zephyr/native-sim-nsos.conf` is what applies; `nros build` and a bare
+  `west build` leave it unset, so there the leaf copy is the ONLY NSOS source, and
+  a native_sim leaf without one boots onto the TAP driver and segfaults
+  (`eth_posix: Cannot create zeth` — issue 2140). Its `CONFIG_ETH_NATIVE_POSIX=n`
+  is a 3.7-only symbol. Read the build's own `Merged configuration` lines before
+  editing a conf; a fix in the wrong file changes nothing and looks like it should.
   **And a nano-ros knob is never authored in a conf file at all** (phase-481,
   RFC-0098 D10/D11): the image's `system.toml` states the RMW, endpoint, domain
   and every `env` knob, and the module renders it LAST, so a `CONFIG_NROS_*` line
