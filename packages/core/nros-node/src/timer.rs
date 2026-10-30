@@ -5,8 +5,13 @@
 //!
 //! # Overview
 //!
-//! Timers allow scheduling periodic or one-shot callbacks. In embedded environments
-//! without background threads, timers must be processed manually via ~~`process_timers()`~~.
+//! Timers allow scheduling periodic or one-shot callbacks. A timer lives in the
+//! executor's static table: a node creates one with `create_timer_repeating` /
+//! `create_timer_oneshot` / `create_timer_inert`, which return its `HandleId`,
+//! and `Executor::spin_once` fires every due timer. There is no separate
+//! timer-processing call to make (the pre-executor API's
+//! ~~`process_timers()`~~ is gone), so this holds on embedded targets without
+//! background threads too.
 //!
 //! # Timer Modes
 //!
@@ -14,39 +19,16 @@
 //! - **OneShot**: Fires once after a delay, then becomes inert
 //! - **Inert**: Never fires, useful as a placeholder
 //!
-//! # Example (with std)
+//! # Example
 //!
 //! ```ignore
-//! use nros::prelude::*;
-//! use nros::timer::Duration;
+//! let mut node = executor.node_mut(node_id);
+//! node.create_timer_repeating(core::time::Duration::from_millis(100), || {
+//!     // runs from inside `spin_once`
+//! })?;
 //!
-//! let mut node = ConnectedNode::connect(config, locator)?;
-//!
-//! // Create a repeating timer
-//! let timer = node.create_timer_repeating(
-//!     Duration::from_millis(100),
-//!     || println!("Timer fired!"),
-//! )?;
-//!
-//! // Process timers periodically
 //! loop {
-//!     node.process_timers(10); // 10ms elapsed
-//!     std::thread::sleep(core::time::Duration::from_millis(10));
-//! }
-//! ```
-//!
-//! # Example (RTIC)
-//!
-//! ```ignore
-//! // In RTIC, use a periodic task to process timers
-//! #[task(priority = 2, shared = [node])]
-//! async fn timer_process(mut cx: timer_process::Context) {
-//!     loop {
-//!         cx.shared.node.lock(|node| {
-//!             node.process_timers(TIMER_PROCESS_INTERVAL_MS as u64);
-//!         });
-//!         Systick::delay(TIMER_PROCESS_INTERVAL_MS.millis()).await;
-//!     }
+//!     executor.spin_once(core::time::Duration::from_millis(10));
 //! }
 //! ```
 
@@ -530,7 +512,8 @@ impl TimerState {
 /// A handle to a timer stored in a node
 ///
 /// This is a lightweight handle that references a timer by index.
-/// The actual timer state is stored in the ~~`ConnectedNode`~~.
+/// The actual timer state lives in the executor's timer table (it lived in
+/// the ~~`ConnectedNode`~~ before the executor API).
 ///
 /// # Type Parameters
 ///

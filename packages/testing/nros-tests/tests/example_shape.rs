@@ -46,7 +46,7 @@
 //!
 //! Adding a directory to the skip set without lifting the underlying
 //! migration block requires a phase-doc update + a comment in
-//! ~~`IS_MIGRATED_WAVE`~~ below.
+//! `is_migrated` below.
 
 use std::{
     collections::BTreeSet,
@@ -608,8 +608,8 @@ fn component_or_application_classification_present() {
         if !cargo.is_file() {
             // C / C++ leaves don't carry a `[package.metadata.nros.*]`
             // table — their classification rides on the cmake fn
-            // (~~`nano_ros_component()`~~ / ~~`nano_ros_application()`~~)
-            // invoked by `CMakeLists.txt`. Asserted by Test 6.
+            // invoked by `CMakeLists.txt` (once ~~`nano_ros_component()`~~ /
+            // ~~`nano_ros_application()`~~). Asserted by Test 6.
             continue;
         }
         let cls = match parse_cargo_toml(&cargo) {
@@ -830,8 +830,8 @@ fn pre_212_files_forbidden_in_migrated_examples() {
         // M.10 list also names committed `metadata/*.json` (build
         // artifacts the codegen path used to drop next to a pkg).
         // They belong in `$OUT_DIR/nros-gen/` or `target/nros-metadata/`,
-        // never tracked next to a Cargo.toml. Aligns with sibling
-        // ~~`phase212_examples_canonical_shape`~~ test's same check.
+        // never tracked next to a Cargo.toml. The retired sibling
+        // ~~`phase212_examples_canonical_shape`~~ made the same check.
         //
         // TRACKED, not present. `.gitignore:131` already ignores
         // `examples/**/metadata/*.json`, and `nros sync` WRITES one per Node

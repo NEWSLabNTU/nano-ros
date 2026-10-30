@@ -32,7 +32,7 @@
 //!
 //! ## The oracle
 //!
-//! ~~`reliable_talker_pkg`~~ declares `reliable + transient_local + depth(5)` in
+//! `rust_qos_talker_pkg` (once ~~`reliable_talker_pkg`~~) declares `reliable + transient_local + depth(5)` in
 //! CODE. The committed model overrides RELIABILITY to `best_effort` — a value
 //! the code never asks for. So on the wire:
 //!

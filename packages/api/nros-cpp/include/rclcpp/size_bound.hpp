@@ -215,10 +215,11 @@ template <class M> struct rx_buffer_capacity {
 
 /// The bound a genuinely TYPE-ERASED registration passes — phase-456 W7.
 ///
-/// A subscription registered with no bound takes issue 1319's ~~`c_raw_no_hint`~~
-/// row, which is priced at the executor's closure buffer (`RX_BUF`) rather than
-/// at the message's own size, and which the sizing descriptor CANNOT see: it
-/// credits every C/C++ entry with ~~`c_typed_hint`~~, because which row a call site
+/// A subscription registered with no bound takes issue 1319's `Unbounded`
+/// row (once ~~`c_raw_no_hint`~~), which is priced at the executor's closure
+/// buffer (`RX_BUF`) rather than at the message's own size, and which the
+/// sizing descriptor CANNOT see: it credits every C/C++ entry with a
+/// `TypedBound` row (once ~~`c_typed_hint`~~), because which row a call site
 /// takes is a property of that site and not of the image. So a site that takes
 /// the expensive row makes the descriptor's credit untrue for the whole entry.
 ///

@@ -2,7 +2,7 @@
  * phase-417 W5.e — NEGATIVE CONTROL. This file MUST FAIL to compile.
  *
  * W5.a's subscription twin exists because ~~`rclc_executor_add_subscription_typed`~~
- * takes the caller's storage as `void *`: the wrong struct registered silently
+ * took the caller's storage as `void *`: the wrong struct registered silently
  * and was then overwritten with a message of another type on every dispatch,
  * with no allocator anywhere to notice. The generated macro had to reintroduce
  * the type (`1 ? (msg) : (<Msg>*)0`) before a compiler would say anything.

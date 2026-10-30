@@ -1872,17 +1872,14 @@ class Node {
     /// Check if the node is initialized and valid.
     bool is_valid() const { return initialized_; }
 
-    /// Phase 235.A — internal: raw FFI node handle for the Entry-pkg
-    /// NodeContext runtime.
-    ///
-    /// The declarative ~~`NodeContextOps`~~ boundary (`<nros/node_pkg.hpp>`)
-    /// is **type-erased** — entities arrive as descriptor *strings*
-    /// (`type_name` / `type_hash`), with no message type `M` available
-    /// at the op-function-pointer callsite. The native runtime in
-    /// `<rclcpp/detail/main.hpp>` therefore constructs publishers / subscriptions
-    /// through the raw `nros_cpp_{publisher,subscription}_create` FFI,
-    /// which takes a `const nros_cpp_node_t*`. This accessor hands that
-    /// pointer to the runtime. Not part of the public rclcpp-style
+    /// Phase 235.A — internal: the raw FFI node handle, for code that must
+    /// call the FFI directly: the type-erased component glue in
+    /// `<rclcpp/detail/component.hpp>` (entities arrive as descriptor
+    /// *strings* — `type_name` / `type_hash` — with no message type `M` at
+    /// the callsite, so it creates them through the raw
+    /// `nros_cpp_{publisher,subscription}_create` FFI) and C interop such as
+    /// `nros_cpp_node_bind_c`. It was written for the declarative
+    /// ~~`NodeContextOps`~~ boundary, since retired. Not part of the public rclcpp-style
     /// surface — user code creates entities via the typed
     /// `create_publisher<M>` / `create_subscription<M>` templates.
     ///

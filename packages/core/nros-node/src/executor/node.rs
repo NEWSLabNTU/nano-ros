@@ -250,7 +250,7 @@ impl<'a> NodeHandle<'a> {
     // name + namespace) into a TopicInfo / ServiceInfo / ActionInfo. The
     // shape repeats verbatim ~12 times across this file. Centralised
     // here so a future change to the routing-info shape (e.g. adding a
-    // ~~`with_security_context`~~) updates one site instead of twelve, and
+    // security context) updates one site instead of twelve, and
     // so the per-`create_*` function bodies focus on the parts that
     // actually differ between them.
     // ------------------------------------------------------------------

@@ -584,7 +584,7 @@ template <typename M> class Publisher {
     }
 
     /// Phase 108.B.7 — manually assert liveliness. Required for
-    /// publishers configured with ~~`LivelinessManualByTopic`~~ /
+    /// publishers configured with `LivelinessPolicy::ManualByTopic` /
     /// `ManualByNode`; nothing to assert for `Automatic` / `None`, which
     /// answer `Ok` on every backend.
     ///

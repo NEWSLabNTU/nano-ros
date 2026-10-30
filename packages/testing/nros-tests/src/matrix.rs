@@ -2,7 +2,8 @@
 //!
 //! Every runtime e2e lane in `nros-tests` is a **cell** of this table:
 //! (platform × language × RMW × workload × kind). The parametrized matrix
-//! consumers (`example_e2e`, ~~`workspace_e2e`~~, …) iterate [`CELLS`]; the
+//! consumers (`entry_e2e`, `workspace_features_e2e`, `realtime_tiers_e2e`, …)
+//! iterate [`CELLS`]; the
 //! isolation allocator ([`crate::alloc`]) derives each cell's port/domain;
 //! the coverage gate cross-checks `examples/fixtures.toml` against this
 //! table in BOTH directions. A gap in coverage is a visible

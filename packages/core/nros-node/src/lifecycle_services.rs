@@ -261,7 +261,7 @@ fn transition_goal_state(t: InternalTransition) -> InternalState {
 //
 // The generated impls spell the sequence length `write_u32(len as u32)`;
 // `write_sequence_len` IS that call (cdr.rs), so the two agree byte for byte.
-// ~~`check_wire_writers_match_generated_serialize`~~ in the tests below re-proves
+// `wire_writers_match_generated_serialize` in the tests below re-proves
 // it on every build rather than on this comment's say-so.
 
 use nros_core::{CdrReader, CdrWriter, SerError};

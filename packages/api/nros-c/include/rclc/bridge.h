@@ -37,8 +37,8 @@ extern "C" {
  * @brief Spec for one backend session in a bridge-mode binary.
  *
  * Mirrors `nros_node::executor::SessionSpec`. `rmw` MUST match a
- * backend the binary linked in (i.e. one that contributed an entry
- * to ~~`RMW_INIT_ENTRIES`~~); spelling errors surface as
+ * backend the binary linked in (i.e. one that registered itself through
+ * `nros_rmw_cffi_register_named`); spelling errors surface as
  * `NROS_RMW_RET_UNKNOWN_BACKEND` at the matching `init_multi` call.
  */
 /**

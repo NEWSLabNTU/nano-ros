@@ -2020,9 +2020,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_relocate(
 
 /// Send a goal asynchronously (non-blocking).
 ///
-/// Uses `send_goal_raw` (zpico_get_start) instead of ~~`send_goal_blocking`~~.
-/// The goal response arrives via the callback registered with
-/// ~~`nros_cpp_action_client_register_async`~~, invoked during `spin_once`.
+/// Uses `send_goal_raw` (zpico_get_start) rather than a blocking send (the
+/// retired ~~`send_goal_blocking`~~). The goal response arrives during
+/// `spin_once`, through the client's executor arena entry (once a callback
+/// registered with ~~`nros_cpp_action_client_register_async`~~).
 ///
 /// # Safety
 /// All pointers must be valid.
@@ -2063,9 +2064,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal_async(
 
 /// Request a goal result asynchronously (non-blocking).
 ///
-/// Uses `send_get_result_request` (zpico_get_start) instead of
-/// ~~`get_result_blocking`~~. The result arrives via the result callback
-/// registered with ~~`nros_cpp_action_client_register_async`~~.
+/// Uses `send_get_result_request` (zpico_get_start) rather than a blocking
+/// request (the retired ~~`get_result_blocking`~~). The result arrives during
+/// `spin_once`, through the client's executor arena entry (once a callback
+/// registered with ~~`nros_cpp_action_client_register_async`~~).
 ///
 /// # Safety
 /// All pointers must be valid.
@@ -2993,7 +2995,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_try_recv_goal_request_raw(
 }
 
 /// Phase 122.3.d — L1 polling: accept a goal received via
-/// ~~`try_recv_goal_request_raw`~~.
+/// `nros_cpp_action_server_try_recv_goal_request_raw`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_accept_goal_raw(
     storage: *mut c_void,
@@ -3085,7 +3087,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal_raw(
 
 /// Phase 122.3.c.6.d / .d — L1 polling: peek a pending
 /// cancel-goal request. Writes goal_id + sequence_number +
-/// current_status (matches ~~`nros_cpp_goal_status_t`~~ discriminants).
+/// current_status (matches `nros::GoalStatusCode` discriminants).
 /// Returns `1` on peek, `0` if none pending, negative on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_try_recv_cancel_request_raw(

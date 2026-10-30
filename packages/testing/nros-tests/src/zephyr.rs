@@ -1236,7 +1236,7 @@ pub fn get_prebuilt_zephyr_example(
 /// `<build_root>/build-ws-rs-entry-zenoh/zephyr/zephyr.exe`.
 const ZEPHYR_WORKSPACE_ENTRY_BUILD_DIR: &str = "build-ws-rs-entry-zenoh";
 
-/// Source-tree key handed to ~~`is_binary_stale`~~ for the workspace Entry.
+/// Source-tree key handed to `source_dir_is_stale` for the workspace Entry.
 /// It is not a `decode_alias` name (the Entry has no role/RMW alias), so
 /// the decoder falls through to `None` — which makes staleness watch the
 /// whole `examples/workspaces/rust` tree plus every shared core/rmw crate

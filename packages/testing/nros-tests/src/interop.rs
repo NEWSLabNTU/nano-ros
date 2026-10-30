@@ -53,7 +53,7 @@ pub enum BuildChannel {
 impl BuildChannel {
     /// The `just` recipe that builds this channel's artifacts — NAMED, not
     /// invoked. Gated against the justfile by G2 the way `PlatformId::just_module`
-    /// is by ~~`just_module_names_a_real_module`~~.
+    /// is by `every_just_module_is_declared_by_the_justfile`.
     pub const fn build_recipe(self) -> &'static str {
         match self {
             BuildChannel::LinuxFixtures => "just linux build-fixtures",

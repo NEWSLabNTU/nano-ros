@@ -878,7 +878,7 @@ typedef struct nros_cpp_mode_t {
  * least `(n_modes + 1) * (NROS_CPP_MODE_TABLE_STORAGE + n_base_deadlines *
  * NROS_CPP_MODE_DEADLINE_STORAGE) + n_row_modes * n_rows *
  * NROS_CPP_MODE_ROW_STORAGE + n_age_modes * n_ages * NROS_CPP_MODE_AGE_STORAGE`
- * bytes, where ~~`n_row_modes`~~ / ~~`n_age_modes`~~ count the modes with rows (ages)
+ * bytes, where n_row_modes / n_age_modes count the modes with rows (ages)
  * of their own; a mode that aliases the base costs only its table.
  */
 typedef struct nros_cpp_mode_tables_t {
@@ -2208,7 +2208,7 @@ nros_cpp_ret_t nros_cpp_node_get_fully_qualified_name(const struct nros_cpp_node
  *
  * Resolved through `Executor::node_session_mut(node_id)`, i.e. the same
  * session a publisher created on this node would be built against. A node
- * created with ~~`nros_cpp_node_init_ex(..., rmw = "xrce")`~~ sits on its own
+ * created by `nros_cpp_node_create_ex` naming `rmw = "xrce"` sits on its own
  * session in the executor's table, so an image with two such nodes gets two
  * answers from this one function — which is the case a compile-time constant
  * (`nros_node::IMAGE_SERIALIZATION_FORMAT`, the generated
@@ -5413,9 +5413,10 @@ nros_cpp_ret_t nros_cpp_action_client_relocate(void *old_storage, void *new_stor
 /**
  * Send a goal asynchronously (non-blocking).
  *
- * Uses `send_goal_raw` (zpico_get_start) instead of ~~`send_goal_blocking`~~.
- * The goal response arrives via the callback registered with
- * ~~`nros_cpp_action_client_register_async`~~, invoked during `spin_once`.
+ * Uses `send_goal_raw` (zpico_get_start) rather than a blocking send (the
+ * retired ~~`send_goal_blocking`~~). The goal response arrives during
+ * `spin_once`, through the client's executor arena entry (once a callback
+ * registered with ~~`nros_cpp_action_client_register_async`~~).
  *
  * # Safety
  * All pointers must be valid.
@@ -5428,9 +5429,10 @@ nros_cpp_ret_t nros_cpp_action_client_send_goal_async(void *handle,
 /**
  * Request a goal result asynchronously (non-blocking).
  *
- * Uses `send_get_result_request` (zpico_get_start) instead of
- * ~~`get_result_blocking`~~. The result arrives via the result callback
- * registered with ~~`nros_cpp_action_client_register_async`~~.
+ * Uses `send_get_result_request` (zpico_get_start) rather than a blocking
+ * request (the retired ~~`get_result_blocking`~~). The result arrives during
+ * `spin_once`, through the client's executor arena entry (once a callback
+ * registered with ~~`nros_cpp_action_client_register_async`~~).
  *
  * # Safety
  * All pointers must be valid.
@@ -5672,7 +5674,7 @@ int32_t nros_cpp_action_server_try_recv_goal_request_raw(void *storage,
 
 /**
  * Phase 122.3.d — L1 polling: accept a goal received via
- * ~~`try_recv_goal_request_raw`~~.
+ * `nros_cpp_action_server_try_recv_goal_request_raw`.
  */
 nros_cpp_ret_t nros_cpp_action_server_accept_goal_raw(void *storage,
                                                       const uint8_t (*goal_id)[16],
@@ -5705,7 +5707,7 @@ nros_cpp_ret_t nros_cpp_action_server_complete_goal_raw(void *storage,
 /**
  * Phase 122.3.c.6.d / .d — L1 polling: peek a pending
  * cancel-goal request. Writes goal_id + sequence_number +
- * current_status (matches ~~`nros_cpp_goal_status_t`~~ discriminants).
+ * current_status (matches `nros::GoalStatusCode` discriminants).
  * Returns `1` on peek, `0` if none pending, negative on error.
  */
 int32_t nros_cpp_action_server_try_recv_cancel_request_raw(void *storage,

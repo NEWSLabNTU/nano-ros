@@ -2656,7 +2656,7 @@ impl QoSProfile {
 
     /// Compute the set of QoS policies actually requested by this profile.
     ///
-    /// Zero-valued time fields and ~~`LivelinessKind::None`~~ count as "not
+    /// Zero-valued time fields and `QoSLivelinessPolicy::None` count as "not
     /// requesting" the corresponding policy — the cheap default.
     ///
     /// issue 0829 — the four `CORE` bits (reliability, durability, history,
@@ -4599,9 +4599,8 @@ pub trait Transport {
 /// Phase 84.E2: `open` consumes `self`. Backends carry their own
 /// configuration (agent addresses, serial ports, TLS CA slots)
 /// inside the factory value and hand that over to the session at
-/// `open` time. All in-repo backends also implement
-/// [`Default`]; most callers spell this as
-/// ~~`BackendRmw::default().open(&config)`~~.
+/// `open` time. In-tree, every backend sits behind the C vtable, so the one
+/// production impl is `CffiRmw`, spelled `CffiRmw::default().open(&config)`.
 pub trait Rmw {
     /// Session type returned by [`open`](Rmw::open)
     type Session: Session;

@@ -5,7 +5,7 @@
 // on the executor and bind callbacks to them.
 //
 // The default Fifo SC is auto-created at executor init; every callback
-// registered without an explicit ~~`bind_to_sched_context`~~ call binds to
+// registered without an explicit `bind_handle_to_sched_context` call binds to
 // it. Single-thread non-preemption applies — see Phase 110.D for
 // preemption semantics.
 

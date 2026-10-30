@@ -265,8 +265,9 @@ constexpr QoS qos_from_ffi(const nros_cpp_qos_t& f);
 /// Phase 108.B.7 — extended with full DDS QoS surface (deadline,
 /// lifespan, liveliness kind + lease, avoid_ros_namespace_conventions).
 /// Backends advertise per-policy support; entities created with a
-/// profile the active backend can't honour return
-/// ~~`NROS_CPP_RET_INCOMPATIBLE_QOS`~~ synchronously at create time.
+/// profile the active backend can't honour return `NROS_CPP_RET_NOT_ALLOWED`
+/// (an `IncompatibleQos` refusal; ~~`NROS_CPP_RET_INCOMPATIBLE_QOS`~~ before)
+/// synchronously at create time.
 ///
 /// Phase 379 W5 — the policy enums moved to namespace scope, the getters
 /// return them instead of `int`, and the three time windows take and return

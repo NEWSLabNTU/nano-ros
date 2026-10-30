@@ -1449,7 +1449,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
         // Lifecycle autostart + param-services capability from the model.
         // `lifecycle_code` is the u8 boot-transition level (0 none / 1
-        // configure / 2 active), same encoding as ~~`read_lifecycle_autostart`~~.
+        // configure / 2 active), as `model_capabilities` encodes it.
         let model_caps = model_capabilities(&model)
             .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
         lifecycle_code = model_caps.lifecycle_code;
@@ -2935,27 +2935,14 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // that delegates to `EmbassyBoardEntry::init_hardware`
             // (which is **sync** — see `embassy_entry.rs`'s "Sync
             // `init_hardware`" note; matches `RticBoardEntry`) and
-            // then spawns two `#[embassy_executor::task]` fns:
-            //
-            // - `__nros_spin_task(executor)` — long-lived task that
-            //   drives the executor. The real body will dequeue from
-            //   the board's ~~`CALLBACK_CHANNEL`~~ and invoke per-Node
-            //   trampolines; today it parks on `Timer::after_secs` so
-            //   the macro emit compiles standalone. The dequeue +
-            //   trampoline-lookup integration lands alongside the
-            //   B.3-equivalent RTIC `__nros_spin` body fill — the
-            //   trampoline registration story spans the macro, the
-            //   `nros::node!()` emit, and
-            //   ~~`register_dispatch_slot_dyn`~~, which is substantial
-            //   integration work for a separate follow-up.
-            //
-            // - `__nros_dispatch_task(runtime)` — long-lived task that
-            //   calls `runtime.spin_once(timeout_ms)` in a loop with an
-            //   `embassy_time` yield between iterations. Same
-            //   placeholder shape as the spin task — the
-            //   ~~`register_dispatch_slot_dyn(...)`~~ registration call
-            //   (the `run_plan(&mut runtime)` story) is the
-            //   integration work deferred to the same follow-up.
+            // then spawns ONE `#[embassy_executor::task]`, `__nros_run_task`,
+            // which spins the executor and drains the runtime's callback
+            // queue (`runtime.take()`) through `Executor::dispatch_callback`.
+            // Phase 216.C.3 began with two tasks (`__nros_spin_task` +
+            // `__nros_dispatch_task`) and collapsed them; see the task's own
+            // doc below. No in-tree board implements `EmbassyBoardEntry` now:
+            // the one that did, with its ~~`EmbassyRuntime`~~ over a static
+            // ~~`CALLBACK_CHANNEL`~~, is gone, so this arm has no live caller.
             //
             // Task argument types resolve via the board's
             // `EmbassyBoardEntry::{Executor, Runtime}` associated
@@ -2975,11 +2962,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 /// `#[embassy_executor::task]` doesn't accept multiple
                 /// generic params and the spin + dispatch loops need
                 /// to share the `(Executor, Runtime)` pair so the
-                /// per-callback routing (once plumbed via the
-                /// `ExecutorNodeRuntime::dispatch_callback` sink in
-                /// `packages/api/nros/src/node_runtime.rs`) can drain
-                /// the board's static ~~`CALLBACK_CHANNEL`~~ between
-                /// executor iterations. Collapsing the two tasks into
+                /// per-callback routing can drain the runtime's callback
+                /// queue between executor iterations. Collapsing the two tasks into
                 /// one gives the spin + drain loops a single coherent
                 /// borrow over both halves.
                 ///
@@ -2987,20 +2971,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 ///   1. Drive `executor.spin_once(small_dur)` — a
                 ///      small budget so the loop can yield between
                 ///      iterations.
-                ///   2. Yield to the Embassy scheduler via
+                ///   2. Drain the runtime's queue (`runtime.take()`)
+                ///      through `Executor::dispatch_callback`.
+                ///   3. Yield to the Embassy scheduler via
                 ///      `Timer::after_millis(1)` so other tasks
                 ///      (Ethernet driver, user-spawned tasks) run.
-                ///
-                /// What's still placeholder: a dequeue + dispatch
-                /// step. ~~`EmbassyRuntime`~~ owns a `&'static` borrow
-                /// of the board's private ~~`CALLBACK_CHANNEL`~~, but
-                /// no public accessor exposes the receiver half today
-                /// — adding one is the next 216.C follow-up, paired
-                /// with the per-Node trampoline registry (linkme) and
-                /// the `ExecutorNodeRuntime`-wrapped sink the macro
-                /// emit needs to plumb in order to call
-                /// `dispatch_callback`. Splitting the tasks back
-                /// apart once that lands is a separate follow-up.
                 #[::embassy_executor::task]
                 async fn __nros_run_task(
                     mut executor: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Executor,
@@ -3011,12 +2986,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             ::core::time::Duration::from_millis(1),
                         );
                         // Phase 216 final dispatch wiring — drain
-                        // every envelope the board's
-                        // ~~`CALLBACK_CHANNEL`~~ has queued this cycle
-                        // and forward each one through
-                        // `Executor::dispatch_callback`.
-                        // ~~`EmbassyRuntime::take()`~~ (Phase 216
-                        // final, sibling of the RTIC SPSC `dequeue`
+                        // every envelope the runtime has queued this
+                        // cycle and forward each one through
+                        // `Executor::dispatch_callback`. `take()`
+                        // (sibling of the RTIC SPSC `dequeue`
                         // path) is non-blocking so the spin loop
                         // keeps yielding even when no callback is
                         // signaled — the `Timer::after_millis(1)`
@@ -3058,7 +3031,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     // executor)` shape, populating the executor's
                     // dispatch-slot table before the
                     // `__nros_run_task` is spawned to drain the
-                    // board's ~~`CALLBACK_CHANNEL`~~.
+                    // runtime's callback queue.
                     #( #framework_register_dispatch_calls )*
                     spawner.spawn(__nros_run_task(executor, runtime)).unwrap();
                 }
@@ -6026,7 +5999,7 @@ mod framework_ssot_tests {
         let mut hosted = 0;
         let mut freestanding = 0;
         for key in nros_orchestration_ir::board_path_keys() {
-            // The exact composition ~~`main_impl`~~ performs.
+            // The exact composition `build_main` performs.
             let links_std = nros_orchestration_ir::board_entry_links_std(key).unwrap_or(true);
             let rendered = hosted_std_scaffold_ts(links_std).to_string();
             let names_std = rendered.contains("std");

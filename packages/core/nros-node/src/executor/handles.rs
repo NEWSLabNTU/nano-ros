@@ -243,12 +243,12 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// without a per-publisher staging copy. Saves on RAM-constrained
     /// nodes that publish multi-KB payloads.
     ///
-    /// The `writer` closure receives a ~~`StreamWriter`~~ mutable
-    /// reference and uses ~~`StreamWriter::write`~~ / `extend` /
-    /// reserved_len to fill the slot in chunks. The total
-    /// payload length must be declared up-front via
-    /// ~~`StreamWriter::reserve_total`~~; the backend allocates that
-    /// many bytes in its outbound buffer before any chunks land.
+    /// `total_len` declares the payload length up front, and the backend
+    /// reserves that many bytes in its outbound buffer before any chunk
+    /// lands. The `writer` closure is then handed the slot one chunk
+    /// (`&mut [u8]`) at a time and returns how many bytes it wrote. (It
+    /// was handed a ~~`StreamWriter`~~ with `write` / `extend` /
+    /// ~~`reserve_total`~~ before.)
     ///
     /// Backends without a native stream slot fall through to a
     /// stack-allocated staging buffer (capped at 4 KiB) + a single

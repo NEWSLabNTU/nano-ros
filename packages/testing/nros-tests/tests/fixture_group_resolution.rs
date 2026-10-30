@@ -60,8 +60,8 @@ fn export_with(shared_platforms: &str) -> Vec<GroupRow> {
 ///
 /// Issue 0517 step 3 deleted the `target_dir` column those roots were spelt
 /// with, so all five rows now share `<leaf>/target` and NONE of them is
-/// attributable by path — deliberately, and asserted positively by
-/// ~~`every_fixture_row_attributes_to_itself`~~'s multi-row half. The property this
+/// attributable by path — deliberately, and the retired
+/// ~~`every_fixture_row_attributes_to_itself`~~'s multi-row half asserted it. The property this
 /// test exists for is untouched by that: the variants must still land in
 /// DIFFERENT group dirs. Only the vocabulary moves, from the authored path to
 /// the selector the caller now names.

@@ -1,10 +1,9 @@
 //! Phase 212.O.1 — `freertos_board_run_executes_run_plan` runtime gate.
 //!
-//! FreeRTOS-side analog of the posix sibling
-//! ~~`phase212_n_entry_poc_runs::entry_poc_boots_through_board_entry_run`~~
-//! (`tests/phase212_n_entry_poc_runs.rs:66`).
+//! FreeRTOS-side analog of the retired posix sibling
+//! ~~`phase212_n_entry_poc_runs::entry_poc_boots_through_board_entry_run`~~.
 //!
-//! The sibling gates that `main()` reaches `<LinuxBoard as BoardEntry>::run`'s
+//! The sibling gated that `main()` reaches `<LinuxBoard as BoardEntry>::run`'s
 //! setup closure on host POSIX. This file does the same for the FreeRTOS
 //! family driver `nros_board_freertos::run_entry` under QEMU MPS2-AN385.
 //!

@@ -1,13 +1,12 @@
 //! Phase 212.M.5.a.3 fixture — talker component (Rust, no_std).
 //!
-//! Declares a single node. The BSP baker links this pkg's mangled
+//! Declares a single node. The BSP baker linked this pkg's mangled
 //! register symbol (`__nros_component_talker_pkg_register`, emitted by
-//! `nros::node!()`) into the firmware and dispatches it from
-//! ~~`nros_system_run`~~. The M.5.a.2 BSP-side ~~`DeclarativeSlot`~~ does
-//! not fire timer / subscription callbacks today (M.5.a.4 follow-up)
-//! so a typed publisher / timer here would add link-time weight
-//! without execution coverage; the node-only declaration exercises
-//! the M.5.a.3 link + dispatch contract end-to-end.
+//! `nros::node!()`) into the firmware and dispatched it from
+//! ~~`nros_system_run`~~; the M.5.a.2 BSP-side ~~`DeclarativeSlot`~~ fired
+//! no timer / subscription callbacks, so the node-only declaration was the
+//! whole M.5.a.3 link + dispatch contract. The baker, that dispatcher and
+//! the slot are gone, and nothing in the tree builds this fixture now.
 
 #![no_std]
 

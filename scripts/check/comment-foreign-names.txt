@@ -436,7 +436,6 @@ Spacing
 Spacing::Joint
 StaleItem
 Stdout
-Timer::after_secs
 TryStreamExt::try_next
 UnitDependencyInfoChanged
 align8
@@ -512,7 +511,9 @@ unicode_escape
 
 # Micro XRCE-DDS and PX4
 BaseObjectRequest
+BootTimeout
 DELETE_CLIENT
+MICROCDR_VERSION_STR
 ORB_DEFINE
 Processor::process_get_info_submessage
 SERIAL_READ_TIMEOUT_MS

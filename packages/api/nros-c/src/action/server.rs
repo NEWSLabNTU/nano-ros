@@ -1654,8 +1654,10 @@ pub unsafe extern "C" fn rclc_action_server_fini(
 /// * `rclc_polling_action_server_publish_feedback_raw` — push feedback.
 /// * `rclc_polling_action_server_complete_goal_raw` — terminate (SUCCEEDED /
 ///   ABORTED / CANCELED).
-/// * ~~`nros_polling_action_server_try_handle_cancel_raw`~~ /
-///   `_try_handle_get_result_raw` — service cancel / get_result RPCs.
+/// * `rclc_polling_action_server_try_recv_cancel_request_raw` /
+///   `_send_cancel_reply_raw` — the cancel RPC (once
+///   ~~`nros_polling_action_server_try_handle_cancel_raw`~~).
+/// * `rclc_polling_action_server_try_handle_get_result_raw` — the get_result RPC.
 ///
 /// # Safety
 /// All pointers must be valid; `action_name` must be a valid
@@ -2036,7 +2038,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_try_recv_goal_request_raw(
 }
 
 /// Phase 122.3.c.6.b — L1 polling: accept a goal received via
-/// ~~`try_recv_goal_request_raw`~~.
+/// `rclc_polling_action_server_try_recv_goal_request_raw`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_server_accept_goal_raw(
     server: *mut rclc_polling_action_server_t,
@@ -2065,7 +2067,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_accept_goal_raw(
 }
 
 /// Phase 122.3.c.6.b — L1 polling: reject a goal received via
-/// ~~`try_recv_goal_request_raw`~~.
+/// `rclc_polling_action_server_try_recv_goal_request_raw`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_server_reject_goal_raw(
     server: *mut rclc_polling_action_server_t,

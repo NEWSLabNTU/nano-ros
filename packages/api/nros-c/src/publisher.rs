@@ -679,7 +679,7 @@ unsafe fn publish_staged<const N: usize>(
 ///   produced. This line used to name a ~~`NROS_RET_`~~-prefixed
 ///   `BUFFER_TOO_SMALL` (issue 1126): `rcl_ret_t` has never defined
 ///   one — the constant is `NROS_RMW_RET_BUFFER_TOO_SMALL`, on the RMW ABI
-///   (~~`nros_rmw_ret_t`~~), and a C caller writing the documented comparison
+///   (`rmw_ret_t`), and a C caller writing the documented comparison
 ///   got an undeclared identifier with nothing pointing back here. The
 ///   backend errors collapse to one code on the way out, so the two
 ///   causes are NOT distinguishable by the caller; for this entry point

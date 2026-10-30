@@ -32,14 +32,14 @@
  *
  * ## Stub contract (until M-F.4.a)
  *
- * Until the codegen-side ~~`GenClientDispatch`~~ impl lands in `nros-cli`
- * (Phase 212.M-F.4.a) and the generated runtime starts passing a real
- * non-null tick-ctx handle, both raw FFI symbols return
- * `NROS_CPP_RET_ERROR` (matching the Rust ~~`UnsupportedClients`~~ stub in
- * `nros-node`'s ~~`ExecutorComponentRuntime::run_ticks`~~). The symbols
- * exist + are callable; C++ user code can write tick bodies against the
- * typed wrappers today, and the runtime will surface `ErrorCode::Error`
- * until the generated dispatch reaches them.
+ * Both raw FFI symbols return `NROS_CPP_RET_ERROR`: nothing routes a C++
+ * tick body's client calls yet. They were written to match the Rust
+ * ~~`UnsupportedClients`~~ stub in ~~`ExecutorComponentRuntime::run_ticks`~~,
+ * which waited on a codegen-side ~~`GenClientDispatch`~~ (Phase
+ * 212.M-F.4.a); the Rust `ExecutorNodeRuntime::run_ticks` dispatches for
+ * real now, and these symbols have not followed. C++ user code can write
+ * tick bodies against the typed wrappers, and the runtime surfaces
+ * `ErrorCode::Error`.
  */
 
 #ifndef NROS_RCLCPP_TICK_CTX_HPP
@@ -59,7 +59,7 @@
 
 namespace rclcpp {
 
-/// Client-side dispatch handle handed to ~~`ExecutableComponent::tick`~~.
+/// Client-side dispatch handle handed to a component's `tick` body.
 ///
 /// Mirrors the Rust `nros::TickCtx` substrate (Phase 212.M-F.4). The
 /// generated runtime constructs one per spin and hands it to the

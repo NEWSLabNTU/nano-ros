@@ -12,9 +12,11 @@
 //! Three seams, three tests:
 //! 1. the LIVE resolve drops the other host's nodes
 //!    (`resolving_with_host_arg_partitions_the_model`);
-//! 2. the COMMITTED per-host models carry their own binding (`meta.args`)
-//!    and only their host's nodes, in all four example workspaces
-//!    (~~`committed_per_host_models_carry_their_binding`~~) — `nros sync`
+//! 2. each per-host model carries its own binding (`meta.args`) and only its
+//!    host's nodes, in all four example workspaces
+//!    (`per_host_resolves_partition_and_carry_their_binding`; it read
+//!    COMMITTED models as ~~`committed_per_host_models_carry_their_binding`~~
+//!    until models became build artifacts) — `nros sync`
 //!    replays `meta.args` on refresh, so a model whose binding went missing
 //!    would silently re-resolve as the default (`all`) configuration;
 //! 3. each language's BUILT per-host entry registers only that host's nodes,

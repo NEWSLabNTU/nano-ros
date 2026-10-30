@@ -893,9 +893,10 @@ pub unsafe extern "C" fn rclc_node_get_rmw_implementation_identifier(
 /// Phase 88.12 — return the `nros::Logger` keyed on this node's name.
 ///
 /// The returned handle is opaque from the C side; pass it to
-/// ~~`nros_log_info(...)`~~ / ~~`nros_log_warn(...)`~~ / etc. (declared in
-/// `<rclc/log.h>`). The lifetime is `'static` — loggers live for the
-/// process; callers must NOT free the returned pointer.
+/// `RCLC_LOG_INFO(...)` / `RCLC_LOG_WARN(...)` / etc. (declared in
+/// `<rclc/log.h>`; ~~`nros_log_info(...)`~~ before). The lifetime is
+/// `'static` — loggers live for the process; callers must NOT free the
+/// returned pointer.
 ///
 /// # Parameters
 /// * `node` - Pointer to an initialized node.
@@ -1043,7 +1044,7 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const rcl_node_t) -> bool {
     if !node_ref.support.is_null() && !crate::support::rclc_support_is_valid(node_ref.support) {
         return false;
     }
-    // NOT ~~`is_multi_session()`~~: that also requires `node_id != 0`, and whether
+    // NOT the retired ~~`is_multi_session()`~~: that also required `node_id != 0`, and whether
     // a node's context is alive does not depend on how many siblings share its
     // executor. The primary slot is a node like any other (issue 1384 is the
     // same predicate misused one class over).

@@ -124,7 +124,7 @@ fn rmw_str(r: Rmw) -> &'static str {
 }
 
 /// Resolve a prebuilt Zephyr native_sim example image for
-/// (lang, case, rmw), or skip. Missing OR stale (~~`is_binary_stale`~~) west
+/// (lang, case, rmw), or skip. Missing OR stale (`source_dir_is_stale`) west
 /// images skip with the `just zephyr build-fixtures` remedy — tests never
 /// build fixtures in their bodies (Phase 179.I).
 fn resolve_example(lang: Lang, case: &str, rmw: Rmw) -> PathBuf {

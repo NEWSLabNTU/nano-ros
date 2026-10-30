@@ -20,7 +20,9 @@
 //!
 //! The entry BAKES its endpoints; phase-267 #113 overrides them at runtime so the
 //! test uses an ephemeral zenohd + a unique agent + a unique cyclone domain
-//! (~~`NROS_BRIDGE_S0_LOCATOR`~~ / ~~`NROS_BRIDGE_S1_LOCATOR`~~ / ~~`NROS_BRIDGE_S1_DOMAIN`~~).
+//! (`NROS_BRIDGE_<node>_LOCATOR` / `NROS_BRIDGE_<node>_DOMAIN`, keyed by the
+//! egress node; they were keyed by session, ~~`NROS_BRIDGE_S0_LOCATOR`~~ /
+//! ~~`NROS_BRIDGE_S1_LOCATOR`~~ / ~~`NROS_BRIDGE_S1_DOMAIN`~~, before).
 //! The agent's DDS participant joins the XRCE-client-requested domain, so the
 //! bridge egress and the listener share it.
 //!
