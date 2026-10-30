@@ -1424,8 +1424,16 @@ release instead, and nothing in the current harness provides one.
   the default toolchain for a `toolchain = "nightly"` board. That is fixed:
   `board_rust_channel` gives `RUSTUP_TOOLCHAIN` to both cargo handoffs. The
   build then stops at `nuttx/config.h`, because nothing configures the
-  kernel on the cargo road. The chapter now says so, and no NuttX Rust track
-  is added until issue 2149 lands.
+  kernel on the cargo road. The chapter said so, and no NuttX Rust track
+  was added until issue 2149 landed.
+
+  **Landed (2026-10-30).** The cargo road now runs the board's kernel
+  configure and export first: `scripts/nuttx/build-nuttx.sh`, from
+  `[board.net] kernel_config`. A second defect then came up. NuttX's
+  `required_env` still demanded `NUTTX_DIR`, the one source tree phase-484
+  W2c had left there. The chapter's Rust paragraph is a probe block now. The
+  new installed `nuttx-arm-rust` track builds the workspace image, boots it
+  on QEMU and expects the talker and listener. Green on run 41051046857.
 
 ## Issues homed here (2026-10-29)
 
@@ -1437,9 +1445,9 @@ release instead, and nothing in the current harness provides one.
   resolved. `nros setup zephyr` did not install what a Zephyr Rust image
   needs beyond a C one: the target, `clippy`, `clang` and `libclang-dev`
   (found by W17's `zephyr-rust` track).
-* [2149](../issues/2149-nuttx-rust-workspace-no-nightly.md), open. A NuttX
-  Rust workspace image does not build from `nros build`. The nightly half is
-  fixed (W17); the kernel-configure half is open.
+* [2149](../issues/archived/2149-nuttx-rust-workspace-no-nightly.md),
+  resolved. A NuttX Rust workspace image did not build from `nros build`.
+  The nightly half was fixed in W17, and the kernel-configure half above.
 * [2137](../issues/archived/2137-nros-build-never-takes-the-census.md),
   resolved. Promise 2 (one build) did not hold for any cross image whose model
   folds in a contract. `nros build --all` refused it with `census missing`,
