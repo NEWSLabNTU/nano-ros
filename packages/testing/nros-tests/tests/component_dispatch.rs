@@ -67,7 +67,7 @@ impl nros::RosMessage for TestMsg {
 static TALKER_FIRES: AtomicU32 = AtomicU32::new(0);
 static TALKER_PUB_ERRORS: AtomicU32 = AtomicU32::new(0);
 /// Issue 1865 — callbacks handed in through `dispatch_callback`, the entry the
-/// RTIC / Embassy dispatch task forwards a signaled callback to.
+/// RTIC dispatch task forwards a signaled callback to.
 static TALKER_SIGNALED: AtomicU32 = AtomicU32::new(0);
 
 struct Talker;
@@ -206,7 +206,7 @@ fn dispatch_routes_publisher_resolver(zenohd_unique: ZenohRouter) {
 ///
 /// That seam ENROLLS the component in the executor and never pushes it to the
 /// runtime's own `components` list, and `dispatch_callback` used to scan that
-/// list alone. So every callback an RTIC / Embassy dispatch task forwarded —
+/// list alone. So every callback an RTIC dispatch task forwarded —
 /// the board's queue drained into `dispatch_callback` — reached no component,
 /// and the RTIC run-plan image (`just qemu test-rtic-main-e2e`), which exits
 /// from its first such callback, never exited.

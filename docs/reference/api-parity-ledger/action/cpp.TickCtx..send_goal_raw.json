@@ -1,5 +1,0 @@
-{
-  "key": "cpp:TickCtx::send_goal_raw",
-  "verdict": "extension",
-  "why": "the generated dispatch path for sending a goal from inside a component's tick. Not changed by phase-506 W1: RFC-0071 D12 rules on the Rust facade; the C++ tick context has no separate machinery namespace to move it to."
-}

@@ -23,12 +23,11 @@ pub enum DispatchStrategy {
     /// Callbacks fire from the executor's spin loop (current default).
     /// Served by every runtime: POSIX, RTOS (FreeRTOS/NuttX/Zephyr/
     /// ThreadX), bare-metal, RTIC (proxied via `__nros_dispatch` task
-    /// when the board demands it), Embassy (likewise). The default for
+    /// when the board demands it). The default for
     /// every existing Node pkg — preserves backward compat.
     Inline = 0,
 
-    /// Callbacks fire from a framework-owned task (RTIC dispatcher /
-    /// Embassy task). The board-side `NodeDispatchRuntime` enqueues
+    /// Callbacks fire from a framework-owned task (the RTIC dispatcher). The board-side `NodeDispatchRuntime` enqueues
     /// signaled callbacks; the framework's scheduler dequeues + drives
     /// `ExecutableNode::on_callback` from its own task context. Needed
     /// for Nodes whose callbacks must not run from the spin task (e.g.

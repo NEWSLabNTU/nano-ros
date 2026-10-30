@@ -18,9 +18,9 @@ contract the FFI then broke.
 THE RULE
 
 An `extern "C"` function whose parameter is named `goal_cdr` must call
-`strip_cdr_header` in its body — or say in a comment why it does not (the
-`tick_ctx` arm is a stub that discards its arguments and returns an error, so it
-sends nothing).
+`strip_cdr_header` in its body — or say in a comment why it does not (an arm
+that discards its arguments and sends nothing; the C++ `tick_ctx` stub was one
+until issue 2154 withdrew it).
 
 WHY A GATE *AND* A TEST
 

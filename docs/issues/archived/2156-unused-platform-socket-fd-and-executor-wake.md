@@ -1,7 +1,8 @@
 ---
 id: 2156
 title: "Every zenoh message on a Linux image signals a condvar nothing waits on; two public helpers have no caller"
-status: open
+status: resolved
+resolved: 2026-10-30
 type: bug
 area: [rmw, zenoh, platform]
 severity: low
@@ -51,3 +52,16 @@ comments that still named their callers.
   number.
 - Delete `nros_platform_socket_get_fd` and the comments naming it, or record
   why the platform ABI should keep an accessor nobody calls.
+
+## Resolution (2026-10-30)
+
+Both deleted.
+
+- `EXECUTOR_WAKE`, ~~`wait_for_executor_wake`~~ and ~~`signal_executor_wake`~~
+  are gone from `nros-rmw-zenoh/src/shim/mod.rs`, with the `pub use` and the
+  two call sites in `shim/subscriber.rs` and `shim/service.rs`. The zenoh read
+  thread no longer locks a mutex per sample or query. No receive-path number
+  was measured; the change removes work with no waiter.
+- ~~`nros_platform_socket_get_fd`~~ is gone from `platform_net.h`, with the
+  two `nros-rmw.toml` comments and the example in
+  `scripts/check-platform-abi-mirror.sh`.

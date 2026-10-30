@@ -1,7 +1,7 @@
 //! Issue 0415 — tell `nros::main!` which framework the BOARD wants.
 //!
-//! `nros::main!` picks its entry shape (`#[rtic::app]`,
-//! `#[embassy_executor::main]`, a plain `fn main()`, …) at macro-expansion
+//! `nros::main!` picks its entry shape (`#[rtic::app]`, a plain
+//! `fn main()`, …) at macro-expansion
 //! time. For in-tree boards it can key that off the deploy string, but an
 //! out-of-tree board is not in any in-tree table, and expansion cannot resolve
 //! one either: a proc-macro's `std::env::var` and file reads are invisible to
@@ -191,12 +191,12 @@ mod tests {
             "[package]\nname = \"e\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
              nros-board-x = { path = \"../board\" }\n",
         );
-        board(&tmp.join("board"), Some("embassy"));
+        board(&tmp.join("board"), Some("rtic"));
         let (name, dir) = resolve_board_crate(&entry).expect("board resolves");
         assert_eq!(name, "nros-board-x");
         assert_eq!(
             read_board_framework(&dir.join("Cargo.toml")).as_deref(),
-            Some("embassy")
+            Some("rtic")
         );
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -242,12 +242,12 @@ mod tests {
              [target.'cfg(target_os = \"none\")'.dependencies]\n\
              nros-board-x = { path = \"../board\" }\n",
         );
-        board(&tmp.join("board"), Some("embassy"));
+        board(&tmp.join("board"), Some("rtic"));
         let (name, dir) = resolve_board_crate(&entry).expect("board resolves");
         assert_eq!(name, "nros-board-x");
         assert_eq!(
             read_board_framework(&dir.join("Cargo.toml")).as_deref(),
-            Some("embassy")
+            Some("rtic")
         );
         std::fs::remove_dir_all(&tmp).ok();
     }

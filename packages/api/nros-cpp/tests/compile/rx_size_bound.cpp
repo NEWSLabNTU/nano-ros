@@ -209,8 +209,7 @@ inline ::rclcpp::Result recv_paths(::rclcpp::PollSubscription<M>& sub, ::rclcpp:
 
 template <class M>
 inline ::rclcpp::Result client_paths(::rclcpp::PollClient<SvcOf<M>>& client,
-                                     ::rclcpp::PollService<SvcOf<M>>& service,
-                                     ::rclcpp::TickCtx& tick, M& payload) {
+                                     ::rclcpp::PollService<SvcOf<M>>& service, M& payload) {
     (void)client.send_request(payload); // future.hpp -- Future<T>'s cached_buf_
     (void)client.template send_request_sized<4096>(payload);
     (void)client.call(payload, payload, 1);
@@ -220,8 +219,6 @@ inline ::rclcpp::Result client_paths(::rclcpp::PollClient<SvcOf<M>>& client,
     int64_t seq = 0;
     (void)service.take_request(payload, seq); // polling_service.hpp -- a RECEIVE buffer
     (void)service.template try_recv_request_sized<4096>(payload, seq);
-    (void)tick.template call<M, M>("e", payload, payload); // tick_ctx.hpp resp_buf
-    (void)tick.template call_sized<M, M, 4096>("e", payload, payload);
     return ::rclcpp::Result::success();
 }
 
@@ -284,11 +281,11 @@ static_assert(
 inline ::rclcpp::Result instantiate_recv_paths(
     ::rclcpp::PollSubscription<Bounded>& bsub, ::rclcpp::Stream<Bounded>& bstream, Bounded& bmsg,
     ::rclcpp::PollClient<SvcOf<Bounded>>& bclient, ::rclcpp::PollService<SvcOf<Bounded>>& bservice,
-    ::rclcpp::TickCtx& tick, ::rclcpp_action::Client<ActionOf<Bounded>>& bac,
+    ::rclcpp_action::Client<ActionOf<Bounded>>& bac,
     ::rclcpp::PollingActionClient<ActionOf<Bounded>>& bpac,
     ::rclcpp::PollingActionServer<ActionOf<Bounded>>& bpas) {
     (void)recv_paths<Bounded>(bsub, bstream, bmsg);
-    (void)client_paths<Bounded>(bclient, bservice, tick, bmsg);
+    (void)client_paths<Bounded>(bclient, bservice, bmsg);
     (void)action_paths<Bounded>(bac, bpac, bpas, bmsg);
     return ::rclcpp::Result::success();
 }

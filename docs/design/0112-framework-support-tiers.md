@@ -20,8 +20,8 @@ which application frameworks nano-ros supports and how. No phase yet.
 New frameworks will keep arriving: async runtimes, embedded schedulers, GUI
 event loops, autopilot work queues and vendor SDK entry points. nano-ros cannot
 grow a branch in `nros::main!` for each one. Every such branch rots unless it
-has a board, a CI cell and someone who owns it, and Embassy's branch already
-has none of the three (issue 2134).
+has a board, a CI cell and someone who owns it, and Embassy's branch had none
+of the three (issue 2134, which retired it on 2026-10-30).
 
 So this RFC sets three tiers:
 
@@ -68,7 +68,7 @@ Measured on main, 2026-10-29:
 |---|---|---|---|
 | `owned-spin` | the baseline | all of them | all of them |
 | `rtic` | ~313 macro lines, `RticBoardEntry`, ~414 lines of board `rtic.rs` | `mps2-an385` | 4 run-plan tests and 8 examples |
-| `embassy` | ~136 macro lines, `EmbassyBoardEntry` | none (removed by phase-337 W7.a) | none |
+| `embassy` | none — the ~136 macro lines and ~~`EmbassyBoardEntry`~~ were retired by issue 2134 | none (removed by phase-337 W7.a) | none |
 | `zephyr`, `esp32` | macro branches | yes | yes (esp32 dormant, issue 1525) |
 
 `main_macro.rs` is 6,777 lines. The framework branches are a minority of it,
@@ -141,9 +141,11 @@ A branch that fails them is demoted to a Tier 0 recipe, or deleted. It is not
 kept as a seam that nothing exercises. Today:
 
 - **`rtic`** meets all four. It stays in Tier 1.
-- **`embassy`** fails 1, 2 and arguably 3. An async task can drive the
-  executor once D2.2's notifier exists. Whether to demote it is a maintainer
-  decision, recorded as issue 2134.
+- **`embassy`** failed 1, 2 and arguably 3. An async task can drive the
+  executor once D2.2's notifier exists. The maintainer ruled to demote it
+  (issue 2134, 2026-10-30): the branch and its trait are deleted, and
+  `framework = "embassy"` is refused with a pointer to the hand-driven shape
+  in `book/src/user-guide/embassy-integration.md`.
 
 ### D4 — Recipes, not branches
 
@@ -158,7 +160,8 @@ The first recipes are the ones with an existing user or an in-tree precedent:
   deadline (C has no `nros::main!`, so this is how C images that already have
   a main loop integrate today).
 - **GLib or epoll:** after the readiness fd exists.
-- **Embassy:** if issue 2134 demotes it.
+- **Embassy:** demoted by issue 2134; the book chapter carries the shape until
+  the recipe and its fixture row land.
 
 Each recipe gets one fixture row and one runtime cell, keyed on the CONTRACT
 coordinate rather than a new framework coordinate. A recipe that breaks shows
@@ -167,7 +170,8 @@ that the contract broke.
 ### D5 — The framework vocabulary separates frameworks from platform entry shapes
 
 `FRAMEWORKS` keeps only Tier 1 values that a user may choose. Today those are
-`owned-spin` and `rtic`, plus `embassy` until issue 2134 is ruled.
+`owned-spin` and `rtic` (`embassy` left with issue 2134, and is refused with a
+hint).
 
 `zephyr` and `esp32` become platform entry shapes that the board descriptor
 derives. A user never writes them, and RFC-0111's `framework` field refuses

@@ -452,8 +452,6 @@ compile_fail
 default_alloc_error_hook
 default_constructed_unit_structs
 deref_addrof
-embassy_futures::select
-embassy_sync::channel::Channel
 explicit_auto_deref
 external_body
 fn_call_width

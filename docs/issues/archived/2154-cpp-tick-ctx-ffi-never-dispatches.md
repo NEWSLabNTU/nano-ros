@@ -1,7 +1,8 @@
 ---
 id: 2154
 title: "A C++ tick body's service / action client calls always fail: the tick-ctx FFI is a stub the Rust side has outgrown"
-status: open
+status: resolved
+resolved: 2026-10-30
 type: bug
 area: [api, cpp, executor]
 severity: low
@@ -51,3 +52,21 @@ W0.d prose pass (#2855); this issue is the behaviour.
 A C++ tick body's `call` reaches a live service server and returns its reply,
 in a runtime test; or the wrappers are gone and a compile-fail probe says what
 to use instead.
+
+## Resolution (2026-10-30)
+
+**Withdrawn** (the second option). Routing the calls was not possible
+without more: a C++ component has no `tick` hook, so nothing could ever hand a
+C++ user a real tick context.
+
+- Deleted `include/rclcpp/tick_ctx.hpp` and `src/tick_ctx.rs`, i.e.
+  ~~`rclcpp::TickCtx`~~, ~~`nros_cpp_tick_ctx_call_raw`~~ and
+  ~~`nros_cpp_tick_ctx_send_goal_raw`~~; `rclcpp.hpp` no longer includes it.
+- `nros_cpp_ffi.h` regenerated (cbindgen); the three api-parity ledger rows
+  for `cpp.TickCtx` removed.
+- `tests/compile/rx_size_bound.cpp` lost its `TickCtx` parameters; its
+  `Client::call` paths still cover the receive-size bound.
+
+No compile-fail probe was added: the type no longer exists, so a C++ tick body
+using it fails at the first use with an unknown-name error. A C++ component
+calls services and sends goals through its own client handles.

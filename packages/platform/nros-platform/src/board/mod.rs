@@ -44,7 +44,6 @@
 
 pub mod config;
 pub mod dispatch;
-pub mod embassy_entry;
 pub mod entry;
 pub mod exit;
 pub mod init;
@@ -56,7 +55,6 @@ pub mod tier;
 
 pub use config::BoardConfig;
 pub use dispatch::DispatchStrategy;
-pub use embassy_entry::EmbassyBoardEntry;
 pub use entry::{BoardEntry, DeployOverlay, LinkKind};
 pub use exit::BoardExit;
 pub use init::BoardInit;

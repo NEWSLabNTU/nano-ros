@@ -81,7 +81,8 @@ What that costs, all measured on main on 2026-10-27:
 ### D1 — `framework` is a field of the image
 
 `[image.<id>] framework = "<name>"`, with a value from the Tier 1 list
-(RFC-0112 D5): `owned-spin`, `rtic`, and `embassy` until issue 2134 is ruled.
+(RFC-0112 D5): `owned-spin` and `rtic`. `embassy` was refused once issue 2134
+retired it.
 `zephyr` and `esp32` are refused with a message saying the board decides them.
 The field is optional; D2 says what an absent field means.
 

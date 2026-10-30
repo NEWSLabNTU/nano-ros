@@ -79,9 +79,9 @@ struct RustNodeView {
 /// Output mirrors the proc-macro's `OwnedSpin` framework branch, and that is
 /// now ENFORCED rather than merely stated: a board wanting any other shape is
 /// refused, naming the shape and pointing at `nros::main!` (issue 1435, see
-/// [`refuse_non_owned_spin`]). The four non-owned-spin frameworks stay
-/// proc-macro-only for reasons that differ per framework — RTIC and Embassy
-/// need `proc_macro::Span` for the `custom_tasks` splice, Zephyr needs the
+/// [`refuse_non_owned_spin`]). The three non-owned-spin frameworks stay
+/// proc-macro-only for reasons that differ per framework — RTIC needs
+/// `proc_macro::Span` for the `custom_tasks` splice, Zephyr needs the
 /// backend register and spin-or-tiers tail that `LoweredEntry` does not carry,
 /// ESP32 needs esp-hal's own entry attribute.
 ///

@@ -197,7 +197,7 @@ pub trait NodeDispatchRuntime {
 
     /// Hand a signaled callback to the framework-side dispatcher
     /// (Phase 216.A.2). Only meaningful for `DispatchStrategy::Deferred`
-    /// (RTIC / Embassy) runtimes — `Inline` runtimes drive callbacks
+    /// (RTIC) runtimes — `Inline` runtimes drive callbacks
     /// directly from `spin_once` and never call this. The default panic
     /// surfaces the mis-wire loudly rather than silently dropping the
     /// callback signal.

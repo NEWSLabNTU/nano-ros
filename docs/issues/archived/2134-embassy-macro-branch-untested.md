@@ -1,12 +1,13 @@
 ---
 id: 2134
 title: "`nros::main!`'s Embassy branch has no board and no CI cell, so nothing checks it — keep it as a Tier 2 seam or demote it to a recipe?"
-status: open
+status: resolved
+resolved: 2026-10-30
 type: tech-debt
 area: [macros, boards, embedded]
 severity: low
 found: 2026-10-29
-related: [0248, 0415, 2143, 2144, 2145, 2146, 2150]
+related: [0248, 0415, 2143, 2144, 2145, 2146, 2150, 2155]
 ---
 
 ## What
@@ -106,4 +107,28 @@ board arrives with a cell and an owner, and then rewrite its emitted loop.
 
 ## Owner
 
-Maintainer ruling needed. Do not change code until it is given.
+Maintainer ruling given 2026-10-30: demote (see Resolution).
+
+## Resolution (2026-10-30)
+
+**Demoted.** The maintainer ruled for the recommendation above.
+
+- The `Framework::Embassy` arm of `nros::main!` and the ~~`EmbassyBoardEntry`~~
+  trait are deleted (with `board/embassy_entry.rs`).
+- `FRAMEWORKS` is `owned-spin`, `rtic`, `zephyr`, `esp32`.
+  `nros_orchestration_ir::RETIRED_FRAMEWORKS` names `embassy` with a hint, so
+  `nros::main!` refuses `framework = "embassy"` naming this issue and the
+  `spin_some` shape, and `nros ws check` reports it as
+  `retired-board-framework`.
+- `book/src/user-guide/embassy-integration.md` now shows the hand-driven shape
+  ("Demote, today's API" above) and lists what it lacks (2143, 2144, 2145, 2146,
+  2150).
+- RFC-0111 and RFC-0112 (D3, D4, D5) record the ruling.
+
+Issue 2155 found one more reason the arm had to go: it called `runtime.take()`
+and executor methods no trait bound declared, so it compiled only for a board
+whose concrete types happened to carry them. It is closed as a duplicate.
+
+Left for later, under their own issues: the notifier loop (2143 + 2144) and
+the setup-only macro (2150). The Embassy recipe and its std-arch CI cell
+(RFC-0112 D4) wait on those.

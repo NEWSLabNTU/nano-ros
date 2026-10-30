@@ -1,7 +1,8 @@
 ---
 id: 2155
 title: "nros::main!'s Embassy arm calls methods no trait declares, and nothing in the tree expands it"
-status: open
+status: wontfix  # duplicate of issue 2134
+resolved: 2026-10-30
 type: bug
 area: [api, macros, boards]
 severity: low
@@ -50,3 +51,11 @@ out-of-tree user builds.
 Either a build-stage fixture expands the Embassy arm against a stub board
 whose types satisfy only the TRAIT bounds, or the arm is gone and the
 framework name is refused.
+
+## Resolution (2026-10-30)
+
+Duplicate of issue 2134, which asked the same question (keep or demote the
+Embassy branch) a day earlier. The maintainer ruled to demote: the arm and
+~~`EmbassyBoardEntry`~~ are deleted and `framework = "embassy"` is refused with
+a hint. This issue's finding (the arm's unstated `take` / `spin_once` /
+`dispatch_callback` contract) is recorded in 2134's resolution.
