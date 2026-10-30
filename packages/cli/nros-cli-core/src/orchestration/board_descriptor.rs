@@ -611,6 +611,18 @@ pub struct BoardZephyr {
     /// the build after the library compiled (issue 2151).
     #[serde(default)]
     pub rust_components: Vec<String>,
+    /// Zephyr snippets every image on this board is built with, by NAME
+    /// (issue 2157). `nros ws leaf-system` reports them and the module hook
+    /// appends them to `SNIPPET`, so `nros build`, the fixture lane and a bare
+    /// `west build` of a `system.toml` application all get the same ones.
+    ///
+    /// A name, never a path: Zephyr resolves it through every module's
+    /// snippet root (`zephyr/module.yml`), so a board package outside this checkout (a workspace
+    /// package, `$NROS_EXTRA_BOARD_PATH`) reaches `nros-nsos` without knowing
+    /// where nano-ros is. The native_sim network (NSOS) is the case: one
+    /// line-agnostic snippet instead of a conf file copied into every leaf.
+    #[serde(default)]
+    pub snippets: Vec<String>,
 }
 
 impl BoardZephyr {

@@ -18,7 +18,7 @@ WORKS
 - `nros setup zephyr --rmw zenoh` and `--source px4-rs` both green.
 - `nros generate-rust --generate-config --nano-ros-path …` flag surface matches the CLI.
 - `just zephyr zenohd` + `just zephyr talker` exist; port 7456 matches `examples/zephyr/rust/talker/src/lib.rs`.
-- `cmake/zephyr/native-sim-line-3.7.conf` overlay exists at the path the doc names.
+- the `nros-nsos` snippet (`zephyr/snippets/nros-nsos/`) the doc passes with `-S` exists (issue 2157 replaced the per-line overlay).
 - `examples/zephyr/c/talker/` ships every `prj*.conf` the doc references.
 
 Acceptance bar (0 BLOCKERS) MET on re-run after `5e24268d1`.

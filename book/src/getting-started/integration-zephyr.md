@@ -250,16 +250,18 @@ export ZEPHYR_BASE="$PWD/zephyr"
 
 Scaffold a C application (a stock Zephyr app: `find_package(Zephyr)`, a typed
 talker component, `CONFIG_NROS=y` in `prj.conf`) and build it, naming the
-nano-ros module on the line, plus the `native_sim` network overlay the SDK
-ships: it routes the app's sockets to the host's (Zephyr's NSOS) instead of a
-TAP interface. Without it `native_sim` tries to create one (`eth_posix: Cannot
-create zeth`), which needs privileges a container or an ordinary user does not
-have, and the image never reaches the router:
+nano-ros module on the line, plus the module's `nros-nsos` snippet: it routes
+the app's sockets to the host's (Zephyr's NSOS) instead of a TAP interface.
+Without it `native_sim` tries to create one (`eth_posix: Cannot create zeth`),
+which needs privileges a container or an ordinary user does not have, and the
+image never reaches the router. The snippet is one file for every Zephyr line,
+and an app whose `system.toml` names board `zephyr` gets it from the board
+package even without the flag:
 
 ```bash probe=40 variant=native-sim
 nros new my_app --platform zephyr --lang c
-west build -b native_sim/native/64 my_app -- -DZEPHYR_EXTRA_MODULES="$(nros sdk-root)" \
-    -DEXTRA_CONF_FILE="$(nros sdk-root)/cmake/zephyr/native-sim-line-3.7.conf"
+west build -b native_sim/native/64 -S nros-nsos my_app -- \
+    -DZEPHYR_EXTRA_MODULES="$(nros sdk-root)"
 ```
 
 Run it against a router on the host's loopback — `native_sim` uses the host's
@@ -942,11 +944,10 @@ codegen tool, and the module is the installed SDK root:
 
 ```bash
 sdk="$(nros sdk-root)"
-# native_sim (POSIX, no QEMU). The 3.7 line needs the NSOS line overlay; apply
-# the NSOS patches first (see "apply nano-ros's patches" below).
-overlay="$sdk/cmake/zephyr/native-sim-line-3.7.conf"
-west build -b native_sim/native/64 apps/my_app -- \
-    -DZEPHYR_EXTRA_MODULES="$sdk" -DCONF_FILE="prj.conf;$overlay"
+# native_sim (POSIX, no QEMU), on the host-socket network (the `nros-nsos`
+# snippet; apply the NSOS patches first, see "apply nano-ros's patches" below).
+west build -b native_sim/native/64 -S nros-nsos apps/my_app -- \
+    -DZEPHYR_EXTRA_MODULES="$sdk" -DCONF_FILE="prj.conf"
 
 # An emulated Cortex-A9 — `qemu_cortex_a9` is a QEMU machine, not a real
 # board (no native_sim overlay):

@@ -29,9 +29,11 @@ your own `EXTRA_CONF_FILE`. So no conf file in an example states a
 
 ```sh
 west build -b native_sim/native/64 examples/zephyr/c/talker -- \
-    -DCONF_FILE=prj.conf -DNROS_IMAGE=zephyr_xrce \
-    -DEXTRA_CONF_FILE=$PWD/cmake/zephyr/native-sim-line-3.7.conf
+    -DCONF_FILE=prj.conf -DNROS_IMAGE=zephyr_xrce
 ```
+
+The host-socket network (NSOS) comes from the board: `[board.zephyr] snippets`
+names `nros-nsos`, and the module adds it to `SNIPPET` (issue 2157).
 
 The `build-one` recipe wires this for you.
 

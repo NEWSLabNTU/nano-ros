@@ -1796,6 +1796,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     nano_ros_root.as_deref(),
                 ));
                 resolved_opt.extend(board_rx_configure_args(descriptor));
+                resolved_opt.extend(board_snippets_configure_arg(descriptor));
                 // Issue 1867 -- the image's `nros` module is THIS checkout. The
                 // store workspace's manifest project carries none (issue 1258),
                 // so without this every image built against it aborted at
@@ -4323,6 +4324,22 @@ fn board_heap_configure_arg(
 /// ALWAYS both, empty when the board states nothing, for
 /// [`board_heap_configure_arg`]'s reason: a `-D` is a cache entry, and an
 /// omitted one keeps the value a board no longer states.
+/// Issue 2157 -- the board's Zephyr snippets, for the module hook to add to
+/// `SNIPPET`.
+///
+/// A cache variable of our own, never `-DSNIPPET`: a user's `-S` reaches cmake
+/// as `-DSNIPPET` in west's FIRST zone, and a second one after `--` would
+/// replace it. The hook merges this with whatever the caller selected, and it
+/// is what reaches a HAND-WRITTEN entry: the hook renders a `system.toml` only
+/// for a leaf or a generated application, so without this a workspace entry
+/// of the user's own (`nros new entry`) got no board snippet at all.
+fn board_snippets_configure_arg(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+) -> Option<String> {
+    let z = descriptor.zephyr.as_ref()?;
+    (!z.snippets.is_empty()).then(|| format!("-DNROS_BOARD_SNIPPETS={}", z.snippets.join(";")))
+}
+
 fn board_rx_configure_args(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
 ) -> [String; 2] {

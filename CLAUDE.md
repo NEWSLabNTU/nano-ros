@@ -681,14 +681,16 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   (a ratchet — shared board fragments are legitimately an override layer).
   **Whether a leaf's `boards/<board>.conf` is merged depends on the ROAD, not the
   file** — Zephyr picks it up only when `CONF_FILE` is UNSET (or names a single
-  `prj_<x>.conf`; `configuration_files.cmake`). The fixture lane sets `CONF_FILE`,
-  so there the leaf copy is dead and `cmake/zephyr/native-sim-line-<v>.conf` /
-  `zephyr/native-sim-nsos.conf` is what applies; `nros build` and a bare
-  `west build` leave it unset, so there the leaf copy is the ONLY NSOS source, and
-  a native_sim leaf without one boots onto the TAP driver and segfaults
-  (`eth_posix: Cannot create zeth` — issue 2140). Its `CONFIG_ETH_NATIVE_POSIX=n`
-  is a 3.7-only symbol. Read the build's own `Merged configuration` lines before
-  editing a conf; a fix in the wrong file changes nothing and looks like it should.
+  `prj_<x>.conf`; `configuration_files.cmake`), and the fixture lane sets it. So a
+  per-BOARD fact does not go in a leaf's `boards/` file: native_sim's network
+  (NSOS) is the `nros-nsos` SNIPPET, named by the board package
+  (`[board.zephyr] snippets`) and added to `SNIPPET` by the module hook, which
+  applies on every road and every Zephyr line (issue 2157 — it replaced 35
+  copies, all naming 3.7's TAP symbol). Without NSOS native_sim boots onto the
+  TAP driver and segfaults (`eth_posix: Cannot create zeth` — issue 2140). Gate:
+  `check-nsos-single-source`. Read the build's own `Merged configuration` lines
+  before editing a conf; a fix in the wrong file changes nothing and looks like
+  it should.
   **And a nano-ros knob is never authored in a conf file at all** (phase-481,
   RFC-0098 D10/D11): the image's `system.toml` states the RMW, endpoint, domain
   and every `env` knob, and the module renders it LAST, so a `CONFIG_NROS_*` line

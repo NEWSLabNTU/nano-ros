@@ -4,7 +4,7 @@
 #
 #   ZEPHYR_IMAGE=<build>/zephyr/zephyr.exe ./scripts/test/isotp-zephyr-tier2.sh
 #
-# Build the image with CONF_FILE including cmake/zephyr/native-sim-line-3.7.conf,
+# Build the image with `-S nros-nsos` (issue 2157) and CONF_FILE including
 # cmake/zephyr/posix-sysconf-minimal-libc.conf and
 # cmake/zephyr/native-sim-can-host.conf, plus
 # -DDTC_OVERLAY_FILE=cmake/zephyr/native-sim-can-host.overlay and

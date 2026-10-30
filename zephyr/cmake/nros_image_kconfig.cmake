@@ -195,6 +195,9 @@ function(nros_image_kconfig_hook)
         endif()
         configure_file("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig.knob-prompts" "${_kgen}"
             COPYONLY)
+        # Issue 2157 -- a hand-written entry is a guest here, and its board's
+        # snippets arrive as `-DNROS_BOARD_SNIPPETS` from `nros build`.
+        _nros_image_kconfig_merge_snippets("" "")
         return()
     endif()
     if(NOT EXISTS "${_dir}/system.toml")
@@ -297,6 +300,7 @@ function(nros_image_kconfig_hook)
     set(_envcfg "")
     set(_keys "")
     set(_image_conf "")
+    set(_board_snippets "")
     string(REPLACE "\n" ";" _lines "${_out}")
     foreach(_l IN LISTS _lines)
         if(_l MATCHES "^NROS_LEAF_KCONFIG=(.*)$")
@@ -305,6 +309,8 @@ function(nros_image_kconfig_hook)
             set(_envcfg "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_CONF=(.*)$")
             set(_image_conf "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_SNIPPET=(.*)$")
+            set(_board_snippets "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_ROS_ARGS_INPUT=(.*)$")
             # Issue 2073 -- a parameter file whose text the image env bakes.
             set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
@@ -349,6 +355,8 @@ function(nros_image_kconfig_hook)
                 "${CMAKE_MATCH_1}" "${_snippets}" "${_dir}/system.toml" "${_image}")
         endif()
     endif()
+
+    _nros_image_kconfig_merge_snippets("${_board_snippets}" "${_image}")
 
     _nros_image_kconfig_named_confs(_named)
     # phase-484 W5b -- a knob assigned in a conf file this image merges is a
@@ -403,6 +411,81 @@ endfunction()
 # with a system.toml). The symbol has no prompt, so Kconfig would refuse the
 # line anyway, but its message names the module's Kconfig, not where the value
 # belongs.
+# Issue 2157 -- add the BOARD's snippets to SNIPPET: `board` (what
+# `nros ws leaf-system` printed for a rendered image) plus
+# `-DNROS_BOARD_SNIPPETS`, which `nros build` passes for every west image so a
+# hand-written entry (a guest here) gets them too. e.g. `nros-nsos`, native_sim's
+# host-socket network.
+#
+# `snippets.cmake` runs after this hook, so a name added here is applied exactly
+# as `-S <name>` is, with or without CONF_FILE -- which a board conf file is not
+# (it is discovered only when CONF_FILE is unset). Merged with every snippet the
+# caller gave, never replacing one. The value goes to the cache AND the
+# application's scope, so `zephyr_check_cache(SNIPPET)` reads the same list
+# whichever it consults, and a re-configure computes the same list again. The
+# names added last time are dropped first, so a board that stops naming one
+# stops getting it (Zephyr then asks for a pristine build, as it does for any
+# snippet change). A MACRO, so `PARENT_SCOPE` is the hook's caller: the
+# application's directory scope.
+macro(_nros_image_kconfig_merge_snippets _ms_board _ms_image)
+    set(_ms_want ${_ms_board})
+    if(DEFINED CACHE{NROS_BOARD_SNIPPETS})
+        list(APPEND _ms_want $CACHE{NROS_BOARD_SNIPPETS})
+    endif()
+    set(_ms_caller "")
+    foreach(_ms_src IN ITEMS LOCAL CACHE ENV)
+        set(_ms_v "")
+        set(_ms_have FALSE)
+        if(_ms_src STREQUAL "LOCAL" AND DEFINED SNIPPET)
+            set(_ms_v "${SNIPPET}")
+            set(_ms_have TRUE)
+        elseif(_ms_src STREQUAL "CACHE" AND DEFINED CACHE{SNIPPET})
+            set(_ms_v "$CACHE{SNIPPET}")
+            set(_ms_have TRUE)
+        elseif(_ms_src STREQUAL "ENV" AND DEFINED ENV{SNIPPET})
+            set(_ms_v "$ENV{SNIPPET}")
+            set(_ms_have TRUE)
+        endif()
+        if(_ms_have)
+            string(REPLACE " " ";" _ms_v "${_ms_v}")
+            foreach(_ms_s IN LISTS _ms_v)
+                if(NOT _ms_s STREQUAL "" AND NOT _ms_s IN_LIST NROS_IMAGE_SNIPPETS
+                   AND NOT _ms_s IN_LIST _ms_caller)
+                    list(APPEND _ms_caller "${_ms_s}")
+                endif()
+            endforeach()
+        endif()
+    endforeach()
+    set(_ms_added "")
+    foreach(_ms_s IN LISTS _ms_want)
+        if(NOT _ms_s IN_LIST _ms_caller AND NOT _ms_s IN_LIST _ms_added)
+            list(APPEND _ms_added "${_ms_s}")
+        endif()
+    endforeach()
+    set(_ms_prev "${NROS_IMAGE_SNIPPETS}")
+    set(NROS_IMAGE_SNIPPETS "${_ms_added}" CACHE INTERNAL
+        "issue 2157: the board snippets the module hook added to SNIPPET")
+    if(NOT _ms_added STREQUAL "" OR NOT _ms_prev STREQUAL "")
+        set(_ms_all ${_ms_caller} ${_ms_added})
+        if(_ms_all STREQUAL "")
+            unset(SNIPPET CACHE)
+            unset(SNIPPET PARENT_SCOPE)
+        else()
+            set(SNIPPET "${_ms_all}" CACHE STRING "Selected snippet" FORCE)
+            set(SNIPPET "${_ms_all}" PARENT_SCOPE)
+        endif()
+    endif()
+    if(NOT _ms_added STREQUAL "")
+        if("${_ms_image}" STREQUAL "")
+            message(STATUS "nano-ros: board snippet(s) ${_ms_added} "
+                "(the board's `[board.zephyr] snippets`)")
+        else()
+            message(STATUS "nano-ros: image `${_ms_image}` -> board snippet(s) ${_ms_added} "
+                "(the board's `[board.zephyr] snippets`)")
+        endif()
+    endif()
+endmacro()
+
 function(_nros_image_kconfig_refuse_conf_knobs files system image)
     set(_syms "")
     foreach(_id IN LISTS NROS_KNOB_KCONFIG_IDS)
@@ -445,7 +528,10 @@ endfunction()
 # here, so the snippets still choose the RMW for it.
 function(_nros_image_kconfig_check_snippets rmw snippets system image)
     foreach(_s IN LISTS snippets)
-        if(_s MATCHES "^nros-(.+)$")
+        # Issue 2157 -- only an RMW's snippet chooses the RMW. `nros-nsos` (a
+        # board's network) is an `nros-` snippet too, and was refused as "selects
+        # NSOS" when this matched every one.
+        if(_s MATCHES "^nros-(zenoh|xrce|cyclonedds)$")
             string(TOUPPER "${CMAKE_MATCH_1}" _snip_rmw)
             if(NOT _snip_rmw STREQUAL rmw)
                 string(TOLOWER "${rmw}" _img_rmw)

@@ -270,10 +270,11 @@ lives with the bringup:
 ```text
 src/demo_bringup/boards/native_sim_native_64/
 ├── prj.conf                            # APPLICATION_CONFIG_DIR
-├── prj-zenoh.conf                      # named by [image.<id>] os_config
-└── boards/
-    └── native_sim_native_64.conf       # Zephyr's own per-board discovery
+└── prj-zenoh.conf                      # named by [image.<id>] os_config
 ```
+
+The host-socket network is not in it: board `zephyr` names the `nros-nsos`
+snippet (`[board.zephyr] snippets`), which every build of the image applies.
 
 That directory is what `[image.<id>] board` selects, and switching boards
 selects a different one rather than editing a package. Every Zephyr image in

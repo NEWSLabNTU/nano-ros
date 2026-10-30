@@ -78,13 +78,20 @@ just setup zephyr --force       # Recreate existing workspace
 ## Step 2: Networking
 
 No network setup is required. `native_sim` uses the NSOS offloaded-sockets
-driver, enabled by `boards/native_sim_native_64.conf` in each example:
+driver, enabled by the module's `nros-nsos` snippet
+(`zephyr/snippets/nros-nsos/nsos.conf`), which board `zephyr` names, so every
+example on it gets it with no file of its own; anything else passes
+`-S nros-nsos`:
 
 ```
-CONFIG_ETH_NATIVE_POSIX=n
+CONFIG_ETH_DRIVER=n
+CONFIG_NET_DRIVERS=y
 CONFIG_NET_SOCKETS_OFFLOAD=y
 CONFIG_NET_NATIVE_OFFLOADED_SOCKETS=y
 ```
+
+`ETH_DRIVER=n` rather than naming the TAP driver, because that symbol is
+`ETH_NATIVE_POSIX` on 3.7 and `ETH_NATIVE_TAP` on 4.4 (issue 2157).
 
 With NSOS, Zephyr's socket API goes straight to host syscalls. Bind to
 `127.0.0.1` and reach `zenohd` / the XRCE Agent on the host loopback just
