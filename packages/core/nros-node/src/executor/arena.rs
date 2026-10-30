@@ -3691,6 +3691,40 @@ pub(crate) struct ServiceClientCallbackEntry<Svc: RosService, F, const REPLY_BUF
     pub(crate) _phantom: PhantomData<Svc>,
 }
 
+/// Issue 2148 — what a typed callback client hands each reply to. Two shapes:
+/// [`ReplyOnly`] (`FnMut(&Reply)`, `create_client_with_callback`) and
+/// [`ReplyWithInfo`] (`FnMut(&Reply, &ServiceInfo)`,
+/// `create_client_with_callback_with_info`). One dispatch serves both; the
+/// info is read only for the shape that asks for it.
+pub(crate) trait ClientReplyCallback<R> {
+    /// Run the user closure. `info` reads the reply's
+    /// [`ServiceInfo`](nros_core::ServiceInfo) from the handle that just took
+    /// it; it is called only by a shape that wants the info.
+    fn on_reply(&mut self, reply: &R, info: impl FnOnce() -> nros_core::ServiceInfo);
+}
+
+/// Issue 2148 — the reply-only shape (`FnMut(&Reply)`).
+pub(crate) struct ReplyOnly<F>(pub(crate) F);
+
+impl<R, F: FnMut(&R)> ClientReplyCallback<R> for ReplyOnly<F> {
+    fn on_reply(&mut self, reply: &R, _info: impl FnOnce() -> nros_core::ServiceInfo) {
+        (self.0)(reply)
+    }
+}
+
+/// Issue 2148 — the reply-plus-info shape (`FnMut(&Reply, &ServiceInfo)`),
+/// rclrs's `(Response, ServiceInfo)` and upstream `rmw_take_response`'s
+/// `rmw_service_info_t`, as [`Promise::take_with_info`](super::handles::Promise::take_with_info)
+/// reports it.
+pub(crate) struct ReplyWithInfo<F>(pub(crate) F);
+
+impl<R, F: FnMut(&R, &nros_core::ServiceInfo)> ClientReplyCallback<R> for ReplyWithInfo<F> {
+    fn on_reply(&mut self, reply: &R, info: impl FnOnce() -> nros_core::ServiceInfo) {
+        let info = info();
+        (self.0)(reply, &info)
+    }
+}
+
 /// Monomorphized typed service-client dispatch (RFC-0041, Phase 239.1).
 ///
 /// Mirrors [`service_client_raw_try_process`] but deserializes the reply into
@@ -3706,7 +3740,7 @@ pub(crate) unsafe fn service_client_callback_try_process<Svc, F, const REPLY_BUF
 ) -> Result<bool, TransportError>
 where
     Svc: RosService,
-    F: FnMut(&Svc::Reply),
+    F: ClientReplyCallback<Svc::Reply>,
 {
     use core::sync::atomic::Ordering;
     let entry = unsafe { &mut *(ptr as *mut ServiceClientCallbackEntry<Svc, F, REPLY_BUF>) };
@@ -3741,8 +3775,15 @@ where
             // between start and end and leave an unbalanced span; here the
             // callback is the only thing between the pair, so the measured
             // interval is user code and nothing else.
+            // Issue 2148 — the info is read from the handle that matched this
+            // reply, before anything else can take on it (as
+            // `Promise::take_with_info` does); only the with-info shape reads it,
+            // and that one copy of a plain struct is inside the span.
+            let handle = &entry.hdr.handle;
             trace_cb_start(desc_idx);
-            (entry.callback)(&reply);
+            entry
+                .callback
+                .on_reply(&reply, || nros_rmw::ClientTrait::response_info(handle));
             trace_cb_end(desc_idx);
             Ok(true)
         }

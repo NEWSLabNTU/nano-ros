@@ -1023,6 +1023,64 @@ pub unsafe extern "C" fn nros_cpp_service_client_take_response_seq(
     }
 }
 
+/// Try to receive a reply (non-blocking) with its REQUEST HEADER — issue 2148.
+///
+/// Upstream `rmw_take_response`'s `rmw_request_id_t` (inside its
+/// `rmw_service_info_t`), which rclcpp's
+/// `Client::take_response(response, request_header)` hands out:
+/// `request_id->sequence_number` is the id the request went out under (the
+/// one [`nros_cpp_service_client_send_request_seq`] returned), always;
+/// `request_id->writer_guid` is this client's request-writer GUID where the
+/// backend reported it (`take_response_with_info`), all zero where it did not.
+///
+/// `NROS_CPP_RET_OK`: `resp_data[..*resp_len]` holds the reply and
+/// `*request_id` its header. `NROS_CPP_RET_TRY_AGAIN`: no reply yet
+/// (`*resp_len` = 0, `*request_id` untouched). Like
+/// [`nros_cpp_service_client_take_response_seq`] this takes whatever reply is
+/// next; the caller decides whom it belongs to.
+///
+/// Excluded from cbindgen (`nros_node::RawRequestId` is an external type);
+/// declared in `rclcpp/polling_client.hpp` against `rmw_request_id_t`, the
+/// same 24-byte layout.
+///
+/// # Safety
+/// All pointers must be valid. `resp_data` must point to `resp_capacity`
+/// writable bytes; `request_id` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_take_response_with_request_id(
+    storage: *mut c_void,
+    resp_data: *mut u8,
+    resp_capacity: usize,
+    resp_len: *mut usize,
+    request_id: *mut nros_node::RawRequestId,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || resp_data.is_null() || resp_len.is_null() || request_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
+    let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp_data, resp_capacity) };
+
+    match client.take_response_raw(resp_slice) {
+        Ok(Some((len, seq))) => {
+            // Read before anything else can take on this handle: the info
+            // describes the reply just taken.
+            let info = nros_rmw::ClientTrait::response_info(&*client);
+            unsafe {
+                *resp_len = len;
+                *request_id = nros_node::RawRequestId::for_response(&info, seq);
+            }
+            NROS_CPP_RET_OK
+        }
+        Ok(None) => {
+            unsafe {
+                *resp_len = 0;
+            }
+            NROS_CPP_RET_TRY_AGAIN
+        }
+        Err(e) => crate::transport_error_to_cpp_ret(e),
+    }
+}
+
 /// Resolve a service client from EITHER road — phase-456 W9 follow-up
 /// (2026-09-28), the shape `nros_cpp_service_client_get_actual_qos` has had
 /// since issue 1437.

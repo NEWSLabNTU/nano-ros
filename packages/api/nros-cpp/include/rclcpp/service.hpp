@@ -62,22 +62,9 @@ nros_cpp_ret_t nros_cpp_service_server_register_capturing(
     size_t* out_handle_id);
 } // extern "C"
 
-#ifndef NROS_RMW_REQUEST_ID_T_DEFINED
-#define NROS_RMW_REQUEST_ID_T_DEFINED
-/// `rmw_request_id_t` — upstream's request header (`<rmw/types.h>`): who sent a
-/// service request (the client's writer GUID) and the sequence number it
-/// assigned. Upstream's three-argument service handler receives it. Issue 2081
-/// fills it from the backend's report; a backend that reports no id leaves it
-/// all zero. The same struct, under the same guard, as `<nros/rmw_entity.h>`
-/// and `<rclc/detail/request_id.h>`.
-extern "C" {
-typedef struct rmw_request_id_t {
-    int8_t writer_guid[16];
-    int64_t sequence_number;
-} rmw_request_id_t;
-} // extern "C"
-#endif
-static_assert(sizeof(rmw_request_id_t) == 24, "rmw_request_id_t: upstream's 16 + 8 bytes");
+// `rmw_request_id_t` — upstream's request header. Upstream's three-argument
+// service handler receives it; issue 2081 fills it from the backend's report.
+#include "rclcpp/detail/rmw_request_id.hpp"
 
 extern "C" {
 /// Issue 2081 — a service trampoline that also receives the request's id.

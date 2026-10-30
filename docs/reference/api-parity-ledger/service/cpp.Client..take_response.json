@@ -3,8 +3,9 @@
   "provides": [
     "nros::Client::send_request",
     "nros::Future::is_ready",
-    "nros::Future::try_take"
+    "nros::Future::try_take",
+    "nros::PollClient::take_response"
   ],
   "verdict": "divergence",
-  "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence. The verb question is settled (`c:take`), but the C++ client never had a `take_response` to rename: a call returns a `Future<Response>` and the reply is polled with `Future::try_take()` / `is_ready()`. That is the no-exceptions, no-allocator shape of rclcpp's `async_send_request` future -- see `cpp:Future::try_take`. The C surface is where the take spelling lives (`c:client_take_response{,_raw}`)."
+  "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence. The verb question is settled (`c:take`), but the C++ client never had a `take_response` to rename: a call returns a `Future<Response>` and the reply is polled with `Future::try_take()` / `is_ready()`. That is the no-exceptions, no-allocator shape of rclcpp's `async_send_request` future -- see `cpp:Future::try_take`. The C surface is where the take spelling lives (`c:client_take_response{,_raw}`).\n\nissue 2148 (2026-10-30) — the take SPELLING now exists, on `rclcpp::PollClient<S>` (`cpp:PollClient::take_response`): `take_response(response, request_header)`, upstream's two parameters, carrying the reply's `rmw_request_id_t` from the backend's `take_response_with_info`. It lives on the poll client because that is the half that owns its `RmwServiceClient`; on the dispatch `rclcpp::Client<S>` the arena takes every reply for the registered handler, so a take there would race it. The verdict stays divergence for that split, and for the `Result` return in place of `bool`-plus-throw."
 }

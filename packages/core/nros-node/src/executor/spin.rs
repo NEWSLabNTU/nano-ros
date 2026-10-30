@@ -11189,7 +11189,8 @@ impl<'s> Executor<'s> {
     ) -> Result<(HandleId, *mut ServiceClientSendHeader<REPLY_BUF>), NodeError>
     where
         Svc: nros_core::RosService + 'static,
-        F: FnMut(&Svc::Reply) + 'static,
+        // Issue 2148 — `ReplyOnly(closure)` or `ReplyWithInfo(closure)`.
+        F: super::arena::ClientReplyCallback<Svc::Reply> + 'static,
     {
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
