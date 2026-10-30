@@ -1,0 +1,264 @@
+From 8dde838e35138c7f53d10196ab2b8454fdd23510 Mon Sep 17 00:00:00 2001
+From: aeon <cshih@csie.ntu.edu.tw>
+Date: Fri, 30 Oct 2026 21:25:20 +0800
+Subject: [PATCH] fix(transport): a multicast Join advertises the configured SN
+ resolution
+
+The multicast TX task built every Join with `resolution:
+Resolution::default()`, while every receiver compares a Join's resolution
+against its OWN configured one and ignores the peer on a mismatch
+(`rx.rs`, "Unsupported SN resolution"). So any non-default
+`transport/link/tx/sequence_number_resolution` gave a multicast transport
+in which two identically configured peers never accept each other. The
+SN masking already used the configured resolution; only the advertisement
+was wrong.
+
+It matters for the CAN link (nano-ros issue 1822). A QoS Join carries eight
+PrioritySn; at the default 32-bit resolution a random SN is a 4-byte varint
+and the Join is 99 bytes against a 63-byte CAN FD MTU. At 8 bits each SN is
+at most 2 bytes and the worst-case QoS Join is 61 bytes (16-bit: 77). So an
+8-bit frame SN is a config-only way to put a QoS Join in one CAN frame -
+which this bug made unreachable.
+
+Tests:
+- multicast_resolution.rs: two UDP multicast peers at default and at 8-bit
+  frame SN must meet within two join intervals. Without this fix the 8-bit
+  case FAILS (8 s deadline, never meet); the default case is the rig control.
+- multicast_can.rs: join_with_qos_fits_one_can_frame_at_8bit_sn measures the
+  worst-case encodings (8-bit 61 B fits, 16-bit 77 B does not). The existing
+  join_with_qos_does_not_fit_one_can_frame (default resolution) still holds.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01U3R52WJtSsuXRP8vfatw3v
+---
+ io/zenoh-transport/src/multicast/link.rs      |   9 +-
+ io/zenoh-transport/src/multicast/transport.rs |   1 +
+ io/zenoh-transport/tests/multicast_can.rs     |  57 +++++++++
+ .../tests/multicast_resolution.rs             | 108 ++++++++++++++++++
+ 4 files changed, 174 insertions(+), 1 deletion(-)
+ create mode 100644 io/zenoh-transport/tests/multicast_resolution.rs
+
+diff --git a/io/zenoh-transport/src/multicast/link.rs b/io/zenoh-transport/src/multicast/link.rs
+index 67e6bebb..103ec459 100644
+--- a/io/zenoh-transport/src/multicast/link.rs
++++ b/io/zenoh-transport/src/multicast/link.rs
+@@ -245,6 +245,13 @@ pub(super) struct TransportLinkMulticastConfigUniversal {
+     pub(super) lease: Duration,
+     pub(super) join_interval: Duration,
+     pub(super) sn_resolution: Bits,
++    /// The resolution this peer ADVERTISES in its `Join`. It must be the
++    /// manager's configured one: every receiver compares a `Join`'s resolution
++    /// against its own config and ignores the peer on a mismatch, so
++    /// advertising the default made any non-default
++    /// `sequence_number_resolution` a multicast transport in which no peer
++    /// ever accepts another.
++    pub(super) resolution: Resolution,
+     pub(super) batch_size: BatchSize,
+ }
+ 
+@@ -500,7 +507,7 @@ async fn tx_task(
+                     version: config.version,
+                     whatami: config.whatami,
+                     zid: config.zid,
+-                    resolution: Resolution::default(),
++                    resolution: config.resolution,
+                     batch_size: config.batch_size,
+                     lease: config.lease,
+                     next_sn,
+diff --git a/io/zenoh-transport/src/multicast/transport.rs b/io/zenoh-transport/src/multicast/transport.rs
+index 6b65d315..498115b7 100644
+--- a/io/zenoh-transport/src/multicast/transport.rs
++++ b/io/zenoh-transport/src/multicast/transport.rs
+@@ -256,6 +256,7 @@ impl TransportMulticastInner {
+                     lease: self.manager.config.multicast.lease,
+                     join_interval: self.manager.config.multicast.join_interval,
+                     sn_resolution: self.manager.config.resolution.get(Field::FrameSN),
++                    resolution: self.manager.config.resolution,
+                     batch_size,
+                 };
+                 l.start_tx(config, self.priority_tx.clone());
+diff --git a/io/zenoh-transport/tests/multicast_can.rs b/io/zenoh-transport/tests/multicast_can.rs
+index 4afb2d41..40790e44 100644
+--- a/io/zenoh-transport/tests/multicast_can.rs
++++ b/io/zenoh-transport/tests/multicast_can.rs
+@@ -582,6 +582,63 @@ mod tests {
+         );
+     }
+ 
++    /// The way past the blocker above, inside the protocol as it stands: an
++    /// **8-bit frame SN**. Each `PrioritySn` is two varints, and at the default
++    /// 32-bit resolution a randomly seeded SN is four bytes; at 8 bits it is at
++    /// most two. With the SNs at the TOP of the 8-bit range (two-byte varints,
++    /// the worst case) and a full 16-byte zid, a QoS `Join` is 61 bytes — it
++    /// fits. 16 bits does not (77).
++    ///
++    /// Reachable by config alone (`transport/link/tx/sequence_number_resolution:
++    /// "8bit"`) once the multicast TX task advertises the configured resolution
++    /// instead of the default — see `multicast_resolution.rs`. Every peer on
++    /// the bus must agree, zenoh-pico included (`Z_SN_RESOLUTION 0x00`).
++    #[test]
++    fn join_with_qos_fits_one_can_frame_at_8bit_sn() {
++        use zenoh_buffers::writer::HasWriter;
++        use zenoh_codec::{WCodec, Zenoh080};
++        use zenoh_protocol::{
++            core::{Bits, Field, Resolution, WhatAmI, ZenohIdProto},
++            transport::{join::ext::PatchType, Join, PrioritySn, TransportMessage},
++        };
++
++        const CAN_FD_MTU: usize = 63;
++
++        fn encoded_len(bits: Bits) -> usize {
++            let mut resolution = Resolution::default();
++            resolution.set(Field::FrameSN, bits);
++            let top = bits.mask() as u32;
++            let sn = PrioritySn {
++                reliable: top,
++                best_effort: top,
++            };
++            let msg: TransportMessage = Join {
++                version: 0x09,
++                whatami: WhatAmI::Peer,
++                zid: ZenohIdProto::try_from([0xA5u8; 16]).unwrap(),
++                resolution,
++                batch_size: CAN_FD_MTU as u16,
++                lease: Duration::from_secs(60),
++                // What the TX task writes when QoS is on.
++                next_sn: PrioritySn::DEFAULT,
++                ext_qos: Some(Box::new([sn; Priority::NUM])),
++                ext_shm: None,
++                ext_patch: PatchType::CURRENT,
++            }
++            .into();
++
++            let mut buf = Vec::new();
++            Zenoh080::new().write(&mut buf.writer(), &msg).unwrap();
++            buf.len()
++        }
++
++        let u8_len = encoded_len(Bits::U8);
++        let u16_len = encoded_len(Bits::U16);
++        println!("QoS Join, worst-case SNs: 8-bit {u8_len} B, 16-bit {u16_len} B; CAN FD MTU {CAN_FD_MTU}");
++        assert!(u8_len <= CAN_FD_MTU, "8-bit QoS Join no longer fits: {u8_len}");
++        assert!(u16_len > CAN_FD_MTU, "16-bit QoS Join now fits ({u16_len}); 8-bit is no longer the only way");
++    }
++
+     /// Four peers on one bus, which is the first test that is not a pair.
+     ///
+     /// It exercises the thing a pair cannot: each peer has to track three
+diff --git a/io/zenoh-transport/tests/multicast_resolution.rs b/io/zenoh-transport/tests/multicast_resolution.rs
+new file mode 100644
+index 00000000..f4e6dda6
+--- /dev/null
++++ b/io/zenoh-transport/tests/multicast_resolution.rs
+@@ -0,0 +1,108 @@
++//
++// Copyright (c) 2023 ZettaScale Technology
++//
++// This program and the accompanying materials are made available under the
++// terms of the Eclipse Public License 2.0 which is available at
++// http://www.eclipse.org/legal/epl-2.0, or the Apache License, Version 2.0
++// which is available at https://www.apache.org/licenses/LICENSE-2.0.
++//
++// SPDX-License-Identifier: EPL-2.0 OR Apache-2.0
++//
++// Contributors:
++//   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
++//
++
++//! A multicast transport with a NON-DEFAULT sequence-number resolution.
++//!
++//! Every receiver compares the resolution a `Join` advertises against its own
++//! configured one and ignores the peer on a mismatch. The multicast TX task
++//! used to advertise `Resolution::default()` whatever the manager was
++//! configured with, so two peers configured identically with, say, an 8-bit
++//! frame SN each ignored every `Join` the other sent and never met.
++//!
++//! This matters beyond tidiness: an 8-bit frame SN is what lets a `Join`
++//! carrying the QoS extension (eight `PrioritySn`) fit one 63-byte CAN FD frame
++//! — see `multicast_can.rs`.
++#[cfg(target_family = "unix")]
++#[cfg(feature = "transport_udp")]
++mod tests {
++    use std::{sync::Arc, time::Duration};
++
++    use zenoh_core::ztimeout;
++    use zenoh_protocol::core::{Bits, EndPoint, Field, Resolution, WhatAmI, ZenohIdProto};
++    use zenoh_transport::{DummyTransportEventHandler, TransportManager};
++
++    const TIMEOUT: Duration = Duration::from_secs(60);
++    /// Two `join_interval`s (2.5 s by default) and some slack: a peer that has
++    /// not accepted the other's `Join` by then never will.
++    const JOIN_DEADLINE: Duration = Duration::from_secs(8);
++    const SLEEP_COUNT: Duration = Duration::from_millis(10);
++
++    async fn peers_meet(bits: Bits) -> bool {
++        let endpoint: EndPoint = format!(
++            "udp/224.{}.{}.{}:20001",
++            rand::random::<u8>(),
++            rand::random::<u8>(),
++            rand::random::<u8>()
++        )
++        .parse()
++        .unwrap();
++
++        let mut resolution = Resolution::default();
++        resolution.set(Field::FrameSN, bits);
++
++        let id01 = ZenohIdProto::try_from([0x11]).unwrap();
++        let id02 = ZenohIdProto::try_from([0x12]).unwrap();
++        let m01 = TransportManager::builder()
++            .zid(id01)
++            .whatami(WhatAmI::Peer)
++            .resolution(resolution)
++            .build_test(Arc::new(DummyTransportEventHandler))
++            .unwrap();
++        let m02 = TransportManager::builder()
++            .zid(id02)
++            .whatami(WhatAmI::Peer)
++            .resolution(resolution)
++            .build_test(Arc::new(DummyTransportEventHandler))
++            .unwrap();
++
++        let _ = ztimeout!(m01.open_transport_multicast(endpoint.clone())).unwrap();
++        let _ = ztimeout!(m02.open_transport_multicast(endpoint.clone())).unwrap();
++
++        let met = tokio::time::timeout(JOIN_DEADLINE, async {
++            while m01.get_transport_multicast(&id02).await.is_none()
++                || m02.get_transport_multicast(&id01).await.is_none()
++            {
++                tokio::time::sleep(SLEEP_COUNT).await;
++            }
++        })
++        .await
++        .is_ok();
++
++        ztimeout!(m01.close());
++        ztimeout!(m02.close());
++        met
++    }
++
++    /// The default resolution is the case that always worked, and is the
++    /// control for the one below: if this fails, the rig (multicast on this
++    /// host) is broken, not the resolution handling.
++    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
++    async fn multicast_peers_meet_at_default_sn_resolution() {
++        zenoh_util::init_log_from_env_or("error");
++        assert!(peers_meet(Bits::from(u32::MAX)).await);
++    }
++
++    /// Fails without the fix: each peer logs "Unsupported SN resolution" for
++    /// every `Join` the other sends and they never meet.
++    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
++    async fn multicast_peers_meet_at_8bit_sn_resolution() {
++        zenoh_util::init_log_from_env_or("error");
++        assert!(
++            peers_meet(Bits::U8).await,
++            "two peers configured with an 8-bit frame SN never accepted each \
++             other's Join — the Join is advertising a resolution that is not \
++             the configured one"
++        );
++    }
++}
+-- 
+2.56.0
+
