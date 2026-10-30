@@ -92,7 +92,7 @@ Both layers share the same session; mix per entity.
   shape for the same reason as service clients.
 
 **Async:**
-- `executor.spin_async()` -- async spin loop (drives I/O, dispatches callbacks, yields between iterations)
+- `executor.spin_async()` -- async spin loop (one non-blocking pass per poll, then a self-wake: never blocks the runtime thread, but busy-loops — issue 2145)
 - `Promise<'a, T, Cli>` -- allocation-free promise, borrows client's reply slot
 - `Promise::take()` -- non-blocking poll for reply
 - `Promise: Future` -- implements `core::future::Future` for `.await`

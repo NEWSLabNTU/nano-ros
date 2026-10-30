@@ -13854,10 +13854,25 @@ impl<'s> Executor<'s> {
     /// * **It never returns and reports no errors** — the output is `!`, and it
     ///   takes no `SpinOptions`. To stop, `select` it against the thing you are
     ///   waiting for (pattern 1 below).
-    /// * **It does not sleep on RMW I/O.** Each cycle is `spin_once(1 ms)` and then
-    ///   a yield that wakes itself before returning `Pending`, so any runtime that
-    ///   honours wakes polls it again at once. It is CPU-bound by construction;
-    ///   the 1 ms `spin_once` budget is its only wait. Do not read `async` as idle.
+    /// * **It never blocks inside `poll`** (issue 2145). Each poll is ONE
+    ///   non-blocking pass — `spin_once(Duration::ZERO)`, which takes the
+    ///   transport's non-blocking path and parks on nothing — and then returns
+    ///   `Pending`. A sibling future on the same single-threaded runtime (tokio
+    ///   `current_thread`, an Embassy executor) therefore waits at most one
+    ///   pass's callbacks, never a park. One pass rather than `spin_some`'s
+    ///   drain, so a callback that keeps feeding itself work yields to the
+    ///   runtime between passes instead of holding it.
+    /// * **It does not sleep on RMW I/O, so it is a busy loop.** It wakes itself
+    ///   before returning `Pending`, so any runtime that honours wakes polls it
+    ///   again at once: an idle app keeps one core at 100 %. Do not read `async`
+    ///   as idle. Sleeping until work arrives needs the executor-level readiness
+    ///   notifier ([`set_ready_notifier`](Self::set_ready_notifier), issue 2144)
+    ///   and the next deadline ([`next_deadline_us`](Self::next_deadline_us),
+    ///   issue 2143) wired to the task's `Waker`. Both exist, but `spin_async`
+    ///   does not use them yet (issue 2145), so the self-wake is still the only
+    ///   way a runtime learns to poll again. Where idle CPU matters, drive
+    ///   the executor from a blocking task with [`spin`](Self::spin) or
+    ///   [`spin_once`](Self::spin_once) instead.
     ///
     /// # Usage patterns
     ///
@@ -13877,7 +13892,9 @@ impl<'s> Executor<'s> {
     /// ```
     pub async fn spin_async(&mut self) -> ! {
         loop {
-            self.spin_once(core::time::Duration::from_millis(1));
+            // Issue 2145 — ZERO, never a budget: a non-zero `spin_once` parks
+            // the calling thread, which here is the async runtime's.
+            self.spin_once(core::time::Duration::ZERO);
             core::future::poll_fn::<(), _>(|cx| {
                 cx.waker().wake_by_ref();
                 core::task::Poll::Pending

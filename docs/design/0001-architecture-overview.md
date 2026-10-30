@@ -390,7 +390,7 @@ When `NROS_EXECUTOR_MAX_CBS=0` and `NROS_EXECUTOR_ARENA_SIZE=0`, the arrays are 
 | `spin_one_period(period_ms, elapsed_ms)` | Yes      | Caller-timed loop (caller provides clock + sleep)                  |
 | `spin(SpinOptions)`             | No       | Loop with optional timeout/max_callbacks                           |
 | `spin_period(Duration)`                  | No       | Wall-clock-timed loop                                              |
-| `spin_async()`                           | Yes      | Yields between iterations via `poll_fn`; works with Embassy, tokio |
+| `spin_async()`                           | Yes      | One non-blocking pass per poll, then a self-wake (busy loop, issue 2145); works with Embassy, tokio |
 
 ### Node Factory
 
@@ -428,7 +428,13 @@ Two dispatch strategies, selected at construction:
 
 ### Async Integration
 
-The executor integrates with external async runtimes (tokio, Embassy) without bundling one:
+The executor integrates with external async runtimes (tokio, Embassy) without bundling one.
+
+**As built (issue 2145):** `spin_async()` does not yet register a waker. Each poll runs one
+non-blocking `spin_once(Duration::ZERO)` pass and then wakes itself before returning `Pending`,
+so it never blocks the runtime's thread but is a busy loop. The diagram below is the target shape
+(RFC-0112 D2.2): the executor-level readiness notifier (issue 2144) and the public next deadline
+(issue 2143) it needs both exist, and `spin_async()` does not use them yet. Per-entity futures (`recv().await`, `Promise`) do use the waker path shown:
 
 ```mermaid
 sequenceDiagram
