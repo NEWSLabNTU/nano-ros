@@ -5680,7 +5680,8 @@ west_id = "zephyr/native_sim/native/64/logging-smoke"
 # `APPLICATION_CONFIG_DIR` discovery outright. The board/NSOS tail that key used
 # to append is not lost: it was a duplicate of the entry's own
 # `boards/native_sim_native_64.conf`, which moved to the bringup and is
-# discovered there. Measured: the merged `.config` is byte-identical to the
+# discovered there (and since issue 2157 is board `zephyr`'s `nros-nsos`
+# snippet instead). Measured: the merged `.config` is byte-identical to the
 # hand-written application's, 2028 lines.
 [[workspace_fixture]]
 id = "workspace-zephyr-rs-params"

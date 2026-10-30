@@ -606,8 +606,9 @@ Leaving the matrix:
 ### Why the new Zephyr Cortex-M witness is the one real addition
 
 It closes a coverage hole, not a marketing gap. **All 28 Zephyr runtime configs
-target `native_sim/native/64`**, and `cmake/zephyr/native-sim-line-*.conf` sets
-`CONFIG_NET_SOCKETS_OFFLOAD=y` with `CONFIG_ETH_NATIVE_TAP=n` — chosen so tests
+target `native_sim/native/64`**, and the `nros-nsos` snippet (issue 2157; the
+per-line `native-sim-line-*.conf` before it) sets
+`CONFIG_NET_SOCKETS_OFFLOAD=y` with the TAP driver off — chosen so tests
 need no TAP device or root. So **every Zephyr test nano-ros runs bypasses
 Zephyr's own IP stack**, using host sockets, at 64-bit pointer width. There is
 zero coverage of Zephyr's in-kernel net stack, of a real driver, or of 32-bit

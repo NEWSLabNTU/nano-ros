@@ -113,24 +113,12 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     # EXTRA_CONF_FILE so it still merges AFTER the image's fragment, exactly
     # where it sat in the old `prj.conf;prj-<rmw>.conf;<tail>` CONF_FILE.
     #
-    # The (native_sim) tail is the version-aware NSOS
-    # line overlay. The line overlay (cmake/zephyr/native-sim-line-<v>.conf)
-    # supplies the native-eth-driver disable under the right symbol for the
-    # line (ETH_NATIVE_POSIX on 3.7, ETH_NATIVE_TAP on 4.4) plus the shared
-    # NSOS settings — so NSOS works on BOTH lines. It supersedes the legacy
-    # per-example boards/native_sim_*.conf (which hardcodes the 3.7 symbol);
-    # that file is left for the not-yet-version-gated build-fixtures path.
+    # native_sim has no tail (issue 2157): its NSOS network is the board
+    # package's `nros-nsos` snippet, which the module hook adds to SNIPPET on
+    # every Zephyr line.
     conf="prj.conf"
     tail=""
     case "{{board}}" in
-    native_sim*)
-        line_overlay="$(pwd)/cmake/zephyr/native-sim-line-{{NROS_ZEPHYR_VERSION}}.conf"
-        if [ -f "$line_overlay" ]; then
-            tail="$line_overlay"
-        else
-            echo "WARN: no native_sim line overlay at $line_overlay" >&2
-        fi
-        ;;
     qemu_cortex_m3*|mps2*)
         # No entropy device on these boards; the net stack needs sys_rand_get.
         # Overlays live here rather than in a per-example `boards/*.conf`

@@ -14,12 +14,12 @@ counting + integrity-validating sink (same payload layout).
 source ./activate.sh
 cd zephyr-workspace
 APP=/abs/path/to/packages/testing/nros-bench/stress-zenoh-zephyr
-CONF='prj.conf;/abs/path/to/zephyr/native-sim-nsos.conf'
+CONF='prj.conf'   # NSOS: -S nros-nsos below (issue 2157)
 LOC='-DCONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:17866"'
 
-west build -b native_sim/native/64 -d build-stress-zenoh       -p always $APP -- -DCONF_FILE="$CONF" $LOC
-west build -b native_sim/native/64 -d build-stress-zenoh-batch -p always $APP -- -DCONF_FILE="$CONF" $LOC -DCONFIG_NROS_ZENOH_TX_BATCH=y
-west build -b native_sim/native/64 -d build-stress-zenoh-split -p always $APP -- -DCONF_FILE="$CONF" $LOC -DCONFIG_NROS_ZENOH_TX_BATCH=y -DCONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y
+west build -b native_sim/native/64 -S nros-nsos -d build-stress-zenoh       -p always $APP -- -DCONF_FILE="$CONF" $LOC
+west build -b native_sim/native/64 -S nros-nsos -d build-stress-zenoh-batch -p always $APP -- -DCONF_FILE="$CONF" $LOC -DCONFIG_NROS_ZENOH_TX_BATCH=y
+west build -b native_sim/native/64 -S nros-nsos -d build-stress-zenoh-split -p always $APP -- -DCONF_FILE="$CONF" $LOC -DCONFIG_NROS_ZENOH_TX_BATCH=y -DCONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y
 ```
 
 Extra shape knobs (phase-282 W3): `-DSTRESS_EXPRESS=1` declares the publisher

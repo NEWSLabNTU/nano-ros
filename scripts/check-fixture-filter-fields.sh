@@ -64,9 +64,9 @@ selftest() {
     expect yes zephyr_self_pkg_sibling native_sim/native/64 zephyr_self_pkg_sibling \
         packages/testing/nros-tests/fixtures/zephyr_self_pkg/sibling/caller "-DCONF_FILE=prj.conf"
     expect no xrce native_sim/native/64 build-rust-talker-zenoh examples/zephyr/rust/talker \
-        "prj.conf;prj-zenoh.conf;$root/cmake/zephyr/native-sim-nsos.conf" zephyr/rust/talker/zenoh
-    expect yes 'native-sim-nsos' native_sim/native/64 build-rust-talker-zenoh \
-        "prj.conf;$root/cmake/zephyr/native-sim-nsos.conf"
+        "prj.conf;prj-zenoh.conf;$root/cmake/zephyr/qemu-cortex-m3.conf" zephyr/rust/talker/zenoh
+    expect yes 'qemu-cortex-m3' native_sim/native/64 build-rust-talker-zenoh \
+        "prj.conf;$root/cmake/zephyr/qemu-cortex-m3.conf"
     expect no 'build-c-.*-xrce' build-c-talker-zenoh zephyr/c/talker/xrce
     expect yes '^prj-xrce\.conf$' "prj.conf;prj-xrce.conf"
 }

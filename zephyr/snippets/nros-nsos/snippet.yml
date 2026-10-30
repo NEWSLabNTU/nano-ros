@@ -1,0 +1,16 @@
+# Issue 2157 -- native_sim's network: NSOS (host BSD sockets, no TAP device).
+#
+# A board package selects it by name (`[board.zephyr] snippets = ["nros-nsos"]`,
+# which the module hook adds to SNIPPET for every `system.toml` image); any
+# other build passes `-S nros-nsos` (or `set(SNIPPET nros-nsos)` before
+# `find_package(Zephyr)`). Zephyr resolves the name through this module's
+# `snippet_root`, so no build needs a path into nano-ros.
+#
+# Snippet-wide, deliberately -- no `boards:` regex. Applied to a board that is
+# not a native simulator, `NET_NATIVE_OFFLOADED_SOCKETS` cannot be enabled
+# (it depends on ARCH_POSIX) and Kconfig REFUSES the build, naming that
+# dependency; a regex would make it a silent no-op instead, and would miss a
+# vendor's native board under another name.
+name: nros-nsos
+append:
+  EXTRA_CONF_FILE: nsos.conf

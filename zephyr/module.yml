@@ -23,16 +23,15 @@ build:
   cmake: zephyr
   kconfig: zephyr/Kconfig
   settings:
-    # Phase 180.C — module-contributed snippets (Zephyr 4.x only). The
-    # snippet_root is interpreted relative to the MODULE ROOT (the dir
-    # containing zephyr/module.yml = the repo root), and snippets.py then
-    # scans `<snippet_root>/snippets/`. Pointing it at `zephyr` makes
-    # Zephyr discover `zephyr/snippets/*/snippet.yml`, so a downstream
-    # user can select the nano-ros RMW with `west build -S nros-<rmw>`
-    # instead of `-DCONF_FILE="...;prj-<rmw>.conf"`. Additive to the
-    # existing CONF_FILE overlay path (which 3.7 — no snippet support —
-    # still relies on). `.` would scan `<repo-root>/snippets/`; the
-    # snippets live under `zephyr/`, so `zephyr` is the correct root.
+    # Phase 180.C — module-contributed snippets (Zephyr 3.7 and 4.x; issue
+    # 2157 measured 3.7, whose `scripts/snippets.py` and module schema both
+    # carry it — this said "4.x only"). The snippet_root is interpreted
+    # relative to the MODULE ROOT (the dir containing zephyr/module.yml = the
+    # repo root), and snippets.py then scans `<snippet_root>/snippets/`.
+    # Pointing it at `zephyr` makes Zephyr discover `zephyr/snippets/*/
+    # snippet.yml`, so a downstream user selects the nano-ros RMW with
+    # `west build -S nros-<rmw>` and native_sim's host-socket network with
+    # `-S nros-nsos` (which a board package names, so the module hook adds it).
     snippet_root: zephyr
     # phase-481 W1 (RFC-0098 D11) — the module's own pre-Kconfig hook. Zephyr
     # includes `<module_ext_root>/modules/modules.cmake` after module discovery

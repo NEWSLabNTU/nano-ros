@@ -98,9 +98,8 @@ nros_cargo_ensure_codegen_c
 codegen_tool="$(nros_cargo_codegen_c_bin)"
 [ -x "$codegen_tool" ] || { echo "FAIL: nros CLI not found ($codegen_tool); run just setup-cli"; exit 1; }
 
-# Version-aware NSOS line overlay (4.4 symbol names).
-line_overlay="$NROS_ROOT/cmake/zephyr/native-sim-line-4.4.conf"
-[ -f "$line_overlay" ] || { echo "FAIL: missing $line_overlay"; exit 1; }
+# NSOS needs no overlay here (issue 2157): the copied leaf's board package
+# names the `nros-nsos` snippet, and the module hook adds it to SNIPPET.
 
 # --- Copy the example OUT of the repo tree --------------------------------
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/nros-copy-out.XXXXXX")"
@@ -138,8 +137,8 @@ echo "[copy-out] workspace : $workspace (4.4 line)"
 
 # --- Build the copied example via the nano-ros Zephyr module --------------
 # phase-481 W3 — the copied leaf builds its `zephyr_<rmw>` image: the module
-# renders the RMW/API/knobs and adds the image's `prj-<rmw>.conf` ahead of the
-# line overlay, which rides EXTRA_CONF_FILE so it still merges last of the files.
+# renders the RMW/API/knobs, adds the image's `prj-<rmw>.conf`, and adds the
+# board's `nros-nsos` snippet (issue 2157) -- the copy carries no board conf.
 conf="prj.conf"
 bd="$tmp_root/build"
 
@@ -155,7 +154,7 @@ set +e
     cd "$workspace"
     "$(realpath "$venvbin")/python" -m west build \
         -b "$BOARD" -d "$bd" -p auto "$copied" -- \
-        -DCONF_FILE="$conf" -DEXTRA_CONF_FILE="$line_overlay" \
+        -DCONF_FILE="$conf" \
         -DNROS_IMAGE="zephyr_$RMW" \
         -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" \
         "$nros_module_arg" \

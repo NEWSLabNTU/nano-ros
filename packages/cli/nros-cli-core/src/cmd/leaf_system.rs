@@ -378,6 +378,36 @@ pub fn board_conf_paths(
         .conf_files()
 }
 
+/// Issue 2157 -- the Zephyr snippets the image's BOARD names
+/// (`[board.zephyr] snippets`), in the order it names them.
+///
+/// Empty for a board the catalog does not resolve and for one with no
+/// `[board.zephyr]` block, as [`board_conf_paths`] is.
+pub fn board_snippets(catalog: Option<&BoardCatalog>, board: &str) -> Vec<String> {
+    catalog
+        .and_then(|c| crate::cmd::board_facts::resolve_board(c, board))
+        .and_then(|d| d.zephyr.as_ref())
+        .map(|z| z.snippets.clone())
+        .unwrap_or_default()
+}
+
+/// The board catalog for `dir`: this checkout's boards and
+/// `$NROS_EXTRA_BOARD_PATH`, plus -- when `dir` sits in a workspace -- the
+/// board packages that workspace carries (issue 2157). Without the third, a
+/// customer's own `src/<board>/nros-board.toml` resolves for `nros build` and
+/// not here, so the module hook would build its image without the board's
+/// snippets or conf files.
+fn load_catalog(root: &std::path::Path, dir: &std::path::Path) -> Option<BoardCatalog> {
+    let pkg_dirs: Vec<PathBuf> = crate::cmd::image_facts::workspace_root_from(dir)
+        .and_then(|ws| {
+            let members = crate::builder::discover::cargo_members_or_walk(&ws);
+            crate::builder::discover::discover(&ws, &members).ok()
+        })
+        .map(|found| found.packages.iter().map(|p| p.dir.clone()).collect())
+        .unwrap_or_default();
+    BoardCatalog::load_with_packages(root, &pkg_dirs).ok()
+}
+
 /// `nros ws qemu-nic`.
 #[derive(Debug, clap::Args)]
 pub struct QemuNicArgs {
@@ -472,7 +502,7 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     // issue 1641 — the one ladder: the leaf's own checkout comes first, so a
     // linked worktree never answers with the PARENT's.
     let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &dir);
-    let catalog = root.as_deref().and_then(|r| BoardCatalog::load(r).ok());
+    let catalog = root.as_deref().and_then(|r| load_catalog(r, &dir));
     // phase-517 W2 — a board several descriptors claim (`threadx`) is refused
     // here exactly as `nros build` refuses it, naming the candidates. Passed
     // through, it reached the cmake road as its own deploy token and the
@@ -608,6 +638,15 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             .collect::<Vec<_>>()
             .join(";")
     );
+    // Issue 2157 -- the board's snippets, for a leaf AND a bringup: unlike its
+    // conf files, `nros build` passes none itself, so the module hook is the
+    // one carrier on every road. Not under `--board`, for 1782's reason.
+    let snippets = if args.board.is_none() {
+        board_snippets(catalog.as_ref(), &board)
+    } else {
+        Vec::new()
+    };
+    println!("NROS_LEAF_SNIPPET={}", snippets.join(";"));
     // Issue 2073 -- the parameter files `NROS_CPP_BAKED_ROS_ARGS` carries the
     // text of, one row each, so a configure re-runs when one is edited.
     let origin_dir = leaf

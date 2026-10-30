@@ -177,9 +177,8 @@ fn is_devicetree(p: &Path) -> bool {
 /// A board id as a directory name.
 ///
 /// Zephyr board strings carry slashes (`native_sim/native/64`), which cannot be
-/// one directory component. `_` is the separator Zephyr's own overlay files
-/// already use — `native_sim_native_64.conf` is what
-/// `examples/workspaces/rust/src/zephyr_entry/boards/` ships.
+/// one directory component. `_` is the separator Zephyr's own per-board files
+/// already use (`boards/native_sim_native_64.conf`).
 #[must_use]
 pub fn sanitize_board(board: &str) -> String {
     board.replace('/', "_")

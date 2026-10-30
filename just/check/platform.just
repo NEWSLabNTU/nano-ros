@@ -440,6 +440,13 @@ freertos-fpu-context:
 leaf-conf-nros-knobs:
     @python3 scripts/check-leaf-conf-nros-knobs.py
 
+# issue 2157 — native_sim's network (NSOS) has ONE source, the module's
+# `nros-nsos` snippet, which a board package names: no tracked conf elsewhere
+# enables it or names a line-specific TAP-driver symbol.
+[group("checks")]
+nsos-single-source:
+    @python3 scripts/check-nsos-single-source.py
+
 # issue 1512 — bare metal is the one platform whose `nros-platform/platform-*`
 # feature is BOARD-specific, so one platform needs THREE arms plus a CMake row
 # instead of one name in each file. Nobody was checking, and the measured state

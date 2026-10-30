@@ -216,12 +216,6 @@ if [ -n "$make_bin" ]; then
     make_bin="$(realpath -m "$make_bin")"
 fi
 
-if [ "$zephyr_version" = "4.4" ]; then
-    native_sim_nsos_conf="$nros_root/cmake/zephyr/native-sim-line-4.4.conf"
-else
-    native_sim_nsos_conf="$nros_root/zephyr/native-sim-nsos.conf"
-fi
-
 fixture_rmws=(zenoh)
 # Cyclone leaves on the 3.7 line whose configure would have no host idlc —
 # reported at the end (issue 1777), never dropped silently.
@@ -449,7 +443,9 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         # wrong — a default that assumes is how this cost an afternoon.
         case "$board" in
             mps2_an385) conf_tail="$nros_root/packages/boards/nros-board-mps2-an385-zephyr/prj.conf" ;;
-            native_sim*) conf_tail="$native_sim_nsos_conf" ;;
+            # Issue 2157 -- native_sim's NSOS is the board package's
+            # `nros-nsos` snippet, which the module hook adds for every
+            # `system.toml` image on every road; no tail to append.
             *) conf_tail="" ;;
         esac
         # Issue 2078 -- a row that LISTS the board tail places it itself, so a

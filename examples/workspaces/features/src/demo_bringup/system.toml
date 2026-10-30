@@ -363,7 +363,8 @@ before_boot = "rust_before_boot_talker_pkg::prepare"
 # measured, not assumed: the three packages' `prj.conf`, `prj-zenoh.conf` and
 # `boards/native_sim_native_64.conf` were byte-identical apart from one comment
 # line naming the entry directory — `diff` before the move, and a byte-identical
-# `.config` against each image's pre-migration baseline afterwards.
+# `.config` against each image's pre-migration baseline afterwards. (Issue
+# 2157 then removed the NSOS conf: board `zephyr` names the `nros-nsos` snippet.)
 #
 # `board = "zephyr"` is the descriptor id, and it projects to the west board
 # `native_sim/native/64` through `BoardDescriptor::west_build_board` — the SAME

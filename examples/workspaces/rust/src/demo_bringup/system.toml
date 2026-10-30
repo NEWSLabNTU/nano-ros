@@ -216,8 +216,9 @@ locator = "tcp/127.0.0.1:9030"
 #
 # Its Kconfig moved WITH it, to `<bringup>/boards/native_sim_native_64/`
 # (RFC-0065 D4). That directory is `-DAPPLICATION_CONFIG_DIR`, so Zephyr takes
-# `prj.conf` and `boards/native_sim_native_64.conf` from there by its own
-# discovery, and `conf` below adds the RMW fragment through EXTRA_CONF_FILE.
+# `prj.conf` from there by its own discovery, and `conf` below adds the RMW
+# fragment through EXTRA_CONF_FILE. NSOS is board `zephyr`'s `nros-nsos`
+# snippet (issue 2157), not a file here.
 # `prj-xrce.conf` / `prj-cyclonedds.conf` moved too and are inert until an
 # image names one — a fragment is only applied when `conf` lists it.
 [image.zephyr]
