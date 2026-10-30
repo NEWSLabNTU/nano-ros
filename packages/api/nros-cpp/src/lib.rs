@@ -1636,7 +1636,7 @@ pub(crate) use cpp_info;
 /// `TransportError` variant fails to compile here until someone decides what the
 /// C++ caller should see.
 ///
-/// ~~`TRANSPORT_ERROR`~~ is kept for the cases that genuinely ARE the transport:
+/// `NROS_CPP_RET_TRANSPORT_ERROR` is kept for the cases that genuinely ARE the transport:
 /// the connection, the peer, the wire, and a backend-specific string this layer
 /// cannot interpret.
 #[cfg(feature = "rmw-cffi")]
@@ -3695,7 +3695,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_fully_qualified_name(
 ///
 /// Resolved through `Executor::node_session_mut(node_id)`, i.e. the same
 /// session a publisher created on this node would be built against. A node
-/// created with ~~`nros_cpp_node_init_ex(..., rmw = "xrce")`~~ sits on its own
+/// created by `nros_cpp_node_create_ex` naming `rmw = "xrce"` sits on its own
 /// session in the executor's table, so an image with two such nodes gets two
 /// answers from this one function — which is the case a compile-time constant
 /// (`nros_node::IMAGE_SERIALIZATION_FORMAT`, the generated
@@ -3828,7 +3828,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_logger(
 /// `"nros"`.
 ///
 /// The nodes here are `nros_cpp_node_t` values built by hand rather than by
-/// ~~`nros_cpp_node_init`~~, because the accessor reads exactly one field — the
+/// `nros_cpp_node_create`, because the accessor reads exactly one field — the
 /// name — and node creation needs a live executor and a backend session. The
 /// full node-lifecycle form of this claim is
 /// `nros_node::executor::tests::two_nodes_on_one_executor_emit_under_their_own_names`.
@@ -6017,7 +6017,7 @@ pub struct nros_cpp_mode_deadline_t {
 /// least `(n_modes + 1) * (NROS_CPP_MODE_TABLE_STORAGE + n_base_deadlines *
 /// NROS_CPP_MODE_DEADLINE_STORAGE) + n_row_modes * n_rows *
 /// NROS_CPP_MODE_ROW_STORAGE + n_age_modes * n_ages * NROS_CPP_MODE_AGE_STORAGE`
-/// bytes, where ~~`n_row_modes`~~ / ~~`n_age_modes`~~ count the modes with rows (ages)
+/// bytes, where n_row_modes / n_age_modes count the modes with rows (ages)
 /// of their own; a mode that aliases the base costs only its table.
 #[cfg(feature = "rmw-cffi")]
 #[repr(C)]

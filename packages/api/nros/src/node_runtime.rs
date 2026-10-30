@@ -419,8 +419,9 @@ struct ComponentCell<
     publishers: RefCell<heapless::Vec<(IdStr, EmbeddedRawPublisher), PUBS>>,
     // Phase 212.M-F.23 — declarative service/action CLIENT + action-SERVER
     // handles, keyed by stable entity id, resolved during tick dispatch.
-    // Mirror of the orchestration ~~`GenClientDispatch`~~/~~`GenActionExec`~~ arrays,
-    // but built at registration time on the single-node runtime. Service- and
+    // Built at registration time on the single-node runtime (they mirrored the
+    // orchestration's ~~`GenClientDispatch`~~/~~`GenActionExec`~~ arrays, both
+    // retired). Service- and
     // action-SERVER request/goal dispatch is owned by the executor (the
     // trampolines registered in `create_entity`); only the action-server
     // handle is kept here so the tick can complete goals / publish feedback.
@@ -820,7 +821,8 @@ struct CellResolver<'a> {
 impl PublisherResolver for CellResolver<'_> {
     fn publish_raw(&self, entity_id: &str, data: &[u8]) -> NodeResult<()> {
         // issue 0736 — the two arms report DIFFERENT failures. A miss on
-        // ~~`lookup_publisher`~~ means this component declared no publisher for the
+        // the cell's publisher lookup (~~`lookup_publisher`~~ once) means this
+        // component declared no publisher for the
         // entity, so nothing ever reached the transport; a `publish_raw` error
         // means the transport had the sample and refused it. Both used to
         // return `Runtime`, which is why a console full of "publish FAILED"
@@ -1289,8 +1291,9 @@ impl ExecutorNodeRuntime {
     ///
     /// # Strategy — linear scan
     ///
-    /// Each registered slot's ~~`dispatch_fn`~~ is the codegen-emitted
-    /// `d()` trampoline from `nros::node!()` (see
+    /// Each registered slot dispatches through the codegen-emitted
+    /// `d()` trampoline from `nros::node!()` (a ~~`dispatch_fn`~~ pointer once;
+    /// see
     /// `packages/core/nros-macros/src/lib.rs`). That trampoline calls
     /// `<NodeTy as ExecutableNode>::on_callback`, whose body
     /// `match`es on the callback's own tag set
@@ -2506,8 +2509,8 @@ unsafe extern "C" fn action_accepted_trampoline(
     dispatch_into_cell(actx.cell.view(), cb_id, &[]);
 }
 
-/// Tick-side service/action CLIENT dispatch — the single-node runtime's mirror
-/// of the orchestration ~~`GenClientDispatch`~~. Resolves the per-component client
+/// Tick-side service/action CLIENT dispatch — the single-node runtime's own
+/// (it mirrored the orchestration's ~~`GenClientDispatch`~~, since retired). Resolves the per-component client
 /// handle arrays + a `*mut Executor<'static>` (the tick borrows `&components` while
 /// needing `&mut executor`, so the executor is reached through a raw pointer,
 /// reborrowed `&mut` per call; no aliasing — `executor` and `components` are
@@ -2624,7 +2627,8 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
     }
 }
 
-/// Tick-side action-SERVER execution — mirror of ~~`GenActionExec`~~. Lets a
+/// Tick-side action-SERVER execution (it mirrored the retired
+/// ~~`GenActionExec`~~). Lets a
 /// component complete goals / publish feedback / enumerate active goals from
 /// its `tick` via `TickCtx`.
 struct RuntimeActions<'a> {

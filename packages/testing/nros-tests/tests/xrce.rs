@@ -7,7 +7,7 @@
 //! These run the DEDICATED `nros-tests/bins` XRCE binaries over an explicit UDP
 //! locator + Agent. What remains is one-offs no matrix cell covers: the SERIAL
 //! transport lane (`*_serial_*`), the large-message / fragmented-stream publish
-//! (~~`large_message_publish`~~), and the startup probes (`*_starts`).
+//! (`test_xrce_large_message_publish`), and the startup probes (`*_starts`).
 //!
 //! The plain pubsub/service/action DELIVERY tests
 //! (~~`talker_listener_communication`~~, ~~`multiple_messages`~~, ~~`service_request_response`~~,

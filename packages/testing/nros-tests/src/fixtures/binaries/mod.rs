@@ -3251,7 +3251,7 @@ pub fn build_native_workspace_mixed_qos_talker_entry() -> TestResult<&'static Pa
 }
 
 /// phase-263 B4 (QoS, MIXED) — the QoS-override LISTENER single-node entry (cached). The C
-/// ~~`qos_listener_pkg`~~ reused verbatim, driven by a C++ TYPED entry carrier + prints `Received: N`.
+/// ~~`qos_listener_pkg`~~ was reused verbatim, driven by a C++ TYPED entry carrier + prints `Received: N`.
 pub fn build_native_workspace_mixed_qos_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_MIXED_QOS_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -3309,7 +3309,7 @@ pub fn build_native_workspace_mixed_custom_msg_talker_entry() -> TestResult<&'st
 }
 
 /// phase-263 B6 (custom-msg, MIXED) — the workspace-local `custom_msgs/Reading` LISTENER single-node
-/// entry (cached). The C ~~`reading_listener_pkg`~~ reused verbatim, driven by a C++ TYPED entry carrier.
+/// entry (cached). The C ~~`reading_listener_pkg`~~ was reused verbatim, driven by a C++ TYPED entry carrier.
 pub fn build_native_workspace_mixed_custom_msg_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_MIXED_CUSTOM_MSG_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -3603,7 +3603,8 @@ pub fn build_nuttx_workspace_c_realtime_entry() -> TestResult<&'static Path> {
 /// #199 follow-up — the 2-tier **C++** realtime NuttX rv-virt (riscv32) entry
 /// (`realtime-cpp/src/riscv_nuttx_entry`), the riscv sibling of the arm
 /// `workspace-cpp-nuttx-realtime` entry. Built by `just nuttx
-/// build-riscv-c-workspaces`; consumed by ~~`realtime_tiers_cpp_riscv_nuttx_e2e`~~.
+/// build-riscv-c-workspaces`. Its consumer was ~~`realtime_tiers_cpp_riscv_nuttx_e2e`~~;
+/// nothing calls it now (`realtime_tiers_e2e` consumes only the C twin below).
 pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
     static NUTTX_RISCV_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NUTTX_RISCV_WORKSPACE_CPP_REALTIME_ENTRY_BINARY
@@ -3621,7 +3622,8 @@ pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static P
 /// #199 follow-up — the 2-tier **C** realtime NuttX rv-virt (riscv32) entry
 /// (`realtime-c/src/riscv_nuttx_entry`), the riscv sibling of
 /// [`build_nuttx_workspace_c_realtime_entry`]. Built by `just nuttx
-/// build-riscv-c-workspaces`; consumed by ~~`realtime_tiers_c_riscv_nuttx_e2e`~~.
+/// build-riscv-c-workspaces`; consumed by `realtime_tiers_e2e` (once
+/// ~~`realtime_tiers_c_riscv_nuttx_e2e`~~).
 pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Path> {
     static NUTTX_RISCV_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NUTTX_RISCV_WORKSPACE_C_REALTIME_ENTRY_BINARY

@@ -2750,7 +2750,7 @@ mod verification {
         );
     }
 
-    // Phase 189.M3.3.a — ~~`init_with_options`~~ stashes the requested sched-context
+    // Phase 189.M3.3.a — `rclc_service_init_with_options` stashes the requested sched-context
     // slot on the service (the executor applies the bind at register time). A
     // NULL options pointer leaves the default (0 = inherit).
     #[kani::proof]
@@ -2917,7 +2917,7 @@ mod verification {
 
     // -- Service Client Harnesses --
 
-    // Phase 189.M3.3.a — client ~~`init_with_options`~~ mirrors the service: stash
+    // Phase 189.M3.3.a — `rclc_client_init_with_options` mirrors the service: stash
     // the requested sched-context slot (bind applied at register time).
     #[kani::proof]
     #[kani::unwind(5)]

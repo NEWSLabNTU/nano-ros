@@ -24,16 +24,15 @@
 //!
 //! ## Contract (M-F.4.c)
 //!
-//! Until the codegen-side ~~`GenClientDispatch`~~ impl lands (M-F.4.a) and the
-//! generated runtime starts passing a real non-null tick-ctx handle, both
-//! FFI symbols return `NROS_CPP_RET_ERROR` — matching the
-//! ~~`UnsupportedClients`~~ stub on the Rust side
-//! (`NodeDeclError::Runtime` for every method). The symbols exist + are
-//! callable; the runtime returns an error until codegen + BSP plumbing
-//! reach them. C++ user code can write tick bodies against the typed
+//! Both FFI symbols return `NROS_CPP_RET_ERROR` for every well-formed call:
+//! nothing routes a C++ tick body's client calls yet. They were written to
+//! match the Rust side's ~~`UnsupportedClients`~~ stub until a codegen-side
+//! ~~`GenClientDispatch`~~ landed (M-F.4.a); the Rust single-node runtime
+//! has since gained real tick-side client dispatch
+//! (`ExecutorNodeRuntime::run_ticks`), and these symbols have not followed.
+//! They exist + are callable. C++ user code can write tick bodies against the typed
 //! `TickCtx::call<Req, Resp>()` / `TickCtx::send_goal<G>()` wrappers today;
-//! the call / send_goal will fail at runtime with `ErrorCode::Error` until
-//! the generated runtime ships.
+//! the call / send_goal fails at runtime with `ErrorCode::Error`.
 
 use core::ffi::c_void;
 
@@ -84,13 +83,11 @@ pub unsafe extern "C" fn nros_cpp_tick_ctx_call_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    // M-F.4.c contract: until the codegen-side ~~`GenClientDispatch`~~ impl
-    // lands (M-F.4.a) and the generated runtime passes a real non-null
-    // tick-ctx handle, return `NROS_CPP_RET_ERROR` for every well-formed
-    // call. Matches the ~~`UnsupportedClients`~~ stub in `nros-node`'s
-    // `ExecutorNodeRuntime::run_ticks` which routes every method to
-    // `NodeDeclError::Runtime`. The symbol exists + is callable; the
-    // runtime returns an error until plumbing reaches it.
+    // M-F.4.c contract: return `NROS_CPP_RET_ERROR` for every well-formed
+    // call — nothing routes a C++ tick body's client calls yet. (It matched
+    // the Rust ~~`UnsupportedClients`~~ stub, which waited on a codegen-side
+    // ~~`GenClientDispatch`~~; the Rust `ExecutorNodeRuntime::run_ticks`
+    // dispatches for real now, and this symbol has not followed.)
     let _ = tick_ctx;
     let _ = (request_cdr, request_len);
     let _ = (response_buf, response_buf_cap);

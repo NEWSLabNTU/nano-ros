@@ -27,7 +27,8 @@ use nros_params::ParameterServerOps as _; // phase-515 R10 stage 2
 ///
 /// The lock is only half the fix. It orders the tests that MEAN to touch the
 /// flag; what stopped every other test from touching it by accident is
-/// ~~`Executor::sim_time_declared`~~, because `reconcile_ros_time_source` runs on
+/// the executor's `sim_time_stated` field (an executor nobody told about
+/// `use_sim_time` writes nothing), because `reconcile_ros_time_source` runs on
 /// every `spin_once` of every executor.
 #[cfg(feature = "sim-time")]
 struct SimTimeGuard {
@@ -1231,7 +1232,7 @@ fn info_arena_delta(hint: usize) -> usize {
 /// The saving, measured: the slot tracks the hint byte for byte.
 ///
 /// Two hints rather than one absolute number, for the same reason
-/// ~~`the_default_subscription_buffer_is_unchanged`~~ uses two depths -- the
+/// `the_default_subscription_buffer_is_derived_from_the_type` measures deltas -- the
 /// difference isolates the payload slot from everything else the registration
 /// claims.
 #[test]
@@ -3485,7 +3486,8 @@ fn the_achieved_park_is_reported_separately_from_the_request() {
 fn the_quantization_audit_sees_the_declared_cadence_not_the_park_bound() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
     // The cap only bites when the timer is SHORTER than the budget, so that
-    // is the case to test: a 33 ms timer under ~~`spin_default`~~'s 50 ms. If the
+    // is the case to test: a 33 ms timer under a 50 ms budget (the retired
+    // ~~`spin_default`~~'s). If the
     // audit followed the cap it would compare 33 ms against 33 ms — an exact
     // multiple — and stay silent on a tier whose grid genuinely quantizes.
     executor
@@ -3546,7 +3548,7 @@ fn a_timer_deadline_shortens_a_longer_caller_budget() {
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
 
-    // 50 ms is ~~`spin_default`~~'s budget; the timer is due in 10 ms.
+    // A 50 ms budget (the retired ~~`spin_default`~~'s); the timer is due in 10 ms.
     let bound_us = executor.next_wake_bound_us(50_000);
     assert_eq!(
         bound_us, 10_000,

@@ -5,9 +5,9 @@
 //! - `nros::init()` — reads `ROS_DOMAIN_ID` / `NROS_LOCATOR` etc. into a
 //!   [`Context`], defaults and overrides both.
 //!
-//! Pattern 1 (`nros::node!`) is covered by the existing component
-//! macro tests in Phase 172.W.3 (`nros-macros` unit tests +
-//! ~~`component_runtime_*`~~ integration suites) — not re-asserted here.
+//! Pattern 1 (`nros::node!`) is covered by the `nros-macros` unit tests
+//! (Phase 172.W.3 added them beside the ~~`component_runtime_*`~~
+//! integration suites, since retired) — not re-asserted here.
 //!
 //! These tests mutate process env vars. To avoid cross-test leakage
 //! they run sequentially through a process-wide mutex (`cargo test`

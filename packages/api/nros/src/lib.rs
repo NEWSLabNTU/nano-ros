@@ -55,7 +55,9 @@
 //! `rmw-cffi` vtable; the concrete backend (zenoh / xrce / cyclonedds) enters
 //! the link graph via the board crate (embedded), the board-less app's own
 //! `nros-rmw-*` dep (native), or the `nros-c`/`nros-cpp` staticlib root (D3),
-//! and self-registers through the ~~`RMW_INIT_ENTRIES`~~ walker at `Executor::open`.
+//! and self-registers — before `main` on a hosted target (an `.init_array`
+//! ctor, phase-249 P4b.1; the ~~`RMW_INIT_ENTRIES`~~ walker at `Executor::open`
+//! before that), or through the board's explicit `<backend>::register()`.
 //! The concrete session type is resolved automatically; advanced users can
 //! access it via `nros::internals::RmwSession`.
 //!
@@ -100,7 +102,8 @@
 // by the board / staticlib root via an `nros-platform` dep, and nros-node picks
 // the kernel primitive at runtime (C2 wake-probe).
 // Only `rmw-cffi` is exposed at this layer; the cffi shim selects the
-// concrete backend at the C ABI level via the ~~`RMW_INIT_ENTRIES`~~ walker.
+// concrete backend at the C ABI level from its registry (filled by each
+// backend's self-registration; the ~~`RMW_INIT_ENTRIES`~~ walker once).
 
 // At most one ROS edition (RFC-0056 — the axis is compile-time exclusive).
 #[cfg(any(
@@ -143,7 +146,8 @@ extern crate self as nros;
 // Phase 249 P1 — `__register_linked_rmw()` (a Phase 248 C5c no-op kept only so the
 // `nros::main!` framework's call sites compiled) is REMOVED along with those call
 // sites. Backend registration never routed through the backend-agnostic `nros` crate:
-// hosted auto-registers via the ~~`RMW_INIT_ENTRIES`~~ walk at `Executor::open`; embedded
+// hosted auto-registers before `main` (an `.init_array` ctor, phase-249 P4b.1; the
+// ~~`RMW_INIT_ENTRIES`~~ walk at `Executor::open` before that); embedded
 // boards perform the explicit `<backend>::register()` in their boot path (C5a). One
 // Rust trigger = the board/app explicit register (phase-249).
 

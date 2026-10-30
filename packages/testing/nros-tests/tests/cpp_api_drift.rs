@@ -11,8 +11,8 @@
 //!     `cpp_compat_snippets/*.cpp` fixtures are `c++ -fsyntax-only`'d by
 //!     `compile-check-fixtures.sh` (run by `build-test-fixtures`), which stamps
 //!     `.compile-ok`. The tests assert the stamps, and a missing stamp is a
-//!     FAILURE in the full tier (`[SKIPPED]` only under
-//!     ~~`NROS_FIXTURES_OPTIONAL=1`~~) — see `assert_snippet_compiled`. The build
+//!     FAILURE in every run (issue 1758; it was `[SKIPPED]` under
+//!     ~~`NROS_FIXTURES_OPTIONAL=1`~~ before) — see `assert_snippet_compiled`. The build
 //!     stage still does not block `build-test-fixtures` on a snippet that will
 //!     not compile; reporting it is this file's job, and until issue 1032 it
 //!     was not being done.
@@ -120,8 +120,9 @@ fn examples_cpp_have_no_retired_symbols() {
 /// three months.
 ///
 /// `?` rather than a bare `assert!`, because the tier policy the old code threw
-/// away already lives in `require_compile_check`: hard-fail in the full tier,
-/// `[SKIPPED]` under ~~`NROS_FIXTURES_OPTIONAL=1`~~. This restores that policy
+/// away already lives in `require_compile_check`: a hard failure in every run
+/// (issue 1758; `[SKIPPED]` under ~~`NROS_FIXTURES_OPTIONAL=1`~~ before). This
+/// restores that policy
 /// instead of writing a second one — the sibling consumer
 /// (`platform_header_compile.rs`) has always done it this way.
 fn assert_snippet_compiled(id: &str) -> TestResult<()> {

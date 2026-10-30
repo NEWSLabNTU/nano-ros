@@ -22,9 +22,9 @@
 //!    liveliness token that matches this subscription's topic. Nothing we do
 //!    to our own entity changes it.
 //! 2. The token is written by `rmw_zenoh_cpp` and matched by our wildcard
-//!    (`Ros2Liveliness::publisher_keyexpr_wildcard`). The tree's only existing
-//!    check of that wildcard — `shim/mod.rs`, ~~`wildcard_matches_any_entity_id`~~
-//!    and friends — matches it against a keyexpr **our own builder produced**.
+//!    (`Ros2Liveliness::publisher_keyexpr_wildcard`). The tree's only check
+//!    of that wildcard was `shim/mod.rs`'s ~~`wildcard_matches_any_entity_id`~~
+//!    and friends, which matched it against a keyexpr **our own builder produced**.
 //!    That is precisely the shape of check that was green throughout issue
 //!    0903, where twelve `produced`, mutation-tested, parity-clean graph slots
 //!    did not work at all.

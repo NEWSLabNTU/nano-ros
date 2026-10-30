@@ -393,24 +393,20 @@ pub unsafe extern "C" fn rclc_support_init_rmw(
         support.locator_len = bytes.len();
     }
 
-    // Phase 128.C.2 — RMW-blind support init. Every linked backend
-    // self-registers via the ~~`RMW_INIT_ENTRIES`~~ linker section
-    // (linkme on the Rust side, `NROS_RMW_REGISTER_BACKEND` macro on
-    // the C/C++ side). The walker fires inside the matching
-    // `nros::internals::open_session` / `Executor::open` call below;
-    // the prior `nros_app_register_backends()` weak/strong dance and
-    // the legacy `cffi-xrce-c` hook are no longer needed.
+    // RMW-blind support init. On a hosted target every linked backend
+    // self-registers before `main` (an `.init_array` ctor from
+    // `nros_rmw_register_backend!` / the `NROS_RMW_REGISTER_BACKEND`
+    // macro, phase-249 P4b.1). Phase 128.C.2 had a linkme slice,
+    // ~~`RMW_INIT_ENTRIES`~~, walked at session open, and dropped this
+    // explicit call on that basis.
     //
-    // Phase 155.B.4 — Phase 128.C.2's "no longer needed" assumption
-    // doesn't hold on RTOS targets `linkme` doesn't recognise:
-    // FreeRTOS, NuttX, Zephyr, ESP-IDF all silently skip the
-    // distributed-slice entry, so ~~`walk_init_section`~~ finds zero
-    // backends and `get_vtable()` returns
-    // `TransportError::InvalidArgument` (registry empty). The
-    // sibling `nros_cpp_init` still calls
-    // `nros_app_register_backends()` explicitly for this exact
-    // reason. Mirror that here so the C-API path works on the
-    // same RTOSes.
+    // Phase 155.B.4 — that did not hold on RTOS targets: FreeRTOS, NuttX,
+    // Zephyr and ESP-IDF skipped the slice entry, so the walker
+    // (~~`walk_init_section`~~) found zero backends and `get_vtable()`
+    // returned `TransportError::InvalidArgument` (registry empty), and an
+    // RTOS has no loader ctor today either. The sibling `nros_cpp_init`
+    // calls `nros_app_register_backends()` explicitly for this reason;
+    // this mirrors it so the C-API path works on the same RTOSes.
     #[cfg(feature = "rmw-cffi")]
     {
         unsafe extern "C" {

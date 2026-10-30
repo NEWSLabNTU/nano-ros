@@ -9,7 +9,8 @@
 //! - `NROS_PLATFORM_ZEPHYR` - Zephyr RTOS
 //! - `NROS_PLATFORM_FREERTOS` - FreeRTOS
 //! - `NROS_PLATFORM_BAREMETAL` - Bare-metal (user provides time/sleep)
-//! - ~~`NROS_PLATFORM_CUSTOM`~~ - User provides all functions
+//!
+//! (The user-provided arm, ~~`NROS_PLATFORM_CUSTOM`~~, is gone.)
 
 // ============================================================================
 // FFI Declarations (for no_std)

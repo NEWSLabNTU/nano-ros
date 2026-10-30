@@ -24,9 +24,10 @@
 // the expected-failure probe `bind_timer_deprecation_probe.cpp`, which is where
 // a `-Werror=deprecated-declarations` build belongs.
 //
-// Compiled c++17 rather than c++14 because `ComponentNode` is the tree's one
-// `if constexpr` user (~~`adopt_launch_seed_`~~), which is the C++17 floor
-// `check-cxx-standard-floor` records.
+// Compiled c++17 rather than c++14 because `ComponentNode` was the tree's one
+// `if constexpr` user (through ~~`adopt_launch_seed_`~~), which is the C++17
+// floor `check-cxx-standard-floor` records. No `if constexpr` is left in the
+// headers, so that reason no longer holds.
 
 #include <rclcpp/rclcpp.hpp>
 

@@ -14,10 +14,10 @@
  *      empty-expansion macro the user's TU may carry as a doc / IDE
  *      hint. Declarative only; cmake fn drives codegen.
  *
- *   2. ~~`nros_board_native_run(nros_node_register_fn entry)`~~ — the
- *      C-FFI Board adapter the generated TU calls. Owns the
- *      `rclcpp::init_in() → entry(context) → rclcpp::spin_in() →
- *      rclcpp::shutdown_in()` lifecycle.
+ *   2. the typed C Entry lifecycle the generated TU calls —
+ *      `nros_board_rtos_run_components` and the per-RTOS
+ *      `nros_board_<rtos>_run_tiers` (Phase 257 retired the
+ *      ~~`nros_board_native_run(nros_node_register_fn entry)`~~ adapter).
  *
  * Phase 212.L.2 keeps Entry pkgs `native`-only at the cmake surface
  * for v1.

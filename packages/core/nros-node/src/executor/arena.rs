@@ -1180,8 +1180,9 @@ mod arena_model_tests {
     ///
     /// The direction that shipped the bug is the other one, and it has no
     /// TOTAL assertion available here: a slot priced BELOW `RX_BUF` is correct
-    /// for a ~~`c_typed_hint`~~ or ~~`rust_typed_descriptors`~~ registration and 1,848
-    /// bytes per subscription short for the other two, and which one this image
+    /// for a `TypedBound` registration (once ~~`c_typed_hint`~~ /
+    /// ~~`rust_typed_descriptors`~~) and 1,848 bytes per subscription short for
+    /// an `Unbounded` one, and which one this image
     /// takes is composed from the entry's language and the linked backend —
     /// neither of which the runtime can read out of a `cfg`. That is why the
     /// fact travels in the sizing descriptor and the check is on the DERIVATION
@@ -2353,7 +2354,8 @@ pub(crate) unsafe fn sub_buffered_raw_safety_c_has_data(ptr: *const u8) -> bool 
 /// Buffered subscription entry for C-style raw callbacks (function pointer + context).
 ///
 /// Same as `SubBufferedRawEntry` but uses `RawSubscriptionCallback` instead of
-/// a Rust closure. Used by the C API and by ~~`register_subscription_raw_*`~~ methods.
+/// a Rust closure. Used by the C API and by the `register_subscription_buffered_raw_*`
+/// methods.
 ///
 /// # Where the caller's capture went — phase-456 W8
 ///

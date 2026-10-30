@@ -586,8 +586,8 @@ impl<'s> Executor<'s> {
 /// Phase 128.F.1 — per-backend session declaration for
 /// [`Executor::open_multi`]. Each spec names an RMW backend (must
 /// match one a backend registered under via
-/// `nros_rmw_cffi_register_named` / the ~~`RMW_INIT_ENTRIES`~~ linker
-/// section) and the locator + domain id to open against it.
+/// `nros_rmw_cffi_register_named`, which its self-registration calls) and
+/// the locator + domain id to open against it.
 #[cfg(feature = "rmw-cffi")]
 #[derive(Clone, Copy)]
 pub struct SessionSpec<'cfg> {
@@ -1230,9 +1230,10 @@ impl WakeCtx {
 /// RT-context contract:
 ///
 /// * **Thread-safe**: callable from any thread. The cb is lock-free
-///   on the cv path — no mutex held during `notify_all`. Lost-wakeup
-///   is prevented by the waiter checking `wake_flag` under
-///   ~~`wake_mu`~~ via the `wait_timeout_while` predicate.
+///   — it sets `wake_flag` and signals the executor's `NodeWake`, a
+///   binary semaphore, which holds a signal sent before the waiter
+///   blocks, so no wakeup is lost. (A condvar pair guarded it before
+///   phase-359 W10: the waiter checked `wake_flag` under ~~`wake_mu`~~.)
 /// * **NOT async-signal-safe on POSIX**: `pthread_cond_signal`
 ///   isn't on the POSIX async-signal-safe function list. For POSIX
 ///   signal handler wake, use a `signalfd` + select pattern in a
@@ -1928,7 +1929,7 @@ pub struct Executor<'s> {
     pub(crate) major_frame_us: u32,
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
-    /// Node name for entities created via ~~`register_subscription`~~/`register_service`.
+    /// Node name for entities the executor registers on the node's behalf.
     /// Empty means unset — no liveliness tokens will be declared.
     pub(crate) node_name: heapless::String<64>,
     /// Phase 228.C — per-tier callback-group filter. Wildcard (register every
@@ -2119,10 +2120,11 @@ pub struct Executor<'s> {
     pub(crate) wake_flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     /// Phase 124.B.2 — wake condvar paired with `wake_flag`. The
     /// runtime-supplied wake callback (`nros_rmw_runtime_wake_cb` in
-    /// nros-rmw-cffi) writes `wake_flag = true` AND signals
-    /// ~~`wake_cv`~~ atomically under ~~`wake_mu`~~. `spin_once` blocks on
-    /// the cv with a deadline instead of calling `drive_io` with the
-    /// user's timeout — sub-poll-period wake latency.
+    /// nros-rmw-cffi) writes `wake_flag = true` AND signals the executor's
+    /// `NodeWake` (a condvar pair, ~~`wake_cv`~~ / ~~`wake_mu`~~, before
+    /// phase-359 W10). `spin_once` blocks on it with a deadline instead of
+    /// calling `drive_io` with the user's timeout — sub-poll-period wake
+    /// latency.
     ///
     /// Poll-only backends (NULL `set_wake_callback` slot) leave the
     /// cb uninstalled; the cv wait still fires on its deadline,
@@ -2933,7 +2935,7 @@ pub type NextDeadlineFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> u
 /// work: `nros-baremetal-common`'s own note says `wfi` with no pending
 /// interrupt deadlocks, so a board must arm a timer compare BEFORE waiting.
 /// A `sleep(duration)` seam cannot express that — the sleeper does not know
-/// whether anyone armed an interrupt. ~~`park_until(deadline)`~~ does, because the
+/// whether anyone armed an interrupt. A `ParkUntilFn` does, because the
 /// deadline is exactly what the compare is armed to.
 pub type ParkUntilFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void, deadline_us: u64) -> i8;
 
@@ -3161,8 +3163,8 @@ impl<'s> Executor<'s> {
 
     /// Set the node name and namespace used for liveliness tokens.
     ///
-    /// Called by `open()` to propagate config values. When ~~`register_subscription`~~
-    /// or `register_service` creates entities, these values are attached to the
+    /// Called by `open()` to propagate config values. When the executor
+    /// creates entities, these values are attached to the
     /// Phase 156 — record the primary session's backend identity
     /// (rmw name + locator) so `NodeBuilder::resolve_session_slot`
     /// can detect when a `.rmw(name)` matches the primary instead
@@ -6169,7 +6171,7 @@ impl<'s> Executor<'s> {
     /// Returns a Linux `eventfd` that callers (typically POSIX
     /// signal handlers) can `write(fd, &1u64, 8)` to from any
     /// context, including signal handlers. A runtime-owned worker
-    /// thread reads the fd and signals ~~`wake_cv`~~, unblocking
+    /// thread reads the fd and signals the executor's `NodeWake`, unblocking
     /// `spin_once`.
     ///
     /// The worker thread is spawned lazily on first call and
@@ -9163,7 +9165,7 @@ impl<'s> Executor<'s> {
     ///   the example.
     ///
     /// The arena-store + vtable wiring is identical to
-    /// ~~`register_subscription_buffered_raw`~~; the only thing that varies is
+    /// `register_subscription_buffered_raw_on`; the only thing that varies is
     /// where the handle came from. Callback fires on every message
     /// delivery during [`spin_once`](Self::spin_once); bytes are
     /// passed as `&[u8]`.
@@ -13125,7 +13127,7 @@ impl<'s> Executor<'s> {
         // waiting HERE, on the bound every source agreed on, and the transport
         // is then drained non-blockingly.
         //
-        // This is the path bare metal needs: ~~`park_until(deadline)`~~ can arm a
+        // This is the path bare metal needs: a `ParkUntilFn` can arm a
         // timer compare before `wfi`, which `sleep(duration)` cannot express —
         // and `nros-baremetal-common` notes that `wfi` with no pending
         // interrupt deadlocks, so arming first is not optional there.
@@ -16569,8 +16571,8 @@ impl<'s> Executor<'s> {
 }
 
 /// Phase 110.E.b — opaque per-platform timer handle. Stores the
-/// raw platform handle (POSIX `timer_t` boxed via ~~`PosixTimerHandle`~~,
-/// FreeRTOS `TimerHandle_t`, etc.) plus a destroy thunk so the
+/// raw platform handle (a boxed POSIX `timer_t`, FreeRTOS `TimerHandle_t`,
+/// etc.) plus a destroy thunk so the
 /// Executor can clean up without being generic over the platform.
 ///
 /// Caller of `register_sporadic_timer` builds this via

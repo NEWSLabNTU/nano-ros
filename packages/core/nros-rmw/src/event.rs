@@ -6,9 +6,9 @@
 //! not via upstream's waitset-take pattern.
 //!
 //! Events fire from inside [`Session::drive_io`](crate::Session::drive_io)
-//! on the executor thread, the same as message callbacks. They count
-//! against the executor's ~~`max_callbacks_per_spin`~~ cap (Phase 105) the
-//! same way.
+//! on the executor thread, the same as message callbacks. (Phase 105 counted
+//! both against a per-spin cap, ~~`max_callbacks_per_spin`~~; the executor has
+//! no such cap now.)
 //!
 //! See `book/src/concepts/status-events.md` for the user-facing
 //! patterns and `book/src/design/rmw-vs-upstream.md` Section 8 for

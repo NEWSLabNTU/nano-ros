@@ -244,7 +244,7 @@ fn xrce_bridge_and_px4_uxrce_dds_client_share_one_image() {
     // PX4 SITL instance 0's server socket is HOST-global (`/tmp/px4-sock-0`).
     // A daemon another process left there makes this boot print `PX4 server
     // already running for instance 0` and exit, which `boot_in` reports as an
-    // anonymous ~~`BootTimeout`~~ — measured while a second session ran a SITL test
+    // anonymous `BootTimeout` — measured while a second session ran a SITL test
     // on this host. Name it instead.
     #[cfg(unix)]
     assert!(

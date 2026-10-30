@@ -223,7 +223,7 @@ fn multi_node_workspace_cpp_typed_pubsub_e2e(
 ///     appeared.
 ///
 /// Single-node coverage: ~~`test_discovery_node_visible`~~ in `rmw_interop.rs`
-/// already asserts a single-node talker entry shows `/talker` (gate keep-primary
+/// asserted a single-node talker entry shows `/talker` (gate keep-primary
 /// branch); no new test needed here.
 #[rstest::rstest]
 fn multi_node_workspace_cpp_per_node_graph_nodes(

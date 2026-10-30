@@ -175,7 +175,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 21;
 /// `rclc_subscription_init_best_effort`, whose body forwards to
 /// `rclc_subscription_init_with_qos` and lost the two `NULL`s that function no
 /// longer takes. Generated C does not call either: a message header's typed
-/// registration is ~~`rclc_executor_add_subscription_typed_sized`~~, whose
+/// registration was ~~`rclc_executor_add_subscription_typed_sized`~~, whose
 /// signature is unchanged, and it passes `struct rcl_subscription_t *`, whose
 /// layout shrank but which generated code never dereferences. A version-10
 /// tree therefore still compiles and runs.
@@ -276,9 +276,9 @@ pub const NROS_CODEGEN_VERSION_MIN: u32 = 18;
 
 /// Does `emitted` fall in the range this runtime accepts?
 ///
-/// The ONE comparison. Rust call sites reach it through
-/// ~~`nros_node::codegen_version_check`~~, the CLI through `abi_guard`; neither
-/// re-spells the bounds.
+/// The ONE comparison. The CLI reaches it through `abi_guard`, which does not
+/// re-spell the bounds; the runtime's Rust call site,
+/// ~~`nros_node::codegen_version_check`~~, is gone.
 #[must_use]
 pub const fn accepts(emitted: u32) -> bool {
     emitted >= NROS_CODEGEN_VERSION_MIN && emitted <= NROS_CODEGEN_VERSION

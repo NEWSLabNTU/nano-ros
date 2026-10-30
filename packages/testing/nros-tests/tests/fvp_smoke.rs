@@ -2,8 +2,8 @@
 //! surface.
 //!
 //! This is the canonical "is the board crate import surface healthy?"
-//! gate (215.G.2). Unlike ~~`phase217_c_fvp_runtime`~~ (which drives an
-//! example carve-out talker), this test exercises the minimal
+//! gate (215.G.2). Unlike the retired ~~`phase217_c_fvp_runtime`~~ (which
+//! drove an example carve-out talker), this test exercises the minimal
 //! ASI-shaped fixture at
 //! `packages/testing/nros-tests/fixtures/board_import_fvp/` — whose
 //! `CMakeLists.txt` carries ONLY `nano_ros_use_board(fvp-aemv8r-smp)`

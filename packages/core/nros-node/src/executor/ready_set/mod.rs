@@ -269,7 +269,8 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
 }
 
 // =============================================================================
-// Phase 110.C — ~~`BucketedFifoSet<NB, N>`~~ + `BucketedEdfSet<NB, N>`
+// Phase 110.C — `BucketedEdfSet<NB, N>`, and its FIFO twin (~~`BucketedFifoSet<NB, N>`~~,
+// now `RankedFifoSet`)
 // =============================================================================
 //
 // Splits a ready set across `NB` priority buckets (defaults to 3:

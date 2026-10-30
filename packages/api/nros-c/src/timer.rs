@@ -1024,7 +1024,7 @@ pub unsafe extern "C" fn rcl_timer_exchange_period(
 /// * `RCL_RET_NOT_INIT` if the timer is uninitialised, finalised, or not
 ///   registered with an executor — nothing is advancing its clock, so it has no
 ///   next call rather than a next call of zero
-/// * whatever ~~`rclc_clock_get_now_ns`~~ reports for a timer whose attached clock
+/// * whatever `rcl_clock_get_now` reports for a timer whose attached clock
 ///   is not readable
 ///
 /// # Safety

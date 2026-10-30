@@ -70,7 +70,7 @@ pub enum SchedClass {
 }
 
 /// Criticality bucket for [`SchedContext`]. Phase 110.C uses this to
-/// pick which ~~`BucketedFifoSet`~~ / `BucketedEdfSet` slot a callback
+/// pick which `RankedFifoSet` / `BucketedEdfSet` slot a callback
 /// dispatches through; later phases (110.D) map it to OS priority.
 ///
 /// Default `Normal` keeps existing single-bucket workloads unchanged

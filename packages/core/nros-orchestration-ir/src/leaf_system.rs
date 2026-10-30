@@ -316,9 +316,10 @@ pub struct LeafSystem {
     /// resolved model states them; a standalone leaf has no model, so it states
     /// them here, in the file it already states everything else in.
     ///
-    /// ABSENT MEANS NONE, exactly as it does for a bringup —
-    /// ~~`cmd::entity_facts::declared_infra`~~ reads an empty `execution.features`
-    /// as `"none"` for every model in this tree. The claim is worth exactly as
+    /// ABSENT MEANS NONE, exactly as it does for a bringup — the CLI's
+    /// `InfraServices::from_features` reads an empty `execution.features` as no
+    /// service families for every model in this tree (the retired
+    /// ~~`cmd::entity_facts::declared_infra`~~ read it as `"none"`). The claim is worth exactly as
     /// much as the `entities` declaration beside it, which is why it is read
     /// only where that declaration exists.
     pub features: Vec<String>,

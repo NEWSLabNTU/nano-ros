@@ -72,8 +72,8 @@ use rstest::rstest;
 const TOPIC: &str = "/chatter";
 const MSG_TYPE: &str = "std_msgs/msg/String";
 
-/// Resolve the prebuilt native Cyclone C listener. Mirrors
-/// ~~`cyclonedds_ros2_interop::nano_cyclone_c_binary`~~.
+/// Resolve the prebuilt native Cyclone C listener — the same resolution as
+/// `declarative_bridge_zenoh_to_cyclonedds.rs`'s `nano_cyclone_listener`.
 ///
 /// HARD FAILURE, not a skip — issue 1124; see the module note above.
 fn nano_cyclone_listener() -> PathBuf {

@@ -257,7 +257,7 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
 /// set, not at this name.
 ///
 /// The callback is an EDGE and carries nothing. "What changed" is answered by
-/// re-reading the graph (~~`nros_node_get_names`~~, `rcl_count_publishers`, …);
+/// re-reading the graph (`rclc_executor_get_node_names`, `rcl_count_publishers`, …);
 /// delivering a diff would mean buffering the graph, which is the cache a
 /// small target cannot afford, and the ABI slot has said so since phase-376
 /// W4.

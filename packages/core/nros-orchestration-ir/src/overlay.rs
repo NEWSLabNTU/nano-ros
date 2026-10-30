@@ -14,8 +14,10 @@
 //! W1 is ADDITIVE: producers write the overlay and nothing reads it yet. Its
 //! content is exactly what rlm's `apply_to_launch` projects into the model
 //! (`execution.features`) and what `lifecycle_autostart()` returns, which
-//! ~~`overlay_agrees_with_the_model_projection`~~ in nros-cli-core asserts for
-//! every tracked `system.toml` — the safety net for W3, where the readers move.
+//! ~~`overlay_agrees_with_the_model_projection`~~ in nros-cli-core asserted for
+//! every tracked `system.toml` — the safety net for W3, where the readers
+//! moved. Its successor is `system_toml_readers_agree.rs`'s
+//! `the_model_carries_no_switch_and_the_overlay_carries_every_bringups`.
 //!
 //! No overlay content ⇒ no file, and a stale one is deleted (RFC-0100's
 //! 2026-10-10 rule, and the PR #1830 lesson: a reader acts on whatever file
@@ -43,7 +45,8 @@ pub struct Overlay {
     pub lifecycle_autostart: Option<String>,
     /// phase-486 W2 — per-image switches ADDED over [`Self::features`]:
     /// `[image_defaults] features` then `[image.<id>] features`, the same
-    /// base-then-specific concatenation ~~`ImageBlock::merged_over`~~ applies.
+    /// base-then-specific concatenation the retired ~~`ImageBlock::merged_over`~~
+    /// applied.
     /// Only images that add something appear.
     pub images: BTreeMap<String, Vec<String>>,
     /// Issue 2019 -- `[[component]] stack_bytes`: the stack each component's

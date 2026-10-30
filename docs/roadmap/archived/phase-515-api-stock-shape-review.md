@@ -268,12 +268,18 @@ references to 1,430 names. The scope widened one area per pull request and
 now covers both trees; it was a list of directories already swept, never a
 baseline.
 
-**Left open:** where a sweep could not cheaply tell what replaced a gone
-name, it struck the name and left the sentence alone, so some comments still
-say something in the present tense about a struck name ("Drives
-~~`NROS_FEATURE_THREADS`~~"). The gate is satisfied by those — the name is
-marked gone — but the prose around them still wants a rewrite; grep `~~\``
-to find them.
+**Prose pass (2026-10-30).** Where a sweep could not cheaply tell what
+replaced a gone name, it struck the name and left the sentence alone, so
+comments said something in the present tense about a struck name ("Drives
+~~`NROS_FEATURE_THREADS`~~"). The gate cannot see that — the name is marked
+gone. A follow-up pass read every struck hit with its neighbouring lines
+(two pull requests: cli/rmw/small areas, then core/testing/api) and either
+named the successor, un-struck, or moved the sentence to the past tense. It
+also found five names struck by mistake — live in play_launch, px4-rs or
+Micro-CDR — un-struck and listed foreign, and recorded issue 2153 (a plan's
+`[build.cc]` override parses and changes no build). The gate still cannot
+tell tense, so a new struck name can bring the shape back; review is the
+check.
 
 | Pull request | Scope added | Findings | Struck | Foreign names | Renamed or reworded |
 | --- | --- | --- | --- | --- | --- |

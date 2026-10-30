@@ -5377,8 +5377,10 @@ rcl_ret_t rclc_action_server_fini(rclc_action_server_t *action_server,
  * * `rclc_polling_action_server_publish_feedback_raw` — push feedback.
  * * `rclc_polling_action_server_complete_goal_raw` — terminate (SUCCEEDED /
  *   ABORTED / CANCELED).
- * * ~~`nros_polling_action_server_try_handle_cancel_raw`~~ /
- *   `_try_handle_get_result_raw` — service cancel / get_result RPCs.
+ * * `rclc_polling_action_server_try_recv_cancel_request_raw` /
+ *   `_send_cancel_reply_raw` — the cancel RPC (once
+ *   ~~`nros_polling_action_server_try_handle_cancel_raw`~~).
+ * * `rclc_polling_action_server_try_handle_get_result_raw` — the get_result RPC.
  *
  * # Safety
  * All pointers must be valid; `action_name` must be a valid
@@ -5460,7 +5462,7 @@ int32_t rclc_polling_action_server_try_recv_goal_request_raw(struct rclc_polling
 
 /**
  * Phase 122.3.c.6.b — L1 polling: accept a goal received via
- * ~~`try_recv_goal_request_raw`~~.
+ * `rclc_polling_action_server_try_recv_goal_request_raw`.
  */
 NROS_PUBLIC
 rcl_ret_t rclc_polling_action_server_accept_goal_raw(struct rclc_polling_action_server_t *server,
@@ -5469,7 +5471,7 @@ rcl_ret_t rclc_polling_action_server_accept_goal_raw(struct rclc_polling_action_
 
 /**
  * Phase 122.3.c.6.b — L1 polling: reject a goal received via
- * ~~`try_recv_goal_request_raw`~~.
+ * `rclc_polling_action_server_try_recv_goal_request_raw`.
  */
 NROS_PUBLIC
 rcl_ret_t rclc_polling_action_server_reject_goal_raw(struct rclc_polling_action_server_t *server,
@@ -7397,7 +7399,7 @@ rcl_ret_t rclc_node_create_guard_condition(struct rcl_node_t *node,
  * set, not at this name.
  *
  * The callback is an EDGE and carries nothing. "What changed" is answered by
- * re-reading the graph (~~`nros_node_get_names`~~, `rcl_count_publishers`, …);
+ * re-reading the graph (`rclc_executor_get_node_names`, `rcl_count_publishers`, …);
  * delivering a diff would mean buffering the graph, which is the cache a
  * small target cannot afford, and the ABI slot has said so since phase-376
  * W4.
@@ -8084,9 +8086,10 @@ NROS_PUBLIC const char *rclc_node_get_rmw_implementation_identifier(const struct
  * Phase 88.12 — return the `nros::Logger` keyed on this node's name.
  *
  * The returned handle is opaque from the C side; pass it to
- * ~~`nros_log_info(...)`~~ / ~~`nros_log_warn(...)`~~ / etc. (declared in
- * `<rclc/log.h>`). The lifetime is `'static` — loggers live for the
- * process; callers must NOT free the returned pointer.
+ * `RCLC_LOG_INFO(...)` / `RCLC_LOG_WARN(...)` / etc. (declared in
+ * `<rclc/log.h>`; ~~`nros_log_info(...)`~~ before). The lifetime is
+ * `'static` — loggers live for the process; callers must NOT free the
+ * returned pointer.
  *
  * # Parameters
  * * `node` - Pointer to an initialized node.
@@ -8465,7 +8468,7 @@ rcl_ret_t rcl_publish(const struct rcl_publisher_t *publisher,
  *   produced. This line used to name a ~~`NROS_RET_`~~-prefixed
  *   `BUFFER_TOO_SMALL` (issue 1126): `rcl_ret_t` has never defined
  *   one — the constant is `NROS_RMW_RET_BUFFER_TOO_SMALL`, on the RMW ABI
- *   (~~`nros_rmw_ret_t`~~), and a C caller writing the documented comparison
+ *   (`rmw_ret_t`), and a C caller writing the documented comparison
  *   got an undeclared identifier with nothing pointing back here. The
  *   backend errors collapse to one code on the way out, so the two
  *   causes are NOT distinguishable by the caller; for this entry point
@@ -10870,7 +10873,7 @@ rcl_ret_t rcl_timer_exchange_period(const struct rcl_timer_t *timer,
  * * `RCL_RET_NOT_INIT` if the timer is uninitialised, finalised, or not
  *   registered with an executor — nothing is advancing its clock, so it has no
  *   next call rather than a next call of zero
- * * whatever ~~`rclc_clock_get_now_ns`~~ reports for a timer whose attached clock
+ * * whatever `rcl_clock_get_now` reports for a timer whose attached clock
  *   is not readable
  *
  * # Safety

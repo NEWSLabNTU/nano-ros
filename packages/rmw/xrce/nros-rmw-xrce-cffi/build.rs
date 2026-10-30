@@ -506,7 +506,7 @@ fn main() {
 // NROS-XRCE-VERSIONS-BEGIN
 /// The vendored tree's OWN statement of its version — issue 1069.
 ///
-/// ~~`MICROCDR_VERSION_STR`~~ compiled as `"2.0.2"` here and `"2.4.1"` under the
+/// `MICROCDR_VERSION_STR` compiled as `"2.0.2"` here and `"2.4.1"` under the
 /// CMake lane, for one tree that is 2.0.2: the versions were hand-restated in
 /// four places (both lanes, plus two `nros-sdk-index.toml` rows) and disagreed.
 /// Correcting the literals would have left the same four literals, so both

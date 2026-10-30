@@ -94,7 +94,7 @@ pub(crate) const STATUS_ARRAY_BUF: usize = 512;
 /// `GoalInfo` is a fixed `uint8[16]` (16 unaligned bytes) + `int32 sec` +
 /// `uint32 nanosec`, then `int8 status` — 25 bytes — and the NEXT entry's `sec`
 /// forces a 4-byte alignment pad, so the stride is 28. MEASURED against the
-/// real `CdrWriter` by ~~`test_status_array_entry_layout_is_measured`~~, not
+/// real `CdrWriter` by `status_array_entry_layout_is_measured`, not
 /// asserted from this comment: the const and the serializer have to agree or
 /// the compile-time bound below is checking the wrong number.
 pub(crate) const STATUS_ENTRY_STRIDE: usize = 28;

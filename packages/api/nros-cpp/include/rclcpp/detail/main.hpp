@@ -29,10 +29,11 @@
 //     Phase 215 `nano_ros_use_board(<name>)` import (board.cmake feeds
 //     the default RMW + `west` runner). cf. RFC-0032 §8a.
 //
-// Both adapters share the SAME ~~`detail::EntryNodeRuntime`~~ ops + arena —
-// only the boot lifecycle differs (init / network-wait / cooperative
-// yield). The op set is factored into ~~`detail::entry_register`~~ +
-// ~~`detail::entry_node_context_ops`~~ so neither board duplicates it.
+// Both adapters run the SAME real-executor loop (`detail::component_spin_loop`)
+// — only the boot lifecycle differs (init / network-wait / cooperative
+// yield). Until Phase 257 they shared the synthesizing
+// ~~`detail::EntryNodeRuntime`~~ instead, its op set factored into
+// ~~`detail::entry_register`~~ + ~~`detail::entry_node_context_ops`~~.
 
 #ifndef NROS_RCLCPP_DETAIL_MAIN_HPP
 #define NROS_RCLCPP_DETAIL_MAIN_HPP
@@ -146,7 +147,7 @@ inline void install_platform_park(void* executor) {
 }
 
 /// Phase 240.2 (RFC-0043) — the **real-executor** spin loop, shared by every
-/// Board's `run_components`. Unlike ~~`EntryNodeRuntime::spin`~~, it runs NO
+/// Board's `run_components`. Unlike the retired ~~`EntryNodeRuntime::spin`~~, it runs NO
 /// synthesizing interpreter: the user's components already registered their real
 /// callbacks on the executor during their `configure`, so this just pumps
 /// `spin_once` (which dispatches them) until `rclcpp::ok()` flips false, or for
@@ -317,7 +318,7 @@ class LinuxBoard {
     /// Phase 240.2 (RFC-0043) — real-executor entry. `setup` (invoked once after
     /// init, before the spin loop) constructs + `configure`s the user's
     /// component objects, which bind their real callbacks on the executor.
-    /// `setup` returns 0 on success. No ~~`EntryNodeRuntime`~~ / synthesis.
+    /// `setup` returns 0 on success. No synthesis (the retired ~~`EntryNodeRuntime`~~).
     /// Phase 266: delegates to the named overload with "node" (the unified default).
     template <typename Setup> static int32_t run_components(Setup&& setup) {
         return run_components("node", nullptr, static_cast<Setup&&>(setup));
@@ -403,8 +404,8 @@ class LinuxBoard {
 /// sibling to `LinuxBoard` (RFC-0032 §8a).
 ///
 /// **Board granularity decision (RFC-0032 §8a open item).** ONE
-/// metadata-driven `ZephyrBoard`, not per-board types (~~`FvpAemv8rBoard`~~,
-/// …). Everything that varies per board — the Zephyr `BOARD` id, the DTS
+/// metadata-driven `ZephyrBoard`, not per-board types (one for the FVP
+/// AEMv8-R, …). Everything that varies per board — the Zephyr `BOARD` id, the DTS
 /// overlay, the default RMW, the `west` runner — is already supplied by
 /// the Phase 215 `nano_ros_use_board(<name>)` cmake import + Kconfig at
 /// *build* time, so the C++ adapter has nothing board-specific left to
@@ -415,8 +416,8 @@ class LinuxBoard {
 /// Lifecycle (mirrors ASI `actuation_module/src/main.cpp`):
 ///   `rclcpp::init(domain) → network-wait → register_fn → spin → shutdown`.
 ///
-/// The runtime ops + arena are the **same** ~~`detail::EntryNodeRuntime`~~
-/// machinery `LinuxBoard` uses — only the lifecycle differs:
+/// It runs the **same** real-executor loop (`detail::component_spin_loop`)
+/// `LinuxBoard` uses — only the lifecycle differs:
 ///   * domain id is **compile-time** (Kconfig `CONFIG_NROS_*_DOMAIN_ID`),
 ///     never a runtime env (CLAUDE.md embedded domain-id rule);
 ///   * a `nros_board_network_wait()` hook runs before init so a board /
@@ -643,8 +644,8 @@ class ZephyrBoard {
 /// Zephyr `CONFIG_NET_CONFIG_AUTO_INIT` path — no explicit network wait is
 /// needed; the weak `nros_board_network_wait()` default no-op is correct.
 ///
-/// The runtime ops + arena are the **same** ~~`detail::EntryNodeRuntime`~~
-/// machinery `LinuxBoard` / `ZephyrBoard` use — only the lifecycle differs:
+/// It runs the **same** real-executor loop (`detail::component_spin_loop`)
+/// `LinuxBoard` / `ZephyrBoard` use — only the lifecycle differs:
 ///   * domain id is **compile-time** (`NROS_ENTRY_DOMAIN_ID`, fed from the
 ///     example's `nano_ros_deploy(DOMAIN_ID …)` → `CONFIG_NROS_DOMAIN_ID`),
 ///     never a runtime env (CLAUDE.md embedded domain-id rule);
@@ -826,7 +827,7 @@ class NuttxBoard {
 /// `startup.c::main` called `tx_kernel_enter()` and the app thread dispatches
 /// to the typed entry's `app_main`), and NetX Duo is already up — so
 /// `run_components` MUST NOT enter the kernel. It brings the nros runtime online
-/// and spins the real executor: ~~`network_wait`~~ (weak no-op — NetX is up at
+/// and spins the real executor: `nros_board_network_wait()` (weak no-op — NetX is up at
 /// boot) → `rclcpp::init` → `setup` (constructs the component + `configure(node)`
 /// binds real callbacks) → `detail::component_spin_loop` → `shutdown`.
 ///
@@ -903,7 +904,7 @@ class ThreadxBoard {
 /// log writer, and the zenoh-pico read/lease task config BEFORE dispatching to
 /// the typed entry's `app_main`). So the network is up and the kernel is
 /// running — `run_components` MUST NOT enter the kernel. It brings the nros
-/// runtime online and spins the real executor: ~~`network_wait`~~ (weak no-op — the
+/// runtime online and spins the real executor: `nros_board_network_wait()` (weak no-op — the
 /// startup task already waited on the netif) → `rclcpp::init` → `setup` (constructs
 /// the component + `configure(node)` binds real callbacks) →
 /// `detail::component_spin_loop` → `shutdown`.

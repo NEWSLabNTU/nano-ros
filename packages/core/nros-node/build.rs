@@ -271,8 +271,8 @@ fn subs_arena(
         // cmake hands a list over as `;`-separated; be liberal about `,` too.
         .split([';', ','])
         // The depth follows the LAST `=`, so a topic containing one does not
-        // shift the field -- the same rule ~~`_nros_qos_depth_env`~~ states in
-        // `cmake/NanoRosEntityFacts.cmake`.
+        // shift the field -- the same rule the retired ~~`_nros_qos_depth_env`~~
+        // stated in `cmake/NanoRosEntityFacts.cmake`.
         .filter_map(|t| t.rsplit_once('='))
         .filter_map(|(head, d)| {
             let (ty, topic) = head.split_once('|').unwrap_or((head, ""));
@@ -945,7 +945,7 @@ fn main() {
     // property of the declaration, and this lane cannot see it.
     //
     // SUBSCRIPTION-scoped and not the broad count, for the two reasons
-    // ~~`_nros_qos_depth_env`~~ states: the broad count spans kinds this number
+    // ~~`_nros_qos_depth_env`~~ stated (retired, issue 1655): the broad count spans kinds this number
     // does not price (issue 1227's measurement, 18 against 11), and since
     // phase-454 W2 a PUBLISHER's contract can move it -- so guarding a
     // subscription price on it would let a publisher declaration resize a
@@ -2014,7 +2014,7 @@ fn declared_qos_rows(
         }
         // `type|topic=depth`. The depth follows the LAST `=`, so a topic
         // containing one does not shift the field -- the same rule
-        // ~~`_nros_qos_depth_env`~~ states in `cmake/NanoRosEntityFacts.cmake` and
+        // ~~`_nros_qos_depth_env`~~ stated in `cmake/NanoRosEntityFacts.cmake` and
         // `subs_arena` follows above.
         let malformed = || -> ! {
             panic!(
@@ -2162,7 +2162,8 @@ struct DeclaredRow {
 /// The same mapping `nros_cli_core::entity_inventory::dds_type_name` applies
 /// when it renders the C/C++ header. Two implementations of one mapping is a
 /// drift surface; this one exists because a build script cannot depend on the
-/// CLI, and ~~`declared_qos::rows_carry_both_spellings`~~ pins the shape.
+/// CLI. ~~`declared_qos::rows_carry_both_spellings`~~ pinned the shape; nothing
+/// pins it now.
 fn dds_type_name(ros: &str) -> String {
     let parts: Vec<&str> = ros.split('/').collect();
     if parts.len() != 3 || parts.iter().any(|p| p.is_empty()) {

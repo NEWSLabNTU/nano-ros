@@ -5,8 +5,8 @@
  * @file node_parameters.hpp
  * @ingroup grp_parameter
  * @brief `rclcpp::detail::node_param_*` — typed forwarders from a C++ node onto
- *        the executor's parameter store, across the ~~`nros_cpp_node_param_*`~~
- *        FFI.
+ *        the executor's parameter store, across the
+ *        `nros_cpp_node_declare_param_*` family of FFI calls.
  *
  * ## Why this header exists (phase-426 W4, RFC-0089)
  *

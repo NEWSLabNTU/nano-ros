@@ -1684,7 +1684,7 @@ pub struct GuardCondition {
     /// builds the executor sets this to `nros_rmw_runtime_wake_cb`
     /// with `ctx` pointing at the executor's WakeCtx. `trigger`
     /// invokes it after writing the arena flag so a `spin_once`
-    /// blocked on ~~`wake_cv`~~ resumes immediately (sub-poll wake
+    /// blocked on its `NodeWake` resumes immediately (sub-poll wake
     /// latency). Bare/no-std builds leave it `None` — the arena
     /// flag is observed on the next spin iteration as before.
     wake_cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,

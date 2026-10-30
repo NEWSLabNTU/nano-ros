@@ -51,7 +51,7 @@
 //!
 //! # Why the static tables below are not a second spelling of the descriptors
 //!
-//! They would be, if nothing compared them. ~~`plans_match_the_descriptors`~~ (in
+//! They would be, if nothing compared them. `priority_plan_projection_matches_the_descriptors` (in
 //! this module's tests) parses every `[board.priority_plan]` /
 //! `[priority_plan]` table in the tree and asserts this file agrees with it,
 //! so the descriptor stays the source and this table stays a projection of it.

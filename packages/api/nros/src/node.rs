@@ -2369,8 +2369,9 @@ pub trait ActionExecutor {
 /// stays `no_std` + free of the `rmw-cffi`-gated `Executor` type.
 ///
 /// Mirrors the sibling [`ActionExecutor`] (server-side ops). Splitting
-/// client vs server keeps each trait small + lets the codegen-side
-/// ~~`GenClientDispatch`~~ impl resolve client handles independently from
+/// client vs server keeps each trait small + lets an implementor (the
+/// single-node runtime's tick-side client dispatch; once the codegen-side
+/// ~~`GenClientDispatch`~~) resolve client handles independently from
 /// server handles.
 pub trait ClientDispatch {
     /// Issue a service-client request on `service_entity` carrying CDR
