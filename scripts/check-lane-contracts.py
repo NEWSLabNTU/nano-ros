@@ -884,10 +884,15 @@ _FN_DEF = re.compile(r"\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 
 
 def _fn_spans(stripped):
-    """{fn name: [(start, end)]} — the BODY span of every `fn` item in a file
-    whose comments and strings are already blanked, so a brace inside either
-    cannot unbalance the walk. Same-name fns in different modules each keep a
-    span; a trait declaration (`fn f();`) has none."""
+    """{fn name: [(start, end)]} — the span of every `fn` item in a file whose
+    comments and strings are already blanked, so a brace inside either cannot
+    unbalance the walk. Same-name fns in different modules each keep a span; a
+    trait declaration (`fn f();`) has none.
+
+    The span runs from the `fn` keyword, not from the body's `{`. Starting at
+    the body left every signature in the file-level text that EVERY test of the
+    file reaches, so a local `fn require_in_lane(…)` refused
+    `port_templates_e2e::cases_bound_to_matrix_cells`, which never calls it."""
     spans = {}
     for m in _FN_DEF.finditer(stripped):
         i = m.end()
@@ -905,7 +910,7 @@ def _fn_spans(stripped):
                 if depth == 0:
                     break
             j += 1
-        spans.setdefault(m.group(1), []).append((i, j + 1))
+        spans.setdefault(m.group(1), []).append((m.start(), j + 1))
     return spans
 
 
@@ -2033,6 +2038,15 @@ def selftest(verbose=False):
             "require_cmake_fixture" in resolvers_used("t_mixed::nowhere")[0])
         chk("a per-test row still sees file-level consts (stamp ids)",
             "stamp_xyz" in stamp_ids_used("t_mixed::tripwire"))
+        with open(os.path.join(td, "t_sig.rs"), "w", encoding="utf8") as fh:
+            fh.write(
+                'struct P;\nimpl P {\n    fn require_entry_binary(self) {}\n}\n'
+                '#[test]\nfn tripwire() { other(); }\nfn other() {}\n'
+                '#[test]\nfn live() { P.require_entry_binary(); }\n')
+        chk("a per-test row does not reach a local fn's SIGNATURE it never calls",
+            resolvers_used("t_sig::tripwire") == (set(), True))
+        chk("...but a body that calls that fn still bites",
+            "require_entry_binary" in resolvers_used("t_sig::live")[0])
 
         # issue 1656 — which rows an invocation BUILDS, per invocation. Ids are
         # REAL manifest rows, because the builder is read from the manifest.
