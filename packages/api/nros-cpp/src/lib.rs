@@ -8054,6 +8054,48 @@ pub unsafe extern "C" fn nros_cpp_scheduler_level_stack_bytes(
         .unwrap_or(0)
 }
 
+/// Issue 2144 (RFC-0112 D2.2, "Readiness out") — install the executor's one
+/// readiness notifier, or clear it with a NULL `notifier`.
+///
+/// `notifier(ctx)` is called whenever work arrives: a sample, request or reply
+/// on any of the executor's sessions, or a guard condition triggered from
+/// another thread. A host loop waits on it and then calls
+/// `nros_cpp_spin_some(handle, 0)`. Timers do not notify. Notifications
+/// coalesce, and work that arrived before the install is not replayed, so spin
+/// once after installing.
+///
+/// The notifier runs on the backend's wake context (a transport or worker
+/// thread, or a guard condition's triggering thread): it must be thread-safe,
+/// must not block and must not call back into the executor. `ctx` must stay
+/// valid until the notifier is replaced or cleared, or the executor is
+/// destroyed.
+///
+/// Returns `NROS_CPP_RET_UNSUPPORTED` from a poll-only backend (XRCE), which
+/// learns of an arrival only inside a spin; clearing never fails that way.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL;
+/// `notifier`/`ctx` must satisfy the contract above.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_ready_notifier(
+    handle: *mut c_void,
+    notifier: Option<unsafe extern "C" fn(ctx: *mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: the caller's contract, stated above, is the executor's.
+    match unsafe { cpp.executor.set_ready_notifier(notifier, ctx) } {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+            NROS_CPP_RET_UNSUPPORTED
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 /// phase-503 — microseconds from now to the earliest deadline of a pending
 /// supervised route (0 when one is due), written to `*out_us`;
 /// `UINT64_MAX` when no supervised route is waiting. A port supervising with

@@ -3363,6 +3363,34 @@ void *nros_cpp_scheduler_level_executor(void *scheduler, uint8_t level);
 size_t nros_cpp_scheduler_level_stack_bytes(void *scheduler, uint8_t level);
 
 /**
+ * Issue 2144 (RFC-0112 D2.2, "Readiness out") — install the executor's one
+ * readiness notifier, or clear it with a NULL `notifier`.
+ *
+ * `notifier(ctx)` is called whenever work arrives: a sample, request or reply
+ * on any of the executor's sessions, or a guard condition triggered from
+ * another thread. A host loop waits on it and then calls
+ * `nros_cpp_spin_some(handle, 0)`. Timers do not notify. Notifications
+ * coalesce, and work that arrived before the install is not replayed, so spin
+ * once after installing.
+ *
+ * The notifier runs on the backend's wake context (a transport or worker
+ * thread, or a guard condition's triggering thread): it must be thread-safe,
+ * must not block and must not call back into the executor. `ctx` must stay
+ * valid until the notifier is replaced or cleared, or the executor is
+ * destroyed.
+ *
+ * Returns `NROS_CPP_RET_UNSUPPORTED` from a poll-only backend (XRCE), which
+ * learns of an arrival only inside a spin; clearing never fails that way.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL;
+ * `notifier`/`ctx` must satisfy the contract above.
+ */
+nros_cpp_ret_t nros_cpp_executor_set_ready_notifier(void *handle,
+                                                    void (*notifier)(void *ctx),
+                                                    void *ctx);
+
+/**
  * phase-503 — microseconds from now to the earliest deadline of a pending
  * supervised route (0 when one is due), written to `*out_us`;
  * `UINT64_MAX` when no supervised route is waiting. A port supervising with

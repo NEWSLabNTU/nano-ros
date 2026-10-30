@@ -25,6 +25,11 @@
 //! than its publisher ends on the burst's NEWEST sample, and the samples the
 //! ring could not hold are counted.
 //!
+//! And the host-facing end (issue 2144, RFC-0112 D2.2 "Readiness out"): the
+//! executor's one readiness notifier fires for an arrival while NOTHING spins,
+//! and for a guard condition triggered from another thread, so a host loop can
+//! wait on it and spin only then.
+//!
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test entity_wake`.
 
 #![cfg(feature = "trigger-test")]
@@ -914,5 +919,115 @@ fn an_attributed_arrival_reaches_its_callback_without_waiting_out_the_park(
         median < Duration::from_millis(20),
         "median arrival-to-callback {median:?} with a {PARK:?} park: dispatch waited for the \
          park instead of the arrival's wake"
+    );
+}
+
+/// Issue 2144 -- the host's notifier: count calls into the `AtomicUsize` the
+/// context names.
+unsafe extern "C" fn count_ready(ctx: *mut core::ffi::c_void) {
+    // SAFETY: the test passes a leaked `AtomicUsize`.
+    unsafe { &*(ctx as *const std::sync::atomic::AtomicUsize) }
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Wait, WITHOUT spinning, until `counter` moves past `from`.
+fn wait_for_notification(counter: &std::sync::atomic::AtomicUsize, from: usize, what: &str) {
+    let start = Instant::now();
+    while counter.load(std::sync::atomic::Ordering::SeqCst) == from {
+        assert!(
+            start.elapsed() < ARRIVAL_BUDGET,
+            "no readiness notification within {ARRIVAL_BUDGET:?} of {what}, with nothing spinning"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Issue 2144 -- the host loop RFC-0112 D2 describes: install the notifier,
+/// wait on it with nothing spinning, then `spin_some(ZERO)` and find the work.
+#[rstest]
+fn the_ready_notifier_fires_with_nothing_spinning(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+
+    let mut exec = open(&locator, "ready_notifier", domain);
+    let node = exec.node_builder("ready_notifier").build().expect("node");
+    let received = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let received_cb = received.clone();
+    exec.node_mut(node)
+        .subscription("/ready_notifier/data")
+        .generic(TYPE, "")
+        .qos(QoSProfile::default())
+        .rx_buffer::<256>()
+        .build(move |_data: &[u8]| {
+            received_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .expect("register subscription");
+    let publisher = exec
+        .node_mut(node)
+        .create_publisher_raw("/ready_notifier/data", TYPE, "")
+        .expect("publisher");
+    let (_, guard) = exec
+        .node_mut(node)
+        .create_guard_condition(|| {})
+        .expect("guard condition");
+
+    assert!(
+        exec.ready_notifier_supported(),
+        "zenoh-pico's multi-threaded POSIX build wakes from its read task, so the notifier must \
+         be offered"
+    );
+    let counter: &'static std::sync::atomic::AtomicUsize =
+        Box::leak(Box::new(std::sync::atomic::AtomicUsize::new(0)));
+    let ctx = counter as *const std::sync::atomic::AtomicUsize as *mut core::ffi::c_void;
+    // SAFETY: `count_ready` is thread-safe and non-blocking, and `ctx` is
+    // leaked, so it outlives every call.
+    unsafe { exec.set_ready_notifier(Some(count_ready), ctx) }.expect("set_ready_notifier");
+    // Anything that arrived before the install is not replayed: drain it.
+    exec.spin_some(Duration::ZERO).expect("spin_some");
+
+    // 1. An arrival, with nothing spinning, notifies; the spin it prompts
+    //    finds the sample.
+    let start = Instant::now();
+    while received.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+        assert!(
+            start.elapsed() < ARRIVAL_BUDGET,
+            "notified, but no spin dispatched the sample within {ARRIVAL_BUDGET:?}"
+        );
+        let from = counter.load(std::sync::atomic::Ordering::SeqCst);
+        publisher.publish_serialized(PAYLOAD).expect("publish");
+        wait_for_notification(counter, from, "publishing");
+        exec.spin_some(Duration::ZERO).expect("spin_some");
+    }
+
+    // 2. A guard condition triggered from another thread notifies too. (Its
+    //    DISPATCH is not asserted: beside an idle subscription the default
+    //    `Trigger::Any` ignores a ready guard, issue 2162.) The
+    //    trigger calls the wake synchronously, so by the join the count has
+    //    moved. (Other traffic may move it as well, which is why this is not
+    //    a wait: a notification for something else would pass a wait.)
+    let from = counter.load(std::sync::atomic::Ordering::SeqCst);
+    let t = std::thread::spawn(move || guard.trigger());
+    t.join().unwrap();
+    assert!(
+        counter.load(std::sync::atomic::Ordering::SeqCst) > from,
+        "a guard condition triggered from another thread did not notify"
+    );
+
+    // 3. Cleared: arrivals still dispatch, and nothing calls the notifier.
+    // SAFETY: clearing takes no context.
+    unsafe { exec.set_ready_notifier(None, core::ptr::null_mut()) }.expect("clear");
+    let frozen = counter.load(std::sync::atomic::Ordering::SeqCst);
+    let before = received.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        spin_until(&mut exec, Some(&publisher), ARRIVAL_BUDGET, || {
+            received.load(std::sync::atomic::Ordering::SeqCst) > before
+        }),
+        "after clearing, an arrival no longer dispatched, so the frozen count proves nothing"
+    );
+    assert_eq!(
+        counter.load(std::sync::atomic::Ordering::SeqCst),
+        frozen,
+        "a cleared notifier was called"
     );
 }

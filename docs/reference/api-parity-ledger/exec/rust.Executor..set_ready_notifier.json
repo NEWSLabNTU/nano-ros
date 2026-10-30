@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_ready_notifier",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "see `c:executor_set_ready_notifier`. rclrs drives its executor from its own `spin` and has no readiness hook for a host loop. Beside it, `Executor::ready_fd()` (Linux, `signal-fd-wake`) offers the same moments as a readable eventfd."
+}

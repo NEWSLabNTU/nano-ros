@@ -2572,6 +2572,13 @@ typedef void (*rclc_event_subscription_incompatible_type_cb_t)(struct rcl_subscr
                                                                void *user_context);
 
 /**
+ * A readiness notifier: called with the context it was installed with
+ * whenever work arrives for the executor. See
+ * [`rclc_executor_set_ready_notifier`].
+ */
+typedef void (*rclc_executor_ready_notifier_t)(void *ctx);
+
+/**
  * phase-381 W4 — visit one node on the graph.
  *
  * `node_namespace` is a ROS namespace (`"/"`, `"/demo"`). `enclave` is NULL
@@ -5823,6 +5830,49 @@ rcl_ret_t rclc_executor_init(struct rclc_executor_t *executor,
 NROS_PUBLIC
 rcl_ret_t rclc_executor_set_timeout(struct rclc_executor_t *executor,
                                     uint64_t timeout_ns);
+
+/**
+ * Issue 2144 (RFC-0112 D2.2, "Readiness out") — install the executor's one
+ * readiness notifier, or clear it with a NULL `notifier`. A nano-ros
+ * extension; rclc has no such call.
+ *
+ * `notifier(ctx)` is called whenever work arrives for this executor: a
+ * sample, request or reply on its session, or a guard condition triggered
+ * from another thread. A host loop with its own event source (a GLib or Qt
+ * main loop, `epoll`, an RTOS task waiting on a semaphore) waits on it and
+ * then calls `rclc_executor_spin_some(executor, 0)`, instead of polling.
+ * Timers are not arrivals and do not notify, so the host also wakes for the
+ * executor's next timer.
+ *
+ * Notifications coalesce: one call may stand for several arrivals, and a
+ * call may come for work a spin already took. Work that arrived before the
+ * install is not replayed, so spin once after installing. A Linux host that
+ * wants a readable fd writes an `eventfd` from the notifier.
+ *
+ * The notifier runs on the backend's wake context — a transport or worker
+ * thread, or the thread that triggered a guard condition — so it must be
+ * thread-safe, must not block and must not call back into the executor.
+ * `ctx` must stay valid until the notifier is replaced or cleared, or the
+ * executor is finalised. Install it once: a replaced notifier's two words
+ * are kept until `rclc_executor_fini`.
+ *
+ * # Returns
+ * * `RCL_RET_OK` — installed (or cleared).
+ * * `RCL_RET_UNSUPPORTED` — the backend is poll-only (XRCE, for example)
+ *   and learns of an arrival only inside a spin, so a notifier would never
+ *   fire for a host waiting on it. Keep spinning on a period. Clearing
+ *   never fails this way.
+ * * `RCL_RET_NOT_INIT` — executor not initialised.
+ * * `RCL_RET_INVALID_ARGUMENT` — `executor` is NULL.
+ *
+ * # Safety
+ * * `executor` must be a valid pointer to an initialized executor.
+ * * `notifier`/`ctx` must satisfy the contract above.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_set_ready_notifier(struct rclc_executor_t *executor,
+                                           rclc_executor_ready_notifier_t notifier,
+                                           void *ctx);
 
 /**
  * Phase 124.F.3 — session-level connectivity probe.

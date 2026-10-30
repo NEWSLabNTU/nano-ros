@@ -1153,6 +1153,37 @@ pub(crate) struct WakeCtx {
     /// only ever pushed to. An attributed arrival wakes the worker whose band
     /// holds its slot; an unattributed one wakes every worker.
     pub(crate) band_waiters: portable_atomic::AtomicPtr<super::scheduler::BandWaiter>,
+    /// Issue 2144 (RFC-0112 D2.2, "Readiness out") -- the host's notifier,
+    /// called on every arrival this context is woken for
+    /// ([`Executor::set_ready_notifier`]). Null when none is set.
+    pub(crate) notifier: portable_atomic::AtomicPtr<ReadyNotifier>,
+    /// Notifiers replaced or cleared while a backend thread may still be
+    /// inside a call to them. Freed with this context, which no waker and no
+    /// backend can reach any more by then.
+    retired_notifiers: portable_atomic::AtomicPtr<ReadyNotifier>,
+    /// Issue 2144 -- the readable eventfd of [`Executor::ready_fd`], `-1`
+    /// until one is asked for. Owned here, not by the executor, and closed
+    /// with this context: a backend still holding an entity waker may write
+    /// to it after the executor is gone, and a number closed under it could
+    /// already name somebody else's file.
+    #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+    pub(crate) ready_fd: portable_atomic::AtomicI32,
+}
+
+/// Issue 2144 -- the shape of a readiness notifier: the host's context back,
+/// nothing else. It runs on whatever thread or context the backend wakes from,
+/// so it must not block, must not allocate and must not re-enter the executor.
+pub type ReadyNotifierFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void);
+
+/// Issue 2144 -- one installed `(notifier, context)` pair. Boxed so the two
+/// words are published together through one pointer: a backend thread loads
+/// the pointer once and can never pair one host's function with another's
+/// context.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+pub(crate) struct ReadyNotifier {
+    f: ReadyNotifierFn,
+    ctx: *mut core::ffi::c_void,
+    next_retired: portable_atomic::AtomicPtr<ReadyNotifier>,
 }
 
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -1166,6 +1197,90 @@ impl WakeCtx {
             node_wake,
             ready: portable_atomic::AtomicUsize::new(0),
             band_waiters: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
+            notifier: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
+            retired_notifiers: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
+            #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+            ready_fd: portable_atomic::AtomicI32::new(-1),
+        }
+    }
+
+    /// Issue 2144 -- install, replace or (with `None`) clear the notifier.
+    ///
+    /// The pair it replaces is kept, not freed: a backend thread that loaded
+    /// it a moment ago may still be calling it. It is freed with this context.
+    /// Setting the pair already installed changes nothing and keeps nothing.
+    pub(crate) fn set_notifier(&self, notifier: Option<(ReadyNotifierFn, *mut core::ffi::c_void)>) {
+        use portable_atomic::Ordering;
+        let current = self.notifier.load(Ordering::Acquire);
+        if let (Some((f, ctx)), false) = (notifier, current.is_null()) {
+            // SAFETY: a published pair is freed only with this context.
+            let cur = unsafe { &*current };
+            if cur.f as usize == f as usize && cur.ctx == ctx {
+                return;
+            }
+        }
+        if notifier.is_none() && current.is_null() {
+            return;
+        }
+        let new = notifier.map_or(core::ptr::null_mut(), |(f, ctx)| {
+            alloc::boxed::Box::into_raw(alloc::boxed::Box::new(ReadyNotifier {
+                f,
+                ctx,
+                next_retired: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
+            }))
+        });
+        let old = self.notifier.swap(new, Ordering::AcqRel);
+        if old.is_null() {
+            return;
+        }
+        // SAFETY: `old` was published by this function and is not freed
+        // before this context; only `next_retired` is written, which no
+        // caller of the notifier reads.
+        let old_ref = unsafe { &*old };
+        let mut head = self.retired_notifiers.load(Ordering::Acquire);
+        loop {
+            old_ref.next_retired.store(head, Ordering::Relaxed);
+            match self.retired_notifiers.compare_exchange_weak(
+                head,
+                old,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(h) => head = h,
+            }
+        }
+    }
+
+    /// Issue 2144 -- tell the host that work arrived: its notifier, then its
+    /// readable fd. Called AFTER the arrival is recorded (the ready bit, the
+    /// flag), so a host that spins on the notification finds the work.
+    ///
+    /// Lock-free and O(1): one load and an indirect call, plus one
+    /// `write(2)` to an eventfd when a ready fd exists.
+    #[inline]
+    pub(crate) fn notify(&self) {
+        let n = self.notifier.load(portable_atomic::Ordering::Acquire);
+        if !n.is_null() {
+            // SAFETY: a published pair is freed only with this context, and
+            // the caller holds a reference to the context.
+            let n = unsafe { &*n };
+            // SAFETY: the contract `Executor::set_ready_notifier`'s caller
+            // accepted: `ctx` stays valid while the pair is installed and the
+            // function is callable from the backend's wake context.
+            unsafe { (n.f)(n.ctx) };
+        }
+        #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+        {
+            let fd = self.ready_fd.load(portable_atomic::Ordering::Acquire);
+            if fd >= 0 {
+                let one: u64 = 1;
+                // SAFETY: an 8-byte write to the eventfd this context owns
+                // and closes only when it is dropped. Non-blocking: a counter
+                // the host never drains saturates with EAGAIN, which still
+                // reads as "ready".
+                unsafe { libc::write(fd, &one as *const u64 as *const core::ffi::c_void, 8) };
+            }
         }
     }
 
@@ -1181,6 +1296,7 @@ impl WakeCtx {
             waiter.signal();
             w = waiter.next.load(portable_atomic::Ordering::Acquire);
         }
+        self.notify();
     }
 
     /// The executor's own worker's wake: flag, then the primitive. Shared by
@@ -1208,6 +1324,8 @@ impl WakeCtx {
     pub(crate) fn mark_ready(&self, slot: usize) {
         self.ready
             .fetch_or(1usize << slot, core::sync::atomic::Ordering::SeqCst);
+        // Issue 2144 -- the host hears of it whichever worker is woken below.
+        self.notify();
         // phase-509 P9b item 3 (RFC-0108 D7) -- only the worker whose band
         // holds the slot; the executor's own worker when no band does.
         let bit = 1usize << slot;
@@ -1222,6 +1340,36 @@ impl WakeCtx {
             w = waiter.next.load(portable_atomic::Ordering::Acquire);
         }
         self.signal_own();
+    }
+}
+
+/// Issue 2144 -- the context outlives every waker and every backend that could
+/// call a notifier through it, so this is the one place the pairs are freed and
+/// the ready fd is closed.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+impl Drop for WakeCtx {
+    fn drop(&mut self) {
+        let mut p = *self.notifier.get_mut();
+        if !p.is_null() {
+            // SAFETY: published by `set_notifier` through `Box::into_raw`, and
+            // nothing can reach it once this context is being dropped.
+            drop(unsafe { alloc::boxed::Box::from_raw(p) });
+        }
+        p = *self.retired_notifiers.get_mut();
+        while !p.is_null() {
+            // SAFETY: as above; the retired list owns each node once.
+            let node = unsafe { alloc::boxed::Box::from_raw(p) };
+            p = node.next_retired.load(portable_atomic::Ordering::Relaxed);
+        }
+        #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+        {
+            let fd = *self.ready_fd.get_mut();
+            if fd >= 0 {
+                // SAFETY: the eventfd this context opened and nothing else
+                // can write to any more.
+                unsafe { libc::close(fd) };
+            }
+        }
     }
 }
 
@@ -5998,6 +6146,12 @@ impl<'s> Executor<'s> {
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) fn clear_wake_signal(&mut self) {
         use nros_rmw::Session as _;
+        // Issue 2144 -- the host's notifier goes with the executor, whether
+        // or not this executor installed a session callback: a guard
+        // condition reaches it through the same context.
+        if let Some(w) = self.wake_ctx.as_ref() {
+            w.set_notifier(None);
+        }
         if !self.wake_cb_installed {
             return;
         }
@@ -6190,6 +6344,156 @@ impl<'s> Executor<'s> {
             self.signal_fd = Some(WakeSignalFd::new(ctx_ptr)?);
         }
         Ok(self.signal_fd.as_ref().expect("just set").fd())
+    }
+
+    /// Issue 2144 (RFC-0112 D2.2, "Readiness out") -- can this executor tell
+    /// a host that work arrived, so the host spins instead of polling?
+    ///
+    /// The same predicate the executor's own park trusts: a live async wake
+    /// from the backend (`Session::supports_wake_callback`, installed at open)
+    /// and a platform wake primitive to deliver it through. A poll-only
+    /// backend (XRCE, uORB's polling build, a bare-metal smoltcp session)
+    /// learns of an arrival only inside `drive_io`, i.e. inside a spin, so a
+    /// notifier there would never fire for a host that waits on it. Those
+    /// executors answer `false`, and [`set_ready_notifier`] and [`ready_fd`]
+    /// refuse rather than install something silent; such a host keeps spinning
+    /// on a period.
+    ///
+    /// [`set_ready_notifier`]: Self::set_ready_notifier
+    /// [`ready_fd`]: Self::ready_fd
+    pub fn ready_notifier_supported(&self) -> bool {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        {
+            self.node_wake.is_some() && self.async_wake_live()
+        }
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        {
+            false
+        }
+    }
+
+    /// Issue 2144 (RFC-0112 D2.2, "Readiness out") -- install the one
+    /// executor-level readiness notifier, or clear it with `None`.
+    ///
+    /// `notifier(ctx)` is called whenever work arrives for this executor: a
+    /// sample, request or reply on any of its sessions (through the backend's
+    /// session wake or an entity waker, attributed or not), or a guard
+    /// condition triggered from another thread. A host event loop (GLib, Qt,
+    /// epoll, tokio, an RTOS task) waits on it and then calls
+    /// [`spin_some`](Self::spin_some)`(ZERO)`, so it never polls. Timers are
+    /// not arrivals and do not notify; a host also sleeps no longer than the
+    /// executor's next deadline.
+    ///
+    /// Notifications coalesce: one call may stand for several arrivals, and
+    /// a call may come for work a spin already took. A host treats it as
+    /// "spin soon", never as a count. Work that arrived BEFORE the notifier
+    /// was installed is not replayed, so spin once after installing.
+    ///
+    /// Replacing a notifier keeps the old pair (two words) until the executor
+    /// and every waker its backend holds are gone, because a backend thread
+    /// may be inside a call to it. Install once; do not toggle it per spin.
+    ///
+    /// The executor clears it on [`close`](Self::close) and on drop.
+    ///
+    /// # Errors
+    ///
+    /// `Transport(Unsupported)` when [`ready_notifier_supported`] is `false`:
+    /// the backend cannot wake anyone outside a spin, and an installed
+    /// notifier would silently never fire. Clearing never fails.
+    ///
+    /// # Safety
+    ///
+    /// - `notifier` runs on the backend's wake context: a transport or worker
+    ///   thread (zenoh-pico's read task, a Cyclone listener thread, the
+    ///   thread that triggers a guard condition) or, for a backend whose
+    ///   arrivals surface during `drive_io`, inside this executor's own spin.
+    ///   No in-tree backend calls it from an interrupt (issue 2144's survey).
+    ///   It must be thread-safe, must not block and must not call back into
+    ///   this executor.
+    /// - `ctx` must stay valid, and `notifier` callable with it, until the
+    ///   notifier is replaced or cleared, or the executor is closed or
+    ///   dropped, and a call that started before then has returned.
+    ///
+    /// [`ready_notifier_supported`]: Self::ready_notifier_supported
+    pub unsafe fn set_ready_notifier(
+        &mut self,
+        notifier: Option<ReadyNotifierFn>,
+        ctx: *mut core::ffi::c_void,
+    ) -> Result<(), NodeError> {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        {
+            match notifier {
+                None => {
+                    if let Some(w) = self.wake_ctx.as_ref() {
+                        w.set_notifier(None);
+                    }
+                    Ok(())
+                }
+                Some(f) => {
+                    if !self.ready_notifier_supported() {
+                        return Err(NodeError::Transport(TransportError::Unsupported));
+                    }
+                    self.wake_ctx_ptr();
+                    self.wake_ctx
+                        .as_ref()
+                        .expect("just set")
+                        .set_notifier(Some((f, ctx)));
+                    Ok(())
+                }
+            }
+        }
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        {
+            let _ = ctx;
+            match notifier {
+                None => Ok(()),
+                Some(_) => Err(NodeError::Transport(TransportError::Unsupported)),
+            }
+        }
+    }
+
+    /// Issue 2144 (RFC-0112 D2.2) -- a READABLE Linux eventfd that becomes
+    /// readable whenever [`set_ready_notifier`](Self::set_ready_notifier)'s
+    /// notifier would be called, for a host loop that watches file
+    /// descriptors (GLib `g_unix_fd_add`, Qt `QSocketNotifier`, `epoll`,
+    /// tokio `AsyncFd`).
+    ///
+    /// The host polls it for `POLLIN`, reads (and discards) its 8-byte
+    /// counter to re-arm it, then calls `spin_some(ZERO)`. It is
+    /// non-blocking, so a read with nothing pending fails with `EAGAIN`
+    /// instead of stalling the loop. It is independent of the notifier: both
+    /// may be in use at once.
+    ///
+    /// The opposite direction from [`signal_fd`](Self::signal_fd), which is a
+    /// WRITE end for signal handlers to wake the executor.
+    ///
+    /// Created on the first call; later calls return the same fd. The
+    /// executor owns it: do not `close()` it. It stays open until the
+    /// executor and every waker its backend holds are gone.
+    ///
+    /// # Errors
+    ///
+    /// `Transport(Unsupported)` when
+    /// [`ready_notifier_supported`](Self::ready_notifier_supported) is
+    /// `false`; `NotInitialized` when `eventfd(2)` fails.
+    #[cfg(all(feature = "signal-fd-wake", feature = "rmw-cffi", target_os = "linux"))]
+    pub fn ready_fd(&mut self) -> Result<core::ffi::c_int, NodeError> {
+        if !self.ready_notifier_supported() {
+            return Err(NodeError::Transport(TransportError::Unsupported));
+        }
+        self.wake_ctx_ptr();
+        let w = self.wake_ctx.as_ref().expect("just set");
+        let fd = w.ready_fd.load(portable_atomic::Ordering::Acquire);
+        if fd >= 0 {
+            return Ok(fd);
+        }
+        // SAFETY: `eventfd(2)` with valid flags; returns -1 on failure.
+        let fd = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
+        if fd < 0 {
+            return Err(NodeError::NotInitialized);
+        }
+        w.ready_fd.store(fd, portable_atomic::Ordering::Release);
+        Ok(fd)
     }
 
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -17866,5 +18170,79 @@ mod band_wake_routing_tests {
         );
         assert_eq!(WOKEN[1].load(Ordering::SeqCst), 2);
         assert_eq!(ctx.ready.load(Ordering::SeqCst), 0b100110);
+    }
+}
+
+/// Issue 2144 (RFC-0112 D2.2) -- every path an arrival takes into the wake
+/// context reaches the host's notifier, and a replaced or cleared one is not
+/// called again.
+#[cfg(all(test, feature = "alloc", feature = "rmw-cffi"))]
+mod ready_notifier_tests {
+    use super::{super::scheduler::BandWaiter, WakeCtx};
+    use core::ffi::c_void;
+    use portable_atomic::{AtomicUsize, Ordering};
+
+    static CALLS: [AtomicUsize; 2] = [AtomicUsize::new(0), AtomicUsize::new(0)];
+
+    unsafe extern "C" fn count(ctx: *mut c_void) {
+        CALLS[ctx as usize].fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn band_wake(_ctx: *mut c_void) {}
+
+    unsafe extern "C" fn band_wait(_ctx: *mut c_void, _us: u64) -> i32 {
+        0
+    }
+
+    fn calls(i: usize) -> usize {
+        CALLS[i].load(Ordering::SeqCst)
+    }
+
+    #[test]
+    fn every_arrival_path_notifies_and_a_replaced_notifier_is_not_called() {
+        let flag = portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false));
+        let ctx = WakeCtx::new(flag, None);
+
+        // Negative control: nothing installed, an arrival calls nobody.
+        ctx.signal();
+        ctx.mark_ready(3);
+        assert_eq!(calls(0) + calls(1), 0);
+
+        ctx.set_notifier(Some((count, core::ptr::null_mut())));
+        // The session-scoped wake (and a guard condition, which uses it).
+        ctx.signal();
+        assert_eq!(calls(0), 1, "an unattributed arrival notifies");
+        // An attributed arrival nobody's band holds.
+        ctx.mark_ready(3);
+        assert_eq!(calls(0), 2, "an attributed arrival notifies");
+        // An attributed arrival a band worker takes: the early return that
+        // skips the executor's own worker must not skip the host.
+        static BAND: BandWaiter =
+            unsafe { BandWaiter::new(band_wake, band_wait, core::ptr::null_mut()) };
+        BAND.slots.store(1 << 4, Ordering::SeqCst);
+        ctx.band_waiters
+            .store(&BAND as *const _ as *mut _, Ordering::SeqCst);
+        ctx.mark_ready(4);
+        assert_eq!(calls(0), 3, "a band-routed arrival notifies too");
+
+        // Re-installing the same pair keeps nothing and changes nothing.
+        let before = ctx.notifier.load(Ordering::SeqCst);
+        ctx.set_notifier(Some((count, core::ptr::null_mut())));
+        assert_eq!(ctx.notifier.load(Ordering::SeqCst), before);
+        assert!(ctx.retired_notifiers.load(Ordering::SeqCst).is_null());
+
+        // Replaced: only the new context hears the next arrival.
+        ctx.set_notifier(Some((count, core::ptr::without_provenance_mut(1))));
+        ctx.signal();
+        assert_eq!((calls(0), calls(1)), (3, 1));
+        assert!(!ctx.retired_notifiers.load(Ordering::SeqCst).is_null());
+
+        // Cleared: nobody.
+        ctx.set_notifier(None);
+        ctx.signal();
+        ctx.mark_ready(3);
+        assert_eq!((calls(0), calls(1)), (3, 1));
+        // Dropping `ctx` frees the two retired pairs (Miri / ASan would flag
+        // a double free or a leak here).
     }
 }

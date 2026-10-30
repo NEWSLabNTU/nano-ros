@@ -96,7 +96,7 @@ what is missing:
 |---|---|---|---|
 | **Drive** | run ready work without giving up the thread | `spin_once(timeout)`, `spin_some(max)` (`spin_some(ZERO)` drains without blocking) | none, apart from stability (D2.1) |
 | **Wake in** | make a parked or later spin notice new work, from a thread, an ISR or a signal handler | `wake()` (any context, `AtomicBool`); `wake_handle()` (needs `alloc`); `signal_fd()` (Linux, `signal-fd-wake` feature) | none for waking. But `signal_fd()` is a WRITE end for signal handlers, not a readable readiness fd, so a GLib or Qt loop cannot watch it. That is the next row's gap |
-| **Readiness out** | learn that work arrived, so the host can schedule a spin | per-entity `register_waker` on the RMW traits, used by the C polling FFI (`c_waker.rs`) | **missing at executor level (issue 2144).** No single "this executor has ready work" notifier exists: no `Waker`, no callback, no readable fd. `spin_async()` wakes ITSELF on every poll, after a `spin_once(1 ms)` that can block the async executor's thread. Under Embassy or tokio that is a busy loop that also blocks (issue 2145) |
+| **Readiness out** | learn that work arrived, so the host can schedule a spin | `set_ready_notifier(fn, ctx)` (issue 2144): one notifier per executor, called on every arrival and every cross-thread guard trigger; `ready_fd()` (Linux, `signal-fd-wake`), a readable eventfd over the same moments; C `rclc_executor_set_ready_notifier`, C++ `rclcpp::Executor::set_ready_notifier`. A poll-only backend refuses (`ready_notifier_supported()`) | **`spin_async()` does not use it yet (issue 2145).** It still wakes ITSELF on every poll, after a `spin_once(1 ms)` that can block the async executor's thread. Under Embassy or tokio that is a busy loop that also blocks |
 | **Time out** | know when the executor next needs to run, so the host can sleep exactly that long | internally, `next_wake_bound_us` is the minimum over timers, backend, routes and wake sources (RFC-0106). Publicly, only `route_next_due_us()` and the per-timer `timer_time_until_next_call_ns(id)` | **missing (issue 2143).** `next_wake_bound_us` is `pub(crate)` |
 | **Defer** | run a callback in the framework's own task instead of inline | `register_dispatch_slot` / `dispatch_callback`, as used by the RTIC emit | **coupled to the macro (issue 2146).** The slot ABI is the per-node `__nros_node_<pkg>_on_callback` that `nros::node!` emits, so a hand-written host cannot use it without the macro |
 
@@ -115,10 +115,20 @@ recorded here so that it is decided once:
   `set_ready_notifier(fn(*mut c_void), ctx)`, that the executor calls when any
   RMW entity's waker fires. It is built on the existing per-entity
   `register_waker` and has the same rules: callable from any context, must not
-  block and must not re-enter. On top of it:
+  block and must not re-enter. **Landed (issue 2144)**, as built: the executor's
+  wake context (`WakeCtx`) calls it at the end of BOTH arrival paths — the
+  session-scoped wake (`signal`, which a guard condition's trigger also takes)
+  and the attributed entity waker (`mark_ready`, before its band routing) — so
+  one hook covers every backend that wakes at all, attributed or not. The pair
+  is published through one pointer and a replaced pair is kept until the
+  context drops, since a backend thread may be mid-call. A backend whose
+  arrivals surface only inside `drive_io` (XRCE) is REFUSED with `Unsupported`:
+  the acceptance predicate is the one the executor's own park trusts (a live
+  async wake plus a wake primitive). On top of it:
   - a `Waker`-based `spin_async()` that returns `Pending` until notified, which
     replaces the self-waking loop;
-  - an optional readable fd on Linux for GLib, Qt and epoll loops.
+  - an optional readable fd on Linux for GLib, Qt and epoll loops — landed
+    as `Executor::ready_fd()` (issue 2144).
 - **Defer:** a hand-callable form of the dispatch ring (enqueue in the RMW
   callback, drain in the host's task) that does not depend on the
   macro-emitted node ABI. Until it exists, deferred dispatch stays a Tier 1
@@ -207,14 +217,20 @@ RFC-0111 is narrowed, not withdrawn:
 
 ## Open questions
 
-- **Readiness from an ISR on bare metal.** On an MCU the RMW's waker can fire
-  in interrupt context. Can the notifier callback run there for every backend
-  (zenoh-pico over smoltcp, XRCE over serial)? Or must it be "set a flag and
-  pend an interrupt"? This needs measuring per backend before D2.2 is
-  implemented.
+- ~~**Readiness from an ISR on bare metal.**~~ Answered by issue 2144's
+  survey of every in-tree wake site: no backend calls its wake from an
+  interrupt. zenoh-pico fires it from its read task (multi-threaded builds) or
+  from `drive_io` inside the executor's own spin; over smoltcp on bare metal
+  the stack is polled in `drive_io`, never from the NIC ISR. Cyclone fires it
+  from its listener threads, a guard condition from the triggering thread.
+  XRCE (serial or UDP) and uORB install no wake at all, so they are refused
+  rather than reached. The notifier therefore runs in thread context, and its contract
+  says so; a future backend that wakes from an ISR inherits the rule that its
+  notifier must be ISR-safe, or must set a flag and pend an interrupt.
 - **Is `wake_handle()`'s `alloc` requirement needed?** `wake()` covers no-alloc
   callers that hold `&Executor`. A host task usually does not, so a
   `'static` no-alloc handle may be needed.
-- **Does a C or C++ host get the same contract?** The C API has the
-  per-entity wake callbacks already. The executor-level notifier should cross
-  the FFI in the same change, so the contract is not Rust-only.
+- ~~**Does a C or C++ host get the same contract?**~~ Yes for Readiness out:
+  the notifier crossed the FFI in the same change as the Rust hook (issue
+  2144). The readable fd stays Rust-only; a C host writes an `eventfd` from
+  its notifier.

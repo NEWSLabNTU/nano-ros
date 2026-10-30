@@ -23,6 +23,10 @@
 //! about the wake path is loosened to get here — the `#![cfg]` is narrower than
 //! before, not wider.
 //!
+//! And the opposite direction (issue 2144, RFC-0112 D2.2): `ready_fd()` is a
+//! READABLE eventfd that a host loop (GLib, Qt, epoll) watches to learn that
+//! work arrived, so it spins only then.
+//!
 //! Run: `just check required-features-tests` (or `cargo nextest run -p
 //! nros-tests --features signal-fd-wake-test --test signal_fd_wake`).
 
@@ -156,4 +160,99 @@ fn sigusr1_handler_wakes_spin_once(zenohd_unique: ZenohRouter) {
     SIGNAL_FD_FOR_HANDLER.store(-1, std::sync::atomic::Ordering::SeqCst);
 
     assert_woke_on_trigger(elapsed, "SIGUSR1");
+}
+
+/// `poll(2)` `fd` for `POLLIN` for up to `ms`.
+fn readable_within(fd: core::ffi::c_int, ms: i32) -> bool {
+    let mut p = libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // SAFETY: one valid pollfd.
+    let n = unsafe { libc::poll(&mut p, 1, ms) };
+    n == 1 && p.revents & libc::POLLIN != 0
+}
+
+/// Read (and so re-arm) the eventfd; `true` when it held a count.
+fn drain(fd: core::ffi::c_int) -> bool {
+    let mut buf = [0u8; 8];
+    // SAFETY: an 8-byte read from an eventfd into an 8-byte buffer.
+    let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut core::ffi::c_void, 8) };
+    n == 8 && u64::from_ne_bytes(buf) > 0
+}
+
+/// Issue 2144 -- a host watching `ready_fd()` sees it become readable for an
+/// arrival with nothing spinning, re-arms it by reading, and the spin it then
+/// runs dispatches the work.
+#[rstest]
+fn ready_fd_becomes_readable_on_arrival(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+
+    let mut executor = open_executor(&zenohd_unique.locator(), "ready_fd_test", 92);
+    let node = executor
+        .node_builder("ready_fd_test")
+        .build()
+        .expect("node");
+    let received = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let received_cb = received.clone();
+    executor
+        .node_mut(node)
+        .subscription("/ready_fd/data")
+        .generic("std_msgs/msg/Empty", "")
+        .qos(nros_node::QoSProfile::default())
+        .rx_buffer::<256>()
+        .build(move |_data: &[u8]| {
+            received_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .expect("subscription");
+    let publisher = executor
+        .node_mut(node)
+        .create_publisher_raw("/ready_fd/data", "std_msgs/msg/Empty", "")
+        .expect("publisher");
+    let (_, guard) = executor
+        .node_mut(node)
+        .create_guard_condition(|| {})
+        .expect("guard condition");
+
+    let fd = executor.ready_fd().expect("ready_fd()");
+    assert!(fd >= 0);
+    assert_eq!(
+        executor.ready_fd().expect("ready_fd()"),
+        fd,
+        "one fd per executor"
+    );
+    let wake_fd = executor.signal_fd().expect("signal_fd()");
+    assert_ne!(
+        fd, wake_fd,
+        "the readiness fd is not the signal handlers' write end"
+    );
+
+    // A trigger wakes synchronously, so the fd is readable at once, and a read
+    // takes the count.
+    guard.trigger();
+    assert!(
+        readable_within(fd, 0),
+        "a guard trigger did not make ready_fd readable"
+    );
+    assert!(drain(fd), "ready_fd was readable but held no count");
+    executor.spin_some(Duration::ZERO).expect("spin_some");
+
+    // An arrival, with nothing spinning.
+    let start = Instant::now();
+    while received.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "no arrival was dispatched within 5 s of ready_fd turning readable"
+        );
+        publisher
+            .publish_serialized(&[0, 1, 0, 0])
+            .expect("publish");
+        assert!(
+            readable_within(fd, 5000),
+            "ready_fd did not become readable within 5 s of a publish, with nothing spinning"
+        );
+        drain(fd);
+        executor.spin_some(Duration::ZERO).expect("spin_some");
+    }
 }
