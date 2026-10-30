@@ -30,6 +30,9 @@
 
 #include "lan9118_lwip.h"
 
+/* Drain-loop hooks in nros-board-freertos/c/network_glue.c (issue 0917). */
+void nros_freertos_net_rx_backlog(void);
+
 /* ---- Linker symbols ---- */
 extern uint32_t _etext;
 extern uint32_t _sdata;
@@ -110,6 +113,12 @@ int nros_board_register_netif(
 
 void nros_board_poll_netif(void) {
     lan9118_lwip_poll(&lan9118_netif);
+    /* No RX interrupt is wired here, so a drain that stopped at its budget
+     * would otherwise wait the full poll interval with frames in the FIFO.
+     * Issue 0917. */
+    if (lan9118_lwip_rx_pending(&lan9118_netif)) {
+        nros_freertos_net_rx_backlog();
+    }
 }
 
 /* ---- Interrupt vector table ---- */

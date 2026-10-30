@@ -51,6 +51,10 @@
 
 #include "lan9118_lwip.h"
 
+/* Drain-loop hooks in nros-board-freertos/c/network_glue.c (issue 0917). */
+void nros_freertos_net_wake_from_isr(void);
+void nros_freertos_net_rx_backlog(void);
+
 /* ---- Board facts ---- */
 #define AN536_UART0_BASE   0xe7c00000UL /* per-CPU CMSDK uart == QEMU serial0 */
 #define AN536_LAN9118_BASE 0xe0300000UL
@@ -381,8 +385,8 @@ __attribute__((used)) void vApplicationIRQHandler(void) {
 /* ---- Network ----
  * Strong overrides of the weak hooks in nros-board-freertos's network_glue.c,
  * exactly as the MPS2 board does — the same LAN9118 driver, a different base
- * address. Poll mode: no NIC interrupt is wired, so the GIC is needed for the
- * tick alone.
+ * address. RX is interrupt-driven (SPI 18, issue 0917): the ISR masks the
+ * source and wakes the drain task, which re-arms it once the FIFO is empty.
  */
 struct netif lan9118_netif;
 struct lan9118_config lan9118_cfg;
@@ -429,6 +433,11 @@ void nros_board_poll_netif(void) {
      * there is work, so a burst cannot re-enter the handler per frame. */
     if (!lan9118_lwip_rx_pending(&lan9118_netif)) {
         lan9118_lwip_rx_irq_enable(&lan9118_netif);
+    } else {
+        /* The drain stopped at its budget with frames still queued. The line
+         * stays masked, so no interrupt will come: tell the drain loop to come
+         * back in one tick rather than after the full poll interval. */
+        nros_freertos_net_rx_backlog();
     }
 }
 

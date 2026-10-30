@@ -175,6 +175,53 @@ void nros_freertos_poll_network(void) {
     nros_board_poll_netif();
 }
 
+/* RX backlog (issue 0917).
+ *
+ * A board's drain is BOUNDED (lan9118_lwip_poll takes 16 frames a call) so a
+ * poller that runs above the application cannot starve it. Bounded is right;
+ * what came after it was not. When a drain stopped at its budget with frames
+ * still in the FIFO, the drain task went back to waiting a full
+ * poll_interval_ms, and on a board whose RX interrupt is masked while the FIFO
+ * is non-empty (the an536 design: the ISR masks, the drain re-arms only on
+ * EMPTY) nothing could wake it early - the one notification had already been
+ * consumed. So the exact case the interrupt exists for, a FIFO with work in it,
+ * fell back to the 5 ms poll the interrupt replaced.
+ *
+ * The board says so by calling this from inside nros_board_poll_netif; the
+ * drain loop then waits ONE tick instead of the ceiling. One tick still yields
+ * the CPU to the application between batches, and 16 frames a millisecond is
+ * above a 100 Mbps link's 12.5 KB/ms of full-size frames. It is a call FROM the
+ * board rather than a weak query hook so it adds no weak symbol (and no
+ * archive-order tie, see nros_board_register_netif above). Same task as the
+ * drain loop, so the flag needs no synchronisation. */
+static volatile int s_rx_backlog;
+
+void nros_freertos_net_rx_backlog(void) {
+    s_rx_backlog = 1;
+}
+
+/* The ONE drain loop, run by the network task of both entry lanes (the C/C++
+ * `freertos_c_entry.c` and the Rust `entry.rs`). The Rust lane used to keep its
+ * own `vTaskDelay` loop, which never registered as the wake target, so an RX
+ * interrupt on a Rust image woke nobody and that lane stayed on the 5 ms poll
+ * the C lane had left behind. Two spellings of one loop is how that happened.
+ *
+ * Drain FIRST, wait second; poll_interval_ms is a CEILING, not the cadence.
+ * Never returns. */
+void nros_freertos_net_drain_loop(uint32_t poll_ms) {
+    const TickType_t ceiling = pdMS_TO_TICKS(poll_ms);
+    nros_freertos_net_register_drain_task();
+    for (;;) {
+        s_rx_backlog = 0;
+        nros_freertos_poll_network();
+        TickType_t wait = ceiling;
+        if (s_rx_backlog && ceiling > 1) {
+            wait = 1;
+        }
+        ulTaskNotifyTake(pdTRUE, wait);
+    }
+}
+
 /*
  * Test TCP connectivity to a given IPv4 address and port.
  * Returns 0 on success, or the positive errno value on failure.

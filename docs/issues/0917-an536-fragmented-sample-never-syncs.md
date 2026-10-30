@@ -518,3 +518,45 @@ What that does and does not settle:
   repair path and nros's typed delivery of a 10.6 KB sample work end to end on
   this board. A regression in any of them now turns this cell red.
 
+## 2026-10-30: two drain-loop gaps the interrupt commit left, closed
+
+Interrupt-driven RX and drain-first ordering landed in `7cb213c43a` (items 1
+and 2 of "What to do"). Reading the result against the budget above found two
+places where a full FIFO still waited the whole 5 ms ceiling:
+
+1. **A budget-stopped drain slept the full interval.** `lan9118_lwip_poll`
+   takes at most 16 frames a call (bounded on purpose, so a poller above the
+   application cannot starve it). The ISR MASKS the source and the drain only
+   re-arms it once the FIFO reads EMPTY, and `ulTaskNotifyTake(pdTRUE, …)` had
+   already consumed the one notification. So a drain that stopped at its budget
+   with frames still queued went back to waiting `poll_interval_ms` with the
+   line masked and nothing able to wake it — the exact case the interrupt was
+   added for fell back to the 5 ms poll. Now the board calls
+   `nros_freertos_net_rx_backlog()` when frames remain, and the loop waits ONE
+   tick instead of the ceiling. One tick still yields to the application between
+   batches; 16 full frames a millisecond (~23 KB/ms) is above a 100 Mbps link's
+   12.5 KB/ms. The MPS2-AN385 board, which has no RX interrupt wired, signals the
+   same backlog. It is a call FROM the board, not a weak query hook, so it adds
+   no weak symbol.
+2. **The Rust entry lane never got the interrupt at all.** `entry.rs` kept its
+   own `vTaskDelay(interval)` loop and never registered as the wake target, so on
+   a Rust image `nros_freertos_net_wake_from_isr` found no task and every burst
+   waited out the poll interval. There is now ONE drain loop,
+   `nros_freertos_net_drain_loop` in `network_glue.c`, and both entry lanes
+   call it.
+
+**Measured in tree** (cell `freertos-an536-pubsub-cpp-cyclone-r2n`, the 10,576 B
+eight-`DATA_FRAG` stream at 10 Hz, slirp, `-icount shift=auto`, QEMU
+`11.0.0-nros7`): passes with the change — 659 of 665 and 692 of 713 samples in
+two runs, every one full length, no stall. With a temporary counter on the
+backlog path, a 75 s run hit it **once**: the path is reachable on this board,
+and rare under `-icount` + slirp, which deliver a burst at emulated rather than
+host speed. That is the expected shape — the case it fixes is the tap-fed,
+free-running burst this issue was measured on, which this lane cannot produce.
+
+**Still open, and why.** What is left is unchanged in kind: demonstrating the
+fix on the path the defect lives on needs the island's tap rig with
+`tc … rate 100mbit` pacing (root), or the real board — phase-512 H3. Payloads
+above the FIFO's 6-frame capacity at line rate remain physics, not a drain
+problem. And the "look above lwIP" residual (item 5) is untouched.
+

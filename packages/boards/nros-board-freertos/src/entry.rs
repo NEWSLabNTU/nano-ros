@@ -65,7 +65,8 @@ unsafe extern "C" {
         gw: *const u8,
     ) -> i32;
 
-    fn nros_freertos_poll_network();
+    /// The one network drain loop (`c/network_glue.c`, issue 0917). Never returns.
+    fn nros_freertos_net_drain_loop(poll_ms: u32);
     fn nros_freertos_start_scheduler();
 
     fn nros_freertos_create_task(
@@ -402,17 +403,13 @@ where
     }
 }
 
+/// Network task body. Runs the SAME drain loop as the C/C++ lane: until issue
+/// 0917 this lane kept its own `vTaskDelay(interval)` loop, which never
+/// registered as the RX wake target, so on a Rust image the NIC's interrupt
+/// woke nobody and every burst waited out the full poll interval.
 unsafe extern "C" fn poll_task_entry(_arg: *mut c_void) {
-    unsafe extern "C" {
-        fn vTaskDelay(ticks: u32);
-    }
     let interval = unsafe { POLL_INTERVAL_MS };
-    loop {
-        unsafe {
-            nros_freertos_poll_network();
-            vTaskDelay(interval);
-        }
-    }
+    unsafe { nros_freertos_net_drain_loop(interval) }
 }
 
 // =============================================================================

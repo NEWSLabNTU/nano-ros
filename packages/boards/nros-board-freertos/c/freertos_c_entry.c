@@ -58,8 +58,7 @@ extern void nros_board_freertos_run_init_array(void);
 /* network_glue.c */
 extern int nros_freertos_init_network(const uint8_t mac[6], const uint8_t ip[4],
                                       const uint8_t netmask[4], const uint8_t gw[4]);
-extern void nros_freertos_poll_network(void);
-extern void nros_freertos_net_register_drain_task(void);
+extern void nros_freertos_net_drain_loop(uint32_t poll_ms);
 extern void nros_freertos_start_scheduler(void);
 extern int nros_freertos_create_task(void (*entry)(void*), const char* name, uint32_t stack_words,
                                      void* arg, uint32_t priority);
@@ -257,19 +256,10 @@ static inline UBaseType_t clamp_prio(uint32_t p) {
 
 static void poll_task_entry(void* arg) {
     (void)arg;
-    const uint32_t poll_ms = NROS_APP_CONFIG.scheduling.poll_interval_ms;
-    /* Register as the RX wake target, then treat poll_interval_ms as a CEILING
-     * rather than the cadence: an RX interrupt wakes this task immediately, and
-     * the timeout still covers boards whose netif has no interrupt wired.
-     * Drain FIRST and wait second - the old order slept before ever looking,
-     * so a burst that landed just after a wakeup sat in the NIC for a full
-     * interval, which on this board is longer than the FIFO can hold it.
-     * Issue 0917. */
-    nros_freertos_net_register_drain_task();
-    for (;;) {
-        nros_freertos_poll_network();
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(poll_ms));
-    }
+    /* Drain first, wait second, with poll_interval_ms as a CEILING: an RX
+     * interrupt or a backlogged drain wakes the task early. The loop lives in
+     * network_glue.c so the Rust lane runs the same one. Issue 0917. */
+    nros_freertos_net_drain_loop(NROS_APP_CONFIG.scheduling.poll_interval_ms);
 }
 
 /* Seed the platform PRNG with a value unique to this node.
