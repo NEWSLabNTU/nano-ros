@@ -97,7 +97,7 @@ what is missing:
 | **Drive** | run ready work without giving up the thread | `spin_once(timeout)`, `spin_some(max)` (`spin_some(ZERO)` drains without blocking) | none, apart from stability (D2.1) |
 | **Wake in** | make a parked or later spin notice new work, from a thread, an ISR or a signal handler | `wake()` (any context, `AtomicBool`); `wake_handle()` (needs `alloc`); `signal_fd()` (Linux, `signal-fd-wake` feature) | none for waking. But `signal_fd()` is a WRITE end for signal handlers, not a readable readiness fd, so a GLib or Qt loop cannot watch it. That is the next row's gap |
 | **Readiness out** | learn that work arrived, so the host can schedule a spin | `set_ready_notifier(fn, ctx)` (issue 2144): one notifier per executor, called on every arrival and every cross-thread guard trigger; `ready_fd()` (Linux, `signal-fd-wake`), a readable eventfd over the same moments; C `rclc_executor_set_ready_notifier`, C++ `rclcpp::Executor::set_ready_notifier`. A poll-only backend refuses (`ready_notifier_supported()`) | **`spin_async()` does not use it yet (issue 2145).** It still wakes ITSELF on every poll, after a `spin_once(1 ms)` that can block the async executor's thread. Under Embassy or tokio that is a busy loop that also blocks |
-| **Time out** | know when the executor next needs to run, so the host can sleep exactly that long | internally, `next_wake_bound_us` is the minimum over timers, backend, routes and wake sources (RFC-0106). Publicly, only `route_next_due_us()` and the per-timer `timer_time_until_next_call_ns(id)` | **missing (issue 2143).** `next_wake_bound_us` is `pub(crate)` |
+| **Time out** | know when the executor next needs to run, so the host can sleep exactly that long | internally, `next_wake_bound_us` is the minimum over timers, backend, routes and wake sources (RFC-0106). Publicly, only `route_next_due_us()` and the per-timer `timer_time_until_next_call_ns(id)` | **closed (issue 2143).** `Executor::next_deadline_us() -> Option<u64>`, with `rclc_executor_get_next_deadline_ns` (C) and `rclcpp::Executor::next_deadline_us` (C++) |
 | **Defer** | run a callback in the framework's own task instead of inline | `register_dispatch_slot` / `dispatch_callback`, as used by the RTIC emit | **coupled to the macro (issue 2146).** The slot ABI is the per-node `__nros_node_<pkg>_on_callback` that `nros::node!` emits, so a hand-written host cannot use it without the macro |
 
 **D2.1 — Stability.** The Drive, Wake-in and (once added) Time-out and
@@ -110,7 +110,9 @@ recorded here so that it is decided once:
 
 - **Time out:** `Executor::next_deadline_us() -> Option<u64>`, a public wrapper
   over `next_wake_bound_us` with no caller budget. `None` means nothing is
-  scheduled, so the host waits on readiness alone.
+  scheduled, so the host waits on readiness alone. **Landed (issue 2143)**,
+  answered from now: a timer's remainder is reduced by the time since the last
+  spin ended, and the executor's own park now makes the same correction.
 - **Readiness out:** one executor-level hook,
   `set_ready_notifier(fn(*mut c_void), ctx)`, that the executor calls when any
   RMW entity's waker fires. It is built on the existing per-entity

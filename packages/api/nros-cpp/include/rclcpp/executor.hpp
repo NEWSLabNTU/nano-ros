@@ -284,6 +284,26 @@ class Executor {
         return Result(nros_cpp_spin_some(storage_, max_ms));
     }
 
+    /// `next_deadline_us(out_us)` — issue 2143 (RFC-0112 D2.2). EXTENSION:
+    /// rclcpp has no counterpart, because an rclcpp executor always owns the
+    /// thread it waits on.
+    ///
+    /// Microseconds from now until this executor next needs to run, written
+    /// to `out_us`: the next timer, the backend's next internal event, a
+    /// supervised route's deadline and every registered wake source — the
+    /// bound the executor's own park uses. `0` means something is already
+    /// due; `UINT64_MAX` means nothing is scheduled ("no deadline", not
+    /// "never": a sample may still arrive, so wait on readiness then).
+    ///
+    /// For a host that owns the loop (a GLib or Qt main loop, a PX4 work
+    /// item, a plain `while`): call `spin_some()`, then sleep at most this
+    /// long. A ROS-time timer does not bound it — its wake is a `/clock`
+    /// message, not a wall instant.
+    Result next_deadline_us(uint64_t& out_us) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_next_deadline_us(storage_, &out_us));
+    }
+
     /// `spin_all(max_duration)` — phase-515 P2. ADOPT-BOUNDED.
     ///
     /// rclcpp's "keep collecting and executing until nothing is ready or

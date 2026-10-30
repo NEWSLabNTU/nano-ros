@@ -3404,6 +3404,22 @@ nros_cpp_ret_t nros_cpp_executor_set_ready_notifier(void *handle,
 nros_cpp_ret_t nros_cpp_executor_route_next_due_us(void *handle, uint64_t *out_us);
 
 /**
+ * Issue 2143 (RFC-0112 D2.2) — microseconds from now until this executor next
+ * needs to run, written to `*out_us`; `UINT64_MAX` when nothing is scheduled,
+ * 0 when something is already due. A forwarder to `Executor::next_deadline_us`,
+ * so the C++ answer cannot disagree with the Rust one.
+ *
+ * The Tier 0 time-out for a host loop that drives the executor with
+ * `nros_cpp_spin_some`: spin, then sleep at most this long. `UINT64_MAX` is "no
+ * deadline", not "never" — a sample may still arrive, so wait on readiness.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL; `out_us`
+ * must be writable.
+ */
+nros_cpp_ret_t nros_cpp_executor_next_deadline_us(void *handle, uint64_t *out_us);
+
+/**
  * phase-503 W7 — fill `*out` with a watch over this executor's supervised
  * routes. Call on the spin thread (or before the first spin) after
  * `nros_cpp_install_monitors`; the watch stays valid as long as the

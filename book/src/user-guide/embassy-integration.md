@@ -63,9 +63,11 @@ board-side half.
 ## What this does not give you yet
 
 - **Sleeping until there is work.** The loop polls every millisecond when
-  idle. The executor has no notifier that says "work arrived" (issue 2144) and
-  no public next deadline (issue 2143); once both exist, the task can wait on
-  `select(notified, Timer::at(next_deadline))` and sleep. Do not use
+  idle. The timer half exists: `Executor::next_deadline_us()` says how long
+  until the next timer or backend deadline, `None` when nothing is scheduled
+  (issue 2143). The executor has no notifier yet that says "work arrived"
+  (issue 2144); once it exists, the task can wait on
+  `select(notified, Timer::after_micros(next_deadline))` and sleep. Do not use
   `Executor::spin_async()` here: it wakes itself on every poll and can block
   the Embassy thread for up to a millisecond (issue 2145).
 - **Deferred dispatch.** Callbacks run inline, inside `spin_some`, on the spin
