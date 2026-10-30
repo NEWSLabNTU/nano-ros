@@ -261,6 +261,24 @@ Started Zenoh router with id
     -kernel build/nuttx/cmake/my_app
 ```
 
+The Rust workspace image boots the same way, from the workspace directory,
+with the ELF `nros build` printed:
+
+```bash probe=70 probe-run=120 variant=arm-rust
+"$(nros sdk-path qemu)/bin/qemu-system-arm" -M virt -cpu cortex-a7 -nographic \
+    -icount shift=auto \
+    -netdev user,id=net0 \
+    -device virtio-net-device,netdev=net0 \
+    -kernel build/nuttx-zenoh/nuttx_entry/target/armv7a-nuttx-eabihf/debug/nuttx_entry
+```
+
+Its talker and listener run in the one image:
+
+```text probe-expect=70 variant=arm-rust
+Publishing: 0
+I heard: 0
+```
+
 An image `nros build` produced starts its application itself. The scaffolded
 C talker is the in-tree
 [example's `main.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-armv7a-nuttx/c/talker/src/main.c),
