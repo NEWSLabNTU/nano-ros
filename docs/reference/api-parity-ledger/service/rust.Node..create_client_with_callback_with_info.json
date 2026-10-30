@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_client_with_callback_with_info",
+  "verdict": "divergence",
+  "why": "issue 2148 (2026-10-30) — `rust:Node::create_client_with_callback` whose closure also receives the reply's `nros::ServiceInfo`: the callback twin of `rust:Promise::take_with_info`, and the client twin of `rust:Node::create_service_with_info`. rclrs's `(Response, ServiceInfo)` reply shape and upstream `rmw_take_response`'s `rmw_service_info_t`: `request_id` is the request the reply answers (this client's GID and its sequence number), `source_timestamp` the server's send time, `received_timestamp` this client's receive time, each `None` where the backend cannot report it — read from `ClientTrait::response_info` right after the matched take, so the info is that reply's and never the previous one's. Divergence for the reasons `rust:Node::create_client_with_callback` records (the callback is bound at creation; no async runtime to await on) and `rust:ServiceInfo` records (every field an `Option`). Test: `executor::tests::callback_client_with_info_reports_each_replys_info` (mock backend)."
+}

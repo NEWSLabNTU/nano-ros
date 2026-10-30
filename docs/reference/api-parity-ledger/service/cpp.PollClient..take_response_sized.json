@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollClient::take_response_sized",
+  "verdict": "extension",
+  "why": "issue 2148 — issue 0964's caller-sized receive buffer on `cpp:PollClient::take_response`. rclcpp has no counterpart because it has an allocator; here the reply is deserialized out of a fixed stack buffer, so a type with no derived bound needs its caller to state the capacity. Same convention as `cpp:PollSubscription::take_sized` and `cpp:PollClient::call_polling_sized`."
+}

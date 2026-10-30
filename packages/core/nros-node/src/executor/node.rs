@@ -2393,11 +2393,62 @@ impl<'e, 's> Node<'e, 's> {
         Svc::Reply: MessageForRmw,
         F: FnMut(&Svc::Reply) + 'static,
     {
+        self.register_client_callback::<Svc, _, REQ_BUF, REPLY_BUF>(
+            service_name,
+            super::arena::ReplyOnly(callback),
+        )
+    }
+
+    /// [`create_client_with_callback`](Self::create_client_with_callback)
+    /// whose closure also receives the reply's
+    /// [`ServiceInfo`](nros_core::ServiceInfo) — issue 2148, the callback twin
+    /// of [`Promise::take_with_info`](super::handles::Promise::take_with_info)
+    /// and the client twin of
+    /// [`create_service_with_info`](Self::create_service_with_info).
+    ///
+    /// rclrs's `(Response, ServiceInfo)` reply and upstream
+    /// `rmw_take_response`'s `rmw_service_info_t`: `request_id` names the
+    /// request this reply answers (this client's GID and the sequence number
+    /// of its request), `source_timestamp` is when the SERVER sent the reply,
+    /// on its clock, and `received_timestamp` is when this client received it.
+    /// A field the backend cannot report is `None`, never a zero — see
+    /// [`ServiceInfo`](nros_core::ServiceInfo).
+    pub fn create_client_with_callback_with_info<Svc, F>(
+        &mut self,
+        service_name: &str,
+        callback: F,
+    ) -> Result<ServiceClientCallback<Svc>, NodeError>
+    where
+        Svc: RosService + 'static,
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+        F: FnMut(&Svc::Reply, &nros_core::ServiceInfo) + 'static,
+    {
+        self.register_client_callback::<
+            Svc,
+            _,
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(service_name, super::arena::ReplyWithInfo(callback))
+    }
+
+    /// The one registration behind both callback-client shapes (issue 2148).
+    fn register_client_callback<Svc, C, const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        callback: C,
+    ) -> Result<ServiceClientCallback<Svc, REQ_BUF, REPLY_BUF>, NodeError>
+    where
+        Svc: RosService + 'static,
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+        C: super::arena::ClientReplyCallback<Svc::Reply> + 'static,
+    {
         register_type::<Svc::Request>()?;
         register_type::<Svc::Reply>()?;
         let (_id, hdr) = self
             .executor
-            .register_service_client_callback::<Svc, F, REPLY_BUF>(
+            .register_service_client_callback::<Svc, C, REPLY_BUF>(
                 Some(self.node_id),
                 service_name,
                 Svc::SERVICE_NAME,

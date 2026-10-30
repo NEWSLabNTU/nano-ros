@@ -8194,6 +8194,72 @@ fn test_service_client_callback_fires_at_spin() {
     );
 }
 
+/// Issue 2148 — `create_client_with_callback_with_info` hands each reply to its
+/// closure WITH the `ServiceInfo` the backend reported for that reply (the
+/// callback twin of `Promise::take_with_info`), and a reply that reported
+/// nothing arrives as `NOT_REPORTED`, not as the previous reply's info.
+#[test]
+fn callback_client_with_info_reports_each_replys_info() {
+    use crate::executor::arena::ServiceClientSendHeader;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("svc_cb_info").build().unwrap();
+
+    type Got = Option<(i32, nros_core::ServiceInfo)>;
+    let got = alloc::sync::Arc::new(std::sync::Mutex::new(None::<(i32, nros_core::ServiceInfo)>));
+    let got2 = got.clone();
+    let mut client = executor
+        .node_mut(nid)
+        .create_client_with_callback_with_info::<TestService, _>(
+            "/svc",
+            move |reply: &TestServiceReply, info: &nros_core::ServiceInfo| {
+                *got2.lock().unwrap() = Some((reply.sum, *info));
+            },
+        )
+        .unwrap();
+
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let hdr = unsafe {
+        &*(arena_ptr.add(off)
+            as *const ServiceClientSendHeader<{ crate::config::DEFAULT_RX_BUF_SIZE }>)
+    };
+
+    client.call(&TestServiceRequest { a: 7 }).unwrap();
+    let seq = hdr.handle.last_sent_seq.get().unwrap();
+    let info = nros_core::ServiceInfo {
+        source_timestamp: Some(nros_core::Time::from_nanos(1_000)),
+        received_timestamp: Some(nros_core::Time::from_nanos(2_000)),
+        request_id: Some(nros_core::RequestId {
+            writer_guid: [0x42; nros_core::REQUEST_WRITER_GUID_SIZE],
+            sequence_number: seq,
+        }),
+    };
+    let (reply_buf, reply_len) = encode_test_reply(14);
+    hdr.handle.load_reply_info(info);
+    hdr.handle.load_reply_for(seq, reply_buf, reply_len);
+    assert!(
+        executor
+            .spin_once(core::time::Duration::from_millis(0))
+            .any_work()
+    );
+    let first: Got = got.lock().unwrap().take();
+    assert_eq!(first, Some((14, info)), "the reply and ITS info");
+
+    // The next reply reported nothing: NOT_REPORTED, never the last one's.
+    client.call(&TestServiceRequest { a: 8 }).unwrap();
+    let seq = hdr.handle.last_sent_seq.get().unwrap();
+    let (reply_buf, reply_len) = encode_test_reply(15);
+    hdr.handle.load_reply_for(seq, reply_buf, reply_len);
+    assert!(
+        executor
+            .spin_once(core::time::Duration::from_millis(0))
+            .any_work()
+    );
+    let second: Got = got.lock().unwrap().take();
+    assert_eq!(second, Some((15, nros_core::ServiceInfo::NOT_REPORTED)));
+}
+
 /// RFC-0041 / Phase 239.4 — a callback-based action client delivers
 /// goal-response / feedback / result to typed closures at `spin_once`. Drives
 /// each receive by injecting into the entry's mock channels and spinning.

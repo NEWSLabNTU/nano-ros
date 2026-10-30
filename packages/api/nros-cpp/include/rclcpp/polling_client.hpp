@@ -78,6 +78,18 @@
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
+#include "rclcpp/detail/rmw_request_id.hpp" // issue 2148 — take_response's request header
+
+// Issue 2148 — excluded from cbindgen (its Rust signature names
+// `nros_node::RawRequestId`, an external-crate type); declared here against
+// `rmw_request_id_t`, the same 24-byte layout.
+extern "C" {
+nros_cpp_ret_t nros_cpp_service_client_take_response_with_request_id(void* storage,
+                                                                     uint8_t* resp_data,
+                                                                     size_t resp_capacity,
+                                                                     size_t* resp_len,
+                                                                     rmw_request_id_t* request_id);
+} // extern "C"
 
 // Issue 2009 — the header's spelling of "no id" and the FFI's must agree, or a
 // future would treat a backend's "no id" as a real one.
@@ -467,6 +479,56 @@ template <typename S> class PollClient {
         if (ResponseType::ffi_deserialize(resp_buf, resp_len, &resp) != 0) {
             return Result(::rclcpp::ErrorCode::Error);
         }
+        return Result::success();
+    }
+
+    /// `rclcpp::Client::take_response(response, request_header)` — issue 2148.
+    ///
+    /// Takes the next reply off this client WITH its request header, upstream
+    /// `rmw_take_response`'s `rmw_request_id_t`:
+    /// `request_header.sequence_number` is the id the request went out under
+    /// (the `request_id` of the `FutureAndRequestId` that sent it), always;
+    /// `request_header.writer_guid` is this client's request-writer GUID where
+    /// the backend reports one (zenoh, Cyclone DDS, XRCE-DDS), all zero where
+    /// it does not.
+    ///
+    /// As upstream's, this takes WHATEVER reply is next and touches no pending
+    /// future: a reply taken here is not delivered to the future that sent its
+    /// request, so a caller mixing the two owns the correlation — the header
+    /// is what it correlates on. Non-blocking; replies arrive through
+    /// `spin_once`.
+    ///
+    /// @return Result::success() with `response` and `request_header` filled;
+    ///         ErrorCode::TryAgain if no reply is waiting;
+    ///         ErrorCode::NotInitialized, the FFI error code, or
+    ///         ErrorCode::Error (the reply did not deserialize) otherwise.
+    ///
+    /// UPSTREAM PARITY: upstream returns `bool` and throws on a failed take;
+    /// RFC-0018 forbids exceptions, so a failure and "no reply yet" are
+    /// distinguished by the `Result` instead — whose explicit `operator bool`
+    /// keeps `if (client.take_response(resp, header))` compiling.
+    Result take_response(ResponseType& response, rmw_request_id_t& request_header) {
+        return take_response_sized<::rclcpp::rx_buffer_capacity<ResponseType>::value>(
+            response, request_header);
+    }
+
+    /// @ref take_response with the receive buffer sized by the CALLER (issue
+    /// 0964). This IS a receive buffer: the reply is deserialized out of it,
+    /// so an under-estimate truncates. See @ref PollSubscription::take_sized.
+    template <size_t RespCap>
+    Result take_response_sized(ResponseType& response, rmw_request_id_t& request_header) {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        uint8_t buf[RespCap];
+        size_t len = 0;
+        rmw_request_id_t header{};
+        nros_cpp_ret_t ret = nros_cpp_service_client_take_response_with_request_id(
+            storage_, buf, sizeof(buf), &len, &header);
+        if (ret != 0) return Result(ret);
+        if (len == 0) return Result(::rclcpp::ErrorCode::TryAgain);
+        if (ResponseType::ffi_deserialize(buf, len, &response) != 0) {
+            return Result(::rclcpp::ErrorCode::Error);
+        }
+        request_header = header;
         return Result::success();
     }
 

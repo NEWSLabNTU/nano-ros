@@ -1910,6 +1910,27 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/client_seq_correlation_runtime
+    # issue 2148 -- PollClient::take_response(response, request_header): the
+    # next reply with the rmw_request_id_t the backend's take_response_with_info
+    # reported (sequence number always, GUID when reported, zero otherwise).
+    test -f packages/api/nros-cpp/tests/compile/client_take_response_runtime.cpp || { \
+        echo "ERROR: client_take_response_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - PollClient::take_response hands out each reply's request header (runtime, issue 2148)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/client_take_response_runtime \
+        packages/api/nros-cpp/tests/compile/client_take_response_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/client_take_response_runtime
     # issue 2037 -- upstream's FutureAndRequestId on what async_send_request
     # returns: .future / .request_id (structured bindings too), the id is the
     # one the reply is matched on, remove_pending_request by id or wrapper, and

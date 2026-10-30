@@ -102,6 +102,9 @@ exclude = [
     # locally in client.hpp. (`nros_cpp_service_client_send_on_handle` takes no
     # callback, so it stays in the cbindgen output.)
     "nros_cpp_service_client_register",
+    # issue 2148 — takes `*mut nros_node::RawRequestId` (external type);
+    # declared locally in polling_client.hpp against `rmw_request_id_t`.
+    "nros_cpp_service_client_take_response_with_request_id",
     # Phase 189.M3.x — same treatment for the callback-style subscription
     # register — takes `RawSubscriptionCallback` (external nros-node alias).
     # Declared locally in subscription.hpp with a matching plain fn-ptr typedef.
