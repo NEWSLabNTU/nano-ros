@@ -90,7 +90,7 @@ pub fn emit_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
 }
 
 /// Render `run_plan_register_dispatch(executor)` — the framework-target
-/// (RTIC + Embassy, Phase 216) sibling of [`emit_run_plan`].
+/// (RTIC, Phase 216) sibling of [`emit_run_plan`].
 ///
 /// Each Node pkg's `nros::node!()` macro emits a
 /// `pub fn register_dispatch(executor: &mut ::nros::Executor<'static>) -> Result<(), ()>`

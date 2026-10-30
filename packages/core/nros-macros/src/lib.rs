@@ -208,7 +208,7 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 ///    ABI export of the Node's [`DispatchStrategy`] discriminant
 ///    (`<Type as Component>::DISPATCH as u8`). Read out-of-tree by
 ///    `nros check` (216.D.1) and consumed from a separate compilation
-///    unit by the RTIC (216.B.3) / Embassy (216.C.3) dispatch tasks.
+///    unit by the RTIC (216.B.3) dispatch task.
 ///    `<pkg>` is the value of `CARGO_PKG_NAME` after
 ///    `sanitize_pkg_name_for_symbol` (hyphens → underscores).
 ///
@@ -260,7 +260,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
     // Phase 216.A.5 — per-Node-pkg `DispatchStrategy` ABI export. The
     // identifier is `__nros_node_<pkg>_dispatch_strategy`, sharing the
     // same sanitised `<pkg>` substring as the diagnostics string above
-    // so out-of-tree tools (`nros check`, RTIC/Embassy dispatch tasks)
+    // so out-of-tree tools (`nros check`, RTIC dispatch tasks)
     // can resolve the symbol from `CARGO_PKG_NAME` directly.
     let dispatch_fn_name = quote::format_ident!("__nros_node_{}_dispatch_strategy", pkg_sym);
     // Phase 257 (W0-B / D6) — the uniform cross-language install seam.
@@ -283,8 +283,8 @@ fn node_impl(input: TokenStream) -> TokenStream {
     let component_class_bytes =
         LitByteStr::new(component_class.as_bytes(), proc_macro2::Span::call_site());
 
-    // Phase 216.A.5 follow-up — the on_callback trampoline the B.3 RTIC /
-    // C.3 Embassy dispatch tasks invoke after dequeuing a
+    // Phase 216.A.5 follow-up — the on_callback trampoline the B.3 RTIC
+    // dispatch task invokes after dequeuing a
     // `SignaledCallback<'static>` from the SPSC ring. The chosen signature
     // is `extern "C"` with `(state, cb_id_ptr, cb_id_len, ctx)` because:
     //
@@ -296,7 +296,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
     //   2. Sibling export `__nros_node_<pkg>_dispatch_strategy` uses
     //      `extern "C"` — keeping the same ABI across the two
     //      macro-emitted symbols means out-of-tree tools (`nros check`,
-    //      the RTIC/Embassy dispatch tasks themselves) resolve both via
+    //      the RTIC dispatch task itself) resolve both via
     //      the same `dlsym` / objdump path with no cfg-driven ABI
     //      branching.
     //   3. `extern "C"` with raw pointers is `no_std`-clean and matches
@@ -392,7 +392,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
         }
 
         // Phase 216.A.5 follow-up — extern "C" trampoline the B.3 RTIC
-        // and C.3 Embassy dispatch tasks call after dequeuing a
+        // dispatch task calls after dequeuing a
         // `SignaledCallback<'static>` from the SPSC ring + resolving the
         // owning Node-pkg by `CallbackId` (the registry is a separate
         // follow-up). The call sequence on the dispatch-task side is:
@@ -454,9 +454,9 @@ fn node_impl(input: TokenStream) -> TokenStream {
         ///
         /// The `nros::main!()` proc-macro emits one
         /// `<pkg>::register_dispatch(&mut executor)?;` call per
-        /// declared Node pkg in the RTIC / Embassy `#[init]` body
+        /// declared Node pkg in the RTIC `#[init]` body
         /// (see `packages/core/nros-macros/src/main_macro.rs`
-        /// `Framework::Rtic` / `Framework::Embassy` emit branches).
+        /// `Framework::Rtic` emit branch).
         /// The call:
         ///
         ///   1. Constructs the Node's per-pkg `State` blob via

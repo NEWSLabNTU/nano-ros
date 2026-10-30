@@ -1,5 +1,0 @@
-{
-  "key": "cpp:TickCtx::call_raw",
-  "verdict": "divergence",
-  "why": "see `cpp:TickCtx`."
-}

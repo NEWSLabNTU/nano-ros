@@ -22,9 +22,6 @@ use crate::{
     },
 };
 
-#[cfg(feature = "std")]
-use super::signal_executor_wake;
-
 // ============================================================================
 // ServiceBuffer
 // ============================================================================
@@ -978,10 +975,6 @@ extern "C" fn queryable_callback(
     // the request. Measured on native zenoh: every service round trip took one
     // 10 ms slice (p50 10.1 ms).
     super::wake_entity_or_session(&buffer.waker, super::session_wake_index(session));
-
-    // Wake the executor spin loop (if waiting)
-    #[cfg(feature = "std")]
-    signal_executor_wake();
 }
 
 // ============================================================================

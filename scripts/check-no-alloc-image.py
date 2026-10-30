@@ -296,21 +296,6 @@ BOOK_CLAIMS = (
         "covers": "the executor open + component install + spin path",
     },
     {
-        "file": "book/src/user-guide/embassy-integration.md",
-        "text": "Keeping the dispatch path heap-free",
-        "kind": "image",
-        "backed_by": HEAP_FREE_POC,
-        "covers": "the executor open + component install + spin path "
-        "(no Embassy image is built; the paragraph says so)",
-    },
-    {
-        "file": "book/src/user-guide/embassy-integration.md",
-        "text": "stays heap-free on the dispatch path",
-        "kind": "image",
-        "backed_by": HEAP_FREE_POC,
-        "covers": "the same executor path; spawning is the framework's static task pool",
-    },
-    {
         "file": "book/src/internals/dispatch-strategy.md",
         "text": "(Heap-free here is a checked property of the",
         "kind": "image",
@@ -323,19 +308,6 @@ BOOK_CLAIMS = (
         "kind": "image",
         "backed_by": HEAP_FREE_POC,
         "covers": "names the checked image",
-    },
-    {
-        "file": "book/src/user-guide/embassy-integration.md",
-        "text": "`heap-free-poc-mps2`",
-        "kind": "image",
-        "backed_by": HEAP_FREE_POC,
-        "covers": "names the checked image and, next lines, what it does not cover",
-    },
-    {
-        "file": "book/src/user-guide/embassy-integration.md",
-        "text": "check-no-alloc-image.py --tier heap-free",
-        "kind": "tool",
-        "why": "this tool's own invocation",
     },
     {
         "file": "book/src/user-guide/rmw-choosing.md",

@@ -330,9 +330,7 @@ include_paths = [
   "{nros}/c/zpico",
   # Phase 154 — `nros-platform-api/include` carries
   # `<nros/platform_net.h>` (the canonical `nros_platform_*`
-  # ABI + the `nros_platform_socket_get_fd` accessor, which
-  # reads a peer fd without depending on the per-RTOS
-  # socket-struct layout).
+  # net ABI).
   "{nros}/../../platform/nros-platform-api/include",
   "{nros}/c/include",
   "{source:threadx}/common/inc",
@@ -426,8 +424,8 @@ include_paths = [
   "{nros}/c/platform",
   "{nros}/c/include",
   # Phase 154 — `nros-platform-api/include` carries
-  # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI +
-  # `nros_platform_socket_get_fd` accessor). `zpico.c` includes it
+  # `<nros/platform_net.h>` (the canonical `nros_platform_*` net
+  # ABI). `zpico.c` includes it
   # unconditionally; without this on the bare-metal path
   # `cargo check` against any `examples/mps2-an385-baremetal/...`
   # example fails with `nros/platform_net.h: No such file or directory`.

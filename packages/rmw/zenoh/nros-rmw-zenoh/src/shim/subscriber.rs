@@ -20,9 +20,6 @@ use crate::{
 #[cfg(feature = "safety-e2e")]
 use super::SAFETY_CRC_SIZE;
 
-#[cfg(feature = "std")]
-use super::signal_executor_wake;
-
 // ============================================================================
 // SubscriberBuffer
 // ============================================================================
@@ -881,10 +878,6 @@ extern "C" fn subscriber_notify_callback(
     // it is the only place the transport-arrival wake can be timestamped
     // (`drive_io`'s poll path returns 0 and never fires it). no_std-safe.
     super::wake_entity_or_session(&buffer.waker, buffer.session_index.load(Ordering::Acquire));
-
-    // Wake the (std BasicExecutor) spin loop's own cvar, if waiting.
-    #[cfg(feature = "std")]
-    signal_executor_wake();
 }
 
 /// Cumulative count of incoming samples that exceeded

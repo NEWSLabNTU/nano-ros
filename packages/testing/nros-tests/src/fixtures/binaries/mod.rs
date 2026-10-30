@@ -3603,8 +3603,8 @@ pub fn build_nuttx_workspace_c_realtime_entry() -> TestResult<&'static Path> {
 /// #199 follow-up — the 2-tier **C++** realtime NuttX rv-virt (riscv32) entry
 /// (`realtime-cpp/src/riscv_nuttx_entry`), the riscv sibling of the arm
 /// `workspace-cpp-nuttx-realtime` entry. Built by `just nuttx
-/// build-riscv-c-workspaces`. Its consumer was ~~`realtime_tiers_cpp_riscv_nuttx_e2e`~~;
-/// nothing calls it now (`realtime_tiers_e2e` consumes only the C twin below).
+/// build-riscv-c-workspaces`; consumed by `realtime_tiers_e2e` (once
+/// ~~`realtime_tiers_cpp_riscv_nuttx_e2e`~~).
 pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
     static NUTTX_RISCV_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NUTTX_RISCV_WORKSPACE_CPP_REALTIME_ENTRY_BINARY

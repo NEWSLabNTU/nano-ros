@@ -40,7 +40,7 @@ use super::runtime::RuntimeCtx;
 /// truth for everything the deploy block does not name).
 ///
 /// Boards whose `BoardEntry::run` ignores network/locator config (POSIX hosts,
-/// RTIC/Embassy MCUs that take their transport elsewhere) inherit the default
+/// RTIC MCUs that take their transport elsewhere) inherit the default
 /// [`BoardEntry::run_with_deploy`] body, which drops the overlay and calls
 /// [`BoardEntry::run`] — so adding a *network* field here never touches those
 /// boards. The exception is [`node_name`](DeployOverlay::node_name): hosted

@@ -41,7 +41,6 @@
 //!   |-----------|--------|----------|---------|
 //!   | OwnedSpin | ok     | ok       | reject  |
 //!   | Rtic      | reject | ok       | ok      |
-//!   | Embassy   | reject | ok       | reject  |
 //!
 //!   Missing `[package.metadata.nros.node] dispatch = …` defaults to
 //!   Inline (matches the `Node::DISPATCH` trait const default). Missing
@@ -368,7 +367,6 @@ fn has_patch_crates_io(body: &str) -> bool {
 enum Framework {
     OwnedSpin,
     Rtic,
-    Embassy,
 }
 
 impl Framework {
@@ -376,7 +374,6 @@ impl Framework {
         match self {
             Framework::OwnedSpin => "owned-spin",
             Framework::Rtic => "rtic",
-            Framework::Embassy => "embassy",
         }
     }
 }
@@ -423,26 +420,12 @@ fn matrix_reject_reason(fw: Framework, ds: DispatchStrategy) -> Option<&'static 
              ring); set [package.metadata.nros.node] dispatch = \"deferred\" \
              on the Node pkg",
         ),
-        // Embassy: Inline rejected (same reason — Embassy needs a Spawner
-        // hand-off); Deferred ok; FromIsr rejected (Embassy's executor
-        // runs in thread mode — no ISR fast-path).
-        (Framework::Embassy, DispatchStrategy::Inline) => Some(
-            "Embassy requires Deferred dispatch (callbacks hand off to a \
-             framework-owned `async` task via the `embassy_executor::Spawner` \
-             escape); set [package.metadata.nros.node] dispatch = \"deferred\" \
-             on the Node pkg",
-        ),
-        (Framework::Embassy, DispatchStrategy::FromIsr) => Some(
-            "FromIsr is not supported on Embassy (the executor runs in \
-             thread mode — no ISR fast-path); change DISPATCH to Deferred, \
-             or deploy on an RTIC board",
-        ),
         // All other (fw, ds) cells are allowed.
         _ => None,
     }
 }
 
-/// Parse `[package.metadata.nros.board] framework = "<rtic|embassy>"`.
+/// Parse `[package.metadata.nros.board] framework = "<rtic|…>"`.
 /// Missing table or unknown framework string → `Framework::OwnedSpin`
 /// (the matrix's default cell for POSIX / RTOS boards w/o framework
 /// metadata).
@@ -462,7 +445,16 @@ fn read_board_framework(board_cargo_toml: &Path) -> Framework {
         .and_then(|v| v.as_str());
     match fw {
         Some("rtic") => Framework::Rtic,
-        Some("embassy") => Framework::Embassy,
+        // Issue 2134 — a RETIRED framework name gets its reason, not "unknown".
+        Some(other) if let Some(hint) = nros_orchestration_ir::retired_framework_hint(other) => {
+            eprintln!(
+                "warning: {}: `[package.metadata.nros.board] framework = \"{other}\"`: {hint}. \
+                 `nros::main!` will refuse to expand for this board. \
+                 [diagnostic: retired-board-framework]",
+                board_cargo_toml.display(),
+            );
+            Framework::OwnedSpin
+        }
         // Issue 0415 — a framework this lint has no arm for is NOT silently
         // owned-spin. `zephyr` and `esp32` are known repo-wide (the proc-macro
         // emits for them) but carry no dispatch-matrix rule here, so they read
@@ -1327,32 +1319,6 @@ mod tests {
         assert!(
             msg.contains("dispatch-mismatch-rtic-inline"),
             "default dispatch must be Inline — diag: {msg}"
-        );
-    }
-
-    #[test]
-    fn inline_node_on_embassy_framework_rejects() {
-        let root = temp_root("d1_inline_on_embassy");
-        write_board_crate(&root, "board-embassy-stub", "embassy");
-        write_node_pkg(&root, "talker-node", Some("inline"));
-        write_entry_pkg(
-            &root,
-            "talker-embassy-entry",
-            "my-embassy-board",
-            &[
-                ("board_embassy_stub", "../board-embassy-stub"),
-                ("talker_node", "../talker-node"),
-            ],
-        );
-        let err = check_workspace(&root).unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("dispatch-mismatch-embassy-inline"),
-            "diag: {msg}"
-        );
-        assert!(
-            msg.contains("Embassy requires Deferred dispatch"),
-            "diag: {msg}"
         );
     }
 

@@ -1,5 +1,0 @@
-{
-  "key": "cpp:TickCtx",
-  "verdict": "divergence",
-  "why": "the C++ mirror of `rust:TickCtx` (node stage): the client-side dispatch handle a component's `tick` body receives. `tick` runs between callback dispatch, where the executor is free, so it is the only place a component can drive a service-client `call` or an action-client `send_goal` -- both need the executor, and a mid-spin callback cannot hold it. See `rust:Node` in the node stage for the declarative component model this belongs to (RFC-0043/0044). Component code never sees the executor directly, which is the point of the handle."
-}

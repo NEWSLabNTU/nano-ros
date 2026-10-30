@@ -417,8 +417,8 @@ fn the_links_std_column_agrees_with_the_descriptors_entry_kind() {
 /// exactly: Zephyr owns `main`, so the macro's `Framework::Zephyr` arm emits a
 /// `rust_main` staticlib export and no `BoardEntry::run` call. The assertion is
 /// therefore a BICONDITIONAL on `zephyr` alone, and deliberately says nothing
-/// about the rest: `board-run` covers `owned-spin`, `rtic`, `embassy` and
-/// `esp32` at once, so it does not name a framework and a test pretending it
+/// about the rest: `board-run` covers `owned-spin`, `rtic` and `esp32` at
+/// once, so it does not name a framework and a test pretending it
 /// did would be asserting something the data does not hold.
 #[test]
 fn the_framework_agrees_with_the_descriptors_entry_kind() {

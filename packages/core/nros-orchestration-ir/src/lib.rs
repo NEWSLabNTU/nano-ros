@@ -143,7 +143,31 @@ pub mod wcet;
 /// `nros-macros` maps to an emit shape (it also has `Zephyr` and `Esp32`
 /// variants), `nros ws check` maps to a lint matrix. What must NOT differ is
 /// the accepted SET and its spelling, which is why parsing lives here.
-pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "embassy", "zephyr", "esp32"];
+pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "zephyr", "esp32"];
+
+/// Framework names this repo ACCEPTED once and now refuses, each with what to
+/// do instead. Both consumers of [`FRAMEWORKS`] ask [`retired_framework_hint`]
+/// before reporting a name as unknown, so a retired name gets its reason rather
+/// than a bare "not a known framework".
+///
+/// `embassy` — issue 2134 / RFC-0112 D3: the `nros::main!` branch had no board
+/// and no CI cell since phase-337 W7.a removed `embassy-stm32f4`, and what it
+/// emitted relied on board methods no trait declared (issue 2155).
+pub const RETIRED_FRAMEWORKS: &[(&str, &str)] = &[(
+    "embassy",
+    "`embassy` is no longer an `nros::main!` framework (issue 2134): drive the \
+     executor from your own `#[embassy_executor::main]` task instead — open the \
+     `Executor`, create the nodes, and loop `spin_some` with an `embassy_time` \
+     yield. See book/src/user-guide/embassy-integration.md",
+)];
+
+/// The reason a retired framework name is refused, if `name` is one.
+pub fn retired_framework_hint(name: &str) -> Option<&'static str> {
+    RETIRED_FRAMEWORKS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, h)| *h)
+}
 
 /// Is `name` a framework this repo understands?
 ///

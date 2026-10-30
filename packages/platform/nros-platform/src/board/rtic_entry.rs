@@ -50,9 +50,9 @@ use super::{Board, DeployOverlay, runtime::NodeDispatchRuntime};
 /// `#[init]` body and wires the returned pair into RTIC `#[local]`
 /// storage.
 ///
-/// Distinct from [`super::BoardEntry`] (board-owns-spin) and
-/// `[planned]` `EmbassyBoardEntry` (216.C.1, executor-owns-spin via
-/// `embassy_executor::Spawner`).
+/// Distinct from [`super::BoardEntry`] (board-owns-spin). Its Embassy
+/// sibling, ~~`EmbassyBoardEntry`~~, was retired with the `nros::main!`
+/// Embassy branch (issue 2134).
 pub trait RticBoardEntry: Board {
     /// Chip Peripheral Access Crate handle (e.g.
     /// `stm32f4xx_hal::pac::Peripherals`). Whatever the RTIC

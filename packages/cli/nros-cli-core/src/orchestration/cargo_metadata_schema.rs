@@ -241,7 +241,7 @@ impl PackageMetadataNros {
 /// role — an entry is the package an image CLAIMS (`leaf_system::
 /// claiming_image`), and an empty table states nothing. What survives is a
 /// home for build facts that are not deployment and that `nros::main!` reads
-/// from the entry's own manifest: `node_pkgs` (an RTIC/Embassy entry that
+/// from the entry's own manifest: `node_pkgs` (an RTIC entry that
 /// registers a node package OTHER than itself — absent, it registers itself),
 /// `max_callbacks`, `max_sched_contexts`. No in-tree manifest needs any of
 /// them, so none carries the table (`check-leaf-deployment-spelling`); the

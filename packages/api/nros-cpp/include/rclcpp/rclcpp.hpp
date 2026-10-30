@@ -59,7 +59,6 @@
 // wear it (phase-427 W4), which is the other half of that guarantee.
 // Freestanding: `<string>`/`<vector>` behind `NROS_CPP_STD`.
 #include "rclcpp/node_parameters.hpp"
-#include "rclcpp/tick_ctx.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "rclcpp/rosout.hpp" // issue 1589 — `/rosout` from C++
 // phase-427 W4 — `nros/component_node.hpp` IS GONE. `nros::ComponentNode` was a

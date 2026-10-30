@@ -200,14 +200,12 @@ mod params_shim;
 // four entry points carry the gate individually (they need `ctx.executor`).
 mod shutdown;
 
-// ── Tick-time client dispatch (Phase 212.M-F.4.c) ──
-//
-// Mirror of the Rust substrate's `TickCtx::call_raw` /
-// `TickCtx::send_goal_raw` seams added in Phase 212.M-F.4 (`d15565efe`).
-// Always-on (no rmw-cffi gate) because the stub error path is independent
-// of any RMW backend — the symbols exist + return `NROS_CPP_RET_ERROR`
-// until the codegen-side ~~`GenClientDispatch`~~ impl lands (M-F.4.a).
-mod tick_ctx;
+// Issue 2154 — the tick-time client dispatch FFI
+// (~~`nros_cpp_tick_ctx_call_raw`~~ / ~~`nros_cpp_tick_ctx_send_goal_raw`~~,
+// Phase 212.M-F.4.c) is withdrawn. A C++ component has no `tick` hook, so
+// nothing could hand it a real tick context, and both symbols returned
+// `NROS_CPP_RET_ERROR` for every well-formed call. A C++ component calls
+// services and sends goals through its own client handles.
 
 // ============================================================================
 // Error codes (mirror nros-c for consistency)

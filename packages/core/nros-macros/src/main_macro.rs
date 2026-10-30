@@ -93,7 +93,7 @@ struct MainArgs {
     /// is RTIC. `None` = not supplied (the default — no extra tasks).
     /// `Some(vec![])` = supplied as an empty list (still no extra
     /// tasks, but the key was present — distinguished so the
-    /// OwnedSpin/Embassy misuse error fires even on `[]`).
+    /// OwnedSpin misuse error fires even on `[]`).
     custom_tasks: Option<Vec<Ident>>,
     /// Span of the `custom_tasks` key, retained for diagnostics when
     /// rejecting the key under a non-RTIC framework.
@@ -723,14 +723,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         .unwrap_or(true);
 
     // Phase 216.B.4 — `custom_tasks = [...]` only applies to the
-    // RTIC emit. OwnedSpin / Embassy have no `mod __nros_app { ... }`
+    // RTIC emit. OwnedSpin has no `mod __nros_app { ... }`
     // body for the macro to splice into, so flag misuse early with a
     // span pointing at the key.
     if args.custom_tasks.is_some() && framework != Framework::Rtic {
         let span = args.custom_tasks_span.unwrap_or_else(Span::call_site);
         let framework_label = match framework {
             Framework::OwnedSpin => "OwnedSpin",
-            Framework::Embassy => "Embassy",
             Framework::Zephyr => "Zephyr",
             Framework::Esp32 => "Esp32",
             Framework::Rtic => unreachable!(),
@@ -748,15 +747,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
     // RFC-0065 D5 amendment — `before_boot` has a splice point only where the
     // macro writes the first statement of the boot: the OwnedSpin, Zephyr and
-    // esp-hal entry bodies. RTIC's `#[init]` and Embassy's `main` belong to
-    // the framework, which has its own init hook for exactly this.
-    if args.before_boot.is_some() && matches!(framework, Framework::Rtic | Framework::Embassy) {
+    // esp-hal entry bodies. RTIC's `#[init]` belongs to the framework, which
+    // has its own init hook for exactly this.
+    if args.before_boot.is_some() && framework == Framework::Rtic {
         let span = args.before_boot_span.unwrap_or_else(Span::call_site);
-        let label = if framework == Framework::Rtic {
-            "RTIC"
-        } else {
-            "Embassy"
-        };
+        let label = "RTIC";
         return Err(syn::Error::new(
             span,
             format!(
@@ -1554,10 +1549,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
             leaf_axis_assert_tokens(&caps)
         });
-    // Issue 1766 — RTIC and Embassy splice the nodes into a framework `#[init]`
-    // and emit neither the parameter nor the lifecycle services, on EITHER arm.
-    // A declaration they cannot honour is refused, never dropped.
-    if matches!(framework, Framework::Rtic | Framework::Embassy)
+    // Issue 1766 — RTIC splices the nodes into a framework `#[init]` and emits
+    // neither the parameter nor the lifecycle services, on EITHER arm. A
+    // declaration it cannot honour is refused, never dropped.
+    if framework == Framework::Rtic
         && (param_services_enabled || param_store_enabled || lifecycle_code.is_some())
     {
         return Err(syn::Error::new(
@@ -1577,11 +1572,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     (true, false) => "`param_services`",
                     _ => "`lifecycle`",
                 },
-                if framework == Framework::Rtic {
-                    "RTIC"
-                } else {
-                    "Embassy"
-                },
+                "RTIC",
             ),
         ));
     }
@@ -2022,16 +2013,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `MissingRtosSpec("posix")` or a raw missing-method compile error.
     if multi_tier.is_some()
         && let Some(d) = deploy_for_framework.as_deref()
-        && [
-            "esp32",
-            "rtic",
-            "embassy",
-            "baremetal",
-            "bare-metal",
-            "orin",
-        ]
-        .iter()
-        .any(|f| d.contains(f))
+        && ["esp32", "rtic", "baremetal", "bare-metal", "orin"]
+            .iter()
+            .any(|f| d.contains(f))
     {
         return Err(syn::Error::new(
             proc_macro2::Span::call_site(),
@@ -2144,14 +2128,14 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         }
     };
 
-    // Phase 216 final wave — Node-pkg registration for framework
-    // targets (RTIC + Embassy). The OwnedSpin branch keeps its
+    // Phase 216 final wave — Node-pkg registration for the framework
+    // target (RTIC). The OwnedSpin branch keeps its
     // existing `<pkg>::register(runtime)?;` flow inside the
-    // `BoardEntry::run` closure; the framework branches instead emit
-    // `<pkg>::register_dispatch(&mut executor)?;` calls into the
-    // generated `#[init]` body, which push the per-Node
-    // `(state, on_callback)` pair into the `Executor`'s dispatch-slot
-    // registry that the framework dispatch task walks.
+    // `BoardEntry::run` closure; the RTIC branch instead emits one
+    // `<pkg>::register(&mut RuntimeCtx)` call per Node pkg into the
+    // generated `#[init]` body (`framework_register_entity_calls` below;
+    // a `<pkg>::register_dispatch` splice preceded it, and went with the
+    // Embassy branch that last emitted it, issue 2134).
     //
     // Source of truth: `[package.metadata.nros.entry] node_pkgs =
     // ["pkg_a", "pkg_b"]` in the Entry pkg's `Cargo.toml`. When the
@@ -2165,10 +2149,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let framework_node_pkg_idents: Vec<Ident> = match framework {
         // OwnedSpin (incl. NuttX) + Zephyr + Esp32 all register via the
         // launch-resolved `register_calls` (the `RuntimeCtx`-based
-        // `<pkg>::register` flow), NOT the RTIC/Embassy
+        // `<pkg>::register` flow), NOT the RTIC
         // `register_dispatch` splice.
         Framework::OwnedSpin | Framework::Zephyr | Framework::Esp32 => Vec::new(),
-        Framework::Rtic | Framework::Embassy => {
+        Framework::Rtic => {
             let cargo_toml = manifest_dir.join("Cargo.toml");
             let from_metadata = read_entry_node_pkgs(&cargo_toml).map_err(|e| {
                 syn::Error::new(
@@ -2206,16 +2190,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 .collect()
         }
     };
-    let framework_register_dispatch_calls: Vec<proc_macro2::TokenStream> =
-        framework_node_pkg_idents
-            .iter()
-            .map(|ident| {
-                quote! {
-                    ::#ident::register_dispatch(&mut executor)
-                        .expect("nros::main!: register_dispatch — executor dispatch-slot table full");
-                }
-            })
-            .collect();
     // Phase 289 (#178) — Rtic entity registration. `register_dispatch` only
     // installs the on_callback trampoline into the dispatch-slot table; it
     // never runs `Node::register(ctx)` — so an RTIC image opened its session
@@ -2239,8 +2213,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // (BoardEntry::run owns the spin loop). `Rtic` emits a
     // `#[rtic::app(...)]` skeleton that delegates to
     // `RticBoardEntry::init_hardware` from the framework-generated
-    // `#[init]` body. `Embassy` is a hard error pointing at the
-    // 216.C.3 sibling that lands the emit body.
+    // `#[init]` body.
     // issue #128 (half 2) — the Zephyr arm's spin-or-tiers tail. Multi-tier
     // systems route through `ZephyrBoard::run_tiers` (one k_thread per tier
     // over the one shared session, RFC-0015 Model 1); single-tier keeps the
@@ -2762,8 +2735,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // a separate follow-up (the trampoline
                         // registration story spans the macro +
                         // `nros::node!()` emit + the runtime trait
-                        // surface; same deferred story as the Embassy
-                        // sibling in the C.3 follow-up).
+                        // surface).
                         // Phase 244.D1 — thread the `[deploy.<board>]` overlay
                         // into the RTIC `#[init]` so each Entry pkg pins its own
                         // ip / locator (the default impl ignores it, so boards
@@ -2926,114 +2898,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     // defines at module scope; signatures are kept
                     // simple to dodge cross-pkg type-alias plumbing.
                     #( #custom_task_items )*
-                }
-            }
-        }
-        Framework::Embassy => {
-            // Phase 216.C.3 follow-up — sibling of the Rtic emit above.
-            // Emits `#[embassy_executor::main] async fn main(spawner)`
-            // that delegates to `EmbassyBoardEntry::init_hardware`
-            // (which is **sync** — see `embassy_entry.rs`'s "Sync
-            // `init_hardware`" note; matches `RticBoardEntry`) and
-            // then spawns ONE `#[embassy_executor::task]`, `__nros_run_task`,
-            // which spins the executor and drains the runtime's callback
-            // queue (`runtime.take()`) through `Executor::dispatch_callback`.
-            // Phase 216.C.3 began with two tasks (`__nros_spin_task` +
-            // `__nros_dispatch_task`) and collapsed them; see the task's own
-            // doc below. No in-tree board implements `EmbassyBoardEntry` now:
-            // the one that did, with its ~~`EmbassyRuntime`~~ over a static
-            // ~~`CALLBACK_CHANNEL`~~, is gone, so this arm has no live caller.
-            //
-            // Task argument types resolve via the board's
-            // `EmbassyBoardEntry::{Executor, Runtime}` associated
-            // types; `#[embassy_executor::task]` doesn't accept
-            // generic params, so we name them concretely through the
-            // assoc-type projection.
-            //
-            // The `#![no_std]`/`#![no_main]` inner attrs are NOT
-            // emitted here — the Entry pkg's `main.rs` already
-            // declares those at file scope (mirrors the Rtic branch).
-            quote! {
-                use #board_path as __NrosBoard;
-
-                /// Embassy run task — collapsed `__nros_spin_task` +
-                /// `__nros_dispatch_task` (Phase 216.C.3 follow-up).
-                ///
-                /// `#[embassy_executor::task]` doesn't accept multiple
-                /// generic params and the spin + dispatch loops need
-                /// to share the `(Executor, Runtime)` pair so the
-                /// per-callback routing can drain the runtime's callback
-                /// queue between executor iterations. Collapsing the two tasks into
-                /// one gives the spin + drain loops a single coherent
-                /// borrow over both halves.
-                ///
-                /// Body:
-                ///   1. Drive `executor.spin_once(small_dur)` — a
-                ///      small budget so the loop can yield between
-                ///      iterations.
-                ///   2. Drain the runtime's queue (`runtime.take()`)
-                ///      through `Executor::dispatch_callback`.
-                ///   3. Yield to the Embassy scheduler via
-                ///      `Timer::after_millis(1)` so other tasks
-                ///      (Ethernet driver, user-spawned tasks) run.
-                #[::embassy_executor::task]
-                async fn __nros_run_task(
-                    mut executor: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Executor,
-                    runtime: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Runtime,
-                ) {
-                    loop {
-                        let _ = executor.spin_once(
-                            ::core::time::Duration::from_millis(1),
-                        );
-                        // Phase 216 final dispatch wiring — drain
-                        // every envelope the runtime has queued this
-                        // cycle and forward each one through
-                        // `Executor::dispatch_callback`. `take()`
-                        // (sibling of the RTIC SPSC `dequeue`
-                        // path) is non-blocking so the spin loop
-                        // keeps yielding even when no callback is
-                        // signaled — the `Timer::after_millis(1)`
-                        // below paces the executor poll without
-                        // needing `embassy_futures::select` (not a
-                        // current dep). The same layer-clean
-                        // `(cb_id: &str, ctx_ptr: *mut c_void)` shape
-                        // applies — see the RTIC sibling for the
-                        // matching commentary. The executor-side
-                        // dispatch body is a no-op stub today; the
-                        // per-Node trampoline registry (linkme /
-                        // Phase 216 follow-up) fills it in.
-                        while let Some(envelope) = runtime.take() {
-                            let cb = envelope.into_inner();
-                            executor.dispatch_callback(cb.cb_id, cb.ctx_ptr);
-                        }
-                        ::embassy_time::Timer::after_millis(1).await;
-                    }
-                }
-
-                #[::embassy_executor::main]
-                async fn main(spawner: ::embassy_executor::Spawner) {
-                    // Sync `init_hardware_with_deploy` — see the
-                    // `EmbassyBoardEntry` trait "Sync `init_hardware`"
-                    // note; matches `RticBoardEntry`. Phase 244.D1 /
-                    // issue #98 / RFC-0045 — threads the deploy overlay
-                    // so the board can resolve the node name from
-                    // `deploy.boot_config` (the default impl ignores it,
-                    // so boards without a baked boot config are
-                    // unchanged).
-                    let (mut executor, runtime) =
-                        <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::init_hardware_with_deploy(
-                            spawner,
-                            &#deploy_overlay_ts,
-                        );
-                    // Phase 216 final wave — per-Node dispatch
-                    // registration. Sibling of the RTIC `#[init]`
-                    // splice above; same `register_dispatch(&mut
-                    // executor)` shape, populating the executor's
-                    // dispatch-slot table before the
-                    // `__nros_run_task` is spawned to drain the
-                    // runtime's callback queue.
-                    #( #framework_register_dispatch_calls )*
-                    spawner.spawn(__nros_run_task(executor, runtime)).unwrap();
                 }
             }
         }
@@ -3303,8 +3167,8 @@ fn no_selection_error(what: &str) -> proc_macro2::TokenStream {
 /// Phase 216 final wave — read `[package.metadata.nros.entry]
 /// node_pkgs = ["pkg_a", "pkg_b"]` from `Cargo.toml`. Each entry names
 /// a Node-pkg crate the Entry pkg depends on; the framework emit
-/// (RTIC / Embassy) splices `<pkg>::register_dispatch(&mut executor)?;`
-/// calls for each into the generated `#[init]` body.
+/// (RTIC) splices a `<pkg>::register` call for each into the generated
+/// `#[init]` body.
 ///
 /// Returns `Ok(None)` when the key is absent — callers fall back to
 /// self-bringup (Entry pkg's own crate name minus the conventional
@@ -5220,27 +5084,6 @@ enum Framework {
     /// `#[rtic::app(...)]` module + `#[init]` body that delegates to
     /// `RticBoardEntry::init_hardware`.
     Rtic,
-    /// Embassy framework owns the spin loop. The macro emits a
-    /// `#[embassy_executor::main] async fn main(spawner: Spawner)` body
-    /// that delegates to `EmbassyBoardEntry::init_hardware`.
-    ///
-    /// phase-337 W7.a — UNREACHABLE from [`framework_for`] since
-    /// `embassy-stm32f4`, the only in-tree deploy key that selected it, left
-    /// with its board crate. The variant and its emit branch stay because they
-    /// are the seam an out-of-tree Embassy board consumes — `EmbassyBoardEntry`
-    /// is public in `nros-platform` and `nros ws check` already routes on the
-    /// board crate's `framework = "embassy"` metadata.
-    ///
-    /// **Issue 0415 FIXED (phase-346 W1) — and this variant is how you can
-    /// tell.** It carried `#[expect(dead_code)]` with the note "the expect
-    /// fires the day it becomes constructible", because no in-tree deploy key
-    /// selected it after phase-337 W7.a. It is constructible now:
-    /// [`framework_from_name`] maps the `"embassy"` a board declares in its own
-    /// `[package.metadata.nros.board]`, which reaches expansion through
-    /// `NROS_BOARD_FRAMEWORK` (emitted by `nros_build::emit_board_framework`).
-    /// So an out-of-tree Embassy board selects this branch without any in-tree
-    /// table entry — which was the whole point.
-    Embassy,
     /// Phase 225.P — Zephyr RTOS owns boot + `main`. The macro emits a
     /// `#[unsafe(no_mangle)] pub extern "C" fn rust_main()` staticlib
     /// export (consumed by `zephyr-lang-rust`'s `rust_cargo_application`)
@@ -5279,7 +5122,6 @@ fn framework_from_name(name: &str) -> Option<Framework> {
     Some(match name {
         "owned-spin" => Framework::OwnedSpin,
         "rtic" => Framework::Rtic,
-        "embassy" => Framework::Embassy,
         "zephyr" => Framework::Zephyr,
         "esp32" => Framework::Esp32,
         _ => return None,
@@ -5302,7 +5144,9 @@ fn framework_from_name(name: &str) -> Option<Framework> {
 /// An UNKNOWN framework name is an error, never a fall-through. That
 /// fall-through was the whole of issue 0415: an out-of-tree board declaring
 /// `framework = "embassy"` got a plain `fn main()`, which links and then does
-/// nothing the framework was for.
+/// nothing the framework was for. A RETIRED name
+/// (`nros_orchestration_ir::RETIRED_FRAMEWORKS`) is an error too, and says
+/// what to do instead.
 fn framework_for(deploy: &str) -> Framework {
     try_framework_for(deploy).unwrap_or_else(|e| {
         // A proc-macro cannot return a Result here without reshaping every
@@ -5317,6 +5161,13 @@ fn try_framework_for(deploy: &str) -> Result<Framework, String> {
     if let Ok(name) = std::env::var("NROS_BOARD_FRAMEWORK") {
         let name = name.trim();
         if !name.is_empty() {
+            if let Some(hint) = nros_orchestration_ir::retired_framework_hint(name) {
+                return Err(format!(
+                    "nros::main!: the board declares `framework = \"{name}\"`. {hint}. (The \
+                     value came from NROS_BOARD_FRAMEWORK, emitted by the Entry package's \
+                     build script from the board crate's `[package.metadata.nros.board]`.)"
+                ));
+            }
             return framework_from_name(name).ok_or_else(|| {
                 format!(
                     "nros::main!: the board declares `framework = \"{name}\"`, which this \
@@ -5513,7 +5364,7 @@ mod custom_tasks_parser_tests {
     #[test]
     fn empty_list_is_accepted() {
         // `Some(vec![])` distinguishes "key supplied, list empty" from
-        // "key not supplied" so the OwnedSpin / Embassy misuse error
+        // "key not supplied" so the OwnedSpin misuse error
         // can still fire on `[]`.
         let parsed = parse("custom_tasks = []").expect("parse empty list");
         let tasks = parsed.custom_tasks.expect("custom_tasks set");
@@ -5928,7 +5779,7 @@ mod framework_ssot_tests {
     /// declare could never be produced by a board, so it would be dead emit.
     #[test]
     fn the_macro_accepts_no_framework_outside_the_vocabulary() {
-        for name in ["owned-spin", "rtic", "embassy", "zephyr", "esp32"] {
+        for name in ["owned-spin", "rtic", "zephyr", "esp32"] {
             assert!(
                 nros_orchestration_ir::is_known_framework(name),
                 "the macro maps `{name}` but the shared vocabulary does not declare it"
@@ -5980,10 +5831,15 @@ mod framework_ssot_tests {
             err.contains("embasy"),
             "the error must name the bad value: {err}"
         );
-        assert!(err.contains("embassy"), "and list the known ones: {err}");
+        assert!(err.contains("rtic"), "and list the known ones: {err}");
 
+        // Issue 2134 — a RETIRED name is refused with its reason, not as a typo.
         unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embassy") };
-        assert_eq!(try_framework_for("linux").unwrap(), Framework::Embassy);
+        let err = try_framework_for("linux").unwrap_err();
+        assert!(
+            err.contains("issue 2134") && err.contains("spin_some"),
+            "a retired framework names the issue and the alternative: {err}"
+        );
         unsafe { std::env::remove_var("NROS_BOARD_FRAMEWORK") };
     }
 
