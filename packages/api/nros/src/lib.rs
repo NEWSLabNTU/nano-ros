@@ -433,6 +433,9 @@ pub use nros_macros::node;
 // `docs/design/0024-multi-node-workspace-layout.md` §11.6.
 #[cfg(feature = "macros")]
 pub use nros_macros::main;
+// phase-520 (issue 2150) — `nros::main!`'s assembly without its `main`.
+#[cfg(feature = "macros")]
+pub use nros_macros::setup;
 
 /// Route this image's panics to its platform — phase-366 W5.c / RFC-0077.
 ///

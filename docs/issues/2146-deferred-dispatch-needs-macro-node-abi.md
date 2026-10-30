@@ -6,7 +6,7 @@ type: enhancement
 area: [core, executor, macros]
 severity: low
 found: 2026-10-29
-related: [2144, 2134]
+related: [2144, 2134, phase-520]
 ---
 
 ## What

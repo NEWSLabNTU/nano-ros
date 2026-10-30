@@ -116,6 +116,14 @@ struct MainArgs {
     before_boot: Option<SynPath>,
     /// Span of the `before_boot` key, for the framework refusal.
     before_boot_span: Option<Span>,
+    /// phase-520 W1 (issue 2150) — expanding `nros::setup!`, not `nros::main!`:
+    /// emit the assembly as `nros_setup` and leave `main` and the loop to the
+    /// host.
+    setup: bool,
+    /// Every key that belongs to whoever owns `main` (`spin`, `panic`,
+    /// `before_boot`, `custom_tasks`), with its span, so `nros::setup!` can
+    /// refuse each one by name.
+    loop_owner_keys: Vec<(String, Span)>,
 }
 
 /// What ends this image (RFC-0077's three values, identical on the cmake side).
@@ -154,7 +162,14 @@ impl Parse for MainArgs {
         // comma — matches every other Rust attribute-arg syntax.
         let pairs: Punctuated<KeyValue, Token![,]> = Punctuated::parse_terminated(input)?;
         for KeyValue { key, value } in pairs {
-            match key.to_string().as_str() {
+            let key_name = key.to_string();
+            if matches!(
+                key_name.as_str(),
+                "spin" | "panic" | "before_boot" | "custom_tasks"
+            ) {
+                out.loop_owner_keys.push((key_name.clone(), key.span()));
+            }
+            match key_name.as_str() {
                 // phase-484 W8c — Form 2 is RETIRED (deprecated in W4g, shipped
                 // in release 0.5.0-nros2). An explicit board path skipped the
                 // leaf's `system.toml` and hard-wired `OwnedSpin`, so it dropped
@@ -477,12 +492,48 @@ pub fn expand(input: TokenStream) -> TokenStream {
     }
 }
 
+/// phase-520 W1 (issue 2150) — `nros::setup!`: the same model-driven assembly
+/// as `nros::main!`, emitted as `pub fn nros_setup(&mut RuntimeCtx)` for a
+/// host that owns its own loop (RFC-0112 Tier 0).
+pub fn expand_setup(input: TokenStream) -> TokenStream {
+    let mut args = parse_macro_input!(input as MainArgs);
+    args.setup = true;
+    match build_main(args) {
+        Ok(ts) => ts.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// The refusal for a `nros::main!` key that `nros::setup!` cannot honour:
+/// each one configures the `main` or the loop, which the host owns.
+fn setup_refuses_loop_key(key: &str, span: Span) -> syn::Error {
+    let why = match key {
+        "spin" => "the host's loop decides how long to spin",
+        "panic" => "the host's binary chooses its own `#[panic_handler]`",
+        "before_boot" => "the host runs its own steps before calling `nros_setup`",
+        _ => "the host's framework owns its task list",
+    };
+    syn::Error::new(
+        span,
+        format!(
+            "nros::setup!: `{key} = ` configures the entry's `main`, and `nros::setup!` emits \
+             none ({why}). Drop the key, or use `nros::main!` to let the board own the loop \
+             (phase-520, issue 2150)."
+        ),
+    )
+}
+
 /// Errors carry a span — when we have a relevant token, attach it; when
 /// the failure is environmental (Cargo.toml missing, launch parse
 /// failed), fall back to `Span::call_site()`.
 type MacroResult<T> = std::result::Result<T, syn::Error>;
 
 fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
+    if args.setup
+        && let Some((key, span)) = args.loop_owner_keys.first()
+    {
+        return Err(setup_refuses_loop_key(key, *span));
+    }
     // CARGO_MANIFEST_DIR is set by cargo when compiling proc-macro
     // consumers; if missing we fail loud — proc-macros without a
     // manifest dir would have no way to find Cargo.toml or workspace
@@ -585,7 +636,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Option<String>,
         Option<nros_orchestration_ir::leaf_system::LeafSystem>,
     ) = {
-        {
+        'board: {
             tracked.push(manifest_dir.join("Cargo.toml"));
             // The deprecated `model = "<bringup>[:file]"` names the bringup too;
             // resolve it here so an entry spelled that way finds its image.
@@ -621,6 +672,15 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             .map_err(|e| syn::Error::new(Span::call_site(), format!("nros::main!: {e}")))?;
             if let Some(l) = &leaf {
                 tracked.push(l.origin_path().to_path_buf());
+            }
+            // phase-520 W1 — `nros::setup!` calls no board: the host owns the
+            // entry, so the declared board contributes only its overlay facts,
+            // and one the in-tree table does not know (an out-of-tree Embassy
+            // board) is no error. The path is never emitted in this mode.
+            if args.setup {
+                let unused: SynPath = syn::parse_quote!(::nros::__setup_calls_no_board);
+                let declared = leaf.as_ref().and_then(|l| l.board.clone());
+                break 'board (unused, declared, leaf);
             }
             let declared = leaf.as_ref().and_then(|l| l.board.clone()).ok_or_else(|| {
                 syn::Error::new(
@@ -703,7 +763,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         p.segments.pop_punct();
         quote! { #p }
     };
+    // phase-520 W1 — under `nros::setup!` the host is the framework, so the
+    // board's own (RTIC, Embassy, Zephyr …) never shapes the emit: the
+    // assembly is the `RuntimeCtx` register flow every OwnedSpin board runs.
     let framework = match deploy_for_framework.as_deref() {
+        _ if args.setup => Framework::OwnedSpin,
         Some(d) => framework_for(d),
         None => Framework::OwnedSpin,
     };
@@ -1976,6 +2040,17 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         ));
     }
     let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
+    // phase-520 W1 — a tiered image needs a board's tier runner to spawn one
+    // executor per tier, and `nros::setup!` calls no board.
+    if args.setup && multi_tier.is_some() {
+        return Err(syn::Error::new(
+            Span::call_site(),
+            "nros::setup!: this image declares more than one tier, and spawning a tier \
+             executor per tier is the board's tier runner — which `nros::setup!` does not \
+             call, because the host owns the loop. Use `nros::main!` for a tiered image, or \
+             collapse it to one tier (phase-520 open question).",
+        ));
+    }
     // Issue 1943 -- the tiered closure runs once per tier executor, and each
     // register call installs its component into a per-class store of
     // `NROS_RUNTIME_MAX_CLASS_INSTANCES` slots. Run unguarded, every tier
@@ -3045,6 +3120,47 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // `own` emits nothing — the image said it brings its own.
             PanicPolicy::Own => quote! {},
         }
+    };
+
+    // phase-520 W1 (issue 2150) — `nros::setup!` emits the board closure's
+    // body as a function, and no `main`, spin or panic handler: the same token
+    // streams the OwnedSpin closure splices, so the two cannot drift.
+    let (panic_ts, body_ts) = if args.setup {
+        let setup_ts = quote! {
+            /// The image's deploy facts (locator, domain, transport, RMW,
+            /// node name) from its `system.toml`, for the host to open its
+            /// `Executor` with. Installs the baked session properties too,
+            /// so call it before opening the session.
+            #[allow(dead_code)]
+            pub fn nros_deploy() -> ::nros::__macro_support::nros_platform::DeployOverlay {
+                #deploy_overlay_ts
+            }
+
+            /// Install everything the image's model declares — contract
+            /// monitors, declared parameters, parameter services, every
+            /// component, lifecycle — on the host's executor. The host
+            /// spins afterwards, from its own loop.
+            ///
+            /// Takes the runtime the host wraps its executor in
+            /// (`nros::node_runtime::ExecutorNodeRuntime::from_executor`).
+            pub fn nros_setup(
+                node_runtime: &mut dyn ::nros::__macro_support::nros_platform::NodeDispatchRuntime,
+            ) -> ::core::result::Result<
+                (),
+                ::nros::__macro_support::nros_platform::RuntimeError,
+            > {
+                let mut ctx =
+                    ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(node_runtime);
+                let runtime = &mut ctx;
+                #contract_monitors_call #declared_params_call #param_services_call
+                #( #register_calls )*
+                #lifecycle_call
+                ::core::result::Result::Ok(())
+            }
+        };
+        (quote! {}, setup_ts)
+    } else {
+        (panic_ts, body_ts)
     };
 
     let expanded = quote! {
@@ -6513,6 +6629,106 @@ mod leaf_axis_tests {
         // RTIC registers no runtime services: refused, not dropped.
         let e = expand("", "rtic-mps2-an385", "features = [\"param_services\"]").unwrap_err();
         assert!(e.contains("RTIC") && e.contains("param_services"), "{e}");
+    }
+
+    /// phase-520 W1 — expand `nros::setup!(<args>)` over a throwaway leaf whose
+    /// `[image.a]` table is `image` verbatim (so a test can omit the board).
+    fn expand_setup(args: &str, image: &str) -> Result<String, String> {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "nros-macros-setup-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let leaf = Leaf(dir.clone());
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"setup_leaf\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("system.toml"),
+            format!("[system]\nname = \"setup_leaf\"\nrmw = \"zenoh\"\n\n[image.a]\n{image}\n"),
+        )
+        .unwrap();
+        let mut args: MainArgs = syn::parse_str(args).map_err(|e| e.to_string())?;
+        args.setup = true;
+        let _env = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        ENTRY_ENV_OVERRIDE.with(|m| {
+            let mut m = m.borrow_mut();
+            m.insert(
+                "CARGO_MANIFEST_DIR".into(),
+                leaf.0.to_string_lossy().into_owned(),
+            );
+            m.insert("CARGO_PKG_NAME".into(), "setup_leaf".into());
+        });
+        let out = build_main(args)
+            .map(|t| t.to_string())
+            .map_err(|e| e.to_string());
+        ENTRY_ENV_OVERRIDE.with(|m| m.borrow_mut().clear());
+        out
+    }
+
+    /// phase-520 W1 — `nros::setup!` emits the assembly as `nros_setup` plus
+    /// the deploy facts, and nothing that owns the entry: no `main`, no board
+    /// call, no spin, no panic handler.
+    #[test]
+    fn setup_emits_the_assembly_and_no_entry() {
+        let out = expand_setup("", "board = \"linux\"").unwrap();
+        assert!(out.contains("pub fn nros_setup"), "{out}");
+        assert!(out.contains("pub fn nros_deploy"), "{out}");
+        assert!(
+            out.contains("setup_leaf :: register"),
+            "component not registered:\n{out}"
+        );
+        for owner in [
+            "fn main",
+            "BoardEntry",
+            "run_with_deploy",
+            "panic_to_platform",
+            "spin_once",
+        ] {
+            assert!(!out.contains(owner), "`{owner}` emitted by setup!:\n{out}");
+        }
+    }
+
+    /// The register calls are the SAME token stream `nros::main!` splices into
+    /// the board closure, so the two entries cannot drift.
+    #[test]
+    fn setup_registers_what_main_registers() {
+        let setup = expand_setup("", "board = \"linux\"").unwrap();
+        let main = expand("", "linux", "").unwrap();
+        let call = "setup_leaf :: register";
+        assert!(setup.contains(call), "{setup}");
+        // `expand` names its leaf `axis_leaf`: compare the register shape, not the name.
+        assert!(main.contains("axis_leaf :: register"), "{main}");
+    }
+
+    /// `setup!` calls no board, so a board the in-tree table does not know
+    /// (an out-of-tree Embassy board with no `type`) is no error. The image
+    /// still names one: RFC-0098 D3 is the leaf reader's rule, not this one's.
+    #[test]
+    fn setup_calls_no_board() {
+        let out = expand_setup("", "board = \"my-embassy-board\"").unwrap();
+        assert!(out.contains("pub fn nros_setup"), "{out}");
+        let err = expand_setup("", "").unwrap_err();
+        assert!(err.contains("names no `board`"), "{err}");
+    }
+
+    /// Every key that configures `main` is refused by name.
+    #[test]
+    fn setup_refuses_every_loop_owner_key() {
+        for (args, key) in [
+            ("spin = \"forever\"", "spin"),
+            ("panic = \"halt\"", "panic"),
+            ("before_boot = my_pkg::open_can", "before_boot"),
+            ("custom_tasks = [adc]", "custom_tasks"),
+        ] {
+            let err = expand_setup(args, "board = \"linux\"").unwrap_err();
+            assert!(err.contains(&format!("`{key} = `")), "{args}: {err}");
+            assert!(err.contains("nros::main!"), "{args}: {err}");
+        }
     }
 }
 

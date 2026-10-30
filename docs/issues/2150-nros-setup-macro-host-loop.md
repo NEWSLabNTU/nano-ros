@@ -6,7 +6,7 @@ type: enhancement
 area: [macros, core, executor]
 severity: low
 found: 2026-10-29
-related: [2134, 2143, 2144, 2145, 2146]
+related: [2134, 2143, 2144, 2145, 2146, phase-520]
 ---
 
 ## What
@@ -47,6 +47,12 @@ async fn main(spawner: Spawner) {
   emits the node ABI, rather than for hand-written code.
 - One `nros_setup` serves every Tier 0 host, so admitting a new framework costs
   a recipe and a cell, never a macro branch. That is RFC-0112 D3's intent.
+
+## Status
+
+Being implemented by [phase-520](../roadmap/phase-520-setup-macro-host-loop.md).
+W1 (`nros::setup!` emitting `nros_setup` + `nros_deploy`) has landed. The issue
+closes with W3 (deferred dispatch, issue 2146) and W4 (the Embassy recipe).
 
 ## Open questions
 

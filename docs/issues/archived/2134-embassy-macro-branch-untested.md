@@ -7,7 +7,7 @@ type: tech-debt
 area: [macros, boards, embedded]
 severity: low
 found: 2026-10-29
-related: [0248, 0415, 2143, 2144, 2145, 2146, 2150, 2155]
+related: [0248, 0415, 2143, 2144, 2145, 2146, 2150, 2155, phase-520]
 ---
 
 ## What
