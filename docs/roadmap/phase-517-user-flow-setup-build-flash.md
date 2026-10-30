@@ -1319,6 +1319,20 @@ carries them. Two things wait for it:
 **Done when** the release is published, `[tool.nros]` pins it, and the
 pinned-project probe is green in `probe-platforms.yml`.
 
+**Done (2026-10-30).** Release `0.6.0-nros5` is published (tag
+`nros-0.6.0-nros5`, cut from `main` at `375fd91f`, after a `publish=false`
+dry run passed). Its manifest records `codegen = 21`, and its asset carries
+`bin/nros-build-profile` (W17) and `share/nano-ros/integrations/`, so the PX4
+and NuttX chapters' copy-from-the-SDK-root steps now work for installed users.
+`[tool.nros]` pins it: `version`, the smoke `--codegen-version` expectation
+(18 to 21) and `upstream`/`source.ref` all move together, and
+`the_nros_smoke_check_expects_what_the_pinned_release_emits` passes against
+the new pin. The pinned-project probe was green before the cut (W11, run
+40928169451). Not yet run: the same track with `0.6.0-nros5` as the installed
+CLI rather than the probe's own `0.0.0-probe` build. The probe always installs
+the asset it builds, so that needs a probe option to install a published
+release instead, and nothing in the current harness provides one.
+
 ### W17 — small items (S each)
 
 * **`nros-build-profile` ships as a binary in the release asset.**
