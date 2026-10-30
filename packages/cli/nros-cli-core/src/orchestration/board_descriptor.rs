@@ -588,6 +588,34 @@ pub struct BoardZephyr {
     /// here would be a second spelling of a fact Zephyr owns.
     #[serde(default)]
     pub runner: Option<String>,
+    /// The rustup triple a RUST image for this board compiles for. Issue 2151:
+    /// zephyr-lang-rust picks it from the Zephyr board at build time, so the
+    /// board had no `target` and nothing installed it. Distinct from the C
+    /// lane's triple: on native_sim a C image's runtime compiles for the host,
+    /// a Rust image's for `x86_64-unknown-none`. `None`: Rust images are not
+    /// supported on this board, or need no extra target. `{host_arch}` stands
+    /// for the build host's architecture, because zephyr-lang-rust maps a
+    /// native_sim board by the build host's processor; read it through
+    /// [`BoardZephyr::rust_target_for_host`].
+    #[serde(default)]
+    pub rust_target: Option<String>,
+    /// `nros-sdk-index.toml` `[prereq.*]` keys a Rust image for this board needs
+    /// on the host beyond what a C image does. zephyr-lang-rust runs bindgen
+    /// over Zephyr's headers, so it needs `clang` (for its builtin headers) and
+    /// `libclang-dev` (the library bindgen loads); issue 2151.
+    #[serde(default)]
+    pub rust_prereqs: Vec<String>,
+}
+
+impl BoardZephyr {
+    /// [`Self::rust_target`] with `{host_arch}` replaced by this host's
+    /// architecture (`x86_64`, `aarch64`).
+    #[must_use]
+    pub fn rust_target_for_host(&self) -> Option<String> {
+        self.rust_target
+            .as_deref()
+            .map(|t| t.replace("{host_arch}", std::env::consts::ARCH))
+    }
 }
 
 /// `[board.nuttx]` — the NuttX ecosystem's own name for this board.
