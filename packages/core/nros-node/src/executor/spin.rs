@@ -6355,12 +6355,11 @@ impl<'s> Executor<'s> {
     /// backend (XRCE, uORB's polling build, a bare-metal smoltcp session)
     /// learns of an arrival only inside `drive_io`, i.e. inside a spin, so a
     /// notifier there would never fire for a host that waits on it. Those
-    /// executors answer `false`, and [`set_ready_notifier`] and [`ready_fd`]
-    /// refuse rather than install something silent; such a host keeps spinning
-    /// on a period.
+    /// executors answer `false`, and [`set_ready_notifier`] and `ready_fd`
+    /// (Linux, `signal-fd-wake`) refuse rather than install something silent;
+    /// such a host keeps spinning on a period.
     ///
     /// [`set_ready_notifier`]: Self::set_ready_notifier
-    /// [`ready_fd`]: Self::ready_fd
     pub fn ready_notifier_supported(&self) -> bool {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         {
