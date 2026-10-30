@@ -2920,10 +2920,16 @@ fn a_session_deadline_competes_and_is_attributed_to_the_session() {
     );
 }
 
+// Issue 2143 -- an exact bound needs a clock that does not move: the timer
+// bound is measured from NOW, so a free-running clock shaves microseconds.
+private_test_clock!(nearer_timer_vs_session_clock);
+
 /// ... and it loses to a nearer timer like any other member.
 #[test]
 fn a_nearer_timer_beats_the_session_deadline() {
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    nearer_timer_vs_session_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), nearer_timer_vs_session_clock::now_us);
     executor
         .register_timer(TimerDuration::from_millis(2), || {})
         .unwrap();
@@ -2994,14 +3000,20 @@ fn the_nearest_of_several_sources_wins() {
     assert_eq!(winner, near);
 }
 
+// Issue 2143 -- an exact bound needs a clock that does not move: the timer
+// bound is measured from NOW, so a free-running clock shaves microseconds.
+private_test_clock!(timer_vs_platform_source_clock);
+
 /// A timer still beats a platform source that is further out — W1's rule is
 /// not special-cased away by the seam, it becomes one member of the same min.
 #[test]
 fn a_timer_still_competes_with_platform_sources() {
+    timer_vs_platform_source_clock::claim_at_us(1_000_000);
     unsafe extern "C" fn due_30ms(_c: *mut core::ffi::c_void) -> u64 {
         30_000
     }
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), timer_vs_platform_source_clock::now_us);
     executor
         .register_wake_source(due_30ms, core::ptr::null_mut())
         .unwrap();
@@ -3018,6 +3030,10 @@ fn a_timer_still_competes_with_platform_sources() {
 // Issue 1321 — which timers may bound a WALL park
 // ==========================================================================
 
+// Issue 2143 -- an exact bound needs a clock that does not move: the timer
+// bound is measured from NOW, so a free-running clock shaves microseconds.
+private_test_clock!(system_time_timer_park_clock);
+
 /// A `TimerClockSource::System` timer DOES bound the park, and it is decided
 /// separately from `Ros` rather than by "not `Steady`".
 ///
@@ -3028,7 +3044,9 @@ fn a_timer_still_competes_with_platform_sources() {
 /// never fire a callback early.
 #[test]
 fn a_system_time_timer_bounds_the_park() {
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    system_time_timer_park_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), system_time_timer_park_clock::now_us);
     executor
         .register_timer_on_clock(
             TimerDuration::from_millis(100),
@@ -3155,16 +3173,24 @@ fn a_paused_ros_clock_does_not_wake_the_image_once_per_timer_period() {
     );
 }
 
+// Issue 2143 -- an exact bound needs a clock that does not move: the timer
+// bound is measured from NOW, so a free-running clock shaves microseconds.
+private_test_clock!(wall_timer_beside_ros_timer_clock);
+
 /// phase-436 W1's property, unchanged: a WALL timer beside the ROS-time one
 /// still wins the park at its own period. The fix skips one clock source, not
 /// the timer deadline source.
 #[cfg(feature = "sim-time")]
 #[test]
 fn a_wall_timer_still_bounds_the_park_beside_a_paused_ros_timer() {
+    wall_timer_beside_ros_timer_clock::claim_at_us(1_000_000);
     let _sim_time = SimTimeGuard::acquire();
     use nros_core::clock::Clock;
 
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut executor: Executor = executor_with_clock_fn(
+        MockSession::new(),
+        wall_timer_beside_ros_timer_clock::now_us,
+    );
     Clock::set_ros_time_override(10_000 * 1_000_000);
     executor
         .register_timer_on_clock(
@@ -3502,12 +3528,18 @@ fn the_quantization_audit_sees_the_declared_cadence_not_the_park_bound() {
     );
 }
 
+// Issue 2143 -- an exact bound needs a clock that does not move: the timer
+// bound is measured from NOW, so a free-running clock shaves microseconds.
+private_test_clock!(spin_once_parks_on_timer_clock);
+
 /// The bound is not merely COMPUTED — `spin_once` must USE it, and must
 /// record which source won. Without that the helper could be correct and
 /// unused: the shape issue 0736 recorded, a probe on a path no image takes.
 #[test]
 fn spin_once_parks_on_the_timer_and_says_so() {
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    spin_once_parks_on_timer_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), spin_once_parks_on_timer_clock::now_us);
     executor
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
@@ -3539,11 +3571,17 @@ fn spin_once_attributes_an_unbounded_park_to_the_caller() {
     assert_eq!(source, super::spin::WakeSourceId::CallerBudget);
 }
 
+// Issue 2143 -- an exact bound needs a clock that does not move: the timer
+// bound is measured from NOW, so a free-running clock shaves microseconds.
+private_test_clock!(timer_shortens_budget_clock);
+
 /// A registered timer is a deadline the EXECUTOR owns. A caller budget longer
 /// than that deadline must not let the executor sleep past it.
 #[test]
 fn a_timer_deadline_shortens_a_longer_caller_budget() {
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    timer_shortens_budget_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), timer_shortens_budget_clock::now_us);
     executor
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
@@ -3580,10 +3618,16 @@ fn no_timers_leaves_the_caller_budget_alone() {
     assert_eq!(executor.next_wake_bound_us(50_000), 50_000);
 }
 
+// Issue 2143 -- an exact bound needs a clock that does not move: the timer
+// bound is measured from NOW, so a free-running clock shaves microseconds.
+private_test_clock!(nearest_timer_clock);
+
 /// The nearest of several timers decides.
 #[test]
 fn the_nearest_timer_decides_the_bound() {
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    nearest_timer_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), nearest_timer_clock::now_us);
     executor
         .register_timer(TimerDuration::from_millis(40), || {})
         .unwrap();
@@ -3616,6 +3660,110 @@ fn a_cancelled_timer_does_not_bound_the_park() {
         50_000,
         "a cancelled timer is not a deadline"
     );
+}
+
+// ============================================================================
+// Issue 2143 -- `next_deadline_us`, the Tier 0 time-out a host loop sleeps on
+// ============================================================================
+
+private_test_clock!(next_deadline_timer_clock);
+
+/// A 10 ms timer is due in at most 10 ms, and -- the lower bound -- not
+/// sooner: an answer of 0 would turn the host's sleep into a busy poll, and
+/// one under 10 ms would wake it for nothing. The private clock makes both
+/// bounds one exact value, then moves "now" WITHOUT spinning, so the answer
+/// is shown to be measured from now rather than from the last spin.
+#[test]
+fn next_deadline_reports_a_10ms_timer_from_now() {
+    next_deadline_timer_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), next_deadline_timer_clock::now_us);
+    executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+
+    let due = executor
+        .next_deadline_us()
+        .expect("a registered timer is a deadline");
+    assert!(
+        due <= 10_000,
+        "a 10 ms timer is due within 10 ms, got {due} us"
+    );
+    assert!(
+        due >= 10_000,
+        "and not sooner: nothing has elapsed on this clock, got {due} us"
+    );
+
+    // The host spends 4 ms in its own loop; the timer is 4 ms nearer.
+    next_deadline_timer_clock::advance_ms(4);
+    assert_eq!(executor.next_deadline_us(), Some(6_000));
+
+    // Past the period it is due now, not "due in a negative time".
+    next_deadline_timer_clock::advance_ms(20);
+    assert_eq!(executor.next_deadline_us(), Some(0));
+}
+
+/// Nothing scheduled is `None`, not a made-up period: the host then waits on
+/// readiness alone (issue 2144).
+#[test]
+fn next_deadline_is_none_with_nothing_scheduled() {
+    let executor: Executor = executor_with_clock(MockSession::new());
+    assert_eq!(executor.next_deadline_us(), None);
+}
+
+/// A cancelled timer owes nothing, and so is not a deadline a host wakes for.
+#[test]
+fn next_deadline_ignores_a_cancelled_timer() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let id = executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+    executor.cancel_timer(id).unwrap();
+    assert_eq!(executor.next_deadline_us(), None);
+}
+
+/// Every member of the park's `min` reaches the public answer, not just the
+/// timers: a platform wake source nearer than the timer decides it.
+#[test]
+fn next_deadline_includes_a_platform_wake_source() {
+    unsafe extern "C" fn due_in_3ms(_ctx: *mut core::ffi::c_void) -> u64 {
+        3_000
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor
+        .register_timer(TimerDuration::from_millis(40), || {})
+        .unwrap();
+    executor
+        .register_wake_source(due_in_3ms, core::ptr::null_mut())
+        .unwrap();
+    assert_eq!(executor.next_deadline_us(), Some(3_000));
+}
+
+private_test_clock!(park_since_last_spin_clock);
+
+/// The executor's OWN park reads the same corrected bound: time the host
+/// spent between two spins is time the timer already waited. Before issue
+/// 2143 the park measured the remainder from the last spin's end and overslept
+/// a timer by exactly that gap.
+#[test]
+fn spin_once_park_counts_time_spent_between_spins() {
+    park_since_last_spin_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), park_since_last_spin_clock::now_us);
+    executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+    executor.spin_once(core::time::Duration::ZERO);
+
+    park_since_last_spin_clock::advance_ms(4);
+    executor.spin_once(core::time::Duration::from_millis(50));
+
+    let (bound_us, source) = executor.last_park();
+    assert_eq!(
+        bound_us, 6_000,
+        "4 ms of a 10 ms timer passed between the spins, got {bound_us} us"
+    );
+    assert_eq!(source, super::spin::WakeSourceId::Timer);
 }
 
 private_test_clock!(add_timer_fire_clock);

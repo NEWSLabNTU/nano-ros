@@ -5229,6 +5229,46 @@ pub unsafe extern "C" fn rclc_executor_get_level(
     RCL_RET_OK
 }
 
+/// Issue 2143 (RFC-0112 D2.2) — nanoseconds from now until this executor next
+/// needs to run, written to `*next_ns`; `UINT64_MAX` when nothing is
+/// scheduled, and 0 when something is already due.
+///
+/// The Tier 0 time-out for a host that drives the executor itself (a plain C
+/// `while`, an Arduino `loop()`, a PX4 work item): call
+/// `rclc_executor_spin_some(executor, 0)`, then sleep at most this long. It is
+/// the bound the executor's own park uses — the next timer, the backend's next
+/// internal event, a supervised route's deadline and every registered wake
+/// source — and forwards to `Executor::next_deadline_us`, so the C answer
+/// cannot disagree with the Rust one. `UINT64_MAX` is "no deadline", not
+/// "never": a sample may still arrive, so wait on readiness then. The unit is
+/// rcl's nanoseconds; the RESOLUTION is microseconds, like
+/// `rcl_timer_get_time_until_next_call`.
+///
+/// `RCL_RET_INVALID_ARGUMENT` for NULL or an executor that is not initialised.
+///
+/// # Safety
+/// `executor` must be NULL or a valid pointer; `next_ns` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_get_next_deadline_ns(
+    executor: *const rclc_executor_t,
+    next_ns: *mut u64,
+) -> rcl_ret_t {
+    if executor.is_null() || next_ns.is_null() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let e = &*executor;
+    if e.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+        && e.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
+    {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let executor = &raw const *e;
+    *next_ns = get_executor(&mut *executor.cast_mut())
+        .next_deadline_us()
+        .map_or(u64::MAX, |us| us.saturating_mul(1_000));
+    RCL_RET_OK
+}
+
 /// phase-509 P7 — place this executor at `level` (0 the most urgent); its
 /// spins check in as that level. A runner calls it once per level before the
 /// level spins. `RCL_RET_INVALID_ARGUMENT` for NULL, an executor that is not

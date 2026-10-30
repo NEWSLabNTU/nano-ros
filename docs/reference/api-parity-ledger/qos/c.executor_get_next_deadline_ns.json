@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_get_next_deadline_ns",
+  "verdict": "extension",
+  "why": "see `rust:Executor::next_deadline_us` -- the host-loop time-out, forwarded so C cannot disagree with Rust. Nanoseconds because rclc's spin budgets are (`rclc_executor_spin_some(executor, timeout_ns)`); microsecond resolution, like `rcl_timer_get_time_until_next_call`. `UINT64_MAX` when nothing is scheduled. rclc has no counterpart: a host using it computes a wait from its timers by hand."
+}

@@ -8121,6 +8121,34 @@ pub unsafe extern "C" fn nros_cpp_executor_route_next_due_us(
     NROS_CPP_RET_OK
 }
 
+/// Issue 2143 (RFC-0112 D2.2) — microseconds from now until this executor next
+/// needs to run, written to `*out_us`; `UINT64_MAX` when nothing is scheduled,
+/// 0 when something is already due. A forwarder to `Executor::next_deadline_us`,
+/// so the C++ answer cannot disagree with the Rust one.
+///
+/// The Tier 0 time-out for a host loop that drives the executor with
+/// `nros_cpp_spin_some`: spin, then sleep at most this long. `UINT64_MAX` is "no
+/// deadline", not "never" — a sample may still arrive, so wait on readiness.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL; `out_us`
+/// must be writable.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_next_deadline_us(
+    handle: *mut c_void,
+    out_us: *mut u64,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if out_us.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe { *out_us = cpp.executor.next_deadline_us().unwrap_or(u64::MAX) };
+    NROS_CPP_RET_OK
+}
+
 /// phase-503 W7 — an executor's supervised routes, readable from OUTSIDE the
 /// spin thread: what [`nros_cpp_executor_route_watch`] fills and
 /// [`nros_cpp_route_watch_next_due_us`] reads. The fields are the runtime's;

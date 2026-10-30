@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::next_deadline_us",
+  "verdict": "extension",
+  "why": "see `rust:Executor::next_deadline_us` -- the host-loop time-out, through `nros_cpp_executor_next_deadline_us`. Out-parameter plus `Result` so an uninitialised executor is an error rather than a deadline; `UINT64_MAX` when nothing is scheduled. Microseconds in a `uint64_t`, not a `std::chrono` duration, because this surface is freestanding (decision D1). rclcpp has no counterpart: its executor always owns the thread it waits on."
+}

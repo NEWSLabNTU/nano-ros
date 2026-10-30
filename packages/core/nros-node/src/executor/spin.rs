@@ -4488,6 +4488,53 @@ impl<'s> Executor<'s> {
         super::monitor::route_next_due_us(self.monitor_table, clock())
     }
 
+    /// Issue 2143 (RFC-0112 D2.2) -- microseconds from now until this executor
+    /// next needs to run, or `None` when nothing is scheduled.
+    ///
+    /// The Tier 0 **time-out** half: a host loop that drives the executor with
+    /// [`spin_some`](Self::spin_some) or a zero-timeout
+    /// [`spin_once`](Self::spin_once) -- tokio, GLib, Arduino `loop()`, a PX4
+    /// work item, a plain C `while` -- asks this after each spin and may sleep
+    /// that long before spinning again. It is the bound the executor's OWN park
+    /// uses, with no caller budget: the `min` over the next timer, the
+    /// backend's next internal event (lease keepalive, heartbeat, ...), a
+    /// supervised route's deadline and every registered wake source. `Some(0)`
+    /// means something is already due.
+    ///
+    /// `None` is "no deadline", not "never": a sample can still arrive at any
+    /// time, so the host waits on readiness alone (issue 2144) rather than
+    /// spinning on a fixed period.
+    ///
+    /// Answered from now, not from the last spin: a timer's remainder is
+    /// reduced by the time since that spin ended. With no clock (a `no_std`
+    /// build with no injected `clock_us`) that time cannot be measured, so the
+    /// remainder is as of the last spin and is an upper bound.
+    ///
+    /// Timers whose clock is not wall time (a ROS-time timer, issue 1321) do not
+    /// bound it, exactly as they do not bound the park: a `/clock` message is
+    /// their wake source.
+    pub fn next_deadline_us(&self) -> Option<u64> {
+        let session_us = self
+            .session
+            .next_deadline_ms()
+            .map(|next| (next as u64).saturating_mul(1000));
+        match self.next_wake_bound_attributed_us(u64::MAX, session_us) {
+            // The budget is a member of the `min`; at `u64::MAX` it wins only
+            // when no source named a deadline.
+            (_, WakeSourceId::CallerBudget) => None,
+            (bound_us, _) => Some(bound_us),
+        }
+    }
+
+    /// Wall microseconds since the last spin ended, the origin every timer's
+    /// `elapsed_us` is credited from; 0 without a clock.
+    fn since_last_spin_end_us(&self) -> u64 {
+        match (self.clock_us_fn, self.last_spin_end_us) {
+            (Some(clock), Some(prev)) => clock().saturating_sub(prev),
+            _ => 0,
+        }
+    }
+
     /// phase-503 W7 -- a [`RouteWatch`](super::monitor::RouteWatch) over this
     /// executor's supervised routes, which a port's timer or reaction thread
     /// reads from outside the spin thread: at its expiry it sees a route the
@@ -4651,7 +4698,15 @@ impl<'s> Executor<'s> {
             best = (s, WakeSourceId::Session);
         }
 
-        if let Some(timer_us) = self.next_timer_deadline_us()
+        // Issue 2143 -- a timer's remainder is as of the last spin's END, the
+        // point its `elapsed_us` was last credited; the time the host spent
+        // since (a sleep between spins, the work of its own loop) is already
+        // spent. Without this the bound was measured from a stale origin and
+        // overslept the timer by exactly that gap -- the band prelude makes the
+        // same correction for its own worker.
+        if let Some(timer_us) = self
+            .next_timer_deadline_us()
+            .map(|t| t.saturating_sub(self.since_last_spin_end_us()))
             && timer_us < best.0
         {
             best = (timer_us, WakeSourceId::Timer);
