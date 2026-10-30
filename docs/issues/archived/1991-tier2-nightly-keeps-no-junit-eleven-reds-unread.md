@@ -1,15 +1,17 @@
 ---
 id: 1991
 title: "`tier 2 nightly (pairwise cover)` uploads no junit and prints no failure output, so 11 of its 14 real failures cannot be read"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: medium
 found: 2026-10-20
+resolved: 2026-10-30
+resolved_in: \"nightly 41018247377 (phase-513)\"
 related: [1988, phase-513]
 ---
 
-**Home: [phase-513](../roadmap/phase-513-nightly-reds-with-no-home.md)** — R4.
+**Home: [phase-513](../../roadmap/phase-513-nightly-reds-with-no-home.md)** — R4.
 
 ## Measured
 
@@ -222,3 +224,17 @@ that is a contract issue 0403 set and nothing else checked:
 Deselecting the test would have left it running nowhere, and a skip would
 have reported the refusal without checking it. Row 13 is closed by this;
 item 2 stays open only for whatever the next nightly shows.
+
+## Resolved, 2026-10-30
+
+Item 2 is answered by nightly 41018247377 (schedule, 2026-10-30 07:08 UTC, main at
+`1c81f56b75`), job 123939362475 `tier 2 nightly (pairwise cover)`, artifact
+`tier2-nightly-junit`. Of 3389 test cases, one failed:
+`sched_dims_applied_e2e sched_dims_applied`, whose only failing cell is
+`CorePinPlacement/zephyr/c` on a missing `qemu-system-aarch64`, which is
+issue 2113. Every row of the table above passed: rows 1-12 and 14 as named,
+and row 13 through its replacement
+`emulator qemu_wcet_bench_refuses_without_a_cycle_counter`. The `rtos_e2e`
+cases not run that night skipped as out of lane. Issue 2111's test,
+`freertos_qemu an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`,
+also passed.

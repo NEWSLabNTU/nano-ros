@@ -1,11 +1,13 @@
 ---
 id: 2139
 title: "Seven `entry_e2e` cells skip on every tier-2 nightly, because their shared observer's own coordinate is out of lane"
-status: open
+status: resolved
 type: bug
 area: [testing, ci]
 severity: medium
 found: 2026-10-29
+resolved: 2026-10-30
+resolved_in: \"nightly 41018247377 (phase-513)\"
 related: [2010, 2004, 0828, phase-513]
 ---
 
@@ -110,3 +112,18 @@ Measured on 2026-10-29. `fixtures-manifest.py list-workspaces --platform linux
 `matrix_fixture_coverage` all pass.
 
 **Acceptance is unchanged:** a tier-2 nightly in which those cells RUN.
+
+## Resolved, 2026-10-30
+
+Accepted on nightly 41018247377 (schedule, 2026-10-30 07:08 UTC, main at
+`1c81f56b75`), job 123939362475 `tier 2 nightly (pairwise cover)`, artifact
+`tier2-nightly-junit`. `entry_e2e entry_matrix` reported
+`entry_matrix: 11 ran, 6 skipped, 0 failed (of 17 cells)`, against 4 ran on
+the night this was filed. None of the 6 skips names
+`workspace-c-native-robot2`: each names the cell's OWN fixture at a
+coordinate the pairwise cover does not select (`zephyr,cpp`, `freertos,cpp`,
+`threadx-linux,c`, `threadx-linux,cpp`), which is a correct lane skip. All
+seven cells listed under "Measured" ran and passed.
+
+The gate test joined `.config/lane-admission/gate.txt` in #2856, after
+`check-lane-contracts` stopped reading a fn signature as a call.

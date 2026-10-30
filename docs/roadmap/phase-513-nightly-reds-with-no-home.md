@@ -1,9 +1,9 @@
 # Phase 513 — Nightly and merge-queue reds with no home
 
-**Status (2026-10-29). In progress.** R2, R5, R6 and R7 are done. R1 is fixed
-on main, and its acceptance waits on issue 2139: the shared observer its cell
-needs is out of lane on every tier-2 nightly. R3 waits on a nightly scheduled
-on newslab-server-241. R4 waits on attributing issue 1991's remaining rows.
+**Status (2026-10-30). In progress.** R1, R2, R4, R5, R6 and R7 are done.
+Tier-2 nightly 41018247377 accepted R1 and R4 (and issue 2139). One item
+remains: R3 waits on a tier-2 nightly scheduled on newslab-server-241. That
+night's only red was issue 2113, which waits on the runner image rebuild.
 
 **Prior:** none. This phase gathers open issues whose phases were archived
 while the issue stayed open, plus one new red found while reading them.
@@ -21,9 +21,9 @@ reds is what gives the nightly a verdict again.
 
 ## Work items
 
-### R1 — the Zephyr mixed entry's archive gets its panic ending
+### R1 — the Zephyr mixed entry's archive gets its panic ending — DONE 2026-10-30
 
-[Issue 2010](../issues/2010-zephyr-mixed-entry-nros-c-has-no-panic-handler.md).
+[Issue 2010](../issues/archived/2010-zephyr-mixed-entry-nros-c-has-no-panic-handler.md), resolved.
 
 The mixed workspace's single linked archive is the `nros_ws_runtime` umbrella.
 `zephyr/CMakeLists.txt` built its feature list from `_nros_cpp_features`
@@ -36,12 +36,17 @@ feature (`NanoRosRuntimeCrate.cmake`). The Zephyr lane now does the same.
 **Done when** a tier-2 nightly builds `build-ws-mixed-entry-zenoh` and the
 Zephyr mixed cell of `entry_e2e` runs.
 
-No tier-2 nightly can meet that as the lanes stand (2026-10-29). Nightly
+No tier-2 nightly could meet that as the lanes stood on 2026-10-29. Nightly
 40648207713 skipped the cell as out of lane before it asked about the cell's
 own fixture. The C observer the seven `EntryPubsub` cells share, the
 `workspace-c-native-robot2` row at `linux,c,zenoh`, is not in the pairwise
-cover. That gap is [issue 2139](../issues/2139-entry-cells-shared-peer-out-of-lane.md),
-and R1 waits on it.
+cover. That gap was [issue 2139](../issues/archived/2139-entry-cells-shared-peer-out-of-lane.md),
+and R1 waited on it.
+
+Accepted 2026-10-30. Tier-2 nightly 41018247377 built
+`build-ws-mixed-entry-zenoh`, and the Zephyr mixed cell ran and passed:
+`entry_matrix: 11 ran, 6 skipped, 0 failed`. The observer row now declares
+the cells it serves (#2830), so the lane builds it for them.
 
 ### R2 — Zephyr's kernel arm defines the whole lock ABI — DONE 2026-10-29
 
@@ -78,9 +83,9 @@ Still waiting on the runner, not on the code (2026-10-29). The two nightlies of
 `nano-ros-runner-newslab-118-server` and printed `check-lock: 114 lock(s),
 0 drift(s)`. A run on 241 has not been scheduled since the fix.
 
-### R4 — read the tier-2 nightly's failures, and file each cause
+### R4 — read the tier-2 nightly's failures, and file each cause — DONE 2026-10-30
 
-[Issue 1991](../issues/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md).
+[Issue 1991](../issues/archived/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md), resolved.
 
 Item 1 is done: the job uploads `tier2-nightly-junit` and prints the panic
 text. Item 2 needs a night that gets past the fixture build, and R1 and R2 are
@@ -88,6 +93,11 @@ what stop it now.
 
 **Done when** each of the issue's rows 4–14 is filed or attributed from that
 night's text.
+
+Done on tier-2 nightly 41018247377. Every row passed. Of 3389 cases, the one
+failure was `sched_dims_applied`, on its `CorePinPlacement/zephyr/c` cell,
+which is issue 2113. That issue is fixed in the tree and waits on the
+runner image rebuild.
 
 ### R5 — tell a late reconnect from a hung one — DONE 2026-10-29
 
@@ -159,11 +169,11 @@ stood before #2579, the gate reports the umbrella line issue 2010 was about.
 
 | Issue | Item | Severity |
 | --- | --- | --- |
-| [2010](../issues/2010-zephyr-mixed-entry-nros-c-has-no-panic-handler.md) | R1 | medium |
+| [2010](../issues/archived/2010-zephyr-mixed-entry-nros-c-has-no-panic-handler.md) | R1 | medium (resolved) |
 | [2032](../issues/archived/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md) | R2 | medium |
 | [1941](../issues/1941-zephyr-rust-leaf-locks-drift-after-seed.md) | R3 | medium |
-| [1991](../issues/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md) | R4 | medium |
-| [2139](../issues/2139-entry-cells-shared-peer-out-of-lane.md) | R1 (blocks its acceptance) | medium |
+| [1991](../issues/archived/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md) | R4 | medium (resolved) |
+| [2139](../issues/archived/2139-entry-cells-shared-peer-out-of-lane.md) | R1 (blocked its acceptance) | medium (resolved) |
 | [1976](../issues/archived/1976-zenoh-reconnect-resume-exceeds-75s-in-queue.md) | R5 | medium (resolved) |
 
 ## Not in this phase

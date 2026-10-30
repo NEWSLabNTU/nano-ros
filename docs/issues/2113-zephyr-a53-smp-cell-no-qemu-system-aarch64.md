@@ -6,7 +6,7 @@ type: bug
 area: [ci, testing, zephyr, qemu]
 severity: medium
 found: 2026-10-27
-related: [1991, 0750, 0930]
+related: [1991, 0750, 0930, phase-513]
 ---
 
 ## Measured

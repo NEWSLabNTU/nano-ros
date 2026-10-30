@@ -1,15 +1,17 @@
 ---
 id: 2010
 title: "The Zephyr mixed workspace entry's `nros-c` staticlib has no `#[panic_handler]` since nros-c lost `std`"
-status: open
+status: resolved
 type: bug
 area: [zephyr, ci, build, api]
 severity: medium
 found: 2026-10-23
+resolved: 2026-10-30
+resolved_in: \"nightly 41018247377 (phase-513)\"
 related: [1742, 1858, phase-513]
 ---
 
-**Home: [phase-513](../roadmap/phase-513-nightly-reds-with-no-home.md)** — R1.
+**Home: [phase-513](../../roadmap/phase-513-nightly-reds-with-no-home.md)** — R1.
 
 ## Measured
 
@@ -80,3 +82,13 @@ The tier-2 nightly cannot run this issue's cell yet. The cell skips because
 its shared observer `workspace-c-native-robot2` (`linux,c,zenoh`) is out of
 lane, before its own fixture is resolved. See
 [issue 2139](2139-entry-cells-shared-peer-out-of-lane.md).
+
+## Resolved, 2026-10-30
+
+Accepted on nightly 41018247377 (schedule, 2026-10-30 07:08 UTC, main at
+`1c81f56b75`), job 123939362475 `tier 2 nightly (pairwise cover)`, artifact
+`tier2-nightly-junit`. The Zephyr fixture build built
+`build-ws-mixed-entry-zenoh`, and `entry_e2e`'s `zephyr/mixed/entry_pubsub`
+cell ran and passed (`entry_matrix: 11 ran, 6 skipped, 0 failed`; the cell is
+not among the skips). Issue 2139 was what stopped the cell from running
+before.
