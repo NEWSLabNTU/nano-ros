@@ -7,11 +7,11 @@ area: [ci, testing]
 severity: medium
 found: 2026-10-20
 resolved: 2026-10-30
-resolved_in: \"nightly 41018247377 (phase-513)\"
+resolved_in: "nightly 41018247377 (phase-513)"
 related: [1988, phase-513]
 ---
 
-**Home: [phase-513](../../roadmap/phase-513-nightly-reds-with-no-home.md)** — R4.
+**Home: [phase-513](../../roadmap/archived/phase-513-nightly-reds-with-no-home.md)** — R4.
 
 ## Measured
 

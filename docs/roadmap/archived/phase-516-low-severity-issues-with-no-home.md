@@ -7,7 +7,7 @@ dormant. W1d and W1e did not land and moved to
 [phase-519](../phase-519-rmw-daemons.md) (W1, W2), which owns router-side and
 agent-side work.
 
-**Prior:** [phase-513](../phase-513-nightly-reds-with-no-home.md), which homed the
+**Prior:** [phase-513](phase-513-nightly-reds-with-no-home.md), which homed the
 medium-severity reds from the same sweep and left these unhomed on purpose.
 This phase gives each of them a home, so every open issue names an active phase
 that names it back.
