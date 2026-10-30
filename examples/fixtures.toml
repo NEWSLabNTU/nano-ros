@@ -2082,6 +2082,17 @@ lang = "rust"
 dir = "packages/testing/nros-tests/bins/service-info-client"
 image = "linux"
 
+# issue 2148 — the C++ client's response header,
+# `PollClient::take_response(response, request_header)`, measured against a
+# stock `rmw_zenoh_cpp` server (`interop_e2e::interop::case_12_zenoh_service_
+# response_header_cpp`). The C++ twin of `service-info-client-zenoh`.
+[[fixture]]
+id = "service-info-client-cpp-zenoh"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/service-info-client-cpp"
+
 # issue 0466 — native rust CycloneDDS talker/listener. These two are consumed by
 # `test_native_cyclonedds_rust_talker_to_listener` /
 # `..._talker_to_rust_listener` (tests/linux_api.rs, via
