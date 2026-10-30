@@ -1,5 +1,51 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-10-31). `live-peer` is met; `host-tests` waits on tonight's
+run; W5 is READ, and it is not yet a verdict on every RTOS cell.**
+
+- `live-peer`: green on two scheduled nights, 2026-10-29 (40816464981) and
+  10-30 (41001586102). Acceptance met.
+- `host-tests` 10-30 (40996190687): per-feature clippy red on a
+  `needless_range_loop` from #2817, fixed by `a6d4a3697a`; tier-1 gates
+  cancelled at the two-hour limit, issue 2141, sharded by `0fc827d4a0`. Both
+  fixes landed after that run started. The 10-31 run is the first that can
+  pass.
+- Tier-2 reds are NOT untracked. Bare nextest counts a `lane_skip!` as FAIL
+  (run-matrix 41013529125 printed "342 failed"); the junit rewrite says
+  `Real failures: 1`. The real failures across run-matrix 10-28, 10-29,
+  10-30 are `lending_freertos_e2e` (its `loan-copy-sub` fixture missing,
+  issue 2112) and, on 10-28 only, the `nm` sweep budget (issue 2127,
+  resolved). `nuttx_level_budget_overrun_is_throttled_by_the_kernel` "failing
+  3/3" in tier 2 is a lane skip; it passes in the pairwise nightly.
+- **W5, read from the junit artifacts** (the log still hides the summaries,
+  see issue 2004's 10-31 note). Run-matrix tier 2 is 1-wise and executes
+  only 4 realtime rows and 1 sched-dims cell, so W5 cannot come from it.
+  The tier-2 NIGHTLY (pairwise; 41018247377 on 10-30, 40833557587 on 10-29,
+  identical both nights) executes:
+  - `realtime_tiers` PASS over 13 rows: `zephyr/rust`, `zephyr/c`,
+    `nuttx-arm/{c,cpp,rust}`, `nuttx-riscv/{c,cpp,rust}`,
+    `freertos/{c,rust}`, `threadx-linux/rust` and the two native Rust rows.
+    Not executed (out of the pairwise lane): `zephyr/{cpp,cpp-derived,cpp-levels}`,
+    `freertos/cpp`.
+  - `sched_dims_applied` executes 14 of 17 cells, across Zephyr, NuttX,
+    FreeRTOS and threadx-linux, and every arm it reports ACCEPTs (TierPriority
+    on NuttX and FreeRTOS: 2/2 tiers, 0 FALLBACK). It is RED on one cell,
+    `CorePinPlacement/zephyr/c`: no `qemu-system-aarch64` on the runner
+    (issue 2113, an unmet precondition, not a scheduling defect). Not
+    executed: `CorePin/freertos/cpp`, `EdfDeadline/zephyr/cpp`,
+    `TierPriority/freertos/cpp`.
+  - The printed counts are wrong ("22 row(s) ran" for 13): issue 2171.
+- **What W5 still needs (documented, not done here):** (a) issue 2113, so the
+  one red cell can run; (b) a verdict for the seven C++ cells no scheduled
+  lane selects (Zephyr C++ ×4, FreeRTOS C++ ×3) -- a lane that covers them
+  (`just ci full`, or adding those coordinates to the pairwise cover), or a
+  written reason they are out of scope; (c) the summaries visible in the
+  log or job summary (issue 2004), so this read does not need an artifact
+  download; (d) correct counts (issue 2171).
+- Issue 1365 unchanged (operator-side).
+
+Left: one green scheduled `host-tests`, W5 (a)-(b), and issue 1365.
+
 **Status (2026-10-24). Every implementation item is landed; what remains is run
 evidence and runner configuration.** The live-peer host job's one red
 (`test_ros2_service_xrce_client`, 4 nights) was a real regression, not a flake:
@@ -177,7 +223,7 @@ are diagnosis waves, and what a wave ends up editing depends on what it finds.
 | `phase-466-W2` | LANDED (#1209). Not `probe.yml` -- the narrow fix was already on main. The class gate `check-workflow-just-provisioning` plus the sweep of every workflow and composite action that invokes `just` | done |
 | `phase-466-W3` | LANDED (#1210). THREE independent bugs: the missing `-DZEPHYR_EXTRA_MODULES`, the runner's absent rosidl python deps (1457, kept open -- not fixable in this repository), and a missing `mkdir -p` at `fixture-lane.sh:343` that silently lost issue 0499's lower bound | done |
 | `phase-466-W4` | LANDED (#1212). Both lanes die in ONE step on a full disk (issue 1353). A survivable disk-report channel plus `scripts/ci/reclaim-disk.sh`, with `live-peer.yml`'s inline copy folded into it | done |
-| `phase-466-W5` | OPEN (2026-10-14, handed over by the archived phase-330). The RTOS half of phase-330's two last acceptance boxes: build the RTOS realtime workspace fixtures and get a verdict from `realtime_tiers_e2e` and `sched_dims_applied_e2e` on them. See "W5 -- the RTOS realtime cells" below | a tier-2 nightly reached its cells on 2026-10-22 and both tests passed, but its log cannot say which RTOS cells ran (issue 2004); the next run that reaches its cells prints them |
+| `phase-466-W5` | OPEN (2026-10-14, handed over by the archived phase-330). The RTOS half of phase-330's two last acceptance boxes: build the RTOS realtime workspace fixtures and get a verdict from `realtime_tiers_e2e` and `sched_dims_applied_e2e` on them. See "W5 -- the RTOS realtime cells" below | READ 2026-10-31 from the tier-2 nightly junit: 13 realtime rows and 14 sched-dims cells executed on Zephyr, NuttX, FreeRTOS and threadx-linux; one cell red on a missing `qemu-system-aarch64` (issue 2113), seven C++ cells selected by no scheduled lane. See the 2026-10-31 status |
 
 W1 and W3 may collide on the Zephyr image: if W3's `msg2idl.py` failure turns
 out to be another missing package in that image, the Dockerfile edit belongs
@@ -326,3 +372,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#2128](../issues/archived/2128-params-nightly-clippy-nonminimal-bool.md) | **Resolved** 2026-10-29 (PR #2802). A lint only the pinned nightly reports (`nonminimal_bool` in nros-params) failed the scheduled feature sweep; host-tests 40810937288's per-feature clippy passed. The gap is not fixed. |
 | [#2129](../issues/archived/2129-sdk-source-fetch-no-retry.md) | **Resolved** 2026-10-30 (PR #2805). One DNS failure during the Corrosion source fetch stopped `host-tests`' rt-sched job. Store fetches now retry a network failure up to 3 times. Closed by maintainer decision on two green rt-sched nights (40810937288, 40996190687); no CI run has yet exercised the retry. |
 | [#2130](../issues/archived/2130-live-peer-host-job-disk-exhausted.md) | **Resolved** 2026-10-29 (PR #2805). `live-peer`'s host job ran out of disk; it now releases compile intermediates after each fixture build, and live-peer 40816464981 passed. |
+| [#2171](../issues/2171-matrix-summary-counts-skipped-rows-as-ran.md) | Filed 2026-10-31. `realtime_tiers` and `sched_dims` count a lane-skipped row as one that ran and file it under `skipped`, so tier 2 printed "22 row(s) ran" for 4. The verdict is unaffected; the W5 evidence line is not. |
