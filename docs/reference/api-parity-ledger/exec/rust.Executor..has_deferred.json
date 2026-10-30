@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::has_deferred",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 2146 / RFC-0112 D2 (Defer) -- deferred dispatch for a hand-written host: whether any deferred callback is queued, for a host that polls instead of using the notifier. See `rust:Executor::set_deferred`."
+}

@@ -2174,6 +2174,14 @@ pub struct Executor<'s> {
     ///
     /// phase-409 — CARVED.
     pub(crate) component_slots: super::storage::CarvedVec<'s, ComponentSlot>,
+    /// Issue 2146 -- callback slots the host DEFERS (`set_deferred`): the
+    /// spin queues them instead of running them. One bit per slot.
+    pub(crate) deferred_mask: u64,
+    /// Issue 2146 -- deferred slots queued by a spin and not yet run by
+    /// `run_deferred` / `run_deferred_handle`.
+    pub(crate) deferred_pending: u64,
+    /// Issue 2146 -- the host's `(notifier, ctx)`, called once per queueing.
+    pub(crate) defer_notify: Option<(super::types::DeferNotify, *mut core::ffi::c_void)>,
     /// Phase 104.C.3 — extra sessions opened by `node_builder.rmw()`
     /// calls that named a backend different from the Executor's
     /// primary session. Indexed by `NodeRecord.session_idx`
@@ -2744,6 +2752,9 @@ impl<'s> Executor<'s> {
             launch_remaps: None,
             dispatch_slots,
             component_slots,
+            deferred_mask: 0,
+            deferred_pending: 0,
+            defer_notify: None,
             extra_sessions,
             extra_session_ids,
             primary_rmw_name: heapless::String::new(),
@@ -8186,6 +8197,8 @@ impl<'s> Executor<'s> {
             self.entity_recheck &= !(1u64 << index);
             self.entity_status_polled &= !(1u64 << index);
         }
+        // Issue 2146 -- the slot's next occupant starts inline and unqueued.
+        self.forget_deferred(index);
         let Some(meta) = self.entries[index].take() else {
             return false;
         };
@@ -8219,7 +8232,7 @@ impl<'s> Executor<'s> {
     /// Issue 1667 — mark `slot`'s callback as running, so a release it requests
     /// is deferred rather than dropping the entry under it.
     #[inline]
-    fn begin_dispatch(slot_tags: &[super::types::SlotTag], slot: usize) {
+    pub(super) fn begin_dispatch(slot_tags: &[super::types::SlotTag], slot: usize) {
         if let Some(tag) = slot_tags.get(slot) {
             tag.set(super::types::SlotTag::IN_DISPATCH);
         }
@@ -8232,7 +8245,7 @@ impl<'s> Executor<'s> {
     /// runs twice at once, and a pass never probes or sweeps an entry whose
     /// callback another thread is in.
     #[inline]
-    fn slot_held(slot_tags: &[super::types::SlotTag], slot: usize) -> bool {
+    pub(super) fn slot_held(slot_tags: &[super::types::SlotTag], slot: usize) -> bool {
         slot_tags.get(slot).is_some_and(|t| {
             t.flags() & (super::types::SlotTag::RELEASE_PENDING | super::types::SlotTag::IN_FLIGHT)
                 != 0
@@ -8308,6 +8321,11 @@ impl<'s> Executor<'s> {
             #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
             let _ = probes;
         }
+        // Issue 2146 -- a deferred slot that became ready mid-pass is queued,
+        // not joined to the pass.
+        if self.deferred_mask & fresh != 0 {
+            fresh = self.defer_ready(fresh);
+        }
         if fresh == 0 {
             return;
         }
@@ -8368,7 +8386,7 @@ impl<'s> Executor<'s> {
 
     /// Issue 1667 — `slot`'s callback has returned. Complete a release it
     /// requested while running.
-    fn finish_dispatch(&mut self, slot: usize) {
+    pub(super) fn finish_dispatch(&mut self, slot: usize) {
         let Some(tag) = self.slot_tags.get(slot) else {
             return;
         };
@@ -12422,6 +12440,15 @@ impl<'s> Executor<'s> {
                 }
                 count += 1;
             }
+        }
+        // Issue 2146 -- a DEFERRED slot that is ready is queued for the
+        // host's drain (and its notifier called), never dispatched here, and
+        // takes no part in the trigger. Taken out before the recheck below:
+        // the drain asks for the recheck when it runs the callback.
+        if s.deferred_mask != 0 {
+            bits = s.defer_ready(bits);
+            non_timer_mask &= !s.deferred_mask;
+            always_mask &= !s.deferred_mask;
         }
         // Every attributed slot that was ready is asked again next spin: a
         // dispatch takes what one call takes, and a trigger that does not

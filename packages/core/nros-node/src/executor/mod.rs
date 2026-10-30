@@ -120,6 +120,9 @@ pub use level_liveness::{
 pub(crate) mod scheduler;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod spin;
+// Issue 2146 -- deferred dispatch for a hand-written host (RFC-0112 D2).
+#[cfg(any(has_rmw, test))]
+mod deferred;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod spsc_ring;
 #[cfg(any(has_rmw, test))]

@@ -18837,3 +18837,235 @@ fn skip_overrun_of_a_timer_reset_by_its_own_callback_is_zero() {
     assert_eq!(skip_overrun(1_000, 1_000), (0, 0), "fired on time");
     assert_eq!(skip_overrun(3_250, 1_000), (2, 250), "two periods missed");
 }
+
+// ====================================================================
+// Issue 2146 -- deferred dispatch for a hand-written host (RFC-0112 D2)
+// ====================================================================
+
+/// What the deferred-dispatch notifier saw: the raw handles it was called
+/// with, in order, recorded through the context pointer the host installed.
+type DeferLog = std::sync::Mutex<alloc::vec::Vec<u64>>;
+
+fn record_deferred(ctx: *mut core::ffi::c_void, handle: HandleId) {
+    // SAFETY: every test below installs a pointer to a `DeferLog` it keeps
+    // alive past the last spin.
+    let log = unsafe { &*(ctx as *const DeferLog) };
+    log.lock().unwrap().push(handle.to_raw() as u64);
+}
+
+/// The whole contract, end to end, with nothing from the macros: a hand-written
+/// subscription is marked deferred, the spin QUEUES it and calls the plain
+/// `fn(ctx, HandleId)` notifier instead of running it, and the host runs it
+/// from "its own task" with one call.
+#[test]
+fn a_deferred_subscription_is_queued_by_the_spin_and_run_by_the_host() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("deferred_host").build().unwrap();
+    let received = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::new()));
+    let received2 = received.clone();
+    let id = executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
+            received2.lock().unwrap().push(msg.data);
+        })
+        .unwrap();
+
+    let log: DeferLog = std::sync::Mutex::new(alloc::vec::Vec::new());
+    executor.set_defer_notifier(record_deferred, &log as *const DeferLog as *mut _);
+    assert!(executor.set_deferred(id, true));
+    assert!(executor.is_deferred(id));
+
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let sub_ptr = unsafe { arena_ptr.add(meta.offset) } as *const MockSubscriber;
+    let (data, len) = encode_test_msg(7);
+    unsafe { &*sub_ptr }.load(data, len);
+    let (data, len) = encode_test_msg(8);
+    unsafe { &*sub_ptr }.load(data, len);
+
+    let spun = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(spun.subscriptions_processed, 0, "the spin must not run it");
+    assert!(received.lock().unwrap().is_empty());
+    assert!(executor.has_deferred());
+    assert!(executor.is_deferred_pending(id));
+    assert_eq!(
+        *log.lock().unwrap(),
+        [id.to_raw() as u64],
+        "the notifier names the queued callback, once"
+    );
+
+    // A second spin while it is still queued neither runs nor re-notifies it.
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(received.lock().unwrap().is_empty());
+    assert_eq!(
+        log.lock().unwrap().len(),
+        1,
+        "already queued: no second notify"
+    );
+
+    // The host's drain runs it once, and that one dispatch takes what an
+    // inline dispatch would have taken (here the whole burst).
+    let ran = executor.run_deferred();
+    assert_eq!(ran.subscriptions_processed, 1);
+    assert_eq!(*received.lock().unwrap(), [7, 8]);
+    assert!(!executor.has_deferred(), "the drain empties the queue");
+
+    // Nothing new arrived: the next spin queues nothing.
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(!executor.has_deferred());
+    assert_eq!(log.lock().unwrap().len(), 1);
+
+    // A new arrival is queued again and notified again; the per-handle drain
+    // runs exactly that callback.
+    let (data, len) = encode_test_msg(9);
+    unsafe { &*sub_ptr }.load(data, len);
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(executor.is_deferred_pending(id));
+    assert_eq!(log.lock().unwrap().len(), 2);
+    assert!(executor.run_deferred_handle(id));
+    assert_eq!(*received.lock().unwrap(), [7, 8, 9]);
+    assert!(
+        !executor.run_deferred_handle(id),
+        "nothing queued: the per-handle drain runs nothing"
+    );
+
+    // Turning deferral off puts the callback back on the spin.
+    let (data, len) = encode_test_msg(10);
+    unsafe { &*sub_ptr }.load(data, len);
+    assert!(executor.set_deferred(id, false));
+    let spun = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(spun.subscriptions_processed, 1);
+    assert_eq!(*received.lock().unwrap(), [7, 8, 9, 10]);
+    assert_eq!(log.lock().unwrap().len(), 2, "inline again: no notify");
+}
+
+/// A host that maps callbacks onto tasks of different priorities runs ONE
+/// queued callback per call, and the others stay queued for their own task.
+/// Callbacks that are not deferred still run inline in the same spin.
+#[test]
+fn per_handle_drain_runs_only_the_named_callback() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let hits = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::new()));
+    let (h1, h2, h3) = (hits.clone(), hits.clone(), hits.clone());
+    let (a, ga) = executor
+        .register_guard_condition(move || h1.lock().unwrap().push('a'))
+        .unwrap();
+    let (b, gb) = executor
+        .register_guard_condition(move || h2.lock().unwrap().push('b'))
+        .unwrap();
+    let (_c, gc) = executor
+        .register_guard_condition(move || h3.lock().unwrap().push('c'))
+        .unwrap();
+    assert!(executor.set_deferred(a, true));
+    assert!(executor.set_deferred(b, true));
+
+    let log: DeferLog = std::sync::Mutex::new(alloc::vec::Vec::new());
+    executor.set_defer_notifier(record_deferred, &log as *const DeferLog as *mut _);
+    ga.trigger();
+    gb.trigger();
+    gc.trigger();
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(*hits.lock().unwrap(), ['c'], "only the inline callback ran");
+    assert_eq!(
+        *log.lock().unwrap(),
+        [a.to_raw() as u64, b.to_raw() as u64],
+        "one notify per queued callback, in slot order"
+    );
+
+    assert!(
+        executor.run_deferred_handle(b),
+        "the high-priority task runs b"
+    );
+    assert_eq!(*hits.lock().unwrap(), ['c', 'b']);
+    assert!(executor.is_deferred_pending(a), "a waits for its own task");
+    assert!(!executor.is_deferred_pending(b));
+    executor.run_deferred();
+    assert_eq!(*hits.lock().unwrap(), ['c', 'b', 'a']);
+    assert!(!executor.has_deferred());
+}
+
+/// The queue fills with no notifier installed (a host may poll
+/// `has_deferred`), a timer is refused, and a released slot's deferral does
+/// not leak to the slot's next occupant.
+#[test]
+fn deferral_refuses_timers_and_is_forgotten_with_the_slot() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let timer = executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+    assert!(
+        !executor.set_deferred(timer, true),
+        "a timer's readiness is decided inside its dispatch: refused"
+    );
+    assert!(!executor.is_deferred(timer));
+
+    let fired = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
+    let f2 = fired.clone();
+    let (g, guard) = executor
+        .register_guard_condition(move || {
+            f2.fetch_add(1, portable_atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+    assert!(executor.set_deferred(g, true));
+    guard.trigger();
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(executor.has_deferred(), "queued with no notifier installed");
+    assert_eq!(fired.load(portable_atomic::Ordering::SeqCst), 0);
+
+    // SAFETY: `g` and `guard` are not used after the release.
+    assert!(unsafe { executor.release_guard_condition(g) });
+    assert!(!executor.has_deferred(), "a released slot leaves the queue");
+    assert_eq!(executor.run_deferred().total(), 0);
+
+    let fired2 = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
+    let f3 = fired2.clone();
+    let (g2, guard2) = executor
+        .register_guard_condition(move || {
+            f3.fetch_add(1, portable_atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+    assert!(!executor.is_deferred(g2), "the next occupant starts inline");
+    guard2.trigger();
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(fired2.load(portable_atomic::Ordering::SeqCst), 1);
+}
+
+/// A deferred callback that becomes ready DURING a pass (here: another
+/// callback's work readies it, and the pass re-probes after each callback) is
+/// queued, not joined to the pass that is running.
+#[test]
+fn a_deferred_callback_readied_mid_pass_is_queued_not_run() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_reprobe_each_callback(true);
+    let nid = executor.node_builder("deferred_mid_pass").build().unwrap();
+    let received = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::new()));
+    let received2 = received.clone();
+    let id = executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
+            received2.lock().unwrap().push(msg.data);
+        })
+        .unwrap();
+    assert!(executor.set_deferred(id, true));
+    let meta = executor.entries[0].as_ref().unwrap();
+    let sub_addr = unsafe { (executor.arena.as_ptr() as *const u8).add(meta.offset) } as usize;
+    let (_g, guard) = executor
+        .register_guard_condition(move || {
+            let (data, len) = encode_test_msg(5);
+            // SAFETY: the subscription's arena slot outlives the executor's
+            // spins in this test.
+            unsafe { &*(sub_addr as *const MockSubscriber) }.load(data, len);
+        })
+        .unwrap();
+    let log: DeferLog = std::sync::Mutex::new(alloc::vec::Vec::new());
+    executor.set_defer_notifier(record_deferred, &log as *const DeferLog as *mut _);
+
+    guard.trigger();
+    let spun = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(spun.subscriptions_processed, 0, "not joined to the pass");
+    assert!(received.lock().unwrap().is_empty());
+    assert!(executor.is_deferred_pending(id), "queued mid-pass");
+    assert_eq!(*log.lock().unwrap(), [id.to_raw() as u64]);
+    executor.run_deferred();
+    assert_eq!(*received.lock().unwrap(), [5]);
+}

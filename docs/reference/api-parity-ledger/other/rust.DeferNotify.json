@@ -1,0 +1,6 @@
+{
+  "key": "rust:DeferNotify",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 2146 / RFC-0112 D2 (Defer) -- deferred dispatch for a hand-written host: the plain `fn(ctx, HandleId)` notifier the spin calls when it queues a deferred callback. No rclcpp/rclrs counterpart: upstream executors run every ready callback inline."
+}
