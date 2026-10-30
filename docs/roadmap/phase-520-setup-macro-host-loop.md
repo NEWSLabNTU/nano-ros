@@ -1,6 +1,6 @@
 # Phase 520 — `nros::setup!`: model-driven assembly for a host that owns its loop
 
-**Status (2026-10-30). W1 landed; W2–W4 open.** Implements
+**Status (2026-10-30). W1 and W1b landed; W2–W4 open.** Implements
 [issue 2150](../issues/2150-nros-setup-macro-host-loop.md) under
 [RFC-0112](../design/0112-framework-support-tiers.md) D2 (the Tier 0
 host-driven contract) and D4 (recipes). The
@@ -63,6 +63,49 @@ api-parity`), which W1 does not need.
   The hand-run host had to install its own `log` sink to see the callbacks
   print. See the open question below.
 
+### W1b — the board's start-up without its loop — DONE
+
+Answers the question W1's hand run raised. No new board trait was needed:
+every OwnedSpin board's `BoardEntry::run_with_deploy{,_sized}` already does
+the start-up (backend registration, log sinks, hardware, network, the
+executor sized as `nros::main!` sizes it) and THEN calls its closure. Linux
+never spins after the closure, and an RTOS board spins only if the closure
+returns. So a closure that keeps the host's loop is the board's start-up
+without its loop. When the image's board resolves to an OwnedSpin
+`BoardEntry`, `setup!` also emits:
+
+```rust
+pub fn nros_boot(
+    host: impl FnOnce(&mut dyn NodeDispatchRuntime) -> Result<(), RuntimeError>,
+) -> Result<(), RuntimeError>;   // run_with_deploy{,_sized}(&nros_deploy(), |ctx| host(ctx.runtime))
+pub fn nros_stop_requested() -> bool;  // the board's termination guard
+```
+
+```rust
+nros::setup!();
+fn main() {
+    nros_boot(|rt| {
+        nros_setup(&mut *rt)?;
+        while !nros_stop_requested() { let _ = rt.spin_once(10); /* host work */ }
+        Ok(())
+    }).expect("boot");
+}
+```
+
+- The error is fixed to `RuntimeError`, `nros_setup`'s: a generic `E` cannot
+  be inferred for a closure whose loop never returns (measured, `E0283`).
+- `nros_stop_requested` exists because the board installs a SIGTERM guard,
+  and a host loop that ignores it never exits (measured: the hand-run listener
+  had to be killed). Returning lets the board close the session (issue 1732).
+- No `nros_boot` for a framework board (RTIC, Embassy, Zephyr, esp-hal: no
+  `BoardEntry` to call) or a board the macro cannot resolve. Such a host does
+  its own start-up and uses `nros_setup` alone.
+- Measured by hand on 2026-10-30: the linux listener as the program above, with
+  no logger, backend call or config of its own, received every message from
+  the stock talker through `rmw_zenohd`, logged through the board's sink, opened
+  with the derived sizing (6144-byte arena) and, on SIGTERM, printed `closing
+  the RMW session` and exited cleanly.
+
 ### W2 — a delivering host-loop example and cell
 
 A `examples/linux/rust/` leaf whose `main` is a plain `std` loop over
@@ -83,12 +126,6 @@ cell on `embassy-executor`'s std arch — the recipe and cell issue 2134's
 resolution left waiting on 2150.
 
 ## Open questions
-
-- Board boot without the loop: should a board expose `host_init()` (backend
-  registration, log sinks, `init_hardware`) for a host that calls
-  `nros_setup`, or should `setup!` emit an `nros_init()` that calls it when the
-  image names an in-tree board? W2 needs one of the two, or its example
-  carries board boot steps by hand.
 
 - Executor backing: the host opens the `Executor`, so it chooses the backing.
   Should `setup!` also emit the `.bss` `EXECUTOR_BACKING` sizing it derived,
