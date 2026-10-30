@@ -724,8 +724,11 @@ fn boot_budget(platform: Platform) -> Duration {
 ///
 /// The peer is `rmw_zenohd`, and its shipped
 /// `DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5` announces `lease: 60000` with
-/// `keep_alive: 2`, i.e. an idle router speaks every **30 s**. zenoh-pico takes
-/// `min(peer_lease, Z_TRANSPORT_LEASE)`. So the lease values split cleanly:
+/// `keep_alive: 2`, i.e. an idle router speaks every **30 s**. zenoh-pico took
+/// `min(peer_lease, Z_TRANSPORT_LEASE)` when this was written; since issue 1731
+/// it judges the router on the router's 60 s alone, so the split below
+/// describes the fork BEFORE that fix, which is what a regression would bring
+/// back. Then the lease values split cleanly:
 ///
 /// * `L >= 30 s` — every `L`-wide check window contains a keep-alive; the
 ///   session holds indefinitely. The shipped 60 s is in this set.
@@ -860,6 +863,11 @@ const MAX_ROUTER_SESSIONS: usize = 3;
 /// 30 s keep-alive cadence and the one-slot slack. Printed on every run so a
 /// PASS says what it proved: leases above this are NOT covered here, and no
 /// affordable window covers the top of the band.
+///
+/// This bound is about the fork BEFORE issue 1731: since then the router is
+/// judged on its own 60 s, so a short image lease no longer lapses at all and
+/// what this cell still catches is a regression of THAT fix (or any other
+/// re-dial), not a short lease by itself.
 const COVERED_LEASE_SECS: u32 = 14;
 
 /// Seconds between consecutive `ROUTER_SESSION_MARKER` lines, rendered for a

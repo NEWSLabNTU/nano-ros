@@ -380,17 +380,20 @@ pub fn config_header(
     // "ROS setting: increase the value to avoid lease expiration at launch time
     // with a large number of Nodes starting all together".
     //
-    // zenoh-pico takes `min(peer_lease, Z_TRANSPORT_LEASE)` and closes the
-    // session when nothing arrives within it. At 10 s that expired while the
-    // router was still 20 s from its next keep-alive — every session, every
-    // time, on every platform we ship. Measured: a talker publishing at 1 Hz
-    // tore down and reconnected every ~20 s, native Linux identically, and each
-    // teardown cost the messages published during it.
+    // zenoh-pico used to take `min(peer_lease, Z_TRANSPORT_LEASE)` and close
+    // the session when nothing arrived within it. At 10 s that expired while
+    // the router was still 20 s from its next keep-alive — every session,
+    // every time, on every platform we ship. Measured: a talker publishing at
+    // 1 Hz tore down and reconnected every ~20 s, native Linux identically, and
+    // each teardown cost the messages published during it. Since issue 1731
+    // the pinned fork measures the router's silence against the router's OWN
+    // lease and paces our keep-alives on this one, as zenoh does, so a short
+    // value here no longer expires a quiet router.
     //
-    // 60 s matches what ROS announces, so the negotiated `min` is 60 s and the
-    // router's 30 s cadence has a 2x margin. The cost is detection latency for
-    // a peer that dies without closing its TCP connection: up to 60 s instead
-    // of 10 s. That is the same tradeoff every other ROS 2 node on this router
+    // 60 s matches what ROS announces, the number every other node on that
+    // router states. The cost is the ROUTER's detection latency for an image
+    // that dies without closing its TCP connection: up to 60 s instead of
+    // 10 s. That is the same tradeoff every other ROS 2 node on this router
     // already makes, and a peer that dies WITH a socket close is still detected
     // immediately — the lease is the fallback, not the primary signal.
     //
