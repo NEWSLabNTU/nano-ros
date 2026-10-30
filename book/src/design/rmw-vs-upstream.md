@@ -954,7 +954,7 @@ publication *handle* in `message_info.publisher_gid`, not the writer
 GUID it reports everywhere else, so its take-side gid matches no gid
 query. Ours reports the GUID.
 
-### Service info: a sibling slot on each side (issues 2081, 2136)
+### Service info: a sibling slot on each side (issues 2081, 2136, 2148)
 
 Upstream's `rmw_take_request` fills an `rmw_service_info_t` beside the
 request: the client's `request_id` (writer GUID + the sequence number that
@@ -1045,12 +1045,22 @@ What an application sees on the client side:
       log::info!("reply took {} ns on the wire", got.to_nanos() - sent.to_nanos());
   }
   ```
+  The callback client has the same read (issue 2148):
+  `Node::create_client_with_callback_with_info` hands its closure
+  `(&Reply, &ServiceInfo)`, the client twin of `create_service_with_info`.
 - **C.** `rclc_executor_add_client_with_request_id` passes the callback an
   `rmw_request_id_t *`, rclc's shape: the sequence number the reply was
   matched on, and the writer GUID where the backend reports it. The
   timestamps are not surfaced in C.
-- **C++.** Not surfaced yet: the rclcpp client has no `take_response`
-  family to carry a request header (tracked as issue 2148).
+- **C++.** `PollClient<S>::take_response(response, request_header)` —
+  upstream `rclcpp::Client::take_response` — takes the next reply with its
+  `rmw_request_id_t`, as C's callback receives it (issue 2148): the
+  sequence number always, the writer GUID where the backend reports it. As
+  upstream's, it takes whatever reply is next and touches no pending
+  future, so the header is what a caller correlates on. It returns a
+  `Result` (`TryAgain` when nothing is waiting) where upstream returns
+  `bool` and throws. The timestamps are not surfaced in C++, as upstream
+  rclcpp surfaces none on a client.
 
 ## See also
 

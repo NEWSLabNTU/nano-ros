@@ -628,8 +628,11 @@ whenever a backend fills it: zenoh reports all three (the reply attachment and t
 callback's wall-clock stamp, as `rmw_zenoh_cpp`); Cyclone DDS `request_id` and \
 `source_timestamp` (stock `rmw_cyclonedds_cpp`'s layout; 0.10 has no reception time); \
 XRCE-DDS `received_timestamp` only, because the Agent owns the request writer and its GUID \
-never reaches the client. Rust reads it through `Promise::take_with_info`, C through \
-`rclc_executor_add_client_with_request_id`. A field not reported is zero."""
+never reaches the client. Rust reads it through `Promise::take_with_info` and \
+`Node::create_client_with_callback_with_info` (issue 2148), C through \
+`rclc_executor_add_client_with_request_id`, C++ through \
+`PollClient::take_response(response, request_header)` (issue 2148). A field not reported \
+is zero."""
 
 [[arg_rule]]
 match = "rmw_request_id_t"
