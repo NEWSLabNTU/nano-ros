@@ -64,3 +64,29 @@ an earlier override that sets other fields for the same binary.
 
 The next scheduled tier-2 run that reaches its cells prints both summaries in
 its log. That is also the evidence phase-466 W5 is waiting for.
+
+## 2026-10-31 — half landed: the junit carries it, the log still does not
+
+Read off three tier-2 runs (run-matrix 41013529125, nightly 41018247377 and
+40833557587). The `junit.store-success-output = true` half works: both
+summaries are in the uploaded junit (`post-submit-junit` from `run-matrix`,
+`tier2-nightly-junit` from `nightly`), and W5 was read from there. The
+`success-output = "final"` half never reaches the log: every lane recipe
+that runs these binaries passes `--success-output never` on the command line
+(seven sites in `justfile`, `_test-focused` among them, plus the per-platform
+recipes under `just/`), and a nextest CLI flag outranks a per-test override. The run-matrix log has the `PASS` line
+and no summary, exactly as before. `check-matrix-summary-visible` passes
+because it checks the config, which is correct; the flag that defeats it is
+in the recipe.
+
+So the close condition above is still unmet. Two ways to meet it, either
+enough:
+
+- drop `--success-output never` from those recipes and let the profile
+  decide (the override already limits it to the five binaries), or
+- have the lane's report step print every `^\S+: \d+ (row|cell)` line it
+  finds in the junit's `system-out` into the job summary — the junit is
+  already collected by `fixture-tree.sh reports`.
+
+Reading the summaries also showed they miscount (issue 2171): "22 row(s)
+ran" for 4 executed.

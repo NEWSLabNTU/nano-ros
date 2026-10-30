@@ -6,7 +6,7 @@ type: bug
 area: [ci, testing, fixtures, freertos]
 severity: medium
 found: 2026-10-27
-related: [1941, phase-510]
+related: [1941, phase-510, phase-466]
 ---
 
 ## Measured
