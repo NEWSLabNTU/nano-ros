@@ -615,6 +615,18 @@ typedef void (*zpico_graph_change_fn)(int32_t session_index);
 #else
 #define ZPICO_TX_BATCH_THREAD 0
 #endif
+/* issue 1534 — the ports whose `_z_task_init` forwards `task_attributes` to
+ * `nros_platform_task_init`, which reads an `nros_platform_task_attr_t`: the
+ * flush task must be handed that shape on every one of them (issue 0803 settled
+ * it for the read task, issue 0852 for Zephyr's flush task, and Linux, macOS
+ * and NuttX were left filling a `pthread_attr_t` the reader decodes as whatever
+ * its bytes say). FreeRTOS keeps its own `z_task_attr_t`. */
+#if ZPICO_TX_BATCH_THREAD == 1 && (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) ||                 \
+                                   defined(ZENOH_NUTTX) || defined(ZENOH_ZEPHYR))
+#define ZPICO_FLUSH_NROS_ATTR 1
+#else
+#define ZPICO_FLUSH_NROS_ATTR 0
+#endif
 #ifndef ZPICO_TX_BATCH_FLUSH_MS
 #define ZPICO_TX_BATCH_FLUSH_MS 50
 #endif
@@ -743,7 +755,7 @@ struct zpico_session {
     volatile bool tx_flush_run;
     bool flush_task_configured;
     z_task_attr_t flush_task_attr;
-#if defined(ZENOH_ZEPHYR)
+#if ZPICO_FLUSH_NROS_ATTR == 1
     /* issue 0852 — the struct the Zephyr port actually reads. `z_task_attr_t`
      * is `pthread_attr_t` here, and `_z_task_init` forwards `task_attributes`
      * to `nros_platform_task_init`, which reads this shape. */
@@ -960,7 +972,13 @@ static z_task_attr_t g_default_read_task_attr;
  * POSIX-like honour them, others ignore the attr. */
 static bool g_default_flush_task_configured = false;
 static z_task_attr_t g_default_flush_task_attr;
-#if defined(ZENOH_ZEPHYR)
+#if defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
+/* The stack depth of zenoh-pico's FreeRTOS default task attributes
+ * (src/system/freertos/system.c) — what the flush task got while it was spawned
+ * with a NULL attr. */
+#define ZPICO_FREERTOS_DEFAULT_STACK_DEPTH 5120
+#endif
+#if ZPICO_FLUSH_NROS_ATTR == 1
 static nros_platform_task_attr_t g_default_flush_nros_attr;
 #endif
 #endif
@@ -2178,7 +2196,12 @@ void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
 #if defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
     g_default_flush_task_attr.name = "zpico_flush";
     g_default_flush_task_attr.priority = (UBaseType_t)priority;
-    g_default_flush_task_attr.stack_depth = stack_bytes / sizeof(StackType_t);
+    /* issue 1534 — 0 means "the port default", as on every other port: the
+     * 5120 words zenoh-pico's FreeRTOS `system.c` gives a task spawned with a
+     * NULL attr (its default task attributes). A literal 0 would ask
+     * xTaskCreate for a zero-word stack. */
+    g_default_flush_task_attr.stack_depth =
+        (stack_bytes != 0u) ? (stack_bytes / sizeof(StackType_t)) : ZPICO_FREERTOS_DEFAULT_STACK_DEPTH;
     g_default_flush_task_configured = true;
 /* issue 0775 — `ZENOH_NUTTX`, not `__NuttX__`.
  *
@@ -2190,7 +2213,7 @@ void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
 #elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(ZENOH_NUTTX) ||                     \
        defined(__NuttX__) || defined(ZENOH_ZEPHYR)) &&                                             \
     !defined(ZENOH_THREADX)
-#if defined(ZENOH_ZEPHYR)
+#if ZPICO_FLUSH_NROS_ATTR == 1
     /* issue 0852 — the flush task is the THIRD transport task and it had the
      * same defect as read and lease: it filled a `pthread_attr_t` that the
      * Zephyr port never reads, and discarded the priority outright ("needs
@@ -2200,7 +2223,16 @@ void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
      * coming back. Band, not RAW — see the read/lease arm. */
     nros_platform_task_attr_init(&g_default_flush_nros_attr);
     if (priority != 0u) {
+        /* The same vocabulary the read setter uses on this port (issue 0623):
+         * Zephyr's normalised band, a RAW SCHED_FIFO value on Linux, macOS and
+         * NuttX (issue 0803). Issue 1534 moved those three onto this arm; until
+         * then the "needs SCHED_FIFO (root)" arm below discarded the priority
+         * and handed the port a `pthread_attr_t`. */
+#if defined(ZENOH_ZEPHYR)
         g_default_flush_nros_attr.priority = (int32_t)priority;
+#else
+        g_default_flush_nros_attr.priority = NROS_PLATFORM_PRIORITY_RAW(priority);
+#endif
     }
     g_default_flush_nros_attr.name = "zpico_flush";
     if (stack_bytes != 0u) {
@@ -2208,19 +2240,8 @@ void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
     }
     g_default_flush_task_configured = true;
 #else
-    /* POSIX: stack size via pthread_attr; priority needs SCHED_FIFO (root),
-     * so only the stack size is applied — mirrors zpico_set_task_config.
-     *
-     * NOTE (issue 0852): on a LINUX/NuttX build `z_task_attr_t` is
-     * `nros_platform_task_attr_t` (they reach `zenoh_generic_platform.h`), so
-     * `pthread_attr_init` here would be initialising the wrong struct. It does
-     * not bite today only because those targets default `ZPICO_TX_BATCH` off,
-     * which compiles this whole arm out. Enable batching there and this needs
-     * the same treatment as the Zephyr arm above. */
-    pthread_attr_init(&g_default_flush_task_attr);
-    pthread_attr_setstacksize(&g_default_flush_task_attr, (size_t)stack_bytes);
-    g_default_flush_task_configured = true;
     (void)priority;
+    (void)stack_bytes;
 #endif
 #else
     (void)priority;
@@ -2233,6 +2254,24 @@ void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
     (void)stack_bytes;
 #endif
 }
+
+#if ZPICO_TX_BATCH_THREAD == 1
+/* issue 1534 — the flush task's default: the READ task's urgency (priority,
+ * core, flags), its own name, the port's default stack. Called by zpico_open
+ * when a read task was configured and no flush task was. */
+static void zpico_flush_task_follows_read(void) {
+#if ZPICO_FLUSH_NROS_ATTR == 1
+    nros_platform_task_attr_init(&g_default_flush_nros_attr);
+    g_default_flush_nros_attr.priority = g_default_read_nros_attr.priority;
+    g_default_flush_nros_attr.core = g_default_read_nros_attr.core;
+    g_default_flush_nros_attr.flags = g_default_read_nros_attr.flags;
+    g_default_flush_nros_attr.name = "zpico_flush";
+    g_default_flush_task_configured = true;
+#elif defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
+    zpico_set_flush_task_config((uint32_t)g_default_read_task_attr.priority, 0u);
+#endif
+}
+#endif
 
 // ============================================================================
 // Executor stack peak — RFC-0110 D2's "measured, not summed"
@@ -2375,21 +2414,28 @@ int32_t zpico_open(zpico_session_t* session) {
     if (!g_default_read_task_configured) {
         zpico_set_task_config(ZPICO_READ_TASK_PRIORITY, 0u);
     }
-#if defined(ZENOH_ZEPHYR) && ZPICO_TX_BATCH_THREAD == 1
+#endif
+#if ZPICO_TX_BATCH_THREAD == 1
     /* Issue 1534 -- the tx-flush task is the third transport task and had no
      * default at all: spawned with a NULL attr, it landed at the platform
-     * default, k_thread 0, ABOVE the read task. On a serial link it then
-     * preempted the RX drain for as long as it had work, and the ISR's ring
-     * overflowed (measured on an S32K344 at 921,600 baud: the read task READY,
-     * state 0x80, while the flush thread ran and the ring sat at 1024/1024).
-     * The flush task has no business outranking the task that receives, so it
-     * takes the READ band: equal priority, no preemption either way, and each
-     * yields when it blocks. A board that calls zpico_set_flush_task_config
-     * first still wins. */
-    if (!g_default_flush_task_configured) {
-        zpico_set_flush_task_config(ZPICO_READ_TASK_PRIORITY, 0u);
+     * default -- k_thread 0 on Zephyr, ABOVE the read task; configMAX_PRIORITIES
+     * / 2 on FreeRTOS, wherever that falls against the board's read priority.
+     * On a serial link it then preempted the RX drain for as long as it had
+     * work, and the ISR's ring overflowed (measured on an S32K344 at 921,600
+     * baud: the read task READY, state 0x80, while the flush thread ran and the
+     * ring sat at 1024/1024). The flush task has no business outranking the
+     * task that receives, so it takes the READ task's urgency -- whatever the
+     * read task was given, by a board or by the default above: equal priority,
+     * no preemption either way, and each yields when it blocks. A board that
+     * calls zpico_set_flush_task_config first still wins.
+     *
+     * This was a Zephyr-only `zpico_set_flush_task_config(
+     * ZPICO_READ_TASK_PRIORITY)`, which was right only while no Zephyr board
+     * states a read priority, and left every other port's flush task where the
+     * platform default put it. */
+    if (!g_default_flush_task_configured && g_default_read_task_configured) {
+        zpico_flush_task_follows_read();
     }
-#endif
 #endif
     s->read_task_configured = g_default_read_task_configured;
     s->read_task_attr = g_default_read_task_attr;
@@ -2417,7 +2463,7 @@ int32_t zpico_open(zpico_session_t* session) {
 #if ZPICO_TX_BATCH_THREAD == 1
     s->flush_task_configured = g_default_flush_task_configured;
     s->flush_task_attr = g_default_flush_task_attr;
-#if defined(ZENOH_ZEPHYR)
+#if ZPICO_FLUSH_NROS_ATTR == 1
     s->flush_nros_attr = g_default_flush_nros_attr;
 #endif
 #endif
@@ -2483,7 +2529,7 @@ int32_t zpico_open(zpico_session_t* session) {
     zp_batch_start(z_session_loan(&s->session));
 #if ZPICO_TX_BATCH_THREAD == 1
     s->tx_flush_run = true;
-#if defined(ZENOH_ZEPHYR)
+#if ZPICO_FLUSH_NROS_ATTR == 1
     /* issue 0852 — hand the port the struct it reads, as read and lease do. */
     z_task_attr_t* flush_attr =
         s->flush_task_configured ? (z_task_attr_t*)&s->flush_nros_attr : NULL;

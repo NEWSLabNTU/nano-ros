@@ -456,7 +456,7 @@ by measurement (board conf lines 683-700): `CONFIG_MAIN_THREAD_PRIORITY=5`
 (Zephyr's 0 sits above the read task's band while main registers entities) and
 `CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES=4096` (default 1024, `zephyr/Kconfig:682-685`;
 measured 793-1024 at joins, 1,226 in a soak). [phase-474](phase-474-safety-island-board-findings.md)
-T3 owns closing [issue 1534](../issues/1534-zephyr-tx-flush-task-outranks-the-read-task.md)
+T3 owns closing [issue 1534](../issues/archived/1534-zephyr-tx-flush-task-outranks-the-read-task.md) (resolved 2026-10-30; residue [issue 2164](../issues/2164-zephyr-serial-join-main-priority-and-rx-ring-default.md))
 with a derived main priority and a measured ring default. This item is only the
 DX half, and it is cheap: until T3 lands, the serial-link guide and the Kconfig
 help name both lines and why; when T3 lands, the default moves under
@@ -494,7 +494,7 @@ work:
 | 1490 | open | open -- forwarding, not stated-wins (D2) |
 | 0758 | open | open; the link-only provider landed (D4), re-acquisition on the SNTP path and the FreeRTOS half (0772) remain |
 | 1533, 0852 | open | resolved, archived |
-| 1534 | open | open -- 474 T3 (I8's second half) |
+| 1534 | open | open -- 474 T3 (I8's second half); resolved 2026-10-30, residue issue 2164 |
 | 1303, 1036, 1252 | open | resolved, archived (I5) |
 | 0934, 0941, 1121, 1419, 1489 | open | resolved, archived |
 | 1371 | open | open |

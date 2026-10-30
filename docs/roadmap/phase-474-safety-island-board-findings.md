@@ -440,7 +440,7 @@ They are tracked as files under `docs/issues/`, not as GitHub issues
   carried forward in the current pin `e28ff603`. The file still says "prepared
   on the fork, not yet pinned"; its status is stale and should be resolved
   and archived after a check that the pin contains the change.
-- [Issue 1534](../issues/1534-zephyr-tx-flush-task-outranks-the-read-task.md)
+- [Issue 1534](../issues/archived/1534-zephyr-tx-flush-task-outranks-the-read-task.md)
   (the tx-flush task outranked the read task): PR #1443 (`8d59adba7`) gave
   the flush task the read band and made Zephyr serial TX interrupt-driven.
   Still open per the file: nano-ros does not state the priority the MAIN
@@ -1190,7 +1190,9 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
 - [ ] T3: issue 1533 resolved and archived; issue 1534 closed with a derived
       main-thread priority and a measured RX-ring default. (1533 archived;
       1534 open: main priority checked by a configure warning, RX ring
-      documented, a measured default still needs a serial-join lane.)
+      documented, a measured default still needs a serial-join lane.
+      2026-10-30: 1534 resolved -- the flush task follows the read task on
+      every port; the main-priority and RX-ring residue is issue 2164.)
 - [ ] T4: a deliberate overrun on the S32K344 is reported through D1's
       channel. (**Board leg met 2026-10-26**: three `max-latency-runtime`
       verdicts in the SWD record, see "The board halves, 2026-10-26";
