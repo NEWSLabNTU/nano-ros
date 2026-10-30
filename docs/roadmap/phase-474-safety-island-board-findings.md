@@ -413,6 +413,9 @@ it stands, and the rule is not to state a lease below the router's. QEMU
 `guestfwd` caveat recorded there: a QEMU lane can show the absence of a drop,
 never a reconnect. For the island: delete the explicit
 `CONFIG_NROS_ZENOH_LEASE_MS=60000` lines if wanted (the default is the same).
+**Resolved 2026-10-30 (issue 1731, archived):** the pinned zenoh-pico fork now
+judges the router on the router's announced lease and paces our keep-alives on
+ours, as zenoh does, so a lease below the router's no longer drops the session.
 
 ### T2 -- `island_trace_cost_max` read 0 in two runs
 
@@ -1181,7 +1184,8 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
 - [x] T1: the plain-router join reproduced on current main with the default
       lease and held; the `min()` question filed or answered. (native_sim
       c/talker vs stock rmw_zenohd, host peer joined at +75 s, session held
-      to +160 s; `min()` filed as issue 1731, 60 s default is the answer.)
+      to +160 s; `min()` filed as issue 1731, 60 s default is the answer;
+      the `min()` itself removed from the fork 2026-10-30, issue 1731 resolved.)
 - [ ] T2: `island_trace_cost_max` reads the bracket's maximum in every run.
 - [ ] T3: issue 1533 resolved and archived; issue 1534 closed with a derived
       main-thread priority and a measured RX-ring default. (1533 archived;
