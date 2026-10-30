@@ -128,6 +128,9 @@ needs-type-descriptors = []
 # Executor's wake condvar. Linux-only (eventfd). Off by default;
 # enable when the binary installs POSIX signal handlers that need
 # to wake the executor.
+# Issue 2144 — also the READ direction: `Executor::ready_fd()`, a readable
+# eventfd a host loop (GLib, Qt, epoll) watches for arrivals. Same syscall,
+# same Linux-only gate, so one feature carries both fds.
 signal-fd-wake = ["dep:libc"]
 # Phase 141.B.2 — wake-latency probe. Instruments two points so
 # 141.C's host-side histogram + assertion can measure P99 wake

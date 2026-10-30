@@ -9,6 +9,10 @@
 //! 79 / 480 / 979 ms later. The zenoh sibling of this test is
 //! `wake_latency.rs`; that backend wakes the executor itself.
 //!
+//! And the readiness notifier's refusal (issue 2144): a poll-only backend
+//! learns of an arrival only inside a spin, so it is not offered a notifier
+//! that would never fire for a host waiting on it.
+//!
 //! Run: `just check required-features-tests` (needs the XRCE Agent).
 
 #![cfg(feature = "xrce-wake-test")]
@@ -80,4 +84,45 @@ fn guard_trigger_wakes_a_poll_only_executor_within_a_slice() {
          executor waited out its {SPIN_BUDGET:?} budget inside the backend's recv"
     );
     println!("guard on XRCE dispatched {latency:?} after the trigger");
+}
+
+unsafe extern "C" fn never_called(_ctx: *mut core::ffi::c_void) {
+    panic!("a refused readiness notifier was called");
+}
+
+/// Issue 2144 -- a poll-only executor REFUSES a readiness notifier instead of
+/// installing one that silently never fires; clearing still succeeds.
+#[test]
+fn a_poll_only_executor_refuses_a_ready_notifier() {
+    require_xrce_agent();
+    let agent = XrceAgent::start_unique().expect("start XRCE agent");
+
+    let _ = nros_rmw_xrce_cffi::register();
+    let addr = agent.addr();
+    let config = ExecutorConfig::new(&addr)
+        .node_name("xrce_ready_notifier")
+        .domain_id(97);
+    let mut executor = Executor::open(&config).expect("Executor::open over XRCE");
+
+    assert!(
+        !executor.ready_notifier_supported(),
+        "XRCE installs no wake callback, so it cannot tell a host anything outside a spin"
+    );
+    // SAFETY: refused, so never installed; clearing takes no context.
+    let set = unsafe { executor.set_ready_notifier(Some(never_called), core::ptr::null_mut()) };
+    assert!(
+        matches!(
+            set,
+            Err(NodeError::Transport(nros_node::TransportError::Unsupported))
+        ),
+        "a poll-only executor accepted a readiness notifier: {set:?}"
+    );
+    assert!(unsafe { executor.set_ready_notifier(None, core::ptr::null_mut()) }.is_ok());
+    // A guard trigger reaches the wake context, where an installed notifier
+    // would run: the refused one must not.
+    let (_id, guard) = executor
+        .register_guard_condition(|| {})
+        .expect("register_guard_condition");
+    guard.trigger();
+    executor.spin_once(Duration::from_millis(10));
 }

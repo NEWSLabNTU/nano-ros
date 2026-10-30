@@ -347,6 +347,24 @@ class Executor {
         return spin_once(timeout_ms);
     }
 
+    /// Issue 2144 (RFC-0112 D2.2, "Readiness out") — install the executor's
+    /// one readiness notifier, or clear it with `nullptr`.
+    ///
+    /// `notifier(ctx)` is called whenever work arrives (a sample, request or
+    /// reply, or a guard condition triggered from another thread). A host
+    /// event loop waits on it, then calls `spin_some()`. Timers do not
+    /// notify. It runs on the backend's wake thread: thread-safe, never
+    /// blocking, never calling back into this executor. `ctx` must outlive
+    /// the installation. Spin once after installing; earlier arrivals are not
+    /// replayed.
+    ///
+    /// @return `ErrorCode::Unsupported` on a poll-only backend (XRCE), which
+    /// can wake nobody outside a spin.
+    Result set_ready_notifier(void (*notifier)(void*), void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_set_ready_notifier(storage_, notifier, ctx));
+    }
+
     /// Phase 124.F.3 — session-level connectivity probe.
     ///
     /// Wire-level round-trip ("is the peer / agent / router

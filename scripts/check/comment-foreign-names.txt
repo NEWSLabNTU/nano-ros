@@ -578,3 +578,8 @@ rt_priority_band
 # git
 GIT_INDEX_FILE
 GIT_OBJECT_DIRECTORY
+
+# GLib, Qt and tokio (host event loops, issue 2144)
+AsyncFd
+QSocketNotifier
+g_unix_fd_add

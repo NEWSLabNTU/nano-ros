@@ -528,6 +528,22 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/entity_wake_callback
     ./tmp/entity_wake_callback
+    echo "  - issue 2144: one executor-level readiness notifier hears every arrival"
+    echo "    with nothing spinning, and is taken down by a replace, a clear and fini"
+    test -f packages/api/nros-c/tests/run/ready_notifier.c || { \
+        echo "ERROR: ready_notifier.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/ready_notifier.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/ready_notifier
+    ./tmp/ready_notifier
     echo "  - issue 2009: C clients match a reply to its request by sequence number;"
     echo "    a stray or timed-out call's late reply is dropped, not delivered; the polled"
     echo "    action client names each reply's goal (issue 2011)"
@@ -1706,7 +1722,7 @@ cpp: cpp-fmt
     # to `c++`: the driver picks the language by EXTENSION, and `c++ foo.c`
     # compiles C as C++, which mangles `nros_stub_rmw_register` and fails to
     # link against the `extern "C"` declaration in the header.
-    for _tu in executor_cancel_runtime executor_node_members_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime jazzy_small_accessors_runtime timer_call_info_runtime status_event_setters_runtime init_multi_session_properties_runtime; do \
+    for _tu in executor_cancel_runtime executor_node_members_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime jazzy_small_accessors_runtime timer_call_info_runtime status_event_setters_runtime init_multi_session_properties_runtime ready_notifier_runtime; do \
         test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
             echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -1744,6 +1760,23 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/executor_cancel_runtime
+    # Issue 2144 -- the executor's readiness notifier through the C++ wrapper:
+    # an arrival with nothing spinning notifies; a replace and a clear take
+    # the old pair down.
+    echo "  - rclcpp::Executor::set_ready_notifier (runtime, issue 2144)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/ready_notifier_runtime \
+        packages/api/nros-cpp/tests/compile/ready_notifier_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/ready_notifier_runtime
     # phase-515 P1/P2 -- rclcpp's executor members with upstream's signatures
     # on an explicit executor: spin_until_future_complete returns SUCCESS
     # without burning its timeout and TIMEOUT no earlier than the budget;

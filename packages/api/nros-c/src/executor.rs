@@ -669,6 +669,83 @@ pub unsafe extern "C" fn rclc_executor_set_timeout(
     RCL_RET_OK
 }
 
+/// A readiness notifier: called with the context it was installed with
+/// whenever work arrives for the executor. See
+/// [`rclc_executor_set_ready_notifier`].
+pub type rclc_executor_ready_notifier_t = Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>;
+
+/// Issue 2144 (RFC-0112 D2.2, "Readiness out") — install the executor's one
+/// readiness notifier, or clear it with a NULL `notifier`. A nano-ros
+/// extension; rclc has no such call.
+///
+/// `notifier(ctx)` is called whenever work arrives for this executor: a
+/// sample, request or reply on its session, or a guard condition triggered
+/// from another thread. A host loop with its own event source (a GLib or Qt
+/// main loop, `epoll`, an RTOS task waiting on a semaphore) waits on it and
+/// then calls `rclc_executor_spin_some(executor, 0)`, instead of polling.
+/// Timers are not arrivals and do not notify, so the host also wakes for the
+/// executor's next timer.
+///
+/// Notifications coalesce: one call may stand for several arrivals, and a
+/// call may come for work a spin already took. Work that arrived before the
+/// install is not replayed, so spin once after installing. A Linux host that
+/// wants a readable fd writes an `eventfd` from the notifier.
+///
+/// The notifier runs on the backend's wake context — a transport or worker
+/// thread, or the thread that triggered a guard condition — so it must be
+/// thread-safe, must not block and must not call back into the executor.
+/// `ctx` must stay valid until the notifier is replaced or cleared, or the
+/// executor is finalised. Install it once: a replaced notifier's two words
+/// are kept until `rclc_executor_fini`.
+///
+/// # Returns
+/// * `RCL_RET_OK` — installed (or cleared).
+/// * `RCL_RET_UNSUPPORTED` — the backend is poll-only (XRCE, for example)
+///   and learns of an arrival only inside a spin, so a notifier would never
+///   fire for a host waiting on it. Keep spinning on a period. Clearing
+///   never fails this way.
+/// * `RCL_RET_NOT_INIT` — executor not initialised.
+/// * `RCL_RET_INVALID_ARGUMENT` — `executor` is NULL.
+///
+/// # Safety
+/// * `executor` must be a valid pointer to an initialized executor.
+/// * `notifier`/`ctx` must satisfy the contract above.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_set_ready_notifier(
+    executor: *mut rclc_executor_t,
+    notifier: rclc_executor_ready_notifier_t,
+    ctx: *mut core::ffi::c_void,
+) -> rcl_ret_t {
+    validate_not_null!(executor);
+    let exec_t = &mut *executor;
+    if exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
+    {
+        return RCL_RET_NOT_INIT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let mut exec = get_executor(exec_t);
+        // SAFETY: the caller's contract, stated above, is the executor's.
+        match unsafe { exec.set_ready_notifier(notifier, ctx) } {
+            Ok(()) => RCL_RET_OK,
+            Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+                RCL_RET_UNSUPPORTED
+            }
+            Err(_) => RCL_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = ctx;
+        if notifier.is_none() {
+            RCL_RET_OK
+        } else {
+            RCL_RET_UNSUPPORTED
+        }
+    }
+}
+
 /// Phase 124.F.3 — session-level connectivity probe.
 ///
 /// Sends a wire-level round-trip ("is the peer / agent / router
