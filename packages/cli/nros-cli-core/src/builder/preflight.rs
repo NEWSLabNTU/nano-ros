@@ -164,6 +164,17 @@ pub fn check_zephyr_rust(
             remedy: format!("rustup target add {target}"),
         });
     }
+    for c in &z.rust_components {
+        if !rust_component_installed(c, None) {
+            out.push(Missing {
+                what: format!(
+                    "rustup component `{c}` (a Rust image on board `{}`)",
+                    board.names[0]
+                ),
+                remedy: format!("rustup component add {c}"),
+            });
+        }
+    }
     let absent = missing_prereqs(&z.rust_prereqs);
     if !absent.is_empty() {
         out.push(Missing {
@@ -641,20 +652,28 @@ mod tests {
         );
         assert_eq!(z.rust_prereqs, vec!["clang", "libclang-dev"]);
 
-        board.zephyr.as_mut().unwrap().rust_target = Some("nros-not-a-real-triple".into());
+        assert_eq!(z.rust_components, vec!["clippy"]);
+        let z = board.zephyr.as_mut().unwrap();
+        z.rust_target = Some("nros-not-a-real-triple".into());
+        z.rust_components = vec!["nros-not-a-real-component".into()];
         let got = check_zephyr_rust(&board, |keys| keys.to_vec());
-        assert_eq!(got.len(), 2, "{got:?}");
+        assert_eq!(got.len(), 3, "{got:?}");
         assert_eq!(got[0].remedy, "rustup target add nros-not-a-real-triple");
-        assert!(
-            got[1].what.contains("clang, libclang-dev"),
-            "{}",
-            got[1].what
+        assert_eq!(
+            got[1].remedy,
+            "rustup component add nros-not-a-real-component"
         );
-        assert_eq!(got[1].remedy, "nros setup --sudo");
+        assert!(
+            got[2].what.contains("clang, libclang-dev"),
+            "{}",
+            got[2].what
+        );
+        assert_eq!(got[2].remedy, "nros setup --sudo");
 
         let z = board.zephyr.as_mut().unwrap();
         z.rust_target = None;
         z.rust_prereqs.clear();
+        z.rust_components.clear();
         assert!(check_zephyr_rust(&board, |keys| keys.to_vec()).is_empty());
     }
 }

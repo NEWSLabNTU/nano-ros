@@ -35,6 +35,8 @@ runner = "armfvp"
 # libclang-dev for the library bindgen loads).
 rust_target = "aarch64-unknown-none"
 rust_prereqs = ["clang", "libclang-dev"]
+# zephyr-lang-rust lints every Rust app as part of `ALL` (`cargo clippy`).
+rust_components = ["clippy"]
 
 [board.provisioning]
 zephyr_line = "3.7"

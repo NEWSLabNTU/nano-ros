@@ -605,6 +605,12 @@ pub struct BoardZephyr {
     /// `libclang-dev` (the library bindgen loads); issue 2151.
     #[serde(default)]
     pub rust_prereqs: Vec<String>,
+    /// rustup components a Rust image for this board needs on the toolchain
+    /// it builds with. zephyr-lang-rust adds `cargo clippy -D warnings` to the
+    /// `ALL` target of every Rust app, so a toolchain without `clippy` fails
+    /// the build after the library compiled (issue 2151).
+    #[serde(default)]
+    pub rust_components: Vec<String>,
 }
 
 impl BoardZephyr {
