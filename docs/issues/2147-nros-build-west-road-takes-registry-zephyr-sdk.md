@@ -83,3 +83,26 @@ Fix the class: one rule, not a second spelling of it.
   `nros build --zephyr-workspace` on a template copy configures against the
   pinned store SDK. A test fixture can stage that with a temporary `HOME`
   holding a crafted `~/.cmake/packages/Zephyr-sdk/`.
+
+## The variant half, measured (2026-10-30)
+
+It is real. On a host with CMake 4.4.4 and no `ZEPHYR_TOOLCHAIN_VARIANT` in
+the environment, `just check template-copy-out` failed all five Zephyr
+template copies at configure:
+
+```
+CMake Error at zephyr-workspace/zephyr/cmake/modules/FindZephyr-sdk.cmake:35 (if):
+  if given arguments:
+    "(" "zephyr" "STREQUAL" ")" "OR" "(" "NOT" "DEFINED" "ZEPHYR_TOOLCHAIN_VARIANT" ")" ...
+  Unknown arguments specified
+```
+
+Setting `ZEPHYR_SDK_INSTALL_DIR` alone (the SDK-half workaround above) did not
+change it. A `cmake --trace-expand` of one copy shows nothing upstream sets the
+variable. `FindDeprecated.cmake:44` runs
+`set(ZEPHYR_TOOLCHAIN_VARIANT $ENV{ZEPHYR_TOOLCHAIN_VARIANT})`, which with an
+empty environment leaves it undefined. So `nros build`'s west road needs the
+variant from `nros_zephyr_toolchain_variant` too, not only the SDK. CI does not
+see this because its image runs CMake 3.22, which tolerates the empty operand
+(issue 0698's table). The local workaround is
+`export ZEPHYR_TOOLCHAIN_VARIANT=zephyr` before the gate.
