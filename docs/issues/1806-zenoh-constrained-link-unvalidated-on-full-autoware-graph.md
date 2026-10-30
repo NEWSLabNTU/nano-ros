@@ -6,7 +6,7 @@ type: test-gap
 area: [rmw-zenoh, interop]
 severity: low
 found: 2026-10-11
-related: [1341, phase-474]
+related: [1341, 2163, phase-474]
 ---
 
 **Home: [phase-474](../roadmap/phase-474-safety-island-board-findings.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
@@ -40,6 +40,42 @@ the publisher's `@adv` liveliness token; ours issues the history query once,
 when the subscription is created. So a latched publisher that appears AFTER the
 subscription delivers its first sample live, not from history. phase-473 records
 this as out of scope rather than as a defect.
+
+## Attempted 2026-10-30: blocked here, and why
+
+Re-checked from fresh `main` on the box that runs this repository's lanes.
+The closing run cannot happen on it, for three measured reasons:
+
+* **No island checkout.** No `simple-autoware-safety-island` /
+  `autoware-safety-island` tree exists under the project roots, so its
+  `demo/l3` setup (where the `l3-autoware` run lives) is not here.
+* **No Autoware container.** `docker images` lists `ubuntu:22.04` only; the
+  `l3-autoware` image the run boots against is not built or pulled.
+* **No in-tree substitute already exists to fall back on.** `git grep` over
+  `packages/testing/` finds no test that builds an image with
+  `ZPICO_GRAPH_DISCOVERY=0` (phase-473 W1), and none in which a nano-ros
+  SUBSCRIBER reads a stock latched publisher's history through the `@adv`
+  query (W2). The in-tree late-joiner coverage is the other direction
+  (`qos_override_e2e::a_late_joiner_receives_the_declared_history`: a stock
+  `ros2 topic echo` reading a nano-ros publisher's cache). Both W1 and W2 were
+  measured only on the island's image, against a 100-node synthetic graph.
+
+What the scale question rests on today, so nobody re-derives it: phase-473
+measured discovery OFF against 100 `rclpy` nodes (3 publishers, 2
+subscriptions, 1 service each) at a heap peak of 105,368 bytes and **zero**
+`@ros2_lv` bytes router→island after the island's own declarations, against
+ON exhausting a 1 MiB heap in 2.5 s. With the cache compiled out, the router
+sends the image nothing that scales with the domain, so 136 nodes is not
+expected to differ from 100 for W1 — but "not expected" is the claim this issue
+exists to replace with a run. W2 is a single query per transient-local
+subscription and its reply count does not depend on the graph size either; the
+part a full graph can still break is the 5 s query timeout under a busy router.
+
+An in-tree witness for W1/W2 (a native image built with graph discovery off,
+late-joining a synthetic ~136-node `rmw_zenoh_cpp` graph and reading a latched
+value) would make the mechanism a regression gate here. It does NOT close this
+issue — the acceptance is the island's real Autoware domain — so it is tracked
+separately, as [issue 2163](2163-zenoh-constrained-link-no-in-tree-witness.md).
 
 ## Closes when
 
