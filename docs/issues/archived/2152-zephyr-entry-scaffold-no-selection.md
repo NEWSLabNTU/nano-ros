@@ -1,11 +1,12 @@
 ---
 id: 2152
 title: "A Zephyr entry from `nros new entry` never gets its selection package, so it does not compile outside a checkout"
-status: open
+status: resolved
 type: bug
 area: [cli, scaffold, zephyr]
 severity: medium
 found: 2026-10-30
+resolved: 2026-10-30
 related: [2151, phase-517]
 ---
 
@@ -66,3 +67,20 @@ features, so no in-tree lane exercises this scaffold. Its only test plans it
 Until then, phase-517 W17's `zephyr-rust` probe track stays out of the
 matrix. Its earlier runs also found issue 2151 and the native_sim
 `CONFIG_NET_DRIVERS` fix.
+
+## Resolution
+
+Both halves of the fix direction, landed together with issue 2151:
+
+* `facade::runtime_deps` locates a registry-style `nros` / `nros-board-*` /
+  `nros-rmw-*` dependency under the SDK root through the crate lookup the
+  patch writer uses (`nros_crate_subpath`), so the facade and cargo name one
+  package. `nros sync` passes the root it resolves for the patch table.
+* `nros new entry` writes `<entry>_nros_selection = { path = … }` at the
+  place sync writes the package (`generated/nros-selection/<entry>`).
+
+The fixture this asked for is the installed `zephyr-rust` probe track,
+back in `probe-platforms.yml`: it scaffolds the entry, syncs, builds and
+runs it, and expects the talker and listener. Green on run 41050394546.
+Unit tests: `a_registry_style_entry_resolves_through_the_sdk_root`,
+`the_entry_depends_on_its_selection_package`.

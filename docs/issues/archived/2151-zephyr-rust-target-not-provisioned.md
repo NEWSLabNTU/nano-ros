@@ -1,11 +1,12 @@
 ---
 id: 2151
 title: "`nros setup zephyr` does not install the Rust target a Zephyr Rust image compiles for"
-status: open
+status: resolved
 type: bug
 area: [cli, setup, zephyr]
 severity: medium
 found: 2026-10-30
+resolved: 2026-10-30
 related: [1672, 2149, phase-517]
 ---
 
@@ -67,3 +68,30 @@ The chapter's Rust block installs `clang` and `libclang-dev` and runs
   (phase-517 W4) install them when the workspace has a Rust Zephyr image.
 * Have the `nros build` preflight check them the way it checks a cross
   board's `target`.
+
+## Resolution
+
+Each Zephyr board descriptor states what a Rust image on it needs beyond a
+C one, in `[board.zephyr]`:
+
+* `rust_target`: the triple zephyr-lang-rust compiles for. native_sim is
+  `{host_arch}-unknown-none`, since zephyr-lang-rust maps it by the build
+  host's processor (`x86_64` or `aarch64`), and
+  `BoardZephyr::rust_target_for_host` expands it.
+* `rust_components = ["clippy"]`: zephyr-lang-rust puts
+  `cargo clippy -D warnings` in the `ALL` target of every Rust app. A third
+  prerequisite, found by run 41048129714 once the first two were in.
+* `rust_prereqs = ["clang", "libclang-dev"]`: `[prereq.*]` keys for bindgen.
+
+`nros setup` installs the target and components for a Zephyr board. The
+workspace form asks for the prereqs when the workspace holds a Rust
+package, and installs them under `--sudo`. It reads the board catalog from
+the SDK root, not the index's directory, which under `NROS_INDEX_URL` holds
+a fetched copy. `nros build` refuses a Rust Zephyr image missing any of
+the three, naming `rustup target add`, `rustup component add` or
+`nros setup --sudo` (`preflight::check_zephyr_rust`, unit-tested by
+`a_rust_zephyr_image_names_its_target_and_host_packages`).
+
+The Zephyr chapter's Rust steps run `nros setup --sudo` instead of the
+hand-installed packages and target. The `zephyr-rust` track is green on run
+41050394546.

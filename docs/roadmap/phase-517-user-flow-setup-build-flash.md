@@ -1407,8 +1407,18 @@ release instead, and nothing in the current harness provides one.
     because the facade writer reads only path dependencies and the scaffold
     writes registry-style ones. That is issue 2152.
 
-  Those Rust steps are plain text again, with a pointer to issue 2152, and
-  the track is out of the matrix until that lands.
+  Those Rust steps were plain text, with a pointer to issue 2152, and the
+  track was out of the matrix until that landed.
+
+  **Back (2026-10-30).** Issues 2151 and 2152 are resolved. The chapter's
+  Rust steps are probe blocks again: `nros setup --sudo` in the workspace
+  replaces the hand-installed packages and target. The `zephyr-rust` track
+  is back in `probe-platforms.yml` and green on run 41050394546 (scaffold,
+  sync, build, boot, and the talker and listener in one image). Getting
+  there took three more runs, and each found something: the board catalog
+  read from the index's directory, which is a fetched copy under
+  `NROS_INDEX_URL`; then rustup's `clippy`, which zephyr-lang-rust runs as
+  part of every Rust app's build.
 * **NuttX Rust: not replayable yet, issue 2149.** Measured locally: the
   scaffolded workspace image failed at `core`, because the cargo road ran
   the default toolchain for a `toolchain = "nightly"` board. That is fixed:
@@ -1419,13 +1429,14 @@ release instead, and nothing in the current harness provides one.
 
 ## Issues homed here (2026-10-29)
 
-* [2152](../issues/2152-zephyr-entry-scaffold-no-selection.md), open. A
-  Zephyr entry from `nros new entry` never gets its selection package, so
-  it does not compile outside a checkout (found by W17's `zephyr-rust`
-  track).
-* [2151](../issues/2151-zephyr-rust-target-not-provisioned.md), open.
-  `nros setup zephyr` does not install the Rust target a Zephyr Rust image
-  compiles for (found by W17's `zephyr-rust` track).
+* [2152](../issues/archived/2152-zephyr-entry-scaffold-no-selection.md),
+  resolved. A Zephyr entry from `nros new entry` never got its selection
+  package, so it did not compile outside a checkout (found by W17's
+  `zephyr-rust` track).
+* [2151](../issues/archived/2151-zephyr-rust-target-not-provisioned.md),
+  resolved. `nros setup zephyr` did not install what a Zephyr Rust image
+  needs beyond a C one: the target, `clippy`, `clang` and `libclang-dev`
+  (found by W17's `zephyr-rust` track).
 * [2149](../issues/2149-nuttx-rust-workspace-no-nightly.md), open. A NuttX
   Rust workspace image does not build from `nros build`. The nightly half is
   fixed (W17); the kernel-configure half is open.
