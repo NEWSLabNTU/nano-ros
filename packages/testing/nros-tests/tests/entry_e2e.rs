@@ -173,7 +173,12 @@ fn wl_str(w: MW) -> &'static str {
 /// coordinate is a HARD panic: adding a cell that `consumer_of` assigns to
 /// `Entry` forces an arm here (phase-329 W1). The RTOS EntryPubsub cells the
 /// other consumers own never reach this (they are not claimed).
-fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
+/// How one Entry-pkg cell proves delivery — split from [`exec_for`] so a test
+/// can ask which cells use the C listener observer without naming the fixture
+/// resolvers `exec_for` carries (`check-lane-contracts` reads what a test
+/// MENTIONS, and the observer test runs in the fixture-free gate lane). A cell
+/// with no arm here has no arm in `exec_for` either.
+fn proof_for(platform: MP, lang: ML, workload: MW) -> Proof {
     // EntryPubsub via the C `linux_robot2_entry` listener (60 s/90 s cold-boot
     // window for QEMU + native_sim; 15 s/20 s for the threadx host sim).
     let chatter_c = |observer_spin_ms: u32, window_secs: u64| Proof::ChatterToCListener {
@@ -181,11 +186,36 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
         window_secs,
     };
     match (platform, lang, workload) {
+        (MP::ThreadxLinux, ML::C, MW::EntryPubsub) => chatter_c(15000, 20),
+        (MP::ThreadxLinux, ML::Cpp, MW::EntryPubsub) => chatter_c(15000, 20),
+        (MP::ThreadxLinux, ML::Mixed, MW::EntryPubsub) => chatter_c(15000, 20),
+        (MP::FreertosMps2, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
+        (MP::FreertosMps2, ML::Cpp, MW::EntryPubsub) => chatter_c(60000, 90),
+        (MP::FreertosMps2, ML::Mixed, MW::EntryPubsub) => chatter_c(60000, 90),
+        (MP::ZephyrNativeSim, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
+        (MP::ZephyrNativeSim, ML::Cpp, MW::EntryPubsub) => chatter_c(60000, 90),
+        (MP::ZephyrNativeSim, ML::Mixed, MW::EntryPubsub) => chatter_c(60000, 90),
+        (MP::NuttxArm, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
+        (MP::ThreadxRiscv64, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
+        (MP::NuttxArm, ML::Rust, MW::EntryPubsub) => {
+            Proof::ChatterToRustListener { window_secs: 90 }
+        }
+        (MP::ZephyrNativeSim, ML::Rust, MW::Params) => Proof::SinkValueLine { value: 120 },
+        (MP::ZephyrNativeSim, ML::Cpp, MW::Params) => Proof::SinkValueLine { value: 250 },
+        (MP::ZephyrNativeSim, ML::Rust, MW::Qos) => Proof::SinkCount { topic: "/qos_ok" },
+        (MP::ZephyrNativeSim, ML::Rust, MW::Lifecycle) => Proof::LifecycleActive,
+        (MP::ZephyrNativeSim, ML::Rust, MW::Safety) => Proof::SinkCount { topic: "/safe_ok" },
+        (p, l, w) => panic!("entry_e2e: no proof for matrix cell {p:?}/{l:?}/{w:?}"),
+    }
+}
+
+fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
+    match (platform, lang, workload) {
         (MP::ThreadxLinux, ML::C, MW::EntryPubsub) => Exec {
             resolver: threadx_c_entry,
             port: port_of(MP::ThreadxLinux, ML::C, MW::EntryPubsub),
             boot: Boot::ThreadxLinux,
-            proof: chatter_c(15000, 20),
+            proof: proof_for(platform, lang, workload),
             note: "phase-263 C2a: codegen emits nros_app_main (NOT int main — would double-main \
                    the ThreadX startup.c); nsos-netx forwards nx_bsd_connect to a host connect()",
         },
@@ -193,7 +223,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: threadx_cpp_entry,
             port: port_of(MP::ThreadxLinux, ML::Cpp, MW::EntryPubsub),
             boot: Boot::ThreadxLinux,
-            proof: chatter_c(15000, 20),
+            proof: proof_for(platform, lang, workload),
             note: "phase-263 C2c: C2a's per-board wiring (locator bake, header-mirror ordering) \
                    reused verbatim through the C++ emitter",
         },
@@ -201,7 +231,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: threadx_mixed_entry,
             port: port_of(MP::ThreadxLinux, ML::Mixed, MW::EntryPubsub),
             boot: Boot::ThreadxLinux,
-            proof: chatter_c(15000, 20),
+            proof: proof_for(platform, lang, workload),
             note: "phase-263 C2c: C talker + C++ listener + Rust heartbeat in ONE image; the \
                    nros_ws_runtime umbrella targets the host triple (ThreadX sim = pthreads)",
         },
@@ -209,7 +239,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: freertos_c_entry,
             port: port_of(MP::FreertosMps2, ML::C, MW::EntryPubsub),
             boot: Boot::FreertosMps2,
-            proof: chatter_c(60000, 90),
+            proof: proof_for(platform, lang, workload),
             note: "phase-263 C2b: nros_app_main + FreertosBoard::run_components; startup.c _start \
                    spawns the app task, brings up netif + zenoh/poll tasks, dispatches app_main",
         },
@@ -217,14 +247,14 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: freertos_cpp_entry,
             port: port_of(MP::FreertosMps2, ML::Cpp, MW::EntryPubsub),
             boot: Boot::FreertosMps2,
-            proof: chatter_c(60000, 90),
+            proof: proof_for(platform, lang, workload),
             note: "phase-263 C2c: C2b's per-board wiring reused verbatim through the C++ emitter",
         },
         (MP::FreertosMps2, ML::Mixed, MW::EntryPubsub) => Exec {
             resolver: freertos_mixed_entry,
             port: port_of(MP::FreertosMps2, ML::Mixed, MW::EntryPubsub),
             boot: Boot::FreertosMps2,
-            proof: chatter_c(60000, 90),
+            proof: proof_for(platform, lang, workload),
             note: "phase-263 C2c: GENUINELY-no_std cross target (thumbv7m) — the umbrella selects \
                    the board's alloc;panic-halt tier and Corrosion cross-compiles it",
         },
@@ -232,7 +262,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: build_zephyr_workspace_c_entry,
             port: port_of(MP::ZephyrNativeSim, ML::C, MW::EntryPubsub),
             boot: Boot::ZephyrNativeSim,
-            proof: chatter_c(60000, 90),
+            proof: proof_for(platform, lang, workload),
             note: "phase-263 C2d: generated int main driving ZephyrBoard::run_components, \
                    whole-archived into `app` (strong main)",
         },
@@ -240,7 +270,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: build_zephyr_workspace_cpp_entry,
             port: port_of(MP::ZephyrNativeSim, ML::Cpp, MW::EntryPubsub),
             boot: Boot::ZephyrNativeSim,
-            proof: chatter_c(60000, 90),
+            proof: proof_for(platform, lang, workload),
             note: "phase-263 C2c: TYPED std_msgs::msg::Int32 nodes — idempotent interface \
                    generator, ::setvbuf (std::setvbuf absent on picolibc), if(TARGET)-guarded \
                    interface link",
@@ -249,7 +279,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: build_zephyr_workspace_mixed_entry,
             port: port_of(MP::ZephyrNativeSim, ML::Mixed, MW::EntryPubsub),
             boot: Boot::ZephyrNativeSim,
-            proof: chatter_c(60000, 90),
+            proof: proof_for(platform, lang, workload),
             note: "phase-263 C2c-zephyr: NROS_WS_RUST_NODE_DIRS before find_package(Zephyr) → the \
                    module synthesises the nros_ws_runtime umbrella (single-runtime invariant: one \
                    nros-rmw-cffi REGISTRY) in place of plain nros-cpp",
@@ -258,7 +288,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: nuttx_c_entry,
             port: port_of(MP::NuttxArm, ML::C, MW::EntryPubsub),
             boot: Boot::NuttxArm,
-            proof: chatter_c(60000, 90),
+            proof: proof_for(platform, lang, workload),
             note: "phase-263 C2b (last C2 gap): NROS_ENTRY_LOCATOR must be set BEFORE the board's \
                    nros_platform_link_app (ferried into the cc-rs entry-TU compile at CONFIGURE \
                    time) — the old 'console issue' was this missing bake",
@@ -267,7 +297,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: threadx_riscv64_c_entry,
             port: port_of(MP::ThreadxRiscv64, ML::C, MW::EntryPubsub),
             boot: Boot::ThreadxRiscv64,
-            proof: chatter_c(60000, 90),
+            proof: proof_for(platform, lang, workload),
             note: "issue 1286: a `--lang c` ThreadX entry is PURE C — the shared \
                    nros_board_rtos_run_components runner compiled in the app target \
                    (THREADX_STARTUP_SOURCE) against the per-build nros_cpp_config_generated.h",
@@ -278,7 +308,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: nuttx_rust_entry,
             port: port_of(MP::NuttxArm, ML::Rust, MW::Pubsub),
             boot: Boot::NuttxArm,
-            proof: Proof::ChatterToRustListener { window_secs: 90 },
+            proof: proof_for(platform, lang, workload),
             note: "#130 / phase-280 W3 (commit 703e840dd): the Rust entry path's entry_net_init \
                    pushes the guest IP into eth0 via SIOCSIFADDR before Executor::open — without \
                    it the image dies in Transport(ConnectionFailed)",
@@ -287,7 +317,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: build_zephyr_workspace_rust_params_entry,
             port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Params),
             boot: Boot::ZephyrNativeSim,
-            proof: Proof::SinkValueLine { value: 120 },
+            proof: proof_for(platform, lang, workload),
             note: "phase-276 W1 / #128: the Framework::Zephyr emit arm gained apply_param_services \
                    (launch-baked initials) — before it, [param_services] was silently ignored. \
                    #147/#278: the observer must be the TYPED int32-sink (the old String listener \
@@ -304,7 +334,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: build_zephyr_workspace_cpp_params_entry,
             port: port_of(MP::ZephyrNativeSim, ML::Cpp, MW::Params),
             boot: Boot::ZephyrNativeSim,
-            proof: Proof::SinkValueLine { value: 250 },
+            proof: proof_for(platform, lang, workload),
             note: "issue 1681: the generated west application sets NROS_FEATURES before \
                    find_package(Zephyr), so nros-cpp is built with param-services (and \
                    lifecycle-services); before it the entry's \
@@ -316,7 +346,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: build_zephyr_workspace_rust_qos_entry,
             port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Qos),
             boot: Boot::ZephyrNativeSim,
-            proof: Proof::SinkCount { topic: "/qos_ok" },
+            proof: proof_for(platform, lang, workload),
             note: "phase-276 W5 (RFC-0041): per-entity reliable+transient_local declared IN NODE \
                    CODE on both in-image endpoints; in-image delivery rides \
                    Z_FEATURE_LOCAL_SUBSCRIBER. The baked qos port is shared with qos_zephyr_ros2_interop_e2e \
@@ -326,7 +356,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: build_zephyr_workspace_rust_lifecycle_entry,
             port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Lifecycle),
             boot: Boot::ZephyrNativeSim,
-            proof: Proof::LifecycleActive,
+            proof: proof_for(platform, lang, workload),
             note: "phase-276 W3 / #128: apply_lifecycle installs the five REP-2002 services and \
                    drives the boot autostart (Configure→Activate) in-image — no manual set",
         },
@@ -334,7 +364,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: build_zephyr_workspace_rust_safety_entry,
             port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Safety),
             boot: Boot::ZephyrNativeSim,
-            proof: Proof::SinkCount { topic: "/safe_ok" },
+            proof: proof_for(platform, lang, workload),
             note: "phase-276 W4 (RFC-0028): [system].features = [\"safety\"] lowers to the \
                    safety-e2e backend feature — CRC+seq attached per publish, validated on \
                    receive, CallbackCtx::integrity() read in-image",
@@ -979,7 +1009,7 @@ fn c_listener_observer_serves_every_cell_that_uses_it() {
         .filter(|c| consumer_of(c) == Some(Consumer::Entry) && matches!(c.tier, MT::Runtime))
         .filter(|c| {
             matches!(
-                exec_for(c.platform, c.lang, c.workload).proof,
+                proof_for(c.platform, c.lang, c.workload),
                 Proof::ChatterToCListener { .. }
             )
         })
