@@ -21,9 +21,12 @@ names = ["nuttx"]
 # backends", RFC-0072 §9).
 arch_profiles = "cortex-a7"
 compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
-required_env = [
-  { name = "NUTTX_DIR", help = "NuttX OS source. just nuttx setup; export NUTTX_DIR=$PWD/third-party/nuttx/nuttx", validate_subdir = "include" },
-]
+# Issue 2149 — no `required_env`: the kernel tree is located through the one
+# ladder (`{nuttx_include}` / `locate::try_source("nuttx-kernel")`: the row's
+# `NUTTX_DIR` override, the store, this checkout), like the other platforms'
+# trees since phase-484 W2c. Demanding `NUTTX_DIR` in the environment was the
+# one site left, and it refused every `nros build` of a Rust NuttX image,
+# which states no such variable.
 
 # phase-400 W3 / RFC-0086 — software-stack FACTS. A transport that needs a
 # capability this platform declares `false` fails at config time; a capability
