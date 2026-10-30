@@ -1,0 +1,19 @@
+# Measured wall time (ms) of the slowest `just check build` gates on the
+# hosted `host-tests` runner (4 vCPU, -P4): the larger of the 2026-10-26
+# (run 40263677513) and 2026-10-28 (run 40625461704) readings.
+#
+# Read by scripts/build/gate-shard.py to BALANCE the build lane's shards
+# (issue 2141). It never decides coverage: a gate missing here gets the
+# median weight, and a stale row is ignored. Refresh it from a run's
+# `check-build: done <gate> rc=N <ms>ms` lines when the shards drift apart.
+linux-check               3245011
+template-copy-out         2206829
+scaffold-builds           1261261
+test-targets              1174675
+borrowed-e2e              1162085
+cli-tests                  850721
+cpp                        844229
+required-features-tests    749068
+workspace-features         742519
+ament-census-sizing        660176
+census-hooks-complete      614470

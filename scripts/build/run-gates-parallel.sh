@@ -130,6 +130,26 @@ fi
     exit 2
 }
 
+# Issue 2141 — `NROS_BUILD_GATE_SHARD=k/n` runs shard k of the `build` lane,
+# so the lane can be spread over n CI jobs. One hosted runner could not fit it
+# in 120 minutes. Only the build lane shards: the fast lane is ~10 minutes and
+# runs on every event. `gate-shard.py` puts every gate in exactly one shard,
+# and `.config/build-gate-weights.txt` only balances them.
+if [ -n "${NROS_BUILD_GATE_SHARD:-}" ] && [ "$lane" = "build-serial" ]; then
+    _shard_list="$(mktemp "${TMPDIR:-/tmp}/nros-gate-shard.XXXXXX")"
+    if ! python3 scripts/build/gate-shard.py "$list" .config/build-gate-weights.txt \
+            "$NROS_BUILD_GATE_SHARD" > "$_shard_list"; then
+        echo "$0: could not take shard $NROS_BUILD_GATE_SHARD of the \`$lane\` list — refusing to run" >&2
+        exit 2
+    fi
+    list="$_shard_list"
+    printf 'check-build: shard %s of the lane: %s\n' "$NROS_BUILD_GATE_SHARD" "$(tr '\n' ' ' <"$list")"
+    [ -s "$list" ] || {
+        echo "$0: shard $NROS_BUILD_GATE_SHARD is EMPTY — refusing to report OK over nothing" >&2
+        exit 2
+    }
+fi
+
 # The skip ledger this runner REPORTS from must work, so its own controls run
 # here, every time (2026-10-07 gate-reach re-audit). They lived only on
 # `check-dist-runtime-deps`' normal path — a gate in no lane — so removing the
@@ -234,9 +254,17 @@ run_one() {
     cpu=$(printf '%s' "$cpu" | tail -1 | awk '{printf "%d", ($1 + $2) * 1000}')
     printf '%s\t%s\t%s\t%s\n' "$gate" "$rc" "$(( (end - start) / 1000000 ))" "${cpu:-0}" \
         >>"$dir/results.tsv"
+    # Issue 2141 — the summary below prints only after the LAST gate, so a job
+    # killed at its time cap logged nothing about which gates had finished.
+    # One line per gate as it ends survives the kill.
+    if [ "${NROS_GATE_PROGRESS:-0}" = 1 ]; then
+        printf 'check-%s: done %s rc=%s %sms\n' "$NROS_GATE_LABEL" "$gate" "$rc" \
+            "$(( (end - start) / 1000000 ))"
+    fi
     return 0
 }
 export -f run_one
+export NROS_GATE_LABEL="$label"
 
 # Issue 1350 — the fan-out is this script's to stop. It runs under
 # `nros_guard_lane`: its own process group, a trap that kills that group on

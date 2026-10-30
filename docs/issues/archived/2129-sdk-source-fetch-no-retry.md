@@ -1,15 +1,16 @@
 ---
 id: 2129
 title: "`nros setup` source-build fetches have no retry, so one DNS failure on a hosted runner stops the job"
-status: open
+status: resolved
 type: bug
 area: [ci, setup]
 severity: low
 found: 2026-10-29
 related: [phase-466]
+resolved: 2026-10-30
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-29.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-29.
 
 ## Measured
 
@@ -66,3 +67,21 @@ passes on its second attempt; and only network commands count as fetches.
 The next `host-tests` rt-sched failure on a DNS blip shows `failed on a
 network error (attempt 1/3); retrying` and then passes. Until a blip happens,
 the unit tests are the only evidence.
+
+## Resolution
+
+Closed 2026-10-30 by maintainer decision, on the lane's green runs rather than
+on an observed retry. The fix (#2805, 39e844300b) retries every network
+command the SDK store runs, up to 3 attempts, on a failure whose output names
+a network error.
+
+- `host-tests`' rt-sched job passed on 2026-10-29 (run
+  [40810937288](https://github.com/NEWSLabNTU/nano-ros/actions/runs/40810937288)) and 2026-10-30 (run
+  [40996190687](https://github.com/NEWSLabNTU/nano-ros/actions/runs/40996190687)).
+- Neither run hit a network failure, so neither log has a
+  "failed on a network error (attempt N/3)" line. The retry path is covered by
+  the four `fetch_retry_tests` unit tests only, not by a CI observation.
+
+If a source fetch on CI again stops a job on a DNS or connection error,
+reopen this issue with the log: either the error text was not one the retry
+recognises, or 3 attempts were not enough.
