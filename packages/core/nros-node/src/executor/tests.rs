@@ -3444,6 +3444,66 @@ fn a_zero_park_stays_zero() {
     assert_eq!(executor.last_park_achieved_us(), 0);
 }
 
+/// Issue 2145 — a poll of `spin_async` must never park the calling thread,
+/// because that thread is the async runtime's: a park there delays every
+/// sibling future on a single-threaded runtime by the park's length. It used
+/// to be `spin_once(1 ms)`, which parks for a granule on every poll.
+///
+/// The park bound is the executor's own record of what the pass asked the
+/// platform for, so this needs no wall-clock measurement (a timing assertion
+/// on a loaded host is a flake). It also pins the other half of the current
+/// contract: the poll returns `Pending` and has woken its own waker, because
+/// until an executor-level notifier exists (issue 2144) that self-wake is how
+/// a runtime knows to poll it again.
+#[test]
+fn spin_async_poll_never_parks_and_wakes_itself() {
+    use core::future::Future as _;
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        task::{Context, Poll, Wake, Waker},
+    };
+
+    struct CountingWaker(AtomicUsize);
+    impl Wake for CountingWaker {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let counter = Arc::new(CountingWaker(AtomicUsize::new(0)));
+    let waker = Waker::from(counter.clone());
+    let mut cx = Context::from_waker(&waker);
+
+    {
+        let mut fut = core::pin::pin!(executor.spin_async());
+        for poll in 1..=3 {
+            assert!(
+                matches!(fut.as_mut().poll(&mut cx), Poll::Pending),
+                "spin_async never completes"
+            );
+            assert_eq!(
+                counter.0.load(Ordering::SeqCst),
+                poll,
+                "each poll wakes itself exactly once (no notifier yet, issue 2144)"
+            );
+        }
+    }
+
+    assert_eq!(
+        executor.last_park().0,
+        0,
+        "a spin_async poll asked the platform to park: it blocks the runtime thread"
+    );
+    assert_eq!(executor.last_park_achieved_us(), 0);
+}
+
 /// The defect: `as_millis()` truncates, so 500 us became 0 ms, which selects
 /// the non-blocking path and turns `spin()` into a 100 % CPU loop. A park
 /// shorter than the platform can express must round UP to what it can.

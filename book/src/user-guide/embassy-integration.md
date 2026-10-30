@@ -65,11 +65,14 @@ board-side half.
 - **Sleeping until there is work.** The loop polls every millisecond when
   idle. The timer half exists: `Executor::next_deadline_us()` says how long
   until the next timer or backend deadline, `None` when nothing is scheduled
-  (issue 2143). The executor has no notifier yet that says "work arrived"
-  (issue 2144); once it exists, the task can wait on
+  (issue 2143). The "work arrived" half is `Executor::set_ready_notifier()`
+  (issue 2144), but it needs `alloc` and a backend with a live async wake
+  (`ready_notifier_supported()`), and no example wires it to an Embassy
+  signal yet. With both, the task can wait on
   `select(notified, Timer::after_micros(next_deadline))` and sleep. Do not use
-  `Executor::spin_async()` here: it wakes itself on every poll and can block
-  the Embassy thread for up to a millisecond (issue 2145).
+  `Executor::spin_async()` here: it no longer blocks the Embassy thread
+  inside a poll (issue 2145), but it still wakes itself on every poll, so
+  it is a busy loop that never lets the Embassy executor sleep.
 - **Deferred dispatch.** Callbacks run inline, inside `spin_some`, on the spin
   task. Handing a callback off to a framework-owned task needs the
   `nros::node!` node ABI (issue 2146). Keep callbacks short, or have them

@@ -297,7 +297,7 @@ a timer that should have fired 5 ms in is delayed 75 ms.
 | Execution model | Fits drive_io today? |
 |-----------------|----------------------|
 | Cooperative single-task (one task does ROS, no priority competition) | Yes — no other task to preempt; entity scheduling fairness is moot |
-| Async / tokio / Embassy (futures, wakers) | Yes — `spin_async` drives futures; `drive_io` not used in the hot path |
+| Async / tokio / Embassy (futures, wakers) | Yes, as a busy loop — `spin_async` runs one non-blocking pass per poll and wakes itself; the readiness notifier and next deadline it would sleep on exist (issues 2143/2144), but it does not use them yet (issue 2145) |
 | Preemptive priority RTOS, ROS at one priority (FreeRTOS / ThreadX / Zephyr typical) | **Partial** — kernel preemption from higher-priority tasks works; ROS-internal entity scheduling is batch-FIFO, timer expiries can be delayed by long sub callbacks at the same priority |
 | WCET-bounded real-time (RTIC, DO-178C) | **No** — `drive_io` has unbounded execution time; callers needing per-callback WCET use the async path with explicit Waker integration instead |
 | Time-triggered cyclic | **No** — no way to bound `drive_io` to a fixed wall-clock budget |

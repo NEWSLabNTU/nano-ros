@@ -80,8 +80,9 @@ sits next to the synchronous executor, not in it. `rclc` has none.
 
 nano-ros has it as a first-class path: `Executor::spin_async()` drives
 the executor from inside a `Future` (it does not park on RMW I/O: each
-cycle is a 1 ms `spin_once` and an immediate self-wake, so it keeps a core
-busy — see its rustdoc), `Subscription::recv().await`, `Client::call().await`,
+poll is one non-blocking `spin_once(Duration::ZERO)` pass and an immediate
+self-wake, so it never blocks the runtime's thread but keeps a core busy —
+see its rustdoc and issue 2145), `Subscription::recv().await`, `Client::call().await`,
 `ActionClient::send_goal().await`, etc. Runs on tokio (POSIX),
 Embassy (FreeRTOS / RTIC), or any external `Future`-driver.
 
