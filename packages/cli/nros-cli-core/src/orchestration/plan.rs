@@ -750,33 +750,37 @@ pub struct PlanBuildOptions {
     /// paths. `rmw_set` unions this with `rmw` / `[[transport]].rmw`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridged_rmws: Vec<String>,
-    /// Phase 204.15 — coherent size/speed *intent* (`size` | `speed` |
-    /// `balanced` | `debug`). The generated package build fans it out to RUSTFLAGS (`-C
-    /// opt-level/lto/codegen-units/strip`) on top of the cargo profile, so one
-    /// knob tunes the Rust layer without per-crate `[profile.*]` edits. `None` ⇒
-    /// today's behaviour (profile only). Per-layer overrides + the cc/CMake
-    /// fan-out are tracked follow-ups (204.15).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub optimize: Option<String>,
-    /// Phase 204.15 (increment 2) — per-layer `[build.cargo]` override table.
-    /// Refines the Rust/cargo layer *on top of* the `optimize` baseline
-    /// (precedence: `optimize` baseline → `[build.cargo]` field). Lets a build
-    /// tune one cargo-profile field without disturbing the coherent intent —
-    /// e.g. `optimize = "size"` + `[build.cargo] debug = true, strip = false`
-    /// keeps Rust debuginfo while everything else stays size-tuned. `None` ⇒
-    /// the `optimize` baseline alone.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cargo: Option<PlanCargoOverrides>,
-    /// Phase 204.15 (increment 3) — per-layer `[build.cc]` override for the C/C++
-    /// layer. `debug`/`cflags` are exported as `CFLAGS`/`CXXFLAGS` which `cc-rs`
-    /// *appends* to its computed flags (every zenoh-pico/XRCE/net.c/lwIP
-    /// `cc::Build`, no build.rs edit): `debug = true` adds `-g` without disturbing
-    /// the opt level → the C-side of the "debug one layer" case. `opt_level`
-    /// went to ~~`NROS_CC_OPT`~~ (204.9). The generator that exported all three
-    /// was retired with #202, and nothing applies this block now: it parses,
-    /// and changes no build (issue 2153).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cc: Option<PlanCcOverrides>,
+    /// Issue 2153 — the retired phase-204.15 build-tuning keys: `optimize`,
+    /// `[build.cargo]` and `[build.cc]`. Each parsed into the plan and changed
+    /// no build: no planner input ever wrote one (`system.toml` has no `[build]`
+    /// table, and `optimize` left with `[deploy.*]` in phase-486 W8), and the
+    /// generator that turned them into RUSTFLAGS / `CFLAGS` / ~~`NROS_CC_OPT`~~
+    /// was retired with #202. A key that parses must not be a silent no-op, so
+    /// each is now refused BY NAME with [`RETIRED_BUILD_TUNING_REMEDY`]. Never
+    /// holds a value.
+    #[serde(
+        default,
+        rename = "optimize",
+        deserialize_with = "refuse_retired_build_tuning",
+        skip_serializing
+    )]
+    pub retired_optimize: RetiredPlanKey,
+    /// See `retired_optimize` — the `[build.cargo]` slot.
+    #[serde(
+        default,
+        rename = "cargo",
+        deserialize_with = "refuse_retired_build_tuning",
+        skip_serializing
+    )]
+    pub retired_cargo: RetiredPlanKey,
+    /// See `retired_optimize` — the `[build.cc]` slot.
+    #[serde(
+        default,
+        rename = "cc",
+        deserialize_with = "refuse_retired_build_tuning",
+        skip_serializing
+    )]
+    pub retired_cc: RetiredPlanKey,
     /// Phase 195.C — workspace root, populated at generate time (NOT part of
     /// the plan wire format). Lets `profile()` load board descriptors from
     /// `<workspace>/packages/boards/*/nros-board.toml` so the CLI carries no
@@ -785,42 +789,29 @@ pub struct PlanBuildOptions {
     pub workspace_root: Option<std::path::PathBuf>,
 }
 
-/// Phase 204.15 (increment 2) — `[build.cargo]` per-layer override fields. Each
-/// maps to a cargo `[profile.release]` key and, when present, replaces the value
-/// the `optimize` intent produced. Values are kept as raw JSON so `opt_level`
-/// accepts both `3` (number) and `"z"` (string); `lto`/`strip` accept a bool or
-/// string; rendering picks the right TOML literal. Unknown JSON shapes are
-/// dropped at render time (never panic).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlanCargoOverrides {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub opt_level: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lto: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub debug: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub strip: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub codegen_units: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub panic: Option<serde_json::Value>,
-}
+/// Issue 2153 — what a plan carrying a retired build-tuning key is told.
+///
+/// nano-ros has no per-layer compiler-flag carrier on any build road (see
+/// `docs/reference/canonical-build-path.md`), so the remedy names the build
+/// tool's own knobs rather than a nano-ros one.
+pub const RETIRED_BUILD_TUNING_REMEDY: &str = "the plan build keys `optimize`, \
+     `cargo` and `cc` (phase-204.15's `[build.cargo]` / `[build.cc]`) are retired \
+     (issue 2153): no build road applied them, so they parsed and changed nothing. \
+     Choose the cargo profile with `[image.<id>] profile` in `system.toml` and tune \
+     it in the leaf's own `[profile.*]`; pass C/C++ flags through the build tool \
+     (`CFLAGS`/`CXXFLAGS`, which cc-rs appends, or `-DCMAKE_C_FLAGS` on a cmake \
+     configure). Remove the key from the plan.";
 
-/// Phase 204.15 (increment 3) — `[build.cc]` per-layer override for the C/C++
-/// toolchain. It was applied via `CFLAGS`/`CXXFLAGS` env (cc-rs appends) +
-/// ~~`NROS_CC_OPT`~~ by the generator #202 retired; nothing applies it now (see
-/// `PlanBuildOptions::cc`, issue 2153).
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlanCcOverrides {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub debug: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub opt_level: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub cflags: Vec<String>,
+/// Issue 2153 — the value slot of a retired plan `build` key. Parses only when
+/// the key is ABSENT; present, its `deserialize_with` refuses with
+/// [`RETIRED_BUILD_TUNING_REMEDY`] instead of serde's generic "unknown field".
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RetiredPlanKey;
+
+fn refuse_retired_build_tuning<'de, D: serde::Deserializer<'de>>(
+    _: D,
+) -> Result<RetiredPlanKey, D::Error> {
+    Err(serde::de::Error::custom(RETIRED_BUILD_TUNING_REMEDY))
 }
 
 impl PlanBuildOptions {
@@ -905,19 +896,34 @@ mod transport_tests {
     }
 
     #[test]
-    fn build_cc_override_parses() {
-        // Phase 204.15 inc 3 — `[build.cc]` deserializes; absent ⇒ None.
-        assert!(build_with("").cc.is_none());
-        let json = r#"{
-            "target": "x", "board": "linux", "rmw": "zenoh", "profile": "release",
-            "features": [], "cfg": {},
-            "cc": { "debug": true, "opt_level": "s", "cflags": ["-fno-plt"] }
-        }"#;
-        let b: PlanBuildOptions = serde_json::from_str(json).expect("parses");
-        let cc = b.cc.expect("cc present");
-        assert_eq!(cc.debug, Some(true));
-        assert_eq!(cc.opt_level.as_deref(), Some("s"));
-        assert_eq!(cc.cflags, vec!["-fno-plt".to_string()]);
+    fn retired_build_tuning_keys_are_refused_by_name() {
+        // Issue 2153 — absent, the plan parses as before.
+        let _ = build_with("");
+        for key in [
+            r#""cc": { "debug": true, "opt_level": "s", "cflags": ["-fno-plt"] }"#,
+            r#""cargo": { "opt_level": "z" }"#,
+            r#""optimize": "size""#,
+        ] {
+            let json = format!(
+                r#"{{
+                    "target": "x", "board": "linux", "rmw": "zenoh", "profile": "release",
+                    "features": [], "cfg": {{}}, {key}
+                }}"#
+            );
+            let err = serde_json::from_str::<PlanBuildOptions>(&json)
+                .expect_err("a retired build-tuning key must not parse")
+                .to_string();
+            assert!(err.contains("issue 2153"), "{key}: {err}");
+            assert!(!err.contains("unknown field"), "{key}: {err}");
+        }
+    }
+
+    #[test]
+    fn retired_build_tuning_keys_never_serialize() {
+        let json = serde_json::to_value(build_with("")).unwrap();
+        for key in ["cc", "cargo", "optimize"] {
+            assert!(json.get(key).is_none(), "{key} serialized: {json}");
+        }
     }
 
     #[test]
