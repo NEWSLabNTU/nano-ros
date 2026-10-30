@@ -1,12 +1,13 @@
 ---
 id: 2121
 title: "Three rtos_e2e session cells fail in every tier-2 nightly since the #2094 fix landed"
-status: open
+status: resolved
 type: bug
 area: [ci, testing, zenoh, threadx, freertos]
 severity: medium
 found: 2026-10-28
-related: [2094, 1013, 1991]
+related: [2094, 1013, 1991, 2125, 2126]
+resolved: 2026-10-30
 ---
 
 ## Measured
@@ -72,3 +73,34 @@ its node.
 - If concurrency: give the quiet-link cell its own port, or put it in the
   same nextest group as the `rtos_e2e` pubsub cells.
 - Acceptance: all three pass in a tier-2 nightly.
+
+## Resolution (2026-10-30)
+
+No code of its own: issue 2125 fixed the cause, and issue 2126 is failure 3
+filed again. The hypothesis above was right in kind, and the shared port was
+the baked one, not a quiet-link choice. The quiet-link cell runs the pub/sub
+Rust LISTENER image, which bakes its router port (7800 on FreeRTOS, 9000 on
+threadx-linux), so it started its router on the same port as that platform's
+`test_rtos_pubsub_e2e` Rust cell. `ZenohRouter::start_on_with` killed any
+listener on its port as an orphan and truncated the shared
+`zenohd-<port>.log`. That gives all three failures: FreeRTOS lost its router
+mid-boot (2, `port 7800 still in use after kill attempt`), and the threadx-linux
+cells each read a log the other had re-created (1 and 3). Fixed in #2802
+(`5afe413c3c`): a router start on a named port waits for the port's `flock`
+holder before killing anything.
+
+Acceptance is met. The three cells pass in each of the three tier-2 nightlies
+on main since that fix (`tier2-nightly-junit`, read 2026-10-30):
+
+| nightly run | quiet-link FreeRTOS | quiet-link threadx-linux | pubsub threadx-linux Rust |
+| --- | --- | --- | --- |
+| 40833557587 (10-29 07:08) | pass 169.8 s | pass 147.4 s | pass 72.6 s |
+| 41006780767 (10-30 05:08) | pass 169.9 s | pass 148.6 s | pass 72.6 s |
+| 41018247377 (10-30 07:08) | pass 169.8 s | pass 147.4 s | pass 72.6 s |
+
+NuttX quiet-link passed in all three as well (81 s). In `run-matrix.yml`'s
+1-wise tier 2 (runs 40828659447 and 41013529125) these cells fail in about
+0.1 s on every try, before any image could boot. That is the out-of-lane
+`lane_skip!` path, which bare nextest reports as a failure. The panic text is
+not in the job log, so this rests on the timing and on the run's junit rewrite
+reporting `Real failures: 1 / 1` against dozens of 0.1 s FAIL lines.
