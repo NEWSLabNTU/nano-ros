@@ -270,6 +270,15 @@ Measured (2026-10-29), at `e0f81b4ac` (after the last phase-514 merge, #2788):
   domain's `config` XML). Its runtime cells skip on the tier-2 runner (no ROS
   peer), so they ran last in W3b, not here.
 - Not booted by any lane: the four bins whose `config.toml` issue 2047 moved
-  to the board network file form (`logging-smoke-*`,
-  `condvar-contract-freertos-mps2`) — tier 2 resolves them out of lane and
+  to the board network file form — tier 2 resolves them out of lane and
   skips. The parse they depend on is unit-tested (`parse_direct_toml`).
+  Booted BY HAND on 2026-10-30, at `origin/main` after #2828, with fixtures
+  built by `fixtures-build.sh --id` (FreeRTOS rows at the platform's
+  `nros-minsizerel` carve-out, as `just freertos build-fixture-extras` passes
+  it) and the two test files run under `cargo nextest`:
+  - `logging-smoke-freertos-mps2` — `logging_smoke_freertos_mps2_emits_every_severity` PASS
+  - `condvar-contract-freertos-mps2` — `condvar_contract_holds_on_freertos_mps2` PASS
+  - `logging-smoke-threadx-riscv64` — `logging_smoke_threadx_riscv64_emits_every_severity` PASS
+  - `logging-smoke-esp32-qemu` — NOT run: its test is `#[ignore]` and no
+    fixture row builds the image (ESP32 is dormant, issue 1525), so this one
+    still rests on the unit test alone.
