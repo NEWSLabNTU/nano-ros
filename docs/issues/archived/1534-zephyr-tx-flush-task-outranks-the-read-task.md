@@ -1,15 +1,16 @@
 ---
 id: 1534
 title: "On Zephyr the tx-flush task runs above the read task, and on a serial link its busy-wait starves the RX drain"
-status: open
+status: resolved
+resolved: 2026-10-30
 area: zenoh, zephyr, serial, scheduling
 severity: medium
 phases: [279, 282]
 rfcs: []
-related: [0626, 0623, 0852, 1533, phase-474, phase-478]
+related: [0626, 0623, 0852, 1533, 2164, phase-474, phase-478]
 ---
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Resolved 2026-10-30** -- see the last section; residue in [issue 2164](../2164-zephyr-serial-join-main-priority-and-rx-ring-default.md). **Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 # On Zephyr the tx-flush task runs above the read task
 
@@ -151,3 +152,33 @@ Still open: a measured RX-ring default (needs a board or an emulated UART
 under load). The island keeps `CONFIG_MAIN_THREAD_PRIORITY=5` and
 `CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES=4096`; both are now what the
 configure asks for rather than a workaround it does not know about.
+
+## Resolution (2026-10-30)
+
+The defect this issue names -- a tx-flush task that outranks the read task --
+is closed on every port that has a flush task, not only Zephyr:
+
+- PR #1443 gave Zephyr's flush task `ZPICO_READ_TASK_PRIORITY` when no board
+  configured it. That was right only while no Zephyr board states a read
+  priority of its own, and it left the other ports where the platform default
+  put them: FreeRTOS spawned the flush task with a NULL attr at
+  `configMAX_PRIORITIES / 2`, wherever that falls against the board's read
+  priority, and Linux, macOS and NuttX filled a `pthread_attr_t` for it that
+  their `_z_task_init` (which forwards to `nros_platform_task_init`) reads as an
+  `nros_platform_task_attr_t` -- issue 0803's defect, on the third transport
+  task. None of those ships batching on by default, so it was latent there.
+- Now (`zpico.c`): `zpico_open` gives an unconfigured flush task the READ
+  task's urgency (priority, core, flags) whenever a read task was configured,
+  by a board or by the Zephyr/ThreadX default
+  (`zpico_flush_task_follows_read`); the flush setter fills the
+  `nros_platform_task_attr_t` on every alias-task port (`ZPICO_FLUSH_NROS_ATTR`),
+  RAW on Linux/macOS/NuttX like the read setter, band on Zephyr; and a FreeRTOS
+  flush task stated with stack 0 keeps the 5120-word port default instead of
+  asking for a zero-word stack. A board that calls
+  `zpico_set_flush_task_config` still wins. ThreadX runs no flush task.
+
+What this issue also carried and is NOT closed here moved to
+[issue 2164](../2164-zephyr-serial-join-main-priority-and-rx-ring-default.md):
+the main thread's priority during registration on a serial link (checked by a
+configure warning, not derived) and a measured RX-ring default (needs a lane
+that joins a serial image into a live domain).
