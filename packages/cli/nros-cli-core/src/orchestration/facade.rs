@@ -174,10 +174,13 @@ fn image_backends(entry_name: &str, sys: &SystemToml) -> Vec<String> {
 /// `bringup_dir` is the bringup `sys` was read from: an entry is the package
 /// one of its images CLAIMS (`leaf_system::claiming_image`, issue 1289).
 ///
-/// Returns `Ok(None)` when the package is not an entry, or when the entry
-/// declares no path deps to attach features to (a registry-style manifest —
-/// `nros sync`'s patch table handles those, and the facade would have nothing
-/// to point at).
+/// `sdk_root` is the nano-ros root `nros sync`'s patch table points into. A
+/// registry-style runtime dependency (`nros = { version = "*" }`, the shape
+/// `nros new entry` writes) resolves through that table, so the facade finds
+/// the crate at the same place cargo will (issue 2152).
+///
+/// Returns `Ok(None)` when the package is not an entry, or when no `nros`
+/// dependency can be located to attach features to.
 pub fn write_facade(
     entry_name: &str,
     entry_dir: &Path,
@@ -185,6 +188,7 @@ pub fn write_facade(
     bringup_dir: &Path,
     sys: &SystemToml,
     facade_root: &Path,
+    sdk_root: Option<&Path>,
 ) -> Result<Option<Facade>> {
     // Not an entry ⇒ nothing to select for. Node packages stay silent about all
     // three axes (phase-314 W3) and get their selection through unification.
@@ -206,7 +210,7 @@ pub fn write_facade(
     let manifest: toml::Value = toml::from_str(&raw)
         .wrap_err_with(|| format!("facade: parse {}", entry_manifest.display()))?;
 
-    let deps = runtime_deps(&manifest, entry_dir);
+    let deps = runtime_deps(&manifest, entry_dir, sdk_root);
     let Some(nros_path) = deps.nros.clone() else {
         return Ok(None);
     };
@@ -854,20 +858,41 @@ fn board_feature_passthrough(board_crate: &str, board_dir: &Path, dep_keys: &[&s
     out
 }
 
-/// Pull the `nros` and `nros-board-*` PATH deps out of the entry's manifest.
-fn runtime_deps(manifest: &toml::Value, entry_dir: &Path) -> RuntimeDeps {
+/// Pull the `nros`, `nros-board-*` and `nros-rmw-*` deps out of the entry's
+/// manifest.
+///
+/// A PATH dep is taken as written. A registry-style one (no `path`) is located
+/// where `nros sync`'s `[patch.crates-io]` sends it, `sdk_root` plus the same
+/// crate lookup the patch writer uses, so the facade and the entry name one
+/// package. Without that, a scaffolded entry got no facade at all, and
+/// `nros::main!` refused it naming `nros sync` as the remedy (issue 2152).
+fn runtime_deps(manifest: &toml::Value, entry_dir: &Path, sdk_root: Option<&Path>) -> RuntimeDeps {
     let mut out = RuntimeDeps::default();
     let Some(table) = manifest.get("dependencies").and_then(|d| d.as_table()) else {
         return out;
     };
     for (name, spec) in table {
-        let Some(rel) = spec.get("path").and_then(|p| p.as_str()) else {
+        let wanted =
+            name == "nros" || name.starts_with("nros-board-") || name.starts_with("nros-rmw-");
+        if !wanted {
             continue;
+        }
+        let abs = match spec.get("path").and_then(|p| p.as_str()) {
+            // Keep it lexical — `canonicalize` would resolve symlinked checkouts
+            // to a path outside the workspace, and the manifest needs a path
+            // cargo can read back relative to the facade.
+            Some(rel) => lexical_normalize(&entry_dir.join(rel)),
+            None => {
+                let Some(dir) = sdk_root
+                    .zip(crate::cmd::ws::nros_crate_subpath(name))
+                    .map(|(root, sub)| root.join(sub))
+                    .filter(|d| d.join("Cargo.toml").is_file())
+                else {
+                    continue;
+                };
+                dir
+            }
         };
-        // Keep it lexical — `canonicalize` would resolve symlinked checkouts to
-        // a path outside the workspace, and the manifest needs a path cargo can
-        // read back relative to the facade.
-        let abs = lexical_normalize(&entry_dir.join(rel));
         if name == "nros" {
             out.nros = Some(abs);
         } else if name.starts_with("nros-board-") {
@@ -1085,6 +1110,47 @@ mod tests {
         assert!(!crate_declares_feature(&nros, "rmw-cyclonedds"));
     }
 
+    /// Issue 2152 — a registry-style runtime dependency (the shape
+    /// `nros new entry` writes) is located where `nros sync`'s patch table sends
+    /// it. Before this the facade read `path` deps only, so a scaffolded entry
+    /// got no selection package and `nros::main!` refused it.
+    #[test]
+    fn a_registry_style_entry_resolves_through_the_sdk_root() {
+        let sdk = lexical_normalize(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.."));
+        let manifest: toml::Value = toml::from_str(
+            "[dependencies]
+\
+             nros = { version = \"*\", default-features = false }\n\
+             nros-board-zephyr = { version = \"*\" }\n\
+             nros-rmw-zenoh = { version = \"*\", optional = true }\n\
+             nros-platform = { version = \"*\" }\n\
+             zephyr = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let entry = Path::new("/ws/src/zephyr_entry");
+
+        let deps = runtime_deps(&manifest, entry, Some(&sdk));
+        assert_eq!(deps.nros, Some(sdk.join("packages/api/nros")));
+        assert_eq!(
+            deps.board,
+            Some((
+                "nros-board-zephyr".to_string(),
+                sdk.join("packages/boards/nros-board-zephyr")
+            ))
+        );
+        assert_eq!(
+            deps.rmw_backend,
+            Some((
+                "nros-rmw-zenoh".to_string(),
+                sdk.join("packages/rmw/zenoh/nros-rmw-zenoh")
+            ))
+        );
+
+        // No root to resolve against: nothing is guessed.
+        let none = runtime_deps(&manifest, entry, None);
+        assert!(none.nros.is_none() && none.board.is_none() && none.rmw_backend.is_none());
+    }
+
     /// Issue 1289 — a facade is written for the package an image CLAIMS, and
     /// only that one. The empty `[package.metadata.nros.entry]` marker that
     /// used to decide it neither makes an unclaimed package an entry nor is
@@ -1121,7 +1187,16 @@ mod tests {
         };
         let facades = root.join("build/nros-selection");
         let write = |name: &str, dir: &Path| {
-            write_facade(name, dir, &dir.join("Cargo.toml"), &bringup, &sys, &facades).unwrap()
+            write_facade(
+                name,
+                dir,
+                &dir.join("Cargo.toml"),
+                &bringup,
+                &sys,
+                &facades,
+                None,
+            )
+            .unwrap()
         };
         // Marked, but no image claims it: not an entry.
         let marked = pkg("talker_pkg", "[package.metadata.nros.entry]\n");

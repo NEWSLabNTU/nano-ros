@@ -178,7 +178,13 @@ pub fn scaffold_entry(cfg: &EntryScaffold) -> Result<EntryScaffoldOut> {
     )?;
     put(
         "Cargo.toml",
-        render_cargo_toml(&name, &cfg.board, &cfg.rmw, &components),
+        render_cargo_toml(
+            &name,
+            &cfg.board,
+            &cfg.rmw,
+            &components,
+            &selection_rel(&cfg.workspace_root, &cfg.entry_dir, &name),
+        ),
     )?;
     put("build.rs", render_build_rs().to_string())?;
     put("src/lib.rs", render_lib_rs(&name, &bringup))?;
@@ -390,7 +396,30 @@ fn render_package_xml(name: &str, bringup: &str, components: &[String]) -> Strin
     )
 }
 
-fn render_cargo_toml(name: &str, board: &str, rmw: &str, components: &[String]) -> String {
+/// Where `nros sync` writes this entry's selection package
+/// (`<ws>/generated/nros-selection/<entry>`, `generate_facade_crates`), as a
+/// path from the entry directory. `nros::main!` takes the image's backend
+/// registration from that package, so the entry must depend on it (RFC-0071
+/// D11, issue 2152).
+fn selection_rel(workspace_root: &Path, entry_dir: &Path, name: &str) -> String {
+    let target = workspace_root
+        .join("generated")
+        .join("nros-selection")
+        .join(name);
+    let rel = pathdiff::diff_paths(&target, entry_dir).unwrap_or(target);
+    rel.components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn render_cargo_toml(
+    name: &str,
+    board: &str,
+    rmw: &str,
+    components: &[String],
+    selection: &str,
+) -> String {
     let node_deps: String = components
         .iter()
         .map(|c| format!("{c} = {{ path = \"../{c}\", default-features = false }}\n"))
@@ -440,6 +469,10 @@ default = ["rmw-{rmw}"]
 rmw-{rmw} = ["dep:nros-rmw-{rmw}"]
 
 [dependencies]
+# The image's selection package, which `nros sync` writes from the bringup:
+# the RMW, edition and capability features, and the backend registration
+# `nros::main!` expands. It does not exist until the first `nros sync`.
+{name}_nros_selection = {{ path = "{selection}" }}
 nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }}
 nros-board-zephyr = {{ version = "*" }}
 nros-platform = {{ version = "*", default-features = false, features = ["platform-zephyr"] }}
@@ -644,6 +677,22 @@ CONFIG_MAX_PTHREAD_MUTEX_COUNT=64
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2152 — the entry depends on the selection package `nros sync`
+    /// writes for it, at the place sync writes it; `nros::main!` takes the
+    /// backend registration from there.
+    #[test]
+    fn the_entry_depends_on_its_selection_package() {
+        let ws = std::path::Path::new("/ws");
+        let rel = selection_rel(ws, &ws.join("src/zephyr_entry"), "zephyr_entry");
+        assert_eq!(rel, "../../generated/nros-selection/zephyr_entry");
+        let toml = render_cargo_toml("zephyr_entry", "native_sim", "zenoh", &[], &rel);
+        let v: toml::Value = toml::from_str(&toml).expect("valid manifest");
+        assert_eq!(
+            v["dependencies"]["zephyr_entry_nros_selection"]["path"].as_str(),
+            Some("../../generated/nros-selection/zephyr_entry")
+        );
+    }
 
     /// Issue 2149's sibling, found by phase-517 W17's `zephyr-rust` probe: the
     /// entry's native_sim conf set NSOS without `CONFIG_NET_DRIVERS=y`, so
