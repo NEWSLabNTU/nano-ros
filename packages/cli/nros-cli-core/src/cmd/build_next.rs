@@ -689,6 +689,7 @@ mod tests {
             profile: None,
             cmake_build_dir: None,
             capabilities: Vec::new(),
+            kernel: None,
             configure: None,
             record: Default::default(),
             output: Some(output),

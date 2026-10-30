@@ -79,6 +79,7 @@ jobs:
           - threadx-riscv64
           - threadx-linux-c
           - nuttx-arm
+          - nuttx-arm-rust
           - nuttx-riscv
           - zephyr
           - zephyr-rust

@@ -86,6 +86,11 @@ threadx-linux-c: (platform "threadx-linux-c")
 [group("main")]
 nuttx-arm: (platform "nuttx-arm")
 
+# book/src/getting-started/integration-nuttx.md — the Rust workspace image on
+# Arm virt (issue 2149).
+[group("main")]
+nuttx-arm-rust: (platform "nuttx-arm-rust")
+
 # book/src/getting-started/integration-nuttx.md — QEMU RISC-V `rv-virt`.
 [group("main")]
 nuttx-riscv: (platform "nuttx-riscv")
