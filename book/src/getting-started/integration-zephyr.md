@@ -291,12 +291,14 @@ package plus a Zephyr entry, which `nros new entry` scaffolds (see
 [The entry: `nros new entry`](#the-entry-nros-new-entry)). From the west
 workspace above, beside it.
 
-zephyr-lang-rust needs two things the C app does not: the Rust target the
+zephyr-lang-rust needs three things the C app does not: the Rust target the
 Zephyr board implies (`x86_64-unknown-none` for native_sim/64 on an x86_64
-host), and clang and libclang, for the bindings it generates from Zephyr's
-headers. `nros setup` in the workspace installs the target, and with `--sudo`
-the two packages (without it, it prints the install command). `nros build`
-refuses a Rust Zephyr image that lacks either, naming the command.
+host), rustup's `clippy` (it lints every Rust app as part of the build), and
+clang and libclang, for the bindings it generates from Zephyr's headers.
+`nros setup` in the workspace installs the target and `clippy`, and with
+`--sudo` the two packages (without it, it prints the install command).
+`nros build` refuses a Rust Zephyr image that lacks any of them, naming the
+command.
 
 ```bash probe=40 variant=native-sim-rust
 . "$HOME/.cargo/env"     # the cargo `nros setup` installed (Installation)

@@ -27,6 +27,8 @@ west_board = "qemu_cortex_a53/qemu_cortex_a53/smp"
 # libclang-dev for the library bindgen loads).
 rust_target = "aarch64-unknown-none"
 rust_prereqs = ["clang", "libclang-dev"]
+# zephyr-lang-rust lints every Rust app as part of `ALL` (`cargo clippy`).
+rust_components = ["clippy"]
 # Derived, so absent on purpose: prj.conf and
 # `boards/<west_board with / and @ as _>.{conf,overlay}`,
 # present-if-exists. State `runner` only if it differs from what

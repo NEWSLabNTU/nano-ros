@@ -924,10 +924,22 @@ fn board_rust_needs(
         // zephyr-lang-rust picks, which the board states. Installed whatever
         // the image language: one `rustup target add` is cheap, and a later
         // Rust image then builds without another setup.
-        if let Some(t) = d.zephyr.as_ref().and_then(|z| z.rust_target_for_host()) {
-            let row = (channel, crate::builder::preflight::RustNeed::Target(t));
-            if !out.contains(&row) {
-                out.push(row);
+        if let Some(z) = d.zephyr.as_ref() {
+            let needs = z
+                .rust_target_for_host()
+                .map(crate::builder::preflight::RustNeed::Target)
+                .into_iter()
+                .chain(
+                    z.rust_components
+                        .iter()
+                        .cloned()
+                        .map(crate::builder::preflight::RustNeed::Component),
+                );
+            for n in needs {
+                let row = (channel.clone(), n);
+                if !out.contains(&row) {
+                    out.push(row);
+                }
             }
         }
     }
