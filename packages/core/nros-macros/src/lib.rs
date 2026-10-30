@@ -59,8 +59,23 @@ pub fn main(input: TokenStream) -> TokenStream {
 /// - `pub fn nros_deploy() -> DeployOverlay` — the image's locator, domain,
 ///   transport and RMW, for the host to open its `Executor` with.
 ///
-/// The host opens the executor, wraps it, calls `nros_setup`, then spins
-/// from its own loop:
+/// When the image's board is an OwnedSpin board (`linux`, the FreeRTOS,
+/// NuttX and ThreadX families …), it also emits `nros_boot(host)`: the board's
+/// start-up, then `host` with the opened runtime and the loop, plus
+/// `nros_stop_requested()` for the board's termination guard:
+///
+/// ```ignore
+/// nros::setup!();
+///
+/// nros_boot(|rt| {
+///     nros_setup(&mut *rt)?;
+///     while !nros_stop_requested() { let _ = rt.spin_once(10); /* host work */ }
+///     Ok(())
+/// })?;
+/// ```
+///
+/// A host with no such board (Embassy, RTIC …) opens the executor itself,
+/// wraps it, calls `nros_setup`, then spins from its own loop:
 ///
 /// ```ignore
 /// nros::setup!();

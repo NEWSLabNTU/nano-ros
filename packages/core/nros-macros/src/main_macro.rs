@@ -631,6 +631,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `system.toml` (`[image.<id>] board`), else the retiring
     // `[package.metadata.nros.{entry,deploy.*}]` keys. This macro used to walk
     // those manifest tables itself, in three places.
+    // phase-520 W1b — set when `nros::setup!`'s image names a board this macro
+    // can call; only then is `nros_boot` emitted.
+    let mut setup_board_resolved = false;
     let (board_path, deploy_for_framework, leaf_decl): (
         SynPath,
         Option<String>,
@@ -673,14 +676,24 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             if let Some(l) = &leaf {
                 tracked.push(l.origin_path().to_path_buf());
             }
-            // phase-520 W1 — `nros::setup!` calls no board: the host owns the
-            // entry, so the declared board contributes only its overlay facts,
-            // and one the in-tree table does not know (an out-of-tree Embassy
-            // board) is no error. The path is never emitted in this mode.
+            // phase-520 W1 — `nros::setup!` never owns the entry, so a board
+            // the in-tree table does not know (an out-of-tree Embassy board) is
+            // no error. W1b: a board that DOES resolve still gets used, by the
+            // emitted `nros_boot` (its start-up, with the host's loop).
             if args.setup {
-                let unused: SynPath = syn::parse_quote!(::nros::__setup_calls_no_board);
                 let declared = leaf.as_ref().and_then(|l| l.board.clone());
-                break 'board (unused, declared, leaf);
+                let resolved = declared.as_deref().and_then(|d| {
+                    board_path_for(d).or_else(|| {
+                        entry_env("NROS_BOARD_TYPE")
+                            .and_then(|v| v.into_string().ok())
+                            .filter(|v| !v.trim().is_empty())
+                            .and_then(|v| syn::parse_str::<SynPath>(v.trim()).ok())
+                    })
+                });
+                setup_board_resolved = resolved.is_some();
+                let path =
+                    resolved.unwrap_or_else(|| syn::parse_quote!(::nros::__setup_calls_no_board));
+                break 'board (path, declared, leaf);
             }
             let declared = leaf.as_ref().and_then(|l| l.board.clone()).ok_or_else(|| {
                 syn::Error::new(
@@ -3126,7 +3139,90 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // body as a function, and no `main`, spin or panic handler: the same token
     // streams the OwnedSpin closure splices, so the two cannot drift.
     let (panic_ts, body_ts) = if args.setup {
+        // phase-520 W1b — the board's start-up without its loop. Every
+        // OwnedSpin board's `run_with_deploy` boots (backend registration, log
+        // sinks, hardware, network, the executor sized as `nros::main!` sizes
+        // it) and then calls its closure; Linux never spins after it, and an
+        // RTOS board spins only if the closure RETURNS. So a closure that keeps
+        // the host's loop is exactly "start-up without the loop". Framework
+        // boards (RTIC, Embassy, Zephyr, esp-hal) have no `BoardEntry` to call,
+        // and an unresolved board none at all: no `nros_boot` for them.
+        let board_is_owned_spin = setup_board_resolved
+            && matches!(
+                deploy_for_framework.as_deref().map(try_framework_for),
+                Some(Ok(Framework::OwnedSpin)) | None
+            );
+        let boot_ts = if board_is_owned_spin {
+            let host_closure = quote! {
+                |ctx: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>| host(ctx.runtime)
+            };
+            let run_call = match exec_sizing {
+                EntrySizing::Declared(max_cbs, max_sc) => quote! {
+                    <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy_sized(
+                        &deploy, #max_cbs, #max_sc, #host_closure,
+                    )
+                },
+                EntrySizing::Derived(max_cbs) => quote! {
+                    <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy_sized(
+                        &deploy,
+                        {
+                            const DERIVED: usize = #max_cbs;
+                            const BUILD_DEFAULT: usize =
+                                ::nros::__macro_support::EXECUTOR_MAX_CBS;
+                            if DERIVED > BUILD_DEFAULT { DERIVED } else { BUILD_DEFAULT }
+                        },
+                        0usize,
+                        #host_closure,
+                    )
+                },
+                EntrySizing::BuildDefault => quote! {
+                    <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy(
+                        &deploy, #host_closure,
+                    )
+                },
+            };
+            quote! {
+                /// Boot the image's board — backend registration, log sinks,
+                /// hardware, network, the executor — and hand the opened
+                /// runtime to `host`, which owns the loop: call `nros_setup`
+                /// on it, then spin from there. The board's own loop never
+                /// runs while `host` does not return; on an RTOS board,
+                /// returning `Ok` hands the loop back to the board.
+                #[allow(dead_code)]
+                ///
+                /// The error is `nros_setup`'s, so `host` can `?` it.
+                pub fn nros_boot(
+                    host: impl ::core::ops::FnOnce(
+                        &mut dyn ::nros::__macro_support::nros_platform::NodeDispatchRuntime,
+                    ) -> ::core::result::Result<
+                        (),
+                        ::nros::__macro_support::nros_platform::RuntimeError,
+                    >,
+                ) -> ::core::result::Result<(), ::nros::__macro_support::nros_platform::RuntimeError> {
+                    let deploy = nros_deploy();
+                    #[cfg(target_os = "none")]
+                    <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::setup_transport(
+                        &deploy,
+                    );
+                    #run_call
+                }
+
+                /// `true` once the board's termination guard has seen a stop
+                /// signal (SIGTERM / SIGINT on a host board). The host's loop
+                /// returns when it is set; `nros_boot` then lets the board
+                /// close the session (issue 1732). Always `false` on a board
+                /// with no guard.
+                #[allow(dead_code)]
+                pub fn nros_stop_requested() -> bool {
+                    ::nros::__macro_support::nros_platform::termination::requested()
+                }
+            }
+        } else {
+            quote! {}
+        };
         let setup_ts = quote! {
+            #boot_ts
+
             /// The image's deploy facts (locator, domain, transport, RMW,
             /// node name) from its `system.toml`, for the host to open its
             /// `Executor` with. Installs the baked session properties too,
@@ -6682,14 +6778,36 @@ mod leaf_axis_tests {
             out.contains("setup_leaf :: register"),
             "component not registered:\n{out}"
         );
-        for owner in [
-            "fn main",
-            "BoardEntry",
-            "run_with_deploy",
-            "panic_to_platform",
-            "spin_once",
-        ] {
+        for owner in ["fn main", "panic_to_platform", "spin_once", "run_tiers"] {
             assert!(!out.contains(owner), "`{owner}` emitted by setup!:\n{out}");
+        }
+    }
+
+    /// phase-520 W1b — an OwnedSpin board's start-up without its loop: the
+    /// board's own `run_with_deploy`, whose closure forwards to the host's.
+    #[test]
+    fn setup_boots_an_owned_spin_board_for_the_host() {
+        let out = expand_setup("", "board = \"linux\"").unwrap();
+        assert!(out.contains("pub fn nros_boot"), "{out}");
+        assert!(out.contains("BoardEntry > :: run_with_deploy"), "{out}");
+        assert!(
+            out.contains("host (ctx . runtime)"),
+            "host closure not forwarded:\n{out}"
+        );
+        assert!(out.contains("pub fn nros_stop_requested"), "{out}");
+    }
+
+    /// No `nros_boot` where there is no `BoardEntry` to call: an unresolved
+    /// board, or a framework board whose entry is the framework's.
+    #[test]
+    fn setup_emits_no_boot_without_an_owned_spin_board() {
+        for board in ["my-embassy-board", "rtic-mps2-an385"] {
+            let out = expand_setup("", &format!("board = \"{board}\"")).unwrap();
+            assert!(out.contains("pub fn nros_setup"), "{board}:\n{out}");
+            assert!(
+                !out.contains("fn nros_boot"),
+                "{board}: nros_boot emitted:\n{out}"
+            );
         }
     }
 
