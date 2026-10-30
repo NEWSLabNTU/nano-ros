@@ -35,15 +35,12 @@
 //! codegen (212.N.4 / N.5 — lives in standalone `nros-cli` repo per
 //! CLAUDE.md), and cmake fn rename (212.N.6) follow.
 //!
-//! ## Relationship to existing `nros-board-common::Board*` traits
+//! ## Relationship to the old `nros-board-common::Board*` traits
 //!
-//! The legacy traits in `nros-board-common::board_init`
-//! (`Board`, `BoardInit`, `BoardPrint`, `BoardExit`, `BoardEntry`,
-//! ~~`DirectExec`~~, `run`) stay as-is during the transition. Phase
-//! 212.N.7 retires the M.5.a FreeRTOS BSP baker and migrates every
-//! Node pkg to the new shape; at that point the legacy
-//! `nros-board-common` traits become `pub use` re-exports of this
-//! module (or get retired entirely if no consumer remains).
+//! `nros-board-common` once carried a second trait family (`Board`,
+//! `BoardInit`, `BoardPrint`, `BoardExit`, `BoardEntry`, ~~`DirectExec`~~
+//! and a generic `run`). Phase 313 W6 (#0243) deleted it; this module is
+//! the one board entry API.
 
 pub mod config;
 pub mod dispatch;

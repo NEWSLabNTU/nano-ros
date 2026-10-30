@@ -402,7 +402,7 @@ impl EntityKind {
 /// than assume, on the safe side of its own question.
 ///
 /// They were stated, resolved and dropped for four phases: the contract schema
-/// has carried all four since `QosDecl` existed, ~~`effective_qos`~~ resolves them
+/// has carried all four since `QosDecl` existed, the resolver's `effective_qos` resolves them
 /// per endpoint into the SystemModel, and `from_model` read `qos.depth` and
 /// nothing else. The one with a live defect behind it is `history`: a
 /// `keep_all` endpoint was priced at whatever `depth` said, which is a silent
@@ -1647,7 +1647,7 @@ pub fn model_declares_lifecycle_block(model: &nros_orchestration_ir::overlay::Lo
 
 impl InfraServices {
     /// What a resolved model declares. An unrecognised feature is not one of
-    /// these and is ignored, as ~~`entity_facts`~~ has always done.
+    /// these and is ignored, as the retired ~~`entity_facts`~~ did.
     ///
     /// Issue 1688 -- the lifecycle family has TWO spellings in a model, and
     /// this read one of them. `features = ["lifecycle"]` reaches
@@ -2015,7 +2015,7 @@ pub struct DerivedEntityKnobs {
     ///   language, which the tier term below covers.
     /// * the C / C++ entry pack creates **one per tier**, through
     ///   `nros_cpp_create_sched_context_from_policy` into `__nros_sc_ids[N]`,
-    ///   where `N` is the resolved tier table's length (~~`SchedView::n`~~).
+    ///   where `N` is the resolved tier table's length (`LoweredSched::n`).
     ///
     /// So the demand is `1 + <SCs the schedule creates>`: the `1` is slot 0,
     /// which `create_sched_context` reserves for the default Fifo context and
@@ -6334,8 +6334,10 @@ fn render_received(what: &str, prose: &str, r: &ReceivedTypes) -> String {
 /// too and narrowed BY HAND: `to_declared_qos_header` filters
 /// `kind == Subscription` before emitting a row (a publisher and a subscription
 /// on one topic would be two rows with one key), and ~~`_nros_qos_depth_env`~~ in
-/// `cmake/NanoRosEntityFacts.cmake` takes a MAX over the list to bill a
-/// subscription's receive region. A depth for a kind none of them price
+/// `cmake/NanoRosEntityFacts.cmake` took a MAX over the list to bill a
+/// subscription's receive region (issue 1655 retired it onto
+/// `nros_sizing_descriptor::max_subscription_depth`, which reads subscriptions
+/// only). A depth for a kind none of them price
 /// belongs in a variable none of them read.
 fn render_declared_depths(d: &DeclaredDepths) -> String {
     let mut s = String::from(
@@ -8990,8 +8992,9 @@ execution:
             cmake.contains("set(NROS_DERIVED_TL_PUBLISHERS 1)\n"),
             "{cmake}"
         );
-        // The refusal half is ~~`a_silent_publisher_refuses_the_transient_local_count`~~
-        // in `from_model_tests`, beside the model it reads.
+        // The refusal half is
+        // `a_silent_publisher_sizes_the_transient_local_pools_for_the_worst_case`
+        // (issue 1572: a refused count sizes for the worst case, never zero).
     }
 
     /// Issue 1270 -- the configure's inventory is metadata MERGED with the
@@ -9938,7 +9941,7 @@ contracts:
     ///
     /// The acceptance, measured rather than asserted by construction: take one
     /// image, read every input `nros-node/build.rs::subs_arena` and
-    /// ~~`_nros_qos_depth_env`~~ use to size the subscription arena, then add a
+    /// ~~`_nros_qos_depth_env`~~ (since retired) used to size the subscription arena, then add a
     /// publisher depth to the SAME image and read them again. Every one of
     /// them must be byte-identical -- the publisher's declaration is invisible
     /// to the subscription terms, which is the whole point of the split.
@@ -9948,8 +9951,9 @@ contracts:
     /// first failed on exactly that line (1 -> 0, because the publisher that
     /// declared stopped being silent), which is a true statement about the
     /// image and would have been a false input to a subscription price.
-    /// ~~`_nros_qos_depth_env`~~ was the one consumer still guarding on it and now
-    /// reads `..._SUBSCRIPTION`, so no publisher fact reaches a subscription
+    /// ~~`_nros_qos_depth_env`~~ was the one consumer still guarding on it and
+    /// read `..._SUBSCRIPTION` (until issue 1655 retired it), so no publisher fact
+    /// reaches a subscription
     /// number. Adding the broad count back here would re-assert the coupling
     /// this wave removed.
     ///
@@ -10685,7 +10689,7 @@ contracts:
     ///
     /// The same acceptance W2 measured, against this wave's addition: take one
     /// image, read every input `nros-node/build.rs::subs_arena` and
-    /// ~~`_nros_qos_depth_env`~~ use to size the subscription arena, then add the
+    /// ~~`_nros_qos_depth_env`~~ (since retired) used to size the subscription arena, then add the
     /// three policies to the SAME image and read them again. Every line must be
     /// byte-identical.
     ///

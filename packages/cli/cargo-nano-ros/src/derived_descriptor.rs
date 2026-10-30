@@ -88,8 +88,9 @@ pub fn c_define_token(name: &str) -> String {
 /// This is a scanner, not a parser: it does not validate the document, and
 /// `package_xml::PackageXml` (quick-xml, the library's real reader) stays the
 /// authority. `rmw_resolver`'s ~~`descriptor_names_match_the_package_xml_reader`~~
-/// asserts the two agree on every in-tree provider, so this cheap form cannot
-/// drift from the expensive one.
+/// asserted the two agree on every in-tree provider until phase-420 W5; the
+/// scanner's own tests below pin its reading now, and nothing compares it
+/// with `PackageXml` any more.
 pub fn announced_names(package_xml: &str, kind: &str) -> Vec<String> {
     let body = strip_xml_comments(package_xml);
     let needle = format!("kind=\"{kind}\"");

@@ -4,10 +4,8 @@
  * Header source of truth: `<nros/platform.h>` (`nros-platform-cffi`).
  *
  * Each `nros_platform_*` symbol below maps to the closest POSIX
- * primitive. The intent is parity with ~~`PosixPlatform`~~'s Rust impl
- * (`packages/platform/nros-platform-posix/src/lib.rs`); the two share
- * the same canonical ABI and may not be linked into the same binary
- * (duplicate `#[no_mangle]` symbols / `extern "C"` definitions).
+ * primitive. This file is the whole POSIX port: it began as the C twin
+ * of a Rust impl, ~~`PosixPlatform`~~, which is gone.
  *
  * Build standalone via the sibling `CMakeLists.txt`, or let
  * `nros-platform-cffi`'s `posix-c-port` feature compile this file
@@ -154,9 +152,9 @@ void nros_platform_yield_now(void) {
 
 /* ---- Random ---- */
 /*
- * The Rust ~~`PosixPlatform`~~ uses a deterministic xorshift seeded from
- * a fixed constant for reproducibility; matching that exactly keeps
- * the two ports observable-equivalent for tests.
+ * A deterministic xorshift seeded from a fixed constant, for
+ * reproducibility. It matched the retired Rust ~~`PosixPlatform`~~
+ * exactly, so the two ports stayed observable-equivalent for tests.
  */
 
 static uint64_t s_rng_state = 0x9E3779B97F4A7C15ULL;

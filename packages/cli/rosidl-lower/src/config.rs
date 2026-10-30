@@ -144,8 +144,8 @@ impl StorageMode {
     // | `view`   | yes            | yes         | yes           | NO         |
     //
     // Enforced by: `field_to_nros_field_with_mode` / `build_c_field` /
-    // ~~`cpp_storage_for_field`~~ (per-language shape support, `UnsupportedStorageMode`)
-    // and ~~`ensure_owned_storage_for_payload`~~ (srv/action, which have no
+    // `resolve_cap_override` (per-language shape support, `UnsupportedStorageMode`)
+    // and `ensure_supported_storage_for_payload` (srv/action, which have no
     // `is_heap` branches in their templates —
     // `UnsupportedStorageModeForPayload`). Covered by
     // `tests/srv_action_storage_mode_gate.rs`.

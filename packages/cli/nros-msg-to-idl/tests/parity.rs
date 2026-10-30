@@ -28,7 +28,8 @@
 //!   chooses how to reconcile (port `unicode_escape` into Rust, or
 //!   drop the python pass and assert ASCII-only comments upstream).
 //!
-//! Out-of-scope (documented divergences, see ~~`srv_and_action_*`~~ tests):
+//! Out-of-scope (documented divergences, see `srv_per_half_converts_and_python_reference_present`
+//! and `action_per_section_converts_and_python_reference_present`):
 //!
 //! - `.srv` files: the python script emits a single combined IDL with
 //!   two `module dds_` blocks under one `module srv`. The Rust port

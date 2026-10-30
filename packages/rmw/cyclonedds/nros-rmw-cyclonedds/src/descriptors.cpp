@@ -15,7 +15,7 @@
 //
 // Concurrency: the registry is populated entirely from static-init
 // constructors (single-threaded, before `main`). Lookups happen from
-// `publisher_create` / ~~`subscriber_create`~~ after `main` starts but
+// `publisher_create` / `subscription_create` after `main` starts but
 // always under the runtime's executor lock — concurrent registration
 // is not supported.
 
@@ -282,7 +282,7 @@ bool action_topic_type(const char *topic_name, const char *type_name,
 // caller-supplied `type_name` differs. The Rust runtime registry
 // (`nros_rmw_cyclonedds::register::<M>()`) passes the unmangled
 // `nros_serdes::Message::TYPE_NAME` (`pkg/msg/Name`), but
-// `publisher_create` / ~~`subscriber_create`~~ look up by the mangled
+// `publisher_create` / `subscription_create` look up by the mangled
 // `RosMessage::TYPE_NAME` baked at codegen time. Registering both
 // keys keeps both call sites working without forcing every consumer
 // to memorise which form lands in which table.

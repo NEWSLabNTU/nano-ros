@@ -626,13 +626,13 @@ extern "C" rmw_ret_t nros_rmw_cyclonedds_register(void) {
     return nros_rmw_cffi_register_named(kImplementationIdentifier, &kVtable);
 }
 
-// Phase 128.B.4 — `.nros_rmw_init` self-registration via the canonical
-// macro from <nros/rmw_vtable.h>. The runtime walker
-// (~~`nros_rmw_cffi_walk_init_section`~~) discovers this entry on first
-// `rclcpp::init` and calls `nros_rmw_cyclonedds_register` — the C/C++
+// Self-registration via the canonical macro from <nros/rmw_vtable.h>. On a
+// hosted target it is a pre-`main` `.init_array` ctor that calls
+// `nros_rmw_cyclonedds_register` (phase-249 P4b.1; phase 128.B.4's runtime
+// walker, ~~`nros_rmw_cffi_walk_init_section`~~, is gone) — the C/C++
 // side gets full nameless dispatch (no `#ifdef NROS_RMW_CYCLONEDDS`
 // chain anywhere). Static-lib link with `--whole-archive` ensures the
-// section entry survives stripping.
+// entry survives stripping.
 extern "C" {
 static void nros_rmw_cyclonedds_section_register(void) {
     (void)nros_rmw_cyclonedds_register();

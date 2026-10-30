@@ -257,8 +257,9 @@ pub struct CmakeApp {
     /// platform. NOT the image's board string: `board_family()` matches exact
     /// tokens and an unknown one falls through to the HOST default, which emits
     /// `int main(int, char**)` where the Zephyr kernel declares
-    /// `extern int main(void)`. The hand-written files all say `zephyr` and
-    /// ~~`zephyr_cyclonedds_entry`~~'s header records the measurement.
+    /// `extern int main(void)`. The hand-written files this replaced all said
+    /// `zephyr`, and ~~`zephyr_cyclonedds_entry`~~'s header recorded the
+    /// measurement.
     pub deploy: String,
     /// `PANIC` — RFC-0077 policy, when the image declares one.
     pub panic: Option<String>,
@@ -310,9 +311,9 @@ fn declares_feature(dir: &Path, feature: &str) -> bool {
 
 /// A cmake `project()` identifier for this image.
 ///
-/// The hand-written applications spell it by hand
-/// (~~`nros_zephyr_workspace_entry_rs`~~, ~~`nros_zephyr_ws_qos_entry_rs`~~, …), which
-/// is a name nobody reads and no two of them agree on. Derived from the two
+/// The hand-written applications this replaced spelled it by hand
+/// (~~`nros_zephyr_workspace_entry_rs`~~, ~~`nros_zephyr_ws_qos_entry_rs`~~, …), a
+/// name nobody read and no two of them agreed on. Derived from the two
 /// things that actually identify the application — the workspace directory and
 /// the image — so it is unique across a west build root, which is the only
 /// property cmake needs of it.

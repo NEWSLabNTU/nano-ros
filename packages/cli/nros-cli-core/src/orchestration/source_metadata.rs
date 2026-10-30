@@ -65,8 +65,9 @@ pub struct SourceNode {
     /// `#[serde(default)]` because this struct is `deny_unknown_fields` and a
     /// sidecar emitted before these existed must still parse. An empty vector
     /// from an OLD sidecar is indistinguishable from a component that genuinely
-    /// has no clients, which is why the consumer keys on the sidecar's presence
-    /// rather than on the count being zero — see ~~`entity_facts`~~.
+    /// has no clients, which is why its consumer (the retired
+    /// ~~`entity_facts`~~) keyed on the sidecar's presence rather than on the
+    /// count being zero.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub action_clients: Vec<SourceClient>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

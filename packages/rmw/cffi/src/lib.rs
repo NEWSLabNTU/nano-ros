@@ -692,7 +692,7 @@ pub fn event_kind_from_c(k: NrosRmwEventKind) -> nros_rmw::EventKind {
 // an event, and when the backend leaves `*_event_init` NULL the registration
 // is recorded HERE and satisfied by polling `*_take_event` from the entity's
 // ordinary data path. That is exactly how zenoh already behaves one layer
-// down — its shim fires registered callbacks from `has_data` / ~~`try_recv_raw`~~
+// down — its shim fires registered callbacks from `has_data` / `take_serialized`
 // and from `publish_raw` — so an application sees the same API and the same
 // delivery points on either backend.
 //
@@ -4149,8 +4149,8 @@ impl nros_rmw::SlotLending for CffiPublisher {
         };
         let len = slot.cursor;
         let token = slot.token;
-        // `slot` drops here without firing ~~`pub_discard`~~ because
-        // `publisher` is `None`.
+        // `slot` drops here without firing
+        // `return_loaned_message_from_publisher` because `publisher` is `None`.
         let ret = unsafe { commit(&view, token, len) };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
@@ -5047,7 +5047,7 @@ impl nros_rmw::Subscription for CffiSubscription {
             return Err(status);
         }
         // Issue 1164 — the second poll point, mirroring the zenoh shim, which
-        // fires its subscription events from ~~`try_recv_raw`~~ as well as from
+        // fires its subscription events from `take_serialized` as well as from
         // `has_data`. A caller that only takes still sees its events.
         self.poll_status_events();
         let mut view = self.make_view();

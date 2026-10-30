@@ -174,8 +174,8 @@ mod static_subscriber_storage {
             // never reaches the error text. The name does both.
             //
             // REMEDY: raise `NROS_RMW_SUBSCRIBER_SLOT_BYTES` to at least the second
-            // operand — env, ~~`CONFIG_NROS_RMW_SUBSCRIBER_SLOT_BYTES`~~, or
-            // `[knobs.rmw] subscriber_slot_bytes` on the platform or board.
+            // operand — env, or `[knobs.rmw] subscriber_slot_bytes` on the
+            // platform or board (it has no Kconfig symbol).
             // `NROS_RMW_SUBSCRIBER_SLOTS` is NOT the lever: it multiplies the same
             // too-small width, at `SLOT_SIZE` bytes of `.bss` a slot.
             let _raise_nros_rmw_subscriber_slot_bytes = SLOT_SIZE - mem::size_of::<T>();
@@ -1627,7 +1627,7 @@ unsafe fn take_response_impl<R: RustBackend>(
 //     trait callback dereferences as `*const LivelinessChangedStatus` /
 //     `*const CountStatus`, the cffi callback dereferences as the matching
 //     union member. The field-by-field layout matches today (see the
-//     ~~`_event_payload_layout_match`~~ const-asserts below).
+//     `const _: () = { … }` size/align asserts below).
 //   * *mut c_void       ↔ *mut c_void   — identical.
 //
 // Therefore the cffi callback can be transmuted into a trait callback

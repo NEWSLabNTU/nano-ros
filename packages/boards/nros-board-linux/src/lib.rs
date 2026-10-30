@@ -518,7 +518,8 @@ impl LinuxBoard {
         // If executor open fails (no RMW backend linked, or the configured
         // router/peer is unreachable), we fall back to
         // [`nros_platform::NullNodeRuntime`] so the setup closure still runs. The
-        // fall-back errors loud on any ~~`register_dispatch_slot_dyn`~~ call.
+        // fall-back's `spin_once` returns `Err(())`, so a caller that needs a
+        // live runtime fails loud.
         // Issue #98 — route the single-node launch overlay through the W1
         // resolver (RFC-0045 precedence model A): env > baked > compiled default.
         // `locator` and `domain` stay `None` so env keeps authority over them

@@ -116,7 +116,8 @@ pub(crate) const LOCATOR_BUFFER_SIZE: usize = 128;
 /// no_std / bare-metal builds (e.g. esp32-c3, 18 KB stack) carry only small
 /// property values (scouting/listen/zid) and have no TLS; the full 256 ×
 /// `MAX_SESSION_PROPERTIES` × 2 (key+val) = 4 KB stack frame in
-/// ~~`SmoltcpSession::new`~~ overflows the small stack into `.bss` (issue #64), so
+/// `ZenohSession::new` (~~`SmoltcpSession::new`~~ when issue #64 measured it)
+/// overflows the small stack into `.bss`, so
 /// shrink it there. 64 covers every embedded property value.
 #[cfg(feature = "std")]
 pub(crate) const CONFIG_PROPERTY_SIZE: usize = 256;
@@ -332,7 +333,8 @@ pub fn signal_executor_wake() {
 /// Wait for a wake signal or timeout.
 ///
 /// Returns `true` if woken by a signal, `false` on timeout.
-/// Used by ~~`BasicExecutor::spin()`~~ to sleep efficiently between iterations.
+/// Its caller was ~~`BasicExecutor::spin()`~~, sleeping between iterations;
+/// it stays a public export, and nothing in the tree calls it now.
 #[cfg(feature = "std")]
 pub fn wait_for_executor_wake(timeout: core::time::Duration) -> bool {
     let (lock, cvar) = &*EXECUTOR_WAKE;

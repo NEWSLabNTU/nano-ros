@@ -518,7 +518,7 @@ rmw_ret_t subscription_take_sequence(const rmw_subscription_t* subscriber, uint8
     if (n < 0) {
         // issue 0773 — the helper returns a COUNT (>= 0) or a negated status.
         // Testing `< 0` only works because of that negation: every
-        // ~~`nros_rmw_ret_t`~~ value is non-negative since phase-376 W3.d step B.
+        // `rmw_ret_t` status is non-negative since phase-376 W3.d step B.
         return static_cast<rmw_ret_t>(-n);
     }
     *taken = static_cast<size_t>(n);

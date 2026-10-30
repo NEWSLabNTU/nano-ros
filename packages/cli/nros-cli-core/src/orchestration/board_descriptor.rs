@@ -176,8 +176,9 @@ impl PlatformKind {
     /// [`executor_sizing::board_honors_entry_sizing`](nros_orchestration_ir::executor_sizing::board_honors_entry_sizing),
     /// which answers the same question in the entry board-KEY namespace. Both
     /// route to [`BoardFamily::honors_entry_sizing`], so the two namespaces
-    /// cannot disagree about one fact; ~~`board_key_and_platform_kind_agree`~~
-    /// (in `model_ingest`) holds them together over every board key.
+    /// cannot disagree about one fact;
+    /// `the_two_namespaces_agree_about_who_honors_entry_sizing` (in
+    /// `model_ingest`) holds them together over every board key.
     pub fn honors_entry_sizing(self) -> bool {
         self.board_family()
             .is_some_and(nros_entry_lower::BoardFamily::honors_entry_sizing)
@@ -325,8 +326,11 @@ pub struct BoardCapabilities {
     /// Board provides atomic load/store. Drives `NROS_PLATFORM_HAS_ATOMICS`.
     #[serde(default)]
     pub atomics: bool,
-    /// Board has threads + a mutex. Drives ~~`NROS_FEATURE_THREADS`~~ /
-    /// ~~`NROS_PLATFORM_HAS_MUTEX`~~.
+    /// Board has threads + a mutex. Split-lock zenoh transport requires it
+    /// (`nros-platform-config` refuses `split_lock` without it). It used to
+    /// drive the C defines ~~`NROS_FEATURE_THREADS`~~ /
+    /// ~~`NROS_PLATFORM_HAS_MUTEX`~~, retired with nros-c's legacy `platform.h`
+    /// (243.5).
     #[serde(default)]
     pub threads: bool,
 }

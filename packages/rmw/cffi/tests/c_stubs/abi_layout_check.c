@@ -1,16 +1,18 @@
 /*
  * ABI layout single-source-of-truth — C half (issue #238 / #239).
  *
- * The `nros_rmw_*` types are a HAND-MIRRORED C ABI: the C definitions
- * in the `include/nros` headers and the Rust `#[repr(C)]` mirrors in
- * `src/lib.rs` are kept in lockstep by hand, with no codegen. These
- * `_Static_assert`s pin the C-side widths at compile time; the Rust
- * half lives in the ~~`abi_layout`~~ `const _: () = { assert!(...) }`
- * block in `src/lib.rs`. If a future edit changes one side's layout
- * without the other, exactly one of these two guards fails the build —
+ * The `nros_rmw_*` types were a HAND-MIRRORED C ABI: the C definitions
+ * in the `include/nros` headers and Rust `#[repr(C)]` mirrors in
+ * `src/lib.rs`, kept in lockstep by hand. These `_Static_assert`s pin
+ * the C-side widths at compile time; the Rust half was the
+ * ~~`abi_layout`~~ `const _: () = { assert!(...) }` block in `src/lib.rs`,
+ * so a layout change on one side alone failed exactly one guard —
  * closing the drift class that #238 slipped through (an event-kind
  * enum that was int-sized in C but byte-sized in Rust, passed BY VALUE
- * across three vtable slots).
+ * across three vtable slots). RFC-0054 then made the Rust side consume
+ * bindgen output of these headers (`src/generated.rs`), so there is no
+ * hand mirror left to pin and that block is gone; this TU still pins
+ * the C side.
  *
  * Compiled (not linked into anything meaningful — the TU has no runtime
  * symbols) by build.rs under the `c-stub-test` feature.
@@ -30,13 +32,13 @@
  * through `rmw_status_event_callback_t`. The Rust mirror MUST be
  * `#[repr(C)]` (tracks the C ABI per-target), never a fixed
  * `#[repr(u8)]`/`#[repr(i32)]`. On ARM EABI the same enum is 1 byte on
- * BOTH sides — that target is not checked here (see the Rust
- * ~~`abi_layout`~~ block, which gates its width pin to non-ARM). */
+ * BOTH sides — that target is not checked here (the Rust
+ * ~~`abi_layout`~~ block gated its width pin to non-ARM too). */
 _Static_assert(sizeof(rmw_event_type_t) == 4,
                "rmw_event_type_t must be C-int-sized host-side (issue #238)");
 
 /* QoS mirror — the by-value struct crossing the create_* slots. Must
- * match `size_of::<NrosRmwQos>() == 24` in the Rust abi_layout block.
+ * match the Rust side's `size_of::<NrosRmwQos>() == 24`.
  * (phase-301 / issue 0240: the transport hints left this struct for
  * the options structs; 28 -> 24 bytes.) */
 _Static_assert(sizeof(rmw_qos_profile_t) == 24,

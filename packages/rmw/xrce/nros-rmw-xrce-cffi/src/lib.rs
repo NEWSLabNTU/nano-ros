@@ -105,8 +105,9 @@ pub fn register() -> Result<(), RegisterError> {
     }
 }
 
-// Phase 128.B.3 / 128.H.2 — ~~`RMW_INIT_ENTRIES`~~ self-registration
-// via `nros_rmw_register_backend!` (RTOS-target-safe).
+// Self-registration via `nros_rmw_register_backend!` (an `.init_array` ctor
+// on hosted targets since phase-249 P4b.1; Phase 128.B.3 / 128.H.2 used the
+// ~~`RMW_INIT_ENTRIES`~~ slice) (RTOS-target-safe).
 #[cfg(not(test))]
 nros_rmw_cffi::nros_rmw_register_backend! {
     fn() {

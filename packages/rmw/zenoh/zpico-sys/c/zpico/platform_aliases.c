@@ -12,7 +12,8 @@
  *
  *   - Threading primitives (`_z_task_*`, `_z_mutex_*`, `_z_condvar_*`)
  *     because zenoh-pico declares them with opaque `[u8; N]` storage
- *     that does not match ~~`nros_platform_task_t`~~ shapes 1:1.
+ *     that does not match the platform ABI's task shapes 1:1 (the ABI takes
+ *     a `void *`; ~~`nros_platform_task_t`~~ was its typed handle).
  *   - smoltcp / serial / IVC bridge hooks (`smoltcp_clock_now_ms`,
  *     `_z_open_serial_from_dev`, IVC helpers) — per-board / per-rtos.
  *

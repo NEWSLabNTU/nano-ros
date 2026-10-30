@@ -12,12 +12,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Mirrors `nros::MISSING_COMPONENT_EXPORT_ERROR` (in
-/// `packages/api/nros/src/component.rs`) so host-side diagnostics
-/// surface the same human-readable phrase as the in-tree
-/// ~~`ComponentError::MissingExport`~~ runtime variant. Held as a
-/// `const` here to keep the CLI off the `nros` build dependency
-/// closure (the latter is `no_std` + target-feature-gated).
+/// The phrase for a package that exports no nros component. It mirrored
+/// `nros`'s ~~`ComponentError::MissingExport`~~ runtime variant, so host-side
+/// and runtime diagnostics read alike; phase-483 W3 retired that variant, and
+/// this `const` is now the only spelling.
 pub(crate) const MISSING_COMPONENT_EXPORT_ERROR: &str = "package has no exported nros component";
 
 #[derive(Debug, ClapArgs)]
@@ -116,8 +114,7 @@ pub fn run(args: Args) -> Result<()> {
     // metadata-mode binary either failed to build or built but exited
     // before writing the JSON, both shapes leave the declared
     // `[metadata].source_metadata` path empty. Catch the case here
-    // with the same diagnostic string the in-tree
-    // ~~`ComponentError::MissingExport`~~ runtime variant uses.
+    // with `MISSING_COMPONENT_EXPORT_ERROR`.
     let declarations = workspace.component_declarations()?;
     let mut missing: Vec<&ComponentDeclaration> = declarations
         .iter()

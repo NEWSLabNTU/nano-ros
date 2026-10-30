@@ -330,9 +330,9 @@ include_paths = [
   "{nros}/c/zpico",
   # Phase 154 — `nros-platform-api/include` carries
   # `<nros/platform_net.h>` (the canonical `nros_platform_*`
-  # ABI + the `nros_platform_socket_get_fd` accessor used by
-  # `zpico.c::get_session_fd` to read peer fd without
-  # depending on the per-RTOS socket-struct layout).
+  # ABI + the `nros_platform_socket_get_fd` accessor, which
+  # reads a peer fd without depending on the per-RTOS
+  # socket-struct layout).
   "{nros}/../../platform/nros-platform-api/include",
   "{nros}/c/include",
   "{source:threadx}/common/inc",
