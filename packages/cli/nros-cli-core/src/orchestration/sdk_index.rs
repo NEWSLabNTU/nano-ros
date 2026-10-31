@@ -2233,8 +2233,8 @@ impl SdkIndex {
                     if src.git.is_none() || src.git_ref.is_none() {
                         bail!(
                             "source '{name}' has `submodule` but no `git`/`ref` — the pin \
-                             must be readable without a checkout. Run \
-                             `python3 scripts/check/check-source-refs.py --write`"
+                             must be readable without a checkout (in a checkout, \
+                             `check-source-refs.py --write` states it)"
                         );
                     }
                 }
