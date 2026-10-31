@@ -43,6 +43,16 @@ pub struct LeafSystemArgs {
     #[arg(long, value_name = "BOARD")]
     pub board: Option<String>,
 
+    /// Issue 2179 -- the Zephyr board this build was actually given
+    /// (`west build -b`, the module hook's `BOARD`). The image's board package
+    /// contributes its snippets and conf files (`NROS_LEAF_SNIPPET`, the head
+    /// of `NROS_LEAF_CONF`) only when it describes this board
+    /// (`BoardDescriptor::builds_west_board`); otherwise both are empty and
+    /// `NROS_LEAF_BOARD_NOT_APPLIED=<its west board>` says why. Omitted, the
+    /// package is assumed to describe the build, as before.
+    #[arg(long, value_name = "WEST_BOARD")]
+    pub west_board: Option<String>,
+
     /// Issue 1712 -- write the image's own layers (what its `transport`
     /// implies, then its `[image.<id>] env`, RFC-0049's APP rung) to PATH as a
     /// cargo config holding one `[env]` table, and print the path as
@@ -391,6 +401,21 @@ pub fn board_snippets(catalog: Option<&BoardCatalog>, board: &str) -> Vec<String
         .unwrap_or_default()
 }
 
+/// Issue 2179 -- `Some(<the board package's west board>)` when the image's
+/// board package does NOT describe the build's `west_board`
+/// ([`crate::orchestration::board_descriptor::BoardDescriptor::builds_west_board`]), so its snippets and conf files
+/// must stay out of it. `None` when it does, when no west board was given, and
+/// for a board the catalog does not resolve (which contributes nothing anyway).
+pub fn board_not_applied(
+    catalog: Option<&BoardCatalog>,
+    board: &str,
+    west_board: Option<&str>,
+) -> Option<String> {
+    let west = west_board?;
+    let d = crate::cmd::board_facts::resolve_board(catalog?, board)?;
+    (!d.builds_west_board(west)).then(|| d.zephyr_board().unwrap_or_default().to_string())
+}
+
 /// The board catalog for `dir`: this checkout's boards and
 /// `$NROS_EXTRA_BOARD_PATH`, plus -- when `dir` sits in a workspace -- the
 /// board packages that workspace carries (issue 2157). Without the third, a
@@ -582,10 +607,16 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
         Some(out) => write_image_env(out, &env_rows)?,
         None => None,
     };
+    // Issue 2179 -- the board package's Zephyr facts (its conf files and
+    // snippets) describe ITS west board. A build given another one (a harness
+    // building a `board = "zephyr"` image for mps2/an385) gets neither, and
+    // the row says which board they were for.
+    let not_applied = board_not_applied(catalog.as_ref(), &board, args.west_board.as_deref());
+    let board_applies = args.board.is_none() && not_applied.is_none();
     // Issue 1782 -- the board package's fragments first, then the image's.
     // Not under `--board`: that answers for ANOTHER board (the host census),
     // whose build is not a Zephyr one.
-    let mut conf = if args.board.is_none() {
+    let mut conf = if board_applies {
         board_conf_paths(&leaf, catalog.as_ref(), root.as_deref(), &board)
     } else {
         Vec::new()
@@ -641,12 +672,16 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     // Issue 2157 -- the board's snippets, for a leaf AND a bringup: unlike its
     // conf files, `nros build` passes none itself, so the module hook is the
     // one carrier on every road. Not under `--board`, for 1782's reason.
-    let snippets = if args.board.is_none() {
+    let snippets = if board_applies {
         board_snippets(catalog.as_ref(), &board)
     } else {
         Vec::new()
     };
     println!("NROS_LEAF_SNIPPET={}", snippets.join(";"));
+    println!(
+        "NROS_LEAF_BOARD_NOT_APPLIED={}",
+        not_applied.unwrap_or_default()
+    );
     // Issue 2073 -- the parameter files `NROS_CPP_BAKED_ROS_ARGS` carries the
     // text of, one row each, so a configure re-runs when one is edited.
     let origin_dir = leaf
@@ -675,6 +710,30 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2179 -- the generic `zephyr` board package (native_sim) gives an
+    /// mps2/an385 build none of its Zephyr facts, and still gives them to a
+    /// native_sim one -- including the NSOS snippet.
+    #[test]
+    fn the_generic_board_package_answers_only_for_native_sim() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let catalog = BoardCatalog::load(&root).expect("board catalog");
+        let c = Some(&catalog);
+        assert_eq!(
+            board_not_applied(c, "zephyr", Some("mps2/an385")).as_deref(),
+            Some("native_sim/native/64")
+        );
+        assert_eq!(
+            board_not_applied(c, "zephyr", Some("mps2_an385")).as_deref(),
+            Some("native_sim/native/64")
+        );
+        assert_eq!(
+            board_not_applied(c, "zephyr", Some("native_sim/native/64")),
+            None
+        );
+        assert_eq!(board_not_applied(c, "zephyr", None), None);
+        assert!(board_snippets(c, "zephyr").iter().any(|s| s == "nros-nsos"));
+    }
 
     fn leaf_dir(system: &str) -> tempfile::TempDir {
         let td = tempfile::tempdir().unwrap();
