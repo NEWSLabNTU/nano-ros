@@ -366,7 +366,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         return Ok(plans);
     }
     // Issues 1296/1308 — and its C/C++ twin: the leaf's OWN `CMakeLists.txt`.
-    if let Some(plans) = plan_single_package_cmake(args, &root)? {
+    if let Some(plans) = plan_single_package_cmake(args, &root, planning)? {
         return Ok(plans);
     }
 
@@ -633,13 +633,21 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
 
         // ---- stage 3 ----------------------------------------------------
         // Before anything is generated or compiled: a missing prerequisite
-        // fails HERE, naming the command that fixes it (RFC-0065 D2).
-        let mut missing =
-            crate::builder::preflight::check(descriptor, &root, nano_ros_root.as_deref());
+        // fails HERE, naming the command that fixes it (RFC-0065 D2). Not for
+        // a query (issue 2180): it compiles nothing, and its caller is a
+        // configure that already has its toolchain.
+        let mut missing = if planning == Planning::Generate {
+            crate::builder::preflight::check(descriptor, &root, nano_ros_root.as_deref())
+        } else {
+            Vec::new()
+        };
         // Issue 2151 — a Rust image on Zephyr compiles for the triple
         // zephyr-lang-rust picks and runs bindgen, neither of which a C image
         // needs.
-        if platform == "zephyr" && !image_has_non_rust(&image, &bringup_dir) {
+        if planning == Planning::Generate
+            && platform == "zephyr"
+            && !image_has_non_rust(&image, &bringup_dir)
+        {
             let index = nano_ros_root.as_deref().and_then(|r| {
                 crate::orchestration::sdk_index::SdkIndex::load(&r.join("nros-sdk-index.toml")).ok()
             });
@@ -2031,7 +2039,12 @@ fn plan_leaf_image(
     leaf_image_net(descriptor, &img.board, Some(&nros_root), &img.decl)
         .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
     crate::cmd::setup::expose_store_tools(descriptor, Some(&nros_root));
-    let mut missing = crate::builder::preflight::check(descriptor, root, Some(&nros_root));
+    // Issue 2180 — a query refuses nothing over the toolchain.
+    let mut missing = if planning == Planning::Generate {
+        crate::builder::preflight::check(descriptor, root, Some(&nros_root))
+    } else {
+        Vec::new()
+    };
     // The toolchain half only. preflight's sync probe is a WORKSPACE heuristic
     // (a `src/` with neither `generated/` nor `build/nros/`), and a leaf's
     // `src/` is its crate's sources: it would refuse a leaf with no message
@@ -2231,6 +2244,7 @@ fn plan_leaf_image(
 fn plan_single_package_cmake(
     args: &Args,
     root: &std::path::Path,
+    planning: Planning,
 ) -> Result<Option<Vec<ResolvedBuild>>> {
     use nros_orchestration_ir::leaf_system;
     if !root.join("CMakeLists.txt").is_file()
@@ -2307,7 +2321,12 @@ fn plan_single_package_cmake(
     // probe is a workspace heuristic, and this configure generates its own
     // message bindings.
     crate::cmd::setup::expose_store_tools(descriptor, Some(&nros_root));
-    let mut missing = crate::builder::preflight::check(descriptor, root, Some(&nros_root));
+    // Issue 2180 — a query refuses nothing over the toolchain.
+    let mut missing = if planning == Planning::Generate {
+        crate::builder::preflight::check(descriptor, root, Some(&nros_root))
+    } else {
+        Vec::new()
+    };
     missing.retain(|m| m.remedy != "nros sync");
     if !missing.is_empty() {
         eyre::bail!("{}", crate::builder::preflight::report(&missing));

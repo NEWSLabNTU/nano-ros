@@ -214,9 +214,23 @@ if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=<undefined>' "$TEST_TMPDIR/g.log"; t
     tail -15 "$TEST_TMPDIR/g.log" >&2
 fi
 
+# H. Issue 2180 -- D on a host whose toolchain could not BUILD the image. The
+# query names the image; it compiles nothing, so a missing Rust target or
+# component is not its business. A `rustup` that lists nothing installed stands
+# in for the tier-2 runner's default toolchain, which lacked
+# `x86_64-unknown-none` and `clippy` outside the checkout's pin.
+mkdir -p "$TEST_TMPDIR/bare-rustup"
+printf '%s\n' '#!/bin/sh' 'exit 0' > "$TEST_TMPDIR/bare-rustup/rustup"
+chmod +x "$TEST_TMPDIR/bare-rustup/rustup"
+PATH="$TEST_TMPDIR/bare-rustup:$PATH" probe "$W/src/zephyr_entry" "$TEST_TMPDIR/h.log"
+if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle\]' "$TEST_TMPDIR/h.log"; then
+    fail "H: a toolchain missing the image's Rust target emptied the query (rc=$RC, issue 2180)"
+    tail -15 "$TEST_TMPDIR/h.log" >&2
+fi
+
 if [ "$FAILURES" -ne 0 ]; then
     log_error "cmake-workspace-system-required: $FAILURES failure(s)"
     exit 1
 fi
-log_success "cmake-workspace-system-required: A refused, B and C not; west road D-G (issue 1261)"
+log_success "cmake-workspace-system-required: A refused, B and C not; west road D-H (issues 1261, 2180)"
 exit 0
