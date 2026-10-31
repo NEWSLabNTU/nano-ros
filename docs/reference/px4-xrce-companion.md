@@ -56,12 +56,14 @@ let qos = QoSProfile::px4();          // BEST_EFFORT + TRANSIENT_LOCAL + KEEP_LA
 PX4's default companion link is UDP on port 8888:
 
 ```bash
-MicroXRCEAgent udp4 -p 8888
+just xrce agent udp/127.0.0.1:8888      # in the nano-ros checkout
 ```
 
-Serial / other transports: see the PX4 uXRCE-DDS docs. `nros setup` provisions
-a `MicroXRCEAgent` under `~/.nros/bin/`; the in-tree build is
-`build/xrce-agent/MicroXRCEAgent`.
+`just xrce agent` takes the locator in nano-ros's own spelling (`udp/`, `tcp/`,
+or `serial/<host device>#baudrate=<n>`) and starts the agent `just xrce setup`
+provisioned, so a serial link is `just xrce agent
+'serial//dev/ttyACM0#baudrate=921600'`. For PX4's side of other transports, see
+the PX4 uXRCE-DDS docs.
 
 > The agent must know the px4_msgs DDS types. PX4 runs the agent with px4_msgs
 > typesupport; a bare agent matches by name. (A pub+sub companion once failed to
@@ -99,7 +101,7 @@ It subscribes `/fmu/out/vehicle_odometry` and streams
 to exercise the companion's publish/connect path:
 
 ```bash
-MicroXRCEAgent udp4 -p 8888 &
+just xrce agent udp/127.0.0.1:8888 &    # in the nano-ros checkout
 NROS_LOCATOR=127.0.0.1:8888 PX4_COMPANION_TICKS=200 cargo run -p px4-offboard-companion &
 NROS_LOCATOR=127.0.0.1:8888 PX4_STUB_TICKS=120        cargo run -p px4-stub
 ```

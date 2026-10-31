@@ -42,7 +42,7 @@ it is **agent-based** (the egress carries a locator, not a DDS domain) and uses
 
 ```sh
 nros build linux                 # links zenoh + xrce backends
-MicroXRCEAgent udp4 -p 8888 &               # the Micro-XRCE-DDS Agent
+just xrce agent udp/127.0.0.1:8888 &        # the Agent, on the [[domain]] agent locator (in the nano-ros checkout)
 ./target/release/linux_entry               # the bridge (dials the agent)
 # override endpoints at runtime (phase-267 #113):
 #   NROS_BRIDGE_S0_LOCATOR=tcp/127.0.0.1:7447  (zenoh router)

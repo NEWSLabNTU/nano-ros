@@ -326,6 +326,8 @@ workspace-features
 workspace-fmt
 workspace-order
 workspace-root-build-files
+xrce-agent-door
+xrce-agent-invocations
 xrce-config-manifest
 xrce-one-vendored-compile
 xrce-source-manifest
