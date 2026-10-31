@@ -563,7 +563,18 @@ function(nros_generate_interfaces target)
     set(ENV{NROS_RMW_CYCLONEDDS_SCRIPTS_DIR} "${NROS_CYCLONE_SCRIPTS_DIR}")
     include("${NROS_CYCLONE_CMAKE_DIR}/NrosRmwCycloneddsTypeSupport.cmake")
   endif()
-  if(CONFIG_NROS_RMW_CYCLONEDDS)
+  # Issue 2159 -- ONCE per package, not once per (package, language). The
+  # guard above is language-keyed, because the C and C++ bindings are distinct
+  # outputs; the Cyclone descriptors are not -- they are C for both, built into
+  # one `<pkg>__cyclonedds_ts` that `app` whole-archives. An image needing both
+  # languages (a C leaf whose TYPED carrier is C++) ran this twice and the
+  # second `add_library` failed: "cannot create target
+  # builtin_interfaces__cyclonedds_ts because another target with the same
+  # name already exists". The first pass already linked it into `app`, so a
+  # later pass has nothing to add.
+  get_property(_nros_cyc_done GLOBAL PROPERTY "_NROS_CYC_TS_GENERATED_${target}")
+  if(CONFIG_NROS_RMW_CYCLONEDDS AND NOT _nros_cyc_done)
+    set_property(GLOBAL PROPERTY "_NROS_CYC_TS_GENERATED_${target}" TRUE)
     set(_cyc_ifaces "")
     foreach(_if ${_interface_files})
       if(_if MATCHES "\\.(msg|srv|action)$")
