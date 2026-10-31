@@ -266,18 +266,14 @@ notes = "Runtime is maintainer-run via `just zephyr verify-fvp-runtime` — henc
 # fourth way to add a board and the one with no record at all.
 #
 # `tier = "scaffold"` is the honest entry, and deliberately NOT a promotion.
-# These rows are new; a tier with a promise needs a named maintainer (W1: 1/2/3
+# (`nros-board-mps2-an385-zephyr` has since moved to the descriptor-only
+# directories below, issue 2177.) These rows are new; a tier with a promise needs a named maintainer (W1: 1/2/3
 # for tiers 3/2/1) and neither has one. What changed today is that they are
 # VISIBLE — a board nobody declared cannot be given a tier, an owner, or a
 # demotion, which is what made the fourth route worse than any of the other
 # three.
 [[board]]
 crate = "nros-board-qemu-cortex-a53"
-tier = "scaffold"
-maintainers = []
-
-[[board]]
-crate = "nros-board-mps2-an385-zephyr"
 tier = "scaffold"
 maintainers = []
 
@@ -338,6 +334,19 @@ crate = "zephyr"
 tier = "infra"
 maintainers = []
 notes = "nros-board.toml descriptor directory, not a crate."
+
+# Issue 2177 — moved here from `scaffold`, which said "unfinished, do not build
+# on these" about a board the Zephyr chapter tells a reader to build, and which
+# the installed probe now builds and boots. It is not a promotion: `infra`
+# carries no promise. The promise for this hardware is the tier-2
+# `ZephyrQemuCortexM` row above, booked on `nros-board-zephyr`, whose fixture
+# lanes build `-b mps2_an385` with THIS directory's `prj.conf` — the same split
+# as `zephyr` (descriptor) and the `ZephyrNativeSim` row (tier 1).
+[[board]]
+crate = "nros-board-mps2-an385-zephyr"
+tier = "infra"
+maintainers = []
+notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `mps2_an385` board's descriptor and base Kconfig (network on QEMU's user net). Its support promise is `nros-board-zephyr`'s ZephyrQemuCortexM row (tier 2), whose lanes build with this `prj.conf`."
 
 # ---------------------------------------------------------------------------
 # `maintainers` is ENFORCED (phase-375 W1): tier 1 needs 3, tier 2 needs 2,
