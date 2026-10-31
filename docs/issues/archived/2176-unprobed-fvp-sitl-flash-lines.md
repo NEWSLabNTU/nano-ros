@@ -98,5 +98,5 @@ Closed the way the fix direction says, with no new probe track:
   runs it (a CI runner has no board) and that it stands unverified until run
   against a named board, next to the QEMU line the weekly tracks do boot.
 
-The mps2-an385-zephyr half of the same audit is [issue 2177](../2177-mps2-an385-zephyr-network-unmeasured.md),
+The mps2-an385-zephyr half of the same audit is [issue 2177](2177-mps2-an385-zephyr-network-unmeasured.md),
 closed separately.
