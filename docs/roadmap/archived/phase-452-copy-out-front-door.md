@@ -1,5 +1,11 @@
 # Phase 452 — what a new user copies, and what builds it
 
+**CLOSED (2026-11-01).** Every work item except W5 landed (W1–W4, W6–W8), and
+the maintainer decided to skip W5's logo work, so W5 closes with no work done
+and its issue, [#1141](../../issues/archived/1141-book-visual-identity-favicon-logo-accent-css.md),
+closes as `wontfix`. The book keeps mdBook's stock look; a visual identity can
+come back as a new phase if anyone wants one.
+
 **Status (2026-10-26). W1–W4, W6 and W7 landed; W5 waits on a logo decision; W8
 opened and closed: #2079 and #2085 resolved 2026-10-27, the latter by amending RFC-0085 so in-tree workspaces are copy-out.**
 W7's three issues are resolved, plus #2087, found fixing #2045: a standalone
@@ -24,7 +30,7 @@ copy of `cpp-port-minimal-publisher` builds `zephyr.elf` with `nros build` in
 
 The steps AROUND what a user copies (one `nros setup`, `nros build` for a
 board, the platform's own run and flash commands, and a probe per platform
-chapter) are [phase-517](archived/phase-517-user-flow-setup-build-flash.md), opened
+chapter) are [phase-517](phase-517-user-flow-setup-build-flash.md), opened
 2026-10-25 from a book-vs-CLI audit.
 
 **Status (2026-09-25). Opened to give five homeless issues one owner. W1, W2, W3
@@ -40,18 +46,18 @@ copy, the scaffold `nros new` emits, the rustdoc they browse — is authored by 
 and built by no lane. Five open issues say so, and none had a phase.
 
 The pattern that makes them one phase rather than five chores is in
-[#1107](../issues/archived/1107-book-teaches-entry-pkg-per-target.md)'s own headline: **a
+[#1107](../../issues/archived/1107-book-teaches-entry-pkg-per-target.md)'s own headline: **a
 book page is what a new user copies, so a stale one propagates.** These surfaces
 are the only part of the tree where being wrong is *replicated* rather than
 merely observed, and they are precisely the part with no compile step:
 
 | issue | the surface | what checks it today |
 | --- | --- | --- |
-| [#1058](../issues/archived/1058-scaffold-output-is-grepped-never-built.md) | `nros new` scaffold output | ~30 substring assertions; nothing compiles the result |
-| [#1108](../issues/archived/1108-templates-materialize-dead-entry-pkgs.md) | four copy-out templates | nothing — two declare no `[image.*]`, so `nros build` refuses them outright |
-| [#1107](../issues/archived/1107-book-teaches-entry-pkg-per-target.md) | book pages | nothing — an out-of-tree consumer was scaffolded from the retired shape |
-| [#1116](../issues/archived/1116-rustdoc-diagnostics-outside-the-published-crate-set.md) | rustdoc outside the six published crates | nothing — the issue said ~70 diagnostics and five crates that cannot document; W4 measured 179 and twelve |
-| [#1141](../issues/1141-book-visual-identity-favicon-logo-accent-css.md) | the book's front door | nothing — no favicon, logo or accent CSS |
+| [#1058](../../issues/archived/1058-scaffold-output-is-grepped-never-built.md) | `nros new` scaffold output | ~30 substring assertions; nothing compiles the result |
+| [#1108](../../issues/archived/1108-templates-materialize-dead-entry-pkgs.md) | four copy-out templates | nothing — two declare no `[image.*]`, so `nros build` refuses them outright |
+| [#1107](../../issues/archived/1107-book-teaches-entry-pkg-per-target.md) | book pages | nothing — an out-of-tree consumer was scaffolded from the retired shape |
+| [#1116](../../issues/archived/1116-rustdoc-diagnostics-outside-the-published-crate-set.md) | rustdoc outside the six published crates | nothing — the issue said ~70 diagnostics and five crates that cannot document; W4 measured 179 and twelve |
+| [#1141](../../issues/archived/1141-book-visual-identity-favicon-logo-accent-css.md) | the book's front door | nothing — no favicon, logo or accent CSS |
 
 Three of the five (#1107, #1108, and the consumer scaffolded from them) are one
 regression with three faces: phase-383 W9/W10.a retired the per-target entry
@@ -59,7 +65,7 @@ package — *an image is a ROW, not a directory* — and retired it across
 `examples/workspaces/**`, gated by `check-no-tracked-workspace-roots`. The
 templates and the book were outside that gate's reach by construction, so they
 still teach the shape `nros build` refuses. That is the
-[phase-450](archived/phase-450-gate-reach-narrower-than-its-rule.md) class arriving in
+[phase-450](phase-450-gate-reach-narrower-than-its-rule.md) class arriving in
 the one place where the output is copied by a stranger.
 
 ## The shape, stated once
@@ -75,7 +81,7 @@ Ordered so the two that hand a user a broken tree come first.
 
 ### W1 — the templates build
 
-[Issue 1108](../issues/archived/1108-templates-materialize-dead-entry-pkgs.md). Four
+[Issue 1108](../../issues/archived/1108-templates-materialize-dead-entry-pkgs.md). Four
 copy-out templates still materialize a `robot_entry` package; two declare no
 `[image.*]` at all.
 
@@ -134,7 +140,7 @@ copy-out templates still materialize a `robot_entry` package; two declare no
 
 ### W2 — the scaffold compiles in its own test
 
-[Issue 1058](../issues/archived/1058-scaffold-output-is-grepped-never-built.md). A
+[Issue 1058](../../issues/archived/1058-scaffold-output-is-grepped-never-built.md). A
 template can name three undeclared types and every test passes.
 
 - [x] Every scaffold variant is COMPILED by its test, not grepped.
@@ -182,7 +188,7 @@ template can name three undeclared types and every test passes.
 
 ### W3 — the book teaches the shape the tree builds
 
-[Issue 1107](../issues/archived/1107-book-teaches-entry-pkg-per-target.md). The evidence
+[Issue 1107](../../issues/archived/1107-book-teaches-entry-pkg-per-target.md). The evidence
 that the tree moved is already in the workspaces: none of
 `examples/workspaces/{c,cpp,rust,mixed}/` tracks a root build file.
 
@@ -220,7 +226,7 @@ state they are in now.
 
 ### W4 — rustdoc is clean where the tree is documented, or says where it is not
 
-[Issue 1116](../issues/archived/1116-rustdoc-diagnostics-outside-the-published-crate-set.md).
+[Issue 1116](../../issues/archived/1116-rustdoc-diagnostics-outside-the-published-crate-set.md).
 `just check rustdoc-links` runs on a pull-request lane for the **deployed** six
 crates, deliberately — that scope is what keeps the docs deploy green.
 Workspace-wide the issue counted ~70 diagnostics and five crates that
@@ -292,7 +298,7 @@ never the number it looked like.
 
 ### W5 — the front door has an identity
 
-[Issue 1141](../issues/1141-book-visual-identity-favicon-logo-accent-css.md).
+[Issue 1141](../../issues/archived/1141-book-visual-identity-favicon-logo-accent-css.md).
 What is left of archived phase-188: workstream 188.B, two theming files in
 `book/theme/` wired through `[output.html]`.
 
@@ -300,12 +306,14 @@ What is left of archived phase-188: workstream 188.B, two theming files in
 logo decision nobody has made in three and a half months. Naming it here is the
 point: it is not in progress, and it will not start itself.
 
-- [ ] A logo decision, recorded.
-- [ ] Favicon, logo and accent CSS wired; `mdbook build book` still clean.
+- [x] A logo decision, recorded. CLOSED 2026-11-01: the maintainer skipped the
+      logo work.
+- [x] Favicon, logo and accent CSS wired; `mdbook build book` still clean.
+      CLOSED 2026-11-01, not done (no logo).
 
 ### W6 — the entry's escape hatches, smallest first
 
-[Issue 1511](../issues/archived/1511-no-worked-example-of-entry-customisation.md),
+[Issue 1511](../../issues/archived/1511-no-worked-example-of-entry-customisation.md),
 resolved 2026-10-24. Every entry is generated now, so the book has to teach
 the user what to do when the generated one is not enough. Its old "Escape
 hatch" section showed code that does not compile.
@@ -331,7 +339,7 @@ Found 2026-10-24/25 measuring checklist G2 (colcon-style self-containment) and
 C8 (language-neutral selection). Each item below was reproduced on a copy made
 the way a user makes it, not argued from a grep.
 
-- [x] [Issue 2044](../issues/archived/2044-example-readmes-configure-with-a-retired-root-variable.md)
+- [x] [Issue 2044](../../issues/archived/2044-example-readmes-configure-with-a-retired-root-variable.md)
       — 148 example READMEs, the root README and `_nros_bootstrap`'s refusal
       teach `NROS_REPO_DIR`, which RFC-0103 D6 retired as an input. The C/C++
       configure line FAILS at `find_package(nano_ros)`. One spelling
@@ -342,16 +350,16 @@ the way a user makes it, not argued from a grep.
       `source <root>/activate.sh` (Rust). `check-repo-dir-readers` now reads
       fenced commands in tracked Markdown: 154 findings on main before the
       sweep, 0 after.
-- [x] [Issue 2045](../issues/archived/2045-example-manifests-hand-set-the-ros-edition-feature.md)
+- [x] [Issue 2045](../../issues/archived/2045-example-manifests-hand-set-the-ros-edition-feature.md)
       — 41 example manifests hand-set `ros-humble` on `nros`, so declaring
       `ros_edition = "jazzy"` is a compile error. Remove the lowered form;
       `nros sync` refuses a leaf manifest that names a lowered axis feature.
-- [x] [Issue 2087](../issues/archived/2087-standalone-cmake-leaf-ignores-declared-ros-edition.md)
+- [x] [Issue 2087](../../issues/archived/2087-standalone-cmake-leaf-ignores-declared-ros-edition.md)
       — found fixing 2045: a standalone CMake leaf's `ros_edition` reached
       nothing, so a declared jazzy built humble silently (codegen AND runtime).
       `nros ws leaf-system` prints it, the reader applies it on both roads and
       refuses a disagreeing `-D`.
-- [x] [Issue 2046](../issues/archived/2046-px4-bridge-ffi-reaches-core-by-repo-path.md)
+- [x] [Issue 2046](../../issues/archived/2046-px4-bridge-ffi-reaches-core-by-repo-path.md)
       — the px4 bridge's FFI crate reaches `nros-serdes` by five `..`; name
       it, and pass the root through the generated patch.
 
@@ -363,7 +371,7 @@ builds from outside the checkout.
 
 Found closing W7. The first item needs a maintainer ruling before any edit.
 
-- [x] [Issue 2085](../issues/archived/2085-workspace-packages-path-dep-nros-by-repo-layout.md)
+- [x] [Issue 2085](../../issues/archived/2085-workspace-packages-path-dep-nros-by-repo-layout.md)
       — all 24 example workspace packages that depend on `nros` reach it by
       `../../../../../packages/api/nros`, so a copied workspace fails at
       `nros sync`. RFC-0085 ruled in-tree workspaces "not portable by
@@ -372,7 +380,7 @@ Found closing W7. The first item needs a maintainer ruling before any edit.
       amended, RFC-0026 extended); all 24 name `nros` by version;
       `check-example-path-deps` refuses the next one. Copies of `launch`,
       `rust` and `features` sync and build.
-- [x] [Issue 2079](../issues/archived/2079-scaffold-emits-unmigrated-rust-leaf-pinning-the-edition.md)
+- [x] [Issue 2079](../../issues/archived/2079-scaffold-emits-unmigrated-rust-leaf-pinning-the-edition.md)
       — `nros new` emits an unmigrated Rust leaf (board crate by hand, edition
       pinned in the manifest, none in `system.toml`). Emit the selection-road
       shape the examples have. **Done (2026-10-27):** linux and baremetal
@@ -398,8 +406,8 @@ Found closing W7. The first item needs a maintainer ruling before any edit.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1511](../issues/archived/1511-no-worked-example-of-entry-customisation.md) | every entry is generated now, so nothing shows a user the escape hatch: a worked example of customising an entry. From the archived phase-477. **RESOLVED 2026-10-24** by W6. |
-| [#1520](../issues/archived/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md) | the `entry =` ambiguity the docs cite was manufactured (issue 1517), so the docs explain a case that no longer exists. From the archived phase-477. **RESOLVED 2026-10-24**: issue 1288 left no `entry =` row in `examples/`; 0085 and the book now say so. |
+| [#1511](../../issues/archived/1511-no-worked-example-of-entry-customisation.md) | every entry is generated now, so nothing shows a user the escape hatch: a worked example of customising an entry. From the archived phase-477. **RESOLVED 2026-10-24** by W6. |
+| [#1520](../../issues/archived/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md) | the `entry =` ambiguity the docs cite was manufactured (issue 1517), so the docs explain a case that no longer exists. From the archived phase-477. **RESOLVED 2026-10-24**: issue 1288 left no `entry =` row in `examples/`; 0085 and the book now say so. |
 
 ## Open issues that name this phase
 
@@ -407,7 +415,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1453](../issues/archived/1453-template-copy-out-not-merge-gating.md) — resolved 2026-10-17: `check-template-copy-out` now runs the full set on `merge_group`.
+- [issue 1453](../../issues/archived/1453-template-copy-out-not-merge-gating.md) — resolved 2026-10-17: `check-template-copy-out` now runs the full set on `merge_group`.
 
 ## Issues homed here (2026-10-17)
 
@@ -415,16 +423,16 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1782](../issues/archived/1782-port-template-zephyr-leaf-board-not-in-data.md) | A copy-out template names the generic `zephyr` board, so `check-template-copy-out` cannot derive its build. **Resolved 2026-10-29**: the templates name `mps2-an385-zephyr`, whose package now owns the QEMU Kconfig tail, and the gate builds the copy with `nros build`. |
-| [#2140](../issues/archived/2140-zephyr-byo-template-copy-does-not-build.md) | RESOLVED 2026-10-29. Found by that gate the day it could build Zephyr: a copy of `zephyr-byo/app` did not compile, and once it did, booted onto the TAP driver and crashed. Declares `std_msgs`, carries the NSOS board conf; the gate builds it. |
+| [#1782](../../issues/archived/1782-port-template-zephyr-leaf-board-not-in-data.md) | A copy-out template names the generic `zephyr` board, so `check-template-copy-out` cannot derive its build. **Resolved 2026-10-29**: the templates name `mps2-an385-zephyr`, whose package now owns the QEMU Kconfig tail, and the gate builds the copy with `nros build`. |
+| [#2140](../../issues/archived/2140-zephyr-byo-template-copy-does-not-build.md) | RESOLVED 2026-10-29. Found by that gate the day it could build Zephyr: a copy of `zephyr-byo/app` did not compile, and once it did, booted onto the TAP driver and crashed. Declares `std_msgs`, carries the NSOS board conf; the gate builds it. |
 
 ## Issues homed here (2026-10-25)
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2044](../issues/archived/2044-example-readmes-configure-with-a-retired-root-variable.md) | RESOLVED 2026-10-26. The copy-out instructions every example carries configured with a retired variable and failed. W7. |
-| [#2045](../issues/archived/2045-example-manifests-hand-set-the-ros-edition-feature.md) | A copied-out example cannot take the edition its own `system.toml` declares. W7. |
-| [#2087](../issues/archived/2087-standalone-cmake-leaf-ignores-declared-ros-edition.md) | A standalone CMake leaf built humble whatever it declared. Found fixing 2045. W7. |
-| [#2085](../issues/archived/2085-workspace-packages-path-dep-nros-by-repo-layout.md) | RESOLVED 2026-10-27. Workspace packages reached `nros` by repository layout; ruled copy-out, named by version, gated. W8. |
-| [#2079](../issues/archived/2079-scaffold-emits-unmigrated-rust-leaf-pinning-the-edition.md) | RESOLVED 2026-10-27. The Rust scaffold pinned the edition its `system.toml` should own. W8. |
-| [#2046](../issues/archived/2046-px4-bridge-ffi-reaches-core-by-repo-path.md) | A copy-into-PX4 source only builds in place. W7. |
+| [#2044](../../issues/archived/2044-example-readmes-configure-with-a-retired-root-variable.md) | RESOLVED 2026-10-26. The copy-out instructions every example carries configured with a retired variable and failed. W7. |
+| [#2045](../../issues/archived/2045-example-manifests-hand-set-the-ros-edition-feature.md) | A copied-out example cannot take the edition its own `system.toml` declares. W7. |
+| [#2087](../../issues/archived/2087-standalone-cmake-leaf-ignores-declared-ros-edition.md) | A standalone CMake leaf built humble whatever it declared. Found fixing 2045. W7. |
+| [#2085](../../issues/archived/2085-workspace-packages-path-dep-nros-by-repo-layout.md) | RESOLVED 2026-10-27. Workspace packages reached `nros` by repository layout; ruled copy-out, named by version, gated. W8. |
+| [#2079](../../issues/archived/2079-scaffold-emits-unmigrated-rust-leaf-pinning-the-edition.md) | RESOLVED 2026-10-27. The Rust scaffold pinned the edition its `system.toml` should own. W8. |
+| [#2046](../../issues/archived/2046-px4-bridge-ffi-reaches-core-by-repo-path.md) | A copy-into-PX4 source only builds in place. W7. |

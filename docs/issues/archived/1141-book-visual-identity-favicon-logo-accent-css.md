@@ -1,15 +1,16 @@
 ---
 id: 1141
 title: "The book has no visual identity — no favicon, no logo, no accent CSS, so the public front door looks like a stock mdBook"
-status: open
+status: wontfix
 type: enhancement
 area: docs
 severity: low
 related: [phase-188, phase-452]
 found: 2026-09-06
+resolved: 2026-11-01
 ---
 
-**Home: [phase-452](../roadmap/phase-452-copy-out-front-door.md)** — homed 2026-09-25; listed in that phase's table of the five issues it was opened for.
+**Home: [phase-452](../../roadmap/archived/phase-452-copy-out-front-door.md)** — homed 2026-09-25; listed in that phase's table of the five issues it was opened for.
 
 # What is left of phase-188, rehomed
 
@@ -52,3 +53,9 @@ A few stale source comments name shims that no longer exist:
 `nros-platform-api/src/lib.rs` (x2). Harmless — comments, not code — and worth a
 pass with the next platform-crate edit. Recorded here so closing the phase does
 not lose them.
+
+## Resolution (2026-11-01) — wontfix
+
+The maintainer decided to skip the logo work, and phase-452 closed with W5
+not done. The book keeps mdBook's stock theme. Nothing here is in progress;
+reopen as a new issue if a visual identity is wanted later.

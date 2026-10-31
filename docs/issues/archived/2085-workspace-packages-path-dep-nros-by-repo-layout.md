@@ -12,7 +12,7 @@ related: [rfc-0085, rfc-0026, rfc-0067, phase-452, issue-0905, issue-2046]
 
 # Example workspace packages reach `nros` by repository layout
 
-**Home:** [phase-452](../../roadmap/phase-452-copy-out-front-door.md) W8. Needs a
+**Home:** [phase-452](../../roadmap/archived/phase-452-copy-out-front-door.md) W8. Needs a
 maintainer ruling first: it reverses an RFC-0085 finding (below).
 
 ## Problem

@@ -14,7 +14,7 @@ dependency index), [RFC-0065](../../design/0065-colcon-like-workspace-builder.md
 config), [RFC-0099](../../design/0099-provisioning-is-planned-once-and-prefers-prebuilts.md)
 (planned provisioning), [RFC-0093](../../design/0093-board-naming-states-reach.md)
 (board names). **Prior:**
-[phase-452](../phase-452-copy-out-front-door.md), which made the templates and the
+[phase-452](phase-452-copy-out-front-door.md), which made the templates and the
 scaffold build; this phase does the same for the steps around them.
 
 ---

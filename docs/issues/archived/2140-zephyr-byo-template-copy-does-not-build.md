@@ -10,7 +10,7 @@ found: 2026-10-29
 related: [1782, phase-452]
 ---
 
-**Home: [phase-452](../../roadmap/phase-452-copy-out-front-door.md)** — found by
+**Home: [phase-452](../../roadmap/archived/phase-452-copy-out-front-door.md)** — found by
 the copy-out gate the day issue 1782 gave it a Zephyr road.
 
 ## What was measured

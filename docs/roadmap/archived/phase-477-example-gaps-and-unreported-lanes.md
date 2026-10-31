@@ -15,7 +15,7 @@ Three open issues leave with homes:
   build gate that #2070 fixed.
 - **Issues 1511 and 1520**, the entry-customisation docs this phase named
   "in this theme" without owning them, move to
-  [phase-452](../phase-452-copy-out-front-door.md), which owns what a new user
+  [phase-452](phase-452-copy-out-front-door.md), which owns what a new user
   copies and reads.
 
 **Status (2026-10-03). All work items open.** Successor to
