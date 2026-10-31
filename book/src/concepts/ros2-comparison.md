@@ -79,10 +79,12 @@ have to bound by hand. Offering both means the application picks.
 sits next to the synchronous executor, not in it. `rclc` has none.
 
 nano-ros has it as a first-class path: `Executor::spin_async()` drives
-the executor from inside a `Future` (it does not park on RMW I/O: each
-poll is one non-blocking `spin_once(Duration::ZERO)` pass and an immediate
-self-wake, so it never blocks the runtime's thread but keeps a core busy —
-see its rustdoc and issue 2145), `Subscription::recv().await`, `Client::call().await`,
+the executor from inside a `Future`. Each poll is one non-blocking
+`spin_once(Duration::ZERO)` pass, so it never blocks the runtime's thread.
+With `spin_async_with_sleep(<runtime sleep>)`, an idle executor sleeps until
+an arrival or its next deadline. A poll-only backend still keeps a core busy;
+see its rustdoc and issue 2145. The handles are async too:
+`Subscription::recv().await`, `Client::call().await`,
 `ActionClient::send_goal().await`, etc. Runs on tokio (POSIX),
 Embassy (FreeRTOS / RTIC), or any external `Future`-driver.
 

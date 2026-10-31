@@ -1168,6 +1168,12 @@ pub(crate) struct WakeCtx {
     /// already name somebody else's file.
     #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
     pub(crate) ready_fd: portable_atomic::AtomicI32,
+    /// Issue 2145 -- the `Waker` of the task running
+    /// [`Executor::spin_async`], woken on every arrival the host's notifier
+    /// hears of. Separate from the notifier, so `spin_async` and a host's own
+    /// notifier never displace each other. Empty until a `spin_async` poll
+    /// registers one; each arrival takes it, and the next poll registers again.
+    pub(crate) task_waker: atomic_waker::AtomicWaker,
 }
 
 /// Issue 2144 -- the shape of a readiness notifier: the host's context back,
@@ -1201,6 +1207,7 @@ impl WakeCtx {
             retired_notifiers: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
             #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
             ready_fd: portable_atomic::AtomicI32::new(-1),
+            task_waker: atomic_waker::AtomicWaker::new(),
         }
     }
 
@@ -1252,14 +1259,17 @@ impl WakeCtx {
         }
     }
 
-    /// Issue 2144 -- tell the host that work arrived: its notifier, then its
-    /// readable fd. Called AFTER the arrival is recorded (the ready bit, the
+    /// Issue 2144 -- tell the host that work arrived: the `spin_async` task
+    /// (issue 2145), its notifier, then its readable fd. Called AFTER the arrival is recorded (the ready bit, the
     /// flag), so a host that spins on the notification finds the work.
     ///
     /// Lock-free and O(1): one load and an indirect call, plus one
     /// `write(2)` to an eventfd when a ready fd exists.
     #[inline]
     pub(crate) fn notify(&self) {
+        // Issue 2145 -- the `spin_async` task, if one is waiting. Lock-free;
+        // a no-op when nothing is registered.
+        self.task_waker.wake();
         let n = self.notifier.load(portable_atomic::Ordering::Acquire);
         if !n.is_null() {
             // SAFETY: a published pair is freed only with this context, and
@@ -13889,17 +13899,27 @@ impl<'s> Executor<'s> {
     ///   pass's callbacks, never a park. One pass rather than `spin_some`'s
     ///   drain, so a callback that keeps feeding itself work yields to the
     ///   runtime between passes instead of holding it.
-    /// * **It does not sleep on RMW I/O, so it is a busy loop.** It wakes itself
-    ///   before returning `Pending`, so any runtime that honours wakes polls it
-    ///   again at once: an idle app keeps one core at 100 %. Do not read `async`
-    ///   as idle. Sleeping until work arrives needs the executor-level readiness
-    ///   notifier ([`set_ready_notifier`](Self::set_ready_notifier), issue 2144)
-    ///   and the next deadline ([`next_deadline_us`](Self::next_deadline_us),
-    ///   issue 2143) wired to the task's `Waker`. Both exist, but `spin_async`
-    ///   does not use them yet (issue 2145), so the self-wake is still the only
-    ///   way a runtime learns to poll again. Where idle CPU matters, drive
-    ///   the executor from a blocking task with [`spin`](Self::spin) or
-    ///   [`spin_once`](Self::spin_once) instead.
+    /// * **It sleeps on arrivals only where the executor can hear them, and on
+    ///   time only if you give it a timer.** After a pass that did no work it
+    ///   registers the task's `Waker` with the executor's readiness path (the
+    ///   one [`set_ready_notifier`](Self::set_ready_notifier) uses, issue 2144;
+    ///   the two coexist) and returns `Pending` WITHOUT waking itself, so an
+    ///   idle app costs no CPU. Two cases still wake themselves, i.e. busy-loop:
+    ///   - a poll-only backend ([`ready_notifier_supported`] is `false`: XRCE,
+    ///     uORB's polling build, a bare-metal smoltcp session), which learns of
+    ///     an arrival only inside a pass, so the pass must keep running;
+    ///   - a pending deadline ([`next_deadline_us`](Self::next_deadline_us),
+    ///     issue 2143: a timer, a backend keepalive) with no timer to sleep on.
+    ///     A runtime-agnostic future owns no clock, so this method cannot sleep
+    ///     until a deadline; [`spin_async_with_sleep`] can, with the runtime's
+    ///     own sleep. Prefer it whenever the runtime has one.
+    ///
+    /// Where neither is available and idle CPU matters, drive the executor
+    /// from a blocking task with [`spin`](Self::spin) or
+    /// [`spin_once`](Self::spin_once) instead.
+    ///
+    /// [`ready_notifier_supported`]: Self::ready_notifier_supported
+    /// [`spin_async_with_sleep`]: Self::spin_async_with_sleep
     ///
     /// # Usage patterns
     ///
@@ -13918,15 +13938,121 @@ impl<'s> Executor<'s> {
     /// }
     /// ```
     pub async fn spin_async(&mut self) -> ! {
+        self.spin_async_inner::<fn(core::time::Duration) -> core::future::Pending<()>, _>(None)
+            .await
+    }
+
+    /// [`spin_async`](Self::spin_async) with the runtime's sleep, so an idle
+    /// executor sleeps until its next deadline as well as until an arrival
+    /// (issue 2145).
+    ///
+    /// `sleep(d)` returns a future that completes after about `d`: tokio's
+    /// `|d| tokio::time::sleep(d)`, Embassy's
+    /// `|d| embassy_time::Timer::after_micros(d.as_micros() as u64)`. After a
+    /// pass that did no work, the task waits for whichever comes first, an
+    /// arrival or that sleep over [`next_deadline_us`](Self::next_deadline_us),
+    /// then runs the next pass. A sleep that ends early only costs a pass; one
+    /// that ends late delays a timer by as much.
+    ///
+    /// A poll-only backend still busy-loops, as `spin_async` documents: it has
+    /// no arrival to wait for, and the deadline is not when its samples come.
+    pub async fn spin_async_with_sleep<S, F>(&mut self, sleep: S) -> !
+    where
+        S: FnMut(core::time::Duration) -> F,
+        F: core::future::Future<Output = ()>,
+    {
+        self.spin_async_inner(Some(sleep)).await
+    }
+
+    /// Issue 2145 -- the one loop behind both async spins.
+    ///
+    /// Order matters for the lost-wake race: the task's `Waker` is registered
+    /// BEFORE the pass, so an arrival during or after the pass wakes the task,
+    /// and the next poll runs another pass. The wait therefore never checks a
+    /// flag: any re-poll means something happened (or a spurious wake, which
+    /// costs one pass).
+    async fn spin_async_inner<S, F>(&mut self, mut sleep: Option<S>) -> !
+    where
+        S: FnMut(core::time::Duration) -> F,
+        F: core::future::Future<Output = ()>,
+    {
+        use core::task::Poll;
+        /// Wake ourselves and return `Pending` once: the runtime polls again
+        /// at once, after giving its other tasks a turn.
+        async fn yield_once() {
+            let mut first = true;
+            core::future::poll_fn(|cx| {
+                if core::mem::take(&mut first) {
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                } else {
+                    Poll::Ready(())
+                }
+            })
+            .await
+        }
         loop {
-            // Issue 2145 — ZERO, never a budget: a non-zero `spin_once` parks
-            // the calling thread, which here is the async runtime's.
-            self.spin_once(core::time::Duration::ZERO);
-            core::future::poll_fn::<(), _>(|cx| {
-                cx.waker().wake_by_ref();
-                core::task::Poll::Pending
+            let (worked, armed) = core::future::poll_fn(|cx| {
+                let armed = self.arm_async_waker(cx.waker());
+                // Issue 2145 — ZERO, never a budget: a non-zero `spin_once`
+                // parks the calling thread, which here is the async runtime's.
+                let worked = self.spin_once(core::time::Duration::ZERO).any_work();
+                Poll::Ready((worked, armed))
             })
             .await;
+            let deadline_us = self.next_deadline_us();
+            let sleep_for = match (worked, armed, deadline_us, sleep.as_mut()) {
+                // More may be ready, or nothing can tell us when it is, or a
+                // deadline is due: yield once and run another pass.
+                (true, ..) | (_, false, ..) | (_, _, Some(0), _) | (_, _, Some(_), None) => {
+                    yield_once().await;
+                    continue;
+                }
+                (_, _, None, _) => None,
+                (_, _, Some(us), Some(sleep)) => Some(sleep(core::time::Duration::from_micros(us))),
+            };
+            let mut sleep_for = core::pin::pin!(sleep_for);
+            let mut first = true;
+            core::future::poll_fn(|cx| {
+                if let Some(f) = sleep_for.as_mut().as_pin_mut()
+                    && f.poll(cx).is_ready()
+                {
+                    return Poll::Ready(());
+                }
+                if core::mem::take(&mut first) {
+                    Poll::Pending
+                } else {
+                    Poll::Ready(())
+                }
+            })
+            .await;
+        }
+    }
+
+    /// Issue 2145 -- register `waker` to be woken on the next arrival, and say
+    /// whether one WILL wake it. `false` when this executor cannot hear an
+    /// arrival outside a spin ([`ready_notifier_supported`]), so the caller
+    /// must keep polling.
+    ///
+    /// [`ready_notifier_supported`]: Self::ready_notifier_supported
+    fn arm_async_waker(&mut self, waker: &core::task::Waker) -> bool {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        {
+            if !self.ready_notifier_supported() {
+                return false;
+            }
+            self.wake_ctx_ptr();
+            self.wake_ctx
+                .as_ref()
+                .expect("just set")
+                .task_waker
+                .register(waker);
+            true
+        }
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        {
+            let _ = waker;
+            false
         }
     }
 

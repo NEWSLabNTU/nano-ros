@@ -30,8 +30,8 @@ arrived during the wait, all 10 callbacks fire in a single
 `spin_once`, then timer / GC dispatch happens once afterwards.
 
 This is the right default for **cooperative single-task** apps and
-for **async-runtime** apps using `spin_async` (a busy loop today —
-see [Async runtime](#async-runtime)). Both want
+for **async-runtime** apps using `spin_async` /
+`spin_async_with_sleep` (see [Async runtime](#async-runtime)). Both want
 throughput; neither benefits from per-callback scheduling
 opportunities.
 
@@ -121,25 +121,39 @@ slot, that callback's WCET is your design constraint.)
 
 ### Async runtime
 
-`spin_async` is NOT waker-driven. Each poll runs one non-blocking
-`spin_once(Duration::ZERO)` pass — it never parks the runtime's thread,
-so sibling futures on a single-threaded runtime are not held up by it —
-and then wakes ITSELF before returning `Pending`. Any runtime that
-honours wakes polls it again at once, so an idle app keeps one core at
-100 % (issue 2145). The executor now has what sleeping until work
-arrives needs — a readiness notifier (`set_ready_notifier`, issue 2144)
-and a public next deadline (`next_deadline_us`, issue 2143) — but
-`spin_async` does not register the task's `Waker` with them yet.
+Each poll runs one non-blocking `spin_once(Duration::ZERO)` pass. It
+never parks the runtime's thread, so sibling futures on a
+single-threaded runtime are not held up by it (issue 2145). After a pass
+that did no work, the task sleeps until it is woken by either:
+
+- **an arrival.** The task's `Waker` is registered with the executor's
+  readiness path, the same one `set_ready_notifier` uses (issue 2144).
+- **the next deadline.** This needs the runtime's sleep, so it applies
+  only to `spin_async_with_sleep`. The deadline is the next timer or
+  backend keepalive (`next_deadline_us`, issue 2143).
 
 ```rust
-executor.spin_async().await
+// tokio
+executor.spin_async_with_sleep(tokio::time::sleep).await
+// Embassy
+executor
+    .spin_async_with_sleep(|d| embassy_time::Timer::after_micros(d.as_micros() as u64))
+    .await
 ```
 
-No knobs apply. Pick it when the app is async anyway and a busy core
-is acceptable (a host process, a short-lived tool). Where idle CPU or
-power matters, drive the executor from a blocking task with `spin` /
-`spin_once(timeout)` instead, and hand results to async code over a
-channel.
+Two cases still wake themselves on every poll, which keeps one core at
+100 %:
+
+- **A poll-only backend** (XRCE, uORB's polling build, a bare-metal
+  smoltcp session). It learns of an arrival only inside a pass, so
+  `ready_notifier_supported()` is `false`.
+- **Plain `spin_async()` with any deadline pending.** It has no timer to
+  sleep on. zenoh always has one, its keepalive, so on zenoh use
+  `spin_async_with_sleep`.
+
+Where neither variant can sleep and idle CPU matters, drive the executor
+from a blocking task with `spin` / `spin_once(timeout)` and hand results
+to async code over a channel.
 
 ## Trade-offs at a glance
 
@@ -148,7 +162,7 @@ channel.
 | drain-all (default) | High | Bounded by ALL ready callbacks' total WCET | Poor under load | Smallest |
 | `max_callbacks(1)` | Slightly lower (more spin loop iterations) | Bounded by ONE callback's WCET | Good | Same — the cap is just an integer |
 | `timeout_ms(N)` per cycle | Lower | Bounded by N ms wall clock + one callback's WCET | Good if N tight | One clock read per iteration |
-| async / `spin_async` | High, at 100 % of one core even when idle (self-waking poll, issue 2145) | One non-blocking pass per poll; never parks the runtime thread | Cooperative — futures yield voluntarily | Async runtime cost |
+| async / `spin_async_with_sleep` | High; idle costs nothing where the backend wakes on arrival (100 % of a core on a poll-only backend, issue 2145) | One non-blocking pass per poll; never parks the runtime thread | Cooperative — futures yield voluntarily | Async runtime cost |
 
 ## Backends and their wait primitives
 

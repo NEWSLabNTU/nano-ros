@@ -2,7 +2,7 @@
 //!
 //! Demonstrates the async action client pattern:
 //! 1. Create executor → create action client (owned, no lifetime to executor)
-//! 2. Move executor to a background `spin_async()` task
+//! 2. Move executor to a background `spin_async_with_sleep()` task
 //! 3. `.await` the goal acceptance Promise directly
 //! 4. Stream feedback with `futures::StreamExt` combinators
 //! 5. `.await` the get_result Promise
@@ -64,7 +64,9 @@ async fn main() {
             // Spawn spin_async() as a background task on the same thread.
             // This drives I/O so action messages can arrive.
             tokio::task::spawn_local(async move {
-                executor.spin_async().await;
+                // tokio's sleep lets an idle executor sleep until its next
+                // deadline instead of polling (issue 2145).
+                executor.spin_async_with_sleep(tokio::time::sleep).await;
             });
 
             // ── Step 1: Send goal and await acceptance ──────────────

@@ -96,7 +96,7 @@ what is missing:
 |---|---|---|---|
 | **Drive** | run ready work without giving up the thread | `spin_once(timeout)`, `spin_some(max)` (`spin_some(ZERO)` drains without blocking) | none, apart from stability (D2.1) |
 | **Wake in** | make a parked or later spin notice new work, from a thread, an ISR or a signal handler | `wake()` (any context, `AtomicBool`); `wake_handle()` (needs `alloc`); `signal_fd()` (Linux, `signal-fd-wake` feature) | none for waking. But `signal_fd()` is a WRITE end for signal handlers, not a readable readiness fd, so a GLib or Qt loop cannot watch it. That is the next row's gap |
-| **Readiness out** | learn that work arrived, so the host can schedule a spin | `set_ready_notifier(fn, ctx)` (issue 2144): one notifier per executor, called on every arrival and every cross-thread guard trigger; `ready_fd()` (Linux, `signal-fd-wake`), a readable eventfd over the same moments; C `rclc_executor_set_ready_notifier`, C++ `rclcpp::Executor::set_ready_notifier`. A poll-only backend refuses (`ready_notifier_supported()`) | **`spin_async()` does not use it yet.** It still wakes ITSELF on every poll, so under Embassy or tokio it is a busy loop. Its pass no longer blocks the async executor's thread (issue 2145: `spin_once(1 ms)` became `spin_once(ZERO)`); sleeping until work arrives is what this row's notifier is for |
+| **Readiness out** | learn that work arrived, so the host can schedule a spin | `set_ready_notifier(fn, ctx)` (issue 2144): one notifier per executor, called on every arrival and every cross-thread guard trigger; `ready_fd()` (Linux, `signal-fd-wake`), a readable eventfd over the same moments; C `rclc_executor_set_ready_notifier`, C++ `rclcpp::Executor::set_ready_notifier`. A poll-only backend refuses (`ready_notifier_supported()`) | **closed for async (issue 2145).** `spin_async()` registers its task's `Waker` on the same path, beside the host notifier, and returns `Pending` without a self-wake after an idle pass. `spin_async_with_sleep(sleep)` also sleeps until the next deadline. A poll-only backend still self-wakes |
 | **Time out** | know when the executor next needs to run, so the host can sleep exactly that long | internally, `next_wake_bound_us` is the minimum over timers, backend, routes and wake sources (RFC-0106). Publicly, only `route_next_due_us()` and the per-timer `timer_time_until_next_call_ns(id)` | **closed (issue 2143).** `Executor::next_deadline_us() -> Option<u64>`, with `rclc_executor_get_next_deadline_ns` (C) and `rclcpp::Executor::next_deadline_us` (C++) |
 | **Defer** | run a callback in the framework's own task instead of inline | `set_deferred(handle, true)` + `set_defer_notifier(fn(ctx, HandleId), ctx)`; the spin queues a ready deferred callback and notifies, the host runs it with `run_deferred()` / `run_deferred_handle(handle)` (issue 2146) | none for a hand-written host. The RTIC emit still runs on the older macro-only slot registry (`register_dispatch_slot` / `__nros_node_<pkg>_on_callback`); moving it onto this queue is issue 2161 |
 
@@ -128,7 +128,8 @@ recorded here so that it is decided once:
   the acceptance predicate is the one the executor's own park trusts (a live
   async wake plus a wake primitive). On top of it:
   - a `Waker`-based `spin_async()` that returns `Pending` until notified, which
-    replaces the self-waking loop;
+    replaces the self-waking loop — landed with `spin_async_with_sleep` for
+    the deadline half (issue 2145);
   - an optional readable fd on Linux for GLib, Qt and epoll loops — landed
     as `Executor::ready_fd()` (issue 2144).
 - **Defer:** a hand-callable form of the dispatch ring (enqueue in the RMW

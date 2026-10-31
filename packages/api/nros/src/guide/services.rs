@@ -29,7 +29,7 @@
 //!
 //! ## Async (background spin task)
 //!
-//! Spawn `spin_async()` as a background task, then `.await` promises:
+//! Spawn `spin_async_with_sleep()` as a background task, then `.await` promises:
 //!
 //! ```ignore
 //! use nros::prelude::*;
@@ -47,7 +47,7 @@
 //!     let local = tokio::task::LocalSet::new();
 //!     local.run_until(async move {
 //!         tokio::task::spawn_local(async move {
-//!             executor.spin_async().await;
+//!             executor.spin_async_with_sleep(tokio::time::sleep).await;
 //!         });
 //!         let reply = client.call(&AddTwoIntsRequest { a: 1, b: 2 })
 //!             .unwrap().await.unwrap();
@@ -57,7 +57,9 @@
 //! ```
 //!
 //! The Promise and `spin_async()` APIs use only `core::future` — no
-//! external runtime dependency.  They work on `no_std`/no_alloc targets.
+//! external runtime dependency. `spin_async_with_sleep` takes the runtime's
+//! sleep so an idle executor also sleeps until its next deadline; plain
+//! `spin_async()` has no timer and polls while any deadline is pending.  They work on `no_std`/no_alloc targets.
 //! For async combinators (`select`, `join`), add `embassy-futures`.
 //!
 //! See `examples/linux/rust/service-client-async/` (tokio) for a complete
