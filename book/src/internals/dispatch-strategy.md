@@ -306,7 +306,8 @@ fn main() {
 installs the notifier above for a host that pends a task per callback, and
 `NROS_DEFERRED_COMPONENTS` lists what was deferred. `nros::main!` ignores the
 key: the board's loop is the only task there, so a deferral would queue
-callbacks nothing drains (RTIC's queue is issue 2161). The worked example is
+callbacks nothing drains. RTIC's `nros::main!` runs callbacks inline in its
+`__nros_run` task too (issue 2161). The worked example is
 `examples/linux/rust/listener-host-loop`, whose cell asserts both the
 deliveries and the drain's marker line.
 

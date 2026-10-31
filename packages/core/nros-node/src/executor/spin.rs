@@ -1661,61 +1661,6 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb_from_isr(ctx: *mut core
     unsafe { nros_rmw_runtime_wake_cb(ctx) };
 }
 
-/// Phase 216 follow-up — per-Node dispatch trampoline registered with
-/// [`Executor::register_dispatch_slot`].
-///
-/// The board-side dispatch task (RTIC `__nros_run` / Embassy
-/// `__nros_run_task`) dequeues a `nros_platform::SignaledCallback`
-/// envelope and forwards `(cb_id, ctx_ptr)` into
-/// [`Executor::dispatch_callback`]; that method linear-scans this
-/// slot table and invokes every registered `on_callback` with the
-/// owning Node's per-Node `state` blob. Each Node's
-/// `__nros_node_<pkg>_on_callback` self-filters on its own
-/// `CallbackId` tag set, so a slot whose Node doesn't own this
-/// callback is a cheap no-op string compare.
-///
-/// The shape mirrors the per-pkg `__nros_node_<pkg>_on_callback`
-/// extern "C" trampoline emitted by the `nros::node!()` macro
-/// (see `packages/core/nros-macros/src/lib.rs` Phase 216.A.5).
-///
-/// # Why not `linkme`
-///
-/// `linkme::distributed_slice` hangs on bare-metal Cortex-M /
-/// RISC-V because `cortex_m_rt`'s link script doesn't provide the
-/// `__start_/__stop_` section anchors in a shape that lets the
-/// iterator terminate (see
-/// `packages/rmw/cffi/src/section.rs` Phase 142). Since
-/// stm32f4 RTIC / Embassy boards are the whole point of Phase 216,
-/// the registry uses the explicit `register()` pattern from Phase
-/// 104.A.
-#[derive(Clone, Copy)]
-pub struct DispatchSlot {
-    /// Owning Node's `State` blob — produced by the macro-emitted
-    /// `i()` and round-tripped through
-    /// `nros::__macro::__private_node_state_into_raw`. Opaque to the
-    /// executor.
-    pub state: *mut core::ffi::c_void,
-    /// Per-Node `extern "C"` trampoline; signature matches the
-    /// `__nros_node_<pkg>_on_callback` symbol the `nros::node!()`
-    /// macro emits.
-    pub on_callback: unsafe extern "C" fn(
-        state: *mut core::ffi::c_void,
-        cb_id_ptr: *const u8,
-        cb_id_len: usize,
-        ctx: *mut core::ffi::c_void,
-    ),
-}
-
-// SAFETY: `DispatchSlot` carries two raw pointers (`state` + an
-// extern "C" fn pointer). The fn pointer is `Send`/`Sync` by
-// definition; the `state` pointer's `Send`/`Sync` story matches the
-// owning `Executor` (which is `unsafe impl Send`). Treating the
-// slot itself as `Send` keeps the existing `Executor` Send impl
-// intact — see `unsafe impl Send for Executor {}` later in this
-// file.
-unsafe impl Send for DispatchSlot {}
-unsafe impl Sync for DispatchSlot {}
-
 /// Phase 258 (Track 2, 2a) — executor-owned component tick slot.
 ///
 /// The layering-clean half of the W0-B `install` seam's tick fix
@@ -1728,8 +1673,8 @@ unsafe impl Sync for DispatchSlot {}
 /// service-client/action poll gap that the callback-`Arc`-only
 /// lifetime left open.
 ///
-/// Like [`DispatchSlot`] the executor only sees raw pointers + `extern
-/// "C"` fn pointers (no `nros` dep — `nros-node` is the lower layer):
+/// The executor only sees raw pointers + `extern "C"` fn pointers (no
+/// `nros` dep — `nros-node` is the lower layer):
 ///
 /// * `state` — a *leaked* `Arc<ComponentCell>` (via `Arc::into_raw`),
 ///   re-borrowed by the `nros`-side `tick`/`drop` fns. Unlike a
@@ -1742,10 +1687,6 @@ unsafe impl Sync for DispatchSlot {}
 /// * `drop` — `nros`-side `extern "C"` fn run on `Executor::drop` that
 ///   reconstitutes + drops the leaked `Arc`, so the executor owns the
 ///   cell's lifetime.
-///
-/// Kept a SEPARATE registry from [`DispatchSlot`] on purpose: framework
-/// dispatch (RTIC / Embassy) is interrupt-driven, name-keyed, and has no
-/// tick/own concern — mixing the two risks that path.
 #[derive(Clone, Copy)]
 pub struct ComponentSlot {
     /// Leaked `Arc<ComponentCell>` (opaque to the executor). Owned by
@@ -1764,8 +1705,7 @@ pub struct ComponentSlot {
     pub level: u8,
 }
 
-// SAFETY: same story as `DispatchSlot` — two raw pointers + two extern
-// "C" fn pointers. The `state` pointer's Send/Sync matches the owning
+// SAFETY: two raw pointers + two extern "C" fn pointers. The `state` pointer's Send/Sync matches the owning
 // `Executor` (`unsafe impl Send for Executor`); the fn pointers are
 // Send/Sync by definition.
 unsafe impl Send for ComponentSlot {}
@@ -2155,32 +2095,11 @@ pub struct Executor<'s> {
     /// installs once before any tier is set up. A borrow of `.rodata`, never
     /// a copy.
     pub(crate) launch_remaps: Option<&'static [super::launch_remap::LaunchRemap]>,
-    /// Phase 216 follow-up — per-Node dispatch trampoline registry.
-    ///
-    /// Populated by [`Executor::register_dispatch_slot`]; walked by
-    /// [`Executor::dispatch_callback`] each time the board-side
-    /// dispatch task hands off a `SignaledCallback` envelope.
-    /// Sized by `MAX_NODES` because the upper-bound is one slot per
-    /// Node pkg deployed on this executor (the same upper bound used
-    /// by `nodes` and `extra_sessions`). `MAX_NODES` is driven by the
-    /// `NROS_EXECUTOR_MAX_NODES` build-script env var (default 4);
-    /// boards that deploy more Node pkgs raise it at build time.
-    ///
-    /// Default is `heapless::Vec::new()` (empty) — Nodes register
-    /// themselves explicitly via the `register_dispatch_slot` API.
-    /// The fallback shape avoids the `linkme` hazard on bare-metal
-    /// Cortex-M / RISC-V (see `DispatchSlot` doc).
-    ///
-    /// phase-409 — CARVED (sized by `ExecutorSizing::nodes`, which is what
-    /// `MAX_NODES` now seeds).
-    pub(crate) dispatch_slots: super::storage::CarvedVec<'s, DispatchSlot>,
     /// Phase 258 (Track 2, 2a) — executor-owned component tick registry.
     /// Enrolled by [`Executor::enroll_component`] (from `nros`'s
     /// `install`/`register_node_borrowed`); each slot's `tick` runs at the
     /// tail of [`spin_once`](Self::spin_once); each slot's `drop` runs on
-    /// `Executor::drop`. Bounded `MAX_NODES` (matches `dispatch_slots` /
-    /// `nodes`). See [`ComponentSlot`] for why it's separate from
-    /// `dispatch_slots`.
+    /// `Executor::drop`. Bounded `MAX_NODES` (matches `nodes`).
     ///
     /// phase-409 — CARVED.
     pub(crate) component_slots: super::storage::CarvedVec<'s, ComponentSlot>,
@@ -2701,7 +2620,6 @@ impl<'s> Executor<'s> {
             extra_sessions,
             extra_session_ids,
             node_sched_table,
-            dispatch_slots,
             component_slots,
             active_groups,
             group_sched_table,
@@ -2760,7 +2678,6 @@ impl<'s> Executor<'s> {
             remap_table: remaps,
             remap_len: 0,
             launch_remaps: None,
-            dispatch_slots,
             component_slots,
             deferred_mask: 0,
             deferred_pending: 0,
@@ -7109,53 +7026,6 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Phase 216 follow-up — register a per-Node dispatch trampoline.
-    ///
-    /// The board-side Entry pkg (or the macro-emitted
-    /// `register_dispatch(executor)` wrapper, once wired) calls this
-    /// once per deployed Node pkg, handing in the
-    /// `__nros_node_<pkg>_on_callback` symbol + the Node's per-pkg
-    /// `state` blob. [`Executor::dispatch_callback`] then linear-scans
-    /// the registered slots when the dispatch task hands off a
-    /// `SignaledCallback`.
-    ///
-    /// Returns `Err(())` when the registry is full (`MAX_NODES`
-    /// entries — raise via `NROS_EXECUTOR_MAX_NODES` at build time).
-    ///
-    /// # Safety
-    ///
-    /// `state` must outlive the executor (the typical shape is a
-    /// `*mut State` produced by
-    /// `nros::__macro::__private_node_state_into_raw` from the
-    /// macro-emitted `i()`; that pointer's lifetime IS the
-    /// `Executor`'s by construction). `on_callback` must be safe to
-    /// invoke with `(state, cb_id_ptr, cb_id_len, ctx)` matching the
-    /// per-Node `__nros_node_<pkg>_on_callback` ABI emitted by the
-    /// `nros::node!()` macro (Phase 216.A.5).
-    #[doc(hidden)]
-    #[allow(clippy::result_unit_err)]
-    pub fn register_dispatch_slot(
-        &mut self,
-        state: *mut core::ffi::c_void,
-        on_callback: unsafe extern "C" fn(
-            *mut core::ffi::c_void,
-            *const u8,
-            usize,
-            *mut core::ffi::c_void,
-        ),
-    ) -> Result<(), ()> {
-        self.dispatch_slots
-            .push(DispatchSlot { state, on_callback })
-            .map_err(|_| ())
-    }
-
-    /// Phase 216 follow-up — current registered dispatch-slot count.
-    /// Diagnostic / test surface.
-    #[doc(hidden)]
-    pub fn dispatch_slot_count(&self) -> usize {
-        self.dispatch_slots.len()
-    }
-
     /// Phase 258 (Track 2, 2a) — enroll a component into the executor-owned
     /// tick registry. Called by `nros`'s `install`/`register_node_borrowed`
     /// after it builds the `Arc<ComponentCell>`: `state` is the leaked
@@ -7214,75 +7084,6 @@ impl<'s> Executor<'s> {
     #[doc(hidden)]
     pub fn enrolled_component_states(&self) -> impl Iterator<Item = *mut core::ffi::c_void> + '_ {
         self.component_slots.iter().map(|slot| slot.state)
-    }
-
-    /// Phase 216 final dispatch hook — stable entry point the
-    /// framework's dispatch task (RTIC `__nros_run` /
-    /// Embassy `__nros_run_task`) calls for each `SignaledCallback`
-    /// envelope it dequeues from the board-side SPSC / Embassy
-    /// channel.
-    ///
-    /// ## Signature shape
-    ///
-    /// `nros-node` sits below `nros` in the dep graph, so the typed
-    /// `nros::CallbackId<'_>` / `nros::CallbackCtx<'_>` types
-    /// referenced in the Phase 216 design notes cannot appear in the
-    /// signature here. The macro emit translates the dequeued
-    /// envelope to the layer-clean `(cb_id: &str, ctx: *mut c_void)`
-    /// pair before calling this method; the per-Node `on_callback`
-    /// trampoline ABI (Phase 216.A.5,
-    /// `__nros_node_<pkg>_on_callback(state, cb_id_ptr, cb_id_len,
-    /// ctx)`) uses the same untyped shape on the other side of the
-    /// fence, so the round-trip stays type-consistent.
-    ///
-    /// ## Body — linear scan of the dispatch registry
-    ///
-    /// Each registered `DispatchSlot` holds an
-    /// `__nros_node_<pkg>_on_callback` fn pointer + the owning Node's
-    /// `state` blob. The macro-emitted trampoline body
-    /// `match`es on `CallbackId` tags the Node declared and is a
-    /// no-op for non-matching `cb_id`s — at most one Node per
-    /// `cb_id` actually acts, the rest are cheap string-compare
-    /// no-ops. This mirrors the strategy
-    /// `ExecutorNodeRuntime::dispatch_callback` uses in
-    /// `packages/api/nros/src/node_runtime.rs:470`.
-    ///
-    /// ## What's NOT auto-wired today
-    ///
-    /// The `nros::node!()` macro doesn't yet emit a
-    /// `register_dispatch(executor)` wrapper that pushes the per-pkg
-    /// `(state, on_callback)` into this registry. Until that wiring
-    /// lands (Phase 216 follow-up — see commit msg), downstream
-    /// consumers (board's `init_hardware`, or the codegen-emitted
-    /// `run_plan`) must call
-    /// [`Executor::register_dispatch_slot`] explicitly with the
-    /// `__nros_node_<pkg>_on_callback` symbol + a `state` blob from
-    /// the macro-emitted `i()`.
-    //
-    // `ctx` is an opaque FFI cookie forwarded verbatim to each slot's
-    // `on_callback`; this fn never dereferences it (the registered callback
-    // does, under the `register_dispatch_slot` safety contract), so it is sound
-    // to call from safe code.
-    #[doc(hidden)]
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub fn dispatch_callback(&mut self, cb_id: &str, ctx: *mut core::ffi::c_void) {
-        let cb_id_ptr = cb_id.as_ptr();
-        let cb_id_len = cb_id.len();
-        // Snapshot pointer + length to avoid an outstanding borrow
-        // across the unsafe fn calls below; each `DispatchSlot` is
-        // `Copy`, so iterating by value sidesteps any aliasing
-        // worry the borrow checker would flag if a slot's
-        // `on_callback` re-entered the executor.
-        for slot in self.dispatch_slots.iter().copied() {
-            // SAFETY: caller of `register_dispatch_slot` guaranteed
-            // `state` outlives the executor + `on_callback` matches
-            // the per-Node `__nros_node_<pkg>_on_callback` ABI;
-            // `cb_id_ptr`/`cb_id_len` describe the live `&str` the
-            // caller passed in.
-            unsafe {
-                (slot.on_callback)(slot.state, cb_id_ptr, cb_id_len, ctx);
-            }
-        }
     }
 
     /// Get a reference to the underlying session.
@@ -17351,119 +17152,6 @@ impl<'s> Drop for Executor<'s> {
     }
 }
 
-#[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
-mod dispatch_registry_tests {
-    //! Phase 216 follow-up — `Executor::register_dispatch_slot` +
-    //! `Executor::dispatch_callback` round-trip.
-    //!
-    //! Uses `MockSession` (same pattern as
-    //! `lifecycle_services::tests::mock_integration`) so the test
-    //! doesn't need a live RMW backend. Gated `not(feature =
-    //! "rmw-cffi")` because under `rmw-cffi` the `ConcreteSession`
-    //! type alias resolves to the cffi session, which `MockSession`
-    //! can't impersonate.
-
-    extern crate alloc;
-
-    use super::Executor;
-    use crate::mock::MockSession;
-    use std::sync::Mutex;
-
-    static CAPTURED: Mutex<alloc::vec::Vec<(usize, alloc::vec::Vec<u8>, usize)>> =
-        Mutex::new(alloc::vec::Vec::new());
-
-    /// Test trampoline matching the per-Node
-    /// `__nros_node_<pkg>_on_callback` ABI shape (Phase 216.A.5).
-    unsafe extern "C" fn recording_on_callback(
-        state: *mut core::ffi::c_void,
-        cb_id_ptr: *const u8,
-        cb_id_len: usize,
-        ctx: *mut core::ffi::c_void,
-    ) {
-        // SAFETY: caller (test body below) holds storage live;
-        // `cb_id_ptr..len` points into a `&str` literal.
-        let cb_id_bytes = unsafe { core::slice::from_raw_parts(cb_id_ptr, cb_id_len).to_vec() };
-        let mut guard = CAPTURED.lock().expect("CAPTURED poisoned");
-        guard.push((state as usize, cb_id_bytes, ctx as usize));
-    }
-
-    #[test]
-    fn register_dispatch_slot_round_trip() {
-        let session = MockSession::new();
-        let mut executor: Executor = Executor::from_session(session);
-
-        // Pre-condition: empty registry.
-        assert_eq!(executor.dispatch_slot_count(), 0);
-
-        // Two distinct "states" so we prove every slot gets called
-        // with its OWN state.
-        let mut state_blob_a: u32 = 0xABCD_0001;
-        let mut state_blob_b: u32 = 0xABCD_0002;
-        let state_a_ptr = &mut state_blob_a as *mut u32 as *mut core::ffi::c_void;
-        let state_b_ptr = &mut state_blob_b as *mut u32 as *mut core::ffi::c_void;
-
-        executor
-            .register_dispatch_slot(state_a_ptr, recording_on_callback)
-            .expect("register slot A");
-        executor
-            .register_dispatch_slot(state_b_ptr, recording_on_callback)
-            .expect("register slot B");
-        assert_eq!(executor.dispatch_slot_count(), 2);
-
-        let mut ctx_blob: u32 = 0xFEED_BEEF;
-        let ctx_ptr = &mut ctx_blob as *mut u32 as *mut core::ffi::c_void;
-        let cb_id = "/talker/timer/publish";
-
-        CAPTURED.lock().expect("CAPTURED poisoned").clear();
-        executor.dispatch_callback(cb_id, ctx_ptr);
-
-        let captured = CAPTURED.lock().expect("CAPTURED poisoned").clone();
-        assert_eq!(
-            captured.len(),
-            2,
-            "every registered slot must be invoked — linear scan, \
-             no self-filter at the registry layer"
-        );
-        // The carved dispatch table iterates in insertion order.
-        assert_eq!(captured[0].0, state_a_ptr as usize, "slot A's state");
-        assert_eq!(captured[1].0, state_b_ptr as usize, "slot B's state");
-        for (idx, capture) in captured.iter().enumerate() {
-            assert_eq!(
-                capture.1.as_slice(),
-                cb_id.as_bytes(),
-                "slot {idx} cb_id bytes round-trip"
-            );
-            assert_eq!(
-                capture.2, ctx_ptr as usize,
-                "slot {idx} ctx pointer round-trip"
-            );
-        }
-    }
-
-    #[test]
-    fn register_dispatch_slot_capacity_full() {
-        let session = MockSession::new();
-        let mut executor: Executor = Executor::from_session(session);
-
-        let mut state_blob: u32 = 0;
-        let state_ptr = &mut state_blob as *mut u32 as *mut core::ffi::c_void;
-
-        // `MAX_NODES` slots fit; the next one must error.
-        for _ in 0..crate::config::MAX_NODES {
-            executor
-                .register_dispatch_slot(state_ptr, recording_on_callback)
-                .expect("under-capacity push must succeed");
-        }
-        assert_eq!(executor.dispatch_slot_count(), crate::config::MAX_NODES);
-        let overflow = executor.register_dispatch_slot(state_ptr, recording_on_callback);
-        assert!(
-            overflow.is_err(),
-            "over-capacity push must return Err(()) — raise \
-             NROS_EXECUTOR_MAX_NODES at build time to grow the registry"
-        );
-    }
-}
-
 /// Phase 274.W1 — borrowed-executor session sharing + active-groups gating.
 ///
 /// Validates three primitives introduced for RFC-0015 Model 1:
@@ -17471,8 +17159,8 @@ mod dispatch_registry_tests {
 ///   the borrowed executor does not own or close the session on drop).
 /// - `set_active_groups` + `group_active` (callback-group filter gating).
 ///
-/// Uses `MockSession` (same pattern as `dispatch_registry_tests`); gated
-/// `not(feature = "rmw-cffi")` for the same reason.
+/// Uses `MockSession`; gated `not(feature = "rmw-cffi")` because the mock
+/// session exists only there.
 #[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
 mod p274_w1_tier_executor_tests {
     use super::Executor;

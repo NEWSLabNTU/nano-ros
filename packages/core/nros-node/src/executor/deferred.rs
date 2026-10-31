@@ -5,8 +5,9 @@
 //! per callback class) wants the executor to find out WHAT is ready, and to
 //! run it LATER, in a task the host picks. Until this module the only form of
 //! that was the per-node `__nros_node_<pkg>_on_callback` slot ABI that
-//! `nros::node!` emits, so a caller that did not go through the macros could
-//! not use it.
+//! `nros::node!` emitted, so a caller that did not go through the macros could
+//! not use it. (Nothing ever filled or drained that registry; issue 2161
+//! retired it.)
 //!
 //! The shape is three calls on [`Executor`], with no macro-private type:
 //!

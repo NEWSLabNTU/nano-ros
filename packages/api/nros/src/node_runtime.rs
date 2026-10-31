@@ -28,7 +28,7 @@
 //! typed entries use. The codegen `run_plan(runtime)` body + `nros::main!`
 //! owned-spin loop drive one `register(runtime)?` per launch-XML `<node>`,
 //! then `runtime.spin()`. (The retired Phase 212.M.5.a four-fn-ptr BSP-baker
-//! ABI — `register_dispatch_slot` / ~~`nros_run_components`~~ — is gone.)
+//! ABI — ~~`register_dispatch_slot`~~ / ~~`nros_run_components`~~ — is gone.)
 //!
 //! ## Coverage today (Phase 212.M.5.a.2)
 //!
@@ -205,7 +205,7 @@ impl<C: ExecutableNode> ComponentSlot for TypedSlot<C> {
 
 // Phase 258 (Track 2, w5) — ~~`BspDispatchSlot`~~ (the type-erased
 // four-fn-ptr BSP dispatch slot) is gone with the retired
-// `register_dispatch_slot` / ~~`nros_run_components`~~ BSP-baker path. The
+// ~~`register_dispatch_slot`~~ / ~~`nros_run_components`~~ BSP-baker path. The
 // only remaining `ComponentSlot` impl is `TypedSlot<C>` above (used by
 // `register_node` / `register_node_borrowed` / `install_node_typed`).
 
@@ -1249,7 +1249,7 @@ impl ExecutorNodeRuntime {
         })
     }
 
-    // Phase 258 (Track 2, w5) — `register_dispatch_slot` (the four-fn-ptr
+    // Phase 258 (Track 2, w5) — ~~`register_dispatch_slot`~~ (the four-fn-ptr
     // BSP registration) is gone with the retired ~~`register_dispatch_slot_dyn`~~
     // bridge + ~~`nros_run_components`~~. Owned-spin / BSP entries now register
     // through `install_node_typed` (the uniform install seam).
@@ -2690,7 +2690,7 @@ impl ActionExecutor for RuntimeActions<'_> {
 
 // Phase 258 (Track 2, w5) — the typed BSP fn-ptr aliases (~~`NodeRegisterFn`~~ /
 // ~~`NodeInitFn`~~ / ~~`NodeDispatchFn`~~ / ~~`NodeTickFn`~~) are gone with the retired
-// `register_dispatch_slot` / ~~`nros_run_components`~~ BSP-baker path. The
+// ~~`register_dispatch_slot`~~ / ~~`nros_run_components`~~ BSP-baker path. The
 // macro-emitted `register(runtime)` wrapper now installs via the
 // `install_node_typed` seam (Track 2 w4).
 
@@ -3074,7 +3074,7 @@ where
 }
 
 // Phase 258 (Track 2, w5) — ~~`nros_run_components`~~ (the BSP shim that registered
-// every component via the four-fn-ptr `register_dispatch_slot` then spun) is
+// every component via the four-fn-ptr ~~`register_dispatch_slot`~~ then spun) is
 // gone. It had no callers; owned-spin / BSP entries register through the
 // `install_node_typed` seam + drive `ExecutorNodeRuntime::spin`.
 

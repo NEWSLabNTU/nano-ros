@@ -59,7 +59,6 @@ pub struct RegionUnits {
     pub concrete_session: RegionUnit,
     pub extra_session_id: RegionUnit,
     pub node_sched_entry: RegionUnit,
-    pub dispatch_slot: RegionUnit,
     pub component_slot: RegionUnit,
     pub group_name: RegionUnit,
     pub group_sched_entry: RegionUnit,
@@ -129,7 +128,6 @@ pub struct Offsets {
     pub extra_sessions: usize,
     pub extra_session_ids: usize,
     pub node_sched_table: usize,
-    pub dispatch_slots: usize,
     pub component_slots: usize,
     pub active_groups: usize,
     pub group_sched_table: usize,
@@ -205,7 +203,6 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
     let extra_sessions = place!(extra_slots, units.concrete_session);
     let extra_session_ids = place!(extra_slots, units.extra_session_id);
     let node_sched_table = place!(node_slots, units.node_sched_entry);
-    let dispatch_slots = place!(node_slots, units.dispatch_slot);
     let component_slots = place!(node_slots, units.component_slot);
     let active_groups = place!(node_slots, units.group_name);
     let group_sched_table = place!(cbs, units.group_sched_entry);
@@ -241,7 +238,6 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
         extra_sessions,
         extra_session_ids,
         node_sched_table,
-        dispatch_slots,
         component_slots,
         active_groups,
         group_sched_table,
