@@ -1,15 +1,16 @@
 ---
 id: 2169
 title: "The run command `nros build` prints is pinned by shape, not run on every tier-1/2 board"
-status: open
+status: resolved
 type: test-gap
 severity: low
 area: [cli, build, testing]
 related: [phase-517]
 found: 2026-10-31
+resolved: 2026-10-31
 ---
 
-**Home: [phase-517](../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — W6's done-when, "a command that, pasted, runs
+**Home: [phase-517](../../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — W6's done-when, "a command that, pasted, runs
 the image", holds only for the shapes the tests pin.
 
 ## What
@@ -33,3 +34,26 @@ a flag added in one place only, would pass every gate.
   chapter's literal line, and assert the same expected output.
 * A board with no track (FVP, SITL, flash-only hardware) states that, in the
   same table, rather than counting as covered.
+
+## Resolution
+
+A static check rather than a second boot. The installed probe tracks
+already prove each chapter's boot line runs its image, so the remaining
+question is whether the printed command is that line.
+`build_next::tests::every_probed_chapter_boot_line_is_the_printed_run_command`
+answers it for every chapter `probe-run` block that boots QEMU. There are
+seven, one row each, checked in both directions, so a new track cannot skip
+the check. It compares option groups, leaving out the kernel path and the
+QEMU location.
+
+Its first run found two drifts:
+
+* Both MPS2-AN385 boards printed a runner with no `-icount` and no NIC.
+  Their runners now carry the measured line; the single-source half is
+  issue 2172.
+* The ThreadX riscv64 chapter line had no `mac=`. The chapter now shows
+  the printed `52:54:00:12:34:56`, which is QEMU's own default.
+
+The simulator boards (`threadx-linux`, Zephyr native_sim) print the
+artifact path itself, which their chapters run, so they have no line to
+compare.
