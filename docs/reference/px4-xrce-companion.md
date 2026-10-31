@@ -60,7 +60,7 @@ just xrce agent udp/127.0.0.1:8888      # in the nano-ros checkout
 ```
 
 `just xrce agent` takes the locator in nano-ros's own spelling (`udp/`, `tcp/`,
-or `serial/<host device>#baudrate=<n>`) and starts the agent `just xrce setup`
+or `serial/<host device>#baudrate=<n>`) and starts the agent `just setup xrce`
 provisioned, so a serial link is `just xrce agent
 'serial//dev/ttyACM0#baudrate=921600'`. For PX4's side of other transports, see
 the PX4 uXRCE-DDS docs.
