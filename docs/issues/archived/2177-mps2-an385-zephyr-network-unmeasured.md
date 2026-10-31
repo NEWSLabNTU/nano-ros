@@ -39,7 +39,7 @@ it with `west build -t run`. Measured locally before the probe ran: the image
 boots under the Zephyr SDK's QEMU and prints `Publishing: N` / `I heard: N`
 through a host `rmw_zenohd` on `10.0.2.2:7447`.
 
-Getting there took eight defects on one road, each hidden behind the one before:
+Getting there took nine defects on one road, each hidden behind the one before:
 
 * `nros build` passed a board package's Zephyr files only to a GENERATED west
   application, on the assumption that a hand-written one calls
@@ -87,6 +87,13 @@ is the same split as the `zephyr` descriptor directory and the tier-1
   `set -e` aborted the set before it reached anything else. Measured on a staged
   SDK root. Those steps now skip, saying so, when the tree is absent; the pinned
   fork already carries each change, and the 4.4 set runs none of them.
+
+* With the set applied, the `zephyr` crate itself failed: `GpioPin::new`
+  "takes 6 arguments but 5 arguments were supplied", issue 0432's gpio
+  devicetree arity. Its fix, `zephyr-lang-rust-gpio-patch.sh`, was run by every
+  `just` lane beside the AArch64 and Cortex-R patches but was never in
+  `patches/3.7.sh`, the set `nros setup board` applies. It is now; a sweep of
+  the lanes' patch calls against the set finds no other one missing.
 
   The native_sim road has the same unpatched workspace and passes anyway,
   silently building with each crate's defaults: issue 2185.

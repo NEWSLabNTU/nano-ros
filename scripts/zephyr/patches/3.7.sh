@@ -38,6 +38,13 @@ bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying AArch64 / Cortex-R Rust patches (idempotent)..."
 bash ./scripts/zephyr/aarch64-rust-patch.sh "$WORKSPACE"
 bash ./scripts/zephyr/cortex-r-rust-patch.sh "$WORKSPACE"
+# Issue 0432 — the gpio pair, without which the `zephyr` crate does not compile
+# for any board with gpio nodes in its devicetree (mps2-an385:
+# `GpioPin::new` "takes 6 arguments but 5 arguments were supplied"). Every
+# `just` lane ran it beside the two above; this set, which is what `nros setup
+# board` applies to a reader's workspace, did not (issue 2177).
+echo "[zephyr setup] applying zephyr-lang-rust gpio patch (idempotent)..."
+bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 168.1 cargo-features patch (idempotent)..."
 bash ./scripts/zephyr/cargo-features-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 97.4 native_sim IPPROTO_IP patch (idempotent)..."
