@@ -182,6 +182,21 @@ def uncovered_qemu_blocks(chapters: dict[str, str], probes: list[dict]) -> list[
     return errs
 
 
+def board_key_errors(rows: list[dict], descriptor_names: set[str]) -> list[str]:
+    """`board_keys` (phase-522 W5) must name descriptors, once each."""
+    errs, owner = [], {}
+    for r in rows:
+        for k in r.get("board_keys") or []:
+            if k not in descriptor_names:
+                errs.append(f"{board_registry.row_name(r)}: board_keys names `{k}`, which no "
+                            "nros-board.toml descriptor names")
+            if k in owner:
+                errs.append(f"board key `{k}` is claimed by {owner[k]} and "
+                            f"{board_registry.row_name(r)}; one board is one row")
+            owner[k] = board_registry.row_name(r)
+    return errs
+
+
 def fixture_board_errors(fixtures: str, descriptor_names: set[str]) -> list[str]:
     errs = []
     for b in sorted(set(re.findall(r'NROS_BOARD\s*=\s*"([^"]+)"', fixtures))):
@@ -193,7 +208,12 @@ def fixture_board_errors(fixtures: str, descriptor_names: set[str]) -> list[str]
 
 def descriptor_names(root: Path) -> set[str]:
     names = set()
-    for f in sorted((root / "packages/boards").glob("*/nros-board.toml")):
+    # Tracked descriptors at any depth: a conf bundle sits under its family
+    # crate (`nros-board-zephyr/boards/fvp-aemv8r-smp/`, phase-337 W9.a).
+    tracked = subprocess.run(["git", "ls-files", "-z", "--", "packages/boards/**nros-board.toml"],
+                             cwd=root, capture_output=True, text=True, check=True).stdout
+    for rel in sorted(p for p in tracked.split("\0") if p):
+        f = root / rel
         doc = board_registry.load(f)
         boards = doc.get("board", [])
         boards = boards if isinstance(boards, list) else [boards]
@@ -261,6 +281,11 @@ def self_test(gen) -> None:
           "qemu_board": "b"}])
     fails(fixture_board_errors('NROS_BOARD = "ghost"', {"real"}),
           "a fixture row naming an undeclared board")
+    fails(board_key_errors([{"crate": "a", "board_keys": ["ghost"]}], {"real"}),
+          "a board key naming no descriptor")
+    fails(board_key_errors([{"crate": "a", "board_keys": ["k"]},
+                            {"crate": "b", "board_keys": ["k"]}], {"k"}),
+          "one board key claimed by two rows")
     # The retired gates' own negative controls run where they live:
     # check-board-tiers (tiers, maintainers, migration), board_registry (D10/D11,
     # round-trip, the stale-day degradation), check-book-board-run-sections
@@ -287,6 +312,7 @@ def main() -> int:
     chapters = {p.name: p.read_text() for p in sorted((ROOT / CHAPTERS).glob("*.md"))}
     errs += uncovered_qemu_blocks(chapters, reg.probes)
     errs += fixture_board_errors((ROOT / FIXTURES).read_text(), names)
+    errs += board_key_errors(reg.rows, names)
 
     # The absorbed gates run their own self-tests on entry and print their own
     # verdicts; their exit status is part of this one.

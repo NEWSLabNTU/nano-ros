@@ -44,6 +44,13 @@ pub struct Args {
     /// table is reported as a problem). When omitted, the cwd's `system.toml` is used if present.
     #[arg(long)]
     pub config: Option<PathBuf>,
+
+    /// Print the support status of every board the bringup's images name,
+    /// from the board support registry (RFC-0114, phase-522 W5), and stop: a
+    /// read-only report an adopter can file. Uses `--config`, else the cwd's
+    /// `system.toml`.
+    #[arg(long)]
+    pub report: bool,
 }
 
 /// phase-365 W5 — report a legacy UNVERSIONED install as removable.
@@ -259,6 +266,9 @@ fn install_report(store: &Path, exe: &Path, cwd: &Path) -> (Vec<String>, usize) 
 }
 
 pub fn run(args: Args) -> Result<()> {
+    if args.report {
+        return support_report(args.config.as_deref(), args.workspace);
+    }
     report_legacy_unversioned_installs();
 
     // RFC-0004 §4 — deploy-target health check. Resolve the bringup
@@ -335,6 +345,59 @@ pub fn run(args: Args) -> Result<()> {
     let problems = deploy_problems.unwrap_or(0) + gate_problems + install_problems;
     if problems > 0 {
         bail!("nros doctor: {problems} problem(s) (images + license gates + install)");
+    }
+    Ok(())
+}
+
+/// `nros doctor --report` — the registry status of every board the bringup's
+/// images name (phase-522 W5). Each line names the image, its board, the
+/// registry row that board's package carries and the status word on today's
+/// date, so the output is a record an adopter can file. A board no registry
+/// row covers is reported, never skipped.
+fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<()> {
+    let root = crate::cmd::board::catalog_root(workspace)?;
+    let status = crate::cmd::board_support::Status::load(&root)?;
+    let today = crate::cmd::board_support::today();
+    println!("nros doctor --report ({today})");
+    println!("  nros       {}", env!("CARGO_PKG_VERSION"));
+    println!("  registry   {}", status.path.display());
+    let Some(config) = resolve_config(config) else {
+        println!("  images     none: no system.toml here (pass --config <bringup>)");
+        return Ok(());
+    };
+    let raw =
+        std::fs::read_to_string(&config).wrap_err_with(|| format!("read {}", config.display()))?;
+    let system: SystemToml =
+        toml::from_str(&raw).wrap_err_with(|| format!("parse {}", config.display()))?;
+    println!("  bringup    {}", config.display());
+    let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+        .map_err(|e| eyre::eyre!("load board catalog: {e}"))?;
+    for id in system.image.keys() {
+        let img = system.image_for(id).expect("key just enumerated");
+        let Some(board) = img.board.as_deref() else {
+            println!("  image {id}: board derived from the image, not named; nothing to report");
+            continue;
+        };
+        let krate = catalog
+            .descriptors()
+            .iter()
+            .find(|d| d.answers_to(board))
+            .and_then(|d| crate::orchestration::board_projection::descriptor_dir(d, &root))
+            .and_then(|dir| dir.file_name().and_then(|n| n.to_str()).map(str::to_string));
+        let rows = status.rows_for_board(board, krate.as_deref());
+        if rows.is_empty() {
+            println!("  image {id}: board {board}: no board support registry row");
+            continue;
+        }
+        for r in rows {
+            println!(
+                "  image {id}: board {board} -> {}: {}; runs on {}; cadence {}",
+                r.key,
+                r.status_on(&today),
+                r.runs_on(),
+                r.cadence_text()
+            );
+        }
     }
     Ok(())
 }

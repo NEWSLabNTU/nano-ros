@@ -18,6 +18,9 @@ use nros_cli_core::codegen::entry::{board_to_rtos, pack::entry_pack_for};
 use nros_entry_lower::{BOARD_KEYS, BoardFamily, LoweredEntry, board_family, known_board_keys};
 use nros_lang::Language;
 
+// Issue 1659 -- every git the CLI tree spawns clears the inherited git env.
+include!("../../../tooling/nros-build-paths/src/git_env.rs");
+
 /// Every consumer, asked about every key in the table, gives the table's answer.
 #[test]
 fn every_table_key_maps_to_its_family_through_every_consumer() {
@@ -982,4 +985,61 @@ fn setup_keys_are_image_board_words() {
         bad.join("\n  ")
     );
     assert!(checked >= 10, "only {checked} setup keys checked");
+}
+
+/// phase-522 W5 — every board key a descriptor answers to reports a board
+/// support registry row, so `nros doctor --report` and `nros board show` have
+/// a status word for every board an image can name. The row comes from the
+/// registry's `board_keys` where one package carries several rows (or the
+/// descriptor sits in another directory), else from the descriptor's package
+/// directory.
+#[test]
+fn every_descriptor_board_key_reports_a_support_status() {
+    use nros_cli_core::cmd::board_support::Status;
+    let root = repo_root();
+    let status = Status::load(&root).expect("board support status file");
+    let listed = nros_git_command("git")
+        .args(["ls-files", "-z", "--", "packages/boards/**nros-board.toml"])
+        .current_dir(&root)
+        .output()
+        .expect("git ls-files");
+    let mut missing = Vec::new();
+    let mut seen = 0;
+    for rel in String::from_utf8_lossy(&listed.stdout)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+    {
+        let path = root.join(rel);
+        let doc: toml::Table = std::fs::read_to_string(&path).unwrap().parse().unwrap();
+        // The package directory: the first component under packages/boards/.
+        let krate = rel.split('/').nth(2).unwrap().to_string();
+        for board in doc
+            .get("board")
+            .and_then(|b| b.as_array())
+            .into_iter()
+            .flatten()
+        {
+            for name in board
+                .get("names")
+                .and_then(|n| n.as_array())
+                .into_iter()
+                .flatten()
+            {
+                let name = name.as_str().unwrap();
+                seen += 1;
+                let rows = status.rows_for_board(name, Some(&krate));
+                if rows.is_empty() {
+                    missing.push(format!("{name} ({rel})"));
+                }
+                for r in rows {
+                    assert!(!r.status.is_empty(), "{name}: {} has no status word", r.key);
+                }
+            }
+        }
+    }
+    assert!(seen > 10, "read only {seen} board keys");
+    assert!(
+        missing.is_empty(),
+        "board keys with no registry row: {missing:?}"
+    );
 }
