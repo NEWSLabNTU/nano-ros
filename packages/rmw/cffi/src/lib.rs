@@ -4066,7 +4066,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
             //
             // Not `Ok(None)`: every caller reads that as "no slot RIGHT NOW,
             // retry" (`LoanError::WouldBlock`, `loan_with_timeout` spinning its
-            // whole budget, `LoanFuture` self-waking forever), and no retry can
+            // whole budget), and no retry can
             // change a vtable. Not `LoanNotSupported` either: its doc bundles
             // "or the loan slot is currently in use", the transient reading.
             //

@@ -62,7 +62,7 @@ is propagated through the feature chain but does not add any API surface.
 - `node.create_client::<S>(name)` — service client
 - `client.call(&request)` — non-blocking, returns `Promise<Reply>`
 - `promise.take()` — poll for reply (returns `Ok(Some(reply))` or `Ok(None)`)
-- `promise.await` — async poll (implements `core::future::Future`)
+- `promise.wait(&mut executor, timeout)` — block, spinning the executor
 
 **Actions:**
 - `node.create_action_server::<A>(name)` / `node.create_action_client::<A>(name)`

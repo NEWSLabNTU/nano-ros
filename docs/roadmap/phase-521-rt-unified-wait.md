@@ -42,10 +42,15 @@ W0 (decisions, done)
 Landed as one change. Two things it found that the list below did not name:
 the nros-macros `'board` label block lost its only `break`, and `ci_lane`'s
 documented cell counts moved (tier 1 26 -> 25, tier 3 255 -> 254) with the
-`HostLoop` cell. **Left in place, for a decision:** the per-entity async
-receivers (`Subscription::recv().await`, `Promise: Future`,
-`FeedbackStream::recv`, the `stream` feature's `Stream` impls) — they need
-something else to spin the executor, and no in-tree code awaits them.
+`HostLoop` cell. A follow-up retired the per-entity async receivers too
+(maintainer ruling 2026-11-01): `Subscription::recv().await`,
+`RawSubscription::borrow().await`, `EmbeddedRawPublisher::loan().await` and
+`LoanFuture`, `Promise`'s `Future` impl and `poll_until_ready`, both feedback
+streams' `recv()`, and the `stream` feature's `Stream` impls. Each completed
+only while something else spun the executor, and no in-tree code awaited
+them. The sync forms (`try_*`, `wait_next`, `wait`, `loan_with_timeout`) and
+the RMW `register_waker` slot, which the executor and the C/C++ arrival
+callbacks use, stay.
 
 
 Delete RFC-0113 D7's list in one change:
@@ -73,8 +78,8 @@ Delete RFC-0113 D7's list in one change:
 - Ledger: the `api-parity-ledger` rows for the deleted symbols are reclassified
   (rclrs's `spin_async`-family rows become a stated non-adoption naming
   RFC-0113).
-- Promise's `Future` impl: keep it only if an owned path awaits it; otherwise
-  delete it here too.
+- Promise's `Future` impl: retired in the follow-up with the other async
+  receivers (no owned path awaits it).
 - `nros::setup!` (`nros-macros`), its `nros_setup` / `nros_deploy` emit,
   tests and book text (RFC-0113 D10), after phase-520's owner stands down.
 - Phase-520 W3's host-loop deferred surface (PR #2896), unless W1 finds an

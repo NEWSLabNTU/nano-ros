@@ -14,13 +14,13 @@ This page explains the shape of nros-node and how it differs from the three offi
 | Executor model | Single-threaded, polled | Single-/multi-threaded, owned thread | Single-threaded, polled | Single-threaded, polled |
 | Spin entry point | `rclc_executor_spin_some(&exec, timeout)` | `rclcpp::spin(node)` (blocks, owns thread) | `executor.spin()` (blocks current thread) | `executor.spin_once(timeout_ms)` |
 | Blocking primitive | None (callback-only) | `std::shared_future::wait_for(timeout)` | `Promise::wait(timeout)` (Tokio-style) | `Promise::wait(&mut executor, timeout_ms)` |
-| Async primitive | None | `std::shared_future` + `spin_until_future_complete` | `impl Future` | `Promise<T>` (impls `Future` + manual poll + executor-driven blocking wait) |
+| Async primitive | None | `std::shared_future` + `spin_until_future_complete` | `impl Future` | `Promise<T>` (manual poll + executor-driven blocking wait; no `Future` impl, RFC-0113) |
 | Heap requirement | Optional (static allocator) | Required | Required | Optional (caller buffers; only zenoh-pico transport heap) |
 | Threading requirement | None | Required (`std::thread`) | Required (`std::thread`) | None (single-threaded valid) |
 
-## Future / Promise as the unifying primitive
+## Promise as the unifying primitive
 
-The same `Promise<T>` value serves three usage patterns. None of the other client libraries achieves this with a single type.
+The same `Promise<T>` value serves two usage patterns. None of the other client libraries achieves this with a single type.
 
 **Pattern 1 -- callback-driven (no blocking call):**
 
@@ -40,11 +40,10 @@ let mut promise = client.call(&request)?;
 let reply = promise.wait(&mut executor, 5000)?;  // blocks up to 5s, drives I/O
 ```
 
-**Pattern 3 -- async runtime (Tokio, Embassy, smol):**
-
-```rust,ignore
-let reply = client.call(&request)?.await;  // Promise: Future<Output = T>
-```
+There is deliberately no third, `.await`-on-a-foreign-runtime pattern: a
+`Future` impl completes only while something else spins the executor, and then
+that runtime's scheduler, not nano-ros, decides when the reply is handled
+(RFC-0113 D1/D7).
 
 Contrast this with the alternatives:
 
@@ -52,7 +51,7 @@ Contrast this with the alternatives:
 - **rclc** has no future or promise concept. The only way to receive a service reply is to register a callback that fires from `rclc_executor_spin_some()`. Building request/response chains becomes an explicit state machine.
 - **rclrs** has `impl Future` but no callback-poll path; you must `.await` from a Tokio task. No blocking-with-timeout helper that drives I/O internally.
 
-In nano-ros, the same `Promise` carries a borrow of the standalone service client and a sequence number; `take()` polls it, `wait()` polls it in a loop while spinning the executor, and the `Future` impl integrates with any executor that calls `register_waker(&Waker)` underneath.
+In nano-ros, the same `Promise` carries a borrow of the standalone service client and a sequence number; `take()` polls it, and `wait()` polls it in a loop while spinning the executor.
 
 ## No internal spin
 
@@ -133,6 +132,6 @@ The four design choices that shape nano-ros's client library:
 1. **Single executor type** that owns the session -- no separate context object, no executor variants.
 2. **No internal spin** -- the user always owns the spin loop; blocking helpers exist but are wrappers.
 3. **Explicit `&mut Executor` on every blocking op** -- the API enforces the I/O dependency at the call site.
-4. **Future/Promise as the unifying primitive** -- one type for callback-drive, blocking-with-timeout, and `.await`.
+4. **Promise as the unifying primitive** -- one type for callback-drive and blocking-with-timeout.
 
 These choices are what make the same client library viable on a Cortex-M3 and a Linux workstation without a separate "MCU client library" like rclc.

@@ -235,8 +235,8 @@ Reality was more nuanced than "missing entirely":
   during `create_*`. Today's data plane treats it as an opaque
   capability advertisement that no consumer reads.
 - `nros-node/src/executor/handles.rs` exposes a Rust-side
-  `loan_with_timeout` + `loan` API on `EmbeddedRawPublisher`.
-  Zero-copy on the Rust side via `LoanFuture`.
+  `try_loan` + `loan_with_timeout` API on `EmbeddedRawPublisher`
+  (the async `loan` / `LoanFuture` was retired by RFC-0113).
 - **No vtable slot** to plumb the loan into the backend
   (`loan_publish`, `commit_publish`, `loan_recv`,
   `release_recv`). Phase 99 was reserved for it and never

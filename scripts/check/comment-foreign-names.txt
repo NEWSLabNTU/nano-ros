@@ -435,7 +435,6 @@ Spacing
 Spacing::Joint
 StaleItem
 Stdout
-TryStreamExt::try_next
 UnitDependencyInfoChanged
 align8
 alloc::alloc::handle_alloc_error
@@ -576,10 +575,6 @@ rt_priority_band
 # git
 GIT_INDEX_FILE
 GIT_OBJECT_DIRECTORY
-
-# the `futures` crate (the `stream` feature's combinators)
-StreamExt
-StreamExt::next
 
 # The ELF specification (System V gABI)
 SHN_ABS

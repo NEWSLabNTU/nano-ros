@@ -153,13 +153,12 @@ match sub_.try_borrow()? {               // Result<Option<RecvView<'_>>, NodeErr
 }
 ```
 
-Three blocking variants per direction:
+Two blocking variants per direction (the async third was retired, see D6):
 
 | Method | Returns | Blocks? |
 |---|---|---|
 | `try_loan(len)` / `try_borrow()` | now-or-never | no |
 | `loan_with_timeout` / `borrow_with_timeout` | sync, spins executor | yes (bounded) |
-| `loan(len).await` / `borrow().await` | async, future-based | yes (cooperative) |
 
 PX4 / uORB POD-struct example (struct↔bytes cast is the user's job):
 
@@ -172,7 +171,7 @@ let dst: &mut SensorPing =
 loan.commit()?;
 
 // receive
-let view = sub_.borrow().await?;
+let view = sub_.borrow_with_timeout(&mut executor, timeout)?.ok_or(Timeout)?;
 debug_assert_eq!(view.len(), core::mem::size_of::<SensorPing>());
 let msg: &SensorPing =
     unsafe { &*(view.as_ref().as_ptr().cast()) };
@@ -194,7 +193,6 @@ There is **no** `Publisher<M>::loan()` / `Subscription<M>::borrow()`. See decisi
        ┌──────────────────────────┐          ┌─────────────────────┐
        │ try_loan      (99.D')    │          │ try_borrow (99.D')  │
        │ loan_with_timeout        │          │ borrow_with_timeout │
-       │ loan().await    (99.H)   │          │ borrow().await      │
        └──────────────────────────┘          └─────────────────────┘
                        │  cfg-gated dispatch
         ┌──────────────┴──────────────┐
@@ -260,7 +258,14 @@ A future opt-in for `SLOTS = N` could pipeline N in-flight publishes per publish
 
 `try_borrow` returns `Result<Option<RecvView<'_>>, NodeError>` because `Option::None` here is the "no message yet" idiom — distinct from "subscriber unavailable" (which is `Err`).
 
-### D6 — Promise-driven async (Phase 99.H)
+### D6 — Promise-driven async (Phase 99.H) — RETIRED
+
+**Retired 2026-11-01 by phase-521 (RFC-0113 D7):** `loan().await`,
+`LoanFuture` and `borrow().await` are deleted. Each completed only while
+something else spun the executor, so a foreign runtime's scheduler decided
+when the loan or the view was handed over, and no real-time bound could be
+stated. `try_loan` / `try_borrow` and the `*_with_timeout` forms remain. The
+text below is the design as it stood.
 
 `loan().await` and `borrow().await` are pin-projected futures. Cancelling the future before `.await` returns must:
 

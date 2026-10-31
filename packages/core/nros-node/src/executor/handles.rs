@@ -872,18 +872,10 @@ impl<const TX_BUF: usize> Drop for EmbeddedRawPublisher<TX_BUF> {
 
 /// Single-slot per-publisher arena. Concurrent `try_loan` calls on the
 /// same publisher race on the busy flag; loser gets `WouldBlock`.
-///
-/// `waker` lets `loan().await` register a waker before returning
-/// `Pending`; `release()` wakes it so the next `try_loan` succeeds
-/// without polling the executor loop. Phase 99.H' — replaces the
-/// earlier `wake_by_ref + Pending` busy yield with an event-driven
-/// wake, and gives `LoanFuture::Drop` a place to release a pending
-/// reservation cleanly.
 #[allow(dead_code)]
 pub(crate) struct TxArena<const TX_BUF: usize> {
     busy: AtomicBool,
     buf: UnsafeCell<[u8; TX_BUF]>,
-    waker: atomic_waker::AtomicWaker,
 }
 
 // SAFETY: Sync-ness of the arena is enforced by the `busy` flag — only
@@ -897,7 +889,6 @@ impl<const TX_BUF: usize> TxArena<TX_BUF> {
         Self {
             busy: AtomicBool::new(false),
             buf: UnsafeCell::new([0u8; TX_BUF]),
-            waker: atomic_waker::AtomicWaker::new(),
         }
     }
 
@@ -929,9 +920,6 @@ impl<const TX_BUF: usize> TxArena<TX_BUF> {
 
     fn release(&self) {
         self.busy.store(false, Ordering::Release);
-        // Wake any pending `LoanFuture` waiting on this arena. Cheap
-        // no-op if no one is waiting.
-        self.waker.wake();
     }
 }
 
@@ -1140,118 +1128,12 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         }
     }
 
-    /// Async-await on a free loan slot. Returns the loan as soon as
-    /// the arena's busy flag clears (no-lending path) or as soon as
-    /// the backend's outbound stream has room (lending path).
-    ///
-    /// Phase 99.H': cancellation-safe Future. Registers the task's
-    /// waker on the arena's `AtomicWaker` before checking
-    /// [`Self::try_loan`]; another task's `commit` / `discard` calls
-    /// `TxArena::release` which wakes us. Dropping the future before
-    /// it resolves removes nothing from any wait queue (single-slot
-    /// AtomicWaker semantics: only the latest registration matters)
-    /// and explicitly wakes another waiter so the next task in line
-    /// gets a poll. No `PublishLoan` is materialised on cancel paths.
-    pub fn loan(&self, len: usize) -> LoanFuture<'_, TX_BUF> {
-        LoanFuture {
-            publisher: self,
-            len,
-            registered: false,
-        }
-    }
-
     /// The topic this publisher was created on — see
     /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
     /// accessor is here rather than on the RMW trait. phase-444.
     pub fn topic_name(&self) -> &str {
         self.handle.topic_name()
     }
-}
-
-/// Future returned by [`EmbeddedRawPublisher::loan`]. Phase 99.H'
-/// cancellation-safe variant: if dropped before resolving, it wakes
-/// the next pending waiter so the busy-flag-clear signal isn't lost
-/// to the cancelled task.
-#[must_use = "futures do nothing unless polled"]
-pub struct LoanFuture<'a, const TX_BUF: usize> {
-    publisher: &'a EmbeddedRawPublisher<TX_BUF>,
-    len: usize,
-    /// Set on the first `Pending` return so `Drop` knows whether a
-    /// waker was registered (and thus another waiter may need a wake).
-    registered: bool,
-}
-
-impl<'a, const TX_BUF: usize> core::future::Future for LoanFuture<'a, TX_BUF> {
-    type Output = Result<PublishLoan<'a, TX_BUF>, LoanError>;
-
-    fn poll(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Self::Output> {
-        // SAFETY: LoanFuture is `Unpin` for all practical purposes —
-        // it holds only `&publisher`, `len`, and a bool. Move out of
-        // Pin for the body.
-        let this = self.get_mut();
-
-        // Register-then-check: closes the race where another task's
-        // `release` fires between `try_loan` returning WouldBlock and
-        // the waker landing. The arena's AtomicWaker stores the
-        // latest waker; we update it on every poll so a `select!` /
-        // re-poll under a different waker observes the right one.
-        loan_register_waker(this.publisher, cx.waker());
-        this.registered = true;
-
-        match this.publisher.try_loan(this.len) {
-            Ok(loan) => core::task::Poll::Ready(Ok(loan)),
-            Err(LoanError::WouldBlock) => core::task::Poll::Pending,
-            Err(other) => core::task::Poll::Ready(Err(other)),
-        }
-    }
-}
-
-impl<'a, const TX_BUF: usize> Drop for LoanFuture<'a, TX_BUF> {
-    fn drop(&mut self) {
-        // If we registered a waker but never resolved, the busy flag
-        // may have just cleared and we'd swallow the wake. Forward it
-        // to the next waiter so the line keeps moving. Cheap no-op
-        // when no one else is waiting.
-        if self.registered {
-            loan_wake_next(self.publisher);
-        }
-    }
-}
-
-// Indirection so the `rmw-lending` build (which has no arena) can
-// stub these. With `rmw-lending` on, the lending Future variant uses
-// the executor's drive_io spin to drain the backend stream — there's
-// no arena-level wake source, so the helpers degrade to a self-wake.
-#[cfg(not(feature = "rmw-lending"))]
-fn loan_register_waker<const TX_BUF: usize>(
-    pub_: &EmbeddedRawPublisher<TX_BUF>,
-    waker: &core::task::Waker,
-) {
-    pub_.arena.waker.register(waker);
-}
-
-#[cfg(not(feature = "rmw-lending"))]
-fn loan_wake_next<const TX_BUF: usize>(pub_: &EmbeddedRawPublisher<TX_BUF>) {
-    pub_.arena.waker.wake();
-}
-
-#[cfg(feature = "rmw-lending")]
-fn loan_register_waker<const TX_BUF: usize>(
-    _pub_: &EmbeddedRawPublisher<TX_BUF>,
-    waker: &core::task::Waker,
-) {
-    // No arena wake source under lending; self-wake so the runtime
-    // re-polls after the next executor tick (which drains the
-    // backend's outbound stream via `drive_io`).
-    waker.wake_by_ref();
-}
-
-#[cfg(feature = "rmw-lending")]
-fn loan_wake_next<const TX_BUF: usize>(_pub_: &EmbeddedRawPublisher<TX_BUF>) {
-    // No-op: no AtomicWaker on the arena under the lending build.
 }
 
 /// Error type for [`EmbeddedRawPublisher::try_loan`].
@@ -1407,7 +1289,7 @@ impl<'a, const TX_BUF: usize> Drop for PublishLoan<'a, TX_BUF> {
 ///
 /// Two methods, both byte-oriented at the wire:
 ///
-/// - [`take`](Self::take) / [`recv`](Self::recv) — pull bytes
+/// - [`take`](Self::take) / [`wait_next`](Self::wait_next) — pull bytes
 ///   from the backend, CDR-decode into `M: RosMessage`, hand back
 ///   ownership of the typed message.
 /// - [`take_serialized`](Self::take_serialized) — copy bytes into the
@@ -1623,43 +1505,6 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
             return Err(NodeError::Transport(TransportError::DeserializationError));
         }
         Ok(processed)
-    }
-
-    /// Async: wait for the next message (no `futures` dependency needed).
-    ///
-    /// Completes only while the executor is spun elsewhere
-    /// ([`spin`](super::spin::Executor::spin) /
-    /// [`spin_once`](super::spin::Executor::spin_once)): nothing drives its
-    /// I/O from inside this future. Returns `Ok(msg)` on the next received
-    /// message, or `Err` if the transport reports an error.
-    ///
-    /// When the `stream` feature is enabled, prefer `StreamExt::next()` /
-    /// `TryStreamExt::try_next()` for combinator support.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let mut sub = node.create_subscription::<Int32>("/topic")?;
-    /// loop {
-    ///     let msg = sub.recv().await?;
-    ///     /* handle msg */
-    /// }
-    /// ```
-    pub async fn recv(&mut self) -> Result<M, NodeError> {
-        core::future::poll_fn(|cx| {
-            // Register the waker FIRST, then check for data. This ordering
-            // closes the race window where a subscriber callback fires
-            // between `take` returning `None` and the waker being
-            // registered — the wake would otherwise be delivered to the
-            // previous waker (or nowhere) and the task would hang.
-            self.handle.register_waker(cx.waker());
-            match self.take() {
-                Ok(Some(msg)) => core::task::Poll::Ready(Ok(msg)),
-                Ok(None) => core::task::Poll::Pending,
-                Err(e) => core::task::Poll::Ready(Err(e)),
-            }
-        })
-        .await
     }
 
     /// Sync: wait for the next message, spinning the executor.
@@ -2037,48 +1882,6 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         }
     }
 
-    /// Async-await on the next message, returning a [`RecvView`].
-    /// Mirrors the `Subscription::recv` pattern but typeless.
-    ///
-    /// Backend wake source: `Subscriber::register_waker`. Same race-
-    /// safe register-then-check ordering as `Subscription::recv`.
-    pub async fn borrow(&mut self) -> Result<RecvView<'_>, NodeError> {
-        // Wait for `has_data` to flip true via the backend's
-        // AtomicWaker, *without* holding any borrow that `try_borrow`
-        // would need afterwards. Borrow `&self.handle` immutably
-        // inside poll_fn so the borrow checker can prove `&mut self`
-        // is free by the time we return Ok(view) below.
-        //
-        // Phase 99.H' cancellation safety: there is no reservation
-        // taken inside poll. Dropping the future before it resolves
-        // simply abandons whatever waker registration the backend
-        // accepted; the next call to `borrow().await` (or
-        // `try_borrow`) re-registers. No leaked state.
-        {
-            let handle = &self.handle;
-            core::future::poll_fn(|cx| {
-                // Register-then-check: closes the race where a backend
-                // callback fires between has_data returning false and
-                // the waker landing.
-                handle.register_waker(cx.waker());
-                if handle.has_data() {
-                    core::task::Poll::Ready(())
-                } else {
-                    core::task::Poll::Pending
-                }
-            })
-            .await;
-        }
-        // has_data was true at some point; in the single-threaded
-        // executor there's no other reader, so try_borrow returns Some.
-        // A spurious wake (very unlikely on shipping backends) returns
-        // WouldBlock and the caller can retry.
-        match self.try_borrow()? {
-            Some(view) => Ok(view),
-            None => Err(NodeError::Transport(TransportError::WouldBlock)),
-        }
-    }
-
     /// Sync blocking borrow with timeout. Spins the executor until a
     /// message is available or `timeout` elapses.
     ///
@@ -2403,25 +2206,6 @@ impl<'a> AsRef<[u8]> for RecvView<'a> {
             .as_ref()
             .expect("RecvView accessed after drop")
             .as_ref()
-    }
-}
-
-#[cfg(feature = "stream")]
-impl<M: RosMessage + Unpin, const RX_BUF: usize> futures_core::Stream for Subscription<M, RX_BUF> {
-    type Item = Result<M, NodeError>;
-
-    fn poll_next(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        // Register-then-check: see Subscription::recv for rationale.
-        this.handle.register_waker(cx.waker());
-        match this.take() {
-            Ok(Some(msg)) => core::task::Poll::Ready(Some(Ok(msg))),
-            Ok(None) => core::task::Poll::Pending,
-            Err(e) => core::task::Poll::Ready(Some(Err(e))),
-        }
     }
 }
 
@@ -3034,72 +2818,6 @@ impl<T> Promise<'_, T> {
     }
 }
 
-impl<T> core::future::Future for Promise<'_, T> {
-    type Output = Result<T, NodeError>;
-
-    fn poll(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Self::Output> {
-        let this = self.get_mut();
-        // Register-then-check (closes the race where a reply lands
-        // between take returning None and the waker registering).
-        this.handle.register_waker(cx.waker());
-        match this.take() {
-            Ok(Some(reply)) => core::task::Poll::Ready(Ok(reply)),
-            Ok(None) => core::task::Poll::Pending,
-            Err(e) => core::task::Poll::Ready(Err(e)),
-        }
-    }
-}
-
-impl<T> Promise<'_, T> {
-    /// Async poll-until-ready helper for environments where the
-    /// backend's `register_waker` path can't deliver a wake.
-    ///
-    /// The plain `.await` (via the `Future` impl above) parks the
-    /// caller until the backend's listener fires the stored Waker.
-    /// That works on `std` builds where the backend has a
-    /// background-thread pool actively polling its listener tasks,
-    /// but it deadlocks on the `nostd-runtime` DDS path (and any
-    /// other cooperative backend whose listener future only runs
-    /// when something actively drives the runtime). The 160.B.1
-    /// trace pinned this to DDS's nostd runtime: listener
-    /// futures only advance inside `runtime.block_on(...)`, and the
-    /// parked `.await` consumer never issues such a call.
-    ///
-    /// `poll_until_ready(yield_fn)` instead actively polls
-    /// `take()` on each turn and awaits the caller-supplied
-    /// yield future between attempts. The yield gives the executor
-    /// a chance to run other ready tasks (typically a spin_task
-    /// that drives the backend runtime via `executor.spin_once()`),
-    /// which in turn pumps the listener future. On the `std` path
-    /// this devolves to a fast poll-then-yield loop with no
-    /// correctness penalty; on `nostd-runtime` it's the only shape
-    /// that completes.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let reply = client
-    ///     .call(&req)?
-    ///     .poll_until_ready(|| embassy_time::Timer::after_millis(5))
-    ///     .await?;
-    /// ```
-    pub async fn poll_until_ready<F, Fut>(&mut self, mut yield_fn: F) -> Result<T, NodeError>
-    where
-        F: FnMut() -> Fut,
-        Fut: core::future::Future<Output = ()>,
-    {
-        loop {
-            match self.take()? {
-                Some(reply) => return Ok(reply),
-                None => yield_fn().await,
-            }
-        }
-    }
-}
-
 /// Deserialize a CDR-encoded service reply.
 fn cdr_deserialize_reply<Svc: RosService>(data: &[u8]) -> Result<Svc::Reply, NodeError> {
     let mut reader = CdrReader::new_with_header(data).map_err(|_| NodeError::Deserialization)?;
@@ -3650,13 +3368,9 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
 /// all active goals. The stream never self-terminates — use combinators
 /// like `take_while` or `break` to stop.
 ///
-/// Three access modes:
-/// - **Async (`Stream`)**: Enable the `stream` feature for
-///   `futures_core::Stream` + `StreamExt` combinators
-/// - **Async (no deps)**: Use `next()` in
-///   `while let` loops (always available)
-/// - **Sync**: Use [`wait_next()`](FeedbackStream::wait_next) which
-///   drives the executor internally
+/// Read it with [`wait_next()`](FeedbackStream::wait_next), which drives
+/// the executor; the async `recv()` and the `stream` feature's `Stream`
+/// impl are retired (RFC-0113 D7).
 pub struct FeedbackStream<
     'a,
     A: RosAction,
@@ -3670,41 +3384,6 @@ pub struct FeedbackStream<
 impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     FeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
-    /// Async: wait for the next feedback message (no `futures` dependency needed).
-    ///
-    /// Completes only while the executor is spun elsewhere
-    /// ([`spin`](super::spin::Executor::spin) /
-    /// [`spin_once`](super::spin::Executor::spin_once)): nothing drives its
-    /// I/O from inside this future. Returns `None` only on error.
-    ///
-    /// When the `stream` feature is enabled, prefer `StreamExt::next()` or
-    /// `TryStreamExt::try_next()` for combinator support.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let mut stream = client.feedback_stream();
-    /// while let Some(result) = stream.recv().await {
-    ///     let (goal_id, feedback) = result?;
-    ///     // process feedback...
-    /// }
-    /// ```
-    pub async fn recv(&mut self) -> Option<Result<(nros_core::GoalUuid, A::Feedback), NodeError>> {
-        core::future::poll_fn(|cx| {
-            // Register-then-check (closes the AtomicWaker race).
-            self.client
-                .core
-                .feedback_subscriber
-                .register_waker(cx.waker());
-            match self.client.try_recv_feedback() {
-                Ok(Some(item)) => core::task::Poll::Ready(Some(Ok(item))),
-                Ok(None) => core::task::Poll::Pending,
-                Err(e) => core::task::Poll::Ready(Some(Err(e))),
-            }
-        })
-        .await
-    }
-
     /// Sync: wait for the next feedback message, spinning the executor.
     ///
     /// Returns `Ok(Some(feedback))` if a message arrives within `timeout_ms`,
@@ -3731,30 +3410,6 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     }
 }
 
-#[cfg(feature = "stream")]
-impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
-    futures_core::Stream for FeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
-{
-    type Item = Result<(nros_core::GoalUuid, A::Feedback), NodeError>;
-
-    fn poll_next(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        // Register-then-check (closes the AtomicWaker race).
-        this.client
-            .core
-            .feedback_subscriber
-            .register_waker(cx.waker());
-        match this.client.try_recv_feedback() {
-            Ok(Some(item)) => core::task::Poll::Ready(Some(Ok(item))),
-            Ok(None) => core::task::Poll::Pending,
-            Err(e) => core::task::Poll::Ready(Some(Err(e))),
-        }
-    }
-}
-
 // ============================================================================
 // GoalFeedbackStream
 // ============================================================================
@@ -3777,32 +3432,6 @@ pub struct GoalFeedbackStream<
 impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     GoalFeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
-    /// Async: wait for the next feedback message for this goal (no `futures` dependency needed).
-    ///
-    /// When the `stream` feature is enabled, prefer `StreamExt::next()` or
-    /// `TryStreamExt::try_next()` for combinator support.
-    pub async fn recv(&mut self) -> Option<Result<A::Feedback, NodeError>> {
-        core::future::poll_fn(|cx| {
-            // Register-then-check (closes the AtomicWaker race). The
-            // waker is registered once for both the "no data" and
-            // "wrong goal" branches that fall through to Pending.
-            self.client
-                .core
-                .feedback_subscriber
-                .register_waker(cx.waker());
-            match self.client.try_recv_feedback() {
-                Ok(Some((id, feedback))) if id.uuid == self.goal_id.uuid => {
-                    core::task::Poll::Ready(Some(Ok(feedback)))
-                }
-                // Feedback for a different goal — keep waiting.
-                Ok(Some(_)) => core::task::Poll::Pending,
-                Ok(None) => core::task::Poll::Pending,
-                Err(e) => core::task::Poll::Ready(Some(Err(e))),
-            }
-        })
-        .await
-    }
-
     /// Sync: wait for the next feedback message for this goal, spinning the executor.
     pub fn wait_next(
         &mut self,
@@ -3823,33 +3452,6 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
             if !budget.tick() {
                 return Ok(None);
             }
-        }
-    }
-}
-
-#[cfg(feature = "stream")]
-impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
-    futures_core::Stream for GoalFeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
-{
-    type Item = Result<A::Feedback, NodeError>;
-
-    fn poll_next(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        // Register-then-check (closes the AtomicWaker race).
-        this.client
-            .core
-            .feedback_subscriber
-            .register_waker(cx.waker());
-        match this.client.try_recv_feedback() {
-            Ok(Some((id, feedback))) if id.uuid == this.goal_id.uuid => {
-                core::task::Poll::Ready(Some(Ok(feedback)))
-            }
-            Ok(Some(_)) => core::task::Poll::Pending,
-            Ok(None) => core::task::Poll::Pending,
-            Err(e) => core::task::Poll::Ready(Some(Err(e))),
         }
     }
 }
