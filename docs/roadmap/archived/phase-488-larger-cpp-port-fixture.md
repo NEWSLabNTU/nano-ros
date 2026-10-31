@@ -1,5 +1,15 @@
 # Phase 488 — real-world ROS 2 C++ nodes, ported, and the friction fixed
 
+**Status (2026-10-31). Closed: nothing is left.** The three issues this
+phase left open are resolved, and the boards it did not attempt are done:
+[phase-518](phase-518-cpp-ports-on-zephyr-and-freertos.md) built and ran every
+ported node on Zephyr and FreeRTOS, and closed
+[2055](../../issues/archived/2055-cpp-client-per-request-callback.md) (W2) and
+[2057](../../issues/archived/2057-cpp-parameter-overrides-listing.md) (W1).
+[2043](../../issues/archived/2043-ament-port-pool-sizing-census.md) closed with
+`2a01f7af3e`: a ported ament workspace is sized from its own program, so the
+hand-raised pool sizes below are history.
+
 **Status (2026-10-25). Done; archived.** W1 done: three nodes picked from a survey of nine
 projects. W2 and W3 done for node 1 (`autoware_external_cmd_selector`): it
 builds with no source edit and runs against a stock ROS 2 peer, with its pool
