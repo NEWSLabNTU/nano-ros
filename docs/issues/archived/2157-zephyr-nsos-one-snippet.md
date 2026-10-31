@@ -102,9 +102,15 @@ by a path into nano-ros.
 
 ## Not measured / left
 
-- **4.4 was read, not built** (v4.4.0 `Kconfig.defconfig`, `Kconfig.native_tap`,
-  `drivers/ethernet/Kconfig`, `drivers/net/Kconfig`, `snippets.cmake`). One
-  native_sim build on 4.4 settles it.
+- ~~4.4 was read, not built~~ -- built 2026-10-31: on Zephyr v4.4.0,
+  `build-c-talker-zenoh` and `build-ws-c-entry-zenoh` merge
+  `zephyr/snippets/nros-nsos/nsos.conf`, their `.config` has
+  `# CONFIG_ETH_DRIVER is not set` and no TAP driver, and both boot on NSOS:
+  the talker published on 3 runs of 3 and the workspace image delivered to its
+  own subscriber on 2 of 2. One earlier run reported `ConnectionFailed`; it was
+  the router not yet listening (5 s head start; 6 s on every run after), and an
+  A/B with the old `CONFIG_ETH_NATIVE_TAP=n` line showed the `.config` differs
+  only in the Ethernet driver class and PHY options.
 - **Timing change.** The 3.7 fixture lane's overlay and the `{c,cpp,mixed}`
   bringup copies lacked `NATIVE_SIM_SLOWDOWN_TO_REAL_TIME`; those images now
   run real-time-paced like the other 29.
