@@ -159,8 +159,7 @@ pub fn run(args: Args) -> Result<()> {
     if let Some(e) = crate::orchestration::store::retired_in_env() {
         bail!(e);
     }
-    let index_path = crate::cmd::setup::resolve_index(&args.index)?;
-    let index = SdkIndex::load(&index_path)?;
+    let (index_path, index) = crate::cmd::setup::load_resolved_index(&args.index)?;
     // Absolute: a `--why` trace and a cmake `set()` are read from other cwds.
     let sdk_root = nros_build_paths::canonical(&crate::cmd::setup::index_workspace(&index_path));
     let checkout = sdk_root

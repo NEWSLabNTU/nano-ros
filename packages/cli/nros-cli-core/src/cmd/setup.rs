@@ -553,8 +553,7 @@ pub fn run(args: Args) -> Result<()> {
     // dropped by whichever `return` happens to come first.
     let route = route(&args)?;
 
-    let index_path = resolve_index(&args.index)?;
-    let index = SdkIndex::load(&index_path)?;
+    let (index_path, index) = load_resolved_index(&args.index)?;
 
     if route == Route::List {
         print_list(&index);
@@ -1872,6 +1871,18 @@ pub(crate) enum IndexOrigin {
 /// 5. **an error that names the way out**, because at this point nothing on
 ///    this host can answer and a bare "no such file" would send the reader
 ///    looking for a file they were never going to have.
+///
+/// A cached copy this binary cannot LOAD is never served (issue 2184). The
+/// cache has no pin and nothing ages it — a developer host's sat 26 days
+/// behind `main`, from before `check-source-refs` gave every submodule source
+/// its `git`/`ref`, so the current CLI refused the index its own store had
+/// cached and named the CHECKOUT's gate as the remedy. [`fetch_index`] already
+/// refuses to cache what it cannot parse; the symmetric rule is "do not keep
+/// serving what you cannot parse": an unreadable cache is treated as `refresh`
+/// (rungs 1 and 3 both skip it), the reader is told, and when nothing else
+/// answers the error says the cache is the broken piece and how to replace it.
+/// The cost is one extra parse of a ~170 KB TOML per resolve, which is nothing
+/// next to the `curl` it saves on every other run.
 pub(crate) fn index_from_store(
     store: &Path,
     url: &str,
@@ -1880,8 +1891,23 @@ pub(crate) fn index_from_store(
     shipped: Option<&Path>,
 ) -> Result<(PathBuf, IndexOrigin)> {
     let cache = index_cache_path(store);
-    if cache.is_file() && !refresh {
+    // `None` — no cache; `Some(Ok)` — readable; `Some(Err(why))` — present and
+    // not loadable by THIS binary (parse or validation).
+    let cached: Option<std::result::Result<(), String>> = cache.is_file().then(|| {
+        SdkIndex::load(&cache)
+            .map(|_| ())
+            .map_err(|e| format!("{e:#}"))
+    });
+    let cache_readable = matches!(cached, Some(Ok(())));
+    if cache_readable && !refresh {
         return Ok((cache, IndexOrigin::Cached));
+    }
+    if let Some(Err(why)) = &cached {
+        eprintln!(
+            "nros: the cached SDK index at {} cannot be read by this `nros` ({why}); \
+             not serving it",
+            cache.display()
+        );
     }
     let why: String = if offline {
         format!(
@@ -1893,21 +1919,29 @@ pub(crate) fn index_from_store(
             Err(e) => format!("{e:#}"),
         }
     };
-    if cache.is_file() {
+    if cache_readable {
         return Ok((cache, IndexOrigin::Cached));
     }
     if let Some(s) = shipped {
         return Ok((s.to_path_buf(), IndexOrigin::Shipped));
     }
+    let cache_line = match &cached {
+        Some(Err(why_cache)) => format!(
+            "the copy cached at {} cannot be read by this `nros` and was not served: \
+             {why_cache}\n  (the next fetch that succeeds replaces it)",
+            cache.display()
+        ),
+        _ => format!("none cached at {}", cache.display()),
+    };
     bail!(
-        "no SDK index: none in the cwd or workspace, none cached at {}, \
+        "no SDK index: none in the cwd, the enclosing checkout or the workspace, {}, \
          and none shipped beside this binary.\n  \
          {}\n  \
          Fix any one of:\n    \
          nros setup --index <path>          a copy you already have\n    \
          NROS_INDEX_URL=<url>              fetch it from a mirror\n    \
          unset NROS_OFFLINE                allow the default fetch ({url})",
-        cache.display(),
+        cache_line,
         why,
     )
 }
@@ -2032,11 +2066,141 @@ pub(crate) fn shipped_index() -> Option<PathBuf> {
 /// bare default name and let `SdkIndex::load` report "no such file
 /// nros-sdk-index.toml", which sends the reader looking in the cwd for a file
 /// that was never going to be there.
+///
+/// Issue 2184 — between the cwd and the store sits **the checkout the cwd is
+/// inside**: the same walk-up [`index_workspace`] (issue 1304) already does for
+/// `dest`. Before it, `nros setup` run from any subdirectory of a checkout
+/// provisioned from `~/.nros/fetch/nros-sdk-index.toml` — a copy nothing ages,
+/// 26 days stale on the host that measured it — while the tree's own index sat
+/// two directories up. The store cache is what a host WITHOUT a checkout reads;
+/// it has no pin, so it is not RFC-0103 D3's "store, at the pin" rung, and a
+/// checkout's own file is the source that cache was fetched from. `--index` and
+/// `$NROS_INDEX_URL` keep outranking it (arg and env, D3's first two rungs): a
+/// mirror the operator named is read even inside a checkout. The walk-up is
+/// ONLY the enclosing checkout, never the binary's own root
+/// ([`crate::orchestration::nano_ros_root`]'s last rung): a released `nros`
+/// stages the index into `share/nano-ros/` too, and preferring that over the
+/// store is exactly the coupling D5 removed, so the installed track is
+/// unchanged.
 pub fn resolve_index(explicit: &Path) -> Result<PathBuf> {
-    if explicit != Path::new(INDEX_FILE) || explicit.is_file() {
-        return Ok(explicit.to_path_buf());
+    resolve_index_explained(explicit).map(|(p, _)| p)
+}
+
+/// Where the index a command reads came from — so a load failure can name the
+/// way out for THAT origin (issue 2184: "run `check-source-refs.py --write`"
+/// was aimed at the checkout while the broken file was the store's copy).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IndexWhence {
+    /// A path the user typed (`--index <path>`).
+    Explicit,
+    /// The default name, found in the cwd, which is not a nano-ros root.
+    Cwd,
+    /// A nano-ros checkout's own `nros-sdk-index.toml` — the cwd is that root
+    /// or inside it.
+    Checkout,
+    /// The store (RFC-0097 D5): cached, fetched on this call, or shipped.
+    Store(IndexOrigin),
+}
+
+/// [`resolve_index`], saying which rung answered.
+pub(crate) fn resolve_index_explained(explicit: &Path) -> Result<(PathBuf, IndexWhence)> {
+    if explicit != Path::new(INDEX_FILE) {
+        return Ok((explicit.to_path_buf(), IndexWhence::Explicit));
     }
-    store_index(/* fetch */ true).map(|(p, _)| p)
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    resolve_default_index(
+        explicit,
+        enclosing_checkout_index(&cwd).as_deref(),
+        std::env::var_os("NROS_INDEX_URL").is_some(),
+        || store_index(/* fetch */ true),
+    )
+}
+
+/// The default rung order, with every input a parameter so the ORDER is
+/// testable from a cwd that is itself inside a checkout (every test here is).
+///
+/// `default` is the bare name, resolved against the cwd; `checkout_index` is
+/// the enclosing checkout's file (already known to exist); `url_overridden` is
+/// `$NROS_INDEX_URL` being set; `store` is the D5 rung.
+fn resolve_default_index(
+    default: &Path,
+    checkout_index: Option<&Path>,
+    url_overridden: bool,
+    store: impl FnOnce() -> Result<(PathBuf, IndexOrigin)>,
+) -> Result<(PathBuf, IndexWhence)> {
+    if default.is_file() {
+        let whence = if crate::orchestration::nano_ros_root::is_root(Path::new(".")) {
+            IndexWhence::Checkout
+        } else {
+            IndexWhence::Cwd
+        };
+        return Ok((default.to_path_buf(), whence));
+    }
+    if !url_overridden && let Some(p) = checkout_index {
+        return Ok((p.to_path_buf(), IndexWhence::Checkout));
+    }
+    store().map(|(p, origin)| (p, IndexWhence::Store(origin)))
+}
+
+/// `<root>/nros-sdk-index.toml` of the nano-ros checkout `start` is inside, if
+/// there is one AND it holds the file. The walk is the launcher's
+/// `find_monorepo_root` — the one answer to "is this a nano-ros root" — and
+/// deliberately not the full `nano_ros_root` ladder (see [`resolve_index`]).
+pub(crate) fn enclosing_checkout_index(start: &Path) -> Option<PathBuf> {
+    let root = nros_launcher::checkout::find_monorepo_root(start)?;
+    let index = root.join(INDEX_FILE);
+    index.is_file().then_some(index)
+}
+
+/// Resolve the index and LOAD it, with a refusal that names the way out for
+/// the path's origin (issue 2184).
+///
+/// `SdkIndex::load`'s own text says what is wrong with the file; this says
+/// which file it was and what replaces it. The remedy differs by rung: a
+/// store copy is replaced by a fetch, an explicit path by a different one, and
+/// only a checkout's own index is fixed by the checkout's gate
+/// (`check-source-refs.py --write`) — which is what the old message named for
+/// EVERY origin, including a stale store cache that gate never reads.
+pub fn load_resolved_index(explicit: &Path) -> Result<(PathBuf, SdkIndex)> {
+    let (path, whence) = resolve_index_explained(explicit)?;
+    let index = SdkIndex::load(&path).wrap_err_with(|| index_load_remedy(&path, whence))?;
+    Ok((path, index))
+}
+
+/// The one-paragraph "which index, and the way out" for a failed load.
+pub(crate) fn index_load_remedy(path: &Path, whence: IndexWhence) -> String {
+    let p = path.display();
+    match whence {
+        IndexWhence::Explicit => format!(
+            "could not use the SDK index named by --index ({p}).\n  \
+             Fix the file, or pass --index <path> naming another; drop --index for the \
+             default (the enclosing checkout's, else the store's)."
+        ),
+        IndexWhence::Cwd => format!(
+            "could not use the SDK index in the current directory ({p}).\n  \
+             Fix the file, pass --index <path>, or run from a directory without one for \
+             the default (the enclosing checkout's, else the store's)."
+        ),
+        IndexWhence::Checkout => format!(
+            "could not use this nano-ros checkout's own SDK index ({p}).\n  \
+             Fix it in the checkout: `python3 scripts/check/check-source-refs.py --write` \
+             rewrites the source pins; or pass --index <path> to read another copy."
+        ),
+        IndexWhence::Store(IndexOrigin::Cached) => format!(
+            "could not use the SDK index cached in the store ({p}).\n  \
+             NROS_INDEX_REFRESH=1 replaces it from {DEFAULT_INDEX_URL} (or $NROS_INDEX_URL); \
+             or pass --index <path>."
+        ),
+        IndexWhence::Store(IndexOrigin::Fetched) => format!(
+            "could not use the SDK index just fetched into the store ({p}).\n  \
+             The index at {DEFAULT_INDEX_URL} (or $NROS_INDEX_URL) is newer than this `nros` \
+             can read: upgrade `nros`, or pass --index <path> to a copy it can."
+        ),
+        IndexWhence::Store(IndexOrigin::Shipped) => format!(
+            "could not use the SDK index shipped beside this `nros` ({p}).\n  \
+             Reinstall the release, or pass --index <path>."
+        ),
+    }
 }
 
 /// The workspace root a `[source.*]` `dest` is resolved against: the directory
@@ -4442,6 +4606,261 @@ mod tests {
             SdkIndex::load(&got).unwrap().tool.contains_key("new"),
             "a failed refresh destroyed the cache it could not replace"
         );
+    }
+
+    // ---- Issue 2184: the enclosing checkout outranks the store cache, and an
+    // unreadable cache is never served -----------------------------------------
+    //
+    // Every test here drives the pure halves (`resolve_default_index`,
+    // `enclosing_checkout_index`, `index_from_store`) with a scratch checkout
+    // and a scratch store. The test process's cwd IS inside a checkout, which is
+    // exactly why the checkout is a parameter rather than read from the cwd.
+
+    /// A directory that answers `find_monorepo_root`: the marker file at its
+    /// root, and an index beside it unless `with_index` is false.
+    fn scratch_checkout(dir: &Path, with_index: bool) -> PathBuf {
+        let marker = dir.join(nros_launcher::checkout::MONOREPO_MARKER);
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, "").unwrap();
+        if with_index {
+            std::fs::write(dir.join(INDEX_FILE), index_text("checkout")).unwrap();
+        }
+        dir.to_path_buf()
+    }
+
+    /// The store rung as a closure that records whether it was reached.
+    fn counting_store(
+        hits: &std::cell::Cell<u32>,
+        answer: PathBuf,
+    ) -> impl FnOnce() -> Result<(PathBuf, IndexOrigin)> + '_ {
+        move || {
+            hits.set(hits.get() + 1);
+            Ok((answer, IndexOrigin::Cached))
+        }
+    }
+
+    /// The walk finds the checkout's index from any depth inside it, and finds
+    /// nothing for a checkout without one or for a directory outside every
+    /// checkout — a root with no index must fall to the store, not to a
+    /// "no such file" at `<root>/nros-sdk-index.toml`.
+    #[test]
+    fn the_enclosing_checkout_index_is_found_from_a_subdirectory() {
+        let dir = crate::test_support::scratch_dir("i2184_walk");
+        let root = scratch_checkout(&dir.join("co"), true);
+        let deep = root.join("tmp/nx_rv/scratch");
+        std::fs::create_dir_all(&deep).unwrap();
+        assert_eq!(
+            enclosing_checkout_index(&deep),
+            Some(root.join(INDEX_FILE)),
+            "a subdirectory three deep must resolve to the checkout's own index"
+        );
+        assert_eq!(enclosing_checkout_index(&root), Some(root.join(INDEX_FILE)));
+
+        let bare = scratch_checkout(&dir.join("bare"), false);
+        assert_eq!(
+            enclosing_checkout_index(&bare.join("x")),
+            None,
+            "a checkout without an index is not an answer"
+        );
+        let outside = dir.join("elsewhere");
+        std::fs::create_dir_all(&outside).unwrap();
+        assert_eq!(enclosing_checkout_index(&outside), None);
+    }
+
+    /// The headline: with the default name and a cwd inside a checkout, the
+    /// checkout's index answers and the store is NOT consulted — before this,
+    /// `nros setup` from `tmp/` read `~/.nros/fetch/nros-sdk-index.toml`.
+    #[test]
+    fn inside_a_checkout_its_index_outranks_the_store_cache() {
+        let dir = crate::test_support::scratch_dir("i2184_order");
+        let root = scratch_checkout(&dir.join("co"), true);
+        let checkout_index = root.join(INDEX_FILE);
+        let store_copy = dir.join("store/fetch").join(INDEX_FILE);
+        let hits = std::cell::Cell::new(0);
+
+        let (got, whence) = resolve_default_index(
+            &dir.join("no-such-default.toml"),
+            Some(&checkout_index),
+            /* url_overridden */ false,
+            counting_store(&hits, store_copy.clone()),
+        )
+        .unwrap();
+        assert_eq!(
+            (got, whence),
+            (checkout_index.clone(), IndexWhence::Checkout)
+        );
+        assert_eq!(
+            hits.get(),
+            0,
+            "the store rung ran although the checkout answered"
+        );
+
+        // No enclosing checkout — the installed track — is unchanged: the store
+        // answers, and its origin is carried through.
+        let (got, whence) = resolve_default_index(
+            &dir.join("no-such-default.toml"),
+            None,
+            false,
+            counting_store(&hits, store_copy.clone()),
+        )
+        .unwrap();
+        assert_eq!(
+            (got, whence),
+            (store_copy, IndexWhence::Store(IndexOrigin::Cached))
+        );
+        assert_eq!(hits.get(), 1);
+    }
+
+    /// `$NROS_INDEX_URL` is the env rung and keeps outranking the checkout: an
+    /// operator who named a mirror gets the mirror, even standing in a tree.
+    /// An explicit `--index` never reaches the ladder at all.
+    #[test]
+    fn an_index_url_or_an_explicit_path_still_outranks_the_checkout() {
+        let dir = crate::test_support::scratch_dir("i2184_env_wins");
+        let root = scratch_checkout(&dir.join("co"), true);
+        let checkout_index = root.join(INDEX_FILE);
+        let store_copy = dir.join("store/fetch").join(INDEX_FILE);
+        let hits = std::cell::Cell::new(0);
+
+        let (got, whence) = resolve_default_index(
+            &dir.join("no-such-default.toml"),
+            Some(&checkout_index),
+            /* url_overridden */ true,
+            counting_store(&hits, store_copy.clone()),
+        )
+        .unwrap();
+        assert_eq!(
+            (got, whence),
+            (store_copy, IndexWhence::Store(IndexOrigin::Cached))
+        );
+        assert_eq!(
+            hits.get(),
+            1,
+            "$NROS_INDEX_URL set, yet the store was skipped"
+        );
+
+        let typed = dir.join("typed.toml");
+        assert_eq!(
+            resolve_index_explained(&typed).unwrap(),
+            (typed.clone(), IndexWhence::Explicit)
+        );
+    }
+
+    /// A cached copy this binary cannot load triggers the refresh rung instead
+    /// of being served: the fetch replaces it. `fetch_index` refuses to cache
+    /// what it cannot parse; this is the symmetric half.
+    #[test]
+    fn an_unreadable_cache_is_refetched_not_served() {
+        let dir = crate::test_support::scratch_dir("i2184_stale_cache");
+        let store = dir.join("store");
+        let cache = index_cache_path(&store);
+        std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        // Parses as TOML, fails `validate`: the 2184 shape (a `submodule` source
+        // from before `check-source-refs` stated `git`/`ref`).
+        std::fs::write(
+            &cache,
+            "[source.cyclonedds-src]\nversion = \"0.10.5\"\nsubmodule = true\ndest = \"x\"\n",
+        )
+        .unwrap();
+        assert!(
+            SdkIndex::load(&cache).is_err(),
+            "the fixture must be unloadable"
+        );
+
+        let upstream = dir.join("new.toml");
+        std::fs::write(&upstream, index_text("new")).unwrap();
+        let (got, origin) = index_from_store(
+            &store,
+            &file_url(&upstream),
+            /* offline */ false,
+            /* refresh */ false,
+            None,
+        )
+        .expect("an unreadable cache falls through to the fetch");
+        assert_eq!(origin, IndexOrigin::Fetched);
+        assert_eq!(got, cache);
+        assert!(
+            SdkIndex::load(&got).unwrap().tool.contains_key("new"),
+            "the fetch did not replace the unreadable cache"
+        );
+    }
+
+    /// When the refetch cannot happen (offline, or failed), the unreadable copy
+    /// is STILL not served: the shipped copy answers, and with none the error
+    /// names the cache as the broken piece rather than "none cached".
+    #[test]
+    fn an_unreadable_cache_is_never_the_fallback_either() {
+        let dir = crate::test_support::scratch_dir("i2184_stale_cache_offline");
+        let store = dir.join("store");
+        let cache = index_cache_path(&store);
+        std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        std::fs::write(&cache, "<html>Sign in</html>").unwrap();
+        let shipped = dir.join("shipped.toml");
+        std::fs::write(&shipped, index_text("shipped")).unwrap();
+
+        for (offline, url) in [
+            (true, file_url(&dir.join("unreachable.toml"))),
+            (false, file_url(&dir.join("unreachable.toml"))),
+        ] {
+            let (got, origin) = index_from_store(&store, &url, offline, false, Some(&shipped))
+                .expect("the shipped copy is the fallback");
+            assert_eq!(origin, IndexOrigin::Shipped, "offline={offline}");
+            assert_eq!(got, shipped, "offline={offline}");
+        }
+
+        let err = index_from_store(
+            &store,
+            &file_url(&dir.join("unreachable.toml")),
+            /* offline */ true,
+            false,
+            None,
+        )
+        .expect_err("an unreadable cache, no network, no shipped copy — nothing can answer");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("cannot be read by this `nros`"),
+            "the error must say the cache is the broken piece:\n{msg}"
+        );
+        assert!(
+            !msg.contains("none cached"),
+            "a cache that exists must not be reported as absent:\n{msg}"
+        );
+        for needle in ["NROS_INDEX_URL", "NROS_OFFLINE", "--index"] {
+            assert!(msg.contains(needle), "must still name `{needle}`:\n{msg}");
+        }
+        assert!(
+            cache.is_file(),
+            "an unreadable cache is left for the next fetch to replace"
+        );
+    }
+
+    /// The remedy is per ORIGIN: `check-source-refs.py --write` only for a
+    /// checkout's own index, `NROS_INDEX_REFRESH` for the store copy, `--index`
+    /// for an explicit path — and never the checkout's gate for a store copy,
+    /// which is what the measured refusal said.
+    #[test]
+    fn the_load_remedy_names_the_way_out_for_the_origin() {
+        let p = Path::new("/some/nros-sdk-index.toml");
+        let checkout = index_load_remedy(p, IndexWhence::Checkout);
+        assert!(
+            checkout.contains("check-source-refs.py --write"),
+            "{checkout}"
+        );
+        let cached = index_load_remedy(p, IndexWhence::Store(IndexOrigin::Cached));
+        assert!(cached.contains("NROS_INDEX_REFRESH=1"), "{cached}");
+        assert!(!cached.contains("check-source-refs"), "{cached}");
+        let explicit = index_load_remedy(p, IndexWhence::Explicit);
+        assert!(explicit.contains("--index <path>"), "{explicit}");
+        assert!(!explicit.contains("check-source-refs"), "{explicit}");
+        for whence in [
+            IndexWhence::Cwd,
+            IndexWhence::Store(IndexOrigin::Fetched),
+            IndexWhence::Store(IndexOrigin::Shipped),
+        ] {
+            let m = index_load_remedy(p, whence);
+            assert!(m.contains(&p.display().to_string()), "{whence:?}: {m}");
+            assert!(m.contains("--index"), "{whence:?}: {m}");
+        }
     }
 
     // ---- RFC-0097 D12: `setup --check` covers the BUILD stage ---------------
