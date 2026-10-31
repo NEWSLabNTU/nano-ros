@@ -78,6 +78,13 @@ board = "mps2-an385-freertos"
 [image.linux]
 board = "linux"
 
+# The default topology on CycloneDDS. Its C and C++ packages reach the same
+# message packages, and Cyclone's descriptors are per PACKAGE, not per
+# language — the configure failed until issue 2159.
+[image.linux_cyclonedds]
+board = "linux"
+rmw = "cyclonedds"
+
 # The multihost pair: these differ ONLY in `LAUNCH_ARGS host=`, so an image
 # without `args` resolves the whole system instead of one host and the two
 # become the same program. The gap W9.a left in every workspace it touched.

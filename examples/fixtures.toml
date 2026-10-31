@@ -4801,6 +4801,21 @@ image = "linux_cyclonedds"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-cyclonedds-linux-cfg1ff0492eb1/cmake"
 
+# issue 2159 — `mixed` on Cyclone. Its C and C++ packages reach the same message
+# packages in ONE configure, and Cyclone's typesupport is per package, so this is
+# the seam where language and RMW meet: it failed at configure until the fix.
+[[workspace_fixture]]
+id = "workspace-mixed-native-cyclonedds"
+platform = "linux"
+lang = "mixed"
+builder = "cmake"
+rmw = "cyclonedds"
+dir = "examples/workspaces/mixed"
+bringup = "src/demo_bringup"
+image = "linux_cyclonedds"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
 [[workspace_fixture]]
 id = "workspace-cpp-native-xrce"
 platform = "linux"
