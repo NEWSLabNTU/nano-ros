@@ -1032,17 +1032,31 @@ west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run
 The Cortex-M3 witness is Zephyr's `mps2/an385` under QEMU, with Zephyr's own
 IP stack on the emulated SMSC911x. An image names it `board =
 "mps2-an385-zephyr"`; `west build -t run` boots it under the QEMU the Zephyr
-SDK ships (`nros setup zephyr` installed it):
+SDK ships (`nros setup zephyr` installed it). In the Rust workspace above, a
+second entry is that image:
 
-```bash
-# in system.toml:  [image.zephyr_m3] board = "mps2-an385-zephyr"
+```bash probe=80 variant=native-sim-rust
+nros new entry zephyr_m3 --platform zephyr --board mps2-an385-zephyr
+nros setup --sudo
+nros sync
 nros build demo_bringup:zephyr_m3
+```
+
+The guest sits on QEMU's user-mode network, and the board package states it:
+its `prj.conf` gives the image `10.0.2.15` (gateway `10.0.2.2`) and the locator
+`tcp/10.0.2.2:7447`, and `nros build` applies it, so there is nothing to set.
+The Slirp gateway `10.0.2.2` is the host, so the router above is reachable.
+An image whose router listens elsewhere states its own `locator` in
+`system.toml`.
+
+```bash probe=90 probe-run=180 variant=native-sim-rust
 west build -d build/zephyr-zenoh/demo_bringup__zephyr_m3_west -t run
 ```
 
-The guest sits on QEMU's user-mode network: give the image an address there
-(`10.0.2.15`, gateway `10.0.2.2`) and a `locator = "tcp/10.0.2.2:<port>"`, and
-start the router on `0.0.0.0:<port>` so the Slirp gateway reaches it.
+```text probe-expect=90 variant=native-sim-rust
+Publishing: 0
+I heard: 0
+```
 
 ### Verify from stock ROS 2
 
