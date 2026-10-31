@@ -50,9 +50,10 @@ use nros_tests::{
     fixtures::{
         DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, Rmw as FixtureRmw, Ros2DdsProcess,
         Ros2Process, ZenohRouter, build_cmake_leaf_rmw, build_native_c_example_rmw,
-        build_ros2_string_interop, lifecycle_node_binary, listener_binary, require_ros2,
-        require_ros2_cyclonedds, ros2_env_setup_with_locator, service_client_binary,
-        service_server_binary, talker_binary, zenoh_service_info_client_binary,
+        build_ros2_string_interop, build_zenoh_constrained_link_probe, lifecycle_node_binary,
+        listener_binary, require_ros2, require_ros2_cyclonedds, ros2_env_setup_with_locator,
+        service_client_binary, service_server_binary, talker_binary,
+        zenoh_service_info_client_binary,
     },
     matrix::{Lang, PlatformId, Rmw, Workload},
     output, unmet,
@@ -109,6 +110,10 @@ enum Scenario {
     /// which takes each reply with `PollClient::take_response(response,
     /// request_header)` and reports the `rmw_request_id_t` (issue 2148).
     ZenohServiceResponseHeaderCpp,
+    /// zenoh: a stock `rmw_zenoh_cpp` (rclpy) latched publisher beside a
+    /// ~136-node graph, late-joined by the nano `constrained-link-probe` built
+    /// with graph discovery on and off (issue 2163, phase-473 W1/W2).
+    ZenohConstrainedLinkLatchedLateJoin,
 }
 
 impl Scenario {
@@ -145,7 +150,8 @@ fn scenario_coord(s: Scenario) -> (PlatformId, Lang, Rmw, Workload) {
         ZenohPubsubNanoToRos2
         | ZenohPubsubRos2ToNano
         | ZenohPubsubStockDemoToNano
-        | ZenohRouterDownsampling => (Lang::Rust, Rmw::Zenoh, Workload::Pubsub),
+        | ZenohRouterDownsampling
+        | ZenohConstrainedLinkLatchedLateJoin => (Lang::Rust, Rmw::Zenoh, Workload::Pubsub),
         ZenohServiceNanoServer | ZenohServiceRos2Server | ZenohServiceResponseInfo => {
             (Lang::Rust, Rmw::Zenoh, Workload::Service)
         }
@@ -422,6 +428,14 @@ fn flood_count(router: &ZenohRouter, note: &str) -> usize {
     note: "issue 2148: the C++ client's PollClient::take_response(response, \
            request_header) hands out each stock reply's rmw_request_id_t (its own \
            request's sequence number and its request-writer GUID)",
+})]
+#[case::zenoh_constrained_link_latched_late_join(Cell {
+    scenario: Scenario::ZenohConstrainedLinkLatchedLateJoin,
+    note: "issue 2163 / phase-473: a TRANSIENT_LOCAL late joiner reads a stock \
+           latched value through one `@adv/**` history query (W2), and an image \
+           built with graph discovery off declares no liveliness subscriber, so \
+           the router sends it no graph (W1); discovery on and a VOLATILE \
+           subscription are the negative controls",
 })]
 fn interop(#[case] cell: Cell) {
     // Issue 0352 / phase-324 W4.d — per-case binding: the coordinate this case
@@ -830,6 +844,122 @@ fn interop(#[case] cell: Cell) {
         }
 
         // ── zenoh service: ros2 server → C++ client's request header ─────
+        Scenario::ZenohConstrainedLinkLatchedLateJoin => {
+            // Issue 1806's Autoware scale, minus the publisher's own node.
+            const GRAPH_NODES: usize = 135;
+            const LATCHED_VALUE: i32 = 2163;
+            const LATCHED_TOPIC: &str = "/constrained_link_latched";
+            let router = start_zenoh_router();
+            let locator = router.locator();
+            let mut publisher = match Ros2Process::latched_int32_with_graph(
+                &locator,
+                DEFAULT_ROS_DISTRO,
+                LATCHED_TOPIC,
+                LATCHED_VALUE,
+                GRAPH_NODES,
+                Duration::from_secs(120),
+            ) {
+                Ok(p) => p,
+                Err(e) => unmet!("ROS 2 latched publisher could not start: {e}"),
+            };
+            // Late by construction: every probe starts after this line, so the
+            // one sample was published before any nano subscription existed.
+            if let Err(e) = publisher.wait_for_output_count(
+                nros_tests::ros2::LATCHED_PUBLISHED_MARKER,
+                1,
+                Duration::from_secs(60),
+            ) {
+                publisher.kill();
+                panic!("the stock latched publisher never published: {e}");
+            }
+
+            // One probe run: (output, received values, graph answer).
+            let run = |graph_discovery: bool, durability: &str| {
+                let bin = build_zenoh_constrained_link_probe(graph_discovery)
+                    .require("constrained-link-probe")
+                    .to_path_buf();
+                let mut cmd = Command::new(&bin);
+                cmd.env("RUST_LOG", "info")
+                    .env("NROS_LOCATOR", &locator)
+                    .env("NROS_SESSION_MODE", "client")
+                    .env("CLP_TOPIC", LATCHED_TOPIC)
+                    .env("CLP_DURABILITY", durability)
+                    .env("CLP_WINDOW_MS", "6000")
+                    .env("CLP_GRAPH_MS", "10000");
+                let name = format!("constrained-link-probe graph={graph_discovery} {durability}");
+                let mut probe = ManagedProcess::spawn_command(cmd, &name)
+                    .unwrap_or_else(|e| panic!("spawn {name}: {e}"));
+                let out = probe.collect_until(output::CLP_DONE_MARKER, Duration::from_secs(40));
+                probe.kill();
+                let received: Vec<i32> = out
+                    .lines()
+                    .filter_map(|l| l.trim().strip_prefix(output::CLP_RECEIVED_PREFIX))
+                    .filter_map(|v| v.trim().parse().ok())
+                    .collect();
+                let graph: Option<usize> = out
+                    .lines()
+                    .find_map(|l| l.trim().strip_prefix(output::CLP_GRAPH_NODES_PREFIX))
+                    .and_then(|v| v.trim().parse().ok());
+                let unsupported = out.contains(output::CLP_GRAPH_UNSUPPORTED_MARKER);
+                assert!(
+                    out.contains(output::CLP_DONE_MARKER),
+                    "{name} never finished ({}):\n{out}",
+                    cell.note
+                );
+                (out, received, graph, unsupported)
+            };
+
+            // 1. The constrained-link build: discovery off, transient-local.
+            let (out, received, graph, unsupported) = run(false, "transient_local");
+            assert_eq!(
+                received,
+                vec![LATCHED_VALUE],
+                "W2: a TRANSIENT_LOCAL late joiner built with graph discovery off did not \
+                 read the stock latched value exactly once ({}):\n{out}",
+                cell.note
+            );
+            assert!(
+                unsupported && graph.is_none(),
+                "W1: the image built with graph discovery off answered a graph query, so a \
+                 graph cache (and the liveliness subscriber that feeds it) is compiled in \
+                 ({}):\n{out}",
+                cell.note
+            );
+
+            // 2. Negative control for W1: the same program with discovery on
+            //    receives the graph burst the constrained build is spared.
+            let (out, received, graph, unsupported) = run(true, "transient_local");
+            assert_eq!(
+                received,
+                vec![LATCHED_VALUE],
+                "control: the discovery-on build missed the latched value ({}):\n{out}",
+                cell.note
+            );
+            // The cache is `NROS_GRAPH_CACHE_SIZE` bytes and COUNTS overflow
+            // rather than storing it, so the default build lists a prefix of
+            // the domain (measured 44 of 136 nodes). The control's question is
+            // only whether the burst arrived at all, which any count well above
+            // the probe's own node answers.
+            const BURST_FLOOR: usize = 20;
+            let seen = graph.unwrap_or(0);
+            assert!(
+                !unsupported && seen >= BURST_FLOOR,
+                "control: with graph discovery on the probe listed {seen} node(s) of the \
+                 {GRAPH_NODES}+ the router holds (want >= {BURST_FLOOR}), so the cell cannot \
+                 tell the two builds apart ({}):\n{out}",
+                cell.note
+            );
+
+            // 3. Negative control for W2: a VOLATILE late joiner is owed nothing.
+            let (out, received, _, _) = run(false, "volatile");
+            publisher.kill();
+            assert!(
+                received.is_empty(),
+                "control: a VOLATILE late joiner received {received:?}, so delivery did not \
+                 come from the transient-local history query ({}):\n{out}",
+                cell.note
+            );
+        }
         Scenario::ZenohServiceResponseHeaderCpp => {
             let bin = build_cmake_leaf_rmw(
                 "packages/testing/nros-tests/bins/service-info-client-cpp",

@@ -7207,6 +7207,32 @@ pub fn build_zenoh_service_info_client() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// issue 2163 — the `constrained-link-probe` bin, one zenoh image per
+/// `graph_discovery` setting: `linux` keeps the graph cache, `linux_no_graph`
+/// compiles it out (phase-473 W1). Both late-join a latched publisher and print
+/// `CLP_RECEIVED <n>` per sample, then the graph answer.
+pub fn build_zenoh_constrained_link_probe(graph_discovery: bool) -> TestResult<&'static Path> {
+    static WITH_GRAPH: OnceCell<PathBuf> = OnceCell::new();
+    static NO_GRAPH: OnceCell<PathBuf> = OnceCell::new();
+    let (cell, image) = if graph_discovery {
+        (&WITH_GRAPH, "linux")
+    } else {
+        (&NO_GRAPH, "linux_no_graph")
+    };
+    cell.get_or_try_init(|| {
+        let row = crate::fixtures::groups::select_row(
+            "packages/testing/nros-tests/bins/constrained-link-probe",
+            &crate::fixtures::groups::FixtureVariant::image(Rmw::Zenoh, image),
+        )?;
+        let rel = PathBuf::from(format!(
+            "{}/constrained-link-probe",
+            cargo_target_profile_dir()
+        ));
+        require_prebuilt_row_binary_fresh(row, &rel)
+    })
+    .map(|p| p.as_path())
+}
+
 /// rstest fixture that provides the zenoh service-info-client binary path.
 #[rstest::fixture]
 pub fn zenoh_service_info_client_binary() -> PathBuf {

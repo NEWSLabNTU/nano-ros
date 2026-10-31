@@ -794,7 +794,7 @@ const fn unowned(test: &'static str, case: &'static str, reason: &'static str) -
 /// the moment the map becomes necessary.
 #[rustfmt::skip]
 pub const CASE_CELLS: &[CaseOwner] = &[
-    // ── interop_e2e — six cells, twelve cases ─────────────────────────────
+    // ── interop_e2e — six cells, thirteen cases ───────────────────────────
     // Each row is `scenario_coord()`'s answer for that case's `Scenario`
     // (tests/interop_e2e.rs), and those five coordinates are distinct, so the
     // assignment is the one the per-case tripwire already asserts — written
@@ -819,6 +819,10 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     // issue 2148 — the same stock server answering the C++ client, which
     // reads each reply's request header (`PollClient::take_response`).
     co("interop_e2e", "interop::case_12_zenoh_service_response_header_cpp", "native-service-cpp-zenoh-n2r"),
+    // issue 2163 — a stock latched publisher late-joined by the nano
+    // constrained-link probe (graph discovery off / on, transient-local /
+    // volatile): ROS-2-to-nano on the pubsub cell, like case_02.
+    co("interop_e2e", "interop::case_13_zenoh_constrained_link_latched_late_join", "native-pubsub-rust-zenoh-n2r"),
 
     // ── pubsub_freertos_an536_cyclone_ros2_interop_e2e — phase-441 W6 ───
     // The talker cell and the fragmented-sample listener (issue 0917): one
