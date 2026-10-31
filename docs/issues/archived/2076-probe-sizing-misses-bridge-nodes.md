@@ -12,7 +12,7 @@ related: [rfc-0100, phase-517, issue-1694]
 
 # Probe-derived sizing misses the nodes a `[[bridge]]` creates
 
-**Home:** [phase-517](../../roadmap/phase-517-user-flow-setup-build-flash.md) W5,
+**Home:** [phase-517](../../roadmap/archived/phase-517-user-flow-setup-build-flash.md) W5,
 [RFC-0100 Amendment 3](../../design/0100-rmw-agnostic-sizing-model.md#amendment-3-2026-10-26--the-probe-census-sizes-a-contract-less-image-proposed-2026-10-25-phase-517-w5).
 Blocked Amendment 3 from landing until it was fixed.
 

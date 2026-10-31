@@ -24,7 +24,7 @@ copy of `cpp-port-minimal-publisher` builds `zephyr.elf` with `nros build` in
 
 The steps AROUND what a user copies (one `nros setup`, `nros build` for a
 board, the platform's own run and flash commands, and a probe per platform
-chapter) are [phase-517](phase-517-user-flow-setup-build-flash.md), opened
+chapter) are [phase-517](archived/phase-517-user-flow-setup-build-flash.md), opened
 2026-10-25 from a book-vs-CLI audit.
 
 **Status (2026-09-25). Opened to give five homeless issues one owner. W1, W2, W3

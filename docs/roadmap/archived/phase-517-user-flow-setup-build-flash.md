@@ -1,20 +1,20 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-29). Open; W1, W4, W8, W12 and W13 done; W12–W17 opened from the maintainer's rulings on the Left lists; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
+**Status (2026-10-31). Complete, archived. W1–W17 are done; each work item records what landed. Release `0.6.0-nros5` is cut and pinned. Every platform chapter is replayed on the installed track, both language roads included, by the 13 `probe-platforms.yml` tracks (11 platform tracks plus `workspace` and `pinned`); NuttX riscv Rust is the one road with no track. Three loose ends left the phase as issues: [2168](../../issues/2168-probe-installs-published-release.md) (the pinned track with a newer CLI installed), [2169](../../issues/2169-printed-run-commands-per-board.md) (the printed run command run per board) and [2170](../../issues/2170-harness-hand-spelled-qemu-launchers.md) (the harness's sibling-pair QEMU launchers). The rest of the **Left** lists either stays recorded where it lives (FVP, SITL and flash lines; the dormant `idf.py` text, issue 1525) or was found already fixed on main (2026-10-31: the C/C++ scaffolds write a full board name, `--platform zephyr --lang c` writes a Zephyr application, a C package's next step is `nros build`).** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
 a release, and the book's user front door becomes the installed `nros` — no
 user clones nano-ros. W8 and W11 need a design note before code.
 
-**Builds on:** [RFC-0062](../design/0062-unified-dependency-ssot.md) (one
-dependency index), [RFC-0065](../design/0065-colcon-like-workspace-builder.md)
+**Builds on:** [RFC-0062](../../design/0062-unified-dependency-ssot.md) (one
+dependency index), [RFC-0065](../../design/0065-colcon-like-workspace-builder.md)
 (`nros build` as the workspace builder),
-[RFC-0098](../design/0098-generated-leaf-build-config.md) (generated leaf build
-config), [RFC-0099](../design/0099-provisioning-is-planned-once-and-prefers-prebuilts.md)
-(planned provisioning), [RFC-0093](../design/0093-board-naming-states-reach.md)
+[RFC-0098](../../design/0098-generated-leaf-build-config.md) (generated leaf build
+config), [RFC-0099](../../design/0099-provisioning-is-planned-once-and-prefers-prebuilts.md)
+(planned provisioning), [RFC-0093](../../design/0093-board-naming-states-reach.md)
 (board names). **Prior:**
-[phase-452](phase-452-copy-out-front-door.md), which made the templates and the
+[phase-452](../phase-452-copy-out-front-door.md), which made the templates and the
 scaffold build; this phase does the same for the steps around them.
 
 ---
@@ -737,7 +737,7 @@ scaffold carries no message path dep and no selection dep, and adding a
 `<depend>` is one edit.
 
 **Design note (2026-10-25): ACCEPTED 2026-10-26** —
-[RFC-0098, "a `<depend>` is one edit for Rust too"](../design/0098-generated-leaf-build-config.md).
+[RFC-0098, "a `<depend>` is one edit for Rust too"](../../design/0098-generated-leaf-build-config.md).
 `nros sync` owns `# nros-managed` rows in the package's own `[dependencies]`
 (the issue-0457 marker precedent). The three candidates above each fail on a
 cargo fact: `--config` cannot add a dependency, a manifest has no `include`, and
@@ -1435,20 +1435,27 @@ release instead, and nothing in the current harness provides one.
   new installed `nuttx-arm-rust` track builds the workspace image, boots it
   on QEMU and expects the talker and listener. Green on run 41051046857.
 
+**Progress (2026-10-30): the three Rust roads that were not replayable.**
+Issues 2149, 2151 and 2152 are resolved (PRs #2863 and #2867). The
+`zephyr-rust` track is back, and a new `nuttx-arm-rust` track builds and
+boots the NuttX Rust workspace image. Both are green on the installed track
+(runs 41050394546 and 41051046857). Each is recorded in the bullets above
+and in its issue's Resolution.
+
 ## Issues homed here (2026-10-29)
 
-* [2152](../issues/archived/2152-zephyr-entry-scaffold-no-selection.md),
+* [2152](../../issues/archived/2152-zephyr-entry-scaffold-no-selection.md),
   resolved. A Zephyr entry from `nros new entry` never got its selection
   package, so it did not compile outside a checkout (found by W17's
   `zephyr-rust` track).
-* [2151](../issues/archived/2151-zephyr-rust-target-not-provisioned.md),
+* [2151](../../issues/archived/2151-zephyr-rust-target-not-provisioned.md),
   resolved. `nros setup zephyr` did not install what a Zephyr Rust image
   needs beyond a C one: the target, `clippy`, `clang` and `libclang-dev`
   (found by W17's `zephyr-rust` track).
-* [2149](../issues/archived/2149-nuttx-rust-workspace-no-nightly.md),
+* [2149](../../issues/archived/2149-nuttx-rust-workspace-no-nightly.md),
   resolved. A NuttX Rust workspace image did not build from `nros build`.
   The nightly half was fixed in W17, and the kernel-configure half above.
-* [2137](../issues/archived/2137-nros-build-never-takes-the-census.md),
+* [2137](../../issues/archived/2137-nros-build-never-takes-the-census.md),
   resolved. Promise 2 (one build) did not hold for any cross image whose model
   folds in a contract. `nros build --all` refused it with `census missing`,
   because only the fixture pre-pass took a census. `nros build` now takes it
