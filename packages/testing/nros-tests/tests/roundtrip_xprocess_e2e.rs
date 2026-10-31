@@ -237,74 +237,23 @@ fn roundtrip_xprocess() {
     // carries no platform token, so `scripts/test/lane-filter.sh linux` cannot
     // exclude its embedded cells the way it excludes a platform-named binary.
     // Without this a tier-1 host boots whatever QEMU images happen to exist.
-    let out_of_lane: Vec<String> = cells
-        .iter()
-        .filter(|c| !nros_tests::lane_scope::admits(c.platform))
-        .map(|c| nros_tests::lane_scope::skip_note(c.platform, c.lang.as_str()))
-        .collect();
-    let cells: Vec<&MCell> = cells
-        .into_iter()
-        .filter(|c| nros_tests::lane_scope::admits(c.platform))
-        .collect();
-    if !out_of_lane.is_empty() {
-        eprintln!(
-            "roundtrip_xprocess: {} cell(s) out of lane:\n  {}",
-            out_of_lane.len(),
-            out_of_lane.join("\n  ")
-        );
-    }
-    if cells.is_empty() {
-        // The class is `lane`, not the `capability` the old plain `skip!`
-        // defaulted to (issue 0584). Every cell here is out of the RUN's lane — the fixtures
-        // were deliberately not built — which is a different fact from "this
-        // machine cannot do it", and the two are counted separately in the
-        // sweep summary. `baremetal_run_plan_runtime` already carries the
-        // classed spelling and a comment about getting it wrong once.
-        nros_tests::lane_skip!(
-            "every cell is out of this run's lane:\n  {}",
-            out_of_lane.join("\n  ")
-        );
-    }
-
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let mut skipped: Vec<String> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
+    // issue 2171 — one tally for every consolidated matrix test: a cell is
+    // EXECUTED only when it ran, a resolver's `[SKIPPED:lane]` inside an
+    // admitted platform is OUT OF LANE like the platforms refused here, and
+    // the summary names every cell that did not run, on a pass too.
+    let mut tally = nros_tests::matrix_tally::Tally::new("roundtrip_xprocess", "cell");
     for c in &cells {
-        let label = format!("{}/{}", c.lang.as_str(), wl_str(c.workload));
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
-        if let Err(p) = res {
-            let msg = p
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "<non-string panic>".to_string());
-            if nros_tests::skip_marker::is_skip(&msg) {
-                skipped.push(format!("{label}: {msg}"));
-            } else {
-                failed.push(format!("{label}: {msg}"));
-            }
+        if !nros_tests::lane_scope::admits(c.platform) {
+            tally.out_of_lane(nros_tests::lane_scope::skip_note(
+                c.platform,
+                c.lang.as_str(),
+            ));
+            continue;
         }
+        let label = format!("{}/{}", c.lang.as_str(), wl_str(c.workload));
+        tally.run(&label, || run_cell(c));
     }
-    std::panic::set_hook(prev_hook);
-
-    assert!(
-        failed.is_empty(),
-        "roundtrip_xprocess: {} of {} cell(s) FAILED:\n  {}",
-        failed.len(),
-        cells.len(),
-        failed.join("\n  ")
-    );
-    if skipped.len() == cells.len() {
-        // Issue 1758 — every inner unmet precondition is a FAILURE (it lands in
-        // `failed`, asserted above), so what is left in `skipped` is lane
-        // deselection only: nothing ran because nothing was in scope.
-        nros_tests::lane_skip!(
-            "all {} roundtrip cell(s) skipped:\n  {}",
-            skipped.len(),
-            skipped.join("\n  ")
-        );
-    }
+    tally.finish();
 }
 
 /// Boot the workspace's server + client entries as two processes and prove the

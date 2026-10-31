@@ -505,12 +505,12 @@ test-all verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test threadx_riscv64_qemu --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(ThreadxRiscv64)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        e2e_args+=(--success-output never --failure-output never)
+        e2e_args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${e2e_args[@]}"
 

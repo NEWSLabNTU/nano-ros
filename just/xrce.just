@@ -88,7 +88,7 @@ test verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast -E 'binary(xrce)')
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     # `nros_tests::lane_skip!` panics with `[SKIPPED:lane]` for an
     # out-of-scope test, and nextest records those as failures. Phase
@@ -118,7 +118,7 @@ test-ros2 verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast -E 'binary(xrce_ros2_interop)')
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     set +e
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
@@ -144,7 +144,7 @@ test-c verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast -E 'binary(c_xrce_api)')
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     set +e
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"

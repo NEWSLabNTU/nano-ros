@@ -392,13 +392,13 @@ test-all verbose="":
     # Build tests
     args=(-p nros-tests --test freertos_qemu --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
     # E2E networking tests (pubsub, service, action across RTOS platforms)
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(Freertos)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        e2e_args+=(--success-output never --failure-output never)
+        e2e_args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${e2e_args[@]}"
 

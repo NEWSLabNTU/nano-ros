@@ -1,15 +1,16 @@
 ---
 id: 2171
 title: "realtime_tiers and sched_dims count a lane-skipped row as one that RAN, and file it under `skipped`, not `out of lane`"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [ci, testing]
 related: [2004, 0571, 1758, phase-466]
 found: 2026-10-31
+resolved: 2026-10-31
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — W5 is read off these two summaries.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — W5 is read off these two summaries.
 
 ## Measured
 
@@ -59,3 +60,28 @@ reason is a LANE skip (`[SKIPPED:lane]`) into `out_of_lane`, keeping
 `multihost_e2e` and `roundtrip_xprocess_e2e` for the same shape (they share
 the catch). A unit test over the summary function, fed one admitted
 out-of-lane row, is the negative control.
+
+## Resolution (2026-10-31)
+
+Fixed the class, not the two reported sites. All five consolidated matrix
+tests now keep one `nros_tests::matrix_tally::Tally`, which owns the catch,
+the classification and the summary:
+
+- a cell that returns is EXECUTED and passed; a non-skip panic EXECUTED and
+  failed (an `unmet!` included, per issue 1758);
+- a `[SKIPPED:lane]` panic is OUT OF LANE whether the test refused the
+  platform or the fixture resolver refused the row; any other skip class is
+  SKIPPED;
+- the summary reads `realtime_tiers: 4 row(s) executed (4 passed, 0 failed),
+  18 out of lane, 0 skipped`, then one line per cell that did not run;
+- no cell executed is a `lane_skip!`, as before.
+
+`multihost_e2e` and `roundtrip_xprocess_e2e` had a third form of the defect:
+they printed only the platforms they refused, never the rows that lane-skipped
+inside a run. They print the full summary now. `entry_e2e` was the one file
+that counted executed cells correctly; it uses the tally too, so the five
+cannot drift apart again (+53 / -344 lines across the five files).
+
+Unit tests in `matrix_tally` cover each class; the first,
+`a_lane_skip_inside_a_cell_is_out_of_lane_not_executed`, is this issue's
+negative control. Mutation: filing a lane skip as `Skipped` fails 3 of the 5.

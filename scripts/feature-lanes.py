@@ -242,7 +242,7 @@ def run(runner: str, verbose: bool) -> int:
         elif lane.get("tolerant"):
             args = lane_args(lane) + ["--no-fail-fast"]
             if not verbose:
-                args += ["--success-output", "never", "--failure-output",
+                args += ["--failure-output",
                          os.environ.get("NROS_TEST_FAILURE_OUTPUT", "never")]
             cmd = ["just", "_nextest-tolerant", *args]
         else:

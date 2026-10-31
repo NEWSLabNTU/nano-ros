@@ -20,6 +20,14 @@ passing it straight to `lane_skip!`, which skips the whole test and is printed
 as a skip anyway) must be selected by a `.config/nextest.toml` override that
 sets `success-output` to show output on success. The subject is derived from
 the sources, so a new consolidated test joins the rule by being written.
+
+And no command line may pass `--success-output never`: a nextest CLI flag
+outranks every per-test override, so that flag silently undid the rule above
+on every lane recipe that ran these binaries. The first fix landed the
+override and the summaries still never reached a log (issue 2004, measured on
+run-matrix 41013529125); only the junit carried them. Without the flag the
+profile decides, and the profile's default for every other binary is already
+`never`.
 """
 
 from __future__ import annotations
@@ -41,6 +49,12 @@ BINARY_RE = re.compile(r"\bbinary\(\s*=?([A-Za-z0-9_]+)\s*\)")
 SHOWN = {"final", "immediate", "immediate-final"}
 # How far back a `lane_skip!(` may sit and still own the `skip_note(` call.
 LANE_SKIP_REACH = 3
+# Where a nextest command line is written.
+CLI_PATHS = ["justfile", "just/*.just", "scripts/**", ".github/workflows/*.yml"]
+# `--success-output never`, `--success-output=never`, or a Python argv pair.
+CLI_NEVER_RE = re.compile(
+    r"""--success-output(?:\s+|=)never\b|["']--success-output["']\s*,\s*["']never["']"""
+)
 
 
 def repo_root() -> Path:
@@ -98,6 +112,37 @@ def shown_binaries(doc: dict) -> set[str]:
     return out
 
 
+def cli_suppressions(text: str) -> list[int]:
+    """1-based lines that pass `--success-output never` on a command line."""
+    return [
+        i
+        for i, line in enumerate(text.splitlines(), 1)
+        if not line.lstrip().startswith("#") and CLI_NEVER_RE.search(line)
+    ]
+
+
+def cli_offenders(root: Path) -> list[str]:
+    files = subprocess.run(
+        ["git", "ls-files", "--", *CLI_PATHS],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=root,
+    ).stdout.split()
+    me = Path(__file__).resolve()
+    out = []
+    for f in files:
+        path = root / f
+        if path.resolve() == me or not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        out.extend(f"{f}:{n}" for n in cli_suppressions(text))
+    return out
+
+
 def check(names: list[str], doc: dict) -> list[str]:
     shown = shown_binaries(doc)
     return [n for n in names if n not in shown]
@@ -127,9 +172,15 @@ def selftest() -> int:
     want("binaries a shown override credits", sorted(shown_binaries(doc)), ["a", "b", "e"])
     want("a binary with only an unrelated override is missing", check(["a", "c"], doc), ["c"])
     want("a test()-narrowed override does not cover the whole binary", check(["d"], doc), ["d"])
+    want("a recipe's CLI suppression", cli_suppressions(
+        '    args+=(--failure-output never)\n    args+=(--success-output never --failure-output never)'), [2])
+    want("the = spelling and a Python argv pair", cli_suppressions(
+        'x --success-output=never\nargs += ["--success-output", "never"]'), [1, 2])
+    want("a CLI that SHOWS output, and a comment naming the flag", cli_suppressions(
+        'args+=(--success-output final)\n# never pass --success-output never'), [])
     if fail:
         return 1
-    print("check-matrix-summary-visible --selftest: OK (7 cases)")
+    print("check-matrix-summary-visible --selftest: OK (10 cases)")
     return 0
 
 
@@ -147,6 +198,17 @@ def main() -> int:
               "the derivation found nothing, which is not believable", file=sys.stderr)
         return 1
     doc = tomllib.loads((root / ".config/nextest.toml").read_text(encoding="utf-8"))
+    rc = 0
+    cli = cli_offenders(root)
+    if cli:
+        print("check-matrix-summary-visible: FAIL -- a command line passes "
+              "`--success-output never`, which outranks the override below and hides every "
+              "summary it shows (issue 2004):", file=sys.stderr)
+        for loc in cli:
+            print(f"  {loc}", file=sys.stderr)
+        print("  fix: drop the flag; the profile already hides a passing test's output for "
+              "every binary the override does not name", file=sys.stderr)
+        rc = 1
     missing = check(names, doc)
     if missing:
         print("check-matrix-summary-visible: FAIL -- these tests pass over rows they did not "
@@ -156,6 +218,8 @@ def main() -> int:
         print("  fix: add binary(<name>) to the `success-output = \"final\"` override in "
               ".config/nextest.toml", file=sys.stderr)
         return 1
+    if rc:
+        return rc
     print(f"check-matrix-summary-visible: OK -- {len(names)} summarising test(s), "
           f"each printed on PASS: {', '.join(names)}")
     return 0

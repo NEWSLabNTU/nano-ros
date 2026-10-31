@@ -735,7 +735,7 @@ test verbose="": build-fixtures
     args=(-p nros-tests --no-fail-fast \
           -E 'not (group(=ros2-interop) or binary(xrce_ros2_interop) or binary(zephyr) or binary(esp32_emulator) or binary(large_msg) or binary(linux_api) or binary(parameters_roundtrip) or binary(c_xrce_api))')
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
@@ -772,7 +772,7 @@ test-large-msg verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test large_msg --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
@@ -784,7 +784,7 @@ test-ros2 verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test interop_e2e --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
@@ -801,7 +801,7 @@ test-ros2-params verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test params --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
@@ -825,7 +825,7 @@ test-ros2-params-per-node verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test params_per_node_interop --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
@@ -843,7 +843,7 @@ test-ros2-c-param-server verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test c_param_server_interop --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
@@ -860,7 +860,7 @@ test-ros2-lifecycle verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test interop_e2e -E 'test(lifecycle)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
@@ -1135,7 +1135,7 @@ test-linux-api verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test linux_api --test parameters_roundtrip --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
@@ -1150,7 +1150,7 @@ test-c verbose="":
     args=(-p nros-tests --test linux_api --no-fail-fast \
           -E 'test(/Language__C$/) or test(test_c_)')
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
     just linux _test-c-codegen {{verbose}}
@@ -1165,7 +1165,7 @@ test-cpp verbose="":
     args=(-p nros-tests --no-fail-fast \
           -E '(binary(linux_api) and (test(Language__Cpp) or test(test_cpp_))) or binary(parameters_roundtrip)')
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
@@ -1178,7 +1178,7 @@ test-c-xrce verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast -E 'binary(c_xrce_api)')
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 

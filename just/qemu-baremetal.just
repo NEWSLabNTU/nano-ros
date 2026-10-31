@@ -378,7 +378,7 @@ test-all verbose="":
     args=(-p nros-tests --no-fail-fast \
           -E 'binary(emulator) or binary(large_msg)')
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 

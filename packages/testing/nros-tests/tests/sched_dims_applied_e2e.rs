@@ -540,11 +540,10 @@ fn sched_dims_applied() {
         "matrix regression: no Runtime sched-dim cells"
     );
 
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let mut skipped: Vec<String> = Vec::new();
-    let mut out_of_lane: Vec<String> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
+    // issue 2171 — one tally for every consolidated matrix test; a cell is
+    // EXECUTED only when it ran, and a resolver's `[SKIPPED:lane]` is OUT OF
+    // LANE. This file printed `17 cell(s) ran` for one.
+    let mut tally = nros_tests::matrix_tally::Tally::new("sched_dims", "cell");
     for c in &cells {
         let label = format!("{:?}/{}/{}", c.dim, plat_str(c.platform), c.lang.as_str());
         // issue 0630 — narrow by LANE here, because no name filter can reach
@@ -561,65 +560,16 @@ fn sched_dims_applied() {
         // missing" (issue 0445): an admitted platform whose fixture is absent
         // still fails exactly as hard.
         if !nros_tests::lane_scope::admits(c.platform) {
-            out_of_lane.push(nros_tests::lane_scope::skip_note(
+            tally.out_of_lane(nros_tests::lane_scope::skip_note(
                 c.platform,
                 c.lang.as_str(),
             ));
             continue;
         }
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
-        if let Err(p) = res {
-            let msg = p
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "<non-string panic>".to_string());
-            if nros_tests::skip_marker::is_skip(&msg) {
-                skipped.push(format!("{label}: {msg}"));
-            } else {
-                failed.push(format!("{label}: {msg}"));
-            }
-        }
+        tally.run(&label, || run_cell(c));
     }
-    std::panic::set_hook(prev_hook);
-
-    // issue 0571's other half, and it is the half that matters more: say what
-    // did NOT run, always. A cell dropped for lane or fixture reasons used to
-    // vanish into a green verdict unless EVERY cell went, so "1 of 9 ran" and
-    // "9 of 9 passed" printed the same thing.
-    let ran = cells.len() - out_of_lane.len();
-    println!(
-        "sched_dims: {ran} cell(s) ran, {} skipped, {} out of lane",
-        skipped.len(),
-        out_of_lane.len()
-    );
-    for note in out_of_lane.iter().chain(skipped.iter()) {
-        println!("  - {note}");
-    }
-
-    assert!(
-        failed.is_empty(),
-        "sched_dims: {} of {} cell(s) FAILED:\n  {}",
-        failed.len(),
-        ran,
-        failed.join("\n  ")
-    );
-    if ran == 0 || skipped.len() == ran {
-        // Issue 1758 — every inner unmet precondition is a FAILURE (it lands in
-        // `failed`, asserted above), so what is left in `skipped` is lane
-        // deselection only: nothing ran because nothing was in scope.
-        nros_tests::lane_skip!(
-            "no sched-dim cell RAN ({} skipped, {} out of lane):\n  {}",
-            skipped.len(),
-            out_of_lane.len(),
-            skipped
-                .iter()
-                .chain(out_of_lane.iter())
-                .cloned()
-                .collect::<Vec<_>>()
-                .join("\n  ")
-        );
-    }
+    // issue 0571's other half: say what did NOT run, always.
+    tally.finish();
 }
 
 /// issue 0260 / phase-356 W3 — say which arm the dim actually took.

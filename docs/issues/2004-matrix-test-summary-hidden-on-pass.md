@@ -88,5 +88,25 @@ enough:
   finds in the junit's `system-out` into the job summary — the junit is
   already collected by `fixture-tree.sh reports`.
 
-Reading the summaries also showed they miscount (issue 2171): "22 row(s)
+Reading the summaries also showed they miscount (issue 2171, resolved): "22 row(s)
 ran" for 4 executed.
+
+## 2026-10-31 — the log half
+
+Took the first of the two ways above. `--success-output never` is gone from
+every command line that ran `nros-tests` (32 sites: `justfile`, eight
+`just/*.just` recipes, `scripts/feature-lanes.py`,
+`scripts/test/check-out-of-lane-deselected.py`); each `--failure-output`
+setting is unchanged. With no flag the profile decides, and the profile shows
+a passing test's output only for the five binaries the override names, so
+every other test is as quiet as before.
+
+`check-matrix-summary-visible` now has a second rule: no tracked
+`justfile`, `just/*.just`, `scripts/**` or workflow line may pass
+`--success-output never` (or `=never`, or the Python argv pair). Self-test 10
+cases; mutation: putting the flag back on `just/xrce.just:91` fails the gate,
+naming that line.
+
+What would close it is unchanged: the next scheduled tier-2 run whose LOG
+(not only its junit) carries an `executed (` summary line for
+`realtime_tiers` and `sched_dims`.

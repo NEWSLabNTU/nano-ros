@@ -664,12 +664,12 @@ fn realtime_tiers() {
         "matrix regression: no RealtimeTiers runtime cells for this consumer"
     );
 
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let mut ran = 0usize;
-    let mut skipped: Vec<String> = Vec::new();
-    let mut out_of_lane: Vec<String> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
+    // issue 2171 — one tally for every consolidated matrix test. A row is
+    // EXECUTED only when it ran; a `[SKIPPED:lane]` raised by the fixture
+    // resolver for an admitted platform's out-of-lane row is OUT OF LANE, the
+    // same as a platform the lane refuses here. Counting it as "ran" printed
+    // `22 row(s) ran` for four.
+    let mut tally = nros_tests::matrix_tally::Tally::new("realtime_tiers", "row");
     for c in &cells {
         // issue 0571 — narrow by LANE here, because no name filter can reach
         // inside one test. `lane-filter.sh linux` excludes platform tokens in
@@ -677,66 +677,18 @@ fn realtime_tiers() {
         // tier-1 host boots every QEMU image it happens to have lying around.
         if !nros_tests::lane_scope::admits(c.platform) {
             for exec in exec_for(c.platform, c.lang) {
-                out_of_lane.push(nros_tests::lane_scope::skip_note(c.platform, exec.label));
+                tally.out_of_lane(nros_tests::lane_scope::skip_note(c.platform, exec.label));
             }
             continue;
         }
         for exec in exec_for(c.platform, c.lang) {
-            ran += 1;
             let label = format!("{}/{}", plat_str(c.platform), exec.label);
-            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_one(c, &exec)));
-            if let Err(p) = res {
-                let msg = p
-                    .downcast_ref::<String>()
-                    .cloned()
-                    .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
-                    .unwrap_or_else(|| "<non-string panic>".to_string());
-                if nros_tests::skip_marker::is_skip(&msg) {
-                    skipped.push(format!("{label}: {msg}"));
-                } else {
-                    failed.push(format!("{label}: {msg}"));
-                }
-            }
+            tally.run(&label, || run_one(c, &exec));
         }
     }
-    std::panic::set_hook(prev_hook);
-
-    // issue 0571 — say what was NOT run, always. A row that skipped because its
-    // fixture is absent used to vanish into a green verdict unless EVERY row
-    // skipped, so "1 of 16 ran" and "16 of 16 passed" printed the same thing.
-    // That is what let issue 0572 sit unseen behind a 12-second PASS.
-    println!(
-        "realtime_tiers: {ran} row(s) ran, {} skipped, {} out of lane",
-        skipped.len(),
-        out_of_lane.len()
-    );
-    for note in out_of_lane.iter().chain(skipped.iter()) {
-        println!("  - {note}");
-    }
-
-    assert!(
-        failed.is_empty(),
-        "realtime_tiers: {} of {} row(s) FAILED:\n  {}",
-        failed.len(),
-        ran,
-        failed.join("\n  ")
-    );
-    if ran == 0 || skipped.len() == ran {
-        // Issue 1758 — every inner unmet precondition is a FAILURE (it lands in
-        // `failed`, asserted above), so what is left in `skipped` is lane
-        // deselection only: nothing ran because nothing was in scope.
-        nros_tests::lane_skip!(
-            "no realtime-tiers row RAN ({} skipped, {} out of lane):\n  {}",
-            skipped.len(),
-            out_of_lane.len(),
-            skipped
-                .iter()
-                .chain(out_of_lane.iter())
-                .cloned()
-                .collect::<Vec<_>>()
-                .join("\n  ")
-        );
-    }
+    // issue 0571 — say what was NOT run, always: "1 of 16 ran" and "16 of 16
+    // passed" must not print the same thing (issue 0572 sat behind that).
+    tally.finish();
 }
 
 /// Issue 2067 -- a FreeRTOS level image's kernel does not time-slice

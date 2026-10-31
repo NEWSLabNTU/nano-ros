@@ -309,7 +309,7 @@ def run(out_dir):
     cmd = (
         ["cargo", "nextest", "run", "-p", "nros-tests", *cargo_args,
          "-P", PROFILE, "--no-fail-fast",
-         "--success-output", "never", "--failure-output", "never",
+         "--failure-output", "never",
          "-E", selection]
     )
     print(f"check-out-of-lane-deselected: linux scope ({coords}), emulators/RTOS trees hidden")

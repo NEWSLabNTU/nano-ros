@@ -310,7 +310,7 @@ def nested_marker_self_test() -> None:
     spec.loader.exec_module(nrf)
 
     summary = (
-        "sched_dims: 10 cell(s) ran, 6 skipped, 7 out of lane\n"
+        "sched_dims: 10 cell(s) executed (10 passed, 0 failed), 7 out of lane, 0 skipped\n"
         "  - nuttx/rust: [SKIPPED:lane] out of lane: no NuttxArm coordinate\n"
     )
     trailer = "\nnote: run with `RUST_BACKTRACE=1`"
