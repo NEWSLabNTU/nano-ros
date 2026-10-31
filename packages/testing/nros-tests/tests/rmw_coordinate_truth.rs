@@ -62,101 +62,55 @@ use std::{
 /// nothing else defines. `(rmw name, symbol prefix)`.
 const BACKENDS: &[(&str, &str)] = &[("zenoh", "_z_"), ("cyclonedds", "dds_"), ("xrce", "uxr_")];
 
-/// Count all three namespaces in ONE `nm` pass.
+/// Count all three namespaces in ONE read of the artifact's symbol table.
 ///
-/// One pass rather than one per backend, and it matters: the first cut ran up
-/// to seven `nm` invocations per binary across every artifact tree and blew the
-/// 60 s nextest timeout. `nm` on an 8 MB binary is not cheap and there are
-/// hundreds of them.
+/// One pass rather than one per backend: the first cut ran up to seven `nm`
+/// invocations per binary across every artifact tree and blew the 60 s nextest
+/// timeout.
 ///
-/// Issue 1984 — bounded by `budget`. An unbounded `nm` let one slow read spend
-/// the test's whole nextest budget, and a suite-level TIMEOUT names no binary.
-fn backend_symbols(bin: &Path, budget: std::time::Duration) -> NmVerdict {
-    use std::io::Read;
-    let Ok(mut child) = Command::new("nm")
-        .arg(bin)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    else {
-        return NmVerdict::Unreadable;
-    };
-    // Drained on its own thread: `nm` blocks on a full pipe, so polling for its
-    // exit without reading would turn a large symbol table into a hang.
-    let mut stdout = child.stdout.take().expect("stdout is piped");
-    let reader = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let _ = stdout.read_to_end(&mut buf);
-        buf
-    });
-    let deadline = std::time::Instant::now() + budget;
-    let exited = loop {
-        match child.try_wait() {
-            Ok(Some(st)) => break Some(st.success()),
-            Ok(None) if std::time::Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break None;
-            }
-            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
-            Err(_) => break Some(false),
-        }
-    };
-    let text = reader.join().unwrap_or_default();
-    match exited {
-        None => NmVerdict::OverBudget,
-        Some(false) => NmVerdict::Unreadable,
-        Some(true) => NmVerdict::Counts(count_nm_output(&String::from_utf8_lossy(&text))),
+/// Issue 2122 -- read IN PROCESS (`nros_tests::elf`), not by `nm`. The `nm`
+/// sweep put one child process per artifact under a wall-clock budget, and
+/// what that budget measured was the host: 9 s for one binary on a loaded
+/// tier-2 runner against 0.04 s idle (issue 2127), and 21.4 s for the whole
+/// sweep on a cold page cache here against 0.9 s warm. The reader touches only
+/// the header, the section headers, `.symtab` and its string table, and there
+/// is no child to start, drain or kill -- so there is no budget either: a read
+/// either answers or names why it could not.
+fn backend_symbols(bin: &Path) -> Result<BTreeMap<&'static str, usize>, String> {
+    let elf = nros_tests::elf::read(bin)?;
+    if elf.symbols.is_empty() {
+        return Err("no static symbol table (`.symtab`) -- the image is stripped".into());
     }
+    Ok(count_backend_symbols(&elf))
 }
 
-/// What one bounded `nm` pass answered.
-enum NmVerdict {
-    Counts(BTreeMap<&'static str, usize>),
-    /// `nm` could not run or refused the file.
-    Unreadable,
-    /// `nm` outlived [`NM_BUDGET`] and was killed.
-    OverBudget,
-    /// The sweep had spent [`NM_SWEEP_BUDGET`] before this row's turn.
-    NotStarted,
-}
-
-/// Issue 1984 — one `nm` pass's budget. 1690 measured the whole sweep at
-/// 2.7 s solo here and CI's runner 118 at 5.6-6.9 s, so a single binary that
-/// needs 20 s is a finding, not load.
-const NM_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
-
-/// Issue 1984 — no row STARTS after this much of the sweep. With [`NM_BUDGET`]
-/// on top, the worst case stays inside nextest's 60 s terminate, so a slow
-/// sweep fails with the rows and timings that explain it instead of a
-/// suite-level TIMEOUT that names nothing.
-const NM_SWEEP_BUDGET: std::time::Duration = std::time::Duration::from_secs(25);
-
-/// Count each backend's namespace in `nm` output.
+/// Count each backend's namespace among the functions an image LINKS.
 ///
-/// Split out from the `nm` invocation so it can be exercised against known
-/// input — see `the_symbol_counter_reads_local_and_global_text_symbols`. This
-/// is the part that was wrong twice while writing the gate, in both directions.
-fn count_nm_output(text: &str) -> BTreeMap<&'static str, usize> {
+/// Split out from the read so it can be exercised against known input -- see
+/// `the_symbol_counter_reads_local_and_global_text_symbols`. This is the part
+/// that was wrong twice while writing the gate, in both directions, and a
+/// third time silently (issue 2122): it counted only STATIC definitions, so an
+/// image that links its backend as a shared library (`linux_cyclonedds_entry`
+/// in the C workspace: `NEEDED libddsc.so.0`, 51 `U dds_` and no `T dds_`)
+/// read as "links no backend at all", was filed under unreadable, and its row
+/// was never checked.
+fn count_backend_symbols(elf: &nros_tests::elf::Elf) -> BTreeMap<&'static str, usize> {
     let mut counts: BTreeMap<&'static str, usize> = BACKENDS.iter().map(|(n, _)| (*n, 0)).collect();
-    for line in text.lines() {
-        // "<addr> <type> <symbol>". Parsed rather than substring-matched: the
-        // type letter's CASE is the difference between a global symbol (`T`)
-        // and a local one (`t`), and matching only `T` called the bridge
-        // workspace's 350 local `dds_` symbols an absent backend. Static linking
-        // decides which case a backend's symbols get; the gate must not.
-        let mut parts = line.split_whitespace();
-        let Some(sym) = parts.next_back() else {
-            continue;
-        };
-        let Some(kind) = parts.next_back() else {
-            continue;
-        };
-        if !kind.eq_ignore_ascii_case("t") {
-            continue;
-        }
+    // `is_text` is `nm`'s `T` OR `t`: a symbol DEFINED in a code section,
+    // global or local. Static linking decides which binding a backend's
+    // symbols get -- the bridge workspace's 350 `dds_` symbols are all local --
+    // and the gate must not. `is_import` is `U`: these artifacts are LINKED
+    // executables, so an undefined reference is one a shared library resolves
+    // at load, which links that backend just as surely. Data and weak symbols
+    // count as neither -- a weak reference may stay unresolved, and a datum
+    // named like a backend is not its code.
+    for sym in elf
+        .symbols
+        .iter()
+        .filter(|s| elf.is_text(s) || elf.is_import(s))
+    {
         for (name, prefix) in BACKENDS {
-            if sym.starts_with(prefix) {
+            if sym.name.starts_with(prefix) {
                 *counts.get_mut(name).expect("seeded above") += 1;
             }
         }
@@ -173,39 +127,62 @@ fn count_nm_output(text: &str) -> BTreeMap<&'static str, usize> {
 ///
 /// * matching the substring `" T dds_"` missed LOCAL symbols, so a binary with
 ///   350 `t dds_` entries read as "links no cyclonedds";
-/// * counting any line merely CONTAINING a prefix would match undefined
-///   imports and data symbols, so a binary that only references a backend
-///   would read as carrying it, and the gate could not fail.
+/// * counting any line merely CONTAINING a prefix would match data symbols
+///   and weak references, so a binary that only names a backend would read
+///   as carrying it, and the gate could not fail. (A non-weak `U` import DOES
+///   count since issue 2122: in a linked executable a shared library resolves
+///   it, so the backend is linked.)
 ///
 /// So it asserts both directions against known input, every run.
 #[test]
 fn the_symbol_counter_reads_local_and_global_text_symbols() {
-    let sample = "0000000000001000 T z_open\n\
-                  0000000000001010 t _z_send_frame\n\
-                  00000000000cb740 t dds_alloc\n\
-                  0000000000142df0 T dds_create_participant\n\
-                  00000000001e12a0 d cyclonedds_root_cfgelems\n\
-                  0000000000002000 U uxr_run_session\n\
-                  0000000000002010 T uxr_init_session\n\
-                                   w some_weak_symbol\n";
-    let c = count_nm_output(sample);
+    use nros_tests::elf::{STB_WEAK, synth};
+    const GLOBAL: u8 = 1;
+    const LOCAL: u8 = 0;
+    let dir = tempfile::tempdir().expect("tempdir");
+    let read = |syms: &[synth::SymSpec<'_>]| {
+        let p = dir.path().join("image.elf");
+        std::fs::write(&p, synth::build(true, false, syms)).expect("write");
+        backend_symbols(&p).expect("a synthesised ELF reads")
+    };
+    let c = read(&[
+        ("z_open", GLOBAL, "text"),
+        ("_z_send_frame", LOCAL, "text"),
+        ("dds_alloc", LOCAL, "text"),
+        ("dds_create_participant", GLOBAL, "text"),
+        ("dds_root_cfgelems", LOCAL, "data"),
+        ("uxr_init_session", GLOBAL, "text"),
+        ("uxr_weak_hook", STB_WEAK, "text"),
+        ("uxr_weak_ref", STB_WEAK, "undef"),
+    ]);
 
     // LOCAL (`t`) and GLOBAL (`T`) both count — the bug that called a linked
-    // backend absent.
-    assert_eq!(c["cyclonedds"], 2, "one `t dds_` + one `T dds_`");
+    // backend absent. The `dds_` DATUM does not.
+    assert_eq!(c["cyclonedds"], 2, "one local + one global `dds_` function");
     // `z_open` does not start with `_z_`; only the prefixed one counts.
-    assert_eq!(c["zenoh"], 1, "only `_z_`-prefixed text symbols");
-    // `U` is UNDEFINED — an import, not evidence the backend is linked; `d` is
-    // data. Counting either would make the gate pass on a binary that merely
-    // references a backend it does not carry.
-    assert_eq!(c["xrce"], 1, "the `U` import must not count, the `T` must");
+    assert_eq!(c["zenoh"], 1, "only `_z_`-prefixed symbols");
+    // The weak definition is `W` and the weak reference `w`, not `T`/`U` -- a
+    // weak reference may stay unresolved, so it carries nothing.
+    assert_eq!(
+        c["xrce"], 1,
+        "the weak definition and weak reference must not count"
+    );
+
+    // A backend linked as a SHARED library shows only `U` references, and it
+    // is linked all the same (issue 2122: the C workspace's Cyclone image).
+    let shared = read(&[("main", GLOBAL, "text"), ("dds_write", GLOBAL, "undef")]);
+    assert_eq!(shared["cyclonedds"], 1, "a `U dds_` import links Cyclone");
 
     // And the counter must be able to report ZERO, which is what the main
     // test's "links none of it" assertion keys on.
-    let none = count_nm_output("0000000000001000 T unrelated_symbol\n");
-    assert_eq!(none["cyclonedds"], 0);
-    assert_eq!(none["zenoh"], 0);
-    assert_eq!(none["xrce"], 0);
+    let none = read(&[("unrelated_symbol", GLOBAL, "text")]);
+    assert_eq!(none.values().sum::<usize>(), 0);
+
+    // A file that cannot be read is NO VERDICT (`Err`), never zero of
+    // everything: zero would read as "links none of the declared backend".
+    let bogus = dir.path().join("not-an-elf");
+    std::fs::write(&bogus, b"#!/bin/sh\n").expect("write");
+    assert!(backend_symbols(&bogus).is_err());
 }
 
 /// Issue 1690 — map `f` over `items` on a bounded pool of threads, results in
@@ -410,13 +387,13 @@ fn declares_a_bridge(ws_dir: &Path) -> bool {
 #[test]
 fn a_rows_rmw_is_the_backend_its_artifact_linked() {
     let mut checked = 0usize;
-    let mut unreadable = 0usize;
+    let mut unread: Vec<String> = Vec::new();
     let mut wrong: Vec<String> = Vec::new();
     let mut promised = 0usize;
 
-    // Locate serially (cheap, and it counts `promised`), then run `nm` over the
-    // located binaries on a pool (issue 1690): `nm` on an 8 MB binary is the
-    // cost, and summed over every row it reached 54.8 s of a 60 s budget.
+    // Locate serially (cheap, and it counts `promised`), then read the located
+    // binaries' symbol tables on a pool (issue 1690): summed over every row,
+    // the old `nm` sweep reached 54.8 s of a 60 s budget.
     let mut located: Vec<(&nros_tests::fixtures::lane::Row, PathBuf)> = Vec::new();
     let locate_started = std::time::Instant::now();
     for row in nros_tests::fixtures::lane::manifest_rows() {
@@ -437,15 +414,13 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
         }
     }
     let locate_took = locate_started.elapsed();
-    // Issue 1984 — every pass bounded and timed, and the sweep bounded too, so
-    // the slowest rows are named whether the test passes or not.
+    // Timed per row and printed on every run, pass or fail (issue 1984), so a
+    // slow host says where the time went. Not BOUNDED: issue 2122 -- there is no
+    // child process to kill any more, and a budget only measured the host.
     let sweep_started = std::time::Instant::now();
     let symbols = par_map(&located, |(_, bin)| {
-        if sweep_started.elapsed() >= NM_SWEEP_BUDGET {
-            return (NmVerdict::NotStarted, std::time::Duration::ZERO);
-        }
         let t0 = std::time::Instant::now();
-        (backend_symbols(bin, NM_BUDGET), t0.elapsed())
+        (backend_symbols(bin), t0.elapsed())
     });
     let sweep_took = sweep_started.elapsed();
     let mut slowest: Vec<(std::time::Duration, &str)> = located
@@ -454,8 +429,9 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
         .map(|((row, _), (_, took))| (*took, row.id.as_str()))
         .collect();
     slowest.sort_by_key(|a| std::cmp::Reverse(a.0));
-    let timing = format!(
-        "located {} binar{} in {locate_took:.1?}, `nm` over them in {sweep_took:.1?}; slowest: {}",
+    eprintln!(
+        "rmw-coordinate-truth: located {} binar{} in {locate_took:.1?}, read their \
+         symbol tables in {sweep_took:.1?}; slowest: {}",
         located.len(),
         if located.len() == 1 { "y" } else { "ies" },
         slowest
@@ -465,44 +441,21 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
             .collect::<Vec<_>>()
             .join(", ")
     );
-    eprintln!("rmw-coordinate-truth: {timing}");
-    let over: Vec<String> = located
-        .iter()
-        .zip(&symbols)
-        .filter_map(|((row, bin), (v, took))| match v {
-            NmVerdict::OverBudget => Some(format!(
-                "{}: `nm` outlived its {NM_BUDGET:?} budget (killed after {took:.1?}): {}",
-                row.id,
-                bin.display()
-            )),
-            NmVerdict::NotStarted => Some(format!(
-                "{}: not read — the sweep had spent its {NM_SWEEP_BUDGET:?}",
-                row.id
-            )),
-            _ => None,
-        })
-        .collect();
-    assert!(
-        over.is_empty(),
-        "{} row(s) got no `nm` verdict within budget ({timing}):\n  {}",
-        over.len(),
-        over.join("\n  ")
-    );
 
     for ((row, bin), (verdict, _)) in located.iter().zip(symbols) {
         let declared = row.coord.2.as_str();
         {
-            let NmVerdict::Counts(counts) = verdict else {
-                unreadable += 1;
-                continue;
+            // A located artifact that cannot be read is NO VERDICT for its row,
+            // and no verdict is a red (issue 2122), never a quiet skip: before,
+            // an unreadable binary -- and one with no backend symbols at all --
+            // was counted aside and the row passed unchecked.
+            let counts = match verdict {
+                Ok(c) => c,
+                Err(why) => {
+                    unread.push(format!("{}: {} -- {why}", row.id, bin.display()));
+                    continue;
+                }
             };
-            // No backend symbols at all: a stripped binary, or a helper that
-            // links none. Reading that as "the declared backend is missing"
-            // would be a false accusation.
-            if counts.values().sum::<usize>() == 0 {
-                unreadable += 1;
-                continue;
-            }
             checked += 1;
 
             if counts[declared] == 0 {
@@ -536,22 +489,22 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
         }
     }
 
-    if checked == 0 && unreadable == 0 {
+    if located.is_empty() {
         none_located(promised, "no workspace artifact was located");
-    }
-    if checked == 0 {
-        nros_tests::unmet!(
-            "no workspace artifact with readable backend symbols was built for \
-             this lane ({unreadable} unreadable) — build fixtures first"
-        );
     }
 
     assert!(
-        wrong.is_empty(),
-        "{} artifact(s) do not link the RMW their fixture row claims \
-         (checked {checked}):\n  {}",
+        unread.is_empty() && wrong.is_empty(),
+        "{} artifact(s) do not link the RMW their fixture row claims and {} could \
+         not be read (checked {checked}):\n  {}",
         wrong.len(),
-        wrong.join("\n  ")
+        unread.len(),
+        wrong
+            .iter()
+            .chain(&unread)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
 

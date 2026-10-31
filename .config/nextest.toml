@@ -1274,16 +1274,6 @@ filter = "binary(rmw_coordinate_truth) and test(a_rows_entry_registers_its_nodes
 test-group = "matrix-consumers-serial"
 
 [[profile.default.overrides]]
-# Issue 2127 — the `nm` sweep runs its own pool of POOL_CAP (8) threads, but
-# nextest counted it as ONE and scheduled a full complement of other tests
-# beside it. On 2026-10-28's tier 2 run (runner 118) a single `nm` took 9 s
-# against 0.04 s on an idle host, and the sweep hit its 25 s budget with 16
-# rows unread. Declaring what the test actually uses keeps its budget honest
-# instead of raising it (issue 1984 ruled against a longer budget).
-filter = "binary(rmw_coordinate_truth) and test(a_rows_rmw_is_the_backend_its_artifact_linked)"
-threads-required = 8
-
-[[profile.default.overrides]]
 # See [test-groups.domain-probe-host-ports].
 filter = "binary_id(nros-tests) and (test(a_bound_daemon_port_makes_the_domain_busy) or test(the_probe_sees_a_real_bound_discovery_port))"
 test-group = "domain-probe-host-ports"

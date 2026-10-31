@@ -32,125 +32,38 @@
 //!
 //! Run with: `cargo nextest run -p nros-tests --test zephyr_link_layout`
 
-use nros_tests::fixtures::{
-    RequireFixture, Rmw, build_zephyr_cortex_m_example, build_zephyr_cortex_m_rust_serial_talker,
-    build_zephyr_cortex_m_tier_stacks_dtcm,
+use nros_tests::{
+    elf::{Elf, Symbol},
+    fixtures::{
+        RequireFixture, Rmw, build_zephyr_cortex_m_example,
+        build_zephyr_cortex_m_rust_serial_talker, build_zephyr_cortex_m_tier_stacks_dtcm,
+    },
 };
 use std::path::Path;
 
-/// One section header of a 32-bit little-endian ELF, the fields used here.
-struct Section {
-    name: String,
-    kind: u32,
-    addr: u32,
-    offset: u32,
-    size: u32,
-    link: u32,
-    entsize: u32,
-}
-
-/// One symbol: its name, value and the index of the section it is defined in
-/// (`SHN_UNDEF` = 0 for an undefined reference).
-struct Symbol {
-    name: String,
-    value: u32,
-    shndx: u16,
-}
-
-struct Elf {
-    sections: Vec<Section>,
-    symbols: Vec<Symbol>,
-}
-
-const SHT_SYMTAB: u32 = 2;
-
-fn u16_at(b: &[u8], o: usize) -> u16 {
-    u16::from_le_bytes([b[o], b[o + 1]])
-}
-
-fn u32_at(b: &[u8], o: usize) -> u32 {
-    u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
-}
-
-fn c_str(b: &[u8], o: usize) -> String {
-    let end = b[o..]
-        .iter()
-        .position(|&c| c == 0)
-        .map_or(b.len(), |n| o + n);
-    String::from_utf8_lossy(&b[o..end]).into_owned()
-}
-
-/// The section headers and the static symbol table of an ELF32 LE image. A
-/// Cortex-M Zephyr image is exactly that; anything else is refused rather
-/// than misread.
+/// The section headers and static symbol table of an image. Issue 2122 --
+/// ONE in-process reader for every test that reads symbols
+/// (`nros_tests::elf`); this file carried its own ELF32-only copy.
 fn read_elf(path: &Path) -> Elf {
-    let b = std::fs::read(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    assert!(
-        b.len() > 52 && &b[..4] == b"\x7fELF" && b[4] == 1 && b[5] == 1,
-        "{} is not a 32-bit little-endian ELF",
-        path.display()
-    );
-    let shoff = u32_at(&b, 32) as usize;
-    let shentsize = u16_at(&b, 46) as usize;
-    let shnum = u16_at(&b, 48) as usize;
-    let shstrndx = u16_at(&b, 50) as usize;
-    let raw: Vec<[u32; 10]> = (0..shnum)
-        .map(|i| {
-            let o = shoff + i * shentsize;
-            std::array::from_fn(|f| u32_at(&b, o + f * 4))
-        })
-        .collect();
-    let shstr = raw[shstrndx][4] as usize;
-    let sections: Vec<Section> = raw
-        .iter()
-        .map(|h| Section {
-            name: c_str(&b, shstr + h[0] as usize),
-            kind: h[1],
-            addr: h[3],
-            offset: h[4],
-            size: h[5],
-            link: h[6],
-            entsize: h[9],
-        })
-        .collect();
-    let mut symbols = Vec::new();
-    for symtab in sections.iter().filter(|s| s.kind == SHT_SYMTAB) {
-        let strtab = sections[symtab.link as usize].offset as usize;
-        let n = (symtab.size / symtab.entsize) as usize;
-        for i in 0..n {
-            let o = symtab.offset as usize + i * symtab.entsize as usize;
-            symbols.push(Symbol {
-                name: c_str(&b, strtab + u32_at(&b, o) as usize),
-                value: u32_at(&b, o + 4),
-                shndx: u16_at(&b, o + 14),
-            });
-        }
-    }
-    Elf { sections, symbols }
+    nros_tests::elf::read(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-impl Elf {
-    fn defined(&self, name: &str) -> Option<&Symbol> {
-        self.symbols.iter().find(|s| s.name == name && s.shndx != 0)
-    }
-
-    /// The baked boot config. The C entry's is a file-scope `static const`
-    /// compiled as C++ by the typed entry, so its local symbol is mangled
-    /// (_ZL16NROS_BOOT_CONFIG); the Rust one is `#[no_mangle]`.
-    fn boot_config(&self) -> Option<&Symbol> {
-        self.symbols.iter().find(|s| {
-            s.shndx != 0
-                && (s.name == "NROS_BOOT_CONFIG"
-                    || (s.name.starts_with("_Z") && s.name.ends_with("16NROS_BOOT_CONFIG")))
-        })
-    }
+/// The baked boot config. The C entry's is a file-scope `static const`
+/// compiled as C++ by the typed entry, so its local symbol is mangled
+/// (_ZL16NROS_BOOT_CONFIG); the Rust one is `#[no_mangle]`.
+fn boot_config(elf: &Elf) -> Option<&Symbol> {
+    elf.symbols.iter().find(|s| {
+        s.shndx != 0
+            && (s.name == "NROS_BOOT_CONFIG"
+                || (s.name.starts_with("_Z") && s.name.ends_with("16NROS_BOOT_CONFIG")))
+    })
 }
 
 /// `NROS_BOOT_CONFIG` is defined, in `rodata`, inside its bounds, and no
 /// orphan `.nros_boot_config` output section exists.
 fn assert_boot_config_in_rodata(what: &str, elf_path: &Path) {
     let elf = read_elf(elf_path);
-    let sym = elf.boot_config().unwrap_or_else(|| {
+    let sym = boot_config(&elf).unwrap_or_else(|| {
         panic!(
             "{what}: {} defines no NROS_BOOT_CONFIG -- the typed entry baked no \
              RFC-0045 boot config, so this test would check nothing",
