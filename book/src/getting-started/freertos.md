@@ -353,6 +353,10 @@ claimed: the MPS2-AN385 boards above are QEMU machines.
   flashed with whatever that board's vendor uses (probe-rs, OpenOCD, a
   vendor IDE).
 
+Neither flash path is run by any probe (a CI runner has no board): both
+stand unverified until run against a named board. The QEMU line above is
+what the weekly probe tracks boot.
+
 ## GitHub source
 
 The full examples, to read:

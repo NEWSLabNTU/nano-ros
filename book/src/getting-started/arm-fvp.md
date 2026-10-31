@@ -16,6 +16,13 @@ the build half.
 > remains is the part with consumers — the board-crate import surface and the
 > workspace Entry. FVP support is intended to grow back from those. See
 > [`docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md).
+>
+> **Verified where?** The run half is maintainer-run: a maintainer boots the
+> image by hand (the recipe is in the contributor lanes linked below), and no
+> installed probe track replays this chapter (issue 2176). `fvp-aemv8r-smp` is a Tier 3
+> build-only board ([Board support tiers](../reference/board-support-tiers.md));
+> a probe track follows its promotion out of that tier, not the other way
+> round. Read the output below as what a maintainer last saw, not as a gate.
 
 ## When to use
 
@@ -143,7 +150,7 @@ settings and pipes the UARTs to your terminal:
 west build -d build/zephyr-cyclonedds/demo_bringup__fvp_west -t run
 ```
 
-> **Not replayed.** No probe track builds or boots the FVP image yet, so this line is unmeasured on the installed track ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe track builds or boots the FVP image yet, so this line is unmeasured on the installed track ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 The model is a free download, **not licence-gated** (see
 [Prereqs](#prereqs)); what keeps it off a CI lane is cost and its x86_64-only

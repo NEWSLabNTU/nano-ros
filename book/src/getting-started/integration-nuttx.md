@@ -440,7 +440,7 @@ cmake --build build
 openocd -f board/<your-board>.cfg -c "program build/nuttx verify reset exit"
 ```
 
-> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 (OpenOCD is an example; NuttX boards also flash with J-Link, `dfu-util`,
 `esptool` or a vendor tool, as the board's page says.)
