@@ -988,6 +988,15 @@ function(nros_rmw_cyclonedds_typesupport_for_target)
     set(_interface_files ${_HK_INTERFACE_FILES})
     set(_ARG_DEPENDENCIES ${_HK_DEPENDENCIES})
 
+    # issue 2159 — `nros_generate_interfaces` runs once per (package, LANGUAGE),
+    # so a package that a C and a C++ consumer both reach comes here twice. The
+    # descriptors are per PACKAGE: the second call attaches the existing ts lib
+    # to its own message library instead of defining the target again.
+    if(TARGET ${target}__cyclonedds_ts)
+      _nros_rmw_cyclonedds_attach_ts("${target}" "${_lib_target}" ${_ARG_DEPENDENCIES})
+      return()
+    endif()
+
     # .msg / .srv / .action all carry data types. Actions are
     # synthesized into their eight wrapper descriptors by
     # `msg_to_cyclone_idl.py` (see generate_from_msg's `.action` branch).
@@ -1112,48 +1121,57 @@ function(nros_rmw_cyclonedds_typesupport_for_target)
             add_dependencies(${target}__cyclonedds_ts ${_dep}__cyclonedds_ts)
           endif()
         endforeach()
-        # The descriptor self-registration is a static-init TU with no
-        # symbol the app references directly, so a plain static-lib link
-        # GC's it. Force-load it through the interface message lib so
-        # any consumer of `${_lib_target}` keeps the registrations. Do
-        # the same for dependency descriptor libs: action endpoints need
-        # action_msgs service/status descriptors even when the app only
-        # references the concrete user action type.
-        if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24"
-           AND NOT CMAKE_SYSTEM_NAME STREQUAL "Generic")
-          foreach(_dep ${_ARG_DEPENDENCIES})
-            if(TARGET ${_dep}__cyclonedds_ts)
-              target_link_libraries(${_lib_target} INTERFACE
-                "$<LINK_LIBRARY:WHOLE_ARCHIVE,${_dep}__cyclonedds_ts>")
-            endif()
-          endforeach()
-          target_link_libraries(${_lib_target} INTERFACE
-            "$<LINK_LIBRARY:WHOLE_ARCHIVE,${target}__cyclonedds_ts>")
-        else()
-          set(_cyc_force_load_libs "")
-          foreach(_dep ${_ARG_DEPENDENCIES})
-            if(TARGET ${_dep}__cyclonedds_ts)
-              list(APPEND _cyc_force_load_libs ${_dep}__cyclonedds_ts)
-            endif()
-          endforeach()
-          list(APPEND _cyc_force_load_libs ${target}__cyclonedds_ts)
-          # issue #193 — CMake < 3.24 has no $<LINK_LIBRARY:WHOLE_ARCHIVE>.
-          # Emitting the group via target_link_LIBRARIES lets CMake de-dupe the
-          # ts lib out of the `--whole-archive` group (it keeps a bare, GC-able
-          # copy), so the descriptor static-init ctors get GC'd →
-          # `find_descriptor -> nullptr -> register_subscription -> -1`. The
-          # de-dup-safe pre-3.24 idiom (per CMake's marc.chevrier,
-          # discourse.cmake.org/t/5883) is target_link_OPTIONS with a `SHELL:`
-          # group: link options are raw flags, not library items, so they are
-          # never de-duped, and `$<TARGET_FILE:…>` carries the build-order edge.
-          # Link the target normally too (ordinary archive membership) — the
-          # documented cost is the lib appearing twice on the link line.
-          foreach(_wl ${_cyc_force_load_libs})
-            target_link_libraries(${_lib_target} INTERFACE ${_wl})
-            target_link_options(${_lib_target} INTERFACE
-              "SHELL:-Wl,--whole-archive $<TARGET_FILE:${_wl}> -Wl,--no-whole-archive")
-          endforeach()
-        endif()
+        _nros_rmw_cyclonedds_attach_ts("${target}" "${_lib_target}" ${_ARG_DEPENDENCIES})
       endif()
+    endif()
+endfunction()
+
+# Force-load `<pkg>__cyclonedds_ts` (and its dependencies' ts libs) into the
+# message library `lib_target`. Split out of the hook for issue 2159: a package
+# reached by both languages has ONE ts lib and TWO message libraries, and each
+# needs the descriptors attached.
+#
+# The descriptor self-registration is a static-init TU with no symbol the app
+# references directly, so a plain static-lib link GC's it. Force-load it through
+# the interface message lib so any consumer of `lib_target` keeps the
+# registrations. Do the same for dependency descriptor libs: action endpoints
+# need action_msgs service/status descriptors even when the app only references
+# the concrete user action type.
+function(_nros_rmw_cyclonedds_attach_ts target lib_target)
+    set(_deps ${ARGN})
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24"
+       AND NOT CMAKE_SYSTEM_NAME STREQUAL "Generic")
+      foreach(_dep ${_deps})
+        if(TARGET ${_dep}__cyclonedds_ts)
+          target_link_libraries(${lib_target} INTERFACE
+            "$<LINK_LIBRARY:WHOLE_ARCHIVE,${_dep}__cyclonedds_ts>")
+        endif()
+      endforeach()
+      target_link_libraries(${lib_target} INTERFACE
+        "$<LINK_LIBRARY:WHOLE_ARCHIVE,${target}__cyclonedds_ts>")
+    else()
+      set(_cyc_force_load_libs "")
+      foreach(_dep ${_deps})
+        if(TARGET ${_dep}__cyclonedds_ts)
+          list(APPEND _cyc_force_load_libs ${_dep}__cyclonedds_ts)
+        endif()
+      endforeach()
+      list(APPEND _cyc_force_load_libs ${target}__cyclonedds_ts)
+      # issue #193 — CMake < 3.24 has no $<LINK_LIBRARY:WHOLE_ARCHIVE>.
+      # Emitting the group via target_link_LIBRARIES lets CMake de-dupe the
+      # ts lib out of the `--whole-archive` group (it keeps a bare, GC-able
+      # copy), so the descriptor static-init ctors get GC'd →
+      # `find_descriptor -> nullptr -> register_subscription -> -1`. The
+      # de-dup-safe pre-3.24 idiom (per CMake's marc.chevrier,
+      # discourse.cmake.org/t/5883) is target_link_OPTIONS with a `SHELL:`
+      # group: link options are raw flags, not library items, so they are
+      # never de-duped, and `$<TARGET_FILE:…>` carries the build-order edge.
+      # Link the target normally too (ordinary archive membership) — the
+      # documented cost is the lib appearing twice on the link line.
+      foreach(_wl ${_cyc_force_load_libs})
+        target_link_libraries(${lib_target} INTERFACE ${_wl})
+        target_link_options(${lib_target} INTERFACE
+          "SHELL:-Wl,--whole-archive $<TARGET_FILE:${_wl}> -Wl,--no-whole-archive")
+      endforeach()
     endif()
 endfunction()

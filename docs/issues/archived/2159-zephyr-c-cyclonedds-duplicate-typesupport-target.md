@@ -60,13 +60,42 @@ Measured (Zephyr 3.7, native_sim): `build-c-talker-cyclonedds` and
 `nros-tests::zephyr example_e2e::case_11_cyclonedds_c_pubsub_e2e` passes against
 the two fresh images (it asserts the listener counted at least one sample).
 
-## Left
+## Hosted road (fixed 2026-10-31)
 
-The HOSTED road has the same shape: `cmake/NanoRosGenerateInterfaces.cmake`'s
+The hosted road had the same shape: `cmake/NanoRosGenerateInterfaces.cmake`'s
 guard is keyed on the language library (`<pkg>__nano_ros_c` /
 `<pkg>__nano_ros_cpp`), and the backend's `per_message` hook
-(`nros_rmw_cyclonedds_typesupport_for_target`) creates `<pkg>__cyclonedds_ts`
-unconditionally. Not changed: no hosted image was measured hitting it, and the
-fix there is not this one -- the second language LIBRARY still needs the
-descriptors attached, and on CMake < 3.24 (this host has 3.22) attaching the
-same archive twice through `--whole-archive` duplicates every symbol.
+(`nros_rmw_cyclonedds_typesupport_for_target`) created `<pkg>__cyclonedds_ts`
+unconditionally. Measured: `examples/workspaces/mixed` on Cyclone (its C and C++
+packages reach the same message packages in one configure) failed with
+`cannot create target "unique_identifier_msgs__cyclonedds_ts" because another
+target with the same name already exists`, and so did a one-directory project
+with a C and a C++ executable on `std_msgs`.
+
+The fix is not the Zephyr one, because the second language LIBRARY still needs
+the descriptors. The hook now returns early when the ts lib exists, after
+attaching it to the new message library; the attach step is
+`_nros_rmw_cyclonedds_attach_ts`, shared by both calls. The concern recorded
+here earlier, that attaching the same archive twice through `--whole-archive`
+on CMake < 3.24 duplicates every symbol, was measured WRONG on 3.22: CMake
+de-duplicates identical `SHELL:` link options, so an executable linking both
+language libraries carries each `-Wl,--whole-archive <ts>.a` once and links.
+
+Measured on CMake 3.22.1, Cyclone:
+
+- the mixed workspace fails to configure without the fix (A/B, same tree) and
+  builds with it; its `linux` image delivers intra-image (`Received: 0..5`);
+- C, C++ and both-libraries executables over `std_msgs` each create their
+  publisher and publish, which needs the descriptor registered.
+
+Regression net: fixture row `workspace-mixed-native-cyclonedds`
+(`[image.linux_cyclonedds]` in the mixed bringup) and the matching build-only
+`matrix::CELLS` cell. Built through `workspace-fixtures-build.sh`.
+
+Sweep: every `add_library`/`add_custom_target` in the four codegen files; the
+two `__cyclonedds_ts` sites were the only per-PACKAGE targets created from a
+per-LANGUAGE call.
+
+Seen on the way, not this issue: a C++ image on Cyclone logs
+`destroy_publisher failed with 1` / `destroy_subscription failed with 1` at
+SIGTERM, on the untouched single-language path too.

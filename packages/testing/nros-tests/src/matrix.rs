@@ -1110,11 +1110,14 @@ pub const CELLS: &[Cell] = &[
     // phase-331 W4 (RFC-0066) — the RMW AXIS over the language workspaces.
     // Before this the workspace rows were 85/87 zenoh: the RMW seam was
     // exercised by single-node examples and essentially never by a workspace.
-    // `mixed` is deliberately absent — its value is the language seam, not the
-    // RMW seam. The rust cells already existed; only c/cpp were missing.
-    cell(Linux, Rust, Cyclonedds, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
-    cell(Linux, C,    Cyclonedds, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
-    cell(Linux, Cpp,  Cyclonedds, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    // The rust cells already existed; only c/cpp were missing. `mixed` was left
+    // out as "the language seam, not the RMW seam" — issue 2159 is where the two
+    // meet: Cyclone's typesupport is per package, a mixed configure reaches each
+    // package from both languages, and it failed at configure until the fix.
+    cell(Linux, Rust,  Cyclonedds, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    cell(Linux, C,     Cyclonedds, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    cell(Linux, Cpp,   Cyclonedds, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    cell(Linux, Mixed, Cyclonedds, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
     cell(Linux, Rust, Xrce,       EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
     cell(Linux, C,    Xrce,       EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
     cell(Linux, Cpp,  Xrce,       EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
