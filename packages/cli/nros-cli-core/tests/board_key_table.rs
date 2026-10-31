@@ -232,10 +232,7 @@ fn family_keys_without_a_rust_board_are_exactly_these() {
         BTreeSet::from([
             "an536",
             "freertos-posix",
-            "fvp-aemv8r-smp",
-            "mps2-an385-zephyr",
             "mps3-an536-freertos",
-            "qemu-cortex-a53",
             "s32z270",
             "s32z270-freertos",
             "threadx",

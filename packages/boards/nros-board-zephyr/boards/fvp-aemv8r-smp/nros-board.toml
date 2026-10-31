@@ -20,6 +20,15 @@ entry_kind = "zephyr-staticlib"
 # An empty list is a statement (phase-351 W4): a deploy naming one is refused.
 supported_netstacks = []
 
+# Issue 2177 — the crate-root boilerplate a GENERATED Rust entry needs on
+# Zephyr, the same two lines and two deps as `packages/boards/zephyr`'s
+# descriptor gives native_sim (whose comment says why each is there). Without
+# them a generated image for this board failed with `cannot find `log` in the
+# crate root` and `#[panic_handler] function required`.
+[board.entry]
+crate_root_extra = "extern crate zephyr;"
+crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
+
 [board.zephyr]
 west_board = "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp"
 sdk_abi = "aarch64-zephyr-elf"
