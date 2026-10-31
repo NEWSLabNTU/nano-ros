@@ -39,7 +39,7 @@ it with `west build -t run`. Measured locally before the probe ran: the image
 boots under the Zephyr SDK's QEMU and prints `Publishing: N` / `I heard: N`
 through a host `rmw_zenohd` on `10.0.2.2:7447`.
 
-Getting there took six defects on one road, each hidden behind the one before:
+Getting there took eight defects on one road, each hidden behind the one before:
 
 * `nros build` passed a board package's Zephyr files only to a GENERATED west
   application, on the assumption that a hand-written one calls
@@ -70,6 +70,26 @@ promise for this hardware stays the tier-2 `ZephyrQemuCortexM` row on
 `nros-board-zephyr`, whose lanes build with this directory's `prj.conf`. That
 is the same split as the `zephyr` descriptor directory and the tier-1
 `ZephyrNativeSim` row.
+
+* The first probe run still failed at `zpico-sys` (`failed to find tool
+  "arm-none-eabi-gcc"`), because the carrier of the previous fix — and of every
+  Rust-lane fact, `NROS_BOARD_FACTS_ENV` — is a line nano-ros's patch set adds
+  to zephyr-lang-rust's cargo command, and the chapter's workspace (plain
+  `west init` / `west update`) was never patched. Locally it built because the
+  developer workspace was. The block now runs `nros setup board
+  mps2-an385-zephyr --zephyr-workspace "$NROS_ZEPHYR_WORKSPACE"` first, and the
+  board descriptor gained the `[board.provisioning]` block that command needs
+  (`zephyr_line = "3.7"`, `rust_targets = ["thumbv7m-none-eabi"]`); before, it
+  refused the board as "not a Zephyr consumer board".
+* And that command could not work on an installed SDK at all: `patches/3.7.sh`
+  runs five cyclonedds steps against nano-ros's own `third-party/dds/cyclonedds`,
+  which `<prefix>/share/nano-ros` does not ship, so the first one exited 1 and
+  `set -e` aborted the set before it reached anything else. Measured on a staged
+  SDK root. Those steps now skip, saying so, when the tree is absent; the pinned
+  fork already carries each change, and the 4.4 set runs none of them.
+
+  The native_sim road has the same unpatched workspace and passes anyway,
+  silently building with each crate's defaults: issue 2185.
 
 Two fixes reach a generated west application (`nros new --image … --board
 mps2-an385-zephyr`, no bringup `boards/<board>/` directory): it now carries a
