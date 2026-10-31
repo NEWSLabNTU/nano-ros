@@ -1,5 +1,10 @@
 # Phase 512 — Work that needs a real board
 
+**Status (2026-11-01). H5 closed: Orin SPE is not supported for now.** The
+maintainer closed every Orin SPE work item, so H5.1 and H5.2 are closed with no
+work done, and [phase-418](archived/phase-418-orin-safety-island-and-spe.md) is
+archived. H1-H4 still wait on hardware.
+
 **Status (2026-10-26). Batch A done; H1-H5 blocked on hardware.** One S32K344
 board (MR-CANHUBK344) is on a bench. Batch A ("Batches", below) closed H6-H9 on
 it: H6 from existing board runs, and H7, H8 and H9 in one bench session on
@@ -15,7 +20,7 @@ session closes every item that board can close.
 (the deadline-driven executor, RFC-0106).
 
 **Gathered 2026-10-24:** [phase-162](archived/phase-162-rt-scheduling-harness.md) 162.C
-(H4), [phase-418](phase-418-orin-safety-island-and-spe.md) 418.5 and 418.7
+(H4), [phase-418](archived/phase-418-orin-safety-island-and-spe.md) 418.5 and 418.7
 (H5), the board leg of [phase-474](phase-474-safety-island-board-findings.md)
 T4 (H6), [issue 1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md)
 (H7), and [issue 0902](../issues/archived/0902-action-goal-completion-is-variable.md)
@@ -37,7 +42,7 @@ not eight separate runs:
 | B | S32Z270 silicon | H1 | no board |
 | C | a bare-metal Cortex-M board: MPS2-AN385 or STM32F4-Discovery | H2, H4 | no board; H2 also needs a board crate that registers smoltcp's deadline source |
 | D | a host with root, tap-fed QEMU | H3 | no runner with root |
-| E | Jetson AGX Orin devkit | H5 | no devkit |
+| E | Jetson AGX Orin devkit | H5 | closed 2026-11-01: Orin SPE not supported |
 
 Batch A runs in this order, one flash per image: H7's two console-less talker
 images (fatal, then the non-fatal control), then H8's action images over
@@ -142,22 +147,23 @@ nothing about a silicon P99. The four items, unchanged in substance:
 
 ### H5 — the Orin SPE on a Jetson AGX Orin devkit
 
-From phase-418 418.5 and 418.7. Provisioning (418.4), the board crate (418.6)
-and the bridge decision (418.8) need no devkit and stay in phase-418.
+From phase-418 418.5 and 418.7. **CLOSED 2026-11-01, not done:** Orin SPE is
+not supported for now, and phase-418 closed with it, including 418.4, 418.6
+and 418.8.
 
-- [ ] **H5.1** (was 418.5) A non-`aon_echo` IVC channel in the AGX Orin DTSI,
+- [x] **H5.1** (was 418.5) CLOSED 2026-11-01, not done. A non-`aon_echo` IVC channel in the AGX Orin DTSI,
       and its Linux-side owner (a small out-of-tree kernel module with a char
       device, or reuse of the echo channel's driver), with the kernel rebuild
       and flash steps documented. **Acceptance:** a loopback between a
       userspace process on Jetson Linux and the stock `ivc-echo-task` on the
       SPE, with the frame format matching `nvidia_ivc_mock_wire_format.rs`.
-- [ ] **H5.2** (was 418.7) A talker on the SPE reaching `ros2 topic echo` on
+- [x] **H5.2** (was 418.7) CLOSED 2026-11-01, not done. A talker on the SPE reaching `ros2 topic echo` on
       Jetson Linux through the CCPLEX bridge and `rmw_zenoh_cpp`.
       **Acceptance:** an `interop::CELLS` row (no fixture row: the SPE side is
       flashed, not launched), and promoting `nros-board-orin-spe`'s
       `board-support.toml` row off tier 3 once a lane can assert it.
 
-**Done when** H5.2's echo prints on the devkit.
+**Done when** H5.2's echo prints on the devkit. (Closed instead; see above.)
 
 ### H6 — a deliberate overrun reported through D1's channel on the S32K344
 

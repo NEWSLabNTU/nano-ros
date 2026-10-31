@@ -40,16 +40,17 @@ The `loopback` test wires two channel IDs to one socketpair via
 `unix_mock::register_pair`, exchanges single-frame and multi-frame
 payloads, and asserts byte-perfect reassembly.
 
-## Building for SPE — deferred
+## Building for SPE — not supported
 
-Orin SPE support is deferred
-([phase-418](../../../../docs/roadmap/phase-418-orin-safety-island-and-spe.md)),
+Orin SPE is not supported for now
+([phase-418](../../../../docs/roadmap/archived/phase-418-orin-safety-island-and-spe.md)),
 and the `fsp` backend's LINK MODEL is known wrong: `build.rs` expects
 `$NV_SPE_FSP_DIR/lib/libtegra_aon_fsp.a`, but the FSP builds no static library
 (`make bin_t23x` compiles its objects straight into `spe.elf`). The `tegra_ivc_*`
 declarations in `src/fsp.rs` do match the FSP's `include/tegra-ivc.h`. How the
-symbols are supplied is decided by phase-418 item 418.6 — an integration shell
-that adds nano-ros to the FSP's own make build — and so is the target: the FSP
+symbols are supplied was phase-418 item 418.6 — an integration shell that adds
+nano-ros to the FSP's own make build — closed with the phase on 2026-11-01, so
+nothing decides it now. The target was decided by measurement: the FSP
 compiles `-mfloat-abi=softfp`, which is `armv7r-none-eabi`, not `-eabihf`.
 
 `just check ivc-fsp` compiles this backend against a stand-in tree meanwhile.

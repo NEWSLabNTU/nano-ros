@@ -1,17 +1,28 @@
 # Phase 418 — NVIDIA Orin: what "safety island" actually means, and what nano-ros needs to run there
 
+**CLOSED (2026-11-01). Not supported for now.** Maintainer decision: nano-ros
+does not support the Orin SPE, so every open work item here is closed rather
+than left deferred. 418.2 and 418.3 landed and stay landed. 418.1 keeps its
+measurement; its DRAM-carveout half is closed unanswered. 418.4, 418.6 and
+418.8 are closed with no work done, and so are 418.5 and 418.7, which had moved
+to [phase-512](../phase-512-on-hardware-measurements.md) H5. The in-tree
+infrastructure the deferral note lists below (`nvidia-ivc`, `zpico-link-ivc`,
+the `cortex-r5` profile) keeps its own checks and is not removed by this
+closure. Support starts again only as a new phase, which can begin from the
+measurements and the vendor survey in this document.
+
 **DEFERRED (2026-10-24).** Maintainer decision: Orin SPE support waits. Nothing
 here is in progress and no claim should be taken on it until it resumes. What
 stays in-tree meanwhile is infrastructure with its own checks, not a board:
 `nvidia-ivc` (stub, Unix mock, `fsp` backend; `just check ivc-fsp`),
 `zpico-link-ivc`, and 418.3's `cortex-r5` profile. Orin SPE has **no row** in
 `packages/boards/board-support.toml` — that registry lists board packages that
-exist, and there is none — and [Supported Boards](../../book/src/reference/supported-boards.md)
+exist, and there is none — and [Supported Boards](../../../book/src/reference/supported-boards.md)
 lists it as deferred. Open on resumption: 418.1's DRAM-carveout question (and a
 re-measure — issue 1122 has since removed the 131,072 B `LARGE_PAYLOADS` that
 dominated the number below), 418.4, 418.6 (re-scoped below as an integration
 shell, per RFC-0064) and 418.8. 418.5 and 418.7 need hardware and live in
-[phase-512](phase-512-on-hardware-measurements.md). The CLI's `orin-spe`
+[phase-512](../phase-512-on-hardware-measurements.md). The CLI's `orin-spe`
 platform kind was removed with the deferral: it built an SPE descriptor as
 bare-metal, and the SPE is a board over FreeRTOS.
 
@@ -23,14 +34,14 @@ survey — including its float-ABI reading, which 418.3's own acceptance sentenc
 contradicted. This doc is the study
 NVIDIA's Orin safety architecture asked for, plus the gap list between it and the
 tree as it stands at `bed98e8ef`. It supersedes nothing; it re-opens the ground
-that archived [phase-100](archived/phase-100-orin-spe-infra.md) covered and that
+that archived [phase-100](phase-100-orin-spe-infra.md) covered and that
 phase-337 W7.b partially deleted.
 
 Implements/informs: RFC-0012 (board/BSP integration), RFC-0064 (board tiers),
 RFC-0005/0006 (feature axes). Related: [phase-100 —
-Orin SPE infrastructure](archived/phase-100-orin-spe-infra.md),
-[phase-100.04 — IVC link design](archived/phase-100-04-link-ivc-design.md),
-[phase-377 — CAN link for zenoh-pico](archived/phase-377-can-link-for-zenoh-pico.md).
+Orin SPE infrastructure](phase-100-orin-spe-infra.md),
+[phase-100.04 — IVC link design](phase-100-04-link-ivc-design.md),
+[phase-377 — CAN link for zenoh-pico](phase-377-can-link-for-zenoh-pico.md).
 
 ---
 
@@ -160,7 +171,7 @@ Unresolved technical questions, in the order they will bite:
 3. **Float ABI.** NVIDIA's BSP is softfp; `armv7r-none-eabihf` is not. This is a
    link-time question, and phase-100 flagged it without settling it.
 4. **Whether the fork's `ivc.c` still builds against zenoh-pico 1.8.0.**
-   [phase-415](archived/phase-415-zenoh-pico-1-8-0-patch-line.md) is bumping the patch
+   [phase-415](phase-415-zenoh-pico-1-8-0-patch-line.md) is bumping the patch
    line; `ivc.c` is a carried patch, and the pin (`fa7ad0f5`) is behind the
    `nano-ros` branch tip (`0101b80d`). Nothing currently compiles that file, so
    a rebase can break it silently — exactly the class issue 1014 just recorded
@@ -221,8 +232,8 @@ second one.
 
 ## 3. Work items
 
-- [~] **418.1 — Measure before building.** MEASURED 2026-09-06; the DRAM-carveout
-      half is still open. **Verdict: does not fit at defaults, and the gap is not
+- [x] **418.1 — Measure before building.** MEASURED 2026-09-06. The DRAM-carveout
+      half is CLOSED unanswered (2026-11-01, not supported). **Verdict: does not fit at defaults, and the gap is not
       close.**
 
       The subject is the first out-of-tree consumer,
@@ -362,7 +373,8 @@ second one.
       phase-385 W1's defect twice more) and 1155 (the `arch_flags` tests run in
       no lane).
 
-- [ ] **418.4 — SPE FSP provisioning.** An `nros-sdk-index.toml` entry plus a
+- [x] **418.4 — SPE FSP provisioning.** CLOSED 2026-11-01, not done: Orin SPE
+      is not supported. An `nros-sdk-index.toml` entry plus a
       `just` verb that fetches the BSP — a plain scripted download, per §2a, not
       an SDK-Manager gate — verifies both digests and stages it. Never `sudo`.
       Follow the ASI script rather than writing a second one. **Acceptance:**
@@ -371,10 +383,11 @@ second one.
       backend compiles in a lane.
 
 - **418.5 — CCPLEX-side IVC channel.** Moved 2026-10-24 to
-      [phase-512](phase-512-on-hardware-measurements.md) H5.1: it needs a Jetson
+      [phase-512](../phase-512-on-hardware-measurements.md) H5.1: it needs a Jetson
       AGX Orin devkit to flash and loop back on.
 
-- [ ] **418.6 — An integration shell over the FSP build, not a board crate.**
+- [x] **418.6 — An integration shell over the FSP build, not a board crate.**
+      CLOSED 2026-11-01, not done: Orin SPE is not supported.
       (Re-scoped 2026-10-24.) This item used to say "bring back
       `nros-board-orin-spe`" from `53a3402d2`. RFC-0064 deleted that crate on
       purpose ("scaffolds → integration shells"), and by its own test — *does
@@ -398,9 +411,10 @@ second one.
       devkit.
 
 - **418.7 — End-to-end on hardware.** Moved 2026-10-24 to
-      [phase-512](phase-512-on-hardware-measurements.md) H5.2.
+      [phase-512](../phase-512-on-hardware-measurements.md) H5.2.
 
-- [ ] **418.8 — Bridge daemon: decide where it lives.** Either vendor
+- [x] **418.8 — Bridge daemon: decide where it lives.** CLOSED 2026-11-01,
+      not decided: Orin SPE is not supported. Either vendor
       `autoware_sentinel`'s `src/ivc-bridge/` into this tree or declare it a
       downstream consumer and pin the wire format as the contract. **Acceptance:**
       a one-paragraph decision in this doc plus, if in-tree, a crate that shares
@@ -453,7 +467,7 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1154](../issues/archived/1154-bare-metal-arch-profiles-unreachable.md) | **Resolved 2026-10-24:** `cortex-m4f` listed (hard-float thumbv7em only), `riscv32gc` deleted, both allowlists empty. Was: `config/bare-metal` defines `cortex-m4f` and `riscv32gc` and lists neither. 418.3 owns `check-arch-profile-resolution` and its KNOWN_UNREACHABLE/KNOWN_INERT allowlist, which is where an unlisted profile has to be answered |
+| [#1154](../../issues/archived/1154-bare-metal-arch-profiles-unreachable.md) | **Resolved 2026-10-24:** `cortex-m4f` listed (hard-float thumbv7em only), `riscv32gc` deleted, both allowlists empty. Was: `config/bare-metal` defines `cortex-m4f` and `riscv32gc` and lists neither. 418.3 owns `check-arch-profile-resolution` and its KNOWN_UNREACHABLE/KNOWN_INERT allowlist, which is where an unlisted profile has to be answered |
 
 ## Open issues that name this phase
 
@@ -461,5 +475,5 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1155](../issues/archived/1155-arch-flags-tests-in-no-lane.md) — **resolved 2026-10-24** (the tests run in `node-std-tests`) — `nros-board-common`'s `arch_flags` tests run in no lane — `test-unit` activates no features and the module is behind …
-- [issue 2031](../issues/archived/2031-zpico-build-chapter-describes-deleted-manifest.md) — the book's zpico-sys build chapter documents `zenoh_platforms.toml`, a file that no longer exists (found while removing its stale `orin-spe` entry for this phase's deferral)
+- [issue 1155](../../issues/archived/1155-arch-flags-tests-in-no-lane.md) — **resolved 2026-10-24** (the tests run in `node-std-tests`) — `nros-board-common`'s `arch_flags` tests run in no lane — `test-unit` activates no features and the module is behind …
+- [issue 2031](../../issues/archived/2031-zpico-build-chapter-describes-deleted-manifest.md) — the book's zpico-sys build chapter documents `zenoh_platforms.toml`, a file that no longer exists (found while removing its stale `orin-spe` entry for this phase's deferral)
