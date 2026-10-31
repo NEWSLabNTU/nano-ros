@@ -266,17 +266,11 @@ notes = "Runtime is maintainer-run via `just zephyr verify-fvp-runtime` — henc
 # fourth way to add a board and the one with no record at all.
 #
 # `tier = "scaffold"` is the honest entry, and deliberately NOT a promotion.
-# (`nros-board-mps2-an385-zephyr` has since moved to the descriptor-only
-# directories below, issue 2177.) These rows are new; a tier with a promise needs a named maintainer (W1: 1/2/3
+# (Both have since moved to the descriptor-only directories below, issue 2177.) These rows are new; a tier with a promise needs a named maintainer (W1: 1/2/3
 # for tiers 3/2/1) and neither has one. What changed today is that they are
 # VISIBLE — a board nobody declared cannot be given a tier, an owner, or a
 # demotion, which is what made the fourth route worse than any of the other
 # three.
-[[board]]
-crate = "nros-board-qemu-cortex-a53"
-tier = "scaffold"
-maintainers = []
-
 # ===== infra — not boards ==================================================
 
 [[board]]
@@ -347,6 +341,17 @@ crate = "nros-board-mps2-an385-zephyr"
 tier = "infra"
 maintainers = []
 notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `mps2_an385` board's descriptor and base Kconfig (network on QEMU's user net). Its support promise is `nros-board-zephyr`'s ZephyrQemuCortexM row (tier 2), whose lanes build with this `prj.conf`."
+
+# Issue 2177 — moved from `scaffold` with the row above, for the same reason.
+# Its one Runtime cell is `CorePinPlacement` (Zephyr C, `core = 1` observed on
+# `qemu_cortex_a53/qemu_cortex_a53/smp`, fixture
+# `workspace-zephyr-c-realtime-smp`), booked on `nros-board-zephyr`'s
+# `ZephyrNativeSim` row, which is where its promise lives. Not a promotion.
+[[board]]
+crate = "nros-board-qemu-cortex-a53"
+tier = "infra"
+maintainers = []
+notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cortex_a53/qemu_cortex_a53/smp` board's descriptor and base Kconfig. Its Runtime cell (CorePinPlacement, the tree's only multi-core cell) is booked on `nros-board-zephyr`'s ZephyrNativeSim row."
 
 # ---------------------------------------------------------------------------
 # `maintainers` is ENFORCED (phase-375 W1): tier 1 needs 3, tier 2 needs 2,
