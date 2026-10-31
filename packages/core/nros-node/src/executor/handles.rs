@@ -1627,9 +1627,11 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
 
     /// Async: wait for the next message (no `futures` dependency needed).
     ///
-    /// Requires a background task running `executor.spin_async()` to drive
-    /// I/O. Returns `Ok(msg)` on the next received message, or `Err` if the
-    /// transport reports an error.
+    /// Completes only while the executor is spun elsewhere
+    /// ([`spin`](super::spin::Executor::spin) /
+    /// [`spin_once`](super::spin::Executor::spin_once)): nothing drives its
+    /// I/O from inside this future. Returns `Ok(msg)` on the next received
+    /// message, or `Err` if the transport reports an error.
     ///
     /// When the `stream` feature is enabled, prefer `StreamExt::next()` /
     /// `TryStreamExt::try_next()` for combinator support.
@@ -3670,8 +3672,10 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
 {
     /// Async: wait for the next feedback message (no `futures` dependency needed).
     ///
-    /// Requires a background task running `executor.spin_async()` to drive
-    /// I/O. Returns `None` only on error.
+    /// Completes only while the executor is spun elsewhere
+    /// ([`spin`](super::spin::Executor::spin) /
+    /// [`spin_once`](super::spin::Executor::spin_once)): nothing drives its
+    /// I/O from inside this future. Returns `None` only on error.
     ///
     /// When the `stream` feature is enabled, prefer `StreamExt::next()` or
     /// `TryStreamExt::try_next()` for combinator support.

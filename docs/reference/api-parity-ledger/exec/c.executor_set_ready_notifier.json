@@ -1,5 +1,0 @@
-{
-  "key": "c:executor_set_ready_notifier",
-  "verdict": "extension",
-  "why": "RFC-0112 D2.2 \"Readiness out\" (issue 2144): one executor-level notifier, called whenever work arrives, so a host loop with its own event source (GLib, Qt, epoll, an RTOS task on a semaphore) spins only when there is something to do instead of polling. rclc has no counterpart because its host IS the executor: `rclc_executor_spin` blocks in `rcl_wait`, and upstream's per-entity `rmw_*_set_on_new_*_callback` hooks leave the host to register and track one per entity. A poll-only backend (XRCE) refuses with RCL_RET_UNSUPPORTED rather than install a notifier that never fires."
-}

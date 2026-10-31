@@ -171,7 +171,7 @@ whose `system.toml` declares a `[[bridge]]` row (`workspaces/bridge-cyclonedds/`
 workspace. The category existed until 2026-10-03 (see Changelog).
 
 Variant naming uses a **suffix** form so variants sort with their peers:
-`talker-rtic`, `service-client-async`, `talker-rtic-mixed`.
+`talker-rtic`, `service-client-rtic`, `talker-rtic-mixed`.
 
 **Entry-pkg sibling dirs** use the kebab-case `-entry` suffix (`talker-entry`,
 `listener-entry`, … on `mps2-an385-freertos`, `qemu-armv7a-nuttx`,

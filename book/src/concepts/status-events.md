@@ -106,7 +106,7 @@ sub.on_message_lost(|status| {
 })?;
 ```
 
-Async equivalents (`spin_async` / Embassy / tokio):
+Async equivalents, which complete only while the executor spins elsewhere:
 
 ```rust
 let status = sub.next_liveliness_change().await?;

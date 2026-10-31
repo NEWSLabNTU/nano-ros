@@ -1,7 +1,7 @@
 //! # Service Calls and Promise API
 //!
 //! `client.call(&request)` returns a `Promise` immediately — no blocking.
-//! The reply can be polled with `take()` or `.await`ed.
+//! The reply is polled with `take()` while the executor spins.
 //!
 //! ## Sync polling (no async runtime)
 //!
@@ -27,41 +27,7 @@
 //! println!("sum = {}", reply.sum);
 //! ```
 //!
-//! ## Async (background spin task)
-//!
-//! Spawn `spin_async_with_sleep()` as a background task, then `.await` promises:
-//!
-//! ```ignore
-//! use nros::prelude::*;
-//! use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-//!
-//! #[tokio::main(flavor = "current_thread")]
-//! async fn main() {
-//!     let config = ExecutorConfig::from_env().node_name("client");
-//!     let mut executor: Executor = Executor::open(&config).unwrap();
-//!     let mut client = {
-//!         let mut node = executor.create_node("client").unwrap();
-//!         node.create_client::<AddTwoInts>("/add_two_ints").unwrap()
-//!     };
-//!
-//!     let local = tokio::task::LocalSet::new();
-//!     local.run_until(async move {
-//!         tokio::task::spawn_local(async move {
-//!             executor.spin_async_with_sleep(tokio::time::sleep).await;
-//!         });
-//!         let reply = client.call(&AddTwoIntsRequest { a: 1, b: 2 })
-//!             .unwrap().await.unwrap();
-//!         println!("sum = {}", reply.sum);
-//!     }).await;
-//! }
-//! ```
-//!
-//! The Promise and `spin_async()` APIs use only `core::future` — no
-//! external runtime dependency. `spin_async_with_sleep` takes the runtime's
-//! sleep so an idle executor also sleeps until its next deadline; plain
-//! `spin_async()` has no timer and polls while any deadline is pending.  They work on `no_std`/no_alloc targets.
-//! For async combinators (`select`, `join`), add `embassy-futures`.
-//!
-//! See `examples/linux/rust/service-client-async/` (tokio) for a complete
-//! working example. The Zephyr Embassy variant was dropped 2026-06-02 per
-//! Phase 212.M-F.5 — pending an async-`Node` trait decision.
+//! A promise is also a `Future`, but nano-ros drives no foreign async runtime:
+//! an async task that waited on one with no spin running elsewhere would wait
+//! forever. RFC-0113 retired `spin_async` because a host's scheduler, not
+//! nano-ros, would decide when its callbacks run.

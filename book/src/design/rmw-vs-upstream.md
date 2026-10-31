@@ -297,9 +297,9 @@ a timer that should have fired 5 ms in is delayed 75 ms.
 | Execution model | Fits drive_io today? |
 |-----------------|----------------------|
 | Cooperative single-task (one task does ROS, no priority competition) | Yes — no other task to preempt; entity scheduling fairness is moot |
-| Async / tokio / Embassy (futures, wakers) | Yes. `spin_async_with_sleep(<runtime sleep>)` runs one non-blocking pass per poll and then sleeps until an arrival or the next deadline (issue 2145). On a poll-only backend it busy-loops |
+| Async / tokio / Embassy (futures, wakers) | **Not supported** — the runtime's scheduler, not nano-ros, would decide when callbacks run, so no real-time bound could be stated (RFC-0113) |
 | Preemptive priority RTOS, ROS at one priority (FreeRTOS / ThreadX / Zephyr typical) | **Partial** — kernel preemption from higher-priority tasks works; ROS-internal entity scheduling is batch-FIFO, timer expiries can be delayed by long sub callbacks at the same priority |
-| WCET-bounded real-time (RTIC, DO-178C) | **No** — `drive_io` has unbounded execution time; callers needing per-callback WCET use the async path with explicit Waker integration instead |
+| WCET-bounded real-time (RTIC, DO-178C) | **No** — `drive_io` has unbounded execution time; callers needing per-callback WCET use RTIC, whose tasks `nros::main!` generates |
 | Time-triggered cyclic | **No** — no way to bound `drive_io` to a fixed wall-clock budget |
 
 The "Yes" rows are where nano-ros ships today. The "Partial" / "No"

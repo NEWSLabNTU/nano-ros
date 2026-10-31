@@ -60,12 +60,6 @@ pub const TALKER_READY_MARKER: &str = TALKER_LOG_PREFIX;
 /// the strict wait is what made the breakage visible.
 pub const LISTENER_READY_MARKER: &str = "Subscriber created for topic:";
 
-/// phase-520 W3 -- the `listener-host-loop` example's `main` logs this once
-/// after its first `nros_run_deferred` returned a non-zero count. Its node is a
-/// `dispatch = "deferred"` component, so this line is the proof the
-/// callbacks ran from the HOST's drain, not from `spin_once`.
-pub const HOST_LOOP_DEFERRED_DRAIN_MARKER: &str = "Deferred callbacks ran from the host loop:";
-
 /// Readiness marker for the SAFETY chatter listener
 /// (the `safety-chatter-listener` bin), which prints
 /// `Safety subscriber created for topic: /chatter`.

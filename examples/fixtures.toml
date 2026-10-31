@@ -1527,16 +1527,6 @@ dir = "examples/linux/rust/action-client"
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/linux/rust/service-client-async"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-dir = "examples/linux/rust/action-client-async"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
 dir = "examples/linux/rust/logging"
 
 [[fixture]]
@@ -1548,16 +1538,6 @@ dir = "examples/linux/rust/talker-rtic"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/listener-rtic"
-
-# phase-520 W2 — the listener's node driven by a loop the program owns:
-# `nros::setup!()` + `nros_boot` + a `std` loop over `spin_once` (RFC-0112
-# Tier 0). The `HostLoop` cell; tests/linux_example_pubsub_e2e.rs pairs it
-# with the stock rust talker and asserts delivery.
-[[fixture]]
-id = "native-rust-listener-host-loop"
-platform = "linux"
-lang = "rust"
-dir = "examples/linux/rust/listener-host-loop"
 
 # Phase 211.H — qos_overrides runtime-delivery fixture (raw pub/sub bin that
 # installs a per-topic QoS override on its NodeHandle and proves it is honoured

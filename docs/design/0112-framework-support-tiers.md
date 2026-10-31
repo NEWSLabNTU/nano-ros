@@ -15,6 +15,15 @@ superseded-by: null
 **Status:** Draft (2026-10-29). Written before any code. It sets the policy for
 which application frameworks nano-ros supports and how. No phase yet.
 
+> **Tier 0 is withdrawn (2026-10-31, [RFC-0113](0113-rt-unified-wait.md) D8).**
+> A way of running nano-ros is supported only if nano-ros keeps its real-time
+> promise there, and a host-driven loop cannot: the host's scheduler decides
+> when callbacks run. D2's Readiness-out and Time-out surfaces, `spin_async`,
+> `nros::setup!` and D4's recipes are deleted (phase-521 W1). Tier 1 admission
+> (D3) gains a fifth criterion, and Tier 2 is promised the owned runtime
+> through the board-entry traits. The text below is kept as the record of what
+> Tier 0 was.
+
 ## Summary
 
 New frameworks will keep arriving: async runtimes, embedded schedulers, GUI
@@ -143,7 +152,7 @@ recorded here so that it is decided once:
   by the emitted `nros_setup` and drained by the emitted `nros_run_deferred`;
   the `listener-host-loop` example and its cell run that way.
 
-### D3 — Tier 1 admission: four criteria, all required
+### D3 — Tier 1 admission: five criteria, all required
 
 A framework gets an `nros::main!` branch only if:
 
@@ -153,7 +162,10 @@ A framework gets an `nros::main!` branch only if:
 3. **Tier 0 cannot serve it.** The framework must need compile-time task,
    priority or resource wiring that a recipe cannot express. RTIC needs this.
    A framework that only needs "call spin from my task" does not;
-4. **a named owner** answers its reds.
+4. **a named owner** answers its reds;
+5. **the real-time promise holds** under the framework's scheduler
+   (RFC-0113 D2): nano-ros generates the priority mapping and the bounds are
+   measured on the framework's CI cell. Added by RFC-0113 D8.
 
 The criteria are re-checked whenever a framework's board or CI cell goes away.
 A branch that fails them is demoted to a Tier 0 recipe, or deleted. It is not

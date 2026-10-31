@@ -1,5 +1,0 @@
-{
-  "key": "rust:set_defer_notifier",
-  "verdict": "extension",
-  "why": "phase-520 W3 (RFC-0112 D2, Defer) -- `Executor::set_defer_notifier` through the lent runtime; behind `nros::setup!`'s emitted `nros_set_defer_notifier`. Doc-hidden in `nros::__macro`, with the other generated-entry seams; rclrs has no deferred dispatch to correlate it with."
-}

@@ -1,5 +1,0 @@
-{
-  "key": "c:executor_ready_notifier_t",
-  "verdict": "extension",
-  "why": "the notifier type `rclc_executor_set_ready_notifier` takes: `void (*)(void *ctx)`, the shape of rmw's own wake callbacks without the event count, because a readiness notification coalesces and is never a count. See `c:executor_set_ready_notifier`."
-}

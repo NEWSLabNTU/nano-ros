@@ -5,8 +5,9 @@
 > per-Node granularity, the tag-based callback API, the
 > `__nros_node_<pkg>_dispatch_strategy()` ABI symbol, and the
 > backward-compat contract. For the user-facing tutorials see
-> [RTIC Integration](../user-guide/rtic-integration.md) and
-> [Embassy Integration](../user-guide/embassy-integration.md).
+> [RTIC Integration](../user-guide/rtic-integration.md). Embassy is not
+> supported ([Embassy Integration](../user-guide/embassy-integration.md) says
+> why).
 
 ## The Inline / Deferred / FromIsr trichotomy
 
@@ -221,10 +222,11 @@ and a forced-correct API for the Deferred path.
 
 ## Deferring callbacks without the macros
 
-`Node::DISPATCH` and the RTIC queue above belong to `nros::node!` nodes. A
-host that builds its executor by hand (a Tier 0 integration, RFC-0112 D2) defers
-callbacks through the executor itself, with three calls and no macro-private
-type (issue 2146):
+`Node::DISPATCH` and the RTIC queue above belong to `nros::node!` nodes. The
+queue under them is the executor's own, with three calls and no macro-private
+type (issue 2146). A loop that drains it is a priority mapping nano-ros
+generates (RTIC) or owns; a foreign host's loop would decide when the
+callbacks run, which RFC-0113 does not support:
 
 ```rust
 use nros::{Executor, HandleId};
@@ -258,58 +260,10 @@ The rules:
 - A deferred callback takes no part in the spin's `Trigger`.
 - Timers cannot be deferred (`set_deferred` returns `false`): a timer's
   readiness is decided inside its own dispatch.
-- It is a different hook from `set_ready_notifier` (issue 2144). That one
-  fires when data arrives and says "spin now"; the defer notifier fires during
-  the spin and says which callback to run. A host that sleeps until work
-  arrives uses both.
-- The drain needs `&mut Executor`, like `spin_once`. On a single-thread host
-  (Embassy, a superloop) that is the same task; across tasks, the executor is
-  the shared resource the host already guards for spinning.
-
-### Through `nros::setup!`
-
-A host that builds its image from `system.toml` with `nros::setup!()` (the
-Tier 0 road, phase-520) does not name handles at all. It writes
-`dispatch = "deferred"` on the component:
-
-```toml
-[[component]]
-pkg = "my_listener"
-class = "my_listener::Listener"
-name = "listener"
-dispatch = "deferred"
-```
-
-and the emitted `nros_setup` installs that component deferred — the
-executor's `callback_mark()` before its `register`, `set_deferred_since(mark,
-true)` after, so every callback the component registered is deferred and
-nothing else is (timers stay inline; they cannot be deferred). The host gets
-the drain beside `nros_setup`:
-
-```rust
-nros::setup!();
-
-fn main() {
-    nros_boot(|rt| {
-        nros_setup(&mut *rt)?;
-        while !nros_stop_requested() {
-            let _ = rt.spin_once(10);       // queues the listener's callback
-            let _ran = nros_run_deferred(&mut *rt); // runs it, here
-        }
-        Ok(())
-    })
-    .expect("boot");
-}
-```
-
-`nros_has_deferred(rt)` polls the queue, `nros_set_defer_notifier(rt, f, ctx)`
-installs the notifier above for a host that pends a task per callback, and
-`NROS_DEFERRED_COMPONENTS` lists what was deferred. `nros::main!` ignores the
-key: the board's loop is the only task there, so a deferral would queue
-callbacks nothing drains. RTIC's `nros::main!` runs callbacks inline in its
-`__nros_run` task too (issue 2161). The worked example is
-`examples/linux/rust/listener-host-loop`, whose cell asserts both the
-deliveries and the drain's marker line.
+- The defer notifier fires during the spin and says which callback to run.
+- The drain needs `&mut Executor`, like `spin_once`. On a single task that is
+  the same task; across tasks (RTIC's), the executor is the shared resource
+  already guarded for spinning.
 
 ## The `__nros_node_<pkg>_dispatch_strategy()` ABI symbol
 
@@ -464,9 +418,8 @@ branch in the "after" version — same code, hoisted to a method.
 
 - [RTIC Integration](../user-guide/rtic-integration.md) — user-facing
   tutorial for the RTIC side of dispatch.
-- [Embassy Integration](../user-guide/embassy-integration.md) —
-  user-facing tutorial for the Embassy side of dispatch +
-  spawn-from-sync.
+- [Embassy Integration](../user-guide/embassy-integration.md) — why
+  Embassy is not supported (RFC-0113).
 - [Scheduling Models](./scheduling-models.md) — the real-time
   scheduling backdrop against which dispatch strategy choices are
   made.

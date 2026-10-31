@@ -577,7 +577,6 @@ rt_priority_band
 GIT_INDEX_FILE
 GIT_OBJECT_DIRECTORY
 
-# GLib, Qt and tokio (host event loops, issue 2144)
-AsyncFd
-QSocketNotifier
-g_unix_fd_add
+# the `futures` crate (the `stream` feature's combinators)
+StreamExt
+StreamExt::next

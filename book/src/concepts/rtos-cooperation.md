@@ -1,9 +1,15 @@
 # RTOS Cooperation
 
 nano-ros runs on platforms that span pure cooperative bare-metal
-through multi-task preemptive RTOS to fully async / Future-driven
-runtimes. The executor's spin loop has to cooperate with each of
-these without imposing a single execution model on all of them.
+through multi-task preemptive RTOS. The executor's spin loop has to
+cooperate with each of these without imposing a single execution model
+on all of them.
+
+Every shape on this page keeps nano-ros's real-time promise: nano-ros
+decides which callback runs and at what priority. A loop owned by a
+foreign async runtime or event loop (tokio, Embassy, Qt, GLib) cannot
+keep it, so it is not supported
+([RFC-0113](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0113-rt-unified-wait.md)).
 
 This page maps the common RTOS / runtime execution profiles to the
 configuration knobs the executor exposes. New apps pick a profile
@@ -16,9 +22,8 @@ translate that choice into bounded behaviour from `drive_io`.
 |-------|-------------|-----------------|
 | **Cooperative single-task** | One task / thread does all ROS work. No preemption from other tasks (there are none, or they're all lower priority). Yielding happens at task boundaries. | Bare-metal MPS2-AN385, single FreeRTOS task, single Zephyr thread |
 | **Preemptive priority** | ROS task runs at a fixed priority. Higher-priority tasks preempt mid-call by the kernel. ROS-internal entities (subs, timers, services, GCs) all share that priority — they don't preempt each other. | Typical FreeRTOS / ThreadX / Zephyr deployment with worker tasks |
-| **WCET-bounded real-time** | Each "task" has a provable worst-case execution time. Tasks are dispatched directly from interrupts; no spin loops in the hot path. | RTIC, Embassy, avionics WCET-validated code |
+| **WCET-bounded real-time** | Each "task" has a provable worst-case execution time. Tasks are dispatched directly from interrupts; no spin loops in the hot path. | RTIC, avionics WCET-validated code |
 | **Time-triggered cyclic** | Fixed schedule. Each cycle does a fixed amount of work in a fixed time slot; ROS gets a fraction of the cycle and must yield. | DO-178C / IEC 61508 controller frames |
-| **Async runtime** | Futures registered with wakers; reactor drives. No spin loop visible to user code. | tokio, Embassy futures, custom async runtimes |
 
 ## How `drive_io` behaves by default
 
@@ -29,10 +34,8 @@ expired timers and triggered guard conditions. If 10 messages
 arrived during the wait, all 10 callbacks fire in a single
 `spin_once`, then timer / GC dispatch happens once afterwards.
 
-This is the right default for **cooperative single-task** apps and
-for **async-runtime** apps using `spin_async` /
-`spin_async_with_sleep` (see [Async runtime](#async-runtime)). Both want
-throughput; neither benefits from per-callback scheduling
+This is the right default for **cooperative single-task** apps, which
+want throughput and do not benefit from per-callback scheduling
 opportunities.
 
 For the other three models, the default has trade-offs the
@@ -88,23 +91,12 @@ If max-callback dispatch latency is still too high in this profile
 callback's WCET — split the slow callback, or move it to its own
 tier/task (see [Scheduling Models](../internals/scheduling-models.md)).
 
-### WCET-bounded real-time (RTIC / Embassy)
+### WCET-bounded real-time (RTIC)
 
-Don't use the spin loop. Use the async path — a buffered subscription
-handle whose `recv()` is an async fn with waker integration:
-
-```rust
-let mut sub = node.create_polling_subscription::<MyMsg>("/topic")?;
-loop {
-    let msg = sub.recv().await?;        // suspends; waker integration
-    handle(msg);
-}
-```
-
-The async path doesn't go through `drive_io` at all. Subscriptions
-register a `Waker`; the backend's RX path wakes the waker; the
-async runtime schedules the receiving task. Per-task WCET analysis
-applies to each `recv().await` continuation, not to a spin loop.
+Don't hand-write the spin loop. `nros::main!` generates the RTIC app: each
+callback becomes an RTIC task at the priority nano-ros derives for it, and
+the executor's deferred-dispatch queue hands ready callbacks to those tasks.
+Per-task WCET analysis applies to each RTIC task, not to a spin loop.
 
 ### Time-triggered cyclic
 
@@ -119,42 +111,6 @@ Pending work resumes next cycle. (There is no finer-grained
 per-callback budget knob today — if a single callback can overrun the
 slot, that callback's WCET is your design constraint.)
 
-### Async runtime
-
-Each poll runs one non-blocking `spin_once(Duration::ZERO)` pass. It
-never parks the runtime's thread, so sibling futures on a
-single-threaded runtime are not held up by it (issue 2145). After a pass
-that did no work, the task sleeps until it is woken by either:
-
-- **an arrival.** The task's `Waker` is registered with the executor's
-  readiness path, the same one `set_ready_notifier` uses (issue 2144).
-- **the next deadline.** This needs the runtime's sleep, so it applies
-  only to `spin_async_with_sleep`. The deadline is the next timer or
-  backend keepalive (`next_deadline_us`, issue 2143).
-
-```rust
-// tokio
-executor.spin_async_with_sleep(tokio::time::sleep).await
-// Embassy
-executor
-    .spin_async_with_sleep(|d| embassy_time::Timer::after_micros(d.as_micros() as u64))
-    .await
-```
-
-Two cases still wake themselves on every poll, which keeps one core at
-100 %:
-
-- **A poll-only backend** (XRCE, uORB's polling build, a bare-metal
-  smoltcp session). It learns of an arrival only inside a pass, so
-  `ready_notifier_supported()` is `false`.
-- **Plain `spin_async()` with any deadline pending.** It has no timer to
-  sleep on. zenoh always has one, its keepalive, so on zenoh use
-  `spin_async_with_sleep`.
-
-Where neither variant can sleep and idle CPU matters, drive the executor
-from a blocking task with `spin` / `spin_once(timeout)` and hand results
-to async code over a channel.
-
 ## Trade-offs at a glance
 
 | Configuration | Throughput | Per-callback latency | Timer-callback fairness | Code-size cost |
@@ -162,7 +118,6 @@ to async code over a channel.
 | drain-all (default) | High | Bounded by ALL ready callbacks' total WCET | Poor under load | Smallest |
 | `max_callbacks(1)` | Slightly lower (more spin loop iterations) | Bounded by ONE callback's WCET | Good | Same — the cap is just an integer |
 | `timeout_ms(N)` per cycle | Lower | Bounded by N ms wall clock + one callback's WCET | Good if N tight | One clock read per iteration |
-| async / `spin_async_with_sleep` | High; idle costs nothing where the backend wakes on arrival (100 % of a core on a poll-only backend, issue 2145) | One non-blocking pass per poll; never parks the runtime thread | Cooperative — futures yield voluntarily | Async runtime cost |
 
 ## Backends and their wait primitives
 

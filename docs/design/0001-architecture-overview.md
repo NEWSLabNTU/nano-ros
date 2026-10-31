@@ -390,7 +390,6 @@ When `NROS_EXECUTOR_MAX_CBS=0` and `NROS_EXECUTOR_ARENA_SIZE=0`, the arrays are 
 | `spin_one_period(period_ms, elapsed_ms)` | Yes      | Caller-timed loop (caller provides clock + sleep)                  |
 | `spin(SpinOptions)`             | No       | Loop with optional timeout/max_callbacks                           |
 | `spin_period(Duration)`                  | No       | Wall-clock-timed loop                                              |
-| `spin_async()`                           | Yes      | One non-blocking pass per poll; sleeps on arrivals, and on the next deadline with `spin_async_with_sleep` (issue 2145); works with Embassy, tokio |
 
 ### Node Factory
 
@@ -426,39 +425,14 @@ Two dispatch strategies, selected at construction:
 - **RclcppExecutor** (default) — interleaved dispatch; each callback sees the latest data
 - **LogicalExecutionTime (LET)** — all subscriptions are pre-sampled at spin start before any callback runs; ensures deterministic snapshot semantics for safety-critical systems
 
-### Async Integration
+### No async-runtime integration
 
-The executor integrates with external async runtimes (tokio, Embassy) without bundling one.
-
-**As built (issue 2145):** each poll runs one non-blocking `spin_once(Duration::ZERO)` pass.
-After a pass that did no work, the task's `Waker` is registered with the executor's readiness path
-(issue 2144) and the task returns `Pending` without waking itself. `spin_async_with_sleep` also
-sleeps until `next_deadline_us()` (issue 2143). A poll-only backend, or plain `spin_async()` with a
-deadline pending, still wakes itself every poll. Per-entity futures (`recv().await`, `Promise`) use
-the waker path shown:
-
-```mermaid
-sequenceDiagram
-    participant RT as Async Runtime<br/>(tokio / Embassy)
-    participant EX as Executor::spin_async()
-    participant SUB as ZenohSubscriber
-    participant ZP as zenoh-pico callback
-
-    RT->>EX: poll Future
-    EX->>SUB: register_waker(cx.waker())
-    SUB-->>EX: Poll::Pending
-    EX-->>RT: Pending (yield)
-
-    ZP->>SUB: data arrives (C callback)
-    SUB->>SUB: AtomicWaker::wake()
-    SUB-->>RT: wake task
-
-    RT->>EX: poll Future (re-poll)
-    EX->>EX: drive_io() + dispatch callbacks
-    EX-->>RT: Poll::Pending (yield again)
-```
-
-`AtomicWaker` bridges C-level zenoh-pico receive callbacks to Rust `Future` waking. No `block_on` is provided — users bring their own async runtime.
+The executor is driven only by nano-ros's own runtime (tiers on OS threads,
+`nros::main!`, the runners) or by a framework whose task mapping
+`nros::main!` generates (RTIC). A foreign async runtime (tokio, Embassy) or
+event loop would decide when callbacks run, so no real-time bound could be
+stated there; RFC-0113 retired `spin_async`, the readiness notifier and the
+host-owned `nros::setup!` for that reason.
 
 ## Board Crates
 

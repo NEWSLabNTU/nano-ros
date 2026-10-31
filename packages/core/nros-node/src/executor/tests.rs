@@ -3444,68 +3444,6 @@ fn a_zero_park_stays_zero() {
     assert_eq!(executor.last_park_achieved_us(), 0);
 }
 
-/// Issue 2145 — a poll of `spin_async` must never park the calling thread,
-/// because that thread is the async runtime's: a park there delays every
-/// sibling future on a single-threaded runtime by the park's length. It used
-/// to be `spin_once(1 ms)`, which parks for a granule on every poll.
-///
-/// The park bound is the executor's own record of what the pass asked the
-/// platform for, so this needs no wall-clock measurement (a timing assertion
-/// on a loaded host is a flake). It also pins the other half of the current
-/// contract: the poll returns `Pending` and has woken its own waker, because
-/// the mock session has no live async wake (`ready_notifier_supported()` is
-/// false), and for such a poll-only executor that self-wake is how a runtime
-/// knows to poll it again. The sleeping half needs a backend that wakes, so it
-/// is tested live over zenoh (`entity_wake::spin_async_sleeps_while_idle_*`).
-#[test]
-fn spin_async_poll_never_parks_and_wakes_itself() {
-    use core::future::Future as _;
-    use std::{
-        sync::{
-            Arc,
-            atomic::{AtomicUsize, Ordering},
-        },
-        task::{Context, Poll, Wake, Waker},
-    };
-
-    struct CountingWaker(AtomicUsize);
-    impl Wake for CountingWaker {
-        fn wake(self: Arc<Self>) {
-            self.0.fetch_add(1, Ordering::SeqCst);
-        }
-        fn wake_by_ref(self: &Arc<Self>) {
-            self.0.fetch_add(1, Ordering::SeqCst);
-        }
-    }
-
-    let mut executor: Executor = executor_with_clock(MockSession::new());
-    let counter = Arc::new(CountingWaker(AtomicUsize::new(0)));
-    let waker = Waker::from(counter.clone());
-    let mut cx = Context::from_waker(&waker);
-
-    {
-        let mut fut = core::pin::pin!(executor.spin_async());
-        for poll in 1..=3 {
-            assert!(
-                matches!(fut.as_mut().poll(&mut cx), Poll::Pending),
-                "spin_async never completes"
-            );
-            assert_eq!(
-                counter.0.load(Ordering::SeqCst),
-                poll,
-                "each poll wakes itself exactly once (poll-only executor)"
-            );
-        }
-    }
-
-    assert_eq!(
-        executor.last_park().0,
-        0,
-        "a spin_async poll asked the platform to park: it blocks the runtime thread"
-    );
-    assert_eq!(executor.last_park_achieved_us(), 0);
-}
-
 /// The defect: `as_millis()` truncates, so 500 us became 0 ms, which selects
 /// the non-blocking path and turns `spin()` into a 100 % CPU loop. A park
 /// shorter than the platform can express must round UP to what it can.
@@ -3725,14 +3663,25 @@ fn a_cancelled_timer_does_not_bound_the_park() {
 }
 
 // ============================================================================
-// Issue 2143 -- `next_deadline_us`, the Tier 0 time-out a host loop sleeps on
+// Issue 2143 -- the executor's next deadline, measured from now
 // ============================================================================
+//
+// It was public (`next_deadline_us`) for a host loop to sleep on; RFC-0113 D7
+// retired that surface, and the park is now its only reader.
+
+/// The park's bound with no caller budget: `None` when no source names one.
+fn owed_us(executor: &Executor) -> Option<u64> {
+    match executor.next_wake_bound_attributed_us(u64::MAX, None) {
+        (_, super::spin::WakeSourceId::CallerBudget) => None,
+        (bound_us, _) => Some(bound_us),
+    }
+}
 
 private_test_clock!(next_deadline_timer_clock);
 
 /// A 10 ms timer is due in at most 10 ms, and -- the lower bound -- not
-/// sooner: an answer of 0 would turn the host's sleep into a busy poll, and
-/// one under 10 ms would wake it for nothing. The private clock makes both
+/// sooner: an answer of 0 would turn the park into a busy poll, and one under
+/// 10 ms would wake it for nothing. The private clock makes both
 /// bounds one exact value, then moves "now" WITHOUT spinning, so the answer
 /// is shown to be measured from now rather than from the last spin.
 #[test]
@@ -3744,9 +3693,7 @@ fn next_deadline_reports_a_10ms_timer_from_now() {
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
 
-    let due = executor
-        .next_deadline_us()
-        .expect("a registered timer is a deadline");
+    let due = owed_us(&executor).expect("a registered timer is a deadline");
     assert!(
         due <= 10_000,
         "a 10 ms timer is due within 10 ms, got {due} us"
@@ -3756,24 +3703,24 @@ fn next_deadline_reports_a_10ms_timer_from_now() {
         "and not sooner: nothing has elapsed on this clock, got {due} us"
     );
 
-    // The host spends 4 ms in its own loop; the timer is 4 ms nearer.
+    // 4 ms pass between spins; the timer is 4 ms nearer.
     next_deadline_timer_clock::advance_ms(4);
-    assert_eq!(executor.next_deadline_us(), Some(6_000));
+    assert_eq!(owed_us(&executor), Some(6_000));
 
     // Past the period it is due now, not "due in a negative time".
     next_deadline_timer_clock::advance_ms(20);
-    assert_eq!(executor.next_deadline_us(), Some(0));
+    assert_eq!(owed_us(&executor), Some(0));
 }
 
-/// Nothing scheduled is `None`, not a made-up period: the host then waits on
-/// readiness alone (issue 2144).
+/// Nothing scheduled is `None`, not a made-up period: the park then waits on
+/// arrivals and the caller's budget alone.
 #[test]
 fn next_deadline_is_none_with_nothing_scheduled() {
     let executor: Executor = executor_with_clock(MockSession::new());
-    assert_eq!(executor.next_deadline_us(), None);
+    assert_eq!(owed_us(&executor), None);
 }
 
-/// A cancelled timer owes nothing, and so is not a deadline a host wakes for.
+/// A cancelled timer owes nothing, and so is not a deadline the park wakes for.
 #[test]
 fn next_deadline_ignores_a_cancelled_timer() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
@@ -3781,11 +3728,11 @@ fn next_deadline_ignores_a_cancelled_timer() {
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
     executor.cancel_timer(id).unwrap();
-    assert_eq!(executor.next_deadline_us(), None);
+    assert_eq!(owed_us(&executor), None);
 }
 
-/// Every member of the park's `min` reaches the public answer, not just the
-/// timers: a platform wake source nearer than the timer decides it.
+/// Every member of the park's `min` reaches the answer, not just the timers: a
+/// platform wake source nearer than the timer decides it.
 #[test]
 fn next_deadline_includes_a_platform_wake_source() {
     unsafe extern "C" fn due_in_3ms(_ctx: *mut core::ffi::c_void) -> u64 {
@@ -3798,7 +3745,7 @@ fn next_deadline_includes_a_platform_wake_source() {
     executor
         .register_wake_source(due_in_3ms, core::ptr::null_mut())
         .unwrap();
-    assert_eq!(executor.next_deadline_us(), Some(3_000));
+    assert_eq!(owed_us(&executor), Some(3_000));
 }
 
 private_test_clock!(park_since_last_spin_clock);
@@ -18992,83 +18939,6 @@ fn a_deferred_subscription_is_queued_by_the_spin_and_run_by_the_host() {
     assert_eq!(spun.subscriptions_processed, 1);
     assert_eq!(*received.lock().unwrap(), [7, 8, 9, 10]);
     assert_eq!(log.lock().unwrap().len(), 2, "inline again: no notify");
-}
-
-/// phase-520 W3 -- a whole component deferred by whoever installs it, with no
-/// handle in hand: a mark before its registrations, `set_deferred_since` after.
-/// Slots occupied BEFORE the mark stay inline, a timer among the new ones is
-/// skipped and not counted, and the deferred subscription is queued by the spin
-/// and run by the drain exactly as a hand-marked one is.
-#[test]
-fn set_deferred_since_defers_what_was_registered_after_the_mark() {
-    let mut executor: Executor = executor_with_clock(MockSession::new());
-    let nid = executor.node_builder("deferred_component").build().unwrap();
-    let received = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::new()));
-
-    // Registered before the mark: another component's subscription.
-    let before_rx = received.clone();
-    let before = executor
-        .node_mut(nid)
-        .create_subscription::<TestMsg, _>("/before", move |msg: &TestMsg| {
-            before_rx.lock().unwrap().push(("before", msg.data));
-        })
-        .unwrap();
-
-    let mark = executor.callback_mark();
-    assert_eq!(
-        executor.set_deferred_since(mark, true),
-        0,
-        "nothing registered since the mark: nothing deferred"
-    );
-
-    // "The component's register": a subscription and a timer.
-    let after_rx = received.clone();
-    let after = executor
-        .node_mut(nid)
-        .create_subscription::<TestMsg, _>("/after", move |msg: &TestMsg| {
-            after_rx.lock().unwrap().push(("after", msg.data));
-        })
-        .unwrap();
-    let timer = executor
-        .node_mut(nid)
-        .create_timer_repeating(core::time::Duration::from_millis(1), || {})
-        .unwrap();
-
-    assert_eq!(
-        executor.set_deferred_since(mark, true),
-        1,
-        "the subscription is deferred; the timer is skipped and not counted"
-    );
-    assert!(
-        !executor.is_deferred(before),
-        "registered before the mark: inline"
-    );
-    assert!(executor.is_deferred(after));
-    assert!(!executor.is_deferred(timer), "timers cannot be deferred");
-
-    // Feed both subscriptions: the spin runs the earlier one inline and queues
-    // the component's.
-    let before_slot = executor.resolve_handle(before).unwrap();
-    let after_slot = executor.resolve_handle(after).unwrap();
-    let arena_ptr = executor.arena.as_ptr() as *const u8;
-    for (slot, value) in [(before_slot, 1), (after_slot, 2)] {
-        let meta = executor.entries[slot].as_ref().unwrap();
-        let sub_ptr = unsafe { arena_ptr.add(meta.offset) } as *const MockSubscriber;
-        let (data, len) = encode_test_msg(value);
-        unsafe { &*sub_ptr }.load(data, len);
-    }
-    let spun = executor.spin_once(core::time::Duration::from_millis(0));
-    assert_eq!(spun.subscriptions_processed, 1, "only the inline one ran");
-    assert_eq!(*received.lock().unwrap(), [("before", 1)]);
-    assert!(executor.is_deferred_pending(after));
-
-    let ran = executor.run_deferred();
-    assert_eq!(ran.subscriptions_processed, 1);
-    assert_eq!(*received.lock().unwrap(), [("before", 1), ("after", 2)]);
-
-    // Undeferring since the same mark puts the component back inline.
-    assert_eq!(executor.set_deferred_since(mark, false), 1);
-    assert!(!executor.is_deferred(after));
 }
 
 /// A host that maps callbacks onto tasks of different priorities runs ONE

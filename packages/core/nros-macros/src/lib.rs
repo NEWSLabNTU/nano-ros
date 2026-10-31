@@ -47,53 +47,6 @@ pub fn main(input: TokenStream) -> TokenStream {
     main_macro::expand(input)
 }
 
-/// The model-driven assembly of [`main!`], for a host that owns its own loop
-/// (RFC-0112 Tier 0: Embassy, tokio, GLib, an Arduino `loop()` …).
-///
-/// Takes `main!`'s model arguments (`launch = "<bringup>[:<file>]"`,
-/// `args = [...]`) and emits, instead of a `main`:
-///
-/// - `pub fn nros_setup(&mut dyn NodeDispatchRuntime) -> Result<(), RuntimeError>` — every
-///   component the model declares, with its parameters, remaps, contract
-///   monitors and lifecycle, installed on the host's executor;
-/// - `pub fn nros_deploy() -> DeployOverlay` — the image's locator, domain,
-///   transport and RMW, for the host to open its `Executor` with.
-///
-/// When the image's board is an OwnedSpin board (`linux`, the FreeRTOS,
-/// NuttX and ThreadX families …), it also emits `nros_boot(host)`: the board's
-/// start-up, then `host` with the opened runtime and the loop, plus
-/// `nros_stop_requested()` for the board's termination guard:
-///
-/// ```ignore
-/// nros::setup!();
-///
-/// nros_boot(|rt| {
-///     nros_setup(&mut *rt)?;
-///     while !nros_stop_requested() { let _ = rt.spin_once(10); /* host work */ }
-///     Ok(())
-/// })?;
-/// ```
-///
-/// A host with no such board (Embassy, RTIC …) opens the executor itself,
-/// wraps it, calls `nros_setup`, then spins from its own loop:
-///
-/// ```ignore
-/// nros::setup!();
-///
-/// let mut rt = nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
-/// nros_setup(&mut rt)?;
-/// loop { rt.spin_once(core::time::Duration::from_millis(10))?; /* host work */ }
-/// ```
-///
-/// The image needs no board (the host is the framework). Refused, because they
-/// configure a `main` this macro does not emit: `spin =`, `panic =`,
-/// `before_boot =`, `custom_tasks =`, and a multi-tier image. Phase-520,
-/// issue 2150.
-#[proc_macro]
-pub fn setup(input: TokenStream) -> TokenStream {
-    main_macro::expand_setup(input)
-}
-
 /// Sanitise a cargo package name into a C-identifier-safe symbol component.
 ///
 /// Cargo allows `-` in package names; C identifiers don't. Each non

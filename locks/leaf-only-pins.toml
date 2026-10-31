@@ -82,22 +82,3 @@ name = "rustc-hash"
 range = "2"
 why = "a dependency of bindgen or zephyr-macros in the Zephyr Rust leaves, e.g. examples/zephyr/rust/talker (issue 1937)"
 
-[[keep]]
-name = "futures"
-range = "0.3"
-why = "the async Linux example examples/linux/rust/action-client-async names it; its lock is untracked, so no root resolves it (issue 1924)"
-
-[[keep]]
-name = "futures-channel"
-range = "0.3"
-why = "futures 0.3's dependency in examples/linux/rust/action-client-async (issue 1924)"
-
-[[keep]]
-name = "futures-io"
-range = "0.3"
-why = "futures 0.3's dependency in examples/linux/rust/action-client-async (issue 1924)"
-
-[[keep]]
-name = "tokio-macros"
-range = "2"
-why = "tokio's `macros` feature in examples/linux/rust/{action,service}-client-async (issue 1924)"

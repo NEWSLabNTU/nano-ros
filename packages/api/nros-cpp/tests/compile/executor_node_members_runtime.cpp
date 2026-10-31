@@ -8,10 +8,7 @@
 //   * `add_node` on a node this executor created is a no-op (a foreign node
 //     aborts, which a single-process test cannot observe without dying);
 //   * `spin_node_some` / `spin_node_once` spin through that check;
-//   * `spin_all(0)` is refused, as rclcpp throws for it; `spin_all(n)` drains;
-//   * issue 2143: `next_deadline_us` -- the time-out a host loop sleeps on --
-//     is "no deadline" with nothing scheduled, and a 10 ms wall timer is due
-//     within 10 ms and not already.
+//   * `spin_all(0)` is refused, as rclcpp throws for it; `spin_all(n)` drains.
 //
 // `remove_node` is a compile-time refusal, held by
 // `ros2_refuse_remove_node_probe.cpp`.
@@ -96,25 +93,6 @@ int main() {
     check(exec.spin_all(0).raw() == static_cast<int32_t>(rclcpp::ErrorCode::InvalidArgument),
           "spin_all(0) is refused");
     check(exec.spin_all(20).ok(), "spin_all(20) drains");
-
-    // issue 2143 -- the host-loop time-out. The stub backend names no internal
-    // deadline, so with no timer there is nothing to wake for.
-    uint64_t next_us = 0;
-    check(exec.next_deadline_us(next_us).ok(), "next_deadline_us is readable");
-    check(next_us == UINT64_MAX, "nothing scheduled reads as no deadline (UINT64_MAX)");
-    int timer_fires = 0;
-    rclcpp::TimerHandle timer = node.create_wall_timer(
-        rclcpp::Duration::from_nanoseconds(10 * 1000 * 1000), [&timer_fires] { ++timer_fires; });
-    check(static_cast<bool>(timer), "a 10 ms wall timer");
-    check(exec.next_deadline_us(next_us).ok(), "next_deadline_us is readable with a timer");
-    check(next_us <= 10000, "a 10 ms wall timer is due within 10 ms");
-    // The lower bound: an answer of 0 would turn the host's sleep into a busy
-    // poll. Nothing has spun since the timer was registered.
-    check(next_us >= 1000, "and is not already due");
-    if (next_us > 10000 || next_us < 1000) {
-        std::fprintf(stderr, "       next_deadline_us = %llu\n",
-                     static_cast<unsigned long long>(next_us));
-    }
 
     if (g_failures != 0) {
         std::fprintf(stderr, "executor_node_members_runtime: %d failure(s)\n", g_failures);

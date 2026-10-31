@@ -15,7 +15,7 @@ examples/
 
 - **Platform** (10): `linux`, `px4`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `esp32-c3-baremetal`, `rv-virt-nuttx`, `rv-virt-threadx`, `threadx-linux`, `zephyr`
 - **Language**: `c`, `cpp`, `rust`
-- **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-aemv8r`, `-host-loop` (a `main` that owns its loop via `nros::setup!()`), etc.
+- **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-serial`, `-aemv8r`, etc.
 
 > **`stm32f4/` left this tree in phase-337 W7.a.** Its board crates carried
 > **zero** Runtime cells — no CI lane could boot them (the hardware is not in
@@ -191,7 +191,7 @@ by phase-445 W5).
 | **1z** | workspace, Zephyr image | the image row builds through `west`; its application is GENERATED (phase-470 W5) unless a hand-written `src/*_entry` package still claims it | every Zephyr `[image.*]` row. None in-tree is hand-written since phase-477 W1 — [issue 1288](../docs/issues/archived/1288-zephyr-rust-workspace-entries-not-generated.md); count them with the command below, not from this table |
 | **1b** | workspace with **no bringup** | `.colcon_workspace`, no `*_bringup` — builds every package in dependency order, colcon's default | `templates/local-msg-package` (a `system.toml` beside a *package*) and `templates/workspace-shadowing` (none at all) |
 | **3** | leaf, cargo owns the link, node-class | leaf has `Cargo.toml`, no `CMakeLists.txt`, and a `system.toml` | most Rust leaves (question 1, first row) **and** the cargo-rooted bare-metal C/C++ leaves |
-| **3a** | leaf, cargo owns the link, **application-shaped** | `[package.metadata.nros.application]` in `Cargo.toml`; the leaf owns `main` and its executor; **no `system.toml`**, never built through `nros build` | 16 `linux/rust/*` leaves — the RTIC, async, custom-transport, serial, lifecycle and logging demos. They show what the node-class shape cannot express (the imperative executor API, a user-supplied transport, an RTIC app), so they are a class, not a backlog |
+| **3a** | leaf, cargo owns the link, **application-shaped** | `[package.metadata.nros.application]` in `Cargo.toml`; the leaf owns `main` and its executor; **no `system.toml`**, never built through `nros build` | 14 `linux/rust/*` leaves — the RTIC, custom-transport, serial, lifecycle and logging demos. They show what the node-class shape cannot express (the imperative executor API, a user-supplied transport, an RTIC app), so they are a class, not a backlog |
 | **4** | leaf, cmake owns the link | leaf has `CMakeLists.txt` (`+ prj*.conf` on Zephyr) | every C and C++ leaf on a platform whose startup is C — all but the bare-metal ones; plus `zephyr/rust/*` and `rv-virt-threadx/rust/*` |
 | **X** | foreign-build integration | no `system.toml` and nothing for `nros build` to generate; a *foreign* build consumes the tree | `examples/px4/` — see below |
 
@@ -269,7 +269,7 @@ behind this section is
 
 ## Coverage matrix
 
-Cell content: `<count>` of `talker|listener|service-{server,client}|action-{server,client}` cases present (max 6). `+` suffix indicates extras (custom-msg, parameters, lifecycle, RTIC variants, host-loop, custom-transport, serial, embassy, async, etc.).
+Cell content: `<count>` of `talker|listener|service-{server,client}|action-{server,client}` cases present (max 6). `+` suffix indicates extras (custom-msg, parameters, lifecycle, RTIC variants, custom-transport, serial, embassy, etc.).
 
 | Platform                  | Language | zenoh | xrce | cyclonedds | uorb |
 |---------------------------|----------|-------|------|------------|------|
@@ -371,7 +371,7 @@ spin up examples here without first lifting the underlying constraint.
 | `cyclonedds` on NuttX QEMU (`qemu-armv7a-nuttx` × all langs) | Deferred-upstream: a Cyclone DDS NuttX socket-shim port is an upstream-scale effort not attempted in nano-ros. FreeRTOS is no longer in this bucket; Phase 175 added FreeRTOS/lwIP Cyclone fixture wiring. | An upstream Cyclone DDS NuttX port (socket shim + config + heap budget), then a nano-ros example cell. |
 | pure-cargo `cyclonedds` Rust binaries on `linux` / `threadx-linux` | Still intentionally unsupported: `nros-rmw-cyclonedds-sys` exposes only the C register shim, so a plain Cargo build has no way to build+link the C++ Cyclone lib + `libddsc`. Native Rust Cyclone now uses the Phase 175 CMake/Corrosion path instead. | Use the CMake/Corrosion fixture path for Cyclone-backed Rust examples, or scope a new staticlib crate separately. |
 | `cyclonedds` service/action on `rv-virt-threadx` (`c`/`cpp`) — talker+listener only | De-scoped (Phase 275 W4): Cyclone on ThreadX RISC-V64 is *experimental* and its runtime still needs participant-init diagnosis (Phase 177.22). Only talker/listener are wired, exercised by the AF_UNIX two-QEMU pub/sub e2e (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`). Service/action would need bidirectional RTPS discovery over that L2 tunnel, unproven on this port; the zenoh RMW covers the full 6-role set here. | Land the Phase 177.22 participant-init fix, then a two-QEMU Cyclone request/response e2e before adding `service-*`/`action-*` cyclone fixture rows. |
-| `zephyr/rust/service-client-async` | Dropped 2026-06-02 per Phase 212.M-F.5 — the Embassy-driven async client has no `Node` / `ExecutableNode` analogue today. The native tokio sibling (`examples/linux/rust/service-client-async/`) remains as the async-client reference. | Decide on an async executable-node trait (deferred until L-Wave / runtime authors pick the path), then re-introduce the example. |
+| `zephyr/rust/service-client-async` | Dropped 2026-06-02 per Phase 212.M-F.5; its native tokio sibling went with RFC-0113 (2026-10-31), which retired async-runtime integration because a foreign scheduler would decide when callbacks run. | None: not coming back while the real-time promise is the support rule. |
 
 If you believe one of these cells should be filled, please open an issue
 referencing the gating phase before adding directories — the lint in

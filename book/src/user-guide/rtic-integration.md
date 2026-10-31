@@ -461,8 +461,8 @@ Until that work lands, `nros check` rejects
 
 - [Dispatch Strategy (internals)](../internals/dispatch-strategy.md) —
   the trichotomy and the per-Node-vs-per-callback rationale.
-- [Embassy Integration](./embassy-integration.md) — the async sibling
-  of this chapter.
+- [Embassy Integration](./embassy-integration.md) — why Embassy, unlike
+  RTIC, is not supported.
 - [Role reference](./component-and-entry-pkg.md) —
   the 3-pkg-role taxonomy in full.
 - [Scheduling Models](../internals/scheduling-models.md#rtic-arm-cortex-m) —

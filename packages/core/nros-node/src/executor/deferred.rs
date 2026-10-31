@@ -36,7 +36,7 @@
 use super::{
     arena::EntryKind,
     spin::Executor,
-    types::{CallbackMark, DeferNotify, HandleId, SpinOnceResult},
+    types::{DeferNotify, HandleId, SpinOnceResult},
 };
 
 impl<'s> Executor<'s> {
@@ -74,41 +74,6 @@ impl<'s> Executor<'s> {
             self.deferred_pending &= !bit;
         }
         true
-    }
-
-    /// phase-520 W3 -- snapshot which callback slots are occupied now, for
-    /// [`set_deferred_since`](Self::set_deferred_since).
-    pub fn callback_mark(&self) -> CallbackMark {
-        let mut occupied = 0u64;
-        for (slot, entry) in self.entries.iter().enumerate().take(64) {
-            if entry.is_some() {
-                occupied |= 1u64 << slot;
-            }
-        }
-        CallbackMark(occupied)
-    }
-
-    /// phase-520 W3 -- defer (or stop deferring) every callback registered
-    /// since `mark` was taken: the slots occupied now that were not occupied
-    /// then. Returns how many callbacks it changed.
-    ///
-    /// This is how a whole component is deferred by whoever installs it
-    /// without naming its handles: take the mark, run the component's
-    /// `register`, then defer since the mark. `nros::setup!` does exactly that
-    /// for a `[[component]]` with `dispatch = "deferred"`. Timers are skipped
-    /// (they cannot be deferred, see the module docs) and are not counted.
-    pub fn set_deferred_since(&mut self, mark: CallbackMark, deferred: bool) -> usize {
-        let fresh = self.callback_mark().0 & !mark.0;
-        let mut changed = 0;
-        let mut rest = fresh;
-        while rest != 0 {
-            let slot = rest.trailing_zeros() as usize;
-            rest &= rest - 1;
-            if self.set_deferred(self.handle_for(slot), deferred) {
-                changed += 1;
-            }
-        }
-        changed
     }
 
     /// Whether `id` names a deferred callback.

@@ -2938,14 +2938,3 @@ mod verification {
 /// host task that will call `Executor::run_deferred` or
 /// `Executor::run_deferred_handle`.
 pub type DeferNotify = fn(ctx: *mut core::ffi::c_void, handle: HandleId);
-
-/// phase-520 W3 (RFC-0112 D2, Defer) -- which callback slots were occupied
-/// when [`Executor::callback_mark`](crate::Executor::callback_mark) was
-/// taken. Hand it back to
-/// [`Executor::set_deferred_since`](crate::Executor::set_deferred_since) to
-/// defer every callback registered after it -- the way `nros::setup!` defers
-/// a whole `dispatch = "deferred"` component without knowing its handles.
-///
-/// Opaque: the slot numbering it snapshots is the executor's own.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CallbackMark(pub(crate) u64);

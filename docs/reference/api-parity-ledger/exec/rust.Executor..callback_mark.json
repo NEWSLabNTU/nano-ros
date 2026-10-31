@@ -1,6 +1,0 @@
-{
-  "key": "rust:Executor::callback_mark",
-  "bucket": "ours-only",
-  "verdict": "extension",
-  "why": "phase-520 W3 / RFC-0112 D2 (Defer) -- a snapshot of the occupied callback slots, taken before a component's `register` so `set_deferred_since` can defer exactly what it registered. How `nros::setup!` defers a `dispatch = \"deferred\"` component without naming its handles."
-}
