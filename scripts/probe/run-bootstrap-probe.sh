@@ -138,6 +138,13 @@ BOOK_TRACK=checkout
 # `release-nros.yml` stages and `install.sh` derives from the host key.
 RELEASE_MOUNT=/probe-release
 ASSET_NAME=nros-linux-x86_64.tar.zst
+
+# Issue 2168 — the release `[tool.nros] version` pins, read from the
+# branch's index (the same pin `nros setup` installs from).
+nros_published_release_version() {
+    git -C "$REPO_ROOT" show "$under_test:nros-sdk-index.toml" |
+        awk '/^\[tool\.nros\]$/ {t = 1; next} /^\[/ {t = 0} t && /^version = / {gsub(/"/, "", $3); print $3; exit}'
+}
 # phase-517 W10 — the installed track replays ONE chapter per platform. The
 # default (`linux`) is first-project.md; every other value names a QEMU
 # chapter, replayed after the same install, against the same no-checkout
@@ -171,7 +178,11 @@ case "$PROBE_PLATFORM" in
     # pinned to a release other than the installed one, so the installed
     # `nros` must hand off to the pinned one, fetching it first.
     pinned)          PLATFORM_CHAPTER=book/src/getting-started/installation.md; PROBE_VARIANT=pinned ;;
-    *) echo "probe: unknown PROBE_PLATFORM '$PROBE_PLATFORM' (want linux|baremetal|freertos|freertos-c|threadx-linux|threadx-riscv64|threadx-linux-c|nuttx-arm|nuttx-arm-rust|nuttx-riscv|zephyr|zephyr-rust|workspace|pinned)" >&2; exit 2 ;;
+    # Issue 2168 — the same project with the PUBLISHED release `[tool.nros]`
+    # pins installed instead of this branch's asset, so a NEWER front must
+    # hand off to the project's older pin.
+    pinned-newer)    PLATFORM_CHAPTER=book/src/getting-started/installation.md; PROBE_VARIANT=pinned ;;
+    *) echo "probe: unknown PROBE_PLATFORM '$PROBE_PLATFORM' (want linux|baremetal|freertos|freertos-c|threadx-linux|threadx-riscv64|threadx-linux-c|nuttx-arm|nuttx-arm-rust|nuttx-riscv|zephyr|zephyr-rust|workspace|pinned|pinned-newer)" >&2; exit 2 ;;
 esac
 if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
     echo "probe: PROBE_PLATFORM=$PROBE_PLATFORM is an installed-track chapter (user chapters have no checkout track — phase-517 W2)" >&2
@@ -204,10 +215,10 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         # `nros setup <board>` line is the one step that chapter replaces.
         SETUP_SUBST=": the $PROBE_PLATFORM chapter provisions its own board, in its own setup step"
         [[ "$PROBE_PLATFORM" = workspace ]] && SETUP_SUBST=": the workspace run provisions every image with one bare nros setup"
-        [[ "$PROBE_PLATFORM" = pinned ]] && SETUP_SUBST=": the pinned project provisions through the pinned release, in its own step"
+        [[ "$PROBE_PLATFORM" = pinned* ]] && SETUP_SUBST=": the pinned project provisions through the pinned release, in its own step"
         VERIFIER="verify-installed-platform.sh"
         [[ "$PROBE_PLATFORM" = workspace ]] && VERIFIER="verify-installed-workspace.sh"
-        [[ "$PROBE_PLATFORM" = pinned ]] && VERIFIER="verify-installed-pinned.sh"
+        [[ "$PROBE_PLATFORM" = pinned* ]] && VERIFIER="verify-installed-pinned.sh"
         # The QEMU chapters dial ROS's `rmw_zenohd` (RFC-0075: nano-ros ships
         # no router), so the reader they describe has a ROS 2 install. The
         # user container is that host: the release's own base plus ROS — the
@@ -292,6 +303,16 @@ fi
 # assume where the clone landed — the same move the verifiers make.)
 
 # Probe-owned runtime verification (the book's Run sections are interactive).
+if [[ "$VERIFIER" = verify-installed-pinned.sh ]]; then
+    # The front `install.sh` leaves is the NEWEST installed version: the
+    # project's pin when the installed asset sorts below it (this branch's
+    # `0.0.0-probe`), the installed release when it is newer (issue 2168).
+    probe_front=0.6.0-nros4
+    if [[ "$PROBE_PLATFORM" = pinned-newer ]]; then
+        probe_front="$(nros_published_release_version)"
+    fi
+    printf 'PROBE_EXPECT_FRONT=%s\n' "$probe_front" >>"$workdir/probe.sh"
+fi
 cat "$SCRIPT_DIR/$VERIFIER" >>"$workdir/probe.sh"
 # Parse the assembled script before any container starts: a substitution or a
 # book block that unbalances a quote otherwise surfaces as a syntax error after
@@ -362,7 +383,19 @@ git_dir="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir
 
 if [[ "$PROBE_TRACK" = "installed" ]]; then
     mkdir -p "$workdir/release"
-    if [[ -n "${PROBE_ASSET:-}" ]]; then
+    if [[ "$PROBE_PLATFORM" = pinned-newer ]]; then
+        # Issue 2168 — the published release, never this branch's asset (a
+        # `PROBE_ASSET` the lane hands every job is ignored here on purpose).
+        published="$(nros_published_release_version)"
+        base="https://github.com/NEWSLabNTU/nano-ros/releases/download/nros-$published"
+        for f in "$ASSET_NAME" "$ASSET_NAME.sha256"; do
+            if ! curl -fsSL -o "$workdir/release/$f" "$base/$f"; then
+                echo "probe: could not fetch $base/$f (the release [tool.nros] pins)" >&2
+                exit 1
+            fi
+        done
+        echo "probe: installed track — using the published release $published"
+    elif [[ -n "${PROBE_ASSET:-}" ]]; then
         for f in "$PROBE_ASSET/$ASSET_NAME" "$PROBE_ASSET/$ASSET_NAME.sha256"; do
             if [[ ! -s "$f" ]]; then
                 echo "probe: PROBE_ASSET=$PROBE_ASSET has no $(basename "$f") (the release asset and the checksum install.sh refuses to install without)" >&2

@@ -115,6 +115,11 @@ workspace: (platform "workspace")
 [group("main")]
 pinned: (platform "pinned")
 
+# Issue 2168: the same project with the PUBLISHED release `[tool.nros]` pins
+# installed, so a newer front hands off to the project's older pin.
+[group("main")]
+pinned-newer: (platform "pinned-newer")
+
 # Same probe on a NON-Debian, NON-bash host (issue 0373). The book's install
 # path was only ever exercised on ubuntu+bash, which is how an apt-only prereq
 # block, a `just` contradiction, an unactionable ROS warning and a zsh-fatal
