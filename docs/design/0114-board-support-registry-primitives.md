@@ -323,6 +323,29 @@ stated reversal.
 
 ## Decision log
 
+- 2026-11-01 — Evaluation step 1's narrowing applied by phase-522 W2. The
+  emulator platforms carry 146 `examples/fixtures.toml` rows
+  (`[[fixture]]` and `[[workspace_fixture]]` on freertos, threadx-riscv64,
+  baremetal, nuttx, nuttx-riscv and zephyr-cortex-m); 68 of them carry per-row
+  `cmake_defs`, `env` or `features` that no descriptor field explains, and the
+  rest still name a per-row `dir`, `build_subdir` and locator port. No family
+  default exists to derive them from, so the allowlist would be larger than
+  the derived set with no path to shrinking. Fixture rows therefore stay
+  authored and are CHECKED against the registry (a row's board is a registry
+  row, its coordinate is in the cell table), not written by the generator. The
+  `interop::CELLS` smoke rows stay authored for the same reason: each binds a
+  peer, a direction and a build recipe the registry does not describe. The
+  cells (`[[cell]]` in `packages/boards/board-support-cells.toml`, named by the
+  registry's `cell_table`), the probe tracks (`[[probe]]`), issue 2169's
+  `ROWS` and the book pages are generated, as D12 says.
+- 2026-11-01 — phase-522 W1 migrated the rows. Three readings differ from the
+  migration table above, each a registry fact rather than a new status word:
+  `nros-board-mps3-an536-freertos` reads Builds (two fixture rows build it,
+  and a fixture row naming the board counts as build evidence, which is also
+  what gives `nros-board-s32z270-freertos` its Builds); the S32K344 island
+  inherits ZephyrQemuCortexM, because its image is Zephyr; and a manual row
+  needs no Runtime cell, since its evidence is the dated run.
+
 - 2026-10-31 — Drafted after the adoption discussion. The maintainer ruled
   that support is named by evidence, not by tier number; that existing
   boards are reconciled rather than replaced (breadth per family, smoke per

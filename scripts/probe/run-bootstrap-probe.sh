@@ -157,36 +157,14 @@ nros_published_release_version() {
 # output the chapter documents; extract-book-steps.py refuses a run without one.
 PROBE_PLATFORM="${PROBE_PLATFORM:-linux}"
 PROBE_VARIANT=""
-case "$PROBE_PLATFORM" in
-    linux)           PLATFORM_CHAPTER=book/src/getting-started/first-project.md ;;
-    baremetal)       PLATFORM_CHAPTER=book/src/getting-started/bare-metal.md ;;
-    # phase-517 W17 — one track per language road a chapter documents: the
-    # Rust workspace and the C package (`variant=rust` / `variant=c` blocks).
-    freertos)        PLATFORM_CHAPTER=book/src/getting-started/freertos.md; PROBE_VARIANT=rust ;;
-    freertos-c)      PLATFORM_CHAPTER=book/src/getting-started/freertos.md; PROBE_VARIANT=c ;;
-    threadx-linux)   PLATFORM_CHAPTER=book/src/getting-started/threadx.md; PROBE_VARIANT=linux ;;
-    threadx-riscv64) PLATFORM_CHAPTER=book/src/getting-started/threadx.md; PROBE_VARIANT=riscv64 ;;
-    threadx-linux-c) PLATFORM_CHAPTER=book/src/getting-started/threadx.md; PROBE_VARIANT=linux-c ;;
-    nuttx-arm)       PLATFORM_CHAPTER=book/src/getting-started/integration-nuttx.md; PROBE_VARIANT=arm ;;
-    nuttx-arm-rust)  PLATFORM_CHAPTER=book/src/getting-started/integration-nuttx.md; PROBE_VARIANT=arm-rust ;;
-    nuttx-riscv)     PLATFORM_CHAPTER=book/src/getting-started/integration-nuttx.md; PROBE_VARIANT=riscv ;;
-    nuttx-riscv-rust) PLATFORM_CHAPTER=book/src/getting-started/integration-nuttx.md; PROBE_VARIANT=riscv-rust ;;
-    zephyr)          PLATFORM_CHAPTER=book/src/getting-started/integration-zephyr.md; PROBE_VARIANT=native-sim ;;
-    zephyr-rust)     PLATFORM_CHAPTER=book/src/getting-started/integration-zephyr.md; PROBE_VARIANT=native-sim-rust ;;
-    # phase-517 W4 — not a platform: installation.md's "Provision a whole
-    # workspace" run, one bare `nros setup` for a Linux and a FreeRTOS image,
-    # then `nros build --all` with nothing else installed.
-    workspace)       PLATFORM_CHAPTER=book/src/getting-started/installation.md; PROBE_VARIANT=workspace ;;
-    # phase-517 W11/W16 — installation.md's "Pinning a version": a project
-    # pinned to a release other than the installed one, so the installed
-    # `nros` must hand off to the pinned one, fetching it first.
-    pinned)          PLATFORM_CHAPTER=book/src/getting-started/installation.md; PROBE_VARIANT=pinned ;;
-    # Issue 2168 — the same project with the PUBLISHED release `[tool.nros]`
-    # pins installed instead of this branch's asset, so a NEWER front must
-    # hand off to the project's older pin.
-    pinned-newer)    PLATFORM_CHAPTER=book/src/getting-started/installation.md; PROBE_VARIANT=pinned ;;
-    *) echo "probe: unknown PROBE_PLATFORM '$PROBE_PLATFORM' (want linux|baremetal|freertos|freertos-c|threadx-linux|threadx-riscv64|threadx-linux-c|nuttx-arm|nuttx-arm-rust|nuttx-riscv|nuttx-riscv-rust|zephyr|zephyr-rust|workspace|pinned|pinned-newer)" >&2; exit 2 ;;
-esac
+# phase-522 W2 — the track table is the board registry's `[[probe]]` list,
+# generated into probe-tracks.json; probe-platforms.yml reads the same file.
+# Each track's history is its `notes` in packages/boards/board-support.toml.
+if ! track_row="$(python3 "$SCRIPT_DIR/probe-track.py" "$PROBE_PLATFORM")"; then
+    exit 2
+fi
+PLATFORM_CHAPTER="${track_row%%$'\t'*}"
+PROBE_VARIANT="${track_row#*$'\t'}"
 if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
     echo "probe: PROBE_PLATFORM=$PROBE_PLATFORM is an installed-track chapter (user chapters have no checkout track — phase-517 W2)" >&2
     exit 2

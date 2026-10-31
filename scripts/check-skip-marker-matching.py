@@ -73,7 +73,9 @@ HAND_MATCH = re.compile(
 PRODUCE = re.compile(r"""["']\[SKIPPED""")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MATRIX = os.path.join(ROOT, "packages/testing/nros-tests/src/matrix.rs")
+# The cell list `matrix::CELLS` includes, generated from the board registry
+# (phase-522 W2).
+MATRIX = os.path.join(ROOT, "packages/testing/nros-tests/src/matrix_cells.rs")
 
 
 def unbuilt_platforms(matrix_src: str) -> set[str]:
@@ -82,7 +84,9 @@ def unbuilt_platforms(matrix_src: str) -> set[str]:
     The Python reading of `matrix::platform_is_built`, from the same table, so
     the exemption is a PROPERTY of the matrix and never a name written here.
     """
-    start = matrix_src.find("pub const CELLS: &[Cell] = &[")
+    # The generated list file holds `matrix::CELLS` and nothing else.
+    start = max(matrix_src.find("const CELLS_GENERATED: &[Cell] = &["),
+                matrix_src.find("pub const CELLS: &[Cell] = &["))
     if start < 0:
         raise SystemExit("check-skip-marker-matching: cannot find matrix::CELLS")
     built, seen = set(), set()

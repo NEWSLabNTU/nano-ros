@@ -1838,6 +1838,13 @@ def known_identifiers(records, roots=("packages", "examples", "scripts", "just",
             text = strip_code_comments(text)
         elif rel.endswith((".just", ".toml", ".cmake", ".txt")):
             text = HASH_COMMENT_LINE_RE.sub(" ", text)
+            if rel.endswith(".toml"):
+                # A TOML line starting `//` can only sit inside a multi-line
+                # string, and the one shape that holds such lines is a code
+                # comment carried as data: the board registry's cell table keeps
+                # each `matrix::CELLS` cell's comment block (phase-522 W2). It
+                # is prose there exactly as it was in matrix.rs.
+                text = re.sub(r"(?m)^\s*//.*$", " ", text)
         elif rel.endswith(".py"):
             # NAME tokens only: a docstring or a string literal is prose, and
             # this script's own docstrings quote the retired names it reports.
