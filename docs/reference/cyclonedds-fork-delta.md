@@ -68,12 +68,18 @@ Retired only if upstream accepts a ThreadX port, which nobody has offered.
 Upstream *does* have a Zephyr port (`ports/zephyr`, `WITH_ZEPHYR`); these are
 places where it does not survive contact with Zephyr's native IP stack / NSOS.
 
-### 3. Lock-pool scaling (2 commits) — the pair this issue was opened about
+### 3. Lock-pool scaling (3 commits) — the pair this issue was opened about, plus a 4.x fix to it
 
 | commit | subject |
 | --- | --- |
 | `a09babf3` | ddsrt: Zephyr-native sync backend — `k_mutex`/`k_condvar` instead of pooled pthreads |
 | `942dda3c` | ddsi/addrset: stripe the lock instead of one mutex per addrset |
+| `404fc5d9` | ddsrt: re-take the mutex after a timed k_condvar_wait on Zephyr 4.x (issue 2188) |
+
+`404fc5d9` repairs `a09babf3` on Zephyr 4.x, where `k_condvar_wait` takes the
+mutex back only when woken, so a timed-out wait returned it unlocked and the GC
+thread's next unlock aborted (`-EINVAL`). It takes the mutex back only when the
+waiter does not already own it, because 3.7 still takes it back itself.
 
 The substantive ones. Zephyr's POSIX `pthread_mutex_t`/`pthread_cond_t` are
 handles into **fixed static pools** (`CONFIG_MAX_PTHREAD_MUTEX_COUNT` and
