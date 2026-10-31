@@ -22,6 +22,8 @@ pub mod alloc;
 pub mod census;
 pub mod checker;
 pub mod dds_isolation;
+// Issue 2122 -- in-process ELF section + symbol table reader.
+pub mod elf;
 pub mod esp32;
 // issue 0526 — LINK the posix C port, do not merely depend on it.
 //

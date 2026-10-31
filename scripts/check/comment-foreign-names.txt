@@ -267,7 +267,6 @@ LD_PRELOAD
 O_EXCL
 PTHREAD_PRIO_NONE
 SHLVL
-SHN_UNDEF
 SIOCGIFFLAGS
 SIOCSIFDSTADDR
 SIOCSIFNETMASK
@@ -580,3 +579,9 @@ GIT_OBJECT_DIRECTORY
 # the `futures` crate (the `stream` feature's combinators)
 StreamExt
 StreamExt::next
+
+# The ELF specification (System V gABI)
+SHN_ABS
+SHN_COMMON
+SHN_XINDEX
+st_info
