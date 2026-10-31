@@ -3,7 +3,8 @@
 // The `unix-mock` feature is pure Rust + libc and needs nothing here.
 // The `fsp` feature links against a `tegra_aon_fsp` static library under
 // `NV_SPE_FSP_DIR`. The FSP builds no such library (phase-418 §2a), so this
-// link model is pending phase-418 item 418.6 (deferred); see README.
+// link model was phase-418 item 418.6, closed undone with Orin SPE
+// support (2026-11-01); see README.
 
 fn main() {
     // issue 0491 — `NV_SPE_FSP_DIR` names a DIRECTORY, so its SPELLING is not

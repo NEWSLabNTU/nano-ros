@@ -1095,10 +1095,10 @@ impl BoardFile {
 /// `platform = "orin-spe"` is refused by name rather than left to serde's
 /// "unknown variant" list. The Orin SPE is a BOARD over FreeRTOS (NVIDIA's
 /// FSP kernel), never a platform of its own (RFC-0064): the ~~`OrinSpe`~~ kind it
-/// replaced built such a descriptor as bare-metal. Phase-418 is deferred.
+/// replaced built such a descriptor as bare-metal. Orin SPE is not supported (phase-418, closed).
 const RETIRED_ORIN_SPE_PLATFORM: &str = "`platform = \"orin-spe\"` is not a platform: the Orin SPE \
      runs FreeRTOS (NVIDIA's FSP), so its descriptor states `platform = \"freertos\"`. \
-     Orin SPE support is deferred — see docs/roadmap/phase-418-orin-safety-island-and-spe.md";
+     Orin SPE is not supported — see docs/roadmap/archived/phase-418-orin-safety-island-and-spe.md";
 
 /// The `[build]` / `[target.<triple>]` shape of a `cargo_config` template.
 #[derive(Debug, Default, Deserialize)]
@@ -3115,7 +3115,7 @@ entry_kind = "zephyr-staticlib"
         assert!(top.to_string().contains("knbos"), "{top}");
     }
 
-    /// phase-418 (deferred) — `orin-spe` is no platform kind: the SPE is a
+    /// phase-418 (closed, not supported) — `orin-spe` is no platform kind: the SPE is a
     /// board over FreeRTOS. A descriptor naming it is refused with the
     /// platform it should state, instead of being built as bare-metal (what
     /// the retired ~~`OrinSpe`~~ kind did).

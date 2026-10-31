@@ -11,8 +11,8 @@ categories = ["embedded", "no-std", "hardware-support"]
 
 # Mutually exclusive backends:
 #   - `fsp`: binds the FSP's `tegra_ivc_channel_*` via `NV_SPE_FSP_DIR`.
-#           `no_std`, Orin SPE. Deferred with phase-418; its link model is
-#           pending 418.6 (see README "Building for SPE").
+#           `no_std`, Orin SPE (not supported; phase-418 closed). Its link
+#           model was 418.6, closed undone (see README "Building for SPE").
 #   - `unix-mock`: Unix-domain-socket pair simulating one IVC channel.
 #                 Linux-only, requires `std`. Used by CI + the
 #                 autoware_sentinel POSIX integration tests.
