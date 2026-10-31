@@ -288,6 +288,16 @@ rmw_ret_t entity_wake_set(dds_entity_t reader, EntityWake* w, rmw_event_callback
 #endif
 }
 
+dds_return_t delete_owned_entity(dds_entity_t entity) {
+    if (entity <= 0) return DDS_RETCODE_OK;
+    const dds_return_t rc = dds_delete(entity);
+    if (rc == DDS_RETCODE_BAD_PARAMETER || rc == DDS_RETCODE_ALREADY_DELETED ||
+        rc == DDS_RETCODE_PRECONDITION_NOT_MET) {
+        return DDS_RETCODE_OK;
+    }
+    return rc;
+}
+
 void entity_wake_release(dds_entity_t reader, EntityWake* w) {
     if (w == nullptr || w->listener == nullptr) {
         return;

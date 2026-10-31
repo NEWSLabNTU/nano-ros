@@ -861,11 +861,12 @@ rmw_ret_t service_destroy(rmw_service_t* server) {
     auto* state = static_cast<ServerState*>(server->backend_data);
     untrack_pair(state->graph, state->reader, state->writer);
     entity_wake_release(state->reader, &state->wake);
+    // Issue 2181 — entities deleted with their participant are not a failure.
     dds_return_t rc = DDS_RETCODE_OK;
-    if (state->reader > 0 && dds_delete(state->reader) < 0) rc = DDS_RETCODE_ERROR;
-    if (state->writer > 0 && dds_delete(state->writer) < 0) rc = DDS_RETCODE_ERROR;
-    if (state->request_topic > 0 && dds_delete(state->request_topic) < 0) rc = DDS_RETCODE_ERROR;
-    if (state->reply_topic > 0 && dds_delete(state->reply_topic) < 0) rc = DDS_RETCODE_ERROR;
+    if (delete_owned_entity(state->reader) < 0) rc = DDS_RETCODE_ERROR;
+    if (delete_owned_entity(state->writer) < 0) rc = DDS_RETCODE_ERROR;
+    if (delete_owned_entity(state->request_topic) < 0) rc = DDS_RETCODE_ERROR;
+    if (delete_owned_entity(state->reply_topic) < 0) rc = DDS_RETCODE_ERROR;
     delete state;
     server->backend_data = nullptr;
     return rc < 0 ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
@@ -1263,11 +1264,12 @@ rmw_ret_t client_destroy(rmw_client_t* client) {
     auto* state = static_cast<ClientState*>(client->backend_data);
     untrack_pair(state->graph, state->reader, state->writer);
     entity_wake_release(state->reader, &state->wake);
+    // Issue 2181 — entities deleted with their participant are not a failure.
     dds_return_t rc = DDS_RETCODE_OK;
-    if (state->writer > 0 && dds_delete(state->writer) < 0) rc = DDS_RETCODE_ERROR;
-    if (state->reader > 0 && dds_delete(state->reader) < 0) rc = DDS_RETCODE_ERROR;
-    if (state->request_topic > 0 && dds_delete(state->request_topic) < 0) rc = DDS_RETCODE_ERROR;
-    if (state->reply_topic > 0 && dds_delete(state->reply_topic) < 0) rc = DDS_RETCODE_ERROR;
+    if (delete_owned_entity(state->writer) < 0) rc = DDS_RETCODE_ERROR;
+    if (delete_owned_entity(state->reader) < 0) rc = DDS_RETCODE_ERROR;
+    if (delete_owned_entity(state->request_topic) < 0) rc = DDS_RETCODE_ERROR;
+    if (delete_owned_entity(state->reply_topic) < 0) rc = DDS_RETCODE_ERROR;
     delete state;
     client->backend_data = nullptr;
     return rc < 0 ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;

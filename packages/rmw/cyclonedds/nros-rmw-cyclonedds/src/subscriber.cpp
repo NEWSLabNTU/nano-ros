@@ -227,8 +227,9 @@ rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {
         graph_untrack_reader(state->graph, state->reader);
     }
     entity_wake_release(state->reader, &state->wake);
-    dds_return_t reader_rc = state->reader > 0 ? dds_delete(state->reader) : DDS_RETCODE_OK;
-    dds_return_t topic_rc = state->topic > 0 ? dds_delete(state->topic) : DDS_RETCODE_OK;
+    // Issue 2181 — a reader deleted with its participant is not a failure.
+    dds_return_t reader_rc = delete_owned_entity(state->reader);
+    dds_return_t topic_rc = delete_owned_entity(state->topic);
     delete state;
     subscriber->backend_data = nullptr;
     if (reader_rc < 0 || topic_rc < 0) return NROS_RMW_RET_ERROR;
