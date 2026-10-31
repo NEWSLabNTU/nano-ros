@@ -64,7 +64,7 @@ if [ ! -x "$PY" ] && [ "$CREATE" = 1 ]; then
     # filtering is here: the header line names the group, and the block's SECOND
     # indented line is the packages.
     pkgs="$(python3 "$here/scripts/check-python-deps.py" --list \
-        | awk 'BEGIN{split("west zephyr-build zephyr-size-report",w," "); for(i in w) want[w[i]]=1}
+        | awk 'BEGIN{split("west zephyr-build zephyr-size-report cyclone-idl",w," "); for(i in w) want[w[i]]=1}
                /^[^ ]/ {g=$1; blk=0; next}
                {blk++; if (blk==2 && (g in want)) print}')"
     if [ -z "$pkgs" ]; then
@@ -126,6 +126,16 @@ fi
 if ! python3 "$here/scripts/check-python-deps.py" --python "$PY" --quiet zephyr-size-report 2>/dev/null; then
     echo "[py312] WARN: no anytree in $VENV, so \`west build -t ram_report\` / \`-t rom_report\` will fail." >&2
     echo "[py312]   install it:  uv pip install --python \"$PY\" anytree   (or: \"$PY\" -m pip install anytree)" >&2
+fi
+
+# Issue 2187 -- every Cyclone image's msg -> IDL step (`msg_to_cyclone_idl.py`)
+# runs under THIS interpreter, so it needs the `cyclone-idl` group here: ROS
+# Humble's own copy is built for 3.10 and a 3.12 venv cannot import it. A
+# WARNING, like the size report: zenoh and XRCE images never reach it, and the
+# Cyclone configure names the same remedy if it is missing.
+if ! python3 "$here/scripts/check-python-deps.py" --python "$PY" --quiet cyclone-idl 2>/dev/null; then
+    echo "[py312] WARN: no catkin_pkg/empy/lark in $VENV, so no Cyclone image builds on this line." >&2
+    echo "[py312]   install it:  uv pip install --python \"$PY\" catkin_pkg 'empy==3.3.4' lark" >&2
 fi
 
 echo "[py312] ready. 4.4 builds run west THROUGH this venv:"

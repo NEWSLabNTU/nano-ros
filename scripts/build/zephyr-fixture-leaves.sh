@@ -216,21 +216,23 @@ if [ -n "$make_bin" ]; then
     make_bin="$(realpath -m "$make_bin")"
 fi
 
-fixture_rmws=(zenoh)
-# Cyclone leaves on the 3.7 line whose configure would have no host idlc —
-# reported at the end (issue 1777), never dropped silently.
+# Cyclone leaves whose configure would have no host idlc — reported at the end
+# (issue 1777), never dropped silently.
+#
+# Issue 2187 — on BOTH lines. 4.4 used to keep `zenoh` alone here, "pending
+# cyclonedds-on-4.4" (180.A, 2026-05-26); phase-180 then proved Cyclone on 4.4
+# and the gate stayed, so every 4.4 run DROPPED the Cyclone rows without a
+# word while the test resolver still counted them in-lane: 23 MISSING reds.
+fixture_rmws=(zenoh xrce)
 idlc_missing_ids=()
-if [ "$zephyr_version" != "4.4" ]; then
-    fixture_rmws=(zenoh xrce)
-    # issue 1777 — the ONE host-idlc probe, in the Cyclone configure's own
-    # search order. This used to be a private spelling that enumerated
-    # `<store>/cyclonedds/*/bin` (a sibling checkout's pin could answer — issue
-    # 1546) and ignored IDLC_EXECUTABLE, which the configure reads first.
-    # shellcheck source=scripts/lib/host-idlc.sh
-    source "$nros_root/scripts/lib/host-idlc.sh"
-    if nros_host_idlc "$nros_root" >/dev/null; then
-        fixture_rmws+=(cyclonedds)
-    fi
+# issue 1777 — the ONE host-idlc probe, in the Cyclone configure's own
+# search order. This used to be a private spelling that enumerated
+# `<store>/cyclonedds/*/bin` (a sibling checkout's pin could answer — issue
+# 1546) and ignored IDLC_EXECUTABLE, which the configure reads first.
+# shellcheck source=scripts/lib/host-idlc.sh
+source "$nros_root/scripts/lib/host-idlc.sh"
+if nros_host_idlc "$nros_root" >/dev/null; then
+    fixture_rmws+=(cyclonedds)
 fi
 
 escape_field() {
@@ -394,7 +396,6 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     # gates that run it read-only on an idlc-less host must keep working.
     idlc_drop=0
     if [ "$rmw" = "cyclonedds" ] && ! printf '%s\n' "${fixture_rmws[@]}" | grep -qx cyclonedds; then
-        [ "$zephyr_version" = "4.4" ] && continue
         idlc_drop=1
     fi
 
