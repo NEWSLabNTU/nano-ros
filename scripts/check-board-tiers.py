@@ -40,6 +40,8 @@ ROOT = Path(__file__).resolve().parent.parent
 REGISTRY = ROOT / "packages/boards/board-support.toml"
 BASELINE = ROOT / "scripts/board-maintainer-baseline.json"
 MATRIX = ROOT / "packages/testing/nros-tests/src/matrix.rs"
+# The cell list matrix.rs includes, generated from the registry (phase-522 W2).
+MATRIX_CELLS = ROOT / "packages/testing/nros-tests/src/matrix_cells.rs"
 FIXTURES = ROOT / "examples/fixtures.toml"
 PROBE_WORKFLOW = ROOT / ".github/workflows/probe-platforms.yml"
 NIGHTLY = ROOT / ".github/workflows/nightly.yml"
@@ -128,6 +130,9 @@ def parse_registry(text):
         if line == "[[board]]":
             cur = {}
             entries.append(cur)
+            continue
+        if line.startswith("["):
+            cur = None          # another table (`[[probe]]`, phase-522 W2)
             continue
         if cur is None:
             continue
@@ -255,14 +260,19 @@ def row_built(row, built_plats, fx_boards):
         board_registry.board_name(row) in fx_boards
 
 
+TODAY = None  # `--today YYYY-MM-DD` (RFC-0114 evaluation step 5)
+
+
 def print_status(doc, matrix_txt, fixtures_txt):
     """`crate@platform<TAB>status word<TAB>breadth`, one row per registry row."""
     built_plats = build_platforms(matrix_txt)
     fx_boards = fixture_boards(fixtures_txt)
     stale = doc.get("manual_stale_days", board_registry.DEFAULT_STALE_DAYS)
     for row in doc.get("board", []):
+        import datetime
         word = board_registry.status_word(
-            row, row_built(row, built_plats, fx_boards), stale_days=stale)
+            row, row_built(row, built_plats, fx_boards), stale_days=stale,
+            today=TODAY or datetime.date.today())
         print(f"{board_registry.row_name(row)}\t{word}\t{row.get('breadth', '-')}")
     return 0
 
@@ -507,14 +517,20 @@ def main():
     self_test(quiet=True)
     board_registry.self_test()
     reg = parse_registry(REGISTRY.read_text())
+    if "--today" in sys.argv:
+        import datetime
+        global TODAY
+        TODAY = datetime.date.fromisoformat(sys.argv[sys.argv.index("--today") + 1])
     if "--print-status" in sys.argv:
-        return print_status(board_registry.load(REGISTRY), MATRIX.read_text(),
+        return print_status(board_registry.load(REGISTRY),
+                            MATRIX.read_text() + MATRIX_CELLS.read_text(),
                             FIXTURES.read_text())
     if "--print-tiers" in sys.argv:
         return print_tiers(reg)
     if "--write-baseline" in sys.argv:
         return write_baseline(reg)
-    matrix_txt = MATRIX.read_text()
+    # `PlatformId` lives in matrix.rs, the cells in the list it includes.
+    matrix_txt = MATRIX.read_text() + MATRIX_CELLS.read_text()
     rt = runtime_platforms(matrix_txt)
     fx = fixture_platforms(FIXTURES.read_text())
     nl = nightly_tokens(NIGHTLY.read_text())

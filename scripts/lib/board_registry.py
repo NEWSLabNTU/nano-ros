@@ -40,8 +40,8 @@ def load(path: Path) -> dict:
 def dumps(doc: dict) -> str:
     """A canonical TOML rendering of the registry's data (comments dropped).
 
-    Only the shapes the registry uses: top-level scalars and one array of
-    `[[board]]` tables holding strings, integers, booleans and string arrays.
+    Only the shapes the registry uses: top-level scalars and arrays of tables
+    (`[[board]]`, `[[probe]]`, `[[cell]]`) holding strings, integers, booleans and string arrays.
     Anything else raises, so a new shape cannot round-trip by accident.
     """
     def scalar(v):
@@ -55,16 +55,20 @@ def dumps(doc: dict) -> str:
             return "[" + ", ".join(scalar(x) for x in v) + "]"
         raise TypeError(f"registry value of unsupported shape: {v!r}")
 
+    def is_tables(v):
+        return isinstance(v, list) and v and all(isinstance(x, dict) for x in v)
+
     out = []
     for k, v in doc.items():
-        if k == "board":
-            continue
-        out.append(f"{k} = {scalar(v)}")
-    for row in doc.get("board", []):
-        out.append("")
-        out.append("[[board]]")
-        for k, v in row.items():
+        if not is_tables(v):
             out.append(f"{k} = {scalar(v)}")
+    for k, v in doc.items():
+        if is_tables(v):
+            for row in v:
+                out.append("")
+                out.append(f"[[{k}]]")
+                for rk, rv in row.items():
+                    out.append(f"{rk} = {scalar(rv)}")
     return "\n".join(out) + "\n"
 
 
@@ -97,17 +101,28 @@ def is_stale(row: dict, stale_days: int, today: datetime.date) -> bool:
     return (today - last).days > stale_days
 
 
+def stale_from(row: dict, stale_days: int) -> datetime.date | None:
+    """The first day a manual row reads "Builds", or None for any other row."""
+    if row.get("cadence") != "manual" or not row.get("last_run"):
+        return None
+    return datetime.date.fromisoformat(row["last_run"]) + datetime.timedelta(
+        days=stale_days + 1)
+
+
 def status_word(row: dict, built: bool, stale_days: int = DEFAULT_STALE_DAYS,
                 today: datetime.date | None = None) -> str:
     """RFC-0114 D10's status word for one row.
 
     `built` is whether the row has any build evidence: a Runtime or BuildOnly
     cell on its platform, or a fixture row whose `NROS_BOARD` names its board.
-    A manual row older than `stale_days` degrades to "Builds" with its date —
-    the row is not edited; the derivation reports what the evidence is worth
-    today.
+    A manual row older than `stale_days` on `today` degrades to "Builds" with
+    its date — the row is not edited; the derivation reports what the evidence
+    is worth that day. `today = None` asks no clock and never degrades: the
+    generated views pass None so that a view cannot change on a day nobody
+    edited anything (they print the date the degradation starts instead,
+    `stale_from`), and the live readers (`nros board`, `--print-status`) pass
+    the real date.
     """
-    today = today or datetime.date.today()
     if row.get("infra") is True:
         return "Infrastructure"
     runs = row.get("runs")
@@ -116,7 +131,7 @@ def status_word(row: dict, built: bool, stale_days: int = DEFAULT_STALE_DAYS,
         return "Builds" if built else "Not supported"
     if cadence == "manual":
         date = row.get("last_run", "?")
-        if is_stale(row, stale_days, today):
+        if today is not None and is_stale(row, stale_days, today):
             return f"Builds (last booted {date})"
         if runs == "hardware":
             return f"Boots on hardware, manual ({date})"
@@ -272,6 +287,13 @@ def self_test() -> None:
     assert status_word(fvp, True, stale_days=30, today=today) == \
         "Builds (last booted 2026-09-06)"
     hw = {**fvp, "runs": "hardware", "hardware": "h"}
+    assert status_word(fvp, True, stale_days=1) == "Boots, manual (2026-09-06)", \
+        "with no clock asked, a view never degrades"
+    assert stale_from(fvp, 120) == datetime.date(2027, 1, 5)
+    assert status_word(fvp, True, stale_days=120, today=datetime.date(2027, 1, 4)) == \
+        "Boots, manual (2026-09-06)"
+    assert status_word(fvp, True, stale_days=120, today=datetime.date(2027, 1, 5)) == \
+        "Builds (last booted 2026-09-06)"
     assert status_word(hw, False, today=today) == "Boots on hardware, manual (2026-09-06)"
     none = {"crate": "n", "runs": "none", "breadth": "witness"}
     assert status_word(none, True) == "Builds"

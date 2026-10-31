@@ -39,8 +39,23 @@ jobs:
     name: build the release asset
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      tracks: ${{ steps.tracks.outputs.tracks }}
     steps:
       - uses: actions/checkout@v4
+      # phase-522 W2 — the weekly tracks are the board registry's `[[probe]]`
+      # entries with `weekly = true`, generated into
+      # scripts/probe/probe-tracks.json; run-bootstrap-probe.sh reads the same
+      # file, so the two lists cannot disagree.
+      - name: read the weekly probe tracks
+        id: tracks
+        run: |
+          set -euo pipefail
+          if ! tracks="$(python3 scripts/probe/probe-track.py --weekly)"; then
+            echo "::error::scripts/probe/probe-track.py --weekly failed"
+            exit 1
+          fi
+          echo "tracks=$tracks" >> "$GITHUB_OUTPUT"
       # See probe.yml for why these lanes install `just` themselves.
       - name: Install just (if absent)
         run: |
@@ -71,22 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          - baremetal
-          - freertos
-          - freertos-c
-          - threadx-linux
-          - threadx-riscv64
-          - threadx-linux-c
-          - nuttx-arm
-          - nuttx-arm-rust
-          - nuttx-riscv
-          - nuttx-riscv-rust
-          - zephyr
-          - zephyr-rust
-          - workspace
-          - pinned
-          - pinned-newer
+        platform: ${{ fromJSON(needs.asset.outputs.tracks) }}
     steps:
       - uses: actions/checkout@v4
       - name: Install just (if absent)

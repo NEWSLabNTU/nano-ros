@@ -11,8 +11,10 @@ placeholder the harness substitutes still matches once, and the result parses
 (`bash -n`). Each of those breaking is otherwise discovered a week later, after
 an install, as a track that fails for a reason that is not about the chapter.
 
-The track list is READ from run-bootstrap-probe.sh's `PROBE_PLATFORM` case
-table, so a platform added there is checked here without editing this file.
+The track list is READ from the generated probe-tracks.json (the board
+registry's `[[probe]]` entries, phase-522 W2), the same list the harness and
+the weekly workflow read, so a track added there is checked here without
+editing this file.
 
 Self-test (every call): a chapter whose run step lost its expected-output block
 must fail to extract — the property this gate leans on.
@@ -21,7 +23,6 @@ Run:  python3 scripts/check-book-probe-tracks.py
 """
 
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -30,15 +31,18 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 HARNESS = REPO / "scripts/probe/run-bootstrap-probe.sh"
 EXTRACTOR = REPO / "scripts/probe/extract-book-steps.py"
-CASE_ROW = re.compile(r"^\s+([a-z0-9-]+)\)\s+PLATFORM_CHAPTER=")
+# phase-522 W2 — the track list is generated from the board registry; this is
+# the same reader the harness and probe-platforms.yml use.
+TRACK_LIST = REPO / "scripts/probe/probe-track.py"
 
 
 def platforms() -> list[str]:
-    rows = [m.group(1) for line in HARNESS.read_text().splitlines()
-            if (m := CASE_ROW.match(line))]
-    if "linux" not in rows or len(rows) < 2:
-        sys.exit(f"check-book-probe-tracks: read {rows} from {HARNESS.name}'s "
-                 "PROBE_PLATFORM table — the table changed shape; update CASE_ROW")
+    r = subprocess.run([sys.executable, str(TRACK_LIST), "--list"],
+                       capture_output=True, text=True)
+    rows = r.stdout.split()
+    if r.returncode != 0 or "linux" not in rows or len(rows) < 2:
+        sys.exit(f"check-book-probe-tracks: read {rows} from {TRACK_LIST.name} "
+                 f"(rc={r.returncode}): {r.stderr.strip()}")
     return rows
 
 
