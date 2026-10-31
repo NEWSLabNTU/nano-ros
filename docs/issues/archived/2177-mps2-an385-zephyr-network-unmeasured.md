@@ -62,6 +62,15 @@ Getting there took six defects on one road, each hidden behind the one before:
   (`zpico-sys`: `failed to find tool "arm-none-eabi-gcc"`). The C lane's
   `CC_<triple>` derivation is now one helper, `nros_cross_cc_env`, used by both.
 
+The board's registry row moved from `scaffold` to the descriptor-only
+directories (`infra`) in `packages/boards/board-support.toml`. `scaffold`
+said "unfinished, do not build on these" about a board the chapter tells a
+reader to build. `infra` carries no promise, so this is not a promotion: the
+promise for this hardware stays the tier-2 `ZephyrQemuCortexM` row on
+`nros-board-zephyr`, whose lanes build with this directory's `prj.conf`. That
+is the same split as the `zephyr` descriptor directory and the tier-1
+`ZephyrNativeSim` row.
+
 Two fixes reach a generated west application (`nros new --image … --board
 mps2-an385-zephyr`, no bringup `boards/<board>/` directory): it now carries a
 `prj.conf` stating `CONFIG_NROS` (and `CONFIG_RUST` for a Rust one), which

@@ -50,7 +50,6 @@ Structurally incomplete. Distinct from tier 3: tier 3 is finished-but-unverified
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
 | `nros-board-esp32-qemu` | Esp32Qemu | *unassigned* | DORMANT (issue 1525): code kept for future use; no lane builds or tests it. Was tier 2 (two-way QEMU e2e, esp32_emulator.rs, now #[ignore]d). |
-| `nros-board-mps2-an385-zephyr` | — | *unassigned* |  |
 | `nros-board-mps3-an536-freertos` | — | *unassigned* |  |
 | `nros-board-qemu-cortex-a53` | — | *unassigned* |  |
 
@@ -65,6 +64,7 @@ Shared traits, family drivers, ABI mirrors, PACs, and descriptor directories. No
 | `nros-board-cffi` | — | *unassigned* | Header ABI mirror with ZERO in-tree C consumers; kept alive by its own drift gate. Spec artifact, not a library. |
 | `nros-board-common` | — | *unassigned* | Build-helper library plus one trait; 2180 of 2252 code lines are behind `build-helpers`. |
 | `nros-board-freertos` | — | *unassigned* | Real family driver: the MPS2 overlay is `pub use nros_board_freertos::Config` and carries zero config code. The pattern the forked boards should copy. |
+| `nros-board-mps2-an385-zephyr` | — | *unassigned* | nros-board.toml descriptor directory, not a crate: the Zephyr `mps2_an385` board's descriptor and base Kconfig (network on QEMU's user net). Its support promise is `nros-board-zephyr`'s ZephyrQemuCortexM row (tier 2), whose lanes build with this `prj.conf`. |
 | `nros-board-nuttx` | — | *unassigned* | NuttX FAMILY DRIVER, not a façade: owns run_entry / run_tiers / the tier spin loops, which the one board overlay (nros-board-nuttx-qemu) delegates to. phase-337 W3 merged the two board crates below it; this layer stays. |
 | `nros-board-threadx` | — | *unassigned* | Real family driver: a 1120-line generic entry.py both ThreadX boards call into. |
 | `nros-board-threadx-port-riscv64` | — | *unassigned* | NOT a board: RFC-0064 layer 2, the ThreadX RISC-V64/GNU ARCH PORT. Upstream types ULONG as 8 bytes there; NetX Duo's packet code does `ULONG *` arithmetic assuming 4, and retyping it shifts every TX_THREAD offset the context-switch assembly loads — so the fork is a header plus five `.S` files, and it is arch, not board. Extracted from nros-board-threadx-qemu-riscv64 by phase-337 W4.a; a second riscv64 ThreadX board would need every line of it unchanged. threadx-linux has none because upstream's Linux port already types ULONG as 4 bytes — which is why the two ThreadX boards did NOT merge. |
