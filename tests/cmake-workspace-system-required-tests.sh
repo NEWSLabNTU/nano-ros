@@ -182,6 +182,12 @@ probe "$W/src/zephyr_entry" "$TEST_TMPDIR/d.log"
 if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle\]' "$TEST_TMPDIR/d.log"; then
     fail "D: an unset NROS_FEATURES did not become the image's axes (rc=$RC)"
     tail -15 "$TEST_TMPDIR/d.log" >&2
+    # Issue 2180: the macro's empty answer has three causes and it reported
+    # none. Ask the CLI directly, without --if-present, so every one of them
+    # reaches the log as an error.
+    echo "-- the macro's query, asked directly:" >&2
+    "$NROS_BIN" image-facts --for-entry zephyr_entry \
+        --workspace "$W/src/zephyr_entry" --cmake 2>&1 | tail -15 >&2
 fi
 
 probe "$W/src/zephyr_entry" "$TEST_TMPDIR/e.log" -DNROS_FEATURES=param_services
