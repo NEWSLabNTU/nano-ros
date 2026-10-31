@@ -95,6 +95,15 @@ pub struct RmwDescriptor {
     /// right-hand side, so a third-party backend can offer a capability
     /// nano-ros has never heard of.
     pub capabilities: Vec<(String, String)>,
+    /// `[rmw.facts]` — what the backend's wire does, stated as booleans
+    /// (issue 2174). Unlike a capability, a fact lowers to no feature: it is
+    /// read by checks that need to know what the backend can carry, such as
+    /// `request_source_timestamp` (does a service request arrive with the
+    /// client's send time?). An open vocabulary for the same reason as
+    /// capabilities: core never names a backend (RFC-0071), so the backend
+    /// states the fact and a check asks for it by key. A fact the descriptor
+    /// does not state is UNKNOWN, never false.
+    pub facts: Vec<(String, bool)>,
     /// The Rust crate whose registration function an image calls to put this
     /// backend in the cffi registry (RFC-0071 D11):
     /// `[rmw.provides.cargo] register_crate`, else the backend's own
@@ -228,6 +237,19 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             }
             ("rmw.link", "edition_feature") => d.edition_feature = scalar(),
             ("rmw.capabilities", k) => d.capabilities.push((k.to_string(), scalar())),
+            ("rmw.facts", k) => {
+                let v = match value {
+                    "true" => true,
+                    "false" => false,
+                    other => {
+                        return Err(format!(
+                            "{origin}: [rmw.facts].{k} = {other} — a fact is `true` or \
+                             `false`; leave it out when it is not known"
+                        ));
+                    }
+                };
+                d.facts.push((k.to_string(), v));
+            }
             ("rmw.codegen", "per_message") => d.per_message_hook = scalar(),
             ("rmw.config", "file") => d.config_file = scalar(),
             ("rmw.config", "format") => d.config_format = scalar(),
@@ -427,6 +449,35 @@ mod tests {
         assert_eq!(
             d.capabilities,
             vec![("never-heard-of-it".to_string(), "acme-feature".to_string())]
+        );
+    }
+
+    /// Issue 2174 -- `[rmw.facts]` holds booleans, an open vocabulary, and
+    /// a value that is not a boolean is refused rather than read as false.
+    #[test]
+    fn facts_are_booleans_in_an_open_vocabulary() {
+        let d = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n\
+             [rmw.facts]\nrequest_source_timestamp = false\nnever-heard-of-it = true\n",
+            "acme",
+        )
+        .unwrap();
+        assert_eq!(
+            d.facts,
+            vec![
+                ("request_source_timestamp".to_string(), false),
+                ("never-heard-of-it".to_string(), true),
+            ]
+        );
+        let err = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n\
+             [rmw.facts]\nrequest_source_timestamp = \"no\"\n",
+            "acme",
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("[rmw.facts].request_source_timestamp"),
+            "{err}"
         );
     }
 

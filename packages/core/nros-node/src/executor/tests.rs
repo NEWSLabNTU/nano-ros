@@ -16971,6 +16971,7 @@ fn a_detected_hazard_starts_its_safe_state_reaction() {
         guards: &GUARDS,
         sink: NO_SINK,
         reaction_id: 3,
+        rungs: &[],
         cell: &CELL,
     }];
     static EVENTS: Mutex<alloc::vec::Vec<ReactionEvent>> = Mutex::new(alloc::vec::Vec::new());
@@ -16998,6 +16999,9 @@ fn a_detected_hazard_starts_its_safe_state_reaction() {
     assert_eq!(events[0].row, 0);
     assert_eq!(events[0].rule_code, rule_code("hazard-detected"));
     assert_eq!((events[0].measured_ms, events[0].declared_ms), (150, 500));
+    // play_launch phase 96 W4.2 -- the event carries the fire: the detection
+    // tick, where the hazard's rung routes start.
+    assert_eq!(events[0].fired_at_us, 1_150_000);
 
     // Still silent: detected once, so no second request.
     hazard_reaction_clock::set_us(1_300_000);

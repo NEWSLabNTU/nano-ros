@@ -1098,6 +1098,21 @@ fn check_blocking_calls(
     for f in check_model(&model, &levels).map_err(|e| eyre::eyre!("codegen entry: {e}"))? {
         eprintln!("codegen entry: {}", f.render());
     }
+    // Issue 2174 -- a server's `stale_after` on a backend that states it
+    // carries no request source timestamp. This road knows the backend only
+    // from the model's `execution.deploy.<fqn>.rmw` (the baked session's).
+    let members: Vec<&str> = plan
+        .nodes
+        .iter()
+        .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()))
+        .collect();
+    for w in crate::orchestration::service_facts::stale_after_warnings(
+        &model,
+        Some(&members),
+        plan.session.rmw.as_deref(),
+    ) {
+        eprintln!("codegen entry: warning: {w}");
+    }
     Ok(())
 }
 

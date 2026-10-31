@@ -364,6 +364,10 @@ pub struct MonitorTable {
     pub hazard_guards: usize,
     #[serde(default)]
     pub hazard_members: usize,
+    /// play_launch phase 96 W4.2 -- rungs across `hazards` (their `starts_at`
+    /// members are counted in `hazard_members`).
+    #[serde(default)]
+    pub hazard_rungs: usize,
     /// phase-462 W4b -- each contract mode's numbers for `rows` / `ages`,
     /// row for row, in mode-id order (mode `i + 1` is `modes[i]`).
     #[serde(default)]
@@ -442,6 +446,27 @@ pub struct HazardRow {
     /// none.
     #[serde(default)]
     pub reaction_id: u16,
+    /// play_launch phase 96 W4.2 -- the hazard's ladder, top rung first
+    /// (`nros_cpp_hazard_rung_t`). Empty: no rung route is monitored.
+    #[serde(default)]
+    pub rungs: Vec<HazardRung>,
+}
+
+/// play_launch phase 96 W4.2 -- one rung of a [`HazardRow`]'s ladder.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HazardRung {
+    /// The baked mode id the rung is; `0xFFFF` = not a mode
+    /// (`NROS_CPP_HAZARD_NO_MODE`).
+    pub mode: u16,
+    /// Rate-row index of a publisher on the rung's output; `0xFFFF` = none
+    /// observed here (`NROS_CPP_HAZARD_NO_SINK`).
+    pub output_row: u16,
+    /// The rung's route, ms; 0 = not judged.
+    pub route_ms: u32,
+    /// 0 rung, 1 window, 2 floor.
+    pub role: u8,
+    /// The guard members of the rung's `starts_at` node.
+    pub starts_at: Vec<HazardMember>,
 }
 
 /// phase-462 W3b -- one guard of a [`HazardRow`].

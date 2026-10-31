@@ -754,6 +754,24 @@ pub fn run(args: Args) -> Result<()> {
         {
             eprintln!("codegen-system: {}", f.render());
         }
+        // Issue 2174 -- a server's `stale_after` on a backend that states it
+        // carries no request source timestamp.
+        let members: Vec<&str> = bringup
+            .system
+            .components
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        let rmw = bringup
+            .system
+            .resolved_rmw(target.as_deref(), args.rmw.as_deref());
+        for w in crate::orchestration::service_facts::stale_after_warnings(
+            model,
+            Some(&members),
+            Some(&rmw),
+        ) {
+            eprintln!("codegen-system: warning: {w}");
+        }
     }
     // phase-462 W4c -- a mode's switch must fit its reaction budget at the
     // slowest tier's spin (the same refusal `nros::main!` and the entry road
@@ -2041,7 +2059,7 @@ structure:
 execution:
   tiers:
     high:
-      spin_period_us: 1000
+      spin_period: 1000us
       posix:
         priority: 80
         stack_bytes: 8192
@@ -2206,7 +2224,7 @@ structure:
 execution:
   tiers:
     high:
-      spin_period_us: 1000
+      spin_period: 1000us
       posix:
         priority: 80
       zephyr:
@@ -2399,7 +2417,7 @@ structure:
 execution:
   tiers:
     high:
-      spin_period_us: 1000
+      spin_period: 1000us
       posix:
         priority: 80
       zephyr:

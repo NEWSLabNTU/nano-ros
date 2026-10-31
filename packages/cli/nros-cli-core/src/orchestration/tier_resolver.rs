@@ -585,12 +585,12 @@ name = "telem_node"
 group_tiers = { telem = "low" }
 
 [tiers.high]
-spin_period_us = 10000
+spin_period = "10000us"
 [tiers.high.posix]
 priority = 80
 
 [tiers.low]
-spin_period_us = 100000
+spin_period = "100000us"
 [tiers.low.posix]
 priority = 10
 "#;
@@ -636,12 +636,12 @@ name = "sub_node"
 group_tiers = { ctrl = "high", telem = "low" }
 
 [tiers.high]
-spin_period_us = 10000
+spin_period = "10000us"
 [tiers.high.posix]
 priority = 80
 
 [tiers.low]
-spin_period_us = 100000
+spin_period = "100000us"
 [tiers.low.posix]
 priority = 10
 "#;

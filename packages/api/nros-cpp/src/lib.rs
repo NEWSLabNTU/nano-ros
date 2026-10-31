@@ -5754,6 +5754,39 @@ pub struct nros_cpp_hazard_row_t {
     /// hazard is detected (the reacting path's, in the model's one reaction id
     /// space); 0 = no safe-state entry to start.
     pub reaction_id: u16,
+    /// play_launch phase 96 W4.2 -- `n_rungs` rungs of the hazard's ladder,
+    /// top first, static; NULL with 0 when no rung route is monitored, which
+    /// is also what an entry generated before these fields reads as.
+    pub rungs: *const nros_cpp_hazard_rung_t,
+    pub n_rungs: usize,
+}
+
+/// `nros_cpp_hazard_rung_t::mode` for a rung that is not a contract mode.
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_HAZARD_NO_MODE: u16 = u16::MAX;
+
+/// play_launch phase 96 W4.2 -- one rung of a hazard's ladder: the C spelling
+/// of `RungSpec`. The executor judges the ACTIVE rung's route
+/// (`hazard-route-runtime`): the top rung, or the rung whose mode the executor
+/// is in when the fault comes or falls to while it holds.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_hazard_rung_t {
+    /// The baked mode id the rung is, or `NROS_CPP_HAZARD_NO_MODE`.
+    pub mode: u16,
+    /// Rate-table row of a publisher on the rung's output, or
+    /// `NROS_CPP_HAZARD_NO_SINK`.
+    pub output_row: u16,
+    /// The rung's route, ms (`rungs[].route_ms`, rounded up); 0 = not judged.
+    pub route_ms: u32,
+    /// 0 rung, 1 window, 2 floor.
+    pub role: u8,
+    /// `n_starts_at` guard members of the rung's `starts_at` node: its route
+    /// clock starts at their detection. NULL with 0: the clock starts when
+    /// the rung becomes active.
+    pub starts_at: *const nros_cpp_hazard_member_t,
+    pub n_starts_at: usize,
 }
 
 /// One install: the rows, and one static 8-aligned buffer of at least
@@ -5771,14 +5804,24 @@ pub struct nros_cpp_hazard_table_t {
 }
 
 /// Bytes of caller storage ONE hazard row needs (`HazardCell` + `HazardSpec`),
-/// a bound for the reason [`NROS_CPP_MONITOR_ROW_STORAGE`] is one: 80 on a
-/// 64-bit host, 48 on a 32-bit target. Stated in the header with
+/// a bound for the reason [`NROS_CPP_MONITOR_ROW_STORAGE`] is one: 112 on a
+/// 64-bit host, 80 on a 32-bit target (play_launch phase 96 W4.2: the rung
+/// tracking's five cell words and the rung slice). Stated in the header with
 /// `sizeof(void *)`, see `cbindgen.toml`.
 #[cfg(feature = "rmw-cffi")]
 pub const NROS_CPP_HAZARD_ROW_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
-    80
+    112
 } else {
-    48
+    80
+};
+/// play_launch phase 96 W4.2 -- bytes of caller storage ONE rung needs
+/// (`RungSpec`): 32 on a 64-bit host, 24 on a 32-bit target. Its `starts_at`
+/// members count toward `NROS_CPP_HAZARD_MEMBER_STORAGE`.
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_HAZARD_RUNG_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
+    32
+} else {
+    24
 };
 /// Bytes of caller storage ONE guard needs (`GuardSpec`).
 #[cfg(feature = "rmw-cffi")]
@@ -5790,15 +5833,20 @@ pub const NROS_CPP_HAZARD_MEMBER_STORAGE: usize = 4;
 #[cfg(feature = "rmw-cffi")]
 const _: () = {
     use core::mem::{align_of, size_of};
-    use nros::monitor::{GuardRef, GuardSpec, HazardCell, HazardSpec};
-    // Cells, then specs, then guards, then members: each region starts at its
-    // type's alignment, and the bounds below leave room for every step.
+    use nros::monitor::{GuardRef, GuardSpec, HazardCell, HazardSpec, RungSpec};
+    // Cells, then specs, then guards, then rungs, then members: each region
+    // starts at its type's alignment, and the bounds below leave room for
+    // every step.
     assert!(
         size_of::<HazardCell>().next_multiple_of(align_of::<HazardSpec>())
             + size_of::<HazardSpec>()
             <= NROS_CPP_HAZARD_ROW_STORAGE
     );
     assert!(size_of::<GuardSpec>() <= NROS_CPP_HAZARD_GUARD_STORAGE);
+    assert!(size_of::<RungSpec>() <= NROS_CPP_HAZARD_RUNG_STORAGE);
+    assert!(size_of::<GuardSpec>().is_multiple_of(align_of::<RungSpec>()));
+    assert!(size_of::<RungSpec>().is_multiple_of(align_of::<GuardRef>()));
+    assert!(align_of::<RungSpec>() <= 8);
     assert!(size_of::<GuardRef>() <= NROS_CPP_HAZARD_MEMBER_STORAGE);
     assert!(size_of::<HazardSpec>().is_multiple_of(align_of::<GuardSpec>()));
     assert!(size_of::<GuardSpec>().is_multiple_of(align_of::<GuardRef>()));
@@ -5827,7 +5875,7 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
     handle: *mut c_void,
     table: *const nros_cpp_hazard_table_t,
 ) -> nros_cpp_ret_t {
-    use nros::monitor::{GuardRef, GuardSpec, HazardCell, HazardSpec, NO_SINK};
+    use nros::monitor::{GuardRef, GuardSpec, HazardCell, HazardSpec, NO_SINK, RungSpec};
     let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
@@ -5844,8 +5892,9 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
     let rows = unsafe { core::slice::from_raw_parts(t.rows, t.n_rows) };
     let mut n_guards = 0usize;
     let mut n_members = 0usize;
+    let mut n_rungs = 0usize;
     for r in rows {
-        if r.n_guards > 0 && r.guards.is_null() {
+        if (r.n_guards > 0 && r.guards.is_null()) || (r.n_rungs > 0 && r.rungs.is_null()) {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         }
         let guards = if r.n_guards == 0 {
@@ -5860,15 +5909,29 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
             }
             n_members += g.n_members;
         }
+        let rungs = if r.n_rungs == 0 {
+            &[][..]
+        } else {
+            unsafe { core::slice::from_raw_parts(r.rungs, r.n_rungs) }
+        };
+        n_rungs += rungs.len();
+        for g in rungs {
+            if g.n_starts_at > 0 && g.starts_at.is_null() {
+                return NROS_CPP_RET_INVALID_ARGUMENT;
+            }
+            n_members += g.n_starts_at;
+        }
     }
-    // The four regions, each at its own alignment.
+    // The five regions, each at its own alignment.
     use core::mem::{align_of, size_of};
     let n = t.n_rows;
     let specs_at = (size_of::<HazardCell>() * n).next_multiple_of(align_of::<HazardSpec>());
     let guards_at =
         (specs_at + size_of::<HazardSpec>() * n).next_multiple_of(align_of::<GuardSpec>());
+    let rungs_at =
+        (guards_at + size_of::<GuardSpec>() * n_guards).next_multiple_of(align_of::<RungSpec>());
     let members_at =
-        (guards_at + size_of::<GuardSpec>() * n_guards).next_multiple_of(align_of::<GuardRef>());
+        (rungs_at + size_of::<RungSpec>() * n_rungs).next_multiple_of(align_of::<GuardRef>());
     let needed = members_at + size_of::<GuardRef>() * n_members;
     if needed > t.storage_len {
         cpp_diag!(
@@ -5882,10 +5945,27 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
     let cells = base as *mut HazardCell;
     let specs = unsafe { base.add(specs_at) } as *mut HazardSpec;
     let guard_slots = unsafe { base.add(guards_at) } as *mut GuardSpec;
+    let rung_slots = unsafe { base.add(rungs_at) } as *mut RungSpec;
     let member_slots = unsafe { base.add(members_at) } as *mut GuardRef;
 
     let mut g_next = 0usize;
+    let mut r_next = 0usize;
     let mut m_next = 0usize;
+    // Copies `members` into the member region; `'static` is the caller's
+    // contract (see Safety).
+    let mut put_members = |members: &[nros_cpp_hazard_member_t]| -> Option<&'static [GuardRef]> {
+        let m_first = m_next;
+        for m in members {
+            let member = match m.kind {
+                NROS_CPP_HAZARD_MEMBER_AGE => GuardRef::Age(m.row),
+                NROS_CPP_HAZARD_MEMBER_RATE => GuardRef::Rate(m.row),
+                _ => return None,
+            };
+            unsafe { core::ptr::write(member_slots.add(m_next), member) };
+            m_next += 1;
+        }
+        Some(unsafe { core::slice::from_raw_parts(member_slots.add(m_first), members.len()) })
+    };
     for (i, r) in rows.iter().enumerate() {
         // `'static` is the caller's contract (see Safety).
         let Some(key) = (unsafe { cstr_to_str(r.key) }) else {
@@ -5903,18 +5983,9 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
             } else {
                 unsafe { core::slice::from_raw_parts(g.members, g.n_members) }
             };
-            let m_first = m_next;
-            for m in members {
-                let member = match m.kind {
-                    NROS_CPP_HAZARD_MEMBER_AGE => GuardRef::Age(m.row),
-                    NROS_CPP_HAZARD_MEMBER_RATE => GuardRef::Rate(m.row),
-                    _ => return NROS_CPP_RET_INVALID_ARGUMENT,
-                };
-                unsafe { core::ptr::write(member_slots.add(m_next), member) };
-                m_next += 1;
-            }
-            let members: &'static [GuardRef] =
-                unsafe { core::slice::from_raw_parts(member_slots.add(m_first), members.len()) };
+            let Some(members) = put_members(members) else {
+                return NROS_CPP_RET_INVALID_ARGUMENT;
+            };
             unsafe {
                 core::ptr::write(
                     guard_slots.add(g_next),
@@ -5928,6 +5999,37 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
         }
         let guard_table: &'static [GuardSpec] =
             unsafe { core::slice::from_raw_parts(guard_slots.add(g_first), guards.len()) };
+        let rungs = if r.n_rungs == 0 {
+            &[][..]
+        } else {
+            unsafe { core::slice::from_raw_parts(r.rungs, r.n_rungs) }
+        };
+        let r_first = r_next;
+        for g in rungs {
+            let starts = if g.n_starts_at == 0 {
+                &[][..]
+            } else {
+                unsafe { core::slice::from_raw_parts(g.starts_at, g.n_starts_at) }
+            };
+            let Some(starts_at) = put_members(starts) else {
+                return NROS_CPP_RET_INVALID_ARGUMENT;
+            };
+            unsafe {
+                core::ptr::write(
+                    rung_slots.add(r_next),
+                    RungSpec {
+                        mode: g.mode,
+                        output_row: g.output_row,
+                        route_ms: g.route_ms,
+                        role: g.role,
+                        starts_at,
+                    },
+                )
+            };
+            r_next += 1;
+        }
+        let rung_table: &'static [RungSpec] =
+            unsafe { core::slice::from_raw_parts(rung_slots.add(r_first), rungs.len()) };
         unsafe {
             let cell = cells.add(i);
             core::ptr::write(cell, HazardCell::new());
@@ -5944,6 +6046,7 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
                         r.sink
                     },
                     reaction_id: r.reaction_id,
+                    rungs: rung_table,
                     cell: &*cell,
                 },
             );
@@ -7215,6 +7318,10 @@ pub struct nros_cpp_reaction_event_t {
     pub declared_ms: u32,
     /// The row's `mechanism` (`NROS_CPP_MECHANISM_*`).
     pub mechanism: u8,
+    /// play_launch phase 96 W4.2 -- the executor's monotonic µs when the
+    /// verdict fired; for `hazard-detected`, the detection tick, where the
+    /// hazard's rung routes start. 0 when the executor has no clock.
+    pub fired_at_us: u64,
 }
 
 #[cfg(feature = "rmw-cffi")]
@@ -7229,6 +7336,7 @@ const _: () = {
     assert!(offset_of!(C, measured_ms) == offset_of!(R, measured_ms));
     assert!(offset_of!(C, declared_ms) == offset_of!(R, declared_ms));
     assert!(offset_of!(C, mechanism) == offset_of!(R, mechanism));
+    assert!(offset_of!(C, fired_at_us) == offset_of!(R, fired_at_us));
 };
 
 /// phase-503 — the reaction hook: `hook(event, ctx)`, called on the spin

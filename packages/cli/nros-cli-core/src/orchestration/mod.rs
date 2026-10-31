@@ -78,6 +78,7 @@ pub mod host_floor;
 pub mod schema;
 pub mod sdk_index;
 pub mod sdk_store;
+pub mod service_facts;
 /// phase-351 W1 — the SITE half of a deploy target (RFC-0072 §5).
 pub mod site_config;
 pub mod source_metadata;
