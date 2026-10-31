@@ -886,6 +886,38 @@ impl BoardDescriptor {
             .map_or_else(|| authored.to_string(), str::to_string)
     }
 
+    /// Issue 2179 -- does this board package describe a Zephyr build whose
+    /// `west build -b` is `west` (the BOARD the build actually received)?
+    ///
+    /// A board package's Zephyr facts -- its `[board.zephyr] snippets` and
+    /// its `prj.conf` / `boards/*.conf` -- are facts about ITS west board
+    /// ([`Self::zephyr_board`]). A harness may build an image naming one
+    /// board package for another Zephyr board (the in-tree mps2/an385 rows
+    /// build leaves whose images say `board = "zephyr"`, i.e. native_sim),
+    /// and then those facts describe a different board: the generic board's
+    /// NSOS snippet made every such mps2 configure fail at Kconfig.
+    ///
+    /// Compared at the granularity of the Zephyr board NAME, in either
+    /// spelling (HWMv2 `mps2/an385`, the legacy `mps2_an385`): `native_sim`,
+    /// `native_sim/native/64` and `native_sim_64` all build the package whose
+    /// west board is `native_sim/native/64`. True for a package that states no
+    /// Zephyr board (nothing to compare against) and for an empty `west`.
+    #[must_use]
+    pub fn builds_west_board(&self, west: &str) -> bool {
+        let Some(own) = self.zephyr_board() else {
+            return true;
+        };
+        if west.is_empty() {
+            return true;
+        }
+        let flat = |s: &str| s.replace(['/', '@'], "_");
+        let (own_flat, west_flat) = (flat(own), flat(west));
+        let own_name = own.split(['/', '@']).next().unwrap_or(own);
+        west_flat == own_flat
+            || west_flat == own_name
+            || west_flat.starts_with(&format!("{own_name}_"))
+    }
+
     /// Board-crate path relative to the workspace root, applying the
     /// `packages/boards/<board_crate>` default.
     pub fn crate_path_rel(&self) -> Option<String> {
@@ -2988,6 +3020,34 @@ entry_kind = "zephyr-staticlib"
             .resolve("native_sim/native/64", "")
             .expect("the zephyr board");
         assert_eq!(zephyr.west_board, None);
+    }
+
+    /// Issue 2179 -- a board package answers for its OWN Zephyr board in any
+    /// spelling, and for no other: the generic `zephyr` package (native_sim)
+    /// must not describe an mps2/an385 build, nor the mps2 package a
+    /// native_sim one.
+    #[test]
+    fn a_board_package_builds_only_its_own_west_board() {
+        let cat = BoardCatalog::load_with_extra(&repo_root_for_tests(), &[]).expect("load");
+        let generic = crate::cmd::board_facts::resolve_board(&cat, "zephyr").expect("zephyr");
+        for w in [
+            "native_sim/native/64",
+            "native_sim",
+            "native_sim/native",
+            "native_sim_64",
+            "",
+        ] {
+            assert!(generic.builds_west_board(w), "{w}");
+        }
+        for w in ["mps2/an385", "mps2_an385", "qemu_cortex_a53", "native"] {
+            assert!(!generic.builds_west_board(w), "{w}");
+        }
+        let mps2 = crate::cmd::board_facts::resolve_board(&cat, "mps2-an385-zephyr")
+            .expect("mps2-an385-zephyr");
+        assert!(mps2.builds_west_board("mps2/an385"));
+        assert!(mps2.builds_west_board("mps2_an385"));
+        assert!(!mps2.builds_west_board("native_sim/native/64"));
+        assert!(!mps2.builds_west_board("mps2/an521"));
     }
 
     /// `deny_unknown_fields` is only worth having if it is exercised against

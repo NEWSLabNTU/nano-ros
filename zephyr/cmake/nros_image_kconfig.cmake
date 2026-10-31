@@ -279,6 +279,24 @@ function(nros_image_kconfig_hook)
         nros_leaf_census_take("${_nros}" "${_dir}")
     endif()
 
+    # Issue 2179 -- the Zephyr board this build was given, so the image's
+    # board package contributes its snippets and conf files only when it
+    # describes that board. `boards.cmake` has not run yet (it follows the
+    # module hooks), so read BOARD the way its `zephyr_check_cache(BOARD)`
+    # will: the variable (local or cache), the environment, then the value a
+    # previous configure cached.
+    set(_west_board "")
+    if(DEFINED BOARD AND NOT "${BOARD}" STREQUAL "")
+        set(_west_board "${BOARD}")
+    elseif(DEFINED ENV{BOARD} AND NOT "$ENV{BOARD}" STREQUAL "")
+        set(_west_board "$ENV{BOARD}")
+    elseif(DEFINED CACHE{CACHED_BOARD})
+        set(_west_board "$CACHE{CACHED_BOARD}")
+    endif()
+    if(NOT _west_board STREQUAL "")
+        list(APPEND _args --west-board "${_west_board}")
+    endif()
+
     set(_frag "${_nros_dir}/${_image}.conf")
     set(_env "${_nros_dir}/${_image}-env.toml")
     execute_process(
@@ -311,6 +329,11 @@ function(nros_image_kconfig_hook)
             set(_image_conf "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_SNIPPET=(.*)$")
             set(_board_snippets "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_BOARD_NOT_APPLIED=(.+)$")
+            message(STATUS
+                "nano-ros: image `${_image}` names a board package for "
+                "${CMAKE_MATCH_1}; this build is for ${_west_board}, so its "
+                "snippets and conf files are not applied")
         elseif(_l MATCHES "^NROS_LEAF_ROS_ARGS_INPUT=(.*)$")
             # Issue 2073 -- a parameter file whose text the image env bakes.
             set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
@@ -424,8 +447,8 @@ endfunction()
 # application's scope, so `zephyr_check_cache(SNIPPET)` reads the same list
 # whichever it consults, and a re-configure computes the same list again. The
 # names added last time are dropped first, so a board that stops naming one
-# stops getting it (Zephyr then asks for a pristine build, as it does for any
-# snippet change). A MACRO, so `PARENT_SCOPE` is the hook's caller: the
+# stops getting it, with no pristine build: Zephyr's own `CACHED_SNIPPET` is
+# moved for the names the hook owns (issue 2179). A MACRO, so `PARENT_SCOPE` is the hook's caller: the
 # application's directory scope.
 macro(_nros_image_kconfig_merge_snippets _ms_board _ms_image)
     set(_ms_want ${_ms_board})
@@ -473,6 +496,32 @@ macro(_nros_image_kconfig_merge_snippets _ms_board _ms_image)
         else()
             set(SNIPPET "${_ms_all}" CACHE STRING "Selected snippet" FORCE)
             set(SNIPPET "${_ms_all}" PARENT_SCOPE)
+        endif()
+        # Issue 2179 -- `snippets.cmake`'s `zephyr_check_cache(SNIPPET)` takes
+        # `CACHED_SNIPPET` (the previous configure's list) over SNIPPET, so a
+        # name this hook added once stayed in the build dir after the board
+        # stopped naming it -- the configure that dropped it re-read it from
+        # there, and a dir that once failed on a snippet kept failing until a
+        # pristine build. The names the hook owns move in that list too: last
+        # time's dropped, this time's added; the caller's own stay as Zephyr
+        # cached them.
+        if(DEFINED CACHE{CACHED_SNIPPET})
+            set(_ms_cached "")
+            foreach(_ms_s IN LISTS CACHED_SNIPPET)
+                if(NOT _ms_s IN_LIST _ms_prev AND NOT _ms_s IN_LIST _ms_cached)
+                    list(APPEND _ms_cached "${_ms_s}")
+                endif()
+            endforeach()
+            foreach(_ms_s IN LISTS _ms_added)
+                if(NOT _ms_s IN_LIST _ms_cached)
+                    list(APPEND _ms_cached "${_ms_s}")
+                endif()
+            endforeach()
+            if(_ms_cached STREQUAL "")
+                unset(CACHED_SNIPPET CACHE)
+            else()
+                set(CACHED_SNIPPET "${_ms_cached}" CACHE STRING "Selected snippet" FORCE)
+            endif()
         endif()
     endif()
     if(NOT _ms_added STREQUAL "")
