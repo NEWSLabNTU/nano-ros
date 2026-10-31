@@ -220,7 +220,7 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
         // 1519 retired that key (it is Zephyr's id, never an image's), so the
         // board has one name again; `every_key_of_one_board_zst_wants_one_
         // framework` still holds the rule for any future second name.
-        "zephyr" => "zephyr",
+        "zephyr" | "mps2-an385-zephyr" | "qemu-cortex-a53" | "fvp-aemv8r-smp" => "zephyr",
         "esp32-qemu" | "esp32-c3-baremetal" => "esp32",
         // NuttX, FreeRTOS, ThreadX and native ride `owned-spin`: the RTOS (or
         // the board crate's own entry symbol) calls `main`, and the macro emits
@@ -353,6 +353,18 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
     // refuses it, naming `zephyr`) and a key for it here would be a second
     // opinion that still accepted it.
     ("zephyr", "::nros_board_zephyr::ZephyrBoard", false),
+    // Issue 2177 — every other Zephyr board descriptor that states a Rust
+    // target (`[board.zephyr] rust_target`). `ZephyrBoard` is board-agnostic:
+    // Zephyr owns boot, the net stack and drivers, so the key only routes the
+    // entry onto the Zephyr emit branch. Without these a Rust image on
+    // `mps2-an385-zephyr` was refused as an unknown board.
+    (
+        "mps2-an385-zephyr",
+        "::nros_board_zephyr::ZephyrBoard",
+        false,
+    ),
+    ("qemu-cortex-a53", "::nros_board_zephyr::ZephyrBoard", false),
+    ("fvp-aemv8r-smp", "::nros_board_zephyr::ZephyrBoard", false),
     // `qemu-rtic-mps2-an385` was a second key for this ZST until issue 1902:
     // no descriptor names it, so no image could select it.
     (

@@ -15,11 +15,36 @@ REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$REPO_ROOT"
 WORKSPACE="${1:?usage: patches/3.7.sh <zephyr-workspace-dir>}"
 
+# Issue 2177 — the cyclonedds steps patch nano-ros's OWN source tree
+# (`third-party/dds/cyclonedds`), not the Zephyr workspace. An installed SDK
+# (`<prefix>/share/nano-ros`) ships no `third-party/`, so each step exited 1
+# and `set -e` took the whole patch set down with it — including the
+# zephyr-lang-rust patch every Rust image needs, which is what `nros setup
+# board <b> --zephyr-workspace <ws>` exists to apply. Skip them there, saying
+# so. Nothing is lost: the pinned fork already carries each change (every step
+# reports "already applied" against a clean checkout), and the 4.4 line runs
+# none of them.
+CYCLONE_TREE="$REPO_ROOT/third-party/dds/cyclonedds/src"
+cyclone_patch() {
+    if [ -d "$CYCLONE_TREE" ]; then
+        bash "$@"
+    else
+        echo "[zephyr setup] skip $1: no cyclonedds source tree under $REPO_ROOT (an installed SDK carries none; the pinned fork already has this change)"
+    fi
+}
+
 echo "[zephyr setup] applying Cortex-A9 / SLCR patches (idempotent)..."
 bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying AArch64 / Cortex-R Rust patches (idempotent)..."
 bash ./scripts/zephyr/aarch64-rust-patch.sh "$WORKSPACE"
 bash ./scripts/zephyr/cortex-r-rust-patch.sh "$WORKSPACE"
+# Issue 0432 — the gpio pair, without which the `zephyr` crate does not compile
+# for any board with gpio nodes in its devicetree (mps2-an385:
+# `GpioPin::new` "takes 6 arguments but 5 arguments were supplied"). Every
+# `just` lane ran it beside the two above; this set, which is what `nros setup
+# board` applies to a reader's workspace, did not (issue 2177).
+echo "[zephyr setup] applying zephyr-lang-rust gpio patch (idempotent)..."
+bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 168.1 cargo-features patch (idempotent)..."
 bash ./scripts/zephyr/cargo-features-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 97.4 native_sim IPPROTO_IP patch (idempotent)..."
@@ -27,11 +52,11 @@ bash ./scripts/zephyr/native-sim-ipproto-ip-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 168.X.fvp llext-edk conditional patch (idempotent)..."
 bash ./scripts/zephyr/llext-edk-conditional-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.6 cyclonedds threads patch (idempotent)..."
-bash ./scripts/zephyr/cyclonedds-zephyr-threads-patch.sh
+cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-threads-patch.sh
 echo "[zephyr setup] applying Phase 11W.7 cyclonedds log eager-flush patch (idempotent)..."
-bash ./scripts/zephyr/cyclonedds-zephyr-log-flush-patch.sh
+cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-log-flush-patch.sh
 echo "[zephyr setup] applying Phase 11W.7/.8 cyclonedds udp sockopt patch (idempotent)..."
-bash ./scripts/zephyr/cyclonedds-zephyr-udp-rcvbuf-patch.sh
+cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-udp-rcvbuf-patch.sh
 # NSOS (Native Simulator Offloaded Sockets) patches edit the consumer's
 # Zephyr tree — they MUST get "$WORKSPACE". Called bare, they fall back to
 # nano-ros's in-tree `../nano-ros-workspace` default, which does not exist for
@@ -50,6 +75,6 @@ bash ./scripts/zephyr/nsos-getifaddrs-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.12 NSOS adapt IPPROTO_IP setsockopt patch (idempotent)..."
 bash ./scripts/zephyr/nsos-adapt-ipproto-ip-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.8 cyclonedds multicast-join best-effort patch (idempotent)..."
-bash ./scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh
+cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh
 echo "[zephyr setup] applying Phase 11W.8 cyclonedds sockwaitset self-pipe patch (idempotent)..."
-bash ./scripts/zephyr/cyclonedds-zephyr-sockwaitset-patch.sh
+cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-sockwaitset-patch.sh

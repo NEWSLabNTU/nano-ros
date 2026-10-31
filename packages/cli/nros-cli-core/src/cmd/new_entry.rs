@@ -582,14 +582,19 @@ fn render_rmw_conf(rmw: &str) -> String {
         "zenoh" => r#"# zenoh-pico backend.
 CONFIG_NROS_RMW_ZENOH=y
 
-# The router this image connects to. 7447 is what `rmw_zenohd` listens on and
-# what a `rmw_zenoh_cpp` node connects to, so both halves of a ROS system agree
-# by default.
-CONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:7447"
+# The router this image connects to is not set here. The default,
+# "tcp/127.0.0.1:7447", is what `rmw_zenohd` listens on and what a
+# `rmw_zenoh_cpp` node connects to; a board whose network is not the host's
+# states its own in its package (mps2-an385-zephyr's QEMU user network says
+# "tcp/10.0.2.2:7447"), and an image states one as `locator` in system.toml.
+# A line here merged AFTER the board's file and overrode it (issue 2177).
 
-# zenoh-pico needs ~8 pthread mutexes; Zephyr's default pool of 5 fails with
-# -80 at session open (issue 0129).
-CONFIG_MAX_PTHREAD_MUTEX_COUNT=16
+# zenoh-pico takes ~22 pthread mutexes plus one per subscriber, from a static
+# pool (Zephyr's default of 5 fails with -80 at session open, issue 0129). The
+# build derives a floor and refuses below it (`_nros_mutex_floor` in
+# `zephyr/cmake/nros_cargo_build.cmake`); 64 is the value every in-tree zenoh
+# leaf uses. 16 was below the floor for one subscriber (issue 2177).
+CONFIG_MAX_PTHREAD_MUTEX_COUNT=64
 CONFIG_MAX_PTHREAD_COND_COUNT=16
 "#
         .to_string(),

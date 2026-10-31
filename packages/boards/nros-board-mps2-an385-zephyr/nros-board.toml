@@ -19,6 +19,15 @@ entry_kind = "zephyr-staticlib"
 # netstack this board does not support is refused (phase-351 W4).
 supported_netstacks = []
 
+# Issue 2177 — the crate-root boilerplate a GENERATED Rust entry needs on
+# Zephyr, the same two lines and two deps as `packages/boards/zephyr`'s
+# descriptor gives native_sim (whose comment says why each is there). Without
+# them a generated image for this board failed with `cannot find `log` in the
+# crate root` and `#[panic_handler] function required`.
+[board.entry]
+crate_root_extra = "extern crate zephyr;"
+crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
+
 [board.zephyr]
 west_board = "mps2_an385"
 # Issue 2151 — what a RUST image for this board needs beyond a C one.
@@ -44,3 +53,15 @@ threads = true
 stack = "os"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]
+
+# Issue 2177 — what `nros setup board mps2-an385-zephyr --zephyr-workspace <ws>`
+# does to a reader's own west workspace: apply the 3.7 patch set. A workspace
+# made with plain `west init` / `west update` runs an UNPATCHED
+# zephyr-lang-rust, whose cargo command carries none of nano-ros's env (the
+# board facts, the derived knobs and the C cross compiler, `NROS_BOARD_FACTS_ENV`
+# in `zephyr/CMakeLists.txt`) — so a Rust image's `zpico-sys` fell back to a
+# PATH `arm-none-eabi-gcc` and failed. The triple is `[board.zephyr]
+# rust_target`'s.
+[board.provisioning]
+zephyr_line = "3.7"
+rust_targets = ["thumbv7m-none-eabi"]
