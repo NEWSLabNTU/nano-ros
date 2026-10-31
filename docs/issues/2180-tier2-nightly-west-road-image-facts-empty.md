@@ -56,3 +56,20 @@ Re-run the gate on the runner's `nros-fixture-tree` and keep
 query diverges: CLI resolution in `_nros_image_facts_file`, or the CLI's
 workspace walk-up from the gate-scratch path. The acceptance test is a tier-2
 nightly reaching `ci matrix-nightly`.
+
+## Second sighting: run-matrix, both lanes (2026-10-31 06:15 UTC)
+
+run-matrix 41175852882 (schedule, `609f20af99`) failed both jobs at the same
+gate, with the same three `[FAIL]` lines, in the `just build` prelude:
+
+- job 124463138244 `tier 2 (1-wise matrix)`, `just build tier2`;
+- job 124464567263 `tier 1 (cells)`, `just build tier1`.
+
+Both ran on `nano-ros-runner-newslab-118-server`, the same runner as the
+nightly sighting. So the failure is not specific to tier 2: every lane whose
+build runs `check fast` on that runner stops here, and tier 1 and tier 2 have
+both stopped reaching their cells. The merge-queue `check / fast` job runs on a GitHub-hosted runner and
+its log never names this gate. Most likely it skips there for want of an
+in-tree CLI, but that is unverified. Either way, that job passing is not
+evidence that the gate passes: no lane that builds the CLI has gone green on
+it since `093456b7e2`.
