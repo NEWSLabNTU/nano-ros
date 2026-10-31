@@ -54,11 +54,11 @@ by a path into nano-ros.
 - `zephyr/snippets/nros-nsos/` — `snippet.yml` + `nsos.conf`. The conf is
   line-agnostic: both 3.7 and 4.4 enable the TAP driver only as
   `default y if NET_L2_ETHERNET && ETH_DRIVER`, and `ETH_DRIVER` exists on both,
-  so `CONFIG_ETH_DRIVER=n` removes it without naming it. Snippet-wide, with no
-  `boards:` regex: on a non-native board `NET_NATIVE_OFFLOADED_SOCKETS` cannot be
-  enabled (`depends on ARCH_POSIX`) and Kconfig refuses the build — measured on
-  `mps2/an385` — where a regex would make it a silent no-op and would miss a
-  vendor's native board under another name.
+  so `CONFIG_ETH_DRIVER=n` removes it without naming it. ~~Snippet-wide, with no
+  `boards:` regex: on a non-native board Kconfig refuses the build~~ -- WRONG,
+  issue 2182: the generic `zephyr` board names the snippet and is also built
+  with `-b mps2/an385`, so that refusal took down every mps2 row. The snippet
+  is now scoped to `boards: /native_sim(/.*)?/`.
 - `[board.zephyr] snippets = ["nros-nsos"]` on the generic `zephyr` board — a
   NAME, so any board package (in-tree, `$NROS_EXTRA_BOARD_PATH`, or a workspace
   `src/<board>/`) reaches it with no path.

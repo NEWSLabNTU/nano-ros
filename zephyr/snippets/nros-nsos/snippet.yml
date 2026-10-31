@@ -6,11 +6,19 @@
 # `find_package(Zephyr)`). Zephyr resolves the name through this module's
 # `snippet_root`, so no build needs a path into nano-ros.
 #
-# Snippet-wide, deliberately -- no `boards:` regex. Applied to a board that is
-# not a native simulator, `NET_NATIVE_OFFLOADED_SOCKETS` cannot be enabled
-# (it depends on ARCH_POSIX) and Kconfig REFUSES the build, naming that
-# dependency; a regex would make it a silent no-op instead, and would miss a
-# vendor's native board under another name.
+# Board-scoped to native_sim. The generic `zephyr` board names this snippet,
+# and its `west_board` is only a DEFAULT: the same board is built with
+# `-b mps2/an385`, where NSOS cannot be enabled (`depends on ARCH_POSIX`) and an
+# unscoped snippet makes Kconfig refuse the build (issue 2182). Only the BOARD
+# the build actually targets can answer, and this regex is where Zephyr asks it.
+# Zephyr matches it against the full board string -- `${BOARD}${BOARD_QUALIFIERS}`
+# on 3.7, `${BOARD}/${BOARD_QUALIFIERS}` on 4.4 -- so `native_sim/native/64`,
+# `native_sim/native` and a bare `native_sim` all match on both lines.
+#
+# A native simulator board under another name gets no NSOS from this; give it
+# a snippet of its own.
 name: nros-nsos
-append:
-  EXTRA_CONF_FILE: nsos.conf
+boards:
+  /native_sim(/.*)?/:
+    append:
+      EXTRA_CONF_FILE: nsos.conf
