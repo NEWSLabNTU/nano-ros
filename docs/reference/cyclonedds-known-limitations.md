@@ -365,7 +365,7 @@ question, not only a cost one); the witness situation is
 `nros-board-s32z270dc2-r52` were "**not yet implemented**" and that the Cyclone
 backend "works on POSIX only". Both were overtaken by phase-292/298 and stayed
 wrong for months. Current status is generated, not asserted here — see
-[Board Support Tiers](../../book/src/reference/board-support-tiers.md), checked
+[Board Support Levels](../../book/src/reference/board-support-levels.md), checked
 by `just check board-registry`.)*
 
 - **`nros-board-fvp-aemv8r-smp` — tier 3, build-only.** The board exists and

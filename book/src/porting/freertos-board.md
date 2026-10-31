@@ -1,7 +1,7 @@
 # Adding a FreeRTOS Board
 
 nano-ros ships one FreeRTOS witness — MPS2-AN385 under QEMU
-(`nros-board-mps2-an385-freertos`, tier 1). This page is the answer to the
+(`nros-board-mps2-an385-freertos`, [verified in emulator daily](../reference/boards/mps2-an385-freertos.md)). This page is the answer to the
 only question that matters if your hardware is not that board: **what do I
 actually have to write?**
 

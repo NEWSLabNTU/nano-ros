@@ -145,6 +145,6 @@ functions, and no rung of the ladder requires nano-ros to know what your stack
 
 The bar is a **witness**: a lane that boots the board and asserts real delivery.
 That means hardware in the test rack or a QEMU machine that models the MAC. A
-board with no Runtime cell cannot be tier 1 or 2 —
-`scripts/check-board-tiers.py` enforces exactly that, which is what moved these
+board with no Runtime cell cannot read *Verified* (in emulator, on host or on
+hardware) — `scripts/check-board-tiers.py` enforces exactly that, which is what moved these
 crates out in the first place.

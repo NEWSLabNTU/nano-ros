@@ -222,17 +222,14 @@ fn render_package_xml(args: &NewArgs) -> String {
     )
 }
 
-/// Append the `board-support.toml` row, at `tier = "scaffold"`.
+/// Append the `board-support.toml` row, at `runs = "none"` (RFC-0114 D10).
 ///
-/// It also states `runs = "none"` (RFC-0114 D10, phase-522 W1): a new board
-/// boots nowhere until a cell says otherwise, so its derived status word is
-/// "Builds" or "Not supported", and it claims no breadth yet.
-///
-/// Scaffold is the honest starting tier and `check-board-tiers` demands nothing
-/// of it. A tier with a promise needs a named maintainer (phase-375 W1: at
-/// least 1 for tier 3, 2 for tier 2, 3 for tier 1), and a scaffold that claimed
-/// one would be
-/// exactly the unearned promise that gate exists to refuse.
+/// A new board boots nowhere until a cell says otherwise, so its derived
+/// status word is "Not supported" (or "Builds" once a fixture builds it), and
+/// it claims no breadth yet. That is the honest start: a row that claims a run
+/// needs a named maintainer (phase-375 W1, re-keyed by RFC-0114: 2 for a
+/// Verified row, 1 for Boots or Builds), and one that claimed a run nothing
+/// shows would be exactly the unearned claim the registry gate refuses.
 fn append_registry_row(root: &Path, args: &NewArgs) -> Result<()> {
     let path = root.join("packages/boards/board-support.toml");
     let mut body =
@@ -241,7 +238,7 @@ fn append_registry_row(root: &Path, args: &NewArgs) -> Result<()> {
     // an existing section, so without it the next `[[board]]` ends up glued to
     // this row's last key. Valid TOML, unreadable diff.
     let row = format!(
-        "[[board]]\ncrate = \"nros-board-{}\"\ntier = \"scaffold\"\nruns = \"none\"\nmaintainers = []\n\n",
+        "[[board]]\ncrate = \"nros-board-{}\"\nruns = \"none\"\nmaintainers = []\n\n",
         args.name
     );
     // Before the `# ===== infra` section, which is not boards.
@@ -261,7 +258,7 @@ fn print_next_steps(args: &NewArgs, dir: &Path) {
             base.display()
         );
     } else {
-        println!("  packages/boards/board-support.toml  # row added at tier = \"scaffold\"");
+        println!("  packages/boards/board-support.toml  # row added at runs = \"none\"");
     }
     if args.platform == "zephyr" {
         let flat: String = args

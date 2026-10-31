@@ -1,5 +1,7 @@
 # Bare-metal Cortex-M3 (QEMU)
 
+> **Support level:** [`mps2-an385-baremetal`](../reference/boards/mps2-an385.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
+
 Single-node starter on **bare-metal** Cortex-M3 (QEMU MPS2-AN385) —
 no RTOS, no kernel scheduler. Pure cooperative spin via
 `zpico_spin_once`. Rust only. `nros-c` / `nros-cpp` are not

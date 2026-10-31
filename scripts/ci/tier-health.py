@@ -247,6 +247,22 @@ def per_merge_candidates():
     return out
 
 
+def claimed_tier(row):
+    """The lane cadence a registry row claims, in this report's tier words.
+
+    phase-522 W4 retired the registry's `tier` field (RFC-0114 D10): a row
+    states `cadence` instead, and this report still speaks in lane tiers
+    because its lanes are tiered (RFC-0061). `merge` is the per-merge lane
+    (tier 1), `daily` and `weekly` the scheduled ones (tier 2), `manual` the
+    runs nothing automated makes (tier 3). A row that runs nowhere, and an
+    infra row, claim nothing.
+    """
+    if row.get("infra") or row.get("runs") in (None, "none"):
+        return ""
+    return {"merge": "1", "daily": "2", "weekly": "2", "manual": "3"}.get(
+        row.get("cadence"), "")
+
+
 def resolve_lanes(row, nightly_tokens):
     """Which lanes should carry this row's runtime evidence.
 
@@ -267,7 +283,7 @@ def resolve_lanes(row, nightly_tokens):
     without looking one step down. A tier-1 platform whose nightly is green has
     earned tier 2, and saying so is more useful than a bare "not tier 1".
     """
-    tier = str(row.get("tier", ""))
+    tier = claimed_tier(row)
     notes = []
     if tier == "3":
         # Build-only means it. There is no runtime lane to query, and inventing
@@ -578,7 +594,7 @@ def selftest(quiet=False):
     toks = {"qemu", "freertos", "nuttx", "threadx_linux", "threadx_riscv64", "esp32"}
 
     lanes, notes = resolve_lanes(
-        {"tier": 1, "matrix_platform": "ThreadxLinux", "nightly_token": "threadx_linux"},
+        {"runs": "host", "cadence": "merge", "matrix_platform": "ThreadxLinux", "nightly_token": "threadx_linux"},
         toks)
     check([lane.cadence for lane in lanes] == ["daily"],
           "with no per-merge lane in the table a tier-1 row gets only the daily one")
@@ -588,13 +604,13 @@ def selftest(quiet=False):
           "not silently dropped, and not spelled the same as an unresolvable lane")
 
     lanes, notes = resolve_lanes(
-        {"tier": 1, "matrix_platform": "Linux"}, toks)
+        {"runs": "host", "cadence": "merge", "matrix_platform": "Linux"}, toks)
     check([lane.workflow for lane in lanes] == ["run-matrix.yml"] and not [
         txt for _, txt in notes if "nightly_token" in txt],
         "the native host resolves to the tier-1 lane, not to a missing nightly token")
 
     lanes, notes = resolve_lanes(
-        {"tier": 2, "matrix_platform": "FreertosPosix", "nightly_token": "freertos_posix"},
+        {"runs": "emulator", "cadence": "daily", "matrix_platform": "FreertosPosix", "nightly_token": "freertos_posix"},
         toks)
     check(not lanes and [k for k, _ in notes] == ["UNCHECKED"]
           and any("names no job" in txt for _, txt in notes),
@@ -602,17 +618,17 @@ def selftest(quiet=False):
           "plus an UNCHECKED note — not silently to the sibling job")
 
     lanes, notes = resolve_lanes(
-        {"tier": 3, "matrix_platform": "Fvp"}, toks)
+        {"runs": "emulator", "cadence": "manual", "matrix_platform": "Fvp"}, toks)
     check(not lanes and not notes,
           "tier 3 needs no lane and owes no explanation beyond its own tier")
 
     lanes, _ = resolve_lanes(
-        {"tier": 2, "matrix_platform": "ZephyrQemuCortexM", "nightly_token": "zephyr"},
+        {"runs": "emulator", "cadence": "daily", "matrix_platform": "ZephyrQemuCortexM", "nightly_token": "zephyr"},
         toks)
     check(len(lanes) == 1 and lanes[0].job == ZEPHYR_JOB_PREFIX,
           "`zephyr` resolves to the 05:00 cron's templated jobs by prefix")
 
-    lanes, _ = resolve_lanes({"tier": "infra", "crate": "nros-board-common"}, toks)
+    lanes, _ = resolve_lanes({"infra": True, "crate": "nros-board-common"}, toks)
     check(not lanes, "infra carries no tier promise, so it gets no lane")
 
     # --- lane_outcomes: inconclusive rows are DROPPED, not counted red ------
@@ -786,11 +802,11 @@ def main(argv=None):
     overclaimed = []
 
     for row in rows:
-        tier = str(row.get("tier", ""))
+        tier = claimed_tier(row)
         if tier not in ("1", "2", "3"):
-            continue                       # infra / scaffold promise nothing
+            continue                       # infra / runs = "none" claim no run
         lanes, notes = resolve_lanes(row, tokens)
-        klass = row.get("execution_class", "<unset>")
+        klass = f"runs {row.get('runs')}, cadence {row.get('cadence')}"
 
         print(f"  {label(row):<24} claimed tier {tier}   {klass}")
         for kind, text in notes:

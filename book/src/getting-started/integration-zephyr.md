@@ -1,5 +1,7 @@
 # Zephyr (west module)
 
+> **Support level:** [`native_sim`](../reference/boards/zephyr-native-sim.md), [`mps2_an385`](../reference/boards/mps2-an385-zephyr.md), [the S32K344 safety island](../reference/boards/s32k344-safety-island.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
+
 Single-node starter on Zephyr via the in-tree `zephyr/`
 west module. nano-ros ships as a Zephyr module — `west` discovers it
 from your workspace's `west.yml`, drops in a `prj.conf` Kconfig

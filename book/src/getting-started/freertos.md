@@ -1,5 +1,7 @@
 # FreeRTOS (QEMU MPS2-AN385)
 
+> **Support level:** [`mps2-an385-freertos`](../reference/boards/mps2-an385-freertos.md), [`freertos-posix`](../reference/boards/freertos-posix.md), [`s32z270-freertos`](../reference/boards/s32z270-freertos.md), [`mps3-an536-freertos`](../reference/boards/mps3-an536-freertos.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
+
 Single-node starter on FreeRTOS + lwIP, cross-compiled for Cortex-M3
 and booted in QEMU MPS2-AN385. Slirp networking; no host TAP /
 bridge / sudo. Rust, C, and C++ talkers are on
@@ -331,7 +333,7 @@ start `rmw_zenohd` on the port its `locator` names, as in
 No in-tree FreeRTOS board is flashed by a documented flow, and none is
 claimed: the MPS2-AN385 boards above are QEMU machines.
 
-* **NXP S32Z270 (`s32z270-freertos`, tier 3) is build-only.** No
+* **NXP S32Z270 (`s32z270-freertos`, [Builds](../reference/boards/s32z270-freertos.md)) is build-only.** No
   emulator models its Cortex-R52 RTU, so nothing here boots it. It
   builds like the other boards — the licensed pieces (NXP's
   `GCC/ARM_CR52_GIC` FreeRTOS port, the RTD NETC Ethernet driver, the

@@ -1,5 +1,7 @@
 # First Project
 
+> **Support level:** [the Linux host](../reference/boards/linux.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
+
 One command scaffolds a working multi-node workspace; two more build and
 run it. C++ and CMake, publishing on your machine, with **nothing else
 running** — no router, no daemon, no ROS 2 installation.
