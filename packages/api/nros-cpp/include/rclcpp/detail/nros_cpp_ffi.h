@@ -35,11 +35,18 @@
 
 /**
  * phase-462 W3b -- bytes of caller storage ONE hazard row needs (its
- * `HazardCell` plus its `HazardSpec`), the same kind of bound: 96 on a 64-bit
- * host, 64 on a 32-bit target. `nros_cpp_install_hazards` checks the real
+ * `HazardCell` plus its `HazardSpec`), the same kind of bound: 112 on a 64-bit
+ * host, 80 on a 32-bit target. `nros_cpp_install_hazards` checks the real
  * requirement and refuses a short buffer.
  */
-#define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 96 : 64)
+#define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 112 : 80)
+
+/**
+ * play_launch phase 96 W4.2 -- bytes of caller storage ONE hazard rung needs
+ * (its `RungSpec`): 32 on a 64-bit host, 24 on a 32-bit target. Its
+ * `starts_at` members count toward NROS_CPP_HAZARD_MEMBER_STORAGE.
+ */
+#define NROS_CPP_HAZARD_RUNG_STORAGE (sizeof(void *) == 8 ? 32 : 24)
 
 /**
  * phase-462 W4b -- bytes of caller storage `nros_cpp_install_modes` needs per
@@ -119,6 +126,11 @@
  * `safe_state` publisher this image monitors.
  */
 #define NROS_CPP_HAZARD_NO_SINK UINT16_MAX
+
+/**
+ * `nros_cpp_hazard_rung_t::mode` for a rung that is not a contract mode.
+ */
+#define NROS_CPP_HAZARD_NO_MODE UINT16_MAX
 
 /**
  * Bytes of caller storage ONE guard needs (`GuardSpec`).
@@ -767,6 +779,39 @@ typedef struct nros_cpp_hazard_guard_t {
 } nros_cpp_hazard_guard_t;
 
 /**
+ * play_launch phase 96 W4.2 -- one rung of a hazard's ladder: the C spelling
+ * of `RungSpec`. The executor judges the ACTIVE rung's route
+ * (`hazard-route-runtime`): the top rung, or the rung whose mode the executor
+ * is in when the fault comes or falls to while it holds.
+ */
+typedef struct nros_cpp_hazard_rung_t {
+  /**
+   * The baked mode id the rung is, or `NROS_CPP_HAZARD_NO_MODE`.
+   */
+  uint16_t mode;
+  /**
+   * Rate-table row of a publisher on the rung's output, or
+   * `NROS_CPP_HAZARD_NO_SINK`.
+   */
+  uint16_t output_row;
+  /**
+   * The rung's route, ms (`rungs[].route_ms`, rounded up); 0 = not judged.
+   */
+  uint32_t route_ms;
+  /**
+   * 0 rung, 1 window, 2 floor.
+   */
+  uint8_t role;
+  /**
+   * `n_starts_at` guard members of the rung's `starts_at` node: its route
+   * clock starts at their detection. NULL with 0: the clock starts when
+   * the rung becomes active.
+   */
+  const struct nros_cpp_hazard_member_t *starts_at;
+  size_t n_starts_at;
+} nros_cpp_hazard_rung_t;
+
+/**
  * One contracted hazard, the C spelling of `HazardSpec` minus its cell.
  */
 typedef struct nros_cpp_hazard_row_t {
@@ -800,19 +845,12 @@ typedef struct nros_cpp_hazard_row_t {
    */
   uint16_t reaction_id;
   /**
-   * play_launch phase 96 W4.2 -- rate-table row of a publisher on the
-   * output of the rung this executor judges (the top rung of the hazard's
-   * ladder whose output the monitor table observes). Read only when
-   * `rung_route_ms` is non-zero.
+   * play_launch phase 96 W4.2 -- `n_rungs` rungs of the hazard's ladder,
+   * top first, static; NULL with 0 when no rung route is monitored, which
+   * is also what an entry generated before these fields reads as.
    */
-  uint16_t rung_row;
-  /**
-   * That rung's route, ms, from the detection tick to its first output
-   * (`contracts.hazards.<h>.rungs[].route_ms`, rounded up); an overrun is
-   * reported as `hazard-route-runtime`. 0 = no route monitored, which is
-   * also what an entry generated before this field reads as.
-   */
-  uint32_t rung_route_ms;
+  const struct nros_cpp_hazard_rung_t *rungs;
+  size_t n_rungs;
 } nros_cpp_hazard_row_t;
 
 /**

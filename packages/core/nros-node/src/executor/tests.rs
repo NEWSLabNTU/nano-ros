@@ -16916,8 +16916,7 @@ fn a_detected_hazard_starts_its_safe_state_reaction() {
         guards: &GUARDS,
         sink: NO_SINK,
         reaction_id: 3,
-        rung_row: NO_SINK,
-        rung_route_ms: 0,
+        rungs: &[],
         cell: &CELL,
     }];
     static EVENTS: Mutex<alloc::vec::Vec<ReactionEvent>> = Mutex::new(alloc::vec::Vec::new());

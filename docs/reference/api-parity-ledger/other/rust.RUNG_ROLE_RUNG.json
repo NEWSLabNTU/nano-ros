@@ -1,0 +1,6 @@
+{
+  "key": "rust:RUNG_ROLE_RUNG",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "play_launch phase 96 W4.2 -- `RungSpec::role` of an ordinary rung of a hazard's ladder (rlm `RungRole::Rung`). See `rust:RungSpec`."
+}

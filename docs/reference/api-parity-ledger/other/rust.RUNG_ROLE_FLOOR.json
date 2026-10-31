@@ -1,0 +1,6 @@
+{
+  "key": "rust:RUNG_ROLE_FLOOR",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "play_launch phase 96 W4.2 -- `RungSpec::role` of the ladder's floor (rlm `RungRole::Floor`). See `rust:RungSpec`."
+}
