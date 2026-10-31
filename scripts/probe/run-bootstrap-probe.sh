@@ -140,10 +140,12 @@ RELEASE_MOUNT=/probe-release
 ASSET_NAME=nros-linux-x86_64.tar.zst
 
 # Issue 2168 — the release `[tool.nros] version` pins, read from the
-# branch's index (the same pin `nros setup` installs from).
+# branch's index (the same pin `nros setup` installs from). awk reads to the
+# end: an early `exit` SIGPIPEs `git show`, which `pipefail` turns into a
+# failed assignment under `set -e`.
 nros_published_release_version() {
     git -C "$REPO_ROOT" show "$under_test:nros-sdk-index.toml" |
-        awk '/^\[tool\.nros\]$/ {t = 1; next} /^\[/ {t = 0} t && /^version = / {gsub(/"/, "", $3); print $3; exit}'
+        awk '/^\[tool\.nros\]$/ {t = 1; next} /^\[/ {t = 0} t && !v && /^version = / {gsub(/"/, "", $3); v = $3} END {print v}'
 }
 # phase-517 W10 — the installed track replays ONE chapter per platform. The
 # default (`linux`) is first-project.md; every other value names a QEMU

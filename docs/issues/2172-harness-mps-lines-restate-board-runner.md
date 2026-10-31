@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: medium
 area: [testing, qemu, cli]
-related: [2169, 2170, phase-517]
+related: [2169, 2170]
 found: 2026-10-31
 ---
 
