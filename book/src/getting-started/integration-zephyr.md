@@ -1111,6 +1111,8 @@ nros build demo_bringup:nucleo
 west flash -d build/zephyr-zenoh/demo_bringup__nucleo_west
 ```
 
+> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2176-unprobed-fvp-sitl-flash-lines.md)).
+
 `nros build` prints that `west flash` line when the build's
 `zephyr/runners.yaml` names a flash runner. The runner (J-Link, nrfjprog,
 OpenOCD, pyOCD, …) and its probe are Zephyr's and your bench's; nano-ros adds

@@ -49,6 +49,8 @@ export EXTERNAL_MODULES_LOCATION=$PWD/my-px4-modules
 make -C $PX4_AUTOPILOT_DIR px4_sitl_default
 ```
 
+> **Not replayed.** No probe track runs the PX4 SITL build yet, so this line is unmeasured on the installed track ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2176-unprobed-fvp-sitl-flash-lines.md)).
+
 PX4's build picks up the module via `<location>/src/CMakeLists.txt`.
 The module CMakeLists resolves the nano-ros SDK root by running
 `nros sdk-root` (or takes `-Dnano_ros_ROOT=<dir>`), and pulls in the

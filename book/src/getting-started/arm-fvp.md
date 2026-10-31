@@ -74,7 +74,8 @@ a last-ditch fallback.
 
 ### Installer surface
 
-After extracting the Arm FVP tarball, run the discovery script:
+For a model you extracted yourself, rather than the one `nros setup --tool
+arm-fvp` fetched, run the discovery script:
 
 ```bash
 ARM_FVP_DIR=/path/to/extracted/fvp \
@@ -86,8 +87,8 @@ symlinks the containing directory to
 `~/.nros/sdks/arm-fvp/current/` (atomic via `ln -sfn`), and
 prints the `export ARMFVP_BIN_PATH=…` line for your shell rc.
 Run `scripts/installers/arm-fvp-installer.sh --print-env` later
-to re-emit the export. It never downloads anything — gated-tool
-policy.
+to re-emit the export. It downloads nothing: `nros setup --tool arm-fvp`
+is the fetch.
 
 ### Doctor check
 
@@ -141,6 +142,8 @@ settings and pipes the UARTs to your terminal:
 ```bash
 west build -d build/zephyr-cyclonedds/demo_bringup__fvp_west -t run
 ```
+
+> **Not replayed.** No probe track builds or boots the FVP image yet, so this line is unmeasured on the installed track ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 The model is a free download, **not licence-gated** (see
 [Prereqs](#prereqs)); what keeps it off a CI lane is cost and its x86_64-only

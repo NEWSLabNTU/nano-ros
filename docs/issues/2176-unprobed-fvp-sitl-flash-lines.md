@@ -38,3 +38,19 @@ only where a probe boots that line, so these boards fall outside it.
 * Flash cannot run in CI. Have each chapter say the line is unverified
   until it has been run against a named board. If a self-hosted runner with
   hardware ever exists, its lane is where the line gets checked.
+
+## Progress (2026-10-31)
+
+The second fix direction has landed. Each line no probe runs now says so,
+linking here: the FVP run (`arm-fvp.md`), the PX4 SITL builds (`px4.md`,
+`integration-px4.md`), and the flash lines (`bare-metal.md`,
+`integration-nuttx.md`, `integration-zephyr.md`, `px4.md`). `arm-fvp.md`'s
+"Installer surface" also stops describing a gated, download-free model; the
+download is `nros setup --tool arm-fvp`. Still open are the FVP and SITL
+probe tracks. Each is a build-out of its own:
+
+* FVP is a Cyclone DDS image on an aarch64 Zephyr model with its own
+  networking, and the only worked example is in-tree
+  (`examples/workspaces/realtime-cpp`'s `[image.fvp]`), not an installed
+  scaffold.
+* SITL is a full PX4 build.
