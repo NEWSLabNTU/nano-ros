@@ -1,11 +1,12 @@
 ---
 id: 2174
 title: "A server contract stating `stale_after:` builds silently on XRCE-DDS, whose requests carry no source timestamp, and the backend descriptor has no place to say so"
-status: open
+status: resolved
 type: enhancement
 area: [orchestration, rmw, xrce]
 found: 2026-10-31
 related: [1942, phase-509]
+resolved_in: "phase96-service-facts (play_launch phase 96 W4.3)"
 ---
 
 ## What is missing
@@ -47,3 +48,21 @@ knobs the target cannot honour). The proposal is a warning, reported where
 `blocking_calls::check_model`'s notes are reported on the three bake roads,
 using the server node's `execution.deploy.<fqn>.rmw` and otherwise the
 image's resolved RMW (only codegen-system knows the latter today).
+
+## Resolution
+
+Option 1, warning. `nros-rmw.toml` gains `[rmw.facts]`, booleans in an
+open vocabulary (`cargo_nano_ros::rmw_descriptor`, refused when not
+`true`/`false`), rendered into the descriptor table and read by
+`rmw_resolver::backend_states_fact`, which returns `None` for a fact the
+backend does not state. XRCE-DDS states `request_source_timestamp = false`,
+zenoh and Cyclone DDS `true`; uORB says nothing.
+`nros-cli-core::orchestration::service_facts::stale_after_warnings` warns,
+per server this image runs whose contract states `stale_after`, when its
+backend (the node's `execution.deploy.<fqn>.rmw`, else the image's) states
+`false`. It names the server and the key and says the image cannot judge
+staleness on this backend. Wired into codegen-system (which knows the
+image's resolved RMW) and the C/C++ entry road (which knows only the deploy
+RMW). Not wired into `nros::main!`: nros-macros does not depend on
+cargo-nano-ros's descriptor table, and adding that edge is the weight issue
+0083 removed.
