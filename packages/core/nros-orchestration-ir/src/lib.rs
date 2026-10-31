@@ -422,40 +422,33 @@ pub fn board_path_keys() -> impl Iterator<Item = &'static str> {
 // system.toml schema (tier subset)
 // =============================================================================
 
-/// Accept BOTH spellings of a µs-valued duration key: the canonical
-/// `spin_period = "1000us"` and the deprecated `spin_period_us = 1000`.
+/// Read a µs-valued `[tiers.*]` duration key: a duration string WITH a unit
+/// (`spin_period = "1000us"`, `"2ms"`), nothing else.
 ///
 /// `system.toml` `[tiers.*]` has TWO parsers — this struct and the resolver's
 /// `ros_launch_manifest_sched::TierPlatformSpec` (see the drift note on
-/// `TierRtosSpec`). rlm v0.1.11 renamed these keys and kept the old names as
-/// serde aliases so it can retire them later; until this mirror accepts the
-/// new spelling too, the narrower one again defines what a user may write.
+/// `TierRtosSpec`). rlm v0.3.0 (play_launch phase 96 W2.2) removed the
+/// deprecated `_us` spellings and the leniency that read a bare number as µs,
+/// so this mirror refuses both too: the legacy key is an `unknown field`
+/// (`deny_unknown_fields`, whose message lists the canonical names), and a bare
+/// number is refused by rlm's own strict `Duration` reader with a message
+/// asking for a unit. A mirror that stayed lenient would again let the
+/// narrower-or-wider parser define what a user may write.
 ///
-/// Parsing delegates to rlm's own `compat::opt_micros` — a duration string,
-/// or a bare number read as µs — so this crate never grows a SECOND duration
-/// parser that could disagree with the resolver's. The value is still stored
-/// as µs, like every other field here: the rename governs what a user WRITES,
-/// not our internal IR, and the model→IR boundary already converts the same
-/// way (`as_micros`, `tier_from_model`).
+/// Parsing delegates to rlm's `Duration` so this crate never grows a SECOND
+/// duration parser that could disagree with the resolver's. The value is
+/// still stored as µs, like every other field here: the key governs what a
+/// user WRITES, not our internal IR, and the model→IR boundary already
+/// converts the same way (`as_micros`, `tier_from_model`).
 fn opt_micros_u64<'de, D>(d: D) -> Result<Option<u64>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let Some(v) = ros_launch_manifest_types::duration::compat::opt_micros(d)? else {
+    let Some(v) =
+        <Option<ros_launch_manifest_types::duration::Duration> as Deserialize>::deserialize(d)?
+    else {
         return Ok(None);
     };
-    // REJECT what this IR cannot represent, rather than truncating it.
-    //
-    // `Duration` holds nanoseconds; every field here is µs, and `as_micros()`
-    // floors. Before v0.1.11 that gap was unreachable — the field NAME was the
-    // unit, so sub-µs could not be written. Now it can: `deadline = "500ns"`
-    // floors to `Some(0)`, and a deadline of ZERO is not the same statement as
-    // no deadline at all. `"1500ns"` lands on 1 µs, off by a third.
-    //
-    // Silently turning a written value into a different one is the exact class
-    // the unit-in-the-value change exists to remove, so it would be perverse to
-    // reintroduce it at the seam that adopts it. A value this IR cannot carry
-    // is a value the author should hear about.
     let exact = v.as_micros_f64();
     if exact < 0.0 {
         return Err(serde::de::Error::custom(format!(
@@ -473,16 +466,30 @@ where
     Ok(Some(v.as_micros()))
 }
 
+/// Write a µs field back in the form [`opt_micros_u64`] reads: a duration
+/// string with a unit. A bare number would not round-trip through the strict
+/// reader.
+fn ser_opt_micros_u64<S>(v: &Option<u64>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match v {
+        Some(us) => s.serialize_str(&format!("{us}us")),
+        None => s.serialize_none(),
+    }
+}
+
 /// `[tiers.<name>]` — a symbolic priority tier (RFC-0015 §4.2). Carries the
-/// RTOS-agnostic `spin_period_us` plus a per-RTOS sub-table
+/// RTOS-agnostic `spin_period` plus a per-RTOS sub-table
 /// (`[tiers.<name>.<rtos>]`) giving the concrete priority/stack for each target.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TierDef {
     #[serde(
         default,
-        alias = "spin_period",
+        rename = "spin_period",
         deserialize_with = "opt_micros_u64",
+        serialize_with = "ser_opt_micros_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub spin_period_us: Option<u64>,
@@ -499,24 +506,27 @@ pub struct TierDef {
     /// Callback period (µs) for `periodic` / `time_triggered`.
     #[serde(
         default,
-        alias = "period",
+        rename = "period",
         deserialize_with = "opt_micros_u64",
+        serialize_with = "ser_opt_micros_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub period_us: Option<u64>,
     /// Execution-time budget (µs) — EDF/sporadic.
     #[serde(
         default,
-        alias = "budget",
+        rename = "budget",
         deserialize_with = "opt_micros_u64",
+        serialize_with = "ser_opt_micros_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub budget_us: Option<u64>,
     /// Relative deadline (µs) — EDF.
     #[serde(
         default,
-        alias = "deadline",
+        rename = "deadline",
         deserialize_with = "opt_micros_u64",
+        serialize_with = "ser_opt_micros_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub deadline_us: Option<u64>,
@@ -561,8 +571,9 @@ pub struct TierRtosSpec {
     /// tiers. ThreadX-only today (bake-validated); `None` = FIFO-until-block.
     #[serde(
         default,
-        alias = "time_slice",
+        rename = "time_slice",
         deserialize_with = "opt_micros_u64",
+        serialize_with = "ser_opt_micros_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub time_slice_us: Option<u64>,
@@ -593,24 +604,27 @@ pub struct TierRtosSpec {
     /// Relative deadline (µs) on THIS platform, tighter than the generic head.
     #[serde(
         default,
-        alias = "deadline",
+        rename = "deadline",
         deserialize_with = "opt_micros_u64",
+        serialize_with = "ser_opt_micros_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub deadline_us: Option<u64>,
     /// Sporadic execution budget (µs) on THIS platform; pairs with `period_us`.
     #[serde(
         default,
-        alias = "budget",
+        rename = "budget",
         deserialize_with = "opt_micros_u64",
+        serialize_with = "ser_opt_micros_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub budget_us: Option<u64>,
     /// Sporadic replenishment period (µs) on THIS platform.
     #[serde(
         default,
-        alias = "period",
+        rename = "period",
         deserialize_with = "opt_micros_u64",
+        serialize_with = "ser_opt_micros_u64",
         skip_serializing_if = "Option::is_none"
     )]
     pub period_us: Option<u64>,
@@ -1499,7 +1513,6 @@ mod tests {
 
         // Representable values keep working, in every spelling.
         assert_eq!(parse(r#"deadline = "1us""#).unwrap().deadline_us, Some(1));
-        assert_eq!(parse("deadline_us = 1000").unwrap().deadline_us, Some(1000));
         assert_eq!(
             parse(r#"deadline = "2ms""#).unwrap().deadline_us,
             Some(2000)
@@ -1507,26 +1520,23 @@ mod tests {
         assert_eq!(parse(r#"deadline = "0us""#).unwrap().deadline_us, Some(0));
     }
 
-    /// Both spellings of every `[tiers.*]` duration key must parse, and to the
-    /// SAME µs value: the canonical `spin_period = "1000us"` (rlm v0.1.11) and
-    /// the deprecated `spin_period_us = 1000` it kept as a serde alias.
+    /// Only the canonical spelling of a `[tiers.*]` duration key parses, and
+    /// only with a unit: rlm v0.3.0 (play_launch phase 96 W2.2) removed the
+    /// deprecated `_us` keys and the leniency that read a bare number as µs.
     ///
     /// This is the drift guard for the OTHER mirror. `system.toml` `[tiers.*]`
     /// is parsed twice — here, and by the resolver's
     /// `ros_launch_manifest_sched::TierPlatformSpec`. When rlm renamed these
     /// keys, only the resolver learned the new spelling, so a user writing the
-    /// documented form hit `unknown field` from THIS parser (its
-    /// `deny_unknown_fields`) while the resolver accepted it — the narrower
-    /// mirror once again defining what a user may write. Asserting equality of
-    /// the two parses, rather than merely that the new one parses, is what
-    /// keeps the alias from being wired to the wrong unit: a bare number is
-    /// µs here, and reading it as ms would be a silent 1000x.
+    /// documented form hit `unknown field` from THIS parser while the resolver
+    /// accepted it. Now that rlm refuses the old forms, this mirror must refuse
+    /// them as well, or it would define a wider language than the resolver.
     #[test]
-    fn tier_duration_keys_accept_both_spellings() {
+    fn tier_duration_keys_refuse_legacy_spellings_and_bare_numbers() {
         let canonical: TierDef = toml::from_str(
             r#"
             spin_period = "250us"
-            deadline = "2000us"
+            deadline = "2ms"
             period = "1000us"
             budget = "500us"
             [posix]
@@ -1538,34 +1548,70 @@ mod tests {
             "#,
         )
         .expect("canonical spelling must parse");
-
-        let deprecated: TierDef = toml::from_str(
-            r#"
-            spin_period_us = 250
-            deadline_us = 2000
-            period_us = 1000
-            budget_us = 500
-            [posix]
-            priority = 80
-            time_slice_us = 2000
-            deadline_us = 1500
-            budget_us = 400
-            period_us = 900
-            "#,
-        )
-        .expect("deprecated spelling must still parse");
-
-        assert_eq!(
-            canonical, deprecated,
-            "the two spellings must denote the same tier"
-        );
-        // Spot-check the absolute values too: `canonical == deprecated` alone
-        // would also hold if BOTH sides silently parsed to None.
         assert_eq!(canonical.spin_period_us, Some(250));
         assert_eq!(canonical.deadline_us, Some(2000));
+        assert_eq!(canonical.period_us, Some(1000));
+        assert_eq!(canonical.budget_us, Some(500));
         let posix = canonical.posix.as_ref().expect("posix sub-table");
         assert_eq!(posix.time_slice_us, Some(2000));
+        assert_eq!(posix.deadline_us, Some(1500));
+        assert_eq!(posix.budget_us, Some(400));
         assert_eq!(posix.period_us, Some(900));
+
+        // Every legacy `_us` key is an unknown field, on the head and in a
+        // per-RTOS sub-table, and the refusal names the canonical key.
+        for (src, canonical_key) in [
+            ("spin_period_us = 250", "spin_period"),
+            ("deadline_us = 2000", "deadline"),
+            ("period_us = 1000", "period"),
+            ("budget_us = 500", "budget"),
+            ("[posix]\npriority = 80\ntime_slice_us = 2000", "time_slice"),
+            ("[posix]\npriority = 80\ndeadline_us = 1500", "deadline"),
+            ("[posix]\npriority = 80\nbudget_us = 400", "budget"),
+            ("[posix]\npriority = 80\nperiod_us = 900", "period"),
+        ] {
+            let err = toml::from_str::<TierDef>(src)
+                .expect_err(&format!("legacy `{src}` must be refused"))
+                .to_string();
+            assert!(err.contains("unknown field"), "{src}: {err}");
+            assert!(
+                err.contains(&format!("`{canonical_key}`")),
+                "{src}: the refusal must list the canonical key, got: {err}"
+            );
+        }
+
+        // A bare number under a canonical key is refused with a message asking
+        // for a unit: reading it as µs (or ms) is the silent 1000x this guards.
+        for src in [
+            "spin_period = 250",
+            "deadline = 2000",
+            "period = 1000.0",
+            "budget = 500",
+            "[posix]\npriority = 80\ntime_slice = 2000",
+            "[posix]\npriority = 80\nperiod = 900",
+        ] {
+            let err = toml::from_str::<TierDef>(src)
+                .expect_err(&format!("bare `{src}` must be refused"))
+                .to_string();
+            assert!(err.contains("unit"), "{src}: {err}");
+        }
+    }
+
+    /// A parsed tier serializes back to the form the strict reader accepts.
+    #[test]
+    fn tier_durations_round_trip_with_units() {
+        let src = r#"
+            spin_period = "250us"
+            deadline = "2ms"
+            [posix]
+            priority = 80
+            time_slice = "2000us"
+        "#;
+        let tier: TierDef = toml::from_str(src).unwrap();
+        let text = toml::to_string(&tier).unwrap();
+        assert!(text.contains(r#"spin_period = "250us""#), "{text}");
+        assert!(!text.contains("_us"), "{text}");
+        assert_eq!(toml::from_str::<TierDef>(&text).unwrap(), tier);
     }
 
     #[test]

@@ -1,0 +1,6 @@
+{
+  "key": "rust:NO_MODE",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "play_launch phase 96 W4.2 -- a hazard rung that is not a contract mode (a single-path reaction): `RungSpec::mode` when no mode id applies. See `rust:RungSpec`."
+}

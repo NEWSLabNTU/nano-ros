@@ -5414,6 +5414,9 @@ impl<'s> Executor<'s> {
             // detection. Not before arming: a start-up verdict is only
             // counted (phase-474 I2), and it starts nothing either.
             let hook = self.reaction_hook.filter(|_| self.violations.counts.armed);
+            // play_launch phase 96 W4.2 -- the mode this executor judges by
+            // says which rung of each hazard's ladder is active.
+            let mode = self.mode_applied;
             let violations = &mut self.violations;
             for (row, spec) in self.hazard_table.iter().enumerate() {
                 super::monitor::check_hazard(
@@ -5421,10 +5424,11 @@ impl<'s> Executor<'s> {
                     self.monitor_table,
                     &self.monitor_states,
                     &self.age_states,
+                    mode,
                     now_ms,
                     |v| {
                         if v.rule == "hazard-detected" && spec.reaction_id != 0 {
-                            call_hazard_reaction(hook, spec, row, &v);
+                            call_hazard_reaction(hook, spec, row, &v, now_us);
                         }
                         violations.record(v);
                     },
@@ -5454,7 +5458,7 @@ impl<'s> Executor<'s> {
         let hook = self.reaction_hook.filter(|_| self.violations.counts.armed);
         let violations = &mut self.violations;
         super::monitor::route_overdue(table, now_us, |row, v, first| {
-            call_route_reaction(hook, table, row, &v);
+            call_route_reaction(hook, table, row, &v, now_us);
             if first {
                 violations.record(v);
             }
@@ -12595,7 +12599,7 @@ impl<'s> Executor<'s> {
                             end_us,
                             |row, v, record, react| {
                                 if react {
-                                    call_route_reaction(hook, mon_table, row, &v);
+                                    call_route_reaction(hook, mon_table, row, &v, end_us);
                                 }
                                 if record {
                                     violations.record(v)
@@ -13240,7 +13244,7 @@ impl<'s> Executor<'s> {
                         t1,
                         |row, v, record, react| {
                             if react {
-                                call_route_reaction(route_hook, mon_table, row, &v);
+                                call_route_reaction(route_hook, mon_table, row, &v, t1);
                             }
                             if record {
                                 let _ = deadline_misses.push(v);
@@ -13270,6 +13274,7 @@ impl<'s> Executor<'s> {
                         &mut skipped_scs,
                         s.fault_fn,
                         s.reaction_hook,
+                        end_us.unwrap_or(0),
                     );
                 }
                 s.finish_dispatch(i);
@@ -17675,6 +17680,7 @@ fn call_route_reaction(
     table: &[super::monitor::MonitorSpec],
     row: usize,
     v: &super::monitor::Violation,
+    fired_at_us: u64,
 ) {
     let Some((f, ctx)) = hook else { return };
     let spec = &table[row];
@@ -17685,6 +17691,7 @@ fn call_route_reaction(
         measured_ms: v.measured,
         declared_ms: v.declared,
         mechanism: spec.mechanism,
+        fired_at_us,
     };
     // SAFETY: `f` and `ctx` were registered together through
     // `set_reaction_hook`, whose caller keeps `ctx` valid for the executor's
@@ -17699,6 +17706,7 @@ fn call_hazard_reaction(
     spec: &super::monitor::HazardSpec,
     row: usize,
     v: &super::monitor::Violation,
+    fired_at_us: u64,
 ) {
     let Some((f, ctx)) = hook else { return };
     let ev = super::monitor::ReactionEvent {
@@ -17708,12 +17716,16 @@ fn call_hazard_reaction(
         measured_ms: v.measured,
         declared_ms: v.declared,
         mechanism: super::monitor::MECHANISM_EXECUTOR,
+        fired_at_us,
     };
     // SAFETY: as `call_route_reaction` -- `f` and `ctx` were registered
     // together through `set_reaction_hook`.
     unsafe { f(&ev, ctx) };
 }
 
+// The deadline, the SC slot, the miss sinks and both fault paths, plus the
+// fire time the reaction hook reports (play_launch phase 96 W4.2).
+#[allow(clippy::too_many_arguments)]
 fn check_deadline_miss(
     sc: Option<&super::sched_context::SchedContext>,
     sc_idx: usize,
@@ -17722,6 +17734,7 @@ fn check_deadline_miss(
     skipped_scs: &mut u64,
     fault_fn: Option<fn(&super::monitor::Violation)>,
     reaction_hook: Option<(super::monitor::ReactionHookFn, *mut core::ffi::c_void)>,
+    fired_at_us: u64,
 ) {
     use super::sched_context::DeadlineAction;
     let Some(sc) = sc else { return };
@@ -17763,6 +17776,7 @@ fn check_deadline_miss(
                     measured_ms: elapsed_us / 1_000,
                     declared_ms: deadline_us / 1_000,
                     mechanism: super::monitor::MECHANISM_EXECUTOR,
+                    fired_at_us,
                 };
                 // SAFETY: as in `check_route_deadlines`.
                 unsafe { f(&ev, ctx) };

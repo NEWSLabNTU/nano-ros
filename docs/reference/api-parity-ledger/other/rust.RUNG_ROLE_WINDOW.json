@@ -1,0 +1,6 @@
+{
+  "key": "rust:RUNG_ROLE_WINDOW",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "play_launch phase 96 W4.2 -- `RungSpec::role` of a `window:` rung (rlm `RungRole::Window`). See `rust:RungSpec`."
+}

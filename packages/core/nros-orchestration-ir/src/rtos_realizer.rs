@@ -917,7 +917,6 @@ mod tests {
                     ..Default::default()
                 },
             ],
-            legacy: None,
             chains: vec![],
         }
     }
@@ -1346,7 +1345,6 @@ mod tests {
     fn realize_one(node: MapperNode) -> RealizedNode {
         let input = MapperInput {
             nodes: vec![node],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
@@ -1409,7 +1407,6 @@ mod tests {
     fn realize_one_plan(node: MapperNode) -> RtosPlan {
         let input = MapperInput {
             nodes: vec![node],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
@@ -1531,7 +1528,6 @@ mod tests {
                 node_with_rate("/a", 100.0, 6.0),
                 node_with_rate("/b", 100.0, 6.0),
             ],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
@@ -1561,7 +1557,6 @@ mod tests {
                 node_with_rate("/a", 100.0, 6.0),
                 node_with_rate("/b", 100.0, 6.0),
             ],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
@@ -1583,7 +1578,6 @@ mod tests {
                 node_with_rate("/a", 100.0, 6.0),
                 node_with_rate("/b", 100.0, 6.0),
             ],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
@@ -1611,7 +1605,6 @@ mod tests {
                 node_with_rate("/b", 100.0, 6.0),
                 unmeasured,
             ],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
@@ -1654,7 +1647,6 @@ mod tests {
                 node_with_rate("/a", 100.0, 1.0),
                 node_with_rate("/b", 100.0, 1.0),
             ],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
@@ -1686,7 +1678,6 @@ mod tests {
                 node_with_rate("/b", 100.0, 6.0),
                 node_with_rate("/c", 100.0, 6.0),
             ],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
@@ -1722,7 +1713,6 @@ mod tests {
         silent.paths[0].exec_ms = None;
         let input = MapperInput {
             nodes: vec![node_with_rate("/a", 100.0, 1.0), silent],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
@@ -1745,7 +1735,6 @@ mod tests {
     fn a_uniprocessor_gets_no_derived_placement() {
         let input = MapperInput {
             nodes: vec![node_with_rate("/a", 100.0, 1.0)],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
@@ -1771,7 +1760,6 @@ mod tests {
                 node_with_rate("/a", 100.0, 1.0),
                 node_with_rate("/b", 100.0, 1.0),
             ],
-            legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);

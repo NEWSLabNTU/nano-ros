@@ -521,7 +521,7 @@ pub(crate) mod tests {
             AGE_100,
             "",
             &hazard_with_ftti("500.0"),
-            "      period_us: 10000\n",
+            "      period: 10000us\n",
         ));
         let b = &hazard_budgets(&m).expect("resolves")[0];
         let d = b.detection.as_ref().expect("observed");
@@ -539,7 +539,7 @@ pub(crate) mod tests {
             AGE_100,
             "",
             &hazard_with_ftti("120.0"),
-            "      period_us: 10000\n",
+            "      period: 10000us\n",
         ));
         let err = check_model(&m).expect_err("130 > 120 must refuse");
         let text = err.to_string();

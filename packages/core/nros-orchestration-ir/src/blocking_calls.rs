@@ -406,9 +406,13 @@ mod tests {
                 },
             );
             if call.is_some() {
-                m.contracts
-                    .cli_endpoints
-                    .insert(client.to_string(), CliContract { call });
+                m.contracts.cli_endpoints.insert(
+                    client.to_string(),
+                    CliContract {
+                        call,
+                        ..Default::default()
+                    },
+                );
             }
         }
         m
@@ -523,6 +527,7 @@ mod tests {
             "/s/handler/go".to_string(),
             CliContract {
                 call: Some(CallMode::Blocking),
+                ..Default::default()
             },
         );
         let table = ResolvedTierTable {
