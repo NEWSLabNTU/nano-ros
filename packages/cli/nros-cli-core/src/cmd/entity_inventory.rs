@@ -332,7 +332,7 @@ fn load_model(model_path: &std::path::Path) -> Result<nros_orchestration_ir::ove
         .map_err(|e| eyre::eyre!("entity-inventory: {e}"))?;
     let raw = std::fs::read_to_string(model_path)
         .wrap_err_with(|| format!("read model `{}`", model_path.display()))?;
-    let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
+    let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw)
         .wrap_err_with(|| format!("parse model `{}`", model_path.display()))?;
     check_model(&model).wrap_err_with(|| format!("model `{}`", model_path.display()))?;
     // phase-486 W3 -- the nano-ros switches beside the model.

@@ -390,7 +390,7 @@ structure:
 execution:
   tiers:
     high:
-      spin_period_us: 1000
+      spin_period: 1000us
       posix:
         priority: 80
       freertos:
@@ -418,7 +418,7 @@ structure: {}
 execution:
   tiers:
     high:
-      spin_period_us: 1000
+      spin_period: 1000us
       posix:
         priority: 80
       freertos:
@@ -648,7 +648,7 @@ structure:
 execution:
 {deploy}  tiers:
     high:
-      spin_period_us: 1000
+      spin_period: 1000us
       posix:
         priority: 80
   bindings:
