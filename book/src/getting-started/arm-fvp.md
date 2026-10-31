@@ -19,10 +19,11 @@ the build half.
 >
 > **Verified where?** The run half is maintainer-run: a maintainer boots the
 > image by hand (the recipe is in the contributor lanes linked below), and no
-> installed probe track replays this chapter (issue 2176). `fvp-aemv8r-smp` is a Tier 3
-> build-only board ([Board support tiers](../reference/board-support-tiers.md));
-> a probe track follows its promotion out of that tier, not the other way
-> round. Read the output below as what a maintainer last saw, not as a gate.
+> installed probe track replays this chapter (issue 2176). `fvp-aemv8r-smp` reads
+> **Boots, manual** with the date of its last boot
+> ([its evidence page](../reference/boards/fvp.md)); a probe track follows
+> an automated run, not the other way round. Read the output below as what a
+> maintainer last saw, not as a gate.
 
 ## When to use
 

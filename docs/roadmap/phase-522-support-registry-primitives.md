@@ -1,6 +1,6 @@
 # Phase 522 — The board support registry becomes the one primitive
 
-**Status (2026-11-01). IN PROGRESS: W1, W2 and W3 landed.** Implements
+**Status (2026-11-01). IN PROGRESS: W1, W2, W3 and W4 landed.** Implements
 [RFC-0114](../design/0114-board-support-registry-primitives.md) (D10 support
 levels, D11 derived and inherited breadth, D12 one registry, everything else
 generated). Amends the tier section of
@@ -229,6 +229,36 @@ degradation on the FVP row) is demonstrated in both directions.
 Decision step: the page is reviewed against the migration table by the
 maintainers before the old page is deleted. A surprise is a registry fix or
 a predicate fix, never a hand edit of a generated page.
+
+**Result (2026-11-01).** `board-support-tiers.md` and its generator are
+deleted; `board-support-levels.md` replaces them in `SUMMARY.md` and every
+link. Each getting-started chapter names its boards' evidence pages in a
+"Support level" line, and `support-status.md` links the levels page. A grep
+of `book/src` for `[Tt]ier [123]` finds nothing: the board tier words became
+evidence words, and the CI lane tiers of the contributor pages read "the
+tier-1 lane". `tier` and `execution_class` are gone from the registry and the
+predicates: `check-board-tiers.py` now checks the primitives and keys the
+maintainer rule on the derived level (Verified needs 2, Boots or Builds 1),
+with the baseline re-keyed to levels; `ci_lane`'s tier-1 pool is compared
+with the `cadence = "merge"` rows (`--print-cadence`); the "explicitly not
+supported" exemptions of issue 1305's walk and `check-managed-msg-deps` read
+the derived "Not supported" from the new generated
+`packages/boards/board-support-status.json`; `tier-health.py` derives its
+lane tier from `cadence`. The levels page matches the W1 migration table row
+for row. Evaluation step 5, both directions: on 2026-11-01 the FVP row reads
+"Boots, manual (2026-09-06)", and `check-board-tiers.py --print-status
+--today 2027-02-01` (or `gen-board-support.py --today 2027-02-01 --out DIR`)
+reads "Builds (last booted 2026-09-06)".
+
+Decision step: the generated views evaluate staleness on no clock, because a
+view that changed on a day nobody edited anything would turn the byte gate
+red for every pull request after day 120 (issue 1226's uniformly-red lane).
+They print the date the degradation starts ("reads *Builds* from
+2027-01-05") instead, and the live readers (`--print-status`, and W5's
+`nros board`) apply the real date. `nros-board-mps3-an536-freertos` reads
+Builds, a level that owes a maintainer where its old scaffold row owed none,
+so it joins the maintainer baseline at `builds`; the maintainer must name an
+owner for it, as for the S32K344 island.
 
 ### W5 — The CLI reads the registry
 

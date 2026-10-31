@@ -712,8 +712,9 @@ mod tests {
         // Tier 1 promises runtime evidence EVERY MERGE, and only a
         // host-executable platform can afford that cadence — a cross-run
         // platform's evidence can only ever be nightly, which is tier 2's
-        // promise. `check-board-tiers` enforces the same rule on the registry;
-        // this is the lane's half.
+        // promise. The registry says the same with `cadence = "merge"`, which
+        // `check-board-tiers` allows only on a host executable; this is the
+        // lane's half.
         for c in cells(CiLane::Tier1) {
             assert!(
                 matches!(
@@ -728,7 +729,8 @@ mod tests {
     /// The pool above is a hardcoded list, and `board-support.toml` is the SSoT.
     /// Hardcoding WITHOUT this assertion is exactly how the two drifted apart:
     /// the registry promised three tier-1 platforms while the pool named one,
-    /// and nothing noticed because nothing compared them.
+    /// and nothing noticed because nothing compared them. Since phase-522 W4
+    /// the registry states it as `cadence = "merge"` (RFC-0114 D10).
     #[test]
     fn tier1_pool_matches_board_registry() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -737,14 +739,16 @@ mod tests {
             .expect("repo root");
         let out = std::process::Command::new("python3")
             .arg(root.join("scripts/check-board-tiers.py"))
-            .arg("--print-tiers")
+            .arg("--print-cadence")
             .current_dir(root)
             .output();
         let Ok(out) = out else {
             crate::unmet!("python3 unavailable — cannot read the board registry");
         };
         if !out.status.success() {
-            crate::unmet!("check-board-tiers --print-tiers failed; the registry could not be read");
+            crate::unmet!(
+                "check-board-tiers --print-cadence failed; the registry could not be read"
+            );
         }
         let text = String::from_utf8_lossy(&out.stdout);
         let mut registry: Vec<&str> = text
@@ -752,8 +756,8 @@ mod tests {
             .filter_map(|l| {
                 let mut f = l.split('\t');
                 let plat = f.next()?;
-                let tier = f.next()?;
-                (tier == "1").then_some(plat)
+                let cadence = f.next()?;
+                (cadence == "merge").then_some(plat)
             })
             .collect();
         registry.sort_unstable();
@@ -767,9 +771,10 @@ mod tests {
 
         assert_eq!(
             pooled, registry,
-            "the tier-1 POOL and packages/boards/board-support.toml disagree.\n\
-             The registry is the source of truth for which platforms a tier \
-             promises; update `pool(CiLane::Tier1)` to match, or change the tier \
+            "the tier-1 POOL and packages/boards/board-support.toml's \
+             `cadence = \"merge\"` rows disagree.\n\
+             The registry is the source of truth for which platforms run on every \
+             merge; update `pool(CiLane::Tier1)` to match, or change the cadence \
              in the registry deliberately."
         );
     }

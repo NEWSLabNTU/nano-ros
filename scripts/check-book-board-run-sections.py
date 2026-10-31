@@ -6,16 +6,16 @@ WHAT THIS ASSERTS
 `nros build` ends at an artifact (there is no `nros run` / `nros flash`), so
 the book is the one place a reader learns which command boots the image on
 QEMU / a simulator and which flashes a real board. For every board row of
-`packages/boards/board-support.toml` at tier 1, 2 or 3:
+`packages/boards/board-support.toml` that RUNS somewhere (`runs` is host,
+emulator or hardware) or is physical silicon (`real_hardware = true`):
 
   * the row names its run block, `book_run = "<chapter>.md#<anchor>"` — a page
     under `book/src/` and the id mdbook gives one of its headings;
   * a row with `real_hardware = true` names its flash block, `book_flash`, the
     same way (and needs no run block when nothing emulates it — S32Z270);
-  * a row with `execution_class = "hardware"` states `real_hardware`, true or
-    false, because that class means "CI cannot boot it", which is true of a
-    physical board AND of a licence-free model CI does not run (the ARM FVP),
-    and only the first is flashed;
+  * a row with `runs = "hardware"` states `real_hardware = true`: its image
+    runs on silicon, which is flashed (a model such as the ARM FVP is
+    `runs = "emulator"` and states `real_hardware = false`);
 
 and each named block must exist:
 
@@ -28,8 +28,8 @@ and each named block must exist:
 The rows and the chapters are both READ, never listed here. A board row whose
 chapter the table of contents marks `(…, dormant)` or `(…, retired)` (the ESP32
 pages, issue 1525) is skipped, with the same SUMMARY derivation
-`check-book-links.py` and `check-book-board-names.py` use; today every ESP32
-row is `scaffold` anyway, which no tier promise reaches.
+`check-book-links.py` and `check-book-board-names.py` use; today the ESP32 row
+is `runs = "none"` anyway, which this check does not read.
 
 The commands themselves are not executed here; that is phase-517 W10's
 per-chapter probe.
@@ -55,7 +55,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 REGISTRY = "packages/boards/board-support.toml"
 SUMMARY = "book/src/SUMMARY.md"
 
-TIERS = {"1", "2", "3"}
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 FENCE = re.compile(r"^\s*(```|~~~)")
 PARKED = re.compile(r"\[[^\]]*\((?:[^)]*,\s*)?(?:dormant|retired)\)\]\(\./([^)]+)\)", re.I)
@@ -145,27 +144,26 @@ def run(registry: dict, pages: dict[str, str]) -> tuple[list[str], int]:
     errors: list[str] = []
     checked = 0
     for row in registry.get("board", []):
-        if str(row.get("tier", "")) not in TIERS:
-            continue
+        real = row.get("real_hardware")
+        if row.get("infra") or (row.get("runs") in (None, "none") and real is not True):
+            continue  # a row that runs nowhere has no Run section to name
         where = f"{REGISTRY}: {row.get('crate', '<no crate>')}@{row.get('matrix_platform') or '-'}"
         refs = [row.get(k) for k in ("book_run", "book_flash")]
         chapters = {r.split("#", 1)[0] for r in refs if isinstance(r, str)}
         if chapters and chapters <= parked:
             continue  # a dormant chapter — parked text, kept unchanged on purpose
         checked += 1
-        real = row.get("real_hardware")
-        if row.get("execution_class") == "hardware" and not isinstance(real, bool):
+        if row.get("runs") == "hardware" and real is not True:
             errors.append(
-                f"{where}: `execution_class = \"hardware\"` row must state "
-                f"`real_hardware = true|false` — a physical board is flashed, a model "
-                f"CI does not run (FVP) is run; the class alone cannot say which")
+                f"{where}: `runs = \"hardware\"` row must state `real_hardware = true` — "
+                f"its image runs on silicon, and silicon is flashed")
         if real is not None and not isinstance(real, bool):
             errors.append(f"{where}: `real_hardware` must be a boolean")
         if "book_run" in row:
             errors += check_ref(where, "book_run", row["book_run"], "Run", pages, listed)
         elif real is not True:
             errors.append(
-                f"{where}: tier {row.get('tier')} board names no run block — add "
+                f"{where}: a board that runs ({row.get('runs')}) names no run block — add "
                 f"`book_run = \"<chapter>.md#<anchor>\"` pointing at the chapter's "
                 f"\"Run on QEMU / simulator\" section")
         if "book_flash" in row:
@@ -187,9 +185,9 @@ def selftest(verbose: bool = False) -> int:
     pages = {SUMMARY: summary, "book/src/getting-started/a.md": good_a,
              "book/src/getting-started/b.md": "# B\n",
              "book/src/getting-started/e.md": "# E\n"}
-    qemu = {"crate": "q", "tier": 2, "execution_class": "cross-run",
+    qemu = {"crate": "q", "runs": "emulator",
             "book_run": "getting-started/a.md#run-on-qemu"}
-    hw = {"crate": "h", "tier": 3, "execution_class": "hardware", "real_hardware": True,
+    hw = {"crate": "h", "runs": "hardware", "real_hardware": True,
           "book_flash": "getting-started/a.md#flash-a-real-board"}
 
     def errs(rows, pg=None):
@@ -216,16 +214,18 @@ def selftest(verbose: bool = False) -> int:
         ("a fence under a sub-heading counts", errs([qemu], sub_heading), False),
         ("a real board with no flash block fails",
          errs([{k: v for k, v in hw.items() if k != "book_flash"}]), True),
-        ("hardware class without real_hardware fails",
+        ("a hardware run without real_hardware fails",
          errs([{k: v for k, v in hw.items() if k != "real_hardware"}]), True),
-        ("a model (hardware class, real_hardware=false) needs a run block",
-         errs([{"crate": "f", "tier": 3, "execution_class": "hardware",
-                "real_hardware": False}]), True),
+        ("a model (runs emulator, real_hardware=false) needs a run block",
+         errs([{"crate": "f", "runs": "emulator", "real_hardware": False}]), True),
+        ("silicon nothing runs (real_hardware, runs none) needs its flash block",
+         errs([{"crate": "s", "runs": "none", "real_hardware": True}]), True),
         ("an unlisted chapter fails",
          errs([dict(qemu, book_run="getting-started/z.md#run-on-qemu")]), True),
         ("a heading not starting with Run fails",
          errs([dict(qemu, book_run="getting-started/a.md#flash-a-real-board")]), True),
-        ("a scaffold row is not read", errs([{"crate": "s", "tier": "scaffold"}]), False),
+        ("a row that runs nowhere is not read", errs([{"crate": "s", "runs": "none"}]), False),
+        ("an infra row is not read", errs([{"crate": "i", "infra": True}]), False),
         ("a dormant chapter's row is skipped",
          errs([dict(qemu, book_run="getting-started/e.md#run")]), False),
     ]
@@ -264,7 +264,7 @@ def main() -> int:
     pages = {rel: (ROOT / rel).read_text() for rel in listed}
     errors, checked = run(registry, pages)
     if not checked:
-        print(f"check-book-board-run-sections: read NO tier 1-3 rows from {REGISTRY}",
+        print(f"check-book-board-run-sections: read NO board that runs from {REGISTRY}",
               file=sys.stderr)
         return 1
     if errors:
@@ -274,12 +274,12 @@ def main() -> int:
             print(f"  {e}", file=sys.stderr)
         print(
             "\n`nros build` prints the next command and stops; the book is where a reader"
-            "\nlearns it. Each tier 1-3 row names its chapter's \"Run …\" section"
+            "\nlearns it. Each board that runs names its chapter's \"Run …\" section"
             "\n(`book_run`), and a physical board its \"Flash …\" section (`book_flash`).",
             file=sys.stderr,
         )
         return 1
-    print(f"check-book-board-run-sections: OK ({checked} tier 1-3 board row(s))")
+    print(f"check-book-board-run-sections: OK ({checked} board row(s) that run)")
     return 0
 
 

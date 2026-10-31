@@ -78,6 +78,9 @@ def parse_registry(text):
             cur = {}
             entries.append(cur)
             continue
+        if line.startswith("["):
+            cur = None          # another table (`[[probe]]`, phase-522 W2)
+            continue
         if cur is None:
             continue
         m = re.match(r'^([a-z_]+)\s*=\s*(.+)$', line)
