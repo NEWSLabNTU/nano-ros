@@ -440,6 +440,15 @@ zenoh-feature-off-compile:
 zenohd-flag-invocations:
     @python3 scripts/check-zenohd-flag-invocations.py
 
+# phase-519 W4 — the XRCE agent's sibling: no doc or example starts
+# `MicroXRCEAgent <transport>` by hand; `just xrce agent <locator>` is the door.
+xrce-agent-invocations:
+    @python3 scripts/check-xrce-agent-invocations.py
+
+# phase-519 W4 — the agent door's locator -> argv translation, as a table.
+xrce-agent-door:
+    @bash tests/xrce-agent-door-tests.sh
+
 # Issue 0653 — the shell and Rust router resolvers must resolve the SAME router.
 #
 # `just <plat> zenohd` is shell and the test harness is Rust; neither can call

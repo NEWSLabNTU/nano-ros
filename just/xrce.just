@@ -60,6 +60,50 @@ doctor:
         exit 1
     fi
 
+# Start the provisioned Micro-XRCE-DDS Agent on a locator (phase-519 W4).
+#
+#   just xrce agent                          # udp/127.0.0.1:8888, or $NROS_LOCATOR
+#   just xrce agent udp/127.0.0.1:2018       # the locator a [[domain]] states
+#   just xrce agent examples/zephyr/c/action-client:zephyr_xrce
+#                                            # the locator that leaf's image states
+#   just xrce agent udp/127.0.0.1:8888 -v 6  # flags after it go to the agent
+#
+# The locator is nano-ros's own spelling, the one `system.toml` writes, so a
+# README passes what its domain says instead of retyping the agent's flags. A
+# directory holding a `system.toml` (optionally `:<image>`) is read for its
+# image's locator through `nros ws leaf-system`; an image whose RMW is not xrce,
+# or that states no locator, is refused. Positional on purpose: a module recipe
+# does not parse `name=value`. The door is `scripts/dev/xrce-agent.sh`.
+[group("main")]
+agent target="" *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/dev/xrce-agent.sh
+    target="{{target}}"
+    leaf="${target%%:*}"
+    if [ -n "$target" ] && [ -f "$leaf/system.toml" ]; then
+        image_flag=()
+        [ "$leaf" = "$target" ] || image_flag=(--image "${target#*:}")
+        if ! facts="$(nros ws leaf-system "${image_flag[@]}" "$leaf")"; then
+            echo "error: cannot read the deployment of $leaf" >&2
+            exit 1
+        fi
+        rmw="$(printf '%s\n' "$facts" | sed -n 's/^NROS_LEAF_RMW=//p')"
+        loc="$(printf '%s\n' "$facts" | sed -n 's/^NROS_LEAF_LOCATOR=//p')"
+        img="$(printf '%s\n' "$facts" | sed -n 's/^NROS_LEAF_IMAGE=//p')"
+        if [ "$rmw" != xrce ]; then
+            echo "error: image \`$img\` of $leaf uses rmw \`$rmw\`, not xrce; name an xrce image: $leaf:<image>" >&2
+            exit 2
+        fi
+        if [ -z "$loc" ]; then
+            echo "error: image \`$img\` of $leaf states no locator (on native it is runtime env); pass a locator" >&2
+            exit 2
+        fi
+    else
+        loc="${target:-${NROS_LOCATOR:-udp/127.0.0.1:8888}}"
+    fi
+    nros_xrce_agent_exec "$loc" {{args}}
+
 # Build Micro-XRCE-DDS Agent from source (alias for `just xrce setup`).
 [group("main")]
 build-agent:

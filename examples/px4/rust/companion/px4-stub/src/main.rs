@@ -13,7 +13,7 @@
 //! `nros-tests::px4_xrce::test_px4_companion_cross_session_receive`.
 //!
 //! ```bash
-//! MicroXRCEAgent udp4 -p 8888
+//! just xrce agent udp/127.0.0.1:8888    # in the nano-ros checkout
 //! NROS_LOCATOR=127.0.0.1:8888 cargo run -p px4-stub                 # drive the companion
 //! NROS_LOCATOR=127.0.0.1:8888 PX4_STUB_LOOPBACK=1 cargo run -p px4-stub  # self-test
 //! ```

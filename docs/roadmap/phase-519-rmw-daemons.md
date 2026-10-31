@@ -1,5 +1,10 @@
 # Phase 519 — The RMW daemons: the zenoh router and the XRCE agent
 
+**Status (2026-11-01). W4 done; W1-W3 still deferred.** The maintainer took
+W4 out of the deferral. `just xrce agent <locator | leaf[:image]>` starts the
+provisioned agent on the locator a domain or an image states, the READMEs use
+it, and `check-xrce-agent-invocations` keeps hand-typed agent commands out.
+
 **Status (2026-10-26). Deferred by the maintainer; nothing started.** Every
 item waits for a reason to start: W1 for a shared router, W2 for a maintainer
 to file it, W3 and W4 for XRCE work to be prioritised. This
@@ -97,7 +102,7 @@ whether what it delivers is fresh. Then either the subscriber requests it from
 the declared ingress (with an RFC-0074 amendment), or RFC-0074 records why
 XRCE has no enforcement point 1.
 
-### W4 — one door for starting the agent
+### W4 — one door for starting the agent — DONE (2026-11-01)
 
 The router has one: `nros_router_exec <locator> [model]`, run by every
 `just <platform>::zenohd`, resolved by `nros_zenohd_bin`, and gated by
@@ -114,6 +119,45 @@ the owner). The test harness also pins the agent's DDS side to loopback
 provisioned agent on the transport and port the image's locator states. The
 READMEs then use it, and a gate keeps a hand-typed `MicroXRCEAgent` command out
 of the docs the way `check-zenohd-flag-invocations` does for the router.
+
+**Landed.**
+
+- The door is `scripts/dev/xrce-agent.sh`: `nros_xrce_agent_bin`,
+  `nros_xrce_agent_args <locator>`, `nros_xrce_agent_exec <locator>` and
+  `nros_xrce_agent_hint`. It runs the agent `just xrce setup` published at
+  `$(nros_build_dir xrce-agent)/MicroXRCEAgent`, which is the ROS-paired build
+  or the store agent's wrapper (issue 0741). PATH is not searched, for the
+  router resolver's reason.
+- The locator is nano-ros's own spelling: `udp/<host>:<port>`,
+  `tcp/<host>:<port>` (an IPv6 host in brackets becomes `udp6`/`tcp6`), a bare
+  `<host>:<port>` (the XRCE client's `NROS_LOCATOR` form, which is UDP), and
+  `serial/<dev>#baudrate=<n>`. The host is where the device dials: the agent
+  has no bind option and listens on every interface of the family. A serial
+  locator naming the device's UART (`UART_0`) is refused unless
+  `NROS_XRCE_AGENT_DEV` names the host end. `custom://` is refused.
+- `just xrce agent` is one shared verb, not one per platform. With no argument
+  it uses `$NROS_LOCATOR` or `udp/127.0.0.1:8888`; a locator is used as
+  written; a directory holding a `system.toml` (`<leaf>[:<image>]`) is read for
+  that image's locator through `nros ws leaf-system`. An image whose RMW is not
+  xrce, or which states no locator, is refused. Flags after the target go to
+  the agent. The argument is positional because a module recipe does not parse
+  `name=value`.
+- DDS isolation is deliberately NOT applied. Issue 1009 measured that a
+  loopback profile on one side only gives no discovery, and the ROS peer a
+  reader starts by hand carries none. `FASTRTPS_DEFAULT_PROFILES_FILE` passes
+  through for a caller that pins both sides.
+- Measured: `just xrce agent examples/zephyr/c/action-client:zephyr_xrce` bound
+  the agent on `0.0.0.0:2018`, the port that image states.
+- Sites moved to the verb: `examples/workspaces/bridge-xrce/README.md`,
+  `examples/px4/rust/companion/README.md` and the doc comments of its three
+  crates, and `docs/reference/px4-xrce-companion.md`.
+- Gates: `check-xrce-agent-invocations` (no `MicroXRCEAgent <transport>`
+  outside history, `third-party/` and the test harness; it has a self-test) and
+  `check-xrce-agent-door` (the locator table, 16 rows).
+
+**Not covered.** A copied-out example has no `just`, so its README tells the
+reader to run the verb in the nano-ros checkout. An `nros` subcommand would
+remove that step; nothing in this item needed one.
 
 ## Issues homed here
 

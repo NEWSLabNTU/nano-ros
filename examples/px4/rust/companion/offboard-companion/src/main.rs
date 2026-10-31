@@ -15,7 +15,7 @@
 //!
 //! ```bash
 //! # 1. Start the agent PX4 talks to (UDP on the default PX4 port):
-//! MicroXRCEAgent udp4 -p 8888
+//! just xrce agent udp/127.0.0.1:8888    # in the nano-ros checkout
 //!
 //! # 2. Start PX4 SITL (or real firmware) so /fmu/out/* flows.
 //! #    (see docs/reference/px4-xrce-companion.md)
@@ -54,7 +54,7 @@ static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> 
 fn main() {
     env_logger::init();
 
-    // PX4's default agent port is 8888 (`MicroXRCEAgent udp4 -p 8888`).
+    // PX4's default agent port is 8888 (`just xrce agent udp/127.0.0.1:8888`).
     let locator = std::env::var("NROS_LOCATOR").unwrap_or_else(|_| "127.0.0.1:8888".to_string());
     let domain_id: u32 = std::env::var("ROS_DOMAIN_ID")
         .ok()

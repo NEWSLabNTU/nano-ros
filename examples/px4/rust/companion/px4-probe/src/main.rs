@@ -7,7 +7,7 @@
 //! `make px4_sitl none` boot is enough.
 //!
 //! ```bash
-//! MicroXRCEAgent udp4 -p 8888 &
+//! just xrce agent udp/127.0.0.1:8888 &  # in the nano-ros checkout
 //! make px4_sitl none          # in PX4-Autopilot; uxrce_dds_client autoconnects
 //! NROS_LOCATOR=127.0.0.1:8888 cargo run -p px4-probe
 //! ```

@@ -36,7 +36,7 @@ modules are harmless (dead-code-allowed, compiled on demand).
 ## Build + run
 
 ```bash
-MicroXRCEAgent udp4 -p 8888 &
+just xrce agent udp/127.0.0.1:8888 &    # in the nano-ros checkout
 NROS_LOCATOR=127.0.0.1:8888 cargo run -p px4-offboard-companion
 ```
 
@@ -47,7 +47,7 @@ NROS_LOCATOR=127.0.0.1:8888 cargo run -p px4-offboard-companion
 round-trips `px4_msgs` through a bare agent:
 
 ```bash
-MicroXRCEAgent udp4 -p 8888 &
+just xrce agent udp/127.0.0.1:8888 &    # in the nano-ros checkout
 NROS_LOCATOR=127.0.0.1:8888 PX4_STUB_LOOPBACK=1 PX4_STUB_TICKS=200 cargo run -p px4-stub
 # → "loopback rx[N]: ..." lines
 ```
