@@ -224,6 +224,10 @@ fn render_package_xml(args: &NewArgs) -> String {
 
 /// Append the `board-support.toml` row, at `tier = "scaffold"`.
 ///
+/// It also states `runs = "none"` (RFC-0114 D10, phase-522 W1): a new board
+/// boots nowhere until a cell says otherwise, so its derived status word is
+/// "Builds" or "Not supported", and it claims no breadth yet.
+///
 /// Scaffold is the honest starting tier and `check-board-tiers` demands nothing
 /// of it. A tier with a promise needs a named maintainer (phase-375 W1: at
 /// least 1 for tier 3, 2 for tier 2, 3 for tier 1), and a scaffold that claimed
@@ -237,7 +241,7 @@ fn append_registry_row(root: &Path, args: &NewArgs) -> Result<()> {
     // an existing section, so without it the next `[[board]]` ends up glued to
     // this row's last key. Valid TOML, unreadable diff.
     let row = format!(
-        "[[board]]\ncrate = \"nros-board-{}\"\ntier = \"scaffold\"\nmaintainers = []\n\n",
+        "[[board]]\ncrate = \"nros-board-{}\"\ntier = \"scaffold\"\nruns = \"none\"\nmaintainers = []\n\n",
         args.name
     );
     // Before the `# ===== infra` section, which is not boards.
