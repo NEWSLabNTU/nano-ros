@@ -1242,10 +1242,16 @@ mod tests {
                     .find_map(|w| w.strip_prefix("variant="))
                     .unwrap_or("");
                 seen.push((chapter, variant.to_string()));
+                // A QEMU block with no row is also refused statically, before
+                // anything compiles, by `check-board-registry` (phase-522 W3):
+                // the rows are the registry's `[[probe]]` tracks.
                 let Some((_, _, board)) =
                     ROWS.iter().find(|(c, v, _)| *c == chapter && *v == variant)
                 else {
-                    panic!("{chapter} `{info}` boots QEMU and has no row here");
+                    panic!(
+                        "{chapter} `{info}` boots QEMU and no `[[probe]]` track in \
+                         packages/boards/board-support.toml carries its `qemu_board`"
+                    );
                 };
                 // The executable is `"$(nros sdk-path qemu)/bin/qemu-system-…"`
                 // or `"$QEMU_SYSTEM_…"`: skip through the word naming it.
