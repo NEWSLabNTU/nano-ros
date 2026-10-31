@@ -1,7 +1,8 @@
 ---
 id: 2145
 title: "`spin_async()` is a busy loop that blocks its runtime thread up to 1 ms per poll, and the book says it is waker-driven"
-status: open
+status: resolved
+resolved: 2026-10-31
 type: bug
 area: [core, executor, docs]
 severity: medium
@@ -103,3 +104,53 @@ removes.
   1 ms (the park test above covers the mechanism; an end-to-end latency
   measurement is still open).
 - Issue 2134's Embassy Tier 0 recipe keeps its own polling loop until then.
+
+## Resolution
+
+**2026-10-31 — `spin_async` sleeps.** Both halves the Direction asked for, on
+the two primitives issues 2143 and 2144 landed.
+
+- **Arrivals.** The executor's wake context (`WakeCtx`) holds a second waker
+  slot beside the host notifier: `task_waker`, an `atomic_waker::AtomicWaker`.
+  `WakeCtx::notify` wakes it on every arrival it already tells the host
+  about, so `spin_async` and a host's own `set_ready_notifier` coexist rather
+  than displacing each other. Each poll registers the task's `Waker` there
+  BEFORE its pass, so an arrival during or after the pass re-polls the task
+  and nothing is lost. A pass that did no work then returns `Pending` with no
+  self-wake.
+- **Deadlines.** A runtime-agnostic future owns no timer, so this is a
+  sibling, `Executor::spin_async_with_sleep(sleep)`. It takes the runtime's
+  sleep (`tokio::time::sleep`, Embassy's `Timer::after_micros`) and waits for
+  whichever comes first, an arrival or `sleep(next_deadline_us())`. Plain
+  `spin_async()` is that loop without the sleep, so with any deadline pending
+  it still yields with a self-wake. On zenoh that is always, because its
+  3.3 s keepalive is a deadline. The book therefore recommends
+  `spin_async_with_sleep`, and the two tokio examples
+  (`service-client-async`, `action-client-async`) use it.
+- **Poll-only backends** (`ready_notifier_supported()` false: XRCE, uORB's
+  polling build, bare-metal smoltcp) still self-wake every poll. They learn of
+  an arrival only inside a pass, so there is nothing to sleep on. Documented
+  in the rustdoc and the book.
+
+**Acceptance, live over zenoh** (`packages/testing/nros-tests/tests/entity_wake.rs`):
+
+- `spin_async_sleeps_while_idle_and_wakes_on_an_arrival` — 0 wakes in 1 s
+  idle, then a publish is dispatched inside a park that only a wake can end.
+  Mutation-checked: forcing the old self-wake gives 19,995 wakes in the same
+  second.
+- `a_sibling_future_never_waits_a_spin_async_park` — a `spin_async` poll,
+  which is what a sibling on a single-threaded runtime waits for, takes about
+  60 µs median against the old 1 ms floor.
+
+The unit test `spin_async_poll_never_parks_and_wakes_itself` stays: the mock
+session is a poll-only executor, so it now pins that fallback.
+
+Docs updated: the rustdoc envelope, `rtos-cooperation.md` (Async runtime
+section and trade-off row), `embassy-integration.md`, `ros2-comparison.md`,
+`rmw-vs-upstream.md`, `no-std.md`, `std-alloc-requirements.md`, RFC-0001's
+"as built" note, RFC-0112's Readiness-out row and D2 list, the
+`rust:Executor::spin_async` parity-ledger row, and the `nros` services guide.
+
+Issue 2134's Embassy recipe can now use `spin_async_with_sleep` instead of
+its own polling loop. The book's Embassy chapter says so; rewriting the
+chapter around `setup!` remains phase-520 W4.

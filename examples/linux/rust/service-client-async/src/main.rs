@@ -2,7 +2,7 @@
 //!
 //! Demonstrates the background spin pattern for async service calls:
 //! 1. Create executor → create client (owned, no lifetime to executor)
-//! 2. Move executor to a background `spin_async()` task via `spawn_local`
+//! 2. Move executor to a background `spin_async_with_sleep()` task via `spawn_local`
 //! 3. `.await` the Promise directly from the main task
 //!
 //! This pattern uses tokio's `current_thread` runtime with `LocalSet` for
@@ -70,7 +70,9 @@ async fn main() {
             // Spawn spin_async() as a background task on the same thread.
             // This drives I/O so the service reply can arrive.
             tokio::task::spawn_local(async move {
-                executor.spin_async().await;
+                // tokio's sleep lets an idle executor sleep until its next
+                // deadline instead of polling (issue 2145).
+                executor.spin_async_with_sleep(tokio::time::sleep).await;
             });
 
             // Let discovery settle before the single request.

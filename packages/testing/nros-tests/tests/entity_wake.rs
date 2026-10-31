@@ -30,6 +30,10 @@
 //! and for a guard condition triggered from another thread, so a host loop can
 //! wait on it and spin only then.
 //!
+//! And the async end of the same path (issue 2145): `spin_async_with_sleep`
+//! costs no CPU while idle, wakes on an arrival, and never makes a sibling
+//! future on its runtime wait a park.
+//!
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test entity_wake`.
 
 #![cfg(feature = "trigger-test")]
@@ -1029,5 +1033,214 @@ fn the_ready_notifier_fires_with_nothing_spinning(zenohd_unique: ZenohRouter) {
         counter.load(std::sync::atomic::Ordering::SeqCst),
         frozen,
         "a cleared notifier was called"
+    );
+}
+
+/// Issue 2145 -- a waker that unparks the test thread and counts its wakes.
+struct ThreadWaker {
+    thread: std::thread::Thread,
+    wakes: std::sync::atomic::AtomicUsize,
+}
+
+impl std::task::Wake for ThreadWaker {
+    fn wake(self: std::sync::Arc<Self>) {
+        self.wake_by_ref();
+    }
+    fn wake_by_ref(self: &std::sync::Arc<Self>) {
+        self.wakes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.thread.unpark();
+    }
+}
+
+/// Issue 2145 -- the runtime's sleep, for a test with no runtime: completes
+/// after `d`, woken by a helper thread.
+struct ThreadSleep {
+    until: Instant,
+    armed: bool,
+}
+
+impl ThreadSleep {
+    fn new(d: Duration) -> Self {
+        Self {
+            until: Instant::now() + d,
+            armed: false,
+        }
+    }
+}
+
+impl core::future::Future for ThreadSleep {
+    type Output = ();
+    fn poll(
+        mut self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<()> {
+        if Instant::now() >= self.until {
+            return core::task::Poll::Ready(());
+        }
+        if !self.armed {
+            self.armed = true;
+            let (waker, until) = (cx.waker().clone(), self.until);
+            std::thread::spawn(move || {
+                std::thread::sleep(until.saturating_duration_since(Instant::now()));
+                waker.wake();
+            });
+        }
+        core::task::Poll::Pending
+    }
+}
+
+/// Poll `fut` (which never completes) until `done()` or `budget` runs out,
+/// parking between polls so that only a WAKE (or the budget) polls it again.
+/// Returns whether `done()` became true.
+fn drive_until(
+    fut: core::pin::Pin<&mut impl core::future::Future>,
+    waker: &std::sync::Arc<ThreadWaker>,
+    budget: Duration,
+    done: impl Fn() -> bool,
+) -> bool {
+    let w = std::task::Waker::from(waker.clone());
+    let mut cx = core::task::Context::from_waker(&w);
+    let mut fut = fut;
+    let start = Instant::now();
+    loop {
+        let _ = fut.as_mut().poll(&mut cx);
+        if done() {
+            return true;
+        }
+        let left = budget.saturating_sub(start.elapsed());
+        if left.is_zero() {
+            return false;
+        }
+        std::thread::park_timeout(left);
+    }
+}
+
+/// Issue 2145 -- the acceptance from the issue's Direction: an idle
+/// `spin_async_with_sleep` sleeps (it does not wake itself), and an arrival
+/// wakes it and is dispatched.
+///
+/// The idle bound is loose on purpose: a self-waking loop wakes hundreds of
+/// thousands of times a second, so a bound of a few dozen separates the two
+/// shapes without timing anything.
+#[rstest]
+fn spin_async_sleeps_while_idle_and_wakes_on_an_arrival(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+    const TOPIC: &str = "/spin_async_idle/data";
+
+    let mut exec = open(&locator, "spin_async_idle", domain);
+    let node = exec.node_builder("spin_async_idle").build().expect("node");
+    let received = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let received_cb = received.clone();
+    exec.node_mut(node)
+        .subscription(TOPIC)
+        .generic(TYPE, "")
+        .qos(QoSProfile::default())
+        .rx_buffer::<256>()
+        .build(move |_data: &[u8]| {
+            received_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .expect("register subscription");
+    let publisher = exec
+        .node_mut(node)
+        .create_publisher_raw(TOPIC, TYPE, "")
+        .expect("publisher");
+    assert!(
+        exec.ready_notifier_supported(),
+        "zenoh-pico's multi-threaded POSIX build wakes from its read task, so spin_async can \
+         sleep on arrivals"
+    );
+
+    let waker = std::sync::Arc::new(ThreadWaker {
+        thread: std::thread::current(),
+        wakes: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let mut fut = core::pin::pin!(exec.spin_async_with_sleep(ThreadSleep::new));
+
+    // Settle: let start-up traffic (declarations, discovery) drain.
+    drive_until(fut.as_mut(), &waker, SETTLE, || false);
+
+    // 1. Idle: nothing publishes, so nothing but the 3.3 s keepalive deadline
+    //    may wake the task.
+    const IDLE: Duration = Duration::from_secs(1);
+    let before = waker.wakes.load(std::sync::atomic::Ordering::SeqCst);
+    drive_until(fut.as_mut(), &waker, IDLE, || false);
+    let idle_wakes = waker.wakes.load(std::sync::atomic::Ordering::SeqCst) - before;
+    eprintln!("issue 2145: {idle_wakes} wakes in {IDLE:?} idle");
+    assert!(
+        idle_wakes <= 20,
+        "spin_async woke {idle_wakes} times in {IDLE:?} with nothing arriving: it is still a \
+         busy loop"
+    );
+
+    // 2. An arrival wakes it. Each publish is followed by a park that waits
+    //    out its whole window unless something wakes the task, so a dispatch
+    //    inside a window is the arrival's wake, not a poll on a period.
+    const WINDOW: Duration = Duration::from_millis(500);
+    let start = Instant::now();
+    let mut delivered = false;
+    while !delivered && start.elapsed() < ARRIVAL_BUDGET {
+        publisher.publish_serialized(PAYLOAD).expect("publish");
+        delivered = drive_until(fut.as_mut(), &waker, WINDOW, || {
+            received.load(std::sync::atomic::Ordering::SeqCst) > 0
+        });
+    }
+    assert!(
+        delivered,
+        "no sample was dispatched within {ARRIVAL_BUDGET:?}: an arrival did not wake spin_async"
+    );
+}
+
+/// Issue 2145 -- the other acceptance: a sibling future on the same
+/// single-threaded runtime is never made to wait a park. Each turn of the
+/// sibling also polls `spin_async`, which runs one non-blocking pass, so the
+/// sibling's turn-around is one pass, not the old 1 ms `spin_once`.
+#[rstest]
+fn a_sibling_future_never_waits_a_spin_async_park(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+
+    let mut exec = open(&locator, "spin_async_sibling", domain);
+    let node = exec
+        .node_builder("spin_async_sibling")
+        .build()
+        .expect("node");
+    exec.node_mut(node)
+        .subscription("/spin_async_sibling/data")
+        .generic(TYPE, "")
+        .qos(QoSProfile::default())
+        .rx_buffer::<256>()
+        .build(|_data: &[u8]| {})
+        .expect("register subscription");
+
+    let waker = std::sync::Arc::new(ThreadWaker {
+        thread: std::thread::current(),
+        wakes: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let w = std::task::Waker::from(waker.clone());
+    let mut cx = core::task::Context::from_waker(&w);
+    let mut spin = core::pin::pin!(exec.spin_async_with_sleep(ThreadSleep::new));
+
+    // On a single-threaded runtime a sibling gets its turn only when the
+    // spin_async poll returns, so the poll's duration IS the sibling's wait.
+    const ROUNDS: usize = 200;
+    let mut turns: Vec<Duration> = Vec::with_capacity(ROUNDS);
+    for _ in 0..ROUNDS {
+        let start = Instant::now();
+        let _ = spin.as_mut().poll(&mut cx);
+        turns.push(start.elapsed());
+    }
+    turns.sort_unstable();
+    let median = turns[ROUNDS / 2];
+    eprintln!(
+        "issue 2145: one spin_async poll, median {median:?}, max {:?}",
+        turns[ROUNDS - 1]
+    );
+    assert!(
+        median < Duration::from_millis(1),
+        "a spin_async poll took {median:?} (median): a sibling on its runtime waits that long \
+         each turn, so the poll is still parking"
     );
 }

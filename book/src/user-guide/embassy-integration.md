@@ -69,10 +69,13 @@ board-side half.
   (issue 2144), but it needs `alloc` and a backend with a live async wake
   (`ready_notifier_supported()`), and no example wires it to an Embassy
   signal yet. With both, the task can wait on
-  `select(notified, Timer::after_micros(next_deadline))` and sleep. Do not use
-  `Executor::spin_async()` here: it no longer blocks the Embassy thread
-  inside a poll (issue 2145), but it still wakes itself on every poll, so
-  it is a busy loop that never lets the Embassy executor sleep.
+  `select(notified, Timer::after_micros(next_deadline))` and sleep.
+  `Executor::spin_async_with_sleep(|d| Timer::after_micros(d.as_micros() as u64))`
+  is that loop already written (issue 2145). It never blocks the Embassy
+  thread inside a poll, and it sleeps until an arrival or the next deadline.
+  Plain `spin_async()` has no timer, so with any deadline pending it wakes
+  itself on every poll and never lets the Embassy executor sleep. On a
+  poll-only backend both variants busy-loop.
 - **Deferred dispatch across tasks.** Callbacks run inline, inside
   `spin_some`, unless you mark them with `Executor::set_deferred`; then the
   spin queues them and calls your `set_defer_notifier` function, and

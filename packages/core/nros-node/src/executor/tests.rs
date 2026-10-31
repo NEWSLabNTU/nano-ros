@@ -3453,8 +3453,10 @@ fn a_zero_park_stays_zero() {
 /// platform for, so this needs no wall-clock measurement (a timing assertion
 /// on a loaded host is a flake). It also pins the other half of the current
 /// contract: the poll returns `Pending` and has woken its own waker, because
-/// until an executor-level notifier exists (issue 2144) that self-wake is how
-/// a runtime knows to poll it again.
+/// the mock session has no live async wake (`ready_notifier_supported()` is
+/// false), and for such a poll-only executor that self-wake is how a runtime
+/// knows to poll it again. The sleeping half needs a backend that wakes, so it
+/// is tested live over zenoh (`entity_wake::spin_async_sleeps_while_idle_*`).
 #[test]
 fn spin_async_poll_never_parks_and_wakes_itself() {
     use core::future::Future as _;
@@ -3491,7 +3493,7 @@ fn spin_async_poll_never_parks_and_wakes_itself() {
             assert_eq!(
                 counter.0.load(Ordering::SeqCst),
                 poll,
-                "each poll wakes itself exactly once (no notifier yet, issue 2144)"
+                "each poll wakes itself exactly once (poll-only executor)"
             );
         }
     }
