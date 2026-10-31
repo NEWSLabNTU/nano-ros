@@ -123,6 +123,7 @@ include = [
     # zpico API - Polling
     "zpico_spin_once",
     "zpico_uses_polling",
+    "zpico_drives_on_thread",
     # zpico API - ZenohId
     "zpico_get_zid",
     # zpico API - Liveliness

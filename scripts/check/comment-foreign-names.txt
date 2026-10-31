@@ -52,7 +52,6 @@ _z_pending_query_process_timeout
 _z_prune_declaration
 _z_query
 _z_reopen
-_z_send_keep_alive
 _z_send_n_msg
 _z_slist_new
 _z_str_clone

@@ -1,6 +1,6 @@
 # Phase 521 — The real-time promise and the one wait
 
-**Status (2026-10-31). Approved; W0 done, W1–W8 open.** Implements
+**Status (2026-10-31). Approved; W0 done, W2's THREAD half done, W1–W8 open.** Implements
 [RFC-0113](../design/0113-rt-unified-wait.md). Amends
 [RFC-0106](../design/0106-executor-park.md) D5 and withdraws
 [RFC-0112](../design/0112-framework-support-tiers.md)'s Tier 0.
@@ -94,17 +94,21 @@ Delete RFC-0113 D7's list in one change:
 docs, changelog fragments and RFC-0113; `just ci gate` green;
 `api-parity` and `rmw-api-parity` green.
 
-### W2 — zenoh reports real deadlines
+### W2 — zenoh reports real deadlines — THREAD mode DONE
 
-- THREAD mode (`ZPICO_DRIVE_THREAD`): `next_deadline_ms` returns `None`.
-- CALLER mode: add a `zpico` accessor that returns the zenoh-pico executor's
-  next wake-up time, and return it. If that needs a zenoh-pico change, land it
-  on the fork's patch branch first (vendored-fork workflow).
+- THREAD mode (`ZPICO_DRIVE_THREAD`): `next_deadline_ms` returns `None`,
+  through the new `zpico_drives_on_thread()`. Tested by
+  `entity_wake::an_idle_zenoh_session_does_not_bound_the_park` (an idle
+  4 s `spin_once` is bounded by the caller's budget and waits it out;
+  mutation-checked: the old constant fails it at 3,333,000 us).
+- CALLER mode: keeps one keep-alive interval. zenoh-pico's real next wake-up
+  there is the idle read's 1 ms poll, so reporting it would poll the link at
+  1 kHz (mps2-an385's issue-2022 tickless idle would regress). It moves to W5,
+  where the read becomes RX-notified and the executor's next wake-up is then
+  the honest answer (RFC-0113 D6).
 
-**Acceptance:** an idle zenoh tier on Linux and on one RTOS lane wakes zero
-times in 30 s with no timers (count from `last_park()` attribution); a
-CALLER-mode image still keeps its lease (an mps2-an385 pair stays connected
-for 60 s idle).
+**Acceptance (remaining):** an idle zenoh tier on one RTOS lane wakes zero
+times in 30 s with no timers; covered by W7.
 
 ### W3 — The readiness slot and the POSIX park
 
@@ -134,6 +138,10 @@ granularities (today ~5 ms through the slices); an idle XRCE tier makes zero
 receive calls between deadlines.
 
 ### W5 — Bare metal: RX interrupt and one-shot timer as a port obligation
+
+zenoh's CALLER-mode read moves from its 1 ms idle poll to the RX Notify, and
+its `next_deadline_ms` then reports zenoh-pico's next executor wake-up instead
+of the keep-alive interval (moved here from W2; RFC-0113 D6).
 
 Generalise mps2-an385's pattern (issue 2022) into the board-entry contract:
 a bare-metal board supplies an RX-interrupt Notify and a one-shot deadline

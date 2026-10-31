@@ -625,6 +625,19 @@ mod cbindgen_stubs {
         false
     }
 
+    /// RFC-0113 D6 — does zenoh-pico's executor run on its own thread?
+    ///
+    /// # Returns
+    /// true in RFC-0110 THREAD mode (POSIX, NuttX, Zephyr, FreeRTOS): that
+    /// thread runs the lease, keep-alive, query timeout and reconnect, so a
+    /// caller of `zpico_spin_once` owes zenoh-pico no deadline. false in
+    /// CALLER mode (bare metal, serial, ThreadX), where those futures run only
+    /// inside `zpico_spin_once`.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_drives_on_thread() -> bool {
+        false
+    }
+
     // ========================================================================
     // ZenohId API
     // ========================================================================

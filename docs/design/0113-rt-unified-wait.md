@@ -166,9 +166,14 @@ work to do at it.
 
 - **zenoh, THREAD mode:** `None`. zenoh-pico's own executor thread runs the
   lease and keep-alive.
-- **zenoh, CALLER mode:** the zenoh-pico executor's next wake-up time
-  (`next_wake_up_time` in `src/runtime/executor.c`), reached through a `zpico`
-  accessor, because `zpico_spin_once` is what runs those futures.
+- **zenoh, CALLER mode:** one keep-alive interval (~3.3 s), because the lease
+  and keep-alive futures run only inside `zpico_spin_once`. zenoh-pico's own
+  next wake-up there is its idle read's 1 ms poll
+  (`Z_RUNTIME_IDLE_READ_TASK_SLEEP`), which is not a deadline but a poll: a
+  park that honoured it would read the link at 1 kHz. Once the read is driven
+  by an RX Notify (D4, phase-521 W5), the read stops polling and the
+  executor's next wake-up (`next_wake_up_time` in `src/runtime/executor.c`)
+  becomes the honest answer.
 - **XRCE:** unchanged (`xrce_deadline_next` already names real events).
 
 On bare metal, a deadline is served by a hardware one-shot timer that the
