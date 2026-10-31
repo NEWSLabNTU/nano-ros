@@ -1,15 +1,16 @@
 ---
 id: 2176
 title: "The book's FVP, PX4 SITL and real-hardware flash lines are run by no probe"
-status: open
+status: resolved
 type: test-gap
 severity: low
 area: [testing, docs, installed-sdk]
 related: [phase-517, 2169]
 found: 2026-10-31
+resolved: 2026-10-31
 ---
 
-**Home: [phase-517](../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — W9's **Left**: everything the installed probe
+**Home: [phase-517](../../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — W9's **Left**: everything the installed probe
 tracks do not boot stays unverified.
 
 ## What
@@ -80,3 +81,22 @@ withdraws both. Each was a build-out of its own:
   (`examples/workspaces/realtime-cpp`'s `[image.fvp]`), not an installed
   scaffold.
 * SITL is a full PX4 build.
+
+## Resolution (2026-10-31)
+
+Closed the way the fix direction says, with no new probe track:
+
+* `arm-fvp.md` now states, in its status box and under "Run on the FVP", that
+  the run half is maintainer-run (`just zephyr verify-fvp-runtime`) and
+  replayed by no installed probe, and that a track follows the board's
+  promotion out of Tier 3.
+* PX4 SITL is phase-521 W8's: that item rewrites `px4.md` around the generated
+  entry and requires a delivering SITL cell, which is the replay. `px4.md`'s
+  flash section says so.
+* Every flash line — `integration-zephyr.md`, `freertos.md`, `bare-metal.md`,
+  `integration-nuttx.md`, `px4.md` — now carries the sentence that no probe
+  runs it (a CI runner has no board) and that it stands unverified until run
+  against a named board, next to the QEMU line the weekly tracks do boot.
+
+The mps2-an385-zephyr half of the same audit is [issue 2177](../2177-mps2-an385-zephyr-network-unmeasured.md),
+closed separately.
