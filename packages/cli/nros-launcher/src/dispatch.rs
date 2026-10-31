@@ -117,7 +117,18 @@ pub fn decide(ctx: &Context) -> Result<Decision> {
     if ctx.skip {
         return Ok(Decision::Proceed("$NROS_SKIP_TOOLCHAIN_DISPATCH is set"));
     }
-    if ctx.dispatched.is_some() {
+    // The marker is inherited by EVERY descendant, not only by the binary
+    // `redispatch` exec'd. A dispatched toolchain's build runs cmake, which
+    // runs the `nros` on PATH (the front, a different version), and that
+    // process sees the marker too. Treating any marked process as the
+    // dispatched one made the front run itself inside a project pinned to
+    // another version: `nros model-path` from the newer binary disagreed with
+    // the model the pinned one had just written (issue 2168's probe, run
+    // 41151393188). So the marker ends the exec loop only for the binary it
+    // names, which is that version's own store binary or reports that version.
+    if let Some(v) = ctx.dispatched.as_deref()
+        && is_dispatched_binary(ctx, v)
+    {
         return Ok(Decision::Proceed(
             "this process IS the dispatched toolchain",
         ));
@@ -150,6 +161,18 @@ pub fn decide(ctx: &Context) -> Result<Decision> {
             pin_path: p.path,
         }),
     }
+}
+
+/// Is the running binary the toolchain a `redispatch` to `version` exec'd?
+/// Either it reports that store version, or it IS that version's installed
+/// binary (the loop case: a binary whose directory disagrees with what it says
+/// about itself).
+fn is_dispatched_binary(ctx: &Context, version: &str) -> bool {
+    if pin::running_version(&ctx.exe).is_some_and(|(mine, _)| mine == version) {
+        return true;
+    }
+    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    pin::installed_bin(&ctx.store, version).is_some_and(|b| canon(&b) == canon(&ctx.exe))
 }
 
 /// The installer this launcher's own release asset carries, if it carries one.

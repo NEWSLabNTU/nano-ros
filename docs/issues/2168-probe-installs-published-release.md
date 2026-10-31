@@ -9,7 +9,7 @@ related: [phase-517, RFC-0095, RFC-0097]
 found: 2026-10-31
 ---
 
-**Home: [phase-517](../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — the one part of W16 its Done note records as not run.
+**Home: [phase-517](../../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — the one part of W16 its Done note records as not run.
 
 ## What
 
@@ -38,3 +38,26 @@ to an older pin.
   `0.6.0-nros5` as the front, with the pinned `0.6.0-nros4` still answering
   inside the project.
 * Keep the branch-asset run as well: it is what tests the branch.
+
+## Progress (2026-10-31)
+
+* **The option exists.** `PROBE_PLATFORM=pinned-newer` (`just probe
+  pinned-newer`) installs the published release `[tool.nros]` pins, fetched
+  with its checksum from the GitHub release, instead of the branch's
+  asset. The verifier's expected front comes from the harness
+  (`PROBE_EXPECT_FRONT`), not a literal.
+* **Its first run found a launcher bug** (run 41151393188). The fetch and
+  the hand-off worked: inside the project `0.6.0-nros4` answered, fetched by
+  `0.6.0-nros5`'s launcher. The build then failed at `nros model-path`,
+  `resolver pin changed`. The pinned toolchain's cmake runs the `nros` on
+  PATH, which is the `0.6.0-nros5` front. That front saw the inherited
+  `NROS_TOOLCHAIN_DISPATCH` marker and ran ITSELF, so it disagreed with the
+  model the pinned binary had just written. `dispatch::decide` now honours
+  the marker only for the binary it names: that version's store binary, or
+  one reporting that version. Any other descendant still follows the pin
+  (`an_inherited_marker_does_not_stop_another_binary_from_dispatching`).
+* **Still open.** The broken decision is made by the FRONT, a released
+  binary, so the track cannot pass until a release carrying this fix is the
+  one `[tool.nros]` pins. It stays out of `probe-platforms.yml`'s matrix
+  until then, with a comment there. Close this issue when that release is
+  cut, the pin moves, and the track is green.

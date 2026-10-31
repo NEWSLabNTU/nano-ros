@@ -372,24 +372,48 @@ fn dispatch_finds_the_pin_from_a_subdirectory() {
     );
 }
 
-/// The exec loop a launcher must not have. A store entry whose directory name
-/// disagrees with the binary inside it would otherwise dispatch to itself
-/// forever; the marker the child inherits ends it in one step.
+/// The exec loop a launcher must not have. The binary `redispatch` exec'd
+/// carries on in place even when the pin it finds would send it elsewhere,
+/// here to a version the store does not have.
 #[test]
 fn a_dispatched_child_never_dispatches_again() {
     let tmp = tempfile::tempdir().unwrap();
     let store = tmp.path().join("store");
-    let launcher = install_toolchain(&store, "0.5.0-nros1");
-    install_toolchain(&store, "0.6.0-nros1");
+    install_toolchain(&store, "0.5.0-nros1");
+    let dispatched = install_toolchain(&store, "0.6.0-nros1");
     let proj = project(tmp.path(), "my-robot");
-    pin::write(&proj, "0.6.0-nros1").unwrap();
+    pin::write(&proj, "0.7.0-nros1").unwrap();
 
-    let mut c = ctx(&launcher, &proj, &store);
+    let mut c = ctx(&dispatched, &proj, &store);
     c.dispatched = Some("0.6.0-nros1".to_string());
     assert!(matches!(
         dispatch::decide(&c).unwrap(),
         Decision::Proceed(_)
     ));
+}
+
+/// Issue 2168's probe: the marker is inherited by every descendant. A
+/// DIFFERENT `nros` that a dispatched toolchain's build reaches (cmake runs
+/// the PATH front) must still honour the pin, not run itself because it found
+/// the marker.
+#[test]
+fn an_inherited_marker_does_not_stop_another_binary_from_dispatching() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = tmp.path().join("store");
+    let front = install_toolchain(&store, "0.6.0-nros5");
+    let pinned = install_toolchain(&store, "0.6.0-nros4");
+    let proj = project(tmp.path(), "my-robot");
+    pin::write(&proj, "0.6.0-nros4").unwrap();
+
+    let mut c = ctx(&front, &proj, &store);
+    c.dispatched = Some("0.6.0-nros4".to_string());
+    assert_eq!(
+        dispatch::decide(&c).unwrap(),
+        Decision::Exec {
+            version: "0.6.0-nros4".to_string(),
+            bin: pinned,
+        }
+    );
 }
 
 /// RFC-0095 D0/D5: a contributor inside a nano-ros checkout uses that clone's
