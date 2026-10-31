@@ -1,12 +1,13 @@
 ---
 id: 2180
 title: "Tier-2 nightly: `workspace-system-required` west road reads no image facts on the runner"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [ci, cmake, zephyr]
-related: [1261, 2160]
+related: [1261, 2151, 2160, 2179]
 found: 2026-10-31
+resolved: 2026-10-31
 ---
 
 ## Symptom
@@ -73,3 +74,45 @@ its log never names this gate. Most likely it skips there for want of an
 in-tree CLI, but that is unverified. Either way, that job passing is not
 evidence that the gate passes: no lane that builds the CLI has gone green on
 it since `093456b7e2`.
+
+## Resolution (2026-10-31)
+
+Root cause: issue 2151's Zephyr-Rust preflight, reached by a QUERY. Read
+off a dispatched run-matrix (41188931503) on a branch whose CLI wrote the
+swallowed error to stderr:
+
+```
+image facts NOT read — …/w has no image facts: missing prerequisites for this build:
+  - Rust target `x86_64-unknown-none` (a Rust image on board `zephyr`)
+  - rustup component `clippy` (a Rust image on board `zephyr`)
+```
+
+`d0a346670b` (in the window, not the suspected `d361877f83`) added that
+preflight to stage 3 of `plan_for`, which `plan_query` also runs. The gate's
+probe runs from `$TEST_TMPDIR`, outside the checkout's `rust-toolchain.toml`,
+so rustup answered for the runner's bare default toolchain; the macro's
+query asked from inside the checkout answered fine, and so did every host
+whose default toolchain carries the target. `--if-present` then dropped the
+error (`let _ = e`), so the answer was empty with exit 0 and no cause.
+
+Fixed on two levels:
+
+- A query never refuses over the build toolchain: `Planning::Query` skips
+  preflight on all three roads that ran it (workspace, cargo leaf, cmake
+  leaf). It compiles nothing, and its caller is a configure that already has
+  its toolchain. `nros build` still refuses.
+- An empty answer says why: `image-facts --if-present` writes a plan error to
+  stderr (still exit 0 — a workspace declaring no `[image.*]` lands there
+  too), `_nros_image_facts_file` prints it beside the empty answer, and gate
+  case D on failure asks the CLI directly without `--if-present`.
+
+Gate case H runs D with a `rustup` that lists nothing installed; it fails on
+the pre-fix binary and passes after. Reproduced locally beforehand with
+`RUSTUP_TOOLCHAIN=1.93.0`.
+
+On the runner: run-matrix 41189549848, dispatched on the fix branch, passed
+`check fast` (487 gates, `workspace-system-required` among them) on
+`nano-ros-runner-newslab-118-server` and went on to build fixtures. It then
+stopped on a different defect, issue 2179 (the `nros-nsos` snippet reaching an
+mps2/an385 image), which was hidden behind this one.
+
