@@ -1,0 +1,25 @@
+# What this example deploys to (RFC-0098 D3/D5) — the same schema a workspace
+# bringup uses, and the same model the `listener` example's `nros::main!()`
+# reads. Here `nros::setup!()` reads it instead: the assembly is identical,
+# only the loop moved into `main.rs`.
+
+[system]
+name = "native_listener_host_loop"
+rmw = "zenoh"
+domain_id = 0
+# The image a bare `nros sync` / `nros build` / `cargo build` builds.
+default_images = ["linux"]
+
+[[component]]
+pkg = "native_listener_host_loop"
+class = "native_rs_listener_host_loop::Listener"
+name = "listener"
+
+# Host build. The locator and domain stay runtime env on native
+# (`NROS_LOCATOR` / `ROS_DOMAIN_ID`); the board applies only the node name.
+# One image: the host loop is about who drives the executor, which no RMW or
+# ROS edition changes — the `listener` example carries those axes.
+[image_defaults]
+board = "linux"
+
+[image.linux]
