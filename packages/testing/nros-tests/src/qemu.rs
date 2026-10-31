@@ -461,54 +461,6 @@ impl QemuProcess {
     // boards now sit on QEMU's own SLIRP network like every other QEMU board,
     // so they boot with `start_mps2_an385_networked`, the one MPS2 launcher.
 
-    /// Start QEMU with MPS2-AN385 machine + LAN9118 mcast-socket
-    /// networking (Phase 97.4.freertos).
-    ///
-    /// Two QEMU instances launched with the same `mcast_addr:port`
-    /// share a virtual L2 broadcast domain on the host (no `sudo`,
-    /// no TAP, no bridge needed). RTPS SPDP / SEDP / ARP all flow
-    /// between them. Mirrors the Zephyr A9 mcast pattern Phase 92
-    /// uses for cross-instance DDS.
-    ///
-    /// `mac` must be unique per instance so ARP behaves; the FreeRTOS
-    /// board crate's `Config::mac` should match what's passed here.
-    pub fn start_mps2_an385_mcast(
-        binary: &Path,
-        mcast_addr_port: &str,
-        mac: &str,
-    ) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-cpu",
-            "cortex-m3",
-            "-machine",
-            "mps2-an385",
-            "-nographic",
-            "-icount",
-            "shift=auto",
-            "-semihosting-config",
-            "enable=on,target=native",
-            "-kernel",
-        ])
-        .arg(binary)
-        .args([
-            "-nic",
-            &format!("socket,model=lan9118,mcast={mcast_addr_port},mac={mac}"),
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
-    }
-
     /// Start QEMU `mps3-an536` (Cortex-R52) on a multicast-socket LAN.
     ///
     /// Issue 1624 — the FreeRTOS AN536 board's runner (its `nros-board.toml`)
@@ -935,131 +887,6 @@ impl QemuProcess {
         }
     }
 
-    /// Start QEMU with ARM virt machine (Cortex-A7 + virtio-net + slirp networking)
-    ///
-    /// Used for NuttX QEMU tests. The virt machine provides a virtio-net interface
-    /// using QEMU's user-mode (slirp) networking. Each instance gets its own
-    /// isolated NAT stack — no TAP devices, no bridge, no sudo needed.
-    ///
-    /// # Arguments
-    /// * `binary` - Path to the NuttX ELF binary (kernel + app)
-    /// * `networking` - `true` for slirp networking, `false` for no NIC (boot tests)
-    ///
-    /// # Returns
-    /// A managed QEMU process
-    /// Phase 97.4.nuttx — same shape as `start_mps2_an385_mcast` but for
-    /// NuttX's `qemu-system-arm -M virt -cpu cortex-a7` machine and
-    /// virtio-net-device. Both sibling instances share the host
-    /// `-netdev socket,mcast=…` segment so SPDP / SEDP / pubsub frames
-    /// cross between them. Caller picks distinct MAC addrs.
-    pub fn start_nuttx_virt_mcast(
-        binary: &Path,
-        mcast_addr_port: &str,
-        mac: &str,
-    ) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-M",
-            "virt",
-            "-cpu",
-            "cortex-a7",
-            "-nographic",
-            "-icount",
-            "shift=auto",
-            "-kernel",
-        ])
-        .arg(binary)
-        .args([
-            "-netdev",
-            // Phase 127.B.5 — QEMU 6.2's `net/socket.c` picks the
-            // mcast egress interface from the host routing table when
-            // `localaddr=` is omitted, which routes to a real LAN NIC
-            // and prevents cross-process delivery on the same host.
-            // Pin egress to lo so the host kernel loops mcast back
-            // to the sibling QEMU. Requires
-            // `sudo ip route add 230.10.0.0/16 dev lo` on the host;
-            // `require_mcast_loopback_route` prints a clear hint when
-            // missing.
-            &format!("socket,id=net0,mcast={mcast_addr_port},localaddr=127.0.0.1"),
-            "-device",
-            &format!("virtio-net-device,netdev=net0,mac={mac}"),
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
-    }
-
-    /// Phase 127.B.5 — QEMU 7.2+ `-netdev dgram,local.type=unix,…`
-    /// peer pair. Replaces the lossy `socket,mcast=…` cross-process
-    /// path with an AF_UNIX SOCK_DGRAM tunnel between exactly two
-    /// QEMU processes. No root, no routes, no IGMP — frames sent to
-    /// `remote_unix_path` arrive at the peer's `local_unix_path` and
-    /// vice versa.
-    ///
-    /// Caller is responsible for picking two distinct unique
-    /// per-pair paths and deleting any stale files at those paths
-    /// before launch (QEMU bind fails on EADDRINUSE).
-    pub fn start_nuttx_virt_dgram(
-        binary: &Path,
-        local_unix_path: &str,
-        remote_unix_path: &str,
-        mac: &str,
-    ) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-M",
-            "virt",
-            "-cpu",
-            "cortex-a7",
-            "-nographic",
-            // Phase 160.K — NO `-icount shift=auto`. The MPS2 / slirp
-            // sibling sets icount to keep CMSDK Timer0 aligned with
-            // host slirp I/O during WFI. NuttX virt + AF_UNIX dgram
-            // pair has no slirp dependency and runs under wall-clock
-            // virtio-net. Icount tied virtual time to instruction
-            // count, so heavy RTPS bursts (SPDP+SEDP+
-            // reliability) advanced virtual time by milliseconds per
-            // wall-second — the 1 Hz publish timer fired ~once per
-            // 30 wall-seconds, breaking the test's 60 s budget. With
-            // icount off, wall-clock virtio + NuttX kernel timing
-            // align and the publish loop ticks at the configured
-            // rate.
-            "-kernel",
-        ])
-        .arg(binary)
-        .args([
-            "-netdev",
-            &format!(
-                "dgram,id=net0,\
-                 local.type=unix,local.path={local_unix_path},\
-                 remote.type=unix,remote.path={remote_unix_path}"
-            ),
-            "-device",
-            &format!("virtio-net-device,netdev=net0,mac={mac}"),
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
-    }
-
     pub fn start_nuttx_virt(binary: &Path, networking: bool) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(
@@ -1165,10 +992,11 @@ impl QemuProcess {
     }
 
     /// Phase 127.B.5 — QEMU 7.2+ `-netdev dgram,local.type=unix,…`
-    /// peer pair for RV64 ThreadX. Same shape as
-    /// `start_nuttx_virt_dgram` — avoids QEMU's broken cross-process
+    /// peer pair for RV64 ThreadX. It avoids QEMU's broken cross-process
     /// `socket,mcast=` delivery by routing two QEMU processes at each
-    /// other via an AF_UNIX SOCK_DGRAM pair.
+    /// other via an AF_UNIX SOCK_DGRAM pair, with no root, routes or IGMP.
+    /// The caller picks two distinct per-pair paths and deletes stale files
+    /// at them first (QEMU's bind fails on EADDRINUSE).
     pub fn start_riscv64_virt_dgram(
         binary: &Path,
         local_unix_path: &str,
@@ -1182,32 +1010,18 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = qemu_system_cmd("qemu-system-riscv64");
-        cmd.args([
-            "-M",
-            "virt",
-            "-m",
-            "256M",
-            "-bios",
-            "none",
-            "-nographic",
-            "-global",
-            "virtio-mmio.force-legacy=false",
-            "-kernel",
-        ])
-        .arg(binary)
-        .args([
-            "-netdev",
-            &format!(
-                "dgram,id=net0,\
-                 local.type=unix,local.path={local_unix_path},\
-                 remote.type=unix,remote.path={remote_unix_path}"
-            ),
-            "-device",
-            &format!("virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac={mac}"),
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        // Issue 2170 — the board's machine line from the shared ladder, the
+        // pair link as its `Net::Dgram`.
+        let line = nros_qemu_ladder::board_line(
+            nros_qemu_ladder::Board::ThreadxRiscv64,
+            nros_qemu_ladder::Net::Dgram {
+                local: local_unix_path,
+                remote: remote_unix_path,
+                mac,
+            },
+        );
+        let mut cmd = board_line_cmd(&line, binary);
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
         Self::spawn(cmd)
