@@ -349,9 +349,9 @@ pub fn start_esp32_qemu(flash_image: &Path, networking: bool) -> TestResult<Mana
 /// `-nic socket,mcast=…` segment so two guests can exchange RTPS
 /// SPDP / SEDP / pubsub on the same virtual L2 broadcast domain.
 ///
-/// Mirrors `QemuProcess::start_mps2_an385_mcast` (FreeRTOS / 97.4)
-/// and `QemuProcess::start_nuttx_virt_mcast` shapes — same mcast
-/// addr+port across both peers, distinct `mac` per instance so ARP
+/// The shape the FreeRTOS and NuttX mcast pair launchers had before issue
+/// 2170 deleted them unused: the same mcast addr+port across both peers,
+/// a distinct `mac` per instance so ARP
 /// behaves. The ESP32 OpenETH model already accepts the standard
 /// QEMU `-nic socket,…` netdev backend, so no additional wiring is
 /// needed.

@@ -247,6 +247,17 @@ pub enum Net<'a> {
     /// QEMU user-mode (slirp) networking on a virtio-net MMIO device; `mac`
     /// pins the device's address when the firmware expects one.
     User { mac: Option<&'a str> },
+    /// A point-to-point AF_UNIX datagram link to ONE sibling QEMU
+    /// (`-netdev dgram,local.type=unix,…`, QEMU 7.2+): frames sent to `remote`
+    /// arrive at the peer's `local`, with no root, routes or IGMP. The test
+    /// harness's two-guest pairs use it; the CLI never prints it. Issue 2170:
+    /// the pair launchers restated their board's machine line by hand until
+    /// this existed.
+    Dgram {
+        local: &'a str,
+        remote: &'a str,
+        mac: &'a str,
+    },
     /// No NIC at all (boot-only images).
     None,
 }
@@ -340,22 +351,43 @@ pub fn board_line(board: Board, net: Net<'_>) -> Line {
             ]),
         ),
     };
+    let device = |mac: Option<&str>| {
+        let mut device = String::from("virtio-net-device,netdev=net0");
+        if board == Board::ThreadxRiscv64 {
+            device.push_str(",bus=virtio-mmio-bus.0");
+        }
+        if let Some(mac) = mac {
+            device.push_str(",mac=");
+            device.push_str(mac);
+        }
+        device
+    };
+    let mut before = before;
     let after = match net {
         Net::None => words(&["-nic", "none"]),
-        Net::User { mac } => {
-            let mut device = String::from("virtio-net-device,netdev=net0");
-            if board == Board::ThreadxRiscv64 {
-                device.push_str(",bus=virtio-mmio-bus.0");
-            }
-            if let Some(mac) = mac {
-                device.push_str(",mac=");
-                device.push_str(mac);
+        Net::User { mac } => vec![
+            "-netdev".to_string(),
+            "user,id=net0".to_string(),
+            "-device".to_string(),
+            device(mac),
+        ],
+        Net::Dgram { local, remote, mac } => {
+            // `-icount shift=auto` keeps a timer aligned with SLIRP's host I/O
+            // during WFI. A dgram link has no SLIRP, and under icount a burst of
+            // RTPS traffic advances virtual time by milliseconds per wall
+            // second, so a 1 Hz publish timer fired about once per 30 s
+            // (phase-160.K, measured on NuttX virt). Wall-clock it is.
+            if let Some(i) = before.iter().position(|a| a == "-icount") {
+                before.drain(i..i + 2);
             }
             vec![
                 "-netdev".to_string(),
-                "user,id=net0".to_string(),
+                format!(
+                    "dgram,id=net0,local.type=unix,local.path={local},\
+                     remote.type=unix,remote.path={remote}"
+                ),
                 "-device".to_string(),
-                device,
+                device(Some(mac)),
             ]
         }
     };
@@ -536,6 +568,33 @@ mod tests {
         assert_eq!(
             board_line(Board::ThreadxRiscv64, user).exe,
             "qemu-system-riscv64"
+        );
+    }
+
+    /// Issue 2170 — the two-guest dgram link: the board's own machine line,
+    /// the AF_UNIX pair after the kernel, and no `-icount` (no SLIRP to align
+    /// with). The ThreadX pair's line is byte-for-byte what its launcher
+    /// spelled by hand before.
+    #[test]
+    fn a_dgram_pair_shares_the_boards_machine_line() {
+        let dgram = Net::Dgram {
+            local: "/t/a.sock",
+            remote: "/t/b.sock",
+            mac: "52:54:00:12:34:56",
+        };
+        assert_eq!(
+            board_line(Board::ThreadxRiscv64, dgram).argv("K").join(" "),
+            "-M virt -m 256M -bios none -nographic -global virtio-mmio.force-legacy=false \
+             -kernel K -netdev dgram,id=net0,local.type=unix,local.path=/t/a.sock,\
+             remote.type=unix,remote.path=/t/b.sock \
+             -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac=52:54:00:12:34:56"
+        );
+        let nuttx = board_line(Board::NuttxArmVirt, dgram).argv("K");
+        assert!(!nuttx.iter().any(|a| a == "-icount"), "{nuttx:?}");
+        assert!(
+            nuttx
+                .join(" ")
+                .starts_with("-M virt -cpu cortex-a7 -nographic -kernel K")
         );
     }
 }
