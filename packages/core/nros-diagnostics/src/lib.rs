@@ -54,6 +54,13 @@ pub const RULE_HAZARD_RECOVERED: &str = "hazard-recovered";
 /// how long the request waited; declared: the reaction path's `max_latency`.
 /// A GUARANTEE: how promptly this image switches is its own behaviour.
 pub const RULE_MODE_SWITCH: &str = "mode-switch-runtime";
+/// play_launch phase 96 W4.2 (phase 85 D4) -- the rung this image judges for a
+/// detected hazard did not answer within the ROUTE play_launch's checker
+/// charged it: from the detection tick to the rung's first output, excluding
+/// the detection time, any window and the settle. Measured: ms from the
+/// detection to that output, or to the tick that saw the route pass with none;
+/// declared: the rung's `route_ms`. A GUARANTEE, like `hazard-reaction`.
+pub const RULE_HAZARD_ROUTE: &str = "hazard-route-runtime";
 
 /// Which side of the contract the violated field belongs to — drives the
 /// 4-quadrant diagnosis (RFC-0050 §contracts): a violated GUARANTEE with

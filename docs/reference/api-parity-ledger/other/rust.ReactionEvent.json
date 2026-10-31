@@ -1,5 +1,5 @@
 {
   "key": "rust:ReactionEvent",
   "verdict": "extension",
-  "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): what the reaction hook receives (reaction id, row, rule code, measured, declared, mechanism); `repr(C)`, mirrored by nros-cpp's `nros_cpp_reaction_event_t`. See `rust:Executor::set_reaction_hook`."
+  "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): what the reaction hook receives (reaction id, row, rule code, measured, declared, mechanism, and since play_launch phase 96 W4.2 the monotonic us the verdict fired); `repr(C)`, mirrored by nros-cpp's `nros_cpp_reaction_event_t`. See `rust:Executor::set_reaction_hook`."
 }

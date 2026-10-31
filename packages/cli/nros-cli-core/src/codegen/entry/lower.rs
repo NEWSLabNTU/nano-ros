@@ -775,6 +775,8 @@ fn monitor_table(
                 .collect(),
             sink: h.sink.map_or(u16::MAX, |r| r as u16),
             reaction_id: h.reaction_id,
+            rung_row: h.rung.as_ref().map_or(u16::MAX, |r| r.row as u16),
+            rung_route_ms: h.rung.as_ref().map_or(0, |r| r.route_ms),
         })
         .collect::<Vec<HazardRow>>();
     // phase-462 W4b -- each mode's numbers for the rows kept above, by the
