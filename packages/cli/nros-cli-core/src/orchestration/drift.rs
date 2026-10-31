@@ -272,20 +272,70 @@ pub fn cargo_precise(dir: &Path) -> impl FnMut(&Realign) -> Result<(), String> +
     }
 }
 
-/// The cargo kind for one root, made to hold: in a CHECKOUT a leaf lock is
-/// seeded build output rather than a promise, so a crate merely off its pin is
-/// moved back onto it (`cargo update --precise`) and said so. What cannot be
-/// realigned — a crate in no pinned range, or a manifest the pin does not
-/// satisfy — is returned as drift. Outside a checkout nothing is moved.
-pub fn enforce_cargo_root(
-    dir: &Path,
-    label: &str,
-    pins_file: &Path,
-    in_checkout: bool,
-) -> eyre::Result<Vec<Drift>> {
+/// Issue 2183 — the package a failed `cargo update` could not find, when this
+/// root's own lock records it as a PATH package (no `source`): a crate the
+/// root names by registry version and only an OUTER build's patch table
+/// supplies. A Zephyr Rust leaf is the case: it names `zephyr` and
+/// `zephyr-build`, which only the west build patches in from the workspace's
+/// `modules/lang/rust`. Such a root cannot be resolved by cargo ALONE, so no
+/// move in it can ever succeed, whichever crate it is for.
+///
+/// `None` for every other failure — a lockstep refusal, a yanked version, a
+/// network error — which is about the crate being moved, not about the root.
+#[must_use]
+pub fn supplied_by_outer_build(cargo_err: &str, lock: &str) -> Option<String> {
+    let name = cargo_err
+        .split("no matching package named `")
+        .nth(1)?
+        .split('`')
+        .next()?;
+    let doc: toml::Value = toml::from_str(lock).ok()?;
+    doc.get("package")?
+        .as_array()?
+        .iter()
+        .any(|p| p.get("name").and_then(|v| v.as_str()) == Some(name) && p.get("source").is_none())
+        .then(|| name.to_string())
+}
+
+/// [`realign`] for one root whose lock is `lock`. Issue 2183 — once one move
+/// shows the root cannot be resolved alone ([`supplied_by_outer_build`]), every
+/// other move would fail the same way, so cargo is not asked again: before
+/// this, a stale Zephyr leaf lock cost one doomed `cargo update` per off-pin
+/// crate. Also returns that package's name.
+pub fn realign_root<F>(
+    moves: Vec<Realign>,
+    lock: &str,
+    mut try_move: F,
+) -> (usize, Vec<(Realign, String)>, Option<String>)
+where
+    F: FnMut(&Realign) -> Result<(), String>,
+{
+    let mut outer: Option<String> = None;
+    let (moved, stuck) = realign(moves, |m| {
+        if let Some(name) = &outer {
+            return Err(format!("`{name}` is supplied only by the outer build"));
+        }
+        try_move(m).inspect_err(|why| outer = supplied_by_outer_build(why, lock))
+    });
+    (moved, stuck, outer)
+}
+
+/// What one realign of a root left.
+struct Enforced {
+    /// Drift still there afterwards.
+    left: Vec<Drift>,
+    /// How many off-pin crates were not moved, and the package that made the
+    /// root unresolvable alone ([`supplied_by_outer_build`]), when that is why.
+    outer: Option<(usize, String)>,
+}
+
+fn enforce(dir: &Path, label: &str, pins_file: &Path, in_checkout: bool) -> eyre::Result<Enforced> {
     let drifts = check_cargo_root(dir, label, pins_file)?;
     if !in_checkout || drifts.is_empty() {
-        return Ok(drifts);
+        return Ok(Enforced {
+            left: drifts,
+            outer: None,
+        });
     }
     let mut left = Vec::new();
     let mut moves = Vec::new();
@@ -304,15 +354,17 @@ pub fn enforce_cargo_root(
             _ => left.push(d),
         }
     }
-    let (moved, stuck) = realign(moves, cargo_precise(dir));
+    let lock = std::fs::read_to_string(dir.join("Cargo.lock")).unwrap_or_default();
+    let (moved, stuck, outer) = realign_root(moves, &lock, cargo_precise(dir));
     if moved > 0 {
         eprintln!("nros:   realigned {moved} crate(s) in {label} to the pin set");
     }
+    let outer = outer.map(|name| (stuck.len(), name));
     // Issue 1941 — say WHY a move failed. A root cargo cannot resolve on its
-    // own (a Zephyr leaf names `zephyr` and `zephyr-build`, which only the
-    // west build's patch table supplies) fails every move, and with the error
-    // dropped that read as "these crates are off the pin set" and nothing else.
-    if let Some((first, why)) = stuck.first() {
+    // own is reported by the caller, which knows what it does about it.
+    if outer.is_none()
+        && let Some((first, why)) = stuck.first()
+    {
         let why = why.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
         eprintln!(
             "nros:   could not realign {} crate(s) in {label}; first, `{}` {} -> {}: {why}",
@@ -330,7 +382,29 @@ pub fn enforce_cargo_root(
             left.push(d);
         }
     }
-    Ok(left)
+    Ok(Enforced { left, outer })
+}
+
+/// The cargo kind for one root, made to hold: in a CHECKOUT a leaf lock is
+/// seeded build output rather than a promise, so a crate merely off its pin is
+/// moved back onto it (`cargo update --precise`) and said so. What cannot be
+/// realigned — a crate in no pinned range, a manifest the pin does not
+/// satisfy, or a root only its outer build can resolve — is returned as drift.
+/// Outside a checkout nothing is moved.
+pub fn enforce_cargo_root(
+    dir: &Path,
+    label: &str,
+    pins_file: &Path,
+    in_checkout: bool,
+) -> eyre::Result<Vec<Drift>> {
+    let e = enforce(dir, label, pins_file, in_checkout)?;
+    if let Some((n, name)) = &e.outer {
+        eprintln!(
+            "nros:   {label} resolves only inside its build (`{name}` comes from the build's \
+             own patch table), so `cargo update` cannot move its {n} off-pin crate(s) here"
+        );
+    }
+    Ok(e.left)
 }
 
 /// A CHECKOUT leaf lock, made to hold before its build: realign it, and replace
@@ -344,17 +418,29 @@ pub fn enforce_cargo_root(
 /// not a promise, so the fallback is what a leaf with NO lock gets: the pin
 /// set, from which the build then resolves. What is returned is the drift left
 /// after that, which a fresh seed normally leaves empty.
+///
+/// Issue 2183 — for such a root the re-seed is not a fallback but the only
+/// realign there is, so it is said once, with why, and not as a failure.
 pub fn realign_or_reseed(dir: &Path, label: &str, pins_file: &Path) -> eyre::Result<Vec<Drift>> {
-    let left = enforce_cargo_root(dir, label, pins_file, true)?;
-    if left.is_empty() {
-        return Ok(left);
+    let e = enforce(dir, label, pins_file, true)?;
+    if e.left.is_empty() {
+        return Ok(e.left);
     }
     crate::orchestration::registry_pins::write_seed(dir, pins_file)?;
-    eprintln!(
-        "nros:   {} drift(s) in {label} the realign could not fix; re-seeded its Cargo.lock from {}",
-        left.len(),
-        pins_file.display()
-    );
+    match &e.outer {
+        Some((_, name)) => eprintln!(
+            "nros:   re-seeded {label}'s Cargo.lock from {}: {} drift(s), and the root \
+             resolves only inside its build (`{name}` comes from the build's own patch table), \
+             so `cargo update` cannot realign it",
+            pins_file.display(),
+            e.left.len()
+        ),
+        None => eprintln!(
+            "nros:   {} drift(s) in {label} the realign could not fix; re-seeded its Cargo.lock from {}",
+            e.left.len(),
+            pins_file.display()
+        ),
+    }
     check_cargo_root(dir, label, pins_file)
 }
 
@@ -398,6 +484,63 @@ mod tests {
             lock_with("serde", "1.0.228"),
             "the lock is the pin set, not the drifted one"
         );
+    }
+
+    /// A Zephyr leaf's lock, abridged: a registry crate, and `zephyr-build`
+    /// as the PATH package the west build's patch table resolved it to.
+    const ZEPHYR_LEAF_LOCK: &str = "version = 4\n\n[[package]]\nname = \"aho-corasick\"\n\
+         version = \"1.1.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n\n\
+         [[package]]\nname = \"zephyr-build\"\nversion = \"0.1.0\"\n";
+    const NO_ZEPHYR_BUILD: &str = "error: no matching package named `zephyr-build` found\n\
+         location searched: crates.io index\nrequired by package `nros_zephyr_listener v0.1.0`";
+
+    #[test]
+    fn a_package_only_the_outer_build_patches_in_makes_the_root_unresolvable_alone() {
+        assert_eq!(
+            supplied_by_outer_build(NO_ZEPHYR_BUILD, ZEPHYR_LEAF_LOCK).as_deref(),
+            Some("zephyr-build")
+        );
+        // A missing REGISTRY crate is about the registry, not about the root.
+        let no_aho = NO_ZEPHYR_BUILD.replace("zephyr-build", "aho-corasick");
+        assert_eq!(supplied_by_outer_build(&no_aho, ZEPHYR_LEAF_LOCK), None);
+        // A crate the lock does not hold at all says nothing about the root.
+        let no_other = NO_ZEPHYR_BUILD.replace("zephyr-build", "unheard-of");
+        assert_eq!(supplied_by_outer_build(&no_other, ZEPHYR_LEAF_LOCK), None);
+        // A lockstep refusal is about the crate being moved.
+        let lockstep = "error: failed to select a version for the requirement \
+                        `futures-core = \"=0.3.34\"`\nrequired by package `futures-util`";
+        assert_eq!(supplied_by_outer_build(lockstep, ZEPHYR_LEAF_LOCK), None);
+    }
+
+    #[test]
+    fn a_root_only_its_build_resolves_asks_cargo_once_not_once_per_crate() {
+        let moves: Vec<Realign> = (0..32)
+            .map(|i| Realign {
+                name: format!("crate-{i}"),
+                have: "1.0.1".into(),
+                want: "1.0.0".into(),
+            })
+            .collect();
+        let mut calls = 0;
+        let (moved, stuck, outer) = realign_root(moves, ZEPHYR_LEAF_LOCK, |_| {
+            calls += 1;
+            Err(NO_ZEPHYR_BUILD.into())
+        });
+        assert_eq!((calls, moved, stuck.len()), (1, 0, 32));
+        assert_eq!(outer.as_deref(), Some("zephyr-build"));
+
+        // Any other refusal keeps asking, as `realign` always has.
+        let m = Realign {
+            name: "futures-core".into(),
+            have: "0.3.34".into(),
+            want: "0.3.32".into(),
+        };
+        let mut calls = 0;
+        let (_, stuck, outer) = realign_root(vec![m.clone(), m], ZEPHYR_LEAF_LOCK, |_| {
+            calls += 1;
+            Err("required by futures-util 0.3.34".into())
+        });
+        assert_eq!((calls, stuck.len(), outer), (2, 2, None));
     }
 
     #[test]
