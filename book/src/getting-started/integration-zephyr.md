@@ -1033,9 +1033,14 @@ The Cortex-M3 witness is Zephyr's `mps2/an385` under QEMU, with Zephyr's own
 IP stack on the emulated SMSC911x. An image names it `board =
 "mps2-an385-zephyr"`; `west build -t run` boots it under the QEMU the Zephyr
 SDK ships (`nros setup zephyr` installed it). In the Rust workspace above, a
-second entry is that image:
+second entry is that image. `nros setup board` comes first: it applies
+nano-ros's patch set to your west workspace, without which zephyr-lang-rust's
+cargo command carries none of nano-ros's settings for the board (among them
+the C cross compiler the zenoh-pico crate builds with), and adds the board's
+Rust target:
 
 ```bash probe=80 variant=native-sim-rust
+nros setup board mps2-an385-zephyr --zephyr-workspace "$NROS_ZEPHYR_WORKSPACE"
 nros new entry zephyr_m3 --platform zephyr --board mps2-an385-zephyr
 nros setup --sudo
 nros sync
