@@ -3632,6 +3632,17 @@ bool zpico_uses_polling(void) {
 #endif
 }
 
+// RFC-0113 D6 — the RFC-0110 D1 choice, reported. In THREAD mode zenoh-pico's
+// own executor thread runs the lease and keep-alive, so the caller owes it no
+// deadline; in CALLER mode those futures run only inside `zpico_spin_once`.
+bool zpico_drives_on_thread(void) {
+#if defined(ZPICO_DRIVE_THREAD)
+    return true;
+#else
+    return false;
+#endif
+}
+
 // ============================================================================
 // ZenohId Implementation
 // ============================================================================

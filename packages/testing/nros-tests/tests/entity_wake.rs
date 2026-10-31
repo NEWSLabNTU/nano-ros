@@ -34,6 +34,9 @@
 //! costs no CPU while idle, wakes on an arrival, and never makes a sibling
 //! future on its runtime wait a park.
 //!
+//! And what an idle session owes the park (RFC-0113 D6, phase-521 W2): in
+//! THREAD mode zenoh reports no deadline, so the caller's budget bounds it.
+//!
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test entity_wake`.
 
 #![cfg(feature = "trigger-test")]
@@ -151,6 +154,46 @@ fn each_arrival_marks_its_own_subscription(zenohd_unique: ZenohRouter) {
             topics[i], slots[i]
         );
     }
+}
+
+/// RFC-0113 D6 (phase-521 W2) — an idle zenoh executor owes zenoh-pico no
+/// deadline.
+///
+/// On Linux zenoh-pico runs in RFC-0110 THREAD mode: its own executor thread
+/// sends the keep-alives and checks the lease. The session used to report a
+/// constant 3333 ms anyway, so an idle `spin_once` with a longer budget parked
+/// for 3.3 s and woke for nothing. Now the caller's budget bounds the park, and
+/// the spin waits it out.
+#[rstest]
+fn an_idle_zenoh_session_does_not_bound_the_park(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let mut exec = open(
+        &locator,
+        "idle_deadline",
+        u32::from(nros_tests::unique_ros_domain_id()),
+    );
+
+    // Longer than the old 3333 ms constant, so the session would have won.
+    let budget = Duration::from_secs(4);
+    let start = Instant::now();
+    exec.spin_once(budget);
+    let waited = start.elapsed();
+
+    let (bound_us, source) = exec.last_park();
+    assert_eq!(
+        source,
+        WakeSourceId::CallerBudget,
+        "an idle zenoh session bounded the park at {bound_us} us: in THREAD mode it owes the \
+         executor no deadline (RFC-0113 D6)"
+    );
+    assert_eq!(bound_us, budget.as_micros() as u64);
+    // A lower bound, so a spin that returned without waiting cannot pass.
+    assert!(
+        waited >= Duration::from_millis(3_500),
+        "an idle spin_once({budget:?}) returned after {waited:?}: something still woke it before \
+         the old 3.3 s deadline"
+    );
 }
 
 /// A raw publisher moved to the publishing thread.

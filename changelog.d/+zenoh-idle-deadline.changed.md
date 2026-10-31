@@ -1,0 +1,1 @@
+An idle zenoh session no longer wakes its executor every 3.3 s. On threaded builds (POSIX, NuttX, Zephyr, FreeRTOS) zenoh-pico's own thread sends the keep-alives, so the session reports no deadline and a spin parks for its full budget (RFC-0113 D6).

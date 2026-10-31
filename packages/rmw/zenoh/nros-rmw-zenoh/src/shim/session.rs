@@ -1700,22 +1700,29 @@ impl Session for ZenohSession {
         Ok(())
     }
 
-    /// Phase 110.0 — bound the executor's `drive_io` wait against
-    /// zenoh-pico's transport keepalive interval.
+    /// RFC-0113 D6 — a deadline only when the executor has work at it.
     ///
-    /// zenoh-pico does not expose its internal "next keepalive
-    /// timestamp" through FFI, so the shim returns a conservative
-    /// upper-bound: `Z_TRANSPORT_LEASE / Z_TRANSPORT_LEASE_EXPIRE_FACTOR`.
-    /// With the upstream defaults (lease = 10 000 ms, factor = 3) that
-    /// caps wake-late to ~3.3 s on a quiet link — the runtime never
-    /// blocks longer than one keepalive interval before returning
-    /// control to the executor. Tracking the precise per-call
-    /// timestamp would need a hook in `_z_send_keep_alive`; out of
-    /// scope for the v1 surface.
+    /// In RFC-0110 THREAD mode zenoh-pico's own executor thread runs the
+    /// lease, keep-alive, query timeout and reconnect, so this session owes
+    /// the executor nothing and reports `None`. The constant it used to report
+    /// (phase 110.0) woke every idle tier every 3.3 s for no work.
+    ///
+    /// In CALLER mode (bare metal, serial, ThreadX) those futures run only
+    /// inside `zpico_spin_once`, so the executor must come back within one
+    /// keep-alive interval: `Z_TRANSPORT_LEASE / Z_TRANSPORT_LEASE_EXPIRE_FACTOR`,
+    /// ~3.3 s with the upstream defaults. zenoh-pico's real next wake-up there
+    /// is its idle read's 1 ms poll, which is not reported: a park that woke
+    /// for it would poll the link at 1 kHz. Replacing that poll with an RX
+    /// notification is phase-521 W5.
     fn next_deadline_ms(&self) -> Option<u32> {
         // Z_TRANSPORT_LEASE = 10000 ms, Z_TRANSPORT_LEASE_EXPIRE_FACTOR = 3
         const ZENOH_KEEPALIVE_INTERVAL_MS: u32 = 10_000 / 3;
-        Some(ZENOH_KEEPALIVE_INTERVAL_MS)
+        // SAFETY: no arguments; reads a build-time constant.
+        if unsafe { zpico_sys::zpico_drives_on_thread() } {
+            None
+        } else {
+            Some(ZENOH_KEEPALIVE_INTERVAL_MS)
+        }
     }
 
     fn ping_session(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {

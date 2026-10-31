@@ -815,6 +815,18 @@ int32_t zpico_spin_once(struct zpico_session_t *_session, uint32_t _timeout_ms);
 bool zpico_uses_polling(void);
 
 /**
+ * RFC-0113 D6 — does zenoh-pico's executor run on its own thread?
+ *
+ * # Returns
+ * true in RFC-0110 THREAD mode (POSIX, NuttX, Zephyr, FreeRTOS): that
+ * thread runs the lease, keep-alive, query timeout and reconnect, so a
+ * caller of `zpico_spin_once` owes zenoh-pico no deadline. false in
+ * CALLER mode (bare metal, serial, ThreadX), where those futures run only
+ * inside `zpico_spin_once`.
+ */
+bool zpico_drives_on_thread(void);
+
+/**
  * Get the session's Zenoh ID.
  *
  * # Parameters

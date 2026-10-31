@@ -627,6 +627,9 @@ unsafe extern "C" {
     // Polling
     pub fn zpico_spin_once(session: *mut zpico_session_t, timeout_ms: u32) -> i32;
     pub fn zpico_uses_polling() -> bool;
+    // RFC-0113 D6 — whether zenoh-pico's executor runs on its own thread
+    // (RFC-0110 THREAD mode) — process-global, fixed at build time.
+    pub fn zpico_drives_on_thread() -> bool;
 
     // Clock helpers (for FFI reentrancy guard timeout decomposition) — process-global.
     pub fn zpico_clock_start(clock_buf: *mut u8);
