@@ -79,6 +79,8 @@ make -C PX4-Autopilot px4_sitl_default \
     CMAKE_ARGS="-Dnano_ros_ROOT=$(nros sdk-root)"    # optional
 ```
 
+> **Not replayed.** No probe track runs the PX4 SITL build yet, so this line is unmeasured on the installed track ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2176-unprobed-fvp-sitl-flash-lines.md)).
+
 Inside the module, the canonical pattern bridges uORB → nano-ros.
 The module is a `PX4Module` subclass that runs in its own work
 queue, opens an nros executor, and forwards uORB messages onto a
@@ -144,6 +146,8 @@ PX4's own upload target flashes over the bootloader USB, with the same
 make -C PX4-Autopilot px4_fmu-v5_default upload \
     EXTERNAL_MODULES_LOCATION="$PWD/px4-modules/nano-ros"
 ```
+
+> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 QGroundControl can flash the same `build/px4_fmu-v5_default/px4_fmu-v5_default.px4`
 instead. Start the module from the NSH console (`nano_ros_app start`) or the
