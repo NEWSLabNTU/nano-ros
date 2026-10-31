@@ -22,7 +22,7 @@ board-cargo-config-shape
 board-descriptor-single-source
 board-facts-delivery
 board-name-reach
-board-tiers
+board-registry
 board-vocabulary
 book-links
 book-no-just

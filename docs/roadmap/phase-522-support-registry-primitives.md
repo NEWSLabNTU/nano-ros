@@ -1,6 +1,6 @@
 # Phase 522 — The board support registry becomes the one primitive
 
-**Status (2026-11-01). IN PROGRESS: W1 and W2 landed.** Implements
+**Status (2026-11-01). IN PROGRESS: W1, W2 and W3 landed.** Implements
 [RFC-0114](../design/0114-board-support-registry-primitives.md) (D10 support
 levels, D11 derived and inherited breadth, D12 one registry, everything else
 generated). Amends the tier section of
@@ -180,6 +180,34 @@ than two seconds.
 Decision step: a mutation the gate cannot see is either made impossible by
 layout (the generated region becomes the whole file) or printed by the gate
 as a known gap. No silent gap.
+
+**Result (2026-11-01).** `just check board-registry`
+(`scripts/check-board-registry.py`) is on the fast line and replaced the
+`board-tiers` and `book-board-run-sections` recipes. It regenerates every
+view into a temporary directory and compares bytes, runs the predicates of
+`check-board-tiers.py` and `check-book-board-run-sections.py` (each with its
+own negative controls, still run on every call), and refuses a board fact
+typed elsewhere: a `cell(...)` in matrix.rs, a hand track list in
+`probe-platforms.yml` or `run-bootstrap-probe.sh` (the probe case-list drift
+is now impossible by layout), a ROWS tuple in issue 2169's test, a `just
+probe` recipe with no track, a QEMU `probe-run` block no track covers (the
+static half of the 2169 test), and a fixture row whose `NROS_BOARD` names no
+descriptor. Mutation list on the real tree, each caught with a message naming
+what to edit: a `cell(...)` in matrix.rs, a probe matrix entry with no row, a
+changed ROWS tuple, a track typed in the harness, a hand edit to the generated
+cell list, and a registry row losing `runs`. Fast-line cost: the old pair took
+155 ms sequentially and the new recipe takes 118 ms, so the line is 37 ms
+cheaper.
+
+Decision step, gaps the gate prints on every run instead of hiding: fixture
+build arguments are authored (W2's narrowing) and only their board is
+checked; `interop::CELLS` stays authored and keeps its own Rust gates; a
+fixture locator port may repeat, because a talker and its listener share one
+router (48 locators over 96 rows). Two of the five gates the phase doc named
+are therefore not deleted: `matrix_fixture_coverage.rs` G1-G4 hold
+`interop::CELLS`, which the narrowing keeps authored, so they stay; and issue
+2169's Rust test keeps its comparison half (it needs `nros build`'s printed
+command), while its coverage half is now also refused statically here.
 
 ### W4 — The book reads the registry
 

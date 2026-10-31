@@ -156,11 +156,24 @@ board-cargo-config-shape:
 board-build-target:
     @python3 scripts/check-board-build-target.py
 
+# phase-522 W3 (RFC-0114 D12) — the board support registry is the only place a
+# board fact is typed, and this is its one gate. It regenerates every view
+# `scripts/gen-board-support.py` writes and requires each byte for byte, runs
+# the registry's predicates (the support levels of RFC-0114 D10/D11, and the
+# tiers until phase-522 W4 retires them, via scripts/check-board-tiers.py),
+# requires every board row's book run/flash section
+# (scripts/check-book-board-run-sections.py), and refuses a board fact typed
+# outside the registry where the layout shows one: a `cell(...)` in matrix.rs,
+# a hand track list in probe-platforms.yml or the probe harness, a hand ROWS
+# tuple in issue 2169's test, a `just probe` recipe with no track, a QEMU run
+# block no track covers, a fixture row naming an undeclared board. It replaced
+# the `board-tiers` and `book-board-run-sections` recipes, and keeps their
+# negative controls as its self-test. Prints its known gaps every run.
+# Buildless, ~0.1 s.
 [private]
-board-tiers:
-    @python3 scripts/check-board-tiers.py
+board-registry:
+    @python3 scripts/check-board-registry.py
     @python3 scripts/gen-board-support-table.py --check
-    @python3 scripts/gen-board-support.py --check
 
 # A Kconfig line that a later CONF_FILE fragment overrides is a line that does
 # nothing, and nothing said so (issue 0876). A RATCHET, not a prohibition —

@@ -3109,7 +3109,7 @@ rust-rtos-link-check: _codegen
 
 # phase-395 W17 — does each platform's CI evidence SUPPORT the tier it claims?
 #
-# The network half of `check::board-tiers`. That gate is in `check::fast`: offline
+# The network half of `check::board-registry`. That gate is in `check::fast`: offline
 # and deterministic, so it can prove a tier's obligation is STRUCTURALLY met and
 # cannot know whether the lane is GREEN — it printed "Board support tiers match
 # the evidence" while the 0 7 nightly failed on three platforms.
