@@ -2935,7 +2935,7 @@ class = "ctrl_pkg::Control"
 name = "control_node"
 
 [tiers.high]
-spin_period_us = 1000
+spin_period = "1000us"
 [tiers.high.freertos]
 priority = 5
 stack_bytes = 8192

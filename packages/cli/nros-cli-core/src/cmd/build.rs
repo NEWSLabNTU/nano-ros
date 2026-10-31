@@ -4624,7 +4624,7 @@ fn resolve_image(
         })?;
         let raw = std::fs::read_to_string(&model_path)
             .map_err(|e| format!("reading {}: {e}", model_path.display()))?;
-        let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
+        let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw)
             .map_err(|e| format!("parsing {}: {e}", model_path.display()))?;
         // phase-486 W3 -- the switches THIS image builds with: the overlay's
         // system list plus its own `[image.<id>] features` (W2).
