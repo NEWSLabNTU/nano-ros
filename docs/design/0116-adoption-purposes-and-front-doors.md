@@ -124,7 +124,7 @@ no hardware, and the probe tracks prove them weekly.
   container, each Run step asserted against the chapter's `probe-expect`
   block. The probes prove the mechanics of a chapter; they do not ask whether
   a reader understands it, and they do not time it.
-- [phase-452](../roadmap/phase-452-copy-out-front-door.md) made what a new user
+- [phase-452](../roadmap/archived/phase-452-copy-out-front-door.md) made what a new user
   copies buildable by a lane (`check-template-copy-out`), and settled that
   in-tree workspaces are copy-out.
 - [phase-474](../roadmap/phase-474-safety-island-board-findings.md) and
