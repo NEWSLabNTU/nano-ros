@@ -153,6 +153,10 @@ QGroundControl can flash the same `build/px4_fmu-v5_default/px4_fmu-v5_default.p
 instead. Start the module from the NSH console (`nano_ros_app start`) or the
 board's startup script.
 
+No probe runs the upload line (a CI runner has no board): it stands
+unverified until run against a named board. PX4 SITL is the replay that can
+run in CI, and it belongs to phase-521 W8 (RFC-0113 D9).
+
 **Readiness signal.** After `nano_ros_app start` in the PX4
 console, the shipped template logs `nano-ros uORB backend
 registered` and returns immediately — it doesn't start a

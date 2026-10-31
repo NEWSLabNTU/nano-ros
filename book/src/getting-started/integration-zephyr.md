@@ -1118,6 +1118,10 @@ west flash -d build/zephyr-zenoh/demo_bringup__nucleo_west
 OpenOCD, pyOCD, …) and its probe are Zephyr's and your bench's; nano-ros adds
 nothing to them. The board must also have a network nano-ros can use.
 
+No probe runs a flash line — a CI runner has no board — so this one stands
+unverified until it has been run against a named board. The `native_sim` and
+QEMU lines above are what the weekly probe tracks boot.
+
 ## Zephyr 4.x: select the RMW with a snippet
 
 On 4.x, nano-ros ships `west` **snippets** so you pick the RMW on the

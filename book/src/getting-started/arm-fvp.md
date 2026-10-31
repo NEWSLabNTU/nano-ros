@@ -16,6 +16,13 @@ the build half.
 > remains is the part with consumers — the board-crate import surface and the
 > workspace Entry. FVP support is intended to grow back from those. See
 > [`docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md).
+>
+> **Verified where?** The run half is maintainer-run: a maintainer boots the
+> image by hand (the recipe is in the contributor lanes linked below), and no
+> installed probe track replays this chapter (issue 2176). `fvp-aemv8r-smp` is a Tier 3
+> build-only board ([Board support tiers](../reference/board-support-tiers.md));
+> a probe track follows its promotion out of that tier, not the other way
+> round. Read the output below as what a maintainer last saw, not as a gate.
 
 ## When to use
 
@@ -148,6 +155,10 @@ west build -d build/zephyr-cyclonedds/demo_bringup__fvp_west -t run
 The model is a free download, **not licence-gated** (see
 [Prereqs](#prereqs)); what keeps it off a CI lane is cost and its x86_64-only
 host build. It runs until you stop it (Ctrl-C).
+
+Nothing replays this step automatically. The weekly probe tracks boot the
+QEMU chapters; this one is maintainer-run (the contributor lane below), so
+the output below is unverified on the installed track.
 
 > **Contributors:** the in-tree FVP run lanes (and what they do under
 > the hood) are in
