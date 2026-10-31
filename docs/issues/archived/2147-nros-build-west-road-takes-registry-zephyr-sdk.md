@@ -1,12 +1,13 @@
 ---
 id: 2147
 title: "`nros build`'s Zephyr west road pins no SDK, so it takes whichever SDK the CMake user registry yields — on a multi-checkout host, another checkout's, and `check-template-copy-out` goes red"
-status: open
+status: resolved
 type: bug
 area: [cli, zephyr, build, testing]
 severity: medium
 found: 2026-10-29
 related: [1811, 1254, 0698]
+resolved: 2026-10-31
 ---
 
 ## What
@@ -106,3 +107,38 @@ variant from `nros_zephyr_toolchain_variant` too, not only the SDK. CI does not
 see this because its image runs CMake 3.22, which tolerates the empty operand
 (issue 0698's table). The local workaround is
 `export ZEPHYR_TOOLCHAIN_VARIANT=zephyr` before the gate.
+
+## Resolution
+
+Fixed 2026-10-31. Both halves, on the one road that had neither.
+
+- `builder::zephyr::resolve_toolchain` is the fixture roads' rule
+  (`nros_zephyr_toolchain_variant` + `nros_zephyr_sdk_env`) in Rust, rung for
+  rung. The variant is the caller's, else `host` for native_sim, else
+  `zephyr`, and is never empty. For an SDK board the SDK is the caller's
+  `ZEPHYR_SDK_INSTALL_DIR` (either spelling, any version), else a store root
+  of a `[tool.zephyr-sdk*]` entry, else the legacy checkout copy, else a CMake
+  registry entry. Each of the last three counts only at exactly the version
+  the tree's `SDK_VERSION` pins. Otherwise it refuses, naming
+  `just setup zephyr`.
+- `nros build`'s west handoff passes both as `ZEPHYR_TOOLCHAIN_VARIANT` and
+  `ZEPHYR_SDK_INSTALL_DIR`. Like a missing Zephyr, the refusal is enforced at
+  exec, so `--dry-run` still prints the command.
+- The two languages do not share one implementation. The CLI has no shell
+  helper it could call, and the shell roads run before a CLI exists in early
+  provisioning. So the reach is gated instead. `check-zephyr-sdk-env.sh` now
+  also refuses a non-test `Handoff::new("west"` in `packages/cli` whose file
+  sets neither variable. It has a negative control, and removing the
+  `build.rs` change makes it fail on `cmd/build.rs`.
+- Tests: `builder::zephyr::toolchain_tests` (5). One is the acceptance case
+  above: a registry whose first entry is another checkout's SDK of the same
+  version, against a store SDK, resolves to the store's.
+
+Verified: `just ci gate` passed (25m48s, including `check::build` and its
+`template-copy-out`) from a shell with neither variable exported, on CMake
+4.4.4. Before this, that host failed all five Zephyr template copies at
+`FindZephyr-sdk.cmake:35`.
+`just check template-copy-out` run alone the same way built all five Zephyr
+copies (`ament-workspace-port`, `cpp-port-minimal-publisher`,
+`rclcpp-compat-smoke`, `topic-state-monitor-port`, `zephyr-byo`), 15 projects
+OK.

@@ -1,12 +1,13 @@
 ---
 id: 2160
 title: "A checkout reached through a symlink builds with BOTH path spellings, so cargo sees two `nros-rmw` packages and refuses the graph on `links = \"nros_rmw\"`"
-status: open
+status: resolved
 type: bug
 area: [build, testing]
 severity: low
 found: 2026-10-30
 related: [0375, 0849, 0616]
+resolved: 2026-10-31
 ---
 
 ## What
@@ -74,3 +75,34 @@ the `just` entry (`justfile_directory()` and its consumers), and the
 `SCRIPT_DIR`/`PROJECT_ROOT` idiom in `tests/` and `scripts/`. Prefer one
 shared helper over 257 hand edits (CLAUDE.md "fix the class"). Then re-run
 `just ci gate` from a shell whose `PWD` is the symlink.
+
+## Resolution
+
+Fixed 2026-10-31 at the `just` entry, not at the 257 sites.
+
+The logical spelling has one source: the shell's `PWD`. `getcwd`, cargo,
+cmake, Python's `os.getcwd()` and `justfile_directory()` all answer the
+physical path. `just` passed the caller's `PWD` to every root recipe, and bash
+keeps an inherited `PWD` whenever it names the current directory, so a
+recipe's `$(cd "$SCRIPT_DIR/.." && pwd)` answered `<link>`. Measured with a
+two-directory justfile: root recipes saw `<link>`, while module recipes (run
+in the module's own directory) already saw the physical path.
+
+The justfile now has `export PWD := justfile_directory()`. A recipe whose cwd
+is elsewhere (a module, `[no-cd]`) gets a `PWD` that does not name its cwd,
+and bash discards that in favour of `getcwd`, so the export is harmless there.
+
+- Measured from `cd <link>` with an activated shell:
+  `just check probe-workspace-caps` passes 5 of 5. With the justfile change
+  stashed it fails 2 of 5 on the same `failed to select a version for
+  \`nros-rmw\``.
+- `just ci gate` passed end to end from `<link>` with no workaround
+  environment (25m48s).
+- Gated in `check-inherited-checkout-paths.py`: `just --evaluate PWD` run
+  from a symlink to the checkout must answer the physical root. Without the
+  export it fails.
+
+Not covered: a script run by hand, outside `just`, from a shell whose `PWD` is
+the link still sees the logical spelling. Every gate and lane enters through
+`just`, and CI checkouts are never symlinked. For a by-hand run,
+`cd -P <real>` first.

@@ -418,6 +418,32 @@ def probe_just(tmp: Path) -> list[str]:
         )
     if path_vendor not in entries:
         problems.append(f"just: an out-of-tree PATH entry was dropped — got {got[:300]!r}")
+
+    # Issue 2160 — PWD is inherited too, and a shell that entered this
+    # checkout through a symlink hands every recipe the LINK. A recipe's
+    # `$(cd … && pwd)` then disagrees with cargo's `getcwd`, and one cargo graph
+    # reaches `nros-rmw` by two spellings. The justfile exports the physical
+    # root; run from a symlink to the checkout, `just` must hand that over.
+    link = tmp / "link-2160"
+    link.symlink_to(ROOT)
+    p = subprocess.run(
+        ["just", "--evaluate", "PWD"],
+        capture_output=True,
+        text=True,
+        cwd=link,
+        env={
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": os.environ.get("HOME", str(tmp)),
+            "NROS_QUIET_ACTIVATE": "1",
+            "PWD": str(link),
+        },
+    )
+    got = p.stdout.strip() if p.returncode == 0 else f"<rc={p.returncode}: {p.stderr.strip()[:200]}>"
+    if got != str(ROOT):
+        problems.append(
+            f"just: entered through a symlink, recipes get PWD={got!r}, not the physical "
+            f"{str(ROOT)!r} (issue 2160)"
+        )
     return problems
 
 
@@ -996,7 +1022,8 @@ def main() -> int:
         f"{len(MARKER_SITES)} spellings, behaviour proven for shell / build-root / just, "
         "in both checkout shapes (side-by-side and nested); unexported names dropped by "
         "activation and re-rooted by cmake-incremental, foreign caches dropped (issue 1840); "
-        "$NROS_CLI re-rooted by the shell and cmake resolvers (issue 1928)"
+        "$NROS_CLI re-rooted by the shell and cmake resolvers (issue 1928), "
+        "PWD physical through a symlinked checkout (issue 2160)"
     )
     return 0
 

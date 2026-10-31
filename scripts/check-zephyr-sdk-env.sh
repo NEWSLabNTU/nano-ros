@@ -166,6 +166,38 @@ while IFS= read -r o; do
     fail "recipe configures a Zephyr image with no ZEPHYR_TOOLCHAIN_VARIANT (issue 0698): $o"
 done <<<"$offenders"
 
+# Issue 2147 -- the same rule's reach into the CLI. `nros build`'s west road
+# is the user's (the book's Zephyr flow), and it set neither the variant nor
+# the SDK, so the shell callers above were covered while the road a user
+# actually types was not (issue 0196's reach gap). A Rust source that builds a
+# `west` handoff outside its tests names both variables there, which is
+# `builder::zephyr::resolve_toolchain`'s answer reaching the environment.
+west_handoff_reach() { # <file>...  prints each offending file
+    python3 - "$@" <<'PY'
+import sys
+for path in sys.argv[1:]:
+    text = open(path, encoding="utf-8").read()
+    code = text.split("#[cfg(test)]", 1)[0]
+    if 'Handoff::new("west"' not in code:
+        continue
+    if not all(v in code for v in ("ZEPHYR_TOOLCHAIN_VARIANT", "ZEPHYR_SDK_INSTALL_DIR")):
+        print(path)
+PY
+}
+printf '%s\n' 'fn f() { Handoff::new("west", a); }' >"$tmp/bad.rs"
+printf '%s\n' 'fn f() { Handoff::new("west", a).with_env("ZEPHYR_TOOLCHAIN_VARIANT", v)' \
+    '    .with_env("ZEPHYR_SDK_INSTALL_DIR", s); }' >"$tmp/good.rs"
+printf '%s\n' 'fn f() {}' '#[cfg(test)]' 'mod t { fn g() { Handoff::new("west", a); } }' >"$tmp/test-only.rs"
+got="$(west_handoff_reach "$tmp/bad.rs" "$tmp/good.rs" "$tmp/test-only.rs")"
+[ "$got" = "$tmp/bad.rs" ] \
+    || fail "west-handoff negative control: want only \`bad.rs\`, got \`$got\`"
+mapfile -t _cli_files < <(git -C "$repo_root" ls-files 'packages/cli/*.rs')
+offenders="$(cd "$repo_root" && west_handoff_reach "${_cli_files[@]}")"
+while IFS= read -r o; do
+    [ -n "$o" ] || continue
+    fail "a CLI \`west\` handoff sets no ZEPHYR_TOOLCHAIN_VARIANT/ZEPHYR_SDK_INSTALL_DIR (issue 2147): $o"
+done <<<"$offenders"
+
 if [ "$fails" -ne 0 ]; then
     echo "check-zephyr-sdk-env: $fails failure(s)" >&2
     exit 1

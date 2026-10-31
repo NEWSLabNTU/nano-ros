@@ -62,6 +62,16 @@ export NROS_CARGO_PROFILE := env_var_or_default("NROS_CARGO_PROFILE", "")
 # rather than none or another checkout's.
 export PATH := _NROS_HERE / "packages/cli/target/release" + ":" + shell('"$2"/scripts/lib/reroot-checkout-pathlist.sh "$1" "$2"', env("HOME") / ".local/bin" + ":" + env_var_or_default("PATH", ""), _NROS_HERE)
 
+# Issue 2160 -- every recipe sees this checkout by its PHYSICAL path. A shell
+# that entered through a symlink has `PWD=<link>`, and just passes that on, so
+# a recipe's `$(cd "$SCRIPT_DIR/.." && pwd)` (257 sites) answered `<link>`
+# while cargo and cmake, which ask `getcwd`, answered the real path. One cargo
+# graph then reached `nros-rmw` by both spellings, and cargo refused the graph
+# on its `links = "nros_rmw"`. `justfile_directory()` is found from `getcwd`,
+# so it is physical; a recipe that runs elsewhere (a module, `[no-cd]`) gets a
+# PWD that does not name its cwd, which bash discards in favour of `getcwd`.
+export PWD := justfile_directory()
+
 LOG_DIR := "test-logs"
 
 # Pinned nightly channel for workspace tooling (fmt, miri, llvm-cov, build-std, emit-stack-sizes).
