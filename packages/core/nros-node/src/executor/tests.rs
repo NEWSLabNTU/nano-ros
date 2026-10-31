@@ -7112,6 +7112,59 @@ fn test_guard_condition_clears_after_trigger() {
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 2);
 }
 
+/// Issue 2162 -- a triggered guard condition registered BESIDE an idle
+/// subscription is dispatched under the default `Trigger::Any`.
+///
+/// Every guard test above registers the guard alone, so `Any`'s
+/// "no non-timer entry" arm passed and hid that the guard's own readiness
+/// never counted: with one idle subscription the flag stayed set and the
+/// callback waited for unrelated traffic. Asserted on the default trigger
+/// (none set) and on `Any` set explicitly, and that the idle subscription
+/// is NOT dispatched by the guard's pass.
+#[test]
+fn a_triggered_guard_beside_an_idle_subscription_fires_under_trigger_any() {
+    for explicit in [false, true] {
+        let session = MockSession::new();
+        let mut executor: Executor = executor_with_clock(session);
+        if explicit {
+            executor.set_trigger(Trigger::Any);
+        }
+        let nid = executor
+            .node_builder("guard_beside_idle_sub")
+            .build()
+            .unwrap();
+        executor
+            .node_mut(nid)
+            .create_subscription::<TestMsg, _>("/idle", |_msg: &TestMsg| {})
+            .unwrap();
+
+        let count = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
+        let count2 = count.clone();
+        let (_id, handle) = executor
+            .register_guard_condition(move || {
+                count2.fetch_add(1, portable_atomic::Ordering::SeqCst);
+            })
+            .unwrap();
+
+        let r = executor.spin_once(core::time::Duration::from_millis(0));
+        assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 0);
+        assert_eq!(r.subscriptions_processed, 0);
+
+        handle.trigger();
+        let r = executor.spin_once(core::time::Duration::from_millis(0));
+        assert_eq!(
+            count.load(portable_atomic::Ordering::SeqCst),
+            1,
+            "explicit={explicit}: the guard must fire although the subscription is idle"
+        );
+        assert!(!handle.is_triggered(), "the dispatch consumed the flag");
+        assert_eq!(
+            r.subscriptions_processed, 0,
+            "the guard's pass dispatched no idle subscription"
+        );
+    }
+}
+
 /// phase-417 W4.e — the guard condition has ONE owner in all three languages,
 /// and in Rust that owner is the node.
 ///

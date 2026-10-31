@@ -12360,6 +12360,11 @@ impl<'s> Executor<'s> {
         let mut bits: u64 = 0;
         let mut count: usize = 0;
         let mut non_timer_mask: u64 = 0;
+        // Issue 2162 -- the guard conditions. A ready guard passes
+        // `Trigger::Any` like a ready subscription does (rclc's
+        // `rclc_executor_trigger_any` counts every handle), but an IDLE guard
+        // never holds `Any` or `All` back, so it stays out of `non_timer_mask`.
+        let mut guard_mask: u64 = 0;
         let mut always_mask: u64 = 0;
 
         // phase-397 W3 (RFC-0084) — an ATTRIBUTED slot's readiness is pushed,
@@ -12432,8 +12437,10 @@ impl<'s> Executor<'s> {
                 if ready {
                     bits |= bit;
                 }
-                if !matches!(meta.kind, EntryKind::Timer | EntryKind::GuardCondition) {
-                    non_timer_mask |= 1u64 << i;
+                match meta.kind {
+                    EntryKind::Timer => {}
+                    EntryKind::GuardCondition => guard_mask |= bit,
+                    _ => non_timer_mask |= bit,
                 }
                 if matches!(meta.invocation, InvocationMode::Always) {
                     always_mask |= 1u64 << i;
@@ -12470,7 +12477,11 @@ impl<'s> Executor<'s> {
 
         // Phase 2: Trigger evaluation
         let trigger_passes = match &s.trigger {
-            Trigger::Any => bits & non_timer_mask != 0 || non_timer_mask == 0,
+            // Issue 2162 -- a triggered guard beside an idle subscription
+            // waited for unrelated traffic (possibly forever) while `Any`
+            // read only `non_timer_mask`. The `non_timer_mask == 0` arm is
+            // unchanged: a timer/guard-only executor still passes every spin.
+            Trigger::Any => bits & (non_timer_mask | guard_mask) != 0 || non_timer_mask == 0,
             Trigger::All => bits & non_timer_mask == non_timer_mask,
             Trigger::One(id) => snapshot.is_ready(*id),
             Trigger::AllOf(set) => snapshot.all_ready(*set),
