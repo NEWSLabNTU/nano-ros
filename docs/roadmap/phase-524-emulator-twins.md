@@ -1,0 +1,154 @@
+# Phase 524 — Emulator twins for the boards adopters hold
+
+**Status (2026-10-31). PROPOSED. Nothing started; W1's three spikes decide the board list before any other item runs.** Implements
+[RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
+phase-522 (the board support registry as the single primitive, RFC-0114) for
+the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
+front doors, RFC-0116) for the serial-first chapter shape and the `nros run`
+verb W4's chapters are written against.
+
+---
+
+## Why
+
+The three adoption purposes (industrial, field solutions, education) each hold
+a physical board; every board a chapter boots today is QEMU or a host
+simulator, and every flash line says no probe runs it (issue 2176). RFC-0115
+rules that a board enters the book only with an emulator twin that boots the
+same ELF the bench runs. This phase buys the boards, runs the spikes that
+prove or disprove each twin, installs the emulators through `nros setup`, adds
+the surviving boards as registry rows and descriptors, generates their probe
+tracks, and records the first hardware runs.
+
+## Work items
+
+Each item ends in an acceptance and a decision step. The decision step is
+where a measured result changes the plan, written down before the result is
+known.
+
+### W0 — Purchase
+
+Nucleo-F767ZI, Arduino UNO R4 Minima (not the WiFi variant: same Zephyr reach,
+the ESP32-S3 coprocessor is not driven), Raspberry Pi Pico W, USB cables, one
+USB-to-UART adapter per bench for a board whose console is not the data link.
+Owner: the maintainer.
+
+- **Acceptance:** boards on the bench.
+- **Decision:** none; the spikes do not need the hardware.
+
+### W1 — The three spikes
+
+Run in the order RFC-0115's "Evaluation and decision steps" gives, each with a
+pass or fail log under `tmp/` and the exact commands in the log header.
+
+1. Renode, `arduino_uno_r4_minima`, Zephyr talker over UART bridged to a host
+   pty, `rmw_zenohd` on a serial locator, `ros2 topic echo` delivery. One day.
+2. Renode, `nucleo_f767zi`, the same over the ST-LINK UART, then over the
+   Renode ethernet switch bridged to the host with a `tcp/` locator. Two days.
+3. `wokwi-cli`, `rpi_pico`, our Zephyr ELF with the UART routed to the host.
+   Half a day.
+
+- **Acceptance:** three logs, each ending in PASS or FAIL with the decisive
+  line quoted.
+- **Decision step:** rewrite RFC-0115 D4's table to the survivors before W2
+  starts. A fail on UNO R4 removes it from the list; a fail on Nucleo ethernet
+  keeps the Nucleo serial-only and moves its ethernet chapter behind W5; a fail
+  on Nucleo serial removes it; a fail on Wokwi moves the Pico W to Renode if
+  the installed Renode has an RP2040 platform, else removes it. If all three
+  fail, this phase closes with the record and RFC-0115 is marked Superseded by
+  a hardware-first decision.
+
+### W2 — Renode and Wokwi as `[tool.*]` entries
+
+Add `[tool.renode]` and `[tool.wokwi-cli]` to `nros-sdk-index.toml` as RFC-0099
+dist rows: pinned version, per-host URL and sha256, a measured `floor`
+(`scripts/sdk/measure-dist-floor.py`), `smoke` rows the release job runs. The
+surviving boards' `[board.*]` rows name them in `packages`, so
+`nros setup <board>` installs the twin with the toolchain. `nros doctor` reports
+them. Nothing is installed by hand or by apt; the probe container is the
+measurement of that.
+
+- **Acceptance:** `nros setup <board> --dry-run` prices the emulator;
+  `check-dist-floors` green; a pristine container reaches a running emulator
+  from the chapter's setup block alone.
+- **Decision step:** if a tool has no redistributable archive for a host we
+  claim (Wokwi CLI's licence or Renode's portable build), the row carries
+  `floor` and dist for the hosts it has and the chapter says which hosts the
+  twin runs on; a twin that runs on no CI host removes its board from the list.
+
+### W3 — Registry rows and board descriptors
+
+After phase-522 W1 has landed the new registry fields. One row per surviving
+board: `package`, `platform = "zephyr"`, `runs = "emulator"`, `emulator`
+(`renode:nucleo_f767zi`, `renode:arduino_uno_r4_minima`, `wokwi:pi-pico-w`),
+`hardware` (the bench board id), `cadence = "weekly"`, `breadth = "inherits
+ZephyrQemuCortexM"`, the chapter and its anchors, `maintainers`. One descriptor
+directory per board under `packages/boards/` with `nros-board.toml`
+(`west_board`, `rust_target`, serial console node, RFC-0109 `stack = "os"`),
+`package.xml`, and the Kconfig fragment the board needs (UART interrupt-driven
+RX for the serial link, issue 0852). No crate.
+
+- **Acceptance:** `check-board-registry` green; `nros board list` shows the
+  three with status "Verified in emulator (weekly)" once W4's track has run,
+  "Builds" before; the generated evidence page says breadth is inherited and
+  names the witness.
+- **Decision step:** if phase-522 W1 is not on `main` when W2 finishes, W3
+  writes rows in the OLD schema (`tier = 3`, `execution_class = "cross-run"`)
+  and the phase-522 migration carries them; it does not wait.
+
+### W4 — Probe tracks and serial-first chapters
+
+Generate the tracks `renode-uno-r4`, `renode-nucleo`, `wokwi-pico` from the
+registry (RFC-0114 D12): the `probe-platforms.yml` matrix rows, the
+`run-bootstrap-probe.sh` lookup, and the issue 2169 run-command rows. Write one
+getting-started chapter per board in RFC-0116 D5's serial-first shape: setup
+(`nros setup <board>`), scaffold (the single-package front door, RFC-0116 D6),
+build, run in the twin (`nros run`), expected output (`probe-expect`), then the
+bench flash section carrying the issue 2176 "unverified" sentence until W5.
+The Nucleo chapter gets an ethernet section after the serial one. Each twin
+smoke cell (boot, link up, one message heard) joins the matrix through the
+generator.
+
+- **Acceptance:** `just probe <track>` passes in a pristine `ros:humble`
+  container for each surviving board; the weekly workflow lists the tracks; the
+  2169 test has a row per chapter; `check-board-registry` and
+  `check-book-board-run-sections` green with no hand-typed board fact outside
+  the registry.
+- **Decision step:** a track that passes by hand and fails in the container
+  for a reason in the emulator (display, licence check, network namespace) is
+  an issue against W2's row, not a reason to mark the track manual.
+
+### W5 — Hardware runs
+
+With W0's boards on the bench, flash each chapter's ELF with the chapter's
+own flash line (`west flash`, the Pico's UF2 copy, the UNO R4's USB-DFU) and
+run the chapter's run section against a host router. Record each in the
+registry: `runs` gains `"hardware"`, `last_run` is the date, the log goes to
+`docs/roadmap/data/`. The chapter's flash line loses the 2176 sentence in the
+same commit the date lands.
+
+- **Acceptance:** three dated hardware runs; the evidence page shows
+  "Boots on hardware, manual, <date>" beside the emulator status; no flash
+  line in those chapters still says "unverified".
+- **Decision step:** a board whose twin passes and whose bench fails is an
+  issue against the descriptor, and the chapter's flash section keeps the
+  sentence; the twin track stays. A bench pass with a twin fail does not exist
+  under RFC-0115 D4 (the board would not be in the book).
+
+## Out of scope
+
+Hardware CI lanes, Arduino GIGA R1 WiFi, Nucleo-H743ZI, ESP32 revival, WiFi on
+the Zephyr 3.7 line, Windows-native toolchains (phase-523 documents a container
+or WSL road). The education lab series and the adoption probes are phase-523's
+successor items and read this phase's tracks.
+
+## Acceptance for the phase
+
+- The book names only boards with a passing twin track.
+- `nros setup <board>` installs the twin; no chapter asks the reader to install
+  an emulator by hand.
+- Every board fact (twin, hardware, cadence, last run, breadth, chapter
+  anchors) is typed once, in the registry, and every table and track is
+  generated from it.
+- Each of the three purposes has a board it can buy, replay in the twin before
+  the box arrives, and flash from the same chapter.
