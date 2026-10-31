@@ -46,3 +46,12 @@ rlib_dep = "nros-rmw-xrce-cffi"
 needs_cxx_linker = false
 
 [rmw.capabilities]
+
+# Issue 2174 -- what this backend's wire carries, stated as booleans for the
+# checks that need it (`cargo_nano_ros::rmw_resolver::backend_states_fact`).
+# A fact left out is UNKNOWN, never false. `request_source_timestamp`: does a
+# service request reach the server with the client's send time
+# (`ServiceInfo.source_timestamp`, issue 1942)? The Agent hands the client a
+# `SampleIdentity` and no timestamp, so a server here cannot tell a stale request.
+[rmw.facts]
+request_source_timestamp = false

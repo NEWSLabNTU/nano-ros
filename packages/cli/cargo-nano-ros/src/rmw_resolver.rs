@@ -152,6 +152,18 @@ pub fn backend_declares_capability(backend: &str, capability: &str) -> bool {
         .is_some_and(|r| r.capabilities.iter().any(|(k, _)| *k == capability))
 }
 
+/// What `backend`'s descriptor states for `fact` (`[rmw.facts]`, issue 2174):
+/// `Some(true)` / `Some(false)` as stated, `None` when the descriptor says
+/// nothing or the backend is unknown. A check must treat `None` as UNKNOWN,
+/// never as false.
+pub fn backend_states_fact(backend: &str, fact: &str) -> Option<bool> {
+    RMW_ROWS
+        .iter()
+        .find(|r| r.names.contains(&backend))
+        .and_then(|r| r.facts.iter().find(|(k, _)| *k == fact))
+        .map(|(_, v)| *v)
+}
+
 /// Every backend whose descriptor declares `capability`, canonical names.
 ///
 /// phase-347 W4 — replaces ~~`Capability::backends_supporting`~~, whose only
