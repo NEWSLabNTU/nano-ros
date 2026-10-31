@@ -220,6 +220,7 @@ create_sertype
 dds_entity_init
 dds_entity_lock
 dds_get_status_changes
+dds_handle_pin_for_delete
 dds_ostream
 dds_override_inherited_listener
 dds_stream

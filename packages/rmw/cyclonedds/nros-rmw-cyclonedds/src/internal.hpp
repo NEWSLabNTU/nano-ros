@@ -251,6 +251,24 @@ rmw_ret_t entity_wake_set(dds_entity_t reader, EntityWake *w, rmw_event_callback
 /* Teardown, BEFORE the reader is deleted: detach and free the listener. */
 void entity_wake_release(dds_entity_t reader, EntityWake *w);
 
+/* Issue 2181 — delete an entity this backend created, for a `*_destroy` slot.
+ *
+ * Cyclone deletes a participant's children with it, so an entity destroyed
+ * AFTER its session closed names a handle that is already gone. That is the
+ * ordinary C++ shape: `rclcpp::shutdown()` closes the executor's session, and
+ * `~Publisher()` runs later, at the end of the scope that owns it. Nothing has
+ * leaked, but `dds_delete` reports it, and the destroy slot used to return
+ * ERROR for it.
+ *
+ * Only a failure to PIN the handle counts as "already gone" — the three codes
+ * `dds_handle_pin_for_delete` returns when the handle no longer names a live
+ * entity (`dds_handles.c`): BAD_PARAMETER (not in the table, or closing),
+ * ALREADY_DELETED, and PRECONDITION_NOT_MET (the library deinitialised with the
+ * last participant). A deletion that was attempted and failed still reports.
+ * A second destroy of the same handle never gets here: the slots refuse a NULL
+ * `backend_data` first. */
+dds_return_t delete_owned_entity(dds_entity_t entity);
+
 /* The three vtable slots. */
 rmw_ret_t subscription_set_on_new_message_callback(rmw_subscription_t *subscription,
                                                    rmw_event_callback_t callback,

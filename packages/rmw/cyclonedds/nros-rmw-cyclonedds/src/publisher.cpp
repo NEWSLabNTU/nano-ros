@@ -221,8 +221,9 @@ rmw_ret_t publisher_destroy(rmw_publisher_t* publisher) {
     if (state->graph != nullptr && state->writer > 0 && dds_get_participant(state->writer) > 0) {
         graph_untrack_writer(state->graph, state->writer);
     }
-    dds_return_t writer_rc = state->writer > 0 ? dds_delete(state->writer) : DDS_RETCODE_OK;
-    dds_return_t topic_rc = state->topic > 0 ? dds_delete(state->topic) : DDS_RETCODE_OK;
+    // Issue 2181 — a writer deleted with its participant is not a failure.
+    dds_return_t writer_rc = delete_owned_entity(state->writer);
+    dds_return_t topic_rc = delete_owned_entity(state->topic);
     delete state;
     publisher->backend_data = nullptr;
     if (writer_rc < 0 || topic_rc < 0) return NROS_RMW_RET_ERROR;
