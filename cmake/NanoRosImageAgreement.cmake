@@ -109,8 +109,15 @@ function(_nros_image_facts_file out_var)
         return()
     endif()
     if(_facts STREQUAL "")
-        # Not in a nano-ros workspace. Nothing declared the image, so there is
-        # no second answer to disagree with.
+        # Not in a nano-ros workspace, or a workspace whose plan answered
+        # nothing. Nothing declared the image, so there is no second answer to
+        # disagree with. The CLI says why on stderr only in the second case,
+        # and that reason is shown: issue 2180 was this branch taken on one
+        # host with the cause thrown away.
+        string(STRIP "${_err}" _err)
+        if(NOT _err STREQUAL "")
+            message(STATUS "nano-ros: image facts NOT read — ${_err}")
+        endif()
         return()
     endif()
 

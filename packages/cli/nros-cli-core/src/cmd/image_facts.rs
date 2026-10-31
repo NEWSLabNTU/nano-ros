@@ -169,10 +169,12 @@ pub fn run(args: Args) -> Result<()> {
     let plans = match crate::cmd::build::plan_query(&build_args) {
         Ok(p) => p,
         Err(e) if args.if_present => {
-            // The workspace exists but does not declare this image. Same
-            // reasoning as above: the caller asked whether facts are available,
-            // and "no" is an answer.
-            let _ = e;
+            // Still "no facts", so still exit 0 -- a workspace that declares no
+            // `[image.*]` lands here too, and that is an answer, not a failure.
+            // But the reason goes to stderr: discarding it made issue 2180 an
+            // empty answer with no cause, on the one host where it happened.
+            // The cmake caller prints stderr beside an empty answer.
+            eprintln!("{} has no image facts: {e:#}", root.display());
             return Ok(());
         }
         Err(e) => return Err(e),
