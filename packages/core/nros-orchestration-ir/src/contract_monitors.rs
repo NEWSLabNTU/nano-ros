@@ -547,6 +547,49 @@ pub struct HazardRow {
     /// ([`model_reaction_ids`]), or 0 when the reacting path states no
     /// `safe_state`: then there is no safe-state entry to start.
     pub reaction_id: u16,
+    /// play_launch phase 96 W4.2 (phase 85 D4) -- the rung whose ROUTE this
+    /// table set judges ([`hazard_rung`]), when there is one.
+    pub rung: Option<HazardRungRow>,
+}
+
+/// play_launch phase 96 W4.2 -- the rung of a hazard's ladder an executor
+/// judges, and the route play_launch's checker charged it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct HazardRungRow {
+    /// The rung's name (`contracts.hazards.<h>.rungs[].rung`), for comments.
+    pub name: String,
+    /// Rate-row index of a publisher on one of the rung's `output` topics.
+    pub row: usize,
+    /// The rung's `route_ms`, rounded UP, never 0: from the detection fire
+    /// to the rung's first output.
+    pub route_ms: u32,
+}
+
+/// play_launch phase 96 W4.2 -- the rung `rows` can judge: the TOP rung of the
+/// ladder (the model lists rungs top first, and a rung the fault removes is
+/// not listed) whose output a rate row of this table set publishes, provided
+/// play_launch charged it a route.
+///
+/// Not a lower rung when the top observed one has no route: the top rung is
+/// the one that answers first while it is available, so judging a lower rung
+/// against the first output would compare the wrong quantity. Which rung
+/// actually runs depends on the mode the image is in when the fault comes,
+/// which this table does not track; the top rung is the claim the checker
+/// makes for the healthy system.
+pub fn hazard_rung(
+    h: &ros_launch_manifest_model::HazardContract,
+    rows: &[MonitorRow],
+) -> Option<HazardRungRow> {
+    let (rung, row) = h.rungs.iter().find_map(|r| {
+        let row = rows.iter().position(|m| r.output.contains(&m.topic))?;
+        Some((r, row))
+    })?;
+    let route = rung.route_ms.filter(|v| v.is_finite() && *v > 0.0)?;
+    Some(HazardRungRow {
+        name: rung.rung.clone(),
+        row,
+        route_ms: route.ceil().min(u32::MAX as f64).max(1.0) as u32,
+    })
 }
 
 /// The rows of `rows`/`ages` that detect a fault on `topic`: every age row on
@@ -667,6 +710,7 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
             guards,
             sink: emits.and_then(|e| rows.iter().position(|r| r.fqn == e)),
             reaction_id,
+            rung: hazard_rung(h, rows),
         });
     }
     out
@@ -719,9 +763,14 @@ fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
             Some(r) => format!("{r}u16"),
             None => format!("{m}::NO_SINK", m = paths.monitor),
         };
+        let (rung_row, rung_route) = match &h.rung {
+            Some(r) => (format!("{}u16", r.row), r.route_ms),
+            None => (format!("{m}::NO_SINK", m = paths.monitor), 0),
+        };
         out.push_str(&format!(
             "    HazardSpec {{ key: {k:?}, ftti_ms: {f}u32, settle_ms: {st}u32, \
              guards: NROS_HAZARD_GUARDS_{i}, sink: {sink}, reaction_id: {ri}u16, \
+             rung_row: {rung_row}, rung_route_ms: {rung_route}u32, \
              cell: &NROS_HAZARD_CELL_{i} }},\n",
             k = h.key,
             f = h.ftti_ms,
@@ -1140,6 +1189,51 @@ mod hazard_row_tests {
             (0, None, 0)
         );
         assert!(model_reaction_ids(&m).is_empty());
+    }
+
+    /// play_launch phase 96 W4.2 -- the model's `rungs` (top first) reach
+    /// the row: the top rung whose output this table set publishes, its route
+    /// rounded up, and the rendered spec carries both. A rung on a topic no
+    /// row publishes is passed over; a top observed rung with no route judges
+    /// nothing (not the rung below it).
+    #[test]
+    fn the_top_observed_rung_and_its_route_reach_the_row() {
+        let rungs = |list: &str| format!("{HAZARD}      ftti_ms: 500.0\n      rungs:\n{list}");
+        // `comfort` ends on a topic nothing here publishes; `stop` on /stop.
+        let (rows, ages, hz) = lowered(
+            AGE_100,
+            &rungs(concat!(
+                "        - rung: comfort\n",
+                "          role: rung\n",
+                "          route_ms: 4.0\n",
+                "          output: [/elsewhere]\n",
+                "        - rung: stop\n",
+                "          role: floor\n",
+                "          route_ms: 7.5\n",
+                "          starts_at: /handler\n",
+                "          output: [/stop]\n",
+            )),
+        );
+        let r = hz[0].rung.as_ref().expect("a rung is judged");
+        assert_eq!((r.name.as_str(), r.route_ms), ("stop", 8), "{r:?}");
+        assert_eq!(rows[r.row].topic, "/stop");
+        let text = render_monitor_rs_full(&rows, &ages, &hz, RenderPaths::NROS_NODE);
+        assert!(
+            text.contains(&format!("rung_row: {}u16, rung_route_ms: 8u32", r.row)),
+            "{text}"
+        );
+
+        // The top observed rung has no route: nothing is judged.
+        let (_, _, hz) = lowered(
+            AGE_100,
+            &rungs("        - rung: stop\n          role: floor\n          output: [/stop]\n"),
+        );
+        assert_eq!(hz[0].rung, None);
+        // No rungs at all (a model before play_launch phase 96).
+        let (rows, ages, hz) = lowered(AGE_100, HAZARD);
+        assert_eq!(hz[0].rung, None);
+        let text = render_monitor_rs_full(&rows, &ages, &hz, RenderPaths::NROS_NODE);
+        assert!(text.contains("rung_route_ms: 0u32"), "{text}");
     }
 
     /// A table set holding only part of a hazard's monitors does not lower

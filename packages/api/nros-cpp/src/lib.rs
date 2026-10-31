@@ -5754,6 +5754,16 @@ pub struct nros_cpp_hazard_row_t {
     /// hazard is detected (the reacting path's, in the model's one reaction id
     /// space); 0 = no safe-state entry to start.
     pub reaction_id: u16,
+    /// play_launch phase 96 W4.2 -- rate-table row of a publisher on the
+    /// output of the rung this executor judges (the top rung of the hazard's
+    /// ladder whose output the monitor table observes). Read only when
+    /// `rung_route_ms` is non-zero.
+    pub rung_row: u16,
+    /// That rung's route, ms, from the detection tick to its first output
+    /// (`contracts.hazards.<h>.rungs[].route_ms`, rounded up); an overrun is
+    /// reported as `hazard-route-runtime`. 0 = no route monitored, which is
+    /// also what an entry generated before this field reads as.
+    pub rung_route_ms: u32,
 }
 
 /// One install: the rows, and one static 8-aligned buffer of at least
@@ -5771,14 +5781,15 @@ pub struct nros_cpp_hazard_table_t {
 }
 
 /// Bytes of caller storage ONE hazard row needs (`HazardCell` + `HazardSpec`),
-/// a bound for the reason [`NROS_CPP_MONITOR_ROW_STORAGE`] is one: 80 on a
-/// 64-bit host, 48 on a 32-bit target. Stated in the header with
+/// a bound for the reason [`NROS_CPP_MONITOR_ROW_STORAGE`] is one: 96 on a
+/// 64-bit host, 64 on a 32-bit target (play_launch phase 96 W4.2: the rung
+/// route's three cell words and two spec fields). Stated in the header with
 /// `sizeof(void *)`, see `cbindgen.toml`.
 #[cfg(feature = "rmw-cffi")]
 pub const NROS_CPP_HAZARD_ROW_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
-    80
+    96
 } else {
-    48
+    64
 };
 /// Bytes of caller storage ONE guard needs (`GuardSpec`).
 #[cfg(feature = "rmw-cffi")]
@@ -5944,6 +5955,12 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
                         r.sink
                     },
                     reaction_id: r.reaction_id,
+                    rung_row: if r.rung_route_ms == 0 {
+                        NO_SINK
+                    } else {
+                        r.rung_row
+                    },
+                    rung_route_ms: r.rung_route_ms,
                     cell: &*cell,
                 },
             );
@@ -7215,6 +7232,10 @@ pub struct nros_cpp_reaction_event_t {
     pub declared_ms: u32,
     /// The row's `mechanism` (`NROS_CPP_MECHANISM_*`).
     pub mechanism: u8,
+    /// play_launch phase 96 W4.2 -- the executor's monotonic µs when the
+    /// verdict fired; for `hazard-detected`, the detection tick, where the
+    /// hazard's rung routes start. 0 when the executor has no clock.
+    pub fired_at_us: u64,
 }
 
 #[cfg(feature = "rmw-cffi")]
@@ -7229,6 +7250,7 @@ const _: () = {
     assert!(offset_of!(C, measured_ms) == offset_of!(R, measured_ms));
     assert!(offset_of!(C, declared_ms) == offset_of!(R, declared_ms));
     assert!(offset_of!(C, mechanism) == offset_of!(R, mechanism));
+    assert!(offset_of!(C, fired_at_us) == offset_of!(R, fired_at_us));
 };
 
 /// phase-503 — the reaction hook: `hook(event, ctx)`, called on the spin

@@ -900,9 +900,9 @@ fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
     );
     assert!(
         src.contains(
-            "{ \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_guards_0, 1u, 65535u, 0u },"
+            "{ \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_guards_0, 1u, 65535u, 0u, 65535u, 0u },"
         ),
-        "hazard row (no safe_state: no sink); src:\n{src}"
+        "hazard row (no safe_state: no sink; no rungs: no route); src:\n{src}"
     );
     assert!(src.contains("static uint64_t __nros_hz_storage[(1u * NROS_CPP_HAZARD_ROW_STORAGE + 1u * NROS_CPP_HAZARD_GUARD_STORAGE + 2u * NROS_CPP_HAZARD_MEMBER_STORAGE + 7u) / 8u];"), "{src}");
     let monitors = src
@@ -937,8 +937,8 @@ fn typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook() {
     )
     .expect("hazard emit ok");
     assert!(
-        src.contains("__nros_hz_guards_0, 1u, 0u, 1u },"),
-        "sink rate row 0, reaction id 1; src:\n{src}"
+        src.contains("__nros_hz_guards_0, 1u, 0u, 1u, 0u, 13u },"),
+        "sink rate row 0, reaction id 1, rung route on rate row 0 at 13 ms; src:\n{src}"
     );
     assert!(src.contains("void nros_app_reaction_hook"), "{src}");
     assert!(

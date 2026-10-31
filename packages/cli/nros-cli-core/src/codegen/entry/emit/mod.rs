@@ -365,7 +365,9 @@ pub(crate) fn hazard_fixture_model() -> ros_launch_manifest_model::SystemModel {
 
 /// [`hazard_fixture_model`], optionally with the hazard reacting through
 /// `/listener/react`, a path whose `safe_state` emits `/talker/chatter`
-/// (phase-462 W3c: the reaction gets id 1, the sink is rate row 0).
+/// (phase-462 W3c: the reaction gets id 1, the sink is rate row 0), and one
+/// rung ending on `/chatter` whose route play_launch charged 12.5 ms
+/// (play_launch phase 96 W4.2: judged on rate row 0, rounded up to 13).
 #[cfg(test)]
 pub(crate) fn hazard_fixture_model_reacting(
     reacting: bool,
@@ -384,7 +386,9 @@ pub(crate) fn hazard_fixture_model_reacting(
     let yaml = if reacting {
         yaml.replace(
             "      ftti_ms: 400.0\n",
-            "      ftti_ms: 400.0\n      reaction: /listener/react\n",
+            "      ftti_ms: 400.0\n      reaction: /listener/react\n      rungs:\n        \
+             - rung: react\n          role: floor\n          route_ms: 12.5\n          \
+             starts_at: /listener\n          output: [/chatter]\n",
         )
         .replace(
             "\n  hazards:",

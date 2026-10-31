@@ -35,11 +35,11 @@
 
 /**
  * phase-462 W3b -- bytes of caller storage ONE hazard row needs (its
- * `HazardCell` plus its `HazardSpec`), the same kind of bound: 80 on a 64-bit
- * host, 48 on a 32-bit target. `nros_cpp_install_hazards` checks the real
+ * `HazardCell` plus its `HazardSpec`), the same kind of bound: 96 on a 64-bit
+ * host, 64 on a 32-bit target. `nros_cpp_install_hazards` checks the real
  * requirement and refuses a short buffer.
  */
-#define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
+#define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 96 : 64)
 
 /**
  * phase-462 W4b -- bytes of caller storage `nros_cpp_install_modes` needs per
@@ -799,6 +799,20 @@ typedef struct nros_cpp_hazard_row_t {
    * space); 0 = no safe-state entry to start.
    */
   uint16_t reaction_id;
+  /**
+   * play_launch phase 96 W4.2 -- rate-table row of a publisher on the
+   * output of the rung this executor judges (the top rung of the hazard's
+   * ladder whose output the monitor table observes). Read only when
+   * `rung_route_ms` is non-zero.
+   */
+  uint16_t rung_row;
+  /**
+   * That rung's route, ms, from the detection tick to its first output
+   * (`contracts.hazards.<h>.rungs[].route_ms`, rounded up); an overrun is
+   * reported as `hazard-route-runtime`. 0 = no route monitored, which is
+   * also what an entry generated before this field reads as.
+   */
+  uint32_t rung_route_ms;
 } nros_cpp_hazard_row_t;
 
 /**
@@ -1016,6 +1030,12 @@ typedef struct nros_cpp_reaction_event_t {
    * The row's `mechanism` (`NROS_CPP_MECHANISM_*`).
    */
   uint8_t mechanism;
+  /**
+   * play_launch phase 96 W4.2 -- the executor's monotonic µs when the
+   * verdict fired; for `hazard-detected`, the detection tick, where the
+   * hazard's rung routes start. 0 when the executor has no clock.
+   */
+  uint64_t fired_at_us;
 } nros_cpp_reaction_event_t;
 
 /**
