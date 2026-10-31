@@ -28,6 +28,6 @@
     "zephyr/cmake/nros_cargo_build.cmake": 6,
     "zephyr/cmake/nros_checkout_guard.cmake": 2,
     "zephyr/cmake/nros_image_kconfig.cmake": 4,
-    "zephyr/cmake/nros_rmw_zenoh.cmake": 2
+    "zephyr/cmake/nros_rmw_zenoh.cmake": 1
   }
 }

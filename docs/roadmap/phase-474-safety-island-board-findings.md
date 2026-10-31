@@ -1192,7 +1192,10 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
       1534 open: main priority checked by a configure warning, RX ring
       documented, a measured default still needs a serial-join lane.
       2026-10-30: 1534 resolved -- the flush task follows the read task on
-      every port; the main-priority and RX-ring residue is issue 2164.)
+      every port; the main-priority and RX-ring residue is issue 2164.
+      2026-10-31: the main priority is REFUSED, not warned about, on a
+      Zephyr serial zenoh link (issue 2164); the RX-ring default still
+      waits on a serial-join lane, and 2164 stays open for it.)
 - [ ] T4: a deliberate overrun on the S32K344 is reported through D1's
       channel. (**Board leg met 2026-10-26**: three `max-latency-runtime`
       verdicts in the SWD record, see "The board halves, 2026-10-26";

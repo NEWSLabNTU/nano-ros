@@ -296,17 +296,19 @@ CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES=4096
   ISR then fills the receive ring while the read task cannot run, and the
   frames lost to the overflow carry the router's replies to the publishers'
   interests. The island's joins into a live domain failed 3 of 3 at 0 and
-  passed at 5. The configure prints a `WARNING` naming the number to use when
-  main is not below the read task on a serial link.
+  passed at 5. On a serial link the configure REFUSES an image whose main
+  thread is not below the read task, and the error names the number to use
+  (5 on the default 15 preempt priorities; issue 2164).
 - **Receive ring.** The default 1024 bytes is 11 ms of line at 921600 baud.
   The island measured a high water of 815–1024 bytes at a join, and one join
   in five overflowed. Read `_z_zephyr_serial_stats.ring_high_water` and
   `ring_overflows` on your board and size the ring from them; the RAM is
   static.
 
-A board that only joins an idle domain stays well inside both defaults. Once
-phase-474 T3 measures them, both become `configdefault`s under
-`CONFIG_NROS_ZENOH_LINK_SERIAL`, and a board conf can still override them.
+A board that only joins an idle domain stays well inside the ring default.
+The ring default moves once phase-474 T3 measures a serial join (issue 2164);
+the main priority stays a stated value, because Kconfig cannot derive
+`read task + 1` from two symbol values.
 
 ## Troubleshooting
 

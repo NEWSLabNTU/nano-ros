@@ -492,8 +492,8 @@ if(DEFINED CONFIG_NROS_ZENOH_READ_PRIORITY)
     zephyr_compile_definitions(ZPICO_READ_TASK_PRIORITY=${CONFIG_NROS_ZENOH_READ_PRIORITY})
 endif()
 
-# Issue 1534 / phase-474 T3 -- on a SERIAL link the main thread must register
-# BELOW the read task. Registration is CPU work: at Zephyr's default
+# Issue 1534 / 2164 / phase-474 T3 -- on a SERIAL link the main thread must
+# register BELOW the read task. Registration is CPU work: at Zephyr's default
 # CONFIG_MAIN_THREAD_PRIORITY 0 the main thread outranks the read task (band
 # 200 = k_thread 4 on a 15-priority image) for the whole registration burst,
 # the UART ISR fills the RX ring while the read task is READY and not running,
@@ -502,8 +502,22 @@ endif()
 # (phase8-W10): 3 of 3 joins into a live domain failed at main 0 and passed at
 # main 5. Derived from the image's own .config with the map
 # `nros_zephyr_native_priority` uses (band -> SCHED_RR -> k_thread), so this is
-# the number the read task actually gets. A WARNING, not a refusal: an image
-# that joins an idle domain registers before any peer sends.
+# the number the read task actually gets.
+#
+# A REFUSAL, not a warning (issue 2164). It was a warning on the grounds that
+# an image joining an IDLE domain registers before any peer sends, but the
+# same main thread then spins the executor above the read task for the life of
+# the image, which is the app-above-transport inversion issue 0623 retired for
+# every other thread: the shipped bands put the transport above the app. No
+# nano-ros image wants main above the read task on a byte-stream link, and a
+# warning in a configure log was the only thing standing between a board and a
+# join that silently loses its interest replies.
+#
+# Not DERIVED, because Zephyr owns the symbol and Kconfig cannot compute
+# `read_k + 1` from two symbol VALUES (NUM_PREEMPT_PRIORITIES and the band);
+# an enumerated `configdefault` would be O(N^2) lines over Zephyr's 0..128
+# preempt range. The refusal prints the derived number instead, so stating it
+# is one copied line.
 if(CONFIG_NROS_ZENOH_LINK_SERIAL
    AND CONFIG_POSIX_PRIORITY_SCHEDULING
    AND DEFINED CONFIG_NROS_ZENOH_READ_PRIORITY
@@ -518,17 +532,31 @@ if(CONFIG_NROS_ZENOH_LINK_SERIAL
     math(EXPR _nros_read_k "${_nros_rr_hi} - (${_nros_band} * ${_nros_rr_hi}) / 255")
     if(NOT CONFIG_MAIN_THREAD_PRIORITY GREATER _nros_read_k)
         math(EXPR _nros_main_want "${_nros_read_k} + 1")
-        message(WARNING
+        if(_nros_main_want GREATER _nros_rr_hi)
+            # The read task already sits on the least urgent preemptible
+            # slot, so no main priority is below it: the band is the input
+            # to move, not main.
+            set(_nros_main_fix
+                "raise the read task's band (knob ZENOH_READ_PRIORITY: "
+                "`[image.<id>.knobs.zenoh] read_priority` in system.toml): at band "
+                "${_nros_band} the read task is on the least urgent preemptible slot "
+                "(k_thread ${_nros_read_k}), so no CONFIG_MAIN_THREAD_PRIORITY is below it")
+        else()
+            set(_nros_main_fix
+                "set CONFIG_MAIN_THREAD_PRIORITY=${_nros_main_want} (or a larger, less "
+                "urgent number up to ${_nros_rr_hi}) in the board's or image's conf")
+        endif()
+        string(CONCAT _nros_main_fix ${_nros_main_fix})
+        message(FATAL_ERROR
             "nros: CONFIG_MAIN_THREAD_PRIORITY=${CONFIG_MAIN_THREAD_PRIORITY} is not "
             "below the zenoh-pico read task (k_thread ${_nros_read_k}, from "
             "CONFIG_NROS_ZENOH_READ_PRIORITY=${CONFIG_NROS_ZENOH_READ_PRIORITY} on "
-            "${CONFIG_NUM_PREEMPT_PRIORITIES} preempt priorities). On a serial link "
-            "the main thread's registration then starves the RX drain, and a board "
-            "that joins while peers already send loses the router's interest "
-            "replies (issue 1534). Set CONFIG_MAIN_THREAD_PRIORITY=${_nros_main_want} "
-            "or lower in urgency (a larger number), and raise "
-            "CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES if the ring's high water "
-            "reaches its size.")
+            "${CONFIG_NUM_PREEMPT_PRIORITIES} preempt priorities), and this image "
+            "links zenoh over a SERIAL link. The main thread's registration then "
+            "starves the RX drain, and a board that joins while peers already send "
+            "loses the router's interest replies (issues 1534, 2164). To fix it, "
+            "${_nros_main_fix}. Also raise CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES if "
+            "`_z_zephyr_serial_stats.ring_high_water` reaches its size.")
     endif()
 endif()
 
