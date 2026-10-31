@@ -19,6 +19,15 @@ entry_kind = "zephyr-staticlib"
 # netstack this board does not support is refused (phase-351 W4).
 supported_netstacks = []
 
+# Issue 2177 — the crate-root boilerplate a GENERATED Rust entry needs on
+# Zephyr, the same two lines and two deps as `packages/boards/zephyr`'s
+# descriptor gives native_sim (whose comment says why each is there). Without
+# them a generated image for this board failed with `cannot find `log` in the
+# crate root` and `#[panic_handler] function required`.
+[board.entry]
+crate_root_extra = "extern crate zephyr;"
+crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
+
 [board.zephyr]
 west_board = "mps2_an385"
 # Issue 2151 — what a RUST image for this board needs beyond a C one.

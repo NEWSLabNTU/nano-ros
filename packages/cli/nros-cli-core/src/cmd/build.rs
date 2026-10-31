@@ -1687,9 +1687,21 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // `conf` fragment overrides the board; the bringup's
                 // `prj.conf` is Zephyr's CONF_FILE and merges BEFORE every
                 // extra, so a value that must beat the board is listed in
-                // `conf`. A hand-written application owns its preamble and
-                // gets nothing added — it would get the files twice.
-                if generated.dir.is_some() {
+                // `conf`.
+                //
+                // Issue 2177 — a HAND-WRITTEN workspace application gets them
+                // too, unless its own `CMakeLists.txt` calls
+                // `nano_ros_use_board()`, which would add them a second time.
+                // This used to read "a hand-written application owns its
+                // preamble and gets nothing added", which assumed every one of
+                // them calls it — and the one `nros new entry` scaffolds does
+                // not. So `nros new entry … --board mps2-an385-zephyr` built an
+                // image with no network driver, no address and no locator. A
+                // standalone LEAF is excluded for the other reason: the module
+                // hook already gives it its board's files (`NROS_LEAF_CONF`).
+                let applies_board_files = generated.dir.is_some()
+                    || (leaf_app.is_none() && !calls_nano_ros_use_board(&app));
+                if applies_board_files {
                     if let Some(dir) = nano_ros_root.as_deref().and_then(|r| {
                         crate::orchestration::board_projection::descriptor_dir(descriptor, r)
                     }) {
@@ -4993,6 +5005,21 @@ pub(crate) fn west_build_dir(
     root.join("build")
         .join(coordinate(platform, image))
         .join(format!("{bringup}__{image_id}_west"))
+}
+
+/// Whether a west application's own `CMakeLists.txt` layers its board package
+/// itself (`nano_ros_use_board(<board>)`), in which case `nros build` must not
+/// pass the same files again (issue 2177). A comment naming the function does
+/// not count; an unreadable file reads as "does not call it".
+fn calls_nano_ros_use_board(app: &std::path::Path) -> bool {
+    std::fs::read_to_string(app.join("CMakeLists.txt"))
+        .map(|text| {
+            text.lines().any(|line| {
+                let code = line.split('#').next().unwrap_or("");
+                code.contains("nano_ros_use_board(")
+            })
+        })
+        .unwrap_or(false)
 }
 
 /// Does the passthrough already name west's build dir (`-d <dir>`,
