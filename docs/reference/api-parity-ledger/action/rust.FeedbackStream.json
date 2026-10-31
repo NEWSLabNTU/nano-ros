@@ -1,5 +1,5 @@
 {
   "key": "rust:FeedbackStream",
   "verdict": "extension",
-  "why": "a pull-side view of the feedback channel with `recv` and `wait_next(executor, timeout)`. RFC-0021's shape: the blocking form takes the executor and drives it. rclcpp_action delivers feedback only through `SendGoalOptions::feedback_callback`; see `cpp:ActionClient::feedback_stream`."
+  "why": "a pull-side view of the feedback channel read with `wait_next(executor, timeout)`. RFC-0021's shape: the blocking form takes the executor and drives it. Its async `recv()` and the `stream` feature's `Stream` impl were retired by phase-521 (RFC-0113 D7): they completed only while something else spun the executor. rclcpp_action delivers feedback only through `SendGoalOptions::feedback_callback`; see `cpp:ActionClient::feedback_stream`."
 }

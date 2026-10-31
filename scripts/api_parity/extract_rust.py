@@ -48,7 +48,6 @@ NROS_FEATURES = [
     "log",
     "param-services",
     "lifecycle-services",
-    "stream",
     "safety-e2e",
     # phase-428 Q1 follow-through (2026-09-06) — the hosted init surface.
     # `env` gates all of `src/init.rs` (`init`, `init_with_args`,

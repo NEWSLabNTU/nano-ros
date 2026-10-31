@@ -404,7 +404,6 @@ dependencies = [
 name = "nros-node"
 version = "0.6.0"
 dependencies = [
- "atomic-waker",
  "heapless",
  "nros-board-common",
  "nros-build-paths",

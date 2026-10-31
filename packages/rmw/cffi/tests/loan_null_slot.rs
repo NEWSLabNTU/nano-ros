@@ -13,9 +13,9 @@
 //!
 //! The answer must also be an ERROR, not `Ok(None)`. Every caller above reads
 //! `Ok(None)` as "no slot RIGHT NOW, retry": `EmbeddedRawPublisher::try_loan`
-//! maps it to `LoanError::WouldBlock`, `loan_with_timeout` then spins the
-//! executor until its whole budget is gone, and `LoanFuture` returns `Pending`
-//! after a self-wake — a hot loop that can never resolve.
+//! maps it to `LoanError::WouldBlock`, and `loan_with_timeout` then spins the
+//! executor until its whole budget is gone, on a condition that can never
+//! clear.
 
 #![cfg(feature = "lending")]
 
@@ -238,8 +238,7 @@ fn a_null_loan_slot_is_a_permanent_error_not_would_block() {
         Ok(None) => panic!(
             "a NULL loan slot returned Ok(None) — the transient spelling. \
              `try_loan` maps that to LoanError::WouldBlock, so `loan_with_timeout` \
-             burns its whole budget and `LoanFuture` self-wakes forever on a \
-             condition that can never clear."
+             burns its whole budget on a condition that can never clear."
         ),
         Ok(Some(_)) => panic!(
             "a NULL loan slot handed out a slot — the backend cannot lend, so \

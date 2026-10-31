@@ -150,7 +150,7 @@ arrival, and it keeps the token optional rather than mandatory.
 `set_wake_callback` is session-scoped, and it is the only wake slot in
 `rmw_vtable.h`. The public entity-scoped functions
 (`rclc_polling_{subscription,service,client}_set_wake_callback`, their C++
-twins, and `recv().await`'s waker) end in `register_waker`, which reaches no
+twins, and `recv().await`'s waker, retired since by RFC-0113) end in `register_waker`, which reaches no
 backend through cffi (issue 1940). So the vtable gains one NULL-able slot per
 entity kind, upstream's own (landed 2026-10-18, phase-397 W1):
 

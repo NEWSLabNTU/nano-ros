@@ -222,9 +222,6 @@ safety-e2e = [
 # reaches through its own optional backend dep. `nros` is agnostic (RFC-0071)
 # and must not name a backend, so it cannot legitimately forward this at all.
 
-# Async feedback stream (futures_core::Stream impl on FeedbackStream).
-stream = ["nros-node/stream"]
-
 # FFI reentrancy guards (critical-section around all RMW FFI calls).
 ffi-sync = ["nros-node/ffi-sync"]
 
