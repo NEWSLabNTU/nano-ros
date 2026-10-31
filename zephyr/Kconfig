@@ -726,7 +726,8 @@ config NROS_ZENOH_SERIAL_RX_RING_BYTES
       not raised here because no lane measures it; read `ring_high_water`
       on the board and size from it. Pair it with
       CONFIG_MAIN_THREAD_PRIORITY below the read task, which the configure
-      warns about on a serial link.
+      requires on a serial link and refuses otherwise, naming the number
+      (issue 2164).
 
 config NROS_ZENOH_SERIAL_TX_RING_BYTES
     int "Serial link: transmit ring between the sending thread and the UART ISR (bytes)"
