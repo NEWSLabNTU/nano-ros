@@ -1728,7 +1728,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // no in-tree descriptor declares, so `nros build fvp` emitted
                 // `-b fvp-aemv8r-smp` for a descriptor that states
                 // `fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`.
-                let mut a = vec!["build".to_string(), "-b".to_string(), west_board];
+                let mut a = vec!["build".to_string(), "-b".to_string(), west_board.clone()];
                 if overlays.sysbuild {
                     a.push("--sysbuild".to_string());
                 }
@@ -1860,10 +1860,28 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // freestanding application work. No cwd gymnastics: the
                 // application path is absolute.
                 let h = Handoff::new("west", a).in_dir(&root);
-                let h = match &zbase {
+                let mut h = match &zbase {
                     Some(z) => h.with_env("ZEPHYR_BASE", z.as_os_str()),
                     None => h,
                 };
+                // Issue 2147 -- the toolchain, by the fixture roads' rule
+                // (`nros_zephyr_sdk_env`, issue 1811): always a variant, so
+                // CMake 4 never meets Zephyr's empty `if()` operand, and for an
+                // SDK board the SDK the tree's `SDK_VERSION` pins, never the
+                // registry's first. A missing pin refuses at exec, like a
+                // missing Zephyr, so `--dry-run` still prints the command.
+                if let Some(z) = &zbase {
+                    match west_toolchain(&west_board, z, nano_ros_root.as_deref()) {
+                        Ok(t) => {
+                            h = h.with_env("ZEPHYR_TOOLCHAIN_VARIANT", t.variant);
+                            if let Some(sdk) = t.sdk {
+                                h = h.with_env("ZEPHYR_SDK_INSTALL_DIR", sdk);
+                            }
+                        }
+                        Err(e) if !args.dry_run => eyre::bail!("{e}"),
+                        Err(_) => {}
+                    }
+                }
                 // phase-439 W7 -- the configure may READ the resolve's entity
                 // inventory only when THIS run of `nros build` wrote the record
                 // it reads it by: the digest rides the environment, which ninja's
@@ -5296,6 +5314,43 @@ fn cmake_deploy_token(text: &str) -> Option<String> {
 /// not `nros build` a west image (issue 1767 item 7). `NROS_ZEPHYR_WORKSPACE`
 /// is the established spelling — an earlier version of this invented
 /// NROS_WEST_WORKSPACE, which would have been one more name for one thing.
+/// [`crate::builder::zephyr::resolve_toolchain`] over this process: the
+/// caller's env, the store root of every `[tool.zephyr-sdk*]` the index pins,
+/// the checkout and `$HOME`'s CMake registry (issue 2147).
+fn west_toolchain(
+    board: &str,
+    zephyr_base: &std::path::Path,
+    nano_ros_root: Option<&std::path::Path>,
+) -> Result<crate::builder::zephyr::ZephyrToolchain, String> {
+    let env_variant = std::env::var("ZEPHYR_TOOLCHAIN_VARIANT").ok();
+    let env_sdk = std::env::var_os("ZEPHYR_SDK_INSTALL_DIR").map(PathBuf::from);
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let store = nano_ros_root
+        .and_then(|nr| {
+            crate::orchestration::sdk_index::SdkIndex::load(&nr.join("nros-sdk-index.toml")).ok()
+        })
+        .map(|index| {
+            index
+                .tool
+                .keys()
+                .filter(|k| k.starts_with("zephyr-sdk"))
+                .filter_map(|k| crate::orchestration::sdk_store::tool_dir_usable(&index, k))
+                .collect()
+        })
+        .unwrap_or_default();
+    crate::builder::zephyr::resolve_toolchain(
+        board,
+        zephyr_base,
+        &crate::builder::zephyr::ToolchainInputs {
+            env_variant: env_variant.as_deref(),
+            env_sdk: env_sdk.as_deref(),
+            store,
+            nano_ros_root,
+            home: home.as_deref(),
+        },
+    )
+}
+
 fn zephyr_base(root: &std::path::Path, flag: Option<&std::path::Path>) -> Option<PathBuf> {
     let line = zephyr_line(std::env::var("NROS_ZEPHYR_VERSION").ok());
     zephyr_base_with(

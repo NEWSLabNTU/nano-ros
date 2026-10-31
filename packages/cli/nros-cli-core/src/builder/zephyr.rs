@@ -351,6 +351,160 @@ fn join_semi(paths: &[PathBuf]) -> String {
         .join(";")
 }
 
+/// The toolchain a `west build` must be told about — issue 2147.
+///
+/// This is `nros_zephyr_toolchain_variant` + `nros_zephyr_sdk_env`
+/// (`scripts/build/zephyr-toolchain.sh`, issues 0698 and 1811) for the CLI's
+/// west road, which had neither: it set no variant, so CMake 4 failed every
+/// SDK board at `FindZephyr-sdk.cmake:35`, and it pinned no SDK, so the build
+/// took whichever SDK the CMake user registry ordered first. The shell file
+/// explains both rules; this is the same ladder, rung for rung.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZephyrToolchain {
+    /// `ZEPHYR_TOOLCHAIN_VARIANT`. Always set, so the empty case never
+    /// reaches Zephyr's unquoted `if()`.
+    pub variant: String,
+    /// `ZEPHYR_SDK_INSTALL_DIR`, for an SDK board whose pinned SDK was found.
+    pub sdk: Option<PathBuf>,
+}
+
+/// What [`resolve_toolchain`] reads, passed in so it is testable without the
+/// process environment, the store or `$HOME`.
+#[derive(Debug, Default)]
+pub struct ToolchainInputs<'a> {
+    /// The caller's `ZEPHYR_TOOLCHAIN_VARIANT`, which wins.
+    pub env_variant: Option<&'a str>,
+    /// The caller's `ZEPHYR_SDK_INSTALL_DIR`, which wins at any version.
+    pub env_sdk: Option<&'a Path>,
+    /// Store roots of every `[tool.zephyr-sdk*]` entry, in index order.
+    pub store: Vec<PathBuf>,
+    /// The checkout this build reads, for the legacy in-checkout SDK.
+    pub nano_ros_root: Option<&'a Path>,
+    /// `$HOME`, for the CMake user package registry.
+    pub home: Option<&'a Path>,
+}
+
+fn is_native_sim(board: &str) -> bool {
+    board.starts_with("native_sim")
+}
+
+/// `nros_zephyr_toolchain_variant`: the caller's, else `host` for native_sim,
+/// else `zephyr`.
+pub fn toolchain_variant(board: &str, env_variant: Option<&str>) -> String {
+    match env_variant.filter(|v| !v.is_empty()) {
+        Some(v) => v.to_string(),
+        None if is_native_sim(board) => "host".to_string(),
+        None => "zephyr".to_string(),
+    }
+}
+
+/// True when `dir` is an SDK root of `version`: it exists and, where it
+/// carries `sdk_version`, that file names `version` (`_nros_zephyr_sdk_is`).
+fn sdk_is(dir: &Path, version: &str) -> bool {
+    if !dir.is_dir() {
+        return false;
+    }
+    match std::fs::read_to_string(dir.join("sdk_version")) {
+        Ok(s) => s.trim() == version,
+        Err(_) => true,
+    }
+}
+
+/// `nros_zephyr_sdk_registered`: a CMake-registered SDK whose `sdk_version`
+/// is exactly `version`. Only the version decides; the registry's own order
+/// is what this exists to bypass.
+fn sdk_registered(home: &Path, version: &str) -> Option<PathBuf> {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(home.join(".cmake/packages/Zephyr-sdk"))
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_file())
+        .collect();
+    entries.sort();
+    entries.into_iter().find_map(|entry| {
+        let text = std::fs::read_to_string(&entry).ok()?;
+        let line = text.lines().next()?.trim().trim_end_matches('/');
+        let root = Path::new(line.strip_suffix("/cmake").unwrap_or(line));
+        let stated = std::fs::read_to_string(root.join("sdk_version")).ok()?;
+        (stated.trim() == version).then(|| root.to_path_buf())
+    })
+}
+
+/// The variant and SDK for `board` against the Zephyr tree `zephyr_base`.
+///
+/// `Err` is the refusal for an SDK board whose pinned SDK is not installed,
+/// never a fall-through to the registry's choice (issue 1811).
+pub fn resolve_toolchain(
+    board: &str,
+    zephyr_base: &Path,
+    inputs: &ToolchainInputs<'_>,
+) -> Result<ZephyrToolchain, String> {
+    let variant = toolchain_variant(board, inputs.env_variant);
+    let done = |sdk| {
+        Ok(ZephyrToolchain {
+            variant: variant.clone(),
+            sdk,
+        })
+    };
+    if variant != "zephyr" {
+        return done(None);
+    }
+    let pin = zephyr_base.join("SDK_VERSION");
+    let Some(want) = std::fs::read_to_string(&pin)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    else {
+        return done(None);
+    };
+
+    // 1. The caller's, at any version, under either spelling (the SDK, or
+    //    its parent).
+    if let Some(env) = inputs.env_sdk.filter(|p| !p.as_os_str().is_empty()) {
+        let named = env
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with("zephyr-sdk-"));
+        let cand = if named {
+            env.to_path_buf()
+        } else {
+            env.join(format!("zephyr-sdk-{want}"))
+        };
+        if cand.is_dir() {
+            return done(Some(cand));
+        }
+    }
+    // 2. The store, 3. the legacy checkout copy, 4. the registry: each only
+    //    at exactly the pinned version.
+    let checkout = inputs.nano_ros_root.map(|r| {
+        r.join("scripts/zephyr/sdk")
+            .join(format!("zephyr-sdk-{want}"))
+    });
+    if let Some(found) = inputs
+        .store
+        .iter()
+        .chain(checkout.iter())
+        .find(|c| sdk_is(c, &want))
+    {
+        return done(Some(found.clone()));
+    }
+    if let Some(found) = inputs.home.and_then(|h| sdk_registered(h, &want)) {
+        return done(Some(found));
+    }
+    if is_native_sim(board) {
+        return done(None);
+    }
+    Err(format!(
+        "board `{board}` builds with the Zephyr SDK, and this tree pins SDK {want} \
+         ({}), which is not installed. Refusing rather than letting the build take \
+         whichever SDK the CMake registry holds: on 3.7 a newer SDK fails in \
+         Zephyr's own libc-hooks.c (issue 1811), and another checkout's is refused \
+         by its checkout guard (issue 2147).\n\
+         Remedy: just setup zephyr   (without --skip-sdk), or set \
+         ZEPHYR_SDK_INSTALL_DIR to an SDK you mean to use.",
+        pin.display()
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -665,5 +819,129 @@ mod native_arg_routing_tests {
     fn an_empty_passthrough_is_two_empty_zones() {
         let (west, cmake) = split_native_args(&[]).expect("routes");
         assert!(west.is_empty() && cmake.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod toolchain_tests {
+    use super::*;
+
+    /// A Zephyr tree pinning `version`, and an SDK root stating `version`.
+    fn tree(dir: &Path, version: &str) -> PathBuf {
+        let z = dir.join("zephyr");
+        std::fs::create_dir_all(&z).unwrap();
+        std::fs::write(z.join("SDK_VERSION"), format!("{version}\n")).unwrap();
+        z
+    }
+
+    fn sdk(dir: &Path, version: &str) -> PathBuf {
+        let root = dir.join(format!("zephyr-sdk-{version}"));
+        std::fs::create_dir_all(root.join("cmake")).unwrap();
+        std::fs::write(root.join("sdk_version"), version).unwrap();
+        root
+    }
+
+    /// One `~/.cmake/packages/Zephyr-sdk/<name>` entry, as `setup.sh -c` writes.
+    fn register(home: &Path, name: &str, root: &Path) {
+        let reg = home.join(".cmake/packages/Zephyr-sdk");
+        std::fs::create_dir_all(&reg).unwrap();
+        std::fs::write(reg.join(name), format!("{}/cmake\n", root.display())).unwrap();
+    }
+
+    #[test]
+    fn variant_is_never_empty_and_the_callers_wins() {
+        assert_eq!(toolchain_variant("mps2/an385", None), "zephyr");
+        assert_eq!(toolchain_variant("native_sim/native/64", None), "host");
+        assert_eq!(toolchain_variant("mps2/an385", Some("")), "zephyr");
+        assert_eq!(
+            toolchain_variant("mps2/an385", Some("gnuarmemb")),
+            "gnuarmemb"
+        );
+    }
+
+    #[test]
+    fn the_store_sdk_wins_over_a_foreign_checkouts_registration() {
+        // Issue 2147's acceptance: the registry lists another checkout's SDK
+        // of the SAME version first, and the build takes the store's.
+        let tmp = tempfile::tempdir().unwrap();
+        let z = tree(tmp.path(), "0.16.8");
+        let store = sdk(&tmp.path().join("store"), "0.16.8");
+        let foreign = sdk(&tmp.path().join("other-checkout"), "0.16.8");
+        let home = tmp.path().join("home");
+        register(&home, "0", &foreign);
+        let inputs = ToolchainInputs {
+            store: vec![store.clone()],
+            home: Some(&home),
+            ..Default::default()
+        };
+        let t = resolve_toolchain("mps2/an385", &z, &inputs).unwrap();
+        assert_eq!(t.variant, "zephyr");
+        assert_eq!(t.sdk, Some(store));
+    }
+
+    #[test]
+    fn the_registry_answers_only_at_the_pinned_version() {
+        let tmp = tempfile::tempdir().unwrap();
+        let z = tree(tmp.path(), "0.16.8");
+        let newer = sdk(&tmp.path().join("a"), "0.17.4");
+        let pinned = sdk(&tmp.path().join("b"), "0.16.8");
+        let home = tmp.path().join("home");
+        register(&home, "0", &newer);
+        register(&home, "1", &pinned);
+        let inputs = ToolchainInputs {
+            store: vec![tmp.path().join("absent")],
+            home: Some(&home),
+            ..Default::default()
+        };
+        let t = resolve_toolchain("mps2/an385", &z, &inputs).unwrap();
+        assert_eq!(t.sdk, Some(pinned));
+    }
+
+    #[test]
+    fn a_missing_pinned_sdk_is_a_refusal_for_an_sdk_board() {
+        let tmp = tempfile::tempdir().unwrap();
+        let z = tree(tmp.path(), "0.16.8");
+        let home = tmp.path().join("home");
+        register(&home, "0", &sdk(&tmp.path().join("a"), "0.17.4"));
+        let inputs = ToolchainInputs {
+            home: Some(&home),
+            ..Default::default()
+        };
+        let err = resolve_toolchain("mps2/an385", &z, &inputs).unwrap_err();
+        assert!(err.contains("pins SDK 0.16.8"), "{err}");
+        // native_sim needs no SDK, whatever the variant says.
+        let ok = ToolchainInputs {
+            env_variant: Some("zephyr"),
+            home: Some(&home),
+            ..Default::default()
+        };
+        let t = resolve_toolchain("native_sim/native/64", &z, &ok).unwrap();
+        assert_eq!(t.sdk, None);
+    }
+
+    #[test]
+    fn the_callers_sdk_wins_under_either_spelling() {
+        let tmp = tempfile::tempdir().unwrap();
+        let z = tree(tmp.path(), "0.16.8");
+        let mine = sdk(&tmp.path().join("mine"), "0.17.4");
+        let store = sdk(&tmp.path().join("store"), "0.16.8");
+        for env in [mine.clone(), tmp.path().join("mine")] {
+            let inputs = ToolchainInputs {
+                env_sdk: Some(&env),
+                store: vec![store.clone()],
+                ..Default::default()
+            };
+            let want = if env == mine {
+                mine.clone()
+            } else {
+                // The parent spelling joins the PINNED version, so it misses
+                // `zephyr-sdk-0.17.4` and falls to the store.
+                store.clone()
+            };
+            assert_eq!(
+                resolve_toolchain("mps2/an385", &z, &inputs).unwrap().sdk,
+                Some(want)
+            );
+        }
     }
 }
