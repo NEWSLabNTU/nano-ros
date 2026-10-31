@@ -81,6 +81,7 @@ jobs:
           - nuttx-arm
           - nuttx-arm-rust
           - nuttx-riscv
+          - nuttx-riscv-rust
           - zephyr
           - zephyr-rust
           - workspace
