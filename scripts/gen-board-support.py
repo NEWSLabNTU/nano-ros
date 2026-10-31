@@ -389,6 +389,7 @@ def render_status_json(reg: Registry) -> str:
             "stale_from": until.isoformat() if until else None,
             "breadth": breadth_text(reg, row),
             "external": row.get("external"),
+            "board_keys": row.get("board_keys") or [],
             "book_run": row.get("book_run"),
             "book_flash": row.get("book_flash"),
             "page": None if row.get("infra") else

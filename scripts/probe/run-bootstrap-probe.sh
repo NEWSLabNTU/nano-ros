@@ -164,7 +164,13 @@ if ! track_row="$(python3 "$SCRIPT_DIR/probe-track.py" "$PROBE_PLATFORM")"; then
     exit 2
 fi
 PLATFORM_CHAPTER="${track_row%%$'\t'*}"
-PROBE_VARIANT="${track_row#*$'\t'}"
+track_rest="${track_row#*$'\t'}"
+PROBE_VARIANT="${track_rest%%$'\t'*}"
+# phase-522 W5 — the board registry row this track is evidence for
+# (`crate@platform`, "" for a track that is not a board's). The verifier asks
+# the INSTALLED `nros board show` for its status word, so the installed track
+# proves a user sees the same word the book prints.
+PROBE_BOARD="${track_rest#*$'\t'}"
 if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
     echo "probe: PROBE_PLATFORM=$PROBE_PLATFORM is an installed-track chapter (user chapters have no checkout track — phase-517 W2)" >&2
     exit 2
@@ -452,6 +458,7 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         -v "$workdir/release:$RELEASE_MOUNT:ro" \
         -e PROBE_SHELL="$PROBE_SHELL" \
         -e PROBE_PLATFORM="$PROBE_PLATFORM" \
+        -e PROBE_BOARD="$PROBE_BOARD" \
         -e NROS_INDEX_URL="file://$RELEASE_MOUNT/nros-sdk-index.toml" \
         -w /root \
         "$PROBE_IMAGE" \

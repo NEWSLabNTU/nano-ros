@@ -78,4 +78,20 @@ done
 kill "$entry_pid" 2>/dev/null || true
 head -6 "$log"
 
+# phase-522 W5 — the installed `nros` states this board's support status, read
+# from the registry its own SDK root ships (RFC-0114). No tier number: a status
+# word from RFC-0114 D10's table.
+if [ -n "${PROBE_BOARD:-}" ]; then
+    if ! show="$(nros board show "$PROBE_BOARD")"; then
+        echo "PROBE FAIL: \`nros board show $PROBE_BOARD\` failed on the installed toolchain" >&2
+        exit 1
+    fi
+    status_line="$(printf '%s\n' "$show" | grep '^  status ' || true)"
+    case "$status_line" in
+        *Verified*|*Boots*|*Builds*|*"Not supported"*) echo "probe: board $PROBE_BOARD:$status_line" ;;
+        *) echo "PROBE FAIL: \`nros board show $PROBE_BOARD\` printed no status word: $show" >&2
+           exit 1 ;;
+    esac
+fi
+
 echo "PROBE PASS: installed release -> scaffold -> build -> run, with no nano-ros checkout on the host"

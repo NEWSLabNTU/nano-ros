@@ -1,7 +1,10 @@
 //! `nros board` — board crate introspection.
 //!
 //! * `list` — Phase 111.A.8: enumerate every `nros-board-*` crate under
-//!   `<workspace>/packages/boards/`.
+//!   `<workspace>/packages/boards/`, with its support status and cadence from
+//!   the board support registry (phase-522 W5).
+//! * `show <name>` — phase-522 W5: a board's evidence-page facts (status,
+//!   where it runs, cadence, breadth, book chapters).
 //! * `info <name>` — Phase 215.C.3: print the side-by-side `Cargo.toml` +
 //!   `board.cmake` views of a board crate's manifest, optionally erroring
 //!   when the two faces drift (the Phase 215.F audit hook).
@@ -21,8 +24,11 @@ use crate::orchestration::{
 
 #[derive(Debug, Subcommand)]
 pub enum Args {
-    /// List every supported board crate
+    /// List every board crate, with its support status and cadence
     List(ListArgs),
+    /// Print a board's support evidence: status, where it runs, cadence,
+    /// breadth and the book chapters that run it (RFC-0114).
+    Show(ShowArgs),
     /// Print a board's resolved descriptor as JSON.
     Info(InfoArgs),
     /// Scaffold a new board package (phase-375 W2/W9).
@@ -75,6 +81,19 @@ pub struct ListArgs {
 }
 
 #[derive(Debug, ClapArgs)]
+pub struct ShowArgs {
+    /// Board: a board key (`mps2-an385-freertos`), a package
+    /// (`nros-board-zephyr`), a registry key (`nros-board-zephyr@Fvp`) or an
+    /// evidence page name (`fvp`).
+    pub name: String,
+    /// nano-ros SDK root holding the board catalog. Default:
+    /// `$NROS_WORKSPACE_ROOT`, a checkout enclosing cwd, then this `nros`
+    /// binary's own SDK root.
+    #[arg(long)]
+    pub workspace: Option<PathBuf>,
+}
+
+#[derive(Debug, ClapArgs)]
 pub struct InfoArgs {
     /// Board key. Resolves to a board CRATE
     /// (`packages/boards/nros-board-<name>/`) or, since phase-337 W9.a, to a
@@ -106,6 +125,7 @@ pub struct CmakeVarsArgs {
 pub fn run(args: Args) -> Result<()> {
     match args {
         Args::List(args) => list(args),
+        Args::Show(args) => show(args),
         Args::Info(args) => info(args),
         Args::CmakeVars(args) => cmake_vars(args),
         Args::Net(args) => net(args),
@@ -151,21 +171,138 @@ fn list(args: ListArgs) -> Result<()> {
         return Ok(());
     }
 
+    // phase-522 W5 — the status word and cadence of every row the crate
+    // carries, read from the registry this root ships; one crate may serve
+    // several witnesses (`nros-board-zephyr`: native_sim and the FVP).
+    let status = crate::cmd::board_support::Status::load(&root)?;
+    let (notes, other) = crate::cmd::board_support::other_copy(&root, own_sdk_root().as_deref());
+    let today = crate::cmd::board_support::today();
+    let column = |status: &crate::cmd::board_support::Status, name: &str| -> (String, String) {
+        let rows = status.rows_for_crate(name);
+        if rows.is_empty() {
+            return ("(no registry row)".into(), "-".into());
+        }
+        let words: Vec<String> = rows
+            .iter()
+            .map(|r| match &r.matrix_platform {
+                Some(p) if rows.len() > 1 => format!("{}: {}", p, r.status_on(&today)),
+                _ => r.status_on(&today),
+            })
+            .collect();
+        let cadences: Vec<String> = rows.iter().map(|r| r.cadence_text()).collect();
+        (words.join("; "), cadences.join("; "))
+    };
+    let cols: Vec<(String, String)> = entries.iter().map(|e| column(&status, &e.name)).collect();
+
     let name_w = entries
         .iter()
         .map(|e| e.name.len())
         .max()
         .unwrap_or(4)
         .max(4);
-    println!("{:<name_w$}  description", "name", name_w = name_w);
+    let st_w = cols.iter().map(|c| c.0.len()).max().unwrap_or(6).max(6);
+    let ca_w = cols.iter().map(|c| c.1.len()).max().unwrap_or(7).max(7);
     println!(
-        "{:<name_w$}  {}",
-        "-".repeat(name_w),
-        "-".repeat(60),
-        name_w = name_w
+        "{:<name_w$}  {:<st_w$}  {:<ca_w$}  description",
+        "name", "status", "cadence"
     );
-    for b in entries {
-        println!("{:<name_w$}  {}", b.name, b.description, name_w = name_w);
+    println!(
+        "{}  {}  {}  {}",
+        "-".repeat(name_w),
+        "-".repeat(st_w),
+        "-".repeat(ca_w),
+        "-".repeat(40)
+    );
+    for (b, (st, ca)) in entries.iter().zip(&cols) {
+        println!(
+            "{:<name_w$}  {st:<st_w$}  {ca:<ca_w$}  {}",
+            b.name, b.description
+        );
+        if let Some(other) = &other {
+            let (ost, _) = column(other, &b.name);
+            if &ost != st {
+                println!("{:<name_w$}  ({} in {})", "", ost, other.path.display());
+            }
+        }
+    }
+    for n in notes {
+        println!("{n}");
+    }
+    Ok(())
+}
+
+/// The SDK root this `nros` binary would answer from with no checkout around:
+/// the decision step of phase-522 W5 compares the registry it read with this
+/// one, so a released `nros` run inside a newer checkout says which it read.
+fn own_sdk_root() -> Option<PathBuf> {
+    crate::orchestration::nano_ros_root::resolve_from(crate::orchestration::nano_ros_root::Rungs {
+        explicit: None,
+        workspace: None,
+        exe: nros_launcher::checkout::canonical_current_exe(),
+        built_in: Some(nros_launcher::checkout::built_in_dir().to_path_buf()),
+    })
+}
+
+/// `nros board show <name>` — a board's evidence-page facts.
+fn show(args: ShowArgs) -> Result<()> {
+    let root = catalog_root(args.workspace)?;
+    let status = crate::cmd::board_support::Status::load(&root)?;
+    let (notes, other) = crate::cmd::board_support::other_copy(&root, own_sdk_root().as_deref());
+    let mut rows = status.rows_named(&args.name);
+    if rows.is_empty() {
+        // A board KEY names a descriptor; its directory is the registry's crate.
+        if let Ok((_, dir)) = resolve(&root, &args.name)
+            && let Some(krate) = dir.file_name().and_then(|n| n.to_str())
+        {
+            rows = status.rows_for_crate(krate);
+        }
+    }
+    if rows.is_empty() {
+        return Err(eyre!(
+            "no board support registry row answers to `{}` (read {}). `nros board list` names every board.",
+            args.name,
+            status.path.display()
+        ));
+    }
+    let today = crate::cmd::board_support::today();
+    for (i, r) in rows.iter().enumerate() {
+        if i > 0 {
+            println!();
+        }
+        println!("{}", r.key);
+        println!("  status     {}", r.status_on(&today));
+        if let Some(other) = &other
+            && let Some(o) = other.rows.iter().find(|o| o.key == r.key)
+            && o.status_on(&today) != r.status_on(&today)
+        {
+            println!(
+                "             ({} in {})",
+                o.status_on(&today),
+                other.path.display()
+            );
+        }
+        println!("  runs on    {}", r.runs_on());
+        println!("  cadence    {}", r.cadence_text());
+        if let Some(d) = &r.stale_from {
+            println!(
+                "  stale from {d} (a manual boot older than the registry's limit reads Builds)"
+            );
+        }
+        println!("  breadth    {}", r.breadth);
+        if let Some(x) = &r.external {
+            println!("  package    {} (in {x}, outside this tree)", r.krate);
+        }
+        for (label, v) in [("run", &r.book_run), ("flash", &r.book_flash)] {
+            if let Some(v) = v {
+                println!("  book {label:<5} book/src/{v}");
+            }
+        }
+        if let Some(p) = &r.page {
+            println!("  evidence   {p}");
+        }
+    }
+    for n in notes {
+        println!("{n}");
     }
     Ok(())
 }
