@@ -95,6 +95,11 @@ nuttx-arm-rust: (platform "nuttx-arm-rust")
 [group("main")]
 nuttx-riscv: (platform "nuttx-riscv")
 
+# book/src/getting-started/integration-nuttx.md — the Rust workspace image on
+# rv-virt (issue 2178).
+[group("main")]
+nuttx-riscv-rust: (platform "nuttx-riscv-rust")
+
 # book/src/getting-started/integration-zephyr.md — native_sim.
 [group("main")]
 zephyr: (platform "zephyr")

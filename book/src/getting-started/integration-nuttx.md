@@ -333,7 +333,7 @@ The `rv-virt-nuttx` board (`rv32imac`) boots on QEMU's RISC-V `virt` machine.
 a `qemu-system-riscv32` from your distribution (Debian/Ubuntu:
 `qemu-system-misc`):
 
-```bash probe=30 variant=riscv
+```bash probe=30 variant=riscv,riscv-rust
 nros setup rv-virt-nuttx --rmw zenoh --sudo
 sudo apt-get install -y qemu-system-misc
 ```
@@ -364,6 +364,32 @@ boot it:
 ```text probe-expect=70 variant=riscv
 Publishing: 'Hello World: 1'
 Publishing: 'Hello World: 2'
+```
+
+The Rust workspace image builds for this board the same way as for Arm. The
+kernel step uses rv-virt's own defconfig, and the target is the board's
+`riscv32imac-unknown-nuttx-elf` spec, built with `build-std`:
+
+```bash probe=40 variant=riscv-rust
+export QEMU_SYSTEM_RISCV32="$(command -v qemu-system-riscv32)"
+nros new nx_ws --workspace --lang rust --rmw zenoh
+cd nx_ws
+nros new --image nuttx --board rv-virt-nuttx
+nros sync
+nros build nuttx
+```
+
+```bash probe=70 probe-run=120 variant=riscv-rust
+"$QEMU_SYSTEM_RISCV32" -M virt -bios none -nographic \
+    -icount shift=auto \
+    -netdev user,id=net0 \
+    -device virtio-net-device,netdev=net0 \
+    -kernel build/nuttx-zenoh/nuttx_entry/target/riscv32imac-unknown-nuttx-elf/debug/nuttx_entry
+```
+
+```text probe-expect=70 variant=riscv-rust
+Publishing: 0
+I heard: 0
 ```
 
 ## Auto-configure glue (NSH built-in registration)

@@ -1202,6 +1202,7 @@ mod tests {
             ("integration-nuttx.md", "arm", "qemu-armv7a-nuttx"),
             ("integration-nuttx.md", "arm-rust", "qemu-armv7a-nuttx"),
             ("integration-nuttx.md", "riscv", "rv-virt-nuttx"),
+            ("integration-nuttx.md", "riscv-rust", "rv-virt-nuttx"),
             ("threadx.md", "riscv64", "rv-virt-threadx"),
         ];
         fn groups(argv: &[String]) -> Vec<String> {
