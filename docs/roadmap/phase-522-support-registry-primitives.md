@@ -1,6 +1,6 @@
 # Phase 522 — The board support registry becomes the one primitive
 
-**Status (2026-10-31). PROPOSED; no work item started.** Implements
+**Status (2026-11-01). IN PROGRESS: W1 landed.** Implements
 [RFC-0114](../design/0114-board-support-registry-primitives.md) (D10 support
 levels, D11 derived and inherited breadth, D12 one registry, everything else
 generated). Amends the tier section of
@@ -79,6 +79,32 @@ Decision step: review the migration table against the rows with the
 maintainers. Any row whose new status word surprises a maintainer is fixed
 in the registry before W2 starts. If more than two rows need a status word
 D10 does not have, amend the RFC first.
+
+**Result (2026-11-01).** Every row carries both field sets;
+`scripts/lib/board_registry.py` holds the D10 shape and evidence predicates
+and the one status-word derivation, `check-board-tiers` runs them beside the
+tier predicates and refuses a row whose two readings disagree, and
+`python3 scripts/check-board-tiers.py --print-status` prints the derived word
+per row. Applied without a live review (the maintainer was not available), so
+these are the decision step's assumptions, each a registry or predicate fix
+rather than a new status word:
+
+- `nros-board-mps3-an536-freertos` reads **Builds**, not the table's "Not
+  supported": two fixture rows build it (`NROS_BOARD = "mps3-an536-freertos"`),
+  and a fixture row naming the board counts as build evidence, which is also
+  what gives `nros-board-s32z270-freertos` the table's **Builds** (it has no
+  `matrix_platform`, so no cell can).
+- The S32K344 island row inherits **ZephyrQemuCortexM**, not FreertosMps2:
+  phase-474 records a Zephyr image. Its package is downstream, so the row says
+  `external = "simple-autoware-safety-island"`; `last_run = "2026-10-26"`
+  (phase-474, "The board halves, 2026-10-26"). It is grandfathered in the
+  maintainer baseline at tier 3 pending a named owner.
+- `FreertosPosix`'s `nightly_token` is `freertos`, the `just` module that runs
+  it; `freertos_posix` named no nightly module, which `cadence = "daily"` asks.
+- A `manual` row needs no Runtime cell (its evidence is the dated run), and a
+  `runs = "none"` row may omit `breadth` (what `nros board new` writes).
+- `cadence = "merge"` is checked as "host executable plus a swept nightly
+  module", the old tier-1 rule, until W2 generates the lane's coordinates.
 
 ### W2 — The generator, proven by a byte-identical round-trip
 

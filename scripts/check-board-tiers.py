@@ -20,9 +20,11 @@ phase-375 W1 adds the one input that is not a structure but a person: a tier is
 a promise, so it needs enough named maintainers to be one (3/2/1 for tiers
 1/2/3), grandfathered for existing rows by scripts/board-maintainer-baseline.json.
 
-Dependency-free on purpose: CI hosts are not guaranteed a TOML library (this
-repo's Python is 3.10, so no `tomllib`), and `scripts/build/fixtures-manifest.py`
-already establishes regex parsing as the house pattern for exactly this reason.
+The tier predicates parse the registry with a regex reader, the house pattern
+`scripts/build/fixtures-manifest.py` set when CI hosts had no TOML library.
+phase-522 W1's RFC-0114 primitives (`scripts/lib/board_registry.py`) read it
+with `tomllib`/`tomli` instead, as `check-book-board-run-sections.py` already
+did, because they also prove the file round-trips through a real loader.
 """
 
 import json
@@ -31,11 +33,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import board_registry  # noqa: E402  (RFC-0114 D10/D11 primitives, phase-522 W1)
+
 ROOT = Path(__file__).resolve().parent.parent
 REGISTRY = ROOT / "packages/boards/board-support.toml"
 BASELINE = ROOT / "scripts/board-maintainer-baseline.json"
 MATRIX = ROOT / "packages/testing/nros-tests/src/matrix.rs"
 FIXTURES = ROOT / "examples/fixtures.toml"
+PROBE_WORKFLOW = ROOT / ".github/workflows/probe-platforms.yml"
 NIGHTLY = ROOT / ".github/workflows/nightly.yml"
 JUSTFILE = ROOT / "justfile"
 BOARDS_DIR = ROOT / "packages/boards"
@@ -164,6 +170,103 @@ def platform_variants(text):
     return set(re.findall(r'PlatformId::(\w+)\s*=>', body))
 
 
+def build_platforms(text):
+    """Platforms with at least one `Runtime` or `BuildOnly` cell."""
+    out = set()
+    for m in re.finditer(r'cell\(\s*(\w+)\s*,(.*?)\)\s*,\s*\n', text, re.S):
+        if re.search(r'\b(Runtime|BuildOnly)\b', m.group(2)):
+            out.add(m.group(1))
+    return out
+
+
+def fixture_boards(text):
+    """Board names a fixture row builds with (`NROS_BOARD = "..."`)."""
+    return set(re.findall(r'NROS_BOARD\s*=\s*"([^"]+)"', text))
+
+
+def probe_tracks(text):
+    """The weekly probe workflow's `matrix.platform` entries."""
+    m = re.search(r'^\s*platform:\s*\n((?:\s*- [\w-]+\s*\n)+)', text, re.M)
+    return set(re.findall(r'- ([\w-]+)', m.group(1))) if m else set()
+
+
+# phase-522 W1 — during the migration both readings of a row are checked, and
+# they must AGREE: an old tier that the new primitives contradict is a row the
+# migration table got wrong. Removed with `tier` by phase-522 W4.
+TIER_TO_PRIMITIVES = {
+    # tier: (allowed runs, allowed cadences)
+    "1": ({"host"}, {"merge"}),
+    "2": ({"host", "emulator"}, {"daily", "weekly"}),
+    "3": ({"none", "emulator", "hardware"}, {None, "manual"}),
+    "scaffold": ({"none"}, {None}),
+}
+CLASS_TO_RUNS = {
+    "host-executable": {"host"},
+    "cross-run": {"emulator", "none"},
+    "hardware": {"emulator", "hardware", "none"},
+}
+
+
+def migration_errors(row):
+    where = board_registry.row_name(row)
+    tier = str(row.get("tier", ""))
+    errs = []
+    if (tier == "infra") != (row.get("infra") is True):
+        errs.append(f"{where}: tier = {tier!r} and infra = {row.get('infra')!r} "
+                    "disagree; `infra = true` is exactly the old `tier = \"infra\"`")
+        return errs
+    if tier == "infra":
+        return errs
+    runs_ok, cad_ok = TIER_TO_PRIMITIVES.get(tier, (set(), set()))
+    if row.get("runs") not in runs_ok or row.get("cadence") not in cad_ok:
+        errs.append(f"{where}: tier {tier} and runs = {row.get('runs')!r}, cadence = "
+                    f"{row.get('cadence')!r} disagree (tier {tier} maps to runs in "
+                    f"{sorted(runs_ok)}, cadence in {sorted(map(str, cad_ok))})")
+    cls = row.get("execution_class")
+    if cls and row.get("runs") not in CLASS_TO_RUNS.get(cls, set()):
+        errs.append(f"{where}: execution_class {cls!r} and runs = {row.get('runs')!r} "
+                    "disagree")
+    return errs
+
+
+def primitive_errors(doc, matrix_txt, fixtures_txt, nightly):
+    """RFC-0114 D10/D11 over every row, plus the old-vs-new agreement."""
+    errs = list(board_registry.round_trip_errors(doc))
+    variants = platform_variants(matrix_txt)
+    rt = runtime_platforms(matrix_txt)
+    built_plats = build_platforms(matrix_txt)
+    fx_boards = fixture_boards(fixtures_txt)
+    tracks = probe_tracks(PROBE_WORKFLOW.read_text())
+    stale = doc.get("manual_stale_days")
+    if not isinstance(stale, int) or isinstance(stale, bool) or stale <= 0:
+        errs.append(f"top-level `manual_stale_days` must be a positive integer "
+                    f"(got {stale!r})")
+    for row in doc.get("board", []):
+        errs += board_registry.shape_errors(row, variants)
+        errs += board_registry.evidence_errors(
+            row, runtime=rt, nightly=nightly, probe_tracks=tracks)
+        errs += migration_errors(row)
+    return errs
+
+
+def row_built(row, built_plats, fx_boards):
+    plat = row.get("matrix_platform")
+    return bool(plat and plat in built_plats) or \
+        board_registry.board_name(row) in fx_boards
+
+
+def print_status(doc, matrix_txt, fixtures_txt):
+    """`crate@platform<TAB>status word<TAB>breadth`, one row per registry row."""
+    built_plats = build_platforms(matrix_txt)
+    fx_boards = fixture_boards(fixtures_txt)
+    stale = doc.get("manual_stale_days", board_registry.DEFAULT_STALE_DAYS)
+    for row in doc.get("board", []):
+        word = board_registry.status_word(
+            row, row_built(row, built_plats, fx_boards), stale_days=stale)
+        print(f"{board_registry.row_name(row)}\t{word}\t{row.get('breadth', '-')}")
+    return 0
+
+
 def fixture_platforms(text):
     return set(re.findall(r'^platform\s*=\s*"([^"]+)"', text, re.M))
 
@@ -277,6 +380,19 @@ def self_test(quiet=False):
     finally:
         BASELINE = real
 
+    # phase-522 W1 — the two readings of a row must agree during the migration.
+    t1 = {"crate": "a", "matrix_platform": "Linux", "tier": 1,
+          "execution_class": "host-executable", "runs": "host", "cadence": "merge"}
+    assert not migration_errors(t1), "a consistent tier-1 row must pass"
+    assert migration_errors({**t1, "cadence": "daily"}), \
+        "tier 1 with a daily cadence must fail: tier 1 was the merge lane"
+    assert migration_errors({**t1, "runs": "emulator"}), \
+        "a host-executable class with runs = emulator must fail"
+    assert migration_errors({"crate": "i", "tier": "infra"}), \
+        "tier infra without infra = true must fail"
+    assert migration_errors({"crate": "s", "tier": "scaffold", "runs": "host",
+                             "cadence": "merge"}), "a scaffold that runs must fail"
+
     if not quiet:
         print("check-board-tiers self-test: OK")
     return 0
@@ -389,7 +505,11 @@ def main():
     # Always, not only behind the flag: a negative control nobody runs decays
     # into a comment, and this rule's whole job is to fire.
     self_test(quiet=True)
+    board_registry.self_test()
     reg = parse_registry(REGISTRY.read_text())
+    if "--print-status" in sys.argv:
+        return print_status(board_registry.load(REGISTRY), MATRIX.read_text(),
+                            FIXTURES.read_text())
     if "--print-tiers" in sys.argv:
         return print_tiers(reg)
     if "--write-baseline" in sys.argv:
@@ -473,7 +593,9 @@ def main():
 
     # Every crate on disk must still appear at least once; that completeness
     # check is the reason this registry exists.
-    listed = [e.get("crate", "<no crate key>") for e in reg]
+    # A row whose package lives in another repository (`external`, phase-522
+    # W1) has no directory here to find.
+    listed = [e.get("crate", "<no crate key>") for e in reg if not e.get("external")]
     keys = [(e.get("crate", "<no crate key>"), e.get("matrix_platform")) for e in reg]
     dupes = {k for k in keys if keys.count(k) > 1}
     for c, plat in sorted(dupes, key=lambda k: (k[0], k[1] or "")):
@@ -558,6 +680,10 @@ def main():
                 "boots and delivers a message (phase-375 W4's smoke floor). Add "
                 "one, or move the row to tier = \"scaffold\", which promises "
                 "nothing.")
+
+    # --- RFC-0114 primitives, beside the tiers (phase-522 W1) -----------------
+    errors += primitive_errors(board_registry.load(REGISTRY), matrix_txt,
+                               FIXTURES.read_text(), nl)
 
     # --- per-entry predicates -------------------------------------------------
     baseline = load_baseline(errors)
