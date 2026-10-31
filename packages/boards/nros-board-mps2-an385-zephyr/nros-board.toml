@@ -53,3 +53,15 @@ threads = true
 stack = "os"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]
+
+# Issue 2177 — what `nros setup board mps2-an385-zephyr --zephyr-workspace <ws>`
+# does to a reader's own west workspace: apply the 3.7 patch set. A workspace
+# made with plain `west init` / `west update` runs an UNPATCHED
+# zephyr-lang-rust, whose cargo command carries none of nano-ros's env (the
+# board facts, the derived knobs and the C cross compiler, `NROS_BOARD_FACTS_ENV`
+# in `zephyr/CMakeLists.txt`) — so a Rust image's `zpico-sys` fell back to a
+# PATH `arm-none-eabi-gcc` and failed. The triple is `[board.zephyr]
+# rust_target`'s.
+[board.provisioning]
+zephyr_line = "3.7"
+rust_targets = ["thumbv7m-none-eabi"]
