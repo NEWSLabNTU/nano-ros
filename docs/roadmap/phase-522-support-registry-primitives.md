@@ -1,0 +1,194 @@
+# Phase 522 — The board support registry becomes the one primitive
+
+**Status (2026-10-31). PROPOSED; no work item started.** Implements
+[RFC-0114](../design/0114-board-support-registry-primitives.md) (D10 support
+levels, D11 derived and inherited breadth, D12 one registry, everything else
+generated). Amends the tier section of
+[RFC-0064](../design/0064-board-support-organization.md). Written from the
+adoption discussion of 2026-10-31; the three adoption purposes (industrial,
+field solutions, education) are the readers of the evidence page this phase
+produces.
+
+---
+
+## Why
+
+Board support is typed in five places today: `packages/boards/board-support.toml`
+(the tier), `packages/testing/nros-tests/src/matrix.rs` (the cells),
+`examples/fixtures.toml` (the builds), the probe workflow plus its case table
+(the weekly replay) and the `ROWS` table of the issue 2169 test (the printed
+run command). Each has its own drift gate, each gate was written after a
+drift, and none of them agrees with the others about reach. The tier numbers
+on top of that encode cadence (every merge versus nightly) while reading as
+quality, and cannot say whether a board runs on a host, in an emulator or on
+silicon.
+
+RFC-0114 makes the registry the only place a board fact is typed and derives
+the rest. This phase does the migration, in an order that proves each step
+before the next relies on it: round-trip first, then gates, then the book,
+then the CLI.
+
+## Scope
+
+In: the registry schema, the generator, the gate consolidation, the book
+pages, `nros board list` and `nros doctor --report`. Every row that exists
+today is mapped; one new row (the S32K344 safety island) is added because the
+evidence for it already exists in phase-474.
+
+Out: new boards (phase-524 adds the Nucleo, Arduino and Pico rows after W1
+lands), RFC-0112's framework tiers (another session's phase-521), the
+contents of the book chapters (phase-523), and the build descriptors
+`nros-board.toml` (RFC-0049 and RFC-0064 own them; the generator reads them
+and never writes them).
+
+## Dependencies
+
+- Blocks phase-524 W3 (board rows for the emulator twins): a row cannot be
+  added in the new shape before W1 defines it.
+- Independent of phase-523 (adoption front doors) and of the education and
+  adoption-probe phase; those touch CLI verbs and chapters, not the registry.
+- Issue 2177's branch (PR 2920) moves `nros-board-mps2-an385-zephyr` and
+  `nros-board-qemu-cortex-a53` from scaffold to infra. W1 is written against
+  main after that lands; if it has not, W1 carries the same move.
+
+## Work items
+
+Each item ends in a decision step: the evidence needed to call it done, and
+what happens if the evidence says no.
+
+### W1 — Registry schema and migration of every row
+
+- Add the fields of RFC-0114 D10 (`runs`, `emulator`, `hardware`, `cadence`,
+  `last_run`, `infra`) and D11 (`breadth`) to every `[[board]]` row, keeping
+  `tier` and `execution_class` in place for this item so the old gate still
+  passes. Add the top-level `manual_stale_days = 120`.
+- Map every current row per the RFC's migration table. Add the S32K344 island
+  row (`runs = "hardware"`, `hardware = "mr-canhubk344"`, `cadence =
+  "manual"`, `last_run` from phase-474's last measured boot).
+- Make the ZephyrQemuCortexM row's package `nros-board-mps2-an385-zephyr`,
+  the descriptor the witness builds with, and drop the scaffold row of the
+  same name.
+- Extend `scripts/check-board-tiers.py` to validate the new fields alongside
+  the old ones (the D10 predicates), so both readings are checked during the
+  migration.
+
+Acceptance: the `check-board-tiers` gate green with both field sets; every row has
+both; a loader round-trips the file.
+
+Decision step: review the migration table against the rows with the
+maintainers. Any row whose new status word surprises a maintainer is fixed
+in the registry before W2 starts. If more than two rows need a status word
+D10 does not have, amend the RFC first.
+
+### W2 — The generator, proven by a byte-identical round-trip
+
+- Write `scripts/gen-board-support.py`. Inputs: the registry and the
+  descriptors it names. Outputs, each with a stamp line naming the generator
+  and the registry hash: the `matrix::CELLS` region, the `interop::CELLS`
+  smoke rows, the emulator `[[fixture]]` rows, one JSON probe matrix the
+  workflow and `run-bootstrap-probe.sh` both read, the 2169 `ROWS` include,
+  `book/src/reference/board-support-levels.md`, one
+  `book/src/reference/boards/<name>.md` per row, and the registry-backed
+  rows of `supported-boards.md`.
+- First milestone, before any content change: regenerate today's cells,
+  fixture rows, probe matrix and `ROWS` from the W1 registry and get an empty
+  `git diff`. Family feature tables are added to the registry only as far
+  as that round-trip needs them.
+- Fixture rows whose build arguments are not a function of descriptor plus
+  family default go on an allowlist file the generator reads; the generator
+  checks them (coordinate present, locator port unique) and does not write
+  them.
+
+Acceptance: `gen-board-support.py --write` on the migrated tree produces no
+diff; the allowlist is enumerated with a reason per row; the book pages
+render under `just book`.
+
+Decision step: if the allowlist holds more rows than the derived set and the
+reasons show no path to shrinking (cmake `cmake_defs` and per-row `env` that
+no descriptor field explains), apply RFC-0114's narrowing: fixture rows stay
+authored and checked, and the RFC is amended. The cells, probe matrix, ROWS
+and book pages are generated regardless of that outcome.
+
+### W3 — One gate, `check-board-registry`
+
+- Replace `check-board-tiers`, `check-book-board-run-sections`, the 2169
+  `ROWS` coverage test, `matrix_fixture_coverage.rs` G1–G4 and the probe
+  case-list drift check with one gate, `check-board-registry`, a new recipe
+  under `mod check`: regenerate into a
+  temporary directory, fail on any byte difference, and refuse a board fact
+  typed outside the registry where the layout lets it be seen (a `cell(...)`
+  outside the generated region, a probe matrix entry with no row, a `ROWS`
+  tuple with no row).
+- Keep the retired gates' negative controls as the new gate's self-test:
+  each mutation they caught must still be caught, by name.
+- Put the gate on the fast line; it reads files and runs no build.
+
+Acceptance: the mutation list passes (RFC-0114 evaluation step 2); the five
+retired gates are deleted from `just/check.just` and
+`check-default-gates-run-somewhere` is green; fast-line time grows by less
+than two seconds.
+
+Decision step: a mutation the gate cannot see is either made impossible by
+layout (the generated region becomes the whole file) or printed by the gate
+as a known gap. No silent gap.
+
+### W4 — The book reads the registry
+
+- `board-support-tiers.md` is replaced by the generated
+  `board-support-levels.md`; `SUMMARY.md` and every link follow
+  (`check-doc-refs`, `check-markdown-links`).
+- The per-board evidence pages are linked from each getting-started chapter's
+  board line and from `support-status.md`.
+- The words "tier 1", "tier 2", "tier 3" leave every user-facing page; a
+  grep of `book/src` for `[Tt]ier [123]` finds only RFC-0112's framework
+  tiers, which stay until that RFC is revised.
+- Remove `tier` and `execution_class` from the registry and the old
+  predicates from the gate; the migration is complete.
+
+Acceptance: `just book` builds; the generated levels page matches the W1
+migration table row for row; the RFC-0114 evaluation step 5 (manual-stale
+degradation on the FVP row) is demonstrated in both directions.
+
+Decision step: the page is reviewed against the migration table by the
+maintainers before the old page is deleted. A surprise is a registry fix or
+a predicate fix, never a hand edit of a generated page.
+
+### W5 — The CLI reads the registry
+
+- `nros board list` prints the status word and cadence beside each board it
+  already lists; `nros board show <name>` prints the evidence page's facts.
+- `nros doctor --report` prints the registry status of every board the
+  workspace's images name, so an industrial adopter has one command whose
+  output they can file.
+- The CLI reads the registry through the SDK root ladder (RFC-0099 D3), so a
+  released toolchain carries its own copy and an installed user sees the
+  same words as the book.
+
+Acceptance: `board_key_table.rs` and the `nros board` tests cover the new
+columns; the installed probe track prints a status word for its board;
+`check-user-surface-ids` (phase-523 W1), once it exists, finds no tier
+number in the output.
+
+Decision step: if the installed toolchain's copy of the registry and the
+checkout's disagree (a released `nros` against a newer checkout), the CLI
+prints both and says which it read; it never picks silently.
+
+## Acceptance for the phase
+
+- No board fact is typed outside `board-support.toml` and the descriptors it
+  names; `check-board-registry` holds that on the fast line.
+- Every row of the migration table is present with its status word, and the
+  generated levels page shows it.
+- The five retired gates are gone and their mutation lists are the new
+  gate's self-test.
+- phase-524 can add a row in the new shape with one registry edit plus a
+  descriptor, and the cells, probe track, ROWS entry and book pages appear
+  from the generator.
+
+## Left
+
+- A downstream board package's own registry row (RFC-0114 open question);
+  not needed until an out-of-tree BSP asks for it.
+- Measured numbers per board (time to first output, install minutes) on the
+  evidence page: the adoption front-doors phase decides whether they live
+  here or in the probe records.
