@@ -431,7 +431,9 @@ nextest-binary-filters:
 # the cells outside the run's coordinates, and its stdout summary is the only
 # record of which cells ran. nextest discards a passing test's output, so every
 # such test must sit in the `success-output = "final"` override. The subject is
-# derived: every test file calling `lane_scope::skip_note(` for a summary.
+# derived: every test file calling `lane_scope::skip_note(` for a summary. It
+# also refuses `--success-output never` on any command line, which outranks the
+# override and kept the summaries out of every log after the first fix.
 [group("ci")]
 matrix-summary-visible:
     @python3 scripts/check-matrix-summary-visible.py

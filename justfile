@@ -1257,7 +1257,7 @@ test-unit verbose="":
           --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
-        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
+        args+=(--failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     # issue 0388 — `nros_tests::skip!` panicked with `[SKIPPED]` for an unmet
     # precondition (since issue 1758 only `lane_skip!` skips), and nextest has no native skip, so those land as FAILURES and
@@ -1397,7 +1397,7 @@ _test-focused filter verbose="":
         # skip REASONS were suppressed too, so the lane's red could not be read
         # without a rerun. The five sibling recipes take the same hook, so the
         # knob means one thing wherever it is set.
-        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
+        args+=(--failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     nros_nextest_junit_reset
     set +e
@@ -1454,7 +1454,7 @@ test-integration verbose="":
     args=(-p nros-tests --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
-        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
+        args+=(--failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     # `nros_tests::lane_skip!` panics with `[SKIPPED:lane]` for an out-of-scope
     # test — nextest has no native skip, so those count as failures and exit
@@ -1612,7 +1612,7 @@ _nextest-platform test_name verbose="" feature_args="" filter="":
     fi
     if [ -z "{{verbose}}" ]; then
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
-        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
+        args+=(--failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     just _nextest-tolerant "${args[@]}"
 
@@ -1851,7 +1851,7 @@ test *scope:
     # A shell variable, not a recipe parameter: the first positional is SCOPE
     # now, and verbosity is a flag parsed out of it at the top of this body.
     if [ -z "$verbose" ]; then
-        args+=(--success-output never --failure-output never)
+        args+=(--failure-output never)
     fi
     nros_nextest_record_begin test
     nros_nextest_record_write_command \
@@ -2450,7 +2450,7 @@ test-failed verbose="":
     nextest_run_profile_args=($(nros_nextest_run_profile_args))
     args=(--workspace "${nextest_run_profile_args[@]}" --no-fail-fast -E "$filterset")
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output immediate)
+        args+=(--failure-output immediate)
     fi
     rm -f "$junit"
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
@@ -2766,7 +2766,7 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}")
     if [ -z "{{verbose}}" ]; then
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
-        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
+        args+=(--failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     env_exclude=()
     # Issue 1900 — the run is scoped by COORDINATE only (`NROS_TEST_COORDS`,

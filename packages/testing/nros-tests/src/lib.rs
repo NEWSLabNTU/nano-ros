@@ -53,6 +53,7 @@ pub mod interop;
 pub mod lane_scope;
 pub mod levels;
 pub mod matrix;
+pub mod matrix_tally;
 pub mod output;
 pub mod platform;
 // Issue 0470 — cross-process port reservation. The bind-then-close allocators

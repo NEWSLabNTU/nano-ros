@@ -541,7 +541,7 @@ test-all verbose="":
     # issue 0743 for the wrong-arch kernel the boot test was really reporting.
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(Nuttx)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        e2e_args+=(--success-output never --failure-output never)
+        e2e_args+=(--failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${e2e_args[@]}"
 
