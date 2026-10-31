@@ -87,6 +87,10 @@
 # than `manual_stale_days` reads "Builds" with its date.
 manual_stale_days = 120
 
+# phase-522 W2 — the registry's cell table: every `matrix::CELLS` cell, in its
+# own file because it is long. Part of the registry, read by the same generator.
+cell_table = "board-support-cells.toml"
+
 # ===== tier 1 — supported ==================================================
 
 [[board]]
@@ -487,3 +491,142 @@ notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cor
 # `python3 scripts/check-board-tiers.py --write-baseline` to drop the row from
 # the grandfather list.
 # ---------------------------------------------------------------------------
+
+# ===== probe tracks (phase-522 W2) ==========================================
+#
+# Every track of the installed-toolchain book probe (`just probe <track>`,
+# phase-517 W10): the chapter it replays and the `variant=` of the chapter's
+# blocks it selects. `scripts/gen-board-support.py` writes them to
+# `scripts/probe/probe-tracks.json`, which `run-bootstrap-probe.sh` resolves a
+# track from and `probe-platforms.yml` takes its weekly matrix from: the two
+# lists that used to be typed separately.
+#
+#   track       the `just probe <track>` / PROBE_PLATFORM name
+#   chapter     the book page under book/src/
+#   variant     the chapter blocks' `variant=` the track replays ("" = none)
+#   weekly      true when `probe-platforms.yml` replays it every Monday
+#   row         the board row (crate@platform) whose evidence this is, if any
+#   qemu_board  the board the image is built for, when the run step boots QEMU;
+#               these are the ROWS of issue 2169's printed-run-command test
+
+[[probe]]
+track = "linux"
+chapter = "getting-started/first-project.md"
+variant = ""
+weekly = false
+row = "nros-board-linux@Linux"
+notes = "The installed track's default chapter; replayed by `probe.yml`, not the weekly platform lane."
+
+[[probe]]
+track = "baremetal"
+chapter = "getting-started/bare-metal.md"
+variant = ""
+weekly = true
+row = "nros-board-mps2-an385@QemuBaremetal"
+qemu_board = "mps2-an385-baremetal"
+
+[[probe]]
+track = "freertos"
+chapter = "getting-started/freertos.md"
+variant = "rust"
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+qemu_board = "mps2-an385-freertos"
+notes = "phase-517 W17 — one track per language road the chapter documents: the Rust workspace here, the C package next."
+
+[[probe]]
+track = "freertos-c"
+chapter = "getting-started/freertos.md"
+variant = "c"
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+qemu_board = "mps2-an385-freertos"
+
+[[probe]]
+track = "threadx-linux"
+chapter = "getting-started/threadx.md"
+variant = "linux"
+weekly = true
+row = "nros-board-threadx-linux@ThreadxLinux"
+
+[[probe]]
+track = "threadx-riscv64"
+chapter = "getting-started/threadx.md"
+variant = "riscv64"
+weekly = true
+row = "nros-board-threadx-qemu-riscv64@ThreadxRiscv64"
+qemu_board = "rv-virt-threadx"
+
+[[probe]]
+track = "threadx-linux-c"
+chapter = "getting-started/threadx.md"
+variant = "linux-c"
+weekly = true
+row = "nros-board-threadx-linux@ThreadxLinux"
+
+[[probe]]
+track = "nuttx-arm"
+chapter = "getting-started/integration-nuttx.md"
+variant = "arm"
+weekly = true
+row = "nros-board-nuttx-qemu@NuttxArm"
+qemu_board = "qemu-armv7a-nuttx"
+
+[[probe]]
+track = "nuttx-arm-rust"
+chapter = "getting-started/integration-nuttx.md"
+variant = "arm-rust"
+weekly = true
+row = "nros-board-nuttx-qemu@NuttxArm"
+qemu_board = "qemu-armv7a-nuttx"
+
+[[probe]]
+track = "nuttx-riscv"
+chapter = "getting-started/integration-nuttx.md"
+variant = "riscv"
+weekly = true
+row = "nros-board-nuttx-qemu@NuttxRiscv"
+qemu_board = "rv-virt-nuttx"
+
+[[probe]]
+track = "nuttx-riscv-rust"
+chapter = "getting-started/integration-nuttx.md"
+variant = "riscv-rust"
+weekly = true
+row = "nros-board-nuttx-qemu@NuttxRiscv"
+qemu_board = "rv-virt-nuttx"
+
+[[probe]]
+track = "zephyr"
+chapter = "getting-started/integration-zephyr.md"
+variant = "native-sim"
+weekly = true
+row = "nros-board-zephyr@ZephyrNativeSim"
+
+[[probe]]
+track = "zephyr-rust"
+chapter = "getting-started/integration-zephyr.md"
+variant = "native-sim-rust"
+weekly = true
+row = "nros-board-zephyr@ZephyrNativeSim"
+
+[[probe]]
+track = "workspace"
+chapter = "getting-started/installation.md"
+variant = "workspace"
+weekly = true
+notes = "phase-517 W4 — not a platform: installation.md's \"Provision a whole workspace\" run, one bare `nros setup` for a Linux and a FreeRTOS image, then `nros build --all` with nothing else installed."
+
+[[probe]]
+track = "pinned"
+chapter = "getting-started/installation.md"
+variant = "pinned"
+weekly = true
+notes = "phase-517 W11/W16 — installation.md's \"Pinning a version\": a project pinned to a release other than the installed one, so the installed `nros` must hand off to the pinned one, fetching it first."
+
+[[probe]]
+track = "pinned-newer"
+chapter = "getting-started/installation.md"
+variant = "pinned"
+weekly = true
+notes = "Issue 2168 — the same project with the PUBLISHED release `[tool.nros]` pins installed instead of this branch's asset, so a NEWER front must hand off to the project's older pin."

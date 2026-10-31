@@ -58,7 +58,8 @@ CFFI_EMPTY = "packages/rmw/cffi/src/lib.rs"
 ZENOH_SRC_DIR = "packages/rmw/zenoh/nros-rmw-zenoh/src"
 ZENOH_SESSION = "packages/rmw/zenoh/nros-rmw-zenoh/src/shim/session.rs"
 QOS_MASK_DEF = "packages/core/nros-rmw/src/traits.rs"
-MATRIX_CELLS = "packages/testing/nros-tests/src/matrix.rs"
+# Generated from the board registry since phase-522 W2; matrix.rs includes it.
+MATRIX_CELLS = "packages/testing/nros-tests/src/matrix_cells.rs"
 INTEROP_CELLS = "packages/testing/nros-tests/src/interop.rs"
 
 # column label -> (vtable source, initializer shape, backend source dir,

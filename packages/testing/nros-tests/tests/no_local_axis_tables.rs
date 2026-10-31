@@ -24,8 +24,10 @@ fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// The two files that ARE the sanctioned axis tables.
-const SSOT: &[&str] = &["matrix.rs", "interop.rs"];
+/// The files that ARE the sanctioned axis tables.
+// `matrix_cells.rs` is `matrix::CELLS` itself, generated from the board
+// registry (phase-522 W2) and included by matrix.rs.
+const SSOT: &[&str] = &["matrix.rs", "matrix_cells.rs", "interop.rs"];
 
 fn is_ssot(path: &Path) -> bool {
     path.file_name()

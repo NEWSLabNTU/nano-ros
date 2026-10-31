@@ -1183,6 +1183,9 @@ mod tests {
         }
     }
 
+    // phase-522 W2 — `PROBE_BOOT_ROWS`, generated from the board registry.
+    include!("probe_boot_rows.rs");
+
     /// Issue 2169 — the run command `nros build` prints for a board equals the
     /// line its chapter boots on the installed probe track. The probes prove the
     /// chapter's line runs the image, so equality carries that to the printed
@@ -1194,17 +1197,10 @@ mod tests {
     /// a row here, so a new track cannot skip the comparison.
     #[test]
     fn every_probed_chapter_boot_line_is_the_printed_run_command() {
-        // (chapter, block variant, board the chapter's image is built for)
-        const ROWS: &[(&str, &str, &str)] = &[
-            ("bare-metal.md", "", "mps2-an385-baremetal"),
-            ("freertos.md", "rust", "mps2-an385-freertos"),
-            ("freertos.md", "c", "mps2-an385-freertos"),
-            ("integration-nuttx.md", "arm", "qemu-armv7a-nuttx"),
-            ("integration-nuttx.md", "arm-rust", "qemu-armv7a-nuttx"),
-            ("integration-nuttx.md", "riscv", "rv-virt-nuttx"),
-            ("integration-nuttx.md", "riscv-rust", "rv-virt-nuttx"),
-            ("threadx.md", "riscv64", "rv-virt-threadx"),
-        ];
+        // (chapter, block variant, board the chapter's image is built for),
+        // generated from the board registry's `[[probe]]` tracks that carry a
+        // `qemu_board` (phase-522 W2, scripts/gen-board-support.py).
+        const ROWS: &[(&str, &str, &str)] = PROBE_BOOT_ROWS;
         fn groups(argv: &[String]) -> Vec<String> {
             let mut out = Vec::new();
             let mut it = argv.iter().peekable();

@@ -1,6 +1,6 @@
 # Phase 522 — The board support registry becomes the one primitive
 
-**Status (2026-11-01). IN PROGRESS: W1 landed.** Implements
+**Status (2026-11-01). IN PROGRESS: W1 and W2 landed.** Implements
 [RFC-0114](../design/0114-board-support-registry-primitives.md) (D10 support
 levels, D11 derived and inherited breadth, D12 one registry, everything else
 generated). Amends the tier section of
@@ -134,6 +134,29 @@ reasons show no path to shrinking (cmake `cmake_defs` and per-row `env` that
 no descriptor field explains), apply RFC-0114's narrowing: fixture rows stay
 authored and checked, and the RFC is amended. The cells, probe matrix, ROWS
 and book pages are generated regardless of that outcome.
+
+**Result (2026-11-01).** `scripts/gen-board-support.py` writes the
+`matrix::CELLS` list (`packages/testing/nros-tests/src/matrix_cells.rs`, from
+the registry's cell table `packages/boards/board-support-cells.toml`), the
+probe track list `scripts/probe/probe-tracks.json` (read by
+`run-bootstrap-probe.sh` through `scripts/probe/probe-track.py` and by
+`probe-platforms.yml`'s matrix), issue 2169's `ROWS`
+(`packages/cli/nros-cli-core/src/cmd/probe_boot_rows.rs`), the levels page,
+one evidence page per board row, and the generated regions of
+`supported-boards.md` and `SUMMARY.md`. Round-trip: the 263 cells the
+generator writes equal, in order, the 263 hand-written ones on main
+(coordinates, status, configurations and comment block; only alignment
+whitespace differs), the generated `ROWS` are the eight hand-written tuples,
+the probe tracks are the sixteen case-table entries and the fifteen workflow
+entries, and a second `--write` produces no diff. `--check` runs inside the
+`board-tiers` gate until W3 replaces it.
+
+Decision step: the fixture-row allowlist would hold more rows than the
+derived set (146 emulator rows, 68 with per-row `cmake_defs`, `env` or
+`features` that no descriptor explains, and no family default to derive the
+rest from), so RFC-0114's narrowing applies: fixture rows stay authored and
+are checked, not written, and the RFC records the amendment. The
+`interop::CELLS` smoke rows stay authored for the same reason.
 
 ### W3 — One gate, `check-board-registry`
 

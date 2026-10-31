@@ -1,0 +1,1491 @@
+# The board registry's cell table — RFC-0114 D12, phase-522 W2.
+#
+# Part of the registry (`packages/boards/board-support.toml` names it as
+# `cell_table`): every cell of the declared test matrix (RFC-0051), one
+# `[[cell]]` per coordinate. `scripts/gen-board-support.py` writes
+# `packages/testing/nros-tests/src/matrix_cells.rs` from it, which
+# `matrix::CELLS` includes, and every book page that states a board's breadth
+# reads it. Edit HERE, then regenerate; the Rust list is never edited by hand.
+#
+#   at       [platform, lang, rmw, feature, kind] — the `PlatformId`, `Lang`,
+#            `Rmw`, `Feature` and `Kind` variants, spelled as in matrix.rs
+#   status   the Rust status expression: `Runtime`, `BuildOnly(..)`,
+#            `CarveOut(..)` or `Gated(..)`, verbatim (a reason may name a const
+#            from matrix.rs)
+#   with     optional `.with(..)` argument: the cell's configurations
+#   comment  optional: the comment block written above the cell, kept verbatim.
+#            It is the cell's history, so it travels with the cell.
+#
+# Order is the list's order; the generator keeps it.
+
+[[cell]]
+comment = '''
+// ── Example kind: the classic pubsub/service/action pairs ──────────
+// Linux host (ephemeral isolation; all three RMWs have runtime lanes).
+'''
+at = ["Linux", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-510 W4 — the same pubsub BUILT with loan publish in a two-session
+// pool (RFC-0051 §7a): `loan_e2e` publishes through `try_loan` + `commit`
+// and its subscriber, in the same process, must receive what it would
+// from a plain publish. Answered by `test-zpico-multisession`'s lane.
+'''
+at = ["Linux", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::Lending, Config::Multisession]'
+
+[[cell]]
+comment = '''
+// phase-510 W5 — lending where the backend cannot lend: its vtable leaves
+// `borrow_loaned_message` NULL, and since issue 0814 (option 2) a loan
+// there is a permanent refusal in every build, so there is nothing to run.
+'''
+at = ["Linux", "Rust", "Cyclonedds", "Pubsub", "Example"]
+status = 'CarveOut(NO_LOAN_SLOT)'
+with = '&[Config::Lending]'
+
+[[cell]]
+at = ["Linux", "Rust", "Xrce", "Pubsub", "Example"]
+status = 'CarveOut(NO_LOAN_SLOT)'
+with = '&[Config::Lending]'
+
+[[cell]]
+at = ["Px4", "Cpp", "Uorb", "Pubsub", "Example"]
+status = 'CarveOut(NO_LOAN_SLOT)'
+with = '&[Config::Lending]'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue 1384 — `examples/linux/c/custom-platform`, the one in-tree caller
+// of `rclc_executor_node_init` that creates an eager entity. Its
+// fixtures.toml row was BUILD-ONLY, so nothing ran the binary and its
+// publisher failed RCL_RET_NOT_INIT unobserved for four phases.
+'''
+at = ["Linux", "C", "Zenoh", "ExecutorBoundNode", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-482 W3 — the unmodified ROS 2 tutorial publisher
+// (`examples/templates/cpp-port-minimal-publisher`), run by
+// `port_templates_e2e`. Same program on all three platforms; only the
+// build glue differs.
+'''
+at = ["Linux", "Cpp", "Zenoh", "Port", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-482 W3 — the other two port templates, the same way:
+// `rclcpp-compat-smoke` and `topic-state-monitor-port`, each one source on
+// all three platforms, run by `port_templates_e2e`.
+'''
+at = ["Linux", "Cpp", "Zenoh", "PortSmoke", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "PortMonitor", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "PortWorkspace", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Cyclonedds", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Cyclonedds", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue #233 cell 1 — proven: rust cyclone service pair delivers
+// (test_native_cyclonedds_rust_service).
+'''
+at = ["Linux", "Rust", "Cyclonedds", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Cyclonedds", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Cyclonedds", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue #234 — RESOLVED: rust cyclone action pair delivers the order-10
+// Fibonacci result (test_native_cyclonedds_rust_action). The action's
+// `register_protocol_types` now registers the `action_msgs` descriptors
+// through the generic `nros_rmw::register_type_descriptor` seam instead of
+// the cfg-gated named-backend call that compiled out of the example build.
+'''
+at = ["Linux", "Rust", "Cyclonedds", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Xrce", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Xrce", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Xrce", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Xrce", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Xrce", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Xrce", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Xrce", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Xrce", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Xrce", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
+// Zephyr on QEMU mps2/an385 (Cortex-M3) — phase-337 W2.d. The point of
+// these rows is everything the native_sim rows below CANNOT say: 32-bit
+// pointers, Zephyr's own in-kernel IP stack, and a real ethernet driver
+// (`eth_smsc911x` against QEMU's lan9118). Proven end to end in W2.b — the
+// image boots, takes 10.0.2.15 from the driver, and publishes over a zenoh
+// session to a host router through SLIRP.
+//
+// NO RUST ROW, deliberately, and NOT as a BuildOnly: the pinned
+// `zephyr-lang-rust` cannot compile the `zephyr` crate for any board whose
+// devicetree has gpio nodes (issue 0432), so a rust cell here would not
+// build either, and `BuildOnly` promises that it does. An absent row with
+// the reason recorded beats a tier that lies — see this module's header.
+//
+// Zenoh only: cyclone and xrce on this board are untried, and the honest
+// record of "nobody has attempted it" is no row, not a guess.
+'''
+at = ["ZephyrQemuCortexM", "C", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrQemuCortexM", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-482 W3 — the ported tutorial publisher on Zephyr. On this board,
+// not native_sim: a ported program needs the full libstdc++, which
+// native_sim's C library cannot carry (phase-209 G.2).
+'''
+at = ["ZephyrQemuCortexM", "Cpp", "Zenoh", "Port", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrQemuCortexM", "Cpp", "Zenoh", "PortSmoke", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrQemuCortexM", "Cpp", "Zenoh", "PortMonitor", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrQemuCortexM", "Cpp", "Zenoh", "PortWorkspace", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-346 W3 — Rust on a REAL Zephyr board, unblocked by patching issue
+// 0432's two upstream defects. Until then the `zephyr` crate could not
+// compile for any board whose devicetree has gpio nodes, which is every
+// real one; native_sim has none, which is the only reason it went unseen.
+'''
+at = ["ZephyrQemuCortexM", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue 1036 — the boot report read out of a console-less, halted 32-bit
+// image. On this board because it is Zephyr's own IP stack on a Cortex-M,
+// the closest QEMU has to the MR-CANHUBK344 the record was written for.
+'''
+at = ["ZephyrQemuCortexM", "C", "Zenoh", "BootReport", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrQemuCortexM", "C", "Zenoh", "Service", "Example"]
+status = '''
+BuildOnly("phase-337 W2.f — the runner reproduces W2.b's manual setup \
+                    (SLIRP + a host zenoh router on 7456) for pubsub only; \
+                    service needs the peer half of that harness")'''
+
+[[cell]]
+at = ["ZephyrQemuCortexM", "Cpp", "Zenoh", "Service", "Example"]
+status = 'BuildOnly("phase-337 W2.f — same runner gap as the C service row")'
+
+[[cell]]
+at = ["ZephyrQemuCortexM", "C", "Zenoh", "Action", "Example"]
+status = 'BuildOnly("phase-337 W2.f — same runner gap as the C service row")'
+
+[[cell]]
+at = ["ZephyrQemuCortexM", "Cpp", "Zenoh", "Action", "Example"]
+status = 'BuildOnly("phase-337 W2.f — same runner gap as the C service row")'
+
+[[cell]]
+comment = '''
+
+// Zephyr native_sim — zenoh + cyclone + xrce, all three langs
+// (the zephyr.rs families; W4 bakes: cyclone domains 22–30, xrce
+// agents 2400+ — `alloc::{domain_of,xrce_agent_port_of}`).
+'''
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Cyclonedds", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Cyclonedds", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Cyclonedds", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Cyclonedds", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Cyclonedds", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Cyclonedds", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Xrce", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Xrce", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Xrce", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Xrce", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Xrce", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Xrce", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Xrce", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Xrce", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Xrce", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
+// FreeRTOS / NuttX-arm / ThreadX-linux — the rtos_e2e 3×3 zenoh block.
+'''
+at = ["FreertosMps2", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-510 W5 — the same pubsub BUILT with loan publish (RFC-0051 §7a), on
+// the embedded target the loan's benefit is about (issue 0814): two images
+// of `nros-bench/loan-copy-count`, delivery to the second and the payload
+// copies counted on the first.
+'''
+at = ["FreertosMps2", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::Lending]'
+
+[[cell]]
+at = ["FreertosMps2", "C", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-482 W3 — the ported tutorial publisher on FreeRTOS.
+'''
+at = ["FreertosMps2", "Cpp", "Zenoh", "Port", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Cpp", "Zenoh", "PortSmoke", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Cpp", "Zenoh", "PortMonitor", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Cpp", "Zenoh", "PortWorkspace", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Rust", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "C", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Cpp", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Rust", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "C", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Cpp", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Rust", "Cyclonedds", "Pubsub", "Example"]
+status = '''
+CarveOut("no fixture builds it: the cmake-bridge entry was retired in \
+                   phase-220.C and issue #233 closed without restoring it. \
+                   Reviving it is a Cyclone cmake entry for the rust example, a \
+                   fixtures.toml row and a runtime test (the two retired \
+                   freertos_qemu.rs tests are in git history)")'''
+
+[[cell]]
+at = ["FreertosMps2", "Rust", "Xrce", "Pubsub", "Example"]
+status = 'CarveOut(XRCE_RTOS_CARVE)'
+
+[[cell]]
+comment = '''
+
+'''
+at = ["NuttxArm", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "C", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue 1795 — the NuttX TYPED carrier road boots and publishes
+// (`examples/qemu-armv7a-nuttx/c/typed-carrier`, tests/typed_carrier_e2e.rs).
+'''
+at = ["NuttxArm", "C", "Zenoh", "TypedCarrier", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "Rust", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "C", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "Cpp", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "Rust", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "C", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "Cpp", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "Rust", "Cyclonedds", "Pubsub", "Example"]
+status = 'CarveOut(CYCLONE_RUST_RTOS_CARVE)'
+
+[[cell]]
+at = ["NuttxArm", "Rust", "Xrce", "Pubsub", "Example"]
+status = 'CarveOut(XRCE_RTOS_CARVE)'
+
+[[cell]]
+comment = '''
+// issue 1706 — the parameter store CARVED from the executor backing on a
+// booted image (`bins/param-store-nuttx-qemu-arm`, tests/param_store_carve.rs).
+'''
+at = ["NuttxArm", "Rust", "Zenoh", "Params", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
+'''
+at = ["ThreadxLinux", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "C", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "Rust", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "C", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "Cpp", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "Rust", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "C", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "Cpp", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// threadx-linux cyclone: C pubsub pair proven (linux_api #215 lane);
+// service/action fixtures build but have no runtime lane.
+'''
+at = ["ThreadxLinux", "C", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue #233 cell 3 — threadx C cyclone service proven (test_threadx_linux_cyclonedds_service).
+'''
+at = ["ThreadxLinux", "C", "Cyclonedds", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue #233 cell 3 — threadx C cyclone action proven (test_threadx_linux_cyclonedds_action).
+'''
+at = ["ThreadxLinux", "C", "Cyclonedds", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue #233 cell 4 — threadx C++ cyclone pubsub proven (test_threadx_linux_cyclonedds_cpp_talker_to_native_listener).
+'''
+at = ["ThreadxLinux", "Cpp", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
+// ThreadX riscv64 — pubsub + service runtime (all three langs; rtos_e2e
+// runs the full lang fan-out). Action examples + builders EXIST in all
+// three langs but were deliberately dropped from the run matrix in
+// phase-182.5 (action is the wall-clock critical path — see rtos_e2e.rs);
+// cyclone two-QEMU pubsub pairs proven (#214).
+'''
+at = ["ThreadxRiscv64", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxRiscv64", "C", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxRiscv64", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxRiscv64", "Rust", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxRiscv64", "C", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxRiscv64", "Cpp", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxRiscv64", "Rust", "Zenoh", "Action", "Example"]
+status = 'BuildOnly("dropped from the action run matrix in 182.5 (wall-clock); examples + rtos_e2e builders exist")'
+
+[[cell]]
+at = ["ThreadxRiscv64", "C", "Zenoh", "Action", "Example"]
+status = 'BuildOnly("dropped from the action run matrix in 182.5 (wall-clock); examples + rtos_e2e builders exist")'
+
+[[cell]]
+at = ["ThreadxRiscv64", "Cpp", "Zenoh", "Action", "Example"]
+status = 'BuildOnly("dropped from the action run matrix in 182.5 (wall-clock); examples + rtos_e2e builders exist")'
+
+[[cell]]
+comment = '''
+// issue 0680 — per-thread `errno`. Not a messaging workload: the fixture
+// spawns two tasks and asserts one cannot see the other's `errno`. It is a
+// cell so the fixture has an owner that RUNS it; before the fix it fails
+// with `FAIL shared errno`, which is what makes it worth a coordinate.
+'''
+at = ["ThreadxRiscv64", "C", "Zenoh", "Errno", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue 1795 — the ThreadX TYPED carrier road boots and publishes
+// (`examples/rv-virt-threadx/c/typed-carrier`, tests/typed_carrier_e2e.rs).
+'''
+at = ["ThreadxRiscv64", "C", "Zenoh", "TypedCarrier", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxRiscv64", "C", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxRiscv64", "Rust", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue #235 — the cpp cyclone riscv64 fixtures existed (distinct
+// identity per node); the two-QEMU lane
+// (test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub) now consumes them.
+'''
+at = ["ThreadxRiscv64", "Cpp", "Cyclonedds", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue 1706 — the parameter store CARVED from the executor backing on a
+// booted image (`bins/param-store-threadx-riscv64`, tests/param_store_carve.rs).
+'''
+at = ["ThreadxRiscv64", "Rust", "Zenoh", "Params", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
+// NuttX riscv — the C talker example has a runtime lane
+// (c_riscv_nuttx_e2e); rust/cpp have NO standalone pubsub examples —
+// their riscv coverage is the realtime-tiers WORKSPACE lanes (rows
+// below), so don't claim Example-Runtime here.
+'''
+at = ["NuttxRiscv", "C", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxRiscv", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = 'CarveOut("no standalone cpp pubsub example on rv-virt; runtime coverage rides the realtime-tiers workspace lane")'
+
+[[cell]]
+at = ["NuttxRiscv", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'CarveOut("no standalone rust pubsub example on rv-virt; runtime coverage rides the realtime-tiers workspace lane")'
+
+[[cell]]
+comment = '''
+
+// ESP32 is DORMANT (issue 1525): its code is kept for future use, and no
+// lane builds or runs it, so every cell is a carve-out with no fixture row.
+'''
+at = ["Esp32Qemu", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'CarveOut(ESP32_DORMANT)'
+
+[[cell]]
+at = ["Esp32Qemu", "Rust", "Zenoh", "Service", "Example"]
+status = 'CarveOut(ESP32_DORMANT)'
+
+[[cell]]
+at = ["Esp32Qemu", "Rust", "Zenoh", "Action", "Example"]
+status = 'CarveOut(ESP32_DORMANT)'
+
+[[cell]]
+at = ["Esp32Qemu", "C", "Zenoh", "Pubsub", "Example"]
+status = 'CarveOut(ESP32_DORMANT)'
+
+[[cell]]
+at = ["Esp32Qemu", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = 'CarveOut(ESP32_DORMANT)'
+
+[[cell]]
+comment = '''
+
+// Bare-metal RTIC (QEMU MPS2) — pubsub-only demo set by design.
+'''
+at = ["QemuBaremetal", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["QemuBaremetal", "Rust", "Zenoh", "Service", "Example"]
+status = 'CarveOut("rtic demo set is pubsub-only by design (phase-289 scope)")'
+
+[[cell]]
+at = ["QemuBaremetal", "Rust", "Zenoh", "Action", "Example"]
+status = 'CarveOut("rtic demo set is pubsub-only by design (phase-289 scope)")'
+
+[[cell]]
+comment = '''
+// issue 1512 — the C/C++ API on the same board. Cargo-rooted leaves
+// (`builder = "cargo"` rows): the Rust startup owns the link and compiles
+// the C/C++ application in. RUNTIME since the image's declared locator
+// reaches the C/C++ compile (`nros_cc_flags::entry_config`) and the boot
+// `Config` (`Config::from_image`); each leaf's `[image.*] locator` names
+// its cell's `alloc::port`, and `tests/emulator.rs`
+// (`test_qemu_baremetal_capi_e2e`) runs every pair. The action pairs
+// joined once the smoltcp read stopped desynchronising on a burst of
+// batches (issue 1797).
+'''
+at = ["QemuBaremetal", "C", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["QemuBaremetal", "C", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["QemuBaremetal", "C", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["QemuBaremetal", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["QemuBaremetal", "Cpp", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["QemuBaremetal", "Cpp", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
+// ── phase-511 A1–A6: Example cells for tests that ran unmodeled ─────
+// Each test existed and ran before these cells did; the cell is what puts
+// it in a tier and binds it (RFC-0051 §7c).
+// A1 — `parameters_roundtrip`, the C/C++ parameter-store examples.
+'''
+at = ["Linux", "C", "Zenoh", "Params", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Params", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// A2 — `qos_overrides_runtime_delivery` (`qos-override-pubsub`).
+'''
+at = ["Linux", "Rust", "Zenoh", "Qos", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// A3 — `custom_msg` (`examples/linux/rust/custom-msg`).
+'''
+at = ["Linux", "Rust", "Zenoh", "CustomMsg", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// A4 — `safety_e2e`. The language is the LISTENER's; the C and C++
+// listeners pair with the Rust safety talker.
+'''
+at = ["Linux", "Rust", "Zenoh", "Safety", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Safety", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Safety", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// A5 — `logging_smoke`. The RTOS smoke images open no executor, so the
+// RMW is nominal; their fixture rows record zenoh and the cells match.
+'''
+at = ["Linux", "Rust", "Zenoh", "Logging", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["QemuBaremetal", "Rust", "Zenoh", "Logging", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Rust", "Zenoh", "Logging", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "Rust", "Zenoh", "Logging", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "Rust", "Zenoh", "Logging", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxRiscv64", "Rust", "Zenoh", "Logging", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Logging", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Esp32Qemu", "Rust", "Zenoh", "Logging", "Example"]
+status = 'CarveOut(ESP32_DORMANT)'
+
+[[cell]]
+comment = '''
+// A6 — `baremetal_run_plan_runtime`: the `nros::main!()` boot road.
+'''
+at = ["QemuBaremetal", "Rust", "Zenoh", "BoardEntryBoot", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
+// phase-337 W7.a — the three ~~`Stm32F4`~~ BuildOnly cells left with the board.
+// They were `BuildOnly`, i.e. ZERO Runtime, so the removal costs no
+// coverage: `check-board-tiers` requires a Runtime cell for tier 1/2 and
+// this platform could never have one (no hardware in the rack, no QEMU
+// model of the F4 MAC). The board is now
+// `book/src/porting/stm32f4-out-of-tree.md`.
+
+// FVP — Cyclone, cpp + rust.
+// Issue 0232 / phase-320 W1.a — these were `Runtime`, which no lane could
+// satisfy: the model was then believed license-walled and modelled as
+// `[gated.arm-fvp]`, so `fvp_smoke` / `fvp_runtime_ws` skipped on every CI
+// and dev host. Claiming Runtime here was 0232's false green — a lane that
+// always skipped, so four walls "shipped invisible and were found by the ASI
+// consumer". A gap reads as a gap; an overclaim reads as confidence.
+//
+// Since 2026-09-06 the model is a pinned public download
+// (`[tool.arm-fvp]`, `nros setup --tool arm-fvp`, x86_64 Linux only), so
+// what keeps it off CI is that no runner provisions it, not a license
+// (phase-511 corrected this note and the reasons below).
+//
+// The example cells have no runtime test at all: phase-298 W4 retired the
+// legacy talker tests, whose images have no ethernet device and so could
+// never publish. The runtime FVP artifact is the two-tier workspace entry.
+'''
+at = ["Fvp", "Cpp", "Cyclonedds", "Pubsub", "Example"]
+status = '''
+BuildOnly("the example image has no ethernet device on the FVP, so it cannot \
+                    publish; the runtime FVP witness is the workspace entry (phase-298 W4)")'''
+
+[[cell]]
+at = ["Fvp", "Rust", "Cyclonedds", "Pubsub", "Example"]
+status = '''
+BuildOnly("the example image has no ethernet device on the FVP, so it cannot \
+                    publish; the runtime FVP witness is the workspace entry (phase-298 W4)")'''
+
+[[cell]]
+at = ["Fvp", "Cpp", "Zenoh", "Pubsub", "Example"]
+status = '''CarveOut("zenoh-pico needs POSIX API the FVP board conf doesn't enable (#217)")'''
+
+[[cell]]
+comment = '''
+// phase-511 B2 — that workspace entry, the two-tier realtime-cpp image,
+// answered by `fvp_runtime_ws`.
+'''
+at = ["Fvp", "Cpp", "Cyclonedds", "RealtimeTiers", "Workspace"]
+status = '''
+Gated("`just zephyr verify-fvp-runtime` — no CI runner provisions the FVP model \
+                (`nros setup --tool arm-fvp`, x86_64 Linux only)")'''
+
+[[cell]]
+comment = '''
+
+// ── Workspace kind (Entry-pkg lanes; native-heavy today) ──────────
+'''
+at = ["Linux", "Rust", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+at = ["Linux", "Mixed", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+comment = '''
+// phase-331 W4 (RFC-0066) — the RMW AXIS over the language workspaces.
+// Before this the workspace rows were 85/87 zenoh: the RMW seam was
+// exercised by single-node examples and essentially never by a workspace.
+// The rust cells already existed; only c/cpp were missing. `mixed` was left
+// out as "the language seam, not the RMW seam" — issue 2159 is where the two
+// meet: Cyclone's typesupport is per package, a mixed configure reaches each
+// package from both languages, and it failed at configure until the fix.
+'''
+at = ["Linux", "Rust", "Cyclonedds", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+at = ["Linux", "C", "Cyclonedds", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+at = ["Linux", "Cpp", "Cyclonedds", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+at = ["Linux", "Mixed", "Cyclonedds", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+at = ["Linux", "Rust", "Xrce", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+at = ["Linux", "C", "Xrce", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+at = ["Linux", "Cpp", "Xrce", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Mixed", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-206 W2 — the RTOS image that links Cyclone AND carries a baked
+// bringup config (`workspace-zephyr-cpp-cyclonedds`). Its fixture row
+// landed with commit 9ae271174 while this cell did not, so the coordinate
+// (zephyr, cpp, cyclonedds, workspace) was a fixtures.toml orphan: built
+// and run by the lane, modeled by nothing. `fixture_rows_all_modeled_by_matrix`
+// is the assertion that caught it, and it is the reverse direction of the
+// pair -- the forward one was green throughout, because a cell that does
+// not exist cannot be missing a fixture.
+'''
+at = ["ZephyrNativeSim", "Cpp", "Cyclonedds", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(ENTRY_E2E_IS_ZENOH_ONLY)'
+
+[[cell]]
+at = ["FreertosMps2", "C", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Cpp", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Rust", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-370 W3 — the freertos family's first cells that run without QEMU.
+// The POSIX simulator is a host process, so `Runtime` here costs a process
+// spawn rather than an emulator, and the RMW is the same host CycloneDDS
+// the `Linux` rows use. No Rust row: the POSIX port has no Rust entry shape
+// of its own and the board carries no Rust board crate.
+'''
+at = ["FreertosPosix", "C", "Cyclonedds", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosPosix", "Cpp", "Cyclonedds", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-511 B1 — the FreeRTOS C++ Cyclone workspace entry, answered by
+// `freertos_qemu` on the mps3-an536 entry (`workspace-cpp-mps3-an536-freertos`),
+// which boots under QEMU and delivers in-image. The coordinate is the
+// `freertos` family's, as the W6 interop cells on the same board are.
+//
+// It was BuildOnly for the S32Z270 Cortex-R52 bundle's row
+// (`workspace-cpp-s32z270-freertos`, phase-372), which shares the
+// coordinate. That board is still link-complete only (the NXP GIC port,
+// RTD NETC driver and PBcfg are consumer-provisioned seams), and its row is
+// still built; the cell now has a runtime witness on an emulated twin, so it
+// no longer waits on S32Z270 hardware.
+'''
+at = ["FreertosMps2", "Cpp", "Cyclonedds", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "C", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// Corrected during the phase-295 W3.b entry consolidation: the seed
+// table marked the nuttx-arm C++ and all three nuttx-riscv EntryPubsub
+// rows `Runtime`, but no EntryPubsub fixture or lane exists at those
+// coordinates — the only nuttx workspace rows besides the C arm entry
+// are the REALTIME-TIERS entries (the fixtures.toml realtime rows +
+// workspace-rust-nuttx-riscv-realtime), which satisfied
+// the (platform, lang) coverage gate and masked the gap. The riscv C
+// runtime proof that exists is the STANDALONE talker example
+// (c_riscv_nuttx_e2e — the `(NuttxRiscv, C, Pubsub, Example)` cell).
+'''
+at = ["NuttxArm", "Cpp", "Zenoh", "EntryPubsub", "Workspace"]
+status = '''
+BuildOnly("no nuttx-arm C++ EntryPubsub fixture/lane; only the RT-tiers C++ \
+                    workspace builds at this coordinate — phase-295 W3.b finding, W6 wires it")'''
+
+[[cell]]
+at = ["NuttxRiscv", "C", "Zenoh", "EntryPubsub", "Workspace"]
+status = '''
+BuildOnly("no nuttx-riscv C EntryPubsub workspace fixture/lane (RT-tiers only; \
+                    the standalone talker example is the riscv C runtime proof) — \
+                    phase-295 W3.b finding, W6 wires it")'''
+
+[[cell]]
+at = ["NuttxRiscv", "Cpp", "Zenoh", "EntryPubsub", "Workspace"]
+status = '''
+BuildOnly("no nuttx-riscv C++ EntryPubsub workspace fixture/lane (RT-tiers only) \
+                    — phase-295 W3.b finding, W6 wires it")'''
+
+[[cell]]
+at = ["ThreadxLinux", "Rust", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'BuildOnly(NO_DELIVERY_TEST)'
+
+[[cell]]
+at = ["ThreadxLinux", "C", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "Cpp", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ThreadxLinux", "Mixed", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue 1286 follow-up — the pure-C ThreadX entry off the host sim:
+// rv-virt (riscv64 QEMU virt, slirp), `workspace-c-threadx-riscv64`.
+'''
+at = ["ThreadxRiscv64", "C", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Mixed", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "Rust", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// See the nuttx-riscv correction above — the rust riscv workspace row
+// is realtime-only too (workspace-rust-nuttx-riscv-realtime); no
+// EntryPubsub image or lane exists. phase-295 W3.b finding.
+'''
+at = ["NuttxRiscv", "Rust", "Zenoh", "EntryPubsub", "Workspace"]
+status = '''
+BuildOnly("no nuttx-riscv rust EntryPubsub workspace fixture/lane (RT-tiers \
+                    only) — phase-295 W3.b finding, W6 wires it")'''
+
+[[cell]]
+at = ["Esp32Qemu", "Rust", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'CarveOut(ESP32_DORMANT)'
+
+[[cell]]
+comment = '''
+
+// Workspace feature workloads (native + zephyr today; per-lang rows
+// mirror the ws-* families).
+'''
+at = ["Linux", "C", "Zenoh", "CustomMsg", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "CustomMsg", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// Corrected during the phase-295 W3.b consolidation: the seed table
+// marked native rust CustomMsg/Qos `Runtime`, but no fixtures.toml row
+// builds `ws-{custom-msg,qos}-rust`'s `linux_entry` and no test
+// consumes it (the C files' "C projection of the Rust demo" prose
+// described the WORKSPACE, not a lane; ws-qos-rust's only runtime lane
+// is the zephyr image). Single-entry natives also hit issue 0096
+// (in-process pub→sub never delivers), so wiring them needs split
+// talker/listener entries first — issue #233.
+'''
+at = ["Linux", "Rust", "Zenoh", "CustomMsg", "Workspace"]
+status = '''
+BuildOnly("ws-custom-msg-rust linux_entry has no fixture row or runtime lane \
+                    (needs an 0096 two-entry split) — phase-295 W3.b finding, W6 wires it")'''
+
+[[cell]]
+at = ["Linux", "Mixed", "Zenoh", "CustomMsg", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Logging", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Logging", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// Added during the phase-295 W3.b consolidation: the rust + mixed
+// logging lanes existed (tests/{,mixed_}logging_workspace_e2e.rs,
+// phase-263 A5) but the seed table never modeled them.
+'''
+at = ["Linux", "Rust", "Zenoh", "Logging", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Mixed", "Zenoh", "Logging", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Qos", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Qos", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// See the CustomMsg rust row above — same phase-295 W3.b correction.
+'''
+at = ["Linux", "Rust", "Zenoh", "Qos", "Workspace"]
+status = '''
+BuildOnly("ws-qos-rust linux_entry has no fixture row or runtime lane (only \
+                    the zephyr image is consumed) — phase-295 W3.b finding, W6 wires it")'''
+
+[[cell]]
+at = ["Linux", "Mixed", "Zenoh", "Qos", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Params", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Params", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Zenoh", "Params", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Lifecycle", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Lifecycle", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Zenoh", "Lifecycle", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Safety", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Safety", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Zenoh", "Safety", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-306 W4 (issue 0255) — launch/model remap + `~` private name hits
+// the wire remapped. Rust only: the C/C++ `nros_cpp_declare_remap` path is
+// emitter-unit-tested (W3); a runtime C/C++ cell is residual.
+'''
+at = ["Linux", "Rust", "Zenoh", "Remap", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// RFC-0065 D5 amendment (issue 1511) — `[image.*] before_boot`. Rust
+// only: the hook is a `nros::main!` argument, and the C/C++ roads refuse it.
+'''
+at = ["Linux", "Rust", "Zenoh", "BeforeBoot", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Params", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// Issue 1681 -- the C++ params entry: the one Zephyr C/C++ image that
+// declares `param_services` (+ `lifecycle`), which did not link before.
+'''
+at = ["ZephyrNativeSim", "Cpp", "Zenoh", "Params", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Lifecycle", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Qos", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Safety", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
+// Realtime tiers + multihost.
+'''
+at = ["Linux", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "C", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrNativeSim", "Cpp", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// Corrected during the phase-295 W4 re-bake: the realtime_tiers_e2e
+// consumer has ALWAYS run nuttx-arm {c,rust}, nuttx-riscv {rust,c} and
+// freertos c cells (fixtures.toml rows existed for each), but the seed
+// table only modeled the cpp rows — the (platform, lang) coverage gate
+// was satisfied by other workspace rows and masked the gap. Modeled so
+// the allocator derives every baked realtime port.
+'''
+at = ["NuttxArm", "Cpp", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "C", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxArm", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxRiscv", "Cpp", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxRiscv", "C", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["NuttxRiscv", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// issue 0636 gap 2 — the Rust arm. `run_tiers_entry` was exported and
+// reachable and called by nothing, so the boot-tier fix on this board was
+// reasoned onto Rust rather than measured. This cell measures it.
+'''
+at = ["FreertosMps2", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Cpp", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "C", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-297 W5 (RFC-0053) — ThreadX multi-tier run_tiers acceptance:
+// hosted simulation (pthread-backed ThreadX, host binary + NSOS host
+// sockets), port 9091 = port_of(ThreadxLinux, Rust, RealtimeTiers).
+'''
+at = ["ThreadxLinux", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Zenoh", "Multihost", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Multihost", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Multihost", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Mixed", "Zenoh", "Multihost", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// The embedded multihost lane is the RUST robot1 zephyr image (276 W6);
+// corrected from Cpp during the phase-295 W3.b consolidation.
+'''
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "Multihost", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
+// Cross-process service/action roundtrips (phase-263 A1/A4; issue 0096
+// forces the two-process topology) — tests/roundtrip_xprocess_e2e.rs.
+'''
+at = ["Linux", "Rust", "Zenoh", "Service", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Service", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Service", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Mixed", "Zenoh", "Service", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Rust", "Zenoh", "Action", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "C", "Zenoh", "Action", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Cpp", "Zenoh", "Action", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["Linux", "Mixed", "Zenoh", "Action", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
+// Workspace RMW variants (thin today: 80/82 rows are zenoh — issue #233).
+
+// ── Interop & Bridge kinds — issue 0352 / phase-324 ────────────────
+// These cells carry a nano side that is BUILT plus an ephemeral PEER and a
+// DIRECTION, a shape `Cell` cannot express. They live in `crate::interop`
+// (`interop::CELLS`) in that formulation, joined to their build + test
+// recipe by a `Binding` and gated by `tests/matrix_fixture_coverage.rs`.
+// `matrix::CELLS` is baked/self-contained only.
+
+// ── uORB (PX4-SITL) — issue 0341 ───────────────────────────────────
+// uORB is a declared RMW (ARCHITECTURE §2) with a real crate
+// (nros-rmw-uorb) + example (packages/testing/nros-px4-register-check), but its runtime lane
+// is a PX4-SITL build no CI runner here provides. Expressible + carved out,
+// so the gap is visible rather than inexpressible.
+'''
+at = ["Px4", "Cpp", "Uorb", "Pubsub", "Example"]
+status = '''
+CarveOut("uORB runs only inside a PX4-SITL build (just px4 …); no CI runner \
+                   builds SITL. `packages/testing/nros-px4-register-check` is the source of truth.")'''
+
+[[cell]]
+comment = '''
+// phase-511 B3 — the PX4 companion over XRCE (`px4_xrce`): host processes
+// round-tripping `px4_msgs` through a MicroXRCEAgent. Gated: its leaves
+// generate `px4_msgs` from the PX4-Autopilot `.msg` tree, which no CI runner
+// carries, and a Runtime cell would put PX4 in tier 2's platform cover.
+'''
+at = ["Px4", "Rust", "Xrce", "Pubsub", "Example"]
+status = '''
+Gated("`just build px4` then `just test px4` — the leaves need the \
+                PX4-Autopilot `.msg` tree (`just px4 setup`), which no CI runner carries")'''

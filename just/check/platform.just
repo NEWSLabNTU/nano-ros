@@ -160,6 +160,7 @@ board-build-target:
 board-tiers:
     @python3 scripts/check-board-tiers.py
     @python3 scripts/gen-board-support-table.py --check
+    @python3 scripts/gen-board-support.py --check
 
 # A Kconfig line that a later CONF_FILE fragment overrides is a line that does
 # nothing, and nothing said so (issue 0876). A RATCHET, not a prohibition —
