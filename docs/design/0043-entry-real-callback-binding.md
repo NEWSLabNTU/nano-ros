@@ -273,7 +273,10 @@ Rust always bound real callbacks):
   **Out of scope:** RTIC/Embassy *framework* dispatch (`register_dispatch` +
   `__nros_node_<pkg>_on_callback`) — the framework owns dispatch (not `spin_once`),
   genuinely needs name-keyed slots; stays. (Resolves Q10: Rust owned-spin → the
-  `install` seam; framework dispatch stays name-dispatched.)
+  `install` seam; framework dispatch stays name-dispatched.) **Superseded
+  2026-10-31 (issue 2161):** RTIC moved onto `register()` in phase-289 and nothing
+  ever filled or drained those slots, so they and the trampoline are retired.
+  Deferred dispatch for a framework is the executor queue (`set_deferred`, issue 2146).
 
 ## Alternatives considered
 
@@ -336,7 +339,8 @@ Rust always bound real callbacks):
     stays** name-dispatched via `register_dispatch` + the
     `__nros_node_<pkg>_on_callback` trampoline — the framework owns dispatch
     (interrupt-driven), not `spin_once`, so it genuinely needs name-keyed slots.
-    C++ remains `spin_once`-only (no C++ RTIC/Embassy planned).
+    C++ remains `spin_once`-only (no C++ RTIC/Embassy planned). *(Superseded by
+    issue 2161: the name-keyed slots were never used and are retired; see above.)*
 
 ## Changelog
 

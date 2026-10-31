@@ -2246,8 +2246,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let framework_node_pkg_idents: Vec<Ident> = match framework {
         // OwnedSpin (incl. NuttX) + Zephyr + Esp32 all register via the
         // launch-resolved `register_calls` (the `RuntimeCtx`-based
-        // `<pkg>::register` flow), NOT the RTIC
-        // `register_dispatch` splice.
+        // `<pkg>::register` flow); only RTIC lists its node packages here.
         Framework::OwnedSpin | Framework::Zephyr | Framework::Esp32 => Vec::new(),
         Framework::Rtic => {
             let cargo_toml = manifest_dir.join("Cargo.toml");
@@ -2287,14 +2286,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 .collect()
         }
     };
-    // Phase 289 (#178) — Rtic entity registration. `register_dispatch` only
-    // installs the on_callback trampoline into the dispatch-slot table; it
-    // never runs `Node::register(ctx)` — so an RTIC image opened its session
-    // but owned NO node/publisher/timer entities and published nothing (the
-    // phase-216 B.3 "per-Node register wiring" follow-up). Route through the
-    // same owned-spin `<pkg>::register(&mut RuntimeCtx)` seam every other
-    // board uses (`install_node_typed`: entities + tick registry + the
-    // component table `dispatch_callback` scans).
+    // Phase 289 (#178) — Rtic entity registration, through the same
+    // owned-spin `<pkg>::register(&mut RuntimeCtx)` seam every other board
+    // uses (`install_node_typed`: entities + tick registry + the component
+    // table `dispatch_callback` scans). The phase-216 ~~`register_dispatch`~~
+    // wiring it replaced created no entities, and its executor slot registry
+    // was retired with it (issue 2161).
     let framework_register_entity_calls: Vec<proc_macro2::TokenStream> = framework_node_pkg_idents
         .iter()
         .map(|ident| {
@@ -2842,7 +2839,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // hardware and returns a `Boot` carrier WITHOUT opening the
                         // executor (no blocking network I/O here — interrupts are
                         // masked). The `__nros_run` task calls `open_executor(boot)`
-                        // + `register_dispatch` once interrupts are live.
+                        // and registers each node once interrupts are live.
                         let (boot, runtime) =
                             <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::init_hardware_with_deploy(
                                 cx.device,
@@ -2919,11 +2916,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // Phase 289 (#178) — wrap the executor in the SAME
                         // `ExecutorNodeRuntime` every owned-spin board uses and
                         // run each Node pkg's full `register()` (entities +
-                        // tick registry + component table) against it. The
-                        // earlier `register_dispatch`-only wiring installed the
-                        // on_callback trampoline but never created the node /
-                        // publisher / timer entities, so the image opened its
-                        // session and then published nothing.
+                        // tick registry + component table) against it.
                         let mut __nros_crt =
                             ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
                         {
@@ -2956,23 +2949,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             // every envelope the board's SPSC has
                             // queued this cycle and forward each one
                             // through `Executor::dispatch_callback`.
-                            // The layer-clean `(cb_id: &str,
-                            // ctx_ptr: *mut c_void)` shape matches both
-                            // the dequeued `SignaledCallback<'static>`
-                            // payload and the executor's stable entry
-                            // point — no type-translation gymnastics.
-                            // The executor-side body is a no-op stub
-                            // today; the per-Node trampoline registry
-                            // (linkme / Phase 216 follow-up) fills it
-                            // in by resolving `cb_id` →
-                            // `__nros_node_<pkg>_on_callback` and
-                            // invoking with the per-pkg state blob.
-                            // What this commit closes is the gap
-                            // where the dequeued envelope was being
-                            // silently dropped with a TODO — values
-                            // now flow into the executor's stable
-                            // surface and the registry lands as a
-                            // body fill, not a macro rewrite.
+                            // Drain the board's signaled-callback queue
+                            // into the component table. Callbacks normally
+                            // run inline in the spin above; the queue's
+                            // only producer is the board's
+                            // `signal_callback` (issue 2161).
                             while let Some(envelope) = consumer.dequeue() {
                                 let cb = envelope.into_inner();
                                 // SAFETY: the board's `signal_callback` enqueues a

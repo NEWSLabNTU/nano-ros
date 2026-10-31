@@ -12,7 +12,7 @@ test = false
 bench = false
 
 # Self-contained standalone fixture (issue 0100): node logic in this crate's
-# lib.rs (`nros::node!(E2eNode)` → `register_dispatch`); `nros::main!()` registers
+# lib.rs (`nros::node!(E2eNode)` → `register`); `nros::main!()` registers
 # this crate itself (issue 1289: no `node_pkgs` needed). `main.rs` is the `nros::main!()` RTIC Entry.
 [lib]
 crate-type = ["rlib"]

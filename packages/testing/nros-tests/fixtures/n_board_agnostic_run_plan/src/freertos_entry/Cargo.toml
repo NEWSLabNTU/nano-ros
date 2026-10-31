@@ -27,8 +27,8 @@ path = "src/main.rs"
 freertos_entry_nros_selection = { path = "build/nros/selection" }
 # Trait surface — BoardEntry / RuntimeCtx / RuntimeError.
 nros-platform = { path = "@NROS_REPO_DIR@/packages/platform/nros-platform", default-features = false }
-# Codegen-emitted `run_plan.rs` defines a `register_dispatch` shim
-# typed `&mut ::nros::Executor`, so the Entry pkg depends on `nros`
+# Codegen-emitted `run_plan.rs` calls each node package's `register`,
+# which goes through `nros`, so the Entry pkg depends on `nros`
 # directly — same platform features the Component pkg forwards (no
 # `std` on `thumbv7m-none-eabi`).
 nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }

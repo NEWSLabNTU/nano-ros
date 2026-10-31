@@ -2894,19 +2894,6 @@ pub fn __record_with_context<T>(
     f(&mut context)
 }
 
-/// Phase 212.M.5.a.4 internal — `Box`-erase a freshly built component
-/// `State` to the type-erased `*mut ()` ABI the BSP path uses. Called
-/// only from the `nros::node!()` macro emit; not public API.
-///
-/// The returned pointer is a leaked `Box`; the BSP runtime keeps it
-/// alive for the firmware lifetime (embedded slots never deallocate).
-#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-#[doc(hidden)]
-pub fn __private_node_state_into_raw<C: ExecutableNode>(state: C::State) -> *mut () {
-    extern crate alloc;
-    alloc::boxed::Box::into_raw(alloc::boxed::Box::new(state)) as *mut ()
-}
-
 /// Run component registration against an in-memory metadata recorder, on an
 /// executor the caller opened on the `metadata` backend.
 #[cfg(feature = "rmw-cffi")]
@@ -3405,50 +3392,5 @@ mod tests {
         // `<Type as Component>::DISPATCH as u8`, not a hard-coded zero.
         assert_eq!(strategy, crate::DispatchStrategy::Inline as u8);
         assert_eq!(strategy, 0);
-    }
-
-    // The `nros::node!()` macro also emits
-    // `__nros_node_<pkg>_on_callback`, the extern "C" trampoline the
-    // RTIC / Embassy dispatch tasks call after dequeuing a
-    // `SignaledCallback<'static>` (see `nros-platform::SignaledCallback`).
-    // The expansion lives in the same `dispatch_probe_macro_test`
-    // sub-module as the dispatch-strategy probe, so a single
-    // `nros_macros::node!(DispatchProbe);` invocation covers both
-    // symbols. Symbol name resolves to
-    // `__nros_node_nros_on_callback` (CARGO_PKG_NAME = "nros").
-    //
-    // The test only confirms the symbol is linkable — actually
-    // invoking the trampoline would need a live State + CallbackCtx
-    // pointer pair, which is the dispatch-task author's contract
-    // (documented in the macro emit). A link-only probe is enough to
-    // catch the macro silently eliding the export — the exact
-    // regression class this test is for.
-    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    #[test]
-    fn node_macro_emits_on_callback_symbol() {
-        unsafe extern "C" {
-            fn __nros_node_nros_on_callback(
-                state: *mut core::ffi::c_void,
-                cb_id_ptr: *const u8,
-                cb_id_len: usize,
-                ctx: *mut core::ffi::c_void,
-            );
-        }
-        // Take the address of the symbol and feed it through
-        // `core::hint::black_box` — forces the linker to resolve the
-        // symbol and prevents the optimiser from folding the unused
-        // reference away. If the macro stopped emitting the export
-        // this line fails at link time, which is the exact regression
-        // class this test catches. (`fn`-pointer values are never
-        // null per Rust's type system, so a direct null check would
-        // be a tautology — `-D useless-ptr-null-checks` would reject
-        // it.)
-        let fn_ptr: unsafe extern "C" fn(
-            *mut core::ffi::c_void,
-            *const u8,
-            usize,
-            *mut core::ffi::c_void,
-        ) = __nros_node_nros_on_callback;
-        core::hint::black_box(fn_ptr);
     }
 }

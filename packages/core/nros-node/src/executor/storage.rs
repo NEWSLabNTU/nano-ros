@@ -27,7 +27,7 @@ use super::{
     monitor::{AliveSlot, MAX_VIOLATIONS, Violation},
     node_record::NodeRecord,
     sched_context::{SchedContext, SchedContextId, SporadicState},
-    spin::{ComponentSlot, DispatchSlot, MAX_REMAPS, RemapRule},
+    spin::{ComponentSlot, MAX_REMAPS, RemapRule},
     types::SlotTag,
 };
 use crate::session::ConcreteSession;
@@ -273,7 +273,6 @@ pub(crate) struct ExecutorStorage<
     extra_sessions: [MaybeUninit<ConcreteSession>; EXTRA],
     extra_session_ids: [MaybeUninit<ExtraSessionId>; EXTRA],
     node_sched_table: [MaybeUninit<NodeSchedEntry>; NODES],
-    dispatch_slots: [MaybeUninit<DispatchSlot>; NODES],
     component_slots: [MaybeUninit<ComponentSlot>; NODES],
     active_groups: [MaybeUninit<ActiveGroup>; NODES],
     group_sched_table: [MaybeUninit<GroupSchedEntry>; CBS],
@@ -317,7 +316,6 @@ pub(crate) struct ExecutorSlices<'s> {
     pub(crate) extra_sessions: CarvedVec<'s, ConcreteSession>,
     pub(crate) extra_session_ids: CarvedVec<'s, ExtraSessionId>,
     pub(crate) node_sched_table: CarvedVec<'s, NodeSchedEntry>,
-    pub(crate) dispatch_slots: CarvedVec<'s, DispatchSlot>,
     pub(crate) component_slots: CarvedVec<'s, ComponentSlot>,
     pub(crate) active_groups: CarvedVec<'s, ActiveGroup>,
     pub(crate) group_sched_table: CarvedVec<'s, GroupSchedEntry>,
@@ -360,7 +358,6 @@ struct FieldOffsets {
     extra_sessions: usize,
     extra_session_ids: usize,
     node_sched_table: usize,
-    dispatch_slots: usize,
     component_slots: usize,
     active_groups: usize,
     group_sched_table: usize,
@@ -398,7 +395,6 @@ pub const NATIVE_UNITS: RegionUnits = RegionUnits {
     concrete_session: unit_of::<ConcreteSession>(),
     extra_session_id: unit_of::<ExtraSessionId>(),
     node_sched_entry: unit_of::<NodeSchedEntry>(),
-    dispatch_slot: unit_of::<DispatchSlot>(),
     component_slot: unit_of::<ComponentSlot>(),
     group_name: unit_of::<ActiveGroup>(),
     group_sched_entry: unit_of::<GroupSchedEntry>(),
@@ -507,7 +503,6 @@ const fn compute_offsets_with(sizing: ExecutorSizing, units: &RegionUnits) -> Fi
         extra_sessions: o.extra_sessions,
         extra_session_ids: o.extra_session_ids,
         node_sched_table: o.node_sched_table,
-        dispatch_slots: o.dispatch_slots,
         component_slots: o.component_slots,
         active_groups: o.active_groups,
         group_sched_table: o.group_sched_table,
@@ -573,8 +568,8 @@ pub struct ExecutorSizing {
     /// Bump-allocator arena size in bytes.
     pub arena: usize,
     /// phase-409 — Node slots. One worst-case extra session, extra-session id,
-    /// node-sched binding, dispatch slot, component slot and callback-group
-    /// filter entry per Node, so ONE count covers all seven tables (that is the
+    /// node-sched binding, component slot and callback-group filter entry per
+    /// Node, so ONE count covers all six tables (that is the
     /// upper bound each of them already assumed under `MAX_NODES`).
     pub nodes: usize,
     /// phase-382 W3' — parameter-store slots carved from the backing.
@@ -951,7 +946,6 @@ pub(crate) unsafe fn carve<'s>(
             extra_sessions: carved!(o.extra_sessions, extra_slots, ConcreteSession),
             extra_session_ids: carved!(o.extra_session_ids, extra_slots, ExtraSessionId),
             node_sched_table: carved!(o.node_sched_table, node_slots, NodeSchedEntry),
-            dispatch_slots: carved!(o.dispatch_slots, node_slots, DispatchSlot),
             component_slots: carved!(o.component_slots, node_slots, ComponentSlot),
             active_groups: carved!(o.active_groups, node_slots, ActiveGroup),
             group_sched_table: carved!(o.group_sched_table, cbs, GroupSchedEntry),
@@ -1060,7 +1054,6 @@ mod tests {
             concrete_session: RegionUnit { size: 0, align: 1 },
             extra_session_id: RegionUnit { size: 0, align: 1 },
             node_sched_entry: RegionUnit { size: 0, align: 1 },
-            dispatch_slot: RegionUnit { size: 0, align: 1 },
             component_slot: RegionUnit { size: 0, align: 1 },
             group_name: RegionUnit { size: 0, align: 1 },
             group_sched_entry: RegionUnit { size: 0, align: 1 },
@@ -1194,7 +1187,6 @@ mod tests {
         same!(extra_sessions);
         same!(extra_session_ids);
         same!(node_sched_table);
-        same!(dispatch_slots);
         same!(component_slots);
         same!(active_groups);
         same!(group_sched_table);
@@ -1220,7 +1212,6 @@ mod tests {
         assert!(align_of::<ConcreteSession>() <= 8);
         assert!(align_of::<ExtraSessionId>() <= 8);
         assert!(align_of::<NodeSchedEntry>() <= 8);
-        assert!(align_of::<DispatchSlot>() <= 8);
         assert!(align_of::<ComponentSlot>() <= 8);
         assert!(align_of::<ActiveGroup>() <= 8);
         assert!(align_of::<AliveSlot>() <= 8);
@@ -1254,12 +1245,11 @@ mod tests {
             + size_of::<ConcreteSession>()
             + size_of::<ExtraSessionId>()
             + size_of::<NodeSchedEntry>()
-            + size_of::<DispatchSlot>()
             + size_of::<ComponentSlot>()
             + size_of::<ActiveGroup>();
         assert!(
             one_more_node - base >= per_node,
-            "one more Node slot must cost its seven tables ({per_node} B) in the \
+            "one more Node slot must cost its six tables ({per_node} B) in the \
              backing; it cost {}",
             one_more_node - base
         );
@@ -1648,7 +1638,6 @@ mod tests {
         assert_eq!(s.extra_sessions.capacity(), extra);
         assert_eq!(s.extra_session_ids.capacity(), extra);
         assert_eq!(s.node_sched_table.capacity(), NODES);
-        assert_eq!(s.dispatch_slots.capacity(), NODES);
         assert_eq!(s.component_slots.capacity(), NODES);
         assert_eq!(s.active_groups.capacity(), NODES);
         assert_eq!(s.group_sched_table.capacity(), CBS);

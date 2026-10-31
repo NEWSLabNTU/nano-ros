@@ -12,7 +12,7 @@ test = false
 bench = false
 
 # Self-contained standalone example (issue 0100): the node logic lives in this
-# crate's `lib.rs` (`nros::node!(Talker)` → `register_dispatch`); `nros::main!()` registers
+# crate's `lib.rs` (`nros::node!(Talker)` → `register`); `nros::main!()` registers
 # this crate itself (issue 1289: no `node_pkgs` needed). `main.rs` is the `nros::main!()` RTIC Entry.
 [lib]
 crate-type = ["rlib"]

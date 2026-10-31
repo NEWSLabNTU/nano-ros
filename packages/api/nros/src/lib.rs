@@ -359,8 +359,7 @@ pub use node::{CallbackEffects, Component, DeclarativeNode, ExecutableNode, Node
 // `nros::node!` expansion and the generated metadata probe
 // (`nros-cli-core/src/orchestration/metadata_build.rs`), never for a node
 // author, and none is named by any hand-written file in `examples/` or
-// `packages/`. Hidden, not deleted: the generated code reaches them by path, the
-// same treatment as `__private_node_state_into_raw` below.
+// `packages/`. Hidden, not deleted: the generated code reaches them by path.
 // phase-359 W8 — follows `node_metadata`'s re-gate: the type needs `alloc`,
 // not `std`.
 #[cfg(feature = "alloc")]
@@ -401,9 +400,6 @@ pub mod __macro {
     #[cfg(feature = "rmw-cffi")]
     pub use crate::node::{__record_with_context, record_node_metadata, register_node};
     pub use crate::node::{ActionExecutor, ClientDispatch, PublisherResolver, TimerOp};
-    // Phase 212.M.5.a.4 — consumed by `nros::node!()` for the BSP dispatch path.
-    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    pub use crate::node::__private_node_state_into_raw;
     // Phase 257 (W0-B) / phase-305 W3 — the uniform cross-language
     // component-install seam backing `__nros_component_<pkg>_install`.
     #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]

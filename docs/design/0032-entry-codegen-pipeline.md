@@ -102,8 +102,8 @@ differs.
 | --- | --- | --- | --- |
 | `OwnedSpin` | `fn main` (hosted) + `extern "C" fn main` (`target_os = "none"`) | `BoardEntry::run` | Native/POSIX, FreeRTOS, NuttX, ThreadX. Default for any board key not routed below. |
 | `Zephyr` | `extern "C" fn rust_main` (staticlib export) | in-body loop | RTOS owns boot + C `main`; no Rust `fn main`. Gates on `wait_link_up`. |
-| `Rtic` | `#[rtic::app]` module + `#[init]` | RTIC tasks | Per-Node `register_dispatch(&mut executor)` splice into the dispatch-slot table. |
-| `Embassy` | `#[embassy_executor::main] async fn main` | Embassy tasks | Same `register_dispatch` splice. |
+| `Rtic` | `#[rtic::app]` module + `#[init]` | RTIC tasks | Per-Node `<pkg>::register(&mut RuntimeCtx)` (phase-289); callbacks run inline in the `__nros_run` task. The phase-216 `register_dispatch` dispatch-slot table was never filled or drained and is retired (issue 2161). |
+| `Embassy` | `#[embassy_executor::main] async fn main` | Embassy tasks | Arm deleted (issue 2134); an Embassy host drives the executor by hand (RFC-0112 Tier 0). |
 | `Esp32` | `#[esp_hal::main] fn main -> !` | `BoardEntry::run` | esp-hal `_start` requires the hal entry; delegates to the real-runtime `run`. |
 
 The `BoardEntry` trait (`nros-platform`) is the portable seam: codegen names a
