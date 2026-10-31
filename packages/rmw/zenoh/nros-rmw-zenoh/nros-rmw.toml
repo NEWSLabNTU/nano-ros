@@ -73,6 +73,15 @@ safety = "safety-e2e"
 # image crate otherwise names `platform-posix` alone, and the URI went unread.
 alloc = "alloc"
 
+# Issue 2174 -- what this backend's wire carries, stated as booleans for the
+# checks that need it (`cargo_nano_ros::rmw_resolver::backend_states_fact`).
+# A fact left out is UNKNOWN, never false. `request_source_timestamp`: does a
+# service request reach the server with the client's send time
+# (`ServiceInfo.source_timestamp`, issue 1942)? From the query attachment
+# (`rmw_zenoh_cpp` layout).
+[rmw.facts]
+request_source_timestamp = true
+
 # RFC-0071 D9 (phase-506 W4a) — the backend feature for each nros platform
 # feature an image may select. A generated C/C++ umbrella forwards the image's
 # platform through this table; `nros-c` used to with `nros-rmw-zenoh?/…` lines.

@@ -72,6 +72,15 @@ per_message = "nros_rmw_cyclonedds_typesupport_for_target"
 [rmw.capabilities]
 type-descriptors = "needs-type-descriptors"   # -> nros-node cfg(rmw_needs_type_descriptors)
 
+# Issue 2174 -- what this backend's wire carries, stated as booleans for the
+# checks that need it (`cargo_nano_ros::rmw_resolver::backend_states_fact`).
+# A fact left out is UNKNOWN, never false. `request_source_timestamp`: does a
+# service request reach the server with the client's send time
+# (`ServiceInfo.source_timestamp`, issue 1942)? The DDS sample's source
+# timestamp.
+[rmw.facts]
+request_source_timestamp = true
+
 # RFC-0109 D8 (phase-514 W3) — this backend's own configuration file, found by
 # convention beside a `system.toml`: the XML `CYCLONEDDS_URI` names. Its bytes
 # reach `dds_create_domain` unchanged (phase-206 W2), so it is `verbatim-xml`.
