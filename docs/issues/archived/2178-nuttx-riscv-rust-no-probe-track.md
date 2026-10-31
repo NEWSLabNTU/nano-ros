@@ -1,15 +1,16 @@
 ---
 id: 2178
 title: "The NuttX rv-virt Rust workspace image has no probe track"
-status: open
+status: resolved
 type: test-gap
 severity: low
 area: [nuttx, testing]
 related: [phase-517, 2149]
 found: 2026-10-31
+resolved: 2026-10-31
 ---
 
-**Home: [phase-517](../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — the one platform road the probe matrix does not
+**Home: [phase-517](../../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — the one platform road the probe matrix does not
 replay.
 
 ## What
@@ -31,3 +32,13 @@ as `riscv`, then the workspace and `nros new --image nuttx --board
 rv-virt-nuttx`, `nros sync`, `nros build nuttx`, and the boot line
 `nros build` prints. Give it an installed `nuttx-riscv-rust` track, and a
 row in issue 2169's printed-command table.
+
+## Resolution
+
+`integration-nuttx.md` gains a `variant=riscv-rust` set of blocks. Setup is
+shared with `riscv`. They build the workspace image with
+`nros new --image nuttx --board rv-virt-nuttx` and `nros build nuttx`, then
+boot it on QEMU riscv32 and expect the talker and listener. The new
+installed track `nuttx-riscv-rust` runs them and is green on run
+41198874371. The boot line is a row in issue 2169's printed-command table,
+and it matches.
