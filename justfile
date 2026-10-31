@@ -349,7 +349,7 @@ build-example-extras:
     rg --files examples -g Cargo.toml \
         | sed 's#/Cargo.toml$##' \
         | grep -Ev '^examples/(zephyr|mps2-an385-freertos|qemu-armv7a-nuttx|threadx-linux|rv-virt-threadx|mps2-an385-baremetal|esp32-c3-baremetal)/' \
-        | grep -Ev '^examples/linux/rust/(talker|listener|lifecycle-node|custom-msg|service-server|service-client|action-server|action-client|talker-rtic|listener-rtic|service-server-rtic|service-client-rtic|action-server-rtic|action-client-rtic|serial-talker|serial-listener)$' \
+        | grep -Ev '^examples/linux/rust/(talker|listener|lifecycle-node|custom-msg|service-server|service-client|action-server|action-client|talker-rtic|listener-rtic|listener-host-loop|service-server-rtic|service-client-rtic|action-server-rtic|action-client-rtic|serial-talker|serial-listener)$' \
         | sort > "$list"
 
     build_one() {

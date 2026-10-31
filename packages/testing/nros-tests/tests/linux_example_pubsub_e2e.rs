@@ -23,6 +23,9 @@
 //! - **xrce** — ephemeral Agent + `XRCE_MSG_COUNT` bounded receive; readiness +
 //!   settle; assert ≥1.
 //!
+//! Also the consumer of the `HostLoop` cell (phase-520 W2): the same delivery,
+//! to a listener whose `main` owns its loop (`nros::setup!()`).
+//!
 //! Run with: `cargo nextest run -p nros-tests --test linux_example_pubsub_e2e`.
 
 use nros_tests::{
@@ -309,6 +312,104 @@ fn run_cell(cell: &MCell) {
     );
 }
 
+/// phase-520 W2 — the `HostLoop` cell: the stock rust talker into
+/// `examples/linux/rust/listener-host-loop`, whose `main` is `nros::setup!()`'s
+/// `nros_boot` + `nros_setup` and a plain `std` loop over `spin_once`
+/// (RFC-0112 Tier 0). The node is the `listener` example's, unchanged, so a
+/// delivery here proves the `setup!` assembly installs everything
+/// `nros::main!` does — the subscription, its callback, and the board's log
+/// sink the `I heard:` line goes through.
+///
+/// Then SIGTERM: the loop polls `nros_stop_requested()`, and the process must
+/// EXIT on its own. A loop that ignores the board's guard never returns, and
+/// the board never gets to close the session (issue 1732).
+#[test]
+fn native_example_host_loop_delivers() {
+    let cell = nros_tests::matrix::CELLS
+        .iter()
+        .find(|c| {
+            matches!(c.platform, nros_tests::matrix::PlatformId::Linux)
+                && matches!(c.kind, MK::Example)
+                && matches!(c.workload, MW::HostLoop)
+                && matches!(c.tier, MT::Runtime)
+        })
+        .expect("matrix regression: no Linux/HostLoop/Example/Runtime cell");
+    assert!(
+        matches!((cell.lang, cell.rmw), (ML::Rust, MR::Zenoh)),
+        "the HostLoop cell moved off rust/zenoh: {cell:?}"
+    );
+
+    let talker = resolve(ML::Rust, "talker", talker_bin(ML::Rust), MR::Zenoh)
+        .unwrap_or_else(|e| panic!("rust talker fixture not built: {e}"));
+    let listener = resolve(
+        ML::Rust,
+        "listener-host-loop",
+        "listener-host-loop",
+        MR::Zenoh,
+    )
+    .unwrap_or_else(|e| panic!("listener-host-loop fixture not built: {e}"));
+    require_zenohd();
+    let router = ZenohRouter::start_unique()
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}"));
+
+    let mut listener_cmd = Command::new(&listener);
+    listener_cmd
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", router.locator());
+    let mut talker_cmd = Command::new(&talker);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", router.locator());
+
+    let mut listener_proc = ManagedProcess::spawn_command(listener_cmd, "host-loop-listener")
+        .unwrap_or_else(|e| panic!("spawn listener-host-loop: {e}"));
+    let mut talker_proc = ManagedProcess::spawn_command(talker_cmd, "host-loop-talker")
+        .unwrap_or_else(|e| {
+            listener_proc.kill();
+            panic!("spawn talker: {e}")
+        });
+    let out = listener_proc
+        .wait_for_output_count(LISTENER_LOG_PREFIX, 3, Duration::from_secs(25))
+        .unwrap_or_else(|e| {
+            talker_proc.kill();
+            listener_proc.kill();
+            panic!(
+                "the host-loop listener never saw 3 `{LISTENER_LOG_PREFIX}` deliveries — \
+                 `nros::setup!()`'s assembly, spun from the program's own loop, did not \
+                 deliver: {e}"
+            )
+        });
+    talker_proc.kill();
+    nros_tests::checker::assert_delivery(MW::HostLoop, &out, 3);
+
+    // The loop must honour the board's termination guard and RETURN: one
+    // SIGTERM to the pid (not the group), then a clean exit.
+    let child = listener_proc.handle_mut();
+    // SAFETY: plain kill(2) on a pid this test spawned and has not reaped.
+    unsafe {
+        libc::kill(child.id() as libc::pid_t, libc::SIGTERM);
+    }
+    let start = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("try_wait") {
+            break status;
+        }
+        if start.elapsed() > Duration::from_secs(10) {
+            listener_proc.kill();
+            panic!(
+                "listener-host-loop was still alive 10 s after one SIGTERM — its loop \
+                 ignored `nros_stop_requested()`, so the board never closed the session"
+            );
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert!(
+        status.success(),
+        "listener-host-loop ended {status} after SIGTERM; `nros_boot` returning Ok \
+         after the loop is a clean exit"
+    );
+}
+
 /// RFC-0109 D6a (phase-514 W3) — a hosted image's whole zenoh session comes
 /// from `$ZENOH_SESSION_CONFIG_URI`, the json5 `rmw_zenoh` reads, lowered by
 /// the same code the build runs on a bringup's `rmw/zenoh.json5`.
@@ -402,6 +503,7 @@ fn cases_bound_to_matrix_cells() {
             (P::Linux, L::Rust, R::Cyclonedds, W::Pubsub, K::Example),
             (P::Linux, L::Rust, R::Xrce, W::Pubsub, K::Example),
             (P::Linux, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+            (P::Linux, L::Rust, R::Zenoh, W::HostLoop, K::Example),
         ],
     );
 }

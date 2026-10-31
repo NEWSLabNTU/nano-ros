@@ -281,6 +281,7 @@ exclude = [
     "packages/testing/nros-bench/stress-zenoh",
     "examples/linux/rust/talker-rtic",
     "examples/linux/rust/listener-rtic",
+    "examples/linux/rust/listener-host-loop",
     "examples/linux/rust/service-server-rtic",
     "examples/linux/rust/service-client-rtic",
     "examples/linux/rust/action-server-rtic",

@@ -15,7 +15,7 @@ examples/
 
 - **Platform** (10): `linux`, `px4`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `esp32-c3-baremetal`, `rv-virt-nuttx`, `rv-virt-threadx`, `threadx-linux`, `zephyr`
 - **Language**: `c`, `cpp`, `rust`
-- **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-aemv8r`, etc.
+- **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-aemv8r`, `-host-loop` (a `main` that owns its loop via `nros::setup!()`), etc.
 
 > **`stm32f4/` left this tree in phase-337 W7.a.** Its board crates carried
 > **zero** Runtime cells — no CI lane could boot them (the hardware is not in
@@ -269,7 +269,7 @@ behind this section is
 
 ## Coverage matrix
 
-Cell content: `<count>` of `talker|listener|service-{server,client}|action-{server,client}` cases present (max 6). `+` suffix indicates extras (custom-msg, parameters, lifecycle, RTIC variants, custom-transport, serial, embassy, async, etc.).
+Cell content: `<count>` of `talker|listener|service-{server,client}|action-{server,client}` cases present (max 6). `+` suffix indicates extras (custom-msg, parameters, lifecycle, RTIC variants, host-loop, custom-transport, serial, embassy, async, etc.).
 
 | Platform                  | Language | zenoh | xrce | cyclonedds | uorb |
 |---------------------------|----------|-------|------|------------|------|

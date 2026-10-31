@@ -1,6 +1,6 @@
 # Phase 520 — `nros::setup!`: model-driven assembly for a host that owns its loop
 
-**Status (2026-10-30). W1 and W1b landed; W2–W4 open.** Implements
+**Status (2026-10-31). W1, W1b and W2 landed; W3–W4 open.** Implements
 [issue 2150](../issues/2150-nros-setup-macro-host-loop.md) under
 [RFC-0112](../design/0112-framework-support-tiers.md) D2 (the Tier 0
 host-driven contract) and D4 (recipes). The
@@ -106,11 +106,34 @@ fn main() {
   with the derived sizing (6144-byte arena) and, on SIGTERM, printed `closing
   the RMW session` and exited cleanly.
 
-### W2 — a delivering host-loop example and cell
+### W2 — a delivering host-loop example and cell — DONE
 
 A `examples/linux/rust/` leaf whose `main` is a plain `std` loop over
 `nros_setup`, with a `fixtures.toml` row and a `matrix::CELLS` cell that asserts
 delivery. Proves the function is complete, not just that it compiles.
+
+- Example: `examples/linux/rust/listener-host-loop`. Its `lib.rs` is the
+  `listener` example's node, unchanged; its `main.rs` is the W1b program
+  (`nros_boot` → `nros_setup` → `while !nros_stop_requested() { spin_once(10) }`).
+  One image (`linux`, zenoh): who drives the loop is not an RMW or edition
+  axis.
+- Row: `native-rust-listener-host-loop` in `examples/fixtures.toml`
+  (coordinate `linux,rust,zenoh`).
+- Cell: `cell(Linux, Rust, Zenoh, HostLoop, Example, Runtime)` — a new
+  `Workload::HostLoop`, its own value on `TypedCarrier`'s reasoning (the
+  subject is the `setup!` road; every `Pubsub` example takes `nros::main!`).
+  Consumer: `linux_example_pubsub_e2e::native_example_host_loop_delivers`,
+  which pairs it with the stock rust talker through a unique `rmw_zenohd`,
+  asserts ≥3 `I heard:` lines (`checker::assert_delivery`), then sends ONE
+  SIGTERM and asserts the process exits 0 on its own within 10 s.
+- Measured 2026-10-31: `cargo nextest run -p nros-tests --test
+  linux_example_pubsub_e2e -E 'test(native_example_host_loop_delivers)'`
+  PASS in 3.4 s on fresh fixtures (`fixtures-build.sh linux rust --id
+  native-rust-listener-host-loop` + `--id native-rust-talker`). Negative
+  control: the same image with the `nros_setup(&mut *rt)?` call removed FAILS
+  it (`saw 0` deliveries in 25 s), so the delivery assertion is load-bearing.
+- Tier 1's 1-wise workload axis took the new workload: 25 → 26 cells at the
+  same 11 coordinates (`ci_lane` table re-measured); tier 3 254 → 255.
 
 ### W3 — deferred dispatch inside `setup!` (issue 2146)
 

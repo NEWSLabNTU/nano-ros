@@ -41,9 +41,11 @@ pub fn ready_marker(workload: Workload, role: Role) -> Option<&'static str> {
 /// The delivery marker whose occurrences prove the workload ran.
 pub fn delivery_marker(workload: Workload) -> &'static str {
     match workload {
-        Workload::Pubsub | Workload::EntryPubsub | Workload::CustomMsg | Workload::Multihost => {
-            output::LISTENER_LOG_PREFIX
-        }
+        Workload::Pubsub
+        | Workload::EntryPubsub
+        | Workload::CustomMsg
+        | Workload::Multihost
+        | Workload::HostLoop => output::LISTENER_LOG_PREFIX,
         // Remap: the external int32-sink on the REMAPPED topic proves delivery.
         Workload::RealtimeTiers | Workload::Qos | Workload::Remap => {
             output::INT32_LISTENER_LOG_PREFIX
@@ -108,7 +110,7 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
 /// parsers (the stock-demo counter contract).
 pub fn assert_delivery(workload: Workload, out: &str, min_events: usize) {
     match workload {
-        Workload::Pubsub | Workload::EntryPubsub => {
+        Workload::Pubsub | Workload::EntryPubsub | Workload::HostLoop => {
             output::assert_listener(out, min_events);
         }
         Workload::Service => {
