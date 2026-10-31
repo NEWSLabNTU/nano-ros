@@ -6,7 +6,7 @@ type: tech-debt
 area: [core, executor, macros, rtic]
 severity: low
 found: 2026-10-30
-related: [2146, 2150]
+related: [2146, 2150, phase-520]
 ---
 
 ## What
@@ -51,6 +51,12 @@ Not done with 2146 because issue 2150 is rewriting the same part of
 cell run, not just a build.
 
 ## Relation to phase-520 W3
+
+**Decided 2026-10-31 (W3 landed):** `nros::setup!` builds on the executor
+queue (`callback_mark` / `set_deferred_since` around the component's
+`register`; `nros_run_deferred` for the host). So the slot registry below now
+has no producer on that road either; what remains of it is RTIC's `nros::main!`
+branch, this issue.
 
 Phase-520 W3 (deferred dispatch inside `nros::setup!`) currently says it will
 "emit the `register_dispatch` slots". That is the registry this issue

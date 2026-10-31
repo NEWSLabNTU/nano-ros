@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_deferred_since",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-520 W3 / RFC-0112 D2 (Defer) -- `set_deferred` for every callback registered since a `callback_mark` (timers skipped). See `rust:Executor::set_deferred`."
+}

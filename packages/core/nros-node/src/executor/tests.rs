@@ -18941,6 +18941,83 @@ fn a_deferred_subscription_is_queued_by_the_spin_and_run_by_the_host() {
     assert_eq!(log.lock().unwrap().len(), 2, "inline again: no notify");
 }
 
+/// phase-520 W3 -- a whole component deferred by whoever installs it, with no
+/// handle in hand: a mark before its registrations, `set_deferred_since` after.
+/// Slots occupied BEFORE the mark stay inline, a timer among the new ones is
+/// skipped and not counted, and the deferred subscription is queued by the spin
+/// and run by the drain exactly as a hand-marked one is.
+#[test]
+fn set_deferred_since_defers_what_was_registered_after_the_mark() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("deferred_component").build().unwrap();
+    let received = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::new()));
+
+    // Registered before the mark: another component's subscription.
+    let before_rx = received.clone();
+    let before = executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/before", move |msg: &TestMsg| {
+            before_rx.lock().unwrap().push(("before", msg.data));
+        })
+        .unwrap();
+
+    let mark = executor.callback_mark();
+    assert_eq!(
+        executor.set_deferred_since(mark, true),
+        0,
+        "nothing registered since the mark: nothing deferred"
+    );
+
+    // "The component's register": a subscription and a timer.
+    let after_rx = received.clone();
+    let after = executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/after", move |msg: &TestMsg| {
+            after_rx.lock().unwrap().push(("after", msg.data));
+        })
+        .unwrap();
+    let timer = executor
+        .node_mut(nid)
+        .create_timer_repeating(core::time::Duration::from_millis(1), || {})
+        .unwrap();
+
+    assert_eq!(
+        executor.set_deferred_since(mark, true),
+        1,
+        "the subscription is deferred; the timer is skipped and not counted"
+    );
+    assert!(
+        !executor.is_deferred(before),
+        "registered before the mark: inline"
+    );
+    assert!(executor.is_deferred(after));
+    assert!(!executor.is_deferred(timer), "timers cannot be deferred");
+
+    // Feed both subscriptions: the spin runs the earlier one inline and queues
+    // the component's.
+    let before_slot = executor.resolve_handle(before).unwrap();
+    let after_slot = executor.resolve_handle(after).unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    for (slot, value) in [(before_slot, 1), (after_slot, 2)] {
+        let meta = executor.entries[slot].as_ref().unwrap();
+        let sub_ptr = unsafe { arena_ptr.add(meta.offset) } as *const MockSubscriber;
+        let (data, len) = encode_test_msg(value);
+        unsafe { &*sub_ptr }.load(data, len);
+    }
+    let spun = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(spun.subscriptions_processed, 1, "only the inline one ran");
+    assert_eq!(*received.lock().unwrap(), [("before", 1)]);
+    assert!(executor.is_deferred_pending(after));
+
+    let ran = executor.run_deferred();
+    assert_eq!(ran.subscriptions_processed, 1);
+    assert_eq!(*received.lock().unwrap(), [("before", 1), ("after", 2)]);
+
+    // Undeferring since the same mark puts the component back inline.
+    assert_eq!(executor.set_deferred_since(mark, false), 1);
+    assert!(!executor.is_deferred(after));
+}
+
 /// A host that maps callbacks onto tasks of different priorities runs ONE
 /// queued callback per call, and the others stay queued for their own task.
 /// Callbacks that are not deferred still run inline in the same spin.

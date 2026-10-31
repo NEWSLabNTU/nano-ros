@@ -266,6 +266,50 @@ The rules:
   (Embassy, a superloop) that is the same task; across tasks, the executor is
   the shared resource the host already guards for spinning.
 
+### Through `nros::setup!`
+
+A host that builds its image from `system.toml` with `nros::setup!()` (the
+Tier 0 road, phase-520) does not name handles at all. It writes
+`dispatch = "deferred"` on the component:
+
+```toml
+[[component]]
+pkg = "my_listener"
+class = "my_listener::Listener"
+name = "listener"
+dispatch = "deferred"
+```
+
+and the emitted `nros_setup` installs that component deferred — the
+executor's `callback_mark()` before its `register`, `set_deferred_since(mark,
+true)` after, so every callback the component registered is deferred and
+nothing else is (timers stay inline; they cannot be deferred). The host gets
+the drain beside `nros_setup`:
+
+```rust
+nros::setup!();
+
+fn main() {
+    nros_boot(|rt| {
+        nros_setup(&mut *rt)?;
+        while !nros_stop_requested() {
+            let _ = rt.spin_once(10);       // queues the listener's callback
+            let _ran = nros_run_deferred(&mut *rt); // runs it, here
+        }
+        Ok(())
+    })
+    .expect("boot");
+}
+```
+
+`nros_has_deferred(rt)` polls the queue, `nros_set_defer_notifier(rt, f, ctx)`
+installs the notifier above for a host that pends a task per callback, and
+`NROS_DEFERRED_COMPONENTS` lists what was deferred. `nros::main!` ignores the
+key: the board's loop is the only task there, so a deferral would queue
+callbacks nothing drains (RTIC's queue is issue 2161). The worked example is
+`examples/linux/rust/listener-host-loop`, whose cell asserts both the
+deliveries and the drain's marker line.
+
 ## The `__nros_node_<pkg>_dispatch_strategy()` ABI symbol
 
 The `nros::node!()` macro emits, per Node pkg:

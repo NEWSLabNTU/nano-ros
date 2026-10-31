@@ -1,0 +1,5 @@
+{
+  "key": "rust:CallbackMark",
+  "verdict": "extension",
+  "why": "phase-520 W3 -- the opaque occupancy snapshot `Executor::callback_mark` returns and `Executor::set_deferred_since` takes. See `rust:Executor::set_deferred`."
+}

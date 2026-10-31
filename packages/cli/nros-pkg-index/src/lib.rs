@@ -386,7 +386,7 @@ fn is_cargo_workspace_root(dir: &Path) -> bool {
 /// Parse the `<name>` element out of a `package.xml`. The element may
 /// nest inside `<package>` (ament convention); we accept any depth so
 /// long as a top-level `<name>` text node exists.
-fn read_package_xml_name(path: &Path) -> Result<String> {
+pub fn read_package_xml_name(path: &Path) -> Result<String> {
     let file = fs::File::open(path).wrap_err_with(|| format!("open `{}`", path.display()))?;
     let mut reader = Reader::from_reader(BufReader::new(file));
 

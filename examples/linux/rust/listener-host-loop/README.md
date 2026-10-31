@@ -31,14 +31,21 @@ SIGTERM (or Ctrl-C) ends the loop and the board closes the RMW session.
 | Function | What it does |
 | --- | --- |
 | `nros_boot(host)` | the board's start-up (RMW registration, log sinks, the executor sized from the model), then `host(rt)`; never spins |
-| `nros_setup(rt)` | installs every `[[component]]` the model declares |
+| `nros_setup(rt)` | installs every `[[component]]` the model declares; one with `dispatch = "deferred"` is installed deferred |
+| `nros_run_deferred(rt)` | runs the deferred callbacks the last spin queued, from whichever task calls it; returns how many ran |
+| `nros_has_deferred(rt)` / `nros_set_defer_notifier(rt, fn, ctx)` | poll the queue, or be told (on the spinning thread) which callback was queued, for a host that pends a task per callback |
+| `NROS_DEFERRED_COMPONENTS` | the packages `nros_setup` deferred |
 | `nros_stop_requested()` | the board's termination guard |
 | `nros_deploy()` | the image's locator / domain / transport / RMW |
 
 ## Config
 
 Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`, exactly as
-for `listener`. `system.contract.yaml` is that example's too: one
+for `listener`. The one addition is the component's `dispatch = "deferred"`
+(RFC-0112 D2, the Defer half of Tier 0): `spin_once` queues the listener's
+callback instead of running it, and `main.rs` runs it with
+`nros_run_deferred`. Drop the line and the same callback runs inside
+`spin_once`. `system.contract.yaml` is that example's too: one
 `KEEP_LAST(1)` subscription on `/chatter`.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

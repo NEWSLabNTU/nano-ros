@@ -1,0 +1,5 @@
+{
+  "key": "rust:callback_mark",
+  "verdict": "extension",
+  "why": "phase-520 W3 (RFC-0112 D2, Defer) -- the runtime executor's `callback_mark` before a component's `register`, so `defer_registered_since` defers exactly what that call registered. `nros::setup!` emits the pair around a `dispatch = \"deferred\"` component. Doc-hidden in `nros::__macro`, with the other generated-entry seams; rclrs has no deferred dispatch to correlate it with."
+}
