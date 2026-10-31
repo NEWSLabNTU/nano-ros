@@ -2099,6 +2099,41 @@ endfunction()
 # Creates target: <pkg_stem>_cargo (imported static library)
 #   e.g., nros-c → nros_c_cargo, nros-cpp → nros_cpp_cargo
 # =============================================================================
+# =============================================================================
+# nros_cross_cc_env(<out> <triple>)
+#
+# The cross-compile env the `cc` crate reads for <triple>: CC_/CFLAGS_/AR_
+# pointed at THIS build's Zephyr toolchain. cc otherwise takes the host CC (or,
+# for a `*-none-eabi` triple, `arm-none-eabi-gcc` from PATH), producing
+# wrong-arch objects, or failing outright on a host that has only the Zephyr
+# SDK. ONE spelling for both lanes: the C lane's command and the Rust lane's
+# `NROS_BOARD_FACTS_ENV` (issue 2177: a Rust image on mps2-an385 failed in
+# zpico-sys with `failed to find tool "arm-none-eabi-gcc"` on an installed
+# host, and built in-tree only because contributors have that compiler).
+# =============================================================================
+function(nros_cross_cc_env out triple)
+    set(_env "")
+    if(triple)
+        string(REPLACE "-" "_" _cc_triple "${triple}")
+        # CMake's resolved C compiler first; the SDK layout if cmake did not
+        # expose one.
+        set(_cc_path "${CMAKE_C_COMPILER}")
+        if(NOT _cc_path AND DEFINED ENV{ZEPHYR_SDK_INSTALL_DIR})
+            file(GLOB _gcc_glob
+                "$ENV{ZEPHYR_SDK_INSTALL_DIR}/*-zephyr-elf/bin/*-zephyr-elf-gcc")
+            list(GET _gcc_glob 0 _cc_path)
+        endif()
+        if(_cc_path)
+            list(APPEND _env
+                CC_${_cc_triple}=${_cc_path}
+                CFLAGS_${_cc_triple}=--sysroot=${SYSROOT_DIR}
+                AR_${_cc_triple}=${CMAKE_AR}
+            )
+        endif()
+    endif()
+    set(${out} "${_env}" PARENT_SCOPE)
+endfunction()
+
 function(nros_cargo_build)
     cmake_parse_arguments(ARG "" "PACKAGE;FEATURES;MANIFEST_PATH;LIB" "" ${ARGN})
 
@@ -2336,31 +2371,7 @@ function(nros_cargo_build)
     string(REPLACE "-" "_" _target_stem ${_nros_cb_ident})
     set(_target_name "${_target_stem}_cargo")
 
-    # Cross-compile env for the `cc` crate that nros-c / nros-cpp's
-    # build.rs invoke for `weak_register_backends.c`. cc defaults to
-    # the host CC, producing wrong-arch objects (`Relocations in
-    # generic ELF (EM: 62)` at link time). Point at the Zephyr SDK
-    # toolchain for the active Rust triple so cc picks the right
-    # cross compiler. CC_<triple> uses underscores per cc's rules.
-    set(_cc_env "")
-    if(NROS_RUST_TARGET)
-        string(REPLACE "-" "_" _cc_triple ${NROS_RUST_TARGET})
-        # Try CMAKE's resolved C compiler first; fall back to the
-        # ZEPHYR_SDK_INSTALL_DIR layout if cmake didn't expose it.
-        set(_cc_path "${CMAKE_C_COMPILER}")
-        if(NOT _cc_path AND DEFINED ENV{ZEPHYR_SDK_INSTALL_DIR})
-            file(GLOB _gcc_glob
-                "$ENV{ZEPHYR_SDK_INSTALL_DIR}/*-zephyr-elf/bin/*-zephyr-elf-gcc")
-            list(GET _gcc_glob 0 _cc_path)
-        endif()
-        if(_cc_path)
-            list(APPEND _cc_env
-                CC_${_cc_triple}=${_cc_path}
-                CFLAGS_${_cc_triple}=--sysroot=${SYSROOT_DIR}
-                AR_${_cc_triple}=${CMAKE_AR}
-            )
-        endif()
-    endif()
+    nros_cross_cc_env(_cc_env "${NROS_RUST_TARGET}")
 
     # Forward every resolved knob to the cargo invocation (issue 0316).
     #
