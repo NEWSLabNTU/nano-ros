@@ -36,14 +36,15 @@ case "$answered" in
 esac
 # Fetching the pinned release runs its install.sh, which fronts
 # `~/.nros/bin/nros` at the NEWEST installed version, never at the fetched
-# one for being fetched. Both versions here are known, so the expected front
-# is stated rather than found by listing the store: the probe's own asset is
-# 0.0.0-probe, which sorts below 0.6.0-nros4.
+# one for being fetched. Which version that is depends on what the track
+# installed, so the harness states it (`PROBE_EXPECT_FRONT`, issue 2168):
+# the pin when the branch's own `0.0.0-probe` asset is installed, the
+# published release when that is.
 installed="$(readlink -f "$HOME/.nros/bin/nros")"
 case "$installed" in
-    */sdk/nros/0.6.0-nros4/*) ;;
+    */sdk/nros/"$PROBE_EXPECT_FRONT"/*) ;;
     *)
-        echo "PROBE FAIL: ~/.nros/bin/nros fronts $installed, not the newest installed release (0.6.0-nros4 above 0.0.0-probe)" >&2
+        echo "PROBE FAIL: ~/.nros/bin/nros fronts $installed, not the newest installed release ($PROBE_EXPECT_FRONT)" >&2
         exit 1
         ;;
 esac
