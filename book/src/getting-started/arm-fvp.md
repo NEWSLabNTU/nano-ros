@@ -150,15 +150,11 @@ settings and pipes the UARTs to your terminal:
 west build -d build/zephyr-cyclonedds/demo_bringup__fvp_west -t run
 ```
 
-> **Not replayed.** No probe track builds or boots the FVP image yet, so this line is unmeasured on the installed track ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe track builds or boots the FVP image yet, so this line is unmeasured on the installed track ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 The model is a free download, **not licence-gated** (see
 [Prereqs](#prereqs)); what keeps it off a CI lane is cost and its x86_64-only
 host build. It runs until you stop it (Ctrl-C).
-
-Nothing replays this step automatically. The weekly probe tracks boot the
-QEMU chapters; this one is maintainer-run (the contributor lane below), so
-the output below is unverified on the installed track.
 
 > **Contributors:** the in-tree FVP run lanes (and what they do under
 > the hood) are in

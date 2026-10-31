@@ -1111,16 +1111,12 @@ nros build demo_bringup:nucleo
 west flash -d build/zephyr-zenoh/demo_bringup__nucleo_west
 ```
 
-> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 `nros build` prints that `west flash` line when the build's
 `zephyr/runners.yaml` names a flash runner. The runner (J-Link, nrfjprog,
 OpenOCD, pyOCD, …) and its probe are Zephyr's and your bench's; nano-ros adds
 nothing to them. The board must also have a network nano-ros can use.
-
-No probe runs a flash line — a CI runner has no board — so this one stands
-unverified until it has been run against a named board. The `native_sim` and
-QEMU lines above are what the weekly probe tracks boot.
 
 ## Zephyr 4.x: select the RMW with a snippet
 
