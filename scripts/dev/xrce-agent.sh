@@ -3,7 +3,7 @@
 #
 # The zenoh router has one door: `nros_router_exec <locator>` in
 # scripts/dev/zenohd.sh, run by every `just <platform>::zenohd`. The agent had
-# none. `just xrce setup` provisions it and nothing started it, so every README
+# none. `just setup xrce` provisions it and nothing started it, so every README
 # that needed one typed `MicroXRCEAgent udp4 -p 8888` by hand. That restates the
 # transport and port the image's domain already owns (RFC-0109 U8: the domain's
 # `locator` is the owner), and a README copying a neighbour's port is how a
@@ -19,8 +19,8 @@
 #
 # `just xrce agent` is the verb over it.
 #
-# WHICH AGENT. The one `just xrce setup` published, at
-# `$(nros_build_dir xrce-agent)/MicroXRCEAgent`. `scripts/xrce-agent/build.sh`
+# WHICH AGENT. The one `just setup xrce` published, at
+# `$(nros_build_dir "$NROS_KIND_XRCE_AGENT")/MicroXRCEAgent`. `scripts/xrce-agent/build.sh`
 # publishes there either a build against the SOURCED ROS's Fast-DDS (no version
 # skew, issue 0741) or a forwarding wrapper around the `nros setup` store agent,
 # so that one path already carries the preference order the test harness uses
@@ -49,7 +49,7 @@ nros_xrce_agent_bin() {
         return 0
     fi
     printf 'ERROR: no provisioned Micro-XRCE-DDS Agent at %s.\n' "$bin" >&2
-    printf '       Run `just xrce setup`: it provisions the agent and publishes it there,\n' >&2
+    printf '       Run `just setup xrce`: it provisions the agent and publishes it there,\n' >&2
     printf '       built against your sourced ROS when one is sourced (issue 0741).\n' >&2
     printf '       PATH is not searched: an agent nobody paired with this ROS can\n' >&2
     printf '       mis-frame a service reply.\n' >&2

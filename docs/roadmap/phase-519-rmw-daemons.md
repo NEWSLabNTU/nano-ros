@@ -106,7 +106,7 @@ XRCE has no enforcement point 1.
 
 The router has one: `nros_router_exec <locator> [model]`, run by every
 `just <platform>::zenohd`, resolved by `nros_zenohd_bin`, and gated by
-`check-zenohd-flag-invocations`. The agent has `just xrce setup` and
+`check-zenohd-flag-invocations`. The agent has `just setup xrce` and
 `just xrce build-agent`, and nothing that starts it. The READMEs that need it
 type it by hand (`MicroXRCEAgent udp4 -p 8888` in
 `examples/px4/rust/companion/README.md` and
@@ -124,8 +124,8 @@ of the docs the way `check-zenohd-flag-invocations` does for the router.
 
 - The door is `scripts/dev/xrce-agent.sh`: `nros_xrce_agent_bin`,
   `nros_xrce_agent_args <locator>`, `nros_xrce_agent_exec <locator>` and
-  `nros_xrce_agent_hint`. It runs the agent `just xrce setup` published at
-  `$(nros_build_dir xrce-agent)/MicroXRCEAgent`, which is the ROS-paired build
+  `nros_xrce_agent_hint`. It runs the agent `just setup xrce` published at
+  `$(nros_build_dir "$NROS_KIND_XRCE_AGENT")/MicroXRCEAgent`, which is the ROS-paired build
   or the store agent's wrapper (issue 0741). PATH is not searched, for the
   router resolver's reason.
 - The locator is nano-ros's own spelling: `udp/<host>:<port>`,
