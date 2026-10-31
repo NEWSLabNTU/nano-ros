@@ -25,6 +25,12 @@ WHAT IT REFUSES, in a tracked `*.conf` outside the snippet:
     refuses an assignment to an undefined symbol, so the line pins the file to
     a line. The snippet turns the driver class off (`CONFIG_ETH_DRIVER=n`).
 
+AND, in the snippet itself (issue 2182): no snippet-wide `append:`. The
+generic `zephyr` board names the snippet and is built for non-native boards
+too (`-b mps2/an385`), where NSOS cannot be enabled and an unscoped snippet
+makes Kconfig refuse the build. The conf must sit under a `boards:` regex that
+only native_sim matches.
+
 Absolute, no baseline: the migration emptied it.
 
 Usage::
@@ -63,6 +69,19 @@ def offences(path: str, text: str) -> list[str]:
     return out
 
 
+def snippet_scope_offences(text: str) -> list[str]:
+    """The snippet must append only under `boards:` -- issue 2182."""
+    out = []
+    if re.search(r"^append\s*:", text, re.M):
+        out.append(f"{SNIPPET_DIR}snippet.yml: a snippet-wide `append:` applies NSOS to every "
+                   "board, and the generic `zephyr` board is built for mps2/an385 too, where "
+                   "Kconfig refuses it (issue 2182); scope it under `boards: /native_sim(/.*)?/:`")
+    if not re.search(r"^boards\s*:\s*\n\s+/native_sim", text, re.M):
+        out.append(f"{SNIPPET_DIR}snippet.yml: no `boards:` entry for native_sim -- the snippet "
+                   "would apply NSOS nowhere")
+    return out
+
+
 def tracked_confs() -> list[str]:
     out = subprocess.run(["git", "-C", ROOT, "ls-files", "-z", "--", "*.conf"],
                          check=True, capture_output=True).stdout
@@ -88,6 +107,17 @@ def selftest() -> int:
             print(f"check-nsos-single-source selftest: {path} {text.strip()!r}: "
                   f"{got} offence(s), want {want}", file=sys.stderr)
             fail += 1
+    scope_cases = [
+        ("name: nros-nsos\nappend:\n  EXTRA_CONF_FILE: nsos.conf\n", 2),
+        ("name: nros-nsos\nboards:\n  /native_sim(/.*)?/:\n    append:\n"
+         "      EXTRA_CONF_FILE: nsos.conf\n", 0),
+    ]
+    for text, want in scope_cases:
+        got = len(snippet_scope_offences(text))
+        if got != want:
+            print(f"check-nsos-single-source selftest: snippet scope {text!r}: "
+                  f"{got} offence(s), want {want}", file=sys.stderr)
+            fail += 1
     if not os.path.isfile(os.path.join(ROOT, SNIPPET_DIR, "nsos.conf")):
         print(f"check-nsos-single-source selftest: {SNIPPET_DIR}nsos.conf is missing — "
               "the one source this gate protects", file=sys.stderr)
@@ -104,7 +134,8 @@ def main() -> int:
         if not fail:
             print("check-nsos-single-source selftest: OK")
         return 1 if fail else 0
-    found = []
+    with open(os.path.join(ROOT, SNIPPET_DIR, "snippet.yml"), encoding="utf-8") as f:
+        found = snippet_scope_offences(f.read())
     for p in tracked_confs():
         try:
             with open(os.path.join(ROOT, p), encoding="utf-8", errors="replace") as f:
