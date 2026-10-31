@@ -24,7 +24,7 @@ std or alloc.
 | nros-core   | Time, Duration, Clock (atomic fallback), lifecycle, logger, error types, action types                                                | (none)                                                              | `Clock::now()` via `SystemTime`, `std::error::Error` impls                                |
 | nros-rmw    | All traits, QoS, sync primitives, safety/E2E protocol                                                                                | `handle_request_boxed()` (Box\<Reply\>)                             | (none)                                                                                    |
 | nros-params | `ParameterServer`, `ParameterValue`, all parameter types (heapless)                                                                  | (none)                                                              | `ParameterVariant` impls for `std::string::String`, `std::vec::Vec`                       |
-| nros-node   | `Executor::open()`, `create_node()`, `spin_once()`, `spin_async()`, `Promise`, pub/sub/service/action, timers (fn pointer callbacks) | Boxed timer callbacks, `handle_request_boxed()`, parameter services | `spin()`, `spin_period()`, `ExecutorConfig::from_env()`, halt flag |
+| nros-node   | `Executor::open()`, `create_node()`, `spin_once()`, `Promise`, pub/sub/service/action, timers (fn pointer callbacks) | Boxed timer callbacks, `handle_request_boxed()`, parameter services | `spin()`, `spin_period()`, `ExecutorConfig::from_env()`, halt flag |
 | nros        | Re-exports from above                                                                                                                | (same as above)                                                     | `SpinPeriodResult` re-export                                                |
 
 ### RMW Backend Crates
@@ -73,12 +73,10 @@ is propagated through the feature chain but does not add any API surface.
 - `action_client.get_result(&goal_id)` — returns `Promise<(GoalStatus, Result)>`
 - Full goal lifecycle: send, cancel, get result, feedback, status
 
-**Async:**
-- `executor.spin_async()` / `spin_async_with_sleep(sleep)` — async spin loop (one non-blocking pass per poll, never blocks the runtime thread; sleeps on arrivals, and with the runtime's `sleep` on the next deadline too — issue 2145)
-- `Promise<'a, T, Cli>` — allocation-free promise, borrows client's reply slot
-- `Promise::take()` — non-blocking poll for reply
-- `Promise: Future` — implements `core::future::Future` for `.await`
-- Uses only `core::future` and `core::task` — no external async runtime dependency
+**Promises:**
+- `Promise<'a, T, Cli>` -- allocation-free promise, borrows client's reply slot
+- `Promise::take()` -- non-blocking poll for reply, while the executor spins
+- No async runtime drives the executor: RFC-0113 retired `spin_async`, because a foreign scheduler, not nano-ros, would decide when callbacks run
 
 **Timers:**
 - `TimerHandle` with function pointer callbacks (`fn()`)
@@ -159,8 +157,8 @@ deleted both types, which no public API ever returned. The user error is
 nros = { version = "*", default-features = false, features = ["rmw-zenoh", "platform-bare-metal"] }
 ```
 Full pub/sub, services, actions, timers (fn pointers), parameters (local).
-Async: `spin_async()`, `Promise`, `take()`, `.await` — all available without std or alloc.
-Use `spin_once()` or `spin_period_polling()` in your main loop, or `spin_async()` with an async runtime (Embassy, RTIC v2).
+Promises (`Promise`, `take()`) are available without std or alloc.
+Use `spin_once()` or `spin_period_polling()` in your main loop.
 
 **Embedded with allocator (e.g., Zephyr with heap):**
 ```toml

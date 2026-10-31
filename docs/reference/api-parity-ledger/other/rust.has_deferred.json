@@ -1,5 +1,0 @@
-{
-  "key": "rust:has_deferred",
-  "verdict": "extension",
-  "why": "phase-520 W3 (RFC-0112 D2, Defer) -- `Executor::has_deferred` through the lent runtime; behind `nros::setup!`'s emitted `nros_has_deferred`. Doc-hidden in `nros::__macro`, with the other generated-entry seams; rclrs has no deferred dispatch to correlate it with."
-}

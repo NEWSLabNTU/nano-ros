@@ -1,6 +1,0 @@
-{
-  "key": "rust:Executor::ready_notifier_supported",
-  "bucket": "ours-only",
-  "verdict": "extension",
-  "why": "the question `set_ready_notifier` answers by refusing: can this executor's backend tell a host anything outside a spin? `false` on a poll-only backend (XRCE, uORB), where an arrival surfaces only inside `drive_io`. See `c:executor_set_ready_notifier`."
-}

@@ -508,18 +508,6 @@ pub enum Workload {
     /// image has no console, which is the condition the record exists for.
     /// The verdict is read out of memory, not out of a stream.
     BootReport,
-    /// phase-520 W2 — pubsub delivery to a node driven by a loop the PROGRAM
-    /// owns: `nros::setup!()` emits the assembly (`nros_boot` for the board's
-    /// start-up, `nros_setup` for the components) and `main` spins it from a
-    /// plain `std` loop (RFC-0112 Tier 0). The fixture is
-    /// `examples/linux/rust/listener-host-loop`, paired with the stock talker.
-    ///
-    /// Its own value rather than a case of [`Workload::Pubsub`] because the
-    /// subject is the ROAD, as for [`Workload::TypedCarrier`]: what fails here
-    /// is a `setup!` expansion that installs too little (a component, a
-    /// subscription, the board's log sink) while `nros::main!` still installs
-    /// everything — and every Pubsub example takes `nros::main!`.
-    HostLoop,
 }
 
 impl Workload {
@@ -574,9 +562,6 @@ impl Workload {
             // A router port of its own: the image opens its session before
             // it registers the entity that exhausts the arena (issue 1036).
             Workload::BootReport => 87,
-            // phase-520 W2. 84 and 85 are free in every band; zenoh only, so
-            // the domain window is irrelevant.
-            Workload::HostLoop => 84,
         }
     }
 
@@ -776,9 +761,6 @@ pub const CELLS: &[Cell] = &[
     // ── Example kind: the classic pubsub/service/action pairs ──────────
     // Linux host (ephemeral isolation; all three RMWs have runtime lanes).
     cell(Linux, Rust, Zenoh,      Pubsub,  Example, Runtime),
-    // phase-520 W2 — the same delivery, from a node `nros::setup!()` assembled
-    // and the program's own loop spins (`examples/linux/rust/listener-host-loop`).
-    cell(Linux, Rust, Zenoh,      HostLoop, Example, Runtime),
     // phase-510 W4 — the same pubsub BUILT with loan publish in a two-session
     // pool (RFC-0051 §7a): `loan_e2e` publishes through `try_loan` + `commit`
     // and its subscriber, in the same process, must receive what it would
@@ -1706,12 +1688,6 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("launch_synth", NonCell::Static),
     ("legacy_files_forbidden", NonCell::Static),
     (
-        "linux_async_roundtrip_e2e",
-        NonCell::Secondary(
-            "Linux/Rust/Zenoh/Service+Action/Example — answered by linux_example_reqresp_e2e; the async API",
-        ),
-    ),
-    (
         "linux_entry_boot",
         NonCell::Secondary(
             "Linux/Rust/EntryPubsub/Workspace boot — answered by deployed_native_system_e2e",
@@ -1967,7 +1943,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
             Some(FreertosQemu)
         }
         (P::Px4, L::Rust, R::Xrce, W::Pubsub, K::Example) => Some(Px4Xrce),
-        (P::Linux, _, _, W::Pubsub | W::HostLoop, K::Example) => Some(LinuxExamplePubsub),
+        (P::Linux, _, _, W::Pubsub, K::Example) => Some(LinuxExamplePubsub),
         (P::Linux, _, _, W::Service | W::Action, K::Example) => Some(LinuxExampleReqresp),
         (P::Linux, _, _, W::ExecutorBoundNode, K::Example) => Some(LinuxExampleExecutorBoundNode),
         (_, _, _, W::Port | W::PortSmoke | W::PortMonitor | W::PortWorkspace, K::Example) => {

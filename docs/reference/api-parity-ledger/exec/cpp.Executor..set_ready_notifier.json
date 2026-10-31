@@ -1,5 +1,0 @@
-{
-  "key": "cpp:Executor::set_ready_notifier",
-  "verdict": "extension",
-  "why": "see `c:executor_set_ready_notifier` -- the RFC-0112 D2.2 readiness notifier for a host event loop that drives the executor with `spin_some()`. rclcpp's executors own their thread and block in a wait set, so it has no hook that tells a foreign loop that work arrived."
-}

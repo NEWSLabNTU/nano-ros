@@ -312,34 +312,6 @@ int main(void) {
                 (long long)s_last_info.actual_call_time);
     }
 
-    /* --- 5. issue 2143: the time-out a host loop sleeps on. ----------------
-     * Every timer registered now runs on the ROS clock, and a ROS-time timer's
-     * remainder is not wall time, so none of them bounds a host's sleep: the
-     * answer is "no deadline", UINT64_MAX. A 10 ms WALL timer then does, and
-     * it is due within its period and -- the lower bound -- not already (a
-     * zero would turn the host's sleep into a busy poll). */
-    uint64_t next_ns = 0;
-    CHECK_RET(rclc_executor_get_next_deadline_ns(&executor, &next_ns), RCL_RET_OK,
-              "next deadline readable");
-    CHECK(next_ns == UINT64_MAX, "ROS-time timers alone give a host no wall deadline");
-
-    struct rcl_timer_t deadline_timer = rcl_get_zero_initialized_timer();
-    CHECK_RET(rclc_timer_init_default(&deadline_timer, NULL, 10000000ull, wall_timer_cb),
-              RCL_RET_OK, "a 10 ms wall timer");
-    CHECK_RET(rclc_executor_add_timer(&executor, &deadline_timer), RCL_RET_OK,
-              "10 ms wall timer registered");
-    CHECK_RET(rclc_executor_get_next_deadline_ns(&executor, &next_ns), RCL_RET_OK,
-              "next deadline readable with a wall timer");
-    CHECK(next_ns <= 10000000ull, "a 10 ms wall timer is due within 10 ms");
-    CHECK(next_ns >= 1000000ull, "and is not already due: nothing has spun since it was added");
-    if (next_ns > 10000000ull || next_ns < 1000000ull) {
-        fprintf(stderr, "       next deadline = %llu ns\n", (unsigned long long)next_ns);
-    }
-    CHECK_RET(rclc_executor_get_next_deadline_ns(NULL, &next_ns), RCL_RET_INVALID_ARGUMENT,
-              "a NULL executor is refused");
-    CHECK_RET(rclc_executor_get_next_deadline_ns(&executor, NULL), RCL_RET_INVALID_ARGUMENT,
-              "a NULL out-pointer is refused");
-
     CHECK_RET(rclc_timer_init_with_info(&rejected, NULL, 1000000ull, NULL, true),
               RCL_RET_INVALID_ARGUMENT, "a call-info timer needs a callback");
 

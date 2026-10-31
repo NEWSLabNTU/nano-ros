@@ -37,17 +37,21 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 26 | 11 | 22 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 22 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 20 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 45 | 39 | 76 % |
-//! | tier 3 | everything | 255 | 51 | 100 % |
+//! | tier 3 | everything | 254 | 51 | 100 % |
 //!
 //! Re-measured 2026-10-31 (phase-466 W5, RFC-0061 amendment of that date):
 //! every realtime-tiers cell is its own nightly requirement, 37 / 35 -> 45 / 39.
 //! The four new coordinates are `freertos,cpp,zenoh`, `zephyr,cpp,zenoh`,
 //! `linux,c,zenoh` and `linux,cpp,zenoh`; tiers 1 and 2 did not move.
 //!
-//! Re-measured 2026-10-31 (phase-520 W2): the `HostLoop` workload joined with
+//! Re-measured 2026-10-31 (phase-521 W1, RFC-0113 D7): the ~~`HostLoop`~~ workload
+//! retired with `nros::setup!`, and its one cell with it: tier 1 26 -> 25, tier 3
+//! 255 -> 254, tiers 2 and nightly unmoved.
+//!
+//! Re-measured 2026-10-31 (phase-520 W2): the ~~`HostLoop`~~ workload joined with
 //! one Linux Rust Zenoh Runtime cell, at an existing coordinate. Tier 1's 1-wise
 //! workload axis took it, 25 -> 26 cells at the same 11 coordinates; tiers 2
 //! and nightly did not move. Tier 3 went 254 -> 255 cells over the same 51
@@ -1111,7 +1115,7 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 26, 11),
+            (CiLane::Tier1, 25, 11),
             (CiLane::Tier2, 11, 10),
             (CiLane::Tier2Nightly, 45, 39),
         ];
@@ -1135,8 +1139,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 255,
-            "the table's tier-3 cell count (255) is stale; recomputed {total_cells}"
+            total_cells, 254,
+            "the table's tier-3 cell count (254) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 51,

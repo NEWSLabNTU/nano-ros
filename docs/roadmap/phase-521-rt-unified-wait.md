@@ -1,6 +1,6 @@
 # Phase 521 — The real-time promise and the one wait
 
-**Status (2026-10-31). Approved; W0 done, W2's THREAD half done, W1–W8 open.** Implements
+**Status (2026-10-31). Approved; W0 and W1 done, W2's THREAD half done, W2 (rest) and W3–W8 open.** Implements
 [RFC-0113](../design/0113-rt-unified-wait.md). Amends
 [RFC-0106](../design/0106-executor-park.md) D5 and withdraws
 [RFC-0112](../design/0112-framework-support-tiers.md)'s Tier 0.
@@ -37,7 +37,16 @@ W0 (decisions, done)
   code only after that session has stood down. This phase does not edit
   phase-520's documents.
 
-### W1 — Retire the host-driven surface
+### W1 — Retire the host-driven surface — DONE
+
+Landed as one change. Two things it found that the list below did not name:
+the nros-macros `'board` label block lost its only `break`, and `ci_lane`'s
+documented cell counts moved (tier 1 26 -> 25, tier 3 255 -> 254) with the
+`HostLoop` cell. **Left in place, for a decision:** the per-entity async
+receivers (`Subscription::recv().await`, `Promise: Future`,
+`FeedbackStream::recv`, the `stream` feature's `Stream` impls) — they need
+something else to spin the executor, and no in-tree code awaits them.
+
 
 Delete RFC-0113 D7's list in one change:
 

@@ -26,7 +26,7 @@ in the same file; do not fill them without lifting the underlying
 constraint.
 
 Variant naming uses **suffix form** so peers sort together:
-`talker-rtic`, `service-client-async`, `talker-rtic-mixed`. Avoid
+`talker-rtic`, `service-client-rtic`, `talker-rtic-mixed`. Avoid
 parallel parent directories like `async-*/` or `rtic-*/`.
 
 ## Non-example binaries

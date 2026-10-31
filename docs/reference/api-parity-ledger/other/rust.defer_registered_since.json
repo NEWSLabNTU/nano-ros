@@ -1,5 +1,0 @@
-{
-  "key": "rust:defer_registered_since",
-  "verdict": "extension",
-  "why": "phase-520 W3 (RFC-0112 D2, Defer) -- `Executor::set_deferred_since` on the runtime's executor, after a `dispatch = \"deferred\"` component's `register`. The other half of `rust:callback_mark`. Doc-hidden in `nros::__macro`, with the other generated-entry seams; rclrs has no deferred dispatch to correlate it with."
-}

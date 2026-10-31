@@ -2572,13 +2572,6 @@ typedef void (*rclc_event_subscription_incompatible_type_cb_t)(struct rcl_subscr
                                                                void *user_context);
 
 /**
- * A readiness notifier: called with the context it was installed with
- * whenever work arrives for the executor. See
- * [`rclc_executor_set_ready_notifier`].
- */
-typedef void (*rclc_executor_ready_notifier_t)(void *ctx);
-
-/**
  * phase-381 W4 — visit one node on the graph.
  *
  * `node_namespace` is a ROS namespace (`"/"`, `"/demo"`). `enclave` is NULL
@@ -5832,49 +5825,6 @@ rcl_ret_t rclc_executor_set_timeout(struct rclc_executor_t *executor,
                                     uint64_t timeout_ns);
 
 /**
- * Issue 2144 (RFC-0112 D2.2, "Readiness out") — install the executor's one
- * readiness notifier, or clear it with a NULL `notifier`. A nano-ros
- * extension; rclc has no such call.
- *
- * `notifier(ctx)` is called whenever work arrives for this executor: a
- * sample, request or reply on its session, or a guard condition triggered
- * from another thread. A host loop with its own event source (a GLib or Qt
- * main loop, `epoll`, an RTOS task waiting on a semaphore) waits on it and
- * then calls `rclc_executor_spin_some(executor, 0)`, instead of polling.
- * Timers are not arrivals and do not notify, so the host also wakes for the
- * executor's next timer.
- *
- * Notifications coalesce: one call may stand for several arrivals, and a
- * call may come for work a spin already took. Work that arrived before the
- * install is not replayed, so spin once after installing. A Linux host that
- * wants a readable fd writes an `eventfd` from the notifier.
- *
- * The notifier runs on the backend's wake context — a transport or worker
- * thread, or the thread that triggered a guard condition — so it must be
- * thread-safe, must not block and must not call back into the executor.
- * `ctx` must stay valid until the notifier is replaced or cleared, or the
- * executor is finalised. Install it once: a replaced notifier's two words
- * are kept until `rclc_executor_fini`.
- *
- * # Returns
- * * `RCL_RET_OK` — installed (or cleared).
- * * `RCL_RET_UNSUPPORTED` — the backend is poll-only (XRCE, for example)
- *   and learns of an arrival only inside a spin, so a notifier would never
- *   fire for a host waiting on it. Keep spinning on a period. Clearing
- *   never fails this way.
- * * `RCL_RET_NOT_INIT` — executor not initialised.
- * * `RCL_RET_INVALID_ARGUMENT` — `executor` is NULL.
- *
- * # Safety
- * * `executor` must be a valid pointer to an initialized executor.
- * * `notifier`/`ctx` must satisfy the contract above.
- */
-NROS_PUBLIC
-rcl_ret_t rclc_executor_set_ready_notifier(struct rclc_executor_t *executor,
-                                           rclc_executor_ready_notifier_t notifier,
-                                           void *ctx);
-
-/**
  * Phase 124.F.3 — session-level connectivity probe.
  *
  * Sends a wire-level round-trip ("is the peer / agent / router
@@ -7192,31 +7142,6 @@ NROS_PUBLIC size_t rclc_executor_get_arena_capacity(const struct rclc_executor_t
 NROS_PUBLIC
 rcl_ret_t rclc_executor_get_level(const struct rclc_executor_t *executor,
                                   uint8_t *level);
-
-/**
- * Issue 2143 (RFC-0112 D2.2) — nanoseconds from now until this executor next
- * needs to run, written to `*next_ns`; `UINT64_MAX` when nothing is
- * scheduled, and 0 when something is already due.
- *
- * The Tier 0 time-out for a host that drives the executor itself (a plain C
- * `while`, an Arduino `loop()`, a PX4 work item): call
- * `rclc_executor_spin_some(executor, 0)`, then sleep at most this long. It is
- * the bound the executor's own park uses — the next timer, the backend's next
- * internal event, a supervised route's deadline and every registered wake
- * source — and forwards to `Executor::next_deadline_us`, so the C answer
- * cannot disagree with the Rust one. `UINT64_MAX` is "no deadline", not
- * "never": a sample may still arrive, so wait on readiness then. The unit is
- * rcl's nanoseconds; the RESOLUTION is microseconds, like
- * `rcl_timer_get_time_until_next_call`.
- *
- * `RCL_RET_INVALID_ARGUMENT` for NULL or an executor that is not initialised.
- *
- * # Safety
- * `executor` must be NULL or a valid pointer; `next_ns` must be writable.
- */
-NROS_PUBLIC
-rcl_ret_t rclc_executor_get_next_deadline_ns(const struct rclc_executor_t *executor,
-                                             uint64_t *next_ns);
 
 /**
  * phase-509 P7 — place this executor at `level` (0 the most urgent); its

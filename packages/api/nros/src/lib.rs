@@ -412,12 +412,6 @@ pub mod __macro {
     // phase-509 P5 -- a ranked node's rank, seeded before its `register`.
     #[cfg(feature = "rmw-cffi")]
     pub use crate::node_runtime::seed_node_rank;
-    // phase-520 W3 -- deferred dispatch for a `dispatch = "deferred"` component
-    // under `nros::setup!`, and the host's drain through the lent runtime.
-    #[cfg(feature = "rmw-cffi")]
-    pub use crate::node_runtime::{
-        callback_mark, defer_registered_since, has_deferred, run_deferred, set_defer_notifier,
-    };
 }
 
 // phase-483 W3 — the `install_node_typed*` STUBS for builds without
@@ -435,9 +429,6 @@ pub use nros_macros::node;
 // `docs/design/0024-multi-node-workspace-layout.md` §11.6.
 #[cfg(feature = "macros")]
 pub use nros_macros::main;
-// phase-520 (issue 2150) — `nros::main!`'s assembly without its `main`.
-#[cfg(feature = "macros")]
-pub use nros_macros::setup;
 
 /// Route this image's panics to its platform — phase-366 W5.c / RFC-0077.
 ///
@@ -1210,12 +1201,12 @@ pub mod internals {
 // Re-export types that don't depend on RMW (always available)
 pub use nros_node::{
     BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
-    BootConfig, BootConfigError, CallbackMark, DOMAIN_ID_EXPLICIT_ZERO_C_ABI, DOMAIN_ID_MAX,
-    DeferNotify, ExecutorConfig, ExecutorSemantics, GuardCondition, HandleId, HandleSet,
-    InvocationMode, NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, RawCancelCallback,
-    RawGoalCallback, RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot,
-    ShutdownCallbackFn, ShutdownCallbackHandle, ShutdownPhase, SpinOnceResult, SpinOptions,
-    SpinPeriodPollingResult, Trigger, baked_domain_from_c_abi,
+    BootConfig, BootConfigError, DOMAIN_ID_EXPLICIT_ZERO_C_ABI, DOMAIN_ID_MAX, DeferNotify,
+    ExecutorConfig, ExecutorSemantics, GuardCondition, HandleId, HandleSet, InvocationMode,
+    NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, RawCancelCallback, RawGoalCallback,
+    RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot, ShutdownCallbackFn,
+    ShutdownCallbackHandle, ShutdownPhase, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
+    Trigger, baked_domain_from_c_abi,
 };
 
 // ---------------------------------------------------------------------------

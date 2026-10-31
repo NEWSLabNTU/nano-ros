@@ -1,98 +1,26 @@
 # Embassy Integration
 
-> **Embassy is not an `nros::main!` framework.** It was one, as an
-> out-of-tree seam: an `EmbassyBoardEntry` trait and an `nros::main!()` branch
-> a board selected with `[package.metadata.nros.board] framework = "embassy"`.
-> No in-tree board had used it since phase-337 W7.a deleted
-> `nros-board-embassy-stm32f4`, no fixture or CI cell expanded it, and the code
-> it emitted called board methods no trait declared. Issue 2134 retired it
-> under RFC-0112 D3, which admits a framework to `nros::main!` codegen only
-> with an in-tree board and a CI cell. A board that still declares
-> `framework = "embassy"` is refused at expansion with a pointer to this page.
+**Embassy is not supported.** nano-ros supports a way of running only if it
+can keep its real-time promise there: nano-ros decides which callback runs
+next and at what priority, so it can state when a callback runs, how late it
+can be, and that a low-priority callback never holds up a high-priority one
+([RFC-0113](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0113-rt-unified-wait.md)).
 
-[Embassy](https://embassy.dev) is an async/await framework for embedded Rust.
-It owns `fn main`, the spawner and a cooperative executor that polls futures
-from one context per priority. nano-ros runs under it the way it runs under
-any other host that owns the loop (RFC-0112's Tier 0, "a host drives it"):
-your `#[embassy_executor::main]` opens the nano-ros `Executor`, creates the
-nodes, and spawns one task that spins it.
+Under Embassy the executor would run inside an Embassy task, and Embassy's
+scheduler, configured by the application, would decide when that task and
+every callback in it run. nano-ros cannot analyse that schedule, so it cannot
+make the promise, and a supported shape whose timing nobody can state is a
+promise nobody can check.
 
-## The shape
+What this page used to describe is gone with it: the hand-driven spin task,
+`Executor::spin_async` / `spin_async_with_sleep`, the readiness notifier and
+the host-owned `nros::setup!` assembly (RFC-0113 D7, D10).
 
-```rust
-#![no_std]
-#![no_main]
+## What to use instead
 
-use core::time::Duration;
-use embassy_executor::Spawner;
-use embassy_time::Timer;
-use nros::prelude::*;
-use std_msgs::msg::Int32;
-
-#[embassy_executor::task]
-async fn spin_task(mut executor: Executor<'static>) -> ! {
-    loop {
-        // Never blocks: dispatch whatever is ready, then yield.
-        let _ = executor.spin_some(Duration::ZERO);
-        Timer::after_millis(1).await;
-    }
-}
-
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
-    // Board bring-up (clocks, network, ...) and backend registration are
-    // yours: call your RMW backend's `register()` here, as an embedded
-    // board's boot path does.
-    let config = ExecutorConfig::new("tcp/192.168.1.1:7447").node_name("listener");
-    let mut executor = Executor::open(&config).expect("open executor");
-    {
-        let mut node = executor.create_node("listener").expect("node");
-        node.create_subscription::<Int32, _>("/chatter", |msg: &Int32| {
-            let _ = msg.data; // runs inside `spin_some`, on the spin task
-        })
-        .expect("subscription");
-    }
-    spawner.spawn(spin_task(executor)).unwrap();
-}
-```
-
-Adapt the locator and the backend registration to your board; the
-[STM32F4 out-of-tree example](../porting/stm32f4-out-of-tree.md) shows the
-board-side half.
-
-## What this does not give you yet
-
-- **Sleeping until there is work.** The loop polls every millisecond when
-  idle. The timer half exists: `Executor::next_deadline_us()` says how long
-  until the next timer or backend deadline, `None` when nothing is scheduled
-  (issue 2143). The "work arrived" half is `Executor::set_ready_notifier()`
-  (issue 2144), but it needs `alloc` and a backend with a live async wake
-  (`ready_notifier_supported()`), and no example wires it to an Embassy
-  signal yet. With both, the task can wait on
-  `select(notified, Timer::after_micros(next_deadline))` and sleep.
-  `Executor::spin_async_with_sleep(|d| Timer::after_micros(d.as_micros() as u64))`
-  is that loop already written (issue 2145). It never blocks the Embassy
-  thread inside a poll, and it sleeps until an arrival or the next deadline.
-  Plain `spin_async()` has no timer, so with any deadline pending it wakes
-  itself on every poll and never lets the Embassy executor sleep. On a
-  poll-only backend both variants busy-loop.
-- **Deferred dispatch across tasks.** Callbacks run inline, inside
-  `spin_some`, unless you mark them with `Executor::set_deferred`; then the
-  spin queues them and calls your `set_defer_notifier` function, and
-  `run_deferred()` runs them (see
-  [Deferring callbacks without the macros](../internals/dispatch-strategy.md#deferring-callbacks-without-the-macros)).
-  Both calls need `&mut Executor`, so with the executor moved into the spin
-  task the drain runs in that task too. To run work in ANOTHER task, keep
-  callbacks short and have them signal an `embassy_sync` channel that task
-  drains.
-- **`system.toml` assembly.** Nodes are created by hand. Issue 2150 splits the
-  model-driven assembly out of `nros::main!` so a host-driven entry can reuse
-  it.
-
-## See also
-
-- [Dispatch Strategy (internals)](../internals/dispatch-strategy.md)
-- [RTIC Integration](./rtic-integration.md) — the framework that IS an
-  `nros::main!` entry shape, with an in-tree board.
-- RFC-0112 (`docs/design/0112-framework-support-tiers.md`) — why frameworks
-  are integrated through one host-driven contract.
+- **An RTOS or bare-metal board through `nros::main!`.** Tiers become OS
+  threads (or the bare-metal loop) at priorities nano-ros derives from your
+  launch contracts.
+- **RTIC** ([RTIC Integration](./rtic-integration.md)). RTIC's scheduling is
+  analysable and `nros::main!` generates the task mapping, so the promise
+  holds there.

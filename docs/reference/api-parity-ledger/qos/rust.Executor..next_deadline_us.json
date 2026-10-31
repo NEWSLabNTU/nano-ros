@@ -1,6 +1,0 @@
-{
-  "key": "rust:Executor::next_deadline_us",
-  "bucket": "ours-only",
-  "verdict": "extension",
-  "why": "issue 2143 (RFC-0112 D2.2) -- the Tier 0 time-out: microseconds from now until the executor next needs to run (the `min` over the next wall timer, the backend's next internal event, a supervised route's deadline and every registered wake source -- the bound its own park uses), `None` when nothing is scheduled. For a host that owns the loop and drives the executor with `spin_some`. rclrs has no counterpart: its executor always owns the thread it waits on."
-}

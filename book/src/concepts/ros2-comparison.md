@@ -73,26 +73,15 @@ poll inside a real-time loop. Callback dispatch is great for
 event-driven services but adds indirection that real-time engineers
 have to bound by hand. Offering both means the application picks.
 
-### 3. Async pub/sub/service/action
+### 3. No foreign async runtime, on purpose
 
-`rclcpp` has no real `async/await`. `rclrs` 0.7+ added async but it
-sits next to the synchronous executor, not in it. `rclc` has none.
-
-nano-ros has it as a first-class path: `Executor::spin_async()` drives
-the executor from inside a `Future`. Each poll is one non-blocking
-`spin_once(Duration::ZERO)` pass, so it never blocks the runtime's thread.
-With `spin_async_with_sleep(<runtime sleep>)`, an idle executor sleeps until
-an arrival or its next deadline. A poll-only backend still keeps a core busy;
-see its rustdoc and issue 2145. The handles are async too:
-`Subscription::recv().await`, `Client::call().await`,
-`ActionClient::send_goal().await`, etc. Runs on tokio (POSIX),
-Embassy (FreeRTOS / RTIC), or any external `Future`-driver.
-
-**Why.** Robotic control loops are stitched together from many
-concurrent waits — sensor data, service replies, action feedback,
-parameter updates. Async lets you write them as one straight-line
-function instead of hand-rolling state machines on top of a
-poll-based executor.
+`rclrs` 0.7+ added `spin_async` beside its synchronous executor. nano-ros
+does not offer one. A future polled by tokio or Embassy runs when THAT
+scheduler decides, so nano-ros could not state when a callback runs or at
+what priority, and the real-time promise is the first thing nano-ros offers
+([RFC-0113](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0113-rt-unified-wait.md)).
+Concurrent waits are written as callbacks on tiers instead, each tier an OS
+thread at a priority nano-ros derives.
 
 ### 4. Heap is optional
 

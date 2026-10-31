@@ -136,31 +136,6 @@ that stores `ActionClientCore` inline in the separate type
 `rclc_polling_action_client_t` (phase-487 W4) and skips the executor entirely;
 see the Doxygen for the full L1 verb list.
 
-## Driving the executor from your own loop
-
-A program that owns its loop (a `while`, an Arduino `loop()`, a PX4 work item)
-does not hand the thread to `rclc_executor_spin()`. It drains what is ready
-with a zero-timeout spin, then asks how long it may sleep:
-
-```c
-for (;;) {
-    rclc_executor_spin_some(&executor, 0);
-    uint64_t next_ns;
-    rclc_executor_get_next_deadline_ns(&executor, &next_ns);
-    /* UINT64_MAX: nothing is scheduled; wait for your own events. */
-    my_loop_wait(next_ns == UINT64_MAX ? MY_IDLE_NS : next_ns);
-}
-```
-
-`rclc_executor_get_next_deadline_ns()` (issue 2143, a nano-ros extension) is
-the bound the executor's own park uses: the next wall timer, the backend's
-next internal event, a supervised route's deadline and every registered wake
-source. It answers from now, so time your loop spent between spins is already
-counted; `0` means something is due. A ROS-time timer does not bound it (its
-wake is a `/clock` message). `UINT64_MAX` is "no deadline", not "never": a
-sample can still arrive. The C++ form is `rclcpp::Executor::next_deadline_us`,
-and the Rust form `Executor::next_deadline_us`.
-
 ## CMake integration
 
 Out-of-tree projects link the `NanoRos::NanoRos` CMake target and
