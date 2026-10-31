@@ -843,7 +843,7 @@ fn attribute_group_binary(binary_path: &Path) -> Option<&'static Row> {
     )
 }
 
-/// [`attribute_group_binary`] over given tables, for tests.
+/// `attribute_group_binary` over given tables, for tests.
 pub fn attribute_group_binary_in<'a>(
     groups: &[crate::fixtures::groups::GroupRow],
     group_dir: impl Fn(&str) -> PathBuf,
