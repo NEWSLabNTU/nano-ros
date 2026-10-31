@@ -2041,7 +2041,7 @@ structure:
 execution:
   tiers:
     high:
-      spin_period_us: 1000
+      spin_period: 1000us
       posix:
         priority: 80
         stack_bytes: 8192
@@ -2206,7 +2206,7 @@ structure:
 execution:
   tiers:
     high:
-      spin_period_us: 1000
+      spin_period: 1000us
       posix:
         priority: 80
       zephyr:
@@ -2399,7 +2399,7 @@ structure:
 execution:
   tiers:
     high:
-      spin_period_us: 1000
+      spin_period: 1000us
       posix:
         priority: 80
       zephyr:
