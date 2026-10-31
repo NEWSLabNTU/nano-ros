@@ -39,4 +39,10 @@ bash ./scripts/zephyr/pthread-mutex-unlock-patch-4.4.sh "$WORKSPACE"
 # eDMA's __aligned(32) TCD pool in DTCM can land 8-aligned and the first DMA
 # transfer asserts in EDMA_TcdSetTransferConfig.
 bash ./scripts/zephyr/tcm-section-align-patch-4.4.sh "$WORKSPACE"
+# Issue 2187 — the zephyr-lang-rust gpio pair (issue 0432) is NOT a 3.7-only
+# patch: 4.4's pin (a763400) still emits a one-cell `GpioPin::new` call for
+# mps2/an385's `#gpio-cells = <1>` controller, so every Rust mps2 image failed
+# to compile the `zephyr` crate on this line (4 x E0061). The same hunks apply.
+echo "[zephyr setup] 4.4 line: applying zephyr-lang-rust gpio patch (idempotent)..."
+bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$WORKSPACE"
 echo "[zephyr setup] 4.4 line: legacy 3.7 Rust/cyclone-submodule patches skipped (Tasks 4-9)"

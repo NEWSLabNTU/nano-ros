@@ -360,7 +360,7 @@ ZEPHYR_PLATFORM_DESCRIPTOR = "packages/platform/nros-platform-zephyr/nros-platfo
 # absent from this table is REFUSED, never guessed.
 BOARD_TARGETS = {
     "native_sim/native/64": (64, None),
-    "mps2_an385": (32, "thumbv7m-none-eabi"),
+    "mps2/an385": (32, "thumbv7m-none-eabi"),
 }
 
 # Fragments EVERY Zephyr image may merge after the leaf's own (the board / line

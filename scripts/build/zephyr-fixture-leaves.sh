@@ -442,7 +442,7 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         # explicitly means the next new board gets nothing rather than something
         # wrong — a default that assumes is how this cost an afternoon.
         case "$board" in
-            mps2_an385) conf_tail="$nros_root/packages/boards/nros-board-mps2-an385-zephyr/prj.conf" ;;
+            mps2/an385) conf_tail="$nros_root/packages/boards/nros-board-mps2-an385-zephyr/prj.conf" ;;
             # Issue 2157 -- native_sim's NSOS is the board package's
             # `nros-nsos` snippet, which the module hook adds for every
             # `system.toml` image on every road; no tail to append.
