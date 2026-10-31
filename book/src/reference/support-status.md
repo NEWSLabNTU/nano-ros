@@ -19,8 +19,8 @@ actually installs.
 | **2-nightly** | `ci-matrix-nightly` | Pairwise cover (~70 %) | Platform×language and RMW×language interactions surface here, within a day. |
 | **3** | `ci-full` (pre-release) | The whole matrix | Everything the tree claims, verified together. |
 
-Per-board tier membership is generated on its own page:
-[Board Support Tiers](board-support-tiers.md). The hand-maintained
+Per-board support levels are generated on their own page:
+[Board Support Levels](board-support-levels.md). The hand-maintained
 procurement view (including boards with no in-tree crate) is
 [Supported Boards](supported-boards.md).
 
@@ -102,7 +102,7 @@ store; the base version is the upstream release.
 - [Install](../getting-started/installation.md) — how these get onto
   a machine (`nros setup`, prebuilt-vs-source rules)
 - [Per-RMW Feature Matrix](rmw-feature-matrix.md)
-- [Board Support Tiers](board-support-tiers.md) (generated) ·
+- [Board Support Levels](board-support-levels.md) (generated) ·
   [Supported Boards](supported-boards.md) (procurement view)
 - [Integrating into a Vendored Tree](../getting-started/vendored-tree.md)
   — pinning and upgrading these from a company tree

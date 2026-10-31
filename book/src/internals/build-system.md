@@ -21,7 +21,7 @@ just build                 # workspace + transports (fast inner loop)
 just build-examples        # + every example
 just build-all             # + test fixtures (everything test-all consumes)
 just build-test-fixtures   # just the fixtures + writes the test-all stamp
-just build-test-fixtures lane=linux   # only what tier 1 (`just ci`) runs
+just build-test-fixtures lane=linux   # only what the tier-1 lane (`just ci`) runs
 
 just test-unit             # ~5s          ⊂
 just test-integration      # ~30s         ⊂
@@ -163,7 +163,7 @@ wrong binary. The discipline:
   `test-all`'s `_require-fixtures` fast-fails (~1 s) if the stamp is absent *or
   does not cover* the **run** implied by `NROS_FIXTURE_LANE` (bypass:
   `NROS_SKIP_FIXTURE_CHECK=1`). So a `lane=linux` build satisfies `just ci`
-  (tier 1) and is correctly rejected by an unscoped `test-all`. A pre-issue-0393
+  (the tier-1 lane) and is correctly rejected by an unscoped `test-all`. A pre-issue-0393
   timestamp-only stamp is read as `lane=all`, which is what it meant.
 
   Note "the run", not "the lane" (issue 0482). A lane's coordinates are what it
@@ -173,7 +173,7 @@ wrong binary. The discipline:
   `lane-coords <lane> --build-lane` prints it).
 
   Every lane narrows its run by fixture COORDINATE (`NROS_TEST_COORDS`), and
-  each is its own build lane. Tier 1 used to narrow by test/binary NAME
+  each is its own build lane. The tier-1 lane used to narrow by test/binary NAME
   (`NROS_TEST_SCOPE=linux`); phase-395 W19 moved it to coordinates, and issue
   1900 retired the name filter's reader, which no runner had set since. Each
   test asks the lane BEFORE it probes the host, so a test of a platform the lane
@@ -181,7 +181,7 @@ wrong binary. The discipline:
   `scripts/test/check-out-of-lane-deselected.py` proves it on the `just ci gate`
   lane.
 
-  A name filter could never have expressed tier 2 anyway: it is 1-wise over
+  A name filter could never have expressed the tier-2 lane anyway: it is 1-wise over
   platform, every platform is in the lane, so a platform-token filter excludes nothing, and the
   saving is in lang × rmw *within* a platform, which test names do not encode
   (issues 0357, 0482). So the narrowing happens in the fixture **resolver**
@@ -190,7 +190,7 @@ wrong binary. The discipline:
   `row_artifact_root()`, and a row outside the lane reports **SKIPPED** instead
   of missing. Build and run then apply the same `row_coord()` predicate to the
   same coordinate file, so `just build-test-fixtures lane=tier2 && just
-  ci-matrix` is a coherent pair. Before W3 tier 2 ran the whole suite, and a
+  ci-matrix` is a coherent pair. Before W3 the tier-2 lane ran the whole suite, and a
   `lane=tier2` build satisfied the preflight for a run that then failed STALE on
   34 unbuilt coordinates.
 

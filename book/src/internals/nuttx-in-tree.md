@@ -78,7 +78,7 @@ The `nros setup qemu-armv7a-nuttx` step above provisions the
 used for NuttX kernel compilation. The one host-side tool you still
 supply yourself:
 
-- Rust nightly toolchain (NuttX targets are Tier 3, require `-Z build-std`)
+- Rust nightly toolchain (NuttX targets are Rust tier-3 targets, so they need `-Z build-std`)
 
 ## Building
 

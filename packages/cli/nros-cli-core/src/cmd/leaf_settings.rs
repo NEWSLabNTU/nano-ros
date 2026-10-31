@@ -835,23 +835,24 @@ pub fn image_ros_edition(img: &LeafImage) -> Result<rosidl_codegen::RosEdition> 
     system_toml(img)?.image_ros_edition(Some(img.image_id.as_str()))
 }
 
-/// The board crates `packages/boards/board-support.toml` marks
-/// `tier = "scaffold"` — explicitly not supported (the dormant ESP32, issue
-/// 1525). Issue 1305's walk derives its "unsupported board" exemption from
-/// here rather than naming a path.
+/// The board crates whose derived status is "Not supported" — nothing builds
+/// or boots them (the dormant ESP32, issue 1525). Read from the board
+/// registry's generated status file (RFC-0114 D10, phase-522 W4), so issue
+/// 1305's walk derives its "unsupported board" exemption from the registry
+/// rather than naming a path.
 #[cfg(test)]
-fn scaffold_board_crates(root: &Path) -> Vec<String> {
-    let path = root.join("packages/boards/board-support.toml");
-    let doc: toml::Table = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
-        .parse()
-        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    doc.get("board")
-        .and_then(|b| b.as_array())
+fn unsupported_board_crates(root: &Path) -> Vec<String> {
+    let path = root.join("packages/boards/board-support-status.json");
+    let doc: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
+    )
+    .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    doc["rows"]
+        .as_array()
         .into_iter()
         .flatten()
-        .filter(|b| b.get("tier").and_then(|t| t.as_str()) == Some("scaffold"))
-        .filter_map(|b| b.get("crate").and_then(|c| c.as_str()).map(str::to_string))
+        .filter(|r| r["status"].as_str() == Some("Not supported"))
+        .filter_map(|r| r["crate"].as_str().map(str::to_string))
         .collect()
 }
 
@@ -2003,7 +2004,7 @@ mod board_crate_tests {
     /// bench and harness-templated fixture entry (issue 1340's witness
     /// included, with `[image.linux] producers = false`) — depends on its
     /// `<pkg>_nros_selection` package and names no board crate (enforced by
-    /// [`check_board_crate_dependency`]). A leaf for a `tier = "scaffold"`
+    /// [`check_board_crate_dependency`]). A leaf for a "Not supported"
     /// board is skipped by that DERIVED property, never listed here. A prefix
     /// matches a leaf path relative to the checkout.
     const NOT_ON_THE_SELECTION: &[(&str, &str)] = &[
@@ -2038,10 +2039,10 @@ mod board_crate_tests {
         let mut used = vec![false; NOT_ON_THE_SELECTION.len()];
         let mut stray = Vec::new();
         // A leaf for an UNSUPPORTED board is out of scope by a DERIVED
-        // property, never by naming its path: the board registry's
-        // `tier = "scaffold"` (the dormant ESP32, issue 1525 — code kept,
-        // nothing built or migrated).
-        let scaffold = scaffold_board_crates(&repo());
+        // property, never by naming its path: the board registry's derived
+        // "Not supported" (the dormant ESP32, issue 1525 — code kept, nothing
+        // built or migrated).
+        let scaffold = unsupported_board_crates(&repo());
         let mut unsupported = 0;
         for rel in String::from_utf8_lossy(&out.stdout)
             .split('\0')
@@ -2187,7 +2188,7 @@ mod board_crate_tests {
         // dormant leaves it exists for, or the registry spelling drifted.
         assert!(
             unsupported >= 1,
-            "no leaf matched a `tier = \"scaffold\"` board ({scaffold:?})"
+            "no leaf matched a \"Not supported\" board ({scaffold:?})"
         );
         assert!(
             on_selection >= 98,

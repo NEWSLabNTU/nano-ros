@@ -173,7 +173,6 @@ board-build-target:
 [private]
 board-registry:
     @python3 scripts/check-board-registry.py
-    @python3 scripts/gen-board-support-table.py --check
 
 # A Kconfig line that a later CONF_FILE fragment overrides is a line that does
 # nothing, and nothing said so (issue 0876). A RATCHET, not a prohibition —

@@ -1,5 +1,7 @@
 # ThreadX (Linux sim / RISC-V64 QEMU)
 
+> **Support level:** [`threadx-linux`](../reference/boards/threadx-linux.md), [`rv-virt-threadx`](../reference/boards/threadx-qemu-riscv64.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
+
 Single-node starter on Microsoft Azure RTOS ThreadX + NetX Duo (BSD
 socket layer). Two flavours:
 

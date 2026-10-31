@@ -25,7 +25,7 @@ subject.
 # What is exempt, and why
 
 * A leaf whose `system.toml` deploys only to a board the registry
-  (`packages/boards/board-support.toml`) holds at `tier = "scaffold"`: no lane
+  (`packages/boards/board-support.toml`) derives as "Not supported": no lane
   builds it, so its manifest is parked as-is (ESP32 is dormant, issue 1525).
   DERIVED from the leaf's own board, never a path list.
 * Rows a different generator owns, keyed on (manifest, crate) in `EXEMPT` with
@@ -37,6 +37,7 @@ Run: python3 scripts/check-managed-msg-deps.py
 from __future__ import annotations
 
 import os
+import json
 import re
 import subprocess
 import sys
@@ -121,9 +122,11 @@ def _load(path: Path) -> dict:
 
 
 def parked_boards(repo: Path) -> "set[str]":
-    """Every board NAME whose crate the registry holds at `tier = "scaffold"`."""
-    tiers = {b.get("crate"): b.get("tier")
-             for b in _load(repo / "packages/boards/board-support.toml").get("board", [])}
+    """Every board NAME whose crate the registry derives as "Not supported"
+    (RFC-0114 D10: nothing builds or boots it), read from the registry's
+    generated status file."""
+    status = json.loads((repo / "packages/boards/board-support-status.json").read_text())
+    unsupported = {r["crate"] for r in status["rows"] if r["status"] == "Not supported"}
     names: "set[str]" = set()
     for desc in tracked(repo, "packages/boards/**/nros-board.toml"):
         d = repo / desc
@@ -133,7 +136,7 @@ def parked_boards(repo: Path) -> "set[str]":
             crate_of_dir = _load(cargo).get("package", {}).get("name")
         for b in _load(d).get("board", []):
             crate = b.get("board_crate") or crate_of_dir
-            if tiers.get(crate) == "scaffold":
+            if crate in unsupported:
                 names.update(b.get("names", []))
     return names
 

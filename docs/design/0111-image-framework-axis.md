@@ -211,7 +211,7 @@ The work, for a phase to pick up:
      and doc comments);
    - `bins/rtic-run-plan-e2e`;
    - the book's `rtic-integration.md`, `bare-metal.md`,
-     `board-support-tiers.md` and `troubleshooting-first-10-min.md`;
+     `board-support-levels.md` and `troubleshooting-first-10-min.md`;
    - the CLI, macro and tier-resolver tests;
    - `board-support.toml`;
    - the `NanoRosBareMetalPlatform.cmake` comment.

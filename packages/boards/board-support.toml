@@ -1,68 +1,20 @@
-# Board support registry — phase-320 W2.
+# Board support registry — RFC-0114 (phase-522), first written by phase-320 W2.
 #
-# ONE table listing every board package, its support tier, and its maintainers.
-# This is the SSoT the book's supported-boards table is generated from and the
-# `check-board-tiers` gate validates against evidence.
+# ONE table listing every board package, the evidence nano-ros holds for it,
+# and its maintainers. It is the only place a board fact is typed:
+# `scripts/gen-board-support.py` writes the test-matrix cells, the probe
+# tracks, issue 2169's ROWS, the book's support pages and the status file the
+# CLI reads from it, and `just check board-registry` holds every view to it.
 #
-# Why a single registry instead of a `tier` field in each `nros-board.toml`:
-# only 12 of the 27 board directories have a descriptor at all, so a per-crate
-# field could not cover the set — and the completeness check (every board is
-# listed exactly once) is the whole point. This mirrors Rust's platform-support
+# Why a single registry instead of a field in each `nros-board.toml`: a
+# descriptor states what a BUILD needs (RFC-0049, RFC-0064), and a build must
+# not read a test registry; and the completeness check (every board directory
+# is listed exactly once) needs one table. This mirrors Rust's platform-support
 # table rather than its per-target spec files.
 #
-# Why not tier DIRECTORIES: tier is metadata, not layout. Rust keeps target
-# specs flat and the tier in target metadata precisely so a promotion is a
-# one-line edit rather than a path change rippling through ~200 references.
-#
 # ---------------------------------------------------------------------------
-# TIERS — each is a promise, and each is mechanically checkable.
-#
-#   1  Supported   `just ci` exercises it, it has asserted runtime coverage,
-#                  and a nightly lane builds it. A regression fails before
-#                  merge.
-#   2  Verified    Asserted runtime coverage + a nightly lane, but not in
-#                  `just ci`. Breakage is found within a day.
-#   3  Build-only  Compiles; NO CI lane can boot it (hardware or a
-#                  license-gated model is required). Nobody has booted it
-#                  recently unless a maintainer did so by hand.
-#   scaffold       Structurally incomplete. Explicitly NOT supported. Distinct
-#                  from tier 3: tier 3 is finished-but-unverified, scaffold is
-#                  unfinished. `embassy-stm32f4` is why this state existed — it
-#                  was actively committed to, which reads as support unless the
-#                  registry says otherwise. phase-337 W7 answered the state's
-#                  own question: a scaffold nobody finishes is a delete, and
-#                  every scaffold row left the tree with its crate.
-#   infra          Not a board: shared traits, family drivers, ABI mirrors,
-#                  PACs. Carries no platform and no tier promise.
-#
-# Gate predicates (scripts/check-board-tiers.py):
-#   - tier 1|2  => the platform has >=1 `Runtime` cell in matrix.rs
-#   - tier 3    => the platform has ZERO Runtime cells (build-only means it)
-#   - scaffold  => zero Runtime cells AND zero fixture rows
-#   - tier 1    => a nightly lane covers it (or it is the native host, which
-#                  `just ci` runs directly — stronger than a nightly build)
-#   - every board directory appears exactly once; every entry names a real one
-#   - tier 1 => >=3 named maintainers, tier 2 => >=2, tier 3 => >=1 (phase-375
-#     W1), with rows that predate the rule grandfathered by
-#     scripts/board-maintainer-baseline.json — a list that only shrinks
-#
-# Where the BOOK says how to run it (phase-517 W9, scripts/check-book-board-run-sections.py):
-#   - book_run      "<chapter>.md#<anchor>" under book/src/: the chapter's
-#                   "Run …" section (QEMU, a simulator, or the host) — required
-#                   on every tier 1|2|3 row unless real_hardware = true
-#   - real_hardware true when the board is physical silicon that is FLASHED;
-#                   required on an `execution_class = "hardware"` row, because
-#                   that class also covers a model CI does not run (the FVP)
-#   - book_flash    "<chapter>.md#<anchor>": the "Flash …" section — required
-#                   when real_hardware = true (a build-only board says so there)
-#   The anchor is the id mdbook gives the heading; the section must hold a
-#   fenced command block.
-#
-# `maintainers` is ENFORCED since phase-375 W1 — see the note at the bottom.
-# ---------------------------------------------------------------------------
-# EVIDENCE PRIMITIVES — RFC-0114 D10/D11, added by phase-522 W1 BESIDE `tier`
-# and `execution_class`, which stay until phase-522 W4 retires them. Both field
-# sets are checked by `scripts/check-board-tiers.py` during the migration.
+# EVIDENCE PRIMITIVES — RFC-0114 D10/D11. A row states what nano-ros can SHOW,
+# never a rank:
 #
 #   runs       none | host | emulator | hardware — where the board's image
 #              executes in evidence nano-ros holds.
@@ -77,27 +29,57 @@
 #   infra      true — shared traits, family drivers, ABI mirrors, PACs and
 #              descriptor directories. No other evidence field on such a row.
 #   breadth    "witness" | "inherits <PlatformId>" — whose matrix the row's
-#              breadth is (D11). Required on every non-infra row.
+#              breadth is (D11). Required on every row that runs.
 #   external   the repository that holds a board package living outside this
 #              tree; exempts the row from the packages/boards/ directory check.
 #
-# The status word ("Verified on host (merge)", "Boots, manual (date)", "Builds",
-# …) is DERIVED by the gate from these fields and the matrix, never typed.
-# `--print-status` prints it per row. A manual row whose `last_run` is older
-# than `manual_stale_days` reads "Builds" with its date.
+# The STATUS WORD is derived, never typed (scripts/lib/board_registry.py):
+#
+#   Verified on host / in emulator / on hardware (cadence)   runs + automated cadence
+#   Boots, manual (date)                                      runs + cadence manual
+#   Builds                                                    runs none + a build
+#   Not supported                                             runs none, nothing builds
+#   Infrastructure                                            infra = true
+#
+# A manual row whose `last_run` is older than `manual_stale_days` reads
+# "Builds (last booted <date>)" in every live view (`nros board`,
+# `check-board-tiers.py --print-status`); the generated pages, which must not
+# change on a day nobody edited anything, print the date that starts instead.
+#
+# Predicates (scripts/check-board-tiers.py, run by `just check board-registry`):
+#   - an automated run (merge/daily/weekly) => >=1 `Runtime` cell for the platform
+#   - runs = "none"                         => ZERO Runtime cells for the platform
+#   - cadence merge  => a host executable, and in `ci_lane`'s tier-1 pool
+#   - cadence daily  => a `nightly_token` the nightly sweep runs
+#   - cadence weekly => `probe` tracks of the weekly probe workflow
+#   - cadence manual => `last_run`
+#   - every board directory appears; every row names a real one or is `external`
+#   - a Verified row needs >=2 named maintainers, a Boots or Builds row >=1
+#     (RFC-0114 D10), rows that predate the rule grandfathered by
+#     scripts/board-maintainer-baseline.json — a list that only shrinks
+#
+# Where the BOOK says how to run it (phase-517 W9, scripts/check-book-board-run-sections.py):
+#   - book_run      "<chapter>.md#<anchor>" under book/src/: the chapter's
+#                   "Run …" section (QEMU, a simulator, or the host) — required
+#                   on every row that runs, unless real_hardware = true
+#   - real_hardware true when the board is physical silicon that is FLASHED;
+#                   required when runs = "hardware"
+#   - book_flash    "<chapter>.md#<anchor>": the "Flash …" section — required
+#                   when real_hardware = true (a build-only board says so there)
+#   The anchor is the id mdbook gives the heading; the section must hold a
+#   fenced command block.
+# ---------------------------------------------------------------------------
 manual_stale_days = 120
 
 # phase-522 W2 — the registry's cell table: every `matrix::CELLS` cell, in its
 # own file because it is long. Part of the registry, read by the same generator.
 cell_table = "board-support-cells.toml"
 
-# ===== tier 1 — supported ==================================================
+# ===== boards =================================================================
 
 [[board]]
 crate = "nros-board-linux"
 matrix_platform = "Linux"
-tier = 1
-execution_class = "host-executable"
 book_run = "getting-started/first-project.md#run"
 runs = "host"
 cadence = "merge"
@@ -109,8 +91,6 @@ notes = "The reference platform: the densest Runtime coverage of any target, all
 crate = "nros-board-zephyr"
 matrix_platform = "ZephyrNativeSim"
 nightly_token = "zephyr"
-tier = 1
-execution_class = "host-executable"
 book_run = "getting-started/integration-zephyr.md#run-on-native_sim"
 runs = "host"
 cadence = "merge"
@@ -123,24 +103,24 @@ notes = "CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardwa
 # file) and the first place the ARMv8-R half of the FreeRTOS platform has ever
 # run, since no emulator models the S32Z270 RTU (issue 0772).
 #
-# `scaffold`, and deliberately so: the board builds, boots and delivers Cyclone
-# pub/sub, but it has no `PlatformId` variant, so NOTHING in the runtime matrix
-# runs it. Phase-385 W4 defers that cell explicitly — "a new `MP::` platform
+# `runs = "none"`, and deliberately so: the board builds, boots and delivers
+# Cyclone pub/sub, but it has no `PlatformId` variant, so NOTHING in the
+# runtime matrix runs it. Phase-385 W4 defers that cell explicitly — "a new `MP::` platform
 # variant [with] ~67 references across platform.rs, matrix.rs, lane_scope.rs
 # and several test files, each with its own gate ... is its own commit, not a
 # tail end of this one".
 #
 # So `matrix_platform` is ABSENT rather than borrowed from a sibling. That is
-# what makes this row honest: scaffold promises nothing and owes no
-# maintainers, which is exactly the board's state. Its two `fixtures.toml` rows
+# what makes this row honest: it claims no run, which is exactly the board's
+# state, and its derived word is "Builds". Its two `fixtures.toml` rows
 # build under `platform = "freertos"` with `NROS_BOARD`, so they are
 # attributed to the existing platform and are not a runtime witness for this
-# board. Give it a tier when W4 lands the cell, not before — a tier that is
-# merely asserted is the drift this gate exists to catch.
+# board. Give it `runs = "emulator"` when phase-385 W4 lands the cell, not
+# before — a run that is merely asserted is the drift this gate exists to
+# catch.
 [[board]]
 crate = "nros-board-mps3-an536-freertos"
 nightly_token = "freertos"
-tier = "scaffold"
 runs = "none"
 emulator = "qemu:mps3-an536"
 breadth = "inherits FreertosMps2"
@@ -151,8 +131,6 @@ crate = "nros-board-mps2-an385-freertos"
 matrix_platform = "FreertosMps2"
 nightly_token = "freertos"
 link_check_example = "examples/mps2-an385-freertos/rust/talker"
-tier = 2
-execution_class = "cross-run"
 book_run = "getting-started/freertos.md#run-on-qemu"
 runs = "emulator"
 emulator = "qemu:mps2-an385"
@@ -171,19 +149,17 @@ crate = "nros-board-s32z270-freertos"
 # NO matrix_platform, deliberately. It read `FreertosMps2` "until a hardware
 # witness exists" — reusing the family lane's PlatformId — and that is the
 # declaration check-board-tiers exists to reject: FreertosMps2 HAS Runtime
-# cells (RealtimeTiers, TierPriority C/C++), so a tier-3 row pointing at it
+# cells (RealtimeTiers, TierPriority C/C++), so a build-only row pointing at it
 # claims build-only support from a platform whose cells assert running code.
 # The cells are MPS2-AN385's; this board is a Cortex-R52 automotive part with
 # no emulator here, and the two share only a kernel. That mismatch is the exact
 # defect phase-320 W1.a fixed for FVP, one family over.
 #
-# The key is optional for tier 3 (only tiers 1 and 2 must name a platform), and
-# a row without one is skipped by check-flavour-lanes and renders "—" in the
+# The key is optional on a row that does not run (an automated run must name a
+# platform), and a row without one is skipped by check-flavour-lanes and renders "—" in the
 # support table — which is the honest answer: no matrix platform witnesses this
 # board yet. Give it a real PlatformId when it gets a witness, not the
 # neighbour's.
-tier = 3
-execution_class = "hardware"
 real_hardware = true
 book_flash = "getting-started/freertos.md#flash-a-real-board"
 runs = "none"
@@ -192,17 +168,15 @@ breadth = "inherits FreertosMps2"
 maintainers = []
 notes = "S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). No matrix_platform: no witness exists for this board, and borrowing FreertosMps2's would claim its Runtime cells. Link-completeness is proven by the workspace cmake lane with the CRx_No_GIC default port."
 
-# phase-337 W3.d — ONE crate, TWO witnesses, TWO tiers. This row and the
-# `NuttxRiscv` row below are the reason W1.c re-keyed the registry by
-# (crate, matrix_platform): tier is a per-witness promise ("`just ci` exercises
-# it" is true of arm and false of rv-virt), so they cannot share a row.
+# phase-337 W3.d — ONE crate, TWO witnesses. This row and the `NuttxRiscv` row
+# below are the reason W1.c re-keyed the registry by (crate, matrix_platform):
+# evidence is per witness (the arm and rv-virt runs are different cells), so
+# they cannot share a row.
 [[board]]
 crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxArm"
 nightly_token = "nuttx"
 link_check_example = "examples/qemu-armv7a-nuttx/rust/talker"
-tier = 2
-execution_class = "cross-run"
 book_run = "getting-started/integration-nuttx.md#run-on-qemu-arm-virt"
 runs = "emulator"
 emulator = "qemu:virt-armv7a"
@@ -215,8 +189,6 @@ crate = "nros-board-threadx-linux"
 matrix_platform = "ThreadxLinux"
 nightly_token = "threadx_linux"
 link_check_example = "examples/threadx-linux/rust/talker"
-tier = 1
-execution_class = "host-executable"
 book_run = "getting-started/threadx.md#run-on-the-linux-simulator"
 runs = "host"
 cadence = "merge"
@@ -231,25 +203,20 @@ crate = "nros-board-freertos-posix"
 matrix_platform = "FreertosPosix"
 # `freertos`, not `freertos_posix`: the nightly sweep's modules are `just`
 # modules (`PlatformId::just_module`), and the POSIX simulator is
-# `just freertos build-posix-*`. The old token named no module, which tier 2
-# never asked about and `cadence = "daily"` does (phase-522 W1).
+# `just freertos build-posix-*`. The old token named no module, which nothing
+# asked about until `cadence = "daily"` did (phase-522 W1).
 nightly_token = "freertos"
-tier = 2
-execution_class = "host-executable"
 book_run = "getting-started/freertos.md#run-on-the-posix-simulator"
 runs = "host"
 cadence = "daily"
 breadth = "inherits FreertosMps2"
 maintainers = []
 
-# ===== tier 2 — verified ===================================================
 
 [[board]]
 crate = "nros-board-threadx-qemu-riscv64"
 matrix_platform = "ThreadxRiscv64"
 nightly_token = "threadx_riscv64"
-tier = 2
-execution_class = "cross-run"
 book_run = "getting-started/threadx.md#run-on-qemu-risc-v-64"
 runs = "emulator"
 emulator = "qemu:rv-virt"
@@ -262,8 +229,6 @@ notes = "All three Action rows are BuildOnly by a deliberate wall-clock choice (
 crate = "nros-board-mps2-an385"
 matrix_platform = "QemuBaremetal"
 nightly_token = "qemu"
-tier = 2
-execution_class = "cross-run"
 book_run = "getting-started/bare-metal.md#run-on-qemu"
 runs = "emulator"
 emulator = "qemu:mps2-an385"
@@ -288,33 +253,27 @@ notes = "phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` fea
 crate = "nros-board-mps2-an385-zephyr"
 matrix_platform = "ZephyrQemuCortexM"
 nightly_token = "zephyr"
-tier = 2
-execution_class = "cross-run"
 book_run = "getting-started/integration-zephyr.md#run-on-qemu-mps2-an385"
 runs = "emulator"
 emulator = "qemu:mps2-an385"
 cadence = "daily"
 breadth = "witness"
 maintainers = []
-notes = "C, C++ and Rust pubsub are Runtime; service/action are BuildOnly pending the runner's peer half. It also carries the tree's first non-native_sim live-peer interop cell (phase-441 W1, `zephyr-cortex-m-pubsub-c-zenoh`). This note used to say NO RUST ROW, because `zephyr-lang-rust` could not compile for any board whose devicetree has gpio nodes — issue 0432, RESOLVED 2026-08-12 by phase-346 W2/W3, after which the Rust leaf built and `zephyr_cortex_m_rust_zenoh_pubsub_e2e` ran it while four documents still said it could not. Tier 2 rather than 1 because `just ci` is host-only and this needs QEMU."
+notes = "C, C++ and Rust pubsub are Runtime; service/action are BuildOnly pending the runner's peer half. It also carries the tree's first non-native_sim live-peer interop cell (phase-441 W1, `zephyr-cortex-m-pubsub-c-zenoh`). This note used to say NO RUST ROW, because `zephyr-lang-rust` could not compile for any board whose devicetree has gpio nodes — issue 0432, RESOLVED 2026-08-12 by phase-346 W2/W3, after which the Rust leaf built and `zephyr_cortex_m_rust_zenoh_pubsub_e2e` ran it while four documents still said it could not. Daily rather than per merge because `just ci` is host-only and this needs QEMU."
 
 [[board]]
 crate = "nros-board-esp32-qemu"
 matrix_platform = "Esp32Qemu"
-tier = "scaffold"
-execution_class = "cross-run"
 runs = "none"
 emulator = "qemu:esp32"
 breadth = "witness"
 maintainers = []
-notes = "DORMANT (issue 1525): code kept for future use; no lane builds or tests it. Was tier 2 (two-way QEMU e2e, esp32_emulator.rs, now #[ignore]d)."
+notes = "DORMANT (issue 1525): code kept for future use; no lane builds or tests it. It used to run nightly (two-way QEMU e2e, esp32_emulator.rs, now #[ignore]d)."
 
 [[board]]
 crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxRiscv"
 nightly_token = "nuttx"
-tier = 2
-execution_class = "cross-run"
 book_run = "getting-started/integration-nuttx.md#run-on-qemu-risc-v-rv-virt"
 runs = "emulator"
 emulator = "qemu:rv-virt"
@@ -323,14 +282,11 @@ breadth = "inherits NuttxArm"
 maintainers = []
 notes = "HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly."
 
-# ===== tier 3 — build-only =================================================
 
 [[board]]
 crate = "nros-board-zephyr"
 matrix_platform = "Fvp"
 sdk = "arm-fvp"  # `[tool.arm-fvp]` since 2026-09-06 — fetched, not gated
-tier = 3
-execution_class = "hardware"
 real_hardware = false
 book_run = "getting-started/arm-fvp.md#run-on-the-fvp"
 runs = "emulator"
@@ -339,26 +295,8 @@ cadence = "manual"
 last_run = "2026-09-06"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = []
-notes = "Runtime is maintainer-run via `just zephyr verify-fvp-runtime` — hence `execution_class = \"hardware\"`, which is what exempts this row from phase-375 W4's smoke floor. The model is NOT licence-gated (that claim stood here until 2026-09-06 and was wrong): `nros setup --tool arm-fvp` fetches it from a pinned Arm CDN permalink, and the board-import fixture was verified booting on it (`nros: smoke ok`) the same day. What still keeps CI out is cost and x86_64-only hosting, not permission. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see. phase-337 W9.a folded the `nros-board-fvp-aemv8r-smp` CRATE into `nros-board-zephyr/boards/fvp-aemv8r-smp/` — the crate's Rust half (a `Config` and a `run` loop) had zero consumers, so what it actually shipped was a prj.conf, a DTS overlay and a board.cmake: a config bundle wearing a Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate, matrix_platform) keying is for."
+notes = "Runtime is maintainer-run via `just zephyr verify-fvp-runtime` — hence `cadence = \"manual\"`, which is what exempts this row from the Runtime-cell requirement. The model is NOT licence-gated (that claim stood here until 2026-09-06 and was wrong): `nros setup --tool arm-fvp` fetches it from a pinned Arm CDN permalink, and the board-import fixture was verified booting on it (`nros: smoke ok`) the same day. What still keeps CI out is cost and x86_64-only hosting, not permission. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see. phase-337 W9.a folded the `nros-board-fvp-aemv8r-smp` CRATE into `nros-board-zephyr/boards/fvp-aemv8r-smp/` — the crate's Rust half (a `Config` and a `run` loop) had zero consumers, so what it actually shipped was a prj.conf, a DTS overlay and a board.cmake: a config bundle wearing a Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate, matrix_platform) keying is for."
 
-# ===== scaffold — explicitly not supported =================================
-#
-# EMPTY since phase-337 W7.b. The four boards that lived here
-# (`embassy-stm32f4`, `esp32s3`, `s32z270dc2-r52`, `orin-spe`) contributed zero
-# cells of any tier, so deleting them cost no coverage. The STATE stays declared
-# above: it is what stops the next unfinished board from reading as support.
-
-# phase-375 W6 — DECLARED at last. Both boards were already built and tested by
-# this tree while appearing in no registry, no descriptor and no announcement:
-# `examples/fixtures.toml` named them as raw Zephyr id STRINGS, which is a
-# fourth way to add a board and the one with no record at all.
-#
-# `tier = "scaffold"` is the honest entry, and deliberately NOT a promotion.
-# (Both have since moved to the descriptor-only directories below, issue 2177.) These rows are new; a tier with a promise needs a named maintainer (W1: 1/2/3
-# for tiers 3/2/1) and neither has one. What changed today is that they are
-# VISIBLE — a board nobody declared cannot be given a tier, an owner, or a
-# demotion, which is what made the fourth route worse than any of the other
-# three.
 # phase-522 W1 (RFC-0114 migration table) — the S32K344 safety island. A board
 # nano-ros has measured booting on silicon, declared nowhere until now: the
 # Autoware safety island (simple-autoware-safety-island) runs a Zephyr image on
@@ -376,8 +314,6 @@ notes = "Runtime is maintainer-run via `just zephyr verify-fvp-runtime` — henc
 [[board]]
 crate = "s32k344-safety-island"
 external = "simple-autoware-safety-island"
-tier = 3
-execution_class = "hardware"
 real_hardware = true
 book_flash = "getting-started/integration-zephyr.md#flash-a-real-board"
 runs = "hardware"
@@ -392,49 +328,42 @@ notes = "NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a 921,600-
 
 [[board]]
 crate = "nros-board-common"
-tier = "infra"
 infra = true
 maintainers = []
 notes = "Build-helper library plus one trait; 2180 of 2252 code lines are behind `build-helpers`."
 
 [[board]]
 crate = "nros-board-cffi"
-tier = "infra"
 infra = true
 maintainers = []
 notes = "Header ABI mirror with ZERO in-tree C consumers; kept alive by its own drift gate. Spec artifact, not a library."
 
 [[board]]
 crate = "nros-board-freertos"
-tier = "infra"
 infra = true
 maintainers = []
 notes = "Real family driver: the MPS2 overlay is `pub use nros_board_freertos::Config` and carries zero config code. The pattern the forked boards should copy."
 
 [[board]]
 crate = "nros-board-nuttx"
-tier = "infra"
 infra = true
 maintainers = []
 notes = "NuttX FAMILY DRIVER, not a façade: owns run_entry / run_tiers / the tier spin loops, which the one board overlay (nros-board-nuttx-qemu) delegates to. phase-337 W3 merged the two board crates below it; this layer stays."
 
 [[board]]
 crate = "nros-board-threadx"
-tier = "infra"
 infra = true
 maintainers = []
 notes = "Real family driver: a 1120-line generic entry.py both ThreadX boards call into."
 
 [[board]]
 crate = "nros-board-threadx-port-riscv64"
-tier = "infra"
 infra = true
 maintainers = []
 notes = "NOT a board: RFC-0064 layer 2, the ThreadX RISC-V64/GNU ARCH PORT. Upstream types ULONG as 8 bytes there; NetX Duo's packet code does `ULONG *` arithmetic assuming 4, and retyping it shifts every TX_THREAD offset the context-switch assembly loads — so the fork is a header plus five `.S` files, and it is arch, not board. Extracted from nros-board-threadx-qemu-riscv64 by phase-337 W4.a; a second riscv64 ThreadX board would need every line of it unchanged. threadx-linux has none because upstream's Linux port already types ULONG as 4 bytes — which is why the two ThreadX boards did NOT merge."
 
 [[board]]
 crate = "mps2-an385-pac"
-tier = "infra"
 infra = true
 maintainers = []
 notes = "IRQ enum only. Kept because RTIC's `#[rtic::app(device = ...)]` needs a nameable path."
@@ -443,14 +372,12 @@ notes = "IRQ enum only. Kept because RTIC's `#[rtic::app(device = ...)]` needs a
 
 [[board]]
 crate = "linux"
-tier = "infra"
 infra = true
 maintainers = []
 notes = "nros-board.toml descriptor directory, not a crate (renamed from `posix` by phase-337 W8.d). phase-321 W2 moves these out of packages/boards/."
 
 [[board]]
 crate = "zephyr"
-tier = "infra"
 infra = true
 maintainers = []
 notes = "nros-board.toml descriptor directory, not a crate."
@@ -465,14 +392,14 @@ notes = "nros-board.toml descriptor directory, not a crate."
 # `ZephyrNativeSim` row, which is where its promise lives. Not a promotion.
 [[board]]
 crate = "nros-board-qemu-cortex-a53"
-tier = "infra"
 infra = true
 maintainers = []
 notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cortex_a53/qemu_cortex_a53/smp` board's descriptor and base Kconfig. Its Runtime cell (CorePinPlacement, the tree's only multi-core cell) is booked on `nros-board-zephyr`'s ZephyrNativeSim row."
 
 # ---------------------------------------------------------------------------
-# `maintainers` is ENFORCED (phase-375 W1): tier 1 needs 3, tier 2 needs 2,
-# tier 3 needs 1.
+# `maintainers` is ENFORCED (phase-375 W1, re-keyed by RFC-0114 D10): a
+# Verified row needs 2, a Boots or Builds row needs 1; Not supported and
+# Infrastructure rows owe nobody.
 #
 # Rust's target-tier policy requires a named person per target and demotes
 # targets whose maintainer goes unreachable — that mechanism, not the directory
@@ -480,12 +407,11 @@ notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cor
 #
 # It is still empty everywhere, and that is the point of the shape the rule took.
 # Inventing an owner would be worse than leaving the field blank, so enforcement
-# landed as a RATCHET rather than a cliff: the 13 rows that predate it are
+# landed as a RATCHET rather than a cliff: the rows that predate it are
 # grandfathered in scripts/board-maintainer-baseline.json, which only shrinks. A
 # NEW board is bound immediately, an existing one when someone claims it, and a
-# PROMOTION is bound too — an exemption granted at tier 3 does not cover tier 2,
-# because a stronger promise is a new one. A gate that failed all 22 rows on the
-# day it landed would have been bypassed, and a bypassed gate enforces nothing.
+# stronger level is bound too — an exemption granted at Builds does not cover
+# Verified, because a stronger claim is a new one.
 #
 # To claim a board: add your handle to its `maintainers`, then run
 # `python3 scripts/check-board-tiers.py --write-baseline` to drop the row from
