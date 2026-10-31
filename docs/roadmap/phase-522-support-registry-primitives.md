@@ -1,6 +1,6 @@
 # Phase 522 — The board support registry becomes the one primitive
 
-**Status (2026-11-01). IN PROGRESS: W1, W2, W3 and W4 landed.** Implements
+**Status (2026-11-01). IN PROGRESS: W1-W5 landed; the phase archives once the last of them merges.** Implements
 [RFC-0114](../design/0114-board-support-registry-primitives.md) (D10 support
 levels, D11 derived and inherited breadth, D12 one registry, everything else
 generated). Amends the tier section of
@@ -279,6 +279,32 @@ number in the output.
 Decision step: if the installed toolchain's copy of the registry and the
 checkout's disagree (a released `nros` against a newer checkout), the CLI
 prints both and says which it read; it never picks silently.
+
+**Result (2026-11-01).** `nros board list` prints a status and a cadence
+column beside each board crate (one entry per row when a crate carries
+several), `nros board show <name>` prints a row's evidence-page facts (status,
+where it runs, cadence, the date a manual row goes stale, breadth, book
+chapters, evidence page), and `nros doctor --report [--config <bringup>]`
+prints, for every image of the bringup, its board, the registry row and that
+row's status on today's date, then stops. All three read the generated
+`packages/boards/board-support-status.json` from the SDK root the read-only
+board verbs already resolve (RFC-0099 D3), so a released toolchain answers
+from the copy it ships, and apply D10's manual-row staleness with the real
+date. Where the package directory cannot say which row an image's board is
+(a package carrying several rows, or a descriptor in another directory), the
+registry's new `board_keys` field names the descriptor keys; the gate refuses
+a key no descriptor names or two rows claim. Tests: `board_support`'s unit
+tests (the stale day in both directions, row lookup, the status file covering
+every registry row with a D10 word and no tier, disagreeing copies) and
+`board_key_table.rs`'s `every_descriptor_board_key_reports_a_support_status`.
+The installed probe track passes its board row to the verifier, which
+requires the installed `nros board show` to print a status word.
+
+Decision step: when the checkout's registry and the running `nros`'s own
+SDK-root copy differ, `nros board list` and `nros board show` print both
+words for the rows that differ and a note naming the file read; they never
+pick silently. `check-user-surface-ids` (phase-523 W1) does not exist yet, so
+that acceptance line waits for it.
 
 ## Acceptance for the phase
 

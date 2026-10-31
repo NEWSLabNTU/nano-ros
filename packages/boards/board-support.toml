@@ -32,6 +32,13 @@
 #              breadth is (D11). Required on every row that runs.
 #   external   the repository that holds a board package living outside this
 #              tree; exempts the row from the packages/boards/ directory check.
+#   board_keys the descriptor board keys (`nros-board.toml` `names`) this row's
+#              evidence is for, where the package directory alone cannot say:
+#              a package carrying several rows (`nros-board-zephyr`, the
+#              NuttX QEMU pair) or a row whose descriptor lives in another
+#              directory (`linux`). `nros doctor --report` maps an image's
+#              board through it; the gate requires every key to name a
+#              descriptor and no key to answer for two rows.
 #
 # The STATUS WORD is derived, never typed (scripts/lib/board_registry.py):
 #
@@ -80,6 +87,7 @@ cell_table = "board-support-cells.toml"
 [[board]]
 crate = "nros-board-linux"
 matrix_platform = "Linux"
+board_keys = ["linux"]
 book_run = "getting-started/first-project.md#run"
 runs = "host"
 cadence = "merge"
@@ -90,6 +98,7 @@ notes = "The reference platform: the densest Runtime coverage of any target, all
 [[board]]
 crate = "nros-board-zephyr"
 matrix_platform = "ZephyrNativeSim"
+board_keys = ["zephyr"]
 nightly_token = "zephyr"
 book_run = "getting-started/integration-zephyr.md#run-on-native_sim"
 runs = "host"
@@ -175,6 +184,7 @@ notes = "S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). No matrix_platform:
 [[board]]
 crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxArm"
+board_keys = ["nuttx", "qemu-armv7a-nuttx"]
 nightly_token = "nuttx"
 link_check_example = "examples/qemu-armv7a-nuttx/rust/talker"
 book_run = "getting-started/integration-nuttx.md#run-on-qemu-arm-virt"
@@ -273,6 +283,7 @@ notes = "DORMANT (issue 1525): code kept for future use; no lane builds or tests
 [[board]]
 crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxRiscv"
+board_keys = ["nuttx-riscv", "rv-virt-nuttx"]
 nightly_token = "nuttx"
 book_run = "getting-started/integration-nuttx.md#run-on-qemu-risc-v-rv-virt"
 runs = "emulator"
@@ -286,6 +297,7 @@ notes = "HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveO
 [[board]]
 crate = "nros-board-zephyr"
 matrix_platform = "Fvp"
+board_keys = ["fvp-aemv8r-smp"]
 sdk = "arm-fvp"  # `[tool.arm-fvp]` since 2026-09-06 — fetched, not gated
 real_hardware = false
 book_run = "getting-started/arm-fvp.md#run-on-the-fvp"
