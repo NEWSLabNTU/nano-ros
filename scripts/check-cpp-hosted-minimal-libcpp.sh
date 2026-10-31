@@ -114,7 +114,12 @@ selftest() {
     case "$rc:$out" in
         0:*) echo "$tag: SELFTEST FAIL — a '/*' inside a block comment compiled; -Werror=comment is not in force" >&2
              return 1 ;;
-        *'"/*" within comment'*) ;;
+        # Match the diagnostic, not its punctuation: GCC <= 15 prints
+        # `"/*" within comment`, GCC 16 `‘/*’ within comment` (typographic
+        # quotes; `'/*'` under LC_ALL=C), clang `'/*' within block comment`.
+        # Pinning GCC 13's quotes made this control fail on a GCC 16 host
+        # while -Werror=comment was doing exactly its job (issue 2186).
+        *'/*'*'within'*'comment'*) ;;
         *) echo "$tag: SELFTEST FAIL — the nested-comment control failed for another reason:" >&2
            printf '%s\n' "$out" >&2
            return 1 ;;

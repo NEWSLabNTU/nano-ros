@@ -13,29 +13,14 @@
 # `just/check.just` became the worst conflict surface in the tree at 48 of
 # 300 commits.
 
+# issue 2186 — `--check` generates into a TEMP DIR and compares; it never
+# writes the tree. It used to run the write mode and then `git diff`, so the
+# gate rewrote the committed bindings exactly when it found them stale (every
+# `pre-push` on a libclang-23 host). The script owns the whole verdict: OK,
+# stale (FAIL), or NOT VERIFIED (no runnable bindgen, or a libclang whose doc
+# comments differ from the committed libclang-14 bytes while the code matches).
 abi-bindings:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if ! command -v bindgen >/dev/null 2>&1; then
-        # shellcheck source=scripts/build/check-skip.sh
-        source scripts/build/check-skip.sh
-        nros_check_skip abi-bindings \
-            "bindgen-cli not installed (cargo install bindgen-cli --locked --version 0.72.1)"
-        exit 0
-    fi
-    bash scripts/gen-abi-bindings.sh >/dev/null
-    if ! git diff --exit-code --quiet -- \
-        packages/rmw/cffi/src/generated.rs \
-        packages/platform/nros-platform-cffi/src/generated.rs \
-        packages/boards/nros-board-cffi/src/generated.rs; then
-        git --no-pager diff --stat -- \
-            packages/rmw/cffi/src/generated.rs \
-            packages/platform/nros-platform-cffi/src/generated.rs \
-            packages/boards/nros-board-cffi/src/generated.rs
-        echo "ERROR: committed ABI bindings are stale — headers changed without rerunning scripts/gen-abi-bindings.sh; commit the regenerated files."
-        exit 1
-    fi
-    echo "ABI bindings match the C-header SSoT."
+    @bash scripts/gen-abi-bindings.sh --check
 
 # Phase 176.4 — verify <nros/board.h> matches the Rust extern block
 # and the `nros_board_export!` macro emission in nros-board-cffi.
