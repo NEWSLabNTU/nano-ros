@@ -39,8 +39,13 @@
 //! | --- | --- | --- | --- | --- |
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 26 | 11 | 22 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 20 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config | 37 | 35 | 69 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 45 | 39 | 76 % |
 //! | tier 3 | everything | 255 | 51 | 100 % |
+//!
+//! Re-measured 2026-10-31 (phase-466 W5, RFC-0061 amendment of that date):
+//! every realtime-tiers cell is its own nightly requirement, 37 / 35 -> 45 / 39.
+//! The four new coordinates are `freertos,cpp,zenoh`, `zephyr,cpp,zenoh`,
+//! `linux,c,zenoh` and `linux,cpp,zenoh`; tiers 1 and 2 did not move.
 //!
 //! Re-measured 2026-10-31 (phase-520 W2): the `HostLoop` workload joined with
 //! one Linux Rust Zenoh Runtime cell, at an existing coordinate. Tier 1's 1-wise
@@ -478,6 +483,23 @@ fn config_platform_pairs(c: &Cell) -> Vec<Req> {
         .collect()
 }
 
+/// phase-466 W5 — every realtime-tiers cell is its OWN requirement in the
+/// nightly cover. Phase-330 handed over "a verdict from `realtime_tiers_e2e` on
+/// every RTOS cell", which is a promise per CELL, and a pairwise cover makes no
+/// promise about any one cell: it picked `zephyr,cpp,xrce` and
+/// `freertos,cpp,cyclonedds` for the Zephyr and FreeRTOS C++ pairs, so the four
+/// realtime C++ rows at `zephyr,cpp,zenoh` / `freertos,cpp,zenoh` (and the three
+/// `sched_dims` cells on the same workspace fixtures) ran in NO scheduled lane
+/// (read off nightlies 40833557587 and 41018247377). Keyed on the consumer, not
+/// the workload, so the FVP cell — its own lane, phase-477 — stays out.
+fn realtime_cell_reqs(c: &Cell) -> Vec<Req> {
+    if crate::matrix::consumer_of(c) == Some(crate::matrix::Consumer::RealtimeTiers) {
+        vec![format!("3|RealtimeTiers={c:?}")]
+    } else {
+        Vec::new()
+    }
+}
+
 fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
     match lane {
         // 1-wise(platform, workload, kind) + pairwise(lang × rmw).
@@ -540,6 +562,7 @@ fn reqs_of(c: &Cell, lane: CiLane) -> BTreeSet<Req> {
     let mut out: BTreeSet<Req> = singles(c, &s).into_iter().chain(pairs(c, &p)).collect();
     if matches!(lane, CiLane::Tier2Nightly) {
         out.extend(config_platform_pairs(c));
+        out.extend(realtime_cell_reqs(c));
     }
     out
 }
@@ -1047,6 +1070,26 @@ _tier-build:
     /// The counts are asserted, the percentages are not: those are a judgement
     /// about cost that rounds, and pinning them would make this gate fire on
     /// noise. Coordinates are the unit (see `the_ladder_is_monotone_in_fixture_cost`).
+    /// phase-466 W5 — the nightly selects EVERY realtime-tiers runtime cell,
+    /// whatever else the greedy cover picks. Negative control: without
+    /// `realtime_cell_reqs` the Zephyr and FreeRTOS C++ cells are missing.
+    #[test]
+    fn the_nightly_selects_every_realtime_tiers_cell() {
+        let chosen = cells(CiLane::Tier2Nightly);
+        let missing: Vec<String> = all_runtime_cells()
+            .filter(|c| {
+                crate::matrix::consumer_of(c) == Some(crate::matrix::Consumer::RealtimeTiers)
+            })
+            .filter(|c| !chosen.iter().any(|k| std::ptr::eq(*k, *c)))
+            .map(|c| format!("{c:?}"))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "realtime-tiers cell(s) no nightly runs:\n  {}",
+            missing.join("\n  ")
+        );
+    }
+
     #[test]
     fn documented_lane_table_is_live() {
         let total_coords = {
@@ -1070,7 +1113,7 @@ _tier-build:
         let documented = [
             (CiLane::Tier1, 26, 11),
             (CiLane::Tier2, 11, 10),
-            (CiLane::Tier2Nightly, 37, 35),
+            (CiLane::Tier2Nightly, 45, 39),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(

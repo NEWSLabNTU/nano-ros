@@ -1,5 +1,30 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-10-31, later). Issue 2112 resolved; W5's uncovered cells get a
+lane; what W5 still waits on is the runner image (issue 2113) and one nightly.**
+
+- Issue 2112 (tier 2's only real red) was a RUN-side attribution gap, not a
+  missing build: the lending test reached `require_in_lane` with a shared
+  group-dir path, which matched no leaf root and failed closed. The chokepoint
+  now attributes a group-dir binary to the row that builds it (issue 1874's
+  rule, previously in one resolver only), so tier 2 skips the cell by its
+  coordinate. The cell passes where it is in lane (both nightlies above).
+- W5 (b): the nightly cover now takes every realtime-tiers cell as its own
+  requirement (RFC-0061 amendment 2026-10-31, `ci_lane::realtime_cell_reqs`):
+  37 / 35 -> 45 / 39 cells / coordinates, adding `freertos,cpp,zenoh`,
+  `zephyr,cpp,zenoh`, `linux,c,zenoh` and `linux,cpp,zenoh`. That brings in the
+  four uncovered `realtime_tiers` C++ rows, the Linux C/C++ rows, and the three
+  `sched_dims` C++ cells on the same workspace fixtures. Pinned by
+  `the_nightly_selects_every_realtime_tiers_cell` (fails without the rule).
+- W5 (a): issue 2113's code half is on `main` (prereq row, image generator,
+  `unmet!` precondition); the runner image must be rebuilt by its operator
+  (`scripts/ci/runner-container.sh --build`, then `--run`). Operator-side,
+  like 1365.
+
+Left: one green scheduled `host-tests`; the first tier-2 nightly after this
+lands, read for W5 (every realtime row and sched-dims cell executed); the
+runner image for 2113; issue 1365.
+
 **Status (2026-10-31). `live-peer` is met; `host-tests` waits on tonight's
 run; W5 is READ, and it is not yet a verdict on every RTOS cell.**
 
@@ -366,6 +391,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#2004](../issues/2004-matrix-test-summary-hidden-on-pass.md) | A matrix test that passes over cells it did not run prints which ones, and nextest discards that output on PASS, so W5 could not be read off the 2026-10-22 tier-2 run. |
 | [#2100](../issues/archived/2100-hosted-runner-gates-outgrow-disk.md) | **Resolved** 2026-10-29 (PR #2754). `host-tests`' tier-1 gates ran out of disk on the GitHub-hosted runner (4 of 7 nights). The three largest gates now release their output on CI, and the 2026-10-28 run passed with 48 G free. |
 | [#2095](../issues/archived/2095-zephyr-native-sim-two-rust-archives-duplicate-popcountdi2.md) | RESOLVED 2026-10-29 as a duplicate of issue 2092 (`44eab11c22`); tier-2 nightly 40648207713 passed the Zephyr C++ xrce cells. Filed 2026-10-27. Every Zephyr native_sim C++ image fails to link on `__popcountdi2`, defined by two Rust staticlibs. Issue 2032's second route hid it. It stops the Zephyr family of `run-matrix` and the tier-2 nightly. |
+| [#2112](../issues/archived/2112-freertos-loan-copy-sub-fixture-missing-in-lane.md) | **Resolved** 2026-10-31. Tier 2 reported the FreeRTOS lending cell's `loan-copy-sub` MISSING every night from 10-27. The build had correctly omitted the out-of-lane row; the run could not attribute a shared group-dir path and failed closed. `require_in_lane` now attributes a group-dir binary to its producing row. |
 | [#2125](../issues/archived/2125-freertos-quiet-link-readiness-missing.md) | **Resolved** 2026-10-29 (PR #2802). Two `rtos_e2e` cells running one baked image started routers on one port, and the second killed the first one's router. A named-port router start now waits for the port's `flock`; tier-2 nightly 40833557587 passed the quiet-link cells on FreeRTOS, threadx-linux and NuttX. |
 | [#2126](../issues/archived/2126-threadx-linux-pubsub-router-log-one-transport.md) | **Resolved** 2026-10-29 with 2125 (PR #2802). The threadx-linux Rust pubsub cell read one router transport for two nodes; tier-2 nightly 40833557587 passed it. |
 | [#2127](../issues/archived/2127-rmw-coordinate-truth-nm-sweep-starved.md) | **Resolved** 2026-10-29 (PR #2802). The `nm` sweep's 8-thread pool was counted as one nextest thread and starved on runner 118. It declares `threads-required = 8`, and passed in 0.6 s in run-matrix 40828659447. |
