@@ -9,7 +9,7 @@ related: [phase-517, RFC-0095, RFC-0097]
 found: 2026-10-31
 ---
 
-**Home: [phase-517](../../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — the one part of W16 its Done note records as not run.
+**Home: [phase-517](../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — the one part of W16 its Done note records as not run.
 
 ## What
 
