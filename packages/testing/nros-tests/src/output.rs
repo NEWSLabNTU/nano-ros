@@ -158,6 +158,20 @@ pub const RESPONSE_INFO_LOG_PREFIX: &str = "RESPONSE_INFO guid=";
 /// issue 2136 — what the `service-info-client` bin prints after its last call.
 pub const RESPONSE_INFO_DONE_MARKER: &str = "RESPONSE_INFO done";
 
+/// issue 2163 — one line per sample the `constrained-link-probe` bin receives
+/// (`CLP_RECEIVED <n>`).
+pub const CLP_RECEIVED_PREFIX: &str = "CLP_RECEIVED ";
+
+/// issue 2163 — the probe's graph answer when graph discovery is compiled in
+/// (`CLP_GRAPH_NODES <count>`).
+pub const CLP_GRAPH_NODES_PREFIX: &str = "CLP_GRAPH_NODES ";
+
+/// issue 2163 — the probe's graph answer when graph discovery is compiled out.
+pub const CLP_GRAPH_UNSUPPORTED_MARKER: &str = "CLP_GRAPH_UNSUPPORTED";
+
+/// issue 2163 — what the probe prints last.
+pub const CLP_DONE_MARKER: &str = "CLP_DONE";
+
 /// issue 2120 — the env var that picks the `service-info-server` bin's
 /// service QoS (`default` | `best_effort`), so a stock peer can read back
 /// what both endpoints were created with.

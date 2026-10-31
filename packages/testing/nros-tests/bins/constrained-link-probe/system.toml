@@ -1,0 +1,27 @@
+# What this test image deploys to (RFC-0098 D3/D5) — see Cargo.toml for what
+# the program is for. It keeps its own `main` and opens its own executor, so it
+# declares no component table.
+#
+# Issue 2163 — the same program twice, differing ONLY in whether the zenoh
+# session keeps a graph cache. `linux_no_graph` states the knob the way a
+# serial/CAN image derives it (`graph_discovery_derived`), so the cell measures
+# the constrained-link build on a TCP host where it can talk to a stock router.
+
+[system]
+name = "constrained_link_probe"
+rmw = "zenoh"
+domain_id = 0
+default_images = ["linux"]
+
+[image_defaults]
+board = "linux"
+
+# Graph discovery ON (the TCP default): the positive control for W1.
+[image.linux]
+
+# Graph discovery compiled OUT (phase-473 W1): no liveliness subscriber, no
+# cache, graph queries answer Unsupported.
+[image.linux_no_graph]
+
+[image.linux_no_graph.knobs.zenoh]
+graph_discovery = false

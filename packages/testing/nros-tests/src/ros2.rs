@@ -17,6 +17,10 @@ pub const DEFAULT_ROS_DISTRO: &str = "humble";
 /// a caller can compare its own wait against it instead of guessing.
 pub const DEFAULT_ECHO_WINDOW: Duration = Duration::from_secs(10);
 
+/// Printed by [`Ros2Process::latched_int32_with_graph`] once its one latched
+/// sample is written and every graph node exists (issue 2163).
+pub const LATCHED_PUBLISHED_MARKER: &str = "LATCHED_PUBLISHED";
+
 /// How long a `ros2 topic pub` peer lives when the caller does not say
 /// (issue 1044) — the same horizon as [`DEFAULT_ECHO_WINDOW`] one role over.
 ///
@@ -1593,6 +1597,53 @@ rclpy.spin(node)
         );
 
         Self::spawn_bash(&cmd, "ros2 add_two_ints_server", Some(config_dir))
+    }
+
+    /// Issue 2163 — a stock `rclpy` process that publishes `value` ONCE on a
+    /// latched topic (TRANSIENT_LOCAL, KEEP_LAST(1), RELIABLE) and keeps
+    /// `graph_nodes` further nodes alive beside it, so a late joiner meets a
+    /// graph of Autoware's scale (issue 1806 counts ~136 nodes).
+    ///
+    /// Prints [`LATCHED_PUBLISHED_MARKER`] once the sample is written and every
+    /// node exists; wait for it with [`Self::wait_for_output_count`] before
+    /// starting the late joiner. Lives for `lifetime`, spinning only the
+    /// publisher's node: `rmw_zenoh_cpp` answers a history query from the
+    /// publisher's cache and declares each node's liveliness token at creation,
+    /// so the other nodes need no executor.
+    pub fn latched_int32_with_graph(
+        locator: &str,
+        distro: &str,
+        topic: &str,
+        value: i32,
+        graph_nodes: usize,
+        lifetime: Duration,
+    ) -> TestResult<Self> {
+        let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
+        let python_script = format!(
+            r#"
+import rclpy
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
+from std_msgs.msg import Int32
+
+rclpy.init()
+graph = [rclpy.create_node(f'graph_filler_{{i:03d}}') for i in range({graph_nodes})]
+node = rclpy.create_node('latched_publisher')
+qos = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
+                 reliability=ReliabilityPolicy.RELIABLE,
+                 durability=DurabilityPolicy.TRANSIENT_LOCAL)
+pub = node.create_publisher(Int32, '{topic}', qos)
+msg = Int32()
+msg.data = {value}
+pub.publish(msg)
+print('{LATCHED_PUBLISHED_MARKER} nodes={{}}'.format(len(graph) + 1), flush=True)
+rclpy.spin(node)
+"#
+        );
+        let deadline = crate::process::deadline(lifetime.as_secs().max(1));
+        let cmd = format!(
+            "{env_setup} && {deadline} python3 -u - 2>&1 <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
+        );
+        Self::spawn_bash(&cmd, "ros2 latched_int32_with_graph", Some(config_dir))
     }
 
     /// Start a ROS 2 topic echo subscriber with custom QoS

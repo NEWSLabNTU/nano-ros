@@ -75,7 +75,7 @@ An in-tree witness for W1/W2 (a native image built with graph discovery off,
 late-joining a synthetic ~136-node `rmw_zenoh_cpp` graph and reading a latched
 value) would make the mechanism a regression gate here. It does NOT close this
 issue — the acceptance is the island's real Autoware domain — so it is tracked
-separately, as [issue 2163](2163-zenoh-constrained-link-no-in-tree-witness.md).
+separately, as [issue 2163](archived/2163-zenoh-constrained-link-no-in-tree-witness.md).
 
 ## Closes when
 

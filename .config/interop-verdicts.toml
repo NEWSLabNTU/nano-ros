@@ -270,12 +270,13 @@ issue = "2110"
 
 [[verdict]]
 cell = "native-pubsub-rust-zenoh-n2r"
-date = "2026-09-07"
+date = "2026-10-31"
 verdict = "pass"
-tests = ["interop::case_01_zenoh_pubsub_nano_to_ros2", "interop::case_02_zenoh_pubsub_ros2_to_nano", "interop::case_03_zenoh_pubsub_stock_demo_nodes_cpp"]
+tests = ["interop::case_01_zenoh_pubsub_nano_to_ros2", "interop::case_02_zenoh_pubsub_ros2_to_nano", "interop::case_03_zenoh_pubsub_stock_demo_nodes_cpp", "interop::case_13_zenoh_constrained_link_latched_late_join"]
 run = "cargo nextest run -p nros-tests --test interop_e2e"
-where = "ros2 distrobox, Humble, tree with #684 + #692"
-evidence = "3 case(s) produced a result in interop_e2e.xml"
+where = "ros2 distrobox, Humble; cases 01-03 on a tree with #684 + #692 (2026-09-07), case 13 on a tree with issue 2163's constrained-link-probe (2026-10-31)"
+evidence = "4 case(s) produced a result in junit.xml"
+issue = "2163"
 
 [[verdict]]
 cell = "native-qos-event-c-zenoh-bidir"

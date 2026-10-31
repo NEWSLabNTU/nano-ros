@@ -2092,6 +2092,27 @@ lang = "rust"
 dir = "packages/testing/nros-tests/bins/service-info-client"
 image = "linux"
 
+# issue 2163 — the constrained-link zenoh witness (phase-473 W1/W2), built
+# twice from one leaf: graph discovery ON (`linux`, the positive control) and
+# compiled OUT (`linux_no_graph`). `interop_e2e::interop::case_13_zenoh_
+# constrained_link_latched_late_join` late-joins a stock latched publisher with
+# both, and with a VOLATILE subscription as the negative control.
+[[fixture]]
+id = "constrained-link-probe-zenoh"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/constrained-link-probe"
+image = "linux"
+
+[[fixture]]
+id = "constrained-link-probe-no-graph-zenoh"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/constrained-link-probe"
+image = "linux_no_graph"
+
 # issue 2148 — the C++ client's response header,
 # `PollClient::take_response(response, request_header)`, measured against a
 # stock `rmw_zenoh_cpp` server (`interop_e2e::interop::case_12_zenoh_service_
