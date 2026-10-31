@@ -1276,10 +1276,14 @@ pub enum InvocationMode {
 /// callback dispatch.
 #[derive(Clone, Copy, Default)]
 pub enum Trigger {
-    /// Fire if any registered handle has data (default).
+    /// Fire if any registered handle has data (default) -- a subscription,
+    /// service, client or action entry with data, or a triggered guard
+    /// condition (issue 2162). Timers do not pass it: due timers fire on
+    /// every spin whether or not it passes. An executor with no entry but
+    /// timers and guard conditions passes every spin.
     #[default]
     Any,
-    /// Fire only when ALL non-timer handles have data.
+    /// Fire only when ALL non-timer, non-guard handles have data.
     All,
     /// Fire only when a specific handle has data.
     One(HandleId),

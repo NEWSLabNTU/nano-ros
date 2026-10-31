@@ -24,7 +24,7 @@
 /// production `spin_once()` trigger evaluation at `spin.rs:1050-1072`:
 ///
 /// ```text
-/// Trigger::Any           => bits & non_timer_mask != 0 || non_timer_mask == 0
+/// Trigger::Any           => bits & (non_timer_mask | guard_mask) != 0 || non_timer_mask == 0
 /// Trigger::All           => bits & non_timer_mask == non_timer_mask
 /// Trigger::One(id)       => snapshot.is_ready(id)
 /// Trigger::AllOf(set)    => snapshot.all_ready(set)
@@ -257,6 +257,43 @@ proof fn timer_canceled_never_fires(s: TimerGhost, delta_ms: u64)
 /// the `non_timer_mask == 0` fallback in production.
 pub open spec fn trigger_any(ready: Seq<bool>) -> bool {
     ready.len() == 0 || exists|i: int| 0 <= i < ready.len() && ready[i]
+}
+
+/// Model of `Trigger::Any` with the guard conditions (issue 2162).
+///
+/// Production semantics:
+/// ```text
+/// bits & (non_timer_mask | guard_mask) != 0 || non_timer_mask == 0
+/// ```
+///
+/// `ready` is the non-timer, non-guard readiness subset (as in
+/// [`trigger_any`]); `guards` is the guard conditions' readiness. A ready
+/// guard passes `Any`; an idle one never holds it back, so a guard-only or
+/// timer-only executor still passes through the empty-`ready` arm.
+pub open spec fn trigger_any_guarded(ready: Seq<bool>, guards: Seq<bool>) -> bool {
+    trigger_any(ready) || exists|j: int| 0 <= j < guards.len() && guards[j]
+}
+
+/// Issue 2162 -- a ready guard condition passes `Any` whatever the other
+/// entries' readiness, and adding guards never makes `Any` fail where it
+/// passed without them.
+proof fn trigger_any_guarded_semantics(ready: Seq<bool>, guards: Seq<bool>, j: int)
+    requires
+        0 <= j < guards.len(),
+        guards[j],
+    ensures
+        trigger_any_guarded(ready, guards),
+{
+}
+
+/// Issue 2162 -- guards only ADD passes: `Any` without them implies `Any`
+/// with them, and with no ready guard the two agree.
+proof fn trigger_any_guarded_extends_any(ready: Seq<bool>, guards: Seq<bool>)
+    ensures
+        trigger_any(ready) ==> trigger_any_guarded(ready, guards),
+        (forall|j: int| 0 <= j < guards.len() ==> !guards[j])
+            ==> (trigger_any_guarded(ready, guards) == trigger_any(ready)),
+{
 }
 
 /// Model of `Trigger::All` — true iff non-timer mask fully satisfied.
