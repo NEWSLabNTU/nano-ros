@@ -1,15 +1,16 @@
 ---
 id: 2168
 title: "The installed probe cannot install a published release, so the pinned-project track never runs with a newer CLI installed"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: [ci, testing, installed-sdk]
 related: [phase-517, RFC-0095, RFC-0097]
 found: 2026-10-31
+resolved: 2026-10-31
 ---
 
-**Home: [phase-517](../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — the one part of W16 its Done note records as not run.
+**Home: [phase-517](../../roadmap/archived/phase-517-user-flow-setup-build-flash.md)** — the one part of W16 its Done note records as not run.
 
 ## What
 
@@ -61,3 +62,13 @@ to an older pin.
   one `[tool.nros]` pins. It stays out of `probe-platforms.yml`'s matrix
   until then, with a comment there. Close this issue when that release is
   cut, the pin moves, and the track is green.
+
+## Resolution
+
+Release `0.6.0-nros6` is published from main at `3f0526fe` and carries the
+launcher fix, and `[tool.nros]` pins it. `pinned-newer` is back in
+`probe-platforms.yml`. On run 41160765910 it installs `0.6.0-nros6`, enters
+a project pinned to `0.6.0-nros4`, and builds there. The pinned toolchain's
+cmake now reaches the `0.6.0-nros6` front, which hands off to the pin
+instead of running itself. The front check expects `0.6.0-nros6`. The
+branch-asset `pinned` track is green in the same run.
