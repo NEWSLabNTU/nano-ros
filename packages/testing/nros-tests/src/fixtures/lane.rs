@@ -815,8 +815,51 @@ pub fn require_workspace_in_lane(fixture_id: &str) -> TestResult<()> {
 /// `OnceLock` that latches for the life of the process. The `require_*`
 /// wrappers add nothing but the lookup and the panic.
 pub fn skip_reason_for_path(binary_path: &Path, coords: &BTreeSet<Coord>) -> Option<String> {
-    let row = attribute_path(binary_path)?;
+    let row = attribute_path(binary_path).or_else(|| attribute_group_binary(binary_path))?;
     (!is_in_lane(row, coords)).then(|| out_of_lane(row))
+}
+
+/// Issue 2112 -- a path INSIDE a shared cargo group dir, attributed by the
+/// binary's name to the one row that builds it.
+///
+/// [`attribute_path`] matches LEAF artifact roots (`<dir>/target`), and a
+/// migrated platform's rows build into `build/cargo-fixtures/<slug>/` instead,
+/// so a caller holding the resolved group path (`groups::row_resolved_dir`)
+/// attributed to nothing and failed closed. The build narrows that row by its
+/// coordinate all the same, so an out-of-lane row was omitted by the build and
+/// then reported "MISSING for an in-lane coordinate" by the run: tier 2's
+/// `lending_freertos_e2e` red, every night from 2026-10-27. Issue 1874 had
+/// already found this and answered it inside ONE resolver
+/// (`shared_group_lane_check`); this is the same rule at the chokepoint every
+/// `require_prebuilt_*` path goes through. Exactly one producing row on the
+/// group's platform is an attribution; none or several keeps failing closed.
+fn attribute_group_binary(binary_path: &Path) -> Option<&'static Row> {
+    attribute_group_binary_in(
+        crate::fixtures::groups::manifest_rows(),
+        crate::fixtures::groups::group_dir,
+        manifest_rows(),
+        &project_root(),
+        binary_path,
+    )
+}
+
+/// [`attribute_group_binary`] over given tables, for tests.
+pub fn attribute_group_binary_in<'a>(
+    groups: &[crate::fixtures::groups::GroupRow],
+    group_dir: impl Fn(&str) -> PathBuf,
+    rows: &'a [Row],
+    root: &Path,
+    binary_path: &Path,
+) -> Option<&'a Row> {
+    let name = binary_path.file_name()?.to_str()?;
+    let group = groups
+        .iter()
+        .filter(|g| g.shared)
+        .find(|g| path_under(binary_path, &group_dir(&g.slug)))?;
+    match rows_producing_binary_in(rows, root, &group.platform, name).as_slice() {
+        [row] => Some(*row),
+        _ => None,
+    }
 }
 
 /// [`skip_reason_for_path`] for a `[[workspace_fixture]]` id.
@@ -929,6 +972,42 @@ fn coord_of_artifact(binary_path: &Path) -> Option<Coord> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2112 -- the lending cell's own path, against the shipped
+    /// manifest: a binary in the FreeRTOS group dir attributes to the
+    /// `loan-copy-count` row, so a lane without `freertos,rust,zenoh` skips it
+    /// instead of reporting it MISSING. Before the fix this returned `None`.
+    #[test]
+    fn a_shared_group_binary_attributes_to_the_row_that_builds_it() {
+        let dir = crate::fixtures::groups::group_dir("freertos")
+            .join("thumbv7m-none-eabi/nros-minsizerel/loan-copy-sub");
+        let row = attribute_group_binary(&dir).expect("loan-copy-sub has one producing row");
+        assert_eq!(row.dir, "packages/testing/nros-bench/loan-copy-count");
+
+        let c = |p: &str, l: &str, r: &str| (p.to_string(), l.to_string(), r.to_string());
+        let tier2: BTreeSet<Coord> = [c("freertos", "cpp", "cyclonedds")].into_iter().collect();
+        let why = skip_reason_for_path(&dir, &tier2).expect("out of lane is a skip");
+        assert!(
+            why.contains("is at coordinate freertos,rust,zenoh"),
+            "{why}"
+        );
+        let rust: BTreeSet<Coord> = [c("freertos", "rust", "zenoh")].into_iter().collect();
+        assert_eq!(
+            skip_reason_for_path(&dir, &rust),
+            None,
+            "in lane must not skip"
+        );
+    }
+
+    /// The fail-closed half: no producing row, or a path outside every group.
+    #[test]
+    fn a_group_binary_no_row_builds_is_not_attributable() {
+        let in_group = crate::fixtures::groups::group_dir("freertos")
+            .join("thumbv7m-none-eabi/nros-minsizerel/no-such-binary");
+        assert!(attribute_group_binary(&in_group).is_none());
+        let outside = project_root().join("build/elsewhere/loan-copy-sub");
+        assert!(attribute_group_binary(&outside).is_none());
+    }
 
     /// Issue 1685 — the platform-level lane question, both directions. A run
     /// holding only `linux` coordinates deselects a Zephyr test; a run holding a

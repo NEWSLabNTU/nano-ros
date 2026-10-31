@@ -469,6 +469,31 @@ configuration-on-target defect (the 0814 class), as it misses every
 platform-specific one; **tier 2** misses configuration × platform interactions
 until the nightly pairing runs.
 
+## Amendment (2026-10-31, phase-466 W5) — realtime-tiers cells are covered PER CELL in 2n
+
+Phase-330 handed phase-466 one acceptance box: a verdict from
+`realtime_tiers_e2e` and `sched_dims_applied_e2e` on every RTOS cell. That is a
+promise about each CELL, and a pairwise cover makes no promise about any one
+cell. When the nightly's junit was first read with cell names (2026-10-29 and
+-30, runs 40833557587 and 41018247377), the Zephyr and FreeRTOS C++ pairs were
+covered by `zephyr,cpp,xrce` and `freertos,cpp,cyclonedds`, so the realtime C++
+rows at `zephyr,cpp,zenoh` and `freertos,cpp,zenoh` (four `realtime_tiers` rows,
+and three `sched_dims` cells on the same workspace fixtures) ran in no
+scheduled lane. Neither did the Linux C and C++ realtime rows.
+
+So tier 2n adds one requirement per cell whose consumer is `RealtimeTiers`
+(`ci_lane::realtime_cell_reqs`). Keyed on the consumer, not the workload, so the
+FVP realtime cell — `Gated`, its own lane — stays outside the cover.
+
+**Measured (2026-10-31).** The nightly went 37 / 35 to 45 / 39 of 51 cells /
+coordinates, +4 coordinates: `freertos,cpp,zenoh`, `zephyr,cpp,zenoh`,
+`linux,c,zenoh`, `linux,cpp,zenoh`. The `--modules` job set did not change. The
+new fixture builds are 10 FreeRTOS cargo rows and 3 workspaces at
+`freertos,cpp,zenoh`, and 6 workspaces and 12 west leaves at
+`zephyr,cpp,zenoh`; the Linux pair is host-only. Tiers 1 and 2 did not move.
+Adopted at that price: the alternative was a written exemption for exactly the
+cells the acceptance names.
+
 ## Operational corollaries
 
 These do not depend on proposals 1–2 but bound the same cost:

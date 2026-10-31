@@ -1,11 +1,12 @@
 ---
 id: 2112
 title: "Tier 2 runs the FreeRTOS lending cell but never builds its `loan-copy-sub` image, so the cell fails MISSING"
-status: open
+status: resolved
 type: bug
 area: [ci, testing, fixtures, freertos]
 severity: medium
 found: 2026-10-27
+resolved: 2026-10-31
 related: [1941, phase-510, phase-466]
 ---
 
@@ -56,3 +57,46 @@ two agree, and show the cell green in a tier-2 run.
 - Run: run-matrix 40643270547 (main at `e0f81b4ac`, after #2764 merged).
 
 - Job: 122666117078, `tier 2 (1-wise matrix)`. The same MISSING panic as before, at `fixtures/binaries/mod.rs:770`, for `…/freertos/thumbv7m-none-eabi/nros-minsizerel/loan-copy-sub`. Merging #2764 did not close it.
+
+## Resolution (2026-10-31)
+
+The build was right and the RUN was wrong. Tier 2's coordinates
+(`lane-coords tier2`) select `freertos,cpp,cyclonedds` and no
+`freertos,rust,zenoh`, so the build correctly omitted `loan-copy-count` — the
+same way it omitted the `rtos_e2e` FreeRTOS Rust cells, which the same run
+reported as `[SKIPPED:lane]`. The lending test should have skipped too, and
+did not, because of how its path was attributed:
+
+- `lending_freertos_e2e` resolves its images through
+  `groups::row_resolved_dir`, i.e. inside the shared group dir
+  `build/cargo-fixtures/freertos/`, and hands that path to
+  `require_prebuilt_artifact`.
+- `require_in_lane` attributes a path by matching LEAF artifact roots
+  (`row_artifact_root`, `<dir>/target`). A group-dir path matches none, so it
+  failed closed — never skip — and the absent binary became "MISSING for an
+  in-lane coordinate".
+
+Issue 1874 had found this exact shape (15 of tier 2's reds then) and fixed it
+inside one resolver, `shared_group_lane_check`, by attributing a group-dir
+binary to the one row whose crate builds that name. The generic chokepoint
+never got the same rule. It has it now: `skip_reason_for_path` falls back to
+`attribute_group_binary` (`fixtures/lane.rs`), so every `require_prebuilt_*`
+path through a shared group dir skips by its row's coordinate. Exactly one
+producing row is an attribution; none or several still fails closed.
+
+Evidence:
+
+- Reproduced locally with tier 2's coordinate file as `NROS_TEST_COORDS`:
+  before, `MISSING for an in-lane coordinate`; after, `[SKIPPED:lane] out of
+  lane: packages/testing/nros-bench/loan-copy-count is at coordinate
+  freertos,rust,zenoh`.
+- Unit tests `a_shared_group_binary_attributes_to_the_row_that_builds_it`
+  (both lane directions) and `a_group_binary_no_row_builds_is_not_attributable`;
+  removing the fallback fails the first.
+- The cell itself is healthy where it is in lane: it PASSED in the pairwise
+  tier-2 nightly on 2026-10-29 (40833557587) and 10-30 (41018247377), 14.6 s
+  each.
+- Sweep: every other `row_resolved_dir` / `sole_group_dir` consumer already
+  asks the row's coordinate first (`require_prebuilt_row_binary`,
+  `shared_group_lane_check`, the NuttX entry resolver); this test was the only
+  caller reaching the chokepoint with a group path.
