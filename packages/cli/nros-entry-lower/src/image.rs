@@ -442,6 +442,18 @@ pub struct HazardRow {
     /// none.
     #[serde(default)]
     pub reaction_id: u16,
+    /// play_launch phase 96 W4.2 -- rate-row index of a publisher on the
+    /// judged rung's output (`nros_cpp_hazard_row_t::rung_row`); `0xFFFF`
+    /// when no rung is judged.
+    #[serde(default = "no_rung_row")]
+    pub rung_row: u16,
+    /// That rung's route, ms; 0 = no route monitored.
+    #[serde(default)]
+    pub rung_route_ms: u32,
+}
+
+fn no_rung_row() -> u16 {
+    u16::MAX
 }
 
 /// phase-462 W3b -- one guard of a [`HazardRow`].

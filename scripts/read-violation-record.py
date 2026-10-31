@@ -75,6 +75,7 @@ RULES = (
     "hazard-reaction",
     "hazard-recovered",
     "mode-switch-runtime",
+    "hazard-route-runtime",
 )
 
 

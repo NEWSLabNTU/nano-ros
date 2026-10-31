@@ -45,11 +45,11 @@ after_includes = """
 
 /**
  * phase-462 W3b -- bytes of caller storage ONE hazard row needs (its
- * `HazardCell` plus its `HazardSpec`), the same kind of bound: 80 on a 64-bit
- * host, 48 on a 32-bit target. `nros_cpp_install_hazards` checks the real
+ * `HazardCell` plus its `HazardSpec`), the same kind of bound: 96 on a 64-bit
+ * host, 64 on a 32-bit target. `nros_cpp_install_hazards` checks the real
  * requirement and refuses a short buffer.
  */
-#define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
+#define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 96 : 64)
 
 /**
  * phase-462 W4b -- bytes of caller storage `nros_cpp_install_modes` needs per

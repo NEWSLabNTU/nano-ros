@@ -158,7 +158,7 @@ static const ::nros_cpp_hazard_guard_t __nros_hz_guards_{{ hi }}[{{ h.guards | l
 {%- endfor %}
 static const ::nros_cpp_hazard_row_t __nros_hz_rows[{{ m.hazards | length }}] = {
 {%- for h in m.hazards %}
-    { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_guards_{{ loop.index0 }}, {{ h.guards | length }}u, {{ h.sink }}u, {{ h.reaction_id }}u },
+    { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_guards_{{ loop.index0 }}, {{ h.guards | length }}u, {{ h.sink }}u, {{ h.reaction_id }}u, {{ h.rung_row }}u, {{ h.rung_route_ms }}u },
 {%- endfor %}
 };
 {%- if m.hazards | selectattr("reaction_id") | list %}
