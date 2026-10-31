@@ -631,6 +631,9 @@ mod tests {
                 "esp32-qemu",
                 "esp32-c3-baremetal",
                 "zephyr",
+                "mps2-an385-zephyr",
+                "qemu-cortex-a53",
+                "fvp-aemv8r-smp",
                 "rtic-mps2-an385",
             ],
             "the refused set moved — read issue 1435 before editing this list"
