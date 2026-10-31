@@ -356,6 +356,15 @@ endif()
 # its crates read `$DOTCONFIG`, where a derived knob is still the `-1` sentinel.
 nros_derived_knob_env(_nros_derived_env)
 list(APPEND _nros_rust_lane_env ${_nros_derived_env})
+# Issue 2177 -- and the C cross compiler, which the Rust lane's `cc` builds
+# (zpico-sys's zenoh-pico) needed and never got: on mps2-an385 cc fell back to
+# a PATH `arm-none-eabi-gcc` an installed host does not have. The triple is
+# the one zephyr-lang-rust maps the board to; `nros_detect_rust_target()`
+# answers the same for every cross board (native_sim's host compiler needs
+# none, and gets the host triple, which the Rust lane does not build for).
+nros_detect_rust_target()
+nros_cross_cc_env(_nros_cross_cc "${NROS_RUST_TARGET}")
+list(APPEND _nros_rust_lane_env ${_nros_cross_cc})
 set(NROS_BOARD_FACTS_ENV "${_nros_rust_lane_env}" CACHE INTERNAL
     "issue 1662: the Zephyr Rust lane's cargo env (board facts, a leaf's descriptor, derived knobs -- issue 1796)")
 
