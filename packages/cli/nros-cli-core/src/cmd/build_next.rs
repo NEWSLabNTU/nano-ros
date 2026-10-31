@@ -737,7 +737,8 @@ mod tests {
                 "run".to_string(),
                 format!(
                     "/store/sdk/qemu/11.0/bin/qemu-system-arm -cpu cortex-m3 -machine mps2-an385 \
-                     -nographic -semihosting-config enable=on,target=native -kernel {art}"
+                     -nographic -icount shift=auto -semihosting-config enable=on,target=native \
+                     -nic user,model=lan9118 -kernel {art}"
                 )
             )]
         );
@@ -866,7 +867,8 @@ mod tests {
         assert_eq!(
             s.commands[0].1,
             "/store/sdk/qemu/11.0/bin/qemu-system-arm -cpu cortex-m3 -machine mps2-an385 \
-             -nographic -semihosting-config enable=on,target=native -kernel \
+             -nographic -icount shift=auto -semihosting-config enable=on,target=native \
+             -nic user,model=lan9118 -kernel \
              /leaf/build/mps2-an385-freertos/cmake/c_talker"
         );
     }
@@ -1179,5 +1181,139 @@ mod tests {
                 assert!(root.join(c).is_file(), "{:?}: {c} does not exist", d.names);
             }
         }
+    }
+
+    /// Issue 2169 — the run command `nros build` prints for a board equals the
+    /// line its chapter boots on the installed probe track. The probes prove the
+    /// chapter's line runs the image, so equality carries that to the printed
+    /// one, on every board with a track. Compared as option groups (`-flag
+    /// value`), so QEMU's order-free options may differ in order; the kernel
+    /// path and the QEMU location are the only parts left out.
+    ///
+    /// Both directions: every chapter `probe-run` block that boots QEMU must be
+    /// a row here, so a new track cannot skip the comparison.
+    #[test]
+    fn every_probed_chapter_boot_line_is_the_printed_run_command() {
+        // (chapter, block variant, board the chapter's image is built for)
+        const ROWS: &[(&str, &str, &str)] = &[
+            ("bare-metal.md", "", "mps2-an385-baremetal"),
+            ("freertos.md", "rust", "mps2-an385-freertos"),
+            ("freertos.md", "c", "mps2-an385-freertos"),
+            ("integration-nuttx.md", "arm", "qemu-armv7a-nuttx"),
+            ("integration-nuttx.md", "arm-rust", "qemu-armv7a-nuttx"),
+            ("integration-nuttx.md", "riscv", "rv-virt-nuttx"),
+            ("threadx.md", "riscv64", "rv-virt-threadx"),
+        ];
+        fn groups(argv: &[String]) -> Vec<String> {
+            let mut out = Vec::new();
+            let mut it = argv.iter().peekable();
+            while let Some(a) = it.next() {
+                if a == "-kernel" {
+                    it.next();
+                    continue;
+                }
+                match it.peek() {
+                    Some(v) if a.starts_with('-') && !v.starts_with('-') => {
+                        out.push(format!("{a} {}", it.next().unwrap()));
+                    }
+                    _ => out.push(a.clone()),
+                }
+            }
+            out.sort();
+            out
+        }
+        let root = repo_root();
+        let cat = catalog();
+        let block = regex_lite_blocks;
+        let mut seen = Vec::new();
+        for chapter in [
+            "bare-metal.md",
+            "freertos.md",
+            "integration-nuttx.md",
+            "threadx.md",
+            "integration-zephyr.md",
+        ] {
+            let text = std::fs::read_to_string(root.join("book/src/getting-started").join(chapter))
+                .expect("chapter");
+            for (info, body) in block(&text) {
+                let boots_qemu = body.contains("qemu-system") || body.contains("QEMU_SYSTEM_");
+                if !info.contains("probe-run") || !boots_qemu {
+                    continue;
+                }
+                let variant = info
+                    .split_whitespace()
+                    .find_map(|w| w.strip_prefix("variant="))
+                    .unwrap_or("");
+                seen.push((chapter, variant.to_string()));
+                let Some((_, _, board)) =
+                    ROWS.iter().find(|(c, v, _)| *c == chapter && *v == variant)
+                else {
+                    panic!("{chapter} `{info}` boots QEMU and has no row here");
+                };
+                // The executable is `"$(nros sdk-path qemu)/bin/qemu-system-…"`
+                // or `"$QEMU_SYSTEM_…"`: skip through the word naming it.
+                let book: Vec<String> = body
+                    .replace("\\\n", " ")
+                    .split_whitespace()
+                    .skip_while(|w| !w.contains("qemu-system") && !w.contains("QEMU_SYSTEM"))
+                    .skip(1)
+                    .map(str::to_string)
+                    .collect();
+                let d = descriptor(&cat, board);
+                let p = plan(
+                    board,
+                    Driver::Cargo,
+                    BuildOutput::Cargo {
+                        target_dir: "/ws/target".into(),
+                        triple: d.target.clone(),
+                        profile_dir: "debug".into(),
+                        bin: Some("app".into()),
+                    },
+                );
+                let s = next_steps(&p, &d, &store_qemu);
+                let (_, printed) = s
+                    .commands
+                    .iter()
+                    .find(|(l, _)| l.starts_with("run"))
+                    .unwrap_or_else(|| panic!("{board}: no printed run command: {s:?}"));
+                let printed: Vec<String> = printed
+                    .split_whitespace()
+                    .skip(1)
+                    .map(str::to_string)
+                    .collect();
+                assert_eq!(
+                    groups(&printed),
+                    groups(&book),
+                    "{chapter} `{info}` boots a different line than `nros build` prints for {board}"
+                );
+            }
+        }
+        for (c, v, _) in ROWS {
+            assert!(
+                seen.iter().any(|(sc, sv)| sc == c && sv == v),
+                "row ({c}, {v}) names no probe-run QEMU block"
+            );
+        }
+    }
+
+    /// The fenced blocks of a Markdown text: (info string, body).
+    fn regex_lite_blocks(text: &str) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        let mut lines = text.lines();
+        while let Some(l) = lines.next() {
+            let Some(info) = l.strip_prefix("```") else {
+                continue;
+            };
+            let mut body = String::new();
+            for b in lines.by_ref() {
+                if b.starts_with("```") {
+                    break;
+                }
+                body.push_str(b);
+                body.push('\n');
+            }
+            out.push((info.to_string(), body));
+        }
+        out
     }
 }

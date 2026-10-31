@@ -309,7 +309,7 @@ workspace (`tx_ws/`):
 "$(nros sdk-path qemu)/bin/qemu-system-riscv64" -M virt -m 256M -bios none -nographic \
     -global virtio-mmio.force-legacy=false \
     -netdev user,id=net0 \
-    -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0 \
+    -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac=52:54:00:12:34:56 \
     -kernel build/threadx-riscv64-zenoh/tx_riscv_entry/target/riscv64gc-unknown-none-elf/debug/tx_riscv_entry
 ```
 
