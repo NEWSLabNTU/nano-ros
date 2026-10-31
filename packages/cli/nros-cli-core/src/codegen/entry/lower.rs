@@ -28,10 +28,10 @@ use std::collections::HashMap;
 
 use nros_entry_lower::{
     AgeRow, ComponentKind, ComponentSeam, GroupBind, HazardGuard, HazardMember, HazardRow,
-    LoweredBoot, LoweredBootConfig, LoweredEntry, LoweredNode, LoweredProbe, LoweredRunners,
-    LoweredSched, LoweredServices, LoweredTaskMemory, LoweredTiers, ModeDeadlineRow, ModeName,
-    ModeRow, ModeVariantRows, MonitorRow, MonitorTable, NodeBind, NodeIdentity, QosOverride,
-    SchedContext, SetupNode, TierRow, TierSetup,
+    HazardRung, LoweredBoot, LoweredBootConfig, LoweredEntry, LoweredNode, LoweredProbe,
+    LoweredRunners, LoweredSched, LoweredServices, LoweredTaskMemory, LoweredTiers,
+    ModeDeadlineRow, ModeName, ModeRow, ModeVariantRows, MonitorRow, MonitorTable, NodeBind,
+    NodeIdentity, QosOverride, SchedContext, SetupNode, TierRow, TierSetup,
 };
 use nros_orchestration_ir::ResolvedTierTable;
 
@@ -743,6 +743,16 @@ fn monitor_table(
         .collect();
     // phase-462 W3b -- over THIS executor's slice, so a hazard lands on the
     // one executor that holds all of its guards' monitors.
+    let member = |m: model_ingest::GuardMemberRow| match m {
+        model_ingest::GuardMemberRow::Age(r) => HazardMember {
+            kind: 0,
+            row: r as u16,
+        },
+        model_ingest::GuardMemberRow::Rate(r) => HazardMember {
+            kind: 1,
+            row: r as u16,
+        },
+    };
     let hazards = opts
         .hazard_model
         .map(|m| model_ingest::hazard_rows(m, &ir_rows, &ir_ages))
@@ -757,26 +767,22 @@ fn monitor_table(
                 .into_iter()
                 .map(|g| HazardGuard {
                     all_of: g.all_of,
-                    members: g
-                        .members
-                        .into_iter()
-                        .map(|m| match m {
-                            model_ingest::GuardMemberRow::Age(r) => HazardMember {
-                                kind: 0,
-                                row: r as u16,
-                            },
-                            model_ingest::GuardMemberRow::Rate(r) => HazardMember {
-                                kind: 1,
-                                row: r as u16,
-                            },
-                        })
-                        .collect(),
+                    members: g.members.into_iter().map(member).collect(),
                 })
                 .collect(),
             sink: h.sink.map_or(u16::MAX, |r| r as u16),
             reaction_id: h.reaction_id,
-            rung_row: h.rung.as_ref().map_or(u16::MAX, |r| r.row as u16),
-            rung_route_ms: h.rung.as_ref().map_or(0, |r| r.route_ms),
+            rungs: h
+                .rungs
+                .into_iter()
+                .map(|r| HazardRung {
+                    mode: r.mode.unwrap_or(u16::MAX),
+                    output_row: r.row.map_or(u16::MAX, |i| i as u16),
+                    route_ms: r.route_ms,
+                    role: r.role,
+                    starts_at: r.starts_at.into_iter().map(member).collect(),
+                })
+                .collect(),
         })
         .collect::<Vec<HazardRow>>();
     // phase-462 W4b -- each mode's numbers for the rows kept above, by the
@@ -867,7 +873,13 @@ fn monitor_table(
         .iter()
         .flat_map(|h| &h.guards)
         .map(|g| g.members.len())
-        .sum();
+        .sum::<usize>()
+        + hazards
+            .iter()
+            .flat_map(|h| &h.rungs)
+            .map(|r| r.starts_at.len())
+            .sum::<usize>();
+    let hazard_rungs = hazards.iter().map(|h| h.rungs.len()).sum();
     let t = MonitorTable {
         base_deadlines: if modes.is_empty() { Vec::new() } else { dl(0) },
         deadline_sc_is_tier: matches!(sc, DeadlineSc::TierIndex(_)),
@@ -875,6 +887,7 @@ fn monitor_table(
         hazards,
         hazard_guards,
         hazard_members,
+        hazard_rungs,
         rows: ir_rows
             .iter()
             .map(|r| MonitorRow {

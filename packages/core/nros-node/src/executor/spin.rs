@@ -5166,6 +5166,9 @@ impl<'s> Executor<'s> {
             // detection. Not before arming: a start-up verdict is only
             // counted (phase-474 I2), and it starts nothing either.
             let hook = self.reaction_hook.filter(|_| self.violations.counts.armed);
+            // play_launch phase 96 W4.2 -- the mode this executor judges by
+            // says which rung of each hazard's ladder is active.
+            let mode = self.mode_applied;
             let violations = &mut self.violations;
             for (row, spec) in self.hazard_table.iter().enumerate() {
                 super::monitor::check_hazard(
@@ -5173,6 +5176,7 @@ impl<'s> Executor<'s> {
                     self.monitor_table,
                     &self.monitor_states,
                     &self.age_states,
+                    mode,
                     now_ms,
                     |v| {
                         if v.rule == "hazard-detected" && spec.reaction_id != 0 {

@@ -1,0 +1,6 @@
+{
+  "key": "rust:RungSpec",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "play_launch phase 96 W4.2 (phase 85 D4) -- one rung of a contracted hazard's ladder (`contracts.hazards.<h>.rungs[]`): the mode it is, the row observing its output, the route play_launch charged it and the guard members its route clock starts at. The hazard observer judges the active rung's route and reports `hazard-route-runtime`; mirrored by nros-cpp's `nros_cpp_hazard_rung_t`. See `rust:HazardSpec`."
+}

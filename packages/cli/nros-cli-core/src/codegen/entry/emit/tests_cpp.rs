@@ -2285,11 +2285,11 @@ fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
     );
     assert!(
         src.contains(
-            "{ \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_guards_0, 1u, 65535u, 0u, 65535u, 0u },"
+            "{ \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_guards_0, 1u, 65535u, 0u, nullptr, 0u },"
         ),
         "hazard row (no safe_state: no sink; no rungs: no route); src:\n{src}"
     );
-    assert!(src.contains("alignas(8) static unsigned char __nros_hz_storage[1 * NROS_CPP_HAZARD_ROW_STORAGE + 1 * NROS_CPP_HAZARD_GUARD_STORAGE + 2 * NROS_CPP_HAZARD_MEMBER_STORAGE];"), "{src}");
+    assert!(src.contains("alignas(8) static unsigned char __nros_hz_storage[1 * NROS_CPP_HAZARD_ROW_STORAGE + 1 * NROS_CPP_HAZARD_GUARD_STORAGE + 2 * NROS_CPP_HAZARD_MEMBER_STORAGE + 0 * NROS_CPP_HAZARD_RUNG_STORAGE];"), "{src}");
     let monitors = src
         .find("nros_cpp_install_monitors(")
         .expect("monitor install");
@@ -2337,8 +2337,11 @@ fn typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook() {
     )
     .expect("hazard emit ok");
     assert!(
-        src.contains("__nros_hz_guards_0, 1u, 0u, 1u, 0u, 13u },"),
-        "sink rate row 0, reaction id 1, rung route on rate row 0 at 13 ms; src:\n{src}"
+        src.contains("__nros_hz_guards_0, 1u, 0u, 1u, __nros_hz_rungs_0, 1u },")
+            && src.contains("{ 65535u, 0u, 13u, 2u, __nros_hz_starts_0_0, 1u },")
+            && src.contains("{ 0u, 0u },"),
+        "sink rate row 0, reaction id 1, one floor rung (no mode) on rate row 0 at 13 ms \
+         whose clock starts at the listener's age row; src:\n{src}"
     );
     assert!(
         src.contains("extern \"C\" void nros_app_reaction_hook"),
