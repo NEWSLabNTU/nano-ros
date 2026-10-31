@@ -44,3 +44,15 @@ command and the measured one disagree. The `runner` is right only for
   `docs/reference/qemu-icount.md` rule says why.
 * Issue 2169's per-board check of the printed command would have caught the
   missing NIC; land that check against this board too.
+
+## Progress (2026-10-31)
+
+Issue 2169's check (`every_probed_chapter_boot_line_is_the_printed_run_command`)
+caught the missing NIC and `-icount` on both MPS2-AN385 boards. Their
+`runner` now carries the chapter's measured line, so the runner, the printed
+command and the book agree there. Two things are left:
+
+* the harness's MPS launchers still spell the line by hand;
+* the MPS3-AN536 runner still has no `-icount`. It has no probe track to
+  compare against, and its harness pairs use `socket,mcast` and SLIRP with
+  `hostfwd` rather than plain SLIRP.

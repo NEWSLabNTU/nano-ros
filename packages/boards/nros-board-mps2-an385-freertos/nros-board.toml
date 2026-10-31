@@ -17,7 +17,10 @@ cargo_config = '''
 target = "thumbv7m-none-eabi"
 
 [target.thumbv7m-none-eabi]
-runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+# Issue 2172 — the line its chapters boot on the installed probe track
+# (`-icount shift=auto`: docs/reference/qemu-icount.md; the LAN9118 NIC on
+# QEMU's SLIRP network), which `nros build` prints as the run command.
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -icount shift=auto -semihosting-config enable=on,target=native -nic user,model=lan9118 -kernel"
 rustflags = [
     # The board's own script (`c/board_mps2.c` startup + FreeRTOS). The
     # `examples/workspaces/{rust,realtime-rust}` configs mirror THIS group for
