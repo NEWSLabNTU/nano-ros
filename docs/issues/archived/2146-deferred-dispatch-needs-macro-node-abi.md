@@ -91,7 +91,7 @@ until work arrives uses both: spin on the first, drain on the second.
 
 **Left for phase-520 W3:** emitting deferred dispatch from `nros::setup!` for
 `dispatch = "deferred"` components
-(`docs/roadmap/phase-520-setup-macro-host-loop.md`). This change provides the
+(`docs/roadmap/archived/phase-520-setup-macro-host-loop.md`, retired 2026-10-31 under RFC-0113 D10). This change provides the
 executor API that W3 builds on, and does not touch `setup!` or
 `main_macro.rs`.
 

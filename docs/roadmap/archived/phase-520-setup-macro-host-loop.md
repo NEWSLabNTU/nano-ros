@@ -1,12 +1,32 @@
 # Phase 520 — `nros::setup!`: model-driven assembly for a host that owns its loop
 
-**Status (2026-10-31). W1, W1b and W2 landed; W3–W4 open.** Implements
-[issue 2150](../issues/2150-nros-setup-macro-host-loop.md) under
-[RFC-0112](../design/0112-framework-support-tiers.md) D2 (the Tier 0
+**Status (2026-10-31). RETIRED — W1, W1b, W2 and W3 landed; W4 not started;
+the surface is withdrawn and phase-521 deletes it.** The maintainer ruled on
+2026-10-31 that the real-time promise (stated response-time, jitter and
+priority bounds) is a precondition of support. A host-driven loop — RFC-0112's
+Tier 0: tokio, an Embassy task, Qt/GLib, a hand-written PX4 work item — decides
+when callbacks run, so nano-ros cannot state those bounds there, and Tier 0 is
+withdrawn. `nros::setup!` exists to serve that shape, so it goes with it. The
+ruling is RFC-0113 "rt-unified-wait" (D1 the support rule, D7 the retired
+surface, D10 `setup!`), drafted on 2026-10-31 and landing with phase-521;
+phase-521 W1 deletes the macro, the `nros_setup` / `nros_deploy` / `nros_boot`
+emit, the W3 deferral helpers, the `listener-host-loop` example and cell, the
+tests and the book text, together with `spin_async*`, `set_ready_notifier`,
+`ready_fd` and the public `Executor::next_deadline_us`. PX4 stays supported as
+a Tier 1 framework (a generated mapping of tiers onto PX4 work queues), not
+through `setup!`.
+
+Issue 2150 is closed `wontfix` with this ruling
+([archived](../../issues/archived/2150-nros-setup-macro-host-loop.md)). What
+follows is the record of what was built and measured, kept because phase-521's
+deletion has to cover every item of it; nothing below is a plan.
+
+Implemented [issue 2150](../../issues/archived/2150-nros-setup-macro-host-loop.md)
+under [RFC-0112](../../design/0112-framework-support-tiers.md) D2 (the Tier 0
 host-driven contract) and D4 (recipes). The
-[issue 2134](../issues/archived/2134-embassy-macro-branch-untested.md) demotion
+[issue 2134](../../issues/archived/2134-embassy-macro-branch-untested.md) demotion
 landed first (2026-10-30: `nros::main!`'s Embassy arm is deleted and the book
-shows the hand-driven shape), so `setup!` is what gives an Embassy recipe back
+shows the hand-driven shape), so `setup!` was what gave an Embassy recipe back
 the `system.toml` assembly that arm used to emit.
 
 ---
@@ -181,14 +201,20 @@ component's callbacks in a task of its own.
   the leaf's own component by either name, inline / absent / foreign rows
   left verbatim with an empty `NROS_DEFERRED_COMPONENTS`.
 
-### W4 — the Embassy recipe on `setup!`
+### W4 — the Embassy recipe on `setup!` — NOT STARTED, RETIRED
+
+Withdrawn with the surface (RFC-0113 D10). The Embassy chapter keeps the
+hand-driven shape issue 2134 left it with, and whatever recipe Embassy gets
+next is phase-521's to state under the Tier 1 rule.
+
+As planned before the ruling:
 
 Rewrite the book's Embassy chapter around `setup!` and a host loop
 (2143/2144's notifier once they land; `spin_some` + timer until then), with a
 cell on `embassy-executor`'s std arch — the recipe and cell issue 2134's
 resolution left waiting on 2150.
 
-## Open questions
+## Open questions (moot since the ruling; kept as record)
 
 - Executor backing: the host opens the `Executor`, so it chooses the backing.
   Should `setup!` also emit the `.bss` `EXECUTOR_BACKING` sizing it derived,
