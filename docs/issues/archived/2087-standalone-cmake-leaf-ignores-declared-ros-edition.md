@@ -12,7 +12,7 @@ related: [issue-2045, rfc-0056, rfc-0031, phase-452]
 
 # A standalone CMake leaf ignored its declared ROS edition
 
-**Home:** [phase-452](../../roadmap/phase-452-copy-out-front-door.md) W7. Found
+**Home:** [phase-452](../../roadmap/archived/phase-452-copy-out-front-door.md) W7. Found
 while fixing [#2045](2045-example-manifests-hand-set-the-ros-edition-feature.md),
 whose cargo-road twin was LOUD; this one was silent.
 

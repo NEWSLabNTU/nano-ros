@@ -12,7 +12,7 @@ related: [rfc-0103, rfc-0026, phase-452, issue-1641]
 
 # Copy-out instructions configure with a retired root variable
 
-**Resolved 2026-10-26** — see the last section. **Home:** [phase-452](../../roadmap/phase-452-copy-out-front-door.md) W7.
+**Resolved 2026-10-26** — see the last section. **Home:** [phase-452](../../roadmap/archived/phase-452-copy-out-front-door.md) W7.
 
 ## Problem
 

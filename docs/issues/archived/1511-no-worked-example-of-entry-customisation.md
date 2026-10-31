@@ -10,7 +10,7 @@ related: [1288, 0865, rfc-0065, rfc-0098, phase-445, phase-477, phase-452]
 found: 2026-09-27
 ---
 
-**Home: [phase-452](../../roadmap/phase-452-copy-out-front-door.md)**, re-homed 2026-10-13 from phase-477, archived that day, which named it without owning it.
+**Home: [phase-452](../../roadmap/archived/phase-452-copy-out-front-door.md)**, re-homed 2026-10-13 from phase-477, archived that day, which named it without owning it.
 
 # The escape hatch will exist in the code and nowhere in the docs
 

@@ -12,7 +12,7 @@ related: [issue-2045, issue-1305, rfc-0056, rfc-0098, phase-452]
 
 # The Rust scaffold pins the ROS edition in its manifest
 
-**Home:** [phase-452](../../roadmap/phase-452-copy-out-front-door.md) W8. Found by
+**Home:** [phase-452](../../roadmap/archived/phase-452-copy-out-front-door.md) W8. Found by
 [#2045](2045-example-manifests-hand-set-the-ros-edition-feature.md)'s
 own refusal, on its first `just ci gate` run.
 

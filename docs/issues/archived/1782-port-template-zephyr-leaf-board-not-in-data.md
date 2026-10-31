@@ -11,7 +11,7 @@ resolved: 2026-10-29
 resolved_in: "#2821"
 ---
 
-**Home: [phase-452](../roadmap/phase-452-copy-out-front-door.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-452](../../roadmap/archived/phase-452-copy-out-front-door.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What was measured
 

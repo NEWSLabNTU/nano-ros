@@ -12,7 +12,7 @@ related: [rfc-0056, rfc-0031, rfc-0004, phase-452, issue-1305, issue-2087]
 
 # Example manifests hand-set the ROS edition as a cargo feature
 
-**Home:** [phase-452](../../roadmap/phase-452-copy-out-front-door.md) W7.
+**Home:** [phase-452](../../roadmap/archived/phase-452-copy-out-front-door.md) W7.
 
 ## Problem
 
