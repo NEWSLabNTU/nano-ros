@@ -1,0 +1,5 @@
+{
+  "key": "rust:run_deferred",
+  "verdict": "extension",
+  "why": "phase-520 W3 (RFC-0112 D2, Defer) -- `Executor::run_deferred` through the `&mut dyn NodeDispatchRuntime` a host holds inside `nros_boot`; behind `nros::setup!`'s emitted `nros_run_deferred`. Doc-hidden in `nros::__macro`, with the other generated-entry seams; rclrs has no deferred dispatch to correlate it with."
+}

@@ -135,11 +135,51 @@ delivery. Proves the function is complete, not just that it compiles.
 - Tier 1's 1-wise workload axis took the new workload: 25 → 26 cells at the
   same 11 coordinates (`ci_lane` table re-measured); tier 3 254 → 255.
 
-### W3 — deferred dispatch inside `setup!` (issue 2146)
+### W3 — deferred dispatch inside `setup!` (issue 2146) — DONE
 
-Emit the `register_dispatch` slots for `dispatch = "deferred"` components, and
-give the host the drain call, so a Tier 0 host can run callbacks in its own
-task. Closes 2146.
+A `[[component]]` with `dispatch = "deferred"` is installed deferred by the
+emitted `nros_setup`, and the host gets the drain, so a Tier 0 host runs that
+component's callbacks in a task of its own.
+
+- Built on issue 2146's executor queue (`set_deferred` / `run_deferred`),
+  NOT on the `register_dispatch` slot registry this item first named: that
+  registry has no consumer (issue 2161), and the queue is what a hand-written
+  host already uses. The two emitters therefore agree, which 2161 asked for.
+- The component is deferred as a WHOLE, with no handle named: the executor
+  grew `callback_mark()` (an opaque snapshot of the occupied callback slots)
+  and `set_deferred_since(mark, bool)` (defer every slot occupied since;
+  timers skipped and not counted). `nros_setup` brackets the component's
+  `register(runtime)?` with the two, through
+  `nros::__macro::{callback_mark, defer_registered_since}`. Measured by unit
+  test: a slot registered before the mark stays inline, a timer among the new
+  ones is skipped, the deferred subscription is queued by the spin and run by
+  the drain.
+- The host's calls, emitted beside `nros_setup` (always, `#[allow(dead_code)]`,
+  so a host that defers by hand has them too): `nros_run_deferred(rt) -> usize`,
+  `nros_has_deferred(rt) -> bool`, `nros_set_defer_notifier(rt, fn, ctx) ->
+  bool`, and `NROS_DEFERRED_COMPONENTS: &[&str]`. They reach the executor
+  through the lent `&mut dyn NodeDispatchRuntime`'s `executor_handle()`, so
+  a host inside `nros_boot`'s closure needs nothing else.
+- Which component a row names: `pkg` is a ROS package name, and the leaf's own
+  component has TWO names — the cargo crate (`CARGO_PKG_NAME`, what the
+  self-bringup ident is spelled from) and `package.xml`'s `<name>`. The first
+  image built reported `Deferred components: []` because
+  `native_listener_host_loop` was matched against `native_rs_listener_host_loop`;
+  a row without `pkg`, or naming either of the leaf's names, now matches, and
+  `package.xml` is a tracked rebuild input of `setup!`.
+- `nros::main!` ignores the key (expansion test `main_does_not_defer_a_deferred_component`):
+  its board loop is the only task, so a deferral would queue callbacks nothing
+  drains. RTIC's own queue remains issue 2161.
+- Acceptance: the W2 example is now the deferred one — `listener-host-loop`
+  declares `dispatch = "deferred"` and its loop is `spin_once(10)` then
+  `nros_run_deferred`; the `HostLoop` cell asserts the 3 deliveries AND the
+  drain's marker line (`output::HOST_LOOP_DEFERRED_DRAIN_MARKER`). Measured
+  by hand 2026-10-31 through `rmw_zenohd` with the stock talker: `Deferred
+  components: ["native_rs_listener_host_loop"]`, `Deferred callbacks ran from
+  the host loop: 1`, 6 `I heard:` lines in 6 s, clean exit on SIGTERM.
+- Expansion tests: mark / register / defer order and the package literal,
+  the leaf's own component by either name, inline / absent / foreign rows
+  left verbatim with an empty `NROS_DEFERRED_COMPONENTS`.
 
 ### W4 — the Embassy recipe on `setup!`
 

@@ -320,6 +320,12 @@ fn run_cell(cell: &MCell) {
 /// `nros::main!` does — the subscription, its callback, and the board's log
 /// sink the `I heard:` line goes through.
 ///
+/// phase-520 W3 — the component is `dispatch = "deferred"`, so the spin only
+/// QUEUES its callback and the loop runs it with `nros_run_deferred`. The
+/// deliveries therefore prove the deferred road too (a deferral nothing
+/// drains delivers nothing), and the drain's own marker line proves they came
+/// through it rather than inline.
+///
 /// Then SIGTERM: the loop polls `nros_stop_requested()`, and the process must
 /// EXIT on its own. A loop that ignores the board's guard never returns, and
 /// the board never gets to close the session (issue 1732).
@@ -381,6 +387,13 @@ fn native_example_host_loop_delivers() {
         });
     talker_proc.kill();
     nros_tests::checker::assert_delivery(MW::HostLoop, &out, 3);
+    assert!(
+        out.contains(nros_tests::output::HOST_LOOP_DEFERRED_DRAIN_MARKER),
+        "the deliveries did not come through `nros_run_deferred`: no \
+         `{}` line — the `dispatch = \"deferred\"` component ran inline, or the \
+         loop never drained:\n{out}",
+        nros_tests::output::HOST_LOOP_DEFERRED_DRAIN_MARKER
+    );
 
     // The loop must honour the board's termination guard and RETURN: one
     // SIGTERM to the pid (not the group), then a clean exit.

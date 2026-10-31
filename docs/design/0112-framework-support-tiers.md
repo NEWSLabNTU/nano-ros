@@ -98,7 +98,7 @@ what is missing:
 | **Wake in** | make a parked or later spin notice new work, from a thread, an ISR or a signal handler | `wake()` (any context, `AtomicBool`); `wake_handle()` (needs `alloc`); `signal_fd()` (Linux, `signal-fd-wake` feature) | none for waking. But `signal_fd()` is a WRITE end for signal handlers, not a readable readiness fd, so a GLib or Qt loop cannot watch it. That is the next row's gap |
 | **Readiness out** | learn that work arrived, so the host can schedule a spin | `set_ready_notifier(fn, ctx)` (issue 2144): one notifier per executor, called on every arrival and every cross-thread guard trigger; `ready_fd()` (Linux, `signal-fd-wake`), a readable eventfd over the same moments; C `rclc_executor_set_ready_notifier`, C++ `rclcpp::Executor::set_ready_notifier`. A poll-only backend refuses (`ready_notifier_supported()`) | **`spin_async()` does not use it yet.** It still wakes ITSELF on every poll, so under Embassy or tokio it is a busy loop. Its pass no longer blocks the async executor's thread (issue 2145: `spin_once(1 ms)` became `spin_once(ZERO)`); sleeping until work arrives is what this row's notifier is for |
 | **Time out** | know when the executor next needs to run, so the host can sleep exactly that long | internally, `next_wake_bound_us` is the minimum over timers, backend, routes and wake sources (RFC-0106). Publicly, only `route_next_due_us()` and the per-timer `timer_time_until_next_call_ns(id)` | **closed (issue 2143).** `Executor::next_deadline_us() -> Option<u64>`, with `rclc_executor_get_next_deadline_ns` (C) and `rclcpp::Executor::next_deadline_us` (C++) |
-| **Defer** | run a callback in the framework's own task instead of inline | `set_deferred(handle, true)` + `set_defer_notifier(fn(ctx, HandleId), ctx)`; the spin queues a ready deferred callback and notifies, the host runs it with `run_deferred()` / `run_deferred_handle(handle)` (issue 2146) | none for a hand-written host. The RTIC emit still runs on the older macro-only slot registry (`register_dispatch_slot` / `__nros_node_<pkg>_on_callback`); moving it onto this queue is issue 2161 |
+| **Defer** | run a callback in the framework's own task instead of inline | `set_deferred(handle, true)` + `set_defer_notifier(fn(ctx, HandleId), ctx)`; the spin queues a ready deferred callback and notifies, the host runs it with `run_deferred()` / `run_deferred_handle(handle)` (issue 2146) | `nros::setup!` defers a `[[component]]` with `dispatch = "deferred"` as a whole (`callback_mark` before its `register`, `set_deferred_since` after) and emits the host's `nros_run_deferred` / `nros_has_deferred` / `nros_set_defer_notifier` (phase-520 W3). `nros::main!` ignores the key: its board loop is the only task. The RTIC emit still runs on the older macro-only slot registry (`register_dispatch_slot` / `__nros_node_<pkg>_on_callback`); moving it onto this queue, or retiring it, is issue 2161 |
 
 **D2.1 — Stability.** The Drive, Wake-in and (once added) Time-out and
 Readiness-out functions become the documented integration surface, under a
@@ -137,7 +137,10 @@ recorded here so that it is decided once:
   executor: the spin enqueues where it learns readiness, so the notifier runs
   on the spinning thread, not in the backend's arrival callback. A host that
   must hear about work from interrupt context pairs it with the Readiness-out
-  notifier (issue 2144).
+  notifier (issue 2144). **Reached from `system.toml` (phase-520 W3):** a
+  `[[component]]` with `dispatch = "deferred"` under `nros::setup!` is deferred
+  by the emitted `nros_setup` and drained by the emitted `nros_run_deferred`;
+  the `listener-host-loop` example and its cell run that way.
 
 ### D3 — Tier 1 admission: four criteria, all required
 

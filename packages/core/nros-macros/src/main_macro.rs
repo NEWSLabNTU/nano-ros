@@ -1673,6 +1673,15 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
     // De-duplicate the tracked list — pkg-index walks can revisit
     // a pkg dir's `package.xml` from multiple paths.
+    // phase-520 W3 -- `nros::setup!` reads the leaf's `package.xml` name to
+    // match a deferred `[[component]]` row to the leaf's own component, so a
+    // renamed package rebuilds the entry.
+    if args.setup {
+        let package_xml = manifest_dir.join("package.xml");
+        if package_xml.is_file() {
+            tracked.push(package_xml);
+        }
+    }
     tracked.sort();
     tracked.dedup();
 
@@ -3220,8 +3229,75 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         } else {
             quote! {}
         };
+        // phase-520 W3 (issue 2146) -- a `[[component]]` whose
+        // `dispatch = "deferred"` is deferred as a whole: its `register` is
+        // bracketed by the executor's callback mark and `set_deferred_since`,
+        // so every callback it registered runs from the host's drain
+        // (`nros_run_deferred`), never from the spin. Only here: under
+        // `nros::main!` the board's loop is the only task, so nothing would
+        // drain (RTIC's own queue is issue 2161).
+        // The leaf's OWN package has two names a row may use: the cargo crate
+        // (`CARGO_PKG_NAME`, what the self-bringup ident is spelled from) and
+        // the ROS package (`package.xml`'s `<name>`, what `pkg =` means
+        // everywhere else in `system.toml`).
+        let mut own_pkgs: Vec<String> = entry_env("CARGO_PKG_NAME")
+            .and_then(|v| v.into_string().ok())
+            .into_iter()
+            .collect();
+        let package_xml = manifest_dir.join("package.xml");
+        if let Ok(ros_pkg) = nros_pkg_index::read_package_xml_name(&package_xml) {
+            own_pkgs.push(ros_pkg);
+        }
+        let deferred_idents =
+            deferred_component_idents(leaf_decl.as_ref(), &entry_nodes, &own_pkgs);
+        let register_calls =
+            wrap_deferred_register_calls(&entry_nodes, &register_calls, &deferred_idents);
+        let deferred_lits = deferred_idents
+            .iter()
+            .map(|i| LitStr::new(i, Span::call_site()));
         let setup_ts = quote! {
             #boot_ts
+
+            /// The components `nros_setup` defers (`[[component]]
+            /// dispatch = "deferred"`), by package. Their callbacks run only
+            /// when the host calls `nros_run_deferred`; empty when the image
+            /// defers nothing.
+            #[allow(dead_code)]
+            pub const NROS_DEFERRED_COMPONENTS: &[&str] = &[ #( #deferred_lits ),* ];
+
+            /// Run every deferred callback the last spin queued, from the
+            /// host's own task, and return how many ran. The spin never runs a
+            /// deferred component's callbacks itself: a host that spins and
+            /// never drains receives nothing from `NROS_DEFERRED_COMPONENTS`.
+            #[allow(dead_code)]
+            pub fn nros_run_deferred(
+                node_runtime: &mut dyn ::nros::__macro_support::nros_platform::NodeDispatchRuntime,
+            ) -> usize {
+                ::nros::__macro::run_deferred(node_runtime)
+            }
+
+            /// Whether a deferred callback is queued for `nros_run_deferred`.
+            #[allow(dead_code)]
+            pub fn nros_has_deferred(
+                node_runtime: &mut dyn ::nros::__macro_support::nros_platform::NodeDispatchRuntime,
+            ) -> bool {
+                ::nros::__macro::has_deferred(node_runtime)
+            }
+
+            /// Install the notifier the spin calls when it queues a deferred
+            /// callback (`nros::DeferNotify`: a plain `fn(ctx, HandleId)`, run
+            /// on the spinning thread, inside the pass; it must not block).
+            /// For a host that pends a task per callback rather than draining
+            /// after every spin. Returns `false` when the runtime has no
+            /// executor.
+            #[allow(dead_code)]
+            pub fn nros_set_defer_notifier(
+                node_runtime: &mut dyn ::nros::__macro_support::nros_platform::NodeDispatchRuntime,
+                notify: ::nros::DeferNotify,
+                ctx: *mut ::core::ffi::c_void,
+            ) -> bool {
+                ::nros::__macro::set_defer_notifier(node_runtime, notify, ctx)
+            }
 
             /// The image's deploy facts (locator, domain, transport, RMW,
             /// node name) from its `system.toml`, for the host to open its
@@ -5549,6 +5625,75 @@ pub(crate) fn render_register_calls(nodes: &[LoweredNode]) -> Vec<proc_macro2::T
         .collect()
 }
 
+/// phase-520 W3 -- the entry nodes a leaf's `[[component]]` rows declare
+/// `dispatch = "deferred"` for, as the sanitised package idents the register
+/// calls are spelled with. A row's `pkg` names the component's package; a row
+/// without one, or naming the leaf's own package by any of its names
+/// (`own_pkgs`: the cargo crate and the ROS package), is the leaf's own
+/// component, whose self-bringup ident is spelled from the CRATE name. Rows
+/// naming a package this entry does not register are not an error here:
+/// `nros check` owns the dispatch lint (issue 1278).
+pub(crate) fn deferred_component_idents(
+    leaf: Option<&nros_orchestration_ir::leaf_system::LeafSystem>,
+    nodes: &[LoweredNode],
+    own_pkgs: &[String],
+) -> Vec<String> {
+    let Some(leaf) = leaf else {
+        return Vec::new();
+    };
+    let own: Vec<String> = own_pkgs
+        .iter()
+        .map(|p| nros_entry_lower::sanitize_pkg(p))
+        .collect();
+    let mut out: Vec<String> = Vec::new();
+    for component in &leaf.components {
+        if component.dispatch.as_deref() != Some("deferred") {
+            continue;
+        }
+        let wanted: Vec<String> = match component.pkg.as_deref() {
+            Some(p) if !own.contains(&nros_entry_lower::sanitize_pkg(p)) => {
+                vec![nros_entry_lower::sanitize_pkg(p)]
+            }
+            _ => own.clone(),
+        };
+        for node in nodes {
+            let ident = node.ident();
+            if wanted.contains(&ident) && !out.contains(&ident) {
+                out.push(ident);
+            }
+        }
+    }
+    out
+}
+
+/// phase-520 W3 -- bracket a deferred component's register call with the
+/// executor's callback mark before and `defer_registered_since` after, so the
+/// callbacks exactly that call registered are deferred, with no handle named.
+/// A node not in `deferred` keeps its call verbatim. `calls` is
+/// [`render_register_calls`]'s output for `nodes`, positionally.
+pub(crate) fn wrap_deferred_register_calls(
+    nodes: &[LoweredNode],
+    calls: &[proc_macro2::TokenStream],
+    deferred: &[String],
+) -> Vec<proc_macro2::TokenStream> {
+    nodes
+        .iter()
+        .zip(calls)
+        .map(|(node, call)| {
+            let ident = node.ident();
+            if !deferred.contains(&ident) {
+                return call.clone();
+            }
+            let pkg_lit = LitStr::new(&ident, Span::call_site());
+            quote! {
+                let __nros_defer_mark = ::nros::__macro::callback_mark(runtime);
+                #call
+                ::nros::__macro::defer_registered_since(runtime, __nros_defer_mark, #pkg_lit)?;
+            }
+        })
+        .collect()
+}
+
 /// Silence the unused-import warning in proc_macro2 — Expr / ExprLit /
 /// Lit are imported so future extensions (e.g. parsing
 /// `args = vec![("k","v")]`) can reach them without re-importing.
@@ -6730,6 +6875,12 @@ mod leaf_axis_tests {
     /// phase-520 W1 — expand `nros::setup!(<args>)` over a throwaway leaf whose
     /// `[image.a]` table is `image` verbatim (so a test can omit the board).
     fn expand_setup(args: &str, image: &str) -> Result<String, String> {
+        expand_setup_with(args, image, "")
+    }
+
+    /// [`expand_setup`] with `extra` appended after `[system]` (a
+    /// `[[component]]` row, say).
+    fn expand_setup_with(args: &str, image: &str, extra: &str) -> Result<String, String> {
         static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let dir = std::env::temp_dir().join(format!(
             "nros-macros-setup-{}-{}",
@@ -6745,7 +6896,16 @@ mod leaf_axis_tests {
         .unwrap();
         std::fs::write(
             dir.join("system.toml"),
-            format!("[system]\nname = \"setup_leaf\"\nrmw = \"zenoh\"\n\n[image.a]\n{image}\n"),
+            format!(
+                "[system]\nname = \"setup_leaf\"\nrmw = \"zenoh\"\n{extra}\n\n[image.a]\n{image}\n"
+            ),
+        )
+        .unwrap();
+        // The leaf's ROS package name differs from its crate name, as in every
+        // shipped example (`native-rs-listener-host-loop` / `native_listener_host_loop`).
+        std::fs::write(
+            dir.join("package.xml"),
+            "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>ros_leaf_pkg</name>\n</package>\n",
         )
         .unwrap();
         let mut args: MainArgs = syn::parse_str(args).map_err(|e| e.to_string())?;
@@ -6832,6 +6992,90 @@ mod leaf_axis_tests {
         assert!(out.contains("pub fn nros_setup"), "{out}");
         let err = expand_setup("", "").unwrap_err();
         assert!(err.contains("names no `board`"), "{err}");
+    }
+
+    /// phase-520 W3 (issue 2146) -- a `[[component]]` with
+    /// `dispatch = "deferred"` has its register call bracketed by the
+    /// executor's callback mark and `defer_registered_since`, naming the
+    /// package, and the host gets the drain.
+    #[test]
+    fn setup_defers_a_deferred_component_around_its_register() {
+        let row = "[[component]]\npkg = \"setup_leaf\"\nname = \"n\"\ndispatch = \"deferred\"\n";
+        let out = expand_setup_with("", "board = \"linux\"", row).unwrap();
+        let mark = out.find("callback_mark (runtime)").expect("no mark");
+        let call = out
+            .find("setup_leaf :: register (runtime)")
+            .expect("no register");
+        let defer = out
+            .find("defer_registered_since (runtime , __nros_defer_mark , \"setup_leaf\")")
+            .expect("no defer");
+        assert!(
+            mark < call && call < defer,
+            "mark / register / defer out of order:\n{out}"
+        );
+        assert!(
+            out.contains("NROS_DEFERRED_COMPONENTS : & [& str] = & [\"setup_leaf\"]"),
+            "{out}"
+        );
+        for f in [
+            "pub fn nros_run_deferred",
+            "pub fn nros_has_deferred",
+            "pub fn nros_set_defer_notifier",
+        ] {
+            assert!(out.contains(f), "`{f}` missing:\n{out}");
+        }
+    }
+
+    /// A row without `pkg`, or naming the leaf's ROS package (its
+    /// `package.xml` name, not the cargo crate the ident is spelled from), is
+    /// the leaf's own component, so it defers the same one.
+    #[test]
+    fn setup_defers_the_leafs_own_component_by_either_of_its_names() {
+        for row in [
+            "[[component]]\nname = \"n\"\ndispatch = \"deferred\"\n",
+            "[[component]]\npkg = \"ros_leaf_pkg\"\nname = \"n\"\ndispatch = \"deferred\"\n",
+        ] {
+            let out = expand_setup_with("", "board = \"linux\"", row).unwrap();
+            assert!(
+                out.contains(
+                    "defer_registered_since (runtime , __nros_defer_mark , \"setup_leaf\")"
+                ),
+                "{row}:\n{out}"
+            );
+        }
+    }
+
+    /// No `dispatch`, `inline`, or a row for a package this entry does not
+    /// register: the register call is verbatim, the deferred list is empty,
+    /// and the drain is still emitted (a host may defer by hand).
+    #[test]
+    fn setup_leaves_an_inline_component_alone() {
+        for row in [
+            "",
+            "[[component]]\npkg = \"setup_leaf\"\nname = \"n\"\ndispatch = \"inline\"\n",
+            "[[component]]\npkg = \"other_pkg\"\nname = \"n\"\ndispatch = \"deferred\"\n",
+        ] {
+            let out = expand_setup_with("", "board = \"linux\"", row).unwrap();
+            assert!(!out.contains("defer_registered_since"), "{row}:\n{out}");
+            assert!(!out.contains("callback_mark"), "{row}:\n{out}");
+            assert!(
+                out.contains("NROS_DEFERRED_COMPONENTS : & [& str] = & []"),
+                "{row}:\n{out}"
+            );
+            assert!(out.contains("pub fn nros_run_deferred"), "{row}:\n{out}");
+        }
+    }
+
+    /// `nros::main!` ignores `dispatch = "deferred"`: the board's loop is the
+    /// only task, so a deferral there would queue callbacks nothing drains
+    /// (RTIC's queue is issue 2161).
+    #[test]
+    fn main_does_not_defer_a_deferred_component() {
+        let row = "[[component]]\npkg = \"axis_leaf\"\nname = \"n\"\ndispatch = \"deferred\"\n";
+        let out = expand("", "linux", row).unwrap();
+        assert!(out.contains("axis_leaf :: register"), "{out}");
+        assert!(!out.contains("defer_registered_since"), "{out}");
+        assert!(!out.contains("nros_run_deferred"), "{out}");
     }
 
     /// Every key that configures `main` is refused by name.
