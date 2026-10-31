@@ -358,7 +358,11 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
     // Zephyr owns boot, the net stack and drivers, so the key only routes the
     // entry onto the Zephyr emit branch. Without these a Rust image on
     // `mps2-an385-zephyr` was refused as an unknown board.
-    ("mps2-an385-zephyr", "::nros_board_zephyr::ZephyrBoard", false),
+    (
+        "mps2-an385-zephyr",
+        "::nros_board_zephyr::ZephyrBoard",
+        false,
+    ),
     ("qemu-cortex-a53", "::nros_board_zephyr::ZephyrBoard", false),
     ("fvp-aemv8r-smp", "::nros_board_zephyr::ZephyrBoard", false),
     // `qemu-rtic-mps2-an385` was a second key for this ZST until issue 1902:
