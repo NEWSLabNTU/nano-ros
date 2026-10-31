@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use eyre::{Result, bail};
 
-use crate::orchestration::{sdk_index::SdkIndex, sdk_store};
+use crate::orchestration::sdk_store;
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -50,7 +50,7 @@ pub fn run(args: Args) -> Result<()> {
     // in the mirror shape, which has no `subdir` by construction.
     let mut subdir: Option<String> = None;
     let front = if args.front.is_empty() {
-        let index = SdkIndex::load(&crate::cmd::setup::resolve_index(&args.index)?)?;
+        let (_, index) = crate::cmd::setup::load_resolved_index(&args.index)?;
         let Some(tool) = index.tool.get(&args.tool) else {
             let known: Vec<&str> = index.tool.keys().map(String::as_str).collect();
             bail!(
