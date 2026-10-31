@@ -51,3 +51,22 @@ whose board is the mps2 package (`nros-board-mps2-an385-zephyr`). Whichever,
 a fixture row that builds a non-native board must be in a lane that would
 have caught this; check which lane builds `talker-serial` and why it stayed
 green (or did not run) after 2157.
+
+## Sighting on main: live-peer regression (2026-10-31)
+
+live-peer regression run 41167433083 (schedule, `380cde09c6`), job
+124438293461 `rows whose board is NOT this runner`, step `Build the fixtures
+those rows resolve`, failed on the first Zephyr fixture,
+`zephyr/mps2_an385/c/talker/zenoh` (`build-cortex-m-c-talker-zenoh`):
+
+```
+Merged configuration '/__w/nano-ros/nano-ros/zephyr/snippets/nros-nsos/nsos.conf'
+nsos.conf:15: warning: attempt to assign the value 'y' to the undefined symbol NATIVE_SIM_SLOWDOWN_TO_REAL_TIME
+error: Aborting due to Kconfig warnings
+✗ Zephyr fixture build FAILED (exit 2)
+```
+
+So the defect also reaches the C leaves (`examples/zephyr/c/talker`, image
+`zephyr_zenoh`, `board = "zephyr"`), not only the Rust serial row this issue
+measured, and the board-elsewhere live-peer lane cannot build any fixture
+until it is fixed.
