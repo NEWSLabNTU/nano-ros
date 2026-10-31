@@ -45,11 +45,18 @@ after_includes = """
 
 /**
  * phase-462 W3b -- bytes of caller storage ONE hazard row needs (its
- * `HazardCell` plus its `HazardSpec`), the same kind of bound: 96 on a 64-bit
- * host, 64 on a 32-bit target. `nros_cpp_install_hazards` checks the real
+ * `HazardCell` plus its `HazardSpec`), the same kind of bound: 112 on a 64-bit
+ * host, 80 on a 32-bit target. `nros_cpp_install_hazards` checks the real
  * requirement and refuses a short buffer.
  */
-#define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 96 : 64)
+#define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 112 : 80)
+
+/**
+ * play_launch phase 96 W4.2 -- bytes of caller storage ONE hazard rung needs
+ * (its `RungSpec`): 32 on a 64-bit host, 24 on a 32-bit target. Its
+ * `starts_at` members count toward NROS_CPP_HAZARD_MEMBER_STORAGE.
+ */
+#define NROS_CPP_HAZARD_RUNG_STORAGE (sizeof(void *) == 8 ? 32 : 24)
 
 /**
  * phase-462 W4b -- bytes of caller storage `nros_cpp_install_modes` needs per
@@ -75,6 +82,7 @@ exclude = [
     "NROS_CPP_MONITOR_ROW_STORAGE",
     # phase-462 W3b -- same reason.
     "NROS_CPP_HAZARD_ROW_STORAGE",
+    "NROS_CPP_HAZARD_RUNG_STORAGE",
     # phase-462 W4b -- same reason.
     "NROS_CPP_MODE_TABLE_STORAGE",
     "NROS_CPP_MODE_ROW_STORAGE",

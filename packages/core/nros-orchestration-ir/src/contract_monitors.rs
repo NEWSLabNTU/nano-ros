@@ -547,49 +547,97 @@ pub struct HazardRow {
     /// ([`model_reaction_ids`]), or 0 when the reacting path states no
     /// `safe_state`: then there is no safe-state entry to start.
     pub reaction_id: u16,
-    /// play_launch phase 96 W4.2 (phase 85 D4) -- the rung whose ROUTE this
-    /// table set judges ([`hazard_rung`]), when there is one.
-    pub rung: Option<HazardRungRow>,
+    /// play_launch phase 96 W4.2 (phase 85 D4) -- the hazard's ladder, top
+    /// rung first ([`hazard_rungs`]). Empty: no rung route is monitored.
+    pub rungs: Vec<HazardRungRow>,
 }
 
-/// play_launch phase 96 W4.2 -- the rung of a hazard's ladder an executor
-/// judges, and the route play_launch's checker charged it.
+/// play_launch phase 96 W4.2 -- one rung of a hazard's ladder, lowered onto an
+/// executor's tables.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct HazardRungRow {
     /// The rung's name (`contracts.hazards.<h>.rungs[].rung`), for comments.
     pub name: String,
-    /// Rate-row index of a publisher on one of the rung's `output` topics.
-    pub row: usize,
-    /// The rung's `route_ms`, rounded UP, never 0: from the detection fire
-    /// to the rung's first output.
+    /// The baked mode id of the mode the rung is ([`crate::mode_variants::mode_ids`]);
+    /// `None` when the rung is not a mode (a single-path reaction).
+    pub mode: Option<u16>,
+    /// Rate-row index of a publisher on one of the rung's `output` topics, when
+    /// this table set has one.
+    pub row: Option<usize>,
+    /// The rung's `route_ms`, rounded UP; 0 when play_launch charged none.
     pub route_ms: u32,
+    /// 0 rung, 1 window, 2 floor (rlm `RungRole`, the executor's
+    /// `RUNG_ROLE_*`).
+    pub role: u8,
+    /// The guard members (of this hazard's lowered guards) that belong to the
+    /// rung's `starts_at` node: the route clock starts at their detection.
+    /// Empty when `starts_at` is not one of the guard's detectors here.
+    pub starts_at: Vec<GuardMemberRow>,
 }
 
-/// play_launch phase 96 W4.2 -- the rung `rows` can judge: the TOP rung of the
-/// ladder (the model lists rungs top first, and a rung the fault removes is
-/// not listed) whose output a rate row of this table set publishes, provided
-/// play_launch charged it a route.
+/// The node FQN of an endpoint ref (`<node FQN>/<endpoint>`).
+fn endpoint_node(fqn: &str) -> &str {
+    fqn.rsplit_once('/').map_or("", |(n, _)| n)
+}
+
+/// play_launch phase 96 W4.2 -- the hazard's ladder as rows of this table set:
+/// every rung the model lists (top first; a rung the fault removes is not
+/// listed), each with the mode it is, the row that observes its output, its
+/// route and the guard members that are its `starts_at` node's detectors.
 ///
-/// Not a lower rung when the top observed one has no route: the top rung is
-/// the one that answers first while it is available, so judging a lower rung
-/// against the first output would compare the wrong quantity. Which rung
-/// actually runs depends on the mode the image is in when the fault comes,
-/// which this table does not track; the top rung is the claim the checker
-/// makes for the healthy system.
-pub fn hazard_rung(
+/// The executor judges the ACTIVE rung: the top one, or the one whose mode it
+/// is in when the fault comes or falls to while the fault holds.
+pub fn hazard_rungs(
+    model: &SystemModel,
+    key: &str,
     h: &ros_launch_manifest_model::HazardContract,
+    guards: &[HazardGuardRow],
     rows: &[MonitorRow],
-) -> Option<HazardRungRow> {
-    let (rung, row) = h.rungs.iter().find_map(|r| {
-        let row = rows.iter().position(|m| r.output.contains(&m.topic))?;
-        Some((r, row))
-    })?;
-    let route = rung.route_ms.filter(|v| v.is_finite() && *v > 0.0)?;
-    Some(HazardRungRow {
-        name: rung.rung.clone(),
-        row,
-        route_ms: route.ceil().min(u32::MAX as f64).max(1.0) as u32,
-    })
+    ages: &[AgeRow],
+) -> Vec<HazardRungRow> {
+    use ros_launch_manifest_model::RungRole;
+    let ids = crate::mode_variants::mode_ids(model);
+    let scope = key.rsplit_once('/').map_or("", |(s, _)| s);
+    h.rungs
+        .iter()
+        .map(|r| {
+            let scoped = format!("{scope}/{}", r.rung);
+            let mode = ids
+                .iter()
+                .find(|(name, _)| *name == scoped || *name == r.rung)
+                .map(|(_, id)| *id);
+            let row = rows.iter().position(|m| r.output.contains(&m.topic));
+            let route_ms = r
+                .route_ms
+                .filter(|v| v.is_finite() && *v > 0.0)
+                .map_or(0, |v| v.ceil().min(u32::MAX as f64) as u32);
+            let role = match r.role {
+                RungRole::Rung => 0,
+                RungRole::Window => 1,
+                RungRole::Floor => 2,
+            };
+            let mut starts_at: Vec<GuardMemberRow> = Vec::new();
+            if let Some(node) = r.starts_at.as_deref() {
+                for m in guards.iter().flat_map(|g| &g.members) {
+                    let fqn = match m {
+                        GuardMemberRow::Age(i) => ages.get(*i).map(|a| a.fqn.as_str()),
+                        GuardMemberRow::Rate(i) => rows.get(*i).map(|r| r.fqn.as_str()),
+                    };
+                    if fqn.is_some_and(|f| endpoint_node(f) == node) && !starts_at.contains(m) {
+                        starts_at.push(*m);
+                    }
+                }
+            }
+            HazardRungRow {
+                name: r.rung.clone(),
+                mode,
+                row,
+                route_ms,
+                role,
+                starts_at,
+            }
+        })
+        .collect()
 }
 
 /// The rows of `rows`/`ages` that detect a fault on `topic`: every age row on
@@ -701,6 +749,7 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
             .filter(|_| safe_state.is_some())
             .and_then(|r| ids.iter().find(|(_, name)| name == r.key))
             .map_or(0, |(id, _)| *id);
+        let rungs = hazard_rungs(model, key, h, &guards, rows, ages);
         out.push(HazardRow {
             key: key.clone(),
             ftti_ms: h
@@ -710,10 +759,18 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
             guards,
             sink: emits.and_then(|e| rows.iter().position(|r| r.fqn == e)),
             reaction_id,
-            rung: hazard_rung(h, rows),
+            rungs,
         });
     }
     out
+}
+
+/// A guard member as the Rust literal the baked table names.
+fn member_ref(m: &GuardMemberRow) -> String {
+    match m {
+        GuardMemberRow::Age(r) => format!("GuardRef::Age({r}u16)"),
+        GuardMemberRow::Rate(r) => format!("GuardRef::Rate({r}u16)"),
+    }
 }
 
 /// phase-462 W3b -- the baked hazard table, as Rust: one `HazardCell` static
@@ -741,14 +798,7 @@ fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
             "const NROS_HAZARD_GUARDS_{i}: &[GuardSpec] = &[\n"
         ));
         for g in &h.guards {
-            let members: Vec<String> = g
-                .members
-                .iter()
-                .map(|m| match m {
-                    GuardMemberRow::Age(r) => format!("GuardRef::Age({r}u16)"),
-                    GuardMemberRow::Rate(r) => format!("GuardRef::Rate({r}u16)"),
-                })
-                .collect();
+            let members: Vec<String> = g.members.iter().map(member_ref).collect();
             out.push_str(&format!(
                 "    GuardSpec {{ all_of: {a}, members: &[{m}] }},\n",
                 a = g.all_of,
@@ -763,19 +813,38 @@ fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
             Some(r) => format!("{r}u16"),
             None => format!("{m}::NO_SINK", m = paths.monitor),
         };
-        let (rung_row, rung_route) = match &h.rung {
-            Some(r) => (format!("{}u16", r.row), r.route_ms),
-            None => (format!("{m}::NO_SINK", m = paths.monitor), 0),
-        };
+        let rungs: Vec<String> = h
+            .rungs
+            .iter()
+            .map(|r| {
+                let mode = match r.mode {
+                    Some(id) => format!("{id}u16"),
+                    None => format!("{m}::NO_MODE", m = paths.monitor),
+                };
+                let row = match r.row {
+                    Some(i) => format!("{i}u16"),
+                    None => format!("{m}::NO_SINK", m = paths.monitor),
+                };
+                let starts_at: Vec<String> = r.starts_at.iter().map(member_ref).collect();
+                format!(
+                    "{m}::RungSpec {{ mode: {mode}, output_row: {row}, route_ms: {rt}u32, \
+                     role: {role}u8, starts_at: &[{sa}] }}",
+                    m = paths.monitor,
+                    rt = r.route_ms,
+                    role = r.role,
+                    sa = starts_at.join(", "),
+                )
+            })
+            .collect();
         out.push_str(&format!(
             "    HazardSpec {{ key: {k:?}, ftti_ms: {f}u32, settle_ms: {st}u32, \
              guards: NROS_HAZARD_GUARDS_{i}, sink: {sink}, reaction_id: {ri}u16, \
-             rung_row: {rung_row}, rung_route_ms: {rung_route}u32, \
-             cell: &NROS_HAZARD_CELL_{i} }},\n",
+             rungs: &[{rungs}], cell: &NROS_HAZARD_CELL_{i} }},\n",
             k = h.key,
             f = h.ftti_ms,
             st = h.settle_ms,
             ri = h.reaction_id,
+            rungs = rungs.join(", "),
         ));
     }
     out.push_str("];\n");
@@ -1191,49 +1260,77 @@ mod hazard_row_tests {
         assert!(model_reaction_ids(&m).is_empty());
     }
 
-    /// play_launch phase 96 W4.2 -- the model's `rungs` (top first) reach
-    /// the row: the top rung whose output this table set publishes, its route
-    /// rounded up, and the rendered spec carries both. A rung on a topic no
-    /// row publishes is passed over; a top observed rung with no route judges
-    /// nothing (not the rung below it).
+    /// play_launch phase 96 W4.2 -- every rung the model lists reaches the
+    /// row, top first: its mode id, the row observing its output (none for a
+    /// topic no row publishes), its route rounded up (0 when none), its role,
+    /// and the guard members of its `starts_at` node. The rendered spec
+    /// carries them.
     #[test]
-    fn the_top_observed_rung_and_its_route_reach_the_row() {
-        let rungs = |list: &str| format!("{HAZARD}      ftti_ms: 500.0\n      rungs:\n{list}");
-        // `comfort` ends on a topic nothing here publishes; `stop` on /stop.
-        let (rows, ages, hz) = lowered(
+    fn the_ladder_reaches_the_row_rung_by_rung() {
+        let yaml = model_yaml(
             AGE_100,
-            &rungs(concat!(
-                "        - rung: comfort\n",
-                "          role: rung\n",
-                "          route_ms: 4.0\n",
-                "          output: [/elsewhere]\n",
-                "        - rung: stop\n",
-                "          role: floor\n",
-                "          route_ms: 7.5\n",
-                "          starts_at: /handler\n",
-                "          output: [/stop]\n",
-            )),
+            SAFE_STATE,
+            &format!(
+                "{HAZARD}      ftti_ms: 500.0\n      rungs:\n{}",
+                concat!(
+                    "        - rung: comfort\n",
+                    "          role: window\n",
+                    "          route_ms: 4.0\n",
+                    "          starts_at: /handler\n",
+                    "          output: [/elsewhere]\n",
+                    "        - rung: stop\n",
+                    "          role: floor\n",
+                    "          route_ms: 7.5\n",
+                    "          starts_at: /nobody\n",
+                    "          output: [/stop]\n",
+                )
+            ),
+            "",
+        )
+        .replace(
+            "\n  hazards:\n",
+            "\n  modes:\n    demo.launch.xml/comfort: {}\n    demo.launch.xml/stop: {}\n  hazards:\n",
         );
-        let r = hz[0].rung.as_ref().expect("a rung is judged");
-        assert_eq!((r.name.as_str(), r.route_ms), ("stop", 8), "{r:?}");
-        assert_eq!(rows[r.row].topic, "/stop");
+        let m = parse(&yaml);
+        let rows = monitor_rows(&m).expect("rows");
+        let ages = age_rows(&m).expect("ages");
+        let hz = hazard_rows(&m, &rows, &ages);
+        let r = &hz[0].rungs;
+        assert_eq!(r.len(), 2, "{r:?}");
+        assert_eq!(
+            (
+                r[0].name.as_str(),
+                r[0].mode,
+                r[0].row,
+                r[0].route_ms,
+                r[0].role
+            ),
+            ("comfort", Some(1), None, 4, 1)
+        );
+        // `/handler` owns the guard's age row 0, so the window rung's clock
+        // starts at its detection; `/nobody` detects nothing here.
+        assert_eq!(r[0].starts_at, vec![GuardMemberRow::Age(0)]);
+        let stop_row = rows.iter().position(|x| x.topic == "/stop").unwrap();
+        assert_eq!(
+            (r[1].mode, r[1].row, r[1].route_ms, r[1].role),
+            (Some(2), Some(stop_row), 8, 2)
+        );
+        assert!(r[1].starts_at.is_empty());
         let text = render_monitor_rs_full(&rows, &ages, &hz, RenderPaths::NROS_NODE);
         assert!(
-            text.contains(&format!("rung_row: {}u16, rung_route_ms: 8u32", r.row)),
+            text.contains(&format!(
+                "RungSpec {{ mode: 2u16, output_row: {stop_row}u16, route_ms: 8u32, role: 2u8, \
+                 starts_at: &[] }}"
+            )),
             "{text}"
         );
+        assert!(text.contains("starts_at: &[GuardRef::Age(0u16)]"), "{text}");
 
-        // The top observed rung has no route: nothing is judged.
-        let (_, _, hz) = lowered(
-            AGE_100,
-            &rungs("        - rung: stop\n          role: floor\n          output: [/stop]\n"),
-        );
-        assert_eq!(hz[0].rung, None);
         // No rungs at all (a model before play_launch phase 96).
         let (rows, ages, hz) = lowered(AGE_100, HAZARD);
-        assert_eq!(hz[0].rung, None);
+        assert!(hz[0].rungs.is_empty());
         let text = render_monitor_rs_full(&rows, &ages, &hz, RenderPaths::NROS_NODE);
-        assert!(text.contains("rung_route_ms: 0u32"), "{text}");
+        assert!(text.contains("rungs: &[]"), "{text}");
     }
 
     /// A table set holding only part of a hazard's monitors does not lower

@@ -1801,13 +1801,18 @@ pub struct HazardCell {
     fault_ms: AtomicU32,
     /// The sink publisher's count when the fault was detected.
     sink_count: AtomicU32,
-    /// Monotonic ms of the tick that DETECTED the hazard (the fire): where a
-    /// rung's route starts. Not [`Self::fault_ms`], which is when the guard
-    /// went quiet -- the route excludes the detection time.
-    fire_ms: AtomicU32,
-    /// The rung output publisher's count at the fire.
+    /// Index into [`HazardSpec::rungs`] of the rung being judged.
+    rung_active: AtomicU32,
+    /// Monotonic ms the active rung became active: the detection tick (the
+    /// fire), or the tick that saw the ladder fall to it.
+    rung_armed_ms: AtomicU32,
+    /// Monotonic ms the active rung's route clock started: its `starts_at`
+    /// node's detection when this executor observes that node, else
+    /// [`Self::rung_armed_ms`].
+    rung_clock_ms: AtomicU32,
+    /// The active rung's output publisher count when its clock started.
     rung_count: AtomicU32,
-    /// [`RUNG_IDLE`], [`RUNG_WATCHING`] or [`RUNG_JUDGED`].
+    /// [`RUNG_IDLE`], [`RUNG_ARMED`], [`RUNG_WATCHING`] or [`RUNG_JUDGED`].
     rung_state: AtomicU32,
 }
 
@@ -1818,7 +1823,9 @@ impl HazardCell {
             state: AtomicU32::new(0),
             fault_ms: AtomicU32::new(0),
             sink_count: AtomicU32::new(0),
-            fire_ms: AtomicU32::new(0),
+            rung_active: AtomicU32::new(0),
+            rung_armed_ms: AtomicU32::new(0),
+            rung_clock_ms: AtomicU32::new(0),
             rung_count: AtomicU32::new(0),
             rung_state: AtomicU32::new(RUNG_IDLE),
         }
@@ -1827,10 +1834,50 @@ impl HazardCell {
 
 /// No rung route being watched.
 const RUNG_IDLE: u32 = 0;
-/// Fired; waiting for the rung's first output.
-const RUNG_WATCHING: u32 = 1;
-/// Judged once for this detection (answered, or reported overdue).
-const RUNG_JUDGED: u32 = 2;
+/// A rung is active; its route clock waits for its `starts_at` detection.
+const RUNG_ARMED: u32 = 1;
+/// The route clock runs; waiting for the rung's first output.
+const RUNG_WATCHING: u32 = 2;
+/// The active rung was judged (answered, or reported overdue).
+const RUNG_JUDGED: u32 = 3;
+
+/// [`RungSpec::mode`] for a rung that is not a contract mode (a reaction that
+/// is a single path has one rung, named after the path).
+pub const NO_MODE: u16 = u16::MAX;
+
+/// [`RungSpec::role`] values, in rlm's `RungRole` order.
+pub const RUNG_ROLE_RUNG: u8 = 0;
+/// A `window:` rung: lasts at least its window; the rung below takes over
+/// when the window passes.
+pub const RUNG_ROLE_WINDOW: u8 = 1;
+/// The ladder's last rung.
+pub const RUNG_ROLE_FLOOR: u8 = 2;
+
+/// play_launch phase 96 W4.2 (phase 85 D4) -- one rung of a hazard's ladder
+/// (`contracts.hazards.<h>.rungs[]`, top first), lowered by the bake.
+#[derive(Debug, Clone, Copy)]
+pub struct RungSpec {
+    /// The baked mode id the rung IS (the id `request_mode` takes), or
+    /// [`NO_MODE`]. While the executor is in this mode, the ladder has fallen
+    /// to this rung.
+    pub mode: u16,
+    /// Rate-table row of a publisher on one of the rung's `output` topics, or
+    /// [`NO_SINK`] when this executor does not observe one.
+    pub output_row: u16,
+    /// The rung's ROUTE as play_launch's checker charged it (`route_ms`,
+    /// rounded up): from its `starts_at` node's detection to the rung's first
+    /// output, excluding the detection time, any window and the settle. 0 = no
+    /// route, so the rung is tracked but not judged.
+    pub route_ms: u32,
+    /// [`RUNG_ROLE_RUNG`], [`RUNG_ROLE_WINDOW`] or [`RUNG_ROLE_FLOOR`].
+    pub role: u8,
+    /// The hazard's guard members that belong to the rung's `starts_at` node:
+    /// the route clock starts when one of them reports faulted. Empty when
+    /// this executor does not observe that node as a detector (a rung below a
+    /// window starts at the window owner, which is not a guard), and then the
+    /// clock starts when the rung becomes active.
+    pub starts_at: &'static [GuardRef],
+}
 
 /// One contracted hazard (`contracts.hazards`), lowered by the bake.
 #[derive(Debug, Clone, Copy)]
@@ -1850,17 +1897,9 @@ pub struct HazardSpec {
     /// DETECTED (the reacting path's, in the model's one reaction id space
     /// shared with supervised routes); 0 = no safe-state entry to start.
     pub reaction_id: u16,
-    /// play_launch phase 96 W4.2 (phase 85 D4) -- rate-table row of a
-    /// publisher on the output of the rung this image judges (the TOP rung of
-    /// the hazard's ladder whose output this table set observes), or
-    /// [`NO_SINK`].
-    pub rung_row: u16,
-    /// That rung's ROUTE as play_launch's checker charged it
-    /// (`contracts.hazards.<h>.rungs[].route_ms`, rounded up): from the
-    /// detection fire to the rung's first output, excluding the detection
-    /// time, any window and the settle. 0 = no route monitored, whatever
-    /// `rung_row` says.
-    pub rung_route_ms: u32,
+    /// play_launch phase 96 W4.2 (phase 85 D4) -- the hazard's ladder, top
+    /// rung first. Empty: no rung route is monitored.
+    pub rungs: &'static [RungSpec],
     /// The observer's state.
     pub cell: &'static HazardCell,
 }
@@ -1932,12 +1971,20 @@ fn hazard_fault(
 ///   measured is fault-to-reaction plus `settle_ms`, declared the FTTI;
 /// - `hazard-recovered` when no guard is faulted any more: measured is the
 ///   ms the hazard lasted;
-/// - `hazard-route-runtime` (play_launch phase 96 W4.2) when the judged
-///   rung's ROUTE overran: measured is the ms from the detection tick (the
-///   fire) to the first publish on the rung's output, or, when none came, to
-///   the tick that saw the route's budget pass; declared is the rung's
-///   `route_ms`. A rung that answers within its route reports nothing. Judged
-///   once per detection.
+/// - `hazard-route-runtime` (play_launch phase 96 W4.2) when the ACTIVE
+///   rung's ROUTE overran: measured is the ms from the rung's route clock
+///   start to the first publish on its output, or, when none came, to the
+///   tick that saw the route pass; declared is the rung's `route_ms`. A rung
+///   that answers within its route reports nothing. Each rung that becomes
+///   active is judged at most once.
+///
+/// Which rung is active comes from `mode`, the mode the executor judges by:
+/// at detection it is the rung whose mode the executor is already in (the
+/// ladder fell before this fault), else the top rung; while the hazard holds,
+/// the executor entering a LOWER rung's mode is a fall, and that rung becomes
+/// active. A rung's clock starts at its `starts_at` node's detection when this
+/// executor observes that node among the guard's detectors, else when the
+/// rung becomes active.
 ///
 /// `fqn` is the hazard's key on all of them.
 pub(crate) fn check_hazard(
@@ -1945,6 +1992,7 @@ pub(crate) fn check_hazard(
     monitor_table: &[MonitorSpec],
     monitor_states: &[MonitorState],
     age_states: &[AgeState],
+    mode: u16,
     now_ms: u32,
     mut emit: impl FnMut(Violation),
 ) {
@@ -1967,9 +2015,13 @@ pub(crate) fn check_hazard(
             cell.sink_count
                 .store(sink_count.unwrap_or(0), Ordering::Relaxed);
             cell.state.store(HAZARD_DETECTED, Ordering::Relaxed);
-            arm_rung(spec, monitor_table, now_ms);
+            let active = spec
+                .rungs
+                .iter()
+                .position(|r| r.mode != NO_MODE && r.mode == mode)
+                .unwrap_or(0);
+            arm_rung(spec, active, now_ms);
             emit(v("hazard-detected", now_ms.wrapping_sub(at)));
-            return;
         }
         (HAZARD_DETECTED, Some(_)) => {
             if let Some(count) = sink_count
@@ -1989,62 +2041,108 @@ pub(crate) fn check_hazard(
         _ => {}
     }
     if fault.is_some() {
-        check_rung(spec, monitor_table, now_ms, &mut emit);
+        check_rung(
+            spec,
+            monitor_table,
+            monitor_states,
+            age_states,
+            mode,
+            now_ms,
+            &mut emit,
+        );
     }
 }
 
-/// The rung output row's publish count, when the spec names a route to judge.
-fn rung_count(spec: &HazardSpec, monitor_table: &[MonitorSpec]) -> Option<u32> {
-    if spec.rung_route_ms == 0 {
-        return None;
-    }
-    monitor_table
-        .get(spec.rung_row as usize)
-        .map(|m| m.cell.count.load(Ordering::Relaxed))
-}
-
-/// At the detection tick: stamp the fire and the rung output's count.
-fn arm_rung(spec: &HazardSpec, monitor_table: &[MonitorSpec], now_ms: u32) {
+/// Make rung `active` the one being judged, from `now_ms`.
+fn arm_rung(spec: &HazardSpec, active: usize, now_ms: u32) {
     let cell = spec.cell;
-    match rung_count(spec, monitor_table) {
-        Some(count) => {
-            cell.fire_ms.store(now_ms, Ordering::Relaxed);
-            cell.rung_count.store(count, Ordering::Relaxed);
-            cell.rung_state.store(RUNG_WATCHING, Ordering::Relaxed);
-        }
-        None => cell.rung_state.store(RUNG_IDLE, Ordering::Relaxed),
+    if active >= spec.rungs.len() {
+        cell.rung_state.store(RUNG_IDLE, Ordering::Relaxed);
+        return;
     }
+    cell.rung_active.store(active as u32, Ordering::Relaxed);
+    cell.rung_armed_ms.store(now_ms, Ordering::Relaxed);
+    cell.rung_state.store(RUNG_ARMED, Ordering::Relaxed);
 }
 
-/// play_launch phase 96 W4.2 -- after the detection tick, while the hazard
-/// holds: judge the rung's route once, at its first output or when its budget
+/// play_launch phase 96 W4.2 -- while the hazard holds: follow a fall to a
+/// lower rung, start the active rung's route clock at its `starts_at`
+/// detection, and judge the rung once, at its first output or when its route
 /// passes with none.
 fn check_rung(
     spec: &HazardSpec,
     monitor_table: &[MonitorSpec],
+    monitor_states: &[MonitorState],
+    age_states: &[AgeState],
+    mode: u16,
     now_ms: u32,
     emit: &mut impl FnMut(Violation),
 ) {
     let cell = spec.cell;
-    if cell.rung_state.load(Ordering::Relaxed) != RUNG_WATCHING {
+    if cell.rung_state.load(Ordering::Relaxed) == RUNG_IDLE {
         return;
     }
-    let Some(count) = rung_count(spec, monitor_table) else {
+    // A fall: the executor entered the mode of a rung below the active one.
+    let active = cell.rung_active.load(Ordering::Relaxed) as usize;
+    if let Some(lower) = spec
+        .rungs
+        .iter()
+        .enumerate()
+        .skip(active + 1)
+        .find(|(_, r)| r.mode != NO_MODE && r.mode == mode)
+        .map(|(i, _)| i)
+    {
+        arm_rung(spec, lower, now_ms);
+    }
+    let active = cell.rung_active.load(Ordering::Relaxed) as usize;
+    let Some(rung) = spec.rungs.get(active) else {
         return;
     };
-    let elapsed = now_ms.wrapping_sub(cell.fire_ms.load(Ordering::Relaxed));
-    let answered = count != cell.rung_count.load(Ordering::Relaxed);
-    if !answered && elapsed <= spec.rung_route_ms {
+    if rung.route_ms == 0 {
         return;
     }
-    cell.rung_state.store(RUNG_JUDGED, Ordering::Relaxed);
-    if elapsed > spec.rung_route_ms {
-        emit(Violation {
-            rule: "hazard-route-runtime",
-            fqn: spec.key,
-            measured: elapsed,
-            declared: spec.rung_route_ms,
-        });
+    let Some(count) = monitor_table
+        .get(rung.output_row as usize)
+        .map(|m| m.cell.count.load(Ordering::Relaxed))
+    else {
+        return;
+    };
+    match cell.rung_state.load(Ordering::Relaxed) {
+        RUNG_ARMED => {
+            let started = rung.starts_at.is_empty()
+                || rung
+                    .starts_at
+                    .iter()
+                    .any(|m| member_fault(*m, monitor_states, age_states).is_some());
+            if !started {
+                return;
+            }
+            let clock = if rung.starts_at.is_empty() {
+                cell.rung_armed_ms.load(Ordering::Relaxed)
+            } else {
+                now_ms
+            };
+            cell.rung_clock_ms.store(clock, Ordering::Relaxed);
+            cell.rung_count.store(count, Ordering::Relaxed);
+            cell.rung_state.store(RUNG_WATCHING, Ordering::Relaxed);
+        }
+        RUNG_WATCHING => {
+            let elapsed = now_ms.wrapping_sub(cell.rung_clock_ms.load(Ordering::Relaxed));
+            let answered = count != cell.rung_count.load(Ordering::Relaxed);
+            if !answered && elapsed <= rung.route_ms {
+                return;
+            }
+            cell.rung_state.store(RUNG_JUDGED, Ordering::Relaxed);
+            if elapsed > rung.route_ms {
+                emit(Violation {
+                    rule: "hazard-route-runtime",
+                    fqn: spec.key,
+                    measured: elapsed,
+                    declared: rung.route_ms,
+                });
+            }
+        }
+        _ => {}
     }
 }
 
@@ -2098,7 +2196,7 @@ mod hazard_tests {
         now: u32,
     ) -> std::vec::Vec<Violation> {
         let mut out = std::vec::Vec::new();
-        check_hazard(spec, &RATE_ROWS, mon, age, now, |v| out.push(v));
+        check_hazard(spec, &RATE_ROWS, mon, age, 0, now, |v| out.push(v));
         out
     }
 
@@ -2118,8 +2216,7 @@ mod hazard_tests {
             guards: &GUARDS,
             sink: 1,
             reaction_id: 0,
-            rung_row: NO_SINK,
-            rung_route_ms: 0,
+            rungs: &[],
             cell: &CELL,
         };
         let mon = [MonitorState::default(); 2];
@@ -2164,8 +2261,7 @@ mod hazard_tests {
             guards: &GUARDS,
             sink: NO_SINK,
             reaction_id: 0,
-            rung_row: NO_SINK,
-            rung_route_ms: 0,
+            rungs: &[],
             cell: &CELL,
         };
         let mut mon = [MonitorState::default(); 2];
@@ -2322,8 +2418,13 @@ mod hazard_tests {
             guards: NROS_HAZARD_GUARDS_0,
             sink: 0u16,
             reaction_id: 1u16,
-            rung_row: 0u16,
-            rung_route_ms: 25u32,
+            rungs: &[crate::executor::monitor::RungSpec {
+                mode: crate::executor::monitor::NO_MODE,
+                output_row: 0u16,
+                route_ms: 25u32,
+                role: 2u8,
+                starts_at: &[GuardRef::Age(0u16)],
+            }],
             cell: &NROS_HAZARD_CELL_0,
         }];
     }
@@ -2338,7 +2439,7 @@ mod hazard_tests {
         age[0].silence_reported = true;
         age[0].last_take_ms = 40;
         let mut out = std::vec::Vec::new();
-        check_hazard(spec, rendered::NROS_MONITORS, &mon, &age, 100, |v| {
+        check_hazard(spec, rendered::NROS_MONITORS, &mon, &age, 0, 100, |v| {
             out.push(v)
         });
         assert_eq!((out[0].rule, out[0].measured), ("hazard-detected", 60));
@@ -2380,15 +2481,20 @@ mod hazard_tests {
             guards: &GUARDS,
             sink: NO_SINK,
             reaction_id: 0,
-            rung_row: 0,
-            rung_route_ms: 20,
+            rungs: &[RungSpec {
+                mode: NO_MODE,
+                output_row: 0,
+                route_ms: 20,
+                role: RUNG_ROLE_FLOOR,
+                starts_at: &[],
+            }],
             cell: &CELL,
         };
         let mon = [MonitorState::default(); 1];
         let mut age = [AgeState::default(); 1];
         let tick = |age: &[AgeState], now: u32| {
             let mut out = std::vec::Vec::new();
-            check_hazard(&spec, &ROWS, &mon, age, now, |v| out.push(v));
+            check_hazard(&spec, &ROWS, &mon, age, 0, now, |v| out.push(v));
             out
         };
         let routes = |v: &[Violation]| -> std::vec::Vec<(u32, u32)> {
@@ -2451,9 +2557,8 @@ mod hazard_tests {
         );
     }
 
-    /// A spec with no route (`rung_route_ms` 0) never reports one, whatever
-    /// `rung_row` names -- an entry generated before the field existed
-    /// zero-fills both, and row 0 is a real row.
+    /// A rung with no route (`route_ms` 0) never reports one, whatever
+    /// `output_row` names: row 0 is a real row.
     #[test]
     fn no_route_no_route_verdict() {
         static CELL: HazardCell = HazardCell::new();
@@ -2468,14 +2573,243 @@ mod hazard_tests {
             guards: &GUARDS,
             sink: NO_SINK,
             reaction_id: 0,
-            rung_row: 0,
-            rung_route_ms: 0,
+            rungs: &[RungSpec {
+                mode: NO_MODE,
+                output_row: 0,
+                route_ms: 0,
+                role: RUNG_ROLE_FLOOR,
+                starts_at: &[],
+            }],
             cell: &CELL,
         };
         let mut mon = [MonitorState::default(); 2];
         mon[0].violated_last_window = true;
         assert_eq!(run(&spec, &mon, &[], 50)[0].rule, "hazard-detected");
         assert!(run(&spec, &mon, &[], 5_000).is_empty());
+    }
+
+    /// A three-rung ladder -- a `window:` rung (mode 1), a rung (mode 2) and
+    /// the floor (mode 3) -- each on its own output row, with distinct routes
+    /// so a verdict names the rung it judged.
+    mod ladder {
+        use super::*;
+
+        pub static OUT: [PubMonitorCell; 3] = [
+            PubMonitorCell::new(),
+            PubMonitorCell::new(),
+            PubMonitorCell::new(),
+        ];
+        const fn row(topic: &'static str, i: usize) -> MonitorSpec {
+            MonitorSpec {
+                topic,
+                fqn: topic,
+                min_rate_hz_milli: 0,
+                max_latency_ms: 0,
+                route_trigger: "",
+                route_max_latency_ms: 0,
+                route_deadline_ms: 0,
+                reaction_id: 0,
+                mechanism: 0,
+                cell: &OUT[i],
+            }
+        }
+        pub static ROWS: [MonitorSpec; 3] = [row("/slow", 0), row("/stop", 1), row("/estop", 2)];
+        pub static GUARDS: [GuardSpec; 1] = [GuardSpec {
+            all_of: false,
+            members: &[GuardRef::Age(0), GuardRef::Age(1)],
+        }];
+        /// The top rung starts at the detector the guard's age row 0 belongs
+        /// to; the two below start at the window owner, which is not a guard
+        /// detector here, so their clocks start when the ladder falls.
+        pub static RUNGS: [RungSpec; 3] = [
+            RungSpec {
+                mode: 1,
+                output_row: 0,
+                route_ms: 10,
+                role: RUNG_ROLE_WINDOW,
+                starts_at: &[GuardRef::Age(0)],
+            },
+            RungSpec {
+                mode: 2,
+                output_row: 1,
+                route_ms: 20,
+                role: RUNG_ROLE_RUNG,
+                starts_at: &[],
+            },
+            RungSpec {
+                mode: 3,
+                output_row: 2,
+                route_ms: 30,
+                role: RUNG_ROLE_FLOOR,
+                starts_at: &[],
+            },
+        ];
+        pub fn spec(cell: &'static HazardCell) -> HazardSpec {
+            HazardSpec {
+                key: "demo.launch.xml/scan_lost",
+                ftti_ms: 0,
+                settle_ms: 0,
+                guards: &GUARDS,
+                sink: NO_SINK,
+                reaction_id: 0,
+                rungs: &RUNGS,
+                cell,
+            }
+        }
+        pub fn tick(
+            spec: &HazardSpec,
+            age: &[AgeState],
+            mode: u16,
+            now: u32,
+        ) -> std::vec::Vec<(u32, u32)> {
+            let mon = [MonitorState::default(); 3];
+            let mut out = std::vec::Vec::new();
+            check_hazard(spec, &ROWS, &mon, age, mode, now, |v| out.push(v));
+            out.iter()
+                .filter(|v| v.rule == "hazard-route-runtime")
+                .map(|v| (v.measured, v.declared))
+                .collect()
+        }
+        pub fn faulted(silent: [bool; 2]) -> [AgeState; 2] {
+            let mut age = [AgeState::default(); 2];
+            for (a, s) in age.iter_mut().zip(silent) {
+                a.silence_reported = s;
+            }
+            age
+        }
+        pub fn publish(i: usize) {
+            OUT[i].count.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// A fault in the base mode is judged against the TOP rung: its output
+    /// and its route, from its `starts_at` detection.
+    #[test]
+    fn a_fault_at_the_top_is_judged_against_the_top_rung() {
+        static CELL: HazardCell = HazardCell::new();
+        let spec = ladder::spec(&CELL);
+        let age = ladder::faulted([true, false]);
+        assert!(ladder::tick(&spec, &age, 0, 1_000).is_empty());
+        // The floor publishing is not the top rung answering.
+        ladder::publish(2);
+        assert!(ladder::tick(&spec, &age, 0, 1_005).is_empty());
+        assert_eq!(
+            ladder::tick(&spec, &age, 0, 1_011),
+            [(11, 10)],
+            "top route 10"
+        );
+    }
+
+    /// A fault arriving after the ladder has fallen -- the executor is already
+    /// in the rung's mode -- is judged against THAT rung.
+    #[test]
+    fn a_fault_after_a_fall_is_judged_against_the_lower_rung() {
+        static CELL: HazardCell = HazardCell::new();
+        let spec = ladder::spec(&CELL);
+        let age = ladder::faulted([true, false]);
+        assert!(ladder::tick(&spec, &age, 2, 2_000).is_empty());
+        // Only the active rung's output answers it.
+        ladder::publish(0);
+        assert!(ladder::tick(&spec, &age, 2, 2_015).is_empty(), "within 20");
+        assert_eq!(
+            ladder::tick(&spec, &age, 2, 2_021),
+            [(21, 20)],
+            "rung route 20"
+        );
+        // And it answered within its route on a second fault.
+        let clear = ladder::faulted([false, false]);
+        ladder::tick(&spec, &clear, 2, 2_100);
+        assert!(ladder::tick(&spec, &age, 2, 3_000).is_empty());
+        ladder::publish(1);
+        assert!(
+            ladder::tick(&spec, &age, 2, 3_019).is_empty(),
+            "answered at 19"
+        );
+        assert!(
+            ladder::tick(&spec, &age, 2, 3_500).is_empty(),
+            "judged once"
+        );
+    }
+
+    /// The window rung answers, its window passes and the ladder falls to the
+    /// rung below: that rung's clock starts at the FALL (its `starts_at` is
+    /// the window owner, not a detector here), and it is judged on its own
+    /// output and route.
+    #[test]
+    fn a_fall_from_the_window_rung_starts_the_rung_below_at_the_fall() {
+        static CELL: HazardCell = HazardCell::new();
+        let spec = ladder::spec(&CELL);
+        let age = ladder::faulted([true, false]);
+        assert!(ladder::tick(&spec, &age, 0, 1_000).is_empty());
+        ladder::publish(0);
+        assert!(
+            ladder::tick(&spec, &age, 1, 1_004).is_empty(),
+            "window rung in time"
+        );
+        // The window passes; the executor enters the rung below at 1_500.
+        assert!(
+            ladder::tick(&spec, &age, 2, 1_500).is_empty(),
+            "nothing at the fall"
+        );
+        assert_eq!(
+            ladder::tick(&spec, &age, 2, 1_521),
+            [(21, 20)],
+            "measured from the fall, not the fire"
+        );
+    }
+
+    /// The floor: a fall straight to it starts its clock, and a floor that
+    /// never publishes is reported once when its route passes. A rise back up
+    /// the ladder is not a fall.
+    #[test]
+    fn a_fall_to_the_floor_is_judged_against_the_floor() {
+        static CELL: HazardCell = HazardCell::new();
+        let spec = ladder::spec(&CELL);
+        let age = ladder::faulted([true, false]);
+        assert!(ladder::tick(&spec, &age, 0, 1_000).is_empty());
+        assert_eq!(
+            ladder::tick(&spec, &age, 0, 1_011),
+            [(11, 10)],
+            "top overdue"
+        );
+        assert!(
+            ladder::tick(&spec, &age, 3, 1_100).is_empty(),
+            "fall to the floor"
+        );
+        assert!(ladder::tick(&spec, &age, 1, 1_110).is_empty(), "not a fall");
+        assert!(
+            ladder::tick(&spec, &age, 3, 1_130).is_empty(),
+            "30 is not past 30"
+        );
+        assert_eq!(
+            ladder::tick(&spec, &age, 3, 1_131),
+            [(31, 30)],
+            "floor route 30"
+        );
+        assert!(
+            ladder::tick(&spec, &age, 3, 1_500).is_empty(),
+            "reported once"
+        );
+    }
+
+    /// The top rung's clock starts at ITS `starts_at` detector, not at the
+    /// first guard member to fault: here member 1 detects first and member 0
+    /// (the top rung's `starts_at`) only later.
+    #[test]
+    fn the_route_clock_starts_at_the_starts_at_detection() {
+        static CELL: HazardCell = HazardCell::new();
+        let spec = ladder::spec(&CELL);
+        assert!(ladder::tick(&spec, &ladder::faulted([false, true]), 0, 1_000).is_empty());
+        let both = ladder::faulted([true, true]);
+        assert!(
+            ladder::tick(&spec, &both, 0, 1_050).is_empty(),
+            "50 ms after the fire, but the clock starts now"
+        );
+        assert!(
+            ladder::tick(&spec, &both, 0, 1_060).is_empty(),
+            "10 is not past 10"
+        );
+        assert_eq!(ladder::tick(&spec, &both, 0, 1_061), [(11, 10)]);
     }
 
     /// With no sink the observer never claims a reaction it cannot see.
@@ -2493,8 +2827,7 @@ mod hazard_tests {
             guards: &GUARDS,
             sink: NO_SINK,
             reaction_id: 0,
-            rung_row: NO_SINK,
-            rung_route_ms: 0,
+            rungs: &[],
             cell: &CELL,
         };
         let mut mon = [MonitorState::default(); 2];

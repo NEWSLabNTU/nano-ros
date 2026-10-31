@@ -1298,10 +1298,11 @@ pub mod monitor {
     pub use nros_node::executor::monitor::{
         AgeMonitorSpec, GuardRef, GuardSpec, HazardCell, HazardSpec, MAX_AGE_MONITORS,
         MAX_MONITORS, MAX_VIOLATIONS, MECHANISM_EXECUTOR, MECHANISM_TIMER, ModeDeadline,
-        ModeTables, ModeTablesMismatch, MonitorArming, MonitorSpec, MonitorTableFull, NO_SINK,
-        PubMonitorCell, REACTION_NONE, RULE_IDS, ReactionEvent, ReactionHookFn, RouteWatch,
-        SubMonitorCell, Violation, check_table_capacity, fqn_hash, request_mode,
-        request_monitor_arming, requested_mode, route_next_due_us, rule_code, rule_name,
+        ModeTables, ModeTablesMismatch, MonitorArming, MonitorSpec, MonitorTableFull, NO_MODE,
+        NO_SINK, PubMonitorCell, REACTION_NONE, RULE_IDS, RUNG_ROLE_FLOOR, RUNG_ROLE_RUNG,
+        RUNG_ROLE_WINDOW, ReactionEvent, ReactionHookFn, RouteWatch, RungSpec, SubMonitorCell,
+        Violation, check_table_capacity, fqn_hash, request_mode, request_monitor_arming,
+        requested_mode, route_next_due_us, rule_code, rule_name,
     };
 }
 

@@ -27,22 +27,22 @@ rlm v0.3.0 added `HazardContract.rungs` (`rung`, `role`, `route_ms`,
 `starts_at`, `output`, top rung first; a rung the fault removes is not
 listed), and play_launch 442faaa3 writes them.
 
-- `contract_monitors::hazard_rung` picks the top rung whose output a rate row
-  of the executor's table publishes, provided it carries a `route_ms`
-  (rounded up). It does not fall through to a lower rung when the top observed
-  one has none: the top rung answers first while it is available.
-- `HazardSpec` gains `rung_row` and `rung_route_ms` (0 = none, which is what
-  an older C/C++ entry's zero-filled trailing fields read as);
-  `nros_cpp_hazard_row_t` gains the same two.
-- `check_hazard` stamps the fire (the detection tick) and the rung output's
-  count, and judges once per detection: nothing when the output publishes
-  within the route, `hazard-route-runtime` (measured from the fire, declared
-  `route_ms`) when it publishes late or the route passes with none. A
-  recovery before the rung answers ends the watch.
+- Every rung reaches the executor (`contract_monitors::hazard_rungs`,
+  `RungSpec`, `nros_cpp_hazard_rung_t`): its mode id, the rate row observing
+  its output, its `route_ms` rounded up (0: not judged), its role, and the
+  guard members that belong to its `starts_at` node.
+- `check_hazard` takes the mode the executor judges by. At detection the
+  active rung is the one whose mode the executor is already in (the ladder
+  fell before this fault), else the top rung; while the hazard holds,
+  entering a lower rung's mode is a fall and makes that rung active. The
+  active rung's route clock starts at its `starts_at` detection when that
+  node is one of the guard's detectors here, else when it becomes active
+  (a rung below a window: its `starts_at` is the window owner). It is judged
+  once: nothing when its output publishes within the route,
+  `hazard-route-runtime` (measured from the clock start, declared its
+  `route_ms`) when late or never. A recovery ends the watch.
 - `ReactionEvent` (and `nros_cpp_reaction_event_t`) gains `fired_at_us`, the
   monotonic µs the verdict fired; for `hazard-detected`, the detection tick.
 
-Not done: per-mode tracking of which rung is active. A fault that lands while
-a lower rung is the active one is judged against the top rung's route.
-`starts_at` is not read; the fire is the tick this executor detected the
-hazard on.
+Not done: a rung change the application makes without `request_mode` is
+not seen; the active rung is the mode the executor applied.
