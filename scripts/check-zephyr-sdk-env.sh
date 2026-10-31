@@ -63,10 +63,10 @@ selftest() {
     }
 
     expect "registered at the pinned version, beside a newer one" \
-        "$(probe "$tmp/home-both" mps2_an385)" \
+        "$(probe "$tmp/home-both" mps2/an385)" \
         "rc=0 out=ZEPHYR_SDK_INSTALL_DIR=$tmp/opt/zephyr-sdk-$want"
 
-    got="$(probe "$tmp/home-other" mps2_an385)"
+    got="$(probe "$tmp/home-other" mps2/an385)"
     expect "only another version registered: an SDK board refuses" "$got" "rc=1 out="
     grep -q 'Remedy: just setup zephyr' "$tmp/err" \
         || fail "the refusal names no remedy: $(cat "$tmp/err")"
@@ -78,11 +78,11 @@ selftest() {
         "$(probe "$tmp/home-other" native_sim ZEPHYR_TOOLCHAIN_VARIANT=zephyr)" "rc=0 out="
 
     expect "a caller's ZEPHYR_SDK_INSTALL_DIR wins, at any version" \
-        "$(probe "$tmp/home-other" mps2_an385 ZEPHYR_SDK_INSTALL_DIR="$tmp/opt/zephyr-sdk-$other")" \
+        "$(probe "$tmp/home-other" mps2/an385 ZEPHYR_SDK_INSTALL_DIR="$tmp/opt/zephyr-sdk-$other")" \
         "rc=0 out=ZEPHYR_SDK_INSTALL_DIR=$tmp/opt/zephyr-sdk-$other"
 
     expect "a third-party variant asks nothing of the SDK" \
-        "$(probe "$tmp/home-other" mps2_an385 ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb)" "rc=0 out="
+        "$(probe "$tmp/home-other" mps2/an385 ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb)" "rc=0 out="
 
     # The resolver's store arm names the `[tool.*]` entry's version, not the one
     # asked for. A store holding the 3.7 pin must not answer for another version.

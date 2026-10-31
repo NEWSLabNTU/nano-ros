@@ -29,7 +29,7 @@ crate_root_extra = "extern crate zephyr;"
 crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
 
 [board.zephyr]
-west_board = "mps2_an385"
+west_board = "mps2/an385"
 # Issue 2151 — what a RUST image for this board needs beyond a C one.
 # zephyr-lang-rust picks the triple from the Zephyr board at build time, and
 # runs bindgen over Zephyr's headers (clang for its builtin headers,

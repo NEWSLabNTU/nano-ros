@@ -897,10 +897,11 @@ impl BoardDescriptor {
     /// and then those facts describe a different board: the generic board's
     /// NSOS snippet made every such mps2 configure fail at Kconfig.
     ///
-    /// Compared at the granularity of the Zephyr board NAME, in either
-    /// spelling (HWMv2 `mps2/an385`, the legacy `mps2_an385`): `native_sim`,
-    /// `native_sim/native/64` and `native_sim_64` all build the package whose
-    /// west board is `native_sim/native/64`. True for a package that states no
+    /// Compared as a Zephyr board, in either spelling (HWMv2 `mps2/an385`,
+    /// the legacy `mps2_an385`), with trailing qualifiers optional:
+    /// `native_sim`, `native_sim/native/64` and `native_sim_64` all build the
+    /// package whose west board is `native_sim/native/64`, and `mps2/an521`
+    /// does not build the one whose west board is `mps2/an385`. True for a package that states no
     /// Zephyr board (nothing to compare against) and for an empty `west`.
     #[must_use]
     pub fn builds_west_board(&self, west: &str) -> bool {
@@ -912,10 +913,17 @@ impl BoardDescriptor {
         }
         let flat = |s: &str| s.replace(['/', '@'], "_");
         let (own_flat, west_flat) = (flat(own), flat(west));
-        let own_name = own.split(['/', '@']).next().unwrap_or(own);
+        let own_parts: Vec<&str> = own.split(['/', '@']).collect();
+        let west_parts: Vec<&str> = west.split(['/', '@']).collect();
+        let own_name = own_parts[0];
+        let own_last = own_parts[own_parts.len() - 1];
+        // Issue 2187 -- a west board may omit trailing qualifiers (Zephyr fills
+        // in the defaults), or use the legacy `<name>_<last qualifier>` alias.
+        // Any other `<name>_…` is a DIFFERENT board: once the mps2 package
+        // states `mps2/an385`, `mps2/an521` shares its name and nothing more.
         west_flat == own_flat
-            || west_flat == own_name
-            || west_flat.starts_with(&format!("{own_name}_"))
+            || own_parts.starts_with(&west_parts)
+            || west_flat == format!("{own_name}_{own_last}")
     }
 
     /// Board-crate path relative to the workspace root, applying the
@@ -3048,6 +3056,7 @@ entry_kind = "zephyr-staticlib"
         assert!(mps2.builds_west_board("mps2_an385"));
         assert!(!mps2.builds_west_board("native_sim/native/64"));
         assert!(!mps2.builds_west_board("mps2/an521"));
+        assert!(!mps2.builds_west_board("mps2_an521"));
     }
 
     /// `deny_unknown_fields` is only worth having if it is exercised against

@@ -68,7 +68,7 @@ probe() {
     rm -rf "$bdir"
 }
 
-probe mps2_an385 sdk-board
+probe mps2/an385 sdk-board
 probe native_sim native-sim
 
 echo
