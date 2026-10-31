@@ -85,9 +85,7 @@ jobs:
           - zephyr-rust
           - workspace
           - pinned
-          # `pinned-newer` (issue 2168) joins once the release `[tool.nros]`
-          # pins carries the launcher fix it found: 0.6.0-nros5's front runs
-          # itself under a dispatched toolchain's cmake.
+          - pinned-newer
     steps:
       - uses: actions/checkout@v4
       - name: Install just (if absent)
