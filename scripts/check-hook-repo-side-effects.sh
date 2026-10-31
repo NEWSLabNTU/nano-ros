@@ -102,8 +102,14 @@
 # hook.
 #
 # The hook's `just check fast` arm is skipped: it is deliberately about the
-# caller's repo, it is separately gated, and running it here would recurse into
-# this gate forever.
+# caller's repo, and running it here would recurse into this gate forever.
+# "Separately gated" was written here and was NOT true until issue 2186: the
+# lane's gates could rewrite tracked files and nothing asked. A write there
+# happens only when a host's tools disagree with the committed bytes
+# (`check-abi-bindings` on libclang 23), which no probe of a clone built here
+# would reproduce, so the guard lives where the writes do: the lane runner
+# (`scripts/build/run-gates-parallel.sh`) snapshots every tracked file's
+# content before and after the fan-out and fails on any change.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 

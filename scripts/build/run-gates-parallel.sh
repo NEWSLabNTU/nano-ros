@@ -216,6 +216,61 @@ cargo --version >/dev/null
 # shellcheck source=scripts/build/check-skip.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-skip.sh"
 
+# Issue 2186 — a gate READS the tree; it never writes a tracked file.
+#
+# `check-abi-bindings` regenerated the committed bindings IN PLACE and then
+# `git diff`ed them, so it rewrote two tracked files exactly when it found them
+# stale — on a libclang-23 host, on every `pre-push`. The worktree went dirty
+# under the developer, every fixture keyed on those files re-staled, and two
+# unrelated gates went red reading the rewritten text. Nothing caught the
+# class: `check-hook-repo-side-effects` runs the hook with this lane SKIPPED
+# (it would recurse), on the stated grounds that the lane is "separately
+# gated" — and it was not. This is that gate, for every gate at once, on every
+# host that runs the lane, which is the only way to see a write that happens
+# only when a host's tools disagree with the committed bytes.
+#
+# Content, not mtime: the snapshot is (path, blob hash) of every tracked file
+# that differs from HEAD, before and after. A pre-existing edit is fine; a
+# change to it, a new modification, or a reverted one is not. An mtime-only
+# rewrite of identical bytes is NOT seen here (write-if-changed is the rule
+# for that). `GIT_OPTIONAL_LOCKS=0` above keeps this from writing the index.
+#
+# FAST lane only: the build lane compiles, and a build that regenerates a
+# committed artifact (cbindgen headers) is a build, not a gate reading the tree.
+_tracked_snapshot() {
+    git diff --name-only --no-renames --ignore-submodules=all HEAD -- 2>/dev/null \
+        | while IFS= read -r f; do
+            if [ -e "$f" ]; then
+                printf '%s %s\n' "$(git hash-object -- "$f")" "$f"
+            else
+                printf 'deleted %s\n' "$f"
+            fi
+        done | sort
+}
+_tracked_guard=0
+[ "$lane" = fast-serial ] && _tracked_guard=1
+if [ "$_tracked_guard" = 1 ]; then
+    _tracked_before="$out_dir/tracked.before"
+    _tracked_snapshot >"$_tracked_before"
+fi
+# _tracked_verdict — 0 when no tracked file changed during the run; otherwise
+# names each one and how to restore it, and returns 1.
+_tracked_verdict() {
+    [ "$_tracked_guard" = 1 ] || return 0
+    local after="$out_dir/tracked.after" changed
+    _tracked_snapshot >"$after"
+    changed="$(diff "$_tracked_before" "$after" | sed -n 's/^[<>] [^ ]* //p' | sort -u)"
+    [ -z "$changed" ] && return 0
+    printf '\ncheck-%s: FAILED — tracked file(s) CHANGED while the gates ran (issue 2186):\n' "$label" >&2
+    printf '%s\n' "$changed" | sed 's/^/  /' >&2
+    echo "  A gate must compare against a temp copy, never regenerate in place: a write" >&2
+    echo "  dirties the tree, re-stales every fixture keyed on the file, and other gates" >&2
+    echo "  then read text nobody committed. Find the writer (grep the gates for the path)." >&2
+    echo "  If YOU edited one of these during the run, re-run the lane." >&2
+    echo "  Restore a file a gate rewrote: git checkout -- <path>" >&2
+    return 1
+}
+
 # `just check fast-serial`'s path: in list order, one at a time, output
 # streaming, STOP at the first red. That fail-fast ordering is the whole reason
 # the serial spelling exists — the parallel path deliberately reports every
@@ -237,6 +292,7 @@ if [ "$serial" = 1 ]; then
             exit 1
         fi
     done <"$list"
+    _tracked_verdict || exit 1
     nros_check_skip_report "check-$label (serial): $ran gate(s) OK"
     exit 0
 fi
@@ -326,10 +382,13 @@ printf '  busy %ds over wall %ds at -P%s => %.1fx effective parallelism\n' \
 
 total=$(wc -l <"$out_dir/results.tsv")
 slowest=$(sort -k3 -rn "$out_dir/results.tsv" | head -1)
+_tracked_ok=1
+_tracked_verdict || _tracked_ok=0
 if [ "$failed" -gt 0 ]; then
     printf '\ncheck-%s (parallel): %d of %d gate(s) FAILED\n' "$label" "$failed" "$total"
     exit 1
 fi
+[ "$_tracked_ok" = 1 ] || exit 1
 
 # QUALIFY the success line by the gates that did not run.
 #

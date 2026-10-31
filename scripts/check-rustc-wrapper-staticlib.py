@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -67,9 +68,24 @@ def route(args, *, with_sccache=True) -> str:
         if with_sccache:
             _exe(bindir / "sccache", f'#!/bin/sh\necho sccache >> "{log}"\n')
         _exe(t / "rustc", f'#!/bin/sh\necho direct >> "{log}"\n')
+        # PATH holds ONLY the fakes plus the tools the shim itself runs. It
+        # used to end in `/usr/bin:/bin`, so on a host that installs sccache
+        # system-wide (`/usr/bin/sccache`, Arch's package) the "no sccache"
+        # case found the REAL one, which then tried to run the fake rustc and
+        # died "Failed to launch subprocess for compiler determination": a red
+        # about the probe, not the shim (issue 2186). The interpreter the
+        # shebang resolves and `dirname` are symlinked in one by one instead.
+        tools = t / "tools"
+        tools.mkdir()
+        for tool in ("bash", "dirname"):
+            found = shutil.which(tool)
+            if not found:
+                raise SystemExit(f"check-rustc-wrapper-staticlib: `{tool}` not on PATH; "
+                                 "the shim cannot be driven")
+            (tools / tool).symlink_to(found)
         env = {k: v for k, v in os.environ.items() if k != "NROS_SCCACHE_REAL"}
         # The shim's own dir first: it must skip ITSELF and find the fake.
-        env["PATH"] = os.pathsep.join([str(SHIM.parent), str(bindir), "/usr/bin", "/bin"])
+        env["PATH"] = os.pathsep.join([str(SHIM.parent), str(bindir), str(tools)])
         argv = [str(t / "rustc") if a == "RUSTC" else a for a in args]
         subprocess.run([str(SHIM), *argv], env=env, check=True, cwd=tmp)
         return log.read_text().strip() if log.exists() else ""
