@@ -310,12 +310,10 @@ probe-rs run --chip STM32F407VGTx build/<image>/target/thumbv7em-none-eabihf/deb
 #       -c "program build/<image>/target/thumbv7em-none-eabihf/debug/<bin> verify reset exit"
 ```
 
-> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 The chip, interface and triple above are the STM32F4-Discovery's; yours come
-from your board. No probe runs this line (a CI runner has no board): it
-stands unverified until run against a named board. The QEMU line above is
-what the weekly probe track boots.
+from your board.
 
 ## GitHub source
 
