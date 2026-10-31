@@ -84,3 +84,29 @@ Both halves are in, and the issue stays open until the acceptance nightly.
 
 **Acceptance is unchanged:** `CorePinPlacement/zephyr/c` passes in a tier-2
 nightly that runs on a rebuilt runner image.
+
+## Measured on the old image, 2026-10-31 (still open)
+
+Tier-2 nightly 41018247377 (2026-10-30, main at `1c81f56b75`) reached the
+cells, and this cell was its only failure (`failures: 1 / 1 total failures`).
+It now fails with the precondition message, not a bare ENOENT:
+
+```
+CorePinPlacement/zephyr/c: [UNMET PRECONDITION] [zephyr c] qemu-system-aarch64 with the `virt` machine is not available, so the Zephyr qemu_cortex_a53 SMP image cannot boot. ...
+```
+
+So the precondition half is confirmed in CI. The emulator half waits on the
+runner image: the generated Dockerfile installs `qemu-system-arm` (which
+carries `qemu-system-aarch64` on apt), and the image has not been rebuilt
+since. The local `nano-ros-runner:local` dates from 2026-09-25. The
+maintainer rebuilds it (`scripts/ci/runner-container.sh <labels> --build`,
+then `--run`). After that, the next tier-2 nightly that reaches the cells is
+the acceptance run.
+
+Two other things keep a nightly from reaching the cells, and neither is this
+issue:
+
+* nightly 41179280379 (2026-10-31) stopped at `check-cmake-workspace-system-required`;
+* the tier-2 `run-matrix` dispatches of 2026-10-31 stopped in the Zephyr
+  fixture build, at `build-cortex-m-c-boot-report-zenoh`'s configure
+  ("Aborting due to Kconfig warnings").
