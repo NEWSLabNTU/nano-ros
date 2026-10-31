@@ -115,19 +115,8 @@ book-links:
 book-board-names:
     @python3 scripts/check-book-board-names.py
 
-# phase-517 W9 — every tier 1-3 board in packages/boards/board-support.toml
-# says, in the book, how to run it: its row names a "Run …" section
-# (`book_run = "<chapter>.md#<anchor>"`), and a physical board
-# (`real_hardware = true`) a "Flash …" section (`book_flash`); each must exist
-# under that mdbook id and hold a fenced command. `nros build` prints the next
-# command and stops (there is no `nros run`), so the book is where a reader
-# learns it — and the FreeRTOS chapter named three real boards that have no
-# crate. Rows and chapters are read, not listed; a dormant chapter (SUMMARY
-# "(…, dormant)", the ESP32 pages) is skipped. Self-test (a board's run block
-# removed from its chapter must fail) runs every call. Buildless, ~0.1 s.
-[private]
-book-board-run-sections:
-    @python3 scripts/check-book-board-run-sections.py
+# phase-517 W9's book run/flash check (`check-book-board-run-sections.py`) runs
+# inside `board-registry` (just/check/platform.just) since phase-522 W3.
 
 # phase-517 W10 — every book probe track still EXTRACTS. `just probe <platform>`
 # replays a QEMU chapter in a container weekly (probe-platforms.yml); per push,
