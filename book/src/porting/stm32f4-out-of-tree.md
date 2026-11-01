@@ -157,6 +157,54 @@ generated cargo settings file gives the same line to cargo as the triple's
 registry reads `emulator` from it rather than typing its own copy. A `runner` in
 `cargo_config`, or `[board.zephyr] runner`, is refused naming these tables.
 
+### How the board is flashed: `[board.flash]`
+
+Real silicon states how it is programmed in `[board.flash]` (RFC-0118 D4): a
+flasher `method` (`west`, `espflash`, `probe-rs`, `openocd`, `picotool`, `uf2`,
+`dfu-util`, …), the `chip` in that flasher's own spelling, and the `prepare`
+steps a person or a relay performs first, in order:
+
+```toml
+[board.flash]
+method  = "probe-rs"
+chip    = "STM32F429ZITx"
+prepare = [
+    { say = "Set BOOT0 to 1, then press RESET", wait_for = "usb:0483:df11" },
+    { run = "relay-ctl on 1" },
+]
+
+[board.console]
+kind = "serial"
+usb  = "0483:374b"           # the USB serial adapter, <vid>:<pid> hex
+baud = 115200
+```
+
+A step is one of `say` (print an instruction), `wait_for` (block on an event:
+`usb:<vid>:<pid>`, `port:<path>`, `volume:<label>` for a UF2 drive, or
+`line:<text>` on the console) and `run` (a host command); only `say` and
+`wait_for` share a step. For a tool no runner covers, `command` replaces
+`method` with a template, filled from the plan's own placeholders only
+(`{elf}` `{bin}` `{hex}` `{uf2}` `{build_dir}` `{port}` `{baud}` `{probe}`
+`{nic}`, and `{tool:<name>}` from the SDK store):
+
+```toml
+[board.flash]
+command = "{tool:pyocd} flash -t stm32f429zi {hex}"
+```
+
+An unknown key, an unknown event kind or an unknown placeholder fails when the
+catalog loads. The `method` word is checked for shape only: flashers are
+runner packages, so which words exist is the installed runners' answer. A
+Zephyr board says `method = "west"` and no more, because which runner and
+probe `west flash` uses is Zephyr's own `runners.yaml`. A board may state
+both `[board.run]` and `[board.flash]` when it has an emulator twin: `nros
+run` takes the twin and `nros flash` the silicon.
+
+An image overrides any of this in its `system.toml` with
+`[image.<id>.flash]` and `[image.<id>.console]`, which take the same keys
+(see [Configuration](../user-guide/configuration.md)). `nros flash`, which
+runs these steps, is phase-529 W3.
+
 ## What you take on
 
 Be clear-eyed about the trade, because it is the reason this page exists rather

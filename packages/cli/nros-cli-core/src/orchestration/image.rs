@@ -191,6 +191,15 @@ pub struct ImageBlock {
     /// read by the QEMU launchers and the test harness, never by the build.
     #[serde(default, skip_serializing_if = "is_default_run")]
     pub run: nros_orchestration_ir::system_net::ImageRun,
+    /// `[image.<id>.flash]` — this image's override of the board's
+    /// `[board.flash]` (RFC-0118 D4/D5, phase-529 W1). Checked by
+    /// [`super::cargo_metadata_schema::SystemToml::validate_image_networks`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flash: Option<nros_orchestration_ir::target_exec::FlashTable>,
+    /// `[image.<id>.console]` — this image's override of the board's
+    /// `[board.console]` (RFC-0118 D4/D5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub console: Option<nros_orchestration_ir::target_exec::ConsoleTable>,
     /// RFC-0109 D4/D6 (phase-514 W2) — this image's layer-1 files, relative to
     /// its `system.toml`, in order. A `.toml` one is the board package's
     /// network file, read into [`Self::net`] by
@@ -504,6 +513,11 @@ impl ImageBlock {
             run: nros_orchestration_ir::system_net::ImageRun {
                 nic: self.run.nic.clone().or_else(|| base.run.nic.clone()),
             },
+            // A table, taken whole: an image that states one is making the
+            // choice; the field-by-field ladder over the board's is the
+            // RunPlan resolver's (RFC-0118 D5, phase-528 W1).
+            flash: self.flash.clone().or_else(|| base.flash.clone()),
+            console: self.console.clone().or_else(|| base.console.clone()),
             // Layer-1 files CONCATENATE base-then-specific: fragments are
             // ordered and later ones override earlier, which is exactly
             // Zephyr's CONF_FILE semantics, and a board network file in both

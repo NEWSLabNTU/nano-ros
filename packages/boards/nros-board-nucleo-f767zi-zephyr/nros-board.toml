@@ -76,9 +76,23 @@ rust_components = ["clippy"]
 # board's ST-LINK V2-1).
 
 # phase-528 W2 (RFC-0118 D4) — the board's Renode twin (phase-524 W1), read by
-# the support registry. The silicon is flashed; `[board.flash]` is phase-529.
+# the support registry. `nros run` takes the twin, `nros flash` the silicon:
+# one board, two targets (RFC-0118 D1 is per target).
 [board.run]
 emulator = "renode:nucleo_f767zi"
+
+# phase-529 W1 (RFC-0118 D4) — the silicon is flashed through Zephyr's own
+# runner (`west flash`; the integration-zephyr chapter's "Flash a real board").
+# Which runner and probe that is (openocd / stlink on the ST-LINK V2-1) is
+# Zephyr's `runners.yaml`, read by the `west` method and not restated here.
+[board.flash]
+method = "west"
+
+# The console is USART6 (Arduino D0/D1, `boards/nucleo_f767zi.overlay`): the
+# ST-LINK virtual COM port carries the zenoh link. On the bench it needs a
+# USB-to-UART adapter, so no USB id is the board's to state.
+[board.console]
+kind = "serial"
 
 [board.capabilities]
 heap = true
