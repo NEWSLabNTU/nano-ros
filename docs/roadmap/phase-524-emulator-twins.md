@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-11-01). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode). RFC-0115 D4 rewritten to match. W2 onward run for the Nucleo only. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W0 open.** Implements
+**Status (2026-11-01). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 onward run for the Nucleo only. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W0 open.** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -73,6 +73,7 @@ their GitHub releases, digests matching the published ones.
 | 1. UNO R4 Minima | FAIL | ``region `FLASH' overflowed by 144744 bytes`` / ``region `RAM' overflowed by 144904 bytes`` (best of four builds; 256 KiB / 32 KiB part) | [renode-uno-r4](data/phase-524-w1-renode-uno-r4.log) |
 | 2. Nucleo-F767ZI | PASS, serial and ethernet | `data: 'Hello World: 1'` from `ros2 topic echo`, over `serial/serial@40004800` and over `tcp/192.0.2.1:7447` | [renode-nucleo](data/phase-524-w1-renode-nucleo.log) |
 | 3. Pico W | FAIL (blocked) | `Error: Missing WOKWI_CLI_TOKEN environment variable.`; Renode 1.17.0 has no RP2040 platform | [wokwi-pico](data/phase-524-w1-wokwi-pico.log) |
+| 3. Pico W, rerun | PASS, serial | `data: 'Hello World: 1'` from `ros2 topic echo`, the Pico W ELF in Wokwi, zenoh over UART0 to `wokwi-cli --interactive`, a host pty and `serial/` on the router | [wokwi-pico-rerun](data/phase-524-w1-wokwi-pico-rerun.log) |
 
 Decision applied: the UNO R4 and the Pico W leave the list, the Nucleo keeps
 both chapters, and RFC-0115 D4 names the Nucleo alone. W2 adds
@@ -110,6 +111,80 @@ What the survivor needs, found by the spike:
   (command history and a binaries cache), so a track sets `HOME` for it. The
   ethernet twin needs a tap: no root is required inside `unshare -rn`, which
   must then hold the router and `ros2` too.
+
+**Rerun of spike 3 (2026-11-01, with a Wokwi token). PASS, serial road.**
+The maintainer created a Wokwi token (personal account, free plan), and spike
+3 ran again with the same `wokwi-cli` 0.29.1 binary, the C talker for
+`rpi_pico/rp2040/w`, Zephyr 3.7.0 and `hal_rpi_pico` as an extra module.
+Decisive line: `data: 'Hello World: 1'` from `ros2 topic echo /chatter`, the
+first sample 6 s after the simulation started, twice on the same ELF. Log:
+[wokwi-pico-rerun](data/phase-524-w1-wokwi-pico-rerun.log). The first run's
+log stays as it was.
+
+- **The link.** Wokwi's serial monitor is UART0 (GP0/GP1). `wokwi-cli
+  --interactive` puts the CLI's stdin on the UART's RX and the serial monitor
+  on its stdout, both byte-transparent (zenoh-pico's COBS frames keep their
+  0x00 delimiters). `socat` turns that pair into a host pty, and
+  `ros2 run rmw_zenoh_cpp rmw_zenohd` opens the pty as a `serial/` locator.
+  This is the Nucleo chapter's shape, with `wokwi-cli` in place of the
+  ST-LINK virtual COM port. The console moves to UART1 (GP4/GP5). On the bench
+  the zenoh link is the GP0/GP1 header pins, so it needs a USB-to-UART
+  adapter: the Pico W's USB port is not that UART.
+- **WiFi road: not tried.** Serial passed. A host-local router over the Pico W
+  WiFi needs Wokwi's private IoT gateway, which the free (Community) plan does
+  not include; the private gateway starts at Hobby.
+- **The image needs `CONFIG_TICKLESS_KERNEL=n`.** With the board default
+  (tickless), Wokwi shows no byte, and Zephyr's own `hello_world` shows none
+  either. Under `wokwi-cli -g`, gdb showed UART0 and its pins set up
+  correctly, every stop in the SysTick ISR, and `z_sys_post_kernel = false`:
+  the kernel never leaves PRE_KERNEL. Wokwi's SysTick does not carry Zephyr
+  3.7's tickless `cortex_m_systick` driver. With `CONFIG_TICKLESS_KERNEL=n`,
+  `hello_world` prints and the talker passes. The bench can run that image
+  too, so "the same ELF on the bench and the twin" holds once the descriptor
+  states it. It is not the board default.
+- **Three tree gaps, patched only locally (issue 2206).** There is no
+  Cortex-M0+ arm in `nros_detect_rust_target()`. Two core-atomics
+  read-modify-write sites (`nros-platform-cffi` `log.rs`, `nros-cpp`
+  `subscription.rs`) do not build without CAS. Nothing provides the ARMv6-M
+  `__atomic_*_4` libcalls that zenoh-pico's C needs. Patches and shim were
+  reverted; none is on main.
+- **RAM (264 KiB).** The default pools overflow by 211,736 bytes. The image
+  needed `ZENOH_MAX_LARGE_SUBSCRIBERS = 0`, `ZENOH_MAX_SUBSCRIBERS = 1`,
+  `ZENOH_SERVICE_BUFFER_SIZE = 1024`, `ZEPHYR_HEAP_SIZE = 32768` and
+  `ZENOH_MAX_QUERYABLES = 1` to fit, at 94.3 % RAM. The largest remaining
+  block is the 83,880-byte executor backing.
+- **Plan limits.** The free plan gives 50 simulation minutes per rolling 30
+  days and 5 minutes wall clock per session. Hobby / Hobby+ / Pro give
+  200 / 500 / 2,000 minutes, with sessions of 5 / 10 / 50 minutes. A twin run
+  is about 1 to 1.5 minutes, so a weekly cadence uses about 6 of the 50:
+  viable. Two caveats. The quota is per user, so CI shares it with anyone
+  developing on the same account (this spike used about 8 minutes). And the
+  token is a repository secret that a fork pull request cannot read, so the
+  track runs on schedule and dispatch only.
+
+Decision applied (the decision step, literally): Wokwi passes, so the Pico W
+rejoins RFC-0115 D4 as the field solutions board. D4's table gains the Wokwi
+row, with its conditions. Follow-ups, each in its work item's shape:
+
+- **Before W3: issue 2206.** The Pico W ELF has to build from main with no
+  local patch.
+- **W2: `[tool.wokwi-cli]`.** A dist row in `[tool.renode]`'s shape: version
+  `0.29.1`, upstream's per-host static binaries (we apply nothing, so no
+  repack), a `front` link and a `--version` smoke. The floor is measured off
+  the artifact, and the hosts with no asset are stated. Also
+  `[zephyr_module.hal_rpi_pico]` moves to `lines = ["3.7"]`, and
+  `thumbv6m-none-eabi` joins `examples/zephyr/rust-toolchain.toml`. `socat`
+  comes from the probe image. The track needs both.
+- **W3: a `wokwi:pi-pico-w` row and a descriptor.**
+  `packages/boards/nros-board-rpi-pico-w-zephyr/`, with `west_board =
+  "rpi_pico/rp2040/w"` and `rust_target = "thumbv6m-none-eabi"`. It carries
+  an overlay that moves the console to UART1 and gives UART0 to zenoh, the
+  serial Kconfig fragment plus `CONFIG_TICKLESS_KERNEL=n`, and the five RAM
+  knobs in `[knobs]`, measured against the boot report before they settle.
+- **W4: the `wokwi-pico` track.** `wokwi-cli -q --interactive` bridged by
+  `socat` to the router's `serial/` locator, as in the log. It needs a
+  `WOKWI_CLI_TOKEN` repository secret, and runs on schedule and dispatch
+  only, weekly.
 
 ### W2 — Renode and Wokwi as `[tool.*]` entries
 
