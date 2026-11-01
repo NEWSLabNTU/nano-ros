@@ -31,8 +31,10 @@ pub mod entity_inventory;
 pub mod explain;
 pub mod generate;
 pub mod generate_px4;
+pub mod graph;
 pub mod image_facts;
 pub mod init;
+pub mod interface;
 pub mod leaf_kconfig;
 pub mod leaf_settings;
 pub mod leaf_system;
@@ -50,6 +52,7 @@ pub mod new_system;
 pub mod pin;
 pub mod plan;
 pub mod profile;
+pub mod reserved;
 pub mod scaffold_deploy;
 pub mod sdk_front;
 pub mod sdk_path;
@@ -61,6 +64,7 @@ pub mod store;
 /// phase-440 W6 — `nros toolchain uninstall` (RFC-0095 D11).
 pub mod toolchain;
 pub mod update;
+pub mod user;
 pub mod version;
 /// Issue 1662 — `nros ws west-leaf-sizing`.
 pub mod west_leaf_sizing;
@@ -86,8 +90,41 @@ pub enum Cmd {
     /// client, action-server, action-client), workspace, image or component
     New(Box<new::Args>),
 
-    /// Generate Rust / C / C++ message bindings from `package.xml`
+    /// Generate Rust / C / C++ message bindings from `package.xml`.
+    // RFC-0117 D5: the old spelling of `nros interface generate`.
+    #[command(hide = true)]
     Generate(generate::Args),
+
+    /// Generate message bindings, list the interfaces the workspace can
+    /// reach, or show one interface's definition.
+    #[command(subcommand)]
+    Interface(interface::Args),
+
+    /// List the workspace's packages: kind, name and directory per row.
+    List(ws::ListArgs),
+
+    /// Print the workspace's packages in dependency order, each with the
+    /// workspace packages it depends on.
+    Graph(graph::Args),
+
+    /// Remove the generated bindings and the managed patch block from each
+    /// Rust package. Leaves user-written sections alone.
+    Clean(ws::CleanArgs),
+
+    /// Run an image on its target (reserved: not available yet).
+    Run(reserved::Args),
+
+    /// Flash an image onto a board (reserved: not available yet).
+    Flash(reserved::Args),
+
+    /// Attach to a running board's console (reserved: not available yet).
+    Monitor(reserved::Args),
+
+    /// Run an image on a bench of boards (reserved: not available yet).
+    Bench(reserved::Args),
+
+    /// Debug an image on its target (reserved: not available yet).
+    Debug(reserved::Args),
 
     /// Generate Rust message bindings from `package.xml`
     #[command(name = "generate-rust", hide = true)]
@@ -177,15 +214,17 @@ pub enum Cmd {
     #[command(name = "sdk-root", hide = true)]
     SdkRoot(sdk_root::Args),
 
-    /// phase-440 W6 — inspect and shrink the SDK store (RFC-0095 D11). The
-    /// store is additive by design, so `list` says what is in it and `gc`
-    /// proposes what to reclaim — dry-run by default, and it never removes
-    /// anything a pin names.
+    /// Inspect and shrink the SDK store.
+    // phase-440 W6 (RFC-0095 D11). The store is additive by design, so `list`
+    // says what is in it and `gc` proposes what to reclaim — dry-run by
+    // default, and it never removes anything a pin names. RFC-0117 D5: the
+    // old spelling of `nros toolchain list|gc`.
+    #[command(hide = true)]
     Store(store::Args),
 
-    /// phase-440 W6 — remove one installed nano-ros toolchain (RFC-0095 D11).
-    /// Refuses while a known pin names the version, and refuses equally when no
-    /// pin file could be consulted: unestablished is not the same as false.
+    /// List, remove and garbage-collect installed toolchains and SDK packages.
+    // phase-440 W6 (RFC-0095 D11); `list` and `gc` absorbed `nros store`
+    // (RFC-0117 D2).
     Toolchain(toolchain::Args),
 
     /// phase-443 W2 — report this project's `nros-toolchain.toml`, or move it.
@@ -227,6 +266,8 @@ pub enum Cmd {
 
     /// Generate a project `CMakePresets.json` including the per-board presets
     /// `nros setup` wrote (RFC-0048 §6). Then `cmake --preset <board>` works.
+    // RFC-0117 D5: the old spelling of `nros setup presets`.
+    #[command(hide = true)]
     Init(init::Args),
 
     /// Health-check the workspace (SDK paths, toolchains, env)
@@ -238,6 +279,9 @@ pub enum Cmd {
 
     /// Workspace-level msg-pkg utilities (Phase 210.B.3 + 210.D.1 — env, list,
     /// status, clean, doctor). `sync` was promoted to the top-level `nros sync`.
+    // RFC-0117 D2: hidden. `list` and `clean` are top-level user verbs now,
+    // and the build-system verbs live under `nros dev`.
+    #[command(hide = true)]
     Ws(ws::Args),
 
     /// Print toolchain + library versions
@@ -263,3 +307,38 @@ pub enum Cmd {
 // retired: its emitter never adopted the post-212.I component sub-table
 // spec and pre-212 workspaces have aged out. A tree that still needs the
 // migration runs it from the `nros-v0.5.0` tag's CLI.
+
+/// Lower an alias spelling into the command its canonical handler takes.
+///
+/// A `nros dev` command lowers to the command its old spelling parses to
+/// ([`dev::lower`]); a user-tier verb that absorbed an older one lowers the
+/// same way ([`user::lower`]). Every caller, the dispatch and the tests alike,
+/// goes through this one function, so two spellings cannot reach different
+/// code.
+pub fn lower(cmd: Cmd) -> Cmd {
+    match cmd {
+        Cmd::Dev(a) => dev::lower(a),
+        other => user::lower(other),
+    }
+}
+
+/// Every alias the CLI resolves, both tiers, as JSON for
+/// `nros help --aliases --json`: one object per old spelling,
+/// `{"old", "new", "tier"}`. `tier` is `"dev"` for a silent alias and
+/// `"user"` for one that prints a note on a terminal (RFC-0117 D5).
+/// `check-cli-old-spellings` reads this, so the gate never carries a list of
+/// its own.
+pub fn aliases_json() -> String {
+    let rows: Vec<_> = all_aliases()
+        .map(|(old, new, tier)| serde_json::json!({ "old": old, "new": new, "tier": tier }))
+        .collect();
+    serde_json::to_string_pretty(&rows).expect("a list of string objects serialises")
+}
+
+/// [`dev::ALIASES`] then [`user::ALIASES`], each row tagged with its tier.
+pub fn all_aliases() -> impl Iterator<Item = (&'static str, &'static str, &'static str)> {
+    dev::ALIASES
+        .iter()
+        .map(|(o, n)| (*o, *n, "dev"))
+        .chain(user::ALIASES.iter().map(|(o, n)| (*o, *n, "user")))
+}

@@ -1,7 +1,7 @@
 //! Phase 212 — Non-Goals CI grep.
 //!
 //! Phase doc §Non-Goals lists user-surfaces that re-create the
-//! colcon-shaped anti-pattern. CI grep guards three rejected verbs
+//! colcon-shaped anti-pattern. CI grep guards two rejected verbs
 //! that have never been (or were retracted from) the top-level `nros`
 //! command tree:
 //!
@@ -9,8 +9,10 @@
 //!   (`01d2ddff8`); users hand-write `package.xml`, and bringup
 //!   `<exec_depend>` drift is caught by `nros check --bringup`.
 //! * `nros sign` — never existed; signing is out-of-scope.
-//! * `nros flash` — never existed at the top level; flashing happens
-//!   inside `nros run` / `nros deploy` orchestration.
+//!
+//! `nros flash` was the third until RFC-0118 made flashing a user verb of its
+//! own beside `nros run` and `nros monitor`; phase-526 W2 reserves it in the
+//! "Run on a target" help group, so its guard here is retired.
 //!
 //! ## Reconciliation note (build / run / monitor / deploy gray area)
 //!
@@ -53,36 +55,36 @@ fn nros_help() -> String {
     String::from_utf8(out.stdout).expect("nros --help stdout utf8")
 }
 
-/// Extract the lines under the `Commands:` block of `nros --help`.
-/// Each command line is `  <verb>   <description...>` (2-space indent
-/// from clap). The block ends at the next blank line / `Options:`
-/// header.
+/// Extract the verb lines of `nros --help`. Since RFC-0117 D2 the verbs are
+/// listed under task headings (`Start:`, `Build:`, ...) rather than one
+/// "Commands:" block, so every indented line under any heading after the
+/// usage line, up to `Options:`, is a verb line: `  <verb>   <description>`.
 fn commands_block(help: &str) -> Vec<String> {
-    let mut in_block = false;
     let mut out = Vec::new();
+    let mut after_usage = false;
     for line in help.lines() {
-        if !in_block {
-            if line.trim_start().starts_with("Commands:") {
-                in_block = true;
-            }
+        if line.starts_with("Usage:") {
+            after_usage = true;
             continue;
         }
-        if line.trim().is_empty() {
+        if !after_usage {
+            continue;
+        }
+        if line.starts_with("Options:") {
             break;
         }
-        if !line.starts_with(' ') {
-            break;
+        if line.starts_with("  ") && !line.trim().is_empty() {
+            out.push(line.to_string());
         }
-        out.push(line.to_string());
     }
     assert!(
-        !out.is_empty(),
-        "failed to parse Commands: block from nros --help"
+        out.iter().any(|l| line_verb(l) == "build"),
+        "failed to parse the verb list from nros --help"
     );
     out
 }
 
-/// Return the leading verb on a `Commands:` line (first whitespace-
+/// Return the leading verb on a verb line (first whitespace-
 /// separated token of the trimmed line).
 fn line_verb(line: &str) -> &str {
     line.split_whitespace().next().unwrap_or("")
@@ -95,7 +97,7 @@ fn assert_verb_absent(verb: &str) {
     assert!(
         hits.is_empty(),
         "Phase 212 §Non-Goals: `nros {verb}` must NOT appear in \
-         `nros --help` Commands: block. Found:\n{}",
+         `nros --help` verb list. Found:\n{}",
         hits.iter()
             .map(|s| s.as_str())
             .collect::<Vec<_>>()
@@ -117,14 +119,6 @@ fn nros_help_lacks_sign_verb() {
         nros_tests::unmet!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
     }
     assert_verb_absent("sign");
-}
-
-#[test]
-fn nros_help_lacks_flash_verb() {
-    if nros_bin().is_none() {
-        nros_tests::unmet!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
-    }
-    assert_verb_absent("flash");
 }
 
 /// Phase 212.A was retracted: the `cargo-nros` cargo subcommand shell

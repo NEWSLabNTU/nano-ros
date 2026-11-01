@@ -1,6 +1,6 @@
 # Phase 526 — The `nros` command tree in two tiers, with ROS 2 flag names and aliases
 
-**Status (2026-11-01). IN PROGRESS — W1 done; W2 to W5 open.** Implements
+**Status (2026-11-01). IN PROGRESS — W1 and W2 done; W3 to W5 open.** Implements
 [RFC-0117](../design/0117-cli-command-tiers.md). Comes before
 [phase-525](phase-525-adoption-front-doors.md) W1, so the help-text id sweep
 runs once, over the final verb names. Independent of phase-527 to phase-529,
@@ -48,6 +48,33 @@ Acceptance:
 - `nros --help` names no dev verb.
 
 ### W2 — The user tier regrouped, with warning aliases
+
+**Status: DONE.** What landed, and the choices the bullets left open:
+
+- `setup` absorbs `init` as `nros setup presets [dir]`. `toolchain list`,
+  `toolchain gc` and `toolchain remove` replace `store list`, `store gc` and
+  `toolchain uninstall`. `interface generate` replaces `generate`;
+  `interface list` and `interface show` are new, with `ros2 interface`'s
+  layout, `-m`/`-s`/`-a` filters and nested-type expansion, over the search
+  path codegen resolves through plus the workspace's own `src/`. `list` and
+  `clean` replace `ws list` and `ws clean`.
+- `graph` prints the packages in `provider_scan`'s build order, each with the
+  workspace packages it depends on. It is not `colcon graph`'s layout yet; W3
+  owns the colcon flag and output names.
+- `nros ws` is hidden from `nros --help`. `ws status` and `ws doctor` have no
+  home in RFC-0117 D2, so they stay spelled under the hidden `ws` with no
+  alias row; `ws router-config` and `ws qemu-nic` leave in phase-527 and
+  RFC-0118.
+- The D2 sub-verb forms the bullets do not name (`plan resolve|check|explain`,
+  `pin update`, `board check`) are not moved here: `check`, `explain` and
+  `update` stay top-level verbs, shown under Inspect and Toolchain.
+  `generate-px4-msgs` is shown under Interfaces until phase-527 W5 moves it
+  into a command package.
+- `doctor --report` already printed the registry-backed report (phase-522
+  W5), so nothing changed there.
+- The user-tier rows join `nros help --aliases --json` with
+  `tier = "user"`. The reserved verbs' names are `cmd::reserved::VERBS`, for
+  phase-527 W4 to read.
 
 - `setup` absorbs `init`; `toolchain list|remove|gc` absorbs `store`;
   `interface generate|list|show` gathers `generate` and the interface

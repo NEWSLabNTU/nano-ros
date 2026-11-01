@@ -248,31 +248,19 @@ pub const ALIASES: &[(&str, &str)] = &[
     ("metadata", "dev metadata"),
 ];
 
-/// [`ALIASES`] as JSON, for `nros help --aliases --json`: one object per
-/// old spelling, `{"old", "new", "tier"}`. `tier` is `"dev"` for a silent
-/// alias (RFC-0117 D5). `check-cli-old-spellings` reads this, so the gate
-/// never carries a list of its own.
-pub fn aliases_json() -> String {
-    let rows: Vec<_> = ALIASES
-        .iter()
-        .map(|(old, new)| serde_json::json!({ "old": old, "new": new, "tier": "dev" }))
-        .collect();
-    serde_json::to_string_pretty(&rows).expect("a list of string objects serialises")
-}
-
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use clap::{CommandFactory, Parser};
 
     #[derive(Debug, Parser)]
     #[command(name = "nros")]
-    struct Cli {
+    pub(crate) struct Cli {
         #[command(subcommand)]
-        cmd: Cmd,
+        pub(crate) cmd: Cmd,
     }
 
-    fn find<'a>(root: &'a clap::Command, path: &str) -> &'a clap::Command {
+    pub(crate) fn find<'a>(root: &'a clap::Command, path: &str) -> &'a clap::Command {
         path.split(' ').fold(root, |c, name| {
             c.find_subcommand(name)
                 .unwrap_or_else(|| panic!("`nros {path}`: no subcommand `{name}`"))
@@ -281,7 +269,7 @@ mod tests {
 
     /// The argument and subcommand tree, without help text: two spellings
     /// over one `Args` type have the same shape, two different types do not.
-    fn shape(c: &clap::Command) -> String {
+    pub(crate) fn shape(c: &clap::Command) -> String {
         let mut args: Vec<String> = c
             .get_arguments()
             .map(|a| {
@@ -306,7 +294,7 @@ mod tests {
     /// A parseable argv for `path`: descend through required subcommands
     /// (taking the first), then supply every required argument with `1`, or
     /// its first possible value.
-    fn argv(root: &clap::Command, path: &str) -> Vec<String> {
+    pub(crate) fn argv(root: &clap::Command, path: &str) -> Vec<String> {
         let mut v: Vec<String> = std::iter::once("nros")
             .chain(path.split(' '))
             .map(String::from)
@@ -336,12 +324,9 @@ mod tests {
         v
     }
 
-    fn parsed(argv: &[String]) -> Cmd {
+    pub(crate) fn parsed(argv: &[String]) -> Cmd {
         match Cli::try_parse_from(argv) {
-            Ok(cli) => match cli.cmd {
-                Cmd::Dev(a) => lower(a),
-                other => other,
-            },
+            Ok(cli) => crate::cmd::lower(cli.cmd),
             Err(e) => panic!("`{}` does not parse: {e}", argv.join(" ")),
         }
     }
@@ -410,16 +395,5 @@ mod tests {
             find(&root, "dev").is_hide_set(),
             "`nros dev` must be hidden"
         );
-    }
-
-    #[test]
-    fn aliases_json_lists_every_row() {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(&aliases_json()).unwrap();
-        assert_eq!(rows.len(), ALIASES.len());
-        for ((old, new), row) in ALIASES.iter().zip(&rows) {
-            assert_eq!(row["old"], *old);
-            assert_eq!(row["new"], *new);
-            assert_eq!(row["tier"], "dev");
-        }
     }
 }

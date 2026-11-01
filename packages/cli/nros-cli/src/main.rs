@@ -2,7 +2,7 @@
 //!
 //! Pure clap dispatch shell. All real work lives in `nros-cli-core`.
 
-use clap::{CommandFactory, Parser};
+use clap::{CommandFactory, FromArgMatches, Parser};
 use clap_complete::{Shell, generate};
 use eyre::Result;
 use nros_cli_core::cmd::Cmd;
@@ -80,16 +80,16 @@ fn main() -> Result<()> {
     };
     if help_flag("--aliases") {
         if help_flag("--json") {
-            println!("{}", nros_cli_core::cmd::dev::aliases_json());
+            println!("{}", nros_cli_core::cmd::aliases_json());
         } else {
-            for (old, new) in nros_cli_core::cmd::dev::ALIASES {
-                println!("nros {old:<26} -> nros {new}");
+            for (old, new, tier) in nros_cli_core::cmd::all_aliases() {
+                println!("nros {old:<26} -> nros {new:<32} ({tier})");
             }
         }
         return Ok(());
     }
     if help_flag("--all") {
-        let mut cmd = Cli::command().mut_subcommand("dev", |c| c.hide(false));
+        let mut cmd = grouped_help(Cli::command(), true);
         cmd.print_help()?;
         println!();
         cmd.find_subcommand_mut("dev")
@@ -99,7 +99,8 @@ fn main() -> Result<()> {
             .print_help()?;
         return Ok(());
     }
-    let cli = Cli::parse();
+    let matches = grouped_help(Cli::command(), false).get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if cli.codegen_version {
         println!("{}", nros_cli_core::abi_guard::EMITTED_VERSION);
         return Ok(());
@@ -124,4 +125,20 @@ fn main() -> Result<()> {
         return Ok(());
     }
     nros_cli_core::run(command)
+}
+
+/// The top-level command with RFC-0117 D2's grouped verb list in place of
+/// clap's flat one. Subcommand help is untouched. With `with_dev`, `nros dev`
+/// is unhidden and listed as a last group (`nros help --all`).
+fn grouped_help(cmd: clap::Command, with_dev: bool) -> clap::Command {
+    let mut cmd = if with_dev {
+        cmd.mut_subcommand("dev", |c| c.hide(false))
+    } else {
+        cmd
+    };
+    cmd.build();
+    let groups = nros_cli_core::cmd::user::render_groups(&cmd, with_dev);
+    cmd.help_template(format!(
+        "{{before-help}}{{about-with-newline}}\n{{usage-heading}} {{usage}}\n\n{groups}Options:\n{{options}}{{after-help}}"
+    ))
 }

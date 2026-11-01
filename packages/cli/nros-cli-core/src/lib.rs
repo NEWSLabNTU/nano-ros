@@ -244,10 +244,14 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
     // RFC-0117: a `nros dev` command becomes the command its old spelling
     // parses to, so the stale guard and the dispatch below see one command
     // for both spellings.
-    let cmd = match cmd {
-        cmd::Cmd::Dev(args) => cmd::dev::lower(args),
-        other => other,
-    };
+    // An old user-tier spelling notes its new one, on a terminal only
+    // (RFC-0117 D5); the lowering below erases which spelling was typed.
+    {
+        use std::io::IsTerminal;
+        let stderr = std::io::stderr();
+        cmd::user::note_old_spelling(&cmd, stderr.is_terminal(), &mut stderr.lock());
+    }
+    let cmd = cmd::lower(cmd);
     if let Err(msg) = stale_guard::refuse_if_stale(cmd_name(&cmd)) {
         return Err(eyre::eyre!("{msg}"));
     }
@@ -257,6 +261,19 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::ImageFacts(args) => cmd::image_facts::run(args),
         cmd::Cmd::New(args) => cmd::new::run(*args),
         cmd::Cmd::Generate(args) => cmd::generate::run(args),
+        cmd::Cmd::Interface(args) => cmd::interface::run(args),
+        cmd::Cmd::List(args) => cmd::ws::run(cmd::ws::Args {
+            command: cmd::ws::Sub::List(args),
+        }),
+        cmd::Cmd::Clean(args) => cmd::ws::run(cmd::ws::Args {
+            command: cmd::ws::Sub::Clean(args),
+        }),
+        cmd::Cmd::Graph(args) => cmd::graph::run(args),
+        cmd::Cmd::Run(args) => cmd::reserved::run("run", args),
+        cmd::Cmd::Flash(args) => cmd::reserved::run("flash", args),
+        cmd::Cmd::Monitor(args) => cmd::reserved::run("monitor", args),
+        cmd::Cmd::Bench(args) => cmd::reserved::run("bench", args),
+        cmd::Cmd::Debug(args) => cmd::reserved::run("debug", args),
         cmd::Cmd::GenerateRust(args) => cmd::generate::run_rust(args),
         cmd::Cmd::CodegenFingerprint => {
             println!("{}", rosidl_codegen::codegen_fingerprint());
