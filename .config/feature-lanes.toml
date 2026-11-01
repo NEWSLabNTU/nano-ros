@@ -165,6 +165,8 @@ tolerant = true
 targets = ["trigger_conditions", "wake_latency", "ftti_detection_bounds",
            "component_runtime", "tier_filter", "component_dispatch", "component_param",
            "dispatch_strategy", "signal_fd_wake", "entity_wake",
+           # phase-521 W3 — a tier parked on a session's waitable handle.
+           "readiness_park",
            # phase-510 W2 — behind `component-runtime-test` since issue 0900
            # and in no lane's `--test` list, so it never ran.
            "executor_arena_advisory"]

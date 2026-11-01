@@ -210,6 +210,8 @@ static const nros_rmw_vtable_t kVtable = {
      * cv-wait boundary; same-thread setters (Executor::wake, halt)
      * still drive the wake_cv. */
     .set_wake_callback = NULL,
+    /* phase-521 W4 — the transport's descriptor, where it has one. */
+    .readiness_source = xrce_readiness_source,
 
     /* Phase 124.A — zero-copy ABI. XRCE-DDS-Client uses micro-CDR
      * with caller-provided staging buffers; loan/borrow would

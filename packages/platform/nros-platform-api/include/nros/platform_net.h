@@ -103,6 +103,14 @@ size_t nros_platform_udp_send(const void *sock,
 /** Set the recv timeout in milliseconds; `0` means block indefinitely. */
 void nros_platform_udp_set_recv_timeout(const void *sock, uint32_t timeout_ms);
 
+/** phase-521 W4 (RFC-0113 D4) — the OS handle that becomes readable when a
+ *  datagram arrives on `sock`: its file descriptor on POSIX and NuttX. An RMW
+ *  session reports it as `NROS_RMW_READINESS_WAITABLE`, and the executor parks
+ *  on it (`nros_platform_wake_park_handles_us`) instead of blocking in
+ *  `read`. Returns -1 where the stack has no such handle (lwIP, NetX, a
+ *  bare-metal stack); those report readiness as a Notify instead. */
+int32_t nros_platform_udp_readiness_handle(const void *sock);
+
 /* ---- UDP multicast (optional) ----
  *
  * Signatures mirror the Rust `PlatformUdpMulticast` trait. `lep`

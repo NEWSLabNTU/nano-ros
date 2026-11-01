@@ -483,6 +483,18 @@ int8_t nros_platform_wake_signal_from_isr(void* w) {
     return nros_platform_wake_signal(w);
 }
 
+/* phase-521 W3 — required since RFC-0113: park on the wake object and on OS
+ * handles. A port that cannot multiplex handles returns -1 and the executor
+ * keeps its ordinary wait, which is what this example does. */
+int8_t nros_platform_wake_park_handles_us(void* w, const int32_t* handles, size_t n,
+                                          uint64_t deadline_us) {
+    (void)w;
+    (void)handles;
+    (void)n;
+    (void)deadline_us;
+    return -1;
+}
+
 size_t nros_platform_wake_storage_size(void) {
     return sizeof(nros_wake_t);
 }

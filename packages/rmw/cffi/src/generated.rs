@@ -944,6 +944,14 @@ pub struct nros_rmw_vtable_t {
             service_info: *mut rmw_service_info_t,
         ) -> rmw_ret_t,
     >,
+    #[doc = " phase-521 W3 (RFC-0113 D4) — how this session reports an arrival.\n\n  Optional, appended. The executor's park ends on exactly two things:\n  the tier's deadline, or readiness. This slot says which form of\n  readiness the session has, so the park can be ended by data rather\n  than the executor blocking inside the transport's own receive:\n\n  - `NROS_RMW_READINESS_NOTIFY`: the backend calls the callback\n    `set_wake_callback` installed when data arrives. `*out_handle` is\n    not written.\n  - `NROS_RMW_READINESS_WAITABLE`: the backend has an OS handle that\n    becomes readable when data arrives — a file descriptor on POSIX and\n    NuttX — written to `*out_handle`. The executor multiplexes it with\n    its own wake object (`nros_platform_wake_park_handles_us`) and\n    drives the session non-blockingly after the park. The handle stays\n    valid until the session closes.\n  - `NROS_RMW_READINESS_NONE`: neither. RFC-0113 D5 refuses such a\n    combination once phase-521 W6 lands; until then the executor\n    blocks inside `drive_io`.\n\n  `*out_kind` and `*out_handle` are written only on `NROS_RMW_RET_OK`.\n\n  NULL slot: the session is `NROS_RMW_READINESS_NOTIFY` when\n  `set_wake_callback` is non-NULL and `NROS_RMW_READINESS_NONE`\n  otherwise — what the runtime inferred before this slot existed, so\n  a backend that delivers a wake callback needs no change."]
+    pub readiness_source: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            out_kind: *mut u8,
+            out_handle: *mut i32,
+        ) -> rmw_ret_t,
+    >,
 }
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 #[repr(C)]
@@ -1037,6 +1045,9 @@ pub const NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS: i32 = 2048;
 pub const NROS_RMW_QOS_POLICY_NONE: i32 = 0;
 pub const NROS_RMW_QOS_POLICY_CORE: i32 = 27;
 pub const NROS_RMW_VISITOR_DEFINED: i32 = 1;
+pub const NROS_RMW_READINESS_NONE: i32 = 0;
+pub const NROS_RMW_READINESS_NOTIFY: i32 = 1;
+pub const NROS_RMW_READINESS_WAITABLE: i32 = 2;
 #[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid.\n\n  Members are APPENDED (issue 1972 grew it from 8 to 16 bytes). A caller\n  owns the union it hands `*_take_event`, so a backend built against the\n  older, smaller header writes within the larger one."]
 #[repr(C)]
 #[derive(Copy, Clone)]

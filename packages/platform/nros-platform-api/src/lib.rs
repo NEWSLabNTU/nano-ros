@@ -665,6 +665,21 @@ pub trait PlatformThreading {
     fn wake_park_granularity_us() -> u64 {
         0
     }
+    /// phase-521 W3 (RFC-0113 D3) — park on the wake object and on OS
+    /// handles: the same park as [`wake_park_until_us`](Self::wake_park_until_us),
+    /// ended also when one of `n` handles at `handles` becomes readable.
+    ///
+    /// Default `-1` — "this port cannot wait on OS handles", which is the
+    /// honest answer on every port without file descriptors. The executor then
+    /// keeps the wait it had.
+    fn wake_park_handles_us(
+        _w: *mut c_void,
+        _handles: *const i32,
+        _n: usize,
+        _deadline_us: u64,
+    ) -> i8 {
+        -1
+    }
     /// Caller-storage size requirement (bytes). Default `0` —
     /// signals "no wake primitive available". May be called before
     /// `wake_init`.
@@ -813,6 +828,15 @@ pub trait PlatformUdp {
     /// Set the receive timeout on a UDP socket (milliseconds).
     /// 0 means block indefinitely (no timeout).
     fn set_recv_timeout(sock: *const c_void, timeout_ms: u32);
+
+    /// phase-521 W4 (RFC-0113 D4) — the OS handle that becomes readable when
+    /// a datagram arrives: a file descriptor on POSIX and NuttX.
+    ///
+    /// Default `-1`: this stack has no such handle, and its sessions report
+    /// readiness as a Notify instead.
+    fn readiness_handle(_sock: *const c_void) -> i32 {
+        -1
+    }
 
     /// Open a UDP socket in listen (server) mode, bound to the given
     /// endpoint. Returns 0 on success, negative on failure.

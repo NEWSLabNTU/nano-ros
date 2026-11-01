@@ -500,6 +500,9 @@ impl nros_platform_api::PlatformUdp for CffiPlatform {
     fn set_recv_timeout(sock: *const c_void, timeout_ms: u32) {
         unsafe { nros_platform_udp_set_recv_timeout(sock, timeout_ms) }
     }
+    fn readiness_handle(sock: *const c_void) -> i32 {
+        unsafe { nros_platform_udp_readiness_handle(sock) }
+    }
 }
 
 impl nros_platform_api::PlatformUdpMulticast for CffiPlatform {
@@ -918,6 +921,20 @@ macro_rules! nros_platform_export_threading {
             <$ty as ::nros_platform_api::PlatformThreading>::wake_park_granularity_us()
         }
         #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wake_park_handles_us(
+            w: *mut ::core::ffi::c_void,
+            handles: *const i32,
+            n: usize,
+            deadline_us: u64,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_park_handles_us(
+                w,
+                handles,
+                n,
+                deadline_us,
+            )
+        }
+        #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_task_storage_size() -> usize {
             <$ty as ::nros_platform_api::PlatformThreading>::task_storage_size()
         }
@@ -1323,6 +1340,12 @@ macro_rules! nros_platform_export_net {
             timeout_ms: u32,
         ) {
             <$ty as ::nros_platform_api::PlatformUdp>::set_recv_timeout(sock, timeout_ms)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_readiness_handle(
+            sock: *const ::core::ffi::c_void,
+        ) -> i32 {
+            <$ty as ::nros_platform_api::PlatformUdp>::readiness_handle(sock)
         }
 
         // ---- UDP multicast ----

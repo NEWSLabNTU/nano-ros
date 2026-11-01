@@ -1029,6 +1029,18 @@ uint64_t nros_platform_wake_park_granularity_us(void) {
     return (1000000ULL + hz - 1ULL) / hz;
 }
 
+/* phase-521 W3 (RFC-0113 D3) — this port has no OS handles for a park to
+ * multiplex: an RMW session's readiness here is a Notify (its wake callback),
+ * never a file descriptor. -1 tells the executor to keep the park it has. */
+int8_t nros_platform_wake_park_handles_us(void *w, const int32_t *handles, size_t n,
+                                          uint64_t deadline_us) {
+    (void) w;
+    (void) handles;
+    (void) n;
+    (void) deadline_us;
+    return -1;
+}
+
 /* phase-359 W10 — opaque-storage sizing for `task`, the sibling of the wake
  * probes above. `task_init`'s contract says the implementor decides the size;
  * these let a caller ASK instead of hard-coding it (issue 0570's trap). */

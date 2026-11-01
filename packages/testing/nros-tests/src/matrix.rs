@@ -1217,6 +1217,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
             "Linux/Cpp/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e",
         ),
     ),
+    ("readiness_park", NonCell::FeatureLane),
     ("repo_root_is_unified", NonCell::Static),
     (
         "rmw_coordinate_truth",

@@ -168,6 +168,9 @@ trigger-test = [
     # umbrella `rmw-cffi` enables the walker that discovers whichever
     # backend the manifest pulled in via `dep:nros-rmw-<name>`.
     "nros-node/rmw-cffi",
+    # phase-521 W3 — `readiness_park` registers a stub backend of its own
+    # through the cffi registry, by name, beside the zenoh one.
+    "dep:nros-rmw-cffi",
     # phase-359 W10 — `nros-node/std` used to be here. None of the three
     # `trigger-test` targets touches nros-node's std-only surface (the
     # wall-clock spin loops and `open_threaded`); they drive `spin_once` and
@@ -332,6 +335,13 @@ required-features = ["trigger-test"]
 [[test]]
 name = "entity_wake"
 path = "tests/entity_wake.rs"
+required-features = ["trigger-test"]
+
+# phase-521 W3 (RFC-0113 D3/D4) — a tier parks on a session's WAITABLE handle
+# and is woken by data with no wake callback installed.
+[[test]]
+name = "readiness_park"
+path = "tests/readiness_park.rs"
 required-features = ["trigger-test"]
 
 [[test]]

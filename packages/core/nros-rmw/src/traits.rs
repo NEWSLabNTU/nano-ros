@@ -1802,6 +1802,28 @@ pub fn validate_locator(locator: &str) -> Result<(), &'static str> {
     }
 }
 
+/// phase-521 W3 (RFC-0113 D4) — how a session reports that data arrived.
+///
+/// The executor's park ends for exactly two reasons: the tier's next deadline,
+/// or readiness. This is the readiness half, in one of two forms, and the
+/// executor picks its wait from it rather than blocking inside the transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadinessSource {
+    /// Neither form: the executor can only learn of an arrival by blocking in
+    /// [`Session::drive_io`]. RFC-0113 D5 refuses this once phase-521 W6
+    /// lands.
+    None,
+    /// The backend calls the wake callback [`Session::set_wake_callback`]
+    /// installed when data arrives (a transport thread, a listener, an RX
+    /// interrupt).
+    Notify,
+    /// An OS handle that becomes readable when data arrives — a file
+    /// descriptor on POSIX and NuttX. The executor multiplexes it with its own
+    /// wake object and drives the session non-blockingly after the park. It
+    /// must stay valid until the session closes.
+    Waitable(i32),
+}
+
 /// Session mode
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SessionMode {
@@ -2148,6 +2170,21 @@ pub trait Session {
     /// [`set_wake_callback`]: Self::set_wake_callback
     fn supports_wake_callback(&self) -> bool {
         false
+    }
+
+    /// phase-521 W3 (RFC-0113 D4) — which form of readiness this session has.
+    ///
+    /// Default: [`ReadinessSource::Notify`] when the backend honours
+    /// [`set_wake_callback`](Self::set_wake_callback), else
+    /// [`ReadinessSource::None`] — what the executor inferred before this
+    /// method existed, so a backend that already delivers a wake callback
+    /// needs no change. A backend with a waitable OS handle overrides it.
+    fn readiness_source(&self) -> ReadinessSource {
+        if self.supports_wake_callback() {
+            ReadinessSource::Notify
+        } else {
+            ReadinessSource::None
+        }
     }
 
     /// Phase 124.F.1 — session-level connectivity probe.

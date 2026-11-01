@@ -49,6 +49,12 @@ unsafe extern "C" {
     fn nros_platform_wake_signal(w: *mut c_void) -> i8;
     #[allow(dead_code)] // Wired by 124.B.7 ISR callers in a follow-up.
     fn nros_platform_wake_signal_from_isr(w: *mut c_void) -> i8;
+    fn nros_platform_wake_park_handles_us(
+        w: *mut c_void,
+        handles: *const i32,
+        n: usize,
+        deadline_us: u64,
+    ) -> i8;
     fn nros_platform_wake_storage_size() -> usize;
     fn nros_platform_wake_storage_align() -> usize;
 }
@@ -138,6 +144,26 @@ impl NodeWake {
         // SAFETY: ptr was init'd in `new`; the underlying
         // primitive supports concurrent calls per platform spec.
         unsafe { nros_platform_wake_wait_ms(ptr, timeout_ms) == 0 }
+    }
+
+    /// phase-521 W3 (RFC-0113 D3) — park on this object AND on the OS
+    /// `handles` (the sessions' `ReadinessSource::Waitable` descriptors) for
+    /// at most `deadline_us`.
+    ///
+    /// `Some(true)` when signalled or a handle became readable, `Some(false)`
+    /// when the deadline expired, `None` when the port cannot wait on handles —
+    /// the caller then keeps the wait it had.
+    pub(crate) fn park_handles_us(&self, handles: &[i32], deadline_us: u64) -> Option<bool> {
+        let ptr = self.storage.as_ptr() as *mut c_void;
+        // SAFETY: ptr was init'd in `new`; `handles` is a live slice for the
+        // call, and the port reads it only during the call.
+        match unsafe {
+            nros_platform_wake_park_handles_us(ptr, handles.as_ptr(), handles.len(), deadline_us)
+        } {
+            0 => Some(true),
+            1 => Some(false),
+            _ => None,
+        }
     }
 
     /// Wake one waiter. Safe from any thread.

@@ -18,9 +18,12 @@
 #include <nros/platform.h>
 
 #include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <pthread.h>
 #include <sched.h>
 #include <semaphore.h>
+#include <stdatomic.h>
 #include <stdint.h>
 /* issue 0636 — `printf` for the priority read-back below. STDOUT, not stderr:
  * the NuttX guest's stderr does not reach the serial console, which is where
@@ -712,6 +715,12 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 
 typedef struct {
     sem_t sem;
+    /* phase-521 W3 — a self-pipe, made on the first handle park only, so an
+     * executor that never parks on a handle costs no descriptors (NuttX caps
+     * them per task). `pipe_w` is read by `signal` from any thread, hence
+     * atomic; `pipe_r` only by the one waiter. -1 until made. */
+    int pipe_r;
+    atomic_int pipe_w;
 } nros_wake_t;
 
 /* phase-436 C2 — which clock a wake wait measures its deadline on.
@@ -772,12 +781,18 @@ static int8_t nros_posix_wake_wait_rel_ns(nros_wake_t *wp, uint64_t rel_ns) {
 int8_t nros_platform_wake_init(void *w) {
     if (w == NULL) return -1;
     nros_wake_t *wp = (nros_wake_t *) w;
+    wp->pipe_r = -1;
+    atomic_init(&wp->pipe_w, -1);
     return sem_init(&wp->sem, 0, 0) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_wake_drop(void *w) {
     if (w == NULL) return 0;
     nros_wake_t *wp = (nros_wake_t *) w;
+    int pw = atomic_exchange(&wp->pipe_w, -1);
+    if (pw >= 0) close(pw);
+    if (wp->pipe_r >= 0) close(wp->pipe_r);
+    wp->pipe_r = -1;
     return sem_destroy(&wp->sem) == 0 ? 0 : -1;
 }
 
@@ -866,16 +881,137 @@ int8_t nros_platform_wake_signal(void *w) {
     /* Coalesce signals: only post if not already pending so the
      * binary semaphore stays at value <= 1. EAGAIN means already
      * signaled (POSIX SEM_VALUE_MAX overflow not relevant here
-     * because we never exceed 1 with the getvalue guard). */
+     * because we never exceed 1 with the getvalue guard).
+     *
+     * phase-521 W3 — a pending post needs no pipe byte either: a handle park
+     * takes the semaphore before it polls, and a post that lands after that
+     * take finds the pipe already made (it is made before the take), so it
+     * writes the byte below. */
     int val = 0;
     if (sem_getvalue(&wp->sem, &val) != 0) return -1;
     if (val > 0) return 0;
-    return sem_post(&wp->sem) == 0 ? 0 : -1;
+    if (sem_post(&wp->sem) != 0) return -1;
+    int pw = atomic_load(&wp->pipe_w);
+    if (pw >= 0) {
+        /* Non-blocking: a full pipe already holds a wake. `write` is
+         * async-signal-safe, as `sem_post` is. */
+        const uint8_t one = 1;
+        ssize_t r = write(pw, &one, 1);
+        (void) r;
+    }
+    return 0;
 }
 
 int8_t nros_platform_wake_signal_from_isr(void *w) {
     /* POSIX hosted: ISR semantics not meaningful. Alias to signal. */
     return nros_platform_wake_signal(w);
+}
+
+/* phase-521 W3 (RFC-0113 D3) — the park over the wake object AND the RMW
+ * sessions' OS handles: what a tier waits on when a session's readiness is a
+ * file descriptor (XRCE's UDP socket) rather than a wake callback.
+ *
+ * The semaphore cannot be polled, so the wake object gains a self-pipe the
+ * first time it parks here, and `signal` writes a byte to it after its post.
+ * The park takes the semaphore before polling (a post that is already there
+ * ends the park at once), and when the pipe fires it drains it and takes the
+ * matching post. A byte whose post was already taken by a plain
+ * `wake_wait_ms` is stale and the park goes on waiting.
+ *
+ * The deadline is microseconds from now on CLOCK_MONOTONIC, the executor's
+ * clock, and an EINTR resumes against the same absolute deadline. `ppoll`
+ * takes a timespec, so a sub-millisecond park stays sub-millisecond; where it
+ * is not declared, `poll`'s millisecond is rounded UP, never down. */
+#if defined(__NuttX__) || defined(__GLIBC__)
+#define NROS_POSIX_HAVE_PPOLL 1
+#if defined(__GLIBC__) && !defined(__USE_GNU)
+#include <signal.h>
+extern int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *tmo_p,
+                 const sigset_t *sigmask);
+#endif
+#endif
+
+/* The most handles one park multiplexes: the executor's own cap, one per
+ * session of a tier, with room to spare. More is refused (-1), never
+ * truncated, because a dropped handle is a missed wake. */
+#define NROS_POSIX_PARK_MAX_HANDLES 8
+
+static int nros_posix_wake_make_pipe(nros_wake_t *wp) {
+    int fds[2];
+    if (pipe(fds) != 0) return -1;
+    for (int i = 0; i < 2; ++i) {
+        int fl = fcntl(fds[i], F_GETFL);
+        if (fl < 0 || fcntl(fds[i], F_SETFL, fl | O_NONBLOCK) != 0 ||
+            fcntl(fds[i], F_SETFD, FD_CLOEXEC) != 0) {
+            close(fds[0]);
+            close(fds[1]);
+            return -1;
+        }
+    }
+    wp->pipe_r = fds[0];
+    atomic_store(&wp->pipe_w, fds[1]);
+    return 0;
+}
+
+static uint64_t nros_posix_monotonic_us(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+    return (uint64_t) ts.tv_sec * 1000000ULL + (uint64_t) ts.tv_nsec / 1000ULL;
+}
+
+int8_t nros_platform_wake_park_handles_us(void *w, const int32_t *handles, size_t n,
+                                          uint64_t deadline_us) {
+    if (w == NULL || (n > 0 && handles == NULL) || n > NROS_POSIX_PARK_MAX_HANDLES) {
+        return -1;
+    }
+    nros_wake_t *wp = (nros_wake_t *) w;
+    if (wp->pipe_r < 0 && nros_posix_wake_make_pipe(wp) != 0) {
+        return -1;
+    }
+    /* A signal already posted ends the park now. */
+    if (sem_trywait(&wp->sem) == 0) return 0;
+
+    struct pollfd pfds[1 + NROS_POSIX_PARK_MAX_HANDLES];
+    pfds[0].fd = wp->pipe_r;
+    pfds[0].events = POLLIN;
+    for (size_t i = 0; i < n; ++i) {
+        pfds[1 + i].fd = handles[i];
+        pfds[1 + i].events = POLLIN;
+    }
+    const nfds_t nfds = (nfds_t) (1 + n);
+    const uint64_t max_us = (uint64_t) UINT32_MAX * 1000ULL;
+    const uint64_t rel_us = deadline_us > max_us ? max_us : deadline_us;
+    const uint64_t end_us = nros_posix_monotonic_us() + rel_us;
+
+    for (;;) {
+        const uint64_t now_us = nros_posix_monotonic_us();
+        const uint64_t left_us = now_us >= end_us ? 0 : end_us - now_us;
+        for (nfds_t i = 0; i < nfds; ++i) pfds[i].revents = 0;
+#ifdef NROS_POSIX_HAVE_PPOLL
+        struct timespec tmo;
+        tmo.tv_sec = (time_t) (left_us / 1000000ULL);
+        tmo.tv_nsec = (long) ((left_us % 1000000ULL) * 1000ULL);
+        int r = ppoll(pfds, nfds, &tmo, NULL);
+#else
+        int r = poll(pfds, nfds, (int) ((left_us + 999ULL) / 1000ULL));
+#endif
+        if (r < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (r == 0) return 1;
+        for (size_t i = 0; i < n; ++i) {
+            if (pfds[1 + i].revents != 0) return 0;
+        }
+        if (pfds[0].revents != 0) {
+            uint8_t buf[16];
+            while (read(wp->pipe_r, buf, sizeof buf) > 0) {
+            }
+            if (sem_trywait(&wp->sem) == 0) return 0;
+            /* Stale: that post was already taken. Keep waiting. */
+            if (left_us == 0) return 1;
+        }
+    }
 }
 
 size_t nros_platform_wake_storage_size(void) {

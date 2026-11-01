@@ -15,6 +15,7 @@
 #include "internal.h"
 
 #include "nros/platform.h"
+#include "nros/platform_net.h"
 #include "nros/rmw_ret.h"
 
 #include <uxr/client/client.h>
@@ -692,6 +693,32 @@ rmw_ret_t xrce_publisher_event_init(const rmw_publisher_t* publisher, rmw_event_
     return NROS_RMW_RET_OK;
 }
 
+/* phase-521 W4 (RFC-0113 D4) — XRCE has no thread of its own, so nothing
+ * arrives outside `drive_io` and there is no Notify to give. Where the
+ * transport is an OS descriptor (POSIX/NuttX UDP, POSIX serial) it is the
+ * session's WAITABLE readiness: the executor parks on it and drives this
+ * session non-blockingly once it is readable, instead of blocking inside
+ * `uxr_run_session_time`. Elsewhere the answer is NONE and the receive-
+ * blocking wait stays until phase-521 W4/W5 give that transport a Notify. */
+rmw_ret_t xrce_readiness_source(const rmw_session_t* session, uint8_t* out_kind,
+                                int32_t* out_handle) {
+    if (session == NULL || out_kind == NULL || out_handle == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    const xrce_session_state_t* st = (const xrce_session_state_t*)session->backend_data;
+    if (st == NULL) {
+        return NROS_RMW_RET_ERROR;
+    }
+    if (st->readiness_handle >= 0) {
+        *out_kind = (uint8_t)NROS_RMW_READINESS_WAITABLE;
+        *out_handle = st->readiness_handle;
+    } else {
+        *out_kind = (uint8_t)NROS_RMW_READINESS_NONE;
+        *out_handle = -1;
+    }
+    return NROS_RMW_RET_OK;
+}
+
 rmw_ret_t xrce_next_deadline_ms(const rmw_session_t* session, uint32_t* out_ms,
                                 bool* has_deadline) {
     if (session == NULL || session->backend_data == NULL || out_ms == NULL ||
@@ -883,6 +910,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         return NROS_RMW_RET_BAD_ALLOC;
     }
     st->next_entity_id = 2; /* id 1 reserved for the participant */
+    st->readiness_handle = -1;
     /* Issue 1734 — before the state is reachable from anywhere. A port whose
      * recursive mutex cannot be created leaves the lock unready, which is the
      * single-threaded behaviour every image had before this lock existed. */
@@ -936,6 +964,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
             xrce_session_free(st);
             return sret;
         }
+        st->readiness_handle = st->serial_bridge.fd;
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
 #endif
     } else {
@@ -972,6 +1001,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
             xrce_session_free(st);
             return udp_ret;
         }
+        st->readiness_handle = nros_platform_udp_readiness_handle(st->udp_bridge.sock);
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
     }
 

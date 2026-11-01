@@ -1,6 +1,6 @@
 # Phase 521 — The real-time promise and the one wait
 
-**Status (2026-10-31). Approved; W0 and W1 done, W2's THREAD half done, W2 (rest) and W3–W8 open.** Implements
+**Status (2026-11-01). Approved; W0, W1 and W3 done; W2's THREAD half and W4's POSIX/NuttX half done; the rest of W2 and W4, and W5–W8, open.** Implements
 [RFC-0113](../design/0113-rt-unified-wait.md). Amends
 [RFC-0106](../design/0106-executor-park.md) D5 and withdraws
 [RFC-0112](../design/0112-framework-support-tiers.md)'s Tier 0.
@@ -124,7 +124,33 @@ docs, changelog fragments and RFC-0113; `just ci gate` green;
 **Acceptance (remaining):** an idle zenoh tier on one RTOS lane wakes zero
 times in 30 s with no timers; covered by W7.
 
-### W3 — The readiness slot and the POSIX park
+### W3 — The readiness slot and the POSIX park — DONE
+
+How it was built:
+
+- The vtable slot is `readiness_source(session, *kind, *handle)`, appended at
+  the end, and `Session::readiness_source() -> ReadinessSource { None, Notify,
+  Waitable(i32) }`. A NULL slot keeps the old inference from
+  `set_wake_callback`. The Rust adapter installs the slot for every Rust
+  backend, because it also installs `set_wake_callback` for every one.
+- The park is a new required platform symbol,
+  `nros_platform_wake_park_handles_us`. POSIX/NuttX implement it as `ppoll`
+  over the handles plus a self-pipe on the wake object; the pipe is made on
+  the first handle park, so no other executor pays a descriptor for it. Every
+  other port returns `-1`, and the executor then keeps its old wait. The
+  executor asks its sessions for Waitable handles on every spin, parks on them
+  before any port-installed park, and drains the sessions non-blockingly
+  afterwards.
+- Tests: `nros-tests/tests/readiness_park.rs`. A stub backend with no wake
+  callback is woken within ~100 ms of a socket write and is never asked for a
+  blocking `drive_io`. Disabling the handle park makes it fail at 3 s. A
+  negative control checks that the receive-blocking wait is still what a
+  session with no readiness form gets. Port-level cases are in
+  `c_port_posix_wake.rs`.
+- `rx_notify` on the custom-transport ops is moved to W4. It is a field on a
+  versioned struct mirrored in four places, and XRCE serial is its first
+  consumer, so it lands with that consumer.
+
 
 - `nros-rmw` C header: add `readiness_source` to the vtable (Notify or
   Waitable + handle); run `scripts/gen-abi-bindings.sh`; Rust trait default
@@ -139,7 +165,27 @@ times in 30 s with no timers; covered by W7.
 test parks a POSIX tier on a socket pair and measures wake on write with no
 wake callback installed.
 
-### W4 — XRCE delivers readiness on every transport
+### W4 — XRCE delivers readiness on every transport — POSIX/NuttX half DONE
+
+POSIX/NuttX half, landed with W3:
+
+- `nros_platform_udp_readiness_handle(sock)` is a new required net symbol.
+  The POSIX net provider returns the socket's fd; lwIP, NetX, Zephyr and Rust
+  stacks return `-1`.
+- XRCE records the handle at session open (UDP through the platform net ABI,
+  or the POSIX serial fd) and reports it through `readiness_source` as
+  Waitable. A board's custom transport reports None until `rx_notify` lands.
+- Measured with `xrce_guard_wake` (renamed
+  `guard_trigger_wakes_an_xrce_executor_parked_on_its_socket`): trigger to
+  dispatch went from ~5 ms through the 10 ms slice to ~90 us on a Linux host.
+  The bound is now 3 ms. A mutation that makes the session report no handle
+  fails it at 5.4 ms.
+
+Remaining: the RTOS transports and `rx_notify` below, and the "zero receive
+calls between deadlines" measurement (W7).
+
+- Custom-transport ops gain `rx_notify` (moved here from W3): the board's
+  UART interrupt calls the notify the session installed.
 
 - POSIX/NuttX UDP: Waitable over `udp_bridge.fd`.
 - FreeRTOS + lwIP, ThreadX + NetX, Zephyr zsock: Notify from the stack's

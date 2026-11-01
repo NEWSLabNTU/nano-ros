@@ -375,6 +375,15 @@ void nros_platform_udp_set_recv_timeout(const void *sock_raw, uint32_t timeout_m
     set_recv_timeout_ms(sock->fd, timeout_ms);
 }
 
+/* phase-521 W4 (RFC-0113 D4) — the socket's descriptor, which `poll` reports
+ * readable when a datagram arrives: what an XRCE session over this socket
+ * reports as WAITABLE readiness, and the executor parks on. */
+int32_t nros_platform_udp_readiness_handle(const void *sock_raw) {
+    if (sock_raw == NULL) return -1;
+    const nros_posix_socket_t *sock = (const nros_posix_socket_t *) sock_raw;
+    return (int32_t) sock->fd;
+}
+
 /* ---- UDP multicast ----
  *
  * Mirrors the Rust impl in posix/src/net.rs. Uses getifaddrs to

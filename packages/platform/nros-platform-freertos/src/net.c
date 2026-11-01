@@ -398,6 +398,14 @@ void nros_platform_udp_set_recv_timeout(const void *sock_raw, uint32_t timeout_m
     set_rcv_timeout(sock->fd, timeout_ms);
 }
 
+/* phase-521 W4 (RFC-0113 D4) — this stack has no OS handle the executor's
+ * park multiplexes, so a session over it cannot report WAITABLE readiness;
+ * RFC-0113 D4 gives it a Notify form instead. */
+int32_t nros_platform_udp_readiness_handle(const void *sock) {
+    (void) sock;
+    return -1;
+}
+
 /* ---- UDP multicast ----
  *
  * lwIP provides IP_ADD_MEMBERSHIP + struct ip_mreq via

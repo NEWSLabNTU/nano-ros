@@ -314,6 +314,18 @@ ADDED = {
             "family, and this is not a substitute for them"
         ),
     ),
+    "readiness_source": Added(
+        ret="rmw_ret_t",
+        args=("const rmw_session_t *", "uint8_t *", "int32_t *"),
+        why=(
+            "RFC-0113 D4: the executor's park ends on the tier's deadline or on "
+            "readiness, never inside a transport's receive, so a session states which "
+            "form of readiness it has: Notify (the `set_wake_callback` it already "
+            "fires) or Waitable (an OS handle the park multiplexes, XRCE's UDP socket "
+            "on POSIX). Upstream's `rmw_wait` hands the wait-set to the backend to "
+            "block in, which is exactly the shape RFC-0113 retires"
+        ),
+    ),
     "ping_session": Added(
         ret="rmw_ret_t",
         args=("rmw_session_t *", "int32_t"),

@@ -2836,6 +2836,11 @@ pub enum WakeSourceId {
 /// targets this seam mainly exists for.
 pub const MAX_WAKE_SOURCES: usize = 8;
 
+/// phase-521 W3 -- the most `ReadinessSource::Waitable` handles one park
+/// multiplexes: one per session of a tier, and the POSIX port's own cap.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+pub(crate) const MAX_WAITABLE_HANDLES: usize = 8;
+
 /// phase-436 (RFC-0106 D5) — the slice a poll-only backend's transport wait is
 /// cut into while a guard condition can signal the executor from another
 /// thread: the worst-case latency of such a trigger, and the period at which
@@ -4579,6 +4584,32 @@ impl<'s> Executor<'s> {
         {
             true
         }
+    }
+
+    /// phase-521 W3 (RFC-0113 D3) -- write the `ReadinessSource::Waitable`
+    /// handles of this executor's sessions (primary first, then the extra
+    /// ones) into `out`, and return how many. Asked every spin: a session's
+    /// handle exists only once its transport is connected.
+    ///
+    /// More waitable sessions than `out` holds is answered with ZERO, not a
+    /// truncated set: parking on some handles but not others would be a missed
+    /// wake, and zero keeps the receive-blocking wait that sees all of them.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) fn waitable_handles(&self, out: &mut [i32; MAX_WAITABLE_HANDLES]) -> usize {
+        use nros_rmw::{ReadinessSource, Session as _};
+        let mut n = 0;
+        let primary = core::iter::once(self.session.readiness_source());
+        let extra = self.extra_sessions.iter().map(|e| e.readiness_source());
+        for source in primary.chain(extra) {
+            if let ReadinessSource::Waitable(fd) = source {
+                if n == out.len() {
+                    return 0;
+                }
+                out[n] = fd;
+                n += 1;
+            }
+        }
+        n
     }
 
     /// Drive the primary session for `timeout_ms`, the transport-side half of
@@ -12999,25 +13030,59 @@ impl<'s> Executor<'s> {
         // 127.C.4 stall (a reliable stream whose ACK lands in a session nobody
         // drives). Those executors keep the receive-blocking wait below.
         let park_can_be_woken = s.park_can_be_woken();
+
+        // phase-521 W3 (RFC-0113 D3) -- a session whose readiness is a
+        // WAITABLE handle (a socket on POSIX / NuttX) is parked on: the port
+        // multiplexes the handles with this executor's own wake object, so
+        // data arriving ends the park and a guard trigger still does too. The
+        // tier then drains its sessions non-blockingly below, instead of
+        // blocking inside the transport's `recv` (and slicing that wait for
+        // a guard condition, phase-436 D5). A port that cannot wait on handles
+        // answers `None` and the wait below is the one it always had.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        let handle_parked = if park_achieved_us > 0 {
+            let mut handles = [0i32; MAX_WAITABLE_HANDLES];
+            let n = s.waitable_handles(&mut handles);
+            match s.node_wake.as_ref() {
+                Some(wake) if n > 0 => {
+                    let wake: *const super::node_wake::NodeWake = &**wake;
+                    let _window = window_lock.map(super::exec_lock::Window::open);
+                    // SAFETY: the wake object is the executor's (`Arc`, set at
+                    // open and never replaced), so it outlives the window.
+                    unsafe { &*wake }
+                        .park_handles_us(&handles[..n], park_achieved_us)
+                        .is_some()
+                }
+                _ => false,
+            }
+        } else {
+            false
+        };
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        let handle_parked = false;
+        // SAFETY: the lock is held again (the window, if any, has closed).
+        s = unsafe { &mut *this };
+
         // phase-509 P9b item 3 -- a shared pass parks with the lock released
         // (a window), so the band workers run while the executor's own
         // worker waits. Nothing borrowed from the executor crosses it.
-        let parked = match s.worker.park_primitive {
-            Some((park, ctx)) if park_achieved_us > 0 && park_can_be_woken => {
-                let _window = window_lock.map(super::exec_lock::Window::open);
-                // SAFETY: `park` and `ctx` were supplied together by the port
-                // through `set_park_primitive` and outlive the executor by its
-                // contract.
-                //
-                // phase-436 — a negative answer is "cannot park": the ABI's
-                // own contract, and what a Rust-implemented port's trait
-                // default returns at once. Counting that as a park would
-                // drop the drain below to non-blocking and spin hot, so the
-                // spin falls back to the wait it would have had uninstalled.
-                (unsafe { park(ctx, park_achieved_us) }) >= 0
-            }
-            _ => false,
-        };
+        let parked = handle_parked
+            || match s.worker.park_primitive {
+                Some((park, ctx)) if park_achieved_us > 0 && park_can_be_woken => {
+                    let _window = window_lock.map(super::exec_lock::Window::open);
+                    // SAFETY: `park` and `ctx` were supplied together by the port
+                    // through `set_park_primitive` and outlive the executor by its
+                    // contract.
+                    //
+                    // phase-436 — a negative answer is "cannot park": the ABI's
+                    // own contract, and what a Rust-implemented port's trait
+                    // default returns at once. Counting that as a park would
+                    // drop the drain below to non-blocking and spin hot, so the
+                    // spin falls back to the wait it would have had uninstalled.
+                    (unsafe { park(ctx, park_achieved_us) }) >= 0
+                }
+                _ => false,
+            };
 
         // Having already waited, the transport drain must not block again —
         // otherwise the park and the drive would sum, and the cadence would be

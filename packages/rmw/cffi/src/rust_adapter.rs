@@ -611,6 +611,11 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         get_gid_for_publisher: Some(get_gid_for_publisher_trampoline::<R>),
         next_deadline_ms: Some(next_deadline_ms_trampoline::<R>),
         set_wake_callback: Some(set_wake_callback_trampoline::<R>),
+        // phase-521 W3 (RFC-0113 D4) — the backend's own answer. Installed
+        // for every Rust backend because `set_wake_callback` above is too, so
+        // the NULL-slot inference ("a wake slot means Notify") would claim
+        // Notify for a backend whose trait method ignores the callback.
+        readiness_source: Some(readiness_source_trampoline::<R>),
         // Phase 124.A — zero-copy slots default to NULL on the
         // generic adapter; per-backend opt-in via dedicated trampolines
         // (see `nros-rmw-zenoh` for the first implementation in 124.A.4).
@@ -1974,6 +1979,32 @@ unsafe extern "C" fn set_wake_callback_trampoline<R: RustBackend>(
     // SAFETY: this trampoline forwards the C ABI's callback/context
     // lifetime contract to the Rust backend.
     unsafe { Session::set_wake_callback(s, cb, ctx) };
+    NROS_RMW_RET_OK
+}
+
+unsafe extern "C" fn readiness_source_trampoline<R: RustBackend>(
+    session: *const NrosRmwSession,
+    out_kind: *mut u8,
+    out_handle: *mut i32,
+) -> NrosRmwRet {
+    if out_kind.is_null() || out_handle.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(s) = (unsafe { session_ref::<R::Session>(session) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let (kind, handle) = match Session::readiness_source(s) {
+        nros_rmw::ReadinessSource::None => (crate::generated::NROS_RMW_READINESS_NONE, -1),
+        nros_rmw::ReadinessSource::Notify => (crate::generated::NROS_RMW_READINESS_NOTIFY, -1),
+        nros_rmw::ReadinessSource::Waitable(fd) => {
+            (crate::generated::NROS_RMW_READINESS_WAITABLE, fd)
+        }
+    };
+    // SAFETY: both checked non-null above.
+    unsafe {
+        *out_kind = kind as u8;
+        *out_handle = handle;
+    }
     NROS_RMW_RET_OK
 }
 

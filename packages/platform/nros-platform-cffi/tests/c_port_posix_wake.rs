@@ -18,7 +18,9 @@ use nros_platform_cffi as _;
 
 use core::ffi::c_void;
 use std::{
+    io::Write,
     mem::MaybeUninit,
+    os::{fd::AsRawFd, unix::net::UnixStream},
     thread,
     time::{Duration, Instant},
 };
@@ -31,6 +33,12 @@ unsafe extern "C" {
     fn nros_platform_wake_signal_from_isr(w: *mut c_void) -> i8;
     fn nros_platform_wake_park_until_us(w: *mut c_void, deadline_us: u64) -> i8;
     fn nros_platform_wake_park_granularity_us() -> u64;
+    fn nros_platform_wake_park_handles_us(
+        w: *mut c_void,
+        handles: *const i32,
+        n: usize,
+        deadline_us: u64,
+    ) -> i8;
     fn nros_platform_wake_storage_size() -> usize;
     fn nros_platform_wake_storage_align() -> usize;
 }
@@ -315,5 +323,154 @@ fn park_zero_deadline_is_a_non_blocking_take() {
         "the signal must have been consumed by the first take"
     );
 
+    unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };
+}
+
+// ---------------------------------------------------------------------------
+// phase-521 W3 (RFC-0113 D3) — the park over the wake object AND OS handles.
+// ---------------------------------------------------------------------------
+
+/// A handle becoming readable ends the park, from another thread, with 0 —
+/// and the park does not read it (the session drains its own transport).
+#[test]
+fn handle_park_is_ended_by_a_readable_handle() {
+    let mut buf = WakeBuf::new();
+    unsafe { nros_platform_wake_init(buf.as_mut_ptr()) };
+    let (rx, mut tx) = UnixStream::pair().unwrap();
+    let fd = rx.as_raw_fd();
+
+    let writer = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(50));
+        tx.write_all(&[7]).unwrap();
+        tx
+    });
+    let t0 = Instant::now();
+    let rc = unsafe { nros_platform_wake_park_handles_us(buf.as_mut_ptr(), &fd, 1, 5_000_000) };
+    let elapsed = t0.elapsed();
+    let _tx = writer.join().unwrap();
+
+    assert_eq!(
+        rc, 0,
+        "a readable handle must end the park with 0, got {rc}"
+    );
+    assert!(
+        elapsed >= Duration::from_millis(40),
+        "returned before the write: {elapsed:?}"
+    );
+    assert!(
+        elapsed < Duration::from_millis(1_000),
+        "missed the write: {elapsed:?}"
+    );
+    let mut byte = [0u8; 1];
+    assert_eq!(
+        unsafe { libc::recv(fd, byte.as_mut_ptr().cast(), 1, libc::MSG_DONTWAIT) },
+        1,
+        "the park consumed the handle's data; the session must find it there"
+    );
+
+    unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };
+}
+
+/// The wake object still ends a handle park: a guard condition or a Notify
+/// session signals it, and the park sees the signal through its self-pipe.
+#[test]
+fn handle_park_is_ended_by_a_cross_thread_signal() {
+    let mut buf = WakeBuf::new();
+    unsafe { nros_platform_wake_init(buf.as_mut_ptr()) };
+    let (rx, _tx) = UnixStream::pair().unwrap();
+    let fd = rx.as_raw_fd();
+    let raw_addr = buf.as_mut_ptr() as usize;
+
+    let signaller = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(50));
+        unsafe { nros_platform_wake_signal(raw_addr as *mut c_void) };
+    });
+    let t0 = Instant::now();
+    let rc =
+        unsafe { nros_platform_wake_park_handles_us(raw_addr as *mut c_void, &fd, 1, 5_000_000) };
+    let elapsed = t0.elapsed();
+    signaller.join().unwrap();
+
+    assert_eq!(rc, 0, "a signalled park must report 0, got {rc}");
+    assert!(elapsed >= Duration::from_millis(40), "{elapsed:?}");
+    assert!(
+        elapsed < Duration::from_millis(1_000),
+        "missed the signal: {elapsed:?}"
+    );
+    assert_eq!(
+        unsafe { nros_platform_wake_park_until_us(raw_addr as *mut c_void, 0) },
+        1,
+        "the handle park must consume the signal it woke on"
+    );
+
+    unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };
+}
+
+/// With nothing readable and nothing signalled, the park waits out its deadline
+/// and reports 1 — no earlier.
+#[test]
+fn handle_park_times_out_at_its_deadline() {
+    let mut buf = WakeBuf::new();
+    unsafe { nros_platform_wake_init(buf.as_mut_ptr()) };
+    let (rx, _tx) = UnixStream::pair().unwrap();
+    let fd = rx.as_raw_fd();
+
+    let t0 = Instant::now();
+    let rc = unsafe { nros_platform_wake_park_handles_us(buf.as_mut_ptr(), &fd, 1, 30_000) };
+    let elapsed = t0.elapsed();
+
+    assert_eq!(rc, 1, "an idle park must time out with 1, got {rc}");
+    assert!(
+        elapsed >= Duration::from_millis(30),
+        "woke early: {elapsed:?}"
+    );
+
+    unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };
+}
+
+/// A signal taken by a plain `wait_ms` leaves its pipe byte behind. That byte
+/// is stale and must not end the next handle park early.
+#[test]
+fn a_stale_pipe_byte_does_not_end_the_handle_park() {
+    let mut buf = WakeBuf::new();
+    unsafe { nros_platform_wake_init(buf.as_mut_ptr()) };
+    let (rx, _tx) = UnixStream::pair().unwrap();
+    let fd = rx.as_raw_fd();
+
+    // Make the self-pipe (the first handle park does), then signal and take
+    // the signal through the semaphore wait, which leaves the byte.
+    assert_eq!(
+        unsafe { nros_platform_wake_park_handles_us(buf.as_mut_ptr(), &fd, 1, 0) },
+        1
+    );
+    assert_eq!(unsafe { nros_platform_wake_signal(buf.as_mut_ptr()) }, 0);
+    assert_eq!(
+        unsafe { nros_platform_wake_wait_ms(buf.as_mut_ptr(), 0) },
+        0
+    );
+
+    let t0 = Instant::now();
+    let rc = unsafe { nros_platform_wake_park_handles_us(buf.as_mut_ptr(), &fd, 1, 30_000) };
+    let elapsed = t0.elapsed();
+    assert_eq!(rc, 1, "a stale byte ended the park: {rc}");
+    assert!(
+        elapsed >= Duration::from_millis(30),
+        "woke early on a stale byte: {elapsed:?}"
+    );
+
+    unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };
+}
+
+/// More handles than the port multiplexes is refused, never truncated: a
+/// dropped handle would be a missed wake.
+#[test]
+fn handle_park_refuses_more_handles_than_it_can_watch() {
+    let mut buf = WakeBuf::new();
+    unsafe { nros_platform_wake_init(buf.as_mut_ptr()) };
+    let fds = [0i32; 9];
+    assert_eq!(
+        unsafe { nros_platform_wake_park_handles_us(buf.as_mut_ptr(), fds.as_ptr(), fds.len(), 0) },
+        -1
+    );
     unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };
 }
