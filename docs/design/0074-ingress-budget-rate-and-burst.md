@@ -3,7 +3,7 @@ rfc: 0074
 title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Stable
 since: 2026-08
-last-reviewed: 2026-10-26
+last-reviewed: 2026-11-01
 implements-tracked-by: [phase-462, phase-516, phase-519]
 supersedes: []
 superseded-by: null
@@ -217,10 +217,71 @@ message(s) have been dropped by the downsampling interceptor` — that is the
 "drop counter" open question 4 asks for, at the granularity zenoh offers: it
 says THAT a rule shed, not how much.
 
-This enforcement point exists only for zenoh. Whether the XRCE agent can
-carry it is phase-519 W3. The pinned agent (v2.4.3) ignores
-`min_pace_period` and enforces `max_bytes_per_second` as a token bucket, so
-the candidate is a byte rate, not a message rate.
+### On XRCE — the agent's byte pace (amendment 2026-11-01, phase-519 W3)
+
+On XRCE the device itself asks for enforcement point 1, so there is no
+deployment step. A subscription that declares `ingress.rate_hz` passes it to
+the backend in `rmw_subscription_options_t::ingress_rate_mhz`. The XRCE backend
+then asks the agent for
+
+    max_bytes_per_second = rate_hz x rx_buffer_hint
+
+in the `uxrDeliveryControl` of its data request. `rx_buffer_hint` is the
+type's derived upper bound, so a smaller sample costs fewer tokens and the
+agent admits at least `rate_hz` samples a second.
+
+**What the agent does with it (read in v2.4.2, Humble's, and the pinned
+v2.4.3; the read path is identical).** `Reader::read_task` takes a sample from
+its DDS DataReader, then blocks in `TokenBucket::consume_tokens` until the
+sample's bytes are available. The bucket's capacity is one second of the rate.
+`min_pace_period` is carried on the wire and never read.
+
+**Measured 2026-11-01**, on one host: a ROS 2 (Humble, Fast-DDS) publisher at
+100 Hz with 200-character `std_msgs/String` samples (209 bytes on the wire),
+through the ROS-paired agent, to a bare XRCE client subscriber. Each cell ran
+15 s, and its first second was discarded.
+
+| `max_bytes_per_second` | reader depth | reliability | received | median age | 90th pct age |
+| --- | --- | --- | --- | --- | --- |
+| unlimited | 10 | reliable | 100.0 Hz | 0.2 ms | 0.3 ms |
+| 2090 (10 Hz) | 1 | reliable | 9.99 Hz | 104.0 ms | 108.9 ms |
+| 2090 | 1 | best effort | 10.05 Hz | 105.6 ms | 109.3 ms |
+| 2090 | 10 | reliable | 10.06 Hz | 194.7 ms | 199.8 ms |
+| 2090 | 10 | best effort | 10.06 Hz | 194.4 ms | 199.6 ms |
+| 2090 | 100 | reliable | 10.06 Hz | 1095.0 ms | 1099.6 ms |
+| 150 (below one sample) | 1 or 10 | either | 0 samples | — | — |
+
+So:
+
+- **It bounds the rate.** The device received the declared rate in every cell,
+  reliable or not. The excess is shed by the agent-side reader's history, not
+  delivered late.
+- **It costs freshness.** The agent takes a sample before it waits, so a
+  delivered sample is about one period (`1 / rate_hz`) old at depth 1. Each
+  sample the agent-side reader's history holds adds more age. That reader is
+  created from the subscription's own QoS, so a declared ingress is fresh
+  only with a shallow depth. Depth 1 is what this RFC recommends for a paced
+  subscriber.
+- **A bucket smaller than one sample stops the stream, silently.**
+  `consume_tokens` returns false forever for a sample larger than the
+  bucket's capacity, and the read task retries it.
+
+**The guards.** The backend asks for the pace only when it is safe, and
+otherwise asks for every sample, as before, and logs why
+(`xrce_ingress_max_bytes_per_second`, tested by
+`nros_rmw_xrce_ingress_pace`):
+
+- `rate_hz >= 1`, so the bucket holds at least one bound-sized sample;
+- a non-zero `rx_buffer_hint`;
+- `rate_hz x bound <= 65535`, because the wire field is a `uint16_t`.
+
+The `uint16_t` is the real limit: 100 Hz of a 656-byte type cannot be paced
+this way. `burst` has no XRCE meaning. The bucket's burst is always one
+second of the rate, and the wire carries no capacity.
+
+**Not yet carried.** The options field and the backend are in place. Each
+language surface still has to fill the field from the declaration, which is
+phase-519 W3b. Until then every subscription passes 0, and nothing changes.
 
 ## Enforcement point 2 — a budget on the read TASK (measured, unblocked)
 
@@ -543,6 +604,12 @@ that, and a design that assumes one `c` per board should say so.
 
 ## Changelog
 
+- 2026-11-01 — phase-519 W3: enforcement point 1 on XRCE, under "On XRCE".
+  The agent's `max_bytes_per_second` was measured to bound the rate, at a
+  cost of one period of age, and to stop the stream when its bucket is
+  smaller than one sample. The backend derives the field from a declared
+  `rate_hz` behind three guards. Carrying the declaration from each language
+  surface is phase-519 W3b.
 - 2026-10-26 — Stable, by maintainer decision. The declaration is settled
   upstream (issue 0760). Both enforcement points are built and measured: the
   read-task budget (phase-462) and the zenoh router rule (phase-516 W1, issue

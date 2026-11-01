@@ -1079,6 +1079,55 @@ bool xrce_event_type_is_supported(rmw_event_type_t event_type);
 void xrce_report_capacity_exhausted(const char* kind, const char* name, unsigned cap,
                                     const char* knob);
 
+/* Phase-519 W3 (RFC-0074, "Enforcement point 1 on XRCE") — the agent-side pace
+ * a subscription asks for, from what it declared.
+ *
+ * The agent (v2.4.2 and the pinned v2.4.3 share this path) enforces exactly one
+ * delivery-control field, `max_bytes_per_second`, as a token bucket in the
+ * reader's read task, whose capacity is one second of the rate.
+ * `min_pace_period` travels on the wire and is never read. So a declared
+ * message rate becomes a byte rate here: `rate_hz x bound`, where `bound` is
+ * the subscription's `rx_buffer_hint` (the type's derived upper bound). A
+ * sample smaller than the bound costs fewer tokens, so the agent admits AT
+ * LEAST `rate_hz` samples a second, never fewer.
+ *
+ * Three refusals, each answered with "ask for everything" (`0`, which is
+ * `UXR_MAX_BYTES_PER_SECOND_UNLIMITED`, the request every subscription made
+ * before) and a reason in `*why`:
+ *
+ * - no declaration (`rate_mhz == 0`) or no bound (`bound == 0`) — nothing to
+ *   derive from; `*why` is NULL, because this is the normal case;
+ * - `rate_hz < 1` — the bucket holds less than one bound-sized sample, and the
+ *   agent's token-bucket consume returns false FOREVER for a sample bigger than
+ *   the bucket, so the stream stops with no error (measured: 0 samples in 15 s
+ *   at 150 B/s for 209-byte samples);
+ * - `rate_hz x bound > 65535` — the wire field is a `uint16_t`.
+ *
+ * Pure, so `tests/ingress_pace.c` covers it without an agent. */
+static inline uint16_t xrce_ingress_max_bytes_per_second(uint32_t rate_mhz, uint32_t bound,
+                                                         const char** why) {
+    *why = NULL;
+    if (rate_mhz == 0u || bound == 0u) {
+        return 0u;
+    }
+    if (rate_mhz < 1000u) {
+        *why = "a declared rate below 1 Hz would make the agent's one-second bucket "
+               "smaller than one sample, which stops the stream";
+        return 0u;
+    }
+    /* Round up, so a fractional rate never asks for less than it declared. */
+    uint64_t bps = ((uint64_t)rate_mhz * (uint64_t)bound + 999u) / 1000u;
+    if (bps > 0xFFFFu) {
+        *why = "rate_hz x the type's bound exceeds the agent's 65535 B/s field";
+        return 0u;
+    }
+    return (uint16_t)bps;
+}
+
+/* Log why a declared ingress was not turned into an agent-side pace. */
+void xrce_report_ingress_unpaced(const char* topic, uint32_t rate_mhz, uint32_t bound,
+                                 const char* why);
+
 /* Report that the ONE per-session allocation could not be served, with the size
  * that was asked for and the knobs that decide it.
  *

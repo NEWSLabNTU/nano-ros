@@ -1,5 +1,13 @@
 # Phase 519 — The RMW daemons: the zenoh router and the XRCE agent
 
+**Status (2026-11-01, later). W3a done; W3b open.** The maintainer chose the
+guarded request. The agent's `max_bytes_per_second` was measured: it bounds the
+rate, it ages each sample by one period, and it stops the stream when its
+bucket is smaller than one sample. The XRCE backend now derives it from
+`rmw_subscription_options_t::ingress_rate_mhz` behind three guards. W3b
+carries a subscription's declared ingress into that field. W1 and W2 are still
+deferred.
+
 **Status (2026-11-01). W4 done; W1-W3 still deferred.** The maintainer took
 W4 out of the deferral. `just xrce agent <locator | leaf[:image]>` starts the
 provisioned agent on the locator a domain or an image states, the READMEs use
@@ -77,7 +85,7 @@ a change in this tree. Until it lands, the lowering stays at burst 1.
 **Done when** the request is filed and linked here. If upstream ships it, the
 lowering gains the term, behind a check of the router's zenoh version.
 
-### W3 — the ingress budget at the XRCE agent
+### W3 — the ingress budget at the XRCE agent — W3a DONE (2026-11-01), W3b open
 
 RFC-0074 enforcement point 1 exists only for zenoh. An XRCE subscriber asks
 the agent for data with a `uxrDeliveryControl`, and nano-ros asks for
@@ -101,6 +109,40 @@ device read stale samples, which could be worse than reading fewer.
 whether what it delivers is fresh. Then either the subscriber requests it from
 the declared ingress (with an RFC-0074 amendment), or RFC-0074 records why
 XRCE has no enforcement point 1.
+
+**Measured (2026-11-01), and decided.** RFC-0074 "On XRCE" has the table. At
+10 Hz declared against a 100 Hz publisher, the device received 9.99–10.06 Hz
+in every cell. The median age was 104 ms at reader depth 1, 195 ms at depth
+10 and 1095 ms at depth 100, against 0.2 ms unpaced. A rate below one sample
+a second delivered nothing for 15 s, with no error. The excess is shed by the
+agent-side reader's history, and what does arrive is one period old. The
+maintainer chose option one: request it, behind guards.
+
+**W3a — the backend half (landed).**
+
+- `rmw_subscription_options_t` gains `uint32_t ingress_rate_mhz`. It takes the
+  old `_reserved[4]`, so the struct is still 8 bytes. `TopicInfo` has
+  `with_ingress_rate_mhz`, and `nros-rmw-cffi` carries the field both ways.
+- `xrce_ingress_max_bytes_per_second` (in `internal.h`) asks the agent for
+  `rate_hz x rx_buffer_hint`, rounded up. It asks for everything, and logs why,
+  in two cases: when `rate_hz < 1` (the bucket would be smaller than one
+  sample) and when the product exceeds the wire field's 65535. Test:
+  `nros_rmw_xrce_ingress_pace` in `just check rmw-xrce`.
+
+**W3b — the declaration reaches the field (open).** No caller sets
+`ingress_rate_mhz` yet, so every image still asks for everything and no
+behaviour has changed. The declaration lives in the contract
+(`sub.<endpoint>.ingress.rate_hz`). Each surface has to fill the field the
+way it fills `rx_buffer_hint`:
+
+- the Rust executor, through `TopicInfo`;
+- the C and C++ subscription options, through the generated declared-QoS
+  header, which today carries depth, reliability and durability for a
+  compile-time check only.
+
+**Done when** an image whose contract declares an ingress on an XRCE
+subscription asks the agent for the derived pace, and that is measured once
+against the agent.
 
 ### W4 — one door for starting the agent — DONE (2026-11-01)
 
