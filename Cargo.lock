@@ -1837,6 +1837,7 @@ dependencies = [
  "nros-platform-cffi",
  "nros-rmw",
  "nros-rmw-metadata",
+ "portable-atomic",
 ]
 
 [[package]]

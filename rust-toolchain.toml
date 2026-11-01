@@ -71,4 +71,7 @@ targets = [
     # (`examples/workspaces/*`) has no toolchain file of its own and resolves
     # THIS one, so the triple Zephyr picks for native_sim has to be here.
     "x86_64-unknown-none",
+    # issue 2206 — Cortex-M0/M0+ (RP2040), the ARMv6-M arm of
+    # `nros_detect_rust_target()`.
+    "thumbv6m-none-eabi",
 ]

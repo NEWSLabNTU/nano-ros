@@ -330,6 +330,9 @@ CROSS = [
             ("platform-freertos", "nros-board-mps2-an385-freertos"),
             ("platform-threadx", "nros-board-threadx-qemu-riscv64"),
             ("platform-zephyr", "thumbv7m-none-eabi"),
+            # issue 2206 -- the CAS-less ARM triple a Cortex-M0+ Zephyr image
+            # (Pico W) builds; nros-cpp's take path had a core `fetch_add`.
+            ("platform-zephyr", "thumbv6m-none-eabi"),
             ("platform-mps2-an385", "thumbv7m-none-eabi"),
             ("platform-stm32f4", "thumbv7em-none-eabihf"),
         )

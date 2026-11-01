@@ -281,6 +281,10 @@ nros-rmw = { version = "0.6.0", path = "../../core/nros-rmw", default-features =
 # `.init_array` self-registration is never in the image, and `NROS_RMW=metadata`
 # resolves to an unknown backend.
 nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
+# issue 2206 — the take path's drop throttle is a `fetch_add`, which a CAS-less
+# target (thumbv6m: a Cortex-M0+ Zephyr image) has only through this polyfill.
+# The single-core feature is selected by target below, nros-log's spelling.
+portable-atomic = { version = "1", default-features = false }
 # phase-361 W8.c — `zpico-alloc` is gone with the duplicate `HeapStats` static;
 # `alloc-stats` forwards to `nros-c`, which forwards to `nros-platform`.
 # critical-section impl provided by the Zephyr alloc module on
@@ -295,6 +299,11 @@ nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
 # arm → u32 (the no_std Zephyr Cortex-M path), other → no
 # restore-state set (the std fallback wins).
 critical-section = { version = "1.1", optional = true }
+
+# issue 2206 — nros-log's row (phase-337 W2.b): no CAS => the interrupt-disable
+# polyfill, bare-metal only.
+[target.'cfg(all(target_os = "none", not(target_has_atomic = "ptr")))'.dependencies]
+portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
 
 [target.'cfg(target_arch = "arm")'.dependencies]
 critical-section = { version = "1.1", optional = true, features = ["restore-state-u32"] }

@@ -6,6 +6,8 @@
 # Matches `examples/qemu-armv7a-nuttx/rust-toolchain.toml`'s pattern. Bump
 # to a newer nightly when the Zephyr examples or zephyr-lang-rust
 # require it — run `just zephyr test` after any change to confirm.
+# thumbv6m-none-eabi -- Cortex-M0/M0+ Zephyr boards, first the Pico W
+# (RP2040; issue 2206, phase-524 W1 rerun).
 [toolchain]
 channel = "nightly-2026-04-11"
 # Phase 208 — `clippy` added: the Zephyr build runs `cargo clippy` on the
@@ -17,4 +19,4 @@ components = ["rust-src", "rustfmt", "clippy"]
 # rustup auto-installs the targets listed here on first use).
 # thumbv7em-none-eabi(hf) — Cortex-M4/M7 Zephyr boards, first the
 # Nucleo-F767ZI (phase-524 W3; the W1 spike had to `rustup target add` them).
-targets = ["x86_64-unknown-none", "armv7a-none-eabi", "armv7a-none-eabihf", "aarch64-unknown-none", "thumbv7em-none-eabi", "thumbv7em-none-eabihf"]
+targets = ["x86_64-unknown-none", "armv7a-none-eabi", "armv7a-none-eabihf", "aarch64-unknown-none", "thumbv7em-none-eabi", "thumbv7em-none-eabihf", "thumbv6m-none-eabi"]

@@ -81,6 +81,14 @@ function(nros_detect_rust_target)
             # guessed, since nothing in this repo builds it.
             set(NROS_RUST_TARGET "i686-unknown-linux-gnu" PARENT_SCOPE)
         endif()
+    elseif(CONFIG_CPU_CORTEX_M0PLUS OR CONFIG_CPU_CORTEX_M0)
+        # Issue 2206 -- ARMv6-M (RP2040's Cortex-M0+). Without this arm the lane
+        # fell through to the HOST triple and cc-rs handed `arm-zephyr-eabi-gcc`
+        # `-m64`. thumbv6m has no compare-and-swap: Rust read-modify-write goes
+        # through `portable-atomic` (its single-core polyfill on
+        # `target_os = "none"`), and the C side's `__atomic_*_4` libcalls come
+        # from `zephyr/nros_armv6m_atomic.c`.
+        set(NROS_RUST_TARGET "thumbv6m-none-eabi" PARENT_SCOPE)
     elseif(CONFIG_CPU_CORTEX_M3)
         set(NROS_RUST_TARGET "thumbv7m-none-eabi" PARENT_SCOPE)
     elseif(CONFIG_CPU_CORTEX_M4 OR CONFIG_CPU_CORTEX_M7)
