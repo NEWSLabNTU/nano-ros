@@ -3251,6 +3251,15 @@ fn the_spin_quantization_audit_speaks_only_of_wall_timers() {
         spin_quantization_span(TimerClockSource::Steady, 25_000, 0),
         None
     );
+    // phase-521 W6 — an entry's idle budget is no cadence.
+    assert_eq!(
+        spin_quantization_span(
+            TimerClockSource::Steady,
+            25_000,
+            crate::executor::ENTRY_IDLE_BUDGET.as_micros() as u64
+        ),
+        None
+    );
 }
 
 #[cfg(feature = "sim-time")]

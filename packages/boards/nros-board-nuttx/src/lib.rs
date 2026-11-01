@@ -683,7 +683,8 @@ where
     // dispatching component callbacks. Spin forever like the FreeRTOS
     // / ThreadX siblings; the user terminates via signal or shell.
     loop {
-        if let Err(err) = nros_platform::NodeDispatchRuntime::spin_once(&mut crt, 10) {
+        let budget_ms = nros_platform::NodeDispatchRuntime::entry_spin_budget_ms(&crt);
+        if let Err(err) = nros_platform::NodeDispatchRuntime::spin_once(&mut crt, budget_ms) {
             println!("spin_once error: {:?}", err);
             sys::exit_process(1);
         }

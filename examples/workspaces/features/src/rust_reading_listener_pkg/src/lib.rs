@@ -40,6 +40,8 @@ impl Component for ReadingListener {
 
 impl ExecutableNode for ReadingListener {
     type State = ();
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
 
     fn init() -> Self::State {}
 

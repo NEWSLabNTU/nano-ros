@@ -884,6 +884,8 @@ mod census_hooks_reach_every_api {
         }
         impl nros::ExecutableNode for CensusComp {
             type State = ();
+            // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+            const HAS_TICK: bool = false;
             fn init() -> Self::State {}
             fn on_callback(
                 _state: &mut Self::State,

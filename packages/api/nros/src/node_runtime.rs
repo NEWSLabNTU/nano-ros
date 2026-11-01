@@ -901,6 +901,10 @@ pub struct ExecutorNodeRuntime {
     /// Always present: the leaking constructor allocates it once, `new_in`
     /// carves the caller's backing.
     pool: ComponentPool,
+    /// phase-521 W6 — whether a component registered through
+    /// [`register_node`](Self::register_node) has a working `tick`
+    /// ([`ExecutableNode::HAS_TICK`]); see [`Self::entry_spin_budget`].
+    ticking: bool,
 }
 
 /// Bump view over the runtime's slot backing. Raw pointer, not a slice, so the
@@ -989,6 +993,19 @@ impl ExecutorNodeRuntime {
                 capacity: sizing.components,
                 next: 0,
             },
+            ticking: false,
+        }
+    }
+
+    /// phase-521 W6 (RFC-0113 D2) — the budget this runtime's entry loop
+    /// passes to [`spin_once`](Self::spin_once):
+    /// [`Executor::entry_spin_budget`], or the 10 ms cadence while a component
+    /// registered here has a working `tick` (it runs once per spin).
+    pub fn entry_spin_budget(&self) -> Duration {
+        if self.ticking {
+            nros_node::ENTRY_POLL_BUDGET
+        } else {
+            self.executor.entry_spin_budget()
         }
     }
 
@@ -1202,6 +1219,7 @@ impl ExecutorNodeRuntime {
             param_node: core::cell::Cell::new(0),
         });
         let component_idx = self.components.len();
+        self.ticking |= C::HAS_TICK;
         self.components.push(cell.clone());
         self.component_levels
             .push(self.executor.registering_level());
@@ -1511,6 +1529,12 @@ unsafe extern "C" fn component_drop_trampoline<
 impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()> {
         Self::spin_once(self, Duration::from_millis(timeout_ms.into())).map_err(|_| ())
+    }
+
+    fn entry_spin_budget_ms(&self) -> u32 {
+        Self::entry_spin_budget(self)
+            .as_millis()
+            .min(u32::MAX as u128) as u32
     }
 
     fn executor_handle(&mut self) -> *mut core::ffi::c_void {
@@ -2843,10 +2867,11 @@ where
     // monomorphizations match its exact type (borrow on tick, drop_in_place
     // on executor drop).
     let _ = unsafe {
-        executor.enroll_component(
+        executor.enroll_component_ticking(
             raw,
             component_tick_trampoline::<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
             component_drop_trampoline::<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
+            C::HAS_TICK,
         )
     };
 

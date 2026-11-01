@@ -253,6 +253,8 @@ impl Component for {type_name} {{
 impl ExecutableNode for {type_name} {{
     /// Whatever this node needs to remember between callbacks.
     type State = u32;
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
 
     fn init() -> Self::State {{
         0

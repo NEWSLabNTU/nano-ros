@@ -778,16 +778,31 @@ static int8_t nros_posix_wake_wait_rel_ns(nros_wake_t *wp, uint64_t rel_ns) {
     }
 }
 
+#ifndef __NuttX__
+int  nros_posix_termination_wake_add(int8_t (*post)(void *w), void *w);
+void nros_posix_termination_wake_remove(void *w);
+#endif
+
 int8_t nros_platform_wake_init(void *w) {
     if (w == NULL) return -1;
     nros_wake_t *wp = (nros_wake_t *) w;
     wp->pipe_r = -1;
     atomic_init(&wp->pipe_w, -1);
-    return sem_init(&wp->sem, 0, 0) == 0 ? 0 : -1;
+    if (sem_init(&wp->sem, 0, 0) != 0) return -1;
+#ifndef __NuttX__
+    /* phase-521 W6 — a termination signal posts this object, so a parked
+     * executor sees the guard's flag at once (termination.c). NuttX compiles
+     * this file without termination.c and has no guard. */
+    (void) nros_posix_termination_wake_add(nros_platform_wake_signal, w);
+#endif
+    return 0;
 }
 
 int8_t nros_platform_wake_drop(void *w) {
     if (w == NULL) return 0;
+#ifndef __NuttX__
+    nros_posix_termination_wake_remove(w);
+#endif
     nros_wake_t *wp = (nros_wake_t *) w;
     int pw = atomic_exchange(&wp->pipe_w, -1);
     if (pw >= 0) close(pw);

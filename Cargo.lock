@@ -1983,6 +1983,7 @@ dependencies = [
 name = "nros-platform"
 version = "0.6.0"
 dependencies = [
+ "libc",
  "nros-platform-api",
  "nros-platform-cffi",
  "nros-platform-config",

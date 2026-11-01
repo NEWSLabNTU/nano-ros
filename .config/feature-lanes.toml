@@ -275,6 +275,14 @@ features = ["posix-c-port"]
 targets = ["c_port_posix", "c_port_posix_critical_section", "c_port_posix_net",
            "c_port_posix_timer", "c_port_posix_wake", "wake_wrapper"]
 
+# phase-521 W6 — a SIGTERM to a hosted image posts every live wake object, so a
+# long park ends on it (the POSIX termination guard).
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-platform"
+features = ["platform-posix"]
+targets = ["termination_wake"]
+
 [[lane]]
 runner = "required-features-tests"
 crate = "nros-platform-cffi"

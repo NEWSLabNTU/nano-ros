@@ -237,6 +237,59 @@ refusal for a combination with no readiness form; amend RFC-0106 D5.
 **Acceptance:** RFC-0113's coverage table has no "not yet" row; a test opens a
 session through a backend stub with no readiness form and asserts the refusal.
 
+**W6a — the entry budget (2026-11-02).** Every entry runtime spun
+`spin_once(10 ms)` forever, so an idle tier woke 100 times a second whatever its
+park could do. Four things stood in the way of a longer budget, and each is now
+fixed:
+
+1. `Executor::cancel` raised a flag but did not post the wake object, so a
+   cancel from another thread waited out the park. It posts now
+   (`readiness_park::cancel_from_another_thread_ends_a_long_park`,
+   mutation-checked: without the post the 5 s park runs to its end).
+2. The POSIX termination guard only set a flag. Its handler now posts every
+   live wake object, registered by `nros_platform_wake_init` in a
+   function-pointer table in `termination.c`, so that file still references
+   nothing in `platform.c` (issue 1776)
+   (`nros-platform`'s `termination_wake` test).
+3. zenoh stated `ReadinessSource::None` in every mode through
+   `RustBackendAdapter`. It now states `Notify` in THREAD mode and `None` in
+   CALLER mode, where an arrival does not end a park.
+4. Component ticks run once per spin. `ExecutableNode::HAS_TICK` (default
+   `true`, `false` from `declarative_component!`) says whether a tick works, and
+   an executor or runtime holding a ticking component keeps the slice.
+
+`Executor::entry_spin_budget` is the one answer: 60 s (`ENTRY_IDLE_BUDGET`,
+inside what FreeRTOS's 32-bit `pdMS_TO_TICKS` expresses at 1 kHz) when every
+session states `Waitable`, or `Notify` with its wake callback live, and no
+ticking component is enrolled; else 10 ms (`ENTRY_POLL_BUDGET`). Its forms are
+`ExecutorNodeRuntime::entry_spin_budget`,
+`NodeDispatchRuntime::entry_spin_budget_ms` and
+`nros_cpp_entry_spin_budget_ms`. Every entry funnel asks it: `nros::main!`, the
+two generated forever-spins in `nros-macros`, the FreeRTOS, ThreadX, NuttX,
+mps2-an385 and esp32 board entries, `nros_rtos_run_components.c`, the native
+C++ `run_components`, `rclcpp::spin_in`, the C++ entry's spin loop and the
+driven future's waits. `nros_cpp_spin_for` no longer spins past its own end.
+`check-entry-spin-budget` refuses a literal budget in those funnels. The
+spin-quantization audit ignores the idle budget, which is no cadence.
+Every in-tree component with no `tick` (57 files: examples, templates, the
+`nros new` scaffold, test bins) states `HAS_TICK = false`.
+
+Measured on Linux (`examples/linux/rust/listener` over `rmw_zenohd`, no
+talker, 10 s): the main thread's voluntary context switches went from 1000
+(the 10 ms slice) to 0. A talker started afterwards was heard, and SIGTERM
+ended the parked listener in 38 ms with exit status 0.
+
+The first W7 Linux witness lands with it:
+`entity_wake::an_idle_zenoh_entry_wakes_only_for_its_deadlines` runs entry
+spins for 3.5 s over a live router with one 1 s timer and asserts at most 8
+spins (measured 4; the 10 ms slice made ~350) and each expiry dispatched within
+5 ms early / 50 ms late of its deadline (measured 0.4 ms late).
+
+Not done yet: the native C++ tier loops still run `spin_once(10)` and then
+sleep the period (an arrival during the sleep waits for the period), the
+receive-blocking path itself, and the refusal of a session with no readiness
+form.
+
 ### W7 — Acceptance measurements for the promise
 
 Make RFC-0113 D2 a measured property, not a reading:

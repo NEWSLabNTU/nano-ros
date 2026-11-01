@@ -106,6 +106,8 @@ impl ExecutableNode for Talker {
         }
     }
     fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
+    // phase-521 W6 — no tick work, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
 }
 
 // Phase 212.N.7 step-3.4 — the macro emits a single `pub fn register`

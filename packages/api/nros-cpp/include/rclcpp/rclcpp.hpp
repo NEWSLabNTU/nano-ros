@@ -334,7 +334,9 @@ inline Result spin_in() {
     }
     Result last = Result::success();
     while (ok()) {
-        last = Result(nros_cpp_spin_once(::rclcpp::Node::global_storage(), 10));
+        // phase-521 W6 — the executor's entry budget, not a fixed 10 ms.
+        void* storage = ::rclcpp::Node::global_storage();
+        last = Result(nros_cpp_spin_once(storage, nros_cpp_entry_spin_budget_ms(storage)));
         if (!last.ok()) return last;
     }
     return last;

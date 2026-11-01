@@ -23,7 +23,9 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <signal.h>
+#include <stdatomic.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 /* Issue 1732 — a termination signal ENDS a hosted image's spin, so the image
@@ -52,6 +54,78 @@
  * does. Returns how many of SIGTERM/SIGINT carry the guard; idempotent. */
 static volatile sig_atomic_t s_termination_requested = 0;
 
+/* phase-521 W6 (RFC-0113 D2) — the wake objects a termination posts.
+ *
+ * A hosted spin loop polls `nros_posix_termination_requested()` between
+ * spins, and a spin now parks until the tier's next deadline instead of for a
+ * fixed 10 ms. A flag alone would be seen only when that park ends, so the
+ * handler also posts every live wake object: each parked executor returns,
+ * sees the flag and closes its session.
+ *
+ * `platform.c` registers each wake object it initialises, with the function
+ * that posts it, and removes it before destroying it. The registry holds a
+ * function pointer rather than naming `nros_platform_wake_signal`, so this
+ * translation unit references nothing in `platform.c` (issue 1776). A wake
+ * object that finds every slot taken is not registered: its executor sees a
+ * termination only when its park ends, which is the behaviour every executor
+ * had before. */
+#define NROS_POSIX_TERMINATION_WAKES 32
+
+typedef int8_t (*nros_posix_wake_post_fn)(void *w);
+
+static _Atomic(void *) s_wake_slot[NROS_POSIX_TERMINATION_WAKES];
+static _Atomic(nros_posix_wake_post_fn) s_wake_post;
+/* Handlers inside the post loop right now; a removal waits for zero so it
+ * never returns while a handler may still post the object it removed. */
+static atomic_int s_wake_posting;
+
+int nros_posix_termination_wake_add(nros_posix_wake_post_fn post, void *w);
+int nros_posix_termination_wake_add(nros_posix_wake_post_fn post, void *w) {
+    if (post == NULL || w == NULL) {
+        return -1;
+    }
+    atomic_store(&s_wake_post, post);
+    for (size_t i = 0; i < NROS_POSIX_TERMINATION_WAKES; i++) {
+        void *expected = NULL;
+        if (atomic_compare_exchange_strong(&s_wake_slot[i], &expected, w)) {
+            return 0;
+        }
+    }
+    return -1;
+}
+
+void nros_posix_termination_wake_remove(void *w);
+void nros_posix_termination_wake_remove(void *w) {
+    if (w == NULL) {
+        return;
+    }
+    for (size_t i = 0; i < NROS_POSIX_TERMINATION_WAKES; i++) {
+        void *expected = w;
+        if (atomic_compare_exchange_strong(&s_wake_slot[i], &expected, NULL)) {
+            break;
+        }
+    }
+    while (atomic_load(&s_wake_posting) != 0) {
+        /* A handler on another thread is mid-post; it holds no lock and runs
+         * a bounded loop, so this ends. */
+    }
+}
+
+static void nros_posix_post_wakes(void) {
+    nros_posix_wake_post_fn post = atomic_load(&s_wake_post);
+    if (post == NULL) {
+        return;
+    }
+    atomic_fetch_add(&s_wake_posting, 1);
+    for (size_t i = 0; i < NROS_POSIX_TERMINATION_WAKES; i++) {
+        void *w = atomic_load(&s_wake_slot[i]);
+        if (w != NULL) {
+            (void) post(w);
+        }
+    }
+    atomic_fetch_sub(&s_wake_posting, 1);
+}
+
 static void nros_posix_on_termination(int sig) {
     if (s_termination_requested) {
         /* Both async-signal-safe (POSIX.1-2008 §2.4.3). The signal is masked
@@ -61,6 +135,8 @@ static void nros_posix_on_termination(int sig) {
         return;
     }
     s_termination_requested = 1;
+    /* `sem_post` and `write` are async-signal-safe; lock-free atomics are. */
+    nros_posix_post_wakes();
 }
 
 int nros_posix_install_termination_guard(void);

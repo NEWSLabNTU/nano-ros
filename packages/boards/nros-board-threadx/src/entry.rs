@@ -846,6 +846,21 @@ impl SpinDeadline {
         unsafe { ::nros_platform_cffi::nros_platform_clock_ns() }
     }
 
+    /// phase-521 W6 — this turn's spin budget: the runtime's entry budget, or
+    /// less when the bounded run ends first.
+    fn budget_ms(&self, entry_ms: u32) -> u32 {
+        match self.0 {
+            None => entry_ms,
+            Some(end) => {
+                let left_ms = end
+                    .saturating_sub(Self::now_ns())
+                    .div_ceil(1_000_000)
+                    .max(1);
+                left_ms.min(u64::from(entry_ms)) as u32
+            }
+        }
+    }
+
     /// Print the completion marker and exit 0 once the deadline has passed —
     /// the linux board's bounded-run ending, so an observer reads the same
     /// line from either board.
@@ -1210,7 +1225,12 @@ where
             // exit_failure (a working bring-up never gets here).
             let deadline = SpinDeadline::from_ms(spin_ms);
             loop {
-                if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, 10) {
+                let budget_ms = deadline.budget_ms(
+                    ::nros_platform::NodeDispatchRuntime::entry_spin_budget_ms(&crt),
+                );
+                if let Err(err) =
+                    ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, budget_ms)
+                {
                     B::println(format_args!(""));
                     B::println(format_args!("spin_once error: {:?}", err));
                     B::exit_failure();

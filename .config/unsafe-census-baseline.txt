@@ -45,10 +45,10 @@ nros-c                             538  92     6     511      0
 nros-cli-core                       23   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
-nros-cpp                          1102  43     0     427      0
+nros-cpp                          1107  43     0     428      0
 nros-log                            24   0     7       1      0
 nros-macros                         13   0     1       1      0
-nros-node                          744  259    35     165      0
+nros-node                          745  260    35     167      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0
@@ -67,7 +67,7 @@ nros-rmw-cyclonedds                  8   0     7       1      0
 nros-rmw-cyclonedds-sys              2   0     0       1      0
 nros-rmw-metadata                    1   0     0       0      0
 nros-rmw-xrce-cffi                   3   1     0       5      0
-nros-rmw-zenoh                     140  12     5      21      0
+nros-rmw-zenoh                     141  12     5      21      0
 nros-sizes-build                    28   0     0       0      0
 nros-smoltcp                       112  19     2      11      0
 nros-tests                          29   0     0       0      0

@@ -2345,6 +2345,21 @@ nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 nros_cpp_ret_t nros_cpp_spin_some(void *handle, uint32_t max_ms);
 
 /**
+ * phase-521 W6 (RFC-0113 D2) — the budget an entry loop passes to
+ * [`nros_cpp_spin_once`], in milliseconds.
+ *
+ * `Executor::entry_spin_budget`: up to a minute when every session of the
+ * executor can end its park (an arrival, a cancel and a hosted termination
+ * all post its wake object), else the 10 ms slice every entry used before.
+ * The park itself ends at the next deadline the executor knows, so this is
+ * not a cadence. Returns 10 for a handle that is not a context.
+ *
+ * # Safety
+ * `handle` must be a valid handle returned by `nros_cpp_init()`.
+ */
+int32_t nros_cpp_entry_spin_budget_ms(void *handle);
+
+/**
  * Spin the executor for `duration_ms`, budgeted by WALL-CLOCK time.
  *
  * Issue 0329 — the single budgeted-spin entry point. `rclcpp::spin()` and
