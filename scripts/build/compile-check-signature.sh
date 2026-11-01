@@ -89,6 +89,14 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
             sig_paths[0]="packages/testing/nros-tests/fixtures/cpp_compat_snippets/$id.c"
             sig_paths+=("packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/rosidl")
         fi
+    elif [ "$builder" = "west-build" ] || [ "$builder" = "west-configure" ]; then
+        # Issue 2192 — a west configure reads the nano-ros Zephyr module
+        # (`zephyr/`: Kconfig, cmake, snippets) and the shared `cmake/` it
+        # includes, on a Zephyr LINE. None of the three was in this signature,
+        # so a module Kconfig edit staled no west fixture and a 3.7 bake read
+        # as current for 4.4.
+        sig_paths=("$dir" zephyr cmake)
+        printf 'zephyr-line\0%s\0' "$(nros_zephyr_fixture_line)"
     else
         sig_paths=("$dir")
     fi
@@ -114,11 +122,7 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
     # dep list), `cmake-configure` reads `CMAKE_MAKEFILE_DEPENDS`, and `west-*`
     # reads `build.ninja`'s RERUN_CMAKE edge. The comment outlived the code and
     # would have told the next reader that these rows still guess.
-    if [ "$builder" = "cmake-configure" ]; then
-        _sig_build_dir="$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES" "$id")"
-    else
-        _sig_build_dir="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" "$id")"
-    fi
+    _sig_build_dir="$(nros_compile_check_stamp_dir "$builder" "$id")"
     printf 'closure\0'
     nros_dep_closure_manifest "$repo_root" "$_sig_build_dir"
 } | sha256sum | awk '{print $1}'

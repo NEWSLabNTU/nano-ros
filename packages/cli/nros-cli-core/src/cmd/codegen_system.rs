@@ -400,6 +400,13 @@ pub fn run(args: Args) -> Result<()> {
         &workspace,
         bringup.manifest_path.parent().unwrap_or(&workspace),
     )?;
+    // Issue 2189 -- the image this bake is, as a line a caller can read.
+    // `nros_system_generate()` compares it with the image the Zephyr module's
+    // Kconfig hook rendered, which ran before it and cannot see its bringup
+    // argument; the stderr line above is prose for a person.
+    if let Some(id) = &target {
+        println!("NROS_SYSTEM_IMAGE={id}");
+    }
 
     // Phase 261 W4 — validate `[system].features` (typo guard) + warn on the
     // deprecated typed capability blocks. Same checks in the planner so both

@@ -6294,7 +6294,9 @@ builder = "west-build"
 dir = "packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr"
 west_subdir = "zephyr_app"
 west_board = "native_sim/native/64"
-west_extra = "-DCONF_FILE=prj.conf;prj-zenoh.conf"
+# Issue 2189 — the image lives in the sibling `demo_bringup/`, which the module's
+# Kconfig hook cannot find from `zephyr_app/`, so the row names it.
+west_extra = "-DCONF_FILE=prj.conf;prj-zenoh.conf -DNROS_IMAGE_SYSTEM_DIR=../demo_bringup -DNROS_IMAGE=zephyr_native_sim"
 output = "zephyr/zephyr.exe"
 
 # phase-206 W2 — the RTOS half of the config-passthrough acceptance.
@@ -6317,7 +6319,9 @@ builder = "west-build"
 dir = "packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr"
 west_subdir = "zephyr_app"
 west_board = "native_sim/native/64"
-west_extra = "-DCONF_FILE=prj.conf;prj-cyclonedds.conf"
+# Issue 2189 — its own image (`rmw = "cyclonedds"`): it used to build Cyclone
+# while the only image claiming `zephyr_app` said zenoh.
+west_extra = "-DCONF_FILE=prj.conf;prj-cyclonedds.conf -DNROS_IMAGE_SYSTEM_DIR=../demo_bringup -DNROS_IMAGE=zephyr_native_sim_cyclonedds"
 output = "zephyr/zephyr.exe"
 
 [[compile_check_fixture]]
@@ -6343,5 +6347,7 @@ builder = "west-configure"
 dir = "packages/testing/nros-tests/fixtures/zephyr_self_pkg/sibling"
 west_subdir = "caller"
 west_board = "native_sim/native/64"
-west_extra = "-DCONF_FILE=prj.conf"
+# Issue 2189 — the image is `alpha_pkg/system.toml`'s; `nros_system_generate`
+# refuses a bake whose image Kconfig never rendered.
+west_extra = "-DCONF_FILE=prj.conf -DNROS_IMAGE_SYSTEM_DIR=../alpha_pkg -DNROS_IMAGE=zephyr"
 output = "build.ninja"

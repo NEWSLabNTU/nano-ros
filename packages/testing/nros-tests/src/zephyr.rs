@@ -931,11 +931,18 @@ pub fn zephyr_build_root() -> PathBuf {
         let s = path.to_string_lossy();
         return PathBuf::from(s.trim_end_matches('/'));
     }
-    let version = std::env::var("NROS_ZEPHYR_VERSION")
+    crate::build_dir(crate::kind::ZEPHYR_WORKSPACE_BUILDS, &[&zephyr_line()])
+}
+
+/// The Zephyr line this run builds and tests: `NROS_ZEPHYR_VERSION`, else
+/// `3.7`. The Rust twin of `nros_zephyr_ws_version`
+/// (scripts/lib/zephyr-workspace.sh); a west build dir is keyed by it
+/// (issue 1596 for the leaves, issue 2192 for the west fixtures).
+pub fn zephyr_line() -> String {
+    std::env::var("NROS_ZEPHYR_VERSION")
         .ok()
         .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| "3.7".to_string());
-    crate::build_dir(crate::kind::ZEPHYR_WORKSPACE_BUILDS, &[&version])
+        .unwrap_or_else(|| "3.7".to_string())
 }
 
 /// Check if west command is available

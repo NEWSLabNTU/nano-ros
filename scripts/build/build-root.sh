@@ -218,3 +218,39 @@ nros_build_dir() {
     done
     printf '%s' "$out"
 }
+
+# Issue 2192 — a west fixture is a function of the Zephyr LINE it was built
+# for, so the line is a coordinate of its directory, the way it already is of
+# `zephyr-workspace-builds/<ver>`. Keyed by id alone, a 3.7 bake sat in the
+# directory a 4.4 run looked in, its signature matched (the line was not in
+# it), and the 4.4 run reused it and its tests passed on it.
+#
+# The line comes from `nros_zephyr_ws_version` (scripts/lib/zephyr-workspace.sh),
+# never a second spelling of its default; the Rust twin is
+# `nros_tests::zephyr::zephyr_line`.
+nros_zephyr_fixture_line() {
+    if ! declare -F nros_zephyr_ws_version >/dev/null; then
+        # shellcheck source=scripts/lib/zephyr-workspace.sh
+        . "$_NROS_BUILD_ROOT_REPO/scripts/lib/zephyr-workspace.sh"
+    fi
+    nros_zephyr_ws_version
+}
+
+# nros_west_fixture_dir <id> — `<root>/west-fixtures/<line>/<id>`.
+nros_west_fixture_dir() {
+    nros_build_dir "$NROS_KIND_WEST_FIXTURES" "$(nros_zephyr_fixture_line)" "$1"
+}
+
+# nros_compile_check_stamp_dir <builder> <id> — where a compile-check row's
+# `.inputsig` lives. ONE answer for its three readers: the builder that writes
+# it, `compile-check-signature.sh` (its dependency closure) and the staleness
+# probe `scripts/test/compile-check-stale.sh`. A west row's is per line too,
+# so two lines' fixtures can both be current at once.
+nros_compile_check_stamp_dir() {
+    case "$1" in
+        cmake-configure) nros_build_dir "$NROS_KIND_CMAKE_FIXTURES" "$2" ;;
+        west-build | west-configure)
+            nros_build_dir "$NROS_KIND_COMPILE_CHECK" "zephyr-$(nros_zephyr_fixture_line)" "$2" ;;
+        *) nros_build_dir "$NROS_KIND_COMPILE_CHECK" "$2" ;;
+    esac
+}
