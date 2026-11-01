@@ -240,14 +240,34 @@ fn park_granularity_is_the_monotonic_clock_resolution() {
 /// The upper bound is on the FASTEST of several parks, because one park under
 /// a loaded parallel test run can be scheduled late for reasons that say
 /// nothing about the primitive; the lower bound holds on every one.
+///
+/// Under heavy load even the fastest of 20 parks can miss the millisecond
+/// (issue 2195: fastest 3.9 ms at load average 38; the same test passes solo),
+/// so an absolute bound alone measures the host. Each park is therefore paired
+/// with a plain 300 us `thread::sleep` taken right before it, which suffers the
+/// same wake-up latency, and the bound also passes when the MEDIAN of the
+/// per-pair differences (park minus sleep) is under `FLOOR_MARGIN_US`.
+///
+/// What that buys, measured with the park mutated to round up to whole
+/// milliseconds: on a quiet host the mutation fails every run (median ~780 us);
+/// with 96 busy loops (load average 35) the unmutated park passed 5 of 5 and
+/// the mutation still failed 3 of 5 (median 700 us). So under load the bound
+/// can miss the regression, never invent one; a quiet run still catches it.
 #[test]
 fn park_sub_millisecond_deadline_is_honoured_both_ways() {
     let mut buf = WakeBuf::new();
     assert_eq!(unsafe { nros_platform_wake_init(buf.as_mut_ptr()) }, 0);
 
     const PARK_US: u64 = 300;
+    const PAIRS: usize = 41;
+    const FLOOR_MARGIN_US: i128 = 350;
     let mut fastest = Duration::MAX;
-    for _ in 0..20 {
+    let mut diffs_us: Vec<i128> = Vec::with_capacity(PAIRS);
+    for _ in 0..PAIRS {
+        let t0 = Instant::now();
+        thread::sleep(Duration::from_micros(PARK_US));
+        let slept = t0.elapsed();
+
         let t0 = Instant::now();
         let rc = unsafe { nros_platform_wake_park_until_us(buf.as_mut_ptr(), PARK_US) };
         let elapsed = t0.elapsed();
@@ -260,11 +280,16 @@ fn park_sub_millisecond_deadline_is_honoured_both_ways() {
             "park returned before its deadline: {elapsed:?} < {PARK_US} us"
         );
         fastest = fastest.min(elapsed);
+        diffs_us.push(elapsed.as_micros() as i128 - slept.as_micros() as i128);
     }
+    diffs_us.sort_unstable();
+    let median_us = diffs_us[PAIRS / 2];
     assert!(
-        fastest < Duration::from_micros(1_000),
-        "no 300 us park finished inside a millisecond (fastest {fastest:?}) — \
-         the park is still floored at the millisecond ABI"
+        fastest < Duration::from_micros(1_000) || median_us < FLOOR_MARGIN_US,
+        "no 300 us park finished inside a millisecond (fastest {fastest:?}), and a \
+         park ran a median {median_us} us longer than a 300 us sleep beside it \
+         (bound {FLOOR_MARGIN_US} us) — the park is still floored at the \
+         millisecond ABI"
     );
 
     unsafe { nros_platform_wake_drop(buf.as_mut_ptr()) };

@@ -849,8 +849,16 @@ fn default_locator_port() -> u16 {
 /// endpoint (or a bare `""` one) and the open errors out.
 ///
 /// Unlike the rest of this file, this test cannot use an ephemeral port — the
-/// value under test IS the default port. It probes first and skips (rather than
-/// stomping) if something else on this host already holds it.
+/// value under test IS the default port. It probes first and never stomps on
+/// whatever already holds it.
+///
+/// A held port is not a reason to fail (issue 2196). On a shared host the
+/// holder is almost always somebody's `rmw_zenohd` (`just zenohd`, an l3
+/// router), and the assertion — a no-locator open completes a zenoh handshake
+/// on the default port — holds against ANY zenoh router there. So when the
+/// port is taken the test dials it as found, and only a holder that does not
+/// answer as a zenoh router is an unmet precondition. Removing the
+/// substitution still fails either way: no router is dialled at all.
 #[test]
 fn client_session_with_absent_locator_dials_backend_default() {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
@@ -862,21 +870,13 @@ fn client_session_with_absent_locator_dials_backend_default() {
     // The default port is shared-host territory. Confirm it is free before
     // `ZenohRouter::start` (which reaps whatever is listening) so this test
     // never kills an unrelated router.
-    match std::net::TcpListener::bind(("127.0.0.1", port)) {
-        Ok(probe) => drop(probe),
-        // issue 1161 — this was a `resource` skip, not the `capability` a bare
-        // `skip!` defaulted to; since issue 1758 both are `unmet!`. A port
-        // already bound is a RUNTIME prerequisite that a rerun or a quieter host
-        // resolves; a capability is something this host cannot do
-        // at all, and the two have opposite remedies. The distinction became
-        // load-bearing when an undeclared capability skip started failing the
-        // budget: mislabelled, this would have demanded a baseline entry for a
-        // condition nobody can provision away.
-        Err(e) => nros_tests::unmet!(
-            "default locator port {port} (from {DEFAULT_LOCATOR}) is already in use \
-             by something else on this host: {e}"
-        ),
-    }
+    let held_by = match std::net::TcpListener::bind(("127.0.0.1", port)) {
+        Ok(probe) => {
+            drop(probe);
+            None
+        }
+        Err(e) => Some(e),
+    };
 
     // The rung under test is "nothing supplied anywhere" — make sure the env
     // overlay really is absent (this process only; nextest gives each test its
@@ -887,7 +887,10 @@ fn client_session_with_absent_locator_dials_backend_default() {
         std::env::remove_var("NROS_LOCATOR");
     }
 
-    let _router = or_unmet(ZenohRouter::start(port));
+    let _router = match held_by {
+        None => Some(or_unmet(ZenohRouter::start(port))),
+        Some(_) => None,
+    };
 
     let config = TransportConfig {
         // Nothing supplied. The backend — and ONLY the backend — decides.
@@ -898,6 +901,40 @@ fn client_session_with_absent_locator_dials_backend_default() {
         namespace: "",
         domain_id: 0,
     };
+
+    // A foreign holder must first prove it answers as a zenoh router when it
+    // is dialled EXPLICITLY; otherwise a failed no-locator open below could be
+    // the holder's fault rather than the substitution's. Bounded, because a
+    // holder that accepts the TCP connect and never answers the handshake
+    // blocks `open` for good (measured: a bare listener ran the test into
+    // nextest's 60 s timeout).
+    if let Some(e) = &held_by {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let base = config.clone();
+        thread::spawn(move || {
+            let explicit = TransportConfig {
+                locator: Some(DEFAULT_LOCATOR),
+                ..base
+            };
+            let outcome = ZenohTransport::open(&explicit)
+                .map(|mut probe| probe.close().expect("Failed to close probe session"))
+                .map_err(|open_err| format!("{open_err:?}"));
+            let _ = tx.send(outcome);
+        });
+        match rx.recv_timeout(Duration::from_secs(10)) {
+            Ok(Ok(())) => {}
+            Ok(Err(open_err)) => nros_tests::unmet!(
+                "default locator port {port} (from {DEFAULT_LOCATOR}) is held by \
+                 something on this host ({e}) that refuses a zenoh session when \
+                 dialled explicitly: {open_err}"
+            ),
+            Err(_) => nros_tests::unmet!(
+                "default locator port {port} (from {DEFAULT_LOCATOR}) is held by \
+                 something on this host ({e}) that does not answer a zenoh \
+                 handshake within 10 s when dialled explicitly"
+            ),
+        }
+    }
 
     let mut session = ZenohTransport::open(&config).unwrap_or_else(|e| {
         panic!(
