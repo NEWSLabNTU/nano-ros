@@ -184,6 +184,8 @@ def render_probe_json(reg: Registry) -> str:
             t["row"] = p["row"]
         if p.get("qemu_board"):
             t["qemu_board"] = p["qemu_board"]
+        if p.get("offline"):
+            t["offline"] = True
         tracks.append(t)
     doc = {"_generated": reg.stamp("")[1:].strip(), "tracks": tracks}
     return json.dumps(doc, indent=2) + "\n"

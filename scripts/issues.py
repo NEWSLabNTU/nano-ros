@@ -62,6 +62,9 @@ def load(include_archived):
                 "status": field(text, "status"),
                 "type": field(text, "type"),
                 "area": field(text, "area"),
+                # RFC-0116 D9 — an adoption-probe stop names the purpose that hit
+                # it (industrial, field, education); absent on every other issue.
+                "purpose": field(text, "purpose"),
                 "body": text,
             })
     return out
@@ -73,6 +76,8 @@ def main():
     ap.add_argument("--all", action="store_true", help="include archived")
     ap.add_argument("--status", help="open | resolved | wontfix")
     ap.add_argument("--area", help="substring match on area")
+    ap.add_argument("--purpose", choices=["industrial", "field", "education"],
+                    help="adoption-probe stops of one purpose (RFC-0116 D9)")
     ap.add_argument("--id", help="a single issue number")
     ap.add_argument("--files", action="store_true", help="print paths only")
     a = ap.parse_args()
@@ -87,6 +92,8 @@ def main():
         rows = [r for r in rows if r["status"] == "open"]
     if a.area:
         rows = [r for r in rows if a.area.lower() in r["area"].lower()]
+    if a.purpose:
+        rows = [r for r in rows if r["purpose"] == a.purpose]
     for t in a.terms:
         rows = [r for r in rows
                 if t.lower() in r["title"].lower() or t.lower() in r["body"].lower()]

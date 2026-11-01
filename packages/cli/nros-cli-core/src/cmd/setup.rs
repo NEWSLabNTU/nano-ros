@@ -1652,6 +1652,60 @@ fn ensure_tools_from(board: &str, index_path: Option<PathBuf>) -> Result<Vec<Pat
     Ok(bin_dirs.into_iter().filter(|b| b.is_dir()).collect())
 }
 
+/// `nros doctor --report` (phase-523 W4) — the toolchain an image of `board`
+/// over `rmw` provisions, one line per package: its pinned version, where the store keeps
+/// it and what `nros setup` would do with it now. Resolved through the SAME
+/// plan `nros setup <board>` and the lazy auto-setup build ([`SessionPlan`]),
+/// with nothing fetched, so the report and the install can never disagree about
+/// a pin. A board the index does not know returns `Err`, which the report
+/// prints rather than skips.
+pub fn report_toolchain(index_path: &Path, board: &str, rmw: &str) -> Result<Vec<String>> {
+    let index = SdkIndex::load(index_path)?;
+    let host = host_key();
+    let root = store_root();
+    let ws = index_workspace(index_path);
+    let key = canonical_setup_board(&index, Some(&ws), board)?;
+    let packages = resolve_packages_with_rmw(&index, &key, Some(rmw))?;
+    let plan = SessionPlan::resolve(
+        &index,
+        &packages,
+        &PlanInputs {
+            root: &root,
+            host: &host,
+            prefix_override: None,
+            mode: Mode::Lazy,
+        },
+        &mut |_| PrereqState::Present,
+        &Default::default(),
+    )?;
+    let mut lines = vec![format!("index board {key}, rmw {rmw}, on {host}")];
+    for step in &plan.steps {
+        match &step.kind {
+            session::StepKind::Tool {
+                tool,
+                prefix,
+                action,
+                ..
+            } => lines.push(format!(
+                "{} {}: {}; {}",
+                step.name,
+                tool.version,
+                prefix.display(),
+                describe(action, &tool.version, &host)
+            )),
+            session::StepKind::Source(src) => lines.push(format!(
+                "{} {}: source {}@{}",
+                step.name,
+                src.version,
+                src.git.as_deref().unwrap_or("(in tree)"),
+                src.git_ref.as_deref().unwrap_or("-")
+            )),
+            session::StepKind::Other(why) => lines.push(format!("{}: {why}", step.name)),
+        }
+    }
+    Ok(lines)
+}
+
 /// Method A — prepend the store `bin/` dirs (from [`ensure_tools`]) to this
 /// process's `PATH` so child platform-tool invocations (cargo, cmake,
 /// west, the `build[]`/`package[]` steps) find the toolchain on `PATH`. `nros`
@@ -4171,6 +4225,34 @@ fn compose_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-523 W4 — `nros doctor --report` lists a board's toolchain from the
+    /// SAME plan `nros setup` resolves: the RMW an image names chooses its host
+    /// package, every line names a pin, and two reads of one host agree, which
+    /// is what lets an auditor file the output.
+    #[test]
+    fn the_report_toolchain_follows_the_image_rmw_and_is_reproducible() {
+        let index = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../nros-sdk-index.toml");
+        let cyclone = report_toolchain(&index, "linux", "cyclonedds").expect("linux resolves");
+        assert!(
+            cyclone[0].starts_with("index board linux, rmw cyclonedds, on "),
+            "{cyclone:?}"
+        );
+        assert!(
+            cyclone.iter().any(|l| l.starts_with("cyclonedds ")),
+            "{cyclone:?}"
+        );
+        let zenoh = report_toolchain(&index, "linux", "zenoh").expect("linux resolves");
+        assert!(
+            !zenoh.iter().any(|l| l.starts_with("cyclonedds ")),
+            "{zenoh:?}"
+        );
+        assert_eq!(
+            cyclone,
+            report_toolchain(&index, "linux", "cyclonedds").unwrap()
+        );
+        assert!(report_toolchain(&index, "no-such-board", "zenoh").is_err());
+    }
 
     /// Issue 1481 — the remedy `nros setup --check` PRINTS. This was an
     /// unconditional `pip3 install --user <pip>` for every `[python.*]` entry

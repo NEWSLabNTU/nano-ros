@@ -124,6 +124,7 @@ def open_issues():
                 "title": field(fm, "title"),
                 "area": field(fm, "area") or "—",
                 "type": field(fm, "type"),
+                "purpose": field(fm, "purpose"),
             }
         )
     return rows
@@ -147,6 +148,14 @@ def render(rows):
     ]
     for r in rows:
         lines.append(f"- **#{r['id']}** ({r['area']}) — {r['title']} See `{r['id']}-*`.")
+    # RFC-0116 D9 / phase-523 W3 — adoption-probe stops, grouped by the purpose
+    # that hit them, so a round's count per purpose is read off this list.
+    purposes = ("industrial", "field", "education")
+    if any(r.get("purpose") in purposes for r in rows):
+        lines += ["", "Adoption-probe stops by purpose (`purpose:` frontmatter):", ""]
+        for p in purposes:
+            ids = [f"#{r['id']}" for r in rows if r.get("purpose") == p]
+            lines.append(f"- {p}: {', '.join(ids) if ids else 'none open'}")
     lines += ["", END]
     return "\n".join(lines)
 

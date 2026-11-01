@@ -67,6 +67,8 @@ fn main() -> Result<()> {
     // drives) spawns must find it there. One place, for every spawn site;
     // before clap and before any command spawns a thread.
     nros_cli_core::orchestration::rust_toolchain::expose_cargo_bin();
+    // issue 2197 — `$NROS_OFFLINE` reaches every cargo this process spawns.
+    nros_cli_core::orchestration::rust_toolchain::expose_offline_to_cargo();
     let cli = Cli::parse();
     if cli.codegen_version {
         println!("{}", nros_cli_core::abi_guard::EMITTED_VERSION);

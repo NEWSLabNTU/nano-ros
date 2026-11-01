@@ -361,6 +361,17 @@ fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<(
     println!("nros doctor --report ({today})");
     println!("  nros       {}", env!("CARGO_PKG_VERSION"));
     println!("  registry   {}", status.path.display());
+    let store = crate::orchestration::store::root();
+    println!(
+        "  store      {} (from {})",
+        store.display(),
+        crate::orchestration::store::root_origin()
+    );
+    let index = crate::cmd::setup::locate_index(Some(&root));
+    match &index {
+        Some(p) => println!("  index      {}", p.display()),
+        None => println!("  index      none found: the toolchain lines below cannot be resolved"),
+    }
     let Some(config) = resolve_config(config) else {
         println!("  images     none: no system.toml here (pass --config <bringup>)");
         return Ok(());
@@ -370,6 +381,14 @@ fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<(
     let system: SystemToml =
         toml::from_str(&raw).wrap_err_with(|| format!("parse {}", config.display()))?;
     println!("  bringup    {}", config.display());
+    let pin_from = config.parent().unwrap_or(Path::new("."));
+    let pins = crate::orchestration::store::discover_pin_files(pin_from);
+    if pins.is_empty() {
+        println!("  pins       none: no pin file from the bringup upward (`nros pin` writes one)");
+    }
+    for pin in &pins {
+        println!("  pins       {}", pin.display());
+    }
     let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
         .map_err(|e| eyre::eyre!("load board catalog: {e}"))?;
     for id in system.image.keys() {
@@ -398,8 +417,29 @@ fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<(
                 r.cadence_text()
             );
         }
+        let rmw = img.rmw.clone().unwrap_or_else(|| system.system.rmw.clone());
+        report_image_toolchain(id, board, &rmw, index.as_deref());
     }
     Ok(())
+}
+
+/// The toolchain lines of one image's board (phase-523 W4): every package the
+/// board provisions, its pin, its store prefix and what `nros setup` would do
+/// now. A board the index cannot resolve is printed as such, never skipped,
+/// because a report an auditor files must account for every image.
+fn report_image_toolchain(id: &str, board: &str, rmw: &str, index: Option<&Path>) {
+    let Some(index) = index else {
+        println!("    toolchain  unresolved: no SDK index");
+        return;
+    };
+    match crate::cmd::setup::report_toolchain(index, board, rmw) {
+        Ok(lines) => {
+            for line in lines {
+                println!("    toolchain  {line}");
+            }
+        }
+        Err(e) => println!("    toolchain  image {id}: board {board} unresolved: {e:#}"),
+    }
 }
 
 /// Resolve the bringup `system.toml` to health-check: the explicit

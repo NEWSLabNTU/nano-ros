@@ -204,6 +204,35 @@ pub fn expose_cargo_bin() {
     crate::cmd::setup::set_process_path(parts);
 }
 
+/// The cargo setting `$NROS_OFFLINE` implies, or `None` when there is
+/// nothing to set: unset `NROS_OFFLINE`, or a `CARGO_NET_OFFLINE` the user
+/// chose already (theirs wins, either way).
+fn cargo_offline_for(
+    nros_offline: Option<&std::ffi::OsStr>,
+    cargo_net_offline: Option<&std::ffi::OsStr>,
+) -> Option<&'static str> {
+    (nros_offline.is_some() && cargo_net_offline.is_none()).then_some("true")
+}
+
+/// issue 2197 / phase-523 W4 — `$NROS_OFFLINE` means no fetch at all, so every
+/// cargo this process spawns (directly, or through a cmake it drives) runs with
+/// cargo's own `CARGO_NET_OFFLINE`, and resolves git and registry dependencies
+/// from `$CARGO_HOME`'s caches. Before this, the index honoured the flag and
+/// cargo did not: the offline probe's `nros sync` died updating a git
+/// dependency the cache already held. One place, beside [`expose_cargo_bin`],
+/// before clap and before any thread.
+pub fn expose_offline_to_cargo() {
+    let Some(value) = cargo_offline_for(
+        std::env::var_os("NROS_OFFLINE").as_deref(),
+        std::env::var_os("CARGO_NET_OFFLINE").as_deref(),
+    ) else {
+        return;
+    };
+    // SAFETY: called from `main` before clap and before any thread or child
+    // exists, so nothing reads the environment concurrently.
+    unsafe { std::env::set_var("CARGO_NET_OFFLINE", value) };
+}
+
 fn cargo_bin_to_prepend_with(
     path: Option<&std::ffi::OsStr>,
     candidates: &[PathBuf],
@@ -496,6 +525,19 @@ pub fn ensure(index: &SdkIndex, host: &str, dry_run: bool) -> Result<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// issue 2197 — NROS_OFFLINE turns cargo offline too, and never overrides
+    /// a CARGO_NET_OFFLINE the user set (to `false` included).
+    #[test]
+    fn nros_offline_implies_cargo_offline_unless_the_user_chose() {
+        use std::ffi::OsStr;
+        assert_eq!(cargo_offline_for(Some(OsStr::new("1")), None), Some("true"));
+        assert_eq!(
+            cargo_offline_for(Some(OsStr::new("1")), Some(OsStr::new("false"))),
+            None
+        );
+        assert_eq!(cargo_offline_for(None, None), None);
+    }
 
     #[test]
     fn a_path_with_cargo_is_left_alone() {
