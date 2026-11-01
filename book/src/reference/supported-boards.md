@@ -26,6 +26,7 @@ status word.
 | `nros-board-nuttx-qemu` (NuttxRiscv) | Verified in emulator (daily) | `qemu:rv-virt` | [evidence page](boards/nuttx-riscv.md) |
 | `nros-board-zephyr` (Fvp) | Boots, manual (2026-09-06); reads *Builds* from 2027-01-05 | `fvp:FVP_BaseR_AEMv8R` | [evidence page](boards/fvp.md) |
 | `s32k344-safety-island` | Boots on hardware, manual (2026-10-26); reads *Builds* from 2027-02-24 | `mr-canhubk344` | [evidence page](boards/s32k344-safety-island.md) |
+| `nros-board-nucleo-f767zi-zephyr` | Boots, manual (2026-11-01); reads *Builds* from 2027-03-02 | `renode:nucleo_f767zi`, `nucleo-f767zi` (target) | [evidence page](boards/nucleo-f767zi-zephyr.md) |
 <!-- END GENERATED registry rows -->
 
 **Parts with no board package in this tree** follow. That table is written by
