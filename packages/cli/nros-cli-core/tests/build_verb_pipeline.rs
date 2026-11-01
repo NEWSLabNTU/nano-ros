@@ -632,6 +632,67 @@ fn a_materialized_entry_is_left_alone_and_still_builds() {
 }
 
 #[test]
+fn a_materialized_entry_keeps_every_path_dependency_resolvable() {
+    // issue 2175 — `nros materialize` copied the generated manifest verbatim,
+    // so every `path =` written relative to `build/<coord>/<entry>/` pointed
+    // one level too high from `src/<entry>/`, and the next build could not
+    // load the manifest. Asserted on the files, not by running cargo: each
+    // relative path must name a directory holding a `Cargo.toml`, which is
+    // the first thing cargo's manifest load checks.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    // The fixture has no launch file, so no entry is generated; write one in
+    // the generator's shape — paths relative to its own directory (phase-383
+    // W3.c) — with a target dir beside it, as `nros build` leaves it.
+    let generated = tmp.path().join("build/posix-zenoh/linux_entry");
+    write(
+        &generated.join("Cargo.toml"),
+        "[package]\nname = \"linux_entry\"\nversion = \"0.0.0\"\n\n\
+         [[bin]]\nname = \"linux_entry\"\npath = \"src/main.rs\"\n\n\
+         [dependencies]\ntalker_pkg = { path = \"../../../src/talker_pkg\" }\n",
+    );
+    write(&generated.join("src/main.rs"), "fn main() {}\n");
+    write(&generated.join("target/debug/linux_entry"), "");
+
+    nros_cli_core::cmd::materialize::run(nros_cli_core::cmd::materialize::Args {
+        image: "linux".to_string(),
+        workspace: Some(tmp.path().to_path_buf()),
+        nano_ros_path: Some(repo_root()),
+        force: false,
+    })
+    .expect("materialises");
+
+    let entry = tmp.path().join("src/linux_entry");
+    assert!(
+        !entry.join("target").exists(),
+        "the generated entry's target dir is build state, not the entry"
+    );
+    let manifest: toml::Table = std::fs::read_to_string(entry.join("Cargo.toml"))
+        .unwrap()
+        .parse()
+        .unwrap();
+    let deps = manifest["dependencies"]
+        .as_table()
+        .expect("a [dependencies] table");
+    let mut checked = 0;
+    for (name, dep) in deps {
+        let Some(path) = dep.get("path").and_then(|p| p.as_str()) else {
+            continue;
+        };
+        assert!(
+            entry.join(path).join("Cargo.toml").is_file(),
+            "`{name}` = {{ path = \"{path}\" }} does not resolve from {}",
+            entry.display()
+        );
+        checked += 1;
+    }
+    assert!(
+        checked > 0,
+        "the generated entry carries path deps to check"
+    );
+}
+
+#[test]
 fn shape_drift_on_a_materialized_entry_warns_and_never_errors() {
     // W7.c — autoware-safety-island will hold a materialised entry forever by
     // design; erroring would break a legitimate downstream permanently.
