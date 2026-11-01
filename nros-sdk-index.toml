@@ -1685,6 +1685,17 @@ arch = "cortex-m7"
 platform = "zephyr"
 packages = ["zephyr-sdk", "renode"]
 
+# phase-524 W3 -- the Raspberry Pi Pico W board package. The Zephyr toolchain,
+# plus `wokwi-cli` (`[tool.wokwi-cli]`, phase-524 W2), the client of the
+# board's hosted emulator twin: so `nros setup rpi-pico-w-zephyr` installs it
+# with the toolchain (RFC-0115). A run also needs a `WOKWI_CLI_TOKEN`, which no
+# setup step provides. Its HAL module, `hal_rpi_pico`, comes from `west.yml`
+# (`[zephyr_module.hal_rpi_pico]`).
+[board.rpi-pico-w-zephyr]
+arch = "cortex-m0plus"
+platform = "zephyr"
+packages = ["zephyr-sdk", "wokwi-cli"]
+
 
 # --- the Zephyr MODULE set, as index data (phase-447 F1, issue 1275) --------
 #

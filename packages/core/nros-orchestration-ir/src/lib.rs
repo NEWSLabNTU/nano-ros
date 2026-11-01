@@ -227,7 +227,8 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
         | "mps2-an385-zephyr"
         | "qemu-cortex-a53"
         | "fvp-aemv8r-smp"
-        | "nucleo-f767zi-zephyr" => "zephyr",
+        | "nucleo-f767zi-zephyr"
+        | "rpi-pico-w-zephyr" => "zephyr",
         "esp32-qemu" | "esp32-c3-baremetal" => "esp32",
         // NuttX, FreeRTOS, ThreadX and native ride `owned-spin`: the RTOS (or
         // the board crate's own entry symbol) calls `main`, and the macro emits
@@ -375,6 +376,12 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
     // phase-524 W3 — the Nucleo-F767ZI, the Renode-twinned book board.
     (
         "nucleo-f767zi-zephyr",
+        "::nros_board_zephyr::ZephyrBoard",
+        false,
+    ),
+    // phase-524 W3 -- the Pico W, the Wokwi-twinned book board.
+    (
+        "rpi-pico-w-zephyr",
         "::nros_board_zephyr::ZephyrBoard",
         false,
     ),

@@ -1,0 +1,38 @@
+/*
+ * rpi-pico-w-zephyr (phase-524 W3): UART0 (GP0/GP1) carries the zenoh link
+ * (locator `serial/uart@40034000#baudrate=115200`), so the console moves to
+ * UART1 (GP4/GP5). In Wokwi, UART0 is the serial monitor that
+ * `wokwi-cli --interactive` puts on its stdio. On the bench both UARTs are
+ * header pins, so each needs a USB-to-UART adapter: the Pico W's USB port is
+ * not a UART.
+ */
+/ {
+	chosen {
+		zephyr,console = &uart1;
+		zephyr,shell-uart = &uart1;
+	};
+};
+
+&pinctrl {
+	uart1_default: uart1_default {
+		group1 {
+			pinmux = <UART1_TX_P4>;
+		};
+		group2 {
+			pinmux = <UART1_RX_P5>;
+			input-enable;
+		};
+	};
+};
+
+/* GP4/GP5 are i2c0's default pins on this board; the console takes them. */
+&i2c0 {
+	status = "disabled";
+};
+
+&uart1 {
+	current-speed = <115200>;
+	status = "okay";
+	pinctrl-0 = <&uart1_default>;
+	pinctrl-names = "default";
+};

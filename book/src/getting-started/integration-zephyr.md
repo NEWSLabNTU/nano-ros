@@ -1119,10 +1119,11 @@ in 30 seconds:
 ## Flash a real board
 
 The boards above are `native_sim` and QEMU machines, and the ARM FVP is a
-model ([its chapter](./arm-fvp.md)). The one hardware board nano-ros ships a
-package for is the Nucleo-F767ZI (`board = "nucleo-f767zi-zephyr"`), whose
-Renode twin boots the same image; its own chapter is still to come. Any board
-Zephyr supports is reached with a
+model ([its chapter](./arm-fvp.md)). The hardware boards nano-ros ships a
+package for are the Nucleo-F767ZI (`board = "nucleo-f767zi-zephyr"`), whose
+Renode twin boots the same image, and the Raspberry Pi Pico W
+(`board = "rpi-pico-w-zephyr"`), whose Wokwi twin does; their own chapters
+are still to come. Any board Zephyr supports is reached with a
 board package that names it (`west_board`, see
 [Which boards you can name](#which-boards-you-can-name)), and flashed with the
 runner Zephyr's own board definition declares:

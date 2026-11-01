@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-11-01). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo only. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. The Pico W's W3 item, W0 and W4 open.** Implements
+**Status (2026-11-02). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W0 and W4 open.** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -408,6 +408,99 @@ RX for the serial link, issue 0852). No crate.
   board's `prj.conf` is serial-shaped. It also needs its heap measured first,
   see issue 2194. The Nucleo's `nros board list` status reads "Boots, manual"
   until then, not "Builds".
+
+**Result, Pico W (2026-11-02). Done.** One row, one package, the Nucleo's
+shape.
+
+- **Registry row** (`packages/boards/board-support.toml`):
+
+  ```toml
+  [[board]]
+  crate = "nros-board-rpi-pico-w-zephyr"
+  board_keys = ["rpi-pico-w-zephyr"]
+  real_hardware = true
+  book_flash = "getting-started/integration-zephyr.md#flash-a-real-board"
+  runs = "emulator"
+  hardware = "rpi-pico-w"
+  cadence = "manual"
+  last_run = "2026-11-01"
+  breadth = "inherits ZephyrQemuCortexM"
+  maintainers = ["jerry73204"]
+  ```
+
+  The emulator is not typed in the row. Since phase-528 W2 (RFC-0118 D4) the
+  generator reads it from the descriptor, `[board.run] emulator =
+  "wokwi:pi-pico-w"`. No grammar change: `wokwi` was already one of
+  `EMULATOR_KINDS` in both the descriptor schema (`board_descriptor.rs`) and
+  the registry library (`scripts/lib/board_registry.py`). Derived status:
+  "Boots, manual (2026-11-01)". `last_run` is the W1 rerun's date, a
+  maintainer decision. The W3 rerun below was on 2026-11-02. `breadth`
+  inherits ZephyrQemuCortexM, the one Cortex-M `PlatformId` on Zephyr. The
+  RP2040's Cortex-M0+ runs the same family code path, with the Rust lane on
+  thumbv6m since issue 2206. The twin adds one smoke run and no matrix. The
+  maintainer is named, so the row is not in the grandfather list. The book
+  has no Pico or UF2 section, so `book_flash` names the Zephyr chapter's
+  "Flash a real board" section, like the Nucleo's. That section's sentence
+  naming the one hardware board now names both. `book_run` is W4's.
+- **Package** `packages/boards/nros-board-rpi-pico-w-zephyr/`:
+  `nros-board.toml` (`west_board = "rpi_pico/rp2040/w"`,
+  `rust_target = "thumbv6m-none-eabi"`, `stack = "os"`, `links = ["serial"]`,
+  `zephyr_line = "3.7"`, `[board.run] emulator = "wokwi:pi-pico-w"`, and
+  phase-529 W1's `[board.flash] method = "west"` and `[board.console] kind =
+  "serial"`, as the Nucleo states them),
+  `package.xml`, `prj.conf` (the Nucleo's serial set plus
+  `CONFIG_TICKLESS_KERNEL=n`), and `boards/rpi_pico_rp2040_w.overlay`
+  (console and shell on UART1, GP4/GP5 with `i2c0` off; zenoh keeps UART0).
+  The overlay name is the flattened west board id, and a unit test in
+  `leaf_system.rs` now holds that for a qualified HWMv2 id. The board key
+  joins `BOARD_KEYS`, `BOARD_PATHS`, the zephyr framework table and issue
+  1435's refused set. `[board.rpi-pico-w-zephyr]` in `nros-sdk-index.toml`
+  names `zephyr-sdk` and `wokwi-cli`.
+- **Knobs: per image, issue 2194.** 2194 is still open, so the five RAM knobs
+  are in the descriptor header, not `[knobs]`. An image states them:
+
+  ```toml
+  [image.<id>.knobs.zenoh]
+  max_large_subscribers = 0
+  max_subscribers = 1
+  service_buffer_size = 1024
+  max_queryables = 1
+
+  [image.<id>.knobs.zephyr]
+  heap_size = 32768
+  ```
+
+  The 32 KiB heap carries the Nucleo ethernet image's caveat: it is below the
+  talker's 15,152-byte peak plus the 24,576-byte floor. Measure the boot
+  report before W4's chapter states it.
+- **Build proof.** A copy of `examples/zephyr/c/talker` (`tmp/w3p/talker`,
+  untracked) with one image added, `[image.picow_serial] board =
+  "rpi-pico-w-zephyr"`, `rmw = "zenoh"`, `locator =
+  "serial/uart@40034000#baudrate=115200"`, plus the knobs above.
+  `west build -b rpi_pico/rp2040/w <leaf> -- -DNROS_IMAGE=picow_serial
+  -DZEPHYR_EXTRA_MODULES=<repo>;<hal_rpi_pico>` passed no conf file and no
+  overlay. The `hal_rpi_pico` path is there only because this box's workspace
+  manifest predates W2. The merge order was the leaf's `prj.conf`, the
+  board's `prj.conf`, then the rendered image. The overlay came from the board
+  package. `zephyr.dts` has the console on `&uart1`, and `.config` has
+  `TICKLESS_KERNEL` unset and the five knobs at the stated values. RAM was
+  254,888 B (94.29 %), the number issue 2206's fix measured. FLASH was
+  524,156 B. No spike patch and no atomic shim. Rebuilt after a rebase onto
+  later main: RAM the same, FLASH 524,780 B.
+- **Boot proof.** That ELF (sha256 `34b5116e...7860`) ran in Wokwi through
+  the spike's `run-wokwi-serial.sh` (`wokwi-cli` 0.29.1, `socat` pty,
+  `rmw_zenohd` on the `serial/` locator). The first sample came 10 s after
+  the start. `ros2 topic echo` printed `data: 'Hello World: 1'` through
+  `'Hello World: 11'`, so the run PASSED. One run, about 1.5 of the free
+  plan's 50 monthly minutes.
+- **`nros setup rpi-pico-w-zephyr --dry-run`** prices `hal_rpi_pico 11 MB
+  [3.7] rpi_pico`, `rust target thumbv6m-none-eabi`, `zephyr-sdk` and
+  `wokwi-cli present 0.29.1`.
+- **Left for W4.** The `wokwi-pico` track (with a `WOKWI_CLI_TOKEN`
+  repository secret, schedule and dispatch only), then `probe` plus
+  `cadence = "weekly"` on the row, `book_run`, and the chapter. A Pico or UF2
+  flash section could replace `book_flash` then. Also the heap measurement
+  above, and moving the knobs into `[knobs]` when issue 2194 lands.
 
 ### W4 — Probe tracks and serial-first chapters
 
