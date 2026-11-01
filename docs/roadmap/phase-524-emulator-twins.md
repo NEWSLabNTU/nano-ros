@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-11-01). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo only. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. The Pico W's W2/W3 items, W0 and W4 open.** Implements
+**Status (2026-11-01). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo only. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. The Pico W's W3 item, W0 and W4 open.** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -248,6 +248,49 @@ uses is a pin nobody exercises.
   acceptance is met per tool (`--tool renode`), not per board. Also W3's: the
   `thumbv7em-none-eabi(hf)` Rust targets in `examples/zephyr/rust-toolchain.toml`.
   The pristine-container acceptance is W4's probe track.
+
+**Result, Pico W (2026-11-01). Done; the board link waits on W3.** The W1
+rerun brought the Pico W back, so W2 now adds the twin's client and the HAL.
+
+- **`[tool.wokwi-cli]`**, version `0.29.1`, upstream's own binaries (we apply
+  nothing, so no repack). Each asset is a bare executable, not an archive, so
+  each dist carries an `install` (the `[tool.ninja]` shape) that puts it at
+  `bin/wokwi-cli`; `front = ["bin/wokwi-cli"]` links it into `$NROS_HOME/bin`,
+  and `smoke` runs `bin/wokwi-cli --version` and expects `0.29.1`. sha256s are
+  the release's own `digest` fields; floors are measured off the binaries.
+
+  | host | asset | sha256 | floor (measured off the artifact) |
+  |---|---|---|---|
+  | linux-x86_64 | `wokwi-cli-linuxstatic-x64` | `3c9d6da0...4258` | none: static-pie |
+  | linux-arm64 | `wokwi-cli-linuxstatic-arm64` | `ef442aad...eeee` | none: static-pie |
+  | macos-arm64 | `wokwi-cli-macos-arm64` | `94da96ee...3eb3d` | macOS 11.0 |
+  | macos-x86_64 | `wokwi-cli-macos-x64` | `27642917...96cb3` | macOS 10.15 |
+
+  Unlike Renode it is a cloud client: a run needs network access and a
+  `WOKWI_CLI_TOKEN`, under the plan limits W1 recorded (free: 50 simulation
+  minutes per rolling 30 days, 5 minutes per session, per user). The row
+  comment says so. `--version` needs neither: it answers offline and writes
+  nothing to `HOME`.
+- **`[zephyr_module.hal_rpi_pico]`** is new (the module had no row at all):
+  `lines = ["3.7"]`, `needed_by = ["rpi_pico"]`, `approx_mb = 11` (the spike's
+  shallow checkout), and `west.yml`'s allowlist names it. Its revision is
+  zephyr v3.7.0's own pin, `fba7162cc7bee06d0149622bbcaac4e41062d368`.
+- **`thumbv6m-none-eabi`** in `examples/zephyr/rust-toolchain.toml` (and the
+  root toolchain, `config/rust-targets.txt` and the index) landed with issue
+  2206's fix, because `check-rust-targets-covered` requires it beside the new
+  `nros_detect_rust_target()` arm.
+- **Measured.** `nros setup --tool wokwi-cli --dry-run` plans `prebuilt 0.29.1
+  (dist linux-x86_64)`; `nros setup zephyr --dry-run` prices `hal_rpi_pico
+  11 MB [3.7] rpi_pico`. A real `nros setup --tool wokwi-cli` into the box
+  store, then `$NROS_HOME/bin/wokwi-cli --version` under `env -i` with an empty
+  `HOME`, prints `0.29.1 (0aa185144b92)` and leaves that `HOME` empty.
+  `check-dist-floors`, `check-smoke-or-reason`, `check-dist-or-reason` and
+  `check-zephyr-module-allowlist` green. One gap in the tooling, not the row:
+  `measure-dist-floor.py` reads only tar and zip, so a bare-binary asset is
+  measured with `--dir` over the downloaded file.
+- **Left.** `socat` (the pty bridge) is already `[prereq.socat]` in the index;
+  putting it in the probe container is W4's, with the track that uses it. The
+  Pico W `[board.*]` row that names `wokwi-cli` in `packages` is W3's.
 
 ### W3 — Registry rows and board descriptors
 

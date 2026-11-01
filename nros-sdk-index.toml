@@ -1431,6 +1431,47 @@ smoke = [
 dist.linux-x86_64 = { url = "https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-portable.tar.gz", sha256 = "4ba7c68b59e2447f188ef4b4b112fcccd2802582c460beedceb63b84e5605a5f", floor = { glibc = "2.29", glibcxx = "3.4.26" } }
 dist.linux-arm64 = { url = "https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-arm64-portable.tar.gz", sha256 = "e9051578411441bfb47b77de0381cfba3badce03663367fab561472fd7807f1f", floor = { glibc = "2.34", glibcxx = "3.4.26" } }
 
+# wokwi-cli, the client for the Pico W's emulator twin (phase-524 W2, RFC-0115
+# D4). phase-524 W1's rerun booted the Zephyr C talker for `rpi_pico/rp2040/w`
+# in Wokwi with exactly this binary and heard `ros2 topic echo` deliver over
+# the serial road (`docs/roadmap/data/phase-524-w1-wokwi-pico-rerun.log`).
+#
+# A CLOUD client, unlike every other emulator here: the simulation runs on
+# Wokwi's servers, so a run needs network access and a `WOKWI_CLI_TOKEN`
+# (a personal token from wokwi.com, never committed; in CI a repository secret,
+# which a fork pull request cannot read, so the twin track runs on schedule and
+# dispatch only). Plan limits as measured in W1: the free plan gives 50
+# simulation minutes per rolling 30 days and 5 minutes wall clock per session
+# (Hobby / Hobby+ / Pro: 200 / 500 / 2,000 minutes, sessions of 5 / 10 / 50).
+# The quota is per USER, so CI shares it with anyone developing on the same
+# account. A twin run costs about 1 to 1.5 minutes.
+#
+# UPSTREAM URLs (we apply nothing, so no repack). Each asset is a BARE
+# executable, not an archive, so each dist carries its own `install` (the
+# `[tool.ninja]` shape) that puts it at `bin/wokwi-cli`. sha256s are upstream's,
+# from the release's own `digest` field; linux-x86_64 also re-measured off the
+# binary W1 ran. Hosts: all four keys have an asset. (Windows has one too and
+# is not a host key here.)
+#
+# Floors measured off the artifacts (`scripts/sdk/measure-dist-floor.py`): the
+# Linux builds are static-pie (no PT_INTERP, no DT_NEEDED), so they carry no
+# glibc floor; the macOS ones carry their Mach-O deployment target.
+#
+# `smoke` needs no token: `--version` answers offline and writes nothing to
+# HOME (measured with `env -i` and an empty HOME). `front` links the binary
+# into `$NROS_HOME/bin`.
+[tool.wokwi-cli]
+version = "0.29.1"
+upstream = "v0.29.1" # wokwi/wokwi-cli release tag (SSOT for the URLs below)
+front = ["bin/wokwi-cli"]
+smoke = [
+    { run = "bin/wokwi-cli --version", expect = "0.29.1" },
+]
+dist.linux-x86_64 = { url = "https://github.com/wokwi/wokwi-cli/releases/download/v0.29.1/wokwi-cli-linuxstatic-x64", sha256 = "3c9d6da007d008a3822ab468318037285440055132c59fd659d7306e40f14258", install = "install -D -m 0755 {archive} {prefix}/bin/wokwi-cli", floor = { none = "statically linked (static-pie): no PT_INTERP, no DT_NEEDED" } }
+dist.linux-arm64 = { url = "https://github.com/wokwi/wokwi-cli/releases/download/v0.29.1/wokwi-cli-linuxstatic-arm64", sha256 = "ef442aad00f5cc2878dd239e77b1b3ca72c3f3292390b151b0d8818733b3eeee", install = "install -D -m 0755 {archive} {prefix}/bin/wokwi-cli", floor = { none = "statically linked (static-pie): no PT_INTERP, no DT_NEEDED" } }
+dist.macos-arm64 = { url = "https://github.com/wokwi/wokwi-cli/releases/download/v0.29.1/wokwi-cli-macos-arm64", sha256 = "94da96ee53af922506f0e4d3eb9bec0684a786c8fe27dc114cc84d27f653eb3d", install = "install -D -m 0755 {archive} {prefix}/bin/wokwi-cli", floor = { macos = "11.0" } }
+dist.macos-x86_64 = { url = "https://github.com/wokwi/wokwi-cli/releases/download/v0.29.1/wokwi-cli-macos-x64", sha256 = "27642917590f25f8d7671e5542cd9280a0397b9e326f336c14f72f4a26996cb3", install = "install -D -m 0755 {archive} {prefix}/bin/wokwi-cli", floor = { macos = "10.15" } }
+
 # --- RMW host packages (Phase 191.6.a): the RMW axis, orthogonal to the board.
 # `nros setup <board> --rmw <name>` resolves `board.packages ∪ rmw.packages`
 # (default `--rmw zenoh`). Boards list only platform/toolchain packages; the RMW
@@ -1790,6 +1831,25 @@ lines = []
 why = "STM32 HALs: the Nucleo-F767ZI emulator twin (phase-524, RFC-0115 D4)"
 needed_by = ["nucleo_f767zi"]
 approx_mb = 639
+lines = ["3.7"]
+
+[zephyr_module.hal_rpi_pico]
+# phase-524 W2 (RFC-0115 D4): the Raspberry Pi Pico SDK HAL, for the Pico W
+# (`rpi_pico/rp2040/w`, RP2040, Cortex-M0+), the field solutions board whose
+# emulator twin is Wokwi (`[tool.wokwi-cli]`). phase-524 W1's rerun built the
+# C talker for that board by fetching this module by hand
+# (`docs/roadmap/data/phase-524-w1-wokwi-pico-rerun.log`); it had no row here at
+# all, so `west.yml`'s allowlist could not name it.
+#
+# The REVISION is zephyr v3.7.0's own pin, through `import:`
+# (`fba7162cc7bee06d0149622bbcaac4e41062d368`, the one the spike built
+# against), and moves with the zephyr pin. 3.7 only: the twin is measured on
+# the 3.7 line. `approx_mb` is the spike's shallow checkout (11 MiB).
+#
+# The Pico W board row that names it beside its own `packages` is phase-524 W3's.
+why = "Raspberry Pi Pico HAL: the Pico W emulator twin (phase-524, RFC-0115 D4)"
+needed_by = ["rpi_pico"]
+approx_mb = 11
 lines = ["3.7"]
 
 [zephyr_module.hal_nordic]

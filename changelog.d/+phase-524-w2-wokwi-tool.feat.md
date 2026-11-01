@@ -1,0 +1,1 @@
+`nros setup --tool wokwi-cli` installs wokwi-cli 0.29.1, the client for the Pico W's emulator twin, from upstream's per-host binaries (Linux x86_64 and arm64, macOS arm64 and x86_64) and links `wokwi-cli` into `$NROS_HOME/bin`. Running a simulation needs network access and a `WOKWI_CLI_TOKEN`. The Zephyr 3.7 workspace now fetches `hal_rpi_pico`, which the board needs.
