@@ -42,7 +42,7 @@ gate used to carry (see where that baseline lived, further down).
 
 A fixture row's `platform` is a COORDINATE LABEL — it names the lane cell and
 feeds `build_subdir` — and it is not what any build looks a descriptor up by.
-`NROS_PLATFORM_NAME` is emitted by `nros ws board-facts` from
+`NROS_PLATFORM_NAME` is emitted by `nros dev image board-facts` from
 `descriptor.platform` (`nros-cli-core/src/cmd/board_facts.rs`), i.e. the
 `platform = "…"` a BOARD declares. The two disagree on purpose:
 
@@ -53,11 +53,11 @@ feeds `build_subdir` — and it is not what any build looks a descriptor up by.
 
 MEASURED through the live path, not read off the files:
 
-    $ nros ws board-facts …/c/src/demo_bringup --board freertos-posix
+    $ nros dev image board-facts …/c/src/demo_bringup --board freertos-posix
     NROS_PLATFORM_NAME=freertos
-    $ nros ws board-facts …/realtime-cpp/src/demo_bringup --board rv-virt-nuttx
+    $ nros dev image board-facts …/realtime-cpp/src/demo_bringup --board rv-virt-nuttx
     NROS_PLATFORM_NAME=nuttx
-    $ nros ws board-facts …/features/src/demo_bringup --board zephyr
+    $ nros dev image board-facts …/features/src/demo_bringup --board zephyr
     NROS_PLATFORM_NAME=zephyr
 
 So none of those three ever fell through, and baselining them recorded work

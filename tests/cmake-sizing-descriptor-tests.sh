@@ -322,7 +322,7 @@ fi
 WRITER_STUB="$TEST_TMPDIR/nros-writer-stub"
 cat > "$WRITER_STUB" <<'STUB_EOF'
 #!/bin/bash
-# Mimics `nros ws sizing-descriptor --from-model`: writes the file at the path
+# Mimics `nros dev image sizing-descriptor --from-model`: writes the file at the path
 # rule and echoes it. NROS_WRITER_SILENT=1 mimics a model with no wiring.
 # With `--composed-entry` it is the RUNTIME write (RFC-0100 D12): the file lands
 # at the runtime path and records the models and entries it was handed, so the
@@ -598,7 +598,7 @@ echo '[system]' > "$LEAF_DIR/system.toml"
 LEAF_STUB="$TEST_TMPDIR/nros-leaf-stub"
 cat > "$LEAF_STUB" <<'STUB_EOF'
 #!/bin/bash
-# Mimics `nros ws sizing-descriptor --from-leaf`: writes at the path rule and
+# Mimics `nros dev image sizing-descriptor --from-leaf`: writes at the path rule and
 # echoes it. Refuses to be mistaken for the model writer -- if the caller did
 # not pass --from-leaf, that is the bug this stub exists to catch.
 build_dir="" entry="" prev="" saw_leaf=""

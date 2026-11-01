@@ -184,8 +184,8 @@ C++ package prints the configure line it would run; its core is
 
 ```bash
 cmake -S . -B build/freertos/cmake -DNROS_IMAGE=freertos \
-    -DCMAKE_TOOLCHAIN_FILE="$(nros sdk-root)/cmake/toolchain/arm-freertos-armcm3.cmake" \
-    -Dnano_ros_ROOT="$(nros sdk-root)"
+    -DCMAKE_TOOLCHAIN_FILE="$(nros dev sdk root)/cmake/toolchain/arm-freertos-armcm3.cmake" \
+    -Dnano_ros_ROOT="$(nros dev sdk root)"
 cmake --build build/freertos/cmake
 ```
 
@@ -221,7 +221,7 @@ mps2-an385-freertos` installed it), with the LAN9118 on Slirp and the
 `-icount` the test harness uses. From the workspace (`fr_ws/`):
 
 ```bash probe=70 probe-run=120 probe-keep variant=rust
-"$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
+"$(nros dev sdk path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
     -icount shift=auto \
     -semihosting-config enable=on,target=native \
     -kernel build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/debug/freertos_entry \
@@ -244,7 +244,7 @@ The C / C++ package's image boots with the same flags and its own ELF, from
 `fr_talker/`:
 
 ```bash probe=70 probe-run=120 probe-keep variant=c
-"$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
+"$(nros dev sdk path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
     -icount shift=auto \
     -semihosting-config enable=on,target=native \
     -kernel build/freertos/cmake/fr_talker \

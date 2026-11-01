@@ -370,7 +370,7 @@ CROSS = [
 # The rest is the root's SHAPE (`standalone_shape`), never restated here:
 #   - a tracked `Cargo.lock` is linted `--locked` against that lock;
 #     otherwise the lock is seeded from the pin set, resolved, and held to the
-#     pins (`nros ws seed-lock` / `nros ws check-lock`);
+#     pins (`nros dev lock seed` / `nros dev lock check`);
 #   - a root whose manifest path-depends on a `generated/` or `build/` tree is
 #     rendered by `nros sync` first, as its fixture build does;
 #   - an explicit `[workspace] members` list is linted `--workspace`; an
@@ -772,7 +772,7 @@ def standalone_clippy(rel, where, target_dir, cli, shape=None, no_default=False)
 
     An unlocked root runs unlocked on purpose: a seeded lock holds the registry
     pins only, and the first resolve completes it with the root's path crates,
-    as `nros build`'s does. The pins are then checked by `nros ws check-lock`,
+    as `nros build`'s does. The pins are then checked by `nros dev lock check`,
     so a crate the pin set does not name FAILS here rather than resolving
     freely. A root with a tracked lock is held to THAT lock (`--locked`), which
     `check-cargo-registry-pins` already holds to the pins."""
@@ -1115,9 +1115,9 @@ def main():
             print(f"  {f}")
         print("  reproduce: cargo clippy -p <crate> --lib --tests --features <set> -- -D warnings")
         print(
-            "  standalone: [nros sync] [nros ws seed-lock <dir>] && cargo clippy --manifest-path "
+            "  standalone: [nros sync] [nros dev lock seed <dir>] && cargo clippy --manifest-path "
             "<dir>/Cargo.toml [--locked] [--target <triple>] -- -D warnings "
-            "[&& nros ws check-lock <dir>] && cargo +<nightly> fmt --check -p <package>"
+            "[&& nros dev lock check <dir>] && cargo +<nightly> fmt --check -p <package>"
         )
         return 1
     print(f"check-feature-sweep: OK — {total} combination(s) across {len(names)} crate(s)")

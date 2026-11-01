@@ -426,7 +426,7 @@ function(_nros_find_ros_msg_package pkg)
     # Validate-only mode (RFC-0048): under `find_package(nano_ros)` the ament
     # `find_package(<msg>)` line only validates the dependency; the actual
     # codegen is driven by the `nano_ros_add_*` verb in the leaf's language (it
-    # reads package.xml + shells `nros codegen resolve-deps`). Resolve to
+    # reads package.xml + shells `nros dev codegen resolve-deps`). Resolve to
     # confirm the pkg exists, then stop before generating — no CPP interface lib,
     # no CPP FFI build, no CXX target-features pulled into a C leaf's scope. The
     # rclcpp-compat workspace path never sets this flag, so it still generates.

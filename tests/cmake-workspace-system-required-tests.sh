@@ -186,7 +186,7 @@ if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle\]' "$TEST
     # none. Ask the CLI directly, without --if-present, so every one of them
     # reaches the log as an error.
     echo "-- the macro's query, asked directly:" >&2
-    "$NROS_BIN" image-facts --for-entry zephyr_entry \
+    "$NROS_BIN" dev image facts --for-entry zephyr_entry \
         --workspace "$W/src/zephyr_entry" --cmake 2>&1 | tail -15 >&2
 fi
 

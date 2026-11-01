@@ -140,6 +140,32 @@ name and RFC-0117 D4's table records why.
 
 ### W4 — `check-cli-old-spellings` and the tree's own migration
 
+**Status: DONE.** `scripts/check/check-cli-old-spellings.py` is on the fast
+line (`just check cli-old-spellings`) at zero. It reads the table from the
+CLI (`nros help --aliases --json`) and records a skip when no CLI is built.
+`--fix` rewrote the tree: about 1,030 uses in some 410 files, with the sweep
+command `python3 scripts/check/check-cli-old-spellings.py --fix`. Choices the
+bullets left open:
+
+- Phase docs are history, as `check-retired-cmake-names` already treats
+  them: each W-item records what was run. They are exempt whole, not only
+  where they quote an old spelling beside the new one. Archived issues are
+  exempt the same way; open issues are not.
+- `tests/` joins the scanned set: its stubs and scripts call the CLI the way
+  cmake does. `packages/` stays outside it, as RFC-0117 D5 names it, so the
+  CLI's own messages and Rust tests still spell some old verbs; the shared
+  SDK-root block in three files outside the scope was moved anyway, because
+  `check-repo-dir-readers` holds every copy byte-identical.
+- Gates that read cmake, recipes or scripts for an `nros` verb now read the
+  new spelling too: `check-build-tool-verbs-exempt` and
+  `check-codegen-tool-reconfigure` lower a `nros dev` spelling to the old verb
+  their tables are keyed on, through `scripts/lib/cli_aliases.py` (it reads the
+  two `ALIASES` constants from the CLI sources), and the harvested verb sets
+  measured identical before and after the move. `check-shim-codegen-target`,
+  `check-pinned-make-path-exported`, `check-release-manifest` and
+  `check-just-recipe-paths` match the new spelling, and `check-book-board-names`
+  knows `setup presets` is a subcommand, not a board.
+
 - Write `scripts/check/check-cli-old-spellings.py`. It reads the alias table
   from `nros help --aliases --json`, which W1 adds as a dev flag, so the gate
   never carries its own list. It then refuses any old spelling in `cmake/`,

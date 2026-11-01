@@ -94,7 +94,7 @@ umbrella's `ros-<ed>` and the board crate's `ros-<ed>`. See
 
 > **Amended 2026-08-31 (issue 0938).** Rung 2 is new and rung 3 was previously
 > rung 2. The reason is not tidiness: `nros build` has resolved an image's RMW
-> from `[image.*]` since RFC-0065, while `nros plan` and `nros codegen-system`
+> from `[image.*]` since RFC-0065, while `nros plan` and `nros dev codegen system`
 > read only `[deploy.<t>].rmw` — so a workspace declaring both BUILT one
 > backend and BAKED another into `#define NROS_SYSTEM_RMW`, with no diagnostic.
 > The ladder above is now what every path resolves, which is what the previous
@@ -107,7 +107,7 @@ umbrella's `ros-<ed>` and the board crate's `ros-<ed>`. See
 > decoupled "RMW duality." [phase-255](../roadmap/archived/phase-255-rmw-config-unify.md) collapsed this:
 > a single `SystemToml::resolved_rmw(target, cli)` applies the precedence above, read by BOTH the
 > planner (`schema_build_json` → board `rmw-<x>` feature) and the bake (`render_system_config_h`
-> → `#define NROS_SYSTEM_RMW{,_<TOKEN>}`). `--rmw` exists on `nros plan` + `nros codegen-system`.
+> → `#define NROS_SYSTEM_RMW{,_<TOKEN>}`). `--rmw` exists on `nros plan` + `nros dev codegen system`.
 > `[system].rmw` + `[deploy.<t>].rmw` is the one declared home (RFC-0004); the `[build].rmw` /
 > `[[transport]].rmw` `nros.toml` overlay is now a **deprecated fallback that warns** (no fixture
 > declares it — migration was a no-op), retired after the next release. A binary's multi-RMW link

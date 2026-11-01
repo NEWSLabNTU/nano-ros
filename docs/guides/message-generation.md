@@ -16,7 +16,7 @@ Two reasons not to read the old text, rather than one:
   directory has not existed since the codegen submodule was folded in; the CLI
   is `packages/cli/`, built by `just setup-cli` (contributor) or
   `./scripts/bootstrap.sh`.
-- It sold `nros generate-rust --config / --nano-ros-path / --nano-ros-git` as
+- It sold `nros dev codegen rust --config / --nano-ros-path / --nano-ros-git` as
   the way to get a leaf's `[patch.crates-io]` table. The user command is
   **`nros sync`**. The flags still parse (`--config` is an accepted alias of
   `--generate-config`), and `--nano-ros-path` is documented in the binary's own

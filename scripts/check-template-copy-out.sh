@@ -58,7 +58,7 @@
 # A CROSS project is built by the road its board DECLARES, every parameter read
 # from data rather than spelled here:
 #
-# * `nros ws board-facts` resolves the board's descriptor and the SDK roots the
+# * `nros dev image board-facts` resolves the board's descriptor and the SDK roots the
 #   leaf's own `[board_config.*] sdk` names (`{env:FREERTOS_DIR}`).
 # * A descriptor with `[board.cmake] toolchain_file` is a CMake leaf: the leaf's
 #   own `CMakeLists.txt`, configured with that toolchain — the C/C++ road the
@@ -386,7 +386,7 @@ build_cross() {
     # not set" — that is the SDK being absent, not a template defect.
     err="$(mktemp)" || return 1
     rc=0
-    facts="$("$nros" ws board-facts "$proj" --board "$board" 2>"$err")" || rc=$?
+    facts="$("$nros" dev image board-facts "$proj" --board "$board" 2>"$err")" || rc=$?
     if [ "$rc" -ne 0 ]; then
         cat "$err" >> "$log"
         local unset_rc=0

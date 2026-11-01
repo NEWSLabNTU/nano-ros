@@ -15,7 +15,7 @@ C++ only — PX4's uORB binding is C++-only (Rust + C not in the
 
 PX4 external modules live **outside** the PX4 source tree and are
 hooked in at configure time. The template — shipped in the SDK root at
-`integrations/px4/module-template/` (`nros sdk-root` prints where) — has
+`integrations/px4/module-template/` (`nros dev sdk root` prints where) — has
 the PX4-required
 `src/modules/<name>/` shape:
 
@@ -52,7 +52,7 @@ build time:
 
 ```bash
 mkdir -p px4-modules
-cp -r "$(nros sdk-root)/integrations/px4/module-template" px4-modules/nano-ros
+cp -r "$(nros dev sdk root)/integrations/px4/module-template" px4-modules/nano-ros
 ```
 
 (Releases after 0.6.0-nros4 ship the template; with an older one, copy
@@ -68,7 +68,7 @@ parent: PX4's root `CMakeLists.txt` does
 `add_subdirectory("${EXTERNAL_MODULES_LOCATION}/src" …)`).
 
 The template finds nano-ros itself: an explicit `-Dnano_ros_ROOT=<path>`
-cache variable wins, otherwise it asks the `nros` on PATH (`nros sdk-root`),
+cache variable wins, otherwise it asks the `nros` on PATH (`nros dev sdk root`),
 which answers with the SDK that binary belongs to. No environment variable is
 read. To name the root anyway, pass it through PX4's
 `CMAKE_ARGS`:
@@ -76,7 +76,7 @@ read. To name the root anyway, pass it through PX4's
 ```bash
 make -C PX4-Autopilot px4_sitl_default \
     EXTERNAL_MODULES_LOCATION="$PWD/px4-modules/nano-ros" \
-    CMAKE_ARGS="-Dnano_ros_ROOT=$(nros sdk-root)"    # optional
+    CMAKE_ARGS="-Dnano_ros_ROOT=$(nros dev sdk root)"    # optional
 ```
 
 > **Not replayed.** No probe track runs the PX4 SITL build yet, so this line is unmeasured on the installed track ([tracking issue](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).

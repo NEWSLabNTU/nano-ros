@@ -282,7 +282,7 @@ Both `nros check` forms pass for the canonical template at
 > - **`nros plan demo_bringup`** resolves a topology into `plan.json` for
 >   static type/QoS checks, but it currently requires pre-collected
 >   source-metadata sidecars (`record.json` + per-pkg `_metadata/*.json`).
->   The automatic metadata-build path (`nros metadata --build`) is not yet
+>   The automatic metadata-build path (`nros dev metadata --build`) is not yet
 >   wired for lib-only Node pkgs, so `nros plan` does not produce a plan
 >   straight from this template. See
 >   `packages/testing/nros-tests/fixtures/orchestration_e2e/` for the

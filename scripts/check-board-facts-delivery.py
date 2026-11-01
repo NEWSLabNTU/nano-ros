@@ -83,11 +83,11 @@ EXEMPT = {
     # never linked into an image, so there is no deploy and no board to state.
     "packages/cli/nros-cli/CMakeLists.txt": "builds the host `nros` CLI, never an image",
     # Spawns NO cargo. Its one `-E env` is `nros_codegen_env_prefix()`, the
-    # interface-search-path prefix on `nros codegen` (issue 1780); OWN_CARGO
+    # interface-search-path prefix on `nros dev codegen` (issue 1780); OWN_CARGO
     # then reaches the word `cargo` in a later message string. A statement-
     # bounded pattern was measured and rejected: it loses the real
     # `set(_ffi_env … -E env …)` + later-cargo shape in NanoRosGenerateInterfaces.
-    "cmake/NanoRosCodegenCore.cmake": "spawns no cargo; `-E env` prefixes `nros codegen` only",
+    "cmake/NanoRosCodegenCore.cmake": "spawns no cargo; `-E env` prefixes `nros dev codegen` only",
     # Spawns NO cargo of its own. `nros_config_header_place` (issue 1824) only
     # names a wrapper as an EXISTING Corrosion import's cargo; the import's
     # cargo command — env, board facts and all — is still the one Corrosion
@@ -96,7 +96,7 @@ EXEMPT = {
     "cmake/NanoRosConfigHeaderMirror.cmake": "wraps an import's cargo; the importer delivers its facts",
     # A staged integration-test template (`@NROS_REPO_DIR@` is rewritten at
     # stage time) exercising the Corrosion superbuild of a user-shaped HOST
-    # workspace; it declares no deploy, so `nros ws board-facts` has nothing
+    # workspace; it declares no deploy, so `nros dev image board-facts` has nothing
     # to resolve for it.
     "packages/testing/nros-tests/fixtures/multi_pkg_workspace_mixed/CMakeLists.txt":
         "host-only test-fixture template; declares no deploy/board",

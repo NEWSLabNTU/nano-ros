@@ -16,7 +16,7 @@ cannot.
 
 No CLI: the fast lane is contractually CLI-free, and this is two TOML reads.
 The board catalog is `packages/boards/*/nros-board.toml`, whose `[[board]]
-names` is the same list `nros ws board-facts` resolves against.
+names` is the same list `nros dev image board-facts` resolves against.
 """
 
 import re

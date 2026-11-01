@@ -4,13 +4,13 @@
 #
 # NROS_CARGO_PROFILE names the cargo profile; unset means the development
 # default. The profile -> flags / target-dir derivations are NOT spelled here —
-# phase-336 moved them behind `nros profile`, because this file, nros-tests and
+# phase-336 moved them behind `nros dev profile`, because this file, nros-tests and
 # a just literal each carried their own copy and they were free to drift.
 #
-#   nros profile resolve --build-type <T>   CMAKE_BUILD_TYPE -> profile
-#   nros profile args    <profile>          cargo build flags
-#   nros profile dir     <profile>          target/ subdirectory
-#   nros profile env     <profile>          the definition, as env pairs
+#   nros dev profile resolve --build-type <T>   CMAKE_BUILD_TYPE -> profile
+#   nros dev profile args    <profile>          cargo build flags
+#   nros dev profile dir     <profile>          target/ subdirectory
+#   nros dev profile env     <profile>          the definition, as env pairs
 #
 # NROS_CARGO_FRONTENDS caps independent Cargo frontend processes. The
 # compiler work inside each frontend still uses Cargo/rustc's native
@@ -19,7 +19,7 @@
 # nros_seed_leaf_lock <dir>
 # phase-485 W2 (RFC-0104 D3) — THE one spelling for "this cargo root is about
 # to be built by plain `cargo`, so start its lock from the registry pin set".
-# `nros ws seed-lock` copies the pins in when `<dir>` has no `Cargo.lock` and IS
+# `nros dev lock seed` copies the pins in when `<dir>` has no `Cargo.lock` and IS
 # its own cargo root (a workspace member is left alone; an existing lock is
 # moved back onto the pins, issue 1937);
 # the cargo command after it prunes the copy to the leaf's graph. `nros build`
@@ -42,7 +42,7 @@ nros_seed_leaf_lock() {
     fi
     local root_arg=()
     if [ -n "${NROS_REPO_ROOT:-}" ]; then root_arg=(--nano-ros-path "$NROS_REPO_ROOT"); fi
-    "$cli" ws seed-lock "${root_arg[@]}" "$dir" >/dev/null \
+    "$cli" dev lock seed "${root_arg[@]}" "$dir" >/dev/null \
         || echo "   (seed-lock refused $dir; cargo resolves it unseeded)" >&2
     # issue 1937 — name the root to the build's ledger, so one `nros ws
     # check-lock` after the build holds what cargo resolved to the pin set.
@@ -78,7 +78,7 @@ _nros_profile_query() {
     fi
     local bin out
     bin="$(nros_cli_bin)" || return 1
-    out="$("$bin" profile "$@")" || return 1
+    out="$("$bin" dev profile "$@")" || return 1
     _NROS_PROFILE_CACHE[$key]="$out"
     printf '%s\n' "$out"
 }
@@ -202,7 +202,7 @@ nros_cargo_target_profile_dir() {
 }
 
 # The profile a platform carve-out forces, ignoring the ambient one. Same
-# constants the Rust fixture resolvers read — see `nros profile carve-out`.
+# constants the Rust fixture resolvers read — see `nros dev profile carve-out`.
 nros_cargo_nuttx_profile() {
     _nros_profile_query carve-out nuttx-rust
 }
@@ -623,9 +623,9 @@ nros_cli_bin() {
 }
 
 # Phase 195.D: the codegen host tool is the canonical, *installed* `nros`
-# binary (`nros codegen …`) — resolved from $NROS_CLI / PATH / ~/.nros, NOT
+# binary (`nros dev codegen …`) — resolved from $NROS_CLI / PATH / ~/.nros, NOT
 # built from the packages/codegen submodule target dir. The standalone
-# `nros-codegen` (nros-codegen-c) was merged into `nros codegen` in 195.A.
+# `nros-codegen` (nros-codegen-c) was merged into `nros dev codegen` in 195.A.
 # Function names keep `codegen_c` for callsite stability; the returned path is
 # absolute, so recipes use it directly (no `$(pwd)/`/`$root/` prefix).
 nros_cargo_codegen_c_bin() {
@@ -743,14 +743,14 @@ nros_cargo_fetch_standalone_manifests() {
 # Six lanes do; `threadx-riscv64` does not, which is why its leaves were the
 # ones that failed while an identical config in a freertos leaf resolved.
 #
-# `nros ws central-patch` is the SAME writer sync calls, so the table cannot
+# `nros dev lock central-patch` is the SAME writer sync calls, so the table cannot
 # drift from sync's. Idempotent — skip-write when unchanged.
 #
 # A shell function rather than a `just` recipe because `just` MODULES cannot
 # depend on a root-level recipe, and the alternative was spelling these two
 # lines once per platform module.
 nros_ensure_central_patch() {
-    "$(nros_cli_bin)" ws central-patch >/dev/null
+    "$(nros_cli_bin)" dev lock central-patch >/dev/null
 }
 
 # issue 1038 follow-up — ensure ONE leaf's `generated/<pkg>` message crates
@@ -762,7 +762,7 @@ nros_ensure_central_patch() {
 # row — RFC-0067) fails the SAME way one path deeper: cargo cannot read a
 # `generated/` dir that was never materialised, central table or not. Measured
 # by reproducing it (`cargo metadata` on `examples/rv-virt-threadx/rust/
-# talker` after `nros ws central-patch` alone: parse still fails, now on
+# talker` after `nros dev lock central-patch` alone: parse still fails, now on
 # `generated/std_msgs/Cargo.toml`).
 #
 # Every OTHER lane's rust leaves reach `fixtures-build.sh`'s cargo-row path,

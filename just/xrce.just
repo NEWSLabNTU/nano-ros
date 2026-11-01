@@ -71,7 +71,7 @@ doctor:
 # The locator is nano-ros's own spelling, the one `system.toml` writes, so a
 # README passes what its domain says instead of retyping the agent's flags. A
 # directory holding a `system.toml` (optionally `:<image>`) is read for its
-# image's locator through `nros ws leaf-system`; an image whose RMW is not xrce,
+# image's locator through `nros dev image leaf-system`; an image whose RMW is not xrce,
 # or that states no locator, is refused. Positional on purpose: a module recipe
 # does not parse `name=value`. The door is `scripts/dev/xrce-agent.sh`.
 [group("main")]
@@ -84,7 +84,7 @@ agent target="" *args:
     if [ -n "$target" ] && [ -f "$leaf/system.toml" ]; then
         image_flag=()
         [ "$leaf" = "$target" ] || image_flag=(--image "${target#*:}")
-        if ! facts="$(nros ws leaf-system "${image_flag[@]}" "$leaf")"; then
+        if ! facts="$(nros dev image leaf-system "${image_flag[@]}" "$leaf")"; then
             echo "error: cannot read the deployment of $leaf" >&2
             exit 1
         fi

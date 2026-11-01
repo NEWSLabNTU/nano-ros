@@ -272,7 +272,7 @@ _cc_write_selections() {
             echo "compile-check: nros CLI not found — cannot write the selection package of $dir (just setup-cli)" >&2
             return 2
         fi
-        NROS_REPO_DIR="$repo_root" "$cli" ws leaf-system --write-settings "$dir" >/dev/null || {
+        NROS_REPO_DIR="$repo_root" "$cli" dev image leaf-system --write-settings "$dir" >/dev/null || {
             echo "compile-check: could not write the selection package of $dir" >&2
             return 2
         }
@@ -473,12 +473,12 @@ _cc_verdict_prelude() {
     case "$id" in
         main_macro_rebuilds_on_model_touch)
             # Where the sync wrote the model is `model_location`'s answer,
-            # asked through `nros model-path` — never a spelled layout (issue
+            # asked through `nros dev image model-path` — never a spelled layout (issue
             # 1767 item 11). Hermetic like the compile below: an inherited
             # NROS_MODEL_DIR would name someone else's model.
             local model nros_bin
             nros_bin="$(nros_cli_bin)" || return 2
-            model="$(env -u NROS_MODEL_DIR -u OUT_DIR "$nros_bin" model-path \
+            model="$(env -u NROS_MODEL_DIR -u OUT_DIR "$nros_bin" dev image model-path \
                 --bringup-dir "$staged/src/demo_bringup")" || return 2
             [ -f "$model" ] || {
                 echo "compile-check: $id: the sync wrote no model at $model" >&2
@@ -733,7 +733,7 @@ stage_and_cross_build() {
     # phase-336 note: `profiles` here is a manifest-supplied list of TARGET
     # DIRECTORY names (`debug`, `release`), not cargo profile names — `debug` is
     # the directory `dev` writes to. That is why this maps by hand instead of
-    # calling `nros profile args`, which speaks profile names.
+    # calling `nros dev profile args`, which speaks profile names.
     NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged/$subdir"
     # Issue 1844 — the board facts, from the invoker. This is a cargo dir with
     # no generated `nros-cargo.toml` (a workspace-shaped fixture, or an entry

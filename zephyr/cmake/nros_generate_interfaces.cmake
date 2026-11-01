@@ -1,5 +1,5 @@
 #[=======================================================================[.rst:
-# phase-336 — the shared cargo-profile resolver (`nros profile`), included
+# phase-336 — the shared cargo-profile resolver (`nros dev profile`), included
 # at FILE scope so a function body never include()s inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosBoardFacts.cmake")
@@ -83,7 +83,7 @@ if(DEFINED _NANO_ROS_CODEGEN_TOOL AND NOT _NANO_ROS_CODEGEN_TOOL STREQUAL "")
   if(NOT _NROS_ZEPHYR_CODEGEN_TOOL STREQUAL _NANO_ROS_CODEGEN_TOOL)
     set(_NROS_ZEPHYR_CODEGEN_TOOL "${_NANO_ROS_CODEGEN_TOOL}")
     set(_NROS_ZEPHYR_CODEGEN_TOOL "${_NROS_ZEPHYR_CODEGEN_TOOL}"
-      CACHE INTERNAL "Path to nros codegen tool (Zephyr)" FORCE)
+      CACHE INTERNAL "Path to nros CLI (Zephyr)" FORCE)
   endif()
 endif()
 
@@ -286,14 +286,14 @@ function(nros_generate_interfaces target)
   # file is on disk before anything downstream configures.
 
   # ---- Run codegen at configure time ----
-  # Phase 196.1 — the codegen CLI is the `nros codegen` subcommand (Phase 195
+  # Phase 196.1 — the codegen CLI is the `nros dev codegen` subcommand (Phase 195
   # folded the standalone nros-codegen binary into it); invoke it as such.
   nros_codegen_env_prefix(_codegen_env)
   if(_ARG_LANGUAGE STREQUAL "CPP")
-    set(_codegen_cmd ${_codegen_env} "${_NROS_ZEPHYR_CODEGEN_TOOL}" codegen --language cpp --args-file "${_args_file}")
+    set(_codegen_cmd ${_codegen_env} "${_NROS_ZEPHYR_CODEGEN_TOOL}" dev codegen --language cpp --args-file "${_args_file}")
     message(STATUS "Generating nros C++ interfaces for ${target}")
   else()
-    set(_codegen_cmd ${_codegen_env} "${_NROS_ZEPHYR_CODEGEN_TOOL}" codegen --args-file "${_args_file}")
+    set(_codegen_cmd ${_codegen_env} "${_NROS_ZEPHYR_CODEGEN_TOOL}" dev codegen --args-file "${_args_file}")
     message(STATUS "Generating nros C interfaces for ${target}")
   endif()
 
@@ -346,7 +346,7 @@ function(nros_generate_interfaces target)
   # Asking the artifacts what version they state is the one input that is a
   # property of the tree on disk rather than of a timestamp.
   nros_codegen_version_stale(_version_stale
-    CONTEXT "nros codegen (${target}, ${_ARG_LANGUAGE})"
+    CONTEXT "nros dev codegen (${target}, ${_ARG_LANGUAGE})"
     FILES ${_exp_hdr})
   if(_version_stale)
     set(_codegen_needed TRUE)
@@ -384,7 +384,7 @@ function(nros_generate_interfaces target)
   # binary and both numbers named, at configure time.
   if(_version_stale)
     nros_codegen_version_assert_fresh("${_NROS_ZEPHYR_CODEGEN_TOOL}"
-      CONTEXT "nros codegen (${target}, ${_ARG_LANGUAGE})"
+      CONTEXT "nros dev codegen (${target}, ${_ARG_LANGUAGE})"
       FILES ${_exp_hdr})
   endif()
 

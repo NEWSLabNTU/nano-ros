@@ -12,7 +12,7 @@ every other C example in the tree, and the reason is the board, not the C API.
 `build.rs` and `src/main.rs` are **leaf-agnostic** and byte-identical across the
 six C leaves, but for the one `use` line in `src/main.rs` that reaches the board
 through the leaf's own generated selection package: the script compiles every
-`src/*.c` and binds every interface package `nros generate c` resolves from
+`src/*.c` and binds every interface package `nros interface generate c` resolves from
 `package.xml`, so a leaf differs from its siblings in `package.xml`, its own C
 file, that package name and (for a receiver of `std_msgs/String`) an
 `nros-codegen.toml` bound — nowhere else.
@@ -90,7 +90,7 @@ cd examples/mps2-an385-baremetal/c/talker && cargo build --release
 `build/mps2-an385-baremetal/nros-cargo.toml` (triple, QEMU runner,
 `--gc-sections`, `CC_thumbv7m_none_eabi`) and writes a gitignored
 `.cargo/config.toml` that includes it beside the `[patch.crates-io]` rows.
-`build.rs` then runs `nros generate c` for the `<depend>` list in `package.xml`
+`build.rs` then runs `nros interface generate c` for the `<depend>` list in `package.xml`
 and compiles the bindings beside `talker.c`. The fixture lane builds the same
 leaf as a `[[fixture]]` row (`builder = "cargo"`):
 `scripts/build/fixtures-build.sh baremetal c`.

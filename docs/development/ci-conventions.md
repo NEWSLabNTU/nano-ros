@@ -73,7 +73,7 @@ line in the workflow. Examples: `dep-chain.yml` (per-board), `ci.yml` (px4-rs vi
 
 ### 2. ROS 2 for the interface codegen
 
-`nros generate-rust` / `nros codegen` resolve a message package's `msg/*.msg`
+`nros dev codegen rust` / `nros dev codegen` resolve a message package's `msg/*.msg`
 via `AMENT_PREFIX_PATH` from a sourced ROS 2. Provide it and `source` before any
 build that codegens interfaces:
 
@@ -111,10 +111,10 @@ ABI). Every lane that needs `nros` runs the same
 (see §1). The pre-288 prebuilt route (`NEWSLabNTU/nros-cli` Releases +
 `install.sh`, Phase 195) is retired.
 
-### 6. Canonical codegen invocation: `nros codegen --args-file`
+### 6. Canonical codegen invocation: `nros dev codegen --args-file`
 
 The low-level codegen entrypoint is the `codegen` subcommand
-(`nros codegen --args-file …`); the old top-level `nros --args-file …` was
+(`nros dev codegen --args-file …`); the old top-level `nros --args-file …` was
 removed in Phase 195. Build glue (`*.cmake`, `*.just`, `*.sh`) that drops the
 subcommand silently breaks interface generation. The
 `codegen-convention.yml` lint (`scripts/ci/codegen-invocation-check.sh`) enforces

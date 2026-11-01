@@ -146,7 +146,7 @@ endfunction()
 # the one a provisioning run just wrote.
 # phase-365 W3a — CONSTRUCT the prefix; never search the store.
 #
-# `nros sdk-path corrosion` joins the store root to the version this project
+# `nros dev sdk path corrosion` joins the store root to the version this project
 # PINS in `nros-sdk-index.toml`. That join is the same function `nros setup`
 # used to write the directory (`sdk_store::tool_dir`), so consumption and
 # provisioning cannot disagree.
@@ -199,7 +199,7 @@ function(_nros_corrosion_store_dir out_var)
         return()
     endif()
     execute_process(
-        COMMAND "${_NROS_CLI}" sdk-path corrosion
+        COMMAND "${_NROS_CLI}" dev sdk path corrosion
         WORKING_DIRECTORY "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.."
         OUTPUT_VARIABLE _dir
         OUTPUT_STRIP_TRAILING_WHITESPACE

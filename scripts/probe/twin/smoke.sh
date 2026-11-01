@@ -51,7 +51,7 @@ nros_twin_build() {
         printf '\n%s\n' "$NROS_TWIN_IMAGE_TOML" >>"$app/system.toml"
         west build -b "$NROS_TWIN_WEST_BOARD" -d "$build" "$app" -- \
             -DNROS_IMAGE=twin \
-            -DZEPHYR_EXTRA_MODULES="$(nros sdk-root)${NROS_TWIN_EXTRA_MODULES:+;$NROS_TWIN_EXTRA_MODULES}"
+            -DZEPHYR_EXTRA_MODULES="$(nros dev sdk root)${NROS_TWIN_EXTRA_MODULES:+;$NROS_TWIN_EXTRA_MODULES}"
     )
 }
 

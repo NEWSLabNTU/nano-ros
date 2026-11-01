@@ -325,11 +325,11 @@ build-fvp-ws-entry:
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
-    make_bin="$(nros sdk-path make 2>/dev/null)/bin/make"
+    make_bin="$(nros dev sdk path make 2>/dev/null)/bin/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi
-    # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros sdk-path`
+    # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros dev sdk path`
     # locates `nros-sdk-index.toml` relative to the CWD, and a Zephyr
     # workspace has none. Resolving after the cd printed two `failed to read
     # SDK index` errors and silently fell back to whatever `make`/`ninja`
@@ -347,8 +347,8 @@ build-fvp-ws-entry:
     if _fvp_bin="$(bash "$nros_root/scripts/zephyr/resolve-fvp-bin.sh" 2>/dev/null)"; then
         export ARMFVP_BIN_PATH="$_fvp_bin"
     fi
-    _sdk_make="$(nros sdk-path make)"
-    _sdk_ninja="$(nros sdk-path ninja)"
+    _sdk_make="$(nros dev sdk path make)"
+    _sdk_ninja="$(nros dev sdk path ninja)"
     cd "$workspace"
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
     # issue 0698 — name the toolchain variant: Zephyr 3.7 expands it UNQUOTED,
@@ -430,7 +430,7 @@ run-fvp-ws-entry:
         nros_lane_skip "Zephyr/FVP-ws-entry run skip: build-fvp-ws-entry/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-ws-entry\` first"
     fi
     nros_root="$(pwd)"
-    # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros sdk-path`
+    # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros dev sdk path`
     # locates `nros-sdk-index.toml` relative to the CWD, and a Zephyr
     # workspace has none. Resolving after the cd printed two `failed to read
     # SDK index` errors and silently fell back to whatever `make`/`ninja`
@@ -448,8 +448,8 @@ run-fvp-ws-entry:
     if _fvp_bin="$(bash "$nros_root/scripts/zephyr/resolve-fvp-bin.sh" 2>/dev/null)"; then
         export ARMFVP_BIN_PATH="$_fvp_bin"
     fi
-    _sdk_make="$(nros sdk-path make)"
-    _sdk_ninja="$(nros sdk-path ninja)"
+    _sdk_make="$(nros dev sdk path make)"
+    _sdk_ninja="$(nros dev sdk path ninja)"
     cd "$workspace"
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
     # issue 1254 — the resolver, not a fifth spelling of the path.
@@ -563,12 +563,12 @@ build-fvp-board-import:
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
-    make_bin="$(nros sdk-path make 2>/dev/null)/bin/make"
+    make_bin="$(nros dev sdk path make 2>/dev/null)/bin/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi
     src="$nros_root/packages/testing/nros-tests/fixtures/board_import_fvp"
-    # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros sdk-path`
+    # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros dev sdk path`
     # locates `nros-sdk-index.toml` relative to the CWD, and a Zephyr
     # workspace has none. Resolving after the cd printed two `failed to read
     # SDK index` errors and silently fell back to whatever `make`/`ninja`
@@ -586,8 +586,8 @@ build-fvp-board-import:
     if _fvp_bin="$(bash "$nros_root/scripts/zephyr/resolve-fvp-bin.sh" 2>/dev/null)"; then
         export ARMFVP_BIN_PATH="$_fvp_bin"
     fi
-    _sdk_make="$(nros sdk-path make)"
-    _sdk_ninja="$(nros sdk-path ninja)"
+    _sdk_make="$(nros dev sdk path make)"
+    _sdk_ninja="$(nros dev sdk path ninja)"
     cd "$workspace"
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
     # issue 0698 — name the toolchain variant: Zephyr 3.7 expands it UNQUOTED,
@@ -656,7 +656,7 @@ run-fvp-board-import:
         nros_lane_skip "Zephyr/FVP board-import run skip: build-fvp-board-import/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-board-import\` first"
     fi
     nros_root="$(pwd)"
-    # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros sdk-path`
+    # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros dev sdk path`
     # locates `nros-sdk-index.toml` relative to the CWD, and a Zephyr
     # workspace has none. Resolving after the cd printed two `failed to read
     # SDK index` errors and silently fell back to whatever `make`/`ninja`
@@ -674,8 +674,8 @@ run-fvp-board-import:
     if _fvp_bin="$(bash "$nros_root/scripts/zephyr/resolve-fvp-bin.sh" 2>/dev/null)"; then
         export ARMFVP_BIN_PATH="$_fvp_bin"
     fi
-    _sdk_make="$(nros sdk-path make)"
-    _sdk_ninja="$(nros sdk-path ninja)"
+    _sdk_make="$(nros dev sdk path make)"
+    _sdk_ninja="$(nros dev sdk path ninja)"
     cd "$workspace"
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
     # issue 1254 — the resolver, not a fifth spelling of the path.

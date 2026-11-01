@@ -7,10 +7,10 @@
 #
 # cmake never parses the index. It asks the CLI for a shape it can read:
 #
-#     nros ws providers --index <file> --lines
+#     nros dev ws providers --index <file> --lines
 #     kind<TAB>name<TAB>package<TAB>root_index<TAB>dir
 #
-# Same role as `nros ws model-dims` — a gate or
+# Same role as `nros dev image model-dims` — a gate or
 # a configure ASKS rather than re-implementing the read. A second parser of the
 # same file is the two-derivations defect this repo keeps paying for; the index
 # is JSON precisely so that hand-rolling a cmake reader is unattractive.
@@ -28,7 +28,7 @@
 # by REGENERATING rather than watching: `nano_ros_load_providers()` re-scans on
 # every configure by default and writes the index as it goes. The index is a
 # cache for readers between configures, not an authority a configure trusts.
-# `nros ws providers --check-index` is the explicit rescan-and-diff for anyone
+# `nros dev ws providers --check-index` is the explicit rescan-and-diff for anyone
 # who wants the cheap read plus a correctness check.
 
 include_guard(GLOBAL)
@@ -113,7 +113,7 @@ function(nano_ros_load_providers)
     endif()
 
     execute_process(
-        COMMAND "${_NANO_ROS_CODEGEN_TOOL}" ws providers
+        COMMAND "${_NANO_ROS_CODEGEN_TOOL}" dev ws providers
                 --workspace "${_NP_WORKSPACE}" ${_root_args}
                 ${_read_args} --lines
         OUTPUT_VARIABLE _rows
@@ -123,7 +123,7 @@ function(nano_ros_load_providers)
 
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
-            "nano_ros_load_providers: `nros ws providers` failed (${_rc}).\n"
+            "nano_ros_load_providers: `nros dev ws providers` failed (${_rc}).\n"
             "${_err}")
     endif()
     if(_err)

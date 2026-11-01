@@ -230,7 +230,7 @@ All core crates support `#![no_std]` with optional `std`/`alloc` features:
 Message types are always generated, never hand-written. Use the codegen tool:
 
 ```bash
-nros generate-rust
+nros dev codegen rust
 ```
 
 Bundled interface definitions live in `packages/cli/interfaces/`. Example `generated/` directories are gitignored and recreated by `just generate-bindings`. Only the core pre-generated set checks its `generated/` into git: ONE driver package at `packages/interfaces/`, one output tree at `packages/interfaces/generated/humble/`, six crates, regenerated with `just generate-interfaces` on a ROS 2 ament host.

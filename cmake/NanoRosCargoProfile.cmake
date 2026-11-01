@@ -2,7 +2,7 @@
 #
 # Resolve ONE cargo profile for everything cmake builds through Corrosion or a
 # custom command, and expose its derived forms. The table lives in the `nros`
-# CLI (`nros profile`, backed by `packages/tooling/nros-cargo-profile`); this
+# CLI (`nros dev profile`, backed by `packages/tooling/nros-cargo-profile`); this
 # module is the bridge, so cmake never carries a second copy of the mapping.
 #
 # Two knobs, deliberately not unified: `CMAKE_BUILD_TYPE` keeps its normal
@@ -51,7 +51,7 @@ function(nros_resolve_cargo_profile)
     endif()
     if(_profile STREQUAL "")
         execute_process(
-            COMMAND "${_nros}" profile resolve --build-type "${CMAKE_BUILD_TYPE}"
+            COMMAND "${_nros}" dev profile resolve --build-type "${CMAKE_BUILD_TYPE}"
             OUTPUT_VARIABLE _profile
             ERROR_VARIABLE _err
             RESULT_VARIABLE _rc
@@ -64,16 +64,16 @@ function(nros_resolve_cargo_profile)
         endif()
     endif()
 
-    execute_process(COMMAND "${_nros}" profile dir "${_profile}"
+    execute_process(COMMAND "${_nros}" dev profile dir "${_profile}"
         OUTPUT_VARIABLE _dir RESULT_VARIABLE _rc OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
-        message(FATAL_ERROR "nano-ros: `nros profile dir ${_profile}` failed")
+        message(FATAL_ERROR "nano-ros: `nros dev profile dir ${_profile}` failed")
     endif()
 
-    execute_process(COMMAND "${_nros}" profile env "${_profile}" --cmake
+    execute_process(COMMAND "${_nros}" dev profile env "${_profile}" --cmake
         OUTPUT_VARIABLE _env RESULT_VARIABLE _rc OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
-        message(FATAL_ERROR "nano-ros: `nros profile env ${_profile}` failed")
+        message(FATAL_ERROR "nano-ros: `nros dev profile env ${_profile}` failed")
     endif()
 
     set(NROS_CARGO_PROFILE "${_profile}" CACHE STRING
@@ -96,21 +96,21 @@ endfunction()
 # <out-prefix>_PROFILE / _DIR / _ENV in the caller's scope.
 function(nros_resolve_carve_out_profile _name _prefix)
     _nros_resolve_codegen_tool(_NANO_ROS_CODEGEN_TOOL)
-    execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" profile carve-out "${_name}"
+    execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" dev profile carve-out "${_name}"
         OUTPUT_VARIABLE _profile ERROR_VARIABLE _err RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR "nano-ros: ${_err}")
     endif()
-    execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" profile dir "${_profile}"
+    execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" dev profile dir "${_profile}"
         OUTPUT_VARIABLE _dir RESULT_VARIABLE _rc OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
-        message(FATAL_ERROR "nano-ros: `nros profile dir ${_profile}` failed")
+        message(FATAL_ERROR "nano-ros: `nros dev profile dir ${_profile}` failed")
     endif()
-    execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" profile env "${_profile}" --cmake
+    execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" dev profile env "${_profile}" --cmake
         OUTPUT_VARIABLE _env RESULT_VARIABLE _rc OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
-        message(FATAL_ERROR "nano-ros: `nros profile env ${_profile}` failed")
+        message(FATAL_ERROR "nano-ros: `nros dev profile env ${_profile}` failed")
     endif()
     set(${_prefix}_PROFILE "${_profile}" PARENT_SCOPE)
     set(${_prefix}_DIR "${_dir}" PARENT_SCOPE)

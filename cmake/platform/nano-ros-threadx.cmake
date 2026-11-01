@@ -63,7 +63,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 # Phase 246 — the Phase-212.H.4 ThreadX system-codegen baker
 # (`NanoRosThreadxSystemCodegen.cmake`, the NULL-context `nros_system_main`
 # stand-in) is retired. ThreadX C/C++ now routes through the unified TYPED
-# carrier (`nano_ros_node_register(TYPED)` → `nros codegen entry --typed`,
+# carrier (`nano_ros_node_register(TYPED)` → `nros dev codegen entry --typed`,
 # RFC-0043 real-callback components); ThreadX Rust through `nros::main!()` /
 # `ExecutorNodeRuntime`. No `nros_threadx_codegen_system` / `nros_threadx_link_app`.
 

@@ -38,7 +38,7 @@ Classification: all **new** (no baseline).
 - F3/H3 · `book/src/getting-started/installation.md:182`,
   `book/src/reference/cli.md:64` · P2 · book advertises board id `esp32`
   which `nros-sdk-index.toml` does not define (only `qemu-esp32-baremetal`) →
-  `nros setup esp32` fails; and top-level verb `nros init` has no CLI-reference
+  `nros setup esp32` fails; and top-level verb `nros setup presets` has no CLI-reference
   section · → **issue #209**
 - H1 · `packages/cli/CLAUDE.md:1` · P2 · entire file is the retired
   "colcon-cargo-ros2" guide — describes a different project · rewrite for the

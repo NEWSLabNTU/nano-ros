@@ -1,6 +1,6 @@
 # Message Binding Generation
 
-nros uses generated Rust bindings for ROS 2 message types. The `nros generate-rust` command generates `no_std` compatible bindings from `package.xml` dependencies.
+nros uses generated Rust bindings for ROS 2 message types. The `nros dev codegen rust` command generates `no_std` compatible bindings from `package.xml` dependencies.
 
 ## Overview
 
@@ -76,7 +76,7 @@ This will:
    carrying the board's triple and flags, the resolved pool budgets, and the
    `[patch.crates-io]` rows for the nano-ros runtime crates
 
-`nros sync` is the user's verb. `nros generate-rust` is the codegen-only
+`nros sync` is the user's verb. `nros dev codegen rust` is the codegen-only
 primitive underneath it — steps 1–4 and nothing else — and is useful when
 you want bindings without a build.
 
@@ -96,7 +96,7 @@ example_interfaces = { path = "generated/example_interfaces", default-features =
 So adding a message package is one edit — the `<depend>` — exactly as on the
 C/C++ road, and deleting the `<depend>` deletes the row on the next sync. A
 row without the tag is yours: sync never edits or removes it, so deleting the
-tag is how you take a row over. `nros ws managed-deps [--check]` runs this one
+tag is how you take a row over. `nros dev lock managed-deps [--check]` runs this one
 step alone (for a script that drives `cargo` itself). The `nros` row is not
 managed — it carries a feature choice that is yours to make.
 
@@ -144,7 +144,7 @@ section 212.K.7.
 ## Where the nano-ros sources come from
 
 A project uses the SDK root the `nros` binary belongs to — a release's
-own `share/nano-ros` (`nros sdk-root` prints it) — so a plain `nros sync`
+own `share/nano-ros` (`nros dev sdk root` prints it) — so a plain `nros sync`
 works anywhere. To name a different SDK root, pass it:
 
 ```bash
@@ -168,11 +168,11 @@ let msg = Int32 { data: 42 };
 
 ## Command Options
 
-`nros generate-rust` is the codegen primitive — it writes bindings and
+`nros dev codegen rust` is the codegen primitive — it writes bindings and
 nothing else:
 
 ```bash
-nros generate-rust [OPTIONS]
+nros dev codegen rust [OPTIONS]
 
 Options:
       --manifest <PATH>         Path to package.xml [default: package.xml]
@@ -295,7 +295,7 @@ cd my_service_client && nros sync && nros build
 
 To regenerate after ROS package updates or dependency changes:
 ```bash
-nros generate-rust --force
+nros dev codegen rust --force
 ```
 
 ## Bundled Interfaces

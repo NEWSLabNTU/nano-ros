@@ -127,9 +127,9 @@ make_bin="make"
 make_args=()
 fallback_ninja_jobs="${NROS_ZEPHYR_NINJA_JOBS:-${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}}"
 jobserver_mode=0
-if [ -x "$(nros sdk-path make)/bin/make" ] && \
-   "$(nros sdk-path make)/bin/make" --version | head -1 | grep -q "4.4"; then
-    make_bin="$(nros sdk-path make)/bin/make"
+if [ -x "$(nros dev sdk path make)/bin/make" ] && \
+   "$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4"; then
+    make_bin="$(nros dev sdk path make)/bin/make"
     # In fifo-jobserver mode the -j value IS the shared token pool: every
     # leaf's ninja joins it, so it bounds TOTAL concurrency across the
     # family, and leaves build into disjoint build-<name> dirs (parallel-safe
@@ -147,7 +147,7 @@ if [ -x "$(nros sdk-path make)/bin/make" ] && \
     outer_jobs="${NROS_ZEPHYR_JOBSERVER_TOKENS:-${NROS_ZEPHYR_BUILD_JOBS:-${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}}}"
     make_args=(-j"$outer_jobs" --jobserver-style=fifo)
     jobserver_mode=1
-    export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
+    export PATH="$(nros dev sdk path make)/bin:$(nros dev sdk path ninja)/bin:$PATH"
     echo "zephyr-fixture-make-driver: using pinned fifo make"
 else
     # No shared token pool here: each leaf's ninja runs -j$fallback_ninja_jobs

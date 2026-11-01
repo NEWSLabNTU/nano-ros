@@ -109,7 +109,7 @@ target dir — the Rust scaffold's `linux` image is
 
 `<profile-dir>` is `debug` unless the image declares
 `[image.<id>] profile = …`, in which case it is that profile's directory
-(`nros profile dir <name>` prints it).
+(`nros dev profile dir <name>` prints it).
 
 **Next step:** on a host board, run it. It is an ordinary executable.
 

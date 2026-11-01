@@ -88,7 +88,7 @@ model — not before, and not silently.
 **Inspection needs to stay easy.** "Exposed for inspection" is a requirement,
 not a side effect: a user debugging placement must be able to read the resolved
 model without reverse-engineering it. The `build/` location must be documented
-and stable, and `nros ws model-dims` (issue 0380) already reads a model from an
+and stable, and `nros dev image model-dims` (issue 0380) already reads a model from an
 arbitrary path.
 
 ## Amendment (phase-460 W1, 2026-09-21) -- a refused resolve leaves no model to trust
@@ -111,7 +111,7 @@ Two rules, both in `nros_cli_core::model_gate`:
   marker is removed only by the next SUCCESSFUL resolve; editing the inputs
   back does not clear it, because a model whose producer last said no is not
   current.
-* **Every consumer verifies provenance.** `nros model-path`,
+* **Every consumer verifies provenance.** `nros dev image model-path`,
   `ws entity-inventory`, `codegen-system`, `codegen entry` and `run_sync`
   itself call the one gate before opening a model: the marker, the resolver
   pin (issue 0427), the recorded input hashes (issue 0320), and a launch-tree

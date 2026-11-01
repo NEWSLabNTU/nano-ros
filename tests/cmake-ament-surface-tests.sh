@@ -60,7 +60,7 @@ trap 'rm -rf "$WORK"' EXIT
 fail=0
 
 # issue 1850 — this checkout's CLI, or the explicit $NROS_CLI the gate passes.
-# The message resolver asks `nros profile`, and without this the cmake modules
+# The message resolver asks `nros dev profile`, and without this the cmake modules
 # fall through to whatever `nros` the host has installed, which may predate it.
 # shellcheck source=scripts/build/cargo.sh
 source "$ROOT/scripts/build/cargo.sh"

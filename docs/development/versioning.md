@@ -92,7 +92,7 @@ section.
 
 ## ABI guard (Phase 218.E)
 
-`nros codegen` / `nros generate-rust` reads the consumer's
+`nros dev codegen` / `nros dev codegen rust` reads the consumer's
 `Cargo.lock`, finds the resolved `nros-core` version, and compares it
 to the CLI binary's compile-time `env!("CARGO_PKG_VERSION")`. Strict
 equality. Mismatch → exit non-zero with both versions printed.

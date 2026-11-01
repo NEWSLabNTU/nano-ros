@@ -4,7 +4,7 @@
 # three comparisons read, and it had TWO SPELLINGS:
 #
 #   * `nano_ros_auto_add_library()` wrote the canonical lowercase `c` / `cpp`
-#     (`nros_lang::Language::as_str`, what `nros codegen source-language`
+#     (`nros_lang::Language::as_str`, what `nros dev codegen source-language`
 #     answers, what `nano_ros_add_node` forwards as `LANGUAGE ${_lang}`, and
 #     what the `"lang"` field of the emitted metadata row carries);
 #   * `nano_ros_node_register()` wrote its own UPPERCASE internal vocabulary

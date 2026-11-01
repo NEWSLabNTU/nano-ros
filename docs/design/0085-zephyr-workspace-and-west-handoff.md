@@ -162,7 +162,7 @@ a design doc that quietly drops its own open questions leaves no way to tell an
 answered one from a forgotten one. Only the third is still open.
 
 * ~~**Which of D3's two shapes the supplier takes.**~~ **DECIDED — D14.**
-  Neither, as posed: the supplier is a QUERY (`nros image-facts`), not a build
+  Neither, as posed: the supplier is a QUERY (`nros dev image facts`), not a build
   verb, which is what dissolves the recursion D2 worried about. Its consumer
   landed as `cmake/NanoRosImageAgreement.cmake`, a cross-check rather than a
   replacement — see D14's refinement for why replacing the Kconfig derivation
@@ -640,16 +640,16 @@ unprivileged is not a starting point.
 `nros sync` → `nros build demo_bringup:demo_entry -- --pristine` → 1248/1248 →
 `zephyr.exe`, which boots. The scratch entry was reverted afterwards.
 
-## D14 — `nros image-facts`: the supplier is a QUERY
+## D14 — `nros dev image facts`: the supplier is a QUERY
 
 Card 2, and the shape D2 was missing. D2 sketched a supplier verb west would
 invoke, and worried it must not be `nros build` or west would loop. **A query
-cannot loop.** `nros image-facts` runs stages 1–4 and stops before the handoff —
+cannot loop.** `nros dev image facts` runs stages 1–4 and stops before the handoff —
 which is exactly `plan_builds`, already exercised by `--dry-run` and already
 reused by `nros materialize`.
 
 ```console
-$ nros image-facts demo_bringup:zephyr --cmake
+$ nros dev image facts demo_bringup:zephyr --cmake
 set(NROS_IMAGE_QUALIFIED "demo_bringup:zephyr")
 set(NROS_IMAGE_BOARD "native_sim/native/64")
 set(NROS_IMAGE_PLATFORM "zephyr")
@@ -660,7 +660,7 @@ set(NROS_IMAGE_ENTRY_PACKAGE "zephyr_entry")
 ```
 
 It is the fifth of an idiom this repository already has four of — `nros
-profile`, `nros model-path`, `nros sdk-path`, `nros codegen resolve-deps` —
+profile`, `nros dev image model-path`, `nros dev sdk path`, `nros dev codegen resolve-deps` —
 described in `NanoRosCargoProfile.cmake` as *"the bridge cmake/bash use so the
 derivations are not re-spelled per language"*.
 

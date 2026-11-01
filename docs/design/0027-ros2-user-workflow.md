@@ -57,7 +57,7 @@ cd ..
 nros setup --target freertos-zenoh
 nros plan robot_bringup launch/system.launch.py -- robot_ns:=/car01
 nros check
-# build: west build -b mps2_an385 -- -DNROS_RMW=zenoh   (after: nros codegen-system)
+# build: west build -b mps2_an385 -- -DNROS_RMW=zenoh   (after: nros dev codegen system)
 # run:   west build -t run
 nros monitor
 ```
@@ -1099,7 +1099,7 @@ Initial subcommands:
 | `nros setup`         | workspace/toolchain/submodule setup                         |
 | `nros new component` | scaffold library-shaped node package                        |
 | `nros new system`    | scaffold bringup/deployment package                         |
-| `nros metadata`      | generate/refresh component source metadata                   |
+| `nros dev metadata`      | generate/refresh component source metadata                   |
 | `nros infer-manifest` | scaffold `nros.toml` from generated source metadata          |
 | `nros plan`          | run launch freeze and emit `record.json` + `nros-plan.json` |
 | `nros check`         | validate manifests, plan, and target constraints            |
@@ -1525,7 +1525,7 @@ enough trace data from the start.
 | No `plan` command                                     | Add command that calls play_launch parser and writes `record.json` + `nros-plan.json` |
 | No `doctor` for workspace state                       | Check sourced ROS env, nano-ros checkout, submodules, toolchains, board vars          |
 | No config selection story                             | Add `--config`/`--overlay` flags and record selected files in `nros-plan.json`        |
-| No source metadata command                            | Add `nros metadata` or make `nros plan/check` refresh generated metadata automatically |
+| No source metadata command                            | Add `nros dev metadata` or make `nros plan/check` refresh generated metadata automatically |
 
 ### nano-ros API/runtime
 
@@ -1653,7 +1653,7 @@ packages as libraries, compose with launch files, build one RTOS binary.
 - `deadline_us` is class-dependent: required for EDF, optional for FIFO,
   paired with period/budget for Sporadic, and replaced by window fields for
   time-triggered scheduling.
-- `nros metadata` exists as a debug/CI command, while `nros plan/check/build`
+- `nros dev metadata` exists as a debug/CI command, while `nros plan/check/build`
   may refresh metadata automatically.
 - Source entities absent from launch manifests are errors by default. An
   explicit internal-entity allowlist can support board telemetry, watchdogs, or

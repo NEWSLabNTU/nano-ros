@@ -89,7 +89,7 @@ The user runs, once, before the first build:
 
 ```sh
 source /path/to/nano-ros/activate.sh        # their checkout's nros on PATH
-eval "$(nros ws env)"                        # ROS / interface search path
+eval "$(nros dev ws env)"                        # ROS / interface search path
 nros sync                                 # codegen msgs + write [patch] block
 cargo build                                  # plain cargo
 ```
@@ -104,7 +104,7 @@ second mechanism. Single mechanism, offline after sync, identical to the example
 `nros = { git = "https://github.com/NEWSLabNTU/nano-ros", package = "nros", … }`
 (+ the board crate via `package=`, one repo fetch deduped). For zero-setup /
 binary-only installs / CI quickstart / no-msg projects where no local checkout is
-present. Msg-using projects on this path still run `nros generate-rust` and carry
+present. Msg-using projects on this path still run `nros dev codegen rust` and carry
 the generated crates as local path deps.
 
 **Constraint (both shapes):** **no `version = "0.1"` crates.io dependency** may
@@ -164,7 +164,7 @@ nros-cli` nor a contradictory `--git` + `--path`. Exact string tracked by 196.7.
 - **D-Q4 — does `nros new` itself run/scaffold the sync? RESOLVED 2026-06 →
   scaffold-only + opt-in `--sync`.** `nros new` stays fast, deterministic,
   env-light file emission: it **prints** the source-release next-steps
-  (`NROS_REPO_DIR` → `eval "$(nros ws env)"` → `nros sync` → `cargo build`),
+  (`NROS_REPO_DIR` → `eval "$(nros dev ws env)"` → `nros sync` → `cargo build`),
   already implemented (196.7). It does **not** auto-run sync — sync codegens
   (needs ROS sourced + `NROS_REPO_DIR`) and would fail/hang at scaffold time when
   the env isn't ready; conditional auto-sync (run-iff-`NROS_REPO_DIR`-set) is

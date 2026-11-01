@@ -19,7 +19,7 @@
 # build: its cargo call ran upstream `RUST_CARGO_BUILD` (`-Zbuild-std`) on
 # the stable toolchain, named a `Cargo.toml` a bringup never has, and
 # linked a fixture glue calling `nros_system_main()`, which
-# `nros codegen-system` stopped emitting in Phase 258. No lane built it, so
+# `nros dev codegen system` stopped emitting in Phase 258. No lane built it, so
 # all three breaks stayed hidden. A NuttX workspace image is a CARGO-road
 # image: an `[image.<id>] board = "qemu-armv7a-nuttx"` block in the
 # bringup's `system.toml`, built by `nros build` — `examples/workspaces/rust`

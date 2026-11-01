@@ -144,7 +144,7 @@ refuses rather than answering differently, or names the unit it acts on
 | `--packages-above` | Refused for a cargo member with no `package.xml`: its dependents name it only as a `Cargo.toml` `path` dependency, which the `<depend>` graph does not hold, so the answer would silently be smaller than colcon's. |
 | `--continue-on-error` | In a workspace with no bringup the unit is the package, as in colcon: a failed package's dependents are skipped. In a workspace with images the unit is the IMAGE — each is one merged build, so a failure inside it fails that image, and the next image is still attempted. |
 | `--parallel-workers` | Same meaning (packages at once, each after its dependencies), default ONE rather than colcon's CPU count, because each package's own tool already runs parallel jobs. Above one it is refused for images, which share a generated root and target directory. |
-| `--build-base` | `<DIR>/<package>/` in a workspace with no bringup, as in colcon. Refused for images: an image's generated tree has a fixed place under `build/` that `nros image-facts`, the cmake module and the fixtures read. |
+| `--build-base` | `<DIR>/<package>/` in a workspace with no bringup, as in colcon. Refused for images: an image's generated tree has a fixed place under `build/` that `nros dev image facts`, the cmake module and the fixtures read. |
 | `--cmake-args` | Reaches every CMake configure, including a west image's (west's second zone); a cargo image has none, as colcon ignores the flag for a non-CMake package. |
 | `--base-paths` | Relative paths are taken against the workspace (`--workspace`, else the cwd), where colcon takes them against the cwd; the two agree whenever `--workspace` is left out. |
 
@@ -155,11 +155,11 @@ message crates, default `generated`), which is the build output `sync` writes.
 
 Every old spelling resolves, hidden from help:
 
-- An **old user-tier spelling** (`nros init`, `nros store gc`,
-  `nros ws list`) works and prints one line on stderr naming the new
+- An **old user-tier spelling** (`nros setup presets`, `nros toolchain gc`,
+  `nros list`) works and prints one line on stderr naming the new
   spelling. The line is suppressed when stderr is not a terminal, so a script
   that captures output sees no change.
-- An **old dev spelling** (`nros image-facts`, `nros ws board-facts`) works
+- An **old dev spelling** (`nros dev image facts`, `nros dev image board-facts`) works
   silently. Its callers are cmake, west and `just`, inside the tree and in
   users' trees built against an older toolchain, and a warning there is
   noise in a build log nobody reads.

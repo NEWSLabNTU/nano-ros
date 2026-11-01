@@ -23,7 +23,7 @@ echo "Refreshing Rust bindings..."
 #
 #   * Standalone example  → a PER-PACKAGE `generated/` beside the pkg's
 #     `package.xml`, resolved by that pkg's own (committed) `[patch.crates-io]`.
-#     Materialised with `nros generate-rust` (codegen only; the patch block ships).
+#     Materialised with `nros dev codegen rust` (codegen only; the patch block ships).
 #
 #   * Cargo workspace      → ONE SHARED `generated/` at the workspace root,
 #     resolved by the workspace manifest's `[patch.crates-io]` for every member

@@ -97,7 +97,7 @@ build-codegen:
 #
 # Policy: prebuilt when upstream publishes one, source only as the fallback.
 # `scripts/sdk-path-tools.txt` puts both on PATH; consumers resolve the exact
-# path with `nros sdk-path <tool>`, constructed from the pin (issue 0625).
+# path with `nros dev sdk path <tool>`, constructed from the pin (issue 0625).
 
 # Install Corrosion (cmake ↔ Rust bridge) into `~/.nros/sdk/corrosion/`.
 # Mixed-language workspaces (Phase 212) use `find_package(Corrosion)` +
@@ -198,7 +198,7 @@ doctor:
     # Store tool now; path CONSTRUCTED from the index pin (issue 0625), so this
     # cannot drift from what `nros setup --tool ninja` installed. The version is
     # the index's — there is no second pin here to disagree with it.
-    ninja_bin="$(nros sdk-path ninja 2>/dev/null)/bin/ninja"
+    ninja_bin="$(nros dev sdk path ninja 2>/dev/null)/bin/ninja"
     if [ -x "$ninja_bin" ]; then
         echo "  [OK] ninja $("$ninja_bin" --version) (SDK store; jobserver-capable)"
     else
@@ -212,7 +212,7 @@ doctor:
     # looking in the flat one, so the status line reported MISSING for a
     # correctly installed tool. Two spellings of one join, drifting the moment
     # one side moved — which is the whole reason the constructor exists.
-    corrosion_prefix="$(nros sdk-path corrosion 2>/dev/null || true)"
+    corrosion_prefix="$(nros dev sdk path corrosion 2>/dev/null || true)"
     # Presence is "the PINNED prefix holds a usable Corrosion", not "this recipe
     # wrote its stamp". `nros setup --tool corrosion` installs the same tool and
     # leaves `.nros-provenance` instead of `.installed-version`, so the
@@ -274,7 +274,7 @@ doctor:
     fi
 
     # --- pinned make (>=4.4 for the fifo jobserver, Phase 176) ---
-    make_bin="$(nros sdk-path make 2>/dev/null)/bin/make"
+    make_bin="$(nros dev sdk path make 2>/dev/null)/bin/make"
     if [ -x "$make_bin" ]; then
         echo "  [OK] make $("$make_bin" --version | head -1 | awk '{print $NF}') (SDK store; fifo jobserver)"
     else

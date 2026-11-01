@@ -173,7 +173,7 @@ It is deleted, along with the `NetStack` type. The question it half-answered
 ("who owns NIC + IP bring-up") is a property of the integration shell and is
 carried by RFC-0072's A/B split; the question consumers actually ask — *which*
 stack this board can be built with — is `supported_netstacks` (phase-351 W4),
-which IS read: by `BoardDescriptor::resolve_netstack`, by `nros ws board-facts`,
+which IS read: by `BoardDescriptor::resolve_netstack`, by `nros dev image board-facts`,
 and by `check-site-config`.
 
 ## Where board support survives, and why
@@ -230,7 +230,7 @@ export NXP_S32DS_PROJECT=~/MR_CANHUBK3_IEEE1722
 verbatim `.cpp`, plus a bringup pkg with `system.toml`:
 
 ```sh
-nros codegen-system --workspace my_ws --bringup safety_island_bringup \
+nros dev codegen system --workspace my_ws --bringup safety_island_bringup \
                     --target freertos --out build/nros-system
 ```
 
@@ -1752,7 +1752,7 @@ rest:
 ### D4 — cmake reads a generated projection, never a second authored file
 
 `nano_ros_use_board(<name>)` keeps its signature — a downstream consumer's call
-site does not move — but its body runs `nros board cmake-vars <name> --out
+site does not move — but its body runs `nros dev board cmake-vars <name> --out
 <build-dir>/…` and `include()`s the result. A build artifact, never committed
 (the SystemModel precedent, phase-330). `board.cmake` and the
 `[package.metadata.nros.board]` mirror are deleted, and with them the two-faces

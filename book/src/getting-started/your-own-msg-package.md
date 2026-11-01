@@ -198,7 +198,7 @@ add_subdirectory(src/my_app)
 ```
 
 ```sh
-cmake -B build -S . -DNANO_ROS_SDK="$(nros sdk-root)"
+cmake -B build -S . -DNANO_ROS_SDK="$(nros dev sdk root)"
 cmake --build build -j
 ./build/src/my_app/my_app
 ```

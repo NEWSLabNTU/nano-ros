@@ -3,7 +3,7 @@
 #
 # Exercises the domain agreement check in the Zephyr module's bake shim,
 # `zephyr/cmake/nros_system_generate.cmake`: the system's domain
-# (`system.toml`'s `domain_id`, baked by `nros codegen-system` as
+# (`system.toml`'s `domain_id`, baked by `nros dev codegen system` as
 # `#define NROS_SYSTEM_DOMAIN_ID <n>u`) and the image's domain
 # (`CONFIG_NROS_DOMAIN_ID`, and `CONFIG_NROS_CYCLONE_DOMAIN_ID` when Cyclone
 # is the backend) agree, or the configure stops naming all three.
@@ -99,9 +99,9 @@ trap 'cleanup_test_tmpdir' EXIT
 STUB="$TEST_TMPDIR/nros-stub"
 cat > "$STUB" <<'STUB_EOF'
 #!/bin/bash
-# `ws rmw-config` (RFC-0109 D6, phase-514 W3b): this bringup ships no RMW
+# `dev rmw config` (RFC-0109 D6, phase-514 W3b): this bringup ships no RMW
 # file, which the real CLI answers with no output.
-[ "$1" = ws ] && [ "$2" = rmw-config ] && exit 0
+[ "$1" = dev ] && [ "$2" = rmw ] && [ "$3" = config ] && exit 0
 out=""; bringup=""; prev=""
 for a in "$@"; do
     case "$prev" in
@@ -114,7 +114,7 @@ done
 mkdir -p "$out/nros-system"
 domain="$(sed -n 's/^domain_id *= *\([0-9]*\).*/\1/p' "$bringup/system.toml" | head -1)"
 {
-    echo '/* stub of `nros codegen system` */'
+    echo '/* stub of `nros dev codegen system` */'
     echo '#define NROS_SYSTEM_NAME "fixture"'
     if [ -z "${NROS_STUB_NO_DOMAIN:-}" ]; then
         echo "#define NROS_SYSTEM_DOMAIN_ID ${domain}u"

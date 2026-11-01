@@ -48,7 +48,7 @@ binding, RFC-0045 boot config, RFC-0048 CMake verbs).
 
 ## Model ingestion (build side)
 
-`nros codegen-system` gains a model mode: `--model system_model.yaml`
+`nros dev codegen system` gains a model mode: `--model system_model.yaml`
 (mutually exclusive with the launch/system.toml pair). Per RFC-0050 the
 model is checked-by-construction; ingestion is selection + mapping, not
 re-validation:

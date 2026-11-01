@@ -18,8 +18,8 @@
 #
 # `setup.sh` passed `--prefix "$SCRIPT_DIR/sdk"` to `nros setup --tool`, and
 # `--prefix` is the documented out-of-store escape hatch — a prefix install is
-# not recorded in `nros-sdk.lock`, so `nros sdk-path` cannot find it and
-# `nros store gc` does not know it exists. A downstream project's generated
+# not recorded in `nros-sdk.lock`, so `nros dev sdk path` cannot find it and
+# `nros toolchain gc` does not know it exists. A downstream project's generated
 # `env.sh` then carried
 #
 #   export ZEPHYR_SDK_INSTALL_DIR=".../nano-ros/scripts/zephyr/sdk/zephyr-sdk-1.0.1"
@@ -36,7 +36,7 @@
 # copy EXISTS, so a host provisioned before this keeps resolving to its checkout
 # copy and keeps building. Nothing moves until something installs to the store.
 #
-# A resolved path is not an installed tree — `nros sdk-path zephyr-sdk` happily
+# A resolved path is not an installed tree — `nros dev sdk path zephyr-sdk` happily
 # prints `~/.nros/sdk/zephyr-sdk/0.16.8` on a host that has never installed it.
 # So every arm here is EXISTENCE-CHECKED, and `default` (the install target) is
 # the one caller that deliberately wants the unchecked answer.
@@ -99,11 +99,11 @@ nros_zephyr_sdk_store_root() {
 # `<version>/zephyr-sdk-<version>/`. `ZEPHYR_SDK_INSTALL_DIR` must name that
 # inner directory.
 #
-# issue 1259 — `nros sdk-path` NOW ANSWERS THAT DIRECTORY. The index states the
+# issue 1259 — `nros dev sdk path` NOW ANSWERS THAT DIRECTORY. The index states the
 # tarball's own top-level directory as `[tool.*] subdir`, so the layout is one
 # fact in the file that already owns the URL and the checksum. This function
 # therefore stops appending: "the one thing a consumer cannot get from
-# `nros sdk-path` alone" (issue 1254) was a gap in the CLI, and appending here
+# `nros dev sdk path` alone" (issue 1254) was a gap in the CLI, and appending here
 # was a second copy of the pin living in a shell script — one bump away from
 # naming a directory nothing installed.
 nros_zephyr_sdk_store_dir() {
@@ -111,14 +111,14 @@ nros_zephyr_sdk_store_dir() {
     [ -n "$version" ] || version="$(nros_zephyr_sdk_version)"
     [ -n "$tool" ] || tool="$(nros_zephyr_sdk_tool)"
 
-    # ASK the CLI rather than restating its layout. `nros sdk-path` is the
+    # ASK the CLI rather than restating its layout. `nros dev sdk path` is the
     # producer of that answer, and it answers without touching the disk, so an
     # absent SDK still resolves.
     # Issue 1880 — the ONE CLI ladder (`nros_cli_bin`), not PATH: in a linked
     # worktree PATH names the parent checkout's `nros` and its index pins.
     local _zsdk_cli
     if _zsdk_cli="$(_nros_zephyr_sdk_cli)"; then
-        base="$("$_zsdk_cli" sdk-path "$tool" 2>/dev/null || true)"
+        base="$("$_zsdk_cli" dev sdk path "$tool" 2>/dev/null || true)"
     fi
     if [ -n "$base" ]; then
         printf '%s\n' "$base"
@@ -162,7 +162,7 @@ nros_zephyr_sdk_resolve() {
     fi
 
     # The store and checkout arms must hold the version ASKED for, not merely
-    # exist. `nros sdk-path` answers for the `[tool.*]` entry that
+    # exist. `nros dev sdk path` answers for the `[tool.*]` entry that
     # `NROS_ZEPHYR_VERSION` selects, not for `--version`. So a 4.4 tree asking
     # for 1.0.1 from a shell left on the 3.7 default was handed the 0.16.8
     # store dir (issue 1811). An SDK root states its own version in

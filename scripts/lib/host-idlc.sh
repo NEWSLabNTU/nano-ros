@@ -22,7 +22,7 @@
 #   4. <repo>/build/cyclonedds/bin, <repo>/build/install/bin (last resort)
 #
 # No `nros` CLI is needed: the store path is built from `store-root.sh` +
-# `sdk-pin.sh`, the shell twins of what `nros sdk-path cyclonedds` prints.
+# `sdk-pin.sh`, the shell twins of what `nros dev sdk path cyclonedds` prints.
 
 _NROS_HOST_IDLC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=scripts/lib/sdk-pin.sh

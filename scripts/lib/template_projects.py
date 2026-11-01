@@ -16,7 +16,7 @@ The unit is the PROJECT. A `system.toml` belongs to:
   workspace bringup, found the way `nros build`'s discovery finds packages
   (`<root>` and `<root>/src`, `builder::discover`);
 * otherwise its OWN directory — a single-package leaf, which is what
-  `nros ws leaf-system` and `find_package(nano_ros)` read it as.
+  `nros dev image leaf-system` and `find_package(nano_ros)` read it as.
 
 Usage:
     template_projects.py <template-dir> <tracked-file>...
@@ -78,7 +78,7 @@ def descriptor_value(path: str, board: str, key: str) -> str:
         doc = tomllib.load(fh)
     section, _, field = key.partition(".")
     blocks = doc.get("board", []) or []
-    # `nros ws board-facts` already chose this FILE for the board; a file with
+    # `nros dev image board-facts` already chose this FILE for the board; a file with
     # several `[[board]]`s (nros-board-nuttx-qemu) is disambiguated by `names`,
     # and a single-block file is the answer whatever its aliases say
     # (`nros-board-mps2-an385-freertos` names itself `freertos`).

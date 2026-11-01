@@ -280,7 +280,7 @@ endfunction()
 # `<nano_ros deploy= board= rmw=/>` tuple above, which stays readable as the
 # deprecated fallback while the remaining leaves are converted.
 #
-# The file is read by `nros ws leaf-system` — the CLI front of
+# The file is read by `nros dev image leaf-system` — the CLI front of
 # `nros_orchestration_ir::leaf_system`, the ONE reader `nros::main!` and
 # `nros sync` also use — never by a regex here: a second parser of one file is
 # how a Rust and a C leaf would read it two ways. The DEPLOY token (the
@@ -329,7 +329,7 @@ function(nano_ros_read_leaf_system)
     nros_resolve_cli(_nros CONTEXT "nano_ros_read_leaf_system (${_NRL_DIR}/system.toml)")
     # Issue 1556 item 4 -- `-DNROS_LEAF_BOARD=<board>` answers for that
     # board instead of the image's: the host census configure of a standalone
-    # leaf (`nros ws entity-census take --leaf`) builds the leaf's own `src/`
+    # leaf (`nros dev image entity-census take --leaf`) builds the leaf's own `src/`
     # for `native`. Unset, nothing changes.
     set(_nrl_board_arg "")
     if(DEFINED NROS_LEAF_BOARD AND NOT NROS_LEAF_BOARD STREQUAL "")
@@ -366,7 +366,7 @@ function(nano_ros_read_leaf_system)
         set(_nrl_image_arg --image "${NROS_IMAGE}")
     endif()
     execute_process(
-        COMMAND "${_nros}" ws leaf-system "${_NRL_DIR}" --nano-ros-path "${NROS_REPO_DIR}"
+        COMMAND "${_nros}" dev image leaf-system "${_NRL_DIR}" --nano-ros-path "${NROS_REPO_DIR}"
                 ${_nrl_board_arg} ${_nrl_image_arg} ${_nrl_image_env_arg}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
@@ -389,7 +389,7 @@ function(nano_ros_read_leaf_system)
     # (NROS_LEAF_CONF, NROS_LEAF_SNIPPET) was cut at its first `;`, and a line
     # with an unbalanced `[` swallowed the rows after it.
     nros_cli_rows(_row "${_out}" REQUIRE "^NROS_LEAF_[A-Z0-9_]+="
-        CONTEXT "`nros ws leaf-system` for ${_NRL_DIR}/system.toml")
+        CONTEXT "`nros dev image leaf-system` for ${_NRL_DIR}/system.toml")
     foreach(_i IN LISTS _row_INDICES)
         set(_l "${_row_${_i}}")
         if(_l MATCHES "^NROS_LEAF_ROS_ARGS_INPUT=(.*)$")
@@ -419,7 +419,7 @@ function(nano_ros_read_leaf_system)
     endif()
     if("${_NROS_LEAF_DEPLOY}" STREQUAL "")
         message(FATAL_ERROR
-            "nano-ros: `nros ws leaf-system ${_NRL_DIR}` printed no deploy token:\n${_out}")
+            "nano-ros: `nros dev image leaf-system ${_NRL_DIR}` printed no deploy token:\n${_out}")
     endif()
     # RFC-0103 D10f (phase-497 W2) — the top-level leaf's resolved network,
     # for `nros_board_net_c` (NanoRosBoardNet.cmake). A GLOBAL property because
@@ -477,7 +477,7 @@ function(nano_ros_read_leaf_system)
 
     # A board that IS its platform (`linux`, `zephyr`) names no separate
     # provider — exactly the tuple shape `<nano_ros deploy="native"/>` had.
-    # `nros ws leaf-system` decides that from the board CATALOG and says so by
+    # `nros dev image leaf-system` decides that from the board CATALOG and says so by
     # printing an empty NROS_LEAF_CMAKE_BOARD (phase-517 W2). This used to be a
     # LEXICAL test here (board word == deploy token), which also emptied every
     # board whose alias happens to spell its platform — `freertos`, `nuttx`,

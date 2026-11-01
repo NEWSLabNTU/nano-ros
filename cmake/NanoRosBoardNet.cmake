@@ -13,7 +13,7 @@
 #
 # Sets <out_var> to the `.network = { … }` body of a C `nros_app_config_t`
 # initializer: the board's `[board.net]` default with the IMAGE's resolved
-# network over it (`nros board net <board> --image-net <text> --format cmake`,
+# network over it (`nros dev board net <board> --image-net <text> --format cmake`,
 # RFC-0103 D10f). The image's network is the configure's: `-DNROS_IMAGE_NET=`
 # (the workspace road), else what `nano_ros_read_leaf_system` read from a
 # top-level leaf's `system.toml`. It replaced `IP_LAST` / `MAC_LAST`, a build
@@ -68,7 +68,7 @@ function(nros_board_net_c board out_var)
             return()
         endif()
         message(FATAL_ERROR
-            "nros_board_net_c: `nros board net ${board}` failed (${_rc}): ${_err}")
+            "nros_board_net_c: `nros dev board net ${board}` failed (${_rc}): ${_err}")
     endif()
     # Two `set()` lines, evaluated in this scope: nothing is written to the
     # build dir, so nothing there can go stale between configures.

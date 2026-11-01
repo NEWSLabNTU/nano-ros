@@ -384,7 +384,7 @@ endfunction()
 # when the resolve was composed over this configure's own inputs (issue 1228).
 #
 # `nros build` composes a C/C++ west image at stage 3.5 by the same function
-# `nros ws entity-inventory` runs (`cmd::entity_inventory::compose_image`), over
+# `nros dev image entity-inventory` runs (`cmd::entity_inventory::compose_image`), over
 # the population the image's packages register, and records what it composed
 # over in `resolved-entity-inputs.cmake`. Equal inputs into one function are
 # equal outputs, so on a match this copies `resolved.cmake` to `<output>` and

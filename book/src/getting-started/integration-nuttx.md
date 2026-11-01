@@ -58,7 +58,7 @@ Wire the shell into your NuttX apps tree. Two commands, both run once:
 
 ```bash
 nros setup qemu-armv7a-nuttx --rmw zenoh    # toolchain + NuttX sources + SDK
-"$(nros sdk-root)/scripts/nuttx/stage-external-apps.sh" "$NUTTX_APPS_DIR"
+"$(nros dev sdk root)/scripts/nuttx/stage-external-apps.sh" "$NUTTX_APPS_DIR"
 ```
 
 The staging script writes `$NUTTX_APPS_DIR/external/Make.defs` + `Kconfig`
@@ -76,7 +76,7 @@ staged a per-bringup app that could not build an image, and now refuse.
 If you'd rather wire it yourself (e.g. into a vendored apps tree):
 
 ```bash
-ln -s "$(nros sdk-root)/integrations/nuttx" \
+ln -s "$(nros dev sdk root)/integrations/nuttx" \
       $NUTTX_APPS_DIR/external/nano-ros
 # then copy integrations/nuttx/external-Make.defs.in →
 # $NUTTX_APPS_DIR/external/Make.defs and add a matching
@@ -255,7 +255,7 @@ Started Zenoh router with id
 `$NUTTX_DIR/nuttx` from the make build), from the package directory:
 
 ```bash probe=70 probe-run=120 variant=arm
-"$(nros sdk-path qemu)/bin/qemu-system-arm" -M virt -cpu cortex-a7 -nographic \
+"$(nros dev sdk path qemu)/bin/qemu-system-arm" -M virt -cpu cortex-a7 -nographic \
     -icount shift=auto \
     -netdev user,id=net0 \
     -device virtio-net-device,netdev=net0 \
@@ -266,7 +266,7 @@ The Rust workspace image boots the same way, from the workspace directory,
 with the ELF `nros build` printed:
 
 ```bash probe=70 probe-run=120 variant=arm-rust
-"$(nros sdk-path qemu)/bin/qemu-system-arm" -M virt -cpu cortex-a7 -nographic \
+"$(nros dev sdk path qemu)/bin/qemu-system-arm" -M virt -cpu cortex-a7 -nographic \
     -icount shift=auto \
     -netdev user,id=net0 \
     -device virtio-net-device,netdev=net0 \

@@ -5,7 +5,7 @@ You need two things, and a release carries both:
 * the **`nros` CLI**, which provisions toolchains, scaffolds projects,
   generates message bindings and drives the build; and
 * the **library**, which is distributed as source and compiled into your
-  build. It ships inside the release as its *SDK root* — `nros sdk-root`
+  build. It ships inside the release as its *SDK root* — `nros dev sdk root`
   prints where — and `nros build` points your project at it. There is no
   prebuilt library and no system-wide install step.
 
@@ -137,7 +137,7 @@ Check the install:
 
 ```sh
 nros version        # the CLI and library versions
-nros sdk-root       # where the library source this CLI builds against lives
+nros dev sdk root       # where the library source this CLI builds against lives
 nros doctor         # SDK paths, toolchains, environment
 ```
 
@@ -486,7 +486,7 @@ printf '[toolchain]\nversion = "0.6.0-nros4"\n' > nros-toolchain.toml
 Ask which release answers here — the pinned one, fetched on first use:
 
 ```bash probe=50 probe-run=600 track=installed variant=pinned
-nros toolchain manifest
+nros dev sdk manifest
 ```
 
 ```text probe-expect=50 variant=pinned

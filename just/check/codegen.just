@@ -37,7 +37,7 @@ artifact-identity-budget:
 boot-report-layout:
     @python3 scripts/check-boot-report-layout.py
 
-# Canonical `nros codegen` invocation-shape guard. The `check.yml` step (SSoT).
+# Canonical `nros dev codegen` invocation-shape guard. The `check.yml` step (SSoT).
 [private]
 codegen-invocation:
     @scripts/ci/codegen-invocation-check.sh
@@ -338,7 +338,7 @@ census-hooks-complete:
 #
 # phase-463 W3 made the comparison; this gates the two properties that decide
 # whether the comparison is ever reached with a document worth comparing. An
-# RTOS image's configure asks `nros ws entity-census check --require-fresh`
+# RTOS image's configure asks `nros dev image entity-census check --require-fresh`
 # before it builds anything, and `[census] on_missing` / `on_stale` in the
 # bringup's `system.toml` decide whether the answer stops the build.
 #
@@ -445,7 +445,7 @@ param-inventory-road-parity:
 # phase-460 W4 (issue 1423) -- the system's domain and the image's domain agree,
 # or the configure says so.
 #
-# `nros codegen-system` bakes `system.toml`'s `domain_id` as
+# `nros dev codegen system` bakes `system.toml`'s `domain_id` as
 # `NROS_SYSTEM_DOMAIN_ID`; the Zephyr image runs on `CONFIG_NROS_DOMAIN_ID`. No
 # layer compared the two, and the island shipped with 2 in one and 10 in the
 # other until a person noticed. `nros_system_generate` now refuses the
@@ -563,7 +563,7 @@ generated-leaf-regenerable:
 # artifact (generated into <ws>/build/nros/models by `nros sync`); tracking
 # one re-opens the issue-0380 hand-edit/regeneration conflict. Supersedes
 # check-model-dims (W5.b: the dim baseline protected committed files that no
-# longer exist; `nros ws model-dims` remains for inspection).
+# longer exist; `nros dev image model-dims` remains for inspection).
 # issue 0571 — a matrix consumer must narrow its own cell list
 # (`nros_tests::lane_scope::admits`). Several consumers are ONE generically-named
 # test each over every platform's cells, so nothing outside the test can
@@ -805,7 +805,7 @@ cmake-ament-surface:
     # shellcheck source=scripts/build/cargo.sh
     source scripts/build/cargo.sh
     # issue 1850 — this checkout's CLI (or an explicit $NROS_CLI), never PATH:
-    # the message resolver asks `nros profile`, and a host-installed `nros`
+    # the message resolver asks `nros dev profile`, and a host-installed `nros`
     # older than that subcommand fails every configure.
     if ! _cli="$(nros_cli_bin --checkout-only)"; then
         # shellcheck source=scripts/build/check-skip.sh

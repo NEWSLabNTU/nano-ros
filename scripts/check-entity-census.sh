@@ -108,10 +108,10 @@ resolve_nros() {
         [ -n "$c" ] && [ -x "$c" ] || continue
         # A CLI that predates this wave has no such subcommand and exits
         # non-zero; that is a candidate rejected, not a tool failure.
-        help="$("$c" ws entity-census check --help 2>&1)" || continue
+        help="$("$c" dev image entity-census check --help 2>&1)" || continue
         # Issue 1419 -- and the `path` verb, which is how both sides of the
         # census name one file; a CLI without it keys the census by entry.
-        "$c" ws entity-census path --help >/dev/null 2>&1 || continue
+        "$c" dev image entity-census path --help >/dev/null 2>&1 || continue
         if nros_grep_q -- '--require-fresh' <<<"$help"; then
             nros="$c"
             return 0
@@ -292,8 +292,8 @@ chmod +x "$ws/fixture_entry"
 # a cross configure consumes. phase-463 W4 keyed both by entry and build dir,
 # and this gate named the path on both sides itself, so it could not see that
 # the two never met on a real workspace.
-census="$("$nros" ws entity-census path --model "$model")" ||
-    fail "\`nros ws entity-census path --model\` failed"
+census="$("$nros" dev image entity-census path --model "$model")" ||
+    fail "\`nros dev image entity-census path --model\` failed"
 case "$census" in
     "$bringup/config/system_model.census.json") ;;
     *) fail "the census of \`$model\` is not beside it: \`$census\`" ;;
@@ -301,7 +301,7 @@ esac
 stamp_model
 
 take_census() {
-    ( cd "$ws" && "$nros" ws entity-census run \
+    ( cd "$ws" && "$nros" dev image entity-census run \
         --entry fixture_entry \
         --workspace "$ws" \
         --binary "$ws/fixture_entry" \
@@ -309,7 +309,7 @@ take_census() {
 }
 
 check() {
-    ( cd "$ws" && "$nros" ws entity-census check \
+    ( cd "$ws" && "$nros" dev image entity-census check \
         --model "$model" \
         --system-toml "$bringup/system.toml" \
         --workspace "$ws" \

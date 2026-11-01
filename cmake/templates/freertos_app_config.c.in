@@ -14,7 +14,7 @@
  * phase-337 W5.d folded the board `build.rs`'s hand-written mirror onto
  * `BaseConfig` + `FreertosScheduling`. phase-484 W4b: the `.network` block is
  * no longer a copy either — it is the board's `[board.net]` over the platform
- * default, asked of `nros board net` (`nros_board_net_c`) with this image's
+ * default, asked of `nros dev board net` (`nros_board_net_c`) with this image's
  * last IP octet / MAC byte. The carrier still varies `.locator` / `.domain_id`
  * per image; the scheduling block below is the remaining hand-kept copy.
  *

@@ -69,7 +69,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")  # nros_codegen_tool_recon
 # a build dir that no `nros sync`-written `.cargo/config.toml` covers, so
 # without the table cargo looks the member's `nros` up on crates.io and fails
 # "no matching package named `nros` found". The table comes from the ONE
-# writer `nros sync` uses (`nros ws central-patch`), never restated here, so the
+# writer `nros sync` uses (`nros dev lock central-patch`), never restated here, so the
 # two cannot resolve against different crates.
 function(_nros_central_patch_table out)
     set(_file "${NROS_REPO_DIR}/nros-patch.toml")
@@ -78,14 +78,14 @@ function(_nros_central_patch_table out)
         # dependency, so rebuilding `nros` re-runs this.
         nros_codegen_tool_reconfigure("${_NANO_ROS_CODEGEN_TOOL}")
         execute_process(
-            COMMAND "${_NANO_ROS_CODEGEN_TOOL}" ws central-patch
+            COMMAND "${_NANO_ROS_CODEGEN_TOOL}" dev lock central-patch
                     --nano-ros-path "${NROS_REPO_DIR}"
             RESULT_VARIABLE _rc
             OUTPUT_QUIET
             ERROR_VARIABLE _err)
         if(NOT _rc EQUAL 0)
             message(FATAL_ERROR
-                "nano-ros: `nros ws central-patch` failed (${_rc}); the runtime "
+                "nano-ros: `nros dev lock central-patch` failed (${_rc}); the runtime "
                 "umbrella needs its [patch.crates-io] table (issue 2085).\n${_err}")
         endif()
     endif()

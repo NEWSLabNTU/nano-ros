@@ -187,7 +187,7 @@ EXEMPT = {
         "-DNROS_IMAGE=twin",
         "twin probe track (phase-524 W4a): runs in a container with NO "
         "checkout, on the installed release, so there is no zephyr-module.sh "
-        "to source; it names the installed SDK root, `$(nros sdk-root)`, which "
+        "to source; it names the installed SDK root, `$(nros dev sdk root)`, which "
         "is the nros module, the way the Zephyr chapter's own build line does.",
     ),
     os.path.join("just", "zephyr-dev.just"): (

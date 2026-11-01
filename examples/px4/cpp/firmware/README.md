@@ -63,7 +63,7 @@ convention throughout — `ModuleBase<T>` + `ScheduledWorkItem`, a `Kconfig`,
 `PRINT_MODULE_*` usage strings, tab indent, CamelCase file named after the class.
 
 One nano-ros-specific call in its CMakeLists, after the shared block that
-resolves `NROS_REPO_DIR` (explicit `-DNROS_REPO_DIR`, else `nros sdk-root`;
+resolves `NROS_REPO_DIR` (explicit `-DNROS_REPO_DIR`, else `nros dev sdk root`;
 never the environment — RFC-0103 D6):
 
 ```cmake

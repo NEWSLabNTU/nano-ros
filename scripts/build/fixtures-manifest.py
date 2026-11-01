@@ -546,7 +546,7 @@ def builds_through_leaf_settings(entry):
 
     ONE predicate, and it is a property of the LEAF, not of the row: a package
     directory with a `system.toml` beside its `Cargo.toml` (RFC-0098 D3). The
-    builder asks the CLI for the file's path (`nros ws leaf-system` ->
+    builder asks the CLI for the file's path (`nros dev image leaf-system` ->
     `NROS_LEAF_SETTINGS`) and FAILS when a leaf this predicate accepts has none,
     so the two cannot silently disagree — a row that lost its `--target` here
     and its settings file there would build for the host.
@@ -2290,14 +2290,14 @@ def main():
 
     if a.command == "census-images":
         # Issue 1419 -- one line per (workspace dir, qualified image) whose
-        # build checks a census with `nros ws entity-census check
+        # build checks a census with `nros dev image entity-census check
         # --require-fresh`: a workspace row that names an `image` and is not a
         # host row (`linux` is the census PRODUCER's own platform). Every
         # language: since issue 1419, `nros build` stage 4 asks for the census
         # of a cross CARGO image and of a Rust WEST image
         # (`rust_cargo_application()`, which no configure check reaches), and a
         # Rust host entry produces one. Whether the image's model has a contract at all is
-        # `nros ws entity-census take`'s question, not this table's: it answers
+        # `nros dev image entity-census take`'s question, not this table's: it answers
         # "nothing to reconcile" for the rest, and one rule for that lives in
         # the CLI. Deduplicated, in manifest order.
         seen = set()
@@ -2320,7 +2320,7 @@ def main():
         # has a `[[component]]` with `entities = "census"`: its configure reads
         # the leaf's census (`nros ws entity-facts --leaf`, `sizing-descriptor
         # --from-leaf`) and REFUSES without a fresh one, so the build takes it
-        # first (`nros ws entity-census take --leaf`). Keyed on the leaf's own
+        # first (`nros dev image entity-census take --leaf`). Keyed on the leaf's own
         # opt-in, never on its shape: a leaf that did not opt in keeps the
         # sizing it has, census or not. Deduplicated, in manifest order.
         seen = set()

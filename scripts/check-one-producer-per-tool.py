@@ -35,7 +35,7 @@ A recipe or script body that NAMES an indexed tool and also does one of:
 
 Forwarding is FINE and is the point: `install-corrosion` still exists, still has
 the name people type, and its body is one `nros setup --tool corrosion`. So is a
-body that only READS the store (`nros sdk-path`), reports (`doctor`), or names
+body that only READS the store (`nros dev sdk path`), reports (`doctor`), or names
 the tool in prose.
 
 WHAT IS OUT OF SCOPE, AND WHY
@@ -109,7 +109,7 @@ EXEMPT = {
         "is not the 'faster to install directly' argument the two retired "
         "producers made. The script is also not a SECOND producer in issue "
         "0500's sense: it writes the same versioned store prefix and fronts it "
-        "the same way (`nros sdk-front`), which is why the shapes agree once "
+        "the same way (`nros dev sdk front`), which is why the shapes agree once "
         "there is an `nros` to compare against."
     ),
 }

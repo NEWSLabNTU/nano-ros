@@ -165,9 +165,9 @@ fn list(args: ListArgs) -> Result<()> {
         println!("{line}");
     }
     for line in [
-        "`nros store gc` only ever removes `installed` entries. `legacy-flat` is the",
+        "`nros toolchain gc` only ever removes `installed` entries. `legacy-flat` is the",
         // See issue 0628.
-        "  unversioned prefix `nros sdk-path` still resolves through —",
+        "  unversioned prefix `nros dev sdk path` still resolves through —",
         "  removing one un-provisions a working host. `source-tree` is what a source",
         "  install BUILT from: nothing needs it, but it is also where local patches",
         "  would be, so it is reported rather than collected.",
@@ -319,7 +319,7 @@ fn report_plan(plan: &GcPlan, now: std::time::SystemTime, older_than: &str) {
     println!();
     println!(
         "kept: {} used within {older_than}, {unmanaged} not attributable to an install \
-         (never removed — see `nros store list`).",
+         (never removed — see `nros toolchain list`).",
         too_new
     );
 

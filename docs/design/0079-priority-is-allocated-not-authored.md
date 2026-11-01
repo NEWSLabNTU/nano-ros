@@ -241,7 +241,7 @@ Whatever starves that tier, it is not this.
 Ordinal sequence → concrete numbers inside `pool.app`, in the port's direction,
 spread with headroom, never overlapping a reservation. The result lands in the
 SystemModel build artifact (already a build artifact — RFC-0063) and is
-inspectable with `nros ws model-dims`. Insufficient distinct slots is a build
+inspectable with `nros dev image model-dims`. Insufficient distinct slots is a build
 error naming the pool, not a silent squeeze.
 
 **Amended 2026-09-27 (issue 1427) — "insufficient slots" is TWO states, and
@@ -300,8 +300,8 @@ known.** `PriorityPlan::for_target("zephyr")` is the Kconfig DEFAULTS
 projection, right only for images on Zephyr's defaults: an image with
 `CONFIG_NUM_PREEMPT_PRIORITIES=32` owns `[8, 31]` and one with
 `CONFIG_NROS_ZENOH_READ_PRIORITY=100` owns `[10, 14]`, and the projection's 5 is
-above or inside their transport. The C/C++ entry (`nros codegen entry`) and the
-module bake (`nros codegen-system`) run at cmake configure time AFTER Kconfig,
+above or inside their transport. The C/C++ entry (`nros dev codegen entry`) and the
+module bake (`nros dev codegen system`) run at cmake configure time AFTER Kconfig,
 so they take `--dotconfig ${DOTCONFIG}` and allocate from the image's own plan
 (`derive_tiers_in_plan`): 8 / 9 and 10 / 11 on those two images, measured on
 built native_sim images, and 5 / 6 unchanged on the default one. An image whose
@@ -317,7 +317,7 @@ FreeRTOS's `report_tiers_above_transport`) — the one check that sees authored
 pins on the image.
 
 **Implemented 2026-10-16 - the record.** "The result lands in a build
-artifact" was a stderr line. `nros codegen entry` now writes two files beside
+artifact" was a stderr line. `nros dev codegen entry` now writes two files beside
 the generated TU (`codegen/entry/priority_record.rs`):
 `nros_priority_plan.json` (the plan - direction, range, reserved bands,
 `pool.app`, its source and whether it is the image's own; each tier's
@@ -678,7 +678,7 @@ parallel it:
 | deadline-monotonic derivation | `mapper:` — a NAMED, chosen algorithm | theirs is better; see below |
 | static pin, checked | `overrides:`, "overrides always beat derived" | same rule |
 | `[board.priority_plan]` per port | platform file per `target:` | same split |
-| `nros ws model-dims` | `check --explain` | same need |
+| `nros dev image model-dims` | `check --explain` | same need |
 
 ### Three things to take
 

@@ -306,7 +306,7 @@ build-fixture-rust:
     # Phase 210.E.3.d.native — pre-cargo codegen via `nros sync` writes
     # the auto-managed [patch.crates-io] block into each example's Cargo.toml
     # + materialises generated msg crates under `<ex>/generated/`.
-    # Replaces the legacy `nros generate-rust --force` + hand-managed
+    # Replaces the legacy `nros dev codegen rust --force` + hand-managed
     # `.cargo/config.toml [patch.crates-io]` chunks.
     nros_repo_root="$PWD"
     for ex in talker listener service-server service-client service-client-callback action-server \

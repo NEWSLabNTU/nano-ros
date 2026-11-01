@@ -39,7 +39,7 @@ fi
 # Their `dest` is SDK-root-relative, so they must land inside the installed
 # SDK root (as W10 measured for the NuttX sources), never in a checkout.
 echo '=== probe verify: checkout-located index sources provision into the SDK root ==='
-sdk_root="$(nros sdk-root)"
+sdk_root="$(nros dev sdk root)"
 for pair in \
     tonbandgeraet:third-party/tracing/Tonbandgeraet \
     px4-rs:third-party/px4/px4-rs \

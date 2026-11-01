@@ -6,7 +6,7 @@
 //! Node pkg shape: `register()` declares node + publisher + timer;
 //! `ExecutableNode::on_callback("on_tick")` runs the timer body
 //! (bump counter, publish). The generated runtime — emitted by
-//! `nros codegen-system` via the H.4 ThreadX adapter shim — owns
+//! `nros dev codegen system` via the H.4 ThreadX adapter shim — owns
 //! `nros::init`, executor open, RMW registration, and the spin loop.
 
 #![no_std]

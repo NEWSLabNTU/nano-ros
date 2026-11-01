@@ -372,7 +372,7 @@ function(nros_codegen_version_stale _stale_var)
     endif()
     set(_context "${_V_CONTEXT}")
     if(_context STREQUAL "")
-        set(_context "nros codegen")
+        set(_context "nros dev codegen")
     endif()
     set(_rejected "")
     foreach(_f ${_V_FILES})
@@ -416,7 +416,7 @@ function(nros_codegen_version_assert_fresh _tool)
     list(GET _bad 0 _first)
     nros_codegen_emitted_version("${_first}" _emitted)
     message(FATAL_ERROR
-        "nros codegen: the regenerated tree is STILL at a codegen version this "
+        "nros dev codegen: the regenerated tree is STILL at a codegen version this "
         "runtime refuses (issue 1360).\n"
         "  emitted:          ${_emitted}\n"
         "  this tree accepts ${_min}..${_max}\n"
@@ -492,7 +492,7 @@ endfunction()
 #     ROS_EDITION <edition> [CODEGEN_CONFIG <path>] [CONFIG_SEARCH_DIR <dir>]
 #     INTERFACE_FILES <files...> DEPS <pkgs...>)
 #
-# Build the `nros codegen --args-file` JSON and write it ONLY when the content
+# Build the `nros dev codegen --args-file` JSON and write it ONLY when the content
 # changed (so a re-configure doesn't perturb the file mtime → the codegen
 # add_custom_command / mtime check sees its outputs already up to date,
 # essential for the workspace-shared codegen cache). `CODEGEN_CONFIG` is the
@@ -622,7 +622,7 @@ endfunction()
 
 # nros_codegen_env_prefix(<out_var>)
 #
-# The command prefix every `nros codegen` invocation runs under, so a workspace
+# The command prefix every `nros dev codegen` invocation runs under, so a workspace
 # interface search path set as a cmake VARIABLE reaches the CLI, which reads
 # only the ENV (`load_index_with_fallback`). Empty when the env already carries
 # one (an exported value wins, the smart-stub's layering) or there is none.
@@ -647,7 +647,7 @@ endfunction()
 #                          ARGS_FILE <json> OUTPUT_DIR <dir>)
 #
 # RFC-0104 D5 / issue 1780 — "did the ament inputs this package was generated
-# FROM move?", asked at configure by both cmake generators. Runs `nros codegen
+# FROM move?", asked at configure by both cmake generators. Runs `nros dev codegen
 # --ament-witness`: the CLI hashes the package's ament inputs (package.xml +
 # interface files, over its dependency closure) and rewrites `<args>.ament.toml`
 # ONLY when that hash moved, naming the moved package on stdout when the
@@ -704,7 +704,7 @@ function(nros_codegen_ament_stale _stale)
         file(WRITE "${_w_env_file}" "${_w_search}")
     endif()
     execute_process(
-        COMMAND ${_w_env} "${_W_TOOL}" codegen --args-file "${_W_ARGS_FILE}"
+        COMMAND ${_w_env} "${_W_TOOL}" dev codegen --args-file "${_W_ARGS_FILE}"
                 --language "${_W_LANGUAGE}" --ament-witness "${_witness}"
         RESULT_VARIABLE _w_rc
         OUTPUT_VARIABLE _w_out
@@ -712,7 +712,7 @@ function(nros_codegen_ament_stale _stale)
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _w_rc EQUAL 0)
         message(FATAL_ERROR
-            "nros codegen --ament-witness failed (exit ${_w_rc}) for ${_W_ARGS_FILE}:\n"
+            "nros dev codegen --ament-witness failed (exit ${_w_rc}) for ${_W_ARGS_FILE}:\n"
             "  ${_w_out}\n  ${_w_err}")
     endif()
     if(_w_out)
@@ -812,7 +812,7 @@ endfunction()
 # _nros_predict_generated_outputs(<headers_var> <sources_var> <rs_var>
 #     LANGUAGE C|CPP PACKAGE <name> OUTPUT_DIR <dir> INTERFACE_FILES <files...>)
 #
-# Predict the files `nros codegen` will emit for the given interfaces, returning
+# Predict the files `nros dev codegen` will emit for the given interfaces, returning
 # three lists (headers / C sources / Rust FFI `.rs`) in the caller's scope.
 # CPP: `<pkg>_<kind>_<name>.hpp` + a split `_types.rs`+`_exports.rs` pair per
 # part (phase-306 W1: msg→1 pair, srv→request+response, action→goal+result+
@@ -1199,7 +1199,7 @@ function(nros_language_of_sources _out)
     # depending on which copy read it; it is a configure FATAL_ERROR now.
     if(NOT _nls_rc EQUAL 0)
         message(FATAL_ERROR
-            "${_NLS_CONTEXT}: `nros codegen source-language` could not name the "
+            "${_NLS_CONTEXT}: `nros dev codegen source-language` could not name the "
             "language of these sources (rc=${_nls_rc}).\n"
             "  sources: ${_NLS_SOURCES}\n"
             "  ${_nls_err}\n"
@@ -1208,7 +1208,7 @@ function(nros_language_of_sources _out)
     endif()
     if(NOT _nls_out MATCHES "language=([A-Za-z0-9_]+)")
         message(FATAL_ERROR
-            "${_NLS_CONTEXT}: `nros codegen source-language` reported no "
+            "${_NLS_CONTEXT}: `nros dev codegen source-language` reported no "
             "language:\n${_nls_out}")
     endif()
     # Reported at VERBOSE because "which language did this verb pick, and did it
@@ -1242,7 +1242,7 @@ endfunction()
 # nros_find_interfaces.cmake) — they must NOT be unified.
 function(_nros_resolve_codegen_tool _cv)
     if(${_cv} AND NOT "${${_cv}}" MATCHES "^\\$<" AND NOT EXISTS "${${_cv}}")
-        message(STATUS "Cached nros codegen tool no longer exists: ${${_cv}}; re-detecting")
+        message(STATUS "Cached nros CLI no longer exists: ${${_cv}}; re-detecting")
         unset(${_cv} CACHE)
         unset(${_cv})
     endif()
@@ -1262,12 +1262,12 @@ function(_nros_resolve_codegen_tool _cv)
                 "accepts prj.conf CONFIG_NROS_CODEGEN_TOOL / west "
                 "-D_NANO_ROS_CODEGEN_TOOL=<path>).")
         endif()
-        message(STATUS "Found nros codegen tool: ${${_cv}}")
+        message(STATUS "Found nros CLI: ${${_cv}}")
     endif()
     # Cache unconditionally — a caller pre-check may have set the var PLAIN (e.g.
     # zephyr's Kconfig CONFIG_NROS_CODEGEN_TOOL); persist it so a re-configure
     # doesn't lose it. Re-caching an already-cached value is a no-op.
-    set(${_cv} "${${_cv}}" CACHE INTERNAL "Path to nros codegen tool" FORCE)
+    set(${_cv} "${${_cv}}" CACHE INTERNAL "Path to nros CLI" FORCE)
 endfunction()
 
 # _nros_resolve_interface_file(<target> <relpath> <out_var> [BUNDLED_PREFIX <p>])
@@ -1332,7 +1332,7 @@ endfunction()
 #                      [ROS_EDITION <e>])
 #
 # High-level package.xml-SSoT entry: read the consumer's package.xml, resolve
-# the transitive interface closure via `nros codegen resolve-deps`, then
+# the transitive interface closure via `nros dev codegen resolve-deps`, then
 # `nros_generate_interfaces()` each resolved package in topological order. The
 # generate call resolves to WHICHEVER generator the build loaded (canonical =
 # standalone lib; zephyr = emit-into-`app`) — the function itself is
@@ -1371,7 +1371,7 @@ function(nros_find_interfaces)
     endif()
     if(NOT _codegen_tool)
         message(FATAL_ERROR
-            "nros_find_interfaces: nros codegen tool not resolved — include the "
+            "nros_find_interfaces: nros CLI not resolved — include the "
             "nano-ros interface generator first (NanoRosGenerateInterfaces.cmake "
             "or zephyr/cmake/nros_generate_interfaces.cmake).")
     endif()
@@ -1386,7 +1386,7 @@ function(nros_find_interfaces)
     nros_codegen_env_prefix(_resolve_env_prefix)
     set(_resolve_output "${CMAKE_CURRENT_BINARY_DIR}/_nros_resolved_deps.cmake")
     execute_process(
-        COMMAND ${_resolve_env_prefix} "${_codegen_tool}" codegen resolve-deps
+        COMMAND ${_resolve_env_prefix} "${_codegen_tool}" dev codegen resolve-deps
                 --package-xml "${_ARG_PACKAGE_XML}"
                 --output-cmake "${_resolve_output}"
         RESULT_VARIABLE _result

@@ -331,7 +331,7 @@ cargo run -p linux_entry            # native run (no nros deploy — Phase 222)
 # [listener] got: hello 1
 ```
 
-Asymmetry: there is **no** `cmake nros …` subcommand. `cargo` dispatches to `cargo-<x>` binaries on PATH; cmake has no equivalent. Phase 212 accepts this — C++ users always call `nros plan` / `nros codegen-system` directly, bridged via `nano_ros_workspace_metadata(…)`.
+Asymmetry: there is **no** `cmake nros …` subcommand. `cargo` dispatches to `cargo-<x>` binaries on PATH; cmake has no equivalent. Phase 212 accepts this — C++ users always call `nros plan` / `nros dev codegen system` directly, bridged via `nano_ros_workspace_metadata(…)`.
 
 ---
 
@@ -405,7 +405,7 @@ cmake --build build -j
 # [ 60%] Building CXX object listener_pkg/.../listener.cpp.o
 # [100%] Linking CXX shared library liblistener_pkg.so
 
-# 4. nros — plan (one shared `nros generate` → matching CDR + type hash both sides)
+# 4. nros — plan (one shared `nros interface generate` → matching CDR + type hash both sides)
 nros plan demo_bringup
 # plan: 2 nodes, 1 topic (chatter: std_msgs/Int32)
 
@@ -415,7 +415,7 @@ cargo run -p linux_entry            # native run (no nros deploy — Phase 222)
 # [listener] heard: 1
 ```
 
-Cross-language pub/sub works because both components link `NanoRos::NanoRos` with the same `NROS_RMW` and consume one shared `nros generate` output — wire-identical descriptors on the bus.
+Cross-language pub/sub works because both components link `NanoRos::NanoRos` with the same `NROS_RMW` and consume one shared `nros interface generate` output — wire-identical descriptors on the bus.
 
 ---
 
@@ -428,7 +428,7 @@ Cross-language pub/sub works because both components link `NanoRos::NanoRos` wit
 - **Single-node → no bringup pkg.** One crate / one cmake project, that is the whole repo.
 - **Component pkg → never carries launch files.** Launch lives in bringup. Component pkgs carry one `[package.metadata.nros.component]` (Rust) or one `add_executable` + `target_link_libraries(NanoRos::NanoRos)` (C++).
 - **RMW pick is build-time, not source.** Cargo feature (`--features rmw-cyclonedds`) or cmake cache (`-DNROS_RMW=cyclonedds`). Per-RMW build dirs (`build-zenoh/`, `build-cdds/`) — no source edits to swap.
-- **`nros generate` is single-source-of-truth for type descriptors.** One invocation per workspace; both languages read the same `generated/` tree. Skip this and Cyclone silently diverges on type hash.
+- **`nros interface generate` is single-source-of-truth for type descriptors.** One invocation per workspace; both languages read the same `generated/` tree. Skip this and Cyclone silently diverges on type hash.
 
 ## Anti-patterns
 

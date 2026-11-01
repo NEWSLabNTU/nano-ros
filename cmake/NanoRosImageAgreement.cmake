@@ -33,7 +33,7 @@ include_guard(GLOBAL)
 
 # _nros_image_facts_file(<out-var>)
 #
-# Run `nros image-facts --for-entry <app> --cmake --if-present` ONCE per
+# Run `nros dev image facts --for-entry <app> --cmake --if-present` ONCE per
 # configure and set <out-var> to the file holding its `set(NROS_IMAGE_* …)`
 # lines, or to "" when there is no answer (no CLI, no application, not in a
 # workspace, or the query failed). Two readers ask (the capability axes early,
@@ -91,7 +91,7 @@ function(_nros_image_facts_file out_var)
     # `--if-present` makes "this app is not in a workspace" an empty answer
     # rather than a failure — the standalone case, and the common one.
     execute_process(
-        COMMAND "${_nros}" image-facts
+        COMMAND "${_nros}" dev image facts
                 --for-entry "${_entry_pkg}"
                 --workspace "${APPLICATION_SOURCE_DIR}"
                 --cmake --if-present
@@ -251,7 +251,7 @@ endfunction()
 # CMakeLists.txt`) before it configures, and that file is the only carrier of
 # the image's capability Kconfig and `NROS_FEATURES` (issues 1681, 1702).
 # But the application is ALSO rewritten by every other `plan_builds` over the
-# workspace -- and until issue 1716 that included `nros image-facts` above,
+# workspace -- and until issue 1716 that included `nros dev image facts` above,
 # which runs INSIDE this configure. So a configure that started from a stale
 # file (its declaration changed since the last `nros build`) read the old
 # values, and the file was brought current while it ran. The query now plans

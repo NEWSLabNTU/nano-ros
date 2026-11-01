@@ -20,14 +20,14 @@
 # directory is no longer the leaf.
 
 # nros_leaf_settings_path <leaf-dir> [<image>]
-# The leaf's settings file as `nros ws leaf-system` reports it, or nothing when
+# The leaf's settings file as `nros dev image leaf-system` reports it, or nothing when
 # the leaf does not build through one. FAILS for a leaf that states its board
 # in `system.toml` (the predicate `fixtures-manifest.py` uses to drop the row's
 # `--target`) but reports no settings file — building it the old way would
 # silently compile for the host.
 #
 # Issue 1305 — it also WRITES the image's selection package and settings file
-# (`nros ws leaf-system --write-settings`, the writer `nros build` uses), for
+# (`nros dev image leaf-system --write-settings`, the writer `nros build` uses), for
 # `<image>` when the row names one (`--nros-image=<id>` in its args) and for
 # the leaf's default image otherwise. A cargo leaf with several images has ONE
 # `build/nros/selection` for all of them, so the row that is about to build
@@ -79,9 +79,9 @@ nros_leaf_settings_prepare() {
         prev="$tok"
     done
     [ -z "$tdir" ] || tdir_args=(--target-dir "$tdir")
-    out="$(NROS_REPO_DIR="$root" "$NROS_CLI" ws leaf-system --write-settings \
+    out="$(NROS_REPO_DIR="$root" "$NROS_CLI" dev image leaf-system --write-settings \
         "${image_args[@]}" "${tdir_args[@]}" "$root/$dir" 2>&1)" || {
-        printf 'nros_leaf_settings_path: "nros ws leaf-system --write-settings %s %s" failed:\n%s\n' \
+        printf 'nros_leaf_settings_path: "nros dev image leaf-system --write-settings %s %s" failed:\n%s\n' \
             "${image_args[*]}" "$dir" "$out" >&2
         return 1
     }

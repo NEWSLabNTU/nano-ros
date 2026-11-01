@@ -21,7 +21,7 @@ include_guard(GLOBAL)
 
 # nros_system_image_args(<out-var> <bringup-pkg> <bringup-dir> <entry-dir>)
 #
-# The image arguments for `nros codegen-system`. When the configure was TOLD
+# The image arguments for `nros dev codegen system`. When the configure was TOLD
 # its image, the bake is that image (`--target`), and the bringup argument must
 # name the same directory: two spellings of one bringup that disagree are
 # refused, not reconciled. Otherwise `--for-entry`, as before.

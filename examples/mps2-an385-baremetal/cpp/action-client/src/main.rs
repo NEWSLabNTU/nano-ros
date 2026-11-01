@@ -8,7 +8,7 @@
 //! there defines the `nros_app_main()` called below once the board is up.
 //!
 //! One thing is C++-specific: the generated message types serialize in RUST.
-//! `nros generate cpp` emits, per message, a `#[repr(C)]` mirror plus CDR field
+//! `nros interface generate cpp` emits, per message, a `#[repr(C)]` mirror plus CDR field
 //! serializers (`*_types.rs`) and the `nros_cpp_{serialize,publish,…}_*` C
 //! exports the C++ header calls (`*_exports.rs`). On the cmake road a
 //! per-package staticlib wraps them (`cmake/ffi_lib_rs.in`); here they are

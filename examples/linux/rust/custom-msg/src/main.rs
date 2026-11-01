@@ -4,7 +4,7 @@
 //!
 //! This example shows two approaches:
 //! 1. Manually defining message types (for learning/prototyping)
-//! 2. Using generated types from `nros generate-rust` (for production)
+//! 2. Using generated types from `nros dev codegen rust` (for production)
 //!
 //! # Running
 //!
@@ -23,7 +23,7 @@
 //! 1. Create a ROS 2 package with your .msg files
 //! 2. Build with `colcon build`
 //! 3. Add to package.xml: `<depend>your_custom_msgs</depend>`
-//! 4. Run `nros generate-rust`
+//! 4. Run `nros dev codegen rust`
 //!
 //! The .msg files in this example's `msg/` directory show the format.
 
@@ -41,7 +41,7 @@ extern crate nros_platform_cffi as _;
 // =============================================================================
 //
 // These demonstrate how to manually define message types.
-// In production, use `nros generate-rust` to create these automatically.
+// In production, use `nros dev codegen rust` to create these automatically.
 
 /// Custom sensor reading message
 ///

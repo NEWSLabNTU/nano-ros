@@ -4,7 +4,7 @@
 > (2026-02-07) — that doc evaluates Portability × Value for a **Rust-rewrite**
 > port (the path NEWSLabNTU/autoware_sentinel actually took). This one asks a
 > different question: which nodes could land **keeping their C++ source**, by
-> compiling against `nros-cpp` + `nros generate cpp` + small build-script
+> compiling against `nros-cpp` + `nros interface generate cpp` + small build-script
 > changes. They are complementary, not duplicates.
 
 > **Re-checked 2026-10-24 ([phase-488](../roadmap/archived/phase-488-larger-cpp-port-fixture.md) W1).**
@@ -50,7 +50,7 @@ against nano-ros:
    inside the `nros` CLI. Autoware nodes need `autoware_control_msgs`,
    `autoware_vehicle_msgs`, `autoware_system_msgs`, `autoware_adapi_v1_msgs`,
    `tier4_control_msgs`, `tier4_external_api_msgs`, `tier4_auto_msgs_converter`,
-   `nav_msgs`, `geometry_msgs`, … — runnable via `nros generate cpp` against the
+   `nav_msgs`, `geometry_msgs`, … — runnable via `nros interface generate cpp` against the
    `.msg` sources, but those `.msg` files have to be present (the autoware
    workspace or an extracted SDK).
 3. **Three Autoware *helper* libraries are pervasive and aren't ROS-runtime
@@ -66,7 +66,7 @@ against nano-ros:
    the *C++ headers* an unchanged Autoware source compiles against don't
    exist as nano-ros crates yet.
 
-So "minor changes" really means: **nros-cpp + the right `nros generate cpp`
+So "minor changes" really means: **nros-cpp + the right `nros interface generate cpp`
 codegen + a small compat shim for `diagnostic_updater`** (the universe_utils
 and vehicle_info_utils surfaces can be replaced with stubs or skipped for
 diagnostic-light nodes). That shim is the single biggest blocker between
@@ -100,7 +100,7 @@ Audit of `~/repos/autoware_universe/{control,vehicle,system}` packages.
 For each, the steps to compile against nano-ros are:
 
 ### `autoware_external_cmd_selector` (control)
-- **Codegen.** `nros generate cpp` for `autoware_vehicle_msgs`, `tier4_control_msgs`,
+- **Codegen.** `nros interface generate cpp` for `autoware_vehicle_msgs`, `tier4_control_msgs`,
   `tier4_external_api_msgs`, `std_msgs`, `tier4_auto_msgs_converter` (the last is
   a header-only converter library, not a msg pkg — vendor its header).
 - **Build glue.** Replace the package's `CMakeLists.txt` `ament_*` calls with
@@ -114,7 +114,7 @@ For each, the steps to compile against nano-ros are:
   `nros-cpp` (publishes `diagnostic_msgs/DiagnosticArray` at a fixed rate) or
   `#ifdef`-out the diagnostic block — the rest of the node doesn't read it.
 
-Estimated effort: **0.5 – 1 day** once `nros generate cpp` against autoware
+Estimated effort: **0.5 – 1 day** once `nros interface generate cpp` against autoware
 msgs is wired, dominated by `tier4_auto_msgs_converter` vendoring + the
 diagnostic stub.
 
@@ -138,12 +138,12 @@ Estimated effort: **0.5 day**.
 - A measured floor on the "minor-change port" cost — concrete answer to the
   user's question instead of a hand-wave.
 - The `diagnostic_updater` stub becomes reusable for every later port.
-- A real test of `nros generate cpp` against autoware-msgs — which exposes
+- A real test of `nros interface generate cpp` against autoware-msgs — which exposes
   whether the codegen handles the (numerous) cross-package `# include` chains
   cleanly.
 - If all three drop in, the path is real and the heavier nodes (joy_controller,
   external_cmd_converter) become a question of effort, not of feasibility.
-- If the diagnostic stub balloons or `nros generate cpp` chokes on autoware
+- If the diagnostic stub balloons or `nros interface generate cpp` chokes on autoware
   msgs, that's the honest "you'd be better off rewriting in Rust" answer the
   Sentinel project chose.
 
@@ -163,7 +163,7 @@ Estimated effort: **0.5 day**.
 ## Suggested next step
 
 Pick **`topic_state_monitor`** (smallest + most generic) as the first port
-attempt: it stresses `nros generate cpp` over a couple of common msg packages
+attempt: it stresses `nros interface generate cpp` over a couple of common msg packages
 + exercises the diagnostic shim without dragging vehicle-msg specifics. If it
 goes clean in ~half a day, do `external_cmd_selector` as the second proof
 (adds the converter-header vendoring + cmd-source state-machine shape). The

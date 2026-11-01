@@ -194,7 +194,7 @@ def main() -> int:
             print(f"  {e}", file=sys.stderr)
         print(
             "\nA user has the installed `nros` (install.sh puts it in ~/.nros/bin), not"
-            "\na clone. Use `nros new` / `nros sdk-root` / the `nros` command a `just`"
+            "\na clone. Use `nros new` / `nros dev sdk root` / the `nros` command a `just`"
             "\nrecipe wraps, or link the example on GitHub as reading material."
             "\nContributor material belongs in book/src/internals/.",
             file=sys.stderr,

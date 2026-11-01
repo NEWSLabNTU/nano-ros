@@ -138,7 +138,7 @@ Multi-RMW bridges (one binary, two or more backends) use
 
 - **One release, no package registry.** The `nros` CLI is released on
   GitHub and installed with `scripts/install.sh`; the library ships as
-  source inside that release (its SDK root, `nros sdk-root`) and is compiled
+  source inside that release (its SDK root, `nros dev sdk root`) and is compiled
   into your build. Nothing is published to crates.io, and there is no
   Arduino zip or ESP-IDF binary component.
 - **Per-board provisioning, no `rosdep`.** `nros setup <board> --rmw <rmw>`
@@ -163,12 +163,12 @@ Multi-RMW bridges (one binary, two or more backends) use
   root CMake under each RTOS's native package manager.
 - **The store only grows, so there are verbs to inspect and shrink it.**
   Provisioning never overwrites: a new version lands beside the old one, which
-  is what makes going back to a previous toolchain free. `nros store list`
-  prints every entry with its size and when it was last read; `nros store gc
+  is what makes going back to a previous toolchain free. `nros toolchain list`
+  prints every entry with its size and when it was last read; `nros toolchain gc
   --older-than 90d` proposes what to reclaim and **removes nothing unless you
   add `--delete`**. It never removes an entry a pin names — it reads
   `nros-sdk-index.toml` / `nros-sdk.lock` from the directory you run it in and
-  its ancestors, and says which files it consulted. `nros toolchain uninstall
+  its ancestors, and says which files it consulted. `nros toolchain remove
   <version>` removes one nano-ros toolchain under the same rule, and refuses
   when it cannot find a pin file to check against, rather than assuming nothing
   needs it.

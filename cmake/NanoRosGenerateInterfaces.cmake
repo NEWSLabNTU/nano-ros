@@ -79,7 +79,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 # =========================================================================
 
 # phase-336 — the profile and its target directory come from the shared table
-# (`nros profile`), so this file no longer carries a default literal or its own
+# (`nros dev profile`), so this file no longer carries a default literal or its own
 # `dev → debug` special case.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCargoProfile.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
@@ -428,7 +428,7 @@ function(nros_generate_interfaces target)
   # the re-emit is done by the tool that owns them — never a wipe of the tree
   # (CLAUDE.md), which would take the reproduction with it.
   nros_codegen_version_stale(_nros_gi_version_stale REJECTED _nros_gi_version_bad
-    CONTEXT "nros codegen (${target}, ${_ARG_LANGUAGE})"
+    CONTEXT "nros dev codegen (${target}, ${_ARG_LANGUAGE})"
     FILES ${_generated_headers})
   if(_nros_gi_version_stale)
     file(REMOVE ${_nros_gi_version_bad})
@@ -479,14 +479,14 @@ function(nros_generate_interfaces target)
     INPUTS ${_nros_gi_fragment_inputs} "${_args_file}")
   if(_nros_gi_fragment_stale OR _nros_gi_version_stale OR _nros_gi_ament_stale)
     execute_process(
-      COMMAND ${_nros_gi_env} "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
+      COMMAND ${_nros_gi_env} "${_NANO_ROS_CODEGEN_TOOL}" dev codegen --language "${_lang_flag}" --args-file "${_args_file}"
       WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
       RESULT_VARIABLE _nros_gi_codegen_rc
       OUTPUT_VARIABLE _nros_gi_codegen_out
       ERROR_VARIABLE _nros_gi_codegen_err)
     if(NOT _nros_gi_codegen_rc EQUAL 0)
       message(FATAL_ERROR
-        "nros codegen failed for ${target} (exit ${_nros_gi_codegen_rc}):\n"
+        "nros dev codegen failed for ${target} (exit ${_nros_gi_codegen_rc}):\n"
         "  stdout: ${_nros_gi_codegen_out}\n"
         "  stderr: ${_nros_gi_codegen_err}")
     endif()
@@ -501,7 +501,7 @@ function(nros_generate_interfaces target)
   add_custom_command(
     OUTPUT ${_generated_headers} ${_generated_sources} ${_generated_rs_files}
            "${_bounds_json}" "${_bounds_cmake}"
-    COMMAND ${_nros_gi_env} "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
+    COMMAND ${_nros_gi_env} "${_NANO_ROS_CODEGEN_TOOL}" dev codegen --language "${_lang_flag}" --args-file "${_args_file}"
     # issue 1803 — a build-time run is a run too; the configure-time predicate
     # compares its inputs against this stamp, never against the outputs.
     COMMAND "${CMAKE_COMMAND}" -E touch "${_nros_gi_run_stamp}"

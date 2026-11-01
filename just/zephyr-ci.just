@@ -164,7 +164,7 @@ build-fixtures:
     ccache_dir="${NROS_ZEPHYR_CCACHE_DIR:-$nros_root/build/zephyr-cache/ccache}"
     ccache_tmpdir="${NROS_ZEPHYR_CCACHE_TEMPDIR:-$nros_root/build/zephyr-cache/ccache-tmp}"
     mkdir -p "$ccache_dir" "$ccache_tmpdir"
-    make_bin="$(nros sdk-path make 2>/dev/null)/bin/make"
+    make_bin="$(nros dev sdk path make 2>/dev/null)/bin/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi
@@ -209,7 +209,7 @@ build-fixtures:
             # zephyr entry's own component is skipped as deploy-bound (the
             # `build-one` branch in zephyr-dev.just dropped the flag for that
             # reason). The flag outlived its cause and cost the probe
-            # sidecars `nros ws west-leaf-sizing` composes from, so every leaf
+            # sidecars `nros dev image west-leaf-sizing` composes from, so every leaf
             # this lane built sized its pools from crate defaults -- the XRCE
             # talker's session allocation then exceeded the heap at boot.
             "$nros_cli" sync "$dir"
@@ -346,7 +346,7 @@ build-fixtures:
         echo "  → workspace-entry prep (nros sync + codegen-system)"
         ( cd examples/workspaces/rust
           "$nros_cli" sync >/dev/null
-          "$nros_cli" codegen-system --bringup src/demo_bringup --out build-fixtures/demo_bringup >/dev/null )
+          "$nros_cli" dev codegen system --bringup src/demo_bringup --out build-fixtures/demo_bringup >/dev/null )
     fi
     # phase-276 W1/W3/W5 (#128) — the capability workspace's three Zephyr
     # Entries (params, lifecycle, qos). Pure-cargo `nros::main!` path: `nros

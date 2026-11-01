@@ -229,7 +229,7 @@ board crate, whose `rmw-<x>` feature links the backend and registers it.
 For C++ consumers, the declared RMW lowers to the CMake cache var:
 
 ```bash
-cmake -S . -B build -Dnano_ros_ROOT="$(nros sdk-root)" \
+cmake -S . -B build -Dnano_ros_ROOT="$(nros dev sdk root)" \
     -DNROS_RMW=cyclonedds  # zenoh / xrce / cyclonedds
 ```
 

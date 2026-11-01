@@ -5,7 +5,7 @@
 # Reached from `zephyr/modules/modules.cmake` (the module's `module_ext_root`
 # hook), inside `find_package(Zephyr)`, before Kconfig runs. Three deliveries:
 #
-# 1. KCONFIG. `nros ws leaf-system --kconfig-out` renders the image's RMW
+# 1. KCONFIG. `nros dev image leaf-system --kconfig-out` renders the image's RMW
 #    choice, the package's language API, the deploy endpoint and every
 #    `[image.<id>] env` row that has a Kconfig symbol into
 #    `<build>/nros/<image>.conf`, and this puts that file LAST in the CACHE value
@@ -224,7 +224,7 @@ function(nros_image_kconfig_hook)
         set(_image "${NROS_IMAGE}")
     else()
         execute_process(
-            COMMAND "${_nros}" ws leaf-system "${_dir}"
+            COMMAND "${_nros}" dev image leaf-system "${_dir}"
                     --nano-ros-path "${_NROS_IMAGE_KCONFIG_ROOT}"
             OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _rc
             OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -318,7 +318,7 @@ function(nros_image_kconfig_hook)
     set(_frag "${_nros_dir}/${_image}.conf")
     set(_env "${_nros_dir}/${_image}-env.toml")
     execute_process(
-        COMMAND "${_nros}" ws leaf-system "${_dir}"
+        COMMAND "${_nros}" dev image leaf-system "${_dir}"
                 --nano-ros-path "${_NROS_IMAGE_KCONFIG_ROOT}"
                 ${_args} --kconfig-out "${_frag}" --image-env-out "${_env}"
                 --kconfig-defaults-out "${_kgen}" ${_override_args}
@@ -426,7 +426,7 @@ endfunction()
 
 # _nros_image_kconfig_leaf_rows(<cli-stdout> <dir> <image> <west-board>)
 #
-# Issue 2200 -- read `nros ws leaf-system`'s rows into the hook's
+# Issue 2200 -- read `nros dev image leaf-system`'s rows into the hook's
 # `_kconfig`, `_envcfg`, `_image_conf`, `_board_snippets`, `_board_overlays` and
 # `_keys` (caller scope),
 # recording the image env rows in the cache as before. Split out of the hook
@@ -445,7 +445,7 @@ function(_nros_image_kconfig_leaf_rows _out _dir _image _west_board)
     # NROS_LEAF_SNIPPET are `;`-joined, and the list spelling cut each at its
     # first `;`, so a board `prj.conf` cost the leaf its `os_config`.
     nros_cli_rows(_row "${_out}" REQUIRE "^NROS_LEAF_[A-Z0-9_]+="
-        CONTEXT "`nros ws leaf-system` for ${_dir}/system.toml [image.${_image}]")
+        CONTEXT "`nros dev image leaf-system` for ${_dir}/system.toml [image.${_image}]")
     foreach(_i IN LISTS _row_INDICES)
         set(_l "${_row_${_i}}")
         if(_l MATCHES "^NROS_LEAF_KCONFIG=(.*)$")
@@ -499,7 +499,7 @@ endfunction()
 # line anyway, but its message names the module's Kconfig, not where the value
 # belongs.
 # Issue 2157 -- add the BOARD's snippets to SNIPPET: `board` (what
-# `nros ws leaf-system` printed for a rendered image) plus
+# `nros dev image leaf-system` printed for a rendered image) plus
 # `-DNROS_BOARD_SNIPPETS`, which `nros build` passes for every west image so a
 # hand-written entry (a guest here) gets them too. e.g. `nros-nsos`, native_sim's
 # host-socket network.
@@ -727,7 +727,7 @@ function(_nros_image_kconfig_named_confs _out)
 endfunction()
 
 # phase-524 W3 -- add the BOARD package's devicetree overlay (what
-# `nros ws leaf-system` printed as `NROS_LEAF_DTC_OVERLAY`) to
+# `nros dev image leaf-system` printed as `NROS_LEAF_DTC_OVERLAY`) to
 # EXTRA_DTC_OVERLAY_FILE, ahead of the caller's own extras so theirs still win.
 # EXTRA_, not DTC_OVERLAY_FILE: setting the latter would switch off Zephyr's
 # discovery of the application's own `boards/<board>.overlay`. The entries the

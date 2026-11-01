@@ -14,7 +14,7 @@
 #     component library.
 #
 # Interface codegen is authoritative through `nros_find_interfaces`, which reads
-# the package's `package.xml` `<depend>` closure and shells `nros codegen
+# the package's `package.xml` `<depend>` closure and shells `nros dev codegen
 # resolve-deps` (the proven path every example uses; it resolves well-known ROS
 # packages the CLI knows, so no in-tree bundle or sourced ROS install is needed).
 # A leaf's `find_package(<msg_pkg> REQUIRED)` line satisfies the ament shape (via
@@ -196,7 +196,7 @@ function(nano_ros_add_executable name)
     # phase-330 W7 — BRINGUP is the INPUT-addressed spelling and the one a
     # human writes: it names the package the user authors (system.toml +
     # launch/ + the launch file's contract sidecar), and `nano_ros_entry`
-    # resolves the SystemModel BUILD ARTIFACT from it via `nros model-path`.
+    # resolves the SystemModel BUILD ARTIFACT from it via `nros dev image model-path`.
     # It was parsed by `nano_ros_entry` and NOT by this verb, so every caller
     # reaching the entry through the ament verb had no way to spell it and
     # was pushed back onto MODEL — which names a resolved artifact directly

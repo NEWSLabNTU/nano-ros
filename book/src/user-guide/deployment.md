@@ -22,7 +22,7 @@ nros build
 ./build/posix-cyclonedds-linux/cmake/linux_entry
 ```
 
-`nros metadata` / `nros plan` / `nros check` are the inspection path, not
+`nros dev metadata` / `nros plan` / `nros check` are the inspection path, not
 the build path — they produce and validate a plan you can read with
 `nros explain`. You do not need them to build.
 

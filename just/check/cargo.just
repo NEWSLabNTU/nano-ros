@@ -21,7 +21,7 @@ absolute-paths:
     @scripts/ci/absolute-path-check.sh
 
 # phase-336 — no build site may NAME a cargo profile: the flag and the artifact
-# path both come from `nros profile`. The failure this prevents is silent (the
+# path both come from `nros dev profile`. The failure this prevents is silent (the
 # builder writes one directory, the reader looks in another), which is why it
 # is a gate and not a convention.
 [private]

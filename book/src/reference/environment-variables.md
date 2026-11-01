@@ -66,7 +66,7 @@ end-to-end build+run walk-through.
 
 `scripts/zephyr/resolve-fvp-bin.sh` resolves, in order: `ARMFVP_BIN_PATH`,
 `ARM_FVP_DIR`, `FVP_BaseR_AEMv8R` on `PATH`, then the store copy
-(`nros sdk-path arm-fvp`). The `just zephyr run-fvp-*` / `verify-fvp-runtime`
+(`nros dev sdk path arm-fvp`). The `just zephyr run-fvp-*` / `verify-fvp-runtime`
 recipes export the result as `ARMFVP_BIN_PATH` at BUILD time as well as run time,
 because Zephyr's `armfvp.cmake` caches the location at configure. When nothing
 resolves, a recipe you NAMED fails with the remedy (`nros setup --tool arm-fvp`);

@@ -32,7 +32,7 @@ nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi
 # phase-338 W7 — one facade in user source: the body logs through `log`,
 # and the board bridges it to semihosting on BOTH boot paths.
 log = { version = "0.4", default-features = false }
-# Generated message types (from package.xml via `nros generate-rust`).
+# Generated message types (from package.xml via `nros dev codegen rust`).
 std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 
 # Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`

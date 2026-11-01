@@ -192,7 +192,7 @@ No platform, no board, no RMW on the command line or in the file:
 leaf-system` and derives the platform from the board it names.
 `-DNROS_PLATFORM`, `-DNROS_BOARD` and `-DNROS_RMW` are retired as the
 way a user chooses. A bare cross configure still passes `-DCMAKE_TOOLCHAIN_FILE` by
-hand (or uses `nros init` + `cmake --preset <board>`); `nros build` in the leaf
+hand (or uses `nros setup presets` + `cmake --preset <board>`); `nros build` in the leaf
 maps the board to its toolchain file and runs the same configure into
 `build/<image>/cmake`
 ([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md), resolved).
@@ -253,7 +253,7 @@ source /opt/ros/humble/setup.sh        # for rosidl tooling
 nros sync                              # what you run in an example
 ```
 
-`nros generate-rust` (and `generate-c` / `generate-cpp` / `generate-all`) is the
+`nros dev codegen rust` (and `generate-c` / `generate-cpp` / `generate-all`) is the
 codegen-only **primitive** underneath it: it emits `generated/` and nothing
 else. `nros sync` is the verb an example needs, because it also writes the
 image's `build/<image>/nros-cargo.toml`.
@@ -297,7 +297,7 @@ full reference + `package.xml` schema.
    it.
 6. **Build standalone.** `nros build` from the example directory (C/C++
    single-package leaves can also run raw CMake:
-   `cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)" && cmake --build build`). No
+   `cmake -B build -Dnano_ros_ROOT="$(nros dev sdk root)" && cmake --build build`). No
    walking-up workspace allowed.
 7. **Wire the test fixture (optional).** If the example needs an E2E
    gate, add a row to `examples/fixtures.toml` and the matching cell in

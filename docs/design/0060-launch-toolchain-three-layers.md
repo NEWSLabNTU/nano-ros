@@ -421,7 +421,7 @@ creates seven — every derived pool short by one, failing at boot as
 
 So the two artifacts a reader might expect to find under this name are one
 artifact. `<stem>.contract.yaml` is simultaneously the resolver's wiring input
-and the per-system replacement for `ENTITIES`; `nros ws entity-inventory
+and the per-system replacement for `ENTITIES`; `nros dev image entity-inventory
 --model` reads the same file through the model. A consumer that wants per-image
 entity counts authors a contract — there is no second source to fall back to,
 and an image with none keeps its configured `NROS_EXECUTOR_MAX_CBS` exactly as

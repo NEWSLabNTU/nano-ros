@@ -238,7 +238,7 @@ EOF
 # carries one. It is a second binary, not part of the SDK root, and
 # `model_location::launch_resolver_bin`'s installed rung is literally
 # `$NROS_HOME/bin/nros-launch-resolve` — so without this link every workspace
-# configure dies at `nros codegen entry` with a remedy naming a checkout the
+# configure dies at `nros dev codegen entry` with a remedy naming a checkout the
 # user does not have. Measured against a staged prefix: the SDK root resolves,
 # cmake gets as far as the entry package, and stops there.
 #

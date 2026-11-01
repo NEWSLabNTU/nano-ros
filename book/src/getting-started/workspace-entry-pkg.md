@@ -226,7 +226,7 @@ configure, `-cfg` suffix and all, and a workspace whose images state nothing
 keeps today's `build/<coordinate>/` paths exactly. The cost is one more
 configure and one more runtime build per distinct configuration — the reason to
 put a knob that every image on a board shares in the board's `[knobs]`
-instead, where it changes no image's hash. `nros image-facts` prints each
+instead, where it changes no image's hash. `nros dev image facts` prints each
 image's `cmake_build_dir`; never derive it by hand.
 
 On Zephyr the same `env` rows are rendered into the image's Kconfig fragment

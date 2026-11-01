@@ -3,7 +3,7 @@
 # Phase 157.A / 195.D — resolve the host `nros` build tool for cross-compile
 # platforms (NuttX / FreeRTOS / ThreadX).
 #
-# `nros` (`nros codegen` / `nros generate-rust`) is a host-side binary the build
+# `nros` (`nros dev codegen` / `nros dev codegen rust`) is a host-side binary the build
 # assumes is provided. Phase 195.D retired the in-tree `packages/codegen`
 # submodule; Phase 218 brought the CLI back in-tree as a sub-workspace at
 # `packages/cli/`, built by `just setup-cli`. `source ./activate.sh` puts
@@ -41,7 +41,7 @@ function(nros_bootstrap_codegen)
        AND _NANO_ROS_CODEGEN_TOOL
        AND NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
         message(STATUS
-            "Cached nros codegen tool no longer exists: "
+            "Cached nros CLI no longer exists: "
             "${_NANO_ROS_CODEGEN_TOOL}; re-detecting")
         unset(_NANO_ROS_CODEGEN_TOOL CACHE)
         unset(_NANO_ROS_CODEGEN_TOOL)

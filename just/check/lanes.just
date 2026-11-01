@@ -3401,7 +3401,7 @@ cpp: cpp-fmt
     # different preprocessor.
     #
     # The fixture dir carries `rclc/detail/nros_declared_qos_generated.h` — what
-    # `nros ws entity-inventory --output-header` renders, and the same bytes a
+    # `nros dev image entity-inventory --output-header` renders, and the same bytes a
     # real component's configure puts on its own include path (issue 1084: the
     # register call claims the dir, a deferred render fills it from the
     # contract's model). Putting it on `-I` here exercises the same

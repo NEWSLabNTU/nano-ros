@@ -184,7 +184,7 @@ way. It provides **no zenoh router**: that is ROS's `rmw_zenohd`
    nros setup --source px4-rs          # workspace cargo-load dep
    ```
 3. **Point Zephyr at the SDK** if your shell does not already find it —
-   `export ZEPHYR_SDK_INSTALL_DIR="$(nros sdk-path zephyr-sdk --require)"` (or
+   `export ZEPHYR_SDK_INSTALL_DIR="$(nros dev sdk path zephyr-sdk --require)"` (or
    register it via the SDK's `setup.sh -c`).
 4. **Message definitions need no setup.** `find_package(<pkg>)` resolves a
    message package from `NROS_INTERFACE_SEARCH_PATH`, then `AMENT_PREFIX_PATH`,
@@ -215,7 +215,7 @@ Provision the board and RMW (the Zephyr SDK, zenoh-pico, mbedtls):
 
 ```bash probe=32 variant=native-sim,native-sim-rust,zephyr-twin
 nros setup zephyr --rmw zenoh
-export ZEPHYR_SDK_INSTALL_DIR="$(nros sdk-path zephyr-sdk --require)"
+export ZEPHYR_SDK_INSTALL_DIR="$(nros dev sdk path zephyr-sdk --require)"
 ```
 
 A west workspace that pins Zephyr 3.7 and fetches only the modules nano-ros's
@@ -263,7 +263,7 @@ package even without the flag:
 ```bash probe=40 variant=native-sim
 nros new my_app --platform zephyr --lang c
 west build -b native_sim/native/64 -S nros-nsos my_app -- \
-    -DZEPHYR_EXTRA_MODULES="$(nros sdk-root)"
+    -DZEPHYR_EXTRA_MODULES="$(nros dev sdk root)"
 ```
 
 Run it against a router on the host's loopback — `native_sim` uses the host's
@@ -333,14 +333,14 @@ I heard: 0
 ## Configure
 
 nano-ros's Zephyr module ships in the installed SDK — the directory
-`nros sdk-root` prints holds its `zephyr/module.yml`. You do not add
+`nros dev sdk root` prints holds its `zephyr/module.yml`. You do not add
 nano-ros to your `west.yml`: `nros build` names the module on the
 `west build` line it runs (`-DZEPHYR_EXTRA_MODULES=<sdk root>`), and a
 `west build` you run yourself passes the same:
 
 ```bash
 west build -b native_sim/native/64 apps/my_app -- \
-    -DZEPHYR_EXTRA_MODULES="$(nros sdk-root)"
+    -DZEPHYR_EXTRA_MODULES="$(nros dev sdk root)"
 ```
 
 Your `west.yml` pins Zephyr itself (and whatever modules your
@@ -944,7 +944,7 @@ prerequisites), build your app — `nros` on PATH is auto-resolved as the
 codegen tool, and the module is the installed SDK root:
 
 ```bash
-sdk="$(nros sdk-root)"
+sdk="$(nros dev sdk root)"
 # native_sim (POSIX, no QEMU), on the host-socket network (the `nros-nsos`
 # snippet; apply the NSOS patches first, see "apply nano-ros's patches" below).
 west build -b native_sim/native/64 -S nros-nsos apps/my_app -- \
@@ -985,7 +985,7 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
 
    This writes `generated/<pkg>/` (the message crates) and a `.cargo/config.toml`
    whose `[patch.crates-io]` points the `nros-*` crates into the nano-ros SDK
-   root and the generated interfaces at `generated/*`. `nros sdk-root
+   root and the generated interfaces at `generated/*`. `nros dev sdk root
    --explain` prints the root `nros` picks; `--nano-ros-path <dir>` names
    another (the SDK ROOT, the directory holding `nano_rosConfig.cmake`).
 

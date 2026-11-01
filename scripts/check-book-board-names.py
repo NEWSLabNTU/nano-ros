@@ -84,8 +84,9 @@ PLATFORM_FLAG = re.compile(r"\bnros\s+new\b[^#\n]*?--platform[ =](" + WORD + r")
 NAMES_ROW = re.compile(r"^\s*names\s*=\s*\[([^\]]*)\]", re.M)
 QUOTED = re.compile(r"\"([^\"]+)\"")
 
-# `nros setup <flag>` and `nros setup board` (the subcommand) take no board here.
-SETUP_NOT_BOARD = {"board"}
+# `nros setup <flag>`, `nros setup board` and `nros setup presets` (the
+# subcommands, `SetupCommand` in cmd/setup.rs) take no board here.
+SETUP_NOT_BOARD = {"board", "presets"}
 
 
 def index_keys(text: str) -> list[str]:

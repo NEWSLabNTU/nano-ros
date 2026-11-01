@@ -4,7 +4,7 @@
 # steps by run-bootstrap-probe.sh; runs in the same shell, in the pinned
 # workspace the last step left.
 #
-# The chapter already asserted that `nros toolchain manifest` answered from
+# The chapter already asserted that `nros dev sdk manifest` answered from
 # the pinned release's prefix, and the build step had to exit 0. What is left:
 # the build ran under the pin (the pin file is unchanged and still names the
 # older release, and the toolchain that answers in the workspace is still the
@@ -26,7 +26,7 @@ case "$rc" in
         exit 1
         ;;
 esac
-answered="$(nros toolchain manifest 2>&1 | head -1)"
+answered="$(nros dev sdk manifest 2>&1 | head -1)"
 case "$answered" in
     *sdk/nros/0.6.0-nros4/share/nros/manifest.toml) ;;
     *)

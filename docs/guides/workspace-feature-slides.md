@@ -144,7 +144,7 @@ nros plan + package/source metadata scan
         └── produces ordered component list
         │
         ▼
-nros codegen entry
+nros dev codegen entry
         │
         ├── emits generated main TU
         └── emits link sidecar for Node-pkg static libs
@@ -171,7 +171,7 @@ The macro finds the image that claims this entry in the bringup's
 `system.toml` and scans workspace metadata and launch inputs at build
 time. For a CMake image, `nros build` writes the root under `build/` and
 `nano_ros_entry(...)` emits the `main()` TU via
-`nros codegen entry --lang c|cpp`.
+`nros dev codegen entry --lang c|cpp`.
 
 Key idea: nobody writes Entry source any more; generated code carries
 the launch-specific register calls, and the image block carries the rest.

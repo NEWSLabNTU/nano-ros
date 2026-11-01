@@ -340,7 +340,7 @@ provision_sdk_via_nros() {
     # and `tar -xf` is run without `--strip-components`, so the tarball's own
     # top-level `zephyr-sdk-<ver>/` becomes the LAST component of the installed
     # path — which is why `nros_zephyr_sdk_store_dir` appends it and why
-    # `nros sdk-path` alone is not the answer a consumer needs (issue 1254).
+    # `nros dev sdk path` alone is not the answer a consumer needs (issue 1254).
     #
     # This replaces a hand-rolled aria2c + sha256sum + tar block whose tarball
     # name and checksum were hardcoded to x86_64 — which fetched 1.3 GiB, PASSED
@@ -357,14 +357,14 @@ provision_sdk_via_nros() {
     log_info "Provisioning Zephyr SDK $ZEPHYR_SDK_VERSION via nros (index entry: $ZEPHYR_SDK_TOOL, host-keyed dist)..."
     # NO `--prefix` — issue 1254. `--prefix` is the documented out-of-store
     # escape hatch: it "places it outside the shared store", the install is not
-    # recorded in `nros-sdk.lock`, so `nros sdk-path` cannot find it afterwards
-    # and `nros store gc` does not know it exists. Passing `$SCRIPT_DIR/sdk`
+    # recorded in `nros-sdk.lock`, so `nros dev sdk path` cannot find it afterwards
+    # and `nros toolchain gc` does not know it exists. Passing `$SCRIPT_DIR/sdk`
     # therefore put the SDK inside whichever clone ran setup, and a downstream
     # project's `env.sh` ended up naming a SIBLING checkout — one that
     # `just clean-setup` deletes.
     #
     # Without it the same command installs where RFC-0095 D2 says, and the store
-    # is what `nros store list` / `gc` already understand.
+    # is what `nros toolchain list` / `gc` already understand.
     "$nros_bin" setup --tool "$ZEPHYR_SDK_TOOL" \
         --index "$NROS_REPO_DIR/nros-sdk-index.toml"
 }

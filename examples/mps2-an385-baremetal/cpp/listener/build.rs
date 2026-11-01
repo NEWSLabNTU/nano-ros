@@ -7,7 +7,7 @@
 //! `nros_app_main()` that `main.rs` calls. See `README.md` for why the link root is
 //! Rust on this board.
 //!
-//! What differs from C is where the message code lives. `nros generate cpp`
+//! What differs from C is where the message code lives. `nros interface generate cpp`
 //! emits header-only C++ types plus their CDR serializers as RUST (`*_types.rs`
 //! / `*_exports.rs` per message) — on the cmake road those are wrapped in a
 //! per-package staticlib. Here they are compiled into the binary crate itself:
@@ -21,7 +21,7 @@
 //!  * the C headers they include, the platform ABI headers and the per-build
 //!    `nros_config_generated.h` — `DEP_NROS_C_*` (`links = "nros_c"`). The
 //!    `links` keys also ORDER this script after both writers of those headers;
-//!  * the generated bindings — `nros generate cpp`, into `OUT_DIR`;
+//!  * the generated bindings — `nros interface generate cpp`, into `OUT_DIR`;
 //!  * the compilers for the board's triple — `CC_`/`CXX_thumbv7m_none_eabi` or
 //!    cc-rs's default for the triple (`arm-none-eabi-g++`).
 
@@ -64,7 +64,7 @@ fn glue_files(pkg_dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// Every package `nros generate cpp` wrote — one directory each under
+/// Every package `nros interface generate cpp` wrote — one directory each under
 /// `generated/` — sorted. DERIVED from what the generator produced for this
 /// leaf's `package.xml`, never listed: a hard-coded `["builtin_interfaces",
 /// "std_msgs"]` here meant a sibling depending on `example_interfaces` found
@@ -144,7 +144,7 @@ fn main() {
     }
     assert!(
         any,
-        "baremetal-cpp-listener: `nros generate cpp` produced no `*_types.rs` / \
+        "baremetal-cpp-listener: `nros interface generate cpp` produced no `*_types.rs` / \
          `*_exports.rs` under {} — the bindings layout changed.",
         generated.display()
     );

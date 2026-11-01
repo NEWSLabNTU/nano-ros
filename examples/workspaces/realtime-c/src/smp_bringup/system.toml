@@ -9,7 +9,7 @@ domain_id = 0
 # Phase 273 W2 (RFC-0047): group→tier binding moved from [[node_overrides]] to
 # [[component]].group_tiers (deployment config, not package manifest).
 # CALLBACK_GROUPS in cmake declares the group IDs; group_tiers here assigns
-# them to the named tiers. nros codegen emits nros_cpp_create_sched_context +
+# them to the named tiers. nros dev codegen emits nros_cpp_create_sched_context +
 # nros_cpp_bind_group_sched to bind each group to its priority tier.
 [[component]]
 pkg = "ctrl_pkg"

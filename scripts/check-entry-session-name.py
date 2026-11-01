@@ -16,7 +16,7 @@ WHAT PHASE-432 W2.6 CHANGED, AND WHAT IS LEFT TO GUARD
 ------------------------------------------------------
 This check was written as a STOPGAP: it held two producers together until one
 of them could be deleted. W2.6 deleted it. `nano_ros_node_register()` no longer
-renders its own entry TU — it calls `nros codegen entry-node`, which builds a
+renders its own entry TU — it calls `nros dev codegen entry-node`, which builds a
 one-node plan and renders the SAME templates as `nros build`. The six
 `cmake/templates/*_entry_main*.cpp.in` files are gone.
 
@@ -390,7 +390,7 @@ def main() -> int:
             print(f"  cmake/templates/{name}", file=sys.stderr)
         print(
             "\n  `nano_ros_node_register()` renders through the SHARED entry\n"
-            "  pack now (`nros codegen entry-node` ->\n"
+            "  pack now (`nros dev codegen entry-node` ->\n"
             "  codegen/entry/packs/entry/cpp/entry.cpp.jinja), so a template here\n"
             "  is a SECOND producer of the entry TU — the shape that let the\n"
             "  session name be right in some images and wrong in others for\n"
@@ -448,7 +448,7 @@ def main() -> int:
             "check-entry-session-name: `NROS_ENTRY_NODE_NAME` is set but never "
             "passed to the emitter (phase-432 W2.6):\n\n"
             "  expected `--node-name \"${NROS_ENTRY_NODE_NAME}\"` in the\n"
-            "  `nros codegen entry-node` invocation.\n\n"
+            "  `nros dev codegen entry-node` invocation.\n\n"
             "  The entry TU used to read `@NROS_ENTRY_NODE_NAME@` through\n"
             "  `configure_file`; it is an ARGUMENT now, and an argument that is\n"
             "  never passed is the same silence as a substitution that never\n"

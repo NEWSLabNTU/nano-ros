@@ -27,7 +27,7 @@ bench = false
 # nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Executor API.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 
-# Generated message types (from package.xml via nros generate-rust)
+# Generated message types (from package.xml via nros dev codegen rust)
 std_msgs = { path = "generated/std_msgs", default-features = false }
 
 # Per-message log lines (Published:/Received:) routed to the console by the

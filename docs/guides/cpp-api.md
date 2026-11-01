@@ -73,7 +73,7 @@ locator   = "tcp/192.0.3.1:7447"
 board = "mps2-an385-freertos"
 ```
 
-`find_package(nano_ros)` reads that through `nros ws leaf-system` and derives
+`find_package(nano_ros)` reads that through `nros dev image leaf-system` and derives
 the platform (`freertos`) from the board, so `-DNROS_PLATFORM`,
 `-DNROS_BOARD` and `-DNROS_RMW` are retired as the way a user chooses.
 Switching board is editing `[image.*] board`. Phase 138's
@@ -93,7 +93,7 @@ cmake --build build/talker
 `nros build` is what maps a board to its toolchain file: run in the leaf, it
 passes this flag itself and builds into `build/<image>/cmake`
 ([issue 1296](../issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)).
-`nros init` + `cmake --preset <board>` is the other way to avoid spelling the
+`nros setup presets` + `cmake --preset <board>` is the other way to avoid spelling the
 path (the presets `nros setup <board>` wrote).
 
 A single-package C/C++ leaf needs **no `nros sync`**: its message bindings are

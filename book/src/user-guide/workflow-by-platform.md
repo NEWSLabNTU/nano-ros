@@ -197,8 +197,8 @@ board, the toolchain file the board's starter page names:
 
 ```bash
 cmake -S . -B build/<image-id>/cmake -DNROS_IMAGE=<image-id> \
-    -Dnano_ros_ROOT="$(nros sdk-root)" \
-    -DCMAKE_TOOLCHAIN_FILE="$(nros sdk-root)/cmake/toolchain/<toolchain>.cmake"
+    -Dnano_ros_ROOT="$(nros dev sdk root)" \
+    -DCMAKE_TOOLCHAIN_FILE="$(nros dev sdk root)/cmake/toolchain/<toolchain>.cmake"
 cmake --build build/<image-id>/cmake --parallel
 ```
 

@@ -82,7 +82,7 @@ the same rail:
   `runtime.node_identity = ("talker", "/robot1")`) before the `<pkg>::register(runtime)` call, from
   the parsed launch node. `create_node(NodeOptions::new(default))` then resolves to the injected
   identity when present.
-- **C / C++ (`nros codegen entry`):** the codegen — which today bakes the launch name straight into
+- **C / C++ (`nros dev codegen entry`):** the codegen — which today bakes the launch name straight into
   the `nros_cpp_node_create` call — instead **injects** the launch identity and passes the node's
   default (`exec`) as the `create_node` argument, so the SAME shared resolver applies. Net
   observable behavior is unchanged for C/C++ (still launch-named), but the resolution rule is now

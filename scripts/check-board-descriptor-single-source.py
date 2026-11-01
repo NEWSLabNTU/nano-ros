@@ -14,7 +14,7 @@ That audit examined ZERO boards, for two independent reasons, and said OK:
     glob would have hit its "not migrated yet" skip.
 
 RFC-0064 R5 D4 deleted both faces. cmake now reads a MECHANICAL PROJECTION of
-the descriptor (`nros board cmake-vars`), regenerated per configure into the
+the descriptor (`nros dev board cmake-vars`), regenerated per configure into the
 build directory. There is nothing to drift because there is one authored file.
 
 WHAT IT CHECKS. That the second faces stay gone: no tracked `board.cmake`
@@ -81,7 +81,7 @@ def scan(root):
         problems.append(
             f"{path}: a second, authored descriptor face.\n"
             "    A board states its facts once, in `nros-board.toml`. cmake reads\n"
-            "    a projection of that (`nros board cmake-vars`, written into the\n"
+            "    a projection of that (`nros dev board cmake-vars`, written into the\n"
             "    build dir per configure), so nothing needs to be written twice.\n"
             "    RFC-0064 R5 D4."
         )

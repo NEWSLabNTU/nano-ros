@@ -209,7 +209,7 @@ The same single-source rule applies to **RMW** (phase-255, **landed**): `[system
 `[image.<id>].rmw` is the one declared home — both the Rust board-feature lowering and the
 C/C++ `#define NROS_SYSTEM_RMW_<TOKEN>` resolve from it via `SystemToml::resolved_rmw(target,
 cli)` (RFC-0031 precedence `--rmw` > `[image.<id>]` > `[system]` > `zenoh`; `--rmw` is on `nros
-plan` + `nros codegen-system`). The legacy `[build].rmw` / `[[transport]].rmw` `nros.toml`
+plan` + `nros dev codegen system`). The legacy `[build].rmw` / `[[transport]].rmw` `nros.toml`
 overlay is now a **deprecated fallback that warns** (no fixture declares it), retired after the
 next release; a binary's multi-RMW link set comes from `[[bridge]]` here (`bridged_rmws()` →
 `PlanBuildOptions::bridged_rmws` → `rmw_set`), not the overlay.

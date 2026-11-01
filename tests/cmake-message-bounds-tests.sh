@@ -200,7 +200,7 @@ PY_EOF
 # Run the derivation. $1 = ";"-joined fragment list, rest = extra -D args.
 # Captures stdout+stderr; the caller greps it.
 #
-# phase-439 W6 -- and run the Rust twin (`nros ws message-bound-knobs`) over the
+# phase-439 W6 -- and run the Rust twin (`nros dev image message-bound-knobs`) over the
 # same closure, requiring the SAME BYTES. `nros build` seeds the west road's
 # bound fragment with that composer, and a seed saves a configure pass only when
 # it is byte-identical to what this module then writes -- so every case below

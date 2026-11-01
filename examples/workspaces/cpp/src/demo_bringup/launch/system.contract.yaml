@@ -4,7 +4,7 @@
 # and a timer. That used to live in each package's `nano_ros_node_register(
 # ENTITIES ...)`, hand-maintained with nothing comparing it to the code. This
 # is the replacement: the resolver folds it into the SystemModel, and
-# `nros ws entity-inventory --model` sizes the image's pools from it.
+# `nros dev image entity-inventory --model` sizes the image's pools from it.
 #
 # `nodes:` keys are LOCAL endpoint names. An absolute path here would be
 # concatenated onto the node FQN and match no topic.

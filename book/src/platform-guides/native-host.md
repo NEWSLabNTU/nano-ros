@@ -71,7 +71,7 @@ shape, and the examples on GitHub are copy-out ready: nothing in one names
 a path into the SDK. For Rust, run `nros sync` and `nros build` (`nros`
 finds its own SDK; `--nano-ros-path` names another). For C/C++, run
 `nros build`, or configure a raw `cmake` with
-`-Dnano_ros_ROOT="$(nros sdk-root)"` — a single-package C/C++
+`-Dnano_ros_ROOT="$(nros dev sdk root)"` — a single-package C/C++
 leaf needs no `nros sync`, because
 its message bindings are a CMake-time output.
 

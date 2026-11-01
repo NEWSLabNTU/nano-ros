@@ -34,7 +34,7 @@
 #include <rcl/rcl.h>
 #include <rclc/timer.h>
 
-// Generated message bindings (`nros generate c`, run by build.rs).
+// Generated message bindings (`nros interface generate c`, run by build.rs).
 #include "std_msgs.h"
 
 // ----------------------------------------------------------------------------

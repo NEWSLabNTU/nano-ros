@@ -123,14 +123,14 @@ def self_test(quiet=False):
     WHY. `gate.yml` builds the CLI only on pull_request/merge_group/schedule/
     dispatch, so on a plain `push` to main there is no `nros`. From 2026-08-31
     (321642a20, which made `make` come from the SDK store) until 2026-09-05 the
-    emitter resolved it with a bare `$(nros sdk-path make)`, which exits 127
+    emitter resolved it with a bare `$(nros dev sdk path make)`, which exits 127
     under `set -e` -- so THIS gate and `check-kconfig-overridden-values` failed
     on every push to main for five days. A lane that is uniformly red cannot
     report a regression, which is the whole cost: the two gates went on looking
     like gates while guarding nothing on the one event they still ran on.
 
     It is a control rather than a comment because the emitter has three
-    CLI-derived inputs now (`nros sdk-path`, `nros_cargo_codegen_c_bin`, and
+    CLI-derived inputs now (`nros dev sdk path`, `nros_cargo_codegen_c_bin`, and
     whatever the next one is) and each is one unguarded `$(...)` away from the
     same 127.
 

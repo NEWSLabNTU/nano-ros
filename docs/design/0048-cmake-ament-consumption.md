@@ -76,7 +76,7 @@ line** — it resolves the package (via the compat find-stubs on `CMAKE_MODULE_P
 to satisfy the ament `REQUIRED` and confirm the dependency, but it does **not**
 itself generate. The authoritative codegen is driven by the `nano_ros_add_*` verb,
 which knows the leaf's language (inferred from its sources) and reads the
-`package.xml` `<depend>` closure through `nros codegen resolve-deps` (the CLI path
+`package.xml` `<depend>` closure through `nros dev codegen resolve-deps` (the CLI path
 that resolves well-known ROS packages with **no in-tree bundle or sourced ROS
 install** — the find-stub's cmake-glob resolution cannot). This keeps C and C++
 leaves byte-identical and avoids pulling a C++ interface lib (and CXX
@@ -190,7 +190,7 @@ complicates parsing and bakes in an assumption about the nano-ros tree layout):
    The toolchain file names its compiler by bare name (`arm-none-eabi-gcc`), so the
    only genuinely-dynamic datum is the store bin dir — carried on the preset's
    `environment.PATH`, filled in from the provision result.
-4. **`nros init`** (new verb) — in the user's project, generates a
+4. **`nros setup presets`** (new verb) — in the user's project, generates a
    `CMakePresets.json` that `"include"`s the `~/.nros/presets/*` fragments.
    Idempotent; re-run after `nros setup` of a new board.
 
@@ -207,7 +207,7 @@ git clone --branch v0.X.Y https://github.com/NEWSLabNTU/nano-ros   # pinned sour
 source nano-ros/activate.sh             # PATH + NROS_REPO_DIR + nano_ros_ROOT
 nros setup mps2-an385-freertos          # toolchain/SDK + ~/.nros/presets/<board>.json
 # in your project:
-nros init                               # CMakePresets.json wired to nano-ros
+nros setup presets                               # CMakePresets.json wired to nano-ros
 cmake --preset mps2-an385-freertos && cmake --build --preset mps2-an385-freertos
 ```
 
@@ -238,6 +238,6 @@ cmake --preset mps2-an385-freertos && cmake --build --preset mps2-an385-freertos
 
 - Whether `find_package(<msg_pkg>)` should also accept the ROS 2 versioned/`COMPONENTS`
   spelling, or only the bare package name.
-- Whether `nros init` writes a project-local `CMakePresets.json` or a
+- Whether `nros setup presets` writes a project-local `CMakePresets.json` or a
   `CMakeUserPresets.json` (the latter is git-ignored by convention — better for a
   user's own repo).

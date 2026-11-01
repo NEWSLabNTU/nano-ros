@@ -25,7 +25,7 @@ project(nros_zephyr_zenoh_service_server_c)
 # link error, so it is gone too (issue 1673).
 
 # The Zephyr typed carrier branch (LANGUAGE C) configure_files
-# the shared entry pack (`nros codegen entry-node`) + compiles src/AddTwoIntsServer.c with
+# the shared entry pack (`nros dev codegen entry-node`) + compiles src/AddTwoIntsServer.c with
 # -DNROS_PKG_NAME=<pkg sym> so its RCLC_C_COMPONENT factory/configure seam links
 # against the generated entry, all into the global `app`. No second executable.
 find_package(nano_ros REQUIRED)

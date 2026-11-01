@@ -98,7 +98,7 @@ nano_ros_workspace_pkg_guard()  # no-op inside a workspace; bootstraps standalon
 ```
 
 — the cmake equivalent of cargo `[workspace]` discipline. Every member
-compiles standalone (with `-Dnano_ros_ROOT="$(nros sdk-root)"`) or as part of the
+compiles standalone (with `-Dnano_ros_ROOT="$(nros dev sdk root)"`) or as part of the
 workspace; the per-pkg CMakeLists doesn't change between modes.
 
 ## Node pkg
@@ -187,7 +187,7 @@ model to the sizing automatically — nothing here takes an argument for it.
 Inspect the composed answer with:
 
 ```console
-$ nros ws entity-inventory --metadata <build>/nros-metadata.json       --model <ws>/build/nros/models/demo_bringup/system_model.yaml
+$ nros dev image entity-inventory --metadata <build>/nros-metadata.json       --model <ws>/build/nros/models/demo_bringup/system_model.yaml
 ```
 
 The derivation is all-or-nothing per image: **a component the contract does not
@@ -224,7 +224,7 @@ it plans a cross image, it takes that image's census. A build
 driven some other way (a hand-run `west build` or `cmake`) takes it first:
 
 ```console
-$ nros ws entity-census take --image demo_bringup:zephyr
+$ nros dev image entity-census take --image demo_bringup:zephyr
 ```
 
 `take` does nothing when there is nothing to do — a model with no contract, or a
@@ -336,7 +336,7 @@ nano_ros_add_executable(linux_entry
     DEPLOY  native)
 ```
 
-At configure time the cmake fn shells `nros codegen entry --lang cpp --typed`,
+At configure time the cmake fn shells `nros dev codegen entry --lang cpp --typed`,
 emits `${CMAKE_BINARY_DIR}/linux_entry_nros_main_generated.cpp` (the canonical
 `int main()` body that constructs each launch node's component + calls
 `configure(node)` on the real executor via `LinuxBoard::run_components`),
@@ -401,7 +401,7 @@ The build produces:
   `int main()` + register-call sequence + Board boot stub linked in.
 
 `cmake configure` is incremental — pinned `CMAKE_CONFIGURE_DEPENDS` on
-every file `nros codegen entry` reads (depfile from the CLI), so any
+every file `nros dev codegen entry` reads (depfile from the CLI), so any
 launch.xml / `package.xml` / Node pkg edit re-runs codegen.
 
 ## What runs where

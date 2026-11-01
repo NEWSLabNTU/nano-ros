@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Phase 196.2 — guard the canonical `nros codegen` invocation shape.
+# Phase 196.2 — guard the canonical `nros dev codegen` invocation shape.
 #
-# Phase 195 made `nros codegen --args-file …` the canonical low-level codegen
+# Phase 195 made `nros dev codegen --args-file …` the canonical low-level codegen
 # entrypoint (the old top-level `nros --args-file …` was dropped). 195.D switched
 # the in-tree consumers — but missed `zephyr/cmake/nros_generate_interfaces.cmake`
 # (Phase 196.1), which silently broke every Zephyr interface build until a live
@@ -10,7 +10,7 @@
 #
 # The signature is precise: any line that drives the codegen tool with
 # `--args-file` MUST carry the `codegen` subcommand token before it. The
-# user-facing verbs (`nros generate-rust`, `nros generate cpp`) are untouched —
+# user-facing verbs (`nros dev codegen rust`, `nros interface generate cpp`) are untouched —
 # they don't use `--args-file`, so they never trip this.
 #
 # Scope = superproject-owned build glue. `third-party/` (vendored) and the
@@ -47,7 +47,7 @@ for f in "${files[@]}"; do
 done
 
 if [ "${#bad[@]}" -ne 0 ]; then
-    echo "ERROR: legacy codegen invocation(s) found — use 'nros codegen --args-file …'" >&2
+    echo "ERROR: legacy codegen invocation(s) found — use 'nros dev codegen --args-file …'" >&2
     echo "       (Phase 195 dropped the top-level '--args-file'; see Phase 196.2):" >&2
     printf '  %s\n' "${bad[@]}" >&2
     exit 1

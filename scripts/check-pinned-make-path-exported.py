@@ -18,7 +18,7 @@ VARIABLE in parallel (`-j`, `--jobserver-*`, a `make_args` array — the same
 detector as `check-jobserver-makes-watched`) must set `PATH=` to a value naming
 that make's directory, on a line BEFORE the run. Accepted spellings of the
 directory: `nros_pinned_tool_path_prefix` (scripts/build/jobserver-pool.sh, the
-one helper), `$(nros sdk-path make)/bin`, `$_sdk_make/bin`-style variables
+one helper), `$(nros dev sdk path make)/bin`, `$_sdk_make/bin`-style variables
 assigned from `sdk-path make`, or a variable assigned `$(dirname "$<make>")`.
 A bare `make -j` is out of scope: it IS PATH's make, so its children agree.
 
@@ -38,14 +38,14 @@ _spec = importlib.util.spec_from_file_location(
 _w = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_w)
 
-SELECTS_PINNED = re.compile(r"sdk-path make\b|nros_pinned_make\b")
+SELECTS_PINNED = re.compile(r"(?:sdk-path|dev sdk path) make\b|nros_pinned_make\b")
 # A make run through a variable or the pinned helper — not a bare `make`.
 VAR_MAKE = re.compile(r'"\$\{?(?:make_bin|pinned_make|MAKE)\}?"|"\$\(nros_pinned_make\)"')
 PATH_SET = re.compile(r'(?:^|[\s;(])(?:export\s+)?PATH="([^"]*)"')
 # A variable that holds the pinned make's directory (or its bin/ parent).
 DIR_VAR = re.compile(
-    r'(?:^|[\s;(])(?:local\s+)?(\w+)="\$\((?:"?\$\w+"?\s+)?(?:sdk-path make|dirname "\$\w+")[^"]*"')
-DIRECT = ("nros_pinned_tool_path_prefix", "sdk-path make)/bin")
+    r'(?:^|[\s;(])(?:local\s+)?(\w+)="\$\((?:"?\$\w+"?\s+)?(?:(?:sdk-path|dev sdk path) make|dirname "\$\w+")[^"]*"')
+DIRECT = ("nros_pinned_tool_path_prefix", "sdk-path make)/bin", "dev sdk path make)/bin")
 
 
 def parallel_var_makes(text):
@@ -90,17 +90,17 @@ def scan(text):
 
 
 def self_test():
-    sel = 'make_bin="$(nros sdk-path make)/bin/make"\n'
+    sel = 'make_bin="$(nros dev sdk path make)/bin/make"\n'
     cases = (
         (sel + '"$make_bin" -j4 -f x.mk\n', 1, "pinned make -j, no export (the 2119 shape)"),
         (sel + 'export PATH="$(nros_pinned_tool_path_prefix "$make_bin"):$PATH"\n'
          '"$make_bin" -j4 -f x.mk\n', 0, "the helper"),
-        (sel + 'export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"\n'
+        (sel + 'export PATH="$(nros dev sdk path make)/bin:$(nros dev sdk path ninja)/bin:$PATH"\n'
          '"$make_bin" "${make_args[@]}" -f x.mk\n', 0, "the literal sdk-path spelling"),
-        ('pinned_make="$(nros sdk-path make)/bin/make"\n'
+        ('pinned_make="$(nros dev sdk path make)/bin/make"\n'
          'pinned_tool_path="$(dirname "$pinned_make")"\nexport PATH="$pinned_tool_path:$PATH"\n'
          'env -u MAKEFLAGS "$pinned_make" -j8 -f x.mk\n', 0, "a dirname variable"),
-        (sel + '"$make_bin" -j4 -f x.mk\nexport PATH="$(nros sdk-path make)/bin:$PATH"\n',
+        (sel + '"$make_bin" -j4 -f x.mk\nexport PATH="$(nros dev sdk path make)/bin:$PATH"\n',
          1, "an export AFTER the run"),
         (sel + 'export PATH="/opt/other/bin:$PATH"\n"$make_bin" -j4 -f x.mk\n',
          1, "an export of something else"),

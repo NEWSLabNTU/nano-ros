@@ -8,7 +8,7 @@
 //!
 //! The script is LEAF-AGNOSTIC — every C leaf in this family carries the same
 //! bytes. It compiles every `src/*.c`, and binds every interface package that
-//! `nros generate c` resolved from `package.xml` (transitively: an action leaf
+//! `nros interface generate c` resolved from `package.xml` (transitively: an action leaf
 //! naming `example_interfaces` also gets `action_msgs`,
 //! `unique_identifier_msgs`, `builtin_interfaces`). So a leaf differs from its
 //! siblings in `package.xml` and its own C file, and nowhere in here.
@@ -23,7 +23,7 @@
 //!    `$NROS_REPO_DIR/packages/api/nros-c/include` is not tidiness: `links` is
 //!    also what makes cargo run THIS script after the one that writes the config
 //!    header, instead of racing it.
-//!  * the generated C bindings — emitted into `OUT_DIR` by `nros generate c`
+//!  * the generated C bindings — emitted into `OUT_DIR` by `nros interface generate c`
 //!    from this package's `package.xml`. They go to `OUT_DIR`, not to the leaf's
 //!    `generated/`, because that directory belongs to `nros sync`'s RUST output
 //!    and the two must not fight over it.
@@ -73,7 +73,7 @@ fn main() {
 
     // ---- generated message bindings -------------------------------------
     //
-    // `nros generate c` writes plain `.h`/`.c` — the same pack the cmake road's
+    // `nros interface generate c` writes plain `.h`/`.c` — the same pack the cmake road's
     // `nros_generate_interfaces(LANGUAGE c)` compiles into a library.
     //
     // `NROS_CLI` then PATH, which is the first two rungs of the resolution order
@@ -134,7 +134,7 @@ fn main() {
 
     // TWO compiles, and the split is about ownership rather than flags: the
     // authored TU is linted, the GENERATED bindings are not. cc-rs turns on
-    // `-Wall -Wextra`, and `nros generate c`'s `Char` pack trips
+    // `-Wall -Wextra`, and `nros interface generate c`'s `Char` pack trips
     // `-Wpointer-sign` (`char*` into a `uint8_t*` parameter) once per build —
     // dozens of types' worth of noise over a diagnostic nobody here can act on,
     // which is exactly how a real warning gets missed. Generated code is not
@@ -206,12 +206,12 @@ fn main() {
             }
         }
     }
-    // `nros generate c` said it generated, so an EMPTY set means the output moved
+    // `nros interface generate c` said it generated, so an EMPTY set means the output moved
     // and the image would fail at link on a `*_publish` symbol instead — a
     // message about the application, four frames from the cause.
     assert!(
         any,
-        "{leaf}: `nros generate c` produced no `.c` under {}/<pkg>/{{msg,srv,action}} \
+        "{leaf}: `nros interface generate c` produced no `.c` under {}/<pkg>/{{msg,srv,action}} \
          — the bindings layout changed, or the generator wrote somewhere else.",
         generated.display()
     );

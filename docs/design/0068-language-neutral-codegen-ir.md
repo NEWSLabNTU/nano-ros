@@ -156,7 +156,7 @@ data-driven boundary safe here, not the serialization format.**
 ## Serialization
 `ResolvedType` and `LoweredType` derive `serde`, but the default Rust path stays **in-process**
 (no serialize→parse→render round-trip). The serialized form is materialized only when a non-Rust
-generator or an external template pack wants it (`nros codegen export` verb), and is versioned
+generator or an external template pack wants it (`nros dev codegen export` verb), and is versioned
 (a `schema_version` on the manifest) for compatibility. So the common case pays nothing; the
 extension case is opt-in.
 
@@ -248,7 +248,7 @@ phase-335 and phase-432, a message language's Rust is:
   This is Rust by design: a spelling is a correctness property, and RFC-0091 §6b
   keys the set by the pack that calls it;
 - a **generator per kind** (`generator/{msg,srv,action,cpp}.rs`) that assembles
-  the surface's context and names its files, and an arm in `nros generate`.
+  the surface's context and names its files, and an arm in `nros interface generate`.
 
 Entries, which this RFC did not scope, need more: each entry language has a
 Rust emitter that builds its view (RFC-0091 §8). The Escape hatch above is
@@ -320,7 +320,7 @@ filter set and a generator per kind. A message language ALSO needed its rows in
 `render.rs`'s 28-row `include_str!` registry and — for a C-family surface — a
 `Surface` variant plus rows in three `match` tables in `generator/naming.rs`. Both
 are gone: they are manifest fields. What remains Rust on the message path is the
-filter set, the generator per kind and its `nros generate` arm, plus the ROS kind
+filter set, the generator per kind and its `nros interface generate` arm, plus the ROS kind
 word (`msg`/`srv`/`action`), which is identical on every surface and so is not a
 per-pack parameter.
 

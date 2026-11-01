@@ -35,7 +35,7 @@ Inside recipe bodies only (never comments), for LITERAL paths only:
 1. `cd <dir>` / `pushd <dir>` — the directory must exist.
 2. The tool run in that directory must find its manifest there:
    `cargo` -> `Cargo.toml`, `cmake`/`west build`/`idf.py` -> `CMakeLists.txt`,
-   `nros generate-rust` -> `package.xml`.
+   `nros dev codegen rust` -> `package.xml`.
 3. `cmake -S <dir>` — `<dir>/CMakeLists.txt` must exist (an explicit `-S`
    replaces the working directory, so rule 2 does not apply to that call).
 4. Every `scripts/…` or `tests/…` `.sh`/`.py` a body names must exist.
@@ -97,7 +97,7 @@ TOOL_MANIFEST = {
     "cmake": "CMakeLists.txt",
     "west": "CMakeLists.txt",
     "idf.py": "CMakeLists.txt",
-    "nros generate-rust": "package.xml",
+    "nros dev codegen rust": "package.xml",
 }
 
 # A tool at a command position within one `&&`/`;`-delimited segment. `west`
@@ -105,7 +105,7 @@ TOOL_MANIFEST = {
 # CMakeLists.txt, so the tool key has to include the subcommand.
 TOOL_AT_COMMAND = re.compile(
     r"^\s*(?:[@-]\s*)?(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"
-    r"(cargo|cmake|idf\.py|west\s+build|nros\s+generate-rust)\b"
+    r"(cargo|cmake|idf\.py|west\s+build|nros\s+dev\s+codegen\s+rust)\b"
 )
 
 # `cmake -S <dir>`: an explicit source dir replaces the working directory.
@@ -374,12 +374,12 @@ scratch-dir-not-a-repo-path:
 generate-good:
     #!/usr/bin/env bash
     cd packages/msgpkg
-    nros generate-rust --gen-good -o generated
+    nros dev codegen rust --gen-good -o generated
 
 generate-crossed:
     #!/usr/bin/env bash
     cd packages/rustcrate
-    nros generate-rust --gen-crossed -o generated
+    nros dev codegen rust --gen-crossed -o generated
 
 idf-good:
     #!/usr/bin/env bash
@@ -447,7 +447,7 @@ EXPECTED = [
     ("cmake-s", "--s-bad",
      "`cmake -S` at a directory with no CMakeLists.txt"),
     ("manifest", "--gen-crossed",
-     "`nros generate-rust` in a dir with no package.xml"),
+     "`nros dev codegen rust` in a dir with no package.xml"),
     ("manifest", "--idf-crossed",
      "`idf.py` in a dir with no CMakeLists.txt"),
     ("manifest", "--west-crossed",
@@ -481,7 +481,7 @@ CLEAN = [
      "a missing `cd` target is reported ONCE, as the cd — not again for every "
      "tool that follows it in the body"),
     ("--gen-good",
-     "a package.xml dir under `nros generate-rust` — with --gen-crossed above, "
+     "a package.xml dir under `nros dev codegen rust` — with --gen-crossed above, "
      "this pins the codegen wire in BOTH directions; a mutation swapping "
      "package.xml for Cargo.toml survived until these two cases existed"),
     ("--idf-good", "a CMakeLists dir under `idf.py`"),

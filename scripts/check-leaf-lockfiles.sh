@@ -90,7 +90,7 @@ SKIP_RE='^(tests/simple-workspace)$'
 #
 # The leaf `.cargo/config.toml` is `nros sync`-managed (RFC-0048): it includes
 # the central, gitignored `nros-patch.toml` and redirects the message crates at
-# a per-leaf `generated/` tree that `nros generate-rust` produces. On a host set
+# a per-leaf `generated/` tree that `nros dev codegen rust` produces. On a host set
 # up by the BOOK's flow (bootstrap + `nros setup`) neither exists yet, so cargo
 # cannot even load the config.
 #

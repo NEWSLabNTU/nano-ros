@@ -43,7 +43,7 @@ that share one nano-ros checkout: each carries its own root build file, and
 `[image.*]` composes them into one program, which is the thing a workspace root
 exists to be found from.
 
-Measured 2026-09-27, with no marker: `nros ws list` and `nros sync` resolve this
+Measured 2026-09-27, with no marker: `nros list` and `nros sync` resolve this
 directory, `nros build --dry-run` plans all three packages, and a bare
 `cargo check` in `src/pkg_rust_publisher` expands `nros::main!` cleanly — because
 that package's own `[workspace]` is the root, which is the right answer. Adding a

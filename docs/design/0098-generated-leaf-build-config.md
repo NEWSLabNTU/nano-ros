@@ -241,7 +241,7 @@ hand-written entries and the manifest fallback that served them:
   claims an entry by `entry = "<pkg>"`, else by being the image the builder
   generates `<id>_entry` for, and `nros_orchestration_ir::leaf_system::for_entry`
   is the one reader — `nros::main!`, `nros sync`'s board projection,
-  `nros ws board-facts` (the Zephyr lane) and `nros build`'s entry
+  `nros dev image board-facts` (the Zephyr lane) and `nros build`'s entry
   classification all ask it. The retired keys are now REFUSED wherever they
   appear, naming the file to write.
 - **A workspace with no bringup has a build.** D9 makes a workspace "a
@@ -612,7 +612,7 @@ whether sync writes the block or only checks it and prints the edit (the
    sync owns only the message-package rows. The second bullet of the proposal
    above is therefore NOT implemented.
 2. **`nros sync` WRITES the rows** (the `cargo add` shape), and so does
-   `nros build`, before planning. `nros ws managed-deps [<dir>] [--check]` runs
+   `nros build`, before planning. `nros dev lock managed-deps [<dir>] [--check]` runs
    the same step alone; `--check` is the report-only form.
 
 **As implemented** (`packages/cli/nros-cli-core/src/cmd/managed_deps.rs`, the

@@ -54,7 +54,7 @@ Phase 176 fifo jobserver; Make was dropped from the staleness path because
   `nros setup --tool make` (source tarball; upstream ships no binary) and
   `nros setup --tool ninja` (upstream prebuilt zip) — and
   `scripts/sdk-path-tools.txt` puts them on `PATH` (incl. a `gmake` → make-4.4
-  alias). Resolve an exact path with `nros sdk-path <tool>`.
+  alias). Resolve an exact path with `nros dev sdk path <tool>`.
 
 ## Per-RMW build dirs = cache isolation
 

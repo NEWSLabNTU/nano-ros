@@ -22,7 +22,7 @@ Options:
   --codegen-tool PATH       host codegen tool used in signatures
                             (default: resolved nros CLI, or build/host-codegen/nros-codegen
                             when nros is unavailable)
-  --make-bin PATH           make path used in signatures (default: $(nros sdk-path make)/bin/make
+  --make-bin PATH           make path used in signatures (default: $(nros dev sdk path make)/bin/make
                             when executable, else command -v make)
   --toolchain-cache-dir DIR Zephyr toolchain capability cache dir
                             (default: build/zephyr-cache/ToolchainCapabilityDatabase)
@@ -198,7 +198,7 @@ if [ -z "$make_bin" ]; then
     # Issue 1880 — the ONE CLI ladder (`nros_cli_bin`, sourced above), not
     # PATH: in a linked worktree PATH names the parent checkout's binary.
     if _nros_cli="$(nros_cli_bin 2>/dev/null)"; then
-        _sdk_make="$("$_nros_cli" sdk-path make 2>/dev/null || true)"
+        _sdk_make="$("$_nros_cli" dev sdk path make 2>/dev/null || true)"
     fi
     if [ -n "$_sdk_make" ] && [ -x "$_sdk_make/bin/make" ]; then
         make_bin="$_sdk_make/bin/make"

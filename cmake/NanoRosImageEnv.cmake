@@ -26,7 +26,7 @@
 # And no path is fingerprinted (issue 0491): the file path rides the command
 # line as a flag, and what cargo tracks is each row's VALUE.
 #
-# The file is written by `nros ws leaf-system --image-env-out`
+# The file is written by `nros dev image leaf-system --image-env-out`
 # (`nano_ros_read_leaf_system`, NanoRosPackageXml.cmake) — the one reader of
 # `system.toml` — and only when the image states a row, so an image that states
 # none keeps a byte-identical cargo command.

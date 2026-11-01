@@ -403,7 +403,7 @@ pub fn run(args: Args) -> Result<()> {
                 nros_lang::Language::Rust => bail!(
                     "nros codegen: `--language rust` is not served by the args-file verb \
                      (it renders C and C++ message packages for CMake); Rust message \
-                     crates come from `nros generate-rust`"
+                     crates come from `nros dev codegen rust`"
                 ),
             }
         }

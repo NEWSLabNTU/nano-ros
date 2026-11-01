@@ -159,7 +159,7 @@ them. **A user does not.** Since
 [RFC-0098](../design/0098-generated-leaf-build-config.md) D3/D5 the board, the
 RMW, the domain and the network identity come from a `system.toml` beside the
 example's `CMakeLists.txt`, and `find_package(nano_ros)` reads it through
-`nros ws leaf-system`, deriving the platform from the board. So
+`nros dev image leaf-system`, deriving the platform from the board. So
 `-DNROS_PLATFORM`, `-DNROS_BOARD` and `-DNROS_RMW` are retired as a
 user-facing spelling: switching board is editing `[image.*] board`.
 
@@ -190,7 +190,7 @@ writes `CMAKE_TOOLCHAIN_FILE` into the generated cmake root before `project()`;
 in a single-package leaf it passes `-DCMAKE_TOOLCHAIN_FILE` to the leaf's own
 configure, into `build/<image>/cmake`
 ([issue 1296](../issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)).
-`nros init` + `cmake --preset <board>` is the other way to avoid spelling the
+`nros setup presets` + `cmake --preset <board>` is the other way to avoid spelling the
 path.
 
 A single-package C/C++ leaf needs no `nros sync`: its message bindings are a

@@ -19,7 +19,7 @@ generated crate). Does not change the ament/`package.xml` SSoT.
 ## Problem
 
 A generated ROS message crate (`std_msgs`, `builtin_interfaces`, …) is produced
-per host by `nros sync` / `nros generate-rust` from the consumer's ament install.
+per host by `nros sync` / `nros dev codegen rust` from the consumer's ament install.
 Its **committed identity has two axes that vary with the host's ROS distro**, and
 both break something when a leaf commits a `Cargo.lock`:
 

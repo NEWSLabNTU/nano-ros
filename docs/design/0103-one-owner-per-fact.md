@@ -406,7 +406,7 @@ rows a contributor edits, which rung 4 serves from the checkout anyway.
   workspace (a workspace inside a checkout builds that checkout), then the
   binary's own root. `$NROS_REPO_DIR` and an exported `nano_ros_ROOT` retire
   as inputs; `nano_ros_ROOT` stays CMake's `find_package` hint, which
-  `nros build` and `nros init`'s preset pass explicitly. A cmake module
+  `nros build` and `nros setup presets`'s preset pass explicitly. A cmake module
   locates the root from its own path (`CMAKE_CURRENT_LIST_DIR`), never from
   the environment. There is no chicken-and-egg: building the CLI
   (`just setup-cli`) is a `cargo build` whose scripts find the checkout from

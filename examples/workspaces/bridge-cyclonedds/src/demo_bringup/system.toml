@@ -9,7 +9,7 @@ default_launch = "system.launch.xml"
 # The [[domain]] rows below put it on the primary (zenoh) session, and the
 # [[bridge]] forwards every declared topic (here /chatter) zenoh→cyclonedds, so a
 # stock rmw_cyclonedds_cpp peer (`ros2 topic echo /chatter`) receives it.
-# `nros codegen system` reads the [[bridge]]/[[domain]] blocks and the (issue #99)
+# `nros dev codegen system` reads the [[bridge]]/[[domain]] blocks and the (issue #99)
 # planner emits the build.transports + plan.bridges the relay codegen consumes.
 [[component]]
 pkg = "talker_pkg"

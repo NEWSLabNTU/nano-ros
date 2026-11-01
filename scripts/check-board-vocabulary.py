@@ -70,7 +70,7 @@ def exports(text):
 
     phase-445 W3b — this read `<nano_ros deploy=".." board=".."/>` package.xml
     tags until those were retired for `system.toml` (RFC-0098 D3/D5). The
-    deploy token is no longer AUTHORED — `nros ws leaf-system` derives it from
+    deploy token is no longer AUTHORED — `nros dev image leaf-system` derives it from
     the board through the board catalog — so there is no deploy value left to
     misspell, and only the board is read. Section-scoped: a `board` key outside
     an `[image.*]` table is not an image's board.

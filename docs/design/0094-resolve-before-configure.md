@@ -246,7 +246,7 @@ status quo.
 ### D5 — Descriptors become load-bearing; the closed lists go
 
 **LANDED, phase-439 W4 (2026-09-08).** `nros_rmw_dispatch()` asks
-`nros ws rmw-dispatch <name> --lines`, which resolves over the provider scan;
+`nros dev rmw dispatch <name> --lines`, which resolves over the provider scan;
 the generated chain, its generator and the root's hand-written chain are all
 deleted, and the root dispatches on the DECLARED link strategy (`umbrella` /
 `cmake`) instead of on names. `NROS_RMW=uorb` configures. Issues 1214,

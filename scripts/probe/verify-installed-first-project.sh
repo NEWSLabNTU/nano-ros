@@ -37,9 +37,9 @@ cyclone_dir="$(sed -n 's/^CycloneDDS_DIR:[A-Z]*=//p' "$cache")"
 # `check-sdk-store-not-enumerated`), and asked from the SDK root so it reads the
 # index that root ships — the same question nros-rmw-provision.cmake asks.
 rc=0
-want="$(cd "$(nros sdk-root)" && nros sdk-path cyclonedds --require)" || rc=$?
+want="$(cd "$(nros dev sdk root)" && nros dev sdk path cyclonedds --require)" || rc=$?
 [ "$rc" -eq 0 ] && [ -n "$want" ] \
-    || probe_fail "\`nros sdk-path cyclonedds --require\` exited $rc — \`nros setup --rmw cyclonedds\` provisioned no Cyclone where the build looks"
+    || probe_fail "\`nros dev sdk path cyclonedds --require\` exited $rc — \`nros setup --rmw cyclonedds\` provisioned no Cyclone where the build looks"
 case "$cyclone_dir" in
     "$want"/*)
         echo "probe: CycloneDDS came from the prebuilt nros setup provisioned ($cyclone_dir)" ;;

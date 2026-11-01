@@ -22,7 +22,7 @@ Release `0.6.0-nros4` and older ship it as source in the SDK root only;
 install it from there once with cargo:
 
 ```bash
-cargo install --locked --path "$(nros sdk-root)/packages/testing/nros-build-profile"
+cargo install --locked --path "$(nros dev sdk root)/packages/testing/nros-build-profile"
 ```
 
 ## How it works

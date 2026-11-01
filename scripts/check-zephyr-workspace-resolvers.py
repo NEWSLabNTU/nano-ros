@@ -22,7 +22,7 @@ gate keyed on it would be mostly noise. The sibling literal is different. It
 appears only where somebody restated the FALLBACK RUNG — nobody writes
 `../nano-ros-workspace` except to say "and if that is not there, look here",
 which is precisely the ladder. The `(?<!-)` guard drops the unrelated
-`--nano-ros-workspace` CLI flag of `nros metadata`, which names the nano-ros
+`--nano-ros-workspace` CLI flag of `nros dev metadata`, which names the nano-ros
 repository rather than a Zephyr workspace.
 
 Lines that are entirely a COMMENT are not a spelling. A gate about resolvers
@@ -62,7 +62,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib
 import file_kinds  # noqa: E402
 
 # The legacy sibling rung. `(?<!-)` drops `--nano-ros-workspace`, an unrelated
-# `nros metadata` flag naming the nano-ros repo.
+# `nros dev metadata` flag naming the nano-ros repo.
 LADDER = re.compile(
     r"(?<!-)nano-ros-workspace"
     # issue 1736 — the OVERRIDE rung with a fallback rung after it is the
@@ -190,7 +190,7 @@ def selftest(verbose=False):
         == [1, 3])
 
     # What it must NOT see. Each of these was a real false positive before the
-    # rule narrowed: the `nros metadata --nano-ros-workspace` flag names the
+    # rule narrowed: the `nros dev metadata --nano-ros-workspace` flag names the
     # nano-ros REPOSITORY, and prose about the ladder is not a spelling of it.
     chk("the --nano-ros-workspace flag is not this ladder",
         ladder_lines('  "--nano-ros-workspace <path> or set NROS_WORKSPACE"\n') == [])

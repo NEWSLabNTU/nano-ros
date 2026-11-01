@@ -66,7 +66,7 @@ RETIRED_PAT="(^|[^/A-Za-z0-9_.-]|[})]/|[$][A-Za-z_][A-Za-z0-9_]*/)third-party/($
 # Files allowed to READ a retired root, each with its reason. May only SHRINK,
 # and a listed file that no longer reads one is a STALE entry and fails.
 #   scripts/cyclonedds/msg_to_cyclone_idl.py — resolves the STORE first
-#     (`nros sdk-path --source rosidl`) and keeps the pre-phase-440 location
+#     (`nros dev sdk path --source rosidl`) and keeps the pre-phase-440 location
 #     BELOW it, so an earlier-provisioned host keeps working with no migration
 #     step. A documented fallback, not a reader that missed the move.
 REF_EXCEPTIONS="scripts/cyclonedds/msg_to_cyclone_idl.py"
@@ -214,7 +214,7 @@ while IFS= read -r hit; do
     problems=$((problems + 1))
     echo "check-third-party-is-submodules: $file:${rest%%:*} reads a retired root" >&2
     echo "    ${line#"${line%%[![:space:]]*}"}" >&2
-    echo "    The tool is in the store now — resolve it with \`nros sdk-path <tool>\`" >&2
+    echo "    The tool is in the store now — resolve it with \`nros dev sdk path <tool>\`" >&2
     echo "    (see nros_pinned_make / nros_pinned_ninja). RFC-0095 D3." >&2
 done <<< "$refs"
 for e in $REF_EXCEPTIONS; do

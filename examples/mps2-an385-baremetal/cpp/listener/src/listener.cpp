@@ -20,7 +20,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-// Generated C++ bindings (`nros generate cpp`, run by build.rs).
+// Generated C++ bindings (`nros interface generate cpp`, run by build.rs).
 #include "std_msgs.hpp"
 
 namespace {

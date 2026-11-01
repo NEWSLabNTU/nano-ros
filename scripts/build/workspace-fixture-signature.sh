@@ -27,7 +27,7 @@ workspace="$repo_root/$dir"
 {
     printf 'nros-workspace-fixture-v3\0%s\0' "$record"
     # #182 — the fixture is a function of the CODEGEN TOOL, not just the
-    # workspace sources: `nros codegen entry` emits the entry TU, `nros ws
+    # workspace sources: `nros dev codegen entry` emits the entry TU, `nros ws
     # sync`/`generate-*` shape the msg crates. A signature blind to the tool
     # let a fixture built with a pre-fd32a0f75 emitter verify as "fresh"
     # (realtime tier lanes ran museum TUs with correct-looking sources).

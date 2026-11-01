@@ -23,7 +23,7 @@ Before importing a board crate, the consumer needs:
 3. **nano-ros's Zephyr module exported on `ZEPHYR_EXTRA_MODULES`** so Zephyr picks up its Kconfig + DTS roots. The module ships in the installed SDK root (the directory holding `zephyr/module.yml`); `nros build` passes it for you, and a `west build` you run yourself names it:
 
 ```sh
-export ZEPHYR_EXTRA_MODULES="$(nros sdk-root)"
+export ZEPHYR_EXTRA_MODULES="$(nros dev sdk root)"
 ```
 
 The release you installed is the pin ([Pinning a version](../getting-started/installation.md#pinning-a-version)); nothing in your `west.yml` names nano-ros.
@@ -68,7 +68,7 @@ target_sources(app PRIVATE src/main.cpp)
 | `NROS_BOARD_RUNNER` | The Zephyr emulator name derived from the descriptor's `[board.run] emulator` (`fvp:` gives `armfvp`), cached. Zephyr does not read it; `nano_ros_entry()` reads it as "an embedded board was imported". |
 | `NROS_BOARD_RUST_SUPPORT_MODULE` | Appended to `ZEPHYR_EXTRA_MODULES` when the board carries a Rust support module. (Not yet in the `board.cmake` ↔ `Cargo.toml` drift-audit field list — drift here is unaudited.) |
 
-The values come from ONE authored file, the board's `nros-board.toml`. cmake cannot read TOML, so `nano_ros_use_board()` runs `nros board cmake-vars` to write a mechanical projection of the descriptor into the build directory and includes that. The projection is a build artifact: never committed, regenerated every configure, and editing it edits nothing that survives.
+The values come from ONE authored file, the board's `nros-board.toml`. cmake cannot read TOML, so `nano_ros_use_board()` runs `nros dev board cmake-vars` to write a mechanical projection of the descriptor into the build directory and includes that. The projection is a build artifact: never committed, regenerated every configure, and editing it edits nothing that survives.
 
 This replaced a second AUTHORED file per board (`board.cmake`, 14 `NROS_BOARD_*` variables) plus a `[package.metadata.nros.board]` mirror in `Cargo.toml`. Two faces of the same facts need a drift audit; that audit examined zero boards for two independent reasons and reported OK for as long as it existed. One authored file has nothing to drift against.
 

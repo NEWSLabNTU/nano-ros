@@ -3,8 +3,8 @@ set -euo pipefail
 
 source scripts/build/cargo.sh
 
-make_bin="$(nros sdk-path make)/bin/make"
-ninja_bin="$(nros sdk-path ninja)/bin/ninja"
+make_bin="$(nros dev sdk path make)/bin/make"
+ninja_bin="$(nros dev sdk path ninja)/bin/ninja"
 if [ ! -x "$make_bin" ] || ! "$make_bin" --version | head -1 | grep -q "4.4"; then
     echo "jobserver build needs make >=4.4 — run: nros setup --tool make" >&2
     exit 1
@@ -15,7 +15,7 @@ if [ ! -x "$ninja_bin" ]; then
 fi
 
 n="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
-export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
+export PATH="$(nros dev sdk path make)/bin:$(nros dev sdk path ninja)/bin:$PATH"
 echo "build-all (jobserver): $make_bin -j$n --jobserver-style=fifo -f build-all.mk"
 echo "  make=$(make --version | head -1), ninja=$(ninja --version)"
 echo "  cargo-profile=$(nros_cargo_profile_name), cargo-frontends=${NROS_CARGO_FRONTENDS:-auto}"
@@ -32,7 +32,7 @@ echo "build-all: generating Rust example bindings before standalone prefetch"
 just generate-bindings
 echo "build-all: prefetching standalone Cargo manifests"
 nros_cargo_fetch_standalone_manifests
-echo "build-all: resolving host nros codegen tool"
+echo "build-all: resolving host nros CLI"
 nros_cargo_ensure_codegen_c
 
 # issue 1403 — stall watchdog; see scripts/build/make-stall-watchdog.py.
