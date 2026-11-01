@@ -597,6 +597,26 @@ git = "https://github.com/pacak/cargo-show-asm"
 ref = "0.2.9"
 install = "cargo install --path . --root {prefix} --locked"
 
+# Prunes stale units from the host cargo target dirs between CI jobs
+# (`scripts/ci/runner-sweep.sh`, issue 1094). Without it those dirs are
+# reported and never reclaimed: 127.5 GiB on the tier-2 runner the night tier 2
+# ran out of disk (issue 2191). Indexed so an operator provisions it with
+# `nros setup --tool cargo-sweep` like every other tool, rather than the
+# `cargo binstall` the sweep used to suggest. Source only (issue 1273 /
+# RFC-0099 D4, verified 2026-11-01 against the GitHub releases API):
+# `holmgr/cargo-sweep` tags releases but attaches no assets to any of them, so
+# there is no binary to point a dist row at. On the dist-or-reason ratchet.
+[tool.cargo-sweep]
+version = "0.8.0-nros1"
+upstream = "v0.8.0" # = source.ref (holmgr/cargo-sweep release tag)
+smoke = [
+    { run = "bin/cargo-sweep --version", expect = "0.8.0" },
+]
+[tool.cargo-sweep.source]
+git = "https://github.com/holmgr/cargo-sweep"
+ref = "v0.8.0"
+install = "cargo install --path . --root {prefix} --locked"
+
 # clang-format — phase-422 W2's deferred half, and the reason it was deferred is
 # gone.
 #

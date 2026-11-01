@@ -12,6 +12,7 @@
 #
 # Regenerate: python3 scripts/sdk/check-dist-or-reason.py --write-baseline
 cargo-show-asm    # upstream (pacak/cargo-show-asm) publishes no GitHub Releases at all
+cargo-sweep       # upstream (holmgr/cargo-sweep) releases carry no assets at all
 corrosion         # upstream (corrosion-rs/corrosion) ships source tarballs only, no binaries
 genromfs          # upstream (chexum/genromfs) publishes no GitHub Releases at all
 make              # DECIDED (RFC-0099 D4): stays [tool.*]; GNU ftp ships source tarballs only
