@@ -42,9 +42,7 @@ use nros_extension::plan::{
     Console, ConsoleKind as PlanConsoleKind, Link, LinkKind, PrepareStep as PlanStep, RunPlan,
     RunnerRef, Target, Verb,
 };
-use nros_orchestration_ir::target_exec::{
-    ConsoleKind, ConsoleTable, FlashTable, PrepareStep, over,
-};
+use nros_orchestration_ir::target_exec::{ConsoleKind, ConsoleTable, FlashTable, over};
 
 use crate::{
     cmd::build_next::BuildOutput,
@@ -444,20 +442,18 @@ fn resolve_flash(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
         }
         let steps_from_image = image_t.is_some_and(|t| !t.prepare.is_empty());
         for s in &f.prepare {
-            match s {
-                PrepareStep::Say(t) => plan.prepare.push(PlanStep::Say(t.clone())),
-                PrepareStep::WaitFor(w) => plan.prepare.push(PlanStep::WaitFor(w.to_string())),
-                PrepareStep::SayThenWait { say, wait_for } => {
-                    plan.prepare.push(PlanStep::Say(say.clone()));
-                    plan.prepare.push(PlanStep::WaitFor(wait_for.to_string()));
-                }
-                PrepareStep::Run(cmd) => {
-                    return Err(ResolveError::Unresolved(format!(
-                        "a `prepare` step runs `{cmd}`, and the plan contract \
-                         (`nros_extension::plan::PrepareStep`) has no `run` step yet"
-                    )));
-                }
-            }
+            // The table's step and the plan's step have one JSON form
+            // (RFC-0118 D7), held equal in both directions by
+            // `tests/prepare_step_wire_agreement.rs`, so the step crosses
+            // unchanged: `run` and the `say` + `wait_for` pair included.
+            let step: PlanStep = serde_json::to_value(s)
+                .and_then(serde_json::from_value)
+                .map_err(|e| {
+                    ResolveError::Unresolved(format!(
+                        "a `prepare` step does not carry onto the plan: {e}"
+                    ))
+                })?;
+            plan.prepare.push(step);
         }
         if !f.prepare.is_empty() {
             prov.set("prepare", who(steps_from_image));
@@ -777,7 +773,7 @@ pub fn elf(plan: &RunPlan) -> Option<&Path> {
 mod tests {
     use super::*;
     use crate::orchestration::board_descriptor::BoardCatalog;
-    use nros_orchestration_ir::target_exec::CommandTemplate;
+    use nros_orchestration_ir::target_exec::{CommandTemplate, PrepareStep};
 
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -908,10 +904,13 @@ mod tests {
         let tables = ImageTables {
             flash: Some(FlashTable {
                 chip: Some("STM32F767ZI".into()),
-                prepare: vec![PrepareStep::SayThenWait {
-                    say: "Press RESET".into(),
-                    wait_for: "usb:0483:374b".parse().unwrap(),
-                }],
+                prepare: vec![
+                    PrepareStep::Run("./relay.sh 3".into()),
+                    PrepareStep::SayThenWait {
+                        say: "Press RESET".into(),
+                        wait_for: "usb:0483:374b".parse().unwrap(),
+                    },
+                ],
                 ..FlashTable::default()
             }),
             console: Some(ConsoleTable {
@@ -940,8 +939,11 @@ mod tests {
         assert_eq!(
             p.prepare,
             vec![
-                PlanStep::Say("Press RESET".into()),
-                PlanStep::WaitFor("usb:0483:374b".into())
+                PlanStep::Run("./relay.sh 3".into()),
+                PlanStep::SayThenWait {
+                    say: "Press RESET".into(),
+                    wait_for: "usb:0483:374b".parse().unwrap(),
+                },
             ]
         );
         assert_eq!(p.provenance["prepare"], IMAGE);

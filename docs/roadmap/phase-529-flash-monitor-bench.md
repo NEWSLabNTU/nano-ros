@@ -91,9 +91,10 @@ a button. RFC-0118 gives these a verb each, a per-machine file, and
     before the target starts, so before launch it is refused, naming
     `--expect` instead; `nros flash --monitor` (W3) can open the console
     first.
-- *`run` steps.* Still refused when the plan resolves.
-  `nros_extension::plan::PrepareStep` has no `Run` on main yet; its arm goes
-  into the executor when that follow-up lands.
+- *`run` steps.* The plan carries them since the phase-527 W3 follow-up
+  (`PrepareStep::Run`, and a typed `wait_for`). The executor runs the command
+  through `sh -c`; a non-zero exit is exit 2. `--no-prompt` does not refuse a
+  `run` step, because it needs no person.
 - *Wiring.* No verb executes prepare yet. `nros run` has no prepare steps
   (`[board.run]` carries none) and no `--no-prompt` (RFC-0118 D2 lists that
   flag for `flash`). `nros flash` (W3) calls the executor.
