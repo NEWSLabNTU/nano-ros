@@ -22,10 +22,7 @@ use eyre::{Result, WrapErr};
 use crate::{
     builder::plan,
     orchestration::{
-        board_descriptor::{
-            BoardCatalog, BoardDescriptor, BoardRun, DeployResolution, PlatformKind,
-            triple_of_build_target,
-        },
+        board_descriptor::{BoardCatalog, BoardDescriptor, DeployResolution, PlatformKind},
         qemu_bin::QemuBin,
     },
 };
@@ -226,38 +223,6 @@ fn platform_chapter(platform: &PlatformKind) -> Option<&'static str> {
     })
 }
 
-/// The QEMU invocation a board with no `[board.run.qemu]` boots under — the
-/// shared line (`nros_qemu_ladder::board_line`, phase-517 W14) the test
-/// harness launches too (`nros_tests::qemu::QemuProcess::start_nuttx_virt` /
-/// `start_nuttx_riscv` / `start_riscv64_virt`). Keyed on the descriptor's
-/// platform and triple. ThreadX riscv64 gets peer 0's MAC — the firmware's
-/// `Config::default()`, and the harness's talker/server.
-fn derived_qemu(d: &BoardDescriptor) -> Option<nros_qemu_ladder::Line> {
-    use nros_qemu_ladder::{Board, Net, board_line, threadx_riscv64_mac};
-    let triple = d
-        .target
-        .as_deref()
-        .map(triple_of_build_target)
-        .unwrap_or("");
-    let user = Net::User { mac: None };
-    match d.platform {
-        PlatformKind::Nuttx if triple.starts_with("armv7a") => {
-            Some(board_line(Board::NuttxArmVirt, user))
-        }
-        PlatformKind::Nuttx if triple.starts_with("riscv32") => {
-            Some(board_line(Board::NuttxRvVirt, user))
-        }
-        PlatformKind::ThreadxRiscv64 => {
-            let mac = threadx_riscv64_mac(0);
-            Some(board_line(
-                Board::ThreadxRiscv64,
-                Net::User { mac: Some(&mac) },
-            ))
-        }
-        _ => None,
-    }
-}
-
 /// A shell word: quoted when it holds anything a shell would split or expand.
 fn shell_word(s: &str) -> String {
     if !s.is_empty()
@@ -328,15 +293,23 @@ fn west_capabilities(build_dir: &Path) -> Option<(Vec<String>, Option<String>)> 
     Some((emus, flash))
 }
 
-/// phase-517 W6 — the follow-up command(s) for one built image. Reads only the
-/// plan, the board descriptor and (for west) the finished build's own files;
-/// runs nothing. `qemu` is the QEMU ladder ([`crate::orchestration::qemu_bin`]).
+/// phase-517 W6, rendered from the RunPlan since phase-528 W1 — the follow-up
+/// command(s) for one built image. The plans come from
+/// [`crate::cmd::run_plan::resolve`] (one for `run`, one for `flash`), and
+/// each is printed as the line its runner executes: a host image's own path,
+/// the QEMU line through [`nros_qemu_ladder::plan_line`] (the renderer the
+/// qemu runner calls), `west build -t run` / `west flash` for a west-built
+/// board, a command template expanded from the plan. Runs nothing. `qemu`
+/// is the QEMU ladder ([`crate::orchestration::qemu_bin`]).
 #[must_use]
 pub fn next_steps(
     p: &super::build::ResolvedBuild,
     d: &BoardDescriptor,
     qemu: &dyn Fn(&str) -> QemuBin,
 ) -> NextSteps {
+    use crate::cmd::run_plan::{self, Bench, Inputs, Invocation};
+    use nros_extension::plan::Verb;
+
     let mut out = NextSteps::default();
     let see_chapter = |out: &mut NextSteps, why: &str| {
         out.notes.push(match chapter(d) {
@@ -349,6 +322,24 @@ pub fn next_steps(
         return out;
     };
     out.artifact = output.artifact();
+    let bench = Bench::for_board(&p.board);
+    let invocation = Invocation::default();
+    let plan_for = |verb| {
+        run_plan::resolve(
+            verb,
+            Inputs {
+                image: &p.qualified,
+                board: &p.board,
+                descriptor: d,
+                output: Some(output),
+                tables: &p.run_tables,
+                bench: &bench,
+                invocation: &invocation,
+            },
+        )
+    };
+    let run = plan_for(Verb::Run);
+    let flash = plan_for(Verb::Flash);
 
     if let BuildOutput::West { build_dir } = output {
         let Some(dir) = build_dir else {
@@ -356,82 +347,155 @@ pub fn next_steps(
             return out;
         };
         let shown = shell_word(&dir.display().to_string());
-        let run = format!("west build -d {shown} -t run");
-        let flash = format!("west flash -d {shown}");
-        if d.run
-            .as_ref()
-            .and_then(BoardRun::emulator_parts)
-            .is_some_and(|(kind, _)| kind == "fvp")
-        {
-            out.commands.push(("run on the FVP".into(), run));
-            out.notes.push(
-                "the FVP model must be resolvable when the build CONFIGURES (Zephyr caches it): \
-                 `nros setup board fvp-aemv8r-smp`, or ARMFVP_BIN_PATH — see \
-                 book/src/getting-started/arm-fvp.md"
-                    .into(),
-            );
-            return out;
+        let west_run = format!("west build -d {shown} -t run");
+        let west_flash = format!("west flash -d {shown}");
+        // What Zephyr's own build says (its `run_<emu>` targets and default
+        // flash runner): the west runner's facts, read where it reads them.
+        let caps = west_capabilities(dir);
+        let emus = caps.as_ref().map(|(e, _)| e.clone()).unwrap_or_default();
+        // A Zephyr board that states no `[board.run]` (an out-of-tree one
+        // written before the table existed) still gets the run target its own
+        // build declares, with a note: `nros run` will need the table.
+        if run.is_err() && d.platform == PlatformKind::Zephyr && !emus.is_empty() {
+            out.commands
+                .push((format!("run ({})", emus.join(", ")), west_run.clone()));
+            out.notes.push(format!(
+                "board `{}` states no `[board.run]`; `nros run` needs one (`emulator = \
+                 \"<kind>:<machine>\"`, RFC-0118 D4)",
+                p.board
+            ));
         }
-        match west_capabilities(dir) {
-            Some((emus, flash_runner)) => {
-                if !emus.is_empty() {
+        if let Ok(plan) = &run {
+            match plan.runner.name.as_str() {
+                "native" => {
+                    if let Some(elf) = run_plan::elf(plan) {
+                        out.commands
+                            .push(("run".into(), shell_word(&elf.display().to_string())));
+                    }
+                }
+                "fvp" => {
                     out.commands
-                        .push((format!("run ({})", emus.join(", ")), run));
-                }
-                if let Some(r) = flash_runner.filter(|r| !emus.contains(r)) {
-                    out.commands.push((format!("flash ({r})"), flash));
-                }
-                if out.commands.is_empty() {
-                    see_chapter(
-                        &mut out,
-                        "the board declares no emulator and no flash runner",
+                        .push(("run on the FVP".into(), west_run.clone()));
+                    out.notes.push(
+                        "the FVP model must be resolvable when the build CONFIGURES (Zephyr \
+                         caches it): `nros setup board fvp-aemv8r-smp`, or ARMFVP_BIN_PATH — see \
+                         book/src/getting-started/arm-fvp.md"
+                            .into(),
                     );
+                    return out;
                 }
+                _ => match &caps {
+                    Some(_) if !emus.is_empty() => out
+                        .commands
+                        .push((format!("run ({})", emus.join(", ")), west_run.clone())),
+                    Some(_) => {}
+                    None => out
+                        .commands
+                        .push(("run (an emulated board)".into(), west_run.clone())),
+                },
             }
-            None => {
-                out.commands.push(("run (an emulated board)".into(), run));
-                out.commands
-                    .push(("flash (a hardware board)".into(), flash));
+        }
+        if let Ok(plan) = &flash {
+            match plan.runner.name.as_str() {
+                "west" => match &caps {
+                    Some((emus, flash_runner)) => {
+                        if let Some(r) = flash_runner.as_ref().filter(|r| !emus.contains(r)) {
+                            out.commands.push((format!("flash ({r})"), west_flash));
+                        }
+                    }
+                    None => out
+                        .commands
+                        .push(("flash (a hardware board)".into(), west_flash)),
+                },
+                _ => flash_line(plan, &mut out),
             }
+        }
+        if out.commands.is_empty() {
+            see_chapter(
+                &mut out,
+                "the board declares no emulator and no flash runner",
+            );
         }
         return out;
     }
 
-    let Some(artifact) = out.artifact.clone() else {
+    let Some(_artifact) = out.artifact.clone() else {
         see_chapter(
             &mut out,
             "the build names no single executable (a library, or several binaries)",
         );
         return out;
     };
-    // Host-executed: no cross triple, and not Zephyr (whose host image is a
-    // west build, above).
-    if d.target.is_none() && d.platform != PlatformKind::Zephyr {
-        out.commands
-            .push(("run".into(), shell_word(&artifact.display().to_string())));
-        return out;
+    let mut unresolved = None;
+    match &run {
+        Ok(plan) => match plan.runner.name.as_str() {
+            "native" => {
+                if let Some(elf) = run_plan::elf(plan) {
+                    out.commands
+                        .push(("run".into(), shell_word(&elf.display().to_string())));
+                }
+            }
+            "qemu" => match run_plan::qemu_line(plan) {
+                Ok(line) => {
+                    let mut argv = vec![line.exe.clone()];
+                    argv.extend(
+                        line.argv(
+                            &run_plan::elf(plan)
+                                .map(|e| e.display().to_string())
+                                .unwrap_or_default(),
+                        ),
+                    );
+                    // The fixed ladder boards (NuttX, ThreadX riscv64) keep
+                    // the label they printed before the plan existed.
+                    let label = if plan.args.contains_key("board") {
+                        "run on QEMU"
+                    } else {
+                        "run"
+                    };
+                    let line = qemu_line(&argv, None, qemu, &mut out.notes);
+                    out.commands.push((label.into(), line));
+                }
+                Err(_) => unresolved = Some(no_command(&p.board)),
+            },
+            other => out.notes.push(format!(
+                "`{}` runs under the `{other}` runner ({}), which phase-528 W3 writes",
+                p.board,
+                plan.target.emulator.as_deref().unwrap_or("?")
+            )),
+        },
+        Err(e) => unresolved = Some(e.to_string()),
     }
-    if let Some(argv) = d.qemu_argv() {
-        let line = qemu_line(&argv, Some(&artifact), qemu, &mut out.notes);
-        out.commands.push(("run".into(), line));
-        return out;
+    if let Ok(plan) = &flash {
+        flash_line(plan, &mut out);
     }
-    if let Some(board) = derived_qemu(d) {
-        let mut argv = vec![board.exe.to_string()];
-        argv.extend(board.argv(&artifact.display().to_string()));
-        let line = qemu_line(&argv, None, qemu, &mut out.notes);
-        out.commands.push(("run on QEMU".into(), line));
-        return out;
+    if out.commands.is_empty() {
+        see_chapter(
+            &mut out,
+            &unresolved.unwrap_or_else(|| no_command(&p.board)),
+        );
     }
-    see_chapter(
-        &mut out,
-        &format!(
-            "no run or flash command is derivable for board `{}` (its descriptor names no \
-             `[board.run]`)",
-            p.board
-        ),
-    );
     out
+}
+
+fn no_command(board: &str) -> String {
+    format!(
+        "no run or flash command is derivable for board `{board}` (its descriptor names no \
+         `[board.run]`)"
+    )
+}
+
+/// A flash plan's line, for a runner that is not `west`: a command template
+/// expanded from the plan, or a note naming the runner to come.
+fn flash_line(plan: &nros_extension::plan::RunPlan, out: &mut NextSteps) {
+    match (plan.runner.name.as_str(), plan.args.get("command")) {
+        ("command", Some(t)) => match plan.expand(t) {
+            Ok(line) => out.commands.push(("flash".into(), line)),
+            Err(e) => out.notes.push(format!("the flash command template: {e}")),
+        },
+        (name, _) => out.notes.push(format!(
+            "flash with the `{name}` runner (`nros flash`, phase-529)"
+        )),
+    }
 }
 
 /// The text block [`next_steps`] prints, one image.
@@ -645,7 +709,10 @@ mod tests {
         }
     }
     use super::*;
-    use crate::{builder::plan::Driver, cmd::build::ResolvedBuild};
+    use crate::{
+        builder::plan::Driver, cmd::build::ResolvedBuild,
+        orchestration::board_descriptor::triple_of_build_target,
+    };
 
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -685,6 +752,7 @@ mod tests {
             record: Default::default(),
             output: Some(output),
             descriptor: None,
+            run_tables: Default::default(),
         }
     }
 
@@ -759,6 +827,9 @@ mod tests {
     #[test]
     fn a_west_board_prints_west_run_or_west_flash_from_its_build() {
         let cat = catalog();
+        // phase-528 W1 — native_sim is a HOST image (`[board.run] host =
+        // true`), so its plan's runner is `native` and the printed run line is
+        // the executable `west build -t run` would have started.
         let d = descriptor(&cat, "zephyr");
         let dir = tmp("west");
         std::fs::create_dir_all(dir.join("zephyr")).unwrap();
@@ -779,16 +850,36 @@ mod tests {
         assert_eq!(
             s.commands,
             vec![(
-                "run (native)".to_string(),
-                format!("west build -d {} -t run", dir.display())
+                "run".to_string(),
+                dir.join("zephyr/zephyr.exe").display().to_string()
             )]
         );
         assert_eq!(s.artifact, Some(dir.join("zephyr/zephyr.elf")));
 
+        // An emulated Zephyr board runs through west (`run_<emu>` from the
+        // build), and a flash runner the build names is printed too.
+        let m3 = descriptor(&cat, "mps2-an385-zephyr");
+        std::fs::write(
+            dir.join("build.ninja"),
+            "build run: phony zephyr/run\nbuild run_qemu: phony zephyr/run_qemu\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("zephyr/runners.yaml"), "flash-runner: qemu\n").unwrap();
+        let s = next_steps(&p, &m3, &store_qemu);
+        assert_eq!(
+            s.commands,
+            vec![(
+                "run (qemu)".to_string(),
+                format!("west build -d {} -t run", dir.display())
+            )]
+        );
+
         // A hardware board: no emulator target, a flash runner.
         std::fs::write(dir.join("build.ninja"), "build flash: phony zephyr/flash\n").unwrap();
         std::fs::write(dir.join("zephyr/runners.yaml"), "flash-runner: jlink\n").unwrap();
-        let s = next_steps(&p, &d, &store_qemu);
+        let mut hw = m3.clone();
+        hw.run = None;
+        let s = next_steps(&p, &hw, &store_qemu);
         assert_eq!(
             s.commands,
             vec![(

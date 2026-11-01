@@ -4,7 +4,8 @@
 //! The names are taken now so nothing else claims them (a command package
 //! cannot provide a reserved verb, RFC-0119), and so a user who types one is
 //! told what to do instead. Each refuses until its implementation lands
-//! (run: phase-528; flash, monitor, bench: phase-529).
+//! (flash, monitor, bench: phase-529). `run` has one since phase-528 W1
+//! ([`crate::cmd::run_plan`]; [`IMPLEMENTED`]).
 
 use clap::Args as ClapArgs;
 use eyre::Result;
@@ -12,6 +13,11 @@ use eyre::Result;
 /// The reserved verbs, in help order. `check-provider-announcements` and the
 /// command dispatch read this so a command package cannot claim one.
 pub const VERBS: &[&str] = &["run", "flash", "monitor", "bench", "debug"];
+
+/// The reserved verbs that have an implementation now, and so parse their own
+/// arguments instead of refusing (`run`: phase-528 W1's `--dry-run`). A
+/// command package still cannot claim them.
+pub const IMPLEMENTED: &[&str] = &["run"];
 
 #[derive(Debug, ClapArgs)]
 pub struct Args {
@@ -47,6 +53,9 @@ mod tests {
                 root.find_subcommand(verb).is_some(),
                 "`nros {verb}` is not in the tree"
             );
+            if IMPLEMENTED.contains(verb) {
+                continue;
+            }
             let cli = Cli::try_parse_from(["nros", verb, "--anything", "x"])
                 .unwrap_or_else(|e| panic!("`nros {verb}` does not parse: {e}"));
             let err = crate::run(cli.cmd).expect_err("a reserved verb refuses");

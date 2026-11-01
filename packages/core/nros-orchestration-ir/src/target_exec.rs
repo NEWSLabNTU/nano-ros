@@ -47,16 +47,31 @@ impl CommandTemplate {
     /// The placeholders the template names, in order (`tool:<name>` whole).
     #[must_use]
     pub fn placeholders(&self) -> Vec<&str> {
-        let mut out = Vec::new();
-        let mut rest = self.0.as_str();
-        while let Some(i) = rest.find('{') {
-            let after = &rest[i + 1..];
-            let Some(j) = after.find('}') else { break };
-            out.push(&after[..j]);
-            rest = &after[j + 1..];
-        }
-        out
+        scan(&self.0).unwrap_or_default()
     }
+}
+
+/// The placeholder names of `s`, with `{{` and `}}` read as literal braces
+/// (the escape `nros_extension::plan::RunPlan::expand` expands), or the first
+/// shape error.
+fn scan(s: &str) -> Result<Vec<&str>, String> {
+    let mut out = Vec::new();
+    let mut rest = s;
+    while let Some(i) = rest.find(['{', '}']) {
+        let tail = &rest[i..];
+        if let Some(t) = tail.strip_prefix("{{").or_else(|| tail.strip_prefix("}}")) {
+            rest = t;
+        } else if tail.starts_with('}') {
+            return Err(format!("`command = {s:?}`: a `}}` with no `{{` before it"));
+        } else {
+            let Some(j) = tail.find('}') else {
+                return Err(format!("`command = {s:?}`: a `{{` that never closes"));
+            };
+            out.push(&tail[1..j]);
+            rest = &tail[j + 1..];
+        }
+    }
+    Ok(out)
 }
 
 impl TryFrom<String> for CommandTemplate {
@@ -65,22 +80,14 @@ impl TryFrom<String> for CommandTemplate {
         if s.trim().is_empty() {
             return Err("`command` is empty".into());
         }
-        let mut rest = s.as_str();
-        while let Some(i) = rest.find(['{', '}']) {
-            if rest.as_bytes()[i] == b'}' {
-                return Err(format!("`command = {s:?}`: a `}}` with no `{{` before it"));
-            }
-            let after = &rest[i + 1..];
-            let Some(j) = after.find('}') else {
-                return Err(format!("`command = {s:?}`: a `{{` that never closes"));
-            };
-            let name = &after[..j];
+        for name in scan(&s)? {
             let ok =
                 PLACEHOLDERS.contains(&name) || name.strip_prefix("tool:").is_some_and(is_word);
             if !ok {
                 return Err(format!(
                     "`command = {s:?}`: unknown placeholder `{{{name}}}` — a template \
-                     names only {}, or `{{tool:<name>}}` (RFC-0118 D5)",
+                     names only {}, or `{{tool:<name>}}`; `{{{{` and `}}}}` are literal \
+                     braces (RFC-0118 D5)",
                     PLACEHOLDERS
                         .iter()
                         .map(|p| format!("`{{{p}}}`"))
@@ -88,7 +95,6 @@ impl TryFrom<String> for CommandTemplate {
                         .join(" ")
                 ));
             }
-            rest = &after[j + 1..];
         }
         Ok(Self(s))
     }
@@ -357,6 +363,34 @@ impl FlashTable {
     }
 }
 
+impl FlashTable {
+    /// `self` (the more specific level) over `base`, key by key: a key this
+    /// table states wins, every other key is `base`'s. `method` and
+    /// `command` are one choice — stating either replaces both of `base`'s.
+    #[must_use]
+    pub fn over(&self, base: &FlashTable) -> FlashTable {
+        let how = self.method.is_some() || self.command.is_some();
+        FlashTable {
+            method: if how {
+                self.method.clone()
+            } else {
+                base.method.clone()
+            },
+            command: if how {
+                self.command.clone()
+            } else {
+                base.command.clone()
+            },
+            chip: self.chip.clone().or_else(|| base.chip.clone()),
+            prepare: if self.prepare.is_empty() {
+                base.prepare.clone()
+            } else {
+                self.prepare.clone()
+            },
+        }
+    }
+}
+
 /// `[board.console] kind` / `[image.<id>.console] kind` (RFC-0118 D1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -408,19 +442,62 @@ impl ConsoleTable {
     }
 }
 
-/// `[image.<id>.<key>]` from an image's raw table (the leaf road), checked.
-fn parse_image_table<T: serde::de::DeserializeOwned>(
-    image: Option<&toml::Table>,
-    id: &str,
+impl ConsoleTable {
+    /// `self` over `base`, key by key (see [`FlashTable::over`]).
+    #[must_use]
+    pub fn over(&self, base: &ConsoleTable) -> ConsoleTable {
+        ConsoleTable {
+            kind: self.kind.or(base.kind),
+            usb: self.usb.or(base.usb),
+            baud: self.baud.or(base.baud),
+            command: self.command.clone().or_else(|| base.command.clone()),
+        }
+    }
+}
+
+/// `a` over `b`, either absent.
+#[must_use]
+pub fn over<T: Clone>(a: Option<&T>, b: Option<&T>, f: impl Fn(&T, &T) -> T) -> Option<T> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(f(a, b)),
+        (a, b) => a.or(b).cloned(),
+    }
+}
+
+/// `[<at>.<key>]` from a raw table (the leaf road), unchecked shape.
+fn parse_table<T: serde::de::DeserializeOwned>(
+    table: Option<&toml::Table>,
+    at: &str,
     key: &str,
 ) -> Result<Option<T>, String> {
-    let Some(v) = image.and_then(|t| t.get(key)) else {
+    let Some(v) = table.and_then(|t| t.get(key)) else {
         return Ok(None);
     };
     v.clone()
         .try_into()
         .map(Some)
-        .map_err(|e| format!("[image.{id}.{key}]: {e}"))
+        .map_err(|e| format!("[{at}.{key}]: {e}"))
+}
+
+/// `[<at>.flash]` (`at` = `image.<id>` or `image_defaults`), checked.
+pub fn parse_flash_at(table: Option<&toml::Table>, at: &str) -> Result<Option<FlashTable>, String> {
+    let t: Option<FlashTable> = parse_table(table, at, "flash")?;
+    if let Some(f) = &t {
+        f.validate(&format!("[{at}.flash]"), false)?;
+    }
+    Ok(t)
+}
+
+/// `[<at>.console]`, checked.
+pub fn parse_console_at(
+    table: Option<&toml::Table>,
+    at: &str,
+) -> Result<Option<ConsoleTable>, String> {
+    let t: Option<ConsoleTable> = parse_table(table, at, "console")?;
+    if let Some(c) = &t {
+        c.validate(&format!("[{at}.console]"), false)?;
+    }
+    Ok(t)
 }
 
 /// `[image.<id>.flash]`, checked (the leaf road).
@@ -428,11 +505,7 @@ pub fn parse_image_flash(
     image: Option<&toml::Table>,
     id: &str,
 ) -> Result<Option<FlashTable>, String> {
-    let t: Option<FlashTable> = parse_image_table(image, id, "flash")?;
-    if let Some(f) = &t {
-        f.validate(&format!("[image.{id}.flash]"), false)?;
-    }
-    Ok(t)
+    parse_flash_at(image, &format!("image.{id}"))
 }
 
 /// `[image.<id>.console]`, checked (the leaf road).
@@ -440,11 +513,7 @@ pub fn parse_image_console(
     image: Option<&toml::Table>,
     id: &str,
 ) -> Result<Option<ConsoleTable>, String> {
-    let t: Option<ConsoleTable> = parse_image_table(image, id, "console")?;
-    if let Some(c) = &t {
-        c.validate(&format!("[image.{id}.console]"), false)?;
-    }
-    Ok(t)
+    parse_console_at(image, &format!("image.{id}"))
 }
 
 #[cfg(test)]
@@ -603,6 +672,35 @@ mod tests {
         assert!(
             e.starts_with("[image.a.flash]") && e.contains("unknown event kind"),
             "{e}"
+        );
+    }
+
+    #[test]
+    fn doubled_braces_are_literal_and_tables_merge_key_by_key() {
+        let c = CommandTemplate::try_from("sh -c 'echo {{x}}' {elf}".to_string()).unwrap();
+        assert_eq!(c.placeholders(), vec!["elf"]);
+        let base = FlashTable {
+            method: Some("probe-rs".into()),
+            chip: Some("A".into()),
+            prepare: vec![PrepareStep::Say("x".into())],
+            ..FlashTable::default()
+        };
+        let image = FlashTable {
+            chip: Some("B".into()),
+            ..FlashTable::default()
+        };
+        let m = image.over(&base);
+        assert_eq!(m.method.as_deref(), Some("probe-rs"));
+        assert_eq!(m.chip.as_deref(), Some("B"));
+        assert_eq!(m.prepare, base.prepare);
+        let cmd = FlashTable {
+            command: Some(CommandTemplate::try_from("x {hex}".to_string()).unwrap()),
+            ..FlashTable::default()
+        };
+        let m = cmd.over(&base);
+        assert!(
+            m.method.is_none() && m.command.is_some(),
+            "a command replaces the method"
         );
     }
 }

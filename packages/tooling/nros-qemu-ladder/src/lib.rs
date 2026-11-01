@@ -284,6 +284,126 @@ impl Line {
     }
 }
 
+/// A board's boot line built from a RunPlan's QEMU `args` (phase-528 W1,
+/// RFC-0118 D3): the ONE renderer both the `nros build` next step and the
+/// qemu runner package (phase-528 W3) execute, so the printed line is the
+/// executed one.
+///
+/// It lives here, not in `nros-extension`: this crate already owns "each QEMU
+/// board's argument line" for the CLI and the harness, takes a plain string
+/// map (a plan's `args`), and has no dependencies, so a runner package can
+/// path-depend on it without pulling the CLI in.
+///
+/// Two shapes, by which keys are present:
+///
+/// * `board` = one of [`Board::word`] (and optionally `mac`): the
+///   [`board_line`] of that board, on user-mode networking — the NuttX and
+///   ThreadX riscv64 lines, whose virtio-mmio NIC the harness varies per pair.
+/// * otherwise the board descriptor's `[board.run.qemu]` facts, rendered in
+///   one fixed order: `qemu-system-<system> [-cpu <cpu>] -machine <machine>
+///   -nographic [-icount <icount>] [-semihosting-config <semihosting>]
+///   [-nic <nic>] -kernel`. `system` and `machine` are required.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanLine {
+    /// `qemu-system-<arch>`.
+    pub exe: String,
+    /// Arguments up to and including `-kernel`.
+    pub before_kernel: Vec<String>,
+    /// Arguments after the kernel image.
+    pub after_kernel: Vec<String>,
+}
+
+impl PlanLine {
+    /// The whole argument vector (without the executable) for `kernel`.
+    #[must_use]
+    pub fn argv(&self, kernel: &str) -> Vec<String> {
+        let mut v = self.before_kernel.clone();
+        v.push(kernel.to_string());
+        v.extend(self.after_kernel.iter().cloned());
+        v
+    }
+}
+
+impl From<Line> for PlanLine {
+    fn from(l: Line) -> Self {
+        Self {
+            exe: l.exe.to_string(),
+            before_kernel: l.before_kernel,
+            after_kernel: l.after_kernel,
+        }
+    }
+}
+
+impl Board {
+    /// Every board with a fixed line.
+    pub const ALL: [Board; 3] = [
+        Board::NuttxArmVirt,
+        Board::NuttxRvVirt,
+        Board::ThreadxRiscv64,
+    ];
+
+    /// The word a plan's `args.board` names this board by.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Board::NuttxArmVirt => "nuttx-arm-virt",
+            Board::NuttxRvVirt => "nuttx-rv-virt",
+            Board::ThreadxRiscv64 => "threadx-riscv64",
+        }
+    }
+
+    /// The board a word names.
+    #[must_use]
+    pub fn from_word(w: &str) -> Option<Board> {
+        Board::ALL.into_iter().find(|b| b.word() == w)
+    }
+}
+
+/// [`PlanLine`] from a plan's `args`, or why the args name no line.
+///
+/// # Errors
+///
+/// An unknown `board` word, or a table line missing `system` or `machine`.
+pub fn plan_line(args: &std::collections::BTreeMap<String, String>) -> Result<PlanLine, String> {
+    if let Some(w) = args.get("board") {
+        let board = Board::from_word(w).ok_or_else(|| {
+            format!(
+                "`args.board = {w:?}` names no QEMU board line (known: {})",
+                Board::ALL.map(Board::word).join(", ")
+            )
+        })?;
+        let mac = args.get("mac").map(String::as_str);
+        return Ok(board_line(board, Net::User { mac }).into());
+    }
+    let need = |k: &str| {
+        args.get(k)
+            .cloned()
+            .ok_or_else(|| format!("the plan's QEMU args state no `{k}`"))
+    };
+    let system = need("system")?;
+    let machine = need("machine")?;
+    let mut v = Vec::new();
+    if let Some(cpu) = args.get("cpu") {
+        v.extend(["-cpu".to_string(), cpu.clone()]);
+    }
+    v.extend(["-machine".to_string(), machine, "-nographic".to_string()]);
+    for (key, flag) in [
+        ("icount", "-icount"),
+        ("semihosting", "-semihosting-config"),
+        ("nic", "-nic"),
+    ] {
+        if let Some(val) = args.get(key) {
+            v.extend([flag.to_string(), val.clone()]);
+        }
+    }
+    v.push("-kernel".to_string());
+    Ok(PlanLine {
+        exe: format!("qemu-system-{system}"),
+        before_kernel: v,
+        after_kernel: Vec::new(),
+    })
+}
+
 /// The MAC a ThreadX riscv64 image expects for `peer_index` — `52:54:00:12:34:56`
 /// for 0 (talker/server), `…:57` for 1 (listener/client). It must match the
 /// firmware's `Config::default()` / `Config::listener()` presets in
@@ -596,5 +716,38 @@ mod tests {
                 .join(" ")
                 .starts_with("-M virt -cpu cortex-a7 -nographic -kernel K")
         );
+    }
+
+    #[test]
+    fn a_plan_line_renders_the_table_order_and_the_fixed_boards() {
+        use std::collections::BTreeMap;
+        let args: BTreeMap<String, String> = [
+            ("system", "arm"),
+            ("cpu", "cortex-m3"),
+            ("machine", "mps2-an385"),
+            ("icount", "shift=auto"),
+            ("semihosting", "enable=on,target=native"),
+            ("nic", "user,model=lan9118"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let l = plan_line(&args).unwrap();
+        assert_eq!(l.exe, "qemu-system-arm");
+        assert_eq!(
+            l.argv("k").join(" "),
+            "-cpu cortex-m3 -machine mps2-an385 -nographic -icount shift=auto \
+             -semihosting-config enable=on,target=native -nic user,model=lan9118 -kernel k"
+        );
+        for b in Board::ALL {
+            let mut a = BTreeMap::new();
+            a.insert("board".to_string(), b.word().to_string());
+            assert_eq!(
+                plan_line(&a).unwrap(),
+                PlanLine::from(board_line(b, Net::User { mac: None }))
+            );
+        }
+        assert!(plan_line(&BTreeMap::from([("system".into(), "arm".into())])).is_err());
+        assert!(plan_line(&BTreeMap::from([("board".into(), "x".into())])).is_err());
     }
 }
