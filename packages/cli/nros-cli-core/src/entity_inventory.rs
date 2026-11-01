@@ -3349,6 +3349,27 @@ impl EntityInventory {
         self.monitor_rows
     }
 
+    /// The model's declared subscriber ingress, folded onto this inventory:
+    /// the read-task budget (the heavier of the two), the declarations behind
+    /// it (a union) and the tightest tier's slack the declarations are checked
+    /// against (the tighter). The same fold [`Self::merged_per_kind_max`] makes,
+    /// for a road that joins a model onto a probe row by row
+    /// ([`crate::contract_join::join`]) instead of merging the two.
+    ///
+    /// Before this, the cargo-leaf road's join replaced the probe's ROWS with
+    /// the contract's and kept the probe's frame, which never saw a model, so
+    /// a leaf whose `system.contract.yaml` declared an ingress was described as
+    /// declaring none: no `rx_task_budget_*`, and RFC-0074's board check never
+    /// ran.
+    pub fn adopt_declared_ingress(&mut self, model: &EntityInventory) {
+        self.rx_task_budget = RxTaskBudget::larger(self.rx_task_budget, model.rx_task_budget);
+        self.rx_ingress = DeclaredIngress::union(&self.rx_ingress, &model.rx_ingress);
+        // RFC-0074's second check reads the tightest tier's slack beside the
+        // declarations, so it travels with them.
+        self.tightest_tier =
+            TierSlack::tighter(self.tightest_tier.clone(), model.tightest_tier.clone());
+    }
+
     /// phase-462 W6b -- state the read-task budget for an inventory whose
     /// model arrives by some road other than [`Self::from_model`].
     pub fn set_rx_task_budget(&mut self, budget: Option<RxTaskBudget>) {
