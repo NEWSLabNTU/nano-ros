@@ -50,7 +50,8 @@ pub enum AheadOfVendor {
     /// Emit a PlatformIO `library.json` augment next to the bake dir.
     Pio,
     /// Emit one PX4-native `nros_<component>/` module dir per component
-    /// (CMakeLists.txt + Kconfig + cpp/h stub) — see Phase 212.H.7.
+    /// (CMakeLists.txt + Kconfig + cpp/h stub).
+    // See Phase 212.H.7.
     Px4,
 }
 
@@ -75,22 +76,26 @@ pub struct Args {
     /// `[image.<id>]` that claims it supplies the target block, so a build
     /// shim never has to know the id.
     ///
-    /// Issue 1312. This is the question a framework configure actually has: a
-    /// west or ESP-IDF configure knows the APPLICATION DIRECTORY it was pointed
-    /// at and nothing above it, so `--target` — a block key — is the one thing
-    /// it cannot answer. `zephyr/cmake/nros_system_generate.cmake`
-    /// answered it anyway, with `--target zephyr-<rmw>` synthesised from
-    /// Kconfig, and that names no block in any bringup: everything `--target`
-    /// selects fell back to the system-wide default, and for the tier resolver
-    /// that default is the HOST, so a Zephyr image baked here read
-    /// `[tiers.*.posix]`.
-    ///
-    /// Same flag name and same resolver as `nros image-facts --for-entry`
-    /// (and as the `nros ws board-facts` the Zephyr lane already calls):
-    /// [`nros_orchestration_ir::leaf_system::for_entry`]. One vocabulary, so
-    /// the three cannot disagree about which image an entry belongs to —
-    /// and no substring of the target string is read, which is what the
-    /// issue-1285 follow-up removed.
+    /// A framework configure (west) knows the application directory it was
+    /// pointed at and nothing above it, so this, not `--target`, is the
+    /// question it can answer. Same flag name and same resolver as
+    /// `nros image-facts --for-entry` and `nros ws board-facts`, so the three
+    /// cannot disagree about which image an entry belongs to.
+    // Issue 1312. This is the question a framework configure actually has: a
+    // west or ESP-IDF configure knows the APPLICATION DIRECTORY it was pointed
+    // at and nothing above it, so `--target` — a block key — is the one thing
+    // it cannot answer. `zephyr/cmake/nros_system_generate.cmake` answered it
+    // anyway, with `--target zephyr-<rmw>` synthesised from Kconfig, and that
+    // names no block in any bringup: everything `--target` selects fell back
+    // to the system-wide default, and for the tier resolver that default is
+    // the HOST, so a Zephyr image baked here read `[tiers.*.posix]`.
+    //
+    // Same flag name and same resolver as `nros image-facts --for-entry` (and
+    // as the `nros ws board-facts` the Zephyr lane already calls):
+    // [`nros_orchestration_ir::leaf_system::for_entry`]. One vocabulary, so
+    // the three cannot disagree about which image an entry belongs to — and
+    // no substring of the target string is read, which is what the issue-1285
+    // follow-up removed.
     #[arg(long = "for-entry", value_name = "PKG", conflicts_with = "target")]
     pub for_entry: Option<String>,
 
@@ -98,13 +103,13 @@ pub struct Args {
     /// resolved target needs. Defaults to a walk up from the workspace, then
     /// this `nros` binary's own SDK root.
     ///
-    /// The SAME top rung `nros image-facts` and `nros ws board-facts` take, and
-    /// for issue 1263's reason: the walk-up finds nothing for a downstream
-    /// project whose nano-ros sits BELOW it (`third-party/nano-ros`), and a
-    /// build shim is the one caller that always knows where its own module
-    /// tree is. Before issue 1312 no bake this module made ever resolved a
-    /// board, so no bake ever needed a root — naming the image is what makes
-    /// this reachable, which is why the flag lands with it.
+    /// The same top rung `nros image-facts` and `nros ws board-facts` take:
+    /// the walk-up finds nothing for a downstream project whose nano-ros sits
+    /// below it (`third-party/nano-ros`), and a build shim always knows where
+    /// its own module tree is.
+    // Issue 1263's reason. Before issue 1312 no bake this module made ever
+    // resolved a board, so no bake ever needed a root — naming the image is
+    // what makes this reachable, which is why the flag lands with it.
     #[arg(long = "nano-ros-path", value_name = "DIR")]
     pub nano_ros_path: Option<PathBuf>,
 
@@ -118,39 +123,46 @@ pub struct Args {
     #[arg(long = "ahead-of-vendor", value_enum)]
     pub ahead_of_vendor: Option<AheadOfVendor>,
 
-    /// Phase 212.L.6 — multi-launch disambiguation: pass `<file>` and
-    /// the resolver picks `<bringup>/launch/<file>` (cwd / absolute as
-    /// fallbacks). `--launch` is the canonical Phase 212.E flag name;
-    /// `--file` is kept as an alias for back-compat with the L.6 docs.
+    /// Launch file to use when the bringup has several.
+    ///
+    /// The resolver picks `<bringup>/launch/<file>` (cwd / absolute as
+    /// fallbacks).
+    // Phase 212.L.6 — multi-launch disambiguation. `--launch` is the canonical
+    // Phase 212.E flag name; `--file` is kept as an alias for back-compat with
+    // the L.6 docs.
     #[arg(long = "launch", visible_alias = "file")]
     pub file: Option<String>,
 
-    /// Phase 212.L.6 — `<node exec="…">` override for synthesised
-    /// launches (when the bringup pkg has multiple `[[bin]]` /
-    /// `add_executable` targets).
+    /// `<node exec="…">` override for synthesised launches (when the bringup
+    /// pkg has multiple `[[bin]]` / `add_executable` targets).
+    // Phase 212.L.6.
     #[arg(long = "exec")]
     pub exec: Option<String>,
 
-    /// RFC-0052 / phase-296 W1 — consume a SystemModel (play_launch
-    /// `resolve` output). The model's execution layer REPLACES the
-    /// bringup's `[tiers.*]` + `[[node_overrides]]` (same resolver, same
-    /// plan output as the equivalent `system.toml`). Structure/contract
-    /// layers: later waves.
+    /// Consume a SystemModel (play_launch `resolve` output).
+    ///
+    /// The model's execution layer replaces the bringup's `[tiers.*]` +
+    /// `[[node_overrides]]` (same resolver, same plan output as the
+    /// equivalent `system.toml`).
+    // RFC-0052 / phase-296 W1. Structure/contract layers: later waves.
     #[arg(long = "model", value_name = "system_model.yaml")]
     pub model: Option<PathBuf>,
 
-    /// Phase 255 Wave 4 — RMW override, the TOP of the precedence ladder
-    /// (`--rmw` > `[image.<target>].rmw` > `[system].rmw` > `zenoh`). Forces
+    /// RMW override, the top of the precedence ladder.
+    ///
+    /// `--rmw` > `[image.<target>].rmw` > `[system].rmw` > `zenoh`. Forces
     /// the `NROS_SYSTEM_RMW*` define for this bake regardless of `system.toml`.
+    // Phase 255 Wave 4.
     #[arg(long = "rmw")]
     pub rmw: Option<String>,
 
-    /// Issue 1508 - the image's Zephyr `.config`. A DERIVED tier table (no
-    /// authored `[tiers.*]`) is allocated out of the priority pool this image's
-    /// Kconfig resolves (RFC-0079 section 4.1) rather than the Kconfig-defaults
-    /// projection, so `nros-plan.json` records the numbers the image's entry
-    /// runs. The Zephyr module passes `${DOTCONFIG}`; refused for a non-Zephyr
-    /// target.
+    /// The image's Zephyr `.config`. Refused for a non-Zephyr target.
+    ///
+    /// A derived tier table (no authored `[tiers.*]`) is allocated out of the
+    /// priority pool this image's Kconfig resolves rather than the
+    /// Kconfig-defaults projection, so `nros-plan.json` records the numbers
+    /// the image's entry runs. The Zephyr module passes `${DOTCONFIG}`.
+    // Issue 1508; the priority pool is RFC-0079 section 4.1.
     #[arg(long, value_name = "PATH")]
     pub dotconfig: Option<PathBuf>,
 }

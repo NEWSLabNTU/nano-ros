@@ -34,17 +34,18 @@ pub struct Args {
     /// `--source`, a `[source.<name>]`.
     pub tool: String,
 
-    /// Ask about a `[source.*]` instead of a `[tool.*]` (phase-440).
+    /// Ask about a `[source.*]` instead of a `[tool.*]`.
     ///
     /// A source with `location = "store"` is provisioned to
     /// `$NROS_HOME/sources/<name>/<version>`, DERIVED from the index exactly
     /// as a tool's prefix is. A consumer that needs to find one must ask rather
-    /// than spell it — the same rule this command exists to enforce for tools,
-    /// and the reason `msg_to_cyclone_idl.py` no longer carries a literal
-    /// `third-party/ros/rosidl`.
+    /// than spell it — the same rule this command enforces for tools.
     ///
     /// A `location = "workspace"` source has no store path, so this reports
     /// that rather than inventing one.
+    // phase-440. The ask-don't-spell rule is the reason
+    // `msg_to_cyclone_idl.py` no longer carries a literal
+    // `third-party/ros/rosidl`.
     #[arg(long)]
     pub source: bool,
 

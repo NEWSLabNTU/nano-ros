@@ -33,40 +33,45 @@ pub struct LeafSystemArgs {
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 
-    /// Issue 1556 item 4 -- answer for THIS board instead of the image's.
+    /// Answer for this board instead of the image's.
     ///
     /// The host census of a standalone leaf builds the leaf's own `src/` for
     /// the host (`nros ws entity-census take --leaf`, which configures with
     /// `-DNROS_LEAF_BOARD=linux`). Every other row -- RMW, domain,
     /// locator -- stays the leaf's: only the board, and the deploy token it
     /// implies, change.
+    // Issue 1556 item 4.
     #[arg(long, value_name = "BOARD")]
     pub board: Option<String>,
 
-    /// Issue 2179 -- the Zephyr board this build was actually given
-    /// (`west build -b`, the module hook's `BOARD`). The image's board package
-    /// contributes its snippets and conf files (`NROS_LEAF_SNIPPET`, the head
-    /// of `NROS_LEAF_CONF`) only when it describes this board
+    /// The Zephyr board this build was actually given.
+    ///
+    /// That is `west build -b`, the module hook's `BOARD`. The image's board
+    /// package contributes its snippets and conf files (`NROS_LEAF_SNIPPET`,
+    /// the head of `NROS_LEAF_CONF`) only when it describes this board
     /// (`BoardDescriptor::builds_west_board`); otherwise both are empty and
     /// `NROS_LEAF_BOARD_NOT_APPLIED=<its west board>` says why. Omitted, the
-    /// package is assumed to describe the build, as before.
+    /// package is assumed to describe the build.
+    // Issue 2179. Omitted keeps the behaviour from before the flag existed.
     #[arg(long, value_name = "WEST_BOARD")]
     pub west_board: Option<String>,
 
-    /// Issue 1712 -- write the image's own layers (what its `transport`
-    /// implies, then its `[image.<id>] env`, RFC-0049's APP rung) to PATH as a
-    /// cargo config holding one `[env]` table, and print the path as
-    /// `NROS_LEAF_IMAGE_ENV`.
+    /// Write the image's own env layers to PATH as a cargo config.
+    ///
+    /// The layers are what its `transport` implies, then its
+    /// `[image.<id>] env` (the APP rung), written as one `[env]` table; the
+    /// path is printed as `NROS_LEAF_IMAGE_ENV`.
     ///
     /// The CMAKE road's carrier: every cargo command cmake spawns for the image
     /// passes it as `--config`, so each row lands BELOW an exported variable
     /// exactly as the cargo road's `nros-cargo.toml` does (no `force`). Written
     /// only when the content changes; REMOVED, and the row printed empty, when
     /// the image states nothing, so such a build's cargo command is unchanged.
+    // Issue 1712. The APP rung is RFC-0049's.
     #[arg(long, value_name = "PATH")]
     pub image_env_out: Option<PathBuf>,
 
-    /// phase-481 W1 -- answer for THIS image of the `system.toml` in PATH.
+    /// Answer for this image of the `system.toml` in PATH.
     ///
     /// A leaf with several images (one per RMW) is built once per image, and
     /// the Zephyr module hook passes `-DNROS_IMAGE=<id>` here. With it, PATH
@@ -74,33 +79,40 @@ pub struct LeafSystemArgs {
     /// beside it), which is how a generated workspace application names its
     /// image. Without it, the leaf's own rule applies: one image, or
     /// `[system] default_images`.
+    // phase-481 W1.
     #[arg(long, value_name = "ID")]
     pub image: Option<String>,
 
-    /// Issue 1305 -- WRITE this image's generated selection package and its
+    /// Write this image's selection package and `nros-cargo.toml` first.
+    ///
+    /// Writes the generated selection package and its
     /// `build/<id>/nros-cargo.toml` (what `nros build` writes at stage 4, by the
     /// same writer, `leaf_settings::write`) before printing
     /// `NROS_LEAF_SETTINGS`. A cargo leaf with several images shares ONE
     /// selection directory between them, so a fixture build of one image
     /// writes it here, under the leaf's lock, immediately before its cargo
     /// command. Message codegen is NOT redone: that is `nros sync --image`.
+    // Issue 1305.
     #[arg(long)]
     pub write_settings: bool,
 
-    /// phase-489 W6 (issue 1885's road, for the fixture lanes) -- with
-    /// `--write-settings`, the shared cargo target dir the caller will build
-    /// this image into. The image gets its sizing CLASS in it (the same
+    /// With `--write-settings`, the shared cargo target dir the caller will
+    /// build this image into.
+    ///
+    /// The image gets its sizing CLASS in it (the same
     /// `shared_target::apply` `nros build` runs for a caller `--target-dir`):
     /// the settings name the class copy of the descriptor, and the class's
     /// cargo `build.build-dir` is printed as `NROS_LEAF_BUILD_DIR`, for the
     /// caller to hand cargo as `--config build.build-dir=<it>`. Without it the
     /// leaves of one group alternate one build dir's `NROS_SIZING_DESCRIPTOR`
     /// and recompile the core crates on every row, whatever changed.
+    // phase-489 W6 (issue 1885's road, for the fixture lanes).
     #[arg(long, value_name = "DIR", requires = "write_settings")]
     pub target_dir: Option<PathBuf>,
 
-    /// phase-481 W1 (RFC-0098 D11) -- write the image as a Zephyr Kconfig
-    /// fragment to PATH: the RMW choice, the package's language API, the
+    /// Write the image as a Zephyr Kconfig fragment to PATH.
+    ///
+    /// The fragment holds the RMW choice, the package's language API, the
     /// deploy endpoint from `locator`, and every `[image.<id>] env` row whose
     /// Kconfig symbol (through `nros_zephyr_build::KCONFIG_PAIRS`) exists in
     /// the module's `zephyr/Kconfig`. Printed as `NROS_LEAF_KCONFIG`.
@@ -109,23 +121,29 @@ pub struct LeafSystemArgs {
     /// holds, each also printed as `NROS_LEAF_IMAGE_ENV_ROW=<KEY>=<VALUE>` for
     /// the Zephyr cmake lane's own knob ladder. Written only when the content
     /// changes; removed (and printed empty) when the image states nothing.
+    // phase-481 W1 (RFC-0098 D11).
     #[arg(long, value_name = "PATH")]
     pub kconfig_out: Option<PathBuf>,
 
-    /// phase-484 W5b (RFC-0103 D2a/D2b) -- with `--kconfig-out`, write the
-    /// image's KNOB values (the `[image.<id>] env` rows whose Kconfig symbol is
-    /// a registry knob, `nros_zephyr_build::KCONFIG_KNOBS`) as prompt-less
-    /// Kconfig `default`s to PATH, `<build>/nros/Kconfig.from-system-toml`,
-    /// which the module's knob section sources first. Those rows leave the
+    /// With `--kconfig-out`, write the image's knob values as Kconfig defaults.
+    ///
+    /// The knob values are the `[image.<id>] env` rows whose Kconfig symbol is
+    /// a registry knob (`nros_zephyr_build::KCONFIG_KNOBS`), written as
+    /// prompt-less Kconfig `default`s to PATH,
+    /// `<build>/nros/Kconfig.from-system-toml`, which the module's knob
+    /// section sources first. Those rows leave the
     /// fragment. Printed as `NROS_LEAF_KCONFIG_DEFAULTS`.
+    // phase-484 W5b (RFC-0103 D2a/D2b).
     #[arg(long, value_name = "PATH", requires = "kconfig_out")]
     pub kconfig_defaults_out: Option<PathBuf>,
 
-    /// phase-484 W5b -- a transient knob value for this build only, `ID=VALUE`
-    /// (the registry id: `EXECUTOR_ARENA_SIZE=32`). The Zephyr module hook
+    /// A transient knob value for this build only, `ID=VALUE`.
+    ///
+    /// `ID` is the registry id: `EXECUTOR_ARENA_SIZE=32`. The Zephyr module hook
     /// passes one per `-DNROS_OVERRIDE_<ID>=<VALUE>` on the configure line;
     /// it replaces the image's own value in `--kconfig-defaults-out`, marked as
     /// an override. Repeatable.
+    // phase-484 W5b.
     #[arg(
         long = "override",
         value_name = "ID=VALUE",

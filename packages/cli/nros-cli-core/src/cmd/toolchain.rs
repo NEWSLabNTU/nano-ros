@@ -56,13 +56,14 @@ pub enum Sub {
     // RFC-0117 D5: the old spelling of `nros toolchain remove`.
     #[command(hide = true)]
     Uninstall(UninstallArgs),
-    /// phase-443 W2 — read, or stamp, `share/nros/manifest.toml`: what a
-    /// release DECLARES it is made of (RFC-0097 D7).
+    /// Read, or stamp, `share/nros/manifest.toml`: what a release DECLARES it
+    /// is made of.
+    // phase-443 W2 (RFC-0097 D7).
     #[command(hide = true)]
     Manifest(ManifestArgs),
 }
 
-/// `nros toolchain manifest` — RFC-0097 D7's file, both directions.
+/// `nros toolchain manifest` — read or stamp the release manifest.
 ///
 /// With no arguments it READS: the manifest of the toolchain this binary
 /// belongs to. With `--write` it STAMPS one, which is what
@@ -73,6 +74,7 @@ pub enum Sub {
 /// [`crate::abi_guard::EMITTED_VERSION`], so a manifest cannot claim a codegen
 /// version its own binary does not emit. There is no `--codegen` flag, and
 /// adding one would give the field back the drift the file exists to remove.
+// The manifest file is RFC-0097 D7's.
 #[derive(Debug, ClapArgs)]
 pub struct ManifestArgs {
     /// The STORE version being released (`0.5.0-nros1`) — the string a pin
@@ -126,8 +128,8 @@ pub struct UninstallArgs {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Store root. Defaults to `$NROS_HOME`, else
-    /// `~/.nros` — never an absolute literal (RFC-0095 D2).
+    /// Store root. Defaults to `$NROS_HOME`, else `~/.nros`.
+    // Never an absolute literal (RFC-0095 D2).
     #[arg(long)]
     pub root: Option<PathBuf>,
 }

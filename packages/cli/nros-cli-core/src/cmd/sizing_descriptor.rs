@@ -48,35 +48,40 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "PATH")]
     pub output_cmake: Option<PathBuf>,
 
-    /// phase-454 W14 — WRITE a descriptor from this resolved SystemModel.
+    /// Write a descriptor from this resolved SystemModel.
     ///
     /// The model-only road: counts and all four QoS policies are stated, and
     /// every field that needs a leaf's inventories is refused by name.
     ///
-    /// RFC-0100 D12 (issue 1649) — REPEATABLE with `--composed-entry`: the
-    /// RUNTIME descriptor of a multi-entry configure, composed over every
-    /// model by issue 1600's reduction. Without `--composed-entry` exactly one
-    /// is accepted, because one entry has one model.
+    /// Repeatable with `--composed-entry`: the runtime descriptor of a
+    /// multi-entry configure, composed over every model. Without
+    /// `--composed-entry` exactly one is accepted, because one entry has one
+    /// model.
+    // phase-454 W14. Repeatable form: RFC-0100 D12 (issue 1649), composed by
+    // issue 1600's reduction.
     #[arg(long, value_name = "PATH", requires = "build_dir", requires = "entry")]
     pub from_model: Vec<PathBuf>,
 
-    /// RFC-0100 D12 (issue 1649) — an entry that links the SHARED runtime this
-    /// descriptor sizes. Repeat once per entry; any one given switches
+    /// An entry that links the shared runtime this descriptor sizes.
+    ///
+    /// Repeat once per entry; any one given switches
     /// `--from-model` to the runtime write: the file lands at
     /// `<build-dir>/nros/sizing/runtime/shared.toml`, `--entry` names the
     /// runtime, and these become `[meta] composed_entries`.
+    // RFC-0100 D12 (issue 1649).
     #[arg(long = "composed-entry", value_name = "NAME", requires = "from_model")]
     pub composed_entry: Vec<String>,
 
-    /// phase-457 W0.b (issues 1407 / 1378) — WRITE a descriptor for a STANDALONE
-    /// LEAF, from its own `system.toml` `[[component]] entities`.
+    /// Write a descriptor for a standalone leaf, from its own `system.toml`.
     ///
-    /// The road `nros ws entity-facts --leaf` already answers and the one issue
-    /// 1378 measured FAILING: a copy-out cmake project has no bringup and no
-    /// SystemModel, so `--from-model` can never reach it, and until this mode
-    /// existed the four `NROS_DECLARED_*` queryable facts were the only thing
-    /// that described such an image. Same `EntityDecl` grammar, same counting
-    /// rules, same refusals as the model road — only the input differs.
+    /// Reads the leaf's `[[component]] entities`. A copy-out cmake project has
+    /// no bringup and no SystemModel, so `--from-model` can never reach it.
+    /// Same `EntityDecl` grammar, same counting rules, same refusals as the
+    /// model road — only the input differs.
+    // phase-457 W0.b (issues 1407 / 1378). The road `nros ws entity-facts
+    // --leaf` already answers and the one issue 1378 measured FAILING; until
+    // this mode existed the four `NROS_DECLARED_*` queryable facts were the
+    // only thing that described such an image.
     #[arg(
         long,
         value_name = "DIR",
@@ -96,8 +101,9 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "NAME")]
     pub entry: Option<String>,
 
-    /// phase-457 W0 (issue 1407) — the `nros-metadata.json` this configure
-    /// wrote, composed with `--from-model`'s contract exactly as `nros ws
+    /// The `nros-metadata.json` this configure wrote.
+    ///
+    /// Composed with `--from-model`'s contract exactly as `nros ws
     /// entity-inventory` composes it.
     ///
     /// The two producers of one descriptor schema must read ONE inventory. The
@@ -107,22 +113,26 @@ pub struct SizingDescriptorArgs {
     /// alone publishes a count smaller than the image needs — see
     /// [`crate::entity_inventory::EntityInventory::merged_per_kind_max`] for
     /// why this is a per-kind MAX and not a replacement.
+    // phase-457 W0 (issue 1407).
     #[arg(long, value_name = "PATH")]
     pub metadata: Option<PathBuf>,
 
-    /// issue 1594 — `--from-model`: the colcon workspace whose metadata probe
-    /// sidecars carry each subscription's REGISTRATION observation (`in_place`).
+    /// `--from-model`: the colcon workspace whose metadata probe sidecars
+    /// record each subscription's registration path.
     ///
-    /// Without it every subscription on an in-place backend refuses its
-    /// `registration_path` (the safe direction). With it, a FRESH sidecar's
-    /// observation is joined onto the model's rows by the contract join's own
-    /// rule. Every sidecar read is printed as an `input <path>` line after the
-    /// descriptor path, so a configure can register it (issue 1018).
+    /// The sidecars carry each subscription's REGISTRATION observation
+    /// (`in_place`). Without it every subscription on an in-place backend
+    /// refuses its `registration_path` (the safe direction). With it, a FRESH
+    /// sidecar's observation is joined onto the model's rows by the contract
+    /// join's own rule. Every sidecar read is printed as an `input <path>`
+    /// line after the descriptor path, so a configure can register it.
+    // issue 1594; the `input <path>` lines are for issue 1018.
     #[arg(long, value_name = "DIR")]
     pub workspace: Option<PathBuf>,
 
-    /// phase-457-payload W2 — a bound table this image's interface closure
-    /// REGISTERED: the `nros_message_bounds.json` codegen emitted beside a
+    /// A bound table this image's interface closure registered.
+    ///
+    /// The `nros_message_bounds.json` codegen emitted beside a
     /// `nros_message_bounds.cmake` fragment. Repeat once per table.
     ///
     /// `--from-model` / `--from-leaf` only. Read through the same reader the
@@ -131,6 +141,7 @@ pub struct SizingDescriptorArgs {
     /// the payload class, naming the missing registration; a table named here and not on disk yet is
     /// a per-field refusal naming its package, never an error — on the
     /// non-Zephyr cmake lane that is the ordinary first-configure state.
+    // phase-457-payload W2.
     #[arg(long = "bound-inventory", value_name = "PATH")]
     pub bound_inventory: Vec<PathBuf>,
 
@@ -144,8 +155,9 @@ pub struct SizingDescriptorArgs {
 
     /// `--from-model`: the target IS this host, so `[target]` may be read here.
     ///
-    /// The one case RFC-0100 D1's "build scripts run for the host" does not
-    /// bite: a native configure's target is the machine running this process.
+    /// A native configure's target is the machine running this process.
+    // The one case RFC-0100 D1's "build scripts run for the host" does not
+    // bite.
     #[arg(long)]
     pub host_build: bool,
 
@@ -153,10 +165,12 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "BYTES")]
     pub heap_budget_bytes: Option<usize>,
 
-    /// `--from-model`: the board's `[board.rx] frame_cost_us` (phase-462 W6c,
-    /// RFC-0074), when the caller knows it -- the per-frame receive cost `c`
-    /// the zenoh read-task budget is derived with and checked against. Absent:
-    /// `c = 0`, nothing checked.
+    /// `--from-model`: the board's `[board.rx] frame_cost_us`, when the
+    /// caller knows it.
+    ///
+    /// The per-frame receive cost `c` the zenoh read-task budget is derived
+    /// with and checked against. Absent: `c = 0`, nothing checked.
+    // phase-462 W6c, RFC-0074.
     #[arg(long, value_name = "US")]
     pub board_rx_frame_cost_us: Option<u32>,
 
@@ -167,21 +181,26 @@ pub struct SizingDescriptorArgs {
 
     /// The road, in prose, for every refusal written.
     ///
-    /// phase-457 W0.b — `Option`, with the default resolved PER MODE
-    /// ([`DEFAULT_MODEL_ROAD`] / [`DEFAULT_LEAF_ROAD`]) rather than by clap. A
-    /// single `default_value` is a claim about which producer is running, and it
-    /// was wrong for the one added later: `--from-leaf` with no `--road` wrote
-    /// "a cmake entry" into every refusal on a road that has no entry at all.
-    /// A refusal's job is to name what is missing and where, so prose that names
-    /// the wrong road is the defect this whole schema exists to prevent.
+    /// Defaults per mode: "a cmake entry" with `--from-model`, "a standalone
+    /// cmake leaf" with `--from-leaf`.
+    // phase-457 W0.b — `Option`, with the default resolved PER MODE
+    // ([`DEFAULT_MODEL_ROAD`] / [`DEFAULT_LEAF_ROAD`]) rather than by clap. A
+    // single `default_value` is a claim about which producer is running, and
+    // it was wrong for the one added later: `--from-leaf` with no `--road`
+    // wrote "a cmake entry" into every refusal on a road that has no entry at
+    // all. A refusal's job is to name what is missing and where, so prose that
+    // names the wrong road is the defect this whole schema exists to prevent.
     #[arg(long, value_name = "PROSE")]
     pub road: Option<String>,
 
-    /// Issue 1970 -- `codegen entry`'s priority record
-    /// (`nros_priority_plan.json`) for this entry. When it names the tiers of a
+    /// `codegen entry`'s priority record (`nros_priority_plan.json`) for this
+    /// entry.
+    ///
+    /// When it names the tiers of a
     /// board whose runner sizes each tier's executor from its own members, the
     /// descriptor states one `[[tier]]` row per tier. Absent or unreadable,
     /// nothing is added.
+    // Issue 1970.
     #[arg(long, value_name = "PATH", requires = "from_model")]
     pub tier_record: Option<PathBuf>,
 }

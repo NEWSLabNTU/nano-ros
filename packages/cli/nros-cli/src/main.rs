@@ -30,14 +30,16 @@ use std::io;
     arg_required_else_help = true
 )]
 struct Cli {
-    /// Print the CODEGEN VERSION this binary emits, and exit (phase-429 W2).
+    /// Print the codegen version this binary emits, and exit.
     ///
     /// The compatibility token between this binary's emitted code and the
     /// nano-ros runtime that compiles it — deliberately not a release version.
-    /// Visible, unlike the `codegen-fingerprint` / `source-stamp` seams: the
-    /// guard's own refusal message tells a user to compare this number against
-    /// the runtime's accepted range, so the door it names has to be one they
-    /// can find in `--help`.
+    /// A codegen-version refusal asks you to compare this number against the
+    /// runtime's accepted range.
+    // phase-429 W2. Visible, unlike the `codegen-fingerprint` /
+    // `source-stamp` seams: the guard's own refusal message tells a user to
+    // compare this number against the runtime's accepted range, so the door it
+    // names has to be one they can find in `--help`.
     #[arg(long)]
     codegen_version: bool,
 

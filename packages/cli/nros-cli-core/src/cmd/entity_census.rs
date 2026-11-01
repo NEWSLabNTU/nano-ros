@@ -137,20 +137,25 @@ pub struct EntityCensusArgs {
 pub enum Sub {
     /// Run the entry's native binary in census mode and write the census.
     Run(RunArgs),
-    /// Compare a census with the contract that declared it (phase-463 W3).
+    /// Compare a census with the contract that declared it.
+    // phase-463 W3.
     Check(CheckArgs),
-    /// Print where the census of a model lives (issue 1419). The ONE spelling
-    /// of that path, for a caller -- a cmake configure -- that has to register
-    /// the file before the check reads it.
+    /// Print where the census of a model lives.
+    ///
+    /// The one spelling of that path, for a caller -- a cmake configure --
+    /// that has to register the file before the check reads it.
+    // Issue 1419.
     Path(PathArgs),
-    /// Make sure the census a CROSS image's configure will check exists and
-    /// is fresh: build the native image generated from the same launch file,
-    /// to its fixed point, and run it in census mode (issue 1419).
+    /// Make sure the census a cross image's configure will check is fresh.
+    ///
+    /// Builds the native image generated from the same launch file, to its
+    /// fixed point, and runs it in census mode.
     ///
     /// The one command a cross build runs before its configure. It does
     /// nothing when there is nothing to do -- a host image, a model with no
     /// contract, a census that is already fresh -- so a build script can call
     /// it before every cross image.
+    // Issue 1419.
     Take(TakeArgs),
 }
 
@@ -168,12 +173,14 @@ pub struct TakeArgs {
     )]
     pub image: Option<String>,
 
-    /// Issue 1556 item 4 -- a STANDALONE C/C++ leaf (`system.toml` beside a
-    /// `CMakeLists.txt`, no bringup) instead of a workspace image: configure
-    /// the leaf's own `src/` for the HOST board, build it, and run it in census
-    /// mode. The census is written to `<leaf>/build/nros/census/leaf.census.json`,
-    /// which is where `entity-facts --leaf` and `sizing-descriptor --from-leaf`
-    /// read it.
+    /// Take the census of a standalone C/C++ leaf instead of a workspace image.
+    ///
+    /// A standalone leaf is a `system.toml` beside a `CMakeLists.txt`, with no
+    /// bringup. Configures the leaf's own `src/` for the host board, builds
+    /// it, and runs it in census mode. The census is written to
+    /// `<leaf>/build/nros/census/leaf.census.json`, which is where
+    /// `entity-facts --leaf` and `sizing-descriptor --from-leaf` read it.
+    // Issue 1556 item 4.
     #[arg(long, value_name = "DIR")]
     pub leaf: Option<PathBuf>,
 
@@ -189,7 +196,8 @@ pub struct TakeArgs {
     /// image this take would build, or only the reason there is nothing to
     /// take. A script that runs `take --offline` asks this first, so it can
     /// warm that image's cargo cache, because an `--offline` build can only
-    /// use crates already fetched (issue 1848, the class of issue 0967).
+    /// use crates already fetched.
+    // Issue 1848, the class of issue 0967.
     #[arg(long, conflicts_with = "leaf")]
     pub plan: bool,
 
@@ -209,8 +217,9 @@ pub struct PathArgs {
     )]
     pub model: Option<PathBuf>,
 
-    /// Issue 1556 -- or a STANDALONE leaf directory: the census
-    /// `take --leaf` writes for it, which its configure reads.
+    /// Or a standalone leaf directory: the census `take --leaf` writes for it,
+    /// which its configure reads.
+    // Issue 1556.
     #[arg(long, value_name = "DIR")]
     pub leaf: Option<PathBuf>,
 }
@@ -237,50 +246,55 @@ pub struct RunArgs {
     /// The resolved SystemModel this entry was generated from. Its
     /// `meta.inputs` digests and its node packages become part of the
     /// census's provenance. Verified through the one model gate before it is
-    /// read (phase-460 W1).
+    /// read.
+    // The one model gate is phase-460 W1.
     #[arg(long, value_name = "PATH")]
     pub model: Option<PathBuf>,
 
     /// Write the census here. Defaults to beside `--model`
     /// (`<model-dir>/<stem>.census.json`), which is where a cross configure of
-    /// any entry generated from the same model looks (issue 1419); with no
-    /// `--model`, to `<build-dir>/nros/census/<entry>.json`, which nothing
-    /// reads but a person.
+    /// any entry generated from the same model looks; with no `--model`, to
+    /// `<build-dir>/nros/census/<entry>.json`, which nothing reads but a
+    /// person.
+    // Issue 1419.
     #[arg(long, value_name = "PATH")]
     pub out: Option<PathBuf>,
 
     /// Give up on a census run that has not exited in this many seconds.
     ///
     /// A census run constructs components and exits; it never spins. A run
-    /// that does not finish is a node whose constructor blocks (issue 0286's
-    /// shape), and a bounded wait reports that instead of hanging a build.
+    /// that does not finish is a node whose constructor blocks, and a bounded
+    /// wait reports that instead of hanging a build.
+    // A blocking constructor is issue 0286's shape.
     #[arg(long, default_value = "60", value_name = "SECS")]
     pub timeout_secs: u64,
 }
 
-/// phase-463 W3 -- `nros ws entity-census check`.
+/// `nros ws entity-census check`.
 ///
 /// The three documents are named rather than discovered, for the same reason
 /// `run` takes `--binary`: this verb is what a recipe and a person both call,
 /// and a check whose inputs are inferred cannot be reproduced by hand from the
-/// line a build log printed. phase-463 W4 is the wave that wires it into
-/// `nros sync` with the freshness rules.
+/// line a build log printed.
+// phase-463 W3. phase-463 W4 is the wave that wires it into `nros sync` with
+// the freshness rules.
 #[derive(Debug, ClapArgs)]
 pub struct CheckArgs {
     /// The census a `run` wrote. Both the wrapped form and the recorder's own
     /// document are accepted. Defaults to the census of `--model`
-    /// (`<model-dir>/<stem>.census.json`, issue 1419), which is where `run
-    /// --model` writes it -- naming it here is for a census kept elsewhere.
+    /// (`<model-dir>/<stem>.census.json`), which is where `run --model`
+    /// writes it -- naming it here is for a census kept elsewhere.
+    // Issue 1419.
     #[arg(long, value_name = "PATH")]
     pub census: Option<PathBuf>,
 
     /// The authored contract, `<bringup>/launch/<stem>.contract.yaml`.
     ///
-    /// phase-463 W4 made it OPTIONAL for one caller: a cross configure knows
-    /// the model and not the launch stem, and re-deriving the sidecar's name
-    /// in cmake would be a second spelling of a rule the model already
-    /// records. When it is omitted, the contract is the `*.contract.yaml` the
-    /// model's own `meta.inputs` names.
+    /// When it is omitted, the contract is the `*.contract.yaml` the model's
+    /// own `meta.inputs` names.
+    // phase-463 W4 made it OPTIONAL for one caller: a cross configure knows
+    // the model and not the launch stem, and re-deriving the sidecar's name in
+    // cmake would be a second spelling of a rule the model already records.
     #[arg(long, value_name = "PATH")]
     pub contract: Option<PathBuf>,
 
@@ -294,9 +308,11 @@ pub struct CheckArgs {
     #[arg(long, value_name = "PATH")]
     pub system_toml: Option<PathBuf>,
 
-    /// The resolved SystemModel. Read only through the one model gate
-    /// (phase-460 W1), so a refused or stale model refuses the check rather
-    /// than quietly making it pass.
+    /// The resolved SystemModel.
+    ///
+    /// Read only through the one model gate, so a refused or stale model
+    /// refuses the check rather than quietly making it pass.
+    // The one model gate is phase-460 W1.
     #[arg(long, value_name = "PATH")]
     pub model: Option<PathBuf>,
 
@@ -306,8 +322,9 @@ pub struct CheckArgs {
     #[arg(long)]
     pub strict: bool,
 
-    /// phase-463 W4 -- refuse to compare against a census that is absent, or
-    /// that no longer describes the code.
+    /// Refuse to compare against a census that is absent or stale.
+    ///
+    /// Stale means the census no longer describes the code.
     ///
     /// This is what an RTOS image's configure passes. Without it a check is
     /// still honest about the two documents it was handed; with it, the check
@@ -318,6 +335,7 @@ pub struct CheckArgs {
     /// Freshness is content-addressed, never mtime-based (the rule
     /// `metadata_refresh` states and the reason it states it): touching a
     /// source file leaves a census fresh, and adding an entity does not.
+    // phase-463 W4.
     #[arg(long)]
     pub require_fresh: bool,
 

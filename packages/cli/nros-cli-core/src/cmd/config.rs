@@ -17,27 +17,32 @@ pub enum Args {
     /// Print the resolved effective config for a bringup system (from its typed
     /// `system.toml`) with per-value provenance.
     Show(ShowArgs),
-    /// phase-290 (RFC-0049) — print the resolved BUILD-time knob ladder for a
-    /// platform: every knob's final value plus the rung that set it
-    /// (builtin / platform / board / env).
+    /// Print the resolved BUILD-time knob ladder for a platform.
+    ///
+    /// Shows every knob's final value plus the rung that set it (builtin /
+    /// platform / board / env).
+    // phase-290 (RFC-0049).
     Explain(ExplainArgs),
 }
 
 #[derive(Debug, ClapArgs)]
 pub struct ShowArgs {
-    /// Phase 256 — the bringup pkg to resolve. Omit (or pass with no value) to
-    /// default to the workspace's `default_system` (or the sole bringup).
+    /// The bringup pkg to resolve.
+    ///
+    /// Omit (or pass with no value) to default to the workspace's
+    /// `default_system` (or the sole bringup).
+    // Phase 256.
     #[arg(long = "system", num_args = 0..=1, default_missing_value = "")]
     pub system: Option<String>,
 
     /// Output shape. `human` (default) is the provenance report; `cmake` emits
     /// a single `set(NROS_FEATURES ...)` line for `include()` from
-    /// `nano_ros_workspace()` BEFORE nano-ros is imported (phase-323 W1).
-    ///
-    /// The cmake form exists so the C/C++ build reaches the capability list
-    /// through `SystemToml::capability_enabled` — the same accessor the Rust
-    /// facade uses — instead of re-deriving it by parsing TOML in cmake, which
-    /// would be the second source this phase exists to remove.
+    /// `nano_ros_workspace()` BEFORE nano-ros is imported.
+    // phase-323 W1. The cmake form exists so the C/C++ build reaches the
+    // capability list through `SystemToml::capability_enabled` — the same
+    // accessor the Rust facade uses — instead of re-deriving it by parsing
+    // TOML in cmake, which would be the second source this phase exists to
+    // remove.
     #[arg(long = "format", value_parser = ["human", "cmake"], default_value = "human")]
     pub format: String,
 

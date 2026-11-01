@@ -75,15 +75,20 @@ pub mod release;
 
 #[derive(Debug, Subcommand)]
 pub enum Cmd {
-    /// Build a nano-ros workspace: discover packages, resolve the image,
-    /// preflight, generate the root, and hand off to the native tool
-    /// (RFC-0065 / phase-383). The final stage is an `exec`, so compiler
-    /// diagnostics are byte-identical to running cargo/cmake/west directly.
+    /// Build a nano-ros workspace.
+    ///
+    /// Discovers packages, resolves the image, runs preflight, generates the
+    /// root, and hands off to the native tool. The final stage is an `exec`,
+    /// so compiler diagnostics are byte-identical to running cargo/cmake/west
+    /// directly.
+    // RFC-0065 / phase-383.
     Build(build::Args),
 
-    /// Take ownership of a generated entry package (RFC-0065 D5). The last
-    /// resort: `panic` and `profile` are declarations on the image and need no
-    /// materialising. One way — `nros build` stops regenerating it.
+    /// Take ownership of a generated entry package.
+    ///
+    /// The last resort: `panic` and `profile` are declarations on the image and
+    /// need no materialising. One way — `nros build` stops regenerating it.
+    // RFC-0065 D5.
     Materialize(materialize::Args),
 
     /// Scaffold a new nano-ros package (`--template`: talker, listener, server,
@@ -130,87 +135,108 @@ pub enum Cmd {
     #[command(name = "generate-rust", hide = true)]
     GenerateRust(generate::RustArgs),
 
-    /// Print this binary's CODEGEN FINGERPRINT — a hash of the bytes its
-    /// emitters produce for a compiled-in probe corpus (RFC-0061 / phase-318 W1).
+    /// Print this binary's codegen fingerprint.
     ///
-    /// The fixture-freshness signature keys on this instead of the binary's own
-    /// hash, so a rebuild that changes no emitted byte invalidates no fixture.
+    /// The fingerprint is a hash of the bytes its emitters produce for a
+    /// compiled-in probe corpus. The fixture-freshness signature keys on this
+    /// instead of the binary's own hash, so a rebuild that changes no emitted
+    /// byte invalidates no fixture.
     /// Hidden: it is a build-system seam, not a user verb.
+    // RFC-0061 / phase-318 W1.
     #[command(name = "codegen-fingerprint", hide = true)]
     CodegenFingerprint,
 
-    /// Report whether this binary matches the CLI sources in its checkout
-    /// (issue 0363). Exits non-zero when stale.
+    /// Report whether this binary matches the CLI sources in its checkout.
     ///
-    /// Hidden for the same reason as `codegen-fingerprint`: a build-system
-    /// seam. It exists so `scripts/check-cli-fresh.sh` can ASK the binary
-    /// rather than reimplement the predicate — the freshness logic lives in
-    /// exactly one place, and this is its read-only door.
-    ///
-    /// Deliberately NOT in the guarded set: a stale binary must still be able
-    /// to report that it is stale.
+    /// Exits non-zero when stale. A stale binary can still run this verb.
+    // Issue 0363. Hidden for the same reason as `codegen-fingerprint`: a
+    // build-system seam. It exists so `scripts/check-cli-fresh.sh` can ASK the
+    // binary rather than reimplement the predicate — the freshness logic lives
+    // in exactly one place, and this is its read-only door.
+    //
+    // Deliberately NOT in the guarded set: a stale binary must still be able
+    // to report that it is stale.
     #[command(name = "source-stamp", hide = true)]
     SourceStamp,
 
-    /// Sync generated msg bindings + the `[patch.crates-io]` config to the
-    /// declared deps (`package.xml` / `Cargo.toml`) — for a standalone pkg
-    /// or a workspace (picks single-pkg vs colcon mode by layout). Writes the
-    /// patch into each Rust consumer's `.cargo/config.toml` (never `Cargo.toml`).
-    /// Pre-cargo step; run after editing `*.msg` files. Phase-265 W5 — promoted
-    /// from the retired `ws`-scoped `sync` alias. (`nros generate-rust` stays the
-    /// codegen-only primitive.)
+    /// Sync generated message bindings and the cargo patch config to the declared deps.
+    ///
+    /// Reads `package.xml` / `Cargo.toml`, for a standalone package or a
+    /// workspace (single-package vs colcon mode is picked by layout). Writes
+    /// the `[patch.crates-io]` patch into each Rust consumer's
+    /// `.cargo/config.toml` (never `Cargo.toml`). Pre-cargo step; run after
+    /// editing `*.msg` files.
+    // Phase-265 W5 — promoted from the retired `ws`-scoped `sync` alias.
+    // (`nros generate-rust` stays the codegen-only primitive.)
     Sync(ws::SyncArgs),
 
-    /// Generate CDR `px4_msgs::msg::*` from a PX4-Autopilot `.msg` tree (no
-    /// ament dep) for the XRCE companion path (Phase 233 / RFC-0039 Track B).
+    /// Generate CDR `px4_msgs::msg::*` from a PX4-Autopilot `.msg` tree.
+    ///
+    /// Needs no ament dependency. Serves the XRCE companion path.
+    // Phase 233 / RFC-0039 Track B.
     #[command(name = "generate-px4-msgs")]
     GeneratePx4Msgs(generate_px4::Args),
 
     /// Build-tool C/C++ binding generation (`--args-file` / `resolve-deps`).
-    /// The interface the cmake / build.rs consumers speak (Phase 195.A — folds
-    /// in the former standalone `nros-codegen` binary).
+    ///
+    /// The interface the cmake / build.rs consumers speak.
+    // Phase 195.A — folds in the former standalone `nros-codegen` binary.
     #[command(hide = true)]
     Codegen(codegen::Args),
 
-    /// Host-time system bake (Phase 212.E) — read `<bringup>/system.toml` +
-    /// `<bringup>/launch/system.launch.xml` and emit the baked compile-time
-    /// C config + component registration glue consumed by every embedded
-    /// RTOS adapter.
+    /// Host-time system bake.
+    ///
+    /// Reads `<bringup>/system.toml` + `<bringup>/launch/system.launch.xml`
+    /// and emits the baked compile-time C config + component registration glue
+    /// consumed by every embedded RTOS adapter.
+    // Phase 212.E.
     #[command(name = "codegen-system", hide = true)]
     CodegenSystem(codegen_system::Args),
 
-    /// RFC-0085 D2 — print the RESOLVED image as data, so a west build derives
-    /// its cargo invocation from `[image.*]` instead of re-spelling it from
-    /// Kconfig. A query, not a build: it cannot recurse into `west build`.
+    /// Print the resolved image as data.
+    ///
+    /// A west build derives its cargo invocation from `[image.*]` through this
+    /// instead of re-spelling it from Kconfig. A query, not a build: it cannot
+    /// recurse into `west build`.
+    // RFC-0085 D2.
     #[command(name = "image-facts", hide = true)]
     ImageFacts(image_facts::Args),
 
-    /// phase-330 W7 — print the resolved SystemModel path for
-    /// (bringup, launch, args). The cmake bridge for `nano_ros_entry(LAUNCH …)`.
+    /// Print the resolved SystemModel path for (bringup, launch, args).
+    ///
+    /// The cmake bridge for `nano_ros_entry(LAUNCH …)`.
+    // phase-330 W7.
     #[command(name = "model-path", hide = true)]
     ModelPath(model_path::Args),
 
-    /// phase-365 W2 — print the CONSTRUCTED install path of a provisioned tool.
+    /// Print the constructed install path of a provisioned tool.
+    ///
     /// The cmake/just/shell bridge to `sdk_store::tool_dir`, so the store is
-    /// never searched (issue 0625).
+    /// never searched.
+    // phase-365 W2; never searching the store is issue 0625.
     #[command(name = "sdk-path", hide = true)]
     SdkPath(sdk_path::Args),
 
-    /// phase-484 W1 (RFC-0103 D4) — where a resource is, and with `--why`,
-    /// which rung answered. The cmake/just/shell front door to
-    /// `nros_build_paths::locate`.
+    /// Print where a resource is, and with `--why`, which rung answered.
+    ///
+    /// The cmake/just/shell front door to `nros_build_paths::locate`.
+    // phase-484 W1 (RFC-0103 D4).
     Locate(locate::Args),
 
-    /// phase-431 W3 — point `$NROS_HOME/bin/<name>` at the NEWEST installed
-    /// version of a tool. The bridge for `scripts/bootstrap.sh`, which unpacks
-    /// the CLI itself and has no `nros setup` to run until it has.
+    /// Point `$NROS_HOME/bin/<name>` at the newest installed version of a tool.
+    ///
+    /// The bridge for `scripts/bootstrap.sh`, which unpacks the CLI itself and
+    /// has no `nros setup` to run until it has.
+    // phase-431 W3.
     #[command(name = "sdk-front", hide = true)]
     SdkFront(sdk_front::Args),
 
-    /// phase-447 A2 — print the nano-ros SDK root this toolchain resolves
-    /// (RFC-0099 D3). The cmake/shell bridge to the four-rung ladder, so a
-    /// scaffolded project ASKS where the runtime is instead of baking in an
-    /// absolute path that is right on exactly one machine.
+    /// Print the nano-ros SDK root this toolchain resolves.
+    ///
+    /// The cmake/shell bridge to the four-rung ladder, so a scaffolded project
+    /// asks where the runtime is instead of baking in an absolute path that is
+    /// right on exactly one machine.
+    // phase-447 A2 (RFC-0099 D3).
     #[command(name = "sdk-root", hide = true)]
     SdkRoot(sdk_root::Args),
 
@@ -227,20 +253,27 @@ pub enum Cmd {
     // (RFC-0117 D2).
     Toolchain(toolchain::Args),
 
-    /// phase-443 W2 — report this project's `nros-toolchain.toml`, or move it.
-    /// A bump reports the CODEGEN DELTA between the two toolchains' declared
+    /// Report this project's `nros-toolchain.toml`, or move it.
+    ///
+    /// A bump reports the codegen delta between the two toolchains' declared
     /// `share/nros/manifest.toml` first, so an upgrade that would invalidate
-    /// already-generated code warns before anything is written (RFC-0097 D7).
+    /// already-generated code warns before anything is written.
+    // phase-443 W2; the codegen-delta warning is RFC-0097 D7.
     Pin(pin::Args),
 
-    /// phase-485 W7 (RFC-0104 D7) — move ONE pin: a registry crate
-    /// (`--crate`), a vendored source (`--source`), a host tool (`--tool`) or a
-    /// west project (`--west`). Edits the pin set and leaves one diff.
+    /// Move one pin, editing the pin set and leaving one diff.
+    ///
+    /// A pin is a registry crate (`--crate`), a vendored source (`--source`), a
+    /// host tool (`--tool`) or a west project (`--west`).
+    // phase-485 W7 (RFC-0104 D7).
     Update(update::Args),
 
-    /// phase-336 — the cargo build-profile table (CMAKE_BUILD_TYPE mapping,
-    /// flags, artifact dir, env-injected definitions). The bridge cmake/bash
-    /// use so the derivations are not re-spelled per language.
+    /// Print the cargo build-profile table.
+    ///
+    /// The table holds the CMAKE_BUILD_TYPE mapping, flags, artifact dir and
+    /// env-injected definitions. The bridge cmake/bash use so the derivations
+    /// are not re-spelled per language.
+    // phase-336.
     #[command(subcommand_negates_reqs = true, hide = true)]
     Profile(profile::Args),
 
@@ -261,12 +294,13 @@ pub enum Cmd {
     #[command(subcommand)]
     Config(config::Args),
 
-    /// Resolve + fetch a board's toolchain/SDK packages (Phase 187)
+    /// Resolve + fetch a board's toolchain/SDK packages
+    // Phase 187.
     Setup(setup::Args),
 
     /// Generate a project `CMakePresets.json` including the per-board presets
-    /// `nros setup` wrote (RFC-0048 §6). Then `cmake --preset <board>` works.
-    // RFC-0117 D5: the old spelling of `nros setup presets`.
+    /// `nros setup` wrote. Then `cmake --preset <board>` works.
+    // RFC-0048 §6. RFC-0117 D5: the old spelling of `nros setup presets`.
     #[command(hide = true)]
     Init(init::Args),
 
@@ -277,9 +311,9 @@ pub enum Cmd {
     #[command(subcommand)]
     Board(board::Args),
 
-    /// Workspace-level msg-pkg utilities (Phase 210.B.3 + 210.D.1 — env, list,
-    /// status, clean, doctor). `sync` was promoted to the top-level `nros sync`.
-    // RFC-0117 D2: hidden. `list` and `clean` are top-level user verbs now,
+    /// Workspace-level message-package utilities: env, list, status, clean, doctor.
+    // Phase 210.B.3 + 210.D.1. `sync` was promoted to the top-level `nros
+    // sync`. RFC-0117 D2: hidden. `list` and `clean` are top-level user verbs now,
     // and the build-system verbs live under `nros dev`.
     #[command(hide = true)]
     Ws(ws::Args),
@@ -290,9 +324,10 @@ pub enum Cmd {
     /// Generate shell completions (bash | zsh | fish | powershell)
     Completions(completions::Args),
 
-    /// The developer and build-system tier (RFC-0117): the verbs cmake, west,
-    /// `just` and the gates call. Hidden from `nros --help`; `nros help --all`
-    /// lists it.
+    /// The developer and build-system tier: the verbs cmake, west, `just` and the gates call.
+    ///
+    /// Hidden from `nros --help`; `nros help --all` lists it.
+    // RFC-0117.
     #[command(hide = true)]
     Dev(dev::Args),
 

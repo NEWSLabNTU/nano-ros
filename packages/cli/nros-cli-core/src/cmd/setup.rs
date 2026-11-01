@@ -27,9 +27,13 @@ use crate::orchestration::{
 #[derive(Debug, ClapArgs)]
 #[command(args_conflicts_with_subcommands = true)]
 pub struct Args {
-    /// Provisioning subcommands. `nros setup board <name> --zephyr-workspace
-    /// <dir>` provisions a DOWNSTREAM Zephyr consumer's tree (Phase 215.J.2);
-    /// omit it for the legacy host-toolchain `nros setup <board>` flow below.
+    /// Provisioning subcommands.
+    ///
+    /// `nros setup board <name> --zephyr-workspace <dir>` provisions a
+    /// downstream Zephyr consumer's tree; omit it for the host-toolchain
+    /// `nros setup <board>` flow below.
+    // The downstream-consumer subcommand is Phase 215.J.2; the host-toolchain
+    // `nros setup <board>` flow is the legacy one.
     #[command(subcommand)]
     pub command: Option<SetupCommand>,
 
@@ -47,25 +51,31 @@ pub struct Args {
 
     /// Install tools by name (instead of a board's whole set), e.g.
     /// `--tool qemu`. Repeatable, like `--source`: `--tool ninja --tool make`
-    /// is ONE plan — one system-package ask for the union, one lock write
-    /// (phase-447 E1). The `just <module> setup` recipes call this.
+    /// is ONE plan — one system-package ask for the union, one lock write.
+    /// The `just <module> setup` recipes call this.
+    // One plan for repeated `--tool`: phase-447 E1.
     #[arg(long = "tool", value_name = "NAME")]
     pub tools: Vec<String>,
 
-    /// Provision a single `[source.*]` package by name from the index (Phase
-    /// 195.B), e.g. `--source freertos-kernel`. Repeatable. The index is the
-    /// SSOT — `dest`/`ref`/`submodule` come from data, never a hardcoded path.
-    /// The `just <module> setup` recipes call this instead of inlining
+    /// Provision a single `[source.*]` package by name from the index.
+    ///
+    /// E.g. `--source freertos-kernel`. Repeatable. The index is the SSOT —
+    /// `dest`/`ref`/`submodule` come from data, never a hardcoded path. The
+    /// `just <module> setup` recipes call this instead of inlining
     /// `git submodule update <path>`.
+    // Phase 195.B.
     #[arg(long = "source")]
     pub sources: Vec<String>,
 
-    /// #0390 — provision the whole build-stage source UNION the repo's
-    /// `just test` / `build-test-fixtures` need (every RMW's `-sys` source + the
-    /// platform sources the workspace graph path-deps), independent of the
-    /// per-board `nros setup <board>` slice. The index's top-level `build_sources`
-    /// is the SSOT. With `--check`, only VERIFY they are present and name
-    /// `nros setup --source <name>` per missing — the preflight the two recipes run.
+    /// Provision the whole build-stage source union the repo's tests need.
+    ///
+    /// That is what `just test` / `build-test-fixtures` need (every RMW's
+    /// `-sys` source + the platform sources the workspace graph path-deps),
+    /// independent of the per-board `nros setup <board>` slice. The index's
+    /// top-level `build_sources` is the SSOT. With `--check`, only VERIFY they
+    /// are present and name `nros setup --source <name>` per missing — the
+    /// preflight the two recipes run.
+    // #0390.
     #[arg(long = "build-sources")]
     pub build_sources: bool,
 
@@ -79,9 +89,11 @@ pub struct Args {
     #[arg(long, default_value = "nros-sdk-index.toml")]
     pub index: PathBuf,
 
-    /// RMW backend whose host daemon/tool to also provision — orthogonal to the
-    /// board (Phase 191.6.a): `zenoh` | `xrce` | `cyclonedds`. Defaults to
+    /// RMW backend whose host daemon/tool to also provision.
+    ///
+    /// Orthogonal to the board: `zenoh` | `xrce` | `cyclonedds`. Defaults to
     /// `zenoh`. Resolves `board.packages ∪ rmw.packages`.
+    // Phase 191.6.a.
     #[arg(long)]
     pub rmw: Option<String>,
 
@@ -102,27 +114,31 @@ pub struct Args {
     #[arg(long)]
     pub shallow: bool,
 
-    /// phase-327 W2 (RFC-0062) — resolve the `[system.*]` OS-package closure
-    /// for the detected package manager and PRINT the one native install
-    /// command (never runs it without `--sudo`). With `--check`, run each
-    /// entry's presence probe instead and exit non-zero if anything is
-    /// missing (the doctor surface).
+    /// Print the native install command for the `[system.*]` OS packages.
+    ///
+    /// Resolves the `[system.*]` OS-package closure for the detected package
+    /// manager and prints the one native install command (never runs it
+    /// without `--sudo`). With `--check`, run each entry's presence probe
+    /// instead and exit non-zero if anything is missing (the doctor surface).
+    // phase-327 W2 (RFC-0062).
     #[arg(long)]
     pub system: bool,
-    /// RFC-0062 amendment 3 — provision from what THIS WORKSPACE declares,
-    /// instead of a scope the user has to know in advance.
+    /// Provision from what this workspace declares.
     ///
     /// Reads every `package.xml` under the path and answers three questions
     /// the tree already states: what the code depends on (`<depend>`), which
     /// builder must exist (`<build_type>` / `<buildtool_depend>`), and where it
     /// deploys (the `[image.<id>] board` of the `system.toml` beside a
-    /// package.xml — RFC-0098 D3; the retired `<nano_ros deploy=…/>` tuple
-    /// was the spelling before phase-445 W3b).
+    /// package.xml).
     ///
-    /// Prints the plan, then installs it (phase-517 W4): every image's board
-    /// and RMW in one store plan, then the OS-package closure — installed with
-    /// `--sudo`, otherwise printed as the command to run. `--check` stops after
-    /// the plan. Plain `nros setup` inside a workspace means `--workspace .`.
+    /// Prints the plan, then installs it: every image's board and RMW in one
+    /// store plan, then the OS-package closure — installed with `--sudo`,
+    /// otherwise printed as the command to run. `--check` stops after the
+    /// plan. Plain `nros setup` inside a workspace means `--workspace .`.
+    // RFC-0062 amendment 3 — provision from what THIS WORKSPACE declares,
+    // instead of a scope the user has to know in advance. The deploy board is
+    // RFC-0098 D3; the retired `<nano_ros deploy=…/>` tuple was the spelling
+    // before phase-445 W3b. Install-after-plan is phase-517 W4.
     #[arg(long = "workspace", value_name = "PATH", num_args = 0..=1, default_missing_value = ".")]
     pub workspace_scan: Option<PathBuf>,
     /// Narrow `--system` to keys of these roles (repeatable).
@@ -138,33 +154,34 @@ pub struct Args {
     /// installing/printing; exits 1 when anything is missing. With
     /// `--system`, probes only the `[system.*]` class; alone, walks EVERY
     /// declared class — `[system.*]`, `[rust.*]`, `[python.*]` — printing a
-    /// remedy COMPUTED from each entry (phase-327 W3: doctor derives from
-    /// the index, remedies are never hand-written).
+    /// remedy computed from each entry.
+    // phase-327 W3: doctor derives from the index, remedies are never
+    // hand-written.
     #[arg(long)]
     pub check: bool,
 
-    /// With `--system`: EXECUTE the composed native install command (which
-    /// invokes sudo where the manager needs it) instead of printing it.
+    /// Execute the composed native install command instead of printing it.
     ///
-    /// issue 1038 — ALSO applies to `--tool`: a tool declaring its own
+    /// With `--system`, runs the native install command (which invokes sudo
+    /// where the manager needs it). With `--tool`, a tool declaring its own
     /// `[tool.<name>] system = [..]` build deps installs them instead of
-    /// bailing with a line for a human to copy.
-    ///
-    /// issue 2099 — and to `<board>` and `--workspace`: the board plan's one
-    /// system ask (its tools' and `[source.*]`s' `system = [..]`) is installed
-    /// before any download, through the same code. Every other arm refuses it
-    /// in `route`, naming these four.
-    ///
-    /// NOT `requires = "system"`. It was, and that made the `--tool` half above
-    /// UNREACHABLE: the implementation for it has existed since issue 1038 and
-    /// the parser rejected every invocation that could reach it, so
-    /// `nros setup --tool esp32-qemu --sudo` exited 2 on a clap usage error
-    /// while the doc comment promised it worked. Validated in `route` instead,
-    /// where the message can name the lines that take it.
+    /// printing a line to copy. With `<board>` and `--workspace`, the board
+    /// plan's one system ask (its tools' and `[source.*]`s' `system = [..]`)
+    /// is installed before any download. Any other use is refused.
+    // `--tool` support is issue 1038; `<board>` / `--workspace` is issue 2099.
+    // Every other arm refuses it in `route`, naming these four.
+    //
+    // NOT `requires = "system"`. It was, and that made the `--tool` half
+    // UNREACHABLE: the implementation for it has existed since issue 1038 and
+    // the parser rejected every invocation that could reach it, so
+    // `nros setup --tool esp32-qemu --sudo` exited 2 on a clap usage error
+    // while the doc comment promised it worked. Validated in `route` instead,
+    // where the message can name the lines that take it.
     #[arg(long, conflicts_with = "check")]
     pub sudo: bool,
 
-    /// How many packages to install at once (phase-447 E3 / RFC-0099 D7).
+    /// How many packages to install at once.
+    ///
     /// Default: this host's CPU count; `NROS_SETUP_JOBS` overrides the default,
     /// and this overrides both.
     ///
@@ -173,19 +190,22 @@ pub struct Args {
     /// so source builds run one at a time and the overlap that pays is one
     /// package's build or unpack beside another's download. Output stays per
     /// package and in plan order whatever the value.
+    // phase-447 E3 / RFC-0099 D7.
     #[arg(long, short = 'j', value_name = "N")]
     pub jobs: Option<usize>,
 }
 
-/// `nros setup <subcommand>` (Phase 215.J.2).
+/// `nros setup <subcommand>`.
+// Phase 215.J.2.
 #[derive(Debug, Subcommand)]
 pub enum SetupCommand {
-    /// Provision a downstream Zephyr consumer's tree for a nano-ros board:
-    /// fetch the board's RMW source, apply the zephyr-line patch set, add the
-    /// rust targets, and check the `zephyr-lang-rust` pin — board-driven from
-    /// the board's provisioning contract (`board.cmake` /
-    /// `[package.metadata.nros.board]`). See RFC-0014 §"Downstream Zephyr
-    /// consumer provisioning" + phase-215.J.
+    /// Provision a downstream Zephyr consumer's tree for a nano-ros board.
+    ///
+    /// Fetches the board's RMW source, applies the zephyr-line patch set, adds
+    /// the rust targets, and checks the `zephyr-lang-rust` pin — driven by the
+    /// board's provisioning contract (`board.cmake` /
+    /// `[package.metadata.nros.board]`).
+    // See RFC-0014 §"Downstream Zephyr consumer provisioning" + phase-215.J.
     Board(BoardSetupArgs),
     /// Write a project `CMakePresets.json` that includes the per-board presets
     /// `nros setup <board>` wrote. Then `cmake --preset <board>` works.

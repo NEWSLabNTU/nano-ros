@@ -44,9 +44,11 @@ use crate::orchestration::{
 
 #[derive(Debug, ClapArgs)]
 pub struct Args {
-    /// Bringup package directory to create (e.g. `demo_bringup`). Conventionally
-    /// suffixed `_bringup` per the Phase 212 design doc, but any name is
-    /// accepted (`<system>_launch` documented as an alias).
+    /// Bringup package directory to create (e.g. `demo_bringup`).
+    ///
+    /// Conventionally suffixed `_bringup`, but any name is accepted
+    /// (`<system>_launch` is documented as an alias).
+    // The `_bringup` convention is from the Phase 212 design doc.
     pub name: PathBuf,
 
     /// Comma-separated component package names to wire into the bringup

@@ -68,16 +68,21 @@ pub struct Args {
     #[arg(long)]
     pub target_dir: Option<PathBuf>,
 
-    /// `artifact` mode: the directory a build PLACED its config headers in
-    /// (`scripts/build/cargo-out-dir-headers.py --dest`, issue 1824). REQUIRED
-    /// for the header artifacts, which live only in cargo's `$OUT_DIR`; an
-    /// archive is never placed, so naming one with this is refused.
+    /// `artifact` mode: the directory a build PLACED its config headers in.
+    ///
+    /// REQUIRED for the header artifacts, which live only in cargo's
+    /// `$OUT_DIR`; an archive is never placed, so naming one with this is
+    /// refused.
+    // The placing step is `scripts/build/cargo-out-dir-headers.py --dest`
+    // (issue 1824).
     #[arg(long)]
     pub placed_dir: Option<PathBuf>,
 
-    /// The project whose `system.toml` `[sources]` is rung 3 (RFC-0103 D3).
+    /// The project whose `system.toml` `[sources]` is rung 3.
+    ///
     /// Default: `$NROS_WORKSPACE_ROOT`, else the nearest ancestor of the
     /// working directory that holds a `system.toml`.
+    // The rung ladder is RFC-0103 D3.
     #[arg(long)]
     pub project: Option<PathBuf>,
 }

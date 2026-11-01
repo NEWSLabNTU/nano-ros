@@ -40,8 +40,9 @@ pub struct Args {
     #[arg(long)]
     pub pins: bool,
     /// With `--pins`: also DROP every pinned range no locked root resolves and
-    /// `locks/leaf-only-pins.toml` does not keep (issue 1873). Regeneration
-    /// alone never drops a range, so a bump leaves the old one pinned.
+    /// `locks/leaf-only-pins.toml` does not keep. Regeneration alone never
+    /// drops a range, so a bump leaves the old one pinned.
+    // Issue 1873.
     #[arg(long, requires = "pins")]
     pub prune: bool,
 

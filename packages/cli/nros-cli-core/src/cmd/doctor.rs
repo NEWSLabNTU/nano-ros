@@ -26,12 +26,14 @@ pub struct Args {
     #[arg(long)]
     pub platform: Option<String>,
 
-    /// Restrict the license-gate check to one board's package set
-    /// (Phase 217.B.2). When set, only `[gated.*]` entries listed in
+    /// Restrict the license-gate check to one board's package set.
+    ///
+    /// When set, only `[gated.*]` entries listed in
     /// `[board.<name>].packages` are checked — keeps unrelated gated
     /// SDKs out of the report for board-scoped runs. The board's
     /// `board.cmake` `NROS_BOARD_GATED_PKGS` is the SSoT;
     /// `nros-sdk-index.toml` `[board.<name>].packages` mirrors it.
+    // Phase 217.B.2.
     #[arg(long)]
     pub board: Option<String>,
 
@@ -45,10 +47,12 @@ pub struct Args {
     #[arg(long)]
     pub config: Option<PathBuf>,
 
-    /// Print the support status of every board the bringup's images name,
-    /// from the board support registry (RFC-0114, phase-522 W5), and stop: a
-    /// read-only report an adopter can file. Uses `--config`, else the cwd's
-    /// `system.toml`.
+    /// Print the support status of every board the bringup's images name, and
+    /// stop.
+    ///
+    /// Reads the board support registry: a read-only report an adopter can
+    /// file. Uses `--config`, else the cwd's `system.toml`.
+    // RFC-0114, phase-522 W5.
     #[arg(long)]
     pub report: bool,
 }

@@ -35,14 +35,18 @@ pub struct Args {
     pub codegen_config: Option<PathBuf>,
 
     /// Output language: `rust` (a `px4_msgs` crate, the XRCE-companion default)
-    /// or `cpp` (headers + FFI glue for an in-firmware PX4 module — issue 0362).
+    /// or `cpp` (headers + FFI glue for an in-firmware PX4 module).
+    // The `cpp` output is issue 0362.
     #[arg(long, default_value = "rust")]
     pub lang: String,
 
-    /// Emit only these messages (issue 0362 approach B — a bridge carries a
-    /// handful of topics, not PX4's ~200). Accepts the message name
-    /// (`VehicleStatus`) or the uORB topic spelling (`vehicle_status`). Nested
-    /// types are pulled in automatically. Default: every message.
+    /// Emit only these messages.
+    ///
+    /// A bridge carries a handful of topics, not PX4's ~200. Accepts the
+    /// message name (`VehicleStatus`) or the uORB topic spelling
+    /// (`vehicle_status`). Nested types are pulled in automatically. Default:
+    /// every message.
+    // Issue 0362 approach B.
     #[arg(long, value_delimiter = ',')]
     pub topics: Vec<String>,
 }

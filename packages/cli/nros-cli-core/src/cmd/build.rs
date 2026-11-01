@@ -59,14 +59,15 @@ pub struct Args {
     #[arg(long)]
     pub all: bool,
 
-    /// Build the image whose `[image.*] board` is this board (phase-517 W6).
+    /// Build the image whose `[image.*] board` is this board.
     ///
     /// Matches the authored word (any case), any alias of the same board
     /// descriptor, or the `nros setup` index key the board provisions through
     /// (`nros build --board mps2-an385-baremetal` finds a `baremetal`
     /// image). One match builds exactly that image, as if it were named; several
-    /// or none is refused, listing them — the image id stays the unit
-    /// (RFC-0065). Not with image arguments or `--all`.
+    /// or none is refused, listing them — the image id stays the unit. Not
+    /// with image arguments or `--all`.
+    // phase-517 W6. The image id staying the unit is RFC-0065.
     #[arg(long, value_name = "BOARD")]
     pub board: Option<String>,
 
@@ -74,29 +75,32 @@ pub struct Args {
     ///
     /// Safe by construction: a `Handoff` performs no I/O until `exec`. It
     /// still GENERATES (stage 4 writes each image's generated files), which
-    /// the Zephyr fixture runner relies on to regenerate an application
-    /// without building it (issue 1707); a no-write answer is `nros
-    /// image-facts` (issue 1716).
+    /// regenerates an application without building it; a no-write answer is
+    /// `nros image-facts`.
+    // The Zephyr fixture runner relies on the generate-without-build
+    // behaviour (issue 1707); the no-write answer is issue 1716.
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Also print the explanation behind each configure note: why a pass
-    /// re-runs, why a size was not derived (phase-517 W5). Sets
+    /// Also print the explanation behind each configure note.
+    ///
+    /// That is: why a pass re-runs, why a size was not derived. Sets
     /// `NROS_VERBOSE=1` for every native command; a correct build without it
     /// prints one line per fact.
+    // phase-517 W5.
     #[arg(short, long)]
     pub verbose: bool,
 
-    /// Do not fetch anything; fail naming what is missing (RFC-0065 D14).
+    /// Do not fetch anything; fail naming what is missing.
     ///
     /// Note this is a SCOPED guarantee: stages 1–4 touch no network, and stage
     /// 5 gets the native tool's own offline spelling. It cannot promise an
     /// arbitrary user `CMakeLists.txt` refrains from fetching.
+    // RFC-0065 D14.
     #[arg(long)]
     pub offline: bool,
 
-    /// Build only these packages — no dependencies, no dependents
-    /// (RFC-0087 D7, phase-420 W7).
+    /// Build only these packages — no dependencies, no dependents.
     ///
     /// colcon's flag, with colcon's meaning, and two deliberate divergences
     /// documented on `builder::discover::select`: a name matching no package is
@@ -110,15 +114,17 @@ pub struct Args {
     /// `system.toml`, which is a property of the workspace, not of the
     /// selection, so `nros build linux --packages-select talker_pkg` still
     /// means the `linux` image, built from a narrowed workspace.
+    // RFC-0087 D7, phase-420 W7.
     #[arg(long, value_name = "PKG", num_args = 1..)]
     pub packages_select: Vec<String>,
 
     /// Build these packages and everything they depend on, transitively, and
-    /// nothing else (RFC-0087 D7, phase-420 W7).
+    /// nothing else.
     ///
     /// Composes with `--packages-select` as an INTERSECTION, which is colcon's
     /// composition too: each flag deselects independently, so adding one can
     /// only ever narrow the build.
+    // RFC-0087 D7, phase-420 W7.
     #[arg(long, value_name = "PKG", num_args = 1..)]
     pub packages_up_to: Vec<String>,
 

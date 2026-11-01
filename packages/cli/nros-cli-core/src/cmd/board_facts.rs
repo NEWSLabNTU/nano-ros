@@ -54,10 +54,12 @@ pub struct BoardFactsArgs {
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 
-    /// Issue 2204 — CHECK, don't print: the triple zephyr-lang-rust picked for
-    /// this image (its `_rust_map_target`, from the Kconfig). Refused when the
+    /// Check, don't print: the triple zephyr-lang-rust picked for this image.
+    ///
+    /// That is its `_rust_map_target`, from the Kconfig. Refused when the
     /// resolved board's `[board.zephyr] rust_target` names a different one.
     /// Prints no facts.
+    // Issue 2204.
     #[arg(long)]
     pub rust_target: Option<String>,
 }

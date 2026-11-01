@@ -51,7 +51,8 @@ pub enum Sub {
     Env(EnvArgs),
 
     /// List discovered msg + rust-consumer pkgs in the workspace (or
-    /// single pkg). Prints kind, name, dir per row. (Phase 210.F.3.)
+    /// single pkg). Prints kind, name, dir per row.
+    // Phase 210.F.3.
     // RFC-0117 D5: the old spelling of `nros list`.
     #[command(hide = true)]
     List(ListArgs),
@@ -72,44 +73,51 @@ pub enum Sub {
     /// `package.xml`, stale patch blocks. Mirrors the sync detection.
     Doctor(DoctorArgs),
 
-    /// Write the central `<checkout>/nros-patch.toml` and nothing else
-    /// (issue 1038).
+    /// Write the central `<checkout>/nros-patch.toml` and nothing else.
     ///
-    /// 47 tracked leaf `.cargo/config.toml` files reach the universal-trio
-    /// patches through one `include = ["…/nros-patch.toml"]` line, and a
-    /// missing `include` target is a HARD cargo error during MANIFEST PARSE —
-    /// four frames deep, naming neither the leaf nor `nros sync`. Until now the
-    /// only thing that wrote that file was a full `nros sync`, which needs a
-    /// workspace; a lane building only STANDALONE leaves has no workspace to
-    /// sync, so it got the file by side effect from whichever neighbouring lane
-    /// happened to build workspace fixtures first. `threadx-riscv64` is the one
-    /// lane with no such neighbour, which is why it is the one that failed.
+    /// Leaf `.cargo/config.toml` files reach the universal-trio patches
+    /// through one `include = ["…/nros-patch.toml"]` line, and a missing
+    /// `include` target is a hard cargo error during manifest parse. This
+    /// writes that file without a full `nros sync`, for a build of standalone
+    /// leaves that has no workspace to sync.
     ///
-    /// This is the same writer `sync` calls, not a second spelling of the
-    /// content: the patch table must agree with sync's byte for byte or the
-    /// leaves resolve against different crates.
-    ///
-    /// Hidden: a build-system seam, like `model-dims`.
+    /// This is the same writer `sync` calls: the patch table must agree with
+    /// sync's byte for byte or the leaves resolve against different crates.
+    // Issue 1038. 47 tracked leaf `.cargo/config.toml` files reach the
+    // universal-trio patches through one `include` line, and a missing target
+    // fails four frames deep, naming neither the leaf nor `nros sync`. Until
+    // now the only thing that wrote that file was a full `nros sync`, which
+    // needs a workspace; a lane building only STANDALONE leaves has no
+    // workspace to sync, so it got the file by side effect from whichever
+    // neighbouring lane happened to build workspace fixtures first.
+    // `threadx-riscv64` is the one lane with no such neighbour, which is why
+    // it is the one that failed. Not a second spelling of the content.
+    //
+    // Hidden: a build-system seam, like `model-dims`.
     #[command(name = "central-patch", hide = true)]
     CentralPatch(CentralPatchArgs),
 
     /// Print the `execution.tiers` dim keys a committed SystemModel declares,
-    /// one per line, sorted (issue 0380).
+    /// one per line, sorted.
     ///
-    /// Hidden: a build-system seam, same role as `codegen-fingerprint`. It
-    /// exists so `scripts/check-model-dims.sh` can ASK for the dim set instead
-    /// of re-parsing YAML in shell — the extraction that the sync-time guard
-    /// uses stays the only implementation. Reads a file; needs no ROS.
+    /// Uses the same extraction as the sync-time guard. Reads a file; needs
+    /// no ROS.
+    // Issue 0380. Hidden: a build-system seam, same role as
+    // `codegen-fingerprint`. It exists so `scripts/check-model-dims.sh` can ASK
+    // for the dim set instead of re-parsing YAML in shell — the extraction that
+    // the sync-time guard uses stays the only implementation.
     #[command(name = "model-dims", hide = true)]
     ModelDims(ModelDimsArgs),
 
-    /// Print the router `downsampling` rule `nros sync` wrote beside a model
-    /// (phase-516 W1b, RFC-0074 enforcement point 1), ready to deploy:
+    /// Print the router `downsampling` rule `nros sync` wrote beside a model.
+    ///
+    /// Ready to deploy:
     /// `ZENOH_CONFIG_OVERRIDE="$(nros ws router-config --model <model>)"`.
     ///
     /// Reads the artifact rather than re-lowering, so the router runs exactly
     /// the rule sync wrote. Fails when there is none: no subscriber declares
     /// an ingress, no image links zenoh, or the model was never synced.
+    // phase-516 W1b, RFC-0074 enforcement point 1.
     #[command(name = "router-config")]
     RouterConfig(RouterConfigArgs),
 
@@ -119,77 +127,88 @@ pub enum Sub {
     // generated `build/<image>/nros-cargo.toml` (RFC-0098 D1), which is
     // rewritten on every sync and every build, so there is no committed mirror
     // left to drift.
-    /// phase-351 W5 — print one deploy's resolved board FACTS + SITE config as
-    /// `KEY=VALUE` lines, for whoever is about to invoke cargo.
+    /// Print one deploy's resolved board facts and site config as `KEY=VALUE`
+    /// lines, for whoever is about to invoke cargo.
     ///
     /// The delivery seam: cargo config is discovered from the invocation CWD
     /// upward and corrosion runs cargo from the workspace root, so a leaf's own
     /// `.cargo/config.toml` never reaches a workspace member. The process
     /// environment does, and its owner is the invoker (cmake, `just`, west).
+    // phase-351 W5.
     #[command(name = "board-facts", hide = true)]
     BoardFacts(crate::cmd::board_facts::BoardFactsArgs),
 
-    /// phase-485 W2 (RFC-0104 D3) — seed `<dir>/Cargo.lock` from the registry
-    /// pin set the index names, when the directory has no lock yet.
+    /// Seed `<dir>/Cargo.lock` from the registry pin set the index names.
     ///
     /// For an invoker that runs cargo in a leaf itself (the fixture builder),
     /// so its first resolve starts from the pins exactly as `nros build`'s
     /// does. An existing lock in a checkout is moved back onto the pins, as
-    /// `nros build` moves it (issue 1937): a persistent tree otherwise never
-    /// sees a pin move. Prints what it did.
+    /// `nros build` moves it: a persistent tree otherwise never sees a pin
+    /// move. Prints what it did.
+    // phase-485 W2 (RFC-0104 D3); moving an existing lock is issue 1937.
     #[command(name = "seed-lock", hide = true)]
     SeedLock(SeedLockArgs),
 
-    /// phase-517 W8 — write (or, with `--check`, only report) the
-    /// `# nros-managed` message rows of every Rust package in a workspace or
-    /// single-package leaf: the step `nros sync` and `nros build` both run,
-    /// without codegen. For a script that drives cargo itself after editing a
-    /// `package.xml`, and for checking a tree is already in that state.
+    /// Write (or, with `--check`, only report) the `# nros-managed` message
+    /// rows of every Rust package.
+    ///
+    /// Works on a workspace or a single-package leaf: the step `nros sync` and
+    /// `nros build` both run, without codegen. For a script that drives cargo
+    /// itself after editing a `package.xml`, and for checking a tree is
+    /// already in that state.
+    // phase-517 W8.
     #[command(name = "managed-deps", hide = true)]
     ManagedDeps(ManagedDepsArgs),
 
-    /// issue 1937 — hold the locks a plain `cargo` resolved to the pin set,
-    /// AFTER the build: the check `nros build` makes on its own roots.
+    /// Check, after the build, that the locks a plain `cargo` resolved hold
+    /// to the pin set.
     ///
-    /// Every registry entry must be pinned at its version. With `--complete`,
-    /// every `locks/leaf-only-pins.toml` entry must also be resolved by one of
-    /// the roots, which is only a fair question when they are every leaf.
+    /// The same check `nros build` makes on its own roots. Every registry
+    /// entry must be pinned at its version. With `--complete`, every
+    /// `locks/leaf-only-pins.toml` entry must also be resolved by one of the
+    /// roots, which is only a fair question when they are every leaf.
+    // Issue 1937.
     #[command(name = "check-lock", hide = true)]
     CheckLock(CheckLockArgs),
 
-    /// phase-445 W3 (RFC-0098 D3/D5) — print a single-package leaf's
-    /// deployment (board, RMW, domain, network identity, and the C/C++ deploy
-    /// token) from its `system.toml`, as `KEY=VALUE` lines.
+    /// Print a single-package leaf's deployment from its `system.toml`, as
+    /// `KEY=VALUE` lines.
     ///
-    /// The seam for a build system that cannot link the reader: the C/C++
-    /// `find_package(nano_ros)` asks this before it imports nano-ros. The
-    /// answer is `nros_orchestration_ir::leaf_system`'s, the same reader
-    /// `nros::main!` and `nros sync` use.
+    /// The deployment is the board, RMW, domain, network identity, and the
+    /// C/C++ deploy token. The seam for a build system that cannot link the
+    /// reader: the C/C++ `find_package(nano_ros)` asks this before it imports
+    /// nano-ros. The answer is `nros_orchestration_ir::leaf_system`'s, the same
+    /// reader `nros::main!` and `nros sync` use.
+    // phase-445 W3 (RFC-0098 D3/D5).
     #[command(name = "leaf-system", hide = true)]
     LeafSystem(crate::cmd::leaf_system::LeafSystemArgs),
 
-    /// RFC-0109 D6 (phase-514 W3b) — print a bringup's default session RMW
-    /// file for one backend, checked, as `NROS_RMW_CONFIG_FILE=<path>` and
-    /// `NROS_RMW_CONFIG_FORMAT=<format>` (nothing when there is none).
+    /// Print a bringup's default session RMW file for one backend, checked.
     ///
-    /// The seam for the CMake road, which bakes the file but must not encode
-    /// how it is found: `[image.<id>] rmw_config`, `[system] rmw_config`, then
-    /// the backend's conventional file, by the same rule `nros sync` checks.
+    /// Prints `NROS_RMW_CONFIG_FILE=<path>` and
+    /// `NROS_RMW_CONFIG_FORMAT=<format>` (nothing when there is none). The
+    /// seam for the CMake road, which bakes the file but must not encode how
+    /// it is found: `[image.<id>] rmw_config`, `[system] rmw_config`, then the
+    /// backend's conventional file, by the same rule `nros sync` checks.
+    // RFC-0109 D6 (phase-514 W3b).
     #[command(name = "rmw-config", hide = true)]
     RmwConfig(RmwConfigArgs),
 
-    /// Issue 2123 — a bridged `[[domain]]`'s RMW session properties as a C
-    /// header, for a hand-written multi-session C/C++ caller: its RMW file
-    /// lowered on the host (RFC-0109 D8), the same answer `nros sync` writes
-    /// into `nros-bridge.toml` for a Rust image. Writes
-    /// `static const <type> <symbol>[N]` and `<symbol>_LEN` to `--out`, and
-    /// prints `NROS_RMW_CONFIG_FILE=<path>` (the source, for a build's
-    /// re-run edge). CMake: `nros_session_properties_header()`.
+    /// Write a bridged `[[domain]]`'s RMW session properties as a C header.
+    ///
+    /// For a hand-written multi-session C/C++ caller: its RMW file lowered on
+    /// the host, the same answer `nros sync` writes into `nros-bridge.toml`
+    /// for a Rust image. Writes `static const <type> <symbol>[N]` and
+    /// `<symbol>_LEN` to `--out`, and prints `NROS_RMW_CONFIG_FILE=<path>`
+    /// (the source, for a build's re-run edge). CMake:
+    /// `nros_session_properties_header()`.
+    // Issue 2123; host lowering is RFC-0109 D8.
     #[command(name = "session-properties", hide = true)]
     SessionProperties(SessionPropertiesArgs),
 
-    /// phase-497 W3 (RFC-0103 D10a) — the QEMU `-nic` value for a leaf's
-    /// image: its `[image.<id>.run] nic` (SLIRP, bridge or TAP), the board's NIC
+    /// Print the QEMU `-nic` value for a leaf's image.
+    ///
+    /// Built from its `[image.<id>.run] nic` (SLIRP, bridge or TAP), the board's NIC
     /// `--model`, the image's MAC. An image that states no network gets QEMU's
     /// own user-mode network; one on a physical-only network (no `nic`) is
     /// refused, because no emulated image can join it.
@@ -197,18 +216,16 @@ pub enum Sub {
     /// For a launcher that cannot link the resolver (a `just` recipe, a
     /// container entrypoint). `nros_tests` renders the same value from the
     /// resolved file with the same function.
+    // phase-497 W3 (RFC-0103 D10a).
     #[command(name = "qemu-nic")]
     QemuNic(crate::cmd::leaf_system::QemuNicArgs),
 
-    /// phase-403 W9 (issue 0965) — compose this image's
-    /// `nano_ros_node_register(... ENTITIES …)` declarations into the ENTITY
-    /// inventory, and derive `NROS_EXECUTOR_MAX_CBS` from it.
+    /// Compose this image's declared entities into an inventory and derive
+    /// `NROS_EXECUTOR_MAX_CBS` from it.
     ///
-    /// The sibling question to the retired `entity-facts` (phase-486), asked of
-    /// a source that can answer it. `entity-facts` read the resolved
-    /// SystemModel and abstained on every one in this tree, because a launch
-    /// file names a node and never says what that node wires; the register
-    /// call does.
+    /// Reads the image's `nano_ros_node_register(... ENTITIES …)`
+    /// declarations: a launch file names a node and never says what that node
+    /// wires; the register call does.
     ///
     /// Prints the env transport (`KEY=VALUE`) on stdout — the same carrier and
     /// the same reason as `board-facts` — and optionally
@@ -217,61 +234,77 @@ pub enum Sub {
     /// REFUSES, printing nothing, when any component in the image declared no
     /// entities: a partial inventory derives a slot count smaller than the
     /// image needs, and a short `MAX_CBS` fails entity creation at boot.
+    // phase-403 W9 (issue 0965). The sibling question to the retired
+    // `entity-facts` (phase-486), asked of a source that can answer it.
+    // `entity-facts` read the resolved SystemModel and abstained on every one
+    // in this tree, because a launch file names a node and never says what
+    // that node wires; the register call does.
     #[command(name = "entity-inventory", hide = true)]
     EntityInventory(crate::cmd::entity_inventory::EntityInventoryArgs),
 
-    /// phase-463 W2 (issue 1419) -- run an entry's own native binary as the
-    /// CENSUS producer: what the code actually creates, node by node.
+    /// Run an entry's own native binary to record a census of what the code
+    /// actually creates, node by node.
     ///
-    /// The third question in the family above, asked of the only source that
-    /// can answer it. The model roads read the resolved model, `entity-inventory`
-    /// reads what the components DECLARE; both read declarations, and nothing
-    /// in the tree checked that a declaration is true. A census is evidence:
-    /// the entry's hosted boot funnel, run with `NROS_CENSUS_OUT` set, writes
-    /// what crossed the ABI and exits where it would have spun.
+    /// The model roads read the resolved model and `entity-inventory` reads
+    /// what the components declare; a census is evidence that a declaration is
+    /// true. The entry's hosted boot funnel, run with `NROS_CENSUS_OUT` set,
+    /// writes what crossed the ABI and exits where it would have spun.
     ///
     /// Native only, by construction and not by policy: the switch is read in
     /// the hosted boot funnel, the one place with the `env` capability, which
     /// no RTOS board has.
+    // phase-463 W2 (issue 1419). The third question in the family above, asked
+    // of the only source that can answer it: both other roads read
+    // declarations, and nothing in the tree checked that a declaration is
+    // true.
     #[command(name = "entity-census", hide = true)]
     EntityCensus(crate::cmd::entity_census::EntityCensusArgs),
 
-    /// phase-454 W4 (RFC-0100 D4) — read back the sizing descriptor `nros sync`
-    /// wrote for an entry: `<build>/nros/sizing/<entry>.toml`.
+    /// Read back the sizing descriptor `nros sync` wrote for an entry.
+    ///
+    /// The descriptor is `<build>/nros/sizing/<entry>.toml`.
     ///
     /// The READ side of the one artifact every backend sizes from. A Rust build
     /// script links `nros-sizing-descriptor` and needs no verb; cmake cannot,
     /// so it asks here and gets an `include()`able projection
     /// (`--output-cmake`). Plain stdout is the human report, refusals included.
     ///
-    /// A MISSING descriptor is an error, not an empty answer: the caller named
-    /// a path, and "it wasn't there so I said nothing" is the silent default
-    /// D6 exists to forbid.
+    /// A missing descriptor is an error, not an empty answer: the caller named
+    /// a path, and "it wasn't there so I said nothing" is a silent default.
+    // phase-454 W4 (RFC-0100 D4). The silent default is what RFC-0100 D6
+    // exists to forbid.
     #[command(name = "sizing-descriptor", hide = true)]
     SizingDescriptor(crate::cmd::sizing_descriptor::SizingDescriptorArgs),
 
-    /// Issue 1662 — a standalone Zephyr RUST leaf's derived sizes, for the
-    /// west configure that builds it: the entity-inventory fragment the
+    /// Print a standalone Zephyr Rust leaf's derived sizes, for the west
+    /// configure that builds it.
+    ///
+    /// Writes the entity-inventory fragment the
     /// module's knob resolver loads (C lane) and the sizing descriptor named to
     /// cargo (Rust lane), both from ONE inventory over the leaf's probe
     /// sidecars. Prints `NROS_SIZING_DESCRIPTOR=<path>` and one `input <path>`
     /// line per file read; prints nothing for a directory that is not such a
     /// leaf.
+    // Issue 1662.
     #[command(name = "west-leaf-sizing", hide = true)]
     WestLeafSizing(crate::cmd::west_leaf_sizing::WestLeafSizingArgs),
 
-    /// phase-439 W6 — the Rust twin of `nros_derive_message_bound_knobs`, over
-    /// JSON bound tables. `nros build` seeds the west road's bound fragment
-    /// with the same composer; this verb lets the cmake suite compare the two.
+    /// Derive message-bound knobs from JSON bound tables, as the Rust twin of
+    /// `nros_derive_message_bound_knobs`.
+    ///
+    /// `nros build` seeds the west road's bound fragment with the same
+    /// composer; this verb lets the cmake suite compare the two.
+    // phase-439 W6.
     #[command(name = "message-bound-knobs", hide = true)]
     MessageBoundKnobs(crate::cmd::message_bound_knobs::MessageBoundKnobsArgs),
 
-    /// phase-348 W1 — list packages that announce a provision
-    /// (`<export><nano_ros_provides kind="rmw" name="zenoh"/></export>`),
-    /// across the search path.
+    /// List packages that announce a provision, across the search path.
     ///
-    /// phase-420 W6 — the search path is an ordered list of roots, and this is
-    /// where you read it: the nano-ros tree, this workspace, then
+    /// A provision is
+    /// `<export><nano_ros_provides kind="rmw" name="zenoh"/></export>`.
+    ///
+    /// The search path is an ordered list of roots, and this is where you read
+    /// it: the nano-ros tree, this workspace, then
     /// `[workspace] package_paths` from `<ws>/nros.toml`, then
     /// `NROS_PACKAGE_PATH`. Each root prints with its origin, a MISSING marker
     /// when it is not a directory, and each provision prints what it shadows.
@@ -281,37 +314,43 @@ pub enum Sub {
     /// an ament index to live in. The scan reads only `package.xml`; a
     /// provider's descriptor is read only when it is the one selected.
     ///
-    /// Visible rather than hidden, unlike the gate seams above: "which
-    /// backends can I pick, and where did they come from" is a question a user
-    /// asks, and it is the answer to a shadowed-provider surprise.
+    /// Use it to see which backends you can pick and where they came from,
+    /// and to explain a shadowed provider.
+    // phase-348 W1; the ordered search path is phase-420 W6. Visible rather
+    // than hidden, unlike the gate seams above: "which backends can I pick,
+    // and where did they come from" is a question a user asks, and it is the
+    // answer to a shadowed-provider surprise.
     #[command(name = "providers", hide = true)]
     Providers(ProvidersArgs),
 
-    /// phase-348 W4 — print the workspace's packages in dependency order, one
-    /// per line, so a build configures each after everything it depends on.
+    /// Print the workspace's packages in dependency order, one per line.
     ///
-    /// Derived from `package.xml`'s existing `<depend>` tags, not a second
-    /// dependency declaration: the file is already parsed by the discovery
-    /// scan, and a second source of the same fact is the defect the provider
-    /// index guards against, one level up.
+    /// A build configures each after everything it depends on. Derived from
+    /// `package.xml`'s existing `<depend>` tags.
     ///
     /// Ties break by name, so the order is reproducible across machines. A
     /// dependency cycle is an error naming every package on it.
+    // phase-348 W4. Derived from `<depend>`, not a second dependency
+    // declaration: the file is already parsed by the discovery scan, and a
+    // second source of the same fact is the defect the provider index guards
+    // against, one level up.
     #[command(name = "order", hide = true)]
     Order(OrderArgs),
 
-    /// phase-439 W4 (RFC-0094 D5) — lower one declared RMW name to the build
-    /// facts its descriptor declares, over the SAME provider scan `providers`
-    /// uses.
+    /// Lower one declared RMW name to the build facts its descriptor declares.
     ///
-    /// This is the seam that makes a backend's `nros-rmw.toml` load-bearing.
-    /// `cmake/NanoRosRmwDispatch.cmake` used to be GENERATED from the table
-    /// baked into this binary — an `if/elseif` chain over the four backends in
-    /// one checkout, with an `else()` `FATAL_ERROR` naming a closed set. So an
-    /// out-of-tree provider that `providers --resolve rmw:acme` found was then
-    /// reported unknown by the very next step (issue 1214). cmake now ASKS,
-    /// exactly as `nano_ros_load_providers` does, and an unknown name is "no
-    /// provider announced this" rather than "not one of the four we compiled".
+    /// Uses the same provider scan as `providers`, so a backend's
+    /// `nros-rmw.toml` is what cmake builds from. An unknown name means no
+    /// provider on the search path announced it.
+    // phase-439 W4 (RFC-0094 D5). This is the seam that makes a backend's
+    // `nros-rmw.toml` load-bearing. `cmake/NanoRosRmwDispatch.cmake` used to be
+    // GENERATED from the table baked into this binary — an `if/elseif` chain
+    // over the four backends in one checkout, with an `else()` `FATAL_ERROR`
+    // naming a closed set. So an out-of-tree provider that
+    // `providers --resolve rmw:acme` found was then reported unknown by the
+    // very next step (issue 1214). cmake now ASKS, exactly as
+    // `nano_ros_load_providers` does, and an unknown name is "no provider
+    // announced this" rather than "not one of the four we compiled".
     #[command(name = "rmw-dispatch", hide = true)]
     RmwDispatch(RmwDispatchArgs),
 }
@@ -342,8 +381,10 @@ pub struct RmwDispatchArgs {
     /// Emit `KEY<TAB>VALUE` rows cmake can read with `string(REPLACE)`.
     ///
     /// The cmake seam, same shape and same reason as `providers --lines`:
-    /// cmake has no JSON parser, and a second parser of the descriptor is the
-    /// drift class this wave exists to delete.
+    /// cmake has no JSON parser, and a second parser of the descriptor would
+    /// drift.
+    // A second parser of the descriptor is the drift class this wave
+    // (phase-439 W4) exists to delete.
     #[arg(long)]
     pub lines: bool,
 
@@ -405,7 +446,8 @@ pub struct ProvidersArgs {
     #[arg(long, conflicts_with = "json")]
     pub lines: bool,
 
-    /// Scan, then write the result to this path as a reusable index (W3).
+    /// Scan, then write the result to this path as a reusable index.
+    // phase-348 W3.
     #[arg(long, value_name = "PATH")]
     pub write_index: Option<PathBuf>,
 
@@ -422,12 +464,14 @@ pub struct ProvidersArgs {
     #[arg(long, value_name = "PATH", conflicts_with_all = ["index", "write_index"])]
     pub check_index: Option<PathBuf>,
 
-    /// phase-348 W5 — resolve one `<kind>:<name>` and report the winner plus
-    /// everything it shadows. Exits non-zero on ambiguity or an unknown name.
+    /// Resolve one `<kind>:<name>` and report the winner plus everything it
+    /// shadows.
     ///
-    /// This is the answer to "why is my patched backend not being used": a
-    /// later search root overlays an earlier one, and the loser is named rather
-    /// than silently dropped.
+    /// Exits non-zero on ambiguity or an unknown name. This is the answer to
+    /// "why is my patched backend not being used": a later search root
+    /// overlays an earlier one, and the loser is named rather than silently
+    /// dropped.
+    // phase-348 W5.
     #[arg(long, value_name = "KIND:NAME")]
     pub resolve: Option<String>,
 }
@@ -480,21 +524,26 @@ pub struct SyncArgs {
     /// Workspace root (the dir containing `src/`). Defaults to cwd.
     pub workspace: Option<PathBuf>,
 
-    /// Output dir for generated msg crates (Phase 212 convention is `generated/`).
+    /// Output dir for generated msg crates (conventionally `generated/`).
+    // Phase 212 convention is `generated/`.
     #[arg(long, default_value = "generated")]
     pub build_dir: PathBuf,
 
-    /// ROS 2 edition (`humble` | `iron` | `jazzy`). When omitted,
-    /// inherits `[system].ros_edition` from a `system.toml` at the workspace root
-    /// (RFC-0056 W2b auto-lowering), else `humble`.
+    /// ROS 2 edition (`humble` | `iron` | `jazzy`).
+    ///
+    /// When omitted, inherits `[system].ros_edition` from a `system.toml` at
+    /// the workspace root, else `humble`.
+    // RFC-0056 W2b auto-lowering.
     #[arg(long)]
     pub ros_edition: Option<String>,
 
-    /// Single-package leaf only (issue 1305): sync for THIS `[image.<id>]` —
-    /// its selection package, its `build/<id>/nros-cargo.toml`, and message
+    /// Single-package leaf only: sync for this `[image.<id>]`.
+    ///
+    /// Covers its selection package, its `build/<id>/nros-cargo.toml`, and message
     /// codegen for its ROS edition. A leaf may declare one image per RMW and
     /// edition; without this flag the leaf's own rule applies (one image, or
     /// `[system] default_images`).
+    // Issue 1305.
     #[arg(long, value_name = "ID")]
     pub image: Option<String>,
 
@@ -520,22 +569,22 @@ pub struct SyncArgs {
     #[arg(long)]
     pub nano_ros_root: Option<PathBuf>,
 
-    /// Provider search roots, REPLACING the default (nano-ros tree, then this
-    /// workspace) — colcon's `--base-paths`, and issue 0646.
+    /// Provider search roots, replacing the default (nano-ros tree, then this
+    /// workspace), as colcon's `--base-paths`.
     ///
     /// The default puts the whole nano-ros checkout in front of every
-    /// workspace, and it is rescanned per sync: measured on
-    /// `examples/workspaces/mixed`, 1570 of the 1590 directories visited are the
-    /// underlay, and `regenerate-bindings.sh` runs 22 syncs. A caller that
-    /// already knows the underlay has not moved — a build script looping over
-    /// workspaces — can say so here rather than pay for the rediscovery each
-    /// time.
+    /// workspace, and it is rescanned per sync. A caller that already knows
+    /// the underlay has not moved — a build script looping over workspaces —
+    /// can say so here rather than pay for the rediscovery each time.
     ///
     /// Repeatable; order is search order, as with colcon. Naming a root that
     /// holds no provider is not an error (the same is true of the default
     /// workspace root when someone builds nano-ros on its own), but dropping a
     /// root that DOES hold one makes its boards unresolvable — so this is an
     /// override for a caller that knows the tree, not a tuning knob.
+    // Issue 0646. Measured on `examples/workspaces/mixed`, 1570 of the 1590
+    // directories visited are the underlay, and `regenerate-bindings.sh` runs
+    // 22 syncs.
     #[arg(long = "base-paths", value_name = "PATH", num_args = 1..)]
     pub base_paths: Vec<PathBuf>,
 
@@ -548,27 +597,34 @@ pub struct SyncArgs {
     #[arg(long)]
     pub no_provider_index: bool,
 
-    /// phase-330 W4 (RFC-0063) — write resolved SystemModels HERE instead of
-    /// into each bringup's `config/`, making them build output rather than
-    /// committed source. Consumers find them through the same search order
+    /// Write resolved SystemModels here instead of into each bringup's
+    /// `config/`.
+    ///
+    /// This makes them build output rather than committed source. Consumers
+    /// find them through the same search order
     /// (`nros_orchestration_ir::model_location`): export `NROS_MODEL_DIR` to
     /// the same path for the build.
+    // phase-330 W4 (RFC-0063).
     #[arg(long)]
     pub model_dir: Option<PathBuf>,
 
-    /// phase-307 W2 — skip the source-metadata refresh. The refresh compiles a
-    /// host probe per Node pkg, which is the slow part of a cold sync; skipping
+    /// Skip the source-metadata refresh.
+    ///
+    /// The refresh compiles a host probe per Node pkg, which is the slow part of a cold sync; skipping
     /// it leaves any existing sidecars untouched and makes bakes fall back to
     /// the SystemModel's entity lower bound.
+    // phase-307 W2.
     #[arg(long)]
     pub no_metadata: bool,
 
-    /// The nano-ros SDK root the probes and board lookups read. Defaults to
-    /// a walk-up from the workspace, then this `nros` binary's own SDK root
-    /// (RFC-0103 D6). It adds nothing to the patch block: the canonical 212
-    /// shape carries nros-* runtime crates as path-deps in the user's own
+    /// The nano-ros SDK root the probes and board lookups read.
+    ///
+    /// Defaults to a walk-up from the workspace, then this `nros` binary's own
+    /// SDK root. It adds nothing to the patch block: the canonical shape
+    /// carries nros-* runtime crates as path-deps in the user's own
     /// `[dependencies]`, so duplicating them there triggers cargo's "patch
     /// unused" warnings.
+    // The default ladder is RFC-0103 D6; the canonical shape is Phase 212's.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 }

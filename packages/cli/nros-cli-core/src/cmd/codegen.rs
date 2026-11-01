@@ -37,10 +37,13 @@ pub struct Args {
     #[arg(long)]
     pub verbose: bool,
 
-    /// RFC-0104 D5: generate nothing; write the args file's CURRENT ament
-    /// fingerprint to this file when it changed, and print a line when the
-    /// generated output's record (`nros-generated.toml`) disagrees with it.
-    /// The cmake generators list the file as a codegen input.
+    /// Generate nothing; write the args file's current ament fingerprint here.
+    ///
+    /// The file is written only when the fingerprint changed, and a line is
+    /// printed when the generated output's record (`nros-generated.toml`)
+    /// disagrees with it. The cmake generators list the file as a codegen
+    /// input.
+    // RFC-0104 D5.
     #[arg(long, requires = "args_file")]
     pub ament_witness: Option<PathBuf>,
 }
@@ -69,16 +72,17 @@ pub enum Sub {
         verbose: bool,
     },
 
-    /// Phase 212.K.4 — emit per-example Cyclone-DDS topic descriptors.
+    /// Emit per-example Cyclone-DDS topic descriptors.
     ///
     /// Synthesises Cyclone-shaped IDL from one or more `.msg` sources,
     /// drives the host `idlc` to produce `<pkg>_<Msg>.{c,h}` pairs, and
     /// writes a `register.{c,h}` + JSON manifest the consumer build
     /// script feeds into `cc::Build`.
+    // Phase 212.K.4.
     #[command(name = "cyclonedds-descriptors")]
     CycloneddsDescriptors(super::codegen_cyclonedds_descriptors::Args),
 
-    /// Phase 219.A/B/C — Entry-pkg TU codegen.
+    /// Generate an entry package's `main` TU from a bringup's launch file.
     ///
     /// Walks the workspace pkg-index, parses a bringup pkg's
     /// launch.xml, and emits a `main` TU (Rust, C++ or C) that
@@ -86,51 +90,54 @@ pub enum Sub {
     /// order. The cmake fn `nano_ros_entry(LAUNCH "…")` shells this
     /// subcommand at configure time; the Rust `nros::main!()` proc-
     /// macro is the in-process equivalent for cargo workspaces.
+    // Phase 219.A/B/C — Entry-pkg TU codegen.
     Entry(EntryArgs),
 
-    /// phase-432 W2.6 — the entry TU for ONE registered node.
+    /// Generate the entry TU for one registered node.
     ///
     /// `nano_ros_node_register()` builds an image from a single
     /// component and has no launch tree, so it cannot pass a
     /// `--model`. It passes the node's facts instead, and Rust
     /// synthesises the one-node plan (see
     /// [`entry_codegen::registered_node`]).
-    ///
-    /// This exists so the verb stops rendering its OWN copy of the
-    /// entry TU. It used to `configure_file()` one of six
-    /// `cmake/templates/*_entry_main*.cpp.in` — a second producer of
-    /// one artifact, which is how issue 1003's missing session name
-    /// lived for three months beside a correct sibling.
+    // phase-432 W2.6. This exists so the verb stops rendering its OWN copy of
+    // the entry TU. It used to `configure_file()` one of six
+    // `cmake/templates/*_entry_main*.cpp.in` — a second producer of one
+    // artifact, which is how issue 1003's missing session name lived for three
+    // months beside a correct sibling.
     #[command(name = "entry-node")]
     EntryNode(EntryNodeArgs),
 
-    /// phase-432 W3.2 — report which entry pack renders a given (language,
-    /// board), and the two facts CMake needs BEFORE codegen runs: the
-    /// generated TU's extension, and whether a C-family compiler builds it.
+    /// Report which entry pack renders a given language on a given board.
     ///
-    /// This exists so `NanoRosEntry.cmake` stops re-deriving them. It used to
-    /// key on `NROS_PLATFORM != "posix"` while the dispatch keyed on the
-    /// BOARD, and `board_family()` answered `native` for any key it did not
-    /// know — so an unlearned board was embedded to one and native to the
-    /// other, and the CLI wrote a C TU into a file CMake named `.cpp`. An
-    /// unknown key is now an error naming the known ones (issue 1285), which
-    /// CMake reports as a FATAL_ERROR at configure.
+    /// Also prints the two facts CMake needs before codegen runs: the
+    /// generated TU's extension, and whether a C-family compiler builds it.
+    /// An unknown board key is an error naming the known ones.
+    // phase-432 W3.2. This exists so `NanoRosEntry.cmake` stops re-deriving
+    // them. It used to key on `NROS_PLATFORM != "posix"` while the dispatch
+    // keyed on the BOARD, and `board_family()` answered `native` for any key
+    // it did not know — so an unlearned board was embedded to one and native
+    // to the other, and the CLI wrote a C TU into a file CMake named `.cpp`.
+    // An unknown key is now an error naming the known ones (issue 1285), which
+    // CMake reports as a FATAL_ERROR at configure.
     #[command(name = "entry-pack")]
     EntryPack(EntryPackArgs),
 
-    /// phase-469 S3 — report which language compiles a source list.
+    /// Report which language compiles a source list.
     ///
-    /// The SIBLING of `entry-pack`, and deliberately not the same query:
+    /// The sibling of `entry-pack`, and deliberately not the same query:
     /// `entry-pack` asks "what extension does this LANGUAGE get on this
     /// board", which is the opposite direction and not even an inverse of
     /// this one (a C entry gets a `.cpp` TU on a board with no C runner). This
-    /// asks "which language is this SOURCE", which three cmake sites each
-    /// answered themselves, each defaulting rather than refusing.
+    /// asks "which language is this SOURCE".
+    // phase-469 S3. Three cmake sites each answered this themselves, each
+    // defaulting rather than refusing.
     #[command(name = "source-language")]
     SourceLanguage(SourceLanguageArgs),
 }
 
-/// phase-432 W3.2 — the query CMake asks before it names an output path.
+/// The query CMake asks before it names an output path.
+// phase-432 W3.2.
 #[derive(Debug, ClapArgs)]
 pub struct EntryPackArgs {
     /// The ENTRY's language: `c`, `cpp` or `rust`.
@@ -145,7 +152,8 @@ pub struct EntryPackArgs {
     pub json: bool,
 }
 
-/// phase-469 S3 — the query CMake asks instead of matching extensions itself.
+/// The query CMake asks instead of matching extensions itself.
+// phase-469 S3.
 #[derive(Debug, ClapArgs)]
 pub struct SourceLanguageArgs {
     /// One source entry, repeatable. Paths are NOT opened — the question is
@@ -158,8 +166,8 @@ pub struct SourceLanguageArgs {
     pub json: bool,
 }
 
-/// phase-432 W2.6 — one registered node's facts, as `nano_ros_node_register()`
-/// knows them. Each flag was a `@VAR@` substitution in a retired template.
+/// One registered node's facts, as `nano_ros_node_register()` knows them.
+// phase-432 W2.6. Each flag was a `@VAR@` substitution in a retired template.
 #[derive(Debug, ClapArgs)]
 pub struct EntryNodeArgs {
     /// `c` or `cpp` — the COMPONENT's language. The emitted TU is C++
@@ -173,8 +181,8 @@ pub struct EntryNodeArgs {
     #[arg(long, value_name = "KEY", default_value = "linux")]
     pub board: String,
 
-    /// The node's own name — and therefore the SESSION name. Issue 1003
-    /// is what happens when this does not reach the emitted call.
+    /// The node's own name, and therefore the session name.
+    // Issue 1003 is what happens when this does not reach the emitted call.
     #[arg(long, value_name = "NAME")]
     pub node_name: String,
 
@@ -218,14 +226,17 @@ pub struct EntryArgs {
     #[arg(long, conflicts_with = "model")]
     pub launch: Option<String>,
 
-    /// R1-N2 (RFC-0052 W4.1) — build the entry plan from a resolved
-    /// SystemModel instead of a launch file (canonical path).
+    /// Build the entry plan from a resolved SystemModel instead of a launch
+    /// file (the canonical path).
+    // R1-N2 (RFC-0052 W4.1).
     #[arg(long, value_name = "system_model.yaml")]
     pub model: Option<PathBuf>,
 
-    /// Board key (`native`, `freertos`, …). Defaults to `native` — the
-    /// only Entry-pkg target the C/C++ surface supports today
-    /// (Phase 212.L.2).
+    /// Board key (`native`, `freertos`, …).
+    ///
+    /// Defaults to `native`, the only entry-package target the C/C++ surface
+    /// supports today.
+    // Phase 212.L.2.
     #[arg(long)]
     pub board: Option<String>,
 
@@ -237,25 +248,32 @@ pub struct EntryArgs {
     #[arg(long)]
     pub out: PathBuf,
 
-    /// Phase 240.2b (RFC-0043) — emit the **typed** C++ Entry: route each
-    /// launch node to the real executor via its component object (construct
-    /// `class` + call `configure(node)`), instead of the legacy type-erased
-    /// `__nros_component_<pkg>_register` call into the synthesizing interpreter.
-    /// Requires `--metadata` (the component class/header source). C++ only.
+    /// Emit the typed C++ entry. C++ only; requires `--metadata`.
+    ///
+    /// Routes each launch node to the real executor via its component object
+    /// (construct `class` + call `configure(node)`), instead of the legacy
+    /// type-erased `__nros_component_<pkg>_register` call into the
+    /// synthesizing interpreter. `--metadata` is the component class/header
+    /// source.
+    // Phase 240.2b (RFC-0043).
     #[arg(long)]
     pub typed: bool,
 
-    /// Phase 240.2b — path to the cmake-emitted `nros-metadata.json` whose
-    /// `components[]` carry each node's C++ `class` + `class_header`. Required
-    /// by `--typed`; ignored otherwise.
+    /// Path to the cmake-emitted `nros-metadata.json`. Required by `--typed`.
+    ///
+    /// Its `components[]` carry each node's C++ `class` + `class_header`.
+    /// Ignored without `--typed`.
+    // Phase 240.2b.
     #[arg(long)]
     pub metadata: Option<PathBuf>,
 
-    /// REMOVED (phase-326 / issue 0364). `--host` partitioned the bake by the
-    /// ROS 1-ism `<node machine="…">`; multi-host now partitions at RESOLVE
-    /// time (`host:=<id>` launch argument + `if=` conditions), so pass the
-    /// per-host model via `--model` instead. Kept only to fail loud with
-    /// guidance (the `--args` / phase-296 R-code.1 precedent).
+    /// Removed: pass the per-host model via `--model` instead.
+    ///
+    /// Multi-host images partition at resolve time (`host:=<id>` launch
+    /// argument + `if=` conditions). Accepted only to fail with guidance.
+    // REMOVED (phase-326 / issue 0364). `--host` partitioned the bake by the
+    // ROS 1-ism `<node machine="…">`. Kept only to fail loud with guidance
+    // (the `--args` / phase-296 R-code.1 precedent).
     #[arg(long, hide = true)]
     pub host: Option<String>,
 
@@ -265,28 +283,35 @@ pub struct EntryArgs {
     #[arg(long)]
     pub depfile: Option<PathBuf>,
 
-    /// Phase 219.J — emit a sidecar `.cmake` file declaring the
+    /// Emit a sidecar `.cmake` file of the component link calls.
+    ///
+    /// The file declares the
     /// `target_link_libraries(<exe> PRIVATE <pkg>_<exec>_component)`
     /// calls the cmake fn `include()`s after codegen. When supplied,
     /// the named `<exe>` target receives a PRIVATE link to every
     /// Node-pkg static lib the launch XML pulls in. Path = sidecar
     /// `.cmake` output.
+    // Phase 219.J.
     #[arg(long, value_name = "EXE_TARGET=PATH", value_parser = parse_link_libs)]
     pub emit_link_libs: Option<(String, PathBuf)>,
 
-    /// Issue 1508 - the image's Zephyr `.config`. A derived tier table is
-    /// allocated out of the priority pool THIS image's Kconfig resolves
-    /// (RFC-0079 section 4.1) instead of the Kconfig-defaults projection.
+    /// The image's Zephyr `.config`. Refused for a non-Zephyr board.
+    ///
+    /// A derived tier table is allocated out of the priority pool this
+    /// image's Kconfig resolves instead of the Kconfig-defaults projection.
     /// `nano_ros_add_executable` passes `${DOTCONFIG}` on a Zephyr build,
-    /// where Kconfig has already run. Refused for a non-Zephyr board.
+    /// where Kconfig has already run.
+    // Issue 1508; the priority pool is RFC-0079 section 4.1.
     #[arg(long, value_name = "PATH")]
     pub dotconfig: Option<PathBuf>,
 
-    /// RFC-0109 D8 (phase-514 W3) — the bringup's own zenoh session config
-    /// (`<bringup>/rmw/zenoh.json5`). Lowered here to zenoh-pico session
-    /// properties the entry bakes as one table and installs before the runner
-    /// opens a session; a key zenoh-pico cannot take is refused.
-    /// `nano_ros_entry` passes it when the file exists for a zenoh image.
+    /// The bringup's own zenoh session config (`<bringup>/rmw/zenoh.json5`).
+    ///
+    /// Lowered here to zenoh-pico session properties the entry bakes as one
+    /// table and installs before the runner opens a session; a key zenoh-pico
+    /// cannot take is refused. `nano_ros_entry` passes it when the file exists
+    /// for a zenoh image.
+    // RFC-0109 D8 (phase-514 W3).
     #[arg(long, value_name = "PATH")]
     pub rmw_config: Option<PathBuf>,
 }

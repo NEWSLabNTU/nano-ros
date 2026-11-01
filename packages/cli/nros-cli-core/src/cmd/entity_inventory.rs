@@ -99,8 +99,8 @@ pub struct EntityInventoryArgs {
     #[arg(long, value_name = "PATH")]
     pub metadata: Option<PathBuf>,
 
-    /// phase-412 -- a resolved SystemModel whose `structure.topics` carries the
-    /// authored contract's wiring.
+    /// A resolved SystemModel whose `structure.topics` carries the authored
+    /// contract's wiring.
     ///
     /// When given AND the model describes wiring, its per-node sub/pub sets are
     /// combined with the metadata declaration per component and per kind,
@@ -113,8 +113,8 @@ pub struct EntityInventoryArgs {
     /// stands alone -- which is every image in this tree that has not authored
     /// a contract.
     ///
-    /// REPEATABLE, for the per-component compile-time tables only (issue
-    /// 1564). A configure that declares several entries resolves several
+    /// Repeatable, for the per-component compile-time tables only. A
+    /// configure that declares several entries resolves several
     /// models and compiles each component ONCE for every image that launches
     /// it, so `--output-header` / `--output-params-header` then render the
     /// UNION of one table per model -- refusing, naming both models, where two
@@ -122,18 +122,21 @@ pub struct EntityInventoryArgs {
     /// output (`--output-json`, `--output-cmake`, `--output-dir`, the env on
     /// stdout) describes ONE image, so with more than one model those are
     /// refused rather than computed from a merge nobody defined.
+    // phase-412. Repeatable since issue 1564.
     #[arg(long, value_name = "PATH")]
     pub model: Vec<PathBuf>,
 
-    /// Issue 1694 -- the colcon workspace whose metadata-probe sidecars record
-    /// what each launched node's CODE creates.
+    /// The colcon workspace whose metadata-probe sidecars record what each
+    /// launched node's code creates.
     ///
     /// When given, the contract's inventory is floored by them before it meets
     /// the metadata (`metadata_refresh::contract_inventory`): a contract states
     /// the endpoints it names and may refine their sizing, and never shrinks a
     /// count below what the code registers. Absent, the contract stands as
-    /// authored -- the pre-1694 composition. `nros build`'s stage-3.5 seed
-    /// always floors, so a configure that passes this agrees with its seed.
+    /// authored. `nros build`'s seed always floors, so a configure that passes
+    /// this agrees with its seed.
+    // Issue 1694. Absent is the pre-1694 composition; the seed is `nros
+    // build`'s stage 3.5.
     #[arg(long, value_name = "DIR")]
     pub workspace: Option<PathBuf>,
 
@@ -149,22 +152,24 @@ pub struct EntityInventoryArgs {
     #[arg(long = "output-dir", value_name = "DIR")]
     pub output_dir: Option<PathBuf>,
 
-    /// Write the C++ compile-time depth table here (phase-403 step 2).
+    /// Write the C++ compile-time depth table here.
     ///
     /// `rclcpp/detail/declared_qos.hpp` expands it and `NROS_SUBSCRIBE` static_asserts
     /// against it, so this is the transport that carries a declared `@depth=`
     /// all the way to the compiler.
+    // phase-403 step 2.
     #[arg(long = "output-header", value_name = "PATH")]
     pub output_header: Option<PathBuf>,
 
-    /// Write the C++ table of each node's DECLARED parameters here (phase-446
-    /// W6), read from `--model`'s `contracts.node_params`.
+    /// Write the C++ table of each node's declared parameters here.
     ///
+    /// The table is read from `--model`'s `contracts.node_params`.
     /// `rclcpp/detail/declared_params.hpp` expands it and
     /// `Node::declare_parameter` refuses a name the node's contract
     /// does not declare, or a type that differs. Written even with no model or
     /// no declaration -- then it defines no table and nothing is checked -- so
     /// a stale table from an earlier configure can never outlive its contract.
+    // phase-446 W6.
     #[arg(long = "output-params-header", value_name = "PATH")]
     pub output_params_header: Option<PathBuf>,
 
@@ -193,9 +198,11 @@ pub struct EntityInventoryArgs {
     #[arg(long)]
     pub require_derived: bool,
 
-    /// The board's `[board.rx] frame_cost_us` (phase-462 W6c, RFC-0074): the
-    /// per-frame receive cost `c` the read-task budget is derived with and the
+    /// The board's `[board.rx] frame_cost_us`: the per-frame receive cost.
+    ///
+    /// This is the cost `c` the read-task budget is derived with and the
     /// declared ingress is checked against. Absent: `c = 0`, nothing checked.
+    // phase-462 W6c, RFC-0074.
     #[arg(long, value_name = "US")]
     pub board_rx_frame_cost_us: Option<u32>,
 

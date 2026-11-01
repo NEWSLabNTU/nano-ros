@@ -24,60 +24,78 @@ use crate::cmd::{
 
 #[derive(Debug, ClapArgs)]
 pub struct Args {
-    /// Project directory to create (project mode), or the literal keyword
-    /// `system` to enter Phase 212.F bringup-scaffold mode: `nros new system
-    /// <name>_bringup --components <pkg1,pkg2,...>`.
+    /// Project directory to create, or a mode keyword.
+    ///
+    /// The literal keyword `system` enters bringup-scaffold mode: `nros new
+    /// system <name>_bringup --components <pkg1,pkg2,...>`.
+    // Bringup-scaffold mode is Phase 212.F.
     pub name: Option<PathBuf>,
 
-    /// Phase 212.F bringup-scaffold mode — the bringup package directory.
-    /// Only consumed when the first positional is the literal `system`.
-    /// phase-290 W4.b — also the <name> when the first positional is the
-    /// literal `platform` or `board` (package-scaffold modes).
+    /// The bringup package directory, or the package name in a package-scaffold mode.
+    ///
+    /// The bringup directory when the first positional is the literal
+    /// `system`; the <name> when it is the literal `platform` or `board`.
+    // Bringup-scaffold mode is Phase 212.F; the `platform` / `board`
+    // package-scaffold modes are phase-290 W4.b.
     pub system_name: Option<PathBuf>,
 
-    /// phase-290 W4.b — the platform a `nros new board <name>` targets
-    /// (a platform directory name, e.g. `zephyr`, `bare-metal`, or one
-    /// scaffolded via `nros new platform`).
+    /// The platform a `nros new board <name>` targets.
+    ///
+    /// A platform directory name, e.g. `zephyr`, `bare-metal`, or one
+    /// scaffolded via `nros new platform`.
+    // phase-290 W4.b.
     #[arg(long = "for-platform")]
     pub for_platform: Option<String>,
 
-    /// Phase 212.F — comma-separated component package names for
+    /// Comma-separated component package names for
     /// `nros new system <bringup> --components <list>`.
+    // Phase 212.F.
     #[arg(long, value_delimiter = ',')]
     pub components: Vec<String>,
 
-    /// Phase 212.F — repeatable single-component form (alternative to
-    /// `--components <a,b,c>` when commas in the shell are awkward). Merged
-    /// with `--components` at dispatch time.
+    /// One component package name; repeatable.
+    ///
+    /// An alternative to `--components <a,b,c>` when commas in the shell are
+    /// awkward. Merged with `--components`.
+    // Phase 212.F. Merged at dispatch time.
     #[arg(long = "component-name")]
     pub component_name: Vec<String>,
 
-    /// Phase 212.F — workspace root holding the cargo `Cargo.toml` to
-    /// update. Defaults to the parent of the bringup dir.
+    /// Workspace root holding the cargo `Cargo.toml` to update.
+    ///
+    /// Defaults to the parent of the bringup dir.
+    // Phase 212.F.
     #[arg(long)]
     pub workspace_root: Option<PathBuf>,
 
-    /// Phase 212.F — parent dir under which the bringup pkg is created.
+    /// Parent dir under which the bringup package is created.
+    ///
     /// Defaults to the current working directory.
+    // Phase 212.F.
     #[arg(long)]
     pub into: Option<PathBuf>,
 
-    /// Phase 212.F — skip the optional `config/` sub-dir.
+    /// Skip the optional `config/` sub-dir.
+    // Phase 212.F.
     #[arg(long)]
     pub no_config: bool,
 
-    /// Phase 212.F — skip the optional `README.md`.
+    /// Skip the optional `README.md`.
+    // Phase 212.F.
     #[arg(long)]
     pub no_readme: bool,
 
-    /// Target platform (required in project mode). `esp32` is not offered:
-    /// ESP32 support is dormant (issue 1525) — the scaffold code is kept, the
-    /// front door is closed.
+    /// Target platform (required in project mode).
     ///
-    /// `linux` is the host board (phase-500 W1). `native` and `posix` were
-    /// deprecated aliases for it until phase-500 W5; they are still PARSED
-    /// (hidden from `--help`) only so `run` can refuse them naming `linux`,
-    /// instead of clap's bare "invalid value".
+    /// `linux` is the host board. `esp32` is not offered: ESP32 support is
+    /// dormant.
+    // ESP32 dormancy is issue 1525 — the scaffold code is kept, the front door
+    // is closed.
+    //
+    // `linux` is the host board (phase-500 W1). `native` and `posix` were
+    // deprecated aliases for it until phase-500 W5; they are still PARSED
+    // (hidden from `--help`) only so `run` can refuse them naming `linux`,
+    // instead of clap's bare "invalid value".
     #[arg(long, value_parser = platform_values())]
     pub platform: Option<String>,
 
@@ -87,7 +105,8 @@ pub struct Args {
     #[arg(long, value_parser = ["zenoh", "xrce", "cyclonedds"])]
     pub rmw: Option<String>,
 
-    /// ROS edition (drives the `ros-<edition>` cargo feature; RFC-0056)
+    /// ROS edition (drives the `ros-<edition>` cargo feature)
+    // RFC-0056.
     #[arg(long = "ros-edition", value_parser = ["humble", "iron", "jazzy"], default_value = rosidl_codegen::DEFAULT_ROS_EDITION)]
     pub ros_edition: String,
 
@@ -103,8 +122,9 @@ pub struct Args {
     #[arg(long, value_parser = template_values())]
     pub template: Option<String>,
 
-    /// RETIRED (phase-517 W12): `--template`. Parsed, hidden, so it is refused
-    /// naming its replacement instead of with clap's bare "unexpected argument".
+    /// Retired: use `--template`.
+    // RETIRED (phase-517 W12). Parsed, hidden, so it is refused naming its
+    // replacement instead of with clap's bare "unexpected argument".
     #[arg(long = "use-case", hide = true)]
     pub use_case: Option<String>,
 
@@ -144,15 +164,18 @@ pub struct Args {
     #[arg(long = "destination-directory")]
     pub destination_directory: Option<PathBuf>,
 
-    /// Phase 172 W.3 — scaffold a planned-mode **component** (a reusable
-    /// library node with an `nros::Component` + a folded `[component]`
-    /// `nros.toml`) instead of a direct-mode binary project. Platform-agnostic
-    /// (platform/RMW are chosen at deploy time), so `--platform` is not needed.
+    /// Scaffold a planned-mode component instead of a direct-mode binary project.
+    ///
+    /// A component is a reusable library node with an `nros::Component` and a
+    /// folded `[component]` `nros.toml`. It is platform-agnostic (platform and
+    /// RMW are chosen at deploy time), so `--platform` is not needed.
+    // Phase 172 W.3.
     #[arg(long)]
     pub component: bool,
 
     /// Scaffold an `[image.<name>]` — a buildable image — into the bringup
-    /// package's `system.toml` (RFC-0065 D6) instead of a project.
+    /// package's `system.toml` instead of a project.
+    // RFC-0065 D6.
     #[arg(long)]
     pub image: Option<String>,
 
@@ -161,27 +184,38 @@ pub struct Args {
     #[arg(long)]
     pub host: Option<String>,
 
-    /// DEPRECATED (issue 0951): `[deploy.*]` split into `[image.*]` (what is
-    /// BUILT) and `[host.*]` (WHERE it runs). Still accepted, and dispatched
-    /// by `--kind`: `self` scaffolds a host, anything else an image.
+    /// Deprecated: use `--image` or `--host`.
+    ///
+    /// `[deploy.*]` split into `[image.*]` (what is built) and `[host.*]`
+    /// (where it runs). Still accepted, and dispatched by `--kind`: `self`
+    /// scaffolds a host, anything else an image.
+    // DEPRECATED by issue 0951.
     #[arg(long)]
     pub deploy: Option<String>,
 
-    /// phase-368 W8 — scaffold a minimal multi-node WORKSPACE (node pkgs +
-    /// bringup + entry) instead of a standalone project: the canonical
-    /// copy-out template with the RMW choice baked into every file that
-    /// spells it. Defaults: `--lang cpp --rmw cyclonedds`.
+    /// Scaffold a minimal multi-node workspace instead of a standalone project.
+    ///
+    /// The workspace holds node packages, a bringup and an entry: the
+    /// canonical copy-out template with the RMW choice baked into every file
+    /// that spells it. Defaults: `--lang cpp --rmw cyclonedds`.
+    // phase-368 W8.
     #[arg(long)]
     pub workspace: bool,
 
-    /// DEPRECATED (issue 0951) — only read by `--deploy`, to decide whether it
-    /// meant a machine (`self`) or a board build (anything else). `--image` and
-    /// `--host` say which directly.
+    /// Deprecated: use `--image` or `--host`.
+    ///
+    /// Only read by `--deploy`, to decide whether it meant a machine (`self`)
+    /// or a board build (anything else). `--image` and `--host` say which
+    /// directly.
+    // DEPRECATED by issue 0951.
     #[arg(long, default_value = "self")]
     pub kind: String,
 
-    /// DEPRECATED (issue 0951): the rustc triple comes from the board
-    /// descriptor, so an image carries none. Accepted and ignored.
+    /// Deprecated: accepted and ignored.
+    ///
+    /// The rustc triple comes from the board descriptor, so an image carries
+    /// none.
+    // DEPRECATED by issue 0951.
     #[arg(long)]
     pub target: Option<String>,
 

@@ -15,15 +15,19 @@ use std::path::PathBuf;
 pub struct Args {
     /// System package name used for build/<system_pkg>/nros output.
     /// When omitted, derived from the `<launch_file>` directory's
-    /// pkg name (Phase 212.L.7 self-bringup shape).
+    /// package name (the self-bringup shape).
+    // Phase 212.L.7 self-bringup shape.
     pub system_pkg: String,
 
-    /// ROS 2 launch file to parse, **or** a package directory to resolve
-    /// via the Phase 212.L.6 multi-launch policy (pkg-named →
-    /// system.launch.xml → single-file → synth for self-bringup pkgs).
-    /// When omitted in a Phase 212.L.7 single-arg invocation
-    /// (`nros plan <pkg-dir>`), defaults to the `<system_pkg>` argument
-    /// (treated as a directory path then).
+    /// ROS 2 launch file to parse, or a package directory to resolve.
+    ///
+    /// A directory resolves by the multi-launch policy: the launch file named
+    /// after the package, then `system.launch.xml`, then a single launch file,
+    /// then a synthesised launch for a self-bringup package. When omitted
+    /// (`nros plan <pkg-dir>`), defaults to the `<system_pkg>` argument,
+    /// treated as a directory path.
+    // The multi-launch policy is Phase 212.L.6; the single-argument
+    // invocation is Phase 212.L.7.
     #[arg(default_value = "")]
     pub launch_file: PathBuf,
 
@@ -37,14 +41,15 @@ pub struct Args {
     #[arg(long, value_name = "system_model.yaml")]
     pub model: Option<PathBuf>,
 
-    /// Phase 212.L.6 — when `<launch_file>` is a directory, prefer
-    /// `<dir>/launch/<file>` (or cwd-relative / absolute as fallback).
+    /// When `<launch_file>` is a directory, prefer `<dir>/launch/<file>`
+    /// (or cwd-relative / absolute as fallback).
+    // Phase 212.L.6 multi-launch disambiguation.
     #[arg(long = "file")]
     pub file: Option<String>,
 
-    /// Phase 212.L.6 — disambiguates the synthesised `<node exec="…">`
-    /// when the package declares multiple `[[bin]]` / `add_executable`
-    /// targets.
+    /// Disambiguates the synthesised `<node exec="…">` when the package
+    /// declares multiple `[[bin]]` / `add_executable` targets.
+    // Phase 212.L.6 multi-launch disambiguation.
     #[arg(long = "exec")]
     pub exec: Option<String>,
 
@@ -64,22 +69,25 @@ pub struct Args {
     #[arg(long = "manifest")]
     pub manifests: Vec<PathBuf>,
 
-    /// Phase 255 Wave 4 — RMW override, the TOP of the precedence ladder
-    /// (`--rmw` > `[image.<t>].rmw` > `[system].rmw` > `zenoh`). Sets
-    /// `plan.build.rmw` regardless of
-    /// `system.toml` / the `[build].rmw` overlay.
+    /// RMW override, the top of the precedence ladder.
+    ///
+    /// `--rmw` > `[image.<t>].rmw` > `[system].rmw` > `zenoh`. Sets
+    /// `plan.build.rmw` regardless of `system.toml` / the `[build].rmw`
+    /// overlay.
+    // Phase 255 Wave 4.
     #[arg(long = "rmw")]
     pub rmw: Option<String>,
 
-    /// Phase 256 / issue 0951 — select the `[image.<id>]` the planner resolves
-    /// per-target values against (RMW override, build tuning, the rustc
-    /// triple). Omitted → the sole image `default_images` picks →
-    /// target-agnostic.
+    /// Select the `[image.<id>]` the planner resolves per-target values
+    /// against.
     ///
-    /// `--target` is kept as an ALIAS, not a second flag: it named the deploy
-    /// era's concept, and the value callers pass is now an image id. The FIELD
-    /// is `image` for the same reason `PlanOptions`' is — `target` in this tree
-    /// is the rustc triple, and the flag has been `--image` since 0951.
+    /// Those values are the RMW override, build tuning and the rustc triple.
+    /// Omitted → the sole image `default_images` picks → target-agnostic.
+    // Phase 256 / issue 0951. `--target` is kept as an ALIAS, not a second
+    // flag: it named the deploy era's concept, and the value callers pass is
+    // now an image id. The FIELD is `image` for the same reason
+    // `PlanOptions`' is — `target` in this tree is the rustc triple, and the
+    // flag has been `--image` since 0951.
     #[arg(long = "image", alias = "target")]
     pub image: Option<String>,
 
