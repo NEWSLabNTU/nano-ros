@@ -71,10 +71,24 @@ fn main() -> Result<()> {
     // issue 2197 — `$NROS_OFFLINE` reaches every cargo this process spawns.
     nros_cli_core::orchestration::rust_toolchain::expose_offline_to_cargo();
     // RFC-0117 D1: `nros dev` is hidden from `nros --help`, and
-    // `nros help --all` is where it is listed. clap's `help` subcommand takes
-    // no flags, so this is answered before clap parses.
+    // `nros help --all` is where it is listed; `nros help --aliases [--json]`
+    // prints every old spelling and its new one. clap's `help` subcommand
+    // takes no flags, so both are answered before clap parses.
     let argv: Vec<String> = std::env::args().skip(1).collect();
-    if argv.first().map(String::as_str) == Some("help") && argv[1..].iter().any(|a| a == "--all") {
+    let help_flag = |f: &str| {
+        argv.first().map(String::as_str) == Some("help") && argv[1..].iter().any(|a| a == f)
+    };
+    if help_flag("--aliases") {
+        if help_flag("--json") {
+            println!("{}", nros_cli_core::cmd::dev::aliases_json());
+        } else {
+            for (old, new) in nros_cli_core::cmd::dev::ALIASES {
+                println!("nros {old:<26} -> nros {new}");
+            }
+        }
+        return Ok(());
+    }
+    if help_flag("--all") {
         let mut cmd = Cli::command().mut_subcommand("dev", |c| c.hide(false));
         cmd.print_help()?;
         println!();
