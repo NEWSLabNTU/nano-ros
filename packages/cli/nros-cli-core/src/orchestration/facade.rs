@@ -881,7 +881,7 @@ fn runtime_deps(manifest: &toml::Value, entry_dir: &Path, sdk_root: Option<&Path
             // Keep it lexical — `canonicalize` would resolve symlinked checkouts
             // to a path outside the workspace, and the manifest needs a path
             // cargo can read back relative to the facade.
-            Some(rel) => lexical_normalize(&entry_dir.join(rel)),
+            Some(rel) => crate::builder::paths::lexical_normalize(&entry_dir.join(rel)),
             None => {
                 let Some(dir) = sdk_root
                     .zip(crate::cmd::ws::nros_crate_subpath(name))
@@ -979,33 +979,6 @@ fn render_manifest(
         ));
     }
     s
-}
-
-/// Collapse `.` and `..` without touching the filesystem.
-///
-/// Needed because the entry's path deps are written relative to the ENTRY
-/// (`../../../../../packages/api/nros`), and joining that onto the entry dir
-/// leaves the `..`s embedded. Cargo reads such a path fine, but `rel_from`
-/// below compares components to find the common prefix, and an un-collapsed
-/// `..` makes every path look divergent — producing a correct-but-absurd
-/// `../../../src/linux_entry/../../../../../packages/...`.
-fn lexical_normalize(p: &Path) -> PathBuf {
-    let mut out: Vec<std::path::Component<'_>> = Vec::new();
-    for c in p.components() {
-        match c {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                // Only pop a real name; `/..` and a leading `..` stay put.
-                if matches!(out.last(), Some(std::path::Component::Normal(_))) {
-                    out.pop();
-                } else {
-                    out.push(c);
-                }
-            }
-            other => out.push(other),
-        }
-    }
-    out.iter().collect()
 }
 
 /// Path of `target` as seen from `base`, lexically (no filesystem access, so a
@@ -1116,7 +1089,9 @@ mod tests {
     /// got no selection package and `nros::main!` refused it.
     #[test]
     fn a_registry_style_entry_resolves_through_the_sdk_root() {
-        let sdk = lexical_normalize(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.."));
+        let sdk = crate::builder::paths::lexical_normalize(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.."),
+        );
         let manifest: toml::Value = toml::from_str(
             "[dependencies]
 \
@@ -1215,11 +1190,13 @@ mod tests {
         // The exact shape a real entry produces: its `nros` dep is written
         // relative to itself, and joining leaves the hops embedded.
         assert_eq!(
-            lexical_normalize(Path::new("/ws/src/linux_entry/../../../packages/api/nros")),
+            crate::builder::paths::lexical_normalize(Path::new(
+                "/ws/src/linux_entry/../../../packages/api/nros"
+            )),
             Path::new("/packages/api/nros")
         );
         assert_eq!(
-            lexical_normalize(Path::new("/a/./b/../c")),
+            crate::builder::paths::lexical_normalize(Path::new("/a/./b/../c")),
             Path::new("/a/c")
         );
     }

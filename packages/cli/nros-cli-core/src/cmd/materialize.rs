@@ -108,6 +108,16 @@ pub fn run(args: Args) -> Result<()> {
 
     copy_tree(&src, &dest).wrap_err_with(|| format!("copying {}", src.display()))?;
 
+    // Issue 2175 — the manifest's path deps were written relative to where it
+    // was GENERATED, and `src/<entry>/` sits at a different depth.
+    let manifest = dest.join("Cargo.toml");
+    let text = std::fs::read_to_string(&manifest)
+        .wrap_err_with(|| format!("reading {}", manifest.display()))?;
+    let rebased = crate::builder::materialize::rebase_manifest_paths(&text, &src, &dest)
+        .map_err(|e| eyre::eyre!("{}: {e}", manifest.display()))?;
+    std::fs::write(&manifest, rebased)
+        .wrap_err_with(|| format!("writing {}", manifest.display()))?;
+
     crate::builder::materialize::Stamp::current(
         &image_id,
         &plan.board,
@@ -159,10 +169,19 @@ fn find_generated(root: &std::path::Path, pkg: &str) -> Option<PathBuf> {
         .find(|d| d.join("Cargo.toml").is_file())
 }
 
+/// What the generated entry dir holds that is BUILD STATE, not the entry: the
+/// image's cargo target dir and its per-image settings file, both of which
+/// `nros build` keeps writing under `build/` (issue 2175 — copying them put a
+/// whole target dir into the user's source tree).
+const NOT_THE_ENTRY: [&str; 2] = ["target", crate::builder::cargo_config::FILE_NAME];
+
 fn copy_tree(src: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dest)?;
     for e in std::fs::read_dir(src)? {
         let e = e?;
+        if NOT_THE_ENTRY.iter().any(|n| e.file_name() == *n) {
+            continue;
+        }
         let to = dest.join(e.file_name());
         if e.file_type()?.is_dir() {
             copy_tree(&e.path(), &to)?;

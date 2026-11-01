@@ -680,6 +680,7 @@ mod tests {
             cmake_build_dir: None,
             capabilities: Vec::new(),
             kernel: None,
+            entry_root: None,
             configure: None,
             record: Default::default(),
             output: Some(output),

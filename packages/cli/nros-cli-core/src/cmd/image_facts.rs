@@ -292,6 +292,7 @@ mod tests {
             cmake_build_dir: None,
             capabilities: capabilities.iter().map(|c| c.to_string()).collect(),
             kernel: None,
+            entry_root: None,
             configure: None,
             record: Default::default(),
             output: None,

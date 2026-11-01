@@ -12,7 +12,7 @@
 //! path under a developer's home directory is the single most common way
 //! that fails.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Path from `from` to `to`, using `/` separators, both absolute.
 ///
@@ -56,10 +56,68 @@ pub fn relative_or_err(from: &Path, to: &Path) -> Result<String, String> {
     })
 }
 
+/// Collapse `.` and `..` without touching the filesystem.
+///
+/// Needed because the entry's path deps are written relative to the ENTRY
+/// (`../../../../../packages/api/nros`), and joining that onto the entry dir
+/// leaves the `..`s embedded. Cargo reads such a path fine, but [`relative`]
+/// compares components to find the common prefix, and an un-collapsed `..`
+/// makes every path look divergent — producing a correct-but-absurd
+/// `../../../src/linux_entry/../../../../../packages/...`.
+#[must_use]
+pub fn lexical_normalize(p: &Path) -> PathBuf {
+    let mut out: Vec<std::path::Component<'_>> = Vec::new();
+    for c in p.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                // Only pop a real name; `/..` and a leading `..` stay put.
+                if matches!(out.last(), Some(std::path::Component::Normal(_))) {
+                    out.pop();
+                } else {
+                    out.push(c);
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out.iter().collect()
+}
+
+/// Re-express `rel`, written relative to `from_dir`, relative to `to_dir`
+/// (issue 2175). Both directories absolute; an absolute `rel` is returned
+/// unchanged, since it never depended on where it was written.
+pub fn rebase_relative(from_dir: &Path, to_dir: &Path, rel: &str) -> Result<String, String> {
+    if Path::new(rel).is_absolute() {
+        return Ok(rel.to_string());
+    }
+    let target = lexical_normalize(&from_dir.join(rel));
+    relative_or_err(&lexical_normalize(to_dir), &target)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn rebasing_one_level_shallower_drops_one_step_up() {
+        // issue 2175's measured case: build/posix-zenoh/linux_entry -> src/linux_entry.
+        let from = Path::new("/ws/build/posix-zenoh/linux_entry");
+        let to = Path::new("/ws/src/linux_entry");
+        assert_eq!(
+            rebase_relative(from, to, "../../../src/ctrl_pkg").as_deref(),
+            Ok("../ctrl_pkg")
+        );
+        assert_eq!(
+            rebase_relative(from, to, "../../../../../packages/api/nros").as_deref(),
+            Ok("../../../../packages/api/nros")
+        );
+        assert_eq!(
+            rebase_relative(from, to, "/abs/elsewhere").as_deref(),
+            Ok("/abs/elsewhere")
+        );
+    }
 
     #[test]
     fn a_sibling_needs_one_step_up() {

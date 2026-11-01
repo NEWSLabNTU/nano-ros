@@ -259,6 +259,11 @@ pub struct ResolvedBuild {
     /// stage, so the board crate's C failed on `nuttx/config.h`.
     pub kernel: Option<Handoff>,
 
+    /// Issue 2167 — on the cargo road, which root this image's entry builds
+    /// from, and the `cargo clean -p` [`run`] performs first when the target
+    /// dir was last built from a different one.
+    pub entry_root: Option<crate::builder::materialize::EntryRoot>,
+
     /// phase-485 W3 (RFC-0104 D4) — what the finished build leaves to read
     /// for the project lock: the cargo roots it resolved and the build
     /// directories whose records say which sources it read.
@@ -676,6 +681,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             out.push(ResolvedBuild {
                 kernel: None,
                 configure: None,
+                entry_root: None,
                 cmake_build_dir: cmake_build_dir_for(driver, &platform, &image, &bringup_dir),
                 qualified: qual,
                 board,
@@ -756,6 +762,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         // native image would be recorded as reading FreeRTOS.
         let mut record_dirs: Vec<std::path::PathBuf> = Vec::new();
         let mut cargo_prepare: Option<Handoff> = None;
+        let mut entry_root: Option<crate::builder::materialize::EntryRoot> = None;
         // phase-517 W6 — where this road puts the artifact, from the values
         // the native command below is given.
         let output: Option<crate::cmd::build_next::BuildOutput>;
@@ -1231,15 +1238,53 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     ));
                 }
                 a.extend(args.native_args.iter().cloned());
+                // A caller-named target dir wins over the settings file's, as it
+                // does for cargo itself (CLI/env above config).
+                let caller_target = crate::builder::shared_target::caller_target_dir(
+                    &args.native_args,
+                    &|k| std::env::var(k).ok(),
+                    &root,
+                );
+                let target_dir = caller_target
+                    .clone()
+                    .unwrap_or_else(|| image_dir.join("target"));
+                // Issue 2167 — the generated and the owned entry share this
+                // target dir and cargo cannot tell them apart; see `EntryRoot`.
+                entry_root = cargo_package_name(&manifest_dir).map(|pkg| {
+                    let mut c = vec![
+                        "clean".to_string(),
+                        "-p".to_string(),
+                        pkg,
+                        "--manifest-path".to_string(),
+                        shown(&manifest_dir.join("Cargo.toml")),
+                        "--config".to_string(),
+                        shown(&config_path),
+                    ];
+                    if let Some(build_dir) = &shared_class {
+                        c.push("--config".to_string());
+                        c.push(format!(
+                            "build.build-dir={}",
+                            toml_edit::Value::from(build_dir.display().to_string())
+                        ));
+                    }
+                    if let Some(t) = &caller_target {
+                        c.push("--target-dir".to_string());
+                        c.push(t.display().to_string());
+                    }
+                    if args.offline {
+                        c.push("--offline".to_string());
+                    }
+                    crate::builder::materialize::EntryRoot {
+                        marker: target_dir.join(crate::builder::materialize::ENTRY_ROOT_MARKER),
+                        manifest_dir: manifest_dir.clone(),
+                        clean: with_rust_channel(
+                            Handoff::new("cargo", c).in_dir(&root),
+                            rust_channel.as_deref(),
+                        ),
+                    }
+                });
                 output = Some(crate::cmd::build_next::BuildOutput::Cargo {
-                    // A caller-named target dir wins over the settings file's,
-                    // as it does for cargo itself (CLI/env above config).
-                    target_dir: crate::builder::shared_target::caller_target_dir(
-                        &args.native_args,
-                        &|k| std::env::var(k).ok(),
-                        &root,
-                    )
-                    .unwrap_or_else(|| image_dir.join("target")),
+                    target_dir,
                     triple: descriptor.target.as_deref().map(|t| {
                         crate::orchestration::board_descriptor::triple_of_build_target(t)
                             .to_string()
@@ -1933,6 +1978,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         out.push(ResolvedBuild {
             kernel: nuttx_kernel,
             configure: cmake_configure.or(cargo_prepare),
+            entry_root,
             cmake_build_dir: cmake_build_dir_for(driver, &platform, &image, &bringup_dir),
             qualified: qual,
             board,
@@ -2123,6 +2169,7 @@ fn plan_leaf_image(
             capabilities: owned_caps(root),
             kernel: None,
             configure: None,
+            entry_root: None,
             record: Default::default(),
             output: None,
             descriptor: None,
@@ -2219,6 +2266,7 @@ fn plan_leaf_image(
         profile: None,
         cmake_build_dir: None,
         kernel: leaf_kernel,
+        entry_root: None,
         configure: prepare,
         record: crate::orchestration::project_lock::BuildRecord {
             project: root.to_path_buf(),
@@ -2391,6 +2439,7 @@ fn plan_single_package_cmake(
         cmake_build_dir: Some(build_dir),
         capabilities: owned_caps(root),
         kernel: None,
+        entry_root: None,
         configure: Some(Handoff::new("cmake", a).in_dir(root)),
         record: crate::orchestration::project_lock::BuildRecord {
             project: root.to_path_buf(),
@@ -2865,6 +2914,9 @@ fn drive(
             if let Some(cfg) = &p.configure {
                 println!("{}", cfg.display());
             }
+            if let Some(er) = p.entry_root.as_ref().filter(|er| er.changed()) {
+                println!("{}", er.clean.display());
+            }
             println!("{}", hand.display());
             continue;
         }
@@ -2877,6 +2929,9 @@ fn drive(
         }
         if let Some(cfg) = &p.configure {
             run_configure(cfg)?;
+        }
+        if let Some(er) = &p.entry_root {
+            run_entry_root_check(er)?;
         }
         let outcome = handover(hand);
         if total > 1 {
@@ -3142,6 +3197,7 @@ fn plan_packages(
             cmake_build_dir: None,
             capabilities: Vec::new(),
             kernel: None,
+            entry_root: None,
             configure,
             record: crate::orchestration::project_lock::BuildRecord {
                 project: root.to_path_buf(),
@@ -6078,6 +6134,40 @@ fn nuttx_env_rows(cargo_config: Option<&str>) -> Vec<(String, String)> {
 }
 
 /// Run [`nuttx_kernel_step`]'s handoff, naming the step when it fails.
+/// Issue 2167 — clean the entry package when its cargo root changed, then
+/// record the root this build uses.
+fn run_entry_root_check(er: &crate::builder::materialize::EntryRoot) -> Result<()> {
+    if er.changed() {
+        eprintln!(
+            "nros build: the entry now builds from {}; cleaning its previous \
+             root's units (issue 2167)",
+            er.manifest_dir.display()
+        );
+        let status = er
+            .clean
+            .command()
+            .status()
+            .wrap_err_with(|| format!("spawn {}", er.clean.display()))?;
+        if !status.success() {
+            eyre::bail!(
+                "cleaning the entry failed ({status}): {}",
+                er.clean.display()
+            );
+        }
+    }
+    er.record().map_err(|e| eyre::eyre!("{e}"))
+}
+
+/// `[package] name` of the manifest in `manifest_dir`.
+fn cargo_package_name(manifest_dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(manifest_dir.join("Cargo.toml")).ok()?;
+    let doc = text.parse::<toml::Table>().ok()?;
+    doc.get("package")?
+        .get("name")?
+        .as_str()
+        .map(str::to_string)
+}
+
 fn run_kernel_step(h: &Handoff) -> Result<()> {
     let status = h
         .command()
@@ -6792,6 +6882,7 @@ mod multi_image_drive_tests {
             capabilities: Vec::new(),
             kernel: None,
             configure: None,
+            entry_root: None,
             record: Default::default(),
             output: None,
             descriptor: None,
