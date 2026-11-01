@@ -129,6 +129,10 @@ one), so they fold in and declare nothing extra.
 
 ### D3 — Three export tags, one shape, one direction each
 
+> **Amended by [RFC-0119](0119-cli-extension-packages.md) D1 (2026-11):** the
+> provider kinds gain `runner` and `command`, read by the same parser. Their
+> packages are built for the host, which follows from the kind.
+
 All live inside `<export>`, beside `<build_type>`.
 
 ```xml
@@ -296,6 +300,12 @@ semantics, over the topological order `provider_scan` already computes.
 
 ### D8 — What is deliberately not taken from colcon
 
+> **Amended by [RFC-0119](0119-cli-extension-packages.md) (2026-11):** the
+> "no Python plugin ABI" point below stands. CLI extension comes from
+> announced `runner` and `command` packages that provide executables over a
+> process contract, and nano-ros's own runners and commands are packages of
+> that same shape.
+
 - **Install prefixes and a sourced `setup.sh`.** `provider_scan`'s doc settles
   it: colcon's discovery artifact is the ament index, reached by sourcing
   `setup.sh`, which exists only after an install step — and nano-ros builds
@@ -372,6 +382,9 @@ are what says so.)*
 
 ## Changelog
 
+- 2026-11-01 — RFC-0119 amends D3 (two kinds, `runner` and `command`) and
+  D8 (extension through announced executables). D6's precedence is kept for
+  the new kinds.
 - 2026-09-10 — issue 1220: the platform open question resolved, and the
   `check-provider-announcements` row restated to name all four rules.
 - 2026-09-04 — initial draft. Folds the packaging discussion: one recognition

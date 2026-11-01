@@ -108,6 +108,13 @@ boards.
 
 ### D10 — Support levels: three primitives and one generated status word
 
+> **Amended by [RFC-0118](0118-target-execution-model.md) D4 (2026-11):**
+> `emulator` is read from the board descriptor's `[board.run]`, not typed in
+> the registry, because an out-of-tree board with no registry row still has to
+> run. D12's rule (no board fact typed twice) then makes the registry read it.
+> `runs`, `hardware`, `cadence` and `last_run` stay registry facts.
+> phase-528 W2 carries the change with this RFC's generator.
+
 Each `[[board]]` row carries, in place of `tier`:
 
 | Field | Values | Meaning |
@@ -365,3 +372,5 @@ stated reversal.
   board); and that there is one source of truth for board support and the
   tests that prove it, so board packages, test scripts and docs stop being
   kept consistent by hand.
+- 2026-11-01 — RFC-0118 D4 amends D10: `emulator` moves to the descriptor's
+  `[board.run]` and the generator reads it there (phase-528 W2).

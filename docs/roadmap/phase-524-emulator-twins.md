@@ -312,6 +312,11 @@ generator.
 - **Decision step:** a track that passes by hand and fails in the container
   for a reason in the emulator (display, licence check, network namespace) is
   an issue against W2's row, not a reason to mark the track manual.
+- **Run commands (2026-11-01).** The chapter's run line is `nros run` in the
+  twin and `nros flash --monitor` on the bench (RFC-0118 D2). The twin is
+  driven by an `nros_runner_renode` package written against the runner
+  contract (RFC-0119, phase-528), not by a special case in the CLI, and the
+  bench run uses phase-529's verbs.
 
 ### W5 — Hardware runs
 
