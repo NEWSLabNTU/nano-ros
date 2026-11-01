@@ -73,8 +73,12 @@ reported, not a measured capacity.
    attaches no release assets) is in the index, `just setup base` runs
    `nros setup --tool cargo-sweep`, and `runner-sweep.sh` finds it at the
    store's pinned path when it is not on PATH (the sweep step runs without
-   `activate.sh`). What is left is the operator provisioning it on the runner:
-   `nros setup --tool cargo-sweep`, or `scripts/ci/runner-provision.sh`.
+   `activate.sh`). **And the workflow installs it** (2026-11-01): nothing
+   on the runner ran `just setup base` — the jobs run `just setup <scope>`,
+   whose prelude skips `workspace cargo-tools` — so every sweep step now
+   passes `--provision`, which runs `nros setup --tool cargo-sweep` when the
+   tool is absent. The first sweep after a merge builds it (one source
+   build, then a store lookup); no operator step remains for this lever.
 2. **Give `examples/` leaf builds an area.** 94.8 GiB that the sweep reports
    and its own warning says to budget ("Give the largest entry an area"). They
    are fixture outputs (rebuildable, re-staled by the probe), so they belong
@@ -84,8 +88,8 @@ reported, not a measured capacity.
    below the working set buys a rebuild per run, not disk.
 4. **A bigger volume** for this runner (operator).
 
-1 and 4 are operator-side. 2 and 3 are in `scripts/ci/runner-sweep.sh`, but
-they only move the problem: with 1 undone, the volume still cannot hold the
+4 is operator-side. 2 and 3 are in `scripts/ci/runner-sweep.sh`, but
+they only move the problem: without 1, the volume still cannot hold the
 working set warm.
 
 ## Acceptance

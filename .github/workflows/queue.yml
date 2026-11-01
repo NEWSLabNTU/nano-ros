@@ -185,7 +185,7 @@ jobs:
       # flake. `always()` because a cancelled job leaks the most.
       - name: Sweep orphans and disk
         if: always()
-        run: ./scripts/ci/runner-sweep.sh || true
+        run: ./scripts/ci/runner-sweep.sh --provision || true
 
   # phase-405 — make the interlocked job's SKIP visible in the run that skipped
   # it. See scripts/ci/report-interlock-coverage.sh for why this warns rather

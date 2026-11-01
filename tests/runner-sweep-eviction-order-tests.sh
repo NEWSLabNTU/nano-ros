@@ -206,6 +206,46 @@ else
 $out4"
 fi
 
+# --- issue 2191: the workflow step INSTALLS it ---------------------------------
+#
+# Finding the tool was half the fix. The CI jobs run `just setup <scope>`, which
+# never reaches `workspace cargo-tools`, so on the runner nothing installed it
+# and the area went on being reported. The workflow's sweep step passes
+# --provision: with the tool absent the sweep runs the checkout's CLI (here a
+# stub named by NROS_CLI) as `nros setup --tool cargo-sweep`, then prunes with
+# what that installed. Real runs, not --check, so every root is in $w3.
+printf '#!/bin/sh\necho "nros $*" >> "%s/ran"\nd="%s/home/sdk/cargo-sweep/9.9.9-test/bin"\nmkdir -p "$d"\nprintf "#!/bin/sh\\necho \\"9.9.9-test \\$*\\" >> %s/ran\\necho Cleaned nothing\\n" > "$d/cargo-sweep"\nchmod +x "$d/cargo-sweep"\n' \
+    "$w3" "$w3" "$w3" > "$w3/nros-stub"
+chmod +x "$w3/nros-stub"
+_sweep_w3() {
+    PATH="$nopath" NROS_HOME="$w3/home" NROS_RUNNER_REPO_ROOT="$w3" NROS_CLI="$w3/nros-stub" \
+        NROS_BUILD_ROOT="$w3/build" NROS_SWEEP_STATE_DIR="$w3/state" NROS_SWEEP_WORK="$w3/work" \
+        NROS_ZEPHYR_BUILD_ROOT="" "$sweep" --disk "$@" 2>&1 || true
+}
+rm -f "$w3/ran"
+out5="$(_sweep_w3)"
+if [ ! -f "$w3/ran" ] && nros_grep_q 'NOT pruned' <<<"$out5"; then
+    ok "without --provision nothing is installed, and the area is reported"
+else
+    fail "a sweep without --provision installed or ran something (ran: $(cat "$w3/ran" 2>/dev/null)):
+$out5"
+fi
+out6="$(_sweep_w3 --provision --check)"
+if [ ! -f "$w3/ran" ] && nros_grep_q '\[would\] nros setup --tool cargo-sweep' <<<"$out6"; then
+    ok "--provision under --check names the install and does not run it"
+else
+    fail "--check ran the install, or did not say it would (ran: $(cat "$w3/ran" 2>/dev/null)):
+$out6"
+fi
+out7="$(_sweep_w3 --provision)"
+if [ -f "$w3/ran" ] && nros_grep_q '^nros setup --tool cargo-sweep$' "$w3/ran" \
+   && nros_grep_q '^9.9.9-test sweep --time 21 ' "$w3/ran"; then
+    ok "--provision installs the indexed cargo-sweep and the same run prunes with it"
+else
+    fail "--provision did not install then prune (ran: $(cat "$w3/ran" 2>/dev/null)):
+$out7"
+fi
+
 echo ""
 if [ "$failures" -eq 0 ]; then
     echo "runner-sweep-eviction-order: $checks check(s) passed"

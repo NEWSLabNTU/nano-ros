@@ -1,0 +1,1 @@
+The CI sweep steps now install `cargo-sweep` themselves (`runner-sweep.sh --provision`), so the self-hosted runner prunes old host cargo build artifacts instead of only reporting them — no CI job ran `just setup base`, so the tool indexed for issue 2191 was never on the runner.
