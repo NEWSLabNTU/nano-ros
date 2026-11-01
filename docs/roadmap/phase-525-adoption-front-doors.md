@@ -27,6 +27,12 @@ is the container, so the probe can time it today.
 
 ### W1 — `check-user-surface-ids` and the sweep (D2)
 
+**Sequenced after [phase-526](phase-526-cli-two-tier-restructure.md) W5
+(2026-11-01).** The command tree is restructured first (RFC-0117), and W5
+there moves the help text's ids into `//` comments. This item then adds the
+gate and sweeps the refusal strings and the book, once, over the final verb
+names.
+
 - Write `scripts/check/check-user-surface-ids.py`. Its subject is the rendered
   user surface: it runs `nros --help` and every verb's `--help`, walks the
   refusal strings reachable from `packages/cli/nros-cli-core/src/cmd/` (the
@@ -75,6 +81,12 @@ needs the workspace shape, say), the scaffold still writes one package and
 `nros run` synthesises the rest under `build/`, never in the reader's tree.
 
 ### W3 — `nros run` (D7)
+
+**Carried by [phase-528](phase-528-run-on-host-and-emulator.md) W4
+(2026-11-01).** RFC-0118 amends RFC-0116 D7: `nros run` covers host and
+emulator targets and refuses on hardware, naming `nros flash --monitor`
+(phase-529). The acceptance below is phase-528 W4's, and this item is marked
+done when that is.
 
 - `nros run [--expect <line>] [--timeout <s>]` in the package or workspace
   directory: builds if stale (the same preflight `nros build` runs), then

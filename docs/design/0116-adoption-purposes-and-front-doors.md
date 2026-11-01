@@ -156,6 +156,11 @@ are.
 
 ### D2 — The user surface names an action, never an internal id
 
+> **Sequenced by [RFC-0117](0117-cli-command-tiers.md) (2026-11):** the
+> command tree is restructured first (phase-526), and the help text's ids move
+> into `//` comments there, so this gate's sweep runs once over the final verb
+> names.
+
 Getting-started chapters, `nros --help` and every verb's `--help`, every
 refusal and `nros doctor` output name the next action and never a phase,
 issue or RFC id. Internal ids stay in `internals/`, in `docs/`, in code
@@ -213,6 +218,14 @@ before they have seen a line of output. Industrial adopters tolerate the
 workspace shape but do not need it to evaluate the runtime.
 
 ### D7 — One verb runs what was built
+
+> **Amended by [RFC-0118](0118-target-execution-model.md) D2 (2026-11):** `nros run`
+> covers host processes and emulators. On a hardware image it refuses and
+> names `nros flash --monitor`, because flashing and the console have
+> different lifetimes, and a human step must be stated rather than hidden.
+> Everything else below holds: build if stale, `--expect` grading, and one
+> line shared by the chapter, the next step and the probe. phase-528 W4
+> carries phase-525 W3.
 
 `nros run` builds the image if stale, then does whatever "run" means for the
 image's board: launches the emulator (QEMU, Renode, Wokwi, as the registry

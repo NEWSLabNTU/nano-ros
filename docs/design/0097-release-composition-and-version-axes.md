@@ -143,6 +143,15 @@ changes here and removes the second-largest release trigger.
 
 ## D8 — The product is BINARIES. Running them is the user's, and is documented
 
+> **Amended by [RFC-0118](0118-target-execution-model.md) (2026-11):** `nros run`,
+> `nros flash` and `nros monitor` exist. They are a contract over runner
+> packages ([RFC-0119](0119-cli-extension-packages.md)), not a runner per
+> board inside the CLI, and the device story is the user's own `bench.toml`.
+> RFC-0118's Problem section answers this section's objection point by point.
+> The documentation obligation stands, met by the printed RunPlan. RFC-0119
+> also adds the first-party runner and command packages to the toolchain
+> artifact, under `share/nros/packages/`.
+
 `nros build` ends at an artifact and stops. That is the shape, not a gap: how an
 image is flashed or started is a property of the BOARD and of the user's bench —
 a probe, a bootloader, a QEMU line, a CI fixture — and nano-ros cannot know it
