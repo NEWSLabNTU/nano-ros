@@ -1,6 +1,6 @@
 # Phase 521 — The real-time promise and the one wait
 
-**Status (2026-11-01). Approved; W0, W1 and W3 done; W2's THREAD half and W4's POSIX/NuttX, lwIP and NetX parts done; the rest of W2 and W4, and W5–W8, open.** Implements
+**Status (2026-11-01). Approved; W0 and W1 done; W3 done except issue 2198 (the NuttX rv-virt link, reopened as W3.b); W2's THREAD half and W4's POSIX/NuttX, lwIP and NetX parts done; the rest of W2 and W4, and W5–W8, open. Revised the same day against RFC-0115 (phase-524): the boards the book names are Zephyr boards on a zenoh serial link, so Zephyr moves to the front of W4 and the polled UART read joins W6.** Implements
 [RFC-0113](../design/0113-rt-unified-wait.md). Amends
 [RFC-0106](../design/0106-executor-park.md) D5 and withdraws
 [RFC-0112](../design/0112-framework-support-tiers.md)'s Tier 0.
@@ -154,6 +154,20 @@ How it was built:
   `__wrap_poll` (issue 2198, first seen in the 2026-11-01 nightly `nuttx`
   job). No merge-gating lane builds NuttX, so W3's checks did not catch it.
 
+### W3.b — The park links on NuttX rv-virt (issue 2198) — OPEN, do first
+
+W3 shipped a regression: four nightly `nuttx-riscv` rows fail to link. Fix it
+before new W4–W6 work lands, since each later item adds to the same park. Of
+the three options issue 2198 lists, prefer one that keeps NuttX on the
+Waitable form: W6 refuses a session with no readiness form, so leaving the
+park off NuttX only moves the failure. Wake the park through a primitive the
+rv-virt configuration has (`eventfd`, or `CONFIG_PIPES`), and wait in a way
+the image's `--wrap=poll` resolves, or stop wrapping `poll` there.
+
+**Acceptance:** the four rows build in the nightly `nuttx` job; a NuttX riscv
+cell runs the park; a merge-gating lane compiles the park for NuttX riscv, so
+the next park change cannot repeat this.
+
 
 - `nros-rmw` C header: add `readiness_source` to the vtable (Notify or
   Waitable + handle); run `scripts/gen-abi-bindings.sh`; Rust trait default
@@ -229,19 +243,33 @@ forks rather than reach stack internals or add a watcher task per session):
   wait for the period boundary by its own definition. Whether that sleep
   should park on the wake object is a W6 question.
 
-Remaining: Zephyr (zsock has no per-socket callback; a `zsock_poll` park or a
-`net_context` hook is the measurement still owed), `rx_notify` on the custom
-transport below, and the "zero receive calls between deadlines" measurement
-(W7).
+Remaining, in order (revised 2026-11-01 against RFC-0115):
 
-- Custom-transport ops gain `rx_notify` (moved here from W3): the board's
-  UART interrupt calls the notify the session installed.
+1. **Zephyr XRCE over UDP — next.** RFC-0115 D4 puts every board the book
+   names on Zephyr (Nucleo-F767ZI in Renode, Pico W in Wokwi), so Zephyr is no
+   longer one port among four. zsock has no per-socket callback. Two
+   candidates, both measured on `native_sim` before choosing: (a) Waitable, an
+   `eventfd` plus `zsock_poll` handle park; (b) Notify, Zephyr's
+   `NET_SOCKET_SERVICE` (public since 3.6, one shared service thread).
+2. **zenoh on Zephyr needs no new hook.** Zephyr runs zenoh in THREAD mode
+   (W2), and with `CONFIG_UART_INTERRUPT_DRIVEN` the serial reader blocks on a
+   `k_sem` that the UART ISR gives (issue 0852), so the twin boards' serial
+   link already meets D2. Without that symbol, the reader falls back to
+   `uart_poll_in` plus `k_yield()`, which is a busy wait; W6 retires that path.
+3. **Custom-transport `rx_notify` is deferred to its first consumer.** It was
+   to land with "every in-tree board that has an XRCE serial cell". There is no
+   such board: every in-tree serial cell is zenoh (`examples/linux/rust/serial-*`,
+   `mps2-an385-baremetal/rust/serial-*`, the Zephyr `talker-serial` row), and
+   the POSIX serial fd is already Waitable. A versioned field mirrored in four
+   places with no caller is not added on spec. Until a consumer exists, W6
+   refuses a custom-transport XRCE session, by name.
+4. The "zero receive calls between deadlines" measurement (W7).
 
 - POSIX/NuttX UDP: Waitable over `udp_bridge.fd`.
-- FreeRTOS + lwIP, ThreadX + NetX, Zephyr zsock: Notify from the stack's
-  receive callback.
-- Serial / custom transport: Notify through `rx_notify`; wire it on every
-  in-tree board that has an XRCE serial cell.
+- FreeRTOS + lwIP, ThreadX + NetX: Notify from the stack's receive callback
+  (done). Zephyr zsock: Waitable or Notify, per item 1.
+- Serial / custom transport: Notify through `rx_notify` once a consumer
+  exists (item 3); refused until then.
 
 **Acceptance:** `xrce_guard_wake` measures trigger→dispatch under 2 port
 granularities (today ~5 ms through the slices); an idle XRCE tier makes zero
@@ -256,7 +284,11 @@ of the keep-alive interval (moved here from W2; RFC-0113 D6).
 Generalise mps2-an385's pattern (issue 2022) into the board-entry contract:
 a bare-metal board supplies an RX-interrupt Notify and a one-shot deadline
 timer, or its sessions are refused (RFC-0113 D5). Port it to every in-tree
-bare-metal board that has a network or serial cell.
+bare-metal board that has a network or serial cell: today
+`mps2-an385-baremetal` (smoltcp and serial). `nros-board-esp32-qemu` is dormant
+(issue 1525) and is refused rather than ported. RFC-0115 names no bare-metal
+book board, so W5 has no twin-board work; a future bare-metal book board
+inherits this obligation through the board-entry contract.
 
 **Acceptance:** each such board's QEMU idle run is under 2 % host CPU and
 delivers its pair.
@@ -280,6 +312,16 @@ board-entry refusal.
 Once W4 and W5 cover every in-tree combination: delete the receive-blocking
 wait, the guard slices and `POLL_ONLY_WAKE_SLICE_MS`; add the open-time
 refusal for a combination with no readiness form; amend RFC-0106 D5.
+
+Added 2026-11-01 (RFC-0115): retire zenoh-pico's polled Zephyr UART read
+(`uart_poll_in` plus `k_yield()` when `CONFIG_UART_INTERRUPT_DRIVEN` is unset).
+A serial zenoh link on Zephyr then requires that symbol, and a build without
+it is refused by name. The twin boards already set it (phase-524 W1's serial
+Kconfig), so this costs the book boards nothing. This is a change on our
+zenoh-pico fork's patch branch.
+
+Also decide `rclc_executor_spin_period` (from W4): whether its inter-period
+sleep parks on the wake object.
 
 **Acceptance:** RFC-0113's coverage table has no "not yet" row; a test opens a
 session through a backend stub with no readiness form and asserts the refusal.
@@ -341,7 +383,10 @@ form.
 
 Make RFC-0113 D2 a measured property, not a reading:
 
-- idle wake count = 0 beyond deadlines (per RMW, Linux + one RTOS lane);
+- idle wake count = 0 beyond deadlines (per RMW, Linux + one RTOS lane;
+  the RTOS lane is the Zephyr family's QEMU `mps2_an385` witness, since
+  RFC-0115 D4 asserts family breadth there and the twin boards inherit it.
+  An RTOS XRCE fixture row is added for this, since none exists);
 - arrival→dispatch and deadline→dispatch latency against the port's
   granularity;
 - a low-priority tier's arrival does not wake a high-priority tier on an
