@@ -1,0 +1,27 @@
+[package]
+name = "nros-extension"
+# The crate's version follows the runner/command PROTOCOL it speaks, not the
+# toolchain's release version (see README.md "Versioning"). While the crate is
+# 0.x, the MINOR number moves exactly when `protocol::SUPPORTED` gains or drops
+# a version; a patch release never changes what goes over the wire.
+# 0.1.x speaks protocol 1.
+version = "0.1.0"
+description = "Types and helpers for nano-ros runner and command packages: the RunPlan, the `describe` reply, the console pump, USB port lookup and the exit codes (RFC-0118, RFC-0119)."
+readme = "README.md"
+keywords = ["nano-ros", "ros2", "embedded", "runner", "flash"]
+categories = ["development-tools", "embedded"]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+documentation = "https://docs.rs/nros-extension"
+# Prepared for crates.io (`cargo publish --dry-run` passes) but NOT published:
+# publication waits until protocol 1 has run through phase-528 and phase-529
+# (phase-527 "Out of scope"). There is deliberately no `publish = false` here,
+# because that would make the dry run refuse rather than check the package.
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

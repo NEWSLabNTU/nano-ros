@@ -34,6 +34,7 @@ three stale answers and no authoritative list.
 | `packages/platform/` | `nros-platform-*` | six of the RTOS ports are pure C, with no `Cargo.toml` |
 | `packages/reference/` | reference / comparison material | |
 | `packages/rmw/` | `zenoh/` `xrce/` `cyclonedds/` `uorb/` `cffi/` `bridge/` `metadata/` `transport-callbacks/` | the three transports that used to be `packages/{zpico,xrce,dds}/` |
+| `packages/runners/` | `nros-extension`, and the first-party runner packages (`nros_runner_*`) | a **sub-workspace**, own `Cargo.toml`/`Cargo.lock`, host tools (RFC-0119 D5); `just setup-cli` builds it |
 | `packages/testing/` | `nros-tests`, `nros-bench`, `nros-smoke`, `nros-build-profile` | |
 | `packages/tooling/` | `nros-build-*`, `nros-cc-flags`, `nros-zephyr-build`, … | build-support crates for this repo |
 | `packages/verification/` | Kani / Verus harnesses | |

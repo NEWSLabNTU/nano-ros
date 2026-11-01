@@ -6,6 +6,11 @@
 
 pub mod abi_guard;
 
+/// phase-527 W3 (RFC-0119 D5) — the runner and command contract, re-exported
+/// so the verbs that resolve a RunPlan or dispatch an extension command
+/// (phase-527 W4, phase-528) reach it through the core crate.
+pub use nros_extension;
+
 /// phase-478 I7 — what `nros version` prints after the codegen version: the
 /// play_launch commit this binary's launch resolution was built against
 /// (issue 0409's pin) and the ros-launch-manifest tag its contract grammar

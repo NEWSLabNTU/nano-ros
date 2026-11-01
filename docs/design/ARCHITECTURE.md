@@ -14,7 +14,7 @@ that way*.
 ## 1. Layered crate stack
 
 nano-ros is a `no_std` ROS 2 client. Crates live under `packages/{api,boards,cli,core,drivers,
-interfaces,platform,reference,rmw,testing,tooling,verification}/` — what each directory holds is
+interfaces,platform,reference,rmw,runners,testing,tooling,verification}/` — what each directory holds is
 RFC-0001 §"Directory map". The stack layers, bottom-up:
 
 1. **Platform layer** — sync/timer/yield ABI per RTOS (`nros-platform-*` in `packages/platform/`;

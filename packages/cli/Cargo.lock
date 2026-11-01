@@ -839,6 +839,7 @@ dependencies = [
  "nros-build-paths",
  "nros-cargo-profile",
  "nros-entry-lower",
+ "nros-extension",
  "nros-lang",
  "nros-launch-parser",
  "nros-launcher",
@@ -882,6 +883,14 @@ name = "nros-entry-lower"
 version = "0.6.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "nros-extension"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

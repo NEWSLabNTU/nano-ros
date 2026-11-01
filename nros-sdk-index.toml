@@ -2490,6 +2490,9 @@ locked_roots = [
     "packages/reference/stm32f4-porting/polling",
     "packages/reference/stm32f4-porting/rtic",
     "packages/rmw/zenoh/zpico-serial",
+    # phase-527 W3 (RFC-0119 D5) — the runner packages and `nros-extension`,
+    # a closed-graph host-tool root like `packages/cli`.
+    "packages/runners",
     "packages/testing/nros-smoke/esp32-hello-world",
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     "packages/verification/nros-verification",
