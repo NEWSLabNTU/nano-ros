@@ -11,9 +11,10 @@
 #
 #   A. A bounded closure DERIVES all four numbers, and derives the ones the
 #      island bring-up produced by eye. The small class is the largest bound at
-#      or under the split; the large count is how many types are above it; the
-#      large size is the biggest of those; the take buffer is the biggest of
-#      all. Asserting the VALUES and not just "it ran" is the point -- W6's
+#      or under the split; the large size is the biggest bound above it; the
+#      take buffer is the biggest of all. The large COUNT is derived only when
+#      it is zero: it counts subscriptions, and an image that declares none
+#      has no count, only a type list (issue 2201). Asserting the VALUES and not just "it ran" is the point -- W6's
 #      prototype was a one-off `cmake -P` whose answer nobody re-derived.
 #
 #   B. COMPOSITION over several packages. The image-wide answer is a property
@@ -352,16 +353,28 @@ fi
 # ---------------------------------------------------------------------------
 # A (large half). Add one type above the split and both large knobs appear.
 # ---------------------------------------------------------------------------
-log_header "A -- a type over the split drives the large class"
+log_header "A -- a type over the split drives the large class SIZE, not its count"
 frag "$T/b1.cmake" "sensor_msgs" <<'ROWS'
 sensor_msgs/msg/JointState|bounded|4204|4208|
 sensor_msgs/msg/Imu|bounded|300|320|
 sensor_msgs/msg/LaserScan|bounded|2500|2600|
 ROWS
-OUT="$(derive "$T/a2.cmake;$T/b1.cmake")"
+OUT="$(derive "$T/a2.cmake;$T/b1.cmake" -DNROS_BOUNDS_OUTPUT="$T/b1-knobs.cmake")"
+# Issue 2201. This image declares no entities, so two linked types over the
+# split say nothing about how many SUBSCRIPTIONS receive them -- it may be
+# none (a talker), or three on one type. The count used to be published as 2
+# here, a type count wearing a subscription count's name.
 check
-if ! nros_grep_q "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS=2" <<< "$OUT"; then
-    fail "A: two types exceed 2048, so the large count must be 2:"; echo "$OUT"
+if nros_grep_q "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS=" <<< "$OUT"; then
+    fail "A: with no declared entities the large COUNT is unknown and must not be derived from a type count (issue 2201):"; echo "$OUT"
+fi
+check
+if nros_grep_q "set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS" "$T/b1-knobs.cmake"; then
+    fail "A: the answer file carries a large count on the closure basis (issue 2201):"; cat "$T/b1-knobs.cmake"
+fi
+check
+if ! nros_grep_q "NROS_MAX_LARGE_SUBSCRIBERS not derived" <<< "$OUT"; then
+    fail "A: the underived large count must be reported, not silently absent:"; echo "$OUT"
 fi
 check
 if ! nros_grep_q "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE=4208" <<< "$OUT"; then
@@ -381,8 +394,8 @@ fi
 log_header "A -- the class split is an input, not a constant"
 OUT="$(derive "$T/a2.cmake;$T/b1.cmake" -DNROS_BOUNDS_CEILING=512)"
 check
-if ! nros_grep_q "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS=3" <<< "$OUT"; then
-    fail "A: at a 512 B split, three types are large:"; echo "$OUT"
+if ! nros_grep_q "NROS_DERIVED_LARGE_TYPES=.*Odometry=880" <<< "$OUT"; then
+    fail "A: at a 512 B split, Odometry (880) is large:"; echo "$OUT"
 fi
 check
 if ! nros_grep_q "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE=320" <<< "$OUT"; then
@@ -419,6 +432,14 @@ fi
 check
 if ! nros_grep_q -qi "nros-codegen.toml" <<< "$OUT"; then
     fail "C: the refusal must name a remedy the user can act on:"; echo "$OUT"
+fi
+# Issue 2201 -- and, for the payload classes, the CHEAP remedy: an image that
+# declares its entities derives them over what it receives however open the
+# closure is (case P), so a talker reserves no large blocks.
+check
+if ! nros_grep_q "declares no entities" <<< "$OUT" \
+   || ! nros_grep_q -F "[[component]] entities" <<< "$OUT"; then
+    fail "C: an undeclared image refused for an open closure must be told that declaring its entities derives the payload classes (issue 2201):"; echo "$OUT"
 fi
 # phase-517 W5 -- without NROS_VERBOSE a correct build says it in ONE line
 # and points at where the detail is; the type list stays out of it.
