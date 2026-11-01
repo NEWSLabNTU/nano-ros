@@ -1,12 +1,13 @@
 ---
 id: 2208
 title: "A declarative Rust subscription hands the backend no rx bound, so a declared ingress cannot pace it on XRCE"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: [rmw, xrce, node, api]
 related: [phase-519, rfc-0074, rfc-0038]
 found: 2026-11-01
+resolved: 2026-11-01
 ---
 
 ## Symptom
@@ -52,3 +53,30 @@ in the declared entity's metadata at declaration time, and pass it as the
 backend hint on the generic registration. The in-place and buffered rows of
 issue 1319 are unaffected: the hint is the BACKEND's number, not the arena
 slot's.
+
+## Resolution (2026-11-01)
+
+The declaration records the bound and the runtime hands it on.
+
+- `EntityMetadata::rx_bound` is set from `RosMessage::MAX_SERIALIZED_BOUND` by
+  every subscription declaration in `packages/api/nros/src/node.rs`: the plain
+  and QoS forms, the `.safety()` form and `create_subscription_static`. It
+  stays `None` for an unbounded type and for every other entity kind.
+- `nros-node` gains `create_generic_subscription_with_qos_and_rx_hint` and
+  `create_generic_subscription_with_integrity_and_rx_hint`. The old names pass
+  `None`. `register_subscription_buffered_raw_on` and its safety twin take the
+  hint and put it in `SubscriptionRequest::backend_hint`.
+- The declarative runtime (`node_runtime.rs`) passes `metadata.rx_bound` on
+  both arms.
+
+Test: `a_declared_subscription_records_its_message_bound` in
+`packages/rmw/metadata/tests/component_registration.rs`, with an unbounded type
+and a publisher as negative controls.
+
+Measured with the issue's shape (a `Component` subscribing
+`builtin_interfaces/msg/Time`, `rmw = "xrce"`, depth 1, a Humble publisher at
+100 Hz, 15 s): with `ingress: { rate_hz: 10 }` it received 10.34 Hz at a median
+age of 100.5 ms; with no `ingress`, 100.07 Hz at 0.4 ms.
+
+The zenoh receive class reads the same hint, so declarative subscriptions on
+zenoh now take the class their type's bound selects rather than the default.

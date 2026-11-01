@@ -295,8 +295,12 @@ with no declaration is unchanged.
 A declared rate on a subscription whose registration states no bound (an
 unbounded type, or the type-erased path) cannot become a byte rate, and the
 backend now logs that rather than staying silent. The declarative Rust
-`Component` path is one such registration today, even for a bounded type:
-it registers through the generic path with no hint (issue 2208).
+`Component` path was one such registration, even for a bounded type, until
+issue 2208: it registers type-erased, so the type's bound is now recorded in
+the entity's metadata at declaration and handed to the backend as the hint.
+Measured on that shape (a `Component` subscribing `builtin_interfaces/msg/Time`,
+`ingress: { rate_hz: 10 }`): 10.34 Hz, median age 100.5 ms, against 100.07 Hz
+and 0.4 ms with no `ingress`.
 
 **Measured 2026-11-01, end to end** on a nano-ros image (native, `rmw =
 "xrce"`, a typed executor subscription to `builtin_interfaces/msg/Time`,

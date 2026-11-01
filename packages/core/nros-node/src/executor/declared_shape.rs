@@ -66,11 +66,11 @@
 /// registrar at its gate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeclaredSubscriptionShape {
-    /// `Node::create_generic_subscription_with_qos` →
+    /// `Node::create_generic_subscription_with_qos_and_rx_hint` →
     /// `Executor::register_subscription_buffered_raw_on`.
     BufferedRaw,
     /// A `.safety()` declaration:
-    /// `Node::create_generic_subscription_with_integrity` →
+    /// `Node::create_generic_subscription_with_integrity_and_rx_hint` →
     /// `Executor::register_subscription_buffered_raw_safety_on`.
     BufferedRawSafety,
 }

@@ -3,9 +3,9 @@
 **Status (2026-11-01, latest). W3 done (W3a + W3b).** A contract's declared
 ingress now reaches `rmw_subscription_options_t::ingress_rate_mhz` on every
 surface, through the sizing descriptor, and a nano-ros image was measured paced
-by the agent (10.34 Hz against a 100 Hz publisher). One path still states no
-bound, so it is not paced: the declarative Rust `Component` (issue 2208). W1 and
-W2 are still deferred.
+by the agent (10.34 Hz against a 100 Hz publisher). The declarative Rust
+`Component`, which first measured unpaced because it handed the backend no
+bound, is paced too since issue 2208. W1 and W2 are still deferred.
 
 **Status (2026-11-01, later). W3a done; W3b open.** The maintainer chose the
 guarded request. The agent's `max_bytes_per_second` was measured: it bounds the
@@ -180,7 +180,8 @@ subscription to `builtin_interfaces/msg/Time`, `ingress: { rate_hz: 10 }`,
 received 10.34 Hz with a median age of 100.5 ms against a 100 Hz publisher;
 the same image with no `ingress` received 100.07 Hz at 0.4 ms. The declarative
 Rust `Component` shape was measured unpaced, with the new log line naming the
-missing bound, and is issue 2208.
+missing bound. Issue 2208 fixed it: the same shape now receives 10.34 Hz at
+100.5 ms.
 
 ### W4 — one door for starting the agent — DONE (2026-11-01)
 

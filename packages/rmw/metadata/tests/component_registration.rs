@@ -177,6 +177,83 @@ fn safety_opt_in_records_metadata_flag() {
     assert!(ents[1].safety, "safety sub must be flagged");
 }
 
+// Issue 2208 — a declared subscription records its message type's bound, so
+// the runtime's type-erased registration can still give the backend the
+// `rx_buffer_hint` the typed executor path gives it. Without it a declarative
+// subscription on XRCE could not be paced by a declared ingress, and on zenoh
+// took the default receive class whatever its type.
+#[derive(Debug, Clone, Copy, Default)]
+struct BoundedMsg;
+
+impl nros::Serialize for BoundedMsg {
+    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+        Ok(())
+    }
+}
+
+impl nros::Deserialize for BoundedMsg {
+    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self)
+    }
+}
+
+impl RosMessage for BoundedMsg {
+    const TYPE_NAME: &'static str = "test_msgs::msg::dds_::Bounded_";
+    const TYPE_HASH: &'static str = "bounded_hash";
+    const MAX_SERIALIZED_BOUND: Option<usize> = Some(16);
+}
+
+struct BoundComponent;
+impl Component for BoundComponent {
+    const NAME: &'static str = "bound_component";
+    fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
+        let mut node =
+            context.create_node_with_id(NodeId::new("node"), NodeOptions::new("listener"))?;
+        let _bounded =
+            node.create_subscription_for_callback_name::<BoundedMsg>("on_bounded", "/bounded")?;
+        let _unbounded =
+            node.create_subscription_for_callback_name::<TestMsg>("on_unbounded", "/unbounded")?;
+        let _safe = node
+            .create_subscription_for_callback_name_with_safety::<BoundedMsg>("on_safe", "/safe")?;
+        let _tag = node.create_subscription_static::<BoundedMsg>("/static")?;
+        let _publisher = node.declare_publisher::<BoundedMsg>(EntityId::new("pub_out"), "/out")?;
+        Ok(())
+    }
+}
+
+#[test]
+fn a_declared_subscription_records_its_message_bound() {
+    let mut recorder = MetadataRecorder::<2, 8, 4>::new();
+    record::<BoundComponent>(&mut recorder).unwrap();
+    let by_topic = |t: &str| {
+        recorder
+            .entities()
+            .iter()
+            .find(|e| e.source_name.as_str() == t)
+            .unwrap_or_else(|| panic!("no entity on {t}"))
+            .rx_bound
+    };
+    assert_eq!(
+        by_topic("/bounded"),
+        Some(16),
+        "the type's bound is recorded"
+    );
+    assert_eq!(
+        by_topic("/safe"),
+        Some(16),
+        "the `.safety()` path records it too"
+    );
+    assert_eq!(
+        by_topic("/static"),
+        Some(16),
+        "the static-tag path records it too"
+    );
+    // Negative controls: an unbounded type states nothing, and so does a
+    // publisher, which has no receive buffer.
+    assert_eq!(by_topic("/unbounded"), None);
+    assert_eq!(by_topic("/out"), None);
+}
+
 /// phase-457 W5 (issue 1522) — the Rust producer STATES a subscription's
 /// registration path instead of refusing it.
 ///

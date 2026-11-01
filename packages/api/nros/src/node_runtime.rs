@@ -1913,10 +1913,11 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     let cb_s = cb_id_owned.clone();
                     executor
                         .node_mut(node)
-                        .create_generic_subscription_with_integrity(
+                        .create_generic_subscription_with_integrity_and_rx_hint(
                             entity_name,
                             metadata.type_name,
                             metadata.type_hash,
+                            metadata.rx_bound,
                             move |payload: &[u8], status: &nros_node::IntegrityStatus| {
                                 dispatch_into_cell_with_integrity(
                                     cell_s.view(),
@@ -1936,11 +1937,15 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                 // node's declared profile instead of defaulting it.
                 executor
                     .node_mut(node)
-                    .create_generic_subscription_with_qos(
+                    // Issue 2208 -- with the type's bound the declaration
+                    // recorded, so the backend gets the same `rx_buffer_hint`
+                    // the typed executor path gives it.
+                    .create_generic_subscription_with_qos_and_rx_hint(
                         entity_name,
                         metadata.type_name,
                         metadata.type_hash,
                         metadata.qos,
+                        metadata.rx_bound,
                         move |payload: &[u8]| {
                             dispatch_into_cell(cell.view(), &cb_id_owned, payload);
                         },
