@@ -115,9 +115,21 @@ pub fn resolve(
     // with either one would hand the build another board's SDK roots.
     let (candidates, site, origin) = pick_deploys(ws, nano_ros_root, deploy, board)?;
     let mut resolved: Vec<(String, BTreeMap<String, String>)> = Vec::new();
-    for (name, board) in candidates {
-        let facts = resolve_one(&origin, nano_ros_root, &name, &board, &site, env)?;
-        resolved.push((name, facts));
+    for (name, board) in &candidates {
+        // Issue 2199 — a refusal about the BOARD belongs to every candidate on
+        // that board, not to whichever one sorts first: naming one deploy read
+        // as "this is the image being built" when nothing chose it.
+        let label = candidates
+            .iter()
+            .filter(|(_, b)| b == board)
+            .map(|(n, _)| format!("`{n}`"))
+            .collect::<Vec<_>>();
+        let label = match label.as_slice() {
+            [one] => format!("deploy {one}"),
+            many => format!("deploys {}", many.join(", ")),
+        };
+        let facts = resolve_one(&origin, nano_ros_root, &label, board, &site, env)?;
+        resolved.push((name.clone(), facts));
     }
     if let Some((first_name, first)) = resolved.first()
         && let Some((other_name, other)) = resolved.iter().find(|(_, f)| f != first)
@@ -211,21 +223,21 @@ fn site_for_board<'a>(
 fn resolve_one(
     origin: &str,
     nano_ros_root: &Path,
-    deploy_name: &str,
+    deploy_label: &str,
     board_name: &str,
     site_table: &BTreeMap<String, toml::Value>,
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Result<BTreeMap<String, String>> {
-    let deploy_name = deploy_name.to_string();
     let board_name = board_name.to_string();
 
     let catalog = BoardCatalog::load(nano_ros_root)
         .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
     let descriptor = resolve_board(&catalog, &board_name).ok_or_else(|| {
         eyre!(
-            "no board descriptor claims `{board_name}` (deploy `{deploy_name}`). \
+            "no board descriptor claims `{board_name}` ({deploy_label}). \
              Descriptors are matched by their `names` and by their directory \
-             (`packages/boards/nros-board-<name>`)."
+             (`packages/boards/nros-board-<name>`); an out-of-tree board package is \
+             reached through `$NROS_EXTRA_BOARD_PATH`."
         )
     })?;
 
@@ -490,7 +502,16 @@ fn pick_deploys(
     // manifest (RFC-0098 D3) — the same file a bringup uses, so one read serves
     // both. The retired manifest keys this used to map (phase-445 W5) are
     // refused by the reader, naming the file to write.
-    nros_orchestration_ir::leaf_system::read(ws).map_err(|e| eyre!(e))?;
+    //
+    // Issue 2199 — and the read's ANSWER is the leaf's image. A leaf builds ONE
+    // image (exactly one `[image.*]`, or `[system] default_images`), and
+    // `nros ws leaf-system` — which the Zephyr hook renders the image from —
+    // applies that rule. This verb used to discard it and resolve EVERY image
+    // the file declares, so a leaf with `xiao_serial` (its default) and
+    // `xiao_cdc` was refused naming `xiao_cdc`, the first key in order, for a
+    // build of `xiao_serial`. A configure that names a deploy or a board still
+    // chooses for itself.
+    let own = nros_orchestration_ir::leaf_system::read(ws).map_err(|e| eyre!(e))?;
     // A workspace ENTRY states no board of its own: the bringup image that
     // claims it does (`leaf_system::for_entry`, phase-445 W5). This is the
     // Zephyr lane's case — `NanoRosBoardFacts.cmake` points this verb at the
@@ -517,7 +538,8 @@ fn pick_deploys(
     let mut found = load_system_tomls(ws)?;
     if found.len() == 1 {
         let (p, sys) = found.remove(0);
-        return pick_from(&p, &sys, None, nano_ros_root, deploy, board);
+        let own = own.as_ref().filter(|_| deploy.is_none() && board.is_none());
+        return pick_from(&p, &sys, own, nano_ros_root, deploy, board);
     }
     let listed = found
         .iter()
@@ -751,7 +773,7 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
         resolve_one(
             &ws.join("Cargo.toml").display().to_string(),
             &root,
-            &board,
+            "the leaf's board crate",
             &board,
             &BTreeMap::new(),
             &|k| std::env::var(k).ok(),
@@ -1011,7 +1033,7 @@ mod tests {
         let board = board_of_cargo_leaf(leaf.path(), &root)
             .expect("attributed")
             .expect("one board crate");
-        let facts = resolve_one("t", &root, &board, &board, &BTreeMap::new(), &|_| None).unwrap();
+        let facts = resolve_one("t", &root, "test", &board, &BTreeMap::new(), &|_| None).unwrap();
         assert_eq!(
             facts.get("FREERTOS_PORT").map(String::as_str),
             Some("GCC_ARM_CM3")
@@ -1380,6 +1402,59 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
         assert!(none.to_string().contains("2 bringups"), "{none}");
         let miss = resolve(ws.path(), &root, Some("nope"), None, &|_| None).unwrap_err();
         assert!(miss.to_string().contains("none of 2 bringups"), "{miss}");
+    }
+
+    /// Issue 2199 — a single-package leaf builds the image its own rule picks
+    /// (`[system] default_images`), so a configure that names none resolves
+    /// THAT image's board — the one `nros ws leaf-system` hands the Zephyr hook
+    /// — rather than every image the file declares.
+    #[test]
+    fn a_leaf_resolves_its_default_image_when_none_is_named() {
+        let ws = ws_with(
+            "[system]\nname = \"l\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+             default_images = [\"smp\"]\n\
+             [image.a_freertos]\nboard = \"mps2-an385-freertos\"\n\
+             [image.smp]\nboard = \"qemu-cortex-a53\"\n",
+        );
+        std::fs::write(ws.path().join("CMakeLists.txt"), "").unwrap();
+        let facts = resolve(ws.path(), &repo_root(), None, None, &|_| None)
+            .expect("the leaf's default image resolves");
+        assert_eq!(
+            facts.get("NROS_BOARD").map(String::as_str),
+            Some("qemu-cortex-a53")
+        );
+        // A named deploy still chooses for itself, default or not.
+        let named = resolve(ws.path(), &repo_root(), Some("a_freertos"), None, &|_| None)
+            .expect("the named image resolves");
+        assert_eq!(
+            named.get("NROS_BOARD").map(String::as_str),
+            Some("mps2-an385-freertos")
+        );
+    }
+
+    /// Issue 2199 — the board refusal names the image that is being built, and
+    /// when nothing chose one it names every image on that board, never the
+    /// first in key order alone.
+    #[test]
+    fn an_unknown_board_refusal_names_the_right_images() {
+        let body = "[system]\nname = \"l\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+                    default_images = [\"xiao_serial\"]\n\
+                    [image.xiao_serial]\nboard = \"no-such-board\"\n\
+                    [image.xiao_cdc]\nboard = \"no-such-board\"\n";
+        let leaf = ws_with(body);
+        std::fs::write(leaf.path().join("CMakeLists.txt"), "").unwrap();
+        let e = resolve(leaf.path(), &repo_root(), None, None, &|_| None)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("(deploy `xiao_serial`)"), "{e}");
+        assert!(!e.contains("xiao_cdc"), "{e}");
+
+        // No manifest: a bringup builds every image, so both are named.
+        let bringup = ws_with(body);
+        let e = resolve(bringup.path(), &repo_root(), None, None, &|_| None)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("(deploys `xiao_cdc`, `xiao_serial`)"), "{e}");
     }
 
     /// The regression this file's own gate demanded and this resolver could
