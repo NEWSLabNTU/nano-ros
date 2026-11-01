@@ -1,10 +1,10 @@
 # Phase 522 — The board support registry becomes the one primitive
 
-**Status (2026-11-01). IN PROGRESS: W1-W5 landed; the phase archives once the last of them merges.** Implements
-[RFC-0114](../design/0114-board-support-registry-primitives.md) (D10 support
+**Status (2026-11-01). COMPLETE: W1-W5 merged (PRs 2932, 2937, 2941, 2942); the rendered book applies the manual-row staleness rule at build time; the W5 acceptance line on `check-user-surface-ids` moved to phase-525 W1, which owns that gate.** Implements
+[RFC-0114](../../design/0114-board-support-registry-primitives.md) (D10 support
 levels, D11 derived and inherited breadth, D12 one registry, everything else
 generated). Amends the tier section of
-[RFC-0064](../design/0064-board-support-organization.md). Written from the
+[RFC-0064](../../design/0064-board-support-organization.md). Written from the
 adoption discussion of 2026-10-31; the three adoption purposes (industrial,
 field solutions, education) are the readers of the evidence page this phase
 produces.
@@ -273,8 +273,8 @@ owner for it, as for the S32K344 island.
 
 Acceptance: `board_key_table.rs` and the `nros board` tests cover the new
 columns; the installed probe track prints a status word for its board;
-`check-user-surface-ids` (phase-523 W1), once it exists, finds no tier
-number in the output.
+`check-user-surface-ids`, once it exists, finds no tier number in the output
+(moved to [phase-525](../phase-525-adoption-front-doors.md) W1's acceptance).
 
 Decision step: if the installed toolchain's copy of the registry and the
 checkout's disagree (a released `nros` against a newer checkout), the CLI
@@ -303,8 +303,8 @@ requires the installed `nros board show` to print a status word.
 Decision step: when the checkout's registry and the running `nros`'s own
 SDK-root copy differ, `nros board list` and `nros board show` print both
 words for the rows that differ and a note naming the file read; they never
-pick silently. `check-user-surface-ids` (phase-523 W1) does not exist yet, so
-that acceptance line waits for it.
+pick silently. `check-user-surface-ids` belongs to phase-525 W1, not phase-523 as
+first written, and that phase's acceptance now carries the tier-number check.
 
 ## Acceptance for the phase
 

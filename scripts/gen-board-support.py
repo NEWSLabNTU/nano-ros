@@ -111,13 +111,18 @@ class Registry:
             return True
         return board_registry.board_name(row) in self.fixture_boards
 
-    today = None  # no clock: a view must not change on a day nobody edited
+    # No clock for the COMMITTED views: a tracked file must not change on a day
+    # nobody edited anything, or the gate turns red for every pull request on
+    # day 121. The RENDERED book applies the date instead: book/book.toml runs
+    # scripts/mdbook-board-status.py, which sets `today` and re-renders these
+    # pages at build time (RFC-0114 D10, decision log 2026-11-01).
+    today = None
 
     def status(self, row: dict) -> str:
         word = board_registry.status_word(row, self.built(row),
                                           stale_days=self.stale_days, today=self.today)
         until = board_registry.stale_from(row, self.stale_days)
-        if until and self.today is None:
+        if until and not word.startswith("Builds"):
             word += f"; reads *Builds* from {until}"
         return word
 

@@ -15,7 +15,7 @@ superseded-by: null
 **Status:** Draft (2026-10-31). Written from the adoption discussion of
 2026-10-31 (three purposes: industrial, field solutions, education) and
 before any code. Implemented by
-[phase-522](../roadmap/phase-522-support-registry-primitives.md). The
+[phase-522](../roadmap/archived/phase-522-support-registry-primitives.md). The
 companion RFCs of the same discussion are RFC-0115 (emulator-first board
 policy) and RFC-0116 (adoption purposes and front doors); this one is the
 substrate both of them record evidence into.
@@ -323,6 +323,19 @@ stated reversal.
 
 ## Decision log
 
+- 2026-11-01 — Where the clock is applied. D10 says a stale manual row reads
+  Builds in every generated view. The committed views (the book's markdown
+  pages, the status file) carry no clock: a tracked file that changed on a day
+  nobody edited anything would fail `check-board-registry` for every pull
+  request from the stale day on. They print the row's current word and the
+  date it starts reading Builds. Every view a reader sees applies today's date:
+  `nros board`, `nros doctor --report` and `check-board-tiers.py --print-status`
+  read the clock, and the rendered book does too, through the mdBook
+  preprocessor `scripts/mdbook-board-status.py`, which re-renders each board
+  page with the generator's own renderer when the book is built. The maintainer
+  chose this over a scheduled regeneration job because the published page then
+  states the fact on the day it is read. The preprocessor's self-test, run by
+  `check-board-registry`, renders the FVP row on both sides of its stale date.
 - 2026-11-01 — Evaluation step 1's narrowing applied by phase-522 W2. The
   emulator platforms carry 146 `examples/fixtures.toml` rows
   (`[[fixture]]` and `[[workspace_fixture]]` on freertos, threadx-riscv64,
