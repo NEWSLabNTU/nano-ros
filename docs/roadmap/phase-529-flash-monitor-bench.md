@@ -114,13 +114,41 @@ with that finding, and no runner is written.
 
 - Hardware cells (phase-524 W5) run through `nros flash --monitor --plan`,
   as emulator cells run through `nros run --plan` (phase-528 W5).
-- The bench file of the runner machine supplies ports and probes. A cell
-  whose board is absent from it is skipped with `nros_tests::skip!` and the
-  reason, never passed.
+- The bench file of the runner machine supplies ports and probes. It never
+  decides whether a cell runs: a scope is a property of the lane, fixed
+  before the run, so the same lane runs the same cells on every host
+  (CLAUDE.md, issue 1758). Two parts:
+  - **Scope.** Real boards are a host capability, `bench`, added to
+    `nros_tests::lane_scope::Capability`. Every existing lane lists it in
+    `NROS_TEST_UNCLAIMED` (through `nros_lane_unclaimed` and
+    `CiLane::unclaimed`, the one place each lane's scope comes from), as it
+    does `rt-sched`. A bench lane claims it and names the boards it covers,
+    for example `just test bench boards=nucleo-f767zi-zephyr`; the board list
+    is part of the lane's declaration, not something read from the machine.
+    A hardware cell outside that scope (capability unclaimed, or its board
+    not in the lane's list) is `nros_tests::lane_skip!`, decided before any
+    probe.
+  - **Precondition.** A cell in scope looks its board up in the bench file
+    and resolves the port and probe (RFC-0118 D6). No bench entry, no
+    attached device, or two candidates is `nros_tests::unmet!` naming the
+    board and `nros bench scan`: a red, never a skip and never a pass.
+  - Unset `NROS_TEST_UNCLAIMED` claims everything, as for every other
+    capability, so a bare `cargo nextest` on a machine with no boards is red
+    on the hardware cells. That is the honest answer for a run that asked
+    for everything.
+- `check-skip-budget` and `lane_scope`'s tests cover the new capability: a
+  `lane_skip!` in a hardware cell must come from the scope predicate, and an
+  unknown board name in a lane's list is a hard error, like an unknown
+  `NROS_TEST_UNCLAIMED` token.
 
-Acceptance: on the maintainer bench, each phase-524 board's smoke cell passes
-through the verb, and the same cell on a machine without that board reports a
-skip that names it.
+Acceptance:
+
+- On the maintainer bench, `just test bench boards=<each phase-524 board>`
+  runs each board's smoke cell through the verb, and it passes.
+- Every existing lane deselects the hardware cells, counted as lane skips,
+  identically on a machine with boards attached and on one without.
+- In the bench lane, a board in the lane's list but unplugged is a red
+  `[UNMET PRECONDITION]` that names the board.
 
 ## Acceptance
 
