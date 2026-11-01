@@ -202,6 +202,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
     {
         return crate::NROS_CPP_RET_DECLARED_DEPTH_MISMATCH;
     }
+    // phase-519 W3b (RFC-0074) — the declared ingress rate, as the executor's
+    // registration hands it on.
+    let topic_info = nros_node::declared_qos::with_declared_ingress(topic_info);
     match session.create_subscription(&topic_info, qos_settings) {
         Ok(handle) => {
             unsafe {

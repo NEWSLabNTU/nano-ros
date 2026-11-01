@@ -1,5 +1,12 @@
 # Phase 519 — The RMW daemons: the zenoh router and the XRCE agent
 
+**Status (2026-11-01, latest). W3 done (W3a + W3b).** A contract's declared
+ingress now reaches `rmw_subscription_options_t::ingress_rate_mhz` on every
+surface, through the sizing descriptor, and a nano-ros image was measured paced
+by the agent (10.34 Hz against a 100 Hz publisher). One path still states no
+bound, so it is not paced: the declarative Rust `Component` (issue 2208). W1 and
+W2 are still deferred.
+
 **Status (2026-11-01, later). W3a done; W3b open.** The maintainer chose the
 guarded request. The agent's `max_bytes_per_second` was measured: it bounds the
 rate, it ages each sample by one period, and it stops the stream when its
@@ -85,7 +92,7 @@ a change in this tree. Until it lands, the lowering stays at burst 1.
 **Done when** the request is filed and linked here. If upstream ships it, the
 lowering gains the term, behind a check of the router's zenoh version.
 
-### W3 — the ingress budget at the XRCE agent — W3a DONE (2026-11-01), W3b open
+### W3 — the ingress budget at the XRCE agent — DONE (2026-11-01)
 
 RFC-0074 enforcement point 1 exists only for zenoh. An XRCE subscriber asks
 the agent for data with a `uxrDeliveryControl`, and nano-ros asks for
@@ -129,9 +136,8 @@ maintainer chose option one: request it, behind guards.
   sample) and when the product exceeds the wire field's 65535. Test:
   `nros_rmw_xrce_ingress_pace` in `just check rmw-xrce`.
 
-**W3b — the declaration reaches the field (open).** No caller sets
-`ingress_rate_mhz` yet, so every image still asks for everything and no
-behaviour has changed. The declaration lives in the contract
+**W3b — the declaration reaches the field (as planned).** Before W3b no
+caller set `ingress_rate_mhz`, so every image asked for everything. The declaration lives in the contract
 (`sub.<endpoint>.ingress.rate_hz`). Each surface has to fill the field the
 way it fills `rx_buffer_hint`:
 
@@ -143,6 +149,38 @@ way it fills `rx_buffer_hint`:
 **Done when** an image whose contract declares an ingress on an XRCE
 subscription asks the agent for the derived pace, and that is measured once
 against the agent.
+
+**W3b — landed.** The design differs from the sketch above in one place: the
+C and C++ surfaces do not read the generated declared-QoS header. That header
+is a compile-time check, while the runtime already has a per-endpoint table
+every surface consults at registration (`nros_node::declared_qos`, filled by
+`nros-node/build.rs` from the sizing descriptor). So the rate rides there, on
+one carrier for all three languages:
+
+- `EntityDecl::ingress_rate` is read from `contracts.sub_endpoints.<ep>.ingress`
+  in `EntityInventory::from_model`, and the contract join copies it onto a
+  probed row it attributes.
+- The descriptor's `[[endpoint]]` row gains `ingress_rate_mhz` (additive; the
+  schema version did not move). An unattributed row refuses it with its other
+  contract facts, and a shared runtime whose entries disagree refuses it (D12
+  rule 2).
+- `DeclaredEndpoint::ingress_rate_mhz`, and `declared_qos::with_declared_ingress`
+  at the five registrations that build a `TopicInfo`: `Executor::open_subscription`,
+  the two `Node` subscription verbs, and the C and C++ polling subscriptions.
+- The XRCE backend now LOGS a declared rate it cannot pace because the
+  registration stated no bound, instead of staying silent.
+
+Tests: `declared_qos` unit tests (lookup, with negative controls), a fifth
+declared-image test in `just check declared-qos-registration` over the
+descriptor fixture's `/paced` row, the composer's row, round-trip, refusal and
+D12 tests in `nros-cli-core`, and `nros_rmw_xrce_ingress_pace`'s no-bound case.
+
+**Measured** (RFC-0074 "On XRCE"): a native XRCE image with a typed
+subscription to `builtin_interfaces/msg/Time`, `ingress: { rate_hz: 10 }`,
+received 10.34 Hz with a median age of 100.5 ms against a 100 Hz publisher;
+the same image with no `ingress` received 100.07 Hz at 0.4 ms. The declarative
+Rust `Component` shape was measured unpaced, with the new log line naming the
+missing bound, and is issue 2208.
 
 ### W4 — one door for starting the agent — DONE (2026-11-01)
 

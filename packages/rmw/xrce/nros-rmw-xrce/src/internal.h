@@ -1091,12 +1091,16 @@ void xrce_report_capacity_exhausted(const char* kind, const char* name, unsigned
  * sample smaller than the bound costs fewer tokens, so the agent admits AT
  * LEAST `rate_hz` samples a second, never fewer.
  *
- * Three refusals, each answered with "ask for everything" (`0`, which is
+ * Four refusals, each answered with "ask for everything" (`0`, which is
  * `UXR_MAX_BYTES_PER_SECOND_UNLIMITED`, the request every subscription made
  * before) and a reason in `*why`:
  *
- * - no declaration (`rate_mhz == 0`) or no bound (`bound == 0`) — nothing to
- *   derive from; `*why` is NULL, because this is the normal case;
+ * - no declaration (`rate_mhz == 0`) — nothing to derive from; `*why` is
+ *   NULL, because this is the normal case;
+ * - a declaration with no bound (`bound == 0`, a type with an unbounded
+ *   member such as a `string`) — a message rate cannot become a byte rate.
+ *   Since phase-519 W3b fills the rate from the contract, this is a
+ *   declaration the image does not honour, so it gets a reason too;
  * - `rate_hz < 1` — the bucket holds less than one bound-sized sample, and the
  *   agent's token-bucket consume returns false FOREVER for a sample bigger than
  *   the bucket, so the stream stops with no error (measured: 0 samples in 15 s
@@ -1107,7 +1111,12 @@ void xrce_report_capacity_exhausted(const char* kind, const char* name, unsigned
 static inline uint16_t xrce_ingress_max_bytes_per_second(uint32_t rate_mhz, uint32_t bound,
                                                          const char** why) {
     *why = NULL;
-    if (rate_mhz == 0u || bound == 0u) {
+    if (rate_mhz == 0u) {
+        return 0u;
+    }
+    if (bound == 0u) {
+        *why = "the type has no static bound, so the declared message rate cannot "
+               "become the agent's byte rate";
         return 0u;
     }
     if (rate_mhz < 1000u) {

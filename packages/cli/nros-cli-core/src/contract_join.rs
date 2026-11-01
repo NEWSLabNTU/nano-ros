@@ -357,6 +357,7 @@ fn attribute(
         buffer: c.buffer,
         publish_rate: c.publish_rate,
         drain_rate: c.drain_rate,
+        ingress_rate: c.ingress_rate,
         contract_refusal: None,
         ..row.clone()
     }

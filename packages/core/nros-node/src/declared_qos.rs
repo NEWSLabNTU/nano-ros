@@ -120,6 +120,10 @@ pub struct DeclaredEndpoint {
     pub reliability: Option<QoSReliabilityPolicy>,
     /// `Volatile` / `TransientLocal`, on the same rule.
     pub durability: Option<QoSDurabilityPolicy>,
+    /// phase-519 W3b (RFC-0074) -- the declared ingress rate, millihertz
+    /// (`rate_hz x 1000`). Subscriptions only. Not checked against anything:
+    /// [`with_declared_ingress`] hands it to the backend.
+    pub ingress_rate_mhz: Option<u32>,
 }
 
 /// Every subscription this image's contract declares something about, or
@@ -181,6 +185,38 @@ pub fn declared_reliability(type_name: &str, topic: &str) -> Option<QoSReliabili
 /// issue 1256 -- the declared durability for `(type_name, topic)`, or `None`.
 pub fn declared_durability(type_name: &str, topic: &str) -> Option<QoSDurabilityPolicy> {
     row_in(DECLARED_QOS_ROWS?, type_name, topic).and_then(|r| r.durability)
+}
+
+/// phase-519 W3b -- the declared ingress rate for `(type_name, topic)` in
+/// `rows`, or `None`. Split out for [`row_in`]'s reason.
+fn ingress_in(rows: &[DeclaredEndpoint], type_name: &str, topic: &str) -> Option<u32> {
+    row_in(rows, type_name, topic).and_then(|r| r.ingress_rate_mhz)
+}
+
+/// phase-519 W3b -- the declared ingress rate (millihertz) for
+/// `(type_name, topic)`, or `None` when nobody declared one.
+pub fn declared_ingress_rate_mhz(type_name: &str, topic: &str) -> Option<u32> {
+    ingress_in(DECLARED_QOS_ROWS?, type_name, topic)
+}
+
+/// phase-519 W3b (RFC-0074) -- `topic`, carrying this image's declared
+/// ingress rate for it, if the contract declared one.
+///
+/// Every subscription registration that builds its own `TopicInfo` calls
+/// this before the backend call -- the executor's one prologue
+/// (`Executor::open_subscription`), the two `Node` subscription verbs, and the
+/// C and C++ polling subscriptions. The rate reaches the backend in
+/// `rmw_subscription_options_t::ingress_rate_mhz`: the XRCE backend asks the
+/// agent for `rate_hz x rx_buffer_hint` bytes a second, and a backend that
+/// enforces the declaration elsewhere (zenoh, at the router) ignores it.
+///
+/// Unchanged when nothing was declared, which is every image with no
+/// contract sidecar: `ingress_rate_mhz` stays 0, "undeclared".
+pub fn with_declared_ingress<'a>(topic: nros_rmw::TopicInfo<'a>) -> nros_rmw::TopicInfo<'a> {
+    match declared_ingress_rate_mhz(topic.type_name, topic.name) {
+        Some(mhz) => topic.with_ingress_rate_mhz(mhz),
+        None => topic,
+    }
 }
 
 /// The contract's own spelling of a reliability, for a log line.
@@ -681,6 +717,7 @@ mod tests {
             depth: Some(d),
             reliability: None,
             durability: None,
+            ingress_rate_mhz: None,
         }
     }
 
@@ -699,6 +736,7 @@ mod tests {
         depth: None,
         reliability: Some(QoSReliabilityPolicy::BestEffort),
         durability: Some(QoSDurabilityPolicy::Volatile),
+        ingress_rate_mhz: None,
     }];
 
     /// ...and one that declares the STRONG value of each.
@@ -708,7 +746,43 @@ mod tests {
         depth: None,
         reliability: Some(QoSReliabilityPolicy::Reliable),
         durability: Some(QoSDurabilityPolicy::TransientLocal),
+        ingress_rate_mhz: None,
     }];
+
+    /// phase-519 W3b -- a row that declares only an ingress rate.
+    const INGRESS_ROWS: &[DeclaredEndpoint] = &[DeclaredEndpoint {
+        type_name: "std_msgs/msg/Int32",
+        topic: "/paced",
+        depth: None,
+        reliability: None,
+        durability: None,
+        ingress_rate_mhz: Some(10_000),
+    }];
+
+    #[test]
+    fn a_declared_ingress_is_found_by_its_endpoint_and_by_no_other() {
+        assert_eq!(
+            ingress_in(INGRESS_ROWS, "std_msgs/msg/Int32", "/paced"),
+            Some(10_000)
+        );
+        assert_eq!(
+            ingress_in(INGRESS_ROWS, "std_msgs/msg/Int32", "paced"),
+            Some(10_000),
+            "a relative call-site spelling names the same endpoint"
+        );
+        // Negative controls: another topic, another type, and a depth-only row.
+        assert_eq!(
+            ingress_in(INGRESS_ROWS, "std_msgs/msg/Int32", "/chatter"),
+            None
+        );
+        assert_eq!(
+            ingress_in(INGRESS_ROWS, "std_msgs/msg/String", "/paced"),
+            None
+        );
+        assert_eq!(ingress_in(ROWS, "std_msgs/msg/Int32", "/chatter"), None);
+        // And a row stating only an ingress holds the depth to nothing.
+        assert_eq!(depth_in(INGRESS_ROWS, "std_msgs/msg/Int32", "/paced"), None);
+    }
 
     #[test]
     fn either_type_spelling_finds_the_row() {
@@ -952,6 +1026,7 @@ mod tests {
         depth: Some(1),
         reliability: Some(QoSReliabilityPolicy::Reliable),
         durability: Some(QoSDurabilityPolicy::TransientLocal),
+        ingress_rate_mhz: None,
     }];
 
     /// ...and one declaring the WEAK value of each: a sensor stream.
@@ -961,6 +1036,7 @@ mod tests {
         depth: None,
         reliability: Some(QoSReliabilityPolicy::BestEffort),
         durability: Some(QoSDurabilityPolicy::Volatile),
+        ingress_rate_mhz: None,
     }];
 
     fn honour_pub(
@@ -1221,6 +1297,45 @@ mod tests {
                 ),
                 Err(NodeError::DeclaredQosMismatch),
                 "and the FFI seams' strict check refuses the same disagreement"
+            );
+        }
+
+        /// phase-519 W3b -- a declared INGRESS rate, over the build's own table.
+        ///
+        /// Compiled only where the descriptor delivered one
+        /// (`tests/fixtures/declared-qos-descriptor.toml` declares `/paced` at
+        /// 10000 millihertz). `just check declared-qos-registration` expects FIVE
+        /// tests on the descriptor step, so a descriptor whose ingress rows
+        /// stopped reaching `DECLARED_QOS_ROWS` fails the lane.
+        #[cfg(nros_declared_ingress_table)]
+        #[test]
+        fn a_declared_ingress_reaches_the_registration_from_the_descriptor() {
+            let topic = with_declared_ingress(nros_rmw::TopicInfo::new(
+                "/paced",
+                "std_msgs::msg::dds_::Int32_",
+                "",
+            ));
+            assert_eq!(
+                topic.ingress_rate_mhz, 10_000,
+                "the descriptor states `ingress_rate_mhz = 10000` for `/paced`; if this is 0 \
+                 the declaration is not reaching DECLARED_QOS_ROWS and every subscription \
+                 asks the XRCE agent for every sample"
+            );
+            // Negative control: `/chatter` declares a depth and no ingress.
+            let other = with_declared_ingress(nros_rmw::TopicInfo::new(
+                "/chatter",
+                "std_msgs/msg/Int32",
+                "",
+            ));
+            assert_eq!(other.ingress_rate_mhz, 0);
+            // A row that states only an ingress checks no depth.
+            assert_eq!(
+                check(
+                    "std_msgs/msg/Int32",
+                    "/paced",
+                    &QoSProfile::QOS_PROFILE_DEFAULT
+                ),
+                Ok(())
             );
         }
 

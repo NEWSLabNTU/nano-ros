@@ -532,6 +532,8 @@ impl<'a> NodeHandle<'a> {
         );
         // phase-454 W10/W13 — see the same line in `executor/spin.rs`.
         let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
+        // phase-519 W3b — and the declared ingress rate, likewise.
+        let topic = crate::declared_qos::with_declared_ingress(topic);
         let handle = self
             .session
             .create_subscription(&topic, qos)
@@ -603,6 +605,8 @@ impl<'a> NodeHandle<'a> {
         // enforceable everywhere except in the images that decode bytes
         // themselves.
         let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
+        // phase-519 W3b — and the declared ingress rate, likewise.
+        let topic = crate::declared_qos::with_declared_ingress(topic);
         let handle = self
             .session
             .create_subscription(&topic, qos)

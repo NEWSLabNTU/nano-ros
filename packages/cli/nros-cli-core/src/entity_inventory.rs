@@ -442,6 +442,17 @@ pub struct EntityDecl {
     /// gets [`crate::queue_depth::NoDefault::NoDrainRate`] rather than a depth
     /// derived from a rate nobody stated.
     pub drain_rate: Option<RateMilliHz>,
+    /// phase-519 W3b (RFC-0074) -- a SUBSCRIPTION's declared ingress rate,
+    /// from `contracts.sub_endpoints.<ep>.ingress.rate_hz`. `None` for
+    /// "nobody declared one", and on every other kind.
+    ///
+    /// Carried to the registration through the sizing descriptor
+    /// ([`nros_sizing_descriptor::Endpoint::ingress_rate_mhz`]), where the
+    /// executor hands it to the backend in
+    /// `rmw_subscription_options_t::ingress_rate_mhz`. The XRCE backend paces
+    /// its data request from it; zenoh enforces the same declaration at the
+    /// router instead and ignores the field.
+    pub ingress_rate: Option<RateMilliHz>,
     /// phase-454 W12 -- the topic / service name AS THE SOURCE WRITES IT.
     ///
     /// The JOIN KEY between this row and a contract endpoint, and the reason it
@@ -562,6 +573,7 @@ impl EntityDecl {
             buffer: None,
             publish_rate: None,
             drain_rate: None,
+            ingress_rate: None,
             source_topic: None,
             contract_refusal: None,
             // phase-457 W3 -- "nobody observed this". Only the probe road sets
@@ -3614,6 +3626,18 @@ impl EntityInventory {
         // `state: true` subscription. ONE translation from the model's
         // vocabulary into this crate's, beside the QoS ones, so the mapping
         // has a single spelling.
+        // phase-519 W3b -- the subscription's declared `ingress.rate_hz`, as
+        // the registration hands it to the backend. A rate no budget can
+        // express (non-finite, non-positive, below one millihertz) is
+        // "nobody said", the rule `DeclaredIngress::from_model` keeps.
+        let sub_ingress_of = |ep: &str| -> Option<RateMilliHz> {
+            model
+                .contracts
+                .sub_endpoints
+                .get(ep)
+                .and_then(|c| c.ingress)
+                .and_then(|i| RateMilliHz::from_hz(i.rate_hz))
+        };
         let sub_buffer_of = |ep: &str| -> Option<BufferDiscipline> {
             model
                 .contracts
@@ -3785,6 +3809,7 @@ impl EntityInventory {
                     buffer: sub_buffer_of(ep),
                     publish_rate,
                     drain_rate: drain_rate_by_node.get(&node_of(ep)).copied(),
+                    ingress_rate: sub_ingress_of(ep),
                     ..EntityDecl::bare(
                         EntityKind::Subscription,
                         Some(wiring.msg_type.clone()),
@@ -7155,6 +7180,51 @@ mod tests {
             sidecar.contains("NROS_EXECUTOR_MAX_AGE_MONITORS = \"0\""),
             "{sidecar}"
         );
+    }
+
+    /// phase-519 W3b -- each subscription row carries ITS OWN declared
+    /// ingress rate, in millihertz, and a subscription that declares none
+    /// carries none.
+    #[test]
+    fn each_subscription_row_carries_its_own_declared_ingress() {
+        let m: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /fast:
+      type: std_msgs/msg/Int32
+      sub: [/listener/fast]
+    /plain:
+      type: std_msgs/msg/Int32
+      sub: [/listener/plain]
+contracts:
+  sub_endpoints:
+    /listener/fast:
+      ingress: { rate_hz: 12.5, burst: 4 }
+"#,
+        )
+        .expect("model fixture parses");
+        let inv = EntityInventory::from_model(
+            "img",
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m),
+        )
+        .expect("wiring described");
+        let rate_of = |topic: &str| {
+            inv.components()
+                .iter()
+                .flat_map(|c| c.declaration.entities())
+                .find(|e| e.topic() == Some(topic))
+                .unwrap_or_else(|| panic!("no row for {topic}"))
+                .ingress_rate
+                .map(RateMilliHz::milli_hz)
+        };
+        assert_eq!(rate_of("/fast"), Some(12_500));
+        assert_eq!(rate_of("/plain"), None);
     }
 
     /// phase-462 W6b -- the zenoh read-task budget is derived from the
