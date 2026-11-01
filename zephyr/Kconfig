@@ -323,7 +323,19 @@ config NROS_ZENOH_MULTI_THREAD
     # shim, so an #ifdef there would read as permanently false and silently
     # discard the priority the user configured, which is the failure issue 0626
     # set out to remove.
-    select POSIX_PRIORITY_SCHEDULING
+    #
+    # Issue 2189 -- conditional on POSIX_THREADS. On 4.4 POSIX_PRIORITY_SCHEDULING
+    # sits inside `if POSIX_SYSTEM_INTERFACES` (3.7 has no such menu), so an
+    # unconditional select from an image with no POSIX (CONFIG_NROS=y and
+    # nothing else, which defaults to zenoh with this symbol on) was a Kconfig
+    # warning, and 4.4 aborts on those. The scheduling calls run only for a
+    # zenoh task, which is a pthread, so POSIX_THREADS is the precondition the
+    # call actually has; it is defined on both lines and implies the menu on
+    # 4.4. An image without it cannot compile zenoh-pico's Zephyr port at all
+    # (<pthread.h>), which fails loudly at compile time, not here. Every
+    # multi-thread image built on either line had POSIX_THREADS=y when this
+    # was written (13 on 3.7, 47 on 4.4), so for them nothing changes.
+    select POSIX_PRIORITY_SCHEDULING if POSIX_THREADS
     help
       Enable multithreading in zenoh-pico. Uses Zephyr threads for
       background read/lease tasks. Required for non-blocking operation.
