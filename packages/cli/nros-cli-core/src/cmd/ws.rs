@@ -2704,12 +2704,17 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         }
     }
     if !blocked.is_empty() {
+        // Issue 2205 — the ladder's own account of where it looked, shared
+        // with `nros locate tool nros-launch-resolve`.
+        let help = std::env::current_exe()
+            .map(|exe| {
+                crate::orchestration::model_location::launch_resolver_missing_help_for_exe(
+                    &exe, None,
+                )
+            })
+            .unwrap_or_else(|e| format!("`nros-launch-resolve` not found ({e})"));
         eyre::bail!(
-            "sync: {} SystemModel(s) need resolving but `nros-launch-resolve` \
-             is not next to the `nros` binary:\n{}\n\n\
-             Build it:  ./scripts/bootstrap.sh   (contributors: just setup-launch-resolve)\n\
-             (If the submodule is missing:  git submodule update --init \
-             packages/cli/third-party/play_launch)\n\n\
+            "sync: {} SystemModel(s) need resolving:\n{}\n\n{help}\n\n\
              Refusing to continue with stale models — a museum SystemModel builds \
              clean and then places nodes wrong at runtime.",
             blocked.len(),
@@ -6972,6 +6977,41 @@ mod launch_resolver_tests {
 
     fn mark_checkout(root: &std::path::Path) {
         touch(&root.join(nros_launcher::checkout::MONOREPO_MARKER));
+    }
+
+    /// Issue 2205 — the refusal names every rung the lookup tried, with the
+    /// path each would have answered, and the override for a binary the
+    /// ladder cannot find on its own. It used to name one rung ("not next to
+    /// the `nros` binary").
+    #[test]
+    fn a_missing_resolver_names_every_rung_it_tried() {
+        use crate::orchestration::model_location::launch_resolver_missing_help;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("checkout");
+        mark_checkout(&root);
+        let exe = tmp.path().join("cli-target/release/nros");
+        touch(&exe);
+        let store = tmp.path().join("store");
+        let ladder = LaunchResolverLadder {
+            explicit: None,
+            near: Some(&exe),
+            own_checkout: Some(root.clone()),
+            beside: exe.parent(),
+            store: Some(store.clone()),
+        };
+        assert_eq!(launch_resolver_from(&ladder), None);
+        let help = launch_resolver_missing_help(&ladder);
+        for path in [
+            crate::orchestration::model_location::launch_resolver_in_checkout(&root),
+            exe.parent().unwrap().join(LAUNCH_RESOLVER),
+            store.join("bin").join(LAUNCH_RESOLVER),
+        ] {
+            assert!(help.contains(&path.display().to_string()), "{help}");
+        }
+        assert!(help.contains("$NROS_LAUNCH_RESOLVE"), "{help}");
+        assert!(help.contains("export NROS_LAUNCH_RESOLVE="), "{help}");
+        assert!(help.contains("./scripts/bootstrap.sh"), "{help}");
+        assert!(help.contains("scripts/install.sh"), "{help}");
     }
 
     /// Installed layout: the helper sits beside the `nros` binary.
