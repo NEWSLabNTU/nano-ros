@@ -312,17 +312,24 @@ void nros_platform_udp_set_recv_timeout(const void *sock_raw, uint32_t timeout_m
     set_udp_recv_timeout(sock->fd, timeout_ms);
 }
 
-/* phase-521 W4 (RFC-0113 D4) — this stack has no OS handle the executor's
- * park multiplexes, so a session over it cannot report WAITABLE readiness;
- * RFC-0113 D4 gives it a Notify form instead. */
+/* phase-521 W4 (RFC-0113 D4) — the socket's zsock descriptor, which
+ * `nros_platform_wake_park_handles_us` polls beside the wake object's
+ * eventfd. That park exists only when the image has ZVFS eventfds; without
+ * them this answers -1 so no session claims a WAITABLE form the park cannot
+ * honour. */
 int32_t nros_platform_udp_readiness_handle(const void *sock) {
+#ifdef CONFIG_ZVFS_EVENTFD
+    const nros_zephyr_socket_t *s = (const nros_zephyr_socket_t *) sock;
+    return (s == NULL || s->fd < 0) ? -1 : (int32_t) s->fd;
+#else
     (void) sock;
     return -1;
+#endif
 }
 
-/* phase-521 W4 (RFC-0113 D4) — zsock offers no per-socket receive callback;
- * which readiness form Zephyr gets (a `zsock_poll` park, or a net_context
- * hook) is the measurement W4 still owes. */
+/* phase-521 W4 (RFC-0113 D4) — zsock offers no per-socket receive callback.
+ * Zephyr's readiness form is the WAITABLE one above, so this is never the
+ * path a session takes here. */
 int8_t nros_platform_udp_set_rx_notify(const void *sock, void (*notify)(void *ctx), void *ctx) {
     (void) sock;
     (void) notify;

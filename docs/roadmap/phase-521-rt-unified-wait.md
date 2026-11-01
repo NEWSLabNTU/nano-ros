@@ -245,31 +245,54 @@ forks rather than reach stack internals or add a watcher task per session):
 
 Remaining, in order (revised 2026-11-01 against RFC-0115):
 
-1. **Zephyr XRCE over UDP — next.** RFC-0115 D4 puts every board the book
+1. **Zephyr XRCE over UDP — DONE.** RFC-0115 D4 puts every board the book
    names on Zephyr (Nucleo-F767ZI in Renode, Pico W in Wokwi), so Zephyr is no
-   longer one port among four. zsock has no per-socket callback. Two
-   candidates, both measured on `native_sim` before choosing: (a) Waitable, an
-   `eventfd` plus `zsock_poll` handle park; (b) Notify, Zephyr's
-   `NET_SOCKET_SERVICE` (public since 3.6, one shared service thread).
+   longer one port among four. zsock has no per-socket callback, so Zephyr
+   takes the Waitable form, the same as POSIX: the wake object carries a
+   non-blocking ZVFS eventfd (made on the first handle park; `signal` and
+   `signal_from_isr` bump it after the `k_sem_give`, and a non-blocking
+   eventfd write is ISR-safe), `nros_platform_wake_park_handles_us` is a
+   `zsock_poll` over it and the sessions' sockets, and
+   `nros_platform_udp_readiness_handle` returns the zsock fd.
+   `NROS_RMW_XRCE` implies `ZVFS` and `ZVFS_EVENTFD`; without them the
+   handle is -1 and the tier keeps the old wait.
+   The Notify form, Zephyr's `NET_SOCKET_SERVICE`, was not taken: it is
+   EXPERIMENTAL on the 3.7 line, its define macro changes in 4.x, and its one
+   dispatcher thread defaults to the LOWEST preemptible priority, so a busy
+   tier would delay every session's wake behind it. The park runs at the
+   tier's own priority with no thread on its behalf.
+   Measured on `native_sim` (the C listener over the Agent, `ros2 topic pub`
+   at 2 Hz, latency from publish to print, each arrival paired with the
+   nearest publish line because a fast delivery can print before `ros2 topic
+   pub` does):
+
+   | Zephyr native_sim XRCE | p50 | p90 |
+   |---|---|---|
+   | fd park, 3 runs | 0.4–1.1 ms | 1.4–4.7 ms |
+   | eventfd off: old receive-blocking path, 2 runs | 3.2–6.3 ms | 4.5–7.1 ms |
+
+   The run also showed the idle tier waking every 10 ms. That is not the park:
+   the entry runtime spins `spin_once(10 ms)` in a loop (W6, below).
 2. **zenoh on Zephyr needs no new hook.** Zephyr runs zenoh in THREAD mode
    (W2), and with `CONFIG_UART_INTERRUPT_DRIVEN` the serial reader blocks on a
    `k_sem` that the UART ISR gives (issue 0852), so the twin boards' serial
    link already meets D2. Without that symbol, the reader falls back to
    `uart_poll_in` plus `k_yield()`, which is a busy wait; W6 retires that path.
-3. **Custom-transport `rx_notify` is deferred to its first consumer.** It was
-   to land with "every in-tree board that has an XRCE serial cell". There is no
-   such board: every in-tree serial cell is zenoh (`examples/linux/rust/serial-*`,
-   `mps2-an385-baremetal/rust/serial-*`, the Zephyr `talker-serial` row), and
-   the POSIX serial fd is already Waitable. A versioned field mirrored in four
-   places with no caller is not added on spec. Until a consumer exists, W6
-   refuses a custom-transport XRCE session, by name.
+3. **Custom-transport `rx_notify` lands with W5.** Its one in-tree consumer
+   is bare metal: `mps2-an385-baremetal/rust/talker-xrce` runs XRCE over the
+   board's CMSDK UART through the custom-transport ops, and its `read`
+   busy-polls the UART until the timeout. The notify needs the UART's RX
+   interrupt, which is W5's port obligation on that board, so the field, its
+   four mirrors and the board's ISR land together there. (An earlier revision
+   of this item said every in-tree serial cell was zenoh; `talker-xrce` was
+   missed.)
 4. The "zero receive calls between deadlines" measurement (W7).
 
 - POSIX/NuttX UDP: Waitable over `udp_bridge.fd`.
 - FreeRTOS + lwIP, ThreadX + NetX: Notify from the stack's receive callback
   (done). Zephyr zsock: Waitable or Notify, per item 1.
-- Serial / custom transport: Notify through `rx_notify` once a consumer
-  exists (item 3); refused until then.
+- Serial / custom transport: Notify through `rx_notify`, wired on
+  mps2-an385 with W5 (item 3).
 
 **Acceptance:** `xrce_guard_wake` measures trigger→dispatch under 2 port
 granularities (today ~5 ms through the slices); an idle XRCE tier makes zero
@@ -285,7 +308,12 @@ Generalise mps2-an385's pattern (issue 2022) into the board-entry contract:
 a bare-metal board supplies an RX-interrupt Notify and a one-shot deadline
 timer, or its sessions are refused (RFC-0113 D5). Port it to every in-tree
 bare-metal board that has a network or serial cell: today
-`mps2-an385-baremetal` (smoltcp and serial). `nros-board-esp32-qemu` is dormant
+`mps2-an385-baremetal` (smoltcp and serial). Its network half exists: issue
+2022 gave the LAN9118 a receive interrupt and a SysTick one-shot under the
+smoltcp wait loop (idle QEMU 0.9–1.4 % host CPU, against 99.9 % polling). Its
+serial half does not: the CMSDK UART's RX interrupt is a placeholder, so the
+zenoh `serial-*` cells and XRCE `talker-xrce` busy-poll the UART. W5 adds that
+interrupt and, through it, the custom-transport `rx_notify` (W4 item 3). `nros-board-esp32-qemu` is dormant
 (issue 1525) and is refused rather than ported. RFC-0115 names no bare-metal
 book board, so W5 has no twin-board work; a future bare-metal book board
 inherits this obligation through the board-entry contract.
@@ -322,6 +350,15 @@ zenoh-pico fork's patch branch.
 
 Also decide `rclc_executor_spin_period` (from W4): whether its inter-period
 sleep parks on the wake object.
+
+Added 2026-11-01 (found by W4's Zephyr run): the entry runtimes spin on a
+fixed 10 ms cadence, so an idle tier wakes 100 times a second whatever its
+park can do. One spelling replaces them: the entry spins with a budget bounded
+only by the tier's next deadline. The sites: `nros::main!`
+(`packages/api/nros/src/lib.rs`), `node_runtime.rs`,
+`nros_rtos_run_components.c`, nros-cpp's `spin` loops and `driven_future.hpp`,
+and the board entries of FreeRTOS, ThreadX, NuttX, mps2-an385 and esp32.
+A gate then refuses a literal spin budget in an entry loop.
 
 **Acceptance:** RFC-0113's coverage table has no "not yet" row; a test opens a
 session through a backend stub with no readiness form and asserts the refusal.
