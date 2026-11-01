@@ -1143,7 +1143,7 @@ location = "store"
 dest = "third-party/freertos/lwip"
 submodule = "third-party/freertos/lwip"
 git = "https://github.com/jerry73204/lwip.git"
-ref = "6233eb61c89b531fd5aaa16acdd6bc5c6368dfdd"
+ref = "96b63e3115dfc010c07d4a4231d93195a814e82c"
 
 [source.threadx]
 env = "THREADX_DIR"
@@ -1271,7 +1271,7 @@ location = "store"
 dest = "third-party/threadx/netxduo"
 submodule = "third-party/threadx/netxduo"
 git = "https://github.com/NEWSLabNTU/netxduo.git"
-ref = "d0c2e80e2da61e274f8f53505b1974fcad7d1071"
+ref = "393b862521d1dc43d6d12b6fa1fd377de963acff"
 
 # NuttX kernel + apps — the qemu-armv7a-nuttx board build.rs / build-nuttx.sh expect
 # them present (the export is built with the app, per Phase 194). The Rust libc

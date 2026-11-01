@@ -204,13 +204,12 @@ static const nros_rmw_vtable_t kVtable = {
     .publisher_assert_liveliness = NULL,
     .next_deadline_ms = xrce_next_deadline_ms,
     .event_type_is_supported = xrce_event_type_is_supported,
-    /* Phase 124.B.1 — XRCE has no asynchronous notify path
-     * (XRCE-DDS-Client is poll-driven via xrce_session_drive_io).
-     * NULL = runtime drains this backend on its deadline-bound
-     * cv-wait boundary; same-thread setters (Executor::wake, halt)
-     * still drive the wake_cv. */
-    .set_wake_callback = NULL,
-    /* phase-521 W4 — the transport's descriptor, where it has one. */
+    /* phase-521 W4 — XRCE-DDS-Client is poll-driven, but its UDP stack may
+     * not be: on lwIP and NetX the executor's wake callback becomes the
+     * socket's receive notification. Elsewhere it installs nothing, and
+     * `readiness_source` (the transport's descriptor, the notification, or
+     * neither) is what the runtime reads, not this slot's presence. */
+    .set_wake_callback = xrce_set_wake_callback,
     .readiness_source = xrce_readiness_source,
 
     /* Phase 124.A — zero-copy ABI. XRCE-DDS-Client uses micro-CDR
@@ -240,9 +239,10 @@ static const nros_rmw_vtable_t kVtable = {
      * Leave NULL → runtime emits the `take` loop fallback. */
     .take_sequence = NULL,
 
-    /* Issue 2109 — per-entity new-data callbacks. `set_wake_callback` above
-     * stays NULL (nothing arrives outside `drive_io`), but every arrival
-     * callback names its entity, so these fire from inside `drive_io`. */
+    /* Issue 2109 — per-entity new-data callbacks. A sample is decoded only
+     * inside `drive_io` (the stack's notification above is an edge with no
+     * entity), and every arrival callback names its entity, so these fire
+     * from inside `drive_io`. */
     .subscription_set_on_new_message_callback = xrce_subscription_set_on_new_message_callback,
     .service_set_on_new_request_callback = xrce_service_set_on_new_request_callback,
     .client_set_on_new_response_callback = xrce_client_set_on_new_response_callback,

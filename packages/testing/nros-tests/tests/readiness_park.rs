@@ -18,6 +18,18 @@
 //!    for the spin's whole budget, i.e. the receive-blocking wait that W6
 //!    retires. Without it, (2) could pass because nothing ever blocks.
 //!
+//! phase-521 W4 adds a second stub that DOES fill `set_wake_callback`, the
+//! shape XRCE has: the slot is always there, but only a transport whose stack
+//! takes a receive notification (lwIP, NetX) ever calls it.
+//!
+//! 4. Reporting NOTIFY, a call of the installed callback (what the stack's
+//!    receive notification does) ends the park, and the drive is still
+//!    non-blocking.
+//! 5. Reporting NONE with the slot filled, the runtime believes the stated
+//!    readiness, not the slot: it keeps the receive-blocking drive. Reading
+//!    the slot's presence instead would park on a wake object nothing will
+//!    signal, and an arrival would wait for the deadline.
+//!
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test readiness_park`.
 
 #![cfg(all(feature = "trigger-test", unix))]
@@ -31,17 +43,17 @@ use std::{
     os::{fd::AsRawFd, unix::net::UnixStream},
     sync::{
         Mutex,
-        atomic::{AtomicI32, AtomicU8, Ordering},
+        atomic::{AtomicI32, AtomicU8, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
 
 use nros_node::executor::*;
 use nros_rmw_cffi::{
-    EMPTY_VTABLE, NROS_RMW_READINESS_NONE, NROS_RMW_READINESS_WAITABLE, NROS_RMW_RET_OK,
-    NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwNode, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
-    NrosRmwService, NrosRmwSession, NrosRmwSessionOptions, NrosRmwSubscription, NrosRmwVtable,
-    nros_rmw_cffi_register_named, rmw_session_t,
+    EMPTY_VTABLE, NROS_RMW_READINESS_NONE, NROS_RMW_READINESS_NOTIFY, NROS_RMW_READINESS_WAITABLE,
+    NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwNode, NrosRmwPublisher,
+    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSessionOptions,
+    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named, rmw_session_t,
 };
 
 /// When the writer puts its byte on the socket, after the spin entered.
@@ -56,6 +68,10 @@ static READ_FD: AtomicI32 = AtomicI32::new(-1);
 static KIND: AtomicU8 = AtomicU8::new(NROS_RMW_READINESS_WAITABLE as u8);
 /// The largest timeout `drive_io` was asked to block for.
 static MAX_DRIVE_MS: AtomicI32 = AtomicI32::new(-1);
+/// The wake callback the runtime installed on the notify stub (0 = none), and
+/// its context, as a backend stores them.
+static WAKE_CB: AtomicUsize = AtomicUsize::new(0);
+static WAKE_CTX: AtomicUsize = AtomicUsize::new(0);
 /// The tests share the statics above; run them one at a time.
 static SERIAL: Mutex<()> = Mutex::new(());
 
@@ -204,6 +220,31 @@ unsafe extern "C" fn stub_readiness(
     NROS_RMW_RET_OK
 }
 
+unsafe extern "C" fn stub_set_wake_callback(
+    _: *mut NrosRmwSession,
+    cb: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+    ctx: *mut core::ffi::c_void,
+) -> NrosRmwRet {
+    WAKE_CB.store(cb.map_or(0, |f| f as usize), Ordering::SeqCst);
+    WAKE_CTX.store(ctx as usize, Ordering::SeqCst);
+    NROS_RMW_RET_OK
+}
+
+/// What a network stack's receive notification does: call the installed
+/// callback with its context, from the stack's own thread.
+fn fire_installed_wake_callback() {
+    let cb = WAKE_CB.load(Ordering::SeqCst);
+    assert_ne!(
+        cb, 0,
+        "the runtime installed no wake callback on the notify stub"
+    );
+    // SAFETY: the value was stored from an `Option<unsafe extern "C" fn>` by
+    // `stub_set_wake_callback`, and the executor is alive (it clears the
+    // callback on drop, after this test's spin).
+    let cb: unsafe extern "C" fn(*mut core::ffi::c_void) = unsafe { std::mem::transmute(cb) };
+    unsafe { cb(WAKE_CTX.load(Ordering::SeqCst) as *mut core::ffi::c_void) };
+}
+
 static VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(stub_open),
     destroy_session: Some(stub_close),
@@ -227,27 +268,46 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     ..EMPTY_VTABLE
 };
 
-const STUB: &str = "readiness_park_stub";
+/// The XRCE shape: the same stub with the wake slot filled.
+static VTABLE_WITH_WAKE_SLOT: NrosRmwVtable = NrosRmwVtable {
+    set_wake_callback: Some(stub_set_wake_callback),
+    ..VTABLE
+};
 
-fn open() -> Executor<'static> {
-    let name = format!("{STUB}\0");
+const STUB: &str = "readiness_park_stub";
+const STUB_WITH_WAKE_SLOT: &str = "readiness_park_stub_wake_slot";
+
+fn open(name: &str, vtable: &'static NrosRmwVtable) -> Executor<'static> {
+    let c_name = format!("{name}\0");
     // SAFETY: a NUL-terminated name and a vtable that lives for the process.
-    let ret = unsafe { nros_rmw_cffi_register_named(name.as_ptr().cast(), &VTABLE) };
+    let ret = unsafe { nros_rmw_cffi_register_named(c_name.as_ptr().cast(), vtable) };
     assert_eq!(ret, NROS_RMW_RET_OK, "register the stub backend");
     let config = ExecutorConfig::new("stub/0")
         .node_name("readiness_park")
-        .rmw(STUB);
+        .rmw(name);
     Executor::open(&config).expect("Executor::open over the stub")
 }
 
 /// One spin of `BUDGET`, with a byte written to the socket `WRITE_AFTER` in.
 fn spin_across_a_write(kind: i32) -> (Duration, i32) {
+    spin_across_an_arrival(kind, STUB, &VTABLE, false)
+}
+
+/// One spin of `BUDGET`, with an arrival `WRITE_AFTER` in: a byte on the
+/// socket and, when `notify`, the installed wake callback called as a stack's
+/// receive notification would.
+fn spin_across_an_arrival(
+    kind: i32,
+    name: &str,
+    vtable: &'static NrosRmwVtable,
+    notify: bool,
+) -> (Duration, i32) {
     let (rx, mut tx) = UnixStream::pair().expect("socketpair");
     rx.set_nonblocking(true).expect("non-blocking read end");
     READ_FD.store(rx.as_raw_fd(), Ordering::SeqCst);
     KIND.store(kind as u8, Ordering::SeqCst);
 
-    let mut executor = open();
+    let mut executor = open(name, vtable);
     // Settle: the first spins register nothing, but let the executor reach its
     // steady state before the measured one.
     executor.spin_once(Duration::ZERO);
@@ -256,6 +316,9 @@ fn spin_across_a_write(kind: i32) -> (Duration, i32) {
     let writer = std::thread::spawn(move || {
         std::thread::sleep(WRITE_AFTER);
         tx.write_all(&[1]).expect("write");
+        if notify {
+            fire_installed_wake_callback();
+        }
         tx
     });
     let start = Instant::now();
@@ -403,4 +466,50 @@ fn cancel_from_another_thread_ends_a_long_park() {
     );
     drop(executor);
     READ_FD.store(-1, Ordering::SeqCst);
+#[test]
+fn a_notify_session_wakes_the_park_from_its_wake_callback() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let (elapsed, max_drive) = spin_across_an_arrival(
+        NROS_RMW_READINESS_NOTIFY,
+        STUB_WITH_WAKE_SLOT,
+        &VTABLE_WITH_WAKE_SLOT,
+        true,
+    );
+
+    assert!(
+        elapsed >= WRITE_AFTER,
+        "the spin returned after {elapsed:?}, before the arrival at {WRITE_AFTER:?}"
+    );
+    assert!(
+        elapsed < WRITE_AFTER + Duration::from_millis(500),
+        "the spin returned after {elapsed:?} for an arrival notified at {WRITE_AFTER:?}: the \
+         wake callback did not end the park"
+    );
+    assert_eq!(
+        max_drive, 0,
+        "drive_io was asked to block for {max_drive} ms: a Notify session must be drained \
+         non-blockingly once its callback has woken the tier (RFC-0113 D2.6)"
+    );
+}
+
+#[test]
+fn a_filled_wake_slot_with_no_readiness_form_still_blocks_inside_drive_io() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let (elapsed, max_drive) = spin_across_an_arrival(
+        NROS_RMW_READINESS_NONE,
+        STUB_WITH_WAKE_SLOT,
+        &VTABLE_WITH_WAKE_SLOT,
+        false,
+    );
+
+    // XRCE over a board's custom transport: the slot is there and nothing
+    // calls it. Parking on the wake object would hold the byte written at
+    // `WRITE_AFTER` until the deadline; the stated NONE keeps the wait in the
+    // transport, where the arrival is seen.
+    assert!(
+        max_drive >= (BUDGET.as_millis() as i32) / 2,
+        "drive_io was asked for at most {max_drive} ms: the runtime read the wake slot's \
+         presence instead of the session's stated readiness (NONE)"
+    );
+    assert!(elapsed >= BUDGET / 2, "{elapsed:?}");
 }

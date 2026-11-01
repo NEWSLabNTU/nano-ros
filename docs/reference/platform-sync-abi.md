@@ -105,6 +105,42 @@ ordinary wait.
 - FreeRTOS, Zephyr, ThreadX: `-1`. Their sessions report Notify, not handles.
 - A Rust port: the `PlatformThreading::wake_park_handles_us` default, `-1`.
 
+## Receive notification on a socket (phase-521 W4, RFC-0113 D4)
+
+```c
+int8_t nros_platform_udp_set_rx_notify(const void *sock, void (*notify)(void *ctx), void *ctx);
+```
+
+Required of every port's net provider. Where the stack has no OS handle to park
+on, it is the other readiness form: the stack calls `notify(ctx)` itself each
+time a datagram is queued on `sock`. An RMW session over the socket reports
+`NROS_RMW_READINESS_NOTIFY` and hands the executor's wake callback straight to
+this call. `notify == NULL` removes it, and is also how a session probes for
+the hook at open. It returns `0` when installed or removed and `-1` where there
+is no hook.
+
+The guarantees a caller relies on:
+
+- `notify` runs in the stack's own context, so it must only signal.
+- Data already queued when it is installed calls it once before the install
+  returns, so nothing that arrived earlier is lost.
+- Once a removal returns, the previous `notify` is never called again. The
+  executor frees its wake context after that.
+
+Per port:
+
+- FreeRTOS + lwIP: `lwip_socket_set_rx_notify`, which the nano-ros lwIP fork
+  adds behind `LWIP_SOCKET_RX_NOTIFY` (on in the shared board `lwipopts.h`).
+  It is called from the socket layer's netconn event callback in the tcpip
+  thread, and the setter runs through `tcpip_api_call`.
+- ThreadX + NetX Duo: `nx_bsd_socket_set_rx_notify`, added by the nano-ros
+  netxduo fork. It is called from the IP thread holding the BSD mutex, which
+  the setter also takes. The threadx-linux NSOS shim (host sockets) answers
+  `-1`.
+- POSIX/NuttX: `-1`. They have `nros_platform_udp_readiness_handle` instead.
+- Zephyr: `-1` for now. Which form zsock gets is still open in W4.
+- A Rust port: the `PlatformUdp::set_rx_notify` default, `-1`.
+
 ## Coalescing semantics
 
 The wake primitive is a **binary** semaphore: multiple `_signal`

@@ -380,6 +380,15 @@ int32_t nros_platform_udp_readiness_handle(const void *sock) {
     return -1;
 }
 
+/* phase-521 W4 (RFC-0113 D4) — NetX Duo's BSD receive notification, which the
+ * nano-ros netxduo fork adds (`nx_bsd_socket_set_rx_notify`, called from the
+ * IP thread owning the BSD mutex each time a packet is queued). */
+int8_t nros_platform_udp_set_rx_notify(const void *sock_raw, void (*notify)(void *ctx), void *ctx) {
+    if (sock_raw == NULL) return -1;
+    const nros_threadx_socket_t *sock = (const nros_threadx_socket_t *) sock_raw;
+    return nx_bsd_socket_set_rx_notify(sock->fd, notify, ctx) == 0 ? 0 : -1;
+}
+
 /* ---- UDP multicast ----
  *
  * NetX Duo's BSD addon exposes IP_ADD_MEMBERSHIP / IP_DROP_MEMBERSHIP

@@ -100,6 +100,7 @@ INT nx_bsd_getsockopt(INT sockID, INT level, INT optName,
 INT nx_bsd_select(INT nfds, fd_set *readfds, fd_set *writefds,
                   fd_set *exceptfds, struct timeval *timeout);
 INT nx_bsd_fcntl(INT sockID, UINT flagType, UINT options);
+INT nx_bsd_socket_set_rx_notify(INT sockID, VOID (*rx_notify)(VOID *arg), VOID *arg);
 INT nx_bsd_shutdown(INT sockID, INT how);
 INT nx_bsd_getaddrinfo(const CHAR *node,
                        const CHAR *service,

@@ -503,6 +503,13 @@ impl nros_platform_api::PlatformUdp for CffiPlatform {
     fn readiness_handle(sock: *const c_void) -> i32 {
         unsafe { nros_platform_udp_readiness_handle(sock) }
     }
+    fn set_rx_notify(
+        sock: *const c_void,
+        notify: Option<unsafe extern "C" fn(*mut c_void)>,
+        ctx: *mut c_void,
+    ) -> i8 {
+        unsafe { nros_platform_udp_set_rx_notify(sock, notify, ctx) }
+    }
 }
 
 impl nros_platform_api::PlatformUdpMulticast for CffiPlatform {
@@ -1346,6 +1353,14 @@ macro_rules! nros_platform_export_net {
             sock: *const ::core::ffi::c_void,
         ) -> i32 {
             <$ty as ::nros_platform_api::PlatformUdp>::readiness_handle(sock)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_udp_set_rx_notify(
+            sock: *const ::core::ffi::c_void,
+            notify: ::core::option::Option<unsafe extern "C" fn(*mut ::core::ffi::c_void)>,
+            ctx: *mut ::core::ffi::c_void,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformUdp>::set_rx_notify(sock, notify, ctx)
         }
 
         // ---- UDP multicast ----

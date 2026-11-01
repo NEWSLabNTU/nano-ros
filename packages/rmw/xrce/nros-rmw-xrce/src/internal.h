@@ -773,6 +773,12 @@ struct xrce_session_state {
      * transport, lwIP, NetX), and the session reports no readiness form. Set
      * once at open, read by `xrce_readiness_source`. */
     int32_t readiness_handle;
+    /* phase-521 W4 (RFC-0113 D4) — the UDP socket's stack takes a receive
+     * notification (`nros_platform_udp_set_rx_notify`: lwIP, NetX), probed at
+     * open. The session then reports NOTIFY readiness, and
+     * `xrce_set_wake_callback` hands the executor's wake callback straight to
+     * the stack, which calls it on every arrival. */
+    bool rx_notify_capable;
     unsigned lock_depth;
     bool free_pending;
 
@@ -1034,6 +1040,7 @@ rmw_ret_t xrce_subscription_event_init(const rmw_subscription_t* subscription,
 rmw_ret_t xrce_publisher_event_init(const rmw_publisher_t* publisher, rmw_event_type_t kind,
                                     uint32_t deadline_ms, rmw_status_event_callback_t cb,
                                     void* user_context);
+rmw_ret_t xrce_set_wake_callback(rmw_session_t* session, void (*cb)(void* ctx), void* ctx);
 rmw_ret_t xrce_readiness_source(const rmw_session_t* session, uint8_t* out_kind,
                                 int32_t* out_handle);
 rmw_ret_t xrce_next_deadline_ms(const rmw_session_t* session, uint32_t* out_ms,
