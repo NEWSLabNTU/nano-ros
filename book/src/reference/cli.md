@@ -118,7 +118,7 @@ phase-437 are in the
 [retired board names](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/retired-board-names.md)
 ledger.
 
-### `nros init [<dir>]`
+### `nros setup presets [<dir>]`
 
 Generate a project `CMakePresets.json` (into `<dir>`, default the current
 directory) that `include`s the per-board preset fragments `nros setup
@@ -129,7 +129,7 @@ after provisioning a new board to pick up its fragment.
 
 ```sh
 nros setup qemu-armv7a-nuttx
-nros init                 # writes ./CMakePresets.json
+nros setup presets                 # writes ./CMakePresets.json
 cmake --preset qemu-armv7a-nuttx
 ```
 
@@ -197,10 +197,10 @@ An image names a `--board` and derives its rustc triple from that board's descri
 
 `nros new --deploy <name>` is DEPRECATED (issue 0951): `[deploy.*]` split into those two tables, and a `system.toml` that still carries one is refused by name (phase-486 W8). The flag still works, dispatched by the `--kind` it always took — `self` scaffolds a host, anything else an image — and says which flag to use instead. It never writes `[deploy.*]`.
 
-### `nros generate <lang> [--manifest <path>] [--output <dir>] [--ros-edition <edition>] [--force] [--verbose] [--generate-config]`
+### `nros interface generate <lang> [--manifest <path>] [--output <dir>] [--ros-edition <edition>] [--force] [--verbose] [--generate-config]`
 
 Generate ROS 2 message bindings from a `package.xml`. Rust users should
-prefer the direct `nros generate-rust` command; C and C++ users normally
+prefer the direct `nros dev codegen rust` command; C and C++ users normally
 use the CMake integration.
 
 | Argument | Values | Default |
@@ -212,10 +212,10 @@ use the CMake integration.
 | `--codegen-config` | explicit per-field capacity config (`nros-codegen.toml`) | discovered by walking up |
 | `--generate-config` | **legacy** — emit a `.cargo/config.toml` patch table (Rust only). Use `nros sync` | off |
 
-### `nros generate-rust [--manifest <path>] [--output <dir>] [--ros-edition <e>] [--codegen-config <f>] [--rename <old=new>] [--force] [--verbose]`
+### `nros dev codegen rust [--manifest <path>] [--output <dir>] [--ros-edition <e>] [--codegen-config <f>] [--rename <old=new>] [--force] [--verbose]`
 
 The Rust-only codegen **primitive**. Same binding generation as
-`nros generate rust`, and with **no side-effects**: it writes `generated/` and
+`nros interface generate rust`, and with **no side-effects**: it writes `generated/` and
 nothing else. Use it when you want bindings and only bindings; use `nros sync`
 for an actual project, because a leaf also needs its generated build settings.
 
@@ -234,15 +234,15 @@ Generate CDR-serializable `px4_msgs::msg::*` bindings from a PX4
 `.msg` tree — the XRCE/PX4 interop path (see the
 [PX4 starter](../getting-started/integration-px4.md)).
 
-### `nros codegen <resolve-deps|cyclonedds-descriptors|entry> …`
+### `nros dev codegen <resolve-deps|cyclonedds-descriptors|entry> …`
 
 **Internal build-tool interface** — invoked by the CMake integration and
 `build.rs` scripts, not meant for direct use. Subcommands resolve
 message-package dependency closures, emit CycloneDDS type descriptors,
-and generate C/C++ entry glue. (`nros codegen-system` below is the
+and generate C/C++ entry glue. (`nros dev codegen system` below is the
 user-facing system bake.)
 
-### `nros metadata <system_pkg> [--workspace <path>] [--out-dir <dir>] [--metadata <existing.json>] [--build [--nano-ros-workspace <path>]]` — walk a colcon-style workspace under `<workspace>/src/`
+### `nros dev metadata <system_pkg> [--workspace <path>] [--out-dir <dir>] [--metadata <existing.json>] [--build [--nano-ros-workspace <path>]]` — walk a colcon-style workspace under `<workspace>/src/`
 collecting component source metadata into
 `build/<system_pkg>/nros/source-metadata.json`. The result feeds
 `nros plan`. With `--build`, any declared component (`component_nros.toml`)
@@ -323,7 +323,7 @@ package** or a **colcon-style workspace** (it picks single-pkg vs workspace mode
 by layout). Run it after editing `*.msg`, `package.xml` or `system.toml`.
 
 ```sh
-eval "$(nros ws env)"   # add src/ to NROS_INTERFACE_SEARCH_PATH
+eval "$(nros dev ws env)"   # add src/ to NROS_INTERFACE_SEARCH_PATH
 nros sync               # generated/ msg crates + build/<image>/nros-cargo.toml
 nros build              # or: nros build <image-id>
 ```
@@ -344,7 +344,7 @@ doctor` subcommands below still talk about.
 `--check` exits non-zero when anything is missing or stale — the CI hook, and
 what `nros ws status` reports non-fatally. `--dry-run` prints what it would do.
 
-`nros generate-rust` stays the low-level codegen-only primitive (no side
+`nros dev codegen rust` stays the low-level codegen-only primitive (no side
 effects beyond `generated/`).
 
 ### `nros build [<image>…] [--board <board>] [--workspace <dir>] [--all] [--dry-run] [--offline] [-v] [--check[=clippy]] [<colcon flags>] [-- <native args>]`
@@ -458,12 +458,12 @@ Workspace-level message-package utilities (the `env` / `status` / `list` /
 `clean` / `doctor` helpers; `sync` was promoted to top-level `nros sync`).
 
 ```sh
-eval "$(nros ws env)"   # add src/ to NROS_INTERFACE_SEARCH_PATH
+eval "$(nros dev ws env)"   # add src/ to NROS_INTERFACE_SEARCH_PATH
 nros ws status          # freshness check (non-fatal): n up-to-date / n stale / n missing
-nros ws list            # list discovered msg + Rust-consumer pkgs
-nros ws clean           # remove generated/ + auto-managed patch entries
+nros list            # list discovered msg + Rust-consumer pkgs
+nros clean           # remove generated/ + auto-managed patch entries
 nros ws doctor          # lint workspace pkgs (package.xml markers, stale patches, …)
-nros ws managed-deps    # write the `# nros-managed` message rows from package.xml
+nros dev lock managed-deps    # write the `# nros-managed` message rows from package.xml
 ```
 
 | Subcommand | Description |
@@ -475,7 +475,7 @@ nros ws managed-deps    # write the `# nros-managed` message rows from package.x
 | `managed-deps [--check]` | The one step `nros sync` and `nros build` both run: write each Rust package's `# nros-managed` `[dependencies]` rows — one per `<depend>` on a message package — without codegen. `--check` writes nothing and exits non-zero if a manifest would change |
 | `doctor` | Lint: warn on missing `<member_of_group> rosidl_interface_packages</member_of_group>`, malformed `package.xml`, missing nros-managed `[patch.crates-io]` entries in the authority `.cargo/config.toml` |
 
-### `nros codegen-system [--bringup <pkg>] [--target <id> | --for-entry <pkg>] [--out <dir>] [--launch <file>] [--ahead-of-vendor <pio|px4>]`
+### `nros dev codegen system [--bringup <pkg>] [--target <id> | --for-entry <pkg>] [--out <dir>] [--launch <file>] [--ahead-of-vendor <pio|px4>]`
 
 Host-time system bake: reads `<bringup>/system.toml` +
 `<bringup>/launch/system.launch.xml` and emits the baked compile-time C
@@ -483,11 +483,11 @@ config + component registration glue consumed by every embedded RTOS
 adapter.
 
 ```sh
-nros codegen-system --bringup demo_bringup
-nros codegen-system --bringup demo_bringup --target zephyr_native_sim  # an [image.<id>]
-nros codegen-system --bringup demo_bringup --for-entry zephyr_app      # the image claiming it
-nros codegen-system --bringup demo_bringup --ahead-of-vendor pio   # + PlatformIO library.json
-nros codegen-system --bringup demo_bringup --ahead-of-vendor px4   # + PX4 module dirs
+nros dev codegen system --bringup demo_bringup
+nros dev codegen system --bringup demo_bringup --target zephyr_native_sim  # an [image.<id>]
+nros dev codegen system --bringup demo_bringup --for-entry zephyr_app      # the image claiming it
+nros dev codegen system --bringup demo_bringup --ahead-of-vendor pio   # + PlatformIO library.json
+nros dev codegen system --bringup demo_bringup --ahead-of-vendor px4   # + PX4 module dirs
 ```
 
 | Flag | Description |
@@ -515,7 +515,7 @@ Enumerate every `nros-board-*` crate under `packages/boards/`. Output
 columns are `name | description`; structured `chip | flash | ram |
 supported_rmw` fields are deferred to a future board-descriptor TOML.
 
-### `nros sdk-root [--workspace <dir>] [--nano-ros-path <dir>] [--explain]`
+### `nros dev sdk root [--workspace <dir>] [--nano-ros-path <dir>] [--explain]`
 
 Print the nano-ros SDK root this `nros` resolves — the directory holding the
 runtime sources and `nano_rosConfig.cmake` that a build compiles against: an
@@ -525,7 +525,7 @@ explicit `--nano-ros-path`, else a nano-ros checkout found by walking up from
 `--explain` names the rung that answered on stderr; stdout stays the bare path.
 
 ```sh
-nros sdk-root --explain
+nros dev sdk root --explain
 ```
 
 ### `nros locate <name>… [--all] [--why] [--format <path|sh|cmake>] [--project <dir>]`
@@ -594,9 +594,9 @@ Emit shell completion scripts to stdout.
 | Want to … | Use |
 |---|---|
 | Scaffold a project | `nros new …` |
-| Generate bindings + the image's build settings | `nros sync` (primitive: `nros generate-rust`) |
+| Generate bindings + the image's build settings | `nros sync` (primitive: `nros dev codegen rust`) |
 | Build | `nros build` — or the platform tool pointed at the generated settings (`cargo --config …`, `cmake --build`, `west build`) |
-| Plan + check a multi-component system from a ROS 2 launch file | `nros metadata` → `nros plan` → `nros check` |
+| Plan + check a multi-component system from a ROS 2 launch file | `nros dev metadata` → `nros plan` → `nros check` |
 | Flash / run | Platform tools: `espflash`, `probe-rs`, `qemu-system-*`, `idf.py` |
 | Orchestrate the checkout (contributor: setup, doctor, CI, multi-platform sweeps) | `just …` |
 

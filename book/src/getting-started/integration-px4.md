@@ -15,12 +15,12 @@ their copy.
 - The full PX4 SITL build toolchain (`make px4_sitl_default` works
   standalone)
 - The `nros` CLI on PATH ([Installation](./installation.md)); the
-  template finds the SDK by asking `nros sdk-root`
+  template finds the SDK by asking `nros dev sdk root`
 
 ## One-liner vendor
 
 ```bash
-cp -r "$(nros sdk-root)/integrations/px4/module-template" ./my-px4-modules
+cp -r "$(nros dev sdk root)/integrations/px4/module-template" ./my-px4-modules
 ```
 
 (The template ships in releases cut after 0.6.0-nros4; with an older
@@ -53,7 +53,7 @@ make -C $PX4_AUTOPILOT_DIR px4_sitl_default
 
 PX4's build picks up the module via `<location>/src/CMakeLists.txt`.
 The module CMakeLists resolves the nano-ros SDK root by running
-`nros sdk-root` (or takes `-Dnano_ros_ROOT=<dir>`), and pulls in the
+`nros dev sdk root` (or takes `-Dnano_ros_ROOT=<dir>`), and pulls in the
 nano-ros C++ headers from there.
 
 ## Reference

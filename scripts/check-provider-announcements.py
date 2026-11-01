@@ -63,7 +63,7 @@ over `package.xml`, and a regex is happy with a document no XML parser accepts
 design (*"one malformed package.xml somewhere in a large tree must not make
 every provider undiscoverable ... the CLI prints them, and a gate can make them
 fatal"*). No gate did. Measured 2026-09-10: a `<x>` inside a `<description>`
-took all five platform providers out of `nros ws providers` while this gate
+took all five platform providers out of `nros dev ws providers` while this gate
 printed OK, which is exactly the harm A1's own message describes. All 417
 tracked package.xml parse; A5 keeps it that way.
 
@@ -698,7 +698,7 @@ def check_announcements_have_descriptors(root):
                 f"{rel}: not well-formed XML: {e}. Every rule in this gate is a "
                 f"REGEX, which reads this file happily; `provider_scan` uses a "
                 f"real parser and demotes the failure to a warning, so a "
-                f"provider here is silently absent from `nros ws providers` "
+                f"provider here is silently absent from `nros dev ws providers` "
                 f"while every gate says OK.\n"
                 f"    A bare `<` in prose is the usual cause — a path written "
                 f"`config/<x>/` inside a <description> is an open tag."

@@ -276,7 +276,7 @@ two follow-ons are additive rather than rework:
 
 2. **Build-time plan image (the "build-time graph").** Extend `.nros_boot_config` to a
    `.nros_plan_image` carrying config **+ node table + entity table** (topic/type/hash/qos/
-   callback/period), generated from the existing `MetadataRecorder` (`nros metadata` →
+   callback/period), generated from the existing `MetadataRecorder` (`nros dev metadata` →
    `source-metadata.json`). Boot reads entities from the image instead of running each node's
    `register()`. Recorded constraints (from the runtime-vs-buildtime analysis): this is a
    **size + verification** play, **not** a perf win — the RMW declaration (the slow part)

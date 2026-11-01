@@ -35,7 +35,7 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
     printf 'nros-compile-check-fixture-v1\0%s\0' "$record"
 
     # The staged tree is emitted by the nros CLI for rows whose build runs
-    # codegen (cmake-configure drives `nros codegen-system`; the cargo rows
+    # codegen (cmake-configure drives `nros dev codegen system`; the cargo rows
     # expand `nros::main!`, which reads models the CLI produced). A signature
     # blind to the tool repeats issue #182 — a museum emitter verifying as fresh.
     # Same fingerprint ladder phase-318 W1 established for the workspace lane:

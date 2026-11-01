@@ -306,7 +306,7 @@ Started Zenoh router with id
 workspace (`tx_ws/`):
 
 ```bash probe=70 probe-run=150 probe-keep variant=riscv64
-"$(nros sdk-path qemu)/bin/qemu-system-riscv64" -M virt -m 256M -bios none -nographic \
+"$(nros dev sdk path qemu)/bin/qemu-system-riscv64" -M virt -m 256M -bios none -nographic \
     -global virtio-mmio.force-legacy=false \
     -netdev user,id=net0 \
     -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac=52:54:00:12:34:56 \

@@ -9,7 +9,7 @@
 # CMake would be the drift class `check-ffi-struct-mirrors` and
 # `check-platform-abi-mirror` police one layer down — two spellings of one
 # format, held equal by nothing. So this module asks the CLI
-# (`nros ws sizing-descriptor --output-cmake`) and `include()`s the answer.
+# (`nros dev image sizing-descriptor --output-cmake`) and `include()`s the answer.
 #
 # ## The freshness rule this module owes — issue 1018
 #
@@ -284,7 +284,7 @@ function(nros_sizing_descriptor_from_model _out_var)
     endif()
 
     # phase-457 W0 (issue 1407) — the COMPONENT METADATA, composed with the
-    # contract by the same `merged_per_kind_max` `nros ws entity-inventory`
+    # contract by the same `merged_per_kind_max` `nros dev image entity-inventory`
     # uses. Without it this producer derived over the contract's nodes alone,
     # while the `NROS_DECLARED_*` carriers beside it derived over every
     # REGISTERED component — two numbers for one image, the descriptor's the
@@ -337,7 +337,7 @@ function(nros_sizing_descriptor_from_model _out_var)
     endif()
 
     execute_process(
-        COMMAND "${_nsw_CLI}" ws sizing-descriptor
+        COMMAND "${_nsw_CLI}" dev image sizing-descriptor
                 --from-model "${_nsw_MODEL}"
                 --build-dir "${_build_dir}"
                 --entry "${_nsw_ENTRY}"
@@ -435,7 +435,7 @@ function(nros_sizing_descriptor_from_leaf _out_var)
     _nros_sizing_heap_args(_heap_args)
 
     execute_process(
-        COMMAND "${_nsl_CLI}" ws sizing-descriptor
+        COMMAND "${_nsl_CLI}" dev image sizing-descriptor
                 --from-leaf "${_nsl_LEAF}"
                 --build-dir "${_build_dir}"
                 --entry "${_nsl_ENTRY}"
@@ -567,7 +567,7 @@ function(_nros_sizing_descriptor_runtime _out_var)
     endif()
 
     execute_process(
-        COMMAND "${_cli}" ws sizing-descriptor ${_args}
+        COMMAND "${_cli}" dev image sizing-descriptor ${_args}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -1033,7 +1033,7 @@ function(nros_sizing_descriptor_read _descriptor)
     get_filename_component(_stem "${_descriptor}" NAME_WE)
     set(_fragment "${CMAKE_CURRENT_BINARY_DIR}/nros-sizing-${_stem}.cmake")
     execute_process(
-        COMMAND "${_nros}" ws sizing-descriptor
+        COMMAND "${_nros}" dev image sizing-descriptor
                 --descriptor "${_descriptor}"
                 --output-cmake "${_fragment}"
         ERROR_VARIABLE _err

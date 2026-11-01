@@ -1,9 +1,9 @@
 # shellcheck shell=bash
 # The SDK store's tool dirs a lane puts FIRST on PATH — issue 1638.
 #
-# `nros sdk-path <tool>` prints where the PINNED tool WOULD live, whether or
+# `nros dev sdk path <tool>` prints where the PINNED tool WOULD live, whether or
 # not it was ever provisioned. The Zephyr runner prepended
-# `$(nros sdk-path ninja)/bin` unconditionally, and on a host with no store
+# `$(nros dev sdk path ninja)/bin` unconditionally, and on a host with no store
 # ninja that names a directory that does not exist: the prepend was a silent
 # no-op, so `ninja` resolved through the rest of PATH — which, inherited from a
 # parent shell, named ANOTHER checkout's `third-party/ninja/ninja`, and the
@@ -19,7 +19,7 @@
 nros_sdk_tool_path_prefix() {
     local out="" tool dir fallback
     for tool in "$@"; do
-        dir="$(nros sdk-path "$tool" 2>/dev/null)/bin"
+        dir="$(nros dev sdk path "$tool" 2>/dev/null)/bin"
         if [ -d "$dir" ]; then
             out="${out:+$out:}$dir"
             continue

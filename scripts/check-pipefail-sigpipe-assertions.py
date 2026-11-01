@@ -109,10 +109,10 @@ ALLOWLIST: dict[str, tuple[str, ...]] = {
         'elif find "$staged" -maxdepth 3 -name package.xml -print -quit 2>/dev/null | grep -q .; then',
     ),
     "scripts/build/fixture-make-driver.sh": (
-        '"$(nros sdk-path make)/bin/make" --version | head -1 | grep -q "4.4" && \\',
+        '"$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4" && \\',
     ),
     "scripts/build/fixtures-build.sh": (
-        '"$(nros sdk-path make)/bin/make" --version | head -1 | grep -q "4.4"; then',
+        '"$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4"; then',
     ),
     "scripts/build/workspace-fixtures-build.sh": (
         '[ -x "$pinned_make" ] && "$pinned_make" --version | head -1 | grep -q "4.4"; then',
@@ -121,7 +121,7 @@ ALLOWLIST: dict[str, tuple[str, ...]] = {
         'if [ "$rmw" = "cyclonedds" ] && ! printf \'%s\\n\' "${fixture_rmws[@]}" | grep -qx cyclonedds; then',
     ),
     "scripts/build/zephyr-fixture-make-driver.sh": (
-        '"$(nros sdk-path make)/bin/make" --version | head -1 | grep -q "4.4"; then',
+        '"$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4"; then',
     ),
     "scripts/check-artifact-identity-budget.sh": (
         '&& ! printf \'%s\\n\' "$rlibs" | grep -q "/lib${BUDGET_CRATE}-" \\',

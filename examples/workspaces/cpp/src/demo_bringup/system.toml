@@ -170,7 +170,7 @@ os_config = ["prj-cyclonedds.conf"]
 # still get separate applications, for a better reason than a declaration: the
 # coordinate carries the RMW, so this one lands in
 # `build/zephyr-cyclonedds/zephyr_cyclonedds_entry/` and its zenoh sibling in
-# `build/zephyr-zenoh/zephyr_entry/`. `nros image-facts --for-entry` still
+# `build/zephyr-zenoh/zephyr_entry/`. `nros dev image facts --for-entry` still
 # answers one image per package name, which is what it always needed.
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the

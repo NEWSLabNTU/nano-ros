@@ -11,7 +11,7 @@
 #   2. `ARM_FVP_DIR/models/Linux64_GCC-*` (the layout `nros-sdk-index.toml`
 #      `[gated.arm-fvp]` describes — `ARM_FVP_DIR` points at the install
 #      root the user accepted the Arm license for).
-#   3. The nano-ros SDK store — `nros sdk-path arm-fvp`. Since 2026-09-06 the
+#   3. The nano-ros SDK store — `nros dev sdk path arm-fvp`. Since 2026-09-06 the
 #      model is a normal `[tool.arm-fvp]` the provisioner FETCHES (it is a
 #      public Arm CDN permalink with a pinned digest, not a login wall), so
 #      `nros setup --tool arm-fvp` is now the answer to "I do not have it".
@@ -74,18 +74,18 @@ if cmd_path=$(command -v "$BIN_NAME" 2>/dev/null); then
     exit 0
 fi
 
-# 3. The SDK store. `nros sdk-path` prints the prefix for an installed tool and
+# 3. The SDK store. `nros dev sdk path` prints the prefix for an installed tool and
 #    exits non-zero when it is absent, so a missing store is silent here rather
 #    than an error the caller has to distinguish from "no FVP anywhere".
 # Issue 1880 — the ONE CLI ladder (`nros_cli_bin`), not PATH.
 # shellcheck source=../build/cargo.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../build/cargo.sh"
 if _fvp_cli="$(nros_cli_bin 2>/dev/null)"; then
-    # `nros sdk-path` finds `nros-sdk-index.toml` from its working directory,
+    # `nros dev sdk path` finds `nros-sdk-index.toml` from its working directory,
     # so ask from this checkout's root: a caller elsewhere (a cargo test runs
     # in its crate dir) got "no FVP found" over an installed model (phase-511).
     _fvp_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-    if _store="$(cd "$_fvp_root" && "$_fvp_cli" sdk-path arm-fvp 2>/dev/null)" && [ -n "$_store" ]; then
+    if _store="$(cd "$_fvp_root" && "$_fvp_cli" dev sdk path arm-fvp 2>/dev/null)" && [ -n "$_store" ]; then
         if emit_dir "$_store/bin" 2>/dev/null || emit_dir "$_store" 2>/dev/null; then
             exit 0
         fi

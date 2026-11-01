@@ -642,7 +642,7 @@ This extends the rule that module already holds itself to:
 `nros_orchestration_ir::qos_agreement::check_model` is the rule, one function
 over a resolved `SystemModel`, called from all four roads a model reaches a bake
 or a sizing derivation on — the two CLI sizing roads W3 already guards
-(`nros ws entity-inventory`, fatal; `nros build`'s seed, a refusal reason) and
+(`nros dev image entity-inventory`, fatal; `nros build`'s seed, a refusal reason) and
 the two BAKE roads (`codegen::entry::plan_from_model`, `nros::main!`). Only the
 bake road is guaranteed to see an override, and only the sizing road is
 guaranteed to see the contract, so a check on either alone is issue 1199's shape.
@@ -916,7 +916,7 @@ with more than one image per coordinate.
 > the entity fragment.**
 
 "Exactly one or none" becomes "exactly one". The per-entry descriptors are still
-written — they are what `nros ws sizing-descriptor --descriptor` inspects and
+written — they are what `nros dev image sizing-descriptor --descriptor` inspects and
 what a per-entry reader would read — but in an N:1 configure none of them is
 named to cargo.
 

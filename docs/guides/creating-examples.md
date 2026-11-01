@@ -11,7 +11,7 @@ checklist — is on the book page, and only the book page is maintained.
 The text that was here described a shape the tree no longer has. It taught a
 hand-written leaf `.cargo/config.toml` (`[build] target`, a QEMU `runner`,
 `rustflags`, `[patch.crates-io]` rows) and the
-`nros generate-rust --config --nano-ros-path …` invocation that wrote half of
+`nros dev codegen rust --config --nano-ros-path …` invocation that wrote half of
 it. Under [RFC-0098](../design/0098-generated-leaf-build-config.md) an example
 states its board in `system.toml`, and `nros sync` generates every build setting
 that choice implies into `build/<image>/nros-cargo.toml`. No build setting is

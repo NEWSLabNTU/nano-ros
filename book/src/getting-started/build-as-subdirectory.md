@@ -15,12 +15,12 @@ There the cache variables below are how you say what you are building
 for, because there is no `system.toml` to read it from. `nros build`
 sets exactly these variables in the root it generates.
 
-The SDK root's top-level `CMakeLists.txt` (`nros sdk-root` prints the
+The SDK root's top-level `CMakeLists.txt` (`nros dev sdk root` prints the
 directory) exposes everything via `add_subdirectory(...)`. The
 higher-level, ament-shaped alternative is
 `find_package(nano_ros REQUIRED)` — `nano_rosConfig.cmake` at the
 SDK root, located via `-Dnano_ros_ROOT=<root>`, which
-`nros build` and the CMakePresets `nros init` writes pass for you (a raw
+`nros build` and the CMakePresets `nros setup presets` writes pass for you (a raw
 `cmake` names it; no shell exports it) — which every in-tree example
 reaches through the workspace helpers. Either way there
 is NO install step: there is no install prefix and no
@@ -39,7 +39,7 @@ my_app/
 nano-ros itself is the installed SDK root; the configure names it:
 
 ```bash
-cmake -B build -DNANO_ROS_SDK="$(nros sdk-root)"
+cmake -B build -DNANO_ROS_SDK="$(nros dev sdk root)"
 cmake --build build
 ```
 
@@ -134,10 +134,10 @@ that file — they are in the `system.toml` beside it, and the build
 reads them from there. A single-package C/C++ leaf like this one
 configures and builds with plain CMake, no sync step required, because
 its message bindings are a CMake-time output. A raw `cmake` names the
-SDK root (`nros sdk-root` prints it; nothing exports it):
+SDK root (`nros dev sdk root` prints it; nothing exports it):
 
 ```bash
-cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
+cmake -B build -Dnano_ros_ROOT="$(nros dev sdk root)"
 cmake --build build
 ```
 

@@ -313,7 +313,7 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
             // first documented command unrunnable for exactly the reader who
             // installed a release. Same commands as first-project.md.
             "Next steps:\n  cd {0}\n  nros sync\n  nros build\n  ./build/posix-{1}-linux/cmake/linux_entry\n\
-             (`nros build` finds nano-ros itself; `nros sdk-root --explain` prints the root it uses.)",
+             (`nros build` finds nano-ros itself; `nros dev sdk root --explain` prints the root it uses.)",
             cfg.dir.display(),
             cfg.rmw
         ),

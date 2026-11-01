@@ -82,7 +82,7 @@ This is what makes a cross-backend profiler tractable: **two parsers cover every
 1. **Build front-door** (`nros build --profile`) — nros owns the sequence, giving exact
    stage boundaries. **Rejected:** requires nros to drive every backend and forces a new
    build verb; conflicts with the setup+codegen-only scope and the external-dep model.
-2. **Build wrapper** (`nros profile -- <cmd>`) — nros wraps an arbitrary build command.
+2. **Build wrapper** (`nros dev profile -- <cmd>`) — nros wraps an arbitrary build command.
    **Rejected:** still a build-adjacent nros verb; sniffing stages from a single wrapped
    process is fuzzy.
 3. **Passive post-build analyzer** (chosen) — the build runs unchanged on its native

@@ -240,9 +240,9 @@ pins scattered across a filesystem is not reliable, so the honest shape is
 explicit and inspectable rather than clever:
 
 ```
-nros store list                    # what is installed, size, last used
-nros store gc --older-than 90d     # unused entries, with a dry run by default
-nros toolchain uninstall 0.6.2     # refuses while a known pin names it
+nros toolchain list                    # what is installed, size, last used
+nros toolchain gc --older-than 90d     # unused entries, with a dry run by default
+nros toolchain remove 0.6.2     # refuses while a known pin names it
 ```
 
 Decided rather than discovered when a disk fills. `--dry-run` is the default

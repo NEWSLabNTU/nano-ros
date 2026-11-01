@@ -240,11 +240,11 @@ Started Zenoh router with id
 **2. The board** — boot the talker in QEMU, with the LAN9118 on Slirp and the
 `-icount` the test harness uses (the `run:` line `nros build` printed works
 too). The patched `qemu-system-arm` is provisioned by `nros setup
-mps2-an385-baremetal` into the SDK store, which `nros sdk-path qemu` prints.
+mps2-an385-baremetal` into the SDK store, which `nros dev sdk path qemu` prints.
 From the package directory:
 
 ```bash probe=70 probe-run=120 probe-keep
-"$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
+"$(nros dev sdk path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
     -icount shift=auto \
     -semihosting-config enable=on,target=native \
     -kernel build/baremetal/target/thumbv7m-none-eabi/debug/bm_talker \

@@ -18,7 +18,7 @@
 # the root before it can include anything (a copy-out leaf has no repo file to
 # include yet); `check-repo-dir-readers` refuses any `$ENV{NROS_REPO_DIR}`.
 #   1. explicit: -DNROS_REPO_DIR=<path> or -Dnano_ros_ROOT=<path>;
-#   2. ask `nros sdk-root`. It walks up from THIS leaf first, so an in-tree
+#   2. ask `nros dev sdk root`. It walks up from THIS leaf first, so an in-tree
 #      leaf answers its own checkout; anywhere else the binary answers with
 #      its own SDK root (a release's share/nano-ros, or the checkout an in-tree
 #      `nros` was built in).
@@ -32,7 +32,7 @@ if(NOT NROS_REPO_DIR)
         find_program(NROS_TOOLCHAIN_EXECUTABLE nros)
         if(NROS_TOOLCHAIN_EXECUTABLE)
             execute_process(
-                COMMAND "${NROS_TOOLCHAIN_EXECUTABLE}" sdk-root
+                COMMAND "${NROS_TOOLCHAIN_EXECUTABLE}" dev sdk root
                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
                 OUTPUT_VARIABLE NROS_REPO_DIR
                 OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -48,7 +48,7 @@ if(NOT NROS_REPO_DIR)
         message(FATAL_ERROR
             "nano-ros: cannot locate the nano-ros SDK root.\n"
             "  Pass -DNROS_REPO_DIR=<path> (or -Dnano_ros_ROOT=<path>), or put\n"
-            "  `nros` on PATH — `nros sdk-root` answers this.")
+            "  `nros` on PATH — `nros dev sdk root` answers this.")
     endif()
 endif()
 include("${NROS_REPO_DIR}/integrations/px4/NanoRosPx4Module.cmake")
@@ -85,14 +85,14 @@ endif()
 
 if(NOT EXISTS "${_ffi_a}")
     # issue 2046 — the crate names `nros-serdes` by name; the central patch
-    # table (`nros ws central-patch`) supplies the SDK's path, so the command
+    # table (`nros dev lock central-patch`) supplies the SDK's path, so the command
     # works from wherever the module was copied to.
     get_filename_component(_ffi_dir "${CMAKE_CURRENT_LIST_DIR}/../../../ffi" ABSOLUTE)
     message(FATAL_ERROR
         "nros_uorb_bridge: the generated-message FFI archive is missing:\n"
         "    ${_ffi_a}\n"
         "Build it (its build.rs reads NROS_PX4_BRIDGE_GEN):\n"
-        "    nros ws central-patch --nano-ros-path ${NROS_REPO_DIR}\n"
+        "    nros dev lock central-patch --nano-ros-path ${NROS_REPO_DIR}\n"
         # profile-literal-ok: prebuilt archive — the instruction that builds it
         "    NROS_PX4_BRIDGE_GEN=${_gen} cargo build --release \\\n"
         "        --manifest-path ${_ffi_dir}/Cargo.toml \\\n"

@@ -18,7 +18,7 @@
 #
 # Every `nano_ros_node_register(... ENTITIES ...)` in the image, composed
 # through the file that call already writes -- `${CMAKE_BINARY_DIR}/
-# nros-metadata.json`. `nros ws entity-inventory` reads it and renders the same
+# nros-metadata.json`. `nros dev image entity-inventory` reads it and renders the same
 # three transports `bounds.rs` does (JSON, this CMake fragment, and env lines
 # for the cargo carrier), from one data model.
 #
@@ -617,7 +617,7 @@ function(nros_derive_entity_inventory_knobs)
         "${CMAKE_BINARY_DIR}/nros/entity_inventory.json" _taken)
     if(NOT _taken)
         execute_process(
-            COMMAND "${_E_CLI}" ws entity-inventory
+            COMMAND "${_E_CLI}" dev image entity-inventory
                     --metadata "${_metadata}"
                     ${_model_arg}
                     ${_ws_arg}
@@ -643,7 +643,7 @@ function(nros_derive_entity_inventory_knobs)
     endif()
 
     if(NOT EXISTS "${_output}")
-        set(_why "`nros ws entity-inventory` wrote no fragment")
+        set(_why "`nros dev image entity-inventory` wrote no fragment")
         _nros_entity_publish(NROS_ENTITY_INVENTORY_REASON "${_why}")
         nros_entity_inventory_seed_knobs_file("${_output}")
         return()

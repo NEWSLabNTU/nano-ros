@@ -40,7 +40,7 @@ Usage:
     python3 scripts/check-tier-priority-plan-image.py --derived-plan \
         <nros_priority_plan.json> <path/to/zephyr/.config> [<generated entry TU>]
 
-`--derived-plan` holds the record `nros codegen entry` writes beside a
+`--derived-plan` holds the record `nros dev codegen entry` writes beside a
 generated entry (RFC-0079 section 5) to the image it was built for: the
 record's bands must be the ones this checker resolves from the `.config`,
 every derived or allocated tier must sit in `pool.app` and on no reserved

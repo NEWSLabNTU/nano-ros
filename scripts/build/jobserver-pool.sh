@@ -52,7 +52,7 @@ _nros_pool_cli() {
 #     a second pool would double-count them.
 #   * pinned make 4.4 is required for `--jobserver-style=fifo`; the system make
 #     may be 4.3, whose pipe-based jobserver child tools cannot join.
-# The pinned make's absolute path, or empty. CONSTRUCTED via `nros sdk-path`
+# The pinned make's absolute path, or empty. CONSTRUCTED via `nros dev sdk path`
 # (issue 0625) rather than searched, and deliberately NOT taken from PATH: a
 # system make 4.3 first on PATH would answer, and its pipe-FD jobserver is the
 # thing that does not work. `$repo_root` is unused now that the binary lives in
@@ -60,7 +60,7 @@ _nros_pool_cli() {
 nros_pinned_make() {
     local cli dir
     cli="$(_nros_pool_cli)" || return 1
-    dir="$("$cli" sdk-path make 2>/dev/null)" || return 1
+    dir="$("$cli" dev sdk path make 2>/dev/null)" || return 1
     [ -n "$dir" ] && [ -x "$dir/bin/make" ] || return 1
     printf '%s\n' "$dir/bin/make"
 }
@@ -72,7 +72,7 @@ nros_pinned_make() {
 nros_pinned_ninja() {
     local cli dir
     cli="$(_nros_pool_cli)" || return 1
-    dir="$("$cli" sdk-path ninja 2>/dev/null)" || return 1
+    dir="$("$cli" dev sdk path ninja 2>/dev/null)" || return 1
     [ -n "$dir" ] && [ -x "$dir/bin/ninja" ] || return 1
     printf '%s\n' "$dir/bin/ninja"
 }

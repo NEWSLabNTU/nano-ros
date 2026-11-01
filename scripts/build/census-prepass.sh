@@ -3,7 +3,7 @@
 # BEFORE any of them configures.
 #
 # A cross image (`demo_bringup:threadx`, `:zephyr`, ...) whose model folds in a
-# `*.contract.yaml` runs `nros ws entity-census check --require-fresh` at
+# `*.contract.yaml` runs `nros dev image entity-census check --require-fresh` at
 # configure time (phase-463 W4). The census it checks is produced by the NATIVE
 # image generated from the same launch file, run in census mode -- and the
 # configure never builds that image itself (issue 0641). So an unattended build
@@ -11,7 +11,7 @@
 # configure reads "census missing" -- a warning while `[census] on_missing`
 # defaulted to `warn`, and a refusal now that it defaults to `refuse`.
 #
-# `nros ws entity-census take --image <q>` does the work and decides what to
+# `nros dev image entity-census take --image <q>` does the work and decides what to
 # do: nothing for a host image, a model with no contract or a census that is
 # already fresh; otherwise build the native sibling to its fixed point and run
 # it. This script only enumerates the images (`fixtures-manifest.py
@@ -32,7 +32,7 @@
 # component's entities from its census (`entities = "census"`): its configure
 # reads that census through `nros ws entity-facts --leaf` and `sizing-descriptor
 # --from-leaf`, and refuses without a fresh one. `fixtures-manifest.py
-# census-leaves` lists them and `nros ws entity-census take --leaf <dir>`
+# census-leaves` lists them and `nros dev image entity-census take --leaf <dir>`
 # builds the leaf's own `src/` for the host and runs it, into
 # `<leaf>/build/census-host` -- a tree no fixture row builds into, so this half
 # could run anywhere; it runs here for the same reason as the images: once,
@@ -105,7 +105,7 @@ if [ "$only" != "images" ]; then
         [ -n "$leaf" ] || continue
         echo "census-prepass: leaf $leaf"
         need_cli
-        "$nros_cli" ws entity-census take --leaf "$repo_root/$leaf"
+        "$nros_cli" dev image entity-census take --leaf "$repo_root/$leaf"
     done <<< "$leaves"
 fi
 if [ "$only" = "leaves" ]; then
@@ -147,7 +147,7 @@ while IFS=$'\t' read -r dir image; do
     # host image's graph, and the take died on `failed to download` with
     # `--frozen was specified`.
     plan_rc=0
-    plan="$(cd "$repo_root/$dir" && "$nros_cli" ws entity-census take --image "$image" \
+    plan="$(cd "$repo_root/$dir" && "$nros_cli" dev image entity-census take --image "$image" \
         --workspace . --plan)" || plan_rc=$?
     if [ "$plan_rc" -ne 0 ]; then
         echo "census-prepass: \`take --plan\` failed for $dir $image (exit $plan_rc)" >&2
@@ -157,6 +157,6 @@ while IFS=$'\t' read -r dir image; do
     if [ -n "$producer" ]; then
         nros_warm_leaf_cache "$repo_root/$dir" "$producer"
     fi
-    ( cd "$repo_root/$dir" && "$nros_cli" ws entity-census take --image "$image" \
+    ( cd "$repo_root/$dir" && "$nros_cli" dev image entity-census take --image "$image" \
         --workspace . --offline )
 done <<< "$rows"

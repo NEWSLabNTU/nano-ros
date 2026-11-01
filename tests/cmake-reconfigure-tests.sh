@@ -383,7 +383,7 @@ list(REMOVE_DUPLICATES NROS_MESSAGE_BOUND_PACKAGES)
 list(REMOVE_DUPLICATES NROS_MESSAGE_BOUND_TYPES)
 EOF
 
-# The entity fragment the stubbed `nros ws entity-inventory` composes: this
+# The entity fragment the stubbed `nros dev image entity-inventory` composes: this
 # image subscribes to Int32 only.
 # The schema version is READ FROM THE MODULE, never hardcoded. Its sibling
 # `cmake-message-bounds-tests.sh` records why in its own words: a literal here

@@ -30,7 +30,7 @@ implies.
 
 When you drive CMake yourself — a single-package C or C++ project builds
 with its own `cmake -B build` (naming the SDK root with
-`-Dnano_ros_ROOT="$(nros sdk-root)"`, which `nros build` passes for you),
+`-Dnano_ros_ROOT="$(nros dev sdk root)"`, which `nros build` passes for you),
 and needs no sync — set `CMAKE_BUILD_TYPE`
 as you would in any CMake project. nano-ros derives the cargo profile for
 the Rust it builds underneath from it:
@@ -44,7 +44,7 @@ the Rust it builds underneath from it:
 | *(unset)* | `nros-relwithdebinfo` | the development default |
 
 ```bash
-cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)" -DCMAKE_BUILD_TYPE=MinSizeRel
+cmake -B build -Dnano_ros_ROOT="$(nros dev sdk root)" -DCMAKE_BUILD_TYPE=MinSizeRel
 cmake --build build
 ```
 
@@ -62,7 +62,7 @@ never silently produces an optimization level you did not ask for.
 differ — for example a small C/C++ image with debuggable Rust:
 
 ```bash
-cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)" \
+cmake -B build -Dnano_ros_ROOT="$(nros dev sdk root)" \
     -DCMAKE_BUILD_TYPE=MinSizeRel -DNROS_CARGO_PROFILE=nros-relwithdebinfo
 ```
 
@@ -91,15 +91,15 @@ the way it always did — `error: profile 'prod' is not defined` — while a
 name the generated settings file defines resolves and builds.
 
 ```bash
-cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)" \
+cmake -B build -Dnano_ros_ROOT="$(nros dev sdk root)" \
     -DCMAKE_BUILD_TYPE=Release -DNROS_CARGO_PROFILE=prod
 ```
 
 ## Which profile is active?
 
 ```bash
-nros profile resolve --build-type MinSizeRel   # -> nros-minsizerel
-nros profile dir     nros-minsizerel           # -> the target/ subdirectory
+nros dev profile resolve --build-type MinSizeRel   # -> nros-minsizerel
+nros dev profile dir     nros-minsizerel           # -> the target/ subdirectory
 ```
 
 A CMake configure also prints it:

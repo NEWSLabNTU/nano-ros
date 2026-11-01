@@ -574,7 +574,7 @@ fn take_census(args: TakeArgs) -> Result<()> {
                 "`{native_q}` did not reach a fixed point in {TAKE_MAX_BUILDS} builds -- `{entry}` \
                  changed on every one, so any census of it is stale the moment it is written. A \
                  build that does not converge is the defect: make `{entry}`'s build \
-                 reproducible, then run `nros ws entity-census take` again"
+                 reproducible, then run `nros dev image entity-census take` again"
             );
         }
         previous = Some(digest);
@@ -965,7 +965,7 @@ fn check_census(args: CheckArgs) -> Result<()> {
         (None, Some(model)) => census_path_for_model(model),
         (None, None) => bail!(
             "no --census and no --model. A census is of a model: pass `--model` and the census \
-             `nros ws entity-census run --model` wrote beside it is read, or name one with \
+             `nros dev image entity-census run --model` wrote beside it is read, or name one with \
              `--census`."
         ),
     };
@@ -1283,8 +1283,8 @@ fn census_remedy(entry: Option<&str>, model: Option<&Path>) -> String {
         .and_then(crate::model_gate::infer_bringup_dir)
         .and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()));
     let take = match (bringup, image) {
-        (Some(b), Some(i)) => format!("nros ws entity-census take --image {b}:{i}"),
-        _ => "nros ws entity-census take --image <bringup>:<this image>".to_string(),
+        (Some(b), Some(i)) => format!("nros dev image entity-census take --image {b}:{i}"),
+        _ => "nros dev image entity-census take --image <bringup>:<this image>".to_string(),
     };
     format!(
         "Take a census of the code as it is now, from the workspace root:\n    {take}\nIt builds \
@@ -2311,7 +2311,7 @@ mod tests {
         let model = bringup.join("config/system_model.yaml");
         let remedy = super::census_remedy(Some("threadx_entry"), Some(&model));
         assert!(
-            remedy.contains("nros ws entity-census take --image demo_bringup:threadx"),
+            remedy.contains("nros dev image entity-census take --image demo_bringup:threadx"),
             "{remedy}"
         );
         // Neither half known: still the verb, with the shape spelled out.

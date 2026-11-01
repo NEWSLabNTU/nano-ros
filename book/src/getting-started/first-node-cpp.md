@@ -201,7 +201,7 @@ told where nano-ros is; a cross board also needs the toolchain file its
 starter page names:
 
 ```bash
-cmake -S . -B build/linux/cmake -DNROS_IMAGE=linux -Dnano_ros_ROOT="$(nros sdk-root)"
+cmake -S . -B build/linux/cmake -DNROS_IMAGE=linux -Dnano_ros_ROOT="$(nros dev sdk root)"
 cmake --build build/linux/cmake
 ```
 

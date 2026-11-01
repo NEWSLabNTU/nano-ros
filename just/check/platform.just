@@ -107,7 +107,7 @@ board-facts-delivery:
 #
 # The two retired faces: a `board.cmake` sidecar (14 `NROS_BOARD_*` variables)
 # and a `[package.metadata.nros.board]` mirror in Cargo.toml. cmake now reads a
-# mechanical projection of `nros-board.toml` instead (`nros board cmake-vars`,
+# mechanical projection of `nros-board.toml` instead (`nros dev board cmake-vars`,
 # written into the build dir per configure), so there is nothing to write twice.
 #
 # A gate rather than a note because the pressure is real: cmake cannot read

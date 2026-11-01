@@ -26,7 +26,7 @@ This RFC introduces a **test-only** `RosEnv` provider with two backends — the
 host ROS install (default edition) and a **per-edition docker container**
 (`nano-ros-ros:<distro>`) — behind one interface. Extra editions run in
 **opt-in internal lanes** that cover the two axes that actually vary per edition:
-**codegen** (does `nros generate-rust` produce the right bindings for that
+**codegen** (does `nros dev codegen rust` produce the right bindings for that
 edition's message set + type hashes?) and **testing** (does nano-ros, built
 against that edition's generated code, interoperate with that edition's live
 ROS 2 peer + `domain_bridge`?).
@@ -83,7 +83,7 @@ speed can cache the image layer.
 
 ### The two axes
 
-**Codegen axis.** `DockerRosEnv(E).generate(pkgs)` runs `nros generate-rust`
+**Codegen axis.** `DockerRosEnv(E).generate(pkgs)` runs `nros dev codegen rust`
 (and the cyclone IDL path) inside edition E, writing to an **edition-scoped**
 `generated-editions/<E>/` (gitignored, ephemeral) so an extra-edition run never
 clobbers the committed default-edition `generated/`. The output is diffed

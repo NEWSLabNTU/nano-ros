@@ -158,7 +158,7 @@ Kconfig rather than only passing on `y` (today's forward cannot express
 
 The ROS domain is declared twice on a Zephyr image, and the two declarations
 have two readers. `system.toml`'s `domain_id` (resolved through the
-`[deploy.<target>]` / `[system]` ladder) is baked by `nros codegen-system` as
+`[deploy.<target>]` / `[system]` ladder) is baked by `nros dev codegen system` as
 `#define NROS_SYSTEM_DOMAIN_ID <n>u` in `system_config.h`, a define app source
 may read; the image's session takes `CONFIG_NROS_DOMAIN_ID`, this RFC's Kconfig
 front-end, through `rclc/detail/zephyr/app_config.h`, and Cyclone takes

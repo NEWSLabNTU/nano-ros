@@ -4,7 +4,7 @@
 On Zephyr an image's nano-ros configuration has ONE source, its `system.toml`:
 the nano-ros module's `module_ext_root` hook renders it into a Kconfig fragment
 placed last in `EXTRA_CONF_FILE` (`zephyr/cmake/nros_image_kconfig.cmake`,
-`nros ws leaf-system --kconfig-out`). A `CONFIG_NROS_*` line in a leaf's
+`nros dev image leaf-system --kconfig-out`). A `CONFIG_NROS_*` line in a leaf's
 `prj.conf` is therefore a SECOND statement of the same fact — the shape issue
 1721 found, where `examples/zephyr/c/talker/system.toml` said `rmw = "zenoh"`
 while the same leaf built XRCE from `prj-xrce.conf`. Ranking the two only

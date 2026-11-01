@@ -275,7 +275,7 @@ qos-mask-derivation:
 # phase-403 W9 (issue 0965) — the per-kind CALLBACK SLOT cost has ONE
 # definition, tied to the registration sites that actually claim a slot.
 #
-# `nros ws entity-inventory` derives NROS_EXECUTOR_MAX_CBS by summing
+# `nros dev image entity-inventory` derives NROS_EXECUTOR_MAX_CBS by summing
 # `EntityKind::callback_slots()`, and that function is a MIRROR: the CLI is a
 # host binary and nros-node is no_std and built for the target, so it restates
 # what `Executor::next_entry_slot()` decides. Same rule as the queryable counts

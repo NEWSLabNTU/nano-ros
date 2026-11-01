@@ -387,7 +387,7 @@ else()
         endif()
     endif()
     if(_NROS_CLI_IDLC)
-        # WORKING_DIRECTORY, and it is load-bearing: `nros sdk-path` reads
+        # WORKING_DIRECTORY, and it is load-bearing: `nros dev sdk path` reads
         # `nros-sdk-index.toml` relative to the CURRENT DIRECTORY, and cmake
         # runs this from the BUILD dir, where there is no index. The command
         # then exits 1 with `failed to read SDK index nros-sdk-index.toml`,
@@ -397,7 +397,7 @@ else()
         # satisfied. `NanoRosCorrosion.cmake` has always passed one; this site
         # and the riscv64-threadx toolchain did not.
         execute_process(
-            COMMAND "${_NROS_CLI_IDLC}" sdk-path cyclonedds
+            COMMAND "${_NROS_CLI_IDLC}" dev sdk path cyclonedds
             WORKING_DIRECTORY "${NROS_REPO_DIR}"
             OUTPUT_VARIABLE _nros_cyclone_dir OUTPUT_STRIP_TRAILING_WHITESPACE
             ERROR_VARIABLE _nros_cyclone_err RESULT_VARIABLE _nros_cyclone_rc)
@@ -440,7 +440,7 @@ if(NOT NROS_HOST_IDLC)
         "  searched: SDK store hints [${_nros_idlc_store_hints}], host PATH, "
         "then ${NROS_REPO_DIR}/build/{cyclonedds,install}/bin\n"
         "  An EMPTY store-hints list above means the store was never "
-        "consulted, not that it is empty — `nros sdk-path cyclonedds` reads "
+        "consulted, not that it is empty — `nros dev sdk path cyclonedds` reads "
         "the index from the CURRENT directory, so it fails when run from a "
         "build dir.\n"
         "  Remedies: install ROS 2 (idlc on PATH), run "

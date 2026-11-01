@@ -302,7 +302,7 @@ fixture-staleness-probes:
     ./tests/fixture-staleness-probe-tests.sh
 
 # phase-489 W6 — a fixture group's single-package leaves each get their sizing
-# class's own cargo build dir (`nros ws leaf-system --write-settings
+# class's own cargo build dir (`nros dev image leaf-system --write-settings
 # --target-dir`), in BOTH the build and the staleness probe. Without it every
 # row after a different leaf recompiled the core crates (~12.7 s a row, ~50
 # rows, on a re-run with no change). Stub CLI; no build needed.

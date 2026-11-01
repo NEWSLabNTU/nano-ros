@@ -184,16 +184,16 @@ told where nano-ros is; a cross board also needs the toolchain file its
 starter page names:
 
 ```bash
-cmake -S . -B build/linux/cmake -DNROS_IMAGE=linux -Dnano_ros_ROOT="$(nros sdk-root)"
+cmake -S . -B build/linux/cmake -DNROS_IMAGE=linux -Dnano_ros_ROOT="$(nros dev sdk root)"
 cmake --build build/linux/cmake
 ```
 
 Without a `system.toml` at all, see
 [Build as a CMake subdirectory](./build-as-subdirectory.md).
 
-`nros sdk-root` prints the SDK root the `nros` on PATH resolves (the
+`nros dev sdk root` prints the SDK root the `nros` on PATH resolves (the
 one its release carries). `nros build`, and the CMakePresets
-`nros init` writes, pass it for you.
+`nros setup presets` writes, pass it for you.
 
 The first configure pulls and builds nano-ros's Rust staticlibs
 (~3 minutes). Re-builds finish in seconds.

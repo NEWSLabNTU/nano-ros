@@ -36,7 +36,7 @@ function(nros_leaf_census_take _nros _dir)
     endif()
     message(STATUS "nano-ros: ${_dir} -- taking its census")
     execute_process(
-        COMMAND "${_nros}" ws entity-census take --leaf "${_dir}"
+        COMMAND "${_nros}" dev image entity-census take --leaf "${_dir}"
         OUTPUT_VARIABLE _nros_take_out
         ERROR_VARIABLE _nros_take_out
         RESULT_VARIABLE _nros_take_rc)

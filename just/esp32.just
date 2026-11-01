@@ -103,7 +103,7 @@ build-examples:
     echo "Building ESP32 examples (from examples/fixtures.toml)..."
     # Phase 225.O — ESP32-C3 QEMU workspace Entry (Node + Bringup + Entry
     # pkgs) through the documented workspace workflow (`nros sync`,
-    # `nros codegen-system`, then cargo). Mirrors the freertos /
+    # `nros dev codegen system`, then cargo). Mirrors the freertos /
     # threadx_linux build-examples workspace-lane tail. The per-row `env`
     # in examples/fixtures.toml carries RUSTUP_TOOLCHAIN +
     # CARGO_UNSTABLE_BUILD_STD, so this call needs no extra toolchain env.

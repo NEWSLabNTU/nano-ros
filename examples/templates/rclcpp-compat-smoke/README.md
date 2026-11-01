@@ -81,7 +81,7 @@ diagnostics observer the `publish_count` task.
 
 - **209.E** (bulk codegen) — replaces the per-package
   `nros_generate_interfaces(...)` lines with the bulk
-  `nros generate cpp --workspace <ws>` form and emits the upstream
+  `nros interface generate cpp --workspace <ws>` form and emits the upstream
   `<pkg>/msg/<name>.hpp` per-message header layout (so `#include
   <std_msgs/msg/int32.hpp>` resolves directly, matching what a ported ROS 2
   source already writes).

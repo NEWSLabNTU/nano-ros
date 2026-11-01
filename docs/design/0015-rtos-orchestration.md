@@ -84,8 +84,8 @@ superseded-by: null
 > **Entry-emit pipeline superseded by RFC-0032.** §3's "cargo nano-ros
 > generate-main" template orchestrator and §11.4 item 2 predate the current
 > entry codegen. The `main()`/boot TU is now emitted by the `nros::main!()`
-> proc-macro (canonical) + the `nros codegen entry` CLI mirror (per **RFC-0032**),
-> with the embedded-C scaffold baked by `nros codegen-system` (RFC-0003). Read
+> proc-macro (canonical) + the `nros dev codegen entry` CLI mirror (per **RFC-0032**),
+> with the embedded-C scaffold baked by `nros dev codegen system` (RFC-0003). Read
 > §3's "cargo-nano-ros codegen orchestrator" box and §10.2's spawn sketch as the
 > *execution-model intent*; the concrete emitter mechanics (frameworks, the
 > `BoardEntry::run` vs `run_tiers` contract, the shared `nros-orchestration-ir`

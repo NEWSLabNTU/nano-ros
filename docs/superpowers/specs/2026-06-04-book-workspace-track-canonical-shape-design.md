@@ -211,7 +211,7 @@ no `system.toml`) — a different, still-valid lesson. **Do not mangle it.**
 
 ## Open items to resolve during implementation
 
-- Confirm `nros ws` / `nros explain` / `nros codegen-system` help text before
+- Confirm `nros ws` / `nros explain` / `nros dev codegen system` help text before
   documenting (run `--help`).
 - Confirm whether `examples/templates/multi-package-workspace/` already
   reflects the 3-role `src/` shape; if stale, note in the bringup page rather

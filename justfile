@@ -39,7 +39,7 @@ export SCCACHE_CACHE_SIZE := "30G"
 export NROS_BUILD_JOBS := env_var_or_default("NROS_BUILD_JOBS", `nproc 2>/dev/null || echo 8`)
 
 # Cargo build profile for broad build recipes. Deliberately EMPTY by default
-# (phase-336): the default lives in the profile table behind `nros profile`, and
+# (phase-336): the default lives in the profile table behind `nros dev profile`, and
 # `scripts/build/cargo.sh` resolves it there. A literal here would be a fourth
 # copy — and it would have to be evaluated at justfile PARSE time, so a wrong
 # value could not even be corrected by the recipe that builds the CLI.
@@ -57,7 +57,7 @@ export NROS_CARGO_PROFILE := env_var_or_default("NROS_CARGO_PROFILE", "")
 #
 # phase-484 W2d (RFC-0103 D6) — and THIS checkout's own `nros` comes first, the
 # same entry `activate.sh` adds. With no exported root, a cmake leaf asks
-# `nros sdk-root` (the binary knows its own checkout), so a recipe run from a
+# `nros dev sdk root` (the binary knows its own checkout), so a recipe run from a
 # shell that never sourced `activate.sh` must still find this checkout's CLI
 # rather than none or another checkout's.
 export PATH := _NROS_HERE / "packages/cli/target/release" + ":" + shell('"$2"/scripts/lib/reroot-checkout-pathlist.sh "$1" "$2"', env("HOME") / ".local/bin" + ":" + env_var_or_default("PATH", ""), _NROS_HERE)
@@ -446,7 +446,7 @@ build-all:
     # through a plain variable.
     #
     # The pinned make and ninja live in the STORE (RFC-0095 D3), resolved through
-    # `nros sdk-path` — constructed from the index pin, never searched on PATH
+    # `nros dev sdk path` — constructed from the index pin, never searched on PATH
     # (issue 0625) — which is exactly how `build-all-jobserver.sh`, the script this
     # gates, resolves them. This block read `third-party/make/make` and
     # `third-party/ninja/ninja` until 2026-09-10, after both had moved: the gate
@@ -2519,7 +2519,7 @@ _require-leaf-includes:
 # while the identical config in a freertos leaf resolved. The lanes that worked
 # were working by accident.
 #
-# `nros ws central-patch` is the SAME writer `sync` calls, not a second spelling
+# `nros dev lock central-patch` is the SAME writer `sync` calls, not a second spelling
 # of the content — the table must agree with sync's byte for byte or two leaves
 # resolve against different crates. Idempotent (skip-write when unchanged), so a
 # lane that already has the file pays one process spawn.
@@ -4192,7 +4192,7 @@ verify-verus:
     # the provisioning command, which is strictly more than the bare
     # "not found at ./tools/verus" this used to say; the line below adds the
     # `just` spelling, which also installs the rust toolchain Verus pins.
-    if ! VERUS_DIR="$(nros sdk-path verus --require)/bin"; then
+    if ! VERUS_DIR="$(nros dev sdk path verus --require)/bin"; then
         echo "Run 'just verification verus' to install" >&2
         exit 1
     fi
@@ -4318,7 +4318,7 @@ install-nros-cli: setup-cli
 # Phase 218.D.1 — build the in-tree `nros` CLI sub-workspace into
 # `packages/cli/target/release/nros`. Idempotent: a no-op when the binary
 # is newer than `packages/cli/Cargo.lock`. Required by every recipe that
-# shells out to `nros setup …` / `nros codegen …`; `just setup` runs
+# shells out to `nros setup …` / `nros dev codegen …`; `just setup` runs
 # this first so downstream provisioning has the binary on hand.
 # Build the in-tree nros CLI (packages/cli/target/release/nros).
 [group("setup")]
@@ -4805,7 +4805,7 @@ generate-interfaces:
     rm -rf "$stage"
     trap 'rm -rf "$stage"' EXIT
     cd packages/interfaces
-    $NROS generate-rust --force -o "$stage" --codegen-config nros-codegen.toml \
+    $NROS dev codegen rust --force -o "$stage" --codegen-config nros-codegen.toml \
         --rename builtin_interfaces=nros-builtin-interfaces \
         --rename std_msgs=nros-std-msgs \
         --rename rcl_interfaces=nros-rcl-interfaces \
@@ -5086,7 +5086,7 @@ _setup-common *roles:
     # preconditions it had no step to provision.
     #
     # AFTER `setup-cli`: `install-corrosion` resolves its prefix with
-    # `nros sdk-path corrosion`, so it needs the binary to exist.
+    # `nros dev sdk path corrosion`, so it needs the binary to exist.
     # Both are idempotent -- corrosion short-circuits on its version stamp,
     # `rustup target add` is a no-op when the target is present.
     just workspace rust-targets
@@ -5859,11 +5859,11 @@ book:
     # Prefer the PINNED binary; fall back to PATH; fail with the remedy rather
     # than `mdbook: command not found` after rustdoc has already run for minutes.
     #
-    # The pinned path is CONSTRUCTED from the index pin via `nros sdk-path`,
+    # The pinned path is CONSTRUCTED from the index pin via `nros dev sdk path`,
     # never searched for in the store (issue 0625) — `--require` is deliberately
     # NOT passed, because a missing install must reach the PATH fallback and
     # then the remedy below, not abort with a store diagnostic.
-    MDBOOK_DIR="$(nros sdk-path mdbook 2>/dev/null || true)"
+    MDBOOK_DIR="$(nros dev sdk path mdbook 2>/dev/null || true)"
     if [ -n "$MDBOOK_DIR" ] && [ -x "$MDBOOK_DIR/bin/mdbook" ]; then
         MDBOOK="$MDBOOK_DIR/bin/mdbook"
     elif command -v mdbook >/dev/null 2>&1; then

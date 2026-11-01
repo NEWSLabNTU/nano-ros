@@ -5,7 +5,7 @@ RFC-0103 D1/D9/D10 / phase-484 W4b, phase-497 W2. A board's fallback IP /
 netmask / gateway / MAC is its network's plan (`[board.net] network`), or the
 platform default, and every copy is generated from it: the crate's
 `Config::default()` (`BOARD_NET_*`), its cargo-road C `NROS_APP_CONFIG`, and
-its cmake-road one (`nros board net`). An IMAGE's address is the image's
+its cmake-road one (`nros dev board net`). An IMAGE's address is the image's
 (`[image.<id>.net.<if>]`, applied over that default through `NROS_IMAGE_NET`),
 and the board-level `ip` / `mac` keys that used to restate one image's identity
 are refused when the descriptor is read (D10g). This is a RATCHET over the boards
@@ -98,7 +98,7 @@ def main() -> int:
               "identity outside [board.net]:", file=sys.stderr)
         print("\n".join(bad), file=sys.stderr)
         print("  Read BOARD_NET_* (Rust), ResolvedNet::c_network_initializer (build.rs) or "
-              "`nros board net <board> --format c-network` (cmake).", file=sys.stderr)
+              "`nros dev board net <board> --format c-network` (cmake).", file=sys.stderr)
         return 1
     n = sum(len(f) for f in MIGRATED.values())
     print(f"check-board-net-one-home: OK — {len(MIGRATED)} board(s), {n} file(s), no literal identity")

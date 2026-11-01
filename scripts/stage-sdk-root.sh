@@ -109,7 +109,7 @@
 #                       PX4's `module-template/` (EXTERNAL_MODULES_LOCATION),
 #                       NuttX's `apps/external` shell, the PlatformIO and
 #                       S32DS glue. The book's user chapters copy them from
-#                       `$(nros sdk-root)/integrations/…` (phase-517 W2), which
+#                       `$(nros dev sdk root)/integrations/…` (phase-517 W2), which
 #                       without this line names a directory only a checkout
 #                       has. 276 KB.
 #   CMakeLists.txt     `_nros_import_once` does `add_subdirectory("${root}")`,

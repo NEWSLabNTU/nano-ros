@@ -12,7 +12,7 @@ RFC-0104 D2 / phase-485 W1. `nros-sdk-index.toml` names the pin set
     so `heapless` cannot be 0.8.1 in the repo root and 0.8.0 in the examples;
   * a `Cargo.lock` is tracked IFF its directory is a locked root (phase-485
     W2) -- every other cargo root is a leaf, seeded from the pins on its first
-    build by `nros build` / `nros ws seed-lock`, never committed.
+    build by `nros build` / `nros dev lock seed`, never committed.
 
 Remedy for every failure: `nros update --crate <name> [--precise <v>]`, which
 moves every locked root and the pin set together; or, after a manual `cargo

@@ -2,7 +2,7 @@
 """phase-403 W9 (issue 0965) - the per-kind CALLBACK SLOT COST has one
 definition, and it matches the registration sites that actually claim a slot.
 
-`nros ws entity-inventory` derives `NROS_EXECUTOR_MAX_CBS` by summing
+`nros dev image entity-inventory` derives `NROS_EXECUTOR_MAX_CBS` by summing
 `EntityKind::callback_slots()` over an image's declared entities. That function
 is a MIRROR: the CLI is a host binary and `nros-node` is `no_std` and built for
 the target, so it cannot read the executor's own accounting and has to restate

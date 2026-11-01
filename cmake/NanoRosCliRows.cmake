@@ -39,7 +39,7 @@
 #
 #   REQUIRE: every non-empty line must match <regex>, or the configure stops
 #   naming CONTEXT and the line. A reader whose producer has a grammar (the
-#   `NROS_LEAF_<KEY>=<value>` rows of `nros ws leaf-system`) states it here, so
+#   `NROS_LEAF_<KEY>=<value>` rows of `nros dev image leaf-system`) states it here, so
 #   a line it cannot attribute is an error rather than something to skip -- a
 #   skipped line is exactly how the defect above stayed invisible.
 

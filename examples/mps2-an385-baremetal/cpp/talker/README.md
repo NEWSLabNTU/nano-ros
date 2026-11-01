@@ -9,12 +9,12 @@ why: the link root is Rust (`src/main.rs` boots the board and calls
 `nros_app_main()`), and `build.rs` compiles `src/talker.cpp` into it. Three things are
 C++-specific:
 
-* **The message code is half Rust.** `nros generate cpp` emits header-only C++
+* **The message code is half Rust.** `nros interface generate cpp` emits header-only C++
   types plus their CDR serializers as Rust (`*_types.rs` / `*_exports.rs`). On
   the cmake road a per-package staticlib wraps them; here `build.rs` writes one
   `include!` per file and `src/main.rs` compiles them into the binary, under the
   small prelude they expect (`nros_serdes`, `fixed_str`, `nros_cpp_publish_raw`).
-  `nros generate cpp` gained its standalone (`package.xml`) front door for this
+  `nros interface generate cpp` gained its standalone (`package.xml`) front door for this
   leaf; it runs the same emitter the cmake args-file path does.
 * **No C++ runtime.** `-ffreestanding -fno-exceptions -fno-rtti
   -fno-threadsafe-statics -fno-use-cxa-atexit`, and no `-lstdc++`. The

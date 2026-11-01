@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Run `nros generate-rust --force` only when package/codegen/interface inputs
+# Run `nros dev codegen rust --force` only when package/codegen/interface inputs
 # changed. The generator itself writes files idempotently, but avoiding the
 # process entirely saves repeated ament-index scans across the full example tree.
 
@@ -121,7 +121,7 @@ nros_generate_rust_if_needed() {
 
     if [ "${NROS_GENERATE_BINDINGS_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ ! -d "$output_dir" ] || ! nros_generated_has_crate "$output_dir" || [ "$(cat "$stamp")" != "$desired" ]; then
         echo "  generate-rust: $dir"
-        ( cd "$dir" && "$nros" generate-rust --force "$@" )
+        ( cd "$dir" && "$nros" dev codegen rust --force "$@" )
         mkdir -p "$output_dir"
         printf '%s\n' "$desired" > "$stamp"
     else

@@ -50,7 +50,7 @@ Test lanes: `just esp32 test`, `test-basic`, `test-all`.
 ### Why C/C++ is absent, written down (issue 1512)
 
 It is an AUTHORED decision, not a missing port, and it is enforced in code:
-`PlatformKind::Esp32::cmake_deploy()` returns `None`, so `nros ws leaf-system`
+`PlatformKind::Esp32::cmake_deploy()` returns `None`, so `nros dev image leaf-system`
 derives no `NROS_PLATFORM` for a C/C++ leaf in this tree and one cannot
 configure. The reason is the tree's identity — this is the **no-IDF** path
 (`esp-hal`, pure Rust HAL); C/C++ on the same silicon is the ESP-IDF component

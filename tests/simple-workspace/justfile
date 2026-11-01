@@ -3,7 +3,7 @@
 # This workspace tests nros integration with generated message bindings.
 # Supports two build modes:
 #   1. colcon mode: Uses colcon-nros for automatic bindgen + compilation
-#   2. standalone mode: Uses nros generate + cargo build (for RTOS)
+#   2. standalone mode: Uses nros interface generate + cargo build (for RTOS)
 #
 # Prerequisites (colcon mode):
 #   - direnv installed and `direnv allow` run in this directory

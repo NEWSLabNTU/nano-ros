@@ -180,7 +180,7 @@ reads them. The hash is content over the `<depend>` closure, never an mtime:
 that starts to shadow a package moves no file at all. One spelling
 (`rosidl_codegen::ament_stamp`) serves all three roads — `nros build` checks a
 cargo-road crate before planning, and both cmake generators ask
-`nros codegen --ament-witness` at configure (issue 1780, phase-485 W5).
+`nros dev codegen --ament-witness` at configure (issue 1780, phase-485 W5).
 
 ### D6 — System libraries: RECORD and WARN, never enforce
 

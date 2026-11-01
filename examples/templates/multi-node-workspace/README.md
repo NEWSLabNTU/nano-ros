@@ -99,7 +99,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 - **`nros plan demo_bringup` / `nros check <plan.json>`** need
   pre-collected source-metadata sidecars (`record.json` +
   per-pkg `_metadata/*.json`) for lib-only Node pkgs in this release —
-  the host metadata-mode auto-build (`nros metadata --build`) and the
+  the host metadata-mode auto-build (`nros dev metadata --build`) and the
   launch record parser are not yet wired for this shape. The
   `nros check --bringup` / `nros check --workspace` lints above do work
   and are the relevant gates for a template. See

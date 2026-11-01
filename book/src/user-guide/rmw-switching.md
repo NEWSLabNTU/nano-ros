@@ -42,7 +42,7 @@ example a scaffolded C leaf (`nros new … --lang c`) — picks its
 backend on the configure line:
 
 ```bash
-cmake -S . -B build -Dnano_ros_ROOT="$(nros sdk-root)" \
+cmake -S . -B build -Dnano_ros_ROOT="$(nros dev sdk root)" \
     -DNROS_RMW=cyclonedds   # zenoh | xrce | cyclonedds
 cmake --build build
 ```

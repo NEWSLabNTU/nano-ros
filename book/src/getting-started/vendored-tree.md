@@ -109,10 +109,10 @@ Two entry points, both source-backed:
 
 - **`find_package(nano_ros REQUIRED)`** — the ament-shaped entry
   (`nano_rosConfig.cmake` at the SDK root). Located via
-  `-Dnano_ros_ROOT="$(nros sdk-root)"`, which `nros build` and the
-  CMakePresets `nros init` writes pass; a raw `cmake` names it (no
+  `-Dnano_ros_ROOT="$(nros dev sdk root)"`, which `nros build` and the
+  CMakePresets `nros setup presets` writes pass; a raw `cmake` names it (no
   shell exports it).
-- **`add_subdirectory(<sdk-root> nano_ros)`**, the path from `nros sdk-root` — the lower-level
+- **`add_subdirectory(<sdk-root> nano_ros)`**, the path from `nros dev sdk root` — the lower-level
   shape. See [Build as a CMake subdirectory](build-as-subdirectory.md)
   for the cache-variable table.
 
@@ -184,7 +184,7 @@ look like missing packages, not like staleness.
 
 - [ ] One release version, installed with `--version`, recorded with
       `nros pin`, moved forward only
-- [ ] CI drives `nros build` (or passes `-Dnano_ros_ROOT="$(nros sdk-root)"`
+- [ ] CI drives `nros build` (or passes `-Dnano_ros_ROOT="$(nros dev sdk root)"`
       to a raw `cmake`) — no reliance on an interactive shell
 - [ ] `nros sync` runs in CI before any Rust build — before `nros build`,
       and before any cargo line that passes `--config

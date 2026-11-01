@@ -140,7 +140,7 @@ The gate `no_tracked_system_toml_states_a_registry_knob_as_an_env_row`
 
 **The app rung's carrier, per road** (issue 1712). Cargo: the generated
 `nros-cargo.toml` `[env]`. CMake: `--config <build>/nros/nros-image-env.toml`
-on every cargo command the configure spawns (written by `nros ws leaf-system
+on every cargo command the configure spawns (written by `nros dev image leaf-system
 --image-env-out`), the same unforced `[env]`, so an exported variable still
 wins and a changed row re-runs the build scripts that read it. West
 (phase-481 W1, RFC-0098 D11, phase-484 W5b): the nano-ros module's

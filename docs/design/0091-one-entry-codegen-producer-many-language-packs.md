@@ -32,7 +32,7 @@ Entry code has **four** producers, not the two issue 1003 assumed:
 | # | Producer | Size | Emits |
 | --- | --- | --- | --- |
 | 1 | CMake templates (`nano_ros_add_node`) | 6 `.cpp.in` | the C/C++ entry TU |
-| 2 | CLI emitters (`nros codegen entry`) | 3748 lines | C++, C, Rust entry TUs |
+| 2 | CLI emitters (`nros dev codegen entry`) | 3748 lines | C++, C, Rust entry TUs |
 | 3 | `nros::main!()` proc-macro | **3822 lines** | the Rust entry |
 | 4 | `builder/entry.rs` | 766 lines | an entry *package* |
 
@@ -611,7 +611,7 @@ the dependency weight that created this duplication once already.
 
 **The CMake templates become a pack.** DONE — phase-432 W2.6. The six
 `cmake/templates/*_entry_main*.cpp.in` are deleted; `nano_ros_node_register()`
-calls `nros codegen entry-node`, which synthesises a one-node `Plan` and renders
+calls `nros dev codegen entry-node`, which synthesises a one-node `Plan` and renders
 the same pack.
 
 Note what this settles about the boundary: the templates could not simply move,
@@ -786,7 +786,7 @@ language first is what made the shortcut visible at all.
 - A language's TYPE SPELLING is a pack and a FILTER SET. For messages that is
   the whole per-language Rust for spelling types; each message surface still
   has a Rust generator per kind (`generator/{msg,srv,action,cpp}.rs`) that
-  assembles its context and names its files, plus an arm in `nros generate`.
+  assembles its context and names its files, plus an arm in `nros interface generate`.
   For entries, a language contributes a pack, a Rust view-building emitter
   (`emit_<lang>.rs`) and its dispatch arms (§8). *(Amendment 1: for entries it
   is now a pack and, if needed, a filter — no emitter, no dispatch arm.)*

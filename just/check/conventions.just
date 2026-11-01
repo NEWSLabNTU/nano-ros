@@ -332,6 +332,26 @@ build-wiring-classified:
 retired-cmake-names:
     @python3 scripts/check/check-retired-cmake-names.py
 
+# phase-526 W4 (RFC-0117 D5) — every old `nros` spelling still works as a
+# hidden alias, but the tree's own cmake, recipes, scripts, examples and docs
+# write the new one. The old -> new table is the CLI's own
+# (`nros help --aliases --json`), so with no CLI built this records a skip
+# rather than passing. `--fix` rewrites in place. Self-tests its matcher.
+[private]
+cli-old-spellings:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rc=0
+    out="$(python3 scripts/check/check-cli-old-spellings.py)" || rc=$?
+    if [ "$rc" -eq 78 ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cli-old-spellings "$out"
+        exit 0
+    fi
+    printf '%s\n' "$out"
+    exit "$rc"
+
 # `CMAKE_CURRENT_LIST_DIR` inside a function body is the CALLER's directory,
 # so a path built from it misses whenever another file calls the function (the
 # Zephyr CycloneDDS `NanoRosCli.cmake` include did). Write

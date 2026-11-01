@@ -83,7 +83,7 @@ function(nano_ros_use_board NAME)
 
     set(_board_vars "${CMAKE_CURRENT_BINARY_DIR}/nros-board-${NAME}.cmake")
     execute_process(
-        COMMAND "${_nros_cli}" board cmake-vars "${NAME}"
+        COMMAND "${_nros_cli}" dev board cmake-vars "${NAME}"
                 --workspace "${NROS_REPO_DIR}"
                 --out "${_board_vars}"
         RESULT_VARIABLE _rc

@@ -7,7 +7,7 @@ no gate, and it recurred on a target PROPERTY rather than an argument:
 
   * `nano_ros_auto_add_library()` wrote `NROS_COMPONENT_LANG` LOWERCASE — the
     canonical `nros_lang::Language::as_str` spelling, which is also the on-disk
-    serde contract and what `nros codegen source-language` answers;
+    serde contract and what `nros dev codegen source-language` answers;
   * `nano_ros_node_register()` wrote the same property UPPERCASE, from its own
     ~30-comparison internal vocabulary;
   * all three readers tested `STREQUAL "C"`.

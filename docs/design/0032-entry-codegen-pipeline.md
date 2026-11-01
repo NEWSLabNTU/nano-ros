@@ -35,7 +35,7 @@ companion to:
   proc-macro entry codegen and is superseded by this RFC (see the RFC-0015
   banner).
 - **RFC-0003** (RTOS integration pattern) — the *embedded host-time C baking*
-  path (`nros codegen-system` → `system_config.h` + `system_main.c`, consumed at
+  path (`nros dev codegen system` → `system_config.h` + `system_main.c`, consumed at
   the vendor's configure phase). That is the **C/vendor** entry scaffold; this
   RFC's proc-macro is the **Rust** entry scaffold. Both consume the same
   node-set source of truth (launch tree + `system.toml`).
@@ -72,7 +72,7 @@ tree the same way:
 | Emitter | Where | When | Why it exists |
 | --- | --- | --- | --- |
 | **`nros::main!()` proc-macro** | `packages/core/nros-macros/src/main_macro.rs` | the consumer's `cargo build` (compile time) | **Canonical.** Has `proc_macro::Span` for diagnostics a shell-out can't match; expands directly into the Entry crate. |
-| **`nros codegen entry --lang rust\|cpp\|c`** | `packages/cli/nros-cli-core/src/codegen/entry/emit_{rust,cpp,c}.rs` | host-time CLI invocation | **Mirror.** Pre-bakes the macro expansion for byte-level diffing, inspection outside a cargo build, and the C/C++ entry TUs. |
+| **`nros dev codegen entry --lang rust\|cpp\|c`** | `packages/cli/nros-cli-core/src/codegen/entry/emit_{rust,cpp,c}.rs` | host-time CLI invocation | **Mirror.** Pre-bakes the macro expansion for byte-level diffing, inspection outside a cargo build, and the C/C++ entry TUs. |
 
 Both consult the workspace pkg-index + launch parser (`nros_build::pkg_index` /
 `launch_parser`) and lower to a per-node register list. The CLI path lowers into
@@ -83,7 +83,7 @@ are the single source of truth for the node set** — neither emitter invents
 nodes.
 
 The **embedded-C path** (RFC-0003) is a third emitter for a *different language*
-(`nros codegen-system` → `system_main.c`), not a competitor: it bakes the same
+(`nros dev codegen system` → `system_main.c`), not a competitor: it bakes the same
 node set into C for vendors whose build owns `main`. This RFC governs the Rust
 emitters; RFC-0003 governs the C bake. They share the node-set inputs, not the
 output.
@@ -128,7 +128,7 @@ surfaced by FreeRTOS Entry-pkg bring-up, [issue 0045](../issues/archived/0045-fr
    gate keeps the board crate host-compatible. This **replaces** the legacy
    board-descriptor `crate_root_extra = "use panic_semihosting as _;"` injection:
    that string was emitted into the generated Entry main by the old
-   `nros codegen-system` path (RFC-0003), which `nros::main!()` does **not**
+   `nros dev codegen system` path (RFC-0003), which `nros::main!()` does **not**
    consume — so under the macro emitter the bin had no handler. Board-ownership
    is emitter-independent (works for both the macro and the CLI mirror) and is the
    single source; `crate_root_extra` is retired for Rust Entry panic.
@@ -287,7 +287,7 @@ so the leaf crate stays free of the full CLI config type. The macro derives
 ```
 launch tree + system.toml (tiers + group_tiers)
         │
-        ├── nros codegen-system ──► resolve_tiers ──► nros-plan.json (bake / RFC-0003)
+        ├── nros dev codegen system ──► resolve_tiers ──► nros-plan.json (bake / RFC-0003)
         └── nros::main! (expand) ──► resolve_tiers ──► run / run_tiers emit
                                         ▲
                               nros-orchestration-ir  (one definition, no drift)

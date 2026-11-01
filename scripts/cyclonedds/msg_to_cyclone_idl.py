@@ -55,7 +55,7 @@ from pathlib import Path
 # <version>` — outside every checkout and keyed by version — and the path is a
 # function of the index rather than a literal here. A literal would be a second
 # spelling that goes stale the moment the index moves, which is the class
-# `nros sdk-path` exists to prevent for tools.
+# `nros dev sdk path` exists to prevent for tools.
 #
 # The pre-phase-440 location is kept BELOW it: a host provisioned earlier still
 # has `third-party/ros/rosidl` and keeps working with no migration step, exactly

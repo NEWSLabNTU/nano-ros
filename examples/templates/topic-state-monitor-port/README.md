@@ -79,7 +79,7 @@ lambda subscription pattern.
 ## Next iteration (real upstream port)
 
 1. Vendor the upstream `topic_state_monitor/` (Apache 2.0) under `vendor/`.
-2. Generate the Autoware message deps via `nros generate cpp <pkg>` per package
+2. Generate the Autoware message deps via `nros interface generate cpp <pkg>` per package
    (or 209.E's bulk form once shipped) — `tf2_msgs`, `autoware_*` deps the
    upstream source includes.
 3. Land the 209.A `std::function`-subscription follow-up so the upstream

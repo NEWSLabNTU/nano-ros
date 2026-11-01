@@ -458,7 +458,7 @@ pub fn next_steps(name: &str, lang: Language, platform: &str) -> Vec<String> {
             );
             v.push(format!(
                 "west build -b native_sim/native/64 {name} -- \
-                 -DZEPHYR_EXTRA_MODULES=\"$(nros sdk-root)\""
+                 -DZEPHYR_EXTRA_MODULES=\"$(nros dev sdk root)\""
             ));
             v.push(format!(
                 "# or let nros hand off to west: cd {name} && \
@@ -1330,7 +1330,7 @@ fn scaffold_zephyr(name: &str, lang: Language, dir: &Path, role: Role, node: &st
     let cmake = format!(
         r#"# A stock Zephyr application (book: getting-started/integration-zephyr.md).
 # `find_package(Zephyr)` loads the nano-ros module (named on the `west build`
-# line: -DZEPHYR_EXTRA_MODULES="$(nros sdk-root)"); CONFIG_NROS=y in prj.conf
+# line: -DZEPHYR_EXTRA_MODULES="$(nros dev sdk root)"); CONFIG_NROS=y in prj.conf
 # switches it on. Board, RMW and the component live in system.toml.
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{{ZEPHYR_BASE}})
@@ -1956,7 +1956,7 @@ mod scaffold_flow_tests {
                             .iter()
                             .find(|l| l.starts_with("west build"))
                             .unwrap_or_else(|| panic!("{lang}/zephyr: no west build:\n{all}"));
-                        let module = "-DZEPHYR_EXTRA_MODULES=\"$(nros sdk-root)\"";
+                        let module = "-DZEPHYR_EXTRA_MODULES=\"$(nros dev sdk root)\"";
                         assert!(west.contains(module) && west.ends_with(module), "{west}");
                         assert!(
                             book.contains(module),

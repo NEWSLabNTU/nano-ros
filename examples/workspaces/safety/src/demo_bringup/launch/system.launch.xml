@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!-- Phase 269 W3 catalog launch for the cross-process C E2E-safety demo. Lists BOTH
-     nodes so `nros codegen-system` (invoked without an explicit file argument) resolves
+     nodes so `nros dev codegen system` (invoked without an explicit file argument) resolves
      an unambiguous system catalog. In-process delivery does not happen (same zenoh
      session; issue 0096), so the talker and safe_listener actually run as TWO
      processes: linux_c_safety_talker_entry boots safety_talker.launch.xml and

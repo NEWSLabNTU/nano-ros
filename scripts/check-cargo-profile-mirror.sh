@@ -31,7 +31,7 @@
 # `Cargo.toml` carries `release`/`dev` overrides the leaves do not need.
 #
 # phase-336 added a THIRD copy — `packages/tooling/nros-cargo-profile`, the
-# table cmake/bash/just read through `nros profile`. Its own tests check both
+# table cmake/bash/just read through `nros dev profile`. Its own tests check both
 # files against it, so this gate (buildless, in `check-fast`) and those tests
 # (behind a build) cover the same triangle from different sides.
 

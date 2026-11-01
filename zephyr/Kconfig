@@ -624,7 +624,7 @@ config NROS_EXECUTOR_MAX_LEVELS
     help
       The image's cap on preemption levels (RFC-0108 D4 rule 4,
       phase-509 P5). The tier derivation reads it from this image's
-      .config (nros codegen entry --dotconfig, and nros::main! through
+      .config (nros dev codegen entry --dotconfig, and nros::main! through
       DOTCONFIG): one level per distinct contract rank, merged from the
       least urgent end until the count fits, every member that loses its
       rank reported as a `level-budget` degradation in

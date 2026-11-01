@@ -59,7 +59,7 @@ the build tree (~3 minutes); rebuilds are seconds. Inside a nano-ros
 checkout that checkout is used; anywhere else `nros` uses its own SDK
 (a release's `share/nano-ros`, or the checkout an in-tree `nros` was
 built in), and `--nano-ros-path <dir>` names one explicitly. Nothing is
-exported. `nros sdk-root --explain` prints the root it would use and
+exported. `nros dev sdk root --explain` prints the root it would use and
 where that came from.
 
 ## Run

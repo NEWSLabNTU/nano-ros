@@ -2,7 +2,7 @@
 # Copyright (c) 2026 nros contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 #
-# Adapter shim for the Phase 212.E "nros codegen system" host-time bake.
+# Adapter shim for the Phase 212.E "nros dev codegen system" host-time bake.
 # Reads `<bringup>/system.toml` + `<bringup>/launch/*.xml` at Zephyr
 # cmake configure time, shells the `nros` CLI, and consumes the emitted
 # tree under `${CMAKE_BINARY_DIR}/nros-system/`:
@@ -123,7 +123,7 @@ endfunction()
 # phase-460 W4 (issue 1423) -- the bake's domain and the image's domain are two
 # declarations with two readers and, until this, no comparison.
 #
-# `nros codegen-system` resolves `system.toml`'s `domain_id` through the
+# `nros dev codegen system` resolves `system.toml`'s `domain_id` through the
 # `[deploy.<target>]` / `[system]` ladder and bakes it as
 # `#define NROS_SYSTEM_DOMAIN_ID <n>u` -- a define app source may read and no
 # file under `zephyr/`, `cmake/` or `packages/api` does. The image's session
@@ -152,7 +152,7 @@ function(nros_system_check_domain_agreement _config_h _bringup_dir)
         message(FATAL_ERROR
             "nros_system_generate: ${_config_h} carries ${_n} "
             "`#define NROS_SYSTEM_DOMAIN_ID` line(s); the bake writes exactly "
-            "one, so this header is not what `nros codegen-system` produced "
+            "one, so this header is not what `nros dev codegen system` produced "
             "and the image's domain cannot be checked against the system's "
             "(phase-460 W4).")
     endif()
@@ -263,7 +263,7 @@ function(nros_system_generate bringup_pkg)
     # which image that is.
     #
     # `APPLICATION_SOURCE_DIR` and its basename are the SAME pair
-    # `NanoRosImageAgreement.cmake` passes to `nros image-facts --for-entry`
+    # `NanoRosImageAgreement.cmake` passes to `nros dev image facts --for-entry`
     # and `NanoRosBoardFacts.cmake` resolves an entry's board from, so this is
     # one vocabulary across the three, not a third. Passing the directory hands
     # the CLI both halves: `leaf_system::for_entry` matches an image's
@@ -278,7 +278,7 @@ function(nros_system_generate bringup_pkg)
     endif()
 
     # Issue 1508 - a derived tier table in `nros-plan.json` is allocated out of
-    # THIS image's priority pool, the same one `nros codegen entry` allocates
+    # THIS image's priority pool, the same one `nros dev codegen entry` allocates
     # the running table from (NanoRosEntry.cmake), so the record and the image
     # agree. Kconfig has run by the time a module is configured.
     set(_dotconfig_args)
@@ -291,7 +291,7 @@ function(nros_system_generate bringup_pkg)
     nros_system_image_args(_image_args "${bringup_pkg}" "${_bringup_dir}" "${_entry_dir}")
 
     execute_process(
-        COMMAND "${_nros_cli}" codegen-system
+        COMMAND "${_nros_cli}" dev codegen system
                 --workspace "${_workspace}"
                 --bringup   "${_bringup_dir}"
                 ${_image_args}
@@ -306,7 +306,7 @@ function(nros_system_generate bringup_pkg)
 
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
-            "nros codegen-system failed (rc=${_rc}):\n${_stdout}\n${_stderr}")
+            "nros dev codegen system failed (rc=${_rc}):\n${_stdout}\n${_stderr}")
     endif()
 
     # Issue 2189 -- the image this bake resolved must be the one Kconfig rendered.
@@ -321,7 +321,7 @@ function(nros_system_generate bringup_pkg)
     set(_config_cmake "${_out_dir}/system_config.cmake")
     if(NOT EXISTS "${_config_h}" OR NOT EXISTS "${_config_cmake}")
         message(FATAL_ERROR
-            "nros codegen-system produced no system_config.h / "
+            "nros dev codegen system produced no system_config.h / "
             "system_config.cmake in ${_out_dir} (verb may be unimplemented "
             "in this CLI build).")
     endif()

@@ -8,7 +8,7 @@ carrier** generates the entry:
 
 - `nano_ros_add_node(TYPED … DEPLOY zephyr)` (with
   `NROS_PLATFORM=zephyr`) `configure_file`s
-  the shared entry pack (`nros codegen entry-node`) — a plain `int main(void)`
+  the shared entry pack (`nros dev codegen entry-node`) — a plain `int main(void)`
   that constructs the component, calls `configure(node)`, and runs
   `::rclcpp::board::ZephyrBoard::run_components(&setup)`.
 - The carrier branch composes the generated entry + the component lib into the

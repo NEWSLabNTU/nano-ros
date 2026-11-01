@@ -224,7 +224,7 @@ def main() -> int:
         print(
             "\nA message dependency is stated ONCE, in package.xml (RFC-0098, phase-517 W8).\n"
             "Delete the row and declare `<depend><pkg></depend>`, then run `nros sync`\n"
-            "(or `nros ws managed-deps <dir>`): sync writes the row back, tagged\n"
+            "(or `nros dev lock managed-deps <dir>`): sync writes the row back, tagged\n"
             "`# nros-managed`. A row another generator owns goes in EXEMPT with its reason.",
             file=sys.stderr,
         )

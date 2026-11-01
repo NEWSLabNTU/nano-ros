@@ -41,7 +41,7 @@
 #     `<stem>.contract.yaml` next to `<stem>.launch.xml` in the bringup package
 #     -- which the resolver folds into the SystemModel. One file per system
 #     rather than one per component, sitting next to the launch file that says
-#     which nodes run, and `nros ws entity-inventory --model` sizes the pools
+#     which nodes run, and `nros dev image entity-inventory --model` sizes the pools
 #     from it. `nano_ros_entry` passes the model automatically; nothing here
 #     needs an argument.
 #
@@ -57,7 +57,7 @@
 #   deploy/rmw tuple lives in package.xml `<export><nano_ros …/>`.)
 #
 # Side effect: every fn appends to GLOBAL props and rewrites
-# `${CMAKE_BINARY_DIR}/nros-metadata.json` so `nros codegen-system`
+# `${CMAKE_BINARY_DIR}/nros-metadata.json` so `nros dev codegen system`
 # can consume it at configure time. No sidecar TOML for C++ pkgs.
 #
 # The function is deliberately declarative/glue-only; entry generation
@@ -342,7 +342,7 @@ endfunction()
 # The node's facts cross as ARGUMENTS, not as a synthesised `SystemModel`: a
 # model is a build artifact of `nros sync`, never hand-authored, and a
 # cmake-side YAML writer would trade a duplicated template for a duplicated IR.
-# `nros codegen entry-node` builds the one-node plan in Rust — the same shape
+# `nros dev codegen entry-node` builds the one-node plan in Rust — the same shape
 # the metadata probe already used (`render_probe_main`).
 #
 # The CLI is not a new dependency for this path: every in-tree package reaching
@@ -386,7 +386,7 @@ function(_nros_node_register_entry_tu _board _lang _out)
     if(NOT _nre_rc EQUAL 0)
         message(FATAL_ERROR
             "nano_ros_node_register(${NROS_ENTRY_NODE_NAME}): "
-            "`nros codegen entry-node` failed (rc=${_nre_rc}).\n"
+            "`nros dev codegen entry-node` failed (rc=${_nre_rc}).\n"
             "  CLI: ${_nre_cli} ${_nre_args}\n"
             "  stdout: ${_nre_out}\n"
             "  stderr: ${_nre_err}")
@@ -517,7 +517,7 @@ function(_nros_entities_retired _call)
         "  `paths:` (a path whose trigger is `{ timer: { rate_hz: N } }` IS a timer);\n"
         "  topics: / services: / actions: wire those endpoints to absolute names.\n"
         "  The resolver folds it into the SystemModel and `nano_ros_entry` passes\n"
-        "  that model to `nros ws entity-inventory`, so the pools size themselves.\n"
+        "  that model to `nros dev image entity-inventory`, so the pools size themselves.\n"
         "\n"
         "  A STANDALONE leaf has no bringup and no model. It states the same facts\n"
         "  on its own `system.toml` `[[component]] entities` rows (RFC-0098 D8).\n"
@@ -653,7 +653,7 @@ function(nano_ros_node_register)
         # it read "extension is not exactly `.c`" ⇒ CPP, while
         # `_nros_infer_lang()` and `nano_ros_entry()` read "no C++ extension"
         # ⇒ c. So a `Cargo.toml` or a `.h` in SOURCES was C++ here and C there,
-        # and neither reader knew it was guessing. `nros codegen
+        # and neither reader knew it was guessing. `nros dev codegen
         # source-language` REFUSES a spelling it does not know.
         #
         # THE DEFAULT IS STATED: an unresolved list — no sources, or only files
@@ -913,7 +913,7 @@ function(nano_ros_node_register)
             # issue 1523 — `_nrc_lang_lc`, NOT `_nrc_lang`. This file's internal
             # vocabulary is UPPERCASE (~30 comparisons); `NROS_COMPONENT_LANG` is
             # a vocabulary this file SHARES, and its canonical spelling is the
-            # lowercase `Language::as_str` one — what `nros codegen
+            # lowercase `Language::as_str` one — what `nros dev codegen
             # source-language` answers, what `nano_ros_add_node` forwards as
             # `LANGUAGE ${_lang}`, what `nano_ros_auto_add_library` writes, and
             # what the `"lang"` field of the metadata row below already carries.
@@ -1305,7 +1305,7 @@ function(nano_ros_node_register)
     # Zephyr `app` target is global, so `target_sources(app …)` from that subdir
     # composes into the outer app. SINGLE-NODE per app: one Node pkg deploys to
     # zephyr per `app` (it owns the one `int main`). Multi-node Zephyr uses the
-    # `nros codegen entry --typed` multi-node emitter (one entry constructs all
+    # `nros dev codegen entry --typed` multi-node emitter (one entry constructs all
     # nodes) — out of scope here.
     # issue 0326 — the fused Zephyr carrier guard; the helper subsumes both the
     # platform test and the `TARGET app` requirement.
@@ -1632,7 +1632,7 @@ function(_nros_emit_declared_qos_header _pkg _component _dir)
     set(_nrq_hdr "${_dir}/rclc/detail/nros_declared_qos_generated.h")
     file(MAKE_DIRECTORY "${_dir}/rclc/detail" "${_dir}/rclcpp/detail")
     execute_process(
-        COMMAND "${_nrq_cli}" ws entity-inventory
+        COMMAND "${_nrq_cli}" dev image entity-inventory
                 --metadata "${_nrq_metadata}"
                 ${_nrq_model_args}
                 --component "${_pkg}::${_component}"

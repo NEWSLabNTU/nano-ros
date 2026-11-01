@@ -256,7 +256,7 @@ nros --help
 nros launch --help
 nros ws --help
 nros explain --help
-nros codegen-system --help
+nros dev codegen system --help
 nros run --help
 nros monitor --help
 ```
@@ -266,7 +266,7 @@ Expected: usage text per verb. (If a verb errors/absent, omit it and note so.)
 
 Insert after the `nros deploy` section. Document: `nros launch <bringup_pkg> [--launch <file>]` — spawns a Bringup pkg's components on the host from `launch/` (no ament install); the `native`/`native_sim` alternative to `ros2 launch`. Use the captured `--help` text as the authority.
 
-- [ ] **Step 3: Add `### nros ws …`, `### nros explain …`, `### nros codegen-system …` sections**
+- [ ] **Step 3: Add `### nros ws …`, `### nros explain …`, `### nros dev codegen system …` sections**
 
 One short section each, transcribed from the captured `--help`. Keep to what the help states; no invention.
 
@@ -676,7 +676,7 @@ Copy-out instructions: `cargo build`, `nros plan demo_bringup`, `nros check`, th
 - [ ] **Step 9: Verify the workspace builds**
 
 Run: `cd examples/templates/multi-node-workspace && cargo build 2>&1 | tail -20`
-Expected: builds the two Node pkgs + Entry pkg. If `nros::main!` codegen needs generated msg bindings, run `nros generate-rust` per pkg first (mirror what `examples/native/rust/talker/` requires) and document that in the README. If a dep path / board-crate name is wrong, fix and rebuild. **If the build cannot be made green within reason (e.g. macro needs a workspace pkg-index feature not in 0.3.7), STOP and report — do not commit a broken template.**
+Expected: builds the two Node pkgs + Entry pkg. If `nros::main!` codegen needs generated msg bindings, run `nros dev codegen rust` per pkg first (mirror what `examples/native/rust/talker/` requires) and document that in the README. If a dep path / board-crate name is wrong, fix and rebuild. **If the build cannot be made green within reason (e.g. macro needs a workspace pkg-index feature not in 0.3.7), STOP and report — do not commit a broken template.**
 
 - [ ] **Step 10: Verify plan + check**
 

@@ -311,7 +311,7 @@ ${_ib_ANCHOR}")
             # A configure-time emitter: a rebuilt `nros` must re-run it (issue 1018).
             nros_codegen_tool_reconfigure("${_tool}")
             execute_process(
-                COMMAND "${_tool}" ws seed-lock "${_lock_root}" --nano-ros-path "${_repo}"
+                COMMAND "${_tool}" dev lock seed "${_lock_root}" --nano-ros-path "${_repo}"
                 RESULT_VARIABLE _seed_rc OUTPUT_QUIET ERROR_VARIABLE _seed_err)
         endif()
         if(NOT _seed_rc EQUAL 0)

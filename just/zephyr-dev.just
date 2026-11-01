@@ -78,7 +78,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     # .cargo/config.toml's [patch.crates-io] — those crates must exist before the
     # cargo-driven west build. The C/C++ paths codegen in cmake via
     # nros_generate_interfaces(); the Rust path has no cmake equivalent, so run
-    # `nros generate-rust` here. Needs ROS sourced (AMENT_PREFIX_PATH resolves
+    # `nros dev codegen rust` here. Needs ROS sourced (AMENT_PREFIX_PATH resolves
     # the .msg defs — CI sources it; locally `source /opt/ros/<distro>/setup.bash`).
     case "{{example}}" in
     rust/*)
@@ -309,7 +309,7 @@ build-c-port:
         echo "$WORKSPACE/env.sh missing — run: just zephyr setup" >&2
         exit 2
     fi
-    make_bin="$(nros sdk-path make 2>/dev/null)/bin/make"
+    make_bin="$(nros dev sdk path make 2>/dev/null)/bin/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi

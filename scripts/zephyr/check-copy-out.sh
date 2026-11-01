@@ -142,11 +142,11 @@ echo "[copy-out] workspace : $workspace (4.4 line)"
 conf="prj.conf"
 bd="$tmp_root/build"
 
-make_bin="$(nros sdk-path make)/bin/make"
+make_bin="$(nros dev sdk path make)/bin/make"
 [ -x "$make_bin" ] || make_bin="$(command -v make)"
 
 export ZEPHYR_TOOLCHAIN_VARIANT=host
-export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
+export PATH="$(nros dev sdk path make)/bin:$(nros dev sdk path ninja)/bin:$PATH"
 
 echo "[copy-out] building (west via venv python) ..."
 set +e

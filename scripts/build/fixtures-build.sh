@@ -4,7 +4,7 @@
 #
 # Per-fixture options come from the manifest; per-PLATFORM env is the caller's
 # responsibility (already exported):
-#   rust  — toolchain/+nightly/SDK dirs; codegen (`nros generate-rust`) run by
+#   rust  — toolchain/+nightly/SDK dirs; codegen (`nros dev codegen rust`) run by
 #           the recipe before this. Manifest record: <dir>\x1f<env>\x1f<cargo-args>.
 #   c/cpp — toolchain/SDK cache vars + the codegen tool / idlc paths via
 #           $NROS_CMAKE_EXTRA_DEFS (appended to every cmake configure; C/C++
@@ -231,9 +231,9 @@ run_with_make() {
 
     jobs="$(nros_cargo_frontend_jobs)"
     make_bin="make"
-    if [ -x "$(nros sdk-path make)/bin/make" ] && \
-       "$(nros sdk-path make)/bin/make" --version | head -1 | grep -q "4.4"; then
-        make_bin="$(nros sdk-path make)/bin/make"
+    if [ -x "$(nros dev sdk path make)/bin/make" ] && \
+       "$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4"; then
+        make_bin="$(nros dev sdk path make)/bin/make"
         # issue 2119 — the rows find their make by NAME: a cargo row whose
         # build script configures cmake "Unix Makefiles" (`cyclonedds-sys`)
         # caches PATH's `gmake` and joins THIS make's fifo jobserver, which the
@@ -444,7 +444,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
         # Phase 210.E.3.d.native — pre-cargo `nros sync` writes the
         # auto-managed [patch.crates-io] block + materialises generated
         # msg crates under <dir>/build/. Replaces the legacy
-        # `nros generate-rust --force` + per-example .cargo/config.toml
+        # `nros dev codegen rust --force` + per-example .cargo/config.toml
         # [patch.crates-io] chunks. Native rust adopters only — embedded
         # rust fixtures still pre-codegen separately until E.3.d.embedded.
         # issue 0649 — the `nros sync` that used to live HERE is now a pre-pass

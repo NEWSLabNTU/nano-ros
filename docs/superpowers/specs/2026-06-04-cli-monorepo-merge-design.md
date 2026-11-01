@@ -141,7 +141,7 @@ into their own workspace can still end up with a *different* `nros`
 binary on PATH (an older install, a sibling checkout, a copy from a
 colleague's tarball). Catch this loud at codegen time:
 
-`nros codegen` and `nros generate-rust`:
+`nros dev codegen` and `nros dev codegen rust`:
 1. Read the target workspace's `Cargo.lock`.
 2. Find the resolved version of `nros-core` (the canonical anchor
    crate).
@@ -231,7 +231,7 @@ following work-item slice:
 - **D. Just recipe wiring.** `just setup` first step;
   `just setup-cli` shortcut; `scripts/build/cargo.sh::nros_cli_bin`
   resolution order change.
-- **E. ABI guard.** `nros codegen` / `nros generate-rust` version
+- **E. ABI guard.** `nros dev codegen` / `nros dev codegen rust` version
   check against target workspace's `Cargo.lock`.
 - **F. Workflow pin removal.** Ten workflows' `NROS_VERSION=0.3.7`
   lines deleted; replaced by the build-or-fetch logic with

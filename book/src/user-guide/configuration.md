@@ -26,7 +26,7 @@ standalone `config.toml` for hand-written `no_std` apps.
 | `Cargo.toml` | Rust toolchain facts only: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`) the generated entry selects from. No board, no target triple, no deploy block. | Rust project |
 | `CMakeLists.txt` | C/C++ toolchain facts only: targets and language deps, via `find_package(nano_ros)` + `nano_ros_add_executable` / `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057; `nano_ros_node_register` remains as the compat spelling) / `nano_ros_entry`. No platform, board or RMW `set()`. | C/C++ project |
 | `build/<image>/nros-cargo.toml` | **GENERATED, never edited** — every cargo setting the board choice implies: `[build] target`, `[target.*]` runner and rustflags, the cross compiler, the derived pool sizes as `[env]`, the nano-ros profiles, and the `[patch.crates-io]` rows that resolve nano-ros's registry-style names into your checkout. Written by `nros sync`, passed to cargo with `--config`. | image |
-| `package.xml` | ROS package identity + msg `<depend>`s (codegen input for `nros generate`) | all |
+| `package.xml` | ROS package identity + msg `<depend>`s (codegen input for `nros interface generate`) | all |
 | **`config.toml`** (standalone) | **Hand-written `no_std` direct-mode apps only** — `[node]` / `[eth0]` / `[network.<name>]` (RFC-0109 D4), compile-baked via `Config::from_toml(include_str!(…))`. Apps that use `nros::main!()` / codegen do **not** have one — they use `[image.<id>]` above. | embedded single-node app (no codegen) |
 
 > **Boundary rule.** If a knob changes *what is compiled/linked as a language

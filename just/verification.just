@@ -51,7 +51,7 @@ doctor:
     # phase-422 W2 — Verus is an SDK-store tool (`[tool.verus]`), so its path is
     # CONSTRUCTED from the index pin and never searched for (issue 0625). No
     # `--require`: a doctor reports, it does not abort.
-    verus_bin="$(nros sdk-path verus 2>/dev/null)/bin/verus"
+    verus_bin="$(nros dev sdk path verus 2>/dev/null)/bin/verus"
     if [ -x "$verus_bin" ] || command -v verus &>/dev/null; then
         ver=$("$verus_bin" --version 2>/dev/null | grep -i Version | head -1 | tr -d ' ' || echo "")
         echo "  [OK] verus${ver:+ ($ver)}"
@@ -108,7 +108,7 @@ verus:
     #!/usr/bin/env bash
     set -euo pipefail
     nros setup --tool verus
-    verus_bin="$(nros sdk-path verus --require)/bin/verus"
+    verus_bin="$(nros dev sdk path verus --require)/bin/verus"
 
     # `verus --version` fails for TWO distinct reasons and they need OPPOSITE
     # handling: a missing pinned rust toolchain (install it — the normal

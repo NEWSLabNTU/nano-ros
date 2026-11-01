@@ -14,7 +14,7 @@
 #
 # WHY VIA THE CLI. The resolution needs the board catalog, the deploy's site
 # block, `{env:…}`/`{sdk.…}` interpolation and W4's netstack domain check. That
-# is `nros ws board-facts` — one implementation, shared with every other lane,
+# is `nros dev image board-facts` — one implementation, shared with every other lane,
 # rather than a second one in cmake that would drift (the `ws model-dims` seam).
 #
 # NOT `set(ENV{...})`. Issue 0460: that touches only the configure-time process,
@@ -208,7 +208,7 @@ function(nros_resolve_board_facts)
         endif()
         message(FATAL_ERROR
             "nano-ros: board facts for ${_ws}${_nros_bf_asked} could not be "
-            "resolved (`nros ws board-facts`):\n${_err}")
+            "resolved (`nros dev image board-facts`):\n${_err}")
     endif()
     if(_out STREQUAL "")
         string(REGEX REPLACE "\n+" " " _why "${_err}")
@@ -223,7 +223,7 @@ function(nros_resolve_board_facts)
     # so a value holding a `;` cannot be carried at all: it would arrive as two
     # entries, the second a bare tail cargo never sees. Refused, naming it.
     nros_cli_rows(_row "${_out}" REQUIRE "^[A-Za-z_][A-Za-z0-9_]*="
-        CONTEXT "`nros ws board-facts` for ${_ws}")
+        CONTEXT "`nros dev image board-facts` for ${_ws}")
     set(_lines "")
     foreach(_i IN LISTS _row_INDICES)
         set(_l "${_row_${_i}}")

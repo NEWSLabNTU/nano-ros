@@ -15,7 +15,7 @@
 #
 # NOTHING IS DERIVED HERE. Since phase-486 the declaration reaches the
 # consumers through ONE carrier, the leaf's SIZING DESCRIPTOR
-# (`nros ws sizing-descriptor --from-leaf`, phase-457 W0.b), which applies the
+# (`nros dev image sizing-descriptor --from-leaf`, phase-457 W0.b), which applies the
 # model road's own counting rules and states the node count and the runtime's
 # service families (`[image] model_nodes`, `infra_families`). The
 # `nros ws entity-facts --leaf` verb and the `NROS_DECLARED_*` fold it fed are
@@ -47,7 +47,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLeafCensus.cmake")
 #     source=<a directory of the project, nano-ros's own excluded>
 #
 # A standalone leaf names its program with `nano_ros_add_executable` in its own
-# `CMakeLists.txt`, which `nros ws entity-census take --leaf` reads. A ported
+# `CMakeLists.txt`, which `nros dev image entity-census take --leaf` reads. A ported
 # ament workspace does not: its executables are `ament_auto_add_executable` /
 # `add_executable` calls in packages that sit outside the leaf directory (the
 # workspace's `src/`). So the census build states them itself, and the package
@@ -166,7 +166,7 @@ function(nros_record_leaf_entity_facts _dir)
         # this configure is what read it. ASKED for, never spelled: the CLI
         # owns where a leaf's census lives.
         execute_process(
-            COMMAND "${_nros}" ws entity-census path --leaf "${_dir}"
+            COMMAND "${_nros}" dev image entity-census path --leaf "${_dir}"
             OUTPUT_VARIABLE _nros_leaf_census
             RESULT_VARIABLE _nros_leaf_census_rc
             OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -205,7 +205,7 @@ function(nros_record_leaf_entity_facts _dir)
             "nano-ros: sizing descriptor written from ${_dir}/system.toml — "
             "${_nros_leaf_descriptor} (phase-457 W0.b, issue 1378)")
     elseif(_nros_leaf_census_optin)
-        # This IS the host census build (`nros ws entity-census take --leaf`),
+        # This IS the host census build (`nros dev image entity-census take --leaf`),
         # which is not sized by the census it produces.
         message(STATUS
             "nano-ros: ${_dir} -- host census build; pools at the hosted defaults "

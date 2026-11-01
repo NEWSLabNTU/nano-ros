@@ -103,7 +103,7 @@ A design that assumes a configure-time hook silently excludes PX4 and PIO.
 | home | count | holds | read by | when |
 | --- | ---: | --- | --- | --- |
 | `packages/boards/*/nros-board.toml` | 8 files, 9 boards | the descriptor | `BoardCatalog` (CLI) | `nros sync` / `setup` |
-| `<bringup>/system.toml` `[image.<id>]` / `[host.<name>]` / `[board_config.<board>]` | 123 / 28 / 24 blocks | build description, placement, site config — one table each | `nros codegen system`, `nros build` | codegen |
+| `<bringup>/system.toml` `[image.<id>]` / `[host.<name>]` / `[board_config.<board>]` | 123 / 28 / 24 blocks | build description, placement, site config — one table each | `nros dev codegen system`, `nros build` | codegen |
 | `<leaf>/.cargo/nros-board.toml` | 44 | projection of `cargo_config` | cargo | every build |
 | `cmake/board/nano-ros-board-*.cmake` | 7 | toolchain file, kernel/stack targets | cmake, **by filename** | configure |
 | `just/sdk-env.just` | — | `FREERTOS_DIR`, `LWIP_DIR`, … | build scripts, via shell env | build |
@@ -613,7 +613,7 @@ a knob source" below, which cites the same prior art and is untouched.
 ```
  1  host configure       user's project (CubeMX, NXP, IDF, Pico, plain CMake)
  2  import               add_subdirectory(nano-ros) — or the west/IDF/NuttX shell
- 3  discover             nros ws providers → board pkg → platform + integration
+ 3  discover             nros dev ws providers → board pkg → platform + integration
  4  resolve              capabilities merged; required-vs-provided checked
  5  contribute           integration supplies include dirs / defines / targets
  6  select port          backend descriptor picks its sources from (rtos, netstack)
@@ -1004,7 +1004,7 @@ merely search root 0 in phase-348. Nothing in the product depends on it.
 | vendored FreeRTOS, IDE host | same file + `nros emit`, then three IDE steps |
 
 The risk is concentrated in the last two rows: the include set is not guessable.
-The mitigation is a scaffolder, not documentation — `nros init --from-cube
+The mitigation is a scaffolder, not documentation — `nros setup presets --from-cube
 <project>` reading `.cproject` linked-resource XML, and the NXP equivalent
 reading `prj.conf`. Both are mechanical; the information is already in those
 files.

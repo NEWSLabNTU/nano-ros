@@ -29,7 +29,7 @@ NOT gated, on purpose:
     capacity over caller-owned bytes), so its memory partner is upstream ROS
     `rosidl_generator_c`, NOT this repo's C++ pack. C and C++ nodes exchange
     CDR, never memory, so the two are SUPPOSED to differ.
-  * The IDIOMATIC Rust pack (`packs/nros/*.jinja`, what `nros generate rust`
+  * The IDIOMATIC Rust pack (`packs/nros/*.jinja`, what `nros interface generate rust`
     emits) carries no `repr(C)` anywhere. It shares CDR with the headers -- a
     wire format, target-independent by specification -- and NOT memory.
   * The `packs/rmw/*.jinja` pack also emits `repr(C)`, but its memory partner
@@ -275,7 +275,7 @@ def generate(nros: str, work: Path, arm: str, configured) -> Path:
     )
     if r.returncode != 0:
         raise SystemExit(
-            f"{PROBE}: `nros codegen --language cpp` failed for the {arm} arm:\n"
+            f"{PROBE}: `nros dev codegen --language cpp` failed for the {arm} arm:\n"
             f"{r.stdout}{r.stderr}"
         )
     return out

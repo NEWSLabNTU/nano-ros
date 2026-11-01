@@ -8,7 +8,7 @@ Phase-351 put every in-tree board's SDK roots in the site block as
 `sdk = { freertos = "{env:FREERTOS_DIR}", … }` and this gate kept that copy in
 step with `just/sdk-env.just`. Phase-484 W3 (RFC-0103 D4) DERIVES those roots
 instead: the index's `[board.<name>]` lists the sources a board needs and
-`nros ws board-facts` locates each through the one ladder. So the rule inverted:
+`nros dev image board-facts` locates each through the one ladder. So the rule inverted:
 
   S1  a site block must NOT restate an index source's own `env` variable as
       `{env:VAR}` — that value is derived, and the copy read the variable raw
@@ -195,7 +195,7 @@ def main():
                             f"{rel}: [{section}].sdk.{sdk_key} = {val!r} restates "
                             f"`[source.{derived[var]}]`'s own ${var}. That root is "
                             f"DERIVED (the index lists the board's sources and "
-                            f"`nros ws board-facts` locates them, RFC-0103 D4) — "
+                            f"`nros dev image board-facts` locates them, RFC-0103 D4) — "
                             f"delete the entry; to use another tree, set ${var} "
                             f"(the row's one override name)."
                         )

@@ -3,7 +3,7 @@
 //! It is the bridge's source, and it is a plain talker: which session it
 //! publishes on, and where `/chatter` is forwarded to, are declared by the
 //! bringup's `[[domain]]` / `[[bridge]]` rows and emitted by
-//! `nros codegen system`. See `demo_bringup/system.toml`.
+//! `nros dev codegen system`. See `demo_bringup/system.toml`.
 
 #![no_std]
 

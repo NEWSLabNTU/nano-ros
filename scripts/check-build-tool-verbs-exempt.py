@@ -8,7 +8,7 @@ invokes the tool path it was configured with (`-D_NANO_ROS_CODEGEN_TOOL`) from
 a build OUTPUT directory, which on a CI runner may sit under an entirely
 different nano-ros tree.
 
-That is what took the tier-2 lane red: `nros codegen resolve-deps` refused a
+That is what took the tier-2 lane red: `nros dev codegen resolve-deps` refused a
 correct, freshly built binary because the zephyr west workspace lives under
 a second nano-ros tree on the runner while the binary came from the checkout
 GitHub Actions cloned.
@@ -84,7 +84,10 @@ def exempt_top_verbs(text):
 
 COMMENT = re.compile(r"^\s*#")
 # `COMMAND "${X}" verb sub` and `set(_args verb sub …)`.
-INVOKE = re.compile(r'(?:COMMAND\s+"\$\{[^}]+\}"|set\(\s*\w+)\s+([a-z][a-z0-9-]*)(?:\s+([a-z][a-z0-9-]*))?')
+# Up to three words: a `nros dev <noun> <verb>` spelling is lowered back to the
+# old `<verb> <sub>` the guard tables are keyed on (phase-526 W4), through the
+# CLI's own alias table (`scripts/lib/cli_aliases.py`).
+INVOKE = re.compile(r'(?:COMMAND\s+"\$\{[^}]+\}"|set\(\s*\w+)\s+([a-z][a-z0-9-]*)(?:\s+([a-z][a-z0-9-]*))?(?:\s+([a-z][a-z0-9-]*))?')
 
 
 def invoked(root):
@@ -95,9 +98,11 @@ def invoked(root):
     Comments are stripped by the one stripper (`scripts/lib/comments.py`).
     """
     sys.path.insert(0, os.path.join(root, "scripts", "lib"))
+    import cli_aliases
     import comments
     import file_kinds
 
+    aliases = cli_aliases.load(root)
     out = set()
     for rel in file_kinds.files_of_kind("cmake", repo=root):
         try:
@@ -107,7 +112,9 @@ def invoked(root):
             continue
         for line in code.split("\n"):
             for m in INVOKE.finditer(line):
-                out.add((m.group(1), m.group(2) or "", rel, m.group(0).startswith("COMMAND")))
+                words = cli_aliases.to_old([w for w in m.groups() if w], aliases)
+                sub = words[1] if len(words) > 1 else ""
+                out.add((words[0], sub, rel, m.group(0).startswith("COMMAND")))
     return out
 
 
@@ -137,8 +144,8 @@ def self_test():
          '    !matches!(name, "codegen" | "ws-build")\n}\n')
     assert exempt_top_verbs(g) == {"codegen", "ws-build"}, exempt_top_verbs(g)
     # A comment line naming a verb is not an invocation.
-    assert not COMMENT.match('  COMMAND "${T}" ws order')
-    assert COMMENT.match('# Same role as `nros ws model-dims`')
+    assert not COMMENT.match('  COMMAND "${T}" dev ws order')
+    assert COMMENT.match('# Same role as `nros dev image model-dims`')
     sys.stdout.write("check-build-tool-verbs-exempt self-test: OK\n")
 
 

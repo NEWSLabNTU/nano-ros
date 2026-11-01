@@ -23,7 +23,7 @@ QEMU_BIN := `bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm |
 # But it must not fail AT PARSE TIME. `just` evaluates a module's `:=` backticks
 # when the justfile loads, for EVERY invocation — including `just setup-cli`,
 # whose entire job is to build the CLI this query needs. A tree without one (a
-# fresh clone, or a `~/.nros/bin/nros` older than `nros profile`) could not run
+# fresh clone, or a `~/.nros/bin/nros` older than `nros dev profile`) could not run
 # ANY just recipe:
 #
 #     error: unrecognized subcommand 'profile'
@@ -53,7 +53,7 @@ _require-profile-dir:
     set -e
     if [ -z "{{PROFILE_DIR}}" ]; then
         echo "qemu: cannot resolve the cargo target-profile dir — the nros CLI is" >&2
-        echo "      missing or predates \`nros profile\` (phase-336)." >&2
+        echo "      missing or predates \`nros dev profile\` (phase-336)." >&2
         echo "  Run:  just setup-cli" >&2
         exit 1
     fi

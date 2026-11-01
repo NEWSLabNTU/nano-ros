@@ -46,7 +46,7 @@ This is **not** an `nros setup` issue — `nros setup` only fetches
 the SDK / source-package payload (zenoh-pico, mbedtls, cyclonedds,
 …); it does not synthesise missing Cargo dependencies.
 
-### A2. nros codegen tool not found
+### A2. nros CLI not found
 
 ```text
 nros (codegen tool) not found on PATH or in packages/cli/target/release/

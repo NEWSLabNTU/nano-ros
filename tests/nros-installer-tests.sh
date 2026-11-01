@@ -81,7 +81,7 @@ echo "9.9.9-nros7" >"$tmp/rel/share/nros/VERSION"
 # multi-arm test is for. Arm 6 still asserts the INSTALLED binary reports the
 # same number, which is the claim that arm is about.
 emitted="$("$cli" --codegen-version)"
-"$cli" toolchain manifest \
+"$cli" dev sdk manifest \
     --store-version 9.9.9-nros7 \
     --index 2026-09-10 \
     --nano-ros abc1234 \
@@ -191,7 +191,7 @@ if [ -x "$installed" ]; then
     arm_start
     [ "$("$installed" --codegen-version)" = "$emitted" ] \
         || fail "6: the installed binary emits a different codegen than the one packaged"
-    "$installed" toolchain manifest >"$tmp/read-back.txt" 2>&1
+    "$installed" dev sdk manifest >"$tmp/read-back.txt" 2>&1
     nros_grep_q "^codegen = $emitted$" "$tmp/read-back.txt" \
         || fail "6: the installed binary does not read back its own codegen
 $(cat "$tmp/read-back.txt")"
@@ -212,7 +212,7 @@ store="$home"
 same="$store/sdk/nros/9.9.9-nros8"
 newer="$store/sdk/nros/9.9.9-nros9"
 mkdir -p "$same/share/nros" "$newer/share/nros"
-"$cli" toolchain manifest --store-version 9.9.9-nros8 --write "$same/share/nros/manifest.toml" >/dev/null
+"$cli" dev sdk manifest --store-version 9.9.9-nros8 --write "$same/share/nros/manifest.toml" >/dev/null
 sed "s/^codegen = .*/codegen = $((emitted + 1))/" "$tmp/rel/share/nros/manifest.toml" \
     | sed 's/^version = .*/version = "9.9.9-nros9"/' >"$newer/share/nros/manifest.toml"
 
@@ -254,7 +254,7 @@ if run_install "$home" "$base/legacy-asset.tar.zst"; then
     arm_start
     legacy="$home/sdk/nros/9.9.8-nros1/bin/nros"
     [ -x "$legacy" ] || fail "8: an asset with no manifest did not install"
-    "$legacy" toolchain manifest >"$tmp/legacy-manifest.txt" 2>&1
+    "$legacy" dev sdk manifest >"$tmp/legacy-manifest.txt" 2>&1
     nros_grep_q "no share/nros/manifest.toml" "$tmp/legacy-manifest.txt" \
         || fail "8: a manifest-less release must SAY it declares nothing
 $(cat "$tmp/legacy-manifest.txt")"

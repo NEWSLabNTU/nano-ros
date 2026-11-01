@@ -269,7 +269,7 @@ fi
 # a `plan_builds` writes it. The west path below runs one; the ninja path did
 # not, and the signature above does not cover `system.toml`. So a declaration
 # change reached the image only when SOMETHING ELSE regenerated the file — and
-# the something else was the `nros image-facts` query a sibling's (or this
+# the something else was the `nros dev image facts` query a sibling's (or this
 # leaf's own) configure runs, mid-configure, after cmake had read the old one.
 # The build system is written after that, newer than its input, so no ninja ever
 # reconfigured: museum Kconfig and features until the signature next moved.
@@ -345,7 +345,7 @@ ament_witness_moved() {
         # cmake variable, which this shell never sees.
         search=""
         [ -f "${w%.toml}.search-path" ] && search="$(cat "${w%.toml}.search-path")"
-        if ! env NROS_INTERFACE_SEARCH_PATH="$search" "$tool" codegen --args-file "$args" \
+        if ! env NROS_INTERFACE_SEARCH_PATH="$search" "$tool" dev codegen --args-file "$args" \
                 --language "$lang" --ament-witness "$tmp/now.toml" >/dev/null 2>&1; then
             echo "  ament witness could not be recomputed: $(basename "$args" .json) — reconfiguring"
             rm -rf "$tmp"

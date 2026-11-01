@@ -142,7 +142,7 @@ endfunction()
 # _nano_ros_order_subdirs(<ws_root> <subdirs> <out_var>) — phase-348 W4
 #
 # Reorder `subdirs` so each package follows the workspace packages it depends
-# on, via `nros ws order --subdir …`. Asks the CLI rather than parsing
+# on, via `nros dev ws order --subdir …`. Asks the CLI rather than parsing
 # package.xml here: the dependency scan already exists in one place, and cmake
 # growing a second `<depend>` reader is the two-derivations defect.
 #
@@ -170,7 +170,7 @@ function(_nano_ros_order_subdirs ws_root subdirs out_var)
     endforeach()
 
     execute_process(
-        COMMAND "${_NANO_ROS_CODEGEN_TOOL}" ws order
+        COMMAND "${_NANO_ROS_CODEGEN_TOOL}" dev ws order
                 --workspace "${ws_root}" ${_args}
         OUTPUT_VARIABLE _ordered
         ERROR_VARIABLE _err
@@ -182,7 +182,7 @@ function(_nano_ros_order_subdirs ws_root subdirs out_var)
     # type is how the constraint stops being checked at all.
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
-            "nano_ros_workspace(ORDER_FROM_DEPENDS): `nros ws order` failed "
+            "nano_ros_workspace(ORDER_FROM_DEPENDS): `nros dev ws order` failed "
             "(${_rc}).\n${_err}")
     endif()
 
@@ -474,7 +474,7 @@ function(nano_ros_workspace)
     # and nano_rosConfig.cmake was located through `nano_ros_ROOT`, which only
     # `activate.sh` exported (and since RFC-0103 D6's 2026-10-12 amendment,
     # nothing does). So a workspace configured anywhere else — an
-    # installed toolchain's (whose root came from `nros sdk-root`), or the
+    # installed toolchain's (whose root came from `nros dev sdk root`), or the
     # book's `-DNROS_REPO_DIR=<checkout>` from an un-activated shell — resolved
     # the root, imported it, and then failed in its first member with "Could not
     # find a package configuration file provided by nano_ros". It passed only in

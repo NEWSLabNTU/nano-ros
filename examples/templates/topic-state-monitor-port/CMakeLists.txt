@@ -12,7 +12,7 @@ set(NROS_RMW "${NROS_RMW}")
 # the root before it can include anything (a copy-out leaf has no repo file to
 # include yet); `check-repo-dir-readers` refuses any `$ENV{NROS_REPO_DIR}`.
 #   1. explicit: -DNROS_REPO_DIR=<path> or -Dnano_ros_ROOT=<path>;
-#   2. ask `nros sdk-root`. It walks up from THIS leaf first, so an in-tree
+#   2. ask `nros dev sdk root`. It walks up from THIS leaf first, so an in-tree
 #      leaf answers its own checkout; anywhere else the binary answers with
 #      its own SDK root (a release's share/nano-ros, or the checkout an in-tree
 #      `nros` was built in).
@@ -26,7 +26,7 @@ if(NOT NROS_REPO_DIR)
         find_program(NROS_TOOLCHAIN_EXECUTABLE nros)
         if(NROS_TOOLCHAIN_EXECUTABLE)
             execute_process(
-                COMMAND "${NROS_TOOLCHAIN_EXECUTABLE}" sdk-root
+                COMMAND "${NROS_TOOLCHAIN_EXECUTABLE}" dev sdk root
                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
                 OUTPUT_VARIABLE NROS_REPO_DIR
                 OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -42,7 +42,7 @@ if(NOT NROS_REPO_DIR)
         message(FATAL_ERROR
             "nano-ros: cannot locate the nano-ros SDK root.\n"
             "  Pass -DNROS_REPO_DIR=<path> (or -Dnano_ros_ROOT=<path>), or put\n"
-            "  `nros` on PATH — `nros sdk-root` answers this.")
+            "  `nros` on PATH — `nros dev sdk root` answers this.")
     endif()
 endif()
 add_subdirectory("${NROS_REPO_DIR}" nano_ros)

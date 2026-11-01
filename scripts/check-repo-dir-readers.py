@@ -26,7 +26,7 @@ CMake is held to the same rule: no tracked CMakeLists / `*.cmake` reads
 `$ENV{NROS_REPO_DIR}` or `$ENV{nano_ros_ROOT}`. A module locates the root from
 its own path; a leaf that must know the root before it can include anything
 carries the ONE leaf block (explicit `-DNROS_REPO_DIR`/`-Dnano_ros_ROOT`, else
-`nros sdk-root`), and every copy of that block must be byte-identical — the
+`nros dev sdk root`), and every copy of that block must be byte-identical — the
 copies are compared with each other, so the spelling lives in the leaves, not
 restated here.
 
@@ -104,7 +104,7 @@ def cmake_findings(rel: str, text: str) -> list[str]:
                 f"      {line.strip()}\n"
                 f"      RFC-0103 D6 (amended 2026-10-12): a module locates the root from "
                 f"its own path (CMAKE_CURRENT_LIST_DIR); a leaf carries the shared "
-                f"block (explicit -DNROS_REPO_DIR / -Dnano_ros_ROOT, else `nros sdk-root`)."
+                f"block (explicit -DNROS_REPO_DIR / -Dnano_ros_ROOT, else `nros dev sdk root`)."
             )
     return out
 

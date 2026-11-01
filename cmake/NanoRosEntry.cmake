@@ -22,7 +22,7 @@
 #     rejects configure with FATAL_ERROR (the pre-235 native-only rule).
 #   * `BOARD` (optional, single-value) — Phase 212.N.6 addition: the
 #     codegen board key (`linux`, `zephyr`, `fvp-aemv8r-smp`, …) the
-#     Entry pkg targets; flows to `nros codegen entry --board` and
+#     Entry pkg targets; flows to `nros dev codegen entry --board` and
 #     selects the C++ Board adapter (`LinuxBoard` / `ZephyrBoard`).
 #     Stored as the `NROS_BOARD` target property. Absent BOARD is
 #     valid for host-native pkgs; for embedded DEPLOY it is auto-derived
@@ -145,7 +145,7 @@ endfunction()
 # unattended builds take a census before any cross configure
 # (`scripts/build/census-prepass.sh`, run by `build-test-fixtures`, the
 # workspace fixture builder and the Zephyr leaf lane). The refusal names
-# `nros ws entity-census take --image <bringup>:<image>`. `warn` is the
+# `nros dev image entity-census take --image <bringup>:<image>`. `warn` is the
 # opt-out, and it is loud: a CMake WARNING. A model with no contract is skipped
 # with a note, since it has no contract-derived pool.
 function(_nros_entry_require_fresh_census)
@@ -195,7 +195,7 @@ function(_nros_entry_require_fresh_census)
     # had been taken. Asked, not re-derived: the path is needed here only to
     # register it below, and a second spelling is how the two would drift.
     execute_process(
-        COMMAND "${_rfc_cli}" ws entity-census path --model "${_RFC_MODEL}"
+        COMMAND "${_rfc_cli}" dev image entity-census path --model "${_RFC_MODEL}"
         RESULT_VARIABLE _rfc_path_rc
         OUTPUT_VARIABLE _rfc_census
         ERROR_VARIABLE  _rfc_path_err
@@ -203,7 +203,7 @@ function(_nros_entry_require_fresh_census)
     if(NOT _rfc_path_rc EQUAL 0 OR _rfc_census STREQUAL "")
         # A CLI that predates the verb. Not silent: the check below still runs
         # and names the path it read.
-        message(STATUS "nano-ros: `nros ws entity-census path` unavailable "
+        message(STATUS "nano-ros: `nros dev image entity-census path` unavailable "
             "(${_rfc_path_err}); the census check reads its own default")
         set(_rfc_census "")
     endif()
@@ -362,7 +362,7 @@ function(nano_ros_entry)
     endif()
     # phase-482 W3 — `zephyr` is a deploy token that IS its board. A leaf whose
     # `system.toml` says `[image.zephyr] board = "zephyr"` reaches here as
-    # DEPLOY zephyr with no BOARD, because `nros ws leaf-system` reports such a
+    # DEPLOY zephyr with no BOARD, because `nros dev image leaf-system` reports such a
     # board as naming no separate provider (cmake/NanoRosPackageXml.cmake).
     # The gate below then refused the one deploy whose board needs no naming,
     # so `nano_ros_add_executable` could not build a Zephyr leaf at all (the
@@ -444,7 +444,7 @@ function(nano_ros_entry)
     # phase-469 S3 — the inference is ASKED, not spelled here. This block was
     # one of THREE copies of `\\.(cpp|cxx|cc|C)$` ⇒ cpp, else c; the third
     # (`nano_ros_node_register`) fell through the other way, so an unmapped
-    # spelling was C to this site and C++ to that one. `nros codegen
+    # spelling was C to this site and C++ to that one. `nros dev codegen
     # source-language` is the one producer, and it REFUSES a spelling it does
     # not know instead of picking a side.
     #
@@ -483,7 +483,7 @@ function(nano_ros_entry)
         endif()
     endif()
 
-    # Phase 219.D — LAUNCH-aware fast path: shell `nros codegen entry`
+    # Phase 219.D — LAUNCH-aware fast path: shell `nros dev codegen entry`
     # at configure time, append the generated TU + auto-link sidecar.
     set(_sources_for_exe ${_NRA_SOURCES})
     if(_NRA_LAUNCH)
@@ -494,7 +494,7 @@ function(nano_ros_entry)
             # launch file (+ BRINGUP dir + optional LAUNCH_ARGS k=v bindings);
             # the model is a build artifact the entry never names. The mapping
             # rule lives ONCE in nros_orchestration_ir::model_location, reached
-            # through `nros model-path` — NOT re-implemented here (the
+            # through `nros dev image model-path` — NOT re-implemented here (the
             # second-spelling drift class). This is not the phase-296-deleted
             # parse path: nothing parses launch XML at configure; the launch
             # file ADDRESSES the resolver output the build layer produced.
@@ -509,24 +509,24 @@ function(nano_ros_entry)
             endif()
             # The arg-bound variant selector. Each `k=v` must match a
             # `[[model]]` declaration in the bringup's system.toml (phase-330
-            # W4.0); `nros model-path` refuses an undeclared binding rather
+            # W4.0); `nros dev image model-path` refuses an undeclared binding rather
             # than deriving a name nothing produces.
             foreach(_kv IN LISTS _NRA_LAUNCH_ARGS)
                 list(APPEND _nra_mp_args --arg "${_kv}")
             endforeach()
             nros_resolve_cli(_nra_mp_tool CONTEXT "nano_ros_entry LAUNCH")
             execute_process(
-                COMMAND "${_nra_mp_tool}" model-path ${_nra_mp_args}
+                COMMAND "${_nra_mp_tool}" dev image model-path ${_nra_mp_args}
                 OUTPUT_VARIABLE _NRA_MODEL
                 OUTPUT_STRIP_TRAILING_WHITESPACE
                 RESULT_VARIABLE _nra_mp_rc
                 ERROR_VARIABLE _nra_mp_err)
             if(NOT _nra_mp_rc EQUAL 0)
                 message(FATAL_ERROR
-                    "nano_ros_entry: `nros model-path` failed for LAUNCH "
+                    "nano_ros_entry: `nros dev image model-path` failed for LAUNCH "
                     "'${_NRA_LAUNCH}' (bringup ${_NRA_BRINGUP}):\n${_nra_mp_err}")
             endif()
-            # Issue 1575 -- `nros model-path` NAMES where the model belongs; it
+            # Issue 1575 -- `nros dev image model-path` NAMES where the model belongs; it
             # does not say one is there. Before `nros sync` it answers with the
             # source-tree rung (`<bringup>/config/system_model.yaml`), which no
             # producer writes, and every consumer below then read "no model"
@@ -598,7 +598,7 @@ function(nano_ros_entry)
         # Phase 257 (W0-A) — TYPED now supports LANG c too: the generated C TU
         # routes each node to the real executor via its `RCLC_C_COMPONENT`
         # factory/configure seam + `nros_board_native_run_components`.
-        # `_NRA_MODEL` is `nros model-path`'s answer and is used AS GIVEN.
+        # `_NRA_MODEL` is `nros dev image model-path`'s answer and is used AS GIVEN.
         # Phase-484 W6d: a second ladder used to re-route it here
         # (`$NROS_MODEL_DIR/<name>`, then `${CMAKE_BINARY_DIR}/nros/<name>`) —
         # a mirror of `nros_orchestration_ir::model_location`, which already
@@ -1222,7 +1222,7 @@ function(nano_ros_entry)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# Helper — resolve a `nros` CLI binary, shell `nros codegen entry`, and
+# Helper — resolve a `nros` CLI binary, shell `nros dev codegen entry`, and
 # slurp the depfile into `CMAKE_CONFIGURE_DEPENDS`.
 #
 # Inputs (single-value kw):
@@ -1293,14 +1293,14 @@ function(_nros_entry_invoke_codegen)
     # `codegen/entry/pack.rs`; nothing textual refuses a second derivation, so
     # a reviewer is what stands between this and one.
     #
-    # NOTE THIS IS THE OPPOSITE DIRECTION from `nros codegen source-language`
+    # NOTE THIS IS THE OPPOSITE DIRECTION from `nros dev codegen source-language`
     # (phase-469 S3), and the two are not inverses: this asks "what extension
     # does LANGUAGE get on BOARD" — a C entry gets `.cpp` on a board with no C
     # runner — while that one asks "which language is this SOURCE". Collapsing
     # them would make the routing rule unexpressible.
     set(_ext "")
     execute_process(
-        COMMAND "${_nros_bin}" codegen entry-pack
+        COMMAND "${_nros_bin}" dev codegen entry-pack
                 --lang "${_NRX_LANG}" --board "${_NRX_BOARD}"
         OUTPUT_VARIABLE _pack_info
         ERROR_VARIABLE  _pack_err
@@ -1308,7 +1308,7 @@ function(_nros_entry_invoke_codegen)
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _pack_rc EQUAL 0)
         message(FATAL_ERROR
-            "nano_ros_entry: `nros codegen entry-pack --lang ${_NRX_LANG} "
+            "nano_ros_entry: `nros dev codegen entry-pack --lang ${_NRX_LANG} "
             "--board ${_NRX_BOARD}` failed (rc=${_pack_rc}).\n${_pack_err}")
     endif()
     if(NOT _pack_info MATCHES "extension=([A-Za-z0-9_]+)")
@@ -1400,7 +1400,7 @@ function(_nros_entry_invoke_codegen)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
             "nano_ros_entry(LAUNCH \"${_NRX_LAUNCH}\"): "
-            "`nros codegen entry` failed (rc=${_rc}).\n"
+            "`nros dev codegen entry` failed (rc=${_rc}).\n"
             "  CLI: ${_nros_bin} ${_cli_args}\n"
             "  stdout: ${_stdout}\n"
             "  stderr: ${_stderr}")
@@ -1572,7 +1572,7 @@ function(_nros_entry_invoke_codegen)
     # TU while every source-level dep looks current (the #147 resolver probe
     # reads the toolchain dep graph and is equally blind to the tool). Depend
     # on the CLI binary itself: its mtime change → cmake re-configure →
-    # `nros codegen entry` re-runs.
+    # `nros dev codegen entry` re-runs.
     #
     # issue 1018 — this WAS four lines of `set_property` here, and it was the
     # only configure-time emitter in the tree that had them. Same rule, shared

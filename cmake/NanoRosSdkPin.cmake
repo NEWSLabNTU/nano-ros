@@ -19,7 +19,7 @@
 # Twins, because the build systems cannot call each other:
 # `nros_sdk_pinned_version` in scripts/lib/sdk-pin.sh and
 # `nros_build_paths::sdk_pinned_version()`. Where the `nros` CLI is reachable
-# and the caller's store root is the CLI's, `nros sdk-path <tool>` answers the
+# and the caller's store root is the CLI's, `nros dev sdk path <tool>` answers the
 # whole path.
 include_guard(GLOBAL)
 

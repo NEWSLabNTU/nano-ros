@@ -313,7 +313,7 @@ fi
 #
 #    It is now an ORDINARY store tool: `nros setup --tool make` builds 4.4.1
 #    from the release tarball, and `scripts/sdk-path-tools.txt` puts it on PATH.
-#    The path is resolved with `nros sdk-path` — CONSTRUCTED from the index pin,
+#    The path is resolved with `nros dev sdk path` — CONSTRUCTED from the index pin,
 #    never searched (issue 0625) — so this cannot drift from what provisioning
 #    installed.
 #
@@ -331,7 +331,7 @@ fi
 _pre_make=""
 # Issue 1880 — the ONE CLI ladder (`nros_cli_bin`, cargo.sh sourced above).
 if _pre_cli="$(nros_cli_bin 2>/dev/null)"; then
-    _pre_make="$("$_pre_cli" sdk-path make 2>/dev/null)/bin/make"
+    _pre_make="$("$_pre_cli" dev sdk path make 2>/dev/null)/bin/make"
 fi
 if [ -z "$_pre_make" ] || [ ! -x "$_pre_make" ] ||
     ! "$_pre_make" --version 2>/dev/null | head -1 | grep -q "4\.4"; then

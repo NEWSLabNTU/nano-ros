@@ -68,7 +68,7 @@
 #   rmw         required  "zenoh" | "xrce" | "cyclonedds"
 #   bringup     required  Bringup pkg path relative to `dir`
 #   entry       required  Entry pkg / CMake target name
-#   codegen_out optional  `nros codegen-system --out` path relative to `dir`
+#   codegen_out optional  `nros dev codegen system --out` path relative to `dir`
 #   build_subdir optional CMake build dir relative to `dir`
 #   target_dir  optional  Cargo target dir relative to `dir`
 #   board       required when platform=="zephyr"  west `-b <board>` target
@@ -83,7 +83,7 @@
 # Workspace fixtures are intentionally listed here but built by a dedicated
 # workspace lane, not by the legacy single-node `fixtures-build.sh` loop. The
 # build recipe must execute the documented user workflow: `nros sync`,
-# `nros codegen-system --bringup ...`, then cargo/cmake/platform build.
+# `nros dev codegen system --bringup ...`, then cargo/cmake/platform build.
 
 # ===========================================================================
 # native — Workspace fixtures (Node pkgs + Bringup pkg + Entry pkg).
@@ -1453,7 +1453,7 @@ build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8130" }
 
 # ===========================================================================
-# native — Rust (host, the ambient profile — see phase-336 / `nros profile`)
+# native — Rust (host, the ambient profile — see phase-336 / `nros dev profile`)
 # ===========================================================================
 
 # Collapsed role examples — default features, default target dir.

@@ -61,7 +61,7 @@ So the properties below are gated rather than remembered.
     part of the SDK root (its own cargo workspace, embeds CPython) and every
     workspace configure goes through it: with the SDK root staged and this
     missing, `cmake -S . -B build` on a scaffolded project dies at
-    `nros codegen entry` with a remedy naming a checkout the user does not have.
+    `nros dev codegen entry` with a remedy naming a checkout the user does not have.
 
   Both NAMES are read out of the Rust that resolves them — `SHIPPED_SUBDIR` in
   `nros_launcher::checkout`, `LAUNCH_RESOLVER` in `model_location` — for R1's reason: a
@@ -130,7 +130,7 @@ LAUNCH_RESOLVER_RE = re.compile(r'const LAUNCH_RESOLVER: &str = "([^"]+)"')
 HAND_WRITTEN_RE = re.compile(
     r"^\s*(printf|echo|cat)\b.*(codegen\s*=|>\s*\S*share/nros/manifest\.toml)"
 )
-STAMP_RE = re.compile(r"toolchain\s+manifest\b")
+STAMP_RE = re.compile(r"(?:toolchain|dev\s+sdk)\s+manifest\b")
 
 
 def manifest_file_name(reader_text):
@@ -198,7 +198,7 @@ def sdk_root_violations(workflow_text, launcher_text, ws_text, stage_text):
                 ("R5", f'the release copies nothing to "$stage/bin/{resolver}" — it is '
                        "not part of the SDK root (own workspace, embeds CPython), and "
                        "every workspace configure resolves its launch file through it, "
-                       "so a scaffolded project dies at `nros codegen entry`")
+                       "so a scaffolded project dies at `nros dev codegen entry`")
             )
     return bad
 
@@ -295,7 +295,7 @@ def violations(workflow_text, reader_text, launcher_text, ws_text, stage_text):
         bad.append(
             (
                 "R2",
-                "the manifest is not stamped by `nros toolchain manifest … --write`; "
+                "the manifest is not stamped by `nros dev sdk manifest … --write`; "
                 "a manifest the workflow composes itself can record a codegen the "
                 "binary does not emit",
             )
@@ -342,7 +342,7 @@ GOOD = """
       - name: Record what this release is made of
         run: |
           set -euo pipefail
-          "$nros" toolchain manifest --store-version "$v" --write "$stage/share/nros/manifest.toml"
+          "$nros" dev sdk manifest --store-version "$v" --write "$stage/share/nros/manifest.toml"
           # THE ONE EQUALITY THAT SURVIVES.
           manifest_codegen="$(sed -n 's/^codegen = \\([0-9]\\+\\)$/\\1/p' "$stage/share/nros/manifest.toml")"
           tree_codegen="$(sed -n 's/.*= \\([0-9]\\+\\);.*/\\1/p' packages/core/nros-core/src/codegen_version.rs)"
@@ -394,7 +394,7 @@ HAND_WRITTEN = """
 NO_EQUALITY = """
       - name: Record
         run: |
-          "$nros" toolchain manifest --store-version "$v" --write "$stage/share/nros/manifest.toml"
+          "$nros" dev sdk manifest --store-version "$v" --write "$stage/share/nros/manifest.toml"
 """
 
 READER_STUB = 'pub const FILE_NAME: &str = "manifest.toml";'

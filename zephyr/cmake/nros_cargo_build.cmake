@@ -5,7 +5,7 @@
 # Provides CMake functions for building Rust crates from the nros workspace
 # and bridging Kconfig values to Cargo environment variables.
 
-# phase-336 — the shared cargo-profile resolver (`nros profile`), included at
+# phase-336 — the shared cargo-profile resolver (`nros dev profile`), included at
 # FILE scope so a function body never include()s inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCliRows.cmake")  # issue 2200
@@ -432,7 +432,7 @@ endfunction()
 # to cargo -- never ran for it, and its pools stayed at Kconfig / crate
 # defaults although the metadata probe answers for its node package.
 #
-# `nros ws west-leaf-sizing` is the ONE derivation for both lanes: it writes
+# `nros dev image west-leaf-sizing` is the ONE derivation for both lanes: it writes
 # the fragment at the path rung 3 already loads (so the resolver gains a
 # SOURCE, not a second ladder) and the descriptor under this build dir, both
 # from one inventory over the leaf's probe sidecars. It prints nothing for an
@@ -487,7 +487,7 @@ function(_nros_west_leaf_sizing)
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
-            "nros: `nros ws west-leaf-sizing` failed for ${APPLICATION_SOURCE_DIR} "
+            "nros: `nros dev image west-leaf-sizing` failed for ${APPLICATION_SOURCE_DIR} "
             "(issue 1662):\n${_err}")
     endif()
     if(NOT _err STREQUAL "")
@@ -2230,7 +2230,7 @@ function(nros_cargo_build)
     set(LIB_NAME "lib${LIB_STEM}.a")
 
     # phase-336 — the profile and its target directory come from the shared
-    # table (`nros profile`). This block used to be a fourth copy of the
+    # table (`nros dev profile`). This block used to be a fourth copy of the
     # mapping, defaulting to a literal that outlived the name it referred to.
     nros_resolve_cargo_profile()
     set(_nros_cargo_profile "${NROS_CARGO_PROFILE}")

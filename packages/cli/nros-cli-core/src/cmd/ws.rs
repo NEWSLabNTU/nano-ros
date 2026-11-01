@@ -713,7 +713,7 @@ fn run_managed_deps(a: ManagedDepsArgs) -> Result<()> {
     if a.check && !changed.is_empty() {
         bail!(
             "{} manifest(s) do not carry the message rows their package.xml implies; \
-             run `nros sync` (or `nros ws managed-deps`)",
+             run `nros sync` (or `nros dev lock managed-deps`)",
             changed.len()
         );
     }
@@ -1021,7 +1021,7 @@ fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
     }
 
     let name = args.name.ok_or_else(|| {
-        eyre!("`nros ws rmw-dispatch` takes an rmw NAME, or `--known` to list them")
+        eyre!("`nros dev rmw dispatch` takes an rmw NAME, or `--known` to list them")
     })?;
     let r = resolve_rmw_in(&scan, &name).map_err(|e| {
         // The known list is part of the DIAGNOSTIC, never part of the decision:
@@ -5100,7 +5100,7 @@ fn central_patch_root(
     }
     own_checkout.ok_or_else(|| {
         eyre::eyre!(
-            "`nros ws central-patch`: {} is not inside a nano-ros checkout and \
+            "`nros dev lock central-patch`: {} is not inside a nano-ros checkout and \
              this `nros` was not built in one. Pass --nano-ros-path <checkout>.",
             cwd.display()
         )

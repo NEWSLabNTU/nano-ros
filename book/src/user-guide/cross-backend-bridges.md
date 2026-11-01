@@ -185,7 +185,7 @@ nros_cpp_init_multi(specs, 2, storage);
 The file is lowered on the host, exactly as for the Rust road
 (RFC-0109 D8): a zenoh JSON5 file becomes its session keys, a Cyclone
 XML file travels whole under `config`. Editing the file re-runs the
-configure. `nros ws session-properties <bringup> --domain <name>
+configure. `nros dev rmw session-properties <bringup> --domain <name>
 --symbol <ident> --out <header>` is the same answer without CMake.
 `rclcpp::SessionSpec::with_properties(rows)` sets it on the C++
 `MultiExecutor` wrapper.

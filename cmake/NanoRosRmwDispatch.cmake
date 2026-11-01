@@ -15,7 +15,7 @@
 # — a closed set, and the reason issue 1214 exists. Both halves, measured
 # against one tree in one minute:
 #
-#     $ nros ws providers --resolve rmw:acme
+#     $ nros dev ws providers --resolve rmw:acme
 #     rmw:acme -> <ws>/src/acme_rmw   root[1] (workspace)     <- FOUND
 #     $ cmake -P probe.cmake
 #     CMake Error: nros_rmw_dispatch: unknown rmw 'acme'
@@ -27,7 +27,7 @@
 # cmake never parses a descriptor. It ASKS the CLI for a shape it can read,
 # exactly as `NanoRosProviders.cmake` does:
 #
-#     nros ws rmw-dispatch <name> --lines
+#     nros dev rmw dispatch <name> --lines
 #     NROS_RMW_<KEY><TAB><value>
 #
 # and the answer comes from the provider SCAN, so a backend in the user's own
@@ -221,7 +221,7 @@ function(nros_rmw_dispatch rmw)
     _nros_rmw_scan_args(_scan_args)
     _nros_rmw_watch_descriptors()
     execute_process(
-        COMMAND "${_tool}" ws rmw-dispatch "${rmw}" ${_scan_args} --lines
+        COMMAND "${_tool}" dev rmw dispatch "${rmw}" ${_scan_args} --lines
         OUTPUT_VARIABLE _rows
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc)
@@ -245,7 +245,7 @@ function(nros_rmw_dispatch rmw)
     # `safety` two separate ROWS. This module used to escape them (`\;`), which
     # left a `[` in a value free to merge rows; issue 2200 moved every CLI
     # reader onto the one splitter that builds no list at all.
-    nros_cli_rows(_row "${_rows}" CONTEXT "`nros ws rmw-dispatch` for '${rmw}'")
+    nros_cli_rows(_row "${_rows}" CONTEXT "`nros dev rmw dispatch` for '${rmw}'")
     foreach(_i IN LISTS _row_INDICES)
         set(_line "${_row_${_i}}")
         # TAB-separated by construction; a value may contain almost anything
@@ -321,14 +321,14 @@ function(nros_rmw_known out_var)
     _nros_rmw_scan_args(_scan_args)
     _nros_rmw_watch_descriptors()
     execute_process(
-        COMMAND "${_tool}" ws rmw-dispatch --known ${_scan_args} --lines
+        COMMAND "${_tool}" dev rmw dispatch --known ${_scan_args} --lines
         OUTPUT_VARIABLE _row
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
-            "nros_rmw_known: `nros ws rmw-dispatch --known` failed (${_rc}).\n${_err}")
+            "nros_rmw_known: `nros dev rmw dispatch --known` failed (${_rc}).\n${_err}")
     endif()
     # One row, `NROS_RMW_KNOWN<TAB>a;b;c`. The `;`-list is what we want here, so
     # no escaping — and a tab-less row means the list is EMPTY (no provider
@@ -374,7 +374,7 @@ function(nros_rmw_is_known name out_var)
     _nros_rmw_cli(_tool)
     _nros_rmw_scan_args(_scan_args)
     execute_process(
-        COMMAND "${_tool}" ws rmw-dispatch "${name}" ${_scan_args} --lines
+        COMMAND "${_tool}" dev rmw dispatch "${name}" ${_scan_args} --lines
         OUTPUT_QUIET
         ERROR_VARIABLE _err
         ERROR_STRIP_TRAILING_WHITESPACE

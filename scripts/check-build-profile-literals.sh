@@ -14,7 +14,7 @@
 # THE RULE
 #
 #   * A cargo profile flag (`--release`, `--profile <name>`) comes from
-#     `nros profile` / `scripts/build/cargo.sh` / `nros_cargo_profile::…`.
+#     `nros dev profile` / `scripts/build/cargo.sh` / `nros_cargo_profile::…`.
 #   * A `target/…/<profile>/` path segment is derived the same way.
 #
 # THE OPT-OUT
@@ -28,7 +28,7 @@
 # the next reader is already looking. Legitimate reasons so far:
 #
 #   host tool       the CLI / launch-resolver builds — following the knob needs
-#                   `nros profile`, which needs the CLI to exist first. The two
+#                   `nros dev profile`, which needs the CLI to exist first. The two
 #                   in-tree host-binary PATHS (`packages/cli/target/release/nros`,
 #                   `nros-launch-resolve/target/release`) are excluded
 #                   structurally: they appear in ~10 diagnostics and locators,
@@ -140,7 +140,7 @@ nros_git_grep _gg -nE -- '(--release|--profile[= ]+[a-z][a-z0-9-]*)' \
        'packages/tooling/*/src/**' 'packages/testing/nros-tests/src/**' "${CMAKE_FILES[@]}"
 scan "hardcoded cargo profile flag" < <(
     grep -v 'rustup' <<<"$_gg" \
-    | grep -vE 'nros_cargo_profile|nros profile|profile_arg|profile_args|PROFILE_FLAGS|_profile"' \
+    | grep -vE 'nros_cargo_profile|nros dev profile|profile_arg|profile_args|PROFILE_FLAGS|_profile"' \
     | grep -v '^packages/tooling/nros-cargo-profile/' \
     || true)
 

@@ -85,7 +85,7 @@ When a project grows beyond one node, continue with
   call, not the core's: XRCE allocates only at entity setup, zenoh-pico wants
   an allocator (a bump allocator suffices on bare-metal), and Cyclone DDS
   allocates per message. `scripts/rmw-alloc-sites.py` reports every site.
-- **Standalone tooling** — `nros generate-rust` produces message
+- **Standalone tooling** — `nros dev codegen rust` produces message
   bindings without a ROS 2 installation (bundled interface definitions).
 - **Formally verified** — 148 Kani bounded model checking harnesses and 83
   Verus deductive proofs cover CDR serialization, scheduling, and protocol

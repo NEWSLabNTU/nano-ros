@@ -124,7 +124,7 @@ nros_resolve_board_facts()
 # picks; at the END of the configure, when both are known.
 cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL nros_check_zephyr_rust_target)
 # Phase 212.H.1 — nros_system_generate(<bringup-pkg>) shells the
-# `nros codegen-system` host-time bake at zephyr cmake configure
+# `nros dev codegen system` host-time bake at zephyr cmake configure
 # time. Consumes <bringup>/system.toml + launch/*.xml; emits a baked
 # tree under ${CMAKE_BINARY_DIR}/nros-system/ wired into `app`. See
 # cmake/nros_system_generate.cmake (≤200 LoC adapter shim).
@@ -162,7 +162,7 @@ set(NROS_REPO_DIR ${CMAKE_CURRENT_LIST_DIR}/.. CACHE PATH
 
 # phase-517 — and the root the application's `find_package(nano_ros)` reads
 # (`nano_rosConfig.cmake` sits at it). The module IS that root, so a plain
-# `west build … -- -DZEPHYR_EXTRA_MODULES="$(nros sdk-root)"` — the book's
+# `west build … -- -DZEPHYR_EXTRA_MODULES="$(nros dev sdk root)"` — the book's
 # primary Zephyr flow — must not also need `-Dnano_ros_ROOT`: without this it
 # died with "Could not find a package configuration file provided by nano_ros"
 # for every app, the in-tree examples included. The cmake roads (issue 1304)
@@ -533,7 +533,7 @@ nros_resolve_image_features()
 # phase-518 W4 — a single-package application (a hand-written Zephyr app over
 # a ported workspace) is in no workspace image, so the query above leaves
 # NROS_FEATURES unset. Its `[system] features` still reached Kconfig, as the
-# capability symbols the leaf renderer states (`nros ws leaf-system
+# capability symbols the leaf renderer states (`nros dev image leaf-system
 # --kconfig-out`), so those are the axes. Without this the Nav2 port declared
 # `lifecycle`, Kconfig said y, and nros-cpp was built without
 # `lifecycle-services`: `undefined reference to nros_cpp_lifecycle_change_state`.

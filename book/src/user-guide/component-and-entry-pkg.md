@@ -346,7 +346,7 @@ and it needs no sync, because its message bindings are a CMake-time output.
 
 ```bash
 cd <leaf>
-cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
+cmake -B build -Dnano_ros_ROOT="$(nros dev sdk root)"
 cmake --build build
 ```
 

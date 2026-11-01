@@ -69,7 +69,7 @@ pub fn run(args: Args) -> Result<()> {
     if front.is_empty() {
         bail!(
             "`[tool.{}]` declares no `front`, so nothing about it belongs in {}. \
-             Resolve it with `nros sdk-path {}` instead — the store is on PATH \
+             Resolve it with `nros dev sdk path {}` instead — the store is on PATH \
              only for the names in scripts/sdk-path-tools.txt, which is for \
              binaries something we do not control invokes by bare name.",
             args.tool,

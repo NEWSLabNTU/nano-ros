@@ -545,7 +545,7 @@ endfunction()
 include("${_NROS_BOARD_ROOT}/cmake/NanoRosEntryLocator.cmake")
 function(_nros_rv64_image_locator out_var)
     # phase-484 W4f — the root already read this leaf (to derive its board
-    # module); take that answer instead of a second `nros ws leaf-system`.
+    # module); take that answer instead of a second `nros dev image leaf-system`.
     get_property(_read GLOBAL PROPERTY NROS_TOP_LEAF_READ)
     if(NOT DEFINED NROS_ENTRY_LOCATOR AND _read STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         get_property(_loc GLOBAL PROPERTY NROS_TOP_LEAF_LOCATOR)

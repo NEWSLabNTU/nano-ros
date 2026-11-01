@@ -160,16 +160,16 @@ keep working but are documented as **deprecated** in favour of
 `nros_*` functions become thin wrappers internally; user-facing docs say
 "use the standard rosidl shape."
 
-### CLI (`nros codegen`)
+### CLI (`nros dev codegen`)
 
 ```bash
 # Single-package (today's per-pkg form, unchanged):
-nros generate cpp <pkg>
-nros generate-rust            # in a pkg dir; reads ./package.xml
+nros interface generate cpp <pkg>
+nros dev codegen rust            # in a pkg dir; reads ./package.xml
 
 # Bulk (matches `colcon build --packages-select` semantics):
-nros generate cpp --workspace <dir> [--target <pkg>...] [--out <dir>]
-nros generate-rust --workspace <dir> [--target <pkg>...] [--out <dir>]
+nros interface generate cpp --workspace <dir> [--target <pkg>...] [--out <dir>]
+nros dev codegen rust --workspace <dir> [--target <pkg>...] [--out <dir>]
 ```
 
 `--workspace <dir>` walks `<dir>` for `package.xml`s where
@@ -225,10 +225,10 @@ workspace dir.
   sorts, calls `add_subdirectory(<pkg-dir>)` so each pkg's own CMakeLists
   runs (which calls `rosidl_generate_interfaces`).
 
-### `nros codegen` (lives in nros-cli)
+### `nros dev codegen` (lives in nros-cli)
 
-- New `--workspace <dir>` flag on `nros codegen resolve-deps`,
-  `nros generate cpp`, `nros generate-rust`.
+- New `--workspace <dir>` flag on `nros dev codegen resolve-deps`,
+  `nros interface generate cpp`, `nros dev codegen rust`.
 - Honours `NROS_INTERFACE_SEARCH_PATH` env.
 - Also emits the upstream-style `<pkg>/msg/<name>.hpp` header alongside the
   current `<pkg>/<pkg>.hpp` umbrella (closes the 209.G-iter-2 codegen
@@ -267,7 +267,7 @@ workspace dir.
 2. `NROS_INTERFACE_SEARCH_PATH` env + cmake var plumbed through the
    smart Find-stub + the workspace fn.
 
-### Stage C — `nros codegen --workspace` (in nros-cli)
+### Stage C — `nros dev codegen --workspace` (in nros-cli)
 
 1. CLI flag.
 2. Topo-walks + emits everything. Optional `--out <dir>` for separate-build

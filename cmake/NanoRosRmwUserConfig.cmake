@@ -26,7 +26,7 @@
 # file is the one the backend's descriptor names (`rmw/cyclonedds.xml`,
 # RFC-0087's "derived from convention"); `[system] rmw_config` names another
 # for the bringup, `[image.<id>] rmw_config` one for an image. WHICH file is
-# the CLI's answer (`nros ws rmw-config`), never spelled here: this module
+# the CLI's answer (`nros dev rmw config`), never spelled here: this module
 # once encoded the convention itself, which is exactly the second reader a
 # declared key would have silently bypassed.
 
@@ -71,7 +71,7 @@ function(nros_rmw_user_config_file _out)
         set(_img_arg --image "${_img}")
     endif()
     execute_process(
-        COMMAND "${_nros}" ws rmw-config "${_NRF_BRINGUP}" --rmw "${_NRF_BACKEND}" ${_img_arg}
+        COMMAND "${_nros}" dev rmw config "${_NRF_BRINGUP}" --rmw "${_NRF_BACKEND}" ${_img_arg}
         OUTPUT_VARIABLE _o
         ERROR_VARIABLE _e
         RESULT_VARIABLE _rc
@@ -113,7 +113,7 @@ endfunction()
 # Writes nothing when there is no such file — the consuming header guards on
 # `__has_include`, so an image with no config compiles with no cmake
 # participation at all. A `session-json5` file is not baked here: CMake cannot
-# parse it, so `nros codegen entry --rmw-config` lowers it and the entry bakes
+# parse it, so `nros dev codegen entry --rmw-config` lowers it and the entry bakes
 # the result (RFC-0109 D8).
 function(nros_bake_rmw_user_config)
     cmake_parse_arguments(_NBR "" "BRINGUP;IMAGE;BACKEND;OUT_DIR;RESULT;FILE" "" ${ARGN})
@@ -195,7 +195,7 @@ endfunction()
 # for a hand-written multi-session C/C++ caller (`nros_cpp_init_multi` with
 # `NrosCppSessionSpec::properties`, `rclc_init_multi` with
 # `rclc_session_spec_t::properties`). The table is the CLI's answer
-# (`nros ws session-properties`): the domain's RMW file lowered on the host
+# (`nros dev rmw session-properties`): the domain's RMW file lowered on the host
 # (RFC-0109 D8), the same rows `nros sync` writes into `nros-bridge.toml` for a
 # Rust image. Nothing about the file's format is spelled here.
 #
@@ -229,7 +229,7 @@ function(nros_session_properties_header)
         set(_img_arg --image "${_img}")
     endif()
     execute_process(
-        COMMAND "${_nros}" ws session-properties "${_NSP_BRINGUP}"
+        COMMAND "${_nros}" dev rmw session-properties "${_NSP_BRINGUP}"
                 --domain "${_NSP_DOMAIN}" --symbol "${_NSP_SYMBOL}"
                 --row-type "${_NSP_ROW_TYPE}" --out "${_NSP_OUT}" ${_img_arg}
         OUTPUT_VARIABLE _o

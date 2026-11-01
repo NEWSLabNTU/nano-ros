@@ -15,10 +15,10 @@
 #
 #   cmake  — `nros_sdk_pin()` in cmake/NanoRosSdkPin.cmake
 #   rust   — `nros_build_paths::sdk_pinned_version()`
-#   CLI    — `sdk_store::tool_dir()` (what `nros sdk-path <tool>` prints)
+#   CLI    — `sdk_store::tool_dir()` (what `nros dev sdk path <tool>` prints)
 #
 # Where the `nros` CLI is available and the caller's store root is the CLI's,
-# `nros sdk-path <tool>` is the better answer. This exists for the callers
+# `nros dev sdk path <tool>` is the better answer. This exists for the callers
 # that run before the CLI is built (the cross-toolchain family; the store root
 # itself is `scripts/lib/store-root.sh`).
 #

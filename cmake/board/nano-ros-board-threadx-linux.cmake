@@ -177,7 +177,7 @@ endif()
 # startup.c::main.
 #
 # phase-484 W4b (RFC-0103 D1) — the `.network` block is ASKED of the board's
-# descriptor (`nros board net`, its `[board.net]` over the platform default),
+# descriptor (`nros dev board net`, its `[board.net]` over the platform default),
 # the same value the crate's `Config::default()` and its build script's C
 # emitter use; this file no longer carries a copy. The CLI is required on this
 # road anyway (codegen), so a missing one is a configure error, not a fallback

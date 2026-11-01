@@ -1,7 +1,7 @@
 # What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
 # schema a workspace bringup uses, and the same file a Rust leaf writes.
 # Replaces the `package.xml` `<nano_ros deploy= board= rmw=/>` tuple:
-# `find_package(nano_ros)` reads this through `nros ws leaf-system`, which
+# `find_package(nano_ros)` reads this through `nros dev image leaf-system`, which
 # derives the platform (`nuttx`) from the board. Switching board is editing
 # `[image.*] board`.
 
@@ -17,7 +17,7 @@ class = "nuttx_cpp_service_server::ServiceServer"
 name = "add_two_ints_server"
 # What this component creates is what its program CREATES (issue 1556): the
 # leaf's own `src/`, built for the host and run once with `$NROS_CENSUS_OUT`
-# (`nros ws entity-census take --leaf .`; the fixture build does it before it
+# (`nros dev image entity-census take --leaf .`; the fixture build does it before it
 # configures). The census sizes the pools a hand-written list used to
 # (issue 1142), and a configure with no fresh census REFUSES, naming that
 # command, rather than falling back to the RMW's guess.

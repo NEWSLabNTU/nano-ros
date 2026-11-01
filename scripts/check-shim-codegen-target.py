@@ -3,7 +3,7 @@
 
 Issue 1396; the class issue 1312 measured and could not gate.
 
-`nros codegen-system --target <id>` selects the `[image.<id>]` / `[deploy.<id>]`
+`nros dev codegen system --target <id>` selects the `[image.<id>]` / `[deploy.<id>]`
 block of the bringup being baked. Everything that block decides — the
 `[tiers.*.<rtos>]` sub-table first among them, then the resolved domain id, RMW,
 locator and per-image launch — comes from there. An id that names NO block is
@@ -84,6 +84,9 @@ PROSE_PREFIXES = ("docs/", "book/")
 SELF = "scripts/check-shim-codegen-target.py"
 
 VERB = "codegen-system"
+#: The verb in either spelling: the old `codegen-system` (still a hidden alias,
+#: and how an argv list writes it) or `dev codegen system` (phase-526 W4).
+VERB_RE = re.compile(r"codegen-system|\bdev\s+codegen\s+system\b")
 
 #: `--target <value>`, in the three spellings a build file writes it: separated
 #: by whitespace, joined by `=`, or as two adjacent argv strings
@@ -181,11 +184,11 @@ def findings(paths, read_text, declared, tracked):
     seen = set()
     for path in paths:
         text = read_text(path)
-        if text is None or VERB not in text:
+        if text is None or not VERB_RE.search(text):
             continue
         lines = text.splitlines()
         for i, line in enumerate(lines):
-            if VERB not in line or COMMENT_LINE.match(line):
+            if not VERB_RE.search(line) or COMMENT_LINE.match(line):
                 continue
             # The invocation's argument window: forward from the verb, stopping
             # at the first blank line (every spelling in the tree — backslash
@@ -381,22 +384,22 @@ def self_test(verbose: bool, quiet: bool = False) -> int:
     # not hardcode ANY key; the ones that do name a block get a sharper note,
     # because those are the ones that read as correct.
     chk("a literal that names a declared block is STILL a finding",
-        vals(run({"a.sh": 'nros codegen-system --target qemu-armv7a-nuttx --out x\n'}))
+        vals(run({"a.sh": 'nros dev codegen system --target qemu-armv7a-nuttx --out x\n'}))
         == ["qemu-armv7a-nuttx"])
     chk("and it is reported as naming a block",
-        run({"a.sh": 'nros codegen-system --target qemu-armv7a-nuttx\n'})[0][3] is True)
+        run({"a.sh": 'nros dev codegen system --target qemu-armv7a-nuttx\n'})[0][3] is True)
     chk("a literal naming no block is reported as naming none",
-        run({"a.sh": 'nros codegen-system --target bogus\n'})[0][3] is False)
+        run({"a.sh": 'nros dev codegen system --target bogus\n'})[0][3] is False)
     chk("`--for-entry` is not a `--target`",
-        run({"a.sh": 'nros codegen-system --for-entry ${DIR} --out x\n'}) == [])
+        run({"a.sh": 'nros dev codegen system --for-entry ${DIR} --out x\n'}) == [])
     chk("`--target-dir` is not `--target`",
-        run({"a.sh": 'nros codegen-system --target-dir /tmp/t --out x\n'}) == [])
+        run({"a.sh": 'nros dev codegen system --target-dir /tmp/t --out x\n'}) == [])
     chk("a `--target=<literal>` spelling is caught too",
-        vals(run({"a.sh": 'nros codegen-system --target=bogus --out x\n'})) == ["bogus"])
+        vals(run({"a.sh": 'nros dev codegen system --target=bogus --out x\n'})) == ["bogus"])
     chk("a shell variable value is out of scope",
-        run({"a.sh": 'nros codegen-system --target "$IMAGE" --out x\n'}) == [])
+        run({"a.sh": 'nros dev codegen system --target "$IMAGE" --out x\n'}) == [])
     chk("a cmake variable value is out of scope",
-        run({"a.cmake": 'COMMAND nros codegen-system --target ${_img}\n'}) == [])
+        run({"a.cmake": 'COMMAND nros dev codegen system --target ${_img}\n'}) == [])
 
     # The opt-out, and its limits.
     #
@@ -406,25 +409,25 @@ def self_test(verbose: bool, quiet: bool = False) -> int:
     unfiled = "9" * 4
     mark = "# nros-shim-target-gap: bogus (issue 1396) — no lane builds this\n"
     chk("the marker above the invocation excuses the value it names",
-        run({"a.sh": mark + 'nros codegen-system --target bogus --out x\n'}) == [])
+        run({"a.sh": mark + 'nros dev codegen system --target bogus --out x\n'}) == [])
     chk("the marker INSIDE the invocation window works too",
-        run({"a.sh": 'nros codegen-system \\\n  ' + mark + '  --target bogus --out x\n'})
+        run({"a.sh": 'nros dev codegen system \\\n  ' + mark + '  --target bogus --out x\n'})
         == [])
     chk("it excuses ONLY the value it names",
-        vals(run({"a.sh": mark + 'nros codegen-system --target other --out x\n'}))
+        vals(run({"a.sh": mark + 'nros dev codegen system --target other --out x\n'}))
         == ["other"])
     # The measured regression this shape exists for.
     chk("a nearby mention of the issue is NOT a marker — prose is not an opt-out",
         vals(run({"a.sh": '# issue 1396 fixed the synthesised `--target nuttx`\n'
-                          'nros codegen-system --target bogus --out x\n'})) == ["bogus"])
+                          'nros dev codegen system --target bogus --out x\n'})) == ["bogus"])
     chk("a marker naming an issue nobody filed does not excuse",
         vals(run({"a.sh": f'# nros-shim-target-gap: bogus (issue {unfiled})\n'
-                          'nros codegen-system --target bogus --out x\n'})) == ["bogus"])
+                          'nros dev codegen system --target bogus --out x\n'})) == ["bogus"])
     chk("a marker with no issue id at all does not excuse",
         vals(run({"a.sh": '# nros-shim-target-gap: bogus\n'
-                          'nros codegen-system --target bogus --out x\n'})) == ["bogus"])
+                          'nros dev codegen system --target bogus --out x\n'})) == ["bogus"])
     chk("an unexcused sibling invocation two blocks away is still a finding",
-        vals(run({"a.sh": mark + 'nros codegen-system --target bogus\n'
+        vals(run({"a.sh": mark + 'nros dev codegen system --target bogus\n'
                           '\n\n\n\n\n\n\nnros codegen-system --target other\n'}))
         == ["other"])
 
@@ -432,24 +435,24 @@ def self_test(verbose: bool, quiet: bool = False) -> int:
     chk("a file that never invokes the verb is out of scope",
         run({"a.sh": 'cmake --build b --target install\n'}) == [])
     chk("a `cmake --build --target` far from the verb is not attributed to it",
-        run({"a.sh": 'nros codegen-system --out x\n\n'
+        run({"a.sh": 'nros dev codegen system --out x\n\n'
                      'cmake --build b --target install\n'}) == [])
     chk("a commented-out invocation is not an invocation",
-        run({"a.sh": '# nros codegen-system --target bogus\n'}) == [])
+        run({"a.sh": '# nros dev codegen system --target bogus\n'}) == [])
     chk("a commented `--target` inside a live invocation is prose, not an argument",
-        run({"a.sh": 'nros codegen-system \\\n  # was --target bogus\n  --out x\n'}) == [])
+        run({"a.sh": 'nros dev codegen system \\\n  # was --target bogus\n  --out x\n'}) == [])
     # `declared` annotates; it cannot make a literal pass. Asserted because the
     # first rule let it decide, and that is what this gate got wrong.
     chk("an empty declared set changes only the NOTE, never the verdict",
-        vals(findings(["a.sh"], {"a.sh": 'nros codegen-system --target native\n'}.get,
+        vals(findings(["a.sh"], {"a.sh": 'nros dev codegen system --target native\n'}.get,
                       set(), tracked)) == ["native"])
     chk("a declared value is still a finding, with the note flipped",
-        findings(["a.sh"], {"a.sh": 'nros codegen-system --target native\n'}.get,
+        findings(["a.sh"], {"a.sh": 'nros dev codegen system --target native\n'}.get,
                  {"native"}, tracked)[0][3] is True)
     chk("`0088` and `88` name the same issue",
         findings(["a.sh"],
                  {"a.sh": '# nros-shim-target-gap: bogus (issue 0088)\n'
-                          'nros codegen-system --target bogus\n'}.get,
+                          'nros dev codegen system --target bogus\n'}.get,
                  declared, {"88"}) == [])
 
     # Scope.

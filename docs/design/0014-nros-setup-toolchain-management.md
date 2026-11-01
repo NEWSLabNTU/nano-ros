@@ -16,7 +16,7 @@ Status: design study · Date: 2026-05-28 · Tracks Phase 172 **W.5**
 > **Extended by [RFC-0048](0048-cmake-ament-consumption.md)** (phase-287): after
 > provisioning a board's toolchain, `nros setup <board>` also emits a CMakePreset
 > fragment (`~/.nros/presets/<board>.json` — `toolchainFile` + `nano_ros_ROOT`)
-> and a new `nros init` verb wires a user project's `CMakePresets.json` to it, so
+> and a new `nros setup presets` verb wires a user project's `CMakePresets.json` to it, so
 > a cross-compiled `cmake --preset <board>` needs no hand-set toolchain.
 
 ## Problem
@@ -106,7 +106,7 @@ setup --list/--install/--licenses` ≈ the sdkmanager verbs; `$NROS_HOME/sdk/`
 → nano-ros borrows: the **board→package-set resolution** (reuse `profile()` /
 the board crates as the "board manifest"), the **shared cache**, and the
 **auto-install-on-build** ergonomic — a native build (`cargo build` / `cmake
---build` / `west build`), via `nros codegen` resolving a missing package,
+--build` / `west build`), via `nros dev codegen` resolving a missing package,
 triggering a missing `nros setup <board>` the way `pio run` triggers the
 platform install.
 
@@ -240,9 +240,9 @@ path against an install then asks one function instead of knowing them:
 - **`subdir`** — the archive carries its own top-level directory and is unpacked
   without `--strip-components`, so the usable root is `{prefix}/<subdir>`, not
   `{prefix}`. `{version}` is substituted from the row's own `version`, so the
-  layout cannot drift from the pin. `nros sdk-path` answers the ROOT;
+  layout cannot drift from the pin. `nros dev sdk path` answers the ROOT;
   `sdk_store::tool_install_prefix` is the separate question "what did setup
-  write, and what does `store gc` reclaim". Before this, `nros sdk-path` answered
+  write, and what does `store gc` reclaim". Before this, `nros dev sdk path` answered
   the prefix and every consumer appended `zephyr-sdk-<version>` by hand — a
   second copy of the pin, in shell.
 - **`post_install`** — some bundles are *designed* to be completed by their own
@@ -262,11 +262,11 @@ path against an install then asks one function instead of knowing them:
 
   What a `post_install` may **not** do is write outside the prefix. The Zephyr
   installer's `-c` (the `~/.cmake/packages/Zephyr-sdk/` registry entry) is
-  therefore excluded: it is per-USER state that `nros store gc` cannot reclaim,
+  therefore excluded: it is per-USER state that `nros toolchain gc` cannot reclaim,
   it accumulates an entry per clone, and `find_package(Zephyr-sdk)` then picks
-  whichever it likes — the silent version substitution `nros sdk-path` exists to
+  whichever it likes — the silent version substitution `nros dev sdk path` exists to
   prevent (issue 0625). Consumers export `ZEPHYR_SDK_INSTALL_DIR` from
-  `nros sdk-path`; a caller that wants the registry runs
+  `nros dev sdk path`; a caller that wants the registry runs
   `scripts/zephyr/ensure-sdk-registered.sh` (issue 1279), which is its decision.
 
 Neither key weakens the contract for anything else: a row that declares neither
@@ -296,7 +296,7 @@ indistinguishable from a skip that fetched nothing.
     lock is written beside the nearest pin file up the path
     (`nros-sdk.lock`, `nros-sdk-index.toml`, `nros-toolchain.toml`), falling back
     to the directory the command ran in when a project carries none yet. That is
-    the same walk `nros store gc` reads these files back with, so a lock is
+    the same walk `nros toolchain gc` reads these files back with, so a lock is
     always written where its readers look.
 - **Bumping a tool:** edit `version` in the index → CI builds the new per-host
   assets under the new tag → users get it on the next `nros setup` (or stay on

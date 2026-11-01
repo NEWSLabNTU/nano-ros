@@ -101,7 +101,7 @@ is the fetch.
 ### Doctor check
 
 nano-ros checks that the model resolves via `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`,
-`PATH`, or the SDK store (`nros sdk-path arm-fvp`), and warns — never
+`PATH`, or the SDK store (`nros dev sdk path arm-fvp`), and warns — never
 hard-fails — when it can't. A warning rather than an error because a
 contributor who is not working on the FVP should not be blocked by its absence;
 `nros setup --tool arm-fvp` is the fix when they are.

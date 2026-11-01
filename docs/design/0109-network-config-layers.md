@@ -339,7 +339,7 @@ interfaces, and wiring uses those names.
      `verbatim-xml` one as its whole text under the one neutral key
      `config` (`nros_orchestration_ir::session_properties::DOCUMENT`).
      A hand-written C/C++ multi-session caller gets the same table as a
-     header (`nros ws session-properties`, CMake
+     header (`nros dev rmw session-properties`, CMake
      `nros_session_properties_header()`) and hands it to
      `NrosCppSessionSpec` / `rclc_session_spec_t` `properties` (issue 2123).
      Cyclone takes that key in place of its baked document, under the
@@ -358,7 +358,7 @@ interfaces, and wiring uses those names.
      per bringup, so an image's per-domain override reaches a bridge only
      through the bringup's `[[domain]] config`.
   5. **One resolver on every road.** The CMake road asks
-     `nros ws rmw-config <bringup> --rmw <backend> [--image <id>]` (the
+     `nros dev rmw config <bringup> --rmw <backend> [--image <id>]` (the
      generated workspace root passes each entry's `IMAGE`); it no longer
      spells `rmw/zenoh.json5` or `rmw/cyclonedds.xml` itself. Without an
      image, the images on that backend must agree on one file or the

@@ -57,7 +57,7 @@ of that name; anything absent falls back to bundled.
 
 ```sh
 export NROS_TEMPLATE_DIR=/path/to/my/pack
-nros generate-rust …          # uses the override, no recompile
+nros dev codegen rust …          # uses the override, no recompile
 ```
 
 (Equivalently, `rosidl_codegen::render::set_template_dir(dir)` from Rust, called
@@ -110,7 +110,7 @@ seam, and nothing else.
 3. add a generator per kind (`generator/{msg,srv,action}.rs`, or one file like
    `generator/cpp.rs`) that builds the context, names the output files and
    calls `render::render("<template-name>", &ctx)`, and its arm in
-   `nros generate` (`cmd/generate.rs`).
+   `nros interface generate` (`cmd/generate.rs`).
 
 ### Step 2 — the entry pack, if the language writes entries
 
@@ -129,7 +129,7 @@ one renderer (`codegen/entry/emit/mod.rs`) lowers the plan once into
    what the renderer must know: `context = "lowered-entry"`, the `filters` its
    templates call, the component kinds it constructs (`components`), and
    whether it calls the board's C-ABI runners (`c_abi_runners`). CMake reads
-   it through `nros codegen entry-pack`. The build discovers the directory —
+   it through `nros dev codegen entry-pack`. The build discovers the directory —
    there is no registry row to add;
 3. one variant on `Language` in `nros-lang`. Every consumer sees it — one
    enumeration;

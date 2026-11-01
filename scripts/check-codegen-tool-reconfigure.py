@@ -63,8 +63,8 @@ gate demands where it cannot be expressed.
 
 The verb is matched wherever it appears as a bare token, not only next to the
 tool, because the three spellings in this tree differ — a direct
-`execute_process(COMMAND "${tool}" codegen-system …)`, a command built into a
-variable (`set(_cmd "${tool}" codegen …)`), and arguments built into a variable
+`execute_process(COMMAND "${tool}" dev codegen system …)`, a command built into a
+variable (`set(_cmd "${tool}" dev codegen …)`), and arguments built into a variable
 with the tool supplied at the call (`set(_args codegen entry …)`). An
 adjacency-based first draft missed two of the four sites, which is why the rule
 is written this way. Verbs inside double-quoted strings are prose (a
@@ -179,8 +179,19 @@ _TOOL_VERB = re.compile(
 _TWO_WORD = ("ws", "codegen", "board", "profile", "config", "sdk-path")
 
 
+def _old_spelling(text):
+    """phase-526 W4: a `nros dev …` spelling read as the old verb it replaced,
+    so NOT_EMITTING and the bare-token rule stay keyed on one vocabulary."""
+    sys.path.insert(0, str(REPO / "scripts" / "lib"))
+    import cli_aliases
+
+    return cli_aliases.normalize_repo(text, REPO)
+
+
 def configure_time_verbs(text):
-    """The `nros` verbs `execute_process()` runs in this CMake text, as spelled."""
+    """The `nros` verbs `execute_process()` runs in this CMake text, as spelled
+    (a `nros dev` spelling as the old verb it replaced)."""
+    text = _old_spelling(text)
     out = set()
     for m in _EP.finditer(text):
         depth, i = 1, m.end()
@@ -202,7 +213,7 @@ def harvest_emitting_verbs(files, read):
     for rel in files:
         spelled |= configure_time_verbs(comments.strip_comments(read(rel), "cmake"))
     # `codegen` (and `codegen-system`) are also spelled through a variable —
-    # `set(_cmd "${tool}" codegen …)` — which no execute_process shows; they
+    # `set(_cmd "${tool}" dev codegen …)` — which no execute_process shows; they
     # stay in the population as the tree's first two emitters.
     population = spelled | {"codegen", "codegen-system"}
     emitting, problems = harvest.reconcile(population, NOT_EMITTING, what="configure-time verb")
@@ -248,7 +259,7 @@ def blank_blocks(text, command):
 def blank_strings(text):
     """Blank the contents of double-quoted strings.
 
-    A verb NAMED in a message — `nros codegen entry` inside a FATAL_ERROR — is
+    A verb NAMED in a message — `nros dev codegen entry` inside a FATAL_ERROR — is
     prose, not an invocation. Every real invocation spells the verb as a bare
     argument, because cmake would otherwise pass it as one word.
     """
@@ -284,10 +295,11 @@ def emitting_verbs(text):
 
     The verb is matched wherever it appears as a bare token, not only adjacent
     to the tool, because all three spellings in this tree are different:
-    `execute_process(COMMAND "${tool}" codegen-system …)`,
-    `set(_cmd "${tool}" codegen …)` run later, and `set(_args codegen entry …)`
+    `execute_process(COMMAND "${tool}" dev codegen system …)`,
+    `set(_cmd "${tool}" dev codegen …)` run later, and `set(_args codegen entry …)`
     with the tool supplied at the call. Requiring adjacency missed two of four.
     """
+    text = _old_spelling(text)
     text = blank_strings(blank_blocks(blank_blocks(text, "add_custom_command"), "add_custom_target"))
     found = set()
     for m in VERB_RE.finditer(text):
@@ -432,15 +444,15 @@ def selftest(verbose=False):
             print(f"  FAIL {what}", file=sys.stderr)
 
     reg = f'{HELPER}("${{_tool}}")\n'
-    emit = 'execute_process(COMMAND "${_tool}" codegen --args-file "${_a}")\n'
-    emit_sys = 'execute_process(COMMAND "${_cli}" codegen-system --out "${_o}")\n'
+    emit = 'execute_process(COMMAND "${_tool}" dev codegen --args-file "${_a}")\n'
+    emit_sys = 'execute_process(COMMAND "${_cli}" dev codegen system --out "${_o}")\n'
     resolve = (
-        'execute_process(COMMAND "${_tool}" codegen resolve-deps\n'
+        'execute_process(COMMAND "${_tool}" dev codegen resolve-deps\n'
         '    --package-xml "${_x}" --output-cmake "${_o}")\n'
     )
     # The two real spellings an adjacency rule missed.
     via_cmd_var = (
-        'set(_codegen_cmd "${_tool}" codegen --language cpp --args-file "${_a}")\n'
+        'set(_codegen_cmd "${_tool}" dev codegen --language cpp --args-file "${_a}")\n'
         "execute_process(COMMAND ${_codegen_cmd} RESULT_VARIABLE _rc)\n"
     )
     via_args_var = (
@@ -453,27 +465,27 @@ def selftest(verbose=False):
         "registered.cmake": reg + emit,
         "system.cmake": emit_sys,
         "resolve.cmake": resolve,
-        "custom.cmake": 'add_custom_command(OUTPUT o COMMAND "${_tool}" codegen -a x)\n',
-        "commented.cmake": "# execute_process(COMMAND nros codegen --args-file x)\n",
+        "custom.cmake": 'add_custom_command(OUTPUT o COMMAND "${_tool}" dev codegen -a x)\n',
+        "commented.cmake": "# execute_process(COMMAND nros dev codegen --args-file x)\n",
         "varonly.cmake": 'execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" --version)\n',
         "nested.cmake": (
             reg + 'execute_process(COMMAND ${CMAKE_COMMAND} -E env A=b\n'
-            '    "${_tool}" codegen --args-file "${_a}"\n'
+            '    "${_tool}" dev codegen --args-file "${_a}"\n'
             '    RESULT_VARIABLE _rc)\n'
         ),
         "both.cmake": emit + resolve,
         # phase-439 W4 — the RMW dispatch query. It writes no file; what it
         # bakes into `build.ninja` is which backend project is added and which
         # archive rides the whole-archive flag.
-        "rmwdispatch.cmake": 'execute_process(COMMAND "${_tool}" ws rmw-dispatch zenoh --lines)\n',
+        "rmwdispatch.cmake": 'execute_process(COMMAND "${_tool}" dev rmw dispatch zenoh --lines)\n',
         "rmwdispatch_reg.cmake": (
-            reg + 'execute_process(COMMAND "${_tool}" ws rmw-dispatch zenoh --lines)\n'
+            reg + 'execute_process(COMMAND "${_tool}" dev rmw dispatch zenoh --lines)\n'
         ),
         "cmdvar.cmake": via_cmd_var,
         "argsvar.cmake": via_args_var,
         "prose.cmake": (
             reg.replace(HELPER, "other_fn")
-            + 'message(FATAL_ERROR "`nros codegen entry` failed")\n'
+            + 'message(FATAL_ERROR "`nros dev codegen entry` failed")\n'
         ),
     }
     run = lambda names: offenders(names, files.get)  # noqa: E731
@@ -511,8 +523,8 @@ def selftest(verbose=False):
     chk("the whole tracked set is enumerable", len(tracked_cmake()) > 0)
 
     # phase-472 W7 — the verbs are harvested; an unexempted one is an emitter.
-    fx = {"a.cmake": 'execute_process(COMMAND "${_nros}" ws sizing-descriptor --x y)\n',
-          "b.cmake": 'execute_process(COMMAND "${t}" sdk-root)\n'}
+    fx = {"a.cmake": 'execute_process(COMMAND "${_nros}" dev image sizing-descriptor --x y)\n',
+          "b.cmake": 'execute_process(COMMAND "${t}" dev sdk root)\n'}
     chk("a configure-time verb is harvested as the CLI spells it",
         configure_time_verbs(fx["a.cmake"]) == {"ws sizing-descriptor"})
     toks, probs = harvest_emitting_verbs(list(fx), lambda r: fx[r])

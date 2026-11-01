@@ -40,9 +40,9 @@ WHY NOT JUST "DON'T EMIT IT"
 `[[model]]` variant, so without it both resolve the whole system and the two
 images are one program. Measured, on the tree that removed it::
 
-    nros model-path --launch multihost.launch.xml                    -> config/multihost_model.yaml
-    nros model-path --launch multihost.launch.xml --arg host=robot1  -> config/multihost_robot1_model.yaml
-    nros model-path --launch multihost.launch.xml --arg host=robot2  -> config/multihost_robot2_model.yaml
+    nros dev image model-path --launch multihost.launch.xml                    -> config/multihost_model.yaml
+    nros dev image model-path --launch multihost.launch.xml --arg host=robot1  -> config/multihost_robot1_model.yaml
+    nros dev image model-path --launch multihost.launch.xml --arg host=robot2  -> config/multihost_robot2_model.yaml
 
 THE SIBLING, AND WHY IT CANNOT COVER THIS
 

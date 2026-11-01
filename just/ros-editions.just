@@ -54,10 +54,10 @@ build-fixture distro="jazzy":
             -v "$NROS":/usr/local/bin/nros:ro \
             -v "$FIX":/fix \
             nano-ros-ros:{{distro}} \
-            bash -lc 'source /opt/ros/{{distro}}/setup.bash && cd /fix && nros generate-rust --force'
+            bash -lc 'source /opt/ros/{{distro}}/setup.bash && cd /fix && nros dev codegen rust --force'
     else
         echo "image nano-ros-ros:{{distro}} absent — generating against host ROS"
-        ( cd "$FIX" && "$NROS" generate-rust --force )
+        ( cd "$FIX" && "$NROS" dev codegen rust --force )
     fi
     # issue 0488 residue 1 — into `$NROS_BUILD_ROOT`, not the fixture's own leaf.
     # Same reasoning as the e2e loop below: `generated/` is rewritten per edition,
@@ -76,7 +76,7 @@ build-fixture distro="jazzy":
     # regenerate `generated/` from the HOST's definitions, undoing the edition's
     # above). Cargo then builds through that file, from the directory above the
     # leaf, as `nros build` does (scripts/build/leaf-settings.sh records why).
-    SETTINGS="$(NROS_REPO_DIR="{{justfile_directory()}}" "$NROS" ws leaf-system --write-settings "$FIX" \
+    SETTINGS="$(NROS_REPO_DIR="{{justfile_directory()}}" "$NROS" dev image leaf-system --write-settings "$FIX" \
         | sed -n 's/^NROS_LEAF_SETTINGS=//p')"
     [ -f "$SETTINGS" ] || { echo "error: no settings file for $FIX" >&2; exit 1; }
     ( cd "$(dirname "$FIX")" && cargo build --manifest-path "$FIX/Cargo.toml" \

@@ -6,7 +6,7 @@
 # `build/<image>/nros-cargo.toml` (scripts/build/leaf-settings.sh) and needs
 # nothing here. Every other cargo dir a lane builds — a workspace-shaped
 # fixture, a test bin, a bench — has no such file, so the invoker must ask
-# `nros ws board-facts` and export the answer, the way the cmake lanes do
+# `nros dev image board-facts` and export the answer, the way the cmake lanes do
 # through `nros_resolve_board_facts` (cmake/NanoRosBoardFacts.cmake).
 #
 # Since phase-484 W2b nothing exports `FREERTOS_PORT` repo-wide, so a lane
@@ -65,10 +65,10 @@ nros_board_facts() {
     # a successful resolve can never become an exported "variable".
     local errf
     errf="$(mktemp)"
-    out="$(NROS_REPO_DIR="$root" "$cli" ws board-facts "$dir" 2>"$errf")" || rc=$?
+    out="$(NROS_REPO_DIR="$root" "$cli" dev image board-facts "$dir" 2>"$errf")" || rc=$?
     if [ "$rc" -ne 0 ]; then
         if [ "$mode" = required ]; then
-            printf 'nros_board_facts: "nros ws board-facts %s" refused, and this build cross-compiles for a board:\n' \
+            printf 'nros_board_facts: "nros dev image board-facts %s" refused, and this build cross-compiles for a board:\n' \
                 "$dir" >&2
             cat "$errf" >&2
             rm -f "$errf"

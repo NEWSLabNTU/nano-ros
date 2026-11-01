@@ -139,7 +139,7 @@ The board's `cargo run` runner uses semihosting only (no serial
 device) — boot QEMU explicitly, wiring UART0 to the pair:
 
 ```bash
-"$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 \
+"$(nros dev sdk path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 \
     -display none -monitor none \
     -icount shift=auto -semihosting-config enable=on,target=native \
     -chardev serial,id=ser0,path=/tmp/nros-serial-qemu \

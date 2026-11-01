@@ -39,7 +39,7 @@ build it — silently, because an absent subdir is not an error.
 ```bash
 nros setup linux
 nros sync
-nros codegen-system --bringup demo_bringup
+nros dev codegen system --bringup demo_bringup
 nros check --bringup src/demo_bringup
 nros check --workspace .
 cargo build -p linux_entry
@@ -104,7 +104,7 @@ first decisive:
    Avoiding it under colcon means making a single package build everything — at
    which point colcon contributes only a tree-walk we already own.
 2. **We already have the parts it would give us.** Discovery is
-   `nros-pkg-index`'s `package.xml` walk; ordering is `nros ws order` (phase-348
+   `nros-pkg-index`'s `package.xml` walk; ordering is `nros dev ws order` (phase-348
    W4), already called by `nano_ros_workspace(ORDER_FROM_DEPENDS)`.
 3. **No target concept.** The existing `task/nros/build.py` shows the strain in
    its own comment: it reads `NANO_ROS_RMW` (a since-retired name) from an env var because *"the
@@ -167,7 +167,7 @@ nros build [<image>] [--board <board>] [-- <native build args>]
   5. EXEC       cmake --build / cargo build / west build — stderr untouched
 ```
 
-Stages 1–3 exist today (`nros-pkg-index`, `nros ws order`, `nros setup`, `nros
+Stages 1–3 exist today (`nros-pkg-index`, `nros dev ws order`, `nros setup`, `nros
 doctor`, `nros sync`). Stage 4's root emitter and the driver that sequences them
 are the new code.
 

@@ -9,14 +9,14 @@
 # provisioned: that the machine has no nano-ros checkout (the whole claim of
 # this track), and that the toolchain answers "where is the SDK root?" out of
 # its own asset (phase-447 A1+A2). Both are checkable the moment `nros` is on
-# PATH — `nros sdk-root` reads no index and opens no socket.
+# PATH — `nros dev sdk root` reads no index and opens no socket.
 #
 # Checking them at the END made them hostage to every step in between. With
 # the release's SDK-root staging reverted, the probe died at `nros setup`
 # (issue 1304: submodule sources cannot be provisioned without a checkout) —
 # the SAME step and the same message as with it intact — so a regression of
 # A1+A2 would have been indistinguishable from an already-open red. Here, a
-# reverted A1+A2 fails on its own line: `nros sdk-root` has no answer.
+# reverted A1+A2 fails on its own line: `nros dev sdk root` has no answer.
 #
 # (a) matters more than it looks. The dead-end this probe gates survived
 # because every person who could have noticed had a checkout the resolution
@@ -58,10 +58,10 @@ nros_prefix="${nros_bin%/bin/nros}"
 # From $HOME, which is not a workspace: the walk-up rung finds nothing, so only
 # the shipped rung can answer. `--explain` names the rung on stderr.
 rc=0
-sdk_root="$(cd "$HOME" && nros sdk-root --explain 2>/tmp/sdk-root.explain)" || rc=$?
+sdk_root="$(cd "$HOME" && nros dev sdk root --explain 2>/tmp/sdk-root.explain)" || rc=$?
 cat /tmp/sdk-root.explain
 [ "$rc" -eq 0 ] \
-    || probe_fail "\`nros sdk-root\` exited $rc — this release carries no SDK root, so no scaffolded project can configure (RFC-0099 D1; staged by scripts/stage-sdk-root.sh)"
+    || probe_fail "\`nros dev sdk root\` exited $rc — this release carries no SDK root, so no scaffolded project can configure (RFC-0099 D1; staged by scripts/stage-sdk-root.sh)"
 # `nros_grep_q` (scripts/lib/grep-q.sh, at the head of the probe script —
 # run-bootstrap-probe.sh's `--prelude`): a grep that fails to RUN exits 2 instead of reading
 # as "the rung was not named" (issue 0726).

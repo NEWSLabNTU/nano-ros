@@ -6,7 +6,7 @@
 # build must follow the documented user workflow:
 #
 #   nros sync
-#   nros codegen-system --bringup <bringup> --out <codegen_out>
+#   nros dev codegen system --bringup <bringup> --out <codegen_out>
 #   cargo build -p <entry> ... OR cmake --build ... --target <entry>
 #
 # Usage, from anywhere in the repo checkout:
@@ -254,7 +254,7 @@ build_workspace() {
         fi
     fi
 
-    # `codegen_out` is required for the BAKE path (`nros codegen-system`). A
+    # `codegen_out` is required for the BAKE path (`nros dev codegen system`). A
     # pure-cargo `nros::main!` entry bakes the system at proc-macro expansion
     # time, so it has no codegen_out — skip the codegen-system step for those.
 
@@ -333,8 +333,8 @@ build_workspace() {
         # BAKE path only: a pure-cargo `nros::main!` entry (no codegen_out)
         # bakes the system in the proc-macro, so it skips codegen-system.
         if [ -n "$codegen_out" ]; then
-            echo "     nros codegen-system --bringup $bringup --out $codegen_out"
-            "$nros_cli" codegen-system --bringup "$bringup" --out "$codegen_out" >/dev/null
+            echo "     nros dev codegen system --bringup $bringup --out $codegen_out"
+            "$nros_cli" dev codegen system --bringup "$bringup" --out "$codegen_out" >/dev/null
         fi
 
         if [ "$lang" = "rust" ]; then
@@ -683,7 +683,7 @@ done
 bash "$repo_root/scripts/build/census-prepass.sh" --only images --platform "$platform" \
     ${lang_filter:+--lang "$lang_filter"} ${id_filter:+--id "$id_filter"}
 
-pinned_make="$(nros sdk-path make)/bin/make"
+pinned_make="$(nros dev sdk path make)/bin/make"
 use_pool=0
 if [ "${NROS_JOBSERVER:-}" != "1" ] && [ "${#group_dirs[@]}" -gt 1 ] && \
    [ -x "$pinned_make" ] && "$pinned_make" --version | head -1 | grep -q "4.4"; then
@@ -711,7 +711,7 @@ fi
 # PATH. `fixture-make-driver.sh` and `build-all-jobserver.sh` already prepend
 # the pinned tools; this is the third driver of the same pool, and it did not.
 pinned_tool_path="$(dirname "$pinned_make")"
-pinned_ninja_dir="$(nros sdk-path ninja)/bin"
+pinned_ninja_dir="$(nros dev sdk path ninja)/bin"
 if [ -x "$pinned_ninja_dir/ninja" ]; then
     pinned_tool_path="$pinned_tool_path:$pinned_ninja_dir"
 fi

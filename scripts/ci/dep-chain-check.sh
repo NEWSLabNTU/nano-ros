@@ -6,7 +6,7 @@
 # lanes). Per cell:
 #   1. toolchain side : `nros setup <board> --rmw <rmw> --dry-run`
 #                       (the [board.*]/[rmw.*] index wiring → prebuilt host tools)
-#   2. codegen        : `nros generate-rust` in the example (produces the
+#   2. codegen        : `nros dev codegen rust` in the example (produces the
 #                       generated/ interface path-crates the example deps on)
 #   3. crate/feature  : `cargo tree` from the example dir (its .cargo/config.toml
 #                       [patch.crates-io] + `target=` apply) — resolution only.
@@ -15,7 +15,7 @@
 # feature that won't resolve on a target, a board→toolchain typo) in seconds.
 #
 # Preconditions (fail loud — never silently pass, per CLAUDE.md):
-#   - ROS 2 sourced: `nros generate-rust` resolves std_msgs's .msg via
+#   - ROS 2 sourced: `nros dev codegen rust` resolves std_msgs's .msg via
 #     AMENT_PREFIX_PATH. `source /opt/ros/<distro>/setup.bash` first.
 #   - $NROS points at the `nros` CLI. Phase 218 resolution order:
 #     $NROS env → packages/cli/target/release/nros (in-tree build via
@@ -42,7 +42,7 @@ INDEX="${NROS_SDK_INDEX:-nros-sdk-index.toml}"
 
 # --- preconditions ---
 if [ -z "${AMENT_PREFIX_PATH:-}" ]; then
-    echo "ERROR: ROS 2 not sourced (AMENT_PREFIX_PATH unset). 'nros generate-rust'" >&2
+    echo "ERROR: ROS 2 not sourced (AMENT_PREFIX_PATH unset). 'nros dev codegen rust'" >&2
     echo "       needs std_msgs's .msg defs. Run: source /opt/ros/<distro>/setup.bash" >&2
     exit 1
 fi
@@ -101,7 +101,7 @@ for cell in "${CELLS[@]}"; do
         # 2. codegen the example's interface crates — only when the example
         #    declares ROS msg deps (has a package.xml). Board-driven baremetal
         #    talkers (mps2-an385-baremetal) publish without generated
-        #    interfaces, so they ship no package.xml and `nros generate-rust`
+        #    interfaces, so they ship no package.xml and `nros dev codegen rust`
         #    would fail "Failed to read package.xml" — there is nothing to
         #    generate, so skip codegen for them (#69).
         #    NROS_SKIP_VERSION_CHECK=1: this lane validates dep-chain *resolution*
@@ -114,10 +114,10 @@ for cell in "${CELLS[@]}"; do
         #    cargo-tree step.
         if [ ! -f "$ex/package.xml" ]; then
             echo "  [ok] no package.xml — no generated interfaces, codegen skipped"
-        elif ( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" generate-rust >/dev/null 2>&1 ); then
+        elif ( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" dev codegen rust >/dev/null 2>&1 ); then
             : # generated/ now present
         else
-            echo "  [FAIL] nros generate-rust (codegen — ROS sourced? msg deps resolvable?)"
+            echo "  [FAIL] nros dev codegen rust (codegen — ROS sourced? msg deps resolvable?)"
             cell_ok=0
         fi
 

@@ -60,7 +60,7 @@ nros_cmake_corrosion_prefixes() {
     #      the store is shared, the pin is per-project, so a newer checkout's
     #      provisioning silently re-pointed an older one.
     #
-    # `nros sdk-path corrosion` joins the store root to the version THIS project
+    # `nros dev sdk path corrosion` joins the store root to the version THIS project
     # pins, using the same function `nros setup` used to write the directory. No
     # ordering rule is needed because nothing is being ordered (issue 0625).
     #
@@ -68,7 +68,7 @@ nros_cmake_corrosion_prefixes() {
     # — leaves CMAKE_PREFIX_PATH untouched, and `nros_resolve_corrosion()` then
     # reports and falls back. A wrong prefix would be worse than none.
     local dir
-    dir="$(nros sdk-path corrosion 2>/dev/null)" || return 0
+    dir="$(nros dev sdk path corrosion 2>/dev/null)" || return 0
     [ -n "$dir" ] && [ -d "$dir" ] && printf '%s\n' "$dir"
 }
 

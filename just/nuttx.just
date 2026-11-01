@@ -139,7 +139,7 @@ build-examples:
     # Phase 225.O follow-up (known-issue #18) — workspace Entry fixture
     # (`examples/workspaces/rust/src/qemu_nuttx_entry`). Same workspace
     # workflow as native/freertos/threadx/esp32: `nros sync`,
-    # `nros codegen-system`, then the cargo cross build (build-std + the
+    # `nros dev codegen system`, then the cargo cross build (build-std + the
     # build.rs kernel-lib link). `NUTTX_DIR` must reach both the board
     # crate's build.rs and the entry's build.rs.
     export NUTTX_DIR="$nuttx_dir"

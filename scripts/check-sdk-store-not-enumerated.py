@@ -4,7 +4,7 @@
 nano-ros decides where a provisioned tool goes: `nros setup` writes
 `<store>/<tool>/<version>` because `nros-sdk-index.toml` named that version. A
 consumer therefore builds the path from those same two inputs — via
-`nros sdk-path <tool>`, `sdk_store::tool_dir()` inside the CLI, or the pin
+`nros dev sdk path <tool>`, `sdk_store::tool_dir()` inside the CLI, or the pin
 readers `nros_sdk_pin()` (cmake, `cmake/NanoRosSdkPin.cmake`), `nros_sdk_pinned_version` (shell,
 `scripts/lib/sdk-pin.sh`) and `nros_build_paths::sdk_pinned_version()` (Rust
 build scripts) — and does not go looking.
@@ -347,7 +347,7 @@ pub fn installed_versions(tool: &str) -> Vec<String> {
     # A comment describing the removed shape is not a reintroduction.
     "scripts/y.sh": """\
 # This used to do `ls "$store" | sort -Vr` over /sdk/riscv-none-elf-gcc/* .
-store="$(nros sdk-path corrosion)"
+store="$(nros dev sdk path corrosion)"
 """,
 }
 
@@ -412,7 +412,7 @@ def main() -> int:
             "  0625); a sibling checkout's newer install shadowing the pin (1546).\n"
             "\n"
             "  Construct it instead — <store>/<tool>/<pinned version>:\n"
-            "      shell / cmake / just :  nros sdk-path <tool>\n"
+            "      shell / cmake / just :  nros dev sdk path <tool>\n"
             "      cmake, no CLI        :  nros_sdk_pin()  (cmake/NanoRosSdkPin.cmake)\n"
             "      shell, no CLI        :  nros_sdk_pinned_version  (scripts/lib/sdk-pin.sh)\n"
             "      rust build script    :  nros_build_paths::sdk_pinned_version()\n"
