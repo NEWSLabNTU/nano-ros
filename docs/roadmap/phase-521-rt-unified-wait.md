@@ -1,6 +1,6 @@
 # Phase 521 — The real-time promise and the one wait
 
-**Status (2026-11-01). Approved; W0 and W1 done; W3 done except issue 2198 (the NuttX rv-virt link, reopened as W3.b); W2's THREAD half and W4's POSIX/NuttX, lwIP and NetX parts done; the rest of W2 and W4, and W5–W8, open. Revised the same day against RFC-0115 (phase-524): the boards the book names are Zephyr boards on a zenoh serial link, so Zephyr moves to the front of W4 and the polled UART read joins W6.** Implements
+**Status (2026-11-01). Approved; W0 and W1 done; W3 done, including W3.b (issue 2198, the NuttX rv-virt link); W2's THREAD half and W4's POSIX/NuttX, lwIP, NetX and Zephyr UDP parts done; the rest of W2 and W4, and W5–W8, open. Revised the same day against RFC-0115 (phase-524): the boards the book names are Zephyr boards on a zenoh serial link, so Zephyr moves to the front of W4 and the polled UART read joins W6.** Implements
 [RFC-0113](../design/0113-rt-unified-wait.md). Amends
 [RFC-0106](../design/0106-executor-park.md) D5 and withdraws
 [RFC-0112](../design/0112-framework-support-tiers.md)'s Tier 0.
@@ -154,7 +154,17 @@ How it was built:
   `__wrap_poll` (issue 2198, first seen in the 2026-11-01 nightly `nuttx`
   job). No merge-gating lane builds NuttX, so W3's checks did not catch it.
 
-### W3.b — The park links on NuttX rv-virt (issue 2198) — OPEN, do first
+### W3.b — The park links on NuttX rv-virt (issue 2198) — DONE (#2977)
+
+Fixed by `CONFIG_PIPES=y` in the rv-virt defconfig, so the park's wake pipe
+links and NuttX keeps the Waitable form, and by dropping the image's stale
+`-Wl,--wrap=poll`. The three `just nuttx build-riscv-*` recipes build, and the
+rv-virt C talker boots in QEMU and publishes to `rmw_zenohd`. The third
+acceptance point below is not met: no merge-gating lane compiles NuttX riscv,
+so the nightly stays the only witness.
+
+The plan as written:
+
 
 W3 shipped a regression: four nightly `nuttx-riscv` rows fail to link. Fix it
 before new W4–W6 work lands, since each later item adds to the same park. Of
