@@ -1,0 +1,190 @@
+# phase-524 W1 spike 2 -- Renode, nucleo_f767zi: zenoh over serial (USART3, the
+# ST-LINK VCP), then over the ETH MAC on a Renode switch bridged to a host tap
+# date:     2026-11-01 (box: distrobox ros2, Ubuntu 22.04, ROS 2 humble)
+# repo:     nano-ros 9e6bf0d4e2 (origin/main), zenoh-pico 8d5ac2fe10 (the pin)
+# zephyr:   3.7.0 (box workspace), SDK 0.16.8; leaf examples/zephyr/c/talker
+# module:   hal_stm32 f1317150eac951fdd8259337a47cbbc4c2e6d335 (zephyr v3.7.0's pin),
+#           fetched by hand into modules/hal/stm32 (639 MiB shallow), via ZEPHYR_EXTRA_MODULES
+# renode:   1.17.0 portable, sha256 4ba7c68b59e2447f188ef4b4b112fcccd2802582c460beedceb63b84e5605a5f
+#           platforms/boards/nucleo_f767zi.repl (-> cpus/stm32f777.repl: STM32F7_USART,
+#           SynopsysEthernetMAC @0x40028000 + EthernetPhysicalLayer, STM32_RNG)
+# router:   nros_zenohd_bin (scripts/dev/zenohd.sh) -> humble's rmw_zenohd
+# renode state: --config tmp/spike-524/renode-config/renode.config, HOME and
+#           XDG_CONFIG_HOME overridden for the Renode process (it otherwise writes
+#           ~/.config/renode even with --config), so nothing lands in ~/.config.
+#
+# --- 2a serial ---
+#   tmp/spike-524/scripts/build.sh nucleo_f767zi tmp/spike-524/build/nucleo-serial \
+#       tmp/spike-524/boards/nucleo_f767zi/serial.conf \
+#       tmp/spike-524/boards/nucleo_f767zi/app-serial.overlay \
+#       'serial/serial@40004800#baudrate=115200' ~/.nros-box/workspaces/zephyr/3.7/modules/hal/stm32 \
+#       -DNROS_OVERRIDE_ZENOH_MAX_LARGE_SUBSCRIBERS=0
+#     (west build -b nucleo_f767zi ... examples/zephyr/c/talker -- -DCONF_FILE="prj.conf;prj-zenoh.conf;<serial.conf>"
+#      -DCONFIG_NROS_ZENOH_LOCATOR=... -DZEPHYR_EXTRA_MODULES="<repo>;<hal_stm32>" -DDTC_OVERLAY_FILE=<overlay> <override>)
+#   tmp/spike-524/scripts/run-serial.sh nucleo-serial nucleo_f767zi.repl \
+#       tmp/spike-524/build/nucleo-serial/zephyr/zephyr.elf usart3 usart6 17524 33524 90
+#     resc: mach create; LoadPlatformDescription @platforms/boards/nucleo_f767zi.repl;
+#           emulation CreateUartPtyTerminal "zlink" "<run>/zlink" true; connector Connect sysbus.usart3 zlink;
+#           sysbus.usart6 CreateFileBackend @<run>/console.log true; sysbus LoadELF @<elf>; (start via monitor)
+#     router: ZENOH_CONFIG_OVERRIDE='listen/endpoints=["serial/<run>/zlink#baudrate=115200","tcp/127.0.0.1:17524"];scouting/multicast/enabled=false' rmw_zenohd
+#     echo:   RMW_IMPLEMENTATION=rmw_zenoh_cpp ROS_DOMAIN_ID=0 \
+#             ZENOH_CONFIG_OVERRIDE='connect/endpoints=["tcp/127.0.0.1:17524"];scouting/multicast/enabled=false' \
+#             ros2 topic echo /chatter std_msgs/msg/String
+#
+# --- 2b ethernet ---
+#   tmp/spike-524/scripts/build.sh nucleo_f767zi tmp/spike-524/build/nucleo-eth \
+#       tmp/spike-524/boards/nucleo_f767zi/eth.conf - 'tcp/192.0.2.1:7447' <hal_stm32> \
+#       -DNROS_OVERRIDE_ZENOH_MAX_LARGE_SUBSCRIBERS=0 -DNROS_OVERRIDE_ZENOH_MAX_SUBSCRIBERS=1 \
+#       -DNROS_OVERRIDE_ZENOH_SERVICE_BUFFER_SIZE=1024 -DNROS_OVERRIDE_ZEPHYR_HEAP_SIZE=32768
+#   unshare -rn tmp/spike-524/scripts/run-eth.sh nucleo-eth tmp/spike-524/build/nucleo-eth/zephyr/zephyr.elf 120
+#     A tap needs CAP_NET_ADMIN. No sudo: the run is a ROOTLESS user+net namespace
+#     (`unshare -rn`; /dev/net/tun is 0666 in the box). Inside it:
+#       ip tuntap add dev tap0 mode tap; ip addr add 192.0.2.1/24 dev tap0; ip link set tap0 up
+#     resc: ... emulation CreateSwitch "switch"; connector Connect sysbus.ethernet switch;
+#           emulation CreateTap "tap0" "tap"; connector Connect host.tap switch; sysbus.usart3 CreateFileBackend ...
+#     router: listen tcp/192.0.2.1:7447 (the board's locator) + tcp/127.0.0.1:7448 (echo side)
+#     The router and ros2 run in the same namespace as the tap; a router in the host's
+#     own netns would need a forwarder (pasta/slirp4netns) -- NOT tried here.
+
+=== 2a serial.conf ===
+# phase-524 W1 spike -- nucleo_f767zi, zenoh over SERIAL on USART3 (the
+# ST-LINK virtual COM port); console moved to USART6 by app-serial.overlay.
+# Delta merged LAST, the shape of cmake/zephyr/mps2-an385-serial.conf.
+CONFIG_NROS_TRANSPORT_SERIAL=y
+CONFIG_NETWORKING=n
+CONFIG_RING_BUFFER=y
+CONFIG_TEST_RANDOM_GENERATOR=y
+# issue 0852: interrupt-driven RX.
+CONFIG_SERIAL=y
+CONFIG_UART_INTERRUPT_DRIVEN=y
+# issue 2164: main below zenoh-pico's read task.
+CONFIG_MAIN_THREAD_PRIORITY=5
+# 384 KiB sram0: the leaf's 64 KiB kernel heap is not what nano-ros allocates
+# from (NROS_ZEPHYR_HEAP_SIZE is); 16 KiB keeps Zephyr's own users fed.
+CONFIG_HEAP_MEM_POOL_SIZE=16384
+=== 2a app-serial.overlay ===
+/* phase-524 W1 spike: USART3 (ST-LINK VCP) carries zenoh; console on USART6. */
+/ {
+	chosen {
+		zephyr,console = &usart6;
+		zephyr,shell-uart = &usart6;
+	};
+};
+=== 2a build: memory report ===
+Memory region         Used Size  Region Size  %age Used
+           FLASH:      521356 B         2 MB     24.86%
+             RAM:      351936 B       384 KB     89.50%
+  (first two builds overflowed RAM by 138944 then 7872 bytes at the crate pool defaults;
+   the ELF that ran: sha256 8b3fd42beddcb32c4c917ee47b1860cde91e58e4e44a14bbfd7d41c45aa9b99c)
+
+=== 2a run ===
+SPIKE: pty <repo>/tmp/spike-524/run/nucleo-serial/zlink -> /dev/pts/0
+SPIKE: router <nros_zenohd_bin: humble's rmw_zenoh_cpp router>
+SPIKE: started at 2026-11-01T10:19:48+08:00
+=== console (usart6) ===
+*** Booting Zephyr OS build v3.7.0 ***
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
+Publishing: 'Hello World: 3'
+Publishing: 'Hello World: 4'
+Publishing: 'Hello World: 5'
+Publishing: 'Hello World: 6'
+Publishing: 'Hello World: 7'
+=== echo ===
+data: 'Hello World: 1'
+---
+data: 'Hello World: 2'
+---
+data: 'Hello World: 3'
+---
+data: 'Hello World: 4'
+---
+data: 'Hello World: 5'
+---
+data: 'Hello World: 6'
+---
+data: 'Hello World: 7'
+---
+=== router (tail) ===
+2026-11-01T02:19:42.003192Z  INFO ThreadId(02) zenoh::net::runtime: Using ZID: 7dc1b561d0c882207b0e6a3d146cac17
+2026-11-01T02:19:42.003504Z  INFO ThreadId(02) zenoh::net::runtime::orchestrator: Zenoh can be reached at: tcp/127.0.0.1:17524
+2026-11-01T02:19:42.003520Z  INFO ThreadId(02) zenoh::net::runtime::orchestrator: Zenoh can be reached at: serial/<repo>/tmp/spike-524/run/nucleo-serial/zlink
+Started Zenoh router with id 7dc1b561d0c882207b0e6a3d146cac17
+SPIKE RESULT: PASS -- data: 'Hello World: 1'
+
+=== 2b eth.conf ===
+# phase-524 W1 spike -- nucleo_f767zi, zenoh over the on-chip ETH MAC
+# (eth_stm32_hal), static IPv4 on a Renode switch bridged to a tap that lives
+# in a rootless user+net namespace (no sudo). Merged LAST after the leaf's
+# prj.conf + prj-zenoh.conf (which carry NETWORKING/NET_TCP/POSIX).
+CONFIG_NET_L2_ETHERNET=y
+CONFIG_NET_CONFIG_SETTINGS=y
+CONFIG_NET_CONFIG_NEED_IPV4=y
+CONFIG_NET_CONFIG_MY_IPV4_ADDR="192.0.2.2"
+CONFIG_NET_CONFIG_MY_IPV4_NETMASK="255.255.255.0"
+CONFIG_NET_CONFIG_MY_IPV4_GW="192.0.2.1"
+CONFIG_NET_DHCPV4=n
+CONFIG_NET_CONFIG_INIT_TIMEOUT=10
+# 384 KiB sram0 (same reasoning as serial.conf).
+CONFIG_HEAP_MEM_POOL_SIZE=16384
+CONFIG_NET_PKT_RX_COUNT=16
+CONFIG_NET_PKT_TX_COUNT=16
+CONFIG_NET_BUF_RX_COUNT=32
+CONFIG_NET_BUF_TX_COUNT=32
+=== 2b build: memory report ===
+Memory region         Used Size  Region Size  %age Used
+           FLASH:      605448 B         2 MB     28.87%
+             RAM:      386024 B       384 KB     98.17%
+  (RAM overflowed by 56808 / 25576 / 25576 bytes before the four pool overrides;
+   the ELF that ran: sha256 ba249610bdbf3eb2a54ef99201c789dcf7b80403126d306aa0e0cf02b40f4807)
+
+=== 2b run ===
+SPIKE: netns uid=0 (namespace root, host uid unchanged)
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+tap0             DOWN           192.0.2.1/24 
+SPIKE: router <nros_zenohd_bin: humble's rmw_zenoh_cpp router>
+SPIKE: started at 2026-11-01T10:28:19+08:00
+=== console (usart3) ===
+*** Booting Zephyr OS build v3.7.0 ***
+[00:00:00.020,000] <inf> net_config: Initializing network
+[00:00:00.020,000] <inf> net_config: Waiting interface 1 (0x20022924) to be up...
+[00:00:00.521,000] <inf> net_config: Interface 1 (0x20022924) coming up
+[00:00:00.521,000] <inf> net_config: IPv4 address: 192.0.2.2
+[00:00:00.523,000] <inf> nros: nros: [    0.523454] arena over-provisioned: set NROS_EXECUTOR_ARENA_SIZE=1024 (Zephyr: CONFIG_ prefix). 48/74240 bytes claimed at first spin; later registrations need more.
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
+Publishing: 'Hello World: 3'
+Publishing: 'Hello World: 4'
+Publishing: 'Hello World: 5'
+Publishing: 'Hello World: 6'
+Publishing: 'Hello World: 7'
+Publishing: 'Hello World: 8'
+
+=== echo ===
+data: 'Hello World: 1'
+---
+data: 'Hello World: 2'
+---
+data: 'Hello World: 3'
+---
+data: 'Hello World: 4'
+---
+data: 'Hello World: 5'
+---
+data: 'Hello World: 6'
+---
+data: 'Hello World: 7'
+---
+data: 'Hello World: 8'
+---
+=== router (tail) ===
+2026-11-01T02:28:13.532238Z  INFO ThreadId(02) zenoh::net::runtime: Using ZID: f18b84b527eeb679d30ad37210494d30
+2026-11-01T02:28:13.532537Z  INFO ThreadId(02) zenoh::net::runtime::orchestrator: Zenoh can be reached at: tcp/127.0.0.1:7448
+2026-11-01T02:28:13.532552Z  INFO ThreadId(02) zenoh::net::runtime::orchestrator: Zenoh can be reached at: tcp/192.0.2.1:7447
+Started Zenoh router with id f18b84b527eeb679d30ad37210494d30
+=== renode (tail) ===
+
+Both halves PASS. Serial result: "SPIKE RESULT: PASS -- data: 'Hello World: 1'"
+Renode noise worth a W2 note: 'ethernet: Unhandled read from offset 0x38' repeats in the Renode log; delivery unaffected.
+
+SPIKE RESULT: PASS -- serial (USART3) and ethernet (tcp/192.0.2.1:7447 via tap): ros2 topic echo printed "data: 'Hello World: 1'" in both runs

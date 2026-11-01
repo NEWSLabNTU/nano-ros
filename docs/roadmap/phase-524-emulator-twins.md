@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-10-31). PROPOSED. Nothing started; W1's three spikes decide the board list before any other item runs.** Implements
+**Status (2026-11-01). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode). RFC-0115 D4 rewritten to match. W2 onward run for the Nucleo only. W0 open.** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -57,6 +57,59 @@ pass or fail log under `tmp/` and the exact commands in the log header.
   the installed Renode has an RP2040 platform, else removes it. If all three
   fail, this phase closes with the record and RFC-0115 is marked Superseded by
   a hardware-first decision.
+
+**Result (2026-11-01). Done. Survivor: Nucleo-F767ZI.** Run in the `ros2`
+distrobox at `9e6bf0d4e2` with Zephyr 3.7.0, SDK 0.16.8 and the C talker
+(`examples/zephyr/c/talker`, `CONFIG_NROS_TRANSPORT_SERIAL` image shape of the
+`talker-serial` row). Tools, pinned: Renode 1.17.0
+(`renode-1.17.0.linux-portable.tar.gz`, sha256
+`4ba7c68b59e2447f188ef4b4b112fcccd2802582c460beedceb63b84e5605a5f`) and
+`wokwi-cli` 0.29.1 (`wokwi-cli-linuxstatic-x64`, sha256
+`3c9d6da007d008a3822ab468318037285440055132c59fd659d7306e40f14258`), both from
+their GitHub releases, digests matching the published ones.
+
+| Spike | Result | Decisive line | Log |
+|---|---|---|---|
+| 1. UNO R4 Minima | FAIL | ``region `FLASH' overflowed by 144744 bytes`` / ``region `RAM' overflowed by 144904 bytes`` (best of four builds; 256 KiB / 32 KiB part) | [renode-uno-r4](data/phase-524-w1-renode-uno-r4.log) |
+| 2. Nucleo-F767ZI | PASS, serial and ethernet | `data: 'Hello World: 1'` from `ros2 topic echo`, over `serial/serial@40004800` and over `tcp/192.0.2.1:7447` | [renode-nucleo](data/phase-524-w1-renode-nucleo.log) |
+| 3. Pico W | FAIL (blocked) | `Error: Missing WOKWI_CLI_TOKEN environment variable.`; Renode 1.17.0 has no RP2040 platform | [wokwi-pico](data/phase-524-w1-wokwi-pico.log) |
+
+Decision applied: the UNO R4 and the Pico W leave the list, the Nucleo keeps
+both chapters, and RFC-0115 D4 names the Nucleo alone. W2 adds
+`[tool.renode]` only; W3 writes one row (`renode:nucleo_f767zi`); W4
+generates `renode-nucleo` only. The field solutions purpose has no twin board
+now, which is a maintainer call (a new candidate, or a token for a W1.3
+rerun).
+
+What the survivor needs, found by the spike:
+
+- **Module.** `hal_stm32` (the revision zephyr v3.7.0's own `west.yml` pins, 639 MiB shallow)
+  is not in `west.yml`'s allowlist; the spike fetched it by hand. W2/W3 add a
+  `[zephyr_module.hal_stm32]` row with `lines = ["3.7"]` and mirror it.
+- **Rust targets.** `examples/zephyr/rust-toolchain.toml` (nightly-2026-04-11)
+  lists no `thumbv7em-none-eabi(hf)`; the spike added them by `rustup target
+  add`. Any Cortex-M4/M7 Zephyr board needs them there.
+- **Kconfig (serial).** `CONFIG_NROS_TRANSPORT_SERIAL=y`,
+  `CONFIG_NETWORKING=n`, `CONFIG_RING_BUFFER=y`,
+  `CONFIG_TEST_RANDOM_GENERATOR=y`, `CONFIG_UART_INTERRUPT_DRIVEN=y`,
+  `CONFIG_MAIN_THREAD_PRIORITY=5`; the zenoh link takes USART3 (the ST-LINK
+  virtual COM port), so the console moves to USART6 (Arduino D0/D1) by
+  overlay, and on the bench that console needs a USB-to-UART adapter.
+- **Kconfig (ethernet).** Static IPv4 (`NET_CONFIG_SETTINGS`, address, mask,
+  gateway); `eth_stm32_hal` comes from the board's `&mac`, entropy from
+  `STM32_RNG`.
+- **RAM.** sram0 is 384 KiB and the crate pool defaults do not fit it: the
+  serial image needed `ZENOH_MAX_LARGE_SUBSCRIBERS = 0` and a 16 KiB kernel
+  heap (89.5 % used), the ethernet image also `ZENOH_MAX_SUBSCRIBERS = 1`,
+  `ZENOH_SERVICE_BUFFER_SIZE = 1024`, `ZEPHYR_HEAP_SIZE = 32768` (98.2 %
+  used). These belong in the descriptor's `[knobs]`. The 32 KiB heap is below
+  the C talker's measured 15,152-byte peak plus the 24,576-byte headroom
+  floor (39,728), so W3 measures the boot report before settling it, or moves
+  stacks or pools to the 128 KiB DTCM.
+- **Twin harness.** Renode writes `~/.config/renode` even with `--config`
+  (command history and a binaries cache), so a track sets `HOME` for it. The
+  ethernet twin needs a tap: no root is required inside `unshare -rn`, which
+  must then hold the router and `ros2` too.
 
 ### W2 — Renode and Wokwi as `[tool.*]` entries
 

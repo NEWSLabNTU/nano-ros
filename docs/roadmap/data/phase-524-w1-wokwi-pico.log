@@ -1,0 +1,49 @@
+# phase-524 W1 spike 3 -- wokwi-cli, rpi_pico (Pico W), our Zephyr ELF with the UART on the host
+# date:     2026-11-01 (box: distrobox ros2)
+# wokwi-cli: 0.29.1 (0aa185144b92), wokwi-cli-linuxstatic-x64
+#           https://github.com/wokwi/wokwi-cli/releases/download/v0.29.1/wokwi-cli-linuxstatic-x64
+#           sha256 3c9d6da007d008a3822ab468318037285440055132c59fd659d7306e40f14258 (matches the release digest)
+# renode:   1.17.0 portable (fallback check)
+#
+# commands:
+#   env | grep WOKWI_CLI_TOKEN                      # host and box: unset
+#   tmp/spike-524/wokwi/wokwi-cli --version
+#   tmp/spike-524/wokwi/wokwi-cli --timeout 1000 .
+#   ls tmp/spike-524/renode/renode_1.17.0-portable/platforms/{boards,cpus} | grep -i -E 'rp2040|rp2350|pico'
+#   grep -rli 'rp2040\|rp2350' tmp/spike-524/renode/renode_1.17.0-portable/platforms
+#   (informational) tmp/spike-524/scripts/build.sh rpi_pico tmp/spike-524/build/pico-serial \
+#       tmp/spike-524/boards/rpi_pico/serial.conf tmp/spike-524/boards/rpi_pico/app.overlay \
+#       'serial/uart@40038000#baudrate=115200' ~/.nros-box/workspaces/zephyr/3.7/modules/hal/rpi_pico ...
+#       with hal_rpi_pico fba7162cc7bee06d0149622bbcaac4e41062d368 and
+#       `rustup target add --toolchain nightly-2026-04-11 thumbv6m-none-eabi`
+
+=== wokwi-cli ===
+$ wokwi-cli --version
+0.29.1 (0aa185144b92)
+$ wokwi-cli --timeout 1000 .
+Wokwi CLI v0.29.1 (0aa185144b92)
+Error: Missing WOKWI_CLI_TOKEN environment variable. Please set it to your Wokwi token.
+Get your token at https://wokwi.com/dashboard/ci.
+=> BLOCKED (no token). Per the task, no account was created and nobody was asked for one.
+   wokwi-cli is a client of Wokwi's hosted simulator: every run needs a token and the
+   network, so a token is also what a CI track would need (W2/W4 question).
+
+=== fallback: RP2040 in the installed Renode? ===
+$ ls platforms/boards platforms/cpus | grep -i -E 'rp2040|rp2350|pico'
+(no output)
+$ grep -rli 'rp2040\|rp2350' platforms
+(no output)
+=> Renode 1.17.0 ships no RP2040 platform. Fallback not available.
+
+=== informational: does our rpi_pico ELF even build? (no twin to boot it) ===
+error: failed to run custom build command for `zpico-sys v0.6.0 (<repo>/packages/rmw/zenoh/zpico-sys)`
+"-m64" "-I" "<repo>/packages/pl
+  ...
+nros-rust/x86_64-unknown-linux-gnu/nros-relwithdebinfo/build/zpico-sys
+  cause: zephyr/cmake/nros_cargo_build.cmake nros_detect_rust_target() has no arm for
+  CONFIG_CPU_CORTEX_M0PLUS, so the nano-ros Rust lane falls through to the HOST triple
+  and cc-rs hands arm-zephyr-eabi-gcc `-m64`. A Cortex-M0+ board needs a
+  thumbv6m-none-eabi mapping (and thumbv6m has no native CAS atomics: whether the
+  nros crates build there is unmeasured). Not pursued: the board has no twin either way.
+
+SPIKE RESULT: FAIL (BLOCKED, no token) -- "Error: Missing WOKWI_CLI_TOKEN environment variable."; fallback unavailable: Renode 1.17.0 has no RP2040 platform

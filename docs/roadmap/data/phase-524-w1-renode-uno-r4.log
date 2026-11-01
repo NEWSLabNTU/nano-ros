@@ -1,0 +1,111 @@
+# phase-524 W1 spike 1 -- Renode, arduino_uno_r4_minima, zenoh over serial
+# date:     2026-11-01 (box: distrobox ros2, Ubuntu 22.04, ROS 2 humble)
+# repo:     nano-ros 9e6bf0d4e2 (origin/main), zenoh-pico 8d5ac2fe10 (the pin)
+# zephyr:   3.7.0 (box workspace ~/.nros-box/workspaces/zephyr/3.7), SDK 0.16.8
+# module:   hal_renesas af77d7cdfeeff290593e7e99f54f0c1e2a3f91e6 (zephyr v3.7.0's
+#           west.yml pin), fetched by hand into modules/hal/renesas, passed via
+#           ZEPHYR_EXTRA_MODULES (not in the west.yml allowlist)
+# renode:   1.17.0, renode-1.17.0.linux-portable.tar.gz
+#           https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-portable.tar.gz
+#           sha256 4ba7c68b59e2447f188ef4b4b112fcccd2802582c460beedceb63b84e5605a5f (matches the release digest)
+#           platform: platforms/boards/arduino_uno_r4_minima.repl -> platforms/cpus/renesas-r7fa4m1a.repl
+#           (sram 0x8000 = 32 KiB, code_flash 0x40000 = 256 KiB, the real part's sizes)
+#
+# commands (all inside `env DBX_CONTAINER_MANAGER=docker distrobox enter ros2 -- bash -lc ...`):
+#   rustup target add --toolchain nightly-2026-04-11 thumbv7em-none-eabi thumbv7em-none-eabihf
+#   tmp/spike-524/scripts/build.sh arduino_uno_r4_minima tmp/spike-524/build/uno-r4 \
+#       tmp/spike-524/boards/uno_r4/serial.conf tmp/spike-524/boards/uno_r4/app.overlay \
+#       'serial/ZUART#baudrate=115200' ~/.nros-box/workspaces/zephyr/3.7/modules/hal/renesas
+#     = cd <ws> && ZEPHYR_TOOLCHAIN_VARIANT=zephyr ZEPHYR_SDK_INSTALL_DIR=<sdk 0.16.8> \
+#       west build -b arduino_uno_r4_minima -d <bdir> -p always examples/zephyr/<lang>/talker -- \
+#         -DCONF_FILE="prj.conf;prj-zenoh.conf;<serial.conf>" \
+#         -DCONFIG_NROS_ZENOH_LOCATOR="\"serial/ZUART#baudrate=115200\"" \
+#         -DZEPHYR_EXTRA_MODULES="<repo>;<hal_renesas>" -DDTC_OVERLAY_FILE=<app.overlay>
+#   attempt 4 adds <size.conf> to CONF_FILE plus
+#       -DCMAKE_BUILD_TYPE=MinSizeRel -DNROS_CARGO_PROFILE=nros-minsizerel
+#       -DNROS_OVERRIDE_ZEPHYR_HEAP_SIZE=8192 -DNROS_OVERRIDE_ZENOH_MAX_LARGE_SUBSCRIBERS=0
+#       -DNROS_OVERRIDE_ZENOH_MAX_SUBSCRIBERS=1 -DNROS_OVERRIDE_ZENOH_GRAPH_CACHE_SIZE=1024
+#       -DNROS_OVERRIDE_SUBSCRIBER_BUFFER_SIZE=256 -DNROS_OVERRIDE_ZENOH_SERVICE_BUFFER_SIZE=256
+#       -DNROS_OVERRIDE_ZENOH_FRAG_MAX_SIZE=512 -DNROS_OVERRIDE_ZENOH_BATCH_UNICAST_SIZE=512
+#   The Renode boot step was never reached: no ELF links for this part.
+
+=== serial.conf (merged last) ===
+# phase-524 W1 spike -- arduino_uno_r4_minima, zenoh over SERIAL (sci9 = D11/D12,
+# label ZUART), console stays on the board's uart2 (sci2, D0/D1).
+# Delta merged LAST after the leaf's prj.conf + prj-zenoh.conf, the shape of
+# cmake/zephyr/mps2-an385-serial.conf.
+CONFIG_NROS_TRANSPORT_SERIAL=y
+CONFIG_NETWORKING=n
+CONFIG_RING_BUFFER=y
+CONFIG_TEST_RANDOM_GENERATOR=y
+# issue 0852: interrupt-driven RX (the board defconfig already sets it).
+CONFIG_SERIAL=y
+CONFIG_UART_INTERRUPT_DRIVEN=y
+# issue 2164: main below zenoh-pico's read task.
+CONFIG_MAIN_THREAD_PRIORITY=5
+
+=== app.overlay (sci9 = D11/D12 as the zenoh UART, label ZUART; console stays on sci2) ===
+/* phase-524 W1 spike: a second SCI for the zenoh serial link. */
+&pinctrl {
+	sci9_default: sci9_default {
+		group1 {
+			pinmux = <P110_RXD9>, <P109_TXD9>;
+		};
+	};
+};
+&sci9 {
+	status = "okay";
+	pinctrl-0 = <&sci9_default>;
+	pinctrl-names = "default";
+	uart9: uart {
+		current-speed = <115200>;
+		status = "okay";
+		label = "ZUART";
+	};
+};
+
+=== size.conf (attempt 4) ===
+# phase-524 W1 spike -- one size-diet attempt to measure the floor against the
+# RA4M1's 256 KiB flash (240 KiB code partition) / 32 KiB SRAM.
+CONFIG_SIZE_OPTIMIZATIONS=y
+CONFIG_LOG=n
+CONFIG_HEAP_MEM_POOL_SIZE=2048
+CONFIG_MAIN_STACK_SIZE=4096
+CONFIG_ISR_STACK_SIZE=1024
+CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE=1024
+CONFIG_ASSERT=n
+
+=== attempt 1+2: examples/zephyr/rust/talker (NROS_SPIKE_LANG=rust) ===
+attempt 1: nightly-2026-04-11 (examples/zephyr/rust-toolchain.toml) has no thumbv7em-none-eabi
+  error[E0463]: can't find crate for `core`  -- the `thumbv7em-none-eabi` target may not be installed
+  (target added with rustup, see header)
+attempt 2:
+warning: RUST (defined at ~/.nros-box/workspaces/zephyr/3.7/modules/lang/rust/Kconfig:17)
+was assigned the value 'y' but got the value 'n'. Check these unsatisfied dependencies:
+RUST_SUPPORTED (=n). See http://docs.zephyrproject.org/latest/kconfig.html#CONFIG_RUST and/or look
+error: Rust does not (yet) support dynamic frequency timer
+  cause: soc/renesas/ra/ra4m1/Kconfig selects TIMER_READS_ITS_FREQUENCY_AT_RUNTIME, and
+  zephyr-lang-rust's RUST_SUPPORTED is `... && !TIMER_READS_ITS_FREQUENCY_AT_RUNTIME`.
+  => no Zephyr Rust application on the UNO R4 at all; the C talker is the only road.
+
+=== attempt 3: examples/zephyr/c/talker, defaults ===
+ld.bfd: zephyr/zephyr_pre0.elf section `text' will not fit in region `FLASH'
+ld.bfd: zephyr/zephyr_pre0.elf section `bss' will not fit in region `RAM'
+ld.bfd: region `FLASH' overflowed by 271364 bytes
+ld.bfd: region `RAM' overflowed by 498824 bytes
+
+=== attempt 4: examples/zephyr/c/talker, size diet (MinSizeRel, nros-minsizerel, pools cut) ===
+ld.bfd: zephyr/zephyr_pre0.elf section `text' will not fit in region `FLASH'
+ld.bfd: zephyr/zephyr_pre0.elf section `bss' will not fit in region `RAM'
+ld.bfd: region `FLASH' overflowed by 144744 bytes
+ld.bfd: region `RAM' overflowed by 144904 bytes
+  i.e. text ~385 KiB against a 240 KiB code partition (256 KiB with the bootloader
+  partition dropped) and ~177 KiB of RAM against 32 KiB. The RAM that is left after the
+  diet is structural (rclcpp::Node GlobalStorageHolder 83,880 B, zpico g_sessions, the
+  nros_platform_zephyr_shims noinit pool 32,768 B, the kernel), not a knob default.
+
+Not an emulator verdict: Renode's repl models the real sizes (32 KiB SRAM, 256 KiB
+flash), and the board is resource-bound before Renode is asked anything.
+
+SPIKE RESULT: FAIL -- best of four builds of the C talker for arduino_uno_r4_minima:
+"region `FLASH' overflowed by 144744 bytes" / "region `RAM' overflowed by 144904 bytes"
