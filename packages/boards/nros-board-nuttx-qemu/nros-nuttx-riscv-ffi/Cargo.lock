@@ -373,6 +373,7 @@ dependencies = [
  "nros-node",
  "nros-platform",
  "nros-rmw",
+ "portable-atomic",
 ]
 
 [[package]]

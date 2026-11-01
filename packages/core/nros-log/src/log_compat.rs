@@ -220,7 +220,7 @@ pub fn install_log_crate_bridge() -> Result<(), log::SetLoggerError> {
     #[cfg(not(target_has_atomic = "ptr"))]
     // SAFETY: the `_racy` pair must not race another `set_logger*` /
     // `set_max_level*` call. The `swap` above admits exactly one caller here,
-    // and the callers are the boot funnels (`nros::main!`, `nros_init`), which
+    // and the callers are the boot funnels (`nros::main!`, `rclc_log_init`), which
     // run before the executor opens or any tier task is spawned. A CAS-less
     // target is single-core (the polyfill's own assumption), so nothing else
     // can be inside the `log` crate's install at the same moment.
