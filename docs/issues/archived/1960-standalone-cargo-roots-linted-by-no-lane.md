@@ -11,7 +11,7 @@ related: [1309, 1472, 0196, 1966, phase-505]
 resolved_in: "phase-505 W1: the feature sweep lints every excluded standalone root"
 ---
 
-**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** W1 — filed while closing issue 1309.
+**Home: [phase-505](../../roadmap/archived/phase-505-ci-lanes-reach-and-infra-robustness.md)** W1 — filed while closing issue 1309.
 
 ## What was measured
 

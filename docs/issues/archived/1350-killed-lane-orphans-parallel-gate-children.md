@@ -11,7 +11,7 @@ related: [issue-0616, issue-1280, phase-454, phase-505]
 resolved_in: "phase-505 W3: lane runners own their fan-out as a process group (`nros_guard_lane`); gate `check-lane-stop-kills-fanout`"
 ---
 
-**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/archived/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured, twice, independently
 

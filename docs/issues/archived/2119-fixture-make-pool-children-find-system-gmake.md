@@ -12,7 +12,7 @@ resolved_in: "issue-2119-fixture-pool-make-path (2026-10-29)"
 
 # The cargo fixture pool's children find the system gmake
 
-**Home:** [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md) W2.
+**Home:** [phase-505](../../roadmap/archived/phase-505-ci-lanes-reach-and-infra-robustness.md) W2.
 
 ## Problem
 

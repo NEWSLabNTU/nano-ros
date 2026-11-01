@@ -10,7 +10,7 @@ related: [issue-1403, phase-505]
 resolved_in: "issue 1773 (no foreign stat, bounded scan) + phase-505 W3 (a deadline on the whole diagnostics phase)"
 ---
 
-**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/archived/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What was measured
 

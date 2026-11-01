@@ -12,7 +12,7 @@ related: [issue-1900, issue-1758, phase-505]
 
 # The out-of-lane gate reports a timeout as a scope violation
 
-**Home:** [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md) W2.
+**Home:** [phase-505](../../roadmap/archived/phase-505-ci-lanes-reach-and-infra-robustness.md) W2.
 
 ## Problem
 
