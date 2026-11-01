@@ -10,7 +10,7 @@ related: [issue-0499, issue-0513, issue-0647, issue-1922, phase-340, phase-505, 
 resolved_in: 2026-10-20
 ---
 
-**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — listed in that phase's "Issues homed here".
+**Home: [phase-505](../../roadmap/archived/phase-505-ci-lanes-reach-and-infra-robustness.md)** — listed in that phase's "Issues homed here".
 
 ## What failed
 

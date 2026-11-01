@@ -12,7 +12,7 @@ related: [issue-0363, issue-1040, phase-505]
 resolved_in: "phase-505 W3: the repaired diagnostic named the cause on its next red (a crates.io download transient)"
 ---
 
-**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/archived/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 

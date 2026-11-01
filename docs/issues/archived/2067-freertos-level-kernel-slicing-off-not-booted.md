@@ -11,7 +11,7 @@ resolved_in: "PR #2709 (2026-10-27)"
 related: [phase-505, phase-509, rfc-0108, 2017]
 ---
 
-**Home:** [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md) W1, since 2026-10-26.
+**Home:** [phase-505](../../roadmap/archived/phase-505-ci-lanes-reach-and-infra-robustness.md) W1, since 2026-10-26.
 
 ## Measured
 

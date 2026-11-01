@@ -12,7 +12,7 @@ related: [issue-0757, phase-505]
 
 # The dropped-take log tests race the global drop counter
 
-**Home:** [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md) W2.
+**Home:** [phase-505](../../roadmap/archived/phase-505-ci-lanes-reach-and-infra-robustness.md) W2.
 
 ## Problem
 
