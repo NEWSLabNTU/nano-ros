@@ -12,8 +12,9 @@ superseded-by: null
 
 # RFC-0115 — Emulator-first board policy
 
-**Status:** Draft (2026-10-31). Written from the adoption discussion of
-2026-10-31, before any spike has run. Implemented by
+**Status:** Draft (2026-10-31; D4 rewritten 2026-11-01 from phase-524 W1's
+three spikes, see "Spike results"). Written from the adoption discussion of
+2026-10-31, before any spike had run. Implemented by
 [phase-524](../roadmap/phase-524-emulator-twins.md). Companion RFCs from the
 same discussion: RFC-0114 (the board support registry as the single primitive,
 which this RFC's evidence page reads from) and RFC-0116 (adoption purposes and
@@ -40,15 +41,17 @@ This RFC decides three things.
 - **D4 — Emulator twin required.** A board enters the book only when an
   emulator boots the same ELF the bench board runs. The emulator series is:
   QEMU `mps2-an385` for concepts (the gate emulator, with no hardware twin by
-  design), Renode for Nucleo-F767ZI and Arduino UNO R4 Minima, Wokwi for
-  Raspberry Pi Pico W, and the Arm FVP for industrial use, maintainer-run.
+  design), Renode for Nucleo-F767ZI, and the Arm FVP for industrial use,
+  maintainer-run. The UNO R4 Minima and the Pico W were candidates and left
+  the list after phase-524 W1 (see "Spike results").
 - **D8 — One evidence page per board**, generated from the registry RFC-0114
   defines: what runs it, how often, what breadth it inherits, when hardware
   last booted it.
 
-The board set is Nucleo-F767ZI, Arduino UNO R4 Minima and Raspberry Pi Pico W,
-all three on Zephyr, all three reachable over USB serial first. The NXP S32K344
-stays the industrial board, hardware-only. Arduino GIGA R1 WiFi, Nucleo-H743ZI
+The board set picked on 2026-10-31 was Nucleo-F767ZI, Arduino UNO R4 Minima
+and Raspberry Pi Pico W, all three on Zephyr, all three reachable over USB
+serial first; after phase-524 W1's spikes the Nucleo-F767ZI is the one that
+stays. The NXP S32K344 stays the industrial board, hardware-only. Arduino GIGA R1 WiFi, Nucleo-H743ZI
 and an ESP32 revival are dropped for now, each for a stated reason.
 
 ## Problem
@@ -106,14 +109,26 @@ and an ESP32 revival are dropped for now, each for a stated reason.
   | Emulator | Boards | Role |
   |---|---|---|
   | QEMU `mps2-an385` | bare-metal, FreeRTOS and Zephyr witnesses | Concepts; the gate emulator for the family matrix; deliberately no hardware twin (an MPS2 board is not what adopters buy) |
-  | Renode | Nucleo-F767ZI, Arduino UNO R4 Minima | Twin of a bench board; serial first, ethernet on the Nucleo |
-  | Wokwi | Raspberry Pi Pico W | Twin of a bench board; serial first, WiFi when the Zephyr 4.x line carries the driver |
+  | Renode 1.17.0 | Nucleo-F767ZI | Twin of a bench board; serial first (USART3, the ST-LINK virtual COM port), ethernet second (the on-chip MAC on a Renode switch bridged to a host tap). Both measured: phase-524 W1 spike 2 |
   | Arm FVP | `fvp-aemv8r-smp` | Industrial purpose, maintainer-run (issue 2176); not a book board under this rule until a track replays it |
 
+  Left the table on 2026-11-01 (phase-524 W1; the logs are in
+  `docs/roadmap/data/phase-524-w1-*.log`):
+
+  - **Arduino UNO R4 Minima** (was Renode). The C talker does not fit the
+    RA4M1: the best of four builds overflows flash by 144,744 bytes and RAM by
+    144,904 bytes against 256 KiB / 32 KiB, and no Zephyr Rust application can
+    target it at all (the SoC selects `TIMER_READS_ITS_FREQUENCY_AT_RUNTIME`,
+    which zephyr-lang-rust's `RUST_SUPPORTED` excludes). The board fails
+    before the emulator is asked anything.
+  - **Raspberry Pi Pico W** (was Wokwi). Blocked, not measured: `wokwi-cli`
+    needs a `WOKWI_CLI_TOKEN` (a hosted simulator), none was available, and
+    Renode 1.17.0 ships no RP2040 platform for the fallback. A W1.3 rerun with
+    a token is what would reopen it.
+
 - **Probe tracks.** Each twin gets an installed-track probe like the QEMU
-  chapters have (phase-517 W10): `renode-uno-r4`, `renode-nucleo`,
-  `wokwi-pico`. They are generated from the registry (RFC-0114 D12), not
-  authored in the workflow matrix.
+  chapters have (phase-517 W10): `renode-nucleo`. They are generated from
+  the registry (RFC-0114 D12), not authored in the workflow matrix.
 - **Hardware.** The bench run is maintainer-run and dated in the registry
   (`runs = "hardware"`, `cadence = "manual"`, `last_run`). The flash line in
   the chapter drops the 2176 "unverified" wording only when that date exists.
@@ -178,14 +193,19 @@ the finding.
 
 Listed here so a reader does not mistake a pick for a measurement.
 
-- Renode's `nucleo_f767zi` passing ethernet traffic to the host: the PHY is
-  declared, the MAC is inferred from the SoC file.
 - Wokwi loading a Zephyr ELF: its documented firmware types for the Pico are
   `.hex`, `.uf2` and `.elf`, and its documented ecosystems are the Pico SDK and
-  MicroPython.
+  MicroPython. Spike 3 could not ask (no token).
+- A Renode ethernet twin reaching a router in the host's OWN network
+  namespace. Spike 2 measured the tap inside a rootless namespace that also
+  held the router.
 - GIGA R1 WiFi on Zephyr 4.x.
 - Renode S32K3 fidelity.
 - Pico W WiFi under Zephyr 4.4 on our line.
+
+Verified since the first draft (phase-524 W1 spike 2): Renode's
+`nucleo_f767zi` passes ethernet traffic to a host tap. The MAC is the SoC
+file's `SynopsysEthernetMAC`, which Zephyr's `eth_stm32_hal` drives.
 
 ## Evaluation and decision steps
 
@@ -213,6 +233,20 @@ package, chapter or track is written.
 Decision step after the three: the surviving boards are the book list; D4's
 table is rewritten to match; phase-524 W2 onward proceeds only for survivors.
 A board without a working twin never reaches a chapter.
+
+### Spike results (2026-11-01)
+
+| Spike | Result | Decisive line |
+|---|---|---|
+| 1. Renode, UNO R4 Minima, serial | FAIL | ``region `FLASH' overflowed by 144744 bytes`` / ``region `RAM' overflowed by 144904 bytes`` |
+| 2. Renode, Nucleo-F767ZI, serial then ethernet | PASS, both | `ros2 topic echo` printed `data: 'Hello World: 1'` over `serial/serial@40004800` and over `tcp/192.0.2.1:7447` |
+| 3. `wokwi-cli`, Pico W | FAIL (blocked) | `Error: Missing WOKWI_CLI_TOKEN environment variable.`; no RP2040 in Renode 1.17.0 |
+
+The tap of spike 2 was made without root, in a rootless user and network
+namespace (`unshare -rn`) that also held the router and `ros2`; a router in
+the host's own namespace would need a user-space forwarder, which was not
+tried. Consequence: the book list is the Nucleo-F767ZI alone, and the field
+solutions purpose has no twin board until a new candidate passes a spike.
 
 ## Alternatives rejected
 
