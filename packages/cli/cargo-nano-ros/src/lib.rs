@@ -71,6 +71,7 @@ pub mod scaffold;
 /// build script that includes it.
 pub mod serdes_descriptor;
 pub mod serdes_resolver;
+pub mod single_package;
 pub mod workflow;
 pub mod workspace_scaffold;
 

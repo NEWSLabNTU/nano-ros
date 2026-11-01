@@ -1,6 +1,8 @@
 # Phase 525 — Adoption front doors: an action-only user surface, a single package, one run verb, serial first
 
-**Status (2026-10-31). PROPOSED — no work item started.** Implements
+**Status (2026-11-01). IN PROGRESS — W2 done; W1, W3 and W4 pending.**
+W1 waits on phase-526 W5, W3 is carried by phase-528 W4, and W4 needs both.
+Implements
 [RFC-0116](../design/0116-adoption-purposes-and-front-doors.md) D2, D5, D6
 and D7 on QEMU mps2-an385 first, so nothing here waits on hardware or on an
 emulator twin. Independent of phase-522 (the registry) and phase-524 (the
@@ -59,7 +61,71 @@ issue N" (the fix is not a command the reader can run), that refusal states
 the fact in a sentence and the issue is filed as a front-door defect, not
 exempted.
 
-### W2 — The single-package scaffold (D6)
+### W2 — The single-package scaffold (D6) — DONE (2026-11-01)
+
+Landed: `nros new <name> --board <board>` reads the platform from the board
+catalog and writes one package — one `[image.<id>]` naming the board, the
+`--template` node, the manifest, a `README.md` rendered from
+`packages/cli/cargo-nano-ros/templates/single-package/README.md` (its build
+lines are the ones `nros new` prints), and a `.gitignore` for what sync and
+build write. The Rust self-bringup no longer writes a leaf `nros.toml`:
+nothing read it (measured: no reader under `packages/`, `cmake/`). Its
+`.cargo/config.toml` went in the same window by phase-528 W2, which moved the
+QEMU runner into `[board.run]`; this item measured the same thing first (the
+scaffold with both files deleted syncs, builds the mps2-an385 image and prints
+its QEMU run line), so the two agree. `nros new
+<ws> --workspace --from <package>` carries the node into a workspace
+unchanged, as D6 says: `src/lib.rs` and `package.xml` move file for file to
+`src/<package>/`, and the package's `system.toml` moves byte for byte to the
+bringup `src/<package>_bringup/` (its `[[component]]` row already names the
+node). What stays behind is what made the package its own image: `main.rs`,
+the manifest's `[[bin]]` table and generated selection dependency, the README,
+and everything sync and build wrote. A first version kept the package whole
+as its own bringup; it built green and linked no second node (`nm` found no
+`second_node` symbol in the image), because a package that is its own image
+stays a leaf, so the workspace road never saw it. The bringup also gets
+`launch/system.launch.xml`, one `<node>` per component (the file the single
+package's sync synthesised under `build/`), because a workspace reads an
+authored one. `nros new node` then declares the second node in the bringup
+and, new here, adds its `<node>` line to that launch file, so the node runs
+and is not only declared. Growing a C or C++ package is refused for
+now, naming why: its scaffold is an executable with its own `main`. The same
+run found `nros new node`'s manifest missing the `macros` feature its own
+`lib.rs` needs, so a fresh node package failed to compile on its own; fixed
+here. `check-template-copy-out` scaffolds `--board linux` and `--board
+mps2-an385-baremetal` outside the checkout, checks the single-package shape
+(with a self-test that plants each forbidden file), and builds them; it also
+gained a cargo-leaf arm for a cross board, where a missing toolchain is the
+build's own preflight refusal, reported NOT VERIFIED. `--platform` keeps
+working unchanged, and no flag was renamed.
+
+Measured before/after (`nros new sensor_node … --template talker`):
+
+| invocation | before | after |
+| --- | --- | --- |
+| `--board mps2-an385-baremetal` | refused: requires `--platform` | `Cargo.toml`, `package.xml`, `system.toml`, `src/{lib,main}.rs`, `README.md`, `.gitignore` |
+| `--platform baremetal` | the above plus `.cargo/config.toml`, `nros.toml`, no README | as `--board`, with the platform's board key |
+| `--board linux` | refused: requires `--platform` | `Cargo.toml`, `package.xml`, `system.toml`, `src/{lib,main}.rs`, `README.md`, `.gitignore` |
+
+The README is the first chapter's text in the sense W4 needs: W4's chapter
+includes that template rather than restating it.
+
+Left open, and a decision for the maintainer rather than this item:
+
+- A Rust package on FreeRTOS, NuttX or ThreadX is still refused by the
+  scaffold (it prints the workspace commands), although the in-tree single-
+  package examples (`examples/mps2-an385-freertos/rust/talker` and siblings)
+  show the cargo road builds that shape today. Adding the scaffold template for
+  it is a contained follow-up; it was left out to keep this change off the
+  runner text another session is editing in `scaffold.rs`.
+- A Rust package on Zephyr is a west leaf with a nested node crate. Per the
+  decision step below, the scaffold should still write one package and the
+  rest be synthesised under `build/`; that synthesis is `nros run` /
+  `nros build` work (phase-528), and until then the scaffold keeps refusing
+  with the workspace commands. C and C++ on Zephyr already scaffold one
+  package.
+- The C/C++ project scaffold still writes a leaf `nros.toml` that nothing
+  reads.
 
 - `nros new <name> --board <board> --template talker` writes one package: a
   `system.toml` with one `[image.<id>]` stating the board, one node from the

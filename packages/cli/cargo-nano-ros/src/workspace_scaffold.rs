@@ -21,6 +21,11 @@
 use eyre::{Result, bail};
 use nros_lang::Language;
 
+/// The workspace root marker, as the Rust template carries it — also what
+/// `nros new --workspace --from <package>` writes (phase-525 W2).
+pub const WORKSPACE_MARKER: &str =
+    include_str!("../../../../examples/templates/multi-node-workspace/.colcon_workspace");
+
 /// (relative path, contents) — the C++ workspace template, verbatim.
 const CPP_FILES: &[(&str, &str)] = &[
     (
