@@ -1,5 +1,26 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-11-01). `host-tests` is met; tier 2 now BUILDS on `main` and
+runs out of disk before its first cell (issue 2191).**
+
+- `host-tests`: green on the 2026-10-31 schedule (41163227454). Acceptance met.
+- Issues 2179 and 2180 are fixed (#2910, #2911). run-matrix 41205983383 on
+  `main` (37d6466751) built every tier-2 fixture, then `check::default` died on
+  `No space left on device`: the coverage job reads `NO VERDICT: preflight
+  failed before any cell`. The job's own sweep says why: fixtures 178 GiB
+  against a 60 GiB budget, 127.5 GiB of host target dirs never pruned
+  (`cargo-sweep` is not on the runner), 94.8 GiB of `examples/` leaf builds in
+  no area. One full tier-2 working set does not fit beside them. Issue 2191
+  names the levers; the two that fix it (install `cargo-sweep`, or a bigger
+  volume) are operator-side.
+- The same run's tier 1 reached its cells: 5 real failures, 4 of them 60 s
+  timeouts that started inside one 35 s window in which ~15 unrelated tests went
+  SLOW together (a host stall). All four passed on 10-29 and 10-30, and the unit
+  test among them passes 3/3 alone in 1.3 s. Not filed.
+
+Left: issue 2191 (operator), then the W5 read on the first tier-2 run that
+reaches its cells; issues 2113 and 1365 (operator).
+
 **Status (2026-10-31, later). Issue 2112 resolved; W5's uncovered cells get a
 lane; what W5 still waits on is the runner image (issue 2113) and one nightly.**
 
@@ -368,6 +389,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#1136](../issues/archived/1136-launch-args-keyword-removed-but-still-generated.md) | `host-tests`' integration job died at **Build workspace fixtures** for 30 runs because the CLI still emits the removed `LAUNCH_ARGS`. That is a scheduled lane with no verdict. |
 | [#1325](../issues/archived/1325-zephyr-fixture-filter-matches-the-checkout-path.md) | RESOLVED 2026-10-22 — the filter now matches per field, repo-relative, in both Zephyr builders (gate `check fixture-filter-fields`). |
 | [#1355](../issues/archived/1355-threadx-riscv64-builds-the-linux-threadx-port.md) | RESOLVED 2026-10-22: the port defect was long gone; the lane then went green without running its cells, because `just threadx_riscv64 test` never selected `rtos_e2e`. It does now, gated by `check platform-lane-cells`. |
+| [#2191](../issues/2191-tier2-runner-volume-below-working-set.md) | Tier 2 on `main` builds, then fills the runner volume in `check::default` and reports no verdict. The fix is operator-side (`cargo-sweep` on the runner, or a bigger volume). |
 | [#1365](../issues/1365-tier2-self-hosted-runner-unregistered.md) | Tier-2 jobs wait for a self-hosted runner that is not registered, and the lane reports nothing. Clause 2 has a report since 2026-10-23: `just runner-wait-triage` names the shape (NO RUNNER / OFFLINE / BUSY / IDLE) from the runner side. It closes once a real wait is named. |
 | [#1353](../issues/archived/1353-nightly-gate-runner-out-of-disk.md) | WONTFIX 2026-10-23 (runner configuration, not a project defect). Before it closed, the self-hosted runners ran out of disk (133 on 10-17, 118 on 10-21) because the sweep budgeted a list that missed `sizes-probe` and the west build root. Both are eviction units now (2026-10-23), and what no area holds is reported in every job log. |
 | [#1375](../issues/archived/1375-zephyr-native-sim-runner-link-misses-zpico-reply-slot.md) | RESOLVED 2026-10-23: Zephyr Rust zenoh images link, boot and pass in the nightly (39739466151). A merge-gating Zephyr link was declined; the nightly is that lane. |
