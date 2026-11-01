@@ -26,6 +26,7 @@ include_guard(GLOBAL)
 
 # issue 0657 — `nros_corrosion_env_target`.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 # issue 1712 — the image's own `[image.<id>] env`, on the same targets.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageEnv.cmake")
 # issue 1263 -- `nros_resolve_cli`, the one lookup for the CLI. The Zephyr lane
@@ -209,8 +210,29 @@ function(nros_resolve_board_facts)
         return()
     endif()
 
-    string(REPLACE "\n" ";" _lines "${_out}")
-    list(REMOVE_ITEM _lines "")
+    # Issue 2200 -- split line by line, never through a cmake list. The answer
+    # IS a list (one `KEY=VALUE` env entry each, for `corrosion_set_env_vars`),
+    # so a value holding a `;` cannot be carried at all: it would arrive as two
+    # entries, the second a bare tail cargo never sees. Refused, naming it.
+    nros_cli_rows(_row "${_out}" REQUIRE "^[A-Za-z_][A-Za-z0-9_]*="
+        CONTEXT "`nros ws board-facts` for ${_ws}")
+    set(_lines "")
+    foreach(_i IN LISTS _row_INDICES)
+        set(_l "${_row_${_i}}")
+        # An UNBALANCED bracket is the other thing a list cannot carry: list
+        # splitting honours bracket nesting, so it would swallow the entries
+        # after it. A balanced pair is harmless.
+        string(REGEX REPLACE "[^[]" "" _open "${_l}")
+        string(REGEX REPLACE "[^]]" "" _close "${_l}")
+        string(LENGTH "${_open}" _open)
+        string(LENGTH "${_close}" _close)
+        if(_l MATCHES ";" OR NOT _open EQUAL _close)
+            message(FATAL_ERROR
+                "nano-ros: board facts for ${_ws}: `${_l}` holds a `;` or an unbalanced "
+                "bracket, which a cmake list cannot carry as one env entry (issue 2200)")
+        endif()
+        list(APPEND _lines "${_l}")
+    endforeach()
     set_property(GLOBAL PROPERTY ${_memo}__VALUE "${_lines}")
     # Issue 2204 — the question that resolved, so a later check asks it of the
     # same deploy (`nros_check_zephyr_rust_target`).

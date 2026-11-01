@@ -8,6 +8,7 @@
 # phase-336 — the shared cargo-profile resolver (`nros profile`), included at
 # FILE scope so a function body never include()s inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCliRows.cmake")  # issue 2200
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosArtifactLayout.cmake")  # issue 1852
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosBoardFacts.cmake")
 # `nros_host_rust_triple` — native_sim's Rust target is the HOST's (issue 0582).
@@ -484,8 +485,9 @@ function(_nros_west_leaf_sizing)
     if(NOT _err STREQUAL "")
         message(STATUS "nros: west-leaf-sizing: ${_err}")
     endif()
-    string(REPLACE "\n" ";" _lines "${_out}")
-    foreach(_line IN LISTS _lines)
+    nros_cli_rows(_row "${_out}")  # issue 2200: never through a cmake list
+    foreach(_i IN LISTS _row_INDICES)
+        set(_line "${_row_${_i}}")
         if(_line MATCHES "^input (.+)$")
             set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
         elseif(_line MATCHES "^NROS_SIZING_DESCRIPTOR=(.+)$")

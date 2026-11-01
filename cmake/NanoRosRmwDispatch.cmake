@@ -56,6 +56,7 @@
 # `CMakeCache.txt` on the configure that its own `CONFIGURE_DEPENDS` triggered.
 
 include_guard(GLOBAL)
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 
 # CACHE INTERNAL, not a normal var — this file is `include()`d from inside
 # other functions, and a normal `set(_X ${CMAKE_CURRENT_LIST_DIR})` is dropped
@@ -241,14 +242,12 @@ function(nros_rmw_dispatch rmw)
     # A VALUE may contain `;` — `NROS_RMW_CAPABILITIES` is a `;`-list by
     # construction, because `IN_LIST` is what consumes it. Splitting the output
     # on newlines with those semicolons live would make `zero-copy-receive` and
-    # `safety` two separate ROWS. Escape them first: an escaped `;` stays inside
-    # one list element and unescapes back to a literal `;` on expansion.
-    string(REPLACE ";" "\\;" _rows "${_rows}")
-    string(REPLACE "\n" ";" _lines "${_rows}")
-    foreach(_line IN LISTS _lines)
-        if(_line STREQUAL "")
-            continue()
-        endif()
+    # `safety` two separate ROWS. This module used to escape them (`\;`), which
+    # left a `[` in a value free to merge rows; issue 2200 moved every CLI
+    # reader onto the one splitter that builds no list at all.
+    nros_cli_rows(_row "${_rows}" CONTEXT "`nros ws rmw-dispatch` for '${rmw}'")
+    foreach(_i IN LISTS _row_INDICES)
+        set(_line "${_row_${_i}}")
         # TAB-separated by construction; a value may contain almost anything
         # else (a `;`-list of capabilities, an absolute path), so split on the
         # FIRST tab only.

@@ -432,6 +432,26 @@ pub fn board_snippets(catalog: Option<&BoardCatalog>, board: &str) -> Vec<String
         .unwrap_or_default()
 }
 
+/// Issue 2200 -- a `;`-joined row value the cmake readers turn back into a
+/// list. An item holding a `;` would come back as two items, one holding a
+/// line break would end the row early, and one holding an unbalanced bracket
+/// would merge every item after it (cmake list splitting honours bracket
+/// nesting). Each is refused, naming the row and the item, rather than
+/// printed into a value no reader can take apart again.
+pub fn cmake_list_row(row: &str, items: &[String]) -> Result<String, String> {
+    for item in items {
+        let open = item.matches('[').count();
+        let close = item.matches(']').count();
+        if item.contains(';') || item.contains('\n') || item.contains('\r') || open != close {
+            return Err(format!(
+                "{row}: `{item}` holds a `;`, a line break or an unbalanced bracket, which \
+                 a cmake list cannot carry as one item -- rename it (issue 2200)"
+            ));
+        }
+    }
+    Ok(items.join(";"))
+}
+
 /// Issue 2179 -- `Some(<the board package's west board>)` when the image's
 /// board package does NOT describe the build's `west_board`
 /// ([`crate::orchestration::board_descriptor::BoardDescriptor::builds_west_board`]), so its snippets and conf files
@@ -700,12 +720,10 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
         println!("NROS_LEAF_BUILD_DIR={}", b.display());
     }
     println!("NROS_LEAF_CMAKE_BOARD={cmake_board}");
+    let conf: Vec<String> = conf.iter().map(|p| p.display().to_string()).collect();
     println!(
         "NROS_LEAF_CONF={}",
-        conf.iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-            .join(";")
+        cmake_list_row("NROS_LEAF_CONF", &conf).map_err(|e| eyre!(e))?
     );
     println!(
         "NROS_LEAF_DTC_OVERLAY={}",
@@ -723,7 +741,10 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     } else {
         Vec::new()
     };
-    println!("NROS_LEAF_SNIPPET={}", snippets.join(";"));
+    println!(
+        "NROS_LEAF_SNIPPET={}",
+        cmake_list_row("NROS_LEAF_SNIPPET", &snippets).map_err(|e| eyre!(e))?
+    );
     println!(
         "NROS_LEAF_BOARD_NOT_APPLIED={}",
         not_applied.unwrap_or_default()
@@ -1076,6 +1097,63 @@ mod tests {
             board_conf_paths(&b, Some(&catalog), Some(&root), "mps2-an385-zephyr").is_empty(),
             "nros build owns a bringup's board files"
         );
+    }
+
+    /// Issue 2200 -- the in-tree pair `check cmake-cli-rows` reads: the
+    /// `mps2-an385-zephyr` board package carries a `prj.conf` AND the
+    /// `cpp-port-minimal-publisher/zephyr` leaf names an `os_config` fragment,
+    /// so its `NROS_LEAF_CONF` holds two `;`-joined paths, board first. If
+    /// either side stops carrying its file, that gate stops exercising the
+    /// shape that lost a conf file, and this says so.
+    #[test]
+    fn the_in_tree_board_plus_leaf_conf_row_has_two_items() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let catalog = BoardCatalog::load(&root).expect("in-tree board catalog");
+        let dir = root.join("examples/templates/cpp-port-minimal-publisher/zephyr");
+        let leaf = leaf_system::read(&dir)
+            .unwrap()
+            .expect("a leaf system.toml");
+        let board = leaf.board.clone().expect("the leaf names a board");
+        let mut conf = board_conf_paths(&leaf, Some(&catalog), Some(&root), &board);
+        conf.extend(leaf_conf_paths(&leaf).unwrap());
+        let conf: Vec<String> = conf.iter().map(|p| p.display().to_string()).collect();
+        assert_eq!(conf.len(), 2, "{conf:?}");
+        assert!(
+            conf[0].ends_with("nros-board-mps2-an385-zephyr/prj.conf"),
+            "{conf:?}"
+        );
+        assert!(conf[1].ends_with("prj-zenoh.conf"), "{conf:?}");
+        let row = cmake_list_row("NROS_LEAF_CONF", &conf).unwrap();
+        assert_eq!(row, conf.join(";"));
+    }
+
+    /// Issue 2200 -- an item a cmake list cannot carry whole is refused,
+    /// naming the row and the item; a balanced bracket pair is not.
+    #[test]
+    fn a_list_row_refuses_items_a_cmake_list_cannot_carry() {
+        let s = |v: &[&str]| v.iter().map(|x| (*x).to_string()).collect::<Vec<_>>();
+        assert_eq!(cmake_list_row("R", &s(&[])).unwrap(), "");
+        assert_eq!(
+            cmake_list_row("R", &s(&["/a/b.conf", "/c/[d]/e.conf"])).unwrap(),
+            "/a/b.conf;/c/[d]/e.conf"
+        );
+        for bad in [
+            "/a;b.conf",
+            "/a\nb.conf",
+            "/a\rb.conf",
+            "/a[b.conf",
+            "/a]b.conf",
+        ] {
+            let e = cmake_list_row("NROS_LEAF_CONF", &s(&["/ok.conf", bad])).unwrap_err();
+            assert!(
+                e.contains("NROS_LEAF_CONF") && e.contains("issue 2200"),
+                "{e}"
+            );
+        }
     }
 
     #[test]

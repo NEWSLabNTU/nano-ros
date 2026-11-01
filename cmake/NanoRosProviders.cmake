@@ -43,6 +43,7 @@ set(_NROS_PROVIDERS_DIR "${CMAKE_CURRENT_LIST_DIR}"
     CACHE INTERNAL "dir of NanoRosProviders.cmake")
 # `nros_refuse_retired_root_keyword` (phase-484 W8).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRetiredNames.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 
 # ---------------------------------------------------------------------------
 # nano_ros_load_providers([INDEX <path>] [WORKSPACE <dir>]
@@ -133,11 +134,9 @@ function(nano_ros_load_providers)
 
     set(_out_rows "")
     set(_kinds "")
-    string(REPLACE "\n" ";" _lines "${_rows}")
-    foreach(_line IN LISTS _lines)
-        if(_line STREQUAL "")
-            continue()
-        endif()
+    nros_cli_rows(_row "${_rows}")  # issue 2200: never through a cmake list
+    foreach(_i IN LISTS _row_INDICES)
+        set(_line "${_row_${_i}}")
         # TAB-separated by construction; a `dir` may contain almost anything
         # else, so split on tabs only.
         string(REPLACE "\t" ";" _f "${_line}")
