@@ -1,0 +1,12 @@
+/*
+ * nucleo-f767zi-zephyr (phase-524 W3): USART3, the ST-LINK virtual COM port,
+ * carries the zenoh link (locator `serial/serial@40004800#baudrate=115200`),
+ * so the console moves to USART6 (Arduino D0/D1). On the bench that console
+ * needs a USB-to-UART adapter; in Renode it is `sysbus.usart6`.
+ */
+/ {
+	chosen {
+		zephyr,console = &usart6;
+		zephyr,shell-uart = &usart6;
+	};
+};

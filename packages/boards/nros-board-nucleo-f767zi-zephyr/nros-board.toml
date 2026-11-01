@@ -1,0 +1,96 @@
+# Board descriptor for `nucleo-f767zi-zephyr` (phase-524 W3, RFC-0115 D3).
+#
+# ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7 with a double-precision FPU, 2 MiB
+# flash, 384 KiB sram0 + 128 KiB DTCM) on Zephyr 3.7. The first board the book
+# names that is not an emulator machine: RFC-0115 D4 admits it because Renode
+# 1.17.0's `nucleo_f767zi` platform boots the SAME ELF (phase-524 W1 spike 2,
+# docs/roadmap/data/phase-524-w1-renode-nucleo.log). Its registry row says so
+# (`emulator = "renode:nucleo_f767zi"`).
+#
+# A board is a PACKAGE (RFC-0064 R5 D1): this file says what the board lowers
+# to, and the `package.xml` beside it announces that the board exists.
+#
+# What lives beside it, found by the spike (phase doc "What the survivor
+# needs"):
+#   prj.conf                      the serial image's Kconfig (USART3 link)
+#   boards/nucleo_f767zi.overlay  the console on USART6, off the zenoh link
+#
+# ---------------------------------------------------------------------------
+# RAM BUDGET, recorded here because it cannot be stated as `[knobs]` yet.
+#
+# sram0 is 384 KiB and the crate pool defaults do not fit it. The spike's
+# images needed:
+#
+#   serial    ZENOH_MAX_LARGE_SUBSCRIBERS = 0           (89.5 % RAM used)
+#   ethernet  ZENOH_MAX_LARGE_SUBSCRIBERS = 0,
+#             ZENOH_MAX_SUBSCRIBERS = 1,
+#             ZENOH_SERVICE_BUFFER_SIZE = 1024,
+#             ZEPHYR_HEAP_SIZE = 32768                  (98.2 % RAM used)
+#
+# The ethernet heap is BELOW what the C talker needs: its measured boot peak
+# is 15,152 bytes and the headroom floor is 24,576 (39,728 in all), so 32 KiB
+# boots the talker in Renode with less margin than the floor asks. Before an
+# ethernet image is documented (phase-524 W4), measure its boot report, or
+# move stacks or pools to the 128 KiB DTCM (CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM).
+#
+# These are board facts (one RAM, every image), so they belong in a top-level
+# `[knobs.<group>]` table here. They are NOT there because neither half of
+# that road exists for them: the descriptor's `[knobs]` schema
+# (`nros-platform-config` `Knobs`, `deny_unknown_fields`) holds none of these
+# four keys, and the Zephyr leaf road renders only the IMAGE's knobs into
+# `Kconfig.from-system-toml`, with no board rung. Until the issue linked from
+# phase-524's W3 result lands, an image on this board states them itself:
+#
+#   [image.<id>.knobs.zenoh]
+#   max_large_subscribers = 0
+#
+# (A `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` line in `prj.conf` is no way round
+# it: the registry knobs have no prompt, so a conf assignment is a configure
+# error.)
+# ---------------------------------------------------------------------------
+
+[[board]]
+names = ["nucleo-f767zi-zephyr"]
+platform = "zephyr"
+toolchain = "stable"
+entry_kind = "zephyr-staticlib"
+# An EMPTY list is a statement, not an omission: nano-ros brings no netstack
+# here; Zephyr's own IP stack owns the ethernet MAC (`[board.net] stack`).
+supported_netstacks = []
+
+# The crate-root boilerplate a GENERATED Rust entry needs on Zephyr (issue
+# 2177), the same as every other Zephyr board descriptor.
+[board.entry]
+crate_root_extra = "extern crate zephyr;"
+crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
+
+[board.zephyr]
+west_board = "nucleo_f767zi"
+# Cortex-M7 with the FPU on (Zephyr's board defconfig): `nros_detect_rust_target`
+# picks the hard-float triple for CPU_CORTEX_M7 + FPU.
+rust_target = "thumbv7em-none-eabihf"
+rust_prereqs = ["clang", "libclang-dev"]
+rust_components = ["clippy"]
+# Derived, so absent on purpose: prj.conf and boards/nucleo_f767zi.overlay
+# beside this file. The flash runner is Zephyr's own (openocd / stlink on the
+# board's ST-LINK V2-1).
+
+[board.capabilities]
+heap = true
+atomics = true
+threads = true
+
+# RFC-0109 D2 — the RTOS's own configuration owns the network devices.
+[board.net]
+stack = "os"
+# RFC-0109 D3 — serial first (USART3, the ST-LINK virtual COM port); the
+# on-chip ethernet MAC through Zephyr's `eth_stm32_hal` second. Both measured
+# in Renode by phase-524 W1.
+links = ["serial", "tcp", "udp"]
+
+# What `nros setup board nucleo-f767zi-zephyr --zephyr-workspace <ws>` does to
+# a reader's own west workspace: apply the 3.7 patch set and add the Rust
+# target. The `hal_stm32` module comes from `west.yml` (phase-524 W2).
+[board.provisioning]
+zephyr_line = "3.7"
+rust_targets = ["thumbv7em-none-eabihf"]

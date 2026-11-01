@@ -338,6 +338,36 @@ breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
 notes = "NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a 921,600-baud UART zenoh link to an island gateway router. Evidence: phase-474 \"The board halves, 2026-10-26\" (nine acts, all PASS, violation records read over SWD). The board package is the downstream island's."
 
+# phase-524 W3 (RFC-0115 D3/D4) — the Nucleo-F767ZI, the first book board
+# with an emulator twin rather than a QEMU machine of its own. Its evidence is
+# the W1 spike: Renode 1.17.0's `nucleo_f767zi` platform booted the C talker
+# ELF and `ros2 topic echo` heard it, over USART3 and over the ETH MAC
+# (docs/roadmap/data/phase-524-w1-renode-nucleo.log). That run was by hand,
+# hence `manual` and its date; it moves to `weekly` with `probe =
+# ["renode-nucleo"]` once phase-524 W4's generated probe track replays it.
+#
+# `breadth` inherits the Zephyr Cortex-M witness (RFC-0115 D4, RFC-0114 D11):
+# the twin adds one smoke run (boot, link up, one message heard) on the
+# family's code path and asserts no matrix of its own, so it is not a witness.
+# No `matrix_platform`: no `PlatformId` runs it, which a manual row may say.
+#
+# `real_hardware = true` because the board is silicon that is FLASHED (the
+# twin is the evidence, not the product), so the row names its flash section;
+# the chapter's own `book_run` for the twin is W4's (RFC-0116 D5).
+[[board]]
+crate = "nros-board-nucleo-f767zi-zephyr"
+board_keys = ["nucleo-f767zi-zephyr"]
+real_hardware = true
+book_flash = "getting-started/integration-zephyr.md#flash-a-real-board"
+runs = "emulator"
+emulator = "renode:nucleo_f767zi"
+hardware = "nucleo-f767zi"
+cadence = "manual"
+last_run = "2026-11-01"
+breadth = "inherits ZephyrQemuCortexM"
+maintainers = ["jerry73204"]
+notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Renode twin booted the C talker over serial (USART3, the ST-LINK VCP) and ethernet (phase-524 W1). The serial image needs `[image.<id>.knobs.zenoh] max_large_subscribers = 0` stated per image until descriptor `[knobs]` can carry it (see the descriptor header)."
+
 # ===== infra — not boards ==================================================
 
 [[board]]
