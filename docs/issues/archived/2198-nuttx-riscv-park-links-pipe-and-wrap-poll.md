@@ -1,7 +1,8 @@
 ---
 id: 2198
 title: "NuttX rv-virt images fail to link: the POSIX handle park needs `pipe` and `__wrap_poll`"
-status: open
+status: resolved
+resolved_in: "2026-11-01"
 type: bug
 severity: high
 area: [nuttx, platform, fixtures]
@@ -70,3 +71,22 @@ Pick one, deliberately:
 
 Acceptance: all four rows build in the nightly `nuttx` job, and a NuttX
 riscv cell runs the park.
+
+## Resolution (2026-11-01)
+
+Fixed by phase-521 W3.b. Both causes are in the rv-virt configuration, not in
+the park, so the park keeps its Waitable form on NuttX:
+
+- `nuttx-config/riscv/defconfig` gains `CONFIG_PIPES=y`, which the arm
+  defconfig already had. The park's self-pipe needs it.
+- `nros-nuttx-riscv-ffi/.cargo/config.toml` drops `-Wl,--wrap=poll`. It
+  bridged Rust `std`'s `pollfd` to NuttX's (issue 0167), and `__wrap_poll`
+  lived in the libc fork's `std` path; the image is `no_std` since phase-359
+  W7, so nothing defined it, and NuttX's own `ppoll` turned it into an
+  undefined reference. The board descriptor's link args already said the
+  wrap was gone; this crate's copy had been missed.
+
+Verified locally: all four rows build (`just nuttx build-riscv-c`,
+`build-riscv-c-workspaces`, `build-riscv-rust`), and the rv-virt C talker
+boots in QEMU and publishes to an `rmw_zenohd` on its baked port
+(`Publishing: 'Hello World: 34'` after 35 s).
