@@ -18,10 +18,12 @@ linker = "riscv-none-elf-gcc"
 rustflags = [
     "-C", "link-arg=-march=rv32imac",
     "-C", "link-arg=-mabi=ilp32",
-    # #167 — interpose poll() to bridge Rust's 8-byte POSIX `pollfd` to NuttX's
-    # 24-byte kernel struct (std's sanitize_standard_fds overflows the caller's
-    # array otherwise). `__wrap_poll` lives in the patched libc fork.
-    "-C", "link-arg=-Wl,--wrap=poll",
+    # NOT `-Wl,--wrap=poll` (issue 2198): it bridged Rust `std`'s `pollfd` to
+    # NuttX's (#167), and `__wrap_poll` lived in the libc fork's `std` path. The
+    # image is `no_std` since phase-359 W7, so nothing defines `__wrap_poll`,
+    # and the POSIX platform's handle park (phase-521 W3) reaches `poll`
+    # through NuttX's own `ppoll`, which the wrap turned into an undefined
+    # reference.
 ]
 
 [env]
