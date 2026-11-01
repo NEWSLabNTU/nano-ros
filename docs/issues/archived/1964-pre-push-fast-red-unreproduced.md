@@ -1,15 +1,16 @@
 ---
 id: 1964
 title: "The pre-push `just check fast` went red once and green on an immediate retry, and which gate it was cannot be recovered"
-status: open
+status: wontfix
 type: bug
 area: [ci]
 severity: low
 found: 2026-10-18
+resolved: 2026-11-01
 related: [issue-0840, issue-1625, issue-1868, phase-505]
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — listed in that phase's "Issues homed here".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — listed in that phase's "Issues homed here".
 
 ## What happened
 
@@ -105,3 +106,21 @@ The next time the hook goes red, read the newest
 `~/.local/state/nros-pre-push/*.log` and `*.gates.tsv`. They name the gate,
 or show that no gate ran. Then file or fix that cause, and close this issue
 against it.
+
+## Resolution (2026-11-01) — wontfix, cannot reproduce
+
+Closed without a cause. Six reproduction attempts found nothing, and in the
+two weeks since the diagnostic landed no red has been traced back here. The
+maintainer chose to close it rather than keep it open waiting for an event
+that may not come again.
+
+The diagnostic stays. The hook still writes its full output and per-gate
+table under `~/.local/state/nros-pre-push/`, so if the pre-push
+`just check fast` goes red again, read the newest `*.log` and `*.gates.tsv`
+there and file a new issue against the gate (or the pre-fan-out step) they
+name, citing this one.
+
+That diagnostic only collects where the hook is installed. A checkout that
+has not run `just setup-hooks` has no `core.hooksPath` and no
+`.git/hooks/pre-push`, so its pushes run no gates and leave no log. That was
+true of the checkout this issue was closed from.
