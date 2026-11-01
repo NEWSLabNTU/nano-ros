@@ -150,6 +150,9 @@ How it was built:
 - `rx_notify` on the custom-transport ops is moved to W4. It is a field on a
   versioned struct mirrored in four places, and XRCE serial is its first
   consumer, so it lands with that consumer.
+- The NuttX rv-virt images do not link the park: they have no `pipe` and no
+  `__wrap_poll` (issue 2198, first seen in the 2026-11-01 nightly `nuttx`
+  job). No merge-gating lane builds NuttX, so W3's checks did not catch it.
 
 
 - `nros-rmw` C header: add `readiness_source` to the vtable (Notify or
