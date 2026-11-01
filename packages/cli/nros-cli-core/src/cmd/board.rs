@@ -38,12 +38,14 @@ pub enum Args {
     /// Written per configure into the build directory by
     /// `nano_ros_use_board()`; never committed. The descriptor is the single
     /// authored source, and this is the mechanical projection of it.
+    #[command(hide = true)]
     CmakeVars(CmakeVarsArgs),
     /// Print a board's resolved network identity defaults (phase-484 W4b).
     ///
     /// The board's `[board.net]` over the platform default — the one value the
     /// board crate's `Config::default()`, its cargo-road C `NROS_APP_CONFIG`
     /// and its cmake-road C `NROS_APP_CONFIG` all use.
+    #[command(hide = true)]
     Net(NetArgs),
 }
 

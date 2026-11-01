@@ -236,6 +236,13 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
     // `scripts/build/cargo.sh` only covers callers that go through `just`;
     // `activate.sh` puts this binary straight on PATH, so `nros sync` — the
     // documented recovery — bypassed it entirely.
+    // RFC-0117: a `nros dev` command becomes the command its old spelling
+    // parses to, so the stale guard and the dispatch below see one command
+    // for both spellings.
+    let cmd = match cmd {
+        cmd::Cmd::Dev(args) => cmd::dev::lower(args),
+        other => other,
+    };
     if let Err(msg) = stale_guard::refuse_if_stale(cmd_name(&cmd)) {
         return Err(eyre::eyre!("{msg}"));
     }
@@ -292,6 +299,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Doctor(args) => cmd::doctor::run(args),
         cmd::Cmd::Board(args) => cmd::board::run(args),
         cmd::Cmd::Ws(args) => cmd::ws::run(args),
+        cmd::Cmd::Dev(_) => unreachable!("`nros dev` is lowered above"),
         cmd::Cmd::Version => cmd::version::run(),
         cmd::Cmd::Completions(args) => cmd::completions::run(args),
         #[cfg(feature = "release")]

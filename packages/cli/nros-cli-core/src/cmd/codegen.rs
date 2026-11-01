@@ -47,6 +47,13 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Sub {
+    /// Generate Rust message bindings from `package.xml`.
+    Rust(super::generate::RustArgs),
+
+    /// Bake a bringup's `system.toml` and launch file into the compile-time C
+    /// config and component registration glue an RTOS adapter consumes.
+    System(super::codegen_system::Args),
+
     /// Resolve interface dependencies from package.xml → a CMake script
     ResolveDeps {
         /// Path to package.xml
@@ -320,6 +327,11 @@ pub fn run(args: Args) -> Result<()> {
         Some(Sub::EntryNode(sub_args)) => run_entry_node(sub_args),
         Some(Sub::EntryPack(sub_args)) => run_entry_pack(sub_args),
         Some(Sub::SourceLanguage(sub_args)) => run_source_language(sub_args),
+        // `nros dev codegen rust|system` lowers to the old top-level verbs
+        // before dispatch (`cmd::dev::lower`); these arms serve the hidden
+        // `nros codegen rust|system` spelling the shared `Args` also accepts.
+        Some(Sub::Rust(sub_args)) => super::generate::run_rust(sub_args),
+        Some(Sub::System(sub_args)) => super::codegen_system::run(sub_args),
         None => {
             let Some(args_file) = args.args_file else {
                 bail!("nros codegen: --args-file is required (or use a subcommand)");
