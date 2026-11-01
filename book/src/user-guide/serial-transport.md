@@ -220,19 +220,22 @@ QEMU redirects the emulated UART to a host pseudo-terminal. The in-tree flow use
 
 ### QEMU Flags
 
-The runner is the **board's**, not the example's. `nros sync` writes it into
+The runner is the **board's**, not the example's: the board descriptor states
+it once as `[board.run]` / `[board.run.qemu]`, and `nros sync` renders it into
 the image's generated settings file,
 `build/mps2-an385-baremetal/nros-cargo.toml`, where it reads:
 
 ```toml
 [target.thumbv7m-none-eabi]
-runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -icount shift=auto -semihosting-config enable=on,target=native -nic user,model=lan9118 -kernel"
 ```
 
 Key flags:
 - `-nographic` — No display window
 - `-semihosting-config enable=on,target=native` — Debug output via semihosting (separate from UART)
-- No `-netdev` / `-net` — Serial transport doesn't need Ethernet
+- `-icount shift=auto` — keeps the guest clock on wall-clock time (below)
+- `-nic user,model=lan9118` — the board's Ethernet on QEMU's user network;
+  a serial-transport image does not use it
 
 That runner wires **no serial device**: it is the board's general-purpose
 one, good for `cargo run` on any image for this board, and it is generated —

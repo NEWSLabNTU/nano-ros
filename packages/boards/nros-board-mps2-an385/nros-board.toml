@@ -30,10 +30,8 @@ cargo_config = '''
 target = "thumbv7m-none-eabi"
 
 [target.thumbv7m-none-eabi]
-# Issue 2172 — the line its chapters boot on the installed probe track
-# (`-icount shift=auto`: docs/reference/qemu-icount.md; the LAN9118 NIC on
-# QEMU's SLIRP network), which `nros build` prints as the run command.
-runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -icount shift=auto -semihosting-config enable=on,target=native -nic user,model=lan9118 -kernel"
+# The QEMU `runner` is not here: it is rendered from `[board.run]` below
+# (phase-528 W2).
 rustflags = [
     # cortex-m-rt's `link.x`. NOT `mps2_an385.ld`: that script belongs to the
     # FreeRTOS board (`nros-board-mps2-an385-freertos`), whose C startup
@@ -69,6 +67,25 @@ interfaces = { eth0 = "ethernet" }
 stack = "board"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp", "serial"]
+
+# phase-528 W2 (RFC-0118 D4) — how this board runs, stated ONCE. `nros build`
+# prints its next step from it, the generated cargo settings give it to cargo
+# as the triple's `runner`, and the support registry reads `emulator` from it.
+# Issue 2172 — the line its chapters boot on the installed probe track
+# (`-icount shift=auto`: docs/reference/qemu-icount.md; the LAN9118 NIC on
+# QEMU's SLIRP network). It used to be a `runner` string in `cargo_config`.
+[board.run]
+emulator = "qemu:mps2-an385"
+
+[board.run.qemu]
+system = "arm"
+cpu = "cortex-m3"
+icount = "shift=auto"
+semihosting = true
+nic_model = "lan9118"
+
+[board.console]
+kind = "semihosting"
 
 [board.entry]
 signature = "#[nros_board_mps2_an385::entry]\nfn main() -> !"

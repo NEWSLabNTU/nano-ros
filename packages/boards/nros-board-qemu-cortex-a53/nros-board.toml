@@ -40,8 +40,8 @@ rust_prereqs = ["clang", "libclang-dev"]
 rust_components = ["clippy"]
 # Derived, so absent on purpose: prj.conf and
 # `boards/<west_board with / and @ as _>.{conf,overlay}`,
-# present-if-exists. State `runner` only if it differs from what
-# Zephyr's own board definition selects.
+# present-if-exists. The emulator `west build -t run` drives is Zephyr's own
+# board definition's; `[board.run]` names it for nano-ros (RFC-0118 D4).
 
 [board.capabilities]
 heap = true

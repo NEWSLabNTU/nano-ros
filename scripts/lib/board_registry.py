@@ -11,12 +11,23 @@ The predicates are written against inputs the CALLER measured (which platforms
 have Runtime cells, which have any build evidence, which nightly modules the
 sweep runs), so this module reads no file except the registry and has a
 self-test that needs none.
+
+One evidence field is not typed here at all: `emulator` is read from the board
+descriptor's `[board.run]` (RFC-0118 D4, amending RFC-0114 D10; phase-528 W2),
+because a board outside the tree has no registry row and still needs to run,
+and RFC-0114 D12 types no board fact twice. `descriptor_index` reads the
+tracked descriptors, `with_descriptor_facts` fills each row's `emulator` from
+its descriptor, and `typed_emulator_errors` refuses a row that still types one
+while an in-tree descriptor exists for it. Only a row with no in-tree
+descriptor (an `external` board) may type `emulator`.
 """
 
 from __future__ import annotations
 
+import copy
 import datetime
 import re
+import subprocess
 from pathlib import Path
 
 try:
@@ -239,6 +250,105 @@ def evidence_errors(row: dict, *, runtime: set[str], nightly: set[str], probe_tr
     return errs
 
 
+# --------------------------------------------------------------------------
+# descriptor-derived facts (RFC-0118 D4, phase-528 W2)
+
+def descriptor_index(root: Path) -> dict:
+    """Every tracked `[[board]]` descriptor entry, by name and by directory.
+
+    `{"by_name": {name: (rel, i)}, "by_dir": {dir: [(rel, i), ...]},
+    "entries": {(rel, i): entry}}` — `rel` is the descriptor's path, `i` the
+    entry's index in its `[[board]]` array. Tracked files only, at any depth
+    (a conf bundle sits under its family package).
+    """
+    tracked = subprocess.run(["git", "ls-files", "-z", "--", "packages/boards/**nros-board.toml"],
+                             cwd=root, capture_output=True, text=True, check=True).stdout
+    index: dict = {"by_name": {}, "by_dir": {}, "entries": {}}
+    for rel in sorted(p for p in tracked.split("\0") if p):
+        boards = load(root / rel).get("board", [])
+        boards = boards if isinstance(boards, list) else [boards]
+        for i, entry in enumerate(boards):
+            key = (rel, i)
+            index["entries"][key] = entry
+            index["by_dir"].setdefault(str(Path(rel).parent), []).append(key)
+            for n in entry.get("names") or []:
+                index["by_name"].setdefault(n, key)
+    return index
+
+
+def row_descriptor(row: dict, index: dict) -> tuple[str, int] | None:
+    """The descriptor entry a row's evidence is for, or None.
+
+    `board_keys` names it when present (its first key; `descriptor_errors`
+    holds every key to the same entry). Otherwise the row's package directory
+    `packages/boards/<crate>/` holding exactly one `[[board]]`. Infra and
+    external rows have none.
+    """
+    if row.get("infra") or row.get("external"):
+        return None
+    keys = row.get("board_keys") or []
+    if keys:
+        return index["by_name"].get(keys[0])
+    entries = index["by_dir"].get(f"packages/boards/{row.get('crate', '')}", [])
+    return entries[0] if len(entries) == 1 else None
+
+
+def descriptor_emulator(index: dict, key: tuple[str, int] | None) -> str | None:
+    if key is None:
+        return None
+    run = index["entries"][key].get("run")
+    return run.get("emulator") if isinstance(run, dict) else None
+
+
+def with_descriptor_facts(doc: dict, index: dict) -> dict:
+    """A copy of the registry with each row's `emulator` read from its
+    descriptor's `[board.run]`. A row's own typed value (refused by
+    `typed_emulator_errors` when a descriptor exists) is kept only for a row
+    with no in-tree descriptor."""
+    out = copy.deepcopy(doc)
+    for row in out.get("board", []):
+        key = row_descriptor(row, index)
+        if key is None:
+            continue
+        row.pop("emulator", None)
+        emu = descriptor_emulator(index, key)
+        if emu is not None:
+            row["emulator"] = emu
+    return out
+
+
+def typed_emulator_errors(rows: list[dict], index: dict) -> list[str]:
+    """A row types `emulator` only when no in-tree descriptor can state it.
+
+    Run against the RAW registry rows (before `with_descriptor_facts`)."""
+    errs = []
+    for row in rows:
+        where = row_name(row)
+        keys = row.get("board_keys") or []
+        owners = {index["by_name"][k] for k in keys if k in index["by_name"]}
+        if len(owners) > 1:
+            errs.append(f"{where}: board_keys {keys} name {len(owners)} different descriptor "
+                        "entries; a row's evidence is for one board")
+        if "emulator" not in row:
+            continue
+        key = row_descriptor(row, index)
+        if key is None:
+            continue
+        rel = key[0]
+        stated = descriptor_emulator(index, key)
+        if stated == row["emulator"]:
+            errs.append(f"{where}: `emulator = {row['emulator']!r}` duplicates {rel}'s "
+                        "`[board.run] emulator`; delete it from the registry row, which "
+                        "reads it from the descriptor (RFC-0118 D4)")
+        else:
+            errs.append(f"{where}: `emulator = {row['emulator']!r}` is typed in the registry, "
+                        f"but the board's descriptor {rel} "
+                        + (f"states {stated!r}" if stated else "states none")
+                        + ". The emulator is a descriptor fact: state it in that file's "
+                        "`[board.run] emulator` and delete it here (RFC-0118 D4)")
+    return errs
+
+
 def self_test() -> None:
     """Negative controls: each rule fires on a row built to break it."""
     today = datetime.date(2026, 11, 1)
@@ -300,6 +410,33 @@ def self_test() -> None:
     assert status_word(none, True) == "Builds"
     assert status_word(none, False) == "Not supported"
     assert status_word({"crate": "i", "infra": True}, False) == "Infrastructure"
+
+    # phase-528 W2 — descriptor-derived `emulator`, each refusal planted.
+    index = {"by_name": {"q": ("d/q.toml", 0), "r": ("d/r.toml", 0)},
+             "by_dir": {"packages/boards/nros-board-q": [("d/q.toml", 0)]},
+             "entries": {("d/q.toml", 0): {"names": ["q"], "run": {"emulator": "qemu:m"}},
+                         ("d/r.toml", 0): {"names": ["r"]}}}
+    q = {"crate": "nros-board-q", "runs": "emulator", "cadence": "daily",
+         "breadth": "witness"}
+    derived = with_descriptor_facts({"board": [q]}, index)["board"][0]
+    assert derived["emulator"] == "qemu:m", "the row reads the descriptor's emulator"
+    assert "emulator" not in q, "the raw row is not mutated"
+    assert not typed_emulator_errors([q], index)
+    assert typed_emulator_errors([{**q, "emulator": "qemu:m"}], index), \
+        "a typed emulator duplicating the descriptor's is refused"
+    assert typed_emulator_errors([{**q, "emulator": "qemu:other"}], index), \
+        "a typed emulator the descriptor does not state is refused"
+    rr = {"crate": "x", "board_keys": ["r"], "runs": "emulator", "emulator": "qemu:m"}
+    assert typed_emulator_errors([rr], index), \
+        "a typed emulator on a row whose descriptor states none is refused"
+    assert shape_errors(with_descriptor_facts({"board": [{**rr, "cadence": "daily",
+                                                           "breadth": "witness"}]},
+                                              index)["board"][0], plats), \
+        "runs = emulator whose descriptor states none needs one"
+    ext = {"crate": "e", "external": "elsewhere", "runs": "emulator", "emulator": "qemu:m"}
+    assert not typed_emulator_errors([ext], index), "an external row may type it"
+    assert typed_emulator_errors([{"crate": "y", "board_keys": ["q", "r"]}], index), \
+        "board_keys spanning two descriptors are refused"
 
     doc = {"manual_stale_days": 120, "board": [ok, {"crate": "i", "infra": True,
                                                     "maintainers": ["a"]}]}

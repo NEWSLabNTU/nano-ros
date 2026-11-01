@@ -172,9 +172,13 @@ pub fn project(board: &BoardDescriptor, board_dir: &Path, module_dir: &Path) -> 
     if let Some(v) = &zephyr.default_transport {
         set_line(&mut out, "NROS_BOARD_DEFAULT_TRANSPORT", v);
     }
-    // Absent means "whatever Zephyr's own board definition selects", which is
-    // the right default and the reason most boards state nothing.
-    if let Some(v) = &zephyr.runner {
+    // phase-528 W2 — DERIVED from `[board.run] emulator` (RFC-0118 D4): the
+    // emulator platform Zephyr's `-t run` names for that kind (`fvp:` ->
+    // `armfvp`). It was `[board.zephyr] runner`, a second spelling of the
+    // launch. Zephyr never reads it (its own board definition selects the
+    // emulator); `nano_ros_entry` reads it as "an embedded board was
+    // imported". Absent when the board states no emulator.
+    if let Some(v) = board.run.as_ref().and_then(|r| r.zephyr_emulator()) {
         set_line(&mut out, "NROS_BOARD_RUNNER", v);
     }
 

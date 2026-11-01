@@ -341,7 +341,9 @@ def main():
     board_registry.self_test()
     if "--today" in sys.argv:
         TODAY = datetime.date.fromisoformat(sys.argv[sys.argv.index("--today") + 1])
-    doc = board_registry.load(REGISTRY)
+    # RFC-0118 D4 (phase-528 W2) — `emulator` comes from each row's descriptor.
+    doc = board_registry.with_descriptor_facts(board_registry.load(REGISTRY),
+                                               board_registry.descriptor_index(ROOT))
     reg = doc.get("board", [])
     matrix_txt = MATRIX.read_text() + MATRIX_CELLS.read_text()
     fixtures_txt = FIXTURES.read_text()

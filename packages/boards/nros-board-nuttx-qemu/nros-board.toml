@@ -117,6 +117,13 @@ kernel_config = "nuttx-config/arm/defconfig"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]
 
+# phase-528 W2 (RFC-0118 D4) — the emulator this board runs under. The support
+# registry reads `emulator` from here; the QEMU line itself stays in
+# `nros-qemu-ladder` (its NIC is a virtio-mmio device the harness varies per
+# pair) until the qemu runner package takes it (phase-528 W3).
+[board.run]
+emulator = "qemu:virt-armv7a"
+
 [board.capabilities]
 heap = true
 atomics = true
@@ -269,6 +276,13 @@ stack = "os"
 kernel_config = "nuttx-config/riscv/defconfig"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]
+
+# phase-528 W2 (RFC-0118 D4) — the emulator this board runs under. The support
+# registry reads `emulator` from here; the QEMU line itself stays in
+# `nros-qemu-ladder` (its NIC is a virtio-mmio device the harness varies per
+# pair) until the qemu runner package takes it (phase-528 W3).
+[board.run]
+emulator = "qemu:rv-virt"
 
 [board.capabilities]
 heap = true

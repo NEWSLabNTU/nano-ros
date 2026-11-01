@@ -76,7 +76,6 @@ fn every_zephyr_board_projects_its_descriptor_exactly() {
             (&zephyr.sdk_abi, "NROS_BOARD_TOOLCHAIN"),
             (&zephyr.default_rmw, "NROS_BOARD_DEFAULT_RMW"),
             (&zephyr.default_transport, "NROS_BOARD_DEFAULT_TRANSPORT"),
-            (&zephyr.runner, "NROS_BOARD_RUNNER"),
         ] {
             assert_eq!(
                 vars.get(var).map(String::as_str),
@@ -86,6 +85,15 @@ fn every_zephyr_board_projects_its_descriptor_exactly() {
                  override Zephyr's own default with nothing"
             );
         }
+
+        // phase-528 W2 — the runner is DERIVED from `[board.run] emulator`,
+        // and absent exactly when the board states no emulator.
+        assert_eq!(
+            vars.get("NROS_BOARD_RUNNER").map(String::as_str),
+            board.run.as_ref().and_then(|r| r.zephyr_emulator()),
+            "{descriptor}: NROS_BOARD_RUNNER is the Zephyr emulator name of \
+             `[board.run] emulator`, and absent when there is none"
+        );
 
         // --- every DERIVED path is derived, and exists ---------------------
         let flat = flatten_board_id(&zephyr.west_board);

@@ -34,10 +34,6 @@ west_board = "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp"
 sdk_abi = "aarch64-zephyr-elf"
 default_rmw = "cyclonedds"
 default_transport = "ethernet"
-# STATED because it differs from what Zephyr's own board definition selects.
-# `armfvp` drives Zephyr's stock `cmake/emu/armfvp.cmake`, which spawns
-# `FVP_BaseR_AEMv8R` with UART on stdout, given `ARMFVP_BIN_PATH`.
-runner = "armfvp"
 # Issue 2151 — what a RUST image for this board needs beyond a C one.
 # zephyr-lang-rust picks the triple from the Zephyr board at build time, and
 # runs bindgen over Zephyr's headers (clang for its builtin headers,
@@ -46,6 +42,15 @@ rust_target = "aarch64-unknown-none"
 rust_prereqs = ["clang", "libclang-dev"]
 # zephyr-lang-rust lints every Rust app as part of `ALL` (`cargo clippy`).
 rust_components = ["clippy"]
+
+# phase-528 W2 (RFC-0118 D4) — the emulator, which the support registry reads
+# and `nros build`'s next step keys on. It was `[board.zephyr] runner =
+# "armfvp"`, which Zephyr never read: its own board definition selects the
+# `armfvp` emulator (`cmake/emu/armfvp.cmake`, spawning `FVP_BaseR_AEMv8R` with
+# UART on stdout, given `ARMFVP_BIN_PATH`). `NROS_BOARD_RUNNER` is now derived
+# from this line (`fvp:` -> `armfvp`).
+[board.run]
+emulator = "fvp:FVP_BaseR_AEMv8R"
 
 [board.provisioning]
 zephyr_line = "3.7"

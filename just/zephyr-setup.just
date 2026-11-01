@@ -611,7 +611,7 @@ build-fvp-board-import:
     echo "Phase 215.G.1 FVP board-import fixture build OK"
 
 # Phase 215.G.1 — run the board-import fixture on the FVP THROUGH the
-# import surface (the board's `[board.zephyr] runner` reaches `NROS_BOARD_RUNNER` in
+# import surface (the board's `[board.run] emulator` reaches `NROS_BOARD_RUNNER` in
 # the CMakeCache that `nano_ros_use_board()` cached). Same resolver +
 # west delegation as the other `run-fvp-*` recipes; different build dir.
 # The Phase 215.G integration test (`phase215_g_fvp_smoke`) drives this

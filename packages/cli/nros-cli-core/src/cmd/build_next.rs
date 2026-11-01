@@ -23,7 +23,8 @@ use crate::{
     builder::plan,
     orchestration::{
         board_descriptor::{
-            BoardCatalog, BoardDescriptor, DeployResolution, PlatformKind, triple_of_build_target,
+            BoardCatalog, BoardDescriptor, BoardRun, DeployResolution, PlatformKind,
+            triple_of_build_target,
         },
         qemu_bin::QemuBin,
     },
@@ -225,22 +226,7 @@ fn platform_chapter(platform: &PlatformKind) -> Option<&'static str> {
     })
 }
 
-/// `[target.<triple>] runner` from the descriptor's `cargo_config`, split.
-fn cargo_runner(d: &BoardDescriptor) -> Option<Vec<String>> {
-    let triple = triple_of_build_target(d.target.as_deref()?);
-    let doc = d.cargo_config.as_deref()?.parse::<toml::Table>().ok()?;
-    let runner = doc.get("target")?.get(triple)?.get("runner")?;
-    match runner {
-        toml::Value::String(s) => Some(s.split_whitespace().map(str::to_string).collect()),
-        toml::Value::Array(a) => a
-            .iter()
-            .map(|v| v.as_str().map(str::to_string))
-            .collect::<Option<Vec<_>>>(),
-        _ => None,
-    }
-}
-
-/// The QEMU invocation a board with no cargo `runner` boots under — the
+/// The QEMU invocation a board with no `[board.run.qemu]` boots under — the
 /// shared line (`nros_qemu_ladder::board_line`, phase-517 W14) the test
 /// harness launches too (`nros_tests::qemu::QemuProcess::start_nuttx_virt` /
 /// `start_nuttx_riscv` / `start_riscv64_virt`). Keyed on the descriptor's
@@ -372,7 +358,11 @@ pub fn next_steps(
         let shown = shell_word(&dir.display().to_string());
         let run = format!("west build -d {shown} -t run");
         let flash = format!("west flash -d {shown}");
-        if d.zephyr.as_ref().and_then(|z| z.runner.as_deref()) == Some("armfvp") {
+        if d.run
+            .as_ref()
+            .and_then(BoardRun::emulator_parts)
+            .is_some_and(|(kind, _)| kind == "fvp")
+        {
             out.commands.push(("run on the FVP".into(), run));
             out.notes.push(
                 "the FVP model must be resolvable when the build CONFIGURES (Zephyr caches it): \
@@ -421,7 +411,7 @@ pub fn next_steps(
             .push(("run".into(), shell_word(&artifact.display().to_string())));
         return out;
     }
-    if let Some(argv) = cargo_runner(d) {
+    if let Some(argv) = d.qemu_argv() {
         let line = qemu_line(&argv, Some(&artifact), qemu, &mut out.notes);
         out.commands.push(("run".into(), line));
         return out;
@@ -437,7 +427,7 @@ pub fn next_steps(
         &mut out,
         &format!(
             "no run or flash command is derivable for board `{}` (its descriptor names no \
-             runner)",
+             `[board.run]`)",
             p.board
         ),
     );
@@ -808,7 +798,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The FVP's descriptor says `runner = "armfvp"`: `-t run`, and the
+    /// The FVP's descriptor says `emulator = "fvp:…"`: `-t run`, and the
     /// licence/model caveat as a note rather than an invented command.
     #[test]
     fn the_fvp_board_prints_west_run_and_names_the_model_requirement() {

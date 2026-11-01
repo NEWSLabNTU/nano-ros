@@ -1130,6 +1130,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         board: board.clone(),
                         cargo_config: descriptor.cargo_config.clone(),
                         target: descriptor.target.clone(),
+                        runner: descriptor.cargo_runner(),
                         nano_ros_root: nros_root.to_path_buf(),
                         workspace: root.clone(),
                         target_dir: image_dir.join("target"),

@@ -44,6 +44,13 @@ stack = "host"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp", "serial", "can", "isotp"]
 
+# phase-528 W2 (RFC-0118 D4) — the image is a host process.
+[board.run]
+host = true
+
+[board.console]
+kind = "stdio"
+
 [board.capabilities]
 heap = true
 atomics = true

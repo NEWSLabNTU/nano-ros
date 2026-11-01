@@ -11,11 +11,18 @@ entry_kind = "board-run"
 board_crate = "nros-board-mps2-an385"
 cargo_config = '''
 [target.thumbv7m-none-eabi]
-runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [
     "-C", "link-arg=-Tlink.x",
 ]
 '''
+
+[board.run]
+emulator = "qemu:mps2-an385"
+
+[board.run.qemu]
+system = "arm"
+cpu = "cortex-m3"
+semihosting = true
 
 [board.entry]
 crate_name = "nros_board_mps2_an385"

@@ -113,7 +113,11 @@ boards.
 > the registry, because an out-of-tree board with no registry row still has to
 > run. D12's rule (no board fact typed twice) then makes the registry read it.
 > `runs`, `hardware`, `cadence` and `last_run` stay registry facts.
-> phase-528 W2 carries the change with this RFC's generator.
+> phase-528 W2 carries the change with this RFC's generator. **Landed
+> 2026-11-01:** `scripts/gen-board-support.py` reads each row's `emulator`
+> from its descriptor (through `board_keys`, or the row's package directory),
+> and `check-board-registry` refuses a row that types one while an in-tree
+> descriptor exists for its board. Only an `external` row may type it.
 
 Each `[[board]]` row carries, in place of `tier`:
 

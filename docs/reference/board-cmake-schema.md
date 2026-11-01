@@ -92,15 +92,19 @@ axis — `ethernet` / `wifi` / `serial` etc.).
 
 ### `NROS_BOARD_RUNNER`
 
-The Zephyr `west` runner the board uses for `-t run` / flash.
+The Zephyr emulator name for the board's `[board.run] emulator`
+(phase-528 W2, RFC-0118 D4): `armfvp` for `fvp:`, `qemu` for `qemu:`,
+`renode` for `renode:`. DERIVED, never authored: it was
+`[board.zephyr] runner`, which is now refused naming `[board.run]`.
+Absent when the board states no emulator.
 
-- Valid values: `armfvp` (Arm Fast Models), `qemu` (any of the
-  qemu_* boards), `native` (native_sim / native_posix), or any
-  upstream Zephyr runner name (`jlink`, `pyocd`, …).
-- Consumed by: the `west fvp` extension (Phase 215.D) reads
-  `NROS_BOARD_RUNNER` from `CMakeCache.txt` and refuses to run if it
-  isn't `armfvp`. Generic `west <runner> run` dispatch from
-  this variable is a Phase 215.D follow-up.
+- Zephyr itself never reads it: the board's own Zephyr definition
+  selects the emulator `west build -t run` drives.
+- Consumed by: `nano_ros_entry()` (`cmake/NanoRosEntry.cmake`), which
+  reads a non-empty value as "an embedded board was imported" and
+  defaults the codegen board key to `zephyr`; and the board-import
+  fixture test, which asserts the FVP caches `armfvp`. The `west fvp`
+  extension that once read it is retired (RFC-0064 revision 5).
 
 ### `NROS_BOARD_PRJ_CONF`
 
