@@ -635,6 +635,7 @@ mod tests {
                 "qemu-cortex-a53",
                 "fvp-aemv8r-smp",
                 "nucleo-f767zi-zephyr",
+                "rpi-pico-w-zephyr",
                 "rtic-mps2-an385",
             ],
             "the refused set moved — read issue 1435 before editing this list"

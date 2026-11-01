@@ -1059,6 +1059,14 @@ mod tests {
             ovl[0].ends_with("nros-board-nucleo-f767zi-zephyr/boards/nucleo_f767zi.overlay"),
             "{ovl:?}"
         );
+        // A HWMv2 west board with qualifiers (`rpi_pico/rp2040/w`) names its
+        // overlay by the flattened id.
+        let ovl = board_overlay_paths(&leaf, Some(&catalog), Some(&root), "rpi-pico-w-zephyr");
+        assert_eq!(ovl.len(), 1, "{ovl:?}");
+        assert!(
+            ovl[0].ends_with("nros-board-rpi-pico-w-zephyr/boards/rpi_pico_rp2040_w.overlay"),
+            "{ovl:?}"
+        );
 
         assert!(
             board_conf_paths(&leaf, Some(&catalog), Some(&root), "zephyr").is_empty(),

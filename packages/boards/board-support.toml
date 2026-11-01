@@ -364,6 +364,42 @@ breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
 notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Renode twin booted the C talker over serial (USART3, the ST-LINK VCP) and ethernet (phase-524 W1). The serial image needs `[image.<id>.knobs.zenoh] max_large_subscribers = 0` stated per image until descriptor `[knobs]` can carry it (see the descriptor header)."
 
+# phase-524 W3 (RFC-0115 D3/D4) -- the Raspberry Pi Pico W, the field
+# solutions board, whose twin is Wokwi's hosted `board-pi-pico-w` (the
+# descriptor's `[board.run] emulator = "wokwi:pi-pico-w"`). Its evidence is the
+# W1 spike 3 rerun plus the W3 rerun: the C talker ELF in Wokwi, zenoh over
+# UART0 carried by `wokwi-cli --interactive` to a host pty and the router's
+# `serial/` locator, and `ros2 topic echo` heard it
+# (docs/roadmap/data/phase-524-w1-wokwi-pico-rerun.log). By hand, hence
+# `manual` and its date; it moves to `weekly` with `probe = ["wokwi-pico"]`
+# once phase-524 W4's generated track replays it (on schedule and dispatch
+# only: the token is a repository secret a fork pull request cannot read).
+#
+# `breadth` inherits the Zephyr Cortex-M witness, as the Nucleo's does
+# (RFC-0115 D4, RFC-0114 D11): ZephyrQemuCortexM is the one Cortex-M
+# `PlatformId` on Zephyr, and the RP2040's Cortex-M0+ runs the same family
+# code path (the Zephyr port, the serial link, the Rust lane on a thumbv6m
+# triple since issue 2206). The twin adds one smoke run and asserts no matrix
+# of its own, so it is not a witness. No `matrix_platform`: no `PlatformId`
+# runs it, which a manual row may say.
+#
+# `real_hardware = true` because the board is silicon that is FLASHED (the UF2
+# copy onto the BOOTSEL drive); the book has no Pico section yet, so the row
+# names the Zephyr chapter's "Flash a real board" section, as the Nucleo's
+# does. The chapter's own `book_run` for the twin is W4's (RFC-0116 D5).
+[[board]]
+crate = "nros-board-rpi-pico-w-zephyr"
+board_keys = ["rpi-pico-w-zephyr"]
+real_hardware = true
+book_flash = "getting-started/integration-zephyr.md#flash-a-real-board"
+runs = "emulator"
+hardware = "rpi-pico-w"
+cadence = "manual"
+last_run = "2026-11-01"
+breadth = "inherits ZephyrQemuCortexM"
+maintainers = ["jerry73204"]
+notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, serial only. Wokwi twin booted the C talker over UART0, the Wokwi serial monitor, with the console on UART1 (phase-524 W1 rerun). The image needs `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs stated per image until descriptor `[knobs]` can carry them (issue 2194; see the descriptor header). Each twin run needs a `WOKWI_CLI_TOKEN` and spends that account's simulation minutes."
+
 # ===== infra — not boards ==================================================
 
 [[board]]

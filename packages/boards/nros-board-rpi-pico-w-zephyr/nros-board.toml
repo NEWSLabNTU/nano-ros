@@ -1,0 +1,118 @@
+# Board descriptor for `rpi-pico-w-zephyr` (phase-524 W3, RFC-0115 D3).
+#
+# Raspberry Pi Pico W (RP2040, dual Cortex-M0+, 2 MiB QSPI flash, 264 KiB
+# SRAM; CYW43439 WiFi) on Zephyr 3.7, the field solutions board. RFC-0115 D4
+# admits it because Wokwi's `board-pi-pico-w` boots the SAME ELF (phase-524 W1
+# spike 3 rerun, docs/roadmap/data/phase-524-w1-wokwi-pico-rerun.log). Its
+# registry row reads that from `[board.run]` below.
+#
+# A board is a PACKAGE (RFC-0064 R5 D1): this file says what the board lowers
+# to, and the `package.xml` beside it announces that the board exists.
+#
+# What lives beside it, found by the spike:
+#   prj.conf                          the serial image's Kconfig, with
+#                                     CONFIG_TICKLESS_KERNEL=n (Wokwi)
+#   boards/rpi_pico_rp2040_w.overlay  zenoh on UART0, the console on UART1
+#
+# Serial only: 3.7 has no driver for the CYW43439 on SPI/PIO (its AIROC
+# driver is SDIO-only), and a Wokwi WiFi run to a host-local router needs the
+# private gateway the free plan lacks (RFC-0115 "Open questions").
+#
+# ---------------------------------------------------------------------------
+# RAM BUDGET, recorded here because it cannot be stated as `[knobs]` yet
+# (issue 2194, the same gap the Nucleo descriptor records).
+#
+# 264 KiB of SRAM, and the crate pool defaults overflow it by 211,736 bytes
+# (W1 rerun). The C talker serial image fits with, per image:
+#
+#   [image.<id>.knobs.zenoh]
+#   max_large_subscribers = 0
+#   max_subscribers = 1
+#   service_buffer_size = 1024
+#   max_queryables = 1
+#
+#   [image.<id>.knobs.zephyr]
+#   heap_size = 32768
+#
+# Measured through the leaf road (phase-524 W3): RAM 254,888 B of 264 KiB
+# (94.29 %), FLASH 524,156 B, the same RAM as issue 2206's fix measured.
+# The largest remaining block is the executor backing (83,880 bytes in the
+# W1 rerun).
+#
+# The 32 KiB heap is the Nucleo ethernet image's number: below the C talker's
+# measured 15,152-byte boot peak plus the 24,576-byte headroom floor (39,728
+# in all). It boots and publishes in Wokwi; measure the boot report before
+# a chapter states it (phase-524 W4).
+#
+# These are board facts (one RAM, every image), so they belong in a top-level
+# `[knobs.<group>]` table here. They are NOT there because the descriptor's
+# `[knobs]` schema holds none of these keys and the Zephyr leaf road has no
+# board knob rung (issue 2194). A `CONFIG_NROS_*` line in `prj.conf` is no way
+# round it: the registry knobs have no prompt, so a conf assignment is a
+# configure error.
+# ---------------------------------------------------------------------------
+
+[[board]]
+names = ["rpi-pico-w-zephyr"]
+platform = "zephyr"
+toolchain = "stable"
+entry_kind = "zephyr-staticlib"
+# An EMPTY list is a statement, not an omission: nano-ros brings no netstack
+# here, and the board's only link is a UART (`[board.net]`).
+supported_netstacks = []
+
+# The crate-root boilerplate a GENERATED Rust entry needs on Zephyr (issue
+# 2177), the same as every other Zephyr board descriptor.
+[board.entry]
+crate_root_extra = "extern crate zephyr;"
+crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
+
+[board.zephyr]
+west_board = "rpi_pico/rp2040/w"
+# Cortex-M0+ (ARMv6-M, no CAS): `nros_detect_rust_target` maps
+# CPU_CORTEX_M0PLUS to this triple (issue 2206).
+rust_target = "thumbv6m-none-eabi"
+rust_prereqs = ["clang", "libclang-dev"]
+rust_components = ["clippy"]
+# Derived, so absent on purpose: prj.conf and boards/rpi_pico_rp2040_w.overlay
+# beside this file. The flash runner is Zephyr's own (the UF2 copy onto the
+# BOOTSEL drive, or openocd over SWD).
+
+# phase-528 W2 (RFC-0118 D4) -- the board's Wokwi twin (phase-524 W1 rerun),
+# read by the support registry. Each run needs a `WOKWI_CLI_TOKEN` and spends
+# that account's simulation minutes (`[tool.wokwi-cli]` in the SDK index).
+[board.run]
+emulator = "wokwi:pi-pico-w"
+
+# phase-529 W1 (RFC-0118 D4) -- the silicon is flashed through Zephyr's own
+# runner (`west flash`; the integration-zephyr chapter's "Flash a real
+# board"). Which runner that is (the UF2 copy, or openocd over SWD) is
+# Zephyr's `runners.yaml`, read by the `west` method and not restated here.
+[board.flash]
+method = "west"
+
+# The console is UART1 (GP4/GP5, `boards/rpi_pico_rp2040_w.overlay`): UART0
+# carries the zenoh link. On the bench it needs a USB-to-UART adapter, so no
+# USB id is the board's to state.
+[board.console]
+kind = "serial"
+
+[board.capabilities]
+heap = true
+# Load/store only: ARMv6-M has no CAS, which `portable-atomic` and
+# zephyr/nros_armv6m_atomic.c cover (issue 2206).
+atomics = true
+threads = true
+
+# RFC-0109 D2 -- the RTOS's own configuration owns the devices.
+[board.net]
+stack = "os"
+# RFC-0109 D3 -- serial only: zenoh-pico's serial link on UART0.
+links = ["serial"]
+
+# What `nros setup board rpi-pico-w-zephyr --zephyr-workspace <ws>` does to a
+# reader's own west workspace: apply the 3.7 patch set and add the Rust
+# target. The `hal_rpi_pico` module comes from `west.yml` (phase-524 W2).
+[board.provisioning]
+zephyr_line = "3.7"
+rust_targets = ["thumbv6m-none-eabi"]
