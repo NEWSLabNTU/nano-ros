@@ -64,6 +64,7 @@ fn default_new_args(
         image: None,
         host: None,
         workspace: false,
+        from: None,
         kind: "self".to_string(),
         target: None,
         board: None,

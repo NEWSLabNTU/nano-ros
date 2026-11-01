@@ -96,7 +96,10 @@
 # defect did and requires this script to report FAIL. A checker that has never
 # been seen to fail is not evidence.
 #
-# Usage: check-template-copy-out.sh [--list | --self-test] [template-name ...]
+# Usage: check-template-copy-out.sh [--list | --self-test] [template-name ... | scaffold]
+#
+# `scaffold` names the single packages `nros new --board` writes (see
+# SCAFFOLD_BOARDS); with no names, templates and scaffolds are all built.
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -425,6 +428,30 @@ build_cross() {
     fi
     [ -n "$board_toml" ] || { echo "board-facts named no descriptor for '$board'" >> "$log"; return 1; }
 
+    # A cargo LEAF (a `Cargo.toml` and no `CMakeLists.txt`, the shape
+    # `nros new <name> --board <board>` writes for Rust — phase-525 W2) is built
+    # the way its README says: `nros sync` + `nros build` in the leaf, which
+    # takes the triple and the rest of the board's cargo settings from the
+    # descriptor (RFC-0098 D1). A board whose toolchain is absent is the build's
+    # own preflight refusal, which is a missing precondition, not a defect.
+    if [ -f "$proj/Cargo.toml" ] && [ ! -f "$proj/CMakeLists.txt" ]; then
+        rc=0
+        (cd "$proj" && "$nros" sync) >> "$log" 2>&1 || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            (cd "$proj" && "$nros" build) >> "$log" 2>&1 || rc=$?
+        fi
+        [ "$rc" -eq 0 ] && return 0
+        local pre_rc=0
+        nros_grep_q 'missing prerequisites for this build' "$log" || pre_rc=$?
+        if [ "$pre_rc" -eq 0 ]; then
+            local what
+            what="$(sed -n 's/^  - //p' "$log" | paste -sd ';' -)"
+            nros_check_unverified "$gate" "$label ($board): toolchain not provisioned — ${what:-see the preflight in the log} (nros setup $board)" || return 5
+            return 4
+        fi
+        return 1
+    fi
+
     local helper="$repo_root/scripts/lib/template_projects.py" toolchain west_board
     toolchain="$(python3 "$helper" descriptor "$board_toml" "$board" cmake.toolchain_file)" || return 1
     west_board="$(python3 "$helper" descriptor "$board_toml" "$board" zephyr.west_board)" || return 1
@@ -585,6 +612,124 @@ run_one() {
     fi
     echo "  $label: OK — $n artifact(s), e.g. ${arts%%$'\n'*}" | sed "s|$pdir/||"
     rm -rf "$work"
+    return 0
+}
+
+# ## The single package `nros new` writes (phase-525 W2, RFC-0116 D6)
+#
+# The first chapter does not copy a template, it scaffolds one: `nros new
+# <name> --board <board> --template talker`. That package is the copy-out a
+# reader gets, so it is built here by the same arms as a template — scaffolded
+# into a scratch dir outside the checkout, which is where a reader has it.
+#
+# The boards are the first chapter's: the host, and the QEMU board RFC-0116
+# measures the field budget on. A board is added here when a getting-started
+# chapter starts from `nros new --board` for it.
+SCAFFOLD_BOARDS=(linux mps2-an385-baremetal)
+
+# What D6 promises the package does NOT hold, one line per violation: a
+# `.cargo/` directory, a workspace root, a bringup or launch file, or more than
+# one `[image.*]`. Asked of the freshly scaffolded tree, before any build
+# writes into it.
+scaffold_shape_violations() {
+    local pdir="$1" n
+    [ -e "$pdir/.cargo" ] && echo "a .cargo/ directory (the board's cargo settings are generated under build/)"
+    [ -e "$pdir/.colcon_workspace" ] && echo "a workspace root marker"
+    [ -d "$pdir/src" ] && [ -n "$(ls "$pdir"/src/*/system.toml 2>/dev/null)" ] && echo "a bringup under src/"
+    [ -n "$(ls "$pdir"/launch "$pdir"/*.launch.* 2>/dev/null)" ] && echo "a launch file"
+    n="$(grep -c '^\[image\.[^].]*\]' "$pdir/system.toml" 2>/dev/null)" || n=0
+    [ "$n" -eq 1 ] || echo "$n [image.*] tables in system.toml (one is the promise)"
+    [ -f "$pdir/README.md" ] || echo "no README.md (the scaffold's README is the first chapter's text)"
+    return 0
+}
+
+# Scaffold one package for <board> and build it. Returns as `run_one` does.
+run_scaffold() {
+    # Two statements: `local`'s words are all expanded before any is assigned.
+    local board="$1"
+    local label="nros new --board $board" work pdir log nros rc v
+    nros="$(nros_bin)" || nros=""
+    if [ -z "$nros" ]; then
+        echo "  $label: FAIL — no \`nros\` CLI to build with (just setup-cli)" >&2
+        return 2
+    fi
+    work="$(mktemp -d "${TMPDIR:-/tmp}/nros-template-copy-out.XXXXXX")" || return 3
+    log="$work/build.log"
+    pdir="$work/sensor_node"
+    rc=0
+    (cd "$work" && "$nros" new sensor_node --board "$board" --template talker) > "$log" 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        report_build_failure "$label" "$log"
+        return 1
+    fi
+    v="$(scaffold_shape_violations "$pdir")"
+    if [ -n "$v" ]; then
+        echo "  $label: FAIL — the scaffold is not one package (RFC-0116 D6):" >&2
+        printf '%s\n' "$v" | sed 's/^/      - /' >&2
+        return 1
+    fi
+    if [ "$board" = "linux" ]; then
+        if nros_gate_prune_enabled; then
+            local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
+            copy_cache_vars "$work"
+        fi
+        (cd "$pdir" && "$nros" sync) >> "$log" 2>&1 || rc=$?
+        [ "$rc" -eq 0 ] && { (cd "$pdir" && "$nros" build) >> "$log" 2>&1 || rc=$?; }
+    else
+        build_cross "$pdir" "$board" "$log" "$label" || rc=$?
+        case "$rc" in
+            4) echo "  $label: NOT VERIFIED — see [SKIPPED] above"; rm -rf "$work"; return 4 ;;
+            5) rm -rf "$work"; return 6 ;;
+        esac
+    fi
+    if [ "$rc" -ne 0 ]; then
+        report_build_failure "$label" "$log"
+        nros_gate_prune_enabled && rm -rf "$work"
+        return 1
+    fi
+    local arts n
+    arts="$(built_artifacts "$pdir")"
+    n="$(printf '%s' "$arts" | grep -c . )"
+    if [ "$n" -eq 0 ]; then
+        echo "  $label: FAIL — build exited 0 but produced no executable (full log: $log)" >&2
+        return 1
+    fi
+    echo "  $label: OK — $n artifact(s), e.g. ${arts%%$'\n'*}" | sed "s|$pdir/||"
+    rm -rf "$work"
+    return 0
+}
+
+# The shape predicate's controls: a clean single package passes, and each
+# thing D6 forbids, planted alone, is reported.
+scaffold_shape_self_test() {
+    local work bad=0 v
+    work="$(mktemp -d "${TMPDIR:-/tmp}/nros-template-selftest.XXXXXX")" || return 2
+    _plant() {
+        rm -rf "$work/p"; mkdir -p "$work/p/src"
+        printf '[system]\nname = "p"\n\n[image.linux]\nboard = "linux"\n' > "$work/p/system.toml"
+        printf '# p\n' > "$work/p/README.md"
+    }
+    _plant
+    v="$(scaffold_shape_violations "$work/p")"
+    [ -z "$v" ] || { echo "self-test FAILED: a clean single package reported: $v" >&2; bad=1; }
+    local case_
+    for case_ in cargo marker bringup launch two-images readme; do
+        _plant
+        case "$case_" in
+            cargo) mkdir "$work/p/.cargo" ;;
+            marker) : > "$work/p/.colcon_workspace" ;;
+            bringup) mkdir -p "$work/p/src/b"; : > "$work/p/src/b/system.toml" ;;
+            launch) mkdir "$work/p/launch" ;;
+            two-images) printf '\n[image.other]\nboard = "linux"\n' >> "$work/p/system.toml" ;;
+            readme) rm "$work/p/README.md" ;;
+        esac
+        v="$(scaffold_shape_violations "$work/p")"
+        [ -n "$v" ] || { echo "self-test FAILED: a scaffold with a planted $case_ passed the shape check" >&2; bad=1; }
+    done
+    unset -f _plant
+    rm -rf "$work"
+    [ "$bad" -eq 0 ] || return 1
+    echo "self-test OK: the single-package shape check passes a clean package and catches each planted violation."
     return 0
 }
 
@@ -755,6 +900,7 @@ if [ "$mode" = "self-test" ]; then
     classifier_self_test || rc=1
     projects_self_test || rc=1
     preflight_self_test || rc=1
+    scaffold_shape_self_test || rc=1
     # The host control BUILDS a copy, so it needs the host tools too: a missing
     # one is a precondition, never a pass or a fail of the control.
     if preflight_host_tools; then
@@ -806,10 +952,12 @@ if [ "$mode" = "list" ]; then
     done
     echo "skipped (no [image.*] — nothing for \`nros build\` to build):"
     printf '  %s\n' "${skipped[@]}"
+    echo "scaffolded single packages (\`nros new sensor_node --board <b> --template talker\`):"
+    printf '  %s\n' "${SCAFFOLD_BOARDS[@]}"
     exit 0
 fi
 
-if [ "${#buildable[@]}" -eq 0 ]; then
+if [ "${#buildable[@]}" -eq 0 ] && [ "${#wanted[@]}" -eq 0 ]; then
     echo "check-template-copy-out: no template declares an [image.*]." >&2
     echo "  That is not a pass — every copy-out template used to declare one," >&2
     echo "  so an empty set means discovery broke, not that the work is done." >&2
@@ -844,6 +992,26 @@ for entry in "${buildable[@]}"; do
         *) fail=1; fail_build=1 ;;
     esac
 done
+# The scaffolded single packages: every run, unless the caller named templates
+# and not `scaffold`.
+run_scaffolds=1
+if [ "${#wanted[@]}" -gt 0 ]; then
+    run_scaffolds=0
+    for w in "${wanted[@]}"; do [ "$w" = scaffold ] && run_scaffolds=1; done
+fi
+if [ "$run_scaffolds" -eq 1 ]; then
+    for b in "${SCAFFOLD_BOARDS[@]}"; do
+        rc=0
+        run_scaffold "$b" || rc=$?
+        case "$rc" in
+            0) verified=$((verified + 1)) ;;
+            4) : ;;
+            2) fail=1; missing_tool=1 ;;
+            6) fail=1; strict_missing=1 ;;
+            *) fail=1; fail_build=1 ;;
+        esac
+    done
+fi
 for tmpl in "${skipped[@]}"; do
     echo "  $tmpl: skipped — declares no [image.*]"
 done
