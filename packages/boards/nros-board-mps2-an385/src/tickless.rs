@@ -18,12 +18,21 @@
 //!   24 bits at 25 MHz, so one shot reaches ~671 ms; a longer deadline wakes
 //!   early, and the loop polls and idles again.
 //!
+//! phase-521 W5 — the serial link gets the same idle. Its wake source is the
+//! CMSDK UART0 RX interrupt (`UARTRX0`, NVIC 0), and the primitive is installed
+//! into `zpico_serial::set_wait_idle`, which the zenoh serial read and
+//! `zpico_spin_once`'s idle call between executor rounds. Like the LAN9118
+//! line, the RX handler only masks the source: QEMU's CMSDK model holds one
+//! byte and stops taking more from the host until it is read, so nothing is
+//! lost while the source is masked.
+//!
 //! Not built for an RTIC image (`feature = "rtic"`): RTIC owns the vector
 //! table, and its 1 ms dual-timer tick already wakes the `wfi` that
 //! `enable_wfi_idle` installs on `do_poll`.
 
 use cortex_m::peripheral::NVIC;
 use cortex_m_rt::exception;
+#[cfg(feature = "ethernet")]
 use lan9118_smoltcp::{MPS2_AN385_BASE, irq};
 use mps2_an385_pac::{Interrupt, interrupt};
 
@@ -66,15 +75,80 @@ fn disarm_oneshot() {
     write(SCB_ICSR, ICSR_PENDSTCLR);
 }
 
-/// The RX handler masks the source and returns. RSFL is a level, so it stays
-/// masked until the next idle, which unmasks it only after checking the FIFO
-/// is empty. The handler's only other job, waking the `wfi`, happened when the
-/// line rose.
-#[interrupt]
-fn ETHERNET() {
-    // SAFETY: the LAN9118 the board initialised, at its fixed address.
-    unsafe { irq::mask_rx(MPS2_AN385_BASE) };
+#[cfg(feature = "ethernet")]
+mod eth {
+    use super::*;
+
+    /// The RX handler masks the source and returns. RSFL is a level, so it
+    /// stays masked until the next idle, which unmasks it only after checking
+    /// the FIFO is empty. The handler's only other job, waking the `wfi`,
+    /// happened when the line rose.
+    #[interrupt]
+    fn ETHERNET() {
+        // SAFETY: the LAN9118 the board initialised, at its fixed address.
+        unsafe { irq::mask_rx(MPS2_AN385_BASE) };
+    }
+
+    /// The [`nros_smoltcp::WaitIdleFn`] this board installs.
+    ///
+    /// The FIFO check, the unmask, the timer and the `wfi` all run with
+    /// interrupts masked. `wfi` still wakes on an interrupt that becomes
+    /// pending under PRIMASK, and the handler then runs when the mask lifts,
+    /// so a frame that lands between the check and the sleep ends the sleep
+    /// instead of being a lost wake.
+    pub(super) unsafe extern "C" fn wait_idle(deadline_ns: u64) {
+        cortex_m::interrupt::free(|_| {
+            // SAFETY: the board's LAN9118, initialised before this was installed.
+            if unsafe { irq::rx_frames_pending(MPS2_AN385_BASE) } || crate::node::eth_rx_buffered()
+            {
+                return;
+            }
+            let now_ns = nros_platform_mps2_an385::clock::clock_ns();
+            if deadline_ns <= now_ns {
+                return;
+            }
+            // SAFETY: as above.
+            unsafe { irq::unmask_rx(MPS2_AN385_BASE) };
+            arm_oneshot((deadline_ns - now_ns).div_ceil(NS_PER_SYST_TICK));
+            cortex_m::asm::wfi();
+            disarm_oneshot();
+        });
+    }
 }
+
+#[cfg(feature = "serial")]
+mod uart {
+    use super::*;
+
+    /// UART0 receive: mask the source and return. The wake is the point; the
+    /// byte stays in the UART until the read takes it.
+    #[interrupt]
+    fn UARTRX0() {
+        cmsdk_uart::mask_rx_irq(cmsdk_uart::UART0_BASE);
+    }
+
+    /// The [`zpico_serial::WaitIdleFn`] this board installs: the same
+    /// PRIMASK-guarded check, unmask, one-shot and `wfi` as the network idle,
+    /// over the UART's RX buffer and the bytes `zpico-serial` already holds.
+    pub(crate) unsafe extern "C" fn wait_idle(max_us: u64) {
+        cortex_m::interrupt::free(|_| {
+            if cmsdk_uart::rx_ready_at(cmsdk_uart::UART0_BASE) || zpico_serial::rx_buffered() {
+                return;
+            }
+            if max_us == 0 {
+                return;
+            }
+            cmsdk_uart::unmask_rx_irq(cmsdk_uart::UART0_BASE);
+            arm_oneshot((max_us * 1000).div_ceil(NS_PER_SYST_TICK));
+            cortex_m::asm::wfi();
+            disarm_oneshot();
+        });
+    }
+}
+
+/// phase-521 W5 — the serial idle, for the board's XRCE custom transport.
+#[cfg(feature = "xrce-transport")]
+pub(crate) use uart::wait_idle as serial_wait_idle;
 
 /// The one-shot's handler: stop the counter so a reload cannot fire again.
 #[exception]
@@ -82,37 +156,22 @@ fn SysTick() {
     disarm_oneshot();
 }
 
-/// The [`nros_smoltcp::WaitIdleFn`] this board installs.
-///
-/// The FIFO check, the unmask, the timer and the `wfi` all run with interrupts
-/// masked. `wfi` still wakes on an interrupt that becomes pending under
-/// PRIMASK, and the handler then runs when the mask lifts, so a frame that
-/// lands between the check and the sleep ends the sleep instead of being a
-/// lost wake.
-unsafe extern "C" fn wait_idle(deadline_ns: u64) {
-    cortex_m::interrupt::free(|_| {
-        // SAFETY: the board's LAN9118, initialised before this was installed.
-        if unsafe { irq::rx_frames_pending(MPS2_AN385_BASE) } || crate::node::eth_rx_buffered() {
-            return;
-        }
-        let now_ns = nros_platform_mps2_an385::clock::clock_ns();
-        if deadline_ns <= now_ns {
-            return;
-        }
-        // SAFETY: as above.
-        unsafe { irq::unmask_rx(MPS2_AN385_BASE) };
-        arm_oneshot((deadline_ns - now_ns).div_ceil(NS_PER_SYST_TICK));
-        cortex_m::asm::wfi();
-        disarm_oneshot();
-    });
-}
-
-/// Arm the RX interrupt line and hand smoltcp's wait loops the primitive.
-/// Called once the network is up.
+/// Arm the transport's RX interrupt line and hand its wait loops the
+/// primitive. Called once the transport is up.
 pub(crate) fn install() {
     // SAFETY: unmasking a line whose handler is defined above. The source is
-    // still masked at the NIC (`INT_EN` is cleared by `Lan9118::init`), so
+    // still masked at the device (the LAN9118's `INT_EN` is cleared by
+    // `Lan9118::init`, the UART's RX enable is clear until the first idle), so
     // nothing fires until the first idle unmasks it.
-    unsafe { NVIC::unmask(Interrupt::ETHERNET) };
-    nros_smoltcp::set_wait_idle(wait_idle);
+    #[cfg(feature = "ethernet")]
+    {
+        unsafe { NVIC::unmask(Interrupt::ETHERNET) };
+        nros_smoltcp::set_wait_idle(eth::wait_idle);
+    }
+    #[cfg(feature = "serial")]
+    {
+        cmsdk_uart::mask_rx_irq(cmsdk_uart::UART0_BASE);
+        unsafe { NVIC::unmask(Interrupt::UARTRX0) };
+        zpico_serial::set_wait_idle(uart::wait_idle);
+    }
 }

@@ -63,9 +63,9 @@ unsafe extern "C" fn xrce_write(_user_data: *mut c_void, buf: *const u8, len: us
 /// XRCE custom-transport contract treats `0` as a clean "no data" signal
 /// the session loop retries on).
 ///
-/// The wait is a busy poll against `clock_ms` — bare-metal mps2-an385 has
-/// no scheduler to yield to; the session loop is single-threaded and the
-/// CPU is dedicated. Without this active wait the handshake fails:
+/// The wait sleeps on UART0's RX interrupt and a SysTick one-shot
+/// (phase-521 W5, `tickless`); bare-metal mps2-an385 has no scheduler to
+/// yield to, so before that it was a busy poll against `clock_ms`. Without this active wait the handshake fails:
 /// `CmsdkUart::read` is non-blocking, so a naive `return n as i32` returns
 /// `0` immediately on every call, and XRCE's per-call timeout budget never
 /// actually waits for `InitAck` to flow back through socat.
@@ -87,9 +87,17 @@ unsafe extern "C" fn xrce_read(
         if n > 0 {
             return n as i32;
         }
-        if nros_platform_mps2_an385::clock::clock_ms() >= deadline {
+        let now = nros_platform_mps2_an385::clock::clock_ms();
+        if now >= deadline {
             return 0;
         }
+        // phase-521 W5 — sleep until the next byte or the deadline on UART0's
+        // RX interrupt and a one-shot, instead of spinning on the UART.
+        #[cfg(not(feature = "rtic"))]
+        unsafe {
+            crate::tickless::serial_wait_idle((deadline - now) * 1000)
+        };
+        #[cfg(feature = "rtic")]
         core::hint::spin_loop();
     }
 }

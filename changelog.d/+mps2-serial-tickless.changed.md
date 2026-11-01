@@ -1,0 +1,1 @@
+An mps2-an385 serial image no longer polls its UART while idle: the zenoh serial read, the idle between `zpico_spin_once` rounds and the XRCE custom-transport read sleep on UART0's receive interrupt and a SysTick one-shot (`zpico_serial::set_wait_idle`), as the board's Ethernet link already did. A board without the hook keeps the 1 ms poll.

@@ -214,6 +214,20 @@ bare-metal board that has a network or serial cell.
 **Acceptance:** each such board's QEMU idle run is under 2 % host CPU and
 delivers its pair.
 
+**Serial half landed (2026-11-02).** mps2-an385's serial link gets the same
+tickless idle as its network: UART0's RX interrupt (`UARTRX0`) plus the SysTick
+one-shot under PRIMASK and `wfi`, installed into a new
+`zpico_serial::set_wait_idle` seam. The zenoh serial read and
+`zpico_spin_once`'s idle between CALLER-mode executor rounds wait on it instead
+of `z_sleep_ms` polls, and the board's XRCE custom-transport `read` sleeps on it
+instead of spinning. `test_qemu_serial_pubsub_e2e` and
+`test_qemu_xrce_pubsub_e2e` deliver. The CPU acceptance is not met in a lane:
+under the SDK's QEMU 11 an idle serial listener costs a host core with or
+without the hook, against about 2 % under QEMU 9 either way (issue 2209). Still
+open here: the custom-transport `rx_notify` (lands with W4, whose XRCE Notify
+path it needs), zenoh CALLER mode's honest `next_deadline_ms`, and the
+board-entry refusal.
+
 ### W6 — Retire the receive-blocking fallback
 
 Once W4 and W5 cover every in-tree combination: delete the receive-blocking

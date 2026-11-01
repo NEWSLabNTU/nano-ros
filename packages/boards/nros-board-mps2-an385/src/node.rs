@@ -451,6 +451,16 @@ fn init_serial(config: &Config) {
     let host_time = semihosting_time();
     random::seed(host_time);
 
+    // phase-521 W5 — the serial waits sleep on UART0's RX interrupt and a
+    // one-shot instead of polling. The handler is UARTRX0, so only UART0 has
+    // the wake; another UART keeps the polled waits, and says so.
+    #[cfg(not(feature = "rtic"))]
+    if config.uart_base == cmsdk_uart::UART0_BASE {
+        crate::tickless::install();
+    } else {
+        hprintln!("  No RX wake on this UART: serial waits poll");
+    }
+
     hprintln!("Serial ready.");
 }
 

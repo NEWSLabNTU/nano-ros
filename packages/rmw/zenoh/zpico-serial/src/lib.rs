@@ -38,4 +38,5 @@
 mod ffi;
 mod port;
 
+pub use ffi::{WaitIdleFn, has_wait_idle, rx_buffered, set_wait_idle};
 pub use port::{MAX_SERIAL_PORTS, SerialPort, register_port};

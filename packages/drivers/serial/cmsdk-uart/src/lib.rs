@@ -58,11 +58,10 @@ const STATE_RX_FULL: u32 = 1 << 1;
 // CTRL register bits
 const CTRL_TX_EN: u32 = 1 << 0;
 const CTRL_RX_EN: u32 = 1 << 1;
-// IRQ-enable bits. Currently only referenced by [`handle_tx_irq`]
-// + the IRQ-driven write path that is not written yet.
+// IRQ-enable bits. TX: only the IRQ-driven write path that is not written
+// yet. RX: the idle wake (phase-521 W5).
 #[allow(dead_code)]
 const CTRL_TX_INT_EN: u32 = 1 << 2;
-#[allow(dead_code)]
 const CTRL_RX_INT_EN: u32 = 1 << 3;
 
 // INTSTATUS bits (write 1 to clear)
@@ -141,14 +140,36 @@ pub fn handle_tx_irq(base: usize) {
     }
 }
 
-/// Phase 132 — RX-IRQ servicing hook (placeholder).
-///
-/// Clears the pending RX status bit. Polled-read path still used
-/// today; a future revision pushes received bytes into a per-port
-/// ring from this handler.
+/// phase-521 W5 — whether UART `base` holds a received byte.
 #[inline]
-pub fn handle_rx_irq(base: usize) {
+pub fn rx_ready_at(base: usize) -> bool {
+    // SAFETY: a CMSDK UART STATE register at a board-supplied base.
+    unsafe { ptr::read_volatile((base + STATE) as *const u32) & STATE_RX_FULL != 0 }
+}
+
+/// phase-521 W5 — enable UART `base`'s receive interrupt.
+///
+/// A board's idle calls this, with interrupts masked, after checking
+/// [`rx_ready_at`] is false and before `wfi`, so the next received byte wakes
+/// it. Its RX handler calls [`mask_rx_irq`].
+#[inline]
+pub fn unmask_rx_irq(base: usize) {
+    // SAFETY: CMSDK UART CTRL read-modify-write at a board-supplied base.
     unsafe {
+        let ctrl = ptr::read_volatile((base + CTRL) as *const u32);
+        ptr::write_volatile((base + CTRL) as *mut u32, ctrl | CTRL_RX_INT_EN);
+    }
+}
+
+/// phase-521 W5 — disable UART `base`'s receive interrupt and clear a pending
+/// one. The RX handler's whole job: the byte stays in the UART for the read,
+/// and the line stays masked until the next idle re-arms it.
+#[inline]
+pub fn mask_rx_irq(base: usize) {
+    // SAFETY: as `unmask_rx_irq`; INTSTATUS is write-one-to-clear.
+    unsafe {
+        let ctrl = ptr::read_volatile((base + CTRL) as *const u32);
+        ptr::write_volatile((base + CTRL) as *mut u32, ctrl & !CTRL_RX_INT_EN);
         ptr::write_volatile((base + INTSTATUS) as *mut u32, INTSTATUS_RX);
     }
 }
