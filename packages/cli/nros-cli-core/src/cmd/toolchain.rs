@@ -44,8 +44,17 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Sub {
+    /// What the store holds: name, version, size, when it was last read.
+    List(crate::cmd::store::ListArgs),
     /// Remove one nano-ros toolchain from the store. Refuses while a known pin
     /// names the version — or while no pin file could be consulted at all.
+    Remove(UninstallArgs),
+    /// Propose (and, with `--delete`, perform) removal of unused store
+    /// entries. Dry-run by default.
+    Gc(crate::cmd::store::GcArgs),
+    /// Remove one nano-ros toolchain from the store.
+    // RFC-0117 D5: the old spelling of `nros toolchain remove`.
+    #[command(hide = true)]
     Uninstall(UninstallArgs),
     /// phase-443 W2 — read, or stamp, `share/nros/manifest.toml`: what a
     /// release DECLARES it is made of (RFC-0097 D7).
@@ -126,7 +135,15 @@ pub struct UninstallArgs {
 pub fn run(args: Args) -> Result<()> {
     let cwd = std::env::current_dir().ok();
     match args.command {
-        Sub::Uninstall(a) => uninstall(a, cwd.as_deref()),
+        Sub::Uninstall(a) | Sub::Remove(a) => uninstall(a, cwd.as_deref()),
+        // `list` and `gc` are lowered to `nros store` before dispatch
+        // (`cmd::user::lower`); reached directly, they run the same code.
+        Sub::List(a) => crate::cmd::store::run(crate::cmd::store::Args {
+            command: crate::cmd::store::Sub::List(a),
+        }),
+        Sub::Gc(a) => crate::cmd::store::run(crate::cmd::store::Args {
+            command: crate::cmd::store::Sub::Gc(a),
+        }),
         Sub::Manifest(a) => manifest(a),
     }
 }

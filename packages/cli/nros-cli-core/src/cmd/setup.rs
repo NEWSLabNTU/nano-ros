@@ -187,6 +187,9 @@ pub enum SetupCommand {
     /// `[package.metadata.nros.board]`). See RFC-0014 §"Downstream Zephyr
     /// consumer provisioning" + phase-215.J.
     Board(BoardSetupArgs),
+    /// Write a project `CMakePresets.json` that includes the per-board presets
+    /// `nros setup <board>` wrote. Then `cmake --preset <board>` works.
+    Presets(crate::cmd::init::Args),
 }
 
 #[derive(Debug, ClapArgs)]
@@ -544,6 +547,7 @@ pub fn run(args: Args) -> Result<()> {
     if let Some(command) = args.command {
         return match command {
             SetupCommand::Board(b) => run_board(b),
+            SetupCommand::Presets(a) => crate::cmd::init::run(a),
         };
     }
 

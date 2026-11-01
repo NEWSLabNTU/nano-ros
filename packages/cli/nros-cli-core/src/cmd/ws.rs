@@ -52,6 +52,8 @@ pub enum Sub {
 
     /// List discovered msg + rust-consumer pkgs in the workspace (or
     /// single pkg). Prints kind, name, dir per row. (Phase 210.F.3.)
+    // RFC-0117 D5: the old spelling of `nros list`.
+    #[command(hide = true)]
     List(ListArgs),
 
     /// Freshness check — non-fatal sibling of `sync --check`. Prints a
@@ -61,6 +63,8 @@ pub enum Sub {
     /// Remove `generated/` + the auto-managed
     /// `[patch.crates-io]` block from each Rust consumer's patch authority
     /// Cargo.toml. Leaves user-written sections alone.
+    // RFC-0117 D5: the old spelling of `nros clean`.
+    #[command(hide = true)]
     Clean(CleanArgs),
 
     /// Lint workspace pkgs: warn on missing `<member_of_group>
