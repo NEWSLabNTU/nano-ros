@@ -512,6 +512,13 @@ pub struct EntityMetadata {
     /// same observation as [`Self::in_place_capable`], so the two are present
     /// together or not at all; `None` is "nobody observed this".
     pub buffered_row: Option<BufferedRow>,
+    /// Issue 2208 -- the subscription's message-type bound
+    /// (`RosMessage::MAX_SERIALIZED_BOUND`), recorded where the type is
+    /// known so the type-erased registration can still hand the backend its
+    /// `rx_buffer_hint`. The typed executor path passes the same number
+    /// (`rmw_type_registry::subscription_rx_hint`). `None` for an unbounded
+    /// type and for every other entity kind: "stated nothing", never zero.
+    pub rx_bound: Option<usize>,
     pub source: SourceLocationMetadata,
 }
 
@@ -1349,6 +1356,7 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
         // subscription, by `metadata_mode::record_subscription_registration`.
         in_place_capable: None,
         buffered_row: None,
+        rx_bound: None,
         source: SourceLocationMetadata::empty(),
     })
 }

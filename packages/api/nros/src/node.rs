@@ -917,6 +917,8 @@ pub trait DeclarativeNode {
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
         metadata.safety = true;
+        // Issue 2208 -- the backend's `rx_buffer_hint`, from the type.
+        metadata.rx_bound = <M as RosMessage>::MAX_SERIALIZED_BOUND;
         self.__declare_entity(metadata)?;
         Ok(NodeSubscription::new(id))
     }
@@ -1017,6 +1019,10 @@ pub trait DeclarativeNode {
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
+        // Issue 2208 -- the backend's `rx_buffer_hint`, from the type. The
+        // runtime registers this subscription type-erased, so this is the
+        // last place `M` is known.
+        metadata.rx_bound = <M as RosMessage>::MAX_SERIALIZED_BOUND;
         self.__declare_entity(metadata)?;
         Ok(NodeSubscription::new(id))
     }
@@ -1054,6 +1060,8 @@ pub trait DeclarativeNode {
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
+        // Issue 2208 -- the backend's `rx_buffer_hint`, from the type.
+        metadata.rx_bound = <M as RosMessage>::MAX_SERIALIZED_BOUND;
         self.__declare_entity(metadata)?;
         Ok(SubscriptionTag::new(topic))
     }

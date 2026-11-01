@@ -8645,10 +8645,11 @@ impl<'s> Executor<'s> {
     ///     n.create_publisher_raw("/fwd", TYPE, HASH)
     /// })??;
     /// exec.register_subscription_buffered_raw_on::<_, 1024>(
-    ///     node_in, "/src", TYPE, HASH, qos(),
+    ///     node_in, "/src", TYPE, HASH, qos(), None,
     ///     move |bytes: &[u8]| { let _ = pub_out.publish_serialized(bytes); },
     /// )?;
     /// ```
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn register_subscription_buffered_raw_on<F, const RX_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
@@ -8656,6 +8657,7 @@ impl<'s> Executor<'s> {
         type_name: &str,
         type_hash: &str,
         qos: QoSProfile,
+        backend_hint: Option<usize>,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -8694,7 +8696,11 @@ impl<'s> Executor<'s> {
             type_name,
             type_hash,
             qos,
-            backend_hint: None,
+            // Issue 2208 -- the caller's statement of the type's bound. A
+            // type-erased caller that knows the type (the declarative
+            // runtime, from its entity metadata) states it; one that does not
+            // passes `None`, "stated nothing".
+            backend_hint,
             slot_bytes: RX_BUF,
             // Issue 1340 — `FnMut(&[u8])` IS a borrowed-bytes callback, which is
             // exactly what `process_raw_in_place` hands over, so this shape takes
@@ -8944,6 +8950,7 @@ impl<'s> Executor<'s> {
     /// plainly and no `register_type::<M>()` is needed (the declarative `Node`
     /// path is generic). Used by the declarative runtime's `.safety()` opt-in.
     #[cfg(feature = "safety-e2e")]
+    #[allow(clippy::too_many_arguments)]
     pub fn register_subscription_buffered_raw_safety_on<F, const RX_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
@@ -8951,6 +8958,7 @@ impl<'s> Executor<'s> {
         type_name: &str,
         type_hash: &str,
         qos: QoSProfile,
+        backend_hint: Option<usize>,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -8973,7 +8981,7 @@ impl<'s> Executor<'s> {
             type_name,
             type_hash,
             qos,
-            backend_hint: None,
+            backend_hint, // Issue 2208 -- as the basic raw path.
             slot_bytes: RX_BUF,
             // The sample is taken through `take_validated`, which computes the
             // integrity status as it copies. `process_raw_in_place` has no

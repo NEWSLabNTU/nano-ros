@@ -2577,6 +2577,29 @@ impl<'e, 's> Node<'e, 's> {
     where
         F: FnMut(&[u8]) + 'static,
     {
+        self.create_generic_subscription_with_qos_and_rx_hint(
+            topic, type_name, type_hash, qos, None, callback,
+        )
+    }
+
+    /// Issue 2208 -- [`Self::create_generic_subscription_with_qos`] for a
+    /// caller that knows the message type's bound although it registers
+    /// type-erased (the declarative runtime, which recorded it at
+    /// declaration). `rx_hint` reaches the backend as `rx_buffer_hint`, which
+    /// sizes zenoh-pico's receive class and, with a declared ingress, the
+    /// XRCE agent's pace (RFC-0074 "On XRCE"). `None` states nothing.
+    pub fn create_generic_subscription_with_qos_and_rx_hint<F>(
+        &mut self,
+        topic: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QoSProfile,
+        rx_hint: Option<usize>,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut(&[u8]) + 'static,
+    {
         self.executor
             .register_subscription_buffered_raw_on::<F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
                 self.node_id,
@@ -2584,6 +2607,7 @@ impl<'e, 's> Node<'e, 's> {
                 type_name,
                 type_hash,
                 qos,
+                rx_hint,
                 callback,
             )
     }
@@ -2605,6 +2629,26 @@ impl<'e, 's> Node<'e, 's> {
     where
         F: FnMut(&[u8], &nros_rmw::IntegrityStatus) + 'static,
     {
+        self.create_generic_subscription_with_integrity_and_rx_hint(
+            topic, type_name, type_hash, None, callback,
+        )
+    }
+
+    /// Issue 2208 -- [`Self::create_generic_subscription_with_integrity`]
+    /// with the message type's bound, as
+    /// [`Self::create_generic_subscription_with_qos_and_rx_hint`].
+    #[cfg(feature = "safety-e2e")]
+    pub fn create_generic_subscription_with_integrity_and_rx_hint<F>(
+        &mut self,
+        topic: &str,
+        type_name: &str,
+        type_hash: &str,
+        rx_hint: Option<usize>,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut(&[u8], &nros_rmw::IntegrityStatus) + 'static,
+    {
         self.executor
             .register_subscription_buffered_raw_safety_on::<F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
                 self.node_id,
@@ -2612,6 +2656,7 @@ impl<'e, 's> Node<'e, 's> {
                 type_name,
                 type_hash,
                 QoSProfile::default(),
+                rx_hint,
                 callback,
             )
     }
@@ -4058,6 +4103,7 @@ impl<'c, 'e, 't, 's, const RX: usize> GenericSubscriptionBuilder<'c, 'e, 't, 's,
                 self.type_name,
                 self.type_hash,
                 self.qos,
+                None,
                 callback,
             )?;
         if let Some(sc) = self.sched {
