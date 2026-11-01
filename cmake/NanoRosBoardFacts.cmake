@@ -81,6 +81,14 @@ function(nros_resolve_board_facts)
     if(_deploy STREQUAL "" AND DEFINED NROS_LEAF_IMAGE_ID)
         set(_deploy "${NROS_LEAF_IMAGE_ID}")
     endif()
+    # Issue 2199 — the Zephyr lane names its image `NROS_IMAGE` (`-DNROS_IMAGE`,
+    # or a generated application's `set(NROS_IMAGE ...)`), the variable the
+    # module hook renders the image from and `NanoRosRmwUserConfig` /
+    # `nros_cargo_build` already read. Not forwarding it made a leaf's
+    # `-DNROS_IMAGE=xiao_cdc` resolve the board of its DEFAULT image instead.
+    if(_deploy STREQUAL "" AND DEFINED NROS_IMAGE AND NOT NROS_IMAGE STREQUAL "")
+        set(_deploy "${NROS_IMAGE}")
+    endif()
     if(_deploy STREQUAL "" AND DEFINED NROS_DEPLOY)
         set(_deploy "${NROS_DEPLOY}")
     endif()
