@@ -45,7 +45,7 @@
 # carries unrelated work, that boundary is the point.
 #
 # Usage:
-#   NROS_RUNNER_NAME=<unique> scripts/ci/runner-container.sh <labels> [--build] [--run] [--check]
+#   NROS_RUNNER_NAME=<unique> scripts/ci/runner-container.sh <labels> [--build] [--run] [--sweep] [--check]
 #   (the name is REQUIRED — it is the GitHub registration; scripts/lib/runner-name.sh)
 #
 #   <labels>   comma- or space-separated, e.g. nros-qemu,nros-sdk-zephyr,nros-big
@@ -56,6 +56,11 @@
 #              container's exit code has to be fished back out with `inspect`
 #              after the fact, and the entrypoint's exit 78 ("these labels can
 #              never be true here") is precisely the code that must not be lost.
+#   --sweep    sweep the runner's VOLUMES in a throwaway container from the
+#              image (issue 2191), then exit. The fixture tree lives in
+#              `nros-runner-work`, which only a container mounts, so a sweep on
+#              the host — what `runner-loop-container.sh` ran between jobs —
+#              swept the operator's own checkout instead and never reached it.
 #   --check    print what would happen, touch nothing
 #
 # With neither --build nor --run, does both.
@@ -64,7 +69,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${NROS_RUNNER_IMAGE:-nano-ros-runner:local}"
 ENGINE="${NROS_CONTAINER_ENGINE:-docker}"
-DO_BUILD=0 DO_RUN=0 CHECK=0 ATTACH=0
+DO_BUILD=0 DO_RUN=0 DO_SWEEP=0 CHECK=0 ATTACH=0
 LABELS=""
 
 while [ $# -gt 0 ]; do
@@ -72,6 +77,7 @@ while [ $# -gt 0 ]; do
         --build) DO_BUILD=1 ;;
         --run)   DO_RUN=1 ;;
         --attach) DO_RUN=1; ATTACH=1 ;;
+        --sweep) DO_SWEEP=1 ;;
         --check|--dry-run) CHECK=1 ;;
         # Refused ON PURPOSE. These are the two flags that turn a contained
         # runner back into an uncontained one, and a script that accepts them
@@ -97,7 +103,30 @@ NAME="$(nros_require_runner_name runner-container)"
 
 [ -n "$LABELS" ] || { echo "runner-container: need <labels>, e.g. nros-qemu,nros-sdk-zephyr,nros-big" >&2; exit 2; }
 LABELS="${LABELS// /,}"
-if [ "$DO_BUILD" -eq 0 ] && [ "$DO_RUN" -eq 0 ]; then DO_BUILD=1; DO_RUN=1; fi
+if [ "$DO_BUILD" -eq 0 ] && [ "$DO_RUN" -eq 0 ] && [ "$DO_SWEEP" -eq 0 ]; then DO_BUILD=1; DO_RUN=1; fi
+
+# The runner's volumes, ONE list for the job container and the sweep container:
+# a sweep that mounted a different set would measure a different disk.
+VOLUME_ARGS=(
+    -v "nros-runner-work:/home/runner/_work"
+    -v "nros-runner-cargo:/home/runner/.cargo"
+    -v "nros-runner-sccache:/home/runner/.cache/sccache"
+    -v "nros-runner-nros:/home/runner/.nros"
+    -v "nros-runner-rustup:/home/runner/.rustup"
+    -v "nros-runner-local:/home/runner/.local"
+    -v "nros-runner-cmake:/home/runner/.cmake"
+    -v "nros-runner-src:/home/runner/src"
+)
+# The job container's confinement, shared for the same reason. Each flag is
+# explained where the job container starts, below.
+# shellcheck disable=SC2054  # the commas are --tmpfs mount options
+CONFINE_ARGS=(
+    --cap-drop ALL
+    --security-opt no-new-privileges
+    --user runner
+    --pids-limit 4096
+    --tmpfs /tmp:rw,exec,nosuid,size=8g
+)
 
 command -v "$ENGINE" >/dev/null 2>&1 || {
     echo "runner-container: '$ENGINE' not found (set NROS_CONTAINER_ENGINE)" >&2; exit 2; }
@@ -577,20 +606,10 @@ if [ "$DO_RUN" -eq 1 ]; then
     MODE_FLAGS=(-d)
     [ "$ATTACH" -eq 1 ] && MODE_FLAGS=(--rm)
     run_or_echo "$ENGINE" run "${MODE_FLAGS[@]}" --name "$NAME" \
-        --cap-drop ALL \
-        --security-opt no-new-privileges \
-        --user runner \
-        --pids-limit 4096 \
-        --tmpfs /tmp:rw,exec,nosuid,size=8g \
-        -v "nros-runner-work:/home/runner/_work" \
-        -v "nros-runner-cargo:/home/runner/.cargo" \
-        -v "nros-runner-sccache:/home/runner/.cache/sccache" \
-        -v "nros-runner-nros:/home/runner/.nros" \
-        -v "nros-runner-rustup:/home/runner/.rustup" \
-        -v "nros-runner-local:/home/runner/.local" \
-        -v "nros-runner-cmake:/home/runner/.cmake" \
-        -v "nros-runner-src:/home/runner/src" \
+        "${CONFINE_ARGS[@]}" \
+        "${VOLUME_ARGS[@]}" \
         -e NROS_RUNNER_LABELS="$LABELS" \
+        -e NROS_RUNNER_MIN_FREE_GIB="${NROS_RUNNER_MIN_FREE_GIB:-}" \
         -e GH_REPO="${GH_REPO:-NEWSLabNTU/nano-ros}" \
         -e RUNNER_TOKEN="$RUNNER_TOKEN" \
         -e RUNNER_NAME="${RUNNER_NAME:-$NAME}" \
@@ -604,4 +623,51 @@ if [ "$DO_RUN" -eq 1 ]; then
         echo "  NEXT, once it is up:"
         echo "    scripts/ci/enable-merge-queue.sh --apply --self-hosted-ready"
     fi
+fi
+
+if [ "$DO_SWEEP" -eq 1 ]; then
+    # What runs inside: the persistent fixture tree is the checkout to sweep
+    # (its host target dirs are cargo-sweep's subject), and `_work` is the
+    # runner work dir (`_temp`, `_actions`). The script is the TREE's own copy
+    # when there is one — the tree is at a recent job's commit, while the
+    # bootstrap checkout in `src` is refreshed only by a re-bootstrap and may
+    # predate `--provision`, which an older script refuses as an unknown flag.
+    # Never fails the loop: a sweep that cannot run is reported, and the next
+    # job's own sweep (`fixture-tree.sh sync`) gets another chance.
+    # shellcheck disable=SC2016  # expanded inside the container, not here
+    SWEEP_SH='
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+src="${NROS_SRC:-/home/runner/src/nano-ros}"
+work="${NROS_RUNNER_WORK_DIR:-/home/runner/_work}"
+tree="$work/${GH_REPO##*/}/nros-fixture-tree"
+root="$src"
+[ -e "$tree/.git" ] && root="$tree"
+sweep="$root/scripts/ci/runner-sweep.sh"
+if [ ! -x "$sweep" ]; then
+    echo "runner sweep: no runner-sweep.sh under $root (bootstrap first) -- nothing swept"
+    exit 0
+fi
+flags=(--disk)
+# An older tree'"'"'s sweep has no --provision; ask it rather than assume
+# (issue 0726: a grep that fails to run is not "no match").
+. "$root/scripts/lib/grep-q.sh"
+rc=0; (nros_grep_q -- "--provision)" "$sweep") || rc=$?
+case $rc in
+    0) flags+=(--provision) ;;
+    1) ;;
+    *) echo "runner sweep: could not read $sweep -- sweeping without --provision" ;;
+esac
+echo "runner sweep: $root (${flags[*]})"
+df -h "$work" | tail -1
+NROS_RUNNER_REPO_ROOT="$root" NROS_SWEEP_WORK="$work" "$sweep" "${flags[@]}" \
+    || echo "runner sweep: the sweep reported a problem -- continuing"
+df -h "$work" | tail -1
+'
+    echo "runner-container: sweeping the runner volumes in a throwaway container"
+    run_or_echo "$ENGINE" run --rm --name "$NAME-sweep" \
+        "${CONFINE_ARGS[@]}" \
+        "${VOLUME_ARGS[@]}" \
+        -e GH_REPO="${GH_REPO:-NEWSLabNTU/nano-ros}" \
+        --entrypoint bash \
+        "$IMAGE" -c "$SWEEP_SH"
 fi

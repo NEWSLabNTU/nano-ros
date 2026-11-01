@@ -86,7 +86,7 @@ if [ "$CHECK" -eq 1 ]; then
     echo "    mint a registration token (gh api, needs admin on $REPO)"
     echo "    $ENGINE rm -f $NAME  (only if a stale container of that name exists)"
     echo "    runner-container.sh $LABELS --run --attach"
-    echo "    runner-sweep.sh"
+    echo "    runner-container.sh $LABELS --sweep  (in a throwaway container: the volumes are not on the host)"
     echo "  stops on exit 78 (labels not true) or $MAX_CONSECUTIVE_FAILURES failures in a row"
     exit 0
 fi
@@ -128,7 +128,12 @@ while :; do
         0)
             N=$((N + 1)); FAILS=0
             say "job $N finished; sweeping"
-            "$REPO_ROOT/scripts/ci/runner-sweep.sh" || say "(sweep reported a problem — continuing)"
+            # Issue 2191 — IN a container. The job's tree lives in the
+            # `nros-runner-work` volume, which the host cannot see, so the host
+            # sweep this replaced swept $REPO_ROOT (the operator's own checkout)
+            # and never reached the disk the jobs fill.
+            GH_REPO="$REPO" "$REPO_ROOT/scripts/ci/runner-container.sh" "$LABELS" --sweep \
+                || say "(sweep reported a problem — continuing)"
             ;;
         78)
             echo "runner-loop-container: the container refused to register — its" >&2

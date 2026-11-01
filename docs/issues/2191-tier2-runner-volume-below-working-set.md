@@ -95,7 +95,18 @@ reported, not a measured capacity.
 3. **Size the fixtures budget to a lane's working set.** 60 GiB is a third of
    what one tier-2 build writes, so every sweep discards the warm set. A budget
    below the working set buys a rebuild per run, not disk.
-4. **A bigger volume** for this runner (operator).
+4. **A bigger volume** for this runner (operator). Measured on newslab-118
+   (2026-11-01): `nros-runner-work` was a bind onto a shared 1.8 TB data disk
+   (229 GB free, the fixture tree 318 GB of it), while the root filesystem
+   had ~1.1 TB free; the operator is moving the volume there. Repo side,
+   two things so it cannot wedge again: `runner-loop-container.sh` sweeps
+   between jobs IN a container (`runner-container.sh <labels> --sweep`, the
+   job container's volumes) — its host sweep could not see the volume and
+   swept the operator's own checkout instead — and `runner-doctor.sh` takes
+   an opt-in floor, `NROS_RUNNER_MIN_FREE_GIB`, measured in the runner work
+   dir, below which `nros-big` refuses to register. Opt-in because queue L3
+   is a required check and a default floor could stop the only registered
+   runner.
 
 4 is operator-side. 2 and 3 are in `scripts/ci/runner-sweep.sh`, but
 they only move the problem: without 1, the volume still cannot hold the

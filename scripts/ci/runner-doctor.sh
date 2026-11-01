@@ -668,6 +668,17 @@ _nros_runner_check_ros2() {
 # label makes a claim about cores and only about cores, and a doctor that fails
 # on a claim nobody made is a doctor people learn to bypass. Disk pressure is
 # `runner-sweep.sh`'s job, which has budgets and can actually fix it.
+#
+# EXCEPT where the operator makes the claim (issue 2191). A sweep cannot make
+# room the disk does not have: newslab-118's work volume shared a disk with
+# other people's datasets, refilled within a day, and the job that found out
+# died mid-build on ENOSPC — after which the runner could not even write the
+# next step's script. `NROS_RUNNER_MIN_FREE_GIB=<n>` asserts n GiB free in the
+# runner WORK dir (where jobs build, `NROS_RUNNER_WORK_DIR`, default
+# `$HOME/_work` — the container's), so a runner that cannot hold a tier-2 build
+# refuses to register instead. Opt-in, per runner: a default floor would stop a
+# smaller runner that is doing fine from registering at all, and queue L3 is a
+# REQUIRED check, so that is a merge queue waiting forever.
 _nros_runner_check_big() {
     local want="${NROS_RUNNER_BIG_CORES:-16}" have
     have="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)"
@@ -689,7 +700,24 @@ _nros_runner_check_big() {
     if [ -n "$avail" ]; then
         _nros_runner_info "free disk on the checkout's filesystem: $avail"
     fi
-    return 0
+
+    local floor="${NROS_RUNNER_MIN_FREE_GIB:-}" workdir free
+    [ -n "$floor" ] && [ "$floor" != 0 ] || return 0
+    workdir="${NROS_RUNNER_WORK_DIR:-$HOME/_work}"
+    [ -d "$workdir" ] || workdir="$(_nros_runner_repo_root)"
+    free="$(df -P -BG "$workdir" 2>/dev/null | awk 'NR==2 {sub(/G$/, "", $4); print $4}' || true)"
+    if [ -z "$free" ]; then
+        _nros_runner_missing "free disk in $workdir: could not be measured (NROS_RUNNER_MIN_FREE_GIB=$floor)"
+        return 1
+    fi
+    if [ "$free" -ge "$floor" ] 2>/dev/null; then
+        _nros_runner_ok "free disk in $workdir: ${free}G (>= ${floor}G, NROS_RUNNER_MIN_FREE_GIB)"
+        return 0
+    fi
+    _nros_runner_missing "free disk in $workdir: ${free}G — this runner claims >= ${floor}G (NROS_RUNNER_MIN_FREE_GIB)"
+    _nros_runner_fix "Sweep the work volume (runner-container.sh <labels> --sweep), move it to a"
+    _nros_runner_fix "disk with room, or lower the floor deliberately (issue 2191)."
+    return 1
 }
 
 # Issue 1755 — not a label, a property of EVERY runner: the user cache dir can
@@ -1060,6 +1088,32 @@ _nros_runner_self_test() {
         _st_ok "a host with no SDK at all still fails"
     fi
 
+    # Issue 2191 — the free-space floor is opt-in, binds when set, and is
+    # measured in the WORK dir, not wherever the checkout happens to sit.
+    local wd="$tmp/work"
+    mkdir -p "$wd"
+    if NROS_RUNNER_BIG_CORES=1 NROS_RUNNER_WORK_DIR="$wd" NROS_RUNNER_MIN_FREE_GIB= \
+        _nros_runner_check_big >/dev/null 2>&1; then
+        _st_ok "free-space floor unset: reported only"
+    else
+        _st_bad "free-space floor unset: reported only" "nros-big failed with no floor set"
+    fi
+    if NROS_RUNNER_BIG_CORES=1 NROS_RUNNER_WORK_DIR="$wd" NROS_RUNNER_MIN_FREE_GIB=1 \
+        _nros_runner_check_big >/dev/null 2>&1; then
+        _st_ok "free-space floor met passes"
+    else
+        _st_bad "free-space floor met passes" "1 GiB floor refused"
+    fi
+    local floor_out=""
+    if floor_out="$(NROS_RUNNER_BIG_CORES=1 NROS_RUNNER_WORK_DIR="$wd" \
+        NROS_RUNNER_MIN_FREE_GIB=999999999 _nros_runner_check_big 2>&1)"; then
+        _st_bad "free-space floor above the disk refuses" "exited 0"
+    elif [ "${floor_out#*free disk in $wd}" = "$floor_out" ]; then
+        _st_bad "free-space floor above the disk refuses" "did not name the work dir: $floor_out"
+    else
+        _st_ok "free-space floor above the disk refuses, naming the work dir"
+    fi
+
     [ -n "$saved_env" ] && export ZEPHYR_SDK_INSTALL_DIR="$saved_env"
     HOME="$saved_home"
 
@@ -1114,6 +1168,9 @@ Known labels: $NROS_RUNNER_LABELS
 Env:
   NROS_RUNNER_REPO_ROOT   the checkout to inspect (default: this file's own)
   NROS_RUNNER_BIG_CORES   the nros-big threshold (default 16)
+  NROS_RUNNER_MIN_FREE_GIB  nros-big: refuse below this many GiB free in the
+                          runner work dir (NROS_RUNNER_WORK_DIR, default
+                          $HOME/_work). Unset or 0: reported only (issue 2191)
   NROS_ZEPHYR_WORKSPACE   where the Zephyr sources live
   ZEPHYR_SDK_INSTALL_DIR  where the Zephyr SDK was unpacked
 
