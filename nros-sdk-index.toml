@@ -1381,6 +1381,56 @@ smoke = [
     { run = "bin/FVP_BaseR_AEMv8R --version", expect = "Fast Models" },
 ]
 
+# Renode, the emulator twin of the Nucleo-F767ZI (phase-524 W2, RFC-0115 D4).
+# phase-524 W1 booted the Zephyr C talker for `nucleo_f767zi` in it and heard
+# `ros2 topic echo` deliver over both the ST-LINK UART and the Renode ethernet
+# switch (`docs/roadmap/data/phase-524-w1-renode-nucleo.log`), with exactly
+# this archive.
+#
+# UPSTREAM URLs, the `[tool.arm-fvp]` / `[tool.ninja]` shape: Renode publishes
+# a self-contained "portable" build (a .NET apphost with the runtime bundled
+# beside it), we apply nothing to it, so a repack would be a release asset per
+# host that adds nothing. sha256s are upstream's, from the release's own
+# `digest` field, and re-verified by downloading each asset.
+#
+# Hosts. linux-x86_64 and linux-arm64 have a portable tarball. macos-arm64 has
+# NONE: upstream ships it only as `renode-1.17.0.osx-arm64-portable.dmg`, a
+# disk image that needs `hdiutil attach` to read, which no dist `install` here
+# runs and nothing in this tree can measure or smoke. So no macOS dist and no
+# source recipe (the source build is a mono/.NET toolchain of its own): a mac
+# host gets the refusal `nros setup` prints for a tool with no dist, and the
+# twin chapter says the twin runs on Linux. Windows has a portable zip and is
+# not a host key here.
+#
+# Layout. The tarball is rooted at `renode_<version>-portable/` and the program
+# must stay beside its bundled runtime (`libcoreclr.so`, the managed `.dll`s,
+# `platforms/`), so it unpacks as-is and `subdir` names that root; `front`
+# links `renode` into `$NROS_HOME/bin` (the apphost resolves its own directory
+# through the link, measured). `version` is upstream's exactly, unsuffixed, so
+# `{version}` in `subdir` is the directory name.
+#
+# HOME. A RUNNING Renode writes `~/.config/renode` (command history and a
+# binaries cache) even when given `--config`, so whatever runs a twin sets
+# `HOME` for it (phase-524 W1). `--version`, the smoke probe below, writes
+# nothing there (measured with an empty HOME), so the probe needs no env.
+#
+# No `system` rows. The program (`renode`, the apphost) needs only the loader
+# family plus libstdc++/libgcc_s (the glibcxx floor). The 11 external sonames
+# the floor script lists (gtk-3, cairo, X11, xcb, png16, z, ...) belong to
+# `platform-lib/linux-x64/renode-ui`, the GUI monitor a twin never opens
+# (the W1 spike ran it `--disable-gui --plain`), and to its compression shim;
+# `check-dist-runtime-deps` reports them as an upstream note, not a verdict.
+[tool.renode]
+version = "1.17.0"
+upstream = "v1.17.0" # renode/renode release tag (SSOT for the URLs below)
+subdir = "renode_{version}-portable"
+front = ["renode"]
+smoke = [
+    { run = "renode --version", expect = "Renode v1.17.0" },
+]
+dist.linux-x86_64 = { url = "https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-portable.tar.gz", sha256 = "4ba7c68b59e2447f188ef4b4b112fcccd2802582c460beedceb63b84e5605a5f", floor = { glibc = "2.29", glibcxx = "3.4.26" } }
+dist.linux-arm64 = { url = "https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-arm64-portable.tar.gz", sha256 = "e9051578411441bfb47b77de0381cfba3badce03663367fab561472fd7807f1f", floor = { glibc = "2.34", glibcxx = "3.4.26" } }
+
 # --- RMW host packages (Phase 191.6.a): the RMW axis, orthogonal to the board.
 # `nros setup <board> --rmw <name>` resolves `board.packages ∪ rmw.packages`
 # (default `--rmw zenoh`). Boards list only platform/toolchain packages; the RMW
@@ -1710,13 +1760,28 @@ approx_mb = 1300
 lines = []
 
 [zephyr_module.hal_stm32]
-# Zero consumers of any kind. No Zephyr board string in this tree is an STM32:
-# every `stm32` hit is a Rust HAL crate name in docs (`stm32f4xx_hal`) or the
-# out-of-tree porting worked example in `book/src/porting/stm32f4-out-of-tree.md`.
-why = "STM32 HALs — no in-tree or downstream consumer found"
-needed_by = []
-approx_mb = 764
-lines = []
+# phase-524 W2 (RFC-0115 D4): back in, for the one emulator-twin board: the
+# Nucleo-F767ZI (`nucleo_f767zi`, STM32F767ZI, Cortex-M7). It used to read
+# "zero consumers of any kind"; phase-524 W1's spike built the C talker for
+# that board and could only do so by fetching this module by hand
+# (`docs/roadmap/data/phase-524-w1-renode-nucleo.log`), because `west.yml`'s
+# allowlist did not name it.
+#
+# The REVISION is not stated here and must not be: `west.yml` takes the module
+# through `import:` of zephyr v3.7.0, so it is the revision zephyr v3.7.0's own
+# `west.yml` pins (`f1317150eac951fdd8259337a47cbbc4c2e6d335`, the one the
+# spike built against), and it moves with the zephyr pin rather than beside it.
+#
+# 3.7 only: the twin is measured on the 3.7 line and no 4.4 image names an
+# STM32 board yet. `approx_mb` is the spike's shallow checkout (639 MiB); the
+# previous 764 was a full-history figure for a module nothing fetched.
+#
+# The board row that will name it in `needed_by` beside its own `packages` is
+# phase-524 W3's (`[board.*]`, blocked on phase-522 W1).
+why = "STM32 HALs: the Nucleo-F767ZI emulator twin (phase-524, RFC-0115 D4)"
+needed_by = ["nucleo_f767zi"]
+approx_mb = 639
+lines = ["3.7"]
 
 [zephyr_module.hal_nordic]
 # Zero consumers. The only `nrf52840dk` occurrences in the tree are string

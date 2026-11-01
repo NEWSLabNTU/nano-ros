@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-11-01). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode). RFC-0115 D4 rewritten to match. W2 onward run for the Nucleo only. W0 open.** Implements
+**Status (2026-11-01). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode). RFC-0115 D4 rewritten to match. W2 onward run for the Nucleo only. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W0 open.** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -128,6 +128,51 @@ measurement of that.
   claim (Wokwi CLI's licence or Renode's portable build), the row carries
   `floor` and dist for the hosts it has and the chapter says which hosts the
   twin runs on; a twin that runs on no CI host removes its board from the list.
+
+**Result (2026-11-01). Done for the Nucleo-F767ZI; the board link waits on
+W3.** W1 left one survivor, so W2 adds `[tool.renode]` only. There is no
+`[tool.wokwi-cli]`: the Pico W left the list, and a row for a twin no board
+uses is a pin nobody exercises.
+
+- **`[tool.renode]`**, version `1.17.0`, upstream's own portable tarballs (the
+  `[tool.arm-fvp]` / `[tool.ninja]` shape: we apply nothing, so no repack).
+  `subdir = "renode_{version}-portable"` (the program stays beside its bundled
+  .NET runtime), `front = ["renode"]` links it into `$NROS_HOME/bin`, and
+  `smoke` runs `renode --version` and expects `Renode v1.17.0`.
+
+  | host | asset | sha256 | floor (measured off the artifact) |
+  |---|---|---|---|
+  | linux-x86_64 | `renode-1.17.0.linux-portable.tar.gz` | `4ba7c68b...a5f` | glibc 2.29, glibcxx 3.4.26 |
+  | linux-arm64 | `renode-1.17.0.linux-arm64-portable.tar.gz` | `e9051578...f1f` | glibc 2.34, glibcxx 3.4.26 |
+  | macos-arm64 | none | | |
+
+  Decision step applied: macOS has no portable archive upstream, only
+  `renode-1.17.0.osx-arm64-portable.dmg`, a disk image no dist `install` here
+  opens and nothing in this tree can measure or smoke. So the row carries the
+  two Linux hosts, `nros setup` refuses on a mac with its no-dist message, and
+  W4's chapter says the twin runs on Linux. Both CI hosts are Linux x86_64, so
+  the board stays on the list.
+- **`[zephyr_module.hal_stm32]`** moves from `lines = []` to
+  `lines = ["3.7"]`, `needed_by = ["nucleo_f767zi"]`, `approx_mb = 639` (the
+  spike's shallow checkout), and `west.yml`'s allowlist names it. Its revision
+  is not stated anywhere: `west.yml` imports it from zephyr v3.7.0, so it is
+  v3.7.0's own pin, `f1317150eac951fdd8259337a47cbbc4c2e6d335`.
+- **Measured.** `nros setup --tool renode --dry-run` plans `prebuilt 1.17.0
+  (dist linux-x86_64)`; `nros setup zephyr --dry-run` prices `hal_stm32 639 MB
+  [3.7] nucleo_f767zi`. A real `nros setup --tool renode` into the store, then
+  `renode --version` from `$NROS_HOME/bin` with an empty `HOME`, prints
+  `Renode v1.17.0` and leaves that `HOME` empty. `check-dist-floors`,
+  `check-smoke-or-reason`, `check-dist-or-reason` and
+  `check-zephyr-module-allowlist` green. `check-dist-runtime-deps` over a store
+  holding renode finds nothing undeclared for it: the program needs only the
+  loader family and libstdc++, and the 11 GTK/X11 sonames belong to
+  `renode-ui`, the GUI monitor a headless twin never opens (an upstream note).
+- **Left for W3.** The board's `[board.*]` row, which names `renode` (and the
+  Zephyr toolchain) in `packages` so `nros setup <board> --dry-run` prices the
+  twin, does not exist yet: it is W3's, blocked on phase-522 W1. Until then the
+  acceptance is met per tool (`--tool renode`), not per board. Also W3's: the
+  `thumbv7em-none-eabi(hf)` Rust targets in `examples/zephyr/rust-toolchain.toml`.
+  The pristine-container acceptance is W4's probe track.
 
 ### W3 — Registry rows and board descriptors
 
