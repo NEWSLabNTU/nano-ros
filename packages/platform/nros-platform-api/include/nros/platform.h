@@ -747,6 +747,23 @@ int8_t   nros_platform_wake_park_until_us(void *w, uint64_t deadline_us);
  *  timespec primitive a finer one, so only the port can answer (issue 1242). */
 uint64_t nros_platform_wake_park_granularity_us(void);
 
+/** phase-521 W3 (RFC-0113 D3) — park on the wake object AND on OS handles.
+ *
+ *  The same park as `nros_platform_wake_park_until_us`, ended also when any
+ *  of the `n` handles in `handles` becomes readable. A handle is what an RMW
+ *  session's `readiness_source` reported as `NROS_RMW_READINESS_WAITABLE`: a
+ *  file descriptor on POSIX and NuttX. The park does not read the handles; the
+ *  executor drives the session non-blockingly after it returns.
+ *
+ *  `w` MUST be the executor's own wake object, as for the park above.
+ *
+ *  Returns 0 when signalled or a handle is readable, 1 when the deadline
+ *  expired, and -1 when this port cannot wait on OS handles. Every port
+ *  defines it: one with no such handles returns -1, and the executor then
+ *  keeps the wait it had. */
+int8_t   nros_platform_wake_park_handles_us(void *w, const int32_t *handles, size_t n,
+                                            uint64_t deadline_us);
+
 /** Opaque-storage sizing. Both helpers are pure functions (no global
  *  state) and may be called before `nros_platform_wake_init`. */
 size_t  nros_platform_wake_storage_size(void);

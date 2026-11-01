@@ -330,6 +330,7 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     event_type_is_supported: None,
     take_request_with_info: None,
     take_response_with_info: None,
+    readiness_source: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
@@ -3446,6 +3447,41 @@ impl Session for CffiSession {
         // poll-only long after that landed, which is misleading for
         // exactly the reader asking whether their lane gets async wakes.
         self.vtable.set_wake_callback.is_some()
+    }
+
+    /// phase-521 W3 (RFC-0113 D4) — forward to the backend's
+    /// `readiness_source` slot. A NULL slot keeps the trait's inference from
+    /// `set_wake_callback`'s presence; a slot that FAILS, or answers a kind
+    /// this runtime does not know, reads as `None`, which keeps the
+    /// receive-blocking wait rather than parking on a handle nobody vouched for.
+    fn readiness_source(&self) -> nros_rmw::ReadinessSource {
+        let Some(f) = self.vtable.readiness_source else {
+            return if self.supports_wake_callback() {
+                nros_rmw::ReadinessSource::Notify
+            } else {
+                nros_rmw::ReadinessSource::None
+            };
+        };
+        let view = NrosRmwSession {
+            node_name: self.node_name_buf.as_ptr().cast(),
+            namespace_: self.namespace_buf.as_ptr().cast(),
+            _reserved: [0u8; 8],
+            backend_data: self.backend_data,
+        };
+        let mut kind: u8 = 0;
+        let mut handle: i32 = -1;
+        // SAFETY: a transient read-only view, as `next_deadline_ms` builds.
+        let ret = unsafe { f(&view as *const _, &mut kind, &mut handle) };
+        if ret != NROS_RMW_RET_OK {
+            return nros_rmw::ReadinessSource::None;
+        }
+        match kind as i32 {
+            generated::NROS_RMW_READINESS_NOTIFY => nros_rmw::ReadinessSource::Notify,
+            generated::NROS_RMW_READINESS_WAITABLE if !handle.is_negative() => {
+                nros_rmw::ReadinessSource::Waitable(handle)
+            }
+            _ => nros_rmw::ReadinessSource::None,
+        }
     }
 
     /// phase-467 Row 8 — forward to the backend's graph-change slot; NULL

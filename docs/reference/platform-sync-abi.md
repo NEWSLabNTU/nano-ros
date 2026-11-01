@@ -83,6 +83,28 @@ Indicative sizes (subject to platform ABI / build flags):
 | NuttX                | 16–32 (`sem_t`) |
 | ThreadX              | ~64 (`TX_SEMAPHORE` control block) |
 
+## Parking on OS handles (phase-521 W3, RFC-0113 D3)
+
+```c
+int8_t nros_platform_wake_park_handles_us(void *w, const int32_t *handles, size_t n,
+                                          uint64_t deadline_us);
+```
+
+Required of every port. It parks on the wake object `w` and also returns when
+one of the `handles` becomes readable. A handle is what an RMW session reports
+as `NROS_RMW_READINESS_WAITABLE`, for example XRCE's UDP socket. It returns
+`0` on a signal or a readable handle, `1` at the deadline, and `-1` when the
+port cannot wait on OS handles. When it returns `-1` the executor keeps its
+ordinary wait.
+
+- POSIX/NuttX: `ppoll` (`poll` where `ppoll` is not declared) over the handles
+  plus a self-pipe. The pipe is made on the first handle park, and `_signal`
+  writes a byte to it after its post. The park takes the semaphore before
+  polling and again when the pipe fires, so a pipe byte whose post was already
+  taken is stale and does not end the park. More than 8 handles is refused.
+- FreeRTOS, Zephyr, ThreadX: `-1`. Their sessions report Notify, not handles.
+- A Rust port: the `PlatformThreading::wake_park_handles_us` default, `-1`.
+
 ## Coalescing semantics
 
 The wake primitive is a **binary** semaphore: multiple `_signal`

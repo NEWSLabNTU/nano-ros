@@ -9,6 +9,13 @@
 //! 79 / 480 / 979 ms later. The zenoh sibling of this test is
 //! `wake_latency.rs`; that backend wakes the executor itself.
 //!
+//! phase-521 W4 (RFC-0113 D3/D4) — XRCE over UDP now reports its socket as
+//! WAITABLE readiness, and the executor parks on that socket plus its own wake
+//! object, so the trigger ends the park directly: measured ~90 us on a Linux
+//! host, where the 10 ms slice gave ~5 ms for this trigger's phase. The bound
+//! below is set under what the slice can deliver, so a session that falls back
+//! to the sliced receive-blocking wait fails it.
+//!
 //! Run: `just check required-features-tests` (needs the XRCE Agent).
 
 #![cfg(feature = "xrce-wake-test")]
@@ -21,14 +28,15 @@ use std::{
 use nros_node::executor::*;
 use nros_tests::fixtures::{XrceAgent, require_xrce_agent};
 
-/// The executor's slice (`POLL_ONLY_WAKE_SLICE_MS`) plus scheduler slack.
-const DISPATCH_BOUND: Duration = Duration::from_millis(10 + 40);
+/// The OS wake latency plus scheduler slack — under the ~5 ms the old 10 ms
+/// slice (`POLL_ONLY_WAKE_SLICE_MS`) gives a trigger 25 ms into the spin.
+const DISPATCH_BOUND: Duration = Duration::from_millis(3);
 /// Far beyond the bound, so a trigger that waits the spin out is unmistakable.
 const SPIN_BUDGET: Duration = Duration::from_millis(1000);
 const TRIGGER_DELAY: Duration = Duration::from_millis(25);
 
 #[test]
-fn guard_trigger_wakes_a_poll_only_executor_within_a_slice() {
+fn guard_trigger_wakes_an_xrce_executor_parked_on_its_socket() {
     require_xrce_agent();
     let agent = XrceAgent::start_unique().expect("start XRCE agent");
 
@@ -77,7 +85,8 @@ fn guard_trigger_wakes_a_poll_only_executor_within_a_slice() {
     assert!(
         latency <= DISPATCH_BOUND,
         "trigger to dispatch took {latency:?} (bound {DISPATCH_BOUND:?}) — the \
-         executor waited out its {SPIN_BUDGET:?} budget inside the backend's recv"
+         executor waited inside the backend's recv (sliced or whole) instead of \
+         parking on the session's socket"
     );
     println!("guard on XRCE dispatched {latency:?} after the trigger");
 }

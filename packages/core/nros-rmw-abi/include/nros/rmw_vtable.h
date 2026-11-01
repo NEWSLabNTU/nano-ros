@@ -1559,7 +1559,41 @@ typedef struct nros_rmw_vtable_t {
         rmw_mut_byte_span_t *reply, int64_t *seq_out, bool *taken,
         rmw_service_info_t *service_info);
 
+    /** phase-521 W3 (RFC-0113 D4) — how this session reports an arrival.
+     *
+     *  Optional, appended. The executor's park ends on exactly two things:
+     *  the tier's deadline, or readiness. This slot says which form of
+     *  readiness the session has, so the park can be ended by data rather
+     *  than the executor blocking inside the transport's own receive:
+     *
+     *  - `NROS_RMW_READINESS_NOTIFY`: the backend calls the callback
+     *    `set_wake_callback` installed when data arrives. `*out_handle` is
+     *    not written.
+     *  - `NROS_RMW_READINESS_WAITABLE`: the backend has an OS handle that
+     *    becomes readable when data arrives — a file descriptor on POSIX and
+     *    NuttX — written to `*out_handle`. The executor multiplexes it with
+     *    its own wake object (`nros_platform_wake_park_handles_us`) and
+     *    drives the session non-blockingly after the park. The handle stays
+     *    valid until the session closes.
+     *  - `NROS_RMW_READINESS_NONE`: neither. RFC-0113 D5 refuses such a
+     *    combination once phase-521 W6 lands; until then the executor
+     *    blocks inside `drive_io`.
+     *
+     *  `*out_kind` and `*out_handle` are written only on `NROS_RMW_RET_OK`.
+     *
+     *  NULL slot: the session is `NROS_RMW_READINESS_NOTIFY` when
+     *  `set_wake_callback` is non-NULL and `NROS_RMW_READINESS_NONE`
+     *  otherwise — what the runtime inferred before this slot existed, so
+     *  a backend that delivers a wake callback needs no change. */
+    rmw_ret_t (*readiness_source)(const rmw_session_t *session,
+        uint8_t *out_kind, int32_t *out_handle);
+
 } nros_rmw_vtable_t;
+
+/** phase-521 W3 (RFC-0113 D4) — values of `readiness_source`'s `*out_kind`. */
+#define NROS_RMW_READINESS_NONE     0u
+#define NROS_RMW_READINESS_NOTIFY   1u
+#define NROS_RMW_READINESS_WAITABLE 2u
 
 /**
  * Session mode for `create_session`'s @p mode parameter (issue 0331).

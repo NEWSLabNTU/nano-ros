@@ -274,6 +274,15 @@ unsafe extern "C" {
     pub fn nros_platform_wake_park_granularity_us() -> u64;
 }
 unsafe extern "C" {
+    #[doc = " phase-521 W3 (RFC-0113 D3) — park on the wake object AND on OS handles.\n\n  The same park as `nros_platform_wake_park_until_us`, ended also when any\n  of the `n` handles in `handles` becomes readable. A handle is what an RMW\n  session's `readiness_source` reported as `NROS_RMW_READINESS_WAITABLE`: a\n  file descriptor on POSIX and NuttX. The park does not read the handles; the\n  executor drives the session non-blockingly after it returns.\n\n  `w` MUST be the executor's own wake object, as for the park above.\n\n  Returns 0 when signalled or a handle is readable, 1 when the deadline\n  expired, and -1 when this port cannot wait on OS handles. Every port\n  defines it: one with no such handles returns -1, and the executor then\n  keeps the wait it had."]
+    pub fn nros_platform_wake_park_handles_us(
+        w: *mut core::ffi::c_void,
+        handles: *const i32,
+        n: usize,
+        deadline_us: u64,
+    ) -> i8;
+}
+unsafe extern "C" {
     #[doc = " Opaque-storage sizing. Both helpers are pure functions (no global\n  state) and may be called before `nros_platform_wake_init`."]
     pub fn nros_platform_wake_storage_size() -> usize;
 }
@@ -416,6 +425,10 @@ unsafe extern "C" {
 unsafe extern "C" {
     #[doc = " Set the recv timeout in milliseconds; `0` means block indefinitely."]
     pub fn nros_platform_udp_set_recv_timeout(sock: *const core::ffi::c_void, timeout_ms: u32);
+}
+unsafe extern "C" {
+    #[doc = " phase-521 W4 (RFC-0113 D4) — the OS handle that becomes readable when a\n  datagram arrives on `sock`: its file descriptor on POSIX and NuttX. An RMW\n  session reports it as `NROS_RMW_READINESS_WAITABLE`, and the executor parks\n  on it (`nros_platform_wake_park_handles_us`) instead of blocking in\n  `read`. Returns -1 where the stack has no such handle (lwIP, NetX, a\n  bare-metal stack); those report readiness as a Notify instead."]
+    pub fn nros_platform_udp_readiness_handle(sock: *const core::ffi::c_void) -> i32;
 }
 unsafe extern "C" {
     pub fn nros_platform_udp_mcast_open(

@@ -767,6 +767,12 @@ struct xrce_session_state {
      * thread ever unlocks a mutex inside freed memory. */
     uint64_t api_lock[(NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE + 7u) / 8u];
     bool api_lock_ready;
+    /* phase-521 W4 (RFC-0113 D4) — the OS handle that becomes readable when
+     * the Agent sends something: the POSIX serial fd, or the UDP socket's fd
+     * where the platform's net stack has one. -1 otherwise (a board's custom
+     * transport, lwIP, NetX), and the session reports no readiness form. Set
+     * once at open, read by `xrce_readiness_source`. */
+    int32_t readiness_handle;
     unsigned lock_depth;
     bool free_pending;
 
@@ -1028,6 +1034,8 @@ rmw_ret_t xrce_subscription_event_init(const rmw_subscription_t* subscription,
 rmw_ret_t xrce_publisher_event_init(const rmw_publisher_t* publisher, rmw_event_type_t kind,
                                     uint32_t deadline_ms, rmw_status_event_callback_t cb,
                                     void* user_context);
+rmw_ret_t xrce_readiness_source(const rmw_session_t* session, uint8_t* out_kind,
+                                int32_t* out_handle);
 rmw_ret_t xrce_next_deadline_ms(const rmw_session_t* session, uint32_t* out_ms,
                                 bool* has_deadline);
 bool xrce_event_type_is_supported(rmw_event_type_t event_type);
