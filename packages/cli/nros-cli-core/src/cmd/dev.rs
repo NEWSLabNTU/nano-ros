@@ -248,6 +248,18 @@ pub const ALIASES: &[(&str, &str)] = &[
     ("metadata", "dev metadata"),
 ];
 
+/// [`ALIASES`] as JSON, for `nros help --aliases --json`: one object per
+/// old spelling, `{"old", "new", "tier"}`. `tier` is `"dev"` for a silent
+/// alias (RFC-0117 D5). `check-cli-old-spellings` reads this, so the gate
+/// never carries a list of its own.
+pub fn aliases_json() -> String {
+    let rows: Vec<_> = ALIASES
+        .iter()
+        .map(|(old, new)| serde_json::json!({ "old": old, "new": new, "tier": "dev" }))
+        .collect();
+    serde_json::to_string_pretty(&rows).expect("a list of string objects serialises")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -398,5 +410,16 @@ mod tests {
             find(&root, "dev").is_hide_set(),
             "`nros dev` must be hidden"
         );
+    }
+
+    #[test]
+    fn aliases_json_lists_every_row() {
+        let rows: Vec<serde_json::Value> = serde_json::from_str(&aliases_json()).unwrap();
+        assert_eq!(rows.len(), ALIASES.len());
+        for ((old, new), row) in ALIASES.iter().zip(&rows) {
+            assert_eq!(row["old"], *old);
+            assert_eq!(row["new"], *new);
+            assert_eq!(row["tier"], "dev");
+        }
     }
 }
