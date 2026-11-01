@@ -336,7 +336,11 @@ pub fn compose(
         if sub_small > 0 {
             p.subscriber_buffer_size = Some(sub_small);
         }
-        p.max_large_subscribers = Some(sub_large_count as usize);
+        // Issue 2201 -- on the closure basis the large COUNT is known only when
+        // it is zero: the closure names large TYPES, and how many subscriptions
+        // receive them is a fact about entities this image did not declare.
+        let count_known = join.basis != "closure" || sub_large_count == 0;
+        p.max_large_subscribers = count_known.then_some(sub_large_count as usize);
         p.large_types = sub_large_types;
         if sub_large_count > 0 {
             p.subscriber_large_size = Some(sub_large_max);
@@ -670,10 +674,15 @@ fn write_output(
             "# Received types over the split: {}\n",
             p.large_types.join(";")
         ));
-        c.push_str(&format!(
-            "set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS {})\n",
-            p.max_large_subscribers.unwrap_or(0)
-        ));
+        if let Some(v) = p.max_large_subscribers {
+            c.push_str(&format!("set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS {v})\n"));
+        } else {
+            c.push_str(
+                "# NROS_MAX_LARGE_SUBSCRIBERS is NOT derived (issue 2201): it counts\n\
+                 # SUBSCRIPTIONS, and the closure names only the types above. It keeps\n\
+                 # its configured value until this image declares what it receives.\n",
+            );
+        }
         if let Some(v) = p.subscriber_large_size {
             c.push_str(&format!("set(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE {v})\n"));
         } else {
@@ -912,6 +921,95 @@ mod tests {
         );
         assert!(
             out.contains("set(NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS \"std_msgs/msg/Int32=12\")\n"),
+            "{out}"
+        );
+    }
+
+    /// Issue 2201 -- an image that declares no entities gets the large SIZE
+    /// from its closure (an upper bound) and NOT the large COUNT: a type count
+    /// is not a count of subscriptions, so a talker that receives nothing was
+    /// charged one block per linked large type.
+    #[test]
+    fn the_closure_basis_does_not_derive_the_large_count() {
+        let tables = [BoundTable {
+            package: "sensor_msgs".into(),
+            rows: vec![
+                bounded("sensor_msgs/msg/JointState", 4204, 4208),
+                bounded("sensor_msgs/msg/LaserScan", 2500, 2600),
+                bounded("std_msgs/msg/Int32", 8, 12),
+            ],
+        }];
+        for entity in [
+            None,
+            Some(
+                "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 6)\nset(NROS_ENTITY_INVENTORY_STATUS \"refused\")\n",
+            ),
+        ] {
+            let out = compose(&tables, entity, 2048).unwrap();
+            assert!(
+                out.contains("set(NROS_MESSAGE_BOUNDS_BASIS \"closure\")\n"),
+                "{out}"
+            );
+            assert!(
+                !out.contains("set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS"),
+                "a type count was published as a subscription count:\n{out}"
+            );
+            assert!(
+                out.contains("NROS_MAX_LARGE_SUBSCRIBERS is NOT derived"),
+                "{out}"
+            );
+            assert!(
+                out.contains("set(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE 4208)\n"),
+                "{out}"
+            );
+            assert!(
+                out.contains("set(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE 12)\n"),
+                "{out}"
+            );
+        }
+    }
+
+    /// Issue 2201's one exception: a closure with NO type over the split
+    /// settles the count at zero whatever the image subscribes to.
+    #[test]
+    fn a_closure_with_nothing_large_still_answers_zero() {
+        let tables = [BoundTable {
+            package: "std_msgs".into(),
+            rows: vec![bounded("std_msgs/msg/Int32", 8, 12)],
+        }];
+        let out = compose(&tables, None, 2048).unwrap();
+        assert!(
+            out.contains("set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS 0)\n"),
+            "{out}"
+        );
+    }
+
+    /// The declared road is untouched: the count is the subscribing entities.
+    #[test]
+    fn the_subscribed_basis_counts_large_subscriptions() {
+        let tables = [BoundTable {
+            package: "sensor_msgs".into(),
+            rows: vec![
+                bounded("sensor_msgs/msg/JointState", 4204, 4208),
+                bounded("std_msgs/msg/Int32", 8, 12),
+            ],
+        }];
+        let entity = "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 6)\n\
+                      set(NROS_ENTITY_INVENTORY_STATUS \"derived\")\n\
+                      set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS \"resolved\")\n\
+                      set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS \"sensor_msgs/msg/JointState=3\")\n";
+        let out = compose(&tables, Some(entity), 2048).unwrap();
+        assert!(
+            out.contains("set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS 3)\n"),
+            "{out}"
+        );
+        let none = "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 6)\n\
+                    set(NROS_ENTITY_INVENTORY_STATUS \"derived\")\n\
+                    set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS \"resolved\")\n\
+                    set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS \"\")\n";
+        let out = compose(&tables, Some(none), 2048).unwrap();
+        assert!(
+            out.contains("set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS 0)\n"),
             "{out}"
         );
     }

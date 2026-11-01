@@ -25,7 +25,9 @@
 #   DERIVABLE HERE -- a question about sizes:
 #     NROS_SUBSCRIBER_BUFFER_SIZE     the small payload class
 #     NROS_SUBSCRIBER_LARGE_SIZE      the large payload class
-#     NROS_MAX_LARGE_SUBSCRIBERS      how many types exceed the small ceiling
+#     NROS_MAX_LARGE_SUBSCRIBERS      how many SUBSCRIPTIONS receive a type over the
+#                                     small ceiling -- needs the entity join below;
+#                                     on the closure alone only `0` (issue 2201)
 #     NROS_SUBSCRIPTION_BUFFER_SIZE   the take buffer for a caller with no type
 #
 #   NOT DERIVABLE HERE -- a question about entity COUNTS, which needs a second
@@ -110,6 +112,13 @@
 # would take those images from an over-approximate derived number back to the
 # hand-set ones this whole wave exists to replace, which is a regression, not a
 # safety property.
+#
+# Issue 2201 narrowed that for the large COUNT alone. The two SIZES over the
+# closure are genuine upper bounds; the count over the closure was a TYPE count
+# standing in for a SUBSCRIPTION count, which over-reserves a publish-only image
+# and under-reserves three subscriptions on one large type. It is published on
+# the closure basis only when it is 0 (no linked type over the split), and
+# otherwise left to the configured value.
 #
 # =============================================================================
 # An unbounded type is not silently dropped
@@ -361,11 +370,25 @@ macro(_nros_bounds_publish_payload_classes)
     # published: derived over every type in the linked closure. The label
     # and the status line are what stop that being mistaken for the joined
     # row.
+    #
+    # Issue 2201 -- but only the two SIZES have an answer there. The largest
+    # linked type bounds every sample the image could receive, so a size over
+    # the closure is an upper bound. The large COUNT is a count of subscribing
+    # ENTITIES, and a type count bounds that in neither direction: a talker
+    # that subscribes to nothing was charged one block per linked large type,
+    # and three subscriptions on one large type were given one. The single
+    # count the closure DOES settle is zero -- no linked type over the split
+    # means nothing this image could receive routes large. Any other closure
+    # leaves the count underived, so the knob keeps its configured value.
+    set(_sub_large_known TRUE)
     if(_basis STREQUAL "closure")
         set(_sub_small "${_small}")
         set(_sub_large_types "${_large_types}")
         set(_sub_large_max "${_large_max}")
         list(LENGTH _large_types _sub_large_count)
+        if(_sub_large_count GREATER 0)
+            set(_sub_large_known FALSE)
+        endif()
     endif()
 
     # Buffer 2, the backend's staging pools: two classes, split at the
@@ -386,8 +409,10 @@ macro(_nros_bounds_publish_payload_classes)
     # counts subscribing ENTITIES and not distinct types: two subscriptions
     # on one large type need two blocks, and a type count would under-reserve
     # by exactly the duplicates. On the `closure` basis there are no entities
-    # to count and it stays a type count, which is what it has always been.
-    _nros_bounds_publish(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS "${_sub_large_count}")
+    # to count, so it is published only when it is zero (issue 2201, above).
+    if(_sub_large_known)
+        _nros_bounds_publish(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS "${_sub_large_count}")
+    endif()
     _nros_bounds_publish(NROS_DERIVED_LARGE_TYPES "${_sub_large_types}")
     if(_sub_large_count GREATER 0)
         _nros_bounds_publish(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE "${_sub_large_max}")
@@ -715,6 +740,35 @@ function(nros_derive_message_bound_knobs)
                     "image RECEIVES is bounded. The take buffer keeps its "
                     "configured value (issue 0963).")
             endif()
+        elseif(_basis STREQUAL "closure" AND NOT _B_QUIET)
+            # Issue 2201 -- the remedy for THIS refusal is not the one the
+            # detail above names. Bounding every linked type is a codegen
+            # campaign; declaring what the image creates is one line, and it
+            # derives the payload classes over the subscribed set however open
+            # the closure is (issue 0963). A publish-only image then gets
+            # MAX_LARGE_SUBSCRIBERS = 0 instead of the crate default -- on a
+            # 520 KiB part that was 128 KiB of large-class pool for a talker.
+            # Not on the first configure of a clean build dir, whose entity
+            # fragment is still the placeholder (issue 0991): a declaring image
+            # reads as undeclared on that pass and would be told to declare.
+            nros_image_reports_backend_knob(zenoh _pc_reports)
+            if(_pc_reports AND EXISTS "${_B_ENTITY_INVENTORY}")
+                file(STRINGS "${_B_ENTITY_INVENTORY}" _pc_placeholder
+                    REGEX "no entity inventory composed yet")
+                if(_pc_placeholder)
+                    set(_pc_reports FALSE)
+                endif()
+            endif()
+            if(_pc_reports)
+                message(STATUS
+                    "nros: the payload classes (NROS_MAX_LARGE_SUBSCRIBERS, "
+                    "NROS_SUBSCRIBER_LARGE_SIZE, NROS_SUBSCRIBER_BUFFER_SIZE) "
+                    "keep their configured values because this image declares no "
+                    "entities. Declare them (`system.toml` `[[component]] "
+                    "entities`, or the bringup's launch contract) and they derive "
+                    "over what it RECEIVES despite the open closure -- 0 large "
+                    "blocks for an image that subscribes to nothing.")
+            endif()
         endif()
         _nros_message_bounds_write_output("${_B_OUTPUT_FILE}" "refused" "${_why}" "${_ceiling}")
         return()
@@ -774,9 +828,20 @@ function(nros_derive_message_bound_knobs)
                     "nros:   small payload class ${_sub_small} B -> "
                     "NROS_SUBSCRIBER_BUFFER_SIZE")
             endif()
-            message(STATUS
-                "nros:   ${_sub_large_count} over the ${_ceiling} B ceiling -> "
-                "NROS_MAX_LARGE_SUBSCRIBERS")
+            if(DEFINED NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
+                message(STATUS
+                    "nros:   ${_sub_large_count} over the ${_ceiling} B ceiling -> "
+                    "NROS_MAX_LARGE_SUBSCRIBERS")
+            else()
+                # Issue 2201 -- the closure names large TYPES, not how many
+                # subscriptions receive them.
+                message(STATUS
+                    "nros:   NROS_MAX_LARGE_SUBSCRIBERS not derived -- "
+                    "${_sub_large_count} linked type(s) are over the ${_ceiling} B "
+                    "ceiling and this image declares no entities, so how many "
+                    "subscriptions receive them is unknown; it keeps its "
+                    "configured value")
+            endif()
             if(_sub_large_count GREATER 0)
                 message(STATUS
                     "nros:   large payload class ${_sub_large_max} B -> "
@@ -1298,8 +1363,15 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
             endif()
             string(APPEND _c
                 "# Received types over the split: ${NROS_DERIVED_LARGE_TYPES}\n")
-            string(APPEND _c
-                "set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS ${NROS_DERIVED_MAX_LARGE_SUBSCRIBERS})\n")
+            if(DEFINED NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
+                string(APPEND _c
+                    "set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS ${NROS_DERIVED_MAX_LARGE_SUBSCRIBERS})\n")
+            else()
+                string(APPEND _c
+                    "# NROS_MAX_LARGE_SUBSCRIBERS is NOT derived (issue 2201): it counts\n"
+                    "# SUBSCRIPTIONS, and the closure names only the types above. It keeps\n"
+                    "# its configured value until this image declares what it receives.\n")
+            endif()
             if(DEFINED NROS_DERIVED_SUBSCRIBER_LARGE_SIZE)
                 string(APPEND _c
                     "set(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE ${NROS_DERIVED_SUBSCRIBER_LARGE_SIZE})\n")
