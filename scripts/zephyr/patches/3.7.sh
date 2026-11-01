@@ -45,6 +45,11 @@ bash ./scripts/zephyr/cortex-r-rust-patch.sh "$WORKSPACE"
 # board` applies to a reader's workspace, did not (issue 2177).
 echo "[zephyr setup] applying zephyr-lang-rust gpio patch (idempotent)..."
 bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$WORKSPACE"
+# Issue 2203 — bindgen must not see the C compiler's builtin include dir. 3.7
+# (CMSIS 5) never reaches GCC's arm_acle.h, so this is latent here; applied
+# on both lines so the include path bindgen sees does not differ by line.
+echo "[zephyr setup] applying zephyr-lang-rust bindgen include patch (idempotent)..."
+bash ./scripts/zephyr/zephyr-lang-rust-bindgen-include-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 168.1 cargo-features patch (idempotent)..."
 bash ./scripts/zephyr/cargo-features-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 97.4 native_sim IPPROTO_IP patch (idempotent)..."

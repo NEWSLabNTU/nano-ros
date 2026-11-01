@@ -191,3 +191,29 @@ patches:
       0x200128b8. ALIGN(4) keeps the section start and the input alignment.
       UPSTREAM: already merged on main (both commits); drop this entry when
       the pinned Zephyr line contains them.
+
+  # 7. zephyr-lang-rust: keep the C compiler's builtin include dir out of the
+  #    `-I` list handed to bindgen (issue 2203). Zephyr puts
+  #    `$<TARGET_PROPERTY:compiler,nostdinc_include>` (GCC's own header dir) on
+  #    `zephyr_interface`, and `rust_cargo_application()` forwards every entry
+  #    to bindgen, where it shadows clang's resource dir. CMSIS_6 includes
+  #    <arm_acle.h>, GCC's copy does not parse under clang, and zephyr-sys
+  #    panics "Unable to generate bindings" for every Rust Cortex-M image.
+  #
+  #    In-tree builds get the same change from
+  #    `scripts/zephyr/zephyr-lang-rust-bindgen-include-patch.sh`.
+  - path: zephyr-lang-rust-bindgen-include.patch
+    sha256sum: 1ce8a75952997ccbdd509dafa1c948946d040ee8122076664943e83ff46b600a
+    module: zephyr-lang-rust
+    author: nano-ros contributors
+    email: nano-ros@newslab.csie.ntu.edu.tw
+    date: 2026-11-01
+    upstreamable: true
+    comments: |
+      Issue 2203. Generic zephyr-lang-rust bug, not nano-ros-specific: the C
+      compiler's private headers reach a different compiler. Measured on
+      Zephyr 4.4.0 with Arm GNU 13.2 and Zephyr SDK 1.0.1 (GCC 14.3) under
+      libclang 14: 18 x "argument to '__builtin_arm_cdp' must be a constant
+      integer" for mps2/an385 and xiao_rp2350/rp2350a/m33 before, both images
+      link after. Zephyr 3.7's bindings are byte-identical with and without it.
+      UPSTREAMABLE: yes — human follow-up per docs/development/zephyr-upstreaming.md.

@@ -45,4 +45,10 @@ bash ./scripts/zephyr/tcm-section-align-patch-4.4.sh "$WORKSPACE"
 # to compile the `zephyr` crate on this line (4 x E0061). The same hunks apply.
 echo "[zephyr setup] 4.4 line: applying zephyr-lang-rust gpio patch (idempotent)..."
 bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$WORKSPACE"
+# Issue 2203 — CMSIS_6 includes <arm_acle.h>, and with the C compiler's builtin
+# include dir on bindgen's `-I` list clang parses GCC's copy and fails
+# (`argument to '__builtin_arm_cdp' must be a constant integer`), so no Rust
+# Cortex-M image builds on this line without it.
+echo "[zephyr setup] 4.4 line: applying zephyr-lang-rust bindgen include patch (idempotent)..."
+bash ./scripts/zephyr/zephyr-lang-rust-bindgen-include-patch.sh "$WORKSPACE"
 echo "[zephyr setup] 4.4 line: legacy 3.7 Rust/cyclone-submodule patches skipped (Tasks 4-9)"
