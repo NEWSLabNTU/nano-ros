@@ -110,6 +110,11 @@ function(_nros_image_knob_spelling _out _image _id _val)
 endfunction()
 
 function(nros_image_kconfig_hook)
+    # Issue 2189 -- what this hook rendered, for `nros_system_generate()`: it
+    # runs later, knows the bringup and the image its bake resolves, and is the
+    # only place that can see the two disagree. Empty until an image renders.
+    set_property(GLOBAL PROPERTY NROS_IMAGE_RENDERED_DIR "")
+    set_property(GLOBAL PROPERTY NROS_IMAGE_RENDERED_IMAGE "")
     if(DEFINED APPLICATION_BINARY_DIR)
         set(_bin "${APPLICATION_BINARY_DIR}")
     else()
@@ -326,6 +331,9 @@ function(nros_image_kconfig_hook)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR "nano-ros: ${_dir}/system.toml [image.${_image}]: ${_err}")
     endif()
+    get_filename_component(_rendered_dir "${_dir}" REALPATH)
+    set_property(GLOBAL PROPERTY NROS_IMAGE_RENDERED_DIR "${_rendered_dir}")
+    set_property(GLOBAL PROPERTY NROS_IMAGE_RENDERED_IMAGE "${_image}")
 
     # Issue 2200 -- the rows, read by one function the gate can call
     # (`check cmake-cli-rows`), since a configure that drops one says nothing.

@@ -28,11 +28,7 @@ NROS_REPO_ROOT="$repo_root"
 # shellcheck source=scripts/build/build-root.sh
 source "$repo_root/scripts/build/build-root.sh"
 
-if [ "$builder" = "cmake-configure" ]; then
-    stamp="$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES" "$id")/.inputsig"
-else
-    stamp="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" "$id")/.inputsig"
-fi
+stamp="$(nros_compile_check_stamp_dir "$builder" "$id")/.inputsig"
 
 expected="$(bash "$repo_root/scripts/build/compile-check-signature.sh" "$line" 2>/dev/null)" || {
     echo "$id (signature failed)"

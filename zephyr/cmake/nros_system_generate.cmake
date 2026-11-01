@@ -44,6 +44,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosRmwUserConfig.cmake")
 # Issue 1550 -- the fragment/snippet half of the domain agreement, shared with
 # the entry road. Functions only, include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosDomainAgreement.cmake")
+# Issue 2189 -- the image the bake resolves agrees with the one Kconfig rendered.
+include("${CMAKE_CURRENT_LIST_DIR}/nros_system_image_agreement.cmake")
 
 # Issue 1312 / 1263 — the checkout THIS file belongs to, for `--nano-ros-path`.
 # Resolved at FILE scope: inside the function `CMAKE_CURRENT_LIST_DIR` names the
@@ -284,11 +286,15 @@ function(nros_system_generate bringup_pkg)
         set(_dotconfig_args --dotconfig "${DOTCONFIG}")
     endif()
 
+    # Issue 2189 -- `--target` when the configure was told its image, else
+    # `--for-entry` (nros_system_image_agreement.cmake).
+    nros_system_image_args(_image_args "${bringup_pkg}" "${_bringup_dir}" "${_entry_dir}")
+
     execute_process(
         COMMAND "${_nros_cli}" codegen-system
                 --workspace "${_workspace}"
                 --bringup   "${_bringup_dir}"
-                --for-entry "${_entry_dir}"
+                ${_image_args}
                 --rmw       "${_rmw}"
                 --nano-ros-path "${_NROS_SYSTEM_GENERATE_REPO}"
                 --out       "${_out_parent}"
@@ -302,6 +308,9 @@ function(nros_system_generate bringup_pkg)
         message(FATAL_ERROR
             "nros codegen-system failed (rc=${_rc}):\n${_stdout}\n${_stderr}")
     endif()
+
+    # Issue 2189 -- the image this bake resolved must be the one Kconfig rendered.
+    nros_system_check_image_agreement("${_stdout}" "${bringup_pkg}" "${_bringup_dir}")
 
     # Issue 0154 — phase-258 retired the `system_main.c` C-baker (its
     # `nros_component_*_register` externs died with the post-257 install

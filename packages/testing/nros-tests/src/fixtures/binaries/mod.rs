@@ -5210,7 +5210,10 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // was a host probe in `test-all` — no `west`, no Zephyr workspace ⇒ the
     // suites vanished from the run.)
     crate::fixtures::lane::require_setup_scope_in_lane("zephyr", &format!("west fixture {id}"));
-    let fixture_dir = build_dir(crate::kind::WEST_FIXTURES, &[id]);
+    // Issue 2192 — per Zephyr line, as `nros_west_fixture_dir` writes it; keyed
+    // by id alone, a 4.4 run read (and passed on) a 3.7 bake.
+    let line = crate::zephyr::zephyr_line();
+    let fixture_dir = build_dir(crate::kind::WEST_FIXTURES, &[&line, id]);
 
     // #185 (the #182 guard, west edition) — the bake is a function of the
     // `nros` CLI (nros_system_generate / nros_generate_interfaces run it at

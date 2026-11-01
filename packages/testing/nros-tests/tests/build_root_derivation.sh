@@ -359,6 +359,21 @@ scenario '
     # west fixture family: <script>.sh (build) + require_west_fixture.
     check "west-fixtures out_root" \
         "$repo_root/build/west-fixtures" "$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
+    # Issue 2192 — a west fixture and its signature are keyed by Zephyr line
+    # (default 3.7, as nros_zephyr_ws_version says); the Rust twin is
+    # require_west_fixture over nros_tests::zephyr::zephyr_line.
+    check "west fixture dir, default line" \
+        "$repo_root/build/west-fixtures/3.7/zephyr_self_pkg_rust" \
+        "$(unset NROS_ZEPHYR_VERSION; nros_west_fixture_dir zephyr_self_pkg_rust)"
+    check "west fixture dir, 4.4 line" \
+        "$repo_root/build/west-fixtures/4.4/zephyr_self_pkg_rust" \
+        "$(NROS_ZEPHYR_VERSION=4.4 nros_west_fixture_dir zephyr_self_pkg_rust)"
+    check "west fixture stamp dir, 4.4 line" \
+        "$repo_root/build/compile-check-fixtures/zephyr-4.4/zephyr_self_pkg_rust" \
+        "$(NROS_ZEPHYR_VERSION=4.4 nros_compile_check_stamp_dir west-configure zephyr_self_pkg_rust)"
+    check "non-west stamp dir is unkeyed" \
+        "$repo_root/build/compile-check-fixtures/main_macro_form1" \
+        "$(NROS_ZEPHYR_VERSION=4.4 nros_compile_check_stamp_dir cargo-check main_macro_form1)"
     # cargo-fixtures: the shell half moved in step 1, the resolver half here.
     check "cargo-fixtures resolver dir" \
         "$repo_root/build/cargo-fixtures/baremetal" \
@@ -694,7 +709,8 @@ scenario '
     if nros_grep_q "pub fn zephyr_build_root() -> PathBuf" "$f" \
        && nros_grep_q "var_os(\"NROS_ZEPHYR_BUILD_ROOT\")" "$f" \
        && nros_grep_q "var(\"NROS_ZEPHYR_VERSION\")" "$f" \
-       && nros_grep_q "build_dir(crate::kind::ZEPHYR_WORKSPACE_BUILDS, &\[&version\])" "$f"; then
+       && nros_grep_q "build_dir(crate::kind::ZEPHYR_WORKSPACE_BUILDS, &\[&zephyr_line()\])" "$f" \
+       && nros_grep_q "unwrap_or_else(|| \"3.7\".to_string())" "$f"; then
         echo "  ok   the Rust twin reads the same override, version and kind"
     else
         echo "  FAIL nros_tests::zephyr::zephyr_build_root does not mirror zephyr-workspace.sh build-root"

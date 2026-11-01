@@ -31,3 +31,13 @@ name = "listener"
 board = "zephyr"
 launch = "system.launch.xml"
 entry = "zephyr_app"
+
+# Issue 2189 — the cyclone row's image. That row built Cyclone while the only
+# image claiming `zephyr_app` said zenoh, and nothing compared the two: the
+# module rendered no image for `zephyr_app/` (its image lives here), so Kconfig
+# took the conf's RMW and the bake was handed Kconfig's. It names no `entry`:
+# one entry is one image's program, and the row selects it with `-DNROS_IMAGE`.
+[image.zephyr_native_sim_cyclonedds]
+board = "zephyr"
+launch = "system.launch.xml"
+rmw = "cyclonedds"

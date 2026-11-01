@@ -113,9 +113,9 @@ west_fixture_stamp() {
 # what `compile-check-stale.sh` passes when it recomputes the expected value —
 # hashing a reconstructed 8-field prefix here would read as permanently stale.
 write_compile_check_inputsig() {
-    local record="$1" id="$2"
+    local record="$1" id="$2" builder="$3"
     local stamp_dir
-    stamp_dir="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" "$id")"
+    stamp_dir="$(nros_compile_check_stamp_dir "$builder" "$id")"
     mkdir -p "$stamp_dir"
     bash "$repo_root/scripts/build/compile-check-signature.sh" "$record" \
         > "$stamp_dir/.inputsig" 2>/dev/null || rm -f "$stamp_dir/.inputsig"
@@ -223,7 +223,8 @@ while IFS= read -r record; do
     fi
     total=$((total + 1))
     [ -d "$repo_root/$src" ] || { echo "west-fixtures: src missing: $src" >&2; continue; }
-    bld="$out_root/$id"
+    # Issue 2192 — per Zephyr line (`nros_west_fixture_dir`), not per id.
+    bld="$(nros_west_fixture_dir "$id")"
     echo "== west-fixture: $id ($builder, board=${board:-board.cmake}) =="
 
     # phase-353 W2 (issue 0509) — REUSE an up-to-date build instead of deleting
@@ -247,7 +248,7 @@ while IFS= read -r record; do
     # present, and this lane's own `.compile-ok` stamp. Any doubt falls through
     # to the unconditional wipe below, so the failure mode is the old cost, not
     # a stale fixture.
-    _wf_sig_dir="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" "$id")"
+    _wf_sig_dir="$(nros_compile_check_stamp_dir "$builder" "$id")"
     _wf_want="$(bash "$repo_root/scripts/build/compile-check-signature.sh" "$record" 2>/dev/null || true)"
     _wf_have="$(cat "$_wf_sig_dir/.inputsig" 2>/dev/null || true)"
     if [ -n "$_wf_want" ] && [ "$_wf_want" = "$_wf_have" ] &&
@@ -393,7 +394,15 @@ while IFS= read -r record; do
     # `--` always, even for a row with no `west_extra`: the module flag is not
     # optional and `west_board_import` carries no extra of its own.
     args+=(--)
-    [ -n "$extra" ] && args+=("$extra")
+    # Issue 2189 — `west_extra` is whitespace-separated cmake arguments, which
+    # is how `fixtures-manifest.py`'s RMW reader already tokenises it. Passed as
+    # ONE argument, a row could carry exactly one `-D`, and the image pointer
+    # (`-DNROS_IMAGE_SYSTEM_DIR` + `-DNROS_IMAGE`) is two. A `;` list value
+    # (`-DCONF_FILE=a.conf;b.conf`) holds no space and stays one argument.
+    if [ -n "$extra" ]; then
+        read -r -a _wf_extra <<< "$extra"
+        args+=("${_wf_extra[@]}")
+    fi
     args+=("$(nros_zephyr_module_cmake_arg "$repo_root")")
     # issues #87 + 0698 — native_sim builds with host gcc (no Zephyr SDK); every
     # other board, the FVP board_import entry (empty board → board.cmake)
@@ -424,7 +433,7 @@ while IFS= read -r record; do
     env "${tc_env[@]}" west "${args[@]}" || true
     if [ -e "$bld/$output" ]; then
         west_fixture_stamp "$bld" "$builder"
-        write_compile_check_inputsig "$record" "$id"
+        write_compile_check_inputsig "$record" "$id" "$builder"
         echo "   ok $bld ($output)"
         n=$((n + 1))
     else
