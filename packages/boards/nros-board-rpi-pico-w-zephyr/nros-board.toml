@@ -84,6 +84,14 @@ rust_components = ["clippy"]
 [board.run]
 emulator = "wokwi:pi-pico-w"
 
+# phase-524 W4a — the twin's wiring, read only by the Wokwi runner (the twin
+# probe track's scripts/probe/twin/wokwi.sh today, phase-528's runner package
+# later): UART0's TX and RX pins go to Wokwi's serial monitor, which
+# `wokwi-cli --interactive` carries on its stdio. The diagram part is
+# `board-pi-pico-w`.
+[board.run.wokwi]
+link = ["GP0", "GP1"]
+
 # phase-529 W1 (RFC-0118 D4) -- the silicon is flashed through Zephyr's own
 # runner (`west flash`; the integration-zephyr chapter's "Flash a real
 # board"). Which runner that is (the UF2 copy, or openocd over SWD) is

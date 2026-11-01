@@ -593,6 +593,12 @@ pub struct BoardRun {
     /// `[board.run.qemu]` — read only by the QEMU runner.
     #[serde(default)]
     pub qemu: Option<BoardRunQemu>,
+    /// `[board.run.renode]` — read only by the Renode runner (phase-524 W4a).
+    #[serde(default)]
+    pub renode: Option<BoardRunRenode>,
+    /// `[board.run.wokwi]` — read only by the Wokwi runner (phase-524 W4a).
+    #[serde(default)]
+    pub wokwi: Option<BoardRunWokwi>,
 }
 
 /// `[board.run.qemu]` — the QEMU invocation's board facts.
@@ -625,6 +631,33 @@ pub struct BoardRunQemu {
     /// The NIC model on QEMU's user (SLIRP) network: `-nic user,model=<m>`.
     #[serde(default)]
     pub nic_model: Option<String>,
+}
+
+/// `[board.run.renode]` — the Renode twin's wiring (phase-524 W4a), read only
+/// by the Renode runner: today the twin probe track's emulator script
+/// (`scripts/probe/twin/renode.sh`), later the Renode runner package that
+/// phase-528 adds.
+/// The platform is the emulator's machine word (`platforms/boards/<m>.repl`).
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BoardRunRenode {
+    /// The `sysbus` peripheral that carries the image's serial link
+    /// (`usart3`), wired to a host pty a router opens as `serial/`.
+    pub link: String,
+    /// The `sysbus` peripheral that carries the console (`usart6`), when it is
+    /// not the link; captured to a file.
+    #[serde(default)]
+    pub console: Option<String>,
+}
+
+/// `[board.run.wokwi]` — the Wokwi twin's wiring (phase-524 W4a), read only by
+/// the Wokwi runner. The diagram part is `board-<machine>`.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BoardRunWokwi {
+    /// The board's `[tx, rx]` pins wired to Wokwi's serial monitor: the UART
+    /// that carries the image's serial link (`["GP0", "GP1"]`).
+    pub link: Vec<String>,
 }
 
 pub use nros_orchestration_ir::target_exec::{
@@ -705,6 +738,30 @@ impl BoardRun {
                  `[board.run] emulator = \"qemu:<machine>\"`"
                     .into(),
             );
+        }
+        let kind = self.emulator_parts().map(|(k, _)| k);
+        if self.renode.is_some() && kind != Some("renode") {
+            return Some(
+                "`[board.run.renode]` is read only by the Renode runner, so it needs \
+                 `[board.run] emulator = \"renode:<platform>\"`"
+                    .into(),
+            );
+        }
+        if let Some(w) = &self.wokwi {
+            if kind != Some("wokwi") {
+                return Some(
+                    "`[board.run.wokwi]` is read only by the Wokwi runner, so it needs \
+                     `[board.run] emulator = \"wokwi:<board>\"`"
+                        .into(),
+                );
+            }
+            if w.link.len() != 2 {
+                return Some(format!(
+                    "`[board.run.wokwi] link` names the board's `[tx, rx]` pins wired to \
+                     the serial monitor, two of them (got {:?})",
+                    w.link
+                ));
+            }
         }
         None
     }
@@ -3406,6 +3463,22 @@ entry_kind = "zephyr-staticlib"
                 "serial console",
             ),
             ("[board.console]\nkind = \"jtag\"\n", "unknown variant"),
+            (
+                "[board.run]\nemulator = \"qemu:x\"\n[board.run.renode]\nlink = \"usart3\"\n",
+                "needs `[board.run] emulator = \"renode:",
+            ),
+            (
+                "[board.run]\nemulator = \"renode:x\"\n[board.run.wokwi]\nlink = [\"GP0\", \"GP1\"]\n",
+                "needs `[board.run] emulator = \"wokwi:",
+            ),
+            (
+                "[board.run]\nemulator = \"wokwi:x\"\n[board.run.wokwi]\nlink = [\"GP0\"]\n",
+                "two of them",
+            ),
+            (
+                "[board.run]\nemulator = \"renode:x\"\n[board.run.renode]\nlink = \"u\"\nuart = \"v\"\n",
+                "unknown field",
+            ),
         ] {
             let err = BoardFile::parse(&format!("{HEAD}{body}"))
                 .expect_err(body)

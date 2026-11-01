@@ -221,6 +221,10 @@ ALLOWLIST = {
         "hand-run debug script comparing a real ros2 peer's keyexprs",
     "scripts/dev/ros2-distrobox-setup.sh":
         "provisions the Ubuntu distrobox itself — it CREATES the ROS env",
+    "scripts/probe/twin/smoke.sh":
+        "twin probe track (phase-524 W4a): runs in the probe's ros:humble "
+        "container with NO checkout, so the nros-tests harness is not there; "
+        "it starts the router and echo the way a reader's terminal does",
     "scripts/probe/verify-zenoh-interop.sh":
         "book-flow probe: reproduces what the BOOK tells a user to type, so it "
         "must not go through the harness",

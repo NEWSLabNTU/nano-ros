@@ -85,10 +85,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-if [[ -z "${PROBE_EXTRACT_ONLY:-}" ]]; then
-    command -v docker >/dev/null || { echo "probe: docker required"; exit 1; }
-fi
-
 PROBE_TRACK="${PROBE_TRACK:-quickstart}"
 case "$PROBE_TRACK" in
     quickstart) default_image="ubuntu:24.04" ;;
@@ -176,6 +172,25 @@ PROBE_BOARD="${track_rest%%$'\t'*}"
 # stage the release asset and the SDK store, then again from that store in a
 # container with no network. See the installed-track `docker run` below.
 PROBE_OFFLINE="${track_rest#*$'\t'}"
+# phase-524 W4a — a TWIN track: a board with an emulator twin and no chapter of
+# its own yet. Its facts (board, west board, emulator, the twin's wiring, the
+# image's locator and knobs, the HAL module, what the emulator kind needs of
+# the host) come from probe-tracks.json: the registry row and the board
+# descriptor. Empty for every other track.
+if ! twin_env="$(python3 "$SCRIPT_DIR/probe-track.py" --twin "$PROBE_PLATFORM")"; then
+    exit 2
+fi
+NROS_TWIN_KIND="" NROS_TWIN_SECRET="" NROS_TWIN_PREREQS="" NROS_TWIN_MODULES=""
+NROS_TWIN_BOARD=""
+eval "$twin_env"
+# A secret the emulator kind cannot run without (Wokwi's token) is a
+# precondition: the track FAILS naming it, before any asset build or container
+# (CLAUDE.md: never a skip). Not under PROBE_EXTRACT_ONLY, which is the
+# per-push drift check and runs where no secret exists.
+if [[ -n "$NROS_TWIN_SECRET" && -z "${PROBE_EXTRACT_ONLY:-}" && -z "${!NROS_TWIN_SECRET:-}" ]]; then
+    echo "probe: [UNMET PRECONDITION] track $PROBE_PLATFORM boots $NROS_TWIN_BOARD in $NROS_TWIN_EMULATOR, which needs $NROS_TWIN_SECRET in the environment (in CI, the repository secret of that name; probe-platforms.yml passes it on schedule and dispatch)" >&2
+    exit 1
+fi
 if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
     echo "probe: PROBE_PLATFORM=$PROBE_PLATFORM is an installed-track chapter (user chapters have no checkout track — phase-517 W2)" >&2
     exit 2
@@ -211,6 +226,17 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         VERIFIER="verify-installed-platform.sh"
         [[ "$PROBE_PLATFORM" = workspace ]] && VERIFIER="verify-installed-workspace.sh"
         [[ "$PROBE_PLATFORM" = pinned* ]] && VERIFIER="verify-installed-pinned.sh"
+        # A twin track's chapter steps are setup only; the twin smoke run is
+        # the probe's (verify-installed-twin.sh), then the platform checks.
+        if [[ -n "$NROS_TWIN_KIND" ]]; then
+            VERIFIER="verify-installed-twin.sh"
+            TWIN_SUBST=(
+                --subst "nros setup zephyr --rmw zenoh:::nros setup $NROS_TWIN_BOARD --rmw zenoh"
+                --subst "mcuboot, net-tools]:::mcuboot, net-tools, ${NROS_TWIN_MODULES// /, }]"
+                --prelude "$SCRIPT_DIR/twin/$NROS_TWIN_KIND.sh"
+                --prelude "$SCRIPT_DIR/twin/smoke.sh"
+            )
+        fi
         # The QEMU chapters dial ROS's `rmw_zenohd` (RFC-0075: nano-ros ships
         # no router), so the reader they describe has a ROS 2 install. The
         # user container is that host: the release's own base plus ROS — the
@@ -262,6 +288,7 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     --prelude "$REPO_ROOT/scripts/lib/deadline.sh" \
     --prelude "$SCRIPT_DIR/probe-run.sh" \
     ${PROBE_VARIANT:+--variant "$PROBE_VARIANT"} \
+    ${TWIN_SUBST[@]+"${TWIN_SUBST[@]}"} \
     ${C_CD_SUBST[@]+"${C_CD_SUBST[@]}"} \
     "${CHAPTERS[@]/#/$REPO_ROOT/}"
 
@@ -305,7 +332,14 @@ if [[ "$VERIFIER" = verify-installed-pinned.sh ]]; then
     fi
     printf 'PROBE_EXPECT_FRONT=%s\n' "$probe_front" >>"$workdir/probe.sh"
 fi
+if [[ "$VERIFIER" = verify-installed-twin.sh ]]; then
+    # The twin facts, as the assignments probe-track.py printed them.
+    printf '%s\n' "$twin_env" >>"$workdir/probe.sh"
+fi
 cat "$SCRIPT_DIR/$VERIFIER" >>"$workdir/probe.sh"
+if [[ "$VERIFIER" = verify-installed-twin.sh ]]; then
+    cat "$SCRIPT_DIR/verify-installed-platform.sh" >>"$workdir/probe.sh"
+fi
 # Parse the assembled script before any container starts: a substitution or a
 # book block that unbalances a quote otherwise surfaces as a syntax error after
 # the install, tens of minutes in (measured — an apostrophe in a substitution).
@@ -316,6 +350,10 @@ if [[ -n "${PROBE_EXTRACT_ONLY:-}" ]]; then
     echo "probe: extract-only -> $PROBE_EXTRACT_ONLY"
     exit 0
 fi
+
+# Checked here, not at the top: a twin track's precondition (above) is
+# decided without a container, and a host with no docker should still hear it.
+command -v docker >/dev/null || { echo "probe: docker required"; exit 1; }
 
 rm_flag=(--rm)
 [[ "${PROBE_KEEP:-0}" = 1 ]] && rm_flag=()
@@ -364,6 +402,17 @@ install_shim="${install_shim/SHELLPKG/$shell_pkg}"
 # is that install minus the one package; adding it is host shape, like tzdata.
 if [[ "$PROBE_TRACK" = installed && "${PROBE_PLATFORM:-linux}" != linux ]]; then
     install_shim="$install_shim && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ros-humble-rmw-zenoh-cpp >/dev/null"
+fi
+# A twin track's emulator kind may need a host tool the index declares as a
+# `[prereq.*]` (Wokwi's pty bridge, socat): host shape, resolved from the
+# commit's index the sanctioned way, never typed here.
+if [[ -n "$NROS_TWIN_PREREQS" ]]; then
+    # shellcheck disable=SC2086  # the keys are one word each
+    if ! twin_pkgs="$(python3 "$REPO_ROOT/scripts/sdk/prereq-packages.py" --manager apt $NROS_TWIN_PREREQS)"; then
+        echo "probe: prereq-packages.py could not resolve $NROS_TWIN_PREREQS from nros-sdk-index.toml" >&2
+        exit 1
+    fi
+    install_shim="$install_shim && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $twin_pkgs >/dev/null"
 fi
 
 # The repository's GIT DIR, not its worktree. In a linked worktree (every agent
@@ -466,6 +515,11 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         -e NROS_INDEX_URL="file://$RELEASE_MOUNT/nros-sdk-index.toml"
         -w /root
     )
+    # The twin's secret, passed BY NAME: docker reads the value from this
+    # environment, so it never appears in an argv or a log.
+    if [[ -n "$NROS_TWIN_SECRET" ]]; then
+        user_args+=(-e "$NROS_TWIN_SECRET")
+    fi
     if [[ "$PROBE_OFFLINE" != 1 ]]; then
         docker run "${rm_flag[@]}" --name "nros-bootstrap-probe-$$" "${user_args[@]}" \
             "$PROBE_IMAGE" \

@@ -115,6 +115,19 @@ zephyr: (platform "zephyr")
 [group("main")]
 zephyr-rust: (platform "zephyr-rust")
 
+# phase-524 W4a — the Nucleo-F767ZI's Renode twin (no chapter yet, W4b): the
+# Zephyr chapter's setup blocks, then the board's serial C talker built through
+# the leaf road, booted in Renode, and heard by `ros2 topic echo` over a
+# serial-locator `rmw_zenohd`.
+[group("main")]
+renode-nucleo: (platform "renode-nucleo")
+
+# phase-524 W4a — the Pico W's Wokwi twin, the same run through `wokwi-cli`
+# and a socat pty. Needs WOKWI_CLI_TOKEN in the environment (it fails naming
+# it otherwise) and spends about 1.5 of the account's simulation minutes.
+[group("main")]
+wokwi-pico: (platform "wokwi-pico")
+
 # phase-517 W4: not a platform chapter, but it rides the same harness. One bare
 # `nros setup` for a Linux and a FreeRTOS image, then `nros build --all`.
 # book/src/getting-started/installation.md — "Provision a whole workspace".

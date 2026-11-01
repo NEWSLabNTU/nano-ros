@@ -204,7 +204,7 @@ Zephyr's own host tools come first — `west` and the build tools
 [Zephyr's Getting Started](https://docs.zephyrproject.org/3.7.0/develop/getting_started/index.html)
 lists; `nros setup` installs no system packages. On Debian/Ubuntu:
 
-```bash probe=30 variant=native-sim,native-sim-rust
+```bash probe=30 variant=native-sim,native-sim-rust,zephyr-twin
 sudo apt-get install -y --no-install-recommends git cmake ninja-build gperf \
     device-tree-compiler python3-pip python3-venv xz-utils file wget
 pip3 install --user west
@@ -213,7 +213,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Provision the board and RMW (the Zephyr SDK, zenoh-pico, mbedtls):
 
-```bash probe=32 variant=native-sim,native-sim-rust
+```bash probe=32 variant=native-sim,native-sim-rust,zephyr-twin
 nros setup zephyr --rmw zenoh
 export ZEPHYR_SDK_INSTALL_DIR="$(nros sdk-path zephyr-sdk --require)"
 ```
@@ -222,7 +222,7 @@ A west workspace that pins Zephyr 3.7 and fetches only the modules nano-ros's
 boards build with (`nros setup zephyr` lists them; `import: true` would fetch
 every vendor HAL, ~2.5 GB more):
 
-```bash probe=34 variant=native-sim,native-sim-rust
+```bash probe=34 variant=native-sim,native-sim-rust,zephyr-twin
 mkdir -p my_zephyr_ws/manifest && cd my_zephyr_ws
 cat > manifest/west.yml <<'WEST_YML'
 manifest:

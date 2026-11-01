@@ -156,6 +156,9 @@ def probe_reference_errors(probes: list[dict], rows: list[dict],
         if p.get("qemu_board") and p["qemu_board"] not in descriptor_names:
             errs.append(f"[[probe]] `{p['track']}` names qemu_board `{p['qemu_board']}`, "
                         "which no nros-board.toml descriptor names")
+        if p.get("twin") and p["twin"] not in descriptor_names:
+            errs.append(f"[[probe]] `{p['track']}` names twin `{p['twin']}`, which no "
+                        "nros-board.toml descriptor names")
     return errs
 
 
@@ -277,6 +280,8 @@ def self_test(gen) -> None:
           "a probe naming a missing row")
     fails(probe_reference_errors([{"track": "t", "qemu_board": "nope"}], [], {"b"}),
           "a probe naming a missing board")
+    fails(probe_reference_errors([{"track": "t", "twin": "nope"}], [], {"b"}),
+          "a twin track naming a missing board")
     chapter = "```bash probe=30 probe-run=10 variant=arm\nqemu-system-arm -kernel x\n```\n"
     fails(uncovered_qemu_blocks({"n.md": chapter}, []), "a QEMU run block with no track")
     assert not uncovered_qemu_blocks(

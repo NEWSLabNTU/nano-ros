@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-11-02). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W0 and W4 open.** Implements
+**Status (2026-11-02). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W4 split (maintainer, 2026-11-02): W4a done, the `renode-nucleo` and `wokwi-pico` probe tracks generated from the registry and listed by the weekly workflow (both rows stay manual: the gate needs a Runtime cell and two maintainers for weekly); W4b (chapters, `book_run`, `nros run`) waits on phase-528 W1/W3/W4 and phase-529. W0 and W4b open.** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -528,6 +528,108 @@ generator.
   driven by an `nros_runner_renode` package written against the runner
   contract (RFC-0119, phase-528), not by a special case in the CLI, and the
   bench run uses phase-529's verbs.
+- **Split (maintainer decision, 2026-11-02).** The run line above needs
+  `nros run` and runner packages (phase-528 W1/W3/W4) and the bench verbs
+  (phase-529), none of which exist yet (`nros run` is still a reserved verb).
+  So W4 is two items. **W4a** is everything that needs no `nros run`: the two
+  twin probe tracks, generated from the registry, and the cadence question.
+  **W4b** is the chapters, `book_run` on both rows, the issue 2169 rows, and
+  switching each track's emulator script to `nros run` with the runner
+  packages; it waits on phase-528 W1/W3/W4 and phase-529.
+
+**Result, W4a (2026-11-02). Done; cadence stays manual.** Two tracks,
+`renode-nucleo` and `wokwi-pico` (`renode-uno-r4` left with the UNO R4 in W1).
+
+- **The registry is the one input.** Each track is a `[[probe]]` row with a
+  new `twin` field (the board key) plus the image's `twin_locator` and
+  `twin_knobs` (the RAM knobs stay per image until issue 2194).
+  `scripts/gen-board-support.py` reads the board's descriptor for the rest and
+  writes it into `scripts/probe/probe-tracks.json`: the west board,
+  `[board.run] emulator`, the twin's wiring, and the HAL module, which is the
+  index's `[zephyr_module.*]` row whose `needed_by` names the board on its
+  Zephyr line. `probe-platforms.yml` lists both tracks through the existing
+  `--weekly` read, and `run-bootstrap-probe.sh` gets the facts from
+  `probe-track.py --twin <track>`. No board fact is typed outside the
+  registry and the descriptors. The generator refuses a twin whose board
+  states no wiring for its emulator kind (self-tested).
+- **The twin's wiring is a descriptor fact**, in a runner sub-table like
+  `[board.run.qemu]`: `[board.run.renode] link = "usart3"`, `console =
+  "usart6"` (the platform is the machine word, `platforms/boards/<m>.repl`),
+  and `[board.run.wokwi] link = ["GP0", "GP1"]` (the diagram part is
+  `board-<machine>`). Both refuse a mismatched emulator kind, and Wokwi
+  refuses a link that is not two pins (`board_descriptor.rs`, unit-tested).
+  Phase-528's runner packages read the same tables.
+- **What a track runs**, in a pristine `ros:humble` container on the installed
+  track: installation.md's install of the release asset, then the Zephyr
+  chapter's setup blocks, now also tagged `variant=zephyr-twin` (host
+  prerequisites, `nros setup <board> --rmw zenoh`, the west workspace with the
+  board's HAL added to the allowlist; both by substitution, so a chapter edit
+  fails extraction rather than probing something else). Then the probe's own
+  `scripts/probe/verify-installed-twin.sh`: `nros setup board <key>
+  --zephyr-workspace`, `nros new twin_app --platform zephyr --lang c`, the
+  track's `[image.twin]` appended, `west build -b <west_board>` through the
+  leaf road, then `scripts/probe/twin/smoke.sh`: the twin up with its link on
+  a host pty, ROS's `rmw_zenohd` listening on that pty as `serial/`, the twin
+  started, and `ros2 topic echo --no-daemon /chatter` asserted through
+  `nros_probe_run_expect` (the chapter run steps' helper) until it prints
+  `data: 'Hello World:`. Then the platform checks (no checkout appeared, `nros
+  board show` prints a status word).
+- **One script per emulator kind**, picked by `[board.run] emulator`:
+  `scripts/probe/twin/renode.sh` (Renode makes the pty itself, its `HOME` is
+  the run dir) and `scripts/probe/twin/wokwi.sh` (`wokwi-cli -q
+  --interactive` with `socat` making the pty, as in W1's rerun). Each defines
+  the same four functions (`nros_twin_up`, `_start`, `_down`, `_console`) and
+  nothing a runner would not; W4b replaces them with `nros run`. `socat` comes
+  from `[prereq.socat]` through `scripts/sdk/prereq-packages.py`, installed by
+  the harness's container shim, and only for the kind that needs it.
+- **The Wokwi token.** `probe-platforms.yml` passes
+  `secrets.WOKWI_CLI_TOKEN` to the step, and the harness passes it into the
+  `wokwi-pico` container by name (`-e WOKWI_CLI_TOKEN`), never as a value in
+  an argv. The workflow is schedule and dispatch only, so a fork pull request
+  never needs it. Without it the harness stops before any asset build:
+  `probe: [UNMET PRECONDITION] track wokwi-pico boots rpi-pico-w-zephyr in
+  wokwi:pi-pico-w, which needs WOKWI_CLI_TOKEN in the environment`, exit 1, a
+  failure and not a skip. The repository secret is the maintainer's to add.
+  Per-push drift is still checked without it: `check-book-probe-tracks`
+  extracts both tracks (`PROBE_EXTRACT_ONLY` skips the precondition).
+- **Measured, and what could not be.** The probe container cannot run from the
+  `ros2` distrobox: the box has no `docker` client, the host's
+  `/run/host/usr/bin/docker` needs a newer glibc (`GLIBC_ABI_DT_RELR`), and
+  the socket is `root:991`, a group the box user is not in. So neither track
+  has run in a pristine container yet; its first container run is the weekly
+  lane's. What ran instead, in the box against the checkout's `nros` and the
+  box's 3.7 workspace (`tmp/w4a/box-twin.sh`, untracked): the same
+  `nros_twin_build` and `nros_twin_hear` functions, with the HAL passed as an
+  extra module because that workspace's manifest predates W2.
+  - `renode-nucleo`: RAM 351,936 B (89.50 %), FLASH 523,760 B; Renode
+    console `Publishing: 'Hello World: 1'`, and `ros2 topic echo` printed
+    `data: 'Hello World: 2'`. PASS.
+  - `wokwi-pico`: RAM 254,888 B (94.29 %); `data: 'Hello World: 1'`. PASS on
+    the second session. The first failed in `ros2 topic echo` itself: without
+    `--no-daemon` it asked an older ros2 daemon in the box (issue 1333's
+    shape), so the echo now passes the flag. Two sessions, a few of the free
+    plan's 50 monthly minutes.
+  - Without the token, the harness fails with the precondition above.
+- **Cadence: manual, both rows.** The gate refuses `cadence = "weekly"`
+  twice over: an automated cadence needs a Runtime cell on the row's
+  `matrix_platform`, and these rows have none because no `PlatformId` runs
+  them; and "Verified" needs two maintainers where each row names one. So
+  `probe` and `weekly` are not set; the tracks link to their rows through the
+  `[[probe]]` `row` field, and the evidence pages list them. Moving to weekly
+  takes either a `PlatformId` for the twins (with the smoke cell) or a
+  predicate change that counts a weekly twin track as the asserting run, plus
+  a second maintainer, and a first green run in the weekly lane.
+- **No smoke cells.** A matrix cell is keyed on a `PlatformId`, and the twins
+  have none (a new one is about 67 references, the reason phase-385 deferred
+  the MPS3 cell). Borrowing `ZephyrQemuCortexM` would claim a run the cell
+  does not make, so no cell was added. The track is the twin's smoke run.
+- **W4b needs:** `nros run` with `nros_runner_renode` and a Wokwi runner
+  (phase-528 W1/W3/W4) reading `[board.run.renode]` / `[board.run.wokwi]`;
+  the two chapters in RFC-0116 D5's shape with `book_run`, replacing the
+  `zephyr-twin` reuse of the native_sim setup blocks and the probe-owned
+  build and run; the issue 2169 rows; the bench verbs (phase-529); and the
+  heap measurement W3 left (both images' knobs are still per image, issue
+  2194).
 
 ### W5 — Hardware runs
 
