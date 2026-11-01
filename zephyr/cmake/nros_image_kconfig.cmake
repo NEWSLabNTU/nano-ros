@@ -81,6 +81,8 @@
 #     `find_package(Zephyr)` (`nros build`, `builder/west_app.rs`).
 
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCli.cmake")
+# Issue 2200 -- reads the CLI's rows without passing them through a list.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCliRows.cmake")
 # phase-484 W5b -- the Kconfig knob ids and symbols (`NROS_KNOB_KCONFIG_*`).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobRegistry.cmake")
 # Issue 2086 -- `nros_leaf_census_take`.
@@ -325,40 +327,9 @@ function(nros_image_kconfig_hook)
         message(FATAL_ERROR "nano-ros: ${_dir}/system.toml [image.${_image}]: ${_err}")
     endif()
 
-    set(_kconfig "")
-    set(_envcfg "")
-    set(_keys "")
-    set(_image_conf "")
-    set(_board_snippets "")
-    set(_board_overlays "")
-    string(REPLACE "\n" ";" _lines "${_out}")
-    foreach(_l IN LISTS _lines)
-        if(_l MATCHES "^NROS_LEAF_KCONFIG=(.*)$")
-            set(_kconfig "${CMAKE_MATCH_1}")
-        elseif(_l MATCHES "^NROS_LEAF_IMAGE_ENV=(.*)$")
-            set(_envcfg "${CMAKE_MATCH_1}")
-        elseif(_l MATCHES "^NROS_LEAF_CONF=(.*)$")
-            set(_image_conf "${CMAKE_MATCH_1}")
-        elseif(_l MATCHES "^NROS_LEAF_SNIPPET=(.*)$")
-            set(_board_snippets "${CMAKE_MATCH_1}")
-        elseif(_l MATCHES "^NROS_LEAF_DTC_OVERLAY=(.*)$")
-            set(_board_overlays "${CMAKE_MATCH_1}")
-        elseif(_l MATCHES "^NROS_LEAF_BOARD_NOT_APPLIED=(.+)$")
-            message(STATUS
-                "nano-ros: image `${_image}` names a board package for "
-                "${CMAKE_MATCH_1}; this build is for ${_west_board}, so its "
-                "snippets and conf files are not applied")
-        elseif(_l MATCHES "^NROS_LEAF_ROS_ARGS_INPUT=(.*)$")
-            # Issue 2073 -- a parameter file whose text the image env bakes.
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
-        elseif(_l MATCHES "^NROS_LEAF_IMAGE_ENV_ROW=([A-Za-z0-9_]+)=(.*)$")
-            list(APPEND _keys "${CMAKE_MATCH_1}")
-            set(NROS_IMAGE_ENV_ROW_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}" CACHE INTERNAL
-                "phase-481 W1: [image.${_image}] env row with no Kconfig symbol")
-        endif()
-    endforeach()
-    set(NROS_IMAGE_ENV_ROWS "${_keys}" CACHE INTERNAL
-        "phase-481 W1: [image.<id>] env rows with no Kconfig symbol")
+    # Issue 2200 -- the rows, read by one function the gate can call
+    # (`check cmake-cli-rows`), since a configure that drops one says nothing.
+    _nros_image_kconfig_leaf_rows("${_out}" "${_dir}" "${_image}" "${_west_board}")
     if(NOT _kconfig STREQUAL "" AND EXISTS "${_kconfig}")
         _nros_image_kconfig_drop_cli_overridden("${_kconfig}")
     endif()
@@ -443,6 +414,76 @@ function(nros_image_kconfig_hook)
             "nano-ros: image `${_image}` env rows with no Kconfig symbol (${_keys}) -> "
             "every cargo command gets --config ${_envcfg} (issue 1712)")
     endif()
+endfunction()
+
+# _nros_image_kconfig_leaf_rows(<cli-stdout> <dir> <image> <west-board>)
+#
+# Issue 2200 -- read `nros ws leaf-system`'s rows into the hook's
+# `_kconfig`, `_envcfg`, `_image_conf`, `_board_snippets`, `_board_overlays` and
+# `_keys` (caller scope),
+# recording the image env rows in the cache as before. Split out of the hook
+# so `packages/testing/nros-tests/tests/cmake_cli_rows.sh` reads a real
+# board-plus-leaf answer through THIS code: the defect it pins (a board
+# `prj.conf` plus an `os_config` fragment, `;`-joined, cut to the board's
+# alone) produced a configure that succeeded and an image with no zenoh link.
+function(_nros_image_kconfig_leaf_rows _out _dir _image _west_board)
+    set(_kconfig "")
+    set(_envcfg "")
+    set(_keys "")
+    set(_image_conf "")
+    set(_board_snippets "")
+    set(_board_overlays "")
+    # Line by line, never through a cmake list: NROS_LEAF_CONF and
+    # NROS_LEAF_SNIPPET are `;`-joined, and the list spelling cut each at its
+    # first `;`, so a board `prj.conf` cost the leaf its `os_config`.
+    nros_cli_rows(_row "${_out}" REQUIRE "^NROS_LEAF_[A-Z0-9_]+="
+        CONTEXT "`nros ws leaf-system` for ${_dir}/system.toml [image.${_image}]")
+    foreach(_i IN LISTS _row_INDICES)
+        set(_l "${_row_${_i}}")
+        if(_l MATCHES "^NROS_LEAF_KCONFIG=(.*)$")
+            set(_kconfig "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_IMAGE_ENV=(.*)$")
+            set(_envcfg "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_CONF=(.*)$")
+            set(_image_conf "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_SNIPPET=(.*)$")
+            set(_board_snippets "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_DTC_OVERLAY=(.*)$")
+            set(_board_overlays "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_BOARD_NOT_APPLIED=(.+)$")
+            message(STATUS
+                "nano-ros: image `${_image}` names a board package for "
+                "${CMAKE_MATCH_1}; this build is for ${_west_board}, so its "
+                "snippets and conf files are not applied")
+        elseif(_l MATCHES "^NROS_LEAF_ROS_ARGS_INPUT=(.*)$")
+            # Issue 2073 -- a parameter file whose text the image env bakes.
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_IMAGE_ENV_ROW=([A-Za-z0-9_]+)=(.*)$")
+            list(APPEND _keys "${CMAKE_MATCH_1}")
+            set(NROS_IMAGE_ENV_ROW_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}" CACHE INTERNAL
+                "phase-481 W1: [image.${_image}] env row with no Kconfig symbol")
+        endif()
+    endforeach()
+    set(NROS_IMAGE_ENV_ROWS "${_keys}" CACHE INTERNAL
+        "phase-481 W1: [image.<id>] env rows with no Kconfig symbol")
+    # Issue 2200 -- every element must be a whole path to a file. The CLI
+    # checked each one exists; a fragment of a path here means the list was
+    # mangled on the way, and a mangled list is a conf file silently missing
+    # from the image.
+    foreach(_c IN LISTS _image_conf)
+        if(NOT IS_ABSOLUTE "${_c}" OR NOT EXISTS "${_c}" OR IS_DIRECTORY "${_c}")
+            message(FATAL_ERROR
+                "nano-ros: ${_dir}/system.toml [image.${_image}]: NROS_LEAF_CONF names "
+                "`${_c}`, which is not an existing conf file (full value: ${_image_conf}). "
+                "(issue 2200)")
+        endif()
+    endforeach()
+    set(_kconfig "${_kconfig}" PARENT_SCOPE)
+    set(_envcfg "${_envcfg}" PARENT_SCOPE)
+    set(_image_conf "${_image_conf}" PARENT_SCOPE)
+    set(_board_snippets "${_board_snippets}" PARENT_SCOPE)
+    set(_board_overlays "${_board_overlays}" PARENT_SCOPE)
+    set(_keys "${_keys}" PARENT_SCOPE)
 endfunction()
 
 # phase-484 W5b -- refuse a registry knob assigned in any of `files` (a project

@@ -65,6 +65,16 @@ cli-fmt:
         rustfmt "+{{NIGHTLY}}" --check --edition "$edition" "${files[@]}"
     done
 
+# Issue 2200 — a configure reads the `nros` CLI's stdout line by line, never as
+# a cmake list. `string(REPLACE "\n" ";")` split a `;`-joined row value
+# (`NROS_LEAF_CONF=<board>/prj.conf;<leaf>/x.conf`) and dropped the tail, so a
+# board package with its own `prj.conf` cost a Zephyr leaf its `os_config`
+# fragment -- an image with no zenoh link, configured without a word. Pins
+# `nros_cli_rows`, the hook's reader against the in-tree mps2-an385-zephyr +
+# cpp-port-minimal-publisher pair, and the sweep. Buildless (`cmake -P`).
+cmake-cli-rows:
+    @bash packages/testing/nros-tests/tests/cmake_cli_rows.sh
+
 # Issue 0726 — `find_program(VAR ...)` is a NO-OP when VAR is already defined,
 # so the "initialise then search" spelling never searches. All three sites in
 # this tree paired it with a quiet fallback (FetchContent clone, "no SDK

@@ -47,6 +47,7 @@
 include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 
 # phase-462 W6c -- `_nros_board_rx_cost_args`, the board's `[board.rx]`.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardRxCost.cmake")
@@ -360,9 +361,12 @@ function(nros_sizing_descriptor_from_model _out_var)
     endif()
     # Line 1 is the descriptor; each later `input <path>` line is a probe sidecar
     # the observation join read (issue 1594).
-    string(REPLACE "\n" ";" _lines "${_out}")
-    list(GET _lines 0 _out)
-    foreach(_line IN LISTS _lines)
+    # Issue 2200 -- never through a cmake list: a `;` or `[` in a path would
+    # split or merge the lines.
+    nros_cli_rows(_row "${_out}")
+    set(_out "${_row_0}")
+    foreach(_i IN LISTS _row_INDICES)
+        set(_line "${_row_${_i}}")
         if(_line MATCHES "^input (.+)$")
             set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
         endif()
@@ -575,9 +579,10 @@ function(_nros_sizing_descriptor_runtime _out_var)
             "nano-ros: no runtime sizing descriptor written -- ${_why}. Every consumer "
             "keeps its own default sizes (RFC-0100 D6).")
     elseif(NOT _out STREQUAL "")
-        string(REPLACE "\n" ";" _lines "${_out}")
-        list(GET _lines 0 _path)
-        foreach(_line IN LISTS _lines)
+        nros_cli_rows(_row "${_out}")  # issue 2200
+        set(_path "${_row_0}")
+        foreach(_i IN LISTS _row_INDICES)
+            set(_line "${_row_${_i}}")
             if(_line MATCHES "^input (.+)$")
                 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
             endif()

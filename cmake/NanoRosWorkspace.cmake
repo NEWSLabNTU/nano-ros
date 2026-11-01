@@ -61,6 +61,7 @@ set(_NROS_WORKSPACE_DIR "${CMAKE_CURRENT_LIST_DIR}"
 # `_nros_find_root` — the checkout-marker walk — lives in its own module so the
 # shared-cargo-dir key (issue 1904) can ask it without this file's side effects.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCheckoutRoot.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 # phase-484 W8 — refuse a retired `NANO_ROS_*` name the workspace set.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRetiredNames.cmake")
@@ -185,12 +186,12 @@ function(_nano_ros_order_subdirs ws_root subdirs out_var)
             "(${_rc}).\n${_err}")
     endif()
 
-    string(REPLACE "\n" ";" _lines "${_ordered}")
+    # Issue 2200 -- split line by line, never through a cmake list; a dir that
+    # a list cannot hold then fails the count check below instead of merging.
+    nros_cli_rows(_row "${_ordered}")
     set(_out "")
-    foreach(_l IN LISTS _lines)
-        if(NOT _l STREQUAL "")
-            list(APPEND _out "${_l}")
-        endif()
+    foreach(_i IN LISTS _row_INDICES)
+        list(APPEND _out "${_row_${_i}}")
     endforeach()
 
     list(LENGTH subdirs _want)

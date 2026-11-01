@@ -36,6 +36,8 @@
 # (NanoRosEntry.cmake). Ninja normalizes both spellings into one output of the
 # generated missing-inputs phony rule, and the pinned ninja 1.13 refuses that:
 # "system.toml is defined as an output multiple times".
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
+
 function(_nros_rmw_config_depend _path)
     file(REAL_PATH "${_path}" _real)
     get_property(_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
@@ -85,8 +87,9 @@ function(nros_rmw_user_config_file _out)
     endif()
     set(_file "")
     set(_fmt "")
-    string(REPLACE "\n" ";" _lines "${_o}")
-    foreach(_l IN LISTS _lines)
+    nros_cli_rows(_row "${_o}")  # issue 2200: never through a cmake list
+    foreach(_i IN LISTS _row_INDICES)
+        set(_l "${_row_${_i}}")
         if(_l MATCHES "^NROS_RMW_CONFIG_FILE=(.*)$")
             set(_file "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_RMW_CONFIG_FORMAT=(.*)$")

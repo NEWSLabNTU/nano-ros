@@ -21,6 +21,7 @@
 
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 
 # `deploy` attribute → the `NROS_PLATFORM` module axis. `linux` is the host
 # board (it maps to the `posix` platform axis value); the RTOS names map 1:1.
@@ -384,8 +385,13 @@ function(nano_ros_read_leaf_system)
     # A configure re-runs when the file changes, like package.xml does.
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_NRL_DIR}/system.toml")
 
-    string(REPLACE "\n" ";" _lines "${_out}")
-    foreach(_l IN LISTS _lines)
+    # Issue 2200 -- line by line, never through a cmake list: a `;`-joined row
+    # (NROS_LEAF_CONF, NROS_LEAF_SNIPPET) was cut at its first `;`, and a line
+    # with an unbalanced `[` swallowed the rows after it.
+    nros_cli_rows(_row "${_out}" REQUIRE "^NROS_LEAF_[A-Z0-9_]+="
+        CONTEXT "`nros ws leaf-system` for ${_NRL_DIR}/system.toml")
+    foreach(_i IN LISTS _row_INDICES)
+        set(_l "${_row_${_i}}")
         if(_l MATCHES "^NROS_LEAF_ROS_ARGS_INPUT=(.*)$")
             # Issue 2073 -- a parameter file the image bakes (its text rides
             # the image env as `NROS_CPP_BAKED_ROS_ARGS`): re-configure when it

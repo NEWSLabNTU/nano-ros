@@ -26,6 +26,7 @@
 # fallback.
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 
 set(_NROS_LOCATE_INDEX "${CMAKE_CURRENT_LIST_DIR}/../nros-sdk-index.toml"
     CACHE INTERNAL "the index nros_locate_var() asks about")
@@ -58,8 +59,9 @@ function(_nros_locate_load)
         message(STATUS "nano-ros: `nros locate` failed (${_rc}); sources fall back: ${_err}")
         return()
     endif()
-    string(REPLACE "\n" ";" _lines "${_out}")
-    foreach(_line IN LISTS _lines)
+    nros_cli_rows(_row "${_out}")  # issue 2200: never through a cmake list
+    foreach(_i IN LISTS _row_INDICES)
+        set(_line "${_row_${_i}}")
         if(_line MATCHES "^set\\(([A-Za-z0-9_]+) \"(.*)\"\\)$")
             set_property(GLOBAL PROPERTY "${CMAKE_MATCH_1}" "${CMAKE_MATCH_2}")
         endif()
