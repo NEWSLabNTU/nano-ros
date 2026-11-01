@@ -99,6 +99,13 @@ if [ -z "$repo_root" ]; then
 fi
 repo_root="${repo_root%/}"
 
+# The store root and a tool's pinned version, read the way every store consumer
+# reads them (issue 1546) — used to find `cargo-sweep` off PATH (issue 2191).
+# shellcheck source=scripts/lib/store-root.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/store-root.sh"
+# shellcheck source=scripts/lib/sdk-pin.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/sdk-pin.sh"
+
 CHECK=0
 DO_PROC=1
 DO_DISK=1
@@ -807,9 +814,23 @@ _sweep_disk() {
     [ -f "$repo_root/packages/cli/Cargo.toml" ] && cargo_roots+=("$repo_root/packages/cli")
     local sweep_days="${NROS_SWEEP_CARGO_DAYS:-21}"
     for root in "${cargo_roots[@]}"; do attributed_paths+=("$root/target"); done
+    # issue 2191 — `nros setup --tool cargo-sweep` installs it into the store,
+    # and this runs as its own workflow step with no `activate.sh`, so the
+    # store's bin dir is not on PATH here. Build the PINNED path the way every
+    # store consumer does (issue 1546): never list the store for a version.
+    local cargo_sweep=""
+    cargo_sweep="$(command -v cargo-sweep 2>/dev/null || true)"
+    if [ -z "$cargo_sweep" ]; then
+        local pin store
+        if pin="$(nros_sdk_pinned_version cargo-sweep "$repo_root/nros-sdk-index.toml")" \
+            && store="$(nros_store_root 2>/dev/null)" \
+            && [ -x "$store/sdk/cargo-sweep/$pin/bin/cargo-sweep" ]; then
+            cargo_sweep="$store/sdk/cargo-sweep/$pin/bin/cargo-sweep"
+        fi
+    fi
     if [ "${#cargo_roots[@]}" -eq 0 ]; then
         _say "  cargo-targets: no cargo manifest at the checkout root"
-    elif ! command -v cargo-sweep >/dev/null 2>&1; then
+    elif [ -z "$cargo_sweep" ]; then
         local total=0 root sz
         for root in "${cargo_roots[@]}"; do
             [ -d "$root/target" ] || continue
@@ -818,7 +839,7 @@ _sweep_disk() {
         done
         _hwm_put cargo-targets "$total"
         _say "  cargo-targets: $(_human "$total") in host target dir(s), NOT pruned —"
-        _say "      \`cargo-sweep\` is not installed. \`cargo binstall cargo-sweep\`, then"
+        _say "      \`cargo-sweep\` is not installed. \`nros setup --tool cargo-sweep\`, then"
         _say "      this area prunes artifacts older than ${sweep_days}d instead of reporting them."
     else
         local total=0 root sz
@@ -833,7 +854,7 @@ _sweep_disk() {
             [ -d "$root/target" ] || continue
             local out=""
             if [ "$CHECK" -eq 1 ]; then
-                out="$(cargo-sweep sweep --dry-run --time "$sweep_days" "$root" 2>&1 || true)"
+                out="$("$cargo_sweep" sweep --dry-run --time "$sweep_days" "$root" 2>&1 || true)"
                 # `Would clean: nothing from "…"` is cargo-sweep's NO-OP
                 # answer, not a finding. Matching on "Would clean" alone marks
                 # the sweep dirty on a tree with nothing to do, which under
@@ -845,7 +866,7 @@ _sweep_disk() {
                     *) _say "      $root: nothing older than ${sweep_days}d" ;;
                 esac
             else
-                out="$(cargo-sweep sweep --time "$sweep_days" "$root" 2>&1 || true)"
+                out="$("$cargo_sweep" sweep --time "$sweep_days" "$root" 2>&1 || true)"
                 case "$out" in
                     *"Cleaned nothing"*) _say "      $root: nothing older than ${sweep_days}d" ;;
                     *"Cleaned"*) dirty=1; _did "cargo-sweep --time $sweep_days $root: ${out##*Cleaned }" ;;

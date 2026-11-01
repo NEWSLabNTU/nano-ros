@@ -1,0 +1,1 @@
+`cargo-sweep` 0.8.0 is now an indexed tool: `nros setup --tool cargo-sweep` (also run by `just setup base`) installs it into the store, and the CI runner sweep finds it there and prunes the host cargo target dirs instead of only reporting them (issue 2191).

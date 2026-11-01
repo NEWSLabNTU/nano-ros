@@ -157,6 +157,55 @@ else
     ok "no Broken pipe noise from the eviction listing"
 fi
 
+# --- issue 2191: `cargo-sweep` from the store, not only from PATH -------------
+#
+# The sweep runs as its own workflow step with no `activate.sh`, so the store's
+# bin dir is not on PATH there. A `cargo-sweep` installed by `nros setup --tool
+# cargo-sweep` must still be found — at its PINNED path, never by listing the
+# store — or 127.5 GiB of host target dirs go on being reported and never pruned.
+w3="$work/w3"
+mkdir -p "$w3/target/debug" "$w3/home/sdk/cargo-sweep/9.9.9-test/bin" \
+         "$w3/home/sdk/cargo-sweep/0.0.1-sibling/bin"
+printf '[package]\nname = "x"\n' > "$w3/Cargo.toml"
+printf '[tool.cargo-sweep]\nversion = "9.9.9-test"\n' > "$w3/nros-sdk-index.toml"
+dd if=/dev/zero of="$w3/target/debug/libx.rlib" bs=1M count=1 status=none
+# The pinned stub records that it ran; a sibling checkout's pin beside it must
+# never be picked (issue 1546).
+for v in 9.9.9-test 0.0.1-sibling; do
+    printf '#!/bin/sh\necho "%s $*" >> "%s/ran"\necho "Would clean: 1 MiB from x"\n' \
+        "$v" "$w3" > "$w3/home/sdk/cargo-sweep/$v/bin/cargo-sweep"
+    chmod +x "$w3/home/sdk/cargo-sweep/$v/bin/cargo-sweep"
+done
+# A host that has its own `cargo-sweep` on PATH would answer for the store.
+nopath=""
+IFS=: read -ra _dirs <<<"$PATH"
+for d in "${_dirs[@]}"; do
+    [ -x "$d/cargo-sweep" ] || nopath="${nopath:+$nopath:}$d"
+done
+out3="$(PATH="$nopath" NROS_HOME="$w3/home" NROS_RUNNER_REPO_ROOT="$w3" \
+        NROS_BUILD_ROOT="$w3/build" NROS_SWEEP_STATE_DIR="$w3/state" \
+        "$sweep" --check --disk 2>&1)" || true
+if [ -f "$w3/ran" ] && nros_grep_q '^9.9.9-test sweep --dry-run --time 21 ' "$w3/ran" \
+   && ! nros_grep_q '^0.0.1-sibling' "$w3/ran"; then
+    ok "cargo-sweep off PATH is found at the store's pinned path, and only there"
+else
+    fail "the pinned store cargo-sweep was not the one run (ran: $(cat "$w3/ran" 2>/dev/null)):
+$out3"
+fi
+# Negative control: no store binary, so the area is reported, and the remedy
+# names the indexed install rather than an unpinned `cargo binstall`.
+rm -rf "$w3/home/sdk/cargo-sweep/9.9.9-test"
+out4="$(PATH="$nopath" NROS_HOME="$w3/home" NROS_RUNNER_REPO_ROOT="$w3" \
+        NROS_BUILD_ROOT="$w3/build" NROS_SWEEP_STATE_DIR="$w3/state" \
+        "$sweep" --check --disk 2>&1)" || true
+if nros_grep_q 'NOT pruned' <<<"$out4" \
+   && nros_grep_q 'nros setup --tool cargo-sweep' <<<"$out4"; then
+    ok "without it, the target dirs are reported and the remedy is \`nros setup --tool cargo-sweep\`"
+else
+    fail "missing cargo-sweep not reported with the indexed remedy:
+$out4"
+fi
+
 echo ""
 if [ "$failures" -eq 0 ]; then
     echo "runner-sweep-eviction-order: $checks check(s) passed"

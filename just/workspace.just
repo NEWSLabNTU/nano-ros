@@ -676,6 +676,10 @@ cargo-tools:
     # builds (upstream publishes no binaries), so they are also the slow two.
     nros setup --tool rustfilt           || echo "WARNING: rustfilt provisioning failed (non-fatal)"
     nros setup --tool cargo-show-asm     || echo "WARNING: cargo-show-asm provisioning failed (non-fatal)"
+    # Issue 2191: what `runner-sweep.sh` prunes the host target dirs with. Also
+    # a source build, and non-fatal for the same reason: without it the sweep
+    # reports those dirs instead of pruning them, which is what it did before.
+    nros setup --tool cargo-sweep        || echo "WARNING: cargo-sweep provisioning failed (non-fatal)"
     # Phase 218 — `nros` lives in-tree at `packages/cli/` (the merge
     # back into nano-ros). Build from source via `just setup-cli`
     # (idempotent: skips if the binary is fresh relative to

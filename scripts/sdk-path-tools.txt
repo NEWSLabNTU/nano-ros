@@ -81,3 +81,6 @@ cargo-nextest
 cargo-llvm-cov
 cargo-asm
 rustfilt
+# `cargo-sweep` — `runner-sweep.sh` and a contributor's `cargo sweep` find it
+# by bare name (issue 2191).
+cargo-sweep
