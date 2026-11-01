@@ -234,6 +234,7 @@ fn topic_on<'a>(node: &'a str, name: &'a str) -> TopicInfo<'a> {
         node_name: Some(node),
         namespace: "/",
         rx_buffer_hint: 0,
+        ingress_rate_mhz: 0,
         tx_express: false,
     }
 }

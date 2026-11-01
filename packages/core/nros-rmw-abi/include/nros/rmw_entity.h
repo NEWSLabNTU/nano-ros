@@ -823,7 +823,28 @@ typedef struct rmw_subscription_options_t {
      *  (a backend saying what it would rather the take buffer were) was
      *  deleted unread — see the note where it stood in `rmw_vtable.h`. */
     uint32_t rx_buffer_hint;
-    uint8_t  _reserved[4];    /**< Reserved; must be zero. */
+    /** Phase-519 W3 (RFC-0074, "On XRCE") — the rate this subscription
+     *  DECLARED it can take, `ingress.rate_hz`, in millihertz. `0` =
+     *  undeclared, which is what every caller that names nothing passes, so
+     *  the field took the old `_reserved[4]` bytes and the struct is the same
+     *  8 bytes it was.
+     *
+     *  - ADVISORY, like `rx_buffer_hint`. A backend MAY ignore it. zenoh does:
+     *    its enforcement point 1 is the router's downsampling rule, which a
+     *    deployment step installs, so the device has nothing to ask for.
+     *  - The XRCE backend asks the agent for
+     *    `max_bytes_per_second = rate_hz x rx_buffer_hint`, and only when that
+     *    is safe to ask for: `rate_hz >= 1` (the agent's token bucket holds
+     *    one second of the rate, and a sample bigger than the bucket stops the
+     *    stream for good), a non-zero `rx_buffer_hint`, and a product that
+     *    fits the wire field's `uint16_t`. Otherwise it asks for everything,
+     *    as before, and logs why.
+     *  - IT PACES, IT DOES NOT FILTER. The agent takes a sample and then waits
+     *    for tokens, so what arrives is up to one period (`1 / rate_hz`) old,
+     *    plus more for every sample the agent-side reader's history holds.
+     *    Measured in RFC-0074: median age 104 ms at depth 1 for a 10 Hz
+     *    declaration, against 0.2 ms unpaced. */
+    uint32_t ingress_rate_mhz;
 } rmw_subscription_options_t;
 
 /* ---- Standard QoS profile constants ---- */

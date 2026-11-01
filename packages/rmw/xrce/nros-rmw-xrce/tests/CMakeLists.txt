@@ -119,3 +119,11 @@ add_executable(nros_rmw_xrce_received_timestamp received_timestamp.c)
 target_link_libraries(nros_rmw_xrce_received_timestamp PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_received_timestamp COMMAND nros_rmw_xrce_received_timestamp)
+
+# Phase-519 W3 — a declared ingress rate becomes the agent's
+# `max_bytes_per_second`, or a reasoned "ask for everything". No agent: the
+# derivation is a pure function in `internal.h`.
+add_executable(nros_rmw_xrce_ingress_pace ingress_pace.c)
+target_link_libraries(nros_rmw_xrce_ingress_pace PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_ingress_pace COMMAND nros_rmw_xrce_ingress_pace)

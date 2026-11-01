@@ -77,6 +77,14 @@ void xrce_report_capacity_exhausted(const char* kind, const char* name, unsigned
                    kind, (name != NULL) ? name : "(unnamed)", knob, cap, knob);
 }
 
+void xrce_report_ingress_unpaced(const char* topic, uint32_t rate_mhz, uint32_t bound,
+                                 const char* why) {
+    xrce_log_error("subscription '%s' declared ingress rate_hz=%lu.%03lu but the agent is "
+                   "asked for every sample: %s (type bound %lu bytes). RFC-0074, phase-519 W3.",
+                   (topic != NULL) ? topic : "(unnamed)", (unsigned long)(rate_mhz / 1000u),
+                   (unsigned long)(rate_mhz % 1000u), why, (unsigned long)bound);
+}
+
 void xrce_report_session_alloc_failed(size_t bytes) {
     xrce_log_error("xrce_session_state_t (%lu bytes) did not fit. Its size is decided "
                    "at BUILD time by NROS_XRCE_MAX_SUBSCRIBERS x "

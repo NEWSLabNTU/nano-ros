@@ -3055,7 +3055,8 @@ impl Session for CffiSession {
         // saturates.
         let options = rmw_subscription_options_t {
             rx_buffer_hint: topic.rx_buffer_hint.min(u32::MAX as usize) as u32,
-            _reserved: [0u8; 4],
+            // phase-519 W3 — the declared ingress rate (RFC-0074).
+            ingress_rate_mhz: topic.ingress_rate_mhz,
         };
 
         let mut sub_state = CffiSubscription {

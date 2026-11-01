@@ -120,7 +120,6 @@ static rmw_ret_t xrce_subscription_create_locked(const rmw_node_t* node,
     rmw_session_t* session = node->session;
     (void)type_hash;
     (void)domain_id;
-    (void)options;
 
     if (session == NULL || out == NULL || topic_name == NULL || type_name == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -220,11 +219,20 @@ static rmw_ret_t xrce_subscription_create_locked(const rmw_node_t* node,
     slot->active = true;
     ss->datareader_oid = dr_oid;
 
-    /* Request continuous data delivery. */
+    /* Request continuous data delivery, paced by the agent when the
+     * subscription declared an ingress rate (phase-519 W3, RFC-0074). */
+    uint32_t ingress_rate_mhz = (options != NULL) ? options->ingress_rate_mhz : 0u;
+    uint32_t ingress_bound = (options != NULL) ? options->rx_buffer_hint : 0u;
+    const char* unpaced_why = NULL;
+    uint16_t paced_bps =
+        xrce_ingress_max_bytes_per_second(ingress_rate_mhz, ingress_bound, &unpaced_why);
+    if (unpaced_why != NULL) {
+        xrce_report_ingress_unpaced(topic_name, ingress_rate_mhz, ingress_bound, unpaced_why);
+    }
     uxrDeliveryControl delivery = {
         .max_samples = UXR_MAX_SAMPLES_UNLIMITED,
         .max_elapsed_time = UXR_MAX_ELAPSED_TIME_UNLIMITED,
-        .max_bytes_per_second = UXR_MAX_BYTES_PER_SECOND_UNLIMITED,
+        .max_bytes_per_second = paced_bps,
         .min_pace_period = 0,
     };
     (void)uxr_buffer_request_data(&st->session, st->output_reliable, dr_oid, st->input_reliable,
