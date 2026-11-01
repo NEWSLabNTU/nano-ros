@@ -39,6 +39,8 @@ impl Component for Listener {
 impl ExecutableNode for Listener {
     /// Number of messages seen on `/chatter` (state shared across ticks).
     type State = u32;
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
 
     fn init() -> Self::State {
         0

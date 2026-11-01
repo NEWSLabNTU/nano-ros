@@ -2283,7 +2283,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // talker's timer publishes); the workspace E2E observes
             // delivery from an external listener and stops the process.
             loop {
-                let _ = runtime.runtime.spin_once(10);
+                // phase-521 W6 (RFC-0113 D2) — the runtime's entry budget.
+                let budget = runtime.runtime.entry_spin_budget_ms();
+                let _ = runtime.runtime.spin_once(budget);
             }
         },
     };
@@ -2841,6 +2843,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             // `run_ticks`), matching the owned-spin boards, so
                             // registered timers fire and service/action poll
                             // components tick.
+                            // entry-spin-budget: exempt — RTIC: the dispatch
+                            // queue below is drained every turn, so this loop
+                            // keeps its slice (phase-521 W6).
                             let _ = ::nros::__macro_support::nros_platform::NodeDispatchRuntime::spin_once(
                                 &mut __nros_crt,
                                 10,
@@ -4899,9 +4904,12 @@ fn hosted_std_scaffold_ts(links_std: bool) -> proc_macro2::TokenStream {
                 if ::nros::__macro_support::nros_platform::termination::requested() {
                     return ::core::result::Result::Ok(());
                 }
+                // phase-521 W6 — the runtime's entry budget; a termination
+                // posts the executor's wake object, so a long park ends on it.
+                let budget = runtime.runtime.entry_spin_budget_ms();
                 runtime
                     .runtime
-                    .spin_once(10)
+                    .spin_once(budget)
                     .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::Spin)?;
             }
         }

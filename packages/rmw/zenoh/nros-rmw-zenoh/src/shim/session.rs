@@ -1700,6 +1700,30 @@ impl Session for ZenohSession {
         Ok(())
     }
 
+    /// phase-521 W6 (RFC-0113 D4) — which readiness this session really has.
+    ///
+    /// In THREAD mode zenoh-pico's own executor thread reads the link and the
+    /// arrival hook fires the wake callback installed above, so an arrival
+    /// ends the executor's park: `Notify`. In CALLER mode (ThreadX, bare
+    /// metal) nothing reads the link outside `zpico_spin_once`, and the wake
+    /// callback fires only from `drive_io`. A park would wait out its whole
+    /// bound with data on the link, so the session states `None` and the
+    /// executor keeps draining it from `drive_io` (W5 makes those reads
+    /// RX-notified inside the drive on bare metal).
+    ///
+    /// zenoh reaches the runtime through `RustBackendAdapter`, which always
+    /// fills the `readiness_source` slot from this method. The trait default
+    /// read `supports_wake_callback()`, which this session never overrode, so
+    /// every zenoh session used to state `None` whatever its mode.
+    fn readiness_source(&self) -> nros_rmw::ReadinessSource {
+        // SAFETY: no arguments; reads a build-time constant.
+        if unsafe { zpico_sys::zpico_drives_on_thread() } {
+            nros_rmw::ReadinessSource::Notify
+        } else {
+            nros_rmw::ReadinessSource::None
+        }
+    }
+
     /// RFC-0113 D6 — a deadline only when the executor has work at it.
     ///
     /// In RFC-0110 THREAD mode zenoh-pico's own executor thread runs the

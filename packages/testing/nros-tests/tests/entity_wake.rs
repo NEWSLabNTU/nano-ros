@@ -959,3 +959,73 @@ fn an_attributed_arrival_reaches_its_callback_without_waiting_out_the_park(
          park instead of the arrival's wake"
     );
 }
+
+/// phase-521 W7 (RFC-0113 D2) — the Linux witness: an idle zenoh entry wakes
+/// only for its deadlines, and wakes ON them.
+///
+/// The executor's entry budget for a THREAD-mode zenoh session with no ticking
+/// component is the idle budget (60 s), so a loop of entry spins over 3 s with
+/// one 1 s timer returns about once per timer expiry. With the old fixed 10 ms
+/// budget it returned ~300 times. Each timer dispatch lands within 50 ms of its
+/// deadline (Linux parks on a 1 us-granularity `sem_clockwait`; the margin is
+/// for scheduling under a loaded test host).
+#[rstest]
+fn an_idle_zenoh_entry_wakes_only_for_its_deadlines(zenohd_unique: ZenohRouter) {
+    use std::sync::{Arc, Mutex};
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let mut exec = open(
+        &locator,
+        "idle_entry",
+        u32::from(nros_tests::unique_ros_domain_id()),
+    );
+    assert_eq!(
+        exec.entry_spin_budget(),
+        nros_node::ENTRY_IDLE_BUDGET,
+        "an idle THREAD-mode zenoh executor with no ticking component must park past the slice"
+    );
+
+    let fired: Arc<Mutex<Vec<Instant>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = fired.clone();
+    let start = Instant::now();
+    exec.register_timer(nros_node::TimerDuration::from_millis(1000), move || {
+        sink.lock().unwrap().push(Instant::now());
+    })
+    .expect("register_timer");
+
+    const WINDOW: Duration = Duration::from_millis(3_500);
+    let mut spins = 0u32;
+    while start.elapsed() < WINDOW {
+        let budget = exec
+            .entry_spin_budget()
+            .min(WINDOW.saturating_sub(start.elapsed()));
+        exec.spin_once(budget);
+        spins += 1;
+    }
+    let fired = fired.lock().unwrap().clone();
+
+    assert!(
+        (3..=4).contains(&fired.len()),
+        "a 1 s timer fired {} times in 3.5 s",
+        fired.len()
+    );
+    // One wake per expiry, plus the loop's own last partial park; a 10 ms
+    // budget would have spun ~350 times.
+    assert!(
+        spins <= 8,
+        "an idle entry spun {spins} times in {WINDOW:?} with one 1 s timer: it is \
+         waking on a slice, not on its deadlines"
+    );
+    for (i, at) in fired.iter().enumerate() {
+        let due = Duration::from_millis(1000 * (i as u64 + 1));
+        let late = at.duration_since(start).saturating_sub(due);
+        let early = due.saturating_sub(at.duration_since(start));
+        assert!(
+            early < Duration::from_millis(5) && late < Duration::from_millis(50),
+            "timer expiry {i} dispatched at {:?}, due at {due:?}",
+            at.duration_since(start)
+        );
+    }
+    let at: Vec<Duration> = fired.iter().map(|t| t.duration_since(start)).collect();
+    eprintln!("idle zenoh entry: {spins} spins in {WINDOW:?}, timer dispatched at {at:?}");
+}

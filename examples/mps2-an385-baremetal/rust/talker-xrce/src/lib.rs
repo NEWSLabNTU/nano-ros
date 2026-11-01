@@ -58,6 +58,8 @@ impl ExecutableNode for XrceTalker {
     }
 
     fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
+    // phase-521 W6 — no tick work, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
 }
 
 nros::node!(XrceTalker);

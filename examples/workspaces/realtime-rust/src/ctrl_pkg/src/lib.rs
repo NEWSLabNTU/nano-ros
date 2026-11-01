@@ -41,6 +41,8 @@ impl Component for Control {
 impl ExecutableNode for Control {
     /// Monotonic tick counter — the next int32 to publish on `/ctrl`.
     type State = i32;
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
 
     fn init() -> Self::State {
         0

@@ -18,6 +18,7 @@ use super::arena::{
 };
 #[cfg(feature = "rmw-cffi")]
 use super::types::ExecutorConfig;
+use super::types::{ENTRY_IDLE_BUDGET, ENTRY_POLL_BUDGET};
 // phase-427 — unconditional: `spin_forever` takes `SpinOptions` and is not
 // `alloc`-gated (a bare-metal entry is exactly the caller that needs it).
 use super::{
@@ -1545,6 +1546,12 @@ pub struct ComponentSlot {
     /// `tick`; `NO_OWNING_LEVEL` on an executor whose levels do not own
     /// their slots, where the executor's own worker ticks every component.
     pub level: u8,
+    /// phase-521 W6 — whether the component's `tick` does any work. A tick
+    /// runs once per spin and is how a component polls a service reply or
+    /// completes an action goal, so an executor holding one keeps the spin
+    /// cadence ([`Executor::entry_spin_budget`]). `false` only for a
+    /// component that states it has no tick.
+    pub ticks: bool,
 }
 
 // SAFETY: two raw pointers + two extern "C" fn pointers. The `state` pointer's Send/Sync matches the owning
@@ -2794,6 +2801,11 @@ pub(crate) fn spin_quantization_span(
     spin_us: u64,
 ) -> Option<(u64, u64)> {
     if spin_us == 0 || period_us == 0 || period_us.is_multiple_of(spin_us) {
+        return None;
+    }
+    // phase-521 W6 — an entry's idle budget is no cadence: its park ends at
+    // each timer's own deadline, so nothing quantizes.
+    if spin_us >= ENTRY_IDLE_BUDGET.as_micros() as u64 {
         return None;
     }
     if !clock_source.remaining_is_wall_time() {
@@ -4584,6 +4596,61 @@ impl<'s> Executor<'s> {
         {
             true
         }
+    }
+
+    /// phase-521 W6 (RFC-0113 D2) — the budget an entry's spin loop passes to
+    /// [`spin_once`](Self::spin_once).
+    ///
+    /// An entry loop is `loop { spin_once(budget) }`, and each park already
+    /// ends at the next deadline the executor knows (a timer, a backend's next
+    /// internal event, a platform source) or on the wake object. So the
+    /// budget is not a cadence: it bounds only a park nothing else bounds.
+    /// Every entry used to pass 10 ms, which woke an idle tier 100 times a
+    /// second whatever its park could do.
+    ///
+    /// [`ENTRY_IDLE_BUDGET`] when every session can end the wait itself: it
+    /// states `Notify` with its wake callback live, or `Waitable` (whose
+    /// handle the port multiplexes with the wake object). A cancel and a
+    /// hosted termination post the same wake object. Otherwise
+    /// [`ENTRY_POLL_BUDGET`]: a session with no readiness form is drained by
+    /// blocking in its own receive, and that wait ends only on its own data,
+    /// so the slice is what bounds everything else (W6 retires that path).
+    /// An enrolled component whose `tick` does work (it polls a service reply
+    /// or completes action goals once per spin) also keeps the slice, so its
+    /// tick rate does not change under it.
+    pub fn entry_spin_budget(&self) -> core::time::Duration {
+        if self.every_session_ends_the_wait() && !self.has_ticking_component() {
+            ENTRY_IDLE_BUDGET
+        } else {
+            ENTRY_POLL_BUDGET
+        }
+    }
+
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    fn every_session_ends_the_wait(&self) -> bool {
+        use nros_rmw::{ReadinessSource, Session as _};
+        if self.node_wake.is_none() {
+            return false;
+        }
+        let notify_live = self.async_wake_live();
+        let primary = core::iter::once(self.session.readiness_source());
+        let extra = self.extra_sessions.iter().map(|e| e.readiness_source());
+        let mut waitable = 0usize;
+        for source in primary.chain(extra) {
+            match source {
+                ReadinessSource::Waitable(_) => waitable += 1,
+                ReadinessSource::Notify if notify_live => {}
+                _ => return false,
+            }
+        }
+        // More waitable sessions than one park multiplexes falls back to the
+        // receive-blocking wait (`waitable_handles`).
+        waitable <= MAX_WAITABLE_HANDLES
+    }
+
+    #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+    fn every_session_ends_the_wait(&self) -> bool {
+        false
     }
 
     /// phase-521 W3 (RFC-0113 D3) -- write the `ReadinessSource::Waitable`
@@ -6739,6 +6806,25 @@ impl<'s> Executor<'s> {
         tick: unsafe extern "C" fn(*mut core::ffi::c_void, *mut core::ffi::c_void),
         drop: unsafe extern "C" fn(*mut core::ffi::c_void),
     ) -> Result<(), ()> {
+        unsafe { self.enroll_component_ticking(state, tick, drop, true) }
+    }
+
+    /// phase-521 W6 — [`enroll_component`](Self::enroll_component), stating
+    /// whether the component's `tick` does any work. `ticks == false` lets
+    /// the entry park past the spin cadence (see
+    /// [`entry_spin_budget`](Self::entry_spin_budget)).
+    ///
+    /// # Safety
+    /// As [`enroll_component`](Self::enroll_component).
+    #[doc(hidden)]
+    #[allow(clippy::result_unit_err)]
+    pub unsafe fn enroll_component_ticking(
+        &mut self,
+        state: *mut core::ffi::c_void,
+        tick: unsafe extern "C" fn(*mut core::ffi::c_void, *mut core::ffi::c_void),
+        drop: unsafe extern "C" fn(*mut core::ffi::c_void),
+        ticks: bool,
+    ) -> Result<(), ()> {
         let level = self.worker.registering_level;
         self.component_slots
             .push(ComponentSlot {
@@ -6746,8 +6832,14 @@ impl<'s> Executor<'s> {
                 tick,
                 drop,
                 level,
+                ticks,
             })
             .map_err(|_| ())
+    }
+
+    /// phase-521 W6 — whether an enrolled component polls from its `tick`.
+    pub fn has_ticking_component(&self) -> bool {
+        self.component_slots.iter().any(|s| s.ticks)
     }
 
     /// Phase 258 (Track 2, 2a) — current enrolled component-slot count.
@@ -16003,6 +16095,15 @@ impl<'s> Executor<'s> {
         #[cfg(feature = "alloc")]
         self.wake_flag
             .store(true, core::sync::atomic::Ordering::SeqCst);
+        // phase-521 W6 (RFC-0113 D2) — and end a PARK, not only a backend
+        // wait. An entry parks until its next deadline rather than for a
+        // fixed slice, so a cancel that only raised the flag would wait out
+        // that whole park. `nros_platform_wake_signal` is the port's ISR- and
+        // signal-safe post, the one an arrival uses.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if let Some(wake) = self.node_wake.as_ref() {
+            wake.signal();
+        }
     }
 
     /// Has a [`cancel()`](Self::cancel) been REQUESTED?

@@ -83,6 +83,8 @@ impl Component for HighTierNode {
 }
 impl ExecutableNode for HighTierNode {
     type State = ();
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
     fn init() -> Self::State {}
     fn on_callback(_s: &mut (), cb: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         match cb.as_str() {
@@ -103,6 +105,8 @@ impl Component for LowTierNode {
 }
 impl ExecutableNode for LowTierNode {
     type State = ();
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
     fn init() -> Self::State {}
     fn on_callback(_s: &mut (), cb: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         match cb.as_str() {
@@ -215,6 +219,8 @@ impl Component for SharedGroupA {
 }
 impl ExecutableNode for SharedGroupA {
     type State = ();
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
     fn init() -> Self::State {}
     fn on_callback(_s: &mut (), cb: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         if cb.as_str() == "on_ctrl" {
@@ -232,6 +238,8 @@ impl Component for SharedGroupB {
 }
 impl ExecutableNode for SharedGroupB {
     type State = ();
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
     fn init() -> Self::State {}
     fn on_callback(_s: &mut (), cb: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         if cb.as_str() == "on_ctrl" {

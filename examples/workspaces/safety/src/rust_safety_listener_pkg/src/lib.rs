@@ -53,6 +53,8 @@ impl Component for SafeListener {
 
 impl ExecutableNode for SafeListener {
     type State = Counts;
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
 
     fn init() -> Self::State {
         Counts::default()

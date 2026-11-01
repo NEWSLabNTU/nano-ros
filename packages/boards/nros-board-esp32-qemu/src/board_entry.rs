@@ -238,7 +238,11 @@ impl Esp32QemuEntry {
                 // timer publishes /chatter). A `spin_once` error trips
                 // the no-exit failure spin.
                 loop {
-                    if let Err(err) = NodeDispatchRuntime::spin_once(&mut crt, 10) {
+                    let budget_ms = NodeDispatchRuntime::entry_spin_budget_ms(&crt);
+                    if let Err(err) = NodeDispatchRuntime::spin_once(
+                        &mut crt,
+                        budget_ms,
+                    ) {
                         esp_println::println!("");
                         esp_println::println!("spin_once error: {:?}", err);
                         Self::exit_failure();

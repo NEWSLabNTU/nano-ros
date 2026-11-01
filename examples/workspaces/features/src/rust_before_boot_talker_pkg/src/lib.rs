@@ -61,6 +61,8 @@ impl Component for BeforeBootTalker {
 impl ExecutableNode for BeforeBootTalker {
     /// Whether `prepare` had run when the node registered, and a tick count.
     type State = (bool, u32);
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
 
     fn init() -> Self::State {
         (PREPARED.load(Ordering::SeqCst), 0)

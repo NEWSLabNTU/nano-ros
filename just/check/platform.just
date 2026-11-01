@@ -704,6 +704,14 @@ no-direct-kernel-alloc:
 no-std-stdio:
     @python3 scripts/check-no-std-stdio.py
 
+# phase-521 W6 (RFC-0113 D2) — an entry loop asks the executor for its spin
+# budget instead of passing a literal. The literal was 10 ms in every entry, so
+# an idle tier woke 100 times a second whatever its park could do. Buildless;
+# `--self-test` runs the matcher over synthetic calls, single- and multi-line.
+[group("ci")]
+entry-spin-budget:
+    @python3 scripts/check-entry-spin-budget.py
+
 # Issue 1381 — the same rule one level up: no `std` path in Rust entry code an
 # nros producer EMITS.
 #

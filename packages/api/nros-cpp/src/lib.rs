@@ -2879,15 +2879,22 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_in(
     // process is signalled, so a plain `spin_once` loop suffices (no per-tick
     // yield — native is preemptively scheduled).
     let bound_ms: u32 = entry_spin_ms().min(u32::MAX as u64) as u32;
+    // phase-521 W6 — the executor's own answer, not a fixed 10 ms. A
+    // termination posts the executor's wake object (POSIX guard), so a long
+    // park still ends on SIGTERM.
     let ret = if bound_ms != 0 {
-        unsafe { nros_cpp_spin_for(sptr, bound_ms, 10) as i32 }
+        let budget_ms = unsafe { nros_cpp_entry_spin_budget_ms(sptr) };
+        unsafe { nros_cpp_spin_for(sptr, bound_ms, budget_ms) as i32 }
     } else {
         loop {
             // Issue 1732 — the guard's flag ends the unbounded run cleanly.
             if nros_platform::termination::requested() {
                 break 0;
             }
-            let last = unsafe { nros_cpp_spin_once(sptr, 10) };
+            // Asked each turn: a session's readiness can change once its
+            // transport connects.
+            let budget_ms = unsafe { nros_cpp_entry_spin_budget_ms(sptr) };
+            let last = unsafe { nros_cpp_spin_once(sptr, budget_ms) };
             if last != NROS_CPP_RET_OK {
                 break last as i32;
             }
@@ -4066,6 +4073,41 @@ pub unsafe extern "C" fn nros_cpp_spin_some(handle: *mut c_void, max_ms: u32) ->
     }
 }
 
+/// phase-521 W6 (RFC-0113 D2) — the budget an entry loop passes to
+/// [`nros_cpp_spin_once`], in milliseconds.
+///
+/// `Executor::entry_spin_budget`: up to a minute when every session of the
+/// executor can end its park (an arrival, a cancel and a hosted termination
+/// all post its wake object), else the 10 ms slice every entry used before.
+/// The park itself ends at the next deadline the executor knows, so this is
+/// not a cadence. Returns 10 for a handle that is not a context.
+///
+/// # Safety
+/// `handle` must be a valid handle returned by `nros_cpp_init()`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_entry_spin_budget_ms(handle: *mut c_void) -> i32 {
+    const SLICE_MS: i32 = nros_node::ENTRY_POLL_BUDGET.as_millis() as i32;
+    if handle.is_null() {
+        return SLICE_MS;
+    }
+    let ctx = handle as *mut CppContext;
+    // SAFETY: as `nros_cpp_spin_once`: only the tag is read until it proves
+    // the context, then the executor pointer written once at open.
+    if unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).tag)) } != CPP_CONTEXT_TAG {
+        return SLICE_MS;
+    }
+    let exec =
+        unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).executor) as *const *mut CppExecutor) };
+    if exec.is_null() {
+        return SLICE_MS;
+    }
+    // SAFETY: the context's live executor; a read of its session readiness
+    // and enrolled components, taken by the thread that spins it.
+    let budget = unsafe { &*exec }.entry_spin_budget();
+    budget.as_millis().min(i32::MAX as u128) as i32
+}
+
 /// Spin the executor for `duration_ms`, budgeted by WALL-CLOCK time.
 ///
 /// Issue 0329 — the single budgeted-spin entry point. `rclcpp::spin()` and
@@ -4094,7 +4136,14 @@ pub unsafe extern "C" fn nros_cpp_spin_for(
     let start_ns = nros_cpp_time_ns();
     let budget_ns = (duration_ms as u64) * 1_000_000;
     loop {
-        let last = unsafe { nros_cpp_spin_once(handle, poll_ms) };
+        // phase-521 W6 — never spin past the end of the budget: an entry now
+        // passes its idle budget (up to a minute) as `poll_ms`.
+        let left_ms = budget_ns
+            .saturating_sub(nros_cpp_time_ns() - start_ns)
+            .div_ceil(1_000_000)
+            .max(1);
+        let slice = (poll_ms.max(0) as u64).min(left_ms) as i32;
+        let last = unsafe { nros_cpp_spin_once(handle, slice) };
         if last != NROS_CPP_RET_OK {
             return last;
         }

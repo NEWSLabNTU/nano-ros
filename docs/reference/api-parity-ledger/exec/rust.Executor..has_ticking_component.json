@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::has_ticking_component",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-521 W6 -- whether an enrolled component polls from its `tick`; the predicate `entry_spin_budget` reads. No upstream counterpart: rclcpp components have no per-spin tick."
+}

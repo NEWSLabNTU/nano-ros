@@ -293,6 +293,8 @@ pub use executor::{
     ShutdownCallbackHandle, ShutdownPhase, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
     Trigger, baked_domain_from_c_abi,
 };
+// phase-521 W6 — the two entry spin budgets.
+pub use executor::{ENTRY_IDLE_BUDGET, ENTRY_POLL_BUDGET};
 // Issue 1971 -- the launch remap table (RFC-0107 step 1).
 pub use executor::{
     BadLaunchRemap, BadSessionProperties, LaunchRemap, MAX_SESSION_PROPERTIES, SessionProperty,

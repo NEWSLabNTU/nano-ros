@@ -89,6 +89,8 @@ extern int nros_cpp_init(const char* locator, uint8_t domain_id, const char* nod
                          const char* namespace_, void* storage);
 extern int nros_cpp_fini(void* storage);
 extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
+/* phase-521 W6 — the executor's entry budget (nros-cpp). */
+extern int32_t nros_cpp_entry_spin_budget_ms(void* handle);
 extern int nros_cpp_spin_for(void* handle, uint32_t duration_ms, int32_t poll_ms);
 
 /* phase-432 W3.1 — the exit condition, and the whole reason this file can
@@ -375,7 +377,8 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
              * spin, so it forwards to the single `nros_cpp_spin_for` CFFI
              * rather than being a hand-rolled budget loop. Same call the C++
              * sibling reaches through `nros::spin(bound_ms)`. */
-            out = (int32_t)nros_cpp_spin_for(storage, bound_ms, 10);
+            out = (int32_t)nros_cpp_spin_for(storage, bound_ms,
+                                             nros_cpp_entry_spin_budget_ms(storage));
         } else {
             /* Unbounded (production): run until the context stops being live,
              * yielding per tick exactly where the C++ sibling does.
@@ -393,7 +396,10 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
                 if (!nros_cpp_context_is_live(storage)) {
                     break;
                 }
-                int32_t last = (int32_t)nros_cpp_spin_once(storage, 10);
+                /* phase-521 W6 — park until the next deadline when every
+                 * source of work can end the park, else the 10 ms slice. */
+                int32_t last = (int32_t)nros_cpp_spin_once(
+                    storage, nros_cpp_entry_spin_budget_ms(storage));
                 if (last != 0) {
                     out = last;
                     break;

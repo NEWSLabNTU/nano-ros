@@ -2840,6 +2840,14 @@ pub trait ExecutableNode: Component {
     /// a component can complete action goals / publish feedback (via `ctx`) or do
     /// periodic work. Default: no-op (timer/sub/service-only components).
     fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
+
+    /// phase-521 W6 (RFC-0113 D2) — whether [`tick`](Self::tick) does any
+    /// work. A tick runs once per spin, so while any registered component
+    /// ticks the entry keeps a 10 ms spin cadence; once none does, the entry
+    /// parks until its next deadline or arrival. Defaults to `true`, the safe
+    /// reading for a component that overrides `tick`. A component with no
+    /// tick says `false`.
+    const HAS_TICK: bool = true;
 }
 
 /// Emit a no-op [`ExecutableNode`] impl for a declarative-only component
@@ -2857,6 +2865,7 @@ macro_rules! declarative_component {
     ($ty:ty) => {
         impl $crate::ExecutableNode for $ty {
             type State = ();
+            const HAS_TICK: bool = false;
             fn init() -> Self::State {}
             fn on_callback(
                 _state: &mut Self::State,

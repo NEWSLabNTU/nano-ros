@@ -62,8 +62,9 @@ template <typename T> class DrivenSharedFuture : public ::std::shared_future<T> 
         return settled();
     }
 
-    /// `std::shared_future::wait_for`, DRIVEN: spins the client's executor in
-    /// slices of at most 10 ms until the value arrives or the budget runs out.
+    /// `std::shared_future::wait_for`, DRIVEN: spins the client's executor
+    /// until the value arrives or the budget runs out, each spin parked until
+    /// an arrival, the budget's end or the executor's next deadline.
     template <typename Rep, typename Period>
     ::std::future_status wait_for(::std::chrono::duration<Rep, Period> timeout) const {
         if (!this->valid()) return ::std::future_status::timeout;
@@ -73,8 +74,17 @@ template <typename T> class DrivenSharedFuture : public ::std::shared_future<T> 
         if (ms <= 0 || exec == nullptr) return ::std::future_status::timeout;
         const uint64_t start_ns = nros_cpp_time_ns();
         const uint64_t budget_ns = static_cast<uint64_t>(ms) * 1000000ULL;
-        while (nros_cpp_time_ns() - start_ns < budget_ns) {
-            (void)nros_cpp_spin_once(exec, 10);
+        while (true) {
+            const uint64_t spent_ns = nros_cpp_time_ns() - start_ns;
+            if (spent_ns >= budget_ns) break;
+            // phase-521 W6 — park until the reply, the end of the budget or the
+            // executor's next deadline, never a fixed 10 ms slice.
+            const uint64_t left_ms = (budget_ns - spent_ns + 999999ULL) / 1000000ULL;
+            const int32_t entry_ms = nros_cpp_entry_spin_budget_ms(exec);
+            const int32_t slice = left_ms < static_cast<uint64_t>(entry_ms)
+                                      ? static_cast<int32_t>(left_ms)
+                                      : entry_ms;
+            (void)nros_cpp_spin_once(exec, slice);
             if (is_ready()) return ::std::future_status::ready;
         }
         return is_ready() ? ::std::future_status::ready : ::std::future_status::timeout;
@@ -88,7 +98,8 @@ template <typename T> class DrivenSharedFuture : public ::std::shared_future<T> 
     const T& get() const {
         while (this->valid() && !is_ready() && pump_ && pump_->ctx != nullptr &&
                pump_->executor != nullptr) {
-            (void)nros_cpp_spin_once(pump_->executor, 10);
+            (void)nros_cpp_spin_once(pump_->executor,
+                                     nros_cpp_entry_spin_budget_ms(pump_->executor));
         }
         return ::std::shared_future<T>::get();
     }

@@ -910,7 +910,10 @@ macro_rules! zephyr_component_main {
             // succeeded).
             ::log::info!("Waiting for messages");
             loop {
-                let _ = runtime.spin_once(::core::time::Duration::from_millis(10));
+                // phase-521 W6 (RFC-0113 D2) — park until the next deadline when
+                // every source of work can end the park, else the 10 ms slice.
+                let budget = runtime.entry_spin_budget();
+                let _ = runtime.spin_once(budget);
             }
         }
     };

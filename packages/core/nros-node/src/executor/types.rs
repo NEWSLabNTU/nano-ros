@@ -109,6 +109,21 @@ pub struct SpinPeriodResult {
 // SpinOptions
 // ============================================================================
 
+/// phase-521 W6 (RFC-0113 D2) — the longest park an entry asks for when
+/// every source of work can end it early: 60 s.
+///
+/// Not unbounded, because every port and backend must express it: FreeRTOS's
+/// `pdMS_TO_TICKS` multiplies in a 32-bit `TickType_t` and wraps above ~71
+/// minutes at 1 kHz, and a 32-bit Zephyr timeout wraps sooner at a high tick
+/// rate. A deadline sooner than this ends the park sooner. See
+/// [`Executor::entry_spin_budget`](super::Executor::entry_spin_budget).
+pub const ENTRY_IDLE_BUDGET: core::time::Duration = core::time::Duration::from_secs(60);
+
+/// phase-521 W6 — the budget an entry keeps while some source of work cannot
+/// end its wait: 10 ms, the cadence every entry had before. See
+/// [`Executor::entry_spin_budget`](super::Executor::entry_spin_budget).
+pub const ENTRY_POLL_BUDGET: core::time::Duration = core::time::Duration::from_millis(10);
+
 /// Default per-iteration budget handed to `spin_once` by the spin loops.
 ///
 /// phase-427 — the value ~~`spin_blocking`~~ carried as a private ~~`POLL_INTERVAL`~~

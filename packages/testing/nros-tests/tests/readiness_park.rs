@@ -305,3 +305,102 @@ fn a_session_with_no_readiness_form_still_blocks_inside_drive_io() {
     );
     assert!(elapsed >= BUDGET / 2, "{elapsed:?}");
 }
+
+/// phase-521 W6 (RFC-0113 D2) — an entry asks the executor for its spin
+/// budget. A session whose handle ends the park lets the entry park until its
+/// next deadline; one with no readiness form keeps the 10 ms slice, because
+/// only its own data ends a receive-blocking wait.
+#[test]
+fn the_entry_budget_is_long_only_when_every_session_ends_the_park() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let (rx, _tx) = UnixStream::pair().expect("socketpair");
+    rx.set_nonblocking(true).expect("non-blocking read end");
+    READ_FD.store(rx.as_raw_fd(), Ordering::SeqCst);
+
+    KIND.store(NROS_RMW_READINESS_WAITABLE as u8, Ordering::SeqCst);
+    let executor = open();
+    assert_eq!(executor.entry_spin_budget(), nros_node::ENTRY_IDLE_BUDGET);
+    drop(executor);
+
+    KIND.store(NROS_RMW_READINESS_NONE as u8, Ordering::SeqCst);
+    let executor = open();
+    assert_eq!(executor.entry_spin_budget(), nros_node::ENTRY_POLL_BUDGET);
+    drop(executor);
+    READ_FD.store(-1, Ordering::SeqCst);
+}
+
+/// phase-521 W6 — a component whose `tick` does work keeps the slice: a tick
+/// runs once per spin, so a long park would slow the service reply it polls.
+#[test]
+fn a_ticking_component_keeps_the_entry_slice() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let (rx, _tx) = UnixStream::pair().expect("socketpair");
+    rx.set_nonblocking(true).expect("non-blocking read end");
+    READ_FD.store(rx.as_raw_fd(), Ordering::SeqCst);
+    KIND.store(NROS_RMW_READINESS_WAITABLE as u8, Ordering::SeqCst);
+
+    unsafe extern "C" fn tick(_: *mut core::ffi::c_void, _: *mut core::ffi::c_void) {}
+    unsafe extern "C" fn drop_state(_: *mut core::ffi::c_void) {}
+
+    let mut executor = open();
+    // SAFETY: a null state the no-op tick and drop never read.
+    unsafe {
+        executor
+            .enroll_component_ticking(core::ptr::null_mut(), tick, drop_state, false)
+            .expect("enroll");
+    }
+    assert_eq!(
+        executor.entry_spin_budget(),
+        nros_node::ENTRY_IDLE_BUDGET,
+        "a component with no tick must not hold the entry to the slice"
+    );
+    // SAFETY: as above.
+    unsafe {
+        executor
+            .enroll_component_ticking(core::ptr::null_mut(), tick, drop_state, true)
+            .expect("enroll");
+    }
+    assert_eq!(executor.entry_spin_budget(), nros_node::ENTRY_POLL_BUDGET);
+    drop(executor);
+    READ_FD.store(-1, Ordering::SeqCst);
+}
+
+/// phase-521 W6 — `cancel()` from another thread ends a park, not only a
+/// backend wait. An entry parks until its next deadline now, so a cancel that
+/// only raised a flag would wait out that park.
+#[test]
+fn cancel_from_another_thread_ends_a_long_park() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let (rx, _tx) = UnixStream::pair().expect("socketpair");
+    rx.set_nonblocking(true).expect("non-blocking read end");
+    READ_FD.store(rx.as_raw_fd(), Ordering::SeqCst);
+    KIND.store(NROS_RMW_READINESS_WAITABLE as u8, Ordering::SeqCst);
+
+    let mut executor = open();
+    executor.spin_once(Duration::ZERO);
+    struct SendPtr(*const Executor<'static>);
+    // SAFETY: `cancel` is documented safe from another thread; the executor
+    // outlives the canceller (joined below, before the drop).
+    unsafe impl Send for SendPtr {}
+    let ptr = SendPtr(&executor as *const _);
+    let canceller = std::thread::spawn(move || {
+        let ptr = ptr;
+        std::thread::sleep(Duration::from_millis(100));
+        // SAFETY: see `SendPtr`.
+        unsafe { &*ptr.0 }.cancel();
+    });
+    let start = Instant::now();
+    executor.spin_once(Duration::from_secs(5));
+    let elapsed = start.elapsed();
+    canceller.join().expect("canceller");
+    assert!(
+        elapsed >= Duration::from_millis(100),
+        "the spin returned after {elapsed:?}, before the cancel at 100 ms"
+    );
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "a cancel at 100 ms ended a 5 s park only after {elapsed:?}"
+    );
+    drop(executor);
+    READ_FD.store(-1, Ordering::SeqCst);
+}

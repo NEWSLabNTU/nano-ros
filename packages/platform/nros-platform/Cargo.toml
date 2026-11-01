@@ -241,3 +241,7 @@ nros-platform-config = { path = "../../tooling/nros-platform-config" }
 # environment read compiles the crate default whatever Kconfig says. Needed
 # here since phase-8 made NROS_ZEPHYR_HEAP_SIZE a forwarded knob; see build.rs.
 nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
+
+[dev-dependencies]
+# phase-521 W6 — `tests/termination_wake.rs` delivers SIGTERM to itself.
+libc = "0.2"

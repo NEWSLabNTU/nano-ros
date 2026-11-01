@@ -176,7 +176,10 @@ inline int32_t component_spin_loop() {
     // Rust-side yield or shutdown primitive to move it behind the CFFI.
     for (;;) {
         if (!::rclcpp::ok()) break;
-        ::rclcpp::Result last = ::rclcpp::spin_once(10);
+        // phase-521 W6 — the executor's entry budget: until the next deadline
+        // when every source of work can end the park, else 10 ms.
+        ::rclcpp::Result last =
+            ::rclcpp::spin_once(nros_cpp_entry_spin_budget_ms(::rclcpp::global_handle()));
         if (!last.ok()) return static_cast<int32_t>(last.raw());
         entry_tick_yield();
     }

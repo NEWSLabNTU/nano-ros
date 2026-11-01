@@ -97,6 +97,15 @@ pub trait NodeDispatchRuntime {
     #[allow(clippy::result_unit_err)]
     fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()>;
 
+    /// phase-521 W6 (RFC-0113 D2) — the budget an entry loop passes to
+    /// [`spin_once`](Self::spin_once). The executor-backed runtime answers
+    /// with how long its park can safely run (until its next deadline when
+    /// every source of work can end it, else a 10 ms slice). The default is
+    /// that slice, for a runtime that cannot say.
+    fn entry_spin_budget_ms(&self) -> u32 {
+        10
+    }
+
     /// Phase 264 W2 — register the REP-2002 lifecycle services on the underlying
     /// executor + drive boot autostart. `autostart`: 0 = none, 1 = configure,
     /// 2 = configure+activate. Default no-op (non-executor runtimes, or `nros`

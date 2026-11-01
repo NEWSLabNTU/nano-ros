@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::entry_spin_budget",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-521 W6 (RFC-0113 D2) -- the budget an entry's forever-spin passes to `spin_once`: `ENTRY_IDLE_BUDGET` (60 s) when every session states `Waitable` or live `Notify` and no enrolled component ticks, else `ENTRY_POLL_BUDGET` (10 ms). Upstream has no budgeted spin and no park to bound: rclcpp's `spin()` blocks in its wait set until work arrives. This is the question an RTOS entry needs answered so it parks until its next deadline instead of waking every 10 ms."
+}

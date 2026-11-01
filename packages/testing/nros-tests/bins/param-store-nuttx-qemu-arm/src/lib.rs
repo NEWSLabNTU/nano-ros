@@ -49,6 +49,8 @@ impl Component for ParamTalker {
 impl ExecutableNode for ParamTalker {
     /// Ticks so far.
     type State = i32;
+    // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
+    const HAS_TICK: bool = false;
 
     fn init() -> Self::State {
         0
