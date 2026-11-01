@@ -500,6 +500,10 @@ exclude = [
     # the runtime workspace's no_std feature-unification view
     # (Phase 214.F.3 guard).
     "packages/cli",
+    # phase-527 W3 (RFC-0119 D5) — the runner packages are a SUB-WORKSPACE
+    # too, with their own `Cargo.lock` and target directory: host tools must
+    # not share a target directory with an image root (issue 0616).
+    "packages/runners",
 ]
 
 [workspace.package]

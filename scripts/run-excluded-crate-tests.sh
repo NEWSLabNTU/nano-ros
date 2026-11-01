@@ -54,6 +54,8 @@ exempt_reason() {
     case "$1" in
         packages/cli|packages/cli/*)
             printf 'its own sub-workspace with its own lane (`just check cli-tests`)' ;;
+        packages/runners|packages/runners/*)
+            printf 'its own sub-workspace (RFC-0119 D5), tested and linted by `just check cli-tests`' ;;
         third-party/*)
             printf 'vendored third-party source; its tests are upstream'"'"'s' ;;
         packages/testing/nros-px4-sitl-test)

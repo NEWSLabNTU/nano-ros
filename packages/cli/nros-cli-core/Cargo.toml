@@ -39,6 +39,10 @@ nros-build-paths = { path = "../../tooling/nros-build-paths" }
 # phase-517 W14 — the ONE QEMU ladder and the per-board boot lines `nros build`
 # prints, shared with the test harness (`nros_tests::qemu`). No dependencies.
 nros-qemu-ladder = { path = "../../tooling/nros-qemu-ladder" }
+# phase-527 W3 (RFC-0119 D5) — the runner/command SDK: the RunPlan types
+# (RFC-0118 D3), the `describe` reply, the console pump and the exit codes.
+# The CLI and every runner speak the contract through the same types.
+nros-extension = { path = "../../runners/nros-extension" }
 # issue 0382 — model node maps preserve launch declaration order.
 indexmap = "2"
 clap = { workspace = true }

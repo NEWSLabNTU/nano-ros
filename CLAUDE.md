@@ -69,7 +69,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 - **nros** — code shorthand (crates, Rust/C idents, `CONFIG_NROS_*`)
 - **nano_ros** — C header dir, CMake targets (`NanoRos::NanoRos`), CMake fn (`nros_generate_interfaces()`)
 
-Workspace: `packages/{api,boards,cli,core,drivers,interfaces,platform,reference,rmw,testing,tooling,verification}/`,
+Workspace: `packages/{api,boards,cli,core,drivers,interfaces,platform,reference,rmw,runners,testing,tooling,verification}/`,
 `examples/`, `third-party/` (gitignored SDKs), `zephyr/` module. Layer map + what each
 directory holds → RFC-0001 §"Directory map"; run `ls packages/<dir>/` for the crates in one.
 **Gated** (`check-package-directories`, issue 1211) — this line and ARCHITECTURE §1 named

@@ -1254,6 +1254,14 @@ cli-tests:
     source scripts/build/gate-prune.sh
     trap 'nros_gate_prune packages/cli/target/debug' EXIT
     cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet
+    # phase-527 W3 — the runner packages workspace (RFC-0119 D5) is a SEPARATE
+    # cargo root, so the CLI run above compiles `nros-extension` as a path dep
+    # but runs none of its tests. It is a host-tool root the CLI depends on,
+    # which is why it rides this lane rather than one of its own; it is small
+    # (one crate, serde only) and lints here too, since no clippy lane reaches
+    # a root outside the main workspace.
+    cargo test --manifest-path packages/runners/Cargo.toml --workspace --quiet
+    cargo clippy --manifest-path packages/runners/Cargo.toml --workspace --all-targets --quiet -- -D warnings
     ros_share=""
     if [ -n "${ROS_DISTRO:-}" ] && [ -d "/opt/ros/$ROS_DISTRO/share" ]; then
         ros_share="/opt/ros/$ROS_DISTRO/share"

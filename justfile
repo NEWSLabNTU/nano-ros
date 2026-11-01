@@ -4396,6 +4396,15 @@ setup-cli:
     #
     # `source-stamp` exits non-zero when stale, when the binary predates the
     # verb, or when it is unrunnable — all of which mean "build it".
+    #
+    # phase-527 W3 (RFC-0119 D4/D5) — the in-tree runner packages build beside
+    # the CLI, in their OWN workspace and target directory (issue 0616: one
+    # target directory per workspace root). This runs before the CLI's skip
+    # below, because the CLI's source stamp does not cover the runner binaries;
+    # cargo's own fingerprint is their freshness check, and `-q` keeps a no-op
+    # silent. Their binaries land in packages/runners/target/release/.
+    # profile-literal-ok: host tool: builds the in-tree runner packages
+    cargo build -q --release --locked --manifest-path "$root/packages/runners/Cargo.toml" --workspace
     if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
         # Quiet on no-op — `just setup` invokes us unconditionally.
         warn_stale_shadow

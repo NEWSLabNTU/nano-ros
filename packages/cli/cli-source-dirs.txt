@@ -13,6 +13,7 @@ packages/core/nros-orchestration-ir
 packages/core/nros-rmw
 packages/core/nros-serdes
 packages/rmw/zenoh/nros-zenoh-session-config
+packages/runners/nros-extension
 packages/tooling/nros-build-paths
 packages/tooling/nros-cargo-profile
 packages/tooling/nros-cc-flags

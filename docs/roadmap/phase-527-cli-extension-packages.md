@@ -1,6 +1,7 @@
 # Phase 527 — Runner and command packages: kinds, host build, dispatch, release underlay
 
-**Status (2026-11-01). PROPOSED — no work item started.** Implements
+**Status (2026-11-01). IN PROGRESS — W3 landed (`packages/runners/` and
+`nros-extension`); W1 next, then W2.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -73,6 +74,25 @@ Acceptance:
 - `just setup-cli` builds the in-tree runner packages beside the CLI.
 - Prepare `nros-extension` for crates.io publication (metadata, README,
   semver policy tied to `protocol`), without publishing yet.
+
+Status: **DONE** (2026-11-01). `packages/runners/` is a cargo workspace with a
+tracked lock (a `[rust] locked_roots` entry, seeded from the pin set with
+`nros ws seed-lock`, then `just lock-update "" "" packages/runners`), excluded
+from the root workspace. `nros-extension` holds `protocol` (versions and
+negotiation), `plan` (the RunPlan with its JSON form, placeholder lookup and
+command-template expansion that refuses an unknown placeholder), `describe`
+(the reply and its builder; `protocol` reads as a number or an array),
+`invocation` (a runner's own argv), `console` (`pump`, `report_link`,
+`scan_stderr`), `usb` (VID:PID, a sysfs and `/dev/serial/by-id` walk, and a
+lookup that answers found, not found or ambiguous) and `exit` (0/1/2, plus 3
+for nros only). `nros-cli-core` depends on it by path and re-exports it;
+`cli-source-dirs.txt` records the directory. `just setup-cli` builds the
+runners workspace before its own skip check, since the CLI stamp does not
+cover runner binaries; no runner package exists yet, so today it builds the
+library only. `check cli-tests` runs the workspace's tests and clippy. Crate
+version 0.1.0 tracks protocol 1 (README "Versioning"); `cargo publish
+--dry-run` passes, and the crate carries no `publish = false`, so the dry run
+checks rather than refuses.
 
 Acceptance:
 
