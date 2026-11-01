@@ -9,7 +9,7 @@
 //! `protocol/codec/serial.c`). We only provide raw byte I/O and
 //! port management.
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 use crate::port::get_port;
 
@@ -33,6 +33,62 @@ static SERIAL_BLOCKING_MODE: AtomicBool = AtomicBool::new(true);
 #[unsafe(no_mangle)]
 pub extern "C" fn zpico_serial_set_nonblocking() {
     SERIAL_BLOCKING_MODE.store(false, Ordering::Relaxed);
+}
+
+/// phase-521 W5 (RFC-0113 D5) — the board's idle primitive for a serial link.
+///
+/// Called with the longest wait, in microseconds, that the caller can afford.
+/// It returns at that bound or as soon as a byte can be read, whichever comes
+/// first, and it may return early for any other reason (callers re-check). A
+/// board implements it with its UART's RX interrupt and a one-shot timer, so an
+/// idle serial session sleeps instead of polling the UART at 1 kHz.
+pub type WaitIdleFn = unsafe extern "C" fn(max_us: u64);
+
+static WAIT_IDLE: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
+
+/// Install the board's [`WaitIdleFn`]. Without one, every wait below is the
+/// platform's `z_sleep_ms`, which on bare metal is a polled sleep.
+pub fn set_wait_idle(f: WaitIdleFn) {
+    WAIT_IDLE.store(f as *mut (), Ordering::Release);
+}
+
+/// Whether a board has installed a [`WaitIdleFn`], i.e. whether an arrival can
+/// end a wait on this link.
+pub fn has_wait_idle() -> bool {
+    !WAIT_IDLE.load(Ordering::Acquire).is_null()
+}
+
+/// Bytes already pulled off a UART and buffered here, not yet read by zenoh.
+/// A board's [`WaitIdleFn`] must not sleep while this is true: the bytes are
+/// past the UART, so its RX interrupt will not fire for them.
+pub fn rx_buffered() -> bool {
+    (0..crate::port::MAX_SERIAL_PORTS)
+        .any(|i| unsafe { get_port(i) }.is_some_and(|p| p.rx_pending()))
+}
+
+/// Wait up to `max_ms`, through the board's [`WaitIdleFn`] when there is one.
+fn idle_ms(max_ms: u32) {
+    let f = WAIT_IDLE.load(Ordering::Acquire);
+    if f.is_null() {
+        unsafe { z_sleep_ms(max_ms) };
+    } else {
+        // SAFETY: stored from a `WaitIdleFn` by `set_wait_idle`.
+        let f: WaitIdleFn = unsafe { core::mem::transmute(f) };
+        unsafe { f(u64::from(max_ms) * 1000) };
+    }
+}
+
+/// The idle `zpico_spin_once` takes between executor rounds on a `ZPICO_SERIAL`
+/// build (zpico.c). It replaces a `z_sleep_ms(1)` poll on a board with a hook.
+#[unsafe(no_mangle)]
+pub extern "C" fn zpico_serial_idle_ms(max_ms: u32) {
+    if has_wait_idle() {
+        idle_ms(max_ms);
+    } else {
+        // No wake source: keep the 1 ms poll this replaced, so a board
+        // without the hook still sees a byte within a millisecond.
+        idle_ms(max_ms.min(1));
+    }
 }
 
 // ============================================================================
@@ -300,7 +356,7 @@ pub extern "C" fn _z_read_serial_internal(
                     unsafe { z_free(raw_buf) };
                     return usize::MAX;
                 }
-                unsafe { z_sleep_ms(SERIAL_READ_POLL_INTERVAL_MS) };
+                idle_ms(SERIAL_READ_POLL_INTERVAL_MS);
                 continue;
             }
             // Mid-frame: wait briefly for the 0x00 delimiter, bounded so a
@@ -310,7 +366,7 @@ pub extern "C" fn _z_read_serial_internal(
                 unsafe { z_free(raw_buf) };
                 return usize::MAX;
             }
-            unsafe { z_sleep_ms(MID_FRAME_POLL_INTERVAL_MS) };
+            idle_ms(MID_FRAME_POLL_INTERVAL_MS);
             continue;
         }
 

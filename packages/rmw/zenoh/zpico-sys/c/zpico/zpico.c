@@ -3554,10 +3554,20 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
         }
         nros_smoltcp_idle_until_ms(start + timeout_ms);
 #else
-        if (z_clock_elapsed_ms(&start) >= timeout_ms) {
+        unsigned long elapsed = z_clock_elapsed_ms(&start);
+        if (elapsed >= timeout_ms) {
             break;
         }
+#ifdef ZPICO_SERIAL
+        /* phase-521 W5 (RFC-0113 D5) -- sleep to the deadline or the next
+         * received byte, through the board's UART RX interrupt and one-shot
+         * timer (`zpico_serial::set_wait_idle`), instead of polling the link
+         * every millisecond. Without a board hook this is still a 1 ms poll. */
+        extern void zpico_serial_idle_ms(uint32_t max_ms);
+        zpico_serial_idle_ms((uint32_t)(timeout_ms - elapsed));
+#else
         z_sleep_ms(1);
+#endif
 #endif
     }
 #endif

@@ -13,7 +13,7 @@
 
 advertised-state-probe              15   0     0       0      0
 cargo-nano-ros                       1   0     0       0      0
-cmsdk-uart                           4   0     0       0      0
+cmsdk-uart                           6   0     0       0      0
 condvar-contract-threadx-linux       1   0     0       1      0
 contract-monitor                     1   0     0       1      0
 heap-free-cpp-poc-mps2               1   0     0       1      0
@@ -30,7 +30,7 @@ nros-board-cffi                      3   0     0       6      0
 nros-board-esp32-qemu               11   1     1       0      0
 nros-board-freertos                 64   1     1      20      0
 nros-board-linux                    21   0     0       7      0
-nros-board-mps2-an385               34   6     1       5      0
+nros-board-mps2-an385               36   6     1       6      0
 nros-board-mps2-an385-freertos       3   0     0       1      0
 nros-board-nuttx                    28   0     0      14      0
 nros-board-nuttx-qemu                4   0     0       3      0
@@ -88,5 +88,5 @@ wake-latency-cortex-m3               0   0     0       1      0
 zpico-alloc                         14   1     1       0      0
 zpico-link-ivc                       7   0     0       8      0
 zpico-platform-custom                1   0     0       5      0
-zpico-serial                        31   2     0       1      0
+zpico-serial                        33   2     0       2      0
 zpico-sys                           33   0     0      13      0

@@ -50,6 +50,11 @@ impl PortState {
 
     /// Drain bytes from the ring buffer into `dst`.
     /// Returns the number of bytes copied.
+    /// Bytes buffered and not yet drained.
+    pub(crate) fn rx_pending(&self) -> bool {
+        self.rx_head != self.rx_tail
+    }
+
     pub(crate) fn rx_drain(&mut self, dst: &mut [u8]) -> usize {
         let mut n = 0;
         while n < dst.len() && self.rx_head != self.rx_tail {
