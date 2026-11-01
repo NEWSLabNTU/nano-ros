@@ -53,6 +53,47 @@ pub struct BoardFactsArgs {
     /// search, then this `nros` binary's own SDK root.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
+
+    /// Issue 2204 — CHECK, don't print: the triple zephyr-lang-rust picked for
+    /// this image (its `_rust_map_target`, from the Kconfig). Refused when the
+    /// resolved board's `[board.zephyr] rust_target` names a different one.
+    /// Prints no facts.
+    #[arg(long)]
+    pub rust_target: Option<String>,
+}
+
+/// Issue 2204 — does `descriptor`'s `[board.zephyr] rust_target` disagree with
+/// the triple the Zephyr build actually compiles a Rust image for?
+///
+/// The descriptor's triple is what `nros setup` installs and the preflight
+/// checks for (issue 2151); zephyr-lang-rust derives the real one from the
+/// Kconfig at build time, so the two are separate statements of one fact.
+/// They can differ for a board whose FPU ABI is a Kconfig choice — an
+/// RP2350's Cortex-M33 is `thumbv8m.main-none-eabihf` only with
+/// `CONFIG_FP_HARDABI` — and nothing compared them, so a descriptor that
+/// provisioned the wrong triple read as correct.
+///
+/// `None` when they agree, or when the descriptor states no triple (it then
+/// makes no claim to check).
+pub fn rust_target_disagreement(descriptor: &BoardDescriptor, picked: &str) -> Option<String> {
+    let stated = descriptor.zephyr.as_ref()?.rust_target_for_host()?;
+    if stated == picked {
+        return None;
+    }
+    let board = descriptor.names.first().map(String::as_str).unwrap_or("?");
+    let file = descriptor
+        .source
+        .as_deref()
+        .unwrap_or("its nros-board.toml");
+    Some(format!(
+        "board `{board}` states `[board.zephyr] rust_target = \"{stated}\"` ({file}), \
+         but zephyr-lang-rust compiles this image for `{picked}` (its \
+         `_rust_map_target`, from this image's Kconfig — on Arm the CPU and \
+         `CONFIG_FP_HARDABI`). The descriptor's triple is what `nros setup` \
+         installs, so one of the two is wrong: correct `rust_target` (and \
+         `[board.provisioning] rust_targets`) to `{picked}`, or change the \
+         Kconfig so the image builds for `{stated}`."
+    ))
 }
 
 /// The resolved facts, in emission order.
@@ -716,6 +757,19 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
             &|k| std::env::var(k).ok(),
         )?
     };
+    if let Some(picked) = args.rust_target.as_deref() {
+        let catalog = BoardCatalog::load(&root)
+            .map_err(|e| eyre!("board catalog under {}: {e}", root.display()))?;
+        let board = facts
+            .get("NROS_BOARD")
+            .ok_or_else(|| eyre!("board-facts: resolved no NROS_BOARD to check"))?;
+        let descriptor =
+            resolve_board(&catalog, board).ok_or_else(|| eyre!("{}", unresolved_board(board)))?;
+        if let Some(why) = rust_target_disagreement(descriptor, picked) {
+            return Err(eyre!(why));
+        }
+        return Ok(());
+    }
     for (k, v) in facts {
         println!("{k}={v}");
     }
@@ -891,6 +945,36 @@ fn workspace_platform_roots(ws: &Path) -> Vec<std::path::PathBuf> {
 mod tests {
     use super::*;
 
+    /// Issue 2204 — the descriptor's Zephyr Rust triple is checked against the
+    /// one zephyr-lang-rust picked, and only a STATED triple is checked.
+    #[test]
+    fn a_zephyr_rust_target_disagreement_is_named() {
+        let root = repo_root();
+        let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+            .expect("in-tree catalog");
+        let mps2 = resolve_board(&catalog, "mps2-an385-zephyr").expect("mps2-an385-zephyr");
+        assert_eq!(rust_target_disagreement(mps2, "thumbv7m-none-eabi"), None);
+        let why = rust_target_disagreement(mps2, "thumbv7em-none-eabi").expect("disagrees");
+        assert!(
+            why.contains("rust_target = \"thumbv7m-none-eabi\""),
+            "{why}"
+        );
+        assert!(
+            why.contains("compiles this image for `thumbv7em-none-eabi`"),
+            "{why}"
+        );
+        assert!(why.contains("nros-board-mps2-an385-zephyr"), "{why}");
+
+        // `{host_arch}` is this host's, the way zephyr-lang-rust maps native_sim.
+        let sim = resolve_board(&catalog, "zephyr").expect("native_sim board");
+        let host = format!("{}-unknown-none", std::env::consts::ARCH);
+        assert_eq!(rust_target_disagreement(sim, &host), None);
+
+        // No `[board.zephyr] rust_target`: no claim, nothing to refuse.
+        let threadx = resolve_board(&catalog, "rv-virt-threadx").expect("rv-virt-threadx");
+        assert_eq!(rust_target_disagreement(threadx, "anything"), None);
+    }
+
     /// phase-484 W2b — a board's own `[env]` facts reach every road through
     /// this verb, and a `system.toml`-less cargo leaf is attributed to the one
     /// board crate it depends on.
@@ -951,6 +1035,7 @@ mod tests {
             nano_ros_path: None,
             deploy: None,
             board: board.map(str::to_string),
+            rust_target: None,
         };
         // A guest project: no system.toml, no Cargo.toml.
         let guest = tempfile::tempdir().unwrap();

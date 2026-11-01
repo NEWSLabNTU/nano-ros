@@ -212,6 +212,9 @@ function(nros_resolve_board_facts)
     string(REPLACE "\n" ";" _lines "${_out}")
     list(REMOVE_ITEM _lines "")
     set_property(GLOBAL PROPERTY ${_memo}__VALUE "${_lines}")
+    # Issue 2204 — the question that resolved, so a later check asks it of the
+    # same deploy (`nros_check_zephyr_rust_target`).
+    set_property(GLOBAL PROPERTY NROS_BOARD_FACTS_RESOLVED_CMD "${_nros};${_args}")
     set(NROS_BOARD_FACTS_ENV "${_lines}" PARENT_SCOPE)
     list(LENGTH _lines _n)
     message(STATUS "nano-ros: board facts from ${_ws} — ${_n} value(s) delivered to cargo")
@@ -282,4 +285,42 @@ function(_nros_board_facts_flush)
             nros_board_facts_env("${_t}")
         endif()
     endforeach()
+endfunction()
+
+# nros_check_zephyr_rust_target()
+#
+# Issue 2204 — refuse a board descriptor whose `[board.zephyr] rust_target`
+# disagrees with the triple zephyr-lang-rust compiles this Rust image for.
+#
+# The descriptor's triple is what `nros setup` installs and the preflight checks
+# for; zephyr-lang-rust derives the real one from the Kconfig at build time, in
+# `_rust_map_target`. Asking THAT function (not a copy of its table) is what
+# makes this the triple the build uses. It disagreed silently on an RP2350: the
+# descriptor said `thumbv8m.main-none-eabihf`, Zephyr built
+# `thumbv8m.main-none-eabi` because `CONFIG_FP_HARDABI` was off.
+#
+# Deferred to the end of the top-level scope (zephyr/CMakeLists.txt): by then
+# zephyr-lang-rust's module has defined `_rust_map_target` whatever the module
+# order, and the image's `CONFIG_*` are in that scope. A C image (no
+# `CONFIG_RUST`) and a configure that resolved no board facts make no claim.
+function(nros_check_zephyr_rust_target)
+    if(NOT CONFIG_RUST OR NOT COMMAND _rust_map_target)
+        return()
+    endif()
+    get_property(_cmd GLOBAL PROPERTY NROS_BOARD_FACTS_RESOLVED_CMD)
+    if("${_cmd}" STREQUAL "")
+        return()
+    endif()
+    _rust_map_target()
+    if("${RUST_TARGET}" STREQUAL "")
+        return()
+    endif()
+    execute_process(
+        COMMAND ${_cmd} --rust-target "${RUST_TARGET}"
+        OUTPUT_VARIABLE _out
+        ERROR_VARIABLE _err
+        RESULT_VARIABLE _rc)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR "nano-ros: ${_err}")
+    endif()
 endfunction()
