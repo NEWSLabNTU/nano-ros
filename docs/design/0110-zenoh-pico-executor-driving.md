@@ -260,6 +260,7 @@ the executor's timers never ran, so the lease and keep-alive never ran.
   | FreeRTOS mps2-an385, Rust and C listener | 728 B | 5120 B |
   | NuttX virt, Rust listener | 2296 B | 65256 B |
   | Zephyr mps2_an385, C talker (`CONFIG_INIT_STACKS` overlay) | 992 B (stable; one sample before issue 2105's fix) | 131072 B |
+  | Zephyr mr_canhubk3/s32k344 silicon, the safety island (C++, serial link; thread analyzer over SWD, its `b` act and a 300 ms overrun act, 2026-11-02) | 1964 B (`zpico_flush` 424 B) | 4096 B (stated) |
   | POSIX host | not measurable (8 MiB host thread) | — |
 
   So no THREAD platform comes near its stack. NuttX and Zephyr carry 28x
