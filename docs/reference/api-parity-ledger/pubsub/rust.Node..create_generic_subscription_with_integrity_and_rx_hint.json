@@ -1,0 +1,8 @@
+{
+  "key": "rust:Node::create_generic_subscription_with_integrity_and_rx_hint",
+  "verdict": "extension",
+  "retired_names": [
+    "NodeCtx"
+  ],
+  "why": "issue 2208 -- `rust:Node::create_generic_subscription_with_integrity` with the message type's bound, as `rust:Node::create_generic_subscription_with_qos_and_rx_hint`. Behind the `safety-e2e` feature.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`)."
+}
