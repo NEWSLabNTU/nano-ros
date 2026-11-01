@@ -61,7 +61,7 @@ issue N" (the fix is not a command the reader can run), that refusal states
 the fact in a sentence and the issue is filed as a front-door defect, not
 exempted.
 
-### W2 — The single-package scaffold (D6) — DONE (2026-11-01)
+### W2 — The single-package scaffold (D6) — DONE (2026-11-02, PR #2994)
 
 Landed: `nros new <name> --board <board>` reads the platform from the board
 catalog and writes one package — one `[image.<id>]` naming the board, the
