@@ -88,6 +88,13 @@ links = ["tcp", "udp"]
 # ThreadX but HAS a heap (CFFI alloc/dealloc) — this is the #38 board; heap=true
 # is what C.2 lowers to -D NROS_PLATFORM_HAS_MALLOC, replacing the hand-set
 # THREADX_GLUE_DEFINES entry.
+# phase-528 W2 (RFC-0118 D4) — the emulator this board runs under. The support
+# registry reads `emulator` from here; the QEMU line itself stays in
+# `nros-qemu-ladder` (its NIC is a virtio-mmio device the harness varies per
+# pair) until the qemu runner package takes it (phase-528 W3).
+[board.run]
+emulator = "qemu:rv-virt"
+
 [board.capabilities]
 heap = true
 atomics = true

@@ -162,7 +162,8 @@ function(nano_ros_use_board NAME)
     endif()
 
     # 8. Cache the runner so a launcher can read it from CMakeCache.txt
-    # (Phase 215.D).
+    # (Phase 215.D). Derived from the descriptor's `[board.run] emulator`
+    # (phase-528 W2): `armfvp` / `qemu` / `renode`, or empty.
     set(NROS_BOARD_RUNNER "${NROS_BOARD_RUNNER}" CACHE STRING
         "nano-ros board runner (armfvp / qemu / native / …)" FORCE)
 

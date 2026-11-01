@@ -1,7 +1,8 @@
 # Board support registry — RFC-0114 (phase-522), first written by phase-320 W2.
 #
 # ONE table listing every board package, the evidence nano-ros holds for it,
-# and its maintainers. It is the only place a board fact is typed:
+# and its maintainers. It is the only place a board EVIDENCE fact is typed
+# (how a board runs is the descriptor's, `[board.run]`, RFC-0118 D4):
 # `scripts/gen-board-support.py` writes the test-matrix cells, the probe
 # tracks, issue 2169's ROWS, the book's support pages and the status file the
 # CLI reads from it, and `just check board-registry` holds every view to it.
@@ -20,7 +21,12 @@
 #              executes in evidence nano-ros holds.
 #   emulator   qemu:<machine> | renode:<platform> | wokwi:<board> | fvp:<model>;
 #              required when runs = "emulator", allowed elsewhere to record a
-#              twin that is not the evidence.
+#              twin that is not the evidence. NOT TYPED HERE: the generator
+#              reads it from the row's board descriptor, `[board.run] emulator`
+#              (RFC-0118 D4, amending D10; phase-528 W2), found through
+#              `board_keys` or the row's package directory. Only a row with no
+#              in-tree descriptor (`external`) may type it, and the gate
+#              refuses a typed one anywhere else, duplicate or not.
 #   hardware   a board id; required when runs = "hardware", allowed elsewhere
 #              to record the silicon an emulator (or a build) stands in for.
 #   cadence    merge | daily | weekly | manual — how often the run happens.
@@ -133,7 +139,6 @@ notes = "CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardwa
 crate = "nros-board-mps3-an536-freertos"
 nightly_token = "freertos"
 runs = "none"
-emulator = "qemu:mps3-an536"
 breadth = "inherits FreertosMps2"
 maintainers = ["jerry73204"]
 
@@ -144,7 +149,6 @@ nightly_token = "freertos"
 link_check_example = "examples/mps2-an385-freertos/rust/talker"
 book_run = "getting-started/freertos.md#run-on-qemu"
 runs = "emulator"
-emulator = "qemu:mps2-an385"
 cadence = "daily"
 breadth = "witness"
 maintainers = []
@@ -191,7 +195,6 @@ nightly_token = "nuttx"
 link_check_example = "examples/qemu-armv7a-nuttx/rust/talker"
 book_run = "getting-started/integration-nuttx.md#run-on-qemu-arm-virt"
 runs = "emulator"
-emulator = "qemu:virt-armv7a"
 cadence = "daily"
 breadth = "witness"
 maintainers = []
@@ -231,7 +234,6 @@ matrix_platform = "ThreadxRiscv64"
 nightly_token = "threadx_riscv64"
 book_run = "getting-started/threadx.md#run-on-qemu-risc-v-64"
 runs = "emulator"
-emulator = "qemu:rv-virt"
 cadence = "daily"
 breadth = "inherits ThreadxLinux"
 maintainers = []
@@ -243,7 +245,6 @@ matrix_platform = "QemuBaremetal"
 nightly_token = "qemu"
 book_run = "getting-started/bare-metal.md#run-on-qemu"
 runs = "emulator"
-emulator = "qemu:mps2-an385"
 cadence = "daily"
 breadth = "witness"
 maintainers = []
@@ -267,7 +268,6 @@ matrix_platform = "ZephyrQemuCortexM"
 nightly_token = "zephyr"
 book_run = "getting-started/integration-zephyr.md#run-on-qemu-mps2-an385"
 runs = "emulator"
-emulator = "qemu:mps2-an385"
 cadence = "daily"
 breadth = "witness"
 maintainers = []
@@ -277,7 +277,6 @@ notes = "C, C++ and Rust pubsub are Runtime; service/action are BuildOnly pendin
 crate = "nros-board-esp32-qemu"
 matrix_platform = "Esp32Qemu"
 runs = "none"
-emulator = "qemu:esp32"
 breadth = "witness"
 maintainers = []
 notes = "DORMANT (issue 1525): code kept for future use; no lane builds or tests it. It used to run nightly (two-way QEMU e2e, esp32_emulator.rs, now #[ignore]d)."
@@ -289,7 +288,6 @@ board_keys = ["nuttx-riscv", "rv-virt-nuttx"]
 nightly_token = "nuttx"
 book_run = "getting-started/integration-nuttx.md#run-on-qemu-risc-v-rv-virt"
 runs = "emulator"
-emulator = "qemu:rv-virt"
 cadence = "daily"
 breadth = "inherits NuttxArm"
 maintainers = []
@@ -304,7 +302,6 @@ sdk = "arm-fvp"  # `[tool.arm-fvp]` since 2026-09-06 — fetched, not gated
 real_hardware = false
 book_run = "getting-started/arm-fvp.md#run-on-the-fvp"
 runs = "emulator"
-emulator = "fvp:FVP_BaseR_AEMv8R"
 cadence = "manual"
 last_run = "2026-09-06"
 breadth = "inherits ZephyrQemuCortexM"
@@ -360,7 +357,6 @@ board_keys = ["nucleo-f767zi-zephyr"]
 real_hardware = true
 book_flash = "getting-started/integration-zephyr.md#flash-a-real-board"
 runs = "emulator"
-emulator = "renode:nucleo_f767zi"
 hardware = "nucleo-f767zi"
 cadence = "manual"
 last_run = "2026-11-01"

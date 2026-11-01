@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-01). PROPOSED — no work item started.** Implements
+**Status (2026-11-01). IN PROGRESS — W2 landed; W1, W3 to W5 not started.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -53,6 +53,41 @@ Acceptance:
   `[board.run]`, and `board-support.toml` stops typing it (RFC-0118 D4,
   amending RFC-0114 D10). `check-board-registry` refuses a typed `emulator`
   that the descriptor does not state.
+
+**Landed (2026-11-01).**
+
+- *Schema.* `[board.run]` takes `emulator = "<kind>:<machine>"` (kind `qemu`,
+  `fvp`, `renode`, `wokwi`) or `host = true`, never both; `[board.run.qemu]`
+  takes `system`, `cpu`, `machine`, `icount`, `semihosting` and `nic_model` and
+  needs a `qemu:` emulator; `[board.console]` takes `kind` (`stdio`, `serial`,
+  `rtt`, `semihosting`) plus `usb` and `baud` for a serial console. Every table
+  refuses unknown keys (`board_descriptor.rs`).
+- *Migration.* The three MPS boards' cargo `runner` strings became
+  `[board.run.qemu]`, rendered back in one fixed order. The FVP's
+  `[board.zephyr] runner = "armfvp"` became `emulator = "fvp:FVP_BaseR_AEMv8R"`.
+  Zephyr never read that key, because its own board definition selects
+  `armfvp`. `NROS_BOARD_RUNNER` is now derived from the emulator kind, and its
+  one reader, `nano_ros_entry()`'s "an embedded board was imported" test, sees
+  the same value. The other emulated boards (NuttX ×2, ThreadX riscv64, ESP32,
+  the Zephyr MPS2 board, the Nucleo's Renode twin) state `emulator` only, and the
+  host boards state `host = true`. Both old spellings are refused naming
+  the new tables, by the catalog and by `check-board-cargo-config-shape`. `nros
+  new --platform baremetal` no longer writes a `.cargo/config.toml` (the bare-metal
+  chapter already said it does not). `nros board new` emits the tables.
+- *Launch readers.* `nros build`'s next step reads `[board.run.qemu]`. Every
+  board's line is byte-identical, and the issue-2169 test is unchanged and green.
+  The generated `nros-cargo.toml` gets the same line as the triple's cargo
+  `runner`, so `cargo run --config …`, which the book documents, still boots a
+  QEMU board. The NuttX and ThreadX riscv64 lines stay in `nros-qemu-ladder`:
+  their virtio-mmio NIC varies per harness pair and does not fit the table's
+  `-nic user` shape, so the qemu runner (W3) takes them.
+- *Registry.* `board-support.toml` types no `emulator`. The generator reads it
+  from the row's descriptor, found through `board_keys` or the package
+  directory. `check-board-registry` refuses a typed one where an in-tree
+  descriptor exists (duplicate or not), and refuses `board_keys` that span two
+  descriptors. Its negative controls run on the normal path. The generated
+  views are byte-identical, the data hash included, because the derived data
+  equals what was typed.
 
 Acceptance:
 

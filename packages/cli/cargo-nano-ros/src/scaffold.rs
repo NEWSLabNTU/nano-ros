@@ -931,15 +931,9 @@ fn scaffold_rust(
     let lib_rs = rust_node_lib(role, node);
     match &spec.kind {
         PlatformKind::Hosted => scaffold_rust_hosted(name, dir, &lib_rs),
-        PlatformKind::SelfBringup { runtime } => scaffold_rust_self_bringup(
-            name,
-            &spec,
-            runtime,
-            edition_feature,
-            platform,
-            dir,
-            &lib_rs,
-        ),
+        PlatformKind::SelfBringup { runtime } => {
+            scaffold_rust_self_bringup(name, &spec, runtime, edition_feature, dir, &lib_rs)
+        }
         // Rejected before any file is written (see `scaffold_package`).
         PlatformKind::Deferred { .. } => {
             unreachable!("Deferred platforms bail in scaffold_package")
@@ -1048,7 +1042,6 @@ fn scaffold_rust_self_bringup(
     spec: &PlatformSpec,
     runtime: &SelfBringupRuntime,
     edition_feature: &str,
-    platform: &str,
     dir: &Path,
     lib_rs: &str,
 ) -> Result<()> {
@@ -1145,7 +1138,6 @@ nros-log = {{ version = "*", default-features = false }}
     fs::write(dir.join("src/lib.rs"), lib_rs)?;
 
     write_default_config_toml(dir)?;
-    write_cargo_config(dir, platform)?;
     Ok(())
 }
 
@@ -1162,62 +1154,6 @@ fn rust_node_lib(role: Role, node: &str) -> String {
             header: "",
         },
     )
-}
-
-/// Scaffold `.cargo/config.toml` for the cortex-m cargo-built platforms
-/// (bare-metal / FreeRTOS on the QEMU mps2-an385). Carries the Phase 204
-/// size knobs by default: `--gc-sections` at link (204.8) plus a documented,
-/// commented block for the serial-only IP-stack opt-out (204.7) and the
-/// per-backend static-heap size (204.5). Other embedded platforms (Zephyr,
-/// NuttX, ESP-IDF, ThreadX) build through their own toolchains and don't use
-/// a cargo target triple here, so they get no `.cargo/config.toml`.
-fn write_cargo_config(dir: &Path, platform: &str) -> Result<()> {
-    let triple = match platform {
-        "baremetal" | "freertos" => "thumbv7m-none-eabi",
-        // Non-cargo-target build flows — leave the build config to the
-        // platform's own toolchain integration.
-        _ => return Ok(()),
-    };
-
-    let config = format!(
-        r#"[build]
-target = "{triple}"
-
-[target.{triple}]
-# QEMU mps2-an385 (cortex-m3) + semihosting. Adjust `-machine`/`-cpu` for your board.
-runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
-rustflags = [
-    # Phase 204.8 — drop unreferenced fns/data at link. `rust-lld` is invoked
-    # directly (no gcc driver), so the bare `--gc-sections`, NOT `-Wl,...`.
-    # `cortex-m-rt`'s `link.x` KEEPs the vector table, so gc is safe.
-    "-C", "link-arg=--gc-sections",
-    "-C", "link-arg=-Tlink.x",
-]
-
-[env]
-# Phase 204.7 — serial-only node: uncomment to drop the IP link layer
-# (zenoh-pico TCP/UDP link C via `Z_FEATURE_LINK_TCP/UDP=0`; `--gc-sections`
-# above then strips the smoltcp residue). Also switch the board to its
-# `serial` feature and use a serial `locator` in `nros.toml`.
-# NROS_LINK_IP = "0"
-# ZPICO_NO_SMOLTCP = "1"
-#
-# Phase 204.5 — size the static heap to the backend's working set
-# (zenoh-pico ~24 KB, XRCE ~8 KB); default is the per-board value (64 KB on
-# mps2-an385). Decimal bytes.
-# NROS_HEAP_SIZE = "24576"
-#
-# Phase 204.2 — a brokered (zenoh/XRCE) client multiplexes over one session;
-# drop the spare smoltcp socket buffers (sized for DDS RTPS by default).
-# NROS_SMOLTCP_MAX_SOCKETS = "1"
-# NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
-"#
-    );
-
-    let cargo_dir = dir.join(".cargo");
-    fs::create_dir_all(&cargo_dir)?;
-    fs::write(cargo_dir.join("config.toml"), config)?;
-    Ok(())
 }
 
 /// The RFC-0033 capacity a C/C++ talker or listener needs for the stock
@@ -1736,6 +1672,13 @@ mod tests {
         ] {
             let d = tmp();
             scaffold_rust("app", platform, "ros-jazzy", d.path(), Role::Talker, "app").unwrap();
+            // phase-528 W2 — no `.cargo/config.toml`: the triple, link flags and
+            // QEMU `runner` come from the board (`[board.run]`) through the
+            // generated settings file, as the bare-metal chapter says.
+            assert!(
+                !d.path().join(".cargo").exists(),
+                "{platform}: the scaffold must not write a `.cargo/`"
+            );
             let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
             assert!(
                 !toml.contains("# TODO: add board crate"),

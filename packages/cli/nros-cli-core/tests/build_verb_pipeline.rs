@@ -414,6 +414,16 @@ fn a_cross_image_carries_its_triple_in_the_settings_file_not_on_the_command_line
         settings.contains("-Tmps2_an385.ld"),
         "the board's link flags: {settings}"
     );
+    // phase-528 W2 — the cargo `runner` is rendered from the board's
+    // `[board.run.qemu]`, so `cargo run --config <this file>` still boots it.
+    assert!(
+        settings.contains(
+            "runner = \"qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+             -icount shift=auto -semihosting-config enable=on,target=native \
+             -nic user,model=lan9118 -kernel\""
+        ),
+        "the board's runner: {settings}"
+    );
     // Issue 1811 — the board facts reach a workspace image too. Without
     // `NROS_BOARD_TOML` the board crate compiled the platform default network
     // (192.0.3.10) into a QEMU image that now boots on SLIRP, and it never

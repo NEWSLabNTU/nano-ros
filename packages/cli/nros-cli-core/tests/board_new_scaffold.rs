@@ -202,3 +202,28 @@ fn a_zephyr_board_without_its_board_id_is_refused() {
         "the refusal must name the fix: {err}"
     );
 }
+
+/// phase-528 W2 — a scaffolded host board states `[board.run] host = true`,
+/// and the descriptor loads under the strict schema with it.
+#[test]
+fn a_scaffolded_host_board_states_how_it_runs() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    scaffold(tmp.path(), &["hostboard", "--platform", "posix"]);
+    let text = std::fs::read_to_string(tmp.path().join("nros-board-hostboard/nros-board.toml"))
+        .expect("descriptor written");
+    assert!(
+        text.contains("[board.run]\nhost = true\n") && !text.contains("runner ="),
+        "{text}"
+    );
+    let out = Command::new(nros())
+        .args(["board", "info", "hostboard", "--workspace"])
+        .arg(repo_root())
+        .env("NROS_EXTRA_BOARD_PATH", tmp.path())
+        .output()
+        .expect("run nros board info");
+    assert!(
+        out.status.success(),
+        "the scaffolded descriptor must load: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

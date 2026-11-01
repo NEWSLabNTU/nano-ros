@@ -75,6 +75,11 @@ rust_components = ["clippy"]
 # beside this file. The flash runner is Zephyr's own (openocd / stlink on the
 # board's ST-LINK V2-1).
 
+# phase-528 W2 (RFC-0118 D4) — the board's Renode twin (phase-524 W1), read by
+# the support registry. The silicon is flashed; `[board.flash]` is phase-529.
+[board.run]
+emulator = "renode:nucleo_f767zi"
+
 [board.capabilities]
 heap = true
 atomics = true

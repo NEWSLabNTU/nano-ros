@@ -25,6 +25,10 @@ table it names) is the only place a board fact is typed. This gate holds that:
          track carrying its `qemu_board` (the static half of issue 2169's test)
        - a fixture row whose `NROS_BOARD` names no board descriptor (fixture
          rows stay authored under RFC-0114's narrowing, so they are CHECKED)
+       - a row typing `emulator` while an in-tree descriptor exists for its
+         board: the emulator is the descriptor's `[board.run] emulator`
+         (RFC-0118 D4, phase-528 W2), read by the generator; only a row with
+         no in-tree descriptor (`external`) may type it
 
 Known gaps, printed on every run (RFC-0114 evaluation step 2: no silent gap):
   - a fixture row's build arguments are not checked against the descriptor;
@@ -316,6 +320,7 @@ def main() -> int:
     errs += uncovered_qemu_blocks(chapters, reg.probes)
     errs += fixture_board_errors((ROOT / FIXTURES).read_text(), names)
     errs += board_key_errors(reg.rows, names)
+    errs += board_registry.typed_emulator_errors(reg.raw_doc.get("board", []), reg.index)
 
     # The absorbed gates run their own self-tests on entry and print their own
     # verdicts; their exit status is part of this one.

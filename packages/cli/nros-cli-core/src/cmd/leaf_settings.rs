@@ -110,6 +110,9 @@ pub struct LeafImage {
     pub target: Option<String>,
     /// The descriptor's `cargo_config` template.
     pub cargo_config: Option<String>,
+    /// The cargo `runner` rendered from the descriptor's `[board.run.qemu]`
+    /// (phase-528 W2).
+    pub runner: Option<String>,
     /// The Rust channel the board builds with (`RUSTUP_TOOLCHAIN`), issue 2149
     /// — [`crate::builder::preflight::board_rust_channel`].
     pub rust_channel: Option<String>,
@@ -293,6 +296,7 @@ fn leaf_image_from_decl(
         platform,
         target: d.target.clone(),
         cargo_config: d.cargo_config.clone(),
+        runner: d.cargo_runner(),
         rust_channel: crate::builder::preflight::board_rust_channel(d, Some(nano_ros_root)),
         rx_cost: d.rx,
         decl,
@@ -1280,6 +1284,7 @@ pub fn write_shared(
         image_id: img.image_id.clone(),
         board: img.board.clone(),
         cargo_config: img.cargo_config.clone(),
+        runner: img.runner.clone(),
         target: img.target.clone(),
         nano_ros_root: nano_ros_root
             .canonicalize()
@@ -1818,6 +1823,7 @@ mod tests {
             platform: "posix".into(),
             target: None,
             cargo_config: None,
+            runner: None,
             rust_channel: None,
             rx_cost: None,
             config_path: settings_path(Path::new("/w/examples/talker"), "linux"),

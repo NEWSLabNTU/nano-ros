@@ -544,7 +544,197 @@ pub struct BoardDescriptor {
     /// checked, and the image is byte-identical to before the table existed.
     #[serde(default)]
     pub rx: Option<crate::entity_inventory::RxFrameCost>,
+    /// `[board.run]` — how the board's image is launched when it is not
+    /// flashed: an emulator, or the host itself (RFC-0118 D1/D4, phase-528
+    /// W2). The ONE place a launch is stated; the build's printed next step,
+    /// the generated cargo settings' `runner` and the support registry's
+    /// `emulator` are all read from it. Absent for real silicon with no twin.
+    #[serde(default)]
+    pub run: Option<BoardRun>,
+    /// `[board.console]` — where the image's console bytes come out
+    /// (RFC-0118 D1). Absent: not stated yet; nothing defaults it.
+    #[serde(default)]
+    pub console: Option<BoardConsole>,
 }
+
+/// The emulator kinds RFC-0114 D10's vocabulary names, and RFC-0118 D1's
+/// launcher row: `<kind>:<machine>`.
+pub const EMULATOR_KINDS: &[&str] = &["qemu", "fvp", "renode", "wokwi"];
+
+/// `[board.run]` — RFC-0118 D4.
+///
+/// `emulator = "<kind>:<machine>"` names the emulator and the machine in the
+/// RFC-0114 vocabulary (`qemu:mps2-an385`, `fvp:FVP_BaseR_AEMv8R`,
+/// `renode:nucleo_f767zi`, `wokwi:<board>`), or `host = true` says the image is
+/// a host process. Never both. A runner-specific sub-table (`[board.run.qemu]`)
+/// holds what only that runner reads; it requires the matching emulator kind.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BoardRun {
+    /// `<kind>:<machine>`, kind one of [`EMULATOR_KINDS`].
+    #[serde(default)]
+    pub emulator: Option<String>,
+    /// The image runs as a host process (no emulator, nothing flashed).
+    #[serde(default)]
+    pub host: bool,
+    /// `[board.run.qemu]` — read only by the QEMU runner.
+    #[serde(default)]
+    pub qemu: Option<BoardRunQemu>,
+}
+
+/// `[board.run.qemu]` — the QEMU invocation's board facts.
+///
+/// The line is rendered in one fixed order
+/// (`qemu-system-<system> [-cpu] -machine -nographic [-icount]
+/// [-semihosting-config] [-nic] -kernel`), with the kernel appended by the
+/// caller. A board whose QEMU line does not fit this shape (the NuttX and
+/// ThreadX riscv64 boards, whose NIC is a virtio-mmio device the harness
+/// varies per pair) states only `emulator` and keeps its line in
+/// `nros-qemu-ladder` until the runner package takes it (phase-528 W3).
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BoardRunQemu {
+    /// The `qemu-system-<system>` binary's suffix (`arm`, `riscv64`).
+    pub system: String,
+    /// QEMU's `-machine`, when it differs from the machine word of
+    /// `emulator` (that word is RFC-0114 vocabulary, not always QEMU's).
+    #[serde(default)]
+    pub machine: Option<String>,
+    /// `-cpu`, when the machine's default CPU is not the one.
+    #[serde(default)]
+    pub cpu: Option<String>,
+    /// `-icount <value>` (`shift=auto`: docs/reference/qemu-icount.md).
+    #[serde(default)]
+    pub icount: Option<String>,
+    /// `-semihosting-config enable=on,target=native`.
+    #[serde(default)]
+    pub semihosting: bool,
+    /// The NIC model on QEMU's user (SLIRP) network: `-nic user,model=<m>`.
+    #[serde(default)]
+    pub nic_model: Option<String>,
+}
+
+/// `[board.console] kind` — RFC-0118 D1's console row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConsoleKind {
+    Stdio,
+    Serial,
+    Rtt,
+    Semihosting,
+}
+
+/// `[board.console]` — RFC-0118 D4. `usb` and `baud` describe a serial
+/// console and are refused on any other kind.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BoardConsole {
+    pub kind: ConsoleKind,
+    /// The USB serial adapter the console appears on, as `<vendor>:<product>`
+    /// hex ids (`0483:374b`).
+    #[serde(default)]
+    pub usb: Option<String>,
+    #[serde(default)]
+    pub baud: Option<u32>,
+}
+
+impl BoardRun {
+    /// `(kind, machine)` of `emulator`, when it is well formed.
+    #[must_use]
+    pub fn emulator_parts(&self) -> Option<(&str, &str)> {
+        let (kind, machine) = self.emulator.as_deref()?.split_once(':')?;
+        (EMULATOR_KINDS.contains(&kind) && !machine.is_empty()).then_some((kind, machine))
+    }
+
+    /// The emulator platform Zephyr's `west build -t run` names for this
+    /// kind (`armfvp` for an FVP), projected as `NROS_BOARD_RUNNER`.
+    #[must_use]
+    pub fn zephyr_emulator(&self) -> Option<&'static str> {
+        match self.emulator_parts()?.0 {
+            "fvp" => Some("armfvp"),
+            "qemu" => Some("qemu"),
+            "renode" => Some("renode"),
+            _ => None,
+        }
+    }
+
+    /// The QEMU command line up to and including `-kernel` (the caller adds
+    /// the image), when the board states `[board.run.qemu]`.
+    #[must_use]
+    pub fn qemu_argv(&self) -> Option<Vec<String>> {
+        let q = self.qemu.as_ref()?;
+        let machine = q
+            .machine
+            .as_deref()
+            .or_else(|| self.emulator_parts().map(|(_, m)| m))?;
+        let mut v = vec![format!("qemu-system-{}", q.system)];
+        if let Some(cpu) = &q.cpu {
+            v.extend(["-cpu".into(), cpu.clone()]);
+        }
+        v.extend(["-machine".into(), machine.to_string(), "-nographic".into()]);
+        if let Some(i) = &q.icount {
+            v.extend(["-icount".into(), i.clone()]);
+        }
+        if q.semihosting {
+            v.extend([
+                "-semihosting-config".into(),
+                "enable=on,target=native".into(),
+            ]);
+        }
+        if let Some(nic) = &q.nic_model {
+            v.extend(["-nic".into(), format!("user,model={nic}")]);
+        }
+        v.push("-kernel".into());
+        Some(v)
+    }
+
+    /// Why this table is malformed, if it is.
+    fn shape_error(&self) -> Option<String> {
+        if self.host && self.emulator.is_some() {
+            return Some(
+                "`[board.run]` states both `host = true` and `emulator`; a board runs \
+                 as a host process OR under an emulator"
+                    .into(),
+            );
+        }
+        if let Some(e) = &self.emulator
+            && self.emulator_parts().is_none()
+        {
+            return Some(format!(
+                "`[board.run] emulator = \"{e}\"` must read `<kind>:<machine>` with kind \
+                 one of {}",
+                EMULATOR_KINDS.join(", ")
+            ));
+        }
+        if self.qemu.is_some() && self.emulator_parts().map(|(k, _)| k) != Some("qemu") {
+            return Some(
+                "`[board.run.qemu]` is read only by the QEMU runner, so it needs \
+                 `[board.run] emulator = \"qemu:<machine>\"`"
+                    .into(),
+            );
+        }
+        None
+    }
+}
+
+impl BoardConsole {
+    fn shape_error(&self) -> Option<String> {
+        (self.kind != ConsoleKind::Serial && (self.usb.is_some() || self.baud.is_some())).then(
+            || {
+                "`[board.console]` `usb` and `baud` describe a serial console; this one is \
+                 not `kind = \"serial\"`"
+                    .into()
+            },
+        )
+    }
+}
+
+/// Refusal for a launch string in the retired places (phase-528 W2).
+const RETIRED_RUNNER: &str = "a board's launch is stated in `[board.run]` (`emulator = \
+     \"qemu:<machine>\"`, or `host = true`) and its runner table (`[board.run.qemu]`: \
+     `system`, `cpu`, `machine`, `icount`, `semihosting`, `nic_model`), with the console in \
+     `[board.console]` — RFC-0118 D4, phase-528 W2. `nros build` renders the cargo `runner` \
+     from them";
 
 /// `[board.zephyr]` — the Zephyr facts, and only the ones no convention gives.
 ///
@@ -580,14 +770,6 @@ pub struct BoardZephyr {
     /// Default transport (`ethernet`, `serial`, …).
     #[serde(default)]
     pub default_transport: Option<String>,
-    /// West runner, stated ONLY when it differs from what Zephyr's own board
-    /// definition already selects.
-    ///
-    /// `armfvp` is the case that needs it. `qemu` does not: Zephyr's
-    /// `qemu_cortex_a53` board already declares its emulator, and restating it
-    /// here would be a second spelling of a fact Zephyr owns.
-    #[serde(default)]
-    pub runner: Option<String>,
     /// The rustup triple a RUST image for this board compiles for. Issue 2151:
     /// zephyr-lang-rust picks it from the Zephyr board at build time, so the
     /// board had no `target` and nothing installed it. Distinct from the C
@@ -1001,6 +1183,21 @@ impl BoardDescriptor {
             .as_ref()
             .map(|body| body.replace("${workspace}", &ws))
     }
+
+    /// The QEMU line up to `-kernel`, from `[board.run.qemu]` (phase-528 W2).
+    #[must_use]
+    pub fn qemu_argv(&self) -> Option<Vec<String>> {
+        self.run.as_ref()?.qemu_argv()
+    }
+
+    /// The cargo `runner` the generated settings carry for this board: the
+    /// QEMU line with a bare `qemu-system-*`, which cargo runs from `PATH`
+    /// with the image appended. `nros build`'s printed step resolves the
+    /// program through the QEMU ladder instead.
+    #[must_use]
+    pub fn cargo_runner(&self) -> Option<String> {
+        self.qemu_argv().map(|v| v.join(" "))
+    }
 }
 
 /// Escape a path for embedding inside a double-quoted TOML string.
@@ -1049,7 +1246,33 @@ impl BoardFile {
     ///
     /// A file with neither takes the direct typed parse, so its errors keep
     /// their line/column spans.
+    ///
+    /// phase-528 W2 — a launch string in either retired place (a
+    /// `cargo_config` `[target.<triple>] runner`, `[board.zephyr] runner`) is
+    /// refused naming `[board.run]`, and `[board.run]` / `[board.console]` are
+    /// checked for the shapes serde cannot express.
     fn parse(text: &str) -> Result<Self, toml::de::Error> {
+        let custom = <toml::de::Error as serde::de::Error>::custom;
+        if let Ok(table) = text.parse::<toml::Table>()
+            && let Some(msg) = retired_runner(&table)
+        {
+            return Err(custom(msg));
+        }
+        let file = Self::parse_typed(text)?;
+        for b in &file.boards {
+            let err = b
+                .run
+                .as_ref()
+                .and_then(BoardRun::shape_error)
+                .or_else(|| b.console.as_ref().and_then(BoardConsole::shape_error));
+            if let Some(e) = err {
+                return Err(custom(format!("board {}: {e}", b.names.join("/"))));
+            }
+        }
+        Ok(file)
+    }
+
+    fn parse_typed(text: &str) -> Result<Self, toml::de::Error> {
         let direct = toml::from_str::<BoardFile>(text);
         let Err(first) = direct else {
             return direct;
@@ -1098,6 +1321,51 @@ impl BoardFile {
         }
         toml::Value::Table(table).try_into()
     }
+}
+
+/// The refusal for a launch string left in a retired place, if any entry of
+/// the raw `[[board]]` array carries one.
+fn retired_runner(table: &toml::Table) -> Option<String> {
+    let boards = table.get("board")?.as_array()?;
+    for entry in boards {
+        let Some(t) = entry.as_table() else { continue };
+        let names = t
+            .get("names")
+            .and_then(|n| n.as_array())
+            .map(|n| {
+                n.iter()
+                    .filter_map(|v| v.as_str())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .unwrap_or_default();
+        if t.get("zephyr")
+            .and_then(|z| z.as_table())
+            .is_some_and(|z| z.contains_key("runner"))
+        {
+            return Some(format!(
+                "board {names}: `[board.zephyr] runner` is retired — {RETIRED_RUNNER}"
+            ));
+        }
+        let Some(cfg) = t.get("cargo_config").and_then(|c| c.as_str()) else {
+            continue;
+        };
+        let Ok(doc) = cfg.parse::<toml::Table>() else {
+            continue;
+        };
+        let Some(targets) = doc.get("target").and_then(|t| t.as_table()) else {
+            continue;
+        };
+        for (triple, body) in targets {
+            if body.as_table().is_some_and(|b| b.contains_key("runner")) {
+                return Some(format!(
+                    "board {names}: `cargo_config` `[target.{triple}] runner` is retired — \
+                     {RETIRED_RUNNER}"
+                ));
+            }
+        }
+    }
+    None
 }
 
 /// `platform = "orin-spe"` is refused by name rather than left to serde's
@@ -2602,6 +2870,8 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             board_features: vec![],
             priority_plan: None,
             rx: None,
+            run: None,
+            console: None,
             cargo_config: Some("inc = \"${workspace}/third-party/x\"".into()),
             entry: None,
             disambiguate_by_target: None,
@@ -2874,6 +3144,8 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             board_features: vec![],
             priority_plan: None,
             rx: None,
+            run: None,
+            console: None,
             cargo_config: None,
             entry: None,
             disambiguate_by_target: None,
@@ -3078,6 +3350,129 @@ entry_kind = "zephyr-staticlib"
         assert!(
             cat.descriptors.iter().any(|d| d.priority_plan.is_some()),
             "at least one in-tree board declares [board.priority_plan]; if none              does, this test has stopped covering the case it exists for"
+        );
+    }
+
+    /// phase-528 W2 — `[board.run]` / `[board.console]` load, render the QEMU
+    /// line in its one order, and refuse the shapes serde cannot express.
+    #[test]
+    fn board_run_and_console_load_render_and_refuse() {
+        const HEAD: &str = "[[board]]\nnames = [\"demo\"]\nplatform = \"bare-metal\"\n\
+                            toolchain = \"stable\"\nentry_kind = \"board-run\"\n";
+        let f = BoardFile::parse(&format!(
+            "{HEAD}[board.run]\nemulator = \"qemu:mps2-an385\"\n\
+             [board.run.qemu]\nsystem = \"arm\"\ncpu = \"cortex-m3\"\nicount = \"shift=auto\"\n\
+             semihosting = true\nnic_model = \"lan9118\"\n\
+             [board.console]\nkind = \"semihosting\"\n"
+        ))
+        .expect("loads");
+        let d = &f.boards[0];
+        assert_eq!(
+            d.cargo_runner().as_deref(),
+            Some(
+                "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -icount shift=auto \
+                 -semihosting-config enable=on,target=native -nic user,model=lan9118 -kernel"
+            )
+        );
+        assert_eq!(
+            d.console.as_ref().map(|c| c.kind),
+            Some(ConsoleKind::Semihosting)
+        );
+
+        // `machine` overrides the emulator's machine word; no cpu, no NIC.
+        let f = BoardFile::parse(&format!(
+            "{HEAD}[board.run]\nemulator = \"qemu:x\"\n[board.run.qemu]\nsystem = \"arm\"\n\
+             machine = \"mps3-an536\"\nsemihosting = true\n"
+        ))
+        .unwrap();
+        assert_eq!(
+            f.boards[0].cargo_runner().as_deref(),
+            Some(
+                "qemu-system-arm -machine mps3-an536 -nographic \
+                 -semihosting-config enable=on,target=native -kernel"
+            )
+        );
+
+        for (body, needle) in [
+            (
+                "[board.run]\nhost = true\nemulator = \"qemu:x\"\n",
+                "OR under an emulator",
+            ),
+            ("[board.run]\nemulator = \"qemu\"\n", "<kind>:<machine>"),
+            ("[board.run]\nemulator = \"bochs:x\"\n", "<kind>:<machine>"),
+            (
+                "[board.run]\nemulator = \"fvp:M\"\n[board.run.qemu]\nsystem = \"arm\"\n",
+                "needs `[board.run] emulator = \"qemu:",
+            ),
+            ("[board.run]\nemulatr = \"qemu:x\"\n", "unknown field"),
+            (
+                "[board.run]\nemulator = \"qemu:x\"\n[board.run.qemu]\nsystem = \"arm\"\nkvm = true\n",
+                "unknown field",
+            ),
+            (
+                "[board.console]\nkind = \"stdio\"\nbaud = 115200\n",
+                "serial console",
+            ),
+            ("[board.console]\nkind = \"jtag\"\n", "unknown variant"),
+        ] {
+            let err = BoardFile::parse(&format!("{HEAD}{body}"))
+                .expect_err(body)
+                .to_string();
+            assert!(err.contains(needle), "{body:?}: {err}");
+        }
+    }
+
+    /// phase-528 W2 — a launch string in either retired place is refused
+    /// naming `[board.run]`, never parsed or ignored.
+    #[test]
+    fn a_retired_runner_string_is_refused_naming_board_run() {
+        const HEAD: &str = "[[board]]\nnames = [\"demo\"]\nplatform = \"zephyr\"\n\
+                            toolchain = \"stable\"\nentry_kind = \"zephyr-staticlib\"\n";
+        for body in [
+            "cargo_config = \"\"\"\n[target.thumbv7m-none-eabi]\nrunner = \"qemu-system-arm -kernel\"\n\"\"\"\n",
+            "[board.zephyr]\nwest_board = \"b/s\"\nrunner = \"armfvp\"\n",
+        ] {
+            let err = BoardFile::parse(&format!("{HEAD}{body}"))
+                .expect_err(body)
+                .to_string();
+            assert!(
+                err.contains("is retired") && err.contains("[board.run]") && err.contains("demo"),
+                "{body:?}: {err}"
+            );
+        }
+    }
+
+    /// phase-528 W2 acceptance — no in-tree descriptor carries a launch
+    /// string, and the QEMU boards' rendered lines are the ones their
+    /// `cargo_config` used to spell (byte for byte).
+    #[test]
+    fn in_tree_qemu_boards_render_the_lines_they_used_to_type() {
+        let cat = BoardCatalog::load_with_extra(&repo_root_for_tests(), &[]).unwrap();
+        let line = |name: &str| {
+            cat.descriptors()
+                .iter()
+                .find(|d| d.names.iter().any(|n| n == name))
+                .and_then(BoardDescriptor::cargo_runner)
+                .unwrap_or_else(|| panic!("{name}: no [board.run.qemu]"))
+        };
+        let mps2 = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -icount \
+                    shift=auto -semihosting-config enable=on,target=native -nic \
+                    user,model=lan9118 -kernel";
+        assert_eq!(line("mps2-an385-baremetal"), mps2);
+        assert_eq!(line("mps2-an385-freertos"), mps2);
+        assert_eq!(
+            line("mps3-an536-freertos"),
+            "qemu-system-arm -machine mps3-an536 -nographic -semihosting-config \
+             enable=on,target=native -kernel"
+        );
+        let fvp = cat
+            .descriptors()
+            .iter()
+            .find(|d| d.names.iter().any(|n| n == "fvp-aemv8r-smp"))
+            .unwrap();
+        assert_eq!(
+            fvp.run.as_ref().and_then(BoardRun::zephyr_emulator),
+            Some("armfvp")
         );
     }
 

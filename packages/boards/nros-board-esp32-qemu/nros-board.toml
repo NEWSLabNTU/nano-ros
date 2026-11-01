@@ -76,6 +76,11 @@ closure_extra = "\n                .clock_us(nros_board_esp32_qemu::nros_platfor
 [board.platformio]
 board = "esp32dev"
 
+# phase-528 W2 (RFC-0118 D4) — the emulator this board runs under, read by the
+# support registry. (ESP32 is dormant, issue 1525.)
+[board.run]
+emulator = "qemu:esp32"
+
 [board.capabilities]
 heap = true
 atomics = true

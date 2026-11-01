@@ -176,9 +176,42 @@ fn render_descriptor(args: &NewArgs) -> String {
              west_board = \"{wb}\"\n\
              # Derived, so absent on purpose: prj.conf and\n\
              # `boards/<west_board with / and @ as _>.{{conf,overlay}}`,\n\
-             # present-if-exists. State `runner` only if it differs from what\n\
-             # Zephyr's own board definition selects.\n"
+             # present-if-exists. Zephyr's own board definition selects the\n\
+             # emulator `west build -t run` drives.\n"
         ));
+    }
+    // phase-528 W2 (RFC-0118 D4) — how the board runs is stated ONCE, in
+    // `[board.run]`; a host board says so, any other gets the shape to fill.
+    if args.platform == "posix" {
+        out.push_str(
+            "\n# How this board runs (RFC-0118 D4): a host process.\n\
+             [board.run]\n\
+             host = true\n\
+             \n\
+             [board.console]\n\
+             kind = \"stdio\"\n",
+        );
+    } else {
+        out.push_str(
+            "\n# How this board runs (RFC-0118 D4), when it has an emulator or a\n\
+             # twin: `emulator = \"qemu:<machine>\" | \"fvp:<model>\" |\n\
+             # \"renode:<platform>\" | \"wokwi:<board>\"`. The support registry reads\n\
+             # it from here. A QEMU board adds the line's facts, which `nros build`\n\
+             # prints and the generated cargo settings use as `runner`:\n\
+             #\n\
+             # [board.run]\n\
+             # emulator = \"qemu:<machine>\"\n\
+             #\n\
+             # [board.run.qemu]\n\
+             # system = \"arm\"            # qemu-system-<system>\n\
+             # cpu = \"cortex-m3\"\n\
+             # icount = \"shift=auto\"\n\
+             # semihosting = true\n\
+             # nic_model = \"lan9118\"\n\
+             #\n\
+             # [board.console]\n\
+             # kind = \"semihosting\"      # stdio | serial | rtt | semihosting\n",
+        );
     }
     out.push_str(
         "\n[board.capabilities]\n\

@@ -40,8 +40,14 @@ rust_prereqs = ["clang", "libclang-dev"]
 rust_components = ["clippy"]
 # Derived, so absent on purpose: prj.conf and
 # `boards/<west_board with / and @ as _>.{conf,overlay}`,
-# present-if-exists. State `runner` only if it differs from what
-# Zephyr's own board definition selects.
+# present-if-exists. The emulator `west build -t run` drives is Zephyr's own
+# board definition's; `[board.run]` names it for nano-ros (RFC-0118 D4).
+
+# phase-528 W2 (RFC-0118 D4) — the emulator this board runs under. The support
+# registry reads `emulator` from here; Zephyr's own board definition drives the
+# launch (`west build -t run`), and `NROS_BOARD_RUNNER` is derived from it.
+[board.run]
+emulator = "qemu:mps2-an385"
 
 [board.capabilities]
 heap = true

@@ -65,7 +65,7 @@ target_sources(app PRIVATE src/main.cpp)
 | `EXTRA_CONF_FILE` | The board crate's `prj.conf` and any per-board Kconfig fragments (e.g. an HWv2 snippet) are appended. Any consumer-supplied `EXTRA_CONF_FILE` is preserved and layered AFTER the board's. |
 | `DTC_OVERLAY_FILE` | The board crate's per-board DTS overlay is appended. Consumer overlays are preserved and layered after. |
 | `NROS_RMW` | Defaulted to `NROS_BOARD_DEFAULT_RMW` (from the board's descriptor) when the consumer did not pass `-DNROS_RMW=...`. |
-| `NROS_BOARD_RUNNER` | Cached so a launcher can pick up the right simulator binary / target-launcher. |
+| `NROS_BOARD_RUNNER` | The Zephyr emulator name derived from the descriptor's `[board.run] emulator` (`fvp:` gives `armfvp`), cached. Zephyr does not read it; `nano_ros_entry()` reads it as "an embedded board was imported". |
 | `NROS_BOARD_RUST_SUPPORT_MODULE` | Appended to `ZEPHYR_EXTRA_MODULES` when the board carries a Rust support module. (Not yet in the `board.cmake` ↔ `Cargo.toml` drift-audit field list — drift here is unaudited.) |
 
 The values come from ONE authored file, the board's `nros-board.toml`. cmake cannot read TOML, so `nano_ros_use_board()` runs `nros board cmake-vars` to write a mechanical projection of the descriptor into the build directory and includes that. The projection is a build artifact: never committed, regenerated every configure, and editing it edits nothing that survives.
@@ -92,8 +92,9 @@ project(my_app LANGUAGES CXX)
 
 ## Running
 
-The board's `[board.zephyr] runner` reaches cmake as `NROS_BOARD_RUNNER`, and
-Zephyr's own emulator target does the rest:
+The board states its emulator once, in `[board.run] emulator` (for the FVP,
+`fvp:FVP_BaseR_AEMv8R`), which reaches cmake as `NROS_BOARD_RUNNER`. Zephyr's own
+board definition selects the emulator, and its run target does the rest:
 
 ```sh
 west build -d build

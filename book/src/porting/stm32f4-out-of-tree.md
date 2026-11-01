@@ -102,14 +102,6 @@ entry_kind          = "board-run"
 supported_netstacks = ["smoltcp"]
 chip                = "stm32f429"
 board_crate         = "my-stm32f4-board"
-
-# entry_kind = "board-run" needs the matching [board.entry] block —
-# copy the one from packages/boards/nros-board-mps2-an385/nros-board.toml
-# and swap the crate name.
-[board.entry]
-crate_name = "my_stm32f4_board"
-signature  = "#[my_stm32f4_board::entry]\nfn main() -> !"
-
 cargo_config = '''
 [build]
 target = "thumbv7em-none-eabihf"
@@ -117,12 +109,53 @@ target = "thumbv7em-none-eabihf"
 [target.thumbv7em-none-eabihf]
 rustflags = ["-C", "link-arg=-Tlink.x"]
 '''
+
+# entry_kind = "board-run" needs the matching [board.entry] block —
+# copy the one from packages/boards/nros-board-mps2-an385/nros-board.toml
+# and swap the crate name. (A `[board.*]` table ends the `[[board]]` keys
+# above it, so `cargo_config` goes before it.)
+[board.entry]
+crate_name = "my_stm32f4_board"
+signature  = "#[my_stm32f4_board::entry]\nfn main() -> !"
 ```
 
 `supported_netstacks` names who brings up the link (here your crate's
-smoltcp glue — nothing outside it). Beware unknown keys: the descriptor
-parser ignores what it does not know rather than erroring, so a typo'd
-key silently does nothing.
+smoltcp glue — nothing outside it). Unknown keys are refused when the
+catalog loads, naming the key and the file, so a typo fails loudly rather
+than doing nothing.
+
+### How the board runs: `[board.run]` and `[board.console]`
+
+A board states its launch once, in `[board.run]` (RFC-0118 D4). Real silicon
+with no emulator twin leaves it out. Otherwise it holds either
+`emulator = "<kind>:<machine>"` (kind `qemu`, `fvp`, `renode` or `wokwi`) or
+`host = true` for a host process, never both. A runner-specific sub-table
+holds what only that runner reads; for QEMU it is `[board.run.qemu]`:
+
+```toml
+[board.run]
+emulator = "qemu:mps2-an385"
+
+[board.run.qemu]
+system      = "arm"          # qemu-system-<system>
+cpu         = "cortex-m3"    # -cpu
+# machine   = "…"            # -machine, when it differs from the emulator's word
+icount      = "shift=auto"   # -icount
+semihosting = true           # -semihosting-config enable=on,target=native
+nic_model   = "lan9118"      # -nic user,model=<m>
+
+[board.console]
+kind = "semihosting"         # stdio | serial | rtt | semihosting
+# usb  = "0483:374b"         # serial only
+# baud = 115200              # serial only
+```
+
+Three things read it, so none of them states it again. `nros build` prints the
+QEMU line (program from the SDK store, then the image) as its next step. The
+generated cargo settings file gives the same line to cargo as the triple's
+`runner`, so `cargo run --config <that file>` boots the image. The board-support
+registry reads `emulator` from it rather than typing its own copy. A `runner` in
+`cargo_config`, or `[board.zephyr] runner`, is refused naming these tables.
 
 ## What you take on
 

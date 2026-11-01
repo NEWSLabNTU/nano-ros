@@ -7,7 +7,8 @@
 # board's whole reason to exist: the ARMv8-R half of the FreeRTOS platform had
 # never run anywhere (no emulator models the S32Z270 RTU — issue 0772).
 #
-# The `runner` below is what makes `cargo run` and the fixture lane work.
+# `[board.run]` below is what makes `cargo run` and the fixture lane work
+# (it is rendered into the generated cargo settings as the triple's `runner`).
 # Semihosting is enabled because the family's console (`_write`,
 # `nros_board_freertos_console_write` in nros-board-freertos) goes through it.
 #
@@ -38,7 +39,6 @@ cargo_config = '''
 target = "armv8r-none-eabihf"
 
 [target.armv8r-none-eabihf]
-runner = "qemu-system-arm -machine mps3-an536 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [
     "-C", "link-arg=-Tan536.ld",
     "-C", "link-arg=--nmagic",
@@ -70,6 +70,20 @@ interfaces = { eth0 = "ethernet" }
 stack = "board"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]
+
+# phase-528 W2 (RFC-0118 D4) — how this board runs, stated ONCE: `nros build`'s
+# next step, the generated cargo `runner` and the registry's `emulator` all
+# read it. No `-icount` and no NIC yet (issue 2172: no probe track measures
+# this board's line, and its harness pairs bring their own network).
+[board.run]
+emulator = "qemu:mps3-an536"
+
+[board.run.qemu]
+system = "arm"
+semihosting = true
+
+[board.console]
+kind = "semihosting"
 
 [board.entry]
 

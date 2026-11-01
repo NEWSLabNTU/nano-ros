@@ -92,6 +92,11 @@ pub struct CargoConfigSpec {
     /// `[patch.crates-io]`: crate name → absolute crate root. The descriptor's
     /// own `[patch]` rows are merged in by [`render`].
     pub patches: BTreeMap<String, PathBuf>,
+    /// The cargo `runner` for the board's triple, rendered from the
+    /// descriptor's `[board.run.qemu]` (phase-528 W2) — so `cargo run
+    /// --config <this file>` boots a QEMU board. The descriptor no longer
+    /// states one in its `cargo_config`.
+    pub runner: Option<String>,
     /// The retypable command for the header, when it is not the default
     /// "build the `Cargo.toml` beside this file" (a single-package example's
     /// manifest is the package's own, not one under `build/`).
@@ -177,6 +182,31 @@ pub fn render(spec: &CargoConfigSpec, config_path: &Path) -> Result<String, Stri
         _ => {}
     }
     build.insert("target-dir", toml_edit::value(rel(&spec.target_dir)?));
+    let triple = build
+        .get("target")
+        .and_then(Item::as_str)
+        .map(|t| crate::orchestration::board_descriptor::triple_of_build_target(t).to_string());
+
+    // ---- [target.<triple>] runner, from `[board.run]` -------------------------
+    if let Some(runner) = &spec.runner {
+        let Some(triple) = triple else {
+            return Err(format!(
+                "board `{}` states a QEMU launch in `[board.run.qemu]` but no triple, so \
+                 there is no `[target.<triple>]` to give its cargo `runner`",
+                spec.board
+            ));
+        };
+        let targets = table(&mut doc, "target");
+        targets.set_implicit(true);
+        if !targets.contains_key(&triple) {
+            targets.insert(&triple, Item::Table(Table::new()));
+        }
+        let t = targets
+            .get_mut(&triple)
+            .and_then(Item::as_table_mut)
+            .ok_or_else(|| format!("board `{}`: `[target.{triple}]` is not a table", spec.board))?;
+        t.insert("runner", toml_edit::value(runner.as_str()));
+    }
 
     // ---- [env] ---------------------------------------------------------------
     let env = table(&mut doc, "env");
@@ -446,6 +476,7 @@ build-std = ["core", "alloc"]
             env: BTreeMap::from([("NROS_EXECUTOR_MAX_NODES".into(), "2".into())]),
             path_env: BTreeMap::new(),
             patches: BTreeMap::new(),
+            runner: None,
             build_hint: None,
         }
     }
@@ -578,6 +609,28 @@ build-std = ["core", "alloc"]
             render(&s, &cfg_path()).is_err(),
             "a different stem still disagrees"
         );
+    }
+
+    /// phase-528 W2 — the board's `[board.run.qemu]` line becomes the cargo
+    /// `runner` of its triple, beside the template's own rustflags.
+    #[test]
+    fn the_board_run_line_becomes_the_triples_cargo_runner() {
+        let mut s = spec();
+        s.cargo_config = Some("[target.thumbv7m-none-eabi]\nrustflags = []\n".into());
+        s.target = Some("thumbv7m-none-eabi".into());
+        s.runner = Some("qemu-system-arm -machine mps2-an385 -nographic -kernel".into());
+        let v = parsed(&render(&s, &cfg_path()).unwrap());
+        let t = &v["target"]["thumbv7m-none-eabi"];
+        assert_eq!(
+            t["runner"].as_str(),
+            Some("qemu-system-arm -machine mps2-an385 -nographic -kernel")
+        );
+        assert!(t["rustflags"].is_array());
+
+        // No triple, no `[target.<triple>]` to carry it: refused, not dropped.
+        s.cargo_config = None;
+        s.target = None;
+        assert!(render(&s, &cfg_path()).is_err());
     }
 
     #[test]

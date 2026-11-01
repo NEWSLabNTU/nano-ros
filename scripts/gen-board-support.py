@@ -4,7 +4,8 @@
 The registry is `packages/boards/board-support.toml` (the board rows and the
 probe tracks) plus the cell table it names (`cell_table`,
 `packages/boards/board-support-cells.toml`). This script reads them and the
-board descriptors they name, and writes every view below. Nothing it writes is
+board descriptors they name (each row's `emulator` is the descriptor's
+`[board.run] emulator`, RFC-0118 D4), and writes every view below. Nothing it writes is
 edited by hand; each output starts with a stamp naming this script and the hash
 of the registry DATA it was made from (comments are not data, so a comment edit
 in the registry restamps nothing).
@@ -82,7 +83,13 @@ RMW_WORD = {"Zenoh": "zenoh", "Cyclonedds": "cyclonedds", "Xrce": "XRCE-DDS",
 class Registry:
     def __init__(self, root: Path):
         self.root = root
-        self.doc = board_registry.load(root / REGISTRY)
+        # RFC-0118 D4 (phase-528 W2): `emulator` is read from each row's board
+        # descriptor, never typed here. `raw_doc` is the file as written (the
+        # gate refuses a typed `emulator` in it); `doc` is what every view and
+        # the data hash are made from, so a descriptor edit restamps the views.
+        self.raw_doc = board_registry.load(root / REGISTRY)
+        self.index = board_registry.descriptor_index(root)
+        self.doc = board_registry.with_descriptor_facts(self.raw_doc, self.index)
         self.cell_table = self.doc.get("cell_table")
         if not self.cell_table:
             raise SystemExit(f"{REGISTRY}: no top-level `cell_table` naming the "

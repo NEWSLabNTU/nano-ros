@@ -65,8 +65,16 @@ CARGO_TABLES = {
     "source", "http", "credential-alias", "install", "cargo-new", "resolver",
 }
 
-# Keys cargo defines inside `[target.<triple>]`.
-TARGET_KEYS = {"linker", "runner", "rustflags", "rustdocflags", "ar"}
+# Keys cargo defines inside `[target.<triple>]` that a board blob may state.
+# `runner` is cargo's too, and is refused here on purpose: phase-528 W2 moved
+# a board's launch to `[board.run]` (RFC-0118 D4), and `nros build` renders the
+# cargo `runner` from it into the generated settings file.
+TARGET_KEYS = {"linker", "rustflags", "rustdocflags", "ar"}
+RETIRED_TARGET_KEYS = {
+    "runner": "a board's launch is stated in `[board.run]` (`emulator`, or "
+              "`host = true`) and `[board.run.qemu]`, not as a cargo `runner` "
+              "(RFC-0118 D4, phase-528 W2); `nros build` renders the runner",
+}
 
 CARGO_CONFIG_RE = re.compile(r"cargo_config\s*=\s*'''(.*?)'''", re.S)
 
@@ -101,7 +109,12 @@ def check_blob(rel, blob):
                 if not isinstance(cfg, dict):
                     continue
                 for key in cfg:
-                    if key not in TARGET_KEYS:
+                    if key in RETIRED_TARGET_KEYS:
+                        problems.append(
+                            f"{rel}: `[target.{triple}] {key}` is retired — "
+                            f"{RETIRED_TARGET_KEYS[key]}"
+                        )
+                    elif key not in TARGET_KEYS:
                         problems.append(
                             f"{rel}: `[target.{triple}] {key}` is not a key cargo "
                             f"defines there — did you mean one of "
@@ -121,7 +134,7 @@ def check_blob(rel, blob):
             problems.append(
                 f"{rel}: `[build] target = \"{build_target}\"` names a triple this "
                 f"blob does not configure ({', '.join(sorted(configured))}). "
-                f"The runner and rustflags below would not apply to the build."
+                f"The rustflags below would not apply to the build."
             )
     return problems
 
@@ -154,15 +167,20 @@ def self_test(quiet=False):
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write("[[board]]\nnames = [\"x\"]\ncargo_config = '''\n%s'''\n" % blob)
 
-        write('[target.thumbv7m-none-eabi]\nrunner = "qemu"\nrustflags = ["-C", "x"]\n')
+        write('[target.thumbv7m-none-eabi]\nrustflags = ["-C", "x"]\n')
         problems, checked = scan(tmp)
         assert checked == 1 and not problems, f"a good blob must pass; got {problems}"
 
-        write("[target.thumbv7m-none-eabi\nrunner = 'q'\n")
+        # phase-528 W2 — a launch string in the blob is refused naming the table.
+        write('[target.thumbv7m-none-eabi]\nrunner = "qemu"\nrustflags = ["-C", "x"]\n')
+        problems, _ = scan(tmp)
+        assert any("is retired" in p and "[board.run]" in p for p in problems), problems
+
+        write("[target.thumbv7m-none-eabi\nrustflags = []\n")
         problems, _ = scan(tmp)
         assert any("not valid TOML" in p for p in problems), problems
 
-        write('[targets.thumbv7m-none-eabi]\nrunner = "qemu"\n')
+        write('[targets.thumbv7m-none-eabi]\nrustflags = []\n')
         problems, _ = scan(tmp)
         assert any("cargo does not read" in p for p in problems), problems
 
@@ -171,12 +189,12 @@ def self_test(quiet=False):
         problems, _ = scan(tmp)
         assert any("not a key cargo" in p for p in problems), problems
 
-        write('[build]\ntarget = "thumbv7m-none-eabi"\n[target.armv8r-none-eabihf]\nrunner = "q"\n')
+        write('[build]\ntarget = "thumbv7m-none-eabi"\n[target.armv8r-none-eabihf]\nrustflags = []\n')
         problems, _ = scan(tmp)
         assert any("does not configure" in p for p in problems), problems
         # phase-472 W6 — the SECOND `[[board]]` blob of one descriptor is read.
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write("[[board]]\nnames = [\"x\"]\ncargo_config = '''\n[target.a]\nrunner = \"q\"\n'''\n"
+            fh.write("[[board]]\nnames = [\"x\"]\ncargo_config = '''\n[target.a]\nrustflags = []\n'''\n"
                      "[[board]]\nnames = [\"y\"]\ncargo_config = '''\n[target.b]\nrunnner = \"q\"\n'''\n")
         problems, checked = scan(tmp)
         assert checked == 2 and any("(blob 2)" in p and "not a key cargo" in p
