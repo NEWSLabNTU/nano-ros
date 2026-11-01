@@ -298,6 +298,9 @@ def main() -> int:
     tiers = load("check_board_tiers", "scripts/check-board-tiers.py")
     runs = load("check_book_board_run_sections", "scripts/check-book-board-run-sections.py")
     self_test(gen)
+    # The rendered book applies D10's clock through this preprocessor; its
+    # negative controls (the FVP row on both sides of its stale date) run here.
+    load("mdbook_board_status", "scripts/mdbook-board-status.py").self_test()
 
     errs = generated_errors(gen)
     reg = gen.Registry(ROOT)

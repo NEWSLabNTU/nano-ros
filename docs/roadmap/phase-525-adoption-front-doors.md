@@ -43,6 +43,10 @@ is the container, so the probe can time it today.
 Acceptance: the gate runs in `just check fast` with a baseline of zero and no
 allowlist; `nros --help` contains no internal id; the sweep's commit message
 carries the sweep command.
+Carried from [phase-522](archived/phase-522-support-registry-primitives.md) W5:
+the gate's subject includes `nros board list`, `nros board show` and
+`nros doctor --report`, and it finds no tier number (`tier 1`, `tier 2`,
+`tier 3`) in their output.
 
 Decision step: if the sweep finds a refusal whose only honest remedy is "read
 issue N" (the fix is not a command the reader can run), that refusal states

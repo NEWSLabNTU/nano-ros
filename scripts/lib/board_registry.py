@@ -118,10 +118,11 @@ def status_word(row: dict, built: bool, stale_days: int = DEFAULT_STALE_DAYS,
     A manual row older than `stale_days` on `today` degrades to "Builds" with
     its date — the row is not edited; the derivation reports what the evidence
     is worth that day. `today = None` asks no clock and never degrades: the
-    generated views pass None so that a view cannot change on a day nobody
-    edited anything (they print the date the degradation starts instead,
-    `stale_from`), and the live readers (`nros board`, `--print-status`) pass
-    the real date.
+    committed views pass None so that a tracked file cannot change on a day
+    nobody edited anything (they print the date the degradation starts instead,
+    `stale_from`), and every view a reader sees passes the real date: `nros
+    board`, `--print-status`, and the rendered book through
+    `scripts/mdbook-board-status.py`.
     """
     if row.get("infra") is True:
         return "Infrastructure"

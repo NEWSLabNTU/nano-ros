@@ -50,8 +50,10 @@
 #
 # A manual row whose `last_run` is older than `manual_stale_days` reads
 # "Builds (last booted <date>)" in every live view (`nros board`,
-# `check-board-tiers.py --print-status`); the generated pages, which must not
-# change on a day nobody edited anything, print the date that starts instead.
+# `check-board-tiers.py --print-status`) and in the rendered book (the mdBook
+# preprocessor `scripts/mdbook-board-status.py` applies the date at build
+# time); the committed pages, which must not change on a day nobody edited
+# anything, print the date that starts instead.
 #
 # Predicates (scripts/check-board-tiers.py, run by `just check board-registry`):
 #   - an automated run (merge/daily/weekly) => >=1 `Runtime` cell for the platform
@@ -133,7 +135,7 @@ nightly_token = "freertos"
 runs = "none"
 emulator = "qemu:mps3-an536"
 breadth = "inherits FreertosMps2"
-maintainers = []
+maintainers = ["jerry73204"]
 
 [[board]]
 crate = "nros-board-mps2-an385-freertos"
@@ -333,7 +335,7 @@ hardware = "mr-canhubk344"
 cadence = "manual"
 last_run = "2026-10-26"
 breadth = "inherits ZephyrQemuCortexM"
-maintainers = []
+maintainers = ["jerry73204"]
 notes = "NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a 921,600-baud UART zenoh link to an island gateway router. Evidence: phase-474 \"The board halves, 2026-10-26\" (nine acts, all PASS, violation records read over SWD). The board package is the downstream island's."
 
 # ===== infra — not boards ==================================================

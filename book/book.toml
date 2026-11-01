@@ -10,6 +10,13 @@ build-dir = "book"
 [preprocessor.mermaid]
 command = "mdbook-mermaid"
 
+# RFC-0114 D10: a manual board row older than `manual_stale_days` reads Builds
+# in the RENDERED book. The committed pages carry the date that starts, because
+# a tracked file must not change on a day nobody edited anything; this applies
+# the clock at build time through the same renderer (scripts/gen-board-support.py).
+[preprocessor.board-status]
+command = "python3 ../scripts/mdbook-board-status.py"
+
 [output.html]
 git-repository-url = "https://github.com/NEWSLabNTU/nano-ros"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
