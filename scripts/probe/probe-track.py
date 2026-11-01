@@ -13,11 +13,17 @@ cannot list different tracks.
   probe-track.py --list       print every track name, one per line
   probe-track.py --weekly     print the weekly tracks as a JSON array (the
                               `probe-platforms.yml` matrix)
+  probe-track.py --twin <track>
+                              print a twin track's board facts (phase-524 W4a)
+                              as shell assignments `NROS_TWIN_<FIELD>=<quoted>`,
+                              list fields space-joined; nothing for a track
+                              that is not a twin's
 
 An unknown track exits 2 naming every known one.
 """
 
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -29,6 +35,15 @@ def tracks() -> list[dict]:
 
 
 def main(argv: list[str]) -> int:
+    if len(argv) == 2 and argv[0] == "--twin":
+        for t in tracks():
+            if t["track"] == argv[1]:
+                for k, v in (t.get("twin") or {}).items():
+                    v = " ".join(v) if isinstance(v, list) else v
+                    print(f"NROS_TWIN_{k.upper()}={shlex.quote(v)}")
+                return 0
+        print(f"probe: unknown track '{argv[1]}'", file=sys.stderr)
+        return 2
     if len(argv) != 1:
         print(__doc__, file=sys.stderr)
         return 2

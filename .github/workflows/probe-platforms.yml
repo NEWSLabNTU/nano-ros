@@ -16,6 +16,10 @@
 # runners only (the probe drives `docker run` itself, so it needs the runner,
 # not a container) — no self-hosted runner is involved.
 #
+# The twin tracks (phase-524 W4a: `renode-nucleo`, `wokwi-pico`) replay the
+# Zephyr chapter's setup, then boot a board's serial talker in its emulator
+# twin and hear it from `ros2 topic echo` (scripts/probe/verify-installed-twin.sh).
+#
 # The asset is built ONCE (`just probe platform-asset`, the same steps
 # `release-nros.yml` runs) and handed to one job per chapter, so a red names
 # its chapter and one chapter's failure never hides another's.
@@ -104,6 +108,13 @@ jobs:
         env:
           PROBE_BRANCH: ${{ github.ref_name }}
           PROBE_ASSET: ${{ runner.temp }}/asset
+          # phase-524 W4a — the Wokwi twin track (`wokwi-pico`) is a hosted
+          # simulator and needs this token; the harness passes it into that
+          # track's container by NAME and to no other. Unset or empty, that
+          # track fails as an unmet precondition naming the secret. A fork's
+          # pull request cannot read it, which is fine: this lane runs on
+          # schedule and dispatch only.
+          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
         run: |
           source ./activate.sh
           just probe ${{ matrix.platform }}

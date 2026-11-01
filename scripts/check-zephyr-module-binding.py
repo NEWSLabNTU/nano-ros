@@ -183,6 +183,13 @@ FLAG_NAME = "ZEPHYR_EXTRA_MODULES"
 # the invocation it was written for: move the build and the exemption stops
 # matching rather than silently covering a different one.
 EXEMPT = {
+    os.path.join("scripts", "probe", "twin", "smoke.sh"): (
+        "-DNROS_IMAGE=twin",
+        "twin probe track (phase-524 W4a): runs in a container with NO "
+        "checkout, on the installed release, so there is no zephyr-module.sh "
+        "to source; it names the installed SDK root, `$(nros sdk-root)`, which "
+        "is the nros module, the way the Zephyr chapter's own build line does.",
+    ),
     os.path.join("just", "zephyr-dev.just"): (
         "tests/zephyr-c-smoke",
         "the C-port smoke app is standalone: its CMakeLists pulls "

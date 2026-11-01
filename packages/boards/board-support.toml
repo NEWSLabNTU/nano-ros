@@ -641,3 +641,42 @@ chapter = "getting-started/installation.md"
 variant = "pinned"
 weekly = true
 notes = "Issue 2168 — the same project with the PUBLISHED release `[tool.nros]` pins installed instead of this branch's asset, so a NEWER front must hand off to the project's older pin."
+
+# phase-524 W4a (RFC-0115) — TWIN tracks: a board with an emulator twin and no
+# getting-started chapter of its own yet. `twin` is the board key; its
+# descriptor states the emulator (`[board.run] emulator`) and the twin's wiring
+# (`[board.run.<kind>]`), and the generator adds the rest to probe-tracks.json.
+# The track replays installation.md and the Zephyr chapter's setup blocks
+# (`variant = "zephyr-twin"`, with `nros setup <board>` and the board's HAL
+# module substituted in), then the probe's own twin smoke run
+# (scripts/probe/verify-installed-twin.sh): build the board's serial C talker
+# through the leaf road, boot it in the twin, and hear one message from
+# `ros2 topic echo`. The emulator call is scripts/probe/twin/<kind>.sh, which
+# phase-528's runner packages replace (W4b, with the chapters and `nros run`).
+#
+#   twin          the board key whose twin the track boots
+#   twin_locator  the serial locator the track's image dials: the twin's link
+#   twin_knobs    `<group>.<name> = <value>`: the image's RAM knobs, stated per
+#                 image until descriptor `[knobs]` can carry them (issue 2194)
+
+[[probe]]
+track = "renode-nucleo"
+chapter = "getting-started/integration-zephyr.md"
+variant = "zephyr-twin"
+weekly = true
+row = "nros-board-nucleo-f767zi-zephyr@-"
+twin = "nucleo-f767zi-zephyr"
+twin_locator = "serial/serial@40004800#baudrate=115200"
+twin_knobs = ["zenoh.max_large_subscribers = 0"]
+notes = "phase-524 W4a — the Nucleo-F767ZI's Renode twin: zenoh over USART3 on a host pty, the console on USART6. The knob is the serial image's (phase-524 W3)."
+
+[[probe]]
+track = "wokwi-pico"
+chapter = "getting-started/integration-zephyr.md"
+variant = "zephyr-twin"
+weekly = true
+row = "nros-board-rpi-pico-w-zephyr@-"
+twin = "rpi-pico-w-zephyr"
+twin_locator = "serial/uart@40034000#baudrate=115200"
+twin_knobs = ["zenoh.max_large_subscribers = 0", "zenoh.max_subscribers = 1", "zenoh.service_buffer_size = 1024", "zenoh.max_queryables = 1", "zephyr.heap_size = 32768"]
+notes = "phase-524 W4a — the Pico W's Wokwi twin: zenoh over UART0, which `wokwi-cli --interactive` and socat carry to a host pty. Hosted: the run needs `WOKWI_CLI_TOKEN` (a repository secret, so the weekly workflow's schedule and dispatch only) and spends about 1.5 of the account's 50 free simulation minutes a month; without the token the track FAILS as an unmet precondition naming it. The knobs are the image's (phase-524 W3)."

@@ -81,6 +81,15 @@ rust_components = ["clippy"]
 [board.run]
 emulator = "renode:nucleo_f767zi"
 
+# phase-524 W4a — the twin's wiring, read only by the Renode runner (the twin
+# probe track's scripts/probe/twin/renode.sh today, phase-528's runner package
+# later): the zenoh link (USART3) goes to a host pty, the console (USART6, the
+# overlay beside this file) to a file. Renode's platform is the machine word,
+# `platforms/boards/nucleo_f767zi.repl`.
+[board.run.renode]
+link = "usart3"
+console = "usart6"
+
 # phase-529 W1 (RFC-0118 D4) — the silicon is flashed through Zephyr's own
 # runner (`west flash`; the integration-zephyr chapter's "Flash a real board").
 # Which runner and probe that is (openocd / stlink on the ST-LINK V2-1) is
