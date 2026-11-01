@@ -1,0 +1,138 @@
+# phase-524 W1 spike 3, RERUN -- wokwi-cli, Pico W (rpi_pico/rp2040/w), our Zephyr C talker, zenoh over serial to a host router
+# date:     2026-11-01 (box: distrobox ros2), branched from origin/main ff680535e9
+# why:      the first run (phase-524-w1-wokwi-pico.log) was blocked on a missing WOKWI_CLI_TOKEN;
+#           the maintainer has since created one (personal account, free plan). The token is read
+#           inline into wokwi-cli's environment only and appears nowhere in this log.
+# wokwi-cli: 0.29.1 (0aa185144b92), wokwi-cli-linuxstatic-x64,
+#           sha256 3c9d6da007d008a3822ab468318037285440055132c59fd659d7306e40f14258 (same binary as the first run)
+#           server: "Wokwi Simulation API 1.0.0-20261026-g45f2303e"
+# zephyr:   3.7.0, SDK 0.16.8, hal_rpi_pico fba7162cc7bee06d0149622bbcaac4e41062d368 (ZEPHYR_EXTRA_MODULES)
+# rust:     nightly-2026-04-11 + thumbv6m-none-eabi
+# app:      examples/zephyr/c/talker, CONF_FILE="prj.conf;prj-zenoh.conf;<spike>/rpi_pico/serial.conf"
+#           (CONFIG_NROS_TRANSPORT_SERIAL=y, CONFIG_NETWORKING=n, CONFIG_UART_INTERRUPT_DRIVEN=y,
+#           CONFIG_MAIN_THREAD_PRIORITY=5, CONFIG_HEAP_MEM_POOL_SIZE=16384 -- the Nucleo spike's shape)
+# diagram:  one part, "board-pi-pico-w"; pico:GP0 -> $serialMonitor:RX, pico:GP1 -> $serialMonitor:TX, 115200
+#
+# commands (spike scripts under tmp/spike-524/scripts, not committed):
+#   west build -b rpi_pico/rp2040/w examples/zephyr/c/talker -- \
+#       -DCONF_FILE=... -DCONFIG_NROS_ZENOH_LOCATOR='"serial/uart@40034000#baudrate=115200"' \
+#       -DZEPHYR_EXTRA_MODULES="<repo>;<ws>/modules/hal/rpi_pico;<spike>/atomic-shim" \
+#       -DDTC_OVERLAY_FILE=<spike>/rpi_pico/app-u0.overlay \
+#       -DNROS_OVERRIDE_ZENOH_MAX_LARGE_SUBSCRIBERS=0 -DNROS_OVERRIDE_ZENOH_MAX_SUBSCRIBERS=1 \
+#       -DNROS_OVERRIDE_ZENOH_SERVICE_BUFFER_SIZE=1024 -DNROS_OVERRIDE_ZEPHYR_HEAP_SIZE=32768 \
+#       -DNROS_OVERRIDE_ZENOH_MAX_QUERYABLES=1 -DCONFIG_TICKLESS_KERNEL=n
+#   socat PTY,link=<run>/zlink,rawer,echo=0 'OPEN:<run>/out.fifo,rdwr!!OPEN:<run>/in.fifo,rdwr'
+#   rmw_zenohd (resolved by nros_zenohd_bin; i.e. `ros2 run rmw_zenoh_cpp rmw_zenohd`) with
+#       listen/endpoints=["serial/<run>/zlink#baudrate=115200","tcp/127.0.0.1:17491"], multicast scouting off
+#   ros2 topic echo /chatter std_msgs/msg/String   (rmw_zenoh_cpp, connect tcp/127.0.0.1:17491 only)
+#   WOKWI_CLI_TOKEN=<inline> wokwi-cli -q --interactive --timeout 120000 <proj> <>in.fifo 1<>out.fifo
+#
+# The link: Wokwi's serial monitor is UART0 (GP0/GP1). `--interactive` puts wokwi-cli's stdin on the
+# UART's RX and the serial monitor on its stdout, both byte-transparent (0x00 survives: see step 4),
+# so socat turns the pair into a host pty and the router opens it as a serial locator -- the same
+# shape as the Nucleo chapter, with wokwi-cli in place of the ST-LINK VCP. The console moves to UART1
+# (GP4/GP5), which Wokwi does not show; on the bench UART0 is the GP0/GP1 header pins, so the zenoh
+# link needs a USB-to-UART adapter there (the Pico W's USB port is not that UART).
+
+=== 1. build: what the ELF needed (in order of discovery) ===
+a. nros_detect_rust_target() has no Cortex-M0+ arm (the first run's finding): the Rust lane fell
+   through to the host triple and cc-rs handed arm-zephyr-eabi-gcc `-m64`.
+   SPIKE PATCH (reverted, not committed):
+       elseif(CONFIG_CPU_CORTEX_M0PLUS OR CONFIG_CPU_CORTEX_M0)
+           set(NROS_RUST_TARGET "thumbv6m-none-eabi" PARENT_SCOPE)
+b. thumbv6m has no CAS (`target_has_atomic = "ptr"` is false), and two sites use core atomics RMW:
+       error[E0425]: cannot find function `install_log_crate_bridge` in module `nros_log::log_compat`
+          --> packages/platform/nros-platform-cffi/src/log.rs:122:35   (callee is cfg(target_has_atomic = "ptr"))
+       error[E0599]: no method named `fetch_add` found for struct `Atomic<T>` in the current scope
+          --> packages/api/nros-cpp/src/subscription.rs:73:39
+   SPIKE PATCH (reverted): gate the first call on target_has_atomic = "ptr"; the second (a
+   diagnostics counter) as load + store. With those two the whole Rust lane compiled for thumbv6m.
+c. C side: GCC lowers C11 atomic RMW on ARMv6-M to libcalls nobody provides:
+       zenoh-pico/src/collections/atomic.c:24: undefined reference to `__atomic_fetch_add_4'
+       zenoh-pico/src/collections/atomic.c:27: undefined reference to `__atomic_fetch_sub_4'
+       zenoh-pico/src/collections/atomic.c:42: undefined reference to `__atomic_compare_exchange_4'
+       zpico-sys/c/zpico/zpico.c:1011: undefined reference to `__atomic_fetch_add_4'
+   SPIKE SHIM (tmp only): a Zephyr module with __atomic_{fetch_add,fetch_sub,exchange,compare_exchange}_4
+   under irq_lock (correct on the single-core build; the RP2040's second core is not started by Zephyr 3.7).
+d. RAM: 264 KiB. Defaults: ``region `RAM' overflowed by 211736 bytes``. The Nucleo ethernet knobs
+   (LARGE_SUBSCRIBERS=0, SUBSCRIBERS=1, SERVICE_BUFFER_SIZE=1024, ZEPHYR_HEAP_SIZE=32768) left
+   ``region `RAM' overflowed by 16656 bytes``; ZENOH_MAX_QUERYABLES=1 (the talker serves nothing)
+   closed it:
+       FLASH:      523112 B    2096896 B     24.95%
+         RAM:      254888 B       264 KB     94.29%
+   Largest remaining: 83,880 B Node::GlobalStorageHolder<0>::storage (executor backing),
+   34,512 B nros_platform zephyr_heap HEAP, 32,768 B nros_thread_stacks, 18,592 B g_sessions.
+
+=== 2. Wokwi boots nothing with a tickless kernel (control: Zephyr's own hello_world) ===
+$ wokwi-cli --timeout 10000 --expect-text "Hello World" .      # samples/hello_world, board defaults
+Wokwi CLI v0.29.1 (0aa185144b92)
+Connected to Wokwi Simulation API 1.0.0-20261026-g45f2303e
+Starting simulation...
+
+Timeout: simulation did not finish in 10000ms
+=> no byte on the serial monitor, same for our talker. Not the wiring: under `wokwi-cli -g`, gdb read
+   UART0 CR=0x301 (enabled, TX, RX), IBRD/FBRD 67/52 (115200 at 125 MHz), GPIO0/1 FUNCSEL=2 (UART),
+   and every stop landed in the SysTick ISR (sys_clock_announce / sys_clock_set_timeout, ticks=1341)
+   with z_sys_post_kernel = false: the kernel never left PRE_KERNEL. Wokwi's SysTick does not carry
+   Zephyr 3.7's tickless cortex_m_systick driver.
+$ (same, built with -DCONFIG_TICKLESS_KERNEL=n)
+*** Booting Zephyr OS build v3.7.0 ***
+Hello World! rpi_pico/rp2040/w
+
+Expected text found: "Hello World"
+TEST PASSED.
+=> the twin needs CONFIG_TICKLESS_KERNEL=n. The bench runs that image too, so "same ELF on bench and
+   twin" holds if the descriptor states it for the board; it is not the board default.
+
+=== 3. talker, console view (zenoh on UART1, nothing attached) ===
+*** Booting Zephyr OS build v3.7.0 ***
+Timeout: simulation did not finish in 15000ms
+=> boots; waits for a session.
+
+=== 4. talker, zenoh on UART0 = serial monitor, no host side (raw bytes, --serial-log-file) ===
+0000000 02 01 01 01 01 01 01 01 00 02 01 01 01 01 01 01
+0000016 01 00 02 01 01 01 01 01 01 01 00 02 01 01 01 01
+=> zenoh-pico's COBS-framed serial link, 0x00 delimiters intact: the CLI's serial stream is binary-safe.
+
+=== 5. the twin: Wokwi -> wokwi-cli --interactive -> socat pty -> rmw_zenohd -> ros2 topic echo ===
+ELF sha256 6d155233e979112aa8b61f73dbf80b77148cf403f7b8415aaa7deac613ae787f (zephyr.elf, run 1 and run 2)
+run 1 (2026-11-01T18:23:57+08:00):
+=== echo ===
+data: 'Hello World: 1'
+---
+data: 'Hello World: 2'
+---
+data: 'Hello World: 3'
+---
+(... through 'Hello World: 11')
+=== router (tail) ===
+zenoh::net::runtime::orchestrator: Zenoh can be reached at: serial/<run>/zlink
+zenoh::net::runtime::orchestrator: Zenoh can be reached at: tcp/127.0.0.1:17491
+Started Zenoh router with id 6e01603db9eb7e2b9b4f786e6b51f145
+=== socat (tail) ===
+socat N PTY is /dev/pts/0
+socat N starting data transfer loop with FDs [5,5] and [7,8]
+SPIKE RESULT: PASS -- data: 'Hello World: 1'
+run 2 (2026-11-01T18:25:04+08:00, same ELF):
+SPIKE: first sample after 6s wall
+data: 'Hello World: 1'
+... 'Hello World: 5'
+SPIKE RESULT: PASS -- data: 'Hello World: 1'
+
+WiFi road: not tried. Serial passed, and the Pico W WiFi through Wokwi needs the private IoT gateway
+for a host-local router, which the free (Community) plan does not include (wokwi.com/pricing: only
+the shared public gateway; private gateway from Hobby up).
+
+=== plan limits (docs.wokwi.com/wokwi-ci/getting-started, wokwi.com/pricing, read 2026-11-01) ===
+free plan: 50 minutes of simulation time per rolling 30-day window, 5 minutes wall clock per session
+(Hobby 200 / Hobby+ 500 / Pro 2,000 minutes; sessions 5 / 10 / 50 minutes).
+One twin run here: 6 s to the first sample; a 60 s run with setup is about 1 to 1.5 minutes.
+Weekly: about 5 runs a month, 5 to 8 minutes of the 50 -- viable, with headroom for reruns, but the
+quota is per USER: CI and anyone developing against the same account share it, and the token is a
+personal secret a fork-PR job cannot read (schedule/dispatch only). This spike used about 8 minutes.
+
+SPIKE RESULT: PASS (serial road) -- "data: 'Hello World: 1'" from `ros2 topic echo /chatter`, the Pico W
+ELF running in Wokwi's cloud sim, zenoh over UART0 -> wokwi-cli --interactive -> host pty -> rmw_zenohd.
+Conditions: CONFIG_TICKLESS_KERNEL=n (Wokwi SysTick), zenoh on UART0 with the console on UART1, five
+RAM knobs, and three tree gaps patched locally for the spike (Cortex-M0+ Rust triple, two CAS-only
+atomic sites, ARMv6-M __atomic libcalls) -- none of which is on main yet.
