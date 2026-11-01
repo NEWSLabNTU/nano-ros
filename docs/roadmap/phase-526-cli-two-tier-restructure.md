@@ -1,6 +1,6 @@
 # Phase 526 — The `nros` command tree in two tiers, with ROS 2 flag names and aliases
 
-**Status (2026-11-01). PROPOSED — no work item started.** Implements
+**Status (2026-11-01). IN PROGRESS — W1 done; W2 to W5 open.** Implements
 [RFC-0117](../design/0117-cli-command-tiers.md). Comes before
 [phase-525](phase-525-adoption-front-doors.md) W1, so the help-text id sweep
 runs once, over the final verb names. Independent of phase-527 to phase-529,
@@ -21,6 +21,8 @@ so nothing that calls an old spelling breaks.
 
 ### W1 — The `nros dev` tier, with silent aliases
 
+**Status: DONE** (the `nros dev` tier and `nros help --aliases` commits, landed together).
+
 - Add `nros dev` and its nouns (`codegen`, `image`, `rmw`, `lock`,
   `profile`, `board`, `ws`, `sdk`, `metadata`) per RFC-0117 D3, each verb
   moved with its arguments, output and exit codes unchanged.
@@ -29,11 +31,20 @@ so nothing that calls an old spelling breaks.
 - `nros --help` stops listing the moved verbs; `nros help --all` and
   `nros dev --help` list them.
 
+- `nros help --aliases [--json]` prints the alias table. The JSON form is
+  `[{"old", "new", "tier"}]` with `tier = "dev"` for every W1 row; W2's user
+  aliases join it with `tier = "user"`, and W4's gate reads it.
+
 Acceptance:
 
-- A test drives every old dev spelling and its new spelling with the same
-  arguments, and asserts byte-identical stdout and identical exit codes. The
-  test reads the alias table, so it cannot miss a verb.
+- A test reads the alias table (`cmd::dev::ALIASES`), so it cannot miss a
+  verb, and for every pair asserts that both spellings parse with the same
+  clap shape and lower to the same `Cmd` (`Debug` equality). Runtime output
+  and exit codes are identical by construction: one dispatch serves both
+  spellings, since `Cmd::Dev` is lowered before anything runs. A second test
+  asserts every `nros dev` verb has a row. Spot checks of `ws env`,
+  `sdk-root`, `toolchain manifest`, `ws order` and `ws providers` measured
+  byte-identical output.
 - `nros --help` names no dev verb.
 
 ### W2 — The user tier regrouped, with warning aliases
