@@ -34,11 +34,15 @@ use std::{
     collections::BTreeMap,
     fmt,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{PROTOCOL, SUPPORTED};
+use crate::{
+    protocol::{PROTOCOL, SUPPORTED},
+    usb::UsbId,
+};
 
 /// What a runner is asked to do. `nros monitor` asks a runner for `console`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -152,16 +156,167 @@ pub struct Link {
     pub locator: String,
 }
 
-/// One human step before a verb runs (RFC-0118 D7). Serialised as
-/// `{"say": "..."}` or `{"wait_for": "usb:0483:df11"}`.
+/// A `wait_for` event (RFC-0118 D7), written `<kind>:<value>`.
+///
+/// The same four kinds, spellings and errors as
+/// `nros_orchestration_ir::target_exec::WaitFor`, which parses the board and
+/// image tables a plan is resolved from; a test in `nros-cli-core` holds the
+/// two JSON forms equal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(try_from = "String", into = "String")]
+pub enum WaitFor {
+    /// `usb:<vid>:<pid>`: a USB device enumerates.
+    Usb(UsbId),
+    /// `port:<path>`: a serial port appears.
+    Port(String),
+    /// `volume:<label>`: a mass-storage volume (a UF2 drive) mounts.
+    Volume(String),
+    /// `line:<text>`: the console prints a line holding `<text>`.
+    Line(String),
+}
+
+impl FromStr for WaitFor {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        let (kind, arg) = s.split_once(':').ok_or_else(|| {
+            format!(
+                "`wait_for = {s:?}` must read `<kind>:<value>`, kind one of usb, port, volume, line"
+            )
+        })?;
+        let nonempty = |what: &str| {
+            if arg.is_empty() {
+                Err(format!("`wait_for = {s:?}`: `{kind}:` names no {what}"))
+            } else {
+                Ok(arg.to_string())
+            }
+        };
+        Ok(match kind {
+            "usb" => WaitFor::Usb(
+                arg.parse()
+                    .map_err(|e| format!("`wait_for = {s:?}`: {e}"))?,
+            ),
+            "port" => WaitFor::Port(nonempty("path")?),
+            "volume" => WaitFor::Volume(nonempty("label")?),
+            "line" => WaitFor::Line(nonempty("text")?),
+            other => {
+                return Err(format!(
+                    "`wait_for = {s:?}`: unknown event kind `{other}` — one of usb, port, \
+                     volume, line (RFC-0118 D7)"
+                ));
+            }
+        })
+    }
+}
+
+impl TryFrom<String> for WaitFor {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, String> {
+        s.parse()
+    }
+}
+
+impl fmt::Display for WaitFor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WaitFor::Usb(u) => write!(f, "usb:{u}"),
+            WaitFor::Port(p) => write!(f, "port:{p}"),
+            WaitFor::Volume(v) => write!(f, "volume:{v}"),
+            WaitFor::Line(t) => write!(f, "line:{t}"),
+        }
+    }
+}
+
+impl From<WaitFor> for String {
+    fn from(w: WaitFor) -> String {
+        w.to_string()
+    }
+}
+
+/// One `prepare` step (RFC-0118 D7): exactly one of `say`, `wait_for` and
+/// `run`, except that `say` and `wait_for` may share a step (print, then
+/// wait). Serialised as a table with those keys, e.g. `{"say": "…"}`,
+/// `{"say": "…", "wait_for": "usb:0483:df11"}` or `{"run": "./relay.sh 3"}`.
+///
+/// The shape of `nros_orchestration_ir::target_exec::PrepareStep`, so a step
+/// read from a board or image table reaches the runner unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RawStep", into = "RawStep")]
 pub enum PrepareStep {
     /// Print an instruction.
     Say(String),
-    /// Block until an event: `usb:<vid>:<pid>`, `port:<path>`,
-    /// `volume:<label>` or `line:<text>`.
-    WaitFor(String),
+    /// Block until an event.
+    WaitFor(WaitFor),
+    /// Print an instruction, then block until an event.
+    SayThenWait {
+        /// The instruction.
+        say: String,
+        /// The event.
+        wait_for: WaitFor,
+    },
+    /// Run a host command (a relay, a power switch). nros runs it, not the
+    /// runner: `prepare` is one of the things nros owns (RFC-0119 D6).
+    Run(String),
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawStep {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    say: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    wait_for: Option<WaitFor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    run: Option<String>,
+}
+
+impl TryFrom<RawStep> for PrepareStep {
+    type Error = String;
+
+    fn try_from(r: RawStep) -> Result<Self, String> {
+        match (r.say, r.wait_for, r.run) {
+            (Some(say), None, None) => Ok(PrepareStep::Say(say)),
+            (None, Some(w), None) => Ok(PrepareStep::WaitFor(w)),
+            (Some(say), Some(wait_for), None) => Ok(PrepareStep::SayThenWait { say, wait_for }),
+            (None, None, Some(run)) if !run.trim().is_empty() => Ok(PrepareStep::Run(run)),
+            (None, None, Some(_)) => Err("a `prepare` step's `run` is empty".into()),
+            (None, None, None) => Err(
+                "a `prepare` step states nothing — it is one of `say`, `wait_for`, `run` \
+                 (or `say` with `wait_for`)"
+                    .into(),
+            ),
+            _ => Err(
+                "a `prepare` step is one of `say`, `wait_for`, `run`; only `say` and \
+                 `wait_for` may share a step (RFC-0118 D7)"
+                    .into(),
+            ),
+        }
+    }
+}
+
+impl From<PrepareStep> for RawStep {
+    fn from(s: PrepareStep) -> Self {
+        match s {
+            PrepareStep::Say(say) => RawStep {
+                say: Some(say),
+                ..RawStep::default()
+            },
+            PrepareStep::WaitFor(w) => RawStep {
+                wait_for: Some(w),
+                ..RawStep::default()
+            },
+            PrepareStep::SayThenWait { say, wait_for } => RawStep {
+                say: Some(say),
+                wait_for: Some(wait_for),
+                run: None,
+            },
+            PrepareStep::Run(run) => RawStep {
+                run: Some(run),
+                ..RawStep::default()
+            },
+        }
+    }
 }
 
 /// The resolved plan.
@@ -498,7 +653,12 @@ mod tests {
             passthrough: vec!["--verbose".into()],
             prepare: vec![
                 PrepareStep::Say("Set BOOT0 to 1".into()),
-                PrepareStep::WaitFor("usb:0483:df11".into()),
+                PrepareStep::WaitFor("usb:0483:df11".parse().unwrap()),
+                PrepareStep::SayThenWait {
+                    say: "Press RESET".into(),
+                    wait_for: "line:READY".parse().unwrap(),
+                },
+                PrepareStep::Run("./relay.sh 3".into()),
             ],
             provenance: BTreeMap::from([("target.flasher".into(), "image".into())]),
         }
@@ -516,6 +676,48 @@ mod tests {
         let json = sample().to_json();
         assert!(json.contains(r#""say": "Set BOOT0 to 1""#), "{json}");
         assert!(json.contains(r#""wait_for": "usb:0483:df11""#), "{json}");
+        assert!(json.contains(r#""run": "./relay.sh 3""#), "{json}");
+    }
+
+    /// RFC-0118 D7 — the three step kinds and the `say` + `wait_for` pair,
+    /// with the refusals the board and image tables give.
+    #[test]
+    fn prepare_steps_round_trip_and_refuse_bad_shapes() {
+        let step = |j: &str| serde_json::from_str::<PrepareStep>(j);
+        assert_eq!(
+            step(r#"{"run":"./relay.sh 3"}"#).unwrap(),
+            PrepareStep::Run("./relay.sh 3".into())
+        );
+        assert_eq!(
+            step(r#"{"say":"x","wait_for":"volume:RPI-RP2"}"#).unwrap(),
+            PrepareStep::SayThenWait {
+                say: "x".into(),
+                wait_for: WaitFor::Volume("RPI-RP2".into())
+            }
+        );
+        assert_eq!(
+            step(r#"{"wait_for":"usb:0483:DF11"}"#).unwrap(),
+            PrepareStep::WaitFor(WaitFor::Usb("0483:df11".parse().unwrap()))
+        );
+        for bad in [
+            r#"{}"#,
+            r#"{"run":"  "}"#,
+            r#"{"say":"x","run":"y"}"#,
+            r#"{"wait_for":"usb:0483"}"#,
+            r#"{"wait_for":"gpio:3"}"#,
+            r#"{"wait_for":"port:"}"#,
+            r#"{"say":"x","beep":true}"#,
+        ] {
+            assert!(step(bad).is_err(), "{bad} must be refused");
+        }
+        for s in [
+            PrepareStep::Run("r".into()),
+            PrepareStep::WaitFor(WaitFor::Port("/dev/ttyACM0".into())),
+            PrepareStep::WaitFor(WaitFor::Line("ready: ok".into())),
+        ] {
+            let j = serde_json::to_string(&s).unwrap();
+            assert_eq!(step(&j).unwrap(), s, "{j}");
+        }
     }
 
     #[test]

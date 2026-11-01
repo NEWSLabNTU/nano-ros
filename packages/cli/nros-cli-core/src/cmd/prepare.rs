@@ -1,9 +1,8 @@
 //! phase-529 W1 — executing a RunPlan's `prepare` steps (RFC-0118 D7).
 //!
-//! A step is `say` (print an instruction) or `wait_for` (block until an
-//! event). The plan contract's `PrepareStep` has no `run` step yet, so the
-//! resolver still refuses one ([`crate::cmd::run_plan`]); when
-//! `nros_extension::plan::PrepareStep::Run` lands, its arm goes here.
+//! A step is `say` (print an instruction), `wait_for` (block until an
+//! event), both in one step (print, then wait), or `run` (run a host command,
+//! such as a relay or a power switch).
 //!
 //! # Who runs these
 //!
@@ -33,10 +32,14 @@
 //!     the target starts, so there is no console then: the step is refused
 //!     unless the caller hands one in ([`Console`]), which only a verb that
 //!     opens the console first can do (`nros flash --monitor`, W3).
+//! * A `run` step runs its command through `sh -c` and fails the verb with
+//!   exit 2 when the command exits non-zero. It needs no person, so
+//!   `--no-prompt` does not refuse it.
 
 use std::{
     io::{BufRead, Write},
     path::{Path, PathBuf},
+    process::Command,
     thread,
     time::{Duration, Instant},
 };
@@ -151,20 +154,58 @@ pub fn execute(
 ) -> Result<(), PrepareError> {
     for step in steps {
         match step {
-            PrepareStep::Say(text) => {
-                let _ = writeln!(human, "nros: {text}");
-                if opts.no_prompt || !opts.interactive {
-                    return Err(PrepareError::NeedsPerson(text.clone()));
-                }
+            PrepareStep::Say(text) => say(text, opts, human)?,
+            PrepareStep::WaitFor(w) => wait_step(w, opts, host, human, console.as_mut())?,
+            PrepareStep::SayThenWait {
+                say: text,
+                wait_for,
+            } => {
+                say(text, opts, human)?;
+                wait_step(wait_for, opts, host, human, console.as_mut())?;
             }
-            PrepareStep::WaitFor(raw) => {
-                let event: WaitFor = raw.parse().map_err(|e: String| PrepareError::Step(e))?;
-                let _ = writeln!(human, "nros: waiting for {event}");
-                wait_for(&event, opts, host, console.as_mut())?;
-            }
+            PrepareStep::Run(cmd) => run(cmd, human)?,
         }
     }
     Ok(())
+}
+
+fn say(text: &str, opts: &Options, human: &mut dyn Write) -> Result<(), PrepareError> {
+    let _ = writeln!(human, "nros: {text}");
+    if opts.no_prompt || !opts.interactive {
+        return Err(PrepareError::NeedsPerson(text.to_string()));
+    }
+    Ok(())
+}
+
+/// The plan's event, parsed again by the executor's own type. Both share one
+/// spelling (a test in `run_plan` holds the JSON forms equal), so this cannot
+/// fail for a plan that deserialised.
+fn wait_step(
+    w: &nros_extension::plan::WaitFor,
+    opts: &Options,
+    host: &Host,
+    human: &mut dyn Write,
+    console: Option<&mut Console<'_>>,
+) -> Result<(), PrepareError> {
+    let event: WaitFor = w.to_string().parse().map_err(PrepareError::Step)?;
+    let _ = writeln!(human, "nros: waiting for {event}");
+    wait_for(&event, opts, host, console)
+}
+
+fn run(cmd: &str, human: &mut dyn Write) -> Result<(), PrepareError> {
+    let _ = writeln!(human, "nros: running `{cmd}`");
+    let status = Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .status()
+        .map_err(|e| PrepareError::Step(format!("`run = {cmd:?}`: cannot start `sh`: {e}")))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(PrepareError::Step(format!(
+            "`run = {cmd:?}` failed ({status})"
+        )))
+    }
 }
 
 fn wait_for(
@@ -288,7 +329,7 @@ mod tests {
         let port = dir.join("ttyACM7");
         let steps = vec![
             PrepareStep::Say("Plug the board in".into()),
-            PrepareStep::WaitFor(format!("port:{}", port.display())),
+            PrepareStep::WaitFor(format!("port:{}", port.display()).parse().unwrap()),
         ];
         let p = port.clone();
         let maker = thread::spawn(move || {
@@ -360,7 +401,7 @@ mod tests {
     fn a_usb_device_is_found_under_a_fake_sysfs() {
         let root = tmp("usb");
         let host = Host::under(&root);
-        let steps = vec![PrepareStep::WaitFor("usb:0483:df11".into())];
+        let steps = vec![PrepareStep::WaitFor("usb:0483:df11".parse().unwrap())];
         let quick = Options {
             timeout: Duration::from_millis(100),
             ..opts(false, true)
@@ -387,7 +428,7 @@ mod tests {
             timeout: Duration::from_millis(100),
             ..opts(false, true)
         };
-        let steps = vec![PrepareStep::WaitFor("volume:RPI RP2".into())];
+        let steps = vec![PrepareStep::WaitFor("volume:RPI RP2".parse().unwrap())];
         let dev = root.join("dev");
         std::fs::create_dir_all(dev.join("disk/by-label")).unwrap();
         std::fs::write(dev.join("sdb1"), "").unwrap();
@@ -413,7 +454,9 @@ mod tests {
 
     #[test]
     fn a_line_event_needs_a_console_and_reads_it_when_given() {
-        let steps = vec![PrepareStep::WaitFor("line:bootloader ready".into())];
+        let steps = vec![PrepareStep::WaitFor(
+            "line:bootloader ready".parse().unwrap(),
+        )];
         let host = Host::under(Path::new("/nonexistent"));
         let e = execute(&steps, &opts(false, true), &host, &mut Vec::new(), None).unwrap_err();
         assert!(e.to_string().contains("no console is open"), "{e}");
@@ -438,17 +481,73 @@ mod tests {
         assert!(matches!(e, PrepareError::TimedOut { .. }));
     }
 
+    /// An unknown event never reaches the executor: the plan refuses it when
+    /// it is read.
     #[test]
     fn an_unknown_event_is_refused() {
-        let steps = vec![PrepareStep::WaitFor("gpio:3".into())];
-        let e = execute(
+        let e = serde_json::from_str::<PrepareStep>(r#"{"wait_for": "gpio:3"}"#).unwrap_err();
+        assert!(e.to_string().contains("unknown event kind"), "{e}");
+    }
+
+    #[test]
+    fn a_say_then_wait_step_prints_then_waits() {
+        let dir = tmp("say-then-wait");
+        let port = dir.join("ttyACM3");
+        std::fs::write(&port, "").unwrap();
+        let steps = vec![PrepareStep::SayThenWait {
+            say: "Press RESET".into(),
+            wait_for: format!("port:{}", port.display()).parse().unwrap(),
+        }];
+        let mut human = Vec::new();
+        execute(
             &steps,
             &opts(false, true),
-            &Host::under(Path::new("/x")),
+            &Host::under(&dir),
+            &mut human,
+            None,
+        )
+        .unwrap();
+        let out = String::from_utf8(human).unwrap();
+        assert!(
+            out.contains("Press RESET") && out.contains("waiting for port:"),
+            "{out}"
+        );
+        // With no person, the `say` half refuses before any wait.
+        let e = execute(
+            &steps,
+            &opts(true, false),
+            &Host::under(&dir),
             &mut Vec::new(),
             None,
         )
         .unwrap_err();
-        assert!(e.to_string().contains("unknown event kind"), "{e}");
+        assert!(matches!(e, PrepareError::NeedsPerson(_)), "{e}");
+    }
+
+    #[test]
+    fn a_run_step_runs_its_command_and_a_failure_stops_the_verb() {
+        let dir = tmp("run");
+        let marker = dir.join("relay-on");
+        let steps = vec![PrepareStep::Run(format!("touch '{}'", marker.display()))];
+        // `run` needs no person, so `--no-prompt` does not refuse it.
+        execute(
+            &steps,
+            &opts(true, false),
+            &Host::under(&dir),
+            &mut Vec::new(),
+            None,
+        )
+        .unwrap();
+        assert!(marker.exists());
+        let e = execute(
+            &[PrepareStep::Run("exit 3".into())],
+            &opts(true, false),
+            &Host::under(&dir),
+            &mut Vec::new(),
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(e.exit_code(), nros_extension::exit::RUNNER_FAILED);
+        assert!(e.to_string().contains("exit 3"), "{e}");
     }
 }
