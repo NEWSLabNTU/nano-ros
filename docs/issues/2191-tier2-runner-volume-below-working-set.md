@@ -79,6 +79,15 @@ reported, not a measured capacity.
    passes `--provision`, which runs `nros setup --tool cargo-sweep` when the
    tool is absent. The first sweep after a merge builds it (one source
    build, then a store lookup); no operator step remains for this lever.
+   **And it runs FIRST** (2026-11-01): run 41280184109 filled the volume in
+   `just build tier2`, after which the runner could not write any later
+   step's script (`No space left on device : '…/_work/_temp/<id>.sh'`), so
+   the end-of-job sweep never started and nothing freed the space. The
+   between-jobs sweep in `runner-loop-container.sh` runs on the HOST and
+   cannot see the `nros-runner-work` volume the tree lives in. Every
+   self-hosted job now sweeps right after checkout: the fixture lanes in
+   `fixture-tree.sh sync`, before it writes the tree, and queue L3 (no
+   tree sync) with `fixture-tree.sh sweep` as its own step.
 2. **Give `examples/` leaf builds an area.** 94.8 GiB that the sweep reports
    and its own warning says to budget ("Give the largest entry an area"). They
    are fixture outputs (rebuildable, re-staled by the probe), so they belong

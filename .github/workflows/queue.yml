@@ -109,6 +109,15 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+      # Issue 2191 -- sweep BEFORE building. The sweep at the end of this job
+      # cannot run once a build fills the volume (each step's script is
+      # written to `_temp` first, so every later step dies on ENOSPC without
+      # starting), and the between-jobs sweep runs on the host, outside the
+      # volume the fixture tree lives in. The fixture lanes get this from
+      # `fixture-tree.sh sync`; this job has no sync step, so it asks directly.
+      - name: Sweep the disk before building
+        working-directory: ${{ github.workspace }}
+        run: scripts/ci/fixture-tree.sh sweep
       # phase-411 W4 — a CI job is `just setup <scope>` then one command a
       # developer can type. Nothing here is CI-only orchestration.
       #

@@ -2,9 +2,10 @@
 #
 # A PERSISTENT checkout for the self-hosted fixture lanes. phase-489 W6.
 #
-# usage: scripts/ci/fixture-tree.sh sync           bring the tree to this job's commit
+# usage: scripts/ci/fixture-tree.sh sync           sweep the tree's disk, then bring it to this job's commit
 #        scripts/ci/fixture-tree.sh reports <dest>  copy THIS run's junit and logs to <dest>
 #        scripts/ci/fixture-tree.sh path           print where the tree lives
+#        scripts/ci/fixture-tree.sh sweep [args]   sweep the tree's disk BEFORE a build
 #        scripts/ci/fixture-tree.sh --self-test
 #
 # WHAT THIS IS FOR
@@ -220,6 +221,35 @@ sync_tree() {
 # The reports this run wrote, copied to $2 at their tree-relative paths. The
 # globs are the ones the upload steps named before issue 1991's fix; a file
 # older than the run mark is an earlier run's and is left behind, counted.
+# Sweep the tree's disk before this job builds into it. Issue 2191.
+#
+# The workflows' own sweep step runs LAST, and a run that fills the volume
+# cannot reach it: the runner writes every step's script to `_work/_temp`
+# first, so after ENOSPC each later step dies as `No space left on device :
+# '…/_temp/<id>.sh'` without starting (run 41280184109). Nothing then frees
+# the space, and every later job fails the same way. The between-jobs sweep in
+# `runner-loop-container.sh` cannot either: it runs on the HOST, and this tree
+# lives in the container's `nros-runner-work` volume.
+#
+# So each job sweeps first, from inside, with the tree as the checkout to sweep.
+# `sync` does it before it writes anything, which keeps the sync step directly
+# after checkout (check-fixture-tree-persistence R3); a job with no sync step
+# (queue L3) runs `sweep` as its own step. The tree's host target dirs are where cargo-sweep's 127.5 GiB was. `--disk` only:
+# this job's own Runner.Worker is alive, so a process sweep would skip anyway.
+# Never fails the job: a sweep that cannot run leaves the build to fail on its
+# own evidence.
+sweep_tree() {
+    local tree="$1"; shift
+    if [ ! -e "$tree/.git" ]; then
+        say "no tree at $tree yet — nothing from an earlier run to sweep"
+        return 0
+    fi
+    say "sweeping $tree before this job builds into it"
+    NROS_RUNNER_REPO_ROOT="$tree" "$(dirname "$0")/runner-sweep.sh" --disk --provision "$@" \
+        || say "(sweep reported a problem — continuing)"
+    return 0
+}
+
 collect_reports() {
     local tree="$1" dest="$2" mark
     [ -e "$tree/.git" ] || die "no fixture tree at $tree (did \`sync\` run?)"
@@ -433,6 +463,34 @@ self_test() {
         && pass "a tree with a broken git store recovers, build output kept" \
         || fail "broken git store not recovered"
 
+    # `sweep` sweeps the TREE (its Cargo.toml / target), never the checkout the
+    # script runs from — and with no tree yet it does nothing, successfully.
+    local out
+    printf '[package]\nname = "x"\n' > "$tree/Cargo.toml"
+    mkdir -p "$tree/target/debug"; echo x > "$tree/target/debug/x"
+    out="$(NROS_SWEEP_STATE_DIR="$t/state" NROS_SWEEP_WORK="$t/work" NROS_HOME="$t/home" \
+           NROS_BUILD_ROOT="$tree/build" NROS_ZEPHYR_BUILD_ROOT="" \
+           sweep_tree "$tree" --check 2>&1)" || true
+    case "$out" in
+        *"no cargo manifest"*) fail "sweep did not sweep the tree: $out" ;;
+        *"cargo-targets:"*) pass "sweep sweeps the tree's own target dirs" ;;
+        *) fail "sweep printed no cargo-targets line: $out" ;;
+    esac
+    # Two-sided: the checkout this script runs from has a Cargo.toml too, so
+    # only a tree WITHOUT one tells "swept the tree" from "swept the wrong root".
+    rm "$tree/Cargo.toml"
+    out="$(NROS_SWEEP_STATE_DIR="$t/state" NROS_SWEEP_WORK="$t/work" NROS_HOME="$t/home" \
+           NROS_BUILD_ROOT="$tree/build" NROS_ZEPHYR_BUILD_ROOT="" \
+           sweep_tree "$tree" --check 2>&1)" || true
+    case "$out" in
+        *"no cargo manifest at the checkout root"*) pass "…and only the tree's: a tree with no Cargo.toml has none" ;;
+        *) fail "sweep reached a root other than the tree: $out" ;;
+    esac
+    out="$(sweep_tree "$t/absent" --check 2>&1)" \
+        && [ "${out#*nothing from an earlier run}" != "$out" ] \
+        && pass "sweep with no tree yet does nothing and succeeds" \
+        || fail "sweep with no tree: $out"
+
     echo "fixture-tree self-test: $ok ok, $bad failed"
     [ "$bad" -eq 0 ]
 }
@@ -452,6 +510,7 @@ cmd="${1:-}"
 case "$cmd" in
     sync)
         [ -n "${GITHUB_WORKSPACE:-}" ] || die "GITHUB_WORKSPACE is unset (this is a CI step)"
+        sweep_tree "$(tree_for "$GITHUB_WORKSPACE")"
         sync_tree "$GITHUB_WORKSPACE" "$(tree_for "$GITHUB_WORKSPACE")" \
             "${NROS_FIXTURE_TREE_MAX_AGE_DAYS:-7}"
         ;;
@@ -464,6 +523,11 @@ case "$cmd" in
         [ -n "${GITHUB_WORKSPACE:-}" ] || die "GITHUB_WORKSPACE is unset"
         tree_for "$GITHUB_WORKSPACE"; echo
         ;;
+    sweep)
+        [ -n "${GITHUB_WORKSPACE:-}" ] || die "GITHUB_WORKSPACE is unset (this is a CI step)"
+        shift
+        sweep_tree "$(tree_for "$GITHUB_WORKSPACE")" "$@"
+        ;;
     --self-test) self_test ;;
-    *) die "usage: fixture-tree.sh sync | reports <dest> | path | --self-test (got '${cmd}')" ;;
+    *) die "usage: fixture-tree.sh sync | reports <dest> | path | sweep [args] | --self-test (got '${cmd}')" ;;
 esac

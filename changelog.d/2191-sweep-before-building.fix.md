@@ -1,0 +1,1 @@
+Self-hosted CI jobs now sweep the persistent fixture tree's disk before they build (`fixture-tree.sh sweep`), not only at the end: once a build filled the runner's volume, the end-of-job sweep could not even start, so every later job failed on a full disk (issue 2191).
