@@ -68,7 +68,7 @@
 # build output and SDK trees that git has never seen.
 #
 # usage:
-#   scripts/ci/runner-sweep.sh [--check] [--processes|--disk]
+#   scripts/ci/runner-sweep.sh [--check] [--processes|--disk] [--provision]
 #                              [--older-than SECONDS] [--all] [--quiet]
 #
 #   --check          report everything; kill nothing, delete nothing. Exit 0 =
@@ -79,6 +79,10 @@
 #   --all            ignore the age floor. Only between jobs.
 #   --force          sweep processes even while a Runner.Worker is alive. Only
 #                    for a wedged job — see `_nros_sweep_job_running` below.
+#   --provision      install the indexed `cargo-sweep` (`nros setup --tool
+#                    cargo-sweep`) when it is absent, so the cargo-targets area
+#                    is pruned rather than reported. What the workflow steps
+#                    pass (issue 2191). Not under --check, which changes nothing.
 #
 # env:
 #   NROS_RUNNER_REPO_ROOT        checkout to sweep (default: this file's own)
@@ -112,6 +116,7 @@ DO_DISK=1
 OLDER_THAN=600
 QUIET=0
 FORCE=0
+PROVISION=0
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -120,6 +125,7 @@ while [ "$#" -gt 0 ]; do
         --disk)            DO_PROC=0 ;;
         --all)             OLDER_THAN=0 ;;
         --force)           FORCE=1 ;;
+        --provision)       PROVISION=1 ;;
         --quiet)           QUIET=1 ;;
         --older-than)      OLDER_THAN="${2:?--older-than needs seconds}"; shift ;;
         -h|--help)
@@ -688,6 +694,41 @@ _report_unbudgeted() {
     fi
 }
 
+# The `cargo-sweep` binary: PATH first, else the store at the PINNED path the
+# way every store consumer builds it (issue 1546) — never by listing the store.
+# Prints nothing when there is none.
+_find_cargo_sweep() {
+    local pin store
+    if command -v cargo-sweep 2>/dev/null; then
+        return 0
+    fi
+    if pin="$(nros_sdk_pinned_version cargo-sweep "$repo_root/nros-sdk-index.toml" 2>/dev/null)" \
+        && store="$(nros_store_root 2>/dev/null)" \
+        && [ -x "$store/sdk/cargo-sweep/$pin/bin/cargo-sweep" ]; then
+        printf '%s\n' "$store/sdk/cargo-sweep/$pin/bin/cargo-sweep"
+    fi
+    return 0
+}
+
+# `nros setup --tool cargo-sweep` with the swept checkout's CLI. A failure is
+# reported and the area falls back to reporting — a sweep step that fails the
+# job over a missing pruner would be the between-jobs hook failing a healthy
+# machine, which the ABSENT TOOL rule below exists to prevent.
+_provision_cargo_sweep() {
+    local cli=""
+    # shellcheck source=scripts/build/cargo.sh
+    . "$(dirname "${BASH_SOURCE[0]}")/../build/cargo.sh"
+    cli="$(nros_cli_bin --root "$repo_root" 2>/dev/null)" || cli=""
+    if [ -z "$cli" ]; then
+        _warn "runner-sweep: no nros CLI for $repo_root — cannot provision cargo-sweep (just setup-cli)."
+        return 0
+    fi
+    _say "  cargo-targets: cargo-sweep absent — $cli setup --tool cargo-sweep"
+    if ! "$cli" setup --tool cargo-sweep 2>&1 | sed 's/^/      /'; then
+        _warn "runner-sweep: \`nros setup --tool cargo-sweep\` failed — cargo-targets is reported, not pruned."
+    fi
+}
+
 _sweep_disk() {
     if ! command -v du >/dev/null 2>&1; then
         _warn "runner-sweep: no \`du\` — disk sweep SKIPPED (nothing was measured or deleted)."
@@ -819,13 +860,19 @@ _sweep_disk() {
     # store's bin dir is not on PATH here. Build the PINNED path the way every
     # store consumer does (issue 1546): never list the store for a version.
     local cargo_sweep=""
-    cargo_sweep="$(command -v cargo-sweep 2>/dev/null || true)"
-    if [ -z "$cargo_sweep" ]; then
-        local pin store
-        if pin="$(nros_sdk_pinned_version cargo-sweep "$repo_root/nros-sdk-index.toml")" \
-            && store="$(nros_store_root 2>/dev/null)" \
-            && [ -x "$store/sdk/cargo-sweep/$pin/bin/cargo-sweep" ]; then
-            cargo_sweep="$store/sdk/cargo-sweep/$pin/bin/cargo-sweep"
+    cargo_sweep="$(_find_cargo_sweep)"
+    # issue 2191 — and NOTHING INSTALLED IT. The CI jobs run `just setup
+    # <scope>`, whose common prelude provisions the CLI, the resolver,
+    # corrosion and clang-format but not `workspace cargo-tools`, so on the
+    # runner this area was reported every run and pruned on none. The
+    # workflow's sweep step passes --provision; once installed the tool sits
+    # in the store at its pin and this is a lookup, not a build.
+    if [ -z "$cargo_sweep" ] && [ "${#cargo_roots[@]}" -gt 0 ] && [ "$PROVISION" -eq 1 ]; then
+        if [ "$CHECK" -eq 1 ]; then
+            _would "nros setup --tool cargo-sweep"
+        else
+            _provision_cargo_sweep
+            cargo_sweep="$(_find_cargo_sweep)"
         fi
     fi
     if [ "${#cargo_roots[@]}" -eq 0 ]; then

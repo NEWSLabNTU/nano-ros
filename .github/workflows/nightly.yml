@@ -1252,7 +1252,7 @@ jobs:
           retention-days: 14
       - name: Sweep orphans and disk
         if: always()
-        run: ./scripts/ci/runner-sweep.sh || true
+        run: ./scripts/ci/runner-sweep.sh --provision || true
 
   coverage-matrix-nightly:
     # issue 1790 — `report-interlock-coverage.sh` reads the gated job's
