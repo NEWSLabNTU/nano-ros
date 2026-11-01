@@ -1635,6 +1635,15 @@ arch = "cortex-m3"
 platform = "zephyr"
 packages = ["zephyr-sdk", "qemu"]
 
+# phase-524 W3 — the Nucleo-F767ZI board package. The Zephyr toolchain, plus
+# Renode (`[tool.renode]`, phase-524 W2), the board's emulator twin: so `nros
+# setup nucleo-f767zi-zephyr` installs the twin with the toolchain (RFC-0115).
+# Its HAL module, `hal_stm32`, comes from `west.yml` (`[zephyr_module.hal_stm32]`).
+[board.nucleo-f767zi-zephyr]
+arch = "cortex-m7"
+platform = "zephyr"
+packages = ["zephyr-sdk", "renode"]
+
 
 # --- the Zephyr MODULE set, as index data (phase-447 F1, issue 1275) --------
 #

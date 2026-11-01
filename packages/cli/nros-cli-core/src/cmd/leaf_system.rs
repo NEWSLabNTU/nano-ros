@@ -357,18 +357,49 @@ pub fn board_conf_paths(
     root: Option<&std::path::Path>,
     board: &str,
 ) -> Vec<PathBuf> {
+    board_package_files(leaf, catalog, root, board)
+        .map(|f| f.conf_files())
+        .unwrap_or_default()
+}
+
+/// phase-524 W3 -- the devicetree overlay the leaf's BOARD PACKAGE carries
+/// (`boards/<flat>.overlay` beside its `nros-board.toml`), printed as
+/// `NROS_LEAF_DTC_OVERLAY` for the module hook to add to
+/// `EXTRA_DTC_OVERLAY_FILE`. Answers nothing exactly where
+/// [`board_conf_paths`] does.
+///
+/// Issue 1782 gave a leaf its board's Kconfig and stopped there, so a board
+/// whose CONSOLE is a devicetree choice got its conf and not its overlay:
+/// `nucleo-f767zi-zephyr` moves the console off USART3 because USART3 carries
+/// the zenoh link, and a leaf image for it built with both on one UART.
+pub fn board_overlay_paths(
+    leaf: &LeafSystem,
+    catalog: Option<&BoardCatalog>,
+    root: Option<&std::path::Path>,
+    board: &str,
+) -> Vec<PathBuf> {
+    board_package_files(leaf, catalog, root, board)
+        .and_then(|f| f.board_overlay)
+        .into_iter()
+        .collect()
+}
+
+/// The board package files a single-package leaf's image gets from its board
+/// (the shared rule of [`board_conf_paths`] and [`board_overlay_paths`]).
+fn board_package_files(
+    leaf: &LeafSystem,
+    catalog: Option<&BoardCatalog>,
+    root: Option<&std::path::Path>,
+    board: &str,
+) -> Option<crate::orchestration::board_projection::BoardFiles> {
     let leaf_system::Origin::SystemToml(path) = &leaf.origin else {
-        return Vec::new();
+        return None;
     };
     let (Some(catalog), Some(root)) = (catalog, root) else {
-        return Vec::new();
+        return None;
     };
-    let Some(descriptor) = crate::cmd::board_facts::resolve_board(catalog, board) else {
-        return Vec::new();
-    };
-    if descriptor.zephyr.is_none() {
-        return Vec::new();
-    }
+    let descriptor = crate::cmd::board_facts::resolve_board(catalog, board)?;
+    descriptor.zephyr.as_ref()?;
     let calls_use_board = path
         .parent()
         .and_then(|d| std::fs::read_to_string(d.join("CMakeLists.txt")).ok())
@@ -379,13 +410,13 @@ pub fn board_conf_paths(
                 .any(|l| l.contains("nano_ros_use_board("))
         });
     if calls_use_board {
-        return Vec::new();
+        return None;
     }
-    let Some(dir) = crate::orchestration::board_projection::descriptor_dir(descriptor, root) else {
-        return Vec::new();
-    };
-    crate::orchestration::board_projection::board_files(&descriptor.west_build_board(board), &dir)
-        .conf_files()
+    let dir = crate::orchestration::board_projection::descriptor_dir(descriptor, root)?;
+    Some(crate::orchestration::board_projection::board_files(
+        &descriptor.west_build_board(board),
+        &dir,
+    ))
 }
 
 /// Issue 2157 -- the Zephyr snippets the image's BOARD names
@@ -622,6 +653,13 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
         Vec::new()
     };
     conf.extend(leaf_conf_paths(&leaf).map_err(|e| eyre!(e))?);
+    // phase-524 W3 -- and the board package's devicetree overlay, on the same
+    // condition.
+    let overlays = if board_applies {
+        board_overlay_paths(&leaf, catalog.as_ref(), root.as_deref(), &board)
+    } else {
+        Vec::new()
+    };
     // Issue 2043 -- `--board` answers for ANOTHER board than the image's (the
     // host census build of an RTOS leaf), and the image's board network files
     // are its own board's: the host owns the host's network. Resolving them
@@ -665,6 +703,14 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     println!(
         "NROS_LEAF_CONF={}",
         conf.iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(";")
+    );
+    println!(
+        "NROS_LEAF_DTC_OVERLAY={}",
+        overlays
+            .iter()
             .map(|p| p.display().to_string())
             .collect::<Vec<_>>()
             .join(";")
@@ -982,6 +1028,18 @@ mod tests {
         );
 
         assert!(
+            board_overlay_paths(&leaf, Some(&catalog), Some(&root), "mps2-an385-zephyr").is_empty(),
+            "mps2-an385-zephyr carries no overlay"
+        );
+        // phase-524 W3 -- a board package's overlay reaches the leaf too.
+        let ovl = board_overlay_paths(&leaf, Some(&catalog), Some(&root), "nucleo-f767zi-zephyr");
+        assert_eq!(ovl.len(), 1, "{ovl:?}");
+        assert!(
+            ovl[0].ends_with("nros-board-nucleo-f767zi-zephyr/boards/nucleo_f767zi.overlay"),
+            "{ovl:?}"
+        );
+
+        assert!(
             board_conf_paths(&leaf, Some(&catalog), Some(&root), "zephyr").is_empty(),
             "the generic board package carries no Kconfig"
         );
@@ -998,6 +1056,11 @@ mod tests {
         assert!(
             board_conf_paths(&leaf, Some(&catalog), Some(&root), "mps2-an385-zephyr").is_empty(),
             "nano_ros_use_board() already merges them"
+        );
+        assert!(
+            board_overlay_paths(&leaf, Some(&catalog), Some(&root), "nucleo-f767zi-zephyr")
+                .is_empty(),
+            "nano_ros_use_board() already appends the overlay"
         );
 
         let bringup = tempfile::tempdir().unwrap();

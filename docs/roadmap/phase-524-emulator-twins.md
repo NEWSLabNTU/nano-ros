@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-11-01). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode). RFC-0115 D4 rewritten to match. W2 onward run for the Nucleo only. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W0 open.** Implements
+**Status (2026-11-01). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode). RFC-0115 D4 rewritten to match. W2 onward run for the Nucleo only. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W0 and W4 open.** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -193,6 +193,103 @@ RX for the serial link, issue 0852). No crate.
 - **Decision step:** if phase-522 W1 is not on `main` when W2 finishes, W3
   writes rows in the OLD schema (`tier = 3`, `execution_class = "cross-run"`)
   and the phase-522 migration carries them; it does not wait.
+
+**Result (2026-11-01). Done for the Nucleo-F767ZI.** One row, one package.
+
+- **Registry row** (`packages/boards/board-support.toml`):
+
+  ```toml
+  [[board]]
+  crate = "nros-board-nucleo-f767zi-zephyr"
+  board_keys = ["nucleo-f767zi-zephyr"]
+  real_hardware = true
+  book_flash = "getting-started/integration-zephyr.md#flash-a-real-board"
+  runs = "emulator"
+  emulator = "renode:nucleo_f767zi"
+  hardware = "nucleo-f767zi"
+  cadence = "manual"
+  last_run = "2026-11-01"
+  breadth = "inherits ZephyrQemuCortexM"
+  maintainers = ["jerry73204"]
+  ```
+
+  Derived status: "Boots, manual (2026-11-01)". `cadence` is `manual` because
+  the evidence is the W1 spike run plus the W3 rerun below, both by hand. It
+  moves to `weekly` with `probe = ["renode-nucleo"]` when W4's generated
+  track replays it. `breadth` inherits the Zephyr Cortex-M witness, not
+  `witness`: the twin adds one smoke run on the family's code path and asserts
+  no matrix of its own (RFC-0115 D4, RFC-0114 D11). The row has no
+  `matrix_platform` because no `PlatformId` runs it, and a manual row may say
+  that. The maintainer is named, so the row is not in the grandfather list.
+  The plan above said `cadence = "weekly"`. That waits for W4's track, because
+  the gate requires a `probe` track for `weekly`.
+- **`book_run` is W4's.** The grammar requires `book_run` on a row that runs,
+  unless `real_hardware = true`. The Nucleo is flashed silicon, so the row
+  states that and names the existing "Flash a real board" section of the
+  Zephyr chapter (it already used `nucleo_f767zi` as its example). That is the
+  least-scope legal option. The twin's "Run" section comes with W4's chapter,
+  and that commit adds `book_run`. A run block written now would be an
+  unprobed command. One sentence of that section changed: it said nano-ros
+  ships no Zephyr hardware board.
+- **Package** `packages/boards/nros-board-nucleo-f767zi-zephyr/`:
+  `nros-board.toml` (`west_board = "nucleo_f767zi"`,
+  `rust_target = "thumbv7em-none-eabihf"`, `stack = "os"`,
+  `links = ["serial", "tcp", "udp"]`, `zephyr_line = "3.7"`), `package.xml`,
+  `prj.conf` (the spike's serial set plus the POSIX half of `prj-zenoh.conf`,
+  so a serial image names no `os_config`), and
+  `boards/nucleo_f767zi.overlay` (console on USART6, zenoh on USART3). The
+  board key also joins `BOARD_KEYS`, `BOARD_PATHS`, the zephyr framework
+  table and issue 1435's refused set. `[board.nucleo-f767zi-zephyr]` in
+  `nros-sdk-index.toml` names `zephyr-sdk` and `renode`.
+  `examples/zephyr/rust-toolchain.toml` gains `thumbv7em-none-eabi(hf)`.
+  `nros_detect_rust_target()` already had the Cortex-M7 arm.
+- **Knobs: not in `[knobs]`, issue 2194.** The descriptor cannot state the
+  four RAM knobs. Its `[knobs]` schema has no field for them, and the Zephyr
+  leaf road has no board knob rung. A prompt-less knob in `prj.conf` is a
+  configure error. So the descriptor header records the numbers and the
+  ethernet heap's shortfall: 32 KiB against a 39,728-byte peak plus floor.
+  An image states `[image.<id>.knobs.zenoh] max_large_subscribers = 0`.
+- **Two leaf-road defects, fixed here because the build needed them.** (1) A
+  leaf image got its board package's Kconfig (issue 1782) but not its
+  devicetree overlay. A nucleo image built with the console and the zenoh link
+  on one UART. `nros ws leaf-system` now prints `NROS_LEAF_DTC_OVERLAY` and
+  the module hook adds it to `EXTRA_DTC_OVERLAY_FILE`. (2) The board facts
+  resolver reads `NROS_LEAF_IMAGE_ID`, which nothing on the Zephyr leaf road
+  set. So a leaf whose images name two boards failed with "deploys ...
+  resolve DIFFERENTLY", even with `-DNROS_IMAGE` given. The image hook now
+  sets it.
+- **Build proof.** A copy of `examples/zephyr/c/talker`
+  (`tmp/w3-nucleo/talker`, untracked) with one image added:
+
+  ```toml
+  [image.nucleo_serial]
+  board = "nucleo-f767zi-zephyr"
+  rmw = "zenoh"
+  locator = "serial/serial@40004800#baudrate=115200"
+
+  [image.nucleo_serial.knobs.zenoh]
+  max_large_subscribers = 0
+  ```
+
+  `west build -b nucleo_f767zi <leaf> -- -DNROS_IMAGE=nucleo_serial
+  -DZEPHYR_EXTRA_MODULES=<repo>;<hal_stm32>` passed no conf file and no
+  overlay. The `hal_stm32` path is there only because this box's workspace
+  manifest predates W2. The merge order was the leaf's `prj.conf`, the
+  board's `prj.conf`, then the rendered image. The overlay came from the board
+  package, and the console is `&usart6`. RAM was 351,936 B (89.50 %), the
+  spike's number to the byte. FLASH was 522,088 B. That ELF (sha256
+  `a66df2b7...0228`) booted in Renode 1.17.0 through the spike's
+  `run-serial.sh`. `ros2 topic echo` printed `data: 'Hello World: 1'`, so the
+  run PASSED.
+- **`nros setup nucleo-f767zi-zephyr --dry-run`** prices `hal_stm32 639 MB
+  [3.7] nucleo_f767zi`, `rust target thumbv7em-none-eabihf`, `zephyr-sdk` and
+  `renode present 1.17.0`.
+- **Left for W4.** The `renode-nucleo` track, `probe` plus `cadence = "weekly"`
+  on the row, `book_run`, the chapter, and an ethernet image. The ethernet
+  image needs an `os_config` that turns the IP stack back on, since this
+  board's `prj.conf` is serial-shaped. It also needs its heap measured first,
+  see issue 2194. The Nucleo's `nros board list` status reads "Boots, manual"
+  until then, not "Builds".
 
 ### W4 — Probe tracks and serial-first chapters
 

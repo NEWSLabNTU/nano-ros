@@ -15,4 +15,6 @@ components = ["rust-src", "rustfmt", "clippy"]
 # aarch64-unknown-none — the FVP AEMv8-R lane (issue #216: the lane rotted
 # to E0463 "can't find crate for `core`" because this pin lacked the target;
 # rustup auto-installs the targets listed here on first use).
-targets = ["x86_64-unknown-none", "armv7a-none-eabi", "armv7a-none-eabihf", "aarch64-unknown-none"]
+# thumbv7em-none-eabi(hf) — Cortex-M4/M7 Zephyr boards, first the
+# Nucleo-F767ZI (phase-524 W3; the W1 spike had to `rustup target add` them).
+targets = ["x86_64-unknown-none", "armv7a-none-eabi", "armv7a-none-eabihf", "aarch64-unknown-none", "thumbv7em-none-eabi", "thumbv7em-none-eabihf"]

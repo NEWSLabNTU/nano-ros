@@ -522,6 +522,8 @@ pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     // name, and no catalog lookup could find it.
     ("mps2-an385-zephyr", BoardFamily::Zephyr),
     ("qemu-cortex-a53", BoardFamily::Zephyr),
+    // phase-524 W3 — the Nucleo-F767ZI, the book's Renode-twinned board.
+    ("nucleo-f767zi-zephyr", BoardFamily::Zephyr),
     ("nuttx", BoardFamily::Nuttx),
     ("qemu-armv7a-nuttx", BoardFamily::Nuttx),
     ("rv-virt-nuttx", BoardFamily::Nuttx),
@@ -744,9 +746,10 @@ mod tests {
         // minus the two keys no descriptor names (`armfvp`,
         // `freertos-qemu-mps2-an385`). Issue 2101: minus `threadx-qemu-riscv64`,
         // which named the emulator (refused, naming `rv-virt-threadx`).
+        // Phase-524 W3: plus `nucleo-f767zi-zephyr`.
         assert_eq!(
             BOARD_KEYS.len(),
-            20,
+            21,
             "a key was added or removed without a row"
         );
     }

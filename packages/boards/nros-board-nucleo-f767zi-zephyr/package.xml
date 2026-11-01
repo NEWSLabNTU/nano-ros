@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_board_nucleo_f767zi_zephyr</name>
+  <version>0.0.0</version>
+  <description>
+    Board support for `nucleo-f767zi-zephyr` (zephyr): ST Nucleo-F767ZI,
+    with a Renode twin (phase-524, RFC-0115).
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cmake</build_type>
+    <!--
+      Provision, NOT consumption: this package IS a board. Must equal the
+      descriptor's `names`, canonical first (`check-provider-announcements`).
+    -->
+    <nano_ros_provides kind="board" name="nucleo-f767zi-zephyr"/>
+  </export>
+</package>

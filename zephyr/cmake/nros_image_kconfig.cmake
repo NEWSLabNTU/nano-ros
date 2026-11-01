@@ -233,6 +233,17 @@ function(nros_image_kconfig_hook)
         message(FATAL_ERROR "nano-ros: ${_dir}/system.toml: no image to render")
     endif()
     list(PREPEND _args --image "${_image}")
+    # phase-524 W3 -- the board facts (`nros_resolve_board_facts`, which runs
+    # later in this configure from zephyr/CMakeLists.txt) must ask for THIS
+    # image's row. It reads `NROS_LEAF_IMAGE_ID`, which nothing on the Zephyr
+    # leaf road set, so it asked with no `--deploy`: right while every image of
+    # a leaf names one board, and an "images resolve DIFFERENTLY" configure
+    # error the moment one names another (measured: a C talker leaf with a
+    # `nucleo-f767zi-zephyr` image beside its `zephyr` ones, even with
+    # `-DNROS_IMAGE` given). Re-set on every configure, so it never outlives
+    # the image choice that made it.
+    set(NROS_LEAF_IMAGE_ID "${_image}" CACHE INTERNAL
+        "the image this Zephyr leaf configure renders (phase-524 W3)")
 
     # phase-484 W5b -- a `-DCONFIG_<knob>` would be Kconfig's "not directly
     # user-configurable" error, naming neither system.toml nor the override
@@ -319,6 +330,7 @@ function(nros_image_kconfig_hook)
     set(_keys "")
     set(_image_conf "")
     set(_board_snippets "")
+    set(_board_overlays "")
     string(REPLACE "\n" ";" _lines "${_out}")
     foreach(_l IN LISTS _lines)
         if(_l MATCHES "^NROS_LEAF_KCONFIG=(.*)$")
@@ -329,6 +341,8 @@ function(nros_image_kconfig_hook)
             set(_image_conf "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_SNIPPET=(.*)$")
             set(_board_snippets "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_DTC_OVERLAY=(.*)$")
+            set(_board_overlays "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_BOARD_NOT_APPLIED=(.+)$")
             message(STATUS
                 "nano-ros: image `${_image}` names a board package for "
@@ -380,6 +394,7 @@ function(nros_image_kconfig_hook)
     endif()
 
     _nros_image_kconfig_merge_snippets("${_board_snippets}" "${_image}")
+    _nros_image_kconfig_merge_overlays("${_board_overlays}" "${_image}")
 
     _nros_image_kconfig_named_confs(_named)
     # phase-484 W5b -- a knob assigned in a conf file this image merges is a
@@ -660,6 +675,47 @@ function(_nros_image_kconfig_named_confs _out)
         endif()
     endforeach()
     set(${_out} "${_abs}" PARENT_SCOPE)
+endfunction()
+
+# phase-524 W3 -- add the BOARD package's devicetree overlay (what
+# `nros ws leaf-system` printed as `NROS_LEAF_DTC_OVERLAY`) to
+# EXTRA_DTC_OVERLAY_FILE, ahead of the caller's own extras so theirs still win.
+# EXTRA_, not DTC_OVERLAY_FILE: setting the latter would switch off Zephyr's
+# discovery of the application's own `boards/<board>.overlay`. The entries the
+# hook added last time are dropped first (`NROS_IMAGE_DTC_OVERLAYS`), so a
+# board that stops carrying one, or an image on another board, stops getting
+# it with no pristine build -- the rule the snippet merge follows (issue 2179).
+function(_nros_image_kconfig_merge_overlays _mo_board _mo_image)
+    set(_mo_prev "")
+    if(DEFINED CACHE{NROS_IMAGE_DTC_OVERLAYS})
+        set(_mo_prev "$CACHE{NROS_IMAGE_DTC_OVERLAYS}")
+    endif()
+    set(_mo_user "")
+    if(DEFINED CACHE{EXTRA_DTC_OVERLAY_FILE})
+        foreach(_mo_f IN LISTS CACHE{EXTRA_DTC_OVERLAY_FILE})
+            if(NOT _mo_f IN_LIST _mo_prev)
+                list(APPEND _mo_user "${_mo_f}")
+            endif()
+        endforeach()
+    endif()
+    set(_mo_new ${_mo_board} ${_mo_user})
+    set(NROS_IMAGE_DTC_OVERLAYS "${_mo_board}" CACHE INTERNAL
+        "phase-524 W3: the board overlays the module hook added to EXTRA_DTC_OVERLAY_FILE")
+    if(_mo_prev STREQUAL "" AND _mo_board STREQUAL "")
+        return()
+    endif()
+    if(_mo_new STREQUAL "")
+        unset(EXTRA_DTC_OVERLAY_FILE CACHE)
+    else()
+        set(EXTRA_DTC_OVERLAY_FILE "${_mo_new}" CACHE STRING
+            "Extra devicetree overlays; nano-ros adds the image's board package overlay first"
+            FORCE)
+    endif()
+    if(NOT _mo_board STREQUAL "")
+        message(STATUS
+            "nano-ros: image `${_mo_image}` board overlay -> ${_mo_board} "
+            "(head of EXTRA_DTC_OVERLAY_FILE)")
+    endif()
 endfunction()
 
 # Write the cache value of EXTRA_CONF_FILE, or remove it when nothing is left.
