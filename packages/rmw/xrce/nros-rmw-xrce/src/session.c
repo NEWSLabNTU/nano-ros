@@ -703,13 +703,13 @@ rmw_ret_t xrce_publisher_event_init(const rmw_publisher_t* publisher, rmw_event_
 
 /* phase-521 W4 (RFC-0113 D4) — XRCE has no thread of its own, so its
  * readiness is its transport's. Where the transport is an OS descriptor
- * (POSIX/NuttX UDP, POSIX serial) it is WAITABLE: the executor parks on it
- * and drives this session non-blockingly once it is readable, instead of
- * blocking inside `uxr_run_session_time`. Where the UDP stack takes a receive
- * notification (lwIP, NetX) it is NOTIFY: the stack calls the executor's wake
- * callback on arrival (`xrce_set_wake_callback`). Elsewhere (a board's custom
- * transport, Zephyr) the answer is NONE and the receive-blocking wait stays
- * until phase-521 W4/W5 give that transport a readiness form. */
+ * (POSIX/NuttX UDP, POSIX serial, Zephyr zsock UDP) it is WAITABLE: the
+ * executor parks on it and drives this session non-blockingly once it is
+ * readable, instead of blocking inside `uxr_run_session_time`. Where the UDP
+ * stack takes a receive notification (lwIP, NetX) it is NOTIFY: the stack
+ * calls the executor's wake callback on arrival (`xrce_set_wake_callback`).
+ * Elsewhere (a board's custom transport, a Rust net stack) the answer is
+ * NONE, which RFC-0113 D5 refuses once phase-521 W6 lands. */
 rmw_ret_t xrce_readiness_source(const rmw_session_t* session, uint8_t* out_kind,
                                 int32_t* out_handle) {
     if (session == NULL || out_kind == NULL || out_handle == NULL) {

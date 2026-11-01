@@ -1320,9 +1320,39 @@ size_t nros_platform_task_storage_align(void) {
  *   kernel build, no Kconfig gate.
  * ============================================================ */
 
+/* phase-521 W4 (RFC-0113 D4) — the handle park needs something `zsock_poll`
+ * can wait on beside the sockets, and a `k_sem` is not a file descriptor. So
+ * where the image has sockets and ZVFS eventfds, the wake object carries an
+ * eventfd, made on the first handle park only (an executor that never parks
+ * on a handle costs no eventfd: `CONFIG_ZVFS_EVENTFD_MAX` is small), and
+ * `signal` bumps it after its give. A NON-BLOCKING eventfd write is a
+ * spinlock and a `k_poll_signal_raise`, so it is ISR-safe, which keeps
+ * `signal_from_isr` honest.
+ *
+ * `sem` stays the first member: every park that is not a handle park still
+ * waits on it alone. */
+#if defined(CONFIG_NET_SOCKETS) && defined(CONFIG_ZVFS_EVENTFD)
+#define NROS_ZEPHYR_HANDLE_PARK 1
+#include <zephyr/net/socket.h>
+#include <zephyr/zvfs/eventfd.h>
+#endif
+
+typedef struct {
+    struct k_sem sem;
+#ifdef NROS_ZEPHYR_HANDLE_PARK
+    /* -1 until made. Written once by the one waiter, read by `signal` from
+     * any context, hence atomic. */
+    atomic_t efd;
+#endif
+} nros_zephyr_wake_t;
+
 int8_t nros_platform_wake_init(void* w) {
     if (w == NULL) return -1;
-    k_sem_init((struct k_sem*)w, 0u, 1u);
+    nros_zephyr_wake_t* wp = (nros_zephyr_wake_t*)w;
+    k_sem_init(&wp->sem, 0u, 1u);
+#ifdef NROS_ZEPHYR_HANDLE_PARK
+    atomic_set(&wp->efd, -1);
+#endif
     return 0;
 }
 
@@ -1331,7 +1361,12 @@ int8_t nros_platform_wake_drop(void* w) {
      * stale waiter (impossible if the caller respects ownership)
      * sees -EAGAIN on the next take. */
     if (w == NULL) return 0;
-    k_sem_reset((struct k_sem*)w);
+    nros_zephyr_wake_t* wp = (nros_zephyr_wake_t*)w;
+#ifdef NROS_ZEPHYR_HANDLE_PARK
+    int efd = (int)atomic_set(&wp->efd, -1);
+    if (efd >= 0) zsock_close(efd);
+#endif
+    k_sem_reset(&wp->sem);
     return 0;
 }
 
@@ -1355,31 +1390,43 @@ int8_t nros_platform_wake_wait_ms(void* w, uint32_t timeout_ms) {
         to = K_MSEC(timeout_ms);
 #endif
     }
-    int rc = k_sem_take((struct k_sem*)w, to);
+    int rc = k_sem_take(&((nros_zephyr_wake_t*)w)->sem, to);
     if (rc == 0) return 0;
     if (rc == -EAGAIN) return 1;
     return -1;
 }
 
+/* A give, then (once a handle park has made it) one eventfd bump. The order
+ * matters: a handle park takes the semaphore before it polls, so a give that
+ * lands after that take is always followed by a bump the poll sees. */
+static void nros_zephyr_wake_give(nros_zephyr_wake_t* wp) {
+    k_sem_give(&wp->sem);
+#ifdef NROS_ZEPHYR_HANDLE_PARK
+    int efd = (int)atomic_get(&wp->efd);
+    if (efd >= 0) (void)zvfs_eventfd_write(efd, 1);
+#endif
+}
+
 int8_t nros_platform_wake_signal(void* w) {
     if (w == NULL) return -1;
-    k_sem_give((struct k_sem*)w);
+    nros_zephyr_wake_give((nros_zephyr_wake_t*)w);
     return 0;
 }
 
 int8_t nros_platform_wake_signal_from_isr(void* w) {
     if (w == NULL) return -1;
-    /* k_sem_give is documented ISR-safe on Zephyr. */
-    k_sem_give((struct k_sem*)w);
+    /* k_sem_give is documented ISR-safe on Zephyr, and so is a write to a
+     * non-blocking eventfd (see `nros_zephyr_wake_t`). */
+    nros_zephyr_wake_give((nros_zephyr_wake_t*)w);
     return 0;
 }
 
 size_t nros_platform_wake_storage_size(void) {
-    return sizeof(struct k_sem);
+    return sizeof(nros_zephyr_wake_t);
 }
 
 size_t nros_platform_wake_storage_align(void) {
-    return __alignof__(struct k_sem);
+    return __alignof__(nros_zephyr_wake_t);
 }
 
 /* phase-436 W7 — a `ParkUntilFn` for Zephyr, at MICROSECOND resolution.
@@ -1402,7 +1449,7 @@ size_t nros_platform_wake_storage_align(void) {
 int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us) {
     if (w == NULL) return -1;
     k_timeout_t to = (deadline_us == 0u) ? K_NO_WAIT : K_USEC((int64_t)deadline_us);
-    int rc = k_sem_take((struct k_sem*)w, to);
+    int rc = k_sem_take(&((nros_zephyr_wake_t*)w)->sem, to);
     if (rc == 0) return 0;
     if (rc == -EAGAIN) return 1;
     return -1;
@@ -1420,9 +1467,80 @@ uint64_t nros_platform_wake_park_granularity_us(void) {
                       CONFIG_SYS_CLOCK_TICKS_PER_SEC);
 }
 
-/* phase-521 W3 (RFC-0113 D3) — this port has no OS handles for a park to
- * multiplex: an RMW session's readiness here is a Notify (its wake callback),
- * never a file descriptor. -1 tells the executor to keep the park it has. */
+/* phase-521 W4 (RFC-0113 D3/D4) — the park over the wake object AND the RMW
+ * sessions' sockets: what a tier waits on when a session's readiness is a
+ * zsock descriptor (XRCE over UDP). The same shape as the POSIX park, with an
+ * eventfd where POSIX has a self-pipe.
+ *
+ * Chosen over Zephyr's socket service (`NET_SOCKET_SERVICE`, the Notify form):
+ * that service is EXPERIMENTAL on the 3.7 line, its define macro changes
+ * between 3.7 and 4.x, and its one dispatcher thread defaults to the LOWEST
+ * preemptible priority, so a busy application tier would delay every
+ * session's wake behind it. Here the tier waits on its own sockets at its own
+ * priority, and nothing else runs on its behalf.
+ *
+ * `zsock_poll` takes milliseconds; the remainder is rounded UP, and the
+ * kernel rounds to ticks anyway, which is the floor
+ * `nros_platform_wake_park_granularity_us` reports. Without sockets or
+ * eventfds this returns -1 and the executor keeps the semaphore park. */
+#ifdef NROS_ZEPHYR_HANDLE_PARK
+/* The most handles one park multiplexes: the executor's own cap, one per
+ * session of a tier, with room to spare. More is refused (-1), never
+ * truncated, because a dropped handle is a missed wake. */
+#define NROS_ZEPHYR_PARK_MAX_HANDLES 8
+
+int8_t nros_platform_wake_park_handles_us(void *w, const int32_t *handles, size_t n,
+                                          uint64_t deadline_us) {
+    if (w == NULL || (n > 0 && handles == NULL) || n > NROS_ZEPHYR_PARK_MAX_HANDLES) {
+        return -1;
+    }
+    nros_zephyr_wake_t *wp = (nros_zephyr_wake_t *)w;
+    int efd = (int)atomic_get(&wp->efd);
+    if (efd < 0) {
+        efd = zvfs_eventfd(0, ZVFS_EFD_NONBLOCK);
+        if (efd < 0) return -1;
+        atomic_set(&wp->efd, efd);
+    }
+    /* A signal already given ends the park now. */
+    if (k_sem_take(&wp->sem, K_NO_WAIT) == 0) return 0;
+
+    struct zsock_pollfd pfds[1 + NROS_ZEPHYR_PARK_MAX_HANDLES];
+    pfds[0].fd = efd;
+    pfds[0].events = ZSOCK_POLLIN;
+    for (size_t i = 0; i < n; ++i) {
+        pfds[1 + i].fd = handles[i];
+        pfds[1 + i].events = ZSOCK_POLLIN;
+    }
+    const int nfds = (int)(1 + n);
+    const int64_t end_us = k_ticks_to_us_ceil64(k_uptime_ticks()) + (int64_t)deadline_us;
+
+    for (;;) {
+        const int64_t now_us = k_ticks_to_us_ceil64(k_uptime_ticks());
+        const int64_t left_us = now_us >= end_us ? 0 : end_us - now_us;
+        const int64_t left_ms = (left_us + 999) / 1000;
+        for (int i = 0; i < nfds; ++i) pfds[i].revents = 0;
+        int r = zsock_poll(pfds, nfds, left_ms > INT32_MAX ? INT32_MAX : (int)left_ms);
+        if (r < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (r == 0) return 1;
+        for (size_t i = 0; i < n; ++i) {
+            if (pfds[1 + i].revents != 0) return 0;
+        }
+        if (pfds[0].revents != 0) {
+            zvfs_eventfd_t v;
+            (void)zvfs_eventfd_read(efd, &v);
+            if (k_sem_take(&wp->sem, K_NO_WAIT) == 0) return 0;
+            /* Stale: that give was already taken. Keep waiting. */
+            if (left_us == 0) return 1;
+        }
+    }
+}
+#else
+/* No sockets or no eventfds in this image: no OS handle for a park to
+ * multiplex, and `nros_platform_udp_readiness_handle` answers -1 to match.
+ * -1 tells the executor to keep the park it has. */
 int8_t nros_platform_wake_park_handles_us(void *w, const int32_t *handles, size_t n,
                                           uint64_t deadline_us) {
     (void) w;
@@ -1431,6 +1549,7 @@ int8_t nros_platform_wake_park_handles_us(void *w, const int32_t *handles, size_
     (void) deadline_us;
     return -1;
 }
+#endif
 
 /* phase-359 W10 — opaque-storage sizing for `task`, the sibling of the wake
  * probes above. `task_init`'s contract says the implementor decides the size;

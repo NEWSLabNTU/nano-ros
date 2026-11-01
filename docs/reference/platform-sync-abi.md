@@ -102,7 +102,13 @@ ordinary wait.
   writes a byte to it after its post. The park takes the semaphore before
   polling and again when the pipe fires, so a pipe byte whose post was already
   taken is stale and does not end the park. More than 8 handles is refused.
-- FreeRTOS, Zephyr, ThreadX: `-1`. Their sessions report Notify, not handles.
+- Zephyr (with `CONFIG_NET_SOCKETS` and `CONFIG_ZVFS_EVENTFD`, which
+  `CONFIG_NROS_RMW_XRCE` implies): `zsock_poll` over the handles plus a
+  non-blocking ZVFS eventfd the wake object carries, made on the first handle
+  park. `_signal` and `_signal_from_isr` bump it after the `k_sem_give` (a
+  non-blocking eventfd write is ISR-safe). Stale bumps are handled as on
+  POSIX. More than 8 handles is refused. Without eventfds: `-1`.
+- FreeRTOS, ThreadX: `-1`. Their sessions report Notify, not handles.
 - A Rust port: the `PlatformThreading::wake_park_handles_us` default, `-1`.
 
 ## Receive notification on a socket (phase-521 W4, RFC-0113 D4)
@@ -138,7 +144,9 @@ Per port:
   the setter also takes. The threadx-linux NSOS shim (host sockets) answers
   `-1`.
 - POSIX/NuttX: `-1`. They have `nros_platform_udp_readiness_handle` instead.
-- Zephyr: `-1` for now. Which form zsock gets is still open in W4.
+- Zephyr: `-1`. zsock has no per-socket callback; Zephyr's form is the
+  Waitable one above (`nros_platform_udp_readiness_handle` returns the zsock
+  fd when the image has eventfds).
 - A Rust port: the `PlatformUdp::set_rx_notify` default, `-1`.
 
 ## Coalescing semantics

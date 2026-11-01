@@ -63,6 +63,17 @@ config NROS_RMW_ZENOH
 config NROS_RMW_XRCE
     bool "XRCE-DDS"
     depends on NET_SOCKETS
+    # phase-521 W4 (RFC-0113 D4): the executor parks on the session's socket
+    # beside an eventfd its wake object carries, so an arrival ends the park
+    # and the tier never blocks inside the transport's receive. Without
+    # eventfds the session reports no handle and the tier keeps the old wait.
+    # One eventfd per executor that parks on a socket (CONFIG_ZVFS_EVENTFD_MAX,
+    # default 1); a further tier falls back the same way. ZVFS is implied too:
+    # ZVFS_EVENTFD sits inside `if ZVFS`, and on the 3.7 line nothing else
+    # turns ZVFS on in a sockets-only image (`EVENTFD`, the POSIX option that
+    # selects both, is refused for native_sim).
+    imply ZVFS
+    imply ZVFS_EVENTFD
     help
       Use Micro-XRCE-DDS as the RMW transport backend.
       Connects to a Micro-XRCE-DDS Agent over UDP sockets.
