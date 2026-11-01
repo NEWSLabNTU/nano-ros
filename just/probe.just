@@ -60,6 +60,12 @@ platform-asset out="tmp/probe-asset":
 [group("main")]
 baremetal: (platform "baremetal")
 
+# phase-523 W4 — the bare-metal chapter OFFLINE: once online to stage the
+# release asset and the SDK store, then again with `--network none` and
+# NROS_OFFLINE=1 from that store (vendored-tree.md "Air-gapped / mirrored CI").
+[group("main")]
+offline: (platform "offline")
+
 # book/src/getting-started/freertos.md — Rust workspace image on QEMU MPS2-AN385.
 [group("main")]
 freertos: (platform "freertos")

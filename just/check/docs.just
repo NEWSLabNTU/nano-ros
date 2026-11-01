@@ -245,6 +245,13 @@ doc-commit-citations:
     printf '%s\n' "$out"
     exit "$rc"
 
+# phase-523 W4 — every fork the tree carries has a generated delta page
+# (docs/reference/forks/) that names the commit the superproject pins. A pin
+# moved without `python3 scripts/gen-fork-deltas.py` (which needs `gh`) is red
+# here; this half is offline and buildless.
+fork-deltas:
+    @python3 scripts/check/check-fork-deltas.py
+
 # Every `docs/{design,issues}/NNNN-*.md` path written anywhere — prose, issue
 # frontmatter, or a cmake error message — must resolve. Renumbering on an id
 # collision is what breaks these.

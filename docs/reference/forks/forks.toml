@@ -1,0 +1,83 @@
+# Every submodule that tracks a branch (`branch =` in .gitmodules), and where
+# its patches start (phase-523 W4, RFC-0116's industrial purpose).
+#
+# A FORK row names the upstream repository and the upstream ref the patch line
+# is measured against: a release tag where the pin descends from one, else an
+# upstream branch (the merge base with it is recorded on the page). The page
+# `docs/reference/forks/<name>.md` is GENERATED from this table and the pinned
+# commit by `scripts/gen-fork-deltas.py`, which asks GitHub's compare API, so it
+# needs `gh` and the network; nothing else does.
+#
+# An OURS row is a repository nano-ros authors (no upstream to diff against);
+# its `main` is the line, and it gets no delta page.
+#
+# `just check fork-deltas` (offline) holds the set: every branch-tracking
+# submodule has a row, every fork row has a page, and each page names the
+# commit the superproject pins. A pin move without a regenerated page is red,
+# so the page cannot describe a delta the tree no longer carries. The decision
+# rule from phase-523 W4: a fork whose delta cannot be stated as a patch list
+# against a pinned upstream is a fork whose pin is wrong, and is filed as such.
+
+[[fork]]
+name = "zenoh-pico"
+path = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
+upstream = "eclipse-zenoh/zenoh-pico"
+base = "1.10.1"
+
+[[fork]]
+name = "cyclonedds"
+path = "third-party/dds/cyclonedds"
+upstream = "eclipse-cyclonedds/cyclonedds"
+base = "0.10.5"
+# The rationale per patch group, kept by hand.
+notes = "cyclonedds-fork-delta.md"
+
+[[fork]]
+name = "lwip"
+path = "third-party/freertos/lwip"
+upstream = "lwip-tcpip/lwip"
+base = "STABLE-2_2_1_RELEASE"
+
+[[fork]]
+name = "threadx"
+path = "third-party/threadx/kernel"
+upstream = "eclipse-threadx/threadx"
+base = "v6.4.5.202504_rel"
+
+[[fork]]
+name = "netxduo"
+path = "third-party/threadx/netxduo"
+upstream = "eclipse-threadx/netxduo"
+base = "v6.4.5.202504_rel"
+
+[[fork]]
+name = "nuttx"
+path = "third-party/nuttx/nuttx"
+upstream = "apache/nuttx"
+base = "nuttx-12.13.0"
+
+[[fork]]
+name = "libc"
+path = "third-party/nuttx/libc"
+upstream = "rust-lang/libc"
+# No release tag is an ancestor with a short delta: the patches sit on the
+# upstream 0.2 maintenance branch, so the page records the merge base with it.
+base = "libc-0.2"
+
+[[fork]]
+name = "qemu"
+path = "third-party/qemu/qemu"
+upstream = "qemu/qemu"
+base = "v11.0.0"
+
+[[fork]]
+name = "ros2-rust-examples"
+path = "packages/cli/testing_workspaces/ros2_rust_examples"
+upstream = "ros2-rust/examples"
+base = "main"
+
+[[ours]]
+path = "third-party/px4/px4-rs"
+
+[[ours]]
+path = "packages/cli/third-party/play_launch"

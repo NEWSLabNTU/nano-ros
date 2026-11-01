@@ -1,6 +1,9 @@
 # Phase 523 — The education lab series, the adoption probes and the industrial extras
 
-**Status (2026-10-31). PROPOSED — no work item started.** Implements
+**Status (2026-11-01). IN PROGRESS — W4 landed (offline probe track, a delta
+page per fork, `nros doctor --report` with the toolchain); W3's briefs and the
+`purpose:` field landed, its probe rounds not yet run; W1 and W2 wait on
+phase-525 W3 (`nros run`) and phase-524 W4 (the Renode probe tracks).** Implements
 [RFC-0116](../design/0116-adoption-purposes-and-front-doors.md) D1 and D9
 and the industrial purpose's remaining frictions. Depends on
 [phase-525](phase-525-adoption-front-doors.md) W3 (`nros run`, the grading
@@ -23,9 +26,11 @@ does — the adoption probes of D9, run twice.
 
 ### W1 — Six labs on QEMU and Renode, lab seven on the bench
 
-- Labs 1 to 6 run on QEMU mps2-an385 and on the Renode twins of phase-524
-  (Nucleo-F767ZI, UNO R4 Minima), so a seat needs no hardware. Lab 7 runs the
-  same image on the Nucleo bench.
+- Labs 1 to 6 run on QEMU mps2-an385 and on the Renode twin of phase-524
+  (the Nucleo-F767ZI; phase-524 W1 dropped the UNO R4 Minima, whose RA4M1 the
+  C talker does not fit, and the Pico W, which Renode does not model), so a
+  seat needs no hardware. Lab 7 runs the same image on the Nucleo bench, which
+  the lab does not have yet: it is the one item that needs a board bought.
 - Each lab is a chapter under `book/src/education/`, with a stated learning
   goal, the steps, the expected output as a `probe-expect` block, and the
   grading command `nros run --expect '<line>'` the instructor runs per seat.
@@ -74,6 +79,14 @@ workspace moves out of the image into a mirrored fetch the lab host serves.
 - Round one before the fixes it finds; round two after. The counts per
   purpose are recorded in this phase's status line.
 
+**Landed (2026-11-01).** The briefs and the method are in
+[docs/development/adoption-probes/](../development/adoption-probes/README.md):
+one each for industrial and education (run by a Claude session that has read
+nothing but the brief and the book) and one for field (run by a person with a
+board). A stop is filed with `purpose:` in its frontmatter; `just issues
+--purpose <p>` lists one purpose's, and the generated `open.md` groups them.
+Round one has not run.
+
 Acceptance: three briefs committed under `docs/development/adoption-probes/`;
 round-one and round-two issue counts per purpose recorded; round two's field
 run is under the 30-minute budget on a real board.
@@ -100,6 +113,33 @@ Decision step: a fork whose delta cannot be stated as a patch list against a
 pinned upstream is a fork whose pin is wrong, and is filed as such rather than
 documented as is.
 
+**Landed (2026-11-01).**
+
+- *Offline probe.* `just probe offline` (track `offline` in the board
+  registry, weekly) replays the bare-metal chapter twice: online to stage the
+  release asset and the SDK store, then on a commit of that container with
+  `--network none` and `NROS_OFFLINE=1`, from the staged store and nothing
+  else. It follows the book's own contract, `vendored-tree.md` "Air-gapped /
+  mirrored CI". Its first runs found two stops in that contract, both fixed
+  ([issue 2197](../issues/archived/2197-offline-contract-omits-rust-homes.md)):
+  rustup keeps the Rust toolchain outside `NROS_HOME`, and `NROS_OFFLINE` did
+  not reach cargo (it now sets `CARGO_NET_OFFLINE`). Measured passing
+  2026-11-01.
+- *Fork deltas.* `docs/reference/forks/` holds one generated page per fork
+  (nine: zenoh-pico, cyclonedds, lwip, threadx, netxduo, nuttx, libc, qemu,
+  ros2-rust-examples), each the commit list from GitHub's compare API between
+  the pinned fork commit and a named upstream ref. Seven pins descend from an
+  upstream release tag; libc is measured against upstream's `libc-0.2` branch
+  and the examples against `main`, each at its recorded merge base. No fork
+  failed the decision step. `scripts/gen-fork-deltas.py` writes them (needs
+  `gh`); `just check fork-deltas` (offline, fast line) refuses a branch-tracking
+  submodule with no row and a page whose pin is not the superproject's.
+- *`nros doctor --report`.* phase-522 W5 gave it each image's board row and
+  status; this adds the store, the index, the pin files, and per image the
+  toolchain its board and RMW provision (each package's pin, store prefix and
+  what `nros setup` would do), resolved through the same plan `nros setup`
+  runs. Two runs on one host print the same text.
+
 ## Acceptance
 
 | Work item | Industrial | Field solutions | Education |
@@ -108,6 +148,13 @@ documented as is.
 | W2 | — | — | 15-minute install measured; semester pin taught |
 | W3 | round-two stop count, industrial | round-two time under 30 minutes on a real board | round-two stop count, education |
 | W4 | offline install passes; every fork has a delta page; `doctor --report` | — | — |
+
+## Left
+
+- Whether `nros setup` should install the Rust toolchain under `NROS_HOME`
+  (`RUSTUP_HOME`/`CARGO_HOME` set for the rustup it runs), so the offline
+  contract is one directory again. It moves an existing user's toolchain, so it
+  needs an RFC-0116 decision first (issue 2197).
 
 ## Out of scope
 

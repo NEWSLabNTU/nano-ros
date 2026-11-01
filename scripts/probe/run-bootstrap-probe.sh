@@ -170,7 +170,12 @@ PROBE_VARIANT="${track_rest%%$'\t'*}"
 # (`crate@platform`, "" for a track that is not a board's). The verifier asks
 # the INSTALLED `nros board show` for its status word, so the installed track
 # proves a user sees the same word the book prints.
-PROBE_BOARD="${track_rest#*$'\t'}"
+track_rest="${track_rest#*$'\t'}"
+PROBE_BOARD="${track_rest%%$'\t'*}"
+# phase-523 W4 — an OFFLINE track replays its chapter twice: once online to
+# stage the release asset and the SDK store, then again from that store in a
+# container with no network. See the installed-track `docker run` below.
+PROBE_OFFLINE="${track_rest#*$'\t'}"
 if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
     echo "probe: PROBE_PLATFORM=$PROBE_PLATFORM is an installed-track chapter (user chapters have no checkout track — phase-517 W2)" >&2
     exit 2
@@ -451,18 +456,58 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
     # EVERY command, which would make the whole chapter — setup and build too —
     # run in a ROS-sourced shell. The chapters source ROS in the steps that use
     # it (the router), so the probe does exactly that and no more.
-    docker run "${rm_flag[@]}" \
-        --name "nros-bootstrap-probe-$$" \
-        --entrypoint '' \
-        -v "$workdir/probe.sh:/probe.sh:ro" \
-        -v "$workdir/release:$RELEASE_MOUNT:ro" \
-        -e PROBE_SHELL="$PROBE_SHELL" \
-        -e PROBE_PLATFORM="$PROBE_PLATFORM" \
-        -e PROBE_BOARD="$PROBE_BOARD" \
-        -e NROS_INDEX_URL="file://$RELEASE_MOUNT/nros-sdk-index.toml" \
-        -w /root \
+    user_args=(
+        --entrypoint ''
+        -v "$workdir/probe.sh:/probe.sh:ro"
+        -v "$workdir/release:$RELEASE_MOUNT:ro"
+        -e PROBE_SHELL="$PROBE_SHELL"
+        -e PROBE_PLATFORM="$PROBE_PLATFORM"
+        -e PROBE_BOARD="$PROBE_BOARD"
+        -e NROS_INDEX_URL="file://$RELEASE_MOUNT/nros-sdk-index.toml"
+        -w /root
+    )
+    if [[ "$PROBE_OFFLINE" != 1 ]]; then
+        docker run "${rm_flag[@]}" --name "nros-bootstrap-probe-$$" "${user_args[@]}" \
+            "$PROBE_IMAGE" \
+            sh -c "$install_shim && \"\$PROBE_SHELL\" /probe.sh"
+        exit 0
+    fi
+    # phase-523 W4 (RFC-0116 industrial) — the offline install, as the book's
+    # contract states it (vendored-tree.md "Air-gapped / mirrored CI"): the
+    # release asset is mirrored (the read-only mount), the index is a local
+    # copy, and NROS_HOME is the cache a networked run filled.
+    #   Stage 1, online: the chapter as written, with ~/.nros on a volume.
+    #   Stage 2, `--network none`: a fresh project from the same chapter, on a
+    #   commit of the stage-1 container (the host's system packages, which an
+    #   air-gapped host has from its own mirror) with the same store volume and
+    #   NROS_OFFLINE=1. Everything stage 1 left in /root except what the book
+    #   says to cache is removed first, so stage 2 rebuilds from the caches, not
+    #   from a build tree: NROS_HOME, and the Rust toolchain's homes, which
+    #   `nros setup` leaves where rustup puts them (issue 2197).
+    # A step that still reaches for the network fails stage 2 on its own line.
+    offline_store="nros-probe-offline-store-$$"
+    offline_base="nros-probe-offline-base:$$"
+    offline_cleanup() {
+        docker rm -f "nros-probe-offline-stage1-$$" >/dev/null 2>&1 || true
+        docker rmi "$offline_base" >/dev/null 2>&1 || true
+        docker volume rm "$offline_store" >/dev/null 2>&1 || true
+    }
+    trap 'offline_cleanup; rm -rf "$workdir"' EXIT
+    echo "probe: offline track — stage 1 (online): stage the asset and the SDK store"
+    docker run --name "nros-probe-offline-stage1-$$" "${user_args[@]}" \
+        -v "$offline_store:/root/.nros" \
         "$PROBE_IMAGE" \
         sh -c "$install_shim && \"\$PROBE_SHELL\" /probe.sh"
+    docker commit "nros-probe-offline-stage1-$$" "$offline_base" >/dev/null
+    docker rm "nros-probe-offline-stage1-$$" >/dev/null
+    echo "probe: offline track — stage 2 (--network none): the same chapter from the staged store"
+    docker run --rm --name "nros-probe-offline-stage2-$$" --network none "${user_args[@]}" \
+        -v "$offline_store:/root/.nros" \
+        -e NROS_OFFLINE=1 \
+        "$offline_base" \
+        sh -c "find /root -mindepth 1 -maxdepth 1 ! -name .nros ! -name .cargo ! -name .rustup -exec rm -rf {} + \
+            && \"\$PROBE_SHELL\" /probe.sh"
+    echo "probe: offline track — PASS: the chapter reached its output line with no network"
     exit 0
 fi
 

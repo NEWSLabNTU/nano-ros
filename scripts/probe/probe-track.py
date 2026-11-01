@@ -6,9 +6,10 @@
 for the shell and the workflow, so the probe harness and `probe-platforms.yml`
 cannot list different tracks.
 
-  probe-track.py <track>      print "<chapter path>\\t<variant>\\t<board row>"
+  probe-track.py <track>      print "<chapter path>\\t<variant>\\t<board row>\\t<offline>"
                               for the track (the row is "" for a track that
-                              is not a board's, e.g. `workspace`)
+                              is not a board's, e.g. `workspace`; offline is
+                              1 for a track replayed with no network, else 0)
   probe-track.py --list       print every track name, one per line
   probe-track.py --weekly     print the weekly tracks as a JSON array (the
                               `probe-platforms.yml` matrix)
@@ -41,7 +42,8 @@ def main(argv: list[str]) -> int:
         return 0
     for t in rows:
         if t["track"] == arg:
-            print(f"book/src/{t['chapter']}\t{t['variant']}\t{t.get('row', '')}")
+            print(f"book/src/{t['chapter']}\t{t['variant']}\t{t.get('row', '')}\t"
+                  f"{1 if t.get('offline') else 0}")
             return 0
     print(f"probe: unknown PROBE_PLATFORM '{arg}' (want "
           f"{'|'.join(t['track'] for t in rows)})", file=sys.stderr)

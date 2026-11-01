@@ -131,7 +131,9 @@ The offline contract, all of it:
 2. **Mirror or pin the SDK index.** `nros setup` reads the index the
    release ships; `NROS_INDEX_URL=<url>` fetches a newer one from a
    mirror, `nros setup --index <path>` uses a copy you already have, and
-   `NROS_OFFLINE=1` forbids the fetch. The index names every asset's
+   `NROS_OFFLINE=1` forbids the fetch, and also runs every cargo that
+   `nros` starts with `CARGO_NET_OFFLINE=true`, so dependencies come from
+   cargo's own cache (item 4). The index names every asset's
    upstream (`[tool.*]`, `[source.*]` sections); for a full mirror,
    rehost those URLs in your copy.
 3. **Pre-install Corrosion**: `nros setup --tool corrosion` (or the
@@ -139,10 +141,14 @@ The offline contract, all of it:
    where the configure finds it without the network. Verify the
    configure line prints `nano-ros: Corrosion <ver> via <origin>` —
    never infer the version from having run an installer.
-4. **Cache `NROS_HOME`.** The CLI, the SDK root and everything
-   `nros setup` fetches land under `${NROS_HOME:-~/.nros}`; point
-   `NROS_HOME` at a shared or cached location and it is reusable across
-   jobs and machines of the same host triple.
+4. **Cache `NROS_HOME` and the Rust toolchain.** The CLI, the SDK root
+   and every SDK `nros setup` fetches land under `${NROS_HOME:-~/.nros}`;
+   point `NROS_HOME` at a shared or cached location and it is reusable
+   across jobs and machines of the same host triple. The Rust toolchain is
+   the exception: `nros setup` installs it with rustup, which keeps it in
+   `${RUSTUP_HOME:-~/.rustup}` and `${CARGO_HOME:-~/.cargo}` (the crate
+   registry cache too). Cache those two directories beside `NROS_HOME`,
+   or the offline host's `nros setup` tries to download rustup again.
 
 ## What lives in your tree, and what does not
 
