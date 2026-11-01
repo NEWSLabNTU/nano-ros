@@ -43,9 +43,11 @@ manifest:
           - tinycrypt
           # HALs — see `[zephyr_module.*]` for who needs each, and for the
           # five that used to sit here. phase-447 F1 / issues 1275, 1282.
-          # None is left: `hal_espressif` went with issue 1282's decision that
-          # bare-metal esp-hal is the esp32 path and Zephyr esp32 is not
-          # supported for now.
+          # `hal_espressif` went with issue 1282's decision that bare-metal
+          # esp-hal is the esp32 path and Zephyr esp32 is not supported for
+          # now. `hal_stm32` came back for the Nucleo-F767ZI emulator twin
+          # (phase-524 W2, RFC-0115 D4).
+          - hal_stm32
           # Bootloader
           - mcuboot
           # Tools
