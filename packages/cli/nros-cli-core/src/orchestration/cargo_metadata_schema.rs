@@ -1304,6 +1304,12 @@ impl SystemToml {
                 &img.net,
             )?;
             img.run.validate(&id)?;
+            if let Some(f) = &img.flash {
+                f.validate(&format!("[image.{id}.flash]"), false)?;
+            }
+            if let Some(c) = &img.console {
+                c.validate(&format!("[image.{id}.console]"), false)?;
+            }
         }
         Ok(())
     }
@@ -3345,6 +3351,50 @@ class = "listener_pkg::Listener"
             assert!(e.contains(want), "{body}\n-> {e}");
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// phase-529 W1 (RFC-0118 D4/D5) — the workspace road reads
+    /// `[image.<id>.flash]` / `[image.<id>.console]` into the same typed tables
+    /// the leaf road does, and refuses what the leaf road refuses.
+    #[test]
+    fn system_toml_image_flash_and_console_are_typed_and_checked() {
+        let head = "[system]\nname = \"d\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+                    [image.a]\nboard = \"nucleo-f767zi-zephyr\"\n";
+        let ok = toml::from_str::<SystemToml>(&format!(
+            "{head}[image.a.flash]\ncommand = \"pyocd flash -t stm32f767zi {{hex}}\"\n\
+             prepare = [{{ say = \"Set BOOT0 to 1\", wait_for = \"usb:0483:df11\" }}]\n\
+             [image.a.console]\nkind = \"serial\"\nbaud = 921600\n"
+        ))
+        .expect("parses");
+        ok.validate_image_networks().expect("valid");
+        let img = &ok.image["a"];
+        assert!(img.flash.as_ref().unwrap().command.is_some());
+        assert_eq!(img.console.as_ref().unwrap().baud, Some(921600));
+        for (body, want) in [
+            (
+                "[image.a.flash]\nmethod = \"w\"\ncommand = \"x {hex}\"\n",
+                "alternatives",
+            ),
+            (
+                "[image.a.flash]\ncommand = \"x {kernel}\"\n",
+                "unknown placeholder",
+            ),
+            (
+                "[image.a.flash]\nprepare = [{ wait_for = \"gpio:1\" }]\n",
+                "unknown event kind",
+            ),
+            (
+                "[image.a.console]\nkind = \"rtt\"\nbaud = 9600\n",
+                "serial console",
+            ),
+            ("[image.a.console]\nspeed = 9600\n", "unknown field"),
+        ] {
+            let e = match toml::from_str::<SystemToml>(&format!("{head}{body}")) {
+                Err(e) => e.to_string(),
+                Ok(s) => s.validate_image_networks().unwrap_err(),
+            };
+            assert!(e.contains(want), "{body}\n-> {e}");
+        }
     }
 
     #[test]

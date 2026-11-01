@@ -161,6 +161,13 @@ pub struct Network {
     pub networks: BTreeMap<String, crate::system_net::NetworkDef>,
     /// `[image.<id>.run]` — how the image is run (RFC-0109 D6).
     pub run: crate::system_net::ImageRun,
+    /// `[image.<id>.flash]` — this image's override of the board's
+    /// `[board.flash]` (RFC-0118 D4/D5, phase-529 W1). Parsed and checked;
+    /// read by the flash verb (phase-529 W3).
+    pub flash: Option<crate::target_exec::FlashTable>,
+    /// `[image.<id>.console]` — this image's override of the board's
+    /// `[board.console]` (RFC-0118 D4/D5).
+    pub console: Option<crate::target_exec::ConsoleTable>,
     /// `[system] name` — part of the key a MAC the image does not state is
     /// derived from (D10b), so two projects' images with the same id differ.
     pub system: Option<String>,
@@ -773,6 +780,10 @@ fn image_system(
         .map_err(|e| format!("{}: {e}", path.display()))?;
     let run =
         crate::system_net::parse_run(image, id).map_err(|e| format!("{}: {e}", path.display()))?;
+    let flash = crate::target_exec::parse_image_flash(image, id)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let console = crate::target_exec::parse_image_console(image, id)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     // The image's own `locator`, else the project's `[system] locator`
     // (RFC-0109 D6: the default domain's endpoint when it has no RMW file).
     // (An image whose bringup ships an RMW file uses none of this: the CLI
@@ -790,6 +801,8 @@ fn image_system(
         net: files.interfaces,
         networks: files.networks,
         run,
+        flash,
+        console,
         system: str_key(system, "name"),
         transport,
     };

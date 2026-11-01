@@ -22,7 +22,7 @@ standalone `config.toml` for hand-written `no_std` apps.
 
 | File | Owns | Per |
 |------|------|-----|
-| **`system.toml`** | **Everything about the deployment** — `[system]` (RMW, domain, capability axes like `features = ["param_services"]` and the `[safety]` block, tiers), `[[component]]` (what runs, and its entities), and one `[image.<id>]` per target (`board`, `locator`, the board network file holding its address, `os_config = ["board-net.toml"]`, and how it runs, `[image.<id>.run]`). One schema for Rust, C and C++, and the same file whether the project is one package or a workspace. | package, or bringup pkg |
+| **`system.toml`** | **Everything about the deployment** — `[system]` (RMW, domain, capability axes like `features = ["param_services"]` and the `[safety]` block, tiers), `[[component]]` (what runs, and its entities), and one `[image.<id>]` per target (`board`, `locator`, the board network file holding its address, `os_config = ["board-net.toml"]`, and how it runs, is flashed and is watched, `[image.<id>.run]`, `[image.<id>.flash]`, `[image.<id>.console]`). One schema for Rust, C and C++, and the same file whether the project is one package or a workspace. | package, or bringup pkg |
 | `Cargo.toml` | Rust toolchain facts only: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`) the generated entry selects from. No board, no target triple, no deploy block. | Rust project |
 | `CMakeLists.txt` | C/C++ toolchain facts only: targets and language deps, via `find_package(nano_ros)` + `nano_ros_add_executable` / `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057; `nano_ros_node_register` remains as the compat spelling) / `nano_ros_entry`. No platform, board or RMW `set()`. | C/C++ project |
 | `build/<image>/nros-cargo.toml` | **GENERATED, never edited** — every cargo setting the board choice implies: `[build] target`, `[target.*]` runner and rustflags, the cross compiler, the derived pool sizes as `[env]`, the nano-ros profiles, and the `[patch.crates-io]` rows that resolve nano-ros's registry-style names into your checkout. Written by `nros sync`, passed to cargo with `--config`. | image |
@@ -200,6 +200,24 @@ image's first interface. An image on any other network with no `nic` is
 physical only, and launching it under QEMU is refused. `nros ws qemu-nic <leaf>
 --model <nic-model>` prints the `-nic` value for a leaf's image, for a script
 that starts QEMU itself.
+
+The same goes for a board that is flashed and watched on a serial port: the
+board's descriptor states its flasher and console (`[board.flash]`,
+`[board.console]`, see
+[the descriptor section](../porting/stm32f4-out-of-tree.md#how-the-board-is-flashed-boardflash)),
+and an image overrides any key of them in its own tables:
+
+```toml
+[image.lab.flash]
+command = "pyocd flash -t stm32f767zi {hex}"     # replaces the board's method
+prepare = [{ say = "Set BOOT0 to 1, then press RESET", wait_for = "usb:0483:df11" }]
+
+[image.lab.console]
+baud = 921600                                     # kind stays the board's
+```
+
+Both are checked when `system.toml` is read (an unknown key, `wait_for` event
+or `{placeholder}` is refused) and are read by `nros flash` (phase-529 W3).
 
 ### The middleware's own file
 

@@ -552,9 +552,22 @@ pub struct BoardDescriptor {
     #[serde(default)]
     pub run: Option<BoardRun>,
     /// `[board.console]` — where the image's console bytes come out
-    /// (RFC-0118 D1). Absent: not stated yet; nothing defaults it.
+    /// (RFC-0118 D1). Absent: not stated yet; nothing defaults it. `kind` is
+    /// required here; an image's `[image.<id>.console]` overrides it.
     #[serde(default)]
-    pub console: Option<BoardConsole>,
+    pub console: Option<ConsoleTable>,
+    /// `[board.flash]` — how real silicon is programmed (RFC-0118 D4/D5,
+    /// phase-529 W1): a flasher `method` (or a `command` template), its
+    /// `chip`, and the `prepare` steps before it. Present only where the
+    /// board's flash method is a stated fact; Zephyr's own flash runner
+    /// (`runners.yaml`) is not restated, the `west` method reads it.
+    ///
+    /// A board may state both this and `[board.run]`: RFC-0118 D1's "exactly
+    /// one launcher or flasher" is per TARGET, and a board with an emulator
+    /// twin is two targets — `nros run` picks the twin, `nros flash` the
+    /// silicon (the Nucleo-F767ZI's Renode twin is the in-tree case).
+    #[serde(default)]
+    pub flash: Option<FlashTable>,
 }
 
 /// The emulator kinds RFC-0114 D10's vocabulary names, and RFC-0118 D1's
@@ -614,29 +627,9 @@ pub struct BoardRunQemu {
     pub nic_model: Option<String>,
 }
 
-/// `[board.console] kind` — RFC-0118 D1's console row.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ConsoleKind {
-    Stdio,
-    Serial,
-    Rtt,
-    Semihosting,
-}
-
-/// `[board.console]` — RFC-0118 D4. `usb` and `baud` describe a serial
-/// console and are refused on any other kind.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct BoardConsole {
-    pub kind: ConsoleKind,
-    /// The USB serial adapter the console appears on, as `<vendor>:<product>`
-    /// hex ids (`0483:374b`).
-    #[serde(default)]
-    pub usb: Option<String>,
-    #[serde(default)]
-    pub baud: Option<u32>,
-}
+pub use nros_orchestration_ir::target_exec::{
+    CommandTemplate, ConsoleKind, ConsoleTable, FlashTable, PrepareStep, UsbId, WaitFor,
+};
 
 impl BoardRun {
     /// `(kind, machine)` of `emulator`, when it is well formed.
@@ -714,18 +707,6 @@ impl BoardRun {
             );
         }
         None
-    }
-}
-
-impl BoardConsole {
-    fn shape_error(&self) -> Option<String> {
-        (self.kind != ConsoleKind::Serial && (self.usb.is_some() || self.baud.is_some())).then(
-            || {
-                "`[board.console]` `usb` and `baud` describe a serial console; this one is \
-                 not `kind = \"serial\"`"
-                    .into()
-            },
-        )
     }
 }
 
@@ -1264,7 +1245,16 @@ impl BoardFile {
                 .run
                 .as_ref()
                 .and_then(BoardRun::shape_error)
-                .or_else(|| b.console.as_ref().and_then(BoardConsole::shape_error));
+                .or_else(|| {
+                    b.console
+                        .as_ref()
+                        .and_then(|c| c.validate("`[board.console]`", true).err())
+                })
+                .or_else(|| {
+                    b.flash
+                        .as_ref()
+                        .and_then(|f| f.validate("`[board.flash]`", true).err())
+                });
             if let Some(e) = err {
                 return Err(custom(format!("board {}: {e}", b.names.join("/"))));
             }
@@ -2872,6 +2862,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             rx: None,
             run: None,
             console: None,
+            flash: None,
             cargo_config: Some("inc = \"${workspace}/third-party/x\"".into()),
             entry: None,
             disambiguate_by_target: None,
@@ -3146,6 +3137,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             rx: None,
             run: None,
             console: None,
+            flash: None,
             cargo_config: None,
             entry: None,
             disambiguate_by_target: None,
@@ -3375,7 +3367,7 @@ entry_kind = "zephyr-staticlib"
             )
         );
         assert_eq!(
-            d.console.as_ref().map(|c| c.kind),
+            d.console.as_ref().and_then(|c| c.kind),
             Some(ConsoleKind::Semihosting)
         );
 
@@ -3414,6 +3406,57 @@ entry_kind = "zephyr-staticlib"
                 "serial console",
             ),
             ("[board.console]\nkind = \"jtag\"\n", "unknown variant"),
+        ] {
+            let err = BoardFile::parse(&format!("{HEAD}{body}"))
+                .expect_err(body)
+                .to_string();
+            assert!(err.contains(needle), "{body:?}: {err}");
+        }
+    }
+
+    /// phase-529 W1 — `[board.flash]` loads typed, a board may state it beside
+    /// `[board.run]` (a twin is a second target), and a board table must name
+    /// how it flashes; a console here must state its kind.
+    #[test]
+    fn board_flash_loads_beside_board_run_and_refuses_what_it_cannot_run() {
+        const HEAD: &str = "[[board]]\nnames = [\"demo\"]\nplatform = \"zephyr\"\n\
+                            toolchain = \"stable\"\nentry_kind = \"zephyr-staticlib\"\n";
+        let f = BoardFile::parse(&format!(
+            "{HEAD}[board.run]\nemulator = \"renode:x\"\n\
+             [board.flash]\nmethod = \"probe-rs\"\nchip = \"STM32F767ZITx\"\n\
+             prepare = [{{ say = \"Press RESET\", wait_for = \"usb:0483:374b\" }}]\n\
+             [board.console]\nkind = \"serial\"\nusb = \"0483:374b\"\nbaud = 115200\n"
+        ))
+        .expect("loads");
+        let d = &f.boards[0];
+        let flash = d.flash.as_ref().unwrap();
+        assert_eq!(flash.method.as_deref(), Some("probe-rs"));
+        assert!(matches!(
+            flash.prepare[0],
+            PrepareStep::SayThenWait {
+                wait_for: WaitFor::Usb(UsbId {
+                    vid: 0x0483,
+                    pid: 0x374b
+                }),
+                ..
+            }
+        ));
+        assert!(d.run.is_some(), "a twin and a flasher on one board");
+        for (body, needle) in [
+            ("[board.flash]\nchip = \"x\"\n", "neither `method`"),
+            (
+                "[board.flash]\nmethod = \"west\"\ncommand = \"x {hex}\"\n",
+                "alternatives",
+            ),
+            (
+                "[board.flash]\ncommand = \"pyocd {image}\"\n",
+                "unknown placeholder",
+            ),
+            (
+                "[board.flash]\nmethod = \"west\"\nport = \"/dev/ttyACM0\"\n",
+                "unknown field",
+            ),
+            ("[board.console]\nbaud = 115200\n", "no `kind`"),
         ] {
             let err = BoardFile::parse(&format!("{HEAD}{body}"))
                 .expect_err(body)

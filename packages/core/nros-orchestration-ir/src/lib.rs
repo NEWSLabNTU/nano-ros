@@ -72,6 +72,9 @@ pub mod model_location;
 pub mod system_launch;
 // RFC-0103 D10 (phase-497 W1) — `[network.*]` + `[image.<id>.net.<if>]`, parsed one way.
 pub mod system_net;
+// RFC-0118 D4/D5/D7 (phase-529 W1) — `[board|image.flash]`, `[board|image.console]`,
+// `prepare` steps and command templates, parsed one way for both levels.
+pub mod target_exec;
 // phase-486 W1 (RFC-0060 amendment 2026-10-10) — the nano-ros facts that do
 // not belong in the SystemModel, written as `nros.toml` beside it.
 pub mod overlay;

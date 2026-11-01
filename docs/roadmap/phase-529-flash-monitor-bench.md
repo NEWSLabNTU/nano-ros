@@ -1,6 +1,6 @@
 # Phase 529 — Real boards: `nros flash`, `nros monitor`, `nros bench`, and human steps
 
-**Status (2026-11-01). PROPOSED — no work item started.** Implements
+**Status (2026-11-01). IN PROGRESS — W1's schema half landed; its `prepare` execution and the rest wait on phase-528 W1.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D2, D6 and D7 for real
 silicon, and the flash and console runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -35,6 +35,42 @@ a button. RFC-0118 gives these a verb each, a per-machine file, and
 - Implement `prepare` steps: `say`, `wait_for` (`usb:`, `port:`, `volume:`,
   `line:`), `run`. With no terminal or with `--no-prompt`, a `say` step fails
   with exit 2 and prints the instruction.
+
+**Landed (schema), 2026-11-01.**
+
+- *Types.* `nros_orchestration_ir::target_exec` holds one definition for
+  both levels. `FlashTable` has `method` or `command` (never both), `chip`
+  and `prepare`. `ConsoleTable` has `kind`, `usb`, `baud` and `command`.
+  `PrepareStep` is `say`, `wait_for`, `run`, or `say` paired with
+  `wait_for`. `WaitFor` covers `usb:<vid>:<pid>` (four hex digits each),
+  `port:`, `volume:` and `line:`, and any other kind is refused.
+  `CommandTemplate` refuses a placeholder outside D5's list and
+  `{tool:<name>}`, and an unclosed brace. Everything is checked when the file
+  is read.
+- *Board.* `[board.flash]` and `[board.console]` are in the descriptor schema
+  (`board_descriptor.rs`). A board table must name a `method` or a `command`,
+  and a board console its `kind`. The `method` word is checked for shape, not
+  against a closed list. Flashers are runner packages (RFC-0119), so which
+  words exist is answered by the installed runners when a plan resolves; a
+  closed list in the file format would need a CLI release for every runner
+  package. A board may state `[board.run]` and `[board.flash]` together. D1's
+  "exactly one launcher or flasher" holds per target, and a board with an
+  emulator twin is two targets. The Nucleo-F767ZI (Renode twin, flashed
+  silicon) is the in-tree case.
+- *Image.* `[image.<id>.flash]` and `[image.<id>.console]` take the same keys
+  and may state any subset. They are parsed on both roads: the leaf road's
+  `leaf_system::Network`, and the workspace road's `ImageBlock`, which takes
+  the specific table whole over `[image_defaults]`'s. The key-by-key ladder
+  over the board's is the RunPlan resolver's job.
+- *Populated.* Only the Nucleo-F767ZI, the one board whose flash method is a
+  stated fact (`west flash` in the Zephyr chapter): `method = "west"` and
+  `[board.console] kind = "serial"` (USART6 over a USB-to-UART adapter, so no
+  `usb`). The S32Z270 is flashed with the user's own S32 tooling ("nano-ros
+  adds no flash step"), and the ESP32 package is a dormant QEMU board, so
+  neither states one.
+- *Waiting on phase-528 W1:* executing `prepare` (the terminal and
+  `--no-prompt` behaviour) and the acceptance unit test below, which drives a
+  plan.
 
 Acceptance:
 
