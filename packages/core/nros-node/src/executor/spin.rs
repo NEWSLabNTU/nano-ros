@@ -8374,6 +8374,11 @@ impl<'s> Executor<'s> {
         // site is the point of this function, and it has to be the honouring
         // one.
         let qos = crate::declared_qos::honour(topic.type_name, topic.name, req.qos)?;
+        // phase-519 W3b (RFC-0074) — the subscription's declared ingress rate,
+        // for a backend that paces delivery itself (XRCE asks its agent for
+        // `rate_hz x rx_buffer_hint` bytes a second). Unchanged when nothing
+        // was declared.
+        let topic = crate::declared_qos::with_declared_ingress(topic);
         let age_table = self.age_table;
         let (handle, deadline_row) = {
             let session = self

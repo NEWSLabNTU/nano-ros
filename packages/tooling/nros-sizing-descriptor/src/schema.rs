@@ -325,6 +325,7 @@ pub struct Endpoint {
     storage_bytes: Option<usize>,
     wire_bound_bytes: Option<usize>,
     reply_bound_bytes: Option<usize>,
+    ingress_rate_mhz: Option<u32>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -339,6 +340,7 @@ impl Endpoint {
         "storage_bytes",
         "wire_bound_bytes",
         "reply_bound_bytes",
+        "ingress_rate_mhz",
     ];
 
     /// A row that states nothing but its identity.
@@ -355,6 +357,7 @@ impl Endpoint {
             storage_bytes: None,
             wire_bound_bytes: None,
             reply_bound_bytes: None,
+            ingress_rate_mhz: None,
             refused: BTreeMap::new(),
         }
     }
@@ -513,6 +516,20 @@ impl Endpoint {
         fact(&self.reply_bound_bytes, "reply_bound_bytes", &self.refused)
     }
 
+    /// phase-519 W3b (RFC-0074) -- the subscription's declared ingress rate,
+    /// in millihertz (`rate_hz x 1000`, rounded), from the contract's
+    /// `sub.<endpoint>.ingress.rate_hz`. `Fact::Absent` where nobody declared
+    /// one, which is every endpoint that is not a subscription.
+    ///
+    /// The registration hands it to the backend in
+    /// `rmw_subscription_options_t::ingress_rate_mhz`; the XRCE backend paces
+    /// its data request from it. ADDITIVE, like `reply_bound_bytes`: a file
+    /// written before it has no such key and reads `Absent`, which is the true
+    /// answer, so the schema version did not move.
+    pub fn ingress_rate_mhz(&self) -> Fact<u32> {
+        fact(&self.ingress_rate_mhz, "ingress_rate_mhz", &self.refused)
+    }
+
     /// Builder setters. Each takes `Option` so a caller that has no answer
     /// leaves the field absent by writing what it actually knows.
     pub fn set_history(&mut self, v: Option<History>) -> &mut Self {
@@ -547,6 +564,10 @@ impl Endpoint {
         self.reply_bound_bytes = v;
         self
     }
+    pub fn set_ingress_rate_mhz(&mut self, v: Option<u32>) -> &mut Self {
+        self.ingress_rate_mhz = v;
+        self
+    }
 
     /// Record that `field` could not be derived, and why.
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
@@ -572,6 +593,7 @@ impl Endpoint {
             "storage_bytes" => self.storage_bytes?.to_string(),
             "wire_bound_bytes" => self.wire_bound_bytes?.to_string(),
             "reply_bound_bytes" => self.reply_bound_bytes?.to_string(),
+            "ingress_rate_mhz" => self.ingress_rate_mhz?.to_string(),
             _ => return None,
         })
     }
@@ -591,6 +613,7 @@ impl Endpoint {
                 ("storage_bytes", self.storage_bytes.is_some()),
                 ("wire_bound_bytes", self.wire_bound_bytes.is_some()),
                 ("reply_bound_bytes", self.reply_bound_bytes.is_some()),
+                ("ingress_rate_mhz", self.ingress_rate_mhz.is_some()),
             ],
         )
     }

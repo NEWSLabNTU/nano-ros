@@ -651,6 +651,9 @@ pub unsafe extern "C" fn rclc_polling_subscription_init_with_qos(
         {
             return RCL_RET_ERROR;
         }
+        // phase-519 W3b (RFC-0074) — the declared ingress rate, as the
+        // executor's registration hands it on.
+        let topic_info = nros_node::declared_qos::with_declared_ingress(topic_info);
         match session.create_subscription(&topic_info, qos_settings) {
             Ok(handle) => {
                 let raw = nros_node::RawSubscription::<{ crate::config::MESSAGE_BUFFER_SIZE }>::new(

@@ -731,7 +731,35 @@ fn endpoint_row(
         for field in ["depth", "history", "reliability", "durability"] {
             ep.refuse(field, why.to_string());
         }
+        // phase-519 W3b -- and the declared ingress, on a subscription, the
+        // only kind that has one: it comes from the same attribution.
+        if kind == EndpointKind::Subscription {
+            ep.refuse("ingress_rate_mhz", why.to_string());
+        }
     } else {
+        // phase-519 W3b (RFC-0074) -- the declared ingress rate, for the
+        // registration to hand the backend. A rate the `u32` options field
+        // cannot hold (above ~4.3 MHz) is refused rather than truncated.
+        if let Some(rate) = d
+            .ingress_rate
+            .filter(|_| kind == EndpointKind::Subscription)
+        {
+            match u32::try_from(rate.milli_hz()) {
+                Ok(mhz) => {
+                    ep.set_ingress_rate_mhz(Some(mhz));
+                }
+                Err(_) => {
+                    ep.refuse(
+                        "ingress_rate_mhz",
+                        format!(
+                            "ingress rate_hz = {} on subscription {topic} does not fit the \
+                             `uint32_t` millihertz field of `rmw_subscription_options_t`",
+                            rate.hz()
+                        ),
+                    );
+                }
+            }
+        }
         ep.set_history(history);
         ep.set_reliability(d.reliability.and_then(map_reliability));
         ep.set_durability(d.durability.and_then(map_durability));
@@ -2274,21 +2302,25 @@ pub struct QosConflict {
     pub detail: String,
 }
 
-/// The four per-endpoint QoS facts D12 rule 2 reduces.
+/// The per-endpoint QoS facts D12 rule 2 reduces: the four policies, and
+/// (phase-519 W3b) the declared ingress rate, which the registration applies
+/// at run time and so must not be one entry's number in a shared runtime.
 #[derive(Clone, Copy)]
 enum QosField {
     Depth,
     History,
     Reliability,
     Durability,
+    IngressRate,
 }
 
 impl QosField {
-    const ALL: [QosField; 4] = [
+    const ALL: [QosField; 5] = [
         QosField::Depth,
         QosField::History,
         QosField::Reliability,
         QosField::Durability,
+        QosField::IngressRate,
     ];
 
     fn name(self) -> &'static str {
@@ -2297,6 +2329,7 @@ impl QosField {
             QosField::History => "history",
             QosField::Reliability => "reliability",
             QosField::Durability => "durability",
+            QosField::IngressRate => "ingress_rate_mhz",
         }
     }
 
@@ -2307,6 +2340,7 @@ impl QosField {
             QosField::History => d.history.map(|v| format!("{v:?}")),
             QosField::Reliability => d.reliability.map(|v| format!("{v:?}")),
             QosField::Durability => d.durability.map(|v| format!("{v:?}")),
+            QosField::IngressRate => d.ingress_rate.map(|v| v.milli_hz().to_string()),
         }
     }
 
@@ -2316,6 +2350,7 @@ impl QosField {
             QosField::History => d.history = None,
             QosField::Reliability => d.reliability = None,
             QosField::Durability => d.durability = None,
+            QosField::IngressRate => d.ingress_rate = None,
         }
     }
 
@@ -2329,6 +2364,7 @@ impl QosField {
             QosField::History => to.history = from.history,
             QosField::Reliability => to.reliability = from.reliability,
             QosField::Durability => to.durability = from.durability,
+            QosField::IngressRate => to.ingress_rate = from.ingress_rate,
         }
     }
 }
@@ -2541,6 +2577,12 @@ fn refuse_conflicts(desc: &mut SizingDescriptor, conflicts: &[QosConflict]) {
                 }
                 "durability" => {
                     ep.set_durability(None).refuse("durability", reason.clone());
+                }
+                // phase-519 W3b -- a shared runtime cannot pace one endpoint
+                // at two rates, so a disagreement asks for every sample.
+                "ingress_rate_mhz" => {
+                    ep.set_ingress_rate_mhz(None)
+                        .refuse("ingress_rate_mhz", reason.clone());
                 }
                 _ => {}
             }
@@ -4106,6 +4148,59 @@ mod tests {
         let r = bound.refusal().unwrap();
         assert!(r.contains("demo_msgs/msg/Mystery"), "{r}");
         assert!(r.contains("nros sync"), "{r}");
+    }
+
+    /// phase-519 W3b -- a subscription's declared ingress rate reaches its row
+    /// in millihertz, survives a render/parse round trip, and is ABSENT on a
+    /// row that declared none and on a publisher (negative controls).
+    #[test]
+    fn a_declared_ingress_reaches_the_subscription_row_and_nothing_else() {
+        let rate = crate::queue_depth::RateMilliHz::from_hz(12.5);
+        let mut paced = sub("std_msgs/msg/String", "/paced", Some(1));
+        paced.ingress_rate = rate;
+        let plain = sub("std_msgs/msg/String", "/plain", Some(1));
+        let mut publisher = EntityDecl::bare(
+            EntityKind::Publisher,
+            Some("std_msgs/msg/String".into()),
+            Some("/out".into()),
+        );
+        publisher.ingress_rate = rate;
+        let inv = inventory(vec![paced, plain, publisher]);
+        let d = build(&base(&inv));
+        let row = |topic: &str| {
+            d.endpoints
+                .iter()
+                .find(|e| e.topic == topic)
+                .unwrap_or_else(|| panic!("no row for {topic}"))
+        };
+        assert_eq!(row("/paced").ingress_rate_mhz().stated(), Some(&12_500));
+        assert!(matches!(
+            row("/plain").ingress_rate_mhz(),
+            nros_sizing_descriptor::Fact::Absent
+        ));
+        assert!(matches!(
+            row("/out").ingress_rate_mhz(),
+            nros_sizing_descriptor::Fact::Absent
+        ));
+        let text = nros_sizing_descriptor::render(&d);
+        assert!(text.contains("ingress_rate_mhz = 12500"), "{text}");
+        let back = nros_sizing_descriptor::parse(&text, std::path::Path::new("t.toml")).unwrap();
+        let paced_back = back.endpoints.iter().find(|e| e.topic == "/paced").unwrap();
+        assert_eq!(paced_back.ingress_rate_mhz().stated(), Some(&12_500));
+    }
+
+    /// phase-519 W3b -- a row the contract join could not attribute refuses
+    /// its ingress with the other contract facts, rather than stating one.
+    #[test]
+    fn an_unattributed_subscription_refuses_its_ingress() {
+        let mut d = sub("std_msgs/msg/String", "/x", Some(1));
+        d.ingress_rate = crate::queue_depth::RateMilliHz::from_hz(10.0);
+        d.contract_refusal = Some("not attributed".into());
+        let desc = build(&base(&inventory(vec![d])));
+        assert_eq!(
+            desc.endpoints[0].ingress_rate_mhz().refusal(),
+            Some("not attributed")
+        );
     }
 
     #[test]
@@ -5767,6 +5862,45 @@ contracts:
             .find(|c| c.component == comp)
             .and_then(|c| c.declaration.entities().first().map(|d| d.depth))
             .flatten()
+    }
+
+    /// phase-519 W3b -- D12 rule 2 for the declared ingress rate: entries
+    /// that agree keep it, entries that disagree refuse it on the row, so a
+    /// shared runtime asks the XRCE agent for every sample rather than pacing
+    /// one entry's endpoint at the other's rate.
+    #[test]
+    fn a_shared_runtime_refuses_an_ingress_its_entries_disagree_on() {
+        let paced = |hz: f64| {
+            let mut d = sub("std_msgs/msg/Int32", "/a", Some(1));
+            d.ingress_rate = crate::queue_depth::RateMilliHz::from_hz(hz);
+            d
+        };
+        let a = inv_of(vec![component("l", vec![paced(10.0)])]);
+        let same = inv_of(vec![component("l", vec![paced(10.0)])]);
+        let (out, conflicts) = reconcile_runtime_qos(
+            &a,
+            &[("a/m.yaml".into(), a.clone()), ("b/m.yaml".into(), same)],
+        );
+        assert!(conflicts.is_empty(), "{conflicts:?}");
+        assert_eq!(
+            build(&base(&out)).endpoints[0].ingress_rate_mhz().stated(),
+            Some(&10_000)
+        );
+
+        let other = inv_of(vec![component("l", vec![paced(20.0)])]);
+        let (out, conflicts) = reconcile_runtime_qos(
+            &a,
+            &[("a/m.yaml".into(), a.clone()), ("b/m.yaml".into(), other)],
+        );
+        assert!(
+            conflicts.iter().any(|c| c.field == "ingress_rate_mhz"),
+            "{conflicts:?}"
+        );
+        let mut desc = build(&base(&out));
+        refuse_conflicts(&mut desc, &conflicts);
+        let ep = &desc.endpoints[0];
+        assert_eq!(ep.ingress_rate_mhz().stated(), None);
+        assert!(ep.ingress_rate_mhz().refusal().unwrap().contains("D12"));
     }
 
     /// D12 rule 2 -- two images that declare the SAME depth for one

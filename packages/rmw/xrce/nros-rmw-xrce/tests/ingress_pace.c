@@ -39,7 +39,7 @@ rmw_ret_t nros_rmw_cffi_register_named(const char* name, const nros_rmw_vtable_t
 int main(void) {
     printf("ingress_pace:\n");
     check(0, 209, 0, 0, "undeclared asks for everything, silently");
-    check(10000, 0, 0, 0, "no bound asks for everything, silently");
+    check(10000, 0, 0, 1, "a declaration with no bound asks for everything, with a reason");
     check(10000, 209, 2090, 0, "10 Hz x 209 B is the measured 2090 B/s");
     check(1000, 209, 209, 0, "1 Hz is the floor: the bucket holds exactly one sample");
     check(999, 209, 0, 1, "below 1 Hz refuses, with a reason");

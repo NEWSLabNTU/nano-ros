@@ -279,9 +279,38 @@ The `uint16_t` is the real limit: 100 Hz of a 656-byte type cannot be paced
 this way. `burst` has no XRCE meaning. The bucket's burst is always one
 second of the rate, and the wire carries no capacity.
 
-**Not yet carried.** The options field and the backend are in place. Each
-language surface still has to fill the field from the declaration, which is
-phase-519 W3b. Until then every subscription passes 0, and nothing changes.
+**How the declaration reaches the field (phase-519 W3b).** The contract's
+`sub.<endpoint>.ingress.rate_hz` reaches the sizing descriptor as the
+subscription row's `ingress_rate_mhz`, beside its declared depth and
+policies. `nros-node`'s build script reads it into the same per-endpoint
+table the declared-QoS registration check reads (`DECLARED_QOS_ROWS`), and
+every subscription registration that builds its own `TopicInfo` looks it up
+by `(type, topic)` and sets the field: the executor's one prologue, the two
+`Node` subscription verbs, and the C and C++ polling subscriptions. So one
+carrier serves Rust, C and C++, and no new generated artifact was needed. A
+multi-entry runtime whose entries declare different rates for one endpoint
+refuses the fact (RFC-0100 D12 rule 2) and asks for every sample. An image
+with no declaration is unchanged.
+
+A declared rate on a subscription whose registration states no bound (an
+unbounded type, or the type-erased path) cannot become a byte rate, and the
+backend now logs that rather than staying silent. The declarative Rust
+`Component` path is one such registration today, even for a bounded type:
+it registers through the generic path with no hint (issue 2208).
+
+**Measured 2026-11-01, end to end** on a nano-ros image (native, `rmw =
+"xrce"`, a typed executor subscription to `builtin_interfaces/msg/Time`,
+wire bound 16 bytes, contract depth 1), against a ROS 2 Humble publisher at
+100 Hz through the ROS-paired agent, 15 s, first second discarded:
+
+| contract | received | median age | 90th pct age |
+| --- | --- | --- | --- |
+| `ingress: { rate_hz: 10 }` | 10.34 Hz | 100.5 ms | 100.6 ms |
+| no `ingress` (control) | 100.07 Hz | 0.4 ms | 0.5 ms |
+
+The paced image asks the agent for `10 x 16 = 160` bytes a second. That it
+receives slightly more than 10 Hz is the rule above: a sample smaller than
+the bound costs fewer tokens.
 
 ## Enforcement point 2 — a budget on the read TASK (measured, unblocked)
 
@@ -605,6 +634,8 @@ that, and a design that assumes one `c` per board should say so.
 ## Changelog
 
 - 2026-11-01 — phase-519 W3: enforcement point 1 on XRCE, under "On XRCE".
+- 2026-11-01 — phase-519 W3b: the declaration reaches the field through the
+  sizing descriptor, measured end to end on a nano-ros image.
   The agent's `max_bytes_per_second` was measured to bound the rate, at a
   cost of one period of age, and to stop the stream when its bucket is
   smaller than one sample. The backend derives the field from a declared

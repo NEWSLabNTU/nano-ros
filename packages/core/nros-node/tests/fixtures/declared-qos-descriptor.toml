@@ -49,6 +49,16 @@ topic = "/status"
 reliability = "best_effort"
 durability = "volatile"
 
+# phase-519 W3b -- a subscription that states only a declared INGRESS rate
+# (`ingress.rate_hz: 10` in a contract, 10000 millihertz). The descriptor is its
+# only carrier, so this row is what proves it reaches `DECLARED_QOS_ROWS`: the
+# lane expects a FIFTH declared-image test on this carrier's step.
+[[endpoint]]
+kind = "subscription"
+type = "std_msgs/msg/Int32"
+topic = "/paced"
+ingress_rate_mhz = 10000
+
 # issue 1608 -- two PUBLISHER rows. The descriptor is the only carrier of a
 # publisher's declaration, so these are what prove it reaches
 # `DECLARED_PUBLISHER_QOS_ROWS`: the lane expects a FOURTH declared-image test
