@@ -28,6 +28,11 @@
 #define LWIP_NETCONN                    1
 #define LWIP_COMPAT_SOCKETS             1
 #define LWIP_POSIX_SOCKETS_IO_NAMES     1
+/* phase-521 W4 (RFC-0113 D4) — per-socket receive notification, added by
+ * the nano-ros lwIP fork: an XRCE session's UDP socket wakes the executor
+ * from the tcpip thread on arrival instead of the executor blocking in
+ * recv(). */
+#define LWIP_SOCKET_RX_NOTIFY           1
 
 /* Disable core locking — netif setup runs in the app task after tcpip_init
  * completes, and zenoh-pico uses the socket API (which is thread-safe).

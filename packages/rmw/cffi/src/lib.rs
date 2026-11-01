@@ -3447,6 +3447,15 @@ impl Session for CffiSession {
         // firing on a Cyclone worker thread — this comment named it
         // poll-only long after that landed, which is misleading for
         // exactly the reader asking whether their lane gets async wakes.
+        //
+        // phase-521 W4 (RFC-0113 D4) — unless the backend states its
+        // readiness: then the slot can be present on a session whose
+        // transport has no notification (XRCE over a board's custom
+        // transport, or over a stack with a descriptor instead), and only the
+        // stated kind says whether an arrival will ever call it.
+        if self.vtable.readiness_source.is_some() {
+            return self.readiness_source() == nros_rmw::ReadinessSource::Notify;
+        }
         self.vtable.set_wake_callback.is_some()
     }
 

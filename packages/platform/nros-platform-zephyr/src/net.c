@@ -320,6 +320,16 @@ int32_t nros_platform_udp_readiness_handle(const void *sock) {
     return -1;
 }
 
+/* phase-521 W4 (RFC-0113 D4) — zsock offers no per-socket receive callback;
+ * which readiness form Zephyr gets (a `zsock_poll` park, or a net_context
+ * hook) is the measurement W4 still owes. */
+int8_t nros_platform_udp_set_rx_notify(const void *sock, void (*notify)(void *ctx), void *ctx) {
+    (void) sock;
+    (void) notify;
+    (void) ctx;
+    return -1;
+}
+
 /* ---- UDP multicast ----
  *
  * Zephyr's zsock layer exposes IP_ADD_MEMBERSHIP + struct ip_mreqn.

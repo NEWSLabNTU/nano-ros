@@ -406,6 +406,26 @@ int32_t nros_platform_udp_readiness_handle(const void *sock) {
     return -1;
 }
 
+/* phase-521 W4 (RFC-0113 D4) — lwIP's receive notification, which the
+ * nano-ros lwIP fork adds behind `LWIP_SOCKET_RX_NOTIFY` (called from the
+ * socket layer's netconn event callback, in the tcpip thread). A board whose
+ * `lwipopts.h` leaves it off has no hook, and its sessions keep the
+ * receive-blocking wait. */
+int8_t nros_platform_udp_set_rx_notify(const void *sock_raw, void (*notify)(void *ctx), void *ctx) {
+#if LWIP_SOCKET_RX_NOTIFY
+    ensure_lwip_thread();
+
+    if (sock_raw == NULL) return -1;
+    const nros_freertos_socket_t *sock = (const nros_freertos_socket_t *) sock_raw;
+    return lwip_socket_set_rx_notify(sock->fd, notify, ctx) == 0 ? 0 : -1;
+#else
+    (void) sock_raw;
+    (void) notify;
+    (void) ctx;
+    return -1;
+#endif
+}
+
 /* ---- UDP multicast ----
  *
  * lwIP provides IP_ADD_MEMBERSHIP + struct ip_mreq via

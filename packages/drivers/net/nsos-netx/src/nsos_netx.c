@@ -383,6 +383,18 @@ INT nx_bsd_fcntl(INT sockID, UINT flagType, UINT options) {
     return fcntl(sockID, (int)flagType, (int)options);
 }
 
+/* phase-521 W4 — the nano-ros NetX Duo fork's receive notification. A host
+ * kernel socket has no such hook, and the ThreadX wake object an executor
+ * parks on cannot be multiplexed with a host fd, so this answers "none": the
+ * caller keeps the receive-blocking wait it had. */
+INT nx_bsd_socket_set_rx_notify(INT sockID, VOID (*rx_notify)(VOID *arg), VOID *arg) {
+    (void) sockID;
+    (void) rx_notify;
+    (void) arg;
+    errno = ENOSYS;
+    return -1;
+}
+
 INT nx_bsd_shutdown(INT sockID, INT how) {
     return shutdown(sockID, how);
 }

@@ -111,6 +111,19 @@ void nros_platform_udp_set_recv_timeout(const void *sock, uint32_t timeout_ms);
  *  bare-metal stack); those report readiness as a Notify instead. */
 int32_t nros_platform_udp_readiness_handle(const void *sock);
 
+/** phase-521 W4 (RFC-0113 D4) — install (`notify != NULL`) or remove the
+ *  receive notification on `sock`: the stack calls `notify(ctx)` each time a
+ *  datagram is queued on it, from the stack's own context (lwIP's tcpip
+ *  thread, NetX's IP thread), so `notify` must only signal. Data already
+ *  queued at install calls it once before this returns; once a removal
+ *  returns, the previous `notify` is never called again. An RMW session over
+ *  `sock` reports this as `NROS_RMW_READINESS_NOTIFY`.
+ *
+ *  Returns 0 when installed (or removed), -1 where the stack offers no such
+ *  hook — POSIX/NuttX, which have `nros_platform_udp_readiness_handle`
+ *  instead, and stacks not yet given one. */
+int8_t nros_platform_udp_set_rx_notify(const void *sock, void (*notify)(void *ctx), void *ctx);
+
 /* ---- UDP multicast (optional) ----
  *
  * Signatures mirror the Rust `PlatformUdpMulticast` trait. `lep`

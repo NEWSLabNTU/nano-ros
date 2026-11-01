@@ -701,13 +701,15 @@ rmw_ret_t xrce_publisher_event_init(const rmw_publisher_t* publisher, rmw_event_
     return NROS_RMW_RET_OK;
 }
 
-/* phase-521 W4 (RFC-0113 D4) — XRCE has no thread of its own, so nothing
- * arrives outside `drive_io` and there is no Notify to give. Where the
- * transport is an OS descriptor (POSIX/NuttX UDP, POSIX serial) it is the
- * session's WAITABLE readiness: the executor parks on it and drives this
- * session non-blockingly once it is readable, instead of blocking inside
- * `uxr_run_session_time`. Elsewhere the answer is NONE and the receive-
- * blocking wait stays until phase-521 W4/W5 give that transport a Notify. */
+/* phase-521 W4 (RFC-0113 D4) — XRCE has no thread of its own, so its
+ * readiness is its transport's. Where the transport is an OS descriptor
+ * (POSIX/NuttX UDP, POSIX serial) it is WAITABLE: the executor parks on it
+ * and drives this session non-blockingly once it is readable, instead of
+ * blocking inside `uxr_run_session_time`. Where the UDP stack takes a receive
+ * notification (lwIP, NetX) it is NOTIFY: the stack calls the executor's wake
+ * callback on arrival (`xrce_set_wake_callback`). Elsewhere (a board's custom
+ * transport, Zephyr) the answer is NONE and the receive-blocking wait stays
+ * until phase-521 W4/W5 give that transport a readiness form. */
 rmw_ret_t xrce_readiness_source(const rmw_session_t* session, uint8_t* out_kind,
                                 int32_t* out_handle) {
     if (session == NULL || out_kind == NULL || out_handle == NULL) {
@@ -720,9 +722,35 @@ rmw_ret_t xrce_readiness_source(const rmw_session_t* session, uint8_t* out_kind,
     if (st->readiness_handle >= 0) {
         *out_kind = (uint8_t)NROS_RMW_READINESS_WAITABLE;
         *out_handle = st->readiness_handle;
+    } else if (st->rx_notify_capable) {
+        *out_kind = (uint8_t)NROS_RMW_READINESS_NOTIFY;
+        *out_handle = -1;
     } else {
         *out_kind = (uint8_t)NROS_RMW_READINESS_NONE;
         *out_handle = -1;
+    }
+    return NROS_RMW_RET_OK;
+}
+
+/* phase-521 W4 (RFC-0113 D4) — the executor's wake callback goes straight to
+ * the UDP stack's receive notification, which calls it from the stack's own
+ * thread on every arrival; `cb == NULL` takes it off, and the stack guarantees
+ * no call after that returns. A session whose transport has no such hook
+ * accepts the call and installs nothing — its readiness says so
+ * (`xrce_readiness_source`), which is what the runtime reads. */
+rmw_ret_t xrce_set_wake_callback(rmw_session_t* session, void (*cb)(void* ctx), void* ctx) {
+    if (session == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_state_t* st = (xrce_session_state_t*)session->backend_data;
+    if (st == NULL) {
+        return NROS_RMW_RET_ERROR;
+    }
+    if (!st->rx_notify_capable) {
+        return NROS_RMW_RET_OK;
+    }
+    if (nros_platform_udp_set_rx_notify(st->udp_bridge.sock, cb, cb != NULL ? ctx : NULL) != 0) {
+        return NROS_RMW_RET_ERROR;
     }
     return NROS_RMW_RET_OK;
 }
@@ -1010,6 +1038,11 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
             return udp_ret;
         }
         st->readiness_handle = nros_platform_udp_readiness_handle(st->udp_bridge.sock);
+        /* A removal is the probe: it installs nothing, and answers whether
+         * the stack has the hook at all. */
+        st->rx_notify_capable =
+            st->readiness_handle < 0 &&
+            nros_platform_udp_set_rx_notify(st->udp_bridge.sock, NULL, NULL) == 0;
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
     }
 

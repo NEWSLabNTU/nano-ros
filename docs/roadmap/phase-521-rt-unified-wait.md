@@ -1,6 +1,6 @@
 # Phase 521 — The real-time promise and the one wait
 
-**Status (2026-11-01). Approved; W0, W1 and W3 done; W2's THREAD half and W4's POSIX/NuttX half done; the rest of W2 and W4, and W5–W8, open.** Implements
+**Status (2026-11-01). Approved; W0, W1 and W3 done; W2's THREAD half and W4's POSIX/NuttX, lwIP and NetX parts done; the rest of W2 and W4, and W5–W8, open.** Implements
 [RFC-0113](../design/0113-rt-unified-wait.md). Amends
 [RFC-0106](../design/0106-executor-park.md) D5 and withdraws
 [RFC-0112](../design/0112-framework-support-tiers.md)'s Tier 0.
@@ -168,7 +168,7 @@ How it was built:
 test parks a POSIX tier on a socket pair and measures wake on write with no
 wake callback installed.
 
-### W4 — XRCE delivers readiness on every transport — POSIX/NuttX half DONE
+### W4 — XRCE delivers readiness on every transport — POSIX/NuttX, lwIP and NetX DONE
 
 POSIX/NuttX half, landed with W3:
 
@@ -184,8 +184,55 @@ POSIX/NuttX half, landed with W3:
   The bound is now 3 ms. A mutation that makes the session report no handle
   fails it at 5.4 ms.
 
-Remaining: the RTOS transports and `rx_notify` below, and the "zero receive
-calls between deadlines" measurement (W7).
+FreeRTOS + lwIP and ThreadX + NetX (maintainer ruling 2026-11-01: patch our
+forks rather than reach stack internals or add a watcher task per session):
+
+- The lwIP fork adds `lwip_socket_set_rx_notify` behind `LWIP_SOCKET_RX_NOTIFY`
+  (on in the shared board `lwipopts.h`). It is called from the socket layer's
+  netconn event callback on every receive or error event, in the tcpip thread.
+  The setter goes through `tcpip_api_call`, so after a removal returns no call
+  of the old callback is still in flight.
+- The netxduo fork adds `nx_bsd_socket_set_rx_notify`, called from the IP
+  thread holding the BSD mutex whenever a UDP packet or TCP data is queued on
+  the socket. The setter takes the same mutex. The threadx-linux NSOS shim is
+  host sockets, not NetX, and answers `-1`.
+- `nros_platform_udp_set_rx_notify(sock, notify, ctx)` is a new required net
+  symbol. FreeRTOS and ThreadX call the fork hooks. POSIX, Zephyr and Rust
+  stacks return `-1`.
+- At open, XRCE probes the hook with a removal call. Where it exists, the
+  session reports Notify, and `set_wake_callback` (now filled) hands the
+  executor's wake callback straight to the stack.
+- The runtime now decides whether a session wakes the executor from its
+  stated `readiness_source`, when the backend fills that slot, not from
+  whether `set_wake_callback` is present. Otherwise an XRCE session over a
+  transport with no hook would park on a wake object nothing signals.
+  `readiness_park` covers it with a stub that fills the slot and reports NONE;
+  reading the slot instead fails it.
+- Measured on QEMU, before and after. A C listener (`rclc_executor_spin_some`
+  with 1 s timeouts) received from the Agent while `ros2 topic pub` sent at
+  2 Hz. Latency is from publish to listener print:
+
+  | Stack | Hook | p50 | p90 |
+  |---|---|---|---|
+  | FreeRTOS + lwIP (mps2-an385) | on, 5 runs | 2.2–4.0 ms | 5.1–8.5 ms |
+  | FreeRTOS + lwIP | off: old receive-blocking path, 2 runs | 72–253 ms | 336–467 ms |
+  | FreeRTOS + lwIP | on, notify call suppressed | 109 ms | 445 ms |
+  | ThreadX + NetX (rv-virt) | on | 1.8 ms | 5.1 ms |
+  | ThreadX + NetX | on, notify call suppressed | 421 ms | 463 ms |
+
+  The last two lwIP runs are at the pinned fork tip, which also carries the
+  fork's earlier lazy netconn-semaphore commit (`de76e778`), shipped here for
+  the first time. These are manual runs. No RTOS XRCE fixture row exists, so making them a
+  lane test is W7's.
+- `rclc_executor_spin_period` is unaffected: rclc's fixed-rate loop runs
+  `spin_some(0)` and then a plain platform sleep, so arrivals within a period
+  wait for the period boundary by its own definition. Whether that sleep
+  should park on the wake object is a W6 question.
+
+Remaining: Zephyr (zsock has no per-socket callback; a `zsock_poll` park or a
+`net_context` hook is the measurement still owed), `rx_notify` on the custom
+transport below, and the "zero receive calls between deadlines" measurement
+(W7).
 
 - Custom-transport ops gain `rx_notify` (moved here from W3): the board's
   UART interrupt calls the notify the session installed.

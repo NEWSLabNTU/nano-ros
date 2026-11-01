@@ -431,6 +431,14 @@ unsafe extern "C" {
     pub fn nros_platform_udp_readiness_handle(sock: *const core::ffi::c_void) -> i32;
 }
 unsafe extern "C" {
+    #[doc = " phase-521 W4 (RFC-0113 D4) — install (`notify != NULL`) or remove the\n  receive notification on `sock`: the stack calls `notify(ctx)` each time a\n  datagram is queued on it, from the stack's own context (lwIP's tcpip\n  thread, NetX's IP thread), so `notify` must only signal. Data already\n  queued at install calls it once before this returns; once a removal\n  returns, the previous `notify` is never called again. An RMW session over\n  `sock` reports this as `NROS_RMW_READINESS_NOTIFY`.\n\n  Returns 0 when installed (or removed), -1 where the stack offers no such\n  hook — POSIX/NuttX, which have `nros_platform_udp_readiness_handle`\n  instead, and stacks not yet given one."]
+    pub fn nros_platform_udp_set_rx_notify(
+        sock: *const core::ffi::c_void,
+        notify: ::core::option::Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+        ctx: *mut core::ffi::c_void,
+    ) -> i8;
+}
+unsafe extern "C" {
     pub fn nros_platform_udp_mcast_open(
         sock: *mut core::ffi::c_void,
         endpoint: *const core::ffi::c_void,

@@ -554,8 +554,17 @@ typedef struct nros_rmw_vtable_t {
      *  again after this returns.
      *
      *  NULL slot = backend has no asynchronous wake path (purely
-     *  poll-driven: XRCE, bare-metal). The runtime still drains the
-     *  session on its deadline-bound cv-wait boundary. */
+     *  poll-driven: bare-metal). The runtime still drains the
+     *  session on its deadline-bound cv-wait boundary.
+     *
+     *  phase-521 W4 — a backend that also fills `readiness_source`
+     *  is believed on THAT: the runtime treats the session as woken
+     *  by this callback only when it reports
+     *  `NROS_RMW_READINESS_NOTIFY`. So a backend may fill this slot
+     *  for every session and install the callback only where its
+     *  transport can call it — XRCE hands it to the UDP stack's
+     *  receive notification on lwIP and NetX, and installs nothing
+     *  over a descriptor or a board's custom transport. */
     rmw_ret_t (*set_wake_callback)(rmw_session_t *session,
                                          void (*cb)(void *ctx),
                                          void *ctx);

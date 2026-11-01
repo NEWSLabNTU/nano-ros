@@ -384,6 +384,15 @@ int32_t nros_platform_udp_readiness_handle(const void *sock_raw) {
     return (int32_t) sock->fd;
 }
 
+/* phase-521 W4 (RFC-0113 D4) — readiness here is the descriptor above, which
+ * the executor's park multiplexes; there is no receive hook to install. */
+int8_t nros_platform_udp_set_rx_notify(const void *sock, void (*notify)(void *ctx), void *ctx) {
+    (void) sock;
+    (void) notify;
+    (void) ctx;
+    return -1;
+}
+
 /* ---- UDP multicast ----
  *
  * Mirrors the Rust impl in posix/src/net.rs. Uses getifaddrs to
