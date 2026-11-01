@@ -164,7 +164,6 @@ SB_CONFIG_BOOTLOADER_MCUBOOT
 Zephyr_DIR
 _system_heap
 arch_proc_id
-atomic_set
 cpu_mask_mod
 hal_nxp
 log_msg_runtime_create

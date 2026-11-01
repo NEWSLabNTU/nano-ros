@@ -86,7 +86,7 @@ dynamic typesupport, service introspection and the
 
 | Tool | Pinned version |
 |---|---|
-| Rust | `1.99.0` channel (`rust-toolchain.toml`); pinned cross targets: `thumbv7m-none-eabi`, `thumbv7em-none-eabihf`, `armv7r-none-eabi`, `armv7r-none-eabihf`, `armv8r-none-eabihf`, `riscv32imc-unknown-none-elf`, `riscv64gc-unknown-none-elf`, `aarch64-unknown-none`, `armv7a-none-eabi`, `armv7a-none-eabihf`, `thumbv7em-none-eabi`, `thumbv8m.main-none-eabi`, `thumbv8m.main-none-eabihf`, `i686-unknown-linux-gnu`, `x86_64-unknown-none`. `rustfmt` runs on nightly (nightly-only options). |
+| Rust | `1.99.0` channel (`rust-toolchain.toml`); pinned cross targets: `thumbv7m-none-eabi`, `thumbv7em-none-eabihf`, `armv7r-none-eabi`, `armv7r-none-eabihf`, `armv8r-none-eabihf`, `riscv32imc-unknown-none-elf`, `riscv64gc-unknown-none-elf`, `aarch64-unknown-none`, `armv7a-none-eabi`, `armv7a-none-eabihf`, `thumbv7em-none-eabi`, `thumbv8m.main-none-eabi`, `thumbv8m.main-none-eabihf`, `i686-unknown-linux-gnu`, `x86_64-unknown-none`, `thumbv6m-none-eabi`. `rustfmt` runs on nightly (nightly-only options). |
 | Arm GCC (`arm-none-eabi`) | `13.2-nros5` |
 | RISC-V GCC (`riscv-none-elf`) | `14.2-nros1` |
 | QEMU (patched, Arm) | `11.0.0-nros7` |
