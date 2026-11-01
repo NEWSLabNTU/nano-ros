@@ -21,7 +21,8 @@ use std::io;
                   nros plan            resolve a launch topology\n  \
                   nros check           validate a plan or workspace\n  \
                   nros doctor          check SDK paths / toolchains / env\n\n\
-                  Run `nros setup --list` to see available packages.",
+                  Run `nros setup --list` to see available packages, and \
+                  `nros help --all` for the build-system verbs under `nros dev`.",
     version,
     propagate_version = true,
     // `--codegen-version` is answerable with no subcommand, so the subcommand
@@ -69,6 +70,21 @@ fn main() -> Result<()> {
     nros_cli_core::orchestration::rust_toolchain::expose_cargo_bin();
     // issue 2197 — `$NROS_OFFLINE` reaches every cargo this process spawns.
     nros_cli_core::orchestration::rust_toolchain::expose_offline_to_cargo();
+    // RFC-0117 D1: `nros dev` is hidden from `nros --help`, and
+    // `nros help --all` is where it is listed. clap's `help` subcommand takes
+    // no flags, so this is answered before clap parses.
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    if argv.first().map(String::as_str) == Some("help") && argv[1..].iter().any(|a| a == "--all") {
+        let mut cmd = Cli::command().mut_subcommand("dev", |c| c.hide(false));
+        cmd.print_help()?;
+        println!();
+        cmd.find_subcommand_mut("dev")
+            .expect("`nros dev` is a subcommand")
+            .clone()
+            .bin_name("nros dev")
+            .print_help()?;
+        return Ok(());
+    }
     let cli = Cli::parse();
     if cli.codegen_version {
         println!("{}", nros_cli_core::abi_guard::EMITTED_VERSION);

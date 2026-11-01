@@ -47,6 +47,7 @@ pub struct Args {
 pub enum Sub {
     /// Print shell export adding <dir> (default `./src`) to
     /// `NROS_INTERFACE_SEARCH_PATH`. `eval "$(nros ws env)"`.
+    #[command(hide = true)]
     Env(EnvArgs),
 
     /// List discovered msg + rust-consumer pkgs in the workspace (or
@@ -121,7 +122,7 @@ pub enum Sub {
     /// upward and corrosion runs cargo from the workspace root, so a leaf's own
     /// `.cargo/config.toml` never reaches a workspace member. The process
     /// environment does, and its owner is the invoker (cmake, `just`, west).
-    #[command(name = "board-facts")]
+    #[command(name = "board-facts", hide = true)]
     BoardFacts(crate::cmd::board_facts::BoardFactsArgs),
 
     /// phase-485 W2 (RFC-0104 D3) — seed `<dir>/Cargo.lock` from the registry
@@ -132,7 +133,7 @@ pub enum Sub {
     /// does. An existing lock in a checkout is moved back onto the pins, as
     /// `nros build` moves it (issue 1937): a persistent tree otherwise never
     /// sees a pin move. Prints what it did.
-    #[command(name = "seed-lock")]
+    #[command(name = "seed-lock", hide = true)]
     SeedLock(SeedLockArgs),
 
     /// phase-517 W8 — write (or, with `--check`, only report) the
@@ -140,7 +141,7 @@ pub enum Sub {
     /// single-package leaf: the step `nros sync` and `nros build` both run,
     /// without codegen. For a script that drives cargo itself after editing a
     /// `package.xml`, and for checking a tree is already in that state.
-    #[command(name = "managed-deps")]
+    #[command(name = "managed-deps", hide = true)]
     ManagedDeps(ManagedDepsArgs),
 
     /// issue 1937 — hold the locks a plain `cargo` resolved to the pin set,
@@ -149,7 +150,7 @@ pub enum Sub {
     /// Every registry entry must be pinned at its version. With `--complete`,
     /// every `locks/leaf-only-pins.toml` entry must also be resolved by one of
     /// the roots, which is only a fair question when they are every leaf.
-    #[command(name = "check-lock")]
+    #[command(name = "check-lock", hide = true)]
     CheckLock(CheckLockArgs),
 
     /// phase-445 W3 (RFC-0098 D3/D5) — print a single-package leaf's
@@ -160,7 +161,7 @@ pub enum Sub {
     /// `find_package(nano_ros)` asks this before it imports nano-ros. The
     /// answer is `nros_orchestration_ir::leaf_system`'s, the same reader
     /// `nros::main!` and `nros sync` use.
-    #[command(name = "leaf-system")]
+    #[command(name = "leaf-system", hide = true)]
     LeafSystem(crate::cmd::leaf_system::LeafSystemArgs),
 
     /// RFC-0109 D6 (phase-514 W3b) — print a bringup's default session RMW
@@ -170,7 +171,7 @@ pub enum Sub {
     /// The seam for the CMake road, which bakes the file but must not encode
     /// how it is found: `[image.<id>] rmw_config`, `[system] rmw_config`, then
     /// the backend's conventional file, by the same rule `nros sync` checks.
-    #[command(name = "rmw-config")]
+    #[command(name = "rmw-config", hide = true)]
     RmwConfig(RmwConfigArgs),
 
     /// Issue 2123 — a bridged `[[domain]]`'s RMW session properties as a C
@@ -180,7 +181,7 @@ pub enum Sub {
     /// `static const <type> <symbol>[N]` and `<symbol>_LEN` to `--out`, and
     /// prints `NROS_RMW_CONFIG_FILE=<path>` (the source, for a build's
     /// re-run edge). CMake: `nros_session_properties_header()`.
-    #[command(name = "session-properties")]
+    #[command(name = "session-properties", hide = true)]
     SessionProperties(SessionPropertiesArgs),
 
     /// phase-497 W3 (RFC-0103 D10a) — the QEMU `-nic` value for a leaf's
@@ -212,7 +213,7 @@ pub enum Sub {
     /// REFUSES, printing nothing, when any component in the image declared no
     /// entities: a partial inventory derives a slot count smaller than the
     /// image needs, and a short `MAX_CBS` fails entity creation at boot.
-    #[command(name = "entity-inventory")]
+    #[command(name = "entity-inventory", hide = true)]
     EntityInventory(crate::cmd::entity_inventory::EntityInventoryArgs),
 
     /// phase-463 W2 (issue 1419) -- run an entry's own native binary as the
@@ -228,7 +229,7 @@ pub enum Sub {
     /// Native only, by construction and not by policy: the switch is read in
     /// the hosted boot funnel, the one place with the `env` capability, which
     /// no RTOS board has.
-    #[command(name = "entity-census")]
+    #[command(name = "entity-census", hide = true)]
     EntityCensus(crate::cmd::entity_census::EntityCensusArgs),
 
     /// phase-454 W4 (RFC-0100 D4) — read back the sizing descriptor `nros sync`
@@ -242,7 +243,7 @@ pub enum Sub {
     /// A MISSING descriptor is an error, not an empty answer: the caller named
     /// a path, and "it wasn't there so I said nothing" is the silent default
     /// D6 exists to forbid.
-    #[command(name = "sizing-descriptor")]
+    #[command(name = "sizing-descriptor", hide = true)]
     SizingDescriptor(crate::cmd::sizing_descriptor::SizingDescriptorArgs),
 
     /// Issue 1662 — a standalone Zephyr RUST leaf's derived sizes, for the
@@ -252,7 +253,7 @@ pub enum Sub {
     /// sidecars. Prints `NROS_SIZING_DESCRIPTOR=<path>` and one `input <path>`
     /// line per file read; prints nothing for a directory that is not such a
     /// leaf.
-    #[command(name = "west-leaf-sizing")]
+    #[command(name = "west-leaf-sizing", hide = true)]
     WestLeafSizing(crate::cmd::west_leaf_sizing::WestLeafSizingArgs),
 
     /// phase-439 W6 — the Rust twin of `nros_derive_message_bound_knobs`, over
@@ -279,7 +280,7 @@ pub enum Sub {
     /// Visible rather than hidden, unlike the gate seams above: "which
     /// backends can I pick, and where did they come from" is a question a user
     /// asks, and it is the answer to a shadowed-provider surprise.
-    #[command(name = "providers")]
+    #[command(name = "providers", hide = true)]
     Providers(ProvidersArgs),
 
     /// phase-348 W4 — print the workspace's packages in dependency order, one
@@ -292,7 +293,7 @@ pub enum Sub {
     ///
     /// Ties break by name, so the order is reproducible across machines. A
     /// dependency cycle is an error naming every package on it.
-    #[command(name = "order")]
+    #[command(name = "order", hide = true)]
     Order(OrderArgs),
 
     /// phase-439 W4 (RFC-0094 D5) — lower one declared RMW name to the build
@@ -307,7 +308,7 @@ pub enum Sub {
     /// reported unknown by the very next step (issue 1214). cmake now ASKS,
     /// exactly as `nano_ros_load_providers` does, and an unknown name is "no
     /// provider announced this" rather than "not one of the four we compiled".
-    #[command(name = "rmw-dispatch")]
+    #[command(name = "rmw-dispatch", hide = true)]
     RmwDispatch(RmwDispatchArgs),
 }
 

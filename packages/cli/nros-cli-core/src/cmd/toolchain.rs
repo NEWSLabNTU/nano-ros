@@ -49,6 +49,7 @@ pub enum Sub {
     Uninstall(UninstallArgs),
     /// phase-443 W2 — read, or stamp, `share/nros/manifest.toml`: what a
     /// release DECLARES it is made of (RFC-0097 D7).
+    #[command(hide = true)]
     Manifest(ManifestArgs),
 }
 

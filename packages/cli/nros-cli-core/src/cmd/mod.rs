@@ -23,6 +23,7 @@ pub mod codegen_cyclonedds_descriptors;
 pub mod codegen_system;
 pub mod completions;
 pub mod config;
+pub mod dev;
 pub mod doctor;
 pub mod emit_package_xml;
 pub mod entity_census;
@@ -89,7 +90,7 @@ pub enum Cmd {
     Generate(generate::Args),
 
     /// Generate Rust message bindings from `package.xml`
-    #[command(name = "generate-rust")]
+    #[command(name = "generate-rust", hide = true)]
     GenerateRust(generate::RustArgs),
 
     /// Print this binary's CODEGEN FINGERPRINT — a hash of the bytes its
@@ -131,30 +132,31 @@ pub enum Cmd {
     /// Build-tool C/C++ binding generation (`--args-file` / `resolve-deps`).
     /// The interface the cmake / build.rs consumers speak (Phase 195.A — folds
     /// in the former standalone `nros-codegen` binary).
+    #[command(hide = true)]
     Codegen(codegen::Args),
 
     /// Host-time system bake (Phase 212.E) — read `<bringup>/system.toml` +
     /// `<bringup>/launch/system.launch.xml` and emit the baked compile-time
     /// C config + component registration glue consumed by every embedded
     /// RTOS adapter.
-    #[command(name = "codegen-system")]
+    #[command(name = "codegen-system", hide = true)]
     CodegenSystem(codegen_system::Args),
 
     /// RFC-0085 D2 — print the RESOLVED image as data, so a west build derives
     /// its cargo invocation from `[image.*]` instead of re-spelling it from
     /// Kconfig. A query, not a build: it cannot recurse into `west build`.
-    #[command(name = "image-facts")]
+    #[command(name = "image-facts", hide = true)]
     ImageFacts(image_facts::Args),
 
     /// phase-330 W7 — print the resolved SystemModel path for
     /// (bringup, launch, args). The cmake bridge for `nano_ros_entry(LAUNCH …)`.
-    #[command(name = "model-path")]
+    #[command(name = "model-path", hide = true)]
     ModelPath(model_path::Args),
 
     /// phase-365 W2 — print the CONSTRUCTED install path of a provisioned tool.
     /// The cmake/just/shell bridge to `sdk_store::tool_dir`, so the store is
     /// never searched (issue 0625).
-    #[command(name = "sdk-path")]
+    #[command(name = "sdk-path", hide = true)]
     SdkPath(sdk_path::Args),
 
     /// phase-484 W1 (RFC-0103 D4) — where a resource is, and with `--why`,
@@ -165,14 +167,14 @@ pub enum Cmd {
     /// phase-431 W3 — point `$NROS_HOME/bin/<name>` at the NEWEST installed
     /// version of a tool. The bridge for `scripts/bootstrap.sh`, which unpacks
     /// the CLI itself and has no `nros setup` to run until it has.
-    #[command(name = "sdk-front")]
+    #[command(name = "sdk-front", hide = true)]
     SdkFront(sdk_front::Args),
 
     /// phase-447 A2 — print the nano-ros SDK root this toolchain resolves
     /// (RFC-0099 D3). The cmake/shell bridge to the four-rung ladder, so a
     /// scaffolded project ASKS where the runtime is instead of baking in an
     /// absolute path that is right on exactly one machine.
-    #[command(name = "sdk-root")]
+    #[command(name = "sdk-root", hide = true)]
     SdkRoot(sdk_root::Args),
 
     /// phase-440 W6 — inspect and shrink the SDK store (RFC-0095 D11). The
@@ -200,10 +202,11 @@ pub enum Cmd {
     /// phase-336 — the cargo build-profile table (CMAKE_BUILD_TYPE mapping,
     /// flags, artifact dir, env-injected definitions). The bridge cmake/bash
     /// use so the derivations are not re-spelled per language.
-    #[command(subcommand_negates_reqs = true)]
+    #[command(subcommand_negates_reqs = true, hide = true)]
     Profile(profile::Args),
 
     /// Collect component source metadata for orchestration planning
+    #[command(hide = true)]
     Metadata(metadata::Args),
 
     /// Resolve launch files, manifests, and metadata into nros-plan.json
@@ -242,6 +245,12 @@ pub enum Cmd {
 
     /// Generate shell completions (bash | zsh | fish | powershell)
     Completions(completions::Args),
+
+    /// The developer and build-system tier (RFC-0117): the verbs cmake, west,
+    /// `just` and the gates call. Hidden from `nros --help`; `nros help --all`
+    /// lists it.
+    #[command(hide = true)]
+    Dev(dev::Args),
 
     /// Maintainer-only release subcommands (hidden unless built with
     /// `--features release`)
