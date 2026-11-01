@@ -50,6 +50,9 @@ pub mod dependency_parser;
 // cffi feature). `build.rs` shares this exact file via `#[path]`, so the
 // generator and the library cannot be two spellings of one rule.
 pub mod derived_descriptor;
+// phase-527 W1 / RFC-0119 D2 — the `runner` and `command` descriptors, read
+// only for the provider a resolution selects.
+pub mod extension_descriptor;
 pub mod node_role;
 pub mod package_discovery;
 pub mod package_xml;

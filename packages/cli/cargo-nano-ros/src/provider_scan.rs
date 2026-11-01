@@ -500,6 +500,19 @@ pub fn scan_roots(roots: &[PathBuf]) -> Result<ScanResult> {
 pub fn scan_root(root: &Path, root_index: usize) -> Result<ScanResult> {
     let mut out = ScanResult::default();
     walk_packages(root, &mut out, |dir, pkg, out| {
+        // phase-527 W1 / RFC-0119 D3 — a package announcing a host kind
+        // (`runner`, `command`) and a target kind has no single build role, so
+        // it is refused rather than listed: resolving either half would pick a
+        // package `nros build` cannot build. A scan error, like a parse
+        // failure, so one bad package hides only itself and a gate can make it
+        // fatal (`check-provider-announcements` A6).
+        if let Err(message) = pkg.build_role() {
+            out.errors.push(ScanError {
+                path: dir.join("package.xml"),
+                message,
+            });
+            return;
+        }
         if !pkg.provides.is_empty() {
             out.providers.push(ProviderPackage {
                 package: pkg.name.clone(),
@@ -2377,6 +2390,48 @@ mod tests {
             path.paths(),
             vec![a.path().to_path_buf(), b.path().to_path_buf()]
         );
+    }
+    /// phase-527 W1 — the two host-tool kinds are found by the same scan as
+    /// every other kind, and a package mixing host and target kinds is refused
+    /// with a scan error rather than listed (RFC-0119 D3).
+    #[test]
+    fn host_tool_kinds_are_scanned_and_a_mixed_package_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(
+            &tmp.path().join("r/package.xml"),
+            &provider_xml("nros_runner_acme", "runner", "acme"),
+        );
+        write(
+            &tmp.path().join("c/package.xml"),
+            &provider_xml("acme_tools", "command", "acme"),
+        );
+        write(
+            &tmp.path().join("mixed/package.xml"),
+            r#"<?xml version="1.0"?>
+<package format="3">
+  <name>acme_board_and_runner</name>
+  <version>0.0.0</version>
+  <export>
+    <nano_ros_provides kind="board" name="acme-board"/>
+    <nano_ros_provides kind="runner" name="acme-flash"/>
+  </export>
+</package>"#,
+        );
+        let scan = scan_roots(&[tmp.path().to_path_buf()]).unwrap();
+        let kinds: Vec<(&str, &str)> = scan
+            .providers
+            .iter()
+            .flat_map(|p| p.provides.iter())
+            .map(|p| (p.kind.as_str(), p.name.as_str()))
+            .collect();
+        assert_eq!(kinds, [("command", "acme"), ("runner", "acme")]);
+        assert_eq!(scan.errors.len(), 1, "{:?}", scan.errors);
+        assert!(scan.errors[0].path.ends_with("mixed/package.xml"));
+        assert!(scan.errors[0].message.contains("RFC-0119 D3"));
+        // A runner and a command may share a name: they are different kinds.
+        assert!(resolve_unique(&scan, "runner", "acme").is_ok());
+        assert!(resolve_unique(&scan, "command", "acme").is_ok());
+        assert!(resolve_unique(&scan, "board", "acme-board").is_err());
     }
 }
 

@@ -37,6 +37,11 @@ nros-lang = { workspace = true }
 # nano-ros root" (it holds `MONOREPO_MARKER`), and asking it is what keeps this
 # from becoming a second derivation of `<prefix>/share/nano-ros`.
 nros-launcher = { workspace = true }
+# phase-527 W1 — the runner/command vocabularies (verbs, plan placeholders,
+# protocol versions) the `nros-runner.toml` / `nros-command.toml` readers
+# validate against: the runners' own SDK crate, so a descriptor and a
+# `describe` reply cannot disagree about a word (RFC-0119 D2, D6).
+nros-extension = { path = "../../runners/nros-extension" }
 rayon = "1.10"
 indicatif = "0.18"
 quick-xml = "0.41"

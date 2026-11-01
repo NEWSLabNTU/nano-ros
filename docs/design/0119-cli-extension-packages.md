@@ -61,10 +61,17 @@ commands follow the same convention users do.**
   registers a `ros2cli.command` entry point and is built by colcon with the
   rest of the workspace. The verb appears once the workspace is built. A
   package adds CLI capability by being built.
-- **Zephyr modules:** a module's `zephyr/module.yml` can declare
-  `west-commands` (new `west` verbs) and runner files (new flash and debug
-  runners); the module arrives with `west update` like any other project.
-  (Recalled; the exact keys are re-checked in phase-527 W1.)
+- **Zephyr modules and west:** a module's `zephyr/module.yml` can list
+  runner files (`runners: [{file: scripts/my_runner.py}]`). Each listed file
+  is imported when `west flash` or `west debug` runs, and its
+  `ZephyrBinaryRunner` subclasses become runners. New `west` verbs are
+  declared elsewhere: a project entry in the west manifest names a
+  `west-commands:` file (`west-commands.yml` by convention). Either way the
+  code arrives with `west update` like any other project. (Checked in
+  phase-527 W1 against Zephyr's `scripts/schemas/module-schema.yaml`, which
+  has a `runners` key and no `west-commands` key, and against west's
+  extension-commands documentation. The first draft of this paragraph put
+  both keys in `module.yml`.)
 - **cargo and git:** an executable named `cargo-foo` or `git-foo` on `PATH`
   becomes a subcommand. This is cheap, but discovery is `PATH`, so which
   binary runs depends on the shell.
@@ -316,3 +323,7 @@ CMake code when they build it, so this adds no new boundary.
 - 2026-11 — created, from the maintainer discussion of 2026-11-01. Amends
   RFC-0087 D3 (two kinds) and D8 (extension through announced executables),
   and RFC-0097 (the toolchain carries the first-party extension packages).
+- 2026-11 — phase-527 W1: corrected the Zephyr prior-art paragraph
+  (`module.yml` carries `runners`; `west-commands` belongs to the west
+  manifest). Landed D1, D2 and the D10 refusals in `check-provider-announcements`
+  (A6 host/target mix, A7 built-in verb, A8 stated `bin`).

@@ -67,6 +67,25 @@ took all five platform providers out of `nros ws providers` while this gate
 printed OK, which is exactly the harm A1's own message describes. All 417
 tracked package.xml parse; A5 keeps it that way.
 
+**A6–A8 are the host-tool kinds of RFC-0119 (phase-527 W1).** `runner` and
+`command` packages are built for the HOST, which follows from their kind:
+
+  A6  a package announces host kinds (`runner`, `command`) or target kinds
+      (`rmw`, `board`, `platform`, `serdes`), never both — it would need two
+      build roles and so two target directories (RFC-0119 D3);
+  A7  a `command` is not named like a built-in or reserved verb — announcing
+      one is a refusal at discovery, not a shadow (RFC-0119 D7). The verb list
+      is `packages/cli/nros-cli-core/builtin-verbs.txt`, generated from the
+      clap tree by a test in that crate, because this gate cannot ask clap;
+  A8  a stated descriptor field equals its derived value. The one derivable
+      field of these kinds is `bin` (the package's single Cargo bin target);
+      a stated `bin` naming none of several targets is refused too.
+
+`BORN_EMPTY` lists the families that exist before any provider of them does,
+each with the work item that ships the first one. The empty-set refusal is
+waived for them, and an entry whose glob has started matching is an error, so
+the waiver retires itself.
+
 Buildless — TOML, a regex, and stdlib XML. No cmake, no cargo.
 """
 
@@ -158,7 +177,36 @@ FAMILIES = {
     # must have — lives in `scripts/check-serdes-descriptors.py`, the split that
     # keeps this gate one gate for every family rather than one per family.
     "serdes": ("packages/*/*/nros-serdes.toml", None),
+    # phase-527 W1 / RFC-0119 D1–D2 — the two HOST-TOOL kinds, both born
+    # nameless: the verb or runner name is the announcement, and the
+    # descriptor holds `protocol`, `verbs`/`needs` or `summary`/`tier`, and an
+    # optional `bin`. Runners live in `packages/runners/` (D5); commands live
+    # beside the domain they serve (`packages/rmw/zenoh/nros_zenoh_tools`),
+    # one or two levels below a `packages/<dir>/`.
+    "runner": ("packages/runners/*/nros-runner.toml", None),
+    "command": (
+        ["packages/*/*/nros-command.toml", "packages/*/*/*/nros-command.toml"],
+        None,
+    ),
 }
+
+# Families with no provider in the tree YET, and the work item that ships the
+# first. Without this the "refusing to pass on an empty set" arm would make a
+# new family unlandable before its first provider, which is RFC-0087 D5's
+# order: a family is defined, then a package that needs it is written. A row
+# whose glob has started matching is an ERROR — the waiver is not a place to
+# park a family, and it must leave the moment it stops being true.
+BORN_EMPTY = {
+    "runner": "phase-528 W1 writes the first runner package",
+    "command": "phase-527 W5 writes the first command package",
+}
+
+# RFC-0119 D3 — what a package is built for follows from its kinds.
+HOST_KINDS = {"runner", "command"}
+TARGET_KINDS = {"rmw", "board", "platform", "serdes"}
+
+# A7's verb list. GENERATED from the clap tree (see the module docstring).
+BUILTIN_VERBS = "packages/cli/nros-cli-core/builtin-verbs.txt"
 
 
 # A4 — the files named like a descriptor that a family glob is RIGHT not to
@@ -286,7 +334,121 @@ def _descriptor_body(kind):
         "board": '[[board]]\nnames = ["x"]\n',
         "rmw": "[rmw]\n",
         "platform": 'names = ["x"]\n',
+        "runner": 'protocol = 1\nverbs = ["run"]\n',
+        "command": 'protocol = 1\nsummary = "x"\n',
     }.get(kind, "")
+
+
+def load_builtin_verbs(root):
+    """{tier: set(verbs)} from BUILTIN_VERBS, or None when the file is absent.
+
+    Lines are `<tier> <verb>`, tier one of `user`, `dev`, `reserved`; `#`
+    starts a comment.
+    """
+    path = os.path.join(root, BUILTIN_VERBS)
+    if not os.path.exists(path):
+        return None
+    tiers = {"user": set(), "dev": set(), "reserved": set()}
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            tier, _, verb = line.partition(" ")
+            tiers.setdefault(tier, set()).add(verb.strip())
+    return tiers
+
+
+def cargo_bins(pkg_dir):
+    """Every bin target of the package's Cargo.toml, explicit or implicit.
+
+    The Python twin of `extension_descriptor::cargo_bins`: `[[bin]]` entries
+    name themselves, and a manifest with none has the implicit `src/main.rs`
+    target named after the package. Empty for a package with no Cargo.toml (a
+    CMake package's executable is not derivable).
+    """
+    manifest = os.path.join(pkg_dir, "Cargo.toml")
+    if not os.path.exists(manifest):
+        return []
+    try:
+        with open(manifest, "rb") as fh:
+            data = tomllib.load(fh)
+    except Exception:  # noqa: BLE001 — not this gate's file to judge
+        return []
+    explicit = [b["name"] for b in data.get("bin", []) if "name" in b]
+    if explicit:
+        return explicit
+    name = data.get("package", {}).get("name")
+    if name and os.path.exists(os.path.join(pkg_dir, "src", "main.rs")):
+        return [name]
+    return []
+
+
+def check_host_package(root, pkg_xml, kinds, verbs):
+    """A6–A8 for one package. -> problems"""
+    rel = os.path.relpath(pkg_xml, root)
+    pkg_dir = os.path.dirname(pkg_xml)
+    problems = []
+    host = [k for k in kinds if k in HOST_KINDS]
+    target = [k for k in kinds if k in TARGET_KINDS]
+    if host and target:
+        problems.append(
+            f"{rel}: announces host-tool kinds {host} and target kinds {target} "
+            f"in one package. A runner or command is built for the HOST and a "
+            f"provider of the others is linked into an image, so one package "
+            f"would need two build roles and two target directories.\n"
+            f"    Split it: a board vendor ships a board package and a runner "
+            f"package, two packages in one repository (RFC-0119 D3)."
+        )
+    for kind in host:
+        desc = os.path.join(pkg_dir, f"nros-{kind}.toml")
+        if not os.path.exists(desc):
+            continue  # A3 reports it
+        desc_rel = os.path.relpath(desc, root)
+        try:
+            with open(desc, "rb") as fh:
+                data = tomllib.load(fh)
+        except Exception as e:  # noqa: BLE001 — report, do not raise
+            problems.append(f"{desc_rel}: not valid TOML: {e}")
+            continue
+        # A8 — `bin` is the one derivable field.
+        stated = data.get("bin")
+        bins = cargo_bins(pkg_dir)
+        if stated is not None and len(bins) == 1 and stated != bins[0]:
+            problems.append(
+                f"{desc_rel}: states bin = {stated!r}, but the package's only bin "
+                f"target is {bins[0]!r}. A stated field must equal its derived "
+                f"value (RFC-0087 D4): drop the line, or rename the target."
+            )
+        elif stated is not None and len(bins) > 1 and stated not in bins:
+            problems.append(
+                f"{desc_rel}: states bin = {stated!r}, which is none of the "
+                f"package's bin targets ({', '.join(bins)})."
+            )
+        # A7 — a command may not take a built-in or reserved verb.
+        if kind != "command":
+            continue
+        if verbs is None:
+            problems.append(
+                f"{rel}: announces a command, and {BUILTIN_VERBS} is missing, so "
+                f"A7 cannot check its verb. Regenerate it (see that file's "
+                f"header, or `nros_cli_core::builtin_verbs`)."
+            )
+            continue
+        tier = data.get("tier", "user")
+        taken = verbs.get("user", set()) | verbs.get("reserved", set())
+        if tier == "dev":
+            taken = taken | verbs.get("dev", set())
+        for name in declared_provisions(pkg_xml, "command"):
+            if name in taken:
+                problems.append(
+                    f"{rel}: announces command {name!r}, which is a built-in or "
+                    f"reserved `nros` verb. A built-in cannot be provided, and "
+                    f"announcing one is a refusal at discovery, not a shadow "
+                    f"(RFC-0119 D7).\n"
+                    f"    Name the verb something else."
+                )
+    return problems
 
 
 def self_test(quiet=False):
@@ -313,6 +475,8 @@ def self_test(quiet=False):
     def build(tmp):
         """A minimal tree that PASSES every rule, so a mutation names itself."""
         for kind, (pattern, _) in FAMILIES.items():
+            if kind in BORN_EMPTY:
+                continue  # an empty family must pass; its stale arm is tested below
             pat = pattern if isinstance(pattern, str) else pattern[0]
             # One minimal descriptor per family, so no family trips the
             # "refusing to pass on an empty set" arm...
@@ -321,6 +485,11 @@ def self_test(quiet=False):
             # ... and its announcement, so the baseline is clean and each
             # assertion below names exactly one offender.
             _write(os.path.join(os.path.dirname(dest), "package.xml"), _pkg_xml(kind))
+        # A7's verb list, one verb per tier.
+        _write(
+            os.path.join(tmp, BUILTIN_VERBS),
+            "# test\nuser build\ndev ws\nreserved run\n",
+        )
         # One file per REACH_EXEMPT row — the shipped one and the synthetic
         # one — so the "stale exemption" arm is exercised by taking them away
         # rather than only asserted about.
@@ -416,6 +585,68 @@ def self_test(quiet=False):
         )
         shutil.rmtree(os.path.join(tmp, "malformed"))
 
+        # A6 — one package announcing a host kind and a target kind.
+        _write(os.path.join(tmp, "mixed/package.xml"), _pkg_xml("board", "runner"))
+        _write(os.path.join(tmp, "mixed/nros-board.toml"), _descriptor_body("board"))
+        _write(os.path.join(tmp, "mixed/nros-runner.toml"), _descriptor_body("runner"))
+        only(
+            scan(tmp)[0],
+            "host-tool kinds ['runner'] and target kinds ['board']",
+            "A6 must refuse a package mixing host and target kinds",
+        )
+        shutil.rmtree(os.path.join(tmp, "mixed"))
+
+        # A7 — a command named like a built-in verb, a reserved verb, and a
+        # dev-tier command named like a `nros dev` verb. A user-tier command
+        # may reuse a dev verb's name: it sits at a different level.
+        def command_pkg(name, tier):
+            _write(
+                os.path.join(tmp, "cmd/package.xml"),
+                f'<package><export><nano_ros_provides kind="command" name="{name}"/>'
+                f"</export></package>",
+            )
+            _write(
+                os.path.join(tmp, "cmd/nros-command.toml"),
+                f'protocol = 1\nsummary = "x"\ntier = "{tier}"\n',
+            )
+
+        for name, tier in (("build", "user"), ("run", "user"), ("ws", "dev")):
+            command_pkg(name, tier)
+            only(
+                scan(tmp)[0],
+                f"announces command {name!r}, which is a built-in or reserved",
+                f"A7 must refuse a {tier}-tier command named {name!r}",
+            )
+        command_pkg("ws", "user")
+        none(scan(tmp)[0], "built-in or reserved", "a user-tier `ws` is not `nros dev ws`")
+        shutil.rmtree(os.path.join(tmp, "cmd"))
+
+        # A8 — a stated `bin` that differs from the one derived bin target.
+        _write(os.path.join(tmp, "packages/runners/r/package.xml"), _pkg_xml("runner"))
+        _write(
+            os.path.join(tmp, "packages/runners/r/Cargo.toml"),
+            '[package]\nname = "r"\n[[bin]]\nname = "nros-runner-r"\n',
+        )
+        _write(
+            os.path.join(tmp, "packages/runners/r/nros-runner.toml"),
+            _descriptor_body("runner") + 'bin = "other"\n',
+        )
+        problems = scan(tmp)[0]
+        only(
+            problems,
+            "states bin = 'other', but the package's only bin target is 'nros-runner-r'",
+            "A8 must refuse a stated bin that differs from the derived one",
+        )
+        # ... and that same descriptor is the one BORN_EMPTY's stale arm needs:
+        # the runner family now has a provider, so its waiver must go.
+        only(problems, "BORN_EMPTY says it has no provider yet", "a stale BORN_EMPTY row")
+        _write(
+            os.path.join(tmp, "packages/runners/r/nros-runner.toml"),
+            _descriptor_body("runner") + 'bin = "nros-runner-r"\n',
+        )
+        none(scan(tmp)[0], "states bin", "a stated bin equal to the derived one passes")
+        shutil.rmtree(os.path.join(tmp, "packages/runners"))
+
         # A4 — an exemption that covers nothing is stale, and stale is an error.
         shutil.rmtree(os.path.join(tmp, "leaf"))
         only(
@@ -455,6 +686,7 @@ def check_announcements_have_descriptors(root):
     """
     problems = []
     seen = 0
+    verbs = load_builtin_verbs(root)
     for pkg_xml in tracked(root, name="package.xml"):
         if not os.path.exists(pkg_xml):
             continue  # staged deletion: in the index, gone from the worktree
@@ -472,7 +704,9 @@ def check_announcements_have_descriptors(root):
                 f"`config/<x>/` inside a <description> is an open tag."
             )
             continue
-        for kind in announced_kinds(pkg_xml):
+        kinds = announced_kinds(pkg_xml)
+        problems.extend(check_host_package(root, pkg_xml, kinds, verbs))
+        for kind in kinds:
             seen += 1
             if kind not in FAMILIES:
                 problems.append(
@@ -583,6 +817,16 @@ def _scan_impl(root):
             )
         )
         family_paths[kind] = paths
+        if kind in BORN_EMPTY:
+            if paths:
+                problems.append(
+                    f"family {kind!r}: BORN_EMPTY says it has no provider yet "
+                    f"({BORN_EMPTY[kind]}), but {len(paths)} descriptor(s) match "
+                    f"{patterns!r}. Delete the BORN_EMPTY row — the waiver is "
+                    f"stale, and the family now has a set to check."
+                )
+            else:
+                continue
         if not paths:
             # A family whose descriptors all vanished would otherwise make this
             # gate quietly vacuous for that family.

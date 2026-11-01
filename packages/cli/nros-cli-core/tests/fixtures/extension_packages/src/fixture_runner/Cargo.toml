@@ -1,0 +1,13 @@
+# phase-527 fixture: a runner package with one bin target and no
+# dependencies. The empty `[workspace]` makes it its own root, so a build of a
+# copy never walks up into another workspace.
+[package]
+name = "fixture_runner"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "nros-runner-fixture"
+path = "src/main.rs"
+
+[workspace]

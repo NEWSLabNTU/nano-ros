@@ -44,6 +44,8 @@ pub mod build_output;
 // `check-build-type-spelling`, because three readers of one rule is how the
 // rmw parity map came to disagree with the vtable by 25 symbols.
 pub mod build_type;
+/// phase-527 W1 (RFC-0119 D7) — the verbs a `command` package may not take.
+pub mod builtin_verbs;
 pub mod cmd;
 /// phase-454 W12 (RFC-0100 D3) — joining the CONTRACT's per-endpoint QoS onto
 /// the rows the metadata probe found, on the ONE key both inventories can

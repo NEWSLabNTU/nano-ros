@@ -1,0 +1,6 @@
+# phase-527 fixture (RFC-0119 D2). `bin` is stated and equals the package's
+# one bin target, which check-provider-announcements A8 accepts.
+protocol = 1
+summary  = "Print a greeting (a test fixture)"
+tier     = "dev"
+bin      = "nros-fixture-hello"

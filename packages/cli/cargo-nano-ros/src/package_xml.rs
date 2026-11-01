@@ -28,7 +28,7 @@ use std::{collections::HashSet, path::Path};
 ///
 /// `kind` is an open vocabulary. The scan does not validate it, because the
 /// kinds that exist are a property of what descriptors exist
-/// (`nros-{rmw,board,platform,serdes}.toml`), not of this parser — a new
+/// (`nros-{rmw,board,platform,serdes,runner,command}.toml`), not of this parser — a new
 /// provider family must not require editing the XML reader. That is the whole
 /// point of `<nano_ros_uses>`: selecting a serializer costs no new attribute in
 /// this parser or in the cmake one.
@@ -43,6 +43,84 @@ pub struct Provision {
 /// A consumption announcement. Same shape as [`Provision`], opposite direction
 /// — see that type's docs for why they are not one tag.
 pub type Selection = Provision;
+
+/// The `runner` kind (RFC-0119 D1): a package that drives a launcher, flasher
+/// or console for `nros run`, `nros flash` and `nros monitor`.
+pub const RUNNER_KIND: &str = "runner";
+
+/// The `command` kind (RFC-0119 D1): a package that adds a verb to `nros`.
+pub const COMMAND_KIND: &str = "command";
+
+/// The kinds a HOST tool announces. A package announcing one is built for the
+/// host triple, whatever board the images beside it target (RFC-0119 D3).
+pub const HOST_KINDS: &[&str] = &[RUNNER_KIND, COMMAND_KIND];
+
+/// The kinds a package linked into an image announces.
+pub const TARGET_KINDS: &[&str] = &["rmw", "board", "platform", "serdes"];
+
+/// What a provider package is built for, which follows from its kinds and is
+/// stated nowhere else (RFC-0119 D3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BuildRole {
+    /// Built for the host triple: `runner`, `command`.
+    Host,
+    /// Linked into an image: `rmw`, `board`, `platform`, `serdes`.
+    Target,
+}
+
+/// The role one kind implies, or `None` for a kind this table does not
+/// classify. `kind` stays an open vocabulary (see [`Provision`]); an
+/// unclassified kind constrains nothing here, and
+/// `check-provider-announcements` is what refuses a kind with no family.
+#[must_use]
+pub fn kind_role(kind: &str) -> Option<BuildRole> {
+    if HOST_KINDS.contains(&kind) {
+        Some(BuildRole::Host)
+    } else if TARGET_KINDS.contains(&kind) {
+        Some(BuildRole::Target)
+    } else {
+        None
+    }
+}
+
+/// The one role a set of announcements implies.
+///
+/// `Ok(None)` when no announcement is classified (most packages announce
+/// nothing at all).
+///
+/// # Errors
+///
+/// A package announcing both a host kind and a target kind. Such a package
+/// would need two build roles and so two target directories; a board vendor
+/// ships a board package and a runner package instead (RFC-0119 D3).
+pub fn build_role_of(provides: &[Provision]) -> std::result::Result<Option<BuildRole>, String> {
+    let host: Vec<&Provision> = provides
+        .iter()
+        .filter(|p| kind_role(&p.kind) == Some(BuildRole::Host))
+        .collect();
+    let target: Vec<&Provision> = provides
+        .iter()
+        .filter(|p| kind_role(&p.kind) == Some(BuildRole::Target))
+        .collect();
+    let show = |ps: &[&Provision]| {
+        ps.iter()
+            .map(|p| format!("{}:{}", p.kind, p.name))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match (host.is_empty(), target.is_empty()) {
+        (true, true) => Ok(None),
+        (false, true) => Ok(Some(BuildRole::Host)),
+        (true, false) => Ok(Some(BuildRole::Target)),
+        (false, false) => Err(format!(
+            "announces host-tool kinds ({}) and target kinds ({}) in one package — \
+             a package has one build role, so split it into two packages, as a board \
+             vendor ships a board package and a runner package (RFC-0119 D3)",
+            show(&host),
+            show(&target)
+        )),
+    }
+}
 
 /// Parsed package.xml metadata
 #[derive(Debug, Clone)]
@@ -294,6 +372,16 @@ impl PackageXml {
     /// Selections of one kind, in declaration order.
     pub fn uses_of_kind(&self, kind: &str) -> impl Iterator<Item = &Selection> {
         self.uses.iter().filter(move |u| u.kind == kind)
+    }
+
+    /// What this package is built for, from its announcements — see
+    /// [`build_role_of`].
+    ///
+    /// # Errors
+    ///
+    /// A package announcing both host and target kinds.
+    pub fn build_role(&self) -> std::result::Result<Option<BuildRole>, String> {
+        build_role_of(&self.provides)
     }
 }
 
@@ -676,5 +764,42 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(pkg.build_type.as_deref(), Some("nros_cmake"));
+    }
+
+    /// phase-527 W1 / RFC-0119 D3 — the build role follows from the kinds, and
+    /// a package cannot have two.
+    #[test]
+    fn build_role_follows_from_the_kinds() {
+        let role = |body: &str| {
+            PackageXml::parse_str(&provider_xml(body))
+                .unwrap()
+                .build_role()
+        };
+        assert_eq!(role(""), Ok(None));
+        assert_eq!(
+            role(r#"    <nano_ros_provides kind="runner" name="qemu"/>"#),
+            Ok(Some(BuildRole::Host))
+        );
+        assert_eq!(
+            role(r#"    <nano_ros_provides kind="command" name="router"/>"#),
+            Ok(Some(BuildRole::Host))
+        );
+        assert_eq!(
+            role(r#"    <nano_ros_provides kind="board" name="x"/>"#),
+            Ok(Some(BuildRole::Target))
+        );
+        // An unclassified kind constrains nothing: the vocabulary stays open.
+        assert_eq!(
+            role(r#"    <nano_ros_provides kind="transport" name="x"/>"#),
+            Ok(None)
+        );
+        let err = role(
+            r#"    <nano_ros_provides kind="board" name="acme"/>
+    <nano_ros_provides kind="runner" name="acme-flash"/>"#,
+        )
+        .unwrap_err();
+        assert!(err.contains("runner:acme-flash"), "{err}");
+        assert!(err.contains("board:acme"), "{err}");
+        assert!(err.contains("RFC-0119 D3"), "{err}");
     }
 }

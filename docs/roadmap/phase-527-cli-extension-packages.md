@@ -1,7 +1,7 @@
 # Phase 527 — Runner and command packages: kinds, host build, dispatch, release underlay
 
-**Status (2026-11-01). IN PROGRESS — W3 landed (`packages/runners/` and
-`nros-extension`); W1 next, then W2.** Implements
+**Status (2026-11-02). IN PROGRESS — W3 and W1 landed (`packages/runners/`
+and `nros-extension`; the `runner` and `command` kinds); W2 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -39,6 +39,36 @@ Acceptance:
 - `nros dev ws providers` lists a fixture runner package and a fixture
   command package.
 - `check-provider-announcements` has a self-test case for each refusal.
+
+Status: **DONE** (2026-11-02).
+
+- `package_xml.rs` names the two kinds and classifies every kind's build role
+  (`BuildRole::{Host, Target}`, `build_role_of`). The parser stays one parser
+  and the vocabulary stays open: an unclassified kind constrains nothing.
+- `provider_scan` refuses a package mixing host and target kinds with a scan
+  error, rather than listing a provider `nros build` could not build.
+- `cargo-nano-ros/src/extension_descriptor.rs` reads `nros-runner.toml` and
+  `nros-command.toml` only for the provider a resolution selects
+  (`resolve_runner_in`, `resolve_command_in`). It validates verbs,
+  placeholders and protocol against `nros-extension`'s vocabularies, and
+  derives `bin` from the package's single Cargo bin target. A stated `bin`
+  that differs from it is refused.
+- `check-provider-announcements` gains the `runner` and `command` families,
+  waived from the empty-set refusal by a self-retiring `BORN_EMPTY` row each.
+  It also gains A6 (host/target mix), A7 (a command named like a built-in or
+  reserved verb) and A8 (a stated `bin` that differs from the derived one),
+  each with a self-test case. A7 reads
+  `packages/cli/nros-cli-core/builtin-verbs.txt`, which a test in
+  `nros_cli_core::builtin_verbs` holds equal to the clap tree; it lists the
+  RFC-0118 D2 verbs as reserved until phase-526 W2 places them.
+- Fixture packages live in
+  `packages/cli/nros-cli-core/tests/fixtures/extension_packages/`.
+  `nros-cli/tests/extension_providers.rs` lists and resolves them through
+  `nros ws providers`, which phase-526 moves under `nros dev`.
+- The Zephyr `module.yml` keys were checked against Zephyr's module schema and
+  the west documentation. `module.yml` has `runners: [{file: …}]` and no
+  `west-commands`; west extension commands are declared in the west manifest.
+  RFC-0119's prior-art paragraph is corrected.
 
 ### W2 — The host build role
 

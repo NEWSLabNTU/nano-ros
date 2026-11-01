@@ -1,0 +1,5 @@
+# phase-527 fixture (RFC-0119 D2). `bin` is not stated: the package has one
+# bin target, so it is derived.
+protocol = 1
+verbs    = ["run", "console"]
+needs    = ["elf"]
