@@ -337,8 +337,12 @@ config NROS_ZENOH_MULTI_THREAD
     # was written (13 on 3.7, 47 on 4.4), so for them nothing changes.
     select POSIX_PRIORITY_SCHEDULING if POSIX_THREADS
     help
-      Enable multithreading in zenoh-pico. Uses Zephyr threads for
-      background read/lease tasks. Required for non-blocking operation.
+      Enable multithreading in zenoh-pico. Uses Zephyr threads for the
+      session's background work: since zenoh-pico 1.10 (RFC-0110 D2) one
+      executor thread, `zpico_exec`, runs the read path, the lease, the
+      keep-alive, a reconnect and every zenoh callback, beside the tx-flush
+      task `zpico_flush` (NROS_ZENOH_TX_BATCH). Before it, `zpico_read` and
+      `zpico_lease` were two tasks. Required for non-blocking operation.
       Maps to Z_FEATURE_MULTI_THREAD.
 
 config NROS_ZEPHYR_TASK_STACK_SIZE
@@ -346,11 +350,14 @@ config NROS_ZEPHYR_TASK_STACK_SIZE
     default 0
     help
       NROS_ZEPHYR_STACK_SIZE in zephyr/nros_platform_zephyr_shims.c — the stack
-      given to every task nano-ros creates on Zephyr, which on a zenoh image is
-      the read task, the lease task and the tx-flush task. It defaults to
-      CONFIG_MAIN_STACK_SIZE, which couples two unrelated budgets: raising
-      main's stack because MAIN needs it also multiplies into
-      NROS_ZEPHYR_TASK_SLOTS stacks of the same size.
+      given to every task nano-ros creates on Zephyr, which on a zenoh image
+      is the session's executor thread `zpico_exec` (since zenoh-pico 1.10,
+      RFC-0110 D2: the read path, the lease, the keep-alive, a reconnect and
+      every zenoh callback on one stack) and the tx-flush task `zpico_flush`.
+      Before 1.10 they were the read task, the lease task and the tx-flush
+      task. It defaults to CONFIG_MAIN_STACK_SIZE, which couples two
+      unrelated budgets: raising main's stack because MAIN needs it also
+      multiplies into NROS_ZEPHYR_TASK_SLOTS stacks of the same size.
 
       On a 320 KiB part that is a link failure rather than a tuning nuisance.
       Measured on mr_canhubk3/s32k344: MAIN_STACK_SIZE 8192 -> 16384 overflowed
@@ -361,7 +368,23 @@ config NROS_ZEPHYR_TASK_STACK_SIZE
       overflowing thread cannot be enabled.
 
       0 keeps upstream behaviour. Set it to size the zenoh tasks for their own
-      deepest call chain, which is the expiry teardown, independently of main.
+      deepest call chain, independently of main. Since RFC-0110 D2 that chain
+      is `zpico_exec`'s, which now also holds the expiry teardown and the
+      reconnect the lease task used to run; `zpico_flush` needs a fraction
+      of it. Measured peaks (thread analyzer / INIT_STACKS paint, the image's
+      busiest act):
+
+        mr_canhubk3/s32k344, the safety island (C++, 3 nodes, serial link,
+        7 subscriptions, 2 services, 2 clients; its `b` act and a 300 ms
+        overrun act, simple-autoware-safety-island phase 16, 2026-11-02):
+        zpico_exec 1,964 B, zpico_flush 424 B of a stated 4,096 B
+        mps2_an385, C talker (RFC-0110 results): zpico_exec 992 B
+
+      So 4,096 B carries about twice the busiest measured peak. Every image
+      that states this knob should keep that kind of margin from its own
+      measurement: zenoh-pico prints `nros: zenoh executor stack peak <used>
+      of <size> bytes` once at boot where CONFIG_INIT_STACKS and
+      CONFIG_THREAD_STACK_INFO are on (zpico.c, RFC-0110 D2).
 
       PERMANENTLY OPERATOR-STATED (issue 1808), as is CONFIG_MAIN_STACK_SIZE,
       Zephyr's own knob, for the same reason: a stack's depth is a property
@@ -422,7 +445,10 @@ config NROS_ZENOH_AUTO_RECONNECT
       Turning it OFF is a diagnostic and a mitigation. The reconnect runs inside
       `_zp_unicast_failed`, on the lease task, AFTER
       `_z_common_transport_clear` has destroyed the transport's mutexes and
-      freed the lease task's own handle. On this board that reliably ends in
+      freed the lease task's own handle. (That was zenoh-pico before 1.10;
+      since RFC-0110 D2 the lease and the reconnect are futures on the
+      session's executor thread `zpico_exec`, and no task handle is freed
+      under them.) On this board that reliably ends in
 
           ASSERTION FAIL [z_spin_lock_valid(l)]  Invalid spinlock
 
