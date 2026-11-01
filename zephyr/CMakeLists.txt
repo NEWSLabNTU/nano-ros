@@ -220,6 +220,16 @@ zephyr_library_named(nros)
 # sys_rand_get, getaddrinfo) that nros-platform-zephyr needs to call via FFI.
 zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_platform_zephyr_shims.c)
 
+# Issue 2206 -- ARMv6-M (Cortex-M0/M0+) has no LDREX/STREX, so GCC lowers C11
+# atomic read-modify-write to `__atomic_*_4` libcalls nothing in the SDK
+# provides. The file answers them over Zephyr's own `atomic_*` API (which
+# Zephyr implements in C on exactly this architecture). ARMv8-M Baseline has
+# the exclusives, hence the second condition -- the same one Zephyr's
+# `ARMV6_M_ARMV8_M_BASELINE` uses to select `ATOMIC_OPERATIONS_C`.
+if(CONFIG_ARMV6_M_ARMV8_M_BASELINE AND NOT CONFIG_ARMV8_M_BASELINE)
+    zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_armv6m_atomic.c)
+endif()
+
 # Task stacks for `nros_zephyr_task_create`. Both tokens are #ifndef-guarded in
 # the shim; NROS_ZEPHYR_STACK_SIZE otherwise derives from CONFIG_MAIN_STACK_SIZE,
 # which couples main's budget to every task nano-ros creates and makes main's

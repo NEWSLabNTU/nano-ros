@@ -15,8 +15,10 @@
 //! one record at a time, and a record raised during a delivery is held and
 //! delivered after it, a bounded number of passes per dispatch (`early`).
 
-#[cfg(target_has_atomic = "ptr")]
-use core::sync::atomic::{AtomicBool, Ordering};
+// issue 2206 -- `portable_atomic`, never `core::sync::atomic`: the installer's
+// `swap` is a read-modify-write, which a CAS-less target (thumbv6m, riscv32imc)
+// gets only through the polyfill this crate's manifest selects there.
+use portable_atomic::{AtomicBool, Ordering};
 
 use crate::{LogSink, Record, Severity};
 
@@ -189,12 +191,12 @@ impl log::Log for LogCrateBridge {
 }
 
 // `log::set_logger`/`set_max_level` exist only where the target has
-// pointer-width atomics; a CAS-less target (riscv32imc, esp32-qemu) gets the
-// `_racy` variants and calls them itself. [`admits`] needs neither, which is
-// why the board sinks on such a target can still use this module (issue 1949).
-#[cfg(target_has_atomic = "ptr")]
+// pointer-width atomics; a CAS-less target (thumbv6m, riscv32imc, esp32-qemu)
+// gets the `_racy` variants. [`install_log_crate_bridge`] picks the right pair
+// itself, so every caller has one spelling on every target (issue 2206: a
+// Cortex-M0+ Zephyr image failed to compile at the one caller that assumed
+// the atomic pair). [`admits`] needs neither (issue 1949).
 static BRIDGE_INSTALLED: AtomicBool = AtomicBool::new(false);
-#[cfg(any(target_has_atomic = "ptr", test))]
 static BRIDGE: LogCrateBridge = LogCrateBridge;
 
 /// Install [`LogCrateBridge`] as the process-wide `log::Log` impl.
@@ -206,13 +208,26 @@ static BRIDGE: LogCrateBridge = LogCrateBridge;
 ///
 /// Returns `Err(log::SetLoggerError)` if the process already
 /// installed a different `log::Log` impl.
-#[cfg(target_has_atomic = "ptr")]
 pub fn install_log_crate_bridge() -> Result<(), log::SetLoggerError> {
     if BRIDGE_INSTALLED.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
-    log::set_logger(&BRIDGE)?;
-    log::set_max_level(log::LevelFilter::Trace);
+    #[cfg(target_has_atomic = "ptr")]
+    {
+        log::set_logger(&BRIDGE)?;
+        log::set_max_level(log::LevelFilter::Trace);
+    }
+    #[cfg(not(target_has_atomic = "ptr"))]
+    // SAFETY: the `_racy` pair must not race another `set_logger*` /
+    // `set_max_level*` call. The `swap` above admits exactly one caller here,
+    // and the callers are the boot funnels (`nros::main!`, `nros_init`), which
+    // run before the executor opens or any tier task is spawned. A CAS-less
+    // target is single-core (the polyfill's own assumption), so nothing else
+    // can be inside the `log` crate's install at the same moment.
+    unsafe {
+        log::set_logger_racy(&BRIDGE)?;
+        log::set_max_level_racy(log::LevelFilter::Trace);
+    }
     Ok(())
 }
 

@@ -3968,10 +3968,18 @@ no-std:
     lending_feats="nros-rmw-cffi/lending,nros-node/rmw-cffi,nros-node/rmw-lending"
     # `rustup target add` FIRST, serially: two concurrent adds of different
     # targets touch the same toolchain dir.
-    for target in thumbv7m-none-eabi riscv32imc-unknown-none-elf; do
+    for target in thumbv7m-none-eabi riscv32imc-unknown-none-elf thumbv6m-none-eabi; do
         rustup target add "$target" >/dev/null 2>&1 || true
     done
-    # The two targets are independent `cargo check`s, so run them under the
+    # issue 2206 — thumbv6m (Cortex-M0/M0+, a Zephyr Pico image) is the CAS-less
+    # ARM target, and the one a CAS-only site breaks without anything else
+    # noticing: riscv32imc is CAS-less too, but `log-compat` (the `log` facade
+    # bridge every Zephyr C/C++ image installs) was checked on neither, which is
+    # how `install_log_crate_bridge` stayed atomic-only. Both CAS-less targets
+    # now check that slice; the C++ half (`nros-cpp`'s drop throttle) needs the
+    # cross C compiler, so it lives in the feature sweep's CROSS table.
+    logcompat="-p nros-log -p nros-platform-cffi --no-default-features --features nros-log/log-compat,nros-platform-cffi/log-compat"
+    # The targets are independent `cargo check`s, so run them under the
     # jobserver rather than back to back (phase-336 W7). nros-rmw-cffi needs ptr
     # atomics — Cortex-M only (riscv32imc lacks them; mirrors ci.yml's per-target
     # crate set).
@@ -3983,6 +3991,11 @@ no-std:
         "echo '== check-no-std: executor slice (alloc+rmw-cffi), riscv32imc ==' && cargo check $rmw_crates --no-default-features --features alloc,rmw-cffi --target riscv32imc-unknown-none-elf" \
         "echo '== check-no-std: lending slice (NO alloc), thumbv7m ==' && cargo check -p nros-rmw-cffi -p nros-node --no-default-features --features $lending_feats --target thumbv7m-none-eabi" \
         "echo '== check-no-std: lending slice (NO alloc), riscv32imc ==' && cargo check -p nros-rmw-cffi -p nros-node --no-default-features --features $lending_feats --target riscv32imc-unknown-none-elf" \
+        "echo '== check-no-std: thumbv6m-none-eabi ==' && cargo check $crates -p nros-rmw-cffi --no-default-features --target thumbv6m-none-eabi" \
+        "echo '== check-no-std: executor slice (alloc+rmw-cffi), thumbv6m ==' && cargo check $rmw_crates --no-default-features --features alloc,rmw-cffi --target thumbv6m-none-eabi" \
+        "echo '== check-no-std: lending slice (NO alloc), thumbv6m ==' && cargo check -p nros-rmw-cffi -p nros-node --no-default-features --features $lending_feats --target thumbv6m-none-eabi" \
+        "echo '== check-no-std: log-compat slice, thumbv6m ==' && cargo check $logcompat --target thumbv6m-none-eabi" \
+        "echo '== check-no-std: log-compat slice, riscv32imc ==' && cargo check $logcompat --target riscv32imc-unknown-none-elf" \
         | nros_pool_run no-std
     echo "no-std OK."
 

@@ -2533,6 +2533,11 @@ triple = "thumbv8m.main-none-eabihf"
 [rust.target.i686-linux]
 triple = "i686-unknown-linux-gnu"
 
+# issue 2206 — ARMv6-M (Cortex-M0/M0+): the RP2040 of the Pico W. No CAS, so
+# Rust read-modify-write goes through `portable-atomic`'s single-core polyfill.
+[rust.target.thumbv6m]
+triple = "thumbv6m-none-eabi"
+
 [rust.target.riscv32imc]
 triple = "riscv32imc-unknown-none-elf"
 

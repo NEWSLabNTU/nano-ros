@@ -28,8 +28,11 @@ use nros_node::executor::ffi::ExecutorFfi as _;
 /// `nros_node::executor::arena`'s `DROPPED_TAKES` is one: the C++ storage is a
 /// bare `RmwSubscriber` and the topic lives on the C++ `Subscription<M>` class,
 /// so there is no per-entity place here to put one without changing the ABI.
-static SAMPLES_DROPPED_TOO_SMALL: core::sync::atomic::AtomicU32 =
-    core::sync::atomic::AtomicU32::new(0);
+///
+/// `portable_atomic`, never `core::sync::atomic` (issue 2206): the throttle
+/// needs `fetch_add`, which a CAS-less target (thumbv6m, a Cortex-M0+ Zephyr
+/// image) has only through the polyfill this crate's manifest selects there.
+static SAMPLES_DROPPED_TOO_SMALL: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 
 /// Say that a C++ take was thrown away, and put it in the boot report.
 ///
@@ -70,7 +73,7 @@ static SAMPLES_DROPPED_TOO_SMALL: core::sync::atomic::AtomicU32 =
 /// this comment; the line carries the two numbers and the one knob.
 #[cold]
 fn note_sample_dropped_too_small(err: &TransportError, buf_len: usize, needed: Option<usize>) {
-    let n = SAMPLES_DROPPED_TOO_SMALL.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    let n = SAMPLES_DROPPED_TOO_SMALL.fetch_add(1, portable_atomic::Ordering::Relaxed);
     // The RECORD, always -- a board with no console is exactly the case this
     // exists for, and it is the throttled LOG that would tell it nothing.
     nros_node::boot_report::note_sample_dropped_too_small();
