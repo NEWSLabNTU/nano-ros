@@ -171,6 +171,7 @@ dependencies = [
  "clap",
  "eyre",
  "indicatif",
+ "nros-extension",
  "nros-lang",
  "nros-launcher",
  "nros-msg-to-idl",

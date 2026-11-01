@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>fixture_runner</name>
+  <version>0.1.0</version>
+  <description>phase-527 test fixture: a runner package (RFC-0119 D1). No board uses it.</description>
+  <maintainer email="noreply@example.com">nano-ros</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="runner" name="fixture"/>
+  </export>
+</package>

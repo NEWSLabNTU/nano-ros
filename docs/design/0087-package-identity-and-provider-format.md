@@ -155,7 +155,8 @@ platform). `<nano_ros …/>` exists today (91 files: `deploy` 90, `rmw` 51,
 `board` 50). `<nano_ros_uses>` is new.
 
 **The two directions are not unified, and the reason is `deploy`.** Provider
-kinds are `rmw`, `board`, `platform` (and later `serdes`). `deploy` is *not* a
+kinds are `rmw`, `board`, `platform` (and later `serdes`; RFC-0119 adds the
+host-tool kinds `runner` and `command`). `deploy` is *not* a
 kind — it names a `[deploy.*]` block in `system.toml`, which
 `NanoRosPackageXml.cmake` maps to the `NROS_PLATFORM` axis. So the
 consumption tag is not provider selection under different attribute names; it
