@@ -203,8 +203,13 @@ pub fn join(
         }
     }
 
+    // The model's frame facts about ingress travel with its rows: a probe
+    // never sees a contract, so without this a leaf that declares an ingress
+    // reads as declaring none (no read-task budget, no RFC-0074 board check).
+    let mut inventory = probe.with_components(rows_out);
+    inventory.adopt_declared_ingress(&contract);
     Joined {
-        inventory: probe.with_components(rows_out),
+        inventory,
         contract_seen: true,
         notes,
     }
@@ -579,6 +584,11 @@ mod tests {
     /// Built as YAML and parsed rather than by poking struct fields, so the
     /// test exercises the same shape `nros-launch-resolve` writes.
     fn model_yaml(node: &str, topic: &str, ty: &str, remap: &str) -> SystemModel {
+        model_yaml_qos(node, topic, ty, remap, QOS_DEPTH_1)
+    }
+
+    /// [`model_yaml`] with the subscription's contract block given.
+    fn model_yaml_qos(node: &str, topic: &str, ty: &str, remap: &str, qos: &str) -> SystemModel {
         let text = format!(
             "meta:\n\
              \x20 version: 1\n\
@@ -598,7 +608,7 @@ mod tests {
              contracts:\n\
              \x20 sub_endpoints:\n\
              \x20   /{node}/ep:\n\
-             {QOS_DEPTH_1}\n"
+             {qos}\n"
         );
         SystemModel::from_yaml_str(&text).expect("fixture model parses")
     }
@@ -656,6 +666,62 @@ mod tests {
         assert_eq!(row.name.as_deref(), Some("/chatter"));
         assert!(row.contract_refusal.is_none());
         assert!(j.notes.is_empty(), "{:?}", j.notes);
+    }
+
+    /// A contract's declared ingress reaches the joined inventory's FRAME, not
+    /// only its row: the read-task budget and the declaration list. The probe
+    /// side saw no model, so before the fold both were empty and the cargo
+    /// leaf's descriptor refused `rx_task_budget_*` as "no subscriber
+    /// declares `ingress`".
+    #[test]
+    fn a_declared_ingress_reaches_the_joined_frame() {
+        let m = model_yaml_qos(
+            "listener",
+            "/chatter",
+            "std_msgs/msg/String",
+            "",
+            "      qos:\n        history: keep_last\n        depth: 1\n      ingress:\n        rate_hz: 50\n        burst: 4",
+        );
+        let p = probe(
+            "listener",
+            vec![probe_sub(
+                "std_msgs/msg/String",
+                "on_chatter",
+                Some("/chatter"),
+            )],
+        );
+        assert!(
+            p.rx_task_budget().is_none(),
+            "the probe alone declares nothing"
+        );
+        let j = join(
+            &p,
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
+        );
+        let b = j.inventory.rx_task_budget().expect("the budget is derived");
+        assert_eq!(b.frames, 4);
+        assert_eq!(b.rest_us, 80_000, "4 x 10^6 / 50");
+        assert_eq!(j.inventory.rx_ingress().len(), 1);
+    }
+
+    /// Negative control: a contract with no ingress leaves the frame empty.
+    #[test]
+    fn no_declared_ingress_leaves_the_joined_frame_empty() {
+        let m = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
+        let p = probe(
+            "listener",
+            vec![probe_sub(
+                "std_msgs/msg/String",
+                "on_chatter",
+                Some("/chatter"),
+            )],
+        );
+        let j = join(
+            &p,
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
+        );
+        assert!(j.inventory.rx_task_budget().is_none());
+        assert!(j.inventory.rx_ingress().is_empty());
     }
 
     /// MUTATION CONTROL for the key: a probe row whose written topic is NOT the
