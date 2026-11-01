@@ -34,9 +34,11 @@ pub struct Args {
     #[arg(long = "launch", value_name = "FILE")]
     pub launch: Option<String>,
 
-    /// Launch argument binding `key=value` (repeatable). Arg-bound variants
-    /// must match a `[[model]]` declaration in `system.toml` (phase-330
-    /// W4.0 derive-plus-declare).
+    /// Launch argument binding `key=value` (repeatable).
+    ///
+    /// Arg-bound variants must match a `[[model]]` declaration in
+    /// `system.toml`.
+    // phase-330 W4.0 derive-plus-declare.
     #[arg(long = "arg", value_name = "K=V")]
     pub args: Vec<String>,
 }

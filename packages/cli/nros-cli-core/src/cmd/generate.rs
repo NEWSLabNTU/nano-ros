@@ -40,8 +40,10 @@ pub struct Args {
     #[arg(long, default_value = rosidl_codegen::DEFAULT_ROS_EDITION)]
     pub ros_edition: String,
 
-    /// Explicit per-field capacity config (`nros-codegen.toml`, RFC-0033).
+    /// Explicit per-field capacity config (`nros-codegen.toml`).
+    ///
     /// Wins over any file discovered by walking up from the manifest dir.
+    // The capacity config format is RFC-0033.
     #[arg(long)]
     pub codegen_config: Option<PathBuf>,
 
@@ -73,15 +75,18 @@ pub struct Args {
     #[arg(long, value_parser = parse_rename)]
     pub rename: Vec<(String, String)>,
 
-    /// Phase 212.K.7.1 (deprecated, no-op) — accepted for backwards
-    /// compatibility with K.5 invocation sites. Generated msg crates
-    /// are now RMW-agnostic; the `<pkg>/cyclonedds` Cargo feature is
-    /// no longer emitted. Use `nros codegen cyclonedds-descriptors`
-    /// for host-side descriptor C emit.
+    /// Deprecated, no-op: accepted for backwards compatibility.
+    ///
+    /// Generated msg crates are RMW-agnostic; the `<pkg>/cyclonedds` Cargo
+    /// feature is not emitted. Use `nros codegen cyclonedds-descriptors` for
+    /// host-side descriptor C emit.
+    // Phase 212.K.7.1 deprecated this; it is accepted for compatibility with
+    // the K.5 invocation sites.
     #[arg(long, hide = true)]
     pub no_cyclonedds: bool,
 
-    /// Phase 212.K.7.1 (deprecated, no-op) — see `--no-cyclonedds`.
+    /// Deprecated, no-op — see `--no-cyclonedds`.
+    // Phase 212.K.7.1.
     #[arg(long, hide = true)]
     pub cyclonedds_idlc: Option<PathBuf>,
 }
@@ -100,8 +105,10 @@ pub struct RustArgs {
     #[arg(long, default_value = rosidl_codegen::DEFAULT_ROS_EDITION)]
     pub ros_edition: String,
 
-    /// Explicit per-field capacity config (`nros-codegen.toml`, RFC-0033).
+    /// Explicit per-field capacity config (`nros-codegen.toml`).
+    ///
     /// Wins over any file discovered by walking up from the manifest dir.
+    // The capacity config format is RFC-0033.
     #[arg(long)]
     pub codegen_config: Option<PathBuf>,
 
@@ -129,11 +136,13 @@ pub struct RustArgs {
     #[arg(long, value_parser = parse_rename)]
     pub rename: Vec<(String, String)>,
 
-    /// Phase 212.K.7.1 (deprecated, no-op) — see `Args::no_cyclonedds`.
+    /// Deprecated, no-op — see `Args::no_cyclonedds`.
+    // Phase 212.K.7.1.
     #[arg(long, hide = true)]
     pub no_cyclonedds: bool,
 
-    /// Phase 212.K.7.1 (deprecated, no-op) — see `Args::cyclonedds_idlc`.
+    /// Deprecated, no-op — see `Args::cyclonedds_idlc`.
+    // Phase 212.K.7.1.
     #[arg(long, hide = true)]
     pub cyclonedds_idlc: Option<PathBuf>,
 }

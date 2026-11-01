@@ -68,10 +68,12 @@ pub struct WestLeafSizingArgs {
     #[arg(long, value_name = "DIR")]
     pub nano_ros_path: Option<PathBuf>,
 
-    /// The image this configure builds (`-DNROS_IMAGE`, phase-481 W3). A leaf
-    /// states one image per RMW, and the descriptor's backend-dependent rows
-    /// (`registration_path`) are about the one that links. Absent, the leaf's
-    /// own rule picks (one image, or `[system] default_images`).
+    /// The image this configure builds (`-DNROS_IMAGE`).
+    ///
+    /// A leaf states one image per RMW, and the descriptor's backend-dependent
+    /// rows (`registration_path`) are about the one that links. Absent, the
+    /// leaf's own rule picks (one image, or `[system] default_images`).
+    // phase-481 W3.
     #[arg(long, value_name = "ID")]
     pub image: Option<String>,
 }

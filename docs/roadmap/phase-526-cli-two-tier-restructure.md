@@ -1,6 +1,6 @@
 # Phase 526 — The `nros` command tree in two tiers, with ROS 2 flag names and aliases
 
-**Status (2026-11-01). IN PROGRESS — W1 and W2 done; W3 to W5 open.** Implements
+**Status (2026-11-01). IN PROGRESS — W1, W2 and W5 done; W3 and W4 open.** Implements
 [RFC-0117](../design/0117-cli-command-tiers.md). Comes before
 [phase-525](phase-525-adoption-front-doors.md) W1, so the help-text id sweep
 runs once, over the final verb names. Independent of phase-527 to phase-529,
@@ -132,6 +132,16 @@ Acceptance:
 - A self-test plants one old spelling and sees the gate fail.
 
 ### W5 — Help text from `//` comments
+
+**Status: DONE.** Every clap verb, subcommand, flag and value-enum variant
+under `packages/cli/nros-cli-core/src/cmd/` and `packages/cli/nros-cli/src/main.rs`
+now renders a `///` that says what it does; the phase, issue and RFC history
+moved into a `//` comment directly below it, beside the code. Measured by
+walking `--help` for every command path (the user tier and the `nros dev`
+tree, 93 paths) and counting lines that match a phase / issue / RFC / `#NNN` /
+`W<n>` pattern: 177 on the W2 tree, 0 after. (The 238 below was measured on an
+older tree whose help wrapped differently, so it counts lines, not ids, on a
+different layout.)
 
 - For every verb and flag, move the phase, issue or RFC history out of the
   `///` doc comment clap renders into a `//` comment above it. The `///` text

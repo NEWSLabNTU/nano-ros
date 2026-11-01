@@ -27,24 +27,28 @@ pub enum Args {
     /// List every board crate, with its support status and cadence
     List(ListArgs),
     /// Print a board's support evidence: status, where it runs, cadence,
-    /// breadth and the book chapters that run it (RFC-0114).
+    /// breadth and the book chapters that run it.
+    // RFC-0114.
     Show(ShowArgs),
     /// Print a board's resolved descriptor as JSON.
     Info(InfoArgs),
-    /// Scaffold a new board package (phase-375 W2/W9).
+    /// Scaffold a new board package.
+    // phase-375 W2/W9.
     New(crate::cmd::board_new::NewArgs),
-    /// Project a board descriptor into cmake variables (RFC-0064 R5 D4).
+    /// Project a board descriptor into cmake variables.
     ///
     /// Written per configure into the build directory by
     /// `nano_ros_use_board()`; never committed. The descriptor is the single
     /// authored source, and this is the mechanical projection of it.
+    // RFC-0064 R5 D4.
     #[command(hide = true)]
     CmakeVars(CmakeVarsArgs),
-    /// Print a board's resolved network identity defaults (phase-484 W4b).
+    /// Print a board's resolved network identity defaults.
     ///
     /// The board's `[board.net]` over the platform default — the one value the
     /// board crate's `Config::default()`, its cargo-road C `NROS_APP_CONFIG`
     /// and its cmake-road C `NROS_APP_CONFIG` all use.
+    // phase-484 W4b.
     #[command(hide = true)]
     Net(NetArgs),
 }
@@ -64,11 +68,13 @@ pub struct NetArgs {
     /// board key's directory is.
     #[arg(long, default_value = "toml")]
     pub format: String,
-    /// An image's resolved network (`NROS_IMAGE_NET`, RFC-0103 D10f): its
-    /// primary interface replaces the board default. Empty or absent keeps the
-    /// board default. It replaced `--ip-last` / `--mac-last`, which let a build
-    /// row restate one octet of an address the image's `system.toml` now owns
-    /// (phase-497 W2).
+    /// An image's resolved network (`NROS_IMAGE_NET`): its primary interface
+    /// replaces the board default.
+    ///
+    /// Empty or absent keeps the board default.
+    // RFC-0103 D10f. It replaced `--ip-last` / `--mac-last`, which let a
+    // build row restate one octet of an address the image's `system.toml`
+    // now owns (phase-497 W2).
     #[arg(long, allow_hyphen_values = true)]
     pub image_net: Option<String>,
 }
@@ -97,11 +103,13 @@ pub struct ShowArgs {
 
 #[derive(Debug, ClapArgs)]
 pub struct InfoArgs {
-    /// Board key. Resolves to a board CRATE
-    /// (`packages/boards/nros-board-<name>/`) or, since phase-337 W9.a, to a
-    /// conf BUNDLE under a family crate
+    /// Board key.
+    ///
+    /// Resolves to a board CRATE (`packages/boards/nros-board-<name>/`) or to
+    /// a conf BUNDLE under a family crate
     /// (`packages/boards/nros-board-<family>/boards/<name>/`) — e.g.
     /// `fvp-aemv8r-smp` is `nros-board-zephyr/boards/fvp-aemv8r-smp/`.
+    // Conf bundles resolve since phase-337 W9.a.
     pub name: String,
     /// nano-ros SDK root holding the board catalog. Default:
     /// `$NROS_WORKSPACE_ROOT`, a checkout enclosing cwd, then this `nros`

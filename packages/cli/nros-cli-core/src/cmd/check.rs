@@ -59,29 +59,36 @@ fn legacy_overlay_warnings(system_toml_path: &Path) -> Result<Vec<String>> {
 pub struct Args {
     /// Path to nros-plan.json, a bringup `system.toml` (or a directory
     /// containing one), or a `<bringup>` pkg directory when `--bringup` is
-    /// set (Phase 212.F).
+    /// set.
+    // The `--bringup` form is Phase 212.F.
     #[arg(default_value = "build/nros/nros-plan.json")]
     pub plan: PathBuf,
 
-    /// Phase 212.G.2 — also check a package directory for generated
-    /// `package.xml` drift (a generator-marked file edited by hand).
+    /// Also check a package directory for generated `package.xml` drift (a
+    /// generator-marked file edited by hand).
+    ///
     /// May be passed multiple times.
+    // Phase 212.G.2.
     #[arg(long = "package-xml-drift")]
     pub package_xml_drift: Vec<PathBuf>,
 
-    /// Phase 212.F — lint the `plan` argument as a `<bringup>` package
-    /// directory: reject `Cargo.toml`, `CMakeLists.txt`, `src/`, or any
-    /// nested `add_executable(`. The bringup package must be pure
-    /// declarative (see docs/design/0024-multi-node-workspace-layout.md §4).
+    /// Lint the `plan` argument as a `<bringup>` package directory.
+    ///
+    /// Rejects `Cargo.toml`, `CMakeLists.txt`, `src/`, or any nested
+    /// `add_executable(`. The bringup package must be pure declarative.
+    // Phase 212.F. The pure-declarative rule is
+    // docs/design/0024-multi-node-workspace-layout.md §4.
     #[arg(long)]
     pub bringup: bool,
 
-    /// Phase 212.L — walk a workspace root and run L.4 / L.8 / L.11:
-    /// `<pkg>::<Class>` enforcement on every `[[component]]` row, stray
-    /// `system.toml` next to a component pkg, and per-pkg
+    /// Walk a workspace root and run the workspace layout checks.
+    ///
+    /// Checks `<pkg>::<Class>` enforcement on every `[[component]]` row, a
+    /// stray `system.toml` next to a component pkg, and a per-pkg
     /// `.cargo/config.toml` carrying `[patch.crates-io]` (warn-only). When
     /// the flag is passed with no value the workspace defaults to the
     /// current directory.
+    // Phase 212.L — the three checks are L.4 / L.8 / L.11.
     #[arg(long, num_args = 0..=1, default_missing_value = ".", value_name = "DIR")]
     pub workspace: Option<PathBuf>,
 }

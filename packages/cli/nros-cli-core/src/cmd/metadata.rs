@@ -35,8 +35,9 @@ pub struct Args {
     #[arg(long = "metadata")]
     pub metadata: Vec<PathBuf>,
 
-    /// Phase 172.E — produce missing source metadata by compiling + running
-    /// each declared component in metadata mode (the metadata-mode build).
+    /// Produce missing source metadata by compiling + running each declared
+    /// component in metadata mode (the metadata-mode build).
+    // Phase 172.E.
     #[arg(long)]
     pub build: bool,
 
