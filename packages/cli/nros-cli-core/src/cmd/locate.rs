@@ -424,9 +424,10 @@ fn run_tool(
         let exe = std::env::current_exe()?;
         let Some(path) = launch_resolver_bin_for_exe(&exe, checkout) else {
             bail!(
-                "{LAUNCH_RESOLVER} not found ($NROS_LAUNCH_RESOLVE, this checkout's build, \
-                 beside this nros, the store) — run `just setup-launch-resolve` (or \
-                 ./scripts/bootstrap.sh)"
+                "{}",
+                crate::orchestration::model_location::launch_resolver_missing_help_for_exe(
+                    &exe, checkout
+                )
             );
         };
         (path, "model_location::launch_resolver_from")

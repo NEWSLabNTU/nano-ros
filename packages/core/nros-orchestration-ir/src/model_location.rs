@@ -308,11 +308,22 @@ pub fn launch_resolver_bin_near(near: Option<&Path>) -> Option<PathBuf> {
 /// this, so the CLI, the shell (which reads `nros locate`) and a build script
 /// (which calls [`launch_resolver_bin_near`]) share ONE ladder.
 pub fn launch_resolver_bin_for_exe(exe: &Path, near: Option<&Path>) -> Option<PathBuf> {
-    launch_resolver_from(&LaunchResolverLadder {
+    launch_resolver_from(&ladder_for_exe(exe, near))
+}
+
+/// [`launch_resolver_missing_help`] over the ladder
+/// [`launch_resolver_bin_for_exe`] asked, so the refusal names the rungs that
+/// lookup actually tried.
+pub fn launch_resolver_missing_help_for_exe(exe: &Path, near: Option<&Path>) -> String {
+    launch_resolver_missing_help(&ladder_for_exe(exe, near))
+}
+
+fn ladder_for_exe<'a>(exe: &'a Path, near: Option<&'a Path>) -> LaunchResolverLadder<'a> {
+    LaunchResolverLadder {
         near: Some(near.unwrap_or(exe)),
         beside: exe.parent(),
         ..LaunchResolverLadder::from_env()
-    })
+    }
 }
 
 /// The inputs of the ONE `nros-launch-resolve` ladder, stated rather than
@@ -379,33 +390,67 @@ pub fn launch_resolver_in_checkout(root: &Path) -> PathBuf {
 /// CLI that actually spawns the resolver never read it — an identity computed
 /// from it described a binary nobody ran.
 pub fn launch_resolver_from(l: &LaunchResolverLadder<'_>) -> Option<PathBuf> {
-    if let Some(p) = &l.explicit
-        && p.is_file()
-    {
-        return Some(p.clone());
-    }
+    launch_resolver_rungs(l)
+        .into_iter()
+        .find_map(|(_, p)| p.filter(|p| p.is_file()))
+}
+
+/// Every rung of [`launch_resolver_from`], in order, with the path it would
+/// answer (`None`: the rung has no input here — the variable is unset, there
+/// is no checkout). [`launch_resolver_from`] is the first that is a file, so a
+/// refusal built from this list names exactly the places the lookup tried
+/// (issue 2205).
+pub fn launch_resolver_rungs(l: &LaunchResolverLadder<'_>) -> Vec<(&'static str, Option<PathBuf>)> {
     let here = l
         .near
         .map(|n| n.canonicalize().unwrap_or_else(|_| n.to_path_buf()))
         .and_then(|n| nros_build_paths::checkout_root_of(&n))
         .or_else(|| l.own_checkout.clone());
-    if let Some(p) = here
-        .map(|h| launch_resolver_in_checkout(&h))
-        .filter(|p| p.is_file())
-    {
-        return Some(p);
+    vec![
+        ("$NROS_LAUNCH_RESOLVE", l.explicit.clone()),
+        (
+            "this checkout's build",
+            here.map(|h| launch_resolver_in_checkout(&h)),
+        ),
+        (
+            "beside this nros (installed)",
+            l.beside.map(|d| d.join(LAUNCH_RESOLVER)),
+        ),
+        (
+            "the store",
+            l.store
+                .as_ref()
+                .map(|s| s.join("bin").join(LAUNCH_RESOLVER)),
+        ),
+    ]
+}
+
+/// Issue 2205 — why the resolver was not found, and how each road provides it:
+/// the ONE text `nros sync` and `nros locate tool nros-launch-resolve` print.
+///
+/// `nros sync` used to say it "is not next to the `nros` binary", which is one
+/// of four rungs, and named only the checkout roads. A CLI built outside the
+/// layouts the ladder knows (into its own `--target-dir`, say) read that as "copy it
+/// beside nros", and the `$NROS_LAUNCH_RESOLVE` override that serves exactly
+/// that case went unmentioned.
+pub fn launch_resolver_missing_help(l: &LaunchResolverLadder<'_>) -> String {
+    let mut out = format!("`{LAUNCH_RESOLVER}` not found. Looked at, in order:\n");
+    for (rung, path) in launch_resolver_rungs(l) {
+        let seen = match path {
+            Some(p) => format!("{} (no such file)", p.display()),
+            None => "(not applicable here)".to_string(),
+        };
+        out.push_str(&format!("  {rung:<30} {seen}\n"));
     }
-    if let Some(p) = l
-        .beside
-        .map(|d| d.join(LAUNCH_RESOLVER))
-        .filter(|p| p.is_file())
-    {
-        return Some(p);
-    }
-    l.store
-        .as_ref()
-        .map(|s| s.join("bin").join(LAUNCH_RESOLVER))
-        .filter(|p| p.is_file())
+    out.push_str(
+        "Provide it:\n  \
+         a nano-ros checkout:  ./scripts/bootstrap.sh  (contributors: just setup-launch-resolve); it builds \
+         from the play_launch submodule:\n                        \
+         git submodule update --init packages/cli/third-party/play_launch\n  \
+         an installed nros:    the release asset ships it beside `nros`; re-run scripts/install.sh\n  \
+         built anywhere else:  export NROS_LAUNCH_RESOLVE=<path to nros-launch-resolve>",
+    );
+    out
 }
 
 /// Where a consumer may WRITE a model it had to resolve itself, in the order
