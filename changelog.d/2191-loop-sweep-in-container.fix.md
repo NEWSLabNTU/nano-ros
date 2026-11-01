@@ -1,0 +1,1 @@
+The contained runner's between-jobs sweep now runs in a throwaway container with the runner's volumes (`runner-container.sh <labels> --sweep`), so it reaches the fixture tree instead of sweeping the operator's own checkout; `runner-doctor.sh` gains an opt-in free-space floor for the runner work dir, `NROS_RUNNER_MIN_FREE_GIB` (issue 2191).

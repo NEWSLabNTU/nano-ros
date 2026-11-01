@@ -246,6 +246,81 @@ else
 $out7"
 fi
 
+# --- issue 2191: the between-jobs sweep runs where the volumes are -------------
+#
+# The contained runner's tree lives in the `nros-runner-work` volume, which the
+# host cannot see, so `runner-loop-container.sh` sweeps through
+# `runner-container.sh --sweep`: a throwaway container from the runner image
+# with the job container's volumes. A stub engine stands in for docker — it
+# logs its argv and, for the sweep, runs the `-c` script here with the
+# container paths pointed at $w4.
+w4="$work/w4"
+tree4="$w4/work/nano-ros/nros-fixture-tree"
+mkdir -p "$tree4/.git" "$tree4/scripts/ci" "$w4/src/scripts/ci" "$tree4/scripts/lib" "$w4/src/scripts/lib"
+# The sweep asks each tree's own grep helper whether it knows --provision.
+cp "$repo_root/scripts/lib/grep-q.sh" "$tree4/scripts/lib/"
+cp "$repo_root/scripts/lib/grep-q.sh" "$w4/src/scripts/lib/"
+cat > "$w4/engine" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$W4/engine.log"
+prev=""
+for a in "$@"; do
+    if [ "$prev" = "-c" ]; then exec bash -c "$a"; fi
+    prev="$a"
+done
+exit 0
+STUB
+chmod +x "$w4/engine"
+# The tree's own runner-sweep.sh, recording how it was called.
+_stub_sweep() { # <path> <with-provision:1|0>
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'echo "root=$NROS_RUNNER_REPO_ROOT work=$NROS_SWEEP_WORK args=$*" >> "$W4/swept"\n'
+        [ "$2" = 1 ] && printf 'case x in --provision) ;; esac\n'
+        printf 'exit 0\n'
+    } > "$1"
+    chmod +x "$1"
+}
+_stub_sweep "$tree4/scripts/ci/runner-sweep.sh" 1
+_stub_sweep "$w4/src/scripts/ci/runner-sweep.sh" 0
+_sweep_w4() {
+    W4="$w4" NROS_CONTAINER_ENGINE="$w4/engine" NROS_RUNNER_NAME=t-runner \
+        GH_REPO=NEWSLabNTU/nano-ros NROS_RUNNER_WORK_DIR="$w4/work" NROS_SRC="$w4/src" \
+        bash "$repo_root/scripts/ci/runner-container.sh" nros-big "$@" 2>&1 || true
+}
+rm -f "$w4/swept" "$w4/engine.log"
+out8="$(_sweep_w4 --sweep)"
+if nros_grep_q "^root=$tree4 work=$w4/work args=--disk --provision\$" "$w4/swept" 2>/dev/null; then
+    ok "--sweep runs the TREE's own sweep over the tree and the work dir, with --provision"
+else
+    fail "--sweep did not sweep the tree (swept: $(cat "$w4/swept" 2>/dev/null)):
+$out8"
+fi
+# The bootstrap checkout's script can predate --provision; an older script
+# refuses an unknown flag, so it gets --disk alone.
+rm -rf "$tree4/.git" "$w4/swept"
+out9="$(_sweep_w4 --sweep)"
+if nros_grep_q "^root=$w4/src work=$w4/work args=--disk\$" "$w4/swept" 2>/dev/null; then
+    ok "with no tree it sweeps the bootstrap checkout, without a flag that script lacks"
+else
+    fail "no-tree sweep wrong (swept: $(cat "$w4/swept" 2>/dev/null)):
+$out9"
+fi
+# Same disk, same confinement as the job container: compare the --run line.
+run_line="$(_sweep_w4 --run --check | grep 'would run: .* run ' || true)"
+sweep_line="$(grep -- '--entrypoint bash' "$w4/engine.log" | head -1)"
+_mounts() { grep -o 'nros-runner-[a-z]*:[^ ]*' <<<"$1" | sort | tr '\n' ' '; }
+if [ -n "$run_line" ] && [ -n "$(_mounts "$sweep_line")" ] \
+   && [ "$(_mounts "$run_line")" = "$(_mounts "$sweep_line")" ] \
+   && nros_grep_q -- '--cap-drop ALL' <<<"$sweep_line" \
+   && nros_grep_q -- '--user runner' <<<"$sweep_line"; then
+    ok "the sweep container mounts the job container's volumes, confined the same way"
+else
+    fail "sweep and job containers differ:
+  run:   $run_line
+  sweep: $sweep_line"
+fi
+
 echo ""
 if [ "$failures" -eq 0 ]; then
     echo "runner-sweep-eviction-order: $checks check(s) passed"
