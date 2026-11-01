@@ -294,6 +294,24 @@ pub fn render(
         Some(rmw) => {
             let sym = rmw_symbol(rmw).map_err(|e| format!("{origin}: [image.{image}] {e}"))?;
             push(&mut out, sym, "y".to_string(), format!("rmw = \"{rmw}\""))?;
+            // Issue 2189 -- zenoh-pico's Zephyr port includes <pthread.h> and
+            // types its tasks and mutexes as pthread objects, so a zenoh image
+            // needs the POSIX API on every line; on 4.4 it is also what turns
+            // on POSIX_SYSTEM_INTERFACES, which the POSIX_PRIORITY_SCHEDULING
+            // that NROS_ZENOH_MULTI_THREAD selects depends on there. The
+            // `nros-zenoh` snippet states it for an image with no system.toml;
+            // this is the same statement for one with. It cannot be a `select`
+            // on NROS_RMW_ZENOH: POSIX_API selects POSIX_NETWORKING, and the
+            // RMW choice's NROS_RMW_XRCE depends on NET_SOCKETS, which Kconfig
+            // refuses as a dependency loop.
+            if sym == "NROS_RMW_ZENOH" {
+                push(
+                    &mut out,
+                    "POSIX_API",
+                    "y".to_string(),
+                    format!("rmw = \"{rmw}\" (zenoh-pico's Zephyr port is pthread-based)"),
+                )?;
+            }
             Some(sym)
         }
         None => None,
@@ -307,6 +325,18 @@ pub fn render(
             "y".to_string(),
             format!("the package's entry is {}", lang.as_str()),
         )?;
+        // Issue 2189 -- `NROS_RUST_API` `depends on RUST`, so an image that
+        // states it without Zephyr's Rust support did not get it: the choice
+        // fell back to `NROS_C_API` with a warning (3.7) or aborted (4.4).
+        // The entry being Rust is what requires RUST, so it is stated here.
+        if lang == Language::Rust {
+            push(
+                &mut out,
+                "RUST",
+                "y".to_string(),
+                "the package's entry is rust (NROS_RUST_API depends on RUST)".to_string(),
+            )?;
+        }
     }
 
     // The declared capability axes (`[system] features`), the same symbols a
@@ -747,6 +777,28 @@ endif # NROS
             !m.contains_key("CONFIG_NROS_CAPABILITY_PARAM_SERVICES"),
             "an undeclared axis keeps its default: {m:?}"
         );
+    }
+
+    /// Issue 2189 — a Rust entry states RUST beside `NROS_RUST_API`, which
+    /// depends on it; a C/C++ entry states no RUST row.
+    #[test]
+    fn a_rust_entry_states_the_rust_support_its_api_depends_on() {
+        let syms = KconfigSymbols::parse(KCONFIG);
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        let m = rows(&render(&l, Some(Language::Rust), &syms, &BTreeMap::new()).unwrap());
+        assert_eq!(m["CONFIG_NROS_RUST_API"], "y");
+        assert_eq!(m["CONFIG_RUST"], "y");
+        assert_eq!(
+            m["CONFIG_POSIX_API"], "y",
+            "a zenoh image states the POSIX API"
+        );
+        for lang in [Language::C, Language::Cpp] {
+            let m = rows(&render(&l, Some(lang), &syms, &BTreeMap::new()).unwrap());
+            assert!(!m.contains_key("CONFIG_RUST"), "{lang:?}: {m:?}");
+        }
     }
 
     /// Each row kind: RMW, language API, endpoint, a paired env row (different
