@@ -552,6 +552,8 @@ build-fvp-board-import:
     # issue 0432 — the gpio pair, without which the `zephyr` crate does not
     # compile for any board with gpio nodes in its devicetree.
     bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$workspace"
+    # issue 2203 — keep the compiler's builtin include dir out of bindgen.
+    bash ./scripts/zephyr/zephyr-lang-rust-bindgen-include-patch.sh "$workspace"
     nros_root="$(pwd)"
     # issue 1379 — resolved BEFORE the `cd "$workspace"` below, like the SDK
     # prefixes: the root handed to the helper is this checkout.

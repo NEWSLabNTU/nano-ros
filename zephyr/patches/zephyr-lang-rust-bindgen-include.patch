@@ -1,0 +1,23 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 75ece41..f379726 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -60,6 +60,18 @@ endfunction()
+ 
+ function(get_include_dirs target dirs)
+   get_target_property(include_dirs ${target} INTERFACE_INCLUDE_DIRECTORIES)
++  # nano-ros: bindgen is clang, so drop the C compiler's builtin include dir
++  # (issue 2203). As a `-I` it shadows clang's resource dir, and GCC's
++  # arm_acle.h (included by CMSIS_6) does not parse under clang.
++  if(include_dirs)
++    list(REMOVE_ITEM include_dirs "$<TARGET_PROPERTY:compiler,nostdinc_include>")
++    if(TARGET compiler)
++      get_property(_nros_nostdinc TARGET compiler PROPERTY nostdinc_include)
++      if(_nros_nostdinc)
++        list(REMOVE_ITEM include_dirs ${_nros_nostdinc})
++      endif()
++    endif()
++  endif()
+   if(include_dirs)
+     set(${dirs} "${include_dirs}" PARENT_SCOPE)
+   else()

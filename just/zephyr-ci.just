@@ -122,6 +122,8 @@ build-fixtures:
     # issue 0432 — the gpio pair, without which the `zephyr` crate does not
     # compile for any board with gpio nodes in its devicetree.
     bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$workspace"
+    # issue 2203 — keep the compiler's builtin include dir out of bindgen.
+    bash ./scripts/zephyr/zephyr-lang-rust-bindgen-include-patch.sh "$workspace"
     # Phase 117.11/13 — add Cortex-R AArch32 (ARMv7-R / ARMv8-R)
     # support to zephyr-lang-rust for the NXP S32Z R52 target.
     bash ./scripts/zephyr/cortex-r-rust-patch.sh "$workspace"
