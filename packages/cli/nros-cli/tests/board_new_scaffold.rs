@@ -9,13 +9,13 @@
 use std::process::Command;
 
 fn nros() -> PathBuf {
-    // The test binary sits in `target/<profile>/deps/`; the CLI is two up.
-    let mut p = std::env::current_exe().expect("test binary path");
-    p.pop();
-    p.pop();
-    p.push("nros");
-    assert!(p.is_file(), "build the CLI first: {}", p.display());
-    p
+    // The binary cargo builds for THIS test run. This test lived in
+    // `nros-cli-core` and found `nros` beside its own binary, which
+    // `cargo test -p nros-cli-core` never rebuilds, so a per-crate run tested
+    // whatever CLI an earlier build left there (`unknown field ...` against a
+    // board descriptor newer than that binary). It moved here for
+    // `CARGO_BIN_EXE_nros`.
+    PathBuf::from(env!("CARGO_BIN_EXE_nros"))
 }
 
 use std::path::PathBuf;
