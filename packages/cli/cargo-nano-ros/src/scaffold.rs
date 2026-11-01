@@ -1136,8 +1136,10 @@ nros-log = {{ version = "*", default-features = false }}
     fs::write(dir.join("Cargo.toml"), cargo_toml)?;
     fs::write(dir.join("src/main.rs"), main_rs)?;
     fs::write(dir.join("src/lib.rs"), lib_rs)?;
-
-    write_default_config_toml(dir)?;
+    // No `.cargo/config.toml` and no `nros.toml` (phase-525 W2, RFC-0116 D6):
+    // the triple, runner and link flags come from the board descriptor, which
+    // `nros sync` / `nros build` render into `build/<image>/nros-cargo.toml`
+    // (RFC-0098 D1), and nothing reads a leaf's `nros.toml`.
     Ok(())
 }
 
@@ -1733,6 +1735,11 @@ mod tests {
             assert!(
                 lib.contains("nros::node!(Talker)"),
                 "{platform}: node lib missing:\n{lib}"
+            );
+            // phase-525 W2 — nothing reads a leaf `nros.toml`.
+            assert!(
+                !d.path().join("nros.toml").exists(),
+                "{platform}: the scaffold wrote nros.toml"
             );
         }
     }

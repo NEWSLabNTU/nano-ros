@@ -14,7 +14,7 @@
 //! ```
 //!
 //! A node package is **board- and RMW-agnostic**: one `nros` dependency with
-//! `alloc` and `rmw-cffi`, and nothing that names a platform. `alloc` is the
+//! `alloc`, `rmw-cffi` and `macros`, and nothing that names a platform. `alloc` is the
 //! universal baseline (it works on the `no_std` targets, and a `std` target
 //! gets `std` from the entry through feature unification); `rmw-cffi` is the
 //! vtable seam, never a concrete backend. The entry chooses the platform, the
@@ -49,6 +49,8 @@ pub struct NodeScaffoldOut {
     pub node_dir: PathBuf,
     pub files: Vec<PathBuf>,
     pub declared_in: Option<PathBuf>,
+    /// The bringup's launch file, when this node was added to it.
+    pub launched_in: Option<PathBuf>,
 }
 
 pub fn scaffold_node(cfg: &NodeScaffold) -> Result<NodeScaffoldOut> {
@@ -106,12 +108,54 @@ pub fn scaffold_node(cfg: &NodeScaffold) -> Result<NodeScaffoldOut> {
         }
         None => None,
     };
+    let launched_in = match &cfg.bringup_dir {
+        Some(b) => add_launch_node(b, &name, &node_name)?,
+        None => None,
+    };
 
     Ok(NodeScaffoldOut {
         node_dir: cfg.node_dir.clone(),
         files,
         declared_in,
+        launched_in,
     })
+}
+
+/// Add `<node pkg exec name/>` to the bringup's launch file (phase-525 W2), so
+/// the node runs as well as being declared: in a workspace the launch file is
+/// what decides which nodes the generated entry boots. The file is
+/// `[system] default_launch` under `launch/`, else `launch/system.launch.xml`.
+/// Returns `None`, touching nothing, when there is no such file or it already
+/// names this package; a launch file this cannot place a line in (no
+/// `</launch>`) is left alone too, since a wrong edit is worse than none.
+fn add_launch_node(bringup: &Path, pkg: &str, node_name: &str) -> Result<Option<PathBuf>> {
+    let file = fs::read_to_string(bringup.join("system.toml"))
+        .ok()
+        .and_then(|t| t.parse::<DocumentMut>().ok())
+        .and_then(|d| {
+            d.get("system")
+                .and_then(|s| s.get("default_launch"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "system.launch.xml".to_string());
+    let path = bringup.join("launch").join(file);
+    let Ok(text) = fs::read_to_string(&path) else {
+        return Ok(None);
+    };
+    if text.contains(&format!("pkg=\"{pkg}\"")) {
+        return Ok(None);
+    }
+    let Some(at) = text.rfind("</launch>") else {
+        return Ok(None);
+    };
+    let line = format!("  <node pkg=\"{pkg}\" exec=\"{node_name}\" name=\"{node_name}\"/>\n");
+    let mut out = String::with_capacity(text.len() + line.len());
+    out.push_str(&text[..at]);
+    out.push_str(&line);
+    out.push_str(&text[at..]);
+    fs::write(&path, out).wrap_err_with(|| format!("write {}", path.display()))?;
+    Ok(Some(path))
 }
 
 /// Append a `[[component]]` row to the bringup.
@@ -185,6 +229,9 @@ fn render_cargo_toml(name: &str) -> String {
 # whole of it: `alloc` is the universal baseline (it works on the `no_std`
 # targets, and a `std` target gets `std` from the entry through feature
 # unification), and `rmw-cffi` is the vtable seam rather than a backend.
+# `macros` because `src/lib.rs` calls `nros::node!` itself: inheriting it from
+# the entry works only where the entry is built, and `nros build` also builds
+# this package on its own.
 #
 # Do NOT add a board crate, a platform port or a concrete `nros-rmw-*` here.
 # The ENTRY package chooses all three, which is what lets this same package be
@@ -203,7 +250,7 @@ publish = false
 crate-type = ["rlib"]
 
 [dependencies]
-nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi"] }}
+nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }}
 log = "0.4"
 "#
     )
@@ -319,7 +366,7 @@ mod tests {
             );
         }
         assert!(
-            manifest.contains(r#"features = ["alloc", "rmw-cffi"]"#),
+            manifest.contains(r#"features = ["alloc", "rmw-cffi", "macros"]"#),
             "{manifest}"
         );
     }
@@ -344,6 +391,46 @@ mod tests {
         // The user's own text survives — that is why this is a toml_edit
         // insertion and not a serialize round-trip.
         assert!(sys.contains("# a comment the user wrote"), "{sys}");
+    }
+
+    /// phase-525 W2 — a bringup with a launch file gets the node's `<node>`
+    /// line too, so the node runs and not only is declared; a second run adds
+    /// nothing, and a bringup with no launch file is left with none.
+    #[test]
+    fn the_bringup_launch_file_gains_the_node() {
+        let d = ws("launch");
+        let launch = d.join("src/demo_bringup/launch/system.launch.xml");
+        std::fs::create_dir_all(launch.parent().unwrap()).unwrap();
+        std::fs::write(
+            &launch,
+            "<launch>\n  <node pkg=\"a\" exec=\"a\" name=\"a\"/>\n</launch>\n",
+        )
+        .unwrap();
+        let out = scaffold_node(&NodeScaffold {
+            node_dir: d.join("src/talker_pkg"),
+            bringup_dir: Some(d.join("src/demo_bringup")),
+        })
+        .expect("scaffolds");
+        assert_eq!(out.launched_in.as_deref(), Some(launch.as_path()));
+        let text = std::fs::read_to_string(&launch).unwrap();
+        assert_eq!(
+            text,
+            "<launch>\n  <node pkg=\"a\" exec=\"a\" name=\"a\"/>\n  \
+             <node pkg=\"talker_pkg\" exec=\"talker\" name=\"talker\"/>\n</launch>\n"
+        );
+        assert_eq!(
+            add_launch_node(&d.join("src/demo_bringup"), "talker_pkg", "talker").unwrap(),
+            None
+        );
+
+        let bare = ws("nolaunch");
+        let out = scaffold_node(&NodeScaffold {
+            node_dir: bare.join("src/talker_pkg"),
+            bringup_dir: Some(bare.join("src/demo_bringup")),
+        })
+        .expect("scaffolds");
+        assert!(out.launched_in.is_none());
+        assert!(!bare.join("src/demo_bringup/launch").exists());
     }
 
     /// A component the bringup ALREADY declares is a no-op, not an error.
