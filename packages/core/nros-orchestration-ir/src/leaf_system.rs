@@ -780,10 +780,24 @@ fn image_system(
         .map_err(|e| format!("{}: {e}", path.display()))?;
     let run =
         crate::system_net::parse_run(image, id).map_err(|e| format!("{}: {e}", path.display()))?;
-    let flash = crate::target_exec::parse_image_flash(image, id)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    let console = crate::target_exec::parse_image_console(image, id)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+    // `[image.<id>.flash|console]` over `[image_defaults]`'s, KEY BY KEY
+    // (phase-528 W1): both are the D5 image rung, and the RunPlan resolver
+    // ladders the result over the board's tables the same way.
+    let (flash, console) = (|| {
+        use crate::target_exec as t;
+        let flash = t::over(
+            t::parse_image_flash(image, id)?.as_ref(),
+            t::parse_flash_at(defaults, "image_defaults")?.as_ref(),
+            t::FlashTable::over,
+        );
+        let console = t::over(
+            t::parse_image_console(image, id)?.as_ref(),
+            t::parse_console_at(defaults, "image_defaults")?.as_ref(),
+            t::ConsoleTable::over,
+        );
+        Ok::<_, String>((flash, console))
+    })()
+    .map_err(|e| format!("{}: {e}", path.display()))?;
     // The image's own `locator`, else the project's `[system] locator`
     // (RFC-0109 D6: the default domain's endpoint when it has no RMW file).
     // (An image whose bringup ships an RMW file uses none of this: the CLI

@@ -257,6 +257,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
     }
     match cmd {
         cmd::Cmd::Build(args) => cmd::build::run(args),
+        cmd::Cmd::Run(args) => cmd::run_plan::run(args),
         cmd::Cmd::Materialize(args) => cmd::materialize::run(args),
         cmd::Cmd::ImageFacts(args) => cmd::image_facts::run(args),
         cmd::Cmd::New(args) => cmd::new::run(*args),
@@ -269,7 +270,6 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
             command: cmd::ws::Sub::Clean(args),
         }),
         cmd::Cmd::Graph(args) => cmd::graph::run(args),
-        cmd::Cmd::Run(args) => cmd::reserved::run("run", args),
         cmd::Cmd::Flash(args) => cmd::reserved::run("flash", args),
         cmd::Cmd::Monitor(args) => cmd::reserved::run("monitor", args),
         cmd::Cmd::Bench(args) => cmd::reserved::run("bench", args),

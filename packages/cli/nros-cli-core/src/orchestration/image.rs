@@ -513,11 +513,19 @@ impl ImageBlock {
             run: nros_orchestration_ir::system_net::ImageRun {
                 nic: self.run.nic.clone().or_else(|| base.run.nic.clone()),
             },
-            // A table, taken whole: an image that states one is making the
-            // choice; the field-by-field ladder over the board's is the
-            // RunPlan resolver's (RFC-0118 D5, phase-528 W1).
-            flash: self.flash.clone().or_else(|| base.flash.clone()),
-            console: self.console.clone().or_else(|| base.console.clone()),
+            // KEY BY KEY (phase-528 W1): `[image.<id>]` and `[image_defaults]`
+            // are both D5's image rung, so the RunPlan resolver sees one
+            // table and ladders it over the board's the same way.
+            flash: nros_orchestration_ir::target_exec::over(
+                self.flash.as_ref(),
+                base.flash.as_ref(),
+                nros_orchestration_ir::target_exec::FlashTable::over,
+            ),
+            console: nros_orchestration_ir::target_exec::over(
+                self.console.as_ref(),
+                base.console.as_ref(),
+                nros_orchestration_ir::target_exec::ConsoleTable::over,
+            ),
             // Layer-1 files CONCATENATE base-then-specific: fragments are
             // ordered and later ones override earlier, which is exactly
             // Zephyr's CONF_FILE semantics, and a board network file in both

@@ -53,6 +53,7 @@ pub mod pin;
 pub mod plan;
 pub mod profile;
 pub mod reserved;
+pub mod run_plan;
 pub mod scaffold_deploy;
 pub mod sdk_front;
 pub mod sdk_path;
@@ -111,8 +112,11 @@ pub enum Cmd {
     /// Rust package. Leaves user-written sections alone.
     Clean(ws::CleanArgs),
 
-    /// Run an image on its target (reserved: not available yet).
-    Run(reserved::Args),
+    /// Run an image on its target: a host process or an emulator
+    /// (RFC-0118 D2). `--dry-run [--why]` prints the resolved RunPlan;
+    /// launching it is phase-528 W4. A hardware image is `nros flash
+    /// --monitor`.
+    Run(run_plan::Args),
 
     /// Flash an image onto a board (reserved: not available yet).
     Flash(reserved::Args),

@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-01). IN PROGRESS — W2 landed; W1, W3 to W5 not started.** Implements
+**Status (2026-11-02). IN PROGRESS — W1 and W2 landed; W3 to W5 not started.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -36,6 +36,52 @@ that is not real silicon. That covers every target the tree's CI runs today.
   `NextSteps` derivation in `build_next.rs`. The issue 2169 test keeps
   asserting that the printed line, the chapter's line and the probe's line
   are equal.
+
+**Landed (2026-11-02).**
+
+- *Resolver.* `nros_cli_core::cmd::run_plan::resolve(verb, inputs)` returns an
+  `nros_extension::plan::RunPlan`. The ladder runs, highest rung first:
+  `invocation` (`--port`, `--probe`, `--runner`, arguments after `--`),
+  `image`, `bench`, `board`, `method`. The `image` rung is
+  `[image.<id>.flash|console]` merged key by key over `[image_defaults]`'s
+  when `system.toml` is read, on both roads. The `bench` rung reads nothing
+  until phase-529 W4 writes `$NROS_HOME/bench.toml`. The `board` rung is
+  `[board.run]`, `[board.run.qemu]`, `[board.flash]` and `[board.console]`.
+  The `method` rung covers what the platform and triple imply: a host image,
+  the `nros-qemu-ladder` NuttX/ThreadX boards, and `west` as a Zephyr board's
+  flasher. Tables merge key by key across rungs. Each field records its rung
+  in `provenance` (`"args.nic" = "board"`).
+- *Target.* The verb picks it: `run` takes `[board.run]`, and `flash` takes
+  `[board.flash]` (a Zephyr board falls back to `west`). `run` on real silicon
+  refuses and names `nros flash --monitor`.
+- *Runners* (RFC-0119 D8 names; the packages are W3's and phase-529's):
+  - a host image uses `native`;
+  - `fvp:` uses `fvp`;
+  - any other emulator on a west build uses `west` (Zephyr's own board
+    definition selects the emulator), and on any other build the emulator
+    kind (`qemu`, `renode`, `wokwi`);
+  - `flash` uses `command` for a template, or else the runner named by the
+    method word.
+- *Plan contents.* Artifacts come from the planner's recorded `BuildOutput`,
+  and the link from the image's locator.
+- *One QEMU renderer.* `nros_qemu_ladder::plan_line(&plan.args)` builds the
+  QEMU line, both from the `[board.run.qemu]` facts and from the fixed
+  ladder boards (`args.board`). It sits in the crate that already owns
+  every QEMU board's line, has no dependencies, and takes a plain string
+  map, so the W3 qemu runner can call it without depending on the CLI.
+- *Next step.* `nros build`'s next step is rendered from the run and flash
+  plans. Every issue-2169 row prints byte-identical text.
+- *One changed line.* Zephyr `native_sim` is a host image, so its runner is
+  `native` and its run line is now `<build>/zephyr/zephyr.exe`. It used to
+  be `west build -d <build> -t run`, which runs that same executable. A
+  Zephyr board with no `[board.run]` still gets its build's `run_<emu>`
+  line, plus a note that `nros run` will need the table.
+  `qemu-cortex-a53` now states `emulator = "qemu:virt"`.
+- *`nros run`* is a user-tier verb (top-level, beside `nros build`). It
+  takes `--dry-run`, `--why`, `--port`, `--json`, and arguments after `--`.
+  It prints the plan as TOML, the RFC-0118 D3 human form, or as JSON with
+  `--json`, the runner-contract form. An unresolved plan exits 3. Running
+  without `--dry-run` exits 2 with a message saying it is phase-528 W4.
 
 Acceptance:
 

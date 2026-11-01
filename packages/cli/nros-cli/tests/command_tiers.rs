@@ -115,10 +115,18 @@ fn an_old_user_spelling_is_silent_when_piped() {
 
 #[test]
 fn a_reserved_verb_refuses_and_names_what_to_do() {
-    for verb in ["run", "flash", "monitor", "bench", "debug"] {
+    for verb in ["flash", "monitor", "bench", "debug"] {
         let (ok, _, err) = run(&[verb, "talker"]);
         assert!(!ok, "`nros {verb}` succeeded");
         assert!(err.contains("is reserved"), "{err}");
         assert!(err.contains("nros build"), "{err}");
     }
+    // phase-528 W1 — `run` resolves its plan with `--dry-run`; launching is
+    // W4, and until then it refuses naming what works.
+    let (ok, _, err) = run(&["run", "talker"]);
+    assert!(!ok, "`nros run` succeeded");
+    assert!(
+        err.contains("phase-528 W4") && err.contains("--dry-run"),
+        "{err}"
+    );
 }

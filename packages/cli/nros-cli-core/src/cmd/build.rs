@@ -277,6 +277,10 @@ pub struct ResolvedBuild {
     /// phase-517 W6 — the board descriptor the image resolved to, for the
     /// follow-up command (`runner`, triple, platform). `None` for a query.
     pub descriptor: Option<crate::orchestration::board_descriptor::BoardDescriptor>,
+    /// phase-528 W1 — the image's `[image.<id>.flash|console]` (over
+    /// `[image_defaults]`'s) and its locator: the image rung of the RunPlan
+    /// ladder ([`crate::cmd::run_plan`]).
+    pub run_tables: crate::cmd::run_plan::ImageTables,
 }
 
 /// What a plan is FOR — issue 1716.
@@ -696,6 +700,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 capabilities: owned_caps(&bringup_dir),
                 output: None,
                 descriptor: None,
+                run_tables: Default::default(),
             });
             continue;
         }
@@ -2000,6 +2005,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             capabilities: owned_caps(&bringup_dir),
             output,
             descriptor: Some(descriptor.clone()),
+            run_tables: crate::cmd::run_plan::ImageTables::from_block(&image),
         });
     }
     Ok(out)
@@ -2173,6 +2179,7 @@ fn plan_leaf_image(
             record: Default::default(),
             output: None,
             descriptor: None,
+            run_tables: Default::default(),
         }]));
     }
 
@@ -2280,6 +2287,7 @@ fn plan_leaf_image(
         capabilities: owned_caps(root),
         output: Some(output),
         descriptor: Some(descriptor.clone()),
+        run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&img.decl),
     }]))
 }
 
@@ -2451,6 +2459,7 @@ fn plan_single_package_cmake(
             executable: crate::cmd::build_next::cmake_leaf_executable(root),
         }),
         descriptor: Some(descriptor.clone()),
+        run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&decl),
     }]))
 }
 
@@ -3210,6 +3219,7 @@ fn plan_packages(
             },
             output: None,
             descriptor: None,
+            run_tables: Default::default(),
         });
     }
     if out.is_empty() {
@@ -6886,6 +6896,7 @@ mod multi_image_drive_tests {
             record: Default::default(),
             output: None,
             descriptor: None,
+            run_tables: Default::default(),
         }
     }
 

@@ -297,6 +297,7 @@ mod tests {
             record: Default::default(),
             output: None,
             descriptor: None,
+            run_tables: Default::default(),
         }
     }
 
