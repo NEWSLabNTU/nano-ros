@@ -5,9 +5,12 @@ status: open
 type: bug
 severity: medium
 area: [zephyr, docs, installer]
-related: [2177, 1662, 1796, 0605, phase-517]
+related: [2177, 1662, 1796, 0605, phase-517, phase-524]
 found: 2026-10-31
 ---
+
+**Home:** [phase-524](../roadmap/phase-524-emulator-twins.md)
+— W4. The Zephyr chapters this phase writes take the same west-workspace road, so the chapter road gets the patch set (or a refusal) there. The generic `zephyr` descriptor's `[board.provisioning]` belongs to W3.
 
 ## What
 

@@ -6,8 +6,11 @@ type: bug
 area: [zephyr, log]
 severity: medium
 found: 2026-10-30
-related: [2000, 1037, 1123]
+related: [2000, 1037, 1123, phase-478]
 ---
+
+**Home:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)
+— an island finding. The ASI Zephyr SMP image loses every `nros_log` record after the early ring.
 
 ## What was measured
 

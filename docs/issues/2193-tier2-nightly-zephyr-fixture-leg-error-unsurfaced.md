@@ -5,9 +5,12 @@ status: open
 type: bug
 severity: medium
 area: [ci, zephyr, fixtures]
-related: [2180, 2179]
+related: [2180, 2179, phase-466]
 found: 2026-11-01
 ---
+
+**Home:** [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
+— the tier-2 nightly's Zephyr fixture leg fails without naming the image, so the lane's verdict cannot be attributed.
 
 ## Symptom
 
