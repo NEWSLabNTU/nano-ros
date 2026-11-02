@@ -562,3 +562,49 @@ Make RFC-0113 D2 a measured property, not a reading:
 **Acceptance:** the PX4 SITL cell delivers through the generated entry; W7's
 idle-wake and latency tests pass on it; `git grep ScheduledWorkItem examples/`
 finds only generated code.
+
+**Assessment (2026-11-02).** SITL is provisionable here: the main checkout
+holds `third-party/px4/PX4-Autopilot` with a built
+`build/px4_sitl_default`, `just px4 setup|doctor|build-sitl-cpp|test-sitl`
+exist, and of PX4's Python build deps only `pyros_genmsg` is missing on this
+host. Nothing below is built yet; this is the design and the breakdown.
+
+*Design.* The generated entry is a C++ translation unit per image, emitted by
+the C++ entry codegen (the same emitter `nros_board_native_run_tiers` images
+use), not hand code:
+
+1. One `px4::ScheduledWorkItem` subclass per tier (`NrosTier_<name>`), with
+   `ModuleBase<>` boilerplate on the image's module, constructed on the work
+   queue the tier's priority picks from `px4::wq_configurations` (a table in
+   the codegen, rank-ordered: the most urgent tier gets `rate_ctrl`, then
+   `hp_default`, `nav_and_controllers`, `lp_default`; more tiers than queues
+   is refused at generation, never shared silently).
+2. `Run()` is one executor pass over the tier's groups with a ZERO wait
+   (`spin_once(0)`), then reschedules itself: `ScheduleDelayed(next_us)` from
+   the executor's internal next deadline (timers, routes, the session's
+   `next_deadline_ms`), `ScheduleClear()` when there is none. The tier never
+   parks a thread; the work queue is its wait object.
+3. Arrivals: the uORB backend states `Notify`, and its wake callback (fired
+   from `px4_callback_glue.cpp`'s `SubscriptionCallbackWorkItem` adapter) is
+   bound to the owning tier's `ScheduleNow()`. Per-entity wake routing
+   (phase-397) picks the tier, so a low tier's topic does not run a high
+   tier's item.
+4. The polling build (`NROS_RMW_UORB_BUILD_PX4_GLUE=OFF`) states `None` and
+   is refused at open under D5; it stays a host test double.
+5. `FRAMEWORKS += "px4"`; `nros::main!` refuses `px4` with a pointer to the
+   C++ entry (a Rust PX4 module rides `px4-rs`, out of scope here).
+
+*Work breakdown.* (a) IR: `px4` in `FRAMEWORKS`, the work-queue table and
+its refusal, unit-tested in `nros-orchestration-ir`. (b) Codegen: the C++
+entry emitter's `px4` arm, snapshot-tested against a two-tier bringup.
+(c) Runtime: a doc(hidden) `Executor` hook returning the internal next
+deadline for a driver that is not a thread (the work item), and the
+`ScheduleNow` binding of the wake callback. (d) Replace
+`examples/px4/cpp/{firmware,bridge}` modules with the generated entry.
+(e) Provision `pyros_genmsg` in the runner image, add the SITL cell, run
+W7's idle-wake and latency tests under the work-queue scheduler. (f) Name
+the owner (RFC-0112 D3).
+
+*Blocker.* Not started in this session for time: (a)-(f) are each a PR,
+and (c) changes the executor's public surface that D7 just narrowed, so it
+wants a short ruling first (a doc(hidden) hook for in-tree drivers only).
