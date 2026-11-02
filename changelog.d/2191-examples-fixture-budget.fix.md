@@ -1,0 +1,1 @@
+The runner sweep evicts `examples/**` leaf builds (`build*`/`target*`) as units of the fixtures area instead of only reporting them, and the default fixtures budget is a tier-2 working set, 280 GiB capped at 40% of the volume, instead of 60 GiB (issue 2191).

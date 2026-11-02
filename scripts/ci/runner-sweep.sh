@@ -90,7 +90,8 @@
 #                                $NROS_RUNNER_DIR/_work, else ~/actions-runner/_work)
 #   NROS_SWEEP_STATE_DIR         where the high-water mark is kept
 #   NROS_SWEEP_BUDGET_ZEPHYR_GIB    default 14
-#   NROS_SWEEP_BUDGET_FIXTURES_GIB  default 60
+#   NROS_SWEEP_BUDGET_FIXTURES_GIB  default 280, capped at 40% of the volume
+#                                   holding the build root (issue 2191)
 #   NROS_SWEEP_BUDGET_WORK_GIB      default 40
 #   NROS_SWEEP_UNBUDGETED_WARN_GIB  default 40 — warn when this much of the
 #                                   checkout sits in no area (issue 1353)
@@ -529,20 +530,25 @@ _newest_mtime() {
 # budget. "Recently written" means the newest file anywhere inside the entry —
 # see `_newest_mtime` above for why the entry's own mtime cannot answer.
 #
-#   _evict <area> <budget-bytes> <pinned-glob-or-empty> <candidate-dir>...
+#   _evict <area> <budget-bytes> <pinned-glob-or-empty> <candidate-dir>... [-- <unit>...]
 #
 # Candidates are the CHILDREN of each candidate dir — one eviction unit each.
 # Never the dir itself: deleting `build/cargo-fixtures` wholesale turns a
 # budget overrun into a full rebuild of everything, when dropping the three
-# coldest coordinates would have done.
+# coldest coordinates would have done. Anything after `--` is a unit itself:
+# for build output that has no common parent, such as one `build/` per leaf
+# under `examples/` (issue 2191).
 _evict() {
     local area="$1" budget="$2" pinned="$3"
     shift 3
-    local dirs=("$@")
-    attributed_paths+=("${dirs[@]}")
+    local dirs=() units=()
+    while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do dirs+=("$1"); shift; done
+    [ "$#" -gt 0 ] && shift
+    units=("$@")
+    attributed_paths+=(${dirs[@]+"${dirs[@]}"} ${units[@]+"${units[@]}"})
 
     local total=0 d sz
-    for d in "${dirs[@]}"; do
+    for d in ${dirs[@]+"${dirs[@]}"} ${units[@]+"${units[@]}"}; do
         [ -d "$d" ] || continue
         sz="$(_du_bytes "$d")"
         total=$((total + sz))
@@ -572,7 +578,11 @@ _evict() {
     # tracks (issue 0844's rule is about tracked files; these are build output
     # and unpacked SDKs, which the index has never seen).
     local listing="" child
-    for d in "${dirs[@]}"; do
+    for child in ${units[@]+"${units[@]}"}; do
+        [ -d "$child" ] || continue
+        listing="${listing}$(_newest_mtime "$child")"$'\t'"$child"$'\n'
+    done
+    for d in ${dirs[@]+"${dirs[@]}"}; do
         [ -d "$d" ] || continue
         for child in "$d"/*; do
             [ -e "$child" ] || continue
@@ -627,9 +637,10 @@ _evict() {
 # sweeps that each said they had cleared the machine, and then ran out.
 #
 # Reported, never evicted: a directory nobody budgeted has nobody who knows
-# whether it is safe to drop. One `du -d2` walk per root. The frontier is the
+# whether it is safe to drop. One `du` walk per root. The frontier is the
 # shallowest directory that holds no area: a top-level entry if it holds none,
-# else its children (so `packages/` is split around `packages/cli/target`).
+# else its children, recursively (so `packages/` is split around
+# `packages/cli/target`, and a leaf around its `build/`).
 _report_unbudgeted() {
     local -a roots=("$repo_root")
     case "$build_root/" in "$repo_root"/*) ;; *) roots+=("$build_root") ;; esac
@@ -646,33 +657,34 @@ _report_unbudgeted() {
         printf 'out'
     }
 
+    # One `du` walk per root, classified breadth-first: a depth-1 entry is
+    # always looked at, a deeper one only when its parent HOLDS an area. Depth
+    # 6 because an area unit can sit that deep: a leaf build is
+    # `examples/<plat>/<lang>/<leaf>/build` (issue 2191), and what sits beside
+    # it (`generated/`) must still be counted.
     local -A expand=()
-    local root sz path rel parent total=0 found=""
+    local root sz path rel parent total=0 found="" depth slashes
     for root in "${roots[@]}"; do
         [ -d "$root" ] || continue
         local walk
-        walk="$(du -x -B1 -d2 "$root" 2>/dev/null || true)"
-        # du lists children before parents, so classify depth 1 first.
-        while IFS=$'\t' read -r sz path; do
-            [ -n "${path:-}" ] || continue
-            rel="${path#"$root"/}"
-            [ "$path" = "$root" ] && continue
-            case "$rel" in */*) continue ;; esac
-            case "$(_attribution "$path")" in
-                out)  found+="$sz"$'\t'"$path"$'\n'; total=$((total + sz)) ;;
-                over) expand["$path"]=1 ;;
-            esac
-        done <<< "$walk"
-        while IFS=$'\t' read -r sz path; do
-            [ -n "${path:-}" ] || continue
-            rel="${path#"$root"/}"
-            case "$rel" in */*/*) continue ;; */*) ;; *) continue ;; esac
-            parent="${path%/*}"
-            [ -n "${expand[$parent]:-}" ] || continue
-            [ "$(_attribution "$path")" = out ] || continue
-            found+="$sz"$'\t'"$path"$'\n'
-            total=$((total + sz))
-        done <<< "$walk"
+        walk="$(du -x -B1 -d6 "$root" 2>/dev/null || true)"
+        for depth in 1 2 3 4 5 6; do
+            while IFS=$'\t' read -r sz path; do
+                [ -n "${path:-}" ] || continue
+                [ "$path" = "$root" ] && continue
+                rel="${path#"$root"/}"
+                slashes="${rel//[!\/]/}"
+                [ "$(( ${#slashes} + 1 ))" -eq "$depth" ] || continue
+                parent="${path%/*}"
+                if [ "$depth" -gt 1 ] && [ -z "${expand[$parent]:-}" ]; then
+                    continue
+                fi
+                case "$(_attribution "$path")" in
+                    out)  found+="$sz"$'\t'"$path"$'\n'; total=$((total + sz)) ;;
+                    over) expand["$path"]=1 ;;
+                esac
+            done <<< "$walk"
+        done
     done
 
     _hwm_put unbudgeted "$total"
@@ -802,11 +814,52 @@ _sweep_disk() {
     if [ -n "${NROS_ZEPHYR_BUILD_ROOT:-}" ] && [ -d "$NROS_ZEPHYR_BUILD_ROOT" ]; then
         cache_dirs+=("${NROS_ZEPHYR_BUILD_ROOT%/}")
     fi
-    if [ "${#cache_dirs[@]}" -gt 0 ]; then
+    # issue 2191 — the leaf builds under `examples/`: 94.8 GiB on newslab-118
+    # after one tier-2 run, in no area, so reported every sweep and reclaimed by
+    # none. They are fixture output (rebuildable, re-staled by the probe), so
+    # they join this area rather than getting a budget of their own. A unit is
+    # one leaf's `build*`/`target*` dir: the git-IGNORED dirs under examples/,
+    # which git lists without walking into anything tracked or into a nested
+    # repo (issue 1565). `generated/`, `.cargo/` and the rest stay reported:
+    # `generated/` is a `nros sync` product a build does not recreate.
+    local -a example_units=()
+    if [ -e "$repo_root/.git" ] && [ -d "$repo_root/examples" ]; then
+        local ign
+        while IFS= read -r ign; do
+            ign="${ign%/}"
+            case "${ign##*/}" in
+                build|build-*|target|target-*) example_units+=("$repo_root/$ign") ;;
+            esac
+        done < <(git -C "$repo_root" ls-files --others --ignored --exclude-standard \
+                     --directory -- examples 2>/dev/null || true)
+    fi
+    # issue 2191 — the default is one tier-2 working set: 178.1 GiB of fixture
+    # caches plus 94.8 GiB of leaf builds after run 41205983383, rounded up. At
+    # 60 GiB every sweep evicted ~2/3 of the warm set, so every run rebuilt it.
+    # Capped at 40% of the volume, so a small disk keeps room for sccache, the
+    # host targets and one run's growth rather than handing it all to this area.
+    local fixtures_gib="${NROS_SWEEP_BUDGET_FIXTURES_GIB:-}"
+    if [ -z "$fixtures_gib" ]; then
+        fixtures_gib=280
+        local vol_bytes cap_gib
+        vol_bytes="$(df -P -B1 "$build_root" 2>/dev/null | awk 'NR==2 {print $2}' || true)"
+        case "${vol_bytes:-}" in
+            ''|*[!0-9]*) ;;
+            *)
+                cap_gib=$(( vol_bytes * 2 / 5 / gib ))
+                if [ "$cap_gib" -lt "$fixtures_gib" ]; then
+                    _say "  fixtures: default budget capped at ${cap_gib} GiB (40% of the volume holding $build_root)"
+                    fixtures_gib="$cap_gib"
+                fi
+                ;;
+        esac
+    fi
+    if [ "${#cache_dirs[@]}" -gt 0 ] || [ "${#example_units[@]}" -gt 0 ]; then
         _evict fixtures \
-            $(( ${NROS_SWEEP_BUDGET_FIXTURES_GIB:-60} * gib )) \
+            $(( fixtures_gib * gib )) \
             "" \
-            "${cache_dirs[@]}"
+            ${cache_dirs[@]+"${cache_dirs[@]}"} \
+            -- ${example_units[@]+"${example_units[@]}"}
     else
         _say "  fixtures: no build caches under $build_root"
     fi

@@ -92,9 +92,27 @@ reported, not a measured capacity.
    and its own warning says to budget ("Give the largest entry an area"). They
    are fixture outputs (rebuildable, re-staled by the probe), so they belong
    with the fixture caches.
+   **Landed** (2026-11-02): each leaf's git-ignored `build*`/`target*` dir
+   under `examples/` is a unit of the `fixtures` area. They are enumerated
+   with `git ls-files --others --ignored --directory`, which walks nothing
+   tracked and no nested repo (issue 1565), and evicted oldest-first beside
+   the caches. `generated/` is not a unit: it is a `nros sync` product a
+   build does not recreate. It stays reported, and the unbudgeted report now
+   descends to depth 6, so what sits beside a leaf build is still counted.
+   Measured on 118 after its cold reset (2026-11-01): 31.3 GiB under
+   `examples/`, in no area.
 3. **Size the fixtures budget to a lane's working set.** 60 GiB is a third of
    what one tier-2 build writes, so every sweep discards the warm set. A budget
    below the working set buys a rebuild per run, not disk.
+   **Landed** (2026-11-02): the default is 280 GiB, run 41205983383's
+   178.1 GiB of caches plus 94.8 GiB of leaf builds, rounded up. It is
+   capped at 40% of the volume holding the build root, so a small disk keeps
+   room for sccache, the host targets and one run's growth; the sweep says
+   when the cap applies. `NROS_SWEEP_BUDGET_FIXTURES_GIB` still overrides
+   both. 118 sat at exactly the old 60 GiB budget (high-water 327.4 GiB) on
+   its first in-container sweep. NOT MEASURED: whether 280 GiB holds the warm
+   set across a tier-2 run and the nightly on one runner. Read the next
+   sweeps' `fixtures:` lines before tuning it.
 4. **A bigger volume** for this runner (operator). Measured on newslab-118
    (2026-11-01): `nros-runner-work` was a bind onto a shared 1.8 TB data disk
    (229 GB free, the fixture tree 318 GB of it), while the root filesystem
