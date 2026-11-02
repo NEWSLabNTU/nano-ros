@@ -186,19 +186,37 @@ pub struct EntryRoot {
 }
 
 impl EntryRoot {
-    /// Whether the target dir was last built from a DIFFERENT root. A target
-    /// dir with no marker but some content predates the marker, so its root is
-    /// unknown and it is cleaned once; an absent target dir needs nothing.
+    /// Whether the target dir was last built from a DIFFERENT root.
+    ///
+    /// Only a marker can say so. A target dir with no marker is recorded, not
+    /// cleaned (issue 2216): "it has content" is no evidence of an earlier
+    /// cargo build, because nros writes its own files there first
+    /// (`nros-class/<hash>/sizing.toml`), so every fresh tree read as a root
+    /// change and asked cargo to clean a directory it had never built in.
     #[must_use]
     pub fn changed(&self) -> bool {
-        match std::fs::read_to_string(&self.marker) {
-            Ok(prev) => Path::new(prev.trim()) != self.manifest_dir,
-            Err(_) => self
-                .marker
-                .parent()
-                .and_then(|t| std::fs::read_dir(t).ok())
-                .is_some_and(|mut d| d.next().is_some()),
+        std::fs::read_to_string(&self.marker)
+            .is_ok_and(|prev| Path::new(prev.trim()) != self.manifest_dir)
+    }
+
+    /// Mark the target dir as cargo's before [`Self::clean`] runs (issue 2216).
+    ///
+    /// `cargo clean` refuses a target dir with no `CACHEDIR.TAG`, and with a
+    /// separate `build.build-dir` cargo writes that tag into the BUILD dir
+    /// only (measured, cargo 1.99), so the clean of a target dir nros chose
+    /// was refused even after a real build. The directory is a build cache
+    /// nros owns, which is exactly what the tag declares; writing the standard
+    /// tag says so to cargo and to backup tools alike.
+    pub fn tag_target_dir(&self) -> Result<(), String> {
+        let Some(t) = self.marker.parent() else {
+            return Ok(());
+        };
+        let tag = t.join("CACHEDIR.TAG");
+        if tag.is_file() {
+            return Ok(());
         }
+        std::fs::create_dir_all(t).map_err(|e| format!("creating {}: {e}", t.display()))?;
+        std::fs::write(&tag, CACHEDIR_TAG).map_err(|e| format!("writing {}: {e}", tag.display()))
     }
 
     /// Record this build's root.
@@ -210,6 +228,11 @@ impl EntryRoot {
             .map_err(|e| format!("writing {}: {e}", self.marker.display()))
     }
 }
+
+/// The Cache Directory Tagging Specification's file, as cargo writes it.
+const CACHEDIR_TAG: &str = "Signature: 8a477f597d28d172789f06886806bc55\n\
+# This file is a cache directory tag created by nros.\n\
+# For information about cache directory tags see https://bford.info/cachedir/\n";
 
 /// Rewrite a copied entry manifest's relative `path =` dependencies so they
 /// resolve from `to_dir` as they did from `from_dir` (issue 2175).
@@ -350,10 +373,12 @@ nros-log = { path = \"../../../../../../packages/core/nros-log\" }
         let owned = root("src/linux_entry");
 
         assert!(!generated.changed(), "no target dir yet: nothing to clean");
-        std::fs::create_dir_all(target.join("debug")).unwrap();
+        // issue 2216 — content nros wrote itself is not an earlier build.
+        std::fs::create_dir_all(target.join("nros-class/x")).unwrap();
+        std::fs::write(target.join("nros-class/x/sizing.toml"), "").unwrap();
         assert!(
-            generated.changed(),
-            "a target dir with no marker has an unknown root"
+            !generated.changed(),
+            "no marker: recorded, never cleaned on a guess"
         );
         generated.record().unwrap();
         assert!(!generated.changed(), "same root: no clean");
@@ -362,6 +387,36 @@ nros-log = { path = \"../../../../../../packages/core/nros-log\" }
         assert!(
             generated.changed(),
             "materialised entry removed: clean again"
+        );
+    }
+
+    #[test]
+    fn the_target_dir_is_tagged_for_cargo_clean_once() {
+        // issue 2216 — `cargo clean` refuses a target dir with no CACHEDIR.TAG.
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("target");
+        let er = EntryRoot {
+            marker: target.join(ENTRY_ROOT_MARKER),
+            manifest_dir: tmp.path().join("src/e"),
+            clean: super::super::handoff::Handoff::new("cargo", ["clean"]),
+        };
+        er.tag_target_dir().unwrap();
+        let tag = std::fs::read_to_string(target.join("CACHEDIR.TAG")).unwrap();
+        assert!(
+            tag.starts_with("Signature: 8a477f597d28d172789f06886806bc55"),
+            "{tag}"
+        );
+        // An existing tag is left as it is.
+        std::fs::write(
+            target.join("CACHEDIR.TAG"),
+            "Signature: 8a477f597d28d172789f06886806bc55\nmine\n",
+        )
+        .unwrap();
+        er.tag_target_dir().unwrap();
+        assert!(
+            std::fs::read_to_string(target.join("CACHEDIR.TAG"))
+                .unwrap()
+                .ends_with("mine\n")
         );
     }
 
