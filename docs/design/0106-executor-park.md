@@ -112,6 +112,20 @@ a build with no wake object installs no park.
 
 ### D5 — Park only when data can end the park
 
+> **Amended by [RFC-0113](0113-rt-unified-wait.md) D4/D5 (2026-11-02).** What
+> ends the park is now the session's STATED readiness (the `readiness_source`
+> vtable slot): `Notify`, the wake callback this section describes, or
+> `Waitable`, an OS handle the port's park multiplexes (POSIX/NuttX `ppoll`,
+> Zephyr `zsock_poll`; phase-521 W3/W4). The receive-blocking wait below is no
+> longer "the right wait for a poll-only backend": it is a fallback for the
+> combinations RFC-0113's coverage table lists as not yet meeting its promise,
+> and it retires, with `POLL_ONLY_WAKE_SLICE_MS`, when the last of them has a
+> readiness form (phase-521 W6). XRCE is no longer its example: it states
+> `Waitable` on POSIX, NuttX and Zephyr and `Notify` over lwIP and NetX Duo.
+> A bare-metal board meets it with an RX interrupt and a one-shot timer behind
+> its port's wake object (mps2-an385, phase-521 W5), not with a tickless idle
+> inside the transport's own wait.
+
 The executor parks only when its backend has a LIVE wake callback
 (`async_wake_live()`). Otherwise it keeps the receive-blocking wait: it drives
 the transport for the same bound, in the transport's own `recv`. That is the
@@ -218,6 +232,10 @@ budget is a floor on the wait, not a bound on the call.
   exit); no hardware run yet.
 
 ## Changelog
+
+- 2026-11-02 — D5 amended by RFC-0113 D4/D5: the park ends on the session's
+  stated readiness (`Notify` or `Waitable`); the receive-blocking wait is a
+  fallback scheduled for retirement, not a design (phase-521 W6).
 
 - 2026-10-24 — Bare metal's open question resolved: a tickless idle inside
   the transport's wait, on mps2-an385 (issue 2022). Idle QEMU host CPU

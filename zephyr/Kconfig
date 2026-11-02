@@ -746,10 +746,18 @@ config NROS_ZENOH_SCOUTING
 config NROS_ZENOH_LINK_SERIAL
     bool "Serial/UART link"
     depends on SERIAL
+    depends on SERIAL_SUPPORT_INTERRUPT
+    select UART_INTERRUPT_DRIVEN
     default n
     help
       Enable serial/UART transport link.
       Maps to Z_FEATURE_LINK_SERIAL.
+
+      The link receives through the UART's interrupt (zenoh-pico's RX ring,
+      issue 0852), so it selects UART_INTERRUPT_DRIVEN and needs a UART
+      driver that supports it. The polled receive path (`uart_poll_in` plus
+      `k_yield`) is retired (phase-521 W6, RFC-0113 D5): it made a serial
+      session's wait a busy loop.
 
 config NROS_ZENOH_SERIAL_RX_RING_BYTES
     int "Serial link: receive ring between the UART ISR and the read task (bytes)"

@@ -39,7 +39,7 @@ Serial transport support varies by platform:
 |----------|----------------------|--------------------|
 | Bare-metal (MPS2-AN385) | `zpico-serial` + UART driver | Yes |
 | ESP32-QEMU (esp-hal, no IDF) | **Not wired** — see [issue 1499](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1499-esp32-serial-transport-is-documented-and-does-not-compile.md) | — |
-| Zephyr | zenoh-pico built-in; interrupt-driven RX ring with `CONFIG_UART_INTERRUPT_DRIVEN` (issue 0852), else `uart_poll_in/out` | No |
+| Zephyr | zenoh-pico built-in; interrupt-driven RX ring (`CONFIG_UART_INTERRUPT_DRIVEN`, selected by the serial link; issue 0852). The polled path is retired | No |
 | FreeRTOS / NuttX | zenoh-pico built-in (POSIX `/dev/ttyXXX`) | No |
 | ThreadX | zenoh-pico built-in (HAL DMA) | No |
 

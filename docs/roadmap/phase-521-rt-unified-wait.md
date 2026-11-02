@@ -518,6 +518,16 @@ Not done yet: the native LEVEL runner still bounds each level's park by its
 period, the receive-blocking path itself, and the refusal of a session with no
 readiness form.
 
+**W6c — Zephyr's polled serial receive retired (2026-11-02).** zenoh-pico's
+Zephyr serial link read with `uart_poll_in` + `k_yield` wherever
+`CONFIG_UART_INTERRUPT_DRIVEN` was off (the mps2/an385 serial row was one).
+The fork now has only the interrupt-driven ring (an `#error` without it, a
+failed open when the ISR cannot bind the UART), and
+`CONFIG_NROS_ZENOH_LINK_SERIAL` selects `UART_INTERRUPT_DRIVEN`. RFC-0106 D5
+is amended by RFC-0113 D4/D5, and RFC-0113 gains its coverage table. Compiled
+through `examples/zephyr/c/talker` on mps2/an385 with the serial conf stack:
+the Rust serial row cannot configure for an unrelated reason (issue 2211).
+
 ### W7 — Acceptance measurements for the promise
 
 Make RFC-0113 D2 a measured property, not a reading:

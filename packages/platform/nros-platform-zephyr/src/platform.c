@@ -677,8 +677,9 @@ void nros_platform_task_attr_init(nros_platform_task_attr_t* attr) {
  *     SCHED_FIFO           -> COOPERATIVE, max CONFIG_NUM_COOP_PRIORITIES - 1
  *     SCHED_RR/SCHED_OTHER -> PREEMPTIBLE, max CONFIG_NUM_PREEMPT_PRIORITIES - 1
  *
- * A cooperative thread is never preempted. The task this issue is about spends
- * its life in a `uart_poll_in` busy-poll, so making it cooperative would hand
+ * A cooperative thread is never preempted. The task this issue is about spent
+ * its life in a `uart_poll_in` busy-poll (retired, phase-521 W6: the serial
+ * read now waits on the RX interrupt's ring), so making it cooperative would hand
  * it the CPU until it blocks — `k_yield()` from a coop thread does not drop
  * below its own priority, so the executor (preemptible) would not run at all
  * between frames. Trading a 20 ms starvation of the reader for an unbounded
