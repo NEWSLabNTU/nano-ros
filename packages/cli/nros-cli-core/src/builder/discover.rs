@@ -33,7 +33,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use cargo_nano_ros::provider_scan::{self, WorkspacePackage};
+use cargo_nano_ros::{
+    package_xml::{BuildRole, Provision, build_role_of},
+    provider_scan::{self, WorkspacePackage},
+};
 
 /// What stage 1 found.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +51,40 @@ pub struct Discovered {
     /// printing; never worth failing on, because one bad file in a large tree
     /// must not hide the rest.
     pub warnings: Vec<String>,
+    /// The host-tool packages, by directory, with what each announces: a
+    /// `runner` or `command` provider (RFC-0119 D3, phase-527 W2). A subset of
+    /// `packages`. They are built for the host triple, each on its own, so a
+    /// generated image root must never list one — [`Discovered::without_host`]
+    /// is what an image's planning reads.
+    pub host: BTreeMap<PathBuf, Vec<Provision>>,
+}
+
+impl Discovered {
+    /// The packages an image's generated root may hold: everything but the
+    /// host tools.
+    #[must_use]
+    pub fn without_host(&self) -> Discovered {
+        Discovered {
+            packages: self
+                .packages
+                .iter()
+                .filter(|p| !self.host.contains_key(&p.dir))
+                .cloned()
+                .collect(),
+            cargo_only: self.cargo_only.clone(),
+            warnings: self.warnings.clone(),
+            host: BTreeMap::new(),
+        }
+    }
+
+    /// The host-tool packages, in build order.
+    #[must_use]
+    pub fn host_packages(&self) -> Vec<&WorkspacePackage> {
+        self.packages
+            .iter()
+            .filter(|p| self.host.contains_key(&p.dir))
+            .collect()
+    }
 }
 
 /// Discover the workspace at `root`.
@@ -103,6 +140,7 @@ pub fn discover_in(
     let mut packages: Vec<WorkspacePackage> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
     let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut host: BTreeMap<PathBuf, Vec<Provision>> = BTreeMap::new();
     for base in &bases {
         let (found, scan) = provider_scan::scan_workspace_packages(base)
             .map_err(|e| format!("scanning {}: {e}", base.display()))?;
@@ -111,6 +149,14 @@ pub fn discover_in(
                 .iter()
                 .map(|e| format!("{}: {}", e.path.display(), e.message)),
         );
+        // RFC-0119 D3 — the build role follows from the kinds. A package
+        // mixing host and target kinds is a scan error above and is not
+        // listed as a provider, so it is never classified as a host tool.
+        for p in &scan.providers {
+            if build_role_of(&p.provides) == Ok(Some(BuildRole::Host)) {
+                host.insert(p.dir.clone(), p.provides.clone());
+            }
+        }
         // Overlapping base paths (`a` and `a/b`) find one package twice.
         packages.extend(found.into_iter().filter(|p| seen.insert(p.dir.clone())));
     }
@@ -172,6 +218,7 @@ pub fn discover_in(
         packages,
         cargo_only,
         warnings,
+        host,
     })
 }
 
@@ -548,7 +595,18 @@ pub fn select(found: &Discovered, sel: &Selection) -> Result<Discovered, String>
     // broken by the intersection or by a skip as well as one broken by
     // `--packages-select` alone — an `--packages-up-to` closure is complete by
     // construction, but intersecting it with anything can punch a hole in it.
+    //
+    // A dependency on a HOST tool is exempt (RFC-0119 D3, phase-527 W2): a
+    // runner or command package is built on its own for the host, never as a
+    // member of the merged root, so leaving it out cannot break the build of
+    // what depends on it. That edge exists so `--packages-up-to` reaches the
+    // runner an image needs, not because the image links it.
     let mut broken: Vec<String> = Vec::new();
+    let is_host = |d: &str| {
+        by_name
+            .get(d)
+            .is_some_and(|p| found.host.contains_key(&p.dir))
+    };
     for pkg in found
         .packages
         .iter()
@@ -558,7 +616,9 @@ pub fn select(found: &Discovered, sel: &Selection) -> Result<Discovered, String>
             .depends
             .iter()
             .map(String::as_str)
-            .filter(|d| *d != pkg.name && by_name.contains_key(d) && !keep.contains(d))
+            .filter(|d| {
+                *d != pkg.name && by_name.contains_key(d) && !keep.contains(d) && !is_host(d)
+            })
             .collect();
         if missing.is_empty() {
             continue;
@@ -599,11 +659,18 @@ pub fn select(found: &Discovered, sel: &Selection) -> Result<Discovered, String>
         .filter(|d| kept_dirs.contains(d))
         .cloned()
         .collect();
+    let host = found
+        .host
+        .iter()
+        .filter(|(d, _)| kept_dirs.contains(d))
+        .map(|(d, p)| (d.clone(), p.clone()))
+        .collect();
 
     Ok(Discovered {
         packages,
         cargo_only,
         warnings: found.warnings.clone(),
+        host,
     })
 }
 
@@ -1219,5 +1286,59 @@ mod tests {
         assert_eq!(n, vec!["msgs_pkg", "other_pkg"], "helper is outside them");
         let e = discover_in(root, &[PathBuf::from("src/nope")], &[]).expect_err("missing");
         assert!(e.contains("--base-paths src/nope"), "{e}");
+    }
+
+    // ---- phase-527 W2 — the host build role (RFC-0119 D3) ----------------
+
+    /// `entry` depends on a runner package, as the image edge makes it.
+    fn host_workspace(root: &Path) -> Discovered {
+        write(
+            &root.join("src/entry/package.xml"),
+            &pkg_xml("entry", &["talker_pkg", "acme_runner"]),
+        );
+        write(
+            &root.join("src/talker_pkg/package.xml"),
+            &pkg_xml("talker_pkg", &[]),
+        );
+        write(
+            &root.join("src/acme_runner/package.xml"),
+            "<?xml version=\"1.0\"?>\n<package format=\"3\"><name>acme_runner</name>\
+             <version>0.0.0</version><description>t</description>\
+             <maintainer email=\"a@b.c\">m</maintainer><license>Apache-2.0</license>\
+             <export><build_type>nros_cargo</build_type>\
+             <nano_ros_provides kind=\"runner\" name=\"acme\"/></export></package>\n",
+        );
+        discover(root, &[]).expect("discovers")
+    }
+
+    #[test]
+    fn a_runner_package_is_classified_host_and_left_out_of_an_image_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = host_workspace(tmp.path());
+        let hosts: Vec<&str> = d.host_packages().iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(hosts, vec!["acme_runner"]);
+        let target = d.without_host();
+        let mut n = names(&target);
+        n.sort_unstable();
+        assert_eq!(n, vec!["entry", "talker_pkg"]);
+        assert!(target.host.is_empty());
+    }
+
+    #[test]
+    fn up_to_reaches_a_host_dependency_and_select_may_leave_it_out() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = host_workspace(tmp.path());
+        let got = select(&d, &sel(&[], &["entry"])).expect("selects");
+        assert!(
+            got.host.values().count() == 1,
+            "the runner is in the closure"
+        );
+        // Leaving the host tool out cannot break the merged root, so the
+        // closure check does not ask for it.
+        let got = select(&d, &sel(&["entry", "talker_pkg"], &[])).expect("closed without it");
+        assert!(got.host.is_empty());
+        let mut n = names(&got);
+        n.sort_unstable();
+        assert_eq!(n, vec!["entry", "talker_pkg"]);
     }
 }

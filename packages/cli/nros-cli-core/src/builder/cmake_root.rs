@@ -490,6 +490,7 @@ mod tests {
             packages,
             cargo_only: Default::default(),
             warnings: Vec::new(),
+            host: Default::default(),
         }
     }
 
