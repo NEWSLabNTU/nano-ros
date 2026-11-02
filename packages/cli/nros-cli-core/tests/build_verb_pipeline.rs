@@ -1402,7 +1402,7 @@ fn two_bringups_generating_one_image_id_are_refused_before_anything_is_written()
     for want in ["demo_bringup:zephyr", "derived_bringup:zephyr", "linux"] {
         let e = plan_builds(&args(tmp.path(), &[want])).expect_err("must refuse");
         let msg = format!("{e:#}");
-        assert!(msg.contains("issue 1582"), "{want}: {msg}");
+        assert!(msg.contains("GENERATE the same output"), "{want}: {msg}");
         assert!(
             msg.contains("build/zephyr-zenoh/zephyr_entry"),
             "{want}: {msg}"

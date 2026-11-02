@@ -60,7 +60,7 @@ Two things a Rust package needs are **generated, not authored**: the
 `[patch.crates-io]` table that resolves registry-style names
 (`nros = { version = "*" }`) to the release's SDK root. You state the
 target once, as a board name in the package's `system.toml`, and
-`nros sync` derives the rest (RFC-0098):
+`nros sync` derives the rest:
 
 ```toml
 [system]

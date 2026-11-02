@@ -170,10 +170,10 @@ fn check_exec_depend_drift(bringup_dir: &Path, pkg_name: &str) -> Result<()> {
             names.join(", ")
         ));
     }
+    // The `nros emit package-xml` auto-regen verb was retired in Phase 212.G.
     bail!(
         "bringup pkg {pkg_name}: package.xml drift vs system.toml — {}. \
-         Hand-edit package.xml to add/remove the listed entries; the \
-         `nros emit package-xml` auto-regen verb was retired in Phase 212.G.",
+         Hand-edit package.xml to add/remove the listed entries.",
         details.join("; ")
     );
 }

@@ -67,6 +67,7 @@ description = "nano-ros platform layer for {name}: clock, sleep, net shims"
     write_new(
         &dir.join("src/lib.rs"),
         &format!(
+            // See phase-349 W2b.
             r#"//! nano-ros platform layer for {name}.
 //!
 //! A platform crate owns the software-stack primitives every nano-ros
@@ -76,7 +77,7 @@ description = "nano-ros platform layer for {name}: clock, sleep, net shims"
 //! - `sleep`  — `sleep_ms()` (+ optional idle-yield hook installation)
 //! - net shims — the `nros_platform_*` socket ABI, or a zenoh-pico
 //!   system layer, described by a `[port.<platform>]` row in the zenoh
-//!   backend's `nros-rmw.toml` (phase-349 W2b)
+//!   backend's `nros-rmw.toml`
 //!
 //! Board crates (`nros-board-*`) layer hardware bring-up on top and pick
 //! this platform via their `nros-board.toml`.
@@ -86,7 +87,7 @@ description = "nano-ros platform layer for {name}: clock, sleep, net shims"
 pub mod clock {{
     /// Monotonic nanoseconds since boot. TODO: wire to the {name} timer.
     ///
-    /// RFC-0073: nanoseconds is the ABI's unit. Where the counter
+    /// Nanoseconds is the ABI's unit. Where the counter
     /// frequency divides 1e9 the conversion is a compile-time multiply —
     /// prefer that over a runtime division.
     pub fn clock_ns() -> u64 {{
@@ -116,7 +117,7 @@ pub mod sleep {{
     write_new(
         &dir.join("nros-platform.toml"),
         &format!(
-            r#"# RFC-0049 — platform package configuration for `{name}`.
+            r#"# Platform package configuration for `{name}`.
 #
 # Resolution ladder: builtin < platform (this file, via optional
 # `inherits`) < board (`nros-board.toml` deltas) < env / Kconfig / -D.
@@ -134,7 +135,7 @@ pub mod sleep {{
 
 # [knobs.zenoh.tx]
 # Typed policy defaults (deny_unknown_fields). Flip these only with a
-# measurement on THIS platform (the phase-282 rule: a lever that does not
+# measurement on THIS platform (a lever that does not
 # move the number is reverted).
 # batch = false        # one socket send per flush instead of per publish
 # split_lock = false   # append while a send is in flight (needs threads)
@@ -210,7 +211,8 @@ pub fn init_hardware() {{
     write_new(
         &dir.join("nros-board.toml"),
         &format!(
-            r#"# RFC-0042 board descriptor + RFC-0049 knob deltas for `{name}`.
+            // See RFC-0042.
+            r#"# Board descriptor + knob deltas for `{name}`.
 #
 # Duty rule: the PLATFORM file carries software-stack facts + defaults;
 # THIS file carries hardware facts + per-board overrides. Debug the
@@ -226,7 +228,7 @@ board_crate = "nros-board-{name}"
 # full descriptor key set.
 
 [board.capabilities]
-# Hardware FACTS (RFC-0042): what this board can actually do.
+# Hardware FACTS: what this board can actually do.
 # heap = true
 # atomics = true
 # threads = true

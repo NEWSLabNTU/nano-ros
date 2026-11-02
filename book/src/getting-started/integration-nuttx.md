@@ -18,7 +18,7 @@ own kernel build and you want to add ROS 2 communication.
 > defaults to `zenoh`). This fetches a mostly-prebuilt toolchain set into
 > `${NROS_HOME:-~/.nros}/sdk` — the NuttX cross-compiler, the emulator and the
 > NuttX sources — so you do **not** hand-install a cross-toolchain. The zenoh
-> router is ROS's `rmw_zenohd` and comes from a ROS 2 install (RFC-0075); the
+> router is ROS's `rmw_zenohd` and comes from a ROS 2 install; the
 > xrce path needs only the Micro-XRCE-DDS agent, which `nros setup … --rmw
 > xrce` installs:
 >
@@ -71,8 +71,7 @@ bringup with several components) is not built through the apps tree: add an
 `[image.<id>]` with `board = "qemu-armv7a-nuttx"` to the bringup's
 `system.toml` and run `nros build` — see `[image.nuttx]` in
 [`examples/workspaces/rust`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/workspaces/rust/src/demo_bringup/system.toml). The script's old `--bringup <dir>` / `--image <id>` flags
-staged a per-bringup app that could not build an image, and now refuse
-(issue 1883).
+staged a per-bringup app that could not build an image, and now refuse.
 
 If you'd rather wire it yourself (e.g. into a vendored apps tree):
 
@@ -442,7 +441,7 @@ cmake --build build
 openocd -f board/<your-board>.cfg -c "program build/nuttx verify reset exit"
 ```
 
-> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([tracking issue](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 (OpenOCD is an example; NuttX boards also flash with J-Link, `dfu-util`,
 `esptool` or a vendor tool, as the board's page says.)

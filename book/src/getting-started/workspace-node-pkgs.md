@@ -33,7 +33,7 @@ nros new node talker_pkg
 
 `nros new node` writes the package under `src/` and adds its `[[component]]`
 row to the bringup. There is no member list to maintain and no workspace root
-to maintain it in: a workspace is a directory of packages (RFC-0098 D9), and
+to maintain it in: a workspace is a directory of packages, and
 `nros build` discovers them under `src/`, generating the entry that names them
 as path dependencies under `build/`.
 
@@ -67,7 +67,7 @@ A Node pkg's `Cargo.toml` is an ordinary Rust manifest: a `[lib]` target and
 its dependencies, and nothing that describes a deployment. Who this node *is*
 — which package provides it, which type implements it, what it is called — is
 one `[[component]]` row in the Bringup pkg's `system.toml`, beside the rows for
-every other node in the system (RFC-0098 D5). From
+every other node in the system. From
 [`examples/workspaces/rust/src/demo_bringup/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/workspaces/rust/src/demo_bringup/system.toml):
 
 ```toml
@@ -93,8 +93,7 @@ counterpart of a C/C++ package's
 pipeline reads it — `nros sync`'s probe, `nros check`'s dispatch lint — and a
 package registers once however many bringups launch it, whereas a `[[component]]`
 row is one bringup's choice to run it. It names no namespace: that is the launch
-file's to give, as it is for a C/C++ node
-([issue 1289](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1289-workspace-node-tables-still-in-manifests.md)).
+file's to give, as it is for a C/C++ node.
 
 The manifest beside `src/lib.rs` is then just this — what
 `nros new <name> --workspace --lang rust` writes for `talker_pkg`
@@ -207,14 +206,14 @@ Key points:
   ran: `ctx.timer_info()` is `Some(&TimerCallInfo)` in a timer callback
   (`expected_call_time`, `actual_call_time`, `lateness_ns()`, on the timer's
   clock) and `None` elsewhere. `create_timer_for_callback_name_with_autostart(name,
-  period, clock, false)` declares a timer STOPPED (issue 2038). Any callback
+  period, clock, false)` declares a timer STOPPED. Any callback
   starts it with `ctx.reset_timer(nros::EntityId::new("on_tick"))` (the id is
   the callback name for the `..._for_callback_name` verbs) and stops one with
-  `ctx.cancel_timer(..)`; `tick` has the same two (issue 2075). A callback
+  `ctx.cancel_timer(..)`; `tick` has the same two. A callback
   does not hold the executor, so the request takes effect at the component's
   next tick, later in the same spin.
 - There is **no `fn main()`** in a Node pkg.
-- `ENTITY_BOUNDS` is **static RAM you either pay or do not** (issue 0857).
+- `ENTITY_BOUNDS` is **static RAM you either pay or do not**.
   `nros::node!` emits a `static` sized from it, and a publisher slot carries a
   loan arena — so the default (`NROS_RUNTIME_MAX_CELL_ENTITIES`, 8 per kind)
   measured **50,824 bytes** of `.bss` for a one-service component against

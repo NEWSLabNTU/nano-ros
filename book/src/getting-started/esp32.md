@@ -1,6 +1,6 @@
 # ESP32 (esp-hal, bare-metal Rust) — dormant
 
-> **Dormant (issue 1525).** ESP32 support is parked: the code below is kept in
+> **Dormant.** ESP32 support is parked: the code below is kept in
 > the tree for future use, but nothing builds, tests or provisions it — the
 > `esp32` just module is not mounted, `nros setup` no longer carries the ESP32
 > board or tools, the CI job and fixture rows are gone, and `nros new --platform`
@@ -10,7 +10,7 @@
 Single-node starter on ESP32-C3 using the bare-metal `esp-hal` Rust
 path — no ESP-IDF — running under the Espressif QEMU fork (OpenETH
 ethernet). **This is the only ESP32 path nano-ros ships**: the ESP-IDF
-component shell was [retired](./integration-esp-idf.md) in phase-468 W2.
+component shell was [retired](./integration-esp-idf.md).
 
 > **Prereqs.** `nros setup esp32-c3-baremetal` prepares the build: the
 > riscv cross-gcc and `espflash` from a pinned index into the shared
@@ -27,7 +27,7 @@ component shell was [retired](./integration-esp-idf.md) in phase-468 W2.
 
 ## Setup
 
-Build the in-tree `nros` CLI (Phase 218):
+Build the in-tree `nros` CLI:
 
 ```bash
 ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
@@ -80,7 +80,7 @@ There is no `.cargo/` to edit. The `riscv32imc-unknown-none-elf` triple, the
 `alloc` from source, `ESP_LOG`, the DRAM budgets and the `[patch.crates-io]`
 rows all come from the board, and `nros sync` writes them into
 `build/esp32-c3-baremetal/nros-cargo.toml` — a generated file the build reads
-with `--config` (RFC-0098).
+with `--config`.
 
 ## Configure
 
@@ -112,7 +112,7 @@ The `entities` line is this board's one extra obligation. Pool sizes are
 normally *probed* from a host build of the component, and this leaf has no
 host build — a foreign triple, `build-std`, and a board crate that only exists
 for the target. So the image states what the node creates, and `nros sync`
-sizes the pools from that (RFC-0098 D8). On `.bss`-tight ESP32-C3 that matters:
+sizes the pools from that. On `.bss`-tight ESP32-C3 that matters:
 the stack is whatever the linker leaves after `.bss`, so a pool sized for an
 entity this node never creates is stack it cannot use.
 
@@ -150,9 +150,7 @@ espflash save-image --chip esp32c3 --flash-size 4mb --merge \
 
 **Driving cargo yourself** — for an IDE or a CI step — run `nros sync` first,
 then point cargo at the same generated file. Run it from the directory *above*
-the package, so the package's own `.cargo/` is not read a second time;
-phase-445 W6 deletes that directory, after which the working directory stops
-mattering:
+the package, so any `.cargo/` the package holds is not read a second time:
 
 ```bash
 cd examples/esp32-c3-baremetal/rust
@@ -230,8 +228,7 @@ If no `Publishing:` line:
   `examples/esp32-c3-baremetal/rust/`.
 - C / C++ apps on an ESP32 have no in-tree path today — the ESP-IDF
   component shell is [retired](./integration-esp-idf.md), and so is the
-  `idf.py` build driver. `nros build` says so rather than failing later
-  (issue 1525).
+  `idf.py` build driver. `nros build` says so rather than failing later.
 - ESP32-S3 (Xtensa) — not supported today. The Xtensa toolchain
   does not ship via `rustup` (it requires
   [`espup`](https://github.com/esp-rs/espup)), and there is no

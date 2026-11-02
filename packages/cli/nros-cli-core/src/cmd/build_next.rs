@@ -360,9 +360,10 @@ pub fn next_steps(
         if run.is_err() && d.platform == PlatformKind::Zephyr && !emus.is_empty() {
             out.commands
                 .push((format!("run ({})", emus.join(", ")), west_run.clone()));
+            // RFC-0118 D4.
             out.notes.push(format!(
                 "board `{}` states no `[board.run]`; `nros run` needs one (`emulator = \
-                 \"<kind>:<machine>\"`, RFC-0118 D4)",
+                 \"<kind>:<machine>\"`)",
                 p.board
             ));
         }
@@ -458,8 +459,9 @@ pub fn next_steps(
                 }
                 Err(_) => unresolved = Some(no_command(&p.board)),
             },
+            // The runner is phase-528 W3's.
             other => out.notes.push(format!(
-                "`{}` runs under the `{other}` runner ({}), which phase-528 W3 writes",
+                "`{}` runs under the `{other}` runner ({}), which this nros cannot launch yet",
                 p.board,
                 plan.target.emulator.as_deref().unwrap_or("?")
             )),
@@ -493,9 +495,10 @@ fn flash_line(plan: &nros_extension::plan::RunPlan, out: &mut NextSteps) {
             Ok(line) => out.commands.push(("flash".into(), line)),
             Err(e) => out.notes.push(format!("the flash command template: {e}")),
         },
-        (name, _) => out.notes.push(format!(
-            "flash with the `{name}` runner (`nros flash`, phase-529)"
-        )),
+        // `nros flash` is phase-529's.
+        (name, _) => out
+            .notes
+            .push(format!("flash with the `{name}` runner (`nros flash`)")),
     }
 }
 

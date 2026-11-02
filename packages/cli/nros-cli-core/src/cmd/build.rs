@@ -800,8 +800,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     )
                     .wrap_err_with(|| {
                         format!(
+                            // See issue 1419.
                             "`{qual}`: the census and the contract disagree, or the census no \
-                             longer describes the code (issue 1419)"
+                             longer describes the code"
                         )
                     })?;
                 }
@@ -814,8 +815,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     crate::builder::cargo_root::retire(&root).map_err(|e| eyre::eyre!("{e}"))?
                 {
                     eprintln!(
-                        "nros build:   removed {} — the phase-383 generated workspace root; \
-                         each image is its own cargo root now (RFC-0098 D9)",
+                        // See RFC-0098 D9; the root is phase-383's builder's output.
+                        "nros build:   removed {} — a generated workspace root an older nros left; \
+                         each image is its own cargo root now",
                         p.display()
                     );
                 }
@@ -875,9 +877,10 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     // entry WILL be generated at.
                     None if args.dry_run => image_dir.clone(),
                     None => eyre::bail!(
+                        // See RFC-0098 D9.
                         "`{qual}` has no entry package: the generated one could not be \
                          written (see the warning above) and there is no hand-written \
-                         `src/{want_entry}`. With no workspace root (RFC-0098 D9) there is \
+                         `src/{want_entry}`. With no workspace root there is \
                          nothing else for cargo to build."
                     ),
                 };
@@ -1069,8 +1072,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     )) {
                         Ok(Some(written)) => {
                             eprintln!(
+                                // issue 1706, phase-486 W9.
                                 "nros build:   sizing descriptor (no wiring: the model's \
-                                 facts only, issue 1706, phase-486 W9) → {}",
+                                 facts only) → {}",
                                 written.path.display()
                             );
                             path_env.insert(
@@ -1616,9 +1620,10 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         )
                         .map_err(|e| eyre::eyre!("{e}"))?,
                         None if text.is_some() => eyre::bail!(
+                            // See issue 2051.
                             "`{qual}`: this build ran no resolve phase, which is what carries \
                              the bringup's lowered RMW file to a Rust Zephyr application's \
-                             cargo build (issue 2051). Build it with `nros build`, or state \
+                             cargo build. Build it with `nros build`, or state \
                              the endpoint as the image's `locator`"
                         ),
                         None => {}
@@ -1645,8 +1650,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     )
                     .wrap_err_with(|| {
                         format!(
+                            // See issue 1419.
                             "`{qual}`: the census and the contract disagree, or the census no \
-                             longer describes the code (issue 1419)"
+                             longer describes the code"
                         )
                     })?;
                 }
@@ -2062,9 +2068,9 @@ fn plan_single_package(
         [] => None,
         [one] => Some(*one),
         many => eyre::bail!(
+            // See issue 1305.
             "{} is a single-package leaf: build one image per `nros build` (asked for {}). \
-             Its images share one generated selection package and one `generated/` tree \
-             (issue 1305), so build them one after another.",
+             Its images share one generated selection package and one `generated/` tree, so build them one after another.",
             root.display(),
             many.join(", ")
         ),
@@ -2133,7 +2139,8 @@ fn plan_leaf_image(
     let unsynced: Vec<String> = unsynced_inputs(root, &img);
     if !unsynced.is_empty() {
         eyre::bail!(
-            "{} has not been synced — missing {}.\n  Run `nros sync` in {} (RFC-0098 D2), then build again.",
+            // See RFC-0098 D2.
+            "{} has not been synced — missing {}.\n  Run `nros sync` in {}, then build again.",
             root.display(),
             unsynced.join(", "),
             root.display()
@@ -2150,8 +2157,9 @@ fn plan_leaf_image(
         && have != want
     {
         eyre::bail!(
+            // See issue 1305.
             "{}: image `{}` builds for ROS {}, and `generated/` was synced for {}.\n  \
-             Run `nros sync --image {}` in {} first (issue 1305).",
+             Run `nros sync --image {}` in {} first.",
             root.display(),
             img.image_id,
             want.as_str(),
@@ -2356,13 +2364,15 @@ fn plan_single_package_cmake(
     .map_err(|e| eyre::eyre!(e))?;
     let Some(decl) = decl else {
         if let Some(id) = want {
-            eyre::bail!("`{id}` is not an image of {} (RFC-0098 D3)", root.display());
+            // See RFC-0098 D3.
+            eyre::bail!("`{id}` is not an image of {}", root.display());
         }
         return Ok(None);
     };
     let Some(board) = decl.board.clone() else {
         eyre::bail!(
-            "{}: names no board (RFC-0098 D3: `[image.<id>] board = \"<board>\"`)",
+            // RFC-0098 D3.
+            "{}: names no board; add `[image.<id>] board = \"<board>\"`",
             decl.origin_path().display()
         );
     };
@@ -2908,13 +2918,14 @@ fn drive(
         );
         let Some(hand) = &p.handoff else {
             eyre::bail!(
-                "stage 4 (generate the root build file) is not implemented yet \
-                 - phase-383 W3 (cargo) / W4 (cmake).\n\
+                // See RFC-0065 D3.
+                // phase-383 W3 (cargo) / W4 (cmake).
+                "stage 4 (generate the root build file) is not implemented yet.\n\
                  `{}` needs a generated root, so it cannot be built through \
-                 `nros build` today. Until W3/W4 land, build it the existing \
+                 `nros build` today. Build it the existing \
                  way (cargo build / cmake --build).\n\
                  Images on Zephyr boards work now - they need no generated \
-                 root (RFC-0065 D3).",
+                 root.",
                 p.qualified
             );
         };
@@ -3025,8 +3036,9 @@ fn run_configure_step(cfg: &Handoff) -> Result<()> {
         eyre::bail!("configure failed: `{}` exited {}", cfg.display(), st);
     };
     eprintln!(
+        // See issue 0873.
         "nros build: warning: `{}` failed against a cold registry cache; \
-         retrying online (issue 0873)",
+         retrying online",
         cfg.display()
     );
     let st = online
@@ -3556,12 +3568,13 @@ fn generate_entry(
                 // THEN refuse to go further. Loud at the point of decision, and
                 // the remedy it names actually works.
                 facade_missing_fatal = Some(format!(
+                    // See issue 0937.
                     "nros build: `{image_id}` needs a selection facade and there is none at {}.\n\
                      \n\
                      Its system declares {} — capabilities reach the Entry ONLY through the\n\
                      facade's `nros` feature list, so building without it yields an Entry that\n\
                      cannot be correct. The failure would surface later as a const-eval panic\n\
-                     in a generated `main.rs` naming neither sync nor this facade (issue 0937).\n\
+                     in a generated `main.rs` naming neither sync nor this facade.\n\
                      \n\
                      The entry package HAS been generated, so `nros sync` can see it now.\n\
                      Run `nros sync` in the workspace, then build again (or `just build\n\
@@ -3579,11 +3592,12 @@ fn generate_entry(
                 // edition, and since 0831 the Entry has no other way to get
                 // either.
                 facade_missing_fatal = Some(format!(
+                    // See issue 0831.
                     "nros build: `{image_id}` needs a selection facade and there is none at {}.\n\
                      \n\
                      The facade is the one place that names {} and the ROS edition: the\n\
                      generated entry declares its board crate `default-features = false`\n\
-                     precisely so the facade can name the backend once (issue 0831), so\n\
+                     precisely so the facade can name the backend once, so\n\
                      without it the entry links NO RMW backend, no ROS edition and none of\n\
                      the board's own defaults. It would compile and then refuse to select a\n\
                      backend at run time, in a build directory named for the one it declared.\n\
@@ -4812,9 +4826,10 @@ fn resolve_image(
             (inv, model.clone())
         })
         .ok_or_else(|| {
+            // issue 1436.
             debug_assert!(
                 matches!(params, crate::entity_inventory::ParamDeclarations::Absent),
-                "issue 1436: no entity inventory, but the contract declares parameters \
+                "no entity inventory, but the contract declares parameters \
                      (`{}`) -- `EntityInventory::from_model` no longer covers `node_params` \
                      and this road is discarding them again",
                 params.tag()
@@ -5222,7 +5237,8 @@ fn generated_output_collision_message(collisions: &[(PathBuf, Vec<String>)]) -> 
         .map(|(p, q)| format!("  {}  <-  {}", p.display(), q.join(", ")))
         .collect();
     Some(format!(
-        "two images in this workspace would GENERATE the same output (issue 1582):\n\n{}\n\n  \
+        // See issue 1582.
+        "two images in this workspace would GENERATE the same output:\n\n{}\n\n  \
          A generated entry, its selection facade and its cmake target are keyed on the \
          image ID, not the bringup, so the second build overwrites the first and each \
          image then carries whichever was written last. Give one of them a distinct id \
@@ -5934,10 +5950,10 @@ fn report_declared_depends(
             ));
         }
         m.push_str(
+            // See RFC-0098 D3.
             "\nA package.xml declares what the package's CONTENT needs. An emulator, \
              cross toolchain or debug probe comes from WHERE the package deploys — \
-             declare that instead, in the `system.toml` that names the image \
-             (RFC-0098 D3):\n\
+             declare that instead, in the `system.toml` that names the image:\n\
              \n  [image.<id>]\n  board = \"<board>\"\n\
              \nand provision it with `nros setup` run in the workspace, which installs \
              every image's board (`nros setup --check` only reports).\n\
@@ -6135,9 +6151,11 @@ fn nuttx_kernel_step(
         .map_or_else(|| PathBuf::from(&rel), |d| d.join(&rel));
     let script = nros_root.join("scripts/nuttx/build-nuttx.sh");
     if !script.is_file() {
+        // An SDK root that predates issue 2149 lacks the script.
         eyre::bail!(
             "NuttX board `{board}`: {} is missing, so the kernel cannot be \
-             configured (an SDK root that predates issue 2149?)",
+             configured. The SDK root is older than this nros: update it with \
+             `nros setup {board}`.",
             script.display()
         );
     }
@@ -6182,8 +6200,9 @@ fn nuttx_env_rows(cargo_config: Option<&str>) -> Vec<(String, String)> {
 fn run_entry_root_check(er: &crate::builder::materialize::EntryRoot) -> Result<()> {
     if er.changed() {
         eprintln!(
+            // See issue 2167.
             "nros build: the entry now builds from {}; cleaning its previous \
-             root's units (issue 2167)",
+             root's units",
             er.manifest_dir.display()
         );
         let status = er
@@ -7384,7 +7403,7 @@ mod generated_output_collision_tests {
             assert_eq!(q, &["demo_bringup:zephyr", "derived_bringup:zephyr"]);
         }
         let msg = generated_output_collision_message(&got).expect("a refusal");
-        assert!(msg.contains("issue 1582"), "{msg}");
+        assert!(msg.contains("GENERATE the same output"), "{msg}");
         assert!(msg.contains("derived_bringup:zephyr"), "{msg}");
     }
 

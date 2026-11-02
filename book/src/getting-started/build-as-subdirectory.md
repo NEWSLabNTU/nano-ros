@@ -4,7 +4,7 @@
 nano-ros package or workspace, you state the board once in
 `system.toml` and let `nros sync` + `nros build` drive CMake — you
 never set a cache variable by hand, because the build root it generates
-sets them from that one board name (RFC-0098). Start at
+sets them from that one board name. Start at
 [First Project](first-project.md) and
 [Project layout](workspace-from-app-node.md) instead.
 
@@ -12,19 +12,18 @@ This page is for the C or C++ project that is **not** a nano-ros
 workspace: an existing CMake tree with its own layout and its own
 conventions, that wants nano-ros as a subdirectory and nothing else.
 There the cache variables below are how you say what you are building
-for, because there is no `system.toml` to read it from. The mechanism
-is unchanged by RFC-0098 — `nros build` sets exactly these variables in
-the root it generates.
+for, because there is no `system.toml` to read it from. `nros build`
+sets exactly these variables in the root it generates.
 
 The SDK root's top-level `CMakeLists.txt` (`nros sdk-root` prints the
 directory) exposes everything via `add_subdirectory(...)`. The
 higher-level, ament-shaped alternative is
 `find_package(nano_ros REQUIRED)` — `nano_rosConfig.cmake` at the
-SDK root, located via `-Dnano_ros_ROOT=<root>` (RFC-0048), which
+SDK root, located via `-Dnano_ros_ROOT=<root>`, which
 `nros build` and the CMakePresets `nros init` writes pass for you (a raw
 `cmake` names it; no shell exports it) — which every in-tree example
 reaches through the workspace helpers. Either way there
-is NO install step: phase-140 removed the install prefix and the old
+is NO install step: there is no install prefix and no
 `find_package(NanoRos)` (capital) config pipeline. Pinning a release
 for a company tree (offline CI, upgrade workflow) has its own page:
 [Integrating into a Vendored Tree](vendored-tree.md).
@@ -80,7 +79,7 @@ libraries (`pthread`, `dl`, `m`), and the per-build
 
 | Variable | Default | Values |
 |----------|---------|--------|
-| `NROS_PLATFORM` | `posix` | `posix`, `freertos`, `nuttx`, `threadx` (legacy spellings: `freertos_armcm3`, `nuttx_armv7a`, `threadx_linux`, `threadx_riscv64`). `esp_idf` was accepted until phase-468 W2 and is now REJECTED. Zephyr and bare-metal are not add_subdirectory platforms — they enter via the [Zephyr module](integration-zephyr.md) / cargo directly |
+| `NROS_PLATFORM` | `posix` | `posix`, `freertos`, `nuttx`, `threadx` (legacy spellings: `freertos_armcm3`, `nuttx_armv7a`, `threadx_linux`, `threadx_riscv64`). `esp_idf` is no longer accepted and is REJECTED. Zephyr and bare-metal are not add_subdirectory platforms — they enter via the [Zephyr module](integration-zephyr.md) / cargo directly |
 | `NROS_BOARD` | (unset) | required for `threadx` (`threadx-linux` or `rv-virt-threadx`) |
 | `NROS_SKIP_BOOTSTRAP` | `OFF` | `ON` skips the configure-time submodule bootstrap — which only a source checkout has; an installed SDK root takes its sources from `nros setup`. Corrosion is never fetched: a configure without it in the SDK store stops and names `nros setup --tool corrosion` |
 | `NROS_FEATURES` | (empty) | extra cargo features forwarded to the Rust build |
@@ -96,12 +95,11 @@ CMake root `nros build` generates writes `NROS_PLATFORM` and
 `NROS_BOARD` itself, both derived from the one `[image.<id>] board`
 you named in `system.toml`, and passes the backend from `[system] rmw`
 through the workspace helper. Setting them by hand there means two
-answers to one question, which is the arrangement RFC-0098 exists to
-end.
+answers to one question.
 
 ## What about installing?
 
-Phase-140 deleted every nano-ros-side `install(...)` rule. nano-ros is
+nano-ros has no `install(...)` rules. It is
 consumed in source form — never out of an installed prefix. If you need a
 shippable artefact, your *user project* owns the install layout; ship
 your binary, not nano-ros itself.
@@ -144,8 +142,8 @@ cmake --build build
 ```
 
 (`nros build` in the leaf runs these same two commands for you, into
-`build/<image>/cmake`, and passes the board's toolchain file
-([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md), resolved). A C/C++ *workspace* builds with
+`build/<image>/cmake`, and passes the board's toolchain file.
+A C/C++ *workspace* builds with
 `nros sync` + `nros build` as usual.)
 
 All the C/C++ examples follow that shape. The `add_subdirectory`

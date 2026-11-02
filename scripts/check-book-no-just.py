@@ -40,6 +40,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+import book_contributor  # noqa: E402  the exemption, shared with check-user-surface-ids
+
 TRACKS = [
     "book/src/getting-started/*.md",
     "book/src/user-guide/*.md",
@@ -52,10 +55,6 @@ TRACKS = [
 # or `--flag`), which is what keeps "just works" / "just a moment" out.
 FENCE_CMD = re.compile(r"^\s*(?:\$\s+)?just\s+[a-z_-]{2,}")
 INLINE_CMD = re.compile(r"`just\s+[a-z_-]{2,}[^`]*`")
-MARKER = re.compile(r"contributor|no-just-ok", re.I)
-HEADING = re.compile(r"^#{1,6}\s")
-TABLE_ROW = re.compile(r"^\s*\|")
-LOOKBACK = 8
 
 
 def main() -> int:
@@ -67,31 +66,11 @@ def main() -> int:
     bad = []
     for rel in files:
         lines = (repo / rel).read_text().splitlines()
-        in_fence = False
-        heading = ""
-        table_head = ""
-        for i, line in enumerate(lines):
-            if not in_fence and HEADING.match(line):
-                heading = line
-            if TABLE_ROW.match(line):
-                if not table_head:
-                    table_head = line  # first row of this table = its header
-            else:
-                table_head = ""
-            if line.lstrip().startswith("```"):
-                in_fence = not in_fence
-                continue
-            hit = FENCE_CMD.match(line) if in_fence else INLINE_CMD.search(line)
-            if not hit:
-                continue
-            window = lines[max(0, i - LOOKBACK) : i + 1]
-            if any(MARKER.search(w) for w in window):
-                continue
-            if MARKER.search(heading):
-                continue
-            if TABLE_ROW.match(line) and MARKER.search(table_head):
-                continue
-            bad.append((rel, i + 1, line.strip()))
+        for ln in book_contributor.walk(lines, extra_markers=("no-just-ok",)):
+            line = ln.text
+            hit = FENCE_CMD.match(line) if ln.in_fence else INLINE_CMD.search(line)
+            if hit and not ln.exempt:
+                bad.append((rel, ln.number, line.strip()))
 
     if not bad:
         print(f"check-book-no-just: OK ({len(files)} user-track page(s))")

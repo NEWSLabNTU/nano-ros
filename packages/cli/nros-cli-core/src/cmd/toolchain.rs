@@ -190,7 +190,7 @@ pub fn manifest(args: ManifestArgs) -> Result<()> {
             println!(
                 "no share/nros/{} beside {}\n\
                  store version: {where_from}\n\
-                 A release cut before RFC-0097 D7 declares no components, so \n\
+                 A release older than this nros declares no components, so \n\
                  `nros pin` cannot answer the codegen question for it.",
                 release_manifest::FILE_NAME,
                 exe.display()
@@ -231,7 +231,7 @@ pub fn uninstall(args: UninstallArgs, pin_search_from: Option<&Path>) -> Result<
         } else {
             println!(
                 "no toolchains are installed — {} does not exist.\n\
-                 (phase-440 W7 is what creates it; until then nano-ros is the checkout \
+                 (`nros setup` creates it; until then nano-ros is the checkout \
                  you are in, and there is nothing here to uninstall.)",
                 dir.display()
             );

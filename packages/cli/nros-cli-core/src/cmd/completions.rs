@@ -12,7 +12,8 @@ pub struct Args {
 
 pub fn run(_args: Args) -> Result<()> {
     Err(eyre!(
-        "`nros completions` is not implemented yet (Phase 111.A.13). \
+        // See Phase 111.A.13.
+        "`nros completions` is not implemented yet. \
          Wiring requires the binary front-end to expose its `clap::Command` \
          tree to `clap_complete::generate`; that lives in `nros-cli`."
     ))

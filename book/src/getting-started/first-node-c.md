@@ -35,7 +35,7 @@ c_talker/
 ```
 
 `system.toml` is the whole deployment statement — the same schema a
-Rust leaf and a multi-node workspace bringup use (RFC-0098):
+Rust leaf and a multi-node workspace bringup use:
 
 ```toml
 [system]

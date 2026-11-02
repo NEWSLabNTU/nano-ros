@@ -42,7 +42,7 @@ my_talker/
 ```
 
 `system.toml` is the whole deployment statement — the same schema a
-multi-node workspace's bringup package uses (RFC-0098):
+multi-node workspace's bringup package uses:
 
 ```toml
 [system]
@@ -84,10 +84,10 @@ walking up the filesystem), and nano-ros crates are declared
 crates.io, so `nros sync` generates the `[patch.crates-io]` block that
 resolves them into the SDK the `nros` on PATH carries, into
 `build/<image>/nros-cargo.toml` — nothing about the build is committed,
-and nothing about it is hand-edited (RFC-0098 D1). The manifest names no
+and nothing about it is hand-edited. The manifest names no
 board crate, RMW backend or ROS edition either: it depends on
 `my_talker_nros_selection = { path = "build/nros/selection" }`, a package
-`nros sync` generates from `system.toml` that brings all three (RFC-0098 D6),
+`nros sync` generates from `system.toml` that brings all three,
 so the `--rmw` and `--ros-edition` you passed to `nros new` live in
 `system.toml` and nowhere else.
 
@@ -207,7 +207,7 @@ To aim the package at a board, change `[image.linux] board` in
 `system.toml` to that board's name ([Supported Boards](../reference/supported-boards.md)),
 run `nros setup <board>`, and re-run `nros sync`. The scaffold's
 `Cargo.toml` names the Linux board crate (`nros-board-linux`), so a
-cross build swaps that dependency too (issue 1305); the platform
+cross build swaps that dependency too; the platform
 chapters scaffold with `--platform <freertos|nuttx|threadx|baremetal>`,
 which writes the right one.
 

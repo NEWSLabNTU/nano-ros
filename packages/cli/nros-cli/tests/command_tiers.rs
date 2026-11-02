@@ -126,7 +126,7 @@ fn a_reserved_verb_refuses_and_names_what_to_do() {
     let (ok, _, err) = run(&["run", "talker"]);
     assert!(!ok, "`nros run` succeeded");
     assert!(
-        err.contains("phase-528 W4") && err.contains("--dry-run"),
+        err.contains("not implemented yet") && err.contains("--dry-run"),
         "{err}"
     );
 }

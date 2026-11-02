@@ -70,7 +70,7 @@ parent: PX4's root `CMakeLists.txt` does
 The template finds nano-ros itself: an explicit `-Dnano_ros_ROOT=<path>`
 cache variable wins, otherwise it asks the `nros` on PATH (`nros sdk-root`),
 which answers with the SDK that binary belongs to. No environment variable is
-read (RFC-0103 D6). To name the root anyway, pass it through PX4's
+read. To name the root anyway, pass it through PX4's
 `CMAKE_ARGS`:
 
 ```bash
@@ -79,7 +79,7 @@ make -C PX4-Autopilot px4_sitl_default \
     CMAKE_ARGS="-Dnano_ros_ROOT=$(nros sdk-root)"    # optional
 ```
 
-> **Not replayed.** No probe track runs the PX4 SITL build yet, so this line is unmeasured on the installed track ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe track runs the PX4 SITL build yet, so this line is unmeasured on the installed track ([tracking issue](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 Inside the module, the canonical pattern bridges uORB → nano-ros.
 The module is a `PX4Module` subclass that runs in its own work
@@ -147,7 +147,7 @@ make -C PX4-Autopilot px4_fmu-v5_default upload \
     EXTERNAL_MODULES_LOCATION="$PWD/px4-modules/nano-ros"
 ```
 
-> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([tracking issue](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 QGroundControl can flash the same `build/px4_fmu-v5_default/px4_fmu-v5_default.px4`
 instead. Start the module from the NSH console (`nano_ros_app start`) or the
@@ -155,7 +155,7 @@ board's startup script.
 
 No probe runs the upload line (a CI runner has no board): it stands
 unverified until run against a named board. PX4 SITL is the replay that can
-run in CI, and it belongs to phase-521 W8 (RFC-0113 D9).
+run in CI, and it is not yet run there either.
 
 **Readiness signal.** After `nano_ros_app start` in the PX4
 console, the shipped template logs `nano-ros uORB backend

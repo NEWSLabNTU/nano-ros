@@ -222,8 +222,9 @@ fn inventory_from_metadata(source: &str, doc: &MetadataDoc) -> Result<EntityInve
         let pkg = c.pkg_or_class_prefix();
         if c.entities.is_some() {
             bail!(
+                // See issue 1555.
                 "component `{pkg}::{}` in `{source}` carries an `entities` key. That key \
-                 is RETIRED (issue 1555): no build writes it, and what a component creates \
+                 is RETIRED: no build writes it, and what a component creates \
                  is stated in the contract sidecar beside the launch file, which reaches \
                  this verb through `--model`. A standalone leaf states it in its \
                  `system.toml` `[[component]]` row instead.",
@@ -691,8 +692,7 @@ pub(crate) fn fold_models_for_shared_runtime(
         eprintln!(
             "nros: entity inventory: {} of {} models in this configure describe no wiring ({}); \
              their launch trees say which components they start, and those are sized from \
-             the statements other images' contracts make of the same components \
-             (issues 1600, 1701)",
+             the statements other images' contracts make of the same components",
             unwired.len(),
             models.len(),
             unwired.join(", ")
@@ -981,7 +981,7 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("p::n"), "names the component: {err}");
-        assert!(err.contains("1555"), "names the issue: {err}");
+        assert!(err.contains("RETIRED"), "says the key is retired: {err}");
         assert!(err.contains("--model"), "names where it lives now: {err}");
     }
 

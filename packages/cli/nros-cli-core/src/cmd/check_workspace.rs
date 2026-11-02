@@ -293,7 +293,8 @@ fn lint_cargo_metadata_nros(cargo_toml_path: &Path, pkg_name: &str) -> Result<()
         .unwrap_or_default();
     if !retired.is_empty() {
         bail!(
-            "{pkg_name}: {} — retired (RFC-0098 D5, phase-445 W5): nothing reads it. \
+            // See RFC-0098 D5, phase-445 W5.
+            "{pkg_name}: {} — retired: nothing reads it. \
              State the board as `[image.<id>] board = \"<board>\"` in a `system.toml` \
              beside the package (a single-package example), or in the workspace \
              bringup's image that builds this entry (`entry = \"{pkg_name}\"`), and \

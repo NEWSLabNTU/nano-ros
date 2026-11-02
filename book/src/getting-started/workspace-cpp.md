@@ -16,7 +16,7 @@ changes language-side is the cmake-fn / macro surface.
 
 | Role | Rust | C / C++ |
 |---|---|---|
-| **Node pkg** | `lib.rs` with `nros::node!(MyNode)`, declared by a `[[component]]` row in the bringup's `system.toml` | `Talker.{hpp,cpp}` with a `configure(::rclcpp::Node&)` component method (C++) / `RCLC_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
+| **Node pkg** | `lib.rs` with `nros::node!(MyNode)`, declared by a `[[component]]` row in the bringup's `system.toml` | `Talker.{hpp,cpp}` with a `configure(::rclcpp::Node&)` component method (C++) / `RCLC_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
 | **Image** | `[image.linux] board = "linux"` in the bringup's `system.toml` | identical (language-agnostic) |
 | **The entry** | GENERATED into `build/<coord>/linux_entry/` — a `Cargo.toml` and a `nros::main!(launch = "demo_bringup")` | GENERATED into `build/<coord>/CMakeLists.txt` — a `nano_ros_add_executable(linux_entry BOARD … BRINGUP … LAUNCH … LANG cpp TYPED DEPLOY linux)` call, plus the `main` TU the verb emits |
@@ -52,7 +52,7 @@ my_ws/
 ```
 
 No entry package, and nothing at the root: a workspace is a directory of
-packages (RFC-0098 D9). `nros build <image>` writes a `CMakeLists.txt` and the
+packages. `nros build <image>` writes a `CMakeLists.txt` and the
 entry's `nano_ros_add_executable(…)` call into `build/<coordinate>/`, configures
 that into `build/<coordinate>/cmake/`, and builds — see
 [Images](./workspace-entry-pkg.md). The exception is a Zephyr application,
@@ -103,7 +103,7 @@ workspace; the per-pkg CMakeLists doesn't change between modes.
 
 ## Node pkg
 
-A **typed component** (RFC-0043) — no `main()`. The pkg ships a class with a
+A **typed component** — no `main()`. The pkg ships a class with a
 `configure(::rclcpp::Node&)` method that creates real entities (a `Publisher`, a
 `Timer`) and binds member callbacks **by identity** (member-fn-pointer template
 param, no string callback name, no interpreter). The generated entry constructs
@@ -116,7 +116,7 @@ project(talker_pkg LANGUAGES C CXX)
 nano_ros_workspace_pkg_guard()
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
-# RFC-0057: the ament shape — the library owns the sources, the register
+# The ament shape — the library owns the sources, the register
 # owns the identity (keyword parity with rclcpp_components_register_node).
 # Interface deps (std_msgs__nano_ros_cpp) are wired automatically.
 nano_ros_auto_add_library(talker_lib STATIC src/Talker.cpp)
@@ -130,7 +130,7 @@ nros_components_register_node(talker_lib
 ### Telling the build what the component creates
 
 `NROS_EXECUTOR_MAX_CBS`, the subscriber slots and the arena are `const` sizes
-compiled into nros-node before a component TU is compiled, while an RFC-0043
+compiled into nros-node before a component TU is compiled, while a typed
 component wires itself in its CONSTRUCTOR, at runtime. Nothing the macros emit
 can supply those sizes — it exists only after linking. So somebody has to state
 what the image creates, ahead of the build.
@@ -200,7 +200,7 @@ Note that a publisher is inventoried but claims no callback slot, so the entity
 count and the derived `MAX_CBS` are legitimately different numbers.
 
 > Earlier versions stated this per component, as
-> `nano_ros_node_register(ENTITIES ...)`. That keyword is retired (phase-412)
+> `nano_ros_node_register(ENTITIES ...)`. That keyword is retired
 > and now fails with a pointer here. It was a list beside the code with nothing
 > comparing the two, and on the safety island one of them declared six
 > subscriptions for a node that creates seven: every pool derived from it was
@@ -220,7 +220,7 @@ the short pool); one the contract declares and the code never creates refuses
 as `phantom` (waivable per row under `[census.waive]`).
 
 The configure never builds the native image itself. `nros build` does: before
-it plans a cross image, it takes that image's census (issue 2137). A build
+it plans a cross image, it takes that image's census. A build
 driven some other way (a hand-run `west build` or `cmake`) takes it first:
 
 ```console
@@ -290,7 +290,7 @@ $ nros new --component my-talker --lang cpp --template talker
 ✓ Created nano-ros C++ Node pkg 'my-talker'
   Class     : my_talker::Talker
   Node      : talker
-  Kind      : typed component (RFC-0043)
+  Kind      : typed component
 ```
 
 ## Bringup pkg

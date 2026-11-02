@@ -151,6 +151,20 @@ book-no-checkout:
 book-no-just:
     @python3 scripts/check-book-no-just.py
 
+# phase-525 W1 (RFC-0116 D2) — the user surface names no internal id. An
+# adopter reads `nros --help`, a verb's refusal and the getting-started
+# chapters with no tree to look a `phase-NNN`, `issue NNNN`, `#NNNN` or
+# `RFC-NNNN` up in. Subjects: every string literal under
+# `packages/cli/nros-cli-core/src/cmd/`, `book/src/getting-started/` (the
+# contributor-block exemption `book-no-just` uses), and the RENDERED help of
+# every verb plus `nros board list`/`show` and `nros doctor --report`, which
+# also hold no tier number. Baseline zero, no allowlist. The rendered half
+# needs the in-tree CLI and is NOT VERIFIED (skip ledger) without one; the
+# rest is buildless, ~1 s.
+[private]
+user-surface-ids:
+    @python3 scripts/check/check-user-surface-ids.py
+
 # phase-429 W3 (RFC-0090 D1/D5) — `NROS_CODEGEN_VERSION` is an AUTHORED integer,
 # and this tree's authored mirrors drift: `check-rmw-api-parity`'s map read green
 # while 25 symbols disagreed with the vtable. Drift here is quieter and worse —

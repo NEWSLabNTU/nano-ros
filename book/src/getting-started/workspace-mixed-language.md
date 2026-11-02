@@ -27,8 +27,7 @@ my_ws/
 
 Mixed is not a special case. The driver is chosen by the **board**, and cmake
 wins whenever the package graph crosses languages — corrosion makes cargo
-consumable from cmake, and nothing makes cmake consumable from cargo (RFC-0024
-§6.3). So a mixed workspace builds exactly like the C++ one:
+consumable from cmake, and nothing makes cmake consumable from cargo. So a mixed workspace builds exactly like the C++ one:
 
 ```console
 $ cd my_mixed_ws              # e.g. a copy of examples/workspaces/mixed
@@ -40,12 +39,12 @@ $ nros build linux
 the discovered packages, plus one `nano_ros_add_executable(…)` per image on
 that coordinate — into `build/<coordinate>/`, configures it into
 `build/<coordinate>/cmake/`, and builds. That generated file is the cmake root;
-the workspace itself has no build file at all (RFC-0098 D9), and neither the
+the workspace itself has no build file at all, and neither the
 root nor the entry is yours to write.
 
 ## C Node pkg
 
-A C Node pkg is a **typed component** (RFC-0043): no `main()`. It defines a
+A C Node pkg is a **typed component**: no `main()`. It defines a
 state struct + a `configure(node, executor, self)` function and exports the
 C-ABI factory/configure seam via `RCLC_C_COMPONENT(StateT, configure_fn)` — the
 typed Entry creates the node and runs `configure` on the real executor. The

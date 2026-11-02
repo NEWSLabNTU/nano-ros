@@ -214,8 +214,9 @@ pub fn resolve(
 ) -> Result<Vec<(String, PathBuf, String, ImageBlock)>, String> {
     let all = all_images(bringups);
     if all.is_empty() {
+        // RFC-0065 D6.
         return Err("this workspace declares no `[image.*]`. An image is the \
-                    buildable unit — see RFC-0065 D6."
+                    buildable unit: add `[image.<id>] board = \"<board>\"` to system.toml."
             .to_string());
     }
 

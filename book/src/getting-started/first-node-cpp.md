@@ -35,8 +35,7 @@ cpp_talker/
 ```
 
 `system.toml` is the whole deployment statement — `[system]` for the
-RMW and domain, and one `[image.<id>]` per target naming its `board`
-(RFC-0098). `find_package(nano_ros)`
+RMW and domain, and one `[image.<id>]` per target naming its `board`. `find_package(nano_ros)`
 reads it and derives the platform from the board, so no line of
 `CMakeLists.txt` names a platform, a board or an RMW. Switching this
 package to a board is editing `[image.linux] board` and re-running
@@ -51,7 +50,7 @@ network file `os_config` names, and bakes them at build time. The `package.xml`
 tuple is retired and refused.
 
 The CMakeLists is the **ament shape you already know** — this is the
-scaffolded file, comments trimmed (RFC-0048: `nano_rosConfig.cmake` at
+scaffolded file, comments trimmed (`nano_rosConfig.cmake` at
 the SDK root makes `find_package(nano_ros)` resolve source-side, and the
 message-package Find-stubs make `find_package(std_msgs)` generate
 bindings on the fly):
@@ -123,8 +122,7 @@ expression that failed. Define `RCLCPP_TRY_LOG` once (any sink — here
 
 `rclcpp::create_node(node, "talker")` above returns a `Result`, and
 `RCLCPP_TRY_RET` checks it. The rclcpp-shaped constructor has no return value to
-check — and on a `-fno-exceptions` target, which every nano-ros build is
-(RFC-0018), it cannot throw the way upstream's does either. It records the
+check — and on a `-fno-exceptions` target, which every nano-ros build is, it cannot throw the way upstream's does either. It records the
 failure and reports it through `ok()`:
 
 ```cpp

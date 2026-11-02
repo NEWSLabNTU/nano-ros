@@ -35,7 +35,7 @@ Two Rust-specific facts:
 - **`nros sync` before the first build**, and again after editing `.msg`
   files or moving the checkout. It generates the message crates, and — per
   image — the settings file cargo is handed with `--config`: the board's
-  rustc triple, the link flags, the `[env]`, the patch rows (RFC-0098 D1).
+  rustc triple, the link flags, the `[env]`, the patch rows.
   Nothing of that is written beside your packages, and cargo cannot resolve
   the build without it. A C or C++ workspace runs `nros sync` too; what it
   does not get from it is the message codegen, which runs inside CMake.

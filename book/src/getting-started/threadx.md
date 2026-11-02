@@ -34,7 +34,7 @@ nano-ros for a board. Most components are prebuilt per platform per RMW — the
 cross-compiler, emulator, and SDK sources (the ThreadX/NetX
 sources, and for threadx-linux the POSIX-sim sources) are fetched from a pinned
 index into a shared store at `${NROS_HOME:-~/.nros}/sdk`. The zenoh router is
-NOT among them — it comes from a ROS 2 install (RFC-0075); only the xrce
+NOT among them — it comes from a ROS 2 install; only the xrce
 agent is provisioned by `nros setup`.
 
 Packages are prebuilt where the index has a binary for your host and built from
@@ -91,14 +91,13 @@ nros new --image tx_riscv --board rv-virt-threadx     # QEMU flavour (optional)
 
 The two flavours differ in the `board =` line of their image — nothing
 else. Everything else follows the board. `threadx-linux` builds for the
-host triple (its Rust entry is still `#![no_std]`, issue 1759), so its
+host triple (its Rust entry is still `#![no_std]`), so its
 board contributes no target triple; `rv-virt-threadx` cross-compiles,
 and its triple, link group and emulator all come from the board
 descriptor — never from your package. `nros sync` / `nros build`
 resolve the choice into the image's `nros-cargo.toml` under `build/`,
-which is what the build reads (RFC-0098). The board crate is reached
-through a generated `<pkg>_nros_selection` package
-([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)),
+which is what the build reads. The board crate is reached
+through a generated `<pkg>_nros_selection` package,
 so nothing you write names it.
 
 ThreadX-linux runs as a regular host process — no QEMU. NetX Duo
@@ -109,8 +108,7 @@ uses the `nx_bsd_*` BSD socket shim layered on the host TCP stack
 ## Why there are two board crates and one arch port
 
 The two flavours look like one board with two targets, and they are not.
-nano-ros ships **three** ThreadX packages, in the three layers RFC-0064
-describes:
+nano-ros ships **three** ThreadX packages, in three layers:
 
 | Package | Layer | What it owns |
 |---|---|---|
@@ -367,10 +365,9 @@ package for physical hardware. A board of your own starts from the
 `nros-board-threadx` family crate and the riscv64 arch port as the
 pieces to reuse; it is then flashed with that board vendor's tooling.
 
-## Multi-tier scheduling (phase-297)
+## Multi-tier scheduling
 
-ThreadX supports the multi-tier workspace scheduling model
-(RFC-0053): declare per-tier ThreadX priorities in the workspace
+ThreadX supports the multi-tier workspace scheduling model: declare per-tier ThreadX priorities in the workspace
 manifest with `[tiers.<name>.threadx]` priority tables, and
 `nros::main!` routes the app onto `run_tiers` — one executor per
 tier, all sharing one session, with per-tier stacks carved from the
