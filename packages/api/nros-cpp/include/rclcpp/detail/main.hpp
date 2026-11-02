@@ -212,7 +212,8 @@ inline int32_t component_spin_loop() {
 ///                    byte-identical to `nros_native_tier_spec_t`.
 /// `priority`       — raw POSIX nice level adjustment (advisory on Linux).
 /// `stack_bytes`    — informational on native (`std::thread` manages the stack).
-/// `spin_period_us` — sleep between `spin_once` calls; 0 → 1 ms floor.
+/// `spin_period_us` — a level's park bound (the level runner); the tier runner
+///                    parks until the next deadline or arrival and ignores it.
 /// `setup`          — called once on the tier thread (after `set_active_groups`)
 ///                    with the tier executor handle; returns 0 on success.
 /// `core_plus1` — RFC-0052 W2: CPU pin + 1; 0 = unpinned.

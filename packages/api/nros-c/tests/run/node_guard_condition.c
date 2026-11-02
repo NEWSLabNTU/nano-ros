@@ -88,17 +88,21 @@ typedef struct {
     unsigned magic;
     unsigned fires;
     pthread_t ran_on;
+    uint64_t last_fire_ms;
 } guard_ctx_t;
 
 #define GUARD_CTX_MAGIC 0x6d61676eu
 
-static guard_ctx_t s_ctx = {GUARD_CTX_MAGIC, 0, 0};
+static guard_ctx_t s_ctx = {GUARD_CTX_MAGIC, 0, 0, 0};
+
+static uint64_t now_ms(void);
 
 static void on_guard(void* context) {
     guard_ctx_t* ctx = (guard_ctx_t*)context;
     if (ctx == NULL) return;
     ctx->fires++;
     ctx->ran_on = pthread_self();
+    ctx->last_fire_ms = now_ms();
 }
 
 /* ---- Timing ------------------------------------------------------------- */
@@ -130,6 +134,28 @@ static void* trigger_thread(void* unused) {
     } else {
         (void)rclc_guard_condition_trigger(&s_guard);
     }
+    return NULL;
+}
+
+/* ---- phase-521 W6: the period spin's gap is a park ----------------------
+ *
+ * `rclc_executor_spin_period` used to SLEEP from the end of one invocation to
+ * the start of the next. A trigger landing in that gap waited for the next
+ * period, and a cancel waited for the sleep to end. This thread triggers the
+ * guard 150 ms into a 1 s period, then cancels 250 ms later. */
+
+static uint64_t s_period_trigger_ms = 0;
+static uint64_t s_period_cancel_ms = 0;
+static struct rclc_executor_t* s_period_exec = NULL;
+
+static void* period_thread(void* unused) {
+    (void)unused;
+    sleep_ms(150);
+    s_period_trigger_ms = now_ms();
+    (void)rclc_guard_condition_trigger(&s_guard);
+    sleep_ms(250);
+    s_period_cancel_ms = now_ms();
+    (void)rclc_executor_cancel(s_period_exec);
     return NULL;
 }
 
@@ -290,6 +316,34 @@ int main(void) {
     (void)rclc_executor_spin_some(&executor, 10000000ull);
     CHECK(s_ctx.fires == 3, "a cleared flag dispatches nothing");
 
+    /* ---- phase-521 W6: a trigger in the period gap, then a cancel -------- */
+
+    CHECK_RET(rclc_executor_set_timeout(&executor, 10000000ull), RCL_RET_OK,
+              "a 10 ms wait per invocation, so the gap is most of the period");
+    const unsigned fires_before_period = s_ctx.fires;
+    s_period_exec = &executor;
+    CHECK(pthread_create(&th, NULL, period_thread, NULL) == 0, "period thread started");
+    const uint64_t period_start = now_ms();
+    CHECK_RET(rclc_executor_spin_period(&executor, 1000000000ull), RCL_RET_OK,
+              "the period spin returned OK on cancel");
+    const uint64_t period_end = now_ms();
+    CHECK(pthread_join(th, NULL) == 0, "period thread joined");
+    const uint64_t trigger_latency_ms = s_ctx.last_fire_ms - s_period_trigger_ms;
+    const uint64_t cancel_latency_ms = period_end - s_period_cancel_ms;
+
+    CHECK(s_ctx.fires == fires_before_period + 1,
+          "the trigger in the gap was dispatched by the period spin");
+    CHECK(s_ctx.last_fire_ms >= s_period_trigger_ms && trigger_latency_ms < 100,
+          "a trigger 150 ms into a 1 s period is dispatched when it lands, not at the next "
+          "period (the old gap SLEPT until 1000 ms)");
+    CHECK(period_end - period_start < 700 && cancel_latency_ms < 100,
+          "a cancel ends the gap's park (the old sleep ran to the next period)");
+    if (trigger_latency_ms >= 100 || cancel_latency_ms >= 100) {
+        fprintf(stderr, "       gap trigger %llu ms, cancel %llu ms, period spin %llu ms\n",
+                (unsigned long long)trigger_latency_ms, (unsigned long long)cancel_latency_ms,
+                (unsigned long long)(period_end - period_start));
+    }
+
     /* ---- Teardown -------------------------------------------------------- */
 
     CHECK_RET(rcl_guard_condition_fini(&s_guard), RCL_RET_OK, "guard condition finalised");
@@ -307,8 +361,9 @@ int main(void) {
         return 1;
     }
     printf("node_guard_condition: OK (idle spin %llu ms, pre-spin wake %llu ms, "
-           "parked wake %llu ms)\n",
+           "parked wake %llu ms, period-gap trigger %llu ms, period-gap cancel %llu ms)\n",
            (unsigned long long)control_ms, (unsigned long long)woken_ms,
-           (unsigned long long)parked_ms);
+           (unsigned long long)parked_ms, (unsigned long long)trigger_latency_ms,
+           (unsigned long long)cancel_latency_ms);
     return 0;
 }
