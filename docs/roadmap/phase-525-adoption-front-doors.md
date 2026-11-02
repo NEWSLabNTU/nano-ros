@@ -26,7 +26,7 @@ is the container, so the probe can time it today.
 
 ## Work items
 
-### W1 — `check-user-surface-ids` and the sweep (D2) — DONE (2026-11-02)
+### W1 — `check-user-surface-ids` and the sweep (D2) — DONE (2026-11-02, PR #3016)
 
 Landed: `scripts/check/check-user-surface-ids.py`, on the fast line as
 `just check user-surface-ids`, baseline zero, no allowlist. The contributor
