@@ -5,9 +5,12 @@ status: open
 type: flake
 severity: low
 area: [ci, testing]
-related: [0854, 1690, 2180]
+related: [0854, 1690, 2180, phase-466]
 found: 2026-11-01
 ---
+
+**Home:** [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
+— tier 1 now reaches its cells. Five time budgets keep its verdict red, and the reason is the runner, not the code.
 
 ## Symptom
 

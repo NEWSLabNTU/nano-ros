@@ -9,6 +9,9 @@ found: 2026-10-27
 related: [1991, 0750, 0930, phase-513, phase-466]
 ---
 
+**Home:** [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
+— W5. The a53 SMP cell is the one realtime cell a scheduled lane reaches and cannot boot.
+
 ## Measured
 
 - Run: nightly 40466371508 (schedule, 07:13 UTC, main at `5e863e1ee`).
