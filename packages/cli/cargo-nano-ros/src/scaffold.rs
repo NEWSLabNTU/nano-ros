@@ -124,10 +124,8 @@ enum PlatformKind {
     /// `#![no_std]` `nros::main!()` Form-1 self-bringup — `main.rs` is the
     /// one-line entry, `lib.rs` is the node (`nros::node!`), and
     /// `system.toml`'s `[image.*] board` names the board. The runtime dep
-    /// profile differs: `CortexM` carries the cortex-m trio + a direct
-    /// `nros-rmw-zenoh`; `Esp32` carries `esp-hal`/`esp-backtrace` and lets the
-    /// board crate own the RMW. Models the baremetal / esp32 single-package
-    /// talkers.
+    /// profile is `CortexM` (the esp32 profile retired with its board,
+    /// phase-521 W6). Models the baremetal single-package talker.
     SelfBringup { runtime: SelfBringupRuntime },
     /// Not yet scaffoldable as a single package — `nros new` bails with a
     /// pointer rather than emit a project that cannot run. The #333 follow-up.
@@ -142,9 +140,6 @@ enum SelfBringupRuntime {
     /// cortex-m target: `cortex-m` + `cortex-m-rt` + `panic-semihosting`, plus a
     /// direct `nros-rmw-zenoh = { features = ["platform-bare-metal", …] }`.
     CortexM,
-    /// esp32c3: `esp-hal` + `esp-backtrace` (panic handler); the board crate's
-    /// default features own the RMW.
-    Esp32,
 }
 
 /// The platform → board-crate + entry-shape SSoT (issue 0333). Every
@@ -154,6 +149,9 @@ enum SelfBringupRuntime {
 /// the values the tracked entry examples declare; `deploy_token` is what bare
 /// `nros::main!()` reads (`nros-orchestration-ir::board_path_for`).
 struct PlatformSpec {
+    // Read by the platform-spec test; the scaffold itself names the board
+    // through the selection package since the esp32 template retired.
+    #[allow(dead_code)]
     board_crate: &'static str,
     /// Deploy token. For `Hosted` it is the `[package.metadata.nros.application]`
     /// deploy; for `SelfBringup` it is the `system.toml` `[image.*] board` the
@@ -182,16 +180,6 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
             deploy_token: "mps2-an385",
             kind: PlatformKind::SelfBringup {
                 runtime: SelfBringupRuntime::CortexM,
-            },
-        },
-        // ESP32 is DORMANT (issue 1525): `nros new --platform` no longer offers
-        // it, but the spec and its self-bringup template are kept for future
-        // use (and still unit-tested below), so reviving it is one line.
-        "esp32" => PlatformSpec {
-            board_crate: "nros-board-esp32-qemu",
-            deploy_token: "esp32-qemu",
-            kind: PlatformKind::SelfBringup {
-                runtime: SelfBringupRuntime::Esp32,
             },
         },
         "freertos" => PlatformSpec {
@@ -291,14 +279,14 @@ pub fn scaffold_package_at(dir: &Path, cfg: &ScaffoldConfig) -> Result<()> {
     // `--ros-edition` fails loud here). Issue 2079: it is DECLARED, in the
     // `system.toml` below, and the toolchain lowers it — through the selection
     // package for a Rust leaf, through the leaf reader for C/C++. The cargo
-    // feature is kept only for the one unmigrated template (esp32, dormant).
+    // feature is no longer emitted by any template (the esp32 one retired).
     let edition = rosidl_codegen::RosEdition::parse(&cfg.ros_edition).ok_or_else(|| {
         eyre::eyre!(
             "nros new: unknown ROS edition '{}' (humble | iron | jazzy | rolling)",
             cfg.ros_edition
         )
     })?;
-    let edition_feature = edition.cargo_feature();
+    let _ = edition;
 
     // Issue 0333 — validate the platform up front (like `--rmw`/`--ros-edition`
     // above) so an unsupported value fails loud before any file is written,
@@ -307,7 +295,7 @@ pub fn scaffold_package_at(dir: &Path, cfg: &ScaffoldConfig) -> Result<()> {
     let spec = platform_spec(&cfg.platform)?;
 
     // Issue 0333 defect 2 — the Rust runnable-template rewrite covers the
-    // single-package platforms (linux hosted, baremetal/esp32
+    // single-package platforms (linux hosted, baremetal
     // `nros::main!()` self-bringup). The split-package (freertos/nuttx/threadx)
     // and west/Kconfig (zephyr) shapes are a follow-up; bail before writing any
     // file rather than emit a project that cannot run. C/C++ are unaffected —
@@ -370,14 +358,7 @@ pub fn scaffold_package_at(dir: &Path, cfg: &ScaffoldConfig) -> Result<()> {
     // a compile error HERE, where somebody has to write its template, instead
     // of an "Unknown language" at run time.
     match cfg.lang {
-        Language::Rust => scaffold_rust(
-            &cfg.name,
-            &cfg.platform,
-            edition_feature,
-            &dir,
-            cfg.template,
-            &node,
-        )?,
+        Language::Rust => scaffold_rust(&cfg.name, &cfg.platform, &dir, cfg.template, &node)?,
         Language::C | Language::Cpp if cfg.platform == "zephyr" => {
             scaffold_zephyr(&cfg.name, cfg.lang, &dir, cfg.template, &node)?
         }
@@ -924,20 +905,13 @@ nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
 /// idiom, dispatched by platform kind. Deferred platforms are rejected earlier
 /// in [`scaffold_package`], so only [`PlatformKind::Hosted`] and
 /// [`PlatformKind::SelfBringup`] reach here.
-fn scaffold_rust(
-    name: &str,
-    platform: &str,
-    edition_feature: &str,
-    dir: &Path,
-    role: Role,
-    node: &str,
-) -> Result<()> {
+fn scaffold_rust(name: &str, platform: &str, dir: &Path, role: Role, node: &str) -> Result<()> {
     let spec = platform_spec(platform)?;
     let lib_rs = rust_node_lib(role, node);
     match &spec.kind {
         PlatformKind::Hosted => scaffold_rust_hosted(name, dir, &lib_rs),
         PlatformKind::SelfBringup { runtime } => {
-            scaffold_rust_self_bringup(name, &spec, runtime, edition_feature, dir, &lib_rs)
+            scaffold_rust_self_bringup(name, &spec, runtime, dir, &lib_rs)
         }
         // Rejected before any file is written (see `scaffold_package`).
         PlatformKind::Deferred { .. } => {
@@ -1041,19 +1015,17 @@ nros::main!(spin = "forever");
     Ok(())
 }
 
-/// Self-bringup (baremetal/esp32) — `main.rs` is the one-line `nros::main!()`
+/// Self-bringup (baremetal) — `main.rs` is the one-line `nros::main!()`
 /// Form-1 entry, `lib.rs` is the node. The macro reads the board from the
 /// `system.toml` `scaffold_package` writes beside it. Models the
-/// single-package `examples/mps2-an385-baremetal/rust/talker` / esp32 talker.
+/// single-package `examples/mps2-an385-baremetal/rust/talker`.
 fn scaffold_rust_self_bringup(
     name: &str,
     spec: &PlatformSpec,
     runtime: &SelfBringupRuntime,
-    edition_feature: &str,
     dir: &Path,
     lib_rs: &str,
 ) -> Result<()> {
-    let board_crate = spec.board_crate;
     let deploy = spec.deploy_token;
 
     // Per-runtime dependency + entry deltas.
@@ -1071,36 +1043,8 @@ fn scaffold_rust_self_bringup(
             // `panic_impl` (E0152, issue 1265).
             "#![no_std]\n#![no_main]\nnros::main!(panic = \"own\");\n".to_string(),
         ),
-        SelfBringupRuntime::Esp32 => (
-            // The esp32 board crate's default features own the RMW backend.
-            format!(
-                r#"{board_crate} = {{ version = "*" }}
-esp-hal = {{ version = "~1.0.0", features = ["esp32c3", "unstable"] }}
-esp-backtrace = {{ version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }}
-"#
-            ),
-            // esp-backtrace is the panic handler (so `panic = "own"`, as above);
-            // the macro emits `#[esp_hal::main]`.
-            //
-            // The app descriptor comes from the BOARD's `esp_bootloader_esp_idf`
-            // re-export, as in `examples/esp32-c3-baremetal/rust/talker`:
-            // `esp_hal` has no `esp_app_desc!`, so the template's old
-            // `esp_hal::esp_app_desc!()` never compiled (E0433, found when issue
-            // 1265 first cross-built the scaffold).
-            format!(
-                "#![no_std]\n#![no_main]\nuse esp_backtrace as _;\n{}::esp_bootloader_esp_idf::esp_app_desc!();\nnros::main!(panic = \"own\");\n",
-                board_crate.replace('-', "_")
-            ),
-        ),
     };
 
-    // Only the esp32 template is unmigrated (it names its board crate by hand
-    // and has no selection package), so its manifest pin is the edition's one
-    // carrier; a migrated leaf's pin would fight the selection's (issue 2045).
-    let edition_pin = match runtime {
-        SelfBringupRuntime::CortexM => String::new(),
-        SelfBringupRuntime::Esp32 => format!(", \"{edition_feature}\""),
-    };
     let cargo_toml = format!(
         // See issue 0100, RFC-0098, phase-517 W8, issue 1265.
         r#"[package]
@@ -1129,7 +1073,7 @@ crate-type = ["rlib"]
 # `macros` because `lib.rs` calls `nros::node!` itself: inheriting the feature
 # from the board crate works only where the board is built, and the host probe
 # never builds it.
-nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"{edition_pin}] }}
+nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }}
 nros-log = {{ version = "*", default-features = false }}
 # Message crates come from package.xml: each <depend> on a message package
 # becomes a `# nros-managed` path row below when you run `nros sync` (or
@@ -1447,15 +1391,7 @@ mod tests {
     #[test]
     fn rust_scaffold_hosted_names_no_board_rmw_or_edition() {
         let d = tmp();
-        scaffold_rust(
-            "my-app",
-            "linux",
-            "ros-jazzy",
-            d.path(),
-            Role::Talker,
-            "my_app",
-        )
-        .unwrap();
+        scaffold_rust("my-app", "linux", d.path(), Role::Talker, "my_app").unwrap();
         let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
         let doc: toml::Value = toml.parse().expect("scaffolded manifest parses");
         let deps = doc["dependencies"].as_table().unwrap();
@@ -1644,9 +1580,6 @@ mod tests {
             "nuttx",
             "threadx",
             "zephyr",
-            // `esp32` is dormant (issue 1525) and no longer advertised; its spec
-            // still resolves, which `scaffold_rust_self_bringup_*` exercises.
-            "esp32",
         ] {
             platform_spec(p).unwrap_or_else(|e| panic!("{p} must resolve: {e}"));
         }
@@ -1680,11 +1613,9 @@ mod tests {
         for (platform, image_dep, pins) in [
             // Issue 2079 — migrated: the selection package, no edition pin.
             ("baremetal", "app_nros_selection", false),
-            // Dormant and unmigrated (issue 1525): its pin is its one carrier.
-            ("esp32", "nros-board-esp32-qemu", true),
         ] {
             let d = tmp();
-            scaffold_rust("app", platform, "ros-jazzy", d.path(), Role::Talker, "app").unwrap();
+            scaffold_rust("app", platform, d.path(), Role::Talker, "app").unwrap();
             // phase-528 W2 — no `.cargo/config.toml`: the triple, link flags and
             // QEMU `runner` come from the board (`[board.run]`) through the
             // generated settings file, as the bare-metal chapter says.

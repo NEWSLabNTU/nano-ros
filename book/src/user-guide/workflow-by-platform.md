@@ -126,7 +126,6 @@ all three spellings.
 | `threadx-riscv64` | cargo, cmake | cmake | cmake | — |
 | `zephyr` | cargo, west | cmake, west | cmake, west | cargo |
 | `zephyr-cortex-m` | west | west | west | — |
-| `esp32` | cargo | — | — | — |
 | `baremetal` | cargo | — | — | — |
 
 Where a row lists two builders, both are real and they build different
@@ -249,15 +248,14 @@ file.
 | ThreadX (Linux sim) | `threadx-linux` | `threadx-linux` | [`examples/threadx-linux`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux) | `just threadx_linux …` | [ThreadX](../getting-started/threadx.md) |
 | ThreadX (QEMU RISC-V 64) | `threadx-riscv64` | `rv-virt-threadx` | [`examples/rv-virt-threadx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/rv-virt-threadx) | `just threadx_riscv64 …` | [ThreadX](../getting-started/threadx.md) |
 | Zephyr | `zephyr`, `zephyr-cortex-m` | `zephyr` | [`examples/zephyr`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr) | `just zephyr …` | [Zephyr](../getting-started/integration-zephyr.md) |
-| ESP32 (dormant, issue 1525) | `esp32` | `esp32-c3-baremetal` | [`examples/esp32-c3-baremetal`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32-c3-baremetal) | — (module not mounted) | [ESP32](../getting-started/esp32.md) |
 | Bare-metal Cortex-M3 | `baremetal` | `mps2-an385-baremetal` | [`examples/mps2-an385-baremetal`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal) | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
 | Arm FVP (Cortex-A SMP) | — | `zephyr` + the Arm FVP (`nros setup --tool arm-fvp`, x86_64 only) | — | — | [ARM FVP](../getting-started/arm-fvp.md) |
 
 Multi-node workspace examples do not follow that directory rule: they
 all live under [`examples/workspaces`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces), selected by fixture row rather
-than by directory. So ESP32's single-node and workspace examples share
-one grid row, `esp32`: a grid row names a platform FAMILY, never a board
-(RFC-0093 R6), and `esp32` carries both. Zephyr is the case that does
+than by directory. So a platform's single-node and workspace examples share
+one grid row: a grid row names a platform FAMILY, never a board
+(RFC-0093 R6). Zephyr is the case that does
 split — `zephyr` and `zephyr-cortex-m` build the SAME examples for
 different boards.
 

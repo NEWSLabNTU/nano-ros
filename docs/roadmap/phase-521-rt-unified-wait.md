@@ -528,6 +528,16 @@ is amended by RFC-0113 D4/D5, and RFC-0113 gains its coverage table. Compiled
 through `examples/zephyr/c/talker` on mps2/an385 with the serial conf stack:
 the Rust serial row cannot configure for an unrelated reason (issue 2211).
 
+**W6d — the ESP32-C3 board retired (2026-11-02).** Maintainer ruling: retire
+rather than port. It had no receive interrupt and no one-shot timer behind a
+wake object, so it was a "not yet" row with no in-tree consumer (dormant since
+issue 1525). The board, platform crate, OpenETH driver, examples, smoke bins,
+`just` module, launch script, QEMU fork submodule, matrix platform and cells,
+index rows and `esp32` framework are deleted; every board name it answered to
+is refused naming RFC-0113 D5 (`nros_entry_lower::REMOVED_BOARD_KEYS`, a
+removal table beside the rename table), and `driver_for("esp32", …)` refuses
+whatever the image's languages. RFC-0113's coverage row reads retired.
+
 ### W7 — Acceptance measurements for the promise
 
 Make RFC-0113 D2 a measured property, not a reading:

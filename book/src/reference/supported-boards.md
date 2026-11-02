@@ -22,7 +22,6 @@ status word.
 | `nros-board-threadx-qemu-riscv64` (ThreadxRiscv64) | Verified in emulator (daily) | `qemu:rv-virt` | [evidence page](boards/threadx-qemu-riscv64.md) |
 | `nros-board-mps2-an385` (QemuBaremetal) | Verified in emulator (daily) | `qemu:mps2-an385` | [evidence page](boards/mps2-an385.md) |
 | `nros-board-mps2-an385-zephyr` (ZephyrQemuCortexM) | Verified in emulator (daily) | `qemu:mps2-an385` | [evidence page](boards/mps2-an385-zephyr.md) |
-| `nros-board-esp32-qemu` (Esp32Qemu) | Not supported | `qemu:esp32` (twin) | [evidence page](boards/esp32-qemu.md) |
 | `nros-board-nuttx-qemu` (NuttxRiscv) | Verified in emulator (daily) | `qemu:rv-virt` | [evidence page](boards/nuttx-riscv.md) |
 | `nros-board-zephyr` (Fvp) | Boots, manual (2026-09-06); reads *Builds* from 2027-01-05 | `fvp:FVP_BaseR_AEMv8R` | [evidence page](boards/fvp.md) |
 | `s32k344-safety-island` | Boots on hardware, manual (2026-10-26); reads *Builds* from 2027-02-24 | `mr-canhubk344` | [evidence page](boards/s32k344-safety-island.md) |

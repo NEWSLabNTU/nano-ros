@@ -203,8 +203,8 @@ platform-threadx = [
 # ---- Bare metal: one arm PER BOARD, and that is not a slip (issue 1512) ----
 #
 # Every other platform above names a single `nros-platform/platform-X`. Bare
-# metal has no such X: `nros-platform` carries THREE board-specific ones
-# (`platform-mps2-an385`, `platform-stm32f4`, `platform-esp32-qemu`), because a
+# metal has no such X: `nros-platform` carries TWO board-specific ones
+# (`platform-mps2-an385`, `platform-stm32f4`), because a
 # no-RTOS port IS the board — its clock is that board's timer, its net is that
 # board's MAC, and it has no kernel in between to abstract them. The RMW half
 # does have one name (`nros-rmw-zenoh/platform-bare-metal`), because zenoh-pico
@@ -265,11 +265,6 @@ platform-stm32f4 = [
     "nros-log/platform-clock",
     "global-allocator",
     "nros-platform/platform-stm32f4",
-]
-platform-esp32-qemu = [
-    "nros-log/platform-clock",
-    "global-allocator",
-    "nros-platform/platform-esp32-qemu",
 ]
 
 # ROS edition (orthogonal to RMW and platform)

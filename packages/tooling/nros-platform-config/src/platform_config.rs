@@ -509,8 +509,7 @@ fn unanswered_platform_message(
          \n  searched (every root, in order):\n    {roots}\n\
          \n  descriptors in those roots answer to: {known}\n\
          \n  A platform name is answered by a descriptor's `names = [..]` list, NOT by \
-         a directory of that name — `config/bare-metal/nros-platform.toml` is what \
-         answers `esp32`. So do not create a `{platform}/` directory on the strength of \
+         a directory of that name. So do not create a `{platform}/` directory on the strength of \
          this message.\n\
          \n  Either add `{platform}` to the `names` of the descriptor this platform \
          already resolves to on its other roads (its `nros/platform-*` feature, its \

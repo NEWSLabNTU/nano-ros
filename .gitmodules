@@ -32,9 +32,6 @@
 	path = third-party/threadx/netxduo
 	url = https://github.com/NEWSLabNTU/netxduo.git
 	branch = nano-ros
-[submodule "third-party/esp32/qemu"]
-	path = third-party/esp32/qemu
-	url = https://github.com/espressif/qemu.git
 [submodule "third-party/nuttx/libc"]
 	path = third-party/nuttx/libc
 	url = https://github.com/jerry73204/libc.git

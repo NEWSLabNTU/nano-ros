@@ -13,7 +13,7 @@
 //!
 //! - There is no Zephyr `runners.yaml` (that path is handled by the
 //!   [`crate::zephyr::RunnersYaml`] interpreter) and no ESP-IDF
-//!   `flasher_args.json` ([`crate::esp32::EspFlasherArgs`]) for these images.
+//!   `flasher_args.json` for these images.
 //!   They are plain cross-compiled ELFs; the emulator machine/CPU/netdev plan
 //!   lives only in each board crate's build glue and this file.
 //! - So `qemu.rs` is itself "the interpreter" E9 refers to: the hand-rolled
@@ -190,7 +190,7 @@ pub fn qemu_system_has_machine(exe: &str, machine: &str) -> bool {
 /// machine.
 ///
 /// Issue 1884 — the NuttX riscv tests asked
-/// [`crate::esp32::is_qemu_riscv32_available`] instead. That probe is for
+/// ~~`crate::esp32::is_qemu_riscv32_available`~~ instead. That probe is for
 /// ESP32-C3: it resolves the Espressif fork's store row and demands its
 /// `esp32c3` machine, which a NuttX rv-virt image never uses. A stock
 /// `qemu-system-riscv32` (apt `qemu-system-misc`, what the CI image installs)

@@ -260,14 +260,6 @@ const RENDERED_FRAMEWORK: &str = "owned-spin";
 /// - `rtic-mps2-an385` → `RticMps2An385`, which
 ///   implements `RticBoardEntry` — a SEPARATE trait, not a subtrait — so the
 ///   same `E0277`.
-/// - `esp32-qemu` / `esp32-c3-baremetal` → `Esp32QemuEntry`, which DOES
-///   implement `BoardEntry`, so this one compiles. It still cannot boot:
-///   esp-riscv-rt's `_start` jumps to the esp-hal entry registration, so the
-///   boot symbol must be `#[::esp_hal::main] fn main() -> !` and the bare
-///   `extern "C" fn main` this template emits is never called. Refused with
-///   the others because the rule is "this emitter renders ONE framework", not
-///   "this emitter renders whatever happens to type-check" — the quieter
-///   failure is the worse one to ship.
 ///
 /// The predicate is the SSoT both producers already consult,
 /// `nros_orchestration_ir::framework_for_board_key`, so a new non-owned-spin
@@ -628,8 +620,6 @@ mod tests {
         assert_eq!(
             refused,
             vec![
-                "esp32-qemu",
-                "esp32-c3-baremetal",
                 "zephyr",
                 "mps2-an385-zephyr",
                 "qemu-cortex-a53",
@@ -640,22 +630,6 @@ mod tests {
             ],
             "the refused set moved — read issue 1435 before editing this list"
         );
-    }
-
-    /// The ESP32 half of the same refusal, spelled out because it is the one
-    /// the reader will want to argue with: `Esp32QemuEntry` DOES implement
-    /// `BoardEntry`, so this rendering compiled. It could not boot —
-    /// esp-riscv-rt's `_start` reaches the esp-hal entry registration, not a
-    /// bare `extern "C" fn main` — and a rendering that compiles and does not
-    /// run is the worse of the two failures to ship.
-    #[test]
-    fn esp32_is_refused_although_its_zst_does_implement_board_entry() {
-        for key in ["esp32-qemu", "esp32-c3-baremetal"] {
-            let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
-            plan.board = key.into();
-            let err = emit(&plan).expect_err(key);
-            assert!(err.contains("`esp32`"), "{err}");
-        }
     }
 
     #[test]

@@ -99,8 +99,6 @@ mod nuttx 'just/nuttx.just'
 mod threadx_linux 'just/threadx-linux.just'
 mod threadx_riscv64 'just/threadx-riscv64.just'
 mod zephyr 'just/zephyr.just'
-# ESP32 is DORMANT (issue 1525): `just/esp32.just` is kept for future use and
-# deliberately not mounted, so no recipe, preset or lane builds or tests it.
 mod qemu 'just/qemu-baremetal.just'
 mod linux 'just/linux.just'
 mod xrce 'just/xrce.just'
@@ -358,7 +356,7 @@ build-example-extras:
     list="$(mktemp)"
     rg --files examples -g Cargo.toml \
         | sed 's#/Cargo.toml$##' \
-        | grep -Ev '^examples/(zephyr|mps2-an385-freertos|qemu-armv7a-nuttx|threadx-linux|rv-virt-threadx|mps2-an385-baremetal|esp32-c3-baremetal)/' \
+        | grep -Ev '^examples/(zephyr|mps2-an385-freertos|qemu-armv7a-nuttx|threadx-linux|rv-virt-threadx|mps2-an385-baremetal)/' \
         | grep -Ev '^examples/linux/rust/(talker|listener|lifecycle-node|custom-msg|service-server|service-client|action-server|action-client|talker-rtic|listener-rtic|service-server-rtic|service-client-rtic|action-server-rtic|action-client-rtic|serial-talker|serial-listener)$' \
         | sort > "$list"
 
@@ -368,10 +366,6 @@ build-example-extras:
         platform="$(echo "$dir" | cut -d/ -f2)"
         local env_prefix=""
         local toolchain=""
-        if [ "$platform" = "esp32" ] || [ "$platform" = "esp32-c3-baremetal" ]; then
-            env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
-            toolchain="+{{NIGHTLY}}"
-        fi
         echo "  build $dir"
         # issue 0635 — never the leaf's own `target/` (phase-340 P2). The
         # resolver answers with the platform's shared group when there is one,
@@ -399,12 +393,7 @@ build-example-extras:
         source scripts/build/jobserver-pool.sh
         units="$(mktemp "${TMPDIR:-/tmp}/nros_build_units.XXXXXX")"
         while read -r dir; do
-            plat="$(echo "$dir" | cut -d/ -f2)"
             e=""; tc=""
-            case "$plat" in
-                esp32 | esp32-c3-baremetal)
-                    e="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"; tc="+{{NIGHTLY}}" ;;
-            esac
             # issue 0635 — the flag spelled in the FORMAT, not folded into a
             # variable: `check::example-leaf-target-dirs` reads an emitted
             # command as text and cannot see through a `$flag`.
@@ -1450,7 +1439,7 @@ test-integration verbose="":
     # umbrella group() exclusions never match them; (the retired phase_118_collapse binary is gone; its cells live in binary(zephyr))
     # at all. On a runner WITH qemu-system-arm + no prebuilt firmware they hard-fail
     # instead of skipping. All three binaries are entirely QEMU/Zephyr e2e.
-    exclude='not (group(=qemu-baremetal) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or binary(esp32_emulator) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop) or binary(rtos_e2e) or binary(zephyr))'
+    exclude='not (group(=qemu-baremetal) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop) or binary(rtos_e2e) or binary(zephyr))'
     args=(-p nros-tests --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
@@ -1846,7 +1835,7 @@ test *scope:
     # umbrella group() exclusions never match them; (the retired phase_118_collapse binary is gone; its cells live in binary(zephyr))
     # at all. On a runner WITH qemu-system-arm + no prebuilt firmware they hard-fail
     # instead of skipping. All three binaries are entirely QEMU/Zephyr e2e.
-    exclude='not (group(=qemu-baremetal) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or binary(esp32_emulator) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop) or binary(rtos_e2e) or binary(zephyr))'
+    exclude='not (group(=qemu-baremetal) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop) or binary(rtos_e2e) or binary(zephyr))'
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}" -E "$exclude")
     # A shell variable, not a recipe parameter: the first positional is SCOPE
     # now, and verbosity is a flag parsed out of it at the top of this body.
@@ -2795,8 +2784,6 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # FVP — no lane provisions the licensed Arm FVP and no manifest row targets
     # it (FVP support is wanted LATER; `just zephyr build-fvp-all` is manual).
     env_exclude+=("not binary(fvp_smoke) and not binary(fvp_runtime_ws) and not binary(board_import)")
-    # ESP32 is DORMANT (issue 1525) and its `just` module is unmounted.
-    env_exclude+=("not binary(esp32_emulator)")
     if [ "${#env_exclude[@]}" -gt 0 ]; then
         env_filter="${env_exclude[0]}"
         for _e in "${env_exclude[@]:1}"; do env_filter="$env_filter and $_e"; done
@@ -5963,8 +5950,7 @@ clean: clean-examples clean-fixtures
     rm -rf "${CARGO_TARGET_DIR:-$PWD/target}-embedded" "${CARGO_TARGET_DIR:-$PWD/target}-zpico-multisession"
     # Build-stage outputs under build/ (SDK installs preserved — see clean-setup).
     source scripts/build/build-root.sh
-    rm -rf build/zephyr-fixtures "$(nros_build_dir "$NROS_KIND_ESP32_QEMU")" \
-        "$(nros_build_dir "$NROS_KIND_QEMU_ZENOH_PICO")"
+    rm -rf build/zephyr-fixtures "$(nros_build_dir "$NROS_KIND_QEMU_ZENOH_PICO")"
     @echo "Build artifacts cleaned (SDK installs + host nros-codegen preserved; 'just clean-setup' to remove them)"
 
 # Remove SDK/tool installs produced by `just setup` (Cyclone, XRCE Agent,

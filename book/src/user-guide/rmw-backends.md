@@ -334,8 +334,7 @@ CONFIG_NET_RECV_TIMEO=y
 // for `setsockopt(SO_RCVTIMEO)` support.
 ```
 
-### Bare-metal smoltcp (`platform-mps2-an385`, `platform-stm32f4`,
-`platform-esp32-qemu`)
+### Bare-metal smoltcp (`platform-mps2-an385`, `platform-stm32f4`)
 
 ```rust
 // Bridge config in the board crate.

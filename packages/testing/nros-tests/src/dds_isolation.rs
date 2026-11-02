@@ -493,7 +493,6 @@ pub const fn shares_host_network_stack(platform: crate::matrix::PlatformId) -> b
         | P::NuttxArm
         | P::NuttxRiscv
         | P::ThreadxRiscv64
-        | P::Esp32Qemu
         | P::QemuBaremetal
         | P::Fvp => false,
     }

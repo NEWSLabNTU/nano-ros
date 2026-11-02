@@ -189,25 +189,6 @@ pub const THREADX_RISCV: PlatformConfig = PlatformConfig {
     xrce_lang_stride: 0,
 };
 
-/// ESP32-C3 QEMU (Espressif fork, open_eth).
-///
-/// | Variant | Rust |
-/// |---------|------|
-/// | Pubsub  | 9800 |
-/// | Service | 9810 |
-/// | Action  | 9820 |
-///
-/// The workspace Entry image takes the `EntryPubsub` slot (9830) — see
-/// `alloc::port_of` — so the ws-entry e2e no longer shares the pubsub
-/// pair's router (the pre-W4 `qemu-esp32` serial group is retired).
-pub const ESP32: PlatformConfig = PlatformConfig {
-    name: "esp32",
-    zenohd_port: platform_port_base(PlatformId::Esp32Qemu),
-    lang_stride: 100,
-    xrce_agent_port: 0,
-    xrce_lang_stride: 0,
-};
-
 /// ThreadX Linux simulation (veth pairs / NSOS host sockets).
 ///
 /// | Variant | Rust | C    | C++  |

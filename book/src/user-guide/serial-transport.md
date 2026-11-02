@@ -68,7 +68,6 @@ nros-board-mps2-an385 = { version = "*", features = ["serial"] }
 | Board Crate | Default | Alternative | Both |
 |-------------|---------|-------------|------|
 | `nros-board-mps2-an385` | `ethernet` | `serial` | `ethernet,serial` |
-| `nros-board-esp32-qemu` | `ethernet` | `serial` | `ethernet,serial` |
 
 When both features are enabled, the transport is selected at runtime by the
 `[image.<id>] locator` in `system.toml`:

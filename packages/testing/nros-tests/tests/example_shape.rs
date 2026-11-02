@@ -198,10 +198,6 @@ const UNMIGRATED_LEAF_SUFFIXES: &[&str] = &[
 /// to give a precise `[SKIPPED]` message.
 const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
     (
-        "examples/esp32-c3-baremetal/",
-        "M.7 territory — ESP32 bare-metal, not in M sweep table",
-    ),
-    (
         "examples/mps2-an385-baremetal/",
         "bare-metal Cortex-M3 — not in M sweep table",
     ),

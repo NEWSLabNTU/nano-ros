@@ -93,7 +93,6 @@ platform-nuttx = "platform-nuttx"
 platform-threadx = "platform-threadx"
 platform-mps2-an385 = "platform-bare-metal"
 platform-stm32f4 = "platform-bare-metal"
-platform-esp32-qemu = "platform-bare-metal"
 
 # ----------------------------------------------------------------------------
 # phase-349 W2b (RFC-0072 §9) — zenoh-pico's PORT ROWS, one per platform.

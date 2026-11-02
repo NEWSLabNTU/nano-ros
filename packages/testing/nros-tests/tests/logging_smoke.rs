@@ -23,14 +23,12 @@ use std::{
 
 use nros_tests::{
     assert_output_contains,
-    esp32::start_esp32_qemu,
     fixtures::{
-        ManagedProcess, QemuProcess, build_logging_smoke_esp32_qemu_flash,
-        build_logging_smoke_freertos_mps2, build_logging_smoke_mps2_baremetal,
-        build_logging_smoke_nuttx_qemu_arm, build_logging_smoke_threadx_linux,
-        build_logging_smoke_threadx_riscv64, build_logging_smoke_zephyr_native_sim,
-        build_native_logging, is_arm_toolchain_available, is_qemu_available,
-        is_qemu_riscv64_available, nuttx, threadx_linux,
+        ManagedProcess, QemuProcess, build_logging_smoke_freertos_mps2,
+        build_logging_smoke_mps2_baremetal, build_logging_smoke_nuttx_qemu_arm,
+        build_logging_smoke_threadx_linux, build_logging_smoke_threadx_riscv64,
+        build_logging_smoke_zephyr_native_sim, build_native_logging, is_arm_toolchain_available,
+        is_qemu_available, is_qemu_riscv64_available, nuttx, threadx_linux,
     },
     output::LOGGING_SMOKE_CHILD_RECORD,
 };
@@ -241,7 +239,7 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
 /// decoration. `scripts/test/lane-filter.sh` excludes a platform's cases from
 /// another lane by matching platform tokens in the binary AND test names
 /// (issue 0357), and every sibling here carries one (freertos_mps2,
-/// nuttx_qemu_arm, `threadx_riscv64`, `esp32_qemu`, qemu_baremetal_mps2).
+/// nuttx_qemu_arm, `threadx_riscv64`, qemu_baremetal_mps2).
 ///
 /// That list was wrong when first written: it counted the bare-metal test as
 /// tokenised on the strength of `mps2`, which is NOT a token — `FreertosMps2`
@@ -287,49 +285,6 @@ fn logging_smoke_threadx_linux_captures_stderr() {
     assert_output_contains(&strip_clock(&output), EXPECTED_LINES);
     assert_output_contains(&strip_clock(&output), &[LOGGING_SMOKE_CHILD_RECORD]);
     assert_output_contains(&output, &["Application completed successfully."]);
-}
-
-/// Phase 88.15.f — ESP32-C3 under stock `qemu-system-riscv32 -M
-/// esp32c3`. The board crate's `run()` registers an
-/// `esp_println`-backed writer with `nros-platform-esp32-qemu`'s
-/// fn-ptr slot (Phase 88.15.f groundwork) before the user closure
-/// fires; the closure drives every Severity through `nros-log`.
-/// ESP32 has no process exit, so the board spins forever after the
-/// `nros: application complete` banner (Phase 173.1); the harness
-/// drains for the timeout window, then kills QEMU and asserts the
-/// expected severity lines.
-#[test]
-#[ignore = "ESP32 support is dormant (issue 1525): no fixture row builds this image"]
-fn logging_smoke_esp32_qemu_emits_every_severity() {
-    // Issue 1685 — deselect before the emulator probe.
-    nros_tests::fixtures::lane::require_platform_in_lane(
-        &[nros_tests::matrix::PlatformId::Esp32Qemu],
-        "the ESP32 logging image",
-    );
-    // issue 0488's resolver + machine probe — a bare `--version` existence
-    // check passes on the STOCK qemu-system-riscv32, which has no `esp32c3`
-    // machine and dies at launch with "unsupported machine type".
-    if !nros_tests::esp32::is_qemu_riscv32_available() {
-        panic!("[SKIPPED] qemu-system-riscv32 (Espressif fork, esp32c3 machine) not available");
-    }
-
-    let flash = build_logging_smoke_esp32_qemu_flash()
-        .require("logging-smoke-esp32-qemu — run `just esp32 build-logging-smoke`");
-
-    let mut qemu = start_esp32_qemu(flash, false).expect("failed to start ESP32-C3 QEMU");
-    // The fixture drives the severities in order (trace→fatal), so wait for the
-    // LAST line: this returns as soon as all six are present (early-return), with
-    // a generous ceiling for a slow esp32-qemu boot under CI load. The old fixed
-    // 30s window always ran the full 30s and, under load, could expire mid-boot
-    // before every severity flushed — the Phase 200.4 "doesn't emit every
-    // severity" gap. A real backend regression now fails loudly (no [FATAL]).
-    let output = qemu
-        .wait_for_output_pattern("[FATAL] smoke: fatal payload", Duration::from_secs(90))
-        .expect("ESP32-C3 QEMU: did not emit all severities (no [FATAL] line within 90s)");
-    qemu.kill();
-
-    assert_output_contains(&output, EXPECTED_LINES);
-    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
 }
 
 /// Phase 88.15.e — Zephyr `native_sim/native/64` running as a Linux

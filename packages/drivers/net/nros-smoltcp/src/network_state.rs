@@ -87,7 +87,7 @@ impl<D: 'static> NetworkState<D> {
 
     /// Drive one smoltcp poll cycle. No-op if any pointer is null.
     ///
-    /// Use this when `D: Device` — e.g. `Lan9118`, `OpenEth`, WifiDevice.
+    /// Use this when `D: Device` — e.g. `Lan9118`.
     ///
     /// # Safety
     /// See [`set`][Self::set] — the installed pointers must still be valid.

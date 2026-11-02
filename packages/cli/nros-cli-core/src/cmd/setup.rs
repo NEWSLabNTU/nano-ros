@@ -5206,12 +5206,9 @@ mod tests {
             tx.contains(&"riscv-none-elf-gcc") && tx.contains(&"qemu") && tx.contains(&"threadx")
         );
 
-        // ESP32-C3 QEMU: declared arch riscv32, no index host-tool (rustup target).
-        assert!(
-            resolve_packages(&idx, "esp32-c3-baremetal")
-                .unwrap()
-                .is_empty()
-        );
+        // A retired board is refused by name, not resolved to nothing.
+        let err = resolve_packages(&idx, "esp32-c3-baremetal").unwrap_err();
+        assert!(format!("{err:#}").contains("RFC-0113"), "{err:#}");
         assert_eq!(resolve_packages(&idx, "linux").unwrap(), vec!["zenohd"]);
         // A board whose set mixes a hosted tool with a license-gated one.
         let gated = resolve_packages(&idx, "gated-example").unwrap();

@@ -731,31 +731,6 @@ status = 'CarveOut("no standalone rust pubsub example on rv-virt; runtime covera
 [[cell]]
 comment = '''
 
-// ESP32 is DORMANT (issue 1525): its code is kept for future use, and no
-// lane builds or runs it, so every cell is a carve-out with no fixture row.
-'''
-at = ["Esp32Qemu", "Rust", "Zenoh", "Pubsub", "Example"]
-status = 'CarveOut(ESP32_DORMANT)'
-
-[[cell]]
-at = ["Esp32Qemu", "Rust", "Zenoh", "Service", "Example"]
-status = 'CarveOut(ESP32_DORMANT)'
-
-[[cell]]
-at = ["Esp32Qemu", "Rust", "Zenoh", "Action", "Example"]
-status = 'CarveOut(ESP32_DORMANT)'
-
-[[cell]]
-at = ["Esp32Qemu", "C", "Zenoh", "Pubsub", "Example"]
-status = 'CarveOut(ESP32_DORMANT)'
-
-[[cell]]
-at = ["Esp32Qemu", "Cpp", "Zenoh", "Pubsub", "Example"]
-status = 'CarveOut(ESP32_DORMANT)'
-
-[[cell]]
-comment = '''
-
 // Bare-metal RTIC (QEMU MPS2) — pubsub-only demo set by design.
 '''
 at = ["QemuBaremetal", "Rust", "Zenoh", "Pubsub", "Example"]
@@ -880,10 +855,6 @@ status = 'Runtime'
 [[cell]]
 at = ["ZephyrNativeSim", "Rust", "Zenoh", "Logging", "Example"]
 status = 'Runtime'
-
-[[cell]]
-at = ["Esp32Qemu", "Rust", "Zenoh", "Logging", "Example"]
-status = 'CarveOut(ESP32_DORMANT)'
 
 [[cell]]
 comment = '''
@@ -1151,10 +1122,6 @@ at = ["NuttxRiscv", "Rust", "Zenoh", "EntryPubsub", "Workspace"]
 status = '''
 BuildOnly("no nuttx-riscv rust EntryPubsub workspace fixture/lane (RT-tiers \
                     only) — phase-295 W3.b finding, W6 wires it")'''
-
-[[cell]]
-at = ["Esp32Qemu", "Rust", "Zenoh", "EntryPubsub", "Workspace"]
-status = 'CarveOut(ESP32_DORMANT)'
 
 [[cell]]
 comment = '''
