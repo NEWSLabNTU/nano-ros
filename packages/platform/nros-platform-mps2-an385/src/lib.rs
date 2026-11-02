@@ -27,6 +27,7 @@ pub mod sleep;
 pub mod sporadic_timer;
 pub mod threading;
 pub mod time;
+pub mod wake;
 pub mod timing;
 
 /// Zero-sized type implementing all platform methods for MPS2-AN385.
@@ -462,5 +463,36 @@ impl nros_platform_api::PlatformThreading for Mps2An385Platform {
         abstime: u64,
     ) -> i8 {
         Self::condvar_wait_until(cv, m, abstime)
+    }
+    // phase-521 W5 — the wake object (`wake`): a flag, parked on through the
+    // board's tickless idle, which also ends the park on received data.
+    fn wake_init(w: *mut core::ffi::c_void) -> i8 {
+        wake::init(w)
+    }
+    fn wake_drop(_w: *mut core::ffi::c_void) -> i8 {
+        0
+    }
+    fn wake_wait_ms(w: *mut core::ffi::c_void, timeout_ms: u32) -> i8 {
+        wake::park_until_us(w, u64::from(timeout_ms) * 1000)
+    }
+    fn wake_signal(w: *mut core::ffi::c_void) -> i8 {
+        wake::signal(w)
+    }
+    fn wake_signal_from_isr(w: *mut core::ffi::c_void) -> i8 {
+        wake::signal(w)
+    }
+    fn wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8 {
+        wake::park_until_us(w, deadline_us)
+    }
+    /// The SysTick one-shot counts 40 ns ticks; a microsecond is the ABI's
+    /// unit, and the finest it can say.
+    fn wake_park_granularity_us() -> u64 {
+        1
+    }
+    fn wake_storage_size() -> usize {
+        wake::storage_size()
+    }
+    fn wake_storage_align() -> usize {
+        wake::storage_align()
     }
 }

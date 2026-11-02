@@ -1,6 +1,6 @@
 ---
 id: 2209
-title: "An idle mps2-an385 serial image costs a host core under the SDK's QEMU 11, and 2 % under QEMU 9"
+title: "An idle mps2-an385 image costs a host core under the SDK's QEMU 11 (wfi returns at once), and 2 % under QEMU 9"
 status: open
 type: bug
 severity: medium
@@ -44,6 +44,16 @@ The phase-521 W5 acceptance, "QEMU idle under 2 % host CPU per serial cell",
 cannot be asserted in a lane that runs the SDK's QEMU 11. The W5 change was
 landed on the pair tests (`test_qemu_serial_pubsub_e2e`,
 `test_qemu_xrce_pubsub_e2e`) and this measurement, without the CPU assertion.
+
+## Not about the serial chardev (2026-11-02)
+
+The network link shows it too. The idle `qemu-bsp-listener` (zenoh over the
+LAN9118, phase-521 W5's executor park) arms its SysTick one-shot 175,157
+times in 20 s under `11.0.0-nros7` and 41 times under `9.0.2`. At each arm
+nothing is pending (`ICSR` 0x800, `ISPR0` 0, only IRQ 13 enabled) and the
+requested one-shot is ~0.96 s, decreasing by ~5.7 us per arm: the `wfi`
+returns at once. So the defect is QEMU 11's armv7m `wfi` on this machine,
+whatever the link.
 
 ## Next
 

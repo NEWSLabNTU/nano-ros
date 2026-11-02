@@ -1704,20 +1704,23 @@ impl Session for ZenohSession {
     ///
     /// In THREAD mode zenoh-pico's own executor thread reads the link and the
     /// arrival hook fires the wake callback installed above, so an arrival
-    /// ends the executor's park: `Notify`. In CALLER mode (ThreadX, bare
-    /// metal) nothing reads the link outside `zpico_spin_once`, and the wake
-    /// callback fires only from `drive_io`. A park would wait out its whole
+    /// ends the executor's park: `Notify`.
+    ///
+    /// In CALLER mode (ThreadX, bare metal) nothing reads the link outside
+    /// `zpico_spin_once`, and the wake callback fires only from `drive_io`.
+    /// The park still ends on an arrival when the board's platform park is
+    /// woken by the link's receive interrupt, which a board states with
+    /// [`set_caller_rx_wakes_park`] (phase-521 W5: mps2-an385's LAN9118 and
+    /// UART0 lines). Then the drive after the park reads the frame, and the
+    /// session states `Notify`. Otherwise a park would wait out its whole
     /// bound with data on the link, so the session states `None` and the
-    /// executor keeps draining it from `drive_io` (W5 makes those reads
-    /// RX-notified inside the drive on bare metal).
+    /// executor keeps draining it from `drive_io`.
     ///
     /// zenoh reaches the runtime through `RustBackendAdapter`, which always
-    /// fills the `readiness_source` slot from this method. The trait default
-    /// read `supports_wake_callback()`, which this session never overrode, so
-    /// every zenoh session used to state `None` whatever its mode.
+    /// fills the `readiness_source` slot from this method.
     fn readiness_source(&self) -> nros_rmw::ReadinessSource {
         // SAFETY: no arguments; reads a build-time constant.
-        if unsafe { zpico_sys::zpico_drives_on_thread() } {
+        if unsafe { zpico_sys::zpico_drives_on_thread() } || caller_rx_wakes_park() {
             nros_rmw::ReadinessSource::Notify
         } else {
             nros_rmw::ReadinessSource::None
@@ -1731,21 +1734,30 @@ impl Session for ZenohSession {
     /// the executor nothing and reports `None`. The constant it used to report
     /// (phase 110.0) woke every idle tier every 3.3 s for no work.
     ///
-    /// In CALLER mode (bare metal, serial, ThreadX) those futures run only
-    /// inside `zpico_spin_once`, so the executor must come back within one
-    /// keep-alive interval: `Z_TRANSPORT_LEASE / Z_TRANSPORT_LEASE_EXPIRE_FACTOR`,
-    /// ~3.3 s with the upstream defaults. zenoh-pico's real next wake-up there
-    /// is its idle read's 1 ms poll, which is not reported: a park that woke
-    /// for it would poll the link at 1 kHz. Replacing that poll with an RX
-    /// notification is phase-521 W5.
+    /// In single-thread CALLER mode (bare metal) those futures run only
+    /// inside `zpico_spin_once`, and zenoh-pico says when the soonest is due
+    /// (`zpico_next_wake_ms`, phase-521 W5): the session reports exactly that,
+    /// and `None` when nothing is scheduled. The link read future is not
+    /// counted, because it only polls: its 1 ms idle wake is what the board's
+    /// receive interrupt replaces, and a session whose board has none states
+    /// `None` readiness and is drained by `drive_io` instead of parked.
+    ///
+    /// ThreadX's CALLER mode runs a multi-thread zenoh-pico build that cannot
+    /// be read without its lock, so it keeps one keep-alive interval
+    /// (`Z_TRANSPORT_LEASE / Z_TRANSPORT_LEASE_EXPIRE_FACTOR`, ~3.3 s).
     fn next_deadline_ms(&self) -> Option<u32> {
         // Z_TRANSPORT_LEASE = 10000 ms, Z_TRANSPORT_LEASE_EXPIRE_FACTOR = 3
         const ZENOH_KEEPALIVE_INTERVAL_MS: u32 = 10_000 / 3;
         // SAFETY: no arguments; reads a build-time constant.
         if unsafe { zpico_sys::zpico_drives_on_thread() } {
-            None
-        } else {
-            Some(ZENOH_KEEPALIVE_INTERVAL_MS)
+            return None;
+        }
+        let mut ms = 0u64;
+        // SAFETY: the session handle is live for `&self`; `ms` is a valid out-pointer.
+        match unsafe { zpico_sys::zpico_next_wake_ms(self.context.handle(), &mut ms) } {
+            1 => Some(u32::try_from(ms).unwrap_or(u32::MAX)),
+            0 => None,
+            _ => Some(ZENOH_KEEPALIVE_INTERVAL_MS),
         }
     }
 
@@ -1974,4 +1986,29 @@ fn log_keyexpr_chunks(key: &str) {
         );
         start = end;
     }
+}
+
+/// phase-521 W5 (RFC-0113 D4) — set by a board whose platform park is ended by
+/// the zenoh link's receive interrupt.
+static CALLER_RX_WAKES_PARK: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+
+/// phase-521 W5 (RFC-0113 D4) — state that this board's platform park ends
+/// when the zenoh link receives data.
+///
+/// For a CALLER-mode build (bare metal): nothing reads the link outside
+/// `zpico_spin_once`, so an arrival can end the executor's park only through
+/// the platform's own wait, the receive interrupt waking it. A board that
+/// wires that (mps2-an385: LAN9118 or UART0 RX interrupt plus a one-shot
+/// timer, behind its port's wake object) calls this before `Executor::open`,
+/// and its sessions then state `Notify` readiness, so the executor parks
+/// instead of draining the link from `drive_io`. Never call it on a board
+/// whose park a frame cannot end: the park would wait out its whole bound
+/// with data on the link.
+pub fn set_caller_rx_wakes_park(on: bool) {
+    CALLER_RX_WAKES_PARK.store(on, core::sync::atomic::Ordering::Release);
+}
+
+fn caller_rx_wakes_park() -> bool {
+    CALLER_RX_WAKES_PARK.load(core::sync::atomic::Ordering::Acquire)
 }

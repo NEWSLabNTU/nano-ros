@@ -26,6 +26,10 @@
 //! byte and stops taking more from the host until it is read, so nothing is
 //! lost while the source is masked.
 //!
+//! phase-521 W5 (RFC-0113 D5) — the same sleep is the port's wake-object park
+//! (`nros_platform_mps2_an385::wake`), so the executor itself parks on `wfi`
+//! between spins and an arrival on either link ends that park.
+//!
 //! Not built for an RTIC image (`feature = "rtic"`): RTIC owns the vector
 //! table, and its 1 ms dual-timer tick already wakes the `wfi` that
 //! `enable_wfi_idle` installs on `do_poll`.
@@ -75,6 +79,30 @@ fn disarm_oneshot() {
     write(SCB_ICSR, ICSR_PENDSTCLR);
 }
 
+/// The one tickless sleep both links use: with interrupts masked, return at
+/// once if `pending()` (data already waiting) or the deadline has passed;
+/// otherwise `unmask()` the link's RX source, arm the one-shot, `wfi`, disarm.
+/// `wfi` still wakes on an interrupt that becomes pending under PRIMASK, and
+/// its handler runs when the mask lifts, so data that lands between the check
+/// and the sleep ends the sleep instead of being a lost wake. Returns
+/// `pending()` as of the end: whether the link has data for the caller.
+fn sleep_until(deadline_ns: u64, pending: impl Fn() -> bool, unmask: impl Fn()) -> bool {
+    cortex_m::interrupt::free(|_| {
+        if pending() {
+            return true;
+        }
+        let now_ns = nros_platform_mps2_an385::clock::clock_ns();
+        if deadline_ns <= now_ns {
+            return false;
+        }
+        unmask();
+        arm_oneshot((deadline_ns - now_ns).div_ceil(NS_PER_SYST_TICK));
+        cortex_m::asm::wfi();
+        disarm_oneshot();
+        pending()
+    })
+}
+
 #[cfg(feature = "ethernet")]
 mod eth {
     use super::*;
@@ -89,30 +117,26 @@ mod eth {
         unsafe { irq::mask_rx(MPS2_AN385_BASE) };
     }
 
-    /// The [`nros_smoltcp::WaitIdleFn`] this board installs.
-    ///
-    /// The FIFO check, the unmask, the timer and the `wfi` all run with
-    /// interrupts masked. `wfi` still wakes on an interrupt that becomes
-    /// pending under PRIMASK, and the handler then runs when the mask lifts,
-    /// so a frame that lands between the check and the sleep ends the sleep
-    /// instead of being a lost wake.
+    fn pending() -> bool {
+        // SAFETY: the board's LAN9118, initialised before the idle is installed.
+        (unsafe { irq::rx_frames_pending(MPS2_AN385_BASE) }) || crate::node::eth_rx_buffered()
+    }
+
+    fn unmask() {
+        // SAFETY: as `pending`.
+        unsafe { irq::unmask_rx(MPS2_AN385_BASE) };
+    }
+
+    /// The [`nros_smoltcp::WaitIdleFn`] this board installs: sleep to the
+    /// deadline or the next frame ([`super::sleep_until`]).
     pub(super) unsafe extern "C" fn wait_idle(deadline_ns: u64) {
-        cortex_m::interrupt::free(|_| {
-            // SAFETY: the board's LAN9118, initialised before this was installed.
-            if unsafe { irq::rx_frames_pending(MPS2_AN385_BASE) } || crate::node::eth_rx_buffered()
-            {
-                return;
-            }
-            let now_ns = nros_platform_mps2_an385::clock::clock_ns();
-            if deadline_ns <= now_ns {
-                return;
-            }
-            // SAFETY: as above.
-            unsafe { irq::unmask_rx(MPS2_AN385_BASE) };
-            arm_oneshot((deadline_ns - now_ns).div_ceil(NS_PER_SYST_TICK));
-            cortex_m::asm::wfi();
-            disarm_oneshot();
-        });
+        super::sleep_until(deadline_ns, pending, unmask);
+    }
+
+    /// The port's [`nros_platform_mps2_an385::wake::WakeIdleFn`]: the same
+    /// sleep, reporting whether a frame is waiting.
+    pub(super) unsafe extern "C" fn wake_idle(deadline_ns: u64) -> bool {
+        super::sleep_until(deadline_ns, pending, unmask)
     }
 }
 
@@ -127,22 +151,30 @@ mod uart {
         cmsdk_uart::mask_rx_irq(cmsdk_uart::UART0_BASE);
     }
 
+    fn pending() -> bool {
+        cmsdk_uart::rx_ready_at(cmsdk_uart::UART0_BASE) || zpico_serial::rx_buffered()
+    }
+
+    fn unmask() {
+        cmsdk_uart::unmask_rx_irq(cmsdk_uart::UART0_BASE);
+    }
+
     /// The [`zpico_serial::WaitIdleFn`] this board installs: the same
-    /// PRIMASK-guarded check, unmask, one-shot and `wfi` as the network idle,
-    /// over the UART's RX buffer and the bytes `zpico-serial` already holds.
+    /// [`super::sleep_until`] as the network idle, over the UART's RX buffer
+    /// and the bytes `zpico-serial` already holds.
     pub(crate) unsafe extern "C" fn wait_idle(max_us: u64) {
-        cortex_m::interrupt::free(|_| {
-            if cmsdk_uart::rx_ready_at(cmsdk_uart::UART0_BASE) || zpico_serial::rx_buffered() {
-                return;
-            }
-            if max_us == 0 {
-                return;
-            }
-            cmsdk_uart::unmask_rx_irq(cmsdk_uart::UART0_BASE);
-            arm_oneshot((max_us * 1000).div_ceil(NS_PER_SYST_TICK));
-            cortex_m::asm::wfi();
-            disarm_oneshot();
-        });
+        if max_us == 0 {
+            return;
+        }
+        let deadline_ns = nros_platform_mps2_an385::clock::clock_ns()
+            .saturating_add(max_us.saturating_mul(1000));
+        super::sleep_until(deadline_ns, pending, unmask);
+    }
+
+    /// The port's [`nros_platform_mps2_an385::wake::WakeIdleFn`]: the same
+    /// sleep, reporting whether a byte is waiting.
+    pub(super) unsafe extern "C" fn wake_idle(deadline_ns: u64) -> bool {
+        super::sleep_until(deadline_ns, pending, unmask)
     }
 }
 
@@ -167,11 +199,19 @@ pub(crate) fn install() {
     {
         unsafe { NVIC::unmask(Interrupt::ETHERNET) };
         nros_smoltcp::set_wait_idle(eth::wait_idle);
+        nros_platform_mps2_an385::wake::set_wake_idle(eth::wake_idle);
     }
     #[cfg(feature = "serial")]
     {
         cmsdk_uart::mask_rx_irq(cmsdk_uart::UART0_BASE);
         unsafe { NVIC::unmask(Interrupt::UARTRX0) };
         zpico_serial::set_wait_idle(uart::wait_idle);
+        nros_platform_mps2_an385::wake::set_wake_idle(uart::wake_idle);
     }
+    // phase-521 W5 (RFC-0113 D4/D5) — the port's wake object now parks on the
+    // link's RX interrupt, so an arrival ends the executor's park: the zenoh
+    // session (CALLER mode) states `Notify` and the executor parks instead of
+    // draining the link from `drive_io`.
+    #[cfg(feature = "rmw-zenoh")]
+    nros_rmw_zenoh::set_caller_rx_wakes_park(true);
 }
