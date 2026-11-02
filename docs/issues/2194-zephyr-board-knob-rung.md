@@ -9,6 +9,9 @@ related: [issue-1782, issue-0460, phase-524]
 found: 2026-11-01
 ---
 
+**Home:** [phase-524](../roadmap/phase-524-emulator-twins.md)
+— W3. The Nucleo-F767ZI and Pico W descriptors need board-level RAM knobs, and today each image states them.
+
 ## Symptom
 
 Phase-524 W3 added `nucleo-f767zi-zephyr`

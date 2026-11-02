@@ -6,8 +6,11 @@ type: enhancement
 area: [memory, zephyr, rmw-zenoh]
 severity: medium
 found: 2026-11-01
-related: [2201, 1122, 1125, 1324, 1033]
+related: [2201, 1122, 1125, 1324, 1033, phase-524]
 ---
+
+**Home:** [phase-524](../roadmap/phase-524-emulator-twins.md)
+— W3. These are the RAM defaults every small adopter board falls back to; issue 2194 is the board rung that would state them.
 
 ## Problem
 
