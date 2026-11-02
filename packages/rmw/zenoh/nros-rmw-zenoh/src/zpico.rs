@@ -48,9 +48,9 @@ use zpico_sys::{
     zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_queryable_request_attachment,
     zpico_queryable_take_reply_seq, zpico_reply_slot_declines, zpico_reply_slot_refusals_total,
     zpico_reply_slot_stats, zpico_reply_slot_take_announcement, zpico_session_acquire,
-    zpico_session_release, zpico_session_t, zpico_spin_once, zpico_undeclare_liveliness,
-    zpico_undeclare_publisher, zpico_undeclare_queryable, zpico_undeclare_subscriber,
-    zpico_uses_polling,
+    zpico_session_release, zpico_session_t, zpico_set_connect_timeout, zpico_spin_once,
+    zpico_undeclare_liveliness, zpico_undeclare_publisher, zpico_undeclare_queryable,
+    zpico_undeclare_subscriber, zpico_uses_polling,
 };
 
 // ============================================================================
@@ -379,50 +379,30 @@ impl Context {
     /// # Errors
     ///
     /// Returns an error if initialization or session opening fails.
-    /// Backoff between connect attempts: a real platform sleep on every
-    /// platform. It must NOT be `zpico_spin_once` — the session is not open
-    /// between attempts, so that returns at once and the backoff is zero (see
-    /// [`sleep_ms`], phase-517 W15).
-    #[inline]
-    fn connect_backoff_ms(ms: usize) {
-        sleep_ms(ms);
-    }
-
-    /// Run an `init + open` attempt with a bounded retry on a transient connect
-    /// failure.
+    /// Open the session `zpico_init*` just configured, under this image's
+    /// connect budget (issue 2207).
     ///
-    /// `attempt` performs `zpico_init*` + `zpico_open` and returns `Ok(())` on
-    /// success or `Err((error, retryable))` — `retryable` is `true` only for the
-    /// `zpico_open` (connect) step, `false` for deterministic init/config errors.
+    /// One call, no retry loop of our own. The budget is
+    /// [`crate::config::CONNECT_TIMEOUT_MS`], resolved over the RFC-0049 ladder
+    /// (`[knobs.zenoh.limits] connect_timeout_ms` / `connect_forever`, default
+    /// one attempt), and zenoh-pico applies its own policy under it: it retries
+    /// only a transport failure, sleeping 100 ms doubling to 1 s, until a router
+    /// answers or the budget is spent. A board that boots before its router
+    /// states `connect_forever`; a test that loses a start race fails at once.
     ///
-    /// Why: `zpico_open`'s `z_open` TCP connect to the router can flake under
-    /// rapid QEMU churn (NuttX cold boot / a fully parallel `test-all`) — a
-    /// single connect races the router's accept and returns `ZPICO_ERR_SESSION`
-    /// → `ConnectionFailed`, aborting node startup ("readiness pattern never
-    /// observed"). Re-running the whole `init + open` (so `zpico_init` rebuilds
-    /// the config that `z_open` consumes via `z_config_move`) with a short
-    /// backoff recovers the transient failure, matching the robustness the
-    /// blocking C client path has. Bounded (~3 s worst case) so a genuinely
-    /// wrong locator still fails promptly. See phase-177 G4 connect-churn note.
-    fn connect_with_retry(
-        mut attempt: impl FnMut() -> core::result::Result<(), (ZpicoError, bool)>,
-    ) -> Result<()> {
-        const MAX_ATTEMPTS: u32 = 10;
-        const BACKOFF_MS: usize = 300;
-        let mut last_err = ZpicoError::Session;
-        for i in 0..MAX_ATTEMPTS {
-            match attempt() {
-                Ok(()) => return Ok(()),
-                Err((err, retryable)) => {
-                    last_err = err;
-                    if !retryable || i + 1 == MAX_ATTEMPTS {
-                        return Err(last_err);
-                    }
-                    Self::connect_backoff_ms(BACKOFF_MS);
-                }
-            }
+    /// The loop this replaces retried every failure ten times with a 300 ms
+    /// backoff, sized for router-accept races in parallel test runs; against a
+    /// peer that accepts TCP and never answers it cost 103.7 s (measured).
+    fn open_configured(handle: *mut zpico_sys::zpico_session_t) -> Result<()> {
+        let ret = unsafe { zpico_set_connect_timeout(handle, crate::config::CONNECT_TIMEOUT_MS) };
+        if ret < 0 {
+            return Err(ZpicoError::from_code(ret));
         }
-        Err(last_err)
+        let ret = unsafe { zpico_open(handle) };
+        if ret < 0 {
+            return Err(ZpicoError::from_code(ret));
+        }
+        Ok(())
     }
 
     pub fn new(locator: &[u8]) -> Result<Self> {
@@ -430,18 +410,14 @@ impl Context {
             let _open = OpenGuard::acquire();
             // Acquire a pool slot up front; release it on any init/open failure.
             let handle = acquire_session_slot()?;
-            let connect = Self::connect_with_retry(|| {
+            let connect = (|| {
                 // Safety: locator is a valid byte slice, cast to c_char for C string
                 let ret = unsafe { zpico_init(handle, locator.as_ptr().cast()) };
                 if ret < 0 {
-                    return Err((ZpicoError::from_code(ret), false));
+                    return Err(ZpicoError::from_code(ret));
                 }
-                let ret = unsafe { zpico_open(handle) };
-                if ret < 0 {
-                    return Err((ZpicoError::from_code(ret), true));
-                }
-                Ok(())
-            });
+                Self::open_configured(handle)
+            })();
             if let Err(e) = connect {
                 unsafe { zpico_session_release(handle) };
                 return Err(e);
@@ -471,7 +447,7 @@ impl Context {
     ) -> Result<Self> {
         // Issue #64 — stage the locator into a fixed-address static instead of
         // passing a captured `&[u8]`. On esp32-c3 a failed first `zpico_open()`
-        // is retryable; during the `connect_backoff_ms` → `z_sleep_ms` network
+        // is retryable; during the ~~`connect_backoff_ms`~~ → `z_sleep_ms` network
         // poll, a wild write on the OpenETH poll/DMA path overwrites the retry
         // closure's *captured* locator pointer field with `0xffffffff`, so the
         // 2nd `zpico_init_with_config` faults in `_z_str_clone(0xffffffff)`. The
@@ -501,9 +477,9 @@ impl Context {
         }
         ffi_guard(|| {
             let handle = acquire_session_slot()?;
-            let connect = Self::connect_with_retry(|| {
+            let connect = (|| {
                 // Read the locator from its constant static address (not a
-                // captured pointer) so the retry survives the backoff clobber.
+                // captured pointer); see the issue #64 note above.
                 let locator_ptr: *const core::ffi::c_char = if unsafe { LOC_VALID } {
                     (&raw const LOC_BUF) as *const core::ffi::c_char
                 } else {
@@ -524,14 +500,10 @@ impl Context {
                     )
                 };
                 if ret < 0 {
-                    return Err((ZpicoError::from_code(ret), false));
+                    return Err(ZpicoError::from_code(ret));
                 }
-                let ret = unsafe { zpico_open(handle) };
-                if ret < 0 {
-                    return Err((ZpicoError::from_code(ret), true));
-                }
-                Ok(())
-            });
+                Self::open_configured(handle)
+            })();
             if let Err(e) = connect {
                 unsafe { zpico_session_release(handle) };
                 return Err(e);

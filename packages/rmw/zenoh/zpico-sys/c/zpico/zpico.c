@@ -2400,6 +2400,40 @@ static void _zpico_exec_stack_spawn(struct zpico_session* s) {
 }
 #endif
 
+/* Issue 2207 — the budget zenoh-pico's `_z_open` retries a client connect
+ * under (`Z_CONFIG_CONNECT_TIMEOUT_KEY`): -1 until a router answers, 0 one
+ * attempt, N a budget of N ms. zenoh-pico owns the policy beneath it (only a
+ * transport failure is retried, with a sleeping 100 ms -> 1 s backoff). Called
+ * between `zpico_init*` and `zpico_open`, so it rides the config `z_open`
+ * consumes. Our zenoh-pico fork reads the key with or without the unstable API
+ * (upstream gates it). Decimal formatted by hand: not every target links
+ * `snprintf`. */
+int32_t zpico_set_connect_timeout(zpico_session_t* session, int32_t timeout_ms) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->initialized) {
+        return ZPICO_ERR_GENERIC;
+    }
+    char buf[12];
+    char* p = &buf[sizeof(buf) - 1];
+    *p = '\0';
+    int64_t v = timeout_ms;
+    bool neg = v < 0;
+    if (neg) {
+        v = -v;
+    }
+    do {
+        *--p = (char)('0' + (int)(v % 10));
+        v /= 10;
+    } while (v != 0);
+    if (neg) {
+        *--p = '-';
+    }
+    if (zp_config_insert(z_config_loan_mut(&s->config), Z_CONFIG_CONNECT_TIMEOUT_KEY, p) < 0) {
+        return ZPICO_ERR_CONFIG;
+    }
+    return ZPICO_OK;
+}
+
 int32_t zpico_open(zpico_session_t* session) {
     struct zpico_session* s = (struct zpico_session*)session;
     if (!s->initialized) {

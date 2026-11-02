@@ -57,6 +57,8 @@ fn main() {
     // issue 1485 -- the Zephyr resolver road's answer to the same question.
     println!("cargo:rerun-if-env-changed=NROS_ENTITY_APP_QUERYABLES");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_CONNECT_TIMEOUT_MS");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_CONNECT_FOREVER");
     println!("cargo:rerun-if-env-changed=NROS_KEYEXPR_STRING_SIZE");
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_SUBSCRIBER_RING_DEPTH");
     println!("cargo:rerun-if-env-changed=NROS_ZENOH_SUBSCRIBER_LARGE_SIZE");
@@ -248,6 +250,9 @@ fn main() {
     // define cannot disagree. The 30 s default's rationale lives there too.
     let service_timeout_ms =
         nros_platform_config::platform_config::resolve_service_timeout_ms(&limits);
+    // issue 2207 — the client connect budget, in zenoh-pico's units.
+    let connect_timeout_ms =
+        nros_platform_config::platform_config::resolve_zenoh_connect_timeout_ms(&limits);
     let keyexpr_string_size: usize =
         env_usize_rung("NROS_KEYEXPR_STRING_SIZE", limits.keyexpr_string_size, 256);
     // Phase 124.D.3.c — SPSC ring depth per subscriber. Default 4
@@ -504,6 +509,10 @@ fn main() {
              /// Default service client RPC timeout in milliseconds\n\
              /// (set via NROS_SERVICE_TIMEOUT_MS, default 30000).\n\
              pub const SERVICE_DEFAULT_TIMEOUT_MS: u32 = {service_timeout_ms};\n\
+             /// Client session connect budget in zenoh-pico's units: -1 = until a\n\
+             /// router answers, 0 = one attempt, N = N ms (issue 2207; set via\n\
+             /// NROS_ZENOH_CONNECT_TIMEOUT_MS / NROS_ZENOH_CONNECT_FOREVER, default 0).\n\
+             pub const CONNECT_TIMEOUT_MS: i32 = {connect_timeout_ms};\n\
              /// Maximum key expression string size for topic/service names\n\
              /// (set via NROS_KEYEXPR_STRING_SIZE, default 256).\n\
              pub const KEYEXPR_STRING_SIZE: usize = {keyexpr_string_size};\n\

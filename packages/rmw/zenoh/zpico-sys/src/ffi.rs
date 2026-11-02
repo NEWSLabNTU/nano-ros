@@ -266,6 +266,20 @@ mod cbindgen_stubs {
         0
     }
 
+    /// Issue 2207 — set how long the next `zpico_open` keeps trying to reach
+    /// its router: -1 until a router answers, 0 one attempt, N a budget of N ms.
+    /// Call between `zpico_init*` and `zpico_open`.
+    ///
+    /// # Returns
+    /// 0 on success, negative error code on failure.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_set_connect_timeout(
+        _session: *mut zpico_session_t,
+        _timeout_ms: i32,
+    ) -> i32 {
+        0
+    }
+
     /// Check if session is currently open.
     ///
     /// # Returns

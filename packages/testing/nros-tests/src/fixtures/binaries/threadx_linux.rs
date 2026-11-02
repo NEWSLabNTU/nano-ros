@@ -43,6 +43,7 @@ pub fn is_cmake_available() -> bool {
 
 static THREADX_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_LISTENER_CONNECT_FOREVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -103,6 +104,23 @@ pub fn build_threadx_talker() -> TestResult<&'static Path> {
 pub fn build_threadx_listener() -> TestResult<&'static Path> {
     THREADX_LISTENER_BINARY
         .get_or_try_init(|| build_rust_example("listener", "threadx-linux-listener"))
+        .map(|p| p.as_path())
+}
+
+/// The listener built with `NROS_ZENOH_CONNECT_FOREVER=1` (issue 2207): it
+/// keeps trying until its router answers, where the default listener makes one
+/// connect attempt. Row-selected by its env, like the peer-mode pair.
+pub fn build_threadx_listener_connect_forever() -> TestResult<&'static Path> {
+    THREADX_LISTENER_CONNECT_FOREVER_BINARY
+        .get_or_try_init(|| {
+            let row = crate::fixtures::groups::select_row(
+                "examples/threadx-linux/rust/listener",
+                &crate::fixtures::groups::FixtureVariant::platform_rmw(crate::fixtures::Rmw::Zenoh)
+                    .with_env(&[("NROS_ZENOH_CONNECT_FOREVER", "1")]),
+            )?;
+            let rel = PathBuf::from(format!("{}/listener", super::cargo_target_profile_dir()));
+            super::require_prebuilt_row_binary_fresh(row, &rel)
+        })
         .map(|p| p.as_path())
 }
 

@@ -906,8 +906,8 @@ fn client_session_with_absent_locator_dials_backend_default() {
     // is dialled EXPLICITLY; otherwise a failed no-locator open below could be
     // the holder's fault rather than the substitution's. Bounded, because a
     // holder that accepts the TCP connect and never answers the handshake
-    // blocks `open` for good (measured: a bare listener ran the test into
-    // nextest's 60 s timeout).
+    // costs `open` one handshake deadline (~10 s; ~104 s before issue 2207's
+    // fix, which ran this test into nextest's 60 s timeout).
     if let Some(e) = &held_by {
         let (tx, rx) = std::sync::mpsc::channel();
         let base = config.clone();
@@ -944,6 +944,52 @@ fn client_session_with_absent_locator_dials_backend_default() {
     });
 
     session.close().expect("Failed to close session");
+}
+
+/// Issue 2207: a locator whose peer accepts the TCP connect and never speaks
+/// zenoh must fail the open within a bound, not block it for good.
+///
+/// The listener is a bare `TcpListener` that is never `accept`ed: the kernel
+/// completes the handshake from the backlog, so the client's connect succeeds
+/// and its first read sees nothing — the shape of a wrong port, a half-up
+/// router, or any other service on 7447. The open runs on its own thread so a
+/// regression reads as a failed assertion rather than nextest's timeout.
+#[test]
+fn client_open_against_a_silent_listener_fails_within_a_bound() {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind ephemeral port");
+    let port = listener.local_addr().expect("local addr").port();
+    let locator: &'static str = Box::leak(format!("tcp/127.0.0.1:{port}").into_boxed_str());
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let started = std::time::Instant::now();
+    thread::spawn(move || {
+        let config = TransportConfig {
+            locator: Some(locator),
+            mode: SessionMode::Client,
+            properties: &[],
+            node_name: "",
+            namespace: "",
+            domain_id: 0,
+        };
+        let outcome = ZenohTransport::open(&config)
+            .map(|mut s| {
+                let _ = s.close();
+            })
+            .map_err(|e| format!("{e:?}"));
+        let _ = tx.send(outcome);
+    });
+
+    // One handshake deadline (zenoh-pico's `Z_TRANSPORT_CONNECT_TIMEOUT`,
+    // 10 s) plus slack. Before the fix: ten deadlines, 103.7 s measured.
+    match rx.recv_timeout(Duration::from_secs(30)) {
+        Ok(Err(_)) => {}
+        Ok(Ok(())) => panic!("a listener that never speaks zenoh cannot open a session"),
+        Err(_) => panic!(
+            "open against a silent listener on {locator} has not returned after {:?}",
+            started.elapsed()
+        ),
+    }
+    drop(listener);
 }
 
 // ============================================================================
