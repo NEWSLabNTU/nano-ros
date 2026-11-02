@@ -251,6 +251,15 @@ are what keeps D5's refusal from landing (phase-521 W6).
 | RTIC images | its own scheduler; the 1 ms dual-timer tick bounds each `wfi` | RTIC is Tier 1 (D1); its arrival path is not yet an RTIC task bound to the RX interrupt |
 | uORB polling build | none: refused under D5 | host test double only |
 
+Measured on Linux over `rmw_zenohd` (`entity_wake`, `required-features-tests`
+lane, 2026-11-02): an idle entry with one 1 s timer runs 4 spins in 3.5 s and
+dispatches each expiry 74-183 us late (D2.1, D2.3); an idle executor sharing a
+session with one taking 936 arrivals/s runs 6 spins in 3 s on 120 us of thread
+CPU, i.e. it is woken only by its own deadlines (D2.5's fan-out on an
+attributing backend is zero); `a_shared_session_member_is_not_woken_by_another_members_arrivals`
+pins the same per member. Zephyr (mps2/an385) and an RTOS XRCE cell are not
+measured yet (phase-521 W7).
+
 Zephyr's serial link receives only through its interrupt-driven ring: the
 polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
