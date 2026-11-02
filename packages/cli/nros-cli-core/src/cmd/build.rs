@@ -6205,6 +6205,7 @@ fn run_entry_root_check(er: &crate::builder::materialize::EntryRoot) -> Result<(
              root's units",
             er.manifest_dir.display()
         );
+        er.tag_target_dir().map_err(|e| eyre::eyre!("{e}"))?;
         let status = er
             .clean
             .command()
