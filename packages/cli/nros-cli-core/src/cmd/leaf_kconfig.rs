@@ -269,6 +269,27 @@ pub fn render(
     syms: &KconfigSymbols,
     overrides: &BTreeMap<String, String>,
 ) -> Result<Rendered, String> {
+    render_over(
+        leaf,
+        language,
+        syms,
+        overrides,
+        &crate::cmd::leaf_settings::BoardRung::new(),
+    )
+}
+
+/// [`render`] over the image's BOARD rung (issue 2194,
+/// [`crate::cmd::leaf_settings::board_rung`] with `Every`): each board knob is
+/// a `default` in `Kconfig.from-system-toml` unless the image states the same
+/// knob, which wins. Zephyr carries no `NROS_BOARD_TOML`, so this is the one
+/// road a board's `[knobs]` takes into a Zephyr image.
+pub fn render_over(
+    leaf: &LeafSystem,
+    language: Option<Language>,
+    syms: &KconfigSymbols,
+    overrides: &BTreeMap<String, String>,
+    board: &crate::cmd::leaf_settings::BoardRung,
+) -> Result<Rendered, String> {
     let origin = leaf.origin_path().display().to_string();
     let image = leaf.image.clone().unwrap_or_default();
     let mut out = Rendered::default();
@@ -433,15 +454,24 @@ pub fn render(
 
     // `[image.<id>] env` and `[image.<id>.knobs]` (after what the image's
     // `transport` implies). A knob row says which spelling stated it.
-    let knob_from: BTreeMap<String, String> = leaf
-        .knobs
+    let board_name = leaf.board.as_deref().unwrap_or("");
+    let mut knob_from: BTreeMap<String, String> = board
         .iter()
-        .filter_map(|(k, v)| {
-            nros_zephyr_build::knob_by_image_key(k)
-                .map(|r| (r.env.to_string(), format!("knobs {k} = {v}")))
+        .map(|(env, (v, k))| {
+            (
+                env.clone(),
+                format!("board `{board_name}` [knobs] {k} = {v}"),
+            )
         })
         .collect();
-    for (key, value) in crate::cmd::leaf_settings::image_layers(leaf).map_err(|e| e.to_string())? {
+    knob_from.extend(leaf.knobs.iter().filter_map(|(k, v)| {
+        nros_zephyr_build::knob_by_image_key(k)
+            .map(|r| (r.env.to_string(), format!("knobs {k} = {v}")))
+    }));
+    let own = crate::cmd::leaf_settings::image_layers(leaf).map_err(|e| e.to_string())?;
+    for (key, value) in
+        crate::cmd::leaf_settings::image_layers_over(leaf, board).map_err(|e| e.to_string())?
+    {
         let symbol = nros_zephyr_build::kconfig_key_for(&key);
         let Some(sym) = syms.get(&symbol) else {
             out.cargo_rows.insert(key, value);
@@ -454,6 +484,11 @@ pub fn render(
         if let (Some(guard), Some(chosen)) = (&sym.rmw_guard, rmw_sym)
             && guard.as_str() != chosen
         {
+            // Issue 2194 — a board states knobs for every RMW its images may
+            // pick; one this image's RMW leaves undefined is not this image's.
+            if !own.contains_key(&key) {
+                continue;
+            }
             return Err(format!(
                 "{origin}: [image.{image}] `{from}` sets {symbol}, which Kconfig defines \
                  only under `if {guard}`, and this image's rmw selects {chosen} — Zephyr \

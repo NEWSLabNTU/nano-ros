@@ -1433,16 +1433,12 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // Handed to every cargo command the configure spawns by the
                 // issue-1712 carrier (`NanoRosImageEnv.cmake`); removed when the
                 // image states none.
-                let mut image_rows =
-                    crate::cmd::leaf_settings::image_block_layers(Some(&image_id), &image)?;
-                // Issue 2096 — the zenoh-pico links the bringup's RMW file
-                // dials, which this road bakes through `--rmw-config` rather
-                // than the settings text the cargo road carries.
-                crate::cmd::leaf_settings::session_link_build_implications(
-                    crate::orchestration::rmw_config::session_text(&bringup_dir, &image_id)
-                        .map_err(|e| eyre::eyre!("{e}"))?
-                        .as_deref(),
-                    &mut image_rows,
+                let image_rows = cmake_image_rows(
+                    descriptor,
+                    nano_ros_root.as_deref(),
+                    &image_id,
+                    &image,
+                    &bringup_dir,
                 )?;
                 let image_env = crate::cmd::leaf_system::write_image_env(
                     &manifest_dir.join(crate::builder::cmake_root::IMAGE_ENV_FILE),
@@ -4995,6 +4991,37 @@ fn cmake_build_dir_for(
     })
 }
 
+/// The rows a workspace cmake configure hands every cargo command it spawns
+/// (the issue-1712 carrier, `NanoRosImageEnv.cmake`): the image's
+/// [`crate::cmd::leaf_settings::image_block_layers_over`] over its board's
+/// knob rung (issue 2194; the board-only keys, a typed one rides
+/// `NROS_BOARD_TOML` as on the leaf road), plus the zenoh-pico links the
+/// bringup's RMW file dials (issue 2096), which this road bakes through
+/// `--rmw-config` rather than the settings text the cargo road carries.
+fn cmake_image_rows(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    nano_ros_root: Option<&Path>,
+    image_id: &str,
+    image: &crate::orchestration::image::ImageBlock,
+    bringup_dir: &Path,
+) -> Result<std::collections::BTreeMap<String, String>> {
+    let board_rung = crate::cmd::leaf_settings::board_rung_of(
+        descriptor,
+        nano_ros_root,
+        image.board.as_deref().unwrap_or_default(),
+        crate::cmd::leaf_settings::BoardRungCarries::BoardOnly,
+    )?;
+    let mut rows =
+        crate::cmd::leaf_settings::image_block_layers_over(Some(image_id), image, &board_rung)?;
+    crate::cmd::leaf_settings::session_link_build_implications(
+        crate::orchestration::rmw_config::session_text(bringup_dir, image_id)
+            .map_err(|e| eyre::eyre!("{e}"))?
+            .as_deref(),
+        &mut rows,
+    )?;
+    Ok(rows)
+}
+
 /// A short, stable digest of an image's resolved configuration
 /// ([`crate::cmd::leaf_settings::image_block_layers`]), or `None` when it
 /// states none. Keyed on the ROWS, never on their spelling in `system.toml`,
@@ -8225,5 +8252,32 @@ mod nuttx_kernel_step_tests {
                 .unwrap()
                 .is_none()
         );
+    }
+}
+
+/// Issue 2194 -- the workspace cmake road's image rows carry the board rung.
+#[cfg(test)]
+mod board_knob_rung_tests {
+    use super::*;
+    use crate::cmd::leaf_settings::{BoardRungCarries, board_rung_tests};
+
+    #[test]
+    fn the_workspace_cmake_road_carries_the_board_knobs() {
+        let root = board_rung_tests::repo();
+        let catalog =
+            crate::orchestration::board_descriptor::BoardCatalog::load(&root).expect("catalog");
+        let descriptor = crate::cmd::board_facts::resolve_board(&catalog, board_rung_tests::BOARD)
+            .expect("the board resolves");
+        let image: crate::orchestration::image::ImageBlock = toml::from_str(&format!(
+            "board = \"{}\"\nrmw = \"zenoh\"\n",
+            board_rung_tests::BOARD
+        ))
+        .unwrap();
+        let bringup = tempfile::tempdir().unwrap();
+        let rows =
+            cmake_image_rows(descriptor, Some(&root), "t", &image, bringup.path()).expect("rows");
+        for (k, v) in board_rung_tests::expected(BoardRungCarries::BoardOnly) {
+            assert_eq!(rows.get(&k), Some(&v), "{k}: {rows:?}");
+        }
     }
 }

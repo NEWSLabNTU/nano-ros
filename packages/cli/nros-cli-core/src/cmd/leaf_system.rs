@@ -659,8 +659,30 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                     .ok_or_else(|| eyre!("--override {o}: expected ID=VALUE"))?;
                 overrides.insert(id.to_string(), v.to_string());
             }
-            let r = crate::cmd::leaf_kconfig::render(&leaf, language, &syms, &overrides)
-                .map_err(|e| eyre!(e))?;
+            // Issue 2194 -- the board's knob rung, every key: Zephyr carries
+            // no `NROS_BOARD_TOML`. Only when the board package applies to
+            // this build (issues 1782/2179, the condition its conf files and
+            // overlay take below).
+            let board_rung = if args.board.is_none()
+                && board_not_applied(catalog.as_ref(), &board, args.west_board.as_deref()).is_none()
+            {
+                crate::cmd::leaf_settings::board_rung(
+                    catalog.as_ref(),
+                    Some(root),
+                    &board,
+                    crate::cmd::leaf_settings::BoardRungCarries::Every,
+                )?
+            } else {
+                Default::default()
+            };
+            let r = crate::cmd::leaf_kconfig::render_over(
+                &leaf,
+                language,
+                &syms,
+                &overrides,
+                &board_rung,
+            )
+            .map_err(|e| eyre!(e))?;
             let text = crate::cmd::leaf_kconfig::fragment_text(&leaf, &r);
             let written = crate::cmd::leaf_kconfig::write_fragment(out, text.as_deref())?;
             if let Some(d) = &args.kconfig_defaults_out {
@@ -670,7 +692,21 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             }
             (Some(written), r.cargo_rows)
         }
-        None => (None, crate::cmd::leaf_settings::image_layers(&leaf)?),
+        // Issue 2194 -- the cmake road: the board-only knobs (a typed one
+        // reaches its build script through the `NROS_BOARD_TOML` the board
+        // facts hand it).
+        None => {
+            let board_rung = crate::cmd::leaf_settings::board_rung(
+                catalog.as_ref(),
+                root.as_deref(),
+                &board,
+                crate::cmd::leaf_settings::BoardRungCarries::BoardOnly,
+            )?;
+            (
+                None,
+                crate::cmd::leaf_settings::image_layers_over(&leaf, &board_rung)?,
+            )
+        }
     };
     let image_env = match &args.image_env_out {
         Some(out) => write_image_env(out, &env_rows)?,
@@ -818,6 +854,98 @@ mod tests {
         );
         assert_eq!(board_not_applied(c, "zephyr", None), None);
         assert!(board_snippets(c, "zephyr").iter().any(|s| s == "nros-nsos"));
+    }
+
+    /// Issue 2194 -- `nros ws leaf-system` with every output off; a case
+    /// turns on the road it is about.
+    fn args(dir: &std::path::Path) -> LeafSystemArgs {
+        LeafSystemArgs {
+            path: dir.to_path_buf(),
+            nano_ros_path: Some(crate::cmd::leaf_settings::board_rung_tests::repo()),
+            board: None,
+            west_board: None,
+            image_env_out: None,
+            image: Some("t".to_string()),
+            write_settings: false,
+            target_dir: None,
+            kconfig_out: None,
+            kconfig_defaults_out: None,
+            overrides: Vec::new(),
+            language: Some("c".to_string()),
+        }
+    }
+
+    /// The `default` `Kconfig.from-system-toml` gives `symbol`, if any.
+    fn kconfig_default(text: &str, symbol: &str) -> Option<String> {
+        let head = format!("config {symbol}\n");
+        let body = &text[text.find(&head)? + head.len()..];
+        body.lines()
+            .take_while(|l| l.starts_with("    "))
+            .find_map(|l| l.trim().strip_prefix("default "))
+            .map(str::to_string)
+    }
+
+    /// Issue 2194 -- a board's `[knobs]` reaches a Zephyr image (as a Kconfig
+    /// `default`, the one carrier that road has) and a cmake image (in its
+    /// image-env file), and the image's own knob wins over the board's.
+    #[test]
+    fn a_board_knob_reaches_the_zephyr_and_cmake_leaf_roads() {
+        use crate::cmd::leaf_settings::{BoardRungCarries, board_rung_tests};
+        let board = board_rung_tests::BOARD;
+        for image_knob in [false, true] {
+            let td = leaf_dir(&format!(
+                "[image.t]\nboard = \"{board}\"\nrmw = \"zenoh\"\n{}",
+                if image_knob {
+                    "\n[image.t.knobs.zenoh]\nmax_subscribers = 3\n"
+                } else {
+                    ""
+                }
+            ));
+            let out = td.path().join("out");
+            let defaults = out.join("Kconfig.from-system-toml");
+            run(LeafSystemArgs {
+                kconfig_out: Some(out.join("frag.conf")),
+                kconfig_defaults_out: Some(defaults.clone()),
+                ..args(td.path())
+            })
+            .expect("the Zephyr road renders");
+            let text = std::fs::read_to_string(&defaults).unwrap();
+            for (env, value) in board_rung_tests::expected(BoardRungCarries::Every) {
+                let row = nros_zephyr_build::knob_row(&env).unwrap();
+                let want = if image_knob && env == "NROS_ZENOH_MAX_SUBSCRIBERS" {
+                    "3".to_string()
+                } else {
+                    value
+                };
+                let sym = row.kconfig.strip_prefix("CONFIG_").unwrap();
+                assert_eq!(
+                    kconfig_default(&text, sym).as_deref(),
+                    Some(want.as_str()),
+                    "{sym} on the Zephyr road:\n{text}"
+                );
+            }
+
+            let env_file = out.join("image-env.toml");
+            run(LeafSystemArgs {
+                image_env_out: Some(env_file.clone()),
+                ..args(td.path())
+            })
+            .expect("the cmake road renders");
+            let doc: toml::Table = std::fs::read_to_string(&env_file).unwrap().parse().unwrap();
+            let rows = doc["env"].as_table().unwrap();
+            for (env, value) in board_rung_tests::expected(BoardRungCarries::BoardOnly) {
+                let want = if image_knob && env == "NROS_ZENOH_MAX_SUBSCRIBERS" {
+                    "3".to_string()
+                } else {
+                    value
+                };
+                assert_eq!(
+                    rows.get(&env).and_then(|v| v.as_str()),
+                    Some(want.as_str()),
+                    "{env} on the cmake road: {rows:?}"
+                );
+            }
+        }
     }
 
     fn leaf_dir(system: &str) -> tempfile::TempDir {

@@ -8,7 +8,11 @@
 #            only where today's symbol differs; no Kconfig symbol is renamed
 #            (phase-481 owns them). The zenoh pools read the RMW-agnostic
 #            DEMAND symbol, which is why the id is not the Kconfig stem.
-#   TOML     `[knobs.<toml>]` — the board / platform key, where one exists
+#   TOML     `[knobs.<toml>]` — the key a TYPED tenant of the platform/board
+#            ladder reads (nros-platform-config `Knobs`, via NROS_BOARD_TOML),
+#            where one exists. A BOARD's `[knobs]` takes every row, keyed
+#            as an image's `[image.<id>.knobs]` is; a row with no `toml`
+#            reaches the build in the image's rows (issue 2194).
 #
 # Edit here, then run `python3 scripts/gen-knob-registry.py`; the generated
 # Rust beside it is checked by `just check knob-registry`.

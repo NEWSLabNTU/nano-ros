@@ -361,6 +361,28 @@ pub(crate) fn board_fact_layer(
             env.insert(k, v);
         }
     }
+    // Issue 2194 — and the board's KNOB rung, in the same layer, so no cargo
+    // road can take the facts without it.
+    board_knob_layer(board, env, path_env)
+}
+
+/// Issue 2194 — the board's KNOB rung on a cargo road: the registry knobs its
+/// descriptor states that no typed tenant reads from the `NROS_BOARD_TOML`
+/// [`board_fact_layer`] just named (that file IS the descriptor). It is the
+/// tail of that layer, so on both cargo roads the rung sits over the derived
+/// pools and under everything the image states.
+fn board_knob_layer(
+    board: &str,
+    env: &mut BTreeMap<String, String>,
+    path_env: &mut BTreeMap<String, PathBuf>,
+) -> Result<()> {
+    let Some(desc) = path_env.get("NROS_BOARD_TOML").cloned() else {
+        return Ok(());
+    };
+    for (k, (v, _)) in board_rung_from_file(&desc, board, BoardRungCarries::BoardOnly)? {
+        path_env.remove(&k);
+        env.insert(k, v);
+    }
     Ok(())
 }
 
@@ -487,13 +509,122 @@ pub(crate) fn transport_implications_of(
 /// settings file of its own. One composition, so a C leaf and a Rust leaf
 /// cannot read one `system.toml` two ways.
 pub fn image_layers(decl: &LeafSystem) -> Result<BTreeMap<String, String>> {
-    let mut env = BTreeMap::new();
+    image_layers_over(decl, &BoardRung::new())
+}
+
+/// [`image_layers`] over the image's BOARD rung (issue 2194): the board's
+/// knob rows first, so every layer the image states outranks them key by key
+/// (RFC-0049: builtin < platform < board < the image's front-end).
+pub fn image_layers_over(decl: &LeafSystem, board: &BoardRung) -> Result<BTreeMap<String, String>> {
+    let mut env: BTreeMap<String, String> = board
+        .iter()
+        .map(|(k, (v, _))| (k.clone(), v.clone()))
+        .collect();
     transport_implications(decl, &mut env)?;
     env.extend(leaf_app_rung(decl)?);
     if let Some(v) = baked_ros_args(decl)? {
         env.insert(BAKED_ROS_ARGS_ENV.to_string(), v);
     }
     Ok(env)
+}
+
+/// Issue 2194 — the BOARD rung's rows: each env spelling → (value, the
+/// `[knobs]` key that stated it).
+pub type BoardRung = BTreeMap<String, (String, String)>;
+
+/// Issue 2194 — which of a board's `[knobs]` a road carries in the image's
+/// rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BoardRungCarries {
+    /// The cargo and cmake roads. A key a typed tenant holds already reaches
+    /// every build script through `NROS_BOARD_TOML` (the RFC-0049 ladder in
+    /// `nros-platform-config`), so only the board-only keys ride here —
+    /// carrying a typed one twice would also move its reported rung from
+    /// `board` to `env`.
+    BoardOnly,
+    /// The Zephyr road, which exports no `NROS_BOARD_TOML`: Kconfig is its one
+    /// carrier, so every key the board states becomes a `default` there.
+    Every,
+}
+
+/// Issue 2194 — the board rung of `board`: the registry knobs its
+/// descriptor's top-level `[knobs]` states (RFC-0103 D6), rendered to their
+/// env spellings exactly as an image's `[image.<id>.knobs]` are, for the road
+/// `carries` names. Every road composes it BELOW the image's own rows
+/// ([`image_layers_over`], [`image_block_layers_over`], [`write`]), so an
+/// image that states a knob wins.
+///
+/// The descriptor is read by `nros-platform-config`'s `BoardKnobsFile`, the
+/// reader the build scripts use, so the CLI and a build script cannot read
+/// one `[knobs]` two ways. A board no single descriptor claims states no
+/// knobs here: the roads refuse such a board where they resolve its facts.
+pub fn board_rung(
+    catalog: Option<&crate::orchestration::board_descriptor::BoardCatalog>,
+    nano_ros_root: Option<&Path>,
+    board: &str,
+    carries: BoardRungCarries,
+) -> Result<BoardRung> {
+    match catalog.and_then(|c| crate::cmd::board_facts::resolve_board(c, board)) {
+        Some(d) => board_rung_of(d, nano_ros_root, board, carries),
+        None => Ok(BoardRung::new()),
+    }
+}
+
+/// [`board_rung`] for a descriptor already resolved.
+pub fn board_rung_of(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    nano_ros_root: Option<&Path>,
+    board: &str,
+    carries: BoardRungCarries,
+) -> Result<BoardRung> {
+    let Some(src) = descriptor.source.as_deref() else {
+        return Ok(BoardRung::new());
+    };
+    let path = match (Path::new(src).is_absolute(), nano_ros_root) {
+        (true, _) => PathBuf::from(src),
+        (false, Some(root)) => root.join(src),
+        (false, None) => return Ok(BoardRung::new()),
+    };
+    board_rung_from_file(&path, board, carries)
+}
+
+/// [`board_rung`] over a descriptor file already located.
+pub fn board_rung_from_file(
+    path: &Path,
+    board: &str,
+    carries: BoardRungCarries,
+) -> Result<BoardRung> {
+    use nros_board_common::platform_config::{BoardKnobsFile, is_board_only_knob};
+    use nros_orchestration_ir::leaf_system::KnobValue;
+    let file = BoardKnobsFile::load_for_board(path, Some(board))
+        .map_err(|e| eyre!("board `{board}`: {e}"))?;
+    let mut rows = BoardRung::new();
+    let mut errors = Vec::new();
+    for (key, value) in &file.knobs.registry {
+        if carries == BoardRungCarries::BoardOnly && !is_board_only_knob(key) {
+            continue;
+        }
+        let v = match value {
+            toml::Value::Integer(n) => KnobValue::Int(*n),
+            toml::Value::Boolean(b) => KnobValue::Bool(*b),
+            toml::Value::String(x) => KnobValue::Str(x.clone()),
+            _ => continue,
+        };
+        match knob_env_row("knobs", key, &v) {
+            Ok((row, rendered)) => {
+                rows.insert(row.env.to_string(), (rendered, key.clone()));
+            }
+            Err(e) => errors.push(e),
+        }
+    }
+    if !errors.is_empty() {
+        return Err(eyre!(
+            "{} (board `{board}`):\n  {}",
+            path.display(),
+            errors.join("\n  ")
+        ));
+    }
+    Ok(rows)
 }
 
 /// Issue 2073 -- the env row that carries an image's `ros_args` and
@@ -573,8 +704,9 @@ pub fn app_rung(
     let id = image.unwrap_or("<id>");
     let mut rows = BTreeMap::new();
     let mut errors = Vec::new();
+    let table = format!("image.{id}.knobs");
     for (key, value) in knobs {
-        match knob_env_row(id, key, value) {
+        match knob_env_row(&table, key, value) {
             Ok((row, v)) => {
                 rows.insert(row.env.to_string(), v);
             }
@@ -613,8 +745,11 @@ pub fn registry_knob_of_env_row(key: &str) -> Option<&'static nros_zephyr_build:
 /// renders to: an int as decimal, a bool as `1`/`0`, a string (a `string`
 /// knob, or one of an `int` knob's `names`) verbatim — the spellings the
 /// env rows it replaces were written in, so a migrated row is byte-identical.
+///
+/// `table` is the table the key sits under, for the errors
+/// (`image.<id>.knobs`, or a board descriptor's `knobs`).
 fn knob_env_row(
-    id: &str,
+    table: &str,
     key: &str,
     value: &nros_orchestration_ir::leaf_system::KnobValue,
 ) -> std::result::Result<(&'static nros_zephyr_build::KnobRow, String), String> {
@@ -626,11 +761,11 @@ fn knob_env_row(
             .find(|r| r.image_key.rsplit_once('.').map(|(_, n)| n) == Some(name))
             .map(|r| {
                 let (g, n) = r.image_group_name();
-                format!(" (did you mean `[image.{id}.knobs.{g}] {n}`?)")
+                format!(" (did you mean `[{table}.{g}] {n}`?)")
             })
             .unwrap_or_default();
         return Err(format!(
-            "`[image.{id}.knobs.{group}] {name}` names no knob in the registry \
+            "`[{table}.{group}] {name}` names no knob in the registry \
              (packages/tooling/nros-zephyr-build/knobs.toml){hint}"
         ));
     };
@@ -638,12 +773,12 @@ fn knob_env_row(
     // its row's reason: the registry keeps the row so this has words to say.
     if let Some(reason) = row.retired {
         return Err(format!(
-            "`[image.{id}.knobs.{group}] {name}` is a retired knob: {reason}"
+            "`[{table}.{group}] {name}` is a retired knob: {reason}"
         ));
     }
     let bad = |want: &str| {
         format!(
-            "`[image.{id}.knobs.{group}] {name} = {value}`: {} is {want}",
+            "`[{table}.{group}] {name} = {value}`: {} is {want}",
             row.env
         )
     };
@@ -709,7 +844,19 @@ pub fn image_block_layers(
     image_id: Option<&str>,
     image: &crate::orchestration::image::ImageBlock,
 ) -> Result<BTreeMap<String, String>> {
-    let mut env = BTreeMap::new();
+    image_block_layers_over(image_id, image, &BoardRung::new())
+}
+
+/// [`image_block_layers`] over the image's board rung (issue 2194), lowest.
+pub fn image_block_layers_over(
+    image_id: Option<&str>,
+    image: &crate::orchestration::image::ImageBlock,
+    board: &BoardRung,
+) -> Result<BTreeMap<String, String>> {
+    let mut env: BTreeMap<String, String> = board
+        .iter()
+        .map(|(k, (v, _))| (k.clone(), v.clone()))
+        .collect();
     transport_implications_of(image.link_kind(), &mut env);
     link_build_implications(image.locator.as_deref(), &mut env);
     env.extend(app_rung(image_id, &image.knobs.0, &image.env)?);
@@ -2662,5 +2809,145 @@ mod board_crate_tests {
         .unwrap();
         let img = resolve(&leaf, &repo()).unwrap().expect("a cargo leaf");
         check_board_crate_dependency(&img).expect("no board crate is not a stale one");
+    }
+}
+
+/// Issue 2194 — the board knob rung: what it carries, and that each road
+/// takes it. The road tests live beside each road (`leaf_system` for the
+/// Zephyr and cmake leaf roads, `build` for the workspace cmake road); the
+/// cargo roads both reach it through [`board_fact_layer`], tested here.
+#[cfg(test)]
+pub(crate) mod board_rung_tests {
+    use super::*;
+
+    pub(crate) fn repo() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap()
+    }
+
+    /// The board whose descriptor states the most board-only knobs.
+    pub(crate) const BOARD: &str = "rpi-pico-w-zephyr";
+
+    /// Its descriptor.
+    pub(crate) fn descriptor() -> PathBuf {
+        repo().join("packages/boards/nros-board-rpi-pico-w-zephyr/nros-board.toml")
+    }
+
+    /// The env rows [`BOARD`]'s `[knobs]` must put on a road carrying
+    /// `carries`, and a floor on them so the road tests cannot pass vacuously:
+    /// the five RAM knobs phase-524 W3 measured.
+    pub(crate) fn expected(carries: BoardRungCarries) -> BTreeMap<String, String> {
+        let rows: BTreeMap<String, String> = board_rung_from_file(&descriptor(), BOARD, carries)
+            .expect("the descriptor's knobs render")
+            .into_iter()
+            .map(|(k, (v, _))| (k, v))
+            .collect();
+        for (k, v) in [
+            ("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS", "0"),
+            ("NROS_ZENOH_MAX_SUBSCRIBERS", "1"),
+            ("NROS_ZENOH_SERVICE_BUFFER_SIZE", "1024"),
+            ("NROS_ZENOH_MAX_QUERYABLES", "1"),
+            ("NROS_ZEPHYR_HEAP_SIZE", "32768"),
+        ] {
+            assert_eq!(rows.get(k).map(String::as_str), Some(v), "{k} in {rows:?}");
+        }
+        rows
+    }
+
+    fn knobs_file(body: &str) -> (tempfile::TempDir, PathBuf) {
+        let td = tempfile::tempdir().unwrap();
+        let p = td.path().join("nros-board.toml");
+        std::fs::write(&p, format!("[[board]]\nnames = [\"b\"]\n\n{body}")).unwrap();
+        (td, p)
+    }
+
+    /// The cargo and cmake roads take only the board-only keys (a typed one
+    /// rides `NROS_BOARD_TOML`); the Zephyr road takes every key; a value the
+    /// row does not admit is refused naming the board's own table.
+    #[test]
+    fn the_rung_carries_what_the_road_cannot_otherwise_reach() {
+        let (_td, p) = knobs_file(
+            "[knobs.zenoh]\nmax_subscribers = 2\n[knobs.executor]\nmax_cbs = 4\n\
+             [knobs.zephyr]\nheap_size = 4096\n",
+        );
+        let only = board_rung_from_file(&p, "b", BoardRungCarries::BoardOnly).unwrap();
+        assert_eq!(only["NROS_ZENOH_MAX_SUBSCRIBERS"].0, "2");
+        assert_eq!(only["NROS_ZEPHYR_HEAP_SIZE"].0, "4096");
+        assert!(
+            !only.contains_key("NROS_EXECUTOR_MAX_CBS"),
+            "a typed tenant's key rides NROS_BOARD_TOML: {only:?}"
+        );
+        let every = board_rung_from_file(&p, "b", BoardRungCarries::Every).unwrap();
+        assert_eq!(
+            every["NROS_EXECUTOR_MAX_CBS"],
+            ("4".into(), "executor.max_cbs".into())
+        );
+
+        let (_td, bad) = knobs_file("[knobs.zenoh]\nmax_subscribers = \"many\"\n");
+        let e = board_rung_from_file(&bad, "b", BoardRungCarries::Every)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("[knobs.zenoh] max_subscribers"), "{e}");
+    }
+
+    /// RFC-0049: the image's own knob outranks the board's, key by key, on
+    /// the leaf composition and the workspace one.
+    #[test]
+    fn the_image_outranks_its_board() {
+        let board: BoardRung = [
+            (
+                "NROS_ZENOH_MAX_SUBSCRIBERS".to_string(),
+                ("1".to_string(), "zenoh.max_subscribers".to_string()),
+            ),
+            (
+                "NROS_ZEPHYR_HEAP_SIZE".to_string(),
+                ("32768".to_string(), "zephyr.heap_size".to_string()),
+            ),
+        ]
+        .into();
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("CMakeLists.txt"), "project(x C)\n").unwrap();
+        std::fs::write(
+            td.path().join("system.toml"),
+            "[system]\nname = \"t\"\n\n[image.t]\nboard = \"b\"\n\n\
+             [image.t.knobs.zenoh]\nmax_subscribers = 3\n",
+        )
+        .unwrap();
+        let decl = leaf_system::read(td.path()).unwrap().unwrap();
+        let rows = image_layers_over(&decl, &board).unwrap();
+        assert_eq!(rows["NROS_ZENOH_MAX_SUBSCRIBERS"], "3", "the image wins");
+        assert_eq!(
+            rows["NROS_ZEPHYR_HEAP_SIZE"], "32768",
+            "the board fills the rest"
+        );
+
+        let image: crate::orchestration::image::ImageBlock =
+            toml::from_str("board = \"b\"\n[knobs.zenoh]\nmax_subscribers = 3\n").unwrap();
+        let rows = image_block_layers_over(Some("t"), &image, &board).unwrap();
+        assert_eq!(rows["NROS_ZENOH_MAX_SUBSCRIBERS"], "3");
+        assert_eq!(rows["NROS_ZEPHYR_HEAP_SIZE"], "32768");
+    }
+
+    /// Both cargo roads (the leaf's settings file and the workspace's
+    /// `nros-cargo.toml`) take the board through [`board_fact_layer`], so the
+    /// rung is part of it: every board-only knob of a real descriptor lands.
+    #[test]
+    fn the_cargo_roads_board_layer_carries_the_board_knobs() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(
+            td.path().join("system.toml"),
+            format!(
+                "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+                 [image.t]\nboard = \"{BOARD}\"\n"
+            ),
+        )
+        .unwrap();
+        let (mut env, mut path_env) = (BTreeMap::new(), BTreeMap::new());
+        board_fact_layer(td.path(), &repo(), BOARD, &mut env, &mut path_env).unwrap();
+        for (k, v) in expected(BoardRungCarries::BoardOnly) {
+            assert_eq!(env.get(&k), Some(&v), "{k}: the cargo roads' board layer");
+        }
     }
 }

@@ -368,6 +368,10 @@ RX for the serial link, issue 0852). No crate.
   configure error. So the descriptor header records the numbers and the
   ethernet heap's shortfall: 32 KiB against a 39,728-byte peak plus floor.
   An image states `[image.<id>.knobs.zenoh] max_large_subscribers = 0`.
+  **Since issue 2194 (resolved):** the descriptor's `[knobs.zenoh]` states
+  it and every road carries it below the image's own knobs, so no image
+  restates it. The ethernet image's three extra knobs stay per image: they
+  pay for the IP stack the serial image does not build.
 - **Two leaf-road defects, fixed here because the build needed them.** (1) A
   leaf image got its board package's Kconfig (issue 1782) but not its
   devicetree overlay. A nucleo image built with the console and the zenoh link
@@ -457,8 +461,10 @@ shape.
   joins `BOARD_KEYS`, `BOARD_PATHS`, the zephyr framework table and issue
   1435's refused set. `[board.rpi-pico-w-zephyr]` in `nros-sdk-index.toml`
   names `zephyr-sdk` and `wokwi-cli`.
-- **Knobs: per image, issue 2194.** 2194 is still open, so the five RAM knobs
-  are in the descriptor header, not `[knobs]`. An image states them:
+- **Knobs: per image, issue 2194.** 2194 was still open, so the five RAM knobs
+  were in the descriptor header, not `[knobs]`. **Since 2194 (resolved) they
+  are the descriptor's `[knobs]`, and no image restates them.** An image
+  stated them:
 
   ```toml
   [image.<id>.knobs.zenoh]
@@ -501,7 +507,7 @@ shape.
   repository secret, schedule and dispatch only), then `probe` plus
   `cadence = "weekly"` on the row, `book_run`, and the chapter. A Pico or UF2
   flash section could replace `book_flash` then. Also the heap measurement
-  above, and moving the knobs into `[knobs]` when issue 2194 lands.
+  above. (Moving the knobs into `[knobs]` is done: issue 2194.)
 
 ### W4 — Probe tracks and serial-first chapters
 
@@ -543,7 +549,9 @@ generator.
 
 - **The registry is the one input.** Each track is a `[[probe]]` row with a
   new `twin` field (the board key) plus the image's `twin_locator` and
-  `twin_knobs` (the RAM knobs stay per image until issue 2194).
+  `twin_knobs` (the RAM knobs stayed per image until issue 2194; since it
+  resolved they are the descriptors' `[knobs]` and the generator refuses
+  `twin_knobs`).
   `scripts/gen-board-support.py` reads the board's descriptor for the rest and
   writes it into `scripts/probe/probe-tracks.json`: the west board,
   `[board.run] emulator`, the twin's wiring, and the HAL module, which is the
@@ -639,8 +647,8 @@ generator.
   the two chapters in RFC-0116 D5's shape with `book_run`, replacing the
   `zephyr-twin` reuse of the native_sim setup blocks and the probe-owned
   build and run; the issue 2169 rows; the bench verbs (phase-529); and the
-  heap measurement W3 left (both images' knobs are still per image, issue
-  2194).
+  heap measurement W3 left (the knobs are the descriptors' `[knobs]` since
+  issue 2194).
 
 ### W5 — Hardware runs
 
