@@ -1512,6 +1512,9 @@ jobs:
           ${{ contains(fromJSON('["pull_request","merge_group"]'), github.event_name)
               && !cancelled() }}
         run: |
+          # phase-526 W3 -- the colcon flag parity tests read this workspace;
+          # without it `cli-tests` records them as unverified.
+          git submodule update --init --depth 1 packages/cli/testing_workspaces/ros2_rust_examples
           source ./activate.sh
           just check cli-tests
 

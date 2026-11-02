@@ -315,7 +315,7 @@ RFC-0049). This is the provenance tool for anything generated — when a pool
 size or a hardware budget is not what you expected, it says which rung decided.
 `--board-toml` supplies the board rung's `[knobs]` deltas by explicit path.
 
-### `nros sync [<workspace>] [--build-dir <d>] [--ros-edition <e>] [--dry-run] [--check] [--base-paths <p>…]`
+### `nros sync [<workspace>] [--build-base <d>] [--ros-edition <e>] [--dry-run] [--check] [--base-paths <p>…]`
 
 The pre-build step. Codegen every `*.msg` package the declared deps name, and
 write the generated build settings for each declared image — for a **standalone
@@ -347,7 +347,7 @@ what `nros ws status` reports non-fatally. `--dry-run` prints what it would do.
 `nros generate-rust` stays the low-level codegen-only primitive (no side
 effects beyond `generated/`).
 
-### `nros build [<image>…] [--board <board>] [--workspace <dir>] [--all] [--dry-run] [--offline] [-v] [--check[=clippy]] [--packages-select <p>…] [--packages-up-to <p>…] [-- <native args>]`
+### `nros build [<image>…] [--board <board>] [--workspace <dir>] [--all] [--dry-run] [--offline] [-v] [--check[=clippy]] [<colcon flags>] [-- <native args>]`
 
 The colcon-like build verb: discover packages, resolve the image, preflight,
 generate the build root, then hand off to the native tool. The final stage is an
@@ -387,6 +387,23 @@ Zephyr image prints `west build -d <dir> -t run` and/or `west flash -d <dir>`,
 read from what its build supports. QEMU is the store's patched build
 (`nros locate tool qemu-system-arm`), never whatever `$PATH` holds. A board
 with no derivable command (S32Z270) gets a pointer to its platform chapter.
+
+colcon's flags work with colcon's names: `--packages-select`,
+`--packages-up-to`, `--packages-above`, `--packages-skip` and `--base-paths`
+choose the packages (`nros list -n` with the same flags prints the set),
+and `--continue-on-error`, `--parallel-workers`, `--cmake-args` and
+`--build-base` act as colcon's do. The differences are refusals rather than
+different answers: a package name that matches nothing is an error, and a
+selection that leaves out a package a selected one depends on is refused,
+because nano-ros has no install prefix for it to come from. In a workspace
+with images the unit of `--continue-on-error` is the image, and
+`--parallel-workers` above one and `--build-base` are refused there.
+
+```sh
+nros build --packages-up-to talker_pkg          # it and its dependencies
+nros build --packages-above msgs_pkg            # it and what depends on it
+nros list -t -n --packages-skip other_pkg      # the set, in build order
+```
 
 `-v` / `--verbose` shows the configure's detail notes: why a re-configure
 happened, which message bounds were refused and why. Without it each is one

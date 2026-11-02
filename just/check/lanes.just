@@ -1277,6 +1277,19 @@ cli-tests:
         source scripts/build/check-skip.sh
         nros_check_unverified cli-tests "no ROS 2 install: the rosidl-codegen parity tests stayed IGNORED (issue 1552)" || exit 1
     fi
+    # phase-526 W3 -- `nros build` / `nros list` select what `colcon list`
+    # selects. Needs colcon (not a ROS install: `colcon list` reads package.xml
+    # alone) and the ros2_rust_examples submodule, so it is `#[ignore]`d and
+    # run here where both are present; elsewhere the ledger says so.
+    rre=packages/cli/testing_workspaces/ros2_rust_examples/rclrs/message_demo/package.xml
+    if command -v colcon >/dev/null 2>&1 && [ -f "$rre" ]; then
+        echo "cli-tests: colcon found -- running the colcon flag parity tests (--ignored)"
+        cargo test --manifest-path packages/cli/Cargo.toml -p nros-cli \
+            --test colcon_flag_parity --quiet -- --ignored
+    else
+        source scripts/build/check-skip.sh
+        nros_check_unverified cli-tests "no colcon on PATH, or ros2_rust_examples not checked out: the colcon flag parity tests stayed IGNORED (phase-526 W3)" || exit 1
+    fi
     echo "CLI tests passed!"
 
 # A COMPILE SMOKE TEST for the pull-request gate — phase-395.

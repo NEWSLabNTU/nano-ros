@@ -60,8 +60,11 @@ pub fn run(args: Args) -> Result<()> {
         offline: true,
         // phase-420 W7 — a QUERY resolves the whole workspace. Narrowing it
         // would answer a question nobody asked.
-        packages_select: Vec::new(),
-        packages_up_to: Vec::new(),
+        selection: Default::default(),
+        continue_on_error: false,
+        cmake_args: Vec::new(),
+        parallel_workers: None,
+        build_base: None,
         check: None,
         native_args: Vec::new(),
     };

@@ -128,6 +128,21 @@ pub struct Args {
     #[arg(long = "use-case", hide = true)]
     pub use_case: Option<String>,
 
+    /// Not taken from `ros2 pkg create`: refused, naming `--component`.
+    // RFC-0117 D4 (phase-526 W3): a nano-ros library package is a component,
+    // whose library is named by the package (crate name, exported symbol,
+    // linkage all derived), so there is no second name to give. Parsed and
+    // hidden so a ROS user's habit gets an answer, not clap's bare
+    // "unexpected argument".
+    #[arg(long = "library-name", hide = true, value_name = "NAME")]
+    pub library_name: Option<String>,
+
+    /// Not taken from `ros2 pkg create`: refused, naming `--lang`.
+    // RFC-0117 D4: the build type is derived from the language and the board
+    // (RFC-0087 D2), so the ROS flag would name a choice the user does not make.
+    #[arg(long = "build-type", hide = true, value_name = "TYPE")]
+    pub build_type: Option<String>,
+
     /// The node's ROS name (as `ros2 pkg create --node-name`). Default: the
     /// package name (`-` spelled `_`); for `--component`, the role's demo node
     /// name (`talker`, `add_two_ints_server`, …).
@@ -283,6 +298,26 @@ fn template_values() -> clap::builder::PossibleValuesParser {
     clap::builder::PossibleValuesParser::new(Role::ALL.map(Role::name))
 }
 
+/// The two `ros2 pkg create` flags `nros new` does not take, refused with
+/// what to write instead (RFC-0117 D4's "kept as our own" column).
+fn refuse_ros_only_flags(args: &Args) -> Result<()> {
+    if let Some(n) = &args.library_name {
+        bail!(
+            "nros new: `--library-name {n}` has no nano-ros counterpart. `ros2 pkg create` \
+             adds a library target beside the node; a nano-ros library package is a \
+             component, and its library takes the package's name. Write `nros new <name> \
+             --component`."
+        );
+    }
+    if let Some(t) = &args.build_type {
+        bail!(
+            "nros new: `--build-type {t}` is not a choice here: the build type follows from \
+             the language and the board. Write `--lang rust|c|cpp` (and `--board <board>`)."
+        );
+    }
+    Ok(())
+}
+
 /// phase-517 W12 — `--use-case` is REFUSED, naming `--template`. It accepted
 /// `talker`/`listener`/`service`/`action` and wrote a talker for every one, so
 /// mapping it silently would keep a word whose only behaviour was a TODO.
@@ -408,6 +443,7 @@ fn refuse_retired_platform(platform: Option<&str>) -> Result<()> {
 pub fn run(args: Args) -> Result<()> {
     refuse_retired_platform(args.platform.as_deref())?;
     refuse_use_case(args.use_case.as_deref())?;
+    refuse_ros_only_flags(&args)?;
     // Every mode returning before project/component mode writes no package,
     // so the package flags are refused there (phase-517 W12).
     let package_mode = !args.workspace

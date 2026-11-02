@@ -1,6 +1,6 @@
 # Phase 526 — The `nros` command tree in two tiers, with ROS 2 flag names and aliases
 
-**Status (2026-11-01). IN PROGRESS — W1, W2 and W5 done; W3 and W4 open.** Implements
+**Status (2026-11-02). IN PROGRESS — W1, W2, W3 and W5 done; W4 open.** Implements
 [RFC-0117](../design/0117-cli-command-tiers.md). Comes before
 [phase-525](phase-525-adoption-front-doors.md) W1, so the help-text id sweep
 runs once, over the final verb names. Independent of phase-527 to phase-529,
@@ -93,6 +93,29 @@ Acceptance:
   when stderr is piped.
 
 ### W3 — ROS 2 and colcon flag names
+
+**Status: DONE** (the colcon flag names commit). `builder::discover::Selection`
+gained `above` and `skip` and `discover_in` the base paths, filtered over the
+one topological order; `nros build` and `nros list` share one flattened
+`SelectionArgs`. `drive` gained a `Schedule` (`--parallel-workers`,
+`--continue-on-error`) that starts a package once its `<depend>`s are done.
+`nros list -t/-n/-p` (or any selection flag) lists in `colcon list`'s shape
+from `nros build`'s discovery. `sync --build-base` with `--build-dir` hidden.
+`nros new` already had every `ros2 pkg create` flag but `--library-name`.
+`nros-cli/tests/colcon_flag_parity.rs` runs eleven flag sets through
+`colcon list -n`, `nros list -n` and `nros build --dry-run` and asserts one
+set; `just check cli-tests` runs it (`--ignored`) where colcon and the
+submodule are present, and the `check-cli-tests` CI job now checks the
+submodule out.
+
+Decision step, recorded in RFC-0117 D4's second table: every selection flag
+keeps refusing an unknown name and an open selection; `--packages-above`
+refuses a cargo-only member (its dependents are invisible to the `<depend>`
+graph); `--continue-on-error` acts per image in a workspace with images;
+`--parallel-workers` defaults to one and, like `--build-base`, is refused for
+images. `--library-name` is NOT taken: a library package is `--component`,
+named by the package; it and `--build-type` are parsed hidden and refused
+naming the flag to use.
 
 - `build`: `--packages-select`, `--packages-up-to`, `--packages-skip`,
   `--packages-above`, `--continue-on-error`, `--cmake-args`,
