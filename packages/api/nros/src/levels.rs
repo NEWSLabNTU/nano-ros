@@ -193,6 +193,31 @@ impl LevelCore {
         *rt
     }
 
+    /// phase-521 W6 (RFC-0113 D2) -- the budget a level runner passes to
+    /// [`Self::spin_level_once`] / [`Self::spin_boot_once`]: the runtime's
+    /// [`ExecutorNodeRuntime::entry_spin_budget`]. Each park already ends at
+    /// the level's next deadline or on an arrival, so the budget is not a
+    /// cadence; passing the tier's period instead woke every idle level once a
+    /// period. Ask it after the levels' setup, which is what registers the
+    /// components whose ticks keep the short budget.
+    ///
+    /// # Safety
+    /// As [`Self::with_runtime`].
+    pub unsafe fn entry_spin_budget(&self) -> Duration {
+        // SAFETY: the caller's contract.
+        unsafe { self.with_runtime(|rt| rt.entry_spin_budget()) }
+    }
+
+    /// phase-521 W6 -- wake every level's worker and the boot level, for a
+    /// runner that is stopping them: a level parked on the long budget would
+    /// otherwise see its stop flag only at its next deadline. Lock-free.
+    pub fn wake_all(&self) {
+        // SAFETY: the runtime is live for the image's life (leaked in `new`);
+        // `wake_all_workers` reads the executor's wake context, written at
+        // open and never replaced, and signals lock-free.
+        unsafe { (*self.exec()).wake_all_workers() }
+    }
+
     /// One pass of the boot level: the executor's own worker (transport,
     /// executor-wide chores), then the boot level's components' ticks, the
     /// lock held except around each callback.

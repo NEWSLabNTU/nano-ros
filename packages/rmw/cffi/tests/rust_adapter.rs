@@ -207,6 +207,11 @@ impl Session for IdentitySession {
     fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
         Ok(())
     }
+    /// phase-521 W6 (RFC-0113 D5) — a session stating no readiness form is
+    /// refused at open; this test double states `Notify`.
+    fn readiness_source(&self) -> nros_rmw::ReadinessSource {
+        nros_rmw::ReadinessSource::Notify
+    }
 }
 
 impl Session for NoopSession {
@@ -255,6 +260,11 @@ impl Session for NoopSession {
     fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
         DRIVE_IO_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(())
+    }
+    /// phase-521 W6 (RFC-0113 D5) — a session stating no readiness form is
+    /// refused at open; this test double states `Notify`.
+    fn readiness_source(&self) -> nros_rmw::ReadinessSource {
+        nros_rmw::ReadinessSource::Notify
     }
     fn supported_qos_policies(&self) -> QoSPolicyMask {
         QoSPolicyMask::CORE
@@ -1571,6 +1581,11 @@ impl Session for InfoSession {
     fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
         Ok(())
     }
+    /// phase-521 W6 (RFC-0113 D5) — a session stating no readiness form is
+    /// refused at open; this test double states `Notify`.
+    fn readiness_source(&self) -> nros_rmw::ReadinessSource {
+        nros_rmw::ReadinessSource::Notify
+    }
 }
 
 impl ServiceTrait for InfoServer {
@@ -1810,8 +1825,18 @@ fn wake_support_through_the_seam<R: nros_rmw_cffi::RustBackend>(
         namespace: "",
         properties: &[],
     };
-    let mut session =
-        CffiRmw::open_with_rmw(name.to_str().unwrap(), &config).expect("open_with_rmw");
+    // The seam itself, below the runtime's refusal (RFC-0113 D5), which
+    // `CffiRmw` applies: a backend stating none never opens through it.
+    let mut session = nros_rmw_cffi::CffiSession::open_named_with_properties(
+        name.to_str().unwrap(),
+        config.locator,
+        0,
+        config.domain_id,
+        config.node_name,
+        config.namespace,
+        config.properties,
+    )
+    .expect("open through the seam");
     let answer = (session.supports_wake_callback(), session.readiness_source());
     let _ = Session::close(&mut session);
     answer
@@ -1831,4 +1856,17 @@ fn a_rust_backend_on_the_wake_default_states_no_readiness_through_the_adapter() 
         wake_support_through_the_seam::<UorbLikeRmw>(c"wake-none"),
         (false, nros_rmw::ReadinessSource::None),
     );
+    // phase-521 W6 (RFC-0113 D5) — and the runtime's open refuses it.
+    let config = RmwConfig {
+        locator: "tcp/127.0.0.1:7447",
+        mode: nros_rmw::SessionMode::Client,
+        domain_id: 0,
+        node_name: "probe",
+        namespace: "",
+        properties: &[],
+    };
+    assert!(matches!(
+        CffiRmw::open_with_rmw("wake-none", &config),
+        Err(TransportError::Unsupported)
+    ));
 }

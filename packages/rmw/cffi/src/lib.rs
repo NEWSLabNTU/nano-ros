@@ -3462,8 +3462,8 @@ impl Session for CffiSession {
     /// phase-521 W3 (RFC-0113 D4) — forward to the backend's
     /// `readiness_source` slot. A NULL slot keeps the trait's inference from
     /// `set_wake_callback`'s presence; a slot that FAILS, or answers a kind
-    /// this runtime does not know, reads as `None`, which keeps the
-    /// receive-blocking wait rather than parking on a handle nobody vouched for.
+    /// this runtime does not know, reads as `None`, which the runtime refuses
+    /// at open (RFC-0113 D5) rather than parking on a handle nobody vouched for.
     fn readiness_source(&self) -> nros_rmw::ReadinessSource {
         let Some(f) = self.vtable.readiness_source else {
             return if self.supports_wake_callback() {
@@ -5896,7 +5896,37 @@ impl nros_rmw::Rmw for CffiRmw {
             config.namespace,
             config.properties,
         )
+        .and_then(refuse_without_readiness)
     }
+}
+
+/// phase-521 W6 (RFC-0113 D5) — a runtime session must state how it becomes
+/// ready: `Notify` (the backend calls the executor's wake callback on an
+/// arrival) or `Waitable` (a handle the port parks on). A session that states
+/// neither could only be drained by blocking inside its own receive, which
+/// no deadline and no other session can end, so nano-ros cannot keep its
+/// real-time wait promise over it. It is refused at open, by name, instead of
+/// parked on blindly.
+///
+/// Every runtime open goes through [`CffiRmw`] (the executor's, an extra
+/// session's, the C/C++ support context's), so this is the one place the
+/// rule is asked. [`CffiSession`]'s own constructors stay unchecked: they are
+/// the seam a backend's own tests drive directly.
+pub fn refuse_without_readiness(session: CffiSession) -> Result<CffiSession, TransportError> {
+    use nros_rmw::Session as _;
+    if matches!(session.readiness_source(), nros_rmw::ReadinessSource::None) {
+        nros_log::log_error!(
+            nros_log::get_logger("nros_rmw_cffi"),
+            "the session states no readiness form: its backend neither calls a wake \
+             callback on an arrival nor reports a handle to park on, so an executor \
+             over it could only block inside its receive. Refused (RFC-0113 D5). \
+             Give the transport a receive notification (for a custom XRCE transport, \
+             `nros_rmw_xrce_set_custom_transport_rx_notify`)."
+        );
+        // Dropping the session closes it.
+        return Err(TransportError::Unsupported);
+    }
+    Ok(session)
 }
 
 impl CffiRmw {
@@ -5920,6 +5950,7 @@ impl CffiRmw {
             config.namespace,
             config.properties,
         )
+        .and_then(refuse_without_readiness)
     }
 }
 
@@ -6437,6 +6468,19 @@ mod tests {
         }
         NROS_RMW_RET_OK
     }
+    /// phase-521 W6 (RFC-0113 D5) — `CffiRmw` refuses a session stating no
+    /// readiness form, so the stub states `Notify`.
+    unsafe extern "C" fn stub_readiness_notify(
+        _: *const generated::rmw_session_t,
+        out_kind: *mut u8,
+        out_handle: *mut i32,
+    ) -> NrosRmwRet {
+        unsafe {
+            *out_kind = generated::NROS_RMW_READINESS_NOTIFY as u8;
+            *out_handle = -1;
+        }
+        NROS_RMW_RET_OK
+    }
     unsafe extern "C" fn stub_destroy_client(_: *mut NrosRmwClient) -> NrosRmwRet {
         NROS_RMW_RET_OK
     }
@@ -6466,6 +6510,7 @@ mod tests {
 
     static STUB_VTABLE: NrosRmwVtable = NrosRmwVtable {
         create_session: Some(stub_create_session),
+        readiness_source: Some(stub_readiness_notify),
         destroy_session: Some(stub_destroy_session),
         drive_io: Some(stub_drive_io),
         create_publisher: Some(stub_create_publisher),

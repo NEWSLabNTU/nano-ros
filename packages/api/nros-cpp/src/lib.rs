@@ -9247,7 +9247,6 @@ struct NativeLevelCtx {
     level: u8,
     name: alloc::ffi::CString,
     stack_bytes: usize,
-    period_us: u64,
     n_groups: usize,
     groups: usize,
     setup: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
@@ -9368,11 +9367,16 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
         }
     }
     ctx.state.store(1, Ordering::SeqCst);
-    let period_ms = (ctx.period_us / 1_000).clamp(1, i32::MAX as u64) as i32;
+    // phase-521 W6 (RFC-0113 D2) -- the entry budget, not the period: the
+    // park already ends at the band's next timer or an arrival in its band,
+    // and passing the period woke an idle level once a period. The runner
+    // wakes every level when it stops them (`native_wake_all_levels`).
+    // SAFETY: `owner` is the scheduler's live context handle.
+    let budget_ms = unsafe { nros_cpp_entry_spin_budget_ms(owner) };
     while !ctx.shutdown.load(Ordering::Relaxed) {
         // Parks (the lock released) until its band's next timer, an arrival
-        // in its band, or the period; then runs its band's ready callbacks.
-        let _ = unsafe { nros_cpp_level_spin_once(sched, ctx.level, period_ms) };
+        // in its band, or the budget; then runs its band's ready callbacks.
+        let _ = unsafe { nros_cpp_level_spin_once(sched, ctx.level, budget_ms) };
     }
     core::ptr::null_mut()
 }
@@ -9581,6 +9585,10 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     let mut workers: Vec<nros_platform::task::PlatformTask> = Vec::with_capacity(n_tiers - 1);
     let stop = |workers: Vec<nros_platform::task::PlatformTask>| {
         shutdown.store(true, Ordering::Relaxed);
+        // phase-521 W6 -- end every level's park, so each sees the flag now
+        // rather than at its next deadline.
+        // SAFETY: `sptr` is the live owning context.
+        unsafe { native_wake_all_levels(sptr) };
         for w in workers {
             w.join();
         }
@@ -9601,7 +9609,6 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             level: level_of(i),
             name: alloc::ffi::CString::new(name.clone()).unwrap_or_else(|_| c"level".into()),
             stack_bytes: t.stack_bytes,
-            period_us: t.spin_period_us,
             n_groups: t.n_groups,
             groups: t.groups as usize,
             setup: t.setup,
@@ -9650,7 +9657,11 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     // The adopted level's loop, bounded as the tier runner's.
     let bound_ms: u64 = entry_spin_ms();
     let start_ns = nros_cpp_time_ns();
-    let boot_period_ms = (bt.spin_period_us / 1_000).clamp(1, 10) as i32;
+    // phase-521 W6 (RFC-0113 D2) -- the entry budget, capped by a bounded
+    // run's remainder; a termination signal posts the wake object this parks
+    // on.
+    // SAFETY: `sptr` is the live owning context.
+    let budget_ms = unsafe { nros_cpp_entry_spin_budget_ms(sptr) };
     let mut ret = 0i32;
     loop {
         if nros_platform::termination::requested() {
@@ -9660,7 +9671,15 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             );
             break;
         }
-        let last = unsafe { nros_cpp_spin_once(sptr, boot_period_ms) };
+        let spin_ms = if bound_ms == 0 {
+            budget_ms
+        } else {
+            let elapsed_ms = (nros_cpp_time_ns() - start_ns) / 1_000_000;
+            (bound_ms
+                .saturating_sub(elapsed_ms)
+                .min(budget_ms.max(0) as u64)) as i32
+        };
+        let last = unsafe { nros_cpp_spin_once(sptr, spin_ms) };
         if last != NROS_CPP_RET_OK {
             ret = last;
             break;
@@ -9672,6 +9691,29 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     stop(workers);
     drop(heap_sched);
     fini(ret)
+}
+
+/// phase-521 W6 -- wake every worker parked over the context's executor (each
+/// level's and the owner's own), for a level runner that is stopping them.
+///
+/// # Safety
+/// `handle` is a live context handle or NULL.
+#[cfg(all(feature = "rmw-cffi", feature = "env", unix))]
+unsafe fn native_wake_all_levels(handle: *mut c_void) {
+    if handle.is_null() {
+        return;
+    }
+    let ctx = handle as *mut CppContext;
+    // SAFETY: as `nros_cpp_entry_spin_budget_ms`: the tag first, then the
+    // executor pointer written once at open; the wake is lock-free.
+    if unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).tag)) } != CPP_CONTEXT_TAG {
+        return;
+    }
+    let exec =
+        unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).executor) as *const *mut CppExecutor) };
+    if let Some(exec) = unsafe { exec.as_ref() } {
+        exec.wake_all_workers();
+    }
 }
 
 /// Sleep through the platform ABI, like every other pacing site in the tree

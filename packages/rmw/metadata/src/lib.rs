@@ -193,6 +193,15 @@ impl Session for MetadataSession {
     fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
         Ok(())
     }
+
+    /// phase-521 W6 (RFC-0113 D5) — the recorder has no transport, so nothing
+    /// ever arrives and there is nothing to call a wake callback for: every
+    /// arrival it will ever have has been notified. `Notify` is the honest
+    /// form, and it lets the probe's runtime open; a session stating none is
+    /// refused at open.
+    fn readiness_source(&self) -> nros_rmw::ReadinessSource {
+        nros_rmw::ReadinessSource::Notify
+    }
 }
 
 impl Publisher for MetadataPublisher {

@@ -327,7 +327,7 @@ mod tests {
     }
 
     /// An entry whose backend does not honour the callback is never live, so a
-    /// member of it falls back to the receive-blocking wait.
+    /// member of it is kept on the short entry budget.
     #[test]
     fn a_backend_that_ignores_the_callback_is_not_live() {
         let _pool = POOL.lock().unwrap();

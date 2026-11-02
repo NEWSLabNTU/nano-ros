@@ -116,11 +116,11 @@ a build with no wake object installs no park.
 > ends the park is now the session's STATED readiness (the `readiness_source`
 > vtable slot): `Notify`, the wake callback this section describes, or
 > `Waitable`, an OS handle the port's park multiplexes (POSIX/NuttX `ppoll`,
-> Zephyr `zsock_poll`; phase-521 W3/W4). The receive-blocking wait below is no
-> longer "the right wait for a poll-only backend": it is a fallback for the
-> combinations RFC-0113's coverage table lists as not yet meeting its promise,
-> and it retires, with `POLL_ONLY_WAKE_SLICE_MS`, when the last of them has a
-> readiness form (phase-521 W6). XRCE is no longer its example: it states
+> Zephyr `zsock_poll`; phase-521 W3/W4). The receive-blocking wait below and
+> its `POLL_ONLY_WAKE_SLICE_MS` guard slices are DELETED (phase-521 W6): a
+> session that states no readiness form is refused at open (RFC-0113 D5), so
+> the text below is history, kept for why the old design looked the way it
+> did. XRCE is no longer its example: it states
 > `Waitable` on POSIX, NuttX and Zephyr and `Notify` over lwIP and NetX Duo.
 > A bare-metal board meets it with an RX interrupt and a one-shot timer behind
 > its port's wake object (mps2-an385, phase-521 W5), not with a tickless idle
@@ -208,8 +208,8 @@ budget is a floor on the wait, not a bound on the call.
 |---|---|---|
 | zenoh | subscription, query and reply arrival | park |
 | Cyclone DDS | data-available listener | park |
-| XRCE | no callback (poll-only) | receive-blocking, same bound, 1 ms; 10 ms slices while a guard condition exists (D5) |
-| uORB | no callback through this slot | receive-blocking, same bound |
+| XRCE | its transport's stated readiness (RFC-0113 D4): `Waitable` socket, or `Notify` from the stack's or the board transport's receive notification | park (was: receive-blocking, 10 ms guard slices — deleted, phase-521 W6) |
+| uORB | `Notify` through the PX4 callback glue; the polling build states none | park; the polling build is refused at open (RFC-0113 D5) |
 
 ## Open questions
 
@@ -233,6 +233,8 @@ budget is a floor on the wait, not a bound on the call.
 
 ## Changelog
 
+- 2026-11-02 — D5's receive-blocking wait and its guard slices deleted
+  (phase-521 W6); a session with no readiness form is refused at open.
 - 2026-11-02 — D5 amended by RFC-0113 D4/D5: the park ends on the session's
   stated readiness (`Notify` or `Waitable`); the receive-blocking wait is a
   fallback scheduled for retirement, not a design (phase-521 W6).

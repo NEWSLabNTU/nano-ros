@@ -13,8 +13,9 @@
 //! WAITABLE readiness, and the executor parks on that socket plus its own wake
 //! object, so the trigger ends the park directly: measured ~90 us on a Linux
 //! host, where the 10 ms slice gave ~5 ms for this trigger's phase. The bound
-//! below is set under what the slice can deliver, so a session that falls back
-//! to the sliced receive-blocking wait fails it.
+//! below is set under what that slice could deliver. phase-521 W6 deleted the
+//! slice and the receive-blocking wait it cut up, so the bound now guards
+//! against either coming back.
 //!
 //! Run: `just check required-features-tests` (needs the XRCE Agent).
 
@@ -28,8 +29,8 @@ use std::{
 use nros_node::executor::*;
 use nros_tests::fixtures::{XrceAgent, require_xrce_agent};
 
-/// The OS wake latency plus scheduler slack — under the ~5 ms the old 10 ms
-/// slice (`POLL_ONLY_WAKE_SLICE_MS`) gives a trigger 25 ms into the spin.
+/// The OS wake latency plus scheduler slack — under the ~5 ms the retired
+/// 10 ms guard slice gave a trigger 25 ms into the spin.
 const DISPATCH_BOUND: Duration = Duration::from_millis(3);
 /// Far beyond the bound, so a trigger that waits the spin out is unmistakable.
 const SPIN_BUDGET: Duration = Duration::from_millis(1000);

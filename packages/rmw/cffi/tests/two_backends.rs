@@ -233,6 +233,7 @@ unsafe extern "C" fn noop_assert_liveliness(_: *const NrosRmwPublisher) -> NrosR
 
 static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(a_open),
+    readiness_source: Some(notify_readiness),
     destroy_session: Some(noop_close),
     drive_io: Some(a_drive_io),
     create_publisher: Some(a_create_publisher),
@@ -257,6 +258,7 @@ static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
 
 static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(b_open),
+    readiness_source: Some(notify_readiness),
     destroy_session: Some(noop_close),
     drive_io: Some(b_drive_io),
     create_publisher: Some(b_create_publisher),
@@ -389,4 +391,19 @@ fn unnamed_open_refuses_an_ambiguous_registry() {
         nros_rmw_cffi::CffiSession::open_named("tb_a", "tcp/127.0.0.1:7447", 0, 0, "amb_a", "")
             .expect("naming a registered backend still opens");
     drop(named);
+}
+
+/// phase-521 W6 (RFC-0113 D5) — the runtime refuses a session that states no
+/// readiness form at open, so this stub states `Notify`.
+unsafe extern "C" fn notify_readiness(
+    _: *const nros_rmw_cffi::rmw_session_t,
+    out_kind: *mut u8,
+    out_handle: *mut i32,
+) -> nros_rmw_cffi::NrosRmwRet {
+    // SAFETY: the runtime passes valid out-pointers.
+    unsafe {
+        *out_kind = nros_rmw_cffi::NROS_RMW_READINESS_NOTIFY as u8;
+        *out_handle = -1;
+    }
+    nros_rmw_cffi::NROS_RMW_RET_OK
 }

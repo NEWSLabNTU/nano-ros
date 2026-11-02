@@ -569,6 +569,41 @@ is refused naming RFC-0113 D5 (`nros_entry_lower::REMOVED_BOARD_KEYS`, a
 removal table beside the rename table), and `driver_for("esp32", …)` refuses
 whatever the image's languages. RFC-0113's coverage row reads retired.
 
+**W6g — the receive-blocking wait deleted, and D5's refusal (2026-11-02).**
+With ESP32-C3 retired (W6d), ThreadX's CALLER mode on a TCP notify (W6f) and
+RTIC's arrival path an RTIC task (W6e), no in-tree combination needed the
+fallback. Deleted: the `else { timeout_ms }` drive that blocked inside a
+transport's `recv` (the wait now always lands on the executor's wake object,
+except in a build whose port links no wake object), `drive_primary`'s guard
+slices, `has_cross_thread_waker` and `POLL_ONLY_WAKE_SLICE_MS`. Added: the
+refusal, asked once where every runtime session opens
+(`nros_rmw_cffi::refuse_without_readiness`, reached through `CffiRmw`): a
+session stating `None` is closed and the open returns
+`TransportError::Unsupported`, logging why and naming RFC-0113 D5.
+`readiness_park::a_session_with_no_readiness_form_is_refused_at_open` drives
+it through a stub backend, with and without a wake slot, against a stub
+stating `Notify` that opens. `ENTRY_POLL_BUDGET` stays as the cadence of a
+runtime whose components tick, and for the two degenerate cases a park
+cannot see (a wake fan-out with no free member, more waitable sessions than
+one park multiplexes); neither is a receive wait.
+
+Two combinations surfaced while landing it. The metadata probe's recorder
+backend stated none and was refused (the probe failed); it has no transport,
+so it now states `Notify`. uORB states none in both builds, including the PX4
+glue build, so a uORB session is refused until W8 wires the glue's arrival to
+the wake callback (issue 2218, held with W8). And a Cyclone build without
+foreign wake (freertos-posix) reads as `Notify` from its filled wake slot
+though nothing calls it (issue 2217).
+
+The native level runners (Rust `LinuxBoard::run_levels`, C++
+`nros_board_native_run_levels_in`) passed each level's spin period as its
+park bound, so an idle level woke once a period. They now pass the entry
+budget (`LevelCore::entry_spin_budget`, `nros_cpp_entry_spin_budget_ms`); a
+level's park already ends at its band's next timer or an arrival, a bounded
+run caps the boot level's park at its remainder, and stopping the levels
+wakes every parked worker (`Executor::wake_all_workers`) so each sees its
+stop flag at once.
+
 ### W7 — Acceptance measurements for the promise
 
 Make RFC-0113 D2 a measured property, not a reading:

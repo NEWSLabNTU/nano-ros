@@ -1280,8 +1280,8 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
         }
         /* Issue 1734 — the lock is held for ONE pass, never across the yield
          * below, so a create or publish on another thread gets in between
-         * passes. A pass is bounded by `remaining`, and a poll-only executor
-         * already slices its drive (`POLL_ONLY_WAKE_SLICE_MS`). */
+         * passes. A pass is bounded by `remaining`, and since phase-521 W6 the
+         * executor drives with a zero `remaining` after it has parked. */
         xrce_session_lock(st);
         (void)uxr_run_session_time(&st->session, remaining);
         xrce_session_unlock(st);

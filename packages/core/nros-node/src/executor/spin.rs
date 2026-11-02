@@ -2156,14 +2156,6 @@ pub struct Executor<'s> {
     /// joins the session's wake fan-out, and its teardown is leaving it.)
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) wake_cb_installed: bool,
-    /// phase-436 (RFC-0106 D5) — something other than the backend can signal
-    /// this executor's wake object: a guard condition, triggered from another
-    /// thread. A poll-only backend waits inside its own `recv`, which that
-    /// signal cannot end, so the wait is driven in slices of
-    /// [`POLL_ONLY_WAKE_SLICE_MS`] while this is set. Never cleared: a guard
-    /// outliving its registration costs slicing, never a missed wake.
-    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    pub(crate) has_cross_thread_waker: bool,
     /// phase-436 — this executor's place in the wake fan-out of its PRIMARY
     /// session, when it has one. Every executor over a session joins the same
     /// entry, so an arrival wakes all of them, not only the one that happened
@@ -2557,7 +2549,6 @@ impl<'s> Executor<'s> {
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             wake_cb_installed: false,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-            has_cross_thread_waker: false,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             wake_membership: None,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -2852,13 +2843,6 @@ pub const MAX_WAKE_SOURCES: usize = 8;
 /// multiplexes: one per session of a tier, and the POSIX port's own cap.
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 pub(crate) const MAX_WAITABLE_HANDLES: usize = 8;
-
-/// phase-436 (RFC-0106 D5) — the slice a poll-only backend's transport wait is
-/// cut into while a guard condition can signal the executor from another
-/// thread: the worst-case latency of such a trigger, and the period at which
-/// an otherwise idle executor re-enters the backend's `recv`.
-#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-pub(crate) const POLL_ONLY_WAKE_SLICE_MS: i32 = 10;
 
 /// When this source will next need the executor, in the executor's clock,
 /// as microseconds FROM NOW.
@@ -4612,9 +4596,11 @@ impl<'s> Executor<'s> {
     /// states `Notify` with its wake callback live, or `Waitable` (whose
     /// handle the port multiplexes with the wake object). A cancel and a
     /// hosted termination post the same wake object. Otherwise
-    /// [`ENTRY_POLL_BUDGET`]: a session with no readiness form is drained by
-    /// blocking in its own receive, and that wait ends only on its own data,
-    /// so the slice is what bounds everything else (W6 retires that path).
+    /// [`ENTRY_POLL_BUDGET`]: what is left can wait on the wake object without
+    /// its data posting it (a wake fan-out with no free member, more waitable
+    /// sessions than one park multiplexes, a port with no wake object), so the
+    /// short budget bounds how long its data waits. A session with no
+    /// readiness form never gets here: it is refused at open (RFC-0113 D5).
     /// An enrolled component whose `tick` does work (it polls a service reply
     /// or completes action goals once per spin) also keeps the slice, so its
     /// tick rate does not change under it.
@@ -4643,8 +4629,8 @@ impl<'s> Executor<'s> {
                 _ => return false,
             }
         }
-        // More waitable sessions than one park multiplexes falls back to the
-        // receive-blocking wait (`waitable_handles`).
+        // More waitable sessions than one park multiplexes cannot be parked
+        // on at all (`waitable_handles`).
         waitable <= MAX_WAITABLE_HANDLES
     }
 
@@ -4660,7 +4646,8 @@ impl<'s> Executor<'s> {
     ///
     /// More waitable sessions than `out` holds is answered with ZERO, not a
     /// truncated set: parking on some handles but not others would be a missed
-    /// wake, and zero keeps the receive-blocking wait that sees all of them.
+    /// wake. Zero leaves the executor on the short entry budget, whose drain
+    /// sees all of them.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) fn waitable_handles(&self, out: &mut [i32; MAX_WAITABLE_HANDLES]) -> usize {
         use nros_rmw::{ReadinessSource, Session as _};
@@ -4682,41 +4669,12 @@ impl<'s> Executor<'s> {
     /// Drive the primary session for `timeout_ms`, the transport-side half of
     /// the wait.
     ///
-    /// phase-436 (RFC-0106 D5) — on a poll-only backend this wait IS the
-    /// executor's park, and it waits inside the backend's own `recv`, which a
-    /// guard condition triggered from another thread cannot end: the trigger
-    /// signals the wake object and nobody is waiting on it. Measured on XRCE
-    /// before this: a trigger 20 ms into a 100 / 500 / 1000 ms spin was
-    /// dispatched 79 / 480 / 979 ms later, i.e. it waited out the bound. So
-    /// when such a waker exists and nothing can wake the park, the drive is
-    /// cut into slices of [`POLL_ONLY_WAKE_SLICE_MS`] and stops at the first
-    /// slice that ends with the wake flag set. The latency becomes one slice;
-    /// an executor with no cross-thread waker keeps the single blocking drive.
+    /// phase-521 W6 (RFC-0113 D2) — after a park this is always a zero, so it
+    /// drains rather than waits. The guard slices phase-436 cut a poll-only
+    /// backend's receive into are gone with that backend: a session that
+    /// states no readiness form is refused at open (D5), so nothing waits
+    /// inside a transport's `recv` for a trigger that cannot end it.
     fn drive_primary(&mut self, timeout_ms: i32) -> Result<(), ()> {
-        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-        if self.has_cross_thread_waker
-            && !self.async_wake_live()
-            && timeout_ms > POLL_ONLY_WAKE_SLICE_MS
-        {
-            let mut remaining = timeout_ms;
-            while remaining > 0 {
-                let slice = remaining.min(POLL_ONLY_WAKE_SLICE_MS);
-                self.session.drive_io(slice).map_err(|_| ())?;
-                remaining -= slice;
-                if self
-                    .wake_flag
-                    .swap(false, portable_atomic::Ordering::SeqCst)
-                {
-                    // Issue 1385 — consume the primitive too, or the next
-                    // spin's wait returns at once on a signal already acted on.
-                    if let Some(wake) = self.node_wake.as_ref() {
-                        let _ = wake.wait_ms(0);
-                    }
-                    break;
-                }
-            }
-            return Ok(());
-        }
         self.session.drive_io(timeout_ms).map_err(|_| ())
     }
 
@@ -11314,7 +11272,6 @@ impl<'s> Executor<'s> {
             {
                 let ctx = self.wake_ctx_ptr();
                 guard_handle.set_wake_cb(nros_rmw_runtime_wake_cb, ctx);
-                self.has_cross_thread_waker = true;
             }
 
             let meta = CallbackMeta {
@@ -13138,7 +13095,8 @@ impl<'s> Executor<'s> {
         // signals that object, so the park would be a blind sleep and data
         // arriving mid-park would wait out the whole bound — the Phase
         // 127.C.4 stall (a reliable stream whose ACK lands in a session nobody
-        // drives). Those executors keep the receive-blocking wait below.
+        // drives). Those executors wait on the wake object below, on the short
+        // entry budget (`entry_spin_budget`).
         let park_can_be_woken = s.park_can_be_woken();
 
         // phase-521 W3 (RFC-0113 D3) -- a session whose readiness is a
@@ -13344,9 +13302,17 @@ impl<'s> Executor<'s> {
                     let _ = wake.wait_ms(0);
                 }
                 0
-            } else if s.async_wake_live()
-                && let Some(wake) = s.node_wake.as_ref()
-            {
+            } else if let Some(wake) = s.node_wake.as_ref() {
+                // phase-521 W6 (RFC-0113 D2) — the wait is on the wake object
+                // whatever the session's form. A session that states no
+                // readiness form is refused at open (D5), so the transport's
+                // own `recv` is never the wait any more. A `Notify` session
+                // whose callback is live posts this object on an arrival; a
+                // `Waitable` session was parked on above. What reaches here
+                // unwoken by its data (a wake fan-out with no free member, more
+                // waitable sessions than one park multiplexes) is the case
+                // `entry_spin_budget` keeps on the short budget, so the wait
+                // stays bounded by it and the drain below picks the data up.
                 // phase-436 — after a park this wait has a zero timeout and
                 // the park has already waited on this same object, so it is a
                 // second syscall that can only time out. Measured on a native
@@ -13369,10 +13335,9 @@ impl<'s> Executor<'s> {
                 let _ = s.wake_flag.swap(false, portable_atomic::Ordering::SeqCst);
                 0
             } else {
-                // No wake primitive linked, or a poll-only backend: drive the
-                // transport for the full timeout. It still BLOCKS — in the
-                // transport's own recv — which is where every flavour ended up
-                // anyway.
+                // No wake object linked (a port that supplies no
+                // `nros_platform_wake_*`): the backend's drive is the only
+                // wait there is.
                 timeout_ms
             }
         };
@@ -16103,6 +16068,20 @@ impl<'s> Executor<'s> {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         if let Some(wake) = self.node_wake.as_ref() {
             wake.signal();
+        }
+    }
+
+    /// phase-521 W6 (RFC-0113 D2) — wake every worker parked over this
+    /// executor: its own and every level's band worker, as an arrival nothing
+    /// attributes does. A level parks until its band's next deadline or an
+    /// arrival, not for a fixed period, so a runner that stops its levels must
+    /// end those parks or wait them out. Lock-free; safe from any thread.
+    /// Raises no halt: a woken worker runs one pass and parks again unless its
+    /// runner's own stop flag says otherwise.
+    pub fn wake_all_workers(&self) {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if let Some(ctx) = self.wake_ctx.as_ref() {
+            ctx.signal();
         }
     }
 

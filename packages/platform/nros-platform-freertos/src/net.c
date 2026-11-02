@@ -418,8 +418,8 @@ int32_t nros_platform_udp_readiness_handle(const void *sock) {
 /* phase-521 W4 (RFC-0113 D4) — lwIP's receive notification, which the
  * nano-ros lwIP fork adds behind `LWIP_SOCKET_RX_NOTIFY` (called from the
  * socket layer's netconn event callback, in the tcpip thread). A board whose
- * `lwipopts.h` leaves it off has no hook, and its sessions keep the
- * receive-blocking wait. */
+ * `lwipopts.h` leaves it off has no hook, and its sessions state no readiness
+ * form, which the runtime refuses at open (RFC-0113 D5). */
 int8_t nros_platform_udp_set_rx_notify(const void *sock_raw, void (*notify)(void *ctx), void *ctx) {
 #if LWIP_SOCKET_RX_NOTIFY
     ensure_lwip_thread();

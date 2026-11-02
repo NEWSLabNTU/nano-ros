@@ -254,6 +254,7 @@ unsafe extern "C" fn stub_destroy_client(_c: *mut NrosRmwClient) -> NrosRmwRet {
 /// The cyclonedds shape: both poll slots filled, both `*_event_init` NULL.
 static POLLED_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(stub_open),
+    readiness_source: Some(notify_readiness),
     destroy_session: Some(stub_close),
     drive_io: Some(stub_drive_io),
     create_publisher: Some(stub_create_publisher),
@@ -437,4 +438,19 @@ fn matched_and_incompatible_type_reach_the_callback_through_the_poll_path() {
     assert_eq!(PUB_INCOMPAT_CHANGE.load(Ordering::SeqCst), 2);
     publisher.publish_raw(&[0u8; 4]).expect("publish");
     assert_eq!(PUB_FIRES.load(Ordering::SeqCst), 1);
+}
+
+/// phase-521 W6 (RFC-0113 D5) — the runtime refuses a session that states no
+/// readiness form at open, so this stub states `Notify`.
+unsafe extern "C" fn notify_readiness(
+    _: *const nros_rmw_cffi::rmw_session_t,
+    out_kind: *mut u8,
+    out_handle: *mut i32,
+) -> nros_rmw_cffi::NrosRmwRet {
+    // SAFETY: the runtime passes valid out-pointers.
+    unsafe {
+        *out_kind = nros_rmw_cffi::NROS_RMW_READINESS_NOTIFY as u8;
+        *out_handle = -1;
+    }
+    nros_rmw_cffi::NROS_RMW_RET_OK
 }
