@@ -285,10 +285,27 @@ spins for 3.5 s over a live router with one 1 s timer and asserts at most 8
 spins (measured 4; the 10 ms slice made ~350) and each expiry dispatched within
 5 ms early / 50 ms late of its deadline (measured 0.4 ms late).
 
-Not done yet: the native C++ tier loops still run `spin_once(10)` and then
-sleep the period (an arrival during the sleep waits for the period), the
-receive-blocking path itself, and the refusal of a session with no readiness
-form.
+**W6b — tier loops and the period spin park (2026-11-02).** The native C++
+tier runner (`nros_board_native_run_tiers*`) ran `spin_once(10)` and then slept
+the tier's `spin_period_us`, on the boot thread and on every spawned tier, so
+an arrival during the sleep waited for the period and an idle tier woke at that
+rate. Each loop now parks in `spin_once(entry_spin_budget_ms)`. Shutdown
+cancels every registered tier executor (`TierLiveSet`, one lock so a cancel
+never reaches an executor its tier is dropping), and a bounded run clamps the
+last park to what remains. `rclc_executor_spin_period` keeps its rate (one
+`spin_some(timeout_ns)` per period) but its gap between invocations is now a
+park on the wake object (`spin_some` until the invocation point), so an
+arrival, a guard condition or a timer inside the gap is dispatched when it
+happens and `rclc_executor_cancel` ends it. `node_guard_condition.c` covers the
+gap: a trigger 150 ms into a 1 s period is dispatched 0 ms after it lands and a
+cancel 250 ms later ends the spin 0 ms after it is raised (mutation-checked:
+with the old sleep the trigger waits to the next period and the spin runs its
+full 1000 ms). `realtime_tiers` (native cpp, cpp-rclcpp) and
+`realtime_subnode_cpp_e2e` pass on the parked tiers.
+
+Not done yet: the native LEVEL runner still bounds each level's park by its
+period, the receive-blocking path itself, and the refusal of a session with no
+readiness form.
 
 ### W7 — Acceptance measurements for the promise
 

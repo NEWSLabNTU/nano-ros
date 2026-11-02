@@ -3544,10 +3544,10 @@ nros_cpp_ret_t nros_cpp_executor_set_park_primitive(void *handle,
  * Declare how often this executor's loop intends to come round, in
  * microseconds. `0` (the default) falls back to the `spin_once` timeout.
  *
- * The pacing and the blocking bound are separate numbers. A tier loop sleeps
- * `spin_period_us` between spins but passes a fixed 10 ms timeout to
- * `spin_once`, so without this the release-jitter rule judged every tier
- * against 10 ms whatever the contract declared.
+ * The pacing and the blocking bound are separate numbers. A loop that sleeps
+ * between spins but passes a fixed timeout to `spin_once` is paced by the
+ * sleep, so without this the release-jitter rule judges it against the
+ * timeout whatever the contract declared.
  *
  * # Safety
  * `handle` must be a live executor handle from this ABI, or NULL.

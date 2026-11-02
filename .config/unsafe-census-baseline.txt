@@ -45,7 +45,7 @@ nros-c                             538  92     6     511      0
 nros-cli-core                       23   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
-nros-cpp                          1107  43     0     428      0
+nros-cpp                          1108  43     0     428      0
 nros-log                            24   0     7       1      0
 nros-macros                         13   0     1       1      0
 nros-node                          745  260    35     167      0

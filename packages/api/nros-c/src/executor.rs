@@ -4862,9 +4862,26 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
 
         // Accumulate next invocation time to prevent drift
         executor_ref.invocation_time_ns += period_ns;
-        let now = crate::platform::get_time_ns();
-        if executor_ref.invocation_time_ns > now {
-            crate::platform::sleep_ns(executor_ref.invocation_time_ns - now);
+        // phase-521 W6 (RFC-0113 D2) — the gap until the next invocation is a
+        // PARK on the executor's wake object, not a sleep: an arrival, a
+        // guard condition or a timer due inside it is dispatched when it
+        // happens instead of at the next period, and `rclc_executor_cancel`
+        // (which posts the wake object) ends it. Each `spin_some` returns once
+        // it has dispatched something, so the gap is re-entered until the
+        // invocation point. The invocation rate is unchanged: one
+        // `spin_some(timeout_ns)` per period, at the period's start.
+        loop {
+            let now = crate::platform::get_time_ns();
+            if executor_ref.invocation_time_ns <= now
+                || executor_ref.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
+                || get_executor(executor_ref).is_halted()
+            {
+                break;
+            }
+            let _ = rclc_executor_spin_some(executor, executor_ref.invocation_time_ns - now);
+            if get_executor(executor_ref).session_io_failures() >= SPIN_ERROR_TOLERANCE {
+                break;
+            }
         }
     }
 

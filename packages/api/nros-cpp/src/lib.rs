@@ -7290,8 +7290,9 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
 ///
 /// `priority` is a raw POSIX nice-level adjustment (advisory on Linux
 /// without elevated privileges). `stack_bytes` is informational on native
-/// (`std::thread` manages the stack). `spin_period_us` is the sleep between
-/// `spin_once` calls; 0 uses a 1 ms floor.
+/// (`std::thread` manages the stack). `spin_period_us` is no longer read by
+/// the tier runner: each tier parks in `spin_once` until its next deadline or
+/// arrival (phase-521 W6). The level runner still bounds a level's park by it.
 ///
 /// # Safety
 ///
@@ -8453,10 +8454,10 @@ pub unsafe extern "C" fn nros_cpp_executor_set_park_primitive(
 /// Declare how often this executor's loop intends to come round, in
 /// microseconds. `0` (the default) falls back to the `spin_once` timeout.
 ///
-/// The pacing and the blocking bound are separate numbers. A tier loop sleeps
-/// `spin_period_us` between spins but passes a fixed 10 ms timeout to
-/// `spin_once`, so without this the release-jitter rule judged every tier
-/// against 10 ms whatever the contract declared.
+/// The pacing and the blocking bound are separate numbers. A loop that sleeps
+/// between spins but passes a fixed timeout to `spin_once` is paced by the
+/// sleep, so without this the release-jitter rule judges it against the
+/// timeout whatever the contract declared.
 ///
 /// # Safety
 /// `handle` must be a live executor handle from this ABI, or NULL.
@@ -8684,7 +8685,8 @@ pub unsafe extern "C" fn nros_cpp_executor_clear_release_jitter_stats(
 ///   2. `nros_cpp_executor_set_active_groups` — gate to the tier's groups.
 ///   3. `setup(executor)` — create + configure nodes (only the tier's
 ///      groups' callbacks register).
-///   4. `spin_once` loop at `spin_period_us` until shutdown flag.
+///   4. `spin_once` loop, parked until the next deadline or arrival, until the
+///      shutdown flag (phase-521 W6; shutdown cancels each tier's park).
 ///
 /// The boot thread runs the first (highest-priority) tier on the owning
 /// executor; it respects the `$NROS_ENTRY_SPIN_MS` bound for test/CI use.
@@ -8925,6 +8927,10 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
 
     // Shared shutdown flag — boot thread sets it; tier tasks poll it.
     let shutdown = Arc::new(AtomicBool::new(false));
+    // phase-521 W6 — a tier parks in `spin_once` until its next deadline or
+    // arrival, so the flag alone no longer ends it: the boot thread cancels
+    // every live tier executor (which posts its wake object) after raising it.
+    let tier_live = Arc::new(TierLiveSet::new(n_tiers));
     // Issue 1733 — held across each spawned tier's open + `setup`, so no two
     // tiers declare on the shared session at once (the boot tier's setup has
     // already returned above). Every RTOS runner serializes by chaining its
@@ -8959,7 +8965,8 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
         let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(NativeTierCtx {
             shutdown: Arc::clone(&shutdown),
             setup_gate: Arc::clone(&setup_gate),
-            period_us: tier.spin_period_us,
+            live: Arc::clone(&tier_live),
+            slot: i,
             n_groups: tier.n_groups,
             groups: tier.groups as usize,
             session: session_handle,
@@ -8995,13 +9002,16 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
     }
 
     // Boot thread spin loop (tier[0] on the owning executor).
+    //
+    // phase-521 W6 (RFC-0113 D2) — the loop parks: `spin_once` waits on the
+    // executor's wake object until its next deadline or arrival, bounded by
+    // the executor's entry budget. It used to spin with a 10 ms bound and then
+    // sleep the tier's `spin_period_us`, so an arrival during the sleep waited
+    // for the period and an idle tier woke at that rate for nothing. The
+    // period is no longer a cadence here; a bounded run
+    // (`NROS_ENTRY_SPIN_MS`) clamps the last park to what remains.
     let bound_ms: u64 = entry_spin_ms();
     let start_ns = nros_cpp_time_ns();
-    let boot_period_us = boot_tier.spin_period_us.max(1_000);
-    // The loop paces on `boot_period_us` below; `spin_once`'s argument is a
-    // blocking bound, not a cadence. Say which is which, or the jitter rule
-    // judges this tier against the timeout.
-    unsafe { nros_cpp_executor_set_spin_nominal_us(sptr, boot_period_us) };
     let mut ret = 0i32;
     loop {
         // Issue 1732 — the guard's flag ends the boot spin; the tiers are then
@@ -9013,22 +9023,24 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
             );
             break;
         }
-        let last = unsafe { nros_cpp_spin_once(sptr, 10) };
-        if last != NROS_CPP_RET_OK {
-            ret = last as i32;
-            break;
-        }
+        let mut budget_ms = unsafe { nros_cpp_entry_spin_budget_ms(sptr) };
         if bound_ms != 0 {
             let elapsed_ms = (nros_cpp_time_ns() - start_ns) / 1_000_000;
             if elapsed_ms >= bound_ms {
                 break;
             }
+            budget_ms = budget_ms.min((bound_ms - elapsed_ms).min(i32::MAX as u64) as i32);
         }
-        platform_sleep_us(boot_period_us);
+        let last = unsafe { nros_cpp_spin_once(sptr, budget_ms) };
+        if last != NROS_CPP_RET_OK {
+            ret = last as i32;
+            break;
+        }
     }
 
-    // Signal all tier tasks to exit and wait for them.
-    shutdown.store(true, Ordering::Relaxed);
+    // Signal all tier tasks to exit, end their parks, and wait for them.
+    shutdown.store(true, Ordering::SeqCst);
+    tier_live.cancel_all();
     for t in tier_tasks {
         t.join();
     }
@@ -9036,6 +9048,69 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
     // Close the primary (session-owning) executor.
     unsafe { nros_cpp_fini(sptr) };
     ret
+}
+
+/// phase-521 W6 — the spawned tiers' executors, so shutdown can end their parks.
+///
+/// A tier registers its executor once it is open and unregisters it before
+/// dropping it; the boot thread cancels every registered one after raising
+/// the shutdown flag. One lock over the slots keeps a cancel from reaching an
+/// executor its tier is dropping: the tier unregisters under it, so a cancel
+/// either finishes first or finds the slot empty.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+struct TierLiveSet {
+    lock: core::sync::atomic::AtomicBool,
+    slots: alloc::vec::Vec<core::sync::atomic::AtomicUsize>,
+}
+
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+impl TierLiveSet {
+    fn new(n: usize) -> Self {
+        Self {
+            lock: core::sync::atomic::AtomicBool::new(false),
+            slots: (0..n)
+                .map(|_| core::sync::atomic::AtomicUsize::new(0))
+                .collect(),
+        }
+    }
+
+    fn with_lock<R>(&self, f: impl FnOnce() -> R) -> R {
+        use core::sync::atomic::Ordering;
+        while self
+            .lock
+            .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            core::hint::spin_loop();
+        }
+        let r = f();
+        self.lock.store(false, Ordering::Release);
+        r
+    }
+
+    fn register(&self, slot: usize, exec: *mut c_void) {
+        use core::sync::atomic::Ordering;
+        self.with_lock(|| self.slots[slot].store(exec as usize, Ordering::Relaxed));
+    }
+
+    fn unregister(&self, slot: usize) {
+        use core::sync::atomic::Ordering;
+        self.with_lock(|| self.slots[slot].store(0, Ordering::Relaxed));
+    }
+
+    fn cancel_all(&self) {
+        use core::sync::atomic::Ordering;
+        self.with_lock(|| {
+            for slot in &self.slots {
+                let exec = slot.load(Ordering::Relaxed);
+                if exec != 0 {
+                    // SAFETY: registered by its tier while open, and the tier
+                    // unregisters under this lock before dropping it.
+                    let _ = unsafe { nros_cpp_executor_cancel(exec as *mut c_void) };
+                }
+            }
+        });
+    }
 }
 
 /// What one spawned tier receives, in place of a closure's captures — the entry
@@ -9049,7 +9124,10 @@ struct NativeTierCtx {
     shutdown: alloc::sync::Arc<core::sync::atomic::AtomicBool>,
     /// Issue 1733 — the runner's one setup gate, shared by every spawned tier.
     setup_gate: alloc::sync::Arc<nros_node::executor::TierSetupGate>,
-    period_us: u64,
+    /// phase-521 W6 — where this tier registers its executor so the boot
+    /// thread can cancel its park at shutdown, and its slot there.
+    live: alloc::sync::Arc<TierLiveSet>,
+    slot: usize,
     n_groups: usize,
     groups: usize,
     session: usize,
@@ -9115,21 +9193,22 @@ unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
     }
     drop(setup_guard);
 
-    // Spin at the tier's period until the shutdown flag is set.
-    let period_us = ctx.period_us.max(1_000);
-    // Same as the boot thread: the sleep below is the cadence, `spin_once`'s
-    // argument is a blocking bound.
-    unsafe { nros_cpp_executor_set_spin_nominal_us(tptr, period_us) };
-    while !ctx.shutdown.load(Ordering::Relaxed) {
-        let rc = unsafe { nros_cpp_spin_once(tptr, 10) };
+    // phase-521 W6 — park until the next deadline or arrival, as the boot
+    // thread does, until shutdown. Registered first, then the flag is read,
+    // so a shutdown raised before the registration is seen by the loop and
+    // one raised after it cancels this park.
+    ctx.live.register(ctx.slot, tptr);
+    while !ctx.shutdown.load(Ordering::SeqCst) {
+        let budget_ms = unsafe { nros_cpp_entry_spin_budget_ms(tptr) };
+        let rc = unsafe { nros_cpp_spin_once(tptr, budget_ms) };
         if rc != NROS_CPP_RET_OK {
             crate::cpp_diag!(
                 "nros: tier '{tier_name}' spin_once returned rc={rc} — tier loop EXITING"
             );
             break;
         }
-        platform_sleep_us(period_us);
     }
+    ctx.live.unregister(ctx.slot);
 
     // Drop borrowed executor in place (does NOT close the shared session).
     unsafe { core::ptr::drop_in_place(tptr as *mut CppContext) };
