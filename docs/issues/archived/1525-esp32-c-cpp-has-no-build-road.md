@@ -124,3 +124,17 @@ Reviving it means undoing that list together: rows, cells, module, index
 entries, nightly selection, the scaffold arm in `nros new`, and un-ignoring the
 tests. The ESP32-only issues (1006, 1356, 1499, 1591, and this one) are parked
 `wontfix` with this note, to reopen on revival.
+
+## Retired (2026-11-02, phase-521 W6)
+
+The dormant board is gone, not parked: RFC-0113 D5 refuses a combination that
+cannot state a readiness form, and the ESP32-C3 board had no receive interrupt
+and no one-shot timer behind a wake object. The maintainer ruled to retire it
+rather than port it. Deleted: `nros-board-esp32-qemu`,
+`nros-platform-esp32-qemu`, `openeth-smoltcp`, `examples/esp32-c3-baremetal/`,
+the esp32 smoke and logging bins, `just/esp32.just`, `scripts/esp32/`, the
+`third-party/esp32/qemu` submodule, the `Esp32Qemu` matrix platform and its
+cells, the commented index rows, and the `esp32` framework. Every name the board
+answered to is now a refusal naming RFC-0113 D5
+(`nros_entry_lower::REMOVED_BOARD_KEYS`, `RETIRED_FRAMEWORKS`). Reviving an ESP32
+now means porting it to RFC-0113 D4 first, then the list above.

@@ -420,7 +420,7 @@ mod tests {
 
         /// Issue 1285 follow-up. Every image board id an in-tree `system.toml`
         /// names, with the key its descriptor's platform gives. `""` is a board
-        /// with no RTOS (bare-metal, ESP32).
+        /// with no RTOS (bare-metal).
         #[test]
         fn every_in_tree_image_board_reads_its_platform() {
             for (id, want) in [
@@ -439,8 +439,6 @@ mod tests {
                 ("nuttx-riscv", "nuttx"),
                 ("rtic-mps2-an385", ""),
                 ("mps2-an385-baremetal", ""),
-                ("esp32-c3-baremetal", ""),
-                ("esp32c3", ""),
             ] {
                 let s = sys(&format!("[image.fw]\nboard=\"{id}\"\n"));
                 assert_eq!(rtos(&s, Some("fw")), Ok(want), "`{id}`");
@@ -456,25 +454,21 @@ mod tests {
             assert!(err.contains("board = \"zephyr\""), "names the fix: {err}");
         }
 
-        /// Issue 1652 — the same rule for the two ecosystems that had no typed
-        /// field: NuttX's board-plus-config and PlatformIO's board id are
-        /// refused on an IMAGE.
+        /// Issue 1652 — the same rule for an ecosystem that had no typed field:
+        /// NuttX's board-plus-config is refused on an IMAGE. (PlatformIO's
+        /// `esp32dev` went with the esp32 board, phase-521 W6.)
         #[test]
-        fn nuttx_and_platformio_framework_ids_are_refused_on_an_image() {
-            for (framework_id, nano_ros, want) in [
-                ("qemu-armv7a-nsh", "nuttx", "nuttx"),
-                ("esp32dev", "esp32-qemu", ""),
-            ] {
-                let s = sys(&format!("[image.fw]\nboard=\"{framework_id}\"\n"));
-                let err = rtos(&s, Some("fw")).expect_err(framework_id);
-                assert!(
-                    err.contains(&format!("board = \"{nano_ros}\"")),
-                    "names the fix: {err}"
-                );
-                // The name the refusal offers resolves, to the same platform.
-                let s = sys(&format!("[image.fw]\nboard=\"{nano_ros}\"\n"));
-                assert_eq!(rtos(&s, Some("fw")), Ok(want), "`{nano_ros}`");
-            }
+        fn nuttx_framework_ids_are_refused_on_an_image() {
+            let (framework_id, nano_ros, want) = ("qemu-armv7a-nsh", "nuttx", "nuttx");
+            let s = sys(&format!("[image.fw]\nboard=\"{framework_id}\"\n"));
+            let err = rtos(&s, Some("fw")).expect_err(framework_id);
+            assert!(
+                err.contains(&format!("board = \"{nano_ros}\"")),
+                "names the fix: {err}"
+            );
+            // The name the refusal offers resolves, to the same platform.
+            let s = sys(&format!("[image.fw]\nboard=\"{nano_ros}\"\n"));
+            assert_eq!(rtos(&s, Some("fw")), Ok(want), "`{nano_ros}`");
         }
 
         /// Ids the substring match answered wrongly. `native_sim/native/64`
@@ -489,7 +483,6 @@ mod tests {
                 ("s32z270", "posix", "freertos"),
                 ("an536", "posix", "freertos"),
                 ("rtic-mps2-an385", "posix", ""),
-                ("esp32c3", "posix", ""),
             ] {
                 let s = sys(&format!("[image.fw]\nboard=\"{id}\"\n"));
                 assert_eq!(rtos(&s, Some("fw")), Ok(now), "`{id}` (was `{was}`)");

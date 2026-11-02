@@ -143,10 +143,10 @@ pub mod wcet;
 ///
 /// Issue 0415 — the SSoT for "which entry shape does this board want". Kept as
 /// strings rather than an enum because the two consumers model it differently:
-/// `nros-macros` maps to an emit shape (it also has `Zephyr` and `Esp32`
-/// variants), `nros ws check` maps to a lint matrix. What must NOT differ is
+/// `nros-macros` maps to an emit shape (it also has a `Zephyr`
+/// variant), `nros ws check` maps to a lint matrix. What must NOT differ is
 /// the accepted SET and its spelling, which is why parsing lives here.
-pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "zephyr", "esp32"];
+pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "zephyr"];
 
 /// Framework names this repo ACCEPTED once and now refuses, each with what to
 /// do instead. Both consumers of [`FRAMEWORKS`] ask [`retired_framework_hint`]
@@ -156,13 +156,27 @@ pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "zephyr", "esp32"];
 /// `embassy` — issue 2134 / RFC-0112 D3: the `nros::main!` branch had no board
 /// and no CI cell since phase-337 W7.a removed `embassy-stm32f4`, and what it
 /// emitted relied on board methods no trait declared (issue 2155).
-pub const RETIRED_FRAMEWORKS: &[(&str, &str)] = &[(
-    "embassy",
-    "`embassy` is no longer an `nros::main!` framework (issue 2134): drive the \
-     executor from your own `#[embassy_executor::main]` task instead — open the \
-     `Executor`, create the nodes, and loop `spin_some` with an `embassy_time` \
-     yield. See book/src/user-guide/embassy-integration.md",
-)];
+///
+/// `esp32` — RFC-0113 D5 (phase-521 W6): its one board, the ESP32-C3 under
+/// QEMU, had no receive interrupt and no one-shot timer behind a wake object,
+/// so an executor on it could not park; the board retired rather than keep the
+/// receive-blocking wait.
+pub const RETIRED_FRAMEWORKS: &[(&str, &str)] = &[
+    (
+        "embassy",
+        "`embassy` is no longer an `nros::main!` framework (issue 2134): drive the \
+         executor from your own `#[embassy_executor::main]` task instead — open the \
+         `Executor`, create the nodes, and loop `spin_some` with an `embassy_time` \
+         yield. See book/src/user-guide/embassy-integration.md",
+    ),
+    (
+        "esp32",
+        "`esp32` is no longer an `nros::main!` framework: its one board \
+         (`esp32-c3-baremetal`) is retired because it cannot keep the real-time \
+         wait promise (RFC-0113 D5 — no receive interrupt or one-shot timer behind \
+         a wake object). See RFC-0113's coverage table and issue 1525",
+    ),
+];
 
 /// The reason a retired framework name is refused, if `name` is one.
 pub fn retired_framework_hint(name: &str) -> Option<&'static str> {
@@ -229,7 +243,6 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
         | "fvp-aemv8r-smp"
         | "nucleo-f767zi-zephyr"
         | "rpi-pico-w-zephyr" => "zephyr",
-        "esp32-qemu" | "esp32-c3-baremetal" => "esp32",
         // NuttX, FreeRTOS, ThreadX and native ride `owned-spin`: the RTOS (or
         // the board crate's own entry symbol) calls `main`, and the macro emits
         // the plain `fn main()` those expect.
@@ -270,8 +283,6 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
 ///   differed between arm virt and rv-virt (the arch delta is defconfig +
 ///   toolchain DATA). The keys stay distinct because they select the
 ///   `[[board]]` descriptor — and therefore the target triple — not the type.
-/// - ESP32 — Phase 225.O: CI-runnable ESP32-C3 QEMU (OpenETH) board, routed
-///   through `Framework::Esp32` emit shape in the proc-macro.
 /// - Zephyr — Phase 225.P: Zephyr owns `main`; the board ZST implements no
 ///   `BoardEntry`, and its network wait is an inherent method (the
 ///   ~~`NetworkWait`~~ trait went in phase-206 W4). The proc-macro routes through
@@ -339,16 +350,6 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
     ),
     ("nuttx-riscv", "::nros_board_nuttx_qemu::NuttxQemu", false),
     ("rv-virt-nuttx", "::nros_board_nuttx_qemu::NuttxQemu", false),
-    (
-        "esp32-qemu",
-        "::nros_board_esp32_qemu::Esp32QemuEntry",
-        false,
-    ),
-    (
-        "esp32-c3-baremetal",
-        "::nros_board_esp32_qemu::Esp32QemuEntry",
-        false,
-    ),
     // `links_std` is FALSE even though native_sim compiles for the host
     // triple: the entry is a `#![no_std]` staticlib (Zephyr owns `main`), and
     // `zephyr/CMakeLists.txt` appending `,std` to the feature list makes `std`
@@ -1839,8 +1840,6 @@ mod tests {
             "qemu-armv7a-nuttx",
             "nuttx-riscv",
             "rv-virt-nuttx",
-            "esp32-qemu",
-            "esp32-c3-baremetal",
             "zephyr",
             "rtic-mps2-an385",
             "mps2-an385-baremetal",

@@ -78,8 +78,6 @@ pub enum PlatformId {
     ThreadxLinux,
     /// ThreadX on QEMU riscv64 virt (NetX Duo).
     ThreadxRiscv64,
-    /// ESP32-C3 under the Espressif QEMU fork (open_eth).
-    Esp32Qemu,
     /// Bare-metal RTIC on QEMU MPS2-AN385.
     QemuBaremetal,
     /// ARM FVP Base_RevC AEMv8-R (`[tool.arm-fvp]`, x86_64 Linux only).
@@ -102,7 +100,8 @@ impl PlatformId {
             PlatformId::NuttxRiscv => 4,
             PlatformId::ThreadxLinux => 5,
             PlatformId::ThreadxRiscv64 => 6,
-            PlatformId::Esp32Qemu => 7,
+            // 7 was ~~`Esp32Qemu`~~ until phase-521 W6 (RFC-0113 D5 retired the
+            // board); left as a gap so no other platform's band moves.
             PlatformId::QemuBaremetal => 8,
             // 9 was ~~`Stm32F4`~~ until phase-337 W7.a. Renumbering `Fvp`/`Px4`
             // down into the gap is free: both carry ZERO Runtime cells, so no
@@ -141,7 +140,7 @@ impl PlatformId {
     /// `fixture_token_mapping_round_trips`).
     ///
     /// It is one-to-MANY *in shape*, and today every platform spells exactly one
-    /// token. `Esp32Qemu` was the sole exception — it carried `esp32` and
+    /// token. ~~`Esp32Qemu`~~ was the sole exception — it carried `esp32` and
     /// `qemu-esp32-baremetal` for one platform, with no stated reason — and
     /// phase-437 W4a collapsed that under RFC-0093 R6 (a fixture platform names
     /// a FAMILY, never a board). The slice stays because callers must not
@@ -195,7 +194,6 @@ impl PlatformId {
             PlatformId::NuttxRiscv => &["nuttx-riscv"],
             PlatformId::ThreadxLinux => &["threadx-linux"],
             PlatformId::ThreadxRiscv64 => &["threadx-riscv64"],
-            PlatformId::Esp32Qemu => &["esp32"],
             // RFC-0093 R6 — the FAMILY, not the board. The board is
             // `mps2-an385-baremetal`; `baremetal` is free because this is the
             // only bare-metal family.
@@ -239,7 +237,6 @@ impl PlatformId {
             PlatformId::NuttxArm | PlatformId::NuttxRiscv => "nuttx",
             PlatformId::ThreadxLinux => "threadx_linux",
             PlatformId::ThreadxRiscv64 => "threadx_riscv64",
-            PlatformId::Esp32Qemu => "esp32",
             PlatformId::QemuBaremetal => "qemu",
             PlatformId::Px4 => "px4",
         }
@@ -264,7 +261,6 @@ impl PlatformId {
         PlatformId::NuttxRiscv,
         PlatformId::ThreadxLinux,
         PlatformId::ThreadxRiscv64,
-        PlatformId::Esp32Qemu,
         PlatformId::QemuBaremetal,
         PlatformId::Fvp,
         PlatformId::Px4,
@@ -725,11 +721,6 @@ use Workload::*;
 /// and stay BuildOnly until wired; the rest are firm CarveOuts.
 const CYCLONE_RUST_RTOS_CARVE: &str =
     "cyclone-on-RTOS is C/C++ only; pure-rust image has no cyclone backend symbol (#163 class)";
-/// ESP32 is DORMANT (issue 1525): the board, platform crate and examples stay
-/// in the tree for future use, but no lane, fixture row or `just` module builds
-/// or tests them.
-const ESP32_DORMANT: &str =
-    "ESP32 support is dormant (issue 1525): code kept, nothing builds or tests it";
 
 /// phase-510 W3 — a workspace entry that BUILDS (its fixture row is in every
 /// lane that needs it) but whose DELIVERY no test asserts: the only runtime
@@ -1068,10 +1059,6 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         NonCell::Secondary(
             "Linux/Rust/Zenoh/Pubsub/Example — answered by linux_example_pubsub_e2e; this one asserts error paths",
         ),
-    ),
-    (
-        "esp32_emulator",
-        NonCell::Dormant(PlatformId::Esp32Qemu, "ESP32 is dormant (issue 1525)"),
     ),
     ("example_output_conformance", NonCell::Static),
     ("example_portability", NonCell::Static),

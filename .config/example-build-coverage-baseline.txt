@@ -9,8 +9,6 @@
 # ESP32 support is DORMANT by maintainer decision (issue 1525, commit
 # 719b6eda1): the code is kept, the `esp32` just module is unmounted and its
 # four rows were deleted on purpose. Restoring ESP32 restores the rows.
-examples/esp32-c3-baremetal/rust/listener  # ESP32 dormant (issue 1525)
-examples/esp32-c3-baremetal/rust/talker  # ESP32 dormant (issue 1525)
 
 # PX4 examples are built by their own recipe, `just px4 build-fixtures` (in the
 # `build-test-fixtures` platform loop), against an external PX4-Autopilot

@@ -24,7 +24,6 @@ pub mod checker;
 pub mod dds_isolation;
 // Issue 2122 -- in-process ELF section + symbol table reader.
 pub mod elf;
-pub mod esp32;
 // issue 0526 — LINK the posix C port, do not merely depend on it.
 //
 // `trigger-test` / `loan-e2e` pull `nros-platform-cffi` with `posix-c-port`, and
@@ -990,12 +989,6 @@ pub mod kind {
     pub const XRCE_AGENT: &str = "xrce-agent";
     pub const ZENOHD: &str = "zenohd";
     pub const ZEPHYR_WORKSPACE_BUILDS: &str = "zephyr-workspace-builds";
-
-    /// The espflash-packed ESP32-C3 QEMU flash images. A POSTPROCESS of the
-    /// `esp32` cargo rows rather than a row of its own — the
-    /// manifest has no shape for "another row's artifact, repacked" — so the
-    /// KIND is what the two sides share instead of a row (issue 0535).
-    pub const ESP32_QEMU: &str = "esp32-qemu";
 
     /// The pinned POSIX zenoh staticlib + its generated `zenoh_generic_config.h`,
     /// built by `just build-zenoh-posix-fixture` for the symbol/parity gates.

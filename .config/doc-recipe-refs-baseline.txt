@@ -34,7 +34,6 @@ book/src/release/migration-install-local-removal.md	install-local
 book/src/start-here/setup-compared-to-ros2.md	install-local
 docs/design/0058-multi-edition-ros-test-harness.md	ros-edition-image
 docs/development/test-harness.md	orin-spe
-docs/guides/esp32-setup.md	esp32
 docs/issues/README.md	build-zenoh-pico-arm
 docs/issues/README.md	esp32
 docs/issues/README.md	native
@@ -57,7 +56,6 @@ docs/research/sdk-ux/zephyr-and-esp-idf.md	zenohd::start
 docs/research/tool-confidence-assessment.md	esp32
 docs/roadmap/book-audit/acc5/SUMMARY.md	esp32
 docs/roadmap/book-audit/acc5/esp32.md	esp32
-examples/esp32-c3-baremetal/README.md	esp32
 packages/cli/CONTRIBUTING.md	build-build-tools
 packages/cli/CONTRIBUTING.md	build-user-libs
 packages/cli/CONTRIBUTING.md	clean-build-tools

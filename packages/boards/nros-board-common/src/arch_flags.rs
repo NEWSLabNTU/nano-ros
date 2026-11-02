@@ -299,8 +299,8 @@ mod tests {
     /// profile, and nothing in the tree asked, because the only live caller
     /// happens to live in the first root.
     ///
-    /// `riscv32imc` is the profile `config/bare-metal` carries FOR the ESP32-C3,
-    /// which is the same fact that made `esp32` an answerable name.
+    /// `riscv32imc` is the profile `config/bare-metal` carries (written for the
+    /// retired ESP32-C3; still a generic riscv32 no-RTOS profile).
     #[test]
     fn the_second_descriptor_root_is_searched_too() {
         let roots = platform_search_path().expect("in-tree checkout");
@@ -310,20 +310,10 @@ mod tests {
         );
         let rv = cflags_for_target(&roots, "bare-metal", "riscv32imc-unknown-none-elf")
             .expect("readable")
-            .expect("config/bare-metal declares [arch.riscv32imc] — the ESP32-C3 profile");
+            .expect("config/bare-metal declares [arch.riscv32imc]");
         assert!(
             rv.iter().any(|f| f == "-march=rv32imc"),
             "riscv32imc selected {rv:?}, expected the riscv32imc profile"
-        );
-
-        // ...and through the ALIAS the same file answers to, which is the name
-        // an esp32 board declares.
-        let via_alias = cflags_for_target(&roots, "esp32", "riscv32imc-unknown-none-elf")
-            .expect("readable")
-            .expect("`esp32` is one of config/bare-metal's `names` (phase-468 W1)");
-        assert_eq!(
-            via_alias, rv,
-            "an alias must resolve the same profiles as the canonical name"
         );
     }
 

@@ -274,14 +274,6 @@ maintainers = []
 notes = "C, C++ and Rust pubsub are Runtime; service/action are BuildOnly pending the runner's peer half. It also carries the tree's first non-native_sim live-peer interop cell (phase-441 W1, `zephyr-cortex-m-pubsub-c-zenoh`). This note used to say NO RUST ROW, because `zephyr-lang-rust` could not compile for any board whose devicetree has gpio nodes — issue 0432, RESOLVED 2026-08-12 by phase-346 W2/W3, after which the Rust leaf built and `zephyr_cortex_m_rust_zenoh_pubsub_e2e` ran it while four documents still said it could not. Daily rather than per merge because `just ci` is host-only and this needs QEMU."
 
 [[board]]
-crate = "nros-board-esp32-qemu"
-matrix_platform = "Esp32Qemu"
-runs = "none"
-breadth = "witness"
-maintainers = []
-notes = "DORMANT (issue 1525): code kept for future use; no lane builds or tests it. It used to run nightly (two-way QEMU e2e, esp32_emulator.rs, now #[ignore]d)."
-
-[[board]]
 crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxRiscv"
 board_keys = ["nuttx-riscv", "rv-virt-nuttx"]

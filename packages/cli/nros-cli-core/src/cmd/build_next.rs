@@ -1201,7 +1201,7 @@ mod tests {
         let cat = catalog();
         let (mut from_store, mut from_host) = (Vec::new(), Vec::new());
         for d in cat.descriptors() {
-            if matches!(d.platform, PlatformKind::Zephyr | PlatformKind::Esp32) {
+            if matches!(d.platform, PlatformKind::Zephyr) {
                 continue;
             }
             let name = d.names.first().cloned().unwrap_or_default();

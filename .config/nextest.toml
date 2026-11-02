@@ -222,15 +222,6 @@ max-threads = 1
 [test-groups.qemu-threadx-riscv]
 max-threads = 9
 
-# Resource: one baked image pair serves three tests. The esp32 pubsub
-# talker/listener images bake ONE allocator port (9800), and the
-# esp32↔esp32 e2e + the two esp32↔native interop tests all start a router
-# on it — serialize just those three (the boot smoke + the ws-entry e2e
-# have their own/no port and run free; the blanket serial `qemu-esp32`
-# group is retired — W4).
-[test-groups.qemu-esp32-pubsub-port]
-max-threads = 1
-
 # Resource: host-load throttle (native-process ThreadX sim + NSOS; no
 # QEMU). Allocator-unique ports; per-variant sub-groups retired (W4).
 [test-groups.threadx-linux]
@@ -732,21 +723,6 @@ test-group = "qemu-threadx-riscv"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# ESP32 QEMU (Espressif RISC-V fork) — allocator window 9800+. The three
-# tests that dial the shared pubsub-pair image port (9800) serialize in
-# qemu-esp32-pubsub-port; everything else (boot smoke, ws-entry e2e on its
-# own 9830 bake, detection probes) runs with the default scheduler.
-[[profile.default.overrides]]
-filter = "binary(esp32_emulator) and (test(test_esp32_talker_listener_e2e) or test(test_esp32_to_native) or test(test_native_to_esp32))"
-test-group = "qemu-esp32-pubsub-port"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-[[profile.default.overrides]]
-filter = "binary(esp32_emulator)"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
 # ThreadX Linux sim (veth bridge) — allocator window 9000+. The
 # realtime_tiers_e2e threadx_linux_rust case (phase-297 W5) rides the same
 # host-load throttle.
@@ -1143,9 +1119,6 @@ fail-fast = true
 #   * qemu-freertos        — FreeRTOS on MPS2-AN385
 #   * qemu-nuttx           — NuttX on MPS2-AN385
 #   * qemu-threadx-riscv   — ThreadX on QEMU RV64
-#   * (esp32 lanes are excluded by `binary(esp32_emulator)` — the blanket
-#     qemu-esp32 group died in W4; only the shared-pubsub-image trio keeps
-#     a group)
 #   * threadx-linux        — ThreadX Linux sim + veth bridge
 #   * qemu-zephyr          — Zephyr native_sim (NSOS), zenoh variants
 #   * qemu-zephyr-xrce     — Zephyr native_sim, XRCE variant (shared Agent port)
@@ -1198,7 +1171,7 @@ max-threads = 4
 max-threads = 1
 
 [[profile.default.overrides]]
-filter = "binary(~freertos) or binary(~nuttx) or binary(~threadx) or binary(~zephyr) or binary(~esp32) or binary(~fvp)"
+filter = "binary(~freertos) or binary(~nuttx) or binary(~threadx) or binary(~zephyr) or binary(~fvp)"
 test-group = "qemu-emulated"
 
 # phase-329 W2 consolidated ten `*_applied` binaries into ONE

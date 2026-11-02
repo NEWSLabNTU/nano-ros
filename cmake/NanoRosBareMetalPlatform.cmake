@@ -44,7 +44,6 @@ include_guard(GLOBAL)
 # The rows. `<cmake board token>` `<nros-c/nros-cpp feature>`, in pairs.
 set(_NROS_BAREMETAL_BOARD_FEATURES
     mps2-an385-baremetal platform-mps2-an385
-    esp32-c3-baremetal   platform-esp32-qemu
     CACHE INTERNAL "issue 1512 — bare-metal CMAKE board token -> nros-c platform feature")
 
 # nros_baremetal_platform_feature(<out_var> <board> <context>)

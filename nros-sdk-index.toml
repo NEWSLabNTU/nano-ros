@@ -729,163 +729,6 @@ ref = "v0.6.1"
 configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_TYPE=Release -DCORROSION_BUILD_TESTS=OFF"
 install = "cmake --build build --parallel $(nproc) --target install"
 
-# Phase 197.3 — Espressif's QEMU fork (provides the `esp32c3` machine the ESP32
-# emulator tests need; stock qemu-system-riscv32 only knows `virt`). Source-built
-# only (not hosted) — `just esp32 setup` → `nros setup --tool esp32-qemu`.
-#
-# NOT switched to a dist for issue 1273 / RFC-0099 D4, and this is the survey's
-# one MEASURED-AND-DECLINED case rather than a "nothing to point at" one:
-# `espressif/qemu` DOES publish a prebuilt `qemu-riscv32-softmmu-*` asset for
-# every host this index keys, at the EXACT pinned tag
-# (`esp-develop-9.2.2-20260417`, matching `[tool.esp32-qemu.source].ref`) — so
-# the obvious move is "point at it, the `[tool.zephyr-sdk]` pattern". Verified
-# 2026-09-11 by downloading the `x86_64-linux-gnu` asset and running `ldd`
-# with `LD_LIBRARY_PATH` unset: it is a FULL GUI QEMU build — SDL2, X11,
-# Wayland, PulseAudio, D-Bus, systemd, libdecor, 55 shared libraries in total —
-# the opposite of what the `--disable-*` recipe below exists to produce. That
-# recipe's own header already measured `check-dist-runtime-deps` finding 69
-# undeclared sonames on an unpinned configure; taking this asset would not
-# avoid that work, it would make it PERMANENT — every one of those 55 libraries
-# becoming a `[prereq.*]` this index carries forever, to remove one source
-# build. Declared on the dist-or-reason ratchet
-# (`.config/dist-or-reason-baseline.txt`) rather than silently left off it.
-# DORMANT (issue 1525): ESP32 support is parked. Kept for future use — uncomment with the rest of the platform.
-# [tool.esp32-qemu]
-# version = "esp-develop-nros1"
-# Source-built (no dist): the first three are BUILD deps of qemu's meson
-# configure — found undeclared when the configure died on glib-2.0 (phase-327 W4
-# applied to source recipes; probed BEFORE the build so the failure names
-# packages).
-#
-# The rest are RUNTIME sonames the built binary linked, found by
-# `check-dist-runtime-deps` against a source build of this very recipe. Each was
-# already a `[prereq.*]` key; only this list was missing them, which is the
-# hand-authored half issue 0926 named.
-#
-# They were called core, and three of them are NOT — read off the fork's own
-# `meson.build` at the pinned tag (issue 1006). Unconditional: `zlib`
-# (`dependency('zlib', required: true)`) and `pcre2` (glib's transitive).
-# `selinux` and curses -> `libtinfo` are AUTO-DETECTED features like every other
-# backend, and qemu links no openssl anywhere in `meson.build` at all — `libssl3`
-# arrived through libcurl/libssh, which the `configure` below now disables BY
-# NAME. So those three are expected to leave the closure on the next rebuild.
-# They stay declared until one happens: `check-dist-runtime-deps` checks
-# COVERAGE, not minimality, so an over-declaration is safe, while deleting them
-# without a re-measure would be a guess.
-# system = [
-#     "libglib2-dev",
-#     "libpixman-dev",
-#     "libgcrypt-dev",
-#     "libssl3",
-#     "libpcre2",
-#     "libselinux1",
-#     "libtinfo6",
-#     "libz1",
-# ]
-# upstream = "esp-develop"
-# [tool.esp32-qemu.source]
-# git = "https://github.com/espressif/qemu"
-# A tag, not a bare SHA: nros's source-build clones by ref (git clone --branch),
-# which needs a branch/tag. esp-develop line provides the `esp32c3` machine.
-# ref = "esp-develop-9.2.2-20260417"
-# `--disable-werror` — this fork is pinned to the esp-develop 9.2.2 line, and
-# QEMU builds -Werror by default, so any compiler NEWER than the fork fails on
-# warnings in upstream's own code rather than on anything we did. Observed with
-# gcc 16.1.1: `util/log.c:188` takes `char *pidstr = strstr(filename, "%")`,
-# which newer headers type as `const char *` →
-# `-Werror=discarded-qualifiers`, 643 objects into a 2670-object build. Pinning
-# the source and not the compiler makes this inevitable on a rolling host; the
-# alternative (patching upstream C in a vendored fork we do not maintain) is
-# strictly worse. `[tool.qemu]` does not need it — it is 11.0.0 and normally
-# arrives as a prebuilt `dist`.
-#
-# issue 1006 — THE REST OF THIS LINE IS A LINK-SURFACE PIN, not taste. qemu's
-# configure AUTO-DETECTS every optional backend: a feature whose `--enable-`/
-# `--disable-` is not passed stays `auto`, so `dependency(..., required:
-# get_option(<f>))` resolves against whatever dev headers the BUILD HOST happens
-# to carry and the binary links them. This recipe is source-built with NO dist —
-# every user runs it — so an unpinned feature makes the runtime dependency set a
-# property of the machine rather than of the recipe. Measured:
-# `check-dist-runtime-deps` against a source build here found 69 sonames no
-# `[prereq.*]` declares (audio, X11, curl/ssh/usb/dbus), which is exactly why
-# DECLARING them would have recorded one host's accident as a contract.
-#
-# What is left reachable is what `-M esp32c3 -icount 3 -nographic -drive
-# file=...,if=mtd,format=raw -nic user,model=open_eth` needs (the invocation in
-# `scripts/esp32/launch-esp32c3.sh` and `nros-tests/src/esp32.rs`): TCG, the raw
-# block layer, slirp, and gcrypt for the fork's secure-boot crypto. The rest is
-# off BY NAME, in groups: UI, audio, host-device passthrough, network/format
-# block drivers, TLS, and the remaining host libraries.
-#
-# NOT `--audio-drv-list=` on its own, which is the fix the issue prescribed and
-# which the tag REFUTES: `audio/meson.build` builds a module for every driver
-# whose dependency `.found()`, not for the ones named in `audio_drv_list`, so an
-# empty list only changes `CONFIG_AUDIO_DRIVERS` and leaves libasound/libpulse
-# (and libpulse's libsndfile/FLAC/vorbis/ogg/X11 tail) linked. The per-driver
-# `--disable-alsa --disable-pa ...` is what cuts them, and with all of them off
-# the default list resolves to empty anyway, so the list flag buys nothing.
-#
-# Every flag token here is ACCEPTED BY THIS TAG — checked against the fork's own
-# generated `scripts/meson-buildoptions.sh` and configure's case list at
-# `esp-develop-9.2.2-20260417`, where an unrecognised option is `ERROR: unknown
-# option`, a hard configure failure. What the resulting closure actually is
-# stays UNMEASURED until someone runs `nros setup --tool esp32-qemu` and re-runs
-# `check-dist-runtime-deps` (this recipe was not rebuilt to land the pin).
-#
-# Left auto DELIBERATELY: fdt (the riscv boards require it), pixman, zlib
-# (`required: true`), and the slirp/gcrypt pair enabled above.
-# configure = "./configure --target-list=riscv32-softmmu --prefix={prefix} --enable-gcrypt --enable-slirp --disable-werror --disable-strip --disable-user --disable-capstone --disable-docs --disable-tools --disable-guest-agent --disable-gtk --disable-vnc --disable-sdl --disable-sdl-image --disable-curses --disable-spice --disable-spice-protocol --disable-dbus-display --disable-opengl --disable-virglrenderer --disable-png --disable-vte --disable-xkbcommon --disable-alsa --disable-pa --disable-jack --disable-oss --disable-sndio --disable-pipewire --disable-libusb --disable-usb-redir --disable-smartcard --disable-u2f --disable-canokey --disable-brlapi --disable-libudev --disable-mpath --disable-curl --disable-libssh --disable-rbd --disable-glusterfs --disable-libiscsi --disable-libnfs --disable-blkio --disable-fuse --disable-gnutls --disable-seccomp --disable-cap-ng --disable-attr --disable-virtfs --disable-numa --disable-selinux --disable-libdw --disable-libcbor --disable-libkeyutils --disable-auth-pam --disable-vde --disable-af-xdp --disable-bpf --disable-linux-aio --disable-linux-io-uring --disable-libpmem --disable-libdaxctl --disable-zstd --disable-lzo --disable-snappy --disable-bzip2 --disable-lzfse"
-# install = "ninja -C build -j$(nproc) && ninja -C build install"
-
-# issue 0486 — espflash packs an ELF into the ESP32 flash image the QEMU runner
-# and the e2e tests actually boot (`espflash save-image --merge`). It was
-# documented in prose only (`docs/guides/esp32-setup.md`) and reachable solely by
-# a hand-run `cargo install`, so a host that completed `just esp32 setup` still
-# produced NO flash images — the pack step warned and the lane exited 0. That is
-# issue 0399's shape one dependency over: 0399 declared `riscv-none-elf-gcc`
-# because a documented-provisioned host could not COMPILE the example; this is
-# the same claim about the PACK step.
-#
-# PREBUILT (issue 1273 / RFC-0099 D4): esp-rs publishes release binaries —
-# a bare `espflash` at the zip root, the `[tool.ninja]` shape. linux-x86_64
-# takes the `-musl` asset (statically linked — `ldd` prints "statically
-# linked", so like the sccache dist above there is no glibc floor to track at
-# all); no musl asset is published for aarch64, so linux-arm64 takes the `-gnu`
-# one (dynamic, but glibc/libgcc/libm only — no `system` declaration needed,
-# matching the source recipe's own "NO system" finding below). Every asset's
-# `--version` was run after download and printed `espflash 4.5.0`, verified
-# 2026-09-11.
-#
-# The SOURCE recipe stays as the fallback and its own rationale, since a host
-# off the three built arches still needs it: pinned like every other cargo
-# tool here (`[tool.sccache]`) rather than a bare
-# `cargo install espflash`, which would resolve against crates.io at whatever
-# version is current that day — the drift the pinning convention and the
-# project-wide `--locked` shim exist to prevent. The binary lives in the
-# `espflash/` subdir of the workspace (`cargo-espflash/` is the separate
-# cargo-subcommand front end and is not wanted here).
-#
-# NO `system = [...]`: verified by building it on a clean host 2026-08-10 —
-# `serialport v4.9.0` compiles with no libudev dev package present, so the
-# historical libudev requirement no longer applies. Probed rather than assumed,
-# because an undeclared system dep is the RFC-0062 class that `[tool.sccache]`
-# carries `--features vendored-openssl` to avoid.
-# DORMANT (issue 1525): ESP32 support is parked. Kept for future use — uncomment with the rest of the platform.
-# [tool.espflash]
-# version = "4.5.0-nros1"
-# upstream = "v4.5.0" # = source.ref (esp-rs/espflash release tag)
-# smoke = [
-#     { run = "bin/espflash --version", expect = "espflash 4.5.0" },
-# ]
-# dist.linux-x86_64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-x86_64-unknown-linux-musl.zip", sha256 = "542c5cc81f0cca384cbead1cacb7ccc9f35072a989b2de0fb95333d814272c22", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { none = "statically linked (x86_64-unknown-linux-musl): no PT_INTERP, no DT_NEEDED" } }
-# dist.linux-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-unknown-linux-gnu.zip", sha256 = "2d5972b9c18fc89bf253e60fe6df6a4f8db3aee5db0166b2c97b53bd21c01f09", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { glibc = "2.34" } }
-# dist.macos-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-apple-darwin.zip", sha256 = "6614ff70e523a6bce5f4ccc6459b77275f5e7e900429004bb7eec463c95db28a", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { macos = "11.0" } }
-# system = ["unzip"]
-# [tool.espflash.source]
-# git = "https://github.com/esp-rs/espflash"
-# ref = "v4.5.0"
-# install = "cargo install --path espflash --root {prefix} --locked"
-
 # 194.3c — genromfs: the NuttX rv-virt board's src/Makefile unconditionally bakes
 # an etc/ ROMFS (RCSRCS = etc/init.d/{rc.sysinit,rcS}) via `genromfs`, so any
 # rv-virt `make export` needs it on PATH. The qemu-armv7a board has no RCSRCS, so
@@ -1623,24 +1466,6 @@ platform = "threadx"
 # runs on the host; the zenoh daemon comes from rmw.zenoh
 packages = ["threadx", "threadx-netxduo"]
 
-# phase-437 W5 (RFC-0093 §4) — the rule's own witness: the cmake overlay
-# already read "board overlay for ESP32-C3 (real silicon) + ESP32-C3 QEMU" —
-# one name, both, because the name is the PART. This key was the emulator
-# spelling of the same board and collapses into it.
-# DORMANT (issue 1525): ESP32 support is parked. Kept for future use — uncomment with the rest of the platform.
-# [board.esp32-c3-baremetal]
-# arch = "riscv32"
-# platform = "bare-metal"
-# issue 0399 — the board compiles zpico C for riscv32imc and needs a riscv
-# cross gcc. `riscv-none-elf-gcc` is the xPack multilib toolchain (rv32imc /
-# ilp32 capable); declaring it here means `nros setup esp32-c3-baremetal`
-# provisions the compiler zpico-build's detection now looks for, instead of
-# leaving a documented-provisioned host unable to build the example.
-# issue 0486 — `espflash` joins `riscv-none-elf-gcc` for the same reason 0399
-# added that one: without it a documented-provisioned host builds every ELF and
-# then produces no flash image, with the lane exiting 0.
-# packages = ["riscv-none-elf-gcc", "espflash"]
-
 [board.fvp-aemv8r-smp]
 arch = "aarch64"
 platform = "bare-metal"
@@ -2044,7 +1869,7 @@ pip = "lark"
 
 [prereq.libglib2-dev]
 role = "infra"
-why = "qemu source builds (esp32-qemu meson configure)"
+why = "qemu source builds (meson configure)"
 apt = ["libglib2.0-dev"]
 dnf = ["glib2-devel"]
 pacman = ["glib2"]
@@ -2495,7 +2320,6 @@ locked_roots = [
     "packages/cli/colcon-cargo-ros2/test/rust-sample-package",
     "packages/cli/nros-launch-resolve",
     "packages/drivers/net/nros-smoltcp",
-    "packages/drivers/net/openeth-smoltcp",
     "packages/drivers/serial/cmsdk-uart",
     "packages/drivers/serial/stm32f4-usart",
     "packages/reference/stm32f4-porting/polling",
@@ -2504,7 +2328,6 @@ locked_roots = [
     # phase-527 W3 (RFC-0119 D5) — the runner packages and `nros-extension`,
     # a closed-graph host-tool root like `packages/cli`.
     "packages/runners",
-    "packages/testing/nros-smoke/esp32-hello-world",
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     "packages/verification/nros-verification",
 ]
@@ -2643,11 +2466,6 @@ check = { cmd = "cargo-nextest" }
 [rust.cargo-tool.llvm-cov]
 crate = "cargo-llvm-cov"
 check = { cmd = "cargo-llvm-cov" }
-
-# DORMANT (issue 1525): ESP32 support is parked. Kept for future use — uncomment with the rest of the platform.
-# [rust.cargo-tool.espflash]
-# crate = "espflash"
-# check = { cmd = "espflash" }
 
 # phase-485 W9 (RFC-0104 D8) — developer-only tools over the pin set, never
 # reached from a user build: cargo-deny runs `just check deny`; cargo-edit's

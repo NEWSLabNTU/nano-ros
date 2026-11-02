@@ -31,7 +31,6 @@ ENTRY_FILES = [
     "packages/boards/nros-board-threadx/src/entry.rs",
     "packages/boards/nros-board-nuttx/src/lib.rs",
     "packages/boards/nros-board-mps2-an385/src/entry.rs",
-    "packages/boards/nros-board-esp32-qemu/src/board_entry.rs",
     "packages/boards/nros-board-common/c/nros_rtos_run_components.c",
     "packages/api/nros-cpp/include/rclcpp/detail/main.hpp",
     "packages/api/nros-cpp/include/rclcpp/detail/driven_future.hpp",

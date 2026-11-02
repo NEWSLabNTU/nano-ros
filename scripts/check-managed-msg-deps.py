@@ -26,7 +26,7 @@ subject.
 
 * A leaf whose `system.toml` deploys only to a board the registry
   (`packages/boards/board-support.toml`) derives as "Not supported": no lane
-  builds it, so its manifest is parked as-is (ESP32 is dormant, issue 1525).
+  builds it, so its manifest is parked as-is (none today: the ESP32-C3 was, until it retired).
   DERIVED from the leaf's own board, never a path list.
 * Rows a different generator owns, keyed on (manifest, crate) in `EXEMPT` with
   the reason as the value.
@@ -201,9 +201,10 @@ def self_test() -> None:
     assert findings_in("packages/core/nros-node/Cargo.toml", core) == []
     assert findings_in(m, '[workspace]\nmembers = ["generated/x"]\n') == []
     assert findings_in(m, '[dependencies]\n# x = { path = "generated/x" }\n') == []
-    # the registry derivation names the dormant board, and only it
+    # the registry derivation never parks a supported board (the one parked
+    # board, the ESP32-C3, retired in phase-521 W6)
     parked = parked_boards(REPO)
-    assert "esp32-c3-baremetal" in parked and "linux" not in parked, parked
+    assert "linux" not in parked, parked
     problems = Exemptions(EXEMPT, what="row").check(NEIGHBOURS)
     assert not problems, problems
 

@@ -496,7 +496,7 @@ impl CAbiRunners {
 ///   `app_main` came up undefined.
 /// - ThreadX (phase 246): the host sim and bare-metal qemu-riscv64.
 ///
-/// Board keys with no RTOS are NOT here: `esp32-qemu`, `rtic-mps2-an385` and
+/// Board keys with no RTOS are NOT here: `rtic-mps2-an385` and
 /// the bare-metal `mps2-an385`. A C or C++ entry has no runner for them, so
 /// asking for their family is an error, not a guess.
 pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
@@ -633,9 +633,36 @@ pub const RETIRED_BOARD_KEYS: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// The refusal for a retired board key (see [`RETIRED_BOARD_KEYS`]), naming
-/// its replacement; `None` for any other key.
+/// Board keys whose BOARD is gone, with no replacement to name: `(key, why)`.
+///
+/// [`RETIRED_BOARD_KEYS`] renames a board; this table removes one. The same
+/// [`retired_board_key_hint`] answers both, so a removed key is refused with
+/// its reason wherever it is written instead of as an unknown word.
+///
+/// phase-521 W6 — the ESP32-C3 under QEMU (`nros-board-esp32-qemu`, every name
+/// it answered to) retired under RFC-0113 D5: it had no receive interrupt and
+/// no one-shot timer behind a wake object, so its executor could not park and
+/// nano-ros could not keep its real-time wait promise there.
+pub const REMOVED_BOARD_KEYS: &[(&str, &str)] = &[
+    ("esp32-c3-baremetal", ESP32_REMOVED),
+    ("esp32-qemu", ESP32_REMOVED),
+    ("esp32-c3", ESP32_REMOVED),
+    ("esp32c3", ESP32_REMOVED),
+    ("esp32", ESP32_REMOVED),
+];
+
+const ESP32_REMOVED: &str = "the ESP32-C3 board is retired with no replacement: it had \
+     no receive interrupt and no one-shot timer behind a wake object, so an executor \
+     on it could not park, and nano-ros does not support a board where it cannot keep \
+     its real-time wait promise (RFC-0113 D5; issue 1525)";
+
+/// The refusal for a retired board key (see [`RETIRED_BOARD_KEYS`] and
+/// [`REMOVED_BOARD_KEYS`]), naming its replacement or its reason; `None` for
+/// any other key.
 pub fn retired_board_key_hint(key: &str) -> Option<alloc::string::String> {
+    if let Some((_, why)) = REMOVED_BOARD_KEYS.iter().find(|(old, _)| *old == key) {
+        return Some(alloc::format!("board `{key}` is retired: {why}."));
+    }
     let (_, now, why) = RETIRED_BOARD_KEYS.iter().find(|(old, _, _)| *old == key)?;
     Some(alloc::format!(
         "board `{key}` is retired: write `{now}`. {why}."
@@ -682,7 +709,7 @@ pub const NO_RTOS_TIER_KEY: &str = "";
 ///
 /// Read from [`BOARD_KEYS`]. A key the table does not know gets
 /// [`NO_RTOS_TIER_KEY`], never a guess from how the key is spelled. That covers
-/// a no-RTOS Rust board (`esp32-qemu`, `rtic-mps2-an385`, bare `mps2-an385`)
+/// a no-RTOS Rust board (`rtic-mps2-an385`, bare `mps2-an385`)
 /// and an out-of-tree board. The old substring match read `my-freertos-board`
 /// as FreeRTOS and `s32z270` as the host.
 ///
@@ -725,7 +752,6 @@ mod tests {
             "zephyr-custom",
             "nuttx-fork",
             "threadx-port",
-            "esp32-qemu",
             "rtic-mps2-an385",
             "mps2-an385",
             "stm32f4",
@@ -910,12 +936,32 @@ mod tests {
         );
     }
 
+    /// phase-521 W6 — every removed esp32 key is refused naming RFC-0113,
+    /// never offered a replacement and never mapped.
+    #[test]
+    fn a_removed_esp32_key_is_refused_naming_rfc_0113() {
+        for key in [
+            "esp32-c3-baremetal",
+            "esp32-qemu",
+            "esp32-c3",
+            "esp32c3",
+            "esp32",
+        ] {
+            let hint = retired_board_key_hint(key).expect(key);
+            assert!(
+                hint.contains("RFC-0113 D5") && !hint.contains("write `"),
+                "{hint}"
+            );
+            assert!(board_family(key).is_err(), "`{key}` still has a family");
+        }
+    }
+
     /// Issue 1285 — an unknown key is an error, never the host. The message
     /// names every known key, so the fix is visible from the failure.
     #[test]
     fn an_unknown_key_is_an_error_naming_the_known_keys() {
         use alloc::string::ToString;
-        for key in ["zigos", "", "esp32-qemu", "mps2-an385", "NATIVE"] {
+        for key in ["zigos", "", "mps2-an385", "NATIVE"] {
             let err = board_family(key).expect_err(key);
             assert_eq!(err.key, key);
             let msg = err.to_string();

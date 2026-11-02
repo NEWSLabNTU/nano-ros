@@ -182,12 +182,6 @@ export NROS_KIND_ZEPHYR_FIXTURE_BUILD="zephyr-fixture-build"
 # Rust twin is `nros_tests::kind::ZEPHYR_WORKSPACE_BUILDS`.
 export NROS_KIND_ZEPHYR_WORKSPACE_BUILDS="zephyr-workspace-builds"
 export NROS_KIND_ZEPHYR_FIXTURE_MAKE_DRIVER="zephyr-fixture-make-driver"
-# issue 0535 — the last two fixtures whose path was a literal on BOTH sides.
-export NROS_KIND_ESP32_QEMU="esp32-qemu"
-# The RISC-V zenoh-pico archive for ESP32 — DISTINCT from `qemu-zenoh-pico`
-# (the ARM one). Folding the two together in `just esp32 clean` would have
-# deleted the wrong tree; caught before landing.
-export NROS_KIND_ESP32_ZENOH_PICO="esp32-zenoh-pico"
 export NROS_KIND_ZENOH_FIXTURE_POSIX="zenoh-fixture-posix"
 # Issue 0787 — host build dirs for the two C backends that had no lane.
 export NROS_KIND_XRCE_CHECK="xrce-check"

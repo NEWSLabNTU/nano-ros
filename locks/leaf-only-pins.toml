@@ -82,3 +82,23 @@ name = "rustc-hash"
 range = "2"
 why = "a dependency of bindgen or zephyr-macros in the Zephyr Rust leaves, e.g. examples/zephyr/rust/talker (issue 1937)"
 
+
+[[keep]]
+name = "ident_case"
+range = "1"
+why = "a dependency of darling_core 0.20.11, kept in locks/leaf-only-pins.toml (issue 1937)"
+
+[[keep]]
+name = "jiff"
+range = "0.2"
+why = "a dependency of env_logger 0.11.11, kept in locks/leaf-only-pins.toml (issue 1937)"
+
+[[keep]]
+name = "jiff-core"
+range = "0.1"
+why = "a dependency of jiff 0.2.37, kept in locks/leaf-only-pins.toml (issue 1937)"
+
+[[keep]]
+name = "jiff-static"
+range = "0.2"
+why = "a dependency of jiff 0.2.37, kept in locks/leaf-only-pins.toml (issue 1937)"

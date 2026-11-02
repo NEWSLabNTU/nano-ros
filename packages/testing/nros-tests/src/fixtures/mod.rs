@@ -25,7 +25,7 @@ pub use xrce_agent::*;
 pub use zenohd_router::*;
 
 // Re-export utilities for backwards compatibility
-pub use crate::{esp32::*, process::*, qemu::*, ros2::*, zephyr::*};
+pub use crate::{process::*, qemu::*, ros2::*, zephyr::*};
 
 /// Whether test fixtures (zenohd router, XRCE Agent, …) should capture their
 /// stdout/stderr to a log file. **Off by default** (the fixture uses a null
