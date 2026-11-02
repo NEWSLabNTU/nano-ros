@@ -72,6 +72,11 @@ pub struct Handoff {
     /// replacement: a build needs the user's `PATH`, `HOME`, `SSH_AUTH_SOCK`
     /// and the whole activated toolchain environment.
     pub env: Vec<(OsString, OsString)>,
+    /// The build's shared jobserver ([`super::jobserver`]): set or removed
+    /// after [`Self::env`]. Kept apart from it so [`Self::display`] stays what
+    /// a user would retype — the pool's per-run path means nothing outside
+    /// this process.
+    pub jobserver: super::jobserver::ChildEnv,
 }
 
 impl Handoff {
@@ -87,6 +92,7 @@ impl Handoff {
             args: args.into_iter().map(Into::into).collect(),
             cwd: None,
             env: Vec::new(),
+            jobserver: Vec::new(),
         }
     }
 
@@ -101,6 +107,14 @@ impl Handoff {
     #[must_use]
     pub fn with_env(mut self, key: impl Into<OsString>, value: impl Into<OsString>) -> Self {
         self.env.push((key.into(), value.into()));
+        self
+    }
+
+    /// Share `env` (from [`super::jobserver::Jobserver::child_env`]) with the
+    /// command.
+    #[must_use]
+    pub fn with_jobserver(mut self, env: &super::jobserver::ChildEnv) -> Self {
+        self.jobserver = env.clone();
         self
     }
 
@@ -159,6 +173,7 @@ impl Handoff {
         for (k, v) in &self.env {
             cmd.env(k, v);
         }
+        apply_jobserver(&mut cmd, &self.jobserver);
         cmd
     }
 }
@@ -185,7 +200,19 @@ fn prepared(handoff: &Handoff) -> Result<std::process::Command, String> {
     for (k, v) in &handoff.env {
         cmd.env(k, v);
     }
+    apply_jobserver(&mut cmd, &handoff.jobserver);
     Ok(cmd)
+}
+
+/// Set or remove each jobserver variable on `cmd`. One spelling for both
+/// [`Handoff::command`] and the handovers, so no child can miss the pool.
+fn apply_jobserver(cmd: &mut std::process::Command, env: &super::jobserver::ChildEnv) {
+    for (k, v) in env {
+        match v {
+            Some(v) => cmd.env(k, v),
+            None => cmd.env_remove(k),
+        };
+    }
 }
 
 /// Replace this process with the native build tool. **Never returns on
@@ -364,6 +391,28 @@ mod tests {
         assert_eq!(online.cwd, h.cwd, "the retry must run in the same dir");
         assert_eq!(online.env, h.env, "and with the same environment");
         assert_eq!(online.program, h.program);
+    }
+
+    /// The jobserver reaches the constructed command — set and removed — and
+    /// stays out of what a user is shown.
+    #[test]
+    fn the_jobserver_reaches_the_command_but_not_the_display() {
+        let env: super::super::jobserver::ChildEnv = vec![
+            (
+                "MAKEFLAGS".into(),
+                Some("-j2 --jobserver-auth=fifo:/p".into()),
+            ),
+            ("CMAKE_BUILD_PARALLEL_LEVEL".into(), None),
+        ];
+        let h = Handoff::new("cmake", ["--build", "."]).with_jobserver(&env);
+        let cmd = h.command();
+        let envs: Vec<_> = cmd.get_envs().collect();
+        assert!(envs.contains(&(
+            std::ffi::OsStr::new("MAKEFLAGS"),
+            Some(std::ffi::OsStr::new("-j2 --jobserver-auth=fifo:/p"))
+        )));
+        assert!(envs.contains(&(std::ffi::OsStr::new("CMAKE_BUILD_PARALLEL_LEVEL"), None)));
+        assert_eq!(h.display(), "cmake --build .");
     }
 
     #[test]

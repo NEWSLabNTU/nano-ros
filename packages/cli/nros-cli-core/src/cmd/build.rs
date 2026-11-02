@@ -127,14 +127,20 @@ pub struct Args {
     #[arg(long, value_name = "ARG", num_args = 1.., allow_hyphen_values = true)]
     pub cmake_args: Vec<String>,
 
-    /// Build up to this many packages at once. Default: one at a time.
+    /// Build up to this many packages at once, and run at most this many
+    /// jobs in total. Default: the number of CPUs.
     ///
-    /// A package starts once every package it depends on has finished. Each
-    /// package's own tool still runs its own jobs in parallel, which is why
-    /// the default is one, not colcon's one per CPU. Only for a workspace
-    /// with no bringup: the images of one workspace share a generated root,
-    /// so above one they are refused.
-    // The default and the image refusal are recorded in RFC-0117 D4's table.
+    /// A package starts once every package it depends on has finished. Every
+    /// tool below `nros build` (cargo, make, ninja, west's cmake) shares one
+    /// GNU make jobserver of N tokens, so N packages each compiling in
+    /// parallel still run N jobs, not N times N. Under a `make -jN` that
+    /// already provides a jobserver, `nros build` joins it instead. Ninja
+    /// older than 1.13 does not read a jobserver and runs at its own width;
+    /// a warning names it. The images of a workspace with a bringup share a
+    /// generated root and build one at a time, so there a value above one
+    /// is refused; their tools still share the pool.
+    // RFC-0117 D4's table records the default, the shared pool and the
+    // image refusal.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u16).range(1..))]
     pub parallel_workers: Option<u16>,
 
@@ -2326,9 +2332,9 @@ fn refuse_image_mode_flags(args: &Args, what: &str) -> Result<()> {
     if let Some(n) = args.parallel_workers.filter(|n| *n > 1) {
         eyre::bail!(
             "`--parallel-workers {n}`: the images of {what} share a generated root and its \
-             target directory, so they build one at a time; each image's own tool already \
-             runs its jobs in parallel. `--parallel-workers` applies to a workspace with no \
-             bringup, where each package builds on its own."
+             target directory, so they build one at a time, each with one job per CPU by \
+             default. Leave the flag out to get that. `--parallel-workers` above one applies \
+             to a workspace with no bringup, where each package builds on its own."
         );
     }
     Ok(())
@@ -2811,7 +2817,23 @@ pub fn run(args: Args) -> Result<()> {
             eyre::bail!("{}", crate::orchestration::drift::report(&drifts));
         }
     }
-    match drive(&plans, args.dry_run, Schedule::of(&args), &perform) {
+    // One jobserver for every tool this build runs (RFC-0117 D4). Not for a
+    // dry run, which runs nothing and prints commands a user can retype.
+    let workers = default_workers(args.parallel_workers);
+    let jobs = if args.dry_run {
+        None
+    } else {
+        build_jobserver(&plans, workers)
+    };
+    if let Some(js) = &jobs {
+        share_jobserver(&mut plans, &js.child_env());
+    }
+    match drive(
+        &plans,
+        args.dry_run,
+        Schedule::of(&args, jobs.as_ref()),
+        &perform,
+    ) {
         Ok(()) => {
             if !args.dry_run {
                 let drifts = record_project_lock(&plans, args.nano_ros_path.clone())?;
@@ -3082,6 +3104,87 @@ pub(crate) fn report_pin_outcome(
     Ok(line)
 }
 
+/// The build's one jobserver: joined from `MAKEFLAGS` when an outer make
+/// provides one, otherwise created with `workers` tokens. `None` only when
+/// neither works, which is said, and the build then runs as each tool decides.
+///
+/// Also says when a ninja that will run cannot read the pool, so its width is
+/// never added to the others silently.
+fn build_jobserver(
+    plans: &[ResolvedBuild],
+    workers: usize,
+) -> Option<crate::builder::jobserver::Jobserver> {
+    use crate::builder::jobserver::{self as js, Jobserver, Style};
+    let generator = std::env::var("CMAKE_GENERATOR").ok();
+    let has = |d: Driver| plans.iter().any(|p| p.driver == d);
+    let mut pool = None;
+    if let Ok(flags) = std::env::var("MAKEFLAGS") {
+        match Jobserver::join(&flags) {
+            Ok(found) => pool = found,
+            Err(why) => eprintln!("nros build: not joining the calling make's jobserver: {why}"),
+        }
+    }
+    let pool = match pool {
+        Some(p) => p,
+        None => {
+            let style = if has(Driver::CMake) {
+                js::choose_style(generator.as_deref(), js::tool_version("make"))
+            } else {
+                Style::Fifo
+            };
+            match Jobserver::create(workers, style) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!(
+                        "nros build: could not create a jobserver ({e}); each tool runs at \
+                         its own width"
+                    );
+                    return None;
+                }
+            }
+        }
+    };
+    let ninja_runs = has(Driver::West)
+        || (has(Driver::CMake) && generator.as_deref().is_some_and(|g| g.contains("Ninja")));
+    if ninja_runs {
+        let why = match (pool.style(), js::tool_version("ninja")) {
+            (Style::Pipe, _) => Some(
+                "the jobserver is a pipe (the make on PATH is older than 4.4), which ninja \
+                 does not read"
+                    .to_string(),
+            ),
+            (Style::Fifo, Some(v)) if v < js::NINJA_CLIENT => Some(format!(
+                "ninja {}.{} does not read a jobserver (1.13 and later do)",
+                v.0, v.1
+            )),
+            _ => None,
+        };
+        if let Some(why) = why {
+            eprintln!(
+                "nros build: {why}; each ninja runs at its own width on top of the shared \
+                 jobs."
+            );
+        }
+    }
+    Some(pool)
+}
+
+/// Give every child a plan runs (kernel step, configure, entry-root clean,
+/// build) the jobserver's environment.
+fn share_jobserver(plans: &mut [ResolvedBuild], env: &crate::builder::jobserver::ChildEnv) {
+    for p in plans {
+        let steps = p
+            .kernel
+            .iter_mut()
+            .chain(p.configure.iter_mut())
+            .chain(p.handoff.iter_mut())
+            .chain(p.entry_root.iter_mut().map(|er| &mut er.clean));
+        for h in steps {
+            h.jobserver = env.clone();
+        }
+    }
+}
+
 /// The native build's own failing exit status, carried out of [`drive`] so
 /// `nros build` exits with it.
 ///
@@ -3128,30 +3231,48 @@ fn perform(hand: &Handoff) -> Result<()> {
     .into())
 }
 
-/// How [`drive`] runs the plans: `--parallel-workers` and
-/// `--continue-on-error`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Schedule {
-    /// The most plans running at once. One is today's sequential loop.
+/// How [`drive`] runs the plans: `--parallel-workers`, the build's shared
+/// jobserver, and `--continue-on-error`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Schedule<'a> {
+    /// The most plans running at once. One is the sequential loop. Images
+    /// never overlap one another whatever this says: they share a generated
+    /// root.
     pub workers: usize,
     /// Keep going past a failed plan, skipping what depends on it.
     pub continue_on_error: bool,
+    /// The pool every plan's tools draw from. A plan runs on this process's
+    /// own implicit token when it is free, and otherwise holds one token from
+    /// the pool for as long as it runs, so plans and their tools together
+    /// never exceed the pool. `None` runs plans without tokens (tests, dry
+    /// runs).
+    pub jobs: Option<&'a crate::builder::jobserver::Jobserver>,
 }
 
-impl Default for Schedule {
+impl Default for Schedule<'_> {
     fn default() -> Self {
         Schedule {
             workers: 1,
             continue_on_error: false,
+            jobs: None,
         }
     }
 }
 
-impl Schedule {
-    fn of(args: &Args) -> Self {
+/// `--parallel-workers`, or colcon's default: the number of CPUs.
+pub(crate) fn default_workers(explicit: Option<u16>) -> usize {
+    explicit.map_or_else(
+        || std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get),
+        usize::from,
+    )
+}
+
+impl<'a> Schedule<'a> {
+    fn of(args: &Args, jobs: Option<&'a crate::builder::jobserver::Jobserver>) -> Self {
         Schedule {
-            workers: args.parallel_workers.map_or(1, usize::from),
+            workers: default_workers(args.parallel_workers),
             continue_on_error: args.continue_on_error,
+            jobs,
         }
     }
 }
@@ -3233,7 +3354,7 @@ fn perform_plan(
 fn drive(
     plans: &[ResolvedBuild],
     dry_run: bool,
-    sched: Schedule,
+    sched: Schedule<'_>,
     handover: &(dyn Fn(&Handoff) -> Result<()> + Sync),
 ) -> Result<()> {
     let total = plans.len();
@@ -3278,9 +3399,12 @@ fn drive(
 
     let edges = plan_edges(plans);
     let workers = sched.workers.clamp(1, total.max(1));
+    // The third field: whether this process's implicit jobserver token is
+    // free for the next plan to run on.
     let state = std::sync::Mutex::new((
         vec![PlanState::Pending; total],
         Vec::<(usize, eyre::Report)>::new(),
+        true,
     ));
     let wake = std::sync::Condvar::new();
 
@@ -3322,8 +3446,14 @@ fn drive(
                 None
             };
         }
+        // Images share a generated root and its target directory, so one
+        // waits for another; packages (and host tools) overlap freely.
+        let image_running =
+            (0..total).any(|j| st[j] == PlanState::Running && plans[j].package_depends.is_none());
         let ready = (0..total).find(|&i| {
-            st[i] == PlanState::Pending && edges[i].iter().all(|&d| st[d] == PlanState::Done)
+            st[i] == PlanState::Pending
+                && edges[i].iter().all(|&d| st[d] == PlanState::Done)
+                && !(image_running && plans[i].package_depends.is_none())
         });
         match ready {
             Some(i) => Some(Some(i)),
@@ -3339,14 +3469,14 @@ fn drive(
 
     let work = || {
         loop {
-            let i = {
+            let (i, implicit) = {
                 let mut guard = state.lock().expect("drive state");
                 loop {
                     let stop = !sched.continue_on_error && !guard.1.is_empty();
                     match next(&mut guard.0, stop) {
                         Some(Some(i)) => {
                             guard.0[i] = PlanState::Running;
-                            break i;
+                            break (i, std::mem::replace(&mut guard.2, false));
                         }
                         // Something is still running that may unblock a plan.
                         Some(None) => guard = wake.wait(guard).expect("drive state"),
@@ -3357,9 +3487,24 @@ fn drive(
                     }
                 }
             };
-            announce(i, &plans[i]);
-            let outcome = perform_plan(&plans[i], handover);
+            // Outside the lock: waiting for a token must not stop a finishing
+            // plan from recording itself (and handing its token back).
+            let token = match (implicit, sched.jobs) {
+                (false, Some(js)) => Some(js.acquire()),
+                _ => None,
+            };
+            let outcome = match token {
+                Some(Err(ref e)) => Err(eyre::eyre!("waiting for a jobserver token: {e}")),
+                _ => {
+                    announce(i, &plans[i]);
+                    perform_plan(&plans[i], handover)
+                }
+            };
+            drop(token);
             let mut guard = state.lock().expect("drive state");
+            if implicit {
+                guard.2 = true;
+            }
             match outcome {
                 Ok(()) => guard.0[i] = PlanState::Done,
                 Err(e) => {
@@ -3380,7 +3525,7 @@ fn drive(
         });
     }
 
-    let (st, mut failures) = state.into_inner().expect("drive state");
+    let (st, mut failures, _) = state.into_inner().expect("drive state");
     if failures.is_empty() {
         return Ok(());
     }
@@ -7739,6 +7884,7 @@ mod multi_image_drive_tests {
         let sched = Schedule {
             workers: 1,
             continue_on_error: true,
+            jobs: None,
         };
         let e = drive(&plans, false, sched, &|h| {
             let name = h.args[0].to_string_lossy().into_owned();
@@ -7789,6 +7935,7 @@ mod multi_image_drive_tests {
         let sched = Schedule {
             workers: 2,
             continue_on_error: false,
+            jobs: None,
         };
         drive(&plans, false, sched, &|h| {
             let name = h.args[0].to_string_lossy().into_owned();
@@ -7811,6 +7958,102 @@ mod multi_image_drive_tests {
             ["left", "right"],
             "joined started only after both deps"
         );
+    }
+
+    /// Unset, `--parallel-workers` is colcon's default: one per CPU.
+    #[test]
+    fn parallel_workers_default_to_the_cpu_count() {
+        let cpus = std::thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(1);
+        assert_eq!(default_workers(None), cpus);
+        assert_eq!(default_workers(Some(3)), 3);
+        let a = Args::try_parse_from(["build"]).expect("parses");
+        assert_eq!(Schedule::of(&a, None).workers, cpus);
+    }
+
+    /// Every command a plan runs carries the jobserver, built ones included:
+    /// asserted on the constructed `Command`, not on a build.
+    #[test]
+    fn every_step_of_a_plan_gets_the_jobserver() {
+        let js =
+            crate::builder::jobserver::Jobserver::create(2, crate::builder::jobserver::Style::Fifo)
+                .expect("pool");
+        let flags = js.makeflags().expect("owned");
+        let mut p = plan("one", nullary("cargo"));
+        p.configure = Some(nullary("cmake"));
+        p.kernel = Some(nullary("make"));
+        let mut plans = vec![p];
+        share_jobserver(&mut plans, &js.child_env());
+        let p = &plans[0];
+        for h in [&p.handoff, &p.configure, &p.kernel] {
+            let cmd = h.as_ref().unwrap().command();
+            let env: Vec<_> = cmd.get_envs().collect();
+            for k in ["MAKEFLAGS", "CARGO_MAKEFLAGS"] {
+                assert!(
+                    env.contains(&(std::ffi::OsStr::new(k), Some(std::ffi::OsStr::new(&flags)))),
+                    "{k} on `{}`: {env:?}",
+                    h.as_ref().unwrap().display()
+                );
+            }
+            assert!(env.contains(&(std::ffi::OsStr::new("CMAKE_BUILD_PARALLEL_LEVEL"), None)));
+        }
+    }
+
+    /// With a pool of two tokens, four workers over four independent packages
+    /// never run more than two at once: the plans draw from the same pool as
+    /// their tools.
+    #[test]
+    fn the_jobserver_bounds_concurrent_plans() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let js =
+            crate::builder::jobserver::Jobserver::create(2, crate::builder::jobserver::Style::Fifo)
+                .expect("pool");
+        let plans: Vec<_> = ["a", "b", "c", "d"]
+            .iter()
+            .map(|n| pkg_plan(n, &[]))
+            .collect();
+        let running = AtomicUsize::new(0);
+        let peak = AtomicUsize::new(0);
+        let sched = Schedule {
+            workers: 4,
+            continue_on_error: false,
+            jobs: Some(&js),
+        };
+        drive(&plans, false, sched, &|_| {
+            let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(now, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            running.fetch_sub(1, Ordering::SeqCst);
+            Ok(())
+        })
+        .expect("builds");
+        assert_eq!(peak.into_inner(), 2, "two tokens, two plans at once");
+        assert_eq!(js.available().unwrap(), 1, "every token came back");
+    }
+
+    /// Images never overlap, whatever the worker count: they share a
+    /// generated root.
+    #[test]
+    fn images_build_one_at_a_time_under_any_worker_count() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let plans = vec![plan("one", nullary("true")), plan("two", nullary("true"))];
+        let running = AtomicUsize::new(0);
+        let peak = AtomicUsize::new(0);
+        let sched = Schedule {
+            workers: 4,
+            continue_on_error: false,
+            jobs: None,
+        };
+        drive(&plans, false, sched, &|_| {
+            let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(now, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            running.fetch_sub(1, Ordering::SeqCst);
+            Ok(())
+        })
+        .expect("builds");
+        assert_eq!(peak.into_inner(), 1);
     }
 
     /// A failing non-final image stops the run and names itself.
