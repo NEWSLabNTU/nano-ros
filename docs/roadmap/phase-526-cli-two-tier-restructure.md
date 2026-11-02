@@ -118,7 +118,7 @@ named by the package; it and `--build-type` are parsed hidden and refused
 naming the flag to use.
 
 **Follow-up — `--parallel-workers` matches colcon, under one jobserver:
-DONE** (PR TBD). The default is colcon's, the CPU count, and the same N sizes
+DONE** (#3026). The default is colcon's, the CPU count, and the same N sizes
 one GNU make jobserver that `nros build` creates (or joins, under an outer
 `make -jN`) and hands to every child, so total jobs stay at N rather than
 N². `builder::jobserver` owns the pool; a plan starts holding a token;
