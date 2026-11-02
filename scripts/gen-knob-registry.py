@@ -19,7 +19,9 @@ equal. Every spelling of a knob derives from its row:
            stops the build naming `NROS_<id>`. The column stays as that
            error table for good: an unlisted old name would be ignored.
   Kconfig  `CONFIG_<kconfig>`, default `CONFIG_NROS_<id>`
-  TOML     `[knobs.<toml>]`, where the ladder has a key for it
+  TOML     `[knobs.<toml>]`, where a typed tenant of the ladder has a key for
+           it. A board's `[knobs]` takes every row by its image key; a row
+           with no `toml` is carried in the image's rows (issue 2194).
   image    `[image.<id>.knobs.<group>] <name>` in a project's system.toml
            (phase-484 W8): the `toml` key where the row has one, so a project
            and a board spell a knob the same way, else the id split at its

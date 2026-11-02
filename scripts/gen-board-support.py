@@ -201,15 +201,13 @@ def twin_facts(index: dict, sdk_index: dict, p: dict) -> dict:
                          "locator its image dials")
     image = ["[image.twin]", f'board = "{key}"', 'rmw = "zenoh"',
              f'locator = "{p["twin_locator"]}"']
-    groups: dict[str, list[str]] = {}
-    for knob in p.get("twin_knobs", []):
-        m = re.fullmatch(r"(\w+)\.(\w+)\s*=\s*(\S+)", knob)
-        if not m:
-            raise SystemExit(f"{where}: twin_knobs entry {knob!r} must read "
-                             "`<group>.<name> = <value>`")
-        groups.setdefault(m.group(1), []).append(f"{m.group(2)} = {m.group(3)}")
-    for g, lines in groups.items():
-        image += ["", f"[image.twin.knobs.{g}]", *lines]
+    # Issue 2194 -- the board's RAM knobs are its descriptor's `[knobs]`, which
+    # every road carries below the image's own; restating them here typed one
+    # fact twice. The field is refused, naming where the knobs live.
+    if "twin_knobs" in p:
+        raise SystemExit(f"{where}: `twin_knobs` is retired (issue 2194) -- a board's "
+                         f"knobs are its descriptor's top-level `[knobs.<group>]` "
+                         f"({ref[0]}), which the twin image inherits")
     family = west_board.split("/")[0]
     modules = sorted(name for name, m in sdk_index.get("zephyr_module", {}).items()
                      if line in (m.get("lines") or []) and family in (m.get("needed_by") or []))
@@ -553,10 +551,14 @@ def self_test() -> None:
         assert "[board.run.renode] link" in str(e), e
     idx["entries"][("d/nros-board.toml", 0)]["run"]["renode"] = {"link": "u3"}
     facts = twin_facts(idx, {"zephyr_module": {"hal_m": {"lines": ["3.7"],
-                                                          "needed_by": ["m"]}}},
-                       {**probe, "twin_knobs": ["zenoh.a = 0"]})
+                                                          "needed_by": ["m"]}}}, probe)
     assert facts["modules"] == ["hal_m"] and facts["link"] == "u3", facts
-    assert "[image.twin.knobs.zenoh]\na = 0" in facts["image_toml"], facts
+    assert "knobs" not in facts["image_toml"], facts
+    try:
+        twin_facts(idx, {}, {**probe, "twin_knobs": ["zenoh.a = 0"]})
+        raise AssertionError("a twin track restating knobs was accepted")
+    except SystemExit as e:
+        assert "issue 2194" in str(e) and "[knobs" in str(e), e
     rows = render_boot_rows(Fake())
     assert '("a.md", "v", "b"),' in rows, rows
     with tempfile.TemporaryDirectory() as d:

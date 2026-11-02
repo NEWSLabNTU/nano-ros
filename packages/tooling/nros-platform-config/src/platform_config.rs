@@ -212,6 +212,65 @@ pub struct Knobs {
     /// learning its name.
     #[serde(flatten, default)]
     pub backends: BTreeMap<String, BackendKnobs>,
+    /// Issue 2194 — EVERY registry knob a BOARD states, keyed by the row's
+    /// `image_key` (`zenoh.max_subscribers`, `zephyr.heap_size`,
+    /// `executor.max_cbs`) — the spelling an image uses in
+    /// `[image.<id>.knobs.<group>]`.
+    ///
+    /// Filled only by [`Knobs::deserialize_board`], which a board descriptor's
+    /// `[knobs]` goes through; a platform file keeps the plain typed parse, so
+    /// a board-only key there is still refused as an unknown field. A key a
+    /// typed tenant above holds is in both places; a key none holds (a
+    /// registry row with no `toml` column, [`is_board_only_knob`]) is only
+    /// here. The set is DERIVED from the knob registry, never a list kept
+    /// here (`a_registry_toml_row_is_a_typed_tenant_field` holds the `toml`
+    /// column and the tenants equal).
+    ///
+    /// No build script reads this map: a typed tenant reaches a build script
+    /// through `NROS_BOARD_TOML`. The CLI renders it into the image's rows,
+    /// below the image's own knobs (`nros_cli_core::cmd::leaf_settings::
+    /// board_rung`): the board-only keys on every road, and every key on the
+    /// Zephyr road, which carries no `NROS_BOARD_TOML`.
+    #[serde(skip)]
+    pub registry: BTreeMap<String, toml::Value>,
+}
+
+/// `<path>.<leaf>` in `t`, cloned, if every step is a table.
+fn get_path(t: &toml::Table, path: &[&str], leaf: &str) -> Option<toml::Value> {
+    match path.split_first() {
+        None => t.get(leaf).cloned(),
+        Some((first, rest)) => match t.get(*first) {
+            Some(toml::Value::Table(sub)) => get_path(sub, rest, leaf),
+            _ => None,
+        },
+    }
+}
+
+/// Remove and return `<path>.<leaf>` from `t`, if every step is a table.
+fn take_path(t: &mut toml::Table, path: &[&str], leaf: &str) -> Option<toml::Value> {
+    match path.split_first() {
+        None => t.remove(leaf),
+        Some((first, rest)) => match t.get_mut(*first) {
+            Some(toml::Value::Table(sub)) => take_path(sub, rest, leaf),
+            _ => None,
+        },
+    }
+}
+
+/// Drop the sub-tables along `path` that [`Knobs::from_board_table`] emptied,
+/// deepest first, so a group that held only registry knobs (`[knobs.zephyr]`)
+/// does not parse as a backend's table. A table that was empty as written is
+/// left alone.
+fn prune_emptied(t: &mut toml::Table, path: &[&str]) {
+    let Some((first, rest)) = path.split_first() else {
+        return;
+    };
+    if let Some(toml::Value::Table(sub)) = t.get_mut(*first) {
+        prune_emptied(sub, rest);
+        if sub.is_empty() {
+            t.remove(*first);
+        }
+    }
 }
 
 /// The backend whose `[knobs.<rmw>.tx]` table is a NAMED field of [`Knobs`]
@@ -228,7 +287,85 @@ pub struct BackendKnobs {
     pub tx: TxKnobs,
 }
 
+/// Issue 2194 — is the board knob `image_key` one no typed tenant of
+/// [`Knobs`] holds (a live registry row with no `toml` column)? Such a knob
+/// reaches no build script through `NROS_BOARD_TOML`, so the CLI carries it
+/// in the image's rows on every road.
+#[must_use]
+pub fn is_board_only_knob(image_key: &str) -> bool {
+    nros_zephyr_build::knob_by_image_key(image_key)
+        .is_some_and(|r| r.toml.is_none() && r.retired.is_none())
+}
+
 impl Knobs {
+    /// Issue 2194 — a BOARD descriptor's `[knobs]`: every registry knob, by
+    /// its image key, copied into [`Self::registry`]. The keys a typed tenant
+    /// holds parse as before; the rest ([`is_board_only_knob`]) are moved out
+    /// first, so a typo still fails the typed parse.
+    ///
+    /// Use as `#[serde(deserialize_with = "Knobs::deserialize_board")]`.
+    pub fn deserialize_board<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let table = toml::Table::deserialize(d)?;
+        Self::from_board_table(table).map_err(serde::de::Error::custom)
+    }
+
+    /// [`Self::deserialize_board`] for an optional `[knobs]`.
+    pub fn deserialize_board_opt<'de, D: serde::Deserializer<'de>>(
+        d: D,
+    ) -> Result<Option<Self>, D::Error> {
+        Self::deserialize_board(d).map(Some)
+    }
+
+    /// [`Self::deserialize_board`] over a table already parsed.
+    pub fn from_board_table(mut table: toml::Table) -> Result<Self, String> {
+        let mut registry = BTreeMap::new();
+        let mut emptied: Vec<Vec<&str>> = Vec::new();
+        for row in nros_zephyr_build::KNOBS
+            .iter()
+            .filter(|r| r.retired.is_none())
+        {
+            let mut path: Vec<&str> = row.image_key.split('.').collect();
+            let Some(leaf) = path.pop() else { continue };
+            // A typed tenant's key is COPIED (its tenant parses it below); a
+            // board-only key is MOVED, so the typed parse does not see it.
+            let taken = if row.toml.is_some() {
+                get_path(&table, &path, leaf).filter(|v| !v.is_table())
+            } else {
+                let v = take_path(&mut table, &path, leaf);
+                if v.is_some() {
+                    emptied.push(path.clone());
+                }
+                v
+            };
+            if let Some(v) = taken {
+                match v {
+                    toml::Value::Integer(_) | toml::Value::Boolean(_) | toml::Value::String(_) => {
+                        registry.insert(row.image_key.to_string(), v);
+                    }
+                    other => {
+                        return Err(format!(
+                            "[knobs.{}] {leaf} = {other}: {} takes an integer, a bool or a string",
+                            path.join("."),
+                            row.env
+                        ));
+                    }
+                }
+            }
+        }
+        for path in &emptied {
+            prune_emptied(&mut table, path);
+        }
+        let mut knobs: Knobs = toml::Value::Table(table).try_into().map_err(|e| {
+            format!(
+                "{e}\n(a board's `[knobs]` takes the typed tenants above and every \
+                 knob in the registry, packages/tooling/nros-zephyr-build/knobs.toml, \
+                 spelled `[knobs.<group>] <name>` as an image's `[image.<id>.knobs]` is)"
+            )
+        })?;
+        knobs.registry = registry;
+        Ok(knobs)
+    }
+
     /// Keys under `[knobs]` that are neither a named tenant nor a backend the caller knows about. Caller supplies the known set,
     /// because only it has loaded the descriptors.
     pub fn unknown_backend_keys(&self, known: &[&str]) -> Vec<String> {
@@ -3038,7 +3175,9 @@ pub struct BoardKnobsFile {
     /// at the top level: the file kind says the owner, and it applies to every
     /// `[[board]]` the file declares. The per-entry `[board.knobs]` spelling is
     /// RETIRED (phase-484 W8) and refused by [`Self::parse_for_board`].
-    #[serde(default)]
+    /// Issue 2194 — it takes every registry knob, through
+    /// [`Knobs::deserialize_board`].
+    #[serde(default, deserialize_with = "Knobs::deserialize_board")]
     pub knobs: Knobs,
     // The rest of nros-board.toml (board descriptor tables) is ignored
     // here — parsed by the board registry, not the knob ladder.
@@ -4895,5 +5034,111 @@ mod tests {
         ])
         .expect("one existing root is enough");
         assert!(tree.files.contains_key("generic"));
+    }
+}
+
+#[cfg(test)]
+mod board_registry_knob_tests {
+    use super::*;
+
+    /// `key = value` nested as the dotted key says.
+    fn nested(key: &str, value: toml::Value) -> toml::Table {
+        let mut parts: Vec<&str> = key.split('.').collect();
+        let leaf = parts.pop().unwrap();
+        let mut root = toml::Table::new();
+        let mut t = &mut root;
+        for p in parts {
+            t = t
+                .entry(p.to_string())
+                .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+                .as_table_mut()
+                .unwrap();
+        }
+        t.insert(leaf.to_string(), value);
+        root
+    }
+
+    fn typed_parses(key: &str) -> bool {
+        [
+            toml::Value::Integer(1),
+            toml::Value::Boolean(true),
+            toml::Value::String("warn".into()),
+        ]
+        .into_iter()
+        .any(|v| {
+            toml::Value::Table(nested(key, v))
+                .try_into::<Knobs>()
+                .is_ok()
+        })
+    }
+
+    /// Issue 2194 — the registry's `toml` column means "a typed tenant holds
+    /// it", which is what [`is_board_only_knob`] derives the board-only set
+    /// from. Both directions: a `toml` row parses through the typed struct,
+    /// and a row without one does not (so it can only arrive through the
+    /// registry map).
+    #[test]
+    fn a_registry_toml_row_is_a_typed_tenant_field() {
+        for r in nros_zephyr_build::KNOBS
+            .iter()
+            .filter(|r| r.retired.is_none())
+        {
+            match r.toml {
+                Some(t) => assert!(typed_parses(t), "`{t}` ({}) has no typed field", r.id),
+                None => assert!(
+                    !typed_parses(r.image_key),
+                    "`{}` ({}) parses as a typed field: give its row `toml`",
+                    r.image_key,
+                    r.id
+                ),
+            }
+        }
+    }
+
+    /// Issue 2194 — a board's `[knobs]` names any registry knob by its image
+    /// key; typed tenants keep parsing; a typo is still refused; and the
+    /// platform files' plain parse still refuses a board-only key.
+    #[test]
+    fn a_board_states_any_registry_knob() {
+        let text = "[zenoh]\nmax_large_subscribers = 0\nmax_subscribers = 1\n\
+                    [zenoh.tx]\nbatch = true\n[zephyr]\nheap_size = 32768\n\
+                    [executor]\nmax_cbs = 4\n";
+        let t: toml::Table = text.parse().unwrap();
+        let k = Knobs::from_board_table(t).expect("board knobs");
+        assert_eq!(
+            k.registry["zenoh.max_large_subscribers"].as_integer(),
+            Some(0)
+        );
+        assert_eq!(k.registry["zenoh.max_subscribers"].as_integer(), Some(1));
+        assert_eq!(k.registry["zephyr.heap_size"].as_integer(), Some(32768));
+        assert_eq!(k.zenoh.tx.batch, Some(true));
+        assert_eq!(k.executor.max_cbs, Some(4));
+        assert_eq!(k.registry["zenoh.tx.batch"].as_bool(), Some(true));
+        assert_eq!(k.registry["executor.max_cbs"].as_integer(), Some(4));
+        assert!(k.backends.is_empty(), "an emptied group is not a backend");
+
+        let typo: toml::Table = "[zenoh]\nmax_subscriber = 1\n".parse().unwrap();
+        let e = Knobs::from_board_table(typo).expect_err("a typo is refused");
+        assert!(
+            e.contains("max_subscriber") && e.contains("knobs.toml"),
+            "{e}"
+        );
+
+        let plat: Result<Knobs, _> = toml::from_str("[zephyr]\nheap_size = 1\n");
+        assert!(
+            plat.is_err(),
+            "a platform file cannot state a board-only knob"
+        );
+
+        let file = BoardKnobsFile::parse_for_board(
+            "[[board]]\nnames = [\"b\"]\n\n[knobs.zenoh]\nmax_queryables = 1\n",
+            None,
+            "b.toml",
+        )
+        .expect("the build-script reader takes it too");
+        assert_eq!(
+            file.knobs.registry["zenoh.max_queryables"].as_integer(),
+            Some(1)
+        );
     }
 }
