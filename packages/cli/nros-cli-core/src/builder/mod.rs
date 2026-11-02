@@ -29,6 +29,7 @@ pub mod dist;
 pub mod entry;
 pub mod handoff;
 pub mod host_tool;
+pub mod jobserver;
 pub mod materialize;
 pub mod paths;
 pub mod plan;

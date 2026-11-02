@@ -399,6 +399,13 @@ because nano-ros has no install prefix for it to come from. In a workspace
 with images the unit of `--continue-on-error` is the image, and
 `--parallel-workers` above one and `--build-base` are refused there.
 
+`--parallel-workers N` (default: the number of CPUs) is also the TOTAL
+number of jobs. `nros build` runs one GNU make jobserver of N tokens and
+every cargo, make and ninja below it draws from it, so building N packages
+at once does not run N times N compilers. Run under a `make -jN` that
+already has a jobserver, it joins that one. Ninja older than 1.13 cannot
+read a jobserver; when one would run, `nros build` says so.
+
 ```sh
 nros build --packages-up-to talker_pkg          # it and its dependencies
 nros build --packages-above msgs_pkg            # it and what depends on it

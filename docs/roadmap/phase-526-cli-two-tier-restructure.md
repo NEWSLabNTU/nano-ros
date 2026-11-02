@@ -112,10 +112,18 @@ Decision step, recorded in RFC-0117 D4's second table: every selection flag
 keeps refusing an unknown name and an open selection; `--packages-above`
 refuses a cargo-only member (its dependents are invisible to the `<depend>`
 graph); `--continue-on-error` acts per image in a workspace with images;
-`--parallel-workers` defaults to one and, like `--build-base`, is refused for
-images. `--library-name` is NOT taken: a library package is `--component`,
+`--parallel-workers` above one is, like `--build-base`, refused for images.
+(Its default of one was revised by the follow-up below.) `--library-name` is NOT taken: a library package is `--component`,
 named by the package; it and `--build-type` are parsed hidden and refused
 naming the flag to use.
+
+**Follow-up — `--parallel-workers` matches colcon, under one jobserver:
+DONE** (PR TBD). The default is colcon's, the CPU count, and the same N sizes
+one GNU make jobserver that `nros build` creates (or joins, under an outer
+`make -jN`) and hands to every child, so total jobs stay at N rather than
+N². `builder::jobserver` owns the pool; a plan starts holding a token;
+images still build one at a time. RFC-0117 D4's row records the FIFO/pipe
+choice and the ninja ≥ 1.13 requirement.
 
 - `build`: `--packages-select`, `--packages-up-to`, `--packages-skip`,
   `--packages-above`, `--continue-on-error`, `--cmake-args`,
