@@ -54,10 +54,17 @@ fn an_unknown_property_key_is_refused_not_ignored() {
 
 #[test]
 fn a_key_upstream_does_not_define_is_refused() {
-    // Documented by zenoh-pico's manual, absent from the 1.x we pin: there is
-    // no `Z_CONFIG_CONNECT_TIMEOUT_KEY` in this `config.h`. A caller who read
-    // the manual and not the header must be told, not humoured.
-    let cfg = client_config(&[("connect_timeout", "500")], "tcp/127.0.0.1:1");
+    // A real zenoh key that this `config.h` lacks: `queries_default_timeout`
+    // is in the Rust zenoh config schema (and so in rmw_zenoh's session
+    // config), and zenoh-pico has never had it. A caller who copied it from
+    // the router's or rmw_zenoh_cpp's config must be told, not humoured.
+    //
+    // This test used `connect_timeout` until the fork defined
+    // `Z_CONFIG_CONNECT_TIMEOUT_KEY` outside the unstable API (issue 2207),
+    // which made that a key the pin DOES define. Every key zenoh-pico's own
+    // docs name is in `config.h` at this pin, so the absent key has to come
+    // from zenoh proper.
+    let cfg = client_config(&[("queries_default_timeout", "500")], "tcp/127.0.0.1:1");
     assert!(
         matches!(
             ZenohTransport::open(&cfg),
