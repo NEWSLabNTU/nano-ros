@@ -382,8 +382,9 @@ fn route(args: &Args) -> Result<Route> {
         .collect();
     if !dropped.is_empty() {
         bail!(
+            // See issue 1935.
             "nros setup: {} cannot be combined with {} — that arm does not use {}, and \
-             ignoring it would exit 0 over work that never happened (issue 1935). \
+             ignoring it would exit 0 over work that never happened. \
              Run them as separate `nros setup` commands.",
             dropped.join(", "),
             route.describe(),
@@ -3745,8 +3746,9 @@ impl SmokeFailures {
         }
         let _ = writeln!(
             out,
+            // See RFC-0099 D5.
             "\n  The download verified and unpacked; the binaries do not RUN here. A dist is\n  \
-             ABI-bound and the host key is `<os>-<arch>` — no OS version, no libc (RFC-0099 D5),\n  \
+             ABI-bound and the host key is `<os>-<arch>` — no OS version, no libc,\n  \
              so it was offered to this host without anything proving it fits.\n  \
              Report it with the line above; the files are left in place to diagnose."
         );
@@ -3876,9 +3878,10 @@ fn run_check_tool(index: &SdkIndex, name: &str) -> Result<()> {
     if !held.is_empty() {
         println!("            the store holds: {}", held.join(", "));
         println!(
+            // See issue 0493, issue 0500.
             "            Installed is not the same as PINNED — that gap is how a landed\n\
-             \x20           fix stays inert (issue 0493), and the store ACCUMULATES, so a\n\
-             \x20           stale prefix can shadow the pin (issue 0500)."
+             \x20           fix stays inert, and the store ACCUMULATES, so a\n\
+             \x20           stale prefix can shadow the pin."
         );
     }
     bail!("nros setup --tool {name} --check: not at the pinned version")
@@ -6784,7 +6787,8 @@ fn run_workspace_scan(
     if !buildtool_role.is_empty() {
         println!("\nBUILD TOOLS this workspace names (role = buildtool):");
         println!("These come from HOW it is built, not from what its content needs —");
-        println!("`<build_type>` already implies them (RFC-0062 amendment 4).");
+        // See RFC-0062 amendment 4.
+        println!("`<build_type>` already implies them.");
         for (name, n) in &buildtool_role {
             let probe = prereqs.get(*name).and_then(|d| d.check.as_ref());
             let state = match run_probe(probe) {
@@ -6827,8 +6831,9 @@ fn run_workspace_scan(
 
     if !wrong_role.is_empty() {
         println!("\nDECLARED BUT NOT A CONTENT DEPENDENCY — these come from the deploy");
-        println!("target, not from a <depend>. Not an error today (RFC-0062 amendment 3");
-        println!("leaves the refusal open), but the declaration is a category error:");
+        // RFC-0062 amendment 3 leaves the refusal open.
+        println!("target, not from a <depend>. Not an error today, but the declaration");
+        println!("is a category error:");
         for (name, role) in &wrong_role {
             println!("  {name:<28} role = {role}");
         }

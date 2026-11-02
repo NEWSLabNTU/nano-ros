@@ -540,11 +540,12 @@ pub fn run(args: Args) -> Result<()> {
             .unwrap_or_else(|| "zephyr".to_string());
         if platform != "zephyr" {
             bail!(
+                // See RFC-0065 D3.
                 "`nros new entry` currently scaffolds Zephyr entries only \
                  (got --platform {platform}).\n  \
                  Every other platform builds through cargo or cmake, where the \
                  entry is GENERATED from the image and needs no package of its \
-                 own (RFC-0065 D3)."
+                 own."
             );
         }
 
@@ -715,7 +716,8 @@ pub fn run(args: Args) -> Result<()> {
                 ScaffoldTable::Image => "--image",
             };
             eprintln!(
-                "nros new: --deploy is deprecated (issue 0951) — `[deploy.*]` split \
+                // See issue 0951.
+                "nros new: --deploy is deprecated — `[deploy.*]` split \
                  into `[image.*]` (what is BUILT) and `[host.*]` (WHERE it runs). \
                  With --kind {}, this scaffolds {} block; use `{replacement}` \
                  directly.",

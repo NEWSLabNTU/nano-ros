@@ -99,7 +99,8 @@ impl BenchFile {
         std::fs::write(
             path,
             format!(
-                "# nros bench file (RFC-0118 D6): which attached device is which board on \
+                // See RFC-0118 D6.
+                "# nros bench file: which attached device is which board on \
                  THIS machine.\n# Written by `nros bench scan`; hand-added fields \
                  (probe, power_cycle, ...) are kept on rescan. Never commit it.\n\n{body}"
             ),

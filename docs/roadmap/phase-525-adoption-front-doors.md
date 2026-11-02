@@ -1,8 +1,7 @@
 # Phase 525 — Adoption front doors: an action-only user surface, a single package, one run verb, serial first
 
-**Status (2026-11-01). IN PROGRESS — W2 done; W1, W3 and W4 pending.**
-W1 waits on phase-526 W5, W3 is carried by phase-528 W4, and W4 needs both.
-Implements
+**Status (2026-11-02). IN PROGRESS — W1 and W2 done; W3 is carried by
+phase-528 W4, and W4 needs it.** Implements
 [RFC-0116](../design/0116-adoption-purposes-and-front-doors.md) D2, D5, D6
 and D7 on QEMU mps2-an385 first, so nothing here waits on hardware or on an
 emulator twin. Independent of phase-522 (the registry) and phase-524 (the
@@ -27,7 +26,19 @@ is the container, so the probe can time it today.
 
 ## Work items
 
-### W1 — `check-user-surface-ids` and the sweep (D2)
+### W1 — `check-user-surface-ids` and the sweep (D2) — DONE (2026-11-02)
+
+Landed: `scripts/check/check-user-surface-ids.py`, on the fast line as
+`just check user-surface-ids`, baseline zero, no allowlist. The contributor
+exemption moved into `scripts/lib/book_contributor.py`, which
+`check-book-no-just` now reads too, so the two gates share one rule. The sweep
+covered ~157 string sites under `cmd/` (plus the two refusals the book quotes
+from outside `cmd/`: `builder/plan.rs` and `cargo-nano-ros`'s scaffold), the
+help of `nros run`, five board crate descriptions `nros board list` prints, and
+164 lines across 27 getting-started chapters. No refusal's only remedy was
+"read issue N", so no front-door issue was filed. The rendered half (help,
+board list/show, `doctor --report`) needs the in-tree CLI and reports NOT
+VERIFIED through the skip ledger without one.
 
 **Sequenced after [phase-526](phase-526-cli-two-tier-restructure.md) W5
 (2026-11-01).** The command tree is restructured first (RFC-0117), and W5

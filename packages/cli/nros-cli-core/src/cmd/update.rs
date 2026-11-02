@@ -693,8 +693,9 @@ fn update_source(
                      FORWARD only (`check-submodule-pins`). Pass --allow-rewind and say why."
                 ),
                 None => bail!(
+                    // See issue 1476.
                     "cannot tell whether {full} descends from the current pin {old}: {} has a \
-                     truncated history (issue 1476). `git -C {} fetch --unshallow`, then retry.",
+                     truncated history. `git -C {} fetch --unshallow`, then retry.",
                     dir.display(),
                     dir.display()
                 ),
@@ -795,8 +796,9 @@ fn update_tool(index: &SdkIndex, index_path: &Path, name: &str, new: &str) -> Re
     }
     std::fs::write(index_path, out)?;
     println!(
+        // See RFC-0099 D5.
         "nros update: {name} {old} -> {new}. Re-measure each dist row's `floor` \
-         (`scripts/sdk/measure-dist-floor.py`) before committing (RFC-0099 D5)."
+         (`scripts/sdk/measure-dist-floor.py`) before committing."
     );
     Ok(())
 }

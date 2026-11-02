@@ -166,7 +166,8 @@ fn list(args: ListArgs) -> Result<()> {
     }
     for line in [
         "`nros store gc` only ever removes `installed` entries. `legacy-flat` is the",
-        "  unversioned prefix `nros sdk-path` still resolves through (issue 0628) —",
+        // See issue 0628.
+        "  unversioned prefix `nros sdk-path` still resolves through —",
         "  removing one un-provisions a working host. `source-tree` is what a source",
         "  install BUILT from: nothing needs it, but it is also where local patches",
         "  would be, so it is reported rather than collected.",

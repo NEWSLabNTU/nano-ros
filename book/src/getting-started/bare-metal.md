@@ -21,7 +21,7 @@ for the policy.
 > (`arm-none-eabi-gcc`, `qemu-system-arm`) plus the Rust
 > `thumbv7m-none-eabi` target into a shared store — no manual
 > cross-compiler install. It provides no zenoh router: that is ROS's
-> `rmw_zenohd` ([RFC-0075](../design/rmw.md)), so running a zenoh image
+> `rmw_zenohd` (see [the RMW design](../design/rmw.md)), so running a zenoh image
 > needs it from a ROS 2 install.
 
 ```bash probe=30
@@ -29,10 +29,9 @@ for the policy.
 nros setup mps2-an385-baremetal --rmw zenoh
 ```
 
-> One key, not two. `qemu-arm-baremetal` and `mps2-an385` were the same
-> entry under two spellings until phase-437 W5 collapsed them (RFC-0093:
-> a board name states the reach of its build, and this build is true for
-> one silicon part). Nothing extra is provisioned for physical hardware —
+> One key, not two: `qemu-arm-baremetal` is a retired spelling of the same
+> entry. A board name states the reach of its build, and this build is true
+> for one silicon part. Nothing extra is provisioned for physical hardware —
 > no probe/flash tooling. For a real STM32F4 see the
 > [out-of-tree worked example](../porting/stm32f4-out-of-tree.md).
 
@@ -59,7 +58,7 @@ There is no `.cargo/` to edit. The target triple, the linker script, the
 `--gc-sections` flag, the QEMU runner and the `[patch.crates-io]` rows that
 resolve nano-ros's crates all come from the board, and `nros sync` writes them
 into `build/<image>/nros-cargo.toml` — a generated file `nros build` hands
-cargo with `--config` (RFC-0098). The scaffold's image is
+cargo with `--config`. The scaffold's image is
 `[image.baremetal]`.
 
 The board crate is `nros-board-mps2-an385` (note: no `-freertos`
@@ -87,7 +86,7 @@ those two lines.
 described below, derives `board-entry` or `rtic` from the board name.)
 
 The RTIC surface used to be a separate `nros-board-rtic-mps2-an385`
-crate; phase-337 W6.a folded it in, because it depended on this crate
+crate; it was folded in here because it depended on this crate
 and re-declared its `Config` — the two copies had drifted to different
 default IPs, which nothing catches until a node fails to reach the
 router.
@@ -131,7 +130,7 @@ os_config = ["board-net.toml"]
 ```
 
 and the image's address sits in the board network file it names,
-`board-net.toml` beside `system.toml` (RFC-0109 D4 — the board package owns
+`board-net.toml` beside `system.toml` (the board package owns
 the device, so its address lives in the board's own file):
 
 ```toml
@@ -162,8 +161,7 @@ with no other edit. The other bare-metal, FreeRTOS, NuttX, ThreadX-Linux and
 RTIC Rust examples take the same dependency, and so do the native ones, the
 copy-out templates' Rust packages and the C/C++ apps on this board's cargo
 link root. A package that names a board crate beside it is
-refused at `nros sync`, naming the crate
-([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
+refused at `nros sync`, naming the crate.
 In a workspace the entry is generated, so there the board line is the only
 edit.
 
@@ -312,7 +310,7 @@ probe-rs run --chip STM32F407VGTx build/<image>/target/thumbv7em-none-eabihf/deb
 #       -c "program build/<image>/target/thumbv7em-none-eabihf/debug/<bin> verify reset exit"
 ```
 
-> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([tracking issue](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 The chip, interface and triple above are the STM32F4-Discovery's; yours come
 from your board.

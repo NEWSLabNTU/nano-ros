@@ -132,9 +132,10 @@ pub fn run(args: NewArgs) -> Result<()> {
 
 fn render_descriptor(args: &NewArgs) -> String {
     let mut out = format!(
+        // See RFC-0064 R5 D1.
         "# Board descriptor for `{name}`.\n\
          #\n\
-         # A board is a PACKAGE (RFC-0064 R5 D1): this file says what the board\n\
+         # A board is a PACKAGE: this file says what the board\n\
          # lowers to, and the `package.xml` beside it announces that the board\n\
          # exists. Both are required — a descriptor with no announcement is\n\
          # refused, because it would resolve here and be invisible to every\n\
@@ -166,8 +167,9 @@ fn render_descriptor(args: &NewArgs) -> String {
         }
     ));
     out.push_str(
+        // See phase-351 W4.
         "# An EMPTY list is a statement, not an omission: a deploy naming a\n\
-         # netstack this board does not support is refused (phase-351 W4).\n\
+         # netstack this board does not support is refused.\n\
          supported_netstacks = []\n",
     );
     if let Some(wb) = &args.west_board {
@@ -184,7 +186,8 @@ fn render_descriptor(args: &NewArgs) -> String {
     // `[board.run]`; a host board says so, any other gets the shape to fill.
     if args.platform == "posix" {
         out.push_str(
-            "\n# How this board runs (RFC-0118 D4): a host process.\n\
+            // See RFC-0118 D4.
+            "\n# How this board runs: a host process.\n\
              [board.run]\n\
              host = true\n\
              \n\
@@ -193,7 +196,8 @@ fn render_descriptor(args: &NewArgs) -> String {
         );
     } else {
         out.push_str(
-            "\n# How this board runs (RFC-0118 D4), when it has an emulator or a\n\
+            // See RFC-0118 D4.
+            "\n# How this board runs, when it has an emulator or a\n\
              # twin: `emulator = \"qemu:<machine>\" | \"fvp:<model>\" |\n\
              # \"renode:<platform>\" | \"wokwi:<board>\"`. The support registry reads\n\
              # it from here. A QEMU board adds the line's facts, which `nros build`\n\

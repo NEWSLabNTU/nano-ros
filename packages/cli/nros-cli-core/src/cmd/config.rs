@@ -761,14 +761,16 @@ fn render_resolved(workspace: &Path, system: &str) -> Result<String> {
             let _ = writeln!(out);
             let _ = writeln!(
                 out,
-                "# IGNORED overlay (phase-256): {} declares [{}]",
+                // See phase-256.
+                "# IGNORED overlay: {} declares [{}]",
                 overlay_path.display(),
                 present.join("], [")
             );
             let _ = writeln!(
                 out,
+                // See RFC-0004 §3.1.
                 "#   the nros.toml overlay is retired (unread); declare these in the bringup \
-                 system.toml and delete the file (RFC-0004 §3.1)."
+                 system.toml and delete the file."
             );
         }
     }

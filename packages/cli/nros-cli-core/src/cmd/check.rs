@@ -46,8 +46,9 @@ fn legacy_overlay_warnings(system_toml_path: &Path) -> Result<Vec<String>> {
     for block in LEGACY_OVERLAY_BLOCKS {
         if last_block_source(&sourced, block).is_some() {
             warnings.push(format!(
+                // See RFC-0004 §3.1.
                 "[{block}] in {} is UNSUPPORTED and ignored — the nros.toml overlay is retired; \
-                 declare it in the bringup system.toml and delete this file (RFC-0004 §3.1)",
+                 declare it in the bringup system.toml and delete this file",
                 overlay.display()
             ));
         }
@@ -269,7 +270,7 @@ board = \"linux\"
         assert!(
             warns
                 .iter()
-                .all(|w| w.contains("nros.toml") && w.contains("RFC-0004")),
+                .all(|w| w.contains("nros.toml") && w.contains("system.toml")),
             "each warning names the file + the SSoT rule: {warns:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);

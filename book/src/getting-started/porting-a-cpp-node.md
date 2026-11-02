@@ -4,7 +4,7 @@ Goal: take a normal ROS 2 C++ node (one that compiles + runs under
 `colcon build` against `ros-humble-*`) and run it under nano-ros — without
 rewriting the source. The `rclcpp::` names are declared by nano-ros's own C++
 headers — `<rclcpp/rclcpp.hpp>` is nros-cpp's own umbrella, not a layer over
-another API (RFC-0096 D4). The
+another API. The
 CMake side is part of nano-ros's own package: `cmake/NanoRosAmentSurface.cmake`
 defines the `ament_*` verbs, `cmake/find/` holds the `Find<pkg>.cmake` modules,
 and `diagnostic_updater` is `packages/api/nros-diagnostic-updater`. So the only
@@ -151,7 +151,7 @@ nano_ros_add_executable(minimal_publisher ../src/minimal_publisher.cpp ROS2_MAIN
 ```
 
 The board comes from the directory's `system.toml`, as for any nano-ros image.
-Every `nano_ros_add_executable` reaches your `main` (phase-499): no C runtime
+Every `nano_ros_add_executable` reaches your `main`: no C runtime
 calls `int main(int argc, char** argv)` on a board, so the build renames
 `main` in your sources only (never in the board's own startup) and calls it
 from the platform's entry, with `argc == 0`. `ROS2_MAIN` adds what a ported
@@ -238,7 +238,7 @@ On a board, nano-ros reads the stock CMake verbs this way:
   for the ported package. `std::condition_variable`, `std::thread` and
   `std::promise` are still absent there.
 
-What the phase-518 ports needed edited in the source, on both boards:
+What porting Nav2 packages to FreeRTOS and Zephyr needed edited in the source:
 
 - **Exceptions.** An RTOS image is built `-fno-exceptions`, so a `throw` does
   not compile. Guard it with `#if defined(__cpp_exceptions)` and abort in the
@@ -259,8 +259,7 @@ What the phase-518 ports needed edited in the source, on both boards:
   ```
 
   The build bakes both into the image, and `rclcpp::init` applies them ahead
-  of whatever command line there is, so a host's real arguments still win
-  ([issue 2073](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2073-ported-board-exe-no-params-source.md)).
+  of whatever command line there is, so a host's real arguments still win.
   A C (`rclc`) program does not read them.
 
 What a workspace image still has to state:
@@ -281,9 +280,8 @@ What a workspace image still has to state:
   liveliness and executor-callback pools from what it created. Nothing has to
   be built twice by hand, and a current census is reused. This works on the
   `add_subdirectory` and `find_package` roads, for a host image and a FreeRTOS
-  one ([issue 2043](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2043-ament-port-pool-sizing-census.md)),
-  and for a Zephyr application
-  ([issue 2086](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2086-zephyr-ported-image-not-census-sized.md)).
+  one,
+  and for a Zephyr application.
   On Zephyr the census also decides whether an in-image client reaches an
   in-image server (`local_queryable`) and, when it records a parameter, the
   parameter store and the nros heap's default. A program that creates several
@@ -299,9 +297,8 @@ What a workspace image still has to state:
   Bound it in `nros-codegen.toml`, for example
   `[packages."diagnostic_msgs"] sequence = 4` and `string = 64`.
 - **Parameter capacities and the app stack.** The default capacities fit:
-  both phase-518 nodes boot on FreeRTOS's default 64 KiB app stack, at peaks of
-  12.5 and 16.8 KiB
-  ([issue 2070](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2070-param-declare-stack-cost.md)).
+  both ported Nav2 nodes boot on FreeRTOS's default 64 KiB app stack, at peaks of
+  12.5 and 16.8 KiB.
   `[knobs.params]` (`max_string_value_len`, `max_array_len`,
   `max_byte_array_len`) still shrinks the parameter store's RAM. If a node
   needs more stack, raise it with `set(NROS_FREERTOS_APP_STACK_KB <KiB>)` in
@@ -314,8 +311,7 @@ What a workspace image still has to state:
 - **The Zephyr board.** Name the board package, `board = "mps2-an385-zephyr"`,
   not the generic `zephyr` (which lowers to `native_sim`). The package carries
   the board's QEMU network, sizing and entropy Kconfig, so the leaf names only
-  its own `os_config` fragments
-  ([issue 1782](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1782-port-template-zephyr-leaf-board-not-in-data.md)).
+  its own `os_config` fragments.
 
 ## What "just works" without source edits
 
@@ -335,11 +331,11 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 | `executor.spin_some()` / `rclcpp::spin_some(node)` | drain what is ready, without waiting | The bound is milliseconds (`spin_some(5)`), not a `std::chrono` duration. |
 | `client->wait_for_service(1s)` / `wait_for_action_server(10s)` | the millisecond wait, converted | Hosted builds. The budget is still required; a negative duration is refused at the call. |
 | `rclcpp::spin_until_future_complete(node, client->send_request(req))` | spins until the reply arrives | The timeout is milliseconds. |
-| `auto fut = client->async_send_request(std::make_shared<S::Request>(…))` / `fut.get()` / `fut.wait_for(1s)` / `client->remove_pending_request(fut)` | the poll client's `rclcpp::Future`, under upstream's verbs | Hosted builds, except `remove_pending_request` (issue 1996). `get()` returns the reply as an owning `std::shared_ptr<Response>` but never blocks: call it after `spin_until_future_complete` returned `SUCCESS` (before the reply it logs a refusal and returns nullptr). `wait_for` returns `std::future_status` and spins the executor while it waits. Each future is keyed by its request's sequence number (issue 2009), as upstream's is: several may be in flight on one client, each gets its own reply, and a reply that arrives after `remove_pending_request` (or `prune_pending_requests`) is dropped. How many is capped by the transport's own outstanding-request limit (`NROS_ZENOH_MAX_PENDING_GETS` on zenoh); a send past it returns an empty future (`valid()` false). What it returns is upstream's `FutureAndRequestId` (issue 2037): the future as `.future`, the request's sequence id as `.request_id` (`auto [future, id] = …` works), and `share()` hands back a `SharedFutureAndRequestId` whose `future` is a `std::shared_future<SharedResponse>` every copy of which gets the same response; `remove_pending_request` takes the id too. `.future` is an `rclcpp::Future`, not a `std::future`. A freestanding build has `send_request(req)` + `fut.try_take(resp)`; `get()` and `share()` there are compile errors naming them. |
+| `auto fut = client->async_send_request(std::make_shared<S::Request>(…))` / `fut.get()` / `fut.wait_for(1s)` / `client->remove_pending_request(fut)` | the poll client's `rclcpp::Future`, under upstream's verbs | Hosted builds, except `remove_pending_request`. `get()` returns the reply as an owning `std::shared_ptr<Response>` but never blocks: call it after `spin_until_future_complete` returned `SUCCESS` (before the reply it logs a refusal and returns nullptr). `wait_for` returns `std::future_status` and spins the executor while it waits. Each future is keyed by its request's sequence number, as upstream's is: several may be in flight on one client, each gets its own reply, and a reply that arrives after `remove_pending_request` (or `prune_pending_requests`) is dropped. How many is capped by the transport's own outstanding-request limit (`NROS_ZENOH_MAX_PENDING_GETS` on zenoh); a send past it returns an empty future (`valid()` false). What it returns is upstream's `FutureAndRequestId`: the future as `.future`, the request's sequence id as `.request_id` (`auto [future, id] = …` works), and `share()` hands back a `SharedFutureAndRequestId` whose `future` is a `std::shared_future<SharedResponse>` every copy of which gets the same response; `remove_pending_request` takes the id too. `.future` is an `rclcpp::Future`, not a `std::future`. A freestanding build has `send_request(req)` + `fut.try_take(resp)`; `get()` and `share()` there are compile errors naming them. |
 | `#include "rclcpp_action/rclcpp_action.hpp"` | an umbrella over `Server<A>` / `Client<A>` and the two free factories | See [Actions](#actions-goal-handles-on-a-hosted-build) below. |
 | `rclcpp::init(argc, argv) / shutdown() / ok() / spin(n) / spin_some(n)` | wraps `rclcpp::init_in/shutdown_in/ok/spin_once` | `--ros-args -r from:=to` is honoured, beneath any remap the launch file sets for the same name. `-p [node:]name:=value` and `--params-file <file>` are honoured in an image with a parameter store: the value replaces the default when the node declares the parameter (scalars only from a file; a value of the wrong type is logged and the default kept). Any other ROS argument (`__node`, log flags) aborts, naming it. |
-| `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through the `NROS_LOG_*` family into `nros_log` | Carries the logger, so `get_logger("x")` selects a real per-logger level, and `FATAL` is a distinct severity. Reaches `LOG_ERR`/`printk` on embedded, where the legacy `NROS_*` sink is a no-op (issue 1019). `_THROTTLE` variants are REFUSE-LOUD. |
-| `get_logger().get_child("sub")` | a real child logger, `<parent>.sub` (RFC-0102) | Its level, when unset, follows the nearest ancestor's, so `set_level` on the node logger reaches it. A full name over 48 bytes or a full runtime-logger arena emits through the PARENT and `set_level` on it is refused — never a silent move of the parent's threshold. Iron/Jazzy images publish children on `/rosout`; Humble ones, as upstream, do not. |
+| `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through the `NROS_LOG_*` family into `nros_log` | Carries the logger, so `get_logger("x")` selects a real per-logger level, and `FATAL` is a distinct severity. Reaches `LOG_ERR`/`printk` on embedded, where the legacy `NROS_*` sink is a no-op. `_THROTTLE` variants are REFUSE-LOUD. |
+| `get_logger().get_child("sub")` | a real child logger, `<parent>.sub` | Its level, when unset, follows the nearest ancestor's, so `set_level` on the node logger reaches it. A full name over 48 bytes or a full runtime-logger arena emits through the PARENT and `set_level` on it is refused — never a silent move of the parent's threshold. Iron/Jazzy images publish children on `/rosout`; Humble ones, as upstream, do not. |
 | `executor.spin_once() / client->wait_for_service() / action_client->wait_for_action_server()` | **the budget is required** | Upstream defaults all three to "block forever", which nano-ros has no form of; the no-argument call is a compile error naming the alternative rather than a silently substituted 10 ms / 5 s budget. Write `spin_once(10)`, `wait_for_service(10000)`. |
 | `rclcpp::QoS / KeepLast(n) / SystemDefaultsQoS()` | one class with upstream's implicit `(depth)` ctor | Chainable setters inherited. |
 | `diagnostic_updater::Updater` + `DiagnosticStatusWrapper` | `packages/api/nros-diagnostic-updater` | Publishes `/diagnostics`. |
@@ -369,9 +365,9 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 | `pub_->get_subscription_count()` | takes the executor and an out-parameter | See `Publisher::get_subscription_count`. Nav2 calls it only in its tests. |
 | `declare_parameter(name, rclcpp::ParameterValue(...)[, descriptor])`, `get_parameter(name)` as an `rclcpp::Parameter`, `set_parameter(rclcpp::Parameter(...))` | the same store the typed `declare_parameter<T>` uses; the descriptor may be an `rcl_interfaces::msg::ParameterDescriptor` | Hosted builds. A byte or string array can be built but not declared. A wrong-type `as_double()` answers `0.0`, not an exception. |
 | `add_on_set_parameters_callback(std::bind(&C::cb, this, _1))` with `cb(std::vector<rclcpp::Parameter>)` returning `SetParametersResult` | runs on every write, local or `ros2 param set`; `successful = false` refuses it; the returned handle unregisters on destruction | One parameter per call, because writes are validated one at a time. The `reason` does not reach the remote caller. Keep the handle as a member of your node class, so it goes before the node does. |
-| `node->get_node_parameters_interface()` | `has_parameter`, `declare_parameter`, `get_parameter` and `get_parameter_overrides()` through `->` | `get_parameter_overrides()` lists this node's `-p` / `--params-file` values as a `std::map<std::string, rclcpp::ParameterValue>`, one copy per node, so Nav2's `declare_or_get_parameter` compiles (issue 2057). |
+| `node->get_node_parameters_interface()` | `has_parameter`, `declare_parameter`, `get_parameter` and `get_parameter_overrides()` through `->` | `get_parameter_overrides()` lists this node's `-p` / `--params-file` values as a `std::map<std::string, rclcpp::ParameterValue>`, one copy per node, so Nav2's `declare_or_get_parameter` compiles. |
 | `pub_->publish(std::move(msg))` with a `std::unique_ptr<M>` | publishes `*msg`; the message is freed when the call returns | Hosted builds. Every publish serializes, so there is no intra-process hand-over to save a copy. A null pointer is refused and logged. |
-| `rclcpp::Client<S>::SharedPtr client_ = create_client<S>(name);` + `client_->async_send_request(req, callback)` with a `void(Client<S>::SharedFuture)` callback | the handle holds the poll client; the callback runs from the executor when the reply arrives, with a `SharedFuture` whose `get()` returns it (issue 2055) | Hosted builds with `std::promise`. The client registers one 1 ms timer for its callbacks, cancelled while none is waiting. A removed request's callback never runs. `wait_for_service(1s)` inside a callback waits without spinning, so on a polled backend it runs out its budget. On an RTOS toolchain (no `std::promise`) store the client as `rclcpp::Owned<rclcpp::PollClient<S>>`, keep the `FutureAndRequestId` that `async_send_request(req)` returns, and read it on a later callback with `future.is_ready()` and `get()`. |
+| `rclcpp::Client<S>::SharedPtr client_ = create_client<S>(name);` + `client_->async_send_request(req, callback)` with a `void(Client<S>::SharedFuture)` callback | the handle holds the poll client; the callback runs from the executor when the reply arrives, with a `SharedFuture` whose `get()` returns it | Hosted builds with `std::promise`. The client registers one 1 ms timer for its callbacks, cancelled while none is waiting. A removed request's callback never runs. `wait_for_service(1s)` inside a callback waits without spinning, so on a polled backend it runs out its budget. On an RTOS toolchain (no `std::promise`) store the client as `rclcpp::Owned<rclcpp::PollClient<S>>`, keep the `FutureAndRequestId` that `async_send_request(req)` returns, and read it on a later callback with `future.is_ready()` and `get()`. |
 | `diagnostic_updater::Updater updater_{this};` | publishes `/diagnostics` on its own timer, every `period` (`setPeriod`), as upstream's does | `update()` still works and is no longer required. |
 | `DiagnosticTask`, `FrequencyStatus`, `TimeStampStatus`, `Heartbeat`, `HeaderlessTopicDiagnostic`, `TopicDiagnostic` | upstream's classes, levels and messages; `updater.add(task)` | A clock argument is a `const rclcpp::Clock*`, so `node->get_clock()` still passes. The tasks take no lock, so a node that calls `tick()` from its own thread must keep that call from overlapping an update. `DiagnosedPublisher` is absent, because a nano-ros publisher handle can be moved but not copied. Keep the publisher and a `TopicDiagnostic`, and call `tick(stamp)` next to each `publish`. |
 | the six parameter services (`ros2 param get/set/list`) | on for an ament package built on a host: every node serves them, as upstream's does | Comes from the package's `package.xml` naming `ament_cmake`; set `NROS_FEATURES` to declare the capabilities yourself. Values come from `--ros-args --params-file <yaml>` or `-p`. On a board they are off unless declared (`param_services` in `NROS_FEATURES`, or `[system] features` on Zephyr): they cost six queryables and their RAM. |
@@ -412,8 +408,8 @@ The remaining causes, largest first:
 - **`seq.back()` on a generated sequence** (2 lines). `FixedSequence` /
   `HeapSequence` are not `std::vector`; write `seq[seq.length() - 1]`.
 
-The two action examples took 164 edited lines until issue 2015 made upstream's
-goal-handle shapes drop-ins (77 → 6 and 87 → 2); the total went from 199 to 43.
+Upstream's goal-handle shapes are drop-ins, so the two action examples need 6
+and 2 edited lines; the total is 43.
 
 ## Actions: goal handles on a hosted build
 
@@ -421,7 +417,7 @@ The action types keep upstream's names and concepts, and `GoalResponse` /
 `CancelResponse` / `ResultCode` keep upstream's enumerators and values.
 
 **On a hosted build** (`-DNROS_CPP_STD`, what the porting flow sets) the stock
-spellings are drop-ins (issue 2015):
+spellings are drop-ins:
 
 - `rclcpp_action::create_server<A>(node->get_node_base_interface(), …clock,
   …logging, …waitables, name, handle_goal, handle_cancel, handle_accepted)` and
@@ -440,7 +436,7 @@ spellings are drop-ins (issue 2015):
   `canceled` take upstream's `std::shared_ptr`s. Each call forwards to the
   server, keyed by the goal id; the goal itself lives in the server's static
   arena, and the handle is a token over it. `execute()` moves a goal accepted
-  with `ACCEPT_AND_DEFER` to EXECUTING and publishes the status (issue 2027);
+  with `ACCEPT_AND_DEFER` to EXECUTING and publishes the status;
   for `ACCEPT_AND_EXECUTE` the server does that itself before
   `handle_accepted`, as upstream's does.
 - `Client<A>::SendGoalOptions` carries upstream's `goal_response_callback`
@@ -454,21 +450,20 @@ spellings are drop-ins (issue 2015):
   `async_cancel_all_goals` / `async_cancel_goals_before(stamp)`, return
   upstream's `std::shared_future` (of a `WrappedResult`, or a
   `CancelResponse::SharedPtr` with `return_code` and `goals_canceling`), so
-  `rclcpp::spin_until_future_complete(node, f)` then `f.get()` work unchanged
-  (issue 2027). The future drives the client while it is polled or waited on.
+  `rclcpp::spin_until_future_complete(node, f)` then `f.get()` work unchanged. The future drives the client while it is polled or waited on.
 
 What stays different, each a compile error or written below:
 
 - **`async_send_goal` returns `rclcpp::Future<GoalAccept>`**, the goal-keyed
   future `send_goal_future` returns, not a `std::shared_future` of a goal
   handle. `auto f = client->async_send_goal(goal, opts);` compiles; a caller
-  that waits on `f` gets the acceptance (RFC-0021: the future never blocks
+  that waits on `f` gets the acceptance (the future never blocks
   without spinning).
-- **A cancel reply is taken by the executor's spin** (issue 2034), as upstream's
+- **A cancel reply is taken by the executor's spin**, as upstream's
   is: the spin settles the `async_cancel_*` future and runs its
   `cancel_callback`, so code that keeps only the callback ports as written.
   A nano-ros server acts on the zero-id cancel-all / cancel-before forms
-  as an rclcpp server does (issue 2029).
+  as an rclcpp server does.
 - **A goal handle is driven from the executor's task.** Do not hand it to a
   thread you start (see the 6 lines above). It names its server by address, so
   the server must not move while a handle is in use; a `SharedPtr` does not
@@ -508,7 +503,7 @@ left for a debugging session.
 ### `Node::ok()` — nano-ros cannot throw, so YOU have to ask
 
 Upstream's `rclcpp::Node` constructor THROWS when the node cannot be created.
-nano-ros is built `-fno-exceptions` (RFC-0018), so the constructor cannot: it
+nano-ros is built `-fno-exceptions`, so the constructor cannot: it
 records the failure and the node answers `false` to `ok()`.
 
 ```cpp
@@ -595,7 +590,7 @@ deliberately do not have. The clock axis is a runtime field plus the second verb
 
 ## A real package: Autoware's `autoware_external_cmd_selector`
 
-Phase-488 ported this node (Autoware 0.45.0; 12 subscriptions, 7 publishers,
+This node was ported (Autoware 0.45.0; 12 subscriptions, 7 publishers,
 a service, two parameters, `diagnostic_updater`, a component registered with
 `rclcpp_components_register_node(... EXECUTABLE ...)`) through a workspace
 umbrella like the one above. Its package needed **no source edit and no
@@ -612,8 +607,9 @@ needed from the person porting it:
    nano-ros codegen, never taken from the installed upstream C++.
 2. **Raise the pool sizes.** A package built this way declares no entity
    counts, so every pool sits at its embedded default, and start-up stops at
-   the first one that fills, naming its knob. Until issue 2043 derives them
-   from the program, set them in the environment of the configure and build:
+   the first one that fills, naming its knob. Unless the census derives them
+   from the program (see "Pool sizes" above), set them in the environment of
+   the configure and build:
 
    ```bash
    export NROS_EXECUTOR_MAX_CBS=40 NROS_ZENOH_MAX_LIVELINESS=128 \
@@ -661,7 +657,7 @@ tracked as ROS-convention codegen work.
 
   The wire format does not change. The other levels (`[defaults]`,
   `[packages.*]`, `[types.*]`) and the storage modes are in
-  [RFC-0033](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0033-message-field-capacity-config.md).
+  [the message field capacity design](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0033-message-field-capacity-config.md).
 - **`create_generic_publisher(topic, type, qos)` /
   `create_generic_subscription(topic, type, qos, callback)` by type name** — a
   compile error naming the alternative. rclcpp loads the type's typesupport at
@@ -683,9 +679,8 @@ tracked as ROS-convention codegen work.
 
 ## When the port hits a gap
 
-Known open follow-ups: pool sizing on the ament road (issue 2043, below),
-the per-request client callback (issue 2055), listing parameter overrides
-(issue 2057), and the in-tree migration of legacy
+Known open follow-ups: pool sizing on the ament road,
+the per-request client callback, listing parameter overrides, and the in-tree migration of legacy
 `nros_generate_interfaces(<pkg>)` call sites. If your port surfaces a *new*
 gap, file an issue with a reduced case — a fix lands either tree-side (in
 `packages/api/nros-cpp/`, `cmake/NanoRosAmentSurface.cmake` or `cmake/find/`)

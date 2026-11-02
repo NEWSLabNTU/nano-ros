@@ -642,6 +642,7 @@ fn scaffold_component_rust(dir: &Path, cfg: &ComponentScaffoldConfig) -> Result<
     )?;
 
     let cargo_toml = format!(
+        // See RFC-0040, RFC-0098, phase-517 W8.
         r#"[package]
 name = "{name}"
 version = "0.1.0"
@@ -664,7 +665,7 @@ class = "{crate_name}::{class_name}"
 name = "{module}"
 
 # A reusable component is a library (rlib); the deployed system links it.
-# nano-ros crates are not published to crates.io (RFC-0040) — `version = "*"` is
+# nano-ros crates are not published to crates.io — `version = "*"` is
 # only the patched left-hand side. Run `nros sync` to write the nros-managed
 # [patch.crates-io] block redirecting `nros` to your nano-ros SDK, then
 # `cargo build`. `nros` finds the SDK itself; `--nano-ros-path` names one.
@@ -677,7 +678,7 @@ nros = {{ version = "*", default-features = false, features = [
 nros-log = {{ version = "*", default-features = false }}
 # Message crates come from package.xml: each <depend> on a message package
 # becomes a `# nros-managed` path row below when you run `nros sync` (or
-# `nros build`). Edit package.xml, not this table (RFC-0098, phase-517 W8).
+# `nros build`). Edit package.xml, not this table.
 "#,
         name = cfg.name,
     );
@@ -769,6 +770,7 @@ fn scaffold_component_cpp(dir: &Path, cfg: &ComponentScaffoldConfig) -> Result<(
     )?;
 
     let cmake = format!(
+        // See RFC-0043.
         r#"cmake_minimum_required(VERSION 3.22)
 # §212.L.4 — class prefix must equal PROJECT_NAME.
 project({pkg_sym} VERSION 0.1.0 LANGUAGES C CXX)
@@ -779,7 +781,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(nano_ros REQUIRED)
 find_package({iface} REQUIRED)
 
-# Typed component (RFC-0043). No add_executable, no `main()`; the linked
+# Typed component. No add_executable, no `main()`; the linked
 # Entry pkg's typed runtime constructs this class + calls `configure(node)`
 # on the real executor. `DEPLOY linux` also builds a standalone runnable
 # single-node ELF via the typed native carrier.
@@ -813,7 +815,8 @@ target_link_libraries({pkg_sym}_{node_name}_component
     println!("✓ Created nano-ros C++ Node pkg '{}'", cfg.name);
     println!("  Class     : {pkg_sym}::{class_name}");
     println!("  Node      : {node_name}");
-    println!("  Kind      : typed component (RFC-0043)");
+    // See RFC-0043.
+    println!("  Kind      : typed component");
     println!();
     println!("Next steps:");
     println!("  cd {}", cfg.name);
@@ -864,6 +867,7 @@ fn scaffold_component_c(dir: &Path, cfg: &ComponentScaffoldConfig) -> Result<()>
     )?;
 
     let cmake = format!(
+        // See RFC-0043.
         r#"cmake_minimum_required(VERSION 3.22)
 # §212.L.4 — class prefix must equal PROJECT_NAME.
 project({pkg_sym} VERSION 0.1.0 LANGUAGES C CXX)
@@ -874,7 +878,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 find_package(nano_ros REQUIRED)
 find_package({iface} REQUIRED)
 
-# Typed C component (RFC-0043), written against the C API with the generated
+# Typed C component, written against the C API with the generated
 # `{iface}` bindings (declared in package.xml). `DEPLOY linux` also builds a
 # standalone runnable single-node ELF via the typed C carrier.
 nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
@@ -900,7 +904,8 @@ nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
     println!("✓ Created nano-ros C Node pkg '{}'", cfg.name);
     println!("  Class     : {pkg_sym}::{class_name}");
     println!("  Node      : {node_name}");
-    println!("  Kind      : typed component (RFC-0043)");
+    // See RFC-0043.
+    println!("  Kind      : typed component");
     println!();
     println!("Next steps:");
     println!("  cd {}", cfg.name);
@@ -955,14 +960,15 @@ fn selection_dep(name: &str) -> String {
 
 /// Shared size/speed profiles + the `nros sync` note appended to every
 /// generated `Cargo.toml`.
+// See RFC-0040, Phase 204.15.
 const CARGO_PROFILES: &str = r#"
-# nano-ros crates are not published to crates.io (RFC-0040) — the `version = "*"`
+# nano-ros crates are not published to crates.io — the `version = "*"`
 # requirements above are patched, not resolved from crates.io. Run `nros sync`
 # to write the nros-managed [patch.crates-io] block here (path deps into your
 # nano-ros SDK + any generated msg crates), then build. `nros` finds the SDK
 # itself; `--nano-ros-path` names one explicitly.
 
-# Named size/speed profiles (Phase 204.15): `cargo build --profile size|speed`.
+# Named size/speed profiles: `cargo build --profile size|speed`.
 [profile.size]
 inherits = "release"
 opt-level = "s"
@@ -984,6 +990,7 @@ codegen-units = 1
 fn scaffold_rust_hosted(name: &str, dir: &Path, lib_rs: &str) -> Result<()> {
     let selection = selection_dep(name);
     let cargo_toml = format!(
+        // See RFC-0098 D6, issue 1305, RFC-0098, phase-517 W8.
         r#"[package]
 name = "{name}"
 version = "0.1.0"
@@ -1005,7 +1012,7 @@ crate-type = ["rlib"]
 # The board, RMW, ROS edition and node live in `system.toml` beside this
 # manifest (RFC-0098 D3/D5) — nothing here names a board, an RMW or an edition.
 # They reach the build through the generated selection package below, which
-# `nros sync` writes (RFC-0098 D6, issue 1305).
+# `nros sync` writes.
 
 [dependencies]
 nros = {{ version = "*", default-features = false, features = ["alloc", "env", "rmw-cffi", "macros"] }}
@@ -1013,17 +1020,18 @@ nros-log = {{ version = "*", default-features = false }}
 {selection}
 # Message crates come from package.xml: each <depend> on a message package
 # becomes a `# nros-managed` path row below when you run `nros sync` (or
-# `nros build`). Edit package.xml, not this table (RFC-0098, phase-517 W8).
+# `nros build`). Edit package.xml, not this table.
 {CARGO_PROFILES}"#
     );
     fs::write(dir.join("Cargo.toml"), cargo_toml)?;
 
     let main_rs = format!(
+        // See issue 0274.
         r#"//! Generated by `nros new {name}` — the entry for `lib.rs`'s node.
 //!
 //! `nros::main!()` and the board own `nros::init`, the executor, RMW
 //! registration and the spin loop. `spin = "forever"`: without it the hosted
-//! main runs a bounded spin and exits at once (issue 0274).
+//! main runs a bounded spin and exits at once.
 
 nros::main!(spin = "forever");
 "#
@@ -1094,6 +1102,7 @@ esp-backtrace = {{ version = "~0.18.0", features = ["esp32c3", "panic-handler", 
         SelfBringupRuntime::Esp32 => format!(", \"{edition_feature}\""),
     };
     let cargo_toml = format!(
+        // See issue 0100, RFC-0098, phase-517 W8, issue 1265.
         r#"[package]
 name = "{name}"
 version = "0.1.0"
@@ -1106,7 +1115,7 @@ path = "src/main.rs"
 test = false
 bench = false
 
-# Self-bringup shape (issue 0100): `lib.rs` IS the node (its `nros::node!(..)`
+# Self-bringup shape: `lib.rs` IS the node (its `nros::node!(..)`
 # emits `register`); `main.rs` is the one-line `nros::main!()` Form-1 entry that
 # dispatches to this same crate's `register`.
 [lib]
@@ -1124,12 +1133,12 @@ nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cff
 nros-log = {{ version = "*", default-features = false }}
 # Message crates come from package.xml: each <depend> on a message package
 # becomes a `# nros-managed` path row below when you run `nros sync` (or
-# `nros build`). Edit package.xml, not this table (RFC-0098, phase-517 W8).
+# `nros build`). Edit package.xml, not this table.
 
 # What the board needs to link + boot, and nothing the node in `lib.rs` uses.
 # TARGET-scoped so that `lib.rs` also builds for the host: `nros sync` probes
 # what the node creates by compiling it there, and these crates do not build
-# for the host (issue 1265). `main.rs` is never built for the host.
+# for the host. `main.rs` is never built for the host.
 [target.'cfg(target_os = "none")'.dependencies]
 {runtime_deps}{CARGO_PROFILES}"#
     );
@@ -1170,7 +1179,8 @@ fn write_codegen_caps(dir: &Path, role: Role) -> Result<()> {
     }
     fs::write(
         dir.join("nros-codegen.toml"),
-        "# The capacity of the stock `std_msgs/String` this node carries (RFC-0033).\n\
+        // See RFC-0033.
+        "# The capacity of the stock `std_msgs/String` this node carries.\n\
          # The type states no serialized-size bound, so the consumer states one here,\n\
          # beside package.xml. 256 is generous for the demo's one-line payloads.\n\
          [fields]\n\"std_msgs/String.data\" = 256\n",
@@ -1204,13 +1214,14 @@ fn scaffold_cxx_executable(
         ),
     };
     let cmake = format!(
+        // See RFC-0098 D3.
         r#"cmake_minimum_required(VERSION 3.22)
 project({name} VERSION 0.1.0 LANGUAGES {languages})
 
 {std_line}
 
 # RFC-0048 — ament shape. Board + RMW live in the system.toml beside this
-# file (RFC-0098 D3); find_package(nano_ros) reads it.
+# file; find_package(nano_ros) reads it.
 find_package(nano_ros REQUIRED)
 find_package({iface} REQUIRED)
 

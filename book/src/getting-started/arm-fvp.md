@@ -11,15 +11,15 @@ the build half.
 > **Status.** The run half — invoking `FVP_BaseR_AEMv8R` and piping
 > UART 0–3 to stdout — is landed.
 >
-> **The two standalone talker lanes were retired** (issue 0537):
+> **The two standalone talker lanes were retired**:
 > their runners had been deleted, so they built images nothing booted. What
 > remains is the part with consumers — the board-crate import surface and the
 > workspace Entry. FVP support is intended to grow back from those. See
-> [`docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md).
+> [the archived FVP runtime roadmap](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md).
 >
 > **Verified where?** The run half is maintainer-run: a maintainer boots the
 > image by hand (the recipe is in the contributor lanes linked below), and no
-> installed probe track replays this chapter (issue 2176). `fvp-aemv8r-smp` reads
+> installed probe track replays this chapter. `fvp-aemv8r-smp` reads
 > **Boots, manual** with the date of its last boot
 > ([its evidence page](../reference/boards/fvp.md)); a probe track follows
 > an automated run, not the other way round. Read the output below as what a
@@ -151,7 +151,7 @@ settings and pipes the UARTs to your terminal:
 west build -d build/zephyr-cyclonedds/demo_bringup__fvp_west -t run
 ```
 
-> **Not replayed.** No probe track builds or boots the FVP image yet, so this line is unmeasured on the installed track ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe track builds or boots the FVP image yet, so this line is unmeasured on the installed track ([tracking issue](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 The model is a free download, **not licence-gated** (see
 [Prereqs](#prereqs)); what keeps it off a CI lane is cost and its x86_64-only
@@ -191,7 +191,7 @@ interop contract (byte-compatible with `rmw_cyclonedds_cpp`).
 
 ## Cross-references
 
-- [`docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md)
+- [the archived FVP runtime roadmap](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md)
   — the roadmap doc for the FVP runtime slice (contributor detail
   on what has landed vs what is ongoing).
 - [`docs/roadmap/archived/phase-117-cyclonedds-rmw.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-117-cyclonedds-rmw.md)

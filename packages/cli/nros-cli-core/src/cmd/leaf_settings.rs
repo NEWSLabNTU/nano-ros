@@ -265,7 +265,8 @@ fn leaf_image_from_decl(
 ) -> Result<Option<LeafImage>> {
     let Some(board) = decl.board.clone() else {
         bail!(
-            "{}: names no board (RFC-0098 D3: `[image.<id>] board = \"<board>\"`)",
+            // RFC-0098 D3.
+            "{}: names no board; add `[image.<id>] board = \"<board>\"`",
             decl.origin_path().display()
         );
     };
@@ -969,11 +970,12 @@ fn check_lowered_edition_features(img: &LeafImage) -> Result<()> {
         return Ok(());
     }
     bail!(
+        // See issue 2045.
         "{}: {}.\n  The ROS edition is declared in {} (`ros_edition` under \
          `[image.{}]`, `[image_defaults]` or `[system]`) and lowered by the toolchain; \
          a dependency feature pins it here instead, so any other declared edition \
          fails to compile (`ros-{{humble,iron,jazzy}}` are mutually exclusive). \
-         Delete the `ros-<edition>` entries from {} (issue 2045).",
+         Delete the `ros-<edition>` entries from {}.",
         manifest.display(),
         pinned.join(", "),
         img.decl.origin_path().display(),
@@ -1050,8 +1052,7 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
              crate `{}`.\n  The selection package carries the image's board crate (and its \
              RMW, platform and runtime), so a migrated leaf names none of them: delete \
              the board dependency from {}. A hand-written board crate beside the \
-             selection is wrong as soon as `[image.{}] board` changes (issue 1305, \
-             RFC-0098 D6).",
+             selection is wrong as soon as `[image.{}] board` changes.",
             img.leaf.display(),
             leaf_system::selection_crate_name(&img.package),
             boards.join("`, `"),
@@ -1078,9 +1079,9 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
          image-only dependencies with an in-tree example for board `{}`: a crate the old \
          board needed can clash with the new one (an RMW backend carrying a `platform-*` \
          feature stops the build with \"Only one platform backend can be selected\").\n  \
-         (issue 1305: this leaf still names its image dependencies by hand; a leaf \
+         (This leaf still names its image dependencies by hand; a leaf \
          that depends on its generated `<pkg>_nros_selection` package instead gets \
-         them from `system.toml`, RFC-0098 D6).",
+         them from `system.toml`.)",
         img.leaf.display(),
         img.image_id,
         img.board,
@@ -1274,7 +1275,7 @@ pub fn write_shared(
          or, from INSIDE the package, with no flags at all:\n\
          cargo build --release\n\
          because `nros sync` wires this file into the leaf's own (gitignored)\n\
-         `.cargo/config.toml` as an `include` — issue 1381. Do NOT combine the\n\
+         `.cargo/config.toml` as an `include`. Do NOT combine the\n\
          two: cargo JOINS `rustflags` arrays across config files, so reading\n\
          this file twice links `link.x` twice (`region 'FLASH' already\n\
          defined`).",
@@ -1362,8 +1363,9 @@ fn wire_settings_into_leaf_config(leaf: &Path, image_id: &str, who: &str) -> Res
 
     if states_its_own_build_flags(&doc) {
         println!(
+            // See issue 1381.
             "{who}: {} states its own `[build] target` / `rustflags`, so the generated \
-             settings stay on the `--config` road (issue 1381)",
+             settings stay on the `--config` road",
             cfg.display()
         );
         return Ok(());
@@ -2234,7 +2236,10 @@ mod board_crate_tests {
             .expect_err("a hand-pinned edition")
             .to_string();
         assert!(e.contains("`nros` enables `ros-humble`"), "{e}");
-        assert!(e.contains("system.toml") && e.contains("issue 2045"), "{e}");
+        assert!(
+            e.contains("system.toml") && e.contains("ros_edition"),
+            "{e}"
+        );
         // ...and `nros sync` meets it before any cargo invocation.
         assert!(write_selection(&leaf, &repo(), None).is_err());
     }
@@ -2335,7 +2340,7 @@ mod board_crate_tests {
             e.contains("`nros-board-linux`") && e.contains("`nros-board-mps2-an385`"),
             "{e}"
         );
-        assert!(e.contains("issue 1305"), "{e}");
+        assert!(e.contains("Replace the board dependency"), "{e}");
     }
 
     /// A migrated leaf: names no board crate, depends on its selection package.

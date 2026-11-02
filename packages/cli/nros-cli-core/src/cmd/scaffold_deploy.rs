@@ -89,8 +89,9 @@ pub fn scaffold_deploy(s: &DeployScaffold) -> Result<()> {
     }
     if s.target.is_some() {
         eprintln!(
+            // See RFC-0065 D9.
             "nros new: --target is ignored. The board descriptor states the rustc \
-             triple, so `[image.*]` does not carry one (RFC-0065 D9); pass --board \
+             triple, so `[image.*]` does not carry one; pass --board \
              and the triple follows."
         );
     }

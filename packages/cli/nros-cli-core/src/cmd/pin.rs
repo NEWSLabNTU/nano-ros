@@ -142,9 +142,9 @@ pub fn report(s: &Survey) -> Vec<String> {
             out.push(describe_manifest("  ", p, s.current_manifest.as_ref()));
         }
         None => out.push(format!(
+            // See RFC-0095 D9.
             "pinned: NOTHING — no {} at or above {}.\n\
-             \x20   This project floats: `nros build` will write a pin \
-             (RFC-0095 D9), and until it does, firmware built here is \
+             \x20   This project floats: `nros build` will write a pin, and until it does, firmware built here is \
              reproducible only by accident.",
             pin::FILE_NAME,
             s.project.display()
@@ -189,8 +189,9 @@ fn describe_manifest(indent: &str, p: &Pin, m: Option<&Found>) -> String {
             s
         }
         None => format!(
+            // See RFC-0097 D7.
             "{indent}codegen UNKNOWN — {} is not installed in this store, or it \
-             predates share/nros/{} (RFC-0097 D7).",
+             predates share/nros/{}.",
             p.version,
             release_manifest::FILE_NAME
         ),

@@ -60,7 +60,7 @@ examples/workspaces/c/
 No `CMakeLists.txt`, no `Cargo.toml` at the root — and none is generated
 there either. A workspace is a directory of packages, exactly as a colcon
 workspace is, and everything the build produces lives under `build/`, `dist/`
-and `log/` (RFC-0098 D9). The tracked marker that this directory *is* a
+and `log/`. The tracked marker that this directory *is* a
 workspace root is `.colcon_workspace`.
 
 And no entry packages, except the Zephyr one. Fourteen images ship out of that
@@ -139,20 +139,20 @@ launch argument. Nothing is duplicated to express any of that.
 | `launch` | The launch file this image bakes, relative to the Bringup pkg. Absent ⇒ `[system] default_launch` |
 | `args` | Launch arguments bound at resolve time (`{ host = "robot1" }`) — how an image selects one machine out of a multi-host launch tree |
 | `rmw` | Backend for this image. Absent ⇒ `[system] rmw` |
-| `panic` | RFC-0077 panic policy (`platform` \| `halt` \| `own`), forwarded to the generated entry |
+| `panic` | Panic policy (`platform` \| `halt` \| `own`), forwarded to the generated entry |
 | `before_boot` | `"<package>::<fn>"`, a function the generated entry calls before the board boots; see [Customising an entry](#customising-an-entry). Rust entries only |
 | `profile` | A cargo / CMake build profile name |
-| `os_config` | Layer-1 files, in order: Zephyr `prj-*.conf` / `.overlay` fragments, or a board network file (`.toml`, RFC-0109 D4). `os_config` is read as its old alias |
+| `os_config` | Layer-1 files, in order: Zephyr `prj-*.conf` / `.overlay` fragments, or a board network file (`.toml`). `os_config` is read as its old alias |
 | `features` | Capability axes for this image, over `[system]`'s list |
 | `entry` | The application package — **normally omitted**; see [the exception](#the-exception-when-a-framework-owns-the-application) |
 
 Switching a workspace image to another board is that one `board` line and
 `nros sync` — nothing in any package you wrote mentions a board crate, because
-the entry that depends on it is generated (RFC-0098 D6). A single-package leaf
+the entry that depends on it is generated. A single-package leaf
 is its own entry and does not yet get that: see
 [Role reference](../user-guide/component-and-entry-pkg.md#single-package-convenience).
 
-`[image_defaults]` is the base every block folds over (RFC-0065 D5.1): scalars
+`[image_defaults]` is the base every block folds over: scalars
 are replaced by the specific block, `args` merges, `os_config` and `features`
 concatenate. Without it an eight-image workspace repeats its RMW eight times,
 and eight copies of one fact is how they start disagreeing.
@@ -174,10 +174,10 @@ cargo resolves a package's workspace by walking *up* and refuses a member above
 its root. That constraint binds only while a workspace *exists*: with no root
 manifest anywhere there is nothing to walk up to, and a path dependency need not
 sit below anything. So the generated entry is the root, and the workspace keeps
-no build file of its own (RFC-0098 D9, superseding RFC-0065 D3).
+no build file of its own.
 
 Beside the generated entry sits `nros-cargo.toml`, the settings file `nros sync`
-writes per image (RFC-0098 D1): the board's rustc triple and link flags, that
+writes per image: the board's rustc triple and link flags, that
 image's `target-dir`, the resolved `[env]`, and the in-repo patch rows. Cargo
 reads it through `--config`, which is why each image compiles with its own
 settings and nothing generated ever appears beside a package — no leaf
@@ -204,7 +204,7 @@ One cmake configure builds the nano-ros runtime (`nros-c` / `nros-cpp` and the
 RMW) **once** for every image on it, so a knob only one image states — a
 `[image.<id>.knobs]` row such as `[knobs.log] max_level = "warn"` — would have no
 build to land in. So an image whose resolved configuration differs gets its own
-configure, keyed by a hash of that configuration (RFC-0098 D12, phase-481 W4):
+configure, keyed by a hash of that configuration:
 
 ```toml
 [image.plain]            # states nothing -> build/posix-zenoh-linux/
@@ -232,8 +232,8 @@ image's `cmake_build_dir`; never derive it by hand.
 On Zephyr the same `env` rows are rendered into the image's Kconfig fragment
 instead (see [Configuring an image](./integration-zephyr.md#configuring-an-image-systemtoml-not-prjconf)).
 
-The generated entry is the same few lines you would have written. RFC-0065 D4
-measured them before deciding to derive them: every Rust entry in the tree was
+The generated entry is the same few lines you would have written. Before
+nano-ros derived them, every Rust entry in the tree was
 **≤ 6 non-comment lines**, every embedded C/C++ entry had **zero** source
 files. Three parts, all derivable —
 
@@ -255,11 +255,11 @@ that demands a real application directory.** That is Zephyr.
 
 A Zephyr app *is* the `app` target that `find_package(Zephyr)` creates, and it
 carries authored Kconfig that nothing can derive: `prj.conf`, the per-RMW
-`prj-<rmw>.conf` fragments, `boards/*.overlay`. RFC-0065 D5 draws the line
+`prj-<rmw>.conf` fragments, `boards/*.overlay`. The line is drawn
 there — *"west and ESP-IDF apps keep their own files because those are Kconfig
 overlays — user intent, not derivable."*
 
-**The Kconfig is the exception; the application is not** (issue 1288). `nros
+**The Kconfig is the exception; the application is not**. `nros
 build` writes the west application too — `build/<coord>/<image>_entry/
 CMakeLists.txt`, with `find_package(Zephyr)`, `project()`, one
 `add_subdirectory` per node package your launch file names, and the single
@@ -315,7 +315,7 @@ tool itself:
 ```text
 `nros new entry` currently scaffolds Zephyr entries only (got --platform linux).
 Every other platform builds through cargo or cmake, where the entry is
-GENERATED from the image and needs no package of its own (RFC-0065 D3).
+GENERATED from the image and needs no package of its own.
 ```
 
 ### Running on Zephyr
@@ -368,7 +368,7 @@ The `entry` key exists for the case where *several* packages could answer to
 one image. An application package no longer declares the board it serves —
 that direction is reversed: the **image claims the entry**, by naming it
 (`entry = "zephyr_entry"`) or, when it names none, by being the image whose
-generated entry would carry that name (RFC-0098 D5, phase-445 W5). So the
+generated entry would carry that name. So the
 application reads its deployment — board, RMW, locator, domain — off the image
 that claims it, and a `[package.metadata.nros.entry] deploy` left in a
 `Cargo.toml` is now an error naming the file to write instead.
@@ -383,8 +383,7 @@ The other reason to set `entry` is that NO package claims the board — then
 `nros build` falls back to the Bringup directory and you see a conf fragment
 "not found" in a path that is not your application's. A hand-written
 application that takes its board from `nano_ros_use_board(...)` in its own
-`CMakeLists.txt` is that case, because the `DEPLOY` scan does not read the call
-(issue 1517). Everywhere else, leave `entry` out and let the name match.
+`CMakeLists.txt` is that case, because the `DEPLOY` scan does not read the call. Everywhere else, leave `entry` out and let the name match.
 
 The full Zephyr path — west workspaces, freestanding applications, `west nros`,
 sysbuild — is [Zephyr (west module)](./integration-zephyr.md).
@@ -415,7 +414,7 @@ single-package project or a materialized entry.
 //    pkg that is the only member of this package.
 nros::main!();
 
-// 2. RETIRED (phase-484 W8c): `nros::main!(board = LinuxBoard)` is a
+// 2. RETIRED: `nros::main!(board = LinuxBoard)` is a
 //    compile error. The board belongs in `system.toml`; an out-of-tree board
 //    crate states its own type in
 //    `[package.metadata.nros.board] type = "::my_board::MyBoard"`, which
@@ -433,7 +432,7 @@ nros::main!(launch = "demo_bringup:multihost.launch.xml", args = [("host", "robo
 
 // 5. DEPRECATED (expert override): name the resolved model ARTIFACT
 //    directly instead of the input. Skips the sync-freshness contract;
-//    warns at bake time (phase-330 W7).
+//    warns at bake time.
 nros::main!(model = "demo_bringup");
 ```
 
@@ -451,7 +450,7 @@ $ nros sync    # resolves models into <ws>/build/nros/models/<bringup>/
 is newer than it, and `nros build` runs it for you. **SystemModels are build
 artifacts — never commit one** (the `check-no-tracked-models` gate enforces
 this). Under the hood `nros sync` runs the pinned `nros-launch-resolve` helper
-(RFC-0060 layer 2) by absolute path, never by a bare name on `$PATH`, because
+by absolute path, never by a bare name on `$PATH`, because
 an unrelated ROS 2 `play_launch` on `PATH` used to win that race.
 
 The macro reads the image's `board` at compile time to select the board

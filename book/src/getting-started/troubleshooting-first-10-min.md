@@ -18,14 +18,14 @@ one to try.
 ```
 … has not been synced — missing the resolved model under `build/nros/models/`,
 the generated message crate `std_msgs` (generated/std_msgs).
-  Run `nros sync` in … (RFC-0098 D2), then build again.
+  Run `nros sync` in …, then build again.
 ```
 
 The example's `Cargo.toml` declares nano-ros crates registry-style
 (`nros = { version = "*" }` — they are not published to crates.io);
 the `[patch.crates-io]` block that resolves them into the nano-ros
 SDK is GENERATED, into `build/<image>/nros-cargo.toml`, which
-`nros build` hands cargo with `--config` (RFC-0098 D1). This error
+`nros build` hands cargo with `--config`. This error
 means that file has not been written yet, or its paths no longer
 reach the SDK (typical right after copying the package somewhere else,
 or installing a different release). Fix:
@@ -142,10 +142,10 @@ nros build
 A single-package C / C++ leaf needs no `nros sync` — its message bindings are
 a CMake-time output. There is no `-DNROS_RMW=` to pass: a backend selected on
 the command line disagrees with the one the rest of the build resolves from
-`system.toml`, which is the drift RFC-0098 removes.
+`system.toml`.
 
 A Rust example does not take `--features rmw-cyclonedds` at all: its RMW is
-its image's (issue 1305). A leaf that declares a `linux_cyclonedds`
+its image's. A leaf that declares a `linux_cyclonedds`
 image (as
 [`examples/linux/rust/talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/talker)
 does) builds it with `nros sync --image linux_cyclonedds && nros build
@@ -168,8 +168,8 @@ descriptor).
 The neighbouring refusals, when the image is missing rather than misspelt:
 
 ```
-this workspace declares no `[image.*]`. An image is the buildable unit — see RFC-0065 D6.
-…/system.toml: names no board (RFC-0098 D3: `[image.<id>] board = "<board>"`)
+this workspace declares no `[image.*]`. An image is the buildable unit: add `[image.<id>] board = "<board>"` to system.toml.
+…/system.toml: names no board; add `[image.<id>] board = "<board>"`
 ```
 
 The first means there is no `system.toml` beside the package at all — a leaf

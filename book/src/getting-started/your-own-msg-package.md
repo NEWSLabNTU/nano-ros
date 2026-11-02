@@ -149,8 +149,7 @@ ament_package()
 
 ## Build it with `nros build`
 
-There is no nano-ros-specific file to add: a workspace has no root build file
-(RFC-0098 D9). With no bringup, `nros build` builds it the way `colcon build`
+There is no nano-ros-specific file to add: a workspace has no root build file. With no bringup, `nros build` builds it the way `colcon build`
 does — every package it finds by its `package.xml`, in `<depend>` order, each
 in its own `build/<pkg>/`. For `my_app` it generates the CMake root that used
 to be hand-written (nano-ros, `NROS_INTERFACE_SEARCH_PATH` at `./src/`, the

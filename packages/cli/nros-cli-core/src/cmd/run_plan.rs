@@ -211,7 +211,9 @@ pub fn resolve(verb: Verb, i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
         Verb::Run => resolve_run(i),
         Verb::Flash => resolve_flash(i),
         Verb::Console => Err(ResolveError::Unresolved(
-            "`nros monitor` (the console verb) is phase-529 W3; no plan resolves for it yet".into(),
+            // phase-529 W3.
+            "`nros monitor` (the console verb) is not implemented yet; no plan resolves for it"
+                .into(),
         )),
     }
 }
@@ -612,9 +614,9 @@ fn finish(
 
 // ── `nros run` ──────────────────────────────────────────────────────────
 
-/// `nros run` — launch a host process or an emulator (RFC-0118 D2). Only
-/// `--dry-run` and `--why` are implemented (phase-528 W1); executing the plan
-/// is phase-528 W4.
+/// `nros run` — launch a host process or an emulator. Only `--dry-run` and
+/// `--why` are implemented; executing the plan is not, yet.
+// RFC-0118 D2; `--dry-run`/`--why` are phase-528 W1, executing is W4.
 #[derive(clap::Args, Debug, Clone)]
 pub struct Args {
     /// The image to run (`<image>` or `<bringup>:<image>`), as `nros build`
@@ -632,7 +634,8 @@ pub struct Args {
     /// Add the ladder rung that supplied each field.
     #[arg(long)]
     pub why: bool,
-    /// The console device (RFC-0118 D5 rung 1).
+    /// The console device.
+    // RFC-0118 D5 rung 1.
     #[arg(long)]
     pub port: Option<String>,
     /// Print the plan as the JSON a runner is handed (`--plan`), not TOML.
@@ -652,7 +655,8 @@ pub struct Args {
 pub fn run(args: Args) -> eyre::Result<()> {
     if !args.dry_run {
         eprintln!(
-            "nros run: launching is not implemented until phase-528 W4; `nros run --dry-run \
+            // phase-528 W4.
+            "nros run: launching is not implemented yet; `nros run --dry-run \
              [--why]` prints the plan it will execute"
         );
         std::process::exit(i32::from(nros_extension::exit::RUNNER_FAILED));

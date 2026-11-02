@@ -244,7 +244,8 @@ pub fn run(args: Args) -> Result<()> {
         // BUILD ARTIFACT and `check-no-tracked-models` rejects a committed one,
         // so that told users to create a file the repo refuses.
         eyre::bail!(
-            "no SystemModel for `{}`. It is a BUILD ARTIFACT (phase-330 W4), so \
+            // See phase-330 W4.
+            "no SystemModel for `{}`. It is a BUILD ARTIFACT, so \
              generate it rather than committing one:\n  nros sync            \
              # writes <ws>/build/nros/models/<bringup>/\n(searched, in order: \
              $NROS_MODEL_DIR, $OUT_DIR/nros, <ws>/build/nros/models, \

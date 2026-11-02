@@ -122,7 +122,7 @@ pub fn run(args: Args) -> Result<()> {
              Provision it:  nros setup --tool {}\n\
              (NOT substituting another version on purpose: the store is shared \
              between projects while the pin is per-project, so a substitution \
-             silently gives this build another project's toolchain — issue 0625.)",
+             silently gives this build another project's toolchain.)",
             args.tool,
             version,
             tried.join("\n"),

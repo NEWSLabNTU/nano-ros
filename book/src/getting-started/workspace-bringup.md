@@ -37,7 +37,7 @@ workspace with no bringup still builds, colcon-style: every package in
 dependency order, each into its own `build/<pkg>/`, with no images. (The
 single-package copy-out shape under `examples/<platform>/<lang>/` has no
 bringup *package*, but it writes the same `system.toml` beside its own
-`Cargo.toml` or `CMakeLists.txt` — one schema either way, RFC-0098 D3 — and
+`Cargo.toml` or `CMakeLists.txt` — one schema either way — and
 boots itself with a bare `nros::main!()`.)
 
 ---
@@ -204,7 +204,7 @@ that doesn't exist is a build error, not a silent skip.
 > are served is this bringup fact.
 
 > **Note:** Python `.launch.py` files ARE resolved by `nros sync` (the
-> RFC-0060 resolver executes them with its bundled CPython; `$(find-pkg-share)`
+> launch resolver executes them with its bundled CPython; `$(find-pkg-share)`
 > against ROS packages needs a sourced `AMENT_PREFIX_PATH`). The XML schema
 > above is the native authoring format.
 

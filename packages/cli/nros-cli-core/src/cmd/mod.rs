@@ -119,10 +119,10 @@ pub enum Cmd {
     /// Rust package. Leaves user-written sections alone.
     Clean(ws::CleanArgs),
 
-    /// Run an image on its target: a host process or an emulator
-    /// (RFC-0118 D2). `--dry-run [--why]` prints the resolved RunPlan;
-    /// launching it is phase-528 W4. A hardware image is `nros flash
-    /// --monitor`.
+    /// Run an image on its target: a host process or an emulator.
+    /// `--dry-run [--why]` prints the resolved RunPlan; launching it is not
+    /// implemented yet. A hardware image is `nros flash --monitor`.
+    // RFC-0118 D2; launching is phase-528 W4.
     Run(run_plan::Args),
 
     /// Flash an image onto a board (reserved: not available yet).
@@ -133,8 +133,8 @@ pub enum Cmd {
 
     /// This machine's boards: `scan` records which attached USB device is
     /// which board in `$NROS_HOME/bench.toml`, `list` prints it with what is
-    /// attached now (RFC-0118 D6). It supplies ports and probes, never test
-    /// scope.
+    /// attached now. It supplies ports and probes, never test scope.
+    // RFC-0118 D6.
     Bench(bench::Args),
 
     /// Debug an image on its target (reserved: not available yet).

@@ -21,7 +21,7 @@ installed SDK is everything else.
 
 Everything toolchain-shaped — rustup, cross-compilers, emulators, RMW
 host tools — is provisioned by `nros setup` below. The zenoh router is the
-exception: it is ROS's `rmw_zenohd` (RFC-0075) and `nros setup` provides
+exception: it is ROS's `rmw_zenohd` and `nros setup` provides
 none — see [Do I need ROS 2 installed?](#do-i-need-ros-2-installed); Cyclone
 DDS needs no daemon. The host itself only
 needs the basics: git, curl, a C toolchain, `pkg-config`, python3.
@@ -149,7 +149,7 @@ bundles, so nothing about setup, codegen or compilation needs ROS 2.
 
 Running is where it splits, and the reason is the **router**. zenoh-pico
 connects in client mode, so any two-process example needs a zenoh router
-— and since [RFC-0075](../design/rmw.md) that router is
+— and that router is
 `rmw_zenoh_cpp/rmw_zenohd`, which ships with ROS 2. nano-ros does not
 vendor one. So on a host with no ROS 2:
 
@@ -218,7 +218,7 @@ stays on the host.
 This is the supported shape, in any language. A workspace is a
 directory of packages — node packages plus one bringup package — and
 it has **no root build file at all**, neither `CMakeLists.txt` nor
-`Cargo.toml` (RFC-0098 D9):
+`Cargo.toml`:
 
 ```
 ~/my_robot/
@@ -279,7 +279,7 @@ nano-ros for a given board. The cross-compiler, emulator, RMW host
 tools and any SDK sources a board needs are resolved from the index the
 release pins and placed in a shared store (`~/.nros/sdk`). You do **not**
 install cross-toolchains by hand. It provides no zenoh router — that is
-ROS's `rmw_zenohd` (RFC-0075) — and Cyclone DDS needs no daemon.
+ROS's `rmw_zenohd` — and Cyclone DDS needs no daemon.
 
 Packages are **prebuilt where the index has a binary for your host, and
 built from source otherwise**. Source builds are normal, not an error —
@@ -391,7 +391,7 @@ Each board's exact package set lives in the index; run
 > `gcc-arm-none-eabi` is 10.3. Install the pin with
 > `nros setup --tool arm-none-eabi-gcc`, or point
 > `-DNROS_ARM_NONE_EABI_PREFIX=<dir>/bin/arm-none-eabi` at a GCC ≥ 11. A
-> C-only image is not refused; it gets a warning (issue 1936).
+> C-only image is not refused; it gets a warning.
 
 See [Supported Boards](../reference/supported-boards.md) for the full
 board list and [`nros` CLI](../reference/cli.md) for every subcommand.
@@ -409,7 +409,7 @@ board list and [`nros` CLI](../reference/cli.md) for every subcommand.
 > For **zenoh**, the router is **not** provisioned by `nros setup`: it is
 > ROS 2's `rmw_zenoh_cpp/rmw_zenohd`, so that nano-ros is tested against
 > the router a ROS 2 deployment actually runs
-> ([RFC-0075](../design/rmw.md)). Start it with your ROS environment
+> (see [the RMW design](../design/rmw.md)). Start it with your ROS environment
 > sourced (leave it running for the whole session):
 >
 > ```bash
@@ -450,7 +450,7 @@ anywhere; re-run `nros sync` to re-point.
 
 A Rust package carries no build settings of its own — no target triple,
 no linker flag, no patch table. It states its board in `system.toml`
-and `nros sync` derives the rest (RFC-0098); see
+and `nros sync` derives the rest; see
 [`examples/templates/multi-package-workspace/src/pkg_rust_publisher/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace/src/pkg_rust_publisher)
 for a package in that shape, and
 [Integrating into a Vendored Tree](vendored-tree.md) for the CI spelling.

@@ -93,10 +93,11 @@ fn report_legacy_unversioned_installs() {
         if !legacy.is_empty() {
             let paths: Vec<String> = legacy.iter().map(|p| p.display().to_string()).collect();
             eprintln!(
+                // See issue 0625.
                 "nros doctor: [REMOVABLE] legacy unversioned install under {}\n\
                  \x20   {}\n\
                  \x20   the store is keyed by version now; this prefix belongs to no \
-                 project and no longer participates in resolution (issue 0625).\n\
+                 project and no longer participates in resolution.\n\
                  \x20   remove it:  rm -rf {}",
                 tool.path().display(),
                 paths.join("\n\x20   "),

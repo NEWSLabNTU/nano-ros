@@ -48,7 +48,7 @@ my_robot_ws/
 
 Two kinds of package, and that is the whole tree. A workspace has **no root
 build file at all** — no `Cargo.toml`, no `CMakeLists.txt` — the way a colcon
-workspace is just a directory of packages (RFC-0098 D9). There is no binary
+workspace is just a directory of packages. There is no binary
 package to write either: from the `[image.*]` table in the Bringup pkg,
 `nros build` generates the entry and the build root that compiles it, both
 under `build/`. The cargo root is the generated entry itself,
@@ -128,7 +128,7 @@ a `.msg` or move the checkout. A workspace that has never been synced makes
 The app-node shape you already know ([`examples/linux/rust/talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/talker)) is a
 single package that is both the logic and the boot point — no bringup and
 no entry, but the same `system.toml` beside its `Cargo.toml`, stating its
-board in an `[image.*]` row (RFC-0098 D3). `nros::main!()` reads it. That
+board in an `[image.*]` row. `nros::main!()` reads it. That
 fusion is fine — and encouraged — for single-node work. Only split when you
 actually need the flexibility.
 

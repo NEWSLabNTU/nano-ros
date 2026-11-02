@@ -378,7 +378,7 @@ fn refuse_unplaced_header(wanted: &[nros_build_paths::artifact::Artifact]) -> Re
             "`{}` is a per-build header, which lives in cargo's `$OUT_DIR` — pass \
              --placed-dir <dir>, the --dest of the build that placed it \
              (`scripts/build/cargo-out-dir-headers.py --package nros-c … --dest <dir> -- \
-             cargo build … --message-format=json-render-diagnostics`; issue 1824)",
+             cargo build … --message-format=json-render-diagnostics`)",
             a.name()
         );
     }

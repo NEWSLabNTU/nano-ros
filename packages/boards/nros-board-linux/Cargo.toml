@@ -3,7 +3,7 @@ name = "nros-board-linux"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "The Linux host board — the POSIX family driver plus the RMW selection point (phase-337 W8.a merged `nros-board-native` in)."
+description = "The Linux host board — the POSIX family driver plus the RMW selection point."
 publish = false
 
 # Host-only crate. A hosted Unix target lives under `std`, so no

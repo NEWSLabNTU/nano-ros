@@ -31,7 +31,7 @@ nros setup mps2-an385-freertos --rmw zenoh
 This fetches the cross-compiler, the patched `qemu-system-arm`, and the
 FreeRTOS + lwIP sources into `${NROS_HOME:-~/.nros}/sdk` (plus the
 Micro-XRCE-DDS agent when you pick `--rmw xrce`). The zenoh router is
-NOT installed — it comes from your ROS 2 install (RFC-0075).
+NOT installed — it comes from your ROS 2 install.
 
 ## Project layout
 
@@ -70,7 +70,7 @@ Rust side has no `.cargo/` to edit — the `thumbv7m-none-eabi` triple,
 the `-Tmps2_an385.ld --nmagic --gc-sections` link group, the QEMU
 runner and the `[patch.crates-io]` rows all come from the board and are
 written by `nros sync` / `nros build` into the image's
-`nros-cargo.toml` under `build/` (RFC-0098). The C / C++ leaves have no
+`nros-cargo.toml` under `build/`. The C / C++ leaves have no
 `<nano_ros deploy=… board=… rmw=…/>` tuple in their `package.xml`:
 `find_package(nano_ros)` reads `system.toml` instead, and derives the
 platform from the board.
@@ -115,8 +115,7 @@ block.
 Switching board is editing `[image.<id>] board` and rebuilding: `nros
 build` picks the cross-toolchain file the board names, and for Rust it
 regenerates the `<pkg>_nros_selection` package that carries the board
-crate, its RMW and `nros-platform`'s FreeRTOS feature
-([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
+crate, its RMW and `nros-platform`'s FreeRTOS feature.
 
 Task stacks / priorities come from the board crate's defaults (Cargo
 features), not a config file — see the

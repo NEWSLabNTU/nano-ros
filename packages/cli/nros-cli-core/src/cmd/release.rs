@@ -37,7 +37,8 @@ pub struct CLibsArgs;
 
 pub fn run(_args: Args) -> Result<()> {
     Err(eyre!(
-        "`nros release` is reserved for the Phase 111.B follow-up; \
+        // Reserved for the Phase 111.B follow-up.
+        "`nros release` is reserved: \
          the CLI ships the verb skeleton but the publish pipeline \
          is not implemented."
     ))

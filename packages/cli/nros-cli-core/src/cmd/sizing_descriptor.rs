@@ -224,8 +224,8 @@ pub fn run(args: SizingDescriptorArgs) -> Result<()> {
         [] => {}
         [model] => return write_from_model(&args, model),
         several => eyre::bail!(
-            "{} `--from-model`s and no `--composed-entry`: several models size a SHARED runtime \
-             (RFC-0100 D12), so name the entries that link it",
+            // See RFC-0100 D12.
+            "{} `--from-model`s and no `--composed-entry`: several models size a SHARED runtime, so name the entries that link it",
             several.len()
         ),
     }
@@ -357,9 +357,10 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
             })?;
         if let Some(written) = written {
             eprintln!(
+                // See issue 1706, phase-486 W9.
                 "nros ws sizing-descriptor: `{}` describes no wiring; the descriptor states only \
                  what the model does -- its node count, the closure's wire bound and the \
-                 parameter store (issue 1706, phase-486 W9)",
+                 parameter store",
                 model_path.display(),
             );
             println!("{}", written.path.display());
@@ -455,8 +456,9 @@ fn tier_rows_for(
         Ok(rows) => rows,
         Err(why) => {
             eprintln!(
+                // See issue 1970.
                 "nros ws sizing-descriptor: no per-tier executor sizing ({why}); every tier keeps \
-                 the image's executor size (issue 1970)"
+                 the image's executor size"
             );
             Vec::new()
         }
@@ -584,8 +586,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
             eprintln!(
                 "nros ws sizing-descriptor: none of the {} model(s) this runtime is shared by \
                  describes wiring; the runtime descriptor states only what the models do -- \
-                 their node count, the closure's wire bound and the parameter store (issue 1706, \
-                 phase-486 W9)",
+                 their node count, the closure's wire bound and the parameter store",
                 models.len()
             );
             println!("{}", written.path.display());
@@ -758,16 +759,18 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         ))?;
         if let Some(written) = written {
             eprintln!(
+                // See issue 1706.
                 "nros ws sizing-descriptor: {origin} declares no entities; the descriptor states \
-                 only what its `[system]` table does (issue 1706)"
+                 only what its `[system]` table does"
             );
             println!("{}", written.path.display());
             return Ok(());
         }
         eprintln!(
+            // See RFC-0098 D8.
             "nros ws sizing-descriptor: {origin} declares no entities, so no sizing descriptor \
              is written and every consumer keeps its own defaults. Add `entities = [...]` to its \
-             `[[component]]` (RFC-0098 D8); the runtime's own service families are \
+             `[[component]]`; the runtime's own service families are \
              `[system] features`."
         );
         return Ok(());
@@ -804,7 +807,8 @@ pub(crate) fn leaf_declaration(dir: &std::path::Path) -> Result<LeafDeclaration>
         .map_err(|e| eyre::eyre!(e))?
         .ok_or_else(|| {
             eyre::eyre!(
-                "{}: declares no deployment -- write {} (RFC-0098 D3)",
+                // See RFC-0098 D3.
+                "{}: declares no deployment -- write {}",
                 dir.display(),
                 dir.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
                     .display()
@@ -940,7 +944,8 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
     if !desc.meta.composed_entries().is_empty() {
         let _ = writeln!(
             s,
-            "  composed entries (a shared runtime, RFC-0100 D12): {}",
+            // RFC-0100 D12.
+            "  composed entries (a shared runtime): {}",
             desc.meta.composed_entries().join(", ")
         );
     }

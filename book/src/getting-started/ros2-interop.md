@@ -147,7 +147,7 @@ nano-ros uses the same wire format as `rmw_zenoh_cpp`:
 
 ### ROS 2 Editions
 
-Three editions are supported (RFC-0056): `humble` (default;
+Three editions are supported: `humble` (default;
 `TypeHashNotSupported` key expressions, XCDR1), `iron`, and `jazzy` (both
 RIHS01 type hashes). Pick the edition matching the ROS 2 install you
 interop with — a Humble-edition image against a Jazzy bus (or vice versa)

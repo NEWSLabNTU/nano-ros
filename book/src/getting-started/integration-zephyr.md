@@ -84,7 +84,7 @@ A minimal `apps/my_app/` looks like this — the shipped
 [`examples/zephyr/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c/talker)
 quoted directly (only the project/class names are trimmed to `my_app`), so
 this page can't drift from the real API surface. It is a **stateful C
-component** (a struct + a `configure` function, RFC-0043 / phase-244.C2) —
+component** (a struct + a `configure` function) —
 not a hand-written `main()` — because the Zephyr typed carrier generates
 the entry point and calls into the component by identity:
 
@@ -174,7 +174,7 @@ transport sources** (zenoh-pico + mbedtls for zenoh, the cyclonedds fork) —
 from a pinned index into `${NROS_HOME:-~/.nros}/sdk`. The Zephyr sources and
 modules themselves are a `west` workspace, which you keep the standard Zephyr
 way. It provides **no zenoh router**: that is ROS's `rmw_zenohd`
-([RFC-0075](../design/rmw.md)); Cyclone DDS needs no daemon at all.
+(see [the RMW design](../design/rmw.md)); Cyclone DDS needs no daemon at all.
 
 1. **Get the `nros` CLI** — install a release with `scripts/install.sh`
    ([Installation](installation.md)); it lands in `~/.nros/bin`.
@@ -364,7 +364,7 @@ Cyclone DDS fork) come from `nros setup zephyr --rmw <rmw>`, not from
 west.
 
 Then, per application, nano-ros's half of the configuration goes in a
-`system.toml` beside the `CMakeLists.txt` (RFC-0098 D10, phase-481), and
+`system.toml` beside the `CMakeLists.txt`, and
 Zephyr's own half in `prj.conf`:
 
 ```toml
@@ -409,7 +409,7 @@ library transparently.
 ## Configuring an image: `system.toml`, not `prj.conf`
 
 An application's nano-ros configuration lives in ONE place, its
-`system.toml` (RFC-0098 D10, phase-481). The nano-ros Zephyr module renders
+`system.toml`. The nano-ros Zephyr module renders
 the selected image into a Kconfig fragment and merges it **last**, after every
 conf file. So the `prj*.conf` files hold Zephyr's own settings only (networking,
 POSIX, stacks, heaps) and **never a `CONFIG_NROS_*` line**: one there is either
@@ -431,7 +431,7 @@ What the module renders, and from where:
 | `os_config = ["prj-xrce.conf"]` | that Zephyr-native fragment, added ahead of your own `EXTRA_CONF_FILE` |
 
 An `env` row with no Kconfig symbol is not lost: it reaches the image's cargo
-builds as an `[env]` row instead (issue 1712). A row whose type does not fit
+builds as an `[env]` row instead. A row whose type does not fit
 its symbol, or that only exists under another RMW, is refused at configure
 time, naming the `system.toml` line.
 
@@ -544,7 +544,7 @@ like that, on purpose.**
 You own the west workspace and the application. `west init` / `west update`
 populate the workspace, your app carries its own `CMakeLists.txt` and
 `prj.conf`, and `west` only runs from inside that workspace. None of that is
-ours to generate — an app's Kconfig is authored, not derived (RFC-0065 D5).
+ours to generate — an app's Kconfig is authored, not derived.
 
 So for a Zephyr image `nros build`:
 
@@ -730,10 +730,10 @@ by hand, below.
     see a conf fragment "not found" in a path that is not your application's.
     A hand-written application that picks its board with
     `nano_ros_use_board(...)` inside its own `CMakeLists.txt` is this case: the
-    `DEPLOY` scan does not read that call (issue 1517). Usually the better fix
+    `DEPLOY` scan does not read that call. Usually the better fix
     is to delete the application — `nros build` generates one and hands it the
     board package's own Kconfig and devicetree overlay, which is all
-    `nano_ros_use_board` added (issue 1288).
+    `nano_ros_use_board` added.
 
 #### If you live in west: `west nros`
 
@@ -762,9 +762,8 @@ which is what `west nros` does for you:
 nros build --zephyr-workspace ~/zephyr-workspace demo_bringup:zephyr
 ```
 
-`west nros` is now the only nano-ros west extension: `west fvp` shared that
-route until RFC-0064 revision 5 retired it, since its body was environment
-wiring in front of the stock `west build -t run`. Two things worth knowing:
+`west nros` is the only nano-ros west extension; to run an image, use the
+stock `west build -t run`. Two things worth knowing:
 
 * **It only exists inside a west workspace.** West loads extension commands
   from the manifest, so from an unrelated directory you get
@@ -790,7 +789,7 @@ west_board = "native_sim/native/64"       # what west is given
 
 So an image writes `board = "zephyr"`, never `board = "native_sim/native/64"`:
 the Zephyr spelling is the descriptor's to state, and an image that authors it
-is refused with the id to write instead (issue 1519).
+is refused with the id to write instead.
 
 Nor is it free-form. A board the catalog does not know is refused with the
 list of ones it does, because the descriptor supplies more than the `-b` string
@@ -845,7 +844,7 @@ module's `board_root`.
 #### Adding your own drivers, modules and boards
 
 **Everything Zephyr lets you extend, you still extend the Zephyr way.** The
-application `CMakeLists.txt` is yours (RFC-0065 D5) and `nros build` runs
+application `CMakeLists.txt` is yours and `nros build` runs
 `west build` against it, so the extension points are untouched:
 
 | you want | you do | `nros build` involvement |
@@ -1135,7 +1134,7 @@ nros build demo_bringup:nucleo
 west flash -d build/zephyr-zenoh/demo_bringup__nucleo_west
 ```
 
-> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([issue 2176](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** No probe runs this flash line (a CI runner has no board), so it is written from the board's runner, not measured ([tracking issue](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
 
 `nros build` prints that `west flash` line when the build's
 `zephyr/runners.yaml` names a flash runner. The runner (J-Link, nrfjprog,
@@ -1156,7 +1155,7 @@ The snippet (shipped via the module's `snippet_root`) carries the
 RMW-common Kconfig — equivalent to merging `prj-<rmw>.conf`. It is for an
 app with NO `system.toml`: with one, the image's `rmw` decides and merges
 after the snippet, so a snippet that agrees is redundant and one that names a
-different RMW is refused at configure time (phase-481). The
+different RMW is refused at configure time. The
 `prj-<rmw>.conf` / `-DCONF_FILE` path still works (and is the only option
 on 3.7).
 
@@ -1178,8 +1177,7 @@ nros setup zephyr --rmw zenoh
 
 (Earlier nano-ros revisions documented a `west patch apply` flow on
 4.x — that required a workspace-side west extension that doesn't ship
-with stock Zephyr. Phase 208.D.7 / E.9 unified both lines on the
-provisioner. Cyclone-DDS-on-Zephyr patches stay baked into the pinned
+with stock Zephyr. Both lines now use the provisioner. Cyclone-DDS-on-Zephyr patches stay baked into the pinned
 cyclonedds submodule, not delivered through `patches.yml`.)
 
 ## Start from an example
@@ -1215,11 +1213,11 @@ for the canonical in-repo surface.
   [`examples/zephyr/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/cpp)
 - Module manifest:
   [`zephyr/module.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/module.yml)
-- Kconfig surface (canonical post-Phase-208.D.7 fold — every `CONFIG_NROS*`
+- Kconfig surface (canonical — every `CONFIG_NROS*`
   symbol the doc cites lives here):
   [`zephyr/Kconfig`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/Kconfig)
-- Patches applied by `nros setup zephyr` (the `west patch` flow on this page
-  was retired in Phase 208.E.9):
+- Patches applied by `nros setup zephyr` (the `west patch` flow is
+  retired):
   [`zephyr/patches.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/patches.yml)
 
 ## Next
