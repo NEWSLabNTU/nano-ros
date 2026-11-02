@@ -6,7 +6,7 @@ type: bug
 area: [orchestration, codegen]
 found: 2026-11-02
 related: [phase-462, issue-2173]
-resolved_in: "fix/hazard-silence-board"
+resolved_in: "PR #3013"
 ---
 
 ## The gap
