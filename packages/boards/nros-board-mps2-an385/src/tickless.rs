@@ -30,15 +30,20 @@
 //! (`nros_platform_mps2_an385::wake`), so the executor itself parks on `wfi`
 //! between spins and an arrival on either link ends that park.
 //!
-//! Not built for an RTIC image (`feature = "rtic"`): RTIC owns the vector
-//! table, and its 1 ms dual-timer tick already wakes the `wfi` that
-//! `enable_wfi_idle` installs on `do_poll`.
+//! phase-521 W6 — an RTIC image (`feature = "rtic"`) uses the same idle. RTIC
+//! owns the vector table, so the LAN9118 line is not a cortex-m-rt
+//! `#[interrupt]` there but an RTIC hardware task the `nros::main!` RTIC shell
+//! binds to `ETHERNET`, which calls [`on_eth_rx_irq`]
+//! (`RticBoardEntry::on_rx_irq`). The 1 ms dual-timer tick that bounded RTIC's
+//! `wfi` before is gone: the one-shot below is the only timer wake.
 
 use cortex_m::peripheral::NVIC;
 use cortex_m_rt::exception;
 #[cfg(feature = "ethernet")]
 use lan9118_smoltcp::{MPS2_AN385_BASE, irq};
-use mps2_an385_pac::{Interrupt, interrupt};
+#[cfg(not(feature = "rtic"))]
+use mps2_an385_pac::interrupt;
+use mps2_an385_pac::Interrupt;
 
 // SysTick, by address — the PAC exposes interrupt names only, and the dual
 // timer beside it in `rtic.rs` is driven the same way.
@@ -111,8 +116,13 @@ mod eth {
     /// stays masked until the next idle, which unmasks it only after checking
     /// the FIFO is empty. The handler's only other job, waking the `wfi`,
     /// happened when the line rose.
+    #[cfg(not(feature = "rtic"))]
     #[interrupt]
     fn ETHERNET() {
+        on_rx_irq();
+    }
+
+    pub(crate) fn on_rx_irq() {
         // SAFETY: the LAN9118 the board initialised, at its fixed address.
         unsafe { irq::mask_rx(MPS2_AN385_BASE) };
     }
@@ -140,7 +150,9 @@ mod eth {
     }
 }
 
-#[cfg(feature = "serial")]
+// An RTIC image takes UARTRX0 as a software-task dispatcher, so it has no
+// serial wake; its link is ethernet.
+#[cfg(all(feature = "serial", not(feature = "rtic")))]
 mod uart {
     use super::*;
 
@@ -181,8 +193,13 @@ mod uart {
     }
 }
 
+/// phase-521 W6 — the LAN9118 RX interrupt's handler body, for the RTIC
+/// hardware task bound to `ETHERNET`.
+#[cfg(all(feature = "ethernet", feature = "rtic"))]
+pub(crate) use eth::on_rx_irq as on_eth_rx_irq;
+
 /// phase-521 W5 — the serial idle, for the board's XRCE custom transport.
-#[cfg(feature = "xrce-transport")]
+#[cfg(all(feature = "xrce-transport", not(feature = "rtic")))]
 pub(crate) use uart::wait_idle as serial_wait_idle;
 
 /// The one-shot's handler: stop the counter so a reload cannot fire again.
@@ -204,7 +221,7 @@ pub(crate) fn install() {
         nros_smoltcp::set_wait_idle(eth::wait_idle);
         nros_platform_mps2_an385::wake::set_wake_idle(eth::wake_idle);
     }
-    #[cfg(feature = "serial")]
+    #[cfg(all(feature = "serial", not(feature = "rtic")))]
     {
         cmsdk_uart::mask_rx_irq(cmsdk_uart::UART0_BASE);
         unsafe { NVIC::unmask(Interrupt::UARTRX0) };
@@ -215,6 +232,7 @@ pub(crate) fn install() {
     // link's RX interrupt, so an arrival ends the executor's park: the zenoh
     // session (CALLER mode) states `Notify` and the executor parks instead of
     // draining the link from `drive_io`.
-    #[cfg(feature = "rmw-zenoh")]
+    // An RTIC image with no ethernet installed no idle above.
+    #[cfg(all(feature = "rmw-zenoh", any(feature = "ethernet", not(feature = "rtic"))))]
     nros_rmw_zenoh::set_caller_rx_wakes_park(true);
 }
