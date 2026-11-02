@@ -409,7 +409,6 @@ mod tests {
             PlatformId::NuttxRiscv,
             PlatformId::FreertosMps2,
             PlatformId::ThreadxRiscv64,
-            PlatformId::Esp32Qemu,
             PlatformId::Px4,
         ] {
             assert!(!coords_admit(Some(&tier1), p), "{p:?} is not in tier 1");

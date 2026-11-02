@@ -559,6 +559,16 @@ context switches against 53,061 before. `rtos_e2e` pubsub, service and
 action pass on threadx-linux; pubsub and service on rv-virt-threadx
 (Rust, C, C++).
 
+**W6d — the ESP32-C3 board retired (2026-11-02).** Maintainer ruling: retire
+rather than port. It had no receive interrupt and no one-shot timer behind a
+wake object, so it was a "not yet" row with no in-tree consumer (dormant since
+issue 1525). The board, platform crate, OpenETH driver, examples, smoke bins,
+`just` module, launch script, QEMU fork submodule, matrix platform and cells,
+index rows and `esp32` framework are deleted; every board name it answered to
+is refused naming RFC-0113 D5 (`nros_entry_lower::REMOVED_BOARD_KEYS`, a
+removal table beside the rename table), and `driver_for("esp32", …)` refuses
+whatever the image's languages. RFC-0113's coverage row reads retired.
+
 ### W7 — Acceptance measurements for the promise
 
 Make RFC-0113 D2 a measured property, not a reading:

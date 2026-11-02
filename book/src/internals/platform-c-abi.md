@@ -83,7 +83,7 @@ The macros expand to the full set of `#[unsafe(no_mangle)] pub
 extern "C" fn nros_platform_*` bodies forwarding to the trait calls.
 This is what `nros-platform-posix` does today. It is also what the
 bare-metal board crates (`nros-platform-mps2-an385`,
-`nros-platform-stm32f4`, `nros-platform-esp32`, `nros-platform-esp32-qemu`)
+`nros-platform-stm32f4`)
 use: there is no host kernel to write idiomatic C against, so the
 single-task stub impls are written in Rust and exported via the macro.
 

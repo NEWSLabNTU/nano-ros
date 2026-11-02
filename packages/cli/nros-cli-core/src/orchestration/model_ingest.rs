@@ -1157,7 +1157,6 @@ mod executor_capacity_tests {
             PlatformKind::Zephyr,
             PlatformKind::ThreadxLinux,
             PlatformKind::ThreadxRiscv64,
-            PlatformKind::Esp32,
             PlatformKind::Stm32,
         ] {
             assert_eq!(

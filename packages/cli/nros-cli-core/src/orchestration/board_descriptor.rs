@@ -32,7 +32,6 @@ pub enum PlatformKind {
     Zephyr,
     ThreadxLinux,
     ThreadxRiscv64,
-    Esp32,
     Stm32,
 }
 
@@ -49,15 +48,15 @@ impl PlatformKind {
     /// The `nros/<feature>` this platform selects.
     ///
     /// RFC-0064 R5 D6 / phase-375 W8. Every board stated this, and 3 of 12
-    /// stated something that is NOT `platform-<platform>`: esp32 selects
-    /// `platform-bare-metal`, and BOTH ThreadX variants select
+    /// stated something that is NOT `platform-<platform>`: esp32 (retired,
+    /// phase-521 W6) selected `platform-bare-metal`, and BOTH ThreadX variants select
     /// `platform-threadx`. That is not three exceptions to a rule — it is the
     /// rule, which is a property of the PLATFORM and was being copied onto
     /// every board that uses it, where it could be got wrong.
     ///
     /// Deliberately NOT moved into a `config/<platform>/nros-platform.toml`,
     /// which is where the wave's original wording put it. There is no
-    /// `config/esp32/`, and both ThreadX kinds map to one feature, so the
+    /// `config/stm32/`, and both ThreadX kinds map to one feature, so the
     /// mapping is keyed on this ENUM rather than on a directory. A descriptor
     /// per platform would have needed a directory that does not exist for the
     /// exact cases that made the field worth moving.
@@ -68,9 +67,7 @@ impl PlatformKind {
             // Stm32 is an out-of-tree platform kind with no in-tree board; it
             // takes the bare-metal feature like every other no-RTOS target. Listed EXPLICITLY rather than via a `_` arm, so
             // the next kind added has to make this choice on purpose.
-            PlatformKind::BareMetal | PlatformKind::Esp32 | PlatformKind::Stm32 => {
-                "platform-bare-metal"
-            }
+            PlatformKind::BareMetal | PlatformKind::Stm32 => "platform-bare-metal",
             PlatformKind::Nuttx => "platform-nuttx",
             PlatformKind::Zephyr => "platform-zephyr",
             PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => "platform-threadx",
@@ -97,7 +94,6 @@ impl PlatformKind {
             PlatformKind::Zephyr => "zephyr",
             PlatformKind::ThreadxLinux => "threadx-linux",
             PlatformKind::ThreadxRiscv64 => "threadx-riscv64",
-            PlatformKind::Esp32 => "esp32",
             PlatformKind::Stm32 => "stm32",
         }
     }
@@ -125,13 +121,7 @@ impl PlatformKind {
     /// `nros_feature_set()`'s bare-metal arm accepts both.
     ///
     /// `None` means "a leaf on this platform does not derive a
-    /// `NROS_PLATFORM` from its board". For `Esp32` that is an AUTHORED
-    /// decision and NOT the absence of a module: the module is `baremetal` and
-    /// `cmake/board/nano-ros-board-esp32-c3-baremetal.cmake` exists. What does not
-    /// exist is a C/C++ example road on that tree — `examples/esp32-c3-baremetal/`
-    /// is the no-IDF `esp-hal` path, and C/C++ on the same silicon is the ESP-IDF
-    /// component (phase-139). The overlay is for a non-IDF C parent build, which
-    /// states its own platform. `Stm32` has no in-tree board at all.
+    /// `NROS_PLATFORM` from its board". `Stm32` has no in-tree board at all.
     pub fn cmake_deploy(self) -> Option<&'static str> {
         Some(match self {
             PlatformKind::Posix => "linux",
@@ -140,7 +130,7 @@ impl PlatformKind {
             PlatformKind::Nuttx => "nuttx",
             PlatformKind::Zephyr => "zephyr",
             PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => "threadx",
-            PlatformKind::Esp32 | PlatformKind::Stm32 => return None,
+            PlatformKind::Stm32 => return None,
         })
     }
 
@@ -165,7 +155,7 @@ impl PlatformKind {
             PlatformKind::Zephyr => Some(F::Zephyr),
             PlatformKind::Nuttx => Some(F::Nuttx),
             PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => Some(F::Threadx),
-            PlatformKind::BareMetal | PlatformKind::Esp32 | PlatformKind::Stm32 => None,
+            PlatformKind::BareMetal | PlatformKind::Stm32 => None,
         }
     }
 
@@ -344,7 +334,7 @@ impl BoardCapabilities {
     fn inferred(platform: PlatformKind) -> Self {
         use PlatformKind::*;
         match platform {
-            Posix | Freertos | Nuttx | Zephyr | ThreadxLinux | ThreadxRiscv64 | Esp32 => {
+            Posix | Freertos | Nuttx | Zephyr | ThreadxLinux | ThreadxRiscv64 => {
                 BoardCapabilities {
                     heap: true,
                     atomics: true,
@@ -990,8 +980,8 @@ impl BoardDescriptor {
             self.platform_feature = self.platform.platform_feature().to_string();
         }
         // `local_aliases` defaults to the platform feature. 8 of 10 stated
-        // exactly that; the two real overrides (`platform-esp32-qemu`,
-        // `platform-threadx-riscv64`) still say so and still win.
+        // exactly that; the one real override
+        // (`platform-threadx-riscv64`) still says so and still wins.
         if self.local_aliases.is_empty() && !self.platform_feature.is_empty() {
             self.local_aliases = vec![self.platform_feature.clone()];
         }
@@ -1004,7 +994,7 @@ impl BoardDescriptor {
                 entry.crate_name = board_crate.replace('-', "_");
             }
             // 4 of 7 signatures are this exact string. The three that differ
-            // are real (an `esp_hal::main` attribute, a `cortex-m-rt` entry
+            // are real (an ~~`esp_hal::main`~~ attribute (retired esp32), a `cortex-m-rt` entry
             // macro re-exported by the board crate, a plain `fn main`), so it
             // is a default rather than a derivation.
             if entry.signature.is_empty() {
@@ -2348,9 +2338,6 @@ mod tests {
         let mut bad = Vec::new();
         let mut seen = 0usize;
         for rel in String::from_utf8_lossy(&listed.stdout).lines() {
-            if rel.contains("esp32") {
-                continue; // dormant (issue 1525)
-            }
             let Ok(raw) = std::fs::read_to_string(root.join(rel)) else {
                 continue;
             };
@@ -2364,9 +2351,6 @@ mod tests {
                 let Some(board) = img.get("board").and_then(|b| b.as_str()) else {
                     continue;
                 };
-                if board.contains("esp32") {
-                    continue;
-                }
                 seen += 1;
                 if let Err(why) = cat.setup_board(board, &is_key) {
                     bad.push(format!("{rel} [image.{id}] board = \"{board}\": {why}"));
@@ -2383,7 +2367,7 @@ mod tests {
             .iter()
             .filter_map(|d| d.setup_key(&is_key))
             .collect();
-        for k in index.board.keys().filter(|k| !k.contains("esp32")) {
+        for k in index.board.keys() {
             if !reached.contains(k) {
                 bad.push(format!(
                     "index [board.{k}] is reached by no board descriptor"
@@ -2955,7 +2939,6 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             Zephyr,
             ThreadxLinux,
             ThreadxRiscv64,
-            Esp32,
             Stm32,
         ] {
             let back: PlatformKind = serde_json::from_str(&format!("\"{}\"", p.kebab()))
@@ -3116,7 +3099,6 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
         for (board, want) in [
             ("mps2-an385-freertos", "thumbv7m-none-eabi"),
             ("mps3-an536-freertos", "armv8r-none-eabihf"),
-            ("esp32-qemu", "riscv32imc-unknown-none-elf"),
             // States `[build] target` as a PATH to its own target spec
             // (phase-445); the triple is the spec's file stem.
             ("nuttx-riscv", "riscv32imac-unknown-nuttx-elf"),

@@ -458,17 +458,6 @@ def prerequisite_rows():
             "notes": "host nros-codegen and board CMake defs before C/C++ leaves",
         },
         {
-            "id": "esp32-sdk-prereq",
-            "platform": "esp32",
-            "kind": "sdk-prereq",
-            "role": "esp32-qemu-tooling",
-            "dir": "nros-sdk-index.toml",
-            "build_root": "build/esp32-qemu",
-            "scheduler": "just esp32 setup",
-            "shared_mutation": "build/esp32-qemu; rustup riscv32imc-unknown-none-elf target",
-            "notes": "ESP32-C3 qemu/image packaging prerequisites for qemu-esp32 fixture tests",
-        },
-        {
             "id": "zephyr-sdk-prereq",
             "platform": "zephyr",
             "kind": "sdk-prereq",
@@ -537,32 +526,6 @@ def hand_authored_rows():
         # was unattributable and `row_artifact_root()` named a `target/` dir
         # nothing writes" — the exact fact this list still denied. Nothing read
         # the list, so nothing failed. `--check` now fails on a stale claim.
-        {
-            "id": "esp32-qemu-flash-images",
-            "platform": "esp32",
-            "kind": "postprocess",
-            "lang": "rust",
-            "rmw": "zenoh",
-            "role": "flash-image",
-            "dir": "examples/esp32-c3-baremetal/rust",
-            "build_root": "build/esp32-qemu",
-            "scheduler": "just esp32 build-qemu",
-            "shared_mutation": "build/esp32-qemu",
-            "notes": "espflash packs talker/listener ELFs after manifest cargo leaves",
-        },
-        {
-            "id": "esp32-qemu-logging-smoke-flash-image",
-            "platform": "esp32",
-            "kind": "postprocess",
-            "lang": "rust",
-            "rmw": "zenoh",
-            "role": "logging-smoke",
-            "dir": "packages/testing/nros-tests/bins/logging-smoke-esp32-qemu",
-            "build_root": "packages/testing/nros-tests/bins/logging-smoke-esp32-qemu/target",
-            "scheduler": "just esp32 build-logging-smoke",
-            "shared_mutation": "logging-smoke ELF .bin sibling",
-            "notes": "espflash packs binary after manifest cargo leaf",
-        },
     ]
     for row in rows:
         row["source"] = "just/*.just"

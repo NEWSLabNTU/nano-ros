@@ -138,7 +138,6 @@ echo "platform C ABI mirror clean: $total symbols total across $(( ${#HEADERS_RE
 PLATFORM_CRATES=(
     "packages/platform/nros-platform-mps2-an385/src/lib.rs|core,net"
     "packages/platform/nros-platform-stm32f4/src/lib.rs|core,net"
-    "packages/platform/nros-platform-esp32-qemu/src/lib.rs|core,net"
     # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — the Rust kernel
     # crates (nros-platform-{freertos,nuttx,threadx,zephyr,posix}) were
     # deleted. The directories `packages/platform/nros-platform-{rtos,posix}/`

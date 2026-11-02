@@ -67,10 +67,9 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     makefile="$(mktemp "${TMPDIR:-/tmp}/nros_example_build.XXXXXX.mk")"
     trap 'rm -f "$toml_list" "$makefile"' EXIT
 
-    # Phase 181.6 / 181.4.h — the `examples/mps2-an385-baremetal/` and
-    # `examples/esp32-c3-baremetal/` leaves are excluded here and built from
-    # the SSOT manifest below instead (fixture platforms `baremetal` and
-    # `esp32`), so each has a single enumeration source (matching the
+    # Phase 181.6 / 181.4.h — the `examples/mps2-an385-baremetal/` leaves are
+    # excluded here and built from the SSOT manifest below instead (fixture
+    # platform `baremetal`), so each has a single enumeration source (matching the
     # test-all staleness probe). The remaining platforms have no manifest rows
     # for this broad find, or are built by their own platform recipes
     # (freertos/nuttx/threadx/zephyr/px4).
@@ -79,7 +78,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # leak in. `NF>=5` = the old find's `-mindepth 4` (leaf crates, not
     # workspace-root manifests). Selection filters stay as greps.
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/workspaces/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/mps2-an385-baremetal/|/esp32/|/esp32-c3-baremetal/|/px4/' \
+        | grep -vE '/zephyr/|/workspaces/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/mps2-an385-baremetal/|/px4/' \
         | sort > "$toml_list"
 
     # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
@@ -156,8 +155,6 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # issue 1512 — the cargo-rooted bare-metal C/C++ leaves (`builder = "cargo"`).
     bash scripts/build/fixtures-build.sh baremetal c
     bash scripts/build/fixtures-build.sh baremetal cpp
-    # ESP32 is DORMANT (issue 1525): its fixture rows are gone, so there is
-    # nothing to build here. The leaves stay under examples/esp32-c3-baremetal/.
     echo "All examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++ + workspaces).
@@ -733,7 +730,7 @@ test verbose="": build-fixtures
     # (test-linux-api, test-c-xrce). Unlike root `just test`, this lane
     # keeps the QEMU RTOS e2e groups in.
     args=(-p nros-tests --no-fail-fast \
-          -E 'not (group(=ros2-interop) or binary(xrce_ros2_interop) or binary(zephyr) or binary(esp32_emulator) or binary(large_msg) or binary(linux_api) or binary(parameters_roundtrip) or binary(c_xrce_api))')
+          -E 'not (group(=ros2-interop) or binary(xrce_ros2_interop) or binary(zephyr) or binary(large_msg) or binary(linux_api) or binary(parameters_roundtrip) or binary(c_xrce_api))')
     if [ -z "{{verbose}}" ]; then
         args+=(--failure-output never)
     fi

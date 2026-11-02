@@ -112,7 +112,6 @@ READS_ENV = {
     # driver `nros-board-nuttx` receives the merged pair and reads no env).
     "nuttx": (True, ["packages/boards/nros-board-nuttx-qemu"]),
     "nuttx-riscv": (True, ["packages/boards/nros-board-nuttx-qemu"]),
-    "esp32": (True, ["packages/boards/nros-board-esp32-qemu"]),
     # phase-484 W4e — reached once leaf rows came into scope.
     "baremetal": (True, ["packages/boards/nros-board-mps2-an385"]),
     "threadx-riscv64": (

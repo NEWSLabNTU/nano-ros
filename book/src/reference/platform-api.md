@@ -45,7 +45,6 @@ copy.
 | `nros-platform-zephyr` | Zephyr RTOS | [packages/platform/nros-platform-zephyr](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platform/nros-platform-zephyr) |
 | `nros-platform-mps2-an385` | Cortex-M3 (QEMU) | [packages/platform/nros-platform-mps2-an385](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platform/nros-platform-mps2-an385) |
 | `nros-platform-stm32f4` | STM32F4 | [packages/platform/nros-platform-stm32f4](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platform/nros-platform-stm32f4) |
-| `nros-platform-esp32-qemu` | ESP32-C3 (QEMU) | [packages/platform/nros-platform-esp32-qemu](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platform/nros-platform-esp32-qemu) |
 
 The POSIX implementation is the canonical reference port.
 

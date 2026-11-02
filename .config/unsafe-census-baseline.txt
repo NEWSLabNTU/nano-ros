@@ -27,7 +27,6 @@ mps2-an385-pac                       0   1     1       2      0
 nros                               108  25     5      30      0
 nros-baremetal-common               24   0     0      21      0
 nros-board-cffi                      3   0     0       6      0
-nros-board-esp32-qemu               11   1     1       0      0
 nros-board-freertos                 64   1     1      20      0
 nros-board-linux                    21   0     0       7      0
 nros-board-mps2-an385               37   6     1      11      0
@@ -57,7 +56,6 @@ nros-platform                       16   5     1       5      0
 nros-platform-api                   22   5     1      10      0
 nros-platform-cffi                  99   0     4     122      0
 nros-platform-critical-section       2   2     1       1      0
-nros-platform-esp32-qemu            17   0     2      16      0
 nros-platform-mps2-an385            23   6     3       8      0
 nros-platform-stm32f4               15   6     3       2      0
 nros-port-metric-bench               3   0     0       3      0

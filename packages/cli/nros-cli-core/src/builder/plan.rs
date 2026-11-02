@@ -26,9 +26,11 @@
 //! 2026-09-28. It was selected for `platform = "esp32"` with a graph that
 //! crosses languages, and it could not work: phase-468 W2 retired the ESP-IDF
 //! component, nothing emits an ESP-IDF project, no carrier reaches an `idf.py`
-//! build, and `nros setup` cannot provision ESP-IDF. That combination now
-//! REFUSES, naming issue 1525, rather than exec'ing a tool with no project to
-//! build or falling through to a cmake road that is equally absent.
+//! build, and `nros setup` cannot provision ESP-IDF. That combination
+//! REFUSED, naming issue 1525, rather than exec'ing a tool with no project to
+//! build or falling through to a cmake road that is equally absent. Since
+//! phase-521 W6 the ESP32 board itself is retired (RFC-0113 D5), so every
+//! `esp32` image refuses, whatever its languages.
 //!
 //! A refusal is a fourth OUTCOME beside the three drivers, on purpose.
 //! Returning `Driver::CMake` there would be the failure mode this repository
@@ -108,12 +110,11 @@ impl std::fmt::Display for NoRoad {
 /// builds C or C++.
 ///
 /// `Err` is a fourth answer and not an accident — see the module doc. The one
-/// combination that produces it is an esp32 board with a graph that crosses
-/// languages, which had a road (`idf.py`) that could not work.
+/// platform that produces it is `esp32`, retired with its board (RFC-0113 D5).
 pub fn driver_for(platform: &str, has_non_rust: bool) -> Result<Driver, NoRoad> {
     match platform {
         "zephyr" => Ok(Driver::West),
-        "esp32" if has_non_rust => Err(NoRoad(ESP32_CROSS_LANGUAGE.to_string())),
+        "esp32" => Err(NoRoad(ESP32_RETIRED.to_string())),
         // Not a "mixed" special case — cmake simply wins whenever the graph
         // crosses languages, because corrosion makes cargo consumable from
         // cmake and nothing makes cmake consumable from cargo.
@@ -122,46 +123,28 @@ pub fn driver_for(platform: &str, has_non_rust: bool) -> Result<Driver, NoRoad> 
     }
 }
 
-/// Why an esp32 image whose graph crosses languages has no road.
+/// Why an esp32 image has no road.
 ///
-/// Written out rather than summarised because every one of the four clauses was
-/// measured, and a reader who only hears "unsupported" will reasonably assume a
-/// missing flag. The issue carries the evidence and the acceptance for undoing
-/// this.
-const ESP32_CROSS_LANGUAGE: &str = "\
-this image's board is an ESP32 board and its package graph crosses languages, \
-and nano-ros has no build road for that combination.\n\n\
-Until 2026-09-28 it chose `idf.py`, which could not have worked: the ESP-IDF \
-component was retired in phase-468 W2, so there is nothing for an ESP-IDF \
-project to register; nothing emits an ESP-IDF project; no carrier delivers a \
-resolved knob to an `idf.py` build; and `nros setup` cannot provision ESP-IDF. \
-Choosing cmake instead would be the same claim in a different tool.\n\n\
-What works today:\n\n  \
-* ESP32 in pure Rust — the esp-hal bare-metal road, `nros build` over the \
-cargo driver. `book/src/getting-started/esp32.md` is the walkthrough.\n  \
-* C or C++ on another target — every other platform token has a road.\n\n\
-Tracked as issue 1525, which states what re-adding an ESP-IDF road would need.";
+/// phase-521 W6 — the ESP32-C3 board (`nros-board-esp32-qemu`, the only esp32
+/// board) is retired. Until then a pure-Rust image was a cargo image and one
+/// whose graph crossed languages refused (issue 1525: no ESP-IDF road).
+const ESP32_RETIRED: &str = "\
+this image's board is an ESP32 board, and the ESP32 board is retired: it had no \
+receive interrupt and no one-shot timer behind a wake object, so an executor on \
+it could not park, and nano-ros does not support a board where it cannot keep its \
+real-time wait promise (RFC-0113 D5). C or C++ on an ESP32 never had a road \
+(issue 1525).";
 
 /// [`driver_for`], refined by the BOARD's entry shape.
 ///
-/// The esp32 board this tree ships is esp-hal on bare metal:
-/// `nros-board-esp32-qemu`'s entry is a Rust `board-run` binary
-/// (`#[esp_hal::main]`) and nothing about it involves ESP-IDF. That image is a
-/// CARGO image, decided here rather than by the platform token alone — deciding
-/// it by platform made `nros build esp32` exec a tool with no project to build
-/// (`could not exec idf.py`), which is why the fixture lane built that image by
-/// hand with `cargo build -p` and could not stop.
-///
-/// Every other esp32 shape reaches [`driver_for`]'s refusal.
+/// Since the esp32 board retired (phase-521 W6) no board's entry shape moves
+/// the answer; the parameter stays so a future board can.
 pub fn driver_for_board(
     platform: &str,
     entry_kind: crate::orchestration::board_descriptor::EntryKind,
     has_non_rust: bool,
 ) -> Result<Driver, NoRoad> {
-    use crate::orchestration::board_descriptor::EntryKind;
-    if platform == "esp32" && entry_kind == EntryKind::BoardRun && !has_non_rust {
-        return Ok(Driver::Cargo);
-    }
+    let _ = entry_kind;
     driver_for(platform, has_non_rust)
 }
 
@@ -447,45 +430,22 @@ mod tests {
     }
 
     #[test]
-    fn a_pure_rust_esp32_board_run_image_is_a_cargo_image() {
-        // The in-tree esp32 board is esp-hal bare metal, whose Rust entry is a
-        // cargo bin and not an ESP-IDF app. The BOARD decides this, not the
-        // platform token — deciding it by token exec'd `idf.py` on a project
-        // that did not exist (phase-445 W4 / PR #880).
-        use crate::orchestration::board_descriptor::EntryKind;
-        assert_eq!(
-            driver_for_board("esp32", EntryKind::BoardRun, false),
-            Ok(Driver::Cargo)
-        );
-    }
-
-    #[test]
-    fn an_esp32_graph_that_crosses_languages_has_no_road() {
-        // RFC-0065 D3, amended 2026-09-28. This combination used to answer
-        // `idf.py`, a road with no ESP-IDF component to build, no carrier and
-        // no way to provision the tool. The refusal is the answer; falling
-        // through to cmake would be the same unsupported claim in another tool.
+    fn every_esp32_image_is_refused_naming_rfc_0113() {
+        // phase-521 W6 — the esp32 board is retired (RFC-0113 D5), so the
+        // pure-Rust image that used to be a cargo image refuses too.
         use crate::orchestration::board_descriptor::EntryKind;
         for entry_kind in [
             EntryKind::BoardRun,
             EntryKind::HostedMain,
             EntryKind::ZephyrStaticlib,
         ] {
-            let e = driver_for_board("esp32", entry_kind, true)
-                .expect_err("an esp32 cross-language graph has no road");
-            assert!(e.0.contains("1525"), "the refusal names its issue: {e}");
-            assert!(
-                e.0.contains("esp-hal"),
-                "the refusal names the road that does work: {e}"
-            );
+            for has_non_rust in [false, true] {
+                let e = driver_for_board("esp32", entry_kind, has_non_rust)
+                    .expect_err("an esp32 image has no road");
+                assert!(e.0.contains("RFC-0113 D5"), "{e}");
+                assert!(e.0.contains("1525"), "{e}");
+            }
         }
-        // The refusal is about the LANGUAGE MIX, not about the entry shape: a
-        // pure-Rust esp32 image is a cargo image whatever its board declares,
-        // because cargo is a road that exists for it.
-        assert_eq!(
-            driver_for_board("esp32", EntryKind::HostedMain, false),
-            Ok(Driver::Cargo)
-        );
     }
 
     #[test]

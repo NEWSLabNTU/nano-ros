@@ -193,9 +193,6 @@ platform-mps2-an385 = [
 platform-stm32f4 = [
     "nros-c/platform-stm32f4",
 ]
-platform-esp32-qemu = [
-    "nros-c/platform-esp32-qemu",
-]
 
 # ROS edition (orthogonal to RMW and platform)
 ros-humble = [

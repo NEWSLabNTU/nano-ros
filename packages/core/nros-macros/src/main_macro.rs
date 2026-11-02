@@ -728,7 +728,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         let framework_label = match framework {
             Framework::OwnedSpin => "OwnedSpin",
             Framework::Zephyr => "Zephyr",
-            Framework::Esp32 => "Esp32",
             Framework::Rtic => unreachable!(),
         };
         return Err(syn::Error::new(
@@ -1558,7 +1557,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 "nros::main!: this system declares {} but the {} framework entry does not \
                  register the runtime's parameter or lifecycle services, so the declaration \
                  would be dropped in silence (issue 1766). Remove it from `[system] features`, \
-                 or deploy on a board whose entry runs the OwnedSpin, Zephyr or ESP32 shape.",
+                 or deploy on a board whose entry runs the OwnedSpin or Zephyr shape.",
                 match (
                     param_services_enabled || param_store_enabled,
                     lifecycle_code.is_some(),
@@ -2010,7 +2009,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `MissingRtosSpec("posix")` or a raw missing-method compile error.
     if multi_tier.is_some()
         && let Some(d) = deploy_for_framework.as_deref()
-        && ["esp32", "rtic", "baremetal", "bare-metal", "orin"]
+        && ["rtic", "baremetal", "bare-metal", "orin"]
             .iter()
             .any(|f| d.contains(f))
     {
@@ -2144,10 +2143,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // none declares `node_pkgs` — each spelled exactly this fallback's
     // answer. The key stays for an entry registering OTHER packages.
     let framework_node_pkg_idents: Vec<Ident> = match framework {
-        // OwnedSpin (incl. NuttX) + Zephyr + Esp32 all register via the
+        // OwnedSpin (incl. NuttX) + Zephyr both register via the
         // launch-resolved `register_calls` (the `RuntimeCtx`-based
         // `<pkg>::register` flow); only RTIC lists its node packages here.
-        Framework::OwnedSpin | Framework::Zephyr | Framework::Esp32 => Vec::new(),
+        Framework::OwnedSpin | Framework::Zephyr => Vec::new(),
         Framework::Rtic => {
             let cargo_toml = manifest_dir.join("Cargo.toml");
             let from_metadata = read_entry_node_pkgs(&cargo_toml).map_err(|e| {
@@ -2529,60 +2528,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // systems route through `ZephyrBoard::run_tiers`; single-tier
                 // keeps the plain single-executor register+spin body.
                 #zephyr_body_tail
-            }
-        },
-        // Phase 225.O — ESP32-C3 (esp-hal) framework. esp-riscv-rt's
-        // `_start` registers + jumps to the esp-hal entry, so the boot
-        // symbol must be a `#[::esp_hal::main] fn main() -> !` — the
-        // `OwnedSpin` bare `extern "C" fn main` does not boot. The board
-        // ZST's real-runtime `BoardEntry::run` builds the `Config`,
-        // brings up hardware + transport, opens the executor, registers
-        // each launch-named Node pkg through the `RuntimeCtx` closure
-        // (identical `<pkg>::register(runtime)?` flow to native/freertos
-        // — the launch file stays the single source of truth), and spins
-        // forever (`run` never returns on ESP32). The trailing `loop` is
-        // defensive (satisfies `-> !`; unreachable in a working build).
-        // The Entry crate provides the panic handler (`esp-backtrace`)
-        // and app descriptor (`esp_app_desc!`).
-        Framework::Esp32 => quote! {
-            #[::esp_hal::main]
-            fn main() -> ! {
-                let _ = __nros_esp32_entry_run();
-                #[allow(clippy::empty_loop)]
-                loop {
-                    ::core::hint::spin_loop();
-                }
-            }
-
-            fn __nros_esp32_entry_run() -> ::core::result::Result<
-                (),
-                ::nros::__macro_support::nros_platform::RuntimeError,
-            > {
-                // RFC-0065 D5 amendment — the declared pre-boot step.
-                #before_boot_call
-                // Phase 244.D2 — `run_with_deploy` (not `run`) so the
-                // `[package.metadata.nros.deploy.<board>]` overlay (locator / ip /
-                // domain) reaches `BoardEntry::run_with_deploy`; with `run` the
-                // overlay was inert and both esp32 nodes used the board-default
-                // net. Boards without an override fall back to `run` via the
-                // default trait body, so non-overlay esp32 builds are unchanged.
-                <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy(
-                    &#deploy_overlay_ts,
-                    |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
-                        -> ::core::result::Result<
-                            (),
-                            ::nros::__macro_support::nros_platform::RuntimeError,
-                        >
-                    {
-                        // Issue #128 — OwnedSpin parity: param services before
-                        // the registers, lifecycle after. Inert without the
-                        // system.toml declarations / cargo features.
-                        #contract_monitors_call #declared_params_call #param_services_call
-                        #( #register_calls )*
-                        #lifecycle_call
-                        ::core::result::Result::Ok(())
-                    },
-                )
             }
         },
         Framework::Rtic => {
@@ -4258,8 +4203,7 @@ mod image_plan_tests {
 ///   lookup the CLI's `plan_from_model` uses for the same Rust keys, so the two
 ///   Rust producers now agree.
 ///
-///   A Rust key with NO RTOS family (`esp32-qemu`, `esp32-c3-baremetal`,
-///   `rtic-mps2-an385`, `mps2-an385-baremetal`, `mps2-an385`) gets `NO_RTOS_TIER_KEY`, which selects no sub-table. The
+///   A Rust key with NO RTOS family (`rtic-mps2-an385`, `mps2-an385-baremetal`, `mps2-an385`) gets `NO_RTOS_TIER_KEY`, which selects no sub-table. The
 ///   substring match gave those keys the host's sub-table. An authored tier on
 ///   such a board is now refused by `resolve_tiers`, and no in-tree leaf
 ///   authors one.
@@ -4298,13 +4242,7 @@ mod target_rtos_tests {
     /// none has an RTOS.
     #[test]
     fn no_rtos_rust_keys_select_no_sub_table() {
-        for key in [
-            "esp32-qemu",
-            "esp32-c3-baremetal",
-            "rtic-mps2-an385",
-            "mps2-an385-baremetal",
-            "mps2-an385",
-        ] {
+        for key in ["rtic-mps2-an385", "mps2-an385-baremetal", "mps2-an385"] {
             assert_eq!(
                 derive_target_rtos(Some(key)),
                 nros_entry_lower::NO_RTOS_TIER_KEY,
@@ -5109,14 +5047,6 @@ enum Framework {
     /// otherwise. There is NO `BoardEntry::run` (Zephyr forbids a Rust
     /// `fn main`).
     Zephyr,
-    /// Phase 225.O — ESP32-C3 (esp-hal). esp-riscv-rt's `_start` calls
-    /// the esp-hal entry registration, so a bare `extern "C" fn main`
-    /// (the `OwnedSpin` `target_os = "none"` shape) does not boot. The
-    /// macro emits `#[::esp_hal::main] fn main() -> !` that delegates to
-    /// the real-runtime `BoardEntry::run` (which never returns), then
-    /// spins defensively. The Entry crate provides the panic handler
-    /// (`esp-backtrace`) + app descriptor (`esp_app_desc!`).
-    Esp32,
 }
 
 // Phase 225.O follow-up (known-issue #18) — NOTE on NuttX. NuttX does
@@ -5139,7 +5069,6 @@ fn framework_from_name(name: &str) -> Option<Framework> {
         "owned-spin" => Framework::OwnedSpin,
         "rtic" => Framework::Rtic,
         "zephyr" => Framework::Zephyr,
-        "esp32" => Framework::Esp32,
         _ => return None,
     })
 }
@@ -5795,7 +5724,7 @@ mod framework_ssot_tests {
     /// declare could never be produced by a board, so it would be dead emit.
     #[test]
     fn the_macro_accepts_no_framework_outside_the_vocabulary() {
-        for name in ["owned-spin", "rtic", "zephyr", "esp32"] {
+        for name in ["owned-spin", "rtic", "zephyr"] {
             assert!(
                 nros_orchestration_ir::is_known_framework(name),
                 "the macro maps `{name}` but the shared vocabulary does not declare it"
@@ -5815,7 +5744,6 @@ mod framework_ssot_tests {
             "rv-virt-threadx",
             "nuttx",
             "nuttx-riscv",
-            "esp32-qemu",
             "zephyr",
             "rtic-mps2-an385",
             "mps2-an385-baremetal",
@@ -6404,12 +6332,8 @@ mod leaf_axis_tests {
     /// boot on every shell that has one, typed against the documented
     /// signature, and its error is the variant that names it.
     #[test]
-    fn before_boot_runs_first_on_the_owned_spin_zephyr_and_esp32_shells() {
-        for (board, first_after) in [
-            ("linux", "setup_transport"),
-            ("zephyr", "wait_network"),
-            ("esp32-qemu", "run_with_deploy"),
-        ] {
+    fn before_boot_runs_first_on_the_owned_spin_and_zephyr_shells() {
+        for (board, first_after) in [("linux", "setup_transport"), ("zephyr", "wait_network")] {
             let out = expand("before_boot = my_pkg::open_can", board, "").unwrap();
             let hook = out
                 .find("my_pkg :: open_can")
