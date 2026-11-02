@@ -7,11 +7,11 @@ nano-ros builds `third-party/threadx/netxduo` from the fork [NEWSLabNTU/netxduo]
 | | |
 | --- | --- |
 | Upstream base | `v6.4.5.202504_rel` (merge base [b54bf0180199](https://github.com/eclipse-threadx/netxduo/commit/b54bf0180199be4a9677d55113d6c5f5ed1879bc)) |
-| Commits on top | 2 |
+| Commits on top | 3 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 2, +15/−16 |
+| Files changed | 2, +114/−16 |
 
-**Pinned commit:** `d0c2e80e2da61e274f8f53505b1974fcad7d1071`
+**Pinned commit:** `393b862521d1dc43d6d12b6fa1fd377de963acff`
 
 ## Commits on top of upstream
 
@@ -19,9 +19,10 @@ nano-ros builds `third-party/threadx/netxduo` from the fork [NEWSLabNTU/netxduo]
 | --- | --- |
 | [669760b0df](https://github.com/NEWSLabNTU/netxduo/commit/669760b0df959d9dd7c02b1bb5e143fd35cd65d6) | Fix UINT pointer truncation in BSD recv + add extract bounds check |
 | [d0c2e80e2d](https://github.com/NEWSLabNTU/netxduo/commit/d0c2e80e2da61e274f8f53505b1974fcad7d1071) | Fix x86_64 pointer truncation in BSD socket layer |
+| [393b862521](https://github.com/NEWSLabNTU/netxduo/commit/393b862521d1dc43d6d12b6fa1fd377de963acff) | BSD: per-socket receive notification |
 
 Reproduce:
 
 ```bash
-gh api repos/eclipse-threadx/netxduo/compare/v6.4.5.202504_rel...NEWSLabNTU:netxduo:d0c2e80e2da61e274f8f53505b1974fcad7d1071 --jq '.ahead_by'
+gh api repos/eclipse-threadx/netxduo/compare/v6.4.5.202504_rel...NEWSLabNTU:netxduo:393b862521d1dc43d6d12b6fa1fd377de963acff --jq '.ahead_by'
 ```

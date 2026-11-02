@@ -236,8 +236,9 @@ forks rather than reach stack internals or add a watcher task per session):
   `RustBackendAdapter`, which always fills the slot, and the slot's trait
   default reads `supports_wake_callback()`, which the zenoh shim never
   overrode. So every zenoh session stated `None` and would have lost its
-  park. The shim now states that it honours the callback, and
-  `rust_adapter`'s two wake tests pin both directions at the seam.
+  park. #2990 (W6a) made the shim state its readiness itself (`Notify` in
+  THREAD mode, `None` in CALLER mode, where an arrival does not end a park),
+  and `rust_adapter`'s two wake tests pin the adapter seam both ways.
 - Measured on QEMU, before and after. A C listener (`rclc_executor_spin_some`
   with 1 s timeouts) received from the Agent while `ros2 topic pub` sent at
   2 Hz. Latency is from publish to listener print:

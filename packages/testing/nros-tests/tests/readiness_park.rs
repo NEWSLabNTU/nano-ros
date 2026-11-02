@@ -381,12 +381,12 @@ fn the_entry_budget_is_long_only_when_every_session_ends_the_park() {
     READ_FD.store(rx.as_raw_fd(), Ordering::SeqCst);
 
     KIND.store(NROS_RMW_READINESS_WAITABLE as u8, Ordering::SeqCst);
-    let executor = open();
+    let executor = open(STUB, &VTABLE);
     assert_eq!(executor.entry_spin_budget(), nros_node::ENTRY_IDLE_BUDGET);
     drop(executor);
 
     KIND.store(NROS_RMW_READINESS_NONE as u8, Ordering::SeqCst);
-    let executor = open();
+    let executor = open(STUB, &VTABLE);
     assert_eq!(executor.entry_spin_budget(), nros_node::ENTRY_POLL_BUDGET);
     drop(executor);
     READ_FD.store(-1, Ordering::SeqCst);
@@ -405,7 +405,7 @@ fn a_ticking_component_keeps_the_entry_slice() {
     unsafe extern "C" fn tick(_: *mut core::ffi::c_void, _: *mut core::ffi::c_void) {}
     unsafe extern "C" fn drop_state(_: *mut core::ffi::c_void) {}
 
-    let mut executor = open();
+    let mut executor = open(STUB, &VTABLE);
     // SAFETY: a null state the no-op tick and drop never read.
     unsafe {
         executor
@@ -439,7 +439,7 @@ fn cancel_from_another_thread_ends_a_long_park() {
     READ_FD.store(rx.as_raw_fd(), Ordering::SeqCst);
     KIND.store(NROS_RMW_READINESS_WAITABLE as u8, Ordering::SeqCst);
 
-    let mut executor = open();
+    let mut executor = open(STUB, &VTABLE);
     executor.spin_once(Duration::ZERO);
     struct SendPtr(*const Executor<'static>);
     // SAFETY: `cancel` is documented safe from another thread; the executor
@@ -466,6 +466,8 @@ fn cancel_from_another_thread_ends_a_long_park() {
     );
     drop(executor);
     READ_FD.store(-1, Ordering::SeqCst);
+}
+
 #[test]
 fn a_notify_session_wakes_the_park_from_its_wake_callback() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
