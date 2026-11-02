@@ -371,8 +371,6 @@ exclude = [
     # unused off-target. Fixing those is what promotion now costs.
     "packages/platform/nros-platform-mps2-an385",
     "packages/platform/nros-platform-stm32f4",
-    "packages/platform/nros-platform-esp32-qemu",
-    "packages/boards/nros-board-esp32-qemu",
     # Shared bare-metal helpers (PRNG, sleep, libc stubs) — embedded-only
     # Serial (UART) link layer (embedded-only, requires cross-compilation)
     "packages/rmw/zenoh/zpico-serial",
@@ -451,13 +449,6 @@ exclude = [
     # an example app; cargo `check` works on host for the Rust surface.
     # Phase 169.2 — threadx-linux rust/dds deleted.
     # Phase 169.2 — rv-virt-threadx rust/dds deleted.
-    # ESP32 crates (RISC-V, require nightly + esp-hal)
-    "packages/drivers/net/openeth-smoltcp",
-    # ESP32 examples (RISC-V, require nightly + esp-hal)
-    "packages/testing/nros-smoke/esp32-hello-world",
-    "examples/esp32-c3-baremetal/rust/talker",
-    "examples/esp32-c3-baremetal/rust/listener",
-    # Phase 169.2 — esp32-c3-baremetal rust/dds deleted.
     # Verus verification crate (requires Verus toolchain, excluded from workspace)
     "packages/verification/nros-verification",
     # PX4 vendored sources (submodule under third-party/px4/). Has its

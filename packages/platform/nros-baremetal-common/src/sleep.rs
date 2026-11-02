@@ -1,7 +1,7 @@
 //! Busy-wait sleep with optional poll callback for bare-metal platforms.
 //!
-//! Each platform's clock source is different (DWT cycle counter on ARM,
-//! `esp_hal::time::Instant` on ESP32, etc.), so this module accepts a
+//! Each platform's clock source is different (the DWT cycle counter on ARM,
+//! for one), so this module accepts a
 //! clock function pointer registered at startup. The platform crate's
 //! init code calls [`set_clock_fn`] with its own `clock_ms`
 //! implementation; subsequent [`sleep_ms`] calls poll that function in

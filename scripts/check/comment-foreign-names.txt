@@ -131,7 +131,6 @@ esp_log_write
 esp_system_abort
 heap_caps_malloc
 heap_caps_realloc
-init_logger
 portMUX_TYPE
 
 # ThreadX and NetX Duo
@@ -326,7 +325,6 @@ YIELD
 DATA_FRAG
 DURABILITY_QOS_POLICY
 D_CDR2_LE
-DcpsDomainParticipant
 HISTORY_QOS_POLICY
 LIVELINESS_QOS_POLICY
 RELIABILITY_QOS_POLICY

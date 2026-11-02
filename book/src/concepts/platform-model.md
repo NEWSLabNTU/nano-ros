@@ -90,7 +90,6 @@ own platform axis — it pulls in one of the rows above.
 | Board crate                  | Underlying platform | CPU         | Notes                                       |
 |------------------------------|---------------------|-------------|---------------------------------------------|
 | `nros-board-mps2-an385`      | `bare-metal`        | Cortex-M3   | QEMU MPS2-AN385 + LAN9118 + smoltcp         |
-| `nros-board-esp32-qemu`      | `bare-metal`        | RISC-V (ESP32-C3) | QEMU ESP32 + OpenETH + smoltcp        |
 
 The board-over-RTOS pattern — a board that pulls in an RTOS row rather than
 being a platform itself — is what NVIDIA's Jetson Orin SPE would be: a

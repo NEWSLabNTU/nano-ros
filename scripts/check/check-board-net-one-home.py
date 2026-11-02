@@ -49,10 +49,6 @@ MIGRATED = {
     # `mps2-an385` (bare-metal) is NOT listed: its `docker` profile still
     # carries a second network as literals until phase-497 makes it a
     # `[network.docker]` row.
-    "esp32-qemu": [
-        "packages/boards/nros-board-esp32-qemu/src/config.rs",
-        "packages/boards/nros-board-esp32-qemu/src/board_entry.rs",
-    ],
     "nuttx-qemu": [
         "packages/boards/nros-board-nuttx-qemu/src/config.rs",
         "packages/boards/nros-board-nuttx-qemu/src/entry_212n.rs",

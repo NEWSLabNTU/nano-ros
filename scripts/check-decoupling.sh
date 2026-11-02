@@ -41,7 +41,8 @@ cd "$(git rev-parse --show-toplevel)"
 # entry, and an empty harvest). The authored list named `posix|freertos|nuttx|
 # threadx|zephyr|posix-c` — five crates that became C-only and one that never
 # existed — and missed the four Rust platform crates that DO exist
-# (`nros-platform-{mps2-an385,stm32f4,esp32-qemu}`, `nros-baremetal-common`).
+# (`nros-platform-{mps2-an385,stm32f4}`, `nros-baremetal-common`; and
+# `nros-platform-esp32-qemu` until phase-521 W6).
 PLATFORMS="$(python3 - <<'PY'
 import glob, os, re, sys
 sys.path.insert(0, os.path.join("scripts", "lib"))
@@ -105,8 +106,7 @@ rmw-zenoh = ["dep:nros-rmw-zenoh"]
     # (phase-472 W7).
     for probe in 'nros-platform-mps2-an385 = { path = "../p" }' \
                  'platform-stm32f4 = ["dep:nros-platform-stm32f4"]' \
-                 'std = ["nros-baremetal-common?/std"]' \
-                 'nros-platform-esp32-qemu = { path = "../e" }'; do
+                 'std = ["nros-baremetal-common?/std"]'; do
         rc=0
         out=$(scan_text "$probe") || rc=$?
         if [[ $rc -eq 0 ]]; then

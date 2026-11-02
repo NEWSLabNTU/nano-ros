@@ -45,7 +45,7 @@
 //!
 //! # Who implements these traits
 //!
-//! The bare-metal Rust ports (`Mps2An385Platform`, `Esp32QemuPlatform`,
+//! The bare-metal Rust ports (`Mps2An385Platform`,
 //! `Stm32f4Platform`) implement them, and `nros_platform_export!` exports
 //! those impls over the C platform ABI; `CffiPlatform` implements them in
 //! the other direction, over that ABI. The hosted and RTOS ports (POSIX,

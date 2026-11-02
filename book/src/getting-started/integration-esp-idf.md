@@ -20,16 +20,10 @@ The book had nonetheless advertised it as **Ready** in two support tables, on
 the strength of a nightly lane that did not exist. That claim was the reason to
 look, and looking is what retired it.
 
-## What still works: ESP32 bare-metal
+## The ESP32 bare-metal board went too (2026-11-02)
 
-**The ESP32 support that has a booting CI lane is unaffected**, and it is a
-different thing one hyphen away. `esp32` is the ESP32-C3 QEMU **bare-metal**
-path over `esp-hal`, with its own board crate, fixtures and nightly lane:
-
-* [ESP32 (esp-hal)](./esp32.md)
-* `examples/esp32-c3-baremetal/`
-
-If you are targeting an ESP32-C3, that is the page you want.
+The other ESP32 path, the ESP32-C3 QEMU **bare-metal** board over `esp-hal`,
+was retired too: it could not keep the real-time wait promise. See [ESP32 (esp-hal) — retired](./esp32.md).
 
 ## The `idf.py` build driver went too (2026-09-28)
 
@@ -42,8 +36,7 @@ emitted an ESP-IDF project for `idf.py` to find, no mechanism carried a
 resolved nano-ros setting into that build, and `nros setup` could not install
 ESP-IDF in the first place.
 
-That combination now **refuses**, naming the four reasons, the ESP32 road
-that does work, and
+That combination now **refuses**, naming the four reasons and
 [the issue tracking a C/C++ ESP32 build road](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1525-esp32-c-cpp-has-no-build-road.md),
 instead of running a tool that had no project to build.
 

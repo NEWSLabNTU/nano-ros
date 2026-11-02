@@ -1271,7 +1271,7 @@ _tier-build:
                 continue;
             }
             // Same rule the script applies: the leading CamelCase word.
-            // `Esp32Qemu` -> `esp32` (NOT `esp` — stopping at the digit would
+            // ~~`Esp32Qemu`~~ -> `esp32` (NOT `esp` — stopping at the digit would
             // look for a token the script never emits).
             let debug = format!("{:?}", c.platform);
             let mut family = String::new();

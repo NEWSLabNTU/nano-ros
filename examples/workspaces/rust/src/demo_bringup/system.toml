@@ -90,16 +90,6 @@ args   = { host = "robot2" }
 [image_defaults]
 rmw = "zenoh"
 
-[image.esp32]
-board = "esp32-c3-baremetal"
-panic = "own"
-# phase-445 W5 — the allocator's (esp32, rust, EntryPubsub) slot, dialed
-# through the QEMU slirp gateway. It was the hand-written entry's
-# `[package.metadata.nros.deploy.esp32-c3-baremetal] locator`; the entry is
-# generated now (`build/<coord>/esp32_entry/`), so the image states it.
-# `esp32_emulator.rs`'s `ESP32_WS_ENTRY_PORT` must agree.
-locator = "tcp/10.0.2.2:9830"
-
 [image.freertos]
 board = "mps2-an385-freertos"
 panic = "own"

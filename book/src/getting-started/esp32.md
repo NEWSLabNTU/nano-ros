@@ -1,235 +1,35 @@
-# ESP32 (esp-hal, bare-metal Rust) — dormant
+# ESP32 (esp-hal) — retired
 
-> **Dormant.** ESP32 support is parked: the code below is kept in
-> the tree for future use, but nothing builds, tests or provisions it — the
-> `esp32` just module is not mounted, `nros setup` no longer carries the ESP32
-> board or tools, the CI job and fixture rows are gone, and `nros new --platform`
-> does not offer `esp32`. The rest of this page records how the path worked, for
-> whoever revives it.
+**The ESP32-C3 bare-metal board has been removed.** This page is kept so the
+links that point at it still resolve; the instructions it used to carry have
+been deleted rather than left to be followed.
 
-Single-node starter on ESP32-C3 using the bare-metal `esp-hal` Rust
-path — no ESP-IDF — running under the Espressif QEMU fork (OpenETH
-ethernet). **This is the only ESP32 path nano-ros ships**: the ESP-IDF
-component shell was [retired](./integration-esp-idf.md).
+## What was here, and why it went
 
-> **Prereqs.** `nros setup esp32-c3-baremetal` prepares the build: the
-> riscv cross-gcc and `espflash` from a pinned index into the shared
-> store at `~/.nros/sdk` — you do not hand-install cross-compilers.
-> Running under QEMU additionally needs Espressif's QEMU fork
-> (`nros setup --tool esp32-qemu`, source-built) and — for zenoh — a
-> ROS 2 install to provide the router.
+`esp32` was the ESP32-C3 under Espressif's QEMU fork, over `esp-hal`: the
+`nros-board-esp32-qemu` board crate, the `nros-platform-esp32-qemu` platform
+crate and the `examples/esp32-c3-baremetal/` leaves. It had already been
+dormant: no lane built or ran it.
 
-> **Time budget.** This chapter is the longest embedded setup in the
-> book (~a dozen steps, two source builds, a nightly toolchain): plan
-> an afternoon, not ten minutes. If you have not had a first win yet,
-> take the [First Project](first-project.md) host flow first — it is
-> the ten-minute one — and come back.
+nano-ros supports a way of running only where it keeps its real-time promise:
+an executor parks until an arrival or its next deadline, and wakes for nothing
+else. On a bare-metal board that needs a receive interrupt and a one-shot timer
+behind the port's wake object, as `mps2-an385-baremetal` has. The ESP32-C3
+board had neither, so its executor could only poll the network. nano-ros
+refuses such a board rather than serve it by polling, and the board was retired
+instead of ported (2026-11-02).
 
-## Setup
+## What happens if you name it
 
-Build the in-tree `nros` CLI:
+Every name the board answered to (`esp32-c3-baremetal`, `esp32-qemu`,
+`esp32-c3`, `esp32c3`, `esp32`) is refused with that reason wherever a board is
+read: `system.toml`, `nros build`, `nros setup`, `nros::main!`. The `esp32`
+framework name is refused the same way.
 
-```bash
-./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
-source ./activate.sh        # OR: direnv allow / source ./activate.fish
-```
+## If you need an ESP32
 
-Provision the board (and RMW):
-
-```bash
-nros setup esp32-c3-baremetal --rmw zenoh     # --rmw defaults to zenoh; xrce | cyclonedds also valid
-```
-
-This pulls the SDK sources nano-ros owns (zenoh-pico + mbedtls
-submodules for zenoh; analogous for xrce / cyclonedds) plus the riscv
-cross-gcc and `espflash` into `${NROS_HOME:-~/.nros}/sdk`. It does NOT
-provide a zenoh router — that is ROS 2's `rmw_zenohd`, so the zenoh Run
-step below needs a ROS install (`--rmw cyclonedds` needs no daemon at
-all). `esp-hal` itself is a Cargo dependency the
-example pulls in at build time, not a separately-installed toolchain;
-the only cross-toolchain you may need to add by hand is the rustup
-target — once per host:
-
-```bash
-rustup target add riscv32imc-unknown-none-elf      # ESP32-C3
-```
-
-## Project layout
-
-Each example is a standalone Cargo package targeting
-`riscv32imc-unknown-none-elf` (ESP32-C3). The board crate
-(`nros-board-esp32-qemu`) wraps the OpenETH / esp-hal init.
-
-> **ESP32-S3 (Xtensa) is NOT supported today.** The tutorial targets
-> the RISC-V ESP32-C3 only. Xtensa targets do not ship via `rustup`
-> (they require the `espup` toolchain installer) and the in-tree
-> board crate is RISC-V only; this gap is tracked separately.
-
-```text
-examples/esp32-c3-baremetal/rust/talker/
-├── system.toml                # WHAT this deploys to — the one file you edit
-├── Cargo.toml                 # Rust deps only; nothing here names a board
-├── package.xml
-├── generated/                 # generated message bindings (gitignored)
-├── build/                     # everything `nros sync` generates (gitignored)
-└── src/                       # lib.rs component class + main.rs entry
-```
-
-There is no `.cargo/` to edit. The `riscv32imc-unknown-none-elf` triple, the
-`-Tlinkall.x` link group, the `[unstable] build-std` that compiles `core` and
-`alloc` from source, `ESP_LOG`, the DRAM budgets and the `[patch.crates-io]`
-rows all come from the board, and `nros sync` writes them into
-`build/esp32-c3-baremetal/nros-cargo.toml` — a generated file the build reads
-with `--config`.
-
-## Configure
-
-The whole deployment statement is `system.toml`, beside the manifest, and it is
-baked at compile time; the board's default `Config` supplies the remaining
-smoltcp knobs like the MAC. The QEMU ESP32 board uses OpenETH ethernet via
-`nros-board-esp32-qemu`. Verbatim from
-[`examples/esp32-c3-baremetal/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/esp32-c3-baremetal/rust/talker/system.toml):
-
-```toml
-[system]
-name = "esp32_qemu_talker"
-rmw = "zenoh"
-domain_id = 0
-
-[[component]]
-pkg = "esp32_qemu_talker"
-class = "esp32_qemu_talker::Talker"
-name = "talker"
-entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]
-
-[image.esp32-c3-baremetal]
-board = "esp32-c3-baremetal"
-os_config = ["board-net.toml"]    # [eth0] network = "qemu", host = 50
-locator = "tcp/10.0.2.2:9800"
-```
-
-The `entities` line is this board's one extra obligation. Pool sizes are
-normally *probed* from a host build of the component, and this leaf has no
-host build — a foreign triple, `build-std`, and a board crate that only exists
-for the target. So the image states what the node creates, and `nros sync`
-sizes the pools from that. On `.bss`-tight ESP32-C3 that matters:
-the stack is whatever the linker leaves after `.bss`, so a pool sized for an
-entity this node never creates is stack it cannot use.
-
-## Build
-
-> **Contributors:** the in-tree fixture/test lanes for this platform are in
-> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#esp32).
-
-Copy the example out, generate bindings, build with the pinned nightly,
-and pack the flash image:
-
-```bash
-# once per checkout location — message bindings + the generated
-# build/esp32-c3-baremetal/nros-cargo.toml:
-# (`nros` finds the SDK it belongs to; `--nano-ros-path <dir>` names another)
-nros sync
-
-# nros build hands cargo the generated settings file. That file asks for
-# `[unstable] build-std`, so a nightly carrying `rust-src` must be the ACTIVE
-# toolchain — nros build picks no channel for you. The pinned channel is
-# tools/rust-toolchain.toml's; any recent nightly works:
-#   rustup toolchain install nightly && rustup component add rust-src --toolchain nightly
-#   rustup target add riscv32imc-unknown-none-elf --toolchain nightly
-#   rustup override set nightly          # in this directory
-# Release, because ESP32-C3 DRAM is tight: anything after `--` goes to cargo
-# verbatim.
-nros build -- --release
-
-# pack the ELF into the flash image QEMU boots (espflash comes from
-# `nros setup esp32-c3-baremetal`, on PATH via activate):
-espflash save-image --chip esp32c3 --flash-size 4mb --merge \
-    build/esp32-c3-baremetal/target/riscv32imc-unknown-none-elf/release/esp32_qemu_talker \
-    talker.bin
-```
-
-**Driving cargo yourself** — for an IDE or a CI step — run `nros sync` first,
-then point cargo at the same generated file. Run it from the directory *above*
-the package, so any `.cargo/` the package holds is not read a second time:
-
-```bash
-cd examples/esp32-c3-baremetal/rust
-cargo +nightly build --release \
-      --manifest-path talker/Cargo.toml \
-      --config talker/build/esp32-c3-baremetal/nros-cargo.toml
-```
-
-First build cross-compiles core/alloc + every dep (~5 min); rebuilds are
-seconds. If you build a C-flavored variant, the riscv cross-gcc the zpico
-shim needs is also provisioned by the same `nros setup`.
-
-## Run
-
-The `esp32c3` machine exists only in **Espressif's QEMU fork** — stock
-`qemu-system-riscv32` knows only `virt`. The fork is source-built by:
-
-```bash
-nros setup --tool esp32-qemu    # clones + builds espressif/qemu (needs
-                                # libglib2-dev libpixman-dev libgcrypt-dev;
-                                # the command names them if absent)
-```
-
-```bash
-# 1. Bring up the router (ROS's `rmw_zenohd`) on the port the example
-#    dials (9800 — the image's `locator` above):
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:9800"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd &
-
-# 2. Boot the flash image (the file packed in Build above):
-qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
-    -drive file=talker.bin,if=mtd,format=raw \
-    -nic user,model=open_eth
-# Serial output:
-#   Publishing: 'Hello World: 1'
-#   Publishing: 'Hello World: 2'
-```
-
-> **Contributors:** the in-tree run lane that boots the talker in QEMU is in
-> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#esp32).
-
-```bash
-# Verify from stock ROS 2 on the same network:
-source /opt/ros/humble/setup.bash
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-# Talker publishes best-effort; stock `ros2 topic echo` defaults to
-# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
-# Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
-```
-
-**Readiness signal.** QEMU ESP32: ~15 seconds after boot.
-
-If no `Publishing:` line:
-
-1. Wrong locator → talker logs `zenoh open failed` and retries.
-   Confirm the router is reachable on the host IP (`10.0.2.2:9800`).
-2. Confirm the image really is the C3 one — `[image.<id>] board` should
-   read `esp32-c3-baremetal`, and the `[build] target` in the generated
-   `build/esp32-c3-baremetal/nros-cargo.toml` should read
-   `riscv32imc-unknown-none-elf`. The tutorial does not support ESP32-S3
-   (Xtensa) yet.
-3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
-
-## GitHub source
-
-- QEMU ESP32 talker:
-  [`examples/esp32-c3-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32-c3-baremetal/rust/talker)
-- Board crate:
-  [`packages/boards/nros-board-esp32-qemu/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-esp32-qemu)
-
-## Next
-
-- Subscriber + service + action peer directories under the same
-  `examples/esp32-c3-baremetal/rust/`.
-- C / C++ apps on an ESP32 have no in-tree path today — the ESP-IDF
-  component shell is [retired](./integration-esp-idf.md), and so is the
-  `idf.py` build driver. `nros build` says so rather than failing later.
-- ESP32-S3 (Xtensa) — not supported today. The Xtensa toolchain
-  does not ship via `rustup` (it requires
-  [`espup`](https://github.com/esp-rs/espup)), and there is no
-  in-tree Xtensa board crate. Stick with ESP32-C3 (RISC-V) for now.
+Porting it back means giving the board what every bare-metal board needs: the
+network driver's receive interrupt and a one-shot timer signalling the port's
+wake object, so the session can report arrivals instead of being polled. The
+platform ABI (`packages/platform/nros-platform-api/`) is unchanged. C or C++
+on an ESP32 never had a build road.

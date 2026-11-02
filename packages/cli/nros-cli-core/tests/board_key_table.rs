@@ -62,7 +62,6 @@ fn every_table_key_maps_to_its_family_through_every_consumer() {
 fn an_unknown_key_errors_at_every_consumer() {
     for key in [
         "zigos",
-        "esp32-qemu",
         "mps2-an385",
         "rtic-mps2-an385",
         "native_sim/native/64",
@@ -152,7 +151,9 @@ fn a_spelling_in_both_namespaces_names_the_same_rtos() {
             "`{key}`"
         );
     }
-    assert!(no_rtos >= 4, "only {no_rtos} no-RTOS Rust keys resolve");
+    // 3 since the ESP32-C3 board was retired (phase-521 W6): RTIC and the two
+    // bare-metal MPS2 spellings.
+    assert!(no_rtos >= 3, "only {no_rtos} no-RTOS Rust keys resolve");
 }
 
 /// The board family each Rust board ZST belongs to. `None` means the board has
@@ -183,7 +184,6 @@ fn rust_zst_family() -> BTreeMap<&'static str, Option<BoardFamily>> {
             "::nros_board_zephyr::ZephyrBoard",
             Some(BoardFamily::Zephyr),
         ),
-        ("::nros_board_esp32_qemu::Esp32QemuEntry", None),
         ("::nros_board_mps2_an385::RticMps2An385", None),
         ("::nros_board_mps2_an385::Mps2An385", None),
     ])
@@ -417,7 +417,7 @@ fn the_links_std_column_agrees_with_the_descriptors_entry_kind() {
 /// exactly: Zephyr owns `main`, so the macro's `Framework::Zephyr` arm emits a
 /// `rust_main` staticlib export and no `BoardEntry::run` call. The assertion is
 /// therefore a BICONDITIONAL on `zephyr` alone, and deliberately says nothing
-/// about the rest: `board-run` covers `owned-spin`, `rtic` and `esp32` at
+/// about the rest: `board-run` covers `owned-spin` and `rtic` at
 /// once, so it does not name a framework and a test pretending it
 /// did would be asserting something the data does not hold.
 #[test]
@@ -795,13 +795,14 @@ fn every_descriptor_name_is_an_entry_key_of_its_family() {
         wrong.join("\n    ")
     );
     // Floors, so neither arm can go vacuous. Measured 2026-10-15: 23 names on
-    // RTOS-family descriptors, 9 on no-RTOS ones (bare-metal mps2, esp32).
+    // RTOS-family descriptors, 9 on no-RTOS ones (bare-metal mps2, esp32);
+    // esp32 retired (phase-521 W6), leaving 4.
     assert!(
         with_family >= 20,
         "only {with_family} RTOS-family names checked"
     );
     assert!(
-        without_family >= 5,
+        without_family >= 4,
         "only {without_family} no-RTOS names checked"
     );
 }
@@ -914,9 +915,6 @@ fn setup_keys_are_image_board_words() {
                 continue;
             }
         };
-        if d.platform == PlatformKind::Esp32 {
-            continue;
-        }
         checked += 1;
         if d.setup_key(&is_key).as_deref() != Some(key.as_str()) {
             bad.push(format!(

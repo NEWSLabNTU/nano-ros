@@ -988,7 +988,8 @@ pub fn image_ros_edition(img: &LeafImage) -> Result<rosidl_codegen::RosEdition> 
 }
 
 /// The board crates whose derived status is "Not supported" — nothing builds
-/// or boots them (the dormant ESP32, issue 1525). Read from the board
+/// or boots them. Empty today: the dormant ESP32 (issue 1525) was deleted
+/// in phase-521 W6 rather than kept. Read from the board
 /// registry's generated status file (RFC-0114 D10, phase-522 W4), so issue
 /// 1305's walk derives its "unsupported board" exemption from the registry
 /// rather than naming a path.
@@ -2195,8 +2196,7 @@ mod board_crate_tests {
         let mut stray = Vec::new();
         // A leaf for an UNSUPPORTED board is out of scope by a DERIVED
         // property, never by naming its path: the board registry's derived
-        // "Not supported" (the dormant ESP32, issue 1525 — code kept, nothing
-        // built or migrated).
+        // "Not supported" (none today; the dormant ESP32 was deleted).
         let scaffold = unsupported_board_crates(&repo());
         let mut unsupported = 0;
         for rel in String::from_utf8_lossy(&out.stdout)
@@ -2339,10 +2339,12 @@ mod board_crate_tests {
             .map(|((p, _), _)| *p)
             .collect();
         assert!(stale.is_empty(), "exemptions matching no leaf: {stale:?}");
-        // The scaffold rule is only as good as its reach: it must find the
-        // dormant leaves it exists for, or the registry spelling drifted.
+        // The scaffold rule is only as good as its reach: when the registry
+        // names an unsupported board, the rule must find its leaves, or the
+        // registry spelling drifted. (None is named since the ESP32 board was
+        // retired outright, phase-521 W6.)
         assert!(
-            unsupported >= 1,
+            scaffold.is_empty() || unsupported >= 1,
             "no leaf matched a \"Not supported\" board ({scaffold:?})"
         );
         assert!(

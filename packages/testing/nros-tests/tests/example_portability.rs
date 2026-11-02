@@ -62,10 +62,9 @@ const GROUPS: &[Group] = &[
         reason: "callbacks are dispatched IMMEDIATELY by the executor, so the node \
                  body is plain declarative + callback code with no DISPATCH \
                  override and no tick(). Usually because an RTOS or host OS \
-                 scheduler runs them — but NOT always: esp32-c3-baremetal has \
-                 neither and still dispatches immediately, which is why this \
-                 reason names the dispatch model rather than the presence of an OS \
-                 (corrected 2026-08-05, see the group-B note)",
+                 scheduler runs them, which is why this reason names the \
+                 dispatch model rather than the presence of an OS (corrected \
+                 2026-08-05, see the group-B note)",
         platforms: &[
             "linux",
             "threadx-linux",
@@ -73,7 +72,6 @@ const GROUPS: &[Group] = &[
             "qemu-armv7a-nuttx",
             "rv-virt-nuttx",
             "rv-virt-threadx",
-            "esp32-c3-baremetal",
         ],
     },
     Group {
