@@ -845,6 +845,8 @@ impl BuildRungs {
             keyexpr_string_size: b.keyexpr_string_size.or(plat.keyexpr_string_size),
             service_timeout_ms: b.service_timeout_ms.or(plat.service_timeout_ms),
             subscriber_ring_depth: b.subscriber_ring_depth.or(plat.subscriber_ring_depth),
+            connect_timeout_ms: b.connect_timeout_ms.or(plat.connect_timeout_ms),
+            connect_forever: b.connect_forever.or(plat.connect_forever),
         }
     }
 
@@ -1731,6 +1733,15 @@ pub struct ZenohLimitKnobs {
     pub service_timeout_ms: Option<usize>,
     #[serde(default)]
     pub subscriber_ring_depth: Option<usize>,
+    /// Issue 2207 — how long a client session open keeps trying to reach its
+    /// router, in milliseconds. `0` is one attempt. See
+    /// [`resolve_zenoh_connect_timeout_ms`].
+    #[serde(default)]
+    pub connect_timeout_ms: Option<usize>,
+    /// Issue 2207 — keep trying until a router answers. Outranks
+    /// `connect_timeout_ms`. For a board that boots before its router.
+    #[serde(default)]
+    pub connect_forever: Option<bool>,
 }
 
 /// Every zenoh limit knob, in a stable order.
@@ -1738,7 +1749,40 @@ pub const ZENOH_LIMIT_KNOBS: &[&str] = &[
     "keyexpr_string_size",
     "service_timeout_ms",
     "subscriber_ring_depth",
+    "connect_timeout_ms",
+    "connect_forever",
 ];
+
+/// The builtin connect budget: one attempt (issue 2207).
+///
+/// zenoh-pico's own default, and the library's: a session open that cannot
+/// reach its router says so at once, and a test that loses a start race fails
+/// rather than waiting it out. An image whose router comes up later than it
+/// does states `connect_forever` (or a budget) in its board or app rung.
+pub const BUILTIN_ZENOH_CONNECT_TIMEOUT_MS: usize = 0;
+
+/// The ONE resolution of the client connect budget (issue 2207), in
+/// zenoh-pico's `Z_CONFIG_CONNECT_TIMEOUT_KEY` units: `-1` retries until a
+/// router answers, `0` is one attempt, `N` is a budget of N ms.
+///
+/// zenoh-pico owns the retry policy under that budget: it retries only a
+/// transport failure (open, tx, rx, handshake deadline), never a config or
+/// protocol one, sleeping 100 ms doubling to 1 s between attempts. Two knobs
+/// because the ladder holds unsigned values only, and `-1` already means "not
+/// stated" for a derivable Kconfig knob.
+pub fn resolve_zenoh_connect_timeout_ms(limits: &ZenohLimitKnobs) -> i64 {
+    let forever = nros_zephyr_build::knob("NROS_ZENOH_CONNECT_FOREVER")
+        .rung(limits.connect_forever.map(usize::from))
+        .resolve(0);
+    if forever != 0 {
+        return -1;
+    }
+    let ms = nros_zephyr_build::knob("NROS_ZENOH_CONNECT_TIMEOUT_MS")
+        .rung(limits.connect_timeout_ms)
+        .resolve(BUILTIN_ZENOH_CONNECT_TIMEOUT_MS);
+    // zenoh-pico reads the budget as an `int32_t`.
+    i64::try_from(ms).map_or(i64::from(i32::MAX), |ms| ms.min(i64::from(i32::MAX)))
+}
 
 /// The builtin default service-client RPC timeout, in milliseconds.
 ///
@@ -2600,10 +2644,14 @@ impl PlatformsTree {
                 (&mut out.keyexpr_string_size, z.keyexpr_string_size),
                 (&mut out.service_timeout_ms, z.service_timeout_ms),
                 (&mut out.subscriber_ring_depth, z.subscriber_ring_depth),
+                (&mut out.connect_timeout_ms, z.connect_timeout_ms),
             ] {
                 if src.is_some() {
                     *dst = src;
                 }
+            }
+            if z.connect_forever.is_some() {
+                out.connect_forever = z.connect_forever;
             }
         }
         Ok(out)
@@ -2660,6 +2708,8 @@ impl PlatformsTree {
             "keyexpr_string_size" => k.keyexpr_string_size,
             "service_timeout_ms" => k.service_timeout_ms,
             "subscriber_ring_depth" => k.subscriber_ring_depth,
+            "connect_timeout_ms" => k.connect_timeout_ms,
+            "connect_forever" => k.connect_forever.map(usize::from),
             _ => None,
         };
         Ok(resolve_usize_tenant(
@@ -4437,6 +4487,48 @@ mod tests {
             ..ZenohLimitKnobs::default()
         };
         assert_eq!(resolve_service_timeout_ms(&stated), 5_000);
+    }
+
+    // ---- issue 2207 — the client connect budget ----
+
+    #[test]
+    fn the_connect_budget_is_one_attempt_unless_a_rung_states_otherwise() {
+        let none = ZenohLimitKnobs::default();
+        assert_eq!(resolve_zenoh_connect_timeout_ms(&none), 0);
+        let budget = ZenohLimitKnobs {
+            connect_timeout_ms: Some(20_000),
+            ..ZenohLimitKnobs::default()
+        };
+        assert_eq!(resolve_zenoh_connect_timeout_ms(&budget), 20_000);
+        // `connect_forever` outranks a budget stated beside it.
+        let forever = ZenohLimitKnobs {
+            connect_timeout_ms: Some(20_000),
+            connect_forever: Some(true),
+            ..ZenohLimitKnobs::default()
+        };
+        assert_eq!(resolve_zenoh_connect_timeout_ms(&forever), -1);
+        let not_forever = ZenohLimitKnobs {
+            connect_forever: Some(false),
+            ..ZenohLimitKnobs::default()
+        };
+        assert_eq!(resolve_zenoh_connect_timeout_ms(&not_forever), 0);
+    }
+
+    #[test]
+    fn a_board_states_connect_forever_over_its_platform() {
+        let tmp = write_tree(&[("p", "[knobs.zenoh.limits]\nconnect_timeout_ms = 500\n")]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let plat = tree.platform_zenoh_limit_rungs("p").unwrap();
+        assert_eq!(resolve_zenoh_connect_timeout_ms(&plat), 500);
+        let board = ZenohLimitKnobs {
+            connect_forever: Some(true),
+            ..ZenohLimitKnobs::default()
+        };
+        let merged = ZenohLimitKnobs {
+            connect_forever: board.connect_forever.or(plat.connect_forever),
+            ..plat
+        };
+        assert_eq!(resolve_zenoh_connect_timeout_ms(&merged), -1);
     }
 
     // ---- issue 2013 — the two tenants `explain` could not report ----

@@ -299,8 +299,11 @@ session open typically takes 10–15 s. If no `Publishing:` line in
 
 1. Confirm the router is running on the host on the port the image
    dials — the `locator` in its `system.toml` (Slirp forwards
-   `10.0.2.2:<p>` → host:<p>). Without it the talker retries the
-   zenoh handshake until QEMU is killed.
+   `10.0.2.2:<p>` → host:<p>). Without it the talker makes one
+   connection attempt and stops with `Failed to open session`; a
+   board that should wait for a late router sets
+   `[knobs.zenoh.limits] connect_forever = true` (or
+   `connect_timeout_ms` for a bounded wait).
 2. Check the talker's early log for `lwIP DHCP timeout` or
    `Failed to open session`.
 3. Bridge tip: `ros2 topic echo /chatter` from a stock ROS 2

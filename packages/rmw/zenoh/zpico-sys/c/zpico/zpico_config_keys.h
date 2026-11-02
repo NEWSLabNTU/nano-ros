@@ -9,7 +9,7 @@
  * zenoh-pico's run-time options ARE its configuration surface — there is no
  * config-file format for the pico client. This table maps the nano-ros
  * property name a caller writes onto the `Z_CONFIG_*_KEY` constant
- * `zp_config_insert()` takes. 27 keys are derived mechanically
+ * `zp_config_insert()` takes. 26 keys are derived mechanically
  * (`Z_CONFIG_<X>_KEY` -> `lowercase(<X>)`); 4 legacy aliases are
  * authored in the generator.
  *
@@ -63,7 +63,6 @@ static const zpico_config_key_entry ZPICO_CONFIG_KEYS[] = {
     {"tls_connect_certificate", Z_CONFIG_TLS_CONNECT_CERTIFICATE_KEY, true},
     {"tls_connect_certificate_base64", Z_CONFIG_TLS_CONNECT_CERTIFICATE_BASE64_KEY, true},
     {"tls_verify_name_on_connect", Z_CONFIG_TLS_VERIFY_NAME_ON_CONNECT_KEY, true},
-    {"connect_timeout", Z_CONFIG_CONNECT_TIMEOUT_KEY, false},
 #if defined(Z_FEATURE_UNSTABLE_API)
     {"connect_exit_on_failure", Z_CONFIG_CONNECT_EXIT_ON_FAILURE_KEY, false},
 #endif

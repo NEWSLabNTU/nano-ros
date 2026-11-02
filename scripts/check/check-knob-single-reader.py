@@ -170,6 +170,9 @@ OWNERS: dict[str, str] = {
     # `NROS_SERVICE_TIMEOUT_MS` is embedded twice (a Rust const and a C
     # define), and both build scripts call the one resolver below (issue 2007).
     "NROS_SERVICE_TIMEOUT_MS": "packages/tooling/nros-platform-config/src/platform_config.rs",
+    # issue 2207 — the client connect budget, one resolver for both knobs.
+    "NROS_ZENOH_CONNECT_TIMEOUT_MS": "packages/tooling/nros-platform-config/src/platform_config.rs",
+    "NROS_ZENOH_CONNECT_FOREVER": "packages/tooling/nros-platform-config/src/platform_config.rs",
     "NROS_KEYEXPR_STRING_SIZE": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
     "NROS_ZENOH_SUBSCRIBER_RING_DEPTH": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
     "NROS_XRCE_CUSTOM_TRANSPORT_MTU": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",

@@ -74,6 +74,17 @@ ALIASES = {
     "verify_name_on_connect": "Z_CONFIG_TLS_VERIFY_NAME_ON_CONNECT_KEY",
 }
 
+# Keys a BUILD KNOB owns, left out of the run-time property table so a fact
+# has one owner (RFC-0103): the knob resolves over the RFC-0049 ladder and
+# `zpico_set_connect_timeout` inserts it, so a session property naming the same
+# key would be overwritten without a word. A property naming one is refused
+# like any key this table does not carry.
+#
+# macro -> the knob that owns it
+KNOB_OWNED = {
+    "Z_CONFIG_CONNECT_TIMEOUT_KEY": "[knobs.zenoh.limits] connect_timeout_ms / connect_forever (issue 2207)",
+}
+
 
 def parse_keys(text: str) -> list[tuple[str, str]]:
     """Return [(macro, derived property name)] in config.h order."""
@@ -281,7 +292,7 @@ def main() -> int:
         )
         return 2
 
-    keys = parse_keys_guarded(CONFIG_H.read_text())
+    keys = [k for k in parse_keys_guarded(CONFIG_H.read_text()) if k[0] not in KNOB_OWNED]
     if not keys:
         print(f"ERROR: no Z_CONFIG_*_KEY defines found in {CONFIG_H}", file=sys.stderr)
         return 2

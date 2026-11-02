@@ -280,6 +280,9 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * invalid afterwards.
  */
 /**
+ * Issue 2207 — the connect budget for the next `zpico_open`.
+ */
+/**
  * Phase 124.F.2 — wire-level connectivity probe. Returns 0
  * on success, `ZPICO_ERR_*` on failure.
  */
@@ -508,6 +511,16 @@ int32_t zpico_init_with_config(struct zpico_session_t *_session,
  * 0 on success, negative error code on failure.
  */
 int32_t zpico_open(struct zpico_session_t *_session);
+
+/**
+ * Issue 2207 — set how long the next `zpico_open` keeps trying to reach
+ * its router: -1 until a router answers, 0 one attempt, N a budget of N ms.
+ * Call between `zpico_init*` and `zpico_open`.
+ *
+ * # Returns
+ * 0 on success, negative error code on failure.
+ */
+int32_t zpico_set_connect_timeout(struct zpico_session_t *_session, int32_t _timeout_ms);
 
 /**
  * Check if session is currently open.

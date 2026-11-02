@@ -2697,6 +2697,19 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/threadx-linux/rust/listener"
 
+# Issue 2207 — the same listener with `connect_forever` stated, for the one
+# cell that starts the image BEFORE its router
+# (`test_rtos_session_open_outlasts_a_late_router`). The library default is one
+# connect attempt, so the late-router behaviour exists only where an image asks
+# for it; this row is that image. The env is part of the group signature, so it
+# lands in its own artifact root and the default listener stays one-attempt.
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/listener"
+env = { NROS_ZENOH_CONNECT_FOREVER = "1" }
+
 [[fixture]]
 platform = "threadx-linux"
 lang = "rust"

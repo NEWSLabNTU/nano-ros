@@ -181,6 +181,8 @@ unsafe extern "C" {
         num_properties: usize,
     ) -> i32;
     pub fn zpico_open(session: *mut zpico_session_t) -> i32;
+    /// Issue 2207 — the connect budget for the next `zpico_open`.
+    pub fn zpico_set_connect_timeout(session: *mut zpico_session_t, timeout_ms: i32) -> i32;
     pub fn zpico_is_open(session: *mut zpico_session_t) -> i32;
     /// Phase 124.F.2 — wire-level connectivity probe. Returns 0
     /// on success, `ZPICO_ERR_*` on failure.

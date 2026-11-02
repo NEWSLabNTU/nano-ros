@@ -75,6 +75,24 @@ fn a_key_upstream_does_not_define_is_refused() {
 }
 
 #[test]
+fn a_key_a_build_knob_owns_is_refused() {
+    // `connect_timeout` IS defined by this `config.h` (the fork reads it
+    // outside the unstable API), but a build knob owns it:
+    // `[knobs.zenoh.limits] connect_timeout_ms` / `connect_forever`, which
+    // `zpico_set_connect_timeout` inserts at open (issue 2207). A session
+    // property naming it would be overwritten without a word, so the key
+    // table leaves it out and the property is refused like an unknown key.
+    let cfg = client_config(&[("connect_timeout", "500")], "tcp/127.0.0.1:1");
+    assert!(
+        matches!(
+            ZenohTransport::open(&cfg),
+            Err(TransportError::InvalidArgument)
+        ),
+        "a key a build knob owns must be refused as a session property"
+    );
+}
+
+#[test]
 fn more_properties_than_the_build_carries_is_refused_not_truncated() {
     // Comfortably past both caps (16 hosted, 8 embedded). The bound used to be
     // `config.properties.len().min(MAX_SESSION_PROPERTIES)`, so everything

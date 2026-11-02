@@ -471,6 +471,13 @@ fn explain(args: ExplainArgs) -> Result<()> {
             nros_board_common::platform_config::BUILTIN_SERVICE_TIMEOUT_MS,
         ),
         ("subscriber_ring_depth", 4),
+        // issue 2207 — the client connect budget (0 = one attempt) and the
+        // bool that outranks it; one resolver in nros-platform-config.
+        (
+            "connect_timeout_ms",
+            nros_board_common::platform_config::BUILTIN_ZENOH_CONNECT_TIMEOUT_MS,
+        ),
+        ("connect_forever", 0),
     ];
     for (name, r) in tree
         .resolve_zenoh_limits(

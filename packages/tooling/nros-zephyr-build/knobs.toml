@@ -1383,6 +1383,14 @@ Maps to ZPICO_BATCH_UNICAST_SIZE.
 '''
 
 [[knob]]
+id = "ZENOH_CONNECT_FOREVER"
+toml = "zenoh.limits.connect_forever"
+
+[[knob]]
+id = "ZENOH_CONNECT_TIMEOUT_MS"
+toml = "zenoh.limits.connect_timeout_ms"
+
+[[knob]]
 id = "ZENOH_FRAG_MAX_SIZE"
 legacy = ["ZPICO_FRAG_MAX_SIZE"]
 kconfig = "NROS_FRAG_MAX_SIZE"

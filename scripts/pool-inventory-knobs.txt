@@ -121,6 +121,8 @@ NROS_XRCE_STREAM_HISTORY | heap | | reliable-stream history depth; multiplies th
 NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD | not-a-size | | the hint above which a subscription routes to the LARGE payload class — a routing threshold, not storage
 NROS_ZENOH_GRAPH_DISCOVERY | not-a-size | | switches the graph cache on; its bytes are `ZPICO_GRAPH_CACHE_SIZE`
 NROS_SERVICE_TIMEOUT_MS | not-a-size | | milliseconds
+NROS_ZENOH_CONNECT_TIMEOUT_MS | not-a-size | | milliseconds (issue 2207)
+NROS_ZENOH_CONNECT_FOREVER | not-a-size | | a switch (issue 2207)
 NROS_SMOLTCP_CONNECT_TIMEOUT_MS | not-a-size | | milliseconds
 NROS_SMOLTCP_SOCKET_TIMEOUT_MS | not-a-size | | milliseconds
 NROS_ZENOH_GET_POLL_INTERVAL_MS | not-a-size | | milliseconds
