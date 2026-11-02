@@ -94,7 +94,7 @@ Acceptance:
 
 ### W3 — ROS 2 and colcon flag names
 
-**Status: DONE** (the colcon flag names commit). `builder::discover::Selection`
+**Status: DONE** (#3021). `builder::discover::Selection`
 gained `above` and `skip` and `discover_in` the base paths, filtered over the
 one topological order; `nros build` and `nros list` share one flattened
 `SelectionArgs`. `drive` gained a `Schedule` (`--parallel-workers`,
