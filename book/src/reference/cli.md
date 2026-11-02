@@ -315,7 +315,7 @@ RFC-0049). This is the provenance tool for anything generated — when a pool
 size or a hardware budget is not what you expected, it says which rung decided.
 `--board-toml` supplies the board rung's `[knobs]` deltas by explicit path.
 
-### `nros sync [<workspace>] [--build-base <d>] [--ros-edition <e>] [--dry-run] [--check] [--base-paths <p>…]`
+### `nros sync [<workspace>] [--generated-base <d>] [--ros-edition <e>] [--dry-run] [--check] [--base-paths <p>…]`
 
 The pre-build step. Codegen every `*.msg` package the declared deps name, and
 write the generated build settings for each declared image — for a **standalone

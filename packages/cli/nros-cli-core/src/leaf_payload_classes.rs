@@ -59,7 +59,7 @@ use crate::entity_inventory::{EntityInventory, ReceivedTypes};
 /// The directory `nros sync` writes generated message crates into.
 ///
 /// The same name `cmd::ws::is_generated_path` keys on, and the default of
-/// `nros sync --build-dir`.
+/// `nros sync --generated-base`.
 const GENERATED_DIR: &str = "generated";
 
 /// The zenoh payload classes for one leaf.
@@ -107,7 +107,7 @@ impl PayloadClasses {
 
 /// Every `pkg/msg/Name` -> bound row this leaf's `generated/` tree prices.
 ///
-/// One level deep: `nros sync --build-dir generated` writes one directory per
+/// One level deep: `nros sync --generated-base generated` writes one directory per
 /// ament package with the artifact at its root.
 pub fn leaf_bound_inventory(leaf: &Path) -> Result<Vec<(String, BoundState)>, String> {
     Ok(leaf_bound_rows(leaf)?

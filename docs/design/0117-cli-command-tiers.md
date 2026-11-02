@@ -123,7 +123,7 @@ Applied:
 | Verb | Flags taken from ROS 2 / colcon | Kept as our own, and why |
 | --- | --- | --- |
 | `build` | `--packages-select`, `--packages-up-to`, `--packages-skip`, `--packages-above`, `--continue-on-error`, `--cmake-args`, `--parallel-workers`, `--base-paths`, `--build-base` | — (same names; the divergences below are refusals or a unit, never a different answer) |
-| `sync` | `--build-base` (was `--build-dir`) | — |
+| `sync` | — | `--generated-base` (was `--build-dir`): not colcon's `--build-base` — see below |
 | `list` | `-t` (topological), `-n` (names only), `-p` (paths only), as `colcon list`, plus `build`'s selection flags and `--base-paths` | — |
 | `graph` | as `colcon graph` | — |
 | `new` | `--dependencies`, `--node-name`, `--license`, `--maintainer-name`, `--maintainer-email`, `--description`, `--destination-directory` | `--lang` (not `--build-type`: our package's build type is derived from the language and the board, RFC-0087 D2, so the ROS flag would name a choice the user does not make); `--component` (not `--library-name`: `ros2 pkg create` adds a library target beside the node, while a nano-ros library package is a component whose library takes the package's name — crate name, exported symbol and linkage are all derived — so there is no second name to give); `--board`, `--template`, `--kind` (no ROS counterpart). `--build-type` and `--library-name` are parsed, hidden, and refused naming the flag to use |
@@ -148,8 +148,13 @@ refuses rather than answering differently, or names the unit it acts on
 | `--cmake-args` | Reaches every CMake configure, including a west image's (west's second zone); a cargo image has none, as colcon ignores the flag for a non-CMake package. |
 | `--base-paths` | Relative paths are taken against the workspace (`--workspace`, else the cwd), where colcon takes them against the cwd; the two agree whenever `--workspace` is left out. |
 
-`sync --build-base` keeps `sync`'s meaning of the directory (the generated
-message crates, default `generated`), which is the build output `sync` writes.
+`sync`'s output directory is `--generated-base`, not `--build-base`. It
+names only the generated message crates (default `generated`); the resolved
+models and the rest of `sync`'s output stay under `build/`. colcon's
+`--build-base` moves all build output, and `nros build --build-base` names the
+package build directories, so a third meaning under the same name would put
+message crates and package builds side by side in one directory while the
+models stayed behind. `--build-dir`, the flag's old name, is a hidden alias.
 
 ### D5 — Aliases, never removals
 
