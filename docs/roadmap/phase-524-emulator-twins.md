@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-11-02). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W4 split (maintainer, 2026-11-02): W4a done, the `renode-nucleo` and `wokwi-pico` probe tracks generated from the registry and listed by the weekly workflow (both rows stay manual: the gate needs a Runtime cell and two maintainers for weekly); W4b (chapters, `book_run`, `nros run`) waits on phase-528 W1/W3/W4 and phase-529. W0 and W4b open.** Implements
+**Status (2026-11-02). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W4 split (maintainer, 2026-11-02): W4a done, the `renode-nucleo` and `wokwi-pico` probe tracks generated from the registry and listed by the weekly workflow (both rows stay manual: the gate needs a Runtime cell and two maintainers for weekly); W4b (chapters, `book_run`, `nros run`) waits on phase-528 W1/W3/W4 and phase-529. Wokwi left CI (maintainer, 2026-11-02, after the free plan ran out): `wokwi-pico` is no longer weekly and the workflow holds no Wokwi secret; the Pico W twin is user-run, the Renode Nucleo twin is the CI-checked one. W0 and W4b open.** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -184,7 +184,8 @@ row, with its conditions. Follow-ups, each in its work item's shape:
 - **W4: the `wokwi-pico` track.** `wokwi-cli -q --interactive` bridged by
   `socat` to the router's `serial/` locator, as in the log. It needs a
   `WOKWI_CLI_TOKEN` repository secret, and runs on schedule and dispatch
-  only, weekly.
+  only, weekly. (Superseded 2026-11-02: user-run only, never in CI; see
+  "Wokwi out of CI" under W4a.)
 
 ### W2 — Renode and Wokwi as `[tool.*]` entries
 
@@ -590,6 +591,16 @@ generator.
   `probe: [UNMET PRECONDITION] track wokwi-pico boots rpi-pico-w-zephyr in
   wokwi:pi-pico-w, which needs WOKWI_CLI_TOKEN in the environment`, exit 1, a
   failure and not a skip. The repository secret is the maintainer's to add.
+  (Superseded, next item.)
+- **Wokwi out of CI (maintainer ruling 2026-11-02).** The free plan's 50
+  simulation minutes ran out, and a metered hosted simulator in a weekly lane
+  goes red whenever the quota does. So the `wokwi-pico` `[[probe]]` row is
+  `weekly = false`, `probe-platforms.yml` no longer passes
+  `secrets.WOKWI_CLI_TOKEN`, and no repository secret is needed. Everything a
+  user needs stays: `[tool.wokwi-cli]`, the board's `emulator =
+  "wokwi:pi-pico-w"`, `scripts/probe/twin/wokwi.sh` and `just probe
+  wokwi-pico`, which a user runs with their own token. The precondition
+  message above is unchanged and still what a token-less local run prints.
   Per-push drift is still checked without it: `check-book-probe-tracks`
   extracts both tracks (`PROBE_EXTRACT_ONLY` skips the precondition).
 - **Measured, and what could not be.** The probe container cannot run from the
