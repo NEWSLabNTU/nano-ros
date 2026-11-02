@@ -362,7 +362,7 @@ cadence = "manual"
 last_run = "2026-11-01"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
-notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Renode twin booted the C talker over serial (USART3, the ST-LINK VCP) and ethernet (phase-524 W1). The serial image needs `[image.<id>.knobs.zenoh] max_large_subscribers = 0` stated per image until descriptor `[knobs]` can carry it (see the descriptor header)."
+notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Renode twin booted the C talker over serial (USART3, the ST-LINK VCP) and ethernet (phase-524 W1). Its RAM budget, `max_large_subscribers = 0`, is the descriptor's `[knobs.zenoh]`, which every image inherits (issue 2194); the ethernet image's extra knobs are its own (see the descriptor header)."
 
 # phase-524 W3 (RFC-0115 D3/D4) -- the Raspberry Pi Pico W, the field
 # solutions board, whose twin is Wokwi's hosted `board-pi-pico-w` (the
@@ -398,7 +398,7 @@ cadence = "manual"
 last_run = "2026-11-01"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
-notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, serial only. Wokwi twin booted the C talker over UART0, the Wokwi serial monitor, with the console on UART1 (phase-524 W1 rerun). The image needs `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs stated per image until descriptor `[knobs]` can carry them (issue 2194; see the descriptor header). Each twin run needs a `WOKWI_CLI_TOKEN` and spends that account's simulation minutes, so the twin is user-run and never in our CI (maintainer ruling 2026-11-02)."
+notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, serial only. Wokwi twin booted the C talker over UART0, the Wokwi serial monitor, with the console on UART1 (phase-524 W1 rerun). The image needs `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs, which are the descriptor's `[knobs]` and every image inherits (issue 2194; see the descriptor header). Each twin run needs a `WOKWI_CLI_TOKEN` and spends that account's simulation minutes, so the twin is user-run and never in our CI (maintainer ruling 2026-11-02)."
 
 # ===== infra — not boards ==================================================
 
@@ -656,8 +656,9 @@ notes = "Issue 2168 — the same project with the PUBLISHED release `[tool.nros]
 #
 #   twin          the board key whose twin the track boots
 #   twin_locator  the serial locator the track's image dials: the twin's link
-#   twin_knobs    `<group>.<name> = <value>`: the image's RAM knobs, stated per
-#                 image until descriptor `[knobs]` can carry them (issue 2194)
+#
+# The image states no knobs: the board's RAM budget is its descriptor's
+# top-level `[knobs]`, which the image inherits (issue 2194).
 
 [[probe]]
 track = "renode-nucleo"
@@ -667,8 +668,7 @@ weekly = true
 row = "nros-board-nucleo-f767zi-zephyr@-"
 twin = "nucleo-f767zi-zephyr"
 twin_locator = "serial/serial@40004800#baudrate=115200"
-twin_knobs = ["zenoh.max_large_subscribers = 0"]
-notes = "phase-524 W4a — the Nucleo-F767ZI's Renode twin: zenoh over USART3 on a host pty, the console on USART6. The knob is the serial image's (phase-524 W3)."
+notes = "phase-524 W4a — the Nucleo-F767ZI's Renode twin: zenoh over USART3 on a host pty, the console on USART6. The RAM knob is the board descriptor's `[knobs]` (issue 2194)."
 
 [[probe]]
 track = "wokwi-pico"
@@ -678,5 +678,4 @@ weekly = false
 row = "nros-board-rpi-pico-w-zephyr@-"
 twin = "rpi-pico-w-zephyr"
 twin_locator = "serial/uart@40034000#baudrate=115200"
-twin_knobs = ["zenoh.max_large_subscribers = 0", "zenoh.max_subscribers = 1", "zenoh.service_buffer_size = 1024", "zenoh.max_queryables = 1", "zephyr.heap_size = 32768"]
-notes = "phase-524 W4a — the Pico W's Wokwi twin: zenoh over UART0, which `wokwi-cli --interactive` and socat carry to a host pty. Hosted and metered, so it is USER-RUN and never in our CI (maintainer ruling 2026-11-02, after the free plan's 50 simulation minutes ran out): `just probe wokwi-pico` with the user's own `WOKWI_CLI_TOKEN`, about 1.5 minutes a run; without the token the track FAILS as an unmet precondition naming it. The knobs are the image's (phase-524 W3)."
+notes = "phase-524 W4a — the Pico W's Wokwi twin: zenoh over UART0, which `wokwi-cli --interactive` and socat carry to a host pty. Hosted and metered, so it is USER-RUN and never in our CI (maintainer ruling 2026-11-02, after the free plan's 50 simulation minutes ran out): `just probe wokwi-pico` with the user's own `WOKWI_CLI_TOKEN`, about 1.5 minutes a run; without the token the track FAILS as an unmet precondition naming it. The RAM knobs are the board descriptor's `[knobs]` (issue 2194)."

@@ -1260,8 +1260,13 @@ struct BoardFile {
     /// `NROS_BOARD_TOML`. This reader does not USE knobs; it TYPES them with
     /// the ladder's own schema (every tenant denies unknown keys) so a knob
     /// typo fails at catalog load naming the key and the descriptor, not in
-    /// some build script three frames later.
-    #[serde(default)]
+    /// some build script three frames later. Issue 2194 — it takes every
+    /// registry knob (`Knobs::deserialize_board`), and the ones no typed
+    /// tenant holds are carried by `cmd::leaf_settings::board_rung`.
+    #[serde(
+        default,
+        deserialize_with = "nros_board_common::platform_config::Knobs::deserialize_board_opt"
+    )]
     #[allow(dead_code)] // validated by parsing; read by `BoardKnobsFile`
     knobs: Option<nros_board_common::platform_config::Knobs>,
 }

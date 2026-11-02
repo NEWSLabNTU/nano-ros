@@ -19,37 +19,32 @@
 # private gateway the free plan lacks (RFC-0115 "Open questions").
 #
 # ---------------------------------------------------------------------------
-# RAM BUDGET, recorded here because it cannot be stated as `[knobs]` yet
-# (issue 2194, the same gap the Nucleo descriptor records).
+# RAM BUDGET: the `[knobs]` tables at the end of this file (issue 2194).
 #
 # 264 KiB of SRAM, and the crate pool defaults overflow it by 211,736 bytes
-# (W1 rerun). The C talker serial image fits with, per image:
-#
-#   [image.<id>.knobs.zenoh]
-#   max_large_subscribers = 0
-#   max_subscribers = 1
-#   service_buffer_size = 1024
-#   max_queryables = 1
-#
-#   [image.<id>.knobs.zephyr]
-#   heap_size = 32768
-#
+# (W1 rerun). The C talker serial image fits with the five knobs there.
 # Measured through the leaf road (phase-524 W3): RAM 254,888 B of 264 KiB
 # (94.29 %), FLASH 524,156 B, the same RAM as issue 2206's fix measured.
 # The largest remaining block is the executor backing (83,880 bytes in the
 # W1 rerun).
+#
+# They are board facts: one RAM, and one link (serial only), so every image
+# here pays for the same budget. Two of them cap what an image may declare:
+# `max_subscribers = 1` and `max_queryables = 1` (one service server, and a
+# node with parameter or lifecycle services claims more). An image that needs
+# more states the knob itself, in `[image.<id>.knobs.zenoh]`, and that wins
+# (RFC-0049).
 #
 # The 32 KiB heap is the Nucleo ethernet image's number: below the C talker's
 # measured 15,152-byte boot peak plus the 24,576-byte headroom floor (39,728
 # in all). It boots and publishes in Wokwi; measure the boot report before
 # a chapter states it (phase-524 W4).
 #
-# These are board facts (one RAM, every image), so they belong in a top-level
-# `[knobs.<group>]` table here. They are NOT there because the descriptor's
-# `[knobs]` schema holds none of these keys and the Zephyr leaf road has no
-# board knob rung (issue 2194). A `CONFIG_NROS_*` line in `prj.conf` is no way
-# round it: the registry knobs have no prompt, so a conf assignment is a
-# configure error.
+# A board states a knob in a top-level `[knobs.<group>]` (RFC-0103 D6), keyed
+# as an image's `[image.<id>.knobs.<group>]` is. On the Zephyr road the board
+# rung becomes a `default` in `Kconfig.from-system-toml`. A `CONFIG_NROS_*`
+# line in `prj.conf` is no way round it: the registry knobs have no prompt, so
+# a conf assignment is a configure error.
 # ---------------------------------------------------------------------------
 
 [[board]]
@@ -124,3 +119,13 @@ links = ["serial"]
 [board.provisioning]
 zephyr_line = "3.7"
 rust_targets = ["thumbv6m-none-eabi"]
+
+# The board's RAM budget (issue 2194; the header above has the numbers).
+[knobs.zenoh]
+max_large_subscribers = 0
+max_subscribers = 1
+service_buffer_size = 1024
+max_queryables = 1
+
+[knobs.zephyr]
+heap_size = 32768

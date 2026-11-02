@@ -16,7 +16,7 @@
 #   boards/nucleo_f767zi.overlay  the console on USART6, off the zenoh link
 #
 # ---------------------------------------------------------------------------
-# RAM BUDGET, recorded here because it cannot be stated as `[knobs]` yet.
+# RAM BUDGET: the `[knobs]` table at the end of this file (issue 2194).
 #
 # sram0 is 384 KiB and the crate pool defaults do not fit it. The spike's
 # images needed:
@@ -27,26 +27,26 @@
 #             ZENOH_SERVICE_BUFFER_SIZE = 1024,
 #             ZEPHYR_HEAP_SIZE = 32768                  (98.2 % RAM used)
 #
+# Only the first is a board fact, so only it is in `[knobs]`: every image on
+# this RAM drops the large-payload pool. The other three are the ETHERNET
+# image's: they pay for Zephyr's IP stack, which the serial image does not
+# build (this package's prj.conf is serial-shaped), and they cap what an image
+# can subscribe to. An ethernet image states them itself, in
+# `[image.<id>.knobs.zenoh]` / `[image.<id>.knobs.zephyr]`, beside the
+# `os_config` that turns the IP stack back on.
+#
 # The ethernet heap is BELOW what the C talker needs: its measured boot peak
 # is 15,152 bytes and the headroom floor is 24,576 (39,728 in all), so 32 KiB
 # boots the talker in Renode with less margin than the floor asks. Before an
 # ethernet image is documented (phase-524 W4), measure its boot report, or
 # move stacks or pools to the 128 KiB DTCM (CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM).
 #
-# These are board facts (one RAM, every image), so they belong in a top-level
-# `[knobs.<group>]` table here. They are NOT there because neither half of
-# that road exists for them: the descriptor's `[knobs]` schema
-# (`nros-platform-config` `Knobs`, `deny_unknown_fields`) holds none of these
-# four keys, and the Zephyr leaf road renders only the IMAGE's knobs into
-# `Kconfig.from-system-toml`, with no board rung. Until the issue linked from
-# phase-524's W3 result lands, an image on this board states them itself:
-#
-#   [image.<id>.knobs.zenoh]
-#   max_large_subscribers = 0
-#
-# (A `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` line in `prj.conf` is no way round
-# it: the registry knobs have no prompt, so a conf assignment is a configure
-# error.)
+# A board states a knob in a top-level `[knobs.<group>]` (RFC-0103 D6), keyed
+# as an image's `[image.<id>.knobs.<group>]` is; an image that states the same
+# knob wins (RFC-0049). On the Zephyr road the board rung becomes a `default`
+# in `Kconfig.from-system-toml`. A `CONFIG_NROS_*` line in `prj.conf` is no
+# way round it: the registry knobs have no prompt, so a conf assignment is a
+# configure error.
 # ---------------------------------------------------------------------------
 
 [[board]]
@@ -122,3 +122,7 @@ links = ["serial", "tcp", "udp"]
 [board.provisioning]
 zephyr_line = "3.7"
 rust_targets = ["thumbv7em-none-eabihf"]
+
+# The board's RAM budget (issue 2194; the header above says why only this one).
+[knobs.zenoh]
+max_large_subscribers = 0
