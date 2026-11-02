@@ -111,7 +111,7 @@ and an ESP32 revival are dropped for now, each for a stated reason.
   |---|---|---|
   | QEMU `mps2-an385` | bare-metal, FreeRTOS and Zephyr witnesses | Concepts; the gate emulator for the family matrix; deliberately no hardware twin (an MPS2 board is not what adopters buy) |
   | Renode 1.17.0 | Nucleo-F767ZI | Twin of a bench board; serial first (USART3, the ST-LINK virtual COM port), ethernet second (the on-chip MAC on a Renode switch bridged to a host tap). Both measured: phase-524 W1 spike 2 |
-  | Wokwi (`wokwi-cli` 0.29.1, hosted) | Raspberry Pi Pico W | Twin of a bench board for the field solutions purpose; serial only (UART0, the Wokwi serial monitor, carried by `wokwi-cli --interactive` to a host pty). Measured: phase-524 W1 spike 3 rerun. Conditions: the image states `CONFIG_TICKLESS_KERNEL=n` (Wokwi's SysTick does not carry Zephyr 3.7's tickless driver), and the Cortex-M0+ gaps the spike patched locally land first (phase-524 W1 rerun result). Each run needs a Wokwi token and counts against that account's simulation minutes |
+  | Wokwi (`wokwi-cli` 0.29.1, hosted) | Raspberry Pi Pico W | Twin of a bench board for the field solutions purpose; serial only (UART0, the Wokwi serial monitor, carried by `wokwi-cli --interactive` to a host pty). Measured: phase-524 W1 spike 3 rerun. Conditions: the image states `CONFIG_TICKLESS_KERNEL=n` (Wokwi's SysTick does not carry Zephyr 3.7's tickless driver), and the Cortex-M0+ gaps the spike patched locally land first (phase-524 W1 rerun result). Each run needs a Wokwi token and counts against that account's simulation minutes, so this twin is USER-RUN and never in nano-ros CI (maintainer ruling 2026-11-02, after the free plan ran out); the Renode twin is the CI-checked one |
   | Arm FVP | `fvp-aemv8r-smp` | Industrial purpose, maintainer-run (issue 2176); not a book board under this rule until a track replays it |
 
   Left the table on 2026-11-01 (phase-524 W1; the logs are in
@@ -257,7 +257,9 @@ three tree gaps the spike patched only locally (no Cortex-M0+ arm in
 `nros_detect_rust_target()`, two core-atomics read-modify-write sites that do
 not build without CAS, no ARMv6-M `__atomic_*` libcalls for zenoh-pico). The
 free Wokwi plan gives 50 simulation minutes per rolling 30 days and 5 minutes
-per session; a weekly twin run uses about 1.5 of them.
+per session; a twin run uses about 1.5 of them. That quota is why the Wokwi
+twin stays out of CI (ruling 2026-11-02): users run it with their own token,
+and no lane holds a Wokwi secret.
 
 ## Alternatives rejected
 

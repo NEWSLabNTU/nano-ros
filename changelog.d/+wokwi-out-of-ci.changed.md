@@ -1,0 +1,1 @@
+The Pico W Wokwi twin is user-run only: the weekly `probe-platforms` lane no longer runs the `wokwi-pico` track or reads a `WOKWI_CLI_TOKEN` secret. Run it yourself with `just probe wokwi-pico` and your own token. The Renode Nucleo-F767ZI twin stays in the weekly lane.
