@@ -89,7 +89,7 @@ Acceptance:
 - Touching the runner's source rebuilds only the runner.
 - Touching the image's source does not rebuild the runner.
 
-Status: **DONE** (2026-11-02).
+Status: **DONE** (2026-11-02, #3022).
 
 - `builder::discover` classifies each workspace package's build role from the
   same walk (`provider_scan::scan_workspace_packages` now records providers),
