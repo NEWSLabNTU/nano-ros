@@ -110,6 +110,34 @@ rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
     const nros_rmw_xrce_transport_ops_t *ops, int framing);
 
 /**
+ * phase-521 W5 (RFC-0113 D4) — the custom transport's receive notification.
+ *
+ * A transport that can say when bytes have arrived (a UART's RX interrupt, a
+ * USB-CDC receive callback) supplies `set_rx_notify`. The backend calls it with
+ * the executor's wake callback once a session opens on the custom transport,
+ * and with `cb == NULL` to take it off. While installed, the transport calls
+ * `cb(ctx)` every time it has received data the next `read` would return.
+ * The session then states `Notify` readiness, so the executor parks until an
+ * arrival or its next deadline instead of blocking in `read`.
+ *
+ * `cb` may be called from the transport's receive path, interrupt context
+ * included where the platform's wake signal is interrupt-safe (it is on every
+ * port that defines `nros_platform_wake_signal_from_isr` the same as
+ * `nros_platform_wake_signal`). After a call with `cb == NULL` returns, the
+ * transport must not call the previous `cb` again.
+ *
+ * `set_rx_notify` returns 0 on success. NULL clears the registration: the
+ * session states no readiness and keeps the receive-blocking wait.
+ *
+ * @retval NROS_RMW_RET_OK always.
+ */
+typedef int32_t (*nros_rmw_xrce_transport_set_rx_notify_fn)(void *user_data,
+                                                           void (*cb)(void *ctx),
+                                                           void *ctx);
+rmw_ret_t nros_rmw_xrce_set_custom_transport_rx_notify(
+    nros_rmw_xrce_transport_set_rx_notify_fn set_rx_notify);
+
+/**
  * Phase 115.K.2.4 — drain whatever
  * `nros_rmw::custom_transport::take_custom_transport()` produces and
  * install it via `nros_rmw_xrce_set_custom_transport_ops`. Convenience

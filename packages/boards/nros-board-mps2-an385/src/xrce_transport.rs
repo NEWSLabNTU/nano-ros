@@ -116,3 +116,48 @@ pub fn xrce_transport_ops() -> nros_rmw_xrce_cffi::NrosRmwXrceTransportOps {
         read: Some(xrce_read),
     }
 }
+
+/// phase-521 W5 (RFC-0113 D4) — the executor's wake callback while a session
+/// rides this transport, set through [`xrce_set_rx_notify`].
+static RX_NOTIFY_CB: core::sync::atomic::AtomicPtr<()> =
+    core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+static RX_NOTIFY_CTX: core::sync::atomic::AtomicPtr<core::ffi::c_void> =
+    core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+
+/// The transport's receive notification
+/// ([`nros_rmw_xrce_cffi::set_custom_transport_rx_notify`]): the backend hands
+/// it the executor's wake callback, and UART0's RX interrupt calls it
+/// ([`notify_rx`]). The port's wake signal is an atomic store, safe there.
+///
+/// # Safety
+/// The XRCE backend's contract: `ctx` stays valid until a call with
+/// `cb == None` returns.
+pub unsafe extern "C" fn xrce_set_rx_notify(
+    _user_data: *mut core::ffi::c_void,
+    cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+    ctx: *mut core::ffi::c_void,
+) -> i32 {
+    use core::sync::atomic::Ordering;
+    // Clear the callback first and set it last, so the ISR never pairs a new
+    // callback with an old context.
+    RX_NOTIFY_CB.store(core::ptr::null_mut(), Ordering::Release);
+    RX_NOTIFY_CTX.store(ctx, Ordering::Release);
+    if let Some(cb) = cb {
+        RX_NOTIFY_CB.store(cb as *mut (), Ordering::Release);
+    }
+    0
+}
+
+/// Called by UART0's RX interrupt: tell the session's executor data arrived.
+pub(crate) fn notify_rx() {
+    use core::sync::atomic::Ordering;
+    let cb = RX_NOTIFY_CB.load(Ordering::Acquire);
+    if cb.is_null() {
+        return;
+    }
+    let ctx = RX_NOTIFY_CTX.load(Ordering::Acquire);
+    // SAFETY: stored from a `Some(cb)` by `xrce_set_rx_notify`; the backend
+    // keeps `ctx` valid while it is installed.
+    let cb: unsafe extern "C" fn(*mut core::ffi::c_void) = unsafe { core::mem::transmute(cb) };
+    unsafe { cb(ctx) };
+}

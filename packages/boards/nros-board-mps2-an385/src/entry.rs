@@ -316,6 +316,23 @@ impl BoardEntry for Mps2An385 {
                 Mps2An385::println(format_args!("XRCE custom transport install failed"));
                 Mps2An385::exit_failure();
             }
+            // phase-521 W5 (RFC-0113 D4) — UART0's RX interrupt reports
+            // arrivals, so the session states `Notify` and the executor parks
+            // (the port's wake object, `tickless`) instead of blocking in
+            // `read`. Without the tickless idle (RTIC) there is no interrupt.
+            #[cfg(not(feature = "rtic"))]
+            // SAFETY: `xrce_set_rx_notify` honours the backend's contract
+            // (clears before it replaces; the ISR's wake signal is an atomic store).
+            if unsafe {
+                nros_rmw_xrce_cffi::set_custom_transport_rx_notify(Some(
+                    crate::xrce_transport::xrce_set_rx_notify,
+                ))
+            }
+            .is_err()
+            {
+                Mps2An385::println(format_args!("XRCE custom transport rx notify failed"));
+                Mps2An385::exit_failure();
+            }
             // #189 — register the XRCE backend explicitly. Bare-metal runs no
             // `.init_array`, so the linkme auto-register in nros-rmw-xrce-cffi
             // never fires (#163 class), and `__register_linked_rmw()` is a

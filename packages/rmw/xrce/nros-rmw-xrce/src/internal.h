@@ -779,6 +779,9 @@ struct xrce_session_state {
      * `xrce_set_wake_callback` hands the executor's wake callback straight to
      * the stack, which calls it on every arrival. */
     bool rx_notify_capable;
+    /* phase-521 W5 — `rx_notify_capable` comes from the custom transport's
+     * hook, not the UDP stack's. */
+    bool rx_notify_custom;
     unsigned lock_depth;
     bool free_pending;
 
@@ -1312,6 +1315,10 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
 struct xrce_custom_ops_slot;
 int xrce_custom_transport_is_armed(void);
 rmw_ret_t xrce_custom_transport_install(xrce_session_state_t* st, bool framing);
+/* phase-521 W5 — the custom transport's receive notification, when the board
+ * registered one (`nros_rmw_xrce_set_custom_transport_rx_notify`). */
+bool xrce_custom_transport_rx_notify_capable(void);
+rmw_ret_t xrce_custom_transport_set_rx_notify(void (*cb)(void* ctx), void* ctx);
 
 /* Phase 115.K.2.5.1.2.a-fix-transport — POSIX UDP via custom
  * transport. Replaces the K.2.1 `uxr_init_udp_transport` direct

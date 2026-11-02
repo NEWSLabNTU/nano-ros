@@ -374,10 +374,20 @@ about the serial chardev). `test_qemu_bsp_pubsub_e2e`,
 `test_qemu_rtic_pubsub_e2e`, `test_qemu_rtic_service_e2e` and
 `test_qemu_lan9118_driver` pass.
 
+**XRCE custom transport reports arrivals (2026-11-02).** A board's XRCE
+custom transport registers a receive notification
+(`nros_rmw_xrce_set_custom_transport_rx_notify`, a separate setter so the ops
+struct and its Rust mirror keep their layout). The backend hands it the
+executor's wake callback through `set_wake_callback`, and the session states
+`Notify`. mps2-an385's UART0 transport registers one, called from `UARTRX0`.
+Measured on `qemu-talker-xrce` (serial to `MicroXRCEAgent`, publishing at
+1 Hz, 20 s, QEMU 9.0.2): 42 SysTick arms and 20 host CPU ticks, against 1,832
+and 703 with the registration suppressed (the receive-blocking 10 ms drain).
+`test_qemu_xrce_pubsub_e2e` passes.
+
 Still open: the board-entry refusal of a bare-metal board without an RX
 interrupt and a one-shot timer (esp32-c3 is the in-tree one), which W6's
-open-time `None` refusal delivers, and the custom-transport `rx_notify` for
-XRCE serial.
+open-time `None` refusal delivers.
 
 ### W6 — Retire the receive-blocking fallback
 
