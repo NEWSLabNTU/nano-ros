@@ -311,7 +311,8 @@ fn init_network<D: EthernetDevice + 'static>(
         nros_platform_mps2_an385::sleep::set_poll_callback(network::smoltcp_network_poll);
     }
 
-    // issue 2022 — the transport's wait loops sleep instead of spinning.
+    // issue 2022 — the transport's wait loops sleep instead of spinning. An
+    // RTIC image installs it once interrupts are live (`on_interrupts_live`).
     #[cfg(not(feature = "rtic"))]
     crate::tickless::install();
 
@@ -321,7 +322,7 @@ fn init_network<D: EthernetDevice + 'static>(
 /// issue 2022 — whether the driver holds a frame smoltcp has not taken yet
 /// (`Lan9118::receive` keeps one back while the TX FIFO is full). The tickless
 /// idle must not sleep on it, and an empty RX FIFO does not rule it out.
-#[cfg(all(feature = "ethernet", not(feature = "rtic")))]
+#[cfg(feature = "ethernet")]
 #[allow(static_mut_refs)]
 pub(crate) fn eth_rx_buffered() -> bool {
     // SAFETY: written once by `init_ethernet` before `tickless::install`, and

@@ -2624,6 +2624,18 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 },
                 None => quote! {},
             };
+            // phase-521 W6 (RFC-0113 D4) — the link's receive interrupt as an
+            // RTIC hardware task. Priority 2 so it preempts the priority-1 run
+            // task; its interrupt is what ends that task's park.
+            let rtic_rx_ts: proc_macro2::TokenStream = match rtic_spec.rx_irq {
+                Some(rx_irq) => quote! {
+                    #[task(binds = #rx_irq, priority = 2)]
+                    fn __nros_rx(_cx: __nros_rx::Context) {
+                        <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::on_rx_irq();
+                    }
+                },
+                None => quote! {},
+            };
 
             // Phase 216.B.3 SKELETON — `#[rtic::app(...)]` module that
             // delegates boot to `RticBoardEntry::init_hardware`. The
@@ -2843,12 +2855,19 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             // `run_ticks`), matching the owned-spin boards, so
                             // registered timers fire and service/action poll
                             // components tick.
-                            // entry-spin-budget: exempt — RTIC: the dispatch
-                            // queue below is drained every turn, so this loop
-                            // keeps its slice (phase-521 W6).
+                            //
+                            // phase-521 W6 (RFC-0113 D2) — with the executor's
+                            // budget: the park ends at the next deadline or on
+                            // the RX task's interrupt. The dispatch queue below
+                            // is filled only on this task (or in `#[init]`,
+                            // before the loop), so it never waits out a park.
+                            let __nros_budget =
+                                ::nros::__macro_support::nros_platform::NodeDispatchRuntime::entry_spin_budget_ms(
+                                    &__nros_crt,
+                                );
                             let _ = ::nros::__macro_support::nros_platform::NodeDispatchRuntime::spin_once(
                                 &mut __nros_crt,
-                                10,
+                                __nros_budget,
                             );
                             // Phase 216 final dispatch wiring — drain
                             // every envelope the board's SPSC has
@@ -2875,6 +2894,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     // Phase 289 (#178) — periodic tick hardware task
                     // (empty when the board spec declares no tick_irq).
                     #rtic_tick_ts
+
+                    // phase-521 W6 — the link's RX interrupt task.
+                    #rtic_rx_ts
 
                     // Phase 216.B.4 — user-supplied `#[task]` trampolines.
                     // Each calls a sibling `<name>_impl` fn the user
@@ -5020,22 +5042,29 @@ struct RticBoardSpec {
     /// connect/poll busy-waits (priority 2 so it preempts the priority-1 run
     /// task). `None` = no tick task emitted (board runs without wfi-yield).
     tick_irq: Option<Ident>,
+    /// phase-521 W6 (RFC-0113 D4) — interrupt ident of the network link's
+    /// receive line. The macro emits a `#[task(binds = <rx_irq>, priority =
+    /// 2)]` hardware task calling `RticBoardEntry::on_rx_irq()`, so an
+    /// arrival ends the run task's park. `None` = no RX task emitted.
+    rx_irq: Option<Ident>,
 }
 
 fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
-    let (device, dispatchers, consumer, tick_irq) = match deploy {
+    let (device, dispatchers, consumer, tick_irq, rx_irq) = match deploy {
         "rtic-mps2-an385" => (
             "mps2_an385_pac",
             &["UARTRX0", "UARTTX0"][..],
             // phase-337 W6.a — folded into `nros-board-mps2-an385`'s `rtic`
             // feature, which re-exports the queue accessors at the crate root.
             "::nros_board_mps2_an385::take_dispatch_consumer",
-            // Issue 1804 — the dual timer, which the board arms as its tick.
-            // TIMER0 is the platform's free-running monotonic clock (a tick
-            // on it reprograms the clock's RELOAD and makes it jump ~171.8 s
-            // per tick) and TIMER1 is the sporadic-server timer, whose
-            // `TIMER1` vector the platform crate already defines.
-            Some("DUALTIMER"),
+            // phase-521 W6 (RFC-0113 D2) — no periodic tick: it woke an idle
+            // image every millisecond. The run task parks in the port's wake
+            // object (a SysTick one-shot at the deadline) and the LAN9118 RX
+            // interrupt below ends the park on an arrival. (The tick was the
+            // dual timer, issue 1804: TIMER0 is the monotonic clock and
+            // TIMER1 the sporadic-server timer.)
+            None,
+            Some("ETHERNET"),
         ),
         _ => return None,
     };
@@ -5046,7 +5075,8 @@ fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
             .map(|name| Ident::new(name, Span::call_site()))
             .collect(),
         dispatch_consumer_path: syn::parse_str::<SynPath>(consumer).ok()?,
-        tick_irq: tick_irq.map(|name| Ident::new(name, Span::call_site())),
+        tick_irq: tick_irq.map(|name: &str| Ident::new(name, Span::call_site())),
+        rx_irq: rx_irq.map(|name: &str| Ident::new(name, Span::call_site())),
     })
 }
 

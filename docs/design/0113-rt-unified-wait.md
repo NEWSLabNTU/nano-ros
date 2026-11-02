@@ -248,7 +248,7 @@ are what keeps D5's refusal from landing (phase-521 W6).
 | zenoh CALLER mode, esp32-c3 bare metal | **not yet** — no RX interrupt or one-shot behind a wake object | — |
 | XRCE over a board's custom transport (mps2-an385 UART0, `talker-xrce`) | Notify (`nros_rmw_xrce_set_custom_transport_rx_notify`, from `UARTRX0`) | 1 Hz talker, QEMU 9.0.2, 20 s: 42 one-shot arms (1,832 with the receive-blocking drain) |
 | XRCE over a custom transport with no receive notification | **not yet** — receive-blocking | the hook is optional, so a board that omits it keeps the fallback |
-| RTIC images | its own scheduler; the 1 ms dual-timer tick bounds each `wfi` | RTIC is Tier 1 (D1); its arrival path is not yet an RTIC task bound to the RX interrupt |
+| RTIC images (mps2-an385, LAN9118) | Notify — an RTIC hardware task bound to `ETHERNET` posts the wake object; the run loop parks with the entry budget (SysTick one-shot at the next deadline) | idle `qemu-rtic-listener`, QEMU 9.0.2, 20 s: 0 SysTick one-shots and 2 host CPU ticks (the router's keep-alive arrives first); the retired 1 ms dual-timer tick woke it 20,000 times. `test_qemu_rtic_{pubsub,service,action,mixed_priority_pubsub}_e2e` pass |
 | uORB polling build | none: refused under D5 | host test double only |
 
 Measured on Linux over `rmw_zenohd` (`entity_wake`, `required-features-tests`
@@ -283,6 +283,8 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Changelog
 
+- 2026-11-02 — RTIC row: the arrival path is an RTIC task on the RX
+  interrupt (phase-521 W6e); the 1 ms tick is gone.
 - 2026-11-02 — Coverage section added (what meets D2, the evidence, the
   "not yet" rows); RFC-0106 D5 amended to match D4/D5.
 - 2026-11-02 — D6: zenoh CALLER mode reports zenoh-pico's next due future

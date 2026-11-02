@@ -156,6 +156,16 @@ pub trait RticBoardEntry: Board {
     /// `tick_irq` (the macro then emits no tick task at all).
     fn on_tick() {}
 
+    /// phase-521 W6 (RFC-0113 D4) — the network link's receive interrupt.
+    /// Invoked from the proc-macro-emitted `#[task(binds = <rx_irq>,
+    /// priority = 2)]` hardware task. It masks or acknowledges the source;
+    /// the interrupt itself is what ends the run task's park (a `wfi` in the
+    /// port's wake object), so an arrival is dispatched when it lands rather
+    /// than at the next tick.
+    ///
+    /// Default: no-op, for boards whose `RticBoardSpec` declares no `rx_irq`.
+    fn on_rx_irq() {}
+
     /// Phase 289 (#178 layer 2) — called once at the top of the
     /// `__nros_run` task, after `#[init]` returned and interrupts unmasked,
     /// BEFORE [`open_executor`](Self::open_executor). The place to install

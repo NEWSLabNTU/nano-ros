@@ -528,6 +528,19 @@ is amended by RFC-0113 D4/D5, and RFC-0113 gains its coverage table. Compiled
 through `examples/zephyr/c/talker` on mps2/an385 with the serial conf stack:
 the Rust serial row cannot configure for an unrelated reason (issue 2211).
 
+**W6e — RTIC's arrival path is an RTIC task (2026-11-02).** Maintainer
+ruling: RTIC stays supported, since nano-ros generates its scheduling. The
+1 ms dual-timer tick that bounded each `wfi` is gone. `nros::main!` emits
+`#[task(binds = ETHERNET, priority = 2)]` for `rtic-mps2-an385`, which calls
+the new `RticBoardEntry::on_rx_irq` hook; the board masks the LAN9118
+interrupt and posts its wake object, as the owned-spin entry's `#[interrupt]`
+does. The run loop spins with the entry budget instead of a literal 10 ms,
+and the board installs the SysTick one-shot park for RTIC images too. RTIC's
+dispatchers take `UARTRX0`/`UARTTX0`, so an RTIC image has no serial wake;
+every RTIC example is ethernet. Measured on the idle `qemu-rtic-listener`
+(QEMU 9.0.2, 20 s): 0 SysTick one-shots and 2 host CPU ticks.
+`test_qemu_rtic_{pubsub,service,action,mixed_priority_pubsub}_e2e` pass.
+
 ### W7 — Acceptance measurements for the promise
 
 Make RFC-0113 D2 a measured property, not a reading:
