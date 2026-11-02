@@ -1008,14 +1008,20 @@ impl LinuxBoard {
                         return;
                     }
                     st.store(1, SeqCst);
-                    let period = std::time::Duration::from_micros(tier.spin_period_us.max(1));
+                    // phase-521 W6 (RFC-0113 D2) -- the level parks until its
+                    // band's next deadline or an arrival; the budget bounds
+                    // only what nothing else does. Its period was passed here
+                    // before, which woke an idle level once a period. The boot
+                    // level wakes every level when it stops them.
+                    // SAFETY: on this level's own thread, no runtime borrow live.
+                    let budget = unsafe { core.entry_spin_budget() };
                     // issue 0636 option 3 -- every iteration reaches a
                     // scheduling point.
                     let mut gap = ::nros_platform::TierSpinGap::new(tier.spin_period_us);
                     while !stop.load(SeqCst) && !run_should_end(deadline) {
                         let iter = gap.mark();
                         // SAFETY: `worker` is this thread's, from `open_level`.
-                        unsafe { core.spin_level_once(worker, period) };
+                        unsafe { core.spin_level_once(worker, budget) };
                         gap.after_spin(iter);
                     }
                 });
@@ -1051,16 +1057,27 @@ impl LinuxBoard {
                 <Self as BoardPrint>::println(format_args!(
                     "nros: multi-level run — {n} level(s) over one executor"
                 ));
-                let period = std::time::Duration::from_micros(boot_tier.spin_period_us.max(1));
+                // phase-521 W6 -- as the levels: park until the next deadline
+                // or an arrival. A termination signal posts the executor's
+                // wake object, which ends this park.
+                // SAFETY: the boot level's thread, no runtime borrow live.
+                let budget = unsafe { core.entry_spin_budget() };
                 let mut gap = ::nros_platform::TierSpinGap::new(boot_tier.spin_period_us);
                 while !run_should_end(deadline) {
                     let iter = gap.mark();
+                    // A bounded run ends on time, not at the next deadline.
+                    let bound = deadline.map_or(budget, |d| {
+                        budget.min(d.saturating_duration_since(std::time::Instant::now()))
+                    });
                     // SAFETY: this is the boot level's thread.
-                    unsafe { core.spin_boot_once(period) };
+                    unsafe { core.spin_boot_once(bound) };
                     gap.after_spin(iter);
                 }
             }
             stop.store(true, std::sync::atomic::Ordering::SeqCst);
+            // phase-521 W6 -- end every level's park, so each sees `stop` now
+            // rather than at its next deadline.
+            core.wake_all();
         });
 
         // Issue 1732 -- reached once a termination signal (or the bounded

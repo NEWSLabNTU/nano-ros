@@ -14,9 +14,10 @@
 //!    see (nothing signals the executor's wake object).
 //! 2. `drive_io` was only ever asked for a NON-blocking drive: the tier never
 //!    waited inside the transport (RFC-0113 D2.6).
-//! 3. Negative control: the same stub reporting no readiness form is driven
-//!    for the spin's whole budget, i.e. the receive-blocking wait that W6
-//!    retires. Without it, (2) could pass because nothing ever blocks.
+//! 3. (phase-521 W6, RFC-0113 D5) The same stub reporting no readiness form is
+//!    refused at open, with its wake slot filled or not. The spin's lower
+//!    bound in (1) is what keeps (2) from passing vacuously: the tier did
+//!    wait, and not in the transport.
 //!
 //! phase-521 W4 adds a second stub that DOES fill `set_wake_callback`, the
 //! shape XRCE has: the slot is always there, but only a transport whose stack
@@ -25,11 +26,6 @@
 //! 4. Reporting NOTIFY, a call of the installed callback (what the stack's
 //!    receive notification does) ends the park, and the drive is still
 //!    non-blocking.
-//! 5. Reporting NONE with the slot filled, the runtime believes the stated
-//!    readiness, not the slot: it keeps the receive-blocking drive. Reading
-//!    the slot's presence instead would park on a wake object nothing will
-//!    signal, and an arrival would wait for the deadline.
-//!
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test readiness_park`.
 
 #![cfg(all(feature = "trigger-test", unix))]
@@ -277,7 +273,7 @@ static VTABLE_WITH_WAKE_SLOT: NrosRmwVtable = NrosRmwVtable {
 const STUB: &str = "readiness_park_stub";
 const STUB_WITH_WAKE_SLOT: &str = "readiness_park_stub_wake_slot";
 
-fn open(name: &str, vtable: &'static NrosRmwVtable) -> Executor<'static> {
+fn try_open(name: &str, vtable: &'static NrosRmwVtable) -> Result<Executor<'static>, NodeError> {
     let c_name = format!("{name}\0");
     // SAFETY: a NUL-terminated name and a vtable that lives for the process.
     let ret = unsafe { nros_rmw_cffi_register_named(c_name.as_ptr().cast(), vtable) };
@@ -285,7 +281,11 @@ fn open(name: &str, vtable: &'static NrosRmwVtable) -> Executor<'static> {
     let config = ExecutorConfig::new("stub/0")
         .node_name("readiness_park")
         .rmw(name);
-    Executor::open(&config).expect("Executor::open over the stub")
+    Executor::open(&config)
+}
+
+fn open(name: &str, vtable: &'static NrosRmwVtable) -> Executor<'static> {
+    try_open(name, vtable).expect("Executor::open over the stub")
 }
 
 /// One spin of `BUDGET`, with a byte written to the socket `WRITE_AFTER` in.
@@ -353,26 +353,44 @@ fn a_waitable_session_wakes_the_park_with_no_wake_callback() {
     );
 }
 
+/// phase-521 W6 (RFC-0113 D5) — a session that states no readiness form is
+/// REFUSED at open, by name. It could only be drained by blocking inside its
+/// own receive, which neither a deadline nor another session can end, so
+/// nano-ros cannot keep its real-time wait promise over it. This replaced the
+/// control that asserted the receive-blocking wait it used to get.
 #[test]
-fn a_session_with_no_readiness_form_still_blocks_inside_drive_io() {
+fn a_session_with_no_readiness_form_is_refused_at_open() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let (elapsed, max_drive) = spin_across_a_write(NROS_RMW_READINESS_NONE);
-
-    // The receive-blocking wait phase-521 W6 retires: the whole budget is
-    // handed to the transport. This is the control that makes the zero above
-    // mean something.
+    KIND.store(NROS_RMW_READINESS_NONE as u8, Ordering::SeqCst);
+    for (name, vtable) in [
+        (STUB, &VTABLE),
+        (STUB_WITH_WAKE_SLOT, &VTABLE_WITH_WAKE_SLOT),
+    ] {
+        let Err(err) = try_open(name, vtable) else {
+            panic!(
+                "{name}: a session with no readiness form opened: RFC-0113 D5 refuses it at \
+                 open, whatever slots its vtable fills"
+            );
+        };
+        assert!(
+            matches!(
+                err,
+                NodeError::Transport(nros_node::TransportError::Unsupported)
+            ),
+            "{name}: refused with {err:?}, expected Transport(Unsupported)"
+        );
+    }
+    // Negative control: the same stub stating a form opens.
+    KIND.store(NROS_RMW_READINESS_NOTIFY as u8, Ordering::SeqCst);
     assert!(
-        max_drive >= (BUDGET.as_millis() as i32) / 2,
-        "drive_io was asked for at most {max_drive} ms, expected the spin's budget: the \
-         control no longer exercises the receive-blocking wait"
+        try_open(STUB_WITH_WAKE_SLOT, &VTABLE_WITH_WAKE_SLOT).is_ok(),
+        "the same stub stating NOTIFY must open"
     );
-    assert!(elapsed >= BUDGET / 2, "{elapsed:?}");
 }
 
 /// phase-521 W6 (RFC-0113 D2) — an entry asks the executor for its spin
 /// budget. A session whose handle ends the park lets the entry park until its
-/// next deadline; one with no readiness form keeps the 10 ms slice, because
-/// only its own data ends a receive-blocking wait.
+/// next deadline. (A session with no readiness form no longer opens.)
 #[test]
 fn the_entry_budget_is_long_only_when_every_session_ends_the_park() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
@@ -385,10 +403,6 @@ fn the_entry_budget_is_long_only_when_every_session_ends_the_park() {
     assert_eq!(executor.entry_spin_budget(), nros_node::ENTRY_IDLE_BUDGET);
     drop(executor);
 
-    KIND.store(NROS_RMW_READINESS_NONE as u8, Ordering::SeqCst);
-    let executor = open(STUB, &VTABLE);
-    assert_eq!(executor.entry_spin_budget(), nros_node::ENTRY_POLL_BUDGET);
-    drop(executor);
     READ_FD.store(-1, Ordering::SeqCst);
 }
 
@@ -492,26 +506,4 @@ fn a_notify_session_wakes_the_park_from_its_wake_callback() {
         "drive_io was asked to block for {max_drive} ms: a Notify session must be drained \
          non-blockingly once its callback has woken the tier (RFC-0113 D2.6)"
     );
-}
-
-#[test]
-fn a_filled_wake_slot_with_no_readiness_form_still_blocks_inside_drive_io() {
-    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let (elapsed, max_drive) = spin_across_an_arrival(
-        NROS_RMW_READINESS_NONE,
-        STUB_WITH_WAKE_SLOT,
-        &VTABLE_WITH_WAKE_SLOT,
-        false,
-    );
-
-    // XRCE over a board's custom transport: the slot is there and nothing
-    // calls it. Parking on the wake object would hold the byte written at
-    // `WRITE_AFTER` until the deadline; the stated NONE keeps the wait in the
-    // transport, where the arrival is seen.
-    assert!(
-        max_drive >= (BUDGET.as_millis() as i32) / 2,
-        "drive_io was asked for at most {max_drive} ms: the runtime read the wake slot's \
-         presence instead of the session's stated readiness (NONE)"
-    );
-    assert!(elapsed >= BUDGET / 2, "{elapsed:?}");
 }

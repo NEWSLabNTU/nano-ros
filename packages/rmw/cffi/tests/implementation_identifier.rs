@@ -170,6 +170,7 @@ unsafe extern "C" fn noop_reg_pub_event(
 /// so the base has to be real even though this test never publishes.
 const BASE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(open),
+    readiness_source: Some(notify_readiness),
     destroy_session: Some(noop_close),
     drive_io: Some(noop_drive_io),
     create_publisher: Some(noop_create_pub),
@@ -276,4 +277,19 @@ fn two_sessions_report_their_own_backends_names() {
     // One image, two backends, two answers — what no image-wide constant holds.
     assert_eq!(a.implementation_identifier(), Some("ii_backend_own_name"));
     assert_eq!(b.implementation_identifier(), Some("ii_other_backend"));
+}
+
+/// phase-521 W6 (RFC-0113 D5) — the runtime refuses a session that states no
+/// readiness form at open, so this stub states `Notify`.
+unsafe extern "C" fn notify_readiness(
+    _: *const nros_rmw_cffi::rmw_session_t,
+    out_kind: *mut u8,
+    out_handle: *mut i32,
+) -> nros_rmw_cffi::NrosRmwRet {
+    // SAFETY: the runtime passes valid out-pointers.
+    unsafe {
+        *out_kind = nros_rmw_cffi::NROS_RMW_READINESS_NOTIFY as u8;
+        *out_handle = -1;
+    }
+    nros_rmw_cffi::NROS_RMW_RET_OK
 }

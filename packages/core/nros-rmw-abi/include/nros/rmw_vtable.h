@@ -1584,8 +1584,8 @@ typedef struct nros_rmw_vtable_t {
      *    its own wake object (`nros_platform_wake_park_handles_us`) and
      *    drives the session non-blockingly after the park. The handle stays
      *    valid until the session closes.
-     *  - `NROS_RMW_READINESS_NONE`: neither. RFC-0113 D5 refuses such a
-     *    combination once phase-521 W6 lands; until then the executor
+     *  - `NROS_RMW_READINESS_NONE`: neither. RFC-0113 D5: the runtime
+     *    refuses such a session at open (phase-521 W6); the executor never
      *    blocks inside `drive_io`.
      *
      *  `*out_kind` and `*out_handle` are written only on `NROS_RMW_RET_OK`.

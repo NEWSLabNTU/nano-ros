@@ -24,11 +24,11 @@ logging-smoke-nuttx-qemu-arm         1   0     0       1      0
 logging-smoke-threadx-linux          1   0     0       1      0
 logging-smoke-threadx-riscv64        1   0     0       1      0
 mps2-an385-pac                       0   1     1       2      0
-nros                               108  25     5      30      0
+nros                               110  26     5      30      0
 nros-baremetal-common               24   0     0      21      0
 nros-board-cffi                      3   0     0       6      0
 nros-board-freertos                 64   1     1      20      0
-nros-board-linux                    21   0     0       7      0
+nros-board-linux                    23   0     0       7      0
 nros-board-mps2-an385               37   6     1      11      0
 nros-board-mps2-an385-freertos       3   0     0       1      0
 nros-board-nuttx                    28   0     0      14      0
@@ -44,7 +44,7 @@ nros-c                             538  92     6     511      0
 nros-cli-core                       23   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
-nros-cpp                          1108  43     0     428      0
+nros-cpp                          1114  44     0     428      0
 nros-log                            24   0     7       1      0
 nros-macros                         13   0     1       1      0
 nros-node                          745  260    35     167      0
@@ -60,7 +60,7 @@ nros-platform-mps2-an385            23   6     3       8      0
 nros-platform-stm32f4               15   6     3       2      0
 nros-port-metric-bench               3   0     0       3      0
 nros-rmw                            21   7    11      13      0
-nros-rmw-cffi                      413  44     8     226      0
+nros-rmw-cffi                      414  44     8     227      0
 nros-rmw-cyclonedds                  8   0     7       1      0
 nros-rmw-cyclonedds-sys              2   0     0       1      0
 nros-rmw-metadata                    1   0     0       0      0
@@ -73,7 +73,6 @@ nros-transport-callbacks             9   0     0       8      0
 nros-zephyr-build                   12   0     0       0      0
 nros-zpico-build                     1   0     0       0      0
 nvidia-ivc                          59  25     4      11      0
-openeth-smoltcp                     13   2     0       0      0
 pool-exhaustion-threadx-linux        2   0     0       1      0
 qemu-bsp-large-msg-test              2   0     0       0      0
 qemu-rs-common                      52   0     0      15      0

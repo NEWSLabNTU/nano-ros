@@ -204,6 +204,7 @@ unsafe extern "C" fn scripted_server_is_available(
 
 static VTABLE_WITH_SLOT: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(stub_open),
+    readiness_source: Some(notify_readiness),
     destroy_session: Some(stub_close),
     drive_io: Some(stub_drive_io),
     create_publisher: Some(stub_create_publisher),
@@ -229,6 +230,7 @@ static VTABLE_WITH_SLOT: NrosRmwVtable = NrosRmwVtable {
 
 static VTABLE_NULL_SLOT: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(stub_open),
+    readiness_source: Some(notify_readiness),
     destroy_session: Some(stub_close),
     drive_io: Some(stub_drive_io),
     create_publisher: Some(stub_create_publisher),
@@ -337,4 +339,19 @@ fn vtable_has_slot_field() {
     // for documentation.
     let _ = VTABLE_WITH_SLOT.service_server_is_available.is_some();
     let _ = VTABLE_NULL_SLOT.service_server_is_available.is_none();
+}
+
+/// phase-521 W6 (RFC-0113 D5) — the runtime refuses a session that states no
+/// readiness form at open, so this stub states `Notify`.
+unsafe extern "C" fn notify_readiness(
+    _: *const nros_rmw_cffi::rmw_session_t,
+    out_kind: *mut u8,
+    out_handle: *mut i32,
+) -> nros_rmw_cffi::NrosRmwRet {
+    // SAFETY: the runtime passes valid out-pointers.
+    unsafe {
+        *out_kind = nros_rmw_cffi::NROS_RMW_READINESS_NOTIFY as u8;
+        *out_handle = -1;
+    }
+    nros_rmw_cffi::NROS_RMW_RET_OK
 }

@@ -126,8 +126,9 @@ rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
  * `nros_platform_wake_signal`). After a call with `cb == NULL` returns, the
  * transport must not call the previous `cb` again.
  *
- * `set_rx_notify` returns 0 on success. NULL clears the registration: the
- * session states no readiness and keeps the receive-blocking wait.
+ * `set_rx_notify` returns 0 on success. NULL clears the registration. A
+ * custom transport with no `set_rx_notify` states no readiness form, and the
+ * runtime refuses such a session at open (RFC-0113 D5).
  *
  * @retval NROS_RMW_RET_OK always.
  */

@@ -229,6 +229,7 @@ unsafe extern "C" fn scripted_process(
 fn base_vtable() -> NrosRmwVtable {
     NrosRmwVtable {
         create_session: Some(stub_open),
+        readiness_source: Some(notify_readiness),
         destroy_session: Some(stub_close),
         drive_io: Some(stub_drive_io),
         create_publisher: Some(stub_create_publisher),
@@ -388,4 +389,19 @@ fn in_place_unsupported_when_probe_says_yes_over_a_null_slot() {
         Subscription::process_raw_in_place(&mut sub, |_| {}).is_err(),
         "and the call itself still errors, so the buffered path is the only route"
     );
+}
+
+/// phase-521 W6 (RFC-0113 D5) — the runtime refuses a session that states no
+/// readiness form at open, so this stub states `Notify`.
+unsafe extern "C" fn notify_readiness(
+    _: *const nros_rmw_cffi::rmw_session_t,
+    out_kind: *mut u8,
+    out_handle: *mut i32,
+) -> nros_rmw_cffi::NrosRmwRet {
+    // SAFETY: the runtime passes valid out-pointers.
+    unsafe {
+        *out_kind = nros_rmw_cffi::NROS_RMW_READINESS_NOTIFY as u8;
+        *out_handle = -1;
+    }
+    nros_rmw_cffi::NROS_RMW_RET_OK
 }

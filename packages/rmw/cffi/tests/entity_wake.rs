@@ -291,6 +291,7 @@ unsafe extern "C" fn stub_destroy_client(_c: *mut NrosRmwClient) -> NrosRmwRet {
 
 static WAKING_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(stub_open),
+    readiness_source: Some(notify_readiness),
     destroy_session: Some(stub_close),
     drive_io: Some(stub_drive_io),
     create_publisher: Some(stub_create_publisher),
@@ -457,6 +458,11 @@ impl Session for WakeSession {
     }
     fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
         Ok(())
+    }
+    /// phase-521 W6 (RFC-0113 D5) — the runtime refuses a session stating
+    /// no readiness form at open; this test double states `Notify`.
+    fn readiness_source(&self) -> nros_rmw::ReadinessSource {
+        nros_rmw::ReadinessSource::Notify
     }
     fn supported_qos_policies(&self) -> QoSPolicyMask {
         QoSPolicyMask::CORE
@@ -692,6 +698,11 @@ impl Session for DeafSession {
     fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
         Ok(())
     }
+    /// phase-521 W6 (RFC-0113 D5) — the runtime refuses a session stating
+    /// no readiness form at open; this test double states `Notify`.
+    fn readiness_source(&self) -> nros_rmw::ReadinessSource {
+        nros_rmw::ReadinessSource::Notify
+    }
     fn supported_qos_policies(&self) -> QoSPolicyMask {
         QoSPolicyMask::CORE
     }
@@ -767,4 +778,19 @@ fn a_rust_backend_on_the_trait_default_reports_unsupported_through_the_adapter()
         !ClientTrait::register_waker(&cli, &waker),
         "client: a backend on the trait default must not read as waking"
     );
+}
+
+/// phase-521 W6 (RFC-0113 D5) — the runtime refuses a session that states no
+/// readiness form at open, so this stub states `Notify`.
+unsafe extern "C" fn notify_readiness(
+    _: *const nros_rmw_cffi::rmw_session_t,
+    out_kind: *mut u8,
+    out_handle: *mut i32,
+) -> nros_rmw_cffi::NrosRmwRet {
+    // SAFETY: the runtime passes valid out-pointers.
+    unsafe {
+        *out_kind = nros_rmw_cffi::NROS_RMW_READINESS_NOTIFY as u8;
+        *out_handle = -1;
+    }
+    nros_rmw_cffi::NROS_RMW_RET_OK
 }

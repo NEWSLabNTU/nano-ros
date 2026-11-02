@@ -56,8 +56,8 @@ Measured on main, 2026-10-31:
 - **Poll-only backends block inside `recv`.** XRCE and uORB cannot end a park
   (RFC-0106 D5), so a tier waits in the transport's receive. That wait has
   1 ms granularity, and a guard condition triggered from another thread can
-  only be noticed between 10 ms slices (`POLL_ONLY_WAKE_SLICE_MS`). Neither is
-  a bound a real-time tier can be designed against.
+  only be noticed between 10 ms slices (`POLL_ONLY_WAKE_SLICE_MS`, deleted in
+  phase-521 W6). Neither is a bound a real-time tier can be designed against.
 - **A foreign loop cannot carry the promise.** tokio is work-stealing with no
   priorities; Qt and GLib run one main thread; an Embassy schedule is the
   user's own. The integration contract RFC-0112 opened (issues 2143–2146)
@@ -155,9 +155,10 @@ deliver Notify without the RMW knowing the board.
 A backend × transport × platform combination with no readiness form is
 REFUSED when the session opens, naming the combination and this RFC. It is
 never served by blocking in `recv`. The receive-blocking wait, its 10 ms guard
-slices and `POLL_ONLY_WAKE_SLICE_MS` retire once the last in-tree combination
-has a form (phase-521 W6). Until then they stay, and each remaining
-combination is listed in the RFC's coverage table as not yet meeting D2.
+slices and `POLL_ONLY_WAKE_SLICE_MS` are deleted (phase-521 W6). The refusal
+is asked once, where every runtime session opens
+(`nros_rmw_cffi::refuse_without_readiness`): it returns
+`TransportError::Unsupported` and logs the reason.
 
 ### D6 — Deadlines name real events
 
@@ -232,14 +233,15 @@ host-callable function.
 
 ## Coverage
 
-Which in-tree combinations meet D2 today, and the evidence. "Not yet" rows
-are what keeps D5's refusal from landing (phase-521 W6).
+Which in-tree combinations meet D2 today, and the evidence. Every row either
+meets D2 or is refused at open under D5 (phase-521 W6); none is served by the
+deleted receive-blocking wait.
 
 | Combination | Readiness | Evidence |
 |---|---|---|
 | zenoh THREAD mode (POSIX, NuttX, Zephyr, FreeRTOS) | Notify | idle Linux listener: 0 voluntary context switches in 10 s (was 1000); `entity_wake::an_idle_zenoh_entry_wakes_only_for_its_deadlines` 4 spins in 3.5 s with a 1 s timer, dispatch 0.4 ms late |
 | zenoh CALLER mode, mps2-an385 (LAN9118 / UART0) | Notify (RX IRQ + SysTick one-shot) | idle listener, QEMU 9.0.2, 20 s: 41 one-shot arms (1,892 with the old 10 ms drain); under QEMU 11 `wfi` does not halt (issue 2209) |
-| Cyclone DDS | Notify | — |
+| Cyclone DDS | Notify (a freertos-posix build without foreign wake reads as Notify and is not: issue 2217) | — |
 | XRCE over UDP, POSIX / NuttX | Waitable (socket fd) | phase-521 W3 |
 | XRCE over zsock, Zephyr | Waitable (`zsock_poll`) | native_sim arrival→dispatch p50 0.4–1.1 ms (was 3.2–6.3 ms) |
 | XRCE over lwIP (FreeRTOS), NetX Duo (ThreadX) | Notify (stack receive callback) | p50 2.2–4.0 ms (was 72–253 ms); NetX 1.8 ms |
@@ -247,9 +249,10 @@ are what keeps D5's refusal from landing (phase-521 W6).
 | zenoh CALLER mode, ThreadX | Notify — the link's TCP socket notifies through `nros_platform_tcp_set_rx_notify` (NetX Duo's receive notify; on threadx-linux a lowest-priority NSOS watcher thread), and `zp_next_wake_ms` is real in the multi-thread build | idle threadx-linux listener, 10 s: 4,599 context switches against 53,061 with the blind `z_sleep_ms`; `rtos_e2e` pubsub/service/action pass on threadx-linux and rv-virt-threadx |
 | esp32-c3 bare metal | **retired** (phase-521 W6) — no RX interrupt or one-shot behind a wake object; every board name is refused naming D5 | `nros_entry_lower::REMOVED_BOARD_KEYS` |
 | XRCE over a board's custom transport (mps2-an385 UART0, `talker-xrce`) | Notify (`nros_rmw_xrce_set_custom_transport_rx_notify`, from `UARTRX0`) | 1 Hz talker, QEMU 9.0.2, 20 s: 42 one-shot arms (1,832 with the receive-blocking drain) |
-| XRCE over a custom transport with no receive notification | **not yet** — receive-blocking | the hook is optional, so a board that omits it keeps the fallback |
+| XRCE over a custom transport with no receive notification | **refused** at open (D5) | `readiness_park::a_session_with_no_readiness_form_is_refused_at_open` (a stub backend stating none, with and without a wake slot) |
 | RTIC images (mps2-an385, LAN9118) | Notify — an RTIC hardware task bound to `ETHERNET` posts the wake object; the run loop parks with the entry budget (SysTick one-shot at the next deadline) | idle `qemu-rtic-listener`, QEMU 9.0.2, 20 s: 0 SysTick one-shots and 2 host CPU ticks (the router's keep-alive arrives first); the retired 1 ms dual-timer tick woke it 20,000 times. `test_qemu_rtic_{pubsub,service,action,mixed_priority_pubsub}_e2e` pass |
 | uORB polling build | none: refused under D5 | host test double only |
+| uORB, PX4 glue build | **refused** at open (D5) until phase-521 W8 wires the glue's arrival to the wake callback | issue 2218 |
 
 Measured on Linux over `rmw_zenohd` (`entity_wake`, `required-features-tests`
 lane, 2026-11-02): an idle entry with one 1 s timer runs 4 spins in 3.5 s and
@@ -289,6 +292,8 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
   TCP receive notification (phase-521 W6f).
 - 2026-11-02 — The esp32-c3 bare-metal board retired rather than ported
   (maintainer ruling); its coverage row reads retired.
+- 2026-11-02 — D5 implemented: the refusal at open, and the receive-blocking
+  wait, its guard slices and `POLL_ONLY_WAKE_SLICE_MS` deleted (phase-521 W6).
 - 2026-11-02 — Coverage section added (what meets D2, the evidence, the
   "not yet" rows); RFC-0106 D5 amended to match D4/D5.
 - 2026-11-02 — D6: zenoh CALLER mode reports zenoh-pico's next due future

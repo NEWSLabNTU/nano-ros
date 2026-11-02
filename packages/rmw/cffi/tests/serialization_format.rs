@@ -179,6 +179,7 @@ unsafe extern "C" fn noop_reg_pub_event(
 /// so the base has to be real even though this test never publishes.
 const BASE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(open),
+    readiness_source: Some(notify_readiness),
     destroy_session: Some(noop_close),
     drive_io: Some(noop_drive_io),
     create_publisher: Some(noop_create_pub),
@@ -313,4 +314,19 @@ fn the_format_pointer_is_static_storage() {
     let second = session.serialization_format_cstr();
     assert!(!first.is_null());
     assert_eq!(first, second);
+}
+
+/// phase-521 W6 (RFC-0113 D5) — the runtime refuses a session that states no
+/// readiness form at open, so this stub states `Notify`.
+unsafe extern "C" fn notify_readiness(
+    _: *const nros_rmw_cffi::rmw_session_t,
+    out_kind: *mut u8,
+    out_handle: *mut i32,
+) -> nros_rmw_cffi::NrosRmwRet {
+    // SAFETY: the runtime passes valid out-pointers.
+    unsafe {
+        *out_kind = nros_rmw_cffi::NROS_RMW_READINESS_NOTIFY as u8;
+        *out_handle = -1;
+    }
+    nros_rmw_cffi::NROS_RMW_RET_OK
 }

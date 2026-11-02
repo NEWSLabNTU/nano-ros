@@ -283,6 +283,7 @@ unsafe extern "C" fn stub_destroy_client(_c: *mut NrosRmwClient) -> NrosRmwRet {
 /// The cyclonedds shape: both poll slots filled, both `*_event_init` NULL.
 static POLLED_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(stub_open),
+    readiness_source: Some(notify_readiness),
     destroy_session: Some(stub_close),
     drive_io: Some(stub_drive_io),
     create_publisher: Some(stub_create_publisher),
@@ -309,6 +310,7 @@ static POLLED_VTABLE: NrosRmwVtable = NrosRmwVtable {
 /// is not allowed to invent a capability out of nothing.
 static EVENTLESS_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(stub_open),
+    readiness_source: Some(notify_readiness),
     destroy_session: Some(stub_close),
     drive_io: Some(stub_drive_io),
     create_publisher: Some(stub_create_publisher),
@@ -525,4 +527,19 @@ fn a_backend_with_neither_half_still_refuses_registration() {
     let before = TAKE_CALLS.load(Ordering::SeqCst);
     assert!(!sub.has_data());
     assert_eq!(TAKE_CALLS.load(Ordering::SeqCst), before);
+}
+
+/// phase-521 W6 (RFC-0113 D5) — the runtime refuses a session that states no
+/// readiness form at open, so this stub states `Notify`.
+unsafe extern "C" fn notify_readiness(
+    _: *const nros_rmw_cffi::rmw_session_t,
+    out_kind: *mut u8,
+    out_handle: *mut i32,
+) -> nros_rmw_cffi::NrosRmwRet {
+    // SAFETY: the runtime passes valid out-pointers.
+    unsafe {
+        *out_kind = nros_rmw_cffi::NROS_RMW_READINESS_NOTIFY as u8;
+        *out_handle = -1;
+    }
+    nros_rmw_cffi::NROS_RMW_RET_OK
 }
