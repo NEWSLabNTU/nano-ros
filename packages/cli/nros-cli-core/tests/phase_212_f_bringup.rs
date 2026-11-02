@@ -52,6 +52,8 @@ fn default_new_args(
         lang: None,
         template: None,
         use_case: None,
+        library_name: None,
+        build_type: None,
         node_name: None,
         dependencies: Vec::new(),
         license: None,

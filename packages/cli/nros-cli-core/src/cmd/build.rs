@@ -100,33 +100,50 @@ pub struct Args {
     #[arg(long)]
     pub offline: bool,
 
-    /// Build only these packages — no dependencies, no dependents.
-    ///
-    /// colcon's flag, with colcon's meaning, and two deliberate divergences
-    /// documented on `builder::discover::select`: a name matching no package is
-    /// an ERROR here rather than a warning, and a selection that drops a
-    /// package another selected package depends on is REFUSED rather than left
-    /// to resolve against an install prefix nano-ros does not have.
-    ///
-    /// The selection narrows what the build CONTAINS — the generated cargo
-    /// root's member list and the generated CMake root's subdirectories. It
-    /// does not narrow which images exist: an image is declared by a bringup's
-    /// `system.toml`, which is a property of the workspace, not of the
-    /// selection, so `nros build linux --packages-select talker_pkg` still
-    /// means the `linux` image, built from a narrowed workspace.
-    // RFC-0087 D7, phase-420 W7.
-    #[arg(long, value_name = "PKG", num_args = 1..)]
-    pub packages_select: Vec<String>,
+    /// Which packages, as colcon selects them.
+    #[command(flatten)]
+    pub selection: SelectionArgs,
 
-    /// Build these packages and everything they depend on, transitively, and
-    /// nothing else.
+    /// Keep building the other packages when one fails.
     ///
-    /// Composes with `--packages-select` as an INTERSECTION, which is colcon's
-    /// composition too: each flag deselects independently, so adding one can
-    /// only ever narrow the build.
-    // RFC-0087 D7, phase-420 W7.
-    #[arg(long, value_name = "PKG", num_args = 1..)]
-    pub packages_up_to: Vec<String>,
+    /// A package that depends on a failed one is skipped, as with colcon, and
+    /// the command still exits non-zero, with the first failure's status. In
+    /// a workspace with images, the unit is the image: each image is one
+    /// merged build, so a failure inside it fails the whole image, and the
+    /// next image is still attempted.
+    // Why the image is the unit: RFC-0117 D4's table (phase-526 W3).
+    #[arg(long)]
+    pub continue_on_error: bool,
+
+    /// Arguments passed to every CMake configure: a cmake image's, a west
+    /// image's (after west's own `--`), and a cmake package's.
+    ///
+    /// A cargo image runs no CMake configure and ignores them, as colcon
+    /// ignores them for a package that is not a CMake package. Ends at the
+    /// next `nros build` flag or at `--`, as colcon's does.
+    #[arg(long, value_name = "ARG", num_args = 1.., allow_hyphen_values = true)]
+    pub cmake_args: Vec<String>,
+
+    /// Build up to this many packages at once. Default: one at a time.
+    ///
+    /// A package starts once every package it depends on has finished. Each
+    /// package's own tool still runs its own jobs in parallel, which is why
+    /// the default is one, not colcon's one per CPU. Only for a workspace
+    /// with no bringup: the images of one workspace share a generated root,
+    /// so above one they are refused.
+    // The default and the image refusal are recorded in RFC-0117 D4's table.
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u16).range(1..))]
+    pub parallel_workers: Option<u16>,
+
+    /// Where each package's build directory goes: `<DIR>/<package>/`.
+    /// Default: `build`, under the workspace.
+    ///
+    /// Only for a workspace with no bringup. An image's generated tree has a
+    /// fixed place under `build/`, which `nros image-facts`, the cmake module
+    /// and the test fixtures all read, so moving it for one build would split
+    /// them; it is refused there.
+    #[arg(long, value_name = "DIR")]
+    pub build_base: Option<PathBuf>,
 
     /// Type-check the image instead of building it: `cargo check`, or
     /// `cargo clippy` with `--check=clippy`.
@@ -155,6 +172,157 @@ pub struct Args {
     /// Arguments after `--` go to the native tool verbatim.
     #[arg(last = true)]
     pub native_args: Vec<String>,
+}
+
+impl Args {
+    /// End `--cmake-args` where colcon ends it: at the next `nros build` flag
+    /// or at `--`.
+    ///
+    /// clap cannot: an argument that takes hyphenated values (`-DX=1`) and
+    /// any number of them consumes every token after it, so `--cmake-args
+    /// -DX=1 --packages-skip a` would hand `--packages-skip a` to CMake. The
+    /// swallowed tail is parsed again as `nros build` arguments and folded in.
+    pub fn split_cmake_args(mut self) -> Result<Self> {
+        use clap::CommandFactory;
+        let cmd = Args::command();
+        let is_ours = |tok: &str| {
+            if tok == "--" {
+                return true;
+            }
+            if let Some(long) = tok.strip_prefix("--") {
+                let name = long.split('=').next().unwrap_or(long);
+                return cmd.get_arguments().any(|a| {
+                    a.get_long() == Some(name)
+                        || a.get_all_aliases().is_some_and(|al| al.contains(&name))
+                });
+            }
+            let mut chars = tok.chars();
+            if chars.next() == Some('-')
+                && let (Some(c), None) = (chars.next(), chars.next())
+            {
+                return cmd.get_arguments().any(|a| a.get_short() == Some(c)) || c == 'h';
+            }
+            false
+        };
+        let Some(at) = self.cmake_args.iter().position(|t| is_ours(t)) else {
+            return Ok(self);
+        };
+        let tail = self.cmake_args.split_off(at);
+        let rest = Args::try_parse_from(std::iter::once("build".to_string()).chain(tail))
+            .map_err(|e| eyre::eyre!("{e}"))?
+            .split_cmake_args()?;
+        // Exhaustive, so a new field is a compile error here rather than a
+        // flag silently dropped after `--cmake-args`.
+        let Args {
+            images,
+            workspace,
+            nano_ros_path,
+            zephyr_workspace,
+            all,
+            board,
+            dry_run,
+            verbose,
+            offline,
+            selection,
+            continue_on_error,
+            cmake_args,
+            parallel_workers,
+            build_base,
+            check,
+            native_args,
+        } = rest;
+        self.images.extend(images);
+        self.workspace = workspace.or(self.workspace);
+        self.nano_ros_path = nano_ros_path.or(self.nano_ros_path);
+        self.zephyr_workspace = zephyr_workspace.or(self.zephyr_workspace);
+        self.all |= all;
+        self.board = board.or(self.board);
+        self.dry_run |= dry_run;
+        self.verbose |= verbose;
+        self.offline |= offline;
+        let SelectionArgs {
+            packages_select,
+            packages_up_to,
+            packages_above,
+            packages_skip,
+            base_paths,
+        } = selection;
+        self.selection.packages_select.extend(packages_select);
+        self.selection.packages_up_to.extend(packages_up_to);
+        self.selection.packages_above.extend(packages_above);
+        self.selection.packages_skip.extend(packages_skip);
+        self.selection.base_paths.extend(base_paths);
+        self.continue_on_error |= continue_on_error;
+        self.cmake_args.extend(cmake_args);
+        self.parallel_workers = parallel_workers.or(self.parallel_workers);
+        self.build_base = build_base.or(self.build_base);
+        self.check = check.or(self.check);
+        self.native_args.extend(native_args);
+        Ok(self)
+    }
+}
+
+/// colcon's package-selection flags, shared by `nros build` and `nros list`
+/// so the two select the same set.
+///
+/// The selection narrows what the build CONTAINS — the generated cargo root's
+/// member list and the generated CMake root's subdirectories. It does not
+/// narrow which images exist: an image is declared by a bringup's
+/// `system.toml`, which is a property of the workspace, not of the selection,
+/// so `nros build linux --packages-select talker_pkg` still means the `linux`
+/// image, built from a narrowed workspace.
+// RFC-0087 D7 (phase-420 W7) brought the first two; RFC-0117 D4 (phase-526
+// W3) the rest. The divergences from colcon are on `builder::discover::select`.
+#[derive(clap::Args, Debug, Clone, Default)]
+pub struct SelectionArgs {
+    /// Only these packages — no dependencies, no dependents.
+    ///
+    /// colcon's flag, with two differences: a name matching no package is an
+    /// error, not a warning, and a selection that leaves out a package a
+    /// selected one depends on is refused, since there is no install prefix
+    /// for it to come from. That holds for every selection flag.
+    #[arg(long, value_name = "PKG", num_args = 1..)]
+    pub packages_select: Vec<String>,
+
+    /// These packages and everything they depend on, transitively.
+    ///
+    /// The selection flags compose as an INTERSECTION, which is colcon's
+    /// composition too: each deselects independently, so adding one can only
+    /// ever narrow the set.
+    #[arg(long, value_name = "PKG", num_args = 1..)]
+    pub packages_up_to: Vec<String>,
+
+    /// These packages and everything that depends on them, transitively.
+    ///
+    /// A package here that depends on a workspace package left out is refused,
+    /// as for every selection flag; add `--packages-up-to` for its
+    /// dependencies. A cargo member with no `package.xml` is refused here: its
+    /// dependents name it only in their `Cargo.toml`, which the selection does
+    /// not read.
+    #[arg(long, value_name = "PKG", num_args = 1..)]
+    pub packages_above: Vec<String>,
+
+    /// Leave these packages out.
+    #[arg(long, value_name = "PKG", num_args = 1..)]
+    pub packages_skip: Vec<String>,
+
+    /// Look for packages only under these directories, relative to the
+    /// workspace. Default: the whole workspace.
+    #[arg(long, value_name = "PATH", num_args = 1..)]
+    pub base_paths: Vec<PathBuf>,
+}
+
+impl SelectionArgs {
+    /// The selection [`discover::select`] applies.
+    #[must_use]
+    pub fn selection(&self) -> discover::Selection {
+        discover::Selection {
+            select: self.packages_select.clone(),
+            up_to: self.packages_up_to.clone(),
+            above: self.packages_above.clone(),
+            skip: self.packages_skip.clone(),
+        }
+    }
 }
 
 /// The cargo command `nros build --check` runs in place of `cargo build`.
@@ -287,6 +455,11 @@ pub struct ResolvedBuild {
     /// `[image_defaults]`'s) and its locator: the image rung of the RunPlan
     /// ladder ([`crate::cmd::run_plan`]).
     pub run_tables: crate::cmd::run_plan::ImageTables,
+    /// `Some` when this plan builds ONE package of a workspace with no bringup,
+    /// in a build directory of its own: the names it `<depend>`s on. A plan
+    /// named here must finish first, and a failed one skips this plan under
+    /// `--continue-on-error`. `None` for an image, whose unit is the image.
+    pub package_depends: Option<Vec<String>>,
 }
 
 /// What a plan is FOR — issue 1716.
@@ -387,7 +560,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
 
     // ---- stage 1 --------------------------------------------------------
     let members = discover::cargo_members_or_walk(&root);
-    let found = discover::discover(&root, &members).map_err(|e| eyre::eyre!("{e}"))?;
+    let found = discover::discover_in(&root, &args.selection.base_paths, &members)
+        .map_err(|e| eyre::eyre!("{e}"))?;
     for w in &found.warnings {
         eprintln!("nros build: warning: {w}");
     }
@@ -419,14 +593,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
     // `check_declared_depends` walks the whole tree itself and would read a
     // deliberately-dropped package as an unresolved `<depend>`.
     let all_packages = found.packages.clone();
-    let found = discover::select(
-        &found,
-        &discover::Selection {
-            select: args.packages_select.clone(),
-            up_to: args.packages_up_to.clone(),
-        },
-    )
-    .map_err(|e| eyre::eyre!("{e}"))?;
+    let found =
+        discover::select(&found, &args.selection.selection()).map_err(|e| eyre::eyre!("{e}"))?;
 
     let requested: Vec<String> = if args.all {
         plan::all_images(&bringups)
@@ -447,6 +615,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         && !args.all
         && !nros_orchestration_ir::leaf_system::is_package_dir(&root)
         && !all_packages.iter().any(|p| is_bringup_dir(&p.dir));
+    if !package_mode {
+        refuse_image_mode_flags(args, "a workspace with images")?;
+    }
     let resolved = if package_mode {
         Vec::new()
     } else {
@@ -707,6 +878,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 output: None,
                 descriptor: None,
                 run_tables: Default::default(),
+                package_depends: None,
             });
             continue;
         }
@@ -1572,6 +1744,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     a.push(crate::builder::nano_ros_root_arg(nr));
                 }
                 a.extend(board_build_type_arg(&platform));
+                a.extend(args.cmake_args.iter().cloned());
                 a.extend(args.native_args.iter().cloned());
                 cmake_configure = Some(Handoff::new("cmake", a).in_dir(&root));
                 // A generated entry is a top-level target of the generated
@@ -1796,9 +1969,12 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // `-- --pristine` in front of cmake, which failed as
                 // `CMake Error: Unknown argument --pristine`, naming the wrong
                 // tool for the user's mistake.
-                let (west_extra, cmake_extra) =
+                let (west_extra, mut cmake_extra) =
                     crate::builder::zephyr::split_native_args(&args.native_args)
                         .map_err(|e| eyre::eyre!("{e}"))?;
+                // `--cmake-args` belong to CMake whatever their spelling, so
+                // they skip the west/cmake split and go to the second zone.
+                cmake_extra.extend(args.cmake_args.iter().cloned());
 
                 // `west_board` is resolved above, beside the overlay directory
                 // it also names — one rule, on the descriptor
@@ -2014,6 +2190,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             output,
             descriptor: Some(descriptor.clone()),
             run_tables: crate::cmd::run_plan::ImageTables::from_block(&image),
+            package_depends: None,
         });
     }
     Ok(out)
@@ -2081,6 +2258,61 @@ fn plan_single_package(
     plan_leaf_image(args, root, &nros_root, planning, img)
 }
 
+/// The selection flags on a single-package leaf: every name must be the
+/// package, and skipping it leaves nothing. `--build-base`, `--base-paths` and
+/// more than one parallel worker have nothing to act on in one package with a
+/// fixed `build/<image>/`, so they are refused rather than ignored.
+fn check_leaf_selection(args: &Args, root: &std::path::Path, package: &str) -> Result<()> {
+    for (_, names) in args.selection.selection().flags() {
+        for p in names {
+            if p != package {
+                eyre::bail!(
+                    "`{p}` is not a package here: {} is a single-package example (`{package}`).",
+                    root.display()
+                );
+            }
+        }
+    }
+    if !args.selection.packages_skip.is_empty() {
+        eyre::bail!(
+            "`--packages-skip {package}` leaves nothing to build: {} is a single-package \
+             example.",
+            root.display()
+        );
+    }
+    if !args.selection.base_paths.is_empty() {
+        eyre::bail!(
+            "`--base-paths` looks for packages in a workspace; {} is a single package.",
+            root.display()
+        );
+    }
+    refuse_image_mode_flags(args, "a single-package example")
+}
+
+/// `--build-base` and `--parallel-workers` above one, where the unit is an
+/// image rather than a package. Refused, never ignored: a flag that is accepted
+/// and does nothing reads as though it worked.
+fn refuse_image_mode_flags(args: &Args, what: &str) -> Result<()> {
+    if let Some(b) = &args.build_base {
+        eyre::bail!(
+            "`--build-base {}`: {what} builds into a fixed place under `build/`, which \
+             `nros image-facts`, the cmake module and the test fixtures read, so one build \
+             cannot move it. `--build-base` applies to a workspace with no bringup, where each \
+             package has its own build directory.",
+            b.display()
+        );
+    }
+    if let Some(n) = args.parallel_workers.filter(|n| *n > 1) {
+        eyre::bail!(
+            "`--parallel-workers {n}`: the images of {what} share a generated root and its \
+             target directory, so they build one at a time; each image's own tool already \
+             runs its jobs in parallel. `--parallel-workers` applies to a workspace with no \
+             bringup, where each package builds on its own."
+        );
+    }
+    Ok(())
+}
+
 /// Stages 3–4 for one resolved image of a single-package leaf.
 fn plan_leaf_image(
     args: &Args,
@@ -2091,15 +2323,7 @@ fn plan_leaf_image(
 ) -> Result<Option<Vec<ResolvedBuild>>> {
     let nros_root = nros_root.to_path_buf();
     let qual = plan::qualified(&img.package, &img.image_id);
-    for p in args.packages_select.iter().chain(&args.packages_up_to) {
-        if p != &img.package {
-            eyre::bail!(
-                "`{p}` is not a package here: {} is a single-package example (`{}`).",
-                root.display(),
-                img.package
-            );
-        }
-    }
+    check_leaf_selection(args, root, &img.package)?;
 
     // ---- stage 3 — preflight ----------------------------------------------
     let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&nros_root)
@@ -2190,6 +2414,7 @@ fn plan_leaf_image(
             output: None,
             descriptor: None,
             run_tables: Default::default(),
+            package_depends: None,
         }]));
     }
 
@@ -2298,6 +2523,7 @@ fn plan_leaf_image(
         output: Some(output),
         descriptor: Some(descriptor.clone()),
         run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&img.decl),
+        package_depends: None,
     }]))
 }
 
@@ -2387,14 +2613,7 @@ fn plan_single_package_cmake(
     if plan::driver_for_board(&platform, descriptor.entry_kind, true) != Ok(Driver::CMake) {
         return Ok(None);
     }
-    for p in args.packages_select.iter().chain(&args.packages_up_to) {
-        if p != &package {
-            eyre::bail!(
-                "`{p}` is not a package here: {} is a single-package example (`{package}`).",
-                root.display()
-            );
-        }
-    }
+    check_leaf_selection(args, root, &package)?;
     let image_id = decl.image.clone().unwrap_or_else(|| board.clone());
     let qual = plan::qualified(&package, &image_id);
 
@@ -2443,6 +2662,7 @@ fn plan_single_package_cmake(
     a.extend(board_rx_configure_args(descriptor));
     a.push(crate::builder::nano_ros_root_arg(&nros_root));
     a.extend(board_build_type_arg(&platform));
+    a.extend(args.cmake_args.iter().cloned());
     a.extend(args.native_args.iter().cloned());
     Ok(Some(vec![ResolvedBuild {
         qualified: qual,
@@ -2472,6 +2692,7 @@ fn plan_single_package_cmake(
         }),
         descriptor: Some(descriptor.clone()),
         run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&decl),
+        package_depends: None,
     }]))
 }
 
@@ -2510,6 +2731,7 @@ fn unsynced_inputs(
 }
 
 pub fn run(args: Args) -> Result<()> {
+    let args = args.split_cmake_args()?;
     // phase-429 W2 — the codegen version guard, BEFORE planning. `nros build`
     // is RFC-0065's front door and was the one codegen path with no guard on
     // it at all; planning is where the generated root is written, so the check
@@ -2568,7 +2790,7 @@ pub fn run(args: Args) -> Result<()> {
             eyre::bail!("{}", crate::orchestration::drift::report(&drifts));
         }
     }
-    match drive(&plans, args.dry_run, &mut perform) {
+    match drive(&plans, args.dry_run, Schedule::of(&args), &perform) {
         Ok(()) => {
             if !args.dry_run {
                 let drifts = record_project_lock(&plans, args.nano_ros_path.clone())?;
@@ -2885,6 +3107,95 @@ fn perform(hand: &Handoff) -> Result<()> {
     .into())
 }
 
+/// How [`drive`] runs the plans: `--parallel-workers` and
+/// `--continue-on-error`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Schedule {
+    /// The most plans running at once. One is today's sequential loop.
+    pub workers: usize,
+    /// Keep going past a failed plan, skipping what depends on it.
+    pub continue_on_error: bool,
+}
+
+impl Default for Schedule {
+    fn default() -> Self {
+        Schedule {
+            workers: 1,
+            continue_on_error: false,
+        }
+    }
+}
+
+impl Schedule {
+    fn of(args: &Args) -> Self {
+        Schedule {
+            workers: args.parallel_workers.map_or(1, usize::from),
+            continue_on_error: args.continue_on_error,
+        }
+    }
+}
+
+/// Where one plan stands while [`drive`] runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlanState {
+    Pending,
+    Running,
+    Done,
+    Failed,
+    /// Not attempted: a plan it follows failed or was skipped.
+    Skipped,
+}
+
+/// For each plan, the indices of the plans it must follow: the packages it
+/// `<depend>`s on that are also being built. Images follow nothing.
+fn plan_edges(plans: &[ResolvedBuild]) -> Vec<Vec<usize>> {
+    plans
+        .iter()
+        .map(|p| {
+            p.package_depends
+                .iter()
+                .flatten()
+                .filter_map(|d| plans.iter().position(|q| &q.qualified == d))
+                .collect()
+        })
+        .collect()
+}
+
+/// One plan's steps after the announcement: kernel, configure, entry-root
+/// check, then the handover.
+fn perform_plan(
+    p: &ResolvedBuild,
+    handover: &(dyn Fn(&Handoff) -> Result<()> + Sync),
+) -> Result<()> {
+    let Some(hand) = &p.handoff else {
+        eyre::bail!(
+            // See RFC-0065 D3.
+            // phase-383 W3 (cargo) / W4 (cmake).
+            "stage 4 (generate the root build file) is not implemented yet.\n\
+             `{}` needs a generated root, so it cannot be built through \
+             `nros build` today. Build it the existing \
+             way (cargo build / cmake --build).\n\
+             Images on Zephyr boards work now - they need no generated \
+             root.",
+            p.qualified
+        );
+    };
+    // The configure, for drivers that need one (cmake). Runs HERE rather
+    // than during planning so planning never spawns a native tool — the
+    // property that makes `--dry-run` trivially correct instead of a second
+    // code path. (Planning does WRITE generated files; issue 1716.)
+    if let Some(k) = &p.kernel {
+        run_kernel_step(k)?;
+    }
+    if let Some(cfg) = &p.configure {
+        run_configure(cfg)?;
+    }
+    if let Some(er) = &p.entry_root {
+        run_entry_root_check(er)?;
+    }
+    handover(hand)
+}
+
 /// Stage 5 for every plan: announce it, then hand it over.
 ///
 /// Split out of [`run`] for one reason — the loop is the thing that was wrong
@@ -2893,17 +3204,23 @@ fn perform(hand: &Handoff) -> Result<()> {
 /// disk; this needs neither.
 ///
 /// `handover` performs one plan's command. Production passes [`perform`].
+///
+/// With `sched.workers` above one, up to that many plans run at once, each
+/// starting once every plan it follows ([`plan_edges`]) is done. Plans are
+/// still STARTED in the order given whenever more than one is ready, so a
+/// run with one worker is exactly the sequential loop it always was.
 fn drive(
     plans: &[ResolvedBuild],
     dry_run: bool,
-    handover: &mut dyn FnMut(&Handoff) -> Result<()>,
+    sched: Schedule,
+    handover: &(dyn Fn(&Handoff) -> Result<()> + Sync),
 ) -> Result<()> {
     let total = plans.len();
-    for (i, p) in plans.iter().enumerate() {
-        // The counter is the ONLY progress a multi-image build reports while
-        // it runs — a user who sees `[3/7]` as the last line knows where it
-        // stopped, and before this there was nothing that distinguished
-        // "built 7" from "built 1 and said nothing about the other 6".
+    // The counter is the ONLY progress a multi-image build reports while it
+    // runs — a user who sees `[3/7]` as the last line knows where it stopped,
+    // and before this there was nothing that distinguished "built 7" from
+    // "built 1 and said nothing about the other 6".
+    let announce = |i: usize, p: &ResolvedBuild| {
         let where_ = if total > 1 {
             format!("[{}/{total}] ", i + 1)
         } else {
@@ -2916,20 +3233,14 @@ fn drive(
             p.platform,
             p.driver.program()
         );
-        let Some(hand) = &p.handoff else {
-            eyre::bail!(
-                // See RFC-0065 D3.
-                // phase-383 W3 (cargo) / W4 (cmake).
-                "stage 4 (generate the root build file) is not implemented yet.\n\
-                 `{}` needs a generated root, so it cannot be built through \
-                 `nros build` today. Build it the existing \
-                 way (cargo build / cmake --build).\n\
-                 Images on Zephyr boards work now - they need no generated \
-                 root.",
-                p.qualified
-            );
-        };
-        if dry_run {
+    };
+
+    if dry_run {
+        for (i, p) in plans.iter().enumerate() {
+            announce(i, p);
+            let Some(hand) = &p.handoff else {
+                return perform_plan(p, handover);
+            };
             if let Some(k) = &p.kernel {
                 println!("{}", k.display());
             }
@@ -2940,39 +3251,156 @@ fn drive(
                 println!("{}", er.clean.display());
             }
             println!("{}", hand.display());
-            continue;
         }
-        // The configure, for drivers that need one (cmake). Runs HERE rather
-        // than during planning so planning never spawns a native tool — the
-        // property that makes `--dry-run` trivially correct instead of a second
-        // code path. (Planning does WRITE generated files; issue 1716.)
-        if let Some(k) = &p.kernel {
-            run_kernel_step(k)?;
-        }
-        if let Some(cfg) = &p.configure {
-            run_configure(cfg)?;
-        }
-        if let Some(er) = &p.entry_root {
-            run_entry_root_check(er)?;
-        }
-        let outcome = handover(hand);
-        if total > 1 {
-            // Which image failed, and that the rest are NOT built — the two
-            // facts a single-image invocation never had to say and a
-            // multi-image one cannot leave to the reader.
-            outcome.wrap_err_with(|| {
-                format!(
-                    "building `{}` (image {} of {total}) failed; nothing after \
-                     it was attempted",
-                    p.qualified,
-                    i + 1
-                )
-            })?;
-        } else {
-            outcome?;
-        }
+        return Ok(());
     }
-    Ok(())
+
+    let edges = plan_edges(plans);
+    let workers = sched.workers.clamp(1, total.max(1));
+    let state = std::sync::Mutex::new((
+        vec![PlanState::Pending; total],
+        Vec::<(usize, eyre::Report)>::new(),
+    ));
+    let wake = std::sync::Condvar::new();
+
+    // Pick the next plan to run, marking the plans a failure strands as
+    // skipped on the way. `None` when nothing is left to start.
+    let next = |st: &mut Vec<PlanState>, stop: bool| -> Option<Option<usize>> {
+        loop {
+            let mut progressed = false;
+            for i in 0..total {
+                if st[i] != PlanState::Pending {
+                    continue;
+                }
+                if edges[i]
+                    .iter()
+                    .any(|&d| matches!(st[d], PlanState::Failed | PlanState::Skipped))
+                {
+                    st[i] = PlanState::Skipped;
+                    let failed: Vec<&str> = edges[i]
+                        .iter()
+                        .filter(|&&d| matches!(st[d], PlanState::Failed | PlanState::Skipped))
+                        .map(|&d| plans[d].qualified.as_str())
+                        .collect();
+                    eprintln!(
+                        "nros build: skipping `{}`: it depends on {}, which did not build",
+                        plans[i].qualified,
+                        failed.join(", ")
+                    );
+                    progressed = true;
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+        if stop {
+            return if st.contains(&PlanState::Running) {
+                Some(None)
+            } else {
+                None
+            };
+        }
+        let ready = (0..total).find(|&i| {
+            st[i] == PlanState::Pending && edges[i].iter().all(|&d| st[d] == PlanState::Done)
+        });
+        match ready {
+            Some(i) => Some(Some(i)),
+            None if st
+                .iter()
+                .any(|s| matches!(s, PlanState::Pending | PlanState::Running)) =>
+            {
+                Some(None)
+            }
+            None => None,
+        }
+    };
+
+    let work = || {
+        loop {
+            let i = {
+                let mut guard = state.lock().expect("drive state");
+                loop {
+                    let stop = !sched.continue_on_error && !guard.1.is_empty();
+                    match next(&mut guard.0, stop) {
+                        Some(Some(i)) => {
+                            guard.0[i] = PlanState::Running;
+                            break i;
+                        }
+                        // Something is still running that may unblock a plan.
+                        Some(None) => guard = wake.wait(guard).expect("drive state"),
+                        None => {
+                            wake.notify_all();
+                            return;
+                        }
+                    }
+                }
+            };
+            announce(i, &plans[i]);
+            let outcome = perform_plan(&plans[i], handover);
+            let mut guard = state.lock().expect("drive state");
+            match outcome {
+                Ok(()) => guard.0[i] = PlanState::Done,
+                Err(e) => {
+                    guard.0[i] = PlanState::Failed;
+                    guard.1.push((i, e));
+                }
+            }
+            wake.notify_all();
+        }
+    };
+    if workers == 1 {
+        work();
+    } else {
+        std::thread::scope(|s| {
+            for _ in 0..workers {
+                s.spawn(work);
+            }
+        });
+    }
+
+    let (st, mut failures) = state.into_inner().expect("drive state");
+    if failures.is_empty() {
+        return Ok(());
+    }
+    // The first failure in plan order carries the exit status out.
+    failures.sort_by_key(|(i, _)| *i);
+    let not_built: Vec<&str> = (0..total)
+        .filter(|&i| !matches!(st[i], PlanState::Done | PlanState::Failed))
+        .map(|i| plans[i].qualified.as_str())
+        .collect();
+    let failed_names: Vec<&str> = failures
+        .iter()
+        .map(|(i, _)| plans[*i].qualified.as_str())
+        .collect();
+    let (first, e) = failures.remove(0);
+    if total == 1 {
+        return Err(e);
+    }
+    let unit = if plans[first].package_depends.is_some() {
+        "package"
+    } else {
+        "image"
+    };
+    Err(e.wrap_err(if sched.continue_on_error {
+        format!(
+            "{} of {total} failed ({}); not built: {}",
+            failed_names.len(),
+            failed_names.join(", "),
+            if not_built.is_empty() {
+                "none".to_string()
+            } else {
+                not_built.join(", ")
+            }
+        )
+    } else {
+        format!(
+            "building `{}` ({unit} {} of {total}) failed; nothing not yet \
+             started was attempted",
+            plans[first].qualified,
+            first + 1
+        )
+    }))
 }
 
 /// Run a configure step, escalating an `--offline` failure to one
@@ -3112,6 +3540,13 @@ fn plan_packages(
     nano_ros_root: Option<&std::path::Path>,
 ) -> Result<Vec<ResolvedBuild>> {
     let mut out = Vec::new();
+    // colcon's `--build-base`, relative to the workspace as colcon's is to the
+    // cwd it runs in.
+    let build_base = match &args.build_base {
+        Some(b) if b.is_absolute() => b.clone(),
+        Some(b) => root.join(b),
+        None => root.join("build"),
+    };
     let shown = |p: &std::path::Path| {
         p.strip_prefix(root)
             .map(|r| r.display().to_string())
@@ -3127,7 +3562,7 @@ fn plan_packages(
             continue;
         }
         let routing = crate::routing::route(pkg);
-        let build_dir = root.join("build").join(&pkg.name);
+        let build_dir = build_base.join(&pkg.name);
         let (driver, configure, handoff) = if routing.cmake_subdir {
             let Some(nros_root) = nano_ros_root else {
                 eyre::bail!(
@@ -3169,6 +3604,7 @@ fn plan_packages(
             // Issue 1304 — same seam as the workspace lane above; `nros_root` is
             // the root this arm already refuses to proceed without.
             a.push(crate::builder::nano_ros_root_arg(nros_root));
+            a.extend(args.cmake_args.iter().cloned());
             a.extend(args.native_args.iter().cloned());
             (
                 Driver::CMake,
@@ -3234,6 +3670,7 @@ fn plan_packages(
             output: None,
             descriptor: None,
             run_tables: Default::default(),
+            package_depends: Some(pkg.depends.iter().cloned().collect()),
         });
     }
     if out.is_empty() {
@@ -6775,8 +7212,15 @@ mod selection_wiring_tests {
             dry_run: true,
             verbose: false,
             offline: true,
-            packages_select: select.iter().map(|s| (*s).to_string()).collect(),
-            packages_up_to: up_to.iter().map(|s| (*s).to_string()).collect(),
+            selection: crate::cmd::build::SelectionArgs {
+                packages_select: select.iter().map(|s| (*s).to_string()).collect(),
+                packages_up_to: up_to.iter().map(|s| (*s).to_string()).collect(),
+                ..Default::default()
+            },
+            continue_on_error: false,
+            cmake_args: Vec::new(),
+            parallel_workers: None,
+            build_base: None,
             check: None,
             native_args: Vec::new(),
         }
@@ -6814,9 +7258,43 @@ mod selection_wiring_tests {
             "entry",
         ])
         .expect("parses");
-        assert_eq!(a.packages_select, vec!["talker_pkg", "msgs_pkg"]);
-        assert_eq!(a.packages_up_to, vec!["entry"]);
+        assert_eq!(a.selection.packages_select, vec!["talker_pkg", "msgs_pkg"]);
+        assert_eq!(a.selection.packages_up_to, vec!["entry"]);
         assert!(a.images.is_empty(), "no image was named: {:?}", a.images);
+    }
+
+    /// `--cmake-args` takes hyphenated values (`-DX=1`) and stops at the next
+    /// `nros build` flag and at `--`, which still hands the rest to the
+    /// native tool.
+    #[test]
+    fn cmake_args_take_hyphen_values_and_stop_at_the_separator() {
+        let a = Args::try_parse_from([
+            "build",
+            "--cmake-args",
+            "-DA=1",
+            "-DB",
+            "--packages-skip",
+            "other",
+            "--cmake-args",
+            "-DC",
+            "--",
+            "-j4",
+        ])
+        .expect("parses")
+        .split_cmake_args()
+        .expect("splits");
+        assert_eq!(a.cmake_args, vec!["-DA=1", "-DB", "-DC"]);
+        assert_eq!(a.native_args, vec!["-j4"]);
+        assert_eq!(a.selection.packages_skip, vec!["other"]);
+    }
+
+    /// `--parallel-workers 0` is refused by the parser: zero workers build
+    /// nothing.
+    #[test]
+    fn parallel_workers_must_be_at_least_one() {
+        assert!(Args::try_parse_from(["build", "--parallel-workers", "0"]).is_err());
+        let a = Args::try_parse_from(["build", "--parallel-workers", "4"]).expect("parses");
+        assert_eq!(a.parallel_workers, Some(4));
     }
 
     /// A selection composes with the flags the verb already has — here the
@@ -6825,13 +7303,13 @@ mod selection_wiring_tests {
     fn an_image_argument_survives_beside_a_selection() {
         let a = Args::try_parse_from(["build", "--packages-up-to", "entry", "--", "-j4"])
             .expect("parses");
-        assert_eq!(a.packages_up_to, vec!["entry"]);
+        assert_eq!(a.selection.packages_up_to, vec!["entry"]);
         assert_eq!(a.native_args, vec!["-j4"]);
 
         let b = Args::try_parse_from(["build", "linux", "--packages-select", "talker_pkg"])
             .expect("parses");
         assert_eq!(b.images, vec!["linux"]);
-        assert_eq!(b.packages_select, vec!["talker_pkg"]);
+        assert_eq!(b.selection.packages_select, vec!["talker_pkg"]);
     }
 
     /// `--check` takes its tool only with `=`, so a bare `--check` never
@@ -6950,6 +7428,7 @@ mod multi_image_drive_tests {
             output: None,
             descriptor: None,
             run_tables: Default::default(),
+            package_depends: None,
         }
     }
 
@@ -6972,12 +7451,13 @@ mod multi_image_drive_tests {
             plan("two", nullary("true")),
             plan("three", nullary("true")),
         ];
-        let mut seen: Vec<String> = Vec::new();
-        drive(&plans, false, &mut |h| {
-            seen.push(h.display());
+        let seen = std::sync::Mutex::new(Vec::<String>::new());
+        drive(&plans, false, Schedule::default(), &|h| {
+            seen.lock().unwrap().push(h.display());
             Ok(())
         })
         .expect("three plans, three handovers");
+        let seen = seen.into_inner().unwrap();
         assert_eq!(
             seen.len(),
             3,
@@ -6990,13 +7470,107 @@ mod multi_image_drive_tests {
     #[test]
     fn a_dry_run_performs_no_handover() {
         let plans = vec![plan("one", nullary("true")), plan("two", nullary("true"))];
-        let mut count = 0usize;
-        drive(&plans, true, &mut |_| {
-            count += 1;
+        let count = std::sync::atomic::AtomicUsize::new(0);
+        drive(&plans, true, Schedule::default(), &|_| {
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(())
         })
         .expect("dry run");
-        assert_eq!(count, 0, "a dry run must not run anything");
+        assert_eq!(count.into_inner(), 0, "a dry run must not run anything");
+    }
+
+    fn pkg_plan(name: &str, deps: &[&str]) -> ResolvedBuild {
+        let mut p = plan(name, Handoff::new("build", vec![name.to_string()]));
+        p.qualified = name.to_string();
+        p.package_depends = Some(deps.iter().map(|d| (*d).to_string()).collect());
+        p
+    }
+
+    /// `--continue-on-error`: the other packages still build, a dependent of
+    /// the failed one is skipped, and the run still fails.
+    #[test]
+    fn continue_on_error_skips_only_the_dependents_of_a_failure() {
+        let plans = vec![
+            pkg_plan("msgs", &[]),
+            pkg_plan("talker", &["msgs"]),
+            pkg_plan("other", &[]),
+        ];
+        let seen = std::sync::Mutex::new(Vec::<String>::new());
+        let sched = Schedule {
+            workers: 1,
+            continue_on_error: true,
+        };
+        let e = drive(&plans, false, sched, &|h| {
+            let name = h.args[0].to_string_lossy().into_owned();
+            seen.lock().unwrap().push(name.clone());
+            if name == "msgs" {
+                eyre::bail!("boom")
+            }
+            Ok(())
+        })
+        .expect_err("one package failed");
+        assert_eq!(seen.into_inner().unwrap(), ["msgs", "other"]);
+        let msg = format!("{e:#}");
+        assert!(msg.contains("1 of 3 failed (msgs)"), "{msg}");
+        assert!(msg.contains("not built: talker"), "{msg}");
+    }
+
+    /// Without it the first failure still stops everything after it.
+    #[test]
+    fn without_continue_on_error_a_package_failure_stops_the_run() {
+        let plans = vec![pkg_plan("msgs", &[]), pkg_plan("other", &[])];
+        let seen = std::sync::atomic::AtomicUsize::new(0);
+        let e = drive(&plans, false, Schedule::default(), &|_| {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            eyre::bail!("boom")
+        })
+        .expect_err("failed");
+        assert_eq!(seen.into_inner(), 1);
+        assert!(format!("{e:#}").contains("package 1 of 2"), "{e:#}");
+    }
+
+    /// `--parallel-workers`: independent packages overlap, and a package never
+    /// starts before what it depends on has finished.
+    #[test]
+    fn parallel_workers_overlap_independent_packages_and_respect_edges() {
+        use std::sync::{
+            Mutex,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let plans = vec![
+            pkg_plan("left", &[]),
+            pkg_plan("right", &[]),
+            pkg_plan("joined", &["left", "right"]),
+        ];
+        let running = AtomicUsize::new(0);
+        let peak = AtomicUsize::new(0);
+        let finished = Mutex::new(Vec::<String>::new());
+        let started_c_after = Mutex::new(Vec::<String>::new());
+        let sched = Schedule {
+            workers: 2,
+            continue_on_error: false,
+        };
+        drive(&plans, false, sched, &|h| {
+            let name = h.args[0].to_string_lossy().into_owned();
+            if name == "joined" {
+                *started_c_after.lock().unwrap() = finished.lock().unwrap().clone();
+            }
+            let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(now, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            running.fetch_sub(1, Ordering::SeqCst);
+            finished.lock().unwrap().push(name);
+            Ok(())
+        })
+        .expect("builds");
+        assert_eq!(peak.into_inner(), 2, "left and right ran at once");
+        let mut before_c = started_c_after.into_inner().unwrap();
+        before_c.sort();
+        assert_eq!(
+            before_c,
+            ["left", "right"],
+            "joined started only after both deps"
+        );
     }
 
     /// A failing non-final image stops the run and names itself.
@@ -7006,13 +7580,17 @@ mod multi_image_drive_tests {
     #[test]
     fn a_failing_earlier_image_stops_the_run_and_is_named() {
         let plans = vec![plan("one", nullary("true")), plan("two", nullary("true"))];
-        let mut seen = 0usize;
-        let e = drive(&plans, false, &mut |_| {
-            seen += 1;
+        let seen = std::sync::atomic::AtomicUsize::new(0);
+        let e = drive(&plans, false, Schedule::default(), &|_| {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             eyre::bail!("boom")
         })
         .expect_err("the first handover failed");
-        assert_eq!(seen, 1, "nothing after the failure is attempted");
+        assert_eq!(
+            seen.into_inner(),
+            1,
+            "nothing after the failure is attempted"
+        );
         let msg = format!("{e:#}");
         assert!(msg.contains("demo:one"), "{msg}");
         assert!(msg.contains("image 1 of 2"), "{msg}");
@@ -7176,8 +7754,11 @@ mod single_package_tests {
             dry_run: true,
             verbose: false,
             offline: false,
-            packages_select: Vec::new(),
-            packages_up_to: Vec::new(),
+            selection: Default::default(),
+            continue_on_error: false,
+            cmake_args: Vec::new(),
+            parallel_workers: None,
+            build_base: None,
             check: None,
             native_args: Vec::new(),
         }

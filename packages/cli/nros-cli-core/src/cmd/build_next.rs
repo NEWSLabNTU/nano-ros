@@ -757,6 +757,7 @@ mod tests {
             output: Some(output),
             descriptor: None,
             run_tables: Default::default(),
+            package_depends: None,
         }
     }
 

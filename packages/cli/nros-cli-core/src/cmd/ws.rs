@@ -525,8 +525,15 @@ pub struct SyncArgs {
     pub workspace: Option<PathBuf>,
 
     /// Output dir for generated msg crates (conventionally `generated/`).
-    // Phase 212 convention is `generated/`.
-    #[arg(long, default_value = "generated")]
+    // Phase 212 convention is `generated/`. Spelled `--build-base` as colcon
+    // spells its build-output root (RFC-0117 D4, phase-526 W3); `--build-dir`
+    // stays as a hidden alias so existing callers keep working.
+    #[arg(
+        long = "build-base",
+        alias = "build-dir",
+        value_name = "DIR",
+        default_value = "generated"
+    )]
     pub build_dir: PathBuf,
 
     /// ROS 2 edition (`humble` | `iron` | `jazzy`).
@@ -634,6 +641,38 @@ pub struct ListArgs {
     /// Workspace root (cwd or first ancestor containing `src/`). Defaults
     /// to cwd.
     pub workspace: Option<PathBuf>,
+
+    /// List in build order, as `colcon list -t`. Default: sorted.
+    ///
+    /// This and every flag below switch the listing to `colcon list`'s:
+    /// one `name<TAB>path<TAB>(type)` line per package, found the way
+    /// `nros build` finds them.
+    #[arg(short = 't', long)]
+    pub topological_order: bool,
+
+    /// Print only each package's name, as `colcon list -n`.
+    #[arg(short = 'n', long, conflicts_with = "paths_only")]
+    pub names_only: bool,
+
+    /// Print only each package's path, as `colcon list -p`.
+    #[arg(short = 'p', long)]
+    pub paths_only: bool,
+
+    /// Which packages, as `nros build` selects them.
+    #[command(flatten)]
+    pub selection: crate::cmd::build::SelectionArgs,
+}
+
+impl ListArgs {
+    /// Whether any `colcon list` flag was given.
+    fn colcon_shape(&self) -> bool {
+        let s = &self.selection;
+        self.topological_order
+            || self.names_only
+            || self.paths_only
+            || !s.selection().is_empty()
+            || !s.base_paths.is_empty()
+    }
 }
 
 #[derive(Debug, ClapArgs)]
@@ -6637,6 +6676,9 @@ fn scan_for_query(
 // --- list ---------------------------------------------------------------------
 
 fn run_list(args: ListArgs) -> Result<()> {
+    if args.colcon_shape() {
+        return run_list_colcon(&args);
+    }
     // build_dir doesn't matter for list; use the default for the scan
     // helper's signature.
     let (ws_root, scan, _build_root) =
@@ -6667,6 +6709,60 @@ fn run_list(args: ListArgs) -> Result<()> {
         );
     }
     println!("ws list: {} msg, {} rust consumer", kinds.0, kinds.1);
+    Ok(())
+}
+
+/// `nros list` with a `colcon list` flag: the packages `nros build` would
+/// discover and select, in colcon's output shape.
+///
+/// Discovery is `nros build`'s ([`crate::builder::discover`]), not the sync
+/// scan the plain listing uses, because the point of the colcon flags is that
+/// `nros list --packages-up-to X` names exactly what `nros build
+/// --packages-up-to X` builds.
+// RFC-0117 D4 (phase-526 W3).
+fn run_list_colcon(args: &ListArgs) -> Result<()> {
+    use crate::builder::discover;
+    let root: PathBuf = match &args.workspace {
+        Some(p) => std::fs::canonicalize(p).wrap_err_with(|| format!("list: {}", p.display()))?,
+        None => std::env::current_dir()?,
+    };
+    let members = discover::cargo_members_or_walk(&root);
+    let found = discover::discover_in(&root, &args.selection.base_paths, &members)
+        .map_err(|e| eyre::eyre!("{e}"))?;
+    for w in &found.warnings {
+        eprintln!("nros list: warning: {w}");
+    }
+    let found =
+        discover::select(&found, &args.selection.selection()).map_err(|e| eyre::eyre!("{e}"))?;
+    let mut out: Vec<String> = Vec::new();
+    for p in &found.packages {
+        let path = p
+            .dir
+            .strip_prefix(&root)
+            .unwrap_or(&p.dir)
+            .display()
+            .to_string();
+        out.push(if args.names_only {
+            p.name.clone()
+        } else if args.paths_only {
+            path
+        } else {
+            let kind = match (&p.build_type, found.cargo_only.contains(&p.dir)) {
+                (_, true) => "cargo".to_string(),
+                (Some(bt), false) => format!("ros.{bt}"),
+                (None, false) => "ros".to_string(),
+            };
+            format!("{}\t{path}\t({kind})", p.name)
+        });
+    }
+    if !args.topological_order {
+        // colcon sorts the printed lines, so `-p` is in path order and the
+        // others in name order.
+        out.sort();
+    }
+    for l in out {
+        println!("{l}");
+    }
     Ok(())
 }
 

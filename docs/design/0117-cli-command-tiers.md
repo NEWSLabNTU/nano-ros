@@ -122,16 +122,34 @@ Applied:
 
 | Verb | Flags taken from ROS 2 / colcon | Kept as our own, and why |
 | --- | --- | --- |
-| `build` | `--packages-select`, `--packages-up-to`, `--packages-skip`, `--packages-above`, `--continue-on-error`, `--cmake-args`, `--parallel-workers`, `--base-paths`, `--build-base` | — |
+| `build` | `--packages-select`, `--packages-up-to`, `--packages-skip`, `--packages-above`, `--continue-on-error`, `--cmake-args`, `--parallel-workers`, `--base-paths`, `--build-base` | — (same names; the divergences below are refusals or a unit, never a different answer) |
 | `sync` | `--build-base` (was `--build-dir`) | — |
-| `list` | `-t` (topological), `-n` (names only), `-p` (paths only), as `colcon list` | — |
+| `list` | `-t` (topological), `-n` (names only), `-p` (paths only), as `colcon list`, plus `build`'s selection flags and `--base-paths` | — |
 | `graph` | as `colcon graph` | — |
-| `new` | `--dependencies`, `--node-name`, `--library-name`, `--license`, `--maintainer-name`, `--maintainer-email`, `--description`, `--destination-directory` | `--lang` (not `--build-type`: our package's build type is derived from the language and the board, RFC-0087 D2, so the ROS flag would name a choice the user does not make); `--board`, `--template`, `--kind` (no ROS counterpart) |
+| `new` | `--dependencies`, `--node-name`, `--license`, `--maintainer-name`, `--maintainer-email`, `--description`, `--destination-directory` | `--lang` (not `--build-type`: our package's build type is derived from the language and the board, RFC-0087 D2, so the ROS flag would name a choice the user does not make); `--component` (not `--library-name`: `ros2 pkg create` adds a library target beside the node, while a nano-ros library package is a component whose library takes the package's name — crate name, exported symbol and linkage are all derived — so there is no second name to give); `--board`, `--template`, `--kind` (no ROS counterpart). `--build-type` and `--library-name` are parsed, hidden, and refused naming the flag to use |
 | `interface` | `list`, `show` as `ros2 interface` | `generate` (no ROS counterpart) |
 | `doctor` | `--report` as `ros2 doctor` | — |
 | `run` | `--prefix` as `ros2 run`; arguments after `--` | `--expect`, `--timeout`, `--router` (no ROS counterpart) |
 
 A flag with no ROS counterpart follows the existing `nros` spelling.
+
+Where `build` keeps a colcon name but cannot give colcon's whole answer, it
+refuses rather than answering differently, or names the unit it acts on
+(phase-526 W3 measured each against `colcon list` over
+`packages/cli/testing_workspaces/ros2_rust_examples`):
+
+| Flag | Where it differs from colcon, and why |
+| --- | --- |
+| every selection flag | A name matching no package is an error, not a warning, and a selection that leaves out a package a selected one `<depend>`s on is refused (colcon lists it and builds it against the install prefix). nano-ros has no install prefix (RFC-0087 D8): a package left out is absent from the one merged root. For `--packages-above` this means a named package with workspace dependencies needs `--packages-up-to` beside it. |
+| `--packages-above` | Refused for a cargo member with no `package.xml`: its dependents name it only as a `Cargo.toml` `path` dependency, which the `<depend>` graph does not hold, so the answer would silently be smaller than colcon's. |
+| `--continue-on-error` | In a workspace with no bringup the unit is the package, as in colcon: a failed package's dependents are skipped. In a workspace with images the unit is the IMAGE — each is one merged build, so a failure inside it fails that image, and the next image is still attempted. |
+| `--parallel-workers` | Same meaning (packages at once, each after its dependencies), default ONE rather than colcon's CPU count, because each package's own tool already runs parallel jobs. Above one it is refused for images, which share a generated root and target directory. |
+| `--build-base` | `<DIR>/<package>/` in a workspace with no bringup, as in colcon. Refused for images: an image's generated tree has a fixed place under `build/` that `nros image-facts`, the cmake module and the fixtures read. |
+| `--cmake-args` | Reaches every CMake configure, including a west image's (west's second zone); a cargo image has none, as colcon ignores the flag for a non-CMake package. |
+| `--base-paths` | Relative paths are taken against the workspace (`--workspace`, else the cwd), where colcon takes them against the cwd; the two agree whenever `--workspace` is left out. |
+
+`sync --build-base` keeps `sync`'s meaning of the directory (the generated
+message crates, default `generated`), which is the build output `sync` writes.
 
 ### D5 — Aliases, never removals
 

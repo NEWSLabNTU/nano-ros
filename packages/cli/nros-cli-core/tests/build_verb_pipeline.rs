@@ -123,8 +123,15 @@ fn selected_args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) ->
         dry_run: true,
         verbose: false,
         offline: false,
-        packages_select: select.iter().map(|s| (*s).to_string()).collect(),
-        packages_up_to: up_to.iter().map(|s| (*s).to_string()).collect(),
+        selection: nros_cli_core::cmd::build::SelectionArgs {
+            packages_select: select.iter().map(|s| (*s).to_string()).collect(),
+            packages_up_to: up_to.iter().map(|s| (*s).to_string()).collect(),
+            ..Default::default()
+        },
+        continue_on_error: false,
+        cmake_args: Vec::new(),
+        parallel_workers: None,
+        build_base: None,
         check: None,
         native_args: Vec::new(),
     }
