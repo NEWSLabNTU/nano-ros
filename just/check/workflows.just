@@ -436,6 +436,15 @@ runner-doctor-sdk-resolution:
 runner-sweep-eviction-order:
     @bash tests/runner-sweep-eviction-order-tests.sh
 
+# issue 2210 — the runner's `src` checkout is a cache nobody edits, so a tracked
+# file a build rewrote there must not stop `runner-bootstrap.sh` refreshing it:
+# a lock rewritten inside the `play_launch` submodule left runner 118 offline.
+# The refresh discards such files, names each one, and lands on the new pins —
+# superproject and submodule. ~1 s, tmpdir, a local file:// origin.
+[private]
+runner-bootstrap-src-sync:
+    @bash tests/runner-bootstrap-src-sync-tests.sh
+
 # issue 1365 clause 2 — `just runner-wait-triage` names WHY a self-hosted job is
 # still queued (no runner / offline / busy / idle beside the waiter). Its live
 # half needs repository admin and the network, so only the classifier's
