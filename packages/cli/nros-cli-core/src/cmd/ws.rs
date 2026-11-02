@@ -524,12 +524,14 @@ pub struct SyncArgs {
     /// Workspace root (the dir containing `src/`). Defaults to cwd.
     pub workspace: Option<PathBuf>,
 
-    /// Output dir for generated msg crates (conventionally `generated/`).
-    // Phase 212 convention is `generated/`. Spelled `--build-base` as colcon
-    // spells its build-output root (RFC-0117 D4, phase-526 W3); `--build-dir`
-    // stays as a hidden alias so existing callers keep working.
+    /// Output dir for the generated message crates, relative to the
+    /// workspace. Models and other sync output stay under `build/`.
+    // Phase 212 convention is `generated/`. Not colcon's `--build-base`, which
+    // names all build output; this one names only the generated crates, so it
+    // carries its own name (RFC-0117 D4). `--build-dir` stays as a hidden
+    // alias so existing callers keep working.
     #[arg(
-        long = "build-base",
+        long = "generated-base",
         alias = "build-dir",
         value_name = "DIR",
         default_value = "generated"

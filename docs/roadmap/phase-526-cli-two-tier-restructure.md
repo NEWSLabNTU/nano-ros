@@ -100,7 +100,7 @@ one topological order; `nros build` and `nros list` share one flattened
 `SelectionArgs`. `drive` gained a `Schedule` (`--parallel-workers`,
 `--continue-on-error`) that starts a package once its `<depend>`s are done.
 `nros list -t/-n/-p` (or any selection flag) lists in `colcon list`'s shape
-from `nros build`'s discovery. `sync --build-base` with `--build-dir` hidden.
+from `nros build`'s discovery. `sync --build-base` with `--build-dir` hidden; renamed `--generated-base` afterwards (2026-11-02), because it names only the generated message crates, not colcon's build output (RFC-0117 D4).
 `nros new` already had every `ros2 pkg create` flag but `--library-name`.
 `nros-cli/tests/colcon_flag_parity.rs` runs eleven flag sets through
 `colcon list -n`, `nros list -n` and `nros build --dry-run` and asserts one
@@ -121,7 +121,7 @@ naming the flag to use.
   `--packages-above`, `--continue-on-error`, `--cmake-args`,
   `--parallel-workers`, `--base-paths`, `--build-base`, with colcon's
   semantics over `provider_scan`'s topological order (RFC-0087 D7).
-- `sync`: `--build-base`, with `--build-dir` as a hidden alias.
+- `sync`: `--build-base`, with `--build-dir` as a hidden alias. (Superseded: the flag is `--generated-base`, see RFC-0117 D4.)
 - `list`: `-t`, `-n`, `-p` as `colcon list`.
 - `new`: the `ros2 pkg create` flags RFC-0117 D4 lists, keeping `--lang`,
   `--board`, `--template`.

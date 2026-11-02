@@ -155,6 +155,39 @@ mod tests {
     use crate::cmd::dev::tests::{Cli, argv, find, parsed, shape};
     use clap::CommandFactory;
 
+    /// `nros sync`'s output directory is `--generated-base`, with the old
+    /// `--build-dir` hidden beside it; colcon's `--build-base` is not taken,
+    /// because it would name a different directory (RFC-0117 D4).
+    #[test]
+    fn sync_names_its_generated_base() {
+        use clap::Parser;
+        let dir = |argv: &[&str]| match Cli::try_parse_from(argv).map(|c| c.cmd) {
+            Ok(crate::cmd::Cmd::Sync(a)) => Ok(a.build_dir),
+            Ok(other) => panic!("{argv:?} parsed to {other:?}"),
+            Err(e) => Err(e.kind()),
+        };
+        assert_eq!(dir(&["nros", "sync"]), Ok("generated".into()));
+        assert_eq!(
+            dir(&["nros", "sync", "--generated-base", "gen"]),
+            Ok("gen".into())
+        );
+        assert_eq!(
+            dir(&["nros", "sync", "--build-dir", "gen"]),
+            Ok("gen".into())
+        );
+        assert_eq!(
+            dir(&["nros", "sync", "--build-base", "gen"]),
+            Err(clap::error::ErrorKind::UnknownArgument)
+        );
+        let help = Cli::command()
+            .find_subcommand_mut("sync")
+            .unwrap()
+            .render_long_help()
+            .to_string();
+        assert!(help.contains("--generated-base"), "{help}");
+        assert!(!help.contains("--build-dir"), "{help}");
+    }
+
     #[test]
     fn every_user_alias_pair_parses_to_the_same_command() {
         let root = Cli::command();
