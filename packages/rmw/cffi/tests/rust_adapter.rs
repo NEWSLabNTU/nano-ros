@@ -1724,3 +1724,111 @@ fn a_rust_backends_response_info_crosses_the_seam() {
     drop(client);
     let _ = Session::close(&mut session);
 }
+
+// ---------------------------------------------------------------------------
+// phase-521 W4 — a Rust backend's wake support survives the adapter
+// ---------------------------------------------------------------------------
+//
+// `RustBackendAdapter` always fills the `readiness_source` slot, and since W4
+// the runtime believes that slot over `set_wake_callback`'s presence. The
+// slot's answer is the trait default, which reads `supports_wake_callback()`.
+// zenoh, the in-tree backend on this road, did not override it, so every
+// zenoh session stated `None` and fell from the park to the receive-blocking
+// wait. These two pin both directions of the contract at the seam the runtime
+// reads.
+
+#[derive(Default)]
+struct NotifyingRmw;
+
+struct NotifyingSession;
+
+impl Rmw for NotifyingRmw {
+    type Session = NotifyingSession;
+    type Error = TransportError;
+    fn open(self, _config: &RmwConfig) -> Result<Self::Session, Self::Error> {
+        Ok(NotifyingSession)
+    }
+}
+
+impl Session for NotifyingSession {
+    type Error = TransportError;
+    type PublisherHandle = NoopPublisher;
+    type SubscriptionHandle = NoopSubscriber;
+    type ServiceHandle = NoopServer;
+    type ClientHandle = NoopClient;
+
+    fn create_publisher(
+        &mut self,
+        _topic: &TopicInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::PublisherHandle, Self::Error> {
+        Ok(NoopPublisher)
+    }
+    fn create_subscription(
+        &mut self,
+        _topic: &TopicInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::SubscriptionHandle, Self::Error> {
+        Ok(NoopSubscriber)
+    }
+    fn create_service(
+        &mut self,
+        _service: &ServiceInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::ServiceHandle, Self::Error> {
+        Ok(NoopServer)
+    }
+    fn create_client(
+        &mut self,
+        _service: &ServiceInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::ClientHandle, Self::Error> {
+        Ok(NoopClient)
+    }
+    fn close(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn supports_wake_callback(&self) -> bool {
+        true
+    }
+}
+
+fn wake_support_through_the_seam<R: nros_rmw_cffi::RustBackend>(
+    name: &'static core::ffi::CStr,
+) -> (bool, nros_rmw::ReadinessSource) {
+    // SAFETY: NUL-terminated literal; registration is idempotent.
+    let rc = unsafe { RustBackendAdapter::<R>::register_named(name.as_ptr()) };
+    assert_eq!(rc, NROS_RMW_RET_OK, "register_named");
+    let config = RmwConfig {
+        locator: "tcp/127.0.0.1:7447",
+        mode: nros_rmw::SessionMode::Client,
+        domain_id: 0,
+        node_name: "probe",
+        namespace: "",
+        properties: &[],
+    };
+    let mut session =
+        CffiRmw::open_with_rmw(name.to_str().unwrap(), &config).expect("open_with_rmw");
+    let answer = (session.supports_wake_callback(), session.readiness_source());
+    let _ = Session::close(&mut session);
+    answer
+}
+
+#[test]
+fn a_rust_backend_that_honours_the_wake_callback_parks_through_the_adapter() {
+    assert_eq!(
+        wake_support_through_the_seam::<NotifyingRmw>(c"wake-notify"),
+        (true, nros_rmw::ReadinessSource::Notify),
+    );
+}
+
+#[test]
+fn a_rust_backend_on_the_wake_default_states_no_readiness_through_the_adapter() {
+    assert_eq!(
+        wake_support_through_the_seam::<UorbLikeRmw>(c"wake-none"),
+        (false, nros_rmw::ReadinessSource::None),
+    );
+}

@@ -222,6 +222,12 @@ forks rather than reach stack internals or add a watcher task per session):
   transport with no hook would park on a wake object nothing signals.
   `readiness_park` covers it with a stub that fills the slot and reports NONE;
   reading the slot instead fails it.
+  That rule caught zenoh: it reaches the runtime through
+  `RustBackendAdapter`, which always fills the slot, and the slot's trait
+  default reads `supports_wake_callback()`, which the zenoh shim never
+  overrode. So every zenoh session stated `None` and would have lost its
+  park. The shim now states that it honours the callback, and
+  `rust_adapter`'s two wake tests pin both directions at the seam.
 - Measured on QEMU, before and after. A C listener (`rclc_executor_spin_some`
   with 1 s timeouts) received from the Agent while `ros2 topic pub` sent at
   2 Hz. Latency is from publish to listener print:
@@ -359,6 +365,37 @@ only by the tier's next deadline. The sites: `nros::main!`
 `nros_rtos_run_components.c`, nros-cpp's `spin` loops and `driven_future.hpp`,
 and the board entries of FreeRTOS, ThreadX, NuttX, mps2-an385 and esp32.
 A gate then refuses a literal spin budget in an entry loop.
+
+Surveyed 2026-11-01 and not yet started, because raising the budget alone
+breaks four things. Each needs its own fix before the entries can stop
+passing 10 ms:
+
+1. **zenoh CALLER mode is not woken by an arrival.** On ThreadX the read is a
+   blind `z_sleep_ms(timeout)` (`zpico_spin_once`), and the wake callback
+   fires only from `drive_io`. A long budget would leave each arrival waiting
+   for zenoh's next keep-alive deadline (~3.3 s). CALLER sessions keep a short
+   slice until W5 gives them an RX notification. Bare-metal CALLER reads
+   already return on a delivered sample.
+2. **Component ticks run once per spin.** `ExecutorNodeRuntime::spin_once`
+   runs every component's `tick` after the pass, and ticks poll service
+   clients and drive action servers. A long park would slow those to the
+   park's rate. Either ticks become deadlines the executor knows, or a runtime
+   with tick-bearing components keeps a cadence.
+3. **Termination does not end a park.** The POSIX termination guard's handler
+   only sets a flag, and the hosted loops poll it between spins. The handler
+   must also signal the executors' wake objects (the port's
+   `nros_platform_wake_signal` is signal-safe). `Executor::cancel` has the
+   same gap: it raises the wake flag but does not post the wake object, so a
+   cancel from another thread waits out the park.
+4. **The tiered loops sleep, not park.** nros-cpp's native tier loops run
+   `spin_once(10)` and then `platform_sleep_us(period)`, so an arrival during
+   the sleep waits for the period. They should park for the period instead.
+
+Rule for the helper once those land: the long budget applies only when every
+session of the executor states `Waitable`, or `Notify` with no caller-owed
+deadline. Anything else keeps the 10 ms slice, which W6 then retires. The
+budget itself must stay within what every port expresses: FreeRTOS's
+`pdMS_TO_TICKS` wraps above ~71 minutes at 1 kHz.
 
 **Acceptance:** RFC-0113's coverage table has no "not yet" row; a test opens a
 session through a backend stub with no readiness form and asserts the refusal.
