@@ -322,7 +322,8 @@ pub fn next_steps(
         return out;
     };
     out.artifact = output.artifact();
-    let bench = Bench::for_board(&p.board);
+    // Printing a command needs no device on this machine's bus.
+    let bench = Bench::default();
     let invocation = Invocation::default();
     let plan_for = |verb| {
         run_plan::resolve(

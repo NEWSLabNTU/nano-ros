@@ -1,6 +1,6 @@
 # Phase 529 — Real boards: `nros flash`, `nros monitor`, `nros bench`, and human steps
 
-**Status (2026-11-02). IN PROGRESS — W1 done (schema and `prepare` execution); W2 to W6 open.** Implements
+**Status (2026-11-02). IN PROGRESS — W1 and W4 done; W2, W3, W5, W6 open.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D2, D6 and D7 for real
 silicon, and the flash and console runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -149,6 +149,40 @@ Acceptance:
 - `nros bench list` prints the file and whether each device is present.
 - Port resolution follows RFC-0118 D6: `--port`, `NROS_PORT`, the bench file,
   then exactly one VID:PID match. Otherwise refuse and list what was found.
+
+**Landed (2026-11-02).**
+
+- *`nros bench`.* It replaces phase-526's reserved stub in the user tier's
+  "Run on a target" group. `bench` stays in `reserved::VERBS`, so a command
+  package cannot claim it, and is listed in `reserved::IMPLEMENTED`.
+- *`nros bench scan`* lists the attached USB serial devices through
+  `nros_extension::usb` (sysfs, plus the stable `/dev/serial/by-id` links).
+  It matches each device against the `[board.console] usb` of every board
+  in the catalog, and writes `$NROS_HOME/bench.toml`, keyed by USB serial
+  number. On a rescan it keeps an entry's name and every hand-added field
+  (`probe`, `power_cycle`, anything else) and refreshes only the `port`.
+  A device that matches two boards, or that has no serial number, is
+  reported and not recorded. `--dry-run` writes nothing.
+- *`nros bench list`* prints the file and whether each device is attached
+  now.
+- *Port resolution* is `cmd::bench::resolve_port`, RFC-0118 D6's ladder:
+  1. `--port`, then `NROS_PORT` (the invocation rung);
+  2. the bench file's entry, found on the bus by serial number;
+  3. exactly one device matching the console's USB id.
+
+  It refuses two candidates and a recorded device that is not attached,
+  and lists what it found. Nothing on the ladder means no port, not a
+  guess.
+- *The RunPlan's `bench` rung* is `run_plan::bench_for`, which phase-528
+  W1 left as an empty stub. It applies to flash targets only, with
+  provenance `bench`: an emulator's console is never a device on the bus,
+  so `nros run` and `nros build`'s next step pass an empty bench.
+  `nros flash` (W3) calls `bench_for`.
+- *Probes.* Debug probes that are not serial devices are not enumerated.
+  `probe` is a hand-added field until W5 picks a probe runner.
+- *No board states a USB id yet.* No in-tree board states `[board.console]
+  usb` (the Nucleo's console is behind a USB-UART adapter), so a scan
+  records nothing until a board, or the bench file by hand, names one.
 
 Acceptance:
 

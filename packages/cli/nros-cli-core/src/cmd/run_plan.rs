@@ -16,7 +16,7 @@
 //! | --- | --- | --- |
 //! | 1 | `invocation` | `--port`, `--probe`, `--runner`, arguments after `--` |
 //! | 2 | `image` | `[image.<id>.run\|flash\|console]` over `[image_defaults]`'s, already merged key by key when `system.toml` was read |
-//! | 3 | `bench` | `$NROS_HOME/bench.toml` — the rung exists and reads nothing until phase-529 W4 writes the file |
+//! | 3 | `bench` | `$NROS_HOME/bench.toml` and the attached devices ([`bench_for`], RFC-0118 D6), for a flash target |
 //! | 4 | `board` | `[board.run]`, `[board.run.qemu]`, `[board.flash]`, `[board.console]` |
 //! | 5 | `method` | the runner's own defaults, and what the board's platform and triple imply |
 //!
@@ -55,7 +55,7 @@ use crate::{
 pub const INVOCATION: &str = "invocation";
 /// See [`INVOCATION`].
 pub const IMAGE: &str = "image";
-/// See [`INVOCATION`]. Unused until phase-529 W4 (`$NROS_HOME/bench.toml`).
+/// See [`INVOCATION`]. The machine's bench ([`bench_for`]).
 pub const BENCH: &str = "bench";
 /// See [`INVOCATION`].
 pub const BOARD: &str = "board";
@@ -108,21 +108,60 @@ pub struct Invocation {
     pub passthrough: Vec<String>,
 }
 
-/// D5 rung 3: `$NROS_HOME/bench.toml`, which phase-529 W4 writes (the ports
-/// and probes on THIS machine). The rung is here so the order and the
-/// provenance word are fixed now; it reads nothing until that file exists.
+/// D5 rung 3: what THIS machine's bench says for the board — the port and
+/// probe [`bench_for`] resolves from `$NROS_HOME/bench.toml` and the attached
+/// devices (phase-529 W4, [`crate::cmd::bench`]). The resolver applies it to
+/// a FLASH target only: an emulator's console is the emulator's, never a
+/// device on this machine's bus. `Bench::default()` is "this machine adds
+/// nothing", which is what `nros build`'s next step and `nros run` pass.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Bench {
     pub port: Option<String>,
     pub probe: Option<String>,
 }
 
-impl Bench {
-    /// The bench facts for `board`. Empty until phase-529 W4.
-    #[must_use]
-    pub fn for_board(_board: &str) -> Self {
-        Self::default()
+/// The bench rung for `board` under `verb`: its port by RFC-0118 D6's
+/// ladder past the invocation (the bench file's entry found on the bus, else
+/// exactly one device matching the console's USB id), and the entry's probe.
+/// Nothing for `run`. `invocation.port` (`--port`, or `NROS_PORT` folded in by
+/// the verb) answers first, so the bench is not consulted.
+///
+/// # Errors
+///
+/// Two candidate devices, or a recorded device that is not attached: a
+/// refusal listing what was found (RFC-0118 D2 exit 3).
+pub fn bench_for(
+    verb: Verb,
+    board: &str,
+    descriptor: &BoardDescriptor,
+    tables: &ImageTables,
+    invocation: &Invocation,
+    machine: &crate::cmd::bench::Machine,
+) -> Result<Bench, ResolveError> {
+    if verb == Verb::Run {
+        return Ok(Bench::default());
     }
+    let mut out = Bench {
+        probe: machine.file.entry(board).and_then(|e| e.probe.clone()),
+        ..Bench::default()
+    };
+    if invocation.port.is_some() {
+        return Ok(out);
+    }
+    let usb = over(
+        tables.console.as_ref(),
+        descriptor.console.as_ref(),
+        ConsoleTable::over,
+    )
+    .and_then(|c| c.usb)
+    .map(|u| nros_extension::usb::UsbId {
+        vid: u.vid,
+        pid: u.pid,
+    });
+    out.port = crate::cmd::bench::resolve_port(None, None, machine, board, usb)
+        .map_err(ResolveError::Unresolved)?
+        .map(|(p, _)| p);
+    Ok(out)
 }
 
 /// Everything [`resolve`] reads.
@@ -479,7 +518,12 @@ fn finish(
     if let Some(p) = &i.invocation.port {
         plan.console.port = Some(p.clone());
         prov.set("console.port", INVOCATION);
-    } else if let Some(p) = &i.bench.port {
+    } else if let Some(p) = i
+        .bench
+        .port
+        .as_ref()
+        .filter(|_| plan.target.flasher.is_some())
+    {
         plan.console.port = Some(p.clone());
         prov.set("console.port", BENCH);
     }
@@ -493,7 +537,12 @@ fn finish(
             ),
         );
     }
-    if let Some(p) = i.invocation.probe.as_ref().or(i.bench.probe.as_ref()) {
+    let bench_probe = i
+        .bench
+        .probe
+        .as_ref()
+        .filter(|_| plan.target.flasher.is_some());
+    if let Some(p) = i.invocation.probe.as_ref().or(bench_probe) {
         plan.args.insert("probe".into(), p.clone());
         prov.set(
             "args.probe",
@@ -638,11 +687,17 @@ pub fn run(args: Args) -> eyre::Result<()> {
         ));
     };
     let invocation = Invocation {
-        port: args.port.clone(),
+        // RFC-0118 D6: `--port`, then `NROS_PORT` — both the invocation rung.
+        port: args
+            .port
+            .clone()
+            .or_else(|| std::env::var("NROS_PORT").ok().filter(|p| !p.is_empty())),
         passthrough: args.passthrough.clone(),
         ..Invocation::default()
     };
-    let bench = Bench::for_board(&one.board);
+    // A `run` target is a host process or an emulator: this machine's bench
+    // adds nothing to it (`bench_for` answers empty for `run`).
+    let bench = Bench::default();
     let plan = match resolve(
         Verb::Run,
         Inputs {
