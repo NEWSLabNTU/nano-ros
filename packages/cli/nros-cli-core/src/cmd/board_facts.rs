@@ -62,6 +62,30 @@ pub struct BoardFactsArgs {
     // Issue 2204.
     #[arg(long)]
     pub rust_target: Option<String>,
+
+    /// With `--rust-target`: the board the Zephyr build was configured for
+    /// (`west build -b`, i.e. `${BOARD}${BOARD_QUALIFIERS}`). When it names a
+    /// catalog board, that board's `rust_target` is the one checked, not the
+    /// image's: a leaf that names the `zephyr` family is built for the
+    /// concrete board `-b` picks.
+    // Issue 2211.
+    #[arg(long, requires = "rust_target")]
+    pub zephyr_board: Option<String>,
+}
+
+/// Issue 2211 — which descriptor's `rust_target` a Zephyr configure is checked
+/// against: the board `west build -b` named, when the catalog knows it (an image
+/// naming the `zephyr` family is built for whichever concrete board `-b` picks,
+/// and the family's own triple is native_sim's), else the image's board.
+fn rust_target_board<'a>(
+    catalog: &'a BoardCatalog,
+    image_board: &str,
+    zephyr_board: Option<&str>,
+) -> Result<&'a BoardDescriptor> {
+    if let Some(d) = zephyr_board.and_then(|zb| resolve_board(catalog, zb)) {
+        return Ok(d);
+    }
+    resolve_board(catalog, image_board).ok_or_else(|| eyre!("{}", unresolved_board(image_board)))
 }
 
 /// Issue 2204 — does `descriptor`'s `[board.zephyr] rust_target` disagree with
@@ -787,8 +811,7 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
         let board = facts
             .get("NROS_BOARD")
             .ok_or_else(|| eyre!("board-facts: resolved no NROS_BOARD to check"))?;
-        let descriptor =
-            resolve_board(&catalog, board).ok_or_else(|| eyre!("{}", unresolved_board(board)))?;
+        let descriptor = rust_target_board(&catalog, board, args.zephyr_board.as_deref())?;
         if let Some(why) = rust_target_disagreement(descriptor, picked) {
             return Err(eyre!(why));
         }
@@ -999,6 +1022,23 @@ mod tests {
         assert_eq!(rust_target_disagreement(threadx, "anything"), None);
     }
 
+    /// Issue 2211 — an image naming the `zephyr` family, configured with
+    /// `-b mps2/an385`, is checked against mps2/an385's triple, not the
+    /// family's native_sim one; with no `-b` the image's board answers.
+    #[test]
+    fn the_west_board_picks_the_rust_target_board() {
+        let root = repo_root();
+        let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+            .expect("in-tree catalog");
+        let d = rust_target_board(&catalog, "zephyr", Some("mps2/an385")).expect("resolves");
+        assert_eq!(rust_target_disagreement(d, "thumbv7m-none-eabi"), None);
+        let d = rust_target_board(&catalog, "zephyr", None).expect("resolves");
+        assert!(rust_target_disagreement(d, "thumbv7m-none-eabi").is_some());
+        // A `-b` the catalog does not know keeps the image's board.
+        let d = rust_target_board(&catalog, "zephyr", Some("no_such/board")).expect("resolves");
+        assert!(rust_target_disagreement(d, "thumbv7m-none-eabi").is_some());
+    }
+
     /// phase-484 W2b — a board's own `[env]` facts reach every road through
     /// this verb, and a `system.toml`-less cargo leaf is attributed to the one
     /// board crate it depends on.
@@ -1060,6 +1100,7 @@ mod tests {
             deploy: None,
             board: board.map(str::to_string),
             rust_target: None,
+            zephyr_board: None,
         };
         // A guest project: no system.toml, no Cargo.toml.
         let guest = tempfile::tempdir().unwrap();

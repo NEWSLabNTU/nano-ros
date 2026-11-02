@@ -345,8 +345,14 @@ function(nros_check_zephyr_rust_target)
     if("${RUST_TARGET}" STREQUAL "")
         return()
     endif()
+    # Issue 2211 — and the board `-b` named: an image naming the `zephyr`
+    # family is built for that concrete board, whose triple is the one to check.
+    set(_zb "")
+    if(DEFINED BOARD AND NOT "${BOARD}" STREQUAL "")
+        set(_zb --zephyr-board "${BOARD}${BOARD_QUALIFIERS}")
+    endif()
     execute_process(
-        COMMAND ${_cmd} --rust-target "${RUST_TARGET}"
+        COMMAND ${_cmd} --rust-target "${RUST_TARGET}" ${_zb}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc)
