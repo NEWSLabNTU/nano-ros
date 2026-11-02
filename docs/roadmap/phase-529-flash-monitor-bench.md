@@ -1,6 +1,6 @@
 # Phase 529 — Real boards: `nros flash`, `nros monitor`, `nros bench`, and human steps
 
-**Status (2026-11-01). IN PROGRESS — W1's schema half landed; its `prepare` execution and the rest wait on phase-528 W1.** Implements
+**Status (2026-11-02). IN PROGRESS — W1 done (schema and `prepare` execution); W2 to W6 open.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D2, D6 and D7 for real
 silicon, and the flash and console runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -68,9 +68,37 @@ a button. RFC-0118 gives these a verb each, a per-machine file, and
   `usb`). The S32Z270 is flashed with the user's own S32 tooling ("nano-ros
   adds no flash step"), and the ESP32 package is a dormant QEMU board, so
   neither states one.
-- *Waiting on phase-528 W1:* executing `prepare` (the terminal and
-  `--no-prompt` behaviour) and the acceptance unit test below, which drives a
-  plan.
+
+**Landed (execution), 2026-11-02.** W1 is done.
+
+- *Where it runs.* `nros_cli_core::cmd::prepare::execute(steps, options,
+  host, human, console)` runs a RunPlan's `prepare` steps. It lives in
+  `nros-cli-core`, not `nros-extension`, because RFC-0119 D6 makes
+  "`prepare` steps and `--no-prompt`" nros's job for every runner: a runner
+  is asked to start or flash, never to talk to a person.
+- *`say`.* Prints the instruction on stderr. With no terminal on stdin, or
+  with `--no-prompt`, it stops the verb with exit 2.
+- *`wait_for`.* Polls until its event holds, for the verb's `--timeout`,
+  else 300 s. Timing out is also exit 2. Events are read under a `Host`
+  root (sys, dev, proc), so tests use a fake tree:
+  - `usb:` scans `sys/bus/usb/devices/*/idVendor|idProduct`. A DFU or
+    mass-storage device is not a tty, so `nros_extension::usb`'s
+    serial-port lookup cannot see it.
+  - `port:` checks that the path exists.
+  - `volume:` needs `dev/disk/by-label/<label>` (udev escaping) to resolve
+    to a source listed in `proc/mounts`.
+  - `line:` waits on a console that the caller passes in. Prepare runs
+    before the target starts, so before launch it is refused, naming
+    `--expect` instead; `nros flash --monitor` (W3) can open the console
+    first.
+- *`run` steps.* Still refused when the plan resolves.
+  `nros_extension::plan::PrepareStep` has no `Run` on main yet; its arm goes
+  into the executor when that follow-up lands.
+- *Wiring.* No verb executes prepare yet. `nros run` has no prepare steps
+  (`[board.run]` carries none) and no `--no-prompt` (RFC-0118 D2 lists that
+  flag for `flash`). `nros flash` (W3) calls the executor.
+- *Tests.* The acceptance test below, plus `usb:` and `volume:` against fake
+  trees, `line:` with and without a console, and an unknown event kind.
 
 Acceptance:
 
