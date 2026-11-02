@@ -1,0 +1,1 @@
+The `nros-node` hazard ladder tests no longer share one static output row across parallel test threads; `a_fault_at_the_top_is_judged_against_the_top_rung` failed intermittently under `cargo test` (issue 2212).

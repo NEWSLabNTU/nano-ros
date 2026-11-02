@@ -2591,15 +2591,16 @@ mod hazard_tests {
     /// A three-rung ladder -- a `window:` rung (mode 1), a rung (mode 2) and
     /// the floor (mode 3) -- each on its own output row, with distinct routes
     /// so a verdict names the rung it judged.
+    ///
+    /// Each test builds its OWN output cells and hazard cell: `cargo test`
+    /// runs tests on parallel threads, and one shared `static` row let a
+    /// `publish(0)` in one test answer the top rung in another, which then
+    /// reported no route violation (seen as an intermittent failure of
+    /// `a_fault_at_the_top_is_judged_against_the_top_rung`).
     mod ladder {
         use super::*;
 
-        pub static OUT: [PubMonitorCell; 3] = [
-            PubMonitorCell::new(),
-            PubMonitorCell::new(),
-            PubMonitorCell::new(),
-        ];
-        const fn row(topic: &'static str, i: usize) -> MonitorSpec {
+        const fn row(topic: &'static str, cell: &'static PubMonitorCell) -> MonitorSpec {
             MonitorSpec {
                 topic,
                 fqn: topic,
@@ -2610,10 +2611,9 @@ mod hazard_tests {
                 route_deadline_ms: 0,
                 reaction_id: 0,
                 mechanism: 0,
-                cell: &OUT[i],
+                cell,
             }
         }
-        pub static ROWS: [MonitorSpec; 3] = [row("/slow", 0), row("/stop", 1), row("/estop", 2)];
         pub static GUARDS: [GuardSpec; 1] = [GuardSpec {
             all_of: false,
             members: &[GuardRef::Age(0), GuardRef::Age(1)],
@@ -2644,7 +2644,7 @@ mod hazard_tests {
                 starts_at: &[],
             },
         ];
-        pub fn spec(cell: &'static HazardCell) -> HazardSpec {
+        fn spec(cell: &'static HazardCell) -> HazardSpec {
             HazardSpec {
                 key: "demo.launch.xml/scan_lost",
                 ftti_ms: 0,
@@ -2656,19 +2656,47 @@ mod hazard_tests {
                 cell,
             }
         }
-        pub fn tick(
-            spec: &HazardSpec,
-            age: &[AgeState],
-            mode: u16,
-            now: u32,
-        ) -> std::vec::Vec<(u32, u32)> {
-            let mon = [MonitorState::default(); 3];
-            let mut out = std::vec::Vec::new();
-            check_hazard(spec, &ROWS, &mon, age, mode, now, |v| out.push(v));
-            out.iter()
-                .filter(|v| v.rule == "hazard-route-runtime")
-                .map(|v| (v.measured, v.declared))
-                .collect()
+        /// One test's ladder: its own output rows and hazard cell, leaked so
+        /// they are `'static` like the generated tables they stand in for.
+        pub struct Ladder {
+            out: &'static [PubMonitorCell; 3],
+            rows: &'static [MonitorSpec; 3],
+            spec: HazardSpec,
+        }
+        impl Ladder {
+            pub fn new() -> Self {
+                let out: &'static [PubMonitorCell; 3] =
+                    std::boxed::Box::leak(std::boxed::Box::new([
+                        PubMonitorCell::new(),
+                        PubMonitorCell::new(),
+                        PubMonitorCell::new(),
+                    ]));
+                let rows: &'static [MonitorSpec; 3] =
+                    std::boxed::Box::leak(std::boxed::Box::new([
+                        row("/slow", &out[0]),
+                        row("/stop", &out[1]),
+                        row("/estop", &out[2]),
+                    ]));
+                let cell: &'static HazardCell =
+                    std::boxed::Box::leak(std::boxed::Box::new(HazardCell::new()));
+                Ladder {
+                    out,
+                    rows,
+                    spec: spec(cell),
+                }
+            }
+            pub fn tick(&self, age: &[AgeState], mode: u16, now: u32) -> std::vec::Vec<(u32, u32)> {
+                let mon = [MonitorState::default(); 3];
+                let mut out = std::vec::Vec::new();
+                check_hazard(&self.spec, self.rows, &mon, age, mode, now, |v| out.push(v));
+                out.iter()
+                    .filter(|v| v.rule == "hazard-route-runtime")
+                    .map(|v| (v.measured, v.declared))
+                    .collect()
+            }
+            pub fn publish(&self, i: usize) {
+                self.out[i].count.fetch_add(1, Ordering::Relaxed);
+            }
         }
         pub fn faulted(silent: [bool; 2]) -> [AgeState; 2] {
             let mut age = [AgeState::default(); 2];
@@ -2677,58 +2705,39 @@ mod hazard_tests {
             }
             age
         }
-        pub fn publish(i: usize) {
-            OUT[i].count.fetch_add(1, Ordering::Relaxed);
-        }
     }
 
     /// A fault in the base mode is judged against the TOP rung: its output
     /// and its route, from its `starts_at` detection.
     #[test]
     fn a_fault_at_the_top_is_judged_against_the_top_rung() {
-        static CELL: HazardCell = HazardCell::new();
-        let spec = ladder::spec(&CELL);
+        let rig = ladder::Ladder::new();
         let age = ladder::faulted([true, false]);
-        assert!(ladder::tick(&spec, &age, 0, 1_000).is_empty());
+        assert!(rig.tick(&age, 0, 1_000).is_empty());
         // The floor publishing is not the top rung answering.
-        ladder::publish(2);
-        assert!(ladder::tick(&spec, &age, 0, 1_005).is_empty());
-        assert_eq!(
-            ladder::tick(&spec, &age, 0, 1_011),
-            [(11, 10)],
-            "top route 10"
-        );
+        rig.publish(2);
+        assert!(rig.tick(&age, 0, 1_005).is_empty());
+        assert_eq!(rig.tick(&age, 0, 1_011), [(11, 10)], "top route 10");
     }
 
     /// A fault arriving after the ladder has fallen -- the executor is already
     /// in the rung's mode -- is judged against THAT rung.
     #[test]
     fn a_fault_after_a_fall_is_judged_against_the_lower_rung() {
-        static CELL: HazardCell = HazardCell::new();
-        let spec = ladder::spec(&CELL);
+        let rig = ladder::Ladder::new();
         let age = ladder::faulted([true, false]);
-        assert!(ladder::tick(&spec, &age, 2, 2_000).is_empty());
+        assert!(rig.tick(&age, 2, 2_000).is_empty());
         // Only the active rung's output answers it.
-        ladder::publish(0);
-        assert!(ladder::tick(&spec, &age, 2, 2_015).is_empty(), "within 20");
-        assert_eq!(
-            ladder::tick(&spec, &age, 2, 2_021),
-            [(21, 20)],
-            "rung route 20"
-        );
+        rig.publish(0);
+        assert!(rig.tick(&age, 2, 2_015).is_empty(), "within 20");
+        assert_eq!(rig.tick(&age, 2, 2_021), [(21, 20)], "rung route 20");
         // And it answered within its route on a second fault.
         let clear = ladder::faulted([false, false]);
-        ladder::tick(&spec, &clear, 2, 2_100);
-        assert!(ladder::tick(&spec, &age, 2, 3_000).is_empty());
-        ladder::publish(1);
-        assert!(
-            ladder::tick(&spec, &age, 2, 3_019).is_empty(),
-            "answered at 19"
-        );
-        assert!(
-            ladder::tick(&spec, &age, 2, 3_500).is_empty(),
-            "judged once"
-        );
+        rig.tick(&clear, 2, 2_100);
+        assert!(rig.tick(&age, 2, 3_000).is_empty());
+        rig.publish(1);
+        assert!(rig.tick(&age, 2, 3_019).is_empty(), "answered at 19");
+        assert!(rig.tick(&age, 2, 3_500).is_empty(), "judged once");
     }
 
     /// The window rung answers, its window passes and the ladder falls to the
@@ -2737,22 +2746,15 @@ mod hazard_tests {
     /// output and route.
     #[test]
     fn a_fall_from_the_window_rung_starts_the_rung_below_at_the_fall() {
-        static CELL: HazardCell = HazardCell::new();
-        let spec = ladder::spec(&CELL);
+        let rig = ladder::Ladder::new();
         let age = ladder::faulted([true, false]);
-        assert!(ladder::tick(&spec, &age, 0, 1_000).is_empty());
-        ladder::publish(0);
-        assert!(
-            ladder::tick(&spec, &age, 1, 1_004).is_empty(),
-            "window rung in time"
-        );
+        assert!(rig.tick(&age, 0, 1_000).is_empty());
+        rig.publish(0);
+        assert!(rig.tick(&age, 1, 1_004).is_empty(), "window rung in time");
         // The window passes; the executor enters the rung below at 1_500.
-        assert!(
-            ladder::tick(&spec, &age, 2, 1_500).is_empty(),
-            "nothing at the fall"
-        );
+        assert!(rig.tick(&age, 2, 1_500).is_empty(), "nothing at the fall");
         assert_eq!(
-            ladder::tick(&spec, &age, 2, 1_521),
+            rig.tick(&age, 2, 1_521),
             [(21, 20)],
             "measured from the fall, not the fire"
         );
@@ -2763,33 +2765,15 @@ mod hazard_tests {
     /// the ladder is not a fall.
     #[test]
     fn a_fall_to_the_floor_is_judged_against_the_floor() {
-        static CELL: HazardCell = HazardCell::new();
-        let spec = ladder::spec(&CELL);
+        let rig = ladder::Ladder::new();
         let age = ladder::faulted([true, false]);
-        assert!(ladder::tick(&spec, &age, 0, 1_000).is_empty());
-        assert_eq!(
-            ladder::tick(&spec, &age, 0, 1_011),
-            [(11, 10)],
-            "top overdue"
-        );
-        assert!(
-            ladder::tick(&spec, &age, 3, 1_100).is_empty(),
-            "fall to the floor"
-        );
-        assert!(ladder::tick(&spec, &age, 1, 1_110).is_empty(), "not a fall");
-        assert!(
-            ladder::tick(&spec, &age, 3, 1_130).is_empty(),
-            "30 is not past 30"
-        );
-        assert_eq!(
-            ladder::tick(&spec, &age, 3, 1_131),
-            [(31, 30)],
-            "floor route 30"
-        );
-        assert!(
-            ladder::tick(&spec, &age, 3, 1_500).is_empty(),
-            "reported once"
-        );
+        assert!(rig.tick(&age, 0, 1_000).is_empty());
+        assert_eq!(rig.tick(&age, 0, 1_011), [(11, 10)], "top overdue");
+        assert!(rig.tick(&age, 3, 1_100).is_empty(), "fall to the floor");
+        assert!(rig.tick(&age, 1, 1_110).is_empty(), "not a fall");
+        assert!(rig.tick(&age, 3, 1_130).is_empty(), "30 is not past 30");
+        assert_eq!(rig.tick(&age, 3, 1_131), [(31, 30)], "floor route 30");
+        assert!(rig.tick(&age, 3, 1_500).is_empty(), "reported once");
     }
 
     /// The top rung's clock starts at ITS `starts_at` detector, not at the
@@ -2797,19 +2781,18 @@ mod hazard_tests {
     /// (the top rung's `starts_at`) only later.
     #[test]
     fn the_route_clock_starts_at_the_starts_at_detection() {
-        static CELL: HazardCell = HazardCell::new();
-        let spec = ladder::spec(&CELL);
-        assert!(ladder::tick(&spec, &ladder::faulted([false, true]), 0, 1_000).is_empty());
+        let rig = ladder::Ladder::new();
+        assert!(
+            rig.tick(&ladder::faulted([false, true]), 0, 1_000)
+                .is_empty()
+        );
         let both = ladder::faulted([true, true]);
         assert!(
-            ladder::tick(&spec, &both, 0, 1_050).is_empty(),
+            rig.tick(&both, 0, 1_050).is_empty(),
             "50 ms after the fire, but the clock starts now"
         );
-        assert!(
-            ladder::tick(&spec, &both, 0, 1_060).is_empty(),
-            "10 is not past 10"
-        );
-        assert_eq!(ladder::tick(&spec, &both, 0, 1_061), [(11, 10)]);
+        assert!(rig.tick(&both, 0, 1_060).is_empty(), "10 is not past 10");
+        assert_eq!(rig.tick(&both, 0, 1_061), [(11, 10)]);
     }
 
     /// With no sink the observer never claims a reaction it cannot see.
