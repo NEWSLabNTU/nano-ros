@@ -643,9 +643,23 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 1 with `*out_ms` written when work is due, 0 when nothing is scheduled,
-    /// -1 when the build cannot answer (THREAD mode, ThreadX).
+    /// -1 when the build cannot answer (THREAD mode).
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_next_wake_ms(_session: *mut zpico_session_t, _out_ms: *mut u64) -> i8 {
+        -1
+    }
+
+    /// phase-521 W6 (RFC-0113 D4) — install or remove the executor's wake
+    /// callback as the link's TCP receive notification (ThreadX CALLER mode).
+    ///
+    /// # Returns
+    /// 0 when installed, removed or probed; -1 where there is no such hook.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_set_link_rx_notify(
+        _session: *mut zpico_session_t,
+        _cb: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+        _ctx: *mut core::ffi::c_void,
+    ) -> i8 {
         -1
     }
 

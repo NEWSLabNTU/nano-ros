@@ -632,8 +632,15 @@ unsafe extern "C" {
     pub fn zpico_drives_on_thread() -> bool;
     // phase-521 W5 (RFC-0113 D6) — when the session's executor next has work its
     // caller must wake for, link reads excluded: 1 and `*out_ms`, 0 none, -1 the
-    // build cannot answer (THREAD mode, ThreadX).
+    // build cannot answer (THREAD mode).
     pub fn zpico_next_wake_ms(session: *mut zpico_session_t, out_ms: *mut u64) -> i8;
+    // phase-521 W6 (RFC-0113 D4) — the link's TCP receive notification (ThreadX
+    // CALLER mode): 0 installed / removed / probed (`cb == None`), -1 no hook.
+    pub fn zpico_set_link_rx_notify(
+        session: *mut zpico_session_t,
+        cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+        ctx: *mut core::ffi::c_void,
+    ) -> i8;
 
     // Clock helpers (for FFI reentrancy guard timeout decomposition) — process-global.
     pub fn zpico_clock_start(clock_buf: *mut u8);

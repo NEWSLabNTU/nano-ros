@@ -220,6 +220,7 @@ INT nx_bsd_socket(INT family, INT type, INT proto) {
 }
 
 INT nx_bsd_soc_close(INT sockID) {
+    nsos_rx_notify_forget(sockID);
     return close(sockID);
 }
 
@@ -263,6 +264,7 @@ INT nx_bsd_send(INT sockID, const CHAR *msg, INT msgLen, INT flags) {
 }
 
 INT nx_bsd_recv(INT sockID, VOID *buf, INT bufLen, INT flags) {
+    nsos_rx_notify_rearm(sockID);
     return (INT)recv(sockID, buf, (size_t)bufLen, flags);
 }
 
@@ -280,6 +282,7 @@ INT nx_bsd_recvfrom(INT sockID, CHAR *buf, INT bufLen, INT flags,
                     struct nx_bsd_sockaddr *srcAddr, INT *addrLen) {
     struct sockaddr_storage posix_addr;
     socklen_t posix_len = sizeof(posix_addr);
+    nsos_rx_notify_rearm(sockID);
     int n = (int)recvfrom(sockID, buf, (size_t)bufLen, flags,
                           srcAddr ? (struct sockaddr *)&posix_addr : NULL,
                           srcAddr ? &posix_len : NULL);
@@ -383,17 +386,10 @@ INT nx_bsd_fcntl(INT sockID, UINT flagType, UINT options) {
     return fcntl(sockID, (int)flagType, (int)options);
 }
 
-/* phase-521 W4 — the nano-ros NetX Duo fork's receive notification. A host
- * kernel socket has no such hook, and the ThreadX wake object an executor
- * parks on cannot be multiplexed with a host fd, so this answers "none": the
- * caller keeps the receive-blocking wait it had. */
-INT nx_bsd_socket_set_rx_notify(INT sockID, VOID (*rx_notify)(VOID *arg), VOID *arg) {
-    (void) sockID;
-    (void) rx_notify;
-    (void) arg;
-    errno = ENOSYS;
-    return -1;
-}
+/* phase-521 W6 — the nano-ros NetX Duo fork's receive notification,
+ * `nx_bsd_socket_set_rx_notify`, lives in `nsos_rx_notify.c`: it needs a
+ * ThreadX thread, so it is compiled with the kernel's headers, which this
+ * file deliberately does not include. */
 
 INT nx_bsd_shutdown(INT sockID, INT how) {
     return shutdown(sockID, how);

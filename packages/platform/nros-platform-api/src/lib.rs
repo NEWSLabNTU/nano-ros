@@ -810,6 +810,19 @@ pub trait PlatformTcp {
     fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
     /// Send `len` bytes. Returns bytes sent, or `usize::MAX` on error.
     fn send(sock: *const c_void, buf: *const u8, len: usize) -> usize;
+
+    /// phase-521 W6 (RFC-0113 D4) — install (`Some`) or remove (`None`) the
+    /// connected socket's receive notification, called from the stack's own
+    /// context each time data is queued, so it must only signal.
+    ///
+    /// Default `-1`: this stack has no such hook.
+    fn set_rx_notify(
+        _sock: *const c_void,
+        _notify: Option<unsafe extern "C" fn(*mut c_void)>,
+        _ctx: *mut c_void,
+    ) -> i8 {
+        -1
+    }
 }
 
 // ============================================================================

@@ -259,6 +259,15 @@ size_t nros_platform_tcp_send(const void *sock_raw, const uint8_t *buf, size_t l
     return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
 }
 
+/* phase-521 W6 (RFC-0113 D4) — zenoh reads the link on its own thread here (THREAD mode),
+ * so no session asks for a TCP receive hook. */
+int8_t nros_platform_tcp_set_rx_notify(const void *sock, void (*notify)(void *ctx), void *ctx) {
+    (void) sock;
+    (void) notify;
+    (void) ctx;
+    return -1;
+}
+
 /* ---- UDP unicast ---- */
 
 int8_t nros_platform_udp_create_endpoint(void *ep_raw,

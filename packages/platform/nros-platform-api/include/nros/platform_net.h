@@ -79,6 +79,19 @@ size_t nros_platform_tcp_read_exact(const void *sock, uint8_t *buf, size_t len);
  *  `NROS_PLATFORM_NET_SOCKET_ERROR` on error. */
 size_t nros_platform_tcp_send(const void *sock, const uint8_t *buf, size_t len);
 
+/** phase-521 W6 (RFC-0113 D4) — install (`notify != NULL`) or remove the
+ *  receive notification on a connected TCP socket: the stack calls
+ *  `notify(ctx)` each time data is queued on it, from the stack's own context
+ *  (NetX's IP thread), so `notify` must only signal. Data already queued at
+ *  install calls it once before this returns; once a removal returns, the
+ *  previous `notify` is never called again. A zenoh session in CALLER mode
+ *  over `sock` reports this as `NROS_RMW_READINESS_NOTIFY`.
+ *
+ *  Returns 0 when installed (or removed), -1 where the stack offers no such
+ *  hook (every stack whose zenoh sessions read the link on their own thread
+ *  needs none). */
+int8_t nros_platform_tcp_set_rx_notify(const void *sock, void (*notify)(void *ctx), void *ctx);
+
 /* ---- UDP unicast ---- */
 
 int8_t nros_platform_udp_create_endpoint(void *ep,
