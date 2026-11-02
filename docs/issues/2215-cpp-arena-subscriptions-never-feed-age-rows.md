@@ -5,7 +5,7 @@ status: open
 type: bug
 area: [executor, monitor]
 found: 2026-11-02
-related: [phase-462, phase-474, issue-2173, issue-0758]
+related: [phase-462, issue-2173, issue-0758]
 ---
 
 ## The gap
