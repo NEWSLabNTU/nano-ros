@@ -262,10 +262,13 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   history (commit in submodule → `git fetch origin` + `git remote prune origin` →
   `git rebase origin/<branch>` → push). **Push the fork branch FIRST, then bump the superproject
   pointer** to the pushed commit.
-  **By default the agent does NOT push fork remotes** (they sit outside the trusted repo →
-  exfiltration guard): the agent commits + rebases locally and leaves the branch ready; the
-  maintainer pushes. The agent may push only when a scoped `Bash(git -C <submodule-path> push:*)`
-  allow-rule exists — never a blanket `git push:*`.
+  **The agent MAY push any vendored fork — only to the branch its `.gitmodules` `branch =`
+  names, fast-forward only, and the fork BEFORE the superproject pin** (maintainer ruling
+  2026-11-02). Never `main`, never a new branch, never `--force`: fetch the tracked branch and
+  check `git merge-base --is-ancestor FETCH_HEAD HEAD` before `git -C <submodule> push origin
+  HEAD:refs/heads/<branch>`; if that fails, rebase onto it first. Push the superproject commit
+  that moves the pin only after the fork push succeeded, so no pin ever names an unpublished
+  commit.
   **The patch branch is a PATCHSET ON A STABLE VERSION, and it is not squashed.** Its commits are
   the readable history of what we changed and why, so they stay individual — a squash to "one
   delta commit" trades the only record of intent for a tidier graph, which is the wrong trade.
