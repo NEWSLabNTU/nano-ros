@@ -1,0 +1,1 @@
+`runner-bootstrap.sh` no longer refuses to refresh the runner's `src` checkout when a build has rewritten a tracked file there (superproject or submodule): it names each discarded change and moves to the new pins anyway, and `--sync-src <dir>` runs that refresh alone (issue 2210).

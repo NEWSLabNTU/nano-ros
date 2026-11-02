@@ -39,6 +39,9 @@
 #
 # Usage:
 #   scripts/ci/runner-bootstrap.sh <labels> [--ref <git-ref>] [--check]
+#   scripts/ci/runner-bootstrap.sh --sync-src <dir> [--ref <git-ref>]
+#       step 2 alone, on a checkout at <dir>, here and not in a container:
+#       repairs a cache checkout by hand, and is what its test drives.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -47,30 +50,33 @@ REMOTE="${NROS_RUNNER_REMOTE:-https://github.com/NEWSLabNTU/nano-ros.git}"
 REF="${NROS_RUNNER_REF:-main}"
 CHECK=0
 LABELS=""
+SYNC_SRC=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --check|--dry-run) CHECK=1 ;;
         --ref) REF="${2:?--ref needs a git ref}"; shift ;;
+        --sync-src) SYNC_SRC="${2:?--sync-src needs a directory}"; shift ;;
         -*) echo "runner-bootstrap: unknown flag '$1'" >&2; exit 2 ;;
         *) LABELS="$1" ;;
     esac
     shift
 done
-[ -n "$LABELS" ] || { echo "runner-bootstrap: need <labels>, e.g. nros-qemu,nros-sdk-zephyr,nros-big" >&2; exit 2; }
+[ -n "$LABELS" ] || [ -n "$SYNC_SRC" ] || { echo "runner-bootstrap: need <labels>, e.g. nros-qemu,nros-sdk-zephyr,nros-big" >&2; exit 2; }
 
 say() { echo "runner-bootstrap: $*"; }
 
 # One `docker run` for the whole bootstrap, sharing the same volumes the runner
 # will get. Same UID, same ACLs, same paths — a bootstrap that provisions
 # somewhere the runner cannot read is the failure this design exists to avoid.
-BOOTSTRAP_SH='
+# Step 2, kept as its own script so --sync-src can run it alone.
+SRC_SYNC_SH='
 set -euo pipefail
 # Inside the volume, never AT it: the mountpoint is a host directory owned by
 # another UID, and git refuses a repo it does not own ("detected dubious
 # ownership") however the ACLs read. A directory this container creates is
 # owned by this container.
-SRC=/home/runner/src/nano-ros
+SRC="${SRC:-/home/runner/src/nano-ros}"
 mkdir -p "$(dirname "$SRC")"
 # -e, not -d: the class in issue 1336. The question is whether a checkout is
 # here, and a .git that is a FILE -- a linked worktree, a submodule -- is one
@@ -85,7 +91,18 @@ mkdir -p "$(dirname "$SRC")"
 if [ -e "$SRC/.git" ]; then
     echo "  fetching $REF into an existing checkout"
     git -C "$SRC" fetch --depth 1 origin "$REF"
-    git -C "$SRC" checkout -q FETCH_HEAD
+    # This checkout is a CACHE nobody edits, so a modified tracked file here is
+    # residue from some build, never work to keep -- and a plain checkout over
+    # it refuses, which left a runner offline (issue 2191). Name what is
+    # discarded, superproject and submodules alike, so whatever wrote it can
+    # be found, then move anyway.
+    dirt="$(git -C "$SRC" status --porcelain --untracked-files=no --ignore-submodules=none)"
+    if [ -n "$dirt" ]; then
+        echo "  discarding tracked changes in the cache checkout (a build wrote these):"
+        printf "%s\n" "$dirt" | sed "s/^/    /"
+        git -C "$SRC" submodule foreach --quiet --recursive "git status --porcelain --untracked-files=no | sed \"s|^|    \$displaypath: |\""
+    fi
+    git -C "$SRC" checkout -q --force FETCH_HEAD
 else
     echo "  cloning (shallow) — this is the one expensive start"
     git clone --depth 1 --branch "$REF" "$REMOTE" "$SRC"
@@ -101,8 +118,19 @@ cd "$SRC"
 # play_launch is initialised because provisioning needs it -- NON-recursively,
 # since its own runtime submodules are never built here (CLAUDE.md).
 git submodule sync -q
-git submodule update -q --depth 1
-git submodule update -q --init --depth 1 packages/cli/third-party/play_launch
+# --force for the same reason as the superproject checkout above: a submodule
+# file a build rewrote must not stop the move to the pin.
+git submodule update -q --force --depth 1
+git submodule update -q --force --init --depth 1 packages/cli/third-party/play_launch
+'
+
+if [ -n "$SYNC_SRC" ]; then
+    SRC="$SYNC_SRC" REMOTE="$REMOTE" REF="$REF" bash -c "$SRC_SYNC_SH"
+    exit 0
+fi
+
+# The rest runs in the same shell, in the checkout step 2 left it in.
+BOOTSTRAP_SH="$SRC_SYNC_SH"'
 
 # `runner-provision.sh` is a thin caller over `just` recipes and says so when
 # `just` is absent — it points at scripts/bootstrap.sh, which is the front door
