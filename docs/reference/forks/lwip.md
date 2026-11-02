@@ -7,20 +7,22 @@ nano-ros builds `third-party/freertos/lwip` from the fork [jerry73204/lwip](http
 | | |
 | --- | --- |
 | Upstream base | `STABLE-2_2_1_RELEASE` (merge base [77dcd25a7250](https://github.com/lwip-tcpip/lwip/commit/77dcd25a72509eb83f72b033d219b1d40cd8eb95)) |
-| Commits on top | 1 |
+| Commits on top | 3 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 1, +4/−3 |
+| Files changed | 5, +139/−3 |
 
-**Pinned commit:** `6233eb61c89b531fd5aaa16acdd6bc5c6368dfdd`
+**Pinned commit:** `96b63e3115dfc010c07d4a4231d93195a814e82c`
 
 ## Commits on top of upstream
 
 | commit | subject |
 | --- | --- |
 | [6233eb61c8](https://github.com/jerry73204/lwip/commit/6233eb61c89b531fd5aaa16acdd6bc5c6368dfdd) | Use pvPortMalloc for per-thread netconn semaphore allocation |
+| [de76e778f9](https://github.com/jerry73204/lwip/commit/de76e778f93ffb9c1784a92418e41c0e82535c4e) | fix(freertos): create netconn semaphores lazily |
+| [96b63e3115](https://github.com/jerry73204/lwip/commit/96b63e3115dfc010c07d4a4231d93195a814e82c) | sockets: optional per-socket receive notification |
 
 Reproduce:
 
 ```bash
-gh api repos/lwip-tcpip/lwip/compare/STABLE-2_2_1_RELEASE...jerry73204:lwip:6233eb61c89b531fd5aaa16acdd6bc5c6368dfdd --jq '.ahead_by'
+gh api repos/lwip-tcpip/lwip/compare/STABLE-2_2_1_RELEASE...jerry73204:lwip:96b63e3115dfc010c07d4a4231d93195a814e82c --jq '.ahead_by'
 ```
