@@ -237,9 +237,13 @@ function(nros_threadx_build_netstack_nsos)
             "nros_threadx_build_netstack_nsos: SHIM_DIR is required.")
     endif()
 
+    # phase-521 W6 — `nsos_rx_notify.c` is a ThreadX thread, so it compiles
+    # with the kernel's headers (`NROS_THREADX_INCLUDES`, set by the kernel
+    # build before this runs).
     nros_build_rtos_static_lib(nsos_netx
-        SOURCES "${_NTNN_SHIM_DIR}/src/nsos_netx.c")
+        SOURCES "${_NTNN_SHIM_DIR}/src/nsos_netx.c" "${_NTNN_SHIM_DIR}/src/nsos_rx_notify.c")
     target_include_directories(nsos_netx PUBLIC "${_NTNN_SHIM_DIR}/include")
+    target_include_directories(nsos_netx PRIVATE ${NROS_THREADX_INCLUDES})
 endfunction()
 
 # ----------------------------------------------------------------------

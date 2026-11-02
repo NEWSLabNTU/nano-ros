@@ -470,6 +470,13 @@ impl nros_platform_api::PlatformTcp for CffiPlatform {
     fn send(sock: *const c_void, buf: *const u8, len: usize) -> usize {
         unsafe { nros_platform_tcp_send(sock, buf, len) }
     }
+    fn set_rx_notify(
+        sock: *const c_void,
+        notify: Option<unsafe extern "C" fn(*mut c_void)>,
+        ctx: *mut c_void,
+    ) -> i8 {
+        unsafe { nros_platform_tcp_set_rx_notify(sock, notify, ctx) }
+    }
 }
 
 impl nros_platform_api::PlatformUdp for CffiPlatform {
@@ -1281,6 +1288,14 @@ macro_rules! nros_platform_export_net {
             len: usize,
         ) -> usize {
             <$ty as ::nros_platform_api::PlatformTcp>::send(sock, buf, len)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_tcp_set_rx_notify(
+            sock: *const ::core::ffi::c_void,
+            notify: ::core::option::Option<unsafe extern "C" fn(*mut ::core::ffi::c_void)>,
+            ctx: *mut ::core::ffi::c_void,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformTcp>::set_rx_notify(sock, notify, ctx)
         }
 
         // ---- UDP unicast ----

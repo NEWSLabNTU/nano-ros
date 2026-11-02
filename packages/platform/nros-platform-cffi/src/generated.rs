@@ -372,6 +372,14 @@ unsafe extern "C" {
     ) -> usize;
 }
 unsafe extern "C" {
+    #[doc = " phase-521 W6 (RFC-0113 D4) — install (`notify != NULL`) or remove the\n  receive notification on a connected TCP socket: the stack calls\n  `notify(ctx)` each time data is queued on it, from the stack's own context\n  (NetX's IP thread), so `notify` must only signal. Data already queued at\n  install calls it once before this returns; once a removal returns, the\n  previous `notify` is never called again. A zenoh session in CALLER mode\n  over `sock` reports this as `NROS_RMW_READINESS_NOTIFY`.\n\n  Returns 0 when installed (or removed), -1 where the stack offers no such\n  hook (every stack whose zenoh sessions read the link on their own thread\n  needs none)."]
+    pub fn nros_platform_tcp_set_rx_notify(
+        sock: *const core::ffi::c_void,
+        notify: ::core::option::Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+        ctx: *mut core::ffi::c_void,
+    ) -> i8;
+}
+unsafe extern "C" {
     pub fn nros_platform_udp_create_endpoint(
         ep: *mut core::ffi::c_void,
         address: *const u8,

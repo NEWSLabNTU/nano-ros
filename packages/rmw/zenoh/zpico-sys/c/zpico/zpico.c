@@ -786,6 +786,16 @@ struct zpico_session {
     // `zpico_spin_once` returns as soon as there is something to dispatch.
     volatile bool spin_delivered;
 #endif
+#if defined(ZPICO_DRIVE_CALLER) && defined(ZENOH_THREADX)
+    // phase-521 W6 (RFC-0113 D4) — the receive notification the executor's
+    // wake callback is installed as on the link's TCP socket
+    // (`zpico_set_link_rx_notify`), and the socket it is installed on. A
+    // reconnect opens a new socket with no notification, so the spin
+    // re-installs it on the socket it finds.
+    void (*rx_notify_cb)(void*);
+    void* rx_notify_ctx;
+    const void* rx_notify_sock;
+#endif
 };
 
 static struct zpico_session g_sessions[ZPICO_MAX_SESSIONS];
@@ -3462,6 +3472,37 @@ int32_t zpico_undeclare_subscriber(zpico_session_t* session, int32_t handle) {
 // fork's multi-thread `zp_spin_once` takes the executor's lock with a TRY-lock:
 // a tier that loses the race returns at once, because the winner is draining —
 // the single-reader rule of issue #247, now enforced by zenoh-pico's own lock.
+#if defined(ZENOH_THREADX)
+// phase-521 W6 (RFC-0113 D4) — the link's TCP socket, or NULL when the session
+// has no TCP link (a reconnect in progress, a serial or UDP link).
+static const void* _zpico_link_tcp_sock(struct zpico_session* s) {
+#if Z_FEATURE_LINK_TCP == 1
+    _z_session_t* zs = _Z_RC_IN_VAL(z_session_loan(&s->session));
+    _z_transport_common_t* common = _z_transport_get_common(&zs->_tp);
+    if (common == NULL || common->_link == NULL || common->_link->_type != _Z_LINK_TYPE_TCP) {
+        return NULL;
+    }
+    return &common->_link->_socket._tcp._sock;
+#else
+    (void)s;
+    return NULL;
+#endif
+}
+
+// Keep the receive notification on the socket the link uses now: a reconnect
+// replaced it, and the new socket starts with none.
+static void _zpico_rx_notify_follow_link(struct zpico_session* s) {
+    if (s->rx_notify_cb == NULL) {
+        return;
+    }
+    const void* sock = _zpico_link_tcp_sock(s);
+    if (sock != NULL && sock != s->rx_notify_sock &&
+        nros_platform_tcp_set_rx_notify(sock, s->rx_notify_cb, s->rx_notify_ctx) == 0) {
+        s->rx_notify_sock = sock;
+    }
+}
+#endif
+
 static void _zpico_run_executor(struct zpico_session* s) {
     for (uint32_t steps = 0; steps < ZPICO_SPIN_BUDGET; steps++) {
         if (!zp_spin_once(z_session_loan(&s->session))) {
@@ -3530,6 +3571,7 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
         z_sleep_ms(timeout_ms);
     }
     _zpico_run_executor(s);
+    _zpico_rx_notify_follow_link(s);
 #else
     // Bare metal (smoltcp, serial) and any other single-thread build. With
     // `timeout_ms == 0`, drain once. Otherwise keep driving until a callback
@@ -3655,8 +3697,8 @@ bool zpico_drives_on_thread(void) {
 
 // phase-521 W5 (RFC-0113 D6) — when this session's executor next has work its caller
 // must wake for. Only answerable in a single-thread CALLER build, where the executor
-// runs in `zpico_spin_once` and `zp_next_wake_ms` can read it without a lock; THREAD
-// mode owes the caller nothing, and ThreadX's CALLER mode runs a multi-thread build.
+// runs in `zpico_spin_once`; THREAD mode owes the caller nothing. A multi-thread
+// CALLER build (ThreadX) reads it under the executor's lock (phase-521 W6).
 //
 // The link read futures are not counted: they only poll, and a caller that asks is
 // one whose park ends on the link's receive interrupt. A pending tx batch is: its
@@ -3665,7 +3707,7 @@ bool zpico_drives_on_thread(void) {
 // Returns 1 and writes `*out_ms` when work is due, 0 when nothing is scheduled, and
 // -1 when the build cannot answer (the caller keeps its own bound).
 int8_t zpico_next_wake_ms(zpico_session_t* session, uint64_t* out_ms) {
-#if defined(ZPICO_DRIVE_CALLER) && !defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD == 0
+#if defined(ZPICO_DRIVE_CALLER)
     struct zpico_session* s = (struct zpico_session*)session;
     if (!s->session_open || out_ms == NULL) {
         return -1;
@@ -3690,6 +3732,40 @@ int8_t zpico_next_wake_ms(zpico_session_t* session, uint64_t* out_ms) {
 #else
     (void)session;
     (void)out_ms;
+    return -1;
+#endif
+}
+
+// phase-521 W6 (RFC-0113 D4) — install (`cb != NULL`) or remove the executor's
+// wake callback as the receive notification of the session's TCP link socket.
+// Only a ThreadX CALLER build has one to give: its link is read only inside
+// `zpico_spin_once`, so this is what lets an arrival end the caller's park.
+// `cb == NULL` is also the probe: it installs nothing and answers whether the
+// stack has the hook.
+//
+// Returns 0 when installed (or removed, or probed), -1 where the build or the
+// stack has no such hook.
+int8_t zpico_set_link_rx_notify(zpico_session_t* session, void (*cb)(void*), void* ctx) {
+#if defined(ZPICO_DRIVE_CALLER) && defined(ZENOH_THREADX)
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
+        return -1;
+    }
+    const void* sock = _zpico_link_tcp_sock(s);
+    if (sock == NULL) {
+        return -1;
+    }
+    if (nros_platform_tcp_set_rx_notify(sock, cb, cb != NULL ? ctx : NULL) != 0) {
+        return -1;
+    }
+    s->rx_notify_cb = cb;
+    s->rx_notify_ctx = cb != NULL ? ctx : NULL;
+    s->rx_notify_sock = cb != NULL ? sock : NULL;
+    return 0;
+#else
+    (void)session;
+    (void)cb;
+    (void)ctx;
     return -1;
 #endif
 }

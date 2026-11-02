@@ -180,6 +180,11 @@ pub struct ZenohSession {
     /// wakes from its park instead of polling on a deadline.
     wake_cb: core::sync::atomic::AtomicPtr<core::ffi::c_void>,
     wake_ctx: core::sync::atomic::AtomicPtr<core::ffi::c_void>,
+    /// phase-521 W6 (RFC-0113 D4) — the link's network stack reports arrivals
+    /// on its TCP socket (`zpico_set_link_rx_notify`, ThreadX CALLER mode over
+    /// NetX Duo), probed once at open. Then `set_wake_callback` installs the
+    /// executor's wake callback there too, and the session states `Notify`.
+    link_rx_notify: bool,
     /// Issue #0292 — monotonic per-session entity id for the `<node_id>/<id>`
     /// field of an entity liveliness token. rmw_zenoh keys graph entities by
     /// `(zid, node_id, entity_id)`; a hardcoded id made every entity collide, so
@@ -759,6 +764,11 @@ impl ZenohSession {
         // None), then immediately declare it while the session is live.
         let mut primary_node_name: heapless::String<64> = heapless::String::new();
         let _ = primary_node_name.push_str(config.node_name);
+        // SAFETY: the session handle is live; a NULL callback installs nothing
+        // and answers whether the link's stack has the hook.
+        let link_rx_notify = unsafe {
+            zpico_sys::zpico_set_link_rx_notify(context.handle(), None, core::ptr::null_mut())
+        } == 0;
         let mut session = Self {
             context,
             node_liveliness: None,
@@ -766,6 +776,7 @@ impl ZenohSession {
             per_node_liveliness: heapless::Vec::new(),
             wake_cb: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             wake_ctx: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
+            link_rx_notify,
             entity_counter: portable_atomic::AtomicU32::new(1),
             domain_id: config.domain_id,
             graph_cache_started: false,
@@ -1645,6 +1656,15 @@ impl Session for ZenohSession {
         // the wake-cb on the multi-threaded backend, where `drive_io`'s poll path
         // never sees the work. Keyed by session, not process-global (issue 1929).
         super::set_runtime_wake_cb(super::session_wake_index(self.context.handle()), cb, ctx);
+        // phase-521 W6 (RFC-0113 D4) — in CALLER mode nothing reads the link
+        // between spins, so the arrival that ends the park is the network
+        // stack's: the same callback becomes the link socket's receive
+        // notification. Removed the same way (`cb == None`).
+        if self.link_rx_notify {
+            // SAFETY: the handle is live; `ctx` outlives the installation
+            // (the runtime removes the callback before freeing it).
+            let _ = unsafe { zpico_sys::zpico_set_link_rx_notify(self.context.handle(), cb, ctx) };
+        }
     }
 
     /// phase-467 Row 8 — the graph-CHANGE edge.
@@ -1711,8 +1731,9 @@ impl Session for ZenohSession {
     /// The park still ends on an arrival when the board's platform park is
     /// woken by the link's receive interrupt, which a board states with
     /// [`set_caller_rx_wakes_park`] (phase-521 W5: mps2-an385's LAN9118 and
-    /// UART0 lines). Then the drive after the park reads the frame, and the
-    /// session states `Notify`. Otherwise a park would wait out its whole
+    /// UART0 lines), or when the link's network stack calls the wake callback
+    /// on a receive (ThreadX over NetX Duo, phase-521 W6). Then the drive
+    /// after the park reads the frame, and the session states `Notify`. Otherwise a park would wait out its whole
     /// bound with data on the link, so the session states `None` and the
     /// executor keeps draining it from `drive_io`.
     ///
@@ -1720,7 +1741,10 @@ impl Session for ZenohSession {
     /// fills the `readiness_source` slot from this method.
     fn readiness_source(&self) -> nros_rmw::ReadinessSource {
         // SAFETY: no arguments; reads a build-time constant.
-        if unsafe { zpico_sys::zpico_drives_on_thread() } || caller_rx_wakes_park() {
+        if unsafe { zpico_sys::zpico_drives_on_thread() }
+            || caller_rx_wakes_park()
+            || self.link_rx_notify
+        {
             nros_rmw::ReadinessSource::Notify
         } else {
             nros_rmw::ReadinessSource::None
@@ -1742,9 +1766,10 @@ impl Session for ZenohSession {
     /// receive interrupt replaces, and a session whose board has none states
     /// `None` readiness and is drained by `drive_io` instead of parked.
     ///
-    /// ThreadX's CALLER mode runs a multi-thread zenoh-pico build that cannot
-    /// be read without its lock, so it keeps one keep-alive interval
-    /// (`Z_TRANSPORT_LEASE / Z_TRANSPORT_LEASE_EXPIRE_FACTOR`, ~3.3 s).
+    /// ThreadX's CALLER mode runs a multi-thread zenoh-pico build, read under
+    /// the executor's lock (phase-521 W6). A build that cannot answer keeps
+    /// one keep-alive interval (`Z_TRANSPORT_LEASE /
+    /// Z_TRANSPORT_LEASE_EXPIRE_FACTOR`, ~3.3 s).
     fn next_deadline_ms(&self) -> Option<u32> {
         // Z_TRANSPORT_LEASE = 10000 ms, Z_TRANSPORT_LEASE_EXPIRE_FACTOR = 3
         const ZENOH_KEEPALIVE_INTERVAL_MS: u32 = 10_000 / 3;

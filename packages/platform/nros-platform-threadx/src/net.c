@@ -263,6 +263,18 @@ size_t nros_platform_tcp_send(const void *sock_raw, const uint8_t *buf, size_t l
     return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
 }
 
+/* phase-521 W6 (RFC-0113 D4) — NetX Duo's BSD receive notification on a
+ * connected TCP socket. The nano-ros netxduo fork's `nx_bsd_socket_set_rx_notify`
+ * covers TCP as well as UDP: the fork's TCP receive notify calls it from the
+ * IP thread each time a segment is queued. zenoh's CALLER mode (the only mode on
+ * ThreadX) reads the link only inside `zpico_spin_once`, so this is what lets
+ * an arrival end the executor's park. */
+int8_t nros_platform_tcp_set_rx_notify(const void *sock_raw, void (*notify)(void *ctx), void *ctx) {
+    if (sock_raw == NULL) return -1;
+    const nros_threadx_socket_t *sock = (const nros_threadx_socket_t *) sock_raw;
+    return nx_bsd_socket_set_rx_notify(sock->fd, notify, ctx) == 0 ? 0 : -1;
+}
+
 /* ---- UDP unicast ---- */
 
 int8_t nros_platform_udp_create_endpoint(void *ep_raw,

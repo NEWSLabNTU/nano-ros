@@ -63,9 +63,7 @@ static const zpico_config_key_entry ZPICO_CONFIG_KEYS[] = {
     {"tls_connect_certificate", Z_CONFIG_TLS_CONNECT_CERTIFICATE_KEY, true},
     {"tls_connect_certificate_base64", Z_CONFIG_TLS_CONNECT_CERTIFICATE_BASE64_KEY, true},
     {"tls_verify_name_on_connect", Z_CONFIG_TLS_VERIFY_NAME_ON_CONNECT_KEY, true},
-#if defined(Z_FEATURE_UNSTABLE_API)
     {"connect_timeout", Z_CONFIG_CONNECT_TIMEOUT_KEY, false},
-#endif
 #if defined(Z_FEATURE_UNSTABLE_API)
     {"connect_exit_on_failure", Z_CONFIG_CONNECT_EXIT_ON_FAILURE_KEY, false},
 #endif

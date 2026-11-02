@@ -541,6 +541,24 @@ every RTIC example is ethernet. Measured on the idle `qemu-rtic-listener`
 (QEMU 9.0.2, 20 s): 0 SysTick one-shots and 2 host CPU ticks.
 `test_qemu_rtic_{pubsub,service,action,mixed_priority_pubsub}_e2e` pass.
 
+**W6f — ThreadX zenoh CALLER mode parks (2026-11-02).** Maintainer ruling:
+port it. The platform ABI gains `nros_platform_tcp_set_rx_notify`, the TCP
+twin of the UDP receive notification W4 added (NetX Duo's fork already
+notifies TCP; POSIX, Zephyr and FreeRTOS answer "unsupported", since their
+zenoh runs in THREAD mode). zpico installs the executor's wake callback on
+the link's TCP socket and re-installs it after a reconnect, so the session
+states `Notify`. The zenoh-pico fork's `zp_next_wake_ms` now answers in a
+multi-thread build that drives its own background executor, so the CALLER
+session's `next_deadline_ms` is zenoh's next due future rather than a blind
+`z_sleep_ms`. On threadx-linux the NSOS shim had no receive notification
+(`ENOSYS`), so it gains one: a lowest-priority ThreadX thread blocks in host
+`poll()` over the armed sockets, fires once per readable socket and re-arms
+on the next receive. That also gives threadx-linux XRCE over UDP its
+`Notify`. Measured on the idle threadx-linux Rust listener, 10 s: 4,599
+context switches against 53,061 before. `rtos_e2e` pubsub, service and
+action pass on threadx-linux; pubsub and service on rv-virt-threadx
+(Rust, C, C++).
+
 ### W7 — Acceptance measurements for the promise
 
 Make RFC-0113 D2 a measured property, not a reading:

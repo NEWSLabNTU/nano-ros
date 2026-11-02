@@ -101,6 +101,10 @@ fn main() {
     configure_linux(&mut nsos);
     nsos.include(nsos_netx_dir.join("include"));
     nsos.file(&nsos_src);
+    // phase-521 W6 — the receive notification is a ThreadX thread, so it
+    // compiles with the kernel's headers.
+    add_threadx_includes(&mut nsos, &threadx_dir, &threadx_port_dir, &config_dir);
+    nsos.file(nsos_netx_dir.join("src/nsos_rx_notify.c"));
     // `+whole-archive`, same reason as the platform/kernel archives in
     // `nros-board-threadx`: this shim's callers (`nros-platform-threadx`'s
     // `net.c`, which holds `U nx_bsd_recvfrom` &c) reach the linker from a

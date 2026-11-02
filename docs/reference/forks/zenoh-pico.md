@@ -7,11 +7,11 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | | |
 | --- | --- |
 | Upstream base | `1.10.1` (merge base [e1ab223a28aa](https://github.com/eclipse-zenoh/zenoh-pico/commit/e1ab223a28aaebb5dec1e70d98eab152332f777a)) |
-| Commits on top | 78 |
+| Commits on top | 81 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 107, +9567/−209 |
+| Files changed | 107, +9641/−214 |
 
-**Pinned commit:** `26ad81545cbfab1bc84f068af3845b7e2152810a`
+**Pinned commit:** `c78dbffd91ed5c271bbe127bad9e21ef1e376b11`
 
 ## Commits on top of upstream
 
@@ -95,9 +95,12 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [8d5ac2fe10](https://github.com/jerry73204/zenoh-pico/commit/8d5ac2fe102e6af57dfb3d8d903208ed383ab5e6) | test(nano-ros #1731): a peer is judged on its own lease, silence summed |
 | [d7ea813365](https://github.com/jerry73204/zenoh-pico/commit/d7ea8133652703f8a1d1fe3b535ed4a33d561475) | feat(nano-ros phase-521): zp_next_wake_ms, the executor's next due work minus link reads |
 | [26ad81545c](https://github.com/jerry73204/zenoh-pico/commit/26ad81545cbfab1bc84f068af3845b7e2152810a) | fix(nano-ros phase-521 W6): retire the polled Zephyr serial receive |
+| [fed5d711d7](https://github.com/jerry73204/zenoh-pico/commit/fed5d711d79bca0cd2dd12a5dd10b31ff980b38f) | fix(zephyr serial): accept a UART with no runtime configuration |
+| [50e059eaa7](https://github.com/jerry73204/zenoh-pico/commit/50e059eaa790ea398dc05156f40e9be42dbba62f) | fix(nano-ros #2207): read the connect timeout without the unstable API |
+| [c78dbffd91](https://github.com/jerry73204/zenoh-pico/commit/c78dbffd91ed5c271bbe127bad9e21ef1e376b11) | feat(nano-ros phase-521 W6): zp_next_wake_ms in a multi-thread build |
 
 Reproduce:
 
 ```bash
-gh api repos/eclipse-zenoh/zenoh-pico/compare/1.10.1...jerry73204:zenoh-pico:26ad81545cbfab1bc84f068af3845b7e2152810a --jq '.ahead_by'
+gh api repos/eclipse-zenoh/zenoh-pico/compare/1.10.1...jerry73204:zenoh-pico:c78dbffd91ed5c271bbe127bad9e21ef1e376b11 --jq '.ahead_by'
 ```

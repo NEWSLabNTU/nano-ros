@@ -832,9 +832,18 @@ bool zpico_drives_on_thread(void);
  *
  * # Returns
  * 1 with `*out_ms` written when work is due, 0 when nothing is scheduled,
- * -1 when the build cannot answer (THREAD mode, ThreadX).
+ * -1 when the build cannot answer (THREAD mode).
  */
 int8_t zpico_next_wake_ms(struct zpico_session_t *_session, uint64_t *_out_ms);
+
+/**
+ * phase-521 W6 (RFC-0113 D4) — install or remove the executor's wake
+ * callback as the link's TCP receive notification (ThreadX CALLER mode).
+ *
+ * # Returns
+ * 0 when installed, removed or probed; -1 where there is no such hook.
+ */
+int8_t zpico_set_link_rx_notify(struct zpico_session_t *_session, void (*_cb)(void*), void *_ctx);
 
 /**
  * Get the session's Zenoh ID.
