@@ -1,0 +1,1 @@
+zenoh's Zephyr serial link no longer has a polled receive path (`uart_poll_in` plus `k_yield`), which made a serial session's wait a busy loop. `CONFIG_NROS_ZENOH_LINK_SERIAL` now selects `CONFIG_UART_INTERRUPT_DRIVEN` and depends on a UART driver that supports it; a UART the receive interrupt cannot bind fails the session open (RFC-0113 D5).
