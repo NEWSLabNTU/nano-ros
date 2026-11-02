@@ -1,7 +1,7 @@
 ---
 id: 2211
 title: "Every mps2/an385 Zephyr Rust west row refuses to configure: the `zephyr` board states an x86_64 rust_target"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [build, zephyr]
@@ -46,3 +46,16 @@ Find where the Zephyr configure picks the board for the rust-target check
 (`nros_check_zephyr_rust_target`, `zephyr/CMakeLists.txt:125`) and make it
 resolve `-b` through the board catalog the way the board facts do for the C
 lane, or have the row name the concrete board.
+
+## Resolution (2026-11-02, phase-521)
+
+The check asked the IMAGE's board (`zephyr`, the family, whose
+`rust_target` is native_sim's) for the triple, while the build is for the
+board `west build -b` names. `nros_check_zephyr_rust_target` now passes
+`--zephyr-board ${BOARD}${BOARD_QUALIFIERS}`, and `nros ws board-facts
+--rust-target` checks the catalog board that answers to it
+(`rust_target_board`), falling back to the image's board when the catalog
+does not know `-b`. Measured: `NROS_ZEPHYR_FIXTURE_FILTER=
+'build-cortex-m-rust-talker-serial-zenoh' just zephyr build-fixtures`
+configures and links `zephyr.elf` (it stopped at configure before).
+Unit test: `board_facts::tests::the_west_board_picks_the_rust_target_board`.
