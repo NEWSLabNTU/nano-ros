@@ -40,6 +40,44 @@ unsafe extern "C" {
         ops: *const NrosRmwXrceTransportOps,
         framing: c_int,
     ) -> c_int;
+
+    /// phase-521 W5 — `transport_custom.c`'s receive-notification hook
+    /// (`nros_rmw_xrce_set_custom_transport_rx_notify` in `nros_rmw_xrce.h`).
+    fn nros_rmw_xrce_set_custom_transport_rx_notify(set_rx_notify: Option<SetRxNotifyFn>) -> c_int;
+}
+
+/// phase-521 W5 (RFC-0113 D4) — a custom transport's receive notification:
+/// called with the executor's wake callback (`cb == None` takes it off); the
+/// transport then calls `cb(ctx)` whenever it has received data. Returns 0 on
+/// success. See `nros_rmw_xrce_set_custom_transport_rx_notify`.
+pub type SetRxNotifyFn = unsafe extern "C" fn(
+    user_data: *mut c_void,
+    cb: Option<unsafe extern "C" fn(ctx: *mut c_void)>,
+    ctx: *mut c_void,
+) -> i32;
+
+/// phase-521 W5 (RFC-0113 D4) — register the custom transport's receive
+/// notification, so a session on it states `Notify` readiness and the
+/// executor parks until an arrival instead of blocking in `read`. Call it
+/// beside [`set_custom_transport_ops`], before the session opens; `None`
+/// clears it.
+///
+/// # Safety
+///
+/// `f` must honour the contract in `nros_rmw_xrce.h`: after a call with
+/// `cb == None` returns it never calls the previous `cb` again, and it calls
+/// `cb` from interrupt context only where the platform's wake signal is
+/// interrupt-safe.
+pub unsafe fn set_custom_transport_rx_notify(
+    f: Option<SetRxNotifyFn>,
+) -> Result<(), RegisterError> {
+    // SAFETY: stores a function pointer; the caller upholds its contract.
+    let rc = unsafe { nros_rmw_xrce_set_custom_transport_rx_notify(f) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(RegisterError(rc))
+    }
 }
 
 /// Phase 207.1 / 115.K.2.4 — runtime transport vtable for the XRCE

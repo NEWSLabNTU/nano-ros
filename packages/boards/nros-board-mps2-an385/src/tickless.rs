@@ -149,6 +149,9 @@ mod uart {
     #[interrupt]
     fn UARTRX0() {
         cmsdk_uart::mask_rx_irq(cmsdk_uart::UART0_BASE);
+        // phase-521 W5 — an XRCE session over this UART learns of it too.
+        #[cfg(feature = "xrce-transport")]
+        crate::xrce_transport::notify_rx();
     }
 
     fn pending() -> bool {

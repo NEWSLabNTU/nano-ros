@@ -41,6 +41,8 @@ typedef struct xrce_custom_ops_storage {
     nros_rmw_xrce_transport_ops_t ops;
     bool framing;
     bool armed;
+    /* phase-521 W5 — optional receive notification (RFC-0113 D4). */
+    nros_rmw_xrce_transport_set_rx_notify_fn set_rx_notify;
 } xrce_custom_ops_storage;
 
 static xrce_custom_ops_storage g_xrce_custom_ops;
@@ -110,6 +112,26 @@ rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
     g_xrce_custom_ops.framing = framing != 0;
     g_xrce_custom_ops.armed   = true;
     return NROS_RMW_RET_OK;
+}
+
+rmw_ret_t nros_rmw_xrce_set_custom_transport_rx_notify(
+    nros_rmw_xrce_transport_set_rx_notify_fn set_rx_notify) {
+    g_xrce_custom_ops.set_rx_notify = set_rx_notify;
+    return NROS_RMW_RET_OK;
+}
+
+bool xrce_custom_transport_rx_notify_capable(void) {
+    return g_xrce_custom_ops.armed && g_xrce_custom_ops.set_rx_notify != NULL;
+}
+
+rmw_ret_t xrce_custom_transport_set_rx_notify(void (*cb)(void *ctx), void *ctx) {
+    if (!xrce_custom_transport_rx_notify_capable()) {
+        return NROS_RMW_RET_UNSUPPORTED;
+    }
+    return g_xrce_custom_ops.set_rx_notify(g_xrce_custom_ops.ops.user_data, cb,
+                                           cb != NULL ? ctx : NULL) == 0
+               ? NROS_RMW_RET_OK
+               : NROS_RMW_RET_ERROR;
 }
 
 rmw_ret_t nros_rmw_xrce_init_custom_transport(int framing) {

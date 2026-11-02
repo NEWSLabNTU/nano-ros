@@ -708,8 +708,10 @@ rmw_ret_t xrce_publisher_event_init(const rmw_publisher_t* publisher, rmw_event_
  * readable, instead of blocking inside `uxr_run_session_time`. Where the UDP
  * stack takes a receive notification (lwIP, NetX) it is NOTIFY: the stack
  * calls the executor's wake callback on arrival (`xrce_set_wake_callback`).
- * Elsewhere (a board's custom transport, a Rust net stack) the answer is
- * NONE, which RFC-0113 D5 refuses once phase-521 W6 lands. */
+ * A board's custom transport is NOTIFY when it registered a receive
+ * notification (`nros_rmw_xrce_set_custom_transport_rx_notify`, phase-521
+ * W5). Elsewhere (a custom transport without one, a Rust net stack) the
+ * answer is NONE, which RFC-0113 D5 refuses once phase-521 W6 lands. */
 rmw_ret_t xrce_readiness_source(const rmw_session_t* session, uint8_t* out_kind,
                                 int32_t* out_handle) {
     if (session == NULL || out_kind == NULL || out_handle == NULL) {
@@ -748,6 +750,9 @@ rmw_ret_t xrce_set_wake_callback(rmw_session_t* session, void (*cb)(void* ctx), 
     }
     if (!st->rx_notify_capable) {
         return NROS_RMW_RET_OK;
+    }
+    if (st->rx_notify_custom) {
+        return xrce_custom_transport_set_rx_notify(cb, ctx);
     }
     if (nros_platform_udp_set_rx_notify(st->udp_bridge.sock, cb, cb != NULL ? ctx : NULL) != 0) {
         return NROS_RMW_RET_ERROR;
@@ -992,6 +997,9 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
             return ret;
         }
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
+        /* phase-521 W5 — a board's transport that reports arrivals. */
+        st->rx_notify_custom = xrce_custom_transport_rx_notify_capable();
+        st->rx_notify_capable = st->rx_notify_custom;
 #if defined(UCLIENT_PLATFORM_POSIX)
     } else if (serial_path != NULL) {
         st->use_custom_transport = true;
