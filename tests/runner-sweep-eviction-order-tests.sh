@@ -23,6 +23,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 sweep="$repo_root/scripts/ci/runner-sweep.sh"
 # shellcheck source=scripts/lib/grep-q.sh
 . "$repo_root/scripts/lib/grep-q.sh"
+. "$repo_root/scripts/lib/git-hook-env.sh"
 failures=0
 checks=0
 
@@ -244,6 +245,82 @@ if [ -f "$w3/ran" ] && nros_grep_q '^nros setup --tool cargo-sweep$' "$w3/ran" \
 else
     fail "--provision did not install then prune (ran: $(cat "$w3/ran" 2>/dev/null)):
 $out7"
+fi
+
+# --- issue 2191: leaf builds under examples/ are fixture units ------------------
+#
+# 94.8 GiB of `examples/**` leaf builds sat in no area on newslab-118: reported
+# every sweep, reclaimed by none. Each leaf's git-ignored `build*`/`target*`
+# dir is now a unit of the fixtures area, evicted oldest-first with the caches;
+# `generated/` (a `nros sync` product a build does not recreate) is not, and is
+# still counted from four levels down rather than vanishing from the report.
+w5="$work/w5"
+leaf="$w5/examples/linux/rust/talker"
+mkdir -p "$leaf/build" "$leaf/target-zenoh" "$leaf/generated" "$w5/build/cargo-fixtures/coord-a"
+(
+    nros_clear_inherited_git_env
+    export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+    git init -q "$w5"
+    printf 'build/\nbuild-*/\ntarget*/\ngenerated/\n' > "$w5/.gitignore"
+    printf '[package]\nname = "talker"\n' > "$leaf/Cargo.toml"
+    git -C "$w5" add .gitignore examples
+    git -C "$w5" -c user.name=t -c user.email=t@t commit -qm leaf
+)
+dd if=/dev/zero of="$leaf/build/app.o" bs=1M count=2 status=none
+dd if=/dev/zero of="$leaf/target-zenoh/libx.rlib" bs=1M count=2 status=none
+dd if=/dev/zero of="$leaf/generated/msg.rs" bs=1M count=1 status=none
+dd if=/dev/zero of="$w5/build/cargo-fixtures/coord-a/lib.rlib" bs=1M count=2 status=none
+touch -t "$old" "$leaf/build/app.o"
+
+out10="$(NROS_RUNNER_REPO_ROOT="$w5" NROS_BUILD_ROOT="$w5/build" \
+         NROS_SWEEP_BUDGET_FIXTURES_GIB=0 NROS_SWEEP_UNBUDGETED_SHOW_MIB=1 \
+         NROS_SWEEP_STATE_DIR="$w5/state" "$sweep" --check --disk 2>&1)" || true
+b_line="$(printf '%s\n' "$out10" | grep -n "rm -rf $leaf/build " | head -1 | cut -d: -f1)"
+t_line="$(printf '%s\n' "$out10" | grep -n "rm -rf $leaf/target-zenoh " | head -1 | cut -d: -f1)"
+if [ -n "$b_line" ] && [ -n "$t_line" ] && [ "$b_line" -lt "$t_line" ]; then
+    ok "a leaf's build and target dirs under examples/ are fixture units, the colder first"
+else
+    fail "examples/ leaf builds were not evicted as fixture units, oldest first:
+$out10"
+fi
+if nros_grep_q -F -- "rm -rf $leaf/generated" <<<"$out10"; then
+    fail "generated/ (a nros sync product) was proposed for eviction:
+$out10"
+else
+    ok "a leaf's generated/ is never evicted"
+fi
+if nros_grep_q -E '^ +unbudgeted: 1 MiB in no area' <<<"$out10" \
+   && nros_grep_q -E "^ +1 MiB +$leaf/generated\$" <<<"$out10"; then
+    ok "what sits beside a leaf build is still reported, four levels down"
+else
+    fail "the leaf's generated/ fell out of the unbudgeted report (want 1 MiB, named):
+$out10"
+fi
+
+# The DEFAULT fixtures budget is one tier-2 working set, capped at 40% of the
+# volume holding the build root. A stub df states the volume size.
+mkdir -p "$w5/bin"
+printf '#!/bin/sh\necho "Filesystem 1-blocks Used Available Capacity Mounted"\necho "stub $W5_VOL_BYTES 0 $W5_VOL_BYTES 0%% /"\n' > "$w5/bin/df"
+chmod +x "$w5/bin/df"
+_budget_w5() {
+    PATH="$w5/bin:$PATH" W5_VOL_BYTES="$1" NROS_RUNNER_REPO_ROOT="$w5" NROS_BUILD_ROOT="$w5/build" \
+        NROS_SWEEP_STATE_DIR="$w5/state" "$sweep" --check --disk 2>&1 || true
+}
+out11="$(_budget_w5 $((100 * 1024 * 1024 * 1024)))"
+out12="$(_budget_w5 $((2048 * 1024 * 1024 * 1024)))"
+if nros_grep_q -F 'default budget capped at 40 GiB' <<<"$out11" \
+   && nros_grep_q -E '^ +fixtures: .* / 40\.0 GiB budget' <<<"$out11"; then
+    ok "on a 100 GiB volume the default fixtures budget is capped at 40%"
+else
+    fail "no 40% cap on a 100 GiB volume:
+$out11"
+fi
+if nros_grep_q -E '^ +fixtures: .* / 280\.0 GiB budget' <<<"$out12" \
+   && ! nros_grep_q -F 'default budget capped' <<<"$out12"; then
+    ok "on a 2 TiB volume the default fixtures budget is the 280 GiB working set"
+else
+    fail "the default fixtures budget on a 2 TiB volume is not 280 GiB:
+$out12"
 fi
 
 # --- issue 2191: the between-jobs sweep runs where the volumes are -------------
