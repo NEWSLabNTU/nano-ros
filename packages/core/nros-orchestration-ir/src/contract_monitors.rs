@@ -695,11 +695,23 @@ fn topic_detectors_in_model(model: &SystemModel, topic: &str) -> Vec<String> {
 /// executor could see it, which `ftti_budget` reports as unobserved); for an
 /// `all_of` guard that leaves the guard unable to fault, so it is dropped.
 /// A hazard left with no guard is not lowered.
+///
+/// issue 2214 -- the rows a guard can name are omission evidence: an age row's
+/// silence lease and a rate row's short window both say "nothing arrived",
+/// never "what arrived says the fault". A hazard whose `on:` names no class
+/// they detect (`reported` alone, a value fault such as a `when:` predicate,
+/// or `late`) is therefore not lowered: observed through the silence row it
+/// would be DETECTED whenever the guard went quiet, which is another hazard's
+/// fault, and never when its own fault came. `ftti_budget` already reports
+/// such a hazard's classes as unobserved on the image.
 pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) -> Vec<HazardRow> {
     let sinks = hazard_sinks(model);
     let ids = model_reaction_ids(model);
     let mut out = Vec::new();
     'hazard: for (key, h) in &model.contracts.hazards {
+        if !silence_observes(h) {
+            continue;
+        }
         let mut guards = Vec::new();
         for g in &h.guards {
             let mut members = Vec::new();
@@ -763,6 +775,17 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
         });
     }
     out
+}
+
+/// issue 2214 -- whether the omission evidence the guard rows carry can
+/// detect `h`'s fault: its `on:` is empty (every class) or names `omission`
+/// or `loss`.
+fn silence_observes(h: &ros_launch_manifest_model::HazardContract) -> bool {
+    use ros_launch_manifest_model::FaultKind;
+    h.on.is_empty()
+        || h.on
+            .iter()
+            .any(|k| matches!(k, FaultKind::Omission | FaultKind::Loss))
 }
 
 /// A guard member as the Rust literal the baked table names.
@@ -1342,6 +1365,23 @@ mod hazard_row_tests {
         let rows = monitor_rows(&m).expect("rows");
         // This executor runs only the sensor: the age row is elsewhere.
         assert!(hazard_rows(&m, &rows, &[]).is_empty());
+    }
+
+    /// issue 2214 -- a hazard on a reported (value) fault is not lowered onto
+    /// the silence and rate rows of its guard topic: they detect omission, so
+    /// they would detect the stream going quiet and call it this hazard. One
+    /// that also names omission still lowers.
+    #[test]
+    fn a_reported_fault_is_not_lowered_onto_the_silence_row() {
+        let reported = HAZARD.replace("on: omission", "on: reported");
+        let (_, _, hz) = lowered(AGE_100, &format!("{reported}      ftti_ms: 500.0\n"));
+        assert!(hz.is_empty(), "{hz:?}");
+        let late = HAZARD.replace("on: omission", "on: late");
+        let (_, _, hz) = lowered(AGE_100, &format!("{late}      ftti_ms: 500.0\n"));
+        assert!(hz.is_empty(), "{hz:?}");
+        let both = HAZARD.replace("on: omission", "on: [omission, reported]");
+        let (_, _, hz) = lowered(AGE_100, &format!("{both}      ftti_ms: 500.0\n"));
+        assert_eq!(hz.len(), 1, "{hz:?}");
     }
 
     /// A model with no hazard renders exactly what it rendered before W3b.
