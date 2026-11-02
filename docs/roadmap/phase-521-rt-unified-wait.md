@@ -223,10 +223,37 @@ of `z_sleep_ms` polls, and the board's XRCE custom-transport `read` sleeps on it
 instead of spinning. `test_qemu_serial_pubsub_e2e` and
 `test_qemu_xrce_pubsub_e2e` deliver. The CPU acceptance is not met in a lane:
 under the SDK's QEMU 11 an idle serial listener costs a host core with or
-without the hook, against about 2 % under QEMU 9 either way (issue 2209). Still
-open here: the custom-transport `rx_notify` (lands with W4, whose XRCE Notify
-path it needs), zenoh CALLER mode's honest `next_deadline_ms`, and the
-board-entry refusal.
+without the hook, against about 2 % under QEMU 9 either way (issue 2209).
+
+**zenoh CALLER mode parks (2026-11-02).** mps2-an385's port gets a wake
+object (`nros_platform_mps2_an385::wake`): a flag, parked on through the
+board's tickless sleep, which ends at the deadline, on a signal, or when the
+link has received data (LAN9118 or UART0 RX interrupt). The board states that
+with `nros_rmw_zenoh::set_caller_rx_wakes_park`, and the zenoh session in
+CALLER mode then states `Notify`, so the executor parks between spins instead
+of draining the link from `drive_io` every 10 ms. Its `next_deadline_ms` is
+zenoh-pico's own next due future, link reads excluded (fork commit
+`zp_next_wake_ms`, through `zpico_next_wake_ms`), and `None` when nothing is
+scheduled; smoltcp's timers already bound the park as a platform wake source
+(phase-436 B2). ThreadX's CALLER mode runs a multi-thread zenoh-pico build
+whose executor cannot be read without its lock, so it keeps the keep-alive
+interval and its blind `z_sleep_ms` (W6).
+
+Measured on the idle `qemu-bsp-listener` (zenoh over LAN9118 to `rmw_zenohd`,
+no talker, 20 s, distro QEMU 9.0.2, counting SysTick one-shot arms with gdb):
+41 arms with the park against 1,892 with the flag cleared (the old 10 ms
+drain), and 12 against 671 host CPU ticks over the window (gdb's breakpoint
+included in both). Under the SDK's QEMU 11 the same image arms 175,157 times:
+`wfi` returns at once there on the network link too (issue 2209, which is not
+about the serial chardev). `test_qemu_bsp_pubsub_e2e`,
+`test_qemu_serial_pubsub_e2e`, `test_qemu_xrce_pubsub_e2e`,
+`test_qemu_rtic_pubsub_e2e`, `test_qemu_rtic_service_e2e` and
+`test_qemu_lan9118_driver` pass.
+
+Still open: the board-entry refusal of a bare-metal board without an RX
+interrupt and a one-shot timer (esp32-c3 is the in-tree one), which W6's
+open-time `None` refusal delivers, and the custom-transport `rx_notify` for
+XRCE serial.
 
 ### W6 — Retire the receive-blocking fallback
 

@@ -3653,6 +3653,47 @@ bool zpico_drives_on_thread(void) {
 #endif
 }
 
+// phase-521 W5 (RFC-0113 D6) — when this session's executor next has work its caller
+// must wake for. Only answerable in a single-thread CALLER build, where the executor
+// runs in `zpico_spin_once` and `zp_next_wake_ms` can read it without a lock; THREAD
+// mode owes the caller nothing, and ThreadX's CALLER mode runs a multi-thread build.
+//
+// The link read futures are not counted: they only poll, and a caller that asks is
+// one whose park ends on the link's receive interrupt. A pending tx batch is: its
+// flush runs only here.
+//
+// Returns 1 and writes `*out_ms` when work is due, 0 when nothing is scheduled, and
+// -1 when the build cannot answer (the caller keeps its own bound).
+int8_t zpico_next_wake_ms(zpico_session_t* session, uint64_t* out_ms) {
+#if defined(ZPICO_DRIVE_CALLER) && !defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD == 0
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open || out_ms == NULL) {
+        return -1;
+    }
+    uint64_t ms = 0;
+    bool due = zp_next_wake_ms(z_session_loan(&s->session), &ms);
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && ZPICO_TX_BATCH_THREAD == 0
+    {
+        unsigned long since = s->batch_flush_init ? z_clock_elapsed_ms(&s->last_batch_flush) : 0;
+        uint64_t flush_in = since >= ZPICO_TX_BATCH_FLUSH_MS ? 0 : (uint64_t)(ZPICO_TX_BATCH_FLUSH_MS - since);
+        if (!due || flush_in < ms) {
+            ms = flush_in;
+        }
+        due = true;
+    }
+#endif
+    if (due) {
+        *out_ms = ms;
+        return 1;
+    }
+    return 0;
+#else
+    (void)session;
+    (void)out_ms;
+    return -1;
+#endif
+}
+
 // ============================================================================
 // ZenohId Implementation
 // ============================================================================

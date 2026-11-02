@@ -166,14 +166,12 @@ work to do at it.
 
 - **zenoh, THREAD mode:** `None`. zenoh-pico's own executor thread runs the
   lease and keep-alive.
-- **zenoh, CALLER mode:** one keep-alive interval (~3.3 s), because the lease
-  and keep-alive futures run only inside `zpico_spin_once`. zenoh-pico's own
-  next wake-up there is its idle read's 1 ms poll
-  (`Z_RUNTIME_IDLE_READ_TASK_SLEEP`), which is not a deadline but a poll: a
-  park that honoured it would read the link at 1 kHz. Once the read is driven
-  by an RX Notify (D4, phase-521 W5), the read stops polling and the
-  executor's next wake-up (`next_wake_up_time` in `src/runtime/executor.c`)
-  becomes the honest answer.
+- **zenoh, CALLER mode:** zenoh-pico's next due future, the link read
+  futures excluded (`zp_next_wake_ms`; phase-521 W5). The read future only
+  polls (`Z_RUNTIME_IDLE_READ_TASK_SLEEP`), so honouring it would read the link
+  at 1 kHz; on a board whose park the RX interrupt ends it is not needed.
+  `None` when nothing is scheduled. ThreadX's CALLER build runs zenoh-pico
+  multi-threaded and keeps one keep-alive interval (~3.3 s).
 - **XRCE:** unchanged (`xrce_deadline_next` already names real events).
 
 On bare metal, a deadline is served by a hardware one-shot timer that the
@@ -252,5 +250,7 @@ host-callable function.
 
 ## Changelog
 
+- 2026-11-02 — D6: zenoh CALLER mode reports zenoh-pico's next due future
+  (phase-521 W5).
 - 2026-10-31 — Filed. PX4 decided as Tier 1 (D9) and `nros::setup!` retired
   (D10) by the maintainer the same day.

@@ -638,6 +638,17 @@ mod cbindgen_stubs {
         false
     }
 
+    /// phase-521 W5 (RFC-0113 D6) — when the session's executor next has work
+    /// its caller must wake for, link read futures excluded.
+    ///
+    /// # Returns
+    /// 1 with `*out_ms` written when work is due, 0 when nothing is scheduled,
+    /// -1 when the build cannot answer (THREAD mode, ThreadX).
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_next_wake_ms(_session: *mut zpico_session_t, _out_ms: *mut u64) -> i8 {
+        -1
+    }
+
     // ========================================================================
     // ZenohId API
     // ========================================================================

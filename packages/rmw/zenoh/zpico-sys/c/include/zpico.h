@@ -827,6 +827,16 @@ bool zpico_uses_polling(void);
 bool zpico_drives_on_thread(void);
 
 /**
+ * phase-521 W5 (RFC-0113 D6) — when the session's executor next has work
+ * its caller must wake for, link read futures excluded.
+ *
+ * # Returns
+ * 1 with `*out_ms` written when work is due, 0 when nothing is scheduled,
+ * -1 when the build cannot answer (THREAD mode, ThreadX).
+ */
+int8_t zpico_next_wake_ms(struct zpico_session_t *_session, uint64_t *_out_ms);
+
+/**
  * Get the session's Zenoh ID.
  *
  * # Parameters

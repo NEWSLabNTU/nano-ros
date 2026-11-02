@@ -30,7 +30,7 @@ nros-board-cffi                      3   0     0       6      0
 nros-board-esp32-qemu               11   1     1       0      0
 nros-board-freertos                 64   1     1      20      0
 nros-board-linux                    21   0     0       7      0
-nros-board-mps2-an385               36   6     1       6      0
+nros-board-mps2-an385               36   6     1       8      0
 nros-board-mps2-an385-freertos       3   0     0       1      0
 nros-board-nuttx                    28   0     0      14      0
 nros-board-nuttx-qemu                4   0     0       3      0
@@ -58,7 +58,7 @@ nros-platform-api                   22   5     1       8      0
 nros-platform-cffi                  97   0     4     114      0
 nros-platform-critical-section       2   2     1       1      0
 nros-platform-esp32-qemu            17   0     2      16      0
-nros-platform-mps2-an385            19   6     3       7      0
+nros-platform-mps2-an385            23   6     3       8      0
 nros-platform-stm32f4               15   6     3       2      0
 nros-port-metric-bench               3   0     0       3      0
 nros-rmw                            21   7    11      13      0
@@ -67,7 +67,7 @@ nros-rmw-cyclonedds                  8   0     7       1      0
 nros-rmw-cyclonedds-sys              2   0     0       1      0
 nros-rmw-metadata                    1   0     0       0      0
 nros-rmw-xrce-cffi                   3   1     0       5      0
-nros-rmw-zenoh                     141  12     5      21      0
+nros-rmw-zenoh                     142  12     5      21      0
 nros-sizes-build                    28   0     0       0      0
 nros-smoltcp                       112  19     2      11      0
 nros-tests                          29   0     0       0      0

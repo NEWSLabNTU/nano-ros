@@ -630,6 +630,10 @@ unsafe extern "C" {
     // RFC-0113 D6 — whether zenoh-pico's executor runs on its own thread
     // (RFC-0110 THREAD mode) — process-global, fixed at build time.
     pub fn zpico_drives_on_thread() -> bool;
+    // phase-521 W5 (RFC-0113 D6) — when the session's executor next has work its
+    // caller must wake for, link reads excluded: 1 and `*out_ms`, 0 none, -1 the
+    // build cannot answer (THREAD mode, ThreadX).
+    pub fn zpico_next_wake_ms(session: *mut zpico_session_t, out_ms: *mut u64) -> i8;
 
     // Clock helpers (for FFI reentrancy guard timeout decomposition) — process-global.
     pub fn zpico_clock_start(clock_buf: *mut u8);
