@@ -115,7 +115,7 @@ fn an_old_user_spelling_is_silent_when_piped() {
 
 #[test]
 fn a_reserved_verb_refuses_and_names_what_to_do() {
-    for verb in ["flash", "monitor", "bench", "debug"] {
+    for verb in ["flash", "monitor", "debug"] {
         let (ok, _, err) = run(&[verb, "talker"]);
         assert!(!ok, "`nros {verb}` succeeded");
         assert!(err.contains("is reserved"), "{err}");

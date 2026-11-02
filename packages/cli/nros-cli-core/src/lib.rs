@@ -272,7 +272,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Graph(args) => cmd::graph::run(args),
         cmd::Cmd::Flash(args) => cmd::reserved::run("flash", args),
         cmd::Cmd::Monitor(args) => cmd::reserved::run("monitor", args),
-        cmd::Cmd::Bench(args) => cmd::reserved::run("bench", args),
+        cmd::Cmd::Bench(args) => cmd::bench::run(args),
         cmd::Cmd::Debug(args) => cmd::reserved::run("debug", args),
         cmd::Cmd::GenerateRust(args) => cmd::generate::run_rust(args),
         cmd::Cmd::CodegenFingerprint => {

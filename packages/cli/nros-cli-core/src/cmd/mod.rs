@@ -9,6 +9,7 @@
 
 use clap::Subcommand;
 
+pub mod bench;
 pub mod board;
 pub mod board_facts;
 pub mod board_new;
@@ -130,8 +131,11 @@ pub enum Cmd {
     /// Attach to a running board's console (reserved: not available yet).
     Monitor(reserved::Args),
 
-    /// Run an image on a bench of boards (reserved: not available yet).
-    Bench(reserved::Args),
+    /// This machine's boards: `scan` records which attached USB device is
+    /// which board in `$NROS_HOME/bench.toml`, `list` prints it with what is
+    /// attached now (RFC-0118 D6). It supplies ports and probes, never test
+    /// scope.
+    Bench(bench::Args),
 
     /// Debug an image on its target (reserved: not available yet).
     Debug(reserved::Args),

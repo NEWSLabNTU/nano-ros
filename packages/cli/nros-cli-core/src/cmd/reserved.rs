@@ -4,8 +4,9 @@
 //! The names are taken now so nothing else claims them (a command package
 //! cannot provide a reserved verb, RFC-0119), and so a user who types one is
 //! told what to do instead. Each refuses until its implementation lands
-//! (flash, monitor, bench: phase-529). `run` has one since phase-528 W1
-//! ([`crate::cmd::run_plan`]; [`IMPLEMENTED`]).
+//! (flash, monitor: phase-529). `run` has one since phase-528 W1
+//! ([`crate::cmd::run_plan`]) and `bench` since phase-529 W4
+//! ([`crate::cmd::bench`]); see [`IMPLEMENTED`].
 
 use clap::Args as ClapArgs;
 use eyre::Result;
@@ -17,7 +18,7 @@ pub const VERBS: &[&str] = &["run", "flash", "monitor", "bench", "debug"];
 /// The reserved verbs that have an implementation now, and so parse their own
 /// arguments instead of refusing (`run`: phase-528 W1's `--dry-run`). A
 /// command package still cannot claim them.
-pub const IMPLEMENTED: &[&str] = &["run"];
+pub const IMPLEMENTED: &[&str] = &["run", "bench"];
 
 #[derive(Debug, ClapArgs)]
 pub struct Args {
