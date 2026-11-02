@@ -1,7 +1,8 @@
 # Phase 527 — Runner and command packages: kinds, host build, dispatch, release underlay
 
-**Status (2026-11-02). IN PROGRESS — W3 and W1 landed (`packages/runners/`
-and `nros-extension`; the `runner` and `command` kinds); W2 next.** Implements
+**Status (2026-11-02). IN PROGRESS — W3, W1 and W2 landed (`packages/runners/`
+and `nros-extension`; the `runner` and `command` kinds; the host build
+role); W4 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -87,6 +88,40 @@ Acceptance:
   host triple.
 - Touching the runner's source rebuilds only the runner.
 - Touching the image's source does not rebuild the runner.
+
+Status: **DONE** (2026-11-02).
+
+- `builder::discover` classifies each workspace package's build role from the
+  same walk (`provider_scan::scan_workspace_packages` now records providers),
+  as `Discovered::host`. Image planning reads `without_host()`, so no
+  generated cargo or CMake root lists a host tool. A dependency on a host tool
+  is exempt from the selection's closure check.
+- `builder::host_tool` owns both facts: where a host tool builds
+  (`<ws>/build/nros/host/<package>/`; cargo with `--release --target <host
+  triple>` and its own `--target-dir`, or the package's own `CMakeLists.txt`
+  into `cmake/`) and where its executable lands (`executable`, which refuses an
+  unbuilt one naming `nros build --packages-select <package>`). W4's dispatch
+  and phase-528's `nros run` call `executable`; nothing calls it yet, so the
+  refusal is held by a unit test.
+- `cmd::build::plan_with_host_tools` is what `nros build` drives: the host
+  tools first, then the images. `plan_builds` still returns images only,
+  because `nros run` and `nros image-facts` ask about images. The image edge:
+  each image's `run` and `flash` plans name a runner; when a workspace package
+  announces that name and the provider search path resolves it to that
+  package, the image's bringup package gains a `<depend>` on it before the
+  selection is applied.
+- Decisions: the host directory is fixed (`--build-base` does not move it,
+  because dispatch reads it); `-- <native args>` and `--check` do not reach a
+  host tool; with no selection every host tool builds; a selection keeping
+  only host tools builds no image.
+- `nros-cli-core/tests/host_build_role.rs` plans the acceptance workspace
+  (one bringup with a `linux` image, one runner package providing `native`).
+  Measured on a copy of `examples/templates/multi-node-workspace` plus a
+  runner package, with real builds: `nros build --packages-up-to demo_bringup`
+  built `acme_runner` (x86_64-unknown-linux-gnu, release) and then the image.
+  Touching the runner's `main.rs` recompiled only `acme_runner`; touching
+  `talker_pkg/src/lib.rs` recompiled `talker_pkg` and `linux_entry`, and the
+  runner binary's mtime did not move.
 
 ### W3 — `packages/runners/` and `nros-extension`
 

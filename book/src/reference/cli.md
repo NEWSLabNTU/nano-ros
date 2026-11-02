@@ -405,6 +405,21 @@ nros build --packages-above msgs_pkg            # it and what depends on it
 nros list -t -n --packages-skip other_pkg      # the set, in build order
 ```
 
+A `runner` or `command` package (RFC-0119) is a host tool. `nros build`
+builds it for the host triple, in release, into
+`build/nros/host/<package>/`, whatever board the images beside it target. It
+has its own target directory and never joins an image's generated root, so
+editing it rebuilds only it, and editing an image does not rebuild it.
+`--build-base` does not move it, because `nros run` and extension verbs look
+for its executable there. An image depends on the workspace package providing
+its runner, so `nros build --packages-up-to <bringup>` builds that runner too.
+With no selection every host tool in the workspace builds, and a selection
+that keeps only host tools builds no image:
+
+```sh
+nros build --packages-select acme_tools         # one command package, alone
+```
+
 `-v` / `--verbose` shows the configure's detail notes: why a re-configure
 happened, which message bounds were refused and why. Without it each is one
 line. A raw cmake run gets the same with `--log-level=VERBOSE`.

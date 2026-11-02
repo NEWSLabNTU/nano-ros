@@ -150,6 +150,23 @@ Build order uses ordinary dependency edges:
   `nros <verb>` with an unbuilt command package refuses and names
   `nros build --packages-select <package>`.
 
+How the build does it (phase-527 W2):
+
+- A cargo host tool builds with `--release --target <host triple>` and
+  `--target-dir <ws>/build/nros/host/<package>/target`, so a `[build] target`
+  in a `.cargo/config.toml` above it cannot make it a cross build. A CMake
+  host tool configures its own `CMakeLists.txt` into
+  `<ws>/build/nros/host/<package>/cmake`.
+- The place is fixed: `--build-base` does not move it, because dispatch and
+  `nros run` find the executable there from the workspace alone.
+- The image edge is resolved on the provider search path (RFC-0087 D6). Only
+  a runner whose winning provider is a package of this workspace adds an
+  edge; one provided from the nano-ros root or a released toolchain is
+  already built. A dependency on a host tool is exempt from the selection's
+  closure check, since leaving one out cannot break the image's root.
+- With no selection, every host tool in the workspace builds. A selection
+  that keeps only host tools builds no image.
+
 ### D4 — Where packages come from, and which one wins
 
 Discovery is RFC-0087 D1 and D6, unchanged: a directory with a `package.xml`,
@@ -327,3 +344,6 @@ CMake code when they build it, so this adds no new boundary.
   (`module.yml` carries `runners`; `west-commands` belongs to the west
   manifest). Landed D1, D2 and the D10 refusals in `check-provider-announcements`
   (A6 host/target mix, A7 built-in verb, A8 stated `bin`).
+- 2026-11 — phase-527 W2: D3's build role landed in `nros build`; D3 records
+  the host build's place, profile and triple, and how the image edge
+  resolves.

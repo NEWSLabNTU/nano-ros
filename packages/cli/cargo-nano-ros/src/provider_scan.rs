@@ -500,28 +500,7 @@ pub fn scan_roots(roots: &[PathBuf]) -> Result<ScanResult> {
 pub fn scan_root(root: &Path, root_index: usize) -> Result<ScanResult> {
     let mut out = ScanResult::default();
     walk_packages(root, &mut out, |dir, pkg, out| {
-        // phase-527 W1 / RFC-0119 D3 — a package announcing a host kind
-        // (`runner`, `command`) and a target kind has no single build role, so
-        // it is refused rather than listed: resolving either half would pick a
-        // package `nros build` cannot build. A scan error, like a parse
-        // failure, so one bad package hides only itself and a gate can make it
-        // fatal (`check-provider-announcements` A6).
-        if let Err(message) = pkg.build_role() {
-            out.errors.push(ScanError {
-                path: dir.join("package.xml"),
-                message,
-            });
-            return;
-        }
-        if !pkg.provides.is_empty() {
-            out.providers.push(ProviderPackage {
-                package: pkg.name.clone(),
-                dir: dir.to_path_buf(),
-                root_index,
-                provides: pkg.provides.clone(),
-                depends: pkg.dependencies.clone(),
-            });
-        }
+        record_provider(dir, pkg, root_index, out);
     })?;
 
     // `stack.pop()` makes the walk order depend on read_dir order, which is
@@ -532,6 +511,33 @@ pub fn scan_root(root: &Path, root_index: usize) -> Result<ScanResult> {
     out.errors.sort_by(|a, b| a.path.cmp(&b.path));
     out.inputs.sort();
     Ok(out)
+}
+
+/// Record what one parsed `package.xml` provides, for both walks.
+///
+/// phase-527 W1 / RFC-0119 D3 — a package announcing a host kind (`runner`,
+/// `command`) and a target kind has no single build role, so it is refused
+/// rather than listed: resolving either half would pick a package `nros build`
+/// cannot build. A scan error, like a parse failure, so one bad package hides
+/// only itself and a gate can make it fatal (`check-provider-announcements`
+/// A6).
+fn record_provider(dir: &Path, pkg: &PackageXml, root_index: usize, out: &mut ScanResult) {
+    if let Err(message) = pkg.build_role() {
+        out.errors.push(ScanError {
+            path: dir.join("package.xml"),
+            message,
+        });
+        return;
+    }
+    if !pkg.provides.is_empty() {
+        out.providers.push(ProviderPackage {
+            package: pkg.name.clone(),
+            dir: dir.to_path_buf(),
+            root_index,
+            provides: pkg.provides.clone(),
+            depends: pkg.dependencies.clone(),
+        });
+    }
 }
 
 /// The shared tree walk: find every `package.xml` under `root`, parse it once,
@@ -656,10 +662,16 @@ pub struct WorkspacePackage {
 }
 
 /// Every package under `root`, in path order.
+///
+/// The returned scan also carries the providers among them, as root 0, so a
+/// caller that needs both the package graph and what each package announces
+/// walks the tree once (phase-527 W2: `nros build` reads each package's build
+/// role from it).
 pub fn scan_workspace_packages(root: &Path) -> Result<(Vec<WorkspacePackage>, ScanResult)> {
     let mut out = ScanResult::default();
     let mut pkgs = Vec::new();
-    walk_packages(root, &mut out, |dir, pkg, _out| {
+    walk_packages(root, &mut out, |dir, pkg, out| {
+        record_provider(dir, pkg, 0, out);
         pkgs.push(WorkspacePackage {
             name: pkg.name.clone(),
             dir: dir.to_path_buf(),
@@ -668,6 +680,7 @@ pub fn scan_workspace_packages(root: &Path) -> Result<(Vec<WorkspacePackage>, Sc
         });
     })?;
     pkgs.sort_by(|a, b| a.dir.cmp(&b.dir));
+    out.providers.sort_by(|a, b| a.dir.cmp(&b.dir));
     out.errors.sort_by(|a, b| a.path.cmp(&b.path));
     out.inputs.sort();
     Ok((pkgs, out))

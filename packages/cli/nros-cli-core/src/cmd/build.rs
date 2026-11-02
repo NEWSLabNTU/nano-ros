@@ -16,7 +16,10 @@
 //! A cargo/cmake image reports what stage 4 will do and stops, rather than
 //! silently building the wrong thing.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+};
 
 use clap::Parser;
 use eyre::{Result, WrapErr};
@@ -595,6 +598,18 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
     let all_packages = found.packages.clone();
     let found =
         discover::select(&found, &args.selection.selection()).map_err(|e| eyre::eyre!("{e}"))?;
+    // RFC-0119 D3 (phase-527 W2) — a runner or command package is a host
+    // tool: it is built on its own for the host ([`plan_host_tools`]) and is
+    // never a member of an image's generated root, so image planning sees the
+    // workspace without it.
+    let selected_host_tools = !found.host.is_empty();
+    let found = found.without_host();
+    // A selection that keeps nothing but host tools asks for no image:
+    // `nros build --packages-select <command package>` builds that package
+    // alone, as the refusal for an unbuilt command tells the user to run.
+    if selected_host_tools && found.packages.is_empty() {
+        return Ok(Vec::new());
+    }
 
     let requested: Vec<String> = if args.all {
         plan::all_images(&bringups)
@@ -668,7 +683,13 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         if planning == Planning::Query {
             return Ok(Vec::new());
         }
-        return plan_packages(&root, &found, args, nano_ros_root.as_deref());
+        return plan_packages(
+            &root,
+            &found,
+            args,
+            nano_ros_root.as_deref(),
+            selected_host_tools,
+        );
     }
 
     // The workspace's OWN packages can carry board descriptors, so a board is
@@ -2772,7 +2793,7 @@ pub fn run(args: Args) -> Result<()> {
         }
     }
 
-    let mut plans = plan_builds(&args)?;
+    let mut plans = plan_with_host_tools(&args)?;
     if args.verbose {
         for p in &mut plans {
             for h in p.configure.iter_mut().chain(p.handoff.iter_mut()) {
@@ -3538,6 +3559,7 @@ fn plan_packages(
     found: &crate::builder::discover::Discovered,
     args: &Args,
     nano_ros_root: Option<&std::path::Path>,
+    has_host_tools: bool,
 ) -> Result<Vec<ResolvedBuild>> {
     let mut out = Vec::new();
     // colcon's `--build-base`, relative to the workspace as colcon's is to the
@@ -3673,13 +3695,231 @@ fn plan_packages(
             package_depends: Some(pkg.depends.iter().cloned().collect()),
         });
     }
-    if out.is_empty() {
+    // A workspace whose only buildable packages are host tools builds those
+    // (`plan_host_tools`), so it is not empty.
+    if out.is_empty() && !has_host_tools {
         eyre::bail!(
             "no buildable package under {} — a workspace with no bringup builds each \
              package with its own build file, and none carries a Cargo.toml or \
              CMakeLists.txt it can build",
             root.display()
         );
+    }
+    Ok(out)
+}
+
+/// [`plan_builds`], with the workspace's host tools planned ahead of the
+/// images (RFC-0119 D3, phase-527 W2). What `nros build` drives.
+///
+/// Separate from [`plan_builds`] because every other caller asks about IMAGES
+/// (`nros run` wants exactly one, `nros image-facts` answers for each), and a
+/// host tool is not one.
+///
+/// # Errors
+///
+/// As [`plan_builds`], or a host tool that cannot be planned.
+pub fn plan_with_host_tools(args: &Args) -> Result<Vec<ResolvedBuild>> {
+    let images = plan_builds(args)?;
+    // `--check` type-checks images; a host tool is not part of one.
+    if args.check.is_some() {
+        return Ok(images);
+    }
+    let mut out = plan_host_tools(args, &images)?;
+    out.extend(images);
+    Ok(out)
+}
+
+/// The runner names each image's plans resolve to — `run`, and `flash` —
+/// keyed by the image's bringup package. A verb that does not resolve for a
+/// board (`run` on real silicon) names no runner, and is not an error here:
+/// `nros run` and `nros flash` report it when they are asked.
+fn image_runner_names(images: &[ResolvedBuild]) -> BTreeMap<String, BTreeSet<String>> {
+    use crate::cmd::run_plan;
+    let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for p in images {
+        let Some(descriptor) = p.descriptor.as_ref() else {
+            continue;
+        };
+        let Some((bringup, _)) = p.qualified.split_once(':') else {
+            continue;
+        };
+        let bench = run_plan::Bench::default();
+        let invocation = run_plan::Invocation::default();
+        for verb in [
+            nros_extension::plan::Verb::Run,
+            nros_extension::plan::Verb::Flash,
+        ] {
+            let inputs = run_plan::Inputs {
+                image: &p.qualified,
+                board: &p.board,
+                descriptor,
+                output: p.output.as_ref(),
+                tables: &p.run_tables,
+                bench: &bench,
+                invocation: &invocation,
+            };
+            if let Ok(plan) = run_plan::resolve(verb, inputs) {
+                out.entry(bringup.to_string())
+                    .or_default()
+                    .insert(plan.runner.name);
+            }
+        }
+    }
+    out
+}
+
+/// Stage 4 for the host tools: every `runner` or `command` package the
+/// selection keeps, each built for the host into its own directory
+/// ([`crate::builder::host_tool`]).
+///
+/// An image depends on the package providing its runner (RFC-0119 D3): the
+/// edge is added to the image's bringup package before the selection is
+/// applied, so `--packages-up-to <bringup>` reaches the runner while the
+/// image's own root still never lists it. Which package provides a runner name
+/// is the provider search path's answer ([`crate::cmd::ws::provider_search_path`]),
+/// so a runner resolved from outside the workspace — nano-ros's own, built by
+/// `just setup-cli` or shipped prebuilt — adds no edge and is not built here.
+fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<ResolvedBuild>> {
+    use cargo_nano_ros::{package_xml::RUNNER_KIND, provider_scan};
+
+    let root = match &args.workspace {
+        Some(w) => w.clone(),
+        None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
+    };
+    let root = std::fs::canonicalize(&root)
+        .wrap_err_with(|| format!("resolving workspace root {}", root.display()))?;
+    // A single-package leaf is one package and holds no host tool.
+    if nros_orchestration_ir::leaf_system::is_package_dir(&root) {
+        return Ok(Vec::new());
+    }
+    let members = discover::cargo_members_or_walk(&root);
+    let mut found = discover::discover_in(&root, &args.selection.base_paths, &members)
+        .map_err(|e| eyre::eyre!("{e}"))?;
+    if found.host.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // ---- the image -> runner edges ---------------------------------------
+    let wanted = image_runner_names(images);
+    let offered: BTreeSet<&str> = found
+        .host
+        .values()
+        .flatten()
+        .filter(|p| p.kind == RUNNER_KIND)
+        .map(|p| p.name.as_str())
+        .collect();
+    // Scanning the search path costs a walk of the nano-ros tree, so it is
+    // done only when a workspace runner could be the answer.
+    if wanted
+        .values()
+        .flatten()
+        .any(|n| offered.contains(n.as_str()))
+    {
+        let path = crate::cmd::ws::provider_search_path(&root)?;
+        let scan = provider_scan::scan_roots(&path.paths())?;
+        let by_dir: BTreeMap<PathBuf, String> = found
+            .packages
+            .iter()
+            .filter(|p| found.host.contains_key(&p.dir))
+            .map(|p| (p.dir.clone(), p.name.clone()))
+            .collect();
+        let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (bringup, names) in &wanted {
+            for name in names.iter().filter(|n| offered.contains(n.as_str())) {
+                let Ok(r) = provider_scan::resolve_unique(&scan, RUNNER_KIND, name) else {
+                    continue;
+                };
+                let dir = r.winner.dir.canonicalize().unwrap_or(r.winner.dir);
+                if let Some(pkg) = by_dir.get(&dir) {
+                    edges
+                        .entry(bringup.clone())
+                        .or_default()
+                        .insert(pkg.clone());
+                }
+            }
+        }
+        for p in &mut found.packages {
+            if let Some(runners) = edges.get(&p.name) {
+                p.depends.extend(runners.iter().cloned());
+            }
+        }
+    }
+
+    let found =
+        discover::select(&found, &args.selection.selection()).map_err(|e| eyre::eyre!("{e}"))?;
+    let hosts = found.host_packages();
+    if hosts.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let nano_ros_root =
+        crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
+    let triple = crate::orchestration::metadata_build::host_triple();
+    let host_names: BTreeSet<&str> = hosts.iter().map(|p| p.name.as_str()).collect();
+    let mut out = Vec::new();
+    for pkg in hosts {
+        let has_lock = pkg.dir.join("Cargo.lock").is_file();
+        let routing = crate::routing::route(pkg);
+        if routing.cargo_member {
+            // RFC-0104 D3 — seeded from the pin set first, as every cargo root
+            // nros build resolves is.
+            crate::orchestration::registry_pins::seed(&pkg.dir, nano_ros_root.as_deref())?;
+        }
+        let Some(b) = crate::builder::host_tool::plan(
+            &root,
+            &pkg.name,
+            &pkg.dir,
+            routing,
+            crate::builder::host_tool::Options {
+                host_triple: &triple,
+                offline: args.offline,
+                has_lock,
+                cmake_args: &args.cmake_args,
+            },
+        ) else {
+            eyre::bail!(
+                "`{}` provides a host tool and carries neither a Cargo.toml nor a \
+                 CMakeLists.txt, so nros build cannot build it",
+                pkg.name
+            );
+        };
+        out.push(ResolvedBuild {
+            qualified: pkg.name.clone(),
+            board: "host".to_string(),
+            platform: triple.clone(),
+            driver: b.driver,
+            handoff: Some(b.handoff),
+            rmw: None,
+            entry_package: None,
+            target: Some(triple.clone()),
+            profile: Some(crate::builder::host_tool::PROFILE.to_string()),
+            cmake_build_dir: None,
+            capabilities: Vec::new(),
+            kernel: None,
+            entry_root: None,
+            configure: b.configure,
+            record: crate::orchestration::project_lock::BuildRecord {
+                project: root.clone(),
+                cargo_roots: if b.driver == Driver::Cargo {
+                    vec![pkg.dir.clone()]
+                } else {
+                    Vec::new()
+                },
+                build_dirs: vec![b.build_dir],
+            },
+            output: None,
+            descriptor: None,
+            run_tables: Default::default(),
+            // Only the host tools it depends on order it; an image never
+            // waits on a host tool to build, it waits on it to RUN.
+            package_depends: Some(
+                pkg.depends
+                    .iter()
+                    .filter(|d| host_names.contains(d.as_str()))
+                    .cloned()
+                    .collect(),
+            ),
+        });
     }
     Ok(out)
 }

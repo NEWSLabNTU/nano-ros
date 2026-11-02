@@ -28,6 +28,7 @@ pub mod discover;
 pub mod dist;
 pub mod entry;
 pub mod handoff;
+pub mod host_tool;
 pub mod materialize;
 pub mod paths;
 pub mod plan;
