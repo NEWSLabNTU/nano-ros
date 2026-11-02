@@ -51,6 +51,7 @@ pub mod new_platform;
 pub mod new_system;
 pub mod pin;
 pub mod plan;
+pub mod prepare;
 pub mod profile;
 pub mod reserved;
 pub mod run_plan;
