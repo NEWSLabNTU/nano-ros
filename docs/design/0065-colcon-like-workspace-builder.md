@@ -38,7 +38,7 @@ build it — silently, because an absent subdir is not an error.
 
 ```bash
 nros setup linux
-nros sync
+nros configure
 nros dev codegen system --bringup demo_bringup
 nros check --bringup src/demo_bringup
 nros check --workspace .
@@ -168,7 +168,7 @@ nros build [<image>] [--board <board>] [-- <native build args>]
 ```
 
 Stages 1–3 exist today (`nros-pkg-index`, `nros dev ws order`, `nros setup`, `nros
-doctor`, `nros sync`). Stage 4's root emitter and the driver that sequences them
+doctor`, `nros configure`). Stage 4's root emitter and the driver that sequences them
 are the new code.
 
 **Bare `nros build` never guesses and never surprises.** `[system]
@@ -235,7 +235,7 @@ hand-written one, so the builder **never overwrites an existing `[workspace]`
 root** — it uses it, and generates only when none exists; D13's migration is
 therefore a deletion, not a cutover. And stage 5 runs **from the workspace
 root** regardless, because cargo finds `.cargo/config.toml` by walking up from
-the CWD, and the leaf `[patch.crates-io]` redirects `nros sync` writes live
+the CWD, and the leaf `[patch.crates-io]` redirects `nros configure` writes live
 there.
 
 **Superseded, 2026-09-10 (RFC-0098 D1/D9): there is no cargo workspace root at
@@ -250,7 +250,7 @@ in `src/`, an entry in `build/img/entry/`, no root manifest, every setting from
 in a workspace when it's not`. So stage 4 emits no `<ws>/Cargo.toml`, stage 5
 runs `cargo build --manifest-path build/<coord>/<entry>/Cargo.toml --config
 build/<coord>/nros-cargo.toml` and the working directory stops mattering, and a
-copy-out example builds the same way after `nros sync` (RFC-0098 D2) rather
+copy-out example builds the same way after `nros configure` (RFC-0098 D2) rather
 than with no `nros` at all. The workspace is a directory of packages, as in
 colcon.
 
@@ -505,7 +505,7 @@ builder afterwards uses that package rather than regenerating it.
 looks.** A materialised entry is a one-line `nros::main!(launch = "…")`, and
 that macro reads the launch XML **at expansion time** (its tracked inputs are
 "launch.xml, every `package.xml` the pkg-index walked"). The RMW and capability
-selection likewise flows through the `*_nros_selection` facade that `nros sync`
+selection likewise flows through the `*_nros_selection` facade that `nros configure`
 regenerates. So adding a node to a launch file reaches a materialised entry on
 the next compile: **the derivation stays live.**
 

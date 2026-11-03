@@ -127,14 +127,14 @@ typo guard `[system] ros_edition` always had). One resolver,
 `SystemToml::image_ros_edition`, answers for both halves that must agree: the
 selection writer (`facade::derive`, shared by a workspace entry's facade and a
 single-package leaf's `<pkg>_nros_selection`) and the leaf's message codegen
-(`nros sync --image <id>`). So one leaf can build a humble image and a jazzy
+(`nros configure --image <id>`). So one leaf can build a humble image and a jazzy
 image — `examples/linux/rust/*` declare `linux`, `linux_jazzy`,
 `linux_xrce_jazzy`, … for `just ros_editions build-e2e-fixtures`, which used
 to pass `--features "rmw-<x> ros-<edition>"`.
 
 A leaf's `generated/` holds ONE edition's message crates at a time, so `nros
 sync` records the edition it generated for (`generated/.nros-ros-edition`) and
-`nros build <id>` refuses an image whose edition differs, naming `nros sync
+`nros build <id>` refuses an image whose edition differs, naming `nros configure
 --image <id>`. A workspace still generates its shared message crates for
 `[system] ros_edition`; per-image editions inside one workspace would need one
 `generated/` per edition and are not supported.

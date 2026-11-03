@@ -11,7 +11,7 @@ superseded-by: null
 
 # RFC-0048 — Ament-aligned CMake consumption
 
-> **Message-crate patches retired (RFC-0067 / phase-333).** The W9 `nros sync`-managed
+> **Message-crate patches retired (RFC-0067 / phase-333).** The W9 `nros configure`-managed
 > `[patch.crates-io]` no longer carries generated MESSAGE crates — they are path deps now, and a
 > path dep needs no patch. `nros-core` / `nros-serdes` entries remain (RFC-0067 Q1).
 

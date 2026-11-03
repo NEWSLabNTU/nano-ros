@@ -49,7 +49,7 @@ it exists because a contributor's nano-ros changes underneath them. An immutable
 `toolchains/0.6.2/` cannot go stale. A user never meets any of it, and no
 user-facing design should grow a second copy of it.
 
-(What a user still meets is `nros sync` after editing their own `.msg` files.
+(What a user still meets is `nros configure` after editing their own `.msg` files.
 That is their source going stale against itself, which is a different question.)
 
 ## The shape of the tree today, and the category that was hiding

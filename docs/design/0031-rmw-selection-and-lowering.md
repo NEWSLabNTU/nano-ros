@@ -136,7 +136,7 @@ build path (RFC-0005 / Phase 175), even for an otherwise-Rust binary. The
 > RMW (and per ROS edition) in its `system.toml` — `examples/linux/rust/talker`
 > declares `linux`, `linux_xrce`, `linux_cyclonedds` and the iron/jazzy
 > images — and depends on its GENERATED `<pkg>_nros_selection` package, which
-> `nros sync --image <id>` / `nros build <id>` write with the board crate's
+> `nros configure --image <id>` / `nros build <id>` write with the board crate's
 > `rmw-<x>` and `ros-<ed>` features. Fixture rows name the image (`image =
 > "linux_xrce"`), never `features = ["rmw-xrce"]`. `link-tls` and
 > `unstable-zenoh-api` are NOT in the capability registry (§ Generalization

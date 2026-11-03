@@ -13,13 +13,13 @@ issue 1428 (`builtin_interfaces` generated three times, none canonical) and
 issue 1455 (a generated crate's `links` collides with a consumer's own copy).
 **Amends / refines:** RFC-0026 §Cargo.lock policy (adds the third leaf class —
 in-tree testing/bench leaves that COMMIT their locks), RFC-0048 W9 (the
-`nros sync`-managed leaf `[patch.crates-io]`), RFC-0023 (codegen emits the
+`nros configure`-managed leaf `[patch.crates-io]`), RFC-0023 (codegen emits the
 generated crate). Does not change the ament/`package.xml` SSoT.
 
 ## Problem
 
 A generated ROS message crate (`std_msgs`, `builtin_interfaces`, …) is produced
-per host by `nros sync` / `nros dev codegen rust` from the consumer's ament install.
+per host by `nros configure` / `nros dev codegen rust` from the consumer's ament install.
 Its **committed identity has two axes that vary with the host's ROS distro**, and
 both break something when a leaf commits a `Cargo.lock`:
 
@@ -99,7 +99,7 @@ could not be reproducible. With D1+D2 the message identity is env-invariant, so 
 `packages/testing/{nros-bench,nros-tests/bins}/*` leaf that commits its
 `generated/` tree CAN commit a reproducible lock. Leaves that do NOT commit
 `generated/` keep a path dep pointing at an absent dir → they fail closed until
-`nros sync` and therefore cannot commit a lock (nor should they).
+`nros configure` and therefore cannot commit a lock (nor should they).
 
 ### D4 — `links` is the THIRD identity axis, and a rename must move it
 
@@ -125,7 +125,7 @@ reaches out-of-tree consumers, not just this repo. Three measurements,
    `packages/interfaces/.../nros-builtin-interfaces-clock` ships
    `name = "nros-builtin-interfaces-clock"` with
    `links = "nros_msgs_builtin_interfaces"` — the *ament* value.
-2. **A consumer's own copy therefore collides.** A user's `nros sync` emits an
+2. **A consumer's own copy therefore collides.** A user's `nros configure` emits an
    unrenamed `builtin_interfaces` crate carrying the same `links`. Put both in
    one graph — which `nros/sim-time` → `nros-node/sim-time` →
    `nros-rosgraph-msgs` → `nros-builtin-interfaces-clock` does for any leaf that
@@ -235,7 +235,7 @@ objections to a *shared crate across trees*:
   reaches `nros-core` / `nros-serdes` in the checkout by relative path, which is
   §Evidence's deliberate design.)
 
-Out-of-tree consumers are unaffected either way: a user's `nros sync` already
+Out-of-tree consumers are unaffected either way: a user's `nros configure` already
 emits one copy per ament package for the whole workspace closure (the same
 `emitted` dedupe, `nros-cli-core/src/cmd/ws.rs`), so a user whose closure
 contains `builtin_interfaces` has exactly one copy before and after. What D5
@@ -315,7 +315,7 @@ Reverted cleanly; no code landed. Implementation is **phase-333**.
   these live in the CHECKOUT rather than beside the generated crate, so the
   emitted path is **relative when the generated tree is inside the checkout**
   (host-invariant, safe to commit) and **absolute only for a copy-out project
-  outside it** (regenerated per host by that user's own `nros sync`, exactly like
+  outside it** (regenerated per host by that user's own `nros configure`, exactly like
   the central `nros-patch.toml` it replaces). Emitting an absolute path into a
   committed tree would have re-introduced the issue-0375/0391 class this RFC
   removes.
@@ -326,7 +326,7 @@ Reverted cleanly; no code landed. Implementation is **phase-333**.
 - Should EVERY in-tree testing/bench leaf commit its `generated/` tree (so it can
   build + commit a lock without a ROS host), or only those that need offline
   reproducibility? Trade-off: committed `generated/` is edition-pinned content in
-  the tree vs. a leaf that only builds after `nros sync`.
+  the tree vs. a leaf that only builds after `nros configure`.
 - Interaction with multi-edition (`ros-humble`/`jazzy`): a committed `generated/`
   is one edition's field set. Cross-edition leaves already pick an edition per
   build; confirm the path-dep lock does not over-assert edition.

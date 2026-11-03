@@ -316,7 +316,7 @@ What this means for the nano-ros bake:
   `Deploy.host`, and the bake-time host filter were all removed. Multi-host
   is now an ordinary `host` launch **argument** + `if=` conditions, resolved
   into per-host models (`multihost_robot<N>_model.yaml`, binding recorded in
-  `meta.args` and replayed by `nros sync`).
+  `meta.args` and replayed by `nros configure`).
 - **`NodeInstance` gains launch fields** — `remaps`, `ros_args`,
   `respawn`/`respawn_delay`, launch-declared `env` — additive/optional, in the
   shared `model` crate. Your bake ignores the ones it doesn't consume (you

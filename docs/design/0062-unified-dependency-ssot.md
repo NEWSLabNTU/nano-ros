@@ -90,7 +90,7 @@ missing prereq *diagnosable* rather than a loader error.
 | rung | outcome |
 | --- | --- |
 | a workspace package | build ORDER, not a prereq — today's behaviour |
-| a generated message package | `nros sync` owns it |
+| a generated message package | `nros configure` owns it |
 | a `[prereq.*]` key | its provider installs it; `check` decides present/absent |
 | anything else | **error, naming the key** |
 

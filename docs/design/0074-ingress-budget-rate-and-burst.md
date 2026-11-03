@@ -217,7 +217,7 @@ downsampling.rs`), not a choice.
    a comment so the winner is visible.
 
 The artifact is per resolved model, beside it:
-`build/nros/models/<bringup>/<model-stem>.router.json5`, written by `nros sync`
+`build/nros/models/<bringup>/<model-stem>.router.json5`, written by `nros configure`
 only when some subscriber declares an ingress (no fact, no file; a stale one is
 deleted). `rmw_zenohd` takes no config path on its command line, so the
 deployable form is also printed as a `ZENOH_CONFIG_OVERRIDE` string by

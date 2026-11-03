@@ -115,8 +115,8 @@ same verb:
 | the user | `nros build <zephyr image>` | resolve app + workspace, hand off to `west build` |
 | west's configure | a supplier verb (name TBD) | sync, codegen, models, staticlibs — **never** invokes west |
 
-The supplier is roughly today's `nros sync` plus the cargo targets, addressed by
-IMAGE so it can apply that image's features and knobs. `nros sync` already
+The supplier is roughly today's `nros sync` (now `nros configure`) plus the cargo targets, addressed by
+IMAGE so it can apply that image's features and knobs. `nros configure` already
 covers the codegen half.
 
 ### What the supplier must deliver
@@ -124,7 +124,7 @@ covers the codegen half.
 Everything a west build cannot derive for itself, all of it owned by the
 workspace rather than the framework:
 
-* generated message crates (`nros sync`);
+* generated message crates (`nros configure`);
 * the resolved SystemModel the entry macro bakes;
 * the per-build sizes headers (`nros_{,cpp_}config_generated.h`) — the family of
   issues 0088 → 0834, which exists precisely because this artifact crosses the
@@ -647,7 +647,7 @@ and needs a host interface made as root — a scaffold whose output cannot run
 unprivileged is not a starting point.
 
 **Verified by scaffolding and building one.** `nros new entry demo_entry` →
-`nros sync` → `nros build demo_bringup:demo_entry -- --pristine` → 1248/1248 →
+`nros sync` (now `nros configure`) → `nros build demo_bringup:demo_entry -- --pristine` → 1248/1248 →
 `zephyr.exe`, which boots. The scratch entry was reverted afterwards.
 
 ## D14 — `nros dev image facts`: the supplier is a QUERY
@@ -681,7 +681,7 @@ thing, and nothing made them agree. `rmw`, `entry_package`, `target` and
 `profile` now live on `ResolvedBuild`, so both consumers read one struct.
 
 **It produces no artifacts, deliberately.** The generated message crates and
-the SystemModel already have a producer (`nros sync`); the entry staticlib and
+the SystemModel already have a producer (`nros configure`); the entry staticlib and
 the sizes headers already have one (cargo, driven by cmake). What was missing
 was never a builder — it was the ANSWERS those builders were guessing at.
 
@@ -781,7 +781,7 @@ include climbs six levels into the checkout. Both are correct where they were
 written and meaningless one directory elsewhere.
 
 A real user's workspace has neither: it names `nros` by version and lets
-`nros sync` write the patch.
+`nros configure` write the patch.
 
 > **Amended 2026-10-27 (issue 2085): in-tree workspaces ARE copy-out.** "Not
 > portable by construction" described how the 24 in-tree workspace packages
@@ -798,7 +798,7 @@ A real user's workspace has neither: it names `nros` by version and lets
 > tests the `nros new` road, which is worth testing in its own right.
 
 So the check now **scaffolds** with the same verbs
-a user runs — `nros new system`, `nros new entry`, `nros sync`, `nros build` —
+a user runs — `nros new system`, `nros new entry`, `nros configure`, `nros build` —
 and the tree never lived in the checkout:
 
 ```text
@@ -824,7 +824,7 @@ minimum by hand and says so.
 `examples/workspaces/rust`, 2026-08-29, on this tree:
 
 ```text
-nros sync
+nros configure
 nros build demo_bringup:zephyr        → west build → 1312/1312 → zephyr.exe
 just zenohd                           → rmw_zenohd on tcp/127.0.0.1:7447
 ./build/zephyr/zephyr.exe             → "zephyr workspace entry up (2 nodes)"

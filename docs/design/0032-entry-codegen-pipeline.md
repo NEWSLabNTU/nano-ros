@@ -169,7 +169,7 @@ pure-cargo path. The linker script is the third leg — the Entry pkg's
 > block to a generated projection of the descriptor — COMMITTED and gated in the
 > `check-abi-bindings` mould, so a clone still links while drift becomes
 > uncommittable rather than merely detectable. (A gitignored projection was
-> considered and rejected: it would make the IMAGE depend on `nros sync`, which
+> considered and rejected: it would make the IMAGE depend on `nros configure`, which
 > is issue 0463's failure aimed at a worse target.) The hoisting it depends on
 > has landed; this paragraph's "config-sync bug" stops naming a live class when
 > W2-W4 do.
@@ -368,7 +368,7 @@ gated to zero) against real zenohd.
 4. **Land the §3.1 boot-scaffold fixes (Phase 212.O.1).** Board panic line on the
    `nros-board-*-freertos` family; the 6 FreeRTOS Node examples → `["rlib"]`;
    linker-script `.cargo/config.toml` sync (audit all freertos examples for the
-   `-Tlink.x` drift, ideally regen via `nros sync`). Tracked by phase-212 O.1
+   `-Tlink.x` drift, ideally regen via `nros configure`). Tracked by phase-212 O.1
    + issue 0045.
 5. **O.1 runtime residual (separate from the panic design).** After §3.1, the app
    task stack-overflows at Executor creation because the firmware links **both**

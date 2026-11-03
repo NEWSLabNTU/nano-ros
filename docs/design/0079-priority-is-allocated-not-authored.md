@@ -273,7 +273,7 @@ implementation collapsed them the other way, clamping both:
   all, it is the last priority the band BELOW owns.
 
 The refusal is a refusal to ALLOCATE, not a build abort, and that is
-deliberate: it reaches all three derivation roads (the `nros sync` bake, the
+deliberate: it reaches all three derivation roads (the `nros configure` bake, the
 C/C++ codegen entry, `nros::main!`) through the degradation record they already
 print, and it leaves the image running whatever its authored configuration says
 rather than replacing an author's schedule with a fabricated one. An operator
