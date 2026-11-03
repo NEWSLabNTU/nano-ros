@@ -397,10 +397,11 @@ endfunction()
 #               THIS configure's `nano_ros_node_register()` calls wrote. The
 #               resolve read them from `nros configure`'s metadata probe; a component
 #               added since the last sync differs here.
-#   model       the one model this configure accumulated (issue 1600's list),
-#               by path AND content.
-#               Several models are a shared runtime, which the resolve -- one
-#               image -- does not compose.
+#   models      every model this configure accumulated (issue 1600's list),
+#               by path AND content, as a set. One for a single image; N for a
+#               shared host configure, whose resolve `nros build` composes as
+#               the union over every image on its coordinate (phase-530 W3,
+#               RFC-0120 D6 case 3).
 #   workspace   the colcon workspace whose probe sidecars floor the contract.
 #   rx          the board's `--board-rx-*` arguments.
 #
@@ -471,22 +472,46 @@ function(nros_resolved_entity_take _metadata _output _json _out_taken)
         if(_existing)
             list(REMOVE_DUPLICATES _existing)
         endif()
+        # phase-530 W3 (RFC-0120 D6 case 3) -- N models. A shared host
+        # configure composes over every model on its coordinate, and its
+        # resolve is that UNION: the record lists each model with its content
+        # digest at the same index. Compared as SETS -- the configure meets its
+        # entries in whatever order cmake processes them.
         list(LENGTH _existing _n_models)
-        if(NOT _n_models EQUAL 1)
-            set(_why "this configure composes over ${_n_models} models, the resolve over one")
+        set(_want_models "${NROS_RESOLVED_ENTITY_MODEL}")
+        set(_want_shas "${NROS_RESOLVED_ENTITY_MODEL_SHA256}")
+        list(LENGTH _want_models _n_want)
+        list(LENGTH _want_shas _n_shas)
+        if(_n_want EQUAL 0)
+            set(_why "its input record (${_rec}) names no model")
+        elseif(NOT _n_shas EQUAL _n_want)
+            set(_why "its input record (${_rec}) lists ${_n_want} models and ${_n_shas} digests")
+        elseif(NOT _n_models EQUAL _n_want)
+            set(_why "this configure composes over ${_n_models} models, the resolve over "
+                     "${_n_want}")
+            string(CONCAT _why ${_why})
         else()
-            get_filename_component(_want "${NROS_RESOLVED_ENTITY_MODEL}" REALPATH)
-            if(NOT "${_existing}" STREQUAL "${_want}")
-                set(_why "it was composed over ${_want}, this configure over ${_existing}")
-            else()
+            math(EXPR _last "${_n_want} - 1")
+            foreach(_i RANGE ${_last})
+                list(GET _want_models ${_i} _want)
+                list(GET _want_shas ${_i} _want_sha)
+                get_filename_component(_want "${_want}" REALPATH)
+                list(FIND _existing "${_want}" _at)
+                if(_at EQUAL -1)
+                    set(_why "it was composed over ${_want}, this configure over "
+                             "[${_existing}]")
+                    string(CONCAT _why ${_why})
+                    break()
+                endif()
                 # The CONTENT, not the path: a configure `nros build` did not
                 # start re-resolves the model in place, and the resolve then
                 # describes the model it replaced -- re-run `nros build`.
-                file(SHA256 "${_existing}" _model_sha)
-                if(NOT "${_model_sha}" STREQUAL "${NROS_RESOLVED_ENTITY_MODEL_SHA256}")
-                    set(_why "the model ${_existing} changed since `nros build` resolved it")
+                file(SHA256 "${_want}" _model_sha)
+                if(NOT "${_model_sha}" STREQUAL "${_want_sha}")
+                    set(_why "the model ${_want} changed since `nros build` resolved it")
+                    break()
                 endif()
-            endif()
+            endforeach()
         endif()
     endif()
 
