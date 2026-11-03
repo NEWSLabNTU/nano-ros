@@ -277,12 +277,22 @@ pub(crate) fn input_digest_with(
         feed("body", &bytes);
     }
     for var in ENV_INPUTS {
-        let val = env
+        let mut val = env
             .iter()
             .find(|(n, _)| n == var)
-            .and_then(|(_, v)| v.clone())
-            .unwrap_or_default();
-        feed(var, val.as_bytes());
+            .and_then(|(_, v)| v.clone());
+        // phase-530 W5 -- unset, `NROS_INTERFACE_SEARCH_PATH` is what
+        // `nros configure` sets it to before it digests
+        // (`configure::ensure_interface_search_path`): the project's
+        // interface root. Spelled here, in the digest, so a READER that runs
+        // no configure (`nros locate configured`, asked by every hooked host)
+        // digests the same project alike.
+        if *var == "NROS_INTERFACE_SEARCH_PATH" && val.is_none() {
+            val = crate::cmd::ws::interface_search_root(project)
+                .ok()
+                .map(|r| r.display().to_string());
+        }
+        feed(var, val.unwrap_or_default().as_bytes());
     }
     for (flag, val) in &flags.pairs {
         feed(flag, val.as_bytes());
@@ -790,6 +800,41 @@ mod tests {
             locate_currency(&p, "zephyr_zenoh").unwrap(),
             Currency::Stale(why) if why.contains("inputs changed")
         ));
+    }
+
+    /// phase-530 W5 -- `nros configure` sets `NROS_INTERFACE_SEARCH_PATH` to
+    /// the project's interface root before it digests (when the user set
+    /// none), and a READER -- `nros locate configured`, which a cmake hook
+    /// asks right after that configure -- does not run it. Measured: on
+    /// `examples/workspaces/cpp` every locate said "inputs changed" over a
+    /// stamp configure had just called up to date, so no hooked configure
+    /// was ever seeded. Unset and configure's default must digest alike.
+    #[test]
+    fn an_unset_interface_search_path_digests_as_configure_sets_it() {
+        let p = tmp("search-path-default");
+        let pkg = p.join("src").join("pkg");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(pkg.join("package.xml"), "<package/>\n").unwrap();
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let root = crate::cmd::ws::interface_search_root(&p).unwrap();
+        let set = vec![(
+            "NROS_INTERFACE_SEARCH_PATH".to_string(),
+            Some(root.display().to_string()),
+        )];
+        let unset = vec![("NROS_INTERFACE_SEARCH_PATH".to_string(), None)];
+        assert_eq!(
+            input_digest_with_env(&p, &set).unwrap(),
+            input_digest_with_env(&p, &unset).unwrap()
+        );
+        // A user's own value is still an input.
+        let other = vec![(
+            "NROS_INTERFACE_SEARCH_PATH".to_string(),
+            Some("/elsewhere".to_string()),
+        )];
+        assert_ne!(
+            input_digest_with_env(&p, &other).unwrap(),
+            input_digest_with_env(&p, &unset).unwrap()
+        );
     }
 
     /// phase-530 W4 -- the raw recorder document a census take leaves beside
