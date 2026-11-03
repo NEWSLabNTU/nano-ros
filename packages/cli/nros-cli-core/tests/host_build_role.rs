@@ -87,11 +87,15 @@ fn fixture(ws: &Path) {
         &ws.join("src/demo_bringup/system.toml"),
         "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
          [image_defaults]\nrmw = \"zenoh\"\n\n\
-         [image.linux]\nboard = \"linux\"\n\n\
-         [overrides]\nnative = \"src/acme_native_runner\"\n",
+         [image.linux]\nboard = \"linux\"\n",
     );
     // The in-tree `nros_runner_native` also provides `native`, so the
-    // workspace's copy is an override and must be declared.
+    // workspace's copy is an override and must be declared — in the
+    // workspace's nros.toml, never in a package's system.toml.
+    write(
+        &ws.join("nros.toml"),
+        "[workspace.overrides]\nnative = \"src/acme_native_runner\"\n",
+    );
     runner_package(ws, "acme_native_runner", "native");
     std::fs::create_dir_all(ws.join("build/nros")).unwrap();
 }
