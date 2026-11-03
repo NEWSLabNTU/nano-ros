@@ -196,6 +196,19 @@ fn configure_project(
     } else {
         targets.iter().map(|t| (t.key.as_str(), t.named)).collect()
     };
+    // RFC-0120 D2 (Ruling R32): before the currency check AND C1, so both
+    // see the environment this configure runs with — the recorded one where
+    // the caller's leaves it unset.
+    let stamp_keys: Vec<&str> = keys.iter().map(|(k, _)| *k).collect();
+    for (var, value) in recorded_env_to_restore(
+        project,
+        &stamp_keys,
+        std::env::var_os(configure_stamp::AMENT_VAR).is_some(),
+        std::env::var_os(configure_stamp::LAUNCH_RESOLVE_VAR).is_some()
+            || configure_stamp::current_launch_resolver().is_some(),
+    )? {
+        set_env(var, Some(value.as_os_str()));
+    }
     if !force {
         let mut all_current = true;
         for (key, named) in &keys {
@@ -290,6 +303,55 @@ fn configure_project(
     Ok(out)
 }
 
+/// RFC-0120 D2 (Ruling R32) — the environment travels with the stamp. What
+/// a configure of `project` must restore, in-process, from the first stamp
+/// recorded under `keys`, for a caller whose environment lacks it (an
+/// IDE-launched host configure has no sourced ROS shell):
+///
+/// - `AMENT_PREFIX_PATH` unset (`ament_set` false) → the recorded prefix;
+/// - no `nros-launch-resolve` resolvable (`resolver_found` false) → the
+///   recorded path, through the ladder's explicit rung, if it still exists.
+///
+/// With `AMENT_PREFIX_PATH` unset and NO stamp recorded at all there is
+/// nothing to reuse, so configure refuses, naming the setup step. A stamp
+/// that recorded no prefix (a run that had none) is a record: nothing to
+/// restore, and no refusal.
+pub(crate) fn recorded_env_to_restore(
+    project: &Path,
+    keys: &[&str],
+    ament_set: bool,
+    resolver_found: bool,
+) -> Result<Vec<(&'static str, std::ffi::OsString)>> {
+    if ament_set && resolver_found {
+        return Ok(Vec::new());
+    }
+    let Some(stamp) = keys.iter().find_map(|k| configure_stamp::read(project, k)) else {
+        if !ament_set {
+            // RFC-0120 D2: no record → refuse, naming the setup step.
+            eyre::bail!(
+                "configure: `{}` is unset and no configure of `{}` has recorded one to reuse. \
+                 Run the setup step once from a shell that has ROS 2: \
+                 `source /opt/ros/<distro>/setup.bash` (or your overlay's `install/setup.bash`), \
+                 then `nros configure`; later runs without a sourced shell reuse what it records.",
+                configure_stamp::AMENT_VAR,
+                project.display()
+            );
+        }
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    if !ament_set && let Some(prefix) = stamp.ament_prefix {
+        out.push((configure_stamp::AMENT_VAR, prefix.into()));
+    }
+    if !resolver_found && let Some(resolver) = stamp.launch_resolve.filter(|r| r.is_file()) {
+        out.push((
+            configure_stamp::LAUNCH_RESOLVE_VAR,
+            resolver.into_os_string(),
+        ));
+    }
+    Ok(out)
+}
+
 /// The `build::Args` stage 4 runs with: one image, nothing else selected
 /// (the template is `materialize.rs`'s literal).
 pub(crate) fn build_args(
@@ -359,8 +421,10 @@ impl Drop for HeldMarker {
 }
 
 /// The ONE place configure writes the process environment: `Some` sets
-/// `var`, `None` removes it. Every writer serialises on one mutex.
-fn set_env(var: &str, value: Option<&std::ffi::OsStr>) {
+/// `var`, `None` removes it. Every writer serialises on one mutex. Writers:
+/// the held marker, the interface search path, and the recorded environment
+/// a stamp restores (RFC-0120 D2).
+pub(crate) fn set_env(var: &str, value: Option<&std::ffi::OsStr>) {
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     // SAFETY: edition 2024 makes these unsafe because another thread may be
@@ -467,13 +531,37 @@ fn targets(project: &Path, named: &[String]) -> Result<Vec<Target>> {
 /// USER set it is captured once, at the first call, before this function has
 /// ever written it.
 fn ensure_interface_search_path(project: &Path) {
-    const VAR: &str = "NROS_INTERFACE_SEARCH_PATH";
-    static USER_SET: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    if *USER_SET.get_or_init(|| std::env::var_os(VAR).is_some()) {
+    if user_interface_search_path().is_some() {
         return;
     }
-    let root = ws::interface_search_root(project).ok();
-    set_env(VAR, root.as_ref().map(|r| r.as_os_str()));
+    let root = interface_search_path_for(project);
+    set_env(INTERFACE_SEARCH_VAR, root.as_deref());
+}
+
+const INTERFACE_SEARCH_VAR: &str = "NROS_INTERFACE_SEARCH_PATH";
+
+/// The USER's `NROS_INTERFACE_SEARCH_PATH`, captured once, at the first call,
+/// before [`ensure_interface_search_path`] has ever written it.
+fn user_interface_search_path() -> Option<&'static std::ffi::OsString> {
+    static USER: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
+    USER.get_or_init(|| std::env::var_os(INTERFACE_SEARCH_VAR))
+        .as_ref()
+}
+
+/// The `NROS_INTERFACE_SEARCH_PATH` a configure of `project` runs with: the
+/// user's, else the one derived from `project` (Ruling R12). The ONE spelling
+/// for the variable configure exports and for the stamp's digest input, which
+/// therefore never reads the process environment for it: that holds whichever
+/// project was configured LAST, so a stamp read it from another project in the
+/// same process and the next configure found "inputs changed" with nothing
+/// edited.
+pub(crate) fn interface_search_path_for(project: &Path) -> Option<std::ffi::OsString> {
+    if let Some(user) = user_interface_search_path() {
+        return Some(user.clone());
+    }
+    ws::interface_search_root(project)
+        .ok()
+        .map(PathBuf::into_os_string)
 }
 
 #[cfg(test)]
@@ -534,6 +622,83 @@ mod tests {
         assert!(!held_by_parent(&a, Some(b.as_os_str())));
         assert!(!held_by_parent(&a, None));
         assert!(!held_by_parent(&a, Some(std::ffi::OsStr::new(""))));
+    }
+
+    fn record_ament(project: &Path, key: &str, ament: Option<&str>, resolver: Option<&Path>) {
+        let stamp = configure_stamp::Stamp {
+            digest: "sha256:0".into(),
+            codegen_version: String::new(),
+            ament_prefix: ament.map(str::to_string),
+            launch_resolve: resolver.map(Path::to_path_buf),
+            skipped: None,
+        };
+        configure_stamp::record(project, key, &stamp).unwrap();
+    }
+
+    /// RFC-0120 D2 (Ruling R32): a stale stamp, run with no sourced ROS
+    /// shell, reuses the recorded `AMENT_PREFIX_PATH` (and resolver) for C1.
+    /// Before this the recorded prefix was written and never read, so C1 ran
+    /// with no ament and failed.
+    #[test]
+    fn stale_configure_reuses_the_recorded_ament_prefix() {
+        let p = crate::test_support::scratch_dir("configure-reuse-ament");
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        let resolver = p.join("nros-launch-resolve");
+        std::fs::write(&resolver, "").unwrap();
+        record_ament(&p, "linux", Some("/opt/ros/humble"), Some(&resolver));
+
+        let restore = recorded_env_to_restore(&p, &["linux"], false, false).unwrap();
+        assert_eq!(
+            restore,
+            vec![
+                (configure_stamp::AMENT_VAR, "/opt/ros/humble".into()),
+                (
+                    configure_stamp::LAUNCH_RESOLVE_VAR,
+                    resolver.clone().into_os_string()
+                ),
+            ]
+        );
+        // A caller whose environment has both keeps its own.
+        assert!(
+            recorded_env_to_restore(&p, &["linux"], true, true)
+                .unwrap()
+                .is_empty()
+        );
+        // A recorded resolver that is gone is not restored.
+        std::fs::remove_file(&resolver).unwrap();
+        assert_eq!(
+            recorded_env_to_restore(&p, &["linux"], false, false).unwrap(),
+            vec![(configure_stamp::AMENT_VAR, "/opt/ros/humble".into())]
+        );
+    }
+
+    /// RFC-0120 D2 (Ruling R32): nothing recorded and nothing in the
+    /// environment — refuse, naming the setup step, rather than run C1 with
+    /// no ament. A stamp that recorded NO prefix is still a record.
+    #[test]
+    fn no_record_and_no_env_refuses_naming_the_setup_step() {
+        let p = crate::test_support::scratch_dir("configure-no-ament");
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        let err = recorded_env_to_restore(&p, &["linux"], false, true)
+            .expect_err("no record and no AMENT_PREFIX_PATH must refuse");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("AMENT_PREFIX_PATH"), "{msg}");
+        assert!(msg.contains("setup.bash"), "{msg}");
+        // With the variable set there is nothing to reuse and nothing to refuse.
+        assert!(
+            recorded_env_to_restore(&p, &["linux"], true, true)
+                .unwrap()
+                .is_empty()
+        );
+        // A record with no prefix: nothing to restore, no refusal.
+        record_ament(&p, "linux", None, None);
+        assert!(
+            recorded_env_to_restore(&p, &["linux"], false, true)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

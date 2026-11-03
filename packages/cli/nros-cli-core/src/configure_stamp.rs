@@ -55,6 +55,10 @@ pub(crate) struct OutputFlags {
     pairs: Vec<(&'static str, String)>,
     /// `--model-dir`: where C1 writes the models.
     pub(crate) model_dir: Option<PathBuf>,
+    /// `--nano-ros-path`: the explicit rung of the nano-ros root the probe
+    /// sidecars are keyed against (`metadata_refresh::probe_inputs_key`),
+    /// resolved per project the way sync's metadata refresh resolves it.
+    pub(crate) nano_ros_path: Option<PathBuf>,
 }
 
 impl OutputFlags {
@@ -83,6 +87,7 @@ impl OutputFlags {
                 ("--nano-ros-root", path(&sync.nano_ros_root)),
             ],
             model_dir: sync.model_dir.clone(),
+            nano_ros_path: sync.nano_ros_path.clone(),
         }
     }
 
@@ -233,11 +238,40 @@ pub(crate) fn input_digest(project: &Path) -> Result<String> {
     input_digest_with_env(project, &real_env())
 }
 
-/// The digest-input variables as the process sees them.
+/// The digest-input variables as the process sees them, for a test that
+/// injects them. `NROS_INTERFACE_SEARCH_PATH` reads as unset: production
+/// derives it per project ([`project_env`]), and the process value is
+/// written by any configure running on another test thread.
+#[cfg(test)]
 fn real_env() -> Vec<(String, Option<String>)> {
     ENV_INPUTS
         .iter()
-        .map(|v| ((*v).to_string(), std::env::var(v).ok()))
+        .map(|v| {
+            let val = (*v != "NROS_INTERFACE_SEARCH_PATH")
+                .then(|| std::env::var(v).ok())
+                .flatten();
+            ((*v).to_string(), val)
+        })
+        .collect()
+}
+
+/// The digest-input variables a configure of `project` runs with. A variable
+/// configure DERIVES per project is taken from that derivation, never from the
+/// process environment, which holds the value for whichever project this
+/// process configured last: the stamp's writer and its reader must compute
+/// the same value for the same project.
+fn project_env(project: &Path) -> Vec<(String, Option<String>)> {
+    ENV_INPUTS
+        .iter()
+        .map(|v| {
+            let val = if *v == "NROS_INTERFACE_SEARCH_PATH" {
+                crate::cmd::configure::interface_search_path_for(project)
+                    .map(|p| p.to_string_lossy().into_owned())
+            } else {
+                std::env::var(v).ok()
+            };
+            ((*v).to_string(), val)
+        })
         .collect()
 }
 
@@ -418,7 +452,7 @@ pub(crate) fn is_current(
         project,
         image,
         named,
-        &real_env(),
+        &project_env(project),
         flags,
         current_launch_resolver().as_deref(),
         &real_ament_moved,
@@ -463,9 +497,9 @@ pub(crate) fn current_launch_resolver() -> Option<PathBuf> {
 /// inputs as they are NOW (after it wrote), and the environment it ran in.
 pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
     Ok(Stamp {
-        digest: input_digest_with(project, &real_env(), flags)?,
+        digest: input_digest_with(project, &project_env(project), flags)?,
         codegen_version: codegen_version(),
-        ament_prefix: std::env::var("AMENT_PREFIX_PATH").ok(),
+        ament_prefix: std::env::var(AMENT_VAR).ok(),
         launch_resolve: current_launch_resolver(),
         skipped: None,
     })
@@ -493,6 +527,29 @@ pub(crate) fn is_current_with(
     )
 }
 
+/// The environment variables a stamp records, besides the digest: each is
+/// restored from the stamp when the run's environment does not set it
+/// (RFC-0120 D2). `NROS_LAUNCH_RESOLVE` is the ladder's explicit rung for the
+/// recorded resolver path.
+pub(crate) const AMENT_VAR: &str = "AMENT_PREFIX_PATH";
+pub(crate) const LAUNCH_RESOLVE_VAR: &str = "NROS_LAUNCH_RESOLVE";
+
+/// `env` with every recorded variable it leaves unset filled from `stamp`.
+fn with_recorded_env(
+    env: &[(String, Option<String>)],
+    stamp: &Stamp,
+) -> Vec<(String, Option<String>)> {
+    env.iter()
+        .map(|(n, v)| {
+            let v = match (n.as_str(), v) {
+                (AMENT_VAR, None) => stamp.ament_prefix.clone(),
+                _ => v.clone(),
+            };
+            (n.clone(), v)
+        })
+        .collect()
+}
+
 /// What a skipped image's preflight answers now: `Some(reason)` still
 /// refuses, `None` passes.
 pub(crate) type PreflightProbe<'a> = &'a dyn Fn(&Path, &str) -> Result<Option<String>>;
@@ -517,6 +574,14 @@ pub(crate) fn currency(
     let Some(stamp) = read(project, image) else {
         return Ok(Currency::Stale("no configure stamp recorded".into()));
     };
+    // RFC-0120 D2 (Ruling R32) — the environment travels with the stamp. A
+    // run with no sourced ROS env (an IDE-launched host configure) has neither
+    // `AMENT_PREFIX_PATH` nor, maybe, a resolvable `nros-launch-resolve`; it
+    // means the recorded ones, so an UNSET input compares as the recorded
+    // value. A value that is SET and differs still stales the stamp.
+    let env = with_recorded_env(env, &stamp);
+    let env = env.as_slice();
+    let resolver = resolver.or(stamp.launch_resolve.as_deref());
     if named && let Some(why) = &stamp.skipped {
         return Ok(Currency::Stale(format!("image was skipped: {why}")));
     }
@@ -565,7 +630,15 @@ pub(crate) fn currency(
     if let Some(pkg) = ament_moved(project)?.into_iter().next() {
         return Ok(Currency::Stale(format!("ament inputs moved: {pkg}")));
     }
-    if let Some(line) = stale_sidecar_components(project).into_iter().next() {
+    // The WHOLE probe key the resolve compares (component
+    // sources, this CLI's source stamp, the crates the probe compiles), keyed
+    // against the nano-ros root sync's metadata refresh keys against.
+    let nano_ros =
+        crate::orchestration::nano_ros_root::resolve(flags.nano_ros_path.clone(), project);
+    if let Some(line) = stale_sidecar_components(project, nano_ros.as_deref())
+        .into_iter()
+        .next()
+    {
         return Ok(Currency::Stale(line));
     }
     for census in recorded_censuses(project) {
@@ -692,6 +765,87 @@ mod tests {
         );
     }
 
+    /// The gate's `cargo test` runs configures of DIFFERENT projects on
+    /// threads of ONE process, and configure exports the per-project
+    /// `NROS_INTERFACE_SEARCH_PATH` (Ruling R12) into that shared
+    /// environment. A stamp that read the variable back took whichever
+    /// project was configured last, so the next configure of this one found
+    /// "inputs changed" with nothing edited. The stamp's writer and reader
+    /// derive it from the project, so the process value is no input at all.
+    #[test]
+    fn second_configure_is_a_no_op_without_exported_search_path() {
+        const VAR: &str = "NROS_INTERFACE_SEARCH_PATH";
+        let p = tmp("stamp-search-path");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let previous = std::env::var_os(VAR);
+        // configure's own serialised writer, the one the race went through.
+        let set = |v: Option<&std::ffi::OsStr>| crate::cmd::configure::set_env(VAR, v);
+        // Another project's configure exported its path while this one's
+        // stamp was written...
+        set(Some(std::ffi::OsStr::new("/another/project/src")));
+        let stamp = stamp_now(&p, &OutputFlags::defaults()).unwrap();
+        record(&p, "img", &stamp).unwrap();
+        // ...and a third project's by the time the next configure checked.
+        set(Some(std::ffi::OsStr::new("/a/third/project/src")));
+        let now = is_current(&p, "img", false, &OutputFlags::defaults()).unwrap();
+        set(previous.as_deref());
+        assert_eq!(now, Currency::Current);
+    }
+
+    /// RFC-0120 D2 (Ruling R32): an IDE-launched host configure has no
+    /// sourced ROS shell. `AMENT_PREFIX_PATH` is a digest input, so before
+    /// this its absence made every such run Stale; it now compares as the
+    /// value the stamp recorded. A DIFFERENT set value still stales.
+    #[test]
+    fn stamp_is_current_with_ament_unset_in_the_env() {
+        let p = tmp("stamp-ament-unset");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let env = |ament: Option<&str>| -> Vec<(String, Option<String>)> {
+            ENV_INPUTS
+                .iter()
+                .map(|v| {
+                    let val = (*v == AMENT_VAR)
+                        .then(|| ament.map(str::to_string))
+                        .flatten();
+                    ((*v).to_string(), val)
+                })
+                .collect()
+        };
+        let flags = OutputFlags::defaults();
+        let resolver = Path::new("/recorded/nros-launch-resolve");
+        let stamp = Stamp {
+            digest: input_digest_with(&p, &env(Some("/opt/ros/humble")), &flags).unwrap(),
+            codegen_version: codegen_version(),
+            ament_prefix: Some("/opt/ros/humble".into()),
+            launch_resolve: Some(resolver.to_path_buf()),
+            skipped: None,
+        };
+        record(&p, "img", &stamp).unwrap();
+        let at = |ament: Option<&str>, resolver: Option<&Path>| {
+            currency(
+                &p,
+                "img",
+                false,
+                &env(ament),
+                &flags,
+                resolver,
+                &nothing_moved,
+                &still_refuses,
+            )
+            .unwrap()
+        };
+        // No sourced shell: neither the prefix nor a resolver is found.
+        assert_eq!(at(None, None), Currency::Current);
+        assert_eq!(
+            at(Some("/opt/ros/humble"), Some(resolver)),
+            Currency::Current
+        );
+        assert!(matches!(
+            at(Some("/opt/ros/jazzy"), Some(resolver)),
+            Currency::Stale(why) if why.contains("inputs changed")
+        ));
+    }
+
     /// Ruling R9: an image's own stamp is not enough on a leaf whose shared
     /// output another image wrote last.
     #[test]
@@ -739,8 +893,9 @@ mod tests {
     }
 
     /// A project with one Rust component and a sidecar stamped by the real
-    /// key function. Returns (project, sidecar).
-    fn sidecar_fixture(name: &str, stamp_with: Option<&str>) -> (PathBuf, PathBuf) {
+    /// key function, against a nano-ros root of its own. Returns (project,
+    /// sidecar, root).
+    fn sidecar_fixture(name: &str, stamp_with: Option<&str>) -> (PathBuf, PathBuf, PathBuf) {
         use crate::orchestration::metadata_refresh as mr;
         let p = tmp(name);
         std::fs::create_dir_all(p.join("src")).unwrap();
@@ -779,23 +934,80 @@ mod tests {
         std::fs::write(src.join("lib.rs"), "pub const X: bool = false;\n").unwrap();
         let key = mr::probe_inputs_key(&p, Some(&root)).expect("keyed");
         mr::stamp_provenance(&sidecar, stamp_with.unwrap_or(&key)).unwrap();
-        (p, sidecar)
+        (p, sidecar, root)
+    }
+
+    /// [`currency`] of `img` with the probe sidecars keyed against `root`,
+    /// the way a configure run with `--nano-ros-path <root>` keys them.
+    fn sidecar_currency(p: &Path, root: &Path) -> Currency {
+        let flags = OutputFlags {
+            nano_ros_path: Some(root.to_path_buf()),
+            ..OutputFlags::defaults()
+        };
+        currency(
+            p,
+            "img",
+            false,
+            &real_env(),
+            &flags,
+            None,
+            &nothing_moved,
+            &still_refuses,
+        )
+        .unwrap()
     }
 
     #[test]
     fn stale_when_metadata_sidecar_inputs_moved() {
-        let (p, _) = sidecar_fixture("sidecar", None);
+        let (p, _, root) = sidecar_fixture("sidecar", None);
         record(&p, "img", &stamp_for(&p)).unwrap();
-        assert_eq!(
-            is_current_with(&p, "img", &real_env(), None).unwrap(),
-            Currency::Current
-        );
+        assert_eq!(sidecar_currency(&p, &root), Currency::Current);
 
         // `lib.rs` is no digest input, so only the sidecar check can answer.
         std::fs::write(p.join("src/lib.rs"), "// the component, edited\n").unwrap();
-        match is_current_with(&p, "img", &real_env(), None).unwrap() {
+        match sidecar_currency(&p, &root) {
             Currency::Stale(why) => assert!(why.contains("metadata sidecar"), "{why}"),
             Currency::Current => panic!("a moved component source must stale the stamp"),
+        }
+    }
+
+    /// A rebuilt CLI moves the `NROS_CLI_SOURCE_STAMP` part of
+    /// the probe key, so the resolve refuses the sidecar. The stamp compared
+    /// only the source part and said "up to date". The CLI part cannot move
+    /// inside one test binary, so the sidecar is stamped with the key a
+    /// DIFFERENT CLI would have written: same sources, same closure.
+    #[test]
+    fn stale_after_a_cli_rebuild_moves_the_sidecar_key() {
+        use crate::orchestration::metadata_refresh as mr;
+        let (p, sidecar, root) = sidecar_fixture("sidecar-cli", None);
+        let key = mr::probe_inputs_key(&p, Some(&root)).expect("keyed");
+        let cli = env!("NROS_CLI_SOURCE_STAMP");
+        assert!(key.contains(&format!(":{cli}:")), "{key} names this CLI");
+        let other_cli = key.replace(&format!(":{cli}:"), ":an-older-cli:");
+        assert_ne!(other_cli, key);
+        mr::stamp_provenance(&sidecar, &other_cli).unwrap();
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        match sidecar_currency(&p, &root) {
+            Currency::Stale(why) => assert!(why.contains("metadata sidecar"), "{why}"),
+            Currency::Current => panic!("a sidecar keyed by another CLI read as current"),
+        }
+    }
+
+    /// The probe key's other half: an edit to a crate the probe COMPILES moves
+    /// the closure part of the key, and nothing in the project.
+    #[test]
+    fn stale_when_a_probed_crate_moved() {
+        let (p, _, root) = sidecar_fixture("sidecar-closure", None);
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        assert_eq!(sidecar_currency(&p, &root), Currency::Current);
+        std::fs::write(
+            root.join("packages/core/probed/src/lib.rs"),
+            "pub const X: bool = true;\n",
+        )
+        .unwrap();
+        match sidecar_currency(&p, &root) {
+            Currency::Stale(why) => assert!(why.contains("metadata sidecar"), "{why}"),
+            Currency::Current => panic!("a moved probe closure left the stamp current"),
         }
     }
 
@@ -803,16 +1015,13 @@ mod tests {
     /// stale (it was flagged on every call before).
     #[test]
     fn unkeyed_sidecar_is_not_stale() {
-        let (p, _) = sidecar_fixture(
+        let (p, _, root) = sidecar_fixture(
             "unkeyed",
             Some(crate::orchestration::metadata_refresh::UNKEYED),
         );
         record(&p, "img", &stamp_for(&p)).unwrap();
         std::fs::write(p.join("src/lib.rs"), "// edited\n").unwrap();
-        assert_eq!(
-            is_current_with(&p, "img", &real_env(), None).unwrap(),
-            Currency::Current
-        );
+        assert_eq!(sidecar_currency(&p, &root), Currency::Current);
     }
 
     #[test]
