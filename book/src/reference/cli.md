@@ -315,18 +315,27 @@ RFC-0049). This is the provenance tool for anything generated — when a pool
 size or a hardware budget is not what you expected, it says which rung decided.
 `--board-toml` supplies the board rung's `[knobs]` deltas by explicit path.
 
-### `nros configure [<workspace>] [--generated-base <d>] [--ros-edition <e>] [--dry-run] [--check] [--base-paths <p>…]`
+### `nros configure [<workspace>] [--image <id>] [--generated-base <d>] [--ros-edition <e>] [--dry-run] [--check] [--force] [--offline] [--no-metadata] [--no-provider-index] [--model-dir <d>] [--nano-ros-path <p>] [--nano-ros-root <p>] [--base-paths <p>…] [-v]`
 
-The pre-build step. Codegen every `*.msg` package the declared deps name, and
-write the generated build settings for each declared image — for a **standalone
-package** or a **colcon-style workspace** (it picks single-pkg vs workspace mode
-by layout). Run it after editing `*.msg`, `package.xml` or `system.toml`.
+Configure a project without building it: codegen every `*.msg` package the
+declared deps name, write the generated build settings for each declared image,
+then resolve and generate the image's build inputs (discover, preflight, census,
+resolve, generate). It works on a **standalone package** or a **colcon-style
+workspace** (it picks single-pkg vs workspace mode by layout) and runs no target
+build tool.
+
+You rarely type it. `nros build` and `nros run` run it first when it is stale,
+the way `cargo build` fetches what it needs. Run it yourself when you want the
+files without a build (an IDE, a CI step), after editing `*.msg`,
+`package.xml` or `system.toml`.
 
 ```sh
-eval "$(nros dev ws env)"   # add src/ to NROS_INTERFACE_SEARCH_PATH
 nros configure               # generated/ msg crates + build/<image>/nros-cargo.toml
-nros build              # or: nros build <image-id>
+nros build                   # or: nros build <image-id>
 ```
+
+The interface search path is computed inside configure, so no
+`eval "$(nros dev ws env)"` is needed before it.
 
 What it writes into `build/<image>/nros-cargo.toml`
 ([RFC-0098](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0098-generated-leaf-build-config.md)
@@ -336,16 +345,53 @@ and derived pool knobs as `[env]`, the in-repo `[patch.crates-io]` rows, and the
 nano-ros cargo profiles. Nothing generated is written beside the package, and
 `[env]` never uses `force = true`, so a value you set in the environment wins.
 
-Transitionally, sync also still maintains the `[patch.crates-io]` block in each
-Rust consumer's patch-authority `.cargo/config.toml` (never in `Cargo.toml`) —
-that is the road phase-445 W6 removes, and it is what the `ws clean` / `ws
-doctor` subcommands below still talk about.
+Transitionally, configure also still maintains the `[patch.crates-io]` block in
+each Rust consumer's patch-authority `.cargo/config.toml` (never in
+`Cargo.toml`) — that is the road phase-445 W6 removes, and it is what the `ws
+clean` / `ws doctor` subcommands below still talk about.
+
+**The stamp.** Each image gets a stamp at
+`<project>/build/nros/configured/<image>/stamp.toml`, holding a digest of its
+inputs: `package.xml`, `Cargo.toml`, `system.toml`, the launch files, the
+environment variables configure reads (such as `AMENT_PREFIX_PATH`), the
+`nros-launch-resolve` path, and the content of the ROS install the generated
+message crates came from. A second run with nothing changed reads the stamps and
+exits without doing any work. An image this host cannot build is recorded as
+skipped, and is configured only when you name it. `--force` configures even when
+every stamp is current. `--dry-run` records no stamp.
+
+**The lock.** A per-project file lock serialises writers, so several configures
+reaching one workspace at once (a parallel fixture build) queue instead of
+racing.
+
+| Flag | Meaning |
+| --- | --- |
+| `[<workspace>]` | Workspace root (the dir containing `src/`); defaults to the cwd |
+| `--image <id>` | Single-package leaf only: configure this `[image.<id>]` (its selection package, `build/<id>/nros-cargo.toml`, message codegen for its edition) |
+| `--generated-base <d>` | Output dir for the generated message crates, relative to the workspace (default `generated`) |
+| `--ros-edition <e>` | `humble` \| `iron` \| `jazzy`; inherits `[system].ros_edition`, else `humble` |
+| `--dry-run` | Don't write; print what would happen |
+| `--check` | Exit non-zero if any patch block is missing or stale (CI hook; also used by `nros ws status`) |
+| `--force` | Configure even when every image's stamp is current |
+| `--offline` | Never touch the network. Reaches the `cargo update --workspace` that prunes a single-package leaf's freshly seeded `Cargo.lock`, the one step that resolves crates |
+| `--no-metadata` | Skip the per-Node-package host probe; bakes fall back to the model's entity lower bound |
+| `--no-provider-index` | Skip the provider index (`build/nros/providers.json`) |
+| `--model-dir <d>` | Write resolved SystemModels here instead of each bringup's `config/` |
+| `--nano-ros-path <p>` | The SDK root the probes and board lookups read |
+| `--nano-ros-root <p>` | nano-ros source tree scanned as the first provider search root |
+| `--base-paths <p>…` | Provider search roots, replacing the default (as colcon's `--base-paths`) |
+| `-v`, `--verbose` | Verbose codegen output |
 
 `--check` exits non-zero when anything is missing or stale — the CI hook, and
-what `nros ws status` reports non-fatally. `--dry-run` prints what it would do.
+what `nros ws status` reports non-fatally.
 
 `nros dev codegen rust` stays the low-level codegen-only primitive (no side
 effects beyond `generated/`).
+
+### The old `sync` spelling
+
+`nros sync` was renamed `nros configure` (`nros sync` still runs it). The alias warns on every use, on stderr whether or not
+it is a terminal, and is being retired. Use `nros configure`.
 
 ### `nros build [<image>…] [--board <board>] [--workspace <dir>] [--all] [--dry-run] [--offline] [-v] [--check[=clippy]] [<colcon flags>] [-- <native args>]`
 
@@ -357,7 +403,6 @@ west yourself. With no image argument it builds `[system] default_images`;
 
 ```sh
 cd <leaf-or-workspace>
-nros configure
 nros build                       # every default image
 nros build linux                # one image by id
 nros build linux -- --release   # arguments after `--` go to the native tool
@@ -424,15 +469,15 @@ nros build --packages-select acme_tools         # one command package, alone
 happened, which message bounds were refused and why. Without it each is one
 line. A raw cmake run gets the same with `--log-level=VERBOSE`.
 
-A build without a sync fails at the first preflight with one line naming
-`nros configure`, rather than four frames down in cargo's manifest parser. `--dry-run`
+A build configures first when the project's stamps are stale (see
+`nros configure`), rather than refusing an unconfigured tree. `--dry-run`
 prints the stages and the command that would run, and performs no I/O.
 
 `--check` type-checks a cargo image instead of building it: every stage runs as
 for a build (the image's settings file, its lock), and only the final command
 becomes `cargo check`, or `cargo clippy` with `--check=clippy`. Lint flags go
 after a second `--`. A cmake or west image is refused, since neither tool has a
-check that is not a build. Like a build, a check needs `nros configure` first.
+check that is not a build. Like a build, a check configures first.
 
 ```sh
 nros build linux --check                          # cargo check
@@ -443,8 +488,7 @@ In a single-package C/C++ leaf, `nros build` configures the leaf's own
 `CMakeLists.txt` into `build/<image>/cmake` with `-DNROS_IMAGE=<id>` and the
 board's toolchain file, then runs `cmake --build`: the leaf's own cmake pair,
 with the inputs a bare configure cannot know
-([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)). Zephyr keeps `west build` as its build verb, with
-`nros configure` still run first.
+([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)). Zephyr keeps `west build` as its build verb, and `nros build` configures first.
 
 Driving cargo yourself is supported — point it at the generated file, from the
 directory above the package:
@@ -473,7 +517,6 @@ Workspace-level message-package utilities (the `env` / `status` / `list` /
 `clean` / `doctor` helpers; `sync` was promoted to top-level `nros configure`).
 
 ```sh
-eval "$(nros dev ws env)"   # add src/ to NROS_INTERFACE_SEARCH_PATH
 nros ws status          # freshness check (non-fatal): n up-to-date / n stale / n missing
 nros list            # list discovered msg + Rust-consumer pkgs
 nros clean           # remove generated/ + auto-managed patch entries
