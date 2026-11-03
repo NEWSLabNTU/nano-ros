@@ -48,7 +48,7 @@ SH
 chmod +x "$fake/bin/nros"
 
 expect() {
-    if ! grep -qF -- "$2" <<< "$out"; then
+    if [[ "$out" != *"$2"* ]]; then
         echo "FAIL [$1]: expected \`$2\` in:"; echo "$out" | sed 's/^/    /'; fail=1
     fi
 }
@@ -59,7 +59,7 @@ out="$(env NROS_BUILD_LOG_DIR=logs FAKE_LEAVES=ok1,bad1,ok2,bad2 bash "$fake/scr
 expect 1 "2 leaf census(es) FAILED"
 expect 1 "LAST-LINE-OF-bad1"
 expect 1 "LAST-LINE-OF-bad2"
-if grep -qF "noise line 5 of bad1" <<< "$out"; then
+if [[ "$out" == *"noise line 5 of bad1"* ]]; then
     echo "FAIL [1]: printed the whole log, not its tail"; fail=1
 fi
 
