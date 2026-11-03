@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [zenoh, serial, embedded, testing]
-related: [phase-528, 2213]
+related: [phase-528, phase-525, 2213]
 found: 2026-11-03
 ---
 
@@ -60,3 +60,12 @@ talkers, open sessions with the same router.
 
 Issue 2213 is the Zephyr CMSDK UART `configure` failure, a different board
 support path. That image never sent a byte, and this one does.
+
+## Blocks
+
+- phase-528 W4: the serial-talker acceptance run (`nros run --expect` on
+  `examples/mps2-an385-baremetal/rust/serial-talker`). The verb's side of
+  the link works: the qemu runner reports the pty and `rmw_zenohd` listens
+  on it.
+- phase-525 W4: the serial-first first chapter on QEMU, whose image dials
+  the router over this same UART-to-pty link.
