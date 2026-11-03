@@ -37,6 +37,14 @@ rmw_ret_t session_create(const char* locator, uint8_t mode, uint32_t domain_id,
                          rmw_session_t* out);
 rmw_ret_t session_destroy(rmw_session_t* session);
 rmw_ret_t session_drive_io(rmw_session_t* session, int32_t timeout_ms);
+/* phase-521 W8 (d), issue 2218 — the executor's wake, and how this session
+ * reports arrivals (RFC-0113 D4). */
+rmw_ret_t session_set_wake_callback(rmw_session_t* session, void (*cb)(void* ctx), void* ctx);
+rmw_ret_t session_readiness_source(const rmw_session_t* session, uint8_t* out_kind,
+                                   int32_t* out_handle);
+/** Call the session's wake callback, if one is installed. `backend_data` is
+ *  the session's; safe from the broker's callback context. */
+void session_wake(void* session_backend_data);
 
 /* ---- publisher.cpp ---- */
 rmw_ret_t publisher_create(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
@@ -58,6 +66,9 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
 rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data);
 rmw_ret_t subscription_get_actual_qos(const rmw_subscription_t* subscriber,
                                       rmw_qos_profile_t* qos);
+rmw_ret_t subscription_set_on_new_message_callback(rmw_subscription_t* subscriber,
+                                                   rmw_event_callback_t callback,
+                                                   const void* user_data);
 
 /* ---- service.cpp ---- */
 rmw_ret_t service_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,

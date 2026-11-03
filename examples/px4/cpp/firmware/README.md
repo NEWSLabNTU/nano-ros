@@ -58,19 +58,31 @@ The stock consumer IS the measurement (issue 0351).
 ## Layout
 
 PX4 requires `<EXTERNAL_MODULES_LOCATION>/src/modules/<name>/`, so that is the
-shape here; this directory is the location root. The module follows PX4
-convention throughout — `ModuleBase<T>` + `ScheduledWorkItem`, a `Kconfig`,
-`PRINT_MODULE_*` usage strings, tab indent, CamelCase file named after the class.
+shape here; this directory is the location root. It is also a nano-ros
+workspace (phase-521 W8, RFC-0113 D9):
 
-One nano-ros-specific call in its CMakeLists, after the shared block that
-resolves `NROS_REPO_DIR` (explicit `-DNROS_REPO_DIR`, else `nros dev sdk root`;
-never the environment — RFC-0103 D6):
+| Path | What it is |
+| --- | --- |
+| `src/uorb_demo_pkg/` | the component, `uorb_demo_pkg::UorbDemo`: a `configure(rclcpp::Node&)` with a 1 s timer, a publisher and a `vehicle_status` subscription. The only hand-written code |
+| `src/uorb_demo_bringup/` | its launch file and `system.toml` |
+| `src/modules/nros_uorb_demo/` | the PX4 module: a `CMakeLists.txt` and a `Kconfig`, no source |
+
+The module's entry is GENERATED: a PX4 module with one work item per tier, on
+the work queue its rank picks. A `vehicle_status` arrival schedules that work
+item from the publisher's context and dispatches the callback, and the timer is
+its only deadline. Nothing polls `orb_check`. `nros sync` (in this directory)
+writes the SystemModel the entry is generated from:
 
 ```cmake
 include("${NROS_REPO_DIR}/integrations/px4/NanoRosPx4Module.cmake")
 nros_px4_add_module(MODULE modules__nros_uorb_demo MAIN nros_uorb_demo
-                    BACKENDS uorb SRCS ${CMAKE_CURRENT_LIST_DIR}/NrosUorbDemo.cpp)
+    BACKENDS uorb
+    BRINGUP ${_demo_ws}/uorb_demo_bringup
+    COMPONENTS uorb_demo_pkg:uorb_demo:uorb_demo_pkg::UorbDemo:uorb_demo_pkg/UorbDemo.hpp
+    INCLUDES ${_demo_ws}/uorb_demo_pkg/include
+    SRCS ${_demo_ws}/uorb_demo_pkg/src/UorbDemo.cpp)
 ```
 
 The helper resolves the prebuilt archives and generated headers, generates the
-backend-registration hook, and contributes the uORB backend's own sources.
+backend-registration hook and the module's entry, and contributes the uORB
+backend's own sources.

@@ -154,7 +154,7 @@ deliver Notify without the RMW knowing the board.
 | XRCE over zsock (Zephyr) | Waitable through `zsock_poll` over the socket plus an `eventfd` park, unless a receive callback proves cheaper; phase-521 W4 measures and picks |
 | XRCE over serial / custom transport | Notify through `rx_notify` |
 | smoltcp on bare metal | Notify from the NIC RX interrupt |
-| uORB on PX4 | Notify through the existing `SubscriptionCallback` glue (`px4_callback_glue.cpp`) |
+| uORB on PX4 | Notify through the `SubscriptionCallback` glue (`px4_callback_glue.cpp`), bound per subscription to the owning tier's work item |
 | uORB polling build (`NROS_RMW_UORB_BUILD_PX4_GLUE=OFF`) | none: refused under D5, kept only as a host test double |
 
 ### D5 — No silent fallback
@@ -293,7 +293,7 @@ deleted receive-blocking wait.
 | XRCE over a custom transport with no receive notification | **refused** at open (D5) | `readiness_park::a_session_with_no_readiness_form_is_refused_at_open` (a stub backend stating none, with and without a wake slot) |
 | RTIC images (mps2-an385, LAN9118) | Notify — an RTIC hardware task bound to `ETHERNET` posts the wake object; the run loop parks with the entry budget (SysTick one-shot at the next deadline) | idle `qemu-rtic-listener`, QEMU 9.0.2, 20 s: 0 SysTick one-shots and 2 host CPU ticks (the router's keep-alive arrives first); the retired 1 ms dual-timer tick woke it 20,000 times. `test_qemu_rtic_{pubsub,service,action,mixed_priority_pubsub}_e2e` pass |
 | uORB polling build | none: refused under D5 | host test double only |
-| uORB, PX4 glue build | **refused** at open (D5) until phase-521 W8 wires the glue's arrival to the wake callback | issue 2218 |
+| uORB, PX4 glue build | Notify — each subscription's `uORB::SubscriptionCallback` (publisher's context) posts the executor's wake and calls the owning PX4 tier's `TierWorkItem::notify()` (phase-521 W8 d) | PX4 SITL: the generated `nros_uorb_demo` dispatches `vehicle_status` on arrival on its work item; `px4_uorb_interop_e2e` passes. The glue had never been linked before (issue 2218, archived) |
 
 Measured on Linux over `rmw_zenohd` (`entity_wake`, `required-features-tests`
 lane, 2026-11-02): an idle entry with one 1 s timer runs 4 spins in 3.5 s and
@@ -360,6 +360,9 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Changelog
 
+- 2026-11-03 — D4/D9: uORB states Notify. Its glue is linked (a weak stub
+  had shadowed it) and bound to the owning tier's work item. The PX4 firmware
+  example runs on the generated entry (phase-521 W8 d).
 - 2026-11-03 — D9: the generated PX4 entry and its tier work item land
   (phase-521 W8 b).
 - 2026-11-03 — D9: the yielding park slot's code, `NROS_PLATFORM_PARK_YIELDED`,

@@ -15,7 +15,11 @@
 //     `NROS_PLATFORM_PARK_YIELDED`, so `spin_once` returns to the queue
 //     (maintainer ruling 2026-11-03; no executor API widens, D7 stands).
 //   * an ARRIVAL -- the backend's wake ends up in the tier's `ScheduleNow()`
-//     (`notify()`; issue 2218 binds uORB's `SubscriptionCallback` to it).
+//     (`notify()`). uORB binds it per subscription: each subscription a
+//     tier's setup creates runs that tier on arrival (issue 2218,
+//     `nros_rmw_uorb_set_arrival_target`). A networked backend's arrival
+//     reaches the executor's wake only, which no PX4 tier waits on: such a
+//     subscription is served at the tier's next deadline (issue 2225).
 //
 // `Run()` is therefore: one pass that does not wait (the slot answers EXPIRED
 // to the first park of a run, so the pass drains and dispatches without
@@ -33,6 +37,10 @@
 #include <nros/platform.h>
 #include <rclcpp/detail/nros_cpp_config_generated.h>
 #include <rclcpp/rclcpp.hpp>
+
+#ifdef NROS_RMW_UORB_PX4_GLUE
+#include "nros_rmw_uorb.h"
+#endif
 
 #include <px4_platform_common/atomic.h>
 #include <px4_platform_common/log.h>
@@ -129,7 +137,16 @@ public:
 		}
 
 		if (spec.setup != nullptr) {
+#ifdef NROS_RMW_UORB_PX4_GLUE
+			// Issue 2218 -- every uORB subscription this tier's nodes create
+			// schedules THIS work item on arrival, from the publisher's
+			// context.
+			nros_rmw_uorb_set_arrival_target(&TierWorkItem::notify_trampoline, this);
+#endif
 			const int32_t rc = spec.setup(_executor);
+#ifdef NROS_RMW_UORB_PX4_GLUE
+			nros_rmw_uorb_set_arrival_target(nullptr, nullptr);
+#endif
 
 			if (rc != 0) {
 				return rc;
@@ -157,6 +174,9 @@ public:
 		_notified.store(true);
 		ScheduleNow();
 	}
+
+	/// `notify()` as a C callback, for a backend's arrival path.
+	static void notify_trampoline(void *ctx) { static_cast<TierWorkItem *>(ctx)->notify(); }
 
 	/// The image is stopping: run once more to see it.
 	void wake_for_stop() { ScheduleNow(); }

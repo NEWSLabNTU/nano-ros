@@ -1,0 +1,10 @@
+[system]
+name = "uorb_demo"
+rmw = "uorb"
+domain_id = 0
+default_launch = "demo.launch.xml"
+
+[[component]]
+pkg = "uorb_demo_pkg"
+class = "uorb_demo_pkg::UorbDemo"
+name = "uorb_demo"

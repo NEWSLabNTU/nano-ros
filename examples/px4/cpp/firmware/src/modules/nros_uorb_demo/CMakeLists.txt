@@ -2,8 +2,9 @@
 #
 # One call. The helper resolves libnros_cpp.a + the posix platform shim, prepends
 # the per-build generated headers, generates the strong
-# nros_app_register_backends() from BACKENDS, and contributes the uORB backend's
-# own sources. See integrations/px4/NanoRosPx4Module.cmake.
+# nros_app_register_backends() from BACKENDS, contributes the uORB backend's
+# own sources, and generates the module's entry from BRINGUP. See
+# integrations/px4/NanoRosPx4Module.cmake.
 
 # Resolve the nano-ros SDK root — RFC-0103 D6 (amended 2026-10-12). This
 # block is the ONE leaf spelling, byte-identical in every leaf that must know
@@ -45,10 +46,18 @@ if(NOT NROS_REPO_DIR)
 endif()
 include("${NROS_REPO_DIR}/integrations/px4/NanoRosPx4Module.cmake")
 
+# phase-521 W8 (d), RFC-0113 D9 -- the module's entry is GENERATED from the
+# bringup: one PX4 work item per tier, on the work queue its rank picks. The
+# component (`uorb_demo_pkg::UorbDemo`) is the only hand-written code; nothing
+# here schedules the executor. Run `nros sync` in `examples/px4/cpp/firmware`
+# first: it writes the SystemModel the entry is generated from.
+set(_demo_ws "${CMAKE_CURRENT_LIST_DIR}/../..")
 nros_px4_add_module(
-	MODULE   modules__nros_uorb_demo
-	MAIN     nros_uorb_demo
-	BACKENDS uorb
-	SRCS
-		${CMAKE_CURRENT_LIST_DIR}/NrosUorbDemo.cpp
+	MODULE     modules__nros_uorb_demo
+	MAIN       nros_uorb_demo
+	BACKENDS   uorb
+	BRINGUP    ${_demo_ws}/uorb_demo_bringup
+	COMPONENTS uorb_demo_pkg:uorb_demo:uorb_demo_pkg::UorbDemo:uorb_demo_pkg/UorbDemo.hpp
+	INCLUDES   ${_demo_ws}/uorb_demo_pkg/include
+	SRCS       ${_demo_ws}/uorb_demo_pkg/src/UorbDemo.cpp
 )

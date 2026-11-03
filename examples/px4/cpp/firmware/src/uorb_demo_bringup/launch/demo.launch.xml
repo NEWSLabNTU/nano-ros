@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="uorb_demo_pkg" exec="uorb_demo" name="nros_uorb_demo"/>
+</launch>

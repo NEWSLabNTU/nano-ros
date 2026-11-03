@@ -30,9 +30,17 @@ set(NROS_RMW_UORB_SOURCES
     "${_nros_rmw_uorb_src_dir}/service.cpp"
     "${_nros_rmw_uorb_src_dir}/topic_registry.cpp"
     "${_nros_rmw_uorb_src_dir}/qos.cpp"
-    "${_nros_rmw_uorb_src_dir}/callback_default.cpp"
 )
+# EXACTLY ONE of the next two lists joins a build (phase-521 W8 d). Both
+# define `nros_orb_register_callback`; `callback_default.cpp`'s used to be a
+# WEAK stub beside the glue's strong one, and in a static archive the linker
+# pulls whichever member first resolves the symbol -- the stub, since nothing
+# else references the glue object -- so the PX4 module never linked its
+# push-wake glue at all: every subscription silently polled.
 set(NROS_RMW_UORB_PX4_GLUE_SOURCES
     "${_nros_rmw_uorb_src_dir}/px4_callback_glue.cpp"
+)
+set(NROS_RMW_UORB_NO_GLUE_SOURCES
+    "${_nros_rmw_uorb_src_dir}/callback_default.cpp"
 )
 unset(_nros_rmw_uorb_src_dir)

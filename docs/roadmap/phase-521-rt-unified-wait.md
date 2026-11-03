@@ -739,6 +739,60 @@ failed `-Wfloat-equal` for every PX4 module including `rclcpp.hpp` (now
 `std::equal_to`). The CLI flag and the cmake wiring that call the emitter land
 with (d), which builds them.
 
+**W8 (d), part 1 — the firmware example and uORB readiness (2026-11-03).**
+`examples/px4/cpp/firmware` is a nano-ros workspace now:
+- the component `uorb_demo_pkg::UorbDemo` (a 1 s timer, the `debug_key_value`
+  publisher and a callback `vehicle_status` subscription);
+- `uorb_demo_bringup`;
+- a module directory holding only `CMakeLists.txt` and `Kconfig`.
+
+`nros_px4_add_module(... BRINGUP <dir> COMPONENTS <pkg>:<exec>:<class>:<header>)`
+asks `nros dev image model-path` for the model `nros sync` wrote, writes the
+component index, and generates the entry with
+`nros dev codegen entry --px4-main <MAIN>`. The plan resolves on the `linux`
+board, because PX4 SITL is POSIX. `just px4 build-sitl-example` runs `nros sync`
+first.
+
+uORB (issue 2218, archived): the push-wake glue had NEVER been linked. A weak
+stub in the same archive resolved the symbol first, so every subscription
+polled. The fix has four parts:
+- exactly one of the glue and the no-glue stub joins a build, and the stub is
+  no longer weak;
+- the session states Notify with the glue and none without it (refused at
+  open, D5), and fills `set_wake_callback` and the per-entity callback; a
+  subscription that cannot register is refused;
+- the glue callback runs in the publisher's context, with no `lp_default` hop;
+- `nros_rmw_uorb_set_arrival_target` binds each subscription a tier's setup
+  creates to that tier's `notify()`.
+
+Measured on PX4 SITL v1.17.0: the module starts on one work item (`default`
+on `rate_ctrl`), publishes at 1 Hz, dispatches `vehicle_status` on arrival,
+and `px4_uorb_interop_e2e` passes.
+
+A networked backend's arrival on a PX4 tier is issue 2225.
+
+**W8 (d), part 2 — the bridge (2026-11-03).** `examples/px4/cpp/bridge` is a
+workspace too:
+- the component is `uorb_bridge_pkg::UorbBridge`;
+- its inward subscription dispatches on arrival, which replaces the
+  200 ms `ScheduleOnInterval` poll;
+- its second node opens the outward session by name (`NodeBuilder::rmw`).
+
+The entry opens the bringup's `[system] rmw` (uORB) as the primary session.
+`nros_px4_add_module` bakes it as `NROS_ENTRY_RMW` when BACKENDS lists more
+than one, because the runtime refuses to guess between registered backends.
+`message_equality.hpp`'s generic `==` failed `-Wfloat-equal` for a PX4 module
+with a float field, so it is now compiled under a diagnostic pragma.
+
+Measured on PX4 SITL with `rmw_zenohd`: `nros_uorb_bridge start` prints
+`bridging ... (uorb) -> ... (zenoh)`, and samples from `px4_mavlink_debug`
+are forwarded. `git grep ScheduledWorkItem examples/` finds nothing; the
+only work items are the generated ones.
+
+`px4_bridge_ros2_e2e` (the ROS 2 subscriber leg) needs a `px4_msgs` ament
+overlay for the host's distro (`just px4 build-px4-msgs-ros <distro>`). That is
+provisioning, part of W8 (e).
+
 **Assessment (2026-11-02).** SITL is provisionable here: the main checkout
 holds `third-party/px4/PX4-Autopilot` with a built
 `build/px4_sitl_default`, `just px4 setup|doctor|build-sitl-cpp|test-sitl`

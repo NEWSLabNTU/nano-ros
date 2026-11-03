@@ -314,6 +314,15 @@ pub struct EntryArgs {
     // RFC-0109 D8 (phase-514 W3).
     #[arg(long, value_name = "PATH")]
     pub rmw_config: Option<PathBuf>,
+
+    /// Render a PX4 module entry whose shell command is `<MAIN>`: one PX4
+    /// work item per tier. `--lang cpp --typed` only.
+    ///
+    /// PX4 SITL runs nano-ros on the POSIX platform, so the plan resolves on
+    /// the `linux` board (`--board` may be omitted or `linux`).
+    // phase-521 W8 (d), RFC-0113 D9.
+    #[arg(long, value_name = "MAIN")]
+    pub px4_main: Option<String>,
 }
 
 fn parse_link_libs(s: &str) -> std::result::Result<(String, PathBuf), String> {
@@ -426,10 +435,25 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         );
     }
 
+    // phase-521 W8 (d) -- a PX4 module entry resolves on the POSIX board it
+    // runs on; any other board would resolve tiers PX4 never runs.
+    let board = match (&args.px4_main, &args.board) {
+        (Some(_), Some(b)) if b != "linux" => bail!(
+            "codegen entry: `--px4-main` resolves the plan on the `linux` board \
+             (PX4 SITL runs nano-ros on POSIX); drop `--board {b}`"
+        ),
+        (Some(_), _) => {
+            if !args.typed || lang != entry_codegen::Lang::Cpp {
+                bail!("codegen entry: `--px4-main` needs `--lang cpp --typed`");
+            }
+            Some("linux".to_string())
+        }
+        (None, b) => b.clone(),
+    };
     let mut plan = if let Some(model_path) = &args.model {
         // phase-460 W1 (issue 1420) -- verify at this door before the bake.
         crate::model_gate::verify(model_path, None).map_err(|e| eyre!("codegen entry: {e}"))?;
-        entry_codegen::plan_from_model(model_path, args.board.clone())?
+        entry_codegen::plan_from_model(model_path, board)?
     } else if args.launch.is_some() {
         // phase-296 R-code.1 — the launch-XML entry bake is REMOVED. The
         // canonical input is a play_launch-resolved SystemModel.
@@ -650,18 +674,37 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 .map_err(|e| eyre!("--rmw-config: {e}"))?,
             None => Vec::new(),
         };
-        entry_codegen::emit::emit_typed_image_lowered(
-            lang,
-            &plan,
-            &monitor_rows,
-            &age_rows,
-            hazard_model.as_ref(),
-            &mode_rows,
-            &mode_tier,
-            &node_ranks,
-            &session_properties,
-        )
-        .map_err(|e| eyre!("{e}"))?
+        if let Some(main) = args.px4_main.as_deref() {
+            entry_codegen::px4::emit_px4_lowered(
+                &plan,
+                main,
+                &entry_codegen::lower::LowerOptions {
+                    monitors: &monitor_rows,
+                    ages: &age_rows,
+                    hazard_model: hazard_model.as_ref(),
+                    modes: &mode_rows,
+                    mode_deadlines: Some(&mode_tier.deadlines),
+                    mode_switch: &mode_tier.switch,
+                    probe: None,
+                    node_ranks: &node_ranks,
+                    session_properties: &session_properties,
+                },
+            )
+            .map_err(|e| eyre!("{e}"))?
+        } else {
+            entry_codegen::emit::emit_typed_image_lowered(
+                lang,
+                &plan,
+                &monitor_rows,
+                &age_rows,
+                hazard_model.as_ref(),
+                &mode_rows,
+                &mode_tier,
+                &node_ranks,
+                &session_properties,
+            )
+            .map_err(|e| eyre!("{e}"))?
+        }
     } else {
         match lang {
             // phase-432 W2.4 (RFC-0091 §7) — the Rust entry VERB is retired.

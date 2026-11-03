@@ -184,6 +184,10 @@ build-sitl-example:
     nros_run_quiet "build nros-platform-posix" \
         cmake --build "$(pwd)/build/nros-platform-posix"
 
+    # phase-521 W8 (d) -- the module's entry is generated from its bringup's
+    # SystemModel, which `nros sync` writes (RFC-0113 D9).
+    (cd "$EXT_DIR" && nros sync)
+
     echo "Building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
     make -C "$PX4_DIR" px4_sitl_default EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
@@ -330,6 +334,10 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
         cmake -S "$ROOT/packages/platform/nros-platform-posix" -B "$ROOT/build/nros-platform-posix"
     nros_run_quiet "build nros-platform-posix" \
         cmake --build "$ROOT/build/nros-platform-posix"
+
+    # phase-521 W8 (d) -- the module's entry is generated from its bringup's
+    # SystemModel, which `nros sync` writes (RFC-0113 D9).
+    (cd "$EXT_DIR" && nros sync)
 
     echo "[4/4] building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
     # profile-literal-ok: symbol fixture: pairs with the --release build above.

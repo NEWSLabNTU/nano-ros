@@ -96,7 +96,9 @@ const nros_rmw_vtable_t kVtable = {
     /*publisher_event_init*/ nullptr,
     /*publisher_assert_liveliness*/ nullptr,
     /*next_deadline_ms*/ nullptr,
-    /*set_wake_callback*/ nullptr,
+    /* phase-521 W8 (d), issue 2218 — the executor's wake, called on an
+     * arrival (RFC-0113 D4 Notify). */
+    /*set_wake_callback*/ session_set_wake_callback,
     /*borrow_loaned_message*/ nullptr,
     /*publish_loaned_message*/ nullptr,
     /*return_loaned_message_from_publisher*/ nullptr,
@@ -159,8 +161,10 @@ const nros_rmw_vtable_t kVtable = {
     /*destroy_node*/ nullptr,
     /*set_log_severity*/ nullptr,
     /*supported_qos_policies*/ supported_qos_policies,
-    /* Issue 1940 — uORB names no entity on arrival, so no per-entity wake. */
-    /*subscription_set_on_new_message_callback*/ nullptr,
+    /* phase-521 W8 (d) — uORB DOES name the entity on arrival: each
+     * subscription registers its own broker callback (issue 1940 read this
+     * as "no per-entity wake"; the glue's per-subscription callback is one). */
+    /*subscription_set_on_new_message_callback*/ subscription_set_on_new_message_callback,
     /*service_set_on_new_request_callback*/ nullptr,
     /*client_set_on_new_response_callback*/ nullptr,
     /* Issue 1978 — uORB has no graph and no client identity, and states no
@@ -169,6 +173,11 @@ const nros_rmw_vtable_t kVtable = {
     /*count_services*/ nullptr,
     /*get_gid_for_client*/ nullptr,
     /*event_type_is_supported*/ nullptr,
+    /*take_request_with_info*/ nullptr,
+    /*take_response_with_info*/ nullptr,
+    /* phase-521 W8 (d), issue 2218 — RFC-0113 D4: Notify with the PX4 glue
+     * linked, none without it (refused at open, D5). */
+    /*readiness_source*/ session_readiness_source,
 };
 #pragma GCC diagnostic pop
 

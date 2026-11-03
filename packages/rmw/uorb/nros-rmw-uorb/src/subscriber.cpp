@@ -30,6 +30,7 @@
 //     frees.
 
 #include "internal.hpp"
+#include "nros_rmw_uorb.h"
 #include "nros_rmw_uorb_registry.h"
 #include "uorb_abi.hpp"
 
@@ -56,11 +57,36 @@ struct SubscriberState {
     // `true` if `nros_orb_register_callback` succeeded — used by
     // destroy to decide whether to unregister.
     bool callback_active;
+    // phase-521 W8 (d), issue 2218 — who hears an arrival, besides `ready`:
+    // the session's executor wake (its `backend_data`), the per-entity
+    // callback when the runtime registered one (phase-397: it names this
+    // subscription, so only the owning tier wakes), and the arrival target
+    // `nros_rmw_uorb_set_arrival_target` named when this was created (a PX4
+    // tier's work item). Called from the broker's context: atomics only.
+    void* session;
+    std::atomic<rmw_event_callback_t> on_new;
+    std::atomic<const void*> on_new_ud;
+    void (*target)(void*);
+    void* target_ctx;
 };
+
+// The target the NEXT subscription takes. Set and cleared around a tier's
+// setup by the generated PX4 entry; setups never overlap (issue #144).
+void (*g_arrival_target)(void*) = nullptr;
+void* g_arrival_target_ctx = nullptr;
 
 extern "C" void subscriber_ready_callback(void* arg) {
     auto* state = static_cast<SubscriberState*>(arg);
     state->ready.store(true, std::memory_order_release);
+    rmw_event_callback_t cb = state->on_new.load(std::memory_order_acquire);
+    if (cb != nullptr) {
+        cb(state->on_new_ud.load(std::memory_order_acquire), 1);
+    } else {
+        session_wake(state->session);
+    }
+    if (state->target != nullptr) {
+        state->target(state->target_ctx);
+    }
 }
 
 } // namespace
@@ -103,6 +129,9 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
     state->meta = meta;
     state->sub_handle = handle;
     state->callback_active = false;
+    state->session = session->backend_data;
+    state->target = g_arrival_target;
+    state->target_ctx = g_arrival_target_ctx;
     // K.4.2-sub-push: try push-wake. Failure leaves callback_active
     // = false; we pin `ready` to true so take_serialized degrades
     // gracefully to the slow polling path.
@@ -115,12 +144,41 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
         // broker latched between subscribe + callback install.
         state->ready.store(true, std::memory_order_relaxed);
     } else {
-        // Slow path: pin ready so has_data / take_serialized never
-        // short-circuit on the flag.
+#ifdef NROS_RMW_UORB_PX4_GLUE
+        // phase-521 W8 (d) — with the glue linked, the session told the
+        // runtime it is Notify (`session_readiness_source`). A subscription
+        // that could not register would be polled by nothing, so it is
+        // refused rather than served silently (RFC-0113 D5). The cause is a
+        // full callback pool: raise NROS_RMW_UORB_PX4_MAX_CALLBACKS.
+        (void)orb_unsubscribe(handle);
+        state->~SubscriberState();
+        std::free(state);
+        return NROS_RMW_RET_ERROR;
+#else
+        // Slow path (the host test double): pin ready so has_data /
+        // take_serialized never short-circuit on the flag.
         state->ready.store(true, std::memory_order_relaxed);
+#endif
     }
     out->backend_data = state;
     out->can_loan_messages = false;
+    return NROS_RMW_RET_OK;
+}
+
+/* phase-521 W8 (d) — the per-entity arrival callback (issue 1940's slot).
+ * uORB names the entity on arrival: each subscription has its own broker
+ * callback, so the runtime's per-entity wake routing reaches the owning
+ * executor rather than every executor over the session. */
+rmw_ret_t subscription_set_on_new_message_callback(rmw_subscription_t* subscriber,
+                                                   rmw_event_callback_t callback,
+                                                   const void* user_data) {
+    if (subscriber == nullptr || subscriber->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    auto* state = static_cast<SubscriberState*>(subscriber->backend_data);
+    state->on_new.store(nullptr, std::memory_order_release);
+    state->on_new_ud.store(user_data, std::memory_order_release);
+    state->on_new.store(callback, std::memory_order_release);
     return NROS_RMW_RET_OK;
 }
 
@@ -235,3 +293,8 @@ rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_da
 }
 
 } // namespace nros_rmw_uorb
+
+extern "C" void nros_rmw_uorb_set_arrival_target(void (*notify)(void* ctx), void* ctx) {
+    nros_rmw_uorb::g_arrival_target = notify;
+    nros_rmw_uorb::g_arrival_target_ctx = ctx;
+}

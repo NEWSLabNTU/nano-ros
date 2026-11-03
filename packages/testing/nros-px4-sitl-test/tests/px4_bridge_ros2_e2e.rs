@@ -244,7 +244,7 @@ fn ros2_subscriber_receives_a_stock_px4_topic_through_the_bridge() {
     let locator = router.locator();
 
     // The bridge reads its outward locator from `$NROS_LOCATOR` in the PX4
-    // DAEMON's environment (`NrosUorbBridge::init`), and `Px4Sitl::boot_in`
+    // DAEMON's environment (`UorbBridge::configure`), and `Px4Sitl::boot_in`
     // gives the daemon this process's environment — it has no per-spawn env
     // seam. Set before the daemon spawns, with no other thread of this test
     // running: nextest runs each test in its own process, and this binary has
@@ -255,7 +255,7 @@ fn ros2_subscriber_receives_a_stock_px4_topic_through_the_bridge() {
 
     let sitl = Px4Sitl::boot_in(&build_dir).expect("Px4Sitl::boot_in");
 
-    // `start` runs `NrosUorbBridge::init()` in the SHELL CLIENT's command
+    // `start` runs `UorbBridge::configure()` in the SHELL CLIENT's command
     // context, so its `PX4_INFO` lines come back as this call's stdout, not
     // through the daemon log (the same property W2.4 measured for `listener`;
     // measured again here — the first draft waited on the log for the
