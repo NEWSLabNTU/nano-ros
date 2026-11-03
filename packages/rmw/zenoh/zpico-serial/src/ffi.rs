@@ -125,11 +125,17 @@ const Z_SERIAL_MAX_COBS_BUF_SIZE: usize = 1516;
 /// Maximum frame size (MTU + header + length + CRC32).
 const Z_SERIAL_MFS_SIZE: usize = 1510;
 
-/// Poll interval when waiting for the first byte in `_z_read_serial_internal` (ms).
+/// Longest single wait when waiting for the first byte in
+/// `_z_read_serial_internal` (ms).
 const SERIAL_READ_POLL_INTERVAL_MS: u32 = 10;
-/// Maximum number of polls before `_z_read_serial_internal` times out.
-/// 500 * 10ms = 5s timeout for reading the first byte.
-const SERIAL_READ_TIMEOUT_POLLS: u32 = 500;
+/// How long a blocking `_z_read_serial_internal` waits for the first byte of a
+/// frame (ms), measured on the platform clock.
+const FIRST_BYTE_TIMEOUT_MS: u64 = 5000;
+/// How long `_z_read_serial_internal` waits for the rest of a frame once its
+/// first byte has been taken (ms), measured on the platform clock.
+const MID_FRAME_TIMEOUT_MS: u64 = 500;
+/// Longest single wait while a frame is partly read (ms).
+const MID_FRAME_POLL_INTERVAL_MS: u32 = 1;
 
 // Imported from zenoh-pico's protocol/codec/serial.h via zpico-sys linkage
 unsafe extern "C" {
@@ -158,6 +164,26 @@ unsafe extern "C" {
 
     /// Sleep for the given number of milliseconds.
     fn z_sleep_ms(ms: u32);
+
+    /// zenoh-pico's monotonic clock. On bare metal `z_clock_t` is a `u64` of
+    /// milliseconds (`c/platform/bare-metal/platform.h`).
+    fn z_clock_now() -> u64;
+}
+
+/// The platform's monotonic clock, in milliseconds.
+fn now_ms() -> u64 {
+    // SAFETY: a pure read of zenoh-pico's platform clock.
+    unsafe { z_clock_now() }
+}
+
+/// Milliseconds since `start` (a [`now_ms`] reading).
+fn elapsed_ms(start: u64) -> u64 {
+    now_ms().wrapping_sub(start)
+}
+
+/// One wait toward a deadline `remaining_ms` away, at most `slice_ms` long.
+fn wait_slice(remaining_ms: u64, slice_ms: u32) -> u32 {
+    remaining_ms.min(u64::from(slice_ms)) as u32
 }
 
 // ============================================================================
@@ -296,7 +322,7 @@ pub extern "C" fn _z_serial_close(sock: *mut ZSysNetSocket) {
 
 /// Read a complete serial frame (COBS-decoded, CRC-checked).
 ///
-/// Blocks up to `SERIAL_READ_TIMEOUT_MS` waiting for the first byte.
+/// Blocks up to `FIRST_BYTE_TIMEOUT_MS` waiting for the first byte.
 /// Once at least one byte has arrived, continues reading until the 0x00
 /// delimiter completes the COBS frame.
 ///
@@ -323,21 +349,22 @@ pub extern "C" fn _z_read_serial_internal(
     // Read bytes until 0x00 delimiter.
     // In blocking mode (during z_open handshake): wait up to 5s for first byte.
     // In non-blocking mode (during spin_once): return immediately if no data.
+    //
+    // Both bounds are DEADLINES on the platform clock, never counts of waits
+    // (issue 2231). A wait goes through the board's idle hook, which may
+    // return early for any reason; under QEMU 11 its `wfi` returns at once
+    // (issue 2209). Counting 500 such waits as "5 s" made the handshake's read
+    // give up within milliseconds, so `_z_connect_serial` re-sent INIT to a
+    // router that had already answered the first one, and the router dropped
+    // the link ("Unexpected Init flag in message").
     let blocking = SERIAL_BLOCKING_MODE.load(Ordering::Relaxed);
-    let max_polls = if blocking {
-        SERIAL_READ_TIMEOUT_POLLS
-    } else {
-        1 // Single poll attempt in non-blocking mode
-    };
     let mut rb: usize = 0;
-    let mut first_byte_polls: u32 = 0;
-    let mut mid_frame_polls: u32 = 0;
+    let first_byte_start = now_ms();
+    let mut mid_frame_start: Option<u64> = None;
     // Once the first byte of a COBS frame has been drained from the UART ring
     // buffer, we must finish reading the whole frame (the bytes already
     // consumed cannot be returned to the ring). Cap the mid-frame wait so a
     // peer that stalls partway through a frame cannot deadlock spin_once.
-    const MID_FRAME_POLL_INTERVAL_MS: u32 = 1;
-    const MID_FRAME_TIMEOUT_POLLS: u32 = 500; // 500 * 1ms = 500ms
     loop {
         if rb >= Z_SERIAL_MAX_COBS_BUF_SIZE {
             break;
@@ -350,23 +377,30 @@ pub extern "C" fn _z_read_serial_internal(
         let mut byte = [0u8; 1];
         if port.rx_drain(&mut byte) == 0 {
             if rb == 0 {
-                // No data yet
-                first_byte_polls += 1;
-                if first_byte_polls >= max_polls {
+                // No data yet. Non-blocking mode (spin_once) polls once.
+                let waited = elapsed_ms(first_byte_start);
+                if !blocking || waited >= FIRST_BYTE_TIMEOUT_MS {
                     unsafe { z_free(raw_buf) };
                     return usize::MAX;
                 }
-                idle_ms(SERIAL_READ_POLL_INTERVAL_MS);
+                idle_ms(wait_slice(
+                    FIRST_BYTE_TIMEOUT_MS - waited,
+                    SERIAL_READ_POLL_INTERVAL_MS,
+                ));
                 continue;
             }
             // Mid-frame: wait briefly for the 0x00 delimiter, bounded so a
             // stalled peer does not park spin_once here forever.
-            mid_frame_polls += 1;
-            if mid_frame_polls >= MID_FRAME_TIMEOUT_POLLS {
+            let start = *mid_frame_start.get_or_insert_with(now_ms);
+            let waited = elapsed_ms(start);
+            if waited >= MID_FRAME_TIMEOUT_MS {
                 unsafe { z_free(raw_buf) };
                 return usize::MAX;
             }
-            idle_ms(MID_FRAME_POLL_INTERVAL_MS);
+            idle_ms(wait_slice(
+                MID_FRAME_TIMEOUT_MS - waited,
+                MID_FRAME_POLL_INTERVAL_MS,
+            ));
             continue;
         }
 
