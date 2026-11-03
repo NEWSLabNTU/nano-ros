@@ -83,6 +83,45 @@ that is not real silicon. That covers every target the tree's CI runs today.
   `--json`, the runner-contract form. An unresolved plan exits 3. Running
   without `--dry-run` exits 2 with a message saying it is phase-528 W4.
 
+**Follow-ups (2026-11-03).**
+
+- *The emulator's NIC from the image (done).* `[image.<id>.run] nic` reaches
+  the plan. The resolver's image rung now carries the image's resolved
+  network (the same `NROS_IMAGE_NET` text the build bakes), and a QEMU board
+  with `[board.run.qemu] nic_model` gets `args.nic` from
+  `nros_board_common::image_net::qemu_nic` over the primary interface: the
+  attach the image states (SLIRP, bridge or TAP), the board's model and the
+  MAC the firmware was built with. Provenance is `image`. An image on a
+  physical-only network refuses rather than booting on no network. An image
+  with no network keeps the board's `user,model=<model>`, so the 2169 rows are
+  unchanged. `nros ws qemu-nic` and the plan now compute the value through the
+  same function.
+- *A console `command` on the plan (done).* `nros_extension::plan::Console`
+  gains `command`, an optional template that attaches the console instead of
+  the runner's own console code. The JSON change is additive. The resolver
+  carries `[board.console]` / `[image.<id>.console] command` key by key, with
+  provenance `console.command`. `nros-cli-core/tests/console_wire_agreement.rs`
+  holds the table and the plan console equal: every table key either crosses
+  under the same name and JSON form, or has a listed home (`usb` becomes
+  `args.usb`), and the plan's only key with no table is the resolved `port`.
+- *Hardware detection from the registry (not done; needs a decision).* What
+  decides host, emulator or hardware in `resolve_run` is the descriptor:
+  `[board.run] host`/`emulator`, else `[board.flash]` (refused, naming
+  `nros flash --monitor`), else a method guess (no triple and not Zephyr means
+  host). The registry cannot replace that as it stands. Its `runs` is
+  evidence (RFC-0114 D10), not capability: `mps3-an536-freertos` and
+  `esp32-qemu` say `runs = "none"` while their descriptors state a QEMU
+  emulator, and the Nucleo says `runs = "emulator"` with `hardware` set. A
+  board outside the tree has no row at all. RFC-0118 D4 assigns "how the
+  board is launched" to the descriptor and "whether it was verified" to the
+  registry. Proposed split: (a) retire the method guess, so a board is
+  launchable only through `[board.run]` (every in-tree host board states
+  `host = true` since W2); (b) extend `check-board-registry` so a row's `runs`
+  must agree with its descriptor (`host` needs `host = true`, `emulator` needs
+  a matching `emulator`, `hardware` needs `[board.flash]`); (c) let W4's
+  hardware refusal keep reading the descriptor. Doing what the item literally
+  says would mean amending RFC-0118 D4.
+
 Acceptance:
 
 - For every board in the 2169 test's rows, the next-step text is unchanged,
