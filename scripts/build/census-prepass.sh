@@ -102,12 +102,66 @@ if [ "$only" != "images" ]; then
         echo "census-prepass: fixtures-manifest.py census-leaves failed (exit $leaves_rc)" >&2
         exit 1
     fi
-    while IFS= read -r leaf; do
-        [ -n "$leaf" ] || continue
-        echo "census-prepass: leaf $leaf"
+    # phase-530 W2 (Ruling R30) -- the leaves are independent (each builds
+    # into its own `<leaf>/build/census-host`), and since RFC-0120 D4 made the
+    # census the default every C/C++ cross leaf has one, at 70-165 s of host
+    # build each. So they run side by side, as many at once as the fixture
+    # build runs cmake frontends (`nros_cmake_frontend_jobs`, the budget
+    # `NROS_CMAKE_FRONTENDS` / `NROS_BUILD_JOBS` already set), each told its
+    # share of the cores (`nros_cargo_inner_jobs`) so N builds do not each
+    # claim the whole machine. A failure is still fatal, and EVERY failing
+    # leaf is named, with its log, rather than the first.
+    if [ -n "$leaves" ]; then
         need_cli
-        "$nros_cli" dev image entity-census take --leaf "$repo_root/$leaf"
-    done <<< "$leaves"
+        width="$(nros_cmake_frontend_jobs)"
+        inner="$(nros_cargo_inner_jobs "$width")"
+        log_dir="$repo_root/${NROS_BUILD_LOG_DIR:-build}/census-prepass"
+        mkdir -p "$log_dir"
+        echo "census-prepass: $(grep -c . <<< "$leaves") leaf candidate(s), $width at a time"
+        pids=()
+        names=()
+        failed=()
+        reap() {
+            # Wait for whichever take finishes first (bash 5.1 `wait -n -p`);
+            # record it if it failed, and drop it from the running set.
+            local rc=0 done_pid="" i
+            wait -n -p done_pid "${pids[@]}" || rc=$?
+            for i in "${!pids[@]}"; do
+                if [ "${pids[$i]}" = "$done_pid" ]; then
+                    if [ "$rc" -ne 0 ]; then
+                        failed+=("${names[$i]} (exit $rc; log: $log_dir/$(echo "${names[$i]}" | tr / _).log)")
+                    fi
+                    unset 'pids[i]' 'names[i]'
+                    pids=("${pids[@]}")
+                    names=("${names[@]}")
+                    return
+                fi
+            done
+        }
+        while IFS= read -r leaf; do
+            [ -n "$leaf" ] || continue
+            while [ "${#pids[@]}" -ge "$width" ]; do
+                reap
+            done
+            echo "census-prepass: leaf $leaf"
+            log="$log_dir/$(echo "$leaf" | tr / _).log"
+            CMAKE_BUILD_PARALLEL_LEVEL="$inner" \
+                "$nros_cli" dev image entity-census take --leaf "$repo_root/$leaf" \
+                > "$log" 2>&1 &
+            pids+=("$!")
+            names+=("$leaf")
+        done <<< "$leaves"
+        while [ "${#pids[@]}" -gt 0 ]; do
+            reap
+        done
+        if [ "${#failed[@]}" -gt 0 ]; then
+            echo "census-prepass: ${#failed[@]} leaf census(es) FAILED:" >&2
+            for f in "${failed[@]}"; do
+                echo "  - $f" >&2
+            done
+            exit 1
+        fi
+    fi
 fi
 if [ "$only" = "leaves" ]; then
     exit 0
