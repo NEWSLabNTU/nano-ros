@@ -69,7 +69,7 @@ fn runner_package(ws: &Path, package: &str, name: &str) {
 }
 
 /// One node package, one bringup with one host image, one runner package that
-/// provides the host image's runner (`native`).
+/// provides the host image's runner (`native`), declared as an override.
 fn fixture(ws: &Path) {
     write(
         &ws.join("src/talker_pkg/package.xml"),
@@ -87,8 +87,11 @@ fn fixture(ws: &Path) {
         &ws.join("src/demo_bringup/system.toml"),
         "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
          [image_defaults]\nrmw = \"zenoh\"\n\n\
-         [image.linux]\nboard = \"linux\"\n",
+         [image.linux]\nboard = \"linux\"\n\n\
+         [overrides]\nnative = \"src/acme_native_runner\"\n",
     );
+    // The in-tree `nros_runner_native` also provides `native`, so the
+    // workspace's copy is an override and must be declared.
     runner_package(ws, "acme_native_runner", "native");
     std::fs::create_dir_all(ws.join("build/nros")).unwrap();
 }
