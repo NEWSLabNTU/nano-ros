@@ -1,11 +1,11 @@
 //! One GNU make jobserver for a whole `nros build` (RFC-0117 D4).
 //!
-//! `--parallel-workers N` runs up to N packages at once, and each package's
-//! own tool — cargo, `cmake --build` over make or ninja, west over cmake and
-//! ninja — is parallel on its own. Left alone that is N tools at N jobs each,
-//! N² processes. So `nros build` owns ONE token pool of N and hands it to
-//! every child: a package starts only with a token in hand, and every tool
-//! below it draws its extra jobs from the same pool. Total jobs stay at N
+//! `nros build -j N` runs independent packages side by side, and each
+//! package's own tool — cargo, `cmake --build` over make or ninja, west over
+//! cmake and ninja — is parallel on its own. Left alone that is N tools at N
+//! jobs each, N² processes. So `nros build` owns ONE token pool of N and hands
+//! it to every child: a package starts only with a token in hand, and every
+//! tool below it draws its extra jobs from the same pool. Total jobs stay at N
 //! however the work is shaped. This is the same mechanism the repository's
 //! `just` fan-outs use (`scripts/build/jobserver-pool.sh`, make 4.4's FIFO
 //! jobserver); `nros build` simply plays the part make plays there.

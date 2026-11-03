@@ -117,13 +117,17 @@ graph); `--continue-on-error` acts per image in a workspace with images;
 named by the package; it and `--build-type` are parsed hidden and refused
 naming the flag to use.
 
-**Follow-up — `--parallel-workers` matches colcon, under one jobserver:
-DONE** (#3026). The default is colcon's, the CPU count, and the same N sizes
-one GNU make jobserver that `nros build` creates (or joins, under an outer
-`make -jN`) and hands to every child, so total jobs stay at N rather than
-N². `builder::jobserver` owns the pool; a plan starts holding a token;
-images still build one at a time. RFC-0117 D4's row records the FIFO/pipe
-choice and the ninja ≥ 1.13 requirement.
+**Follow-up — `-j/--jobs` under one jobserver; `--parallel-workers`
+refused: DONE** (#3026). `nros build` creates one GNU make jobserver of N
+tokens (or joins an outer `make -jN`) and hands it to every child, so total
+jobs stay at N rather than N². N is `-j N` / `--jobs N`, default the CPU
+count. colcon's `--parallel-workers` was first taken with the job-count
+meaning, then, by maintainer decision (2026-11-03), replaced: colcon counts
+packages only because it has no shared pool, so the flag is parsed hidden
+and refused naming `nros build -j <N>`, and the image refusal went with it.
+`builder::jobserver` owns the pool; a plan starts holding a token; images
+build one at a time on the same pool. RFC-0117 D4's row records the
+FIFO/pipe choice and the ninja ≥ 1.13 requirement.
 
 - `build`: `--packages-select`, `--packages-up-to`, `--packages-skip`,
   `--packages-above`, `--continue-on-error`, `--cmake-args`,

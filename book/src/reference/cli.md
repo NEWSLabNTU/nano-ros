@@ -391,20 +391,23 @@ with no derivable command (S32Z270) gets a pointer to its platform chapter.
 colcon's flags work with colcon's names: `--packages-select`,
 `--packages-up-to`, `--packages-above`, `--packages-skip` and `--base-paths`
 choose the packages (`nros list -n` with the same flags prints the set),
-and `--continue-on-error`, `--parallel-workers`, `--cmake-args` and
-`--build-base` act as colcon's do. The differences are refusals rather than
+and `--continue-on-error`, `--cmake-args` and `--build-base` act as
+colcon's do. The differences are refusals rather than
 different answers: a package name that matches nothing is an error, and a
 selection that leaves out a package a selected one depends on is refused,
 because nano-ros has no install prefix for it to come from. In a workspace
 with images the unit of `--continue-on-error` is the image, and
-`--parallel-workers` above one and `--build-base` are refused there.
+`--build-base` is refused there.
 
-`--parallel-workers N` (default: the number of CPUs) is also the TOTAL
+`-j N` / `--jobs N` (default: the number of CPUs, as cargo) caps the TOTAL
 number of jobs. `nros build` runs one GNU make jobserver of N tokens and
-every cargo, make and ninja below it draws from it, so building N packages
-at once does not run N times N compilers. Run under a `make -jN` that
-already has a jobserver, it joins that one. Ninja older than 1.13 cannot
-read a jobserver; when one would run, `nros build` says so.
+every cargo, make and ninja below it draws from it, so independent packages
+building side by side never run more than N compilers between them. Run
+under a `make -jN` that already has a jobserver, it joins that one. Ninja
+older than 1.13 cannot read a jobserver; when one would run, `nros build`
+says so. colcon's `--parallel-workers` is refused with a pointer to `-j`:
+colcon counts packages because it has no shared job pool, and `nros build`
+does.
 
 ```sh
 nros build --packages-up-to talker_pkg          # it and its dependencies
