@@ -246,7 +246,7 @@ pub fn run(args: Args) -> Result<()> {
         eyre::bail!(
             // See phase-330 W4.
             "no SystemModel for `{}`. It is a BUILD ARTIFACT, so \
-             generate it rather than committing one:\n  nros sync            \
+             generate it rather than committing one:\n  nros configure       \
              # writes <ws>/build/nros/models/<bringup>/\n(searched, in order: \
              $NROS_MODEL_DIR, $OUT_DIR/nros, <ws>/build/nros/models, \
              <bringup>/build/nros/models. `--model <path>` overrides; a \

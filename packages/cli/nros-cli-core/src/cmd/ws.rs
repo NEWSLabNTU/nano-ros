@@ -715,7 +715,7 @@ fn run_managed_deps(a: ManagedDepsArgs) -> Result<()> {
     if a.check && !changed.is_empty() {
         bail!(
             "{} manifest(s) do not carry the message rows their package.xml implies; \
-             run `nros sync` (or `nros dev lock managed-deps`)",
+             run `nros configure` (or `nros dev lock managed-deps`)",
             changed.len()
         );
     }
@@ -1552,7 +1552,7 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
         for c in &diff.changed_provisions {
             eprintln!("  provision {c}");
         }
-        bail!("re-run `nros sync` (or reconfigure) to refresh the provider index");
+        bail!("re-run `nros configure` (or reconfigure) to refresh the provider index");
     }
 
     // An index read replaces the scan entirely — that is the point of having
@@ -4546,6 +4546,45 @@ fn moved_generated(
     Ok((moved, unresolved))
 }
 
+/// `<ws_root>/generated` as [`moved_generated`] reads it: the scan it needs,
+/// and its answer. `None` for a root with no `generated/`, or one sync cannot
+/// scan — nothing sync generated, so nothing to check.
+struct GeneratedScan {
+    ws_root: PathBuf,
+    scan: Vec<WsPkg>,
+    build_root: PathBuf,
+    moved: Vec<MovedGenerated>,
+    unresolved: Vec<String>,
+}
+
+fn scan_generated(ws_root: &Path) -> Result<Option<GeneratedScan>> {
+    if !ws_root.join("generated").is_dir() {
+        return Ok(None);
+    }
+    let Ok((ws_root, scan, build_root)) = scan_for_query(Some(ws_root), Path::new("generated"))
+    else {
+        return Ok(None);
+    };
+    let (moved, unresolved) = moved_generated(&ws_root, &build_root, &scan)?;
+    Ok(Some(GeneratedScan {
+        ws_root,
+        scan,
+        build_root,
+        moved,
+        unresolved,
+    }))
+}
+
+/// RFC-0120 D7 (phase-530 W1, Ruling R17) — the configure stamp's half of
+/// issue 1780: the generated message crates under `<ws_root>/generated` whose
+/// recorded ament inputs moved. The SAME comparison [`refresh_generated`]
+/// acts on, so the two can never disagree about what moved.
+pub(crate) fn ament_moved_packages(ws_root: &Path) -> Result<Vec<MovedGenerated>> {
+    Ok(scan_generated(ws_root)?
+        .map(|g| g.moved)
+        .unwrap_or_default())
+}
+
 /// RFC-0104 D5 / issue 1780 — `nros build`'s half of the record `nros sync`
 /// writes: regenerate every generated message crate under `<ws_root>/generated`
 /// whose ament inputs moved since it was generated, BEFORE anything compiles.
@@ -4558,15 +4597,16 @@ fn moved_generated(
 /// `package.xml` newly names is generated too. A root with no `generated/` (or
 /// that sync cannot scan) has nothing sync generated, and is left alone.
 pub(crate) fn refresh_generated(ws_root: &Path, dry_run: bool) -> Result<Vec<String>> {
-    let build_root = ws_root.join("generated");
-    if !build_root.is_dir() {
-        return Ok(Vec::new());
-    }
-    let Ok((ws_root, scan, build_root)) = scan_for_query(Some(ws_root), Path::new("generated"))
+    let Some(GeneratedScan {
+        ws_root,
+        scan,
+        build_root,
+        moved,
+        unresolved,
+    }) = scan_generated(ws_root)?
     else {
         return Ok(Vec::new());
     };
-    let (moved, unresolved) = moved_generated(&ws_root, &build_root, &scan)?;
     for name in &unresolved {
         eprintln!(
             // See RFC-0104 D5.
@@ -4615,7 +4655,7 @@ pub(crate) fn refresh_generated(ws_root: &Path, dry_run: bool) -> Result<Vec<Str
                 eyre::bail!(
                     // See RFC-0104 D5.
                     "nros build: {name} moved and then could not be resolved to regenerate it; \
-                     run `nros sync` in {}.",
+                     run `nros configure` in {}.",
                     ws_root.display()
                 );
             };
@@ -4628,7 +4668,7 @@ pub(crate) fn refresh_generated(ws_root: &Path, dry_run: bool) -> Result<Vec<Str
     }
     eprintln!(
         // See RFC-0104 D5.
-        "nros build: regenerated {} — `nros sync` is not needed for this",
+        "nros build: regenerated {} — `nros configure` is not needed for this",
         names.join(", ")
     );
     Ok(names)
@@ -5211,7 +5251,7 @@ fn warn_if_cargo_predates_config_include(ws_root: &Path) {
     if minor < CONFIG_INCLUDE_STABLE_MINOR {
         eprintln!(
             "warning: this workspace's cargo ({}) predates the `include` config-key \
-             stabilization (cargo 1.{CONFIG_INCLUDE_STABLE_MINOR}). nros sync writes the \
+             stabilization (cargo 1.{CONFIG_INCLUDE_STABLE_MINOR}). nros configure writes the \
              nros/nros-core/nros-serdes [patch.crates-io] rows into a central file reached \
              via `include = [\"…/nros-patch.toml\"]`, which stable cargo < 1.{CONFIG_INCLUDE_STABLE_MINOR} \
              SILENTLY IGNORES — the build will then fail `no matching package named 'nros'`. \
@@ -5420,7 +5460,7 @@ fn run_router_config(args: RouterConfigArgs) -> Result<()> {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => bail!(
             "router-config: no router rule at {} — no subscriber of this model declares an \
-             `ingress`, no image links zenoh, or `nros sync` has not run since it did",
+             `ingress`, no image links zenoh, or `nros configure` has not run since it did",
             path.display()
         ),
         Err(e) => bail!("router-config: read {}: {e}", path.display()),
@@ -5647,7 +5687,7 @@ fn write_patch_block(
                  those deps from crates.io at the next build. \
                  Fix: source a ROS 2 env, vendor the package into \
                  packages/cli/interfaces/, or remove the dependency — then re-run \
-                 `nros sync`.",
+                 `nros configure`.",
                 cfg_path.display(),
                 narrowed.len(),
                 narrowed.join(", "),
@@ -6799,7 +6839,7 @@ fn check_freshness(
         }
     }
     if stale {
-        bail!("sync --check: some pkgs stale — run `nros sync` first.");
+        bail!("sync --check: some pkgs stale — run `nros configure` first.");
     }
     println!("sync --check: all good.");
     Ok(())
@@ -7103,7 +7143,7 @@ fn run_doctor(args: DoctorArgs) -> Result<()> {
                     if !body.contains(NROS_MANAGED_TAG) {
                         eprintln!(
                             "  ⚠ {}: no nros-managed [patch.crates-io] entries in \
-                             patch authority config ({}). Run `nros sync`.",
+                             patch authority config ({}). Run `nros configure`.",
                             pkg.name,
                             cfg.display()
                         );

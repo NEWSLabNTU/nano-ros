@@ -203,16 +203,12 @@ fn sync_alias_runs_configure() {
     cleanup(&leaf);
 }
 
-/// A workspace whose bringup declares a host image and a second image on a
-/// board whose Rust target no host has installed: configuring the workspace
-/// (no image named) skips the second, and still succeeds.
-#[test]
-fn sync_alias_succeeds_when_an_image_preflight_refuses() {
-    setup();
-    let ws = scratch_copy("examples/templates/multi-node-workspace", "skip");
-    // A workspace-local board (the catalog absorbs a package's
-    // `nros-board.toml`): the host board, but pinned to a Rust target that
-    // does not exist, so stage 3 refuses it on every host with rustup.
+/// A copy of `multi-node-workspace` plus an image whose preflight refuses on
+/// every host with rustup: a workspace-local board (the catalog absorbs a
+/// package's `nros-board.toml`) — the host board, pinned to a Rust target that
+/// does not exist.
+fn workspace_with_an_unprovisioned_image(tag: &str) -> PathBuf {
+    let ws = scratch_copy("examples/templates/multi-node-workspace", tag);
     let board = ws.join("src/never_provisioned_board");
     fs::create_dir_all(&board).unwrap();
     fs::write(
@@ -234,17 +230,26 @@ fn sync_alias_succeeds_when_an_image_preflight_refuses() {
     let mut body = fs::read_to_string(&sys).unwrap();
     body.push_str("\n[image.cross]\nboard = \"never-provisioned\"\n");
     fs::write(&sys, body).unwrap();
+    ws
+}
 
+/// A workspace whose bringup declares a host image and a second image on a
+/// board whose Rust target no host has installed: configuring the workspace
+/// (no image named) skips the second, and still succeeds.
+#[test]
+fn sync_alias_succeeds_when_an_image_preflight_refuses() {
+    setup();
+    let ws = workspace_with_an_unprovisioned_image("skip");
     nros(&["sync", ws.to_str().unwrap()])
         .expect("an image the caller did not name is skipped, not an error");
     assert!(stamp_file(&ws, "demo_bringup:linux").is_file());
-    assert!(
-        !stamp_file(&ws, "demo_bringup:cross").exists(),
-        "a skipped image records no stamp"
-    );
+    // Ruling R15: a skipped image records a SKIP stamp (digest + reason).
+    let skip = fs::read_to_string(stamp_file(&ws, "demo_bringup:cross"))
+        .expect("a skipped image records a skip stamp");
+    assert!(skip.contains("skipped"), "{skip}");
 
     // The outcome names the skip and its reason.
-    let out = configure_outcome(&[ws.to_str().unwrap()]);
+    let out = configure_outcome(&[ws.to_str().unwrap(), "--force"]);
     assert_eq!(out.skipped.len(), 1, "{out:?}");
     assert_eq!(out.skipped[0].0, "demo_bringup:cross", "{out:?}");
     assert!(
@@ -434,4 +439,37 @@ fn selection_written_outside_configure_moves_the_marker() {
     );
     assert_eq!(out.configured, ["linux"], "{out:?}");
     cleanup(&leaf);
+}
+
+/// Ruling R15 — a host lacking one image's toolchain must not reconfigure on
+/// every bare `nros build`: the skipped image's SKIP stamp is current for a
+/// configure that does not name it.
+#[test]
+fn skipped_image_does_not_reconfigure_every_build() {
+    setup();
+    let ws = workspace_with_an_unprovisioned_image("skip-noop");
+    let first = configure_outcome(&[ws.to_str().unwrap()]);
+    assert_eq!(first.skipped.len(), 1, "{first:?}");
+    let second = configure_outcome(&[ws.to_str().unwrap()]);
+    assert!(
+        second.up_to_date,
+        "nothing changed, so nothing reconfigures: {second:?}"
+    );
+    assert_eq!(second.sync_passes, 0, "{second:?}");
+    cleanup(&ws);
+}
+
+/// Ruling R15 — a bringup-less workspace declares no image, so it records one
+/// project-level stamp, and an unchanged second configure is a no-op.
+#[test]
+fn imageless_workspace_second_configure_is_a_no_op() {
+    setup();
+    let ws = scratch_copy("examples/templates/workspace-shadowing", "imageless");
+    let first = configure_outcome(&[ws.to_str().unwrap()]);
+    assert!(!first.up_to_date, "{first:?}");
+    assert_eq!(first.sync_passes, 1, "{first:?}");
+    let second = configure_outcome(&[ws.to_str().unwrap()]);
+    assert!(second.up_to_date, "{second:?}");
+    assert_eq!(second.sync_passes, 0, "{second:?}");
+    cleanup(&ws);
 }

@@ -128,7 +128,7 @@ impl Verb {
     fn as_str(self) -> &'static str {
         match self {
             Verb::Build => "nros build",
-            Verb::Sync => "nros sync",
+            Verb::Sync => "nros configure",
             Verb::Codegen => "nros codegen",
             Verb::GenerateRust => "nros generate-rust",
             Verb::GenerateC => "nros generate c",
@@ -469,7 +469,7 @@ mod tests {
         let err = check_workspace(&tmp, Verb::Sync).expect_err("must refuse");
         let msg = format!("{err}");
         assert!(msg.contains("NEWER than the runtime"), "{msg}");
-        assert!(msg.contains("nros sync"), "{msg}");
+        assert!(msg.contains("nros configure"), "{msg}");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

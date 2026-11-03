@@ -4618,7 +4618,7 @@ impl EntityInventory {
                     "the `[[bridge]]` {} forwards every topic the workspace declares, and the \
                      bringup's generated `nros-bridge.toml` -- which names them -- was not read \
                      here, so the nodes and endpoints the bridge creates are not known. Run \
-                     `nros sync`, or name the bridge's `topics` in `system.toml` (issue 2076).",
+                     `nros configure`, or name the bridge's `topics` in `system.toml` (issue 2076).",
                     self.unresolved_bridges.join(", ")
                 ),
             };

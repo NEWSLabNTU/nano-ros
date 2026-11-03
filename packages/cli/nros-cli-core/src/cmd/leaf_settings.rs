@@ -1430,7 +1430,7 @@ pub fn write_shared(
          \n\
          or, from INSIDE the package, with no flags at all:\n\
          cargo build --release\n\
-         because `nros sync` wires this file into the leaf's own (gitignored)\n\
+         because `nros configure` wires this file into the leaf's own (gitignored)\n\
          `.cargo/config.toml` as an `include`. Do NOT combine the\n\
          two: cargo JOINS `rustflags` arrays across config files, so reading\n\
          this file twice links `link.x` twice (`region 'FLASH' already\n\
