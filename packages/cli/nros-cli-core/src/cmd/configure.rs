@@ -97,7 +97,7 @@ pub fn ensure_current(
     offline: bool,
     verb: &str,
 ) -> Result<bool> {
-    // phase-530 W2 (RFC-0120 D1) retired `NROS_CONFIGURE_HELD`: nothing a
+    // phase-530 W2 (RFC-0120 D1) retired ~~`NROS_CONFIGURE_HELD`~~: nothing a
     // configure runs calls back into `nros build` or `nros configure` any
     // more. The census builds its host image through the host tool, in this
     // process, and its build sets `NROS_LEAF_CENSUS_HOST`, which every hook
