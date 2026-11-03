@@ -203,12 +203,18 @@ Two maintainer decisions on top of W2b (2026-11-03), recorded in RFC-0119 D4.
   `[overrides]` is refused, so a vendored package cannot grant itself an
   override; `[overrides]` in both `nros.toml` and the root `system.toml` is
   refused, keeping `nros.toml`.
+- **The leaf fallback is transitional** (from the RFC-0121 / phase-531
+  session): it lives in one function, `leaf_system_toml_fallback`, so
+  phase-531 W7 can delete it in one edit, and when it reads a non-empty
+  table it prints one stderr note telling the user to move it to
+  `nros.toml [workspace.overrides]`.
 
 Acceptance: one test per rule — a src/`package_paths` duplicate refused; a
 pin resolves it; `--allow-overriding` resolves it; two `package_paths`
 entries refused; an env-root shadow warns; the underlay rule unchanged;
 declarations from `nros.toml`; the leaf fallback; `src/*/system.toml`
-`[overrides]` refused; both files refused. W2b's tests stay green.
+`[overrides]` refused; both files refused; the fallback's note. W2b's
+tests stay green.
 
 Status: **DONE, in review** (2026-11-03, PR pending).
 

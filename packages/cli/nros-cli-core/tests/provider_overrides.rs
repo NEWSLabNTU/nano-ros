@@ -457,6 +457,40 @@ fn a_leaf_without_nros_toml_reads_its_root_system_toml() {
 }
 
 #[test]
+fn the_leaf_fallback_notes_where_overrides_belong_now() {
+    let (_tmp, ws) = tmp_ws();
+    // No table: nothing to say.
+    std::fs::write(ws.join("system.toml"), BRINGUP_SYSTEM_TOML).unwrap();
+    let d = nros_cli_core::provider_overrides::declared(&ws).unwrap();
+    assert!(d.notes.is_empty(), "{:?}", d.notes);
+
+    // A table read through the fallback: one note naming the new home.
+    std::fs::write(
+        ws.join("system.toml"),
+        format!("{BRINGUP_SYSTEM_TOML}\n[overrides]\nqemu = \"my_qemu\"\n"),
+    )
+    .unwrap();
+    let d = nros_cli_core::provider_overrides::declared(&ws).unwrap();
+    assert_eq!(d.notes.len(), 1, "{:?}", d.notes);
+    assert!(
+        d.notes[0].contains("move this to nros.toml [workspace.overrides]"),
+        "{:?}",
+        d.notes
+    );
+    assert!(d.notes[0].contains("system.toml"), "{:?}", d.notes);
+
+    // Read from nros.toml, there is no note.
+    std::fs::write(ws.join("system.toml"), BRINGUP_SYSTEM_TOML).unwrap();
+    std::fs::write(
+        ws.join("nros.toml"),
+        "[workspace.overrides]\nqemu = \"my_qemu\"\n",
+    )
+    .unwrap();
+    let d = nros_cli_core::provider_overrides::declared(&ws).unwrap();
+    assert!(d.notes.is_empty(), "{:?}", d.notes);
+}
+
+#[test]
 fn overrides_in_a_package_system_toml_are_refused() {
     let (_tmp, ws) = tmp_ws();
     let vendored = ws.join("src/vendored_bringup");

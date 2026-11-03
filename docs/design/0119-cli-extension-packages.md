@@ -224,7 +224,9 @@ An override is allowed, and it is never silent:
    `src/*/system.toml` carrying `[overrides]` is refused, naming the file and
    the move, so a vendored package cannot grant itself an override. The one
    exception is a single-package leaf with no `nros.toml`, whose root
-   `system.toml` `[overrides]` is read instead; a workspace with a `nros.toml`
+   `system.toml` `[overrides]` is read instead, with a note on stderr that
+   the table belongs in `nros.toml` (the fallback is transitional); a
+   workspace with a `nros.toml`
    whose root `system.toml` also carries `[overrides]` is refused, and the
    `nros.toml` table is the one to keep.
 2. **An undeclared override of a `runner` or `command` is refused**, because
