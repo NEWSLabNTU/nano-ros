@@ -2489,9 +2489,25 @@ jobs:
             { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
           fi
 
+  # SHARDED (issue 2223). One hosted runner's disk could not hold the lane:
+  # every `build-serial` gate keeps its build tree until the job ends, and on
+  # 2026-11-03 (run 41563531517) the step started with 44 G free and ended
+  # with 292 K. Every scheduled run from 2026-10-29 was red. The job is now
+  # three matrix entries on this ONE job id, and each runs one shard of
+  # `just check build` (`NROS_BUILD_GATE_SHARD`, issue 2141's mechanism:
+  # `scripts/build/gate-shard.py` puts every gate in exactly one shard). Each
+  # shard therefore has its own 146 G disk. The aggregator's
+  # `needs.check-build.result` is the matrix's combined result.
+  # `check-merge-group-gates` rule 5 refuses a shard spec whose matrix does not
+  # list 1..n. `no-std` and `pristine-checkout` are not part of the lane and
+  # run once, on the last shard.
   check-build:
-    name: check / build tier + no-std (nightly/manual only)
+    name: check / build tier + no-std [${{ matrix.shard }}/3] (nightly/manual only)
     needs: changes
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     if: >-
       ${{ always() && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)
           && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
@@ -2861,13 +2877,15 @@ jobs:
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: disk-transcript-before-check-build
+          name: disk-transcript-before-check-build-${{ matrix.shard }}
           path: ${{ env.NROS_DISK_TRANSCRIPT }}
           if-no-files-found: ignore
           retention-days: 7
 
       - name: just check build (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        env:
+          NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/3
         run: |
           source ./activate.sh
           just check build
@@ -2893,13 +2911,13 @@ jobs:
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && always() && env.NROS_DISK_TRANSCRIPT != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: disk-transcript-after-check-build
+          name: disk-transcript-after-check-build-${{ matrix.shard }}
           path: ${{ env.NROS_DISK_TRANSCRIPT }}
           if-no-files-found: ignore
           retention-days: 7
 
       - name: just check no-std (nightly / manual only)
-        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() && matrix.shard == 3 }}
         run: |
           source ./activate.sh
           just check no-std
@@ -2913,7 +2931,7 @@ jobs:
       # on every pre-push; here it is the nightly / manual signal that
       # `check-default-gates-run-somewhere` requires.
       - name: just check pristine-checkout (nightly / manual only)
-        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() && matrix.shard == 3 }}
         run: |
           source ./activate.sh
           just check pristine-checkout
