@@ -1,6 +1,6 @@
 # Phase 530 — `nros configure`: one resolver for every road, tight sizing, and no fixed point
 
-**Status (2026-11-03). OPEN — not started; W0 (the spike) first.** Implements
+**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1); W2 next.** Implements
 [RFC-0120](../design/0120-nros-configure-one-resolver.md) D1 to D7, D9 and
 the driven and hooked rows of D8. Meets
 [RFC-0094](../design/0094-resolve-before-configure.md) A3 as originally
@@ -34,7 +34,7 @@ The maintainer's requirements (2026-11-03):
 
 ## Work items
 
-### W0 — Spike: the census digest as a host-configure dependency
+### W0 — Spike: the census digest as a host-configure dependency (DONE 2026-11-03)
 
 RFC-0120 D7 depends on one behaviour. A build edge writes
 `<build>/nros/census.digest` write-if-changed (`restat = 1`). That file is in
@@ -60,7 +60,43 @@ Repeat on a Zephyr native_sim leaf.
   cargo `--config` file with ninja edges), and W6 becomes that work. Record the
   choice in RFC-0120.
 
-### W1 — `nros configure`, with sync folded in
+**Results (measured 2026-11-03).** The spike: a build edge (inputs = source)
+writes `census.digest` write-if-changed, as a BYPRODUCT so ninja restats; the
+digest file is in `CMAKE_CONFIGURE_DEPENDS`; configure also writes the digest
+itself.
+
+Plain CMake 3.22.1 + ninja 1.13.2 project:
+
+| test | re-runs | configures | digest |
+| --- | --- | --- | --- |
+| T1 clean build | 0 | 1 | pubs=1 |
+| T2 no-op | 0 | 1 | pubs=1 |
+| T3 body edit (no endpoint change) | 0 | 1 | pubs=1 |
+| T4 add an endpoint | 1 (`[1/2] Re-running CMake...` after the census edge ran) | 2 | pubs=2, seen by that configure |
+| T5 no-op after | 0 | 2 | pubs=2 |
+
+No "multiple rules generate", no cycle error.
+
+Zephyr 3.7, `west build -b native_sim/native/64` on a bare hello-world app
+with the same snippet (`native_sim` 32-bit needs gcc-multilib, absent on this
+host; the tree uses `native_sim/native/64`):
+
+| test | result |
+| --- | --- |
+| T1 clean | 0 re-runs, 1 configure |
+| T2 no-op | 0 |
+| T3 body edit | 0 re-runs |
+| T4 add endpoint | exactly 1 re-run; the configure in that pass saw pubs=2 |
+| T5 no-op after | 0 |
+
+No errors.
+
+**Decision: RFC-0120 D7's build-time fallback is NOT taken.** Because the
+re-run is a real host configure, Kconfig is re-rendered too, so Kconfig-backed
+derived values update through the same path. The Kconfig-symbol listing below
+is therefore moot, and W6 stays the census-step wiring.
+
+### W1 — `nros configure`, with sync folded in (LANDED 2026-11-03)
 
 - A user-tier verb in the Build group (RFC-0117). It runs C1 (today's sync)
   and C2 to C6 (today's stages 1 to 4), and writes `<build>/nros/configured/`
@@ -90,6 +126,69 @@ Repeat on a Zephyr native_sim leaf.
   - a second `nros configure` with nothing changed exits in under one second
     (measured on the C++ workspace);
   - `nros sync` still works.
+
+**What landed (W1).**
+
+- **The verb.** `nros configure` is a user-tier verb in the Build group. It
+  runs C1 (today's sync) and C2 to C6 (stages 1 to 4) under the project lock,
+  and runs no target build tool. Flags: `--image`, `--generated-base`,
+  `--ros-edition`, `--dry-run`, `--check`, `--force`, `--offline` and the
+  provider and metadata flags it inherited from sync. An image the host cannot
+  build is recorded as skipped and configured only when named.
+- **The stamp and its staleness rules.** A stamp per image at
+  `<project>/build/nros/configured/<image>/stamp.toml` holds the input digest:
+  `package.xml`, `Cargo.toml`, `system.toml`, launch files, the env variables
+  configure reads (`AMENT_PREFIX_PATH` among them), the `nros-launch-resolve`
+  path, and the ament install's CONTENT (the digest of the value alone missed
+  an in-place ROS upgrade, so a moved generated package makes the stamp stale).
+  A skip stamp on a named image is stale. `--dry-run` records no stamp. A
+  project with no image gets one `.project` stamp. A skip stamp re-checks its
+  image's preflight. The probe cache per component and the shared host-configure
+  coordinate stamps (D2) are not part of W1; see the open items below.
+- **The lock.** A per-project file lock serialises writers. The parallel
+  measurement the item asks for (several configures reaching one workspace at
+  once, under the fixture build) is not yet run; it belongs with the fixture
+  build's switch to configure.
+- **Implicit configure.** `nros build` and `nros run` call
+  `configure::ensure_current` before planning, like cargo fetching what it
+  needs. The "has not been synced" refusal is now an internal error, since a
+  configure that left the tree unsynced is a bug. `refresh_generated` stays in
+  build as the ament backstop; `refresh_managed_msg_deps` is gone, covered by
+  configure's C1.
+- **The sweep.** `nros sync` is an alias row `("sync", "configure")`, warns on
+  stderr on every use whether or not it is a terminal (W9 step 1). The tree was
+  swept with `check-cli-old-spellings --fix`, so the scanned tree holds zero
+  `nros sync`, and the gate keeps it so. Remedy strings in the CLI say
+  `nros configure`. `eval "$(nros dev ws env)"` is gone from the book flows.
+- **`--offline`.** It reaches the one step of a sync that resolves crates, the
+  `cargo update --workspace` that prunes a seeded leaf `Cargo.lock`, so an
+  offline configure never touches the network.
+
+**Acceptance (measured 2026-11-03).**
+
+- `nros new … && nros build` needs no `nros sync` typed: the build integration
+  test `build_on_a_fresh_copy_needs_no_sync` passes.
+- `nros sync` still works, with its warning.
+- A second `nros configure` with nothing changed on `examples/workspaces/cpp`:
+  **NOT MET on the C++ workspace, because the first
+  configure does not finish there.** `nros configure` in
+  `examples/workspaces/cpp` hung for over 5 minutes after "taking the census
+  with `demo_bringup:linux`", and a re-run hung the same way (killed at 120 s).
+  The process tree shows the cause: the configure holds the project lock, its
+  census spawns `nros build demo_bringup:linux`, and that child now configures
+  implicitly and blocks on the same lock (`locks_lock_inode_wait`), a
+  self-deadlock. No stamp was written, so there is no no-op to time. It is a
+  W1 defect (the lock and the implicit configure meet in the census child), not
+  a slow number. For reference only, the same measurement on
+  `examples/workspaces/rust`: first `nros configure` 41.1 s, second
+  `nros configure` ("up to date (18 image(s))") **0.064 s** wall, under the 1 s
+  target. The C++ number is still to be taken once the census child no longer
+  re-enters the lock.
+
+**Not in the W1 change set (still open):** the per-component metadata probe cache,
+the per-coordinate stamps for shared host configures, retiring
+`NROS_RESOLVED_DIR`, and the parallel-lock measurement. They carry forward
+to the later items that consume them.
 
 ### W2 — Census by default (RFC-0120 D4)
 
@@ -215,7 +314,7 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
 2026-11-03). It retires in three steps, the way the `ZPICO_*` knob spellings
 did (phase-484 W8). Each step is its own change.
 
-1. **Alias, with a warning on every use (lands with W1).**
+1. **Alias, with a warning on every use (LANDED with W1, 2026-11-03).**
    - The warning is printed on stderr whether or not stderr is a terminal, so
      CI logs and scripts see it too. Today `note_old_spelling` prints only on
      a TTY; `sync` gets the always-on form.

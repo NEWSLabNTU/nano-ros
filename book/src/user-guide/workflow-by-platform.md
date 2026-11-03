@@ -40,35 +40,31 @@ a board crate, as every in-tree single-package example on a supported board
 does
 ([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
-## The step that is easy to miss
+## Configure is part of the build
 
-**Rust leaves need `nros configure` before their first build. C and C++
-leaves do not.**
+**`nros build` and `nros run` configure for you, the way `cargo build`
+fetches what it needs.** You do not type a separate step first, for Rust, C
+or C++ leaves alike.
 
-That split is a property of the two languages, not an inconsistency.
-CMake generates a C/C++ leaf's message bindings *during configure*, so
-there is nothing to prepare first. Cargo has no such stage: the message
-crates a Rust leaf path-depends on, and the settings file that carries
-its board facts, both have to exist before cargo parses the manifest.
-`nros configure` produces them:
+`nros configure` is the step they run: it generates the message crates a
+Rust leaf path-depends on, writes the settings file that carries its board
+facts, and resolves each image's build inputs. Cargo has no stage of its own
+for that, so the files have to exist before cargo parses the manifest:
 
 ```text
 <leaf>/generated/<pkg>/                  # message crates
 <leaf>/build/<image>/nros-cargo.toml     # every cargo setting the board implies
 ```
 
-**Skipping it fails in three ways, and they read very differently.**
-`nros build` says so in one line and names the remedy:
+It records a stamp per image under `build/nros/configured/`, so a build with
+nothing changed skips it. It re-runs on its own when `package.xml`,
+`Cargo.toml`, `system.toml`, a launch file or the ROS install changed. Run
+`nros configure` yourself when you want the files without a build, for an
+IDE or a CI step, or add `--force` to redo it.
 
-```text
-Error: <leaf> has not been synced — missing the resolved model under
-`build/nros/models/`, the generated message crate `std_msgs`
-(generated/std_msgs).
-  Run `nros configure` in <leaf> (RFC-0098 D2), then build again.
-```
-
-A plain `cargo build` gets as far as the manifest and stops on the
-missing message crate, without mentioning nano-ros at all:
+**Driving cargo directly skips that.** A plain `cargo build` before any
+configure gets as far as the manifest and stops on the missing message
+crate, without mentioning nano-ros at all:
 
 ```text
 error: failed to load manifest for dependency `std_msgs`
@@ -80,7 +76,7 @@ Caused by:
 
 And a `cargo build --config <leaf>/build/<image>/nros-cargo.toml` whose
 settings file does not exist yet produces the one that does not look
-like a missing file at all — cargo falls back to reading the argument as
+like a missing file at all, because cargo falls back to reading the argument as
 an inline setting:
 
 ```text
@@ -91,12 +87,11 @@ Caused by:
   key with no value, expected `=`
 ```
 
-If you see any of the three, run `nros configure`.
+If you see either, run `nros configure` (or build once with `nros build`).
 
 **Contributors (in-tree checkout):** the `just` recipes —
 `just <module> build-fixtures` and friends — run `nros configure` for you, so
-they work from a fresh clone. It is the hand-run build in a leaf that
-needs you to run it yourself.
+they work from a fresh clone.
 
 You need it **once per project location**, not once per build. Re-run
 it after editing a `.msg`, `.srv`, or `.action` file, after changing
@@ -158,7 +153,7 @@ and its QEMU runner live.
 
 If you would rather drive cargo yourself — an IDE, a CI step,
 `--release` — run `nros configure`; then a plain `cargo build` inside the
-package works, because sync wires that file into the package's
+package works, because configure wires that file into the package's
 gitignored `.cargo/config.toml`. To name the file explicitly instead,
 run from the directory *above* the package — inside it cargo would read
 the settings twice and join the board's rustflags onto themselves:
@@ -218,9 +213,8 @@ nros build <image>              # runs `west build -d build/<coordinate>/<bringu
 `nros build` resolves the west application and the image's overlays, runs
 `west build` with that image's own build directory, and prints Zephyr's next
 command for it — `west build -d <dir> -t run` for an emulated board,
-`west flash -d <dir>` for one with a flash runner. `nros configure` comes first on
-Zephyr whatever the language, because the build stops at its preflight on a
-workspace that was never synced. Driving `west build` yourself is the escape
+`west flash -d <dir>` for one with a flash runner. `nros build` configures first
+on Zephyr too, whatever the language. Driving `west build` yourself is the escape
 hatch; see [Zephyr (west module)](../getting-started/integration-zephyr.md).
 
 ### Where a leaf comes from
