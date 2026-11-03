@@ -1784,8 +1784,8 @@ impl SystemHeader {
 /// `[[component]] entities` -- an authored list, or where the list comes from
 /// instead (issue 1556).
 ///
-/// Untagged: a TOML array is [`Self::Declared`], the string `"census"` is
-/// [`Self::Source`]. Any other string is refused by [`EntitySource`]'s own
+/// Untagged: a TOML array is [`Self::Declared`], the string `"census"` or
+/// `"defaults"` is [`Self::Source`]. Any other string is refused by [`EntitySource`]'s own
 /// variant set, so a typo is a parse error rather than a silent "declared".
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -1803,6 +1803,9 @@ pub enum EntitySource {
     /// The leaf's own census: its program, built for the host and run with
     /// `$NROS_CENSUS_OUT` (`nros ws entity-census take --leaf`).
     Census,
+    /// RFC-0120 D4 (phase-530 W2) -- the crate defaults, written down: the
+    /// opt-out of the census a C/C++ leaf gets when it states nothing.
+    Defaults,
 }
 
 /// `[[component]]` row.
@@ -2060,8 +2063,14 @@ mod tests {
             parsed.components[0].entities,
             Some(ComponentEntitiesSpec::Declared(vec!["timer".into()]))
         );
+        let parsed =
+            toml::from_str::<SystemToml>(&doc("\"defaults\"")).expect("the opt-out parses");
+        assert_eq!(
+            parsed.components[0].entities,
+            Some(ComponentEntitiesSpec::Source(EntitySource::Defaults))
+        );
         toml::from_str::<SystemToml>(&doc("\"timer\""))
-            .expect_err("a bare string other than `census` is neither shape");
+            .expect_err("a bare string other than `census`/`defaults` is neither shape");
     }
 
     use super::*;

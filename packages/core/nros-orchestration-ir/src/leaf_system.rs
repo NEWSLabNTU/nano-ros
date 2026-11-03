@@ -192,6 +192,11 @@ pub struct LeafComponent {
     /// its census (`nros ws entity-census take --leaf`). `entities` is `None`
     /// when this is set; the two are one key, so a component cannot state both.
     pub entities_from_census: bool,
+    /// RFC-0120 D4 -- `entities = "defaults"`: the WRITTEN opt-out of the
+    /// census a C/C++ leaf gets when it states nothing. The component is sized
+    /// at the crate defaults because somebody chose that, not because nothing
+    /// was said. `entities` is `None` when this is set.
+    pub entities_defaults: bool,
     /// Dispatch strategy (`"inline"` | `"deferred"` | `"from_isr"`,
     /// phase-216 A.5), replacing `[package.metadata.nros.node] dispatch`
     /// (issue 1278). Read by `nros check`'s framework × dispatch lint; `None`
@@ -386,6 +391,20 @@ impl LeafSystem {
     /// census (`entities = "census"`)?
     pub fn entities_from_census(&self) -> bool {
         self.components.iter().any(|c| c.entities_from_census)
+    }
+
+    /// RFC-0120 D4 -- does any component write `entities = "defaults"`?
+    pub fn entities_defaults(&self) -> bool {
+        self.components.iter().any(|c| c.entities_defaults)
+    }
+
+    /// Does any component state `entities` at all -- a list, `"census"` or
+    /// `"defaults"`? A C/C++ leaf that states none is counted by its census
+    /// by default (RFC-0120 D4).
+    pub fn states_entities(&self) -> bool {
+        self.components
+            .iter()
+            .any(|c| c.entities.is_some() || c.entities_from_census || c.entities_defaults)
     }
 }
 
@@ -633,25 +652,51 @@ fn features_key(t: Option<&toml::Table>, file: &Path) -> Result<Vec<String>, Str
 /// The word `entities` takes instead of a list (issue 1556).
 pub const ENTITIES_FROM_CENSUS: &str = "census";
 
-/// `entities` as `(declared list, from census)`: an array is a declaration,
-/// the string [`ENTITIES_FROM_CENSUS`] is the census opt-in, anything else is
-/// refused naming both shapes.
-fn entities_key(t: &toml::Table, file: &Path) -> Result<(Option<Vec<String>>, bool), String> {
+/// The word that opts a component out of the census and onto the crate
+/// defaults, written down (RFC-0120 D4).
+pub const ENTITIES_DEFAULTS: &str = "defaults";
+
+/// What one `[[component]] entities` key says.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct EntitiesKey {
+    declared: Option<Vec<String>>,
+    census: bool,
+    defaults: bool,
+}
+
+/// `entities` read: an array is a declaration, the string
+/// [`ENTITIES_FROM_CENSUS`] is the census, [`ENTITIES_DEFAULTS`] the written
+/// opt-out; anything else is refused naming every shape.
+fn entities_key(t: &toml::Table, file: &Path) -> Result<EntitiesKey, String> {
     let Some(v) = t.get("entities") else {
-        return Ok((None, false));
+        return Ok(EntitiesKey::default());
     };
-    if v.as_str() == Some(ENTITIES_FROM_CENSUS) {
-        return Ok((None, true));
+    match v.as_str() {
+        Some(ENTITIES_FROM_CENSUS) => {
+            return Ok(EntitiesKey {
+                census: true,
+                ..EntitiesKey::default()
+            });
+        }
+        Some(ENTITIES_DEFAULTS) => {
+            return Ok(EntitiesKey {
+                defaults: true,
+                ..EntitiesKey::default()
+            });
+        }
+        _ => {}
     }
     let arr = v.as_array().ok_or_else(|| {
         format!(
             "{}: `entities` must be an ARRAY of strings, e.g. \
-             [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"], or the word \
-             \"{ENTITIES_FROM_CENSUS}\" (read from the leaf's census, issue 1556)",
+             [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"], the word \
+             \"{ENTITIES_FROM_CENSUS}\" (read from the leaf's census, issue 1556), or the word \
+             \"{ENTITIES_DEFAULTS}\" (the crate defaults, chosen)",
             file.display()
         )
     })?;
-    arr.iter()
+    let declared = arr
+        .iter()
         .map(|item| {
             item.as_str().map(str::to_string).ok_or_else(|| {
                 format!(
@@ -660,8 +705,11 @@ fn entities_key(t: &toml::Table, file: &Path) -> Result<(Option<Vec<String>>, bo
                 )
             })
         })
-        .collect::<Result<Vec<_>, _>>()
-        .map(|v| (Some(v), false))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(EntitiesKey {
+        declared: Some(declared),
+        ..EntitiesKey::default()
+    })
 }
 
 fn parse_file(path: &Path) -> Result<toml::Table, String> {
@@ -833,7 +881,11 @@ fn image_system(
             let t = row.as_table().ok_or_else(|| {
                 format!("{}: every `[[component]]` must be a table", path.display())
             })?;
-            let (entities, entities_from_census) = entities_key(t, path)?;
+            let EntitiesKey {
+                declared: entities,
+                census: entities_from_census,
+                defaults: entities_defaults,
+            } = entities_key(t, path)?;
             // phase-481 W3 -- eight Zephyr leaves shipped `name =
             // "${NROS_CYCLONE_IDLC}"`, a build-system variable copied into a
             // file nothing substitutes (a phase-445 W3b slip). TOML has no
@@ -855,6 +907,7 @@ fn image_system(
                 name: str_key(Some(t), "name"),
                 entities,
                 entities_from_census,
+                entities_defaults,
                 dispatch: str_key(Some(t), "dispatch"),
             });
         }
@@ -1842,5 +1895,32 @@ domain_id = 4
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &typo)]);
         let e = read(d.path()).unwrap_err();
         assert!(e.contains("ARRAY") && e.contains("\"census\""), "{e}");
+    }
+
+    /// RFC-0120 D4 -- `entities = "defaults"` is the WRITTEN opt-out of the
+    /// census a C/C++ leaf now gets by default: no list, no census, and the
+    /// flag that says somebody chose the crate defaults. The refusal of any
+    /// other word names it beside `"census"`.
+    #[test]
+    fn entities_defaults_is_the_written_opt_out() {
+        let defaults = SYSTEM.replace(
+            "entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]",
+            "entities = \"defaults\"",
+        );
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &defaults)]);
+        let l = read(d.path()).unwrap().unwrap();
+        assert!(l.components[0].entities_defaults);
+        assert!(l.entities_defaults());
+        assert!(!l.entities_from_census());
+        assert_eq!(l.components[0].entities, None);
+        assert_eq!(l.declared_entities(), None);
+
+        let typo = SYSTEM.replace(
+            "entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]",
+            "entities = \"default\"",
+        );
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &typo)]);
+        let e = read(d.path()).unwrap_err();
+        assert!(e.contains("\"defaults\""), "{e}");
     }
 }
