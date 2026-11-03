@@ -19,3 +19,7 @@ packages/rmw/xrce/xrce-sys/micro-cdr              # check::fast — xrce-vendore
 packages/rmw/xrce/xrce-sys/micro-xrce-dds-client  # check::fast — xrce-vendored-versions
 third-party/dds/cyclonedds                        # check::build — test-targets, workspace-all, workspace-features
 packages/cli/third-party/play_launch               # check::build — cli-tests; and the launch resolver is built from it
+third-party/freertos/kernel                       # check::build — workspace-all, test-targets (nros-board-freertos build script; store-first)
+third-party/freertos/lwip                         # check::build — workspace-all, test-targets (nros-board-freertos build script; store-first)
+third-party/threadx/kernel                        # check::build — workspace-all, test-targets (nros-board-threadx build script; store-first)
+third-party/threadx/netxduo                       # check::build — workspace-all, test-targets (nros-board-threadx build script; store-first)
