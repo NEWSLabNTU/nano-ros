@@ -34,8 +34,64 @@ const INPUT_NAMES: &[&str] = &[
 const INTERFACE_EXTS: &[&str] = &["msg", "srv", "action"];
 /// Launch-file extensions, counted only under a `launch/` directory.
 const LAUNCH_EXTS: &[&str] = &["xml", "py", "yaml", "yml"];
-/// Environment variables whose VALUES are digest inputs.
-const ENV_INPUTS: &[&str] = &["AMENT_PREFIX_PATH", "NROS_INTERFACE_SEARCH_PATH"];
+/// Environment variables whose VALUES are digest inputs. `NROS_MODEL_DIR`
+/// moves where C1 writes the models (and where a build reads them).
+const ENV_INPUTS: &[&str] = &[
+    "AMENT_PREFIX_PATH",
+    "NROS_INTERFACE_SEARCH_PATH",
+    "NROS_MODEL_DIR",
+];
+
+/// The configure flags that change what configure WRITES, as digest inputs
+/// (phase-530 W1). A configure with other output flags than the stamp's is
+/// not the configure the stamp recorded. `--force`, `--check`, `--dry-run`,
+/// `--verbose`, `--offline` and `--image` are not outputs: `--image` is the
+/// stamp KEY, and the rest change whether or how loudly configure runs, not
+/// what it writes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct OutputFlags {
+    /// `(flag, value)`, every flag present, its default spelled as the parser
+    /// would build it, so a default flag and an absent one digest alike.
+    pairs: Vec<(&'static str, String)>,
+    /// `--model-dir`: where C1 writes the models.
+    pub(crate) model_dir: Option<PathBuf>,
+}
+
+impl OutputFlags {
+    pub(crate) fn of(sync: &crate::cmd::ws::SyncArgs) -> Self {
+        let path = |p: &Option<PathBuf>| {
+            p.as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default()
+        };
+        let base_paths: Vec<String> = sync
+            .base_paths
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect();
+        OutputFlags {
+            pairs: vec![
+                (
+                    "--ros-edition",
+                    sync.ros_edition.clone().unwrap_or_default(),
+                ),
+                ("--generated-base", sync.build_dir.display().to_string()),
+                ("--model-dir", path(&sync.model_dir)),
+                ("--no-metadata", sync.no_metadata.to_string()),
+                ("--base-paths", base_paths.join("\0")),
+                ("--nano-ros-path", path(&sync.nano_ros_path)),
+                ("--nano-ros-root", path(&sync.nano_ros_root)),
+            ],
+            model_dir: sync.model_dir.clone(),
+        }
+    }
+
+    /// Every output flag at its default: a configure with no flags.
+    #[cfg(test)]
+    pub(crate) fn defaults() -> Self {
+        Self::of(&crate::cmd::configure::default_sync_args())
+    }
+}
 
 /// What a configure recorded about itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -170,8 +226,9 @@ fn codegen_version() -> String {
     crate::abi_guard::EMITTED_VERSION.to_string()
 }
 
-/// `sha256:<hex>` over the project's inputs, the interface search env and the
-/// codegen version.
+/// `sha256:<hex>` over the project's inputs, the digest-input env, the output
+/// flags at their defaults, and the codegen version.
+#[cfg(test)]
 pub(crate) fn input_digest(project: &Path) -> Result<String> {
     input_digest_with_env(project, &real_env())
 }
@@ -186,9 +243,19 @@ fn real_env() -> Vec<(String, Option<String>)> {
 
 /// [`input_digest`] with the environment values injected, so a test needs no
 /// process-env mutation.
+#[cfg(test)]
 pub(crate) fn input_digest_with_env(
     project: &Path,
     env: &[(String, Option<String>)],
+) -> Result<String> {
+    input_digest_with(project, env, &OutputFlags::defaults())
+}
+
+/// [`input_digest_with_env`] with the output flags injected too.
+pub(crate) fn input_digest_with(
+    project: &Path,
+    env: &[(String, Option<String>)],
+    flags: &OutputFlags,
 ) -> Result<String> {
     let mut h = Sha256::new();
     let mut feed = |tag: &str, bytes: &[u8]| {
@@ -210,6 +277,9 @@ pub(crate) fn input_digest_with_env(
             .and_then(|(_, v)| v.clone())
             .unwrap_or_default();
         feed(var, val.as_bytes());
+    }
+    for (flag, val) in &flags.pairs {
+        feed(flag, val.as_bytes());
     }
     feed("codegen", codegen_version().as_bytes());
     Ok(format!("sha256:{:x}", h.finalize()))
@@ -254,18 +324,82 @@ fn recorded_censuses(project: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// `model_gate`'s refused-resolve markers under `build/nros/models`.
-fn refused_model_markers(project: &Path) -> Vec<PathBuf> {
+/// `model_gate`'s refused-resolve markers under `build/nros/models` and,
+/// when one is set, the models dir configure wrote into instead
+/// (`--model-dir`, else `NROS_MODEL_DIR`). A models dir holds a model per
+/// bringup at most one level down, so only that depth is read.
+fn refused_model_markers(project: &Path, model_dir: Option<&Path>) -> Vec<PathBuf> {
     let ext = crate::model_gate::MARKER_EXT.trim_start_matches('.');
-    let mut out: Vec<PathBuf> = WalkDir::new(project.join("build").join("nros").join("models"))
-        .into_iter()
-        .flatten()
-        .filter(|e| e.file_type().is_file())
-        .map(|e| e.into_path())
-        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some(ext))
-        .collect();
+    let own = project.join("build").join("nros").join("models");
+    let mut out: Vec<PathBuf> = Vec::new();
+    for (root, depth) in std::iter::once((own.as_path(), usize::MAX))
+        .chain(model_dir.filter(|d| *d != own).map(|d| (d, 2)))
+    {
+        out.extend(
+            WalkDir::new(root)
+                .max_depth(depth)
+                .into_iter()
+                .flatten()
+                .filter(|e| e.file_type().is_file())
+                .map(|e| e.into_path())
+                .filter(|p| p.extension().and_then(|x| x.to_str()) == Some(ext)),
+        );
+    }
     out.sort();
     out
+}
+
+/// The models dir a configure with `flags` wrote into, when it is not the
+/// project's own: `--model-dir`, else `NROS_MODEL_DIR` (sync's own order).
+fn configured_model_dir(flags: &OutputFlags, env: &[(String, Option<String>)]) -> Option<PathBuf> {
+    flags.model_dir.clone().or_else(|| {
+        env.iter()
+            .find(|(n, _)| n == "NROS_MODEL_DIR")
+            .and_then(|(_, v)| v.clone())
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    })
+}
+
+/// The first configure OUTPUT a build of `image` reads that is gone
+/// (phase-530 W1): a leaf's model, its `generated/<pkg>` path-deps
+/// (`build::leaf_outputs_missing`, the check `nros build` itself refuses on)
+/// and its selection package; a workspace image's model. Inputs alone cannot
+/// see an `rm -rf generated`.
+fn missing_output(project: &Path, image: &str, model_dir: Option<&Path>) -> Result<Option<String>> {
+    use nros_orchestration_ir::leaf_system;
+    if image == PROJECT_KEY {
+        return Ok(None);
+    }
+    if image.contains(':') {
+        return crate::cmd::build::workspace_model_missing(project, image, model_dir);
+    }
+    if !project.join(leaf_system::SYSTEM_TOML).is_file() {
+        return Ok(None);
+    }
+    let has_components = leaf_system::read_image(project, image)
+        .ok()
+        .flatten()
+        .is_some_and(|d| !d.components.is_empty());
+    if let Some(what) = crate::cmd::build::leaf_outputs_missing(project, has_components)
+        .into_iter()
+        .next()
+    {
+        return Ok(Some(what));
+    }
+    if let Some(pkg) = crate::cmd::leaf_settings::leaf_package(project)
+        && crate::cmd::leaf_settings::depends_on_selection(project, &pkg)
+        && !project
+            .join(leaf_system::LEAF_SELECTION_DIR)
+            .join("Cargo.toml")
+            .is_file()
+    {
+        return Ok(Some(format!(
+            "the selection package `{}`",
+            leaf_system::LEAF_SELECTION_DIR
+        )));
+    }
+    Ok(None)
 }
 
 /// May a configure of `image` be skipped? Order of reasons: no stamp; digest
@@ -274,12 +408,18 @@ fn refused_model_markers(project: &Path) -> Vec<PathBuf> {
 ///
 /// `named`: whether the caller asked for this image by name. A SKIP stamp
 /// (Ruling R15) is current only for a caller that did not.
-pub(crate) fn is_current(project: &Path, image: &str, named: bool) -> Result<Currency> {
+pub(crate) fn is_current(
+    project: &Path,
+    image: &str,
+    named: bool,
+    flags: &OutputFlags,
+) -> Result<Currency> {
     currency(
         project,
         image,
         named,
         &real_env(),
+        flags,
         current_launch_resolver().as_deref(),
         &real_ament_moved,
         &real_preflight,
@@ -321,9 +461,9 @@ pub(crate) fn current_launch_resolver() -> Option<PathBuf> {
 
 /// The stamp a configure that just finished records: the digest of the
 /// inputs as they are NOW (after it wrote), and the environment it ran in.
-pub(crate) fn stamp_now(project: &Path) -> Result<Stamp> {
+pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
     Ok(Stamp {
-        digest: input_digest(project)?,
+        digest: input_digest_with(project, &real_env(), flags)?,
         codegen_version: codegen_version(),
         ament_prefix: std::env::var("AMENT_PREFIX_PATH").ok(),
         launch_resolve: current_launch_resolver(),
@@ -346,6 +486,7 @@ pub(crate) fn is_current_with(
         image,
         false,
         env,
+        &OutputFlags::defaults(),
         resolver,
         &real_ament_moved,
         &real_preflight,
@@ -360,11 +501,15 @@ pub(crate) type PreflightProbe<'a> = &'a dyn Fn(&Path, &str) -> Result<Option<St
 /// named, the environment, the resolved `nros-launch-resolve`, which generated
 /// crates' ament inputs moved, and (for a SKIP stamp only) the image's
 /// toolchain preflight.
+// Each argument is one thing the answer observes, injected so a test can hold
+// the rest still; bundling them would only rename the list.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn currency(
     project: &Path,
     image: &str,
     named: bool,
     env: &[(String, Option<String>)],
+    flags: &OutputFlags,
     resolver: Option<&Path>,
     ament_moved: &dyn Fn(&Path) -> Result<Vec<String>>,
     preflight: PreflightProbe<'_>,
@@ -382,7 +527,7 @@ pub(crate) fn currency(
             "leaf output holds image `{holder}`"
         )));
     }
-    let now = input_digest_with_env(project, env)?;
+    let now = input_digest_with(project, env, flags)?;
     if stamp.digest != now {
         return Ok(Currency::Stale(format!(
             "inputs changed (recorded {}, now {now})",
@@ -400,11 +545,20 @@ pub(crate) fn currency(
     // A model whose resolve was REFUSED (`model_gate`) is quarantined with a
     // marker beside it. Its inputs can be edited back to exactly what this
     // stamp recorded, so only the marker says the model is gone.
-    if let Some(marker) = refused_model_markers(project).into_iter().next() {
+    let model_dir = configured_model_dir(flags, env);
+    if let Some(marker) = refused_model_markers(project, model_dir.as_deref())
+        .into_iter()
+        .next()
+    {
         return Ok(Currency::Stale(format!(
             "model resolve was refused (`{}`)",
             marker.display()
         )));
+    }
+    // An output configure wrote and a build reads is gone (`rm -rf
+    // generated`): its inputs are unchanged, so only this sees it.
+    if let Some(what) = missing_output(project, image, model_dir.as_deref())? {
+        return Ok(Currency::Stale(format!("configure output missing: {what}")));
     }
     // RFC-0120 D7 — the AMENT install's content: `AMENT_PREFIX_PATH`'s value
     // is a digest input, but an `apt` upgrade moves the files under it.
@@ -529,10 +683,13 @@ mod tests {
     fn stamp_now_reads_current_through_the_real_lookup() {
         let p = tmp("stamp-now");
         std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
-        let stamp = stamp_now(&p).unwrap();
+        let stamp = stamp_now(&p, &OutputFlags::defaults()).unwrap();
         assert_eq!(stamp.launch_resolve, current_launch_resolver());
         record(&p, "img", &stamp).unwrap();
-        assert_eq!(is_current(&p, "img", false).unwrap(), Currency::Current);
+        assert_eq!(
+            is_current(&p, "img", false, &OutputFlags::defaults()).unwrap(),
+            Currency::Current
+        );
     }
 
     /// Ruling R9: an image's own stamp is not enough on a leaf whose shared
@@ -558,7 +715,7 @@ mod tests {
     fn no_stamp_is_stale() {
         let p = tmp("no-stamp");
         assert!(matches!(
-            is_current(&p, "img", false).unwrap(),
+            is_current(&p, "img", false, &OutputFlags::defaults()).unwrap(),
             Currency::Stale(why) if why.contains("no configure stamp")
         ));
     }
@@ -773,6 +930,7 @@ mod tests {
                 "img",
                 false,
                 &real_env(),
+                &OutputFlags::defaults(),
                 None,
                 &nothing_moved,
                 &still_refuses
@@ -782,7 +940,17 @@ mod tests {
         );
         let moved = |_: &Path| -> Result<Vec<String>> { Ok(vec!["std_msgs".to_string()]) };
         assert_eq!(
-            currency(&p, "img", false, &real_env(), None, &moved, &still_refuses).unwrap(),
+            currency(
+                &p,
+                "img",
+                false,
+                &real_env(),
+                &OutputFlags::defaults(),
+                None,
+                &moved,
+                &still_refuses
+            )
+            .unwrap(),
             Currency::Stale("ament inputs moved: std_msgs".into())
         );
     }
@@ -802,6 +970,7 @@ mod tests {
                 "ws:img",
                 false,
                 &real_env(),
+                &OutputFlags::defaults(),
                 None,
                 &nothing_moved,
                 &still_refuses
@@ -816,6 +985,7 @@ mod tests {
                 "ws:img",
                 true,
                 &real_env(),
+                &OutputFlags::defaults(),
                 None,
                 &nothing_moved,
                 &still_refuses
@@ -843,6 +1013,7 @@ mod tests {
             "img",
             false,
             &real_env(),
+            &OutputFlags::defaults(),
             None,
             &nothing_moved,
             &still_refuses,
@@ -870,6 +1041,7 @@ mod tests {
                 "ws:img",
                 false,
                 &real_env(),
+                &OutputFlags::defaults(),
                 None,
                 &nothing_moved,
                 &still_refuses
@@ -889,6 +1061,7 @@ mod tests {
                 "ws:img",
                 false,
                 &real_env(),
+                &OutputFlags::defaults(),
                 None,
                 &nothing_moved,
                 &present
@@ -909,6 +1082,7 @@ mod tests {
                 "ws:img",
                 false,
                 &real_env(),
+                &OutputFlags::defaults(),
                 None,
                 &nothing_moved,
                 &never
@@ -916,5 +1090,232 @@ mod tests {
             .unwrap(),
             Currency::Current
         );
+    }
+
+    /// A single-image leaf with one `[[component]]`, so a build reads its
+    /// model: what `deleted_model_is_stale` deletes.
+    fn leaf_with_a_component(name: &str) -> PathBuf {
+        let p = tmp(name);
+        std::fs::write(
+            p.join("system.toml"),
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[[component]]\npkg = \"t\"\n\
+             class = \"t::T\"\nname = \"t\"\n\n[image.linux]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            p.join("Cargo.toml"),
+            "[package]\nname = \"t\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        p
+    }
+
+    /// Where a leaf's resolved model lives under its own build dir.
+    fn leaf_model_file(p: &Path) -> PathBuf {
+        let rel = nros_orchestration_ir::model_location::launch_to_model_rel(p, None, &[]).unwrap();
+        nros_orchestration_ir::model_location::model_search_paths(p, &rel)
+            .into_iter()
+            .find(|c| c.starts_with(p.join("build")))
+            .expect("a build-dir rung for the leaf's model")
+    }
+
+    /// phase-530 W1 (I1) — inputs alone cannot see a deleted OUTPUT: the
+    /// digest is unchanged, and the next `nros build` fails on the missing
+    /// model with an internal error. The stamp must call that stale.
+    #[test]
+    fn deleted_model_is_stale() {
+        let p = leaf_with_a_component("deleted-model");
+        let model = leaf_model_file(&p);
+        std::fs::create_dir_all(model.parent().unwrap()).unwrap();
+        std::fs::write(&model, "nodes: []\n").unwrap();
+        record(&p, "linux", &stamp_for(&p)).unwrap();
+        let ask = || {
+            currency(
+                &p,
+                "linux",
+                false,
+                &real_env(),
+                &OutputFlags::defaults(),
+                None,
+                &nothing_moved,
+                &still_refuses,
+            )
+            .unwrap()
+        };
+        assert_eq!(ask(), Currency::Current, "the model is there");
+        std::fs::remove_file(&model).unwrap();
+        match ask() {
+            Currency::Stale(why) => assert!(
+                why.starts_with("configure output missing: the resolved model"),
+                "{why}"
+            ),
+            Currency::Current => panic!("a deleted model left the stamp current"),
+        }
+    }
+
+    /// phase-530 W1 (I1) — the same for a `generated/<pkg>` path-dep the
+    /// leaf manifest names.
+    #[test]
+    fn deleted_generated_crate_is_stale() {
+        let p = tmp("deleted-generated");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        std::fs::write(
+            p.join("Cargo.toml"),
+            "[package]\nname = \"t\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
+             std_msgs = { path = \"generated/std_msgs\" }\n",
+        )
+        .unwrap();
+        let crate_dir = p.join("generated/std_msgs");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), "[package]\n").unwrap();
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        let ask = || {
+            currency(
+                &p,
+                "img",
+                false,
+                &real_env(),
+                &OutputFlags::defaults(),
+                None,
+                &nothing_moved,
+                &still_refuses,
+            )
+            .unwrap()
+        };
+        assert_eq!(ask(), Currency::Current);
+        std::fs::remove_dir_all(p.join("generated")).unwrap();
+        assert_eq!(
+            ask(),
+            Currency::Stale(
+                "configure output missing: the generated message crate `std_msgs` \
+                 (generated/std_msgs)"
+                    .into()
+            )
+        );
+    }
+
+    /// phase-530 W1 (I2) — a flag that changes what configure writes is a
+    /// digest input; one that changes only whether it runs is not.
+    #[test]
+    fn output_flags_are_digest_inputs() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct A {
+            #[command(flatten)]
+            sync: crate::cmd::ws::SyncArgs,
+        }
+        let flags = |argv: &[&str]| {
+            let mut full = vec!["configure"];
+            full.extend_from_slice(argv);
+            OutputFlags::of(&A::try_parse_from(full).unwrap().sync)
+        };
+        let p = tmp("flag-inputs");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let env = real_env();
+        let d = |f: &OutputFlags| input_digest_with(&p, &env, f).unwrap();
+        let base = d(&flags(&[]));
+        assert_eq!(base, d(&OutputFlags::defaults()), "defaults == no flags");
+        for moves in [
+            &["--ros-edition", "jazzy"][..],
+            &["--generated-base", "gen"],
+            &["--model-dir", "/m"],
+            &["--no-metadata"],
+            &["--base-paths", "/u"],
+            &["--nano-ros-path", "/n"],
+            &["--nano-ros-root", "/r"],
+        ] {
+            assert_ne!(base, d(&flags(moves)), "{moves:?} is an output flag");
+        }
+        for stays in [
+            &["--check"][..],
+            &["--dry-run"],
+            &["--verbose"],
+            &["--offline"],
+            &["--image", "x"],
+        ] {
+            assert_eq!(base, d(&flags(stays)), "{stays:?} writes nothing");
+        }
+    }
+
+    /// phase-530 W1 (I2) — a refused model under `NROS_MODEL_DIR` (where C1
+    /// wrote it) stales the stamp too, not only one under `build/`.
+    #[test]
+    fn refused_model_under_the_model_dir_is_stale() {
+        let p = tmp("refused-model-dir");
+        let md = tmp("refused-model-dir-models");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let env: Vec<(String, Option<String>)> = ENV_INPUTS
+            .iter()
+            .map(|v| {
+                let val = (*v == "NROS_MODEL_DIR").then(|| md.display().to_string());
+                ((*v).to_string(), val)
+            })
+            .collect();
+        let flags = OutputFlags::defaults();
+        let stamp = Stamp {
+            digest: input_digest_with(&p, &env, &flags).unwrap(),
+            ..stamp_for(&p)
+        };
+        record(&p, "img", &stamp).unwrap();
+        let ask = || {
+            currency(
+                &p,
+                "img",
+                false,
+                &env,
+                &flags,
+                None,
+                &nothing_moved,
+                &still_refuses,
+            )
+            .unwrap()
+        };
+        assert_eq!(ask(), Currency::Current);
+        std::fs::create_dir_all(md.join("t_bringup")).unwrap();
+        let marker =
+            crate::model_gate::marker_path(&md.join("t_bringup").join("system_model.yaml"));
+        std::fs::write(&marker, "check: x\ninput: y\n").unwrap();
+        match ask() {
+            Currency::Stale(why) => assert!(why.contains("refused"), "{why}"),
+            Currency::Current => panic!("a refused model under NROS_MODEL_DIR was missed"),
+        }
+    }
+
+    /// phase-530 W1 (I2) — `NROS_MODEL_DIR` moves where C1 writes the
+    /// models, so its value is a digest input like `AMENT_PREFIX_PATH`'s.
+    #[test]
+    fn model_dir_env_is_a_stamp_input() {
+        let p = tmp("model-dir-env");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let env = |md: Option<&str>| -> Vec<(String, Option<String>)> {
+            ENV_INPUTS
+                .iter()
+                .map(|v| {
+                    let val = (*v == "NROS_MODEL_DIR")
+                        .then(|| md.map(str::to_string))
+                        .flatten();
+                    ((*v).to_string(), val)
+                })
+                .collect()
+        };
+        let base = input_digest_with_env(&p, &env(None)).unwrap();
+        record(
+            &p,
+            "img",
+            &Stamp {
+                digest: base.clone(),
+                ..stamp_for(&p)
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            is_current_with(&p, "img", &env(None), None).unwrap(),
+            Currency::Current
+        );
+        assert_ne!(base, input_digest_with_env(&p, &env(Some("/m"))).unwrap());
+        match is_current_with(&p, "img", &env(Some("/m")), None).unwrap() {
+            Currency::Stale(why) => assert!(why.starts_with("inputs changed"), "{why}"),
+            Currency::Current => panic!("a moved NROS_MODEL_DIR left the stamp current"),
+        }
     }
 }

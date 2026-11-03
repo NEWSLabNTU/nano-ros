@@ -2503,9 +2503,11 @@ fn plan_leaf_image(
         // RFC-0120 D3 — `nros build` configures before it plans, so an
         // unsynced leaf here means that configure did not do its job.
         eyre::bail!(
-            "internal error: configure ran and left {} unsynced — a bug (missing {}).",
+            "internal error: configure ran and left {} unsynced — a bug (missing {}).\n  \
+             `nros configure --force` in {} reconfigures it.",
             root.display(),
-            unsynced.join(", ")
+            unsynced.join(", "),
+            root.display()
         );
     }
 
@@ -2827,16 +2829,28 @@ fn plan_single_package_cmake(
     }]))
 }
 
-/// What a single-package build reads that only `nros sync` writes, and is
-/// absent. See [`plan_single_package`].
+/// What a single-package build reads that only `nros configure` writes, and
+/// is absent. See [`plan_single_package`].
 fn unsynced_inputs(
     root: &std::path::Path,
     img: &crate::cmd::leaf_settings::LeafImage,
 ) -> Vec<String> {
+    leaf_outputs_missing(root, !img.decl.components.is_empty())
+}
+
+/// phase-530 W1 — the ONE answer to "which of configure's outputs that a
+/// leaf's build reads are gone": `nros build` refuses on it (an internal
+/// error, since build configures first), and the configure stamp reads it so
+/// that a deleted output makes the stamp stale instead of "up to date".
+///
+/// `has_components`: a leaf with no `[[component]]` has no synthesised launch
+/// and so no model; the facts then stay absent by design and nothing is
+/// missing.
+pub(crate) fn leaf_outputs_missing(root: &std::path::Path, has_components: bool) -> Vec<String> {
     let mut out = Vec::new();
-    // A leaf with no `[[component]]` has no synthesised launch and so no model;
-    // the facts then stay absent by design and nothing is missing.
-    if !img.decl.components.is_empty() && crate::leaf_entity_env::leaf_model(root).is_none() {
+    // A REFUSED model (`Err`) is not missing: it names its own remedy, and
+    // both callers report it on their own before asking this.
+    if has_components && matches!(crate::leaf_entity_env::leaf_model_path(root), Ok(None)) {
         out.push("the resolved model under `build/nros/models/`".to_string());
     }
     let Ok(doc) = std::fs::read_to_string(root.join("Cargo.toml"))
@@ -6669,6 +6683,71 @@ pub(crate) fn workspace_images(root: &std::path::Path) -> Result<Vec<String>> {
         .into_iter()
         .map(|(b, _, id, _)| plan::qualified(&b, &id))
         .collect())
+}
+
+/// phase-530 W1 — the resolved model a workspace image `key`
+/// (`<bringup>:<id>`) plans from, when configure should have written it and
+/// it is absent. The model is looked for where `generate_entry` reads it
+/// ([`model_location::model_search_paths`]) and, when `model_dir` is given
+/// (`nros configure --model-dir`), where configure wrote it.
+///
+/// `None` when the image is unknown, its launch file is not one the bringup
+/// carries (configure resolves no model for it, so none is missing), or the
+/// model is there.
+///
+/// [`model_location::model_search_paths`]: nros_orchestration_ir::model_location::model_search_paths
+pub(crate) fn workspace_model_missing(
+    root: &std::path::Path,
+    key: &str,
+    model_dir: Option<&std::path::Path>,
+) -> Result<Option<String>> {
+    use nros_orchestration_ir::model_location;
+    let members = discover::cargo_members_or_walk(root);
+    let found = discover::discover_in(root, &[], &members).map_err(|e| eyre::eyre!("{e}"))?;
+    let bringups = collect_images(&found.packages)?;
+    let Some((_, dir, _, image)) = plan::all_images(&bringups)
+        .into_iter()
+        .find(|(b, _, id, _)| plan::qualified(b, id) == key)
+    else {
+        return Ok(None);
+    };
+    let launch = match &image.launch {
+        Some(l) => l.clone(),
+        None => match model_location::default_launch(&dir) {
+            Ok(l) => l,
+            Err(_) => return Ok(None),
+        },
+    };
+    if !dir.join("launch").join(&launch).is_file() {
+        return Ok(None);
+    }
+    let args: Vec<(String, String)> = image
+        .args
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let Ok(rel) = model_location::launch_to_model_rel(&dir, Some(&launch), &args) else {
+        return Ok(None);
+    };
+    let mut candidates = model_location::model_search_paths(&dir, &rel);
+    if let (Some(md), Some(bringup), Some(name)) = (
+        model_dir,
+        dir.file_name(),
+        std::path::Path::new(&rel).file_name(),
+    ) {
+        candidates.push(md.join(bringup).join(name));
+    }
+    if candidates.iter().any(|c| c.is_file()) {
+        return Ok(None);
+    }
+    Ok(Some(format!(
+        "the resolved model `{rel}` of `{key}` (looked in {})",
+        candidates
+            .iter()
+            .map(|c| c.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    )))
 }
 
 /// Read every bringup's `[image.*]`.

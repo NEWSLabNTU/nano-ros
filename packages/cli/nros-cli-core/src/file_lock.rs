@@ -1,7 +1,9 @@
 //! One exclusive advisory file lock for the CLI (phase-530 W1).
 //!
 //! `provision_lock` (sdk_store) and `nros configure` both need a blocking
-//! `flock`; this is the one spelling.
+//! `flock`. They share [`lock_exclusive`], the flock call itself; opening and
+//! creating the lock file is [`lock_exclusive_path`] for configure, while
+//! `provision_lock` still opens its own file (it returns a different type).
 
 use std::{fs::File, io, path::Path};
 
