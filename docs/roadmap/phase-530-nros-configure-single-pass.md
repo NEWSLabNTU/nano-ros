@@ -1,6 +1,6 @@
 # Phase 530 — `nros configure`: one resolver for every road, tight sizing, and no fixed point
 
-**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1); W2 next.** Implements
+**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed; W3 next.** Implements
 [RFC-0120](../design/0120-nros-configure-one-resolver.md) D1 to D7, D9 and
 the driven and hooked rows of D8. Meets
 [RFC-0094](../design/0094-resolve-before-configure.md) A3 as originally
@@ -186,7 +186,7 @@ the per-coordinate stamps for shared host configures, retiring
 `NROS_RESOLVED_DIR`, and the parallel-lock measurement. They carry forward
 to the later items that consume them.
 
-### W2 — Census by default (RFC-0120 D4)
+### W2 — Census by default (RFC-0120 D4) (LANDED 2026-11-03)
 
 This flips an existing opt-in to the default. The hook already takes the
 census for `entities = "census"` (issue 2086), and that spelling keeps working.
@@ -217,6 +217,98 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   - a Rust Zephyr leaf is sized from its probe on both roads;
   - a test leaf whose source calls a Zephyr API gets the two-fix refusal;
   - the workspace census reaches no `nros build`.
+
+**What landed (W2).**
+
+- **One rule.** `nros_cli_core::leaf_census::entity_source` says where a
+  standalone leaf's entity counts come from: `declared` (a list), `census`
+  (written, or by default), `defaults` (`entities = "defaults"`, parsed by
+  `leaf_system` as `LeafComponent::entities_defaults`) or `unstated`. The
+  census is the default for a C/C++ leaf (a `CMakeLists.txt`, no `Cargo.toml`)
+  with at least one `[[component]]`, none stating `entities`, whose image is
+  CROSS. A host image keeps the hosted defaults (the line `nros build` already
+  draws for a workspace: a host image is the census producer), and so does a
+  leaf with no component (RFC-0120 D4 amended to say so). Every reader asks the
+  rule: the leaf reader (`leaf_entity_env`), the descriptor's composer, the
+  Kconfig rendering, `nros build`'s leaf road. The cmake and Zephyr hooks ask
+  `nros dev image entity-census source --leaf <dir>` instead of grepping
+  `system.toml` for one word; `nros_leaf_census_take` decides through it, so
+  the Zephyr hook's existing call is now the default path (W4 replaces it with
+  a configure call). `NROS_LEAF_CENSUS_TAKE=OFF` and `entities = "census"` keep
+  working. The fixture pre-pass lists every C/C++ leaf and lets `take --leaf`
+  decide ("nothing to take" for the rest).
+- **The census's host build is one pass.** `take --leaf` configures and builds
+  once under `NROS_LEAF_CENSUS_HOST` (no declaration, census or seed read); the
+  convergence loop is gone. The stub `find_package(Zephyr)` package also
+  enables C after `project()` (`CMAKE_PROJECT_INCLUDE`), because a Zephyr
+  application may name `LANGUAGES CXX` alone. A Zephyr C application that
+  names no `nano_ros_add_executable` is found through the census program
+  manifest, which is now armed for every census leaf.
+- **Preflight (C3).** `preflight::check_host_toolchain` checks a host C and C++
+  compiler (`CC`/`CXX` or `cc`/`c++`), CMake, Ninja, the host Rust target and
+  the store's Corrosion, and names each missing one with its fix. A census leaf
+  whose host build fails is refused with both fixes (`entities = [...]`, or
+  `entities = "defaults"`).
+- **The workspace census reaches no `nros build`** (RFC-0120 D1). `take` plans
+  the host sibling in-process (`build::plan_builds`, as configure does) and runs
+  its own cargo/CMake steps (`build::build_host_image`), under
+  `NROS_LEAF_CENSUS_HOST`, once. The `take` VERB configures first
+  (`ensure_current`); the take inside a configure or a build does not.
+- **`NROS_CONFIGURE_HELD` is retired.** It existed so the census's child
+  `nros build` would not wait on its parent configure's lock. Nothing a
+  configure runs calls `nros build` or `nros configure` now, and no other path
+  needed it (`git grep` finds no other self-spawn of `build`/`run`).
+- **Rust leaves.** Measured before any change: `west-leaf-sizing` over all six
+  `examples/zephyr/rust/*` leaves refused every one ("no components were
+  registered"), because no probe sidecar existed: nothing had run the metadata
+  probe (C1). After `nros configure` in each leaf, all six compose
+  (`basis probe sidecars`, `NROS_ENTITY_INVENTORY_STATUS "derived"`). So
+  phase-481 W3's refusals were a road that ran no sync, not a composer defect;
+  `nros build` runs C1 implicitly since W1, and the plain-west road gets it
+  when W4's hook calls configure.
+- **The test leaf that cannot be counted.** `idle-wake-zephyr-mps2` includes
+  `<zephyr/devicetree.h>`; its default census was refused with the two fixes,
+  and it now states `entities = ["subscription:std_msgs/msg/String:/chatter",
+  "timer"]`.
+
+- **`nros build` of a multi-image Zephyr leaf named no image.** Found while
+  measuring: the west handoff of `nros build zephyr_xrce` passed no
+  `-DNROS_IMAGE`, so the hook rendered the talker's default (zenoh) image over
+  `prj-xrce.conf`. The west road now passes it for an application holding its
+  own `system.toml`, as the cmake leaf road does.
+
+**Acceptance (measured 2026-11-03, Zephyr 4.4, `native_sim/native/64`).**
+
+- `examples/zephyr/cpp/talker`, census-sized on both roads. The census host
+  build: ONE configure, 0 `Re-running CMake`, 165 s on the loaded host
+  (1 node, 1 pub, 1 timer). A plain `west build -- -DNROS_IMAGE=zephyr_xrce`
+  and `nros build zephyr_xrce` derive the same knobs from it:
+  `NROS_XRCE_MAX_SUBSCRIBERS=0`, `NROS_XRCE_MAX_SERVICE_SERVERS=1` (the
+  transient-local cache queryable), `NROS_EXECUTOR_MAX_CBS=1`,
+  `NROS_EXECUTOR_MAX_NODES=1`, `NROS_RMW_SUBSCRIBER_SLOTS=0`; the sizing
+  descriptor is named to cargo on both and states `service_client_entities =
+  0`, `action_client_entities = 0`, which `XRCE_MAX_SERVICE_CLIENTS` derives
+  from. The three `[image.zephyr_xrce.knobs.xrce]` caps are deleted and the
+  comment corrected. Both images boot against a MicroXRCEAgent: session open,
+  28 and 29 `Publishing:` lines in 15 s, no error. (Each west configure still
+  ran 7 passes: the fixed point, W4/W7.)
+- Rust: `examples/zephyr/rust/talker` from its probe on both roads (`entity
+  inventory from its probe sidecars`; `NROS_MAX_PUBLISHERS=1`,
+  `NROS_MAX_SUBSCRIBERS=0`, `NROS_MAX_QUERYABLES=1`, `NROS_EXECUTOR_MAX_CBS=1`)
+  with a plain `west build` and with `nros build zephyr_zenoh`.
+- `idle-wake-zephyr-mps2` (includes `<zephyr/devicetree.h>`) before its
+  declaration: the host build fails at `zephyr/devicetree.h: No such file`,
+  and `take --leaf` refuses naming both fixes.
+- The workspace census reaches no `nros build`: `nros configure --force` of
+  `examples/workspaces/cpp` with its census deleted, polled every 0.5 s for
+  this checkout's `nros build`/`nros run` processes: 0 seen. It took the census
+  with `demo_bringup:linux` in 220 s (one plan, one host build; the host
+  image's own cmake configure still settles once internally, the fixed point
+  W7 deletes), and the six other cross images read it `fresh`.
+- Census host builds of other cross leaves, one pass each: zephyr/c/talker
+  152 s, threadx-linux/cpp/talker 71 s, rv-virt-nuttx/c/talker 114 s,
+  mps2-an385-freertos/cpp/listener 149 s, rv-virt-threadx/c/talker 734 s (load);
+  linux/c/talker `unstated`, nothing taken.
 
 ### W3 — Resolve gaps: the Rust west entry, and the multi-entry union
 
