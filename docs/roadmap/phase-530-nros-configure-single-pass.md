@@ -1,6 +1,6 @@
 # Phase 530 — `nros configure`: one resolver for every road, tight sizing, and no fixed point
 
-**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling).** Implements
+**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling), W5 landed for CMake (on W4; the NuttX make road is NEEDS_CONTEXT).** Implements
 [RFC-0120](../design/0120-nros-configure-one-resolver.md) D1 to D7, D9 and
 the driven and hooked rows of D8. Meets
 [RFC-0094](../design/0094-resolve-before-configure.md) A3 as originally
@@ -485,6 +485,76 @@ against a stand-in CLI.
 - The NuttX `apps/external` Makefile makes it a prerequisite.
 - **Acceptance:** a cmake leaf, a cmake workspace and a NuttX app each build
   from a clean dir in one pass, with knobs identical to `nros build`'s.
+
+**What landed (W5).**
+
+- **One helper.** `cmake/NanoRosConfigureHook.cmake`'s `nros_configure_hook`
+  is the only spelling of the hooked `nros configure` call: the Zephyr hook
+  (`_nros_image_kconfig_configure`, keeping W4's R31 walk-up) and the three
+  CMake entries call it. Once per host configure; a no-op for a guest and
+  under `NROS_LEAF_CENSUS_HOST`; a query caller, never `nros build`; it marks
+  the configure CURRENT only when `nros locate configured` published a
+  current answer (R33). `tests/cmake-configure-hook-tests.sh`
+  (`just check configure-hook`, fast line) drives it with a stand-in CLI and
+  checks the reach: every hooked entry calls it, nothing else spells the
+  command.
+- **The CMake entries.** `find_package(nano_ros)` (the top-level leaf, before
+  the entity facts and the import; image = `-DNROS_IMAGE`, else
+  `default_images`), `nano_ros_workspace()` (before its import; image =
+  `-DNROS_CONFIGURED_IMAGE`, `-DNROS_IMAGE`, else the `IMAGES` the generated
+  root now states: one is configured and located, several are each
+  configured and none is located), and a bare `add_subdirectory(<nano-ros>)`
+  (the consumer's `system.toml`).
+- **Two defects the hook exposed, fixed.**
+  - `nros locate configured` called every WORKSPACE stamp stale ("inputs
+    changed") right after configure called it up to date: configure digests
+    `NROS_INTERFACE_SEARCH_PATH` after setting it to the project's interface
+    root, and a reader runs no configure. The digest now spells that default
+    itself (`configure_stamp::input_digest_with`). Without it R33 left every
+    hooked workspace configure unseeded.
+  - Stage 3.5 composed over the registered population only on the west road,
+    so a cmake workspace image was seeded with the model-only answer (2 nodes)
+    while its configure composed every registration the root adds (7), and
+    the promise check refused the configure -- under `nros build` on the W4
+    base too. `resolve_composes_registered` now names the scope per road:
+    the launch closure (west), the whole workspace (cmake).
+- **Deadlock.** `nros build`'s `configure_implicitly` returns, dropping the
+  project lock (`flock` on an `O_CLOEXEC` fd), before planning and the
+  hand-off; the hook's configure takes a free lock. The census host build
+  configure runs inside sets `NROS_LEAF_CENSUS_HOST`, which the helper
+  honours first. No change was needed.
+- **NuttX `apps/external`: not done (NEEDS_CONTEXT).** The make road builds
+  only the integration shell's runtime archive, from Kconfig
+  (`CONFIG_NROS_RMW_*`, `CONFIG_NROS_ROS_EDITION`, `CONFIG_NROS_*_API`)
+  through `NanoRosImageCrate.cmake -P`. It has no project: no `system.toml`,
+  no image, and the user's application is not one of its inputs (the
+  per-example staging was retired, Phase 212.M-F.12, issue 1883). And it has
+  no channel for configure's outputs: no seed, no knob file reaches its
+  cargo build. Making configure a prerequisite needs a project identity the
+  road does not carry and a knob channel it does not have; both are design
+  choices. The NuttX app measured below is the cmake leaf, the road `nros
+  build` takes for a NuttX image.
+
+**Acceptance (measured 2026-11-04, clean build dirs; counts are `-- Configuring
+done` over the configure and the first `ninja`, plus `Re-running CMake`).**
+
+| subject | base (W4 tip) | W5 plain cmake | knobs vs `nros build` |
+| --- | --- | --- | --- |
+| cmake leaf `examples/linux/c/talker`, no stamp (the hook runs a full configure) | 1, 0 (no configure in front) | **1, 0**; hook "configured" in 106 s, then "up to date" | identical (360-line dump: env, fragments, 12 config headers) |
+| NuttX app `examples/qemu-armv7a-nuttx/c/talker` (cmake leaf, census-sized, `armv7a-nuttx-eabihf`) | 1, 0 | **1, 0**; ELF linked | identical (census-tight: `NROS_EXECUTOR_MAX_HANDLES 1`) |
+| cmake workspace `examples/workspaces/cpp` `linux_xrce` (generated root `build/posix-xrce-linux`) | `nros build`: promise FATAL (seed 2 nodes vs 7); plain: 2, 1 | **1, 0**, seeded: "entity inventory read from the resolve phase; this configure composed nothing" | identical but one line: the plain road's codegen commands carry `NROS_INTERFACE_SEARCH_PATH` as a `cmake -E env` prefix (same value), which `nros build` passes through the environment |
+| cmake workspace `linux` (7-image coordinate `build/posix-zenoh-linux`) | `nros build`: promise FATAL; plain: 2, 1 | plain: 2, 1 (the root names 7 images: each configured, none located, so unseeded -- the base's lever); `nros build`: promise FATAL "composes over 7 models, the resolve over one" | -- (W3's per-coordinate union) |
+
+Under `nros build`, every hook's configure said "up to date" in 0-2 s.
+
+**Still unseeded: a standalone cmake leaf.** Configure resolves no image dir
+for one (the cmake leaf road has no stage 3.5), so its readers keep the
+unseeded road and print issue 0991's "cmake will run once more" -- which on
+this road never fires: the bounds fragment is no configure dependency there,
+so the measured pass count is 1 either way, and the producer's answer is what
+the build gets. Making the leaf seeded is C5 for the cmake leaf road (what W4
+did for the Zephyr C/C++ leaf, `configure_zephyr_leaf`); it is what W7 needs
+before the unseeded fallback in `NanoRosPromise.cmake` can be deleted.
 
 ### W6 — The census step (or W0's fallback)
 
