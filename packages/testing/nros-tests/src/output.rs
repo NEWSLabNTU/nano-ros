@@ -1358,6 +1358,55 @@ pub const TYPED_CARRIER_SENT_PREFIX: &str = "[typed_carrier] sent:";
 /// `zephyr_cortex_m_qemu` asserts on it the way an operator reads it.
 pub const BOOT_REPORT_ARENA_EXHAUSTED: &str = "ARENA EXHAUSTED:";
 
+/// phase-521 W7 — the idle-wake witness's armed line, printed once its
+/// subscription and timer are registered
+/// (`packages/testing/nros-tests/bins/idle-wake-zephyr-mps2/src/Witness.c`).
+pub const IDLE_WAKE_ARMED_MARKER: &str = "idle-wake: armed";
+
+/// phase-521 W7 — the idle-wake witness's result line, printed at the end of
+/// its window: `idle-wake: switch_ins=N fires=F window_ms=W max_late_us=L
+/// max_early_us=E`. Parsed by [`parse_idle_wake`].
+pub const IDLE_WAKE_RESULT_PREFIX: &str = "idle-wake: switch_ins=";
+
+/// The idle-wake witness's result, parsed from [`IDLE_WAKE_RESULT_PREFIX`]'s
+/// line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IdleWake {
+    /// Times the executor's thread was switched in over the window.
+    pub switch_ins: u32,
+    /// Timer expiries inside the window.
+    pub fires: u32,
+    /// The window's length, first expiry to last.
+    pub window_ms: u32,
+    /// Worst lateness of an expiry's dispatch against its deadline.
+    pub max_late_us: u64,
+    /// Worst earliness of an expiry's dispatch against its deadline.
+    pub max_early_us: u64,
+}
+
+/// Parse the first idle-wake result line in `out`, if there is one.
+pub fn parse_idle_wake(out: &str) -> Option<IdleWake> {
+    let line = out
+        .lines()
+        .find_map(|l| l.find(IDLE_WAKE_RESULT_PREFIX).map(|i| &l[i..]))?;
+    let field = |name: &str| -> Option<u64> {
+        let key = format!("{name}=");
+        let start = line.find(&key)? + key.len();
+        let rest = &line[start..];
+        let end = rest
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(rest.len());
+        rest[..end].parse().ok()
+    };
+    Some(IdleWake {
+        switch_ins: u32::try_from(field("switch_ins")?).ok()?,
+        fires: u32::try_from(field("fires")?).ok()?,
+        window_ms: u32::try_from(field("window_ms")?).ok()?,
+        max_late_us: field("max_late_us")?,
+        max_early_us: field("max_early_us")?,
+    })
+}
+
 /// phase-511 A6 — the bare-metal MPS2-AN385 board's `init_hardware` banner
 /// (`packages/boards/nros-board-mps2-an385/src/node.rs` prints it before the
 /// executor opens). Keep in sync with that `hprintln!`.
@@ -1648,6 +1697,24 @@ fn extract_after<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_idle_wake_reads_the_witness_line() {
+        let out = "*** Booting Zephyr ***\r\nidle-wake: armed\r\n\
+                   idle-wake: switch_ins=6 fires=5 window_ms=5001 max_late_us=812 \
+                   max_early_us=0\r\n";
+        assert_eq!(
+            parse_idle_wake(out),
+            Some(IdleWake {
+                switch_ins: 6,
+                fires: 5,
+                window_ms: 5001,
+                max_late_us: 812,
+                max_early_us: 0,
+            })
+        );
+        assert_eq!(parse_idle_wake("idle-wake: armed\n"), None);
+    }
 
     #[test]
     fn parse_nuttx_eth0_reads_the_board_report_line() {

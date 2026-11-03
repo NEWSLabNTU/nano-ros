@@ -74,6 +74,14 @@ config NROS_RMW_XRCE
     # selects both, is refused for native_sim).
     imply ZVFS
     imply ZVFS_EVENTFD
+    # Issue 2105's rule, for XRCE (phase-521 W7): each session-create and
+    # request attempt is a receive bounded by `SO_RCVTIMEO`, which Zephyr's
+    # in-kernel sockets honour only under this symbol and otherwise ignore.
+    # Without it the first CREATE_CLIENT's receive never returns, so an image
+    # on a board with Zephyr's own IP stack (mps2/an385) sent one packet and
+    # hung before its first entity. native_sim never showed it: NSOS offloads
+    # the socket to the host, which implements the timeout itself.
+    select NET_CONTEXT_RCVTIMEO if NETWORKING
     help
       Use Micro-XRCE-DDS as the RMW transport backend.
       Connects to a Micro-XRCE-DDS Agent over UDP sockets.

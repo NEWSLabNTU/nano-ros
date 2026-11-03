@@ -225,8 +225,9 @@ comment = '''
 // build either, and `BuildOnly` promises that it does. An absent row with
 // the reason recorded beats a tier that lies — see this module's header.
 //
-// Zenoh only: cyclone and xrce on this board are untried, and the honest
-// record of "nobody has attempted it" is no row, not a guess.
+// Zenoh only for the delivery cells: cyclone and xrce delivery on this
+// board are untried, and the honest record of "nobody has attempted it" is
+// no row, not a guess. (The idle-wake cells below include XRCE.)
 '''
 at = ["ZephyrQemuCortexM", "C", "Zenoh", "Pubsub", "Example"]
 status = 'Runtime'
@@ -273,6 +274,20 @@ comment = '''
 // the closest QEMU has to the MR-CANHUBK344 the record was written for.
 '''
 at = ["ZephyrQemuCortexM", "C", "Zenoh", "BootReport", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+// phase-521 W7 (RFC-0113 D2) — the RTOS idle-wake witness: Zephyr's own IP
+// stack on a Cortex-M, the board RFC-0115 D4 asserts family breadth on.
+// XRCE is the first XRCE row on this board; it reaches the host agent over
+// QEMU's user network.
+'''
+at = ["ZephyrQemuCortexM", "C", "Zenoh", "IdleWake", "Example"]
+status = 'Runtime'
+
+[[cell]]
+at = ["ZephyrQemuCortexM", "C", "Xrce", "IdleWake", "Example"]
 status = 'Runtime'
 
 [[cell]]

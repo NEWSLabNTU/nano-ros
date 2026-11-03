@@ -5535,6 +5535,18 @@ pub fn build_zephyr_cortex_m_rust_serial_talker() -> TestResult<PathBuf> {
     )
 }
 
+/// phase-521 W7 (RFC-0113 D2) -- the `build-cortex-m-c-idle-wake-<rmw>` rows:
+/// the idle-wake witness for `mps2_an385`, one image per RMW (zenoh, xrce). It
+/// prints its executor thread's switch-ins over five 1 s timer periods.
+pub fn build_zephyr_cortex_m_idle_wake(rmw: Rmw) -> TestResult<PathBuf> {
+    build_zephyr_cortex_m_leaf(
+        "packages/testing/nros-tests/bins/idle-wake-zephyr-mps2",
+        &format!("build-cortex-m-c-idle-wake-{}", rmw.cmake_value()),
+        "c",
+        rmw,
+    )
+}
+
 /// Issue 2084 -- the `build-cortex-m-c-tier-stacks-dtcm-zenoh` row: one level
 /// on the shim's tier pool, `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` on, for an
 /// `mps2_an385` given a "DTCM" region by the fixture's `app.overlay`. A link

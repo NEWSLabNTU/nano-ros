@@ -1,0 +1,36 @@
+# phase-521 W7 (RFC-0113 D2) -- the idle-wake witness, one image per RMW. The
+# board is the Zephyr family; the fixture rows build it with `-b mps2/an385`
+# and author the isolation values (router locator, agent address and port).
+
+[system]
+name = "nros_idle_wake_witness_c"
+rmw = "zenoh"
+domain_id = 0
+default_images = ["zephyr_zenoh"]
+
+[[component]]
+pkg = "nros_idle_wake_witness_c"
+class = "nros_idle_wake_witness_c::Witness"
+name = "witness"
+
+[image.zephyr_zenoh]
+board = "zephyr"
+rmw = "zenoh"
+os_config = ["prj-zenoh.conf"]
+
+[image.zephyr_xrce]
+board = "zephyr"
+rmw = "xrce"
+os_config = ["prj-xrce.conf"]
+# An mps2/an385 guest reaches the host through QEMU's user network at
+# 10.0.2.2; the fixture row sets the port (`west_xrce_agent_port`).
+locator = "udp/10.0.2.2:2018"
+# One subscription, no services; sized as the C listener's xrce image is
+# (issue 1033 / issue 1761).
+[image.zephyr_xrce.knobs.xrce]
+max_subscribers = 1
+max_service_servers = 0
+max_service_clients = 0
+
+[image.zephyr_xrce.knobs.zephyr]
+heap_size = 98304

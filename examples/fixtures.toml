@@ -5635,6 +5635,40 @@ conf_files = ["prj.conf", "prj-zenoh.conf", "../../../../packages/boards/nros-bo
 # witness: `tests/zephyr_link_layout.rs` reads the ELF and requires both stack
 # arrays in the DTCM output section. Nothing boots it, so the locator is only
 # a placeholder the leaf needs.
+# phase-521 W7 (RFC-0113 D2) -- the RTOS idle-wake witness, the
+# (ZephyrQemuCortexM, C, {Zenoh, Xrce}, IdleWake) cells. One idle subscription
+# and one 1 s timer; the image counts its executor thread's switch-ins over five
+# periods and prints them. Port 10784 = `alloc::port_of(ZephyrQemuCortexM, C,
+# IdleWake)`, agent port 5784 = `alloc::xrce_agent_port_of(...)`; the agent
+# ADDRESS (10.0.2.2, QEMU's user-network host) is the leaf's own `system.toml`,
+# since the leaf exists only for this board. The XRCE row is the first XRCE
+# image on an RTOS QEMU board. Consumed by tests/zephyr_cortex_m_qemu.rs.
+[[fixture]]
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "zenoh"
+builder = "west"
+dir = "packages/testing/nros-tests/bins/idle-wake-zephyr-mps2"
+board = "mps2/an385"
+west_role = "idle-wake"
+west_build_name = "build-cortex-m-c-idle-wake-zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10784"
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
+
+[[fixture]]
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "xrce"
+builder = "west"
+dir = "packages/testing/nros-tests/bins/idle-wake-zephyr-mps2"
+board = "mps2/an385"
+west_role = "idle-wake"
+west_build_name = "build-cortex-m-c-idle-wake-xrce"
+west_xrce_agent_port = 5784
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
+
 [[fixture]]
 platform = "zephyr-cortex-m"
 lang = "c"
