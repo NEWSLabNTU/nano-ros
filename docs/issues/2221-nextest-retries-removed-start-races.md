@@ -76,7 +76,7 @@ with fixtures built per family (`lane=all` itself could not build them: issue
 | --- | --- | --- |
 | 6 NuttX arm tests | fixture STALE: the riscv half of `just nuttx build-fixtures` rewrites the shared `config.h` (issue 2227). After `build-fixtures-arm`, the NuttX lanes ran 17 of 17 green | no |
 | `test_zephyr_workspace_entry_native_sim_e2e`, `sched_dims_applied` (6 Zephyr realtime cells), `fvp_ws_entry_two_tier_publishes`, `fvp_board_import_fixture_boots` | fixture not built: the Zephyr family stopped at issue 2224 | no |
-| `example_e2e::case_19_xrce_rust_pubsub_e2e` | heap gate read the talker's boot record as zero; listener had counted a sample. 5 of 5 solo | **yes**, issue 2228 (mechanism open) |
+| `example_e2e::case_19_xrce_rust_pubsub_e2e` | heap gate read the talker's boot record as zero; listener had counted a sample. 5 of 5 solo | **yes**, mechanism open (see below) |
 
 The first attempt's run (before the disk filled) also had
 `example_e2e::case_10_cyclonedds_rust_pubsub_e2e` red the same way, beside the
@@ -89,4 +89,17 @@ and FVP-free Zephyr groups.
 
 ## Found and fixed
 
-(none yet)
+- Issue 2228: the Zephyr Rust Cyclone pubsub e2e shared its baked domain with
+  the Rust Cyclone boot smokes. Each now holds its baked identity
+  (`hold_baked_identity`), so the two wait for each other.
+- Issue 2227 (not a race): the NuttX arm fixtures read STALE after the riscv
+  half of the same build. Build scripts no longer watch the shared `config.h`.
+
+## Still open
+
+- `example_e2e::case_19_xrce_rust_pubsub_e2e`: once, under load, the heap gate
+  read the talker's boot record as zero after the listener had counted a
+  sample. No XRCE Rust boot smoke exists and the Agent port is per-cell, so the
+  foreign publisher is unidentified. The baked-identity hold now covers this
+  cell too; it passed 3 of 3 loaded runs since. Re-open with a log if it
+  recurs.

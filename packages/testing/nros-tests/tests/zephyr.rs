@@ -58,7 +58,7 @@ use nros_tests::{
     output, platform,
     zephyr::{
         ZephyrPlatform, ZephyrProcess, get_prebuilt_zephyr_example,
-        get_prebuilt_zephyr_workspace_entry, require_zephyr,
+        get_prebuilt_zephyr_workspace_entry, hold_baked_identity, require_zephyr,
     },
 };
 use rstest::rstest;
@@ -121,6 +121,20 @@ fn rmw_str(r: Rmw) -> &'static str {
         Rmw::Xrce => "xrce",
         Rmw::Uorb => "uorb",
     }
+}
+
+/// Issue 2228 — the baked identity an example image of `case` dials: one per
+/// (rmw, lang, variant), the unit `zephyr-fixture-leaves.sh` bakes a domain /
+/// router port / Agent port for. Both roles of a pair share it, so the key is
+/// the VARIANT, never the role.
+fn baked_identity_key(rmw: Rmw, lang: Lang, case: &str) -> String {
+    let variant = match case {
+        "talker" | "listener" => "pubsub",
+        "service-server" | "service-client" => "service",
+        "action-server" | "action-client" => "action",
+        other => other,
+    };
+    format!("zephyr-{}-{}-{variant}", rmw_str(rmw), lang.as_str())
 }
 
 /// Resolve a prebuilt Zephyr native_sim example image for
@@ -590,6 +604,10 @@ fn example_e2e(#[case] cell: Cell) {
     let first_bin = resolve_example(cell.lang, first_role, cell.rmw);
     let second_bin = resolve_example(cell.lang, second_role, cell.rmw);
 
+    // Issue 2228 — no other test may run these images' baked identity while
+    // this pair is on it, or the listener counts a talker that is not ours.
+    // Declared before both processes, so it is dropped after them.
+    let _identity = hold_baked_identity(&baked_identity_key(cell.rmw, cell.lang, first_role));
     let (_iso_guard, locator) = setup_isolation(&cell);
 
     // Subscriber/server first, so its declarations are live before the
@@ -812,6 +830,9 @@ fn boot_smoke(#[case] smoke: Smoke) {
         smoke.lang.as_str(),
         smoke.case
     );
+    // Issue 2228 — a smoke boots the same image on the same baked identity as
+    // the e2e cell of its variant; hold it so the two never share a bus.
+    let _identity = hold_baked_identity(&baked_identity_key(smoke.rmw, smoke.lang, smoke.case));
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .unwrap_or_else(|e| panic!("Failed to start {id}: {e:?}"));
 

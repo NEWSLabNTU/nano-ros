@@ -1,7 +1,7 @@
 ---
 id: 2228
 title: "Zephyr Rust pubsub e2e counts a sample its own talker never sent: the boot smoke runs the same image on the same baked domain concurrently"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [testing, zephyr]
@@ -48,10 +48,33 @@ record `magic 0`, listener had counted `Hello World: 1`) and passed 5 of 5 solo.
 Its agent port 2400 is per-cell, and there is no Rust XRCE boot smoke, so the
 foreign publisher is not identified yet.
 
-## Fix direction
+## Resolution
 
-- Give the e2e its own readiness edge on the talker: wait for the talker's
-  publish marker (or its boot record) before counting the listener's samples.
-- Keep two tests that start the same baked-domain image from overlapping:
-  route the Rust boot smokes and the Rust e2e cells of one rmw into one group
-  with `max-threads = 1`, or bake the smokes a domain no e2e uses.
+A start race in the plain sense: two tests needed one bus, and nothing made the
+second wait for the first. The fix is that wait.
+
+`nros_tests::zephyr::hold_baked_identity(key)` takes a BLOCKING exclusive
+`flock` on `<tmp>/nros-test-baked-identity/<key>.lock`. The key is the unit the
+west lane bakes a rendezvous for, `zephyr-<rmw>-<lang>-<variant>`. Both
+`example_e2e` and `boot_smoke` take it before their first spawn and keep it
+until their processes are gone. A second test on the same identity waits; it is
+never refused, so nothing is skipped and no retry is involved. Tests on
+different identities run in parallel as before.
+
+It covers the class, not only the reported pair: every Zephyr boot smoke
+(zenoh Rust, XRCE C++, Cyclone C/C++/Rust) and every example cell take their
+identity's hold, so the zenoh and C/C++ Cyclone smoke/e2e pairs, which had the
+same latent overlap, are serialised too.
+
+Measured, whole `zephyr` test binary, three runs under nextest's normal
+parallelism, fresh fixtures:
+- `case_10_cyclonedds_rust_pubsub_e2e`, `case_19_xrce_rust_pubsub_e2e` and both
+  Rust Cyclone boot smokes passed in all three runs.
+- `case_10` took 10.4–11.3 s, against 5.4 s solo: it waited for the smokes'
+  hold, which is the edge working.
+- The other reds in those runs were preconditions only: the native peers' Linux
+  fixtures were not built in that worktree, and issue 2224's entry.
+
+The XRCE Rust pubsub sighting is not explained by this mechanism (no XRCE Rust
+boot smoke exists). Its identity is held now too, but its foreign publisher was
+never identified, so issue 2221 keeps it open.

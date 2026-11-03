@@ -68,7 +68,7 @@ nros-rmw-xrce-cffi                   4   2     0       7      0
 nros-rmw-zenoh                     144  12     5      21      0
 nros-sizes-build                    28   0     0       0      0
 nros-smoltcp                       112  19     2      11      0
-nros-tests                          29   0     0       0      0
+nros-tests                          30   0     0       0      0
 nros-transport-callbacks             9   0     0       8      0
 nros-zephyr-build                   12   0     0       0      0
 nros-zpico-build                     1   0     0       0      0

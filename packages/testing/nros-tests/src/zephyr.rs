@@ -779,6 +779,58 @@ pub fn read_process_memory(pid: u32, addr: u64, len: usize) -> Result<Vec<u8>, S
     Ok(buf)
 }
 
+/// Issue 2228 — exclusive use of one BAKED network identity for as long as
+/// this value lives.
+///
+/// A west-built example image bakes its rendezvous at build time: a Cyclone
+/// `CONFIG_NROS_DOMAIN_ID`, a zenoh router port, an XRCE Agent port, all per
+/// (rmw, lang, variant). Two tests that start images of the same identity at
+/// the same time share one bus, so a listener counts a talker that belongs to
+/// the other test. Measured: `cyclonedds_rust_talker_boots` and
+/// the `cyclonedds_rust_pubsub_e2e` example cell ran together in `qemu-zephyr-dds`, the
+/// e2e listener counted the smoke's sample, and the e2e's own talker had not
+/// reached `boot_report::init()` yet.
+///
+/// A blocking, exclusive `flock` on `<tmp>/nros-test-baked-identity/<key>.lock`:
+/// the second holder WAITS, it is never turned away, so the only cost is that
+/// two tests needing one bus take turns. The kernel drops the lock when the
+/// process ends, however it ends. When the lock cannot be taken (no writable
+/// temp dir) the hold is empty and the test runs unserialised, which is what
+/// it did before.
+pub struct BakedIdentityHold {
+    _file: Option<std::fs::File>,
+}
+
+/// Take the hold for `key`, e.g. `cyclonedds-rust-pubsub`. A test that starts
+/// an image on its baked identity takes the hold before its first spawn and
+/// keeps it until its last process is gone.
+#[must_use]
+pub fn hold_baked_identity(key: &str) -> BakedIdentityHold {
+    use std::os::unix::io::AsRawFd;
+    let dir = std::env::temp_dir().join("nros-test-baked-identity");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return BakedIdentityHold { _file: None };
+    }
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join(format!("{key}.lock")))
+    else {
+        return BakedIdentityHold { _file: None };
+    };
+    loop {
+        // SAFETY: flock(2) on a descriptor this function owns and returns.
+        let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+        if rc == 0 {
+            return BakedIdentityHold { _file: Some(file) };
+        }
+        if std::io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) {
+            return BakedIdentityHold { _file: None };
+        }
+    }
+}
+
 impl Drop for ZephyrProcess {
     fn drop(&mut self) {
         kill_process_group(&mut self.handle);
