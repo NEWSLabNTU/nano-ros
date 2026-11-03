@@ -37,8 +37,23 @@ fn parse(argv: &[&str]) -> Cmd {
         .cmd
 }
 
+/// One in-process verb at a time. `cargo test` (the `just ci gate` lane)
+/// runs these tests as THREADS of one process, and a configure writes the
+/// process environment for as long as it runs: the per-project
+/// `NROS_INTERFACE_SEARCH_PATH` its sync scans (Ruling R12) and the
+/// `NROS_CONFIGURE_HELD` marker (R20). A CLI is one configure per process, so
+/// two at once on threads is a shape no user runs: another thread's search
+/// path made a sync codegen from the wrong tree, and its marker made an
+/// explicit configure refuse (R25). nextest (one process per test) never
+/// shared either.
+fn verb_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 /// The full dispatch, exactly as the binary runs it (lowering included).
 fn nros(argv: &[&str]) -> Result<(), String> {
+    let _one = verb_lock();
     nros_cli_core::run(parse(argv)).map_err(|e| format!("{e:?}"))
 }
 
@@ -49,6 +64,7 @@ fn configure_outcome(argv: &[&str]) -> configure::Outcome {
     let Cmd::Configure(args) = parse(&full) else {
         panic!("`nros configure` did not parse to Cmd::Configure");
     };
+    let _one = verb_lock();
     configure::configure(args).unwrap_or_else(|e| panic!("configure failed: {e:?}"))
 }
 
@@ -288,6 +304,10 @@ fn second_concurrent_configure_finds_stamp_current() {
                 .args(["configure_child", "--exact", "--ignored", "--nocapture"])
                 .env(CHILD_LEAF, &leaf)
                 .env_remove("NROS_CONFIGURE_HELD")
+                // What a configure on another thread of THIS process exported
+                // for its own project (see `verb_lock`); a child derives its
+                // own, like a user who never exported one.
+                .env_remove("NROS_INTERFACE_SEARCH_PATH")
                 .stdout(std::process::Stdio::piped())
                 .spawn()
                 .expect("spawn a configure child")

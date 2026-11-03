@@ -1294,13 +1294,19 @@ fn collect_sources(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<()
     Ok(())
 }
 
-/// phase-530 W1 -- the sidecars under `root` whose COMPONENT SOURCES moved
-/// since they were stamped, as one line each. A sidecar's key is
-/// `<source_digest>:<closure>:<cli stamp>` (see [`probe_inputs_key`]); only the
-/// first part is a property of the project, so only it is compared here and no
-/// nano-ros checkout is needed. A component with no sidecar yet is not listed
-/// (nothing recorded, nothing stale); an unreadable or unstamped one is.
-pub(crate) fn stale_sidecar_components(root: &Path) -> Vec<String> {
+/// phase-530 W1 -- the sidecars under `root` the resolve would refuse as
+/// stale, as one line each. Freshness is the resolve's own
+/// predicate ([`fresh_probe_rows`]) — [`sidecar_is_fresh`] against the WHOLE
+/// [`probe_inputs_key`] (component sources, this CLI's source stamp, the
+/// crates the probe compiles under `nano_ros`). Comparing the source part
+/// alone left a sidecar a rebuilt CLI had staled reading as current, so
+/// configure said "up to date" while the resolve dropped every sidecar.
+///
+/// A component with no sidecar yet is not listed (nothing recorded, nothing
+/// stale); an unreadable or unstamped one is. Ruling R5: a sidecar stamped
+/// [`UNKEYED`] (no key could be formed when it was probed) has nothing to
+/// compare, so it is not listed either.
+pub(crate) fn stale_sidecar_components(root: &Path, nano_ros: Option<&Path>) -> Vec<String> {
     let Ok(workspace) = Workspace::discover(root) else {
         return Vec::new();
     };
@@ -1313,20 +1319,17 @@ pub(crate) fn stale_sidecar_components(root: &Path) -> Vec<String> {
         let Ok(raw) = std::fs::read_to_string(&sidecar) else {
             continue;
         };
-        let recorded = serde_json::from_str::<SourceMetadata>(&raw)
+        let unkeyed = serde_json::from_str::<SourceMetadata>(&raw)
             .ok()
             .and_then(|m| m.provenance)
-            .map(|p| p.inputs_digest);
-        let current = source_digest(&decl.package_root).ok();
-        let fresh = match (&recorded, &current) {
-            // R5: a sidecar stamped with no key has nothing to compare.
-            (Some(r), _) if r == UNKEYED => true,
-            (Some(r), Some(c)) => r.starts_with(&format!("{c}:")),
-            _ => false,
-        };
+            .is_some_and(|p| p.inputs_digest == UNKEYED);
+        let fresh = unkeyed
+            || probe_inputs_key(&decl.package_root, nano_ros)
+                .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
         if !fresh {
             out.push(format!(
-                "metadata sidecar `{}` is stale (component sources moved)",
+                "metadata sidecar `{}` is stale (its probe inputs moved: component sources, the \
+                 CLI, or the crates the probe compiles)",
                 sidecar.display()
             ));
         }
