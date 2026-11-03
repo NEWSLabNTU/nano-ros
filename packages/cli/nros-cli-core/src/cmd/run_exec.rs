@@ -495,16 +495,23 @@ pub fn run_dir(ws: &Path, image: &str) -> PathBuf {
     ws.join("build/nros/run").join(safe)
 }
 
-/// Build `image` through `nros build` with the build's output on stderr, so
-/// stdout stays the console. `true` when the build succeeded.
-pub fn build_image(ws: &Path, nano_ros_path: Option<&Path>, image: &str) -> Result<(), String> {
+/// Build the image through `nros build`, with the build's output on stderr so
+/// stdout stays the console. The selection is the one the plan was resolved
+/// from (`--workspace`, `--nano-ros-path` and the image as the user named
+/// them), so the build and the plan agree on which image it is.
+pub fn build_image(args: &crate::cmd::run_plan::Args, image: &str) -> Result<(), String> {
     let me = std::env::current_exe().map_err(|e| format!("locating nros: {e}"))?;
     let mut cmd = Command::new(me);
-    cmd.arg("build").arg("--workspace").arg(ws);
-    if let Some(n) = nano_ros_path {
+    cmd.arg("build");
+    if let Some(w) = &args.workspace {
+        cmd.arg("--workspace").arg(w);
+    }
+    if let Some(n) = &args.nano_ros_path {
         cmd.arg("--nano-ros-path").arg(n);
     }
-    cmd.arg(image);
+    if let Some(i) = &args.image {
+        cmd.arg(i);
+    }
     let stderr = io::stderr()
         .as_fd_dup()
         .map_err(|e| format!("duplicating stderr: {e}"))?;
@@ -515,7 +522,7 @@ pub fn build_image(ws: &Path, nano_ros_path: Option<&Path>, image: &str) -> Resu
     if status.success() {
         Ok(())
     } else {
-        Err(format!("`nros build {image}` failed ({status})"))
+        Err(format!("building `{image}` with `nros build` failed ({status})"))
     }
 }
 
@@ -558,7 +565,7 @@ pub fn build_and_execute(
     let ws = workspace_of(args);
     let nano_ros_root =
         crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &ws);
-    if let Err(e) = build_image(&ws, args.nano_ros_path.as_deref(), image) {
+    if let Err(e) = build_image(args, image) {
         eprintln!("nros run: {e}");
         exit_with(exit::RUNNER_FAILED);
     }
