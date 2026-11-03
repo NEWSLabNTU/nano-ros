@@ -18,7 +18,7 @@
 //!
 //! Two releases declaring the same `codegen` produce
 //! [`CodegenDelta::Same`] however far apart their versions are; one declaring a
-//! different `codegen` produces a warning that names `nros sync`.
+//! different `codegen` produces a warning that names `nros configure`.
 //!
 //! ## Why the report is printed before the pin is written
 //!
@@ -347,7 +347,7 @@ mod tests {
             "equal codegen must not warn:\n{joined}"
         );
         assert!(joined.contains("UNCHANGED"), "{joined}");
-        assert!(!joined.contains("nros sync"), "{joined}");
+        assert!(!joined.contains("nros configure"), "{joined}");
         assert!(matches!(out, Outcome::Wrote { .. }), "{out:?}");
         assert_eq!(
             pin::load(&project.join(pin::FILE_NAME)).unwrap().version,
@@ -371,7 +371,7 @@ mod tests {
             .iter()
             .find(|(l, _)| l.starts_with("warning: codegen 7 -> 8"))
             .unwrap_or_else(|| panic!("no codegen warning in {seen:#?}"));
-        assert!(warn_line.contains("nros sync"), "{warn_line}");
+        assert!(warn_line.contains("nros configure"), "{warn_line}");
         // THE claim: when the user was warned, the pin still named the OLD
         // toolchain. Nothing had been done yet.
         assert_eq!(
@@ -408,7 +408,7 @@ mod tests {
         ));
         let joined = report(&s).join("\n");
         assert!(joined.contains("UNKNOWN"), "{joined}");
-        assert!(joined.contains("nros sync"), "{joined}");
+        assert!(joined.contains("nros configure"), "{joined}");
     }
 
     /// `--dry-run` reports and writes nothing — the half that proves the report

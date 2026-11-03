@@ -525,7 +525,7 @@ pub struct EnvArgs {
     pub shell: Shell,
 }
 
-#[derive(Debug, ClapArgs)]
+#[derive(Debug, Clone, ClapArgs)]
 pub struct SyncArgs {
     /// Workspace root (the dir containing `src/`). Defaults to cwd.
     pub workspace: Option<PathBuf>,
@@ -1961,7 +1961,14 @@ fn resolve_env_root(arg: Option<&Path>) -> Result<PathBuf> {
     if let Some(p) = arg {
         return std::fs::canonicalize(p).map_err(|e| eyre!("ws env: {}: {e}", p.display()));
     }
-    let cwd = std::env::current_dir()?;
+    interface_search_root(&std::env::current_dir()?)
+}
+
+/// [`resolve_env_root`]'s rules 2-4, from `cwd` rather than the process's
+/// working directory. `nros configure` asks it for the project it configures
+/// (phase-530 W1, RFC-0120 D2: configure computes the interface search path
+/// itself, retiring `eval "$(nros dev ws env)"`).
+pub(crate) fn interface_search_root(cwd: &Path) -> Result<PathBuf> {
     let src = cwd.join("src");
     if src.is_dir() && has_pkg_subdir(&src) {
         return std::fs::canonicalize(&src).map_err(|e| eyre!("ws env: {}: {e}", src.display()));

@@ -1300,8 +1300,6 @@ fn collect_sources(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<()
 /// first part is a property of the project, so only it is compared here and no
 /// nano-ros checkout is needed. A component with no sidecar yet is not listed
 /// (nothing recorded, nothing stale); an unreadable or unstamped one is.
-// phase-530 W1 Task 3 (the verb) removes this allow.
-#[allow(dead_code)]
 pub(crate) fn stale_sidecar_components(root: &Path) -> Vec<String> {
     let Ok(workspace) = Workspace::discover(root) else {
         return Vec::new();

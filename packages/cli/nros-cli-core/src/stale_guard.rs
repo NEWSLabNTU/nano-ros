@@ -198,6 +198,7 @@ fn command_is_guarded(name: &str) -> bool {
     matches!(
         name,
         "sync"
+            | "configure"
             | "plan"
             | "ws"
             | "ws-build"
@@ -741,7 +742,7 @@ mod foreign_binary_tests {
             assert!(command_is_guarded(verb), "{verb} must stay stale-guarded");
         }
         // What a user types in their own workspace keeps the check.
-        for verb in ["sync", "plan", "ws", "setup"] {
+        for verb in ["sync", "configure", "plan", "ws", "setup"] {
             assert!(workspace_check_applies(verb), "{verb} must keep the check");
         }
     }
