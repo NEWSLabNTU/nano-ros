@@ -1,9 +1,9 @@
 ---
 rfc: 0113
 title: "Every supported way to run nano-ros keeps the real-time promise; one wait serves every platform and RMW"
-status: Draft
+status: Stable
 since: 2026-10
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-521]
 amends: [RFC-0106, RFC-0112]
 supersedes: []
@@ -15,7 +15,7 @@ superseded-by: null
 **Status:** Draft (2026-10-31), approved by the maintainer the same day. Written before any code. It sets a support
 rule that outranks RFC-0112's tiers, and it gives the executor one way of
 waiting for every platform and every RMW. Implemented by
-[phase-521](../roadmap/phase-521-rt-unified-wait.md).
+[phase-521](../roadmap/archived/phase-521-rt-unified-wait.md).
 
 ## Summary
 
@@ -374,6 +374,9 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Changelog
 
+- 2026-11-03 — Stable: phase-521 is complete and archived. Every
+  combination in the coverage table states Notify or Waitable or is refused
+  at open, and D2 is measured on Linux, Zephyr and PX4.
 - 2026-11-03 — Coverage: D2 measured under PX4's work-queue scheduler on
   SITL (runs = deadlines + arrivals, arrival→dispatch 14–29 µs), the cell run
   by the hosted `px4-sitl` nightly job; PX4 admitted to Tier 1 in RFC-0112 D3
