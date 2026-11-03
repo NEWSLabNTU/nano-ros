@@ -796,6 +796,8 @@ mod tests {
             deploy: "linux".to_string(),
             panic: None,
             domain_id: None,
+            locator: None,
+            image_net: None,
         };
         sp.entries = vec![entry("linux")];
         let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
