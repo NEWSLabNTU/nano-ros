@@ -239,11 +239,22 @@ Consequences:
   Nothing is silently loose.
 - **Declared `entities = [...]` still wins** and needs no census.
 - **A host image keeps the hosted defaults.** The default reaches a leaf
-  whose image is CROSS (its board's platform is not the host's), which is the
-  line `nros build` already draws for a workspace: a host image is the census
-  producer, never its consumer. A leaf with no `[[component]]` has no program
-  for a census to be of and stays unstated. Written `entities = "census"`
+  whose SELECTED image is CROSS (its board's platform is not the host's),
+  which is the line `nros build` already draws for a workspace: a host image
+  is the census producer, never its consumer. Written `entities = "census"`
   still applies anywhere (phase-530 W2).
+- **A leaf with no `[[component]]`** (a port that names its executable in
+  CMake) is census-sized by default too when its `CMakeLists.txt` builds a
+  program (`nano_ros_add_executable`, or `add_subdirectory` of a ported
+  workspace's packages). Its opt-out is `[system] entities = "defaults"`, the
+  same word, because it has no component row to write it on. One with no
+  component and no program has nothing a census could run, and is refused
+  naming both fixes: add the `[[component]]` with its `entities`, or write
+  `[system] entities = "defaults"`.
+- **A leaf with several `[[component]]` rows** and no `entities` is refused:
+  a census records one program, and splitting it across components would
+  invent an attribution. The fix is an `entities = [...]` list per component,
+  or `entities = "defaults"`.
 
 ### D5 — Every host configure takes one pass
 
@@ -403,5 +414,7 @@ configure, is answered by D2: the stamp records it.)
 ## Changelog
 
 - 2026-11 — created.
-- 2026-11 — D4: the census default is for a CROSS image with at least one
-  `[[component]]`; a host image keeps the hosted defaults (phase-530 W2).
+- 2026-11 — D4: the census default is for a CROSS image; a host image keeps
+  the hosted defaults; a component-less leaf with a program is census-sized
+  (opt-out `[system] entities = "defaults"`), one with no program and a
+  multi-component leaf are refused (phase-530 W2, Ruling R29).
