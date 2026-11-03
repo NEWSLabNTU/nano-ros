@@ -104,6 +104,7 @@ pub mod sizing_descriptor;
 // Issue 0363 — the freshness predicate, shared verbatim with `build.rs` via
 // `include!`. One implementation: the build embeds a stamp, the runtime
 // recomputes it. Replaces the mtime comparison that fired on every rebase.
+pub(crate) mod configure_stamp;
 mod file_lock;
 pub mod interface_package;
 /// RFC-0094 D3 — which driver builds a package, and whether it is built here.
