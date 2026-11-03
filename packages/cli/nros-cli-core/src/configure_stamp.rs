@@ -72,6 +72,35 @@ pub(crate) fn lock_path(project: &Path) -> PathBuf {
         .join(".lock")
 }
 
+/// Ruling R9 (phase-530 W1): which image last wrote a leaf's SHARED output.
+/// A leaf's images share one selection package and one `generated/` tree
+/// (issue 1305), so an image's own stamp cannot say whether that output is
+/// still its own.
+fn leaf_selection_file(project: &Path) -> PathBuf {
+    project
+        .join("build")
+        .join("nros")
+        .join("configured")
+        .join(".leaf-selection")
+}
+
+/// Record that `image` is about to (re)write the leaf's shared output.
+/// Written BEFORE the writing starts, so a configure that fails half way
+/// leaves every other image stale rather than one wrongly current.
+pub(crate) fn record_leaf_selection(project: &Path, image: &str) -> Result<()> {
+    let path = leaf_selection_file(project);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .wrap_err_with(|| format!("cannot create `{}`", dir.display()))?;
+    }
+    atomic_write(&path, &format!("{image}\n"))
+}
+
+fn leaf_selection(project: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(leaf_selection_file(project)).ok()?;
+    Some(raw.trim().to_string()).filter(|s| !s.is_empty())
+}
+
 fn stamp_file(project: &Path, image: &str) -> PathBuf {
     stamp_dir(project, image).join("stamp.toml")
 }
@@ -258,6 +287,13 @@ pub(crate) fn is_current_with(
     let Some(stamp) = read(project, image) else {
         return Ok(Currency::Stale("no configure stamp recorded".into()));
     };
+    if let Some(holder) = leaf_selection(project)
+        && holder != image
+    {
+        return Ok(Currency::Stale(format!(
+            "leaf output holds image `{holder}`"
+        )));
+    }
     let now = input_digest_with_env(project, env)?;
     if stamp.digest != now {
         return Ok(Currency::Stale(format!(
@@ -374,6 +410,25 @@ mod tests {
         assert_eq!(stamp.launch_resolve, current_launch_resolver());
         record(&p, "img", &stamp).unwrap();
         assert_eq!(is_current(&p, "img").unwrap(), Currency::Current);
+    }
+
+    /// Ruling R9: an image's own stamp is not enough on a leaf whose shared
+    /// output another image wrote last.
+    #[test]
+    fn leaf_output_held_by_another_image_is_stale() {
+        let p = tmp("leaf-selection");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        record(&p, "linux", &stamp_for(&p)).unwrap();
+        record(&p, "linux_xrce", &stamp_for(&p)).unwrap();
+        record_leaf_selection(&p, "linux_xrce").unwrap();
+        match is_current_with(&p, "linux", &real_env(), None).unwrap() {
+            Currency::Stale(why) => assert!(why.contains("`linux_xrce`"), "{why}"),
+            Currency::Current => panic!("`linux` read current over `linux_xrce`'s output"),
+        }
+        assert_eq!(
+            is_current_with(&p, "linux_xrce", &real_env(), None).unwrap(),
+            Currency::Current
+        );
     }
 
     #[test]

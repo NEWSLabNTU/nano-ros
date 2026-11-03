@@ -3523,7 +3523,20 @@ fn write_beside_model(model: &Path, system_toml: &Path, pkg_name: &str) -> Resul
     Ok(())
 }
 
+thread_local! {
+    /// How many times [`run_sync`] has started on this thread. `nros
+    /// configure` reports the delta, so a configure that needs a second C1 to
+    /// converge is visible (phase-530 W1).
+    static SYNC_RUNS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// [`run_sync`] calls started on this thread so far.
+pub(crate) fn sync_runs() -> usize {
+    SYNC_RUNS.with(std::cell::Cell::get)
+}
+
 pub fn run_sync(args: SyncArgs) -> Result<()> {
+    SYNC_RUNS.with(|n| n.set(n.get() + 1));
     // Captured before `args.workspace` is moved below; the scope flags are read
     // near the END of sync, and a partial move would otherwise force the whole
     // struct to be cloned.
@@ -3969,6 +3982,16 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // generated `build/<image>/nros-cargo.toml` written below (RFC-0098 D1),
     // so only one writer maintains the `include` array now.
 
+    // phase-530 W1 (RFC-0120 D2 C1, Ruling R10) -- a single-package cargo
+    // leaf's lock is seeded from the pin set AND pruned here, BEFORE the
+    // metadata probe: the lock sits in the component's package root, so the
+    // probe must key on the lock the build will use. This was `nros build`
+    // stage 4's seed plus its `cargo update --workspace` handoff; a configure
+    // that only planned stage 4 seeded without pruning.
+    if single_pkg_mode && let Some(nrp) = nano_ros_path.as_deref() {
+        seed_and_prune_leaf_lock(&ws_root, nrp, sync_image.as_deref())?;
+    }
+
     refresh_source_metadata(&ws_root, nano_ros_path.clone(), no_metadata, verbose)?;
 
     // phase-445 W4b (RFC-0098 D1/D2) — a single-package leaf is a workspace of
@@ -3985,6 +4008,42 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     }
 
     println!("sync: done.");
+    Ok(())
+}
+
+/// Seed a cargo leaf's missing `Cargo.lock` from the registry pin set and
+/// prune it to the leaf's graph ([`crate::cmd::build::leaf_lock_prune`]). A
+/// leaf that already has a lock, or is not a cargo leaf, is left alone. The
+/// prune reads the leaf's generated settings (its `[patch.crates-io]` rows),
+/// so they are written first; sync writes them again, complete, after the
+/// probe.
+fn seed_and_prune_leaf_lock(leaf: &Path, nano_ros: &Path, image: Option<&str>) -> Result<()> {
+    use crate::orchestration::registry_pins::{Seed, seed};
+    if leaf.join("Cargo.lock").exists() {
+        return Ok(());
+    }
+    let Some(img) = crate::cmd::leaf_settings::resolve_image(leaf, nano_ros, image)? else {
+        return Ok(());
+    };
+    crate::cmd::leaf_settings::write(leaf, nano_ros, "sync", image)?;
+    if !matches!(seed(&img.leaf, Some(nano_ros))?, Seed::Seeded { .. }) {
+        return Ok(());
+    }
+    let prune = crate::cmd::build::leaf_lock_prune(&img, false);
+    println!(
+        "sync: lock → seeded {} from the pin set; pruning (cargo update --workspace)",
+        img.leaf.join("Cargo.lock").display()
+    );
+    let status = prune
+        .command()
+        .status()
+        .wrap_err("sync: running `cargo update --workspace` to prune the seeded lock")?;
+    if !status.success() {
+        bail!(
+            "sync: `cargo update --workspace` failed ({status}) pruning the lock seeded at {}",
+            img.leaf.join("Cargo.lock").display()
+        );
+    }
     Ok(())
 }
 

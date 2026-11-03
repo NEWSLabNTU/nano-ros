@@ -13,6 +13,7 @@ user codegen-fingerprint
 user codegen-system
 user completions
 user config
+user configure
 user debug
 user dev
 user doctor
