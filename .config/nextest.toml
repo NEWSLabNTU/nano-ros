@@ -2,6 +2,12 @@
 # See: https://nexte.st/book/configuration.html
 
 [profile.default]
+# NO RETRIES, anywhere in this file (maintainer ruling 2026-11-02). A test that
+# fails on its first attempt and passes on a second has a START RACE: a missing
+# readiness edge, an ordering, or too much concurrency for its resources. Fix
+# that edge, or narrow the test's `test-group` `max-threads`; never re-roll.
+# A retry turns a real race into a green and hides it from every lane.
+# Gate: `check-nextest-no-retries`.
 # Mark tests as slow after 30 seconds, terminate after 60 seconds
 slow-timeout = { period = "30s", terminate-after = 2 }
 fail-fast = false
@@ -340,9 +346,9 @@ max-threads = 9
 # collide modulo the 232-slot DDS domain space — a cross-RMW domain clash (an
 # XRCE test and a Cyclone test landing on the same domain → topic/service
 # cross-talk → wrong counts). One shared group bounds *total* concurrent
-# host-DDS interop to max-threads (the two suites compete for the same slots),
-# and the per-suite `retries` below re-roll the PID → domain on the rare
-# residual collision. (zenoh ROS 2 interop is unaffected — it isolates via the
+# host-DDS interop to max-threads (the two suites compete for the same slots).
+# Domains come from the slot partition (`unique_ros_domain_id`, issue 0838), so
+# two live tests never share one; nothing here re-rolls a collision. (zenoh ROS 2 interop is unaffected — it isolates via the
 # zenoh router + keyexpr on the default domain, disjoint from 1..=232.)
 [test-groups.host-dds-ros2-interop]
 max-threads = 3
@@ -367,8 +373,8 @@ max-threads = 1
 
 # Per-platform bindings for the QEMU / bridge-networked binaries.
 # Each override assigns one binary (or one slice of rtos_e2e) to its
-# matching platform group. Slow-timeout + retries stay identical to
-# the former single `qemu-serial` block.
+# matching platform group. Slow-timeouts stay identical to the former
+# single `qemu-serial` block.
 
 # QEMU bare-metal (MPS2-AN385). Every image owns an allocator port since
 # W4 (rtic 10200/10210/10220; bsp 10500, mixed 10510, large-msg 10520) —
@@ -391,7 +397,6 @@ slow-timeout = { period = "60s", terminate-after = 2 }
 filter = "binary(emulator) or binary(large_msg)"
 test-group = "qemu-baremetal"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 # issue 1749 — the reconnect test waits for zenoh-pico to notice a killed router
 # (lease expiry) and reopen, which measured 39.8 s after the restart every run
@@ -608,7 +613,6 @@ test-group = "cyclone-slirp-an536"
 filter = "binary(freertos_run_plan_runtime)"
 test-group = "qemu-freertos-entry"
 slow-timeout = { period = "180s", terminate-after = 4 }
-retries = 1
 
 # FreeRTOS QEMU (MPS2-AN385 + FreeRTOS kernel) — allocator window 7800+.
 # phase-497 W3 — the FreeRTOS multihost pair on the host bridge: two MPS2
@@ -623,7 +627,6 @@ slow-timeout = { period = "120s", terminate-after = 2 }
 filter = "binary(freertos_qemu) or (binary(rtos_e2e) and test(Platform__Freertos))"
 test-group = "qemu-freertos"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 # NuttX QEMU — allocator window 8200+. Includes the entry-image e2e cells (issues
 # #130/0152; phase-295 W3.b folded rust_nuttx_entry_e2e / c_nuttx_entry_e2e
@@ -648,7 +651,6 @@ retries = 2
 [[profile.default.overrides]]
 filter = "binary(c_riscv_nuttx_e2e)"
 slow-timeout = { period = "150s", terminate-after = 2 }
-retries = 1
 
 # issue 1706 — the carved-parameter-store boots: a NuttX arm-virt and an
 # rv-virt-threadx guest, each on its OWN allocator port
@@ -658,7 +660,6 @@ retries = 1
 [[profile.default.overrides]]
 filter = "binary(param_store_carve)"
 slow-timeout = { period = "120s", terminate-after = 2 }
-retries = 1
 
 # issue 1795 — the RTOS typed-carrier boots: one rv-virt-threadx and one NuttX
 # arm-virt guest, each on its own allocator port (`port_of(_, C, TypedCarrier)` =
@@ -667,7 +668,6 @@ retries = 1
 [[profile.default.overrides]]
 filter = "binary(typed_carrier_e2e)"
 slow-timeout = { period = "120s", terminate-after = 2 }
-retries = 1
 
 # issue 0571 — five overrides stood here (phase-296 W5.5/W5.9/W5.10/W5.11,
 # phase-302 W5), each serializing ONE realtime_tiers_e2e CASE against the
@@ -707,12 +707,9 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # fail, the fix is the test-group and port routing above — configuring the
 # concurrency correctly — not re-rolling the dice.
 #
-# The other three RTOS e2e overrides still carry `retries = 2`
-# (Platform__Freertos, Platform__Threadx*, ThreadxLinux). They mask the same
-# class and are deliberately left for a separate decision: issue 0968 records
-# ~12 unreproduced tier-2 e2e failures, so flipping all four at once would
-# produce a wall of red that obscures rather than reveals.
-retries = 0
+# The other three RTOS e2e overrides (Platform__Freertos, Platform__Threadx*,
+# ThreadxLinux) followed on 2026-11-02, with every other override in this file:
+# a red from issue 0968's unreproduced tier-2 failures is a start race to fix.
 
 # ThreadX QEMU RISC-V — allocator window 9400+. Match only the RV64 rtos_e2e
 # slice, not `ThreadxLinux`, by using the trailing-underscore-free
@@ -721,7 +718,6 @@ retries = 0
 filter = "binary(threadx_riscv64_qemu) or (binary(rtos_e2e) and test(Platform__ThreadxRiscv64))"
 test-group = "qemu-threadx-riscv"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 # ThreadX Linux sim (veth bridge) — allocator window 9000+. The
 # realtime_tiers_e2e threadx_linux_rust case (phase-297 W5) rides the same
@@ -739,7 +735,6 @@ test-group = "cyclone-baked-domain-107"
 filter = "binary(rtos_e2e) and test(Platform__ThreadxLinux)"
 test-group = "threadx-linux"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 # Zephyr native_sim (NSOS, Phase 81) — allocator window 7400+, lang_stride = 100.
 #
@@ -759,7 +754,6 @@ retries = 2
 filter = "binary(zephyr) and test(xrce)"
 test-group = "qemu-zephyr-xrce"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 # Zephyr Cyclone DDS native_sim cells (e2e + boot smokes; consolidated from
 # the retired zephyr_cyclonedds_native_sim_e2e binary in phase-295 W3.c).
@@ -770,7 +764,6 @@ retries = 2
 filter = "binary(zephyr) and test(dds)"
 test-group = "qemu-zephyr-dds"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 # Phase 89.13 — Zephyr per-(variant, lang) sub-groups. Ordered most-specific
 # first so nextest's first-match-wins picks the right slot. C++ E2E tests
@@ -782,37 +775,31 @@ retries = 2
 filter = "binary(zephyr) and test(zenoh_cpp_service_e2e)"
 test-group = "qemu-zephyr-service-cpp"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(zephyr) and test(zenoh_cpp_action_e2e)"
 test-group = "qemu-zephyr-action-cpp"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(zephyr) and (test(zenoh_cpp_pubsub_e2e) or test(cpp_talker_to_native_listener) or test(native_talker_to_zephyr_cpp_listener))"
 test-group = "qemu-zephyr-pubsub-cpp"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(zephyr) and (test(zenoh_rust_service_e2e) or test(native_server_zephyr_client) or test(zephyr_server_native_client))"
 test-group = "qemu-zephyr-service-rust"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(zephyr) and test(zenoh_rust_action_e2e)"
 test-group = "qemu-zephyr-action-rust"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(zephyr) and (test(zenoh_rust_pubsub_e2e) or test(zephyr_to_native_e2e) or test(native_to_zephyr_e2e) or test(bidirectional_native_zephyr_e2e))"
 test-group = "qemu-zephyr-pubsub-rust"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 # Fall-through: the C zenoh cells (distinct baked per-variant allocator
 # ports 7500/7510/7520 — parallel-safe), the zenoh boot smokes, and the
@@ -822,7 +809,6 @@ retries = 2
 filter = "binary(zephyr)"
 test-group = "qemu-zephyr"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 # phase-298 W3.2 (issue 0232) — the FVP runtime gate over the
 # ws-realtime-cpp-fvp workspace Entry (replaces the retired 217.C.2/D.3
@@ -834,7 +820,6 @@ retries = 2
 filter = "binary(fvp_runtime_ws)"
 test-group = "zephyr-fvp"
 slow-timeout = { period = "240s", terminate-after = 2 }
-retries = 1
 
 # Phase 215.G — FVP smoke through the board-crate IMPORT surface. Drives
 # `just zephyr run-fvp-board-import` (the minimal ASI-shaped fixture) and
@@ -845,7 +830,6 @@ retries = 1
 filter = "binary(fvp_smoke)"
 test-group = "zephyr-fvp"
 slow-timeout = { period = "180s", terminate-after = 2 }
-retries = 1
 
 # phase-295 W3.c — the zephyr_cyclonedds_native_sim_e2e binary (ex
 # phase_118_collapse) was consolidated into `binary(zephyr)`'s cyclonedds
@@ -875,12 +859,6 @@ slow-timeout = { period = "60s", terminate-after = 5 }
 filter = "binary(xrce)"
 test-group = "xrce"
 slow-timeout = { period = "60s", terminate-after = 3 }
-# Phase 177/G6 — same retry budget as the other process-heavy E2E groups
-# (rtos_e2e/emulator/large_msg). The xrce group now runs parallel (Phase
-# 183.7), but these tests still share the host with the wide QEMU groups, so
-# a transient CPU-starvation timeout (the in-test wait_for_output_pattern
-# expiring) was a hard fail with 0 retries. retries=2 recovers it.
-retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(c_xrce_api)"
@@ -893,7 +871,6 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 filter = "binary(xrce_ros2_interop)"
 test-group = "host-dds-ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 3 }
-retries = 2
 
 # phase-295 W6.c — the ROS 2 interop family (rmw_interop / cyclonedds_ros2_interop
 # / demo_nodes_cpp_interop / ros2_lifecycle_interop) consolidated into
@@ -906,7 +883,6 @@ retries = 2
 filter = "binary(interop_e2e) and test(cyclone)"
 test-group = "host-dds-ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 3 }
-retries = 2
 
 # phase-455 W3 — the ZENOH half of the ACTIONS live-peer lane.
 #
@@ -937,14 +913,12 @@ retries = 2
 # fired and replace an assertion's diagnostic with a nextest timeout — the
 # shape PR #627 found on this very binary when it had no override.
 #
-# NO RETRIES, deliberately, and unlike the Cyclone row below. The question
+# NO RETRIES, deliberately (as everywhere in this file). The question
 # these cells exist to answer is whether an action goal COMPLETES over zenoh,
 # and issue 0902 measured exactly that completing between 20 % and 90 % of the
 # time. A retry converts "failed once, passed on the second attempt" into a
 # green, which is the reading this lane exists to refuse — the same argument
-# `binary(qos_event_interop)` further down already carries. The Cyclone row's
-# `retries` is not there either; its host-DDS siblings' retries re-roll a
-# PID→domain collision, which is a hazard these cases do not have.
+# `binary(qos_event_interop)` further down already carries.
 #
 # 120s since issues 1361/1341: the r2n case now also runs a LATE JOINER after
 # the goal terminates — a 3 s settle plus a 15 s `ros2 topic echo --once` —
@@ -971,8 +945,7 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # budget is larger than that — up to 20 s of discovery polling plus a
 # `timeout 60` on the goal. So the default would kill it before its own timeout
 # fired, replacing the assertion's diagnostic with a nextest timeout. 60s × 3
-# covers the worst case with headroom; `retries = 2` re-rolls the PID → domain
-# on the residual collision, as for every sibling host-DDS lane.
+# covers the worst case with headroom.
 [[profile.default.overrides]]
 filter = "binary(=ros2_action_e2e)"
 test-group = "host-dds-ros2-interop"
@@ -998,7 +971,6 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 filter = "binary(=advertised_state_interop)"
 test-group = "host-dds-ros2-interop"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(interop_e2e)"
@@ -1214,7 +1186,6 @@ max-threads = 1
 filter = "binary(sched_dims_applied_e2e)"
 test-group = "matrix-consumers-serial"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
 
 # issue 0564 — the 0413 consolidation cost, one binary further out. phase-329 W1
 # folded 15 per-cell `realtime_tiers_*` files into ONE test that iterates every

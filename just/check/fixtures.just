@@ -427,6 +427,14 @@ interop-verdict-ledger:
 nextest-binary-filters:
     @python3 scripts/check-nextest-binary-filters.py
 
+# Maintainer ruling 2026-11-02 — no `retries` anywhere in .config/nextest.toml.
+# A test that passes only on a second attempt has a start race; fix the edge or
+# narrow its test-group, never re-roll. 27 overrides carried one when the rule
+# landed, each justified by a race since removed or a decision "left for later".
+[group("ci")]
+nextest-no-retries:
+    @python3 scripts/check/check-nextest-no-retries.py
+
 # Issue 2004 — a test that runs a matrix of cells in one `#[test]` PASSES over
 # the cells outside the run's coordinates, and its stdout summary is the only
 # record of which cells ran. nextest discards a passing test's output, so every

@@ -111,8 +111,10 @@ any socket in smoltcp and are silently ignored.
 
 `cleanup_tap_network()` attempts to destroy stale TCP sockets and ARP entries
 using `ss -K` and `ip neigh del`. These require `CAP_NET_ADMIN` and fail
-silently without privileges. Nextest retries (configured in
-`.config/nextest.toml`) handle any residual flakiness.
+silently without privileges. Nothing retries a test that trips on a stale
+socket (`.config/nextest.toml` carries no `retries`, maintainer ruling
+2026-11-02): a residual one shows as a red, and the fix is the cleanup or the
+test's isolation.
 
 ## Summary
 
