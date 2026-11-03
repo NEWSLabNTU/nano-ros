@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-03). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 and W5 not landed.** Implements
+**Status (2026-11-03). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 partial (the executor landed, its acceptance follows); W5 not landed.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -313,6 +313,65 @@ Carried:
   - `console.log` capture and process-group teardown.
 - On a hardware image (registry `runs = "hardware"`, or a board with only
   `[board.flash]`), refuse and name `nros flash --monitor`.
+
+**Partial (2026-11-03): the executor landed; the acceptance below is open.**
+It needed the `native` and `qemu` runner packages (W3). Its four runs (the
+three below plus the mps2-an385 serial talker, whose router dials the QEMU
+UART pty), W4's done mark and phase-525 W3's follow in the PR after W3.
+
+- *Executor.* `cmd/run_exec.rs`. Unless `--plan` names a plan file, which runs
+  as written, `nros run` resolves the plan (W1), builds the image through
+  `nros build` with the build's output on stderr (stdout stays the console),
+  finds the plan's runner on the provider search path, checks its `describe`
+  reply (protocol and verb), writes `<ws>/build/nros/run/<image>/plan.json`
+  and runs `<runner> run --plan plan.json`. Where the executable is: a
+  workspace runner package's host-tool directory (`nros build` builds it, and
+  an unbuilt one is refused naming `nros build --packages-select`), a nano-ros
+  checkout's `packages/runners/target/release` (built by `just setup-cli`), or
+  a released package's `bin/`.
+- *Session.* `target_session.rs` holds the process group, console capture,
+  grading and teardown, and has no verb in it, so `nros flash --monitor` and
+  `nros monitor` (phase-529 W3) reuse it. Every process joins one new process
+  group, and on Linux gets `PR_SET_PDEATHSIG`. Ctrl-C, SIGTERM and SIGHUP set
+  a flag, and the verb stops the group (SIGTERM, 2 s, then SIGKILL). The
+  console is copied unmodified to stdout and `console.log`. `--expect`
+  (substring) and `--expect-regex` grade it line by line, and an unterminated
+  tail counts as a line. On an unmet expectation the last ten console lines
+  are repeated on stderr.
+- *Exit codes* (RFC-0118 D2): 0 matched or ran clean; 1 the target failed,
+  ended without the match, or `--expect` timed out; 2 the runner, router or
+  build failed; 3 the plan did not resolve. A `--timeout` with no `--expect`
+  is a clean stop (0). Ctrl-C is 130, the shell's SIGINT code, because an
+  interrupt is not a verdict about the target.
+- *Router* (`--router auto|none|<locator>`). With `auto`, a zenoh link gets
+  ROS's `rmw_zenohd` (the CLI's existing resolver, configured through
+  `ZENOH_CONFIG_OVERRIDE`, in its prefix's environment and with its paired
+  `libzenohc`), and an XRCE link gets the store's pinned `MicroXRCEAgent`.
+  Either starts only when the locator is this host's: loopback, an address
+  that can be bound here, or `10.0.2.2` for an emulator on QEMU's user
+  network, which then listens on `127.0.0.1`. A network router starts before
+  the runner, and the verb waits until its TCP port accepts. A serial link
+  starts its router or agent on the endpoint the runner reports on stderr
+  (`nros-runner: link <pty>`), keeping the locator's `#baudrate=` options. A
+  router or agent that exits early ends the run with exit 2, naming its log
+  (`<run dir>/router.log`, `agent.log`). `--router <locator>` starts nothing
+  and passes the locator to the target as `NROS_LOCATOR`.
+- *Plan additions.* `link.rmw` is an optional field, added to the JSON
+  without a protocol change: it records which RMW speaks over the link, which
+  decides router or agent. A host zenoh image with no stated locator gets the
+  zenoh default link, `tcp/127.0.0.1:7447`, or `NROS_LOCATOR` when that is
+  set (provenance `method`). `--prefix` reaches the runner as `args.prefix`.
+  All of this is applied before `--dry-run` prints, so the printed plan is
+  the executed plan.
+- *Hardware.* The W1 resolver already refuses a board with only
+  `[board.flash]`, naming `nros flash --monitor` (exit 3).
+- *Tests,* compiling nothing: `target_session` runs shell children
+  (grading, the regex tail, timeout, link callback, a required member dying,
+  and Ctrl-C with a grandchild and a second member, asserted by a `/proc`
+  process-group scan). `run_exec` covers the router decision table, and
+  covers the executor against a shell-script fake runner, both handed in
+  directly and found as a workspace runner package (provider scan plus
+  host-tool directory).
 
 Acceptance:
 
