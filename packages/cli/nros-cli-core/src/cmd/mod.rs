@@ -30,6 +30,7 @@ pub mod emit_package_xml;
 pub mod entity_census;
 pub mod entity_inventory;
 pub mod explain;
+pub mod flash;
 pub mod generate;
 pub mod generate_px4;
 pub mod graph;
@@ -45,6 +46,7 @@ pub mod materialize;
 pub mod message_bound_knobs;
 pub mod metadata;
 pub mod model_path;
+pub mod monitor;
 pub mod new;
 pub mod new_entry;
 pub mod new_node;
@@ -128,11 +130,16 @@ pub enum Cmd {
     // RFC-0118 D2.
     Run(run_plan::Args),
 
-    /// Flash an image onto a board (reserved: not available yet).
-    Flash(reserved::Args),
+    /// Flash an image onto a real board: builds it if stale, runs the
+    /// board's human steps, flashes, and with `--monitor` watches the console
+    /// on the same port. `--expect` grades it; `--dry-run [--why]` prints the
+    /// plan instead.
+    Flash(flash::Args),
 
-    /// Attach to a running board's console (reserved: not available yet).
-    Monitor(reserved::Args),
+    /// Attach to a running board's console: `--expect` grades it, `--send`
+    /// writes to it. In a workspace the image's board states the port and
+    /// baud; elsewhere `--port` names the device.
+    Monitor(monitor::Args),
 
     /// This machine's boards: `scan` records which attached USB device is
     /// which board in `$NROS_HOME/bench.toml`, `list` prints it with what is

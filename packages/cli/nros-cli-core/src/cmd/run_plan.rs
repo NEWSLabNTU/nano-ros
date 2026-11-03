@@ -222,12 +222,42 @@ pub fn resolve(verb: Verb, i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
     match verb {
         Verb::Run => resolve_run(i),
         Verb::Flash => resolve_flash(i),
-        Verb::Console => Err(ResolveError::Unresolved(
-            // phase-529 W3.
-            "`nros monitor` (the console verb) is not implemented yet; no plan resolves for it"
-                .into(),
-        )),
+        Verb::Console => resolve_console(i),
     }
+}
+
+/// The console of a real board (`nros monitor`, and `nros flash --monitor`
+/// after the flash): the board's flash target, observed through the `serial`
+/// runner. It is the flash plan's resolution, so the port, baud, console
+/// command and provenance are the ones the flash used, minus what only a
+/// flash needs (the prepare steps, the flash command and chip).
+fn resolve_console(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
+    let mut plan = resolve_flash(i).map_err(|e| match e {
+        ResolveError::WrongVerb(_) => ResolveError::WrongVerb(format!(
+            "board `{}` is not real silicon: its console is the process or emulator `nros run` \
+             starts, and `nros run` streams it",
+            i.board
+        )),
+        other => other,
+    })?;
+    console_of(&mut plan);
+    Ok(plan)
+}
+
+/// Turn a flash plan into the console plan of the same board: same target,
+/// port, baud and console command, the `serial` runner, and none of what only
+/// a flash needs. `nros flash --monitor` hands the flashed port on this way,
+/// so the console opens the device the flash just wrote.
+pub fn console_of(plan: &mut RunPlan) {
+    plan.verb = Verb::Console;
+    plan.runner = runner("nros_runner_serial", "serial");
+    plan.prepare.clear();
+    plan.args.remove("command");
+    plan.args.remove("chip");
+    for k in ["prepare", "args.command", "args.chip"] {
+        plan.provenance.remove(k);
+    }
+    plan.provenance.insert("runner".into(), METHOD.into());
 }
 
 fn plan_shell(verb: Verb, i: &Inputs<'_>, runner: RunnerRef, target: Target) -> RunPlan {
@@ -732,35 +762,12 @@ pub fn run(args: Args) -> eyre::Result<()> {
     if let Some(file) = &args.exec.plan {
         return crate::cmd::run_exec::run_plan_file(&args, file);
     }
-    let mut build_argv = vec!["build".to_string(), "--dry-run".to_string()];
-    if let Some(w) = &args.workspace {
-        build_argv.extend(["--workspace".into(), w.display().to_string()]);
-    }
-    if let Some(n) = &args.nano_ros_path {
-        build_argv.extend(["--nano-ros-path".into(), n.display().to_string()]);
-    }
-    if let Some(i) = &args.image {
-        build_argv.push(i.clone());
-    }
-    let bargs = <crate::cmd::build::Args as clap::Parser>::try_parse_from(build_argv)?;
-    let plans = crate::cmd::build::plan_builds(&bargs)?;
-    let one = match plans.as_slice() {
-        [one] => one,
-        [] => unresolved("no image to run: the workspace declares none"),
-        many => unresolved(&format!(
-            "`nros run` runs one image; name it — one of: {}",
-            many.iter()
-                .map(|p| p.qualified.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )),
+    let one = match resolve_target(&Selection::from(&args), "run") {
+        Ok(one) => one,
+        Err(e) => unresolved(&e),
     };
-    let Some(descriptor) = one.descriptor.as_ref() else {
-        unresolved(&format!(
-            "`{}` resolved to no board descriptor, so there is nothing to run",
-            one.qualified
-        ));
-    };
+    let one = &one;
+    let descriptor = one.descriptor.as_ref().expect("resolve_target checked it");
     let invocation = Invocation {
         // RFC-0118 D6: `--port`, then `NROS_PORT` — both the invocation rung.
         port: args
@@ -806,6 +813,76 @@ pub fn run(args: Args) -> eyre::Result<()> {
         return Ok(());
     }
     crate::cmd::run_exec::build_and_execute(&args, &one.qualified, &plan)
+}
+
+/// Which image a target verb acts on: the workspace, the nano-ros checkout
+/// and the image as the user named them.
+#[derive(Debug, Clone, Default)]
+pub struct Selection {
+    /// `--workspace`.
+    pub workspace: Option<PathBuf>,
+    /// `--nano-ros-path`.
+    pub nano_ros_path: Option<PathBuf>,
+    /// The positional image (`<image>` or `<bringup>:<image>`).
+    pub image: Option<String>,
+}
+
+impl From<&Args> for Selection {
+    fn from(a: &Args) -> Self {
+        Self {
+            workspace: a.workspace.clone(),
+            nano_ros_path: a.nano_ros_path.clone(),
+            image: a.image.clone(),
+        }
+    }
+}
+
+/// THE target resolution of `nros run`, `nros flash` and `nros monitor`: the
+/// one image `sel` names (or the workspace's only one), with its board
+/// descriptor. Every rung of "which image" lives here and nowhere else.
+///
+/// # Errors
+///
+/// No image, more than one, or one with no board descriptor: a message for
+/// RFC-0118 D2's exit 3. `verb` is the user's word (`run`, `flash`) for it.
+pub fn resolve_target(
+    sel: &Selection,
+    verb: &str,
+) -> Result<crate::cmd::build::ResolvedBuild, String> {
+    let mut build_argv = vec!["build".to_string(), "--dry-run".to_string()];
+    if let Some(w) = &sel.workspace {
+        build_argv.extend(["--workspace".into(), w.display().to_string()]);
+    }
+    if let Some(n) = &sel.nano_ros_path {
+        build_argv.extend(["--nano-ros-path".into(), n.display().to_string()]);
+    }
+    if let Some(i) = &sel.image {
+        build_argv.push(i.clone());
+    }
+    let bargs = <crate::cmd::build::Args as clap::Parser>::try_parse_from(build_argv)
+        .map_err(|e| e.to_string())?;
+    let mut plans = crate::cmd::build::plan_builds(&bargs).map_err(|e| format!("{e:#}"))?;
+    let one = match plans.len() {
+        1 => plans.remove(0),
+        0 => return Err(format!("no image to {verb}: the workspace declares none")),
+        _ => {
+            return Err(format!(
+                "`nros {verb}` acts on one image; name it — one of: {}",
+                plans
+                    .iter()
+                    .map(|p| p.qualified.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    };
+    if one.descriptor.is_none() {
+        return Err(format!(
+            "`{}` resolved to no board descriptor, so there is nothing to {verb}",
+            one.qualified
+        ));
+    }
+    Ok(one)
 }
 
 fn unresolved(msg: &str) -> ! {

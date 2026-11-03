@@ -217,7 +217,7 @@ baud = 921600                                     # kind stays the board's
 ```
 
 Both are checked when `system.toml` is read (an unknown key, `wait_for` event
-or `{placeholder}` is refused) and are read by `nros flash` (phase-529 W3).
+or `{placeholder}` is refused) and are read by `nros flash` and `nros monitor`.
 
 ### The middleware's own file
 

@@ -115,16 +115,17 @@ fn an_old_user_spelling_is_silent_when_piped() {
 
 #[test]
 fn a_reserved_verb_refuses_and_names_what_to_do() {
-    for verb in ["flash", "monitor", "debug"] {
+    let (ok, _, err) = run(&["debug", "talker"]);
+    assert!(!ok, "`nros debug` succeeded");
+    assert!(err.contains("is reserved"), "{err}");
+    assert!(err.contains("nros build"), "{err}");
+    // `run` (phase-528 W4), `flash` and `monitor` (phase-529 W3) are no longer
+    // reserved: outside a workspace each fails resolving its plan, not as an
+    // unimplemented verb.
+    for verb in ["run", "flash", "monitor"] {
         let (ok, _, err) = run(&[verb, "talker"]);
-        assert!(!ok, "`nros {verb}` succeeded");
-        assert!(err.contains("is reserved"), "{err}");
-        assert!(err.contains("nros build"), "{err}");
+        assert!(!ok, "`nros {verb}` succeeded outside a workspace");
+        assert!(!err.contains("is reserved"), "{err}");
+        assert!(!err.contains("not implemented"), "{err}");
     }
-    // phase-528 W4 — `run` is no longer reserved: outside a workspace it
-    // fails resolving its plan, not as an unimplemented verb.
-    let (ok, _, err) = run(&["run", "talker"]);
-    assert!(!ok, "`nros run` succeeded outside a workspace");
-    assert!(!err.contains("is reserved"), "{err}");
-    assert!(!err.contains("not implemented"), "{err}");
 }

@@ -499,7 +499,7 @@ pub fn run_dir(ws: &Path, image: &str) -> PathBuf {
 /// stdout stays the console. The selection is the one the plan was resolved
 /// from (`--workspace`, `--nano-ros-path` and the image as the user named
 /// them), so the build and the plan agree on which image it is.
-pub fn build_image(args: &crate::cmd::run_plan::Args, image: &str) -> Result<(), String> {
+pub fn build_image(args: &crate::cmd::run_plan::Selection, image: &str) -> Result<(), String> {
     let me = std::env::current_exe().map_err(|e| format!("locating nros: {e}"))?;
     let mut cmd = Command::new(me);
     cmd.arg("build");
@@ -567,7 +567,7 @@ pub fn build_and_execute(
     let ws = workspace_of(args);
     let nano_ros_root =
         crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &ws);
-    if let Err(e) = build_image(args, image) {
+    if let Err(e) = build_image(&crate::cmd::run_plan::Selection::from(args), image) {
         eprintln!("nros run: {e}");
         exit_with(exit::RUNNER_FAILED);
     }
@@ -656,6 +656,16 @@ pub fn console_command(plan: &RunPlan) -> Result<Option<Vec<String>>, String> {
     Ok(Some(words))
 }
 
+/// The verb a plan's verb is spelled as on the command line.
+#[must_use]
+pub fn verb_word(v: Verb) -> &'static str {
+    match v {
+        Verb::Run => "run",
+        Verb::Flash => "flash",
+        Verb::Console => "monitor",
+    }
+}
+
 /// The last `n` lines of a text file (lossy), oldest first.
 fn last_lines(path: &Path, n: usize) -> Vec<String> {
     let Ok(bytes) = std::fs::read(path) else {
@@ -685,7 +695,7 @@ pub struct Execution<'a> {
 /// Execute a resolved plan and return the verb's exit code (RFC-0118 D2).
 pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
     let fail = |code: u8, msg: &str| {
-        eprintln!("nros run: {msg}");
+        eprintln!("nros {}: {msg}", verb_word(plan.verb));
         code
     };
     let expect = match x.exec.expectation() {
@@ -725,9 +735,16 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
             &format!("writing {}: {e}", plan_path.display()),
         );
     }
-    let log = match std::fs::File::create(dir.join("console.log")) {
+    // A flash's output is not the console: it gets a log of its own, so the
+    // console a `--monitor` opens next starts its `console.log` clean.
+    let log_name = if plan.verb == Verb::Flash {
+        "flash.log"
+    } else {
+        "console.log"
+    };
+    let log = match std::fs::File::create(dir.join(log_name)) {
         Ok(f) => f,
-        Err(e) => return fail(exit::RUNNER_FAILED, &format!("creating console.log: {e}")),
+        Err(e) => return fail(exit::RUNNER_FAILED, &format!("creating {log_name}: {e}")),
     };
 
     ts::install_interrupt_handler();
@@ -740,7 +757,7 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
     match &side {
         HostSide::Nothing(why) => {
             if plan.link.is_some() {
-                eprintln!("nros run: starting no router ({why})");
+                eprintln!("nros {}: starting no router ({why})", verb_word(plan.verb));
             }
         }
         HostSide::ZenohListen(endpoint) => {
@@ -748,7 +765,10 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
                 Ok(c) => c,
                 Err(e) => return fail(exit::RUNNER_FAILED, &e),
             };
-            eprintln!("nros run: starting the zenoh router on {endpoint}");
+            eprintln!(
+                "nros {}: starting the zenoh router on {endpoint}",
+                verb_word(plan.verb)
+            );
             if let Err(e) = start_member(&mut group, "router", cmd, &dir) {
                 return fail(exit::RUNNER_FAILED, &e);
             }
@@ -774,7 +794,11 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
                 Ok(c) => c,
                 Err(e) => return fail(exit::RUNNER_FAILED, &e),
             };
-            eprintln!("nros run: starting the XRCE agent ({})", args.join(" "));
+            eprintln!(
+                "nros {}: starting the XRCE agent ({})",
+                verb_word(plan.verb),
+                args.join(" ")
+            );
             if let Err(e) = start_member(&mut group, "agent", cmd, &dir) {
                 return fail(exit::RUNNER_FAILED, &e);
             }
@@ -877,7 +901,10 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
             } else {
                 format!("serial/{endpoint}#{options}")
             };
-            eprintln!("nros run: starting the zenoh router on {ep}");
+            eprintln!(
+                "nros {}: starting the zenoh router on {ep}",
+                verb_word(plan.verb)
+            );
             ("router", zenoh_router(&ep)?)
         } else {
             let baud = options
@@ -892,7 +919,11 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
                 "-b".into(),
                 baud,
             ];
-            eprintln!("nros run: starting the XRCE agent ({})", args.join(" "));
+            eprintln!(
+                "nros {}: starting the XRCE agent ({})",
+                verb_word(plan.verb),
+                args.join(" ")
+            );
             ("agent", xrce_agent(&args, nano_ros_root.as_deref())?)
         };
         start_member(&mut s.group, name, cmd, &dir)?;
@@ -904,15 +935,17 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
     let line = outcome.describe(expect.as_ref(), started.elapsed());
     let _ = io::stdout().flush();
     eprintln!(
-        "nros run: {line} (console: {})",
-        dir.join("console.log").display()
+        "nros {}: {line} ({}: {})",
+        verb_word(plan.verb),
+        log_name,
+        dir.join(log_name).display()
     );
     // An unmet expectation: the last console lines, on stderr, for a reader
     // whose stdout went to a file or a pipe.
     if expect.is_some() && code != exit::SUCCESS {
-        let tail = last_lines(&dir.join("console.log"), 10);
+        let tail = last_lines(&dir.join(log_name), 10);
         if !tail.is_empty() {
-            eprintln!("nros run: the console's last lines:");
+            eprintln!("nros {}: the console's last lines:", verb_word(plan.verb));
             for l in tail {
                 eprintln!("  | {l}");
             }
@@ -920,7 +953,8 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
     }
     if let Outcome::MemberDied { name, .. } = &outcome {
         eprintln!(
-            "nros run: the {name}'s log: {}",
+            "nros {}: the {name}'s log: {}",
+            verb_word(plan.verb),
             dir.join(format!("{name}.log")).display()
         );
     }

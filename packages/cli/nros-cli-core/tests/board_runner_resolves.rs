@@ -418,6 +418,119 @@ fn every_flashable_board_resolves_a_flash_runner() {
     );
 }
 
+/// phase-529 W3: what `nros flash --dry-run --why` and `nros monitor
+/// --dry-run --why` print resolves on every in-tree board with
+/// `[board.flash]`. The flash plan renders with its provenance, and the
+/// console plan (`--monitor`, and `nros monitor`) resolves to a package
+/// implementing `console`, on the flash plan's port.
+#[test]
+fn every_flashable_board_resolves_flash_and_monitor_dry_runs() {
+    use nros_cli_core::cmd::{flash::monitor_plan, run_plan::render_plan_text};
+    let root = repo_root();
+    let cat = BoardCatalog::load(&root).unwrap();
+    let scan = scan_roots(std::slice::from_ref(&root)).unwrap();
+    let invocation = Invocation {
+        port: Some("/dev/ttyACM9".into()),
+        ..Invocation::default()
+    };
+    let mut problems = Vec::new();
+    let mut seen = 0;
+    for d in cat.descriptors().iter().filter(|d| d.flash.is_some()) {
+        seen += 1;
+        let name = &d.names[0];
+        let out = output_for(d);
+        let inputs = Inputs {
+            image: "gate:img",
+            board: name,
+            descriptor: d,
+            output: Some(&out),
+            tables: &ImageTables::default(),
+            bench: &Bench::default(),
+            invocation: &invocation,
+        };
+        let flash = match resolve(Verb::Flash, inputs) {
+            Ok(p) => p,
+            Err(e) => {
+                problems.push(format!(
+                    "{name}: `nros flash --dry-run` resolves nothing: {e}"
+                ));
+                continue;
+            }
+        };
+        let why = render_plan_text(&flash, true, false);
+        if !why.contains("[provenance]") || !why.contains("\"console.port\" = \"invocation\"") {
+            problems.push(format!(
+                "{name}: `--why` names no rung for the port:\n{why}"
+            ));
+        }
+        let console = match resolve(Verb::Console, inputs) {
+            Ok(p) => p,
+            Err(e) => {
+                problems.push(format!(
+                    "{name}: `nros monitor --dry-run` resolves nothing: {e}"
+                ));
+                continue;
+            }
+        };
+        if console != monitor_plan(&flash) {
+            problems.push(format!(
+                "{name}: `nros monitor`'s plan is not `nros flash --monitor`'s console plan"
+            ));
+        }
+        if console.console.port.as_deref() != Some("/dev/ttyACM9") {
+            problems.push(format!("{name}: the console lost the flashed port"));
+        }
+        match lookup_runner(&scan, &console.runner.name) {
+            Ok(r) if r.descriptor.verbs.contains(&Verb::Console) => {}
+            Ok(r) => problems.push(format!(
+                "{name}: console runner `{}` does not implement `console`",
+                r.name
+            )),
+            Err(e) => problems.push(format!(
+                "{name}: console runner `{}` resolves to no package: {e}",
+                console.runner.name
+            )),
+        }
+    }
+    assert!(seen >= 2, "{seen} boards state `[board.flash]`");
+    assert!(
+        problems.is_empty(),
+        "flash/monitor dry runs that do not resolve:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// `nros monitor` on an emulated board is refused, naming `nros run`.
+#[test]
+fn monitor_on_an_emulated_board_names_nros_run() {
+    let root = repo_root();
+    let cat = BoardCatalog::load(&root).unwrap();
+    let d = cat
+        .descriptors()
+        .iter()
+        .find(|d| {
+            d.flash.is_none()
+                && d.platform != PlatformKind::Zephyr
+                && d.run.as_ref().is_some_and(|r| r.emulator.is_some())
+        })
+        .expect("an emulated, non-Zephyr board");
+    let out = output_for(d);
+    let e = resolve(
+        Verb::Console,
+        Inputs {
+            image: "gate:img",
+            board: &d.names[0],
+            descriptor: d,
+            output: Some(&out),
+            tables: &ImageTables::default(),
+            bench: &Bench::default(),
+            invocation: &Invocation::default(),
+        },
+    )
+    .unwrap_err();
+    assert!(e.to_string().contains("nros run"), "{e}");
+}
+
 /// Placeholders the machine supplies at flash time (`--port`, `--probe`, the
 /// bench file), never the board descriptor.
 const MACHINE_FACTS: &[&str] = &["port", "probe"];
