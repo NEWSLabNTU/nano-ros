@@ -172,6 +172,22 @@ A branch that fails them is demoted to a Tier 0 recipe, or deleted. It is not
 kept as a seam that nothing exercises. Today:
 
 - **`rtic`** meets all four. It stays in Tier 1.
+- **`px4`** meets all five (RFC-0113 D9, phase-521 W8, admitted 2026-11-03),
+  as a C++-only framework (`nros::main!` refuses it; the C++ entry codegen
+  emits one PX4 work item per tier):
+  1. the board is PX4 SITL (`px4_sitl_default`, built from the pinned
+     `third-party/px4/PX4-Autopilot` with the example as its external
+     modules);
+  2. the cell is `(Px4, Cpp, Uorb, Pubsub)`, `nros-tests --test px4_sitl`, run
+     by the hosted `px4-sitl` job in `nightly.yml`: a stock PX4 `listener`
+     reads a nano-ros publication and nano-ros dispatches commander's
+     `vehicle_status`;
+  3. PX4 owns `main` and every thread, and a tier must be a work item on a
+     queue PX4 configures, which a recipe cannot express;
+  4. the owner is the maintainer (ruling 2026-11-03);
+  5. RFC-0113's coverage section records the bounds under the work-queue
+     scheduler: no run beyond deadlines and arrivals, arrival→dispatch
+     14–29 µs.
 - **`embassy`** failed 1, 2 and arguably 3. An async task can drive the
   executor once D2.2's notifier exists. The maintainer ruled to demote it
   (issue 2134, 2026-10-30): the branch and its trait are deleted, and
@@ -201,8 +217,8 @@ that the contract broke.
 ### D5 — The framework vocabulary separates frameworks from platform entry shapes
 
 `FRAMEWORKS` keeps only Tier 1 values that a user may choose. Today those are
-`owned-spin` and `rtic` (`embassy` left with issue 2134, and is refused with a
-hint).
+`owned-spin`, `rtic` and `px4` (`px4` is C++-only; `embassy` left with issue
+2134, and is refused with a hint).
 
 `zephyr` and `esp32` become platform entry shapes that the board descriptor
 derives. A user never writes them, and RFC-0111's `framework` field refuses

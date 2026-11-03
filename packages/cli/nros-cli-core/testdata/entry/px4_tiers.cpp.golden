@@ -200,6 +200,8 @@ void NrosTier_low::on_image_stopped() {
 
 int NrosPx4Entry::print_status() {
     PX4_INFO("2 tier(s): high@rate_ctrl low@hp_default");
+    PX4_INFO("tier high runs=%u wake_max_us=%llu", static_cast<unsigned>(_tier_0.runs()), static_cast<unsigned long long>(_tier_0.wake_max_us()));
+    PX4_INFO("tier low runs=%u wake_max_us=%llu", static_cast<unsigned>(_tier_1.runs()), static_cast<unsigned long long>(_tier_1.wake_max_us()));
     return 0;
 }
 

@@ -48,6 +48,11 @@ class UorbDemo {
     uint32_t published_ = 0;
     uint32_t received_ = 0;
     float counter_ = 0.0F;
+
+    // The `stats:` line's window (phase-521 W8 (e)): how far a tick strays
+    // from 1 s, in PX4 time (virtual under SITL lockstep).
+    uint64_t last_tick_us_ = 0;
+    uint64_t jitter_max_us_ = 0;
 };
 
 } // namespace uorb_demo_pkg

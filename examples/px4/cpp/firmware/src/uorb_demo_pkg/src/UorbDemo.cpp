@@ -85,6 +85,13 @@ void on_status(const VehicleStatus& msg) {
 }
 
 void UorbDemo::on_tick() {
+    const uint64_t now = hrt_absolute_time();
+    if (last_tick_us_ != 0) {
+        const uint64_t dt = now - last_tick_us_;
+        const uint64_t off = dt > 1000000u ? dt - 1000000u : 1000000u - dt;
+        if (off > jitter_max_us_) jitter_max_us_ = off;
+    }
+    last_tick_us_ = now;
     // No encode step, and none skipped: `msg` IS what lands in the uORB queue.
     debug_key_value_s msg{};
     msg.timestamp = hrt_absolute_time();
@@ -99,6 +106,13 @@ void UorbDemo::on_tick() {
     if (published_ == 1 || (published_ % 10) == 0) {
         PX4_INFO("published debug_key_value key=nros value=%.1f (%u samples)",
                  static_cast<double>(msg.value), static_cast<unsigned>(published_));
+    }
+    // Every 10 ticks: what this tier dispatched, and how promptly. Read by
+    // `nros-tests --test px4_sitl` against the tier's own `runs=` count.
+    if ((published_ % 10) == 0) {
+        PX4_INFO("stats: ticks=%u status=%u jitter_max_us=%llu", static_cast<unsigned>(published_),
+                 static_cast<unsigned>(received_), static_cast<unsigned long long>(jitter_max_us_));
+        jitter_max_us_ = 0;
     }
 }
 

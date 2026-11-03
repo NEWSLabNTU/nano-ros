@@ -209,7 +209,8 @@ void NrosTier_{{ t.name | pkg_ident }}::on_image_stopped() {
 
 int NrosPx4Entry::print_status() {
     PX4_INFO("{{ px4.tiers | length }} tier(s):{% for t in px4.tiers %} {{ t.name | c_str }}@{{ t.queue }}{% endfor %}");
-    return 0;
+{% for t in px4.tiers %}    PX4_INFO("tier {{ t.name | c_str }} runs=%u wake_max_us=%llu", static_cast<unsigned>(_tier_{{ t.index }}.runs()), static_cast<unsigned long long>(_tier_{{ t.index }}.wake_max_us()));
+{% endfor %}    return 0;
 }
 
 int NrosPx4Entry::task_spawn(int /*argc*/, char* /*argv*/[]) {

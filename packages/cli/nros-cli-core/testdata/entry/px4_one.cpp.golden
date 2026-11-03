@@ -147,6 +147,7 @@ void NrosTier_default::on_image_stopped() {
 
 int NrosPx4Entry::print_status() {
     PX4_INFO("1 tier(s): default@rate_ctrl");
+    PX4_INFO("tier default runs=%u wake_max_us=%llu", static_cast<unsigned>(_tier_0.runs()), static_cast<unsigned long long>(_tier_0.wake_max_us()));
     return 0;
 }
 

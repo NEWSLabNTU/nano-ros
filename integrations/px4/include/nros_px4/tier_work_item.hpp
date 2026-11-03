@@ -49,6 +49,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <chrono>
+
 namespace nros_px4
 {
 
@@ -171,7 +173,13 @@ public:
 	/// uORB's `SubscriptionCallback` to this).
 	void notify()
 	{
-		_notified.store(true);
+		// The first arrival since the last run stamps the wake path's start
+		// on the REAL clock (`steady_clock`, not PX4's `hrt`: SITL runs
+		// lockstep, where `hrt` is virtual time that moves in steps).
+		bool was = false;
+		if (_notified.compare_exchange(&was, true)) {
+			_notify_ns.store(now_ns());
+		}
 		ScheduleNow();
 	}
 
@@ -193,6 +201,14 @@ public:
 	}
 
 	bool is_boot() const { return !_borrowed; }
+
+	/// How many times this tier's work item has run a pass (stop excluded).
+	uint32_t runs() const { return _runs.load(); }
+
+	/// The longest real time, in microseconds, from an arrival's `notify()`
+	/// to the run that served it (RFC-0113 D2's arrival->dispatch, less the
+	/// pass itself).
+	uint64_t wake_max_us() const { return _wake_max_us.load(); }
 
 protected:
 	TierWorkItem(const char *item_name, const px4::wq_config_t &queue) : ScheduledWorkItem(item_name, queue) {}
@@ -221,6 +237,19 @@ protected:
 			}
 
 			return;
+		}
+
+		// Every wake that reaches the executor, counted for the idle-wake
+		// witness (phase-521 W8 (e), RFC-0113 D2): a tier woken only by its
+		// deadlines and its arrivals runs no more often than they occur.
+		_runs.fetch_add(1);
+		const uint64_t woke_ns = _notify_ns.load();
+		if (woke_ns != 0) {
+			_notify_ns.store(0);
+			const uint64_t us = (now_ns() - woke_ns) / 1000u;
+			if (us > _wake_max_us.load()) {
+				_wake_max_us.store(us);
+			}
 		}
 
 		// Cleared BEFORE the pass, so an arrival from here on is either
@@ -302,6 +331,16 @@ private:
 	bool _first_park{false};
 	bool _yielded{false};
 	px4::atomic<bool> _notified{false};
+	px4::atomic<uint32_t> _runs{0};
+	px4::atomic<uint64_t> _notify_ns{0};
+	px4::atomic<uint64_t> _wake_max_us{0};
+
+	static uint64_t now_ns()
+	{
+		return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+						     std::chrono::steady_clock::now().time_since_epoch())
+						     .count());
+	}
 };
 
 } // namespace nros_px4

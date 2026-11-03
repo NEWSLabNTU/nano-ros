@@ -853,3 +853,15 @@ Its first local run found every PX4 uORB image refused at open since W6's D5
 refusal — the push-wake glue was never linked — which W8 (d) fixed. Still in
 (e): per-tier wake counters, and W7's idle-wake and arrival→dispatch tests on
 SITL.
+
+**W8 (e) second half and (f) — measured and admitted (2026-11-03).** Each
+PX4 tier's work item counts its runs and the real-clock delay from an
+arrival's `notify()` to the run that serves it; the generated module's
+`status` prints both per tier, and the firmware example prints a `stats:`
+line every 10 ticks. `px4_sitl::work_queue_tier_wakes_only_for_deadlines_and_arrivals`
+reads them over a 10 s window: 30 runs for 10 deadlines and 20 arrivals in
+each of three runs, arrival→dispatch 14–29 µs. Numbers in RFC-0113's coverage
+section. (f): the admission record is RFC-0112 D3's list, not the board
+registry — RFC-0114 records board EVIDENCE and states no rank, and PX4 is a
+framework on PX4's own SITL board. PX4 is entered there with all five
+criteria and the maintainer as owner.
