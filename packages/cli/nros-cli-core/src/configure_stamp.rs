@@ -368,8 +368,14 @@ fn recorded_censuses(project: &Path) -> Vec<PathBuf> {
     ] {
         for e in WalkDir::new(&root).into_iter().flatten() {
             let name = e.file_name().to_string_lossy();
+            // phase-530 W4 -- `<census>.recorded.json` is the RAW recorder
+            // document a take leaves beside the census it becomes
+            // (`entity_census.rs`), not a census: it records no input, so
+            // reading it as one made every census leaf's stamp stale forever
+            // (the talker reconfigured on every host configure).
             let census = e.file_type().is_file()
                 && name.ends_with(".json")
+                && !name.ends_with(".recorded.json")
                 && (name.ends_with(".census.json") || root.ends_with(CENSUS_DIR));
             if census {
                 out.push(e.into_path());
@@ -747,6 +753,18 @@ mod tests {
         // Two bringups declaring it: the bare id names neither.
         record(&p, "other_bringup:zephyr", &s).unwrap();
         assert!(locate_resolved(&p, "zephyr").is_err());
+    }
+
+    /// phase-530 W4 -- the raw recorder document a census take leaves beside
+    /// the census is not a census, so it never makes a stamp stale.
+    #[test]
+    fn the_raw_recorder_document_is_not_a_census() {
+        let p = tmp("recorded-census");
+        let dir = p.join("build").join(CENSUS_DIR);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("leaf.census.json"), "{}").unwrap();
+        std::fs::write(dir.join("leaf.census.recorded.json"), "{}").unwrap();
+        assert_eq!(recorded_censuses(&p), vec![dir.join("leaf.census.json")]);
     }
 
     #[test]
