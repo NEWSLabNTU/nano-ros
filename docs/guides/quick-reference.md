@@ -15,7 +15,7 @@ time (it is `rmw-zenoh`), examples are standalone packages so there is no root
 workspace to take `-p`, and the RMW is no longer a cargo feature a user picks —
 it is `[system] rmw` in the leaf's `system.toml`
 ([RFC-0098](../design/0098-generated-leaf-build-config.md)). The flow is
-`nros sync`, then `nros build` (or `cargo build --config
+`nros configure`, then `nros build` (or `cargo build --config
 <leaf>/build/<image>/nros-cargo.toml` if you drive cargo yourself).
 
 ## See Also

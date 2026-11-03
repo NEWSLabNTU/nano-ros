@@ -325,7 +325,7 @@ if [ "${1:-}" = "--self-test" ]; then
 
     # (f) issue 1919's shape: the metadata probe root writes its own five
     # copies of the identity the image wrote five times. Two cargo roots, by
-    # construction (issue 0616), so this PASSES — what a plain `nros sync` leaves.
+    # construction (issue 0616), so this PASSES — what a plain `nros configure` leaves.
     for k in 1 2 3 4 5; do
         _st_mk "nros-metadata/metadata-probe-cmake/build/nros-codegen/nano_ros_cpp_ffi_m$k/target/x86_64-unknown-linux-gnu/p/deps" \
             "libbyteorder-$_st_shared.rlib" '2020-01-01 00:00:00'
@@ -667,7 +667,7 @@ era_verdict() {
 #
 # Roots do NOT add up. This axis first charged a non-image root's copies to
 # every image, which read the probe's five plus the image's five as ten. That
-# is what a plain `nros sync` produces (measured 2026-10-16 on the mixed
+# is what a plain `nros configure` produces (measured 2026-10-16 on the mixed
 # workspace: `nros_serdes` and `heapless` at 10), because the probe and the
 # image are two cmake projects, so two cargo roots, and issue 0616 forbids one
 # target dir serving both. Fixture lanes do not keep the probe's tree

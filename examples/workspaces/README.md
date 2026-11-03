@@ -19,11 +19,11 @@ Build one with the user workflow:
 source ./activate.sh
 cd examples/workspaces/<rust|c|cpp|mixed>
 nros setup linux
-nros sync
+nros configure
 nros build              # every [image.*]; or: nros build <image-id>
 ```
 
-`nros sync` resolves `demo_bringup/system.toml` plus the launch files into the
+`nros configure` resolves `demo_bringup/system.toml` plus the launch files into the
 generated inputs — the message crates, the entry, and the build settings each
 image's board implies — so no build command carries a board, an RMW or a domain.
 
@@ -65,7 +65,7 @@ module renders it into Kconfig (phase-481). There is no `nros launch` build path
 source ./activate.sh
 
 # Platform-agnostic message provisioning (once; sibling to `west update`).
-nros sync
+nros configure
 
 # west is the build verb. `-b` picks the board; the image (its `rmw`, `env`
 # knobs and Zephyr-native `conf` fragment) is the bringup's `system.toml`.

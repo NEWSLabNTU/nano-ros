@@ -206,7 +206,7 @@ fn main() {
     // C++ compile rejects the constructs outright.
     nros_cc_flags::gcc_safe_frame_pointer(&mut build);
     // Issue 1512 — the image's declared locator/domain, from the `[env]` rows
-    // `nros sync` renders into `build/<image>/nros-cargo.toml`. The app TU only:
+    // `nros configure` renders into `build/<image>/nros-cargo.toml`. The app TU only:
     // the generated bindings dial nothing.
     nros_cc_flags::entry_config::bake(&mut build);
     // phase-499 W3 — `nros_app_register_backends()`, generated from the RMW

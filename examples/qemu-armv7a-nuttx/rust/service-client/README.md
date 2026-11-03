@@ -8,7 +8,7 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 ```bash
 cp -r examples/qemu-armv7a-nuttx/rust/service-client ~/my-service-client && cd ~/my-service-client
 source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
-nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
+nros configure     # generated/ message crates + build/<image>/nros-cargo.toml
 nros build    # or: nros build qemu-armv7a-nuttx
 ```
 
@@ -29,7 +29,7 @@ carries any of them.
 
 `Cargo.toml` names no board crate. The board crate, its RMW backend and
 its runtime crates come from the `<pkg>_nros_selection` package that
-`nros sync` / `nros build` generate under `build/nros/selection/` from
+`nros configure` / `nros build` generate under `build/nros/selection/` from
 `system.toml` (RFC-0098 D6), so switching board is the `[image.*] board`
 line and nothing else
 ([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).

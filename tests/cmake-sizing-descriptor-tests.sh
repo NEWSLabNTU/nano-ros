@@ -27,7 +27,7 @@
 #
 #   C2. It is registered even when the descriptor does NOT EXIST YET. CMake
 #      re-configures when a listed file appears, so this is what makes the first
-#      `nros sync` after a configure visible; without it that sync is invisible
+#      `nros configure` after a configure visible; without it that sync is invisible
 #      until something unrelated triggers a reconfigure.
 #
 #   D. A MISSING descriptor is a reported NO-OP, not a fatal. An image nobody
@@ -291,7 +291,7 @@ if ! nros_grep_q "could not be read" <<<"$OUT"; then
     fail "E: the fatal did not name the failure -- $OUT"
 fi
 check
-if ! nros_grep_q "nros sync" <<<"$OUT"; then
+if ! nros_grep_q "nros configure" <<<"$OUT"; then
     fail "E: the fatal did not name the remedy -- $OUT"
 fi
 

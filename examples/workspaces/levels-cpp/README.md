@@ -50,7 +50,7 @@ workspace builds in one cmake tree (`build/posix-zenoh-linux/cmake`).
 ```sh
 source ./activate.sh
 cd examples/workspaces/levels-cpp
-nros sync
+nros configure
 ```
 
 `just zephyr build-fixtures` syncs and builds the Zephyr image

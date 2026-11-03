@@ -72,7 +72,7 @@ build-fixture distro="jazzy":
     nros_seed_leaf_lock "$FIX"
     # Issue 1305 — the leaf names no board or RMW; its `system.toml` image does.
     # `ws leaf-system --write-settings` writes the image's selection package and
-    # settings file WITHOUT re-running codegen (a `nros sync` here would
+    # settings file WITHOUT re-running codegen (a `nros configure` here would
     # regenerate `generated/` from the HOST's definitions, undoing the edition's
     # above). Cargo then builds through that file, from the directory above the
     # leaf, as `nros build` does (scripts/build/leaf-settings.sh records why).
@@ -136,7 +136,7 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     for ex in talker listener service-server service-client action-server action-client; do
         DIR="{{justfile_directory()}}/examples/linux/rust/$ex"
         echo "== $ex (image $IMG) sync =="
-        "$NROS" sync --no-provider-index --image "$IMG" "$DIR" >/dev/null
+        "$NROS" configure --no-provider-index --image "$IMG" "$DIR" >/dev/null
         echo "== $ex (image $IMG) → $ED_TARGET_DIR =="
         nros_seed_leaf_lock "$DIR"
         # From the directory ABOVE the leaf, naming the manifest and the

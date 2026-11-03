@@ -27,14 +27,14 @@ went with them). Between them they carried
     LINK time;
   * 17 leaves' `[env]` blocks, which are now the board descriptor's
     `[knobs]`, a transport implication, or `[image.<id>.knobs]` / `env`;
-  * an `include = [...]` line that `nros sync` REWROTE on every build, which
+  * an `include = [...]` line that `nros configure` REWROTE on every build, which
     CLAUDE.md answered with a rule ("never commit that line") that had already
     been broken twice.
 
 # What this gate does NOT say
 
 It is about TRACKED files, because that is the invariant a clone and CI see. A
-leaf may still hold a `.cargo/config.toml` on disk: `nros sync` writes the
+leaf may still hold a `.cargo/config.toml` on disk: `nros configure` writes the
 central `[patch.crates-io]` include for a leaf a plain `cargo` or the metadata
 probe runs INSIDE (the Zephyr west lane is the one that has no `--config` seam
 of its own — issue 1288). Those are gitignored by `.gitignore`'s blanket
@@ -137,7 +137,7 @@ def main() -> int:
     for p in found:
         print(f"  {p}", file=sys.stderr)
     print(
-        "\nAn example's build configuration is GENERATED (RFC-0098 D1): `nros sync`\n"
+        "\nAn example's build configuration is GENERATED (RFC-0098 D1): `nros configure`\n"
         "or `nros build` writes `<leaf>/build/<image>/nros-cargo.toml` from the board\n"
         "the leaf's `system.toml` names, and cargo reads it through `--config`.\n"
         "\n"

@@ -127,7 +127,7 @@ rmw = "cyclonedds"
 ```bash
 nros setup zephyr --rmw cyclonedds     # the Zephyr workspace + SDK
 nros setup fvp-aemv8r-smp              # the model (x86_64 Linux only)
-nros sync
+nros configure
 nros build demo_bringup:fvp
 ```
 

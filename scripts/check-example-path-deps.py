@@ -12,16 +12,16 @@ build there. A path dependency into the checkout,
     nros = { path = "../../../../../packages/api/nros", ... }
 
 is correct in the one place it was written and meaningless one directory
-elsewhere: `nros sync` in the copy fails with "no matching package named
+elsewhere: `nros configure` in the copy fails with "no matching package named
 `nros` found". The portable spelling names the crate,
 
     nros = { version = "*", ... }
 
-and `nros sync` writes the `[patch.crates-io]` row that resolves it into the
+and `nros configure` writes the `[patch.crates-io]` row that resolves it into the
 SDK, exactly as for every single-package example.
 
 A path that stays inside `examples/` is not this rule's business: a sibling
-workspace member, or a `generated/` message crate `nros sync` writes, travels
+workspace member, or a `generated/` message crate `nros configure` writes, travels
 with the copy.
 
 Scope: every dependency table (`[dependencies]`, `dev-`, `build-`, their
@@ -117,7 +117,7 @@ def report(found: list[str]) -> int:
         print(f"  {line}", file=sys.stderr)
     print(
         "\n  Name the crate instead — `<crate> = { version = \"*\", ... }` — and let\n"
-        "  `nros sync` write the `[patch.crates-io]` row that resolves it (RFC-0098 D1).",
+        "  `nros configure` write the `[patch.crates-io]` row that resolves it (RFC-0098 D1).",
         file=sys.stderr,
     )
     return 1

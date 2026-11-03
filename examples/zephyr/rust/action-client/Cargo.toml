@@ -58,7 +58,7 @@ example_interfaces = { path = "generated/example_interfaces", default-features =
 [build-dependencies]
 zephyr-build = "0.1.0"
 # phase-291 (#211) — shared Kconfig→rustc-env bake (locator/domain/XRCE);
-# resolved by the `nros sync` leaf-local patch.
+# resolved by the `nros configure` leaf-local patch.
 nros-zephyr-build = "*"
 
 # The board, network identity and node declaration live in `system.toml` beside

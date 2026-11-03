@@ -527,7 +527,7 @@ function(nano_ros_entry)
                     "'${_NRA_LAUNCH}' (bringup ${_NRA_BRINGUP}):\n${_nra_mp_err}")
             endif()
             # Issue 1575 -- `nros dev image model-path` NAMES where the model belongs; it
-            # does not say one is there. Before `nros sync` it answers with the
+            # does not say one is there. Before `nros configure` it answers with the
             # source-tree rung (`<bringup>/config/system_model.yaml`), which no
             # producer writes, and every consumer below then read "no model"
             # as "nothing to do": the entity facts and the census returned
@@ -548,9 +548,9 @@ function(nano_ros_entry)
                         "nano_ros_entry(${_NRA_NAME}): the SystemModel for bringup "
                         "${_NRA_BRINGUP} (launch '${_NRA_LAUNCH}') does not exist:\n"
                         "  ${_NRA_MODEL}\n"
-                        "It is a BUILD ARTIFACT that only `nros sync` writes "
+                        "It is a BUILD ARTIFACT that only `nros configure` writes "
                         "(phase-330 W4.a). Run it in the workspace, then re-configure:\n"
-                        "  nros sync\n"
+                        "  nros configure\n"
                         "Configuring without it used to derive no tiers and size no "
                         "pools, silently (issue 1575). To configure anyway, knowing "
                         "that, pass -DNROS_ALLOW_UNSYNCED_MODEL=ON.")

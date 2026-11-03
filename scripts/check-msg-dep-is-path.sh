@@ -185,7 +185,7 @@ done < <(msg_py --dotted)
 # `../../generated/<crate>`. Nothing failed until the fixture build reached
 # metadata refresh and died on a path that never existed.
 #
-# Layout decides the spelling, so check it — with the SAME rule `nros sync`
+# Layout decides the spelling, so check it — with the SAME rule `nros configure`
 # uses, which is the only rule that decides where `generated/` actually lands.
 # `ws.rs`: "colcon-mode iff `<root>/src/` exists AND at least one immediate
 # subdir contains `package.xml`". No `Cargo.toml` anywhere in that sentence.
@@ -200,7 +200,7 @@ done < <(msg_py --dotted)
 # `testing_workspaces/complex_workspace`, which is the real one.
 #
 # Verified rather than reasoned: with the per-leaf tree moved aside,
-# `nros sync examples/templates/multi-package-workspace` recreates the ROOT
+# `nros configure examples/templates/multi-package-workspace` recreates the ROOT
 # `generated/` and does not recreate the leaf one. The leaf trees still on disk
 # are fossils from a pre-sweep pass (May 24), gitignored, and they are why the
 # wrong spelling still resolved on a developer's tree while failing on a fresh

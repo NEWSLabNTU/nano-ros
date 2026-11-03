@@ -19,7 +19,7 @@
 # Build the nano-ros nodes with zenoh-pico's ISO-TP link, which is off by
 # default (issue 2096). These leaves state no locator -- the script hands each
 # its endpoint as NROS_LOCATOR -- so the link is asked for at build time:
-#   (cd examples/linux/rust/<leaf> && nros sync && NROS_LINK_ISOTP=1 nros build)
+#   (cd examples/linux/rust/<leaf> && nros configure && NROS_LINK_ISOTP=1 nros build)
 #   for <leaf> in service-server service-client action-server action-client;
 #   the paced server adds NROS_FIB_STEP_TICKS=5000 and its own CARGO_TARGET_DIR.
 # An image whose own `locator` (or RMW-file endpoint) is `isotp/...` needs no

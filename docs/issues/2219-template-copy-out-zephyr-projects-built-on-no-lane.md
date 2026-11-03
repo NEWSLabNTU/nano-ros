@@ -46,7 +46,7 @@ claims these five as out of scope.
 `gate.yml`'s comment on `check-template-copy-out` still says that "the Zephyr
 ones have no copy-out road the gate can derive (issue 1782)", and the
 provisioning step repeats it. Issue 1782 was resolved on 2026-10-29 by giving
-the gate exactly that road: `nros sync` + `nros build` in the copied leaf,
+the gate exactly that road: `nros configure` + `nros build` in the copied leaf,
 against the resolved west workspace. Its acceptance was measured locally with
 Zephyr installed. The rationale in the workflow is therefore stale. The only
 thing still missing is the precondition.

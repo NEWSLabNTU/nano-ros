@@ -8,7 +8,7 @@ direction that reads green: a detector that misses an invocation reports OK.
 Two false positives make a grep-based gate over `.github/workflows/` worse than
 nothing, and both were live in the tree when 0933 was written:
 
-  * **Prose.** `nightly.yml`'s CLI-build step has a COMMENT about `nros sync`
+  * **Prose.** `nightly.yml`'s CLI-build step has a COMMENT about `nros configure`
     and does not run it.
   * **Command text inside a heredoc.** `queue-notify.yml` builds a pull-request
     comment whose TEXT tells the author to run `just queue-triage` and

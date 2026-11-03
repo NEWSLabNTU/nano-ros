@@ -87,7 +87,7 @@ archive-lang-items:
 #
 # RETIRED by phase-445 W6 with the projection itself (RFC-0098 D1). A board's
 # `cargo_config` now reaches a leaf through `build/<image>/nros-cargo.toml`,
-# which `nros sync` and `nros build` rewrite from the descriptor every time, so
+# which `nros configure` and `nros build` rewrite from the descriptor every time, so
 # there is no committed mirror left that CAN drift — and the gate's own
 # enumeration would have gone empty, printing `board projections OK (0
 # leaf/leaves)` forever, which is what a check that can never fail looks like.

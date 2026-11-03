@@ -48,11 +48,11 @@ Four things, and the order matters:
    `--dry-run` prints the plan first. (The zenoh *router* is
    deliberately not provisioned — it comes from a ROS 2 install,
    `ros2 run rmw_zenoh_cpp rmw_zenohd`.)
-4. **`nros sync`.** `nros sync` from your workspace root. It produces
+4. **`nros configure`.** `nros configure` from your workspace root. It produces
    the message bindings *and* the build settings each `[image.*]`
    implies — see the next section for why this is not optional.
 
-## The Rust side: `nros sync` is mandatory, and nothing it writes is in your source tree
+## The Rust side: `nros configure` is mandatory, and nothing it writes is in your source tree
 
 Two things a Rust package needs are **generated, not authored**: the
 `generated/` message crates, and every build setting the target implies
@@ -60,7 +60,7 @@ Two things a Rust package needs are **generated, not authored**: the
 `[patch.crates-io]` table that resolves registry-style names
 (`nros = { version = "*" }`) to the release's SDK root. You state the
 target once, as a board name in the package's `system.toml`, and
-`nros sync` derives the rest:
+`nros configure` derives the rest:
 
 ```toml
 [system]
@@ -71,12 +71,12 @@ rmw  = "cyclonedds"
 board = "linux"
 ```
 
-`nros sync` writes those settings to `build/<image-id>/nros-cargo.toml`
+`nros configure` writes those settings to `build/<image-id>/nros-cargo.toml`
 — one file per `[image.*]` row, under `build/`, never beside your
 package — and `nros build` hands it to cargo:
 
 ```bash
-nros sync
+nros configure
 nros build            # or: nros build <image-id> for one image
 ```
 
@@ -91,14 +91,14 @@ This is what makes a tree cheap to move: there is no `.cargo/config.toml`
 to copy, no `include` line whose relative path cannot resolve from your
 directory, and no table of absolute paths under version control to
 invalidate. After relocating the workspace or installing another
-release, re-run `nros sync`; it rewrites what is under `build/` and
+release, re-run `nros configure`; it rewrites what is under `build/` and
 touches nothing you track. Switching a package to another board is
 editing its one `board =` line and syncing again.
 
 A build that runs before sync fails at the first preflight with a line
-naming `nros sync`, rather than deep inside cargo.
+naming `nros configure`, rather than deep inside cargo.
 
-Message dependencies are path deps that `nros sync` writes for you from
+Message dependencies are path deps that `nros configure` writes for you from
 `package.xml`'s `<depend>`s (`std_msgs = { path = "generated/std_msgs",
 default-features = false }  # nros-managed`); never registry-name a message
 crate — a bare `std_msgs = "*"` can resolve against the public crates.io.
@@ -172,11 +172,11 @@ curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/in
     | sh -s -- --version <newer>
 nros pin <newer>              # reports the codegen delta first
 nros setup <board>            # reconcile the SDK store with the new index
-nros sync                     # in each consuming workspace
+nros configure                     # in each consuming workspace
 nros build
 ```
 
-Re-run `nros sync` after every pin move: its output is keyed to the
+Re-run `nros configure` after every pin move: its output is keyed to the
 CLI, and stale sync output after an upgrade produces build errors that
 look like missing packages, not like staleness.
 
@@ -186,7 +186,7 @@ look like missing packages, not like staleness.
       `nros pin`, moved forward only
 - [ ] CI drives `nros build` (or passes `-Dnano_ros_ROOT="$(nros dev sdk root)"`
       to a raw `cmake`) — no reliance on an interactive shell
-- [ ] `nros sync` runs in CI before any Rust build — before `nros build`,
+- [ ] `nros configure` runs in CI before any Rust build — before `nros build`,
       and before any cargo line that passes `--config
       build/<image-id>/nros-cargo.toml`; no build setting hand-written
       into a package

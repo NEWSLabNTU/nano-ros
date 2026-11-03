@@ -56,16 +56,16 @@ at `<platform>/<language>/<role>`. No exceptions.
 
 Each example is a standalone Cargo + CMake package — no walk-up in the manifests, no workspace coupling. The tested copy-out contract (phase-277 W6):
 
-- **Rust** — manifests declare nano-ros crates registry-style (`nros = { version = "*" }`) and carry Rust-toolchain facts only. Which board the leaf deploys to is stated once, in `system.toml` beside the manifest (`[image.<id>] board`, RFC-0098 D3); `nros sync` turns that choice into the generated build settings under `build/<image>/`, and `nros build` reads them. Copy the directory anywhere, put your checkout's `nros` on PATH, and build:
+- **Rust** — manifests declare nano-ros crates registry-style (`nros = { version = "*" }`) and carry Rust-toolchain facts only. Which board the leaf deploys to is stated once, in `system.toml` beside the manifest (`[image.<id>] board`, RFC-0098 D3); `nros configure` turns that choice into the generated build settings under `build/<image>/`, and `nros build` reads them. Copy the directory anywhere, put your checkout's `nros` on PATH, and build:
 
   ```bash
   cp -r examples/linux/rust/talker ~/my-talker && cd ~/my-talker
   source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
-  nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
+  nros configure     # generated/ message crates + build/<image>/nros-cargo.toml
   nros build    # or: nros build linux
   ```
 
-  Driving cargo yourself is supported — hand it the file `nros sync` wrote. Run it from the directory *above* the package: the leaf's own `.cargo/` still exists and cargo would read it a second time (phase-445 W6 deletes that directory, after which the working directory stops mattering).
+  Driving cargo yourself is supported — hand it the file `nros configure` wrote. Run it from the directory *above* the package: the leaf's own `.cargo/` still exists and cargo would read it a second time (phase-445 W6 deletes that directory, after which the working directory stops mattering).
 
   ```bash
   cd ~
@@ -73,17 +73,17 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
               --config my-talker/build/linux/nros-cargo.toml
   ```
 
-  A single-package **Rust** leaf is its own entry, and on a supported board it names no board crate: it depends on `<pkg>_nros_selection = { path = "build/nros/selection" }`, which `nros sync` / `nros build` generate with the image's board crate, RMW backend and runtime crates (RFC-0098 D6), so switching it to another board is the `[image.*] board` line, as it is for a C/C++ leaf and a workspace ([issue 1305](../docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
+  A single-package **Rust** leaf is its own entry, and on a supported board it names no board crate: it depends on `<pkg>_nros_selection = { path = "build/nros/selection" }`, which `nros configure` / `nros build` generate with the image's board crate, RMW backend and runtime crates (RFC-0098 D6), so switching it to another board is the `[image.*] board` line, as it is for a C/C++ leaf and a workspace ([issue 1305](../docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
-- **Workspaces** — `examples/workspaces/<ws>/` is copy-out as a whole, by the same rule: its packages name nano-ros crates by version and `nros sync` writes the patch for every member ([issue 2085](../docs/issues/archived/2085-workspace-packages-path-dep-nros-by-repo-layout.md)). A `path` dependency stays inside the copy (a sibling package, a `generated/` message crate); one that leaves `examples/` is refused by `just check example-path-deps`.
+- **Workspaces** — `examples/workspaces/<ws>/` is copy-out as a whole, by the same rule: its packages name nano-ros crates by version and `nros configure` writes the patch for every member ([issue 2085](../docs/issues/archived/2085-workspace-packages-path-dep-nros-by-repo-layout.md)). A `path` dependency stays inside the copy (a sibling package, a `generated/` message crate); one that leaves `examples/` is refused by `just check example-path-deps`.
 
   ```bash
   cp -r examples/workspaces/launch ~/my_robot && cd ~/my_robot
   source /path/to/nano-ros/activate.sh
-  nros sync && nros build
+  nros configure && nros build
   ```
 
-- **C / C++** — every CMakeLists finds nano-ros with `find_package(nano_ros)`, and a copied-out leaf names the checkout with `-Dnano_ros_ROOT=<path>`, the hint that call reads (RFC-0103 D6; `nros build` passes it for you). That hint says where the checkout is and nothing else — the board, the RMW, the domain and the network identity come from the leaf's `system.toml`, not from `-D` flags and not from the retired `package.xml` `<nano_ros deploy= board= rmw=/>` tuple. A single-package C/C++ leaf needs no `nros sync`: its message bindings are a CMake-time output. Copy the directory anywhere, then:
+- **C / C++** — every CMakeLists finds nano-ros with `find_package(nano_ros)`, and a copied-out leaf names the checkout with `-Dnano_ros_ROOT=<path>`, the hint that call reads (RFC-0103 D6; `nros build` passes it for you). That hint says where the checkout is and nothing else — the board, the RMW, the domain and the network identity come from the leaf's `system.toml`, not from `-D` flags and not from the retired `package.xml` `<nano_ros deploy= board= rmw=/>` tuple. A single-package C/C++ leaf needs no `nros configure`: its message bindings are a CMake-time output. Copy the directory anywhere, then:
 
   ```bash
   cp -r examples/linux/c/talker ~/my-c-talker && cd ~/my-c-talker
@@ -401,12 +401,12 @@ workspace is a directory of packages — no root `Cargo.toml`, no root
 
 ```bash
 cd <ws>
-nros sync
+nros configure
 nros build              # every [image.*]; or: nros build <image-id>
 ```
 
 Everything generated lands under `build/`, `dist/` and `log/`. Zephyr stays the
-carve-out: `west build` is still its build verb, with `nros sync` before it.
+carve-out: `west build` is still its build verb, with `nros configure` before it.
 
 **A FEATURE is a node package and a CONFIGURATION is a fixture axis — never a
 new directory** (RFC-0066, phase-331). The per-capability `ws-<topic>-<lang>`
@@ -470,7 +470,7 @@ examples to your own board.
 
 | `examples/<plat>/` | Profile | Guide |
 |---|---|---|
-| `linux/` | Host (Linux) | `nros sync` + `nros build` — no integration shell needed. |
+| `linux/` | Host (Linux) | `nros configure` + `nros build` — no integration shell needed. |
 | `mps2-an385-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-baremetal-cortex-m`) |
 | `mps2-an385-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
 | `qemu-armv7a-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/getting-started/integration-nuttx.md) — `apps/external/nano-ros/`. |
@@ -492,11 +492,11 @@ Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run 
 
 ```bash
 # terminal 2
-cd examples/linux/rust/talker && nros sync && nros build
+cd examples/linux/rust/talker && nros configure && nros build
 ./build/linux/target/debug/talker
 
 # terminal 3
-cd examples/linux/rust/listener && nros sync && nros build
+cd examples/linux/rust/listener && nros configure && nros build
 ./build/linux/target/debug/listener
 ```
 
@@ -527,7 +527,7 @@ nano-ros pubs/subs are rmw_zenoh-compatible. Quickest round-trip:
 ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # terminal 2
-cd examples/linux/rust/talker && nros sync && nros build
+cd examples/linux/rust/talker && nros configure && nros build
 ./build/linux/target/debug/talker
 
 # terminal 3

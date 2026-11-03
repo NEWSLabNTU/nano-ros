@@ -58,7 +58,7 @@ std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-man
 [build-dependencies]
 zephyr-build = "0.1.0"
 # phase-291 (#211) — shared Kconfig→rustc-env bake (locator/domain/XRCE);
-# resolved by the `nros sync` leaf-local patch.
+# resolved by the `nros configure` leaf-local patch.
 nros-zephyr-build = "*"
 
 # The board, RMW, domain and node declaration live in `system.toml` beside this

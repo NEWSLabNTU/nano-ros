@@ -109,7 +109,7 @@ def is_cxx_leaf(root, f):
     No longer the POPULATION — it now narrows only the STRICT assertion below
     (the board must be an index `[board.*]` key, the namespace `nros setup
     <board>` reads). That assertion is the C/C++ lane's contract; a Rust leaf's
-    or a bringup's board is resolved through the board CATALOG (`nros sync`,
+    or a bringup's board is resolved through the board CATALOG (`nros configure`,
     `BoardCatalog::resolve`), so its contract is the resolution assertion, which
     every leaf now gets.
     """
@@ -124,7 +124,7 @@ def is_cxx_leaf(root, f):
 def catalog_boards(root):
     """Every name a board descriptor (`nros-board.toml`, at any depth) answers to.
 
-    The board CATALOG — what `nros sync` and the proc-macro resolve a leaf's
+    The board CATALOG — what `nros configure` and the proc-macro resolve a leaf's
     board against. The sixth namespace, added with the Rust leaves: their
     spellings (`baremetal`, `rtic-mps2-an385`, `freertos`, `nuttx`) live
     here and nowhere else.

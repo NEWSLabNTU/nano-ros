@@ -28,7 +28,7 @@ multi-package-workspace/
 ```
 
 There is no `.cargo/config.toml` in the Rust package and no workspace-root
-`Cargo.toml` (RFC-0098 D1/D9): `nros sync` writes what the board choice implies
+`Cargo.toml` (RFC-0098 D1/D9): `nros configure` writes what the board choice implies
 into `build/<image>/`, and the build reads it from there.
 
 ### …and no `.colcon_workspace`, deliberately (issue 1515)
@@ -43,7 +43,7 @@ that share one nano-ros checkout: each carries its own root build file, and
 `[image.*]` composes them into one program, which is the thing a workspace root
 exists to be found from.
 
-Measured 2026-09-27, with no marker: `nros list` and `nros sync` resolve this
+Measured 2026-09-27, with no marker: `nros list` and `nros configure` resolve this
 directory, `nros build --dry-run` plans all three packages, and a bare
 `cargo check` in `src/pkg_rust_publisher` expands `nros::main!` cleanly — because
 that package's own `[workspace]` is the root, which is the right answer. Adding a
@@ -67,7 +67,7 @@ self-contained inside the nano-ros source repo.
 * **One nano-ros source per workspace.** Both CMake packages
   `add_subdirectory(<path-to-nano-ros>)` (Phase 140) — there is no
   install prefix to populate up front. The Rust package names nano-ros
-  crates registry-style and `nros sync` resolves them against the same
+  crates registry-style and `nros configure` resolves them against the same
   checkout — the resolution is generated, never hand-written.
 * **Three audiences, one entry.** C (rclc-shaped), C++ (rclcpp-shaped),
   Rust (rclrs-shaped) packages co-exist; their build files differ by
@@ -103,7 +103,7 @@ domain are never on a command line.
 ```bash
 cd examples/templates/multi-package-workspace
 
-# C and C++ — their own CMake. No `nros sync`: a C/C++ package's message
+# C and C++ — their own CMake. No `nros configure`: a C/C++ package's message
 # bindings are a CMake-time output.
 cmake -S src/pkg_c_talker -B src/pkg_c_talker/build \
       -DNROS_GEN_CACHE_DIR="$PWD/build/nros-gen-cache"
@@ -113,7 +113,7 @@ cmake -S src/pkg_cpp_listener -B src/pkg_cpp_listener/build \
 cmake --build src/pkg_cpp_listener/build
 
 # Rust — its `system.toml` declares `[image.linux]`.
-cd src/pkg_rust_publisher && nros sync && nros build
+cd src/pkg_rust_publisher && nros configure && nros build
 ```
 
 `build-all.sh` is the one-shot driver for the same three builds; it also sets

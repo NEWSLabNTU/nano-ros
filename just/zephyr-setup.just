@@ -365,7 +365,7 @@ build-fvp-ws-entry:
     ws="$nros_root/examples/workspaces/realtime-cpp"
     # The image's SystemModel is a build artifact (phase-330 W4.a): resolve it
     # before the configure that reads it, as `west-fixtures.sh` does.
-    (cd "$ws" && "$codegen_tool" sync)
+    (cd "$ws" && "$codegen_tool" configure)
     echo "Building examples/workspaces/realtime-cpp demo_bringup:fvp (generated west application)..."
     # issue 1379 — name our OWN nros module. `-p auto` makes this recipe the
     # quieter half of the same defect: west pristines a build dir whose cached

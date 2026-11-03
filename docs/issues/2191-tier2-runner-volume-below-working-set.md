@@ -96,7 +96,7 @@ reported, not a measured capacity.
    under `examples/` is a unit of the `fixtures` area. They are enumerated
    with `git ls-files --others --ignored --directory`, which walks nothing
    tracked and no nested repo (issue 1565), and evicted oldest-first beside
-   the caches. `generated/` is not a unit: it is a `nros sync` product a
+   the caches. `generated/` is not a unit: it is a `nros configure` product a
    build does not recreate. It stays reported, and the unbudgeted report now
    descends to depth 6, so what sits beside a leaf build is still counted.
    Measured on 118 after its cold reset (2026-11-01): 31.3 GiB under

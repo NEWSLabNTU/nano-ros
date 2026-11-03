@@ -1,6 +1,6 @@
 # issue 1722 — the declaration that prices the parameter family's requests
 # for rust_params_xrce.launch.xml: 25 integers with 35-byte names (issue
-# 1352's measured case) plus the talker's own period. `nros sync` renders it as
+# 1352's measured case) plus the talker's own period. `nros configure` renders it as
 # the sizing descriptor's `[params] service_shape`, which the XRCE build reads.
 version: 1
 

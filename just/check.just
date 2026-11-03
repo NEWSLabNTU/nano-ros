@@ -306,7 +306,7 @@ build-serial: \
 # That description is now TRUE, and was not (issue 0466): `check-cli-fresh` and
 # `check-test-targets` both lived here and both needed what the paragraph says
 # this tier does without. Verified rather than asserted — a pristine detached
-# worktree with no CLI, no sources and no `nros sync` runs this lane green in
+# worktree with no CLI, no sources and no `nros configure` runs this lane green in
 # 23s. If you add a gate here, check it against that, not against your own
 # provisioned tree, where everything passes for the wrong reason.
 # `check-fast`'s gates, fanned out across the machine (issue 0726).

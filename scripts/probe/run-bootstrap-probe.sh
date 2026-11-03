@@ -244,7 +244,7 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         default_platform_image="ros:humble"
     fi
 elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
-    # first-node-rust.md is IN this track: its zenoh-default `nros sync &&
+    # first-node-rust.md is IN this track: its zenoh-default `nros configure &&
     # cargo build` is exactly what a reader on the interop path runs, and it
     # needs the zenoh-pico source that only `--rmw zenoh` provisions.
     CHAPTERS=(

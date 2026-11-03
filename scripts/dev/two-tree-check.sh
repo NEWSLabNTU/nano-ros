@@ -13,7 +13,7 @@
 #   a_plan_is_answerable_with_no_zephyr_on_the_machine
 #   a_missing_framework_names_how_to_supply_it
 #
-# What only a real build can show is the part those cannot reach: `nros sync`
+# What only a real build can show is the part those cannot reach: `nros configure`
 # rewriting absolute paths into a MOVED tree, and the compile actually
 # succeeding from there.
 #
@@ -31,7 +31,7 @@
 # correct where they were written and meaningless one directory elsewhere.
 #
 # A real user's workspace has neither: it names `nros` by version and lets
-# `nros sync` write the patch. So the check builds that shape — with the same
+# `nros configure` write the patch. So the check builds that shape — with the same
 # verbs a user runs — instead of moving a tree that was never meant to move.
 #
 # WHAT THIS PROVES, AND WHAT IT DOES NOT
@@ -40,7 +40,7 @@
 # the checkout and never lived in it, the Zephyr is named explicitly, the
 # framework is named explicitly, and the image builds.
 #
-# Does NOT prove: resolution from a PUBLISHED nano-ros. `nros sync` patches the
+# Does NOT prove: resolution from a PUBLISHED nano-ros. `nros configure` patches the
 # registry names to this checkout, which is what a user does today (RFC-0040 —
 # the crates are not published). When they are, this is the check that should
 # gain a no-`NROS_REPO_DIR` variant.
@@ -103,8 +103,8 @@ echo "==> nros new entry zephyr_entry --platform zephyr"
 nros new entry zephyr_entry --platform zephyr >/dev/null
 
 echo
-echo "==> nros sync   (writes this tree's patch table)"
-NROS_REPO_DIR="$REPO" nros sync
+echo "==> nros configure   (writes this tree's patch table)"
+NROS_REPO_DIR="$REPO" nros configure
 
 echo
 echo "==> nros build demo_bringup:zephyr_entry"

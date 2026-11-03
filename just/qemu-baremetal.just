@@ -102,13 +102,13 @@ build:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    # Phase 214.J.2 — guard `nros sync` against stale `generated/` after trait-
+    # Phase 214.J.2 — guard `nros configure` against stale `generated/` after trait-
     # surface drift (see scripts/build/codegen-stamp.sh).
     source scripts/build/codegen-stamp.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the loops below invoke
-    # `nros sync`, absent from the shipped 0.3.7 release. Probe once;
+    # `nros configure`, absent from the shipped 0.3.7 release. Probe once;
     # emit `[PREREQ]` + exit 0 if missing.
     nros_require_sync "$nros_cli"
     echo "Building QEMU ARM examples..."
@@ -134,14 +134,14 @@ build:
     # sibling pkg's codegen (pass 1) before building (pass 2). Every example is
     # now a single self-contained crate (its own `package.xml` + `generated/` +
     # `.cargo/config.toml` patch, no sibling walk-up), so each dir's own
-    # `nros sync` produces exactly the `generated/` its own `cargo build` needs —
+    # `nros configure` produces exactly the `generated/` its own `cargo build` needs —
     # sync + build fold into one pass.
     for toml in $_qemu_tomls; do
         dir="$(dirname "$toml")"
         if [ -f "$dir/package.xml" ]; then
             echo "  sync $dir"
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-            "$nros_cli" sync "$dir" >/dev/null
+            "$nros_cli" configure "$dir" >/dev/null
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
         echo "  build $dir"
@@ -163,7 +163,7 @@ build:
         # the generated/ [patch.crates-io] path.
         if [ -f "$dir/package.xml" ]; then
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-            "$nros_cli" sync "$dir" >/dev/null
+            "$nros_cli" configure "$dir" >/dev/null
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
         nros_seed_leaf_lock "$dir"
@@ -319,7 +319,7 @@ build-rtic-main-e2e:
     # issue 1865 — build the manifest ROW, through the same builder every lane
     # uses. The bare `cargo build` in the leaf this replaced could not have
     # worked since phase-445 W6 / issue 1305: the leaf has no `.cargo/` and
-    # depends on a selection package only `nros sync` writes, so the recipe
+    # depends on a selection package only `nros configure` writes, so the recipe
     # failed on a missing `build/nros/selection/Cargo.toml` before compiling
     # anything (issue 0488 residue 1 was the same second build path, one level up).
     bash scripts/build/fixtures-build.sh baremetal rust --id baremetal-rtic-run-plan-e2e

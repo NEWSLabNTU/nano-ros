@@ -83,7 +83,7 @@ RULE 5 — a shipped generated crate is in the `nros-` namespace
 phase-465 W4. The same collision as rule 4, one axis over: two `path` packages
 sharing a NAME and a version are a hard cargo error with no workaround at all
 ("package collision in the lockfile: … only one can be written to lockfile
-unambiguously"), and a consumer's own `nros sync` emits a crate named after each
+unambiguously"), and a consumer's own `nros configure` emits a crate named after each
 ament package verbatim. So the `nros-` prefix on the committed set is
 load-bearing, not cosmetic.
 
@@ -243,7 +243,7 @@ def load(manifest_path: str):
 def ships_prefixed(crate_name: str) -> bool:
     """RULE 5 — is this a name a consumer's own generated tree cannot collide with?
 
-    `nros sync` names a crate after its ament package verbatim, so anything in
+    `nros configure` names a crate after its ament package verbatim, so anything in
     the `nros-` namespace is safe by construction and anything outside it is a
     name a consumer may also produce.
     """
@@ -281,7 +281,7 @@ def scan_manifests(manifests: list):
         # Two `path` packages sharing a name and a version are a hard cargo
         # error with no workaround ("package collision in the lockfile: … only
         # one can be written to lockfile unambiguously"), and a consumer's own
-        # `nros sync` produces a crate named after each ament package verbatim.
+        # `nros configure` produces a crate named after each ament package verbatim.
         # So a committed crate named `geometry_msgs` would make every leaf that
         # also generates `geometry_msgs` unresolvable. It is not hypothetical:
         # `geometry_msgs` arrives in the interfaces closure via diagnostic_msgs'
@@ -571,7 +571,7 @@ def main() -> int:
             print(f"  {name}    {path}", file=sys.stderr)
         print(
             "\nA shipped crate must be in the `nros-` namespace (RFC-0067 §D4). A\n"
-            "consumer's own `nros sync` emits a crate named after each ament package\n"
+            "consumer's own `nros configure` emits a crate named after each ament package\n"
             "verbatim, and two `path` packages sharing a name and a version are a hard\n"
             "cargo error with no workaround — 'package collision in the lockfile: …\n"
             "only one can be written to lockfile unambiguously'. `geometry_msgs` reaches\n"

@@ -217,7 +217,7 @@ BUILTIN_VERBS = "packages/cli/nros-cli-core/builtin-verbs.txt"
 #
 # `forbid_key` makes an exemption a MEASUREMENT rather than a claim: where the
 # reason is "this is a name collision, not a descriptor", the file is parsed
-# and must NOT carry the family's descriptor table. If `nros sync` ever started
+# and must NOT carry the family's descriptor table. If `nros configure` ever started
 # writing a real board descriptor into a leaf's `.cargo/`, the exemption would
 # fail instead of hiding it.
 #

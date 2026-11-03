@@ -2,7 +2,7 @@
 
 **This is the escape hatch, not the path.** If your project is a
 nano-ros package or workspace, you state the board once in
-`system.toml` and let `nros sync` + `nros build` drive CMake — you
+`system.toml` and let `nros configure` + `nros build` drive CMake — you
 never set a cache variable by hand, because the build root it generates
 sets them from that one board name. Start at
 [First Project](first-project.md) and
@@ -144,7 +144,7 @@ cmake --build build
 (`nros build` in the leaf runs these same two commands for you, into
 `build/<image>/cmake`, and passes the board's toolchain file.
 A C/C++ *workspace* builds with
-`nros sync` + `nros build` as usual.)
+`nros configure` + `nros build` as usual.)
 
 All the C/C++ examples follow that shape. The `add_subdirectory`
 mechanism on this page sits underneath it.

@@ -173,7 +173,7 @@ else
             sed 's/.*=\s*"\(.*\)".*/\1/' || true)"
     elif [[ -f "$EXAMPLE_DIR/system.toml" ]]; then
         echo "Error: no build/<image>/nros-cargo.toml in '$EXAMPLE_DIR' — run" >&2
-        echo "       \`nros sync $EXAMPLE_DIR\` first (RFC-0098 D2). Guessing the" >&2
+        echo "       \`nros configure $EXAMPLE_DIR\` first (RFC-0098 D2). Guessing the" >&2
         echo "       host triple here would analyse the wrong binary." >&2
         exit 1
     fi

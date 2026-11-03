@@ -21,13 +21,13 @@ rmw = "cyclonedds"          # zenoh | xrce | cyclonedds
 or, for one image only, `rmw = "…"` inside its `[image.<id>]` block. Then
 
 ```bash
-nros sync
+nros configure
 nros build
 ```
 
 A workspace has no root build file to edit (RFC-0098 D9): `nros build`
 writes the CMake root under `build/` with `BACKEND` taken from the
-image's `rmw`, and for a Rust image `nros sync` writes the selection
+image's `rmw`, and for a Rust image `nros configure` writes the selection
 facade that gives the board crate the backend feature. Each image builds
 into its own directory, so no object files from another backend linger.
 
@@ -53,7 +53,7 @@ Use one build directory per backend (`build-zenoh/`, `build-cyclonedds/`,
 ## Single Rust package
 
 A single Rust package with its own `system.toml` (no bringup) is the same
-one edit — `rmw` in that `system.toml` — followed by `nros sync` and a
+one edit — `rmw` in that `system.toml` — followed by `nros configure` and a
 rebuild. The Rust workspace case is covered by the section above: a
 workspace entry is generated, so there is no entry `Cargo.toml` to edit.
 

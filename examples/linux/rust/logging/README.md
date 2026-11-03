@@ -8,7 +8,7 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 ```bash
 cp -r examples/linux/rust/logging ~/my-logging && cd ~/my-logging
 source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
-nros sync                                # generated/ message crates
+nros configure                                # generated/ message crates
 cargo build
 ```
 
@@ -19,7 +19,7 @@ This leaf carries no `system.toml` yet, so it declares no `[image.*]` for
 
 Needs a zenoh router (`ros2 run rmw_zenoh_cpp rmw_zenohd`).
 The binary lands under `target/debug/`; `cargo run` runs it, after the
-`nros sync` above.
+`nros configure` above.
 
 ## Config
 

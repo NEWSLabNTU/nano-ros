@@ -121,25 +121,25 @@ for cell in "${CELLS[@]}"; do
             cell_ok=0
         fi
 
-        # 2b. `nros sync` — writes the leaf's `.cargo/config.toml`, which carries
+        # 2b. `nros configure` — writes the leaf's `.cargo/config.toml`, which carries
         #     the `[patch.crates-io]` redirect that makes `nros` resolve to this
-        #     checkout. Those configs became `nros sync` OUTPUT and were
+        #     checkout. Those configs became `nros configure` OUTPUT and were
         #     untracked (3f61284fe), so on a fresh clone — or any tree that has
         #     not synced this leaf — step 3 fails with `no matching package
         #     named 'nros' found`. The check has to perform the setup step it is
         #     validating, exactly as it already does for `nros setup` above.
         if [ -f "$ex/package.xml" ] || [ -f "$ex/Cargo.toml" ]; then
             sync_out=""
-            if sync_out="$( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" sync 2>&1 )"; then
+            if sync_out="$( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" configure 2>&1 )"; then
                 : # .cargo/config.toml patch table now present
             else
-                # PRINT the refusal. Swallowing it cost a day: `nros sync`
+                # PRINT the refusal. Swallowing it cost a day: `nros configure`
                 # refusing for want of `nros-launch-resolve` surfaced only as
                 # `cargo tree` saying `no matching package named 'nros' found`
                 # three steps later, which reads like a manifest defect and is
                 # not one. The reason a step failed belongs in the log of the
                 # run that failed.
-                echo "  [warn] nros sync did not complete for $ex (dep resolution may fail below)"
+                echo "  [warn] nros configure did not complete for $ex (dep resolution may fail below)"
                 printf '%s\n' "$sync_out" | sed 's/^/      /'
             fi
         fi

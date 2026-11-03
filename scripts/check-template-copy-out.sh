@@ -53,7 +53,7 @@
 # ## Host and cross projects
 #
 # A project whose images are all `board = "linux"` is built the way a user
-# builds a workspace: `nros sync` + `nros build --workspace`.
+# builds a workspace: `nros configure` + `nros build --workspace`.
 #
 # A CROSS project is built by the road its board DECLARES, every parameter read
 # from data rather than spelled here:
@@ -260,7 +260,7 @@ nros_bin() {
 #                     is a question only about THAT binary; a store CLI has no
 #                     source stamp to compare
 #   <cli-stale-msg>   `nros source-stamp`'s refusal (empty: fresh)
-#   <resolver>        the resolver `nros sync` will spawn (empty: none)
+#   <resolver>        the resolver `nros configure` will spawn (empty: none)
 #   <built-resolver>  where this checkout's `setup-launch-resolve` writes it
 #   <resolver-stale>  0 when `nros_launch_resolve_stale` says stale
 preflight_judge() {
@@ -281,7 +281,7 @@ preflight_judge() {
     fi
     if [ -z "$resolver" ]; then
         echo "check-template-copy-out: PRECONDITION — no \`nros-launch-resolve\`." >&2
-        echo "  \`nros sync\` spawns it to resolve every workspace template's bringup," >&2
+        echo "  \`nros configure\` spawns it to resolve every workspace template's bringup," >&2
         echo "  so without it every host copy fails at sync. Build it:" >&2
         echo "    just setup-launch-resolve" >&2
         echo "  No template was built; this is not a finding about any of them." >&2
@@ -289,7 +289,7 @@ preflight_judge() {
     fi
     if [ "$resolver" = "$built" ] && [ "$r_stale" = 0 ]; then
         echo "check-template-copy-out: PRECONDITION — \`nros-launch-resolve\` is STALE" >&2
-        echo "  ($resolver no longer matches its sources; \`nros sync\` refuses a" >&2
+        echo "  ($resolver no longer matches its sources; \`nros configure\` refuses a" >&2
         echo "   resolver from another layer-2 checkout — issue 0409). Rebuild it:" >&2
         echo "    just setup-launch-resolve" >&2
         echo "  No template was built; this is not a finding about any of them." >&2
@@ -341,7 +341,7 @@ preflight_self_test() {
 }
 
 
-# Build one copied-out HOST project with `nros sync` + `nros build`. Returns 0
+# Build one copied-out HOST project with `nros configure` + `nros build`. Returns 0
 # on success, 1 on a build failure, 3 when there is no `nros` to build with.
 # Issue 2100 — where one copy's build cache lives. By default the copies share
 # this checkout's cache, so one warm `corrosion-cargo` group serves them all.
@@ -371,7 +371,7 @@ build_copy() {
     [ -n "$nros" ] || return 3
     : > "$log"
     rc=0
-    "$nros" sync "$ws" >> "$log" 2>&1 || rc=$?
+    "$nros" configure "$ws" >> "$log" 2>&1 || rc=$?
     [ "$rc" -eq 0 ] || return 1
     rc=0
     "$nros" build --workspace "$ws" >> "$log" 2>&1 || rc=$?
@@ -443,13 +443,13 @@ build_cross() {
 
     # A cargo LEAF (a `Cargo.toml` and no `CMakeLists.txt`, the shape
     # `nros new <name> --board <board>` writes for Rust — phase-525 W2) is built
-    # the way its README says: `nros sync` + `nros build` in the leaf, which
+    # the way its README says: `nros configure` + `nros build` in the leaf, which
     # takes the triple and the rest of the board's cargo settings from the
     # descriptor (RFC-0098 D1). A board whose toolchain is absent is the build's
     # own preflight refusal, which is a missing precondition, not a defect.
     if [ -f "$proj/Cargo.toml" ] && [ ! -f "$proj/CMakeLists.txt" ]; then
         rc=0
-        (cd "$proj" && "$nros" sync) >> "$log" 2>&1 || rc=$?
+        (cd "$proj" && "$nros" configure) >> "$log" 2>&1 || rc=$?
         if [ "$rc" -eq 0 ]; then
             (cd "$proj" && "$nros" build) >> "$log" 2>&1 || rc=$?
         fi
@@ -507,10 +507,10 @@ build_cross() {
         # Issue 1782: the leaf names its board package (`mps2-an385-zephyr`),
         # which lowers to the west board AND carries the board's Kconfig, and
         # its image's `os_config` names the rest. So the road is the one a user
-        # runs: `nros sync` + `nros build` in the leaf, against the resolved
+        # runs: `nros configure` + `nros build` in the leaf, against the resolved
         # west workspace.
         rc=0
-        (cd "$proj" && "$nros" sync) >> "$log" 2>&1 || rc=$?
+        (cd "$proj" && "$nros" configure) >> "$log" 2>&1 || rc=$?
         [ "$rc" -eq 0 ] || return 1
         (cd "$proj" && "$nros" build --zephyr-workspace "$zws") >> "$log" 2>&1 || rc=$?
         [ "$rc" -eq 0 ] || return 1
@@ -525,7 +525,7 @@ build_cross() {
 # Report a failed build with the TAIL of its log.
 #
 # The TAIL, not the head. This printed `sed -n '1,12p'` until issue 1453's
-# 2026-09-28 section: the first lines of a copy's build are `nros sync`'s
+# 2026-09-28 section: the first lines of a copy's build are `nros configure`'s
 # progress (`sync: codegen std_msgs`, `sync: resolved …`), so the twelve lines
 # shown were always preamble and the error — which cargo, cmake and the CLI's
 # own refusals all put LAST — was never among them. Two CI runs reported this
@@ -686,7 +686,7 @@ run_scaffold() {
             local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
             copy_cache_vars "$work"
         fi
-        (cd "$pdir" && "$nros" sync) >> "$log" 2>&1 || rc=$?
+        (cd "$pdir" && "$nros" configure) >> "$log" 2>&1 || rc=$?
         [ "$rc" -eq 0 ] && { (cd "$pdir" && "$nros" build) >> "$log" 2>&1 || rc=$?; }
     else
         build_cross "$pdir" "$board" "$log" "$label" || rc=$?
@@ -830,7 +830,7 @@ self_test() {
     build_copy "$ws" "$work/build.log" || rc=$?
     # A failure only counts when it is the one we caused (the cross control's
     # rule, below). Without this the control passed VACUOUSLY on a host with no
-    # launch resolver: `nros sync` died on the missing tool before it ever read
+    # launch resolver: `nros configure` died on the missing tool before it ever read
     # the broken <depend> (issue 1453).
     local ours_rc=0
     nros_grep_q -E '^ +nano-ros — declared by' "$work/build.log" || ours_rc=$?
@@ -1028,7 +1028,7 @@ if [ -n "$shard" ]; then
     fi
 fi
 
-# Every HOST project runs `nros sync` + `nros build`; ask for their tools once,
+# Every HOST project runs `nros configure` + `nros build`; ask for their tools once,
 # before any copy is made (see `preflight_judge`).
 has_host=0
 for entry in "${buildable[@]}"; do

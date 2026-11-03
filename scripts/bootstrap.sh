@@ -6,7 +6,7 @@ set -euo pipefail
 # `cd -P` resolves symlinks: a checkout reached through a symlinked parent
 # (e.g. ~/data -> /mnt/wd) must record the ONE physical path, or the alias ends
 # up in the rc line proposed below, in NROS_REPO_DIR, and in RFC-0048's
-# absolute-path `nros sync` output — two names for one tree (issue 0375).
+# absolute-path `nros configure` output — two names for one tree (issue 0375).
 # activate.sh / activate.fish resolve the same way.
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd -P "${SCRIPT_DIR}/.." && pwd -P)"
@@ -259,7 +259,7 @@ build_in_tree_cli() {
         cargo build --release --manifest-path "${REPO_ROOT}/packages/cli/Cargo.toml" --bin nros \
         || return 0
     # phase-368 W4 — the launch resolver is part of the front door, not an
-    # extra step. Every workspace configure (`nano_ros_entry`, `nros sync`)
+    # extra step. Every workspace configure (`nano_ros_entry`, `nros configure`)
     # resolves the bringup's launch file through `nros-launch-resolve`; a CLI
     # without it fails the FIRST `nros new --workspace` build with an error
     # naming a `just` recipe the user does not have. Built into the shared

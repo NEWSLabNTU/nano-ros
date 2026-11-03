@@ -66,7 +66,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBareMetalPlatform.cmake")
 # the identical board and toolchain already take, and gain `-lstdc++`. Adding a
 # library to a link that does not reference it is benign with GNU ld, and those
 # siblings prove it resolves for `riscv-none-elf`. NOT build-verified in the
-# branch that made this change: a fresh worktree has no `nros sync` output, so
+# branch that made this change: a fresh worktree has no `nros configure` output, so
 # corrosion cannot read `nros-patch.toml` and the leaf will not configure there.
 #
 # The generalisation — derive from a property instead of listing a label — is

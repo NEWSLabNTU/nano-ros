@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # A leaf `.cargo/config.toml` under `packages/` or `tests/` is tracked if and
-# only if it carries content `nros sync` cannot reproduce.
+# only if it carries content `nros configure` cannot reproduce.
 #
 # SCOPE, phase-445 W6: `examples/` left this gate. An example now tracks NOTHING
 # under `.cargo/` at all (RFC-0098 D1) — its build configuration is generated
@@ -18,7 +18,7 @@
 # Sync writes these files (RFC-0048 W9): an `include = ["…/nros-patch.toml"]`
 # line pointing at a gitignored, host-specific central file, and a
 # `[patch.crates-io]` block of `# nros-managed` path entries. A config holding
-# only that is a pure artifact — recreated by `nros sync` in any checkout — and
+# only that is a pure artifact — recreated by `nros configure` in any checkout — and
 # committing it means a file that churns on every sync as the patch set moves.
 #
 # Many configs also carry hand-authored content: `[build] target` for a
@@ -67,7 +67,7 @@ source scripts/build/prune-dirs.sh
 # file: it records issue 0582's finding (why there is deliberately NO
 # `[build] target` — the literal `x86_64-unknown-linux-gnu` read as a host pin
 # on an x86 machine and a CROSS COMPILE everywhere else) and where the artifact
-# actually lands. `nros sync` will never rewrite that paragraph, so by this
+# actually lands. `nros configure` will never rewrite that paragraph, so by this
 # repo's own rule — the authored half stays tracked because a clone cannot
 # regenerate it — it is authored content.
 #
@@ -82,7 +82,7 @@ has_authored_content() {
 # Issue 0457 — a TRACKED config must not patch a `generated/` message crate
 # whose tree is not itself committed.
 #
-# Those crates are produced by `nros sync` from the USER's ament install, so the
+# Those crates are produced by `nros configure` from the USER's ament install, so the
 # row is host-derived: it names a path that does not exist in a fresh clone, and
 # cargo fails on a `[patch]` (or path dep) pointing at a missing manifest. This
 # is the same rule that already keeps `generated/` and the leaf `Cargo.lock`
@@ -127,7 +127,7 @@ has_uncommitted_generated_patch() {
 # Exactly TWO targets are generated now: the central `nros-patch.toml` and the
 # per-leaf `nros-managed-patch.toml` sidecar. Both are gitignored, so a fresh
 # clone has neither and `_require-leaf-includes` sends the developer to
-# `nros sync`. An include naming anything ELSE has no generator at all, so no
+# `nros configure`. An include naming anything ELSE has no generator at all, so no
 # sync run will ever satisfy it — that leaf is bricked for everyone, forever.
 #
 # phase-445 W6 removed two from that list, and BOTH directions matter. The
@@ -255,7 +255,7 @@ rc=0
 if [ "$untracked_authored" -ne 0 ]; then
     {
         echo
-        echo "  These hold content `nros sync` cannot regenerate — a \`[build] target\`,"
+        echo "  These hold content `nros configure` cannot regenerate — a \`[build] target\`,"
         echo "  a runner, or link flags. \`**/.cargo/config.toml\` is gitignored because"
         echo "  most of these files are pure sync output, so committing one takes:"
         echo "      git add -f <path>"
@@ -281,7 +281,7 @@ if [ "$orphan_includes" -ne 0 ]; then
         echo "  \`nros-patch.toml\` (central), \`nros-managed-patch.toml\` (per-leaf) and"
         echo "  \`nros-board.toml\` (per-leaf board projection, phase-341) are"
         echo "  generated; an include naming anything else can never be satisfied by any"
-        echo "  \`nros sync\` run. Drop the entry, or make sync write the target."
+        echo "  \`nros configure\` run. Drop the entry, or make sync write the target."
         echo "  (See docs/issues/0463-*.)"
     } >&2
     rc=1
@@ -290,7 +290,7 @@ if [ "$tracked_pure" -ne 0 ]; then
     {
         echo
         echo "  These hold nothing but sync's own include + [patch.crates-io] block, so"
-        echo "  they are recreated by \`nros sync\` and only churn in git. Untrack with:"
+        echo "  they are recreated by \`nros configure\` and only churn in git. Untrack with:"
         echo "      git rm --cached <path>"
     } >&2
     rc=1

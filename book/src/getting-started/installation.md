@@ -99,7 +99,7 @@ nros setup linux --rmw cyclonedds
 
 # 4. Scaffold a project, then build it:
 nros new my_robot --workspace
-cd my_robot && nros sync && nros build
+cd my_robot && nros configure && nros build
 ```
 
 [First Project](./first-project.md) walks steps 3 and 4 end to end.
@@ -199,7 +199,7 @@ remove it.
 
 | Task | Needs a ROS 2 install? |
 |---|---|
-| `nros setup`, `nros sync`, message codegen | **No** — interface sources are bundled |
+| `nros setup`, `nros configure`, message codegen | **No** — interface sources are bundled |
 | Building any node (Rust / C / C++), any RMW | **No** |
 | Embedded targets (Zephyr, FreeRTOS, NuttX, ThreadX) | **No** |
 | Cyclone DDS backend, build *and* run | **No** — `idlc` comes from the index dist, and there is no daemon |
@@ -240,13 +240,13 @@ rmw  = "cyclonedds"
 board = "linux"
 ```
 
-`nros sync` resolves the launch files and generates what the board
+`nros configure` resolves the launch files and generates what the board
 choice implies; `nros build` generates the entry and the build root for
 each `[image.*]` under `build/`, then hands off to CMake, cargo or
 west:
 
 ```bash
-nros sync
+nros configure
 nros build                     # or: nros build linux
 ```
 
@@ -344,7 +344,7 @@ nros setup
 Then every image builds, with nothing else to install:
 
 ```bash probe=50 track=installed variant=workspace
-nros sync
+nros configure
 nros build --all
 ```
 
@@ -439,18 +439,18 @@ sources (zenoh-pico, mbedtls); `nros-core` isn't carved out for
 crates.io either, to avoid a hybrid distribution model with version
 drift between a crates.io snapshot and the SDK.
 
-So a Rust package declares registry-style names and lets `nros sync`
+So a Rust package declares registry-style names and lets `nros configure`
 redirect them: `nros = { version = "*" }` (+ msg crates), resolved into
 the SDK root the `nros` on PATH carries (`--nano-ros-path` names a
 different one). The `[patch.crates-io]` block it writes goes into the
 generated settings file under `build/`, not into your package —
 `nros build` hands that file to cargo with `--config`, and a cargo
 command you drive yourself passes the same path. Copy the project
-anywhere; re-run `nros sync` to re-point.
+anywhere; re-run `nros configure` to re-point.
 
 A Rust package carries no build settings of its own — no target triple,
 no linker flag, no patch table. It states its board in `system.toml`
-and `nros sync` derives the rest; see
+and `nros configure` derives the rest; see
 [`examples/templates/multi-package-workspace/src/pkg_rust_publisher/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace/src/pkg_rust_publisher)
 for a package in that shape, and
 [Integrating into a Vendored Tree](vendored-tree.md) for the CI spelling.
@@ -499,13 +499,13 @@ and everything after it builds with that release:
 nros new pinned_ws --workspace
 cd pinned_ws
 nros setup linux --rmw cyclonedds
-nros sync
+nros configure
 nros build
 ```
 
 `nros pin <version>` reports the **codegen delta** between the two
 releases before it writes anything, so an upgrade that would invalidate
-already-generated bindings warns first; re-run `nros sync` after one
+already-generated bindings warns first; re-run `nros configure` after one
 that does. After installing a newer release, re-run `nros setup <board>`
 — it reconciles the SDK store against the new index, and packages that
 are already current are no-ops. See

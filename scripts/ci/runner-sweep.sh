@@ -821,7 +821,7 @@ _sweep_disk() {
     # one leaf's `build*`/`target*` dir: the git-IGNORED dirs under examples/,
     # which git lists without walking into anything tracked or into a nested
     # repo (issue 1565). `generated/`, `.cargo/` and the rest stay reported:
-    # `generated/` is a `nros sync` product a build does not recreate.
+    # `generated/` is a `nros configure` product a build does not recreate.
     local -a example_units=()
     if [ -e "$repo_root/.git" ] && [ -d "$repo_root/examples" ]; then
         local ign

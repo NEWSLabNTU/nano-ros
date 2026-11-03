@@ -263,7 +263,7 @@ preempts the slow one's.
 
 Start here. A bridge is a `[[bridge]]` row in the workspace's
 `system.toml`, between two `[[domain]]` rows naming the backends — no
-`build.rs` and no user bridge code. `nros sync` resolves each topic name
+`build.rs` and no user bridge code. `nros configure` resolves each topic name
 to its ROS type and the generated entry runs the forwarder (`open_multi`
 over both sessions, one `PubSubBridge` per row):
 

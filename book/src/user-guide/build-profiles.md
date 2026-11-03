@@ -21,7 +21,7 @@ profile = "nros-minsizerel"       # this one is going on a board
 `nros build` carries that through to whichever tool builds the image — the
 cargo profile flag on the cargo driver, `CMAKE_BUILD_TYPE` on the cmake one.
 You do not repeat it on the command line, and you do not define the `nros-*`
-profiles anywhere: `nros sync` writes them into the image's generated cargo
+profiles anywhere: `nros configure` writes them into the image's generated cargo
 settings file under `build/` (`build/linux/nros-cargo.toml` for a
 single-package project), along with everything else the board choice
 implies.

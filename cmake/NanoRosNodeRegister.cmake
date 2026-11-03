@@ -340,7 +340,7 @@ endfunction()
 # could express no other.
 #
 # The node's facts cross as ARGUMENTS, not as a synthesised `SystemModel`: a
-# model is a build artifact of `nros sync`, never hand-authored, and a
+# model is a build artifact of `nros configure`, never hand-authored, and a
 # cmake-side YAML writer would trade a duplicated template for a duplicated IR.
 # `nros dev codegen entry-node` builds the one-node plan in Rust — the same shape
 # the metadata probe already used (`render_probe_main`).

@@ -227,7 +227,7 @@ doctor:
     fi
 
     # --- nros-launch-resolve (RFC-0060 layer 2 — the CLI's launch resolver) ---
-    # Issue 0336: `nros sync` HARD-REQUIRES this binary (cmd/ws.rs bails
+    # Issue 0336: `nros configure` HARD-REQUIRES this binary (cmd/ws.rs bails
     # without it), and `just setup` builds it unconditionally — but doctor never
     # checked it, so doctor could report a green tree that cannot sync a
     # workspace. Invoked by ABSOLUTE path, never via $PATH (issue 0285: an
@@ -265,7 +265,7 @@ doctor:
             echo "  [OK] nros-launch-resolve ($nlr_bin)"
         fi
     elif [ ! -f "{{justfile_directory()}}/packages/cli/third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
-        echo "  [MISSING] play_launch submodule — nros sync cannot resolve SystemModels"
+        echo "  [MISSING] play_launch submodule — nros configure cannot resolve SystemModels"
         echo "            run: git submodule update --init packages/cli/third-party/play_launch"
         fail=1
     else
@@ -496,7 +496,7 @@ doctor:
             echo "  [FAIL] nros on PATH ($nros_resolved) shadows the in-tree CLI" \
                  "($nros_intree)."
             echo "         A stale pre-218 \`nros\` emits outdated"
-            echo "         \`[patch.crates-io]\` blocks (from \`nros sync\`) that"
+            echo "         \`[patch.crates-io]\` blocks (from \`nros configure\`) that"
             echo "         break native rust cyclonedds examples and other downstream"
             echo "         consumers. Clean it up:"
             echo "             rm -f \"\$HOME/.cargo/bin/nros\" \"\$HOME/.nros/bin/nros\""

@@ -69,19 +69,19 @@ nros-rmw-zenoh = { version = "*",
 nano-ros crates are declared **registry-style**: they are not on crates.io, so
 something has to resolve them into the checkout. That something is no longer a
 file you write. Since [RFC-0098] an example carries **no `.cargo/` directory at
-all**: `nros sync` writes the `[patch.crates-io]` rows, the board's cargo
+all**: `nros configure` writes the `[patch.crates-io]` rows, the board's cargo
 settings and the derived `[env]` into `build/<image>/nros-cargo.toml`, and cargo
 reads that file through `--config`. After adding or renaming nros deps or msg
-`<depend>` rows, re-run `nros sync` in the example dir — and commit nothing,
+`<depend>` rows, re-run `nros configure` in the example dir — and commit nothing,
 because everything it wrote is build output. This is what makes the copy-out
-promise real: a copied example re-runs `nros sync` at its new location.
+promise real: a copied example re-runs `nros configure` at its new location.
 
 [RFC-0098]: https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0098-generated-leaf-build-config.md
 
 The canonical invocation from inside the example directory:
 
 ```bash
-nros sync     # generated/ msg crates + build/<image>/nros-cargo.toml
+nros configure     # generated/ msg crates + build/<image>/nros-cargo.toml
 nros build    # every declared image; or `nros build <image-id>`
 ```
 
@@ -106,7 +106,7 @@ colcon workspace, and everything generated lives under `build/`, `dist/` and
 `log/`. There is no entry package to write either: the entry is generated per
 `[image.*]`, at `build/<coord>/<entry>/Cargo.toml` (cargo) or
 `build/<coord>/CMakeLists.txt` (cmake). The bringup package's `system.toml`
-carries the images. `nros sync` then `nros build` is the flow; a workspace with
+carries the images. `nros configure` then `nros build` is the flow; a workspace with
 no bringup at all builds every package in dependency order, each into its own
 `build/<pkg>/`.
 
@@ -148,14 +148,14 @@ deployment (issue 1289).
 something has to give `nros::main!` the board: a generated package. The leaf
 declares one fixed dependency,
 `<pkg>_nros_selection = { path = "build/nros/selection" }` (target-scoped when
-the node must also build for the host probe), and `nros sync` / `nros build`
+the node must also build for the host probe), and `nros configure` / `nros build`
 write that package for the image's board — the board crate with its features,
 the RMW backend, `nros-platform`'s platform feature and the runtime and panic
 crates (RFC-0098 D6). So a new leaf names none of those, and switching
 `[image.*] board` is the only edit. If `main.rs` says
 `nros::main!(panic = "platform")`, state `panic = "platform"` in the
 `[image.*]` too, or the package also links the board's panic handler. Naming
-a board crate beside the selection package is refused at `nros sync`, and a
+a board crate beside the selection package is refused at `nros configure`, and a
 unit test walks every in-tree leaf for it. A C/C++ app on a cargo link root
 (`examples/mps2-an385-baremetal/{c,cpp}/*`) takes the same dependency and
 reaches the board's re-exports through it from its own `main.rs`. The leaves
@@ -197,7 +197,7 @@ maps the board to its toolchain file and runs the same configure into
 `build/<image>/cmake`
 ([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md), resolved).
 
-A single-package C/C++ leaf needs **no `nros sync`**: its message bindings are a
+A single-package C/C++ leaf needs **no `nros configure`**: its message bindings are a
 CMake-time output, so a clean copy outside the checkout configures and builds
 with no sync at all.
 
@@ -229,8 +229,8 @@ examples/<plat>/<lang>/<example>/
 ├── package.xml                    # ROS-style manifest for the example
 ├── Cargo.toml | CMakeLists.txt    # language-toolchain facts only
 ├── src/                           # main.rs / main.c / main.cpp
-├── generated/                     # codegen output — `nros sync`, gitignored
-├── build/                         # `nros sync` / `nros build` output, gitignored
+├── generated/                     # codegen output — `nros configure`, gitignored
+├── build/                         # `nros configure` / `nros build` output, gitignored
 └── README.md                      # usage instructions
 ```
 
@@ -250,18 +250,18 @@ aside).
 
 ```bash
 source /opt/ros/humble/setup.sh        # for rosidl tooling
-nros sync                              # what you run in an example
+nros configure                              # what you run in an example
 ```
 
 `nros dev codegen rust` (and `generate-c` / `generate-cpp` / `generate-all`) is the
 codegen-only **primitive** underneath it: it emits `generated/` and nothing
-else. `nros sync` is the verb an example needs, because it also writes the
+else. `nros configure` is the verb an example needs, because it also writes the
 image's `build/<image>/nros-cargo.toml`.
 
 Its `--generate-config` / `--config` / `--nano-ros-path` / `--nano-ros-git`
 flags still parse, and are retired as a way to configure an example: they wrote
 a leaf `.cargo/config.toml`, which no longer exists. (`--nano-ros-path` is a
-documented no-op on `nros sync` itself, kept for back-compat.)
+documented no-op on `nros configure` itself, kept for back-compat.)
 
 For CMake consumers:
 
@@ -290,7 +290,7 @@ full reference + `package.xml` schema.
    exception above. If the board cannot be host-probed (a foreign `[build]
    target`, `build-std`, or a board crate with no host build), declare the
    component's `entities` here too.
-5. **Sync.** `nros sync` in the example directory — generated message crates
+5. **Sync.** `nros configure` in the example directory — generated message crates
    plus `build/<image>/nros-cargo.toml`. Custom messages need their own
    `package.xml` in the consuming example. A single-package C/C++ leaf can skip
    this; everything else cannot, and `nros build` refuses with one line naming
@@ -319,7 +319,7 @@ The build command is `nros build` (Rust and workspaces) or `cmake --build`
 | `nuttx` | `src/main.rs` / `src/main.c` | `cmake --build` (NuttX export tarball) | NuttX kernel. |
 | `threadx-linux` / `threadx-riscv64` | `src/main.rs` | `cmake --build` | ThreadX + NetX Duo. |
 | `esp32` | `src/main.rs` | `nros build` + `espflash save-image` | bare-metal `esp-hal`; no cargo `runner`. |
-| `zephyr` | `src/lib.rs` (staticlib) or `src/main.cpp` | `west build` (after `nros sync`) | Kconfig + west module — the one carve-out where `nros build` is not the verb. |
+| `zephyr` | `src/lib.rs` (staticlib) or `src/main.cpp` | `west build` (after `nros configure`) | Kconfig + west module — the one carve-out where `nros build` is not the verb. |
 
 Artifacts land under `<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>`:
 `examples/linux/rust/talker` gives `build/linux/target/debug/talker`,

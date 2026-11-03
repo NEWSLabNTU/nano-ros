@@ -82,7 +82,7 @@
 #
 # Workspace fixtures are intentionally listed here but built by a dedicated
 # workspace lane, not by the legacy single-node `fixtures-build.sh` loop. The
-# build recipe must execute the documented user workflow: `nros sync`,
+# build recipe must execute the documented user workflow: `nros configure`,
 # `nros dev codegen system --bringup ...`, then cargo/cmake/platform build.
 
 # ===========================================================================
@@ -109,7 +109,7 @@ target_dir = "target-fixtures"
 # timers, no subscription: the launch wiring names ZERO callback entities for it
 # while the runtime needs six slots, and the table defaults to four. Sized from
 # the SystemModel alone the entry dies at registration with
-# `ExecutorFull("burst_pkg")`; sized from the `nros sync`-produced
+# `ExecutorFull("burst_pkg")`; sized from the `nros configure`-produced
 # source-metadata sidecar it derives eight and boots. Pure-cargo `nros::main!`
 # (no codegen_out) because it is the MACRO's sizing under test — the CLI bake
 # only refuses over-capacity systems, it does not size this executor.
@@ -2614,7 +2614,7 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11" }
 # (`nros_board_common::nuttx_image_link`, gated on `NUTTX_DIR` — exported
 # by the `just nuttx` recipes), the static args live in each entry's
 # `.cargo/config.toml`. ZERO entry build.rs. `fixtures-build.sh` runs
-# `nros sync` (materialises generated/ + the managed [patch.crates-io]
+# `nros configure` (materialises generated/ + the managed [patch.crates-io]
 # rows) before cargo. The locator and domain each image dials are its own
 # `system.toml` `[image.*]` / `[system]` values, which `nros::main!` bakes
 # over the board's env-fed default (phase-484 W4e: the rows used to restate
@@ -2677,7 +2677,7 @@ skip_probe = true
 # Phase 275 W1 (#102 H2) — the per-role Entry-pkg demos. Each Entry pkg
 # bakes board+rmw through `nros::main!` + the `nros-board-threadx-linux`
 # shim (package.xml `rmw="zenoh"`), so these are bare default-feature rows.
-# `fixtures-build.sh` runs `nros sync` (materialises generated/ + the
+# `fixtures-build.sh` runs `nros configure` (materialises generated/ + the
 # [patch.crates-io] block) before cargo, same as any package.xml dir. Build
 # builds for the HOST — these rows carry no `target`, so no triple segment is
 # spliced into the artifact path (they used to pin `x86_64-unknown-linux-gnu`,
@@ -3952,7 +3952,7 @@ builder = "cargo-check-verdict"
 dir = "packages/testing/nros-tests/fixtures/n9_workspace"
 output = ".verdict"
 
-# Positive, and staged WITHOUT `nros sync`: the macro must resolve the model
+# Positive, and staged WITHOUT `nros configure`: the macro must resolve the model
 # from the bringup's inputs when no build system produced one (issue 0414).
 [[compile_check_fixture]]
 id = "main_macro_resolves_from_inputs"
@@ -4095,7 +4095,7 @@ id = "nav2_compat_smoke"
 builder = "cargo-build"
 dir = "packages/testing/nros-tests/fixtures/o5_nav2_compat_smoke"
 # issue 0683 — the entry is a workspace package under `src/` like every other,
-# so `nros sync` resolves ITS launch file. While it sat beside `src/` sync never
+# so `nros configure` resolves ITS launch file. While it sat beside `src/` sync never
 # saw it, no SystemModel was written, and the fixture emitted a stub for months.
 manifest_dir = "src/demo_entry"
 output = "target/debug/demo_entry"
@@ -4105,7 +4105,7 @@ id = "board_agnostic_run_plan"
 builder = "cargo-build"
 dir = "packages/testing/nros-tests/fixtures/n_board_agnostic_run_plan"
 pkg = "posix_entry"
-# issue 0683 — under `src/` so `nros sync` resolves the launch file.
+# issue 0683 — under `src/` so `nros configure` resolves the launch file.
 manifest_dir = "src/posix_entry"
 output = "target/debug/posix_entry"
 
@@ -4149,7 +4149,7 @@ output = "workspace_port_nodes/workspace_port"
 
 # phase-445 W5 (RFC-0098 D9, issue 1108) — the five WORKSPACE templates below
 # have no root build file any more, so `cmake-configure` builds them the way a
-# user does: a staged copy, `nros sync` + `nros build` (see
+# user does: a staged copy, `nros configure` + `nros build` (see
 # `build_cmake_fixture`). The three with a bringup build their one
 # `[image.linux]` through the generated root (`build/posix-zenoh-linux/cmake`,
 # its generated entry `linux_entry` in place of the deleted `src/robot_entry`,
@@ -4176,7 +4176,7 @@ output = "build/posix-zenoh-linux/cmake/linux_entry"
 
 # issue 1650 (phase-477 D3) — the two RUST workspace templates, which no lane
 # compiled (`native.just`'s example sweep excludes both by name). Same staged
-# `nros sync` + `nros build` road as the C/C++ templates above.
+# `nros configure` + `nros build` road as the C/C++ templates above.
 # `multi-node-workspace` builds its one `[image.linux]` through the generated
 # entry; `multi-package-workspace` is a Form-1 self-bringup (the image lives in
 # `pkg_rust_publisher`) whose build also compiles its C and C++ packages.
@@ -4243,7 +4243,7 @@ output = "nros-metadata.json"
 id = "freertos_firmware"
 builder = "cross-build"
 dir = "packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos"
-# issue 0683 — under `src/` so `nros sync` resolves its launch file.
+# issue 0683 — under `src/` so `nros configure` resolves its launch file.
 manifest_dir = "src/firmware"
 pkg = "firmware"
 target = "thumbv7m-none-eabi"
@@ -6014,7 +6014,7 @@ skip_probe = true
 # until this row no lane booted it, so that regression could come back unseen.
 # The C++ sibling of the Rust `workspace-zephyr-rs-realtime-derived` row.
 #
-# The model is a `nros sync` artifact: `just zephyr build-fixtures` syncs this
+# The model is a `nros configure` artifact: `just zephyr build-fixtures` syncs this
 # workspace in its workspace-entry prep, and an unsynced configure now REFUSES
 # (issue 1575) instead of deriving zero tiers and booting single-executor.
 # Consumed by `tests/realtime_tiers_e2e.rs` (zephyr/cpp-derived), which asserts

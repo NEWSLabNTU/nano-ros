@@ -126,7 +126,7 @@ nros_launch_resolve_stamp() {
     # identities agree only while every pin move touches `src/ros-launch-resolve`
     # — and 420904826055..65a7591e5165 touched `tests/**` and nothing else. So
     # the content stamp matched, `setup-launch-resolve` exited 0 without
-    # rebuilding, the binary kept the old commit, and `nros sync` refused with a
+    # rebuilding, the binary kept the old commit, and `nros configure` refused with a
     # remedy that provably could not clear it. `build-test-fixtures` was
     # unrunnable at that pin, and re-running the printed command forever was the
     # only thing it suggested.

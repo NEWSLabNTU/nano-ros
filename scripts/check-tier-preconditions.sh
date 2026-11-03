@@ -4,7 +4,7 @@
 # `just ci` is the instruction every task ends with, and reaching it has an
 # ordered setup contract that is written nowhere as a sequence: the CLI must be
 # rebuilt before fixtures (fixtures key on its stamp), fixtures must be built
-# for the LANE you will test (#393), leaves need `nros sync` before cargo can
+# for the LANE you will test (#393), leaves need `nros configure` before cargo can
 # even parse them (#463), the build stage needs the UNION of vendored sources
 # (#390). Every step is documented somewhere; the ORDER is documented nowhere.
 #
@@ -113,9 +113,9 @@ cli_stale=$failed   # non-zero ⇒ everything that EXECS the CLI below would onl
 #    `examples/`: the `include` arm now only covers the 23 tracked configs
 #    outside `examples/`, because an example tracks no `.cargo/` file at all
 #    (RFC-0098 D1). What still bites an example is the OTHER shape — a `path =`
-#    dep into a `generated/` tree `nros sync` has not produced.
+#    dep into a `generated/` tree `nros configure` has not produced.
 probe "a leaf names a sync-written path that does not exist yet" \
-    "nros sync   in the named leaf   (bypass: NROS_SKIP_LEAF_INCLUDE_CHECK=1)" \
+    "nros configure   in the named leaf   (bypass: NROS_SKIP_LEAF_INCLUDE_CHECK=1)" \
     python3 scripts/build/leaf-config-includes.py
 
 # 4. The build stage needs the UNION of vendored sources, not the per-board

@@ -159,7 +159,7 @@ into `build/linux/cmake` (passing the SDK root and the toolchain file
 the board names), and builds it. The binary lands at
 `build/linux/cmake/c_talker`.
 
-**No `nros sync` here, and that is a property of the language, not an
+**No `nros configure` here, and that is a property of the language, not an
 oversight:** a C or C++ leaf's message bindings are generated *inside*
 CMake, at configure time, from the package's own declared dependencies.
 A Rust leaf needs sync because its message crates and its build settings

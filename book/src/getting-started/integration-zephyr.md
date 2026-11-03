@@ -312,7 +312,7 @@ nros new rs_ws --workspace --lang rust --rmw zenoh
 cd rs_ws
 nros new entry zephyr_entry --platform zephyr
 nros setup --sudo
-nros sync
+nros configure
 nros build demo_bringup:zephyr_entry
 ```
 
@@ -471,7 +471,7 @@ os_config = ["prj-cyclonedds.conf"]
 ```
 
 ```bash
-nros sync
+nros configure
 nros build                    # the default_images: zephyr_zenoh
 nros build zephyr_xrce        # another image — its own west build dir
 ```
@@ -615,7 +615,7 @@ nros new entry: scaffolded ./src/zephyr_entry (7 file(s))
   declared [image.zephyr_entry] in ./src/demo_bringup/system.toml
 
 Next:
-  nros sync
+  nros configure
   nros build demo_bringup:zephyr_entry --zephyr-workspace <dir>
 ```
 
@@ -650,7 +650,7 @@ export NROS_ZEPHYR_WORKSPACE=/path/to/zephyr-workspace
 # 1. generate the message bindings this workspace's packages depend on.
 #    `nros build` refuses with "this workspace has never been synced" until
 #    you do — it will not silently build against absent bindings.
-nros sync
+nros configure
 
 # 2. build. This resolves the application, applies the image's overlays and
 #    runs `west build` for you.
@@ -980,7 +980,7 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
    `nros setup`, which provides the codegen toolchain + message sources):
 
    ```bash
-   nros sync
+   nros configure
    ```
 
    This writes `generated/<pkg>/` (the message crates) and a `.cargo/config.toml`
@@ -1044,7 +1044,7 @@ Rust target:
 nros setup board mps2-an385-zephyr --zephyr-workspace "$NROS_ZEPHYR_WORKSPACE"
 nros new entry zephyr_m3 --platform zephyr --board mps2-an385-zephyr
 nros setup --sudo
-nros sync
+nros configure
 nros build demo_bringup:zephyr_m3
 ```
 

@@ -203,7 +203,7 @@ that doesn't exist is a build error, not a silent skip.
 > nothing to set it. Which parameters exist is a contract fact; whether they
 > are served is this bringup fact.
 
-> **Note:** Python `.launch.py` files ARE resolved by `nros sync` (the
+> **Note:** Python `.launch.py` files ARE resolved by `nros configure` (the
 > launch resolver executes them with its bundled CPython; `$(find-pkg-share)`
 > against ROS packages needs a sourced `AMENT_PREFIX_PATH`). The XML schema
 > above is the native authoring format.
@@ -238,14 +238,14 @@ No `<build_depend>` entries — there is nothing to compile.
 
 ## Workflow: sync → check → run
 
-Once your Bringup pkg is written, `nros sync` prepares what the build needs,
+Once your Bringup pkg is written, `nros configure` prepares what the build needs,
 `nros check` validates the declarations, and `nros build` turns one of its
 images into a program:
 
 ```bash
 # 1. Sync. Once per workspace, and again after editing a .msg: it writes the
 #    generated message crates and each image's generated build settings.
-nros sync
+nros configure
 
 # 2. Lint the bringup pkg (pure-declarative check — no Cargo.toml, stray files, etc.)
 nros check --bringup src/demo_bringup
@@ -267,7 +267,7 @@ naming it:
 ```text
 Error: missing prerequisites for this build:
   - generated message bindings (this workspace has never been synced)
-      run: nros sync
+      run: nros configure
 ```
 
 The binary boots every node the launch file names, composed into one process.
@@ -301,7 +301,7 @@ this guide. Copy the whole directory out and rename the packages, then:
 
 ```bash
 nros setup linux
-nros sync            # once per workspace — message bindings + build settings
+nros configure            # once per workspace — message bindings + build settings
 nros build linux
 ```
 
@@ -322,7 +322,7 @@ optionally, a launch file within it — the SAME inputs you author, and the same
 pair an `[image.*]` row names. You will read this in a generated entry, and
 write it yourself only in a single-package project or a materialized one. The
 build resolves the pair to a SystemModel under
-`<workspace>/build/nros/models/` (run `nros sync`, or let the build system
+`<workspace>/build/nros/models/` (run `nros configure`, or let the build system
 drive it); you never reference the model file, though you can inspect it
 there:
 

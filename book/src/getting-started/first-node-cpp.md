@@ -178,7 +178,7 @@ nros build
 `nros build` reads `[image.linux]`, configures the package with CMake
 into `build/linux/cmake` (passing the SDK root and the board's
 toolchain file), and builds it; the binary lands at
-`build/linux/cmake/cpp_talker`. No `nros sync` here: a C++ leaf's
+`build/linux/cmake/cpp_talker`. No `nros configure` here: a C++ leaf's
 message bindings are generated inside CMake, at configure time. (A Rust
 leaf needs sync, because its message crates and its build settings have
 to exist before cargo parses anything.) In a

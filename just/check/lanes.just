@@ -3808,7 +3808,7 @@ dep-chain:
     fi
     # `setup-launch-resolve` too, since phase-445 W3b, for the reason
     # `scaffold-journey` states: an example leaf carries a `system.toml`, so
-    # `nros sync` — which step 2b of the script runs to write the leaf's
+    # `nros configure` — which step 2b of the script runs to write the leaf's
     # `[patch.crates-io]` table — resolves its SystemModel through
     # `nros-launch-resolve` and REFUSES to skip it. Without the resolver every
     # cell reported `no matching package named 'nros' found` from `cargo tree`,
@@ -3852,12 +3852,12 @@ embedded-feature-unification:
 # It invokes the REAL recipe rather than a second `cargo check` spelling: same
 # profile, same flags, and it catches link errors a `cargo check` would miss —
 # ~14 s warm against 6 s, which is the cheaper half of the trade. The artifact it
-# leaves is the one `nros sync` wants anyway.
+# leaves is the one `nros configure` wants anyway.
 #
 # SKIPS when the submodule is absent, so `just check` still runs on a bare clone.
 # That is deliberately NOT what `setup-launch-resolve` itself does: issue 0409
 # made that recipe FAIL there, because its job is to produce the binary and
-# exiting 0 without one let `nros sync` run on a stale resolver. A verification
+# exiting 0 without one let `nros configure` run on a stale resolver. A verification
 # lane answers a different question — "can this be checked?" — and the honest
 # answer without the submodule is no.
 [private]
@@ -4810,7 +4810,7 @@ workspace-embedded:
 # rot unseen; a name on the list is the only thing the runner reads.
 # A module cannot name another module's recipe as a dependency, hence the call.
 # Needs the `nros` CLI on PATH (`just setup-cli`, `source ./activate.sh`):
-# `lint-example-leaf.sh` renders each leaf with `nros sync` before linting it,
+# `lint-example-leaf.sh` renders each leaf with `nros configure` before linting it,
 # decided by the leaf's shape, so no hand sync and no `just generate-bindings`
 # (issue 1892).
 [private]

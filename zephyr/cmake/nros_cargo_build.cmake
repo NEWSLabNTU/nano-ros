@@ -440,7 +440,7 @@ endfunction()
 # this function changes nothing.
 #
 # Runs BEFORE the fragment loader, synchronously: the sidecars exist before
-# west runs (`nros sync` wrote them), so unlike an entry's producer there is no
+# west runs (`nros configure` wrote them), so unlike an entry's producer there is no
 # later-in-this-configure lag to settle. Every file it read is a configure
 # dependency, so a probe that changes re-runs this.
 function(_nros_west_leaf_sizing)

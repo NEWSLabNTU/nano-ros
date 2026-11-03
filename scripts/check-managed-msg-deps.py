@@ -5,7 +5,7 @@ the path row it implies.
 
 # The rule
 
-`nros sync` (and `nros build`, before planning) writes one `# nros-managed`
+`nros configure` (and `nros build`, before planning) writes one `# nros-managed`
 row per `<depend>` / `<build_depend>` / `<exec_depend>` that resolves to a
 message package:
 
@@ -57,7 +57,7 @@ TAG = "# nros-managed"
 
 _PX4 = (
     "px4_msgs is generated from the PX4-Autopilot .msg tree by `nros "
-    "generate-px4-msgs`, not by `nros sync`; the package.xml says so and does "
+    "generate-px4-msgs`, not by `nros configure`; the package.xml says so and does "
     "not declare it, so sync never manages this row"
 )
 EXEMPT = {
@@ -224,7 +224,7 @@ def main() -> int:
             print(f"  {manifest}:{n}: {crate}", file=sys.stderr)
         print(
             "\nA message dependency is stated ONCE, in package.xml (RFC-0098, phase-517 W8).\n"
-            "Delete the row and declare `<depend><pkg></depend>`, then run `nros sync`\n"
+            "Delete the row and declare `<depend><pkg></depend>`, then run `nros configure`\n"
             "(or `nros dev lock managed-deps <dir>`): sync writes the row back, tagged\n"
             "`# nros-managed`. A row another generator owns goes in EXEMPT with its reason.",
             file=sys.stderr,

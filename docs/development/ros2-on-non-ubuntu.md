@@ -2,7 +2,7 @@
 
 nano-ros itself needs **no** ROS 2 (see
 [installation.md](../../book/src/getting-started/installation.md#do-i-need-ros-2-installed)):
-setup, `nros sync`, codegen and the first-node flows all work without it. ROS 2
+setup, `nros configure`, codegen and the first-node flows all work without it. ROS 2
 is required only for the interop side — `ros2` CLI verification, the
 `rmw_zenoh_cpp` / cyclone / fastrtps interop cells, and the ROS-bridging lanes
 of `just test-all`.
@@ -33,7 +33,7 @@ distrobox enter ros2 -- bash scripts/dev/ros2-distrobox-setup.sh
 ```
 
 Mount the checkout at the **same absolute path** it has on the host. Different
-paths on the two sides is the issue-0375 hazard: `nros sync` writes absolute
+paths on the two sides is the issue-0375 hazard: `nros configure` writes absolute
 paths, and every path-keyed cache then splits in two.
 
 `ros-humble-desktop` is ~2 GB of apt; the script also installs the book's host
@@ -169,7 +169,7 @@ not encoded anywhere.
   serves both sides — rebuild it once in the box with
   `nros setup --tool make`).
   `nros-launch-resolve` is per-environment by design (issue 0409): a stale one
-  fails `nros sync` with a TOML `unknown field` error naming a field the current
+  fails `nros configure` with a TOML `unknown field` error naming a field the current
   schema does have, which reads as a broken `system.toml` rather than a stale
   binary. `just setup-launch-resolve` in the box.
 - **ROS's `setup.bash` dies under `set -u`** (`AMENT_TRACE_SETUP_FILES: unbound
@@ -189,7 +189,7 @@ reported as a failure by the bare-nextest quirk above. No box-specific failures.
 so it counts among the skipped rather than the failed.)
 
 Arch host (glibc 2.44) + Ubuntu 22.04.5 box (glibc 2.35), 2026-08-01:
-`nros setup` for zenoh and cyclonedds, `nros sync`, a cyclone-backed
+`nros setup` for zenoh and cyclonedds, `nros configure`, a cyclone-backed
 `examples/linux/rust/talker` build, and `ros2 topic echo /chatter` receiving
 its messages over `rmw_cyclonedds_cpp` with `ros2 topic list` showing
 `/chatter`.

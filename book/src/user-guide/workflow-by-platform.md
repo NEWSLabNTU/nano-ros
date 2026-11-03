@@ -42,7 +42,7 @@ does
 
 ## The step that is easy to miss
 
-**Rust leaves need `nros sync` before their first build. C and C++
+**Rust leaves need `nros configure` before their first build. C and C++
 leaves do not.**
 
 That split is a property of the two languages, not an inconsistency.
@@ -50,7 +50,7 @@ CMake generates a C/C++ leaf's message bindings *during configure*, so
 there is nothing to prepare first. Cargo has no such stage: the message
 crates a Rust leaf path-depends on, and the settings file that carries
 its board facts, both have to exist before cargo parses the manifest.
-`nros sync` produces them:
+`nros configure` produces them:
 
 ```text
 <leaf>/generated/<pkg>/                  # message crates
@@ -64,7 +64,7 @@ its board facts, both have to exist before cargo parses the manifest.
 Error: <leaf> has not been synced — missing the resolved model under
 `build/nros/models/`, the generated message crate `std_msgs`
 (generated/std_msgs).
-  Run `nros sync` in <leaf> (RFC-0098 D2), then build again.
+  Run `nros configure` in <leaf> (RFC-0098 D2), then build again.
 ```
 
 A plain `cargo build` gets as far as the manifest and stops on the
@@ -91,10 +91,10 @@ Caused by:
   key with no value, expected `=`
 ```
 
-If you see any of the three, run `nros sync`.
+If you see any of the three, run `nros configure`.
 
 **Contributors (in-tree checkout):** the `just` recipes —
-`just <module> build-fixtures` and friends — run `nros sync` for you, so
+`just <module> build-fixtures` and friends — run `nros configure` for you, so
 they work from a fresh clone. It is the hand-run build in a leaf that
 needs you to run it yourself.
 
@@ -144,7 +144,7 @@ that live on the platform's own starter page.
 nros setup <board> --rmw zenoh  # toolchain + SDK for the target
 
 cd <leaf>
-nros sync                       # ← the step above; once per location
+nros configure                       # ← the step above; once per location
 nros build                      # every [image.*]; or: nros build <image-id>
 ```
 
@@ -157,7 +157,7 @@ is in the generated settings file, which is also where its linker flags
 and its QEMU runner live.
 
 If you would rather drive cargo yourself — an IDE, a CI step,
-`--release` — run `nros sync`; then a plain `cargo build` inside the
+`--release` — run `nros configure`; then a plain `cargo build` inside the
 package works, because sync wires that file into the package's
 gitignored `.cargo/config.toml`. To name the file explicitly instead,
 run from the directory *above* the package — inside it cargo would read
@@ -183,7 +183,7 @@ nros build                      # configures + builds into build/<image>/cmake
 
 The executable lands at `<leaf>/build/<image-id>/cmake/<name>`, where
 `<name>` is what the leaf's `nano_ros_add_executable(<name> …)` calls it;
-`nros build` prints that path and the command that runs it. No `nros sync`,
+`nros build` prints that path and the command that runs it. No `nros configure`,
 and no `-DNROS_BOARD` / `-DNROS_RMW` either: `find_package(nano_ros)` reads
 the leaf's `system.toml` and derives the platform from the board it names,
 and `nros build` passes the board's cross-toolchain file and the SDK root
@@ -211,14 +211,14 @@ resolves it. A CMake tree with no `system.toml` at all is
 nros setup zephyr --rmw zenoh
 
 cd <leaf-or-workspace>
-nros sync
+nros configure
 nros build <image>              # runs `west build -d build/<coordinate>/<bringup>__<image>_west`
 ```
 
 `nros build` resolves the west application and the image's overlays, runs
 `west build` with that image's own build directory, and prints Zephyr's next
 command for it — `west build -d <dir> -t run` for an emulated board,
-`west flash -d <dir>` for one with a flash runner. `nros sync` comes first on
+`west flash -d <dir>` for one with a flash runner. `nros configure` comes first on
 Zephyr whatever the language, because the build stops at its preflight on a
 workspace that was never synced. Driving `west build` yourself is the escape
 hatch; see [Zephyr (west module)](../getting-started/integration-zephyr.md).
@@ -267,7 +267,7 @@ different boards.
 The sequence above builds one leaf. A project with several nodes adds a
 Bringup package carrying the same `system.toml` — and nothing else: no
 root build file, and no entry package to write, because the entry is
-generated per `[image.*]`. The commands stay `nros sync` and
+generated per `[image.*]`. The commands stay `nros configure` and
 `nros build`, which then drive one of the three shapes above for you.
 See [Project layout](../getting-started/workspace-from-app-node.md).
 

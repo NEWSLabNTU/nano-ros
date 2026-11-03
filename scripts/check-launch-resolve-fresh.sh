@@ -137,7 +137,7 @@ if nros_launch_resolve_stale "."; then
     echo "" >&2
     echo "        It and the in-tree \`nros\` must agree (issue 0409): a resolver from a" >&2
     echo "        different layer-2 checkout does not fail, it writes models that are" >&2
-    echo "        MISSING DATA silently, and \`nros sync\` refuses rather than allow that." >&2
+    echo "        MISSING DATA silently, and \`nros configure\` refuses rather than allow that." >&2
     echo "" >&2
     echo "        Rebuild it:  just setup-launch-resolve" >&2
     echo "" >&2

@@ -60,7 +60,7 @@ invisible to the old gate's `tests` exclusion):
   9. (issue 1892) The example lint (`scripts/build/lint-example-leaf.sh`)
      decides from a leaf's SHAPE, never from its platform DIRECTORY. The
      script is run in PLAN mode (`NROS_LINT_LEAF_PLAN=1`: it prints whether it
-     renders the leaf with `nros sync`, its `--config` args and its profile
+     renders the leaf with `nros configure`, its `--config` args and its profile
      flags, and runs neither sync nor cargo) over synthetic leaves of each
      shape, each placed under `examples/native/`, `examples/linux/` and a board
      directory. Every plan must equal the shape's expected plan, so a
@@ -565,7 +565,7 @@ def check_lint_leaf_shape():
                 continue
         plan = lint_plan(ROOT, leaf)
         if plan.get("render") != "1":
-            problems.append((leaf, f"declares [image.*] but the lint plans no `nros sync` ({plan})"))
+            problems.append((leaf, f"declares [image.*] but the lint plans no `nros configure` ({plan})"))
     return problems
 
 

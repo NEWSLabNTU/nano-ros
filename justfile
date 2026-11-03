@@ -535,7 +535,7 @@ _cmake-cargo-stale-guard build_dir:
 #
 # Issue 0474 — `_require-leaf-includes` FIRST. `linux::format` runs
 # `cargo fmt` in every example leaf, and an unsynced leaf makes cargo fail
-# during MANIFEST PARSE with a path that never mentions `nros sync` (issue
+# during MANIFEST PARSE with a path that never mentions `nros configure` (issue
 # 0463). That guard was wired to `build-test-fixtures-leaves` and
 # `rust-rtos-link-check` — the two sites where the failure had been seen — and
 # `format` is a third walking the same leaves. CLAUDE.md tells you to run
@@ -1999,7 +1999,7 @@ build-compile-check-fixtures builder="":
 # The link error surfaced two fixture rebuilds later.
 #
 # `check::fast` is the right edge precisely because of the contract documented
-# on it: BUILDLESS and SOURCE-FREE, no CLI, no `nros sync`, no provisioned
+# on it: BUILDLESS and SOURCE-FREE, no CLI, no `nros configure`, no provisioned
 # toolchain, green in 23s on a pristine detached worktree. That is what makes
 # this dependency affordable in front of a build measured in hours, and it is
 # the property to preserve — a gate added to `check::fast` that needs the
@@ -2482,7 +2482,7 @@ _require-fixtures:
 # HARD error during MANIFEST PARSE — `cargo metadata` and every gate that reads
 # the leaf fail too, four frames deep, naming a path with no mention of sync.
 # (Two comments in cmd/ws.rs claimed cargo drops a missing include silently;
-# measured on 1.97.1 it does not.) Say "run `nros sync`" once here rather than
+# measured on 1.97.1 it does not.) Say "run `nros configure`" once here rather than
 # once per leaf in cargo's words. Bypass with NROS_SKIP_LEAF_INCLUDE_CHECK=1.
 [private]
 _require-leaf-includes:
@@ -2496,7 +2496,7 @@ _require-leaf-includes:
 # `.cargo/config.toml` files `include`. The PRODUCER for the dependency the
 # preflight above only checks.
 #
-# Only `nros sync` wrote that file, and sync needs a WORKSPACE. A lane building
+# Only `nros configure` wrote that file, and sync needs a WORKSPACE. A lane building
 # standalone leaves has no workspace to sync, so it got the file as a SIDE
 # EFFECT of whichever neighbouring lane ran `workspace-fixtures-build.sh` first.
 # Six lanes do (esp32, threadx-linux, native, nuttx, zephyr-ci, freertos);
@@ -2536,7 +2536,7 @@ _ensure-central-patch:
 # a lane whose whole job is to build the leaves that would resolve them.
 #
 # ORDER IS THE POINT, and the old dependency list had it backwards: it ran
-# `generate-bindings` BEFORE `setup-launch-resolve`. `nros sync` refuses to
+# `generate-bindings` BEFORE `setup-launch-resolve`. `nros configure` refuses to
 # resolve a SystemModel without that helper (issue 0409 — it errors rather than
 # reusing a museum model), so on a tree that lacks the binary codegen dies
 # naming a helper the very next dependency would have built. Provision, then
@@ -2887,7 +2887,7 @@ rust-rtos-link-check: _codegen
     echo "== Phase 146.3 — embedded-RTOS Rust link check =="
     # phase-445 W6 (`9af7e5230`) DELETED every example leaf's `.cargo/`, so the
     # `[patch.crates-io]` table that resolves `nros`, `nros-platform` and the
-    # board crate is pure `nros sync` OUTPUT now. A bare `cargo build` in a leaf
+    # board crate is pure `nros configure` OUTPUT now. A bare `cargo build` in a leaf
     # therefore resolves `nros = { version = "*" }` against the public registry
     # and dies `no matching package named 'nros' found` — which is how this lane
     # took the merge queue's L3 job down (run 34634922404) within four hours of
@@ -2899,7 +2899,7 @@ rust-rtos-link-check: _codegen
                examples/qemu-armv7a-nuttx/rust/talker \
                examples/threadx-linux/rust/talker; do
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-        "$nros_cli" sync "$dir" >/dev/null
+        "$nros_cli" configure "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
     # ...and the same W6 move took the leaf's `[build] target` with it. That key
@@ -2922,7 +2922,7 @@ rust-rtos-link-check: _codegen
     # host is the defect this exists to stop.
     #
     # issue 1445 — the settings file is ASSERTED here and NOT passed as
-    # `--config`. `nros sync` wires it into the leaf's own (gitignored)
+    # `--config`. `nros configure` wires it into the leaf's own (gitignored)
     # `.cargo/config.toml` as an `include` (issue 1381, later than the comment
     # above), so a `--config` of the same file makes cargo read it TWICE and
     # JOIN the `rustflags` arrays: `-Tmps2_an385.ld` lands on the link line
@@ -2943,7 +2943,7 @@ rust-rtos-link-check: _codegen
         found="$(find "$leaf/build" -mindepth 2 -maxdepth 2 -name nros-cargo.toml 2>/dev/null | head -1)"
         if [ -z "$found" ]; then
             echo "rust-rtos-link-check: no build/<image>/nros-cargo.toml under $leaf" >&2
-            echo "  \`nros sync $leaf\` writes it; without it cargo builds for the host." >&2
+            echo "  \`nros configure $leaf\` writes it; without it cargo builds for the host." >&2
             exit 1
         fi
         rel="${found#"$leaf"/}"
@@ -2963,7 +2963,7 @@ rust-rtos-link-check: _codegen
         fi
         if [ "$absent" -ne 0 ]; then
             echo "rust-rtos-link-check: $cfg does not include $rel" >&2
-            echo "  \`nros sync $leaf\` writes that include (issue 1381); without it cargo" >&2
+            echo "  \`nros configure $leaf\` writes that include (issue 1381); without it cargo" >&2
             echo "  reads neither the board's triple nor its link flags and builds for the host." >&2
             exit 1
         fi
@@ -3841,7 +3841,7 @@ mem-report *args:
 #
 # `setup-launch-resolve` too, since phase-445 W3b: the scaffolder emits a
 # `system.toml` (the retired `<nano_ros deploy=/>` tuple is refused), so the
-# scaffolded package is a self-pkg bringup and `nros sync` resolves its
+# scaffolded package is a self-pkg bringup and `nros configure` resolves its
 # SystemModel through `nros-launch-resolve` — which it refuses to skip. That is
 # the documented flow (`scripts/bootstrap.sh` builds both); the journey proves it.
 # Called from the BODY, not listed beside `setup-cli`: a dependency list is an
@@ -3886,7 +3886,7 @@ colcon-parity:
 # verb — builds go through the platform tool (cargo here), never `nros`.
 # `setup-launch-resolve` for the same reason as `scaffold-journey`, and from the
 # body for the same reason: the scaffold is a `system.toml` bringup, and
-# `nros sync` resolves it through the resolver.
+# `nros configure` resolves it through the resolver.
 [group("ci")]
 acceptance: setup-cli
     #!/usr/bin/env bash
@@ -3899,7 +3899,7 @@ acceptance: setup-cli
     rm -rf "$work"; mkdir -p "$work"; cd "$work"
     "$nros" new accept_app --platform linux --lang rust --template talker
     cd accept_app
-    "$nros" sync
+    "$nros" configure
     cargo build
     # profile-literal-ok: unprofiled: accept_app is a plain `cargo build` smoke binary
     # issue 1741 — the image is bounded by a deadline that ESCALATES.
@@ -4354,7 +4354,7 @@ setup-cli:
     # `*.rs`) is newer than it. The old `bin -nt lock` guard only checked
     # Cargo.lock, so a SOURCE-only change (e.g. a new subcommand, lock unchanged)
     # was missed — setup-cli skipped the rebuild and handed back a stale binary
-    # (phase-265 `nros sync` was "unrecognized" until a manual `cargo build`).
+    # (phase-265 `nros configure` was "unrecognized" until a manual `cargo build`).
     # `target/`/`generated/` are pruned so the scan is fast; `-quit` stops at the
     # first newer source.
     # `testing_workspaces`/`third-party` pruned too — cli-test fixtures and the
@@ -4435,7 +4435,7 @@ setup-cli:
 # so rebuilding fixtures BEFORE the CLI re-stales everything you just built.
 #
 # Paid four times in one session, each time as a different-looking failure:
-# three red `check::fast` gates (a stale CLI), a `nros sync` refusing on the 0409
+# three red `check::fast` gates (a stale CLI), a `nros configure` refusing on the 0409
 # pin guard (a stale resolver), and `check::issue-index` red (concurrent filings
 # on main). None of them says "you just rebased".
 #
@@ -4455,7 +4455,7 @@ post-rebase:
     #    would be stale the moment it relinks.
     just setup-cli || exit 1
     # 2. The resolver second. It and the CLI must agree on the play_launch pin
-    #    or `nros sync` refuses (issue 0409) — deep in a fixture build, not here.
+    #    or `nros configure` refuses (issue 0409) — deep in a fixture build, not here.
     just setup-launch-resolve || exit 1
     # 3. The generated issue list. `merge=union` means concurrent filings on
     #    main both land; the generator re-sorts and `check::issue-index` is the
@@ -4494,7 +4494,7 @@ post-rebase:
 
 # Build the launch-resolution helper (issue 0285).
 #
-# `nros sync` needs a resolver that can execute Python for `.launch.py`
+# `nros configure` needs a resolver that can execute Python for `.launch.py`
 # trees, which cannot be linked into the portable `nros` binary. It used to
 # shell out to `play_launch` BY NAME through PATH — where an unrelated ROS 2
 # record/replay tool of the same name shadowed it and every platform's
@@ -4518,9 +4518,9 @@ setup-launch-resolve:
     # the reported path must look there too. Hardcoding `$crate/target` made a
     # box build land in the redirected dir while this recipe declared success
     # about a HOST binary sitting at the old path — and since that binary links
-    # the host's libpython, `nros sync` inside the box then died with
+    # the host's libpython, `nros configure` inside the box then died with
     # `libpython3.14.so.1.0: cannot open shared object file`. Issue 0400.
-    # The CONSUMER ladder (`nros sync`, `nros locate tool`) deliberately does
+    # The CONSUMER ladder (`nros configure`, `nros locate tool`) deliberately does
     # not follow the redirect (issue 1850), so a redirected build is reported
     # below with the variable that makes it reachable.
     # The producer's path has one spelling (issue 1850).
@@ -4529,7 +4529,7 @@ setup-launch-resolve:
     bin="$(nros_launch_resolve_built_bin "$root")"
     if [ ! -f "$crate/../third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
         # issue 0409 — FAIL, do not skip. This recipe's job is to produce the
-        # resolver binary; exiting 0 without producing one let `nros sync` run
+        # resolver binary; exiting 0 without producing one let `nros configure` run
         # with whatever stale binary was left on disk, and a resolver predating
         # rlm v0.1.1 silently drops every `[[component]].params` /
         # `params_files` projection. No error, no warning, exit 0 — 22 models in
@@ -4552,7 +4552,7 @@ setup-launch-resolve:
         echo "      NROS_ALLOW_NO_LAUNCH_RESOLVE=1 just setup-launch-resolve" >&2
         if [ "${NROS_ALLOW_NO_LAUNCH_RESOLVE:-0}" = "1" ]; then
             echo "[setup-launch-resolve] skipping anyway (NROS_ALLOW_NO_LAUNCH_RESOLVE=1)" >&2
-            # Remove any binary left behind, so a later `nros sync` fails LOUD on a
+            # Remove any binary left behind, so a later `nros configure` fails LOUD on a
             # missing resolver instead of quietly resolving with a stale one.
             rm -f "$bin"
             exit 0
@@ -4616,7 +4616,7 @@ setup-launch-resolve:
             # "I decided not to" were indistinguishable from the outside —
             # which is how issue 0921 stayed hidden: the recipe reported
             # success, the binary kept a stale pin, and the disagreement
-            # surfaced two steps later in `nros sync` naming neither.
+            # surfaced two steps later in `nros configure` naming neither.
             #
             # The PIN is the informative part, because it is the value the 0409
             # guard compares against the CLI's. Printing it turns "why does sync
@@ -4711,7 +4711,7 @@ setup-launch-resolve:
         "$crate"/*) ;;
         *)
             echo "[setup-launch-resolve] NOTE: \$CARGO_TARGET_DIR moved the build out of this checkout;" >&2
-            echo "  \`nros sync\` will not look there. Export NROS_LAUNCH_RESOLVE=$bin (issue 1850)." >&2
+            echo "  \`nros configure\` will not look there. Export NROS_LAUNCH_RESOLVE=$bin (issue 1850)." >&2
             ;;
     esac
 
@@ -5038,7 +5038,7 @@ setup target="" tier="" *extra:
 # PLATFORM (`just setup zephyr`) each `exit 0`/`exec` before reaching them, so
 # the spelling phase-411 W4 tells every CI job to use provisioned the CLI and
 # nothing else. `build-wide` runs exactly `just setup tier2`, and its build
-# step needs the launch resolver — `nros sync` refuses to resolve a SystemModel
+# step needs the launch resolver — `nros configure` refuses to resolve a SystemModel
 # without it rather than reusing a museum model (issue 0409). The gap was
 # invisible on a developer machine, which had built the resolver months ago.
 #
@@ -5286,7 +5286,7 @@ _doctor-host:
         host_rc=1
     fi
     # Issue 1758 — its sibling (issue 1487): a `play_launch` move stales BOTH
-    # binaries, and `nros sync` refuses a resolver built from another checkout
+    # binaries, and `nros configure` refuses a resolver built from another checkout
     # as the first step of `just build linux`. SKIPs (rc 0) when none is built.
     if lr_out="$(bash "{{justfile_directory()}}/scripts/check-launch-resolve-fresh.sh" 2>&1)"; then
         echo "  [OK] nros-launch-resolve agrees with this checkout's play_launch"
@@ -5483,7 +5483,7 @@ _doctor-host:
         n=$(printf '%s\n' "$stale_gen" | wc -l)
         echo "  [WARN] $n workspace(s) carry PRE-0.0.0 generated msg crates (env-baked versions)."
         echo "         Harmless where the lock is untracked; breaks \`--locked\` where it is not."
-        echo "         Re-sync the ones that fail to build:  cd <dir> && nros sync"
+        echo "         Re-sync the ones that fail to build:  cd <dir> && nros configure"
     else
         echo "  [OK] generated msg crates: all constant-versioned (0.0.0)"
     fi

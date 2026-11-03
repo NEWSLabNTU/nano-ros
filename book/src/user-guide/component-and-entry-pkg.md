@@ -76,7 +76,7 @@ A single-package project has no bringup package either, but keeps the
 `<arg>`, `<node>`, `<param>`, `<remap>`, `<group>`, `<include>`, with
 `$(find <pkg>)` / `$(var)` / `$(env)` substitutions. Stock nav2/Autoware
 XML pastes in and Just Works; Python `.launch.py` files are resolved by
-`nros sync` too (the RFC-0060 resolver executes them — see the bringup
+`nros configure` too (the RFC-0060 resolver executes them — see the bringup
 tutorial).
 See [the workspace bringup tutorial](../getting-started/workspace-bringup.md).
 
@@ -144,7 +144,7 @@ generated entry is simply a package with path dependencies (RFC-0098 D9). On
 the cmake driver the generated `<ws>/build/<coordinate>/CMakeLists.txt` is the
 root, and emits a `nano_ros_add_executable(…)` call per image on that
 coordinate. Beside a cargo entry sits `nros-cargo.toml`, the per-image settings
-file `nros sync` writes — triple, link flags, `[env]`, patch rows — which cargo
+file `nros configure` writes — triple, link flags, `[env]`, patch rows — which cargo
 reads through `--config`.
 
 All of it is build output under `build/`, and none of it is written beside your
@@ -187,7 +187,7 @@ delegates to `<Board as BoardEntry>::run(...)`, dispatching one
 `<pkg>::register(runtime)?` call per launch row.
 
 The `launch` forms take `<bringup>[:<file>]` against
-`launch/<file>.launch.xml` + `system.toml [system] default_launch`; `nros sync`
+`launch/<file>.launch.xml` + `system.toml [system] default_launch`; `nros configure`
 resolves that input into a SystemModel under `<ws>/build/nros/models/<bringup>/`
 (a build artifact — never committed; gate `check-no-tracked-models`), and the
 macro bakes from it. `launch` and `model` are mutually exclusive.
@@ -266,7 +266,7 @@ my_ws/
     └── demo_bringup/       # Bringup pkg (declarative; system.toml carries [image.*])
 ```
 
-`nros sync` writes the generated message crates and the per-image build
+`nros configure` writes the generated message crates and the per-image build
 settings; `nros build <image>` then generates the entry and its build root
 under `build/` and runs the platform's own tool. `nros plan` takes the sole
 bringup when there is one, or you name it: `nros plan demo_bringup`.
@@ -311,18 +311,18 @@ hand-written boot glue.
 Switching board here is the same one-line edit it is in a workspace, provided
 the package depends on its generated selection package instead of a board
 crate: `<pkg>_nros_selection = { path = "build/nros/selection" }`, which
-`nros sync` / `nros build` write for the image's board (RFC-0098 D6) and
+`nros configure` / `nros build` write for the image's board (RFC-0098 D6) and
 `nros::main!` reaches the board through. The in-tree bare-metal, FreeRTOS,
 NuttX, ThreadX-Linux, RTIC and native examples do (a native example declares
 one image per RMW and ROS edition). A package that still names its board crate
-in `[dependencies]` has to move that line with `[image.*] board`; `nros sync`
+in `[dependencies]` has to move that line with `[image.*] board`; `nros configure`
 refuses the mismatch, naming both crates. See
 [issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md).
 
 Build it the same two ways a workspace is built:
 
 ```bash
-nros sync            # generated/ message crates + build/<image>/nros-cargo.toml
+nros configure            # generated/ message crates + build/<image>/nros-cargo.toml
 nros build           # or: nros build <image-id>
 ```
 

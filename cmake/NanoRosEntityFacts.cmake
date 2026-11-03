@@ -91,7 +91,7 @@ function(_nros_entity_facts_rekey_shared_cargo_dir)
     # what the build scripts write (the config header's VARIANT stamp) exactly
     # as the facts do, so they complete the key the same way. Measured: the
     # `features` and `managed` workspaces' metadata probes keyed equal, one with
-    # `panic-platform` and one without, and each `nros sync` left the other's
+    # `panic-platform` and one without, and each `nros configure` left the other's
     # mirrored header stale. Empty for an image with no late feature, so its key
     # does not move.
     get_property(_late GLOBAL PROPERTY NROS_SHARED_CARGO_LATE_FEATURES)

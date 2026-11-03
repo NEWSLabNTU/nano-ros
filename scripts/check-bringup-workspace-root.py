@@ -38,7 +38,7 @@ rather than at the workspace. With the marker, a forced re-expansion of
     `…/build/posix-zenoh/linux_entry`. Known pkgs: []
 
 That is what rung 2 buys, and nothing else in the tree supplies it: `nros build`
-and `nros sync` take the workspace from the CWD and hand cargo a
+and `nros configure` take the workspace from the CWD and hand cargo a
 `NROS_WORKSPACE_ROOT` besides, so they are green either way — the measurement
 that says the marker matters has to be a BARE `cargo` invocation on the
 generated entry, which is also what an IDE and rust-analyzer run.
