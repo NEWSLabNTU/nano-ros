@@ -1845,7 +1845,7 @@ const RUNG_JUDGED: u32 = 3;
 /// is a single path has one rung, named after the path).
 pub const NO_MODE: u16 = u16::MAX;
 
-/// [`RungSpec::role`] values, in rlm's `RungRole` order.
+/// [`RungSpec::role`] values, in rlm's `LevelRole` order (`RungRole` before rlm v0.3.3).
 pub const RUNG_ROLE_RUNG: u8 = 0;
 /// A `window:` rung: lasts at least its window; the rung below takes over
 /// when the window passes.

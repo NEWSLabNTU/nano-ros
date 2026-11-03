@@ -556,7 +556,8 @@ pub struct HazardRow {
 /// executor's tables.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct HazardRungRow {
-    /// The rung's name (`contracts.hazards.<h>.rungs[].rung`), for comments.
+    /// The rung's name (`contracts.hazards.<h>.degradation_levels[].level`,
+    /// `rungs[].rung` before rlm v0.3.3), for comments.
     pub name: String,
     /// The baked mode id of the mode the rung is ([`crate::mode_variants::mode_ids`]);
     /// `None` when the rung is not a mode (a single-path reaction).
@@ -566,7 +567,7 @@ pub struct HazardRungRow {
     pub row: Option<usize>,
     /// The rung's `route_ms`, rounded UP; 0 when play_launch charged none.
     pub route_ms: u32,
-    /// 0 rung, 1 window, 2 floor (rlm `RungRole`, the executor's
+    /// 0 rung, 1 window, 2 floor (rlm `LevelRole`: level, dwell, mrc; the executor's
     /// `RUNG_ROLE_*`).
     pub role: u8,
     /// The guard members (of this hazard's lowered guards) that belong to the
@@ -595,16 +596,16 @@ pub fn hazard_rungs(
     rows: &[MonitorRow],
     ages: &[AgeRow],
 ) -> Vec<HazardRungRow> {
-    use ros_launch_manifest_model::RungRole;
+    use ros_launch_manifest_model::LevelRole;
     let ids = crate::mode_variants::mode_ids(model);
     let scope = key.rsplit_once('/').map_or("", |(s, _)| s);
-    h.rungs
+    h.degradation_levels
         .iter()
         .map(|r| {
-            let scoped = format!("{scope}/{}", r.rung);
+            let scoped = format!("{scope}/{}", r.level);
             let mode = ids
                 .iter()
-                .find(|(name, _)| *name == scoped || *name == r.rung)
+                .find(|(name, _)| *name == scoped || *name == r.level)
                 .map(|(_, id)| *id);
             let row = rows.iter().position(|m| r.output.contains(&m.topic));
             let route_ms = r
@@ -612,9 +613,9 @@ pub fn hazard_rungs(
                 .filter(|v| v.is_finite() && *v > 0.0)
                 .map_or(0, |v| v.ceil().min(u32::MAX as f64) as u32);
             let role = match r.role {
-                RungRole::Rung => 0,
-                RungRole::Window => 1,
-                RungRole::Floor => 2,
+                LevelRole::Level => 0,
+                LevelRole::Dwell => 1,
+                LevelRole::Mrc => 2,
             };
             let mut starts_at: Vec<GuardMemberRow> = Vec::new();
             if let Some(node) = r.starts_at.as_deref() {
@@ -629,7 +630,7 @@ pub fn hazard_rungs(
                 }
             }
             HazardRungRow {
-                name: r.rung.clone(),
+                name: r.level.clone(),
                 mode,
                 row,
                 route_ms,
