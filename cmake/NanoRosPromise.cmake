@@ -222,6 +222,10 @@ function(_nros_promise_check_one _path)
             "second pass would build with whichever answer came last (RFC-0120 D5). "
             "`diff` the two files and report it.")
     endif()
+    get_property(_cmd GLOBAL PROPERTY NROS_CONFIGURED_COMMAND)
+    if("${_cmd}" STREQUAL "")
+        set(_cmd "nros configure")
+    endif()
     message(FATAL_ERROR
         "nros: ${_label} differs from the answer `nros configure` composed before "
         "this configure, because this configure declares something configure could "
@@ -230,6 +234,6 @@ function(_nros_promise_check_one _path)
         "  configure: ${_path}\n"
         "  Declare it where `nros configure` reads it (the package's `package.xml`, "
         "the leaf's `system.toml` / `[[component]] entities`, or the launch contract), "
-        "then configure again (RFC-0120 D5). Every reader of this configure used the "
-        "seed, so the build is not allowed to proceed on it.")
+        "then run `${_cmd}` and configure again (RFC-0120 D5). Every reader of this "
+        "configure used the seed, so the build is not allowed to proceed on it.")
 endfunction()
