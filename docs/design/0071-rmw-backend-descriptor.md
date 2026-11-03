@@ -137,7 +137,7 @@ feeds (`MessageForRmw`, `register_type_descriptor`) is already generic.
 
 ### D3 — the selection facade carries the lowering
 
-The translation point already exists and is already generated. `nros sync`
+The translation point already exists and is already generated. `nros configure`
 writes `<entry>_nros_selection` (RFC-0031's lowering made concrete), which today
 carries the board's `rmw-<x>` feature. It gains the capability features read
 from the descriptor:
@@ -276,7 +276,7 @@ rmw = "zenoh"
 capabilities = ["zero-copy-receive"]
 ```
 
-`nros sync` resolves the backend, looks the capability up in its descriptor, and
+`nros configure` resolves the backend, looks the capability up in its descriptor, and
 enables the mapped feature in the generated selection facade. Three properties
 fall out:
 
@@ -401,7 +401,7 @@ generated `lib.rs` holds the force-link anchor `rmw_backend.rs` holds today.
   measured 2026-10-18), so nothing published breaks. The integrations that run
   `cargo build -p nros-c --features rmw-<x>` themselves — the NuttX app
   Makefile, s32ds, PX4 — move to the same generated crate, emitted by
-  `nros sync` for their configuration.
+  `nros configure` for their configuration.
 * The `#ifdef NROS_RMW_<X>` + `extern "C" nros_rmw_<x>_register()` chain in
   `rclcpp/node.hpp` has no caller in the headers (registration is the
   generated strong `nros_app_register_backends()`), so it is deleted outright;
@@ -439,7 +439,7 @@ register = "register"          # called as <crate>::register()
 needs-type-descriptors = true  # a typed <crate>::register::<T>() per message
 ```
 
-`nros sync` reads them and generates, in `<entry>_nros_selection`,
+`nros configure` reads them and generates, in `<entry>_nros_selection`,
 `register_backends()` and `register_type::<T>()`. The entry macro, which already
 re-roots paths through the selection package, calls those two and names no
 backend. Tools that need the list of backends (`nros new --workspace`, colcon's

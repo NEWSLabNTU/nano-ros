@@ -55,7 +55,7 @@ Measured on `c16e26f0b2` (the full tree is in the phase doc):
   doc comment and the doc comment is where the history was written. RFC-0116
   D2 already forbids that on the user surface.
 - **ROS users meet unfamiliar flags for familiar ideas.** `nros build` selects
-  packages, `nros new` scaffolds one, and `nros sync` names a build directory,
+  packages, `nros new` scaffolds one, and `nros sync` (now `nros configure`) names a build directory,
   each with flag names a colcon or `ros2 pkg create` user has to learn again.
 
 ## Design

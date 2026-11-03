@@ -168,9 +168,9 @@ can write once.)
 
 ## D9 — One build verb: `nros build` generates AND compiles
 
-There is no separate `nros sync` step in the user flow. `nros build` is
+There is no separate `nros sync` (now `nros configure`) step in the user flow. `nros build` is
 "discover packages, resolve the image, preflight, generate the root, and hand
-off to the native tool" — colcon's shape, with codegen inside it. `nros sync`
+off to the native tool" — colcon's shape, with codegen inside it. `nros configure`
 remains for editing `.msg` files between builds, not as a step anyone is told to
 run first.
 

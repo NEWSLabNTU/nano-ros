@@ -499,7 +499,7 @@ is the OS) and the wiring to the RMW's own file. What survives, and where:
 | --- | --- |
 | D10e host-OS boards own no network facts (`[board.net] stack = "host"`) | **kept and generalised:** `stack` is `"host"`, `"os"` or `"board"`, naming who owns layer 1 (RFC-0109 D2) |
 | D10f one carrier, `NROS_IMAGE_NET`, on all three roads | **kept**, fed from the board package's own file instead of `system.toml` (RFC-0109 D4) |
-| D10b static or leased; unique MACs, derived per image; collision refusal | **kept**, applied to those files at `nros sync` |
+| D10b static or leased; unique MACs, derived per image; collision refusal | **kept**, applied to those files at `nros configure` |
 | D10c interface kinds | **become** the board descriptor's `links` (RFC-0109 D3) |
 | D10a `[network.<name>]`, `attach` | **retired:** `attach` → `[image.<id>.run] nic`; subnet / gateway / `dhcp` → the board file |
 | D10d derived router; `[image]` / `[system] locator` | **retired:** the router is wiring, in the RMW's own file (or a file-less domain's `locator`) |

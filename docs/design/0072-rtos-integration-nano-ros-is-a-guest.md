@@ -104,7 +104,7 @@ A design that assumes a configure-time hook silently excludes PX4 and PIO.
 
 | home | count | holds | read by | when |
 | --- | ---: | --- | --- | --- |
-| `packages/boards/*/nros-board.toml` | 8 files, 9 boards | the descriptor | `BoardCatalog` (CLI) | `nros sync` / `setup` |
+| `packages/boards/*/nros-board.toml` | 8 files, 9 boards | the descriptor | `BoardCatalog` (CLI) | `nros configure` / `setup` |
 | `<bringup>/system.toml` `[image.<id>]` / `[host.<name>]` / `[board_config.<board>]` | 123 / 28 / 24 blocks | build description, placement, site config — one table each | `nros dev codegen system`, `nros build` | codegen |
 | `<leaf>/.cargo/nros-board.toml` | 44 | projection of `cargo_config` | cargo | every build |
 | `cmake/board/nano-ros-board-*.cmake` | 7 | toolchain file, kernel/stack targets | cmake, **by filename** | configure |
@@ -884,7 +884,7 @@ adds nano-ros to it.
 
 ```
 1. describe the target      one board package in their workspace
-2. nros sync                discovery + codegen
+2. nros configure                discovery + codegen
 3. import                   the shell for their host build system
 4. build                    their build, unchanged, now linking nano-ros
 ```

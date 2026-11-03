@@ -57,7 +57,7 @@ The direction problem is structural, not a plumbing shortfall.
 the entity counts compiles *before* the crate whose source declares them. No
 build script, proc macro or manifest key can reach backwards across that edge —
 which is why issue 0827's fix moved the derivation OUT of the cargo graph into
-`nros sync` in the first place. This RFC finishes that move rather than starting
+`nros configure` in the first place. This RFC finishes that move rather than starting
 a new one.
 
 ## Prior art, checked on this host

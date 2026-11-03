@@ -94,7 +94,7 @@ It sits on the image, not on a component or the system:
   controller in one bringup is legitimate.
 
 It is a nano-ros BUILD fact. Per the RFC-0060 amendment (2026-10-10), it never
-enters the SystemModel. `nros sync` carries it in the `nros.toml` overlay
+enters the SystemModel. `nros configure` carries it in the `nros.toml` overlay
 beside the model, as it carries the other image facts.
 
 It is Rust-only today: every framework other than `owned-spin` is a Rust entry

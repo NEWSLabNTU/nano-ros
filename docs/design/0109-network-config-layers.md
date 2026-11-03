@@ -171,7 +171,7 @@ package's own parser.
   they move into this file when W4 retires `[network.<name>]`. A CAN or
   serial interface's device facts (`[can0] bitrate`, `[uart1] baud`) join the
   same file when W5 moves controller bring-up out of the link.
-- **Where it is parsed.** `nros sync` and `nros build` parse every image's
+- **Where it is parsed.** `nros configure` and `nros build` parse every image's
   file (`system_net::fold_board_net_files`, on the leaf and workspace roads
   both) and render the result
   into the ONE carrier phase-497 built, `NROS_IMAGE_NET` (RFC-0103 D10f), on
@@ -287,7 +287,7 @@ interfaces, and wiring uses those names.
   to the domain's `id`; anything else is refused.
 - **zenoh (json5):** the format is upstream zenoh's session config, as
   rmw_zenoh's `ZENOH_SESSION_CONFIG_URI` uses. On a target with zenoh-pico,
-  `nros sync` parses it ON THE HOST and lowers each key to a
+  `nros configure` parses it ON THE HOST and lowers each key to a
   `zp_config_insert` property (the phase-206 W3 seam). A key zenoh-pico does
   not support is refused, never dropped. **There is no json5 parser on an
   embedded target**; hosted builds link the same lowering code for D6a. The
@@ -364,7 +364,7 @@ interfaces, and wiring uses those names.
      image, the images on that backend must agree on one file or the
      configure is refused, naming `-DNROS_IMAGE`.
 
-### D9 — Checks at `nros sync`
+### D9 — Checks at `nros configure`
 
 1. A retired key (D6) is refused, naming its new home.
 2. A domain with both `config` and `locator` is refused.
@@ -455,7 +455,7 @@ os_config = ["board-net.toml"]               # or none: the board default
 ```toml
 [image.talker]
 board = "mps2-an385-freertos"
-os_config = ["board-net.toml"]               # D4: board format, read by nros sync
+os_config = ["board-net.toml"]               # D4: board format, read by nros configure
 ```
 
 **FreeRTOS + lwIP, user's CubeMX board.** `board = "my_stm32h7"`, no
@@ -596,7 +596,7 @@ layer 1.
 Recorded so a reader can tell a decision from a default. Each was weighed
 against the alternative named:
 
-1. Reference board files are parsed by `nros sync` and carried by
+1. Reference board files are parsed by `nros configure` and carried by
    `NROS_IMAGE_NET` (not: a new per-road carrier read by each board build) —
    keeps cross-image collision checks and the launcher/firmware MAC pairing.
 2. An image with no `[[domain]]` has an implicit default domain (not: every

@@ -219,7 +219,7 @@ separate dirs at that group size, ~1.7× against the shared dir) because inner
 parallelism beats a flock. It is also the only shape that unions features across
 its members, so it constrains the group key where N invocations do not, and in
 this repository it requires generating manifests and a merged
-`[patch.crates-io]` — a second spelling of `nros sync`'s output, which R3
+`[patch.crates-io]` — a second spelling of `nros configure`'s output, which R3
 forbids.
 
 So: **prefer the shape that needs no generated state unless wall clock is the

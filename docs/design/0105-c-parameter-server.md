@@ -278,7 +278,7 @@ rclc has no equivalent:
 
 | Function | Why |
 | --- | --- |
-| `rclc_parameter_declare_{bool,int,double,string}(server, name, default)` | Declare with a default **and keep a launch value** for that name, as rclcpp does. Launch values are baked into the image at build time (the launch seeds `nros sync` emits); nothing is read from a file, `argv` or the environment at run time (D10). rclc's `add_parameter` + `set_*` overwrites a launch value, which matches upstream rclc (it has no overrides) and is kept. Docs and examples lead with `declare_*`. |
+| `rclc_parameter_declare_{bool,int,double,string}(server, name, default)` | Declare with a default **and keep a launch value** for that name, as rclcpp does. Launch values are baked into the image at build time (the launch seeds `nros configure` emits); nothing is read from a file, `argv` or the environment at run time (D10). rclc's `add_parameter` + `set_*` overwrites a launch value, which matches upstream rclc (it has no overrides) and is kept. Docs and examples lead with `declare_*`. |
 | `rclc_parameter_{get,set}_string(server, name, buf, len)` | rclc is bool/int/double only. Strings are bounded by `MAX_STRING_VALUE_LEN`. |
 | `rclc_parameter_{get,set}_{bool,int,double,string}_array` | Arrays are bounded by `MAX_ARRAY_LEN` (32). |
 | `rclc_parameter_get_type`, `rclc_parameter_list` | Read-side helpers the executor family had. |
