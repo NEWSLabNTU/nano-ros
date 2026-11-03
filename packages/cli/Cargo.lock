@@ -1329,16 +1329,17 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 [[package]]
 name = "ros-launch-manifest-derive"
 version = "0.4.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.3#b6a4a11a8f831b3db62886905c14a9654e29d4ca"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.4#e1274c733bd082133f0ef6da79972196d6c51ed1"
 dependencies = [
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
+ "ros-launch-manifest-types",
 ]
 
 [[package]]
 name = "ros-launch-manifest-model"
 version = "0.4.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.3#b6a4a11a8f831b3db62886905c14a9654e29d4ca"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.4#e1274c733bd082133f0ef6da79972196d6c51ed1"
 dependencies = [
  "indexmap",
  "ros-launch-manifest-sched",
@@ -1351,7 +1352,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-rlx"
 version = "0.4.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.3#b6a4a11a8f831b3db62886905c14a9654e29d4ca"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.4#e1274c733bd082133f0ef6da79972196d6c51ed1"
 dependencies = [
  "sha2",
  "unicode-normalization",
@@ -1360,7 +1361,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-sched"
 version = "0.4.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.3#b6a4a11a8f831b3db62886905c14a9654e29d4ca"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.4#e1274c733bd082133f0ef6da79972196d6c51ed1"
 dependencies = [
  "ros-launch-manifest-types",
  "serde",
@@ -1371,7 +1372,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-types"
 version = "0.4.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.3#b6a4a11a8f831b3db62886905c14a9654e29d4ca"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.4#e1274c733bd082133f0ef6da79972196d6c51ed1"
 dependencies = [
  "ros-launch-manifest-rlx",
  "serde",
