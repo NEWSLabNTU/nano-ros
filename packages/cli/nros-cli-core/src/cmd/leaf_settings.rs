@@ -1613,6 +1613,7 @@ mod tests {
                 ..Default::default()
             },
             components: Vec::new(),
+            system_entities_defaults: false,
             env: env
                 .iter()
                 .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
