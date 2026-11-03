@@ -777,5 +777,5 @@ nros_ensure_central_patch() {
 # CMake-driven message-dependent leaf needs, not two. Idempotent.
 nros_ensure_leaf_synced() {
     local dir="$1"
-    "$(nros_cli_bin)" sync "$dir" >/dev/null
+    "$(nros_cli_bin)" configure "$dir" >/dev/null
 }
