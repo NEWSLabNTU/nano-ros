@@ -88,6 +88,13 @@ example-fmt:
 example-leaf-build-dirs:
     @python3 scripts/check-example-leaf-build-dirs.py
 
+# phase-530 W2 (Ruling R30) — the side-by-side leaf census pre-pass names
+# every failed leaf with its log's tail, and refuses a failed width or a bash
+# without `wait -n -p`, against a fake checkout (no census is built).
+[private]
+census-prepass-parallel:
+    @./tests/census-prepass-parallel-tests.sh
+
 # phase-340 P2 — nothing may write an `examples/**/target/` dir. That is the
 # invariant item 7 / P4 stands on (`examples/**/target-*/` is globally ignored;
 # a plain `target/` survives only through 391 per-leaf .gitignore files), and it

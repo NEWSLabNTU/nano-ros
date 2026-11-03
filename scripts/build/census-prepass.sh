@@ -113,8 +113,24 @@ if [ "$only" != "images" ]; then
     # leaf is named, with its log, rather than the first.
     if [ -n "$leaves" ]; then
         need_cli
-        width="$(nros_cmake_frontend_jobs)"
-        inner="$(nros_cargo_inner_jobs "$width")"
+        # `wait -n -p` (below) is bash 5.1. An older bash rejects `-p` as an
+        # invalid option, which would read as a failed leaf -- so ask first.
+        # (`NROS_CENSUS_PREPASS_FAKE_BASH` stands in for the read-only
+        # `BASH_VERSINFO` in tests/census-prepass-parallel-tests.sh.)
+        bash_version="${NROS_CENSUS_PREPASS_FAKE_BASH:-${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}}"
+        if [ "${bash_version%%.*}" -lt 5 ] \
+            || { [ "${bash_version%%.*}" -eq 5 ] && [ "${bash_version#*.}" -lt 1 ]; }; then
+            echo "census-prepass: needs bash 5.1 or newer (for \`wait -n -p\`); this is bash $bash_version" >&2
+            exit 1
+        fi
+        if ! width="$(nros_cmake_frontend_jobs)" || [ -z "$width" ]; then
+            echo "census-prepass: nros_cmake_frontend_jobs failed, so there is no width to run the leaf censuses at" >&2
+            exit 1
+        fi
+        if ! inner="$(nros_cargo_inner_jobs "$width")" || [ -z "$inner" ]; then
+            echo "census-prepass: nros_cargo_inner_jobs failed for width $width" >&2
+            exit 1
+        fi
         log_dir="$repo_root/${NROS_BUILD_LOG_DIR:-build}/census-prepass"
         mkdir -p "$log_dir"
         echo "census-prepass: $(grep -c . <<< "$leaves") leaf candidate(s), $width at a time"
@@ -126,10 +142,16 @@ if [ "$only" != "images" ]; then
             # record it if it failed, and drop it from the running set.
             local rc=0 done_pid="" i
             wait -n -p done_pid "${pids[@]}" || rc=$?
+            if [ -z "$done_pid" ]; then
+                # Nothing was reaped (no such child, or a signal interrupted
+                # the wait): looping would wait forever on the same set.
+                echo "census-prepass: \`wait -n -p\` reaped no take (exit $rc) while ${#pids[@]} ran: ${names[*]}" >&2
+                exit 1
+            fi
             for i in "${!pids[@]}"; do
                 if [ "${pids[$i]}" = "$done_pid" ]; then
                     if [ "$rc" -ne 0 ]; then
-                        failed+=("${names[$i]} (exit $rc; log: $log_dir/$(echo "${names[$i]}" | tr / _).log)")
+                        failed+=("${names[$i]}|$rc")
                     fi
                     unset 'pids[i]' 'names[i]'
                     pids=("${pids[@]}")
@@ -157,7 +179,10 @@ if [ "$only" != "images" ]; then
         if [ "${#failed[@]}" -gt 0 ]; then
             echo "census-prepass: ${#failed[@]} leaf census(es) FAILED:" >&2
             for f in "${failed[@]}"; do
-                echo "  - $f" >&2
+                name="${f%|*}"
+                log="$log_dir/$(echo "$name" | tr / _).log"
+                echo "  - $name (exit ${f##*|}; log: $log), last lines:" >&2
+                tail -n 20 "$log" 2>/dev/null | sed 's/^/      | /' >&2 || true
             done
             exit 1
         fi
