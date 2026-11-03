@@ -22,7 +22,7 @@ which tool owns the build. Implemented by
 
 Everything `nros` derives before a host build tool runs moves into **one
 verb, `nros configure`**. That covers message codegen and the metadata probe
-(today `nros sync`), plus the census, the resolve phase and the generated build
+(today `nros sync`, renamed `nros configure` here), plus the census, the resolve phase and the generated build
 files (today stages 1 to 4 of `nros build`). Every road calls it:
 
 - `nros build` calls it in-process;
@@ -129,7 +129,7 @@ Rules:
 
 | phase | was | does |
 | --- | --- | --- |
-| C1 sync | `nros sync` | message codegen, metadata probe (cached per component, keyed on its sources), models, leaf lock seed, the interface search path |
+| C1 sync | `nros sync` (now `nros configure`'s first phase) | message codegen, metadata probe (cached per component, keyed on its sources), models, leaf lock seed, the interface search path |
 | C2 discover | stages 1, 1b, 2 | packages in dependency order, selection, images |
 | C3 preflight | stage 3 | toolchains, board provisioning, host compiler (D4) |
 | C4 census | stage 3.4 | host build plus counting run; **the default for a leaf with no declared entities** (D4) |
@@ -189,8 +189,8 @@ Contract:
 RFC-0040 rejected an automatic sync at `nros new` time, because the
 environment may not be ready at scaffold time. That reason does not reach a
 build, which needs the generated code anyway. `nros build` already detects an
-unsynced tree and refuses (`… has not been synced — … Run nros sync`). Under
-this RFC it configures instead.
+unsynced tree and refuses (`… Run nros sync`); `nros configure` replaces that
+refusal under this RFC, run by `nros build` itself.
 
 ### D3 — `nros build` and `nros run` behave like cargo
 
