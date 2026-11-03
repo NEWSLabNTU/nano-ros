@@ -2210,7 +2210,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             capabilities: owned_caps(&bringup_dir),
             output,
             descriptor: Some(descriptor.clone()),
-            run_tables: crate::cmd::run_plan::ImageTables::from_block(&image),
+            run_tables: crate::cmd::run_plan::ImageTables::from_block(&image, image_net.as_ref()),
             package_depends: None,
         });
     }
@@ -2354,7 +2354,7 @@ fn plan_leaf_image(
     };
     // RFC-0103 D10 (phase-497 W2) — refused here, at preflight, with the
     // image named; `leaf_settings` resolves the same answer into the build.
-    leaf_image_net(descriptor, &img.board, Some(&nros_root), &img.decl)
+    let image_net = leaf_image_net(descriptor, &img.board, Some(&nros_root), &img.decl)
         .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
     crate::cmd::setup::expose_store_tools(descriptor, Some(&nros_root));
     // Issue 2180 — a query refuses nothing over the toolchain.
@@ -2543,7 +2543,7 @@ fn plan_leaf_image(
         capabilities: owned_caps(root),
         output: Some(output),
         descriptor: Some(descriptor.clone()),
-        run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&img.decl),
+        run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&img.decl, image_net.as_ref()),
         package_depends: None,
     }]))
 }
@@ -2628,7 +2628,7 @@ fn plan_single_package_cmake(
     let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &board) else {
         eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&board));
     };
-    leaf_image_net(descriptor, &board, Some(&nros_root), &decl)
+    let image_net = leaf_image_net(descriptor, &board, Some(&nros_root), &decl)
         .map_err(|e| eyre::eyre!("`{board}` cannot be built: {e}"))?;
     let platform = descriptor.platform.kebab().to_string();
     if plan::driver_for_board(&platform, descriptor.entry_kind, true) != Ok(Driver::CMake) {
@@ -2712,7 +2712,7 @@ fn plan_single_package_cmake(
             executable: crate::cmd::build_next::cmake_leaf_executable(root),
         }),
         descriptor: Some(descriptor.clone()),
-        run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&decl),
+        run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&decl, image_net.as_ref()),
         package_depends: None,
     }]))
 }

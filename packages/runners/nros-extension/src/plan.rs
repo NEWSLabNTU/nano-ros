@@ -133,6 +133,11 @@ pub struct Console {
     /// The serial baud rate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub baud: Option<u32>,
+    /// A command template that attaches the console instead of the runner's
+    /// own console code (`picocom -b {baud} {port}`). Its placeholders expand
+    /// from this plan, like any other template ([`RunPlan::expand`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
 }
 
 /// The transport kind of the link.
@@ -646,6 +651,7 @@ mod tests {
                 kind: ConsoleKind::Serial,
                 port: Some("/dev/ttyACM0".into()),
                 baud: Some(115_200),
+                command: Some("picocom -b {baud} {port}".into()),
             },
             link: None,
             args: BTreeMap::new(),
@@ -767,6 +773,20 @@ mod tests {
             p.expand("{tool:}"),
             Err(ExpandError::Unknown("tool:".into()))
         );
+    }
+
+    /// A console attached through a command template expands from the plan
+    /// like every other template, and an absent one is absent from the JSON
+    /// (so a plan without it reads in a runner that predates the field).
+    #[test]
+    fn a_console_command_expands_from_the_plan() {
+        let p = sample();
+        let cmd = p.console.command.as_deref().unwrap();
+        assert_eq!(p.expand(cmd).unwrap(), "picocom -b 115200 /dev/ttyACM0");
+        let mut q = sample();
+        q.console.command = None;
+        let v: serde_json::Value = serde_json::from_str(&q.to_json()).unwrap();
+        assert!(v["console"].get("command").is_none(), "{v}");
     }
 
     #[test]

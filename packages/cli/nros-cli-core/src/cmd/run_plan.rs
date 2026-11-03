@@ -69,26 +69,39 @@ pub struct ImageTables {
     pub console: Option<ConsoleTable>,
     /// The image's `locator` (`tcp/10.0.2.2:7447`, `serial/…`).
     pub locator: Option<String>,
+    /// The image's resolved network as the build receives it (the
+    /// `NROS_IMAGE_NET` text), which carries `[image.<id>.run] nic` and the
+    /// MAC the firmware was built with. `None`: the image states no network.
+    pub net: Option<String>,
 }
 
 impl ImageTables {
-    /// From a workspace image (already overlaid on `[image_defaults]`).
+    /// From a workspace image (already overlaid on `[image_defaults]`) and
+    /// its resolved network.
     #[must_use]
-    pub fn from_block(b: &crate::orchestration::image::ImageBlock) -> Self {
+    pub fn from_block(
+        b: &crate::orchestration::image::ImageBlock,
+        net: Option<&crate::orchestration::image_net::ImageNet>,
+    ) -> Self {
         Self {
             flash: b.flash.clone(),
             console: b.console.clone(),
             locator: b.locator.clone(),
+            net: net.map(crate::orchestration::image_net::ImageNet::text),
         }
     }
 
-    /// From a leaf's `system.toml`.
+    /// From a leaf's `system.toml` and its resolved network.
     #[must_use]
-    pub fn from_leaf(l: &nros_orchestration_ir::leaf_system::LeafSystem) -> Self {
+    pub fn from_leaf(
+        l: &nros_orchestration_ir::leaf_system::LeafSystem,
+        net: Option<&crate::orchestration::image_net::ImageNet>,
+    ) -> Self {
         Self {
             flash: l.network.flash.clone(),
             console: l.network.console.clone(),
             locator: l.network.locator.clone(),
+            net: net.map(crate::orchestration::image_net::ImageNet::text),
         }
     }
 }
@@ -229,6 +242,7 @@ fn plan_shell(verb: Verb, i: &Inputs<'_>, runner: RunnerRef, target: Target) -> 
             kind: PlanConsoleKind::Stdio,
             port: None,
             baud: None,
+            command: None,
         },
         link: None,
         args: BTreeMap::new(),
@@ -351,8 +365,21 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
             if q.semihosting {
                 put("semihosting", "enable=on,target=native".into());
             }
-            if let Some(n) = &q.nic_model {
-                put("nic", format!("user,model={n}"));
+            if let Some(model) = &q.nic_model {
+                // The image's network, when it states one, says how the NIC
+                // attaches (`[image.<id>.run] nic`) and with which MAC; the
+                // board says only the model.
+                let (nic, rung) = match i.tables.net.as_deref() {
+                    Some(text) => (
+                        image_nic(text, model).map_err(|e| {
+                            ResolveError::Unresolved(format!("image `{}`: {e}", i.image))
+                        })?,
+                        IMAGE,
+                    ),
+                    None => (nros_board_common::image_net::slirp_nic(model), BOARD),
+                };
+                plan.args.insert("nic".into(), nic);
+                prov.set("args.nic", rung);
             }
         } else if let Some((board, mac)) = ladder_board(d) {
             plan.args.insert("board".into(), board.word().into());
@@ -367,6 +394,16 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
     finish(&mut plan, &mut prov, &i, None)?;
     plan.provenance = prov.0;
     Ok(plan)
+}
+
+/// QEMU's `-nic` value for the primary interface of an image's resolved
+/// network (`text`), on a NIC of `model`.
+fn image_nic(text: &str, model: &str) -> Result<String, String> {
+    use nros_board_common::image_net;
+    let primary = image_net::primary(text)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "its network resolved no interface".to_string())?;
+    image_net::qemu_nic(&primary, model)
 }
 
 fn resolve_flash(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
@@ -510,6 +547,16 @@ fn finish(
             rung(
                 image_c.map(|c| c.baud.is_some()),
                 board_c.is_some_and(|c| c.baud.is_some()),
+            ),
+        );
+    }
+    if let Some(c) = &merged.command {
+        plan.console.command = Some(c.as_str().to_string());
+        prov.set(
+            "console.command",
+            rung(
+                image_c.map(|c| c.command.is_some()),
+                board_c.is_some_and(|c| c.command.is_some()),
             ),
         );
     }
@@ -856,6 +903,101 @@ mod tests {
         );
     }
 
+    /// The image rung's NIC: an image with a resolved network gets the `-nic`
+    /// its `[image.<id>.run] nic` and MAC say, on the board's NIC model; one
+    /// on a physical-only network refuses rather than booting on no network.
+    #[test]
+    fn the_image_network_states_the_emulator_nic() {
+        let cat = BoardCatalog::load(&repo_root()).unwrap();
+        let d = board(&cat, "mps2-an385-baremetal");
+        let out = cargo_out(Some("thumbv7m-none-eabi"));
+        let inv = Invocation::default();
+        let with = |net: &str| ImageTables {
+            net: Some(net.into()),
+            ..ImageTables::default()
+        };
+        let p = go(
+            Verb::Run,
+            &d,
+            &out,
+            &with("eth0,ethernet,lab,192.168.50.10,24,-,02:00:00:00:00:0a,tap=tap0"),
+            &inv,
+        )
+        .unwrap();
+        assert_eq!(
+            p.args["nic"],
+            "tap,ifname=tap0,script=no,downscript=no,model=lan9118,mac=02:00:00:00:00:0a"
+        );
+        assert_eq!(p.provenance["args.nic"], IMAGE);
+        let line = qemu_line(&p).unwrap().argv("K").join(" ");
+        assert!(line.contains("-nic tap,ifname=tap0"), "{line}");
+
+        let p = go(
+            Verb::Run,
+            &d,
+            &out,
+            &with("eth0,ethernet,qemu,10.0.2.15,24,10.0.2.2,02:00:00:00:00:0b,slirp"),
+            &inv,
+        )
+        .unwrap();
+        assert_eq!(p.args["nic"], "user,model=lan9118,mac=02:00:00:00:00:0b");
+
+        let e = go(
+            Verb::Run,
+            &d,
+            &out,
+            &with("eth0,ethernet,lab,192.168.50.10,24,-,02:00:00:00:00:0a,-"),
+            &inv,
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("physical-only"), "{e}");
+    }
+
+    /// A console attached through a command template reaches the plan, key by
+    /// key over the board's console like every other console fact.
+    #[test]
+    fn a_console_command_reaches_the_plan() {
+        let cat = BoardCatalog::load(&repo_root()).unwrap();
+        let mut d = board(&cat, "nucleo-f767zi-zephyr");
+        d.console = Some(ConsoleTable {
+            kind: Some(ConsoleKind::Serial),
+            baud: Some(115_200),
+            command: Some(
+                CommandTemplate::try_from("picocom -b {baud} {port}".to_string()).unwrap(),
+            ),
+            ..ConsoleTable::default()
+        });
+        let out = BuildOutput::West {
+            build_dir: Some("/b".into()),
+        };
+        let inv = Invocation {
+            port: Some("/dev/ttyACM0".into()),
+            ..Invocation::default()
+        };
+        let p = go(Verb::Flash, &d, &out, &ImageTables::default(), &inv).unwrap();
+        assert_eq!(
+            p.console.command.as_deref(),
+            Some("picocom -b {baud} {port}")
+        );
+        assert_eq!(p.provenance["console.command"], BOARD);
+        assert_eq!(
+            p.expand(p.console.command.as_deref().unwrap()).unwrap(),
+            "picocom -b 115200 /dev/ttyACM0"
+        );
+
+        let tables = ImageTables {
+            console: Some(ConsoleTable {
+                command: Some(CommandTemplate::try_from("minicom -D {port}".to_string()).unwrap()),
+                ..ConsoleTable::default()
+            }),
+            ..ImageTables::default()
+        };
+        let p = go(Verb::Flash, &d, &out, &tables, &inv).unwrap();
+        assert_eq!(p.console.command.as_deref(), Some("minicom -D {port}"));
+        assert_eq!(p.provenance["console.command"], IMAGE);
+        assert_eq!(p.console.baud, Some(115_200), "the board's baud survives");
+    }
+
     /// The method rung: a board with no triple runs on the host; the NuttX
     /// board's line is the ladder's, keyed on platform + triple.
     #[test]
@@ -918,6 +1060,7 @@ mod tests {
                 ..ConsoleTable::default()
             }),
             locator: Some("serial/serial@40004800#baudrate=115200".into()),
+            net: None,
         };
         let inv = Invocation {
             port: Some("/dev/ttyACM0".into()),
