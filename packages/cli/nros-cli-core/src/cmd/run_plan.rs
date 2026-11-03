@@ -715,6 +715,9 @@ pub fn run(args: Args) -> eyre::Result<()> {
         build_argv.push(i.clone());
     }
     let bargs = <crate::cmd::build::Args as clap::Parser>::try_parse_from(build_argv)?;
+    // RFC-0120 D3 — configure implicitly first, as `nros build` does; never
+    // from inside planning, which configure itself runs under its lock.
+    crate::cmd::build::configure_implicitly(&bargs)?;
     let plans = crate::cmd::build::plan_builds(&bargs)?;
     let one = match plans.as_slice() {
         [one] => one,

@@ -2390,14 +2390,15 @@ fn plan_leaf_image(
     // `src/` is its crate's sources: it would refuse a leaf with no message
     // dependency and no component, which sync gives nothing to write. What this
     // build actually reads from sync is checked precisely just below.
-    missing.retain(|m| m.remedy != "nros sync");
+    missing.retain(|m| m.remedy != crate::builder::preflight::CONFIGURE_REMEDY);
     if !missing.is_empty() {
         return Err(crate::builder::preflight::PreflightRefusal(missing).into());
     }
-    // RFC-0098 D2 — sync runs before the build. The two things it produces that
-    // this build reads: the resolved model (the entity facts) and the generated
-    // message crates the manifest path-depends on. Missing either is ONE line
-    // naming `nros sync`, never cargo's manifest error four frames down.
+    // RFC-0098 D2 — sync runs before the build (RFC-0120 D3: `nros build`
+    // runs it, as configure's C1). The two things it produces that this build
+    // reads: the resolved model (the entity facts) and the generated message
+    // crates the manifest path-depends on. Missing either after that is ONE
+    // line naming the bug, never cargo's manifest error four frames down.
     // phase-460 W1 follow-up -- a model sync refused (or one whose inputs
     // moved since) is not "unsynced": it names its own remedy.
     if let Err(r) = crate::leaf_entity_env::leaf_model_path(root) {
@@ -2405,12 +2406,12 @@ fn plan_leaf_image(
     }
     let unsynced: Vec<String> = unsynced_inputs(root, &img);
     if !unsynced.is_empty() {
+        // RFC-0120 D3 — `nros build` configures before it plans, so an
+        // unsynced leaf here means that configure did not do its job.
         eyre::bail!(
-            // See RFC-0098 D2.
-            "{} has not been synced — missing {}.\n  Run `nros sync` in {}, then build again.",
+            "internal error: configure ran and left {} unsynced — a bug (missing {}).",
             root.display(),
-            unsynced.join(", "),
-            root.display()
+            unsynced.join(", ")
         );
     }
 
@@ -2660,7 +2661,7 @@ fn plan_single_package_cmake(
     } else {
         Vec::new()
     };
-    missing.retain(|m| m.remedy != "nros sync");
+    missing.retain(|m| m.remedy != crate::builder::preflight::CONFIGURE_REMEDY);
     if !missing.is_empty() {
         return Err(crate::builder::preflight::PreflightRefusal(missing).into());
     }
@@ -2780,29 +2781,25 @@ pub fn run(args: Args) -> Result<()> {
     };
     crate::abi_guard::check_workspace(&guard_anchor, crate::abi_guard::Verb::Build)?;
 
+    // RFC-0120 D3 (phase-530 W1) — configure implicitly, like cargo: a
+    // stale or missing stamp runs `nros configure` for the image(s) this
+    // build names, so a fresh clone builds with no `nros sync` first. That
+    // configure is C1 too, so a `<depend>` added since the last configure
+    // (package.xml and Cargo.toml are stamp inputs) reaches its managed row
+    // and its generated crate there; build no longer runs that step itself.
+    let root = configure_implicitly(&args)?;
+
     // RFC-0104 D5 / issue 1780 — the generated message crates are the LOCAL
-    // half, a function of the host's ament install. Before planning, because
-    // planning reads them (the single-package leaf's manifest path-depends on
-    // `generated/<pkg>`, and every cargo image compiles them): a crate whose
-    // recorded ament inputs moved is regenerated HERE, never compiled stale.
-    // The cmake and west roads ask the same question of their own generated
-    // trees at configure (`nros codegen --ament-witness`).
-    {
-        let root = match &args.workspace {
-            Some(w) => w.clone(),
-            None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
-        };
-        let root = std::fs::canonicalize(&root).unwrap_or(root);
-        let regenerated = crate::cmd::ws::refresh_generated(&root, args.dry_run)?;
-        if !args.dry_run {
-            observe_system(&args, &regenerated);
-        }
-        // phase-517 W8 — the managed message rows, the same step sync runs:
-        // a `<depend>` is one edit, whichever of the two verbs comes next.
-        for m in crate::cmd::ws::refresh_managed_msg_deps(&root, args.dry_run)? {
-            let verb = if args.dry_run { "would write" } else { "wrote" };
-            eprintln!("nros build: {verb} message dependencies → {}", m.display());
-        }
+    // half, a function of the host's ament install. The configure stamp keys
+    // on `AMENT_PREFIX_PATH`'s VALUE, and an `apt` upgrade moves the files
+    // under an unchanged value, so a current stamp cannot answer this: a
+    // crate whose recorded ament inputs moved is regenerated HERE, before
+    // planning reads it, never compiled stale. The cmake and west roads ask
+    // the same question of their own generated trees at configure (`nros
+    // codegen --ament-witness`).
+    let regenerated = crate::cmd::ws::refresh_generated(&root, args.dry_run)?;
+    if !args.dry_run {
+        observe_system(&args, &regenerated);
     }
 
     let mut plans = plan_with_host_tools(&args)?;
@@ -2849,6 +2846,42 @@ pub fn run(args: Args) -> Result<()> {
             None => Err(e),
         },
     }
+}
+
+/// RFC-0120 D3 (phase-530 W1) — `nros build`'s and `nros run`'s implicit
+/// configure: [`crate::cmd::configure::ensure_current`] for the image(s) the
+/// build names, before anything plans. Returns the project root, resolved as
+/// planning resolves it (`--workspace`, else the working directory).
+///
+/// Called from the two front doors only, NEVER from planning: configure
+/// itself plans (stage 4) under the project's lock, which is not re-entrant.
+/// No image named means configure's own default selection (an empty slice) —
+/// never skipped, because a west or cmake leaf's selection marker moves only
+/// through configure. `--board` names an image, so it is resolved to that
+/// image here exactly as planning resolves it.
+pub(crate) fn configure_implicitly(args: &Args) -> Result<PathBuf> {
+    let root = match &args.workspace {
+        Some(w) => w.clone(),
+        None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
+    };
+    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    let images = match &args.board {
+        Some(want) => {
+            if let Some(why) = crate::cmd::build_next::refuse_board_with(&args.images, args.all) {
+                eyre::bail!("{why}");
+            }
+            let nros_root =
+                crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
+            vec![crate::cmd::build_next::images_for_board(
+                &root,
+                nros_root.as_deref(),
+                want,
+            )?]
+        }
+        None => args.images.clone(),
+    };
+    crate::cmd::configure::ensure_current(&root, &images, args.dry_run, args.offline)?;
+    Ok(root)
 }
 
 /// RFC-0104 D9 (phase-485 W4) — what can be checked BEFORE the build: each
@@ -8075,7 +8108,7 @@ mod single_package_tests {
     }
 
     #[test]
-    fn a_leaf_whose_components_were_never_synced_names_nros_sync() {
+    fn a_leaf_left_unsynced_after_configure_is_an_internal_error() {
         let tmp = tempfile::tempdir().unwrap();
         let leaf = leaf(tmp.path());
         let mut sys = std::fs::read_to_string(leaf.join("system.toml")).unwrap();
@@ -8084,7 +8117,10 @@ mod single_package_tests {
         let e = plan_builds(&args(&leaf, &[]))
             .expect_err("no model yet")
             .to_string();
-        assert!(e.contains("nros sync"), "{e}");
+        assert!(
+            e.contains("configure ran and left") && e.contains("unsynced — a bug"),
+            "{e}"
+        );
     }
 
     /// Issues 1296/1308 — the C/C++ shape of a single-package leaf, with the
