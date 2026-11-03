@@ -63,6 +63,9 @@ set(_NROS_WORKSPACE_DIR "${CMAKE_CURRENT_LIST_DIR}"
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCheckoutRoot.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
+# phase-530 W5 -- `nros_configure_hook`, the one `nros configure` call every
+# hooked host makes (RFC-0120 D5).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosConfigureHook.cmake")
 # phase-484 W8 — refuse a retired `NANO_ROS_*` name the workspace set.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRetiredNames.cmake")
 nros_refuse_retired_names()
@@ -214,7 +217,7 @@ function(nano_ros_workspace)
     cmake_parse_arguments(_NRW
         "ORDER_FROM_DEPENDS"
         "SYSTEM;BACKEND;PLATFORM;EDITION;NROS_REPO_DIR;NANO_ROS_ROOT;WORKSPACE_ROOT"
-        "SUBDIRS"
+        "SUBDIRS;IMAGES"
         ${ARGN})
 
     # phase-484 W8 — `NROS_REPO_DIR` is the keyword; the retired `NANO_ROS_ROOT`
@@ -271,6 +274,32 @@ function(nano_ros_workspace)
     # MODULE directory, unrelated to this. Pre-existing, and worth reading twice.
     set(NROS_WORKSPACE_DIR "${_NRW_WORKSPACE_ROOT}"
         CACHE INTERNAL "issue 0949: the workspace root board-facts resolves from")
+
+    # phase-530 W5 (RFC-0120 D5) -- `nros configure` for the image this
+    # configure builds, BEFORE the import below and every reader in it, so a
+    # plain `cmake -S build/<coord>` takes one pass. The project is this
+    # workspace (the caller said so: WORKSPACE_ROOT), the system.toml its
+    # bringup's. The image: the identity `nros build` passes
+    # (`-DNROS_CONFIGURED_IMAGE`), else `-DNROS_IMAGE`, else the images the
+    # generated root states it was written for (`IMAGES`): one is configured
+    # and located; several (a coordinate shared by images, before phase-530
+    # W3's union) are each configured and none is located; a root that names
+    # none (hand-written) configures every image and locates none.
+    # Under `nros build` it finds the stamp current and returns at once.
+    if(_NRW_SYSTEM)
+        if(DEFINED NROS_CONFIGURED_IMAGE AND NOT "${NROS_CONFIGURED_IMAGE}" STREQUAL "")
+            set(_nrw_image_arg IMAGE "${NROS_CONFIGURED_IMAGE}")
+        elseif(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
+            set(_nrw_image_arg IMAGE "${NROS_IMAGE}")
+        elseif(NOT "${_NRW_IMAGES}" STREQUAL "")
+            set(_nrw_image_arg IMAGES ${_NRW_IMAGES})
+        else()
+            set(_nrw_image_arg ALL_IMAGES)
+        endif()
+        nros_configure_hook(DIR "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}"
+            PROJECT "${_NRW_WORKSPACE_ROOT}" ${_nrw_image_arg}
+            ROAD "nano_ros_workspace()")
+    endif()
 
     # Defaults: backend = zenoh, platform = posix, ROS edition = humble.
     if(NOT _NRW_BACKEND)

@@ -382,6 +382,17 @@ pub fn render(
     if !spec.system.is_empty() {
         out.push_str(&format!("    SYSTEM   {}\n", spec.system));
     }
+    // phase-530 W5 (RFC-0120 D5) — the images this root was written for, so a
+    // plain `cmake -S` of it (no `nros build` to pass `-DNROS_CONFIGURED_IMAGE`)
+    // can still name the ONE image its `nros configure` hook configures and
+    // locates. Bare ids: machine-agnostic, like every other line here.
+    if !spec.entries.is_empty() {
+        out.push_str("    IMAGES");
+        for e in &spec.entries {
+            out.push_str(&format!(" {}", e.image));
+        }
+        out.push('\n');
+    }
     out.push_str("    ORDER_FROM_DEPENDS\n");
     out.push_str("    SUBDIRS\n");
     for (rel, name) in &subdirs {
@@ -627,6 +638,44 @@ mod tests {
         let body = render(&d, &root.join("build/posix"), &spec(root)).expect("renders");
         assert!(body.contains("c_pkg"), "{body}");
         assert!(!body.contains("rust_pkg"), "{body}");
+    }
+
+    #[test]
+    fn a_generated_root_names_its_images_to_the_configure_hook() {
+        // phase-530 W5 (RFC-0120 D5): a plain `cmake -S` of this root has no
+        // `nros build` to pass `-DNROS_CONFIGURED_IMAGE`, so the root states
+        // the images it was written for and `nano_ros_workspace()`'s hook
+        // configures (and locates) the one it names.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
+        let mut sp = spec(root);
+        let entry = |image: &str| CmakeEntry {
+            name: format!("{image}_entry"),
+            image: image.to_string(),
+            launch: "default".to_string(),
+            args: vec![],
+            lang: Language::C,
+            deploy: "linux".to_string(),
+            panic: None,
+            domain_id: None,
+        };
+        sp.entries = vec![entry("linux")];
+        let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
+        let call = body
+            .split("nano_ros_workspace(")
+            .nth(1)
+            .and_then(|b| b.split(')').next())
+            .unwrap_or_else(|| panic!("no nano_ros_workspace call: {body}"));
+        assert!(call.contains("    IMAGES linux\n"), "{body}");
+
+        sp.entries = vec![entry("a"), entry("b")];
+        let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
+        assert!(body.contains("    IMAGES a b\n"), "{body}");
+
+        sp.entries = vec![];
+        let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
+        assert!(!body.contains("IMAGES"), "no entry, no claim: {body}");
     }
 
     #[test]

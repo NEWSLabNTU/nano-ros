@@ -148,6 +148,21 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
     include("${NROS_REPO_DIR}/cmake/NanoRosCodegenCore.cmake")
 endif()
 nano_ros_read_leaf_system()
+# phase-530 W5 (RFC-0120 D5) -- the hooked CMake road runs `nros configure` for
+# this leaf's image BEFORE its first reader (the entity facts and census
+# below, the seeds `nros_find_interfaces()` and the Corrosion imports read),
+# so they read configure's answer and a plain `cmake -S` takes one pass. The
+# image is the one `nano_ros_read_leaf_system()` just resolved:
+# `-DNROS_IMAGE`, else the leaf's `default_images`. Only for the TOP-LEVEL
+# leaf: a member package of a larger configure is not the image being built,
+# and `nano_ros_workspace()` has already configured the workspace. A guest (no
+# system.toml) is unchanged; a no-op inside the census's host build; once per
+# configure; a digest comparison under `nros build`, which configured first.
+if(NROS_LEAF_SYSTEM AND CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    include("${NROS_REPO_DIR}/cmake/NanoRosConfigureHook.cmake")
+    nros_configure_hook(DIR "${CMAKE_CURRENT_SOURCE_DIR}" IMAGE "${NROS_EXPORT_IMAGE}"
+        ROAD "find_package(nano_ros)")
+endif()
 if(NROS_LEAF_SYSTEM)
     # Deployment identity (RFC-0098 D5): the leaf's locator and domain, in
     # directory scope, where no `-D` spoke (NanoRosPackageXml.cmake).

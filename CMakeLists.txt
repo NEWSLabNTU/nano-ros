@@ -6,6 +6,21 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRetiredNames.cmake")
 nros_refuse_retired_names()
 
+# phase-530 W5 (RFC-0120 D5) -- a project that pulls nano-ros in with a bare
+# `add_subdirectory(<nano-ros>)` (no `find_package(nano_ros)`) is a hooked
+# CMake road too: `nros configure` runs for the CONSUMER's image (its
+# `system.toml` beside its top-level `CMakeLists.txt`) before any reader in
+# this tree. The image is `-DNROS_IMAGE`, else the consumer's
+# `default_images`. A no-op when `find_package(nano_ros)` or
+# `nano_ros_workspace()` already configured in this host configure, for a
+# guest consumer (no system.toml), and inside the census's host build.
+if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
+   AND EXISTS "${CMAKE_SOURCE_DIR}/system.toml")
+    include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosConfigureHook.cmake")
+    nros_configure_hook(DIR "${CMAKE_SOURCE_DIR}" IMAGE "${NROS_IMAGE}"
+        ROAD "add_subdirectory(nano-ros)")
+endif()
+
 # ---------------------------------------------------------------------------
 # Phase 137 — Top-level entry point for source-distribution consumption.
 #

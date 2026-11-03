@@ -53,13 +53,15 @@
 # A read with NO seed
 # =============================================================================
 #
-# A configure nothing configured in front of -- a plain `cmake -S` of a leaf
-# until phase-530 W5 adds the cmake hook -- still has the producer-after-reader
-# lag, and still needs the old lever. Only there do `nros_promise_read` and
-# `nros_promise_check` delegate to `NanoRosReconfigure.cmake`: this file is its
-# ONE remaining caller, and phase-530 W7 deletes both halves together. A Zephyr
-# configure never reaches it: the module hook configures first, so every
-# reader there is seeded.
+# Every hooked host now runs `nros configure` first (phase-530 W5 added the
+# CMake hook, `cmake/NanoRosConfigureHook.cmake`). A read is still UNSEEDED
+# where configure states no answer for it: a standalone CMake leaf, for which
+# configure resolves no image dir (no `resolved-message-bounds.cmake`), and a
+# workspace root that names no single image. Only there do `nros_promise_read`
+# and `nros_promise_check` delegate to `NanoRosReconfigure.cmake`: this file is
+# its ONE remaining caller, and phase-530 W7 deletes both halves together. On
+# the plain CMake leaf the delegation costs no pass (measured, phase-530 W5):
+# the bounds fragment is no configure dependency there, so its arm never fires.
 
 include_guard(GLOBAL)
 

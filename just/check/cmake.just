@@ -523,6 +523,22 @@ resolved-seed:
     fi
     ./tests/cmake-resolved-seed-tests.sh
 
+# phase-530 W5 (RFC-0120 D5) -- every hooked host configure runs `nros configure`
+# through ONE helper (`nros_configure_hook`): once per configure, the image the
+# configure builds, no-op for a guest and inside the census host build, FATAL on
+# a failed configure; and the reach -- every hooked entry calls it, and nothing
+# else spells the command. A stand-in CLI, so seconds; same skip ledger.
+configure-hook:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip configure-hook "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-configure-hook-tests.sh
+
 # phase-530 W4 (RFC-0120 D6 case 4, issue 1699) -- a changed Kconfig default
 # reaches an EXISTING Zephyr build dir in ONE configure: the module's stamp is
 # written by the pre-Kconfig hook. A real Zephyr configure of a hello-world
