@@ -238,34 +238,27 @@ pub(crate) fn input_digest(project: &Path) -> Result<String> {
     input_digest_with_env(project, &real_env())
 }
 
-/// The digest-input variables as the process sees them, for a test that
-/// injects them. `NROS_INTERFACE_SEARCH_PATH` reads as unset: production
-/// derives it per project ([`project_env`]), and the process value is
-/// written by any configure running on another test thread.
+/// The digest-input variables for a test that injects them: what
+/// [`project_env`] gives, so a test's stamp and its check agree with the
+/// production pair whatever the shell exported.
 #[cfg(test)]
 fn real_env() -> Vec<(String, Option<String>)> {
-    ENV_INPUTS
-        .iter()
-        .map(|v| {
-            let val = (*v != "NROS_INTERFACE_SEARCH_PATH")
-                .then(|| std::env::var(v).ok())
-                .flatten();
-            ((*v).to_string(), val)
-        })
-        .collect()
+    project_env()
 }
 
-/// The digest-input variables a configure of `project` runs with. A variable
-/// configure DERIVES per project is taken from that derivation, never from the
-/// process environment, which holds the value for whichever project this
-/// process configured last: the stamp's writer and its reader must compute
-/// the same value for the same project.
-fn project_env(project: &Path) -> Vec<(String, Option<String>)> {
+/// The digest-input variables a configure's stamp is written and checked
+/// with. `NROS_INTERFACE_SEARCH_PATH` is the USER's value only, never the
+/// process's: configure writes the process value for whichever project it
+/// configured LAST, so reading it back digested another project's path (the
+/// gate's `cargo test` runs configures of different projects on threads of
+/// one process). Unset, [`input_digest_with`] digests configure's default for
+/// THIS project.
+fn project_env() -> Vec<(String, Option<String>)> {
     ENV_INPUTS
         .iter()
         .map(|v| {
             let val = if *v == "NROS_INTERFACE_SEARCH_PATH" {
-                crate::cmd::configure::interface_search_path_for(project)
+                crate::cmd::configure::user_interface_search_path()
                     .map(|p| p.to_string_lossy().into_owned())
             } else {
                 std::env::var(v).ok()
@@ -316,9 +309,8 @@ pub(crate) fn input_digest_with(
         // no configure (`nros locate configured`, asked by every hooked host)
         // digests the same project alike.
         if *var == "NROS_INTERFACE_SEARCH_PATH" && val.is_none() {
-            val = crate::cmd::ws::interface_search_root(project)
-                .ok()
-                .map(|r| r.display().to_string());
+            val = crate::cmd::configure::default_interface_search_path(project)
+                .map(|r| r.to_string_lossy().into_owned());
         }
         feed(var, val.unwrap_or_default().as_bytes());
     }
@@ -462,7 +454,7 @@ pub(crate) fn is_current(
         project,
         image,
         named,
-        &project_env(project),
+        &project_env(),
         flags,
         current_launch_resolver().as_deref(),
         &real_ament_moved,
@@ -507,7 +499,7 @@ pub(crate) fn current_launch_resolver() -> Option<PathBuf> {
 /// inputs as they are NOW (after it wrote), and the environment it ran in.
 pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
     Ok(Stamp {
-        digest: input_digest_with(project, &project_env(project), flags)?,
+        digest: input_digest_with(project, &project_env(), flags)?,
         codegen_version: codegen_version(),
         ament_prefix: std::env::var(AMENT_VAR).ok(),
         launch_resolve: current_launch_resolver(),
@@ -823,6 +815,9 @@ mod tests {
         let p = tmp("stamp-search-path");
         std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
         let previous = std::env::var_os(VAR);
+        // Capture the user's value (the process's, before any write) FIRST,
+        // the way a configure process captures it before it exports.
+        let _ = crate::cmd::configure::user_interface_search_path();
         // configure's own serialised writer, the one the race went through.
         let set = |v: Option<&std::ffi::OsStr>| crate::cmd::configure::set_env(VAR, v);
         // Another project's configure exported its path while this one's
