@@ -712,17 +712,53 @@ impl TrailingBuf {
 /// `Option` branch.
 pub(crate) type AgeMon = (
     &'static crate::executor::monitor::SubMonitorCell,
-    fn() -> u64,
+    Option<fn() -> u64>,
 );
+
+/// Record one stamped take on an age cell: its age when an epoch source is
+/// installed, else the take alone (issue 2215, `observe_unaged`).
+#[inline]
+fn observe_stamp(
+    cell: &crate::executor::monitor::SubMonitorCell,
+    epoch: Option<fn() -> u64>,
+    raw: &[u8],
+    off: usize,
+) {
+    if let Some(stamp_us) = crate::executor::monitor::peek_stamp_us(raw, off) {
+        match epoch {
+            Some(epoch) => cell.observe(stamp_us, epoch()),
+            None => cell.observe_unaged(),
+        }
+    }
+}
 
 /// W3b.5 — peek the message stamp from the raw CDR buffer and record its
 /// take-age. Compiled away per-type when `M::STAMP_OFFSET` is `None`.
 #[inline]
 pub(crate) fn observe_age<M: RosMessage>(raw: &[u8], mon: &Option<AgeMon>) {
-    if let (Some((cell, epoch)), Some(off)) = (mon, M::STAMP_OFFSET)
-        && let Some(stamp_us) = crate::executor::monitor::peek_stamp_us(raw, off)
-    {
-        cell.observe(stamp_us, epoch());
+    if let (Some((cell, epoch)), Some(off)) = (mon, M::STAMP_OFFSET) {
+        observe_stamp(cell, *epoch, raw, off);
+    }
+}
+
+/// Issue 2215 — the C/C++ callback path's age hook. That path carries no Rust
+/// type, so the stamp's CDR offset comes from the registration (the C++
+/// template reads it off the message type, `M::STAMP_OFFSET`, and passes it in
+/// `nros_cpp_subscription_options_t::stamp_offset`). Bound after registration
+/// by `Executor::bind_raw_subscription_stamp`; `None` = no age row on this
+/// topic, or the type carries no stamp.
+#[derive(Clone, Copy)]
+pub(crate) struct RawAgeMon {
+    pub(crate) cell: &'static crate::executor::monitor::SubMonitorCell,
+    pub(crate) epoch: Option<fn() -> u64>,
+    pub(crate) stamp_offset: u16,
+}
+
+/// Issue 2215 — record a C/C++ subscription's take on its age row.
+#[inline]
+pub(crate) fn observe_age_raw(raw: &[u8], mon: &Option<RawAgeMon>) {
+    if let Some(m) = mon {
+        observe_stamp(m.cell, m.epoch, raw, m.stamp_offset as usize);
     }
 }
 
@@ -2386,6 +2422,8 @@ pub(crate) struct SubBufferedRawCEntry {
     /// phase-476 W2 — destroys that copy when the entry is dropped. Declared
     /// after `handle`, so the subscriber is gone before its capture is.
     pub(crate) capture: CaptureGuard,
+    /// Issue 2215 — the contracted age row this subscription feeds, if any.
+    pub(crate) age_mon: Option<RawAgeMon>,
 }
 
 // ============================================================================
@@ -2413,6 +2451,8 @@ pub(crate) struct SubInplaceRawCEntry {
     pub(crate) context: *mut core::ffi::c_void,
     /// Same contract as [`SubBufferedRawCEntry::capture`].
     pub(crate) capture: CaptureGuard,
+    /// Same contract as [`SubBufferedRawCEntry::age_mon`].
+    pub(crate) age_mon: Option<RawAgeMon>,
 }
 
 /// Dispatch for in-place C-style raw subscriptions.
@@ -2433,16 +2473,19 @@ pub(crate) unsafe fn sub_inplace_raw_c_try_process(
         handle,
         callback,
         context,
+        age_mon,
         ..
     } = entry;
     let context = *context;
     let callback = *callback;
+    let age_mon = *age_mon;
     drain_in_place(|| {
         // Phase 8 — hooked INSIDE the borrow closure, which the drain loop
         // re-enters once per pending sample, so N samples produce N spans. The
         // pair is fully contained in the closure, so the `?` below can never
         // fire between a start and its end.
         handle.process_raw_in_place(|raw| {
+            observe_age_raw(raw, &age_mon);
             trace_take(desc_idx, raw, None);
             trace_cb_start(desc_idx);
             unsafe { callback(raw.as_ptr(), raw.len(), context) };
@@ -2574,6 +2617,7 @@ pub(crate) unsafe fn sub_buffered_raw_c_try_process(
         // `reader_acquire` comes back empty.
         BufferStrategy::Triple(tb) => match tb.reader_acquire() {
             Some((data, len)) => {
+                observe_age_raw(&data[..len], &entry.age_mon);
                 trace_take(desc_idx, &data[..len], None);
                 trace_cb_start(desc_idx);
                 unsafe { (entry.callback)(data.as_ptr(), len, entry.context) };
@@ -2590,6 +2634,7 @@ pub(crate) unsafe fn sub_buffered_raw_c_try_process(
         BufferStrategy::Ring(ring) => {
             let mut did_work = false;
             while let Some((data, len)) = ring.try_pop() {
+                observe_age_raw(&data[..len], &entry.age_mon);
                 trace_take(desc_idx, &data[..len], None);
                 trace_cb_start(desc_idx);
                 unsafe { (entry.callback)(data.as_ptr(), len, entry.context) };

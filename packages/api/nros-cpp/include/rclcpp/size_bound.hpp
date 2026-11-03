@@ -32,6 +32,7 @@
 #define NROS_RCLCPP_SIZE_BOUND_HPP
 
 #include <cstddef>
+#include <cstdint>
 
 namespace rclcpp {
 namespace detail {
@@ -234,6 +235,21 @@ template <class M> struct rx_buffer_capacity {
 /// tell apart: before W7 the tree had five registration sites passing 0 with an
 /// `M` sitting in scope, and they were indistinguishable from this one.
 constexpr size_t rx_bound_unknown = 0;
+
+/// Issue 2215 — the CDR byte offset of `M`'s `stamp.sec` (encapsulation header
+/// included), or 0 when `M` carries no stamp. The C++ message pack states it as
+/// `M::STAMP_OFFSET` exactly when the Rust pack states `RosMessage::STAMP_OFFSET`
+/// (a first field that is a `Header` or a bare `builtin_interfaces/Time`); a type
+/// without the member reads 0. A registration passes it in
+/// `nros_cpp_subscription_options_t::stamp_offset`, which is what lets a C++
+/// subscription feed its topic's contracted age row (`silence-runtime`,
+/// `max-age-runtime`, the hazard observer) as the Rust typed paths do.
+template <class M, class = void> struct stamp_offset {
+    static constexpr uint16_t value = 0;
+};
+template <class M> struct stamp_offset<M, decltype(void(M::STAMP_OFFSET))> {
+    static constexpr uint16_t value = static_cast<uint16_t>(M::STAMP_OFFSET);
+};
 
 } // namespace rclcpp
 

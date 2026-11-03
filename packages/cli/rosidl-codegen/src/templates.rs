@@ -842,6 +842,11 @@ pub struct MessageCppHeaderTemplate<'a> {
     /// C++ string literal. Built in Rust rather than in the template because it
     /// interpolates the reason, which is arbitrary text.
     pub unbounded_message: Option<String>,
+    /// Issue 2215 — the CDR offset of `stamp.sec`, the same fact as
+    /// [`MessageNrosTemplate::stamp_offset`] and from the same predicate;
+    /// emitted as `STAMP_OFFSET` so a C++ subscription can feed its topic's
+    /// contracted age row. `None` = no stamp, no member.
+    pub stamp_offset: Option<usize>,
 }
 
 /// TYPES half of the split C++ FFI glue (phase-306 W1, issue 0253): the

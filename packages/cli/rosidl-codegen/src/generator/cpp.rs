@@ -410,6 +410,7 @@ pub fn generate_cpp_message_package_with_lookup(
         unbounded_reason: bound.reason,
         unbounded_token: bound.token,
         unbounded_message,
+        stamp_offset: super::msg::stamp_offset_for(message),
     };
     let header = crate::render::render("message_cpp.hpp", &header_template)
         .map_err(|e| GeneratorError::RenderError(e.to_string()))?;

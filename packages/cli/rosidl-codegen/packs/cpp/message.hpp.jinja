@@ -78,6 +78,12 @@ struct {{ message_name }} {
     // Type metadata
     static constexpr const char* TYPE_NAME = "{{ package_name }}::msg::dds_::{{ message_name }}_";
     static constexpr const char* TYPE_HASH = "{{ type_hash }}";
+{%- if stamp_offset is not none %}
+    /// Issue 2215 — CDR byte offset of `stamp.sec` (the encapsulation header
+    /// included): `rclcpp::stamp_offset<M>` reads it, and a subscription passes
+    /// it so its stamped takes feed the topic's contracted age row.
+    static constexpr uint16_t STAMP_OFFSET = {{ stamp_offset }};
+{%- endif %}
     /// ESTIMATE, not a bound — `rosidl_codegen::types::compute_serialized_size_max`
     /// charges a flat 512 bytes per nested message and a flat default capacity
     /// per string, and always returns a value, so it can never say "unbounded"

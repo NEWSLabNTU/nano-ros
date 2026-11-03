@@ -512,6 +512,7 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
     // option default put this registration on issue 1319's ~~`c_raw_no_hint`~~ row
     // while the sizing descriptor credited the entry with a supplied hint.
     ffi_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
+    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
     nros_cpp_ret_t ret = nros_cpp_subscription_register(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, &Subscription<M>::message_trampoline,
         &out, &handle, &ffi_options);
@@ -561,6 +562,7 @@ Result Node::create_subscription_in_group(const ::rclcpp::CallbackGroup& group,
     // phase-456 W7 — see the ungrouped form above. A grouped subscription costs
     // the arena exactly what an ungrouped one does, so it states the same bound.
     ffi_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
+    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
     nros_cpp_ret_t ret = nros_cpp_subscription_register(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, &Subscription<M>::message_trampoline,
         &out, &handle, &ffi_options);
@@ -611,6 +613,7 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
     // how many bytes the sample itself needs, so this is the same bound the
     // plain callback form states.
     ffi_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
+    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
     nros_cpp_ret_t ret = nros_cpp_subscription_register_with_info(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
         &Subscription<M>::message_info_trampoline, &out, &handle, &ffi_options);
@@ -662,6 +665,7 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
     // phase-456 W7 — the validated path deserializes the same bytes; the safety
     // status is computed from them, not received alongside them.
     ffi_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
+    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
     nros_cpp_ret_t ret = nros_cpp_subscription_register_validated(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
         &Subscription<M>::message_safety_trampoline, &out, &handle, &ffi_options);
@@ -903,6 +907,7 @@ inline Result register_subscription_message_info(::rclcpp::Node& node, const cha
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     nros_cpp_subscription_options_t opts = {};
     opts.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
+    opts.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
     return Result(nros_cpp_subscription_register_message_info(
         h, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, invoke, heap, drop, out_handle_id, &opts));
 }
@@ -950,6 +955,7 @@ inline Result register_subscription_capturing(::rclcpp::Node& node, const char* 
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     nros_cpp_subscription_options_t opts = {};
     opts.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
+    opts.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
     return Result(nros_cpp_subscription_register_capturing(
         h, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, invoke,
         reinterpret_cast<const uint8_t*>(&fn), sizeof(Fn), destroy, out_handle_id, &opts));

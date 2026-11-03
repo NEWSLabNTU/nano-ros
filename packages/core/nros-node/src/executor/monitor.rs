@@ -167,6 +167,17 @@ impl SubMonitorCell {
         self.max_age_ms.fetch_max(age_ms, Ordering::Relaxed);
         self.takes.fetch_add(1, Ordering::Relaxed);
     }
+
+    /// Issue 2215 -- a stamped take on an image with NO epoch source: the
+    /// stamp was read (the type carries one and it is a real time), so the
+    /// take is the silence rule's evidence exactly as [`Self::observe`]'s is,
+    /// but its age cannot be computed against a clock that is not on the
+    /// stamp's epoch, so `max_age_ms` is left alone and `max-age-runtime`
+    /// judges nothing on such an image. An unstamped take is still not
+    /// evidence: nothing here counts arrivals.
+    pub fn observe_unaged(&self) {
+        self.takes.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 /// Peek `Time { i32 sec; u32 nanosec }` little-endian at `offset` in a

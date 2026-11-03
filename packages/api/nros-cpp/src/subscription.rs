@@ -248,7 +248,15 @@ pub struct nros_cpp_subscription_options_t {
     /// Scheduling-context slot; `0` = inherit the executor default.
     pub sched_context: u8,
     /// Reserved; must be zero.
-    pub _reserved: [u8; 3],
+    pub _reserved: u8,
+    /// Issue 2215 — the CDR byte offset of the message's `stamp.sec`
+    /// (encapsulation header included), or `0` when the type carries no
+    /// stamp. The C++ templates fill it from the message type's
+    /// `STAMP_OFFSET`; with it the subscription feeds its topic's contracted
+    /// age row (`silence-runtime`, `max-age-runtime`, the hazard observer)
+    /// as the Rust typed paths do. Took two of the three reserved bytes, so
+    /// the struct's size and the other fields' offsets are unchanged.
+    pub stamp_offset: u16,
     /// Callback group name; NULL = default. Available on ALL THREE register
     /// variants now, which it was not before.
     pub callback_group: *const c_char,
@@ -263,7 +271,8 @@ impl Default for nros_cpp_subscription_options_t {
         Self {
             rx_buffer_hint: 0,
             sched_context: 0,
-            _reserved: [0; 3],
+            _reserved: 0,
+            stamp_offset: 0,
             callback_group: core::ptr::null(),
         }
     }
@@ -293,6 +302,16 @@ unsafe fn read_subscription_options(
     }
     let o = unsafe { &*options };
     (o.sched_context, o.callback_group, o.rx_buffer_hint)
+}
+
+/// Issue 2215 — the stamp offset the options carry; `0` (or NULL options) =
+/// none.
+unsafe fn read_subscription_stamp(options: *const nros_cpp_subscription_options_t) -> u16 {
+    if options.is_null() {
+        0
+    } else {
+        unsafe { (*options).stamp_offset }
+    }
 }
 
 /// Phase 189.M3.x — register a **callback-style** subscription in the executor
@@ -408,6 +427,15 @@ unsafe fn subscription_register_impl(
             capture_drop,
         );
 
+    // Issue 2215 — feed the topic's contracted age row from this
+    // subscription's stamped takes. No row, or no stamp: nothing to bind.
+    let stamp_offset = unsafe { read_subscription_stamp(options) };
+    if let Ok(handle_id) = &result
+        && stamp_offset != 0
+    {
+        ctx.executor
+            .bind_raw_subscription_stamp(*handle_id, topic_str, stamp_offset);
+    }
     match result {
         Ok(handle_id) => {
             // Bind the (now-real) arena handle to the requested sched context.
