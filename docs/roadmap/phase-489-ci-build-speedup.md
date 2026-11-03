@@ -966,6 +966,35 @@ copy-out road. No lane claims them as out of scope, and none builds them, so
 issue 1453's "every copy-out template" does not hold for these five. W8 does
 not change that. It shards what runs today, and 2219 carries the decision.
 
+**Landed (2026-11-03), validated by dispatch.** The job is a 3-entry
+matrix (`check / template-copy-out [k/3]`). The shard plan is
+`check-template-copy-out.sh --shard k/3 --preload-last ament-census-sizing`,
+reached through `NROS_TEMPLATE_COPY_OUT_SHARD` on `just check
+template-copy-out`. The measured unit weights live in
+`.config/template-copy-out-weights.txt`. `check-merge-group-gates` rule 5
+refuses a `*_SHARD` that is not `${{ matrix.X }}/n` over a matrix listing
+exactly `1..n`. A mutation of `gate.yml` (`/2` against `[1, 2, 3]`) is refused.
+
+`workflow_dispatch` run 41558995861 on the branch:
+
+| | before (20 merge groups, 2026-11-02) | after (run 41558995861) |
+| --- | --- | --- |
+| `template-copy-out` wall | 36.9 min median (one job) | 15.8 / 14.7 / 14.6 min (shards 1/2/3) |
+| hosts | 16 slow, 4 EPYC 9V45 | EPYC 7763, Xeon 8573C, EPYC 7763 (all slow class) |
+| projects built copied out | 12 per run | 4 + 4 + 4 = 12, the same set |
+| longest sibling on the merge-group set | `test-lane-contracts` 15.3 min median | `template-copy-out [1/3]` 15.8, `workspace-all` 12.0, `test-lane-contracts` 10.5 |
+| hosted runner time for the job | ~37 job-min | 45.1 job-min (+22 %) |
+
+Shard 2 ran the self-test, both controls included. Shard 3 ran
+`ament-census-sizing` (OK). The run's own conclusion is `failure` only
+because of `check / build tier + no-std (nightly/manual only)`, which runs on
+`workflow_dispatch` and `schedule` and never on `merge_group`. That job was
+already red on the last three scheduled gate runs (41563531517,
+41375507503, 41263488044).
+
+The acceptance median needs 20 merge groups after the merge; record it here
+when they exist.
+
 **Acceptance:** the `gate.yml` `merge_group` median over 20 successful
 runs is back under 25 min, which is W1's own target. The phase met it on
 2026-10-12, and nothing here changes lane membership. `template-copy-out` is no

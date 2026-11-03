@@ -19,10 +19,12 @@ So for each gate in `MERGE_GATING` below this asserts, against `gate.yml`:
      does not hear is decorative (R3 of `check-default-gates-run-somewhere`);
   4. no step, job or `sibling` line admits `pull_request` — the decision was
      "batch thorough", and a copy on the PR lane is a cost nobody agreed to;
-  5. a SHARDED host (phase-489 W8: the step sets a `*_SHARD` variable) takes
-     its shard from a matrix that lists exactly `1..n` for the `<k>/<n>` it
-     spells. Each shard builds only its share, so a matrix that drops an entry,
-     or a literal `2/3`, quietly drops units while every shard reads green.
+  5. ANY sharded step in the CI workflows (phase-489 W8: the step
+     sets a `*_SHARD` variable) takes its shard from a matrix that lists
+     exactly `1..n` for the `<k>/<n>` it spells. Each shard runs only its
+     share, so a matrix that drops an entry, or a literal `2/3`, quietly drops
+     work while every shard reads green. This rule covers every job in
+     `SHARD_WORKFLOWS`, not just the merge-gating ones.
 
 AUTHORED, deliberately: the list is a record of decisions, and there is nothing
 to derive a decision from. Each entry names the decision that put it here.
@@ -40,6 +42,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 GATE_YML = ROOT / ".github" / "workflows" / "gate.yml"
+# Workflows whose sharded jobs rule 5 checks.
+SHARD_WORKFLOWS = [GATE_YML, ROOT / ".github" / "workflows" / "host-tests.yml"]
 
 # gate name -> the decision that makes it merge-gating.
 MERGE_GATING = {
@@ -129,7 +133,6 @@ def check(doc, text):
                             f"merge_group, not the PR lane ({why})")
             if "merge_group" not in step_ev:
                 continue
-            errs.extend(_shard_errors(job, step, where))
             if step.get("continue-on-error"):
                 errs.append(f"{where} is continue-on-error, so its red cannot eject ({why})")
                 continue
@@ -156,6 +159,16 @@ def check(doc, text):
             heard = True
         if not heard:
             errs.append(f"`{gate}` does not gate merge_group through the required `CI` ({why})")
+    return errs
+
+
+def shard_errors(doc, label):
+    """Rule 5 over EVERY step of a workflow."""
+    errs = []
+    for jid, job in (doc.get("jobs", {}) or {}).items():
+        for step in (job or {}).get("steps", []) or []:
+            if isinstance(step, dict):
+                errs.extend(_shard_errors(job, step, f"{label}: job `{jid}`, step `{step.get('name', '?')}`"))
     return errs
 
 
@@ -206,7 +219,8 @@ assert SHARDED != SAMPLE and "shard: [1, 2, 3]" in SHARDED
 
 def selftest():
     def run(text):
-        return check(yaml.safe_load(text), text)
+        doc = yaml.safe_load(text)
+        return check(doc, text) + shard_errors(doc, "sample")
 
     cases = [
         ("the decided placement is clean", SAMPLE, False),
@@ -254,6 +268,8 @@ def main():
         return rc
     doc, text = load()
     errs = check(doc, text)
+    for wf in SHARD_WORKFLOWS:
+        errs.extend(shard_errors(yaml.safe_load(wf.read_text()), wf.name))
     if errs:
         print("check-merge-group-gates: a gate DECIDED to be merge-gating no longer is:",
               file=sys.stderr)
