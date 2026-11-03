@@ -11,13 +11,22 @@
 //! store). This runner never searches `PATH`: a distribution QEMU lacks the
 //! patches the store's carries, and running one nobody chose is how a test
 //! measures the wrong emulator.
+//!
+//! A plan whose link is serial gets the first UART on a host pty
+//! (`-serial pty`), and the runner reports that pty on stderr as
+//! `nros-runner: link <pty>` (RFC-0119 D6) once QEMU names it, so nros can
+//! start the router on the other end.
 
-use std::process::{Command, ExitCode};
+use std::{
+    io::{BufRead, BufReader, Write},
+    process::{Command, ExitCode, Stdio},
+};
 
 use nros_extension::{
+    console,
     describe::Describe,
     exit::RunnerExit,
-    plan::{RunPlan, Verb},
+    plan::{LinkKind, RunPlan, Verb},
     runner,
 };
 
@@ -52,15 +61,67 @@ fn command_line(plan: &RunPlan) -> Result<(std::path::PathBuf, Vec<String>), Str
             nros_qemu_ladder::env_var(&line.exe)
         )
     })?;
+    let mut line = line;
+    if serial_link(plan) {
+        // Ahead of `-kernel`, the last word before the image.
+        let at = line.before_kernel.len().saturating_sub(1);
+        line.before_kernel
+            .splice(at..at, ["-serial".to_string(), "pty".to_string()]);
+    }
     let mut argv = line.argv(&elf.display().to_string());
     argv.extend(plan.passthrough.iter().cloned());
     Ok((exe, argv))
 }
 
+fn serial_link(plan: &RunPlan) -> bool {
+    plan.link
+        .as_ref()
+        .is_some_and(|l| l.kind == LinkKind::Serial)
+}
+
+/// The pty in QEMU's `char device redirected to /dev/pts/N (label ...)`.
+fn redirected_pty(line: &str) -> Option<&str> {
+    let rest = line.split_once("char device redirected to ")?.1;
+    rest.split_whitespace()
+        .next()
+        .filter(|p| p.starts_with('/'))
+}
+
 fn run(plan: &RunPlan) -> RunnerExit {
-    match command_line(plan) {
-        Ok((exe, argv)) => runner::exec(Command::new(exe).args(argv)),
-        Err(e) => runner::fail(e),
+    let (exe, argv) = match command_line(plan) {
+        Ok(c) => c,
+        Err(e) => return runner::fail(e),
+    };
+    if !serial_link(plan) {
+        return runner::exec(Command::new(exe).args(argv));
+    }
+    // Serial: watch QEMU's stderr for the pty it allocated; forward every line.
+    let mut child = match Command::new(&exe)
+        .args(&argv)
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return runner::fail(format!("could not start {}: {e}", exe.display())),
+    };
+    let stderr = child.stderr.take().expect("piped");
+    let watcher = std::thread::spawn(move || {
+        let mut reported = false;
+        let mut err = std::io::stderr();
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            let _ = writeln!(err, "{line}");
+            if !reported && let Some(pty) = redirected_pty(&line) {
+                console::report_link(pty);
+                reported = true;
+            }
+        }
+    });
+    let status = child.wait();
+    let _ = watcher.join();
+    match status {
+        Ok(s) if s.success() => RunnerExit::Success,
+        Ok(_) => RunnerExit::TargetFailed,
+        Err(e) => runner::fail(format!("waiting for {}: {e}", exe.display())),
     }
 }
 
@@ -122,6 +183,25 @@ mod tests {
             e.contains("qemu-system-arm") && e.contains("QEMU_SYSTEM_ARM"),
             "{e}"
         );
+    }
+
+    #[test]
+    fn a_serial_link_puts_the_uart_on_a_pty_and_reports_it() {
+        let args = r#"{"system":"arm","cpu":"cortex-m3","machine":"mps2-an385"}"#;
+        let mut p = plan(args, r#"{"qemu-system-arm":"/q"}"#);
+        p.link = Some(nros_extension::plan::Link {
+            kind: LinkKind::Serial,
+            locator: "serial/UART_0#baudrate=115200".into(),
+            rmw: None,
+        });
+        let (_, argv) = command_line(&p).unwrap();
+        let k = argv.iter().position(|a| a == "-kernel").unwrap();
+        assert_eq!(&argv[k - 2..k], ["-serial", "pty"], "{argv:?}");
+        assert_eq!(
+            redirected_pty("char device redirected to /dev/pts/7 (label serial0)"),
+            Some("/dev/pts/7")
+        );
+        assert_eq!(redirected_pty("qemu: something else"), None);
     }
 
     #[test]
