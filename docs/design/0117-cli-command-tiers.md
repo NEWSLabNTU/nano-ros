@@ -20,7 +20,7 @@ user and to a contributor. Its two siblings are
 [RFC-0118](0118-target-execution-model.md) (how an image is run, flashed and
 monitored) and [RFC-0119](0119-cli-extension-packages.md) (packages that add
 runners and commands). Implemented by
-[phase-526](../roadmap/phase-526-cli-two-tier-restructure.md).
+[phase-526](../roadmap/archived/phase-526-cli-two-tier-restructure.md).
 
 ## Summary
 
