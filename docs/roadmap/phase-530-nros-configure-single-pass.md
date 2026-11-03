@@ -295,8 +295,8 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   same six cold `examples/mps2-an385-freertos/c/*` leaves, parallel first (so
   shared-cache warmth favours the serial run): **664 s** 4-wide against
   **1351 s** one at a time, on the shared, loaded host. Each `census-host` is
-  about 1.8 GB and rebuilds the whole runtime; a shared host target is issue
-  2235.
+  about 1.8 GB and rebuilds the whole runtime; a shared host target is
+  issue 2235.
 
 **Acceptance (measured 2026-11-03, Zephyr 4.4, `native_sim/native/64`).**
 
