@@ -214,6 +214,34 @@ pub fn compose(
     entity_cmake: Option<&str>,
     ceiling: usize,
 ) -> Option<String> {
+    compose_for(tables, entity_cmake, ceiling, SeedBasis::ClosureAllowed)
+}
+
+/// Which bases a seed may derive a knob over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeedBasis {
+    /// The cmake producer's rule, which [`compose`] mirrors byte for byte: the
+    /// take buffer over the linked closure, and the payload classes over the
+    /// subscribed set when the image declares its entities, else the closure.
+    ClosureAllowed,
+    /// A Zephyr west RUST image (phase-530 W3, Ruling R27). It links its
+    /// `Cargo.toml` path-deps, which its `package.xml` does not state, so the
+    /// closure this prices can miss a type the image receives, and a size taken
+    /// over it can be too SMALL. Only the subscribed basis may tighten a knob:
+    /// a closure-basis answer derives nothing (every knob keeps its crate
+    /// default), and the take buffer -- a closure fact on every basis -- is
+    /// never published. No cmake producer recomposes on this road, so no byte
+    /// parity is owed.
+    SubscribedOnly,
+}
+
+/// [`compose`] under a [`SeedBasis`].
+pub fn compose_for(
+    tables: &[BoundTable],
+    entity_cmake: Option<&str>,
+    ceiling: usize,
+    seed_basis: SeedBasis,
+) -> Option<String> {
     if tables.is_empty() {
         return Some(write_output(
             "refused",
@@ -307,6 +335,19 @@ pub fn compose(
 
     let entity = entity_cmake.map(cmake_set_values);
     let join = join_subscribed(entity.as_ref(), &priced, ceiling)?;
+    if seed_basis == SeedBasis::SubscribedOnly && join.basis != "subscribed" {
+        return Some(write_output(
+            "refused",
+            "this image is a Rust application, which links the interface crates its \
+             Cargo.toml names; its package.xml need not name them all, so the closure \
+             priced here is not known to hold every type it receives. Without declared \
+             subscriptions no payload class is derived; each keeps its crate default.",
+            ceiling,
+            &packages,
+            type_count,
+            &Published::default(),
+        ));
+    }
     let tl_retain = tl_retain(entity.as_ref(), &priced);
 
     let mut published = Published {
@@ -367,6 +408,26 @@ pub fn compose(
         ));
     }
 
+    if seed_basis == SeedBasis::SubscribedOnly {
+        // The subscribed classes only; the take buffer is a closure fact.
+        published.payload_status = join.status.clone();
+        published.payload_reason = join.why.clone();
+        published.subscription_count = join.count;
+        if join.status == "derived" {
+            publish_classes(&mut published);
+        }
+        return Some(write_output(
+            "refused",
+            "this image is a Rust application: the take buffer \
+             (NROS_SUBSCRIPTION_BUFFER_SIZE) is sized over the linked closure, which \
+             its package.xml is not known to state in full, so it keeps its crate \
+             default.",
+            ceiling,
+            &packages,
+            type_count,
+            &published,
+        ));
+    }
     published.subscription_buffer_size = Some(max_rx);
     published.largest_type = max_type;
     published.payload_status = join.status.clone();
@@ -742,6 +803,7 @@ pub fn write_west_seed(
     resolved_dir: &std::path::Path,
     probe_codegen_dir: &std::path::Path,
     node_dirs: &[std::path::PathBuf],
+    seed_basis: SeedBasis,
 ) -> Result<std::path::PathBuf, String> {
     let target = resolved_dir.join(RESOLVED_MESSAGE_BOUNDS_NAME);
     let record = resolved_dir.join(RESOLVED_MESSAGE_BOUNDS_INPUTS_NAME);
@@ -793,7 +855,7 @@ pub fn write_west_seed(
             });
         }
         let ceiling = rosidl_codegen::bounds::DEFAULT_SMALL_CLASS_CEILING;
-        let text = compose(&tables, Some(&entity), ceiling).ok_or_else(|| {
+        let text = compose_for(&tables, Some(&entity), ceiling, seed_basis).ok_or_else(|| {
             "the composed text would name a build-dir path, which a seed cannot know".to_string()
         })?;
         Ok((text, inputs_record(&digests, &entity, ceiling)))
@@ -1011,6 +1073,60 @@ mod tests {
         assert!(
             out.contains("set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS 0)\n"),
             "{out}"
+        );
+    }
+
+    /// phase-530 W3 (Ruling R27) -- a Rust west image links its `Cargo.toml`
+    /// path-deps, which `package.xml` does not state, so the closure the seed
+    /// prices can miss a type the image receives. On that road only the
+    /// SUBSCRIBED basis may tighten a knob: a closure-basis answer derives
+    /// nothing (crate defaults kept), and the closure-derived take buffer
+    /// (`NROS_SUBSCRIPTION_BUFFER_SIZE`) is never published.
+    #[test]
+    fn rust_west_seed_refuses_the_closure_basis() {
+        let tables = [BoundTable {
+            package: "std_msgs".into(),
+            rows: vec![bounded("std_msgs/msg/Int32", 8, 12)],
+        }];
+        // No declared entities: the closure basis.
+        let out = compose_for(&tables, None, 2048, SeedBasis::SubscribedOnly).unwrap();
+        assert!(
+            out.contains("set(NROS_MESSAGE_BOUNDS_STATUS \"refused\")\n"),
+            "{out}"
+        );
+        for knob in [
+            "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE",
+            "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS",
+            "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE",
+            "NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE",
+        ] {
+            assert!(
+                !out.contains(knob),
+                "{knob} derived over the closure:\n{out}"
+            );
+        }
+        // The subscribed basis still tightens the classes, never the take buffer.
+        let entity = "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 6)\n\
+                      set(NROS_ENTITY_INVENTORY_STATUS \"derived\")\n\
+                      set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS \"resolved\")\n\
+                      set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS \"std_msgs/msg/Int32=1\")\n";
+        let out = compose_for(&tables, Some(entity), 2048, SeedBasis::SubscribedOnly).unwrap();
+        assert!(
+            out.contains("set(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE 12)\n"),
+            "{out}"
+        );
+        assert!(
+            out.contains("set(NROS_MESSAGE_BOUNDS_BASIS \"subscribed\")\n"),
+            "{out}"
+        );
+        assert!(
+            !out.contains("NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE"),
+            "the take buffer is a closure fact:\n{out}"
+        );
+        // The cmake producer's twin is unchanged: closure basis allowed.
+        assert_eq!(
+            compose_for(&tables, None, 2048, SeedBasis::ClosureAllowed),
+            compose(&tables, None, 2048)
         );
     }
 

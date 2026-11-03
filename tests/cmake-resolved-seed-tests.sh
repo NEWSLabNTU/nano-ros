@@ -559,7 +559,7 @@ else
 $TAKE_OUT"
 fi
 take_declines "one model of the union missing" "composes over 1 models, the resolve over 2"
-take_declines "one model of the union swapped" "it was composed over" \
+take_declines "one model of the union swapped" "model/system_model.yaml, $TAKE_ROOT/model/third.yaml]" \
     "-DPROBE_MODELS=$TAKE_ROOT/model/system_model.yaml;$TAKE_ROOT/model/third.yaml"
 printf 'edited\n' > "$TAKE_ROOT/model/other.yaml"
 take_declines "one model of the union edited in place" "changed since \`nros build\` resolved it" \

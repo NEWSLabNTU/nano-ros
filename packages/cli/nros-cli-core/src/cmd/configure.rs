@@ -357,16 +357,14 @@ pub(crate) fn build_args(
     }
 }
 
-/// The shared host-configure coordinate a plan builds on: a cmake image's
-/// `build/<coord>/cmake`, when stage 3.5 wrote that coordinate's union.
+/// The shared host configure a plan builds on, as
+/// [`build::shared_configure_id`]: its bringup and the coordinate of its
+/// `build/<coord>/cmake`.
 fn shared_coordinate(plan: &build::ResolvedBuild) -> Option<String> {
     let dir = plan.cmake_build_dir.as_deref()?;
-    let coord = Path::new(dir)
-        .parent()?
-        .file_name()?
-        .to_string_lossy()
-        .into_owned();
-    Some(coord)
+    let coord = Path::new(dir).parent()?.file_name()?.to_string_lossy();
+    let (bringup, _) = plan.qualified.split_once(':')?;
+    Some(build::shared_configure_id(bringup, &coord))
 }
 
 /// The project: `dir`, else the working directory, canonical.

@@ -772,10 +772,11 @@ function(nros_sizing_descriptor_west_decide _resolved _leaf)
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                     "${NROS_RESOLVED_SIZING_DESCRIPTOR}" "${_cargo_file}"
             RESULT_VARIABLE _copy_rc)
+        # Issue 2233 -- the copy is what names the resolve's descriptor to cargo.
         if(NOT _copy_rc EQUAL 0)
             message(FATAL_ERROR
                 "nano-ros: could not copy the sizing descriptor "
-                "${NROS_RESOLVED_SIZING_DESCRIPTOR} to ${_cargo_file} (issue 2233)")
+                "${NROS_RESOLVED_SIZING_DESCRIPTOR} to ${_cargo_file}")
         endif()
         set(_named TRUE)
         message(STATUS "nros: sizing descriptor decided by the resolve phase "

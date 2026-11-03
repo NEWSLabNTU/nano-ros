@@ -135,8 +135,9 @@ pub(crate) fn stamp_dir(project: &Path, image: &str) -> PathBuf {
         .join(image.replace(':', "__"))
 }
 
-/// phase-530 W3 (RFC-0120 D2) — the stamp key of a shared host-configure
-/// coordinate: `@<coord>`. `@` is in no image id, so it cannot collide with one.
+/// phase-530 W3 (RFC-0120 D2) — the stamp key of a shared host configure,
+/// `@<bringup>:<coord>` (`build::shared_configure_id`). `@` is in no image id,
+/// so it cannot collide with one.
 pub(crate) fn coordinate_key(coord: &str) -> String {
     format!("@{coord}")
 }
@@ -387,7 +388,7 @@ fn missing_output(project: &Path, image: &str, model_dir: Option<&Path>) -> Resu
     if image == PROJECT_KEY {
         return Ok(None);
     }
-    // phase-530 W3 — a coordinate's output is its union resolve.
+    // phase-530 W3 — a shared configure's output is its union resolve.
     if let Some(coord) = image.strip_prefix('@') {
         let dir = crate::cmd::build::coordinate_resolve_dir(project, coord);
         return Ok((!dir
@@ -1341,7 +1342,7 @@ mod tests {
     fn an_image_under_a_shared_configure_needs_its_coordinate_stamp() {
         let p = tmp("coordinate");
         std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
-        let coord = "posix-zenoh-linux";
+        let coord = "demo:posix-zenoh-linux";
         record(
             &p,
             "demo:linux",
@@ -1356,11 +1357,11 @@ mod tests {
             Currency::Stale(why) => assert!(why.contains(want), "{why}"),
             Currency::Current => panic!("current without its coordinate's stamp ({want})"),
         };
-        stale("shared configure `posix-zenoh-linux`");
+        stale("shared configure `demo:posix-zenoh-linux`");
         let key = coordinate_key(coord);
         assert_eq!(
             stamp_dir(&p, &key),
-            p.join("build/nros/configured/@posix-zenoh-linux")
+            p.join("build/nros/configured/@demo__posix-zenoh-linux")
         );
         // A union that does not cover this image.
         record(
@@ -1395,17 +1396,36 @@ mod tests {
         )
         .unwrap();
         // ...and the union it covers is gone.
-        stale("union resolve of `posix-zenoh-linux`");
+        stale("union resolve of `demo:posix-zenoh-linux`");
         let union = crate::cmd::build::coordinate_resolve_dir(&p, coord);
         std::fs::create_dir_all(&union).unwrap();
         std::fs::write(
             union.join(crate::cmd::build::COORDINATE_MEMBERS_NAME),
-            "coordinate = \"posix-zenoh-linux\"\nimages = [\"demo:linux\"]\n",
+            "coordinate = \"demo:posix-zenoh-linux\"\nimages = [\"demo:linux\"]\n",
         )
         .unwrap();
         assert_eq!(
             is_current_with(&p, "demo:linux", &real_env(), None).unwrap(),
             Currency::Current
+        );
+    }
+
+    /// Ruling R28 — two bringups that share a host-configure coordinate each
+    /// compose their own union, so neither the union directory nor the
+    /// coordinate stamp may be keyed by the coordinate alone.
+    #[test]
+    fn two_bringups_on_one_coordinate_keep_their_own_unions() {
+        let p = tmp("coordinate-two-bringups");
+        let coord = "posix-zenoh-linux";
+        let a = crate::cmd::build::shared_configure_id("a_bringup", coord);
+        let b = crate::cmd::build::shared_configure_id("b_bringup", coord);
+        assert_ne!(
+            crate::cmd::build::coordinate_resolve_dir(&p, &a),
+            crate::cmd::build::coordinate_resolve_dir(&p, &b)
+        );
+        assert_ne!(
+            stamp_dir(&p, &coordinate_key(&a)),
+            stamp_dir(&p, &coordinate_key(&b))
         );
     }
 
