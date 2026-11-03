@@ -653,9 +653,12 @@ nros_cli_ws_sync_available() {
         bin="$(nros_cli_bin 2>/dev/null)" || return 1
     fi
     [ -x "$bin" ] || return 1
-    # Top-level `nros configure` (phase-265) OR the hidden `nros configure` alias. The
-    # grep on a failure path returns 1 too, so the chained pipes are safe.
-    "$bin" help 2>/dev/null | grep -q '^[[:space:]]*sync\b' ||
+    # The verb as `nros help` lists it: `configure` since phase-530 W1, whose
+    # `sync` alias is hidden from help -- so a probe for `sync` alone failed
+    # every Rust fixture build against a current CLI. An older CLI lists
+    # `sync` (top-level since phase-265, or under `ws`). The grep on a failure
+    # path returns 1 too, so the chained pipes are safe.
+    "$bin" help 2>/dev/null | grep -qE '^[[:space:]]*(configure|sync)\b' ||
         "$bin" help ws 2>/dev/null | grep -q '^[[:space:]]*sync\b'
 }
 
