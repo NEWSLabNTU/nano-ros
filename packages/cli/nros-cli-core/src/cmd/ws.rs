@@ -637,9 +637,10 @@ pub struct SyncArgs {
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 
+    // phase-530 W1, Ruling R13.
     /// Never touch the network. Passed to the `cargo update --workspace`
     /// that prunes a single-package leaf's freshly seeded `Cargo.lock`, the
-    /// one step of a sync that resolves crates (phase-530 W1, Ruling R13).
+    /// one step of a sync that resolves crates.
     #[arg(long)]
     pub offline: bool,
 }
