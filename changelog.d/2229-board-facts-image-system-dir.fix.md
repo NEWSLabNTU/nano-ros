@@ -1,0 +1,1 @@
+Zephyr west applications that name their image with `-DNROS_IMAGE_SYSTEM_DIR` + `-DNROS_IMAGE` configure again: board facts now resolve from the bringup that declares the image, not from the application dir (issue 2229).

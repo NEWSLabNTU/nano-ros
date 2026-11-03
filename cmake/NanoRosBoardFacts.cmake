@@ -137,8 +137,26 @@ function(nros_resolve_board_facts)
     # Issue 1827 — `NROS_BRINGUP_DIR` (set by `nros build`) comes before the
     # workspace: the workspace answers only while it has ONE bringup, and the
     # verb refuses a second as ambiguous (a configure error since issue 0941).
+    #
+    # Issue 2229 — `NROS_IMAGE_SYSTEM_DIR` comes first of all: it is half of
+    # one statement (`-DNROS_IMAGE_SYSTEM_DIR=<bringup> -DNROS_IMAGE=<id>`, what
+    # a generated west application and the workspace west fixtures write), and
+    # since issue 2199 `NROS_IMAGE` is forwarded above as `--deploy`. Asking
+    # that image of any other dir asks the wrong question: the application dir
+    # holds no `system.toml` and no `Cargo.toml`, so the verb read a manifest
+    # that does not exist, and every such configure stopped. Resolved against
+    # `APPLICATION_SOURCE_DIR`, as `nros_image_kconfig.cmake` resolves it.
+    set(_nros_bf_image_dir "")
+    if(DEFINED NROS_IMAGE_SYSTEM_DIR AND NOT NROS_IMAGE_SYSTEM_DIR STREQUAL "")
+        set(_nros_bf_base "${APPLICATION_SOURCE_DIR}")
+        if(_nros_bf_base STREQUAL "")
+            set(_nros_bf_base "${CMAKE_SOURCE_DIR}")
+        endif()
+        get_filename_component(_nros_bf_image_dir "${NROS_IMAGE_SYSTEM_DIR}" ABSOLUTE
+            BASE_DIR "${_nros_bf_base}")
+    endif()
     set(_ws "${_A_WORKSPACE}")
-    foreach(_cand "${NROS_BRINGUP_DIR}" "${NROS_WORKSPACE_DIR}" "${APPLICATION_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}")
+    foreach(_cand "${_nros_bf_image_dir}" "${NROS_BRINGUP_DIR}" "${NROS_WORKSPACE_DIR}" "${APPLICATION_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}")
         if(_ws STREQUAL "" AND NOT _cand STREQUAL "")
             set(_ws "${_cand}")
         endif()

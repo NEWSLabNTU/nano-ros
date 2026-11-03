@@ -793,6 +793,21 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
         // answer with the descriptor's facts alone (there is no site block).
         let board = match args.board.clone() {
             Some(b) => b,
+            // Issue 2229 — a named image with nothing here to state it: the
+            // `system.toml` that declares it is somewhere else (a Zephyr
+            // application names it with `NROS_IMAGE_SYSTEM_DIR`). Say that,
+            // rather than fail reading a `Cargo.toml` nobody wrote.
+            None if !ws.join("Cargo.toml").is_file() => {
+                return Err(eyre!(
+                    "{}: --deploy {} names an image, but this dir has no system.toml \
+                     (nor src/*/system.toml) to declare it and no Cargo.toml naming a \
+                     board crate -- resolve from the dir whose system.toml declares \
+                     [image.{}]",
+                    ws.display(),
+                    args.deploy.as_deref().unwrap_or_default(),
+                    args.deploy.as_deref().unwrap_or_default(),
+                ));
+            }
             None => board_of_cargo_leaf(&ws, &root)?
                 .expect("nothing_to_carry answered the no-board-crate case"),
         };
@@ -1086,6 +1101,28 @@ mod tests {
                 .is_some_and(|d| d.ends_with("nros-board-mps2-an385-freertos/config")),
             "{facts:?}"
         );
+    }
+
+    /// Issue 2229 — a named image asked of a dir that cannot state it (a
+    /// Zephyr application whose `system.toml` lives at
+    /// `NROS_IMAGE_SYSTEM_DIR`) is refused naming the image and where to
+    /// look, never as a failed read of a `Cargo.toml` nobody wrote.
+    #[test]
+    fn a_named_image_in_a_dir_with_no_manifest_names_the_image() {
+        let app = tempfile::tempdir().unwrap();
+        let err = run(BoardFactsArgs {
+            path: app.path().to_path_buf(),
+            nano_ros_path: Some(repo_root()),
+            deploy: Some("zephyr_native_sim".into()),
+            board: None,
+            rust_target: None,
+            zephyr_board: None,
+        })
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("--deploy zephyr_native_sim"), "{err}");
+        assert!(err.contains("[image.zephyr_native_sim]"), "{err}");
+        assert!(!err.contains("reading"), "{err}");
     }
 
     /// Issue 0941 — the configures with no board facts to carry are an
