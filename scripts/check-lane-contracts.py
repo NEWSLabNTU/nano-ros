@@ -1459,7 +1459,8 @@ LEAF_CARGO = re.compile(
 
 
 def leaf_builds_without_sync(recipes):
-    """{recipe: [leaf dirs it builds]} for bodies that never call `sync`."""
+    """{recipe: [leaf dirs it builds]} for bodies that never call `configure`
+    (or `sync`, its retiring alias — phase-530 W1)."""
     out = {}
     for name, rec in recipes.items():
         body = "\n".join(rec.get("body", []))
@@ -1467,7 +1468,7 @@ def leaf_builds_without_sync(recipes):
         leaves = sorted({m.group(1) for m in LEAF_CARGO.finditer(code)})
         if not leaves:
             continue
-        if re.search(r"\bsync\b", code):
+        if re.search(r"\b(?:configure|sync)\b", code):
             continue
         out[name] = leaves
     return out
@@ -2126,6 +2127,12 @@ def selftest(verbose=False):
         "    ( cd examples/x/rust/talker && cargo build --target-dir t ) >/dev/null"]}}
     chk("the same body that syncs is clean",
         leaf_builds_without_sync(with_sync) == {})
+    # `nros sync` is the retiring alias of `nros configure`.
+    with_alias = {"r": {"deps": [], "body": [
+        '    "$nros_cli" sync "$dir" >/dev/null',  # `nros configure`'s alias
+        "    ( cd examples/x/rust/talker && cargo build --target-dir t ) >/dev/null"]}}
+    chk("a body that runs the retiring `sync` alias is clean too",
+        leaf_builds_without_sync(with_alias) == {})
     commented = {"r": {"deps": [], "body": [
         "    #   cd examples/x/rust/talker && cargo build --target-dir t"]}}
     chk("a leaf build shown only in a COMMENT is not a build",

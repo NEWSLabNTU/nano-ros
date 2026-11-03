@@ -215,7 +215,7 @@ build_one() {
             # `cargo build`." Skipping it reports `no matching package named
             # \`nros\` found` against crates.io, which reads as the #378 defect
             # and is really this harness omitting a step.
-            ( cd "$dir" && NROS_REPO_DIR="$repo_root" "$(nros_bin)" sync ) >> "$log" 2>&1 || rc=$?
+            ( cd "$dir" && NROS_REPO_DIR="$repo_root" "$(nros_bin)" configure ) >> "$log" 2>&1 || rc=$?
             [ "$rc" -eq 0 ] || return 1
             ( cd "$dir" && cargo build ) >> "$log" 2>&1 || rc=$?
             ;;
