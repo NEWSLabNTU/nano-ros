@@ -1,7 +1,7 @@
 # Phase 525 — Adoption front doors: an action-only user surface, a single package, one run verb, serial first
 
-**Status (2026-11-02). IN PROGRESS — W1 and W2 done; W3 is carried by
-phase-528 W4, and W4 needs it.** Implements
+**Status (2026-11-03). IN PROGRESS — W1, W2 and W3 done (W3 by reference to
+phase-528 W4); W4 not started.** Implements
 [RFC-0116](../design/0116-adoption-purposes-and-front-doors.md) D2, D5, D6
 and D7 on QEMU mps2-an385 first, so nothing here waits on hardware or on an
 emulator twin. Independent of phase-522 (the registry) and phase-524 (the
@@ -159,11 +159,15 @@ needs the workspace shape, say), the scaffold still writes one package and
 
 ### W3 — `nros run` (D7)
 
-**Carried by [phase-528](phase-528-run-on-host-and-emulator.md) W4
-(2026-11-01).** RFC-0118 amends RFC-0116 D7: `nros run` covers host and
+**Done by reference (2026-11-03): [phase-528](phase-528-run-on-host-and-emulator.md)
+W4 landed.** RFC-0118 amends RFC-0116 D7: `nros run` covers host and
 emulator targets and refuses on hardware, naming `nros flash --monitor`
-(phase-529). The acceptance below is phase-528 W4's, and this item is marked
-done when that is.
+(phase-529). `nros run --expect` passed on the mps2-an385 QEMU talker and the
+Linux talker (and the Zephyr `native_sim` talker); the runs are in
+phase-528 W4. Two parts of the acceptance below were not in that work item
+and move to W4 here, whose chapter is the probe's subject: the probe harness
+calling `nros run` in place of the hand-spelled QEMU line, and the issue
+2169 test covering the verb.
 
 - `nros run [--expect <line>] [--timeout <s>]` in the package or workspace
   directory: builds if stale (the same preflight `nros build` runs), then
@@ -196,6 +200,8 @@ chapter (RFC-0115 D4); it stays on the evidence page as build-only.
   budget.
 - The chapter states, in one sentence each, what it assumes (a Linux host or
   the documented container) and what is deferred (WiFi, Zephyr 4.4).
+- From W3: the probe harness calls `nros run --expect` in place of the
+  chapter's hand-spelled QEMU line, and the issue 2169 test covers the verb.
 
 Acceptance: `just probe <track>` passes with the time printed; the time is
 under 30 minutes on the probe runner; the chapter names no workspace word and
