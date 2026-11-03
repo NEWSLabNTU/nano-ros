@@ -209,6 +209,40 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
 - **Acceptance:** `just book` builds; the probe tracks for the Zephyr and
   first-project chapters pass.
 
+### W9 — Retire `nros sync` (RFC-0120 D2)
+
+`nros sync` is a temporary alias, not a permanent one (maintainer decision,
+2026-11-03). It retires in three steps, the way the `ZPICO_*` knob spellings
+did (phase-484 W8). Each step is its own change.
+
+1. **Alias, with a warning on every use (lands with W1).**
+   - The warning is printed on stderr whether or not stderr is a terminal, so
+     CI logs and scripts see it too. Today `note_old_spelling` prints only on
+     a TTY; `sync` gets the always-on form.
+   - The warning names `nros configure`.
+   - The W1 sweep leaves zero `nros sync` uses in the scanned tree, and
+     `check-cli-old-spellings` keeps it at zero.
+2. **Refusal (after one tagged release has shipped step 1).**
+   - `nros sync` exits non-zero, printing `nros sync was renamed: run
+     nros configure` and the same arguments spelled for configure.
+   - `tests/`, the `just` recipes, the fixture scripts and the book reach no
+     `sync` (the gate already holds this).
+   - The release notes name the rename.
+3. **Removal (after one more tagged release).**
+   - The `Sync` variant, its alias row and its `old_spelling` arm are deleted.
+   - `check-cli-old-spellings` keeps refusing the spelling, with a
+     `retired` reason, so a reintroduced `nros sync` in a doc or script is
+     caught.
+
+- **Acceptance:**
+  - step 1: a non-TTY run of `nros sync` prints the warning;
+  - step 2: `nros sync` exits non-zero with the message, and every lane is
+    green;
+  - step 3: `nros sync` is an unknown command, and the gate refuses the
+    spelling.
+- Steps 2 and 3 wait on releases, so the phase can close with them still
+  open, provided W9 names the release each one waits for.
+
 ## Order
 
 1. W0 decides W6's shape, so it comes first.
@@ -217,6 +251,7 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
 4. W4 and W5 need W1 and W2.
 5. W6 needs W0 and W4.
 6. W7 comes last but one, and W8 last.
+7. W9 step 1 lands with W1; steps 2 and 3 follow tagged releases.
 
 ## What this phase does not do
 
