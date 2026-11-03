@@ -65,8 +65,12 @@ function(nros_leaf_census_take _nros _dir)
         return()
     endif()
     message(STATUS "nano-ros: ${_dir} -- sized from its census; checking it")
+    set(_nros_take_image "")
+    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
+        set(_nros_take_image --image "${NROS_IMAGE}")
+    endif()
     execute_process(
-        COMMAND "${_nros}" dev image entity-census take --leaf "${_dir}"
+        COMMAND "${_nros}" dev image entity-census take --leaf "${_dir}" ${_nros_take_image}
         OUTPUT_VARIABLE _nros_take_out
         ERROR_VARIABLE _nros_take_out
         RESULT_VARIABLE _nros_take_rc

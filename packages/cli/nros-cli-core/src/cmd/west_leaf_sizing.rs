@@ -192,7 +192,7 @@ fn run_declared_leaf(args: &WestLeafSizingArgs) -> Result<()> {
         system,
         inventory,
         census_backed,
-    } = crate::cmd::sizing_descriptor::leaf_declaration(leaf)?;
+    } = crate::cmd::sizing_descriptor::leaf_declaration(leaf, args.image.as_deref())?;
     let Some(inv) = inventory else {
         return Ok(());
     };
