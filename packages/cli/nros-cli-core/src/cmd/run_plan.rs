@@ -810,6 +810,26 @@ pub fn run(args: Args) -> eyre::Result<()> {
     crate::cmd::run_exec::decorate(&mut plan, one.rmw.as_deref(), &args.exec);
     if args.dry_run {
         print!("{}", render_plan_text(&plan, args.why, args.json));
+        // `--why` also names the package that answers the runner name, and
+        // what it overrides (RFC-0119 D4): the plan names the runner, the
+        // provider search path decides who it is.
+        if args.why && !args.json {
+            let ws = args
+                .workspace
+                .clone()
+                .or_else(|| std::env::current_dir().ok())
+                .unwrap_or_default();
+            let located = crate::cmd::run_exec::locate_runner(
+                &ws,
+                root.as_deref(),
+                &plan.runner.name,
+                &args.exec.allow_overriding,
+            );
+            print!(
+                "{}",
+                crate::cmd::run_exec::why_runner(&located, &plan.runner.name)
+            );
+        }
         return Ok(());
     }
     crate::cmd::run_exec::build_and_execute(&args, &one.qualified, &plan)
