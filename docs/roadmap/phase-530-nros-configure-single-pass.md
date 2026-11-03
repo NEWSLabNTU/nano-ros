@@ -170,20 +170,16 @@ is therefore moot, and W6 stays the census-step wiring.
   test `build_on_a_fresh_copy_needs_no_sync` passes.
 - `nros sync` still works, with its warning.
 - A second `nros configure` with nothing changed on `examples/workspaces/cpp`:
-  **NOT MET on the C++ workspace, because the first
-  configure does not finish there.** `nros configure` in
-  `examples/workspaces/cpp` hung for over 5 minutes after "taking the census
-  with `demo_bringup:linux`", and a re-run hung the same way (killed at 120 s).
-  The process tree shows the cause: the configure holds the project lock, its
-  census spawns `nros build demo_bringup:linux`, and that child now configures
-  implicitly and blocks on the same lock (`locks_lock_inode_wait`), a
-  self-deadlock. No stamp was written, so there is no no-op to time. It is a
-  W1 defect (the lock and the implicit configure meet in the census child), not
-  a slow number. For reference only, the same measurement on
-  `examples/workspaces/rust`: first `nros configure` 41.1 s, second
-  `nros configure` ("up to date (18 image(s))") **0.064 s** wall, under the 1 s
-  target. The C++ number is still to be taken once the census child no longer
-  re-enters the lock.
+  **0.14 s** wall ("up to date (18 image(s))", measured twice), under the 1 s
+  target. The first `nros configure` there took 66.0 s. On
+  `examples/workspaces/rust` the second run is **0.06 s** (three runs), after a
+  `--force` configure of 7.2 s (an earlier first run, before any stamp, took
+  41.1 s). The first measurement of the C++ workspace found a self-deadlock:
+  configure held the project lock while its census spawned
+  `nros build demo_bringup:linux`, whose implicit configure blocked on that same
+  lock (`locks_lock_inode_wait`); Ruling R20 fixed it, as configure now exports
+  `NROS_CONFIGURE_HELD` to its children and an implicit configure of the same
+  project returns at once (W2 removes the spawn itself).
 
 **Not in the W1 change set (still open):** the per-component metadata probe cache,
 the per-coordinate stamps for shared host configures, retiring
