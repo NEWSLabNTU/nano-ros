@@ -15,11 +15,21 @@
 //! A plan whose link is serial gets the first UART on a host pty
 //! (`-serial pty`), and the runner reports that pty on stderr as
 //! `nros-runner: link <pty>` (RFC-0119 D6) once QEMU names it, so nros can
-//! start the router on the other end.
+//! start the router on the other end. QEMU starts paused (`-S`) and resumes
+//! over QMP [`SERIAL_SETTLE`] after the link is reported: a pty with nothing
+//! on the other end drops what the guest writes, so a guest that boots first
+//! sends its session handshake into nothing, and the router then reads the
+//! guest's retry as a protocol error.
 
 use std::{
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
+    os::unix::net::UnixStream,
     process::{Command, ExitCode, Stdio},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 use nros_extension::{
@@ -65,8 +75,12 @@ fn command_line(plan: &RunPlan) -> Result<(std::path::PathBuf, Vec<String>), Str
     if serial_link(plan) {
         // Ahead of `-kernel`, the last word before the image.
         let at = line.before_kernel.len().saturating_sub(1);
-        line.before_kernel
-            .splice(at..at, ["-serial".to_string(), "pty".to_string()]);
+        // `-serial` replaces `-nographic`'s stdio mux, which would otherwise
+        // leave QEMU's monitor prompt on the console: no monitor at all.
+        line.before_kernel.splice(
+            at..at,
+            ["-serial", "pty", "-monitor", "none"].map(String::from),
+        );
     }
     let mut argv = line.argv(&elf.display().to_string());
     argv.extend(plan.passthrough.iter().cloned());
@@ -87,6 +101,77 @@ fn redirected_pty(line: &str) -> Option<&str> {
         .filter(|p| p.starts_with('/'))
 }
 
+/// Copy `from` to `to` unmodified, and report the first pty line seen by
+/// either stream (`reported` is shared between the two copies).
+fn copy_and_scan(mut from: impl Read, mut to: impl Write, reported: &AtomicBool) {
+    let mut buf = [0u8; 4096];
+    let mut line: Vec<u8> = Vec::new();
+    loop {
+        let n = match from.read(&mut buf) {
+            Ok(0) | Err(_) => return,
+            Ok(n) => n,
+        };
+        let _ = to.write_all(&buf[..n]).and_then(|()| to.flush());
+        if reported.load(Ordering::SeqCst) {
+            continue;
+        }
+        for &b in &buf[..n] {
+            if b != b'\n' {
+                line.push(b);
+                continue;
+            }
+            let text = String::from_utf8_lossy(&line).into_owned();
+            line.clear();
+            if let Some(pty) = redirected_pty(&text)
+                && !reported.swap(true, Ordering::SeqCst)
+            {
+                console::report_link(pty);
+                break;
+            }
+        }
+    }
+}
+
+/// How long a serial guest stays paused after its pty is reported: the time
+/// nros has to start the router on the other end (the test harness waits the
+/// same before booting a serial guest).
+const SERIAL_SETTLE: Duration = Duration::from_secs(2);
+
+/// Resume a QEMU started with `-S`, over its QMP socket.
+fn qmp_cont(path: &std::path::Path) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut sock = loop {
+        match UnixStream::connect(path) {
+            Ok(s) => break s,
+            Err(e) if Instant::now() >= deadline => {
+                return Err(format!("QMP socket {}: {e}", path.display()));
+            }
+            Err(_) => std::thread::sleep(Duration::from_millis(50)),
+        }
+    };
+    let _ = sock.set_read_timeout(Some(Duration::from_secs(5)));
+    let mut reader = BufReader::new(sock.try_clone().map_err(|e| e.to_string())?);
+    let mut line = String::new();
+    // The greeting, then one reply per command.
+    for cmd in [
+        "",
+        "{\"execute\":\"qmp_capabilities\"}",
+        "{\"execute\":\"cont\"}",
+    ] {
+        if !cmd.is_empty() {
+            writeln!(sock, "{cmd}").map_err(|e| format!("QMP write: {e}"))?;
+        }
+        line.clear();
+        reader
+            .read_line(&mut line)
+            .map_err(|e| format!("QMP read: {e}"))?;
+        if line.contains("\"error\"") {
+            return Err(format!("QMP refused `{cmd}`: {}", line.trim()));
+        }
+    }
+    Ok(())
+}
+
 fn run(plan: &RunPlan) -> RunnerExit {
     let (exe, argv) = match command_line(plan) {
         Ok(c) => c,
@@ -95,29 +180,47 @@ fn run(plan: &RunPlan) -> RunnerExit {
     if !serial_link(plan) {
         return runner::exec(Command::new(exe).args(argv));
     }
-    // Serial: watch QEMU's stderr for the pty it allocated; forward every line.
+    // Serial: QEMU names the pty it allocated (`char device redirected to
+    // ...`) on stdout or stderr depending on its version. Both streams are
+    // copied through byte for byte, and the first such line is reported.
+    let qmp = std::env::temp_dir().join(format!("nros-runner-qemu-{}.qmp", std::process::id()));
+    let _ = std::fs::remove_file(&qmp);
     let mut child = match Command::new(&exe)
         .args(&argv)
+        .arg("-S")
+        .arg("-qmp")
+        .arg(format!("unix:{},server=on,wait=off", qmp.display()))
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
     {
         Ok(c) => c,
         Err(e) => return runner::fail(format!("could not start {}: {e}", exe.display())),
     };
-    let stderr = child.stderr.take().expect("piped");
-    let watcher = std::thread::spawn(move || {
-        let mut reported = false;
-        let mut err = std::io::stderr();
-        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-            let _ = writeln!(err, "{line}");
-            if !reported && let Some(pty) = redirected_pty(&line) {
-                console::report_link(pty);
-                reported = true;
-            }
-        }
-    });
+    let reported = Arc::new(AtomicBool::new(false));
+    let out = child.stdout.take().expect("piped");
+    let err = child.stderr.take().expect("piped");
+    let r1 = Arc::clone(&reported);
+    let t1 = std::thread::spawn(move || copy_and_scan(out, std::io::stdout(), &r1));
+    let r2 = Arc::clone(&reported);
+    let t2 = std::thread::spawn(move || copy_and_scan(err, std::io::stderr(), &r2));
+    // Hold the guest until the link is reported and the router had time to
+    // open the other end; a guest QEMU cannot resume is the runner failing.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !reported.load(Ordering::SeqCst) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::thread::sleep(SERIAL_SETTLE);
+    let resumed = qmp_cont(&qmp);
+    let _ = std::fs::remove_file(&qmp);
+    if let Err(e) = resumed {
+        let _ = child.kill();
+        let _ = child.wait();
+        return runner::fail(format!("resuming the paused guest: {e}"));
+    }
     let status = child.wait();
-    let _ = watcher.join();
+    let _ = t1.join();
+    let _ = t2.join();
     match status {
         Ok(s) if s.success() => RunnerExit::Success,
         Ok(_) => RunnerExit::TargetFailed,
@@ -196,7 +299,11 @@ mod tests {
         });
         let (_, argv) = command_line(&p).unwrap();
         let k = argv.iter().position(|a| a == "-kernel").unwrap();
-        assert_eq!(&argv[k - 2..k], ["-serial", "pty"], "{argv:?}");
+        assert_eq!(
+            &argv[k - 4..k],
+            ["-serial", "pty", "-monitor", "none"],
+            "{argv:?}"
+        );
         assert_eq!(
             redirected_pty("char device redirected to /dev/pts/7 (label serial0)"),
             Some("/dev/pts/7")
