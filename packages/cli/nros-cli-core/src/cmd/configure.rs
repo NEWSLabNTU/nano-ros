@@ -250,6 +250,10 @@ fn configure_project(
     // configured image is planned on, by stamp key.
     let mut coordinates: std::collections::BTreeMap<String, build::SharedConfigure> =
         Default::default();
+    // phase-530 W4 (RFC-0120 D2) — where each configured image's answer
+    // was resolved, by stamp key: the coordinate's union under a shared host
+    // configure (W3), else the image's own resolve.
+    let mut resolved: std::collections::BTreeMap<String, PathBuf> = Default::default();
     for t in &targets {
         match build::plan_builds(&build_args(
             project,
@@ -261,10 +265,20 @@ fn configure_project(
             Ok(plans) => {
                 // Only a coordinate whose union stage 3.5 wrote: a stamp
                 // naming one with no union would keep the image stale.
-                if let Some(coord) = plans.iter().find_map(shared_coordinate).filter(|c| {
+                let coord = plans.iter().find_map(shared_coordinate).filter(|c| {
                     build::read_coordinate_members(&build::coordinate_resolve_dir(project, c))
                         .is_some()
-                }) {
+                });
+                // The configure a shared coordinate runs reads its union, so
+                // that is the answer `nros locate configured` names.
+                let dir = match &coord {
+                    Some(c) => Some(build::coordinate_resolve_dir(project, c)),
+                    None => plans.iter().find_map(|b| resolve_dir_of(project, b)),
+                };
+                if let Some(d) = dir {
+                    resolved.insert(t.key.clone(), d);
+                }
+                if let Some(coord) = coord {
                     coordinates.insert(t.key.clone(), coord);
                 }
                 out.configured.push(t.key.clone());
@@ -301,6 +315,7 @@ fn configure_project(
         for key in out.configured.iter().chain(project_wide.iter()) {
             let image_stamp = configure_stamp::Stamp {
                 coordinate: coordinates.get(key).map(build::SharedConfigure::id),
+                resolved_dir: resolved.get(key).cloned(),
                 ..stamp.clone()
             };
             configure_stamp::record(project, key, &image_stamp)?;
@@ -467,6 +482,20 @@ fn shared_coordinate(plan: &build::ResolvedBuild) -> Option<build::SharedConfigu
     Some(build::SharedConfigure::new(bringup, coord))
 }
 
+/// phase-530 W4 (RFC-0120 D2) — the directory stage 3.5 resolved `build`'s
+/// image into (`build/<bringup>__<id>/`, [`crate::resolve::dir_name_for`]),
+/// when it wrote one. Recorded in the image's stamp, so a host configure
+/// locates it by the image's identity (`nros locate configured`).
+fn resolve_dir_of(project: &Path, build: &build::ResolvedBuild) -> Option<PathBuf> {
+    let (bringup, id) = build.qualified.split_once(':')?;
+    let dir = project
+        .join("build")
+        .join(crate::resolve::dir_name_for(bringup, id));
+    dir.join(crate::resolve::RESOLVED_TOML_NAME)
+        .is_file()
+        .then_some(dir)
+}
+
 /// The project: `dir`, else the working directory, canonical.
 fn project_root(dir: Option<&Path>) -> Result<PathBuf> {
     let dir = match dir {
@@ -627,6 +656,7 @@ mod tests {
             skipped: None,
             coordinate: None,
             covers: Vec::new(),
+            resolved_dir: None,
         };
         configure_stamp::record(project, key, &stamp).unwrap();
     }

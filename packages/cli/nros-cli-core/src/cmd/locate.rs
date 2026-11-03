@@ -37,8 +37,10 @@ pub struct Args {
     /// cargo-built artifact (`c-archive`, `cpp-archive`, `c-include`,
     /// `cpp-include`, `c-config-header`, `cpp-config-header`); `tool <name>`
     /// a host binary (`nros-launch-resolve`, `renode`, or `qemu-system-<arch>`
-    /// through the one QEMU ladder), or the install directory of an SDK tool
-    /// `nros setup <board>` provisioned (`tool zephyr-sdk`).
+    /// through the one QEMU ladder), the install directory of an SDK tool
+    /// `nros setup <board>` provisioned (`tool zephyr-sdk`), or `configured`
+    /// where `nros configure` put an image's answer (with `--project` and
+    /// `--image`).
     pub names: Vec<String>,
 
     /// Every `[source.*]` row. A row that resolves nowhere is skipped in
@@ -81,6 +83,11 @@ pub struct Args {
     // (issue 1824).
     #[arg(long)]
     pub placed_dir: Option<PathBuf>,
+
+    /// `configured` mode: the image, by its configure key (an image id for a
+    /// single-package leaf, `<bringup>:<id>` for a workspace).
+    #[arg(long)]
+    pub image: Option<String>,
 
     /// The project whose `system.toml` `[sources]` is rung 3.
     ///
@@ -165,6 +172,10 @@ fn var_name(name: &str) -> String {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    // Asks nothing of the SDK index: a stamp under the project.
+    if args.names.first().map(String::as_str) == Some("configured") {
+        return run_configured(&args, project_dir(args.project.as_deref()).as_deref());
+    }
     if let Some(e) = crate::orchestration::store::retired_in_env() {
         bail!(e);
     }
@@ -845,4 +856,40 @@ mod tests {
             "NROS_LOCATE_MICRO_XRCE_DDS_CLIENT"
         );
     }
+}
+
+/// `nros locate configured --project <dir> --image <key>` — phase-530 W4
+/// (RFC-0120 D2): where `nros configure` put an image's answer, located by the
+/// image's identity. Two rows: `configured` (its stamp dir) and `resolved`
+/// (the directory its resolve wrote, empty when it resolved nothing). A host
+/// configure reads these instead of being handed a path.
+fn run_configured(args: &Args, project: Option<&std::path::Path>) -> Result<()> {
+    let Some(image) = args.image.as_deref() else {
+        bail!("`nros locate configured` needs --image <id>");
+    };
+    let Some(project) = project else {
+        bail!("`nros locate configured` needs --project <dir> (or a system.toml above the cwd)");
+    };
+    let project = nros_build_paths::canonical(project);
+    let (stamp, resolved) = crate::configure_stamp::locate_resolved(&project, image)?;
+    let resolved = resolved
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let stamp = stamp.display().to_string();
+    match args.format {
+        Format::Path => {
+            println!("configured\t{stamp}");
+            println!("resolved\t{resolved}");
+        }
+        Format::Sh => {
+            let q = |v: &str| v.replace('\'', "'\\''");
+            println!("NROS_LOCATE_CONFIGURED='{}'", q(&stamp));
+            println!("NROS_LOCATE_RESOLVED='{}'", q(&resolved));
+        }
+        Format::Cmake => {
+            println!("set(NROS_LOCATE_CONFIGURED \"{stamp}\")");
+            println!("set(NROS_LOCATE_RESOLVED \"{resolved}\")");
+        }
+    }
+    Ok(())
 }

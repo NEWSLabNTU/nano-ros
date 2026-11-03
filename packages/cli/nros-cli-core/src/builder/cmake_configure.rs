@@ -21,11 +21,12 @@
 //! generated project consults. Anything else is an input FILE, and an input
 //! file is `cmake --build`'s job.
 //!
-//! `NROS_RESOLVED_DIR` is left out on purpose. It names where stage 3.5 put
-//! THIS image's answer, so it differs for every image sharing the dir, but the
-//! configure only SEEDS the entity-inventory fragment from it when none exists
-//! yet (`nros_resolved_seed_entity_inventory`) — on a configured dir it is
-//! inert, and counting it re-ran the configure for every row.
+//! `NROS_CONFIGURED_PROJECT` / `NROS_CONFIGURED_IMAGE` are left out on
+//! purpose (phase-530 W4; the retired `NROS_RESOLVED_DIR` before them). They
+//! name WHICH image's configured answer the configure seeds from, so they
+//! differ for every image sharing the dir, while the answer itself is a file
+//! the configure registers as a dependency — counting them re-ran the
+//! configure for every row.
 
 use std::{
     ffi::OsString,
@@ -39,7 +40,7 @@ use super::handoff::Handoff;
 pub const STAMP_NAME: &str = ".nros-build-configure.stamp";
 
 /// Cache variables that are inert on a configured dir (see the module doc).
-const SEED_ONLY: &[&str] = &["NROS_RESOLVED_DIR"];
+const SEED_ONLY: &[&str] = &["NROS_CONFIGURED_PROJECT", "NROS_CONFIGURED_IMAGE"];
 
 /// Environment a configure may read. By PREFIX, so a new knob is covered
 /// without anyone remembering to list it; the ambient noise that varies per
@@ -283,13 +284,13 @@ mod tests {
     }
 
     #[test]
-    fn the_per_image_resolved_dir_is_inert_but_nothing_else_is() {
+    fn the_per_image_identity_is_inert_but_nothing_else_is() {
         let t = tempfile::tempdir().unwrap();
         configured(t.path());
-        let a = stamp(t.path(), &["-DNROS_RESOLVED_DIR=/ws/build/img_a"], &[]);
+        let a = stamp(t.path(), &["-DNROS_CONFIGURED_IMAGE=b:img_a"], &[]);
         a.record();
         assert!(
-            stamp(t.path(), &["-DNROS_RESOLVED_DIR=/ws/build/img_b"], &[]).is_current(),
+            stamp(t.path(), &["-DNROS_CONFIGURED_IMAGE=b:img_b"], &[]).is_current(),
             "another image's answer dir seeds nothing on a configured dir"
         );
         assert!(
