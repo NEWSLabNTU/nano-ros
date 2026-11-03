@@ -399,6 +399,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             // migrate off.
             default_target: None,
             features: Vec::new(),
+            entities: None,
         },
         components: entries,
         retired_deploy: Default::default(),
