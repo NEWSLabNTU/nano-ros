@@ -523,6 +523,23 @@ resolved-seed:
     fi
     ./tests/cmake-resolved-seed-tests.sh
 
+# phase-530 W4 (RFC-0120 D6 case 4, issue 1699) -- a changed Kconfig default
+# reaches an EXISTING Zephyr build dir in ONE configure: the module's stamp is
+# written by the pre-Kconfig hook. A real Zephyr configure of a hello-world
+# app, with a control that reproduces the defect without the stamp. Needs a
+# Zephyr workspace: absent is a ledger skip here, never a pass.
+zephyr-kconfig-stamp:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _ws="${ZEPHYR_WS:-$HOME/.nros/workspaces/zephyr/3.7}"
+    if [ ! -d "$_ws/zephyr" ] || ! command -v ninja >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zephyr-kconfig-stamp "no Zephyr workspace at $_ws (or no ninja)"
+        exit 0
+    fi
+    ./tests/zephyr-kconfig-stamp-tests.sh
+
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
 # the fast tier; the ROOT workspace's `fmt --check` was the one left in the build
 # tier, so an unformatted file you just wrote survived `check-fast` — which is

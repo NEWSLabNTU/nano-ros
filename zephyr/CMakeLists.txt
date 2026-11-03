@@ -6,55 +6,16 @@
 # Kconfig values to Cargo environment variables, so individual examples
 # don't need to manually include them.
 
-# Issue 1699 -- a `configdefault` in this module's `zephyr/Kconfig` must reach an
-# EXISTING build dir, not only a fresh one.
-#
-# Zephyr regenerates `.config` from the conf fragments only when their checksum
-# changes (`cmake/modules/kconfig.cmake`, `.cmake.dotconfig.checksum`).
-# Otherwise it feeds the OLD `.config` back in as the input, and every value
-# there counts as a user choice that a new Kconfig default never overrides.
-# Issue 1674 measured the result: `NET_SOCKETS_POLL_MAX` raised to 8 in a fresh
-# configure while every existing dir kept 3. A module's Kconfig is not one of
-# those fragments, so editing it changed nothing.
-#
-# The checksum DOES cover every `*.conf` in the application build dir (Zephyr's
-# "extra configuration files dropped in by anyone else" glob). So this writes
-# one there whose only content is a COMMENT naming the digest of this module's
-# Kconfig. It assigns nothing. When the digest moves, the file moves, so
-# Zephyr's checksum moves and `.config` is regenerated from the fragments.
-#
-# The ORDER is the subtle part. This module runs AFTER Kconfig, so the pass
-# that notices the change has already used the stale `.config`.
-# `nros_reconfigure_on_change` future-dates the file, which makes ninja re-run
-# cmake and restart inside the same `west build` (issue 0991's lever). One
-# extra configure, only on the build after a Kconfig edit. A clean build dir
-# writes the file without arming it: there is no stale `.config` to replace.
-# Menuconfig edits in that build dir are reset, exactly as any conf-fragment
-# edit resets them.
-include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosReconfigure.cmake)
+# Issue 1699 -- the module-Kconfig stamp (a `*.conf` naming the digest of this
+# module's `zephyr/Kconfig`, so a changed default regenerates `.config` in an
+# existing build dir) moved to the pre-Kconfig hook in phase-530 W4 (RFC-0120
+# D6 case 4): written here, AFTER Kconfig, the pass that noticed a change had
+# already used the stale `.config` and cost one more configure. See
+# `_nros_image_kconfig_stamp` in `cmake/nros_image_kconfig.cmake`.
 # phase-484 W8 — refuse a retired `NANO_ROS_*` name the application set.
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosRetiredNames.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosArtifactLayout.cmake)  # issue 1852
 nros_refuse_retired_names()
-set(_nros_kconfig_stamp "${APPLICATION_BINARY_DIR}/nros-module-kconfig.conf")
-nros_reconfigure_settle("${_nros_kconfig_stamp}")
-nros_reconfigure_snapshot("${_nros_kconfig_stamp}" _nros_kconfig_before)
-file(SHA256 "${CMAKE_CURRENT_LIST_DIR}/Kconfig" _nros_kconfig_digest)
-set(_nros_kconfig_text
-    "# nano-ros zephyr/Kconfig digest (issue 1699): ${_nros_kconfig_digest}\n")
-set(_nros_kconfig_old "")
-if(EXISTS "${_nros_kconfig_stamp}")
-    file(READ "${_nros_kconfig_stamp}" _nros_kconfig_old)
-endif()
-if(NOT _nros_kconfig_old STREQUAL _nros_kconfig_text)
-    file(WRITE "${_nros_kconfig_stamp}" "${_nros_kconfig_text}")
-endif()
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_LIST_DIR}/Kconfig")
-if(NOT _nros_kconfig_before STREQUAL "")
-    nros_reconfigure_on_change("${_nros_kconfig_stamp}" "${_nros_kconfig_before}"
-        LABEL "nano-ros zephyr/Kconfig changed; regenerating .config (issue 1699)")
-endif()
 
 if(CONFIG_NROS)
 

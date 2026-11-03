@@ -2903,12 +2903,11 @@ endif # NROS_RMW_ZENOH
 # Editing one of these DOES reach an existing build dir (issue 1699). Zephyr
 # re-reads an old `.config` as user choices unless a conf fragment changed, so
 # a new default here used to reach fresh build dirs only.
-# `zephyr/CMakeLists.txt` now drops a comment-only `nros-module-kconfig.conf`,
-# carrying this file's digest, into the build dir. Zephyr's fragment checksum
-# covers it, and the module re-runs the configure once on the build after an
-# edit. Measured: an edit to the `NET_TCP_WORKQ_STACK_SIZE` default reached an
-# incremental `ninja` in one build (two configures); without this it kept the
-# old value.
+# The module's pre-Kconfig hook (`zephyr/cmake/nros_image_kconfig.cmake`)
+# drops a comment-only `nros-module-kconfig.conf`, carrying this file's digest,
+# into the build dir. Zephyr's fragment checksum covers it, and since the hook
+# runs BEFORE Kconfig the edit lands in the same configure (phase-530 W4; the
+# post-Kconfig stamp it replaced cost a second configure).
 
 if NROS_RMW_CYCLONEDDS
 

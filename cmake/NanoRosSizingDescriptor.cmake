@@ -51,6 +51,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 
 # phase-462 W6c -- `_nros_board_rx_cost_args`, the board's `[board.rx]`.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardRxCost.cmake")
+# phase-530 W4 (RFC-0120 D5) -- the west decision fragment is held to the
+# module's decision by a promise check. (The Cyclone C++ facts' cargo-file arm,
+# issue 1653, still uses NanoRosReconfigure.cmake directly: phase-530 W7 maps it.)
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPromise.cmake")
 
 # nros_sizing_descriptor_path(<out_var> <build_dir> <entry>)
 #
@@ -756,11 +760,14 @@ function(_nros_sizing_descriptor_west_backstop)
     if(EXISTS "${_frag}")
         file(READ "${_frag}" _old)
     endif()
-    nros_reconfigure_snapshot("${_frag}" _before)
+    nros_promise_snapshot("${_frag}" _before)
     if(NOT _old STREQUAL _body)
         file(WRITE "${_frag}" "${_body}")
     endif()
-    nros_reconfigure_on_change("${_frag}" "${_before}"
+    nros_promise_why("${_frag}"
+        "the module named a sizing descriptor (${_forwarded}) that no entry of this "
+        "configure wrote")
+    nros_promise_check("${_frag}" "${_before}"
         LABEL "the sizing descriptor this image names to cargo (none was written)")
 endfunction()
 
@@ -839,16 +846,14 @@ function(nros_sizing_descriptor_record_for_west)
     if(EXISTS "${_frag}")
         file(READ "${_frag}" _old)
     endif()
-    if(COMMAND nros_reconfigure_snapshot)
-        nros_reconfigure_snapshot("${_frag}" _before)
-    endif()
+    nros_promise_snapshot("${_frag}" _before)
     if(NOT _old STREQUAL _body)
         file(WRITE "${_frag}" "${_body}")
     endif()
-    if(COMMAND nros_reconfigure_on_change)
-        nros_reconfigure_on_change("${_frag}" "${_before}"
-            LABEL "the sizing descriptor this image names to cargo")
-    endif()
+    # phase-530 W4 (RFC-0120 D5) -- held to the decision the module made from
+    # `nros configure`'s answer, at the end of this configure.
+    nros_promise_check("${_frag}" "${_before}"
+        LABEL "the sizing descriptor this image names to cargo")
     # Issue 1653 (west half) -- the module ALSO compiled Cyclone's C++ TUs from
     # this descriptor's CONTENT, at configure time and before this entry
     # rewrote it (`nros_sizing_descriptor_apply_cyclonedds` in

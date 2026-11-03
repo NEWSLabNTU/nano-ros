@@ -1430,26 +1430,19 @@ function(_nros_entry_invoke_codegen)
     # every image built before this wave has no `ENTITIES` at all — those keep
     # their configured `MAX_CBS` and are unaffected.
     #
-    # Issue 0991 -- and because it is composed HERE, every reader of it already
-    # ran: the Zephyr knob resolver during `find_package(Zephyr)`, the
-    # payload-class join at the end of each `nros_find_interfaces()`. If this
-    # composition writes different bytes than those readers saw, the build about
-    # to start is sized from the PREVIOUS answer, which on a clean build dir is
-    # the "no inventory yet" placeholder -- and on a memory-tight image that is
-    # a link failure naming a byte count and no knob. `nros_reconfigure_*` makes
-    # cmake run again before the build proceeds; see NanoRosReconfigure.cmake
-    # for why the `CMAKE_CONFIGURE_DEPENDS` recovery this used to rely on never
-    # fired.
-    #
-    # "Again" is not "once" (issue 1002). This fragment feeds the payload-class
-    # join, whose OWN output is what the knob resolver reads, so a clean build
-    # dir takes THREE configures to deliver a derived size: one to learn the
-    # entities, one to re-derive the sizes from them, one for a reader to see
-    # those sizes. Ninja runs all three inside the same `west build`.
+    # Issue 0991, phase-530 W4 (RFC-0120 D5) -- and because it is composed
+    # HERE, every reader of it already ran: the Zephyr knob resolver during
+    # `find_package(Zephyr)`, the payload-class join at the end of each
+    # `nros_find_interfaces()`. Those readers read the answer `nros configure`
+    # composed before this configure (the seed), and this composition is HELD
+    # to it at the end of the configure: equal continues, different fails the
+    # configure naming both files, or naming the registration configure could
+    # not see. With no configure in front (a plain cmake road until phase-530
+    # W5) the old re-configure lever still applies; see NanoRosPromise.cmake.
     include("${_NROS_ENTRY_DIR}/NanoRosEntityInventory.cmake")
-    include("${_NROS_ENTRY_DIR}/NanoRosReconfigure.cmake")
+    include("${_NROS_ENTRY_DIR}/NanoRosPromise.cmake")
     nros_entity_inventory_knobs_file(_entity_knobs_path)
-    nros_reconfigure_snapshot("${_entity_knobs_path}" _entity_knobs_before)
+    nros_promise_snapshot("${_entity_knobs_path}" _entity_knobs_before)
     # phase-412 -- MODEL joins METADATA as a SECOND source of the wiring, and
     # the verb takes the larger of the two per component and per kind.
     #
@@ -1498,7 +1491,7 @@ function(_nros_entry_invoke_codegen)
     endif()
     nros_derive_entity_inventory_knobs(CLI "${_nros_bin}" MODEL "${_NRX_MODEL}"
         WORKSPACE "${_nrx_colcon_ws}")
-    nros_reconfigure_on_change("${_entity_knobs_path}" "${_entity_knobs_before}"
+    nros_promise_check("${_entity_knobs_path}" "${_entity_knobs_before}"
         LABEL "this image's entity inventory")
     # issue 1084 -- the same model, for the COMPILER rather than the pools. Each
     # `nano_ros_node_register()` claimed an include dir and scheduled a deferred

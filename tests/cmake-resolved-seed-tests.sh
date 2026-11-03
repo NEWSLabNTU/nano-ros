@@ -1,37 +1,30 @@
 #!/usr/bin/env bash
-# tests/cmake-resolved-seed-tests.sh -- phase-439 W2 (RFC-0094 D1).
+# tests/cmake-resolved-seed-tests.sh -- phase-439 W2 (RFC-0094 D1), phase-530
+# W4 (RFC-0120 D2/D5).
 #
 # WHAT THIS MEASURES
 #
-# `nros build` gained a resolve phase (stage 3.5) that writes an image's derived
-# counts BEFORE any configure, as `<NROS_RESOLVED_DIR>/resolved.cmake`.
-# `nros_resolved_seed_entity_inventory()` is the configure-side reader: it seeds
-# the entity-inventory fragment from that file where the build would otherwise
-# have written a placeholder.
+# `nros configure` resolves an image's derived counts BEFORE any host
+# configure, as `<resolve dir>/resolved.cmake`, and a host configure locates
+# that dir by the image's identity (`nros_configured_locate`, which this test
+# stands in for with `nros_configured_publish` -- the retired
+# `-DNROS_RESOLVED_DIR` path is gone). `nros_resolved_seed_entity_inventory()`
+# is the reader: it seeds the entity-inventory fragment from that file where
+# the build would otherwise have written a placeholder.
 #
-# The claim under test is about the PASS COUNT, not about a number. The
-# producer-after-reader chain (`NanoRosReconfigure.cmake`) costs one extra
-# configure per link, because the earliest reader of pass 1 sees a placeholder
-# and issue 0991's future-mtime arm buys the pass in which it does not. A seed
-# written before the configure removes exactly that pass -- IF the producer then
-# agrees with it.
+# The claim under test is about the PASS COUNT, and about what happens when the
+# late producer disagrees with the seed (RFC-0120 D5's promise check):
 #
-# So three cases, and the third is the one that makes this a test rather than a
-# demonstration:
+#   A  no configure in front    1 re-configure, built with the real answer
+#                               (the old lever, kept until phase-530 W5/W7)
+#   B  seed AGREES              0 re-configures, built with the real answer
+#   C  seed DISAGREES           the configure FAILS, naming both files -- every
+#                               reader used the seed, so nothing may build on it
+#                               and nothing re-converges
 #
-#   A  no resolve phase         1 re-configure, built with the real answer
-#                               (today's behaviour, and it must not change)
-#   B  resolve AGREES           0 re-configures, built with the real answer
-#                               (the pass this phase removes)
-#   C  resolve DISAGREES        the producer still overwrites and still arms,
-#                               and the build uses the PRODUCER's answer
-#
-# C is the safety property. The seed and the mid-configure producer do not read
-# the same inputs -- the producer also reads `nros-metadata.json`, whose
-# component set is what makes `derive()` refuse when a registered component is
-# absent from the launch declaration -- so a seed that is wrong must lose. A
-# green A and B with a red C would mean this phase can silently ship a number
-# nothing stood behind, which is the exact defect RFC-0094 exists to remove.
+# C is the safety property. A wrong seed must never reach a build silently: it
+# used to lose to the producer through one more configure; it now stops the
+# configure, because the two composers of one answer disagreeing is a bug.
 #
 # PRECONDITIONS ARE HARD FAILURES. This script never prints-and-returns: a green
 # here is read as "the resolve seed works and cannot override a producer".
@@ -55,6 +48,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$PROJECT_ROOT/scripts/lib/grep-q.sh"
 
 RECONFIGURE_MODULE="$PROJECT_ROOT/cmake/NanoRosReconfigure.cmake"
+PROMISE_MODULE="$PROJECT_ROOT/cmake/NanoRosPromise.cmake"
 RESOLVED_MODULE="$PROJECT_ROOT/cmake/NanoRosResolved.cmake"
 
 FAILURES=0
@@ -69,7 +63,7 @@ check() {
     CHECKS=$((CHECKS + 1))
 }
 
-for _m in "$RECONFIGURE_MODULE" "$RESOLVED_MODULE"; do
+for _m in "$RECONFIGURE_MODULE" "$PROMISE_MODULE" "$RESOLVED_MODULE"; do
     if [ ! -f "$_m" ]; then
         fail "module not found: $_m"
         exit 1
@@ -106,8 +100,11 @@ write_project() {
 cmake_minimum_required(VERSION 3.20)
 project(nros_resolved_seed_probe NONE)
 
-include("$RECONFIGURE_MODULE")
 include("$RESOLVED_MODULE")
+# The Zephyr hook's half: where configure put this image's answer.
+if(DEFINED PROBE_RESOLVED)
+    nros_configured_publish("\${PROBE_RESOLVED}")
+endif()
 
 set(_frag "\${CMAKE_BINARY_DIR}/frag.cmake")
 
@@ -119,7 +116,7 @@ if(NOT EXISTS "\${_frag}")
     file(WRITE "\${_frag}" "set(ANSWER placeholder)\n")
 endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "\${_frag}")
-nros_reconfigure_settle("\${_frag}")
+nros_promise_read("\${_frag}")
 include("\${_frag}")
 message(STATUS "PROBE_READ=\${ANSWER}")
 
@@ -127,9 +124,9 @@ message(STATUS "PROBE_READ=\${ANSWER}")
 # Absent on the generated Rust Zephyr entry's road (issue 1729), where the seed
 # is the fragment's only producer: -DPROBE_NO_PRODUCER=ON.
 if(NOT PROBE_NO_PRODUCER)
-    nros_reconfigure_snapshot("\${_frag}" _before)
+    nros_promise_snapshot("\${_frag}" _before)
     file(WRITE "\${_frag}" "set(ANSWER real)\n")
-    nros_reconfigure_on_change("\${_frag}" "\${_before}" LABEL "the probe answer")
+    nros_promise_check("\${_frag}" "\${_before}" LABEL "the probe answer")
 endif()
 
 add_custom_target(go ALL
@@ -154,13 +151,13 @@ SRC="$TEST_TMPDIR/src"
 write_project "$SRC"
 
 # ---------------------------------------------------------------------------
-log_header "A. no resolve phase: today's behaviour, one extra configure"
+log_header "A. no configure in front: the old lever, one extra configure"
 # ---------------------------------------------------------------------------
 
 CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/none-build" 2>&1)"
 check
 if nros_grep_q 'PROBE_READ=placeholder' <<<"$CONFIGURE_OUT"; then
-    log_success "with no NROS_RESOLVED_DIR the first pass reads the placeholder"
+    log_success "with nothing located the first pass reads the placeholder"
 else
     fail "expected the placeholder on pass 1 with no resolve phase:
 $CONFIGURE_OUT"
@@ -188,7 +185,7 @@ mkdir -p "$RESOLVED_OK"
 printf 'set(ANSWER real)\n' > "$RESOLVED_OK/resolved.cmake"
 
 CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/ok-build" \
-    "-DNROS_RESOLVED_DIR=$RESOLVED_OK" 2>&1)"
+    "-DPROBE_RESOLVED=$RESOLVED_OK" 2>&1)"
 check
 if nros_grep_q 'PROBE_READ=real' <<<"$CONFIGURE_OUT"; then
     log_success "the first pass reads the resolve phase's answer, not a placeholder"
@@ -198,7 +195,7 @@ $CONFIGURE_OUT"
 fi
 
 check
-if nros_grep_q 'seeded from the resolve phase' <<<"$CONFIGURE_OUT"; then
+if nros_grep_q 'seeded from `nros configure`' <<<"$CONFIGURE_OUT"; then
     log_success "and it SAYS so -- a silent seed is not auditable"
 else
     fail "the seed left no status line; a build must be able to say where its
@@ -216,37 +213,45 @@ $BUILD_OUT"
 fi
 
 # ---------------------------------------------------------------------------
-log_header "C. the resolve phase DISAGREES: the producer still wins, and still arms"
+log_header "C. the seed DISAGREES: the configure stops, naming both files"
 # ---------------------------------------------------------------------------
 #
-# The safety property. The two composers read different inputs, so a seed that
-# is wrong must lose to the producer -- otherwise stage 3.5 could ship a number
-# nothing stood behind, which is the defect this whole RFC exists to remove.
+# The safety property (RFC-0120 D5). Every reader of the configure used the
+# seed, so a producer that composes something else means the two composers of
+# one answer disagree: no build may proceed on either, and no second pass may
+# quietly pick whichever came last.
 
 RESOLVED_BAD="$TEST_TMPDIR/resolved-bad"
 mkdir -p "$RESOLVED_BAD"
 printf 'set(ANSWER stale_seed)\n' > "$RESOLVED_BAD/resolved.cmake"
 
+BAD_RC=0
 CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/bad-build" \
-    "-DNROS_RESOLVED_DIR=$RESOLVED_BAD" 2>&1)"
+    "-DPROBE_RESOLVED=$RESOLVED_BAD" 2>&1)" || BAD_RC=$?
 check
 if nros_grep_q 'PROBE_READ=stale_seed' <<<"$CONFIGURE_OUT"; then
-    log_success "pass 1 read the (wrong) seed, so the disagreement is real"
+    log_success "the first reader read the (wrong) seed, so the disagreement is real"
 else
     fail "case C did not set up: the seed never reached the reader:
 $CONFIGURE_OUT"
 fi
-
-run_build "$TEST_TMPDIR/bad-build"
 check
-if [ "$BUILD_USED" = "real" ] && [ "$BUILD_RERUNS" -eq 1 ]; then
-    log_success "resolve disagrees: the producer overwrote it, armed, and the build used the PRODUCER's answer"
+if [ "$BAD_RC" -ne 0 ] && nros_grep_q -F "over the same inputs" <<<"$CONFIGURE_OUT" \
+   && nros_grep_q -F "$RESOLVED_BAD/resolved.cmake" <<<"$CONFIGURE_OUT" \
+   && nros_grep_q -F "$TEST_TMPDIR/bad-build/frag.cmake" <<<"$CONFIGURE_OUT"; then
+    log_success "the producer disagreed: the configure STOPPED, naming the seed and the fragment"
 else
-    fail "A WRONG SEED REACHED THE BUILD: used='$BUILD_USED' re-runs=$BUILD_RERUNS (want real / 1).
-  The seed must never be able to override the mid-configure producer -- they do
-  not read the same inputs, and the producer is the one that sees the component
-  set that makes a derivation REFUSE.
-$BUILD_OUT"
+    fail "A WRONG SEED DID NOT STOP THE CONFIGURE (rc=$BAD_RC).
+  Every reader used the seed; a producer that composes something else must fail
+  the configure naming both files (RFC-0120 D5).
+$CONFIGURE_OUT"
+fi
+check
+if nros_grep_q -F "changed after the readers" <<<"$CONFIGURE_OUT"; then
+    fail "a seeded configure armed the fixed point: it must fail, never re-converge
+$CONFIGURE_OUT"
+else
+    log_success "and nothing armed a re-configure"
 fi
 
 # ---------------------------------------------------------------------------
@@ -263,7 +268,7 @@ mkdir -p "$RESOLVED_REFUSED"
 printf 'status = "refused"\n' > "$RESOLVED_REFUSED/resolved.toml"
 
 CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/refused-build" \
-    "-DNROS_RESOLVED_DIR=$RESOLVED_REFUSED" 2>&1)"
+    "-DPROBE_RESOLVED=$RESOLVED_REFUSED" 2>&1)"
 check
 if nros_grep_q 'PROBE_READ=placeholder' <<<"$CONFIGURE_OUT"; then
     log_success "a refused resolve seeds nothing; the placeholder stands"
@@ -296,7 +301,7 @@ RESOLVED_MOVING="$TEST_TMPDIR/resolved-moving"
 mkdir -p "$RESOLVED_MOVING"
 printf 'set(ANSWER first)\n' > "$RESOLVED_MOVING/resolved.cmake"
 cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/moving-build" \
-    "-DNROS_RESOLVED_DIR=$RESOLVED_MOVING" -DPROBE_NO_PRODUCER=ON >/dev/null 2>&1
+    "-DPROBE_RESOLVED=$RESOLVED_MOVING" -DPROBE_NO_PRODUCER=ON >/dev/null 2>&1
 run_build "$TEST_TMPDIR/moving-build"
 check
 if [ "$BUILD_USED" = "first" ] && [ "$BUILD_RERUNS" -eq 0 ]; then
@@ -330,29 +335,32 @@ $BUILD_OUT"
 fi
 
 # ---------------------------------------------------------------------------
-log_header "F. with a producer, a moved resolve still loses to it and converges"
+log_header "F. the seed moved to the producer's answer: one configure, no failure"
 # ---------------------------------------------------------------------------
 #
-# Re-seeding must not break case C's safety property, nor loop: the producer
-# overwrites the re-seed and arms once, and the record keeps the next configure
-# from seeding again.
+# After case C the fix is to make configure's answer right (here: the seed
+# itself), and the same build dir then configures once and builds -- the
+# fragment the failed configure left behind is not what the readers see,
+# because the seed is copied in by CONTENT on every configure.
 
 sleep 1
-printf 'set(ANSWER also_stale)\n' > "$RESOLVED_BAD/resolved.cmake"
-run_build "$TEST_TMPDIR/bad-build"
+printf 'set(ANSWER real)\n' > "$RESOLVED_BAD/resolved.cmake"
+F_RC=0
+CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/bad-build" \
+    "-DPROBE_RESOLVED=$RESOLVED_BAD" 2>&1)" || F_RC=$?
 check
-if [ "$BUILD_USED" = "real" ] && [ "$BUILD_RERUNS" -le 2 ]; then
-    log_success "the producer's answer still reached the build (re-runs=$BUILD_RERUNS)"
+if [ "$F_RC" -eq 0 ] && nros_grep_q 'PROBE_READ=real' <<<"$CONFIGURE_OUT"; then
+    log_success "the corrected seed configures cleanly"
 else
-    fail "a re-seed beat the producer or looped: used='$BUILD_USED' re-runs=$BUILD_RERUNS.
-$BUILD_OUT"
+    fail "the corrected seed did not configure (rc=$F_RC):
+$CONFIGURE_OUT"
 fi
 run_build "$TEST_TMPDIR/bad-build"
 check
 if [ "$BUILD_RERUNS" -eq 0 ] && [ "$BUILD_USED" = "real" ]; then
-    log_success "and it converged: no configure on the next build"
+    log_success "and builds with it, no further configure"
 else
-    fail "did not converge: used='$BUILD_USED' re-runs=$BUILD_RERUNS.
+    fail "used='$BUILD_USED' re-runs=$BUILD_RERUNS (want real / 0).
 $BUILD_OUT"
 fi
 
@@ -467,7 +475,10 @@ cat > "$TAKE_ROOT/src/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.20)
 project(nros_take_probe NONE)
 include("$RESOLVED_MODULE")
-set(NROS_RESOLVED_DIR "$TAKE_ROOT/resolve")
+nros_configured_publish("$TAKE_ROOT/resolve")
+if(PROBE_CONFIGURED)
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_CURRENT TRUE)
+endif()
 if(NOT PROBE_MODELS)
     set(PROBE_MODELS "$TAKE_ROOT/model/system_model.yaml")
 endif()
@@ -537,8 +548,18 @@ take_declines "no workspace" "its workspace is" "-DPROBE_WS="
 write_take_record 1 "$REG" "--board-rx-frame-cost-us;40"
 take_declines "another board receive cost" "board receive cost"
 write_take_record
-TAKE_NO_ENV=1 take_declines "a configure \`nros build\` did not start (a later reconfigure)" \
-    "was not started by the \`nros build\`"
+TAKE_NO_ENV=1 take_declines "a configure no current \`nros configure\` is in front of" \
+    "no current \`nros configure\` wrote"
+# phase-530 W4 -- the module hook ran `nros configure` in THIS configure: the
+# record is current, with no digest in the environment.
+TAKE_NO_ENV=1 take_run hook -DPROBE_CONFIGURED=ON
+check
+if nros_grep_q -F "PROBE_TAKEN=TRUE" <<<"$TAKE_OUT"; then
+    log_success "a configure the module hook configured takes the record with no environment digest"
+else
+    fail "the hook's current configure did not count as current:
+$TAKE_OUT"
+fi
 write_take_record 2
 take_declines "an unknown record schema" "schema this reader does not know"
 # The model re-resolved IN PLACE (same path, new content) -- what a configure
@@ -552,13 +573,12 @@ take_declines "the model edited in place" "changed since \`nros build\` resolved
 log_header "Case U -- a seeded message-bound answer is held to, not re-converged (phase-439 W8)"
 # ---------------------------------------------------------------------------
 #
-# RFC-0094 A3, as amended: a configure `nros build` started takes ONE pass. The
-# readers of the message-bound fragment read the seed; if the producer then
-# composes a different answer over the SAME inputs (tables, entity inventory,
-# ceiling -- `resolved-message-bounds-inputs.cmake`), the two composers
-# disagree and the configure stops. Over DIFFERENT inputs it is a resolve older
-# than the tree, and the fixed point converges it as before. No record (every
-# configure `nros build` did not start) is the fixed point, unchanged.
+# RFC-0120 D5: the readers of the message-bound fragment read configure's seed;
+# a producer that composes a different FINAL answer stops the configure. Over
+# the SAME inputs (tables, entity inventory, ceiling --
+# `resolved-message-bounds-inputs.cmake`) it names both files as the two
+# composers' disagreement; over DIFFERENT inputs it names the input that moved,
+# which is a declaration configure could not see. Never re-converged.
 PROM_ROOT="$TEST_TMPDIR/promise"
 mkdir -p "$PROM_ROOT/resolve" "$PROM_ROOT/src"
 printf 'set(BOUND seeded)\n' > "$PROM_ROOT/resolve/resolved-message-bounds.cmake"
@@ -578,17 +598,16 @@ EOF
 cat > "$PROM_ROOT/src/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.20)
 project(nros_promise_probe NONE)
-include("$RECONFIGURE_MODULE")
 include("$PROJECT_ROOT/cmake/NanoRosEntityInventory.cmake")
 include("$PROJECT_ROOT/cmake/NanoRosMessageBounds.cmake")
 include("$RESOLVED_MODULE")
-set(NROS_RESOLVED_DIR "$PROM_ROOT/resolve")
+nros_configured_publish("$PROM_ROOT/resolve")
 nros_entity_inventory_knobs_file(_e)
 configure_file("$PROM_ROOT/entity.cmake" "\${_e}" COPYONLY)
 nros_message_bounds_knobs_file(_frag)
 # ---- the READER (the Zephyr module's order) ----
 nros_resolved_seed_message_bounds("\${_frag}")
-nros_reconfigure_settle("\${_frag}")
+nros_promise_read("\${_frag}")
 # ---- one interface package registers its table ----
 set(_t "\${CMAKE_BINARY_DIR}/codegen/std_msgs")
 file(MAKE_DIRECTORY "\${_t}")
@@ -609,9 +628,9 @@ if(PROBE_ENTITY_LAG)
 endif()
 # ---- the PRODUCER ----
 nros_message_bounds_note_composition("\${_e}" 2048)
-nros_reconfigure_snapshot("\${_frag}" _before)
+nros_promise_snapshot("\${_frag}" _before)
 file(WRITE "\${_frag}" "set(BOUND \${PROBE_ANSWER})\n")
-nros_reconfigure_on_change("\${_frag}" "\${_before}" LABEL "the probe bounds")
+nros_promise_check("\${_frag}" "\${_before}" LABEL "the probe bounds")
 # ---- the ENTITY producer, after the last bounds call ----
 configure_file("$PROM_ROOT/entity.cmake" "\${_e}" COPYONLY)
 EOF
@@ -631,7 +650,7 @@ $PROM_OUT"
 fi
 prom_run -DPROBE_ANSWER=other
 check
-if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "over the SAME inputs" <<<"$PROM_OUT"; then
+if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "over the same inputs" <<<"$PROM_OUT"; then
     log_success "same inputs, different answer: the configure STOPS naming both files"
 else
     fail "a disagreement over the same inputs did not stop the configure (rc=$PROM_RC):
@@ -640,29 +659,30 @@ fi
 write_prom_record "0000000000000000000000000000000000000000000000000000000000000000"
 prom_run -DPROBE_ANSWER=other
 check
-if [ "$PROM_RC" -eq 0 ] && nros_grep_q -F "composed over other inputs -- its bound tables" <<<"$PROM_OUT" \
-   && nros_grep_q -F "changed after the readers" <<<"$PROM_OUT"; then
-    log_success "a moved table: the resolve is stale, the fixed point converges, and says why"
+if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "could not see" <<<"$PROM_OUT" \
+   && nros_grep_q -F "configure composed over the bound tables" <<<"$PROM_OUT" \
+   && ! nros_grep_q -F "changed after the readers" <<<"$PROM_OUT"; then
+    log_success "a moved table: the configure stops naming the table set, never re-converges"
 else
-    fail "a stale resolve was not left to the fixed point (rc=$PROM_RC):
+    fail "a table configure did not see did not stop the configure by name (rc=$PROM_RC):
 $PROM_OUT"
 fi
 write_prom_record "" 4096
 prom_run -DPROBE_ANSWER=other
 check
-if [ "$PROM_RC" -eq 0 ] && nros_grep_q -F "small-class ceiling is 4096" <<<"$PROM_OUT"; then
-    log_success "another ceiling: stale, not a disagreement"
+if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "small-class ceiling is 4096" <<<"$PROM_OUT"; then
+    log_success "another ceiling: stops, naming the ceiling"
 else
-    fail "a ceiling difference was treated as a disagreement (rc=$PROM_RC):
+    fail "a ceiling difference was not named (rc=$PROM_RC):
 $PROM_OUT"
 fi
 write_prom_record
 prom_run -DPROBE_ANSWER=other -DPROBE_ENTITY_LAG=ON
 check
-if [ "$PROM_RC" -eq 0 ] && nros_grep_q -F "entity inventory is not the one" <<<"$PROM_OUT"; then
-    log_success "bounds composed over an entity answer the entity producer later replaced: lag, not a disagreement"
+if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "entity inventory is not the one" <<<"$PROM_OUT"; then
+    log_success "bounds composed over another entity answer: stops, naming the entity inventory"
 else
-    fail "the check judged the bounds against an entity fragment they never read (rc=$PROM_RC):
+    fail "the entity-inventory input was not named (rc=$PROM_RC):
 $PROM_OUT"
 fi
 # Two tables whose names sort differently from their formatted rows (`foo`
@@ -672,7 +692,7 @@ _tsha="$(sha256sum "$PROM_ROOT/table.json" | cut -d' ' -f1)"
 write_prom_record "" "" "foo2=$_tsha;foo=$_tsha;std_msgs=$_tsha"
 prom_run -DPROBE_ANSWER=other "-DPROBE_EXTRA_TABLES=foo;foo2"
 check
-if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "over the SAME inputs" <<<"$PROM_OUT"; then
+if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "over the same inputs" <<<"$PROM_OUT"; then
     log_success "tables foo + foo2: the record's row order matches, and a disagreement still stops the configure"
 else
     fail "with tables foo and foo2 the record never matches, so the check cannot fire (rc=$PROM_RC):
@@ -681,10 +701,10 @@ fi
 rm -f "$PROM_ROOT/resolve/resolved-message-bounds-inputs.cmake"
 prom_run -DPROBE_ANSWER=other
 check
-if [ "$PROM_RC" -eq 0 ] && ! nros_grep_q -F "resolve phase's seed" <<<"$PROM_OUT"; then
-    log_success "no record (a configure nros build did not start): the fixed point, unchanged"
+if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "over the same inputs" <<<"$PROM_OUT"; then
+    log_success "no input record: still a promise (the readers read the seed), named as a disagreement"
 else
-    fail "a configure with no record was held to a promise it never made (rc=$PROM_RC):
+    fail "a seeded configure with no input record was not held to the seed (rc=$PROM_RC):
 $PROM_OUT"
 fi
 

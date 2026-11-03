@@ -43,11 +43,11 @@ endfunction()
 # builds the same sources for the host into `<leaf>/build/census-host` and runs
 # them in census mode; a current census returns at once.
 #
-# ONE spelling for every road that sizes a leaf from its census: the
-# `find_package(nano_ros)` / `add_subdirectory` roads
-# (`nros_record_leaf_entity_facts`) and a Zephyr application, whose module
-# takes it in its pre-Kconfig hook (`zephyr/cmake/nros_image_kconfig.cmake`,
-# issue 2086). phase-530 W4 replaces the Zephyr call with `nros configure`.
+# The `find_package(nano_ros)` / `add_subdirectory` roads
+# (`nros_record_leaf_entity_facts`) call it. A Zephyr application no longer
+# does: since phase-530 W4 its module hook runs `nros configure`, whose C4 takes
+# the census (`zephyr/cmake/nros_image_kconfig.cmake`); phase-530 W5 moves
+# these roads to the same call.
 #
 # A no-op for a leaf not counted by its census, and in the host census build
 # itself (`NROS_LEAF_CENSUS_HOST`), which is the producer.

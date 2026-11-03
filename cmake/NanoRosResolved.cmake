@@ -1,104 +1,124 @@
-# NanoRosResolved.cmake -- phase-439 W2 (RFC-0094 D1/D2): the CONFIGURE-SIDE
-# READER for `nros build`'s resolve phase.
+# NanoRosResolved.cmake -- phase-439 W2 (RFC-0094 D1/D2), phase-530 W4
+# (RFC-0120 D2/D5): the HOST-CONFIGURE-SIDE READER for `nros configure`'s
+# resolve phase.
 #
 # =============================================================================
-# What stage 3.5 is, from this side
+# What the resolve phase is, from this side
 # =============================================================================
 #
-# `nros build` gains a phase between "is the toolchain present" (stage 3) and
-# "emit a root build file" (stage 4). It reads DECLARATIONS -- the descriptors,
-# the image block, and the wiring the launch tree states through its contract
-# sidecar -- runs `EntityInventory::derive` once for the whole image, and writes
+# `nros configure` (C5, once `nros build`'s stage 3.5) reads DECLARATIONS --
+# the descriptors, the image block, and the wiring the launch tree states
+# through its contract sidecar -- runs `EntityInventory::derive` once for the
+# whole image, and writes, BEFORE any host configure,
 #
-#   <NROS_RESOLVED_DIR>/resolved.toml    the answer, with [provenance]
-#   <NROS_RESOLVED_DIR>/resolved.cmake   the same answer, include()able
+#   <resolve dir>/resolved.toml    the answer, with [provenance]
+#   <resolve dir>/resolved.cmake   the same answer, include()able
 #
-# BEFORE any configure. `nros build` passes the directory as
-# `-DNROS_RESOLVED_DIR=<dir>` on the cmake and west handoffs.
-#
-# =============================================================================
-# Why a reader wants it: the producer-after-reader lag
-# =============================================================================
-#
-# `${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake` is written by
-# `nano_ros_entry()`, which must run after every `nano_ros_node_register()` --
-# and is READ by `nros_resolve_knobs()` inside `find_package(Zephyr)` and by
-# `nros_find_interfaces()`, both of which run earlier. On a clean build dir the
-# earliest reader therefore finds a PLACEHOLDER, and issue 0991's future-mtime
-# arm exists to buy a second configure in which it finds the answer.
-#
-# A file written before the configure has no such lag. Seeding the fragment from
-# it means the earliest reader of the FIRST pass sees a real number, which is
-# the pass that arm was buying.
+# (plus the message-bound seed and the input records the producers compare).
 #
 # =============================================================================
-# It is a SEED, not an OVERRIDE -- and that is the safety property
+# Where the answer is: located by IMAGE, never passed as a path
 # =============================================================================
 #
-# `nros_resolved_seed_entity_inventory` writes ONLY where
-# `nros_entity_inventory_seed_knobs_file` would have written a placeholder: a
-# fragment that does not exist yet. The mid-configure producer still runs, still
-# composes over `nros-metadata.json` AND the model, and still arms a
-# re-configure through `nros_reconfigure_on_change` if its answer differs.
+# phase-530 W4 (RFC-0120 D2) retired `-DNROS_RESOLVED_DIR`. The resolve phase
+# is part of `nros configure` now, and configure records, in the image's stamp
+# (`<project>/build/nros/configured/<image>/stamp.toml`), the directory it
+# resolved into. A reader asks for it by the image's IDENTITY:
 #
-# That ordering is deliberate and it is what makes this safe to land before the
-# fixed point is deleted. The two composers do not have the same INPUTS:
+#   * the Zephyr module hook (`zephyr/cmake/nros_image_kconfig.cmake`) runs
+#     `nros configure` for the image this host configure builds, asks
+#     `nros locate configured` where its answer is, and publishes the GLOBAL
+#     property `NROS_CONFIGURED_RESOLVED_DIR` for this configure only;
+#   * a cmake road states the identity (`NROS_CONFIGURED_PROJECT` +
+#     `NROS_CONFIGURED_IMAGE`, which `nros build` passes) and this file asks
+#     `nros locate configured` itself, once per configure.
 #
-#   * this phase reads the model alone, since `nros-metadata.json` is written
-#     DURING a configure and reading it here would recreate the lag;
-#   * the mid-configure producer also reads that metadata, whose component set
-#     is what makes `derive()` REFUSE when a registered component is absent from
-#     the launch declaration.
-#
-# So the seed can only be equal to, or more optimistic than, the producer's
-# answer -- and when it is more optimistic the producer overwrites it and arms,
-# exactly as it does today over a placeholder. Nothing here can make a build
-# quieter than it is now.
+# Never GUESSED from `CMAKE_BINARY_DIR`: a reader that guessed where a resolve
+# might live would silently pick up another image's answer (issue 0616's
+# shape). And never a cached PATH: the old `-D` outlived the `nros build` that
+# passed it, so a later reconfigure read a resolve nobody had refreshed.
 #
 # =============================================================================
-# A lane that ran no resolve phase is UNCHANGED
+# It is a SEED, held to by a PROMISE (RFC-0120 D5)
 # =============================================================================
 #
-# `NROS_RESOLVED_DIR` unset -- a bare `west build`, `just zephyr
-# build-fixtures`, a user's own `cmake -S` -- means every function here is a
-# no-op and the placeholder is written as before. NOTE it is a `-D`, so it is
-# CACHED: a later reconfigure of a build dir `nros build` created still has it,
-# whoever starts that configure. A rule that must hold only for configures
-# `nros build` itself started cannot key on it (`nros_resolved_entity_take`
-# keys on an environment variable for that reason). That is the whole reason the
-# seam is a passed variable rather than a search: a reader that GUESSED where a
-# resolve might live would silently pick up another image's answer, which is
-# issue 0616's shape one directory over.
+# The earliest readers in a configure (`nros_resolve_knobs()` inside
+# `find_package(Zephyr)`, the payload-class join in `nros_find_interfaces()`)
+# run BEFORE the producers that compose the same answer from what the host
+# configure declared. The seed is copied in ahead of the first reader, so no
+# reader ever sees a placeholder. The producers still compose, and
+# `cmake/NanoRosPromise.cmake` holds their final answer to the seed: equal
+# continues, different fails the configure naming both files -- or naming the
+# declaration configure could not see. Nothing re-converges.
+#
+# A configure with no `nros configure` in front of it (a plain `cmake -S`,
+# until phase-530 W5's cmake hook) locates nothing, writes the placeholder as
+# before, and still converges through the old lever, inside the promise module.
 
 include_guard(GLOBAL)
 
 # `nros_resolved_entity_take` compares the board receive-cost arguments.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardRxCost.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPromise.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
+
+# nros_configured_locate(<project> <image>)
+#
+# Ask `nros locate configured` where configure put <image>'s answer, and
+# publish it for this configure as the GLOBAL property
+# `NROS_CONFIGURED_RESOLVED_DIR` (empty when configure resolved none). The one
+# call both the Zephyr hook and a cmake road make.
+function(nros_configured_locate _project _image)
+    nros_resolve_cli(_nros OPTIONAL CONTEXT "locating ${_image}'s configured answer")
+    if(NOT _nros OR NOT EXISTS "${_nros}")
+        set_property(GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR "")
+        return()
+    endif()
+    execute_process(
+        COMMAND "${_nros}" locate configured --project "${_project}" --image "${_image}"
+                --format cmake
+        OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR
+            "nano-ros: `nros locate configured --project ${_project} --image ${_image}` "
+            "failed:\n${_err}")
+    endif()
+    set(_dir "")
+    if(_out MATCHES "set\\(NROS_LOCATE_RESOLVED \"([^\"]*)\"\\)")
+        set(_dir "${CMAKE_MATCH_1}")
+    endif()
+    nros_configured_publish("${_dir}")
+endfunction()
+
+# nros_configured_publish(<dir>)
+#
+# Publish <dir> (possibly empty) as where this configure's image's answer is,
+# for every reader of THIS configure. `nros_configured_locate` is its caller;
+# a test stands in for the CLI through it.
+function(nros_configured_publish _dir)
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR "${_dir}")
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_LOCATED TRUE)
+endfunction()
 
 # nros_resolved_dir(<out_var>)
 #
-# The directory stage 3.5 wrote this image's answer into, or empty.
-#
-# Read from the cache/normal variable first and the ENVIRONMENT second, because
-# the two carriers reach different lanes: `-D` reaches a configure `nros build`
-# spawned directly, and the environment reaches one it spawned through a tool
-# that owns its own command line. Never GUESSED from `CMAKE_BINARY_DIR` -- see
-# the header.
+# The directory `nros configure` resolved this image's answer into, or empty.
+# See the header: located by identity, once per configure.
 function(nros_resolved_dir _out_var)
-    if(DEFINED NROS_RESOLVED_DIR AND NOT "${NROS_RESOLVED_DIR}" STREQUAL "")
-        set(${_out_var} "${NROS_RESOLVED_DIR}" PARENT_SCOPE)
-        return()
+    get_property(_located GLOBAL PROPERTY NROS_CONFIGURED_LOCATED)
+    if(NOT _located
+       AND DEFINED NROS_CONFIGURED_PROJECT AND NOT "${NROS_CONFIGURED_PROJECT}" STREQUAL ""
+       AND DEFINED NROS_CONFIGURED_IMAGE AND NOT "${NROS_CONFIGURED_IMAGE}" STREQUAL "")
+        nros_configured_locate("${NROS_CONFIGURED_PROJECT}" "${NROS_CONFIGURED_IMAGE}")
     endif()
-    if(DEFINED ENV{NROS_RESOLVED_DIR} AND NOT "$ENV{NROS_RESOLVED_DIR}" STREQUAL "")
-        set(${_out_var} "$ENV{NROS_RESOLVED_DIR}" PARENT_SCOPE)
-        return()
-    endif()
-    set(${_out_var} "" PARENT_SCOPE)
+    get_property(_dir GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR)
+    set(${_out_var} "${_dir}" PARENT_SCOPE)
 endfunction()
 
 # nros_resolved_entity_fragment(<out_var>)
 #
-# The include()able projection stage 3.5 wrote, or empty when there is none.
+# The include()able projection configure wrote, or empty when there is none.
 #
 # EMPTY rather than a path-that-does-not-exist, so a caller cannot accidentally
 # `include()` a missing file and get cmake's own error about a name that means
@@ -123,38 +143,19 @@ endfunction()
 
 # nros_resolved_seed_entity_inventory(<path> [<out_used>])
 #
-# Seed the image's entity-inventory fragment from the resolve phase's answer,
-# if there is one and the fragment does not exist yet.
-#
-# Call it IMMEDIATELY BEFORE `nros_entity_inventory_seed_knobs_file(<path>)`,
-# which is a no-op on a file that now exists. Both are then correct in either
-# order of arrival, and a lane with no resolve keeps today's placeholder.
+# Seed the image's entity-inventory fragment from configure's answer, if there
+# is one. Call it from a READER, before `nros_entity_inventory_seed_knobs_file`
+# (a no-op on a file that now exists) and before `nros_promise_read`.
 #
 # Call it from a READER only. The three call sites inside
 # `nros_derive_entity_inventory_knobs()` are a PRODUCER recording its own
 # refusal ("I could not compose here"), and seeding those with a different
 # composer's answer would publish a number the producer did not stand behind.
-# Two roles, two behaviours -- the sites are not siblings even though they call
-# one function.
 #
-# Issue 1729 -- and RE-seed it when the resolve phase's answer has MOVED since
-# the last seed. "Only where no fragment exists" assumed a mid-configure
-# producer that recomposes the fragment on every configure. The generated Rust
-# Zephyr entry (`rust_cargo_application()`, no `nano_ros_entry()`) has none:
-# the seed IS its only producer. So the first configure's answer was the
-# image's answer forever -- `resolved.cmake` was not even a configure
-# dependency -- and `realtime-rust`'s derived-tier image kept a three-slot
-# publisher pool after `nros build` had re-resolved four, failing
-# `PublisherCreationFailed` at boot. Measured: the build dir configured at
-# 09:34, the resolve rewritten at 09:56, ninja ran no configure.
-#
-# The record `<path>.resolved-seed` holds the content hash of the projection the
-# fragment was last seeded from. A seed happens when the fragment is absent OR
-# that hash moved; an unchanged resolve never re-seeds, so a road WITH a
-# producer still converges (the producer overwrites, arms once, and the next
-# configure finds the record current). The projection is a configure
-# dependency, and `nros build` writes it write-if-changed, so an unchanged
-# resolve costs no configure.
+# Issue 1729 -- for the generated Rust Zephyr entry the seed is the fragment's
+# ONLY producer, so a resolve that moved must reach it: the fragment is made
+# equal to the projection on every configure (write-if-different), and the
+# projection is a configure dependency.
 function(nros_resolved_seed_entity_inventory _path)
     nros_resolved_entity_fragment(_frag)
     _nros_resolved_seed("${_frag}" "${_path}" "entity inventory" _used)
@@ -167,15 +168,14 @@ endfunction()
 #
 # The same seed for the image's MESSAGE-BOUND fragment
 # (`nros/message_bound_knobs.cmake`), from `resolved-message-bounds.cmake`,
-# which `nros build` writes beside `resolved.cmake` for a west image
+# which configure writes beside `resolved.cmake`
 # (`nros_cli_core::message_bound_knobs::write_west_seed`). Call it from the
-# READER, before `nros_message_bounds_seed_knobs_file(<path>)` -- the same
-# order and the same reason as the entity seed above. The producer
-# (`nros_find_interfaces()`) still runs and still wins: a seed that differs
-# from its answer arms the pass it would have armed anyway.
+# READER, before `nros_message_bounds_seed_knobs_file(<path>)`. The producer
+# (`nros_find_interfaces()`) still runs, and its final answer is held to this
+# one (RFC-0120 D5).
 #
-# No-op with no resolve phase, and when `nros build` declined to seed (it says
-# why on its own output): the placeholder is then written as before.
+# No-op with no configure in front, and when configure declined to seed (it
+# says why on its own output): the placeholder is then written as before.
 function(nros_resolved_seed_message_bounds _path)
     nros_resolved_dir(_dir)
     if("${_dir}" STREQUAL "" OR NOT EXISTS "${_dir}/resolved-message-bounds.cmake")
@@ -183,111 +183,71 @@ function(nros_resolved_seed_message_bounds _path)
     endif()
     _nros_resolved_seed("${_dir}/resolved-message-bounds.cmake" "${_path}"
         "message-bound sizes" _used)
-    # phase-439 W8 -- and hold the producer to it (see the check below).
+    # The producer's account of WHY it moved, from the input record configure
+    # wrote beside the seed. Queued before the reader queues the promise check,
+    # so it runs first (cmake's deferred calls are FIFO).
     if(EXISTS "${_dir}/resolved-message-bounds-inputs.cmake")
         get_property(_queued GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_FRAG SET)
         set_property(GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_FRAG "${_path}")
         if(NOT _queued)
             cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
-                CALL _nros_resolved_bounds_promise_check)
+                CALL _nros_resolved_bounds_why)
         endif()
     endif()
 endfunction()
 
-# _nros_resolved_bounds_promise_check() -- phase-439 W8 (RFC-0094 A3, amended)
+# _nros_resolved_bounds_why() -- phase-439 W8, phase-530 W4
 #
-# A configure `nros build` started takes ONE pass for the message-bound sizes:
-# its readers read the seed stage 3.5 composed, and the producer
-# (`nros_derive_message_bound_knobs`, once per interface-declaring package)
-# composes the same answer again. This holds the producer to it, at the end of
-# the top-level configure -- after the LAST producer call, because an earlier
-# call sees fewer tables and legitimately differs.
+# When this configure's final message-bound answer moved from the seed, say
+# which INPUT moved, by comparing this configure's inputs with the record
+# configure composed the seed over: its bound tables (a `find_package(<msg>)`
+# configure did not see adds one), the entity fragment the last composition
+# read, and the small-class ceiling. Equal inputs leave no account, and the
+# promise check then names the two composers' disagreement as the bug it is.
 #
-# Three outcomes, decided by what the readers consumed and by the inputs:
-#
-#   * readers did not read the seed, or the final fragment equals what they
-#     read: nothing to say (the fixed point in NanoRosReconfigure.cmake covers
-#     the first);
-#   * the answer moved AND this configure's inputs are not the ones the seed was
-#     composed over (a table regenerated, another entity inventory, another
-#     ceiling -- a tree edited since `nros build` resolved it): a resolve older
-#     than the tree. The producer's arm buys the pass, as it always has, and
-#     this says why the configure was not single-pass;
-#   * the answer moved over the SAME inputs: the two composers of one answer
-#     disagree. That is a bug in one of them (the parity case of
-#     `tests/cmake-message-bounds-tests.sh` is what should have caught it), and
-#     a second pass would only build with whichever answer came last -- so the
-#     configure stops, naming both files.
-#
-# Runs one hop late: the first call re-queues itself, so it follows every
-# deferred call queued before it (an entry's standalone flushes among them).
-function(_nros_resolved_bounds_promise_check)
+# One hop late, like the promise check it feeds.
+function(_nros_resolved_bounds_why)
     get_property(_hop GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_HOP)
     if(NOT _hop)
         set_property(GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_HOP TRUE)
         cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
-            CALL _nros_resolved_bounds_promise_check)
+            CALL _nros_resolved_bounds_why)
         return()
     endif()
-    if(NOT COMMAND _nros_reconfigure_pass_props OR NOT COMMAND nros_message_bounds_fragments
+    if(NOT COMMAND nros_message_bounds_fragments
        OR NOT COMMAND nros_entity_inventory_knobs_file)
         return()
     endif()
     get_property(_frag GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_FRAG)
     nros_resolved_dir(_dir)
-    set(_seed "${_dir}/resolved-message-bounds.cmake")
     set(_rec "${_dir}/resolved-message-bounds-inputs.cmake")
-    if("${_frag}" STREQUAL "" OR NOT EXISTS "${_seed}" OR NOT EXISTS "${_rec}"
-       OR NOT EXISTS "${_frag}")
+    if("${_frag}" STREQUAL "" OR NOT EXISTS "${_rec}")
         return()
     endif()
-    _nros_reconfigure_pass_props("${_frag}" _basis_prop _armed_prop)
-    get_property(_have GLOBAL PROPERTY ${_basis_prop} SET)
-    if(NOT _have)
-        return()
-    endif()
-    get_property(_basis GLOBAL PROPERTY ${_basis_prop})
-    file(SHA256 "${_seed}" _seed_sha)
-    file(SHA256 "${_frag}" _final_sha)
-    if(NOT _basis STREQUAL _seed_sha OR _final_sha STREQUAL _basis)
-        return()
-    endif()
-
     unset(NROS_RESOLVED_BOUNDS_INPUTS_SCHEMA)
     include("${_rec}")
     _nros_resolved_bounds_inputs(_tables _entity_sha)
     get_property(_ceiling GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_CEILING)
     set(_why "")
     if(NOT "${NROS_RESOLVED_BOUNDS_INPUTS_SCHEMA}" STREQUAL "1")
-        set(_why "its input record has a schema this reader does not know")
+        set(_why "its input record (${_rec}) has a schema this reader does not know")
     elseif(NOT "${_tables}" STREQUAL "${NROS_RESOLVED_BOUNDS_TABLES}")
-        set(_why "its bound tables are [${NROS_RESOLVED_BOUNDS_TABLES}], this configure's [${_tables}]")
+        set(_why "configure composed over the bound tables [${NROS_RESOLVED_BOUNDS_TABLES}], "
+                 "this configure registers [${_tables}] -- an interface package the "
+                 "host configure finds that `package.xml` does not name")
+        string(CONCAT _why ${_why})
     elseif(NOT "${_entity_sha}" STREQUAL "${NROS_RESOLVED_BOUNDS_ENTITY_SHA256}")
-        set(_why "this configure's entity inventory is not the one it was composed with")
+        set(_why "this configure's entity inventory is not the one configure composed "
+                 "the sizes with -- a registration configure did not count")
+        string(CONCAT _why ${_why})
     elseif(NOT "${_ceiling}" STREQUAL "${NROS_RESOLVED_BOUNDS_CEILING}")
-        set(_why "its small-class ceiling is ${NROS_RESOLVED_BOUNDS_CEILING}, this "
+        set(_why "configure's small-class ceiling is ${NROS_RESOLVED_BOUNDS_CEILING}, this "
                  "configure's ${_ceiling}")
         string(CONCAT _why ${_why})
     endif()
     if(NOT _why STREQUAL "")
-        message(STATUS
-            "nros: message-bound sizes: the resolve phase's seed (${_seed}) was "
-            "composed over other inputs -- ${_why}. This configure converges by "
-            "one more pass; re-run `nros build` to keep it to one.")
-        return()
+        nros_promise_why("${_frag}" "${_why}")
     endif()
-    message(FATAL_ERROR
-        "nros: this image's message-bound sizes differ from the answer `nros build` "
-        "resolved before this configure, over the SAME inputs.
-"
-        "  seed:      ${_seed}
-"
-        "  configure: ${_frag}
-"
-        "  The two composers of one answer disagree, which is a bug in one of them, "
-        "not a lag to converge: a configure `nros build` started takes one pass "
-        "(RFC-0094 A3, phase-439 W8), and a second pass would build with whichever "
-        "answer came last. `diff` the two files and report it.")
 endfunction()
 
 # _nros_resolved_bounds_inputs(<out_tables> <out_entity_sha>)
@@ -324,57 +284,59 @@ endfunction()
 
 # _nros_resolved_seed(<projection> <path> <what> <out_used>)
 #
-# The one copy both seeds make: VERBATIM, re-seeded only when the projection's
-# content moved (issue 1729's record), and the projection made a configure
-# dependency. The rationale for each half is the comment below.
+# The one copy both seeds make: VERBATIM, whenever the fragment's content is
+# not the projection's (write-if-different, so an unchanged answer moves no
+# mtime), the projection made a configure dependency, and the fragment
+# recorded as SEEDED for the promise check (RFC-0120 D5). <out_used> is TRUE
+# whenever there is a projection, copied or already equal.
+#
+# phase-530 W4 -- re-seeded on CONTENT, not on a record of the last seed
+# (issue 1729's `<path>.resolved-seed`): with the fixed point gone, a producer
+# that moved the fragment fails the configure rather than converging, and the
+# fragment it left behind must not be what the next configure's readers see.
 function(_nros_resolved_seed _frag _path _what _out_used)
     set(${_out_used} FALSE PARENT_SCOPE)
     if("${_frag}" STREQUAL "")
         return()
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_frag}")
+    set(${_out_used} TRUE PARENT_SCOPE)
+    # ONCE per configure: a reader called once per package (the payload-class
+    # join in `nros_find_interfaces()`) must not put the seed back over what a
+    # producer wrote in between -- only the FINAL answer is held to it.
+    nros_promise_is_seeded("${_path}" _already)
+    if(_already)
+        return()
+    endif()
+    nros_promise_seeded("${_path}" "${_frag}")
     file(SHA256 "${_frag}" _seed_hash)
-    set(_record "${_path}.resolved-seed")
-    if(EXISTS "${_path}" AND EXISTS "${_record}")
-        file(READ "${_record}" _last_hash)
-        string(STRIP "${_last_hash}" _last_hash)
-        if(_last_hash STREQUAL _seed_hash)
+    if(EXISTS "${_path}")
+        file(SHA256 "${_path}" _have_hash)
+        if(_have_hash STREQUAL _seed_hash)
             return()
         endif()
     endif()
-    # Absent fragment, a moved resolve, or a fragment with no record (one this
-    # rule predates, which is exactly the build dir issue 1729 measured). On a
-    # road WITH a producer the producer still runs after this, overwrites, and
-    # arms one re-configure if it disagrees -- case C -- and the record then
-    # keeps it from being re-seeded.
     get_filename_component(_dir "${_path}" DIRECTORY)
     file(MAKE_DIRECTORY "${_dir}")
     # VERBATIM. Not a copy with a "seeded from ..." banner on top, which is what
-    # this did first and which MEASURED as buying nothing: `nros_reconfigure_
-    # snapshot` hashes CONTENT, so a seed that differs from the producer's
-    # answer by one comment line arms exactly the re-configure the seed exists
-    # to remove. Case B of `tests/cmake-resolved-seed-tests.sh` is that
-    # measurement, and it reported `re-runs=1` until the banner came off.
+    # this did first and which MEASURED as buying nothing: the comparison is of
+    # CONTENT, so a seed that differs from the producer's answer by one comment
+    # line is a different answer (case B of `tests/cmake-resolved-seed-tests.sh`).
     #
-    # The same rule cost the pass a SECOND time, from INSIDE the fragment
-    # rather than from this copy (issue 1228, measured on `demo_bringup:zephyr`
-    # / native_sim/native/64): `to_cmake` used to set
+    # The same rule cost a pass a SECOND time, from INSIDE the fragment rather
+    # than from this copy (issue 1228): `to_cmake` used to set
     # `NROS_ENTITY_INVENTORY_SOURCE` and to print the per-component provenance
     # as `<pkg>::<component>`, and both depend on WHICH COMPOSER ran rather
-    # than on the image -- the model names nodes (`/talker`), the merge names
-    # ament packages (`talker_pkg`). Every NUMBER agreed and those two
-    # renderings were the entire byte difference, so the producer re-armed over
-    # provenance every time. Both are out of the fragment now.
-    #
-    # The provenance is not lost, it is in the places a byte comparison cannot
-    # reach: the STATUS line below, `nros/entity_inventory.json`, and
-    # `resolved.toml`'s `[provenance]` table beside the file this reads.
+    # than on the image. Both are out of the fragment now; the provenance is in
+    # the STATUS line below, `nros/entity_inventory.json`, and `resolved.toml`'s
+    # `[provenance]` table beside the file this reads.
     file(READ "${_frag}" _body)
     file(WRITE "${_path}" "${_body}")
-    file(WRITE "${_record}" "${_seed_hash}\n")
-    set(${_out_used} TRUE PARENT_SCOPE)
+    # The record issue 1729 kept is retired (see above); drop one a previous
+    # tree left, so nothing reads it.
+    file(REMOVE "${_path}.resolved-seed")
     message(STATUS
-        "nros: ${_what} seeded from the resolve phase (${_frag}); this "
+        "nros: ${_what} seeded from `nros configure` (${_frag}); this "
         "configure's first reader sees a derived answer rather than a placeholder")
 endfunction()
 
@@ -406,10 +368,10 @@ endfunction()
 #
 # Any difference, an absent or unreadable record, or a <metadata> row carrying
 # the retired `entities` key (the verb refuses it, and only the verb says so)
-# leaves `<out_taken>` FALSE and says why once: the caller composes exactly as
-# it did before this function existed. A road with no record -- every
-# configure `nros build` did not start, and every non-west image -- never
-# reaches the comparison.
+# leaves `<out_taken>` FALSE and says why once: the caller composes, and the
+# promise check (RFC-0120 D5) quotes the reason if that composition differs
+# from the seed. A road with no record -- every non-west image -- never reaches
+# the comparison.
 function(nros_resolved_entity_take _metadata _output _json _out_taken)
     set(${_out_taken} FALSE PARENT_SCOPE)
     nros_resolved_entity_fragment(_frag)
@@ -424,17 +386,19 @@ function(nros_resolved_entity_take _metadata _output _json _out_taken)
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_rec}")
 
-    # Only a configure the `nros build` that wrote this record started -- its
-    # digest rides the environment, which ninja's own re-runs inherit. The
-    # record covers the registered rows, the model and the workspace, not the
-    # probe sidecars that floor the counts: a later reconfigure of this build
-    # dir (`NROS_RESOLVED_DIR` is cached, so it still reaches here) may follow a
-    # `nros configure` that moved one, and must compose.
+    # Only over a CURRENT configure. The record covers the registered rows, the
+    # model and the workspace, not the probe sidecars that floor the counts, so
+    # a record a stale configure left must not be read. Current means either:
+    #   * phase-530 W4 -- the Zephyr module hook ran `nros configure` for this
+    #     image in THIS host configure (`NROS_CONFIGURED_CURRENT`), so every
+    #     input configure reads is current now; or
+    #   * the `nros build` that wrote the record started this configure -- its
+    #     digest rides the environment, which ninja's own re-runs inherit.
     file(SHA256 "${_rec}" _rec_sha)
-    if(NOT "$ENV{NROS_RESOLVED_ENTITY_RECORD_SHA256}" STREQUAL "${_rec_sha}")
+    get_property(_current GLOBAL PROPERTY NROS_CONFIGURED_CURRENT)
+    if(NOT _current AND NOT "$ENV{NROS_RESOLVED_ENTITY_RECORD_SHA256}" STREQUAL "${_rec_sha}")
         message(STATUS "nros: entity inventory composed at configure, not read from the "
-                       "resolve phase: this configure was not started by the `nros build` "
-                       "that wrote ${_rec}")
+                       "resolve phase: no current `nros configure` wrote ${_rec}")
         return()
     endif()
 
@@ -514,6 +478,9 @@ function(nros_resolved_entity_take _metadata _output _json _out_taken)
     if(NOT _why STREQUAL "")
         message(STATUS "nros: entity inventory composed at configure, not read from the "
                        "resolve phase: ${_why}")
+        # RFC-0120 D5 -- if this configure's composition then differs from the
+        # seed its readers used, this is why.
+        nros_promise_why("${_output}" "${_why}")
         return()
     endif()
 

@@ -30,11 +30,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosEntityInventory.cmake")
 # same reason as its neighbours: an include() inside a function frame drops the
 # file's vars when the frame pops.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
-# Issue 0991 -- `nros_reconfigure_settle`, for both loaders below. They are the
-# EARLIEST readers of either fragment in a Zephyr configure, which is what makes
-# them the right place to clear a date a previous pass armed. FILE scope, same
-# reason as the two above.
-include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosReconfigure.cmake")
+# phase-530 W4 (RFC-0120 D5) -- `nros_promise_read`, for the three loaders
+# below. They are the EARLIEST readers of each fragment in a Zephyr configure,
+# so they record what the configure's readers consumed, which the late
+# producers are then held to. FILE scope, same reason as the two above.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosPromise.cmake")
 # phase-484 W5a/W8 (RFC-0103 D2b) -- `_nros_knob_env`, rung 1 under a knob's
 # canonical spelling, refusing a retired one. FILE scope, same reason as its
 # neighbours.
@@ -336,11 +336,10 @@ function(_nros_load_derived_message_bounds)
         nros_message_bounds_seed_knobs_file("${_knobs}")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_knobs}")
-    # Issue 0991 -- clear a date a previous pass armed. This runs during
-    # `find_package(Zephyr)`, which is the EARLIEST reader in the whole
-    # configure, and that is why settling belongs here: a configure that fails
-    # after this point leaves nothing future-dated behind.
-    nros_reconfigure_settle("${_knobs}")
+    # RFC-0120 D5 -- what this configure's readers consume. Seeded (configure
+    # wrote the answer), the producer is held to it at the end of the
+    # configure; with no seed the old settle still applies (NanoRosPromise.cmake).
+    nros_promise_read("${_knobs}")
     include("${_knobs}")
     # issue 1498 -- re-export every DERIVED fact the file sets, read off the
     # file itself rather than a hand-kept list. The list this replaced named
@@ -395,7 +394,7 @@ function(_nros_load_derived_entity_inventory)
         nros_entity_inventory_seed_knobs_file("${_knobs}")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_knobs}")
-    nros_reconfigure_settle("${_knobs}")
+    nros_promise_read("${_knobs}")
     include("${_knobs}")
 
     # Re-export EVERY name the fragment sets, read from the fragment itself.
@@ -511,6 +510,13 @@ function(_nros_west_leaf_sizing)
         message(STATUS
             "nros: standalone leaf -- entity inventory from its ${_basis} "
             "(issues 1662, 2086)")
+        # phase-530 W4 (RFC-0120 D5) -- this IS the leaf's answer, written
+        # before every reader from configure's own inputs. The readers read it
+        # as a seed, and the standalone composer (`NanoRosNodeRegister.cmake`),
+        # which cannot see a census, stands down rather than overwrite it (it
+        # did, every pass, which is what kept the talker from converging).
+        nros_promise_seeded("${_knobs}" "`nros dev image west-leaf-sizing` (${_basis})")
+        set_property(GLOBAL PROPERTY NROS_ENTITY_INVENTORY_LEAF_SIZED "${_basis}")
     endif()
 endfunction()
 
@@ -544,7 +550,26 @@ endfunction()
 # cargo is never handed a file that is not there (RFC-0100 D6).
 function(_nros_load_west_sizing_descriptor)
     nros_sizing_descriptor_west_fragment(_frag)
-    if(NOT EXISTS "${_frag}")
+    get_property(_configured GLOBAL PROPERTY NROS_CONFIGURED_CURRENT)
+    if(_configured)
+        # phase-530 W4 (RFC-0120 D5) -- `nros configure` is in front of this
+        # configure, so the decision is made from ITS facts, every configure,
+        # and held as a promise: an entry that decides otherwise fails the
+        # configure instead of arming another one.
+        #
+        # "named" only where a C/C++ ENTRY will run (`nano_ros_entry()`, the
+        # writer): a generated workspace application that is not a Rust entry.
+        # A standalone leaf names its own descriptor or none, and a Rust entry
+        # runs no entry -- the "named" default used to wait for a writer it never
+        # had, and the backstop took it back one pass later (issue 2233).
+        nros_resolved_dir(_resolved)
+        if(NOT DEFINED NROS_IMAGE_SYSTEM_DIR OR "${NROS_IMAGE_SYSTEM_DIR}" STREQUAL ""
+           OR "${NROS_IMAGE_LANGUAGE}" STREQUAL "rust")
+            set(_resolved "")
+        endif()
+        nros_sizing_descriptor_west_default("${_resolved}" "${NROS_WEST_LEAF_DESCRIPTOR}")
+        nros_promise_seeded("${_frag}" "the module's decision from `nros configure`'s answer")
+    elseif(NOT EXISTS "${_frag}")
         # Written rather than skipped, for the reason the bounds loader gives:
         # it is registered as a configure dependency below, and a ninja input
         # with no producing rule is a hard error at load.
@@ -552,7 +577,7 @@ function(_nros_load_west_sizing_descriptor)
         nros_sizing_descriptor_west_default("${_resolved}" "${NROS_WEST_LEAF_DESCRIPTOR}")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_frag}")
-    nros_reconfigure_settle("${_frag}")
+    nros_promise_read("${_frag}")
     include("${_frag}")
     if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL "")
         message(STATUS
@@ -720,10 +745,10 @@ function(nros_resolve_knobs)
     # clear nothing next time.
     #
     # Only INTERNAL entries: `_nros_resolve_knob` writes every value CACHE
-    # INTERNAL, while `NROS_RESOLVED_DIR` (cmake/NanoRosResolved.cmake) shares
-    # the prefix and is a CALLER's `-D` on the cmake/west handoff — clearing it
-    # would discard an input, not a stale answer. Named as well, in case a
-    # handoff ever types it INTERNAL.
+    # INTERNAL, while `NROS_RESOLVED_DIR` shares the prefix and was a CALLER's
+    # `-D` on the cmake/west handoff (retired by phase-530 W4 and read by
+    # nothing now, but a build dir configured before still caches it) --
+    # clearing it would discard an input, not a stale answer. Named as well.
     get_property(_nros_cache_vars GLOBAL PROPERTY CACHE_VARIABLES)
     foreach(_nros_cache_var IN LISTS _nros_cache_vars)
         # Issue 1549 -- a knob's recorded SOURCE goes with its value: a knob
