@@ -27,12 +27,9 @@ description = "PX4 SITL E2E test fixture for nano-ros uORB modules (out-of-works
 name = "px4_xrce_e2e"
 path = "tests/px4_xrce_e2e.rs"
 
-# phase-325 W2.4 — Track A's runtime lane, replacing the px4_e2e issue 0356
-# removed. Unlike its predecessor it asserts on a STOCK PX4 consumer, and it does
-# not build SITL: `just px4 build-sitl-example` does that, per CLAUDE.md.
-[[test]]
-name = "px4_uorb_interop_e2e"
-path = "tests/px4_uorb_interop_e2e.rs"
+# phase-325 W2.4's Track A uORB interop test moved to `nros-tests`
+# (`tests/px4_sitl.rs`, phase-521 W8 (e)): PX4 is a Tier 1 framework, so its
+# runtime cells are matrix consumers there, with no `px4-rs` dependency.
 
 # phase-325 W3.4 — the bridge's acceptance: a stock PX4 module's uORB topic
 # reaches a REAL ROS 2 subscriber. Consumes the SITL image from

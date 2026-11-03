@@ -838,3 +838,18 @@ the owner (RFC-0112 D3).
 *Blocker.* Not started in this session for time: (a)-(f) are each a PR,
 and (c) changes the executor's public surface that D7 just narrowed, so it
 wants a short ruling first (a doc(hidden) hook for in-tree drivers only).
+
+**W8 (e), first half — the delivering cell (2026-11-03).** Correction to the
+assessment above: `pyros_genmsg` was never missing. The distribution is
+`pyros-genmsg` and its module is `genmsg`, which this host has; `just px4
+setup`'s `px4-build` check passes. The runner image is the wrong home for it
+anyway: by maintainer ruling the SITL lane is a HOSTED `px4-sitl` job in
+`nightly.yml`, which installs PX4's own pinned `Tools/setup/requirements.txt`
+into its throwaway container, because the index's `[python.*]` layer refuses an
+upstream-only dependency. The uORB interop test moved into `nros-tests`
+(`tests/px4_sitl.rs`, harness `nros_tests::px4_sitl`, no `px4-rs`), and the
+`(Px4, Cpp, Uorb, Pubsub)` cell is `Gated` on that job instead of carved out.
+Its first local run found every PX4 uORB image refused at open since W6's D5
+refusal — the push-wake glue was never linked — which W8 (d) fixed. Still in
+(e): per-tier wake counters, and W7's idle-wake and arrival→dispatch tests on
+SITL.

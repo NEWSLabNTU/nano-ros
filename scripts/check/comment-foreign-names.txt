@@ -525,7 +525,6 @@ optional_history_depth
 orb_id_size_t
 preprocess_endpoint_attributes
 qos_flags
-rcS
 read_format_data
 read_submessage_info
 rmw_microxrcedds

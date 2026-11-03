@@ -543,6 +543,107 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # ===== PX4 SITL (phase-521 W8 (e), RFC-0113 D9) ======================
+  # PX4 is a Tier 1 framework, and Tier 1 admission needs a DELIVERING CI
+  # cell (RFC-0112 D3). Its cells are `Gated` in `matrix::CELLS`: a SITL build
+  # is not a fixture row, so no tier cover schedules it, and this job is the
+  # lane their status string names (`tests/px4_sitl.rs`).
+  #
+  # HOSTED on purpose (maintainer ruling 2026-11-03): SITL needs PX4's own
+  # Python requirements, and those are upstream's — the index's `[python.*]`
+  # layer refuses an upstream-only dependency, so the self-hosted runner image
+  # is the wrong home for them. PX4's pinned `Tools/setup/requirements.txt` is
+  # the authority, installed here into the job's throwaway container, never
+  # restated as a list.
+  px4-sitl:
+    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 7 * * *' }}
+    name: px4 sitl
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: nightly-px4-sitl-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore CLI build cache (Phase 218)
+        id: cli-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        uses: ./.github/actions/setup-nros-cli
+
+      - name: Save CLI build cache (Phase 218)
+        if: steps.cli-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+
+      - name: Provision the declared system closure (phase-413 W3)
+        run: |
+          source ./activate.sh
+          nros setup --system --sudo
+
+      # The PX4 tree first: its requirements file is what the next step reads.
+      # `nuttx-libc` backs a root-workspace path dep that `nros-tests` loads.
+      - name: Provision PX4-Autopilot and px4-rs
+        run: |
+          source ./activate.sh
+          nros setup --source px4-rs --source px4-autopilot --source nuttx-libc
+          git -C third-party/px4/PX4-Autopilot submodule update --init \
+            --depth 1 --recommend-shallow --recursive
+
+      - name: Install PX4's own Python requirements (upstream's pinned list)
+        run: |
+          python3 -m pip install --no-cache-dir \
+            -r third-party/px4/PX4-Autopilot/Tools/setup/requirements.txt
+
+      - name: just setup px4
+        run: |
+          source ./activate.sh
+          just setup px4
+
+      - name: Reclaim disk before build (container headroom)
+        run: |
+          echo "before:"; df -h / | tail -1
+          apt-get clean 2>/dev/null || true
+          rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
+      # Builds SITL with the uORB example as EXTERNAL_MODULES_LOCATION, then
+      # runs `nros-tests --test px4_sitl` against that tree.
+      - name: Build SITL and run the PX4 cells
+        run: |
+          source ./setup.bash
+          just px4 test-sitl-example
+
+      - name: Upload nextest JUnit (px4)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-px4-sitl-junit
+          path: |
+            target/nextest/*/junit.xml
+            ${{ env.CARGO_TARGET_DIR }}/nextest/*/junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
   # Does the tier actually RUN the lane it claims to? Every module the tier-2
   # nightly cover needs must have a home somewhere in nightly CI. Without this,
   # "`ci-matrix-nightly` catches the platform x lang class" is a sentence in

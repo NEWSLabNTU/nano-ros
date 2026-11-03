@@ -565,17 +565,17 @@ build-fixtures:
     done | nros_pool_run px4-companion
     echo "PX4 XRCE fixtures built."
 
-# Run the Track A uORB interop E2E: a STOCK PX4 `listener` reads a nano-ros
-# publication (phase-325 W2.4). Rebuilds SITL against the example first, because
-# the register-check gate and this example cannot share one build dir.
+# Run the PX4 SITL cells (`nros-tests` `px4_sitl`, phase-521 W8 (e)): a STOCK
+# PX4 `listener` reads a nano-ros publication (phase-325 W2.4). Rebuilds SITL
+# against the example first, because the register-check gate and this example
+# cannot share one build dir. The hosted `px4-sitl` nightly job runs this.
 [group("debug")]
 test-sitl-example: build-sitl-example
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    cargo_nextest_args=($(nros_cargo_nextest_args_unlocked))
-    cd packages/testing/nros-px4-sitl-test
-    cargo nextest run "${cargo_nextest_args[@]}" --test px4_uorb_interop_e2e
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    cargo nextest run "${cargo_nextest_args[@]}" -p nros-tests --test px4_sitl
 
 # Build every PX4 tier: example integrations and fixtures.
 #
@@ -592,7 +592,7 @@ build-all: build-examples build-fixtures
 #   px4_xrce_e2e  — Track B (real PX4 uxrce_dds_client → agent → nano-ros
 #                   companion receives /fmu/out telemetry over nros-rmw-xrce)
 #
-# Track A (in-firmware uORB) is `px4_uorb_interop_e2e`, run by `test-sitl-example`
+# Track A (in-firmware uORB) is `nros-tests`' `px4_sitl`, run by `test-sitl-example`
 # rather than here. It needs a DIFFERENT EXTERNAL_MODULES_LOCATION than the
 # register-check gate, PX4 takes one per build, and both write to the same
 # build/px4_sitl_default — so the two cannot share a SITL tree. Keeping them in

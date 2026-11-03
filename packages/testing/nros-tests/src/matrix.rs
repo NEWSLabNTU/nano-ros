@@ -83,7 +83,8 @@ pub enum PlatformId {
     /// ARM FVP Base_RevC AEMv8-R (`[tool.arm-fvp]`, x86_64 Linux only).
     Fvp,
     /// PX4-SITL host (the uORB middleware). Issue 0341 — expressible so the
-    /// uORB axis has a home; carried as a CarveOut (no CI runner builds SITL).
+    /// uORB axis has a home. Its cells are [`Tier::Gated`]: the hosted
+    /// `px4-sitl` nightly job builds SITL and runs them (phase-521 W8 (e)).
     Px4,
 }
 
@@ -199,7 +200,7 @@ impl PlatformId {
             // only bare-metal family.
             PlatformId::QemuBaremetal => &["baremetal"],
             PlatformId::Fvp => &["fvp"],
-            // Carried as a CarveOut (no CI runner builds PX4-SITL), so no row
+            // Every PX4 cell is Gated (its own nightly job builds SITL), so no row
             // spells this today. The token is still declared: the vocabulary has
             // to name every platform, or a lane that later gains PX4 fixtures
             // selects nothing for them and looks fast rather than broken.
@@ -771,9 +772,9 @@ include!("matrix_cells.rs");
 /// Does any cell of `p` ask a CI lane to BUILD something (Runtime or
 /// BuildOnly)?
 ///
-/// A platform whose every cell is a `CarveOut` or [`Tier::Gated`] — PX4 (no
-/// runner builds SITL, and the XRCE companion cell is gated on the PX4 `.msg`
-/// tree) and ESP32 (dormant, issue 1525) — has nothing for a fixture row, a
+/// A platform whose every cell is a `CarveOut` or [`Tier::Gated`] — PX4 (its
+/// SITL cells run in the hosted `px4-sitl` nightly job, and the XRCE companion
+/// cell is gated on the PX4 `.msg` tree) and ESP32 (dormant, issue 1525) — has nothing for a fixture row, a
 /// `just` module or a lane to produce. A gated cell is built by the lane its
 /// string names, which no tier schedules. The coverage gates exempt it by
 /// this PROPERTY, derived from `CELLS`, rather than by naming it a second time.
@@ -871,6 +872,9 @@ pub enum Consumer {
     FvpRuntimeWs,
     /// `tests/px4_xrce.rs` — a [`Tier::Gated`] cell (phase-511 B3).
     Px4Xrce,
+    /// `tests/px4_sitl.rs` — the PX4 SITL uORB cells, [`Tier::Gated`] on the
+    /// hosted `px4-sitl` nightly job (phase-521 W8 (e)).
+    Px4Sitl,
 }
 
 impl Consumer {
@@ -910,6 +914,7 @@ impl Consumer {
         Consumer::FreertosQemu,
         Consumer::FvpRuntimeWs,
         Consumer::Px4Xrce,
+        Consumer::Px4Sitl,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -949,6 +954,7 @@ impl Consumer {
             Consumer::FreertosQemu => "freertos_qemu",
             Consumer::FvpRuntimeWs => "fvp_runtime_ws",
             Consumer::Px4Xrce => "px4_xrce",
+            Consumer::Px4Sitl => "px4_sitl",
         }
     }
 }
@@ -1391,6 +1397,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
             Some(FreertosQemu)
         }
         (P::Px4, L::Rust, R::Xrce, W::Pubsub, K::Example) => Some(Px4Xrce),
+        (P::Px4, L::Cpp, R::Uorb, W::Pubsub, K::Example) => Some(Px4Sitl),
         (P::Linux, _, _, W::Pubsub, K::Example) => Some(LinuxExamplePubsub),
         (P::Linux, _, _, W::Service | W::Action, K::Example) => Some(LinuxExampleReqresp),
         (P::Linux, _, _, W::ExecutorBoundNode, K::Example) => Some(LinuxExampleExecutorBoundNode),
