@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-03). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance blocked by issue 2231; W5 not landed.** Implements
+**Status (2026-11-03). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 not landed.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -315,8 +315,10 @@ Carried:
   `[board.flash]`), refuse and name `nros flash --monitor`.
 
 **Done for host, QEMU and `native_sim` images (2026-11-03).** The
-serial-talker acceptance is **blocked by issue 2231**, which reproduces
-without `nros run`. The runs are recorded after the list below.
+serial-talker acceptance was blocked by issue 2231, which reproduced without
+`nros run`; it passes since that fix (a `zpico-serial` read timeout that
+counted waits instead of measuring time). The runs are recorded after the
+list below.
 
 - *Executor.* `cmd/run_exec.rs`. Unless `--plan` names a plan file, which runs
   as written, `nros run` resolves the plan (W1), builds the image through
@@ -394,7 +396,8 @@ time is the whole verb, build included; the match time is from launch.
 | `examples/linux/rust/talker` | exit 0 | 33.1 s | 1.4 s |
 | `examples/mps2-an385-baremetal/rust/talker` (QEMU, router on `tcp/127.0.0.1:10500` for the guest's `10.0.2.2`) | exit 0 | 7.1 s | 1.3 s |
 | `examples/zephyr/rust/talker` (`native_sim`, west build) | exit 0 | 163.5 s | 3.3 s |
-| `examples/mps2-an385-baremetal/rust/serial-talker` | exit 1, `ConnectionFailed` | 12.8 s | — |
+| `examples/mps2-an385-baremetal/rust/serial-talker` (before issue 2231's fix) | exit 1, `ConnectionFailed` | 12.8 s | — |
+| `examples/mps2-an385-baremetal/rust/serial-talker` (after issue 2231's fix) | exit 0 | — | 3.1 s |
 
 - The expectation used was `--expect 'Publishing:'`. These talkers print
   `Publishing: 'Hello World: <n>'`, so the literal `'Publishing: 0'` below
@@ -402,7 +405,9 @@ time is the whole verb, build included; the match time is from launch.
 - The serial talker's link plumbing works: the runner reported the pty, and
   `rmw_zenohd` started listening on it. The session itself fails. It fails
   the same way in the test harness's own socat topology, with no `nros run`
-  involved, so this is issue 2231 and not this verb.
+  involved, so this is issue 2231 and not this verb. Resolved: the guest's
+  serial read gave up after 500 early-returning waits, a few milliseconds
+  under QEMU 11, and re-sent the link INIT the router had already answered.
 - Ctrl-C on a real run: `nros run` on the mps2-an385 talker with a router,
   QEMU and the runner in its group was sent SIGINT after 25 s. It exited 130,
   QEMU logged `terminating on signal 15`, and the group had no member left.

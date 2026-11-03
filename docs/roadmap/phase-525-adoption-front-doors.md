@@ -202,8 +202,9 @@ chapter (RFC-0115 D4); it stays on the evidence page as build-only.
   the documented container) and what is deferred (WiFi, Zephyr 4.4).
 - From W3: the probe harness calls `nros run --expect` in place of the
   chapter's hand-spelled QEMU line, and the issue 2169 test covers the verb.
-- Blocked by issue 2231: the bare-metal mps2-an385 serial talker opens no
-  session with `rmw_zenohd` over the UART-to-pty link this chapter uses.
+- Was blocked by issue 2231 (resolved 2026-11-03): the bare-metal
+  mps2-an385 serial talker now opens its session with `rmw_zenohd` over the
+  UART-to-pty link this chapter uses.
 
 Acceptance: `just probe <track>` passes with the time printed; the time is
 under 30 minutes on the probe runner; the chapter names no workspace word and
