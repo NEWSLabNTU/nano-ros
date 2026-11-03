@@ -2403,9 +2403,9 @@ jobs:
         if: ${{ !cancelled() }}
         run: scripts/ci/disk-report.sh "before Zephyr setup"
 
-      - name: Reclaim disk before Zephyr setup — issue 1353
-        if: ${{ !cancelled() }}
-        run: scripts/ci/reclaim-disk.sh "before Zephyr setup"
+      # No `reclaim-disk.sh` here (it cost 36 s): this job measured 60 G free
+      # before the Zephyr setup and 53 G free after the template build, so
+      # there is nothing for it to buy.
 
       - name: rustup set profile minimal (avoid clippy-preview conflict)
         run: rustup set profile minimal
@@ -2419,12 +2419,29 @@ jobs:
 
       # WITH the SDK: the image's is the wrong version for 3.7 (see the job
       # comment), so the pinned one is installed into the store.
+      #
+      # NOT cached with actions/cache, deliberately (measured, issue 2219). The
+      # 0.16.8 SDK is 1.4 GB fetched and 7.8 GB unpacked, the 3.7 west
+      # workspace a further few GB, and the repository's cache budget is 10 GB
+      # with ~9.2 GB already held by the CLI and sccache entries every other
+      # lane restores. A cache this size would evict those (LRU) on every
+      # merge group, slowing the lanes it does not belong to. So nothing here
+      # is restored: west fetches the manifest's pinned revisions and the SDK
+      # is the index's pin, every run, and no stale tree can stand in for
+      # either (the issue 1476 trap does not arise).
+      #
+      # `NROS_ZEPHYR_SKIP_XRCE_AGENT`: the Agent is a RUNTIME peer for XRCE
+      # tests and this job builds images without running any (~30 s).
       - name: Set up the Zephyr 3.7 west workspace and its pinned SDK
         env:
           NROS_ZEPHYR_CREATE_VENV: "1"
+          NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
         run: |
           source ./activate.sh
           just setup zephyr
+          # What a cache of this step would have to hold (issue 2219).
+          du -sh "$(bash scripts/lib/zephyr-workspace.sh --version 3.7 resolve-or-default)" \
+                 "$(bash scripts/lib/zephyr-sdk.sh --version 0.16.8 resolve)" 2>/dev/null || true
 
       - name: Fetch the pin baseline (to find submodules whose pin moved)
         run: bash scripts/ci/pin-baseline.sh provide
