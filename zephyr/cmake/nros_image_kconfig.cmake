@@ -69,8 +69,29 @@
 #    gives every knob back its prompt: prj.conf, menuconfig and `-DCONFIG_*`
 #    work exactly as before.
 #
+# 6. `nros configure` (phase-530 W4, RFC-0120 D5). Before any of the above
+#    reads a derived fact, the hook runs `nros configure` for the image this
+#    host configure builds -- the leaf, or the image that owns a generated
+#    workspace application (RFC-0085 D14's walk-up) -- and asks
+#    `nros locate configured` where its answer is. Configure writes the census,
+#    the resolve and the seeds the module's early readers read, so no reader
+#    sees a placeholder and the late producers are held to the seeds (promise
+#    checks, `cmake/NanoRosPromise.cmake`). It is a QUERY caller: it never runs
+#    `nros build`, and a current stamp makes it a digest comparison, which is
+#    what it costs under `nros build` (configured already). Skipped inside the
+#    census's own host build (`NROS_LEAF_CENSUS_HOST`), which is the producer.
+#
+# 7. THE MODULE-KCONFIG STAMP (issue 1699, RFC-0120 D6 case 4). A `*.conf` in
+#    the application build dir whose only content is a comment naming the
+#    digest of the module's `zephyr/Kconfig` and of `Kconfig.from-system-toml`.
+#    Zephyr's `.cmake.dotconfig.checksum` covers every `*.conf` there, so a
+#    changed default regenerates `.config` -- in THIS pass, because the hook
+#    runs before Kconfig (it ran after Kconfig in `zephyr/CMakeLists.txt`,
+#    which cost an extra configure through the fixed point).
+#
 # For an application with no `system.toml` the hook writes the guest prompts
-# and drops a stale rendering of its own from the cache; nothing else.
+# and the stamp, and drops a stale rendering of its own from the cache;
+# nothing else.
 #
 # WHICH system.toml, and which image:
 #   * a single-package leaf: `${APPLICATION_SOURCE_DIR}/system.toml`;
@@ -85,8 +106,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCli.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCliRows.cmake")
 # phase-484 W5b -- the Kconfig knob ids and symbols (`NROS_KNOB_KCONFIG_*`).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobRegistry.cmake")
-# Issue 2086 -- `nros_leaf_census_take`.
-include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosLeafCensus.cmake")
+# phase-530 W4 -- `nros_configured_locate`, which publishes where configure put
+# this image's answer for the module's readers.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
 
 # The module root, captured at FILE scope (inside a function
 # `CMAKE_CURRENT_LIST_DIR` names the caller's file).
@@ -202,6 +224,7 @@ function(nros_image_kconfig_hook)
         endif()
         configure_file("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig.knob-prompts" "${_kgen}"
             COPYONLY)
+        _nros_image_kconfig_stamp("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig" "${_kgen}" "${_bin}")
         # Issue 2157 -- a hand-written entry is a guest here, and its board's
         # snippets arrive as `-DNROS_BOARD_SNIPPETS` from `nros build`.
         _nros_image_kconfig_merge_snippets("" "")
@@ -289,13 +312,11 @@ function(nros_image_kconfig_hook)
             "${_ov} (transient; RFC-0103 D2)")
     endif()
 
-    # Issue 2086 -- a leaf that takes its entities from its census takes it
-    # HERE, before Kconfig: the rendering below states the parameter store's
-    # axis from it (and so the nros heap's default), and the module's
-    # `west-leaf-sizing` reads the same census for the pools after Kconfig.
-    if(_dir STREQUAL APPLICATION_SOURCE_DIR)
-        nros_leaf_census_take("${_nros}" "${_dir}")
-    endif()
+    # phase-530 W4 (RFC-0120 D5) -- configure the image HERE, before Kconfig:
+    # the rendering below states the parameter store's axis from the census
+    # (issue 2086, which configure takes now), the module's readers read the
+    # seeds, and both must be current before the first of them.
+    _nros_image_kconfig_configure("${_nros}" "${_dir}" "${_image}")
 
     # Issue 2179 -- the Zephyr board this build was given, so the image's
     # board package contributes its snippets and conf files only when it
@@ -331,6 +352,7 @@ function(nros_image_kconfig_hook)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR "nano-ros: ${_dir}/system.toml [image.${_image}]: ${_err}")
     endif()
+    _nros_image_kconfig_stamp("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig" "${_kgen}" "${_bin}")
     get_filename_component(_rendered_dir "${_dir}" REALPATH)
     set_property(GLOBAL PROPERTY NROS_IMAGE_RENDERED_DIR "${_rendered_dir}")
     set_property(GLOBAL PROPERTY NROS_IMAGE_RENDERED_IMAGE "${_image}")
@@ -422,6 +444,107 @@ function(nros_image_kconfig_hook)
             "nano-ros: image `${_image}` env rows with no Kconfig symbol (${_keys}) -> "
             "every cargo command gets --config ${_envcfg} (issue 1712)")
     endif()
+endfunction()
+
+# _nros_image_kconfig_configure(<cli> <system-dir> <image>) -- phase-530 W4
+#
+# Run `nros configure` for the image this host configure builds and publish
+# where its answer is (`nros_configured_locate`: the GLOBAL properties
+# `NROS_CONFIGURED_RESOLVED_DIR` and `NROS_CONFIGURED_CURRENT`, which live for
+# this configure only).
+#
+# The PROJECT is the leaf itself (a `system.toml` beside the application), or
+# -- RFC-0085 D14's walk-up -- the colcon workspace that owns a generated
+# application's bringup (`<ws>/src/<bringup>`). The IMAGE is the one this
+# configure renders: `-DNROS_IMAGE`, else the leaf's own `default_images` --
+# the image `nros build` builds.
+#
+# A QUERY caller (RFC-0120 D1): `nros configure` runs no target build tool and
+# never `nros build`; with a current stamp it is a digest comparison and
+# returns at once, which is what it costs under `nros build`. A no-op inside
+# the census's own host build (`NROS_LEAF_CENSUS_HOST`), which is configure's
+# producer, not its consumer.
+function(_nros_image_kconfig_configure _nros _dir _image)
+    if(NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
+        return()
+    endif()
+    get_filename_component(_parent "${_dir}" DIRECTORY)
+    get_filename_component(_parent_name "${_parent}" NAME)
+    if(_parent_name STREQUAL "src")
+        get_filename_component(_project "${_parent}" DIRECTORY)
+    else()
+        set(_project "${_dir}")
+    endif()
+    # The wall time is reported, because "a current stamp is a digest
+    # comparison" is a claim a log should let anyone check (cmake 3.22's
+    # TIMESTAMP has no sub-second field, so the clock is asked).
+    execute_process(COMMAND date +%s%3N OUTPUT_VARIABLE _t0 OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(
+        COMMAND "${_nros}" configure "${_project}" --image "${_image}"
+        OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND date +%s%3N OUTPUT_VARIABLE _t1 OUTPUT_STRIP_TRAILING_WHITESPACE)
+    set(_ms "?")
+    if(_t0 MATCHES "^[0-9]+$" AND _t1 MATCHES "^[0-9]+$")
+        math(EXPR _ms "${_t1} - ${_t0}")
+    endif()
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR
+            "nano-ros: `nros configure ${_project} --image ${_image}` failed "
+            "(RFC-0120 D5: every host configure runs it first):\n${_err}\n${_out}")
+    endif()
+    set(_said "configured")
+    if(_out MATCHES "(^|\n)(configure: [^\n]*)")
+        set(_said "${CMAKE_MATCH_2}")
+    endif()
+    message(STATUS "nano-ros: nros configure ${_project} --image ${_image}: ${_said} (${_ms} ms)")
+    nros_configured_locate("${_project}" "${_image}")
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_CURRENT TRUE)
+    get_property(_resolved GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR)
+    if(NOT "${_resolved}" STREQUAL "")
+        message(STATUS "nano-ros: image `${_image}` answer -> ${_resolved}")
+    endif()
+endfunction()
+
+# _nros_image_kconfig_stamp(<kconfig> <kconfig-from-system-toml> <bin>)
+#
+# Issue 1699, RFC-0120 D6 case 4 -- a `configdefault` in the module's Kconfig,
+# or a default `Kconfig.from-system-toml` renders, must reach an EXISTING build
+# dir, not only a fresh one.
+#
+# Zephyr regenerates `.config` from the conf fragments only when their checksum
+# changes (`cmake/modules/kconfig.cmake`, `.cmake.dotconfig.checksum`).
+# Otherwise it feeds the OLD `.config` back in as the input, and every value
+# there counts as a user choice that a new Kconfig default never overrides
+# (issue 1674: `NET_SOCKETS_POLL_MAX` raised to 8 in a fresh configure while
+# every existing dir kept 3). Neither Kconfig file is one of those fragments.
+#
+# The checksum DOES cover every `*.conf` in the application build dir (Zephyr's
+# "extra configuration files dropped in by anyone else" glob). So this writes
+# one there whose only content is a COMMENT naming the digests. It assigns
+# nothing; when a digest moves the file moves, the checksum moves, and `.config`
+# is regenerated from the fragments -- in THIS configure, since the hook runs
+# before Kconfig (from `zephyr/CMakeLists.txt`, after Kconfig, it cost one more
+# configure through the fixed point). Write-if-changed. Menuconfig edits in
+# that build dir are reset, as any conf-fragment edit resets them.
+function(_nros_image_kconfig_stamp _kconfig _kgen _bin)
+    set(_stamp "${_bin}/nros-module-kconfig.conf")
+    file(SHA256 "${_kconfig}" _d1)
+    set(_text "# nano-ros zephyr/Kconfig digest (issue 1699): ${_d1}\n")
+    if(EXISTS "${_kgen}")
+        file(SHA256 "${_kgen}" _d2)
+        string(APPEND _text
+            "# nano-ros Kconfig.from-system-toml digest (RFC-0120 D6): ${_d2}\n")
+    endif()
+    set(_old "")
+    if(EXISTS "${_stamp}")
+        file(READ "${_stamp}" _old)
+    endif()
+    if(NOT _old STREQUAL _text)
+        file(MAKE_DIRECTORY "${_bin}")
+        file(WRITE "${_stamp}" "${_text}")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_kconfig}")
 endfunction()
 
 # _nros_image_kconfig_leaf_rows(<cli-stdout> <dir> <image> <west-board>)

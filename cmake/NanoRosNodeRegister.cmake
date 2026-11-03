@@ -155,10 +155,9 @@ set(_NROS_NODE_REGISTER_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
 # registered first. On Zephyr the reader (`nros_resolve_knobs()`, inside
 # `find_package(Zephyr)`) runs BEFORE the app's CMakeLists body, so there is no
 # ordering that lets this configure both compose and read its own answer —
-# which is why `nros_reconfigure_on_change` is not optional here. It is the same
-# machinery issue 0991 built for exactly this shape, and the same reason: a
-# clean build dir would otherwise size the image from the "no inventory yet"
-# placeholder.
+# which is why the readers read `nros configure`'s answer as a seed and this
+# composition is held to it (phase-530 W4, RFC-0120 D5): a clean build dir
+# would otherwise size the image from the "no inventory yet" placeholder.
 #
 # The deferred call takes NO ARGUMENTS. `cmake_language(DEFER … CALL fn(arg))`
 # delivers them EMPTY, so the CLI path travels as a GLOBAL property instead.
@@ -188,12 +187,23 @@ function(_nros_node_register_compose_inventory)
         return()
     endif()
 
+    # phase-530 W4 -- a standalone Zephyr leaf's inventory was already written,
+    # before every reader, by `nros dev image west-leaf-sizing` (its census, its
+    # `[[component]] entities` or its probe sidecars). This composer reads only
+    # `nros-metadata.json`, which cannot see a census, and overwrote that answer
+    # with a refusal on EVERY pass -- the talker never converged, stopping at
+    # NROS_RECONFIGURE_MAX_PASSES. The leaf's one derivation wins; nothing to do.
+    get_property(_leaf_sized GLOBAL PROPERTY NROS_ENTITY_INVENTORY_LEAF_SIZED)
+    if(NOT "${_leaf_sized}" STREQUAL "")
+        return()
+    endif()
+
     include("${_NROS_NODE_REGISTER_DIR}/NanoRosEntityInventory.cmake")
-    include("${_NROS_NODE_REGISTER_DIR}/NanoRosReconfigure.cmake")
+    include("${_NROS_NODE_REGISTER_DIR}/NanoRosPromise.cmake")
     nros_entity_inventory_knobs_file(_knobs_path)
-    nros_reconfigure_snapshot("${_knobs_path}" _knobs_before)
+    nros_promise_snapshot("${_knobs_path}" _knobs_before)
     nros_derive_entity_inventory_knobs(CLI "${_nros_bin}")
-    nros_reconfigure_on_change("${_knobs_path}" "${_knobs_before}"
+    nros_promise_check("${_knobs_path}" "${_knobs_before}"
         LABEL "this image's entity inventory (standalone)")
 endfunction()
 
