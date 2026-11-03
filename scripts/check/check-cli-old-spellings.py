@@ -211,7 +211,7 @@ def self_test() -> None:
         "run([nros_cli, 'metadata', '--x'])": ["metadata"],
         'run([cargo, "metadata"])': [],
         'run([cli, "dev", "image", "board-facts"])': [],
-        'run(["git", "init"])': [],
+        'run(["cargo", "metadata"])': [],
     }
     assert rewrite('"$(nros_cli_bin)" ws board-facts "$d"', c) == \
         '"$(nros_cli_bin)" dev image board-facts "$d"'
