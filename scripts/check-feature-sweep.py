@@ -784,11 +784,11 @@ def standalone_clippy(rel, where, target_dir, cli, shape=None, no_default=False)
     if unmet:
         return 1, f"error: {unmet}"
     if shape["renders"]:
-        sync = subprocess.run([cli, "sync"], cwd=d, capture_output=True, text=True)
+        sync = subprocess.run([cli, "configure"], cwd=d, capture_output=True, text=True)
         if sync.returncode != 0:
             return sync.returncode, "error: `nros configure` failed\n" + sync.stdout + sync.stderr
     if not shape["locked"]:
-        seed = subprocess.run([cli, "ws", "seed-lock", str(d)], capture_output=True, text=True)
+        seed = subprocess.run([cli, "dev", "lock", "seed", str(d)], capture_output=True, text=True)
         if seed.returncode != 0:
             return seed.returncode, seed.stderr
     scope = ["--workspace"] if shape["workspace"] else []
@@ -812,7 +812,7 @@ def standalone_clippy(rel, where, target_dir, cli, shape=None, no_default=False)
     if p.returncode != 0:
         return p.returncode, p.stderr
     if not shape["locked"]:
-        lock = subprocess.run([cli, "ws", "check-lock", str(d)], capture_output=True, text=True)
+        lock = subprocess.run([cli, "dev", "lock", "check", str(d)], capture_output=True, text=True)
         if lock.returncode != 0:
             return lock.returncode, lock.stdout + lock.stderr
     # `-p <package>` (or `--all` over explicit members), never a bare

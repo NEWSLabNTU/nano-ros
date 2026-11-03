@@ -269,7 +269,7 @@ def generate(nros: str, work: Path, arm: str, configured) -> Path:
     af = work / f"{arm}-cpp-args.json"
     af.write_text(json.dumps(args))
     r = subprocess.run(
-        [nros, "codegen", "--language", "cpp", "--args-file", str(af)],
+        [nros, "dev", "codegen", "--language", "cpp", "--args-file", str(af)],
         capture_output=True,
         text=True,
     )

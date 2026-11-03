@@ -20,7 +20,13 @@ WHAT COUNTS AS A USE of an old spelling `<old>` (e.g. `ws board-facts`):
     also ordinary words other tools use (`codegen`, `profile`, `metadata`,
     `init`, `generate`: `git init`, `cargo metadata`), so for those the
     variable's NAME must say it holds nros (`nros`, `cli`, `tool`, `bin`) and
-    must not say `cargo`, `git` or `rustup`.
+    must not say `cargo`, `git` or `rustup`;
+  * `"$(<fn>)" <old>` — the tool given as a shell command substitution
+    (`"$(nros_cli_bin)" sync`), and `[<name>, "<old>", ...]` — the tool as the
+    head of a Python argv list (`[cli, "sync"]`, `[cli, "ws", "board-facts"]`).
+    For both, the function's or name's NAME must say it holds nros, whatever
+    the spelling: there is no `nros` literal on such a line to anchor on
+    (phase-530 W1, Ruling R23 — the `nros sync` sweep missed three of these).
 
 A following `-` or word character ends no match, so `nros generate-px4-msgs`
 is not `nros generate`.
@@ -58,11 +64,16 @@ EXEMPT_FILES = {
     # Maps new spellings back to old ones for gates keyed on the old verb
     # names; its self-test has to spell both.
     "scripts/lib/cli_aliases.py",
+    # Its self-test fixtures quote the pre-1396 NuttX and PlatformIO shim
+    # bodies VERBATIM (old spelling included): they are what that gate exists
+    # to have caught.
+    "scripts/check-shim-codegen-target.py",
 }
 AMBIGUOUS = {"codegen", "profile", "metadata", "init", "generate"}
 TOOL_NAME = re.compile(r"nros|cli|tool|bin", re.I)
 NOT_TOOL = re.compile(r"cargo|git|rustup", re.I)
 VAR = r'"?\$\{?(?P<var>[A-Za-z_][A-Za-z0-9_]*)\}?"?'
+SUBST = r'"?\$\((?P<fn>[A-Za-z_][A-Za-z0-9_]*)\)"?'
 SKIP = 78
 
 
@@ -83,15 +94,37 @@ def load_rows(cli: Path) -> list[dict]:
     return rows
 
 
+def argv_words(words: str) -> str:
+    """`ws board-facts` as the tail of a Python argv list: `"ws", "board-facts"`."""
+    return r"""["']\s*,\s*["']""".join(re.escape(w) for w in words.split())
+
+
 def compile_rows(rows: list[dict]) -> list[tuple[dict, re.Pattern, re.Pattern]]:
     out = []
     for r in rows:
         old, new = re.escape(r["old"]), re.escape(r["new"])
         end = r"(?![\w-])"
-        use = re.compile(rf"\bnros {old}{end}|{VAR}\s+{old}{end}")
-        beside = re.compile(rf"\bnros {new}{end}|\}}\"?\s+{new}{end}")
+        use = re.compile(
+            rf"\bnros {old}{end}|{VAR}\s+{old}{end}|{SUBST}\s+{old}{end}"
+            rf"""|\[\s*(?P<py>[A-Za-z_][A-Za-z0-9_.]*)\s*,\s*(?P<q>["']){argv_words(r["old"])}(?P=q)"""
+        )
+        beside = re.compile(
+            rf"\bnros {new}{end}|\}}\"?\s+{new}{end}|\)\"?\s+{new}{end}"
+            rf"""|["']{argv_words(r["new"])}["']"""
+        )
         out.append((r, use, beside))
     return out
+
+
+def counts(r: dict, m: re.Match) -> bool:
+    """Whether a match of `r`'s old spelling is a use of the nros CLI."""
+    var, fn, py = m.group("var"), m.group("fn"), m.group("py")
+    if var is not None and r["old"] in AMBIGUOUS:
+        return bool(TOOL_NAME.search(var)) and not NOT_TOOL.search(var)
+    name = fn or py
+    if name is not None:
+        return bool(TOOL_NAME.search(name)) and not NOT_TOOL.search(name)
+    return True
 
 
 def uses(line: str, compiled) -> list[str]:
@@ -100,10 +133,8 @@ def uses(line: str, compiled) -> list[str]:
         if beside.search(line):
             continue
         for m in use.finditer(line):
-            var = m.group("var")
-            if var is not None and r["old"] in AMBIGUOUS:
-                if not TOOL_NAME.search(var) or NOT_TOOL.search(var):
-                    continue
+            if not counts(r, m):
+                continue
             found.append(r["old"])
             break
     return found
@@ -116,10 +147,12 @@ def rewrite(line: str, compiled) -> str:
             continue
 
         def sub(m: re.Match) -> str:
-            var = m.group("var")
-            if var is not None and r["old"] in AMBIGUOUS:
-                if not TOOL_NAME.search(var) or NOT_TOOL.search(var):
-                    return m.group(0)
+            if not counts(r, m):
+                return m.group(0)
+            if m.group("py") is not None:
+                q = m.group("q")
+                head = m.group(0)[: m.start("q") - m.start(0)]
+                return head + q + f"{q}, {q}".join(r["new"].split()) + q
             return m.group(0)[: len(m.group(0)) - len(r["old"])] + r["new"]
 
         line = use.sub(sub, line)
@@ -168,7 +201,23 @@ def self_test() -> None:
         '"${_nros_cli}" metadata --x': ["metadata"],
         "nros initialise": [],
         "nros interface generate rust": [],
+        # Ruling R23 — the tool as a command substitution, and as the head of
+        # a Python argv list.
+        '"$(nros_cli_bin)" ws board-facts "$dir"': ["ws board-facts"],
+        '( cd "$d" && "$(nros_bin)" init )': ["init"],
+        '"$(git_bin)" init': [],
+        '"$(nros_bin)" dev image board-facts': [],
+        'subprocess.run([cli, "ws", "board-facts"], cwd=d)': ["ws board-facts"],
+        "run([nros_cli, 'metadata', '--x'])": ["metadata"],
+        'run([cargo, "metadata"])': [],
+        'run([cli, "dev", "image", "board-facts"])': [],
+        'run(["git", "init"])': [],
     }
+    assert rewrite('"$(nros_cli_bin)" ws board-facts "$d"', c) == \
+        '"$(nros_cli_bin)" dev image board-facts "$d"'
+    assert rewrite('subprocess.run([cli, "ws", "board-facts"], cwd=d)', c) == \
+        'subprocess.run([cli, "dev", "image", "board-facts"], cwd=d)'
+    assert rewrite("run([cli, 'init'])", c) == "run([cli, 'setup', 'presets'])"
     assert rewrite('X "${_nros}" ws board-facts --y', c) == 'X "${_nros}" dev image board-facts --y'
     assert rewrite("nros init . && git init", c) == "nros setup presets . && git init"
     for line, want in cases.items():

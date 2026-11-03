@@ -2054,7 +2054,7 @@ build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _re
     if [ -s "$leaf_ledger" ]; then
         complete=()
         if [ "$lane" = "all" ]; then complete=(--complete); fi
-        "$(nros_cli_bin)" ws check-lock --ledger "$leaf_ledger" "${complete[@]}"
+        "$(nros_cli_bin)" dev lock check --ledger "$leaf_ledger" "${complete[@]}"
     fi
     # Drop a stamp so `_require-fixtures` (the test-all/test preflight) can
     # fast-fail with a build hint instead of letting the suite run and
