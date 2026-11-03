@@ -137,8 +137,22 @@ function(nros_resolve_board_facts)
     # Issue 1827 — `NROS_BRINGUP_DIR` (set by `nros build`) comes before the
     # workspace: the workspace answers only while it has ONE bringup, and the
     # verb refuses a second as ambiguous (a configure error since issue 0941).
+    #
+    # Issue 2232 -- and a generated Zephyr application's `NROS_IMAGE_SYSTEM_DIR`
+    # (the bringup its `[image.<NROS_IMAGE>]` lives in) before its own source
+    # dir. The application dir holds no `system.toml`, so since issue 2199
+    # forwarded `NROS_IMAGE` as the deploy, asking the application dir made the
+    # verb look for a board crate it does not state, and the generated Rust
+    # Zephyr entry could not configure at all.
     set(_ws "${_A_WORKSPACE}")
-    foreach(_cand "${NROS_BRINGUP_DIR}" "${NROS_WORKSPACE_DIR}" "${APPLICATION_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}")
+    set(_image_system_dir "")
+    if(DEFINED NROS_IMAGE_SYSTEM_DIR AND NOT NROS_IMAGE_SYSTEM_DIR STREQUAL "")
+        # The module hook's own resolution of it (`nros_image_kconfig.cmake`).
+        get_filename_component(_image_system_dir "${NROS_IMAGE_SYSTEM_DIR}" ABSOLUTE
+            BASE_DIR "${APPLICATION_SOURCE_DIR}")
+    endif()
+    foreach(_cand "${NROS_BRINGUP_DIR}" "${_image_system_dir}" "${NROS_WORKSPACE_DIR}"
+                  "${APPLICATION_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}")
         if(_ws STREQUAL "" AND NOT _cand STREQUAL "")
             set(_ws "${_cand}")
         endif()

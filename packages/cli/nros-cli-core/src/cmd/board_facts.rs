@@ -791,10 +791,20 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
         // crate, and every descriptor records its `board_crate`. Derive the
         // board from that rather than ask the leaf to author it twice, and
         // answer with the descriptor's facts alone (there is no site block).
+        // Issue 2232 -- `nothing_to_carry` answers the no-board-crate case only
+        // when no deploy was named; with `--deploy` and no `system.toml` there
+        // is nothing to resolve the deploy against, and that is an error, not
+        // a panic.
         let board = match args.board.clone() {
             Some(b) => b,
-            None => board_of_cargo_leaf(&ws, &root)?
-                .expect("nothing_to_carry answered the no-board-crate case"),
+            None => board_of_cargo_leaf(&ws, &root)?.ok_or_else(|| {
+                eyre!(
+                    "{}: no system.toml declares deploy `{}`, and its Cargo.toml depends on \
+                     no board crate -- pass the bringup that declares the image, or --board",
+                    ws.display(),
+                    args.deploy.as_deref().unwrap_or_default()
+                )
+            })?,
         };
         resolve_one(
             &ws.join("Cargo.toml").display().to_string(),
@@ -1085,6 +1095,30 @@ mod tests {
                 .get("FREERTOS_CONFIG_DIR")
                 .is_some_and(|d| d.ends_with("nros-board-mps2-an385-freertos/config")),
             "{facts:?}"
+        );
+    }
+
+    /// Issue 2232 — a deploy named against a dir with no `system.toml` and
+    /// no board crate (a generated Zephyr application's own dir) is an error
+    /// naming the deploy, never a panic; the cmake arm asks the bringup
+    /// (`NROS_IMAGE_SYSTEM_DIR`) instead.
+    #[test]
+    fn a_deploy_with_nothing_to_resolve_it_against_is_an_error() {
+        let root = repo_root();
+        let app = tempfile::tempdir().unwrap();
+        std::fs::write(app.path().join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        let err = run(BoardFactsArgs {
+            path: app.path().to_path_buf(),
+            nano_ros_path: Some(root),
+            deploy: Some("zephyr".into()),
+            board: None,
+            rust_target: None,
+            zephyr_board: None,
+        })
+        .expect_err("nothing declares deploy `zephyr` here");
+        assert!(
+            format!("{err:#}").contains("no system.toml declares deploy `zephyr`"),
+            "{err:#}"
         );
     }
 
