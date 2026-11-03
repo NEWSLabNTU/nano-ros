@@ -754,6 +754,82 @@ if ! nros_grep_q "DEFAULT=\$" <<<"$OUT"; then
 issue 1662's leaf would lose its descriptor for a pass -- $OUT"
 fi
 
+# ---------------------------------------------------------------------------
+# G9 -- phase-530 W3 (issue 2233): a Zephyr west RUST image calls no
+# `nano_ros_entry()`, so nothing in its configure decides one-or-none, and G8's
+# "named" default waited for a writer that never came -- the backstop's pass.
+# `nros build` now writes the decision into the resolve directory
+# (`resolved-sizing.cmake`), and the module TAKES it: the descriptor is copied
+# to the fixed path, the fragment says what was decided, and nothing is armed.
+# The resolver (`_nros_load_west_sizing_descriptor`) calls the one function
+# this drives, `nros_sizing_descriptor_west_decide`.
+DPROJ="$TEST_TMPDIR/decide"
+DRES="$TEST_TMPDIR/decide-resolve"
+mkdir -p "$DPROJ" "$DRES"
+cat > "$DPROJ/CMakeLists.txt" <<'EOF'
+cmake_minimum_required(VERSION 3.20)
+project(nros_sizing_descriptor_west_decide_test NONE)
+include("$ENV{NROS_TEST_RECONFIGURE}")
+include("$ENV{NROS_TEST_MODULE}")
+nros_sizing_descriptor_west_fragment(_frag)
+nros_sizing_descriptor_west_decide("$ENV{NROS_TEST_RESOLVED}" "")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_frag}")
+nros_reconfigure_settle("${_frag}")
+include("${_frag}")
+message(STATUS "DECIDED=${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL ""
+   AND NOT EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+    nros_sizing_descriptor_west_arm_backstop("${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+endif()
+add_custom_target(go ALL COMMAND ${CMAKE_COMMAND} -E echo "BUILT")
+EOF
+
+# run_decide -- configure a clean build dir, then build it once.
+run_decide() {
+    rm -rf "$DPROJ/build"
+    DECIDE_OUT="$(NROS_TEST_RECONFIGURE="$PROJECT_ROOT/cmake/NanoRosReconfigure.cmake" \
+        NROS_TEST_MODULE="$MODULE" NROS_TEST_RESOLVED="$DRES" \
+        cmake -G Ninja -S "$DPROJ" -B "$DPROJ/build" 2>&1)"
+    DECIDE_RC=$?
+    DECIDE_BUILD="$(timeout 120 ninja -C "$DPROJ/build" 2>&1)"
+    DECIDE_RERUNS="$(printf '%s\n' "$DECIDE_BUILD" | grep -c 'Re-running CMake')"
+}
+
+log_info "G9. the resolve's decision for a Rust west image is taken: one pass, either way"
+printf 'schema_version = 2\n# the image descriptor\n' > "$DRES/zephyr.toml"
+printf 'set(NROS_RESOLVED_SIZING_DESCRIPTOR "%s")\n' "$DRES/zephyr.toml" \
+    > "$DRES/resolved-sizing.cmake"
+run_decide
+check
+if [ "$DECIDE_RC" -ne 0 ] || ! nros_grep_q "DECIDED=[^ ]*/nros/sizing/west-cargo.toml\$" <<<"$DECIDE_OUT" \
+   || ! cmp -s "$DRES/zephyr.toml" "$DPROJ/build/nros/sizing/west-cargo.toml"; then
+    fail "G9: a resolve that NAMED a descriptor did not reach cargo's fixed path in pass 1 \
+(rc=$DECIDE_RC) -- $DECIDE_OUT"
+fi
+check
+if [ "$DECIDE_RERUNS" -ne 0 ] || nros_grep_q "changed after the readers" <<<"$DECIDE_OUT"; then
+    fail "G9: a named decision still cost a re-configure ($DECIDE_RERUNS) -- $DECIDE_OUT
+$DECIDE_BUILD"
+fi
+printf 'set(NROS_RESOLVED_SIZING_DESCRIPTOR "")\n' > "$DRES/resolved-sizing.cmake"
+run_decide
+check
+if ! nros_grep_q "DECIDED=\$" <<<"$DECIDE_OUT" || [ -e "$DPROJ/build/nros/sizing/west-cargo.toml" ]; then
+    fail "G9: a resolve that decided NONE still named a descriptor to cargo -- $DECIDE_OUT"
+fi
+check
+if [ "$DECIDE_RERUNS" -ne 0 ] || nros_grep_q "none was written" <<<"$DECIDE_OUT"; then
+    fail "G9: a none decision still armed the backstop's re-configure ($DECIDE_RERUNS) -- \
+$DECIDE_OUT"
+fi
+# No decision file (a C/C++ west image, whose entry decides): G8's default, unchanged.
+rm -f "$DRES/resolved-sizing.cmake"
+run_decide
+check
+if ! nros_grep_q "DECIDED=[^ ]*/nros/sizing/west-cargo.toml\$" <<<"$DECIDE_OUT"; then
+    fail "G9: with no decision file the behind-a-resolve default changed -- $DECIDE_OUT"
+fi
+
 log_info "H1. a standalone leaf's descriptor reaches cargo (issues 1407/1378)"
 OUT="$(NROS_TEST_ENTRY_FIRST= run_leaf "")"
 RC=$?

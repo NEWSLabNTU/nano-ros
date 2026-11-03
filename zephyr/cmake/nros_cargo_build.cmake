@@ -538,19 +538,24 @@ endfunction()
 #   * anything else (a bare `west build`, a standalone Rust leaf) -- "none",
 #     which is what this function forwarded before W6.
 #
+# phase-530 W3 (issue 2233) -- a Rust west image has no entry to decide, so
+# `nros build` decides for it before the configure and writes the decision
+# into the resolve directory (`resolved-sizing.cmake`). That decision is taken
+# on every configure (`nros_sizing_descriptor_west_decide`), never defaulted.
+#
 # A "named" decision whose file still does not exist when the configure ends
 # -- no entry ran, or the entry named none -- is taken back by the deferred
 # `nros_sizing_descriptor_west_arm_backstop`, which arms a re-configure so
 # cargo is never handed a file that is not there (RFC-0100 D6).
 function(_nros_load_west_sizing_descriptor)
     nros_sizing_descriptor_west_fragment(_frag)
-    if(NOT EXISTS "${_frag}")
-        # Written rather than skipped, for the reason the bounds loader gives:
-        # it is registered as a configure dependency below, and a ninja input
-        # with no producing rule is a hard error at load.
-        nros_resolved_dir(_resolved)
-        nros_sizing_descriptor_west_default("${_resolved}" "${NROS_WEST_LEAF_DESCRIPTOR}")
-    endif()
+    # Written rather than skipped when absent, for the reason the bounds loader
+    # gives: it is registered as a configure dependency below, and a ninja
+    # input with no producing rule is a hard error at load. phase-530 W3
+    # (issue 2233) -- and TAKEN from the resolve when `nros build` decided for
+    # a Rust west image, which has no entry to decide in its configure.
+    nros_resolved_dir(_resolved)
+    nros_sizing_descriptor_west_decide("${_resolved}" "${NROS_WEST_LEAF_DESCRIPTOR}")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_frag}")
     nros_reconfigure_settle("${_frag}")
     include("${_frag}")

@@ -442,12 +442,21 @@ printf 'set(ANSWER resolved)\n' > "$TAKE_ROOT/resolve/resolved.cmake"
 printf '{"source":"resolve"}\n' > "$TAKE_ROOT/resolve/resolved-entity-inventory.json"
 : > "$TAKE_ROOT/model/system_model.yaml"
 REG='b_pkg::sub::b_pkg::Sub2;core::bare::core::Bare;z_pkg::talker::z_pkg::Talker'
+# TAKE_MODELS: the models the record was composed over (phase-530 W3: a
+# shared host configure's resolve is the UNION over every model on its
+# coordinate), as a `;`-list; the SHA list is parallel to it.
 write_take_record() {
+    local models="${TAKE_MODELS:-$TAKE_ROOT/model/system_model.yaml}" shas="" m
+    local -a list
+    IFS=';' read -r -a list <<<"$models"
+    for m in "${list[@]}"; do
+        shas="${shas:+$shas;}$(sha256sum "$m" | cut -d' ' -f1)"
+    done
     cat > "$TAKE_ROOT/resolve/resolved-entity-inputs.cmake" <<EOF
 set(NROS_RESOLVED_ENTITY_INPUTS_SCHEMA ${1:-1})
 set(NROS_RESOLVED_ENTITY_REGISTERED [==[${2:-$REG}]==])
-set(NROS_RESOLVED_ENTITY_MODEL [==[$TAKE_ROOT/model/system_model.yaml]==])
-set(NROS_RESOLVED_ENTITY_MODEL_SHA256 $(sha256sum "$TAKE_ROOT/model/system_model.yaml" | cut -d' ' -f1))
+set(NROS_RESOLVED_ENTITY_MODEL [==[$models]==])
+set(NROS_RESOLVED_ENTITY_MODEL_SHA256 [==[$shas]==])
 set(NROS_RESOLVED_ENTITY_WORKSPACE [==[$TAKE_ROOT/ws]==])
 set(NROS_RESOLVED_ENTITY_RX_ARGS [==[${3:-}]==])
 EOF
@@ -529,10 +538,34 @@ $TAKE_OUT"
 write_take_record 1 'b_pkg::sub::b_pkg::Sub2;z_pkg::talker::z_pkg::Talker'
 take_declines "a component registered since the resolve" "re-run \`nros configure\`"
 write_take_record
-: > "$TAKE_ROOT/model/other.yaml"
-take_declines "a second model (a shared runtime)" "composes over 2 models" \
+printf 'other\n' > "$TAKE_ROOT/model/other.yaml"
+printf 'third\n' > "$TAKE_ROOT/model/third.yaml"
+take_declines "a second model the resolve did not compose over" \
+    "composes over 2 models, the resolve over 1" \
     "-DPROBE_MODELS=$TAKE_ROOT/model/system_model.yaml;$TAKE_ROOT/model/other.yaml"
 take_declines "another model" "it was composed over" "-DPROBE_MODELS=$TAKE_ROOT/model/other.yaml"
+
+# phase-530 W3 (RFC-0120 D6 case 3) -- a shared host configure composes over
+# every model on its coordinate, and its resolve is that UNION: a record naming
+# the same N models is taken, in whatever order the configure met them.
+TAKE_MODELS="$TAKE_ROOT/model/other.yaml;$TAKE_ROOT/model/system_model.yaml" write_take_record
+take_run union "-DPROBE_MODELS=$TAKE_ROOT/model/system_model.yaml;$TAKE_ROOT/model/other.yaml"
+check
+if nros_grep_q -F "PROBE_TAKEN=TRUE" <<<"$TAKE_OUT" \
+   && cmp -s "$TAKE_ROOT/resolve/resolved.cmake" "$TAKE_ROOT/build/frag.cmake"; then
+    log_success "the union of N models: taken, whatever the configure's model order"
+else
+    fail "a record over the same N models was not taken:
+$TAKE_OUT"
+fi
+take_declines "one model of the union missing" "composes over 1 models, the resolve over 2"
+take_declines "one model of the union swapped" "it was composed over" \
+    "-DPROBE_MODELS=$TAKE_ROOT/model/system_model.yaml;$TAKE_ROOT/model/third.yaml"
+printf 'edited\n' > "$TAKE_ROOT/model/other.yaml"
+take_declines "one model of the union edited in place" "changed since \`nros build\` resolved it" \
+    "-DPROBE_MODELS=$TAKE_ROOT/model/system_model.yaml;$TAKE_ROOT/model/other.yaml"
+printf 'other\n' > "$TAKE_ROOT/model/other.yaml"
+write_take_record
 take_declines "no workspace" "its workspace is" "-DPROBE_WS="
 write_take_record 1 "$REG" "--board-rx-frame-cost-us;40"
 take_declines "another board receive cost" "board receive cost"

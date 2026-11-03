@@ -731,6 +731,74 @@ function(nros_sizing_descriptor_west_default _resolved _leaf)
     file(WRITE "${_frag}" "${_body}")
 endfunction()
 
+# nros_sizing_descriptor_west_decide(<resolved_dir> <leaf_descriptor>) — phase-530 W3
+#
+# The module resolver's one-or-none decision, before it reads the fragment.
+#
+#   * the resolve directory holds `resolved-sizing.cmake` (issue 2233): `nros
+#     build` decided for a Zephyr west RUST image, which calls no
+#     `nano_ros_entry()` and so has no writer in its configure. The decision is
+#     TAKEN on every configure -- the descriptor it names is copied to the
+#     fixed path cargo is named (`copy_if_different`, so an unchanged
+#     descriptor moves no mtime) and the fragment records it. Both files are
+#     configure dependencies, so a moved resolve re-runs this; nothing is
+#     armed, because nothing later in the configure revisits the decision.
+#   * otherwise, on a clean build dir only, `nros_sizing_descriptor_west_default`:
+#     the likely answer an entry will confirm or take back.
+function(nros_sizing_descriptor_west_decide _resolved _leaf)
+    nros_sizing_descriptor_west_fragment(_frag)
+    set(_decision "")
+    if(NOT _resolved STREQUAL "" AND EXISTS "${_resolved}/resolved-sizing.cmake")
+        set(_decision "${_resolved}/resolved-sizing.cmake")
+    endif()
+    if(_decision STREQUAL "")
+        if(NOT EXISTS "${_frag}")
+            nros_sizing_descriptor_west_default("${_resolved}" "${_leaf}")
+        endif()
+        return()
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_decision}")
+    unset(NROS_RESOLVED_SIZING_DESCRIPTOR)
+    include("${_decision}")
+    nros_sizing_descriptor_west_cargo_path(_cargo_file)
+    set(_named FALSE)
+    if(NOT "${NROS_RESOLVED_SIZING_DESCRIPTOR}" STREQUAL ""
+       AND EXISTS "${NROS_RESOLVED_SIZING_DESCRIPTOR}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+            "${NROS_RESOLVED_SIZING_DESCRIPTOR}")
+        get_filename_component(_dir "${_cargo_file}" DIRECTORY)
+        file(MAKE_DIRECTORY "${_dir}")
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${NROS_RESOLVED_SIZING_DESCRIPTOR}" "${_cargo_file}"
+            RESULT_VARIABLE _copy_rc)
+        if(NOT _copy_rc EQUAL 0)
+            message(FATAL_ERROR
+                "nano-ros: could not copy the sizing descriptor "
+                "${NROS_RESOLVED_SIZING_DESCRIPTOR} to ${_cargo_file} (issue 2233)")
+        endif()
+        set(_named TRUE)
+        message(STATUS "nros: sizing descriptor decided by the resolve phase "
+                       "(${_decision}): ${NROS_RESOLVED_SIZING_DESCRIPTOR}")
+    else()
+        if(EXISTS "${_cargo_file}")
+            file(REMOVE "${_cargo_file}")
+        endif()
+        message(STATUS "nros: sizing descriptor decided by the resolve phase "
+                       "(${_decision}): none")
+    endif()
+    nros_sizing_descriptor_west_body(_body ${_named})
+    set(_old "")
+    if(EXISTS "${_frag}")
+        file(READ "${_frag}" _old)
+    endif()
+    if(NOT _old STREQUAL _body)
+        get_filename_component(_dir "${_frag}" DIRECTORY)
+        file(MAKE_DIRECTORY "${_dir}")
+        file(WRITE "${_frag}" "${_body}")
+    endif()
+endfunction()
+
 # nros_sizing_descriptor_west_arm_backstop(<forwarded>) — phase-439 W6
 #
 # The resolver forwarded <forwarded>, a file that does not exist yet. Defer a

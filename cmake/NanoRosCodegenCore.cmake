@@ -1511,6 +1511,14 @@ function(nros_find_interfaces)
         CMAKE_CONFIGURE_DEPENDS "${_entity_knobs}")
     nros_reconfigure_settle("${_entity_knobs}")
     nros_message_bounds_knobs_file(_bounds_knobs)
+    # phase-530 W3 (RFC-0120 D6 case 3) -- and the resolve phase's message-bound
+    # answer over a placeholder, for the same reason: on a clean build dir the
+    # producer below writes a file no reader had, which is a change, and the
+    # fixed point bought a pass for it. A shared cmake configure's resolve
+    # writes the seed over the union (`resolve_coordinate`); the Zephyr module
+    # already seeded it (a no-op here). It holds the producer to the seed
+    # (`_nros_resolved_bounds_promise_check`).
+    nros_resolved_seed_message_bounds("${_bounds_knobs}")
     nros_reconfigure_settle("${_bounds_knobs}")
     # The digest of what the readers of THIS pass consumed. The Zephyr knob
     # resolver already read this file during `find_package(Zephyr)`; if the

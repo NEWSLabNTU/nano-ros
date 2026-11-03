@@ -106,6 +106,16 @@ pub(crate) struct Stamp {
     /// reconfigure on every build; stale for one that names it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) skipped: Option<String>,
+    /// phase-530 W3 (RFC-0120 D2) — an IMAGE's stamp: the shared host-configure
+    /// coordinate it is configured under (a cmake image's `build/<coord>/`). The
+    /// image is current only while that coordinate's stamp ([`coordinate_key`])
+    /// is, over the same inputs and covering it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) coordinate: Option<String>,
+    /// phase-530 W3 — a COORDINATE's stamp: the images its union resolve
+    /// covers, qualified `<bringup>:<id>`, sorted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) covers: Vec<String>,
 }
 
 /// Whether a recorded stamp still describes the project.
@@ -123,6 +133,12 @@ pub(crate) fn stamp_dir(project: &Path, image: &str) -> PathBuf {
         .join("nros")
         .join("configured")
         .join(image.replace(':', "__"))
+}
+
+/// phase-530 W3 (RFC-0120 D2) — the stamp key of a shared host-configure
+/// coordinate: `@<coord>`. `@` is in no image id, so it cannot collide with one.
+pub(crate) fn coordinate_key(coord: &str) -> String {
+    format!("@{coord}")
 }
 
 /// The one lock every configure of this project takes.
@@ -371,6 +387,14 @@ fn missing_output(project: &Path, image: &str, model_dir: Option<&Path>) -> Resu
     if image == PROJECT_KEY {
         return Ok(None);
     }
+    // phase-530 W3 — a coordinate's output is its union resolve.
+    if let Some(coord) = image.strip_prefix('@') {
+        let dir = crate::cmd::build::coordinate_resolve_dir(project, coord);
+        return Ok((!dir
+            .join(crate::cmd::build::COORDINATE_MEMBERS_NAME)
+            .is_file())
+        .then(|| format!("the union resolve of `{coord}` ({})", dir.display())));
+    }
     if image.contains(':') {
         return crate::cmd::build::workspace_model_missing(project, image, model_dir);
     }
@@ -468,6 +492,8 @@ pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
         ament_prefix: std::env::var("AMENT_PREFIX_PATH").ok(),
         launch_resolve: current_launch_resolver(),
         skipped: None,
+        coordinate: None,
+        covers: Vec::new(),
     })
 }
 
@@ -541,6 +567,30 @@ pub(crate) fn currency(
             show(stamp.launch_resolve.as_deref()),
             show(resolver)
         )));
+    }
+    // phase-530 W3 (RFC-0120 D2) — an image configured under a shared host
+    // configure reads that configure's union resolve, which has its own stamp.
+    if let Some(coord) = &stamp.coordinate {
+        let key = coordinate_key(coord);
+        let Some(shared) = read(project, &key) else {
+            return Ok(Currency::Stale(format!(
+                "no stamp for its shared configure `{coord}`"
+            )));
+        };
+        if shared.digest != stamp.digest {
+            return Ok(Currency::Stale(format!(
+                "its shared configure `{coord}` was configured over other inputs"
+            )));
+        }
+        if !shared.covers.iter().any(|i| i == image) {
+            return Ok(Currency::Stale(format!(
+                "its shared configure `{coord}` does not cover it (covers {})",
+                shared.covers.join(", ")
+            )));
+        }
+        if let Some(what) = missing_output(project, &key, None)? {
+            return Ok(Currency::Stale(format!("configure output missing: {what}")));
+        }
     }
     // A model whose resolve was REFUSED (`model_gate`) is quarantined with a
     // marker beside it. Its inputs can be edited back to exactly what this
@@ -621,6 +671,8 @@ mod tests {
             ament_prefix: None,
             launch_resolve: None,
             skipped: None,
+            coordinate: None,
+            covers: Vec::new(),
         }
     }
 
@@ -1279,6 +1331,82 @@ mod tests {
             Currency::Stale(why) => assert!(why.contains("refused"), "{why}"),
             Currency::Current => panic!("a refused model under NROS_MODEL_DIR was missed"),
         }
+    }
+
+    /// phase-530 W3 (RFC-0120 D2) — an image configured under a SHARED host
+    /// configure is current only while the coordinate's own stamp is: one
+    /// stamp per coordinate, covering the union, recorded over the same
+    /// inputs, and naming the image.
+    #[test]
+    fn an_image_under_a_shared_configure_needs_its_coordinate_stamp() {
+        let p = tmp("coordinate");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let coord = "posix-zenoh-linux";
+        record(
+            &p,
+            "demo:linux",
+            &Stamp {
+                coordinate: Some(coord.into()),
+                ..stamp_for(&p)
+            },
+        )
+        .unwrap();
+        let stale = |want: &str| match is_current_with(&p, "demo:linux", &real_env(), None).unwrap()
+        {
+            Currency::Stale(why) => assert!(why.contains(want), "{why}"),
+            Currency::Current => panic!("current without its coordinate's stamp ({want})"),
+        };
+        stale("shared configure `posix-zenoh-linux`");
+        let key = coordinate_key(coord);
+        assert_eq!(
+            stamp_dir(&p, &key),
+            p.join("build/nros/configured/@posix-zenoh-linux")
+        );
+        // A union that does not cover this image.
+        record(
+            &p,
+            &key,
+            &Stamp {
+                covers: vec!["demo:linux_robot1".into()],
+                ..stamp_for(&p)
+            },
+        )
+        .unwrap();
+        stale("does not cover");
+        // Covering it, over other inputs.
+        record(
+            &p,
+            &key,
+            &Stamp {
+                digest: "sha256:other".into(),
+                covers: vec!["demo:linux".into(), "demo:linux_robot1".into()],
+                ..stamp_for(&p)
+            },
+        )
+        .unwrap();
+        stale("other inputs");
+        record(
+            &p,
+            &key,
+            &Stamp {
+                covers: vec!["demo:linux".into(), "demo:linux_robot1".into()],
+                ..stamp_for(&p)
+            },
+        )
+        .unwrap();
+        // ...and the union it covers is gone.
+        stale("union resolve of `posix-zenoh-linux`");
+        let union = crate::cmd::build::coordinate_resolve_dir(&p, coord);
+        std::fs::create_dir_all(&union).unwrap();
+        std::fs::write(
+            union.join(crate::cmd::build::COORDINATE_MEMBERS_NAME),
+            "coordinate = \"posix-zenoh-linux\"\nimages = [\"demo:linux\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            is_current_with(&p, "demo:linux", &real_env(), None).unwrap(),
+            Currency::Current
+        );
     }
 
     /// phase-530 W1 (I2) — `NROS_MODEL_DIR` moves where C1 writes the

@@ -775,6 +775,29 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         known.iter().any(|n| ws_non_rust.contains(&n.as_str()))
     };
 
+    // W4.b / phase-530 W3 — every image of `bringup` that lands on cmake
+    // coordinate `coord`: the entries one generated root declares, and the
+    // images one shared configure's union resolve covers. One predicate, so
+    // the root and the resolve cannot disagree about who shares a configure.
+    let coordinate_members = |bringup: &str, coord: &str| -> Vec<CoordinateMember> {
+        plan::all_images(&bringups)
+            .into_iter()
+            .filter(|(b, bd, _, img)| {
+                b == bringup
+                    && crate::orchestration::image::resolve_image_board(&catalog, "", img)
+                        .map(|d| {
+                            plan::driver_for_board(
+                                d.platform.kebab(),
+                                d.entry_kind,
+                                image_has_non_rust(img, bd),
+                            ) == Ok(Driver::CMake)
+                                && cmake_coordinate(d.platform.kebab(), img, bd) == coord
+                        })
+                        .unwrap_or(false)
+            })
+            .collect()
+    };
+
     // issue 1582 — before ANY image is generated, and over EVERY image the
     // workspace declares rather than the ones requested: building one image is
     // enough to overwrite another's generated output, so the refusal cannot
@@ -967,6 +990,59 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             driver == Driver::West && image_has_non_rust(&image, &bringup_dir),
         );
         let resolved_dir = resolved.as_ref().map(|r| r.dir.clone());
+        // The packages a cmake coordinate's generated root `add_subdirectory()`s
+        // leave out: framework entries, and entries claimed by another board.
+        let cmake_excluded = || {
+            let mut e = framework_entries.clone();
+            e.extend(entries_for_other_boards(
+                &found,
+                &board,
+                &platform,
+                &bringup_dirs,
+            ));
+            e
+        };
+        // phase-530 W3 (RFC-0120 D6 case 3) — a cmake image is configured with
+        // every image on its coordinate, so the configure is handed the UNION's
+        // resolve, never this image's alone.
+        let coordinate_dir = (driver == Driver::CMake)
+            .then(|| {
+                let coord = cmake_coordinate(&platform, &image, &bringup_dir);
+                let excluded = cmake_excluded();
+                let registered: std::collections::BTreeMap<String, PathBuf> = found
+                    .packages
+                    .iter()
+                    .filter(|p| crate::builder::cmake_root::is_subdir(p, &excluded))
+                    .map(|p| (p.name.clone(), p.dir.clone()))
+                    .collect();
+                // The root's language, by the rule stage 4 writes it with.
+                let lang = if found
+                    .packages
+                    .iter()
+                    .any(|p| crate::builder::discover::holds_cpp_source(&p.dir))
+                {
+                    nros_lang::Language::Cpp
+                } else {
+                    nros_lang::Language::C
+                };
+                resolve_coordinate(
+                    &root,
+                    &coord,
+                    &coordinate_members(&bringup, &coord),
+                    &registered,
+                    lang,
+                    crate::resolve::ImageIdent {
+                        bringup: bringup.clone(),
+                        entry: format!("@{coord}"),
+                        board: board.clone(),
+                        platform: platform.clone(),
+                        rmw: image.rmw.clone().unwrap_or_default(),
+                    },
+                    nano_ros_root.as_deref(),
+                    descriptor.rx,
+                )
+            })
+            .flatten();
 
         // ---- stage 4 ----------------------------------------------------
         let mut cmake_configure: Option<Handoff> = None;
@@ -1178,10 +1254,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         text,
                     );
                 }
-                let image_for = |wiring| crate::sizing_descriptor::ModelImage {
+                let target = DescriptorTarget {
                     build_dir: &image_dir,
-                    entry: &image_id,
-                    wiring,
                     target_triple: descriptor.target.clone(),
                     // A board that pins no rustc triple builds for the
                     // host, and that is the ONE case where this
@@ -1189,110 +1263,29 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     host_build: descriptor.target.is_none(),
                     heap_budget_bytes: board_heap_budget(descriptor, &board, Some(nros_root)),
                     rmw: image.rmw.clone(),
-                    bound_inventories: &[],
-                    horizon: crate::sizing_descriptor::ModelHorizon::new("a workspace cargo image"),
+                    road: "a workspace cargo image",
                 };
-                if let Some((inv, model)) = resolved
-                    .as_ref()
-                    .and_then(|r| r.inventory.as_ref().zip(r.model.as_ref()))
+                // Issue 1706 -- with no wiring the descriptor states the
+                // model's facts only; either way it is this road's only
+                // carrier for them, named to cargo by path.
+                if let Some((written, wired)) =
+                    write_image_descriptor(&root, resolved.as_ref(), &image_id, &target)
                 {
-                    // issue 1594 -- the probe sidecars' per-subscription
-                    // registration observation, joined by the contract join's
-                    // own rule. Not fatal: an unreadable workspace leaves every
-                    // row unobserved, which refuses `registration_path` (the
-                    // over-size, never the under-size).
-                    let observed = match crate::contract_join::observe_workspace_registrations(
-                        inv, model, &root,
-                    ) {
-                        Ok((observed, _, notes)) => {
-                            for n in notes {
-                                eprintln!("nros build:   {n}");
-                            }
-                            observed
+                    // phase-454 W6.c — the four Cyclone facts a
+                    // `cc::Build` cannot read from a file. All four are
+                    // refused on this road today (they are `[types]`
+                    // maxima and the board heap), so this adds no row;
+                    // it is here so the two producers stay one shape
+                    // rather than two that happen to agree.
+                    if wired {
+                        for (k, v) in written.cyclonedds_env() {
+                            env.insert(k, v);
                         }
-                        Err(e) => {
-                            eprintln!(
-                                "nros build: warning: no registration observation joined \
-                                 ({e}); every subscription keeps its receive region"
-                            );
-                            inv.clone()
-                        }
-                    };
-                    let inv = &observed;
-                    // phase-457-payload W2 — the workspace's own `generated/`
-                    // tables, found by the discovery a single-package leaf uses
-                    // and read by the reader every road shares. This is the
-                    // third model-road producer; the two cmake ones take the
-                    // tables their configure registered instead.
-                    let bound_tables = crate::leaf_payload_classes::generated_bound_tables(&root);
-                    match crate::sizing_descriptor::write_for_model(
-                        &crate::sizing_descriptor::ModelImage {
-                            bound_inventories: &bound_tables,
-                            ..image_for(crate::sizing_descriptor::Wiring::Composed(inv))
-                        },
-                    ) {
-                        Ok(Some(written)) => {
-                            eprintln!(
-                                "nros build:   sizing descriptor → {}",
-                                written.path.display()
-                            );
-                            // phase-454 W6.c — the four Cyclone facts a
-                            // `cc::Build` cannot read from a file. All four are
-                            // refused on this road today (they are `[types]`
-                            // maxima and the board heap), so this adds no row;
-                            // it is here so the two producers stay one shape
-                            // rather than two that happen to agree.
-                            for (k, v) in written.cyclonedds_env() {
-                                env.insert(k, v);
-                            }
-                            path_env.insert(
-                                nros_sizing_descriptor::DESCRIPTOR_ENV.to_string(),
-                                written.path,
-                            );
-                        }
-                        Ok(None) => {}
-                        // NOT fatal, and the same argument stage 3.5 makes:
-                        // making the descriptor a new way for a build to stop
-                        // would be a regression paid by every image for the
-                        // benefit of the few that derive.
-                        Err(e) => eprintln!(
-                            "nros build: warning: `{image_id}`'s sizing descriptor was not \
-                             written ({e}); every consumer keeps its own defaults"
-                        ),
                     }
-                } else if let Some(infra) = resolved.as_ref().and_then(|r| r.store_infra) {
-                    // Issue 1706 -- no wiring, so no full descriptor; but a
-                    // bringup that implies a parameter store still says so,
-                    // and the descriptor is this road's only carrier. A model
-                    // with no wiring declares no `params:` either (issue 1436's
-                    // predicate), so the declarations are `Absent`.
-                    let params = crate::entity_inventory::ParamDeclarations::Absent;
-                    match crate::sizing_descriptor::write_for_model(&image_for(
-                        crate::sizing_descriptor::Wiring::Unwired {
-                            params: &params,
-                            infra,
-                            model_nodes: Some(infra.model_nodes),
-                            roots: &[root.as_path()],
-                        },
-                    )) {
-                        Ok(Some(written)) => {
-                            eprintln!(
-                                // issue 1706, phase-486 W9.
-                                "nros build:   sizing descriptor (no wiring: the model's \
-                                 facts only) → {}",
-                                written.path.display()
-                            );
-                            path_env.insert(
-                                nros_sizing_descriptor::DESCRIPTOR_ENV.to_string(),
-                                written.path,
-                            );
-                        }
-                        Ok(None) => {}
-                        Err(e) => eprintln!(
-                            "nros build: warning: `{image_id}`'s parameter-store descriptor was \
-                             not written ({e}); the store keeps the heap path"
-                        ),
-                    }
+                    path_env.insert(
+                        nros_sizing_descriptor::DESCRIPTOR_ENV.to_string(),
+                        written.path,
+                    );
                 }
                 // phase-445 W6 — what the image's declared TRANSPORT implies,
                 // then the APP rung. Same two layers, same order and the same
@@ -1556,21 +1549,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     .packages
                     .iter()
                     .any(|p| crate::builder::discover::holds_cpp_source(&p.dir));
-                let cmake_entries = plan::all_images(&bringups)
+                let cmake_entries = coordinate_members(&bringup, &coord)
                     .into_iter()
-                    .filter(|(b, bd, _, img)| {
-                        b == &bringup
-                            && crate::orchestration::image::resolve_image_board(&catalog, "", img)
-                                .map(|d| {
-                                    plan::driver_for_board(
-                                        d.platform.kebab(),
-                                        d.entry_kind,
-                                        image_has_non_rust(img, bd),
-                                    ) == Ok(Driver::CMake)
-                                        && cmake_coordinate(d.platform.kebab(), img, bd) == coord
-                                })
-                                .unwrap_or(false)
-                    })
                     .filter_map(|(_, bd, id, img)| {
                         let name = crate::builder::entry::package_name(&id);
                         if root
@@ -1672,16 +1652,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     rmw: image.rmw.clone().unwrap_or_else(|| "zenoh".to_string()),
                     toolchain_file: descriptor.cmake.as_ref().map(|c| c.toolchain_file.clone()),
                     nano_ros_root: nano_ros_root.clone().unwrap_or_default(),
-                    excluded: {
-                        let mut e = framework_entries.clone();
-                        e.extend(entries_for_other_boards(
-                            &found,
-                            &board,
-                            &platform,
-                            &bringup_dirs,
-                        ));
-                        e
-                    },
+                    excluded: cmake_excluded(),
                 };
                 crate::builder::cmake_root::write(&found, &manifest_dir, &spec)
                     .map_err(|e| eyre::eyre!("{e}"))?;
@@ -1738,7 +1709,11 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // what keeps the seam HONEST — a lane that did not run stage
                 // 3.5 (a bare `west build`, `just zephyr build-fixtures`) sets
                 // nothing, finds nothing, and behaves exactly as it does today.
-                if let Some(d) = &resolved_dir {
+                //
+                // phase-530 W3 (RFC-0120 D6 case 3) — the coordinate's UNION,
+                // which is what this configure composes; this image's own
+                // resolve only when the union could not be written.
+                if let Some(d) = coordinate_dir.as_ref().or(resolved_dir.as_ref()) {
                     a.push(format!("-DNROS_RESOLVED_DIR={}", d.display()));
                 }
                 // Issue 1653 (RFC-0100 Amendment 1, "D4 revised") — the BOARD
@@ -1779,7 +1754,22 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 a.extend(board_build_type_arg(&platform));
                 a.extend(args.cmake_args.iter().cloned());
                 a.extend(args.native_args.iter().cloned());
-                cmake_configure = Some(Handoff::new("cmake", a).in_dir(&root));
+                // phase-439 W7 / phase-530 W3 -- the record's digest, so the
+                // configure's entity producer may read the union instead of
+                // recomposing it (`nros_resolved_entity_take`); the west arm's
+                // rule, on this road.
+                let configure = Handoff::new("cmake", a).in_dir(&root);
+                cmake_configure = Some(
+                    match coordinate_dir
+                        .as_ref()
+                        .and_then(|d| crate::resolve::entity_record_digest(d))
+                    {
+                        Some(digest) => {
+                            configure.with_env(crate::resolve::ENTITY_RECORD_ENV, digest)
+                        }
+                        None => configure,
+                    },
+                );
                 // A generated entry is a top-level target of the generated
                 // root; a hand-written `src/<entry>` package is a subdirectory
                 // (the fixture locator's two shapes).
@@ -1833,6 +1823,31 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                              the endpoint as the image's `locator`"
                         ),
                         None => {}
+                    }
+                    // phase-530 W3 (issue 2233, RFC-0120 D6 case 2) — the two
+                    // answers a Rust west application's configure has no
+                    // producer for: its message bounds and its sizing descriptor.
+                    if let Some(d) = &resolved_dir {
+                        resolve_rust_west_image(
+                            &root,
+                            d,
+                            &bringup_dir,
+                            &image_id,
+                            &image,
+                            descriptor,
+                            &board,
+                            nano_ros_root.as_deref(),
+                            resolved.as_ref(),
+                        );
+                    }
+                } else if let Some(d) = &resolved_dir {
+                    // A C/C++ west application decides in its own configure
+                    // (`nano_ros_entry()`); a decision left by an earlier Rust
+                    // build of this image must not speak for it.
+                    let stale = d.join(RESOLVED_SIZING_DECISION_NAME);
+                    if stale.exists() {
+                        std::fs::remove_file(&stale)
+                            .wrap_err_with(|| format!("removing {}", stale.display()))?;
                     }
                 }
                 // Issue 1419 — a RUST west application (`rust_cargo_application()`)
@@ -5612,46 +5627,13 @@ fn resolve_image(
             crate::resolve::write_entity_inputs(&w, &dir, entity_inputs.as_ref(), &inv)?;
             Ok(w)
         }),
-        Err(reason) => {
-            let r = crate::resolve::Resolved::unresolvable(
-                ident,
-                bringup_dir.join("launch").display().to_string(),
-                reason,
-            )
-            .with_locations(locations);
-            // Same two writes as the derived path, minus the projection — kept
-            // inline rather than routed through `write` because there is no
-            // inventory to render one from.
-            match std::fs::create_dir_all(&dir)
-                .and_then(|()| {
-                    // phase-439 W7 -- and the record a configure would
-                    // read it by: no projection, nothing to take.
-                    for name in [
-                        crate::resolve::RESOLVED_CMAKE_NAME,
-                        crate::resolve::RESOLVED_ENTITY_INPUTS_NAME,
-                        crate::resolve::RESOLVED_ENTITY_JSON_NAME,
-                    ] {
-                        let stale = dir.join(name);
-                        if stale.exists() {
-                            std::fs::remove_file(&stale)?;
-                        }
-                    }
-                    Ok(())
-                })
-                .and_then(|()| {
-                    let p = dir.join(crate::resolve::RESOLVED_TOML_NAME);
-                    crate::atomic_file::atomic_write(&p, &r.to_toml())
-                        .map_err(|e| std::io::Error::other(e.to_string()))
-                        .map(|()| p)
-                }) {
-                Ok(toml_path) => Ok(crate::resolve::Written {
-                    resolved: r,
-                    toml_path,
-                    cmake_path: None,
-                }),
-                Err(e) => Err(e),
-            }
-        }
+        Err(reason) => write_unresolved(
+            &dir,
+            ident,
+            bringup_dir.join("launch").display().to_string(),
+            reason,
+            locations,
+        ),
     };
 
     match written {
@@ -5683,6 +5665,517 @@ fn resolve_image(
                 inventory: composed.map(|(i, _)| i),
                 store_infra,
             })
+        }
+    }
+}
+
+/// An image's sizing descriptor, composed from its stage-3.5 resolve: over the
+/// contract's wiring (plus the workspace's bound tables and the probe sidecars'
+/// registration observation), or -- a model with no wiring -- over the
+/// bringup's parameter-store facts alone (issue 1706). `None` when the resolve
+/// states nothing (no file), or when the write failed, which is reported and
+/// never fatal: every consumer then keeps its own defaults, the argument stage
+/// 3.5 makes for itself.
+///
+/// The cargo road names the file to cargo through its settings; the Zephyr
+/// west road's Rust lane through the resolve directory's decision file
+/// (phase-530 W3, [`RESOLVED_SIZING_DECISION_NAME`]). The `bool` is whether
+/// it was composed over wiring (the Cyclone facts ride only that one).
+fn write_image_descriptor(
+    root: &Path,
+    resolved: Option<&ResolvedImage>,
+    image_id: &str,
+    target: &DescriptorTarget<'_>,
+) -> Option<(crate::sizing_descriptor::WrittenDescriptor, bool)> {
+    let image_for = |wiring| crate::sizing_descriptor::ModelImage {
+        build_dir: target.build_dir,
+        entry: image_id,
+        wiring,
+        target_triple: target.target_triple.clone(),
+        host_build: target.host_build,
+        heap_budget_bytes: target.heap_budget_bytes,
+        rmw: target.rmw.clone(),
+        bound_inventories: &[],
+        horizon: crate::sizing_descriptor::ModelHorizon::new(target.road),
+    };
+    if let Some((inv, model)) = resolved.and_then(|r| r.inventory.as_ref().zip(r.model.as_ref())) {
+        // issue 1594 -- the probe sidecars' per-subscription registration
+        // observation, joined by the contract join's own rule. Not fatal: an
+        // unreadable workspace leaves every row unobserved, which refuses
+        // `registration_path` (the over-size, never the under-size).
+        let observed = match crate::contract_join::observe_workspace_registrations(inv, model, root)
+        {
+            Ok((observed, _, notes)) => {
+                for n in notes {
+                    eprintln!("nros build:   {n}");
+                }
+                observed
+            }
+            Err(e) => {
+                eprintln!(
+                    "nros build: warning: no registration observation joined ({e}); every \
+                     subscription keeps its receive region"
+                );
+                inv.clone()
+            }
+        };
+        // phase-457-payload W2 — the workspace's own `generated/` tables, found
+        // by the discovery a single-package leaf uses and read by the reader
+        // every road shares. The cmake producers take the tables their
+        // configure registered instead.
+        let bound_tables = crate::leaf_payload_classes::generated_bound_tables(root);
+        return match crate::sizing_descriptor::write_for_model(
+            &crate::sizing_descriptor::ModelImage {
+                bound_inventories: &bound_tables,
+                ..image_for(crate::sizing_descriptor::Wiring::Composed(&observed))
+            },
+        ) {
+            Ok(Some(written)) => {
+                eprintln!(
+                    "nros build:   sizing descriptor → {}",
+                    written.path.display()
+                );
+                Some((written, true))
+            }
+            Ok(None) => None,
+            // NOT fatal, and the same argument stage 3.5 makes: making the
+            // descriptor a new way for a build to stop would be a regression
+            // paid by every image for the benefit of the few that derive.
+            Err(e) => {
+                eprintln!(
+                    "nros build: warning: `{image_id}`'s sizing descriptor was not written \
+                     ({e}); every consumer keeps its own defaults"
+                );
+                None
+            }
+        };
+    }
+    // Issue 1706 -- no wiring, so no full descriptor; but a bringup that
+    // implies a parameter store still says so. A model with no wiring declares
+    // no `params:` either (issue 1436's predicate), so the declarations are
+    // `Absent`.
+    let infra = resolved.and_then(|r| r.store_infra)?;
+    let params = crate::entity_inventory::ParamDeclarations::Absent;
+    match crate::sizing_descriptor::write_for_model(&image_for(
+        crate::sizing_descriptor::Wiring::Unwired {
+            params: &params,
+            infra,
+            model_nodes: Some(infra.model_nodes),
+            roots: &[root],
+        },
+    )) {
+        Ok(Some(written)) => {
+            eprintln!(
+                // issue 1706, phase-486 W9.
+                "nros build:   sizing descriptor (no wiring: the model's facts only) → {}",
+                written.path.display()
+            );
+            Some((written, false))
+        }
+        Ok(None) => None,
+        Err(e) => {
+            eprintln!(
+                "nros build: warning: `{image_id}`'s parameter-store descriptor was not written \
+                 ({e}); the store keeps the heap path"
+            );
+            None
+        }
+    }
+}
+
+/// Stage 3.5's second half for a Zephyr west RUST image -- phase-530 W3,
+/// issue 2233, RFC-0120 D6 case 2.
+///
+/// A Rust west application (`rust_cargo_application()`) calls neither
+/// `nros_find_interfaces()` nor `nano_ros_entry()`, so its configure has no
+/// producer for two answers a C/C++ west image's configure composes:
+///
+/// * the MESSAGE BOUNDS. The module's reader found a placeholder, so every
+///   message-bound knob (`NROS_SUBSCRIBER_BUFFER_SIZE`,
+///   `NROS_SUBSCRIBED_TYPE_BOUNDS`, ...) fell to its crate default. The seed
+///   [`crate::message_bound_knobs::write_west_seed`] writes for a C/C++ image
+///   is composed here too, over the workspace's `generated/` bound tables (the
+///   ones this image's cargo build compiles); the module seeds the fragment
+///   from it, and the derived knobs ride the Rust lane's env (issue 1796).
+/// * the SIZING DESCRIPTOR. The module defaulted to "named" for any build
+///   `nros build` started and waited for an entry to write the file; none ever
+///   did, so the deferred backstop took the decision back and re-ran cmake.
+///   The descriptor is composed here, from this resolve, by the cargo road's
+///   writer ([`write_image_descriptor`]), and the decision is written beside
+///   it ([`RESOLVED_SIZING_DECISION_NAME`]).
+///
+/// Never fatal, like the rest of stage 3.5: what cannot be composed is said
+/// once, and the module then keeps the crate defaults it had before.
+#[allow(clippy::too_many_arguments)]
+fn resolve_rust_west_image(
+    root: &Path,
+    resolved_dir: &Path,
+    bringup_dir: &Path,
+    image_id: &str,
+    image: &crate::orchestration::image::ImageBlock,
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&Path>,
+    resolved: Option<&ResolvedImage>,
+) {
+    // ---- the message-bound seed -------------------------------------------
+    let node_dirs = (|| -> Result<Vec<PathBuf>, String> {
+        let args: Vec<(String, String)> = image
+            .args
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let rel = crate::orchestration::model_location::launch_to_model_rel(
+            bringup_dir,
+            image.launch.as_deref(),
+            &args,
+        )
+        .map_err(|e| format!("cannot resolve the launch: {e}"))?;
+        let model = open_model(bringup_dir, &rel).map_err(|e| match e {
+            ModelDoor::Refused(r) => r.to_string(),
+            ModelDoor::Unresolved(e) => format!("cannot resolve the SystemModel: {e}"),
+        })?;
+        let plan = crate::codegen::entry::plan_from_model(&model, image.board.clone())
+            .map_err(|e| format!("cannot plan the launch: {e}"))?;
+        Ok(launch_closure(root, &plan)
+            .into_iter()
+            .map(|(_, d)| d)
+            .collect())
+    })();
+    match node_dirs.and_then(|dirs| {
+        crate::message_bound_knobs::write_west_seed(resolved_dir, &root.join("generated"), &dirs)
+    }) {
+        Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
+        Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
+    }
+
+    // ---- the sizing-descriptor decision ------------------------------------
+    let heap = board_heap_budget(descriptor, board, nano_ros_root);
+    let triple = descriptor
+        .zephyr
+        .as_ref()
+        .and_then(|z| z.rust_target_for_host());
+    let target = DescriptorTarget {
+        build_dir: resolved_dir,
+        // The triple zephyr-lang-rust compiles the image for, as the board
+        // states it; the module checks the two agree (issue 2204).
+        target_triple: triple,
+        host_build: false,
+        heap_budget_bytes: heap,
+        rmw: image.rmw.clone(),
+        road: "a Zephyr west Rust image",
+    };
+    let written = write_image_descriptor(root, resolved, image_id, &target);
+    if let Err(e) = write_sizing_decision(
+        resolved_dir,
+        written.as_ref().map(|(w, _)| w.path.as_path()),
+    ) {
+        eprintln!(
+            "nros build: warning: `{image_id}`'s sizing-descriptor decision was not written \
+             ({e}); the module decides for itself"
+        );
+    }
+}
+
+/// Where [`write_image_descriptor`] writes, and the facts of the target it
+/// sizes for: every [`crate::sizing_descriptor::ModelImage`] field but the
+/// wiring and the bound tables, which it composes itself.
+struct DescriptorTarget<'a> {
+    /// The descriptor lands at `<build_dir>/nros/sizing/<entry>.toml`.
+    build_dir: &'a Path,
+    target_triple: Option<String>,
+    host_build: bool,
+    heap_budget_bytes: Option<usize>,
+    rmw: Option<String>,
+    /// The road, for the descriptor's refusal prose.
+    road: &'static str,
+}
+
+/// phase-530 W3 (issue 2233) -- the file in a Zephyr west Rust image's resolve
+/// directory that carries C5's sizing-descriptor decision to the module
+/// (`_nros_load_west_sizing_descriptor`): `NROS_RESOLVED_SIZING_DESCRIPTOR`, the
+/// descriptor's path, or empty for none. A Rust west application calls no
+/// `nano_ros_entry()`, so nothing in its configure decides; without this the
+/// module's "named" default waited for a writer that never came, and the
+/// deferred backstop re-ran cmake to take it back.
+pub(crate) const RESOLVED_SIZING_DECISION_NAME: &str = "resolved-sizing.cmake";
+
+/// Write -- or, for an image whose configure decides for itself, remove -- the
+/// decision [`RESOLVED_SIZING_DECISION_NAME`] names. Write-if-changed: the
+/// module registers it as a configure dependency.
+fn write_sizing_decision(dir: &Path, descriptor: Option<&Path>) -> std::io::Result<()> {
+    let path = dir.join(RESOLVED_SIZING_DECISION_NAME);
+    let Some(d) = descriptor else {
+        return crate::atomic_file::atomic_write(
+            &path,
+            "# Generated by `nros build` (phase-530 W3) -- this image names no sizing descriptor \
+             to cargo.\nset(NROS_RESOLVED_SIZING_DESCRIPTOR \"\")\n",
+        )
+        .map_err(|e| std::io::Error::other(e.to_string()));
+    };
+    let shown = d.to_str().filter(|s| !s.contains(['"', '\\', '$', ';']));
+    let Some(shown) = shown else {
+        // A path cmake cannot quote is no decision: the module keeps its own.
+        if path.exists() {
+            std::fs::remove_file(&path)?;
+        }
+        return Ok(());
+    };
+    let body = format!(
+        "# Generated by `nros build` (phase-530 W3) -- the sizing descriptor this image names \
+         to cargo.\nset(NROS_RESOLVED_SIZING_DESCRIPTOR \"{shown}\")\n"
+    );
+    if std::fs::read_to_string(&path).is_ok_and(|old| old == body) {
+        return Ok(());
+    }
+    crate::atomic_file::atomic_write(&path, &body).map_err(|e| std::io::Error::other(e.to_string()))
+}
+
+/// Write a refusal into `dir`: `resolved.toml` saying why, and no projection
+/// or entity record a configure could read (one written by an earlier answer
+/// is removed). Shared by the per-image resolve and the per-coordinate union.
+fn write_unresolved(
+    dir: &std::path::Path,
+    ident: crate::resolve::ImageIdent,
+    source: String,
+    reason: String,
+    locations: Vec<crate::resolve::Location>,
+) -> std::io::Result<crate::resolve::Written> {
+    let r = crate::resolve::Resolved::unresolvable(ident, source, reason).with_locations(locations);
+    std::fs::create_dir_all(dir)?;
+    // phase-439 W7 -- and the record a configure would read it by: no
+    // projection, nothing to take.
+    for name in [
+        crate::resolve::RESOLVED_CMAKE_NAME,
+        crate::resolve::RESOLVED_ENTITY_INPUTS_NAME,
+        crate::resolve::RESOLVED_ENTITY_JSON_NAME,
+    ] {
+        let stale = dir.join(name);
+        if stale.exists() {
+            std::fs::remove_file(&stale)?;
+        }
+    }
+    let p = dir.join(crate::resolve::RESOLVED_TOML_NAME);
+    crate::atomic_file::atomic_write(&p, &r.to_toml())
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    Ok(crate::resolve::Written {
+        resolved: r,
+        toml_path: p,
+        cmake_path: None,
+    })
+}
+
+/// One image of a shared cmake configure: `(bringup, bringup dir, id, image)`,
+/// the shape `plan::all_images` yields.
+pub(crate) type CoordinateMember = (
+    String,
+    PathBuf,
+    String,
+    crate::orchestration::image::ImageBlock,
+);
+
+/// Where stage 3.5 writes a shared cmake configure's resolve:
+/// `build/<coord>/resolved/`, beside the root the configure is generated from
+/// (phase-530 W3, RFC-0120 D6 case 3). One per host-configure coordinate,
+/// whichever of its images is being built.
+pub(crate) fn coordinate_resolve_dir(root: &Path, coord: &str) -> PathBuf {
+    root.join("build").join(coord).join("resolved")
+}
+
+/// The file in [`coordinate_resolve_dir`] naming the coordinate and the
+/// images its union covers; `nros configure` records the coordinate's stamp
+/// from it.
+pub(crate) const COORDINATE_MEMBERS_NAME: &str = "coordinate.toml";
+
+/// The coordinate and images [`resolve_coordinate`] last composed over.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct CoordinateMembers {
+    pub(crate) coordinate: String,
+    /// Qualified `<bringup>:<id>`, sorted.
+    pub(crate) images: Vec<String>,
+}
+
+/// Read [`COORDINATE_MEMBERS_NAME`] from `dir`, or `None`.
+pub(crate) fn read_coordinate_members(dir: &Path) -> Option<CoordinateMembers> {
+    let raw = std::fs::read_to_string(dir.join(COORDINATE_MEMBERS_NAME)).ok()?;
+    toml::from_str(&raw).ok()
+}
+
+/// One member's resolved model, through the door every resolve uses, and held
+/// to the refusals `nros dev image entity-inventory` applies at its own door
+/// (`check_model`): a model the configure would refuse composes nothing here.
+fn coordinate_member_model(
+    bringup_dir: &Path,
+    image: &crate::orchestration::image::ImageBlock,
+) -> Result<(PathBuf, nros_orchestration_ir::overlay::LoadedModel), String> {
+    use crate::orchestration::model_location;
+    let args: Vec<(String, String)> = image
+        .args
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let model_rel =
+        model_location::launch_to_model_rel(bringup_dir, image.launch.as_deref(), &args)
+            .map_err(|e| format!("cannot resolve the launch: {e}"))?;
+    let path = open_model(bringup_dir, &model_rel).map_err(|e| match e {
+        ModelDoor::Refused(r) => r.to_string(),
+        ModelDoor::Unresolved(e) => format!("cannot resolve the SystemModel: {e}"),
+    })?;
+    let raw =
+        std::fs::read_to_string(&path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw)
+        .map_err(|e| format!("parsing {}: {e}", path.display()))?;
+    crate::cmd::entity_inventory::check_model(&model)
+        .map_err(|e| format!("model {}: {e:#}", path.display()))?;
+    let model = nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, &path)?;
+    Ok((path, model))
+}
+
+/// Stage 3.5 for a SHARED cmake configure -- phase-530 W3, RFC-0120 D6 case 3.
+///
+/// A cmake coordinate builds every image on it in one configure and links ONE
+/// runtime into all of them, so the configure's entity producer composes the
+/// union over every member's model (issue 1600's list). The per-image resolve
+/// answers for one model, so the configure's first reader saw a different
+/// answer from the one the producer then wrote, and the fixed point bought a
+/// second pass. This composes the union the producer composes -- the same
+/// registered population (the probe's rows for the packages the generated root
+/// `add_subdirectory()`s), the same models, the same function
+/// (`compose_image` for one, `fold_models_for_shared_runtime` for several, as
+/// `nros dev image entity-inventory` chooses) -- and records its inputs, so the
+/// producer takes it instead of recomposing (`nros_resolved_entity_take`).
+///
+/// Like [`resolve_image`] it never fails a build: anything it cannot compose is
+/// a `resolved.toml` saying why, no projection, and the configure composes as
+/// it did before. `None` only when the filesystem refused.
+#[allow(clippy::too_many_arguments)]
+fn resolve_coordinate(
+    root: &Path,
+    coord: &str,
+    members: &[CoordinateMember],
+    registered_packages: &std::collections::BTreeMap<String, PathBuf>,
+    lang: nros_lang::Language,
+    ident: crate::resolve::ImageIdent,
+    nano_ros_root: Option<&Path>,
+    rx_cost: Option<crate::entity_inventory::RxFrameCost>,
+) -> Option<PathBuf> {
+    let dir = coordinate_resolve_dir(root, coord);
+    let mut images: Vec<String> = members
+        .iter()
+        .map(|(b, _, id, _)| plan::qualified(b, id))
+        .collect();
+    images.sort();
+    let composed = (|| -> Result<_, String> {
+        let mut models = Vec::with_capacity(members.len());
+        for (b, bd, id, img) in members {
+            let (path, model) = coordinate_member_model(bd, img)
+                .map_err(|e| format!("`{}`: {e}", plan::qualified(b, id)))?;
+            models.push((path, model));
+        }
+        let probe = metadata_probe_build_dir(root).join("nros-metadata.json");
+        if !probe.is_file() {
+            return Err(format!(
+                "no metadata probe at {} (run `nros configure`)",
+                probe.display()
+            ));
+        }
+        let names: std::collections::BTreeSet<String> =
+            registered_packages.keys().cloned().collect();
+        let registered = crate::cmd::entity_inventory::registered_from_probe(&probe, &names)
+            .map_err(|e| format!("{e:#}"))?;
+        let paths: Vec<PathBuf> = models.iter().map(|(p, _)| p.clone()).collect();
+        let inputs = crate::resolve::EntityInputs::union(&registered, &paths, root, rx_cost);
+        let inv = match models.as_slice() {
+            [(path, model)] => crate::cmd::entity_inventory::compose_image(
+                registered,
+                &path.display().to_string(),
+                model,
+                Some(root),
+                rx_cost,
+                "nros build:  ",
+            )
+            .map_err(|e| format!("{e:#}"))?,
+            _ => {
+                let named: Vec<(String, nros_orchestration_ir::overlay::LoadedModel)> = models
+                    .into_iter()
+                    .map(|(p, m)| (p.display().to_string(), m))
+                    .collect();
+                let mut inv = crate::cmd::entity_inventory::fold_models_for_shared_runtime(
+                    &registered,
+                    &named,
+                    Some(root),
+                );
+                if rx_cost.is_some() {
+                    inv.set_board_rx_cost(rx_cost);
+                }
+                crate::sizing_descriptor::report_rx_ingress(&inv, "nros build:  ")
+                    .map_err(|e| format!("{e:#}"))?;
+                inv
+            }
+        };
+        Ok((inv, inputs))
+    })();
+    let locations = image_locations(nano_ros_root, root);
+    let written = match composed {
+        Ok((inv, inputs)) => crate::resolve::write(&dir, ident, &inv, locations).and_then(|w| {
+            crate::resolve::write_entity_inputs(&w, &dir, Some(&inputs), &inv)?;
+            Ok(w)
+        }),
+        Err(reason) => write_unresolved(
+            &dir,
+            ident,
+            format!("the {} image(s) on {coord}", members.len()),
+            reason,
+            locations,
+        ),
+    }
+    .and_then(|w| {
+        let body = toml::to_string(&CoordinateMembers {
+            coordinate: coord.to_string(),
+            images: images.clone(),
+        })
+        .map_err(std::io::Error::other)?;
+        crate::atomic_file::atomic_write(&dir.join(COORDINATE_MEMBERS_NAME), &body)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        Ok(w)
+    });
+    match written {
+        Err(e) => {
+            eprintln!("nros build: warning: stage 3.5 could not write `{coord}`'s union: {e}");
+            None
+        }
+        Ok(w) => {
+            // The message-bound seed, over the bound tables the metadata probe
+            // generated for the configure's language and the interface closure
+            // of every package the root adds -- the closure the configure's
+            // `nros_find_interfaces()` calls register (phase-439 W6's seed, on
+            // this road). Composed over the union's entity answer just written.
+            let probe_codegen = metadata_probe_build_dir(root)
+                .join("nros-codegen")
+                .join(format!("nano_ros_{}", lang.as_str()));
+            let dirs: Vec<PathBuf> = registered_packages.values().cloned().collect();
+            match crate::message_bound_knobs::write_west_seed(&dir, &probe_codegen, &dirs) {
+                Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
+                Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
+            }
+            match w.resolved.knobs() {
+                Some(k) => eprintln!(
+                    "nros build:   resolved {coord} (union of {} image(s)) → {} (max_cbs {}, \
+                     nodes {}, digest {})",
+                    images.len(),
+                    w.toml_path.display(),
+                    k.max_cbs,
+                    k.max_nodes,
+                    w.resolved.digest()
+                ),
+                None => eprintln!(
+                    "nros build:   resolved {coord} (union of {} image(s)) → {} (entity counts \
+                     not derived; the configure composes them)",
+                    images.len(),
+                    w.toml_path.display()
+                ),
+            }
+            Some(dir)
         }
     }
 }
@@ -8608,6 +9101,42 @@ mod board_heap_tests {
             "the premise: an in-tree source is root-relative"
         );
         d
+    }
+
+    /// phase-530 W3 (issue 2233) -- the decision a Rust west image's resolve
+    /// hands the module: the descriptor's path, or empty for none, and no file
+    /// at all for a path cmake cannot quote (the module then decides itself).
+    /// An unchanged decision keeps its mtime: the module registers the file as
+    /// a configure dependency.
+    #[test]
+    fn the_sizing_decision_names_one_or_none() {
+        let t = tempfile::tempdir().unwrap();
+        let file = t.path().join(RESOLVED_SIZING_DECISION_NAME);
+        let d = t.path().join("nros/sizing/zephyr.toml");
+        write_sizing_decision(t.path(), Some(&d)).unwrap();
+        let named = std::fs::read_to_string(&file).unwrap();
+        assert!(
+            named.contains(&format!(
+                "set(NROS_RESOLVED_SIZING_DESCRIPTOR \"{}\")",
+                d.display()
+            )),
+            "{named}"
+        );
+        let before = std::fs::metadata(&file).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        write_sizing_decision(t.path(), Some(&d)).unwrap();
+        assert_eq!(
+            before,
+            std::fs::metadata(&file).unwrap().modified().unwrap()
+        );
+        write_sizing_decision(t.path(), None).unwrap();
+        assert!(
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .contains("set(NROS_RESOLVED_SIZING_DESCRIPTOR \"\")")
+        );
+        write_sizing_decision(t.path(), Some(Path::new("/a;b/x.toml"))).unwrap();
+        assert!(!file.exists(), "an unquotable path is no decision");
     }
 
     /// Issue 1653 -- the heap reaches the configure line from ANY cwd. The
