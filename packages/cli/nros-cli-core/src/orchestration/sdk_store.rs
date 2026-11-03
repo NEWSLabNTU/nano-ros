@@ -17,6 +17,8 @@ use std::{
 use eyre::{Result, WrapErr, bail, eyre};
 use serde::{Deserialize, Serialize};
 
+use crate::file_lock::lock_exclusive;
+
 use super::sdk_index::{SourceLocation, SourcePackage, SourceProvision, ToolPackage};
 
 /// The lockfile name (written in cwd by `nros setup` / auto-setup — pins the
@@ -1991,29 +1993,6 @@ fn provision_lock(
         .wrap_err_with(|| format!("open provision lock {}", path.display()))?;
     lock_exclusive(&file).wrap_err_with(|| format!("lock {} (source {name})", path.display()))?;
     Ok(Some(file))
-}
-
-/// A blocking exclusive `flock`, released when `file` closes. `File::lock`
-/// is the std spelling, but it is stable only since 1.89 and this crate's
-/// MSRV is older. Retries EINTR, which a blocking `flock` can return.
-#[cfg(unix)]
-fn lock_exclusive(file: &std::fs::File) -> std::io::Result<()> {
-    use std::os::fd::AsRawFd;
-    loop {
-        // SAFETY: a valid, open fd for the life of the call; flock touches no memory.
-        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } == 0 {
-            return Ok(());
-        }
-        let err = std::io::Error::last_os_error();
-        if err.kind() != std::io::ErrorKind::Interrupted {
-            return Err(err);
-        }
-    }
-}
-
-#[cfg(not(unix))]
-fn lock_exclusive(_file: &std::fs::File) -> std::io::Result<()> {
-    Ok(())
 }
 
 fn provision_source_unlocked(
