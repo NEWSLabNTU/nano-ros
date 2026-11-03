@@ -198,6 +198,12 @@ hand out.
 
 ### D6 — A single-package front door before the workspace vocabulary
 
+> **Amended by [RFC-0121](0121-workspace-first-project-layout.md) (2026-11-03):**
+> the scaffold writes a workspace holding a node package and a bringup, and the
+> chapter runs `nros run <node>`. The chapter still names no launch file, image
+> or entry, and the reader authors nothing in the bringup. "Grows into a
+> workspace by `nros new --workspace`" becomes "grows by adding a package".
+
 The first chapter scaffolds one package and runs it:
 
 ```text

@@ -450,6 +450,11 @@ probe still builds the node (issue 1265).
 This is also what RFC-0103's layer table asks: a package names no board, RMW or
 network.
 
+> **Reversed by [RFC-0121](0121-workspace-first-project-layout.md) D6
+> (2026-11-03):** every image builds through the generated entry, and the
+> plain `cargo build` flow this paragraph kept retires with the standalone
+> package shape (phase-531).
+
 Rejected: making every single-package leaf a generated entry. It meets D6 but
 removes the documented plain-cargo flow for the most common example shape.
 
