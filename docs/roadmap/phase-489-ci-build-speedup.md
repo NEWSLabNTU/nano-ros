@@ -1,14 +1,30 @@
 # Phase 489 — CI build speed-up: the required gate first, then the build-bound lanes
 
-**Status (2026-10-15). W1 and W3 met their acceptance; W4 met it on a hit and
-cut the miss path by half; W5 landed, CI acceptance NOT met (PR hit rate now
-measured, 93.7 %; main's warm job was being cancelled, fixed in PR #2200 --
-see W5); W2 landed and is switched OFF again after a three-hour trial starved
+**Status (2026-11-03). The required gate has REGRESSED past W1's target:
+`gate.yml` on `merge_group` has a median of 37.1 min (range 24.4–41.5) over its
+last 20 successful runs (41381715200 … 41496872163, all on 2026-11-02). Each run
+is measured from `createdAt` to `updatedAt` with
+`gh run list --workflow gate.yml --event merge_group --status success -L 20`,
+and per job and per step with `gh run view <id> --json jobs`. The critical path in
+EVERY one of those runs is `check / template-copy-out` (job median 36.9 min,
+range 23.8–41.2). It joined the merge queue on 2026-10-17 (eda59e4126,
+issue 1453), after this phase's last measurement, and the next-slowest jobs are
+11–18 min (`test-lane-contracts` 15.3, `workspace-all` 14.7, `cli-tests` 14.1,
+`fast` 13.1). W8 below is that job. W1 and W3 met their acceptance. W4 met it
+on a hit and halved the miss path. W5 landed, but its CI acceptance is still not
+met: `check / fast` takes 8–15 min on pull_request against the 6-min target. W2
+is OFF (`NROS_GATE_SELF_HOSTED` unset), and only ONE self-hosted runner is
+registered now (`nano-ros-runner-newslab-118-server`), so it stays off. W6 met
+its acceptance locally. W7 is moot because its runner is no longer registered.**
+
+Status (2026-10-15), kept for history: W1 and W3 met their acceptance; W4 met
+it on a hit and cut the miss path by half; W5 landed, CI acceptance NOT met (PR
+hit rate measured, 93.7 %; main's warm job was being cancelled, fixed in PR
+#2200); W2 landed and was switched OFF again after a three-hour trial starved
 the merge queue (PR #2177 since routed `check-cli-tests` and added its image
-row, still off); W6 met its acceptance locally (869 s / 875 s no-change re-runs, 9.2 % of
-9479 s cold; PRs #2170 and #2248), the CI second-run
-number is still pending on free runners; W7 is
-handed to the runner operators.**
+row, still off); W6 met its acceptance locally (869 s / 875 s no-change
+re-runs, 9.2 % of 9479 s cold; PRs #2170 and #2248), the CI second-run number
+pending on free runners; W7 handed to the runner operators.
 Each item's own section has the post-merge numbers. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
 the baseline every work item is judged against. Implements no new RFC
 decision. It continues the cost work of
@@ -254,6 +270,15 @@ idle must take queued work (an operator diagnosis, beside W7), and either
 more runners or a label that keeps L3 and the siblings from competing for
 the same three. `check-cli-tests` still needs the ROS interface packages in
 the runner image. The acceptance median then needs the variable left on.
+
+**Standing (2026-11-03): still off.** `vars.NROS_GATE_SELF_HOSTED` is unset,
+and only one self-hosted runner is registered:
+`nano-ros-runner-newslab-118-server`, a container started by hand that also
+serves queue L3. The trial above starved three runners. One runner cannot
+carry L3 plus a sibling for each of up to five queue entries, so the routing
+stays off until there is capacity again. That is a runner-infra decision
+outside this repo. The routed `runs-on` expressions stay in `gate.yml`, so
+turning it back on needs no code change.
 
 ### W3 — make the CLI cache cost seconds, not 3.8 minutes
 
@@ -842,7 +867,7 @@ runs on main, each lane on the runner it landed on):
 2026-10-14 (issues 1933, 1934 fixed on the way). tier 1 stays on 241, which
 is W7's slow runner.
 
-### W7 — find out why `newslab-server-241` is 2–5× slower
+### W7 — find out why `newslab-server-241` is 2–5× slower (moot: runner gone)
 
 Compare `nproc`, the jobserver budget, disk type and free space, and other
 tenants (CLAUDE.md: `/home` is shared by 14 users) across the three runners.
@@ -855,7 +880,97 @@ for whoever administers the runner machines; this repo cannot see them
 beyond job logs.
 
 **Acceptance:** `newslab-server-241`'s L3 median within 25 % of the other
+
+**Moot (2026-11-03).** `newslab-server-241` is no longer registered as a
+runner (`gh api repos/NEWSLabNTU/nano-ros/actions/runners` lists only
+`nano-ros-runner-newslab-118-server`), so there is no slow runner left to
+diagnose and its acceptance cannot be measured. Closed without a fix. The
+history above stays, because a re-registered host should be measured against it
+before it takes the critical-path job.
 two runners'.
+
+### W8 — take `template-copy-out` off the gate's critical path
+
+`check / template-copy-out` became the gate's critical path when it joined the
+merge queue on 2026-10-17 (eda59e4126, issue 1453). It is the longest job in
+all 20 successful `merge_group` runs of 2026-11-02 (41381715200 …
+41496872163): job median 36.9 min, range 23.8–41.2. The gate run median is
+37.1 min. The next-slowest sibling is `test-lane-contracts` at 15.3 min.
+
+**Where the time goes**, measured from the 20 job logs (per-unit times are
+the gaps between the gate's own `<project>: OK` lines):
+
+| unit | slow host (16 runs), s | 9V45 host (4 runs), s |
+| --- | --- | --- |
+| `multi-package-workspace` | 290 | 178 |
+| `local-msg-package` | 209 | 131 |
+| `c-and-cpp-mixed-workspace` | 191 | 117 |
+| `pure-c-workspace` | 190 | 116 |
+| `multi-node-workspace-cpp` | 187 | 113 |
+| `--self-test` (builds one broken host copy and one broken cross copy) | 126 | 77 |
+| `ament-workspace-port/mps2-an385-freertos` | 112 | 68 |
+| `rclcpp-compat-smoke`, `topic-state-monitor-port`, `cpp-port-minimal-publisher` (`mps2-an385-freertos`) | ~90 each | ~26–54 |
+| `multi-node-workspace` | 49 | 33 |
+| `nros new --board linux` / `mps2-an385-baremetal` | 39 / 43 | 28 / 28 |
+| the five Zephyr projects | ~1 each (NOT VERIFIED) | ~1 |
+| `just check ament-census-sizing` (same job, next step) | 222 | 139 |
+
+- **The bimodal shape is the hardware.** Every hosted runner has 4 vCPUs.
+  The 4 runs that landed on an AMD EPYC 9V45 at ~4.4 GHz took 1004–1102 s
+  in the gate step. The 16 on an EPYC 7763, EPYC 9V74 or Xeon 8573C/6973P at
+  ~2.9–3.7 GHz took 1289–1758 s. Every unit scales by the same factor, so
+  nothing in the gate changes between the two modes. A hosted job cannot
+  choose its hardware.
+- **Each copy is a cold cargo and cmake build in its own work dir.** That is
+  the copy-out property: no shared `target/`. Rust compiles go through
+  sccache, which serves 50 % of them (2643 hits, 2612 misses in run
+  41492126741). The cache is restored from the shared `sccache-Linux-check-`
+  prefix, already at its 2 GB cap. This job never saves it. C/C++ compiles
+  are not cached.
+- **Fixed job overhead** (container start, CLI restore or build, source and
+  toolchain provisioning, `nros-launch-resolve`, disk reclaim) has a median of
+  371 s (range 177–497 s). That is everything outside the two `just check`
+  steps.
+- The work is SERIAL: one copy at a time on one 4-vCPU runner. The issue-1453
+  comment chose that for DISK, because the peak is one template's build.
+
+**Lever: shard the job.** A matrix of N entries on the same job id. Each entry
+builds the units `scripts/build/gate-shard.py` assigns it. That script is the
+greedy longest-first split issue 2141 already uses for `just check build`,
+and it puts every unit in exactly one shard whatever the weights say.
+The units are every discovered project, every scaffold board, the self-test
+and `ament-census-sizing`. Each shard still copies every unit out of the
+checkout into its own `$TMPDIR`, so issue 1453's property holds per unit. The
+aggregator's `needs.check-template-copy-out.result` is the matrix's combined
+result, so a red shard fails `CI`.
+`check-merge-group-gates` gains a rule: a sharded host job must list `k/n`
+for every `k` in `1..n`, so a dropped shard cannot quietly drop templates.
+
+The sum on a slow host is ~1930 s of units. With N = 3 that is ~650 s per
+shard plus ~370 s of overhead, about 17 min per shard: under the 15–19 min
+siblings' range, so they become the critical path.
+
+**Cost, stated beside the win.** Sharding does not repeat the build work,
+because each unit runs once. It repeats the fixed overhead. Per `merge_group`
+run, hosted runner time goes from ~37 job-minutes to about 3 × 17 ≈ 51, which is
++~14 min or +~38 %. The job also occupies three runners instead of one,
+against the account's concurrent-job limit, while up to five queue entries
+run at once.
+
+**The five Zephyr projects are a GAP, not a scope decision** (issue 2219). They
+take ~1 s each because the job provisions no west workspace, so each one is
+recorded NOT VERIFIED (`Zephyr not provisioned`) in the `nros_check_skip`
+ledger. That is visible, not a silent pass. But `gate.yml` still justifies it
+with issue 1782, which was resolved on 2026-10-29 by giving the gate a Zephyr
+copy-out road. No lane claims them as out of scope, and none builds them, so
+issue 1453's "every copy-out template" does not hold for these five. W8 does
+not change that. It shards what runs today, and 2219 carries the decision.
+
+**Acceptance:** the `gate.yml` `merge_group` median over 20 successful
+runs is back under 25 min, which is W1's own target. The phase met it on
+2026-10-12, and nothing here changes lane membership. `template-copy-out` is no
+longer the longest job in the majority of those runs. Validated first with a
+`workflow_dispatch` run of `gate.yml` on the branch.
 
 ## Self-hosted runner cache observations (2026-10-09..14)
 
@@ -895,5 +1010,6 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
+- [issue 2219](../issues/2219-template-copy-out-zephyr-projects-built-on-no-lane.md) — template-copy-out's five Zephyr projects are built copied out on no lane (found measuring W8)
 - [issue 1869](../issues/archived/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md) — workspace fixture rows sharing a target dir rebuilt the core crates every run (W6; resolved by RFC-0100 D13)
 - [issue 1177](../issues/archived/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — RESOLVED 2026-10-23 (Option B: the no-alloc nros-c rows run in `compile-smoke`). `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
