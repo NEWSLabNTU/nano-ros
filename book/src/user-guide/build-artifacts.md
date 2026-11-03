@@ -9,15 +9,18 @@ tool would have produced had you run it yourself.
 This page answers the question the build does not: **what are you holding, and
 where is it?**
 
-## There is no `nros run` and no `nros flash`
+## Running it: `nros run`, and no `nros flash` yet
 
-That is a decision, not a gap. How an image is flashed or started is a property
-of the board and of your bench — a probe, a bootloader, a QEMU command line, a
-CI fixture — and nano-ros cannot know it without inventing a device inventory
-nobody asked for. So nano-ros delivers binaries, and the board's own tooling
-takes them from there.
+`nros run` starts an image whose board is a host process or an emulator: it
+builds the image if it is stale, starts the router the image's link needs,
+streams the console and stops everything when it ends (`--expect <text>`
+grades the console, `--dry-run --why` prints the plan it would execute). How a
+board is launched is stated once, in its descriptor's `[board.run]`, so the
+command `nros build` prints as its next step is the one `nros run` executes.
 
-The commands quoted below are **that tooling's**, reproduced here as a
+Real silicon is not run: `nros run` refuses a hardware image and names
+`nros flash --monitor`, which is not available yet. Until it is, the
+commands quoted below are **the board tooling's**, reproduced here as a
 reference. They are not nano-ros wrappers and nano-ros does not run them for
 you.
 

@@ -121,12 +121,10 @@ fn a_reserved_verb_refuses_and_names_what_to_do() {
         assert!(err.contains("is reserved"), "{err}");
         assert!(err.contains("nros build"), "{err}");
     }
-    // phase-528 W1 — `run` resolves its plan with `--dry-run`; launching is
-    // W4, and until then it refuses naming what works.
+    // phase-528 W4 — `run` is no longer reserved: outside a workspace it
+    // fails resolving its plan, not as an unimplemented verb.
     let (ok, _, err) = run(&["run", "talker"]);
-    assert!(!ok, "`nros run` succeeded");
-    assert!(
-        err.contains("not implemented yet") && err.contains("--dry-run"),
-        "{err}"
-    );
+    assert!(!ok, "`nros run` succeeded outside a workspace");
+    assert!(!err.contains("is reserved"), "{err}");
+    assert!(!err.contains("not implemented"), "{err}");
 }

@@ -76,10 +76,11 @@ covers a tree with no `system.toml`.
 For real hardware, deployment step becomes flash/load/monitor. For QEMU,
 deployment is launching simulator with correct network setup.
 
-There is no `nros run`, no `nros flash` and no `nros deploy` verb, and none is
-planned: `nros build` ends at an artifact, and how that artifact is flashed or
-started is a property of the board and of your bench. Deployment runs on the
-**vendor's native tools**. See
+For a host image or an emulator, `nros run` builds the image if stale, starts
+the router its link needs and streams the console; `nros run --expect
+'<line>'` is the one-line smoke test. Real hardware is not run: there is no
+`nros flash` or `nros deploy` verb yet, so flashing runs on the **vendor's
+native tools**. See
 [What `nros build` Produces](build-artifacts.md) for where each target family's
 artifact lands and which of the vendor's commands takes it from there.
 
