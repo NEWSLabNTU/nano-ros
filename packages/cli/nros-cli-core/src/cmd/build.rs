@@ -961,10 +961,11 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             &board,
             nano_ros_root.as_deref(),
             descriptor.rx,
-            // phase-439 W7 -- the road whose configure reads the resolve
-            // instead of recomposing: a west image crossing out of Rust, i.e.
-            // the generated C/C++ application.
-            driver == Driver::West && image_has_non_rust(&image, &bringup_dir),
+            // phase-439 W7 -- the roads whose configure reads the resolve
+            // instead of recomposing: a C/C++ image on west (the generated
+            // application) and, since phase-530 W5, on cmake, whose
+            // `nano_ros_workspace()` hook now seeds every reader from it.
+            resolve_composes_registered(driver, image_has_non_rust(&image, &bringup_dir)),
         );
         let resolved_dir = resolved.as_ref().map(|r| r.dir.clone());
 
@@ -5122,24 +5123,31 @@ fn registered_population(
     root: &std::path::Path,
     model_path: &std::path::Path,
     board: Option<String>,
+    scope: RegisteredScope,
 ) -> Result<crate::entity_inventory::EntityInventory, String> {
-    let plan = crate::codegen::entry::plan_from_model(model_path, board)
-        .map_err(|e| format!("cannot plan the launch: {e}"))?;
-    let packages: std::collections::BTreeSet<String> = launch_closure(root, &plan)
-        .into_iter()
-        .map(|(p, _)| p)
-        .collect();
-    if packages.is_empty() {
-        return Err("the launch plan names no workspace package".into());
-    }
     let probe = metadata_probe_build_dir(root).join("nros-metadata.json");
+    let packages: Option<std::collections::BTreeSet<String>> = match scope {
+        RegisteredScope::Workspace => None,
+        RegisteredScope::LaunchClosure => {
+            let plan = crate::codegen::entry::plan_from_model(model_path, board)
+                .map_err(|e| format!("cannot plan the launch: {e}"))?;
+            let packages: std::collections::BTreeSet<String> = launch_closure(root, &plan)
+                .into_iter()
+                .map(|(p, _)| p)
+                .collect();
+            if packages.is_empty() {
+                return Err("the launch plan names no workspace package".into());
+            }
+            Some(packages)
+        }
+    };
     if !probe.is_file() {
         return Err(format!(
             "no metadata probe at {} (run `nros configure`)",
             probe.display()
         ));
     }
-    crate::cmd::entity_inventory::registered_from_probe(&probe, &packages)
+    crate::cmd::entity_inventory::registered_from_probe(&probe, packages.as_ref())
         .map_err(|e| format!("{e:#}"))
 }
 
@@ -5474,7 +5482,7 @@ fn resolve_image(
     board: &str,
     nano_ros_root: Option<&std::path::Path>,
     rx_cost: Option<crate::entity_inventory::RxFrameCost>,
-    compose_registered: bool,
+    compose_registered: Option<RegisteredScope>,
 ) -> Option<ResolvedImage> {
     use crate::{
         entity_inventory::EntityInventory,
@@ -5576,8 +5584,10 @@ fn resolve_image(
         // row, and the derivation refuses here exactly as it would there. The
         // verb's refusals become this phase's (it cannot fail a build), so a
         // model the configure would reject leaves no projection to read.
-        if compose_registered && EntityInventory::from_model("", &model).is_some() {
-            match registered_population(root, &model_path, image.board.clone()) {
+        if let Some(scope) = compose_registered
+            && EntityInventory::from_model("", &model).is_some()
+        {
+            match registered_population(root, &model_path, image.board.clone(), scope) {
                 Ok(registered) => {
                     crate::cmd::entity_inventory::check_model(&model)
                         .map_err(|e| format!("{e:#}"))?;
@@ -7005,6 +7015,39 @@ const CENSUS_PREPASS_ENV: &str = "NROS_CENSUS_PREPASS";
 /// (`rust_cargo_application()`). A C/C++ west or cmake image is checked by its
 /// own configure (`cmake/NanoRosEntry.cmake`), so checking it here too would
 /// be a second reader of one verdict; a HOST image is the census PRODUCER.
+/// phase-439 W7, phase-530 W5 -- whether stage 3.5 composes `driver`'s image
+/// over the population its packages REGISTER (the configure-time composer's
+/// own input), rather than over the model alone: wherever the host configure
+/// runs `nano_ros_node_register()` and composes, i.e. a C/C++ image on the
+/// west or the cmake road. A seed composed over fewer inputs than its
+/// configure's producer is refused by the promise check (RFC-0120 D5).
+///
+/// The SCOPE of that population is the host configure's own: a generated west
+/// application adds the packages the image's launch closure names, while a
+/// cmake workspace root adds EVERY package of the workspace (a registered
+/// component the image does not launch claims no slot, and still a node).
+pub(crate) fn resolve_composes_registered(
+    driver: Driver,
+    has_non_rust: bool,
+) -> Option<RegisteredScope> {
+    match driver {
+        _ if !has_non_rust => None,
+        Driver::West => Some(RegisteredScope::LaunchClosure),
+        Driver::CMake => Some(RegisteredScope::Workspace),
+        Driver::Cargo => None,
+    }
+}
+
+/// Which registered components stage 3.5 composes an image over
+/// ([`resolve_composes_registered`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RegisteredScope {
+    /// The packages the image's launch plan names (the generated west app).
+    LaunchClosure,
+    /// Every package the metadata probe registered (the cmake workspace root).
+    Workspace,
+}
+
 pub(crate) fn stage4_checks_census(
     driver: Driver,
     platform: crate::orchestration::board_descriptor::PlatformKind,
@@ -8773,6 +8816,39 @@ mod board_heap_tests {
             );
         }
         assert_eq!(board_build_type_arg("posix"), None);
+    }
+}
+
+#[cfg(test)]
+mod resolve_registered_tests {
+    use super::{Driver, RegisteredScope, resolve_composes_registered};
+
+    /// phase-530 W5 (RFC-0120 D5) -- the resolve composes an image over the
+    /// population its packages REGISTER exactly where a host configure does:
+    /// every C/C++ image whose configure runs `nano_ros_node_register()` and
+    /// the entity composer -- the west road (phase-439 W7) AND the cmake road.
+    /// Measured before: the cmake workspace `examples/workspaces/cpp`
+    /// `linux_xrce` was seeded with the model-only answer (2 nodes) while its
+    /// configure composed the 7 registered components (`NodeTableFull` is
+    /// what 2 would have been), and the promise check refused the configure:
+    /// its root registers every workspace package, the launch closure two.
+    #[test]
+    fn the_resolve_composes_registered_where_a_configure_does() {
+        assert_eq!(
+            resolve_composes_registered(Driver::West, true),
+            Some(RegisteredScope::LaunchClosure)
+        );
+        // The cmake root `add_subdirectory()`s every workspace package, so its
+        // configure registers them all.
+        assert_eq!(
+            resolve_composes_registered(Driver::CMake, true),
+            Some(RegisteredScope::Workspace)
+        );
+        // An all-Rust image registers nothing a configure composes.
+        assert_eq!(resolve_composes_registered(Driver::West, false), None);
+        assert_eq!(resolve_composes_registered(Driver::CMake, false), None);
+        assert_eq!(resolve_composes_registered(Driver::Cargo, false), None);
+        assert_eq!(resolve_composes_registered(Driver::Cargo, true), None);
     }
 }
 

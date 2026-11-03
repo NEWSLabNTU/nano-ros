@@ -899,7 +899,8 @@ mod tests {
             .into_iter()
             .map(str::to_string)
             .collect();
-        let reg = crate::cmd::entity_inventory::registered_from_probe(&meta, &launched).unwrap();
+        let reg =
+            crate::cmd::entity_inventory::registered_from_probe(&meta, Some(&launched)).unwrap();
         let model = dir.path().join("system_model.yaml");
         std::fs::write(&model, "nodes: []\n").unwrap();
         let inputs = EntityInputs::new(&reg, &model, dir.path(), None);
