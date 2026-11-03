@@ -87,7 +87,6 @@ impl OutputFlags {
     }
 
     /// Every output flag at its default: a configure with no flags.
-    #[cfg(test)]
     pub(crate) fn defaults() -> Self {
         Self::of(&crate::cmd::configure::default_sync_args())
     }
@@ -324,6 +323,15 @@ pub(crate) fn locate_resolved(project: &Path, image: &str) -> Result<(PathBuf, O
         );
     }
     Ok((dir, stamp.resolved_dir.filter(|d| d.is_dir())))
+}
+
+/// Ruling R33 -- whether `image`'s stamp is still CURRENT, by the same
+/// question `nros configure` asks before it skips (an unnamed image, every
+/// output flag at its default: the configure the Zephyr hook and `nros build`
+/// both run). A host configure seeds only from a current stamp.
+pub(crate) fn locate_currency(project: &Path, image: &str) -> Result<Currency> {
+    let key = stamp_key_for(project, image)?;
+    is_current(project, &key, false, &OutputFlags::defaults())
 }
 
 /// The stamp key `image` names: itself when a stamp is recorded under it,
@@ -753,6 +761,35 @@ mod tests {
         // Two bringups declaring it: the bare id names neither.
         record(&p, "other_bringup:zephyr", &s).unwrap();
         assert!(locate_resolved(&p, "zephyr").is_err());
+    }
+
+    /// Phase-530 review I3 (Ruling R33) -- `nros locate configured` also says
+    /// whether the stamp is CURRENT, so a cmake road whose identity outlived
+    /// the `nros build` that passed it (an edit to `CMakeLists.txt`, then
+    /// `cmake --build`) never seeds from a configure the edit made stale.
+    #[test]
+    fn locate_reports_whether_the_stamp_is_current() {
+        let p = tmp("locate-currency");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        std::fs::write(p.join("CMakeLists.txt"), "project(x)\n").unwrap();
+        let s = Stamp {
+            launch_resolve: current_launch_resolver(),
+            ..stamp_for(&p)
+        };
+        record(&p, "zephyr_zenoh", &s).unwrap();
+        assert_eq!(
+            locate_currency(&p, "zephyr_zenoh").unwrap(),
+            Currency::Current
+        );
+        std::fs::write(
+            p.join("CMakeLists.txt"),
+            "project(x)\nfind_package(std_msgs)\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            locate_currency(&p, "zephyr_zenoh").unwrap(),
+            Currency::Stale(why) if why.contains("inputs changed")
+        ));
     }
 
     /// phase-530 W4 -- the raw recorder document a census take leaves beside

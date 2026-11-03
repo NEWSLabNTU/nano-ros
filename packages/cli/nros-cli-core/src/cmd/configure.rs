@@ -117,7 +117,6 @@ pub fn ensure_current(
 }
 
 /// `SyncArgs` with every default, the way the parser would build them.
-#[cfg(test)]
 pub(crate) fn default_sync_args() -> ws::SyncArgs {
     SyncOnly::try_parse_from(["configure"])
         .expect("`configure` with no flags parses")

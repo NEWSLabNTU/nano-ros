@@ -316,7 +316,11 @@ function(nros_image_kconfig_hook)
     # the rendering below states the parameter store's axis from the census
     # (issue 2086, which configure takes now), the module's readers read the
     # seeds, and both must be current before the first of them.
-    _nros_image_kconfig_configure("${_nros}" "${_dir}" "${_image}")
+    set(_generated FALSE)
+    if(DEFINED NROS_IMAGE_SYSTEM_DIR AND NOT NROS_IMAGE_SYSTEM_DIR STREQUAL "")
+        set(_generated TRUE)
+    endif()
+    _nros_image_kconfig_configure("${_nros}" "${_dir}" "${_image}" ${_generated})
 
     # Issue 2179 -- the Zephyr board this build was given, so the image's
     # board package contributes its snippets and conf files only when it
@@ -446,7 +450,7 @@ function(nros_image_kconfig_hook)
     endif()
 endfunction()
 
-# _nros_image_kconfig_configure(<cli> <system-dir> <image>) -- phase-530 W4
+# _nros_image_kconfig_configure(<cli> <system-dir> <image> <generated>) -- phase-530 W4
 #
 # Run `nros configure` for the image this host configure builds and publish
 # where its answer is (`nros_configured_locate`: the GLOBAL properties
@@ -455,7 +459,10 @@ endfunction()
 #
 # The PROJECT is the leaf itself (a `system.toml` beside the application), or
 # -- RFC-0085 D14's walk-up -- the colcon workspace that owns a generated
-# application's bringup (`<ws>/src/<bringup>`). The IMAGE is the one this
+# application's bringup (`<ws>/src/<bringup>`). Only a GENERATED application
+# walks up (<generated>: it stated NROS_IMAGE_SYSTEM_DIR, a property of the
+# consumer): a standalone leaf that happens to sit in some `src/` directory
+# (`~/ros_ws/src/my_leaf/`) is its own project (Ruling R31). The IMAGE is the one this
 # configure renders: `-DNROS_IMAGE`, else the leaf's own `default_images` --
 # the image `nros build` builds.
 #
@@ -464,21 +471,22 @@ endfunction()
 # returns at once, which is what it costs under `nros build`. A no-op inside
 # the census's own host build (`NROS_LEAF_CENSUS_HOST`), which is configure's
 # producer, not its consumer.
-function(_nros_image_kconfig_configure _nros _dir _image)
+function(_nros_image_kconfig_configure _nros _dir _image _generated)
     if(NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
         return()
     endif()
-    get_filename_component(_parent "${_dir}" DIRECTORY)
-    get_filename_component(_parent_name "${_parent}" NAME)
-    if(_parent_name STREQUAL "src")
-        get_filename_component(_project "${_parent}" DIRECTORY)
-    else()
-        set(_project "${_dir}")
+    set(_project "${_dir}")
+    if(_generated)
+        get_filename_component(_parent "${_dir}" DIRECTORY)
+        get_filename_component(_parent_name "${_parent}" NAME)
+        if(_parent_name STREQUAL "src")
+            get_filename_component(_project "${_parent}" DIRECTORY)
+        endif()
     endif()
     # The wall time is reported, because "a current stamp is a digest
-    # comparison" is a claim a log should let anyone check (cmake 3.22's
-    # TIMESTAMP has no sub-second field, so the clock is asked).
-    execute_process(COMMAND date +%s%3N OUTPUT_VARIABLE _t0 OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # comparison" is a claim a log should let anyone check. `TIMESTAMP %s` is
+    # portable (no GNU `date +%N`), so it is whole seconds.
+    string(TIMESTAMP _t0 "%s" UTC)
     # From the project itself: the CLI's workspace check asks which checkout
     # the cwd is in, and the build dir may sit under another one.
     execute_process(
@@ -486,11 +494,8 @@ function(_nros_image_kconfig_configure _nros _dir _image)
         WORKING_DIRECTORY "${_project}"
         OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_STRIP_TRAILING_WHITESPACE)
-    execute_process(COMMAND date +%s%3N OUTPUT_VARIABLE _t1 OUTPUT_STRIP_TRAILING_WHITESPACE)
-    set(_ms "?")
-    if(_t0 MATCHES "^[0-9]+$" AND _t1 MATCHES "^[0-9]+$")
-        math(EXPR _ms "${_t1} - ${_t0}")
-    endif()
+    string(TIMESTAMP _t1 "%s" UTC)
+    math(EXPR _s "${_t1} - ${_t0}")
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
             "nano-ros: `nros configure ${_project} --image ${_image}` failed "
@@ -500,7 +505,7 @@ function(_nros_image_kconfig_configure _nros _dir _image)
     if(_out MATCHES "(^|\n)(configure: [^\n]*)")
         set(_said "${CMAKE_MATCH_2}")
     endif()
-    message(STATUS "nano-ros: nros configure ${_project} --image ${_image}: ${_said} (${_ms} ms)")
+    message(STATUS "nano-ros: nros configure ${_project} --image ${_image}: ${_said} (${_s} s)")
     nros_configured_locate("${_project}" "${_image}")
     set_property(GLOBAL PROPERTY NROS_CONFIGURED_CURRENT TRUE)
     get_property(_resolved GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR)

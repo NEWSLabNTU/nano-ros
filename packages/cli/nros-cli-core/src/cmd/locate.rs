@@ -502,7 +502,9 @@ fn cargo_target_dir(checkout: Option<&std::path::Path>) -> Result<PathBuf> {
 /// (RFC-0120 D2): where `nros configure` put an image's answer, located by the
 /// image's identity. Two rows: `configured` (its stamp dir) and `resolved`
 /// (the directory its resolve wrote, empty when it resolved nothing). A host
-/// configure reads these instead of being handed a path.
+/// configure reads these instead of being handed a path. Two more say whether
+/// the stamp is still CURRENT (`current`, and `stale`: why not), because a
+/// host configure seeds only from a current one (Ruling R33).
 fn run_configured(args: &Args, project: Option<&std::path::Path>) -> Result<()> {
     let Some(image) = args.image.as_deref() else {
         bail!("`nros locate configured` needs --image <id>");
@@ -516,19 +518,34 @@ fn run_configured(args: &Args, project: Option<&std::path::Path>) -> Result<()> 
         .map(|p| p.display().to_string())
         .unwrap_or_default();
     let stamp = stamp.display().to_string();
+    let stale = match crate::configure_stamp::locate_currency(&project, image)? {
+        crate::configure_stamp::Currency::Current => String::new(),
+        crate::configure_stamp::Currency::Stale(why) => why,
+    };
+    let current = stale.is_empty();
     match args.format {
         Format::Path => {
             println!("configured\t{stamp}");
             println!("resolved\t{resolved}");
+            println!("current\t{}", if current { "yes" } else { "no" });
+            println!("stale\t{stale}");
         }
         Format::Sh => {
             let q = |v: &str| v.replace('\'', "'\\''");
             println!("NROS_LOCATE_CONFIGURED='{}'", q(&stamp));
             println!("NROS_LOCATE_RESOLVED='{}'", q(&resolved));
+            println!("NROS_LOCATE_CURRENT='{}'", if current { 1 } else { 0 });
+            println!("NROS_LOCATE_STALE='{}'", q(&stale));
         }
         Format::Cmake => {
+            let q = |v: &str| v.replace('\\', "/").replace('"', "'");
             println!("set(NROS_LOCATE_CONFIGURED \"{stamp}\")");
             println!("set(NROS_LOCATE_RESOLVED \"{resolved}\")");
+            println!(
+                "set(NROS_LOCATE_CURRENT {})",
+                if current { "TRUE" } else { "FALSE" }
+            );
+            println!("set(NROS_LOCATE_STALE \"{}\")", q(&stale));
         }
     }
     Ok(())

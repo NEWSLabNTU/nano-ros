@@ -708,6 +708,126 @@ else
 $PROM_OUT"
 fi
 
+# A table list in the FATAL keeps its separators (`foo2=..;foo=..`), so a
+# reader can tell three tables from one long name.
+write_prom_record "" "" "foo=$_tsha;std_msgs=$_tsha"
+prom_run -DPROBE_ANSWER=other "-DPROBE_EXTRA_TABLES=foo;foo2"
+check
+if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "[foo=$_tsha;std_msgs=$_tsha]" <<<"$PROM_OUT" \
+   && nros_grep_q -F "[foo2=$_tsha;foo=$_tsha;std_msgs=$_tsha]" <<<"$PROM_OUT"; then
+    log_success "the FATAL names both table sets with their separators"
+else
+    fail "the table sets lost their separators in the FATAL (rc=$PROM_RC):
+$PROM_OUT"
+fi
+
+# ---------------------------------------------------------------------------
+log_header "S. the cmake road locates a STALE configure: no seed, no promise"
+# ---------------------------------------------------------------------------
+#
+# Phase-530 review I3 (Ruling R33). `nros build` passes the image's IDENTITY
+# (`-DNROS_CONFIGURED_PROJECT/IMAGE`), and the cache keeps it. An edit to the
+# project (a new `find_package(<msg>)`) then `cmake --build` re-runs cmake with
+# no `nros configure` in front: the stamp is STALE, and a seed composed before
+# the edit must not be promised. `nros locate configured` says so
+# (`NROS_LOCATE_CURRENT`), and the configure falls to the unseeded road, which
+# converges -- the base's behaviour -- instead of FATAL-ing.
+FAKE_CLI="$TEST_TMPDIR/fake-nros"
+cat > "$FAKE_CLI" <<'EOF'
+#!/usr/bin/env bash
+# Stands in for `nros`: logs its argv; answers `configure` and `locate`.
+printf '%s\n' "$*" >> "$FAKE_NROS_LOG"
+case "$1" in
+    configure) echo "configure: up to date (1 image(s))" ;;
+    locate)
+        echo "set(NROS_LOCATE_CONFIGURED \"$FAKE_NROS_RESOLVED\")"
+        echo "set(NROS_LOCATE_RESOLVED \"$FAKE_NROS_RESOLVED\")"
+        echo "set(NROS_LOCATE_CURRENT $FAKE_NROS_CURRENT)"
+        echo "set(NROS_LOCATE_STALE \"inputs changed\")"
+        ;;
+esac
+EOF
+chmod +x "$FAKE_CLI"
+export NROS_CLI="$FAKE_CLI" FAKE_NROS_LOG="$TEST_TMPDIR/fake-nros.log"
+RESOLVED_STALE="$TEST_TMPDIR/resolved-stale"
+mkdir -p "$RESOLVED_STALE"
+printf 'set(ANSWER stale_seed)\n' > "$RESOLVED_STALE/resolved.cmake"
+export FAKE_NROS_RESOLVED="$RESOLVED_STALE"
+
+FAKE_NROS_CURRENT=FALSE
+export FAKE_NROS_CURRENT
+STALE_RC=0
+CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/stale-build" \
+    -DNROS_CONFIGURED_PROJECT=/proj -DNROS_CONFIGURED_IMAGE=img 2>&1)" || STALE_RC=$?
+check
+if [ "$STALE_RC" -eq 0 ] && nros_grep_q 'PROBE_READ=placeholder' <<<"$CONFIGURE_OUT" \
+   && nros_grep_q -F 'nros configure /proj --image img' <<<"$CONFIGURE_OUT"; then
+    log_success "a stale configure seeds nothing, and the configure says what to run"
+else
+    fail "A STALE CONFIGURE WAS PROMISED (rc=$STALE_RC): the cmake road must seed only
+  from a CURRENT stamp, and name \`nros configure\` when it is not.
+$CONFIGURE_OUT"
+fi
+run_build "$TEST_TMPDIR/stale-build"
+check
+if [ "$BUILD_USED" = "real" ] && [ "$BUILD_RC" -eq 0 ]; then
+    log_success "and the edit-then-rebuild converges with the real answer (re-runs=$BUILD_RERUNS)"
+else
+    fail "edit-then-rebuild did not converge: used='$BUILD_USED' rc=$BUILD_RC.
+$BUILD_OUT"
+fi
+
+# Control: the same seed from a CURRENT stamp is promised, and fails as C did.
+FAKE_NROS_CURRENT=TRUE
+export FAKE_NROS_CURRENT
+CUR_RC=0
+CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/current-build" \
+    -DNROS_CONFIGURED_PROJECT=/proj -DNROS_CONFIGURED_IMAGE=img 2>&1)" || CUR_RC=$?
+check
+if [ "$CUR_RC" -ne 0 ] && nros_grep_q 'PROBE_READ=stale_seed' <<<"$CONFIGURE_OUT"; then
+    log_success "control: a CURRENT stamp's seed is read and promised"
+else
+    fail "control: a current stamp's seed was not promised (rc=$CUR_RC):
+$CONFIGURE_OUT"
+fi
+
+# ---------------------------------------------------------------------------
+log_header "W. the Zephyr hook's project: a leaf under a \`src/\` directory is itself"
+# ---------------------------------------------------------------------------
+#
+# Phase-530 review I1 (Ruling R31). RFC-0085 D14's walk-up to `<ws>` is a
+# property of the GENERATED application (it states NROS_IMAGE_SYSTEM_DIR), not
+# of a directory's name: a standalone leaf at `~/ros_ws/src/my_leaf/` is its
+# own project.
+HOOK_WS="$TEST_TMPDIR/hook-ws"
+mkdir -p "$HOOK_WS/src/my_leaf" "$HOOK_WS/src/bringup"
+FAKE_NROS_CURRENT=TRUE
+export FAKE_NROS_CURRENT
+hook_project() { # <dir> <generated> -> the project `nros configure` was run on
+    : > "$FAKE_NROS_LOG"
+    cat > "$TEST_TMPDIR/hook-project.cmake" <<EOF
+include("$PROJECT_ROOT/zephyr/cmake/nros_image_kconfig.cmake")
+_nros_image_kconfig_configure("$FAKE_CLI" "\${DIR}" img "\${GEN}")
+EOF
+    cmake -DDIR="$1" -DGEN="$2" -P "$TEST_TMPDIR/hook-project.cmake" >/dev/null 2>&1
+    sed -n 's/^configure \([^ ]*\) --image img$/\1/p' "$FAKE_NROS_LOG" | head -1
+}
+check
+got="$(hook_project "$HOOK_WS/src/my_leaf" FALSE)"
+if [ "$got" = "$HOOK_WS/src/my_leaf" ]; then
+    log_success "a standalone leaf under src/ configures itself"
+else
+    fail "a standalone leaf under src/ configured '$got', not itself ($HOOK_WS/src/my_leaf)"
+fi
+check
+got="$(hook_project "$HOOK_WS/src/bringup" TRUE)"
+if [ "$got" = "$HOOK_WS" ]; then
+    log_success "a generated application's bringup configures its workspace"
+else
+    fail "a generated application's bringup configured '$got', not its workspace ($HOOK_WS)"
+fi
+unset NROS_CLI
+
 # ---------------------------------------------------------------------------
 log_header "Summary"
 # ---------------------------------------------------------------------------
