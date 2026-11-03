@@ -86,15 +86,55 @@ fn run(plan: &RunPlan) -> RunnerExit {
             "the plan's target is not a host process; the native runner runs host images",
         );
     }
-    match argv(plan, exe, fresh_seed) {
-        Ok(args) => runner::exec(Command::new(exe).args(args)),
+    let args = match argv(plan, exe, fresh_seed) {
+        Ok(a) => a,
+        Err(e) => return runner::fail(e),
+    };
+    match prefixed(plan, exe, args) {
+        Ok((program, args)) => runner::exec(Command::new(program).args(args)),
         Err(e) => runner::fail(e),
     }
+}
+
+/// `nros run --prefix <cmd>` (`args.prefix`): run the image under that
+/// command (`valgrind -q`, `gdb --args`), split into words as a command
+/// template is, never through a shell.
+fn prefixed(
+    plan: &RunPlan,
+    exe: &Path,
+    args: Vec<String>,
+) -> Result<(String, Vec<String>), String> {
+    let mut image = vec![exe.display().to_string()];
+    image.extend(args);
+    let Some(prefix) = plan.args.get("prefix") else {
+        let program = image.remove(0);
+        return Ok((program, image));
+    };
+    let mut words = runner::split_words(prefix)?;
+    if words.is_empty() {
+        return Err("`args.prefix` is empty".to_string());
+    }
+    let program = words.remove(0);
+    words.extend(image);
+    Ok((program, words))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_prefix_wraps_the_image() {
+        let mut p = plan("/b/talker");
+        let exe = Path::new("/b/talker");
+        let (prog, rest) = prefixed(&p, exe, vec!["-x".into()]).unwrap();
+        assert_eq!(prog, "/b/talker");
+        assert_eq!(rest, ["-x"]);
+        p.args.insert("prefix".into(), "valgrind -q".into());
+        let (prog, rest) = prefixed(&p, exe, vec!["-x".into()]).unwrap();
+        assert_eq!(prog, "valgrind");
+        assert_eq!(rest, ["-q", "/b/talker", "-x"]);
+    }
 
     fn plan(elf: &str) -> RunPlan {
         RunPlan::from_json(&format!(

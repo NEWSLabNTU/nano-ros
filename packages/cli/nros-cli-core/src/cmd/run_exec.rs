@@ -622,6 +622,31 @@ pub fn run_plan_file(args: &crate::cmd::run_plan::Args, file: &Path) -> eyre::Re
     ));
 }
 
+/// The plan's console command, split into words and expanded from the plan
+/// (RFC-0118 D5 placeholders), or `None` when the runner owns the console.
+///
+/// # Errors
+///
+/// An unclosed quote, an unknown placeholder or one the plan does not carry.
+pub fn console_command(plan: &RunPlan) -> Result<Option<Vec<String>>, String> {
+    let Some(template) = plan.console.command.as_deref() else {
+        return Ok(None);
+    };
+    let words = nros_extension::runner::split_words(template)
+        .map_err(|e| format!("the console command: {e}"))?;
+    let words = words
+        .iter()
+        .map(|w| {
+            plan.expand(w)
+                .map_err(|e| format!("the console command `{template}`: {e}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if words.is_empty() {
+        return Err("the console command is empty".to_string());
+    }
+    Ok(Some(words))
+}
+
 /// The last `n` lines of a text file (lossy), oldest first.
 fn last_lines(path: &Path, n: usize) -> Vec<String> {
     let Ok(bytes) = std::fs::read(path) else {
@@ -763,19 +788,32 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
     if let RouterMode::External(l) = &mode {
         cmd.env("NROS_LOCATOR", l);
     }
+    // A stated console command attaches the console instead of the runner
+    // (`[board.console] command`): its stdout is what is graded and logged,
+    // and the runner's own stdout becomes a diagnostic on stderr.
+    let console_cmd = match console_command(plan) {
+        Ok(c) => c,
+        Err(e) => return fail(exit::PLAN_UNRESOLVED, &e),
+    };
     let (tx, rx) = ts::channel();
+    let mut log = Some(log);
     match group.spawn("runner", cmd) {
         Ok(m) => {
             let out = m.child.stdout.take().expect("piped");
             let err = m.child.stderr.take().expect("piped");
-            ts::spawn_console(
-                out,
-                Box::new(io::stdout()),
-                Some(log),
-                expect.clone(),
-                tx.clone(),
-            );
-            ts::spawn_stderr(err, tx);
+            if console_cmd.is_some() {
+                let (side_tx, _side_rx) = ts::channel();
+                ts::spawn_console(out, Box::new(io::stderr()), None, None, side_tx);
+            } else {
+                ts::spawn_console(
+                    out,
+                    Box::new(io::stdout()),
+                    log.take(),
+                    expect.clone(),
+                    tx.clone(),
+                );
+            }
+            ts::spawn_stderr(err, tx.clone());
         }
         Err(e) => {
             return fail(
@@ -787,6 +825,29 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
                 ),
             );
         }
+    }
+
+    if let Some(words) = console_cmd {
+        let mut c = Command::new(&words[0]);
+        c.args(&words[1..])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+        match group.spawn("console", c) {
+            Ok(m) => {
+                let out = m.child.stdout.take().expect("piped");
+                ts::spawn_console(out, Box::new(io::stdout()), log.take(), expect.clone(), tx);
+                required.push("console".to_string());
+            }
+            Err(e) => {
+                return fail(
+                    exit::RUNNER_FAILED,
+                    &format!("starting the console command `{}`: {e}", words.join(" ")),
+                );
+            }
+        }
+    } else {
+        drop(tx);
     }
 
     let mut session = Session::new(group, "runner", timeout);
@@ -996,6 +1057,41 @@ mod tests {
         let mut q = plan(false, None);
         decorate(&mut q, Some("zenoh"), &ExecArgs::default());
         assert!(q.link.is_none());
+    }
+
+    #[test]
+    fn a_console_command_is_graded_instead_of_the_runner() {
+        let _g = crate::target_session::tests::FLAG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let d = tempfile::tempdir().unwrap();
+        let r = fake_runner(d.path(), "echo 'Publishing: 0'; sleep 30");
+        let mut p = plan(true, None);
+        p.console.command = Some("sh -c 'echo console says hi; sleep 30'".into());
+        let x = |e: &str| ExecArgs {
+            expect: Some(e.into()),
+            timeout: Some(3.0),
+            router: "none".into(),
+            ..ExecArgs::default()
+        };
+        let run = |x: ExecArgs| {
+            execute(
+                &p,
+                &Execution {
+                    ws: d.path(),
+                    nano_ros_root: None,
+                    exec: &x,
+                    runner: Some(r.clone()),
+                },
+            )
+        };
+        assert_eq!(run(x("console says hi")), 0);
+        // The runner's stdout is no longer the console.
+        assert_eq!(run(x("Publishing: 0")), 1);
+
+        let mut q = plan(true, None);
+        q.console.command = Some("picocom {port}".into());
+        assert!(console_command(&q).unwrap_err().contains("port"));
     }
 
     #[test]
