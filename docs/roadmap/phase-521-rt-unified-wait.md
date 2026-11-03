@@ -653,6 +653,26 @@ latency on the RTOS lane, and the fan-out cost on a non-attributing backend.
 idle-wake and latency tests pass on it; `git grep ScheduledWorkItem examples/`
 finds only generated code.
 
+**Rulings (maintainer, 2026-11-03), recorded in RFC-0113 D9.** (c) A PX4
+tier waits through a yielding park slot: no next-deadline hook and no wider
+executor API (D7 stands). The executor calls its park slot with the bound in
+µs; a PX4 tier's slot arms `ScheduleDelayed(us)` (or `ScheduleClear()` with no
+deadline) and returns a "yielded" code defined in the park ABI and its header,
+so `spin_once` returns to the work queue. The uORB wake callback is bound to
+the tier's `ScheduleNow()`. Unit tests in nros-node: a yielding park makes
+`spin_once` return, and the bound it received equals `next_wake_bound`. (f)
+The owner is the maintainer, recorded in RFC-0113 D9 and in PX4's entry in
+`board-support.toml`, which marks PX4 Tier 1 once (e) delivers.
+
+**W8 (a) — the framework and the work-queue table (2026-11-03).** `px4` is
+in `nros_orchestration_ir::FRAMEWORKS`; `nros::main!` refuses it by name
+(`CPP_ONLY_FRAMEWORKS`: the entry is generated C++), and the macro's
+vocabulary test holds that it never grows a Rust shape by accident.
+`nros_orchestration_ir::px4::px4_work_queues` maps tiers, most urgent first,
+onto `rate_ctrl`, `hp_default`, `nav_and_controllers`, `lp_default`, and
+refuses more tiers than queues, naming every tier. Unit-tested in
+nros-orchestration-ir.
+
 **Assessment (2026-11-02).** SITL is provisionable here: the main checkout
 holds `third-party/px4/PX4-Autopilot` with a built
 `build/px4_sitl_default`, `just px4 setup|doctor|build-sitl-cpp|test-sitl`

@@ -5113,6 +5113,14 @@ fn try_framework_for(deploy: &str) -> Result<Framework, String> {
                      build script from the board crate's `[package.metadata.nros.board]`.)"
                 ));
             }
+            if let Some(reason) = nros_orchestration_ir::cpp_only_framework_reason(name) {
+                return Err(format!(
+                    "nros::main!: the board declares `framework = \"{name}\"`: {reason}. \
+                     (The value came from NROS_BOARD_FRAMEWORK, emitted by the Entry \
+                     package's build script from the board crate's \
+                     `[package.metadata.nros.board]`.)"
+                ));
+            }
             return framework_from_name(name).ok_or_else(|| {
                 format!(
                     "nros::main!: the board declares `framework = \"{name}\"`, which this \
@@ -5712,6 +5720,15 @@ mod framework_ssot_tests {
     #[test]
     fn every_declared_framework_has_an_emit_shape() {
         for name in nros_orchestration_ir::FRAMEWORKS {
+            // phase-521 W8 (RFC-0113 D9) — a C++-only framework (PX4) has no
+            // Rust shape on purpose, and must NOT grow one by accident.
+            if nros_orchestration_ir::cpp_only_framework_reason(name).is_some() {
+                assert!(
+                    framework_from_name(name).is_none(),
+                    "`{name}` is C++-only (CPP_ONLY_FRAMEWORKS) but this macro maps it"
+                );
+                continue;
+            }
             assert!(
                 framework_from_name(name).is_some(),
                 "`{name}` is in nros_orchestration_ir::FRAMEWORKS but this macro \

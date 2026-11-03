@@ -457,8 +457,9 @@ fn read_board_framework(board_cargo_toml: &Path) -> Framework {
             Framework::OwnedSpin
         }
         // Issue 0415 — a framework this lint has no arm for is NOT silently
-        // owned-spin. `zephyr` and `esp32` are known repo-wide (the proc-macro
-        // emits for them) but carry no dispatch-matrix rule here, so they read
+        // owned-spin. `zephyr` and `px4` are known repo-wide (the proc-macro
+        // emits for `zephyr`; a PX4 entry is generated C++) but carry no
+        // dispatch-matrix rule here, so they read
         // as owned-spin for THIS lint's purposes; anything outside the shared
         // set is a typo and must be reported rather than absorbed.
         Some(other) if !nros_orchestration_ir::is_known_framework(other) => {

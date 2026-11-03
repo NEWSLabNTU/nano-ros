@@ -224,6 +224,24 @@ five admission criteria apply: an in-tree board (PX4 SITL), a delivering CI
 cell, a need the owned shape cannot express (PX4 owns `main` and the threads),
 a named owner, and the D2 bounds measured under the work-queue scheduler.
 
+**Rulings (maintainer, 2026-11-03).**
+
+- **A PX4 tier waits through a yielding park slot.** No next-deadline hook is
+  added and no executor API widens; D7 stands. The executor already calls its
+  park slot with the bound in microseconds. A PX4 tier's park slot arms
+  `ScheduleDelayed(us)` (or `ScheduleClear()` when there is no deadline) and
+  returns a "yielded" code, so `spin_once` returns to the work queue instead
+  of blocking. The code is defined in the park ABI and its header. A uORB
+  arrival's wake callback is bound to the tier's `ScheduleNow()`.
+- **Owner.** The maintainer owns PX4 as a Tier 1 framework (RFC-0112 D3's
+  named-owner criterion), recorded here and in PX4's entry in
+  `board-support.toml`.
+
+The work queues come from one rank-ordered table,
+`nros_orchestration_ir::px4::PX4_WORK_QUEUES`: the most urgent tier takes
+`rate_ctrl`, then `hp_default`, `nav_and_controllers` and `lp_default`. More
+tiers than queues is refused at generation, never shared (phase-521 W8 a).
+
 ### D10 — `nros::setup!` retires
 
 `nros::setup!` (phase-520) emits an image's assembly for a host that owns its
@@ -299,6 +317,9 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Changelog
 
+- 2026-11-03 — D9: the maintainer's rulings recorded (a PX4 tier waits
+  through a yielding park slot; the maintainer owns PX4), and the work-queue
+  table landed (`px4` joins `FRAMEWORKS`, phase-521 W8 a).
 - 2026-11-03 — Zephyr idle-wake measured on mps2/an385, zenoh and XRCE
   (phase-521 W7); `NROS_RMW_XRCE` selects `NET_CONTEXT_RCVTIMEO`.
 - 2026-11-02 — RTIC row: the arrival path is an RTIC task on the RX

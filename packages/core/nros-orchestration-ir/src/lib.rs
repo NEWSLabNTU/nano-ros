@@ -103,6 +103,8 @@ pub mod session_properties;
 // mapped dense rank 0 onto the kernel's most urgent number, which on Zephyr
 // sits above the transport threads that feed the application.
 pub mod priority_plan;
+// phase-521 W8 (a) (RFC-0113 D9) - the PX4 work queues a tier maps onto.
+pub mod px4;
 pub mod rtos_realizer;
 pub mod sidecar_slots;
 // RFC-0079's table - a tier's spin period, derived from its members' releases.
@@ -146,7 +148,30 @@ pub mod wcet;
 /// `nros-macros` maps to an emit shape (it also has a `Zephyr`
 /// variant), `nros ws check` maps to a lint matrix. What must NOT differ is
 /// the accepted SET and its spelling, which is why parsing lives here.
-pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "zephyr"];
+///
+/// `px4` (phase-521 W8, RFC-0113 D9): PX4 owns `main` and every thread, so a
+/// PX4 image's entry is GENERATED C++ (one `ScheduledWorkItem` per tier, on the
+/// work queue [`px4::px4_work_queues`] picks), and `nros::main!` has no shape
+/// for it — see [`CPP_ONLY_FRAMEWORKS`].
+pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "zephyr", "px4"];
+
+/// Frameworks in [`FRAMEWORKS`] whose entry is generated C++ only, each with
+/// the reason `nros::main!` refuses it. Everything else in [`FRAMEWORKS`] has a
+/// Rust emit shape (`nros-macros` holds that both ways).
+pub const CPP_ONLY_FRAMEWORKS: &[(&str, &str)] = &[(
+    "px4",
+    "a PX4 image's entry is generated C++ (one `px4::ScheduledWorkItem` per tier, \
+     each on its own PX4 work queue), because PX4 owns `main` and every thread \
+     (RFC-0113 D9); `nros::main!` has no PX4 shape",
+)];
+
+/// Why `nros::main!` refuses `name`, if it is a C++-only framework.
+pub fn cpp_only_framework_reason(name: &str) -> Option<&'static str> {
+    CPP_ONLY_FRAMEWORKS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, r)| *r)
+}
 
 /// Framework names this repo ACCEPTED once and now refuses, each with what to
 /// do instead. Both consumers of [`FRAMEWORKS`] ask [`retired_framework_hint`]
