@@ -763,10 +763,13 @@ function(_nros_sizing_descriptor_west_backstop)
     nros_promise_snapshot("${_frag}" _before)
     if(NOT _old STREQUAL _body)
         file(WRITE "${_frag}" "${_body}")
+        # The account is true only when THIS write moved the answer; set
+        # unconditionally it would relabel a same-inputs disagreement.
+        string(CONCAT _why_text
+            "the module named a sizing descriptor (${_forwarded}) that no entry of "
+            "this configure wrote")
+        nros_promise_why("${_frag}" "${_why_text}")
     endif()
-    nros_promise_why("${_frag}"
-        "the module named a sizing descriptor (${_forwarded}) that no entry of this "
-        "configure wrote")
     nros_promise_check("${_frag}" "${_before}"
         LABEL "the sizing descriptor this image names to cargo (none was written)")
 endfunction()

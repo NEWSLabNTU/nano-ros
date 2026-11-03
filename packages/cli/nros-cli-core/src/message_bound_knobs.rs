@@ -855,12 +855,14 @@ pub const LEAF_CODEGEN_DIR: &str = "codegen";
 /// declaration and its caps, not of the language or the target. The ENTITY
 /// fragment is the one `nros dev image west-leaf-sizing` writes before every
 /// reader ([`crate::cmd::sizing_descriptor::leaf_declaration`]). A leaf that
-/// declares no entities has no such fragment, and gets no seed.
+/// declares no entities has no such fragment, and gets no seed. `ros_edition`
+/// is the image's declared edition ([`seed_edition`]).
 pub fn write_leaf_west_seed(
     resolved_dir: &std::path::Path,
     leaf: &std::path::Path,
+    ros_edition: Option<&str>,
 ) -> Result<std::path::PathBuf, String> {
-    let out = leaf_west_seed(resolved_dir, leaf);
+    let out = leaf_west_seed(resolved_dir, leaf, ros_edition);
     if out.is_err() {
         // A seed from an earlier configure must not outlive the inputs it was
         // composed from (the rule `write_west_seed_over` keeps on its own
@@ -875,9 +877,23 @@ pub fn write_leaf_west_seed(
     out
 }
 
+/// The edition the leaf's bound tables are generated for: the one the host
+/// configure's `nros_find_interfaces()` resolves (`_nros_resolve_ros_edition`
+/// in `cmake/NanoRosRosEdition.cmake`): the image's declared edition, which
+/// the module applies as `NROS_ROS_EDITION`, else the default. Never
+/// `$ROS_DISTRO`, which the host configure does not read, so the two cannot
+/// disagree.
+fn seed_edition(declared: Option<&str>) -> String {
+    declared
+        .filter(|e| !e.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| rosidl_codegen::RosEdition::default().as_str().to_string())
+}
+
 fn leaf_west_seed(
     resolved_dir: &std::path::Path,
     leaf: &std::path::Path,
+    ros_edition: Option<&str>,
 ) -> Result<std::path::PathBuf, String> {
     let decl =
         crate::cmd::sizing_descriptor::leaf_declaration(leaf).map_err(|e| format!("{e:#}"))?;
@@ -897,10 +913,7 @@ fn leaf_west_seed(
         ));
     }
     let codegen = resolved_dir.join(LEAF_CODEGEN_DIR);
-    let edition = std::env::var("ROS_DISTRO")
-        .ok()
-        .filter(|d| rosidl_codegen::RosEdition::parse(d).is_some())
-        .unwrap_or_else(|| "humble".to_string());
+    let edition = seed_edition(ros_edition);
     // The emitter reports on stdout; a configure's stdout is its own report.
     cargo_nano_ros::generate_cpp_from_package_xml(cargo_nano_ros::GenerateCStandaloneConfig {
         manifest_path: xml.clone(),
@@ -916,6 +929,16 @@ fn leaf_west_seed(
 
 #[cfg(test)]
 mod tests {
+    /// The leaf seed's tables are generated for the edition the host
+    /// configure resolves: the declared one, else the default -- never
+    /// `$ROS_DISTRO`, which the host configure does not read.
+    #[test]
+    fn the_seed_edition_is_the_host_configures() {
+        assert_eq!(super::seed_edition(Some("jazzy")), "jazzy");
+        assert_eq!(super::seed_edition(None), "humble");
+        assert_eq!(super::seed_edition(Some("")), "humble");
+    }
+
     /// phase-439 W8 -- the record names exactly what
     /// `_nros_resolved_bounds_why` reads, in its spelling
     /// (`tests/cmake-resolved-seed-tests.sh` case U writes the same lines).
@@ -1136,7 +1159,7 @@ mod tests {
         let resolved = tempfile::tempdir().unwrap();
         let stale = resolved.path().join(RESOLVED_MESSAGE_BOUNDS_NAME);
         std::fs::write(&stale, "set(X 1)\n").unwrap();
-        let err = write_leaf_west_seed(resolved.path(), leaf.path()).unwrap_err();
+        let err = write_leaf_west_seed(resolved.path(), leaf.path(), None).unwrap_err();
         assert!(!err.is_empty());
         assert!(
             !stale.exists(),

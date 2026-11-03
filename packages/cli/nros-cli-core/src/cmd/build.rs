@@ -6138,7 +6138,7 @@ fn configure_zephyr_leaf(
     let Some(dir) = resolved_dir else {
         return;
     };
-    match crate::message_bound_knobs::write_leaf_west_seed(dir, leaf) {
+    match crate::message_bound_knobs::write_leaf_west_seed(dir, leaf, decl.ros_edition.as_deref()) {
         Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
         Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
     }

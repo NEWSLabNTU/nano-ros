@@ -450,7 +450,26 @@ did. 2234 is now on every road the hook reaches, so it wants fixing before W6.
 The `/home` filesystem of this shared host filled to 0 bytes twice during the
 measurement; the runs it broke were re-run and the table holds the re-runs.
 
-### W5### W5 — The CMake and NuttX hooks
+**Review round 1 (2026-11-04).**
+
+- **The walk-up is the consumer's (Ruling R31).** Only a generated
+  application (it states `NROS_IMAGE_SYSTEM_DIR`) configures `<ws>` from
+  `<ws>/src/<bringup>`; a standalone leaf under some `src/` directory is its
+  own project. `tests/cmake-resolved-seed-tests.sh` case W.
+- **Only a CURRENT stamp seeds (Ruling R33).** The cmake road's identity is
+  cached, so an edit followed by `cmake --build` re-runs cmake with no
+  configure in front. `nros locate configured` now reports `current` / `stale`
+  (the question configure asks before it skips), and
+  `nros_configured_locate` publishes no answer from a stale stamp: that
+  configure composes its own, converges as the base did, and says to run
+  `nros configure <project> --image <image>`. The "could not see" FATAL names
+  that command too. Case S (and its current-stamp control).
+- The leaf bounds seed generates for the edition the host configure resolves
+  (the image's declared one, else the default), never `$ROS_DISTRO`. The
+  hook's timing is whole seconds (`string(TIMESTAMP %s)`; GNU `date +%N` is
+  gone), so the table's milliseconds are the original measurement's.
+
+### W5 — The CMake and NuttX hooks
 
 - `find_package(nano_ros)` and `add_subdirectory(nano-ros)` call configure
   before any knob reader.
