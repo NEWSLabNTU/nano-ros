@@ -1,0 +1,34 @@
+# Measured wall time (ms) of each `check-template-copy-out` unit on a slow
+# hosted `ubuntu-22.04` runner (4 vCPU, EPYC 7763 / 9V74 class): the median of
+# the 16 slow-host `merge_group` runs of 2026-11-02 (41381715200 ...
+# 41496872163), read as the gap between the gate's own `<unit>: OK` lines.
+#
+# Read by scripts/build/gate-shard.py to BALANCE the merge-queue job's shards
+# (phase-489 W8). It never decides coverage: every unit lands in exactly one
+# shard whatever this file says, a unit missing here gets the median weight,
+# and a stale row is ignored. Refresh it from a run's per-unit lines when the
+# shards drift apart.
+#
+# `@self-test` is the gate's `--self-test`, and `scaffold:<board>` is one
+# `nros new --board <board>` package. `ament-census-sizing` is not a unit of
+# this gate: the last shard also runs that gate, so its weight is charged to
+# that shard (`--preload-last`).
+multi-package-workspace                          290000
+local-msg-package                                209000
+c-and-cpp-mixed-workspace                        191000
+pure-c-workspace                                 190000
+multi-node-workspace-cpp                         187000
+@self-test                                       126000
+ament-workspace-port/mps2-an385-freertos         112000
+rclcpp-compat-smoke/mps2-an385-freertos           90000
+topic-state-monitor-port/mps2-an385-freertos      90000
+cpp-port-minimal-publisher/mps2-an385-freertos    89000
+multi-node-workspace                              49000
+scaffold:mps2-an385-baremetal                     43000
+scaffold:linux                                    39000
+ament-workspace-port/zephyr                        1000
+cpp-port-minimal-publisher/zephyr                  1000
+rclcpp-compat-smoke/zephyr                         1000
+topic-state-monitor-port/zephyr                    1000
+zephyr-byo/app                                     1000
+ament-census-sizing                              222000

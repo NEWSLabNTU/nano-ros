@@ -150,10 +150,23 @@ scaffold-builds:
     @bash scripts/check-scaffold-builds.sh --self-test
     @bash scripts/check-scaffold-builds.sh
 
+#
+# phase-489 W8 — `NROS_TEMPLATE_COPY_OUT_SHARD=<k>/<n>` builds one share of the
+# units (projects, scaffolds, the self-test). The n shards together build
+# every unit exactly once; see the script's "Shards" section. The merge-queue
+# job runs three. `NROS_TEMPLATE_COPY_OUT_PRELOAD_LAST` names work its last
+# shard runs besides, so the split can balance around it.
 [private]
 template-copy-out:
-    @bash scripts/check-template-copy-out.sh --self-test
-    @bash scripts/check-template-copy-out.sh
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "${NROS_TEMPLATE_COPY_OUT_SHARD:-}" ]; then
+        args=(--shard "$NROS_TEMPLATE_COPY_OUT_SHARD")
+        [ -z "${NROS_TEMPLATE_COPY_OUT_PRELOAD_LAST:-}" ] || args+=(--preload-last "$NROS_TEMPLATE_COPY_OUT_PRELOAD_LAST")
+        exec bash scripts/check-template-copy-out.sh "${args[@]}"
+    fi
+    bash scripts/check-template-copy-out.sh --self-test
+    bash scripts/check-template-copy-out.sh
 
 # Issue 1925 — the two gates above copy a project OUT of the checkout, where
 # `find_package(nano_ros)` has no walk-up and a bare `cmake` takes its root from

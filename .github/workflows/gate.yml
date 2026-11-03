@@ -2089,9 +2089,26 @@ jobs:
   #
   # `workflow_dispatch` is on the list so the lane can be dispatched on a branch
   # BEFORE it can eject anything: `gh workflow run gate.yml --ref <branch>`.
+  #
+  # SHARDED (phase-489 W8). One runner made this the gate's critical path: a
+  # median of 36.9 min over the 20 merge groups of 2026-11-02, while every
+  # sibling took under 19. Each unit is a cold copy-out build, run one at a
+  # time, so the job is three matrix entries on this ONE job id.
+  # `scripts/build/gate-shard.py` puts every unit (project, scaffold,
+  # self-test) in exactly one shard, so together they build what one runner
+  # did, each copy still made outside the checkout. The aggregator reads
+  # `needs.check-template-copy-out.result`, which is the matrix's combined
+  # result, so a red shard is a red `CI`. `check-merge-group-gates` refuses a
+  # matrix that names fewer shards than its `k/n` spelling claims.
+  # `ament-census-sizing` runs on the LAST shard, which the split charges with
+  # its weight (`NROS_TEMPLATE_COPY_OUT_PRELOAD_LAST`).
   check-template-copy-out:
-    name: check / template-copy-out (merge group + manual)
+    name: check / template-copy-out [${{ matrix.shard }}/3] (merge group + manual)
     needs: changes
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     if: >-
       ${{ always() && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)
           && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
@@ -2254,14 +2271,17 @@ jobs:
           echo "NROS_TEMPLATE_COPY_OUT_TMP=$RUNNER_TEMP/template-copy-out" >> "$GITHUB_ENV"
           export TMPDIR="$RUNNER_TEMP/template-copy-out"
           mkdir -p "$TMPDIR"
+          export NROS_TEMPLATE_COPY_OUT_SHARD="${{ matrix.shard }}/3"
+          export NROS_TEMPLATE_COPY_OUT_PRELOAD_LAST=ament-census-sizing
           source ./activate.sh
           just check template-copy-out
 
       # Issue 2043 — a ported ament workspace is sized from its census: the
       # same cost class as the templates above (it builds one, twice: the
-      # census host build and the image), so it rides the same job.
+      # census host build and the image), so it rides the same job, on the
+      # last shard only (phase-489 W8 — the shard the split charges for it).
       - name: just check ament-census-sizing (pools sized from the program)
-        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() && matrix.shard == 3 }}
         run: |
           source ./activate.sh
           just check ament-census-sizing
@@ -2277,7 +2297,7 @@ jobs:
         if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && failure() && env.NROS_TEMPLATE_COPY_OUT_TMP != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: template-copy-out-build-logs
+          name: template-copy-out-build-logs-${{ matrix.shard }}
           path: ${{ env.NROS_TEMPLATE_COPY_OUT_TMP }}/nros-template-copy-out.*/build.log
           if-no-files-found: ignore
           retention-days: 7

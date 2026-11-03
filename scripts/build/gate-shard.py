@@ -17,8 +17,13 @@ lands in exactly one shard whatever the weights say. A gate missing from the
 weights file gets the median weight, and a weights row naming no listed gate
 is ignored, so a stale weights file costs balance and nothing else.
 
+`--preload-last <unit>` charges the LAST shard with <unit>'s weight before the
+fill, for work that shard runs outside the list (phase-489 W8: the
+`template-copy-out` job's last shard also runs `ament-census-sizing`). The unit
+is never printed, so it changes balance and nothing else.
+
 Usage:
-    gate-shard.py <list-file> <weights-file> <k>/<n>   # prints shard k's gates
+    gate-shard.py <list-file> <weights-file> <k>/<n> [--preload-last <unit>]
     gate-shard.py --self-test
 """
 
@@ -50,7 +55,7 @@ def read_weights(path):
     return weights
 
 
-def assign(gates, weights, n):
+def assign(gates, weights, n, preload_last=None):
     """Return a list of n gate lists; together they hold every gate exactly once."""
     known = [weights[g] for g in gates if g in weights]
     default = int(statistics.median(known)) if known else 1
@@ -59,6 +64,8 @@ def assign(gates, weights, n):
     )
     shards = [[] for _ in range(n)]
     load = [0] * n
+    if preload_last is not None:
+        load[n - 1] = weights.get(preload_last, default)
     for _, gate in order:
         k = min(range(n), key=lambda i: (load[i], i))
         shards[k].append(gate)
@@ -89,6 +96,10 @@ def self_test():
     # No weights at all still covers everything.
     flat = sorted(g for s in assign(gates, {}, 3) for g in s)
     assert flat == sorted(gates)
+    # A preload moves balance, never coverage, and is never printed.
+    pre = assign(gates, dict(weights, extra=100), 2, preload_last="extra")
+    assert sorted(g for s in pre for g in s) == sorted(gates), pre
+    assert "a" in pre[0] and "extra" not in pre[1], pre
     print("gate-shard: self-test OK")
 
 
@@ -96,12 +107,16 @@ def main(argv):
     if argv[1:] == ["--self-test"]:
         self_test()
         return 0
+    preload = None
+    if len(argv) == 6 and argv[4] == "--preload-last":
+        preload = argv[5]
+        argv = argv[:4]
     if len(argv) != 4:
-        print(__doc__.strip().splitlines()[-3], file=sys.stderr)
+        print(__doc__.strip().splitlines()[-2], file=sys.stderr)
         return 2
     gates = read_list(argv[1])
     k, n = parse_spec(argv[3])
-    shard = assign(gates, read_weights(argv[2]), n)[k - 1]
+    shard = assign(gates, read_weights(argv[2]), n, preload)[k - 1]
     sys.stdout.write("".join(g + "\n" for g in shard))
     return 0
 
