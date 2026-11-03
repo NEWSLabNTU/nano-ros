@@ -43,13 +43,13 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosResolved.cmake")
 # the whole codegen core.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
 
-# Issue 0991 -- both fragments above are written LATER in a configure than they
-# are read, and the `CMAKE_CONFIGURE_DEPENDS` recovery every comment in this
-# area described was measured to never fire. This is the mechanism that does.
-# At FILE scope, not inside the function that uses it: `include()` in a function
+# Issue 0991, phase-530 W4 -- both fragments above are written LATER in a
+# configure than they are read. Their readers read `nros configure`'s seed and
+# the producers are held to it (RFC-0120 D5, NanoRosPromise.cmake). At FILE
+# scope, not inside the function that uses it: `include()` in a function
 # frame drops the included file's normal variables when the frame pops, and this
 # module's `CMAKE_CURRENT_LIST_DIR` is only correct here.
-include("${CMAKE_CURRENT_LIST_DIR}/NanoRosReconfigure.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPromise.cmake")
 
 # _nros_collect_rs_closure(<out_var> DEPS <pkgs...> OWN <rs-files...>)
 #
@@ -1511,26 +1511,26 @@ function(nros_find_interfaces)
     nros_entity_inventory_seed_knobs_file("${_entity_knobs}")
     set_property(DIRECTORY APPEND PROPERTY
         CMAKE_CONFIGURE_DEPENDS "${_entity_knobs}")
-    nros_reconfigure_settle("${_entity_knobs}")
+    nros_promise_read("${_entity_knobs}")
     nros_message_bounds_knobs_file(_bounds_knobs)
-    # phase-530 W3 (RFC-0120 D6 case 3) -- and the resolve phase's message-bound
-    # answer over a placeholder, for the same reason: on a clean build dir the
-    # producer below writes a file no reader had, which is a change, and the
-    # fixed point bought a pass for it. A shared cmake configure's resolve
-    # writes the seed over the union (`resolve_coordinate`); the Zephyr module
-    # already seeded it (a no-op here). It holds the producer to the seed
-    # (`_nros_resolved_bounds_promise_check`).
+    # phase-530 W4 -- on a road whose module loader did not run first (a cmake
+    # leaf), this is the first reader of the bounds fragment, so it is where
+    # `nros configure`'s seed is copied in. phase-530 W3 (RFC-0120 D6 case 3):
+    # a shared cmake configure's resolve writes that seed over the union
+    # (`resolve_coordinate`); the Zephyr module already seeded it (a no-op
+    # here).
     nros_resolved_seed_message_bounds("${_bounds_knobs}")
-    nros_reconfigure_settle("${_bounds_knobs}")
-    # The digest of what the readers of THIS pass consumed. The Zephyr knob
-    # resolver already read this file during `find_package(Zephyr)`; if the
-    # derivation below writes different bytes, that read was of a stale answer
-    # and the build must not proceed on it.
-    nros_reconfigure_snapshot("${_bounds_knobs}" _bounds_before)
+    nros_promise_read("${_bounds_knobs}")
+    # The digest of what the readers of THIS configure consumed. The Zephyr
+    # knob resolver already read this file during `find_package(Zephyr)`; the
+    # derivation below is held to it (RFC-0120 D5): at the end of the configure,
+    # after the LAST producer call, because an earlier call sees fewer tables
+    # and legitimately differs.
+    nros_promise_snapshot("${_bounds_knobs}" _bounds_before)
     nros_derive_message_bound_knobs(
         OUTPUT_FILE "${_bounds_knobs}"
         ENTITY_INVENTORY "${_entity_knobs}")
-    nros_reconfigure_on_change("${_bounds_knobs}" "${_bounds_before}"
+    nros_promise_check("${_bounds_knobs}" "${_bounds_before}"
         LABEL "this image's derived message-bound sizes")
     set(NROS_MESSAGE_BOUNDS_STATUS "${NROS_MESSAGE_BOUNDS_STATUS}" PARENT_SCOPE)
     set(NROS_MESSAGE_BOUNDS_REASON "${NROS_MESSAGE_BOUNDS_REASON}" PARENT_SCOPE)
