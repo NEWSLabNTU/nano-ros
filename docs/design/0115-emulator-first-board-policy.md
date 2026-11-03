@@ -3,7 +3,7 @@ rfc: 0115
 title: "Emulator-first board policy: a board enters the book with an emulator twin that runs the same ELF"
 status: Draft
 since: 2026-10
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-524]
 amends: [RFC-0064]
 supersedes: []
@@ -14,7 +14,8 @@ superseded-by: null
 
 **Status:** Draft (2026-10-31; D4 rewritten 2026-11-01 from phase-524 W1's
 three spikes, and again the same day when the Pico W spike was rerun with a
-Wokwi token, see "Spike results"). Written from the adoption discussion of
+Wokwi token, see "Spike results"; D4's smoke cell and CI scope ruled
+2026-11-02/03, see D4 "Breadth" and "Probe tracks"). Written from the adoption discussion of
 2026-10-31, before any spike had run. Implemented by
 [phase-524](../roadmap/phase-524-emulator-twins.md). Companion RFCs from the
 same discussion: RFC-0114 (the board support registry as the single primitive,
@@ -129,7 +130,9 @@ and an ESP32 revival are dropped for now, each for a stated reason.
 
 - **Probe tracks.** Each twin gets an installed-track probe like the QEMU
   chapters have (phase-517 W10): `renode-nucleo`, `wokwi-pico`. They are generated from
-  the registry (RFC-0114 D12), not authored in the workflow matrix.
+  the registry (RFC-0114 D12), not authored in the workflow matrix. Only
+  `renode-nucleo` is weekly; `wokwi-pico` is user-run (`just probe
+  wokwi-pico` with the user's own token) and no lane holds a Wokwi secret.
 - **Hardware.** The bench run is maintainer-run and dated in the registry
   (`runs = "hardware"`, `cadence = "manual"`, `last_run`). The flash line in
   the chapter drops the 2176 "unverified" wording only when that date exists.
@@ -139,6 +142,24 @@ and an ESP32 revival are dropped for now, each for a stated reason.
   the link comes up, one message is heard) and inherits the family breadth; the
   evidence page says so in those words. Three new Zephyr boards therefore cost
   three smoke cells and three probe tracks, not three matrices.
+  **The smoke cell sits on the twin's OWN `PlatformId`** (maintainer ruling
+  2026-11-03, for the Nucleo-F767ZI). RFC-0114 D10 lets an automated cadence
+  stand only on a Runtime cell of the row's `matrix_platform`, and the three
+  ways to meet that were weighed: borrow `ZephyrQemuCortexM` (refused: its
+  cells boot mps2 in QEMU, so "Verified" would rest on another board's run),
+  amend D10 so a weekly probe track counts as the asserting run (not taken:
+  a probe track replays a chapter, it is not a test lane), or give the twin a
+  platform of its own whose cell boots THIS board's ELF in THIS twin. The last
+  was chosen, so a twin's status word is earned by a cell the test lanes run,
+  and the probe track stays what it was: the chapter's replay. It costs a
+  `PlatformId` variant (about 67 references, phase-385's estimate), a twin
+  launcher in the test harness beside QEMU's, a fixture row, and the twin in
+  the CI runner image. **Only a twin CI can run gets a cell**: the Wokwi twin
+  is user-run and never in CI (ruling 2026-11-02, after the free plan's
+  quota ran out), so the Pico W gets no `PlatformId` and its row stays
+  `cadence = "manual"`; Renode is local and free, so the Nucleo's row moves to
+  an automated cadence once its cell is green and it names a second
+  maintainer (D10's two-maintainer rule for "Verified").
 
 ### D8 — One evidence page per board
 

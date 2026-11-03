@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-11-02). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W4 split (maintainer, 2026-11-02): W4a done, the `renode-nucleo` and `wokwi-pico` probe tracks generated from the registry and listed by the weekly workflow (both rows stay manual: the gate needs a Runtime cell and two maintainers for weekly); W4b (chapters, `book_run`, `nros run`) waits on phase-528 W1/W3/W4 and phase-529. Wokwi left CI (maintainer, 2026-11-02, after the free plan ran out): `wokwi-pico` is no longer weekly and the workflow holds no Wokwi secret; the Pico W twin is user-run, the Renode Nucleo twin is the CI-checked one. W0 and W4b open.** Implements
+**Status (2026-11-03). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W4 split (maintainer, 2026-11-02): W4a done, the `renode-nucleo` and `wokwi-pico` probe tracks generated from the registry and listed by the weekly workflow (both rows stay manual: the gate needs a Runtime cell and two maintainers for weekly); W4b (chapters, `book_run`, `nros run`) waits on phase-528 W1/W3/W4 and phase-529. Wokwi left CI (maintainer, 2026-11-02, after the free plan ran out): `wokwi-pico` is no longer weekly and the workflow holds no Wokwi secret; the Pico W twin is user-run, the Renode Nucleo twin is the CI-checked one. Issue 2194 landed (#3015): the twins' RAM knobs are their descriptors' `[knobs]`. W4c added (maintainer, 2026-11-03): the Nucleo gets its own `PlatformId` and a Renode smoke cell, the route RFC-0115 D4 now records. W0, W4b and W4c open.** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -637,7 +637,8 @@ generator.
   `[[probe]]` `row` field, and the evidence pages list them. Moving to weekly
   takes either a `PlatformId` for the twins (with the smoke cell) or a
   predicate change that counts a weekly twin track as the asserting run, plus
-  a second maintainer, and a first green run in the weekly lane.
+  a second maintainer, and a first green run in the weekly lane. Ruled
+  2026-11-03: the `PlatformId` route, for the Nucleo only (W4c).
 - **No smoke cells.** A matrix cell is keyed on a `PlatformId`, and the twins
   have none (a new one is about 67 references, the reason phase-385 deferred
   the MPS3 cell). Borrowing `ZephyrQemuCortexM` would claim a run the cell
@@ -649,6 +650,48 @@ generator.
   build and run; the issue 2169 rows; the bench verbs (phase-529); and the
   heap measurement W3 left (the knobs are the descriptors' `[knobs]` since
   issue 2194).
+
+### W4c — A `PlatformId` and a Renode smoke cell for the Nucleo
+
+Maintainer ruling 2026-11-03 (RFC-0115 D4 "Breadth"): the Nucleo-F767ZI's
+status word is earned by a Runtime cell on its OWN platform, not by
+borrowing `ZephyrQemuCortexM` and not by counting the weekly probe track as
+the asserting run. The Pico W gets none of this: its twin is Wokwi, which is
+user-run and never in CI, so its row stays manual.
+
+- **`PlatformId::ZephyrNucleoF767zi`.** The variant and every table keyed on
+  it (phase-385 counted about 67 references for a new platform; take the
+  sweep from `check-board-registry`'s platform set and the matrix tables, not
+  from that number). Family `zephyr`, triple `thumbv7em-none-eabihf`, board
+  `nucleo-f767zi-zephyr`.
+- **A Renode launcher in `nros-tests`**, beside `qemu.rs`: boot an ELF in
+  the descriptor's `[board.run.renode]` machine, bridge the zenoh UART's pty
+  to the router's `serial/` locator, read the console UART. One spelling of
+  "where is renode" (`nros locate`, the store path the index pins), and a
+  missing Renode is `unmet!`, never a skip (issue 1758). W4b's `nros run`
+  runner may later replace it; until then this is the one place a test
+  starts Renode.
+- **One smoke cell** in `matrix::CELLS`: the C serial talker on the new
+  platform, heard by a host listener over the router (RFC-0115 D4: boots,
+  link up, one message). Its `fixtures.toml` row builds the W3 serial image
+  through the leaf road, with no per-image knobs (the descriptor's
+  `[knobs]`, issue 2194). Lane: whichever lane the cell's coordinate lands
+  in, built by that lane (`check-lane-contracts`); never a merge-gating one,
+  since it needs a cross build and Renode.
+- **Renode in the runner image**, generated from `[tool.renode]` by
+  `runner-container.sh` (issues 1457/1482: an image fix, never a host
+  install). Linux x86_64 floor glibc 2.29, measured in W2.
+- **Registry row.** `matrix_platform = "ZephyrNucleoF767zi"`, `probe =
+  ["renode-nucleo"]`, and the automated cadence its cell's lane runs at
+  (weekly, or daily if the cell joins the nightly), replacing `manual` and
+  `last_run`. A second name in `maintainers`, or the row stays manual: D10
+  refuses "Verified" with one.
+- **Acceptance:** the cell passes in its lane on a fresh fixture build;
+  removing Renode from the runner image turns it red as an unmet
+  precondition, not a skip; the evidence page reads "Verified in emulator
+  (<cadence>)"; `check-board-registry` green with the row automated.
+- **Blocked on:** disk on the build host (`/mnt/wd` full on 2026-11-02/03);
+  a second maintainer for the row change only.
 
 ### W5 — Hardware runs
 
