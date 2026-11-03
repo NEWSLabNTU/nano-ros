@@ -230,3 +230,11 @@ never by giving the harness a private path.
 Real boards: flashing, the serial console, the bench file and port
 resolution (phase-529). The Renode runner (written with phase-524's
 Nucleo-F767ZI twin, against this phase's contract), and `nros debug`.
+
+## RFC-0120 (2026-11-03): what changes for this phase
+
+[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+
+- **W4, "build if stale".** This is `nros build`, which now configures when its stamp is stale (RFC-0120 D3). Today the `--dry-run` path calls `plan_builds` directly; phase-530 W1 puts `configure::ensure_current` in front of it.
+- **W3, the `west` run runner** (`west build -t run`). A host configure it triggers calls `nros configure` from the module hook (phase-530 W4). With a current stamp that is a no-op, so the runner adds no pass.
+- **W5.** The harness's fixtures are configured by the fixture build. A current stamp makes every hook a no-op, so `nros run --plan` adds no configure.

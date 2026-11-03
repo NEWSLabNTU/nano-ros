@@ -735,3 +735,10 @@ successor items and read this phase's tracks.
   generated from it.
 - Each of the three purposes has a board it can buy, replay in the twin before
   the box arrives, and flash from the same chapter.
+
+## RFC-0120 (2026-11-03): what changes for this phase
+
+[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+
+- **W3, W4.** The plain `west build -b <board> <leaf> -- -DNROS_IMAGE=<id>` road these twins use stays supported. After phase-530 W4 it configures in one pass and is census-sized, the same as `nros build`. Twin builds need a host C/C++ compiler.
+- **Issue 2185** (the chapter's unpatched west workspace) is separate and stays W4's. RFC-0120 makes the hook call `nros configure`, and does not apply the Zephyr patch set.

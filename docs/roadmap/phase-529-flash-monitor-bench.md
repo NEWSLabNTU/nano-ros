@@ -262,3 +262,10 @@ Acceptance:
 
 `nros debug` (RFC-0118 open question 1), runners for boards no phase has
 bought, and power-switch hardware beyond the `run` step and `power_cycle`.
+
+## RFC-0120 (2026-11-03): what changes for this phase
+
+[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+
+- **W3, `nros flash`'s "build if stale".** This goes through `nros configure` like `nros run`'s. A `west flash` after `nros build` runs no configure: the build directory is current.
+- **The serial-first chapter's flash line.** It needs no `nros sync` before it. On Zephyr boards, a reader who uses `west build` / `west flash` directly gets the same tight sizing in one pass (phase-530 W4).
