@@ -980,11 +980,14 @@ mod tests {
             prefix: Some("valgrind -q".into()),
             ..ExecArgs::default()
         };
-        // SAFETY: test-only; no other test reads NROS_LOCATOR.
-        unsafe { std::env::remove_var("NROS_LOCATOR") };
         decorate(&mut p, Some("zenoh"), &x);
         let l = p.link.as_ref().unwrap();
-        assert_eq!(l.locator, ZENOH_DEFAULT_LOCATOR);
+        // `NROS_LOCATOR`, when the environment sets it, wins over the default.
+        let expected = std::env::var("NROS_LOCATOR")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| ZENOH_DEFAULT_LOCATOR.to_string());
+        assert_eq!(l.locator, expected);
         assert_eq!(l.rmw.as_deref(), Some("zenoh"));
         assert_eq!(p.args["prefix"], "valgrind -q");
         assert_eq!(p.provenance["args.prefix"], "invocation");
