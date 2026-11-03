@@ -106,7 +106,7 @@ function(nros_configured_locate _project _image)
             "nano-ros: image `${_image}`'s configure is stale${_why}: this configure "
             "reads no seed from it and composes its own answer; run "
             "`nros configure ${_project} --image ${_image}` (or `nros build`) to seed "
-            "it again (RFC-0120 D5)")
+            "it again")
         set(_dir "")
     endif()
     nros_configured_publish("${_dir}")
