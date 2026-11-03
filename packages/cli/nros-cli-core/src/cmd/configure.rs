@@ -216,7 +216,7 @@ fn configure_project(
 
 /// The `build::Args` stage 4 runs with: one image, nothing else selected
 /// (the template is `materialize.rs`'s literal).
-fn build_args(
+pub(crate) fn build_args(
     project: &Path,
     image: &str,
     nano_ros_path: &Option<PathBuf>,

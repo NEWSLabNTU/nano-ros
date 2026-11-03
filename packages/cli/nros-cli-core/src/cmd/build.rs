@@ -484,6 +484,11 @@ enum Planning {
     /// Stages 1–3 — identify every image and stop. Writes nothing, deletes
     /// nothing; the plans carry no handoff and no configure.
     Query,
+    /// [`Planning::Query`] that ALSO runs stage 3's toolchain preflight and
+    /// stops right after it — the configure stamp's question "would this
+    /// skipped image's preflight pass now?" (phase-530 W1, Ruling R19). Writes
+    /// nothing, takes no census, generates nothing.
+    Preflight,
 }
 
 /// Stages 1-4: everything up to the handoff, which runs NOTHING — no native
@@ -510,6 +515,13 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
 /// [`Planning`] for why it must not regenerate what that configure just read.
 pub fn plan_query(args: &Args) -> Result<Vec<ResolvedBuild>> {
     plan_for(args, Planning::Query)
+}
+
+/// Stages 1–3 with the toolchain preflight, writing nothing ([`Planning::Preflight`]).
+/// `Err` carrying a [`crate::builder::preflight::PreflightRefusal`] is a
+/// refusal; `Ok` means every selected image's preflight passes.
+pub(crate) fn preflight_query(args: &Args) -> Result<()> {
+    plan_for(args, Planning::Preflight).map(|_| ())
 }
 
 fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
@@ -680,7 +692,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         // Issue 1716 — a bringup-less workspace declares no image, so a query
         // has nothing to name; `plan_packages` would WRITE each package's
         // generated cmake root to answer a question nobody asked.
-        if planning == Planning::Query {
+        if planning != Planning::Generate {
             return Ok(Vec::new());
         }
         return plan_packages(
@@ -843,7 +855,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         // fails HERE, naming the command that fixes it (RFC-0065 D2). Not for
         // a query (issue 2180): it compiles nothing, and its caller is a
         // configure that already has its toolchain.
-        let mut missing = if planning == Planning::Generate {
+        let mut missing = if planning != Planning::Query {
             crate::builder::preflight::check(descriptor, &root, nano_ros_root.as_deref())
         } else {
             Vec::new()
@@ -851,7 +863,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         // Issue 2151 — a Rust image on Zephyr compiles for the triple
         // zephyr-lang-rust picks and runs bindgen, neither of which a C image
         // needs.
-        if planning == Planning::Generate
+        if planning != Planning::Query
             && platform == "zephyr"
             && !image_has_non_rust(&image, &bringup_dir)
         {
@@ -879,7 +891,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         // model (3.5), then the generated entry, settings file, west
         // application and sizing descriptor, and the retirement of a stale
         // generated root (4).
-        if planning == Planning::Query {
+        if planning != Planning::Generate {
             out.push(ResolvedBuild {
                 kernel: None,
                 configure: None,
@@ -2380,7 +2392,7 @@ fn plan_leaf_image(
         .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
     crate::cmd::setup::expose_store_tools(descriptor, Some(&nros_root));
     // Issue 2180 — a query refuses nothing over the toolchain.
-    let mut missing = if planning == Planning::Generate {
+    let mut missing = if planning != Planning::Query {
         crate::builder::preflight::check(descriptor, root, Some(&nros_root))
     } else {
         Vec::new()
@@ -2393,6 +2405,9 @@ fn plan_leaf_image(
     missing.retain(|m| m.remedy != crate::builder::preflight::CONFIGURE_REMEDY);
     if !missing.is_empty() {
         return Err(crate::builder::preflight::PreflightRefusal(missing).into());
+    }
+    if planning == Planning::Preflight {
+        return Ok(Some(Vec::new()));
     }
     // RFC-0098 D2 — sync runs before the build (RFC-0120 D3: `nros build`
     // runs it, as configure's C1). The two things it produces that this build
@@ -2438,7 +2453,7 @@ fn plan_leaf_image(
     }
 
     // Issue 1716 — a query names the leaf's image and writes no settings file.
-    if planning == Planning::Query {
+    if planning != Planning::Generate {
         return Ok(Some(vec![ResolvedBuild {
             qualified: qual,
             board: img.board.clone(),
@@ -2656,7 +2671,7 @@ fn plan_single_package_cmake(
     // message bindings.
     crate::cmd::setup::expose_store_tools(descriptor, Some(&nros_root));
     // Issue 2180 — a query refuses nothing over the toolchain.
-    let mut missing = if planning == Planning::Generate {
+    let mut missing = if planning != Planning::Query {
         crate::builder::preflight::check(descriptor, root, Some(&nros_root))
     } else {
         Vec::new()
@@ -2664,6 +2679,9 @@ fn plan_single_package_cmake(
     missing.retain(|m| m.remedy != crate::builder::preflight::CONFIGURE_REMEDY);
     if !missing.is_empty() {
         return Err(crate::builder::preflight::PreflightRefusal(missing).into());
+    }
+    if planning == Planning::Preflight {
+        return Ok(Some(Vec::new()));
     }
     // Issue 2137 -- the leaf half of the workspace road's stage 3.4: a leaf
     // whose components read their entities from the census (`entities =
