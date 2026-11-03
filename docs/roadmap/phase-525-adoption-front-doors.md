@@ -40,7 +40,7 @@ help of `nros run`, five board crate descriptions `nros board list` prints, and
 board list/show, `doctor --report`) needs the in-tree CLI and reports NOT
 VERIFIED through the skip ledger without one.
 
-**Sequenced after [phase-526](phase-526-cli-two-tier-restructure.md) W5
+**Sequenced after [phase-526](archived/phase-526-cli-two-tier-restructure.md) W5
 (2026-11-01).** The command tree is restructured first (RFC-0117), and W5
 there moves the help text's ids into `//` comments. This item then adds the
 gate and sweeps the refusal strings and the book, once, over the final verb
