@@ -220,3 +220,12 @@ over the emulator console transport and RFC-0116 D5 records the exception.
 Boards and emulator twins (phase-524), the registry and evidence page
 (phase-522), the lab series and adoption probes (phase-523), Windows or macOS
 native toolchains (the container path is documented instead), ESP32.
+
+## RFC-0120 (2026-11-03): what changes for this phase
+
+[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+
+- **W3.** The stale-build step `nros run` takes ("the same preflight `nros build` runs") now begins with `nros configure`. `nros run` in a fresh copy needs no `nros sync`.
+- **W4.** The chapter's flow is `nros new … --template talker`, then `nros run`. It has no `nros sync` line and no `eval "$(nros dev ws env)"`; configure computes the interface search path itself.
+- **W4, the chapter's assumptions sentence.** Add a host C/C++ compiler, which the census needs on every road (RFC-0120 D4).
+- **W2.** "Resolves with no `nros sync` of its own" stays true: configure is implicit in `nros build` and `nros run`.

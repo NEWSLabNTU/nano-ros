@@ -217,3 +217,10 @@ and the book.
 The run, flash, monitor and bench verbs (phase-528, phase-529), extension
 commands (phase-527), and retiring any alias (a later RFC-0117 amendment
 names the release).
+
+## RFC-0120 (2026-11-03): what changes for this phase
+
+[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+
+- **The Build group.** It becomes `build` · `configure` · `clean` · `materialize`. `sync` is `configure`'s old spelling (RFC-0117, amended), a warning alias.
+- **W4.** Once phase-530 W1 adds the `("sync", "configure")` row, `check-cli-old-spellings` flags every `nros sync` in the scanned tree. Phase-530 W1 runs `check-cli-old-spellings.py --fix` in the same change. Phase docs stay exempt as history.

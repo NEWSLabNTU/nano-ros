@@ -242,3 +242,10 @@ The runner packages themselves (phase-528, phase-529), publishing
 `nros-extension` to crates.io (after protocol 1 has run through both of those
 phases), and shell completions for extension verbs (RFC-0119 open
 question 1).
+
+## RFC-0120 (2026-11-03): what changes for this phase
+
+[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+
+- **W2, the host build role.** Building a runner or command package is layer 2 (`nros build`), never `nros configure`. Configure invokes no target build tool and no `nros build` (RFC-0120 D1).
+- **`nros run`'s stale-build step.** It is configure if stale, then the build including the runner package. A west or CMake hook calls configure only, so a plain `west build` never builds a runner package.

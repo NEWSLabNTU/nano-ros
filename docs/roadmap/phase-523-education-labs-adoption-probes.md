@@ -160,3 +160,10 @@ documented as is.
 
 Hardware runners (lab 7 stays manual cadence), Windows or macOS native
 toolchains, ESP32 until W3 reopens it, a per-purpose book.
+
+## RFC-0120 (2026-11-03): what changes for this phase
+
+[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+
+- **W1, W3.** Lab and probe command sequences have no `nros sync` step. `nros build` / `nros run` configure implicitly, so a probe's timed path includes configure.
+- **W2, the instructor image.** It must carry a host C/C++ compiler: the census sizes every undeclared leaf, the Zephyr hardware labs included (RFC-0120 D4).

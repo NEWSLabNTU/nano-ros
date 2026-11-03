@@ -66,7 +66,10 @@ Repeat on a Zephyr native_sim leaf.
   and C2 to C6 (today's stages 1 to 4), and writes `<build>/nros/configured/`
   with a stamp holding the input digest.
 - An unchanged second run is a no-op.
-- `nros sync` becomes an alias.
+- `nros sync` becomes an alias: a `("sync", "configure")` row in the user-tier
+  alias table (RFC-0117). With that row, `check-cli-old-spellings` (phase-526
+  W4) flags every `nros sync` in the scanned tree, so run
+  `python3 scripts/check/check-cli-old-spellings.py --fix` in the same change.
 - `nros build` and `nros run` configure when the stamp is stale, instead of
   refusing an unsynced tree.
 - The interface search path is computed inside configure. Remove
