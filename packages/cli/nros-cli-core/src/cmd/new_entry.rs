@@ -432,7 +432,7 @@ fn render_cargo_toml(
 # this directory instead — `nros new entry` added that line.
 #
 # nano-ros crates are not published; `version = "*"` is only the
-# left-hand side of the patch `nros sync` writes. Run `nros sync` before
+# left-hand side of the patch `nros configure` writes. Run `nros configure` before
 # building; it finds the SDK itself (`--nano-ros-path` names one explicitly).
 
 [package]
@@ -459,9 +459,9 @@ default = ["rmw-{rmw}"]
 rmw-{rmw} = ["dep:nros-rmw-{rmw}"]
 
 [dependencies]
-# The image's selection package, which `nros sync` writes from the bringup:
+# The image's selection package, which `nros configure` writes from the bringup:
 # the RMW, edition and capability features, and the backend registration
-# `nros::main!` expands. It does not exist until the first `nros sync`.
+# `nros::main!` expands. It does not exist until the first `nros configure`.
 {name}_nros_selection = {{ path = "{selection}" }}
 nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }}
 nros-board-zephyr = {{ version = "*" }}

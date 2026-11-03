@@ -228,7 +228,7 @@ fn nros_sync_is_guarded_too() {
 
     assert!(!ok, "expected non-zero exit; got success.\n{out}");
     assert!(out.contains("ABI version mismatch"), "{out}");
-    assert!(out.contains("nros sync"), "{out}");
+    assert!(out.contains("nros configure"), "{out}");
     assert!(
         !root.join("generated").exists(),
         "guard must precede the first write",

@@ -79,12 +79,12 @@ fn nros_plan_refuses_bringup_with_no_committed_model() {
     // The contract: no model anywhere + the launch-XML parse path removed
     // (phase-296 R-code.1) is a refusal, and the message must tell the user how
     // to GET a model. phase-336 W7 repointed that guidance: the model is a build
-    // artifact (phase-330 W4), so the message now names `nros sync` and the
+    // artifact (phase-330 W4), so the message now names `nros configure` and the
     // build-output location instead of telling the user to commit one — which
     // `check-no-tracked-models` rejects. Assert the CONTRACT (refusal + a usable
     // instruction), not one phrasing of it.
     assert!(
-        stderr.contains("SystemModel") && stderr.contains("nros sync"),
-        "stderr should refuse AND point at `nros sync`:\n{stderr}"
+        stderr.contains("SystemModel") && stderr.contains("nros configure"),
+        "stderr should refuse AND point at `nros configure`:\n{stderr}"
     );
 }

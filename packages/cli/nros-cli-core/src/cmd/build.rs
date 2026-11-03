@@ -2506,7 +2506,7 @@ fn plan_leaf_image(
         eyre::bail!(
             // See issue 1305.
             "{}: image `{}` builds for ROS {}, and `generated/` was synced for {}.\n  \
-             Run `nros sync --image {}` in {} first.",
+             Run `nros configure --image {}` in {} first.",
             root.display(),
             img.image_id,
             want.as_str(),
@@ -4561,8 +4561,8 @@ fn generate_entry(
                      cannot be correct. The failure would surface later as a const-eval panic\n\
                      in a generated `main.rs` naming neither sync nor this facade.\n\
                      \n\
-                     The entry package HAS been generated, so `nros sync` can see it now.\n\
-                     Run `nros sync` in the workspace, then build again (or `just build\n\
+                     The entry package HAS been generated, so `nros configure` can see it now.\n\
+                     Run `nros configure` in the workspace, then build again (or `just build\n\
                      <scope>`, which runs codegen for you).",
                     d.display(),
                     declares_capability
@@ -4587,8 +4587,8 @@ fn generate_entry(
                      the board's own defaults. It would compile and then refuse to select a\n\
                      backend at run time, in a build directory named for the one it declared.\n\
                      \n\
-                     The entry package HAS been generated, so `nros sync` can see it now.\n\
-                     Run `nros sync` in the workspace, then build again (or `just build\n\
+                     The entry package HAS been generated, so `nros configure` can see it now.\n\
+                     Run `nros configure` in the workspace, then build again (or `just build\n\
                      <scope>`, which runs codegen for you).",
                     d.display(),
                     match image.rmw.as_deref() {
@@ -5321,7 +5321,7 @@ fn registered_population(
     let probe = metadata_probe_build_dir(root).join("nros-metadata.json");
     if !probe.is_file() {
         return Err(format!(
-            "no metadata probe at {} (run `nros sync`)",
+            "no metadata probe at {} (run `nros configure`)",
             probe.display()
         ));
     }
@@ -7003,7 +7003,7 @@ fn report_declared_depends(
     }
     msg.push_str(
         "\nEach must be one of: a package in this workspace, a message package \
-         `nros sync` generates, a `[prereq.*]` key in nros-sdk-index.toml whose \
+         `nros configure` generates, a `[prereq.*]` key in nros-sdk-index.toml whose \
          `role` is `package`, a package the ambient ROS install provides \
          (source its setup.bash so AMENT_PREFIX_PATH is set), or a key in the \
          pinned rosdep snapshot `nros-rosdep-snapshot.toml`.\n\

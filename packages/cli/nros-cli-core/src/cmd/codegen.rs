@@ -463,7 +463,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         bail!(
             // See phase-296 R4.
             "codegen entry: `--launch` was removed — generate a \
-             SystemModel and pass `--model`:\n  nros sync            \
+             SystemModel and pass `--model`:\n  nros configure       \
              # writes <ws>/build/nros/models/<bringup>/system_model.yaml\n  \
              nros codegen entry --model \
              <ws>/build/nros/models/<bringup>/system_model.yaml …"

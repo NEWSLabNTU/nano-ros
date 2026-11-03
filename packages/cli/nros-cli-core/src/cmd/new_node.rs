@@ -239,7 +239,7 @@ fn render_cargo_toml(name: &str) -> String {
 # deployed to Linux and to a Cortex-M without an edit.
 #
 # nano-ros crates are not published; `version = "*"` is the
-# left-hand side of the patch `nros sync` writes.
+# left-hand side of the patch `nros configure` writes.
 
 [package]
 name = "{name}"
