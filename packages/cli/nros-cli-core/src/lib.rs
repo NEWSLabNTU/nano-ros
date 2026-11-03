@@ -222,8 +222,8 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
 
 fn cmd_name(cmd: &cmd::Cmd) -> &'static str {
     match cmd {
-        cmd::Cmd::Sync(_) => "sync",
-        // phase-530 W1 — guarded like `sync`, which lowers to it.
+        // phase-530 W1 — `sync` lowers to `configure` before this is asked
+        // (`cmd::lower`), so `configure` is the one arm both spellings reach.
         cmd::Cmd::Configure(_) => "configure",
         cmd::Cmd::Plan(_) => "plan",
         cmd::Cmd::Ws(a) => ws_cmd_name(a),
