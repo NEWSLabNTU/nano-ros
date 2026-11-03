@@ -126,11 +126,18 @@ fn configure_project(
     let _lock = lock_exclusive_path(&configure_stamp::lock_path(project))?;
 
     let targets = targets(project, named)?;
-    if !force && !targets.is_empty() {
+    // Ruling R15: a project that declares no image (a bringup-less workspace)
+    // still has inputs C1 reads, so it records ONE project-level stamp.
+    let keys: Vec<(&str, bool)> = if targets.is_empty() {
+        vec![(configure_stamp::PROJECT_KEY, false)]
+    } else {
+        targets.iter().map(|t| (t.key.as_str(), t.named)).collect()
+    };
+    if !force {
         let mut all_current = true;
-        for t in &targets {
-            if let Currency::Stale(why) = configure_stamp::is_current(project, &t.key)? {
-                eprintln!("configure: {}: {why}", t.key);
+        for (key, named) in &keys {
+            if let Currency::Stale(why) = configure_stamp::is_current(project, key, *named)? {
+                eprintln!("configure: {key}: {why}");
                 all_current = false;
                 break;
             }
@@ -183,10 +190,24 @@ fn configure_project(
     }
 
     // ---- the stamps: inputs as they are AFTER this configure wrote -----
-    if !out.configured.is_empty() {
+    // Ruling R16: a dry run's stage 4 wrote nothing, so it records nothing —
+    // the rule `--check`/`--dry-run` already follow.
+    if !plan_dry_run {
         let stamp = configure_stamp::stamp_now(project)?;
-        for key in &out.configured {
+        let project_wide = targets
+            .is_empty()
+            .then(|| configure_stamp::PROJECT_KEY.to_string());
+        for key in out.configured.iter().chain(project_wide.iter()) {
             configure_stamp::record(project, key, &stamp)?;
+        }
+        // Ruling R15: a skipped image records the digest and its reason, so
+        // an unchanged project does not reconfigure on every build.
+        for (key, why) in &out.skipped {
+            let skip = configure_stamp::Stamp {
+                skipped: Some(why.clone()),
+                ..stamp.clone()
+            };
+            configure_stamp::record(project, key, &skip)?;
         }
     }
     out.sync_passes = ws::sync_runs() - syncs_before;

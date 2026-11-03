@@ -801,7 +801,7 @@ pub fn fresh_probe_rows(
             .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
         if !fresh {
             notes.push(format!(
-                "{}: stale against its sources (re-run `nros sync`), so neither its counts nor \
+                "{}: stale against its sources (re-run `nros configure`), so neither its counts nor \
                  its registration observations are used",
                 sidecar.display()
             ));

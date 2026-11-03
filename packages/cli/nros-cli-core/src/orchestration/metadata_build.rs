@@ -1336,7 +1336,7 @@ mod tests {
         assert!(msg.contains("gone.toml"), "{msg}");
         assert!(msg.contains("restored") && msg.contains("removed"), "{msg}");
         assert!(
-            !msg.contains("nros sync"),
+            !msg.contains("nros sync") && !msg.contains("nros configure"),
             "names the failing command: {msg}"
         );
     }

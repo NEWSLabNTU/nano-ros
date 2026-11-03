@@ -318,7 +318,7 @@ impl ModelHorizon {
             "this descriptor was written from {from} ({road}), and that road handed it no \
              message-bound table: no `nros_message_bounds.json` is registered for this image's \
              interface closure. Codegen writes one beside every interface package it generates \
-             (`nros sync`, or the build that runs codegen), so a type nothing generated is a type \
+             (`nros configure`, or the build that runs codegen), so a type nothing generated is a type \
              nothing priced",
             from = self.from,
             road = self.road
@@ -344,7 +344,7 @@ impl ModelHorizon {
             why = self.unobserved,
             tracked = if self.unobserved == MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE {
                 format!(
-                    "Run `nros sync` in the workspace so its probe sidecars are current; the \
+                    "Run `nros configure` in the workspace so its probe sidecars are current; the \
                      attribution rule is {UNOBSERVED_ON_MODEL_ROAD_ISSUE}'s"
                 )
             } else {
@@ -912,7 +912,7 @@ fn bound_over(
                         Some(e) => format!("no bound inventory for this entry: {e}"),
                         None => format!(
                             "`{member}` is in no `nros_message_bounds.json` beside this entry -- \
-                             run `nros sync` so codegen prices it"
+                             run `nros configure` so codegen prices it"
                         ),
                     },
                 );
@@ -1845,7 +1845,7 @@ fn type_facts(inputs: &DescriptorInputs<'_>, endpoints: &[Endpoint]) -> Types {
                  resolve a nested type, or the `generated/` tree predates this field. These \
                  are the MESSAGE types this entry's endpoints register (a service's two \
                  halves, an action's eight members plus the `action_msgs` protocol types), \
-                 not the interface names the `[[endpoint]]` rows carry. Run `nros sync` so \
+                 not the interface names the `[[endpoint]]` rows carry. Run `nros configure` so \
                  codegen walks them; a maximum over the types that DO have one would \
                  under-size the descriptor builder's stack arrays silently",
                 unshaped.join(", ")
@@ -4147,7 +4147,7 @@ mod tests {
         let bound = d.endpoints[0].wire_bound_bytes();
         let r = bound.refusal().unwrap();
         assert!(r.contains("demo_msgs/msg/Mystery"), "{r}");
-        assert!(r.contains("nros sync"), "{r}");
+        assert!(r.contains("nros configure"), "{r}");
     }
 
     /// phase-519 W3b -- a subscription's declared ingress rate reaches its row

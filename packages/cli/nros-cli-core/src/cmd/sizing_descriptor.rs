@@ -705,7 +705,7 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
     if is_cargo_leaf(&dir) {
         eprintln!(
             "nros ws sizing-descriptor: `{}` is a cargo leaf, so its sizing descriptor comes \
-             from `nros sync` (which has the message-bound inventory this road does not). \
+             from `nros configure` (which has the message-bound inventory this road does not). \
              Nothing written.",
             dir.display()
         );

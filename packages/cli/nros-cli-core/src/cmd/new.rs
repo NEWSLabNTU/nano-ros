@@ -652,7 +652,7 @@ pub fn run(args: Args) -> Result<()> {
             bringup_dir.display()
         );
         println!("\nNext:");
-        println!("  nros sync");
+        println!("  nros configure");
         println!(
             "  nros build {bringup_name}:{} --zephyr-workspace <dir>",
             out.image_id
@@ -828,7 +828,7 @@ pub fn run(args: Args) -> Result<()> {
         println!(
             "  nros new node <second_node>   # a second node, declared in the bringup's system.toml"
         );
-        println!("  nros sync");
+        println!("  nros configure");
         println!("  nros build");
         return Ok(());
     }

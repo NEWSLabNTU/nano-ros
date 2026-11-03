@@ -109,23 +109,36 @@ fn cleanup(project: &Path) {
 fn build_on_a_fresh_copy_needs_no_sync() {
     setup();
     let leaf = scratch_copy("examples/linux/rust/listener", "fresh");
-    assert!(
-        !stamp_file(&leaf, "linux").exists(),
-        "a fresh copy has no stamp"
-    );
+    assert!(!leaf.join("build/nros/models").exists(), "a fresh copy");
     nros(&["build", "--dry-run", "--workspace", leaf.to_str().unwrap()])
         .unwrap_or_else(|e| panic!("`nros build --dry-run` on a fresh copy: {e}"));
     assert!(
-        stamp_file(&leaf, "linux").is_file(),
-        "the implicit configure recorded {}",
+        leaf.join("build/nros/models").is_dir() && leaf.join("generated/std_msgs").is_dir(),
+        "the implicit configure synced: the model and the message crate exist"
+    );
+    cleanup(&leaf);
+}
+
+/// Ruling R16 — a dry run's stage 4 writes nothing, so its configure records
+/// no stamp (the rule sync's `--check`/`--dry-run` follow): the next real
+/// build must configure.
+#[test]
+fn dry_run_records_no_stamp() {
+    setup();
+    let leaf = scratch_copy("examples/linux/rust/listener", "dry-stamp");
+    nros(&["build", "--dry-run", "--workspace", leaf.to_str().unwrap()])
+        .unwrap_or_else(|e| panic!("`nros build --dry-run`: {e}"));
+    assert!(
+        !stamp_file(&leaf, "linux").exists(),
+        "a dry run recorded {}",
         stamp_file(&leaf, "linux").display()
     );
     cleanup(&leaf);
 }
 
-/// `--dry-run` reaches the implicit configure: it configures (and records the
-/// stamp) but runs no native program, so a C/C++ leaf whose components read
-/// `entities = "census"` takes no census.
+/// `--dry-run` reaches the implicit configure: it configures (recording no
+/// stamp, Ruling R16) but runs no native program, so a C/C++ leaf whose
+/// components read `entities = "census"` takes no census.
 #[test]
 fn build_dry_run_configures_without_census() {
     setup();
@@ -138,9 +151,8 @@ fn build_dry_run_configures_without_census() {
     nros(&["build", "--dry-run", "--workspace", leaf.to_str().unwrap()])
         .unwrap_or_else(|e| panic!("`nros build --dry-run` on a census leaf: {e}"));
     assert!(
-        stamp_file(&leaf, "qemu-armv7a-nuttx").is_file(),
-        "the implicit configure recorded {}",
-        stamp_file(&leaf, "qemu-armv7a-nuttx").display()
+        leaf.join("build/nros/models").is_dir(),
+        "the implicit configure synced: the model exists"
     );
     assert!(
         !leaf.join("build/census-host").exists(),

@@ -780,7 +780,7 @@ pub fn write_west_seed(
             let doc = std::fs::read_to_string(&json).map_err(|_| {
                 format!(
                     "the metadata probe generated no bound table for `{pkg}` ({}) -- run \
-                     `nros sync`",
+                     `nros configure`",
                     json.display()
                 )
             })?;

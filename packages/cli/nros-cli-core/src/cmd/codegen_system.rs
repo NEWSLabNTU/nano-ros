@@ -706,7 +706,7 @@ pub fn run(args: Args) -> Result<()> {
                 eprintln!(
                     "codegen-system: derived-schedule note - path '{path}' carries no \
                      trigger in the model; it is unclassified and ranks nothing \
-                     (re-run `nros sync` if the model predates the pinned resolver)"
+                     (re-run `nros configure` if the model predates the pinned resolver)"
                 );
             }
             let image_plan = crate::orchestration::image_priority_plan::plan_for_image(
@@ -754,7 +754,7 @@ pub fn run(args: Args) -> Result<()> {
                 // See phase-330 W4.
                 "codegen-system: `{}` declares system semantics but no \
                  SystemModel was found. It is a BUILD ARTIFACT, \
-                 so generate it rather than committing one:\n  nros sync      \
+                 so generate it rather than committing one:\n  nros configure \
                  # writes <ws>/build/nros/models/<bringup>/\n(`--model <path>` \
                  overrides.)",
                 toml.display(),

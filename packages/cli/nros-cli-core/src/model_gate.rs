@@ -170,14 +170,14 @@ impl std::fmt::Display for Refusal {
                 f,
                 "SystemModel `{}` was refused by its producer and cannot be trusted \
                  (marker `{}`):\n  check: {check}\n  input: {input}\n  \
-                 Fix the input and run `nros sync`; the next successful resolve \
+                 Fix the input and run `nros configure`; the next successful resolve \
                  removes the marker.",
                 model.display(),
                 marker.display(),
             ),
             Refusal::Stale { model, reason } => write!(
                 f,
-                "SystemModel `{}` is stale: {reason}\n  Run `nros sync` to re-resolve it.",
+                "SystemModel `{}` is stale: {reason}\n  Run `nros configure` to re-resolve it.",
                 model.display(),
             ),
         }

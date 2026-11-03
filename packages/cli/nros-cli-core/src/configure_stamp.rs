@@ -44,6 +44,12 @@ pub(crate) struct Stamp {
     pub(crate) codegen_version: String,
     pub(crate) ament_prefix: Option<String>,
     pub(crate) launch_resolve: Option<PathBuf>,
+    /// Ruling R15: a SKIP stamp — the image's preflight refused it (this
+    /// reason) when nobody named it. Current for a configure that does not
+    /// name it either, so a host lacking one image's toolchain does not
+    /// reconfigure on every build; stale for one that names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) skipped: Option<String>,
 }
 
 /// Whether a recorded stamp still describes the project.
@@ -64,6 +70,11 @@ pub(crate) fn stamp_dir(project: &Path, image: &str) -> PathBuf {
 }
 
 /// The one lock every configure of this project takes.
+/// Ruling R15: the stamp key of a project that declares no image (a
+/// bringup-less workspace builds package by package). Not a legal image id,
+/// so it cannot collide with one.
+pub(crate) const PROJECT_KEY: &str = ".project";
+
 pub(crate) fn lock_path(project: &Path) -> PathBuf {
     project
         .join("build")
@@ -243,16 +254,44 @@ fn recorded_censuses(project: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// `model_gate`'s refused-resolve markers under `build/nros/models`.
+fn refused_model_markers(project: &Path) -> Vec<PathBuf> {
+    let ext = crate::model_gate::MARKER_EXT.trim_start_matches('.');
+    let mut out: Vec<PathBuf> = WalkDir::new(project.join("build").join("nros").join("models"))
+        .into_iter()
+        .flatten()
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some(ext))
+        .collect();
+    out.sort();
+    out
+}
+
 /// May a configure of `image` be skipped? Order of reasons: no stamp; digest
 /// differs; a metadata sidecar's component sources moved; a recorded census is
 /// stale. An image with no recorded census is not stale on that account.
-pub(crate) fn is_current(project: &Path, image: &str) -> Result<Currency> {
-    is_current_with(
+///
+/// `named`: whether the caller asked for this image by name. A SKIP stamp
+/// (Ruling R15) is current only for a caller that did not.
+pub(crate) fn is_current(project: &Path, image: &str, named: bool) -> Result<Currency> {
+    currency(
         project,
         image,
+        named,
         &real_env(),
         current_launch_resolver().as_deref(),
+        &real_ament_moved,
     )
+}
+
+/// The generated message crates whose recorded ament inputs moved (RFC-0120
+/// D7, issue 1780): `ws`'s own comparison, never a second one.
+fn real_ament_moved(project: &Path) -> Result<Vec<String>> {
+    Ok(crate::cmd::ws::ament_moved_packages(project)?
+        .into_iter()
+        .map(|m| m.package)
+        .collect())
 }
 
 /// The `nros-launch-resolve` this process resolves: the lookup
@@ -273,20 +312,40 @@ pub(crate) fn stamp_now(project: &Path) -> Result<Stamp> {
         codegen_version: codegen_version(),
         ament_prefix: std::env::var("AMENT_PREFIX_PATH").ok(),
         launch_resolve: current_launch_resolver(),
+        skipped: None,
     })
 }
 
 /// [`is_current`] with the environment and the currently resolved
 /// `nros-launch-resolve` injected.
+/// An unnamed image, with the real ament check.
+#[cfg(test)]
 pub(crate) fn is_current_with(
     project: &Path,
     image: &str,
     env: &[(String, Option<String>)],
     resolver: Option<&Path>,
 ) -> Result<Currency> {
+    currency(project, image, false, env, resolver, &real_ament_moved)
+}
+
+/// [`is_current`] with everything it observes injected: whether the image was
+/// named, the environment, the resolved `nros-launch-resolve`, and which
+/// generated crates' ament inputs moved.
+pub(crate) fn currency(
+    project: &Path,
+    image: &str,
+    named: bool,
+    env: &[(String, Option<String>)],
+    resolver: Option<&Path>,
+    ament_moved: &dyn Fn(&Path) -> Result<Vec<String>>,
+) -> Result<Currency> {
     let Some(stamp) = read(project, image) else {
         return Ok(Currency::Stale("no configure stamp recorded".into()));
     };
+    if named && let Some(why) = &stamp.skipped {
+        return Ok(Currency::Stale(format!("image was skipped: {why}")));
+    }
     if let Some(holder) = leaf_selection(project)
         && holder != image
     {
@@ -308,6 +367,20 @@ pub(crate) fn is_current_with(
             show(stamp.launch_resolve.as_deref()),
             show(resolver)
         )));
+    }
+    // A model whose resolve was REFUSED (`model_gate`) is quarantined with a
+    // marker beside it. Its inputs can be edited back to exactly what this
+    // stamp recorded, so only the marker says the model is gone.
+    if let Some(marker) = refused_model_markers(project).into_iter().next() {
+        return Ok(Currency::Stale(format!(
+            "model resolve was refused (`{}`)",
+            marker.display()
+        )));
+    }
+    // RFC-0120 D7 — the AMENT install's content: `AMENT_PREFIX_PATH`'s value
+    // is a digest input, but an `apt` upgrade moves the files under it.
+    if let Some(pkg) = ament_moved(project)?.into_iter().next() {
+        return Ok(Currency::Stale(format!("ament inputs moved: {pkg}")));
     }
     if let Some(line) = stale_sidecar_components(project).into_iter().next() {
         return Ok(Currency::Stale(line));
@@ -344,6 +417,7 @@ mod tests {
             codegen_version: codegen_version(),
             ament_prefix: None,
             launch_resolve: None,
+            skipped: None,
         }
     }
 
@@ -409,7 +483,7 @@ mod tests {
         let stamp = stamp_now(&p).unwrap();
         assert_eq!(stamp.launch_resolve, current_launch_resolver());
         record(&p, "img", &stamp).unwrap();
-        assert_eq!(is_current(&p, "img").unwrap(), Currency::Current);
+        assert_eq!(is_current(&p, "img", false).unwrap(), Currency::Current);
     }
 
     /// Ruling R9: an image's own stamp is not enough on a leaf whose shared
@@ -435,7 +509,7 @@ mod tests {
     fn no_stamp_is_stale() {
         let p = tmp("no-stamp");
         assert!(matches!(
-            is_current(&p, "img").unwrap(),
+            is_current(&p, "img", false).unwrap(),
             Currency::Stale(why) if why.contains("no configure stamp")
         ));
     }
@@ -625,6 +699,68 @@ mod tests {
                 "launch resolver changed: /old/nros-launch-resolve -> /new/nros-launch-resolve"
             ),
             Currency::Current => panic!("a moved resolver must stale the stamp"),
+        }
+    }
+
+    fn nothing_moved(_: &Path) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+
+    /// RFC-0120 D7 / Ruling R17 — an `apt` upgrade moves the ament files under
+    /// an unchanged `AMENT_PREFIX_PATH`, so only the generated crates' content
+    /// stamps can see it, and the configure stamp must ask them.
+    #[test]
+    fn stale_when_ament_content_moved() {
+        let p = tmp("ament-moved");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        assert_eq!(
+            currency(&p, "img", false, &real_env(), None, &nothing_moved).unwrap(),
+            Currency::Current
+        );
+        let moved = |_: &Path| -> Result<Vec<String>> { Ok(vec!["std_msgs".to_string()]) };
+        assert_eq!(
+            currency(&p, "img", false, &real_env(), None, &moved).unwrap(),
+            Currency::Stale("ament inputs moved: std_msgs".into())
+        );
+    }
+
+    /// Ruling R15 — a SKIP stamp is current for a configure that does not
+    /// name the image, and stale (naming the reason) for one that does.
+    #[test]
+    fn named_skipped_image_is_stale() {
+        let p = tmp("named-skip");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let mut stamp = stamp_for(&p);
+        stamp.skipped = Some("missing Rust target `x` (run: rustup target add x)".into());
+        record(&p, "ws:img", &stamp).unwrap();
+        assert_eq!(
+            currency(&p, "ws:img", false, &real_env(), None, &nothing_moved).unwrap(),
+            Currency::Current,
+            "an unnamed skipped image with an unchanged digest is current"
+        );
+        assert_eq!(
+            currency(&p, "ws:img", true, &real_env(), None, &nothing_moved).unwrap(),
+            Currency::Stale(
+                "image was skipped: missing Rust target `x` (run: rustup target add x)".into()
+            )
+        );
+    }
+
+    /// A refused resolve quarantines the model; editing the input back to the
+    /// recorded bytes must not make the stamp current again.
+    #[test]
+    fn stale_when_a_model_resolve_was_refused() {
+        let p = tmp("refused-model");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        let models = p.join("build/nros/models/demo_bringup");
+        std::fs::create_dir_all(&models).unwrap();
+        let marker = crate::model_gate::marker_path(&models.join("system_model.yaml"));
+        std::fs::write(&marker, "check: x\ninput: y\n").unwrap();
+        match currency(&p, "img", false, &real_env(), None, &nothing_moved).unwrap() {
+            Currency::Stale(why) => assert!(why.contains("refused"), "{why}"),
+            Currency::Current => panic!("a refused model must stale the stamp"),
         }
     }
 }
