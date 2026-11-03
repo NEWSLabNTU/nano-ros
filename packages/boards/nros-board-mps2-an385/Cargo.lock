@@ -818,8 +818,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-derive"
-version = "0.3.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.2#b3213520bfecc633deeda7399037022a72a6ff06"
+version = "0.4.0"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.3#b6a4a11a8f831b3db62886905c14a9654e29d4ca"
 dependencies = [
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
@@ -827,8 +827,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-model"
-version = "0.3.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.2#b3213520bfecc633deeda7399037022a72a6ff06"
+version = "0.4.0"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.3#b6a4a11a8f831b3db62886905c14a9654e29d4ca"
 dependencies = [
  "indexmap",
  "ros-launch-manifest-sched",
@@ -840,8 +840,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-rlx"
-version = "0.3.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.2#b3213520bfecc633deeda7399037022a72a6ff06"
+version = "0.4.0"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.3#b6a4a11a8f831b3db62886905c14a9654e29d4ca"
 dependencies = [
  "sha2",
  "unicode-normalization",
@@ -849,8 +849,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-sched"
-version = "0.3.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.2#b3213520bfecc633deeda7399037022a72a6ff06"
+version = "0.4.0"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.3#b6a4a11a8f831b3db62886905c14a9654e29d4ca"
 dependencies = [
  "ros-launch-manifest-types",
  "serde",
@@ -860,8 +860,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-types"
-version = "0.3.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.2#b3213520bfecc633deeda7399037022a72a6ff06"
+version = "0.4.0"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.3#b6a4a11a8f831b3db62886905c14a9654e29d4ca"
 dependencies = [
  "ros-launch-manifest-rlx",
  "serde",
