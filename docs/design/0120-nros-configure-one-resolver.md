@@ -238,6 +238,12 @@ Consequences:
   `entities = [...]` (tight), or `entities = "defaults"` (loose, written down).
   Nothing is silently loose.
 - **Declared `entities = [...]` still wins** and needs no census.
+- **A host image keeps the hosted defaults.** The default reaches a leaf
+  whose image is CROSS (its board's platform is not the host's), which is the
+  line `nros build` already draws for a workspace: a host image is the census
+  producer, never its consumer. A leaf with no `[[component]]` has no program
+  for a census to be of and stays unstated. Written `entities = "census"`
+  still applies anywhere (phase-530 W2).
 
 ### D5 — Every host configure takes one pass
 
@@ -397,3 +403,5 @@ configure, is answered by D2: the stamp records it.)
 ## Changelog
 
 - 2026-11 — created.
+- 2026-11 — D4: the census default is for a CROSS image with at least one
+  `[[component]]`; a host image keeps the hosted defaults (phase-530 W2).

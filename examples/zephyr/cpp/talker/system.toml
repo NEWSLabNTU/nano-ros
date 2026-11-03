@@ -40,18 +40,14 @@ os_config = ["prj-xrce.conf"]
 # The Micro-XRCE-DDS agent. A test harness passes its own port per run
 # (`-DCONFIG_NROS_XRCE_AGENT_PORT=…`, which merges after this).
 locator = "udp/127.0.0.1:2018"
-# This image creates: pub:std_msgs/msg/String:/chatter + timer
-# so: no subscription, no service of either direction.
 # Issue 1033 -- `xrce_session_state_t` is one platform-heap allocation sized
-# by these three caps at BUILD time; at the crate defaults it is 6.4x the
-# 64 KiB arena and the image cannot boot. STATED, not derived: a standalone
-# Zephyr leaf's entity inventory does not compose (measured, phase-481 W3:
-# refused for every C/C++ leaf and five of the six Rust ones), and the client
-# cap has no derivation at all, so `-1` would fall to the crate default.
-[image.zephyr_xrce.knobs.xrce]
-max_subscribers = 0
-max_service_servers = 0
-max_service_clients = 0
+# by the subscriber and service caps at BUILD time; at the crate defaults it is
+# 6.4x the 64 KiB arena and the image cannot boot. Those caps are DERIVED now:
+# this leaf states no `entities`, so it is counted by its census (RFC-0120 D4)
+# -- the talker, built for the host and run in counting mode, creates one
+# publisher and one timer -- and the census reaches the subscriber and
+# service-server caps through the entity inventory, and the service-client cap
+# through the sizing descriptor (`XRCE_MAX_SERVICE_CLIENTS`, knobs.toml).
 
 [image.zephyr_cyclonedds]
 board = "zephyr"
