@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="uorb_bridge_pkg" exec="uorb_bridge" name="px4_bridge_in"/>
+</launch>

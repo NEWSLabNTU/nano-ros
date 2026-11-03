@@ -78,6 +78,16 @@ struct Px4Context<'a> {
 
 /// Render `plan` as a PX4 module entry whose shell command is `main`.
 pub fn emit_px4(plan: &Plan, main: &str, opts: &LowerOptions<'_>) -> Result<String, String> {
+    emit_px4_lowered(plan, main, opts).map(|(src, _)| src)
+}
+
+/// [`emit_px4`], keeping the lowered entry (the `--emit-link-libs` sidecar
+/// states its facts from the same lowering).
+pub fn emit_px4_lowered(
+    plan: &Plan,
+    main: &str,
+    opts: &LowerOptions<'_>,
+) -> Result<(String, LoweredEntry), String> {
     if !is_c_ident(main) {
         return Err(format!(
             "PX4 entry: module main `{main}` is not a C identifier, and PX4 names the \
@@ -146,7 +156,7 @@ pub fn emit_px4(plan: &Plan, main: &str, opts: &LowerOptions<'_>) -> Result<Stri
         tiers[i].queue = queue;
     }
 
-    super::render::render(
+    let src = super::render::render(
         TEMPLATE,
         Px4Context {
             entry: &lowered,
@@ -155,7 +165,8 @@ pub fn emit_px4(plan: &Plan, main: &str, opts: &LowerOptions<'_>) -> Result<Stri
                 tiers,
             },
         },
-    )
+    )?;
+    Ok((src, lowered))
 }
 
 fn is_c_ident(s: &str) -> bool {

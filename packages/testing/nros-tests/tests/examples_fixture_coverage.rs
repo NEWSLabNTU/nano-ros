@@ -101,7 +101,24 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
 /// Empty: the px4 xrce examples that once sat here now compile-check via
 /// `scripts/build/compile-check-fixtures.sh` (its px4 leg generates `px4_msgs`
 /// from the vendored PX4-Autopilot `.msg` tree, gated on the submodule).
-const ALLOWLIST: &[(&str, &str)] = &[];
+const ALLOWLIST: &[(&str, &str)] = &[
+    (
+        "px4/cpp/bridge/src/uorb_bridge_bringup",
+        "member package of the PX4 bridge workspace (phase-521 W8 d): built as one unit, with the generated module entry, by `just px4 build-bridge-example` (PX4 SITL), never on its own",
+    ),
+    (
+        "px4/cpp/bridge/src/uorb_bridge_pkg",
+        "member package of the PX4 bridge workspace (phase-521 W8 d): built as one unit, with the generated module entry, by `just px4 build-bridge-example` (PX4 SITL), never on its own",
+    ),
+    (
+        "px4/cpp/firmware/src/uorb_demo_bringup",
+        "member package of the PX4 firmware workspace (phase-521 W8 d): built as one unit, with the generated module entry, by `just px4 build-sitl-example` (PX4 SITL, phase-521 W8 e's px4-sitl job), never on its own",
+    ),
+    (
+        "px4/cpp/firmware/src/uorb_demo_pkg",
+        "member package of the PX4 firmware workspace (phase-521 W8 d): built as one unit, with the generated module entry, by `just px4 build-sitl-example` (PX4 SITL, phase-521 W8 e's px4-sitl job), never on its own",
+    ),
+];
 
 /// Recursive walk collecting dirs that contain `package.xml`.
 fn collect_pkg_dirs(root: &Path) -> Vec<PathBuf> {

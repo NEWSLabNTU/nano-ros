@@ -19,7 +19,9 @@
 
 #include "nros/rmw_entity.h"
 #include "nros/rmw_ret.h"
+#include "nros/rmw_vtable.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -42,6 +44,11 @@ struct SessionState {
     char node_name[kMaxNodeName];
     char namespace_[kMaxNamespace];
     uint32_t domain_id;
+    // phase-521 W8 (d), issue 2218 — the executor's wake. Read from the
+    // broker's callback context, so the pair is atomic: `ctx` is stored
+    // before `cb` and read after it.
+    std::atomic<void (*)(void *)> wake_cb{nullptr};
+    std::atomic<void *> wake_ctx{nullptr};
 };
 
 // Copy a null-terminated C string into a fixed buffer, truncating to
@@ -104,6 +111,46 @@ rmw_ret_t session_destroy(rmw_session_t *session) {
         std::free(state);
         session->backend_data = nullptr;
     }
+    return NROS_RMW_RET_OK;
+}
+
+rmw_ret_t session_set_wake_callback(rmw_session_t *session, void (*cb)(void *ctx), void *ctx) {
+    if (session == nullptr || session->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    auto *state = static_cast<SessionState *>(session->backend_data);
+    state->wake_cb.store(nullptr, std::memory_order_release);
+    state->wake_ctx.store(ctx, std::memory_order_release);
+    state->wake_cb.store(cb, std::memory_order_release);
+    return NROS_RMW_RET_OK;
+}
+
+void session_wake(void *session_backend_data) {
+    if (session_backend_data == nullptr) {
+        return;
+    }
+    auto *state = static_cast<SessionState *>(session_backend_data);
+    void (*cb)(void *) = state->wake_cb.load(std::memory_order_acquire);
+    if (cb != nullptr) {
+        cb(state->wake_ctx.load(std::memory_order_acquire));
+    }
+}
+
+// phase-521 W8 (d), issue 2218 — RFC-0113 D4. With the PX4 push-wake glue
+// linked, every subscription registers a `SubscriptionCallback` and an
+// arrival calls this session's wake (and its per-entity callback): Notify.
+// Without it (the host test double, `NROS_RMW_UORB_BUILD_PX4_GLUE=OFF`) a
+// subscription can only be polled, which D5 refuses at open.
+rmw_ret_t session_readiness_source(const rmw_session_t *session, uint8_t *out_kind,
+                                   int32_t * /*out_handle*/) {
+    if (session == nullptr || out_kind == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+#ifdef NROS_RMW_UORB_PX4_GLUE
+    *out_kind = NROS_RMW_READINESS_NOTIFY;
+#else
+    *out_kind = NROS_RMW_READINESS_NONE;
+#endif
     return NROS_RMW_RET_OK;
 }
 

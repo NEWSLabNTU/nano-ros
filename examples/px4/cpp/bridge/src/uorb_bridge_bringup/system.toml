@@ -1,0 +1,13 @@
+# The bridge's PRIMARY session is uORB, the inward side. The outward session
+# (zenoh by default, `NROS_PX4_BRIDGE_RMW` at build time) is opened by the
+# component's second node (`NodeBuilder::rmw`).
+[system]
+name = "uorb_bridge"
+rmw = "uorb"
+domain_id = 0
+default_launch = "bridge.launch.xml"
+
+[[component]]
+pkg = "uorb_bridge_pkg"
+class = "uorb_bridge_pkg::UorbBridge"
+name = "uorb_bridge"

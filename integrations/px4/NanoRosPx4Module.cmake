@@ -275,7 +275,110 @@ nros_assert_archive_pairs_with_header(
     BUILD_HINT    "${_NROS_PX4_REBUILD_HINT}")
 
 # ---------------------------------------------------------------------------
-# nros_px4_add_module(MODULE <t> MAIN <m> [BACKENDS <rmw>...] <px4_add_module args>)
+# _nros_px4_generate_entry(<out> MODULE <m> MAIN <main> BRINGUP <dir>
+#                          [LAUNCH <file>] COMPONENTS <pkg>:<exec>:<class>:<header>...)
+#
+# phase-521 W8 (d), RFC-0113 D9 -- the module's entry, generated at configure:
+# one PX4 work item per tier (`nros dev codegen entry --px4-main`). The model
+# is the bringup's, which `nros sync` writes; COMPONENTS state what the cmake
+# metadata states for a workspace entry (each launch node's class and header),
+# because a PX4 module registers no component library of its own.
+# ---------------------------------------------------------------------------
+function(_nros_px4_generate_entry _out)
+    cmake_parse_arguments(_GE "" "MODULE;MAIN;BRINGUP;LAUNCH" "COMPONENTS" ${ARGN})
+    include("${NROS_REPO_DIR}/cmake/NanoRosCli.cmake")
+    nros_resolve_cli(_ge_nros CONTEXT "nros_px4_add_module(${_GE_MODULE} BRINGUP)")
+    get_filename_component(_ge_bringup "${_GE_BRINGUP}" ABSOLUTE)
+    # The workspace holds the bringup at `<ws>/src/<bringup>`.
+    get_filename_component(_ge_ws "${_ge_bringup}/../.." ABSOLUTE)
+
+    set(_ge_mp --bringup-dir "${_ge_bringup}")
+    if(_GE_LAUNCH)
+        list(APPEND _ge_mp --launch "${_GE_LAUNCH}")
+    endif()
+    execute_process(
+        COMMAND "${_ge_nros}" dev image model-path ${_ge_mp}
+        OUTPUT_VARIABLE _ge_model OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_VARIABLE _ge_err RESULT_VARIABLE _ge_rc)
+    if(NOT _ge_rc EQUAL 0)
+        message(FATAL_ERROR "nros_px4_add_module(${_GE_MODULE}): `nros dev image model-path` "
+            "failed for ${_ge_bringup}:\n${_ge_err}")
+    endif()
+    if(NOT EXISTS "${_ge_model}")
+        message(FATAL_ERROR "nros_px4_add_module(${_GE_MODULE}): no SystemModel at\n"
+            "  ${_ge_model}\n"
+            "It is a build artifact `nros sync` writes. Run it in ${_ge_ws}, then "
+            "re-configure.")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${_ge_model}" "${_ge_bringup}/system.toml")
+
+    # The component index `codegen entry --typed` reads, in the shape
+    # `nano_ros_node_register()` writes it.
+    set(_ge_rows "")
+    foreach(_c IN LISTS _GE_COMPONENTS)
+        string(REPLACE ":" ";" _parts "${_c}")
+        list(LENGTH _parts _n)
+        # A C++ class names `::`, which the split above turned into two
+        # empty fields: rejoin everything between the exec and the header.
+        if(_n LESS 4)
+            message(FATAL_ERROR "nros_px4_add_module(${_GE_MODULE}): COMPONENTS entry "
+                "'${_c}' is not <pkg>:<exec>:<class>:<header>")
+        endif()
+        list(GET _parts 0 _pkg)
+        list(GET _parts 1 _exec)
+        math(EXPR _last "${_n} - 1")
+        list(GET _parts ${_last} _hdr)
+        math(EXPR _cls_n "${_last} - 2")
+        list(SUBLIST _parts 2 ${_cls_n} _cls_parts)
+        list(JOIN _cls_parts ":" _cls)
+        string(APPEND _ge_rows "${_ge_sep}{\"name\":\"${_exec}\",\"pkg\":\"${_pkg}\","
+            "\"class\":\"${_cls}\",\"class_header\":\"${_hdr}\",\"lang\":\"cpp\","
+            "\"shape\":\"configure\"}")
+        set(_ge_sep ",")
+    endforeach()
+    set(_ge_meta "${CMAKE_CURRENT_BINARY_DIR}/${_GE_MAIN}_nros_metadata.json")
+    file(WRITE "${_ge_meta}" "{\"components\":[${_ge_rows}]}\n")
+
+    set(_ge_out "${CMAKE_CURRENT_BINARY_DIR}/${_GE_MAIN}_nros_entry.cpp")
+    # Spelled through a list, as `NanoRosEntry.cmake` spells it.
+    set(_ge_cli dev codegen entry
+        --lang cpp --typed --metadata "${_ge_meta}"
+        --model "${_ge_model}" --workspace "${_ge_ws}"
+        --px4-main "${_GE_MAIN}" --out "${_ge_out}")
+    execute_process(
+        COMMAND "${_ge_nros}" ${_ge_cli}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        OUTPUT_VARIABLE _ge_stdout ERROR_VARIABLE _ge_err RESULT_VARIABLE _ge_rc)
+    if(NOT _ge_rc EQUAL 0)
+        message(FATAL_ERROR "nros_px4_add_module(${_GE_MODULE}): `nros dev codegen entry "
+            "--px4-main ${_GE_MAIN}` failed (rc=${_ge_rc}):\n${_ge_err}")
+    endif()
+    string(STRIP "${_ge_err}" _ge_err)
+    if(NOT _ge_err STREQUAL "")
+        message(STATUS "nros_px4_add_module(${_GE_MODULE}): ${_ge_err}")
+    endif()
+    nros_codegen_tool_reconfigure("${_ge_nros}")
+    set(${_out} "${_ge_out}" PARENT_SCOPE)
+
+    # The image's PRIMARY backend: the bringup's `[system] rmw`. A module
+    # linking several backends (the bridge) opens this one at boot and names
+    # the rest per node (`NodeBuilder::rmw`); without it the runtime refuses to
+    # guess between them.
+    file(STRINGS "${_ge_bringup}/system.toml" _ge_rmw_line
+        REGEX "^[ \t]*rmw[ \t]*=[ \t]*\"[A-Za-z0-9_]+\"")
+    set(_ge_rmw "")
+    if(_ge_rmw_line)
+        list(GET _ge_rmw_line 0 _ge_rmw_line)
+        string(REGEX REPLACE ".*\"([A-Za-z0-9_]+)\".*" "\\1" _ge_rmw "${_ge_rmw_line}")
+    endif()
+    set(${_out}_RMW "${_ge_rmw}" PARENT_SCOPE)
+endfunction()
+
+# ---------------------------------------------------------------------------
+# nros_px4_add_module(MODULE <t> MAIN <m> [BACKENDS <rmw>...]
+#                     [BRINGUP <dir> [LAUNCH <file>] COMPONENTS <spec>...]
+#                     <px4_add_module args>)
 # ---------------------------------------------------------------------------
 function(nros_px4_add_module)
     # Every px4_add_module keyword must be DECLARED here, even though most are
@@ -288,7 +391,10 @@ function(nros_px4_add_module)
     set(_px4_multi COMPILE_FLAGS LINK_FLAGS SRCS INCLUDES DEPENDS MODULE_CONFIG)
     set(_px4_opts  EXTERNAL DYNAMIC UNITY_BUILD)
 
-    cmake_parse_arguments(NPX "${_px4_opts}" "${_px4_one}" "BACKENDS;${_px4_multi}" ${ARGN})
+    # phase-521 W8 (d) -- BRINGUP / LAUNCH / COMPONENTS: the module's entry is
+    # GENERATED (RFC-0113 D9). See `_nros_px4_generate_entry` below.
+    cmake_parse_arguments(NPX "${_px4_opts}" "${_px4_one};BRINGUP;LAUNCH"
+        "BACKENDS;COMPONENTS;${_px4_multi}" ${ARGN})
 
     if(NOT NPX_MODULE)
         message(FATAL_ERROR "nros_px4_add_module: MODULE is required")
@@ -317,6 +423,21 @@ function(nros_px4_add_module)
     # nano-ros's own include dirs ride along on INCLUDES.
     list(APPEND _fwd INCLUDES ${_NROS_PX4_INCLUDES})
 
+    if(NPX_BRINGUP)
+        if(NOT NPX_MAIN)
+            message(FATAL_ERROR "nros_px4_add_module(${NPX_MODULE}): BRINGUP needs MAIN, "
+                "which names the generated module's shell command")
+        endif()
+        _nros_px4_generate_entry(_npx_entry
+            MODULE "${NPX_MODULE}" MAIN "${NPX_MAIN}"
+            BRINGUP "${NPX_BRINGUP}" LAUNCH "${NPX_LAUNCH}"
+            COMPONENTS ${NPX_COMPONENTS})
+        list(APPEND _fwd SRCS "${_npx_entry}")
+    elseif(NPX_COMPONENTS OR NPX_LAUNCH)
+        message(FATAL_ERROR "nros_px4_add_module(${NPX_MODULE}): COMPONENTS and LAUNCH "
+            "describe a generated entry and need BRINGUP")
+    endif()
+
     # Each named backend contributes its own sources, includes and flags. The
     # alternative — every caller hand-listing the backend's .cpp files, its two
     # include dirs and its one -D — is a copy of build knowledge per module, and
@@ -339,7 +460,10 @@ function(nros_px4_add_module)
                 INCLUDES ${_uorb}/include ${_uorb}/src
                 # Flips uorb_abi.hpp to "#include <uORB/uORB.h>" mode, i.e. the
                 # real PX4 headers rather than the mock ABI the unit smoke uses.
-                COMPILE_FLAGS -DNROS_RMW_UORB_USE_PX4_HEADER=1
+                # phase-521 W8 (d): the push-wake glue is always linked
+                # here, so the session states Notify (RFC-0113 D4) and the
+                # generated entry binds each tier's subscriptions to it.
+                COMPILE_FLAGS -DNROS_RMW_UORB_USE_PX4_HEADER=1 -DNROS_RMW_UORB_PX4_GLUE=1
                 SRCS
                     ${NROS_RMW_UORB_SOURCES}
                     ${NROS_RMW_UORB_PX4_GLUE_SOURCES})
@@ -434,6 +558,15 @@ function(nros_px4_add_module)
         list(GET NPX_BACKENDS 0 _npx_primary)
         target_compile_definitions(${NPX_MODULE} PRIVATE
             "NROS_ENTRY_RMW=\"${_npx_primary}\"")
+    elseif(_npx_entry_RMW)
+        # phase-521 W8 (d) -- a generated entry over several backends opens
+        # the one its bringup DECLARES (`[system] rmw`), never list order.
+        if(NOT _npx_entry_RMW IN_LIST NPX_BACKENDS)
+            message(FATAL_ERROR "nros_px4_add_module(${NPX_MODULE}): the bringup's rmw "
+                "'${_npx_entry_RMW}' is not in BACKENDS (${NPX_BACKENDS})")
+        endif()
+        target_compile_definitions(${NPX_MODULE} PRIVATE
+            "NROS_ENTRY_RMW=\"${_npx_entry_RMW}\"")
     endif()
 
     # The stub goes INTO the module archive, and the linker is told up front that

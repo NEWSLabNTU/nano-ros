@@ -40,6 +40,23 @@ extern "C" {
  */
 rmw_ret_t nros_rmw_uorb_register(void);
 
+/**
+ * phase-521 W8 (d), issue 2218 — where a subscription created from now on
+ * reports its arrivals, besides the executor's own wake.
+ *
+ * A PX4 tier is a work item, not a thread, so an executor wake reaches no
+ * one: the arrival must schedule the tier's work item. The generated PX4
+ * entry (`nros_px4/tier_work_item.hpp`) sets this around each tier's setup to
+ * the tier's `notify()`, and clears it (`NULL, NULL`) after, so every
+ * subscription a tier's nodes create runs that tier on arrival — from the
+ * publisher's context, with no work-queue hop between.
+ *
+ * Not thread-safe against a concurrent create; setups never overlap
+ * (issue #144). A subscription created with no target set reports only to
+ * the executor's wake.
+ */
+void nros_rmw_uorb_set_arrival_target(void (*notify)(void *ctx), void *ctx);
+
 #ifdef __cplusplus
 }
 #endif

@@ -104,7 +104,7 @@ endif()
 # phase-325 W3.3 — the OUTWARD backend, selectable.
 #
 # W3.2's rule is that the outward backend is a build-time CHOICE, not a
-# directory axis. It was neither until now: `NrosUorbBridge.cpp` guards
+# directory axis. It was neither until now: `UorbBridge.cpp` guards
 # `NROS_BRIDGE_RMW` with `#ifndef` and defaults it to "zenoh", and NOTHING in
 # cmake ever defined it — so the choice existed in the source and could not be
 # made from outside. One backend does not demonstrate selection; it
@@ -153,6 +153,7 @@ if(NOT _rmw MATCHES "^(zenoh|xrce|cyclonedds)$")
 endif()
 message(STATUS "nros_uorb_bridge: outward backend = ${_rmw}")
 
+set(_bridge_ws "${CMAKE_CURRENT_LIST_DIR}/../..")
 nros_px4_add_module(
 	MODULE   modules__nros_uorb_bridge
 	MAIN     nros_uorb_bridge
@@ -163,14 +164,20 @@ nros_px4_add_module(
 	# backend contributes no sources here — it is compiled INTO libnros_cpp.a by
 	# the image crate `just px4 build-bridge-example` builds, and this list only drives the register call.
 	BACKENDS uorb ${_rmw}
-	# `<rclcpp/bridge.hpp>` (MultiExecutor) is gated on NROS_CPP_STD rather than
-	# __STDC_HOSTED__ on purpose (issue 0332: a hosted compiler can be run
+	# phase-521 W8 (d), RFC-0113 D9 -- the module's entry is GENERATED from
+	# the bringup (one PX4 work item per tier); `uorb_bridge_pkg::UorbBridge`
+	# is the only hand-written code. `nros sync` in `examples/px4/cpp/bridge`
+	# writes the SystemModel first (`just px4 build-bridge-example` runs it).
+	BRINGUP  ${_bridge_ws}/uorb_bridge_bringup
+	COMPONENTS uorb_bridge_pkg:uorb_bridge:uorb_bridge_pkg::UorbBridge:uorb_bridge_pkg/UorbBridge.hpp
+	# The hosted surface (`<string>`/`<vector>`) is gated on NROS_CPP_STD rather
+	# than __STDC_HOSTED__ on purpose (issue 0332: a hosted compiler can be run
 	# -nostdinc++ against a minimal libcpp with no <string>/<vector>). PX4 SITL is
 	# real posix with full libstdc++, so opt in explicitly.
 	COMPILE_FLAGS -DNROS_CPP_STD=1
-	INCLUDES ${_gen}
+	INCLUDES ${_gen} ${_bridge_ws}/uorb_bridge_pkg/include
 	SRCS
-		${CMAKE_CURRENT_LIST_DIR}/NrosUorbBridge.cpp
+		${_bridge_ws}/uorb_bridge_pkg/src/UorbBridge.cpp
 )
 
 # The generated headers' Rust bodies. PUBLIC so it propagates to the final PX4

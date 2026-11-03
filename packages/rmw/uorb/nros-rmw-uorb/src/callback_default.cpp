@@ -1,31 +1,20 @@
-// Phase 115.K.4.2-subscriber-push — weak default impl of the
-// push-wake callback ABI.
+// Phase 115.K.4.2-subscriber-push — the push-wake callback ABI for a build
+// WITHOUT the PX4 glue (the host test double): registration is unsupported,
+// so every subscription polls. Such a session states no readiness form and
+// the runtime refuses it at open (RFC-0113 D5).
 //
-// Two build paths:
-//
-//   1. Standalone / host smoke test (default):
-//      these weak definitions return -1 (unsupported). The test
-//      driver overrides them with strong symbols that stash
-//      (cb, arg) so the test can fire the callback synthetically
-//      (see `tests/register_smoke.cpp`).
-//
-//   2. PX4 module build (NROS_RMW_UORB_LINK_PX4=ON):
-//      `px4_callback_glue.cpp` provides strong definitions that
-//      wrap `uORB::SubscriptionCallbackWorkItem`. The weak
-//      symbols here are overridden at link time.
-//
-// Keeping the default in its own TU lets the linker drop these
-// weak symbols entirely if a strong override is present, which
-// is what we want — the standalone path never wants the
-// "unsupported" stub to ship in production binaries.
+// Linked ONLY when the glue is not (`NROS_RMW_UORB_NO_GLUE_SOURCES`). These
+// were weak stubs beside `px4_callback_glue.cpp`'s strong definitions until
+// phase-521 W8 (d), and in a static archive the stub won: the linker pulls
+// the first member that resolves the symbol, and nothing else references the
+// glue object, so the PX4 module shipped without its push-wake glue. A test
+// driver that links the library supplies its own definitions
+// (`tests/register_smoke.cpp`); this member is then never pulled.
 
 #include "uorb_abi.hpp"
 
 extern "C" {
 
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__((weak))
-#endif
 int nros_orb_register_callback(const struct orb_metadata * /*meta*/,
                                uint8_t /*instance*/,
                                int /*handle*/,
@@ -34,9 +23,6 @@ int nros_orb_register_callback(const struct orb_metadata * /*meta*/,
     return -1;
 }
 
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__((weak))
-#endif
 int nros_orb_unregister_callback(int /*handle*/) {
     return -1;
 }

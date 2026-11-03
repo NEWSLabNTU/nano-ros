@@ -49,6 +49,8 @@ px4_add_module(
     COMPILE_FLAGS
         # Flip uorb_abi.hpp to "#include <uORB/uORB.h>" mode.
         -DNROS_RMW_UORB_USE_PX4_HEADER=1
+        # The glue is linked below: the session states Notify (phase-521 W8 d).
+        -DNROS_RMW_UORB_PX4_GLUE=1
     INCLUDES
         ${CMAKE_CURRENT_LIST_DIR}
         ${NROS_RMW_UORB_CPP_DIR}/include

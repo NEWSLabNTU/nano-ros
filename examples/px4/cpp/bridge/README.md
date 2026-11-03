@@ -156,7 +156,7 @@ layouts do not. PX4 reorders for packing and appends explicit padding:
 | ROS `px4_msgs::msg::DebugKeyValue` | `{ uint64 timestamp; char key[10]; float value; }` |
 
 A `memcpy` would silently transpose `key` and `value`. `translate()` in
-`NrosUorbBridge.cpp` writes the map out, and copies `char[N]` with its NUL
+`uorb_bridge_pkg/src/UorbBridge.cpp` writes the map out, and copies `char[N]` with its NUL
 terminator intact because the CDR side reads it as a string.
 
 ## Two sessions, both named
@@ -165,3 +165,19 @@ The inward node binds `"uorb"`, the outward node binds the networked backend, vi
 `NodeBuilder::rmw(name)` on one executor. An empty name takes the
 first-registered backend, which is `BACKENDS` argument order — an argument list,
 not a contract — so both are named explicitly.
+
+## Layout: a generated entry (phase-521 W8)
+
+This directory is also a nano-ros workspace. The component
+`uorb_bridge_pkg::UorbBridge` (`src/uorb_bridge_pkg/`) is the only
+hand-written code. The PX4 module, its work item and its work queue are
+generated from `src/uorb_bridge_bringup/`:
+`nros_px4_add_module(... BRINGUP ... COMPONENTS ...)`, after `nros sync` has
+written the SystemModel. `just px4 build-bridge-example` runs `nros sync` for
+you.
+
+The entry opens the bringup's `rmw`, uORB, as the primary session. The
+component's second node opens the outward session by name. A
+`debug_key_value` arrival schedules the work item from the publisher's
+context and is forwarded on dispatch, so the bridge has no 200 ms polling
+interval.

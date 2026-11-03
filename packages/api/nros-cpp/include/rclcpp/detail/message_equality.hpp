@@ -45,9 +45,21 @@ inline bool msg_text_eq(const char* a, size_t na, const char* b, size_t nb) {
 
 /// A primitive or a nested message (whose own generated `operator==` this
 /// reaches).
+///
+/// A float field compares with `==`, as upstream's generated `operator==`
+/// does (NaN unequal to itself). The pragma is for builds that refuse that
+/// spelling: PX4 compiles every module `-Werror -Wfloat-equal`, so without it
+/// any PX4 module whose messages carry a float fails (phase-521 W8 d).
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wfloat-equal"
+#endif
 template <typename T> inline bool msg_field_eq(const T& a, const T& b) {
     return a == b;
 }
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 template <typename T, size_t N> inline bool msg_field_eq(const T (&a)[N], const T (&b)[N]) {
     for (size_t i = 0; i < N; ++i)
         if (!msg_field_eq(a[i], b[i])) return false;

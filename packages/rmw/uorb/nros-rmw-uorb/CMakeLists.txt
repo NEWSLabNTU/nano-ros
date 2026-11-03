@@ -103,10 +103,17 @@ if(NROS_RMW_UORB_BUILD_PX4_GLUE)
             "NROS_RMW_UORB_BUILD_PX4_GLUE=ON requires NROS_RMW_UORB_LINK_PX4=ON.")
     endif()
     list(APPEND _nros_rmw_uorb_sources ${NROS_RMW_UORB_PX4_GLUE_SOURCES})
+else()
+    list(APPEND _nros_rmw_uorb_sources ${NROS_RMW_UORB_NO_GLUE_SOURCES})
 endif()
 
 add_library(nros_rmw_uorb STATIC ${_nros_rmw_uorb_sources})
 add_library(NrosRmwUorb::NrosRmwUorb ALIAS nros_rmw_uorb)
+if(NROS_RMW_UORB_BUILD_PX4_GLUE)
+    # phase-521 W8 (d): with the glue, the session states Notify (RFC-0113
+    # D4); without it, none, and the runtime refuses it at open (D5).
+    target_compile_definitions(nros_rmw_uorb PRIVATE NROS_RMW_UORB_PX4_GLUE=1)
+endif()
 
 target_include_directories(nros_rmw_uorb
     PUBLIC

@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>uorb_bridge_pkg</name>
+  <version>0.1.0</version>
+  <description>The uORB to RMW bridge component: reads debug_key_value from uORB, republishes it as CDR px4_msgs.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>
