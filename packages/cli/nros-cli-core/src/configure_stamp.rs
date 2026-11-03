@@ -106,6 +106,13 @@ pub(crate) struct Stamp {
     /// reconfigure on every build; stale for one that names it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) skipped: Option<String>,
+    /// phase-530 W4 (RFC-0120 D2) — where this configure resolved the image's
+    /// answer (`resolved.toml`, the seeds and their input records). A host
+    /// configure finds it by the image's identity (`nros locate configured`),
+    /// never by a path passed on its command line (the retired
+    /// `NROS_RESOLVED_DIR`). `None` when the image resolved nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) resolved_dir: Option<PathBuf>,
 }
 
 /// Whether a recorded stamp still describes the project.
@@ -291,6 +298,55 @@ pub(crate) fn read(project: &Path, image: &str) -> Option<Stamp> {
     toml::from_str(&raw).ok()
 }
 
+/// phase-530 W4 (RFC-0120 D2) — where `nros configure` put `image`'s answer,
+/// located by the image's identity: the directory its stamp records. `Err`
+/// names what to run when the image was not configured (no stamp, or a skip
+/// stamp); `Ok(None)` when it was, and resolved nothing.
+///
+/// `image` is the stamp key: an image id for a leaf, `<bringup>:<id>` for a
+/// workspace, where a bare id that names exactly one stamp is accepted too.
+pub(crate) fn locate_resolved(project: &Path, image: &str) -> Result<(PathBuf, Option<PathBuf>)> {
+    let key = stamp_key_for(project, image)?;
+    let dir = stamp_dir(project, &key);
+    let Some(stamp) = read(project, &key) else {
+        eyre::bail!(
+            "`{image}` in {} has not been configured (no {}): run `nros configure --image {image}` \
+             there",
+            project.display(),
+            stamp_file(project, &key).display()
+        );
+    };
+    if let Some(why) = &stamp.skipped {
+        eyre::bail!(
+            "`{image}` in {} was skipped by its last configure ({why}): run `nros configure \
+             --image {image}` there",
+            project.display()
+        );
+    }
+    Ok((dir, stamp.resolved_dir.filter(|d| d.is_dir())))
+}
+
+/// The stamp key `image` names: itself when a stamp is recorded under it,
+/// else the one `<bringup>:<image>` stamp whose id is `image`.
+fn stamp_key_for(project: &Path, image: &str) -> Result<String> {
+    if stamp_file(project, image).is_file() || image.contains(':') {
+        return Ok(image.to_string());
+    }
+    let root = project.join("build").join("nros").join("configured");
+    let suffix = format!("__{}", image.replace(':', "__"));
+    let hits: Vec<String> = std::fs::read_dir(&root)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.ends_with(&suffix) && root.join(n).join("stamp.toml").is_file())
+        .collect();
+    match hits.as_slice() {
+        [one] => Ok(one.replacen("__", ":", 1)),
+        _ => Ok(image.to_string()),
+    }
+}
+
 /// Write the stamp atomically.
 pub(crate) fn record(project: &Path, image: &str, stamp: &Stamp) -> Result<()> {
     let path = stamp_file(project, image);
@@ -468,6 +524,7 @@ pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
         ament_prefix: std::env::var("AMENT_PREFIX_PATH").ok(),
         launch_resolve: current_launch_resolver(),
         skipped: None,
+        resolved_dir: None,
     })
 }
 
@@ -621,6 +678,7 @@ mod tests {
             ament_prefix: None,
             launch_resolve: None,
             skipped: None,
+            resolved_dir: None,
         }
     }
 
@@ -635,6 +693,60 @@ mod tests {
             stamp_dir(p, "demo_bringup:zephyr"),
             p.join("build/nros/configured/demo_bringup__zephyr")
         );
+    }
+
+    /// phase-530 W4 (RFC-0120 D2) — a host configure locates an image's
+    /// answer by the image's identity: the dir its stamp records. An image
+    /// with no stamp, or a skip stamp, is an error naming `nros configure`.
+    #[test]
+    fn an_image_is_located_by_its_stamp() {
+        let p = tmp("locate");
+        let err = locate_resolved(&p, "zephyr_zenoh").unwrap_err().to_string();
+        assert!(err.contains("has not been configured"), "{err}");
+        assert!(err.contains("nros configure --image zephyr_zenoh"), "{err}");
+
+        let resolved = p.join("build/talker__zephyr_zenoh");
+        std::fs::create_dir_all(&resolved).unwrap();
+        let mut s = stamp_for(&p);
+        s.resolved_dir = Some(resolved.clone());
+        record(&p, "zephyr_zenoh", &s).unwrap();
+        let (dir, got) = locate_resolved(&p, "zephyr_zenoh").unwrap();
+        assert_eq!(dir, stamp_dir(&p, "zephyr_zenoh"));
+        assert_eq!(got.as_deref(), Some(resolved.as_path()));
+
+        // A recorded dir that is gone is no answer, never a dangling path.
+        std::fs::remove_dir_all(&resolved).unwrap();
+        assert_eq!(locate_resolved(&p, "zephyr_zenoh").unwrap().1, None);
+
+        // A skipped image was not configured.
+        let skip = Stamp {
+            skipped: Some("missing toolchain".into()),
+            ..stamp_for(&p)
+        };
+        record(&p, "other", &skip).unwrap();
+        let err = locate_resolved(&p, "other").unwrap_err().to_string();
+        assert!(
+            err.contains("skipped") && err.contains("missing toolchain"),
+            "{err}"
+        );
+    }
+
+    /// A workspace image's stamp key is `<bringup>:<id>`; the hook may name it
+    /// by its bare id when exactly one bringup declares it.
+    #[test]
+    fn a_bare_id_names_its_one_qualified_stamp() {
+        let p = tmp("locate-bare");
+        let resolved = p.join("build/demo_bringup__zephyr");
+        std::fs::create_dir_all(&resolved).unwrap();
+        let mut s = stamp_for(&p);
+        s.resolved_dir = Some(resolved.clone());
+        record(&p, "demo_bringup:zephyr", &s).unwrap();
+        let (dir, got) = locate_resolved(&p, "zephyr").unwrap();
+        assert_eq!(dir, stamp_dir(&p, "demo_bringup:zephyr"));
+        assert_eq!(got.as_deref(), Some(resolved.as_path()));
+        // Two bringups declaring it: the bare id names neither.
+        record(&p, "other_bringup:zephyr", &s).unwrap();
+        assert!(locate_resolved(&p, "zephyr").is_err());
     }
 
     #[test]

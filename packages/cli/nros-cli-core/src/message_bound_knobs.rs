@@ -743,15 +743,36 @@ pub fn write_west_seed(
     probe_codegen_dir: &std::path::Path,
     node_dirs: &[std::path::PathBuf],
 ) -> Result<std::path::PathBuf, String> {
+    write_west_seed_over(resolved_dir, probe_codegen_dir, node_dirs, None)
+}
+
+/// [`write_west_seed`] with the ENTITY fragment the configure's composer will
+/// read stated by the caller, instead of read from `resolved.cmake` beside it.
+///
+/// phase-530 W4 — a standalone Zephyr C/C++ leaf's entity fragment is not the
+/// resolve's (which refuses a leaf with no launch wiring): it is what
+/// `nros dev image west-leaf-sizing` writes before every reader, from the
+/// leaf's census or `[[component]] entities`. `None` reads `resolved.cmake`.
+pub fn write_west_seed_over(
+    resolved_dir: &std::path::Path,
+    probe_codegen_dir: &std::path::Path,
+    node_dirs: &[std::path::PathBuf],
+    entity: Option<&str>,
+) -> Result<std::path::PathBuf, String> {
     let target = resolved_dir.join(RESOLVED_MESSAGE_BOUNDS_NAME);
     let record = resolved_dir.join(RESOLVED_MESSAGE_BOUNDS_INPUTS_NAME);
     let outcome = (|| {
-        let entity_path = resolved_dir.join(crate::resolve::RESOLVED_CMAKE_NAME);
-        let entity = std::fs::read_to_string(&entity_path).map_err(|_| {
-            "the resolve derived no entity inventory, so the configure's first pass reads a \
-             placeholder and composes over a different join"
-                .to_string()
-        })?;
+        let entity = match entity {
+            Some(e) => e.to_string(),
+            None => {
+                let entity_path = resolved_dir.join(crate::resolve::RESOLVED_CMAKE_NAME);
+                std::fs::read_to_string(&entity_path).map_err(|_| {
+                    "the resolve derived no entity inventory, so the configure's first pass \
+                     reads a placeholder and composes over a different join"
+                        .to_string()
+                })?
+            }
+        };
         let mut closure: Vec<String> = Vec::new();
         for dir in node_dirs {
             let xml = dir.join("package.xml");
@@ -817,6 +838,77 @@ pub fn write_west_seed(
             Err(why)
         }
     }
+}
+
+/// The directory, under a resolve dir, that [`write_leaf_west_seed`] generates
+/// a leaf's bound tables into.
+pub const LEAF_CODEGEN_DIR: &str = "codegen";
+
+/// phase-530 W4 (RFC-0120 D5) — the message-bound seed for a standalone
+/// Zephyr C/C++ leaf, which has no workspace metadata probe to read tables
+/// from.
+///
+/// The TABLES are generated here by the C++ emitter the host configure's
+/// `nros_find_interfaces()` runs (`generate_cpp_from_package_xml`, which
+/// discovers the leaf's `nros-codegen.toml` chain the way the cmake args file
+/// names it), into `<resolved_dir>/codegen/`. A bound is a property of the
+/// declaration and its caps, not of the language or the target. The ENTITY
+/// fragment is the one `nros dev image west-leaf-sizing` writes before every
+/// reader ([`crate::cmd::sizing_descriptor::leaf_declaration`]). A leaf that
+/// declares no entities has no such fragment, and gets no seed.
+pub fn write_leaf_west_seed(
+    resolved_dir: &std::path::Path,
+    leaf: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    let out = leaf_west_seed(resolved_dir, leaf);
+    if out.is_err() {
+        // A seed from an earlier configure must not outlive the inputs it was
+        // composed from (the rule `write_west_seed_over` keeps on its own
+        // failures).
+        for name in [RESOLVED_MESSAGE_BOUNDS_NAME, RESOLVED_MESSAGE_BOUNDS_INPUTS_NAME] {
+            let _ = std::fs::remove_file(resolved_dir.join(name));
+        }
+    }
+    out
+}
+
+fn leaf_west_seed(
+    resolved_dir: &std::path::Path,
+    leaf: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    let decl =
+        crate::cmd::sizing_descriptor::leaf_declaration(leaf).map_err(|e| format!("{e:#}"))?;
+    let Some(inv) = decl.inventory else {
+        return Err(
+            "the leaf states no entities, so its configure reads a placeholder entity \
+             inventory"
+                .to_string(),
+        );
+    };
+    let entity = inv.to_cmake();
+    let xml = leaf.join("package.xml");
+    if !declares_a_dependency(&xml) {
+        return Err(format!(
+            "{} declares no interface dependency",
+            xml.display()
+        ));
+    }
+    let codegen = resolved_dir.join(LEAF_CODEGEN_DIR);
+    let edition = std::env::var("ROS_DISTRO")
+        .ok()
+        .filter(|d| rosidl_codegen::RosEdition::parse(d).is_some())
+        .unwrap_or_else(|| "humble".to_string());
+    // The emitter reports on stdout; a configure's stdout is its own report.
+    cargo_nano_ros::generate_cpp_from_package_xml(cargo_nano_ros::GenerateCStandaloneConfig {
+        manifest_path: xml.clone(),
+        output_dir: codegen.clone(),
+        force: true,
+        verbose: false,
+        ros_edition: edition,
+        codegen_config: None,
+    })
+    .map_err(|e| format!("generating the bound tables for {}: {e:#}", xml.display()))?;
+    write_west_seed_over(resolved_dir, &codegen, &[leaf.to_path_buf()], Some(&entity))
 }
 
 #[cfg(test)]
@@ -1023,5 +1115,30 @@ mod tests {
         let entity = "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 6)\n\
                       set(NROS_ENTITY_INVENTORY_STATUS \"derived\")\n";
         assert!(compose(&tables, Some(entity), 2048).is_none());
+    }
+
+    /// phase-530 W4 -- a Zephyr C/C++ leaf that states no entities has no
+    /// fragment `west-leaf-sizing` writes, so configure writes no seed (and
+    /// removes one an earlier configure left), rather than seeding over a
+    /// placeholder it cannot know.
+    #[test]
+    fn a_leaf_that_states_no_entities_gets_no_seed() {
+        let leaf = tempfile::tempdir().unwrap();
+        std::fs::write(
+            leaf.path().join("system.toml"),
+            "[system]\nname = \"l\"\n\n[[component]]\npkg = \"l\"\nclass = \"l::C\"\nname = \"c\"\nentities = \"defaults\"\n\n[image.z]\nboard = \"zephyr\"\n",
+        )
+        .unwrap();
+        std::fs::write(leaf.path().join("CMakeLists.txt"), "find_package(Zephyr)\n").unwrap();
+        let resolved = tempfile::tempdir().unwrap();
+        let stale = resolved.path().join(RESOLVED_MESSAGE_BOUNDS_NAME);
+        std::fs::write(&stale, "set(X 1)\n").unwrap();
+        let err = write_leaf_west_seed(resolved.path(), leaf.path()).unwrap_err();
+        assert!(!err.is_empty());
+        assert!(!stale.exists(), "a seed an earlier configure left is removed");
+        assert!(
+            !resolved.path().join(LEAF_CODEGEN_DIR).exists(),
+            "nothing is generated for a leaf that cannot be seeded"
+        );
     }
 }

@@ -188,6 +188,7 @@ fn configure_project(
 
     // ---- C2-C6: `nros build` stages 1-4, one image at a time ----------
     let mut out = Outcome::default();
+    let mut resolved: std::collections::BTreeMap<String, PathBuf> = Default::default();
     for t in &targets {
         match build::plan_builds(&build_args(
             project,
@@ -196,7 +197,12 @@ fn configure_project(
             plan_dry_run,
             offline,
         )) {
-            Ok(_) => out.configured.push(t.key.clone()),
+            Ok(builds) => {
+                if let Some(d) = builds.iter().find_map(|b| resolve_dir_of(project, b)) {
+                    resolved.insert(t.key.clone(), d);
+                }
+                out.configured.push(t.key.clone())
+            }
             Err(e) if t.named => {
                 return Err(e.wrap_err(format!("configure: image `{}`", t.key)));
             }
@@ -229,6 +235,10 @@ fn configure_project(
             .is_empty()
             .then(|| configure_stamp::PROJECT_KEY.to_string());
         for key in out.configured.iter().chain(project_wide.iter()) {
+            let stamp = configure_stamp::Stamp {
+                resolved_dir: resolved.get(key).cloned(),
+                ..stamp.clone()
+            };
             configure_stamp::record(project, key, &stamp)?;
         }
         // Ruling R15: a skipped image records the digest and its reason, so
@@ -273,6 +283,20 @@ pub(crate) fn build_args(
         check: None,
         native_args: Vec::new(),
     }
+}
+
+/// phase-530 W4 (RFC-0120 D2) — the directory stage 3.5 resolved `build`'s
+/// image into (`build/<bringup>__<id>/`, [`crate::resolve::dir_name_for`]),
+/// when it wrote one. Recorded in the image's stamp, so a host configure
+/// locates it by the image's identity (`nros locate configured`).
+fn resolve_dir_of(project: &Path, build: &build::ResolvedBuild) -> Option<PathBuf> {
+    let (bringup, id) = build.qualified.split_once(':')?;
+    let dir = project
+        .join("build")
+        .join(crate::resolve::dir_name_for(bringup, id));
+    dir.join(crate::resolve::RESOLVED_TOML_NAME)
+        .is_file()
+        .then_some(dir)
 }
 
 /// The project: `dir`, else the working directory, canonical.

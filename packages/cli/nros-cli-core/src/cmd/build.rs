@@ -1729,17 +1729,15 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         n.text()
                     ));
                 }
-                // RFC-0094 D1 — where stage 3.5 put this image's answer. The
-                // configure READS it; it does not re-derive it.
-                //
-                // Passed rather than discovered, for the reason the preamble
-                // above is: a generated build file that computes a path into
-                // the caller's tree stops being workspace-agnostic. It is also
-                // what keeps the seam HONEST — a lane that did not run stage
-                // 3.5 (a bare `west build`, `just zephyr build-fixtures`) sets
-                // nothing, finds nothing, and behaves exactly as it does today.
-                if let Some(d) = &resolved_dir {
-                    a.push(format!("-DNROS_RESOLVED_DIR={}", d.display()));
+                // RFC-0094 D1, RFC-0120 D2 (phase-530 W4) — WHICH image this
+                // configure builds, so its readers locate the answer configure
+                // resolved (`nros locate configured`) by identity. Never the
+                // path itself: the retired `-DNROS_RESOLVED_DIR` was cached, so
+                // it outlived the run that passed it. Kept off the generated
+                // file, which stays workspace-agnostic.
+                if resolved_dir.is_some() {
+                    a.push(format!("-DNROS_CONFIGURED_PROJECT={}", root.display()));
+                    a.push(format!("-DNROS_CONFIGURED_IMAGE={qual}"));
                 }
                 // Issue 1653 (RFC-0100 Amendment 1, "D4 revised") — the BOARD
                 // heap, resolved here at stage 4 for every road, handed to the
@@ -1767,7 +1765,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // had already resolved that very root.
                 //
                 // PASSED, not baked into the generated file, for the reason the
-                // preamble and `NROS_RESOLVED_DIR` above are: the file stays
+                // preamble above is: the file stays
                 // workspace-agnostic and byte-identical across machines (W3.c),
                 // which an absolute store path written into it would not be.
                 //
@@ -1899,6 +1897,22 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 let leaf_app = (image.entry.is_none())
                     .then(|| zephyr_leaf_application(&root, &bringup_dir))
                     .flatten();
+                // phase-530 W4 (RFC-0120 D5) -- a standalone Zephyr C/C++ leaf's
+                // census (C4: the module hook took it before W4) and its
+                // message-bound seed (C5), so a host configure of it reads
+                // derived sizes on its first pass and its producers are held
+                // to them.
+                if let Some(leaf) = &leaf_app
+                    && !args.dry_run
+                    && image_has_non_rust(&image, &bringup_dir)
+                {
+                    configure_zephyr_leaf(
+                        leaf,
+                        &image_id,
+                        descriptor.platform,
+                        resolved_dir.as_deref(),
+                    );
+                }
                 let generated = if image.entry.is_some() || leaf_app.is_some() {
                     GeneratedEntry::default()
                 } else {
@@ -2065,12 +2079,11 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // arities, and west accepts options after the positional.
                 a.extend(west_extra);
                 let west_opts = crate::builder::zephyr::west_args(&overlays);
-                // RFC-0094 D1 — same seam as the cmake driver, in west's
-                // second argument zone. See the note there.
-                let mut resolved_opt: Vec<String> = resolved_dir
-                    .as_ref()
-                    .map(|d| vec![format!("-DNROS_RESOLVED_DIR={}", d.display())])
-                    .unwrap_or_default();
+                // RFC-0120 D2 (phase-530 W4) — no resolve path on the west
+                // line: the module hook runs `nros configure` for the image it
+                // renders and locates the answer by identity, exactly as a
+                // plain `west build` does, so the two roads read one answer.
+                let mut resolved_opt: Vec<String> = Vec::new();
                 // Issue 1653's west half -- the board heap, on the same
                 // configure line the cmake arm hands it on. West emits no root
                 // (RFC-0065 D3), but its second argument zone IS a cmake
@@ -2182,13 +2195,13 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     }
                 }
                 // phase-439 W7 -- the configure may READ the resolve's entity
-                // inventory only when THIS run of `nros build` wrote the record
-                // it reads it by: the digest rides the environment, which ninja's
-                // own re-runs of cmake inherit and a later reconfigure of the
-                // same build dir does not (`NROS_RESOLVED_DIR` is cached, so it
-                // cannot tell them apart). The record covers the registered
-                // rows, the model and the workspace, not the probe sidecars that
-                // floor the counts, and those can move between two builds.
+                // inventory only over a current configure: the digest rides the
+                // environment, which ninja's own re-runs of cmake inherit and a
+                // later reconfigure of the same build dir does not. (Since
+                // phase-530 W4 the module hook also runs `nros configure` itself
+                // and says so, which is the same guarantee on a plain `west
+                // build`.) The record covers the registered rows, the model and
+                // the workspace, not the probe sidecars that floor the counts.
                 Some(
                     match resolved_dir
                         .as_ref()
@@ -6095,6 +6108,40 @@ fn before_boot_not_on_c_road(image_id: &str) -> eyre::Report {
          C/C++ (its package graph holds a C/C++ package). Run the step from a node's \
          `register`, or materialise the entry (`nros materialize {image_id}`)."
     )
+}
+
+/// phase-530 W4 (RFC-0120 D5) -- what `nros configure` writes for a
+/// standalone Zephyr C/C++ leaf before any host configure: its census, when it
+/// is sized from one (C4 -- the module hook took it before), and its
+/// message-bound seed (C5), composed over the tables the host configure's
+/// `nros_find_interfaces()` will generate (the same codegen, the same
+/// `nros-codegen.toml` chain, generated here into the resolve dir) and over the
+/// entity fragment `nros dev image west-leaf-sizing` will write before every
+/// reader. Never fatal: no seed is the old behaviour, and the reason is said.
+fn configure_zephyr_leaf(
+    leaf: &std::path::Path,
+    image_id: &str,
+    platform: crate::orchestration::board_descriptor::PlatformKind,
+    resolved_dir: Option<&std::path::Path>,
+) {
+    let decl = match nros_orchestration_ir::leaf_system::read_image(leaf, image_id) {
+        Ok(Some(d)) => d,
+        Ok(None) => return,
+        Err(e) => {
+            eprintln!("nros build:   {}: {e}", leaf.display());
+            return;
+        }
+    };
+    if crate::leaf_census::entity_source(leaf, &decl).is_census() && census_take_is_ours(platform) {
+        crate::cmd::entity_census::take_leaf_for_build(leaf);
+    }
+    let Some(dir) = resolved_dir else {
+        return;
+    };
+    match crate::message_bound_knobs::write_leaf_west_seed(dir, leaf) {
+        Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
+        Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
+    }
 }
 
 /// The leaf directory, when it is a Zephyr application in its own right.
