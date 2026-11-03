@@ -338,6 +338,20 @@ test states is 100 µs). With attribution (the slot filled, the arrival
 naming its entity) it wakes none of them: each parks its whole budget, and
 the low tier is woken by its own arrival.
 
+Under PX4's work-queue scheduler (D9; PX4 v1.17.0 SITL,
+`px4_sitl::work_queue_tier_wakes_only_for_deadlines_and_arrivals`, the
+hosted `px4-sitl` nightly job, 2026-11-03): the generated `nros_uorb_demo`
+runs one tier, a 1 s timer and a `vehicle_status` subscription, as a PX4
+work item. The tier counts its own runs and the component its dispatches;
+over a 10 s window, in each of three runs, the work item ran 30 times for 10
+deadlines and 20 arrivals: no run answered neither (the retired 10 ms slice
+would add ~1,000). Arrival→dispatch is measured on the real clock from the
+uORB callback's `notify()` to the run that serves it: 14–29 µs, against a
+stated bound of 5 ms. SITL runs lockstep, so PX4's `hrt` is virtual time
+that moves in steps: a publish-to-dispatch delta on it is 0 by construction,
+and a 1 s tick's jitter on it is exactly one 16 ms step in every run, which
+is what the test bounds (20 ms) rather than a real-time claim.
+
 Zephyr's serial link receives only through its interrupt-driven ring: the
 polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
@@ -360,6 +374,10 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Changelog
 
+- 2026-11-03 — Coverage: D2 measured under PX4's work-queue scheduler on
+  SITL (runs = deadlines + arrivals, arrival→dispatch 14–29 µs), the cell run
+  by the hosted `px4-sitl` nightly job; PX4 admitted to Tier 1 in RFC-0112 D3
+  (phase-521 W8 e/f).
 - 2026-11-03 — D4/D9: uORB states Notify. Its glue is linked (a weak stub
   had shadowed it) and bound to the owning tier's work item. The PX4 firmware
   example runs on the generated entry (phase-521 W8 d).
