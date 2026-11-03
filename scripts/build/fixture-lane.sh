@@ -494,8 +494,9 @@ nros_fixtures_stamp_clear() {
 nros_fixtures_skipped_modules() {
     local joblog="${1:-tmp/build-test-fixtures-latest/build-test-fixtures.joblog}"
     [ -r "$joblog" ] || return 0
-    # Field 5 is the status. 78 = SKIPPED; a non-zero, non-78 status aborts the
-    # fan-out, so it cannot reach the stamp and needs no arm here.
+    # Field 5 is the status. 78 = SKIPPED; a non-zero, non-78 status fails the
+    # build after every stage has run (issue 2226), so it never reaches the
+    # stamp and needs no arm here.
     awk -F'\t' 'NR>1 && $5==78 {print $1}' "$joblog" 2>/dev/null | sort -u
 }
 
