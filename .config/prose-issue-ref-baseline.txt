@@ -53,6 +53,11 @@
 #         keyed without the entity facts). Issue 1684 cites it as what blocked
 #         the tier-1 fixture build. REMOVE THIS ROW when #1707 merges.
 #
+#   2234  IN FLIGHT — filed on branch `phase530-w3` (phase-530 W3: the configure
+#         stamp misses a probe sidecar whose CLI key moved). phase-530 W4
+#         measured it on every hooked road. REMOVE THIS ROW when W3 merges.
+#
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
+docs/roadmap/phase-530-nros-configure-single-pass.md:2234
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
