@@ -915,7 +915,7 @@ fn sidecar_is_fresh(sidecar: &Path, digest: &str) -> bool {
 /// the harness so the stamp is one implementation for every producer language
 /// (W3's C/C++ probe gets it for free), and so the round-trip through
 /// [`SourceMetadata`] doubles as schema validation of what the harness emitted.
-fn stamp_provenance(sidecar: &Path, digest: &str) -> Result<()> {
+pub(crate) fn stamp_provenance(sidecar: &Path, digest: &str) -> Result<()> {
     let raw =
         std::fs::read_to_string(sidecar).wrap_err_with(|| format!("read {}", sidecar.display()))?;
     let mut parsed: SourceMetadata = serde_json::from_str(&raw).wrap_err_with(|| {
@@ -1292,6 +1292,46 @@ fn collect_sources(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<()
         }
     }
     Ok(())
+}
+
+/// phase-530 W1 -- the sidecars under `root` whose COMPONENT SOURCES moved
+/// since they were stamped, as one line each. A sidecar's key is
+/// `<source_digest>:<closure>:<cli stamp>` (see [`probe_inputs_key`]); only the
+/// first part is a property of the project, so only it is compared here and no
+/// nano-ros checkout is needed. A component with no sidecar yet is not listed
+/// (nothing recorded, nothing stale); an unreadable or unstamped one is.
+// phase-530 W1 Task 3 (the verb) removes this allow.
+#[allow(dead_code)]
+pub(crate) fn stale_sidecar_components(root: &Path) -> Vec<String> {
+    let Ok(workspace) = Workspace::discover(root) else {
+        return Vec::new();
+    };
+    let Ok(declarations) = workspace.component_declarations() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for decl in &declarations {
+        let sidecar = decl.source_metadata_path();
+        let Ok(raw) = std::fs::read_to_string(&sidecar) else {
+            continue;
+        };
+        let recorded = serde_json::from_str::<SourceMetadata>(&raw)
+            .ok()
+            .and_then(|m| m.provenance)
+            .map(|p| p.inputs_digest);
+        let current = source_digest(&decl.package_root).ok();
+        let fresh = match (&recorded, &current) {
+            (Some(r), Some(c)) => r.starts_with(&format!("{c}:")),
+            _ => false,
+        };
+        if !fresh {
+            out.push(format!(
+                "metadata sidecar `{}` is stale (component sources moved)",
+                sidecar.display()
+            ));
+        }
+    }
+    out
 }
 
 /// Newest mtime under a package root — diagnostics only (`nros ws status`).
