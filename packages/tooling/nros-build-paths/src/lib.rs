@@ -890,16 +890,18 @@ pub fn tband_dir() -> PathBuf {
 ///
 /// Prefers `nros-nuttx-export-<arch>/include` when it carries a
 /// `nuttx/config.h`, else the live tree's `include/` so a pre-phase-339 checkout
-/// keeps working. Emits `rerun-if-changed` on BOTH spellings whether or not they
-/// exist (issue 0477's rule): the config IS the memory map and the ABI, so a
-/// reconfigure must invalidate whatever was derived from it — including on the
-/// branch that lost.
+/// keeps working.
+///
+/// Watches every PREFERRED spelling whether or not it exists (issue 0477's
+/// rule): a snapshot that appears later must invalidate an artifact built from
+/// the fallback. The shared tree's `config.h` is watched only when it IS the
+/// answer (issue 2227). The shared tree is configured for whichever arch built
+/// last, so watching it on the branch that lost made every riscv reconfigure
+/// invalidate every arm artifact compiled against the arm snapshot — the arm
+/// fixtures `just nuttx build-fixtures` had just built read STALE at once,
+/// over a header they never included.
 pub fn nuttx_include_root(nuttx_dir: &std::path::Path) -> PathBuf {
     let shared = nuttx_dir.join("include");
-    println!(
-        "cargo:rerun-if-changed={}",
-        shared.join("nuttx/config.h").display()
-    );
     // issue 0750 (B) — `$NUTTX_EXPORT_DIR` FIRST, matching
     // `nros_board_common::nuttx_export::snapshot_root`'s resolution order.
     //
@@ -946,6 +948,10 @@ pub fn nuttx_include_root(nuttx_dir: &std::path::Path) -> PathBuf {
             return inc;
         }
     }
+    println!(
+        "cargo:rerun-if-changed={}",
+        shared.join("nuttx/config.h").display()
+    );
     shared
 }
 
