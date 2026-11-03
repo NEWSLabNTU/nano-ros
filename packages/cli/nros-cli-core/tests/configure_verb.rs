@@ -269,24 +269,191 @@ fn sync_alias_succeeds_when_an_image_preflight_refuses() {
     cleanup(&ws);
 }
 
+/// The env var naming the leaf a [`configure_child`] process configures.
+const CHILD_LEAF: &str = "NROS_CONFIGURE_TEST_CHILD_LEAF";
+/// The line a [`configure_child`] prints its outcome on.
+const CHILD_MARK: &str = "CONFIGURE-CHILD up_to_date=";
+
+/// M2 (phase-530 W1 final review): two configures of one leaf at once, as
+/// two PROCESSES. In one process the two shared the environment, so one
+/// could read the other's exported `NROS_CONFIGURE_HELD` and the "exactly
+/// one finds the stamp current" count raced. Each child is this test binary
+/// re-run on [`configure_child`] alone, with its own environment.
 #[test]
 fn second_concurrent_configure_finds_stamp_current() {
-    setup();
     let leaf = scratch_leaf("concurrent");
-    let leaf_s = leaf.to_str().unwrap().to_string();
-    let threads: Vec<_> = (0..2)
+    let children: Vec<std::process::Child> = (0..2)
         .map(|_| {
-            let l = leaf_s.clone();
-            std::thread::spawn(move || configure_outcome(&[&l]))
+            std::process::Command::new(std::env::current_exe().expect("this test binary"))
+                .args(["configure_child", "--exact", "--ignored", "--nocapture"])
+                .env(CHILD_LEAF, &leaf)
+                .env_remove("NROS_CONFIGURE_HELD")
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .expect("spawn a configure child")
         })
         .collect();
-    let outs: Vec<configure::Outcome> = threads.into_iter().map(|t| t.join().unwrap()).collect();
-    let up_to_date = outs.iter().filter(|o| o.up_to_date).count();
+    let outs: Vec<String> = children
+        .into_iter()
+        .map(|c| {
+            let out = c.wait_with_output().expect("a configure child ran");
+            let text = String::from_utf8_lossy(&out.stdout).into_owned();
+            assert!(out.status.success(), "a configure child failed:\n{text}");
+            text
+        })
+        .collect();
+    let up_to_date: Vec<bool> = outs
+        .iter()
+        .map(|t| {
+            let line = t
+                .lines()
+                .find_map(|l| l.strip_prefix(CHILD_MARK))
+                .unwrap_or_else(|| panic!("no `{CHILD_MARK}` line in:\n{t}"));
+            line.trim() == "true"
+        })
+        .collect();
     assert_eq!(
-        up_to_date, 1,
-        "exactly one finds the other's stamp: {outs:?}"
+        up_to_date.iter().filter(|u| **u).count(),
+        1,
+        "exactly one finds the other's stamp: {up_to_date:?}"
     );
     cleanup(&leaf);
+}
+
+/// The child half of [`second_concurrent_configure_finds_stamp_current`]:
+/// configure the leaf [`CHILD_LEAF`] names and print the outcome. Run alone
+/// (no [`CHILD_LEAF`]), it configures a scratch leaf of its own, so it never
+/// passes having done nothing.
+#[test]
+#[ignore = "a child process of second_concurrent_configure_finds_stamp_current"]
+fn configure_child() {
+    setup();
+    let own = std::env::var_os(CHILD_LEAF).is_none();
+    let leaf = match std::env::var_os(CHILD_LEAF) {
+        Some(l) => PathBuf::from(l),
+        None => scratch_leaf("child"),
+    };
+    let out = configure_outcome(&[leaf.to_str().unwrap()]);
+    println!("{CHILD_MARK}{}", out.up_to_date);
+    if own {
+        assert_eq!(out.configured, ["linux"], "{out:?}");
+        cleanup(&leaf);
+    }
+}
+
+/// phase-530 W1 (I1): an OUTPUT configure wrote is gone and every input is
+/// unchanged. The stamp used to say "up to date", and the next `nros build`
+/// then failed with an internal error.
+#[test]
+fn deleted_generated_dir_reconfigures() {
+    setup();
+    let leaf = scratch_leaf("deleted-generated");
+    let leaf_s = leaf.to_str().unwrap();
+    configure_outcome(&[leaf_s]);
+    let std_msgs = leaf.join("generated/std_msgs/Cargo.toml");
+    assert!(std_msgs.is_file(), "configure generated std_msgs");
+    fs::remove_dir_all(leaf.join("generated")).unwrap();
+
+    let out = configure_outcome(&[leaf_s]);
+    assert!(!out.up_to_date, "a deleted `generated/` is stale: {out:?}");
+    assert_eq!(out.configured, ["linux"], "{out:?}");
+    assert!(std_msgs.is_file(), "configure regenerated std_msgs");
+    let again = configure_outcome(&[leaf_s]);
+    assert!(again.up_to_date, "and is current after: {again:?}");
+    cleanup(&leaf);
+}
+
+/// phase-530 W1 (I2): `--ros-edition` changes what C1 generates, so a
+/// configure with it is not the configure the stamp recorded. (`humble` is
+/// the image's own edition: the flag's VALUE is what the stamp keys on.)
+#[test]
+fn ros_edition_change_reconfigures() {
+    setup();
+    let leaf = scratch_leaf("edition-flag");
+    let leaf_s = leaf.to_str().unwrap();
+    let first = configure_outcome(&[leaf_s]);
+    assert_eq!(first.configured, ["linux"], "{first:?}");
+    let out = configure_outcome(&[leaf_s, "--ros-edition", "humble"]);
+    assert!(!out.up_to_date, "a new --ros-edition reconfigures: {out:?}");
+    assert_eq!(out.configured, ["linux"], "{out:?}");
+    let again = configure_outcome(&[leaf_s, "--ros-edition", "humble"]);
+    assert!(again.up_to_date, "the same flags again: {again:?}");
+    cleanup(&leaf);
+}
+
+/// phase-530 W1 (I2): `--no-metadata` skips the metadata probe, so a plain
+/// configure after it must run the probe, not find the stamp current.
+#[test]
+fn no_metadata_then_plain_configure_runs_the_probe() {
+    setup();
+    let leaf = scratch_leaf("no-metadata");
+    let leaf_s = leaf.to_str().unwrap();
+    let sidecar = leaf.join("metadata/listener.json");
+    let first = configure_outcome(&[leaf_s, "--no-metadata"]);
+    assert_eq!(first.configured, ["linux"], "{first:?}");
+    assert!(!sidecar.exists(), "--no-metadata wrote no sidecar");
+    assert!(stamp_file(&leaf, "linux").is_file(), "and recorded a stamp");
+    let out = configure_outcome(&[leaf_s]);
+    assert!(!out.up_to_date, "the probe never ran: {out:?}");
+    assert!(sidecar.is_file(), "the plain configure ran the probe");
+    cleanup(&leaf);
+}
+
+/// A copy of `multi-node-workspace` whose bringup adds an image naming a
+/// board no catalog knows: stage 2 fails for it, and not as a preflight
+/// refusal.
+fn workspace_with_a_broken_image(tag: &str) -> PathBuf {
+    let ws = scratch_copy("examples/templates/multi-node-workspace", tag);
+    let sys = ws.join("src/demo_bringup/system.toml");
+    let mut body = fs::read_to_string(&sys).unwrap();
+    body.push_str("\n[image.broken]\nboard = \"no-such-board-anywhere\"\n");
+    fs::write(&sys, body).unwrap();
+    ws
+}
+
+/// Ruling R22: an image the caller did NOT name that fails stages 2-4 for
+/// any reason is reported, left without a stamp, and configure still
+/// succeeds -- `nros sync`'s contract (C1 succeeded, exit 0).
+#[test]
+fn unnamed_image_failure_does_not_fail_configure() {
+    setup();
+    let ws = workspace_with_a_broken_image("r22-unnamed");
+    let out = configure_outcome(&[ws.to_str().unwrap()]);
+    assert!(
+        out.configured.iter().any(|k| k == "demo_bringup:linux"),
+        "{out:?}"
+    );
+    assert_eq!(out.not_configured.len(), 1, "{out:?}");
+    assert_eq!(out.not_configured[0].0, "demo_bringup:broken", "{out:?}");
+    assert!(
+        out.not_configured[0].1.contains("no-such-board-anywhere"),
+        "{out:?}"
+    );
+    assert!(!out.not_configured[0].1.contains('\n'), "one line: {out:?}");
+    assert!(
+        !stamp_file(&ws, "demo_bringup:broken").exists(),
+        "a failed image records no stamp"
+    );
+    // The same through the dispatch: exit 0.
+    nros(&["configure", ws.to_str().unwrap(), "--force"])
+        .expect("an unnamed image's failure does not fail configure");
+    cleanup(&ws);
+}
+
+/// Ruling R22's counterpart: NAMED, the same failure is an error.
+#[test]
+fn named_image_failure_fails_configure() {
+    setup();
+    let ws = workspace_with_a_broken_image("r22-named");
+    let err = nros(&[
+        "configure",
+        ws.to_str().unwrap(),
+        "--image",
+        "demo_bringup:broken",
+    ])
+    .expect_err("a named image's failure is an error");
+    assert!(err.contains("no-such-board-anywhere"), "{err}");
+    cleanup(&ws);
 }
 
 /// Issue-1305 shape (Ruling R9): a leaf's images share ONE selection package

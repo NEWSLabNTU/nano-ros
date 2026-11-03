@@ -43,6 +43,10 @@ pub struct Outcome {
     /// `(stamp key, reason)` of each image whose preflight refused it and
     /// which the caller did not name. No stamp is recorded for these.
     pub skipped: Vec<(String, String)>,
+    /// `(stamp key, error)` of each image the caller did not name whose
+    /// stages 2-4 failed for a reason other than a preflight refusal (Ruling
+    /// R22). No stamp is recorded, so the next configure tries it again.
+    pub not_configured: Vec<(String, String)>,
     /// How many times C1 (`ws::run_sync`) ran, counted where it starts. One
     /// when anything ran: a configure that must sync twice to converge is a
     /// defect (phase-530 W1, Ruling R10).
@@ -63,19 +67,27 @@ pub fn run(args: Args) -> Result<()> {
 
 /// [`run`], returning what it did.
 pub fn configure(args: Args) -> Result<Outcome> {
+    configure_with(args, std::env::var_os(HELD_VAR).as_deref())
+}
+
+/// [`configure`] with [`HELD_VAR`]'s value injected.
+pub(crate) fn configure_with(args: Args, held: Option<&std::ffi::OsStr>) -> Result<Outcome> {
+    let project = project_root(args.sync.workspace.as_deref())?;
+    // Ruling R25: only `ensure_current` (the implicit configure of a child a
+    // configure spawned) honours the marker. An EXPLICIT configure under it
+    // was asked to do work; succeeding without doing any would let a CI
+    // `nros configure --check` pass vacuously.
+    if held_by_parent(&project, held) {
+        eyre::bail!(
+            "{HELD_VAR} is internal to nros configure (it marks a configure already \
+             running for this project); unset it"
+        );
+    }
     // `--check` and `--dry-run` keep the meaning they had on `nros sync`: a
     // check, and a print of what would be written. Neither writes, so neither
     // plans nor records a stamp.
     if args.sync.check || args.sync.dry_run {
         ws::run_sync(args.sync)?;
-        return Ok(Outcome::default());
-    }
-    let project = project_root(args.sync.workspace.as_deref())?;
-    if held_by_parent(&project, std::env::var_os(HELD_VAR).as_deref()) {
-        println!(
-            "configure: {} is being configured by a parent configure; nothing to do",
-            project.display()
-        );
         return Ok(Outcome::default());
     }
     let named: Vec<String> = args.sync.image.iter().cloned().collect();
@@ -103,6 +115,10 @@ pub fn ensure_current(
 
 /// The environment variable a configure exports while it holds a project's
 /// lock: the canonical project path.
+///
+/// INTERNAL: never set it by hand. Only the implicit configure a child of
+/// that configure runs (`ensure_current`) honours it; an explicit `nros
+/// configure` under it for the same project fails (Ruling R25).
 pub(crate) const HELD_VAR: &str = "NROS_CONFIGURE_HELD";
 
 /// [`ensure_current`] with [`HELD_VAR`]'s value injected, so a test need not
@@ -143,6 +159,14 @@ pub(crate) fn ensure_current_with(
 }
 
 /// `SyncArgs` with every default, the way the parser would build them.
+#[cfg(test)]
+pub(crate) fn default_sync_args() -> ws::SyncArgs {
+    SyncOnly::try_parse_from(["configure"])
+        .expect("`configure` with no flags parses")
+        .sync
+}
+
+/// `SyncArgs` alone, for the parser.
 #[derive(Parser)]
 struct SyncOnly {
     #[command(flatten)]
@@ -158,6 +182,7 @@ fn configure_project(
     plan_dry_run: bool,
 ) -> Result<Outcome> {
     ensure_interface_search_path(project);
+    let flags = configure_stamp::OutputFlags::of(&sync);
     let _lock = lock_exclusive_path(&configure_stamp::lock_path(project))?;
     // Declared AFTER `_lock`, so it drops first: the marker never outlives
     // the lock it announces.
@@ -174,7 +199,8 @@ fn configure_project(
     if !force {
         let mut all_current = true;
         for (key, named) in &keys {
-            if let Currency::Stale(why) = configure_stamp::is_current(project, key, *named)? {
+            if let Currency::Stale(why) = configure_stamp::is_current(project, key, *named, &flags)?
+            {
                 eprintln!("configure: {key}: {why}");
                 all_current = false;
                 break;
@@ -216,13 +242,25 @@ fn configure_project(
             offline,
         )) {
             Ok(_) => out.configured.push(t.key.clone()),
+            Err(e) if t.named => {
+                return Err(e.wrap_err(format!("configure: image `{}`", t.key)));
+            }
             Err(e) => match e.downcast_ref::<PreflightRefusal>() {
-                Some(refusal) if !t.named => {
+                Some(refusal) => {
                     let why = refusal.summary();
                     eprintln!("configure: {}: skipped — {why}", t.key);
                     out.skipped.push((t.key.clone(), why));
                 }
-                _ => return Err(e.wrap_err(format!("configure: image `{}`", t.key))),
+                // Ruling R22: an image nobody named that fails stages 2-4 for
+                // any other reason is reported and left unconfigured, with no
+                // stamp, so the next configure tries it again. C1 succeeded,
+                // which is what `nros sync` exited 0 on; `nros build` of that
+                // image then fails on its own error.
+                None => {
+                    let chain = format!("{e:#}").lines().collect::<Vec<_>>().join(" ");
+                    eprintln!("configure: {}: not configured — {chain}", t.key);
+                    out.not_configured.push((t.key.clone(), chain));
+                }
             },
         }
     }
@@ -231,7 +269,7 @@ fn configure_project(
     // Ruling R16: a dry run's stage 4 wrote nothing, so it records nothing —
     // the rule `--check`/`--dry-run` already follow.
     if !plan_dry_run {
-        let stamp = configure_stamp::stamp_now(project)?;
+        let stamp = configure_stamp::stamp_now(project, &flags)?;
         let project_wide = targets
             .is_empty()
             .then(|| configure_stamp::PROJECT_KEY.to_string());
@@ -309,20 +347,32 @@ struct HeldMarker(Option<std::ffi::OsString>);
 impl HeldMarker {
     fn export(project: &Path) -> Self {
         let previous = std::env::var_os(HELD_VAR);
-        // SAFETY: set and restored on configure's own thread, around a body
-        // that spawns its children from that thread; the readers are this
-        // CLI's verbs and the processes it spawns.
-        unsafe { std::env::set_var(HELD_VAR, project) };
+        set_env(HELD_VAR, Some(project.as_os_str()));
         HeldMarker(previous)
     }
 }
 
 impl Drop for HeldMarker {
     fn drop(&mut self) {
-        // SAFETY: as in `export`.
-        match self.0.take() {
-            Some(v) => unsafe { std::env::set_var(HELD_VAR, v) },
-            None => unsafe { std::env::remove_var(HELD_VAR) },
+        set_env(HELD_VAR, self.0.take().as_deref());
+    }
+}
+
+/// The ONE place configure writes the process environment: `Some` sets
+/// `var`, `None` removes it. Every writer serialises on one mutex.
+fn set_env(var: &str, value: Option<&std::ffi::OsStr>) {
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    // SAFETY: edition 2024 makes these unsafe because another thread may be
+    // reading the environment. Configure's writers (the held marker, the
+    // interface search path) all come through here and are serialised on
+    // ENV_LOCK; the CLI runs configure on one thread, and the readers are
+    // this CLI's own verbs and the processes configure spawns from that
+    // thread, which inherit a consistent copy.
+    unsafe {
+        match value {
+            Some(v) => std::env::set_var(var, v),
+            None => std::env::remove_var(var),
         }
     }
 }
@@ -419,18 +469,11 @@ fn targets(project: &Path, named: &[String]) -> Result<Vec<Target>> {
 fn ensure_interface_search_path(project: &Path) {
     const VAR: &str = "NROS_INTERFACE_SEARCH_PATH";
     static USER_SET: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    // Two configures in one process (threads) must not both write it.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     if *USER_SET.get_or_init(|| std::env::var_os(VAR).is_some()) {
         return;
     }
-    // SAFETY: serialised against every other writer in this process by
-    // ENV_LOCK; this CLI's readers of the variable are its own verbs.
-    match ws::interface_search_root(project) {
-        Ok(root) => unsafe { std::env::set_var(VAR, root) },
-        Err(_) => unsafe { std::env::remove_var(VAR) },
-    }
+    let root = ws::interface_search_root(project).ok();
+    set_env(VAR, root.as_ref().map(|r| r.as_os_str()));
 }
 
 #[cfg(test)]
@@ -519,5 +562,42 @@ mod tests {
             PreflightRefusal(vec![m.clone()]).to_string(),
             crate::builder::preflight::report(&[m])
         );
+    }
+
+    fn explicit_args(argv: &[&str]) -> Args {
+        #[derive(Parser)]
+        struct A {
+            #[command(flatten)]
+            args: Args,
+        }
+        let mut full = vec!["configure"];
+        full.extend_from_slice(argv);
+        A::try_parse_from(full).unwrap().args
+    }
+
+    /// Ruling R25 — an EXPLICIT configure under an inherited marker for the
+    /// same project fails, naming the variable; before, it printed a note and
+    /// exited 0 having done nothing, so `--check` could pass vacuously.
+    #[test]
+    fn explicit_configure_refuses_an_inherited_held_marker() {
+        let project = crate::test_support::scratch_dir("configure_held_explicit");
+        let p = project.to_str().unwrap();
+        for argv in [
+            &[p][..],
+            &[p, "--check"],
+            &[p, "--dry-run"],
+            &[p, "--force"],
+        ] {
+            let err = configure_with(explicit_args(argv), Some(project.join(".").as_os_str()))
+                .expect_err("an explicit configure under the marker must fail");
+            let msg = format!("{err:#}");
+            assert!(
+                msg.contains(
+                    "NROS_CONFIGURE_HELD is internal to nros configure (it marks a configure \
+                     already running for this project); unset it"
+                ),
+                "{argv:?}: {msg}"
+            );
+        }
     }
 }
