@@ -63,6 +63,10 @@ pub mod entity_census;
 // Shaped like `rosidl_codegen::bounds` — one data model, three transports —
 // rather than as a second inventory mechanism.
 pub mod entity_inventory;
+/// RFC-0120 D4 (phase-530 W2) — where a standalone leaf's entity counts come
+/// from: declared, its census (by default for a C/C++ cross leaf), or the
+/// written-down defaults. One rule for every reader.
+pub mod leaf_census;
 /// Issue 0827 — a cargo leaf derives its pool budgets from the metadata probe,
 /// through `entity_inventory`'s rules rather than a second copy of them.
 pub mod leaf_entity_env;
