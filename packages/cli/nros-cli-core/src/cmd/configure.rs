@@ -43,6 +43,10 @@ pub struct Outcome {
     /// `(stamp key, reason)` of each image whose preflight refused it and
     /// which the caller did not name. No stamp is recorded for these.
     pub skipped: Vec<(String, String)>,
+    /// How many times C1 (`ws::run_sync`) ran, counted where it starts. One
+    /// when anything ran: a configure that must sync twice to converge is a
+    /// defect (phase-530 W1, Ruling R10).
+    pub sync_passes: usize,
 }
 
 /// One image to configure: the key its stamp lives under, the name
@@ -134,8 +138,14 @@ fn configure_project(
 
     // ---- C1: what `nros sync` did -------------------------------------
     let nano_ros_path = sync.nano_ros_path.clone();
-    // Kept for the convergence pass below.
-    let resync = sync.clone();
+    // Ruling R9: on a leaf, every image shares the output C1 writes, so say
+    // which image is writing it before the first byte moves.
+    if is_leaf(project)
+        && let [t] = targets.as_slice()
+    {
+        configure_stamp::record_leaf_selection(project, &t.key)?;
+    }
+    let syncs_before = ws::sync_runs();
     ws::run_sync(sync)?;
 
     // ---- C2-C6: `nros build` stages 1-4, one image at a time ----------
@@ -159,24 +169,6 @@ fn configure_project(
         }
     }
 
-    // ---- convergence: stage 4 can move what C1 keyed on ----------------
-    //
-    // Stage 4 can write into a component's package root -- measured on the
-    // listener leaf: the `Cargo.lock` its stage 4 seeds lands after C1's
-    // metadata probe -- so the sidecar C1 just stamped is stale the moment
-    // planning finishes. Recording now would make the NEXT
-    // configure stale for a reason this one caused. One more C1 re-probes
-    // against what stage 4 left; stage 4 does not move it again.
-    if !out.configured.is_empty()
-        && let Some(line) =
-            crate::orchestration::metadata_refresh::stale_sidecar_components(project)
-                .into_iter()
-                .next()
-    {
-        eprintln!("configure: re-syncing after planning: {line}");
-        ws::run_sync(resync)?;
-    }
-
     // ---- the stamps: inputs as they are AFTER this configure wrote -----
     if !out.configured.is_empty() {
         let stamp = configure_stamp::stamp_now(project)?;
@@ -184,6 +176,7 @@ fn configure_project(
             configure_stamp::record(project, key, &stamp)?;
         }
     }
+    out.sync_passes = ws::sync_runs() - syncs_before;
     Ok(out)
 }
 
@@ -307,20 +300,27 @@ fn targets(project: &Path, named: &[String]) -> Result<Vec<Target>> {
 }
 
 /// RFC-0120 D2: configure computes the interface search path itself, which
-/// retires `eval "$(nros dev ws env)"`. Set only when unset, so a caller's
-/// own path wins. A project with no package layout to search has none.
+/// retires `eval "$(nros dev ws env)"`. A caller's own path wins: one set before
+/// the process started is left alone. A project with no package layout has none.
+///
+/// Derived per PROJECT on every call (Ruling R12): a process that configures
+/// two projects must not hand the second the first one's path. Whether the
+/// USER set it is captured once, at the first call, before this function has
+/// ever written it.
 fn ensure_interface_search_path(project: &Path) {
     const VAR: &str = "NROS_INTERFACE_SEARCH_PATH";
+    static USER_SET: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     // Two configures in one process (threads) must not both write it.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    if std::env::var_os(VAR).is_some() {
+    if *USER_SET.get_or_init(|| std::env::var_os(VAR).is_some()) {
         return;
     }
-    if let Ok(root) = ws::interface_search_root(project) {
-        // SAFETY: serialised against every other writer in this process by
-        // ENV_LOCK; this CLI's readers of the variable are its own verbs.
-        unsafe { std::env::set_var(VAR, root) };
+    // SAFETY: serialised against every other writer in this process by
+    // ENV_LOCK; this CLI's readers of the variable are its own verbs.
+    match ws::interface_search_root(project) {
+        Ok(root) => unsafe { std::env::set_var(VAR, root) },
+        Err(_) => unsafe { std::env::remove_var(VAR) },
     }
 }
 

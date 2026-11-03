@@ -2310,6 +2310,28 @@ fn check_leaf_selection(args: &Args, root: &std::path::Path, package: &str) -> R
     refuse_image_mode_flags(args, "a single-package example")
 }
 
+/// The prune that follows seeding a leaf's lock from the pin set: `cargo
+/// update --workspace` over the leaf's own root and generated settings
+/// (`build --manifest-path <m> --config <c>`, resolved instead of built),
+/// because `--frozen` cannot prune a seed down to the leaf's graph
+/// (RFC-0104 D3). One spelling for `nros build` (stage 4, as a handoff) and
+/// `nros configure` (C1, run directly -- phase-530 W1, Ruling R10).
+pub(crate) fn leaf_lock_prune(
+    img: &crate::cmd::leaf_settings::LeafImage,
+    offline: bool,
+) -> Handoff {
+    let (cwd, a) = crate::cmd::leaf_settings::build_command(img);
+    let mut u = vec!["update".to_string(), "--workspace".to_string()];
+    u.extend(a[1..].iter().cloned());
+    if offline {
+        u.push("--offline".to_string());
+    }
+    with_rust_channel(
+        Handoff::new("cargo", u).in_dir(&cwd),
+        img.rust_channel.as_deref(),
+    )
+}
+
 /// `--build-base` and `--parallel-workers` above one, where the unit is an
 /// image rather than a package. Refused, never ignored: a flag that is accepted
 /// and does nothing reads as though it worked.
@@ -2468,19 +2490,9 @@ fn plan_leaf_image(
     // Issue 2149 — the NuttX kernel stage, as on the workspace cargo road.
     let leaf_kernel = nuttx_kernel_step(descriptor, &nros_root)
         .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
-    let prepare = (!had_lock && seeded).then(|| {
-        // `a` is `build --manifest-path <m> --config <c>`: the same root and
-        // the same settings, resolved instead of built.
-        let mut u = vec!["update".to_string(), "--workspace".to_string()];
-        u.extend(a[1..].iter().cloned());
-        if args.offline {
-            u.push("--offline".to_string());
-        }
-        with_rust_channel(
-            Handoff::new("cargo", u).in_dir(&cwd),
-            img.rust_channel.as_deref(),
-        )
-    });
+    // phase-530 W1 (Ruling R10): `nros configure` seeds and prunes in C1, so
+    // after a configure the lock is present and this is `None`.
+    let prepare = (!had_lock && seeded).then(|| leaf_lock_prune(&img, args.offline));
     if args.offline {
         a.push("--frozen".to_string());
     }
