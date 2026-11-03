@@ -111,6 +111,7 @@ fn args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) -> Args {
         },
         continue_on_error: false,
         cmake_args: Vec::new(),
+        jobs: None,
         parallel_workers: None,
         build_base: None,
         check: None,

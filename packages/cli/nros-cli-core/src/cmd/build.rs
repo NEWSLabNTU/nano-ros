@@ -127,21 +127,34 @@ pub struct Args {
     #[arg(long, value_name = "ARG", num_args = 1.., allow_hyphen_values = true)]
     pub cmake_args: Vec<String>,
 
-    /// Build up to this many packages at once, and run at most this many
-    /// jobs in total. Default: the number of CPUs.
+    /// Run at most N jobs at once, in total. Default: the number of CPUs.
     ///
-    /// A package starts once every package it depends on has finished. Every
-    /// tool below `nros build` (cargo, make, ninja, west's cmake) shares one
-    /// GNU make jobserver of N tokens, so N packages each compiling in
-    /// parallel still run N jobs, not N times N. Under a `make -jN` that
-    /// already provides a jobserver, `nros build` joins it instead. Ninja
-    /// older than 1.13 does not read a jobserver and runs at its own width;
-    /// a warning names it. The images of a workspace with a bringup share a
-    /// generated root and build one at a time, so there a value above one
-    /// is refused; their tools still share the pool.
-    // RFC-0117 D4's table records the default, the shared pool and the
-    // image refusal.
-    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u16).range(1..))]
+    /// Every tool below `nros build` (cargo, make, ninja, west's cmake)
+    /// shares one GNU make jobserver of N tokens, so packages compiling side
+    /// by side still run N jobs in total, not N each. A package starts once
+    /// every package it depends on has finished; images build one at a time,
+    /// each drawing on the same N. Under a `make -jN` that already provides a
+    /// jobserver, `nros build` joins it instead. Ninja older than 1.13 does
+    /// not read a jobserver and runs at its own width; a warning names it.
+    // RFC-0117 D4: `-j` replaces colcon's `--parallel-workers`, which counts
+    // packages only because colcon has no shared job pool.
+    #[arg(
+        short = 'j',
+        long = "jobs",
+        value_name = "N",
+        value_parser = clap::value_parser!(u16).range(1..)
+    )]
+    pub jobs: Option<u16>,
+
+    /// colcon's `--parallel-workers`, refused with a pointer to `-j`. Hidden.
+    // RFC-0117 D4: accepting it with either meaning would mislead a command
+    // pasted from colcon, so it is refused by name.
+    #[arg(
+        long = "parallel-workers",
+        hide = true,
+        value_name = "N",
+        value_parser = refuse_parallel_workers
+    )]
     pub parallel_workers: Option<u16>,
 
     /// Where each package's build directory goes: `<DIR>/<package>/`.
@@ -211,6 +224,10 @@ impl Args {
             {
                 return cmd.get_arguments().any(|a| a.get_short() == Some(c)) || c == 'h';
             }
+            // `-j4`, the attached form of `-j 4`.
+            if let Some(n) = tok.strip_prefix("-j") {
+                return !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit());
+            }
             false
         };
         let Some(at) = self.cmake_args.iter().position(|t| is_ours(t)) else {
@@ -235,6 +252,7 @@ impl Args {
             selection,
             continue_on_error,
             cmake_args,
+            jobs,
             parallel_workers,
             build_base,
             check,
@@ -263,6 +281,7 @@ impl Args {
         self.selection.base_paths.extend(base_paths);
         self.continue_on_error |= continue_on_error;
         self.cmake_args.extend(cmake_args);
+        self.jobs = jobs.or(self.jobs);
         self.parallel_workers = parallel_workers.or(self.parallel_workers);
         self.build_base = build_base.or(self.build_base);
         self.check = check.or(self.check);
@@ -2316,9 +2335,9 @@ fn check_leaf_selection(args: &Args, root: &std::path::Path, package: &str) -> R
     refuse_image_mode_flags(args, "a single-package example")
 }
 
-/// `--build-base` and `--parallel-workers` above one, where the unit is an
-/// image rather than a package. Refused, never ignored: a flag that is accepted
-/// and does nothing reads as though it worked.
+/// `--build-base`, where the unit is an image rather than a package. Refused,
+/// never ignored: a flag that is accepted and does nothing reads as though it
+/// worked.
 fn refuse_image_mode_flags(args: &Args, what: &str) -> Result<()> {
     if let Some(b) = &args.build_base {
         eyre::bail!(
@@ -2329,15 +2348,17 @@ fn refuse_image_mode_flags(args: &Args, what: &str) -> Result<()> {
             b.display()
         );
     }
-    if let Some(n) = args.parallel_workers.filter(|n| *n > 1) {
-        eyre::bail!(
-            "`--parallel-workers {n}`: the images of {what} share a generated root and its \
-             target directory, so they build one at a time, each with one job per CPU by \
-             default. Leave the flag out to get that. `--parallel-workers` above one applies \
-             to a workspace with no bringup, where each package builds on its own."
-        );
-    }
     Ok(())
+}
+
+/// The value parser of the hidden `--parallel-workers`: always an error, so a
+/// command pasted from colcon stops before anything runs and names `-j`.
+fn refuse_parallel_workers(v: &str) -> std::result::Result<u16, String> {
+    Err(format!(
+        "nros build has no `--parallel-workers`. colcon counts packages there because it \
+         has no shared job pool; every tool under `nros build` shares one, so the knob is \
+         the job count: `nros build -j {v}`. Leave it out to use every CPU."
+    ))
 }
 
 /// Stages 3–4 for one resolved image of a single-package leaf.
@@ -2819,7 +2840,7 @@ pub fn run(args: Args) -> Result<()> {
     }
     // One jobserver for every tool this build runs (RFC-0117 D4). Not for a
     // dry run, which runs nothing and prints commands a user can retype.
-    let workers = default_workers(args.parallel_workers);
+    let workers = default_jobs(args.jobs);
     let jobs = if args.dry_run {
         None
     } else {
@@ -3231,8 +3252,8 @@ fn perform(hand: &Handoff) -> Result<()> {
     .into())
 }
 
-/// How [`drive`] runs the plans: `--parallel-workers`, the build's shared
-/// jobserver, and `--continue-on-error`.
+/// How [`drive`] runs the plans: `-j`, the build's shared jobserver, and
+/// `--continue-on-error`.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Schedule<'a> {
     /// The most plans running at once. One is the sequential loop. Images
@@ -3259,8 +3280,8 @@ impl Default for Schedule<'_> {
     }
 }
 
-/// `--parallel-workers`, or colcon's default: the number of CPUs.
-pub(crate) fn default_workers(explicit: Option<u16>) -> usize {
+/// `-j`, or the number of CPUs, as cargo and colcon default.
+pub(crate) fn default_jobs(explicit: Option<u16>) -> usize {
     explicit.map_or_else(
         || std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get),
         usize::from,
@@ -3270,7 +3291,7 @@ pub(crate) fn default_workers(explicit: Option<u16>) -> usize {
 impl<'a> Schedule<'a> {
     fn of(args: &Args, jobs: Option<&'a crate::builder::jobserver::Jobserver>) -> Self {
         Schedule {
-            workers: default_workers(args.parallel_workers),
+            workers: default_jobs(args.jobs),
             continue_on_error: args.continue_on_error,
             jobs,
         }
@@ -7604,6 +7625,7 @@ mod selection_wiring_tests {
             },
             continue_on_error: false,
             cmake_args: Vec::new(),
+            jobs: None,
             parallel_workers: None,
             build_base: None,
             check: None,
@@ -7673,13 +7695,44 @@ mod selection_wiring_tests {
         assert_eq!(a.selection.packages_skip, vec!["other"]);
     }
 
-    /// `--parallel-workers 0` is refused by the parser: zero workers build
-    /// nothing.
+    /// `-j 0` is refused by the parser: zero jobs build nothing. `-j N`,
+    /// `-jN` and `--jobs N` are one flag.
     #[test]
-    fn parallel_workers_must_be_at_least_one() {
-        assert!(Args::try_parse_from(["build", "--parallel-workers", "0"]).is_err());
-        let a = Args::try_parse_from(["build", "--parallel-workers", "4"]).expect("parses");
-        assert_eq!(a.parallel_workers, Some(4));
+    fn jobs_must_be_at_least_one() {
+        assert!(Args::try_parse_from(["build", "-j", "0"]).is_err());
+        for argv in [
+            &["build", "-j", "4"][..],
+            &["build", "-j4"],
+            &["build", "--jobs", "4"],
+        ] {
+            let a = Args::try_parse_from(argv).expect("parses");
+            assert_eq!(a.jobs, Some(4), "{argv:?}");
+        }
+    }
+
+    /// colcon's `--parallel-workers` is refused by name, before anything
+    /// runs, and the refusal names `-j` with the same number.
+    #[test]
+    fn parallel_workers_is_refused_naming_jobs() {
+        let e = Args::try_parse_from(["build", "--parallel-workers", "4"]).unwrap_err();
+        let text = e.to_string();
+        assert!(text.contains("nros build -j 4"), "{text}");
+        let help = <Args as clap::CommandFactory>::command()
+            .render_long_help()
+            .to_string();
+        assert!(!help.contains("--parallel-workers"), "{help}");
+        assert!(help.contains("--jobs"), "{help}");
+    }
+
+    /// `-j4` after `--cmake-args` ends the cmake arguments, as `-j 4` does.
+    #[test]
+    fn attached_jobs_ends_cmake_args() {
+        let a = Args::try_parse_from(["build", "--cmake-args", "-DX=1", "-j4"])
+            .expect("parses")
+            .split_cmake_args()
+            .expect("splits");
+        assert_eq!(a.cmake_args, vec!["-DX=1"]);
+        assert_eq!(a.jobs, Some(4));
     }
 
     /// A selection composes with the flags the verb already has — here the
@@ -7915,10 +7968,10 @@ mod multi_image_drive_tests {
         assert!(format!("{e:#}").contains("package 1 of 2"), "{e:#}");
     }
 
-    /// `--parallel-workers`: independent packages overlap, and a package never
-    /// starts before what it depends on has finished.
+    /// `-j`: independent packages overlap, and a package never starts before
+    /// what it depends on has finished.
     #[test]
-    fn parallel_workers_overlap_independent_packages_and_respect_edges() {
+    fn jobs_overlap_independent_packages_and_respect_edges() {
         use std::sync::{
             Mutex,
             atomic::{AtomicUsize, Ordering},
@@ -7960,14 +8013,14 @@ mod multi_image_drive_tests {
         );
     }
 
-    /// Unset, `--parallel-workers` is colcon's default: one per CPU.
+    /// Unset, `-j` is one job per CPU, as cargo and colcon default.
     #[test]
-    fn parallel_workers_default_to_the_cpu_count() {
+    fn jobs_default_to_the_cpu_count() {
         let cpus = std::thread::available_parallelism()
             .map(std::num::NonZeroUsize::get)
             .unwrap_or(1);
-        assert_eq!(default_workers(None), cpus);
-        assert_eq!(default_workers(Some(3)), 3);
+        assert_eq!(default_jobs(None), cpus);
+        assert_eq!(default_jobs(Some(3)), 3);
         let a = Args::try_parse_from(["build"]).expect("parses");
         assert_eq!(Schedule::of(&a, None).workers, cpus);
     }
@@ -8240,6 +8293,7 @@ mod single_package_tests {
             selection: Default::default(),
             continue_on_error: false,
             cmake_args: Vec::new(),
+            jobs: None,
             parallel_workers: None,
             build_base: None,
             check: None,
