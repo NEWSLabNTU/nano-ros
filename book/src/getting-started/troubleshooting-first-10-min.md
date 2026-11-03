@@ -13,31 +13,30 @@ one to try.
 
 ## A. Build failures (cargo / cmake)
 
-### A1. You built before `nros configure`
+### A1. You ran `cargo build` yourself before configuring
 
 ```
-… has not been synced — missing the resolved model under `build/nros/models/`,
-the generated message crate `std_msgs` (generated/std_msgs).
-  Run `nros configure` in …, then build again.
+error: no matching package named `nros` found
 ```
 
-The example's `Cargo.toml` declares nano-ros crates registry-style
-(`nros = { version = "*" }` — they are not published to crates.io);
-the `[patch.crates-io]` block that resolves them into the nano-ros
-SDK is GENERATED, into `build/<image>/nros-cargo.toml`, which
-`nros build` hands cargo with `--config`. This error
-means that file has not been written yet, or its paths no longer
-reach the SDK (typical right after copying the package somewhere else,
-or installing a different release). Fix:
+(or `failed to read .../generated/std_msgs/Cargo.toml`, or an unresolved import).
+
+`nros build` and `nros run` configure the project themselves, so this only
+happens when you drive cargo directly. The example's `Cargo.toml` declares
+nano-ros crates registry-style (`nros = { version = "*" }` — they are not
+published to crates.io); the `[patch.crates-io]` block that resolves them into
+the nano-ros SDK is GENERATED, into `build/<image>/nros-cargo.toml`, which
+`nros build` hands cargo with `--config`. The error means that file has not
+been written yet, or its paths no longer reach the SDK (typical right after
+copying the package somewhere else, or installing a different release). Fix:
 
 ```bash
 cd <the package dir>
 nros configure        # or: nros configure --nano-ros-path <another SDK root>
 ```
 
-Driving cargo directly skips that refusal and gets cargo's own version of it
-instead — `no matching package named 'nros' found`, or an unresolved import.
-Same cause, same fix: sync, then pass the generated file with `--config`.
+Cargo's own message for this is `no matching package named 'nros' found`, or
+an unresolved import. Same cause, same fix: configure, then pass the generated file with `--config`.
 `nros configure` is what ties a copied-out example to an SDK (the `nros` binary's
 own, or the one `--nano-ros-path` names), so re-run it after moving the
 directory.

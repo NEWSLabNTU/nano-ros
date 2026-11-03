@@ -61,16 +61,6 @@ instead, which is the [network chapter](bare-metal.md).
 
 ## Run it
 
-First generate what the build reads: the message code the talker uses and
-the board's build settings, all under `build/`. Run it again whenever you
-edit `system.toml`:
-
-```bash probe=48 track=installed
-nros configure
-```
-
-Then build and run:
-
 ```bash probe=50 probe-run=1500 track=installed
 nros run --expect 'Publishing:'
 ```
