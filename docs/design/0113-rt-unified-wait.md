@@ -251,6 +251,20 @@ The work queues come from one rank-ordered table,
 `rate_ctrl`, then `hp_default`, `nav_and_controllers` and `lp_default`. More
 tiers than queues is refused at generation, never shared (phase-521 W8 a).
 
+The entry is generated C++ (phase-521 W8 b): `nros dev codegen entry`'s PX4
+emitter (`codegen/entry/px4.rs`) renders a PX4 module with one
+`nros_px4::TierWorkItem` subclass per tier on the queue its rank picks, and
+the work item is the runtime half (`integrations/px4/include/nros_px4/
+tier_work_item.hpp`). The boot tier opens the session and the others borrow
+it, as on every tier runner. A `Run()` is one pass whose first park answers
+EXPIRED, so it drains and dispatches without blocking, then passes until the
+park slot yields: the slot arms `ScheduleDelayed(bound)`, or
+`ScheduleClear()` when no deadline falls inside the executor's idle budget
+(`NROS_CPP_ENTRY_IDLE_BUDGET_MS`). Arrivals reach the tier through
+`TierWorkItem::notify()`, which a clear cannot lose. A node whose groups span
+two tiers is refused: a work item per tier has no shared executor to carry a
+sched context per tier.
+
 ### D10 — `nros::setup!` retires
 
 `nros::setup!` (phase-520) emits an image's assembly for a host that owns its
@@ -346,6 +360,8 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Changelog
 
+- 2026-11-03 — D9: the generated PX4 entry and its tier work item land
+  (phase-521 W8 b).
 - 2026-11-03 — D9: the yielding park slot's code, `NROS_PLATFORM_PARK_YIELDED`,
   lands in the park ABI (phase-521 W8 c).
 - 2026-11-03 — D2.5's fan-out bound stated and measured

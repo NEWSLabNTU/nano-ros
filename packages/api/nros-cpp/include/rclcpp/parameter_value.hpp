@@ -55,6 +55,7 @@
 #include "rclcpp/detail/traits.hpp"
 
 #ifdef NROS_CPP_STD // hosted-family: parameter-interop
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -472,7 +473,12 @@ inline bool ParameterValue::operator==(const ParameterValue& o) const {
     case PARAMETER_INTEGER:
         return integer_ == o.integer_;
     case PARAMETER_DOUBLE:
-        return double_ == o.double_;
+        // `std::equal_to`, not `==`: the same comparison (NaN is unequal to
+        // itself, as upstream's), spelled where a `-Werror -Wfloat-equal`
+        // build does not refuse it. PX4 compiles every module that way, so
+        // `==` here made every PX4 module that includes rclcpp.hpp fail
+        // (phase-521 W8 b).
+        return ::std::equal_to<double>()(double_, o.double_);
     case PARAMETER_STRING:
         return as_string() == o.as_string();
     case PARAMETER_BYTE_ARRAY:

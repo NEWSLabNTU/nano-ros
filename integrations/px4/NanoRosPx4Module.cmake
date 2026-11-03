@@ -177,7 +177,10 @@ set(_NROS_PX4_INCLUDES
     "${NROS_REPO_DIR}/packages/api/nros-cpp/include"
     "${NROS_REPO_DIR}/packages/api/nros-c/include"
     "${NROS_REPO_DIR}/packages/core/nros-rmw-abi/include"
-    "${NROS_REPO_DIR}/packages/platform/nros-platform-api/include")
+    "${NROS_REPO_DIR}/packages/platform/nros-platform-api/include"
+    # phase-521 W8 (b) -- `nros_px4/tier_work_item.hpp`, the runtime half of
+    # the generated entry: one PX4 work item per tier (RFC-0113 D9).
+    "${NROS_REPO_DIR}/integrations/px4/include")
 
 # The PER-BUILD generated headers (storage sizes, feature constants), emitted by
 # nros-c/nros-cpp build.rs into their `$OUT_DIR`s and PLACED under

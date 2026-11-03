@@ -211,6 +211,20 @@ STORAGE_ROLES = [
         "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/boot_wrapper.jinja",
         "static uint64_t __nros_tier_executor_storage[",
     ),
+    # phase-521 W8 (b) -- the PX4 entry: each borrowed tier's executor, and
+    # the component slots it shares in spelling with the C++ entry.
+    (
+        "executor storage",
+        r"__nros_tier_storage",
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/px4_entry.cpp.jinja",
+        "static ::nros_px4::TierStorage __nros_tier_storage[",
+    ),
+    (
+        "component storage",
+        r"__nros_comp_buf_\d+",
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/px4_entry.cpp.jinja",
+        "static unsigned char __nros_comp_buf_",
+    ),
     (
         "executor storage",
         r"(?:[A-Za-z_][A-Za-z0-9_]*::)*Node::GlobalStorageHolder<\d+>::storage",
@@ -310,7 +324,9 @@ STORAGE_ROLES = [
     (
         "monitor storage",
         r"__nros_(?:mon|age|hz|mode)_storage|__nros_mon_rows",
-        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/entry.cpp.jinja",
+        # phase-521 W8 (b) -- the C++ entry's monitor statics are a partial
+        # now, shared with the PX4 entry.
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/monitor_statics.jinja",
         "alignas(8) static unsigned char __nros_mon_storage[",
     ),
     # The Zephyr platform's task-stack pool (zenoh-pico's executor thread and
