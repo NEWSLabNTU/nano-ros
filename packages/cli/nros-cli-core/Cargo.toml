@@ -66,6 +66,8 @@ serde_yaml_ng = "0.10"
 sha2 = "0.10"
 toml = { workspace = true }
 toml_edit = "0.22"
+# `nros run --expect-regex` (RFC-0118 D2).
+regex = "1"
 cargo_metadata = "0.18"
 # Phase 195.A / RFC-0060: launch-file resolution shells OUT to a separate binary
 # rather than linking it — the resolver embeds CPython via pyo3

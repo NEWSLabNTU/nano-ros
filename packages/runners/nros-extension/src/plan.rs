@@ -159,6 +159,11 @@ pub struct Link {
     pub kind: LinkKind,
     /// The locator (`tcp/10.0.2.2:7447`) or serial endpoint.
     pub locator: String,
+    /// The RMW that speaks over it (`zenoh`, `xrce`), which decides what nros
+    /// starts on the host side of the link: a zenoh router or an XRCE agent
+    /// (RFC-0118 D8). Absent in a plan written before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rmw: Option<String>,
 }
 
 /// A `wait_for` event (RFC-0118 D7), written `<kind>:<value>`.
