@@ -283,3 +283,132 @@ fn second_concurrent_configure_finds_stamp_current() {
     );
     cleanup(&leaf);
 }
+
+/// Issue-1305 shape (Ruling R9): a leaf's images share ONE selection package
+/// and ONE `generated/` tree, so switching to another image and back must
+/// reconfigure -- the first image's stamp is still on disk, and its inputs
+/// have not moved, but the shared output now holds the other image.
+#[test]
+fn switching_leaf_images_reconfigures() {
+    setup();
+    let leaf = scratch_leaf("switch");
+    let leaf_s = leaf.to_str().unwrap();
+    let selection = leaf.join("build/nros/selection/Cargo.toml");
+
+    let first = configure_outcome(&[leaf_s, "--image", "linux"]);
+    assert_eq!(first.configured, ["linux"], "{first:?}");
+    let zenoh = fs::read_to_string(&selection).unwrap();
+
+    // Same edition (humble), another RMW.
+    let other = configure_outcome(&[leaf_s, "--image", "linux_xrce"]);
+    assert_eq!(other.configured, ["linux_xrce"], "{other:?}");
+    let xrce = fs::read_to_string(&selection).unwrap();
+    assert_ne!(zenoh, xrce, "the two images select different backends");
+
+    let back = configure_outcome(&[leaf_s, "--image", "linux"]);
+    assert!(
+        !back.up_to_date,
+        "the shared output holds `linux_xrce`, so `linux` is not current: {back:?}"
+    );
+    assert_eq!(back.configured, ["linux"], "{back:?}");
+    assert_eq!(fs::read_to_string(&selection).unwrap(), zenoh);
+    cleanup(&leaf);
+}
+
+/// Ruling R10: the leaf lock is seeded and pruned inside C1, before the
+/// metadata probe, so nothing stage 4 does moves what the probe keyed on and
+/// one sync is enough.
+#[test]
+fn first_configure_runs_sync_once() {
+    setup();
+    let leaf = scratch_leaf("once");
+    let out = configure_outcome(&[leaf.to_str().unwrap()]);
+    assert_eq!(out.configured, ["linux"], "{out:?}");
+    assert_eq!(
+        out.sync_passes, 1,
+        "a fresh leaf converged in one C1: {out:?}"
+    );
+    cleanup(&leaf);
+}
+
+/// What `nros build` plans after a configure (stage 4, nothing spawned)
+/// leaves the stamp current: planning finds the lock C1 already seeded and
+/// pruned, and changes nothing a stamp reads.
+#[test]
+fn build_after_configure_keeps_the_stamp_current() {
+    setup();
+    let leaf = scratch_leaf("build-after");
+    let leaf_s = leaf.to_str().unwrap();
+    configure_outcome(&[leaf_s]);
+    let lock = fs::read(leaf.join("Cargo.lock")).expect("configure left a lock");
+
+    let plans = nros_cli_core::cmd::build::plan_builds(&build_args(&leaf, "linux"))
+        .expect("the configured leaf plans");
+    assert_eq!(plans.len(), 1);
+    assert!(
+        plans[0].configure.is_none(),
+        "a configured leaf needs no lock prune before its build: {:?}",
+        plans[0].configure
+    );
+    assert_eq!(fs::read(leaf.join("Cargo.lock")).unwrap(), lock);
+    let again = configure_outcome(&[leaf_s]);
+    assert!(
+        again.up_to_date,
+        "planning a build staled the stamp: {again:?}"
+    );
+    cleanup(&leaf);
+}
+
+/// Ruling R10: configure seeds the leaf lock from the pin set AND prunes it
+/// to the leaf's graph, the pair `nros build` used to run as its first two
+/// steps. Pruned means a further `cargo update --workspace` over the same
+/// root and settings changes nothing.
+#[test]
+fn configure_seeds_and_prunes_the_leaf_lock() {
+    setup();
+    let leaf = scratch_leaf("lock");
+    assert!(
+        !leaf.join("Cargo.lock").exists(),
+        "a fresh copy has no lock"
+    );
+    configure_outcome(&[leaf.to_str().unwrap()]);
+    let lock = leaf.join("Cargo.lock");
+    let seeded = fs::read(&lock).expect("configure seeded the leaf lock");
+
+    let status = std::process::Command::new("cargo")
+        .current_dir(leaf.parent().unwrap())
+        .args(["update", "--workspace", "--manifest-path"])
+        .arg(leaf.join("Cargo.toml"))
+        .arg("--config")
+        .arg(leaf.join("build/linux/nros-cargo.toml"))
+        .status()
+        .expect("cargo runs");
+    assert!(status.success(), "cargo update over the configured leaf");
+    assert_eq!(
+        fs::read(&lock).unwrap(),
+        seeded,
+        "configure left an unpruned lock: `cargo update --workspace` still rewrote it"
+    );
+    cleanup(&leaf);
+}
+
+fn build_args(project: &Path, image: &str) -> nros_cli_core::cmd::build::Args {
+    nros_cli_core::cmd::build::Args {
+        images: vec![image.to_string()],
+        workspace: Some(project.to_path_buf()),
+        nano_ros_path: None,
+        zephyr_workspace: None,
+        board: None,
+        all: false,
+        dry_run: true,
+        verbose: false,
+        offline: false,
+        selection: Default::default(),
+        continue_on_error: false,
+        cmake_args: Vec::new(),
+        parallel_workers: None,
+        build_base: None,
+        check: None,
+        native_args: Vec::new(),
+    }
+}
