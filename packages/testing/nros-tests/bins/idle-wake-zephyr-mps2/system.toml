@@ -12,6 +12,10 @@ default_images = ["zephyr_zenoh"]
 pkg = "nros_idle_wake_witness_c"
 class = "nros_idle_wake_witness_c::Witness"
 name = "witness"
+# Its sources call Zephyr directly (`k_cycle_get_32`, the devicetree), so they
+# cannot build for the host and no census can count them (RFC-0120 D4). What
+# it creates, stated: one /chatter subscription and one timer.
+entities = ["subscription:std_msgs/msg/String:/chatter", "timer"]
 
 [image.zephyr_zenoh]
 board = "zephyr"
