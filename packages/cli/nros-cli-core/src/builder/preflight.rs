@@ -30,6 +30,12 @@ use std::path::Path;
 
 use crate::orchestration::board_descriptor::BoardDescriptor;
 
+/// The remedy preflight names for a workspace that has never been
+/// configured (RFC-0120 D2: `nros configure`, of which `nros sync` is the
+/// retiring alias). One spelling, so `nros build` can tell this row from the
+/// toolchain rows it refuses on.
+pub const CONFIGURE_REMEDY: &str = "nros configure";
+
 /// A missing prerequisite, with the command that installs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Missing {
@@ -127,7 +133,7 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
     if root.join("src").is_dir() && !synced {
         out.push(Missing {
             what: "generated message bindings (this workspace has never been synced)".to_string(),
-            remedy: "nros sync".to_string(),
+            remedy: CONFIGURE_REMEDY.to_string(),
         });
     }
 
@@ -586,14 +592,15 @@ mod tests {
     #[test]
     fn an_unsynced_workspace_is_told_to_sync() {
         // issue 0463 — without this the failure is a cargo manifest-PARSE error
-        // four frames deep that never names `nros sync`.
+        // four frames deep that never names `nros configure`.
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("src/talker_pkg")).unwrap();
         let m = check(&board(""), tmp.path(), None);
         let hit = m
             .iter()
-            .find(|m| m.remedy == "nros sync")
-            .expect("must name sync");
+            .find(|m| m.remedy == CONFIGURE_REMEDY)
+            .expect("must name configure");
+        assert_eq!(hit.remedy, "nros configure", "{hit:?}");
         assert!(hit.what.contains("never been synced"), "{hit:?}");
     }
 
@@ -603,7 +610,7 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("src/talker_pkg")).unwrap();
         std::fs::create_dir_all(tmp.path().join("build/nros")).unwrap();
         let m = check(&board(""), tmp.path(), None);
-        assert!(m.iter().all(|m| m.remedy != "nros sync"), "{m:?}");
+        assert!(m.iter().all(|m| m.remedy != CONFIGURE_REMEDY), "{m:?}");
     }
 
     #[test]
@@ -616,7 +623,7 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("generated/std_msgs")).unwrap();
         let m = check(&board(""), tmp.path(), None);
         assert!(
-            m.iter().all(|m| m.remedy != "nros sync"),
+            m.iter().all(|m| m.remedy != CONFIGURE_REMEDY),
             "generated/ is sync output too: {m:?}"
         );
     }

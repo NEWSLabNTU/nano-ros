@@ -762,6 +762,10 @@ pub fn run(args: Args) -> eyre::Result<()> {
     if let Some(file) = &args.exec.plan {
         return crate::cmd::run_exec::run_plan_file(&args, file);
     }
+    // RFC-0120 D3 -- configure implicitly first, as `nros build` does; never
+    // from inside planning, which configure itself runs under its lock.
+    let bargs = selection_build_args(&Selection::from(&args)).map_err(|e| eyre::eyre!(e))?;
+    crate::cmd::build::configure_implicitly(&bargs)?;
     let one = match select_target(&Selection::from(&args), "run") {
         Ok(one) => one,
         Err(e) => unresolved(&e),
@@ -890,6 +894,14 @@ impl Selection {
     }
 }
 
+/// The dry `nros build` arguments a selection plans with: one spelling for
+/// [`select_target`] and for `nros run`'s implicit configure before it.
+fn selection_build_args(sel: &Selection) -> Result<crate::cmd::build::Args, String> {
+    let mut build_argv = vec!["build".to_string(), "--dry-run".to_string()];
+    build_argv.extend(sel.build_args());
+    <crate::cmd::build::Args as clap::Parser>::try_parse_from(build_argv).map_err(|e| e.to_string())
+}
+
 /// THE target resolution of `nros run`, `nros flash` and `nros monitor`: the
 /// one image `sel` names (or the workspace's only one), with its board
 /// descriptor. Every rung of "which image" lives here and nowhere else.
@@ -902,10 +914,7 @@ pub fn select_target(
     sel: &Selection,
     verb: &str,
 ) -> Result<crate::cmd::build::ResolvedBuild, String> {
-    let mut build_argv = vec!["build".to_string(), "--dry-run".to_string()];
-    build_argv.extend(sel.build_args());
-    let bargs = <crate::cmd::build::Args as clap::Parser>::try_parse_from(build_argv)
-        .map_err(|e| e.to_string())?;
+    let bargs = selection_build_args(sel)?;
     let mut plans = crate::cmd::build::plan_builds(&bargs).map_err(|e| format!("{e:#}"))?;
     let one = match plans.len() {
         1 => plans.remove(0),
