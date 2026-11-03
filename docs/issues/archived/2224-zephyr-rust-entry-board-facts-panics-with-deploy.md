@@ -1,11 +1,11 @@
 ---
 id: 2224
 title: "`nros dev image board-facts` panics on a generated Zephyr Rust workspace entry since #2199 forwards `NROS_IMAGE` as `--deploy`"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [cli, zephyr, build]
-related: [2199, 0941]
+related: [2199, 0941, 2229]
 found: 2026-11-03
 ---
 
@@ -47,21 +47,22 @@ So the `expect` is reachable whenever `--deploy` is passed for a directory with
 no `system.toml` whose Cargo.toml names no catalogued board crate. That is a
 panic where issue 0941 requires an answer or a stated error.
 
-## Fix direction (not applied)
+## Resolution
 
-Two separable defects:
+Two defects, as filed, closed by two changes:
 
-- The `expect` should be an error that names the leaf and the flags it got,
-  or `nothing_to_carry`'s early return should not cover the no-`system.toml`
-  case.
-- The verb answers for the wrong directory: the entry's image lives in the
-  bringup's `system.toml` (`NROS_IMAGE_SYSTEM_DIR`), so `--deploy zephyr` is
-  only meaningful against that file. Either cmake passes the system dir, or the
-  verb follows the entry to its claiming bringup, as `board_of_cargo_leaf`
-  already does for selection packages (issue 1305).
+- **Asking the wrong directory**: fixed by issue 2229 (`33ba61ad46`), filed
+  and fixed in parallel. `nros_resolve_board_facts` now asks about the dir
+  `NROS_IMAGE_SYSTEM_DIR` names, the bringup whose `system.toml` declares the
+  image, before `APPLICATION_SOURCE_DIR`. 2229 also turned the no-`Cargo.toml`
+  shape of the same path into a stated error.
+- **The `expect`**: still reachable after 2229, for a cargo dir that depends on
+  no catalogued board crate. A generated Zephyr entry is exactly that: it
+  depends on `nros-board-zephyr`, and no descriptor claims it. It is now a
+  refusal naming the image, where to resolve it from, and `--board`. Test
+  `a_named_image_in_a_cargo_dir_on_no_board_crate_is_refused_not_a_panic`.
 
-## Reproduce
-
-```
-NROS_ZEPHYR_FIXTURE_FILTER=build-ws-rs-entry-zenoh just zephyr build-fixtures
-```
+Measured on main plus this change, in a fresh worktree:
+`NROS_ZEPHYR_FIXTURE_FILTER=build-ws-rs-entry-zenoh just zephyr build-fixtures`
+rc=0 and links `zephyr.exe`; `test_zephyr_workspace_entry_native_sim_e2e`
+passes (with the Linux family built for its `int32-sink` peer).

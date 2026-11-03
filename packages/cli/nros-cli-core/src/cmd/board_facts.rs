@@ -808,8 +808,24 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
                     args.deploy.as_deref().unwrap_or_default(),
                 ));
             }
-            None => board_of_cargo_leaf(&ws, &root)?
-                .expect("nothing_to_carry answered the no-board-crate case"),
+            // Issue 2224 — this was an `expect` claiming `nothing_to_carry`
+            // had already answered the no-board-crate case. It answers it only
+            // when NOTHING was named: with `--deploy` it returns early, so a
+            // cargo dir on no catalogued board crate reached here and the verb
+            // panicked mid-configure (a generated Zephyr entry did, from issue
+            // 2199 until issue 2229 pointed cmake at its bringup). A named
+            // image that cannot be resolved is the refusal 0941 asks for.
+            None => board_of_cargo_leaf(&ws, &root)?.ok_or_else(|| {
+                eyre!(
+                    "{}: --deploy {} names an image, but this dir has no system.toml \
+                     (nor src/*/system.toml) to declare it, and its Cargo.toml depends \
+                     on no board crate the catalog knows -- resolve from the dir whose \
+                     system.toml declares [image.{}], or pass --board",
+                    ws.display(),
+                    args.deploy.as_deref().unwrap_or_default(),
+                    args.deploy.as_deref().unwrap_or_default(),
+                )
+            })?,
         };
         resolve_one(
             &ws.join("Cargo.toml").display().to_string(),
@@ -1123,6 +1139,33 @@ mod tests {
         assert!(err.contains("--deploy zephyr_native_sim"), "{err}");
         assert!(err.contains("[image.zephyr_native_sim]"), "{err}");
         assert!(!err.contains("reading"), "{err}");
+    }
+
+    /// Issue 2224 — the same named image asked of a cargo dir that depends on
+    /// no catalogued board crate (a generated Zephyr entry depends on
+    /// `nros-board-zephyr`, which no descriptor claims: the board is `-b`) is a
+    /// refusal naming the image, never a panic.
+    #[test]
+    fn a_named_image_in_a_cargo_dir_on_no_board_crate_is_refused_not_a_panic() {
+        let app = tempfile::tempdir().unwrap();
+        std::fs::write(
+            app.path().join("Cargo.toml"),
+            "[package]\nname = \"zephyr_entry\"\n[dependencies]\nnros-board-zephyr = \"*\"\n",
+        )
+        .unwrap();
+        let err = run(BoardFactsArgs {
+            path: app.path().to_path_buf(),
+            nano_ros_path: Some(repo_root()),
+            deploy: Some("zephyr".into()),
+            board: None,
+            rust_target: None,
+            zephyr_board: None,
+        })
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("--deploy zephyr"), "{err}");
+        assert!(err.contains("[image.zephyr]"), "{err}");
+        assert!(err.contains("no board crate"), "{err}");
     }
 
     /// Issue 0941 — the configures with no board facts to carry are an
