@@ -19220,3 +19220,95 @@ fn a_deferred_callback_readied_mid_pass_is_queued_not_run() {
     executor.run_deferred();
     assert_eq!(*received.lock().unwrap(), [5]);
 }
+
+private_test_clock!(raw_stamp_clock);
+
+/// Issue 2215 — a C/C++ callback subscription bound to its topic's age row
+/// (`bind_raw_subscription_stamp`, the C++ templates' `stamp_offset`) feeds
+/// it from its stamped takes, as the Rust typed paths do. On an image with no
+/// epoch source (the board) the take alone is the silence rule's evidence:
+/// a 500 ms lease fed every 100 ms is never `silence-runtime`, while the same
+/// stream on an UNBOUND subscription (no stamp offset passed, the pre-2215
+/// C++ path) is reported silent though every sample arrived. A message whose
+/// stamp is zero is not a stamp and feeds nothing; a topic with no age row
+/// binds nothing.
+#[test]
+fn a_cpp_subscription_feeds_its_age_row_from_the_stamp() {
+    use super::monitor::{AgeMonitorSpec, SubMonitorCell};
+    let _g = arming_lock();
+    static CELL_A: SubMonitorCell = SubMonitorCell::new();
+    static CELL_B: SubMonitorCell = SubMonitorCell::new();
+    static CELL_C: SubMonitorCell = SubMonitorCell::new();
+    const fn row(cell: &'static SubMonitorCell) -> [AgeMonitorSpec; 1] {
+        [AgeMonitorSpec {
+            topic: "/stamped",
+            fqn: "/n/stamped",
+            max_age_ms: 500,
+            deadline_ms: 0,
+            cell,
+        }]
+    }
+    static AGES_A: [AgeMonitorSpec; 1] = row(&CELL_A);
+    static AGES_B: [AgeMonitorSpec; 1] = row(&CELL_B);
+    static AGES_C: [AgeMonitorSpec; 1] = row(&CELL_C);
+    unsafe extern "C" fn cb(_d: *const u8, _l: usize, _c: *mut core::ffi::c_void) {}
+    // `builtin_interfaces/Time stamp` first: sec at CDR offset 4.
+    fn stamped(sec: i32) -> ([u8; 256], usize) {
+        let mut buf = [0u8; 256];
+        let mut w = CdrWriter::new_with_header(&mut buf).unwrap();
+        w.write_i32(sec).unwrap();
+        w.write_u32(250_000_000).unwrap();
+        let len = w.position();
+        (buf, len)
+    }
+    // (bind the stamp?, stamp sec, expect silence?)
+    raw_stamp_clock::claim_at_us(1_000_000);
+    for (n, (bind, sec, ages, silent)) in [
+        (true, 1_000, &AGES_A, false),
+        (false, 1_000, &AGES_B, true),
+        (true, 0, &AGES_C, true),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let base = 1_000_000 + n as u64 * 10_000_000;
+        raw_stamp_clock::set_us(base);
+        let mut executor = executor_with_clock_fn(MockSession::new(), raw_stamp_clock::now_us);
+        executor.epoch_us_fn = None; // the board: no epoch source
+        executor.set_age_table(ages);
+        let h = executor
+            .add_arena_subscription_c_callback::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+                None,
+                "/stamped",
+                "test/msg/Stamped",
+                "test_hash",
+                QoSProfile::default().keep_last(1),
+                cb,
+                core::ptr::null_mut(),
+                None,
+                0,
+            )
+            .unwrap();
+        if bind {
+            assert!(executor.bind_raw_subscription_stamp(h, "/stamped", 4));
+        }
+        assert!(!executor.bind_raw_subscription_stamp(h, "/no/age/row", 4));
+        let meta = executor.entries[0].as_ref().unwrap();
+        let sub_ptr = unsafe { (executor.arena.as_ptr() as *const u8).add(meta.offset) }
+            as *const MockSubscriber;
+        // 1.2 s of samples every 100 ms, against a 500 ms lease.
+        for k in 0..=12u64 {
+            raw_stamp_clock::set_us(base + k * 100_000);
+            let (data, len) = stamped(sec);
+            unsafe { (*sub_ptr).load(data, len) };
+            let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        }
+        let mut rules = alloc::vec::Vec::new();
+        executor.drain_violations(|v| rules.push((v.rule, v.fqn)));
+        assert_eq!(
+            rules.contains(&("silence-runtime", "/n/stamped")),
+            silent,
+            "bind {bind}, sec {sec}: {rules:?}"
+        );
+    }
+}

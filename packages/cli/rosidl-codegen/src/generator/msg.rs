@@ -484,7 +484,7 @@ pub fn generate_c_message_package_with_lookup(
 /// includes `Header` itself) carries `stamp.sec` at CDR byte 4 (after the
 /// 4-byte encapsulation header; `Time` is `{ i32 sec; u32 nanosec }`,
 /// 4-byte aligned, no preceding fields). Everything else: `None`.
-fn stamp_offset_for(message: &rosidl_parser::ast::Message) -> Option<usize> {
+pub(crate) fn stamp_offset_for(message: &rosidl_parser::ast::Message) -> Option<usize> {
     use rosidl_parser::ast::FieldType;
     let first = message.fields.first()?;
     match &first.field_type {

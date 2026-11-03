@@ -61,7 +61,8 @@ namespace rclcpp {
 inline Result create_subscription_raw(::rclcpp::Node& node, const char* topic,
                                       const char* type_name,
                                       void (*callback)(const uint8_t* data, size_t len, void* ctx),
-                                      void* ctx, const QoS& qos, size_t rx_bytes) {
+                                      void* ctx, const QoS& qos, size_t rx_bytes,
+                                      uint16_t stamp_offset = 0) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
@@ -76,7 +77,11 @@ inline Result create_subscription_raw(::rclcpp::Node& node, const char* topic,
     // retains nothing.
     nros_cpp_subscription_options_t opts = {};
     opts.rx_buffer_hint = static_cast<uint32_t>(rx_bytes);
-    const nros_cpp_subscription_options_t* opts_p = (rx_bytes != 0) ? &opts : nullptr;
+    // Issue 2215 -- the type's stamp offset (0 = none), so the subscription
+    // feeds its topic's contracted age row.
+    opts.stamp_offset = stamp_offset;
+    const nros_cpp_subscription_options_t* opts_p =
+        (rx_bytes != 0 || stamp_offset != 0) ? &opts : nullptr;
     nros_cpp_ret_t ret = nros_cpp_subscription_register(h, topic, type_name, "", ffi_qos, callback,
                                                         ctx, &handle, opts_p);
     return Result(ret);
@@ -144,7 +149,7 @@ inline Result bind_subscription(::rclcpp::Node& node, const char* topic, C* self
             if (M::ffi_deserialize(data, len, &msg) != 0) return;
             (static_cast<C*>(ctx)->*Method)(msg);
         },
-        self, qos, ::rclcpp::rx_size_bound<M>::value);
+        self, qos, ::rclcpp::rx_size_bound<M>::value, ::rclcpp::stamp_offset<M>::value);
 }
 
 /// `bind_subscription` with the receive-buffer hint supplied by the CALLER.
@@ -168,7 +173,7 @@ inline Result bind_subscription_sized(::rclcpp::Node& node, const char* topic, C
             if (M::ffi_deserialize(data, len, &msg) != 0) return;
             (static_cast<C*>(ctx)->*Method)(msg);
         },
-        self, qos, rx_bytes);
+        self, qos, rx_bytes, ::rclcpp::stamp_offset<M>::value);
 }
 
 /// Register a **raw** callback-style service server on the executor that owns
@@ -444,6 +449,7 @@ inline void Node::create_subscription_in_group(const ::rclcpp::CallbackGroup& gr
     // grouped form cost the closure buffer where the ungrouped
     // `create_subscription_in` (through `bind_subscription`) costs the type.
     sub_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
+    sub_options.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
     nros_cpp_ret_t ret = nros_cpp_subscription_register(
         h, topic, M::TYPE_NAME, "", ffi_qos,
         [](const uint8_t* data, size_t len, void* ctx) {

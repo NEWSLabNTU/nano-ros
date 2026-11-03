@@ -398,3 +398,32 @@ fn an_empty_message_has_the_field_serializers_a_nesting_message_calls() {
         "the padding member is not read"
     );
 }
+
+/// Issue 2215 — a message whose first field is a `builtin_interfaces/Time`
+/// (or a `Header`) states `STAMP_OFFSET` in its C++ header, the same offset
+/// the Rust pack states as `RosMessage::STAMP_OFFSET`, so a C++ subscription
+/// can feed its topic's contracted age row; a message without one states none.
+#[test]
+fn a_stamped_message_states_its_stamp_offset_in_the_cpp_header() {
+    let resolver = rosidl_codegen::CapacityResolver::empty();
+    let stamped = parse_message("builtin_interfaces/Time stamp\nbool autonomous\n").unwrap();
+    let pkg = rosidl_codegen::generate_cpp_message_package(
+        "tier4_system_msgs",
+        "OperationModeAvailability",
+        &stamped,
+        "h",
+        &resolver,
+    )
+    .unwrap();
+    assert!(
+        pkg.header
+            .contains("static constexpr uint16_t STAMP_OFFSET = 4;"),
+        "no STAMP_OFFSET in:\n{}",
+        pkg.header
+    );
+    let plain = parse_message("bool autonomous\n").unwrap();
+    let pkg =
+        rosidl_codegen::generate_cpp_message_package("x_msgs", "Plain", &plain, "h", &resolver)
+            .unwrap();
+    assert!(!pkg.header.contains("STAMP_OFFSET"), "{}", pkg.header);
+}

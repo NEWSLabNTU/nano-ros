@@ -3696,14 +3696,67 @@ impl<'s> Executor<'s> {
 
     /// W3b.5 — resolve a subscription's age hook at registration time:
     /// exact topic match against the baked age table, only for stamped
-    /// types (`M::STAMP_OFFSET`) and only when an epoch source exists.
+    /// types (`M::STAMP_OFFSET`). Issue 2215: with no epoch source the hook
+    /// still records the stamped take (the silence rule's evidence), and the
+    /// age is judged only once an epoch is installed.
     fn age_lookup<M: RosMessage>(&self, topic: &str) -> Option<super::arena::AgeMon> {
         M::STAMP_OFFSET?;
-        let epoch = self.epoch_us_fn?;
         self.age_table
             .iter()
             .find(|a| a.topic == topic)
-            .map(|a| (a.cell, epoch))
+            .map(|a| (a.cell, self.epoch_us_fn))
+    }
+
+    /// Issue 2215 — bind a C/C++ callback subscription to its topic's
+    /// contracted age row, so its stamped takes feed the silence rule (and,
+    /// with an epoch source, the age rule) as the Rust typed paths' do.
+    /// `stamp_offset` is the CDR byte offset of the type's `stamp.sec`
+    /// (encapsulation header included; the C++ message type states it as
+    /// `STAMP_OFFSET`). Returns `true` when a row was bound; `false` when the
+    /// topic has no age row or `handle` is not a C callback subscription,
+    /// which is not an error: such a subscription has nothing to feed.
+    pub fn bind_raw_subscription_stamp(
+        &mut self,
+        handle: HandleId,
+        topic: &str,
+        stamp_offset: u16,
+    ) -> bool {
+        let Some(row) = self.age_table.iter().find(|a| a.topic == topic) else {
+            return false;
+        };
+        let mon = Some(super::arena::RawAgeMon {
+            cell: row.cell,
+            epoch: self.epoch_us_fn,
+            stamp_offset,
+        });
+        let i = self.live_slot(handle);
+        let Some(meta) = self.entries.get(i).and_then(|m| m.as_ref()) else {
+            return false;
+        };
+        let offset = meta.offset;
+        type TryProcess = unsafe fn(*mut u8, u64, u8) -> Result<bool, TransportError>;
+        let inplace = core::ptr::fn_addr_eq(
+            meta.try_process,
+            super::arena::sub_inplace_raw_c_try_process as TryProcess,
+        );
+        let buffered = core::ptr::fn_addr_eq(
+            meta.try_process,
+            super::arena::sub_buffered_raw_c_try_process as TryProcess,
+        );
+        // SAFETY: the entry at `offset` was written by
+        // `add_arena_subscription_c_callback_with_capture` as the type its
+        // `try_process` names, which is what the two tests above select on.
+        unsafe {
+            let ptr = (self.arena.as_mut_ptr() as *mut u8).add(offset);
+            if inplace {
+                (*(ptr as *mut super::arena::SubInplaceRawCEntry)).age_mon = mon;
+            } else if buffered {
+                (*(ptr as *mut SubBufferedRawCEntry)).age_mon = mon;
+            } else {
+                return false;
+            }
+        }
+        true
     }
 
     /// W3b.5 — install the `DeadlineAction::Fault` hook. Without one a
@@ -10188,6 +10241,7 @@ impl<'s> Executor<'s> {
                             ctx: context,
                             drop: capture_drop,
                         },
+                        age_mon: None,
                     },
                 );
             }
@@ -10245,6 +10299,7 @@ impl<'s> Executor<'s> {
                         ctx: context,
                         drop: capture_drop,
                     },
+                    age_mon: None,
                 },
             );
         }

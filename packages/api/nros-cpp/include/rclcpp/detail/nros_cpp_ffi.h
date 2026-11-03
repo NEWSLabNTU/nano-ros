@@ -1248,7 +1248,17 @@ typedef struct nros_cpp_subscription_options_t {
   /**
    * Reserved; must be zero.
    */
-  uint8_t _reserved[3];
+  uint8_t _reserved;
+  /**
+   * Issue 2215 — the CDR byte offset of the message's `stamp.sec`
+   * (encapsulation header included), or `0` when the type carries no
+   * stamp. The C++ templates fill it from the message type's
+   * `STAMP_OFFSET`; with it the subscription feeds its topic's contracted
+   * age row (`silence-runtime`, `max-age-runtime`, the hazard observer)
+   * as the Rust typed paths do. Took two of the three reserved bytes, so
+   * the struct's size and the other fields' offsets are unchanged.
+   */
+  uint16_t stamp_offset;
   /**
    * Callback group name; NULL = default. Available on ALL THREE register
    * variants now, which it was not before.

@@ -539,14 +539,15 @@ impl<'a> NodeHandle<'a> {
             .create_subscription(&topic, qos)
             .map_err(NodeError::Transport)?;
         // W3b.5 — attach the contracted endpoint's age cell (stamped
-        // types only; needs an epoch source).
-        let age_mon = match (<M as RosMessage>::STAMP_OFFSET, self.epoch_us_fn) {
-            (Some(_), Some(epoch)) => self
+        // types only). Issue 2215: with no epoch source the take is still
+        // recorded, unaged.
+        let age_mon = match <M as RosMessage>::STAMP_OFFSET {
+            Some(_) => self
                 .age_monitors
                 .iter()
                 .find(|a| a.topic == topic_name)
-                .map(|a| (a.cell, epoch)),
-            _ => None,
+                .map(|a| (a.cell, self.epoch_us_fn)),
+            None => None,
         };
         Ok(Subscription {
             handle,
