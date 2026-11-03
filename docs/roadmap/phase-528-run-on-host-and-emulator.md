@@ -104,8 +104,9 @@ that is not real silicon. That covers every target the tree's CI runs today.
   holds the table and the plan console equal: every table key either crosses
   under the same name and JSON form, or has a listed home (`usb` becomes
   `args.usb`), and the plan's only key with no table is the resolved `port`.
-- *Hardware detection from the registry (not done; needs a decision).* What
-  decides host, emulator or hardware in `resolve_run` is the descriptor:
+- *Hardware detection from the registry (done, as split (a) and (b) below;
+  see "How a board runs has one source" after the acceptance list).* What
+  decided host, emulator or hardware in `resolve_run` is the descriptor:
   `[board.run] host`/`emulator`, else `[board.flash]` (refused, naming
   `nros flash --monitor`), else a method guess (no triple and not Zephyr means
   host). The registry cannot replace that as it stands. Its `runs` is
@@ -127,6 +128,34 @@ Acceptance:
 - For every board in the 2169 test's rows, the next-step text is unchanged,
   or each changed row is listed in the commit with the reason.
 - `nros run --dry-run --why` prints the plan with provenance.
+
+**How a board runs has one source (2026-11-03; W1 follow-up 3, done).** The
+decision taken: the descriptor holds launch facts and the registry holds
+evidence (RFC-0118 D4). The registry therefore cross-checks against the
+descriptor and is not read for launch facts.
+
+- *The method guess is retired.* `resolve_run` no longer assumes "no triple
+  and not Zephyr, so a host process". A board that states neither
+  `[board.run]` nor `[board.flash]` is refused (exit 3), and the refusal
+  names both tables and the `host = true` / `emulator = "<kind>:<machine>"`
+  forms. Survey before the change: every tracked in-tree descriptor that runs
+  states `[board.run]`. The one with neither table is `s32z270-freertos`,
+  which its own descriptor says has never run anywhere. The
+  `nros-cli-core/tests/fixtures/board-workspace` descriptors that lack the
+  table feed only the host-platform vocabulary check, never a RunPlan.
+- *`check-board-registry` cross-checks `runs`* (`runs_descriptor_errors` in
+  `scripts/lib/board_registry.py`, with negative controls in its self-test).
+  `runs = "host"` needs `[board.run] host = true`, `runs = "emulator"` needs
+  a `[board.run] emulator`, and `runs = "hardware"` needs `[board.flash]`.
+  The converse is not checked: a descriptor may state a launch nobody has
+  verified yet. `mps3-an536-freertos` is that case. Its descriptor states
+  `qemu:mps3-an536`, and its row stays `runs = "none"` because no runtime
+  cell or probe track has shown it boot. The existing vocabulary already
+  says "stated, unverified": status "Builds", with the machine shown as a
+  twin. No evidence was added. `esp32-qemu` left the tree with phase-521 W6.
+  Every row that runs resolves to a descriptor and agrees with it. The
+  external `s32k344-safety-island` row has no in-tree descriptor and is not
+  checked.
 
 ### W2 — `[board.run]` and `[board.console]`, and the registry's `emulator`
 
