@@ -264,8 +264,9 @@ What porting Nav2 packages to FreeRTOS and Zephyr needed edited in the source:
 
 What a workspace image still has to state:
 
-- **Pool sizes: let the census answer.** Say that the image's entities are
-  what its program creates, and state no size:
+- **Pool sizes: let the census answer.** For an image that runs on a board
+  (not on the host), this is the default: a C/C++ component that states no
+  `entities` is counted by its census. Writing it down says the same thing:
 
   ```toml
   [[component]]
@@ -288,6 +289,12 @@ What a workspace image still has to state:
   nodes is counted node by node.
   The census run constructs the node, so it needs the node's parameters: state
   them with `params_files` (above).
+  The census build needs a host C and C++ compiler, CMake, Ninja, the host Rust
+  target and the store's Corrosion; the configure names whichever is missing.
+  A component whose sources call an RTOS API directly cannot build for the
+  host, and its configure is refused with two fixes: list its entities
+  (`entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]`), or write
+  `entities = "defaults"` to keep the embedded defaults on purpose.
   One Zephyr pool stays yours to state, because Zephyr sizes it in Kconfig:
   zenoh-pico takes a POSIX condition variable per subscriber and queryable,
   and the configure refuses a `CONFIG_MAX_PTHREAD_COND_COUNT` below what the

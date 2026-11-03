@@ -150,12 +150,16 @@ function(nros_record_leaf_entity_facts _dir)
     endif()
     set_property(GLOBAL PROPERTY ${_memo} TRUE)
 
-    # Issue 1556 -- `entities = "census"`: the leaf states that its entities
-    # are what its program creates, read from its census. Read here from the
-    # file itself, not inferred from the verb's message: whether a failure
-    # below may degrade to the fallback budget is a property of the leaf.
-    file(STRINGS "${_dir}/system.toml" _nros_leaf_census_optin
-        REGEX "^[ \t]*entities[ \t]*=[ \t]*\"census\"")
+    # Issue 1556 -- `entities = "census"`: the leaf's entities are what its
+    # program creates, read from its census. RFC-0120 D4 -- so are those of a
+    # C/C++ cross leaf that states no `entities`. Asked of the CLI's one rule,
+    # not grepped here: whether a failure below may degrade to the fallback
+    # budget is a property of the leaf, and the CLI is what knows it.
+    nros_leaf_census_source(_nros_leaf_census_word "${_nros}" "${_dir}")
+    set(_nros_leaf_census_optin FALSE)
+    if(_nros_leaf_census_word STREQUAL "census")
+        set(_nros_leaf_census_optin TRUE)
+    endif()
 
     if(_nros_leaf_census_optin)
         nros_leaf_census_take("${_nros}" "${_dir}")

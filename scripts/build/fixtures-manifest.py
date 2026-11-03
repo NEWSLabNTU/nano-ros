@@ -555,16 +555,18 @@ def builds_through_leaf_settings(entry):
     return (d / "system.toml").is_file() and (d / "Cargo.toml").is_file()
 
 
-def leaf_entities_from_census(leaf):
-    """Issue 1556 -- does this leaf's `system.toml` take a component's
-    entities from its census (`entities = "census"`)? The same word
-    `nros_orchestration_ir::leaf_system` reads."""
-    path = Path(leaf) / "system.toml"
-    if not path.is_file() or not (Path(leaf) / "CMakeLists.txt").is_file():
-        return False
-    with open(path, "rb") as fh:
-        doc = tomllib.load(fh)
-    return any(c.get("entities") == "census" for c in doc.get("component", []))
+def leaf_may_take_census(leaf):
+    """Issue 1556 / RFC-0120 D4 -- could this leaf be counted by its census?
+
+    A standalone C/C++ leaf (a `system.toml` beside a `CMakeLists.txt`) is,
+    when it writes `entities = "census"` or -- the default since phase-530 W2
+    -- states no `entities` for a cross image. Whether it IS is the CLI's one
+    rule (`nros dev image entity-census source`), which needs the board
+    catalog; this script does not restate it. `take --leaf` answers "nothing
+    to take" for a leaf the rule does not count, so listing a candidate costs
+    one CLI call."""
+    d = Path(leaf)
+    return (d / "system.toml").is_file() and (d / "CMakeLists.txt").is_file()
 
 
 def is_cargo_row(entry):
@@ -1885,9 +1887,9 @@ def main():
             # so a fixture build can take every census before it configures
             # them (`scripts/build/census-prepass.sh`).
             "census-images",
-            # Issue 1556 -- the standalone C/C++ LEAVES whose entities come
-            # from their own census (`entities = "census"`), so a fixture
-            # build can take each census before it cross-configures the leaf.
+            # Issue 1556 -- the standalone C/C++ LEAVES that may be counted by
+            # their own census (RFC-0120 D4: by default), so a fixture build can
+            # take each census before it cross-configures the leaf.
             "census-leaves",
         ],
     )
@@ -2316,13 +2318,14 @@ def main():
         return
 
     if a.command == "census-leaves":
-        # Issue 1556 -- one line per `[[fixture]]` leaf dir whose `system.toml`
-        # has a `[[component]]` with `entities = "census"`: its configure reads
-        # the leaf's census (`nros ws entity-facts --leaf`, `sizing-descriptor
-        # --from-leaf`) and REFUSES without a fresh one, so the build takes it
-        # first (`nros dev image entity-census take --leaf`). Keyed on the leaf's own
-        # opt-in, never on its shape: a leaf that did not opt in keeps the
-        # sizing it has, census or not. Deduplicated, in manifest order.
+        # Issue 1556 -- one line per `[[fixture]]` C/C++ leaf dir that may be
+        # counted by its census: such a leaf's configure reads the census
+        # (`sizing-descriptor --from-leaf`) and REFUSES without a fresh one, so
+        # the build takes it first (`nros dev image entity-census take --leaf`).
+        # RFC-0120 D4 made the census the DEFAULT for a C/C++ cross leaf, and
+        # which leaves it reaches is the CLI's one rule, not a word grepped
+        # here: `take --leaf` decides, and does nothing for the rest.
+        # Deduplicated, in manifest order.
         seen = set()
         fixture_rows = load(a.manifest)
         for e in fixture_rows:
@@ -2331,7 +2334,7 @@ def main():
             d = e.get("dir", "")
             if not d or d in seen or is_cargo_row(e):
                 continue
-            if leaf_entities_from_census(Path(a.manifest).resolve().parents[1] / d):
+            if leaf_may_take_census(Path(a.manifest).resolve().parents[1] / d):
                 seen.add(d)
                 sys.stdout.write(f"{d}\n")
         return
