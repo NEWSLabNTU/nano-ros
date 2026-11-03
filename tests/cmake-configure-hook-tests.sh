@@ -274,9 +274,9 @@ for f in nano_rosConfig.cmake CMakeLists.txt cmake/NanoRosWorkspace.cmake \
 done
 check
 # Any `COMMAND <cli> configure` outside the helper is a second spelling.
-others="$(cd "$PROJECT_ROOT" && git grep -nE 'COMMAND +"?\$\{[A-Za-z_]+\}"? +configure( |$)' \
-    -- 'cmake/*.cmake' 'zephyr/*.cmake' '*CMakeLists.txt' 'nano_rosConfig.cmake' \
-    | grep -v '^cmake/NanoRosConfigureHook.cmake:' || true)"
+nros_git_grep others -C "$PROJECT_ROOT" -nE 'COMMAND +"?\$\{[A-Za-z_]+\}"? +configure( |$)' \
+    -- 'cmake/*.cmake' 'zephyr/*.cmake' '*CMakeLists.txt' 'nano_rosConfig.cmake'
+others="$(grep -v '^cmake/NanoRosConfigureHook.cmake:' <<<"$others" || true)"
 if [ -z "$others" ]; then
     log_success "only NanoRosConfigureHook.cmake spells the configure command"
 else

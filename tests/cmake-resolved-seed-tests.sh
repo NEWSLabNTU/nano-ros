@@ -801,6 +801,9 @@ log_header "W. the Zephyr hook's project: a leaf under a \`src/\` directory is i
 # own project.
 HOOK_WS="$TEST_TMPDIR/hook-ws"
 mkdir -p "$HOOK_WS/src/my_leaf" "$HOOK_WS/src/bringup"
+# The hook runs only for a dir holding a system.toml (a guest is unchanged --
+# `nros_configure_hook`, phase-530 W5), as both of these do in a real tree.
+touch "$HOOK_WS/src/my_leaf/system.toml" "$HOOK_WS/src/bringup/system.toml"
 FAKE_NROS_CURRENT=TRUE
 export FAKE_NROS_CURRENT
 hook_project() { # <dir> <generated> -> the project `nros configure` was run on
