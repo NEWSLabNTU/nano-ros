@@ -37,10 +37,16 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 22 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 20 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 45 | 39 | 76 % |
-//! | tier 3 | everything | 254 | 51 | 100 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 21 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 19 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 45 | 39 | 75 % |
+//! | tier 3 | everything | 256 | 52 | 100 % |
+//!
+//! Re-measured 2026-11-03 (phase-521 W7): the `IdleWake` workload joined with
+//! two Zephyr Cortex-M cells, C over zenoh and C over XRCE. The XRCE one is a
+//! new coordinate (`zephyr-cortex-m,c,xrce`), so tier 3 went 254 -> 256 cells
+//! over 51 -> 52 coordinates; tiers 1, 2 and nightly did not move (their
+//! percentages move only because the denominator did).
 //!
 //! Re-measured 2026-10-31 (phase-466 W5, RFC-0061 amendment of that date):
 //! every realtime-tiers cell is its own nightly requirement, 37 / 35 -> 45 / 39.
@@ -1144,12 +1150,12 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 254,
-            "the table's tier-3 cell count (254) is stale; recomputed {total_cells}"
+            total_cells, 256,
+            "the table's tier-3 cell count (256) is stale; recomputed {total_cells}"
         );
         assert_eq!(
-            total_coords, 51,
-            "the table's tier-3 denominator (51 coordinates) is stale; recomputed \
+            total_coords, 52,
+            "the table's tier-3 denominator (52 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }

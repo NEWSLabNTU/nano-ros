@@ -504,6 +504,16 @@ pub enum Workload {
     /// image has no console, which is the condition the record exists for.
     /// The verdict is read out of memory, not out of a stream.
     BootReport,
+    /// phase-521 W7 (RFC-0113 D2) — an idle image wakes only for its
+    /// deadlines. The image holds one subscription nobody publishes to and one
+    /// 1 s timer, counts how often the thread running its executor is switched
+    /// in over five timer periods (Zephyr's user tracing hook), and prints the
+    /// count with each expiry's lateness. The test bounds both.
+    ///
+    /// Its own value because nothing is delivered: the subject is how often
+    /// the executor woke while nothing happened, which a pubsub cell cannot
+    /// see — a 10 ms slice delivers every sample just as well.
+    IdleWake,
 }
 
 impl Workload {
@@ -558,6 +568,10 @@ impl Workload {
             // A router port of its own: the image opens its session before
             // it registers the entity that exhausts the arena (issue 1036).
             Workload::BootReport => 87,
+            // phase-521 W7. 84 and 85 are free in every band (see
+            // PortWorkspace); a router or agent port of its own, because the
+            // image opens a session (zenoh router, or XRCE agent).
+            Workload::IdleWake => 84,
         }
     }
 
@@ -1382,7 +1396,9 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         (_, _, _, W::Port | W::PortSmoke | W::PortMonitor | W::PortWorkspace, K::Example) => {
             Some(PortTemplates)
         }
-        (P::ZephyrQemuCortexM, _, _, W::Pubsub | W::BootReport, K::Example) => Some(ZephyrCortexM),
+        (P::ZephyrQemuCortexM, _, _, W::Pubsub | W::BootReport | W::IdleWake, K::Example) => {
+            Some(ZephyrCortexM)
+        }
         (P::ZephyrNativeSim, _, _, W::Pubsub | W::Service | W::Action, K::Example) => Some(Zephyr),
         (P::ZephyrNativeSim, L::Rust, R::Zenoh, W::EntryPubsub, K::Workspace) => Some(Zephyr),
         (

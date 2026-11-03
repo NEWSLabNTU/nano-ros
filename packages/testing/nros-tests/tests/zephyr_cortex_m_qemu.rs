@@ -45,12 +45,15 @@
 use nros_tests::{
     alloc::port_of,
     fixtures::{
-        QemuProcess, RequireFixture, Rmw, ZenohRouter, build_zephyr_cortex_m_c_boot_report,
-        build_zephyr_cortex_m_example, is_qemu_available, is_zenohd_available,
-        qemu_monitor_command,
+        QemuProcess, RequireFixture, Rmw, XrceAgent, ZenohRouter,
+        build_zephyr_cortex_m_c_boot_report, build_zephyr_cortex_m_example,
+        build_zephyr_cortex_m_idle_wake, is_qemu_available, is_xrce_agent_available,
+        is_zenohd_available, qemu_monitor_command,
     },
     matrix::{Lang, PlatformId, Workload},
-    output::{ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER},
+    output::{
+        IDLE_WAKE_RESULT_PREFIX, ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER, parse_idle_wake,
+    },
 };
 use std::{
     process::Command,
@@ -494,6 +497,102 @@ fn program_counter(registers: &str) -> Option<u32> {
     u32::from_str_radix(&hex, 16).ok()
 }
 
+/// phase-521 W7 (RFC-0113 D2) — the RTOS idle-wake witness: an idle image
+/// on Zephyr's own IP stack wakes only for its deadlines, and on them.
+///
+/// The image (`bins/idle-wake-zephyr-mps2`) holds one subscription nobody
+/// publishes to and one 1 s timer. Over five timer periods it counts how often
+/// the thread running its executor was switched in (Zephyr's user tracing
+/// hook) and how far each expiry's dispatch landed from its deadline, and
+/// prints both. One wake per expiry is the promise; the receive-blocking wait
+/// phase-521 W6 deleted woke on a 10 ms slice, ~500 times in this window.
+///
+/// The bounds leave room for what is not an idle wake of the executor: a
+/// preemption while a callback runs returns the thread through a switch-in
+/// too. Lateness is bounded at 50 ms, the Linux witness's margin; earliness at
+/// one 1 ms tick.
+fn run_idle_wake_cell(rmw: Rmw) {
+    require_cortex_m_in_lane("a Zephyr Cortex-M idle-wake cell");
+    if !is_qemu_available() {
+        nros_tests::unmet!("qemu-system-arm not found");
+    }
+    let binary = build_zephyr_cortex_m_idle_wake(rmw).require("the mps2_an385 idle-wake witness");
+
+    // The peer the image opens its session against, on the port its fixture
+    // row bakes (`alloc::{port_of, xrce_agent_port_of}`). Bound to every
+    // interface: the guest reaches the host through QEMU's 10.0.2.2 gateway.
+    let (_router, _agent) = match rmw {
+        Rmw::Zenoh => {
+            if !is_zenohd_available() {
+                nros_tests::unmet!("zenohd not found — run `just setup` / source ./activate.sh");
+            }
+            let port = port_of(PlatformId::ZephyrQemuCortexM, Lang::C, Workload::IdleWake);
+            let router = ZenohRouter::start_slirp(port).unwrap_or_else(|e| {
+                panic!("failed to start zenohd on {port} for the SLIRP guest: {e:?}")
+            });
+            (Some(router), None)
+        }
+        Rmw::Xrce => {
+            if !is_xrce_agent_available() {
+                nros_tests::unmet!("the Micro-XRCE-DDS agent was not found — run `just setup`");
+            }
+            let port = nros_tests::alloc::xrce_agent_port_of(
+                PlatformId::ZephyrQemuCortexM,
+                Lang::C,
+                Workload::IdleWake,
+            );
+            let agent = XrceAgent::start(port)
+                .unwrap_or_else(|e| panic!("failed to start the XRCE agent on {port}: {e:?}"));
+            (None, Some(agent))
+        }
+        other => panic!("no idle-wake row for {other:?}"),
+    };
+
+    let mut qemu =
+        QemuProcess::start_mps2_an385_networked(&binary).expect("spawn the idle-wake witness");
+    // Boot, session, the first expiry, then five 1 s periods.
+    let output = qemu.collect_until(IDLE_WAKE_RESULT_PREFIX, BOOT_BUDGET);
+    qemu.kill();
+    eprintln!("Zephyr mps2_an385 idle-wake witness ({rmw:?}) output:\n{output}");
+
+    let r = parse_idle_wake(&output).unwrap_or_else(|| {
+        panic!(
+            "the witness printed no result line (`{IDLE_WAKE_RESULT_PREFIX}`).\nOutput:\n{output}"
+        )
+    });
+    assert!(
+        r.switch_ins <= 2 * r.fires + 2,
+        "the executor's thread woke {} times over {} timer periods ({} ms): it is waking on \
+         something other than its deadlines (RFC-0113 D2). Output:\n{output}",
+        r.switch_ins,
+        r.fires,
+        r.window_ms
+    );
+    assert!(
+        r.switch_ins >= r.fires,
+        "the executor's thread woke {} times for {} expiries: the counter is not counting the \
+         thread that dispatches. Output:\n{output}",
+        r.switch_ins,
+        r.fires
+    );
+    assert!(
+        r.max_late_us <= 50_000 && r.max_early_us <= 1_000,
+        "an expiry was dispatched {} us late / {} us early. Output:\n{output}",
+        r.max_late_us,
+        r.max_early_us
+    );
+}
+
+#[test]
+fn zephyr_cortex_m_idle_zenoh_image_wakes_only_for_its_deadlines() {
+    run_idle_wake_cell(Rmw::Zenoh);
+}
+
+#[test]
+fn zephyr_cortex_m_idle_xrce_image_wakes_only_for_its_deadlines() {
+    run_idle_wake_cell(Rmw::Xrce);
+}
+
 /// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
 /// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
 /// added, retiered or reassigned without this list moving is a red here.
@@ -514,6 +613,14 @@ fn cases_bound_to_matrix_cells() {
                 K::Example,
             ),
             (P::ZephyrQemuCortexM, L::C, R::Zenoh, W::Pubsub, K::Example),
+            (
+                P::ZephyrQemuCortexM,
+                L::C,
+                R::Zenoh,
+                W::IdleWake,
+                K::Example,
+            ),
+            (P::ZephyrQemuCortexM, L::C, R::Xrce, W::IdleWake, K::Example),
             (
                 P::ZephyrQemuCortexM,
                 L::Cpp,

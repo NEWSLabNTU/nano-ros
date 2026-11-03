@@ -280,7 +280,7 @@ l3:
 # Tier 2 — phase-318 W4.d. Gate exactly the fixture COORDINATES the lane selected.
 #
 # The selection is 1-wise over platform x lang x rmw x kind (`nros_tests::ci_lane`),
-# computed from `matrix::CELLS` and emitted by `lane-coords`. 10 of 51 coordinates
+# computed from `matrix::CELLS` and emitted by `lane-coords`. 10 of 52 coordinates
 # (the count is gated by `ci_lane::tests::documented_lane_table_is_live`; do not
 # hand-edit it here — run `lane-coords tier2 | wc -l`).
 #

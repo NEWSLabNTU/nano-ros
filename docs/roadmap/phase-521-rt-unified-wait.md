@@ -586,6 +586,20 @@ Make RFC-0113 D2 a measured property, not a reading:
 **Acceptance:** each measurement is a test in a lane that runs (not an
 `eprintln!`), with numbers recorded in RFC-0113's coverage section.
 
+**W7 — the Zephyr idle-wake witness and the RTOS XRCE row (2026-11-03).** The
+RTOS lane's witness is `packages/testing/nros-tests/bins/idle-wake-zephyr-mps2`:
+one subscription nobody publishes to and one 1 s timer, with Zephyr's user
+tracing hook (`CONFIG_TRACING_USER`) counting how often the executor's thread is
+switched in. Two fixture rows build it for mps2/an385, over zenoh and over
+XRCE. The XRCE row is the RTOS XRCE row this item called for, and the first
+XRCE image on this board. They are the (ZephyrQemuCortexM, C, {Zenoh, Xrce},
+IdleWake) cells, run by `zephyr_cortex_m_qemu`. Measured: 10 switch-ins over
+five expiries on both, with dispatch on the tick, in every run. The XRCE cell
+first hung after one CREATE_CLIENT: Zephyr ignores `SO_RCVTIMEO` without
+`CONFIG_NET_CONTEXT_RCVTIMEO`, which issue 2105 selected for zenoh only, so
+`NROS_RMW_XRCE` now selects it too. Still open in W7: arrival→dispatch
+latency on the RTOS lane, and the fan-out cost on a non-attributing backend.
+
 ### W8 — PX4 as a Tier 1 framework (RFC-0113 D9)
 
 - Add `px4` to `nros_orchestration_ir::FRAMEWORKS` and an `nros::main!` /

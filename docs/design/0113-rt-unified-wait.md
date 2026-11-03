@@ -237,11 +237,11 @@ are what keeps D5's refusal from landing (phase-521 W6).
 
 | Combination | Readiness | Evidence |
 |---|---|---|
-| zenoh THREAD mode (POSIX, NuttX, Zephyr, FreeRTOS) | Notify | idle Linux listener: 0 voluntary context switches in 10 s (was 1000); `entity_wake::an_idle_zenoh_entry_wakes_only_for_its_deadlines` 4 spins in 3.5 s with a 1 s timer, dispatch 0.4 ms late |
+| zenoh THREAD mode (POSIX, NuttX, Zephyr, FreeRTOS) | Notify | idle Linux listener: 0 voluntary context switches in 10 s (was 1000); `entity_wake::an_idle_zenoh_entry_wakes_only_for_its_deadlines` 4 spins in 3.5 s with a 1 s timer, dispatch 0.4 ms late; Zephyr mps2/an385 (in-kernel IP stack, QEMU 11): 10 executor switch-ins over five 1 s expiries, dispatch on the tick |
 | zenoh CALLER mode, mps2-an385 (LAN9118 / UART0) | Notify (RX IRQ + SysTick one-shot) | idle listener, QEMU 9.0.2, 20 s: 41 one-shot arms (1,892 with the old 10 ms drain); under QEMU 11 `wfi` does not halt (issue 2209) |
 | Cyclone DDS | Notify | — |
 | XRCE over UDP, POSIX / NuttX | Waitable (socket fd) | phase-521 W3 |
-| XRCE over zsock, Zephyr | Waitable (`zsock_poll`) | native_sim arrival→dispatch p50 0.4–1.1 ms (was 3.2–6.3 ms) |
+| XRCE over zsock, Zephyr | Waitable (`zsock_poll`) | native_sim arrival→dispatch p50 0.4–1.1 ms (was 3.2–6.3 ms); mps2/an385 (in-kernel IP stack, QEMU 11): 10 executor switch-ins over five 1 s expiries, dispatch on the tick |
 | XRCE over lwIP (FreeRTOS), NetX Duo (ThreadX) | Notify (stack receive callback) | p50 2.2–4.0 ms (was 72–253 ms); NetX 1.8 ms |
 | C++ native tier runner, `rclc_executor_spin_period` | parks on the wake object | `node_guard_condition.c`: a trigger in the period gap dispatched 0 ms after it lands (was: next period) |
 | zenoh CALLER mode, ThreadX | Notify — the link's TCP socket notifies through `nros_platform_tcp_set_rx_notify` (NetX Duo's receive notify; on threadx-linux a lowest-priority NSOS watcher thread), and `zp_next_wake_ms` is real in the multi-thread build | idle threadx-linux listener, 10 s: 4,599 context switches against 53,061 with the blind `z_sleep_ms`; `rtos_e2e` pubsub/service/action pass on threadx-linux and rv-virt-threadx |
@@ -257,8 +257,21 @@ dispatches each expiry 74-183 us late (D2.1, D2.3); an idle executor sharing a
 session with one taking 936 arrivals/s runs 6 spins in 3 s on 120 us of thread
 CPU, i.e. it is woken only by its own deadlines (D2.5's fan-out on an
 attributing backend is zero); `a_shared_session_member_is_not_woken_by_another_members_arrivals`
-pins the same per member. Zephyr (mps2/an385) and an RTOS XRCE cell are not
-measured yet (phase-521 W7).
+pins the same per member.
+
+Measured on Zephyr (mps2/an385 under QEMU 11, Zephyr's own IP stack and the
+LAN9118 driver; `zephyr_cortex_m_qemu::zephyr_cortex_m_idle_{zenoh,xrce}_image_wakes_only_for_its_deadlines`,
+2026-11-03): an image with one idle subscription and one 1 s timer counts its
+executor thread's switch-ins with Zephyr's user tracing hook. Over five
+expiries (5,000 ms) the count is 10 on zenoh and 10 on XRCE, each expiry
+dispatched on its 1 ms tick (0 us late, 0 us early), in every run. That is two
+switch-ins per deadline and none between them; the receive-blocking wait woke
+on a 10 ms slice, ~500 times in the same window. The test bounds the count at
+two per expiry plus two, and the lateness at 50 ms. The XRCE cell is the first
+XRCE image on an in-kernel Zephyr stack, and it found that XRCE's per-attempt
+receive timeout was ignored there: `CONFIG_NET_CONTEXT_RCVTIMEO` was selected
+for zenoh only (issue 2105), so the first CREATE_CLIENT's receive never
+returned. `NROS_RMW_XRCE` selects it now.
 
 Zephyr's serial link receives only through its interrupt-driven ring: the
 polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
@@ -283,6 +296,8 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Changelog
 
+- 2026-11-03 — Zephyr idle-wake measured on mps2/an385, zenoh and XRCE
+  (phase-521 W7); `NROS_RMW_XRCE` selects `NET_CONTEXT_RCVTIMEO`.
 - 2026-11-02 — RTIC row: the arrival path is an RTIC task on the RX
   interrupt (phase-521 W6e); the 1 ms tick is gone.
 - 2026-11-02 — ThreadX zenoh CALLER row: Notify through the new platform
