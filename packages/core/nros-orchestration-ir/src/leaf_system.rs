@@ -290,6 +290,11 @@ pub struct LeafSystem {
     pub ros_edition: Option<String>,
     pub network: Network,
     pub components: Vec<LeafComponent>,
+    /// phase-530 W2 (Ruling R29) -- `[system] entities = "defaults"`: the
+    /// census opt-out for a leaf whose program is not a `[[component]]` (a
+    /// port that names its executable in CMake), which has no component row
+    /// to write it on. The same word as a component's.
+    pub system_entities_defaults: bool,
     /// `[image.<id>] env` — the RFC-0049 APP rung, stated per image
     /// (RFC-0098 D4, phase-445 W6).
     ///
@@ -395,16 +400,18 @@ impl LeafSystem {
 
     /// RFC-0120 D4 -- does any component write `entities = "defaults"`?
     pub fn entities_defaults(&self) -> bool {
-        self.components.iter().any(|c| c.entities_defaults)
+        self.system_entities_defaults || self.components.iter().any(|c| c.entities_defaults)
     }
 
     /// Does any component state `entities` at all -- a list, `"census"` or
     /// `"defaults"`? A C/C++ leaf that states none is counted by its census
     /// by default (RFC-0120 D4).
     pub fn states_entities(&self) -> bool {
-        self.components
-            .iter()
-            .any(|c| c.entities.is_some() || c.entities_from_census || c.entities_defaults)
+        self.system_entities_defaults
+            || self
+                .components
+                .iter()
+                .any(|c| c.entities.is_some() || c.entities_from_census || c.entities_defaults)
     }
 }
 
@@ -712,6 +719,22 @@ fn entities_key(t: &toml::Table, file: &Path) -> Result<EntitiesKey, String> {
     })
 }
 
+/// `[system] entities`: absent, or [`ENTITIES_DEFAULTS`] (Ruling R29). A list
+/// or `"census"` belongs on a `[[component]]`, and the census is already the
+/// default for a C/C++ cross leaf, so nothing else is accepted here.
+fn system_entities_key(system: Option<&toml::Table>, file: &Path) -> Result<bool, String> {
+    match system.and_then(|s| s.get("entities")) {
+        None => Ok(false),
+        Some(v) if v.as_str() == Some(ENTITIES_DEFAULTS) => Ok(true),
+        Some(v) => Err(format!(
+            "{}: `[system] entities = {v}` -- only \"{ENTITIES_DEFAULTS}\" is accepted there (the \
+             crate defaults, written down); a list or \"{ENTITIES_FROM_CENSUS}\" goes on a \
+             `[[component]]`",
+            file.display()
+        )),
+    }
+}
+
 fn parse_file(path: &Path) -> Result<toml::Table, String> {
     let raw = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     raw.parse::<toml::Table>()
@@ -938,6 +961,7 @@ fn image_system(
         ros_edition,
         network,
         components,
+        system_entities_defaults: system_entities_key(system, path)?,
         env,
         knobs,
         features: features_key(system, path)?,
@@ -1895,6 +1919,39 @@ domain_id = 4
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &typo)]);
         let e = read(d.path()).unwrap_err();
         assert!(e.contains("ARRAY") && e.contains("\"census\""), "{e}");
+    }
+
+    /// phase-530 W2 (Ruling R29) -- a leaf with no `[[component]]` has nowhere
+    /// to write a component's `entities`, so its opt-out is `[system] entities
+    /// = "defaults"`, the same word. Any other value there is refused.
+    #[test]
+    fn system_level_defaults_opts_out() {
+        let body = |entities: &str| {
+            format!(
+                "[system]\nname = \"t\"\nrmw = \"zenoh\"\n{entities}\n[image.a]\nboard = \"x\"\n"
+            )
+        };
+        let d = leaf(&[
+            ("Cargo.toml", CARGO),
+            ("system.toml", &body("entities = \"defaults\"")),
+        ]);
+        let l = read(d.path()).unwrap().unwrap();
+        assert!(l.system_entities_defaults);
+        assert!(
+            l.entities_defaults(),
+            "the system-level word is the opt-out too"
+        );
+        assert!(l.states_entities());
+
+        let d = leaf(&[
+            ("Cargo.toml", CARGO),
+            ("system.toml", &body("entities = \"census\"")),
+        ]);
+        let e = read(d.path()).unwrap_err();
+        assert!(
+            e.contains("[system] entities") && e.contains("\"defaults\""),
+            "{e}"
+        );
     }
 
     /// RFC-0120 D4 -- `entities = "defaults"` is the WRITTEN opt-out of the

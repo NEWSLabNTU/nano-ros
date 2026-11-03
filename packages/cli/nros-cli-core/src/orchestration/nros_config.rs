@@ -815,6 +815,7 @@ fn synthesise_self_bringup(
         default_launch: None,
         default_target: None,
         features: Vec::new(),
+        entities: None,
     };
 
     // Component rows. The `node` spelling (Phase 212.N.12 rename) is
