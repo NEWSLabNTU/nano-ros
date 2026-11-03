@@ -297,7 +297,9 @@ pub fn rows(
         ("NROS_LEAF_DEPLOY", deploy.to_string()),
         ("NROS_LEAF_RMW", s(&leaf.rmw)),
         // Issue 2087 — the image's declared edition, empty when nothing states
-        // one; the cmake reader applies it as `NROS_ROS_EDITION`.
+        // one. Both readers apply it as `NROS_ROS_EDITION`: the cmake road's
+        // leaf read (`NanoRosPackageXml.cmake`) and the Zephyr module hook
+        // (`nros_image_kconfig.cmake`, phase-530 Ruling R34).
         ("NROS_LEAF_ROS_EDITION", s(&leaf.ros_edition)),
         (
             "NROS_LEAF_DOMAIN_ID",
