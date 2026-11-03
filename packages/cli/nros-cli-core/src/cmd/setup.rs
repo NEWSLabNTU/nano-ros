@@ -6293,7 +6293,7 @@ fn workspace_boards(
 /// resolved in the order the scripts' `nros_zenohd_bin` uses:
 /// `NROS_RMW_ZENOHD`, then each `AMENT_PREFIX_PATH` prefix, then
 /// `/opt/ros/$ROS_DISTRO`. PATH and a `/opt/ros/*` glob are not searched.
-fn resolve_rmw_zenohd() -> Option<std::path::PathBuf> {
+pub(crate) fn resolve_rmw_zenohd() -> Option<std::path::PathBuf> {
     if let Some(p) = std::env::var_os("NROS_RMW_ZENOHD").map(std::path::PathBuf::from)
         && p.is_file()
     {

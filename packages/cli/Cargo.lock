@@ -853,6 +853,7 @@ dependencies = [
  "nros-zephyr-build",
  "pathdiff",
  "quick-xml",
+ "regex",
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
  "ros-launch-manifest-types",

@@ -617,6 +617,7 @@ fn finish(
             plan.link = Some(Link {
                 kind,
                 locator: loc.clone(),
+                rmw: None,
             });
             prov.set("link", IMAGE);
         }
@@ -656,9 +657,9 @@ fn finish(
 
 // ── `nros run` ──────────────────────────────────────────────────────────
 
-/// `nros run` — launch a host process or an emulator. Only `--dry-run` and
-/// `--why` are implemented; executing the plan is not, yet.
-// RFC-0118 D2; `--dry-run`/`--why` are phase-528 W1, executing is W4.
+/// `nros run` — launch a host process or an emulator. `--dry-run` prints the
+/// plan; otherwise [`crate::cmd::run_exec`] executes it.
+// RFC-0118 D2; resolving is phase-528 W1, executing is W4.
 #[derive(clap::Args, Debug, Clone)]
 pub struct Args {
     /// The image to run (`<image>` or `<bringup>:<image>`), as `nros build`
@@ -686,6 +687,8 @@ pub struct Args {
     /// Arguments for the target, after `--`.
     #[arg(last = true)]
     pub passthrough: Vec<String>,
+    #[command(flatten)]
+    pub exec: crate::cmd::run_exec::ExecArgs,
 }
 
 /// `nros run`.
@@ -693,15 +696,10 @@ pub struct Args {
 /// # Errors
 ///
 /// Planning the build failed. A plan that cannot resolve exits 3 (RFC-0118
-/// D2); a run without `--dry-run` exits 2 until phase-528 W4.
+/// D2); otherwise the process exits with the code the execution gives.
 pub fn run(args: Args) -> eyre::Result<()> {
-    if !args.dry_run {
-        eprintln!(
-            // phase-528 W4.
-            "nros run: launching is not implemented yet; `nros run --dry-run \
-             [--why]` prints the plan it will execute"
-        );
-        std::process::exit(i32::from(nros_extension::exit::RUNNER_FAILED));
+    if let Some(file) = &args.exec.plan {
+        return crate::cmd::run_exec::run_plan_file(&args, file);
     }
     let mut build_argv = vec!["build".to_string(), "--dry-run".to_string()];
     if let Some(w) = &args.workspace {
@@ -760,6 +758,7 @@ pub fn run(args: Args) -> eyre::Result<()> {
         Err(e) => unresolved(&e.to_string()),
     };
     // The emulator executable the runner is handed, through the QEMU ladder.
+    // Attached before the dry-run prints, so the printed plan is the run one.
     let root = crate::orchestration::nano_ros_root::resolve(
         args.nano_ros_path.clone(),
         &std::env::current_dir().unwrap_or_default(),
@@ -770,8 +769,12 @@ pub fn run(args: Args) -> eyre::Result<()> {
     }) {
         eprintln!("nros run: {note}");
     }
-    print!("{}", render_plan_text(&plan, args.why, args.json));
-    Ok(())
+    crate::cmd::run_exec::decorate(&mut plan, one.rmw.as_deref(), &args.exec);
+    if args.dry_run {
+        print!("{}", render_plan_text(&plan, args.why, args.json));
+        return Ok(());
+    }
+    crate::cmd::run_exec::build_and_execute(&args, &one.qualified, &plan)
 }
 
 fn unresolved(msg: &str) -> ! {

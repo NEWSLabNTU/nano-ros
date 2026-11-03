@@ -110,6 +110,10 @@ pub mod interface_package;
 pub mod routing;
 pub mod source_stamp;
 pub mod stale_guard;
+// RFC-0118 D8 — the process group, console capture and `--expect` grading
+// every target verb shares (`nros run`; `nros flash --monitor` and `nros
+// monitor` reuse it).
+pub mod target_session;
 // Issue 0455 — one `scratch_dir` for every unit test in this crate. Nine
 // hand-written `temp_dir().join(...)` spellings raced each other; the
 // differences between them WERE the bug. Test-only, so it ships nothing.
