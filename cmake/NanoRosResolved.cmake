@@ -51,9 +51,12 @@
 # continues, different fails the configure naming both files -- or naming the
 # declaration configure could not see. Nothing re-converges.
 #
-# A configure with no `nros configure` in front of it (a plain `cmake -S`,
-# until phase-530 W5's cmake hook) locates nothing, writes the placeholder as
-# before, and still converges through the old lever, inside the promise module.
+# Every hooked host runs `nros configure` first (phase-530 W5's CMake hook,
+# `cmake/NanoRosConfigureHook.cmake`, for `find_package(nano_ros)`,
+# `nano_ros_workspace()` and a bare `add_subdirectory`). A configure whose
+# image configure resolved no dir for (a standalone CMake leaf) locates
+# nothing, writes the placeholder as before, and keeps the old lever, inside
+# the promise module.
 
 include_guard(GLOBAL)
 

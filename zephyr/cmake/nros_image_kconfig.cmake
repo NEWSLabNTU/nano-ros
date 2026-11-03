@@ -111,6 +111,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobRegistry.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
 # `nros_ros_edition_agree` -- the image's declared edition (Ruling R34).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosRosEdition.cmake")
+# phase-530 W5 -- `nros_configure_hook`, the one `nros configure` call every
+# hooked host makes (RFC-0120 D5).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosConfigureHook.cmake")
 
 # The module root, captured at FILE scope (inside a function
 # `CMAKE_CURRENT_LIST_DIR` names the caller's file).
@@ -468,29 +471,22 @@ endfunction()
 
 # _nros_image_kconfig_configure(<cli> <system-dir> <image> <generated>) -- phase-530 W4
 #
-# Run `nros configure` for the image this host configure builds and publish
-# where its answer is (`nros_configured_locate`: the GLOBAL properties
-# `NROS_CONFIGURED_RESOLVED_DIR` and `NROS_CONFIGURED_CURRENT`, which live for
-# this configure only).
+# Run `nros configure` for the image this host configure builds, through the
+# ONE helper every hooked host calls (`nros_configure_hook`,
+# cmake/NanoRosConfigureHook.cmake -- phase-530 W5 factored it out of here, so
+# the CMake roads cannot spell it differently). It publishes where the answer
+# is (`NROS_CONFIGURED_RESOLVED_DIR`) and marks this configure current
+# (`NROS_CONFIGURED_CURRENT`), and is a no-op under `NROS_LEAF_CENSUS_HOST`.
 #
 # The PROJECT is the leaf itself (a `system.toml` beside the application), or
 # -- RFC-0085 D14's walk-up -- the colcon workspace that owns a generated
 # application's bringup (`<ws>/src/<bringup>`). Only a GENERATED application
 # walks up (<generated>: it stated NROS_IMAGE_SYSTEM_DIR, a property of the
 # consumer): a standalone leaf that happens to sit in some `src/` directory
-# (`~/ros_ws/src/my_leaf/`) is its own project (Ruling R31). The IMAGE is the one this
-# configure renders: `-DNROS_IMAGE`, else the leaf's own `default_images` --
-# the image `nros build` builds.
-#
-# A QUERY caller (RFC-0120 D1): `nros configure` runs no target build tool and
-# never `nros build`; with a current stamp it is a digest comparison and
-# returns at once, which is what it costs under `nros build`. A no-op inside
-# the census's own host build (`NROS_LEAF_CENSUS_HOST`), which is configure's
-# producer, not its consumer.
+# (`~/ros_ws/src/my_leaf/`) is its own project (Ruling R31). The IMAGE is the
+# one this configure renders: `-DNROS_IMAGE`, else the leaf's own
+# `default_images` -- the image `nros build` builds.
 function(_nros_image_kconfig_configure _nros _dir _image _generated)
-    if(NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
-        return()
-    endif()
     set(_project "${_dir}")
     if(_generated)
         get_filename_component(_parent "${_dir}" DIRECTORY)
@@ -499,38 +495,8 @@ function(_nros_image_kconfig_configure _nros _dir _image _generated)
             get_filename_component(_project "${_parent}" DIRECTORY)
         endif()
     endif()
-    # The wall time is reported, because "a current stamp is a digest
-    # comparison" is a claim a log should let anyone check. `TIMESTAMP %s` is
-    # portable (no GNU `date +%N`), so it is whole seconds.
-    string(TIMESTAMP _t0 "%s" UTC)
-    # From the project itself: the CLI's workspace check asks which checkout
-    # the cwd is in, and the build dir may sit under another one.
-    execute_process(
-        COMMAND "${_nros}" configure "${_project}" --image "${_image}"
-        WORKING_DIRECTORY "${_project}"
-        OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _rc
-        OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_STRIP_TRAILING_WHITESPACE)
-    string(TIMESTAMP _t1 "%s" UTC)
-    math(EXPR _s "${_t1} - ${_t0}")
-    if(NOT _rc EQUAL 0)
-        message(FATAL_ERROR
-            "nano-ros: `nros configure ${_project} --image ${_image}` failed "
-            "(RFC-0120 D5: every host configure runs it first):\n${_err}\n${_out}")
-    endif()
-    set(_said "configured")
-    if(_out MATCHES "(^|\n)(configure: [^\n]*)")
-        set(_said "${CMAKE_MATCH_2}")
-    endif()
-    message(STATUS "nano-ros: nros configure ${_project} --image ${_image}: ${_said} (${_s} s)")
-    nros_configured_locate("${_project}" "${_image}")
-    # Current only when locate published a CURRENT answer: configure just ran,
-    # but its stamp is what says so.
-    get_property(_located_current GLOBAL PROPERTY NROS_CONFIGURED_LOCATED_CURRENT)
-    set_property(GLOBAL PROPERTY NROS_CONFIGURED_CURRENT "${_located_current}")
-    get_property(_resolved GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR)
-    if(NOT "${_resolved}" STREQUAL "")
-        message(STATUS "nano-ros: image `${_image}` answer -> ${_resolved}")
-    endif()
+    nros_configure_hook(DIR "${_dir}" IMAGE "${_image}" PROJECT "${_project}"
+        CLI "${_nros}" ROAD "the Zephyr module hook")
 endfunction()
 
 # _nros_image_kconfig_stamp(<kconfig> <kconfig-from-system-toml> <bin>)
