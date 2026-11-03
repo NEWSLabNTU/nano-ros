@@ -1,6 +1,6 @@
 # Phase 530 — `nros configure`: one resolver for every road, tight sizing, and no fixed point
 
-**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1); W2 next.** Implements
+**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1); W3 landed; W2 next.** Implements
 [RFC-0120](../design/0120-nros-configure-one-resolver.md) D1 to D7, D9 and
 the driven and hooked rows of D8. Meets
 [RFC-0094](../design/0094-resolve-before-configure.md) A3 as originally
@@ -218,7 +218,7 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   - a test leaf whose source calls a Zephyr API gets the two-fix refusal;
   - the workspace census reaches no `nros build`.
 
-### W3 — Resolve gaps: the Rust west entry, and the multi-entry union
+### W3 — Resolve gaps: the Rust west entry, and the multi-entry union (LANDED 2026-11-03)
 
 - **Rust west entry (RFC-0120 D6 case 2).** C5 writes the message-bound seed
   and makes the sizing-descriptor decision for a Rust entry.
@@ -237,6 +237,74 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
 - **Acceptance:** for each of the two, a clean build dir shows 0
   `Re-running CMake`, and the knobs delivered are identical to today's
   converged values.
+
+**What landed (W3).**
+
+- **Measured first** (the W1 tip, a fresh build dir each run):
+  - The generated Rust west entry could not configure at all: issue 2232, a
+    panic in `nros dev image board-facts` reached because the module asked the
+    generated application's own dir (no `system.toml`) since issue 2199
+    forwarded `NROS_IMAGE` as the deploy. Fixed here
+    (`NanoRosBoardFacts.cmake` asks `NROS_IMAGE_SYSTEM_DIR` first; the verb
+    returns an error instead of panicking); the baseline below includes it.
+  - (a) **Open.** No derived message-bound knob reached the Rust lane. All six
+    read "left to its crate default": `nros_derived_knob_env` carries what is
+    derived, and a Rust entry has no bound producer, so nothing was.
+  - (b) **Armed.** The module's "named" default waited for a writer a Rust
+    entry never runs, and the backstop took it back: 1 `Re-running CMake`,
+    converging on no descriptor.
+  - Both are issue 2233. The multi-entry C++ configure took 2 passes
+    (`-- Configuring done` twice: this road's generator is Unix Makefiles,
+    which prints no `Re-running CMake`). The first reader saw one image's
+    resolve, the producers wrote the 7-model union, and the message-bound
+    fragment had no seed at all.
+- **Rust west entry (case 2).** Stage 3.5 (`resolve_rust_west_image`) writes
+  the message-bound seed over the workspace's `generated/` bound tables. It
+  also writes the image's sizing descriptor with the cargo road's writer (now
+  shared, `write_image_descriptor`) and records the one-or-none decision in
+  `<resolve>/resolved-sizing.cmake`. The module takes that decision
+  (`nros_sizing_descriptor_west_decide`), so the backstop has nothing to take
+  back.
+- **Multi-entry (case 3).** Stage 3.5 resolves once per cmake coordinate,
+  over the union of its images (`resolve_coordinate`, into
+  `build/<coord>/resolved/`). It uses the same registered population as the
+  configure (one predicate, `cmake_root::is_subdir`) and every member's model:
+  `compose_image` for one model, `fold_models_for_shared_runtime` for several,
+  as the verb chooses. It also writes a message-bound seed over the probe's
+  bound tables. `nros build` hands the shared configure that directory
+  (`-DNROS_RESOLVED_DIR`) and its record digest. The cmake road now seeds the
+  message-bound fragment too (`NanoRosCodegenCore.cmake`), and
+  `nros_resolved_entity_take` accepts N models, compared as a set by path and
+  content (case T of `tests/cmake-resolved-seed-tests.sh`).
+- **Stamps (RFC-0120 D2).** `nros configure` records one stamp per shared
+  coordinate, `configured/@<coord>/stamp.toml`, with `covers` listing the
+  union's images. Each image's stamp names its coordinate. An image is stale
+  while that stamp is missing, was recorded over other inputs, does not cover
+  it, or while its union resolve is gone. `NROS_RESOLVED_DIR` stays (W4).
+
+**Acceptance (measured 2026-11-03, `nros build` from a clean build dir).**
+
+| | before | after |
+| --- | --- | --- |
+| `examples/workspaces/rust` `demo_bringup:zephyr` (west, native_sim/native/64) | 1 `Re-running CMake` | **0** |
+| `examples/workspaces/cpp` `demo_bringup:linux` (7 images on `posix-zenoh-linux`) | 2 configure passes | **1** |
+
+- **C++ union: identical.** Every `NROS_*` row the configure delivered, the
+  entity and message-bound fragments, and all 8 sizing descriptors (7 entries
+  plus `runtime/shared.toml`) are byte-identical to the converged baseline.
+- **Rust entry: every knob it had is identical.** It now has four more, and
+  those four are the issue-2233 fix, not drift: `NROS_SIZING_DESCRIPTOR`
+  (named, where the baseline converged on none),
+  `NROS_SUBSCRIBED_TYPE_BOUNDS=std_msgs/msg/Int32=12`,
+  `NROS_SUBSCRIBER_BUFFER_SIZE=12` and `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS=0`.
+  Before, all four fell to their crate defaults. The entity fragment is
+  byte-identical.
+- **A no-op rebuild of either build dir re-configures nothing.**
+- **Found on the way:** issue 2234 (open). The configure stamp compares only
+  the package part of a probe sidecar's key, so after a CLI rebuild
+  `nros configure` reports "up to date" while the resolve refuses every
+  sidecar as stale. The Rust measurement ran `nros configure --force` first
+  for that reason.
 
 ### W4 — The Zephyr hook calls `nros configure` (cases 1 and 4)
 
