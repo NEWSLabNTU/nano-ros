@@ -172,6 +172,8 @@ NOT_EMITTING = {
     "ws order": "the workspace's package ORDER, read back to drive the same configure's loop",
     "ws providers": "the provider index path, read back inside its own configure",
     "plan": "a workspace metadata plan read back by the same configure",
+    "locate": "a PATH query (`nros locate configured`, phase-530 W4): where configure put an image's answer; no content",
+    "configure": "`nros configure` checks its own stamp, which keys on the CLI's codegen version, so a rebuilt tool reconfigures; its one cmake caller, the Zephyr module hook, also registers nros_codegen_tool_reconfigure. As a bare token `configure` is cmake vocabulary (`SHAPE configure`), which token matching cannot tell from a call (phase-530 W4)",
 }
 _EP = re.compile(r"(?<![\w.-])execute_process\s*\(")
 _TOOL_VERB = re.compile(

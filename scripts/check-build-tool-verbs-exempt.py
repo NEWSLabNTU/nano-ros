@@ -129,6 +129,9 @@ def guarded_verbs(guard_src):
 TOP_VERB_CHECKED_ON_PURPOSE = {
     "plan": "nano_ros_workspace_metadata runs it with WORKING_DIRECTORY = the "
             "user's workspace root, so the workspace check asks the right question",
+    "sync": "`nros configure` (old spelling `sync`): the Zephyr module hook runs it "
+            "with WORKING_DIRECTORY = the project it configures, so the workspace "
+            "check asks the right question (phase-530 W4)",
 }
 
 

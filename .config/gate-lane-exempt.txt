@@ -68,4 +68,5 @@ workspace  # aggregate: depends on `workspace-fmt`, echoes where its jobs went
 workspace-embedded  # cross-compiles the workspace for thumbv7; minutes
 zenoh  # `cargo clippy -p nros-rmw`; a compile, not a source gate
 zenoh-archive  # reads a built `libnros_rmw_zenoh_staticlib.a`
+zephyr-kconfig-stamp  # runs real Zephyr configures (~minutes) and needs a provisioned Zephyr 3.7 workspace; in no lane and no caller found yet -- issue 1071's class (phase-530 W4)
 zephyr-kconfig-symbols  # needs the fetched Zephyr Kconfig trees (~600 MB)

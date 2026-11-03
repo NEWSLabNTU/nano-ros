@@ -53,9 +53,9 @@ pub const RESOLVED_MESSAGE_BOUNDS_NAME: &str = "resolved-message-bounds.cmake";
 
 /// phase-439 W8 -- what the seed was composed over, beside it. The configure
 /// compares its own inputs with these at the end of the top-level configure
-/// (`_nros_resolved_bounds_promise_check`): equal inputs and a different answer
+/// (`_nros_resolved_bounds_why`): equal inputs and a different answer
 /// is a disagreement between the two composers, and stops the configure;
-/// different inputs is a resolve older than the tree, and converges as before.
+/// different inputs name a declaration configure could not see (RFC-0120 D5).
 pub const RESOLVED_MESSAGE_BOUNDS_INPUTS_NAME: &str = "resolved-message-bounds-inputs.cmake";
 
 /// Lower-case hex SHA-256, the spelling cmake's `file(SHA256)` produces.
@@ -917,7 +917,7 @@ fn leaf_west_seed(
 #[cfg(test)]
 mod tests {
     /// phase-439 W8 -- the record names exactly what
-    /// `_nros_resolved_bounds_promise_check` reads, in its spelling
+    /// `_nros_resolved_bounds_why` reads, in its spelling
     /// (`tests/cmake-resolved-seed-tests.sh` case U writes the same lines).
     #[test]
     fn the_inputs_record_is_what_the_promise_check_reads() {

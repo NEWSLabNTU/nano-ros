@@ -479,8 +479,11 @@ function(_nros_image_kconfig_configure _nros _dir _image)
     # comparison" is a claim a log should let anyone check (cmake 3.22's
     # TIMESTAMP has no sub-second field, so the clock is asked).
     execute_process(COMMAND date +%s%3N OUTPUT_VARIABLE _t0 OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # From the project itself: the CLI's workspace check asks which checkout
+    # the cwd is in, and the build dir may sit under another one.
     execute_process(
         COMMAND "${_nros}" configure "${_project}" --image "${_image}"
+        WORKING_DIRECTORY "${_project}"
         OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_STRIP_TRAILING_WHITESPACE)
     execute_process(COMMAND date +%s%3N OUTPUT_VARIABLE _t1 OUTPUT_STRIP_TRAILING_WHITESPACE)

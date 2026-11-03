@@ -44,6 +44,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 # shellcheck source=../scripts/lib/grep-q.sh
 source "$PROJECT_ROOT/scripts/lib/grep-q.sh"
+# shellcheck source=../scripts/lib/deadline.sh
+source "$PROJECT_ROOT/scripts/lib/deadline.sh"
 
 HOOK="$PROJECT_ROOT/zephyr/cmake/nros_image_kconfig.cmake"
 ZEPHYR_WS="${ZEPHYR_WS:-$HOME/.nros/workspaces/zephyr/3.7}"
@@ -115,12 +117,12 @@ printf 'int main(void) { return 0; }\n' > "$APP/src/main.c"
 # a compile -- `build.ninja` is the target ninja brings up to date first.
 configure_clean() { # <build> [-D...]
     local b="$1"; shift
-    STEP_OUT="$(cd "$ZEPHYR_WS" && timeout 900 cmake -G Ninja -S "$APP" -B "$b" \
+    STEP_OUT="$(cd "$ZEPHYR_WS" && "${NROS_DEADLINE[@]}" 900 cmake -G Ninja -S "$APP" -B "$b" \
         -DBOARD="$BOARD" -DZEPHYR_EXTRA_MODULES="$MOD" -DWEST_PYTHON="$PY" "$@" 2>&1)"
     STEP_RC=$?
 }
 rebuild() { # <build>
-    STEP_OUT="$(timeout 900 ninja -C "$1" build.ninja 2>&1)"
+    STEP_OUT="$("${NROS_DEADLINE[@]}" 900 ninja -C "$1" build.ninja 2>&1)"
     STEP_RC=$?
 }
 configures() { grep -c -- '-- Configuring done' <<<"$STEP_OUT"; }
@@ -180,7 +182,13 @@ rebuild "$C"
 # outcome is a property of the Zephyr line, READ from its kconfig.cmake.
 KCONFIG_CMAKE="$ZEPHYR_BASE/cmake/modules/kconfig.cmake"
 check
-if grep -q merge_kconfig_checksum "$KCONFIG_CMAKE"; then
+nros_grep_q merge_kconfig_checksum "$KCONFIG_CMAKE"
+case $? in
+    0) LINE_CHECKSUMS_KCONFIG=1 ;;
+    1) LINE_CHECKSUMS_KCONFIG=0 ;;
+    *) fail "cannot read $KCONFIG_CMAKE"; exit 1 ;;
+esac
+if [ "$LINE_CHECKSUMS_KCONFIG" -eq 1 ]; then
     if [ "$STEP_RC" -eq 0 ] && [ "$(value "$C" NROS_KSTAMP_PROBE)" = "2" ]; then
         log_success "control: this Zephyr line checksums its Kconfig sources itself \
 ($KCONFIG_CMAKE), so the edit lands without the stamp too; cases 2-3 still hold the stamp to one configure"
