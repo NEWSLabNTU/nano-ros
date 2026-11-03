@@ -178,21 +178,9 @@ pub fn render(
             left_out.push(&pkg.name);
             continue;
         }
-        // An INTERFACE package has a CMakeLists and still must not be a subdir
-        // (issue 0862). Its CMakeLists is deliberately verbatim upstream ROS —
-        // `find_package(ament_cmake REQUIRED)` on line one — because it must
-        // also build under `colcon`. nano-ros never configures it: `nros sync`
-        // routes `rosidl_generate_interfaces` through the codegen pipeline and
-        // emits the `generated/<pkg>` crate the node packages depend on.
-        //
-        // The hand-written roots knew this and left these packages out of
-        // ~~`_ws_subdirs`~~ by hand, with a comment saying why; the derivation had
-        // only "has a CMakeLists" and swept them back in. On a host WITH ROS
-        // that configures and looks fine, which is why it landed — it fails
-        // only where tier 1 is contracted to run, on a host with no ROS.
-        // `routing::cmake_node` is that rule, shared with the driver choice in
-        // `cmd/build.rs`, which had missed it.
-        if !crate::routing::cmake_node(pkg) {
+        // One predicate with stage 3.5's union (phase-530 W3): an INTERFACE
+        // package (issue 0862) is never a subdir either; see `is_subdir`.
+        if !is_subdir(pkg, &spec.excluded) {
             continue;
         }
         // Relative to the WORKSPACE, not to this file.
@@ -487,6 +475,37 @@ fn sanitize(s: &str) -> String {
     s.chars()
         .map(|c| if c.is_alphanumeric() { c } else { '_' })
         .collect()
+}
+
+/// Whether the generated root `add_subdirectory()`s `pkg`: the packages whose
+/// `nano_ros_node_register()` calls fill the configure's `nros-metadata.json`.
+/// ONE predicate for the root and for stage 3.5, which composes a shared
+/// configure's union over the same registered population (phase-530 W3).
+pub(crate) fn is_subdir(
+    pkg: &cargo_nano_ros::provider_scan::WorkspacePackage,
+    excluded: &BTreeSet<PathBuf>,
+) -> bool {
+    // RFC-0094 D3 (phase-439 W3) — the declaration picks the driver, file
+    // presence only decides participation. Was
+    // `!pkg.dir.join("CMakeLists.txt").is_file()`: one probe answering both
+    // questions, so a crate whose `CMakeLists.txt` is a sibling harness
+    // became a subdirectory of the workspace root on the strength of the
+    // file existing.
+    // An INTERFACE package has a CMakeLists and still must not be a subdir
+    // (issue 0862). Its CMakeLists is deliberately verbatim upstream ROS —
+    // `find_package(ament_cmake REQUIRED)` on line one — because it must
+    // also build under `colcon`. nano-ros never configures it: `nros sync`
+    // routes `rosidl_generate_interfaces` through the codegen pipeline and
+    // emits the `generated/<pkg>` crate the node packages depend on.
+    //
+    // The hand-written roots knew this and left these packages out of
+    // ~~`_ws_subdirs`~~ by hand, with a comment saying why; the derivation had
+    // only "has a CMakeLists" and swept them back in. On a host WITH ROS
+    // that configures and looks fine, which is why it landed — it fails
+    // only where tier 1 is contracted to run, on a host with no ROS.
+    // `routing::cmake_node` is that rule, shared with the driver choice in
+    // `cmd/build.rs`, which had missed it.
+    !excluded.contains(&pkg.dir) && crate::routing::cmake_node(pkg)
 }
 
 /// Write the root, creating `manifest_dir` if needed.

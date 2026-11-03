@@ -246,6 +246,9 @@ fn configure_project(
 
     // ---- C2-C6: `nros build` stages 1-4, one image at a time ----------
     let mut out = Outcome::default();
+    // phase-530 W3 (RFC-0120 D2) — the shared host-configure coordinate each
+    // configured image is planned on, by stamp key.
+    let mut coordinates: std::collections::BTreeMap<String, String> = Default::default();
     for t in &targets {
         match build::plan_builds(&build_args(
             project,
@@ -254,7 +257,17 @@ fn configure_project(
             false,
             offline,
         )) {
-            Ok(_) => out.configured.push(t.key.clone()),
+            Ok(plans) => {
+                // Only a coordinate whose union stage 3.5 wrote: a stamp
+                // naming one with no union would keep the image stale.
+                if let Some(coord) = plans.iter().find_map(shared_coordinate).filter(|c| {
+                    build::read_coordinate_members(&build::coordinate_resolve_dir(project, c))
+                        .is_some()
+                }) {
+                    coordinates.insert(t.key.clone(), coord);
+                }
+                out.configured.push(t.key.clone());
+            }
             Err(e) if t.named => {
                 return Err(e.wrap_err(format!("configure: image `{}`", t.key)));
             }
@@ -285,7 +298,31 @@ fn configure_project(
             .is_empty()
             .then(|| configure_stamp::PROJECT_KEY.to_string());
         for key in out.configured.iter().chain(project_wide.iter()) {
-            configure_stamp::record(project, key, &stamp)?;
+            let image_stamp = configure_stamp::Stamp {
+                coordinate: coordinates.get(key).cloned(),
+                ..stamp.clone()
+            };
+            configure_stamp::record(project, key, &image_stamp)?;
+        }
+        // phase-530 W3 (RFC-0120 D2) — "a shared host configure gets one stamp
+        // per coordinate", covering the union its resolve composed over.
+        let mut recorded = std::collections::BTreeSet::new();
+        for coord in coordinates.values() {
+            if !recorded.insert(coord.clone()) {
+                continue;
+            }
+            let dir = build::coordinate_resolve_dir(project, coord);
+            let covers = build::read_coordinate_members(&dir)
+                .map(|m| m.images)
+                .unwrap_or_default();
+            configure_stamp::record(
+                project,
+                &configure_stamp::coordinate_key(coord),
+                &configure_stamp::Stamp {
+                    covers,
+                    ..stamp.clone()
+                },
+            )?;
         }
         // Ruling R15: a skipped image records the digest and its reason, so
         // an unchanged project does not reconfigure on every build.
@@ -417,6 +454,18 @@ pub(crate) fn build_args(
         allow_overriding: Vec::new(),
         native_args: Vec::new(),
     }
+}
+
+/// The shared host-configure coordinate a plan builds on: a cmake image's
+/// `build/<coord>/cmake`, when stage 3.5 wrote that coordinate's union.
+fn shared_coordinate(plan: &build::ResolvedBuild) -> Option<String> {
+    let dir = plan.cmake_build_dir.as_deref()?;
+    let coord = Path::new(dir)
+        .parent()?
+        .file_name()?
+        .to_string_lossy()
+        .into_owned();
+    Some(coord)
 }
 
 /// The project: `dir`, else the working directory, canonical.
@@ -577,6 +626,8 @@ mod tests {
             launch_resolve: resolver.map(Path::to_path_buf),
             resolver_pin: Some(configure_stamp::resolver_pin()),
             skipped: None,
+            coordinate: None,
+            covers: Vec::new(),
         };
         configure_stamp::record(project, key, &stamp).unwrap();
     }
