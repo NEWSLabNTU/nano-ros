@@ -2,7 +2,7 @@
 //! (RFC-0118 D2, D6, D7).
 //!
 //! 1. Resolve the flash plan for the one image the selection names
-//!    ([`run_plan::resolve_target`], the target resolution every target verb
+//!    ([`run_plan::select_target`], the target resolution every target verb
 //!    shares), with the port and probe from RFC-0118 D6's ladder
 //!    ([`run_plan::bench_for`]); or read `--plan <file>` as written.
 //! 2. Build the image if it is stale (not under `--plan`).
@@ -146,8 +146,8 @@ fn plans(args: &Args) -> (RunPlan, Option<crate::cmd::build::ResolvedBuild>) {
         return (plan, None);
     }
     let one =
-        run_plan::resolve_target(&args.selection(), "flash").unwrap_or_else(|e| unresolved(&e));
-    let descriptor = one.descriptor.as_ref().expect("resolve_target checked it");
+        run_plan::select_target(&args.selection(), "flash").unwrap_or_else(|e| unresolved(&e));
+    let descriptor = one.descriptor.as_ref().expect("select_target checked it");
     let invocation = Invocation {
         // RFC-0118 D6: `--port`, then `NROS_PORT`, both the invocation rung.
         port: args

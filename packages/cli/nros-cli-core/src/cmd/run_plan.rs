@@ -762,12 +762,12 @@ pub fn run(args: Args) -> eyre::Result<()> {
     if let Some(file) = &args.exec.plan {
         return crate::cmd::run_exec::run_plan_file(&args, file);
     }
-    let one = match resolve_target(&Selection::from(&args), "run") {
+    let one = match select_target(&Selection::from(&args), "run") {
         Ok(one) => one,
         Err(e) => unresolved(&e),
     };
     let one = &one;
-    let descriptor = one.descriptor.as_ref().expect("resolve_target checked it");
+    let descriptor = one.descriptor.as_ref().expect("select_target checked it");
     let invocation = Invocation {
         // RFC-0118 D6: `--port`, then `NROS_PORT` — both the invocation rung.
         port: args
@@ -845,7 +845,7 @@ impl From<&Args> for Selection {
 ///
 /// No image, more than one, or one with no board descriptor: a message for
 /// RFC-0118 D2's exit 3. `verb` is the user's word (`run`, `flash`) for it.
-pub fn resolve_target(
+pub fn select_target(
     sel: &Selection,
     verb: &str,
 ) -> Result<crate::cmd::build::ResolvedBuild, String> {
