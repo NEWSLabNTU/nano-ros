@@ -227,8 +227,17 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   census is the default for a C/C++ leaf (a `CMakeLists.txt`, no `Cargo.toml`)
   with at least one `[[component]]`, none stating `entities`, whose image is
   CROSS. A host image keeps the hosted defaults (the line `nros build` already
-  draws for a workspace: a host image is the census producer), and so does a
-  leaf with no component (RFC-0120 D4 amended to say so). Every reader asks the
+  draws for a workspace: a host image is the census producer). Fix round 1
+  (Ruling R29): a leaf with NO component whose `CMakeLists.txt` builds a
+  program (`nano_ros_add_executable`, or `add_subdirectory` of a ported
+  workspace) is census-sized too, and one with no program is refused naming
+  both fixes; its opt-out is `[system] entities = "defaults"`. The four
+  `examples/templates/*/mps2-an385-freertos` ports were `unstated` (silently
+  loose) before that and are `census` now. A multi-component leaf that states
+  nothing is refused (a census records one program). Every reader classifies
+  the SELECTED image (`leaf_census::read(dir, image)`; `take --leaf --image`,
+  `sizing-descriptor --leaf-image`, the hooks pass `NROS_IMAGE`), not the
+  leaf's default one. Every reader asks the
   rule: the leaf reader (`leaf_entity_env`), the descriptor's composer, the
   Kconfig rendering, `nros build`'s leaf road. The cmake and Zephyr hooks ask
   `nros dev image entity-census source --leaf <dir>` instead of grepping
@@ -246,9 +255,10 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   manifest, which is now armed for every census leaf.
 - **Preflight (C3).** `preflight::check_host_toolchain` checks a host C and C++
   compiler (`CC`/`CXX` or `cc`/`c++`), CMake, Ninja, the host Rust target and
-  the store's Corrosion, and names each missing one with its fix. A census leaf
-  whose host build fails is refused with both fixes (`entities = [...]`, or
-  `entities = "defaults"`).
+  the store's Corrosion, and names each missing one with its fix, on BOTH
+  census roads (`take --leaf`, and the workspace census before it plans the
+  host sibling). A census leaf whose host build fails is refused with both
+  fixes (`entities = [...]`, or `entities = "defaults"`).
 - **The workspace census reaches no `nros build`** (RFC-0120 D1). `take` plans
   the host sibling in-process (`build::plan_builds`, as configure does) and runs
   its own cargo/CMake steps (`build::build_host_image`), under
@@ -276,6 +286,17 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   `-DNROS_IMAGE`, so the hook rendered the talker's default (zenoh) image over
   `prj-xrce.conf`. The west road now passes it for an application holding its
   own `system.toml`, as the cmake leaf road does.
+
+- **The leaf census pre-pass runs side by side** (fix round 1, Ruling R30).
+  `scripts/build/census-prepass.sh` takes the leaves `nros_cmake_frontend_jobs`
+  at a time (the fixture build's cmake frontend budget, default 4), each with
+  `nros_cargo_inner_jobs`' share of the cores; a failure stays fatal and every
+  failing leaf is named with its log. Measured with the real pre-pass over the
+  same six cold `examples/mps2-an385-freertos/c/*` leaves, parallel first (so
+  shared-cache warmth favours the serial run): **664 s** 4-wide against
+  **1351 s** one at a time, on the shared, loaded host. Each `census-host` is
+  about 1.8 GB and rebuilds the whole runtime; a shared host target is issue
+  2235.
 
 **Acceptance (measured 2026-11-03, Zephyr 4.4, `native_sim/native/64`).**
 
