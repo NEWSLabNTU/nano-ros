@@ -879,10 +879,12 @@ pub fn write_leaf_west_seed(
 
 /// The edition the leaf's bound tables are generated for: the one the host
 /// configure's `nros_find_interfaces()` resolves (`_nros_resolve_ros_edition`
-/// in `cmake/NanoRosRosEdition.cmake`): the image's declared edition, which
-/// the module applies as `NROS_ROS_EDITION`, else the default. Never
-/// `$ROS_DISTRO`, which the host configure does not read, so the two cannot
-/// disagree.
+/// in `cmake/NanoRosRosEdition.cmake`) -- the image's declared edition, else
+/// the default. The Zephyr module hook (`nros_image_kconfig_hook`, from the
+/// `NROS_LEAF_ROS_EDITION` row) sets the declared one as `NROS_ROS_EDITION`
+/// and refuses a `-D` naming another (`nros_ros_edition_agree`, issue 2087),
+/// so the host cannot resolve a different one (Ruling R34). Never
+/// `$ROS_DISTRO`, which the host configure does not read.
 fn seed_edition(declared: Option<&str>) -> String {
     declared
         .filter(|e| !e.is_empty())

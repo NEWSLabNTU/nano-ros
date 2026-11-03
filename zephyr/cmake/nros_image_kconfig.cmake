@@ -109,6 +109,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobRegistry.cmake")
 # phase-530 W4 -- `nros_configured_locate`, which publishes where configure put
 # this image's answer for the module's readers.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
+# `nros_ros_edition_agree` -- the image's declared edition (Ruling R34).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosRosEdition.cmake")
 
 # The module root, captured at FILE scope (inside a function
 # `CMAKE_CURRENT_LIST_DIR` names the caller's file).
@@ -364,6 +366,20 @@ function(nros_image_kconfig_hook)
     # Issue 2200 -- the rows, read by one function the gate can call
     # (`check cmake-cli-rows`), since a configure that drops one says nothing.
     _nros_image_kconfig_leaf_rows("${_out}" "${_dir}" "${_image}" "${_west_board}")
+    # Ruling R34 (issue 2087's rule on this road) -- the image's declared
+    # `ros_edition` is the edition this application builds: every generator
+    # and the runtime crate resolve `NROS_ROS_EDITION`
+    # (`_nros_resolve_ros_edition`), and `nros configure` seeded the bound
+    # tables for it. Set in the application's scope, which this hook runs in,
+    # so a later configure sees only what the user stated; a `-D` naming
+    # another edition is refused.
+    if(NOT "${_ros_edition}" STREQUAL "")
+        nros_ros_edition_agree("${_ros_edition}" "${NROS_ROS_EDITION}"
+            "${_dir}/system.toml" "${_image}")
+        set(NROS_ROS_EDITION "${_ros_edition}" PARENT_SCOPE)
+        message(STATUS "nano-ros: image `${_image}` ROS edition `${_ros_edition}` "
+            "from ${_dir}/system.toml")
+    endif()
     if(NOT _kconfig STREQUAL "" AND EXISTS "${_kconfig}")
         _nros_image_kconfig_drop_cli_overridden("${_kconfig}")
     endif()
@@ -507,7 +523,10 @@ function(_nros_image_kconfig_configure _nros _dir _image _generated)
     endif()
     message(STATUS "nano-ros: nros configure ${_project} --image ${_image}: ${_said} (${_s} s)")
     nros_configured_locate("${_project}" "${_image}")
-    set_property(GLOBAL PROPERTY NROS_CONFIGURED_CURRENT TRUE)
+    # Current only when locate published a CURRENT answer: configure just ran,
+    # but its stamp is what says so.
+    get_property(_located_current GLOBAL PROPERTY NROS_CONFIGURED_LOCATED_CURRENT)
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_CURRENT "${_located_current}")
     get_property(_resolved GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR)
     if(NOT "${_resolved}" STREQUAL "")
         message(STATUS "nano-ros: image `${_image}` answer -> ${_resolved}")
@@ -572,6 +591,7 @@ function(_nros_image_kconfig_leaf_rows _out _dir _image _west_board)
     set(_image_conf "")
     set(_board_snippets "")
     set(_board_overlays "")
+    set(_ros_edition "")
     # Line by line, never through a cmake list: NROS_LEAF_CONF and
     # NROS_LEAF_SNIPPET are `;`-joined, and the list spelling cut each at its
     # first `;`, so a board `prj.conf` cost the leaf its `os_config`.
@@ -589,6 +609,8 @@ function(_nros_image_kconfig_leaf_rows _out _dir _image _west_board)
             set(_board_snippets "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_DTC_OVERLAY=(.*)$")
             set(_board_overlays "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_ROS_EDITION=(.*)$")
+            set(_ros_edition "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_BOARD_NOT_APPLIED=(.+)$")
             message(STATUS
                 "nano-ros: image `${_image}` names a board package for "
@@ -622,6 +644,7 @@ function(_nros_image_kconfig_leaf_rows _out _dir _image _west_board)
     set(_image_conf "${_image_conf}" PARENT_SCOPE)
     set(_board_snippets "${_board_snippets}" PARENT_SCOPE)
     set(_board_overlays "${_board_overlays}" PARENT_SCOPE)
+    set(_ros_edition "${_ros_edition}" PARENT_SCOPE)
     set(_keys "${_keys}" PARENT_SCOPE)
 endfunction()
 

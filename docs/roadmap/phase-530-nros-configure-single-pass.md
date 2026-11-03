@@ -469,6 +469,15 @@ measurement; the runs it broke were re-run and the table holds the re-runs.
   hook's timing is whole seconds (`string(TIMESTAMP %s)`; GNU `date +%N` is
   gone), so the table's milliseconds are the original measurement's.
 
+**Review round 2.** The leaf seed's edition is the declared one, and the
+Zephyr road now builds the host for it: the module hook applies the image's
+`ros_edition` (the `NROS_LEAF_ROS_EDITION` row) as `NROS_ROS_EDITION`, and a
+`-D` naming another is refused by issue 2087's rule, now one function
+(`nros_ros_edition_agree`) both roads call (Ruling R34). The hook marks its
+configure current only when `nros locate configured` published a current
+answer. `tests/cmake-resolved-seed-tests.sh` case R drives the real hook
+against a stand-in CLI.
+
 ### W5 — The CMake and NuttX hooks
 
 - `find_package(nano_ros)` and `add_subdirectory(nano-ros)` call configure

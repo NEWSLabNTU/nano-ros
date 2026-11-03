@@ -22,6 +22,7 @@
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")  # issue 2087
 
 # `deploy` attribute → the `NROS_PLATFORM` module axis. `linux` is the host
 # board (it maps to the `posix` platform axis value); the RTOS names map 1:1.
@@ -460,18 +461,10 @@ function(nano_ros_read_leaf_system)
         # Issue 2087 — the edition, by the same rule. A standalone leaf's
         # `ros_edition` used to reach nothing on this road: codegen and the
         # runtime crate resolved `NROS_ROS_EDITION`, which only a workspace set,
-        # so a leaf declaring jazzy baked humble type hashes with no error.
-        if(NOT "${_NROS_LEAF_ROS_EDITION}" STREQUAL ""
-           AND DEFINED NROS_ROS_EDITION AND NOT NROS_ROS_EDITION STREQUAL ""
-           AND NOT NROS_ROS_EDITION STREQUAL _NROS_LEAF_ROS_EDITION)
-            message(FATAL_ERROR
-                "nano-ros: ${_NRL_DIR}/system.toml states ROS edition "
-                "`${_NROS_LEAF_ROS_EDITION}` for image `${_NROS_LEAF_IMAGE}` but "
-                "-DNROS_ROS_EDITION=${NROS_ROS_EDITION} names another. State the "
-                "edition in the image this build is (`[image.<id>] ros_edition`, "
-                "selected with -DNROS_IMAGE=<id>) and drop the -D (`cmake -U "
-                "NROS_ROS_EDITION <build-dir>` clears a cached one) — issue 2087.")
-        endif()
+        # so a leaf declaring jazzy baked humble type hashes with no error. On
+        # Zephyr the module hook applies it by the same function (Ruling R34).
+        nros_ros_edition_agree("${_NROS_LEAF_ROS_EDITION}" "${NROS_ROS_EDITION}"
+            "${_NRL_DIR}/system.toml" "${_NROS_LEAF_IMAGE}")
         set(NROS_LEAF_ROS_EDITION "${_NROS_LEAF_ROS_EDITION}" PARENT_SCOPE)
     endif()
 

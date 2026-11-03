@@ -828,6 +828,109 @@ else
 fi
 unset NROS_CLI
 
+
+# ---------------------------------------------------------------------------
+log_header "R. the Zephyr hook applies the image's declared ROS edition"
+# ---------------------------------------------------------------------------
+#
+# Phase-530 review round 2 (Ruling R34). `nros configure` seeds a leaf's bound
+# tables for its DECLARED `ros_edition`; the Zephyr road must build the host
+# for the same edition, or the current stamp's seed disagrees with the host
+# and the promise FATALs with a hint nobody can follow. The module hook (the
+# real one, `zephyr/modules/modules.cmake`, against a stand-in CLI) applies it
+# as `NROS_ROS_EDITION`, and refuses a `-D` that names another (issue 2087's
+# rule, the cmake road's). The same harness holds item 2: the hook marks its
+# configure CURRENT only when `nros locate configured` said so.
+ED_ROOT="$TEST_TMPDIR/edition"
+mkdir -p "$ED_ROOT/app"
+cat > "$ED_ROOT/fake-nros" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2 $3" in
+    "dev image leaf-system")
+        while [ $# -gt 0 ]; do
+            case "$1" in --kconfig-defaults-out) : > "$2"; shift ;; esac
+            shift
+        done
+        echo "NROS_LEAF_IMAGE=img"
+        echo "NROS_LEAF_ROS_EDITION=$FAKE_EDITION"
+        exit 0 ;;
+esac
+case "$1" in
+    configure) echo "configure: up to date (1 image(s))" ;;
+    locate)
+        echo 'set(NROS_LOCATE_RESOLVED "")'
+        echo "set(NROS_LOCATE_CURRENT $FAKE_NROS_CURRENT)" ;;
+esac
+EOF
+chmod +x "$ED_ROOT/fake-nros"
+printf '[system]\nname = "x"\n[image.img]\nboard = "native_sim"\n' > "$ED_ROOT/app/system.toml"
+cat > "$ED_ROOT/app/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.20)
+project(nros_hook_edition_probe NONE)
+set(APPLICATION_SOURCE_DIR "\${CMAKE_CURRENT_SOURCE_DIR}")
+set(APPLICATION_BINARY_DIR "\${CMAKE_BINARY_DIR}")
+# Where zephyr_module.cmake includes it: the application's own scope.
+include("$PROJECT_ROOT/zephyr/modules/modules.cmake")
+include("$PROJECT_ROOT/cmake/NanoRosRosEdition.cmake")
+_nros_resolve_ros_edition("" _e)
+message(STATUS "HOST_EDITION=\${_e}")
+get_property(_c GLOBAL PROPERTY NROS_CONFIGURED_CURRENT)
+message(STATUS "HOOK_CURRENT=\${_c}")
+EOF
+ed_run() { # <declared> <current> [cmake -D args...]
+    local declared="$1" current="$2"
+    shift 2
+    rm -rf "$ED_ROOT/build"
+    ED_RC=0
+    ED_OUT="$(NROS_CLI="$ED_ROOT/fake-nros" FAKE_EDITION="$declared" \
+        FAKE_NROS_CURRENT="$current" \
+        cmake -S "$ED_ROOT/app" -B "$ED_ROOT/build" -DNROS_IMAGE=img "$@" 2>&1)" || ED_RC=$?
+}
+ed_run jazzy TRUE
+check
+if [ "$ED_RC" -eq 0 ] && nros_grep_q -F 'HOST_EDITION=jazzy' <<<"$ED_OUT"; then
+    log_success "a declared jazzy image builds its host for jazzy"
+else
+    fail "a declared jazzy image did not set the host edition (rc=$ED_RC):
+$ED_OUT"
+fi
+ed_run jazzy TRUE -DNROS_ROS_EDITION=humble
+check
+if [ "$ED_RC" -ne 0 ] && nros_grep_q -F '`jazzy`' <<<"$ED_OUT" \
+   && nros_grep_q -F 'NROS_ROS_EDITION=humble' <<<"$ED_OUT" \
+   && nros_grep_q -F 'issue 2087' <<<"$ED_OUT"; then
+    log_success "a -D naming another edition is refused, naming both"
+else
+    fail "a disagreeing -DNROS_ROS_EDITION was not refused by name (rc=$ED_RC):
+$ED_OUT"
+fi
+ed_run jazzy TRUE -DNROS_ROS_EDITION=jazzy
+check
+if [ "$ED_RC" -eq 0 ] && nros_grep_q -F 'HOST_EDITION=jazzy' <<<"$ED_OUT"; then
+    log_success "an agreeing -D is accepted"
+else
+    fail "an agreeing -DNROS_ROS_EDITION was refused (rc=$ED_RC):
+$ED_OUT"
+fi
+ed_run "" TRUE
+check
+if [ "$ED_RC" -eq 0 ] && nros_grep_q -F 'HOST_EDITION=humble' <<<"$ED_OUT" \
+   && nros_grep_q -F 'HOOK_CURRENT=TRUE' <<<"$ED_OUT"; then
+    log_success "no declaration: the default; a current locate marks the configure current"
+else
+    fail "an undeclared image did not keep the default, or a current locate was not marked (rc=$ED_RC):
+$ED_OUT"
+fi
+ed_run "" FALSE
+check
+if [ "$ED_RC" -eq 0 ] && nros_grep_q -F 'HOOK_CURRENT=' <<<"$ED_OUT" \
+   && ! nros_grep_q -F 'HOOK_CURRENT=TRUE' <<<"$ED_OUT"; then
+    log_success "a stale locate does not mark the hook's configure current"
+else
+    fail "the hook marked its configure CURRENT over a stale locate (rc=$ED_RC):
+$ED_OUT"
+fi
+
 # ---------------------------------------------------------------------------
 log_header "Summary"
 # ---------------------------------------------------------------------------

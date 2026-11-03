@@ -566,10 +566,11 @@ endif()
 # edition literally, so a `-DNROS_ROS_EDITION=jazzy` Zephyr image built
 # nros-c and nros-cpp for the default while its interface codegen resolved
 # jazzy — the RFC-0056 keyexpr/type_hash disagreement that builds cleanly and
-# fails on the wire. Precedence is the resolver's: `NROS_ROS_EDITION` (a
-# `-D` on the west command line, or set before `find_package(Zephyr)` like
-# `NROS_ENTRY_PANIC`), else `NROS_DEFAULT_ROS_EDITION` — so a default image
-# is unchanged.
+# fails on the wire. Precedence is the resolver's: `NROS_ROS_EDITION` (the
+# image's `system.toml` `ros_edition`, which the module hook sets -- phase-530
+# Ruling R34 -- or a `-D` on the west command line, which must agree with it,
+# or one set before `find_package(Zephyr)` like `NROS_ENTRY_PANIC`), else
+# `NROS_DEFAULT_ROS_EDITION` — so a default image is unchanged.
 #
 # ONE variable for all nine strings, for the same reason as
 # `_nros_trace_suffix`: nros-c and nros-cpp are built in two cargo invocations
