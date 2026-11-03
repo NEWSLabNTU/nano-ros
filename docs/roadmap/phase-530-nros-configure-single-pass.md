@@ -1,6 +1,6 @@
 # Phase 530 — `nros configure`: one resolver for every road, tight sizing, and no fixed point
 
-**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed; W3 next.** Implements
+**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling).** Implements
 [RFC-0120](../design/0120-nros-configure-one-resolver.md) D1 to D7, D9 and
 the driven and hooked rows of D8. Meets
 [RFC-0094](../design/0094-resolve-before-configure.md) A3 as originally
@@ -352,7 +352,105 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
     dir: 0 `Re-running CMake`, tight knobs;
   - the same three under `nros build`: identical knobs.
 
-### W5 — The CMake and NuttX hooks
+**What landed (W4).**
+
+- **The hook configures.** `nros_image_kconfig_hook` runs `nros configure
+  <project> --image <image>` (`_nros_image_kconfig_configure`) before any
+  reader: the project is the leaf, or the colcon workspace owning a generated
+  application's bringup (`<ws>/src/<bringup>`, RFC-0085 D14's walk-up); the
+  image is the one the hook renders (`-DNROS_IMAGE`, else `default_images`).
+  Skipped under `NROS_LEAF_CENSUS_HOST`; a guest is unchanged. It is a query
+  caller and never runs `nros build`. It replaces the hook's census take:
+  configure's C4 takes a Zephyr C/C++ leaf's census now. The status line
+  reports the configure's wall time.
+- **Located by identity (RFC-0120 D2).** Each image's stamp records the dir
+  stage 3.5 resolved into (`resolved_dir`); `nros locate configured --project
+  P --image I` prints it, and the hook publishes it for this configure only
+  (`NROS_CONFIGURED_RESOLVED_DIR`, a GLOBAL property). `nros build` no longer
+  passes `-DNROS_RESOLVED_DIR`: nothing on the west line, the identity
+  (`NROS_CONFIGURED_PROJECT`/`_IMAGE`) on the cmake line. A bare id names the
+  one `<bringup>:<id>` stamp. W3 is not in this base: its coordinate dirs
+  (`build/<coord>/resolved/`) reach the locator once configure records them
+  as the stamp's `resolved_dir`, which is the one line its merge must add.
+- **Promise checks (D5).** `cmake/NanoRosPromise.cmake`: a reader that read
+  configure's seed records what it consumed; the late producers are held to
+  it at the END of the configure (one hop late, so a producer called once per
+  package may pass through intermediate answers): equal continues; different
+  FATALs naming the seed and the fragment, quoting the producer's own reason
+  when it has one (the bounds input record names a table set or entity
+  inventory configure did not see, the entity take names the registration).
+  Every settle and arm in `nros_cargo_build.cmake`, `NanoRosCodegenCore`,
+  `NanoRosNodeRegister`, `NanoRosEntry` and `NanoRosSizingDescriptor` goes
+  through it, and Resolved's `_nros_reconfigure_pass_props` bookkeeping is
+  gone. Seeds are copied by CONTENT once per configure (issue 1729's record
+  is retired). **Left for W5/W7:** a read with no seed (a plain cmake road,
+  until W5's hook) still delegates to `NanoRosReconfigure.cmake` -- inside
+  the promise module, its one remaining caller -- and the Cyclone C++
+  cargo-file arm (issue 1653, `nros_sizing_descriptor_west_settle_cargo_file`
+  and the arm in `nros_sizing_descriptor_record_for_west`) is untouched.
+- **What actually cost the talker its passes.** Measured on the base: 4
+  configures, 3 re-runs, and NON-convergent -- `NanoRosNodeRegister`'s
+  standalone composer reads only `nros-metadata.json`, cannot see a census,
+  and overwrote west-leaf-sizing's census fragment with a refusal on every
+  pass until `NROS_RECONFIGURE_MAX_PASSES`. It now stands down when
+  west-leaf-sizing produced the leaf's fragment (that fragment is a seed). The
+  one real lag left was the message bounds: configure now writes a Zephyr
+  C/C++ leaf's bounds seed, over tables it generates with the codegen and
+  config chain the host configure uses, and the entity text west-leaf-sizing
+  writes.
+- **Two defects found on the way.** The stamp treated a census take's raw
+  `<census>.recorded.json` as a census, so a census-sized leaf was never
+  current (every hook configure re-ran configure); fixed. The generated Rust
+  west entry could not configure at all on this base (issue 2232, fixed on
+  W3's branch by 9d79af0cde): cherry-picked so the third road could be
+  measured; it drops by patch-id when W3 lands.
+- **The Kconfig stamp (D6 case 4)** moved into the hook
+  (`_nros_image_kconfig_stamp`), before Kconfig, and hashes
+  `Kconfig.from-system-toml` too. `tests/zephyr-kconfig-stamp-tests.sh`
+  (`just check zephyr-kconfig-stamp`) configures a hello-world app with a
+  stand-in module calling the real function, edits a prompted default, and
+  asserts ONE configure and the new value in `.config`, for each file; its
+  control (no stamp) keeps the old value on Zephyr 3.7. Zephyr 4.x adds
+  every parsed Kconfig source to the `.config` checksum itself
+  (`merge_kconfig_checksum`), so on 4.4 the control lands the edit too and
+  the test says which line it measured: case 4 is a 3.7-line defect.
+- **The Rust west entry's sizing-descriptor default** is "none"
+  (`NROS_IMAGE_LANGUAGE=rust` runs no entry, so "named" waited for a writer
+  it never had): today's converged value. W3's decision file supersedes it.
+
+**Acceptance (measured 2026-11-03, Zephyr 4.4, `native_sim/native/64`, clean
+build dirs; a configure loop is `west build -t build.ninja`).**
+
+| road | base (W2/W3 logs, same commit) | W4: configures, re-runs | knobs |
+| --- | --- | --- | --- |
+| plain `west build` cpp/talker `zephyr_xrce` | 4, 3 -- non-convergent | **1, 0** | identical to the base's converged knobs |
+| plain `west build` cpp/talker `zephyr_zenoh` (full build, `zephyr.exe` linked) | -- | **1, 0** | identical to `nros build` |
+| plain `west build` rust/talker | 1, 0 | **1, 0** | identical to the base and to `nros build` |
+| plain `west build` workspaces/rust generated `zephyr_entry` | cannot configure (issue 2232); W3 measured 1 re-run | **1, 0** | identical to `nros build` |
+| `nros build zephyr_zenoh` cpp/talker | 4, 3 | **1, 0**; the hook's configure "up to date" in **42 ms** | -- |
+| `nros build zephyr_zenoh` rust/talker (full build) | 1, 0 | **1, 0**; "up to date" in 2.1 s on the loaded host | -- |
+| `nros build zephyr` workspaces/rust (full build) | 1 re-run (W3) | **1, 0**; "up to date" in **34 ms** | -- |
+
+`examples/workspaces/rust/src/zephyr_entry` no longer exists (phase-470 W5.a
+generates it under `build/zephyr-zenoh/zephyr_entry/`); the plain west build
+is of that generated application, with the `APPLICATION_CONFIG_DIR` and
+`EXTRA_CONF_FILE` the README names. Its knobs are the resolve's
+(`NROS_MAX_PUBLISHERS=1`, `NROS_MAX_SUBSCRIBERS=1`, `NROS_MAX_QUERYABLES=1`,
+`NROS_EXECUTOR_MAX_CBS=2`, `NROS_ZENOH_MAX_*=1`). The talker's are its census
+(`NROS_MAX_PUBLISHERS=1`, `NROS_MAX_SUBSCRIBERS=0`, `NROS_EXECUTOR_MAX_CBS=1`,
+`NROS_ZENOH_MAX_LARGE_SUBSCRIBERS=0`, …). A configure loop was measured with
+`west build -t build.ninja`, and the talker also with a full build.
+
+Measured with issue 2234 (open) in the way: after a CLI rebuild the stamp
+says "up to date" while the resolve refuses every probe sidecar as stale, and
+the workspace entry then configures with REFUSED counts (crate defaults) --
+one pass, but loose. `nros configure --force` before the measurement, as W3
+did. 2234 is now on every road the hook reaches, so it wants fixing before W6.
+
+The `/home` filesystem of this shared host filled to 0 bytes twice during the
+measurement; the runs it broke were re-run and the table holds the re-runs.
+
+### W5### W5 — The CMake and NuttX hooks
 
 - `find_package(nano_ros)` and `add_subdirectory(nano-ros)` call configure
   before any knob reader.
