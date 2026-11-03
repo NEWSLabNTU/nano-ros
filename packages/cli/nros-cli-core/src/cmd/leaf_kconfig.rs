@@ -387,7 +387,10 @@ pub fn render_over(
     // default: phase-518's node 1 halted at boot with `HEAP EXHAUSTED` on the
     // 64 KiB default before this row existed. A `features` row already
     // stating the axis wins, and says so once.
-    if leaf.entities_from_census()
+    if leaf
+        .origin_path()
+        .parent()
+        .is_some_and(|dir| crate::leaf_census::entity_source(dir, leaf).is_census())
         && !out
             .lines
             .iter()

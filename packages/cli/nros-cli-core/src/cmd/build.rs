@@ -2689,7 +2689,10 @@ fn plan_single_package_cmake(
     // whose components read their entities from the census (`entities =
     // "census"`, issue 1556) has its configure refuse without a fresh one,
     // and before this only the fixture pre-pass took it.
-    if !args.dry_run && decl.entities_from_census() && census_take_is_ours(descriptor.platform) {
+    if !args.dry_run
+        && crate::leaf_census::entity_source(root, &decl).is_census()
+        && census_take_is_ours(descriptor.platform)
+    {
         crate::cmd::entity_census::take_leaf_for_build(root);
     }
 
@@ -3292,6 +3295,24 @@ fn perform_plan(
         run_entry_root_check(er)?;
     }
     handover(hand)
+}
+
+/// RFC-0120 D1 (phase-530 W2) -- build one planned HOST image through its own
+/// host tool (cargo or CMake): the kernel, configure and handover steps stage
+/// 5 would run, and nothing else. The workspace census builds its host sibling
+/// this way: layer 0 may build a host image by calling the host tool, and
+/// never runs `nros build` (which is layer 2). `env` is added to each step.
+pub(crate) fn build_host_image(p: &ResolvedBuild, env: &[(&str, &str)]) -> Result<()> {
+    let mut p = p.clone();
+    for h in [&mut p.kernel, &mut p.configure, &mut p.handoff]
+        .into_iter()
+        .flatten()
+    {
+        for (k, v) in env {
+            h.env.push(((*k).into(), (*v).into()));
+        }
+    }
+    perform_plan(&p, &perform)
 }
 
 /// Stage 5 for every plan: announce it, then hand it over.

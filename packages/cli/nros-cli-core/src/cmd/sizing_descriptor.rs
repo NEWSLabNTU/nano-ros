@@ -824,13 +824,15 @@ pub(crate) fn leaf_declaration(dir: &std::path::Path) -> Result<LeafDeclaration>
     let mut rows = Vec::new();
     let mut any_declared = false;
     let mut census_backed = false;
+    // RFC-0120 D4 -- `entities = "census"`, or the C/C++ default.
+    let from_census = crate::leaf_census::entity_source(dir, &system).is_census();
     for (i, c) in system.components.iter().enumerate() {
         let declaration = match &c.entities {
             // Issue 1556 -- `entities = "census"`: the leaf's census answers,
             // through the ONE leaf reader `entity-facts --leaf` uses, so the
             // descriptor and the `NROS_DECLARED_*` carriers cannot read two
             // different things (a missing or stale census refuses there).
-            None if c.entities_from_census => {
+            None if from_census => {
                 match crate::leaf_entity_env::declared_entities(dir)? {
                     Some(_) => {
                         any_declared = true;
@@ -1758,23 +1760,33 @@ board = "qemu-armv7a-nuttx"
     /// guards on in order to say nothing, and `entity-facts --leaf` abstains on
     /// exactly this input — the two roads must agree about when there is no
     /// answer, not only about what the answer is.
+    ///
+    /// RFC-0120 D4 -- on a C/C++ cross leaf "nothing" must be WRITTEN
+    /// (`entities = "defaults"`): one that states no `entities` is counted by
+    /// its census, and with no census taken that refuses, naming `take`.
     #[test]
     fn a_leaf_that_declares_no_entities_gets_no_descriptor() {
         let dir = tempfile::tempdir().unwrap();
-        let leaf = leaf_with(
-            dir.path(),
-            r#"
-[system]
-name = "leaf"
-rmw = "zenoh"
-
-[[component]]
-name = "n"
-
-[image.i]
-board = "qemu-armv7a-nuttx"
-"#,
+        let system = |entities: &str| {
+            format!(
+                "[system]\nname = \"leaf\"\nrmw = \"zenoh\"\n\n[[component]]\nname = \"n\"\n\
+                 {entities}\n[image.i]\nboard = \"qemu-armv7a-nuttx\"\n"
+            )
+        };
+        let leaf = leaf_with(dir.path(), &system(""));
+        let refused = run(SizingDescriptorArgs {
+            from_leaf: Some(leaf.clone()),
+            build_dir: Some(dir.path().join("build")),
+            entry: Some("e".into()),
+            host_build: true,
+            ..args()
+        })
+        .expect_err("stating nothing is the census, and there is none");
+        assert!(
+            format!("{refused:#}").contains("entity-census take --leaf"),
+            "{refused:#}"
         );
+        let leaf = leaf_with(dir.path(), &system("entities = \"defaults\""));
         let build_dir = dir.path().join("build");
         run(SizingDescriptorArgs {
             from_leaf: Some(leaf),

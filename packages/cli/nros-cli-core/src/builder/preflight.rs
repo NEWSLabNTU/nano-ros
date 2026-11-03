@@ -379,6 +379,106 @@ fn rust_target_installed(target: &str) -> bool {
     }
 }
 
+/// What the host toolchain check asks of the machine. A seam, so the rule
+/// is testable without a machine that lacks a compiler.
+pub(crate) struct HostProbe<'a> {
+    /// Is `program` (or the value of `CC`/`CXX` for the compilers) runnable?
+    pub on_path: &'a dyn Fn(&str) -> bool,
+    /// Is the host rustc target installed? `None` cannot answer.
+    pub host_target: &'a dyn Fn() -> Option<(String, bool)>,
+    /// Is the store's pinned Corrosion present? `None` cannot answer (no
+    /// index to read the pin from).
+    pub corrosion: &'a dyn Fn() -> Option<bool>,
+}
+
+/// RFC-0120 D4 / C3 (phase-530 W2) -- the HOST toolchain every census needs:
+/// a C and a C++ compiler, CMake and Ninja, the host Rust target, and the
+/// store-provisioned Corrosion. A census is a host build of the leaf's own
+/// sources, so a host without one of these cannot count anything; this names
+/// the one that is missing instead of a CMake error four frames deep.
+#[must_use]
+pub fn check_host_toolchain(nano_ros_root: Option<&Path>) -> Vec<Missing> {
+    let on_path = |p: &str| which_on_path(p);
+    let host_target = || {
+        let host = crate::orchestration::metadata_build::host_triple();
+        installed_rust_targets()
+            .as_ref()
+            .map(|list| (host.clone(), list.iter().any(|l| l == &host)))
+    };
+    let corrosion = || {
+        let index = crate::orchestration::sdk_index::SdkIndex::load(
+            &nano_ros_root?.join("nros-sdk-index.toml"),
+        )
+        .ok()?;
+        Some(crate::orchestration::sdk_store::tool_dir_usable(&index, "corrosion").is_some())
+    };
+    check_host_toolchain_with(&HostProbe {
+        on_path: &on_path,
+        host_target: &host_target,
+        corrosion: &corrosion,
+    })
+}
+
+/// [`check_host_toolchain`] over an injected [`HostProbe`].
+pub(crate) fn check_host_toolchain_with(probe: &HostProbe<'_>) -> Vec<Missing> {
+    let mut out = Vec::new();
+    let compiler = |env: &str, default: &str| -> String {
+        std::env::var(env)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .and_then(|v| v.split_whitespace().next().map(str::to_string))
+            .unwrap_or_else(|| default.to_string())
+    };
+    for (what, program) in [
+        ("a host C compiler", compiler("CC", "cc")),
+        ("a host C++ compiler", compiler("CXX", "c++")),
+    ] {
+        if !(probe.on_path)(&program) {
+            out.push(Missing {
+                what: format!("{what} (`{program}`, for the entity census's host build)"),
+                remedy: "install one, e.g. `sudo apt install build-essential`".to_string(),
+            });
+        }
+    }
+    for (tool, remedy) in [
+        (
+            "cmake",
+            "install CMake 3.22 or newer, e.g. `sudo apt install cmake`",
+        ),
+        ("ninja", "nros setup --tool ninja"),
+    ] {
+        if !(probe.on_path)(tool) {
+            out.push(Missing {
+                what: format!("`{tool}` (for the entity census's host build)"),
+                remedy: remedy.to_string(),
+            });
+        }
+    }
+    if let Some((host, false)) = (probe.host_target)() {
+        out.push(Missing {
+            what: format!("the host Rust target `{host}` (for the entity census's host build)"),
+            remedy: format!("rustup target add {host}"),
+        });
+    }
+    if (probe.corrosion)() == Some(false) {
+        out.push(Missing {
+            what: "the store's pinned Corrosion (for the entity census's host build)".to_string(),
+            remedy: "nros setup --tool corrosion".to_string(),
+        });
+    }
+    out
+}
+
+/// `program` resolves: an absolute or relative path that is a file, or a
+/// name found on `PATH`.
+fn which_on_path(program: &str) -> bool {
+    if program.contains('/') {
+        return Path::new(program).is_file();
+    }
+    std::env::var_os("PATH")
+        .is_some_and(|path| std::env::split_paths(&path).any(|d| d.join(program).is_file()))
+}
+
 /// Stage 3's refusal, as a typed error (phase-530 W1).
 ///
 /// Its `Display` is exactly [`report`]. Typed so `nros configure` can tell
@@ -425,6 +525,56 @@ pub fn report(missing: &[Missing]) -> String {
 mod tests {
     use super::*;
     use crate::orchestration::board_descriptor::BoardCatalog;
+
+    /// RFC-0120 C3 -- the host toolchain check names each missing piece and
+    /// its fix, and nothing when the host has them all.
+    #[test]
+    fn the_host_toolchain_check_names_the_one_that_is_missing() {
+        let all = |_: &str| true;
+        let target_ok = || Some(("x86_64-unknown-linux-gnu".to_string(), true));
+        let corrosion_ok = || Some(true);
+        let ok = check_host_toolchain_with(&HostProbe {
+            on_path: &all,
+            host_target: &target_ok,
+            corrosion: &corrosion_ok,
+        });
+        assert!(ok.is_empty(), "{ok:?}");
+
+        let no_cxx = |p: &str| p != "c++";
+        let missing = check_host_toolchain_with(&HostProbe {
+            on_path: &no_cxx,
+            host_target: &target_ok,
+            corrosion: &corrosion_ok,
+        });
+        assert_eq!(missing.len(), 1, "{missing:?}");
+        assert!(missing[0].what.contains("C++ compiler"), "{missing:?}");
+
+        let target_missing = || Some(("x86_64-unknown-linux-gnu".to_string(), false));
+        let no_corrosion = || Some(false);
+        let missing = check_host_toolchain_with(&HostProbe {
+            on_path: &all,
+            host_target: &target_missing,
+            corrosion: &no_corrosion,
+        });
+        let remedies: Vec<&str> = missing.iter().map(|m| m.remedy.as_str()).collect();
+        assert_eq!(
+            remedies,
+            [
+                "rustup target add x86_64-unknown-linux-gnu",
+                "nros setup --tool corrosion"
+            ]
+        );
+
+        // A probe that cannot answer refuses nothing.
+        let unknown = || None;
+        let unknown_c = || None;
+        let quiet = check_host_toolchain_with(&HostProbe {
+            on_path: &all,
+            host_target: &unknown,
+            corrosion: &unknown_c,
+        });
+        assert!(quiet.is_empty());
+    }
 
     #[derive(serde::Deserialize)]
     struct BoardFile {

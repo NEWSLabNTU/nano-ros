@@ -157,6 +157,26 @@ pub enum Sub {
     /// it before every cross image.
     // Issue 1419.
     Take(TakeArgs),
+    /// Print where a standalone leaf's entity counts come from: `census`,
+    /// `declared`, `defaults` or `unstated`.
+    ///
+    /// The one rule the cmake and Zephyr hooks ask, instead of reading
+    /// `system.toml` themselves. A C/C++ leaf that states no `entities` is
+    /// counted by its census by default.
+    // RFC-0120 D4, phase-530 W2.
+    Source(SourceArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct SourceArgs {
+    /// The leaf directory (a `system.toml` beside its build file).
+    #[arg(long, value_name = "DIR")]
+    pub leaf: PathBuf,
+
+    /// The image the build selected (`-DNROS_IMAGE`). Absent, the leaf's own
+    /// rule picks (one image, or `[system] default_images`).
+    #[arg(long, value_name = "ID")]
+    pub image: Option<String>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -188,7 +208,8 @@ pub struct TakeArgs {
     #[arg(long, value_name = "DIR")]
     pub workspace: Option<PathBuf>,
 
-    /// Build the native image with `nros build --offline`.
+    /// Configure and build the host image offline: only crates already
+    /// fetched are used.
     #[arg(long)]
     pub offline: bool,
 
@@ -364,7 +385,13 @@ pub fn run(args: EntityCensusArgs) -> Result<()> {
             }
             Ok(())
         }
-        Sub::Take(a) => take_census(a),
+        Sub::Take(a) => take_census_verb(a),
+        Sub::Source(a) => {
+            let word = crate::leaf_census::entity_source_of(&a.leaf, a.image.as_deref())?
+                .map_or("unstated", crate::leaf_census::EntitySource::word);
+            println!("{word}");
+            Ok(())
+        }
     }
 }
 
@@ -372,19 +399,6 @@ pub fn run(args: EntityCensusArgs) -> Result<()> {
 // issue 1419 -- `take`: the census a cross configure will ask for, produced
 // before it asks
 // ---------------------------------------------------------------------------
-
-/// How many builds `take` allows the native image to reach its fixed point in.
-///
-/// Measured on `examples/workspaces/cpp` (2026-10-03): from a CLEAN build
-/// directory the first `nros build demo_bringup:linux` links a `linux_entry`
-/// whose bytes the second build changes -- the message-bound fragments are
-/// written by codegen DURING the first build, so its knobs are the
-/// placeholders and only the next configure reads the real ones (issue 1252,
-/// the one re-configure that survives). A census of the first binary is stale
-/// the moment anything rebuilds the image. The second and every later build
-/// are byte-identical, so two builds is the fixed point and three is the
-/// ceiling before this calls the image non-convergent.
-const TAKE_MAX_BUILDS: usize = 3;
 
 /// The one sibling that takes the census for `model_rel`: a HOST image of
 /// the same bringup resolved from the same launch and arguments.
@@ -434,6 +448,30 @@ fn image_model_rel(
         image.launch.as_deref(),
         &args,
     )
+}
+
+/// `take` typed by a person or a script: configure the project first, the
+/// way `nros build` does (RFC-0120 D3), so the host image is planned from a
+/// current tree. `nros build`'s and `nros configure`'s own take
+/// ([`take_for_build`]) runs INSIDE a configure and calls [`take_census`]
+/// directly -- a configure that re-entered itself would wait on its own lock.
+fn take_census_verb(args: TakeArgs) -> Result<()> {
+    if args.leaf.is_none()
+        && !args.plan
+        && let Some(image) = &args.image
+    {
+        let root = match &args.workspace {
+            Some(w) => w.clone(),
+            None => std::env::current_dir().wrap_err("no current directory")?,
+        };
+        crate::cmd::configure::ensure_current(
+            &root,
+            std::slice::from_ref(image),
+            false,
+            args.offline,
+        )?;
+    }
+    take_census(args)
 }
 
 fn take_census(args: TakeArgs) -> Result<()> {
@@ -539,51 +577,40 @@ fn take_census(args: TakeArgs) -> Result<()> {
     let entry = crate::builder::entry::package_name(native_id);
     println!("entity-census take {asked_q}: taking the census with `{native_q}` ({entry})");
 
-    let nros = std::env::current_exe().wrap_err("locating this nros binary")?;
+    // RFC-0120 D1 (phase-530 W2) -- layer 0 builds the host sibling through
+    // its HOST TOOL, never through `nros build` (layer 2): stages 1-4 plan it
+    // in this process (the same `plan_builds` `nros configure` runs) and its
+    // own cargo or CMake steps build it. ONE pass (RFC-0120 D4): the census
+    // records the digest of the binary it ran, and a later build that moves
+    // those bytes makes it stale, which the next configure retakes -- issue
+    // 1252's "build to a fixed point first" was a loop around that.
+    // `NROS_LEAF_CENSUS_HOST` marks the build as the census producer, which
+    // every hook honours (RFC-0120 D1), so no hook it reaches configures this
+    // project again while this configure holds its lock. For a workspace
+    // entry it changes nothing else: its only other readers are the
+    // standalone-leaf ones, which a generated entry never reaches. So this is
+    // still the host image a person runs (`nros build <bringup>:linux` builds
+    // into the same directory), built the same way.
     let build_dir = root.join("build");
-    let mut previous: Option<String> = None;
-    let mut binary = None;
-    for attempt in 1..=TAKE_MAX_BUILDS {
-        // phase-530 W2 (RFC-0120 D1) retires this spawn: configure must not
-        // run `nros build`. Until then, under a configure this child inherits
-        // NROS_CONFIGURE_HELD and its implicit configure returns at once
-        // instead of waiting on the lock its parent holds (Ruling R20).
-        let mut cmd = Command::new(&nros);
-        cmd.arg("build")
-            .arg(&native_q)
-            .arg("--workspace")
-            .arg(&root);
-        if args.offline {
-            cmd.arg("--offline");
-        }
-        let status = cmd
-            .status()
-            .wrap_err_with(|| format!("running `nros build {native_q}`"))?;
-        if !status.success() {
-            bail!("`nros build {native_q}` exited {status}; no census can be taken without it");
-        }
-        let bin = locate_entry_binary(&build_dir, &entry).wrap_err_with(|| {
-            format!(
-                "`nros build {native_q}` succeeded but left no `{entry}` binary under its cmake or \
-                 cargo image root"
-            )
-        })?;
-        let digest = file_digest(&bin)?;
-        if previous.as_deref() == Some(digest.as_str()) {
-            binary = Some(bin);
-            break;
-        }
-        if attempt == TAKE_MAX_BUILDS {
-            bail!(
-                "`{native_q}` did not reach a fixed point in {TAKE_MAX_BUILDS} builds -- `{entry}` \
-                 changed on every one, so any census of it is stale the moment it is written. A \
-                 build that does not converge is the defect: make `{entry}`'s build \
-                 reproducible, then run `nros dev image entity-census take` again"
-            );
-        }
-        previous = Some(digest);
+    let plans = crate::cmd::build::plan_builds(&crate::cmd::configure::build_args(
+        &root,
+        &native_q,
+        &None,
+        false,
+        args.offline,
+    ))
+    .wrap_err_with(|| format!("planning the host image `{native_q}` the census is taken with"))?;
+    for p in &plans {
+        crate::cmd::build::build_host_image(p, &[(LEAF_CENSUS_HOST_ENV, "1")]).wrap_err_with(
+            || format!("building the host image `{native_q}`; no census can be taken without it"),
+        )?;
     }
-    let binary = binary.expect("the loop breaks with a binary or bails");
+    let binary = locate_entry_binary(&build_dir, &entry).wrap_err_with(|| {
+        format!(
+            "the host build of `{native_q}` succeeded but left no `{entry}` binary under its \
+             cmake or cargo image root"
+        )
+    })?;
 
     // Asked AGAIN, after the build. Before it, an unsynced workspace has no
     // `build/nros/models/` and `ensure_model` answers from its cache; the
@@ -797,6 +824,9 @@ fn census_program_binary(leaf: &Path, build: &Path) -> Result<PathBuf> {
     }
 }
 
+/// The file `CMAKE_PROJECT_INCLUDE` names in the host census build.
+const CENSUS_PROJECT_INCLUDE: &str = "census-project-include.cmake";
+
 /// Issue 2086 -- a Zephyr application's `CMakeLists.txt` opens with
 /// `find_package(Zephyr ...)`, because Zephyr owns that build. The host census
 /// build compiles the same sources for the host, where that call would either
@@ -816,6 +846,14 @@ fn write_zephyr_census_stub(build: &Path) -> Result<PathBuf> {
                 # found and does nothing, so the application's own sources build for the host.\n\
                 set(Zephyr_FOUND TRUE)\n";
     crate::atomic_file::atomic_write(&dir.join("ZephyrConfig.cmake"), text)
+        .map_err(|e| eyre::eyre!("write `{}`: {e}", dir.display()))?;
+    // RFC-0120 D4 -- Zephyr enables C (and ASM) before the application's
+    // `project()`, so an application may name `LANGUAGES CXX` alone and still
+    // reach `find_package(nano_ros)`, which needs C. The host census build has
+    // no Zephyr, so it enables C after every `project()` instead.
+    let include = "# GENERATED by `nros dev image entity-census take --leaf` -- do not edit.\n\
+                   if(NOT CMAKE_C_COMPILER_LOADED)\n    enable_language(C)\nendif()\n";
+    crate::atomic_file::atomic_write(&dir.join(CENSUS_PROJECT_INCLUDE), include)
         .map_err(|e| eyre::eyre!("write `{}`: {e}", dir.display()))?;
     Ok(dir)
 }
@@ -841,6 +879,21 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
             leaf.display()
         );
     }
+    // RFC-0120 D4 -- the ONE rule decides whether this leaf is counted by its
+    // census at all (`entities = "census"`, or the C/C++ default). A leaf
+    // that declares its entities, writes `"defaults"`, or is a host image has
+    // nothing to take, so every caller may ask unconditionally.
+    let source = crate::leaf_census::entity_source_of(&leaf, None)?
+        .unwrap_or(crate::leaf_census::EntitySource::Unstated);
+    if !source.is_census() {
+        println!(
+            "entity-census take --leaf {}: entities are `{}`, not counted by a census -- nothing \
+             to take",
+            leaf.display(),
+            source.word()
+        );
+        return Ok(());
+    }
     // Issue 2043 -- a ported ament workspace names no executable in its own
     // `CMakeLists.txt`; the host build's program manifest does, after it.
     let named = leaf_executable_name(&leaf);
@@ -862,74 +915,96 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
 
     let root = crate::orchestration::nano_ros_root::resolve(None, &leaf)
         .ok_or_else(|| eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
+    // RFC-0120 C3 -- the host toolchain, before anything is configured, so a
+    // missing compiler is named rather than surfacing as a CMake error.
+    let missing = crate::builder::preflight::check_host_toolchain(Some(&root));
+    if !missing.is_empty() {
+        bail!(
+            "{}: its entities are counted by its census, a HOST build of its sources, and this \
+             host cannot build one.\n{}",
+            leaf.display(),
+            crate::builder::preflight::report(&missing)
+        );
+    }
     let build = leaf.join("build").join("census-host");
     let zephyr_stub = write_zephyr_census_stub(&build)?;
-    let mut previous: Option<String> = None;
-    let mut binary = None;
-    for attempt in 1..=TAKE_MAX_BUILDS {
-        let status = Command::new("cmake")
-            .arg("-S")
-            .arg(&leaf)
-            .arg("-B")
-            .arg(&build)
-            .arg("-G")
-            .arg("Ninja")
-            .arg(format!("-Dnano_ros_DIR={}", root.display()))
-            // The add_subdirectory road (a ported ament workspace's root,
-            // issue 2043) names the SDK root this way instead.
-            .arg(format!("-DNROS_REPO_DIR={}", root.display()))
-            .arg("-DNROS_LEAF_BOARD=linux")
-            .arg(format!("-DZephyr_DIR={}", zephyr_stub.display()))
-            .env(LEAF_CENSUS_HOST_ENV, "1")
-            .status()
-            .wrap_err("running cmake (configure) for the host census build")?;
-        if !status.success() {
-            bail!(
-                "host census configure of {} exited {status}",
-                leaf.display()
-            );
-        }
-        let status = Command::new("cmake")
-            .arg("--build")
-            .arg(&build)
-            .env(LEAF_CENSUS_HOST_ENV, "1")
-            .status()
-            .wrap_err("running cmake --build for the host census build")?;
-        if !status.success() {
-            bail!("host census build of {} exited {status}", leaf.display());
-        }
-        let bin = match &named {
-            Ok(exe) => build.join(exe),
-            Err(why) => {
-                census_program_binary(&leaf, &build).map_err(|e| eyre::eyre!("{why}\n  and {e}"))?
+    // RFC-0120 D4 -- ONE pass. The host census build is sizing-insensitive:
+    // `NROS_LEAF_CENSUS_HOST` makes it read no declaration, no census and no
+    // seed, so its pools sit at the hosted defaults and a reconfigure cannot
+    // move what it registers. The census records the digest of the binary it
+    // ran, and nothing but this verb builds `census-host`, so the census stays
+    // fresh until the leaf's own sources move (issue 1252's convergence loop
+    // was about a binary another build could change).
+    let refused = |step: &str, status: std::process::ExitStatus| {
+        eyre::eyre!(
+            "{}: {step} of its host census build exited {status}.\n\
+             This leaf is counted by its census{}: its own sources, built for the HOST and run \
+             in counting mode. Sources that call an RTOS API directly (a Zephyr `k_*` call, \
+             say) cannot build for the host, so nothing can be counted. Either fix is one line \
+             in its system.toml `[[component]]`:\n  \
+             entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]   (tight: \
+             state what it creates)\n  \
+             entities = \"defaults\"   (loose, written down: the crate defaults)",
+            leaf.display(),
+            match source {
+                crate::leaf_census::EntitySource::Census { explicit: false } => {
+                    " (the default for a C/C++ leaf that states no `entities`)"
+                }
+                _ => "",
             }
-        };
-        if !bin.is_file() {
-            bail!(
-                "the host census build of {} left no `{}`",
-                leaf.display(),
-                bin.display()
-            );
+        )
+    };
+    let status = Command::new("cmake")
+        .arg("-S")
+        .arg(&leaf)
+        .arg("-B")
+        .arg(&build)
+        .arg("-G")
+        .arg("Ninja")
+        .arg(format!("-Dnano_ros_DIR={}", root.display()))
+        // The add_subdirectory road (a ported ament workspace's root,
+        // issue 2043) names the SDK root this way instead.
+        .arg(format!("-DNROS_REPO_DIR={}", root.display()))
+        .arg("-DNROS_LEAF_BOARD=linux")
+        .arg(format!("-DZephyr_DIR={}", zephyr_stub.display()))
+        // A Zephyr application's `project()` may name CXX alone, because
+        // Zephyr enables C itself; the stub does not, so this does.
+        .arg(format!(
+            "-DCMAKE_PROJECT_INCLUDE={}",
+            zephyr_stub.join(CENSUS_PROJECT_INCLUDE).display()
+        ))
+        .env(LEAF_CENSUS_HOST_ENV, "1")
+        .status()
+        .wrap_err("running cmake (configure) for the host census build")?;
+    if !status.success() {
+        return Err(refused("the configure", status));
+    }
+    let status = Command::new("cmake")
+        .arg("--build")
+        .arg(&build)
+        .env(LEAF_CENSUS_HOST_ENV, "1")
+        .status()
+        .wrap_err("running cmake --build for the host census build")?;
+    if !status.success() {
+        return Err(refused("the build", status));
+    }
+    let bin = match &named {
+        Ok(exe) => build.join(exe),
+        Err(why) => {
+            census_program_binary(&leaf, &build).map_err(|e| eyre::eyre!("{why}\n  and {e}"))?
         }
-        let digest = file_digest(&bin)?;
-        if previous.as_deref() == Some(digest.as_str()) {
-            binary = Some(bin);
-            break;
-        }
-        if attempt == TAKE_MAX_BUILDS {
-            bail!(
-                "the host census build of {} did not reach a fixed point in {TAKE_MAX_BUILDS} \
-                 builds",
-                leaf.display()
-            );
-        }
-        previous = Some(digest);
+    };
+    if !bin.is_file() {
+        bail!(
+            "the host census build of {} left no `{}`",
+            leaf.display(),
+            bin.display()
+        );
     }
     let exe = match named {
         Ok(exe) => exe,
-        Err(_) => binary
-            .as_deref()
-            .and_then(Path::file_name)
+        Err(_) => bin
+            .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
     };
@@ -937,7 +1012,7 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
         entry: exe,
         workspace: Some(leaf.clone()),
         build_dir: build,
-        binary,
+        binary: Some(bin),
         model: None,
         out: Some(out),
         timeout_secs,
@@ -1883,6 +1958,25 @@ fn summarise(recorded: &serde_json::Value) -> String {
 mod tests {
     use super::*;
 
+    /// RFC-0120 D1 (phase-530 W2) -- layer 0 never runs `nros build`. The
+    /// census used to take itself by spawning this binary's `build` verb; it
+    /// now builds its host image through the host tool, and nothing in this
+    /// file spawns the CLI again.
+    #[test]
+    fn the_census_spawns_no_nros() {
+        let src = include_str!("entity_census.rs");
+        let code: String = src
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let spawn = ["current", "_exe()"].concat();
+        assert!(
+            !code.contains(&spawn),
+            "entity_census.rs locates this binary again -- a census must not run `nros build`"
+        );
+    }
+
     /// Issue 1419 -- the cargo road's layout: each image is its own cargo root
     /// at `<build>/<coord>/<entry>/`, its binary under that root's target dir.
     /// A Rust host entry is a census producer, so `take` must find it there.
@@ -2032,7 +2126,8 @@ mod tests {
     ///
     /// * `entities = "census"` + a current census -> the census's entities,
     ///   with an action's RMW constituents folded back into the action; no
-    ///   `entities` at all -> nothing, census or not;
+    ///   `entities` at all -> the census too (RFC-0120 D4, a C/C++ cross
+    ///   leaf); `entities = "defaults"` -> nothing, census or not;
     /// * `entities = "census"` + a stale or missing census -> refused, naming
     ///   `take --leaf`;
     /// * the host census build (`NROS_LEAF_CENSUS_HOST`) reads neither;
@@ -2097,10 +2192,18 @@ mod tests {
         assert!(matches!(census_freshness(&out, leaf), Freshness::Fresh));
 
         let read = crate::leaf_entity_env::declared_entities;
-        // No `entities` at all: nothing is stated, and a census on disk is
-        // not read -- running `take --leaf` by hand must not move a leaf's
-        // sizing that never opted in.
-        assert!(read(leaf).unwrap().is_none(), "no opt-in, no answer");
+        // RFC-0120 D4 -- no `entities` at all on a C/C++ cross leaf: it is
+        // counted by its census by default, so the census answers.
+        let got = read(leaf).unwrap().expect("the census answers by default");
+        assert_eq!(got.len(), 1, "{got:?}");
+        // `entities = "defaults"` is the written opt-out: nothing is stated,
+        // and a census on disk is not read.
+        std::fs::write(
+            leaf.join("system.toml"),
+            system("entities = \"defaults\"\n"),
+        )
+        .unwrap();
+        assert!(read(leaf).unwrap().is_none(), "opted out, no answer");
 
         // `entities = "census"`: the census answers.
         std::fs::write(leaf.join("system.toml"), system("entities = \"census\"\n")).unwrap();

@@ -274,7 +274,16 @@ pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
         return Ok(None);
     };
     let origin = decl.origin_path().display().to_string();
-    if decl.entities_from_census() {
+    // RFC-0120 D4 -- `entities = "census"`, or a C/C++ cross leaf that states
+    // nothing (the census is its default). One rule: `leaf_census`.
+    let source = crate::leaf_census::entity_source(leaf, &decl);
+    if source.is_census() {
+        let said = match source {
+            crate::leaf_census::EntitySource::Census { explicit: true } => {
+                "`entities = \"census\"`"
+            }
+            _ => "no `entities` (a C/C++ leaf is counted by its census by default)",
+        };
         // Issue 1556 -- `entities = "census"`: nothing is authored, and the
         // leaf's own CENSUS (`nros ws entity-census take --leaf`) is the
         // answer -- what the program creates, observed by running it, in
@@ -285,17 +294,18 @@ pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
         // without anyone having chosen that.
         if decl.components.len() != 1 {
             eyre::bail!(
-                "{origin}: `entities = \"census\"` on a leaf with {} `[[component]]` rows -- a \
-                 census records ONE program, and splitting it across components would be \
-                 inventing an attribution. Declare each component's `entities` list instead.",
+                "{origin}: {said} on a leaf with {} `[[component]]` rows -- a census records \
+                 ONE program, and splitting it across components would be inventing an \
+                 attribution. Declare each component's `entities` list instead, or write \
+                 `entities = \"defaults\"`.",
                 decl.components.len()
             );
         }
         return match census_entities(leaf)? {
             Ok(rows) => Ok(Some(rows)),
             Err(why) => Err(eyre::eyre!(
-                "{origin}: `entities = \"census\"`, and {why}.\n  Take it first: \
-                 nros ws entity-census take --leaf {}",
+                "{origin}: {said}, and {why}.\n  Take it first: \
+                 nros dev image entity-census take --leaf {}",
                 leaf.display()
             )),
         };

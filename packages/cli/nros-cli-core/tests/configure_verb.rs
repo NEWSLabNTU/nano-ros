@@ -275,9 +275,8 @@ const CHILD_LEAF: &str = "NROS_CONFIGURE_TEST_CHILD_LEAF";
 const CHILD_MARK: &str = "CONFIGURE-CHILD up_to_date=";
 
 /// M2 (phase-530 W1 final review): two configures of one leaf at once, as
-/// two PROCESSES. In one process the two shared the environment, so one
-/// could read the other's exported `NROS_CONFIGURE_HELD` and the "exactly
-/// one finds the stamp current" count raced. Each child is this test binary
+/// two PROCESSES, so the "exactly one finds the stamp current" count is
+/// about the lock and nothing the two could share in one process. Each child is this test binary
 /// re-run on [`configure_child`] alone, with its own environment.
 #[test]
 fn second_concurrent_configure_finds_stamp_current() {
@@ -287,7 +286,6 @@ fn second_concurrent_configure_finds_stamp_current() {
             std::process::Command::new(std::env::current_exe().expect("this test binary"))
                 .args(["configure_child", "--exact", "--ignored", "--nocapture"])
                 .env(CHILD_LEAF, &leaf)
-                .env_remove("NROS_CONFIGURE_HELD")
                 .stdout(std::process::Stdio::piped())
                 .spawn()
                 .expect("spawn a configure child")

@@ -67,22 +67,7 @@ pub fn run(args: Args) -> Result<()> {
 
 /// [`run`], returning what it did.
 pub fn configure(args: Args) -> Result<Outcome> {
-    configure_with(args, std::env::var_os(HELD_VAR).as_deref())
-}
-
-/// [`configure`] with [`HELD_VAR`]'s value injected.
-pub(crate) fn configure_with(args: Args, held: Option<&std::ffi::OsStr>) -> Result<Outcome> {
     let project = project_root(args.sync.workspace.as_deref())?;
-    // Ruling R25: only `ensure_current` (the implicit configure of a child a
-    // configure spawned) honours the marker. An EXPLICIT configure under it
-    // was asked to do work; succeeding without doing any would let a CI
-    // `nros configure --check` pass vacuously.
-    if held_by_parent(&project, held) {
-        eyre::bail!(
-            "{HELD_VAR} is internal to nros configure (it marks a configure already \
-             running for this project); unset it"
-        );
-    }
     // `--check` and `--dry-run` keep the meaning they had on `nros sync`: a
     // check, and a print of what would be written. Neither writes, so neither
     // plans nor records a stamp.
@@ -104,39 +89,12 @@ pub fn ensure_current(
     dry_run: bool,
     offline: bool,
 ) -> Result<()> {
-    ensure_current_with(
-        project,
-        images,
-        dry_run,
-        offline,
-        std::env::var_os(HELD_VAR).as_deref(),
-    )
-}
-
-/// The environment variable a configure exports while it holds a project's
-/// lock: the canonical project path.
-///
-/// INTERNAL: never set it by hand. Only the implicit configure a child of
-/// that configure runs (`ensure_current`) honours it; an explicit `nros
-/// configure` under it for the same project fails (Ruling R25).
-pub(crate) const HELD_VAR: &str = "NROS_CONFIGURE_HELD";
-
-/// [`ensure_current`] with [`HELD_VAR`]'s value injected, so a test need not
-/// mutate the process environment.
-pub(crate) fn ensure_current_with(
-    project: &Path,
-    images: &[String],
-    dry_run: bool,
-    offline: bool,
-    held: Option<&std::ffi::OsStr>,
-) -> Result<()> {
+    // phase-530 W2 (RFC-0120 D1) retired `NROS_CONFIGURE_HELD`: nothing a
+    // configure runs calls back into `nros build` or `nros configure` any
+    // more. The census builds its host image through the host tool, in this
+    // process, and its build sets `NROS_LEAF_CENSUS_HOST`, which every hook
+    // honours; so no child waits on the lock this configure holds.
     let project = project_root(Some(project))?;
-    // Ruling R20: a parent configure of THIS project holds its lock and is
-    // what spawned us (stage 3.4's census runs `nros build`). It is already
-    // configuring; waiting on its lock would deadlock both.
-    if held_by_parent(&project, held) {
-        return Ok(());
-    }
     let mut argv = vec![
         "configure".to_string(),
         project.to_string_lossy().into_owned(),
@@ -184,9 +142,6 @@ fn configure_project(
     ensure_interface_search_path(project);
     let flags = configure_stamp::OutputFlags::of(&sync);
     let _lock = lock_exclusive_path(&configure_stamp::lock_path(project))?;
-    // Declared AFTER `_lock`, so it drops first: the marker never outlives
-    // the lock it announces.
-    let _held = HeldMarker::export(project);
 
     let targets = targets(project, named)?;
     // Ruling R15: a project that declares no image (a bringup-less workspace)
@@ -329,43 +284,14 @@ fn project_root(dir: Option<&Path>) -> Result<PathBuf> {
     std::fs::canonicalize(&dir).wrap_err_with(|| format!("configure: {}", dir.display()))
 }
 
-/// Whether `marker` ([`HELD_VAR`]'s value) names `project`: a parent
-/// configure holds its lock. Compared canonically.
-fn held_by_parent(project: &Path, marker: Option<&std::ffi::OsStr>) -> bool {
-    let Some(marker) = marker.filter(|m| !m.is_empty()) else {
-        return false;
-    };
-    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-    canon(Path::new(marker)) == canon(project)
-}
-
-/// Ruling R20: [`HELD_VAR`] set to the project for as long as this value
-/// lives, so every process configure spawns inherits it; the previous value
-/// (a configure of ANOTHER project further up) comes back on drop.
-struct HeldMarker(Option<std::ffi::OsString>);
-
-impl HeldMarker {
-    fn export(project: &Path) -> Self {
-        let previous = std::env::var_os(HELD_VAR);
-        set_env(HELD_VAR, Some(project.as_os_str()));
-        HeldMarker(previous)
-    }
-}
-
-impl Drop for HeldMarker {
-    fn drop(&mut self) {
-        set_env(HELD_VAR, self.0.take().as_deref());
-    }
-}
-
 /// The ONE place configure writes the process environment: `Some` sets
 /// `var`, `None` removes it. Every writer serialises on one mutex.
 fn set_env(var: &str, value: Option<&std::ffi::OsStr>) {
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     // SAFETY: edition 2024 makes these unsafe because another thread may be
-    // reading the environment. Configure's writers (the held marker, the
-    // interface search path) all come through here and are serialised on
+    // reading the environment. Configure's writers (the interface search
+    // path) all come through here and are serialised on
     // ENV_LOCK; the CLI runs configure on one thread, and the readers are
     // this CLI's own verbs and the processes configure spawns from that
     // thread, which inherit a consistent copy.
@@ -478,63 +404,8 @@ fn ensure_interface_search_path(project: &Path) {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::mpsc, thread, time::Duration};
 
     use super::*;
-
-    /// Hold `project`'s configure lock for the rest of the process, the way a
-    /// parent configure holds it while its census spawns `nros build`.
-    fn hold_lock_forever(project: &Path) {
-        let guard = lock_exclusive_path(&configure_stamp::lock_path(project)).unwrap();
-        // Never released: a thread still waiting on it must stay waiting,
-        // never go on to configure a scratch dir after the test ends.
-        std::mem::forget(guard);
-    }
-
-    /// Run `ensure_current_with` on a thread; `Some` if it returned in `wait`.
-    fn ensure_current_within(project: &Path, held: &Path, wait: Duration) -> Option<Result<()>> {
-        let (tx, rx) = mpsc::channel();
-        let (project, held) = (project.to_path_buf(), held.to_path_buf());
-        thread::spawn(move || {
-            let r = ensure_current_with(&project, &[], false, true, Some(held.as_os_str()));
-            let _ = tx.send(r);
-        });
-        rx.recv_timeout(wait).ok()
-    }
-
-    #[test]
-    fn implicit_configure_under_a_held_parent_does_not_block() {
-        let project = crate::test_support::scratch_dir("configure_held_same");
-        hold_lock_forever(&project);
-        // A non-canonical spelling of the same project still matches.
-        let spelled = project.join(".");
-        let r = ensure_current_within(&project, &spelled, Duration::from_secs(2))
-            .expect("ensure_current blocked on a lock its own parent configure holds");
-        r.expect("returns Ok under a held parent");
-    }
-
-    #[test]
-    fn a_held_marker_for_another_project_still_configures() {
-        let project = crate::test_support::scratch_dir("configure_held_mine");
-        let other = crate::test_support::scratch_dir("configure_held_other");
-        hold_lock_forever(&project);
-        // Another project's marker does not exempt this one: it goes on to
-        // take its own lock, which is held, so it waits.
-        assert!(
-            ensure_current_within(&project, &other, Duration::from_secs(1)).is_none(),
-            "a marker naming another project skipped this project's configure"
-        );
-    }
-
-    #[test]
-    fn held_marker_names_one_canonical_project() {
-        let a = crate::test_support::scratch_dir("configure_held_a");
-        let b = crate::test_support::scratch_dir("configure_held_b");
-        assert!(held_by_parent(&a, Some(a.join(".").as_os_str())));
-        assert!(!held_by_parent(&a, Some(b.as_os_str())));
-        assert!(!held_by_parent(&a, None));
-        assert!(!held_by_parent(&a, Some(std::ffi::OsStr::new(""))));
-    }
 
     #[test]
     fn bare_id_strips_one_qualifier() {
@@ -562,42 +433,5 @@ mod tests {
             PreflightRefusal(vec![m.clone()]).to_string(),
             crate::builder::preflight::report(&[m])
         );
-    }
-
-    fn explicit_args(argv: &[&str]) -> Args {
-        #[derive(Parser)]
-        struct A {
-            #[command(flatten)]
-            args: Args,
-        }
-        let mut full = vec!["configure"];
-        full.extend_from_slice(argv);
-        A::try_parse_from(full).unwrap().args
-    }
-
-    /// Ruling R25 — an EXPLICIT configure under an inherited marker for the
-    /// same project fails, naming the variable; before, it printed a note and
-    /// exited 0 having done nothing, so `--check` could pass vacuously.
-    #[test]
-    fn explicit_configure_refuses_an_inherited_held_marker() {
-        let project = crate::test_support::scratch_dir("configure_held_explicit");
-        let p = project.to_str().unwrap();
-        for argv in [
-            &[p][..],
-            &[p, "--check"],
-            &[p, "--dry-run"],
-            &[p, "--force"],
-        ] {
-            let err = configure_with(explicit_args(argv), Some(project.join(".").as_os_str()))
-                .expect_err("an explicit configure under the marker must fail");
-            let msg = format!("{err:#}");
-            assert!(
-                msg.contains(
-                    "NROS_CONFIGURE_HELD is internal to nros configure (it marks a configure \
-                     already running for this project); unset it"
-                ),
-                "{argv:?}: {msg}"
-            );
-        }
     }
 }

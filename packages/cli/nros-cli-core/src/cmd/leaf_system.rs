@@ -492,7 +492,7 @@ pub fn board_not_applied(
 /// customer's own `src/<board>/nros-board.toml` resolves for `nros build` and
 /// not here, so the module hook would build its image without the board's
 /// snippets or conf files.
-fn load_catalog(root: &std::path::Path, dir: &std::path::Path) -> Option<BoardCatalog> {
+pub(crate) fn load_catalog(root: &std::path::Path, dir: &std::path::Path) -> Option<BoardCatalog> {
     let pkg_dirs: Vec<PathBuf> = crate::cmd::image_facts::workspace_root_from(dir)
         .and_then(|ws| {
             let members = crate::builder::discover::cargo_members_or_walk(&ws);
