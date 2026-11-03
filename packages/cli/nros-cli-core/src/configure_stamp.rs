@@ -6,10 +6,6 @@
 //! answers "may I skip", and every `Stale` carries the one line saying why.
 //!
 //! Content-addressed throughout (never mtimes: a rebase touches every file).
-// phase-530 W1 Task 3 (the verb) calls everything here; it removes the
-// `allow(dead_code)` below.
-#![allow(dead_code)]
-
 use std::path::{Path, PathBuf};
 
 use eyre::{Result, WrapErr};
@@ -222,10 +218,33 @@ fn recorded_censuses(project: &Path) -> Vec<PathBuf> {
 /// differs; a metadata sidecar's component sources moved; a recorded census is
 /// stale. An image with no recorded census is not stale on that account.
 pub(crate) fn is_current(project: &Path, image: &str) -> Result<Currency> {
-    let resolver = std::env::current_exe().ok().and_then(|exe| {
-        crate::orchestration::model_location::launch_resolver_bin_for_exe(&exe, None)
-    });
-    is_current_with(project, image, &real_env(), resolver.as_deref())
+    is_current_with(
+        project,
+        image,
+        &real_env(),
+        current_launch_resolver().as_deref(),
+    )
+}
+
+/// The `nros-launch-resolve` this process resolves: the lookup
+/// `ws::launch_resolver_path` (sync) makes. ONE spelling for the stamp's
+/// writer ([`stamp_now`]) and its reader ([`is_current`]), so a recorded path
+/// can never differ from the one compared against it (Ruling R6: a mismatch
+/// reads "launch resolver changed" forever).
+pub(crate) fn current_launch_resolver() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    crate::orchestration::model_location::launch_resolver_bin_for_exe(&exe, None)
+}
+
+/// The stamp a configure that just finished records: the digest of the
+/// inputs as they are NOW (after it wrote), and the environment it ran in.
+pub(crate) fn stamp_now(project: &Path) -> Result<Stamp> {
+    Ok(Stamp {
+        digest: input_digest(project)?,
+        codegen_version: codegen_version(),
+        ament_prefix: std::env::var("AMENT_PREFIX_PATH").ok(),
+        launch_resolve: current_launch_resolver(),
+    })
 }
 
 /// [`is_current`] with the environment and the currently resolved
@@ -342,6 +361,19 @@ mod tests {
         std::fs::create_dir_all(p.join("sub/.git")).unwrap();
         std::fs::write(p.join("sub/Cargo.toml"), "[package]\n").unwrap();
         assert_eq!(before, input_digest(&p).unwrap());
+    }
+
+    /// Ruling R6: what a configure records is what [`is_current`] compares
+    /// against, so a stamp written now reads `Current` through the REAL
+    /// lookup (not an injected resolver).
+    #[test]
+    fn stamp_now_reads_current_through_the_real_lookup() {
+        let p = tmp("stamp-now");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let stamp = stamp_now(&p).unwrap();
+        assert_eq!(stamp.launch_resolve, current_launch_resolver());
+        record(&p, "img", &stamp).unwrap();
+        assert_eq!(is_current(&p, "img").unwrap(), Currency::Current);
     }
 
     #[test]

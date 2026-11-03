@@ -373,6 +373,34 @@ fn rust_target_installed(target: &str) -> bool {
     }
 }
 
+/// Stage 3's refusal, as a typed error (phase-530 W1).
+///
+/// Its `Display` is exactly [`report`]. Typed so `nros configure` can tell
+/// "this host cannot build that image" (skip it, when the caller did not name
+/// it) from every other planning failure, by type rather than by message text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreflightRefusal(pub Vec<Missing>);
+
+impl PreflightRefusal {
+    /// One line: each missing item with its remedy, for a skip notice.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        self.0
+            .iter()
+            .map(|m| format!("missing {} (run: {})", m.what, m.remedy))
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+}
+
+impl std::fmt::Display for PreflightRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&report(&self.0))
+    }
+}
+
+impl std::error::Error for PreflightRefusal {}
+
 /// Render the problems as the message stage 3 fails with.
 #[must_use]
 pub fn report(missing: &[Missing]) -> String {
