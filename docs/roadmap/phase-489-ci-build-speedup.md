@@ -1039,7 +1039,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 2223](../issues/2223-nightly-gate-build-tier-fills-hosted-disk.md) — the scheduled gate's `just check build` fills the hosted disk; sharded like W8
+- [issue 2223](../issues/archived/2223-nightly-gate-build-tier-fills-hosted-disk.md) — RESOLVED 2026-11-03: the scheduled gate's `just check build` filled the hosted disk; sharded three ways like W8 (run 41583320229, worst shard 24 G free)
 - [issue 2219](../issues/2219-template-copy-out-zephyr-projects-built-on-no-lane.md) — template-copy-out's five Zephyr projects are built copied out on no lane (found measuring W8)
 - [issue 1869](../issues/archived/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md) — workspace fixture rows sharing a target dir rebuilt the core crates every run (W6; resolved by RFC-0100 D13)
 - [issue 1177](../issues/archived/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — RESOLVED 2026-10-23 (Option B: the no-alloc nros-c rows run in `compile-smoke`). `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
