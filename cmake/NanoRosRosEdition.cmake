@@ -39,6 +39,26 @@ set(NROS_DEFAULT_ROS_EDITION "humble"
 set(NROS_KNOWN_ROS_EDITIONS humble iron jazzy
     CACHE INTERNAL "nano-ros: every ROS edition the codegen understands")
 
+# nros_ros_edition_agree(<declared> <stated> <system.toml> <image>)
+#
+# Issue 2087 -- a leaf's `system.toml` declares the image's edition, and a
+# `-DNROS_ROS_EDITION` (or a cached one) may state one too. Either alone is
+# used; both must agree, or the configure stops naming both values. ONE rule
+# for both roads that apply a declaration: the cmake road's leaf read
+# (`NanoRosPackageXml.cmake`) and the Zephyr module hook
+# (`zephyr/cmake/nros_image_kconfig.cmake`, phase-530 Ruling R34).
+function(nros_ros_edition_agree _declared _stated _toml _image)
+    if(NOT "${_declared}" STREQUAL "" AND NOT "${_stated}" STREQUAL ""
+       AND NOT "${_stated}" STREQUAL "${_declared}")
+        message(FATAL_ERROR
+            "nano-ros: ${_toml} states ROS edition `${_declared}` for image `${_image}` "
+            "but -DNROS_ROS_EDITION=${_stated} names another. State the edition in the "
+            "image this build is (`[image.<id>] ros_edition`, selected with "
+            "-DNROS_IMAGE=<id>) and drop the -D (`cmake -U NROS_ROS_EDITION <build-dir>` "
+            "clears a cached one) — issue 2087.")
+    endif()
+endfunction()
+
 # Resolve the edition for one call site.
 #
 #   _nros_resolve_ros_edition("<explicit-or-empty>" out_var)

@@ -78,6 +78,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
 function(nros_configured_locate _project _image)
     set_property(GLOBAL PROPERTY NROS_CONFIGURED_COMMAND
         "nros configure ${_project} --image ${_image}")
+    # TRUE only once a CURRENT answer is published below.
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_LOCATED_CURRENT FALSE)
     nros_resolve_cli(_nros OPTIONAL CONTEXT "locating ${_image}'s configured answer")
     if(NOT _nros OR NOT EXISTS "${_nros}")
         set_property(GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR "")
@@ -108,6 +110,8 @@ function(nros_configured_locate _project _image)
             "`nros configure ${_project} --image ${_image}` (or `nros build`) to seed "
             "it again")
         set(_dir "")
+    else()
+        set_property(GLOBAL PROPERTY NROS_CONFIGURED_LOCATED_CURRENT TRUE)
     endif()
     nros_configured_publish("${_dir}")
 endfunction()
