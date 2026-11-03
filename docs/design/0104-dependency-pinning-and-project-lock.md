@@ -33,7 +33,7 @@ system libraries, and gives a developer one verb to move a pin.
 - **The policy fought the generated graph** (0012, 0066, 0359, 0394, 1182, 1184,
   1398): generated message crates carried the ament package version, so a
   tracked lock asserted WHICH ROS install built it; tracked locks needed
-  `nros sync` to have run; the lock gate skipped exactly the trees that drifted.
+  `nros configure` to have run; the lock gate skipped exactly the trees that drifted.
 
 **The gap nobody filed.** `git ls-files 'examples/**/Cargo.lock'` is empty
 against 112 example manifests. Every user who copies an example, and every CI
@@ -95,7 +95,7 @@ D5 requires.)
 
 ### D3 — Leaf locks are SEEDED, never tracked
 
-A leaf `Cargo.lock` is written by `nros sync` / `nros build` from the pin set
+A leaf `Cargo.lock` is written by `nros configure` / `nros build` from the pin set
 (the registry entries, copied whole, checksums included), then cargo resolves —
 keeping every seeded version the manifests still accept, pruning the rest, and
 adding the LOCAL path crates (deterministic: generated crates are `version =

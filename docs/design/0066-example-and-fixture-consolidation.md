@@ -173,7 +173,7 @@ embedded opt-in rule above.
 **Correction (W2, 2026-08-02): `managed_bringup` cannot live here.** The
 assumption above — that C++-only entries dodge the limit — is wrong. The
 one-system rule is per WORKSPACE, not per language: a second bringup makes
-`features/` two-system and `nros sync` then refuses selection facades for its
+`features/` two-system and `nros configure` then refuses selection facades for its
 RUST entries, regardless of which language the second system's entries use.
 
 The manual-transition demo therefore became its own workspace,
@@ -344,7 +344,7 @@ artifact), and the partial-language trees (`px4`, `stm32f4`,
 ## Cost this does not hide
 
 Under R2 the large workspaces do not grow at all — the feature demos go to
-`features/` instead. The trade becomes 17 `nros sync` + CMake-configure cycles
+`features/` instead. The trade becomes 17 `nros sync` (now `nros configure`) + CMake-configure cycles
 replaced by **one** (plus `features/`'s own build, which is larger than any
 single themed workspace but far smaller than the 11 it replaces).
 
@@ -359,7 +359,7 @@ manifest-declared build tree wiped first:
 | seconds per fixture | 92.4 | 72.5 | **-21.5 %** |
 
 The per-fixture number is the one that answers this section: the native stage
-got 11.7 % faster while building 8 MORE fixtures, because 35 `nros sync` +
+got 11.7 % faster while building 8 MORE fixtures, because 35 `nros sync` (now `nros configure`) +
 CMake-configure cycles became 15. Wall clock understates it — the non-native
 remainder grew 433 s for an unrelated reason (a `regenerate-bindings.sh` fix in
 the same session made it sync 7 template workspaces it had been silently

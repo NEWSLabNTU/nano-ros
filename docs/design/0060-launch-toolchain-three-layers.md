@@ -63,7 +63,7 @@ are deleted rather than moved. Per-node placement that DOES change behaviour
 
 ### Where they go: a nano-ros OVERLAY beside the model
 
-`nros sync` already writes the model to `<ws>/build/nros/models/<bringup>/`,
+`nros configure` already writes the model to `<ws>/build/nros/models/<bringup>/`,
 located through `nros_orchestration_ir::model_location`. It now also writes
 **`nros.toml`** in the same directory: the nano-ros facts resolved from
 `system.toml` by nano-ros's own strict parser

@@ -229,7 +229,7 @@ every per-endpoint consumer off.
 
 A single-package leaf had nowhere to AUTHOR a contract. The resolver finds one
 through the provider-sidecar channel, `<launch-file-dir>/<stem>.contract.yaml`,
-and a leaf's launch file is SYNTHESISED by `nros sync` from its `[[component]]`
+and a leaf's launch file is SYNTHESISED by `nros configure` from its `[[component]]`
 rows into a generated directory (RFC-0098 D3) — which is not a place a user can
 put a file. So a leaf states its contract at **`<leaf>/system.contract.yaml`**,
 beside the `system.toml` that states everything else about its deployment, and
@@ -296,7 +296,7 @@ already shorter than `QOS_PROFILE_DEFAULT`'s KEEP_LAST(10) before this wave.
 
 ## D4 — one descriptor, read by path
 
-**Landed, phase-454 W4.** `nros sync` writes one file per entry; consumers read
+**Landed, phase-454 W4.** `nros configure` writes one file per entry; consumers read
 it by path, never by environment. Env transport is what produced issues 0460 (a
 knob reaching the Zephyr C lane and not the Rust one) and 0491 (a path variable
 compared as text), and it cannot carry per-endpoint structure without encoding it
@@ -408,7 +408,7 @@ A cargo consumer gets a real `rerun-if-changed` edge on this path —
 `nros_sizing_descriptor::load_for_build_script` emits it, on the file's CONTENT
 and never on the variable that names it (issue 0491), and **on the path whether
 or not a file is there yet**, because CREATION is the edge that matters: the
-first `nros sync` is what turns an image's defaults into its declaration.
+first `nros configure` is what turns an image's defaults into its declaration.
 Measured on cargo 1.98.1 — a watch emitted only for a file that already existed
 saw neither the creation nor a later edit (phase-454 W11 carries the table). A
 cmake consumer reads it through `nros_sizing_descriptor_read()` in
@@ -416,7 +416,7 @@ cmake consumer reads it through `nros_sizing_descriptor_read()` in
 the CLI in `CMAKE_CONFIGURE_DEPENDS` (issue 1018's rule — `execute_process()` has
 already run by the time ninja decides anything, so that list is the only thing
 that makes the emitted fragment fresh). The descriptor is registered even when it
-does not exist yet, so the first `nros sync` after a configure is what re-triggers
+does not exist yet, so the first `nros sync` (now `nros configure`) after a configure is what re-triggers
 one; the cargo side answers the same way for the same reason.
 
 **A consumer reading it is not a road delivering it.** `from_build_env()` answers
@@ -1038,7 +1038,7 @@ build path changing under it:
 
 | producer | reads | called from |
 | --- | --- | --- |
-| leaf (`write_for_leaf`) | the leaf's probe, its `generated/` bound tables, its synthesised model and `system.contract.yaml` | `nros sync` on a single-package cargo leaf |
+| leaf (`write_for_leaf`) | the leaf's probe, its `generated/` bound tables, its synthesised model and `system.contract.yaml` | `nros configure` on a single-package cargo leaf |
 | model (`write_for_model`) | the resolved SystemModel(s), the registered bound tables, the board's triple, the workspace's probe sidecars | `nros build` stage 4 on a cargo workspace image; `nano_ros_entry()` at configure on cmake and west |
 | declaration (`--from-leaf`) | a standalone cmake leaf's `[[component]] entities` -- an authored list, or, for `entities = "census"`, the leaf's own census (issue 1556) | `nros_record_leaf_entity_facts` |
 
@@ -1153,7 +1153,7 @@ own runtime evidence.
 no STATED entity fact ⇒ no file.** The model road states none for a model that
 describes no wiring and writes nothing; the cargo LEAF road's probe states the
 entities the image creates, so it writes a file with or without a contract.
-That is the file observed for `examples/linux/rust/talker` after `nros sync`
+That is the file observed for `examples/linux/rust/talker` after `nros configure`
 with no contract — `basis = "contract"`, no QoS fields, `undeclared_endpoints =
 1`: neither stale nor a writer bug, and re-measured on a fresh sync.
 `Basis::Contract` means "the rows are THIS IMAGE's endpoint set, not the link
@@ -1214,7 +1214,7 @@ entity fact ⇒ no file" stands for everything else.
 **In effect since phase-486 W4 (2026-10-12).** RFC-0060's
 [2026-10-10 amendment](0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 moves nano-ros's capability switches out of the SystemModel into a nano-ros
-overlay (`nros.toml`, written beside the model by `nros sync`). The 2026-10-09
+overlay (`nros.toml`, written beside the model by `nros configure`). The 2026-10-09
 ruling rested on the parameter store being a "model-only" fact, and the
 premise is gone:
 
@@ -1380,7 +1380,7 @@ sidecar becomes `StatedBy::Probe`, and its descriptor states
 `basis = "probe"`. That branch was measured against `origin/main` (37b950503e).
 The full record, with the table, is in phase-517 W5.
 
-- **Static survey.** `nros sync` plus `nros build --dry-run --all` ran over
+- **Static survey.** `nros sync` (now `nros configure`) plus `nros build --dry-run --all` ran over
   every colcon workspace in `examples/workspaces`, `examples/templates` and
   `packages/testing/nros-tests/fixtures`. 112 images moved from REFUSED to
   derived. No contract image moved, because the contract arm is untouched.

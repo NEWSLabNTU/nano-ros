@@ -71,7 +71,7 @@ our tree:
 
 Three consequences, all observed rather than hypothesised:
 
-1. **Version skew is unbounded.** `nros sync` calls `play_launch resolve`, a
+1. **Version skew is unbounded.** `nros sync` (now `nros configure`) calls `play_launch resolve`, a
    verb of a tool we neither vendor nor pin. Issue 0285: an unrelated ROS 2
    record/replay tool of the *same binary name* sat on PATH, and every
    platform's `build-examples` failed inside a cmake configure.
@@ -228,7 +228,7 @@ who computes it changes.
 - [ ] A workspace of `.launch.xml` files with no `$(eval)` resolves to a
       `SystemModel` with **no Python on the machine at all**, proven by a
       container lane that has no interpreter installed.
-- [ ] `nros sync` no longer shells a tool we do not pin for the Python-free
+- [ ] `nros configure` no longer shells a tool we do not pin for the Python-free
       path.
 - [ ] A launch tree that DOES need Python fails with a diagnostic naming the
       file and the construct, not a clap error from inside a cmake configure.

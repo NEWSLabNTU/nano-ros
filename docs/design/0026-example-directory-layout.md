@@ -64,7 +64,7 @@ Each example directory is a **standalone copy-out template** (RFC, per its own
 
 The copy-out contract is **tested** (phase-277 W6): Rust manifests declare
 nano-ros crates registry-style (`nros = { version = "*" }`) with a tracked
-`# nros-managed` `[patch.crates-io]` block that `nros sync` re-points at any
+`# nros-managed` `[patch.crates-io]` block that `nros configure` re-points at any
 checkout; C/C++ CMakeLists resolve the nano-ros root through one guard —
 `-DNANO_ROS_ROOT=<path>` cache var (a name since retired), else the `NROS_REPO_DIR` env var, else the
 in-repo relative walk-up. Copying a directory out of the repo and building it
@@ -73,7 +73,7 @@ against a checkout is part of the CI-checked surface
 
 **Workspaces are copy-out too** (issue 2085, 2026-10-27). A workspace under
 `examples/workspaces/` is copied as a whole, and its packages name nano-ros
-crates by version exactly as a single-package example does; `nros sync`
+crates by version exactly as a single-package example does; `nros configure`
 writes the patch for each member. A path dependency is fine while it stays
 inside `examples/` (a sibling member, a `generated/` message crate) and refused
 the moment it leaves: `check-example-path-deps` is the fast-line gate. Until
@@ -101,7 +101,7 @@ Two rules, by who owns the dependency graph:
   example leaf's lock **cannot** be produced at the repo, because the leaf
   redirects its message deps through `[patch.crates-io]` to a `generated/`
   tree that does not exist until the **user** runs message codegen
-  (`nros sync` / `nros dev codegen rust`) on THEIR machine — the lock is only
+  (`nros configure` / `nros dev codegen rust`) on THEIR machine — the lock is only
   resolvable *after* that user-side step. A lock committed from the repo would
   pin paths/hashes for generated crates the user hasn't produced yet: stale
   and misleading, never reproducible. So the leaf lock is a regenerable local
@@ -129,7 +129,7 @@ Two rules, by who owns the dependency graph:
 
   A testing/bench leaf that does NOT commit `generated/` keeps a path dep to an
   absent directory: it fails CLOSED (`failed to read …/generated/std_msgs/
-  Cargo.toml`) until `nros sync`, and therefore cannot commit a meaningful lock —
+  Cargo.toml`) until `nros configure`, and therefore cannot commit a meaningful lock —
   the same reasoning that gitignores `examples/**`, reached from the other side.
   **Settled 2026-08-03:** ten such locks were tracked and were deleted; a leaf's
   `generated/` tree belongs to the USER (it is generated from THEIR ament
@@ -149,7 +149,7 @@ Two rules, by who owns the dependency graph:
 shim keys off `git check-ignore Cargo.lock`, so it forces `--locked` exactly for
 the tracked (core) locks and skips it exactly for the ignored (example/leaf)
 locks — the leaf may create its first lock and re-resolve after a later
-`nros sync`, while a core lock still cannot drift.
+`nros configure`, while a core lock still cannot drift.
 
 ## Sibling categories
 

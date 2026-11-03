@@ -36,7 +36,7 @@ A file cannot be both. Anything hand-authored into a file whose maintenance
 procedure is "regenerate from inputs" is data waiting to be deleted — and it
 was, twice.
 
-Issue 0380 landed guards that make the loss loud (`nros sync` refuses to shrink
+Issue 0380 landed guards that make the loss loud (`nros configure` refuses to shrink
 a model; `check-model-dims` diffs a baseline). Those stop the bleeding. They do
 not resolve the contradiction: the model is still a committed file that nobody
 can safely regenerate.
@@ -77,7 +77,7 @@ build-system freshness rules apply, the same way object files do not carry
 sha256 provenance of their sources.
 *Known gap (issue 1121, open):* the resolver reads a contract sidecar
 (`<stem>.contract.yaml`), but adding one does not re-resolve the model it
-feeds. So `nros sync` can leave a stale model in place. The rule above still
+feeds. So `nros configure` can leave a stale model in place. The rule above still
 stands, and the missing edge is a bug against it.
 
 **Issue 0380's guards become transitional.** The sync-time refusal and
@@ -104,7 +104,7 @@ and the entry bake all derived from a contract the tree no longer stated.
 
 Two rules, both in `nros_cli_core::model_gate`:
 
-* **Quarantine.** On refusal `nros sync` moves the previous model to
+* **Quarantine.** On refusal `nros configure` moves the previous model to
   `<stem>.refused-<utc-stamp>.yaml` beside it (kept for diffing, never
   deleted) and writes a two-line `<stem>.refused` marker: the refusing check
   and the input that changed. The path a consumer opens no longer exists. The
