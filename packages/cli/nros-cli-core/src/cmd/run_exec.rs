@@ -971,6 +971,7 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
     };
     let (tx, rx) = ts::channel();
     let mut log = Some(log);
+    let mut consoles = Vec::new();
     match group.spawn("runner", cmd) {
         Ok(m) => {
             let out = m.child.stdout.take().expect("piped");
@@ -979,13 +980,13 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
                 let (side_tx, _side_rx) = ts::channel();
                 ts::spawn_console(out, Box::new(io::stderr()), None, None, side_tx);
             } else {
-                ts::spawn_console(
+                consoles.push(ts::spawn_console(
                     out,
                     Box::new(io::stdout()),
                     log.take(),
                     expect.clone(),
                     tx.clone(),
-                );
+                ));
             }
             ts::spawn_stderr(err, tx.clone());
         }
@@ -1010,7 +1011,13 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
         match group.spawn("console", c) {
             Ok(m) => {
                 let out = m.child.stdout.take().expect("piped");
-                ts::spawn_console(out, Box::new(io::stdout()), log.take(), expect.clone(), tx);
+                consoles.push(ts::spawn_console(
+                    out,
+                    Box::new(io::stdout()),
+                    log.take(),
+                    expect.clone(),
+                    tx,
+                ));
                 required.push("console".to_string());
             }
             Err(e) => {
@@ -1072,6 +1079,13 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
         Ok(())
     });
     session.group.teardown(ts::TEARDOWN_GRACE);
+    // The group is gone, so the console pipe is at its end: let the tee write
+    // the last bytes (what a stopped target printed on its way out) before the
+    // process exits, bounded in case something outside the group holds it.
+    let drained = Instant::now();
+    while consoles.iter().any(|h| !h.is_finished()) && drained.elapsed() < Duration::from_secs(1) {
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let code = outcome.exit_code(expect.is_some());
     let line = outcome.describe(expect.as_ref(), started.elapsed());
     let _ = io::stdout().flush();
