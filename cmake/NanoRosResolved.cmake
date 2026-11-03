@@ -68,7 +68,16 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
 # publish it for this configure as the GLOBAL property
 # `NROS_CONFIGURED_RESOLVED_DIR` (empty when configure resolved none). The one
 # call both the Zephyr hook and a cmake road make.
+#
+# Only a CURRENT stamp's answer is published (Ruling R33). A cmake road keeps
+# the identity `nros build` passed in its cache, so an edit to the project
+# followed by `cmake --build` re-runs this configure with no `nros configure`
+# in front of it: the stamp is stale, and a seed composed before the edit must
+# not be promised. That configure takes the unseeded road and says what to
+# run (phase-530 W5's cmake hook runs it first).
 function(nros_configured_locate _project _image)
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_COMMAND
+        "nros configure ${_project} --image ${_image}")
     nros_resolve_cli(_nros OPTIONAL CONTEXT "locating ${_image}'s configured answer")
     if(NOT _nros OR NOT EXISTS "${_nros}")
         set_property(GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR "")
@@ -87,6 +96,18 @@ function(nros_configured_locate _project _image)
     set(_dir "")
     if(_out MATCHES "set\\(NROS_LOCATE_RESOLVED \"([^\"]*)\"\\)")
         set(_dir "${CMAKE_MATCH_1}")
+    endif()
+    if(NOT _out MATCHES "set\\(NROS_LOCATE_CURRENT TRUE\\)")
+        set(_why "")
+        if(_out MATCHES "set\\(NROS_LOCATE_STALE \"([^\"]*)\"\\)")
+            set(_why " (${CMAKE_MATCH_1})")
+        endif()
+        message(STATUS
+            "nano-ros: image `${_image}`'s configure is stale${_why}: this configure "
+            "reads no seed from it and composes its own answer; run "
+            "`nros configure ${_project} --image ${_image}` (or `nros build`) to seed "
+            "it again (RFC-0120 D5)")
+        set(_dir "")
     endif()
     nros_configured_publish("${_dir}")
 endfunction()
@@ -232,18 +253,20 @@ function(_nros_resolved_bounds_why)
     if(NOT "${NROS_RESOLVED_BOUNDS_INPUTS_SCHEMA}" STREQUAL "1")
         set(_why "its input record (${_rec}) has a schema this reader does not know")
     elseif(NOT "${_tables}" STREQUAL "${NROS_RESOLVED_BOUNDS_TABLES}")
-        set(_why "configure composed over the bound tables [${NROS_RESOLVED_BOUNDS_TABLES}], "
-                 "this configure registers [${_tables}] -- an interface package the "
-                 "host configure finds that `package.xml` does not name")
-        string(CONCAT _why ${_why})
+        # CONCAT of QUOTED arguments: the table lists keep their `;`, which
+        # an unquoted `${_why}` re-split would not promise.
+        string(CONCAT _why
+            "configure composed over the bound tables [${NROS_RESOLVED_BOUNDS_TABLES}], "
+            "this configure registers [${_tables}] -- an interface package the "
+            "host configure finds that `package.xml` does not name")
     elseif(NOT "${_entity_sha}" STREQUAL "${NROS_RESOLVED_BOUNDS_ENTITY_SHA256}")
-        set(_why "this configure's entity inventory is not the one configure composed "
-                 "the sizes with -- a registration configure did not count")
-        string(CONCAT _why ${_why})
+        string(CONCAT _why
+            "this configure's entity inventory is not the one configure composed "
+            "the sizes with -- a registration configure did not count")
     elseif(NOT "${_ceiling}" STREQUAL "${NROS_RESOLVED_BOUNDS_CEILING}")
-        set(_why "configure's small-class ceiling is ${NROS_RESOLVED_BOUNDS_CEILING}, this "
-                 "configure's ${_ceiling}")
-        string(CONCAT _why ${_why})
+        string(CONCAT _why
+            "configure's small-class ceiling is ${NROS_RESOLVED_BOUNDS_CEILING}, this "
+            "configure's ${_ceiling}")
     endif()
     if(NOT _why STREQUAL "")
         nros_promise_why("${_frag}" "${_why}")
