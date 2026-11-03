@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [zenoh, serial, embedded, testing]
-related: [phase-528, phase-525, 2213]
+related: [phase-528, phase-525]
 found: 2026-11-03
 ---
 
@@ -42,7 +42,7 @@ the socat script below (paths shortened):
 ```sh
 socat pty,raw,echo=0,link=qemu.pty pty,raw,echo=0,link=router.pty &
 ZENOH_CONFIG_OVERRIDE='scouting/multicast/enabled=false;listen/endpoints=["serial/router.pty#baudrate=115200"]' \
-    /opt/ros/humble/lib/rmw_zenoh_cpp/rmw_zenohd &
+    ros2 run rmw_zenoh_cpp rmw_zenohd &
 sleep 2
 qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -display none -monitor none \
     -icount shift=auto -semihosting-config enable=on,target=native \
@@ -58,8 +58,9 @@ receive-path changes on bare metal, or the router's zenoh version. The
 network talker on the same board, and the network and Zephyr `native_sim`
 talkers, open sessions with the same router.
 
-Issue 2213 is the Zephyr CMSDK UART `configure` failure, a different board
-support path. That image never sent a byte, and this one does.
+The Zephyr CMSDK UART `configure` failure (fixed by a zenoh-pico bump in
+flight) is a different board support path: that image never sent a byte,
+and this one does.
 
 ## Blocks
 

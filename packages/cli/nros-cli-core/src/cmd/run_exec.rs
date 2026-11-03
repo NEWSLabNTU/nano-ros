@@ -522,7 +522,9 @@ pub fn build_image(args: &crate::cmd::run_plan::Args, image: &str) -> Result<(),
     if status.success() {
         Ok(())
     } else {
-        Err(format!("building `{image}` with `nros build` failed ({status})"))
+        Err(format!(
+            "building `{image}` with `nros build` failed ({status})"
+        ))
     }
 }
 
