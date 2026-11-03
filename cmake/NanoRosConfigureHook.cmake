@@ -127,6 +127,12 @@ function(nros_configure_hook)
                     --nano-ros-path "${_NROS_CONFIGURE_HOOK_ROOT}"
             OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _rc
             OUTPUT_STRIP_TRAILING_WHITESPACE)
+        # Issue 1018 -- the answer (which image) is baked into this configure,
+        # so a rebuilt `nros` must re-run it. Guarded: the Zephyr module hook
+        # reaches this before NanoRosCodegenCore defines it.
+        if(COMMAND nros_codegen_tool_reconfigure)
+            nros_codegen_tool_reconfigure("${_nros}")
+        endif()
         if(NOT _rc EQUAL 0)
             message(FATAL_ERROR "nano-ros: ${_dir}/system.toml: ${_err}\n"
                 "(a leaf with several images builds the one `-DNROS_IMAGE=<id>` names)")
