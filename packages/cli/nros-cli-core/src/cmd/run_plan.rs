@@ -18,7 +18,7 @@
 //! | 2 | `image` | `[image.<id>.run\|flash\|console]` over `[image_defaults]`'s, already merged key by key when `system.toml` was read |
 //! | 3 | `bench` | `$NROS_HOME/bench.toml` and the attached devices ([`bench_for`], RFC-0118 D6), for a flash target |
 //! | 4 | `board` | `[board.run]`, `[board.run.qemu]`, `[board.flash]`, `[board.console]` |
-//! | 5 | `method` | the runner's own defaults, and what the board's platform and triple imply |
+//! | 5 | `method` | the runner's own defaults, and what the board's platform and triple imply (never the target itself: a board states `[board.run]` or `[board.flash]`) |
 //!
 //! Tables merge KEY BY KEY across rungs: an image stating `[image.<id>.flash]
 //! chip` keeps the board's `method` and `prepare`.
@@ -310,16 +310,15 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
                 i.board
             )));
         }
-        // A board with no triple, on any platform but Zephyr (whose host image
-        // is a west build), runs on the host.
-        _ if d.target.is_none() && d.platform != PlatformKind::Zephyr => {
-            target.host = true;
-            prov.set("target.host", METHOD);
-        }
+        // The descriptor is the one source of how a board runs (RFC-0118 D4):
+        // nothing is guessed from a missing triple. The support registry
+        // records whether a run was verified, never whether one exists.
         _ => {
             return Err(ResolveError::Unresolved(format!(
-                "no run or flash command is derivable for board `{}` (its descriptor names no \
-                 `[board.run]`)",
+                "board `{}` states neither `[board.run]` nor `[board.flash]`, so nothing says how \
+                 it runs. Add `[board.run]` to its nros-board.toml with `host = true` for a host \
+                 process or `emulator = \"<kind>:<machine>\"` for an emulator, or `[board.flash]` \
+                 for real silicon.",
                 i.board
             )));
         }
@@ -998,13 +997,15 @@ mod tests {
         assert_eq!(p.console.baud, Some(115_200), "the board's baud survives");
     }
 
-    /// The method rung: a board with no triple runs on the host; the NuttX
-    /// board's line is the ladder's, keyed on platform + triple.
+    /// The method rung fills the console kind and the NuttX board's line
+    /// (the ladder's, keyed on platform + triple), but never the target: a
+    /// board stating neither `[board.run]` nor `[board.flash]` is refused,
+    /// naming both tables, rather than guessed onto the host from a missing
+    /// triple.
     #[test]
     fn the_method_rung_fills_what_the_board_leaves_out() {
         let cat = BoardCatalog::load(&repo_root()).unwrap();
         let mut linux = board(&cat, "linux");
-        linux.run = None;
         linux.console = None;
         let p = go(
             Verb::Run,
@@ -1015,9 +1016,25 @@ mod tests {
         )
         .unwrap();
         assert!(p.target.host);
-        assert_eq!(p.provenance["target.host"], METHOD);
+        assert_eq!(p.provenance["target.host"], BOARD);
         assert_eq!(p.provenance["console.kind"], METHOD);
         assert_eq!(p.runner.name, "native");
+
+        linux.run = None;
+        assert!(linux.target.is_none(), "the case the retired guess covered");
+        let e = go(
+            Verb::Run,
+            &linux,
+            &cargo_out(None),
+            &ImageTables::default(),
+            &Invocation::default(),
+        )
+        .unwrap_err();
+        assert!(matches!(e, ResolveError::Unresolved(_)), "{e:?}");
+        let msg = e.to_string();
+        for t in ["[board.run]", "host = true", "emulator = ", "[board.flash]"] {
+            assert!(msg.contains(t), "the refusal names `{t}`: {msg}");
+        }
 
         let nuttx = board(&cat, "nuttx");
         let p = go(

@@ -349,6 +349,40 @@ def typed_emulator_errors(rows: list[dict], index: dict) -> list[str]:
     return errs
 
 
+def runs_descriptor_errors(rows: list[dict], index: dict) -> list[str]:
+    """A row's `runs` (evidence) must name a launch its descriptor states.
+
+    RFC-0118 D4: the descriptor says HOW a board runs, the registry says
+    whether nano-ros has SEEN it run. Evidence for a launch the descriptor
+    does not state is evidence nobody can reproduce, so `runs = "host"` needs
+    `[board.run] host = true`, `runs = "emulator"` a `[board.run] emulator`,
+    and `runs = "hardware"` a `[board.flash]`. The converse is not checked: a
+    descriptor may state a launch nobody has verified yet (`runs = "none"`
+    with a stated emulator reads "Builds", with the machine as a twin).
+    Rows with no in-tree descriptor (infra, `external`) are not checked."""
+    errs = []
+    need = {"host": "`[board.run] host = true`",
+            "emulator": "`[board.run] emulator = \"<kind>:<machine>\"`",
+            "hardware": "`[board.flash]`"}
+    for row in rows:
+        runs = row.get("runs")
+        if runs not in need:
+            continue
+        key = row_descriptor(row, index)
+        if key is None:
+            continue
+        entry = index["entries"][key]
+        run = entry.get("run") if isinstance(entry.get("run"), dict) else {}
+        stated = {"host": run.get("host") is True,
+                  "emulator": bool(run.get("emulator")),
+                  "hardware": isinstance(entry.get("flash"), dict)}[runs]
+        if not stated:
+            errs.append(f"{row_name(row)}: runs = {runs!r} is evidence for a launch its "
+                        f"descriptor {key[0]} does not state; add {need[runs]} there, or "
+                        "lower `runs` to what was verified (RFC-0118 D4)")
+    return errs
+
+
 def self_test() -> None:
     """Negative controls: each rule fires on a row built to break it."""
     today = datetime.date(2026, 11, 1)
@@ -437,6 +471,27 @@ def self_test() -> None:
     assert not typed_emulator_errors([ext], index), "an external row may type it"
     assert typed_emulator_errors([{"crate": "y", "board_keys": ["q", "r"]}], index), \
         "board_keys spanning two descriptors are refused"
+
+    # phase-528 W1 — `runs` must name a launch the descriptor states.
+    rx = {"by_name": {"h": ("d/h.toml", 0), "e": ("d/e.toml", 0), "f": ("d/f.toml", 0),
+                      "n": ("d/n.toml", 0)},
+          "by_dir": {},
+          "entries": {("d/h.toml", 0): {"names": ["h"], "run": {"host": True}},
+                      ("d/e.toml", 0): {"names": ["e"], "run": {"emulator": "qemu:m"}},
+                      ("d/f.toml", 0): {"names": ["f"], "flash": {"method": "west"}},
+                      ("d/n.toml", 0): {"names": ["n"]}}}
+
+    def row(key, runs):
+        return {"crate": f"nros-board-{key}", "board_keys": [key], "runs": runs}
+    for k, r in (("h", "host"), ("e", "emulator"), ("f", "hardware"), ("n", "none"),
+                 ("e", "none")):
+        assert not runs_descriptor_errors([row(k, r)], rx), f"{k}/{r} agrees"
+    for k, r in (("n", "host"), ("e", "host"), ("h", "emulator"), ("n", "emulator"),
+                 ("e", "hardware"), ("n", "hardware")):
+        assert runs_descriptor_errors([row(k, r)], rx), f"{k}/{r} must be refused"
+    assert not runs_descriptor_errors(
+        [{"crate": "x", "external": "elsewhere", "runs": "hardware"}], rx), \
+        "an external row has no in-tree descriptor to check"
 
     doc = {"manual_stale_days": 120, "board": [ok, {"crate": "i", "infra": True,
                                                     "maintainers": ["a"]}]}

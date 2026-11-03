@@ -326,6 +326,7 @@ def main() -> int:
     errs += fixture_board_errors((ROOT / FIXTURES).read_text(), names)
     errs += board_key_errors(reg.rows, names)
     errs += board_registry.typed_emulator_errors(reg.raw_doc.get("board", []), reg.index)
+    errs += board_registry.runs_descriptor_errors(reg.raw_doc.get("board", []), reg.index)
 
     # The absorbed gates run their own self-tests on entry and print their own
     # verdicts; their exit status is part of this one.
