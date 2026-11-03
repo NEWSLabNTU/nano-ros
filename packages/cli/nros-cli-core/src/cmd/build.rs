@@ -2085,6 +2085,17 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 ));
                 resolved_opt.extend(board_rx_configure_args(descriptor));
                 resolved_opt.extend(board_snippets_configure_arg(descriptor));
+                // phase-530 W2 -- an application that holds its own
+                // `system.toml` (a leaf) may declare several images, and the
+                // module hook selects one with `-DNROS_IMAGE`, as the cmake
+                // leaf road passes it. Without it the hook rendered the leaf's
+                // DEFAULT image over the asked one's conf files.
+                if app
+                    .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                    .is_file()
+                {
+                    resolved_opt.push(format!("-DNROS_IMAGE={image_id}"));
+                }
                 // Issue 1867 -- the image's `nros` module is THIS checkout. The
                 // store workspace's manifest project carries none (issue 1258),
                 // so without this every image built against it aborted at

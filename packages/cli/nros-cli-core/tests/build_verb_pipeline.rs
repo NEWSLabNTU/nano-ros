@@ -1663,3 +1663,51 @@ fn cmake_and_cargo_plans_record_where_their_handoff_builds() {
         other => panic!("{other:?}"),
     }
 }
+
+/// phase-530 W2 -- a Zephyr LEAF that declares several images (one per RMW)
+/// builds the one `nros build` was asked for. The module hook selects a leaf's
+/// image with `-DNROS_IMAGE`; without it the hook rendered the leaf's DEFAULT
+/// image (zenoh) on top of the asked image's `prj-xrce.conf`, so the xrce
+/// image was configured and sized as the zenoh one.
+#[test]
+fn a_multi_image_zephyr_leaf_names_the_image_to_the_hook() {
+    let tmp = tempfile::tempdir().unwrap();
+    let leaf = tmp.path().join("talker");
+    std::fs::create_dir_all(leaf.join("src")).unwrap();
+    std::fs::write(
+        leaf.join("CMakeLists.txt"),
+        "cmake_minimum_required(VERSION 3.20)\nfind_package(Zephyr REQUIRED)\n\
+         project(talker LANGUAGES CXX)\n",
+    )
+    .unwrap();
+    std::fs::write(
+        leaf.join("package.xml"),
+        "<?xml version=\"1.0\"?>\n<package format=\"3\"><name>talker</name>\
+         <version>0.0.0</version><description>t</description>\
+         <maintainer email=\"a@b.c\">a</maintainer><license>MIT</license>\
+         <export><build_type>nros_cmake</build_type></export></package>\n",
+    )
+    .unwrap();
+    for f in ["prj-zenoh.conf", "prj-xrce.conf"] {
+        std::fs::write(leaf.join(f), "").unwrap();
+    }
+    std::fs::write(
+        leaf.join("system.toml"),
+        "[system]\nname = \"talker\"\nrmw = \"zenoh\"\ndomain_id = 0\ndefault_images = [\"zephyr_zenoh\"]\n\n\
+         [[component]]\npkg = \"talker\"\nclass = \"talker::Talker\"\nname = \"talker\"\n\
+         entities = \"defaults\"\n\n\
+         [image.zephyr_zenoh]\nboard = \"zephyr\"\nrmw = \"zenoh\"\nos_config = [\"prj-zenoh.conf\"]\n\n\
+         [image.zephyr_xrce]\nboard = \"zephyr\"\nrmw = \"xrce\"\nos_config = [\"prj-xrce.conf\"]\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(leaf.join("build/nros")).unwrap();
+    let plans = plan_builds(&args(&leaf, &["zephyr_xrce"])).expect("resolves");
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].driver, Driver::West);
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    let (_, cmake_zone) = line.split_once(" -- ").expect("a cmake zone");
+    assert!(
+        cmake_zone.contains("-DNROS_IMAGE=zephyr_xrce"),
+        "the hook must be told which image: {line}"
+    );
+}
