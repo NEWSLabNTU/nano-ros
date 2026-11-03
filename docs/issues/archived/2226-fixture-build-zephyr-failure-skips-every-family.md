@@ -1,7 +1,7 @@
 ---
 id: 2226
 title: "`build-test-fixtures` orders every family after zephyr, so one Zephyr leaf failure silently builds no other family"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [build, testing]
@@ -40,9 +40,26 @@ The summary reads like a Zephyr failure, which it is, and says nothing about
 the six families it cost. A reader who skims for "which family failed" gets
 one name where seven are missing.
 
-## Fix direction
+## Resolution
 
-Keep the serialisation without the failure coupling. Either run the other
-families after zephyr regardless of its status (a wrapper that records the
-status and exits 0, with the overall rc computed from the joblog), or invoke
-make with `-k`. Then report every family that did not build, by name.
+Order is kept; failure no longer propagates through it. Each generated stage
+rule records its rc in the joblog (it already did) and exits 0 after printing
+`FAILED`, so make starts every family whatever happened before. Once make
+returns, `report_stages` reads the joblog, names every stage whose rc is
+neither 0 nor 78 (`build-test-fixtures: FAILED stage(s): zephyr(rc=1)`), and
+fails the recipe. The stamp is still written only after a successful build.
+
+The class was wider than zephyr. Without `-k`, make starts no further target
+after ANY failure, so a failing qemu stage also stopped whichever families had
+not started yet. And the serial `NROS_JOBSERVER=1` launcher had the same shape
+under `set -e`: its loop ended at the first failing stage. Both launchers now
+run every stage and share `report_stages`.
+
+Measured with a `just` shim on PATH that fails `zephyr build-fixtures` (rc=1)
+and passes the other families' `build-fixtures`:
+- make launcher: all eight stages ran (`== linux == OK` … `== px4 == OK`), the
+  summary named `zephyr(rc=1)`, the recipe exited 1.
+- `NROS_JOBSERVER=1` launcher: same eight stages, same summary, exit 1.
+- shim with no failure: `All test fixtures built.`, exit 0.
+
+Before the fix, two real `lane=all` builds ran zephyr only.

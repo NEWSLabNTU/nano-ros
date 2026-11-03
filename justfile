@@ -2207,6 +2207,24 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
         printf '%s\t%s\t%s\t%s\t%s\n' "$stage" "$start" "$end" "$((end - start))" "$status" >> "$joblog"
         return "$status"
     }
+    # Issue 2226 — every stage RUNS, and the verdict is read from the joblog
+    # once they have. A stage that failed used to stop the fan-out: the make
+    # rule exited non-zero, and make (no `-k`) starts no further target after a
+    # failure, so one Zephyr leaf (issue 2224) left linux, qemu, freertos,
+    # nuttx and both threadx families unbuilt, and the log named only zephyr.
+    # Now each stage records its rc and exits 0; this names every stage that
+    # failed, and the recipe still fails, so no stamp is written over a partial
+    # build (`nros_fixtures_stamp_write` runs only after success).
+    report_stages() {
+        local failed
+        failed="$(awk -F'\t' 'NR>1 && $5!=0 && $5!=78 {printf "%s(rc=%s) ", $1, $5}' "$joblog")"
+        if [ -n "$failed" ]; then
+            echo "build-test-fixtures: FAILED stage(s): ${failed% }" >&2
+            echo "  every other stage ran; per-stage logs in $log_dir" >&2
+            return 1
+        fi
+        return 0
+    }
     budget="${NROS_BUILD_JOBS}"
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
         echo "build-test-fixtures: NROS_JOBSERVER=1 — serial launcher; child tools inherit fifo tokens"
@@ -2220,11 +2238,16 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
         # It is set per stage rather than exported once, so it names the platform
         # in the child's environment and cannot leak to an unrelated `just` this
         # recipe might later run. Unset is NAMED — see scripts/build/lane-skip.sh.
-        if in_lane zephyr; then run_stage zephyr env NROS_LANE_INCLUDED=zephyr just zephyr build-fixtures; fi
+        #
+        # Issue 2226 — `|| true`: under `set -e` a failing stage ended the loop
+        # here exactly as `| zephyr` did in the make graph. The rc is in the
+        # joblog; `report_stages` reads it after every stage has run.
+        if in_lane zephyr; then run_stage zephyr env NROS_LANE_INCLUDED=zephyr just zephyr build-fixtures || true; fi
         for platform in linux qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
             in_lane "$platform" || continue
-            run_stage "$platform" env "NROS_LANE_INCLUDED=$platform" just "$platform" build-fixtures
+            run_stage "$platform" env "NROS_LANE_INCLUDED=$platform" just "$platform" build-fixtures || true
         done
+        report_stages || exit 1
         exit 0
     fi
     case "$budget" in
@@ -2316,6 +2339,8 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
         # finish before starting, so zephyr really does run alone with the
         # full budget instead of concurrently with 4 sibling families
         # (~2x oversubscription, observed in the 2026-08-03 jobs audit).
+        # Order, not success: a rule never exits non-zero (issue 2226), so a
+        # failed zephyr still lets every other family start.
         zephyr_prereq=""
         if in_lane zephyr; then zephyr_prereq=" | zephyr"; fi
         for platform in $lane_platforms; do
@@ -2350,7 +2375,11 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
             # variable unset, is therefore NAMED, and fails instead. Unset =
             # NAMED is the deliberate default: a driver that forgets this
             # assignment goes red rather than quietly staying green.
-            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env %s NROS_LANE_INCLUDED=%q NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -eq 78 ]; then echo "== %s == SKIPPED ($$(sed -n "s/^NROS_LANE_SKIP: //p" %q | tail -1))"; else if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status)"; bash scripts/build/log-first-errors.sh %q; echo "== %s == log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"; fi\n\n' \
+            #
+            # Issue 2226 — on FAILED the rule reports and exits 0. Its rc is in
+            # the joblog, and `report_stages` turns it into the recipe's
+            # verdict after make has run every stage.
+            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env %s NROS_LANE_INCLUDED=%q NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -eq 78 ]; then echo "== %s == SKIPPED ($$(sed -n "s/^NROS_LANE_SKIP: //p" %q | tail -1))"; else if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status)"; bash scripts/build/log-first-errors.sh %q; echo "== %s == log tail:"; tail -40 %q || true; else echo "== %s == OK"; fi; fi\n\n' \
                 "$platform" "$NROS_STAGE_ENV" "$platform" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform" "$log" "$platform" "$log" "$platform"
         done
     } > "$makefile"
@@ -2365,6 +2394,7 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
     nros_guard_exec fixtures python3 scripts/build/make-stall-watchdog.py \
         --label build-test-fixtures --diag-dir "$log_dir" -- \
         make -j "$make_jobs" -f "$makefile"
+    report_stages || exit 1
     echo "All test fixtures built."
 
 # Phase 150.E rev3 — single deterministic fixture serving both
