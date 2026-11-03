@@ -62,3 +62,27 @@ nros_probe_run_expect() {
     kill -- "-$pid" 2>/dev/null || true
     echo "probe: step $step printed its documented output"
 }
+
+# nros_probe_clock_start / nros_probe_clock_report — the field budget's wall
+# clock (phase-525 W4, RFC-0116 D1: 30 minutes from an unopened box to
+# `ros2 topic echo`). extract-book-steps.py --clock-from places the start
+# before the first step that runs `nros setup`, and a report after every step
+# from there on, so the time to each asserted line is printed as the run goes
+# and the step that ends past PROBE_CLOCK_BUDGET (seconds) fails the track.
+# The report carries the host's load average, because a time measured on a
+# loaded host says less than its number.
+nros_probe_clock_start() {
+    PROBE_CLOCK_T0="$(date +%s)"
+    echo "probe: clock started at step $1 (the first nros setup); budget ${PROBE_CLOCK_BUDGET:-none}s"
+}
+nros_probe_clock_report() {
+    local step="$1" elapsed load
+    elapsed=$(($(date +%s) - PROBE_CLOCK_T0))
+    load="$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || echo '?')"
+    printf 'probe: clock: step %s done %dm%02ds after the first nros setup (load %s)\n' \
+        "$step" $((elapsed / 60)) $((elapsed % 60)) "$load"
+    if [ -n "${PROBE_CLOCK_BUDGET:-}" ] && [ "$elapsed" -gt "$PROBE_CLOCK_BUDGET" ]; then
+        echo "PROBE FAIL: step $step ended ${elapsed}s after the first nros setup, past the ${PROBE_CLOCK_BUDGET}s field budget" >&2
+        exit 1
+    fi
+}

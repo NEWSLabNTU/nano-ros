@@ -11,7 +11,7 @@ Depends on:
   the host build role and `nros-extension`;
 - [phase-522](archived/phase-522-support-registry-primitives.md)'s generator, for W2 (landed; the phase is archived).
 
-Carries [phase-525](phase-525-adoption-front-doors.md) W3: when W4 here is
+Carries [phase-525](archived/phase-525-adoption-front-doors.md) W3: when W4 here is
 accepted, phase-525 W3's acceptance is met by this phase's verb.
 
 ---

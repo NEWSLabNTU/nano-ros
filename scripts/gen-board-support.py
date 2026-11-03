@@ -266,6 +266,8 @@ def render_probe_json(reg: Registry) -> str:
             t["qemu_board"] = p["qemu_board"]
         if p.get("offline"):
             t["offline"] = True
+        if p.get("budget_minutes"):
+            t["budget_minutes"] = int(p["budget_minutes"])
         twin = getattr(reg, "twins", {}).get(p["track"])
         if twin:
             t["twin"] = twin

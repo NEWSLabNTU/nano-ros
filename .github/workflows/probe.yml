@@ -13,10 +13,11 @@
 #     What everyone does until a release is cut.
 #   * the INSTALLED track — build the asset `release-nros.yml` would publish,
 #     install it into a second pristine container with nothing else mounted,
-#     and run `first-project.md` on a host with NO checkout. That page is the
-#     one carrying the post-RFC-0065 shape ("There is no entry package and no
-#     root CMakeLists.txt: the binary is *generated* from the bringup's
-#     system.toml"), so this is the job that executes the claim W3 is about.
+#     and run `first-project.md` on a host with NO checkout: the book's first
+#     chapter (an mps2-an385 talker on QEMU over a serial link, `nros run`,
+#     then `ros2 topic echo`), timed from the first `nros setup` against the
+#     30-minute field budget (phase-525 W4). The Linux multi-node chapter is
+#     the `linux` track, replayed weekly by probe-platforms.yml.
 #     The released `nros` could once build nothing and nothing noticed, because
 #     every host that ran it had a checkout the SDK-root ladder reached first.
 #

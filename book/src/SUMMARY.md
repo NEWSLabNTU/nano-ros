@@ -3,10 +3,11 @@
 [Introduction](./introduction.md)
 [Choose Your Entry](./start-here/choose-your-entry.md)
 
-# Quick Start (Linux first)
+# Quick Start
 
 - [Install](./getting-started/installation.md)
 - [First Project](./getting-started/first-project.md)
+- [Several Nodes on the Linux Host](./getting-started/multi-node-linux.md)
 - [Anatomy of What You Just Built](./getting-started/anatomy.md)
 - [Your own message package](./getting-started/your-own-msg-package.md)
 - [Troubleshooting — First 10 Minutes](./getting-started/troubleshooting-first-10-min.md)

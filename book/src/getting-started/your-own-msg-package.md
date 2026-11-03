@@ -17,7 +17,7 @@ files in the msg package.
 > **Where this fits.** This chapter uses ROS 2 vocabulary
 > (`ament_cmake`, `rosidl`, `rclcpp`) because its point is that stock
 > ROS shapes work unchanged. If you came straight from
-> [First Project](first-project.md) and none of that means anything
+> [Several Nodes on the Linux Host](multi-node-linux.md) and none of that means anything
 > yet, you can skim to "The Rust side" below or skip ahead to
 > [First Node — Rust](first-node-rust.md) and return later. The
 > standalone tree here is for clarity — in your scaffolded `my_robot`

@@ -274,7 +274,7 @@ owner for it, as for the S32K344 island.
 Acceptance: `board_key_table.rs` and the `nros board` tests cover the new
 columns; the installed probe track prints a status word for its board;
 `check-user-surface-ids`, once it exists, finds no tier number in the output
-(moved to [phase-525](../phase-525-adoption-front-doors.md) W1's acceptance).
+(moved to [phase-525](phase-525-adoption-front-doors.md) W1's acceptance).
 
 Decision step: if the installed toolchain's copy of the registry and the
 checkout's disagree (a released `nros` against a newer checkout), the CLI

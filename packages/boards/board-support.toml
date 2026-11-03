@@ -96,7 +96,7 @@ cell_table = "board-support-cells.toml"
 crate = "nros-board-linux"
 matrix_platform = "Linux"
 board_keys = ["linux"]
-book_run = "getting-started/first-project.md#run"
+book_run = "getting-started/multi-node-linux.md#run"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -510,14 +510,27 @@ notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cor
 #   row         the board row (crate@platform) whose evidence this is, if any
 #   qemu_board  the board the image is built for, when the run step boots QEMU;
 #               these are the ROWS of issue 2169's printed-run-command test
+#   budget_minutes  the track's wall-clock budget from the first `nros setup`
+#               to its last asserted line; the probe prints the time after
+#               every step and fails past it (phase-525 W4, RFC-0116 D1)
 
 [[probe]]
-track = "linux"
+track = "first-project"
 chapter = "getting-started/first-project.md"
 variant = ""
 weekly = false
+row = "nros-board-mps2-an385@QemuBaremetal"
+qemu_board = "mps2-an385-baremetal"
+budget_minutes = 30
+notes = "phase-525 W4 (RFC-0116 D1, D5): the book's first chapter and the installed track's default, replayed by `probe.yml`. The mps2-an385 talker over its serial link under `nros run`, then `ros2 topic echo`, timed from the first `nros setup` against the field budget."
+
+[[probe]]
+track = "linux"
+chapter = "getting-started/multi-node-linux.md"
+variant = ""
+weekly = true
 row = "nros-board-linux@Linux"
-notes = "The installed track's default chapter; replayed by `probe.yml`, not the weekly platform lane."
+notes = "The Linux-host multi-node chapter. It was the installed track's default chapter (first-project.md) until phase-525 W4 made that chapter the serial QEMU one; now weekly."
 
 [[probe]]
 track = "baremetal"

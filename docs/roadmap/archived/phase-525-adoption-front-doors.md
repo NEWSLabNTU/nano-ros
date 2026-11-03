@@ -1,11 +1,12 @@
 # Phase 525 — Adoption front doors: an action-only user surface, a single package, one run verb, serial first
 
-**Status (2026-11-03). IN PROGRESS — W1, W2 and W3 done (W3 by reference to
-phase-528 W4); W4 not started.** Implements
-[RFC-0116](../design/0116-adoption-purposes-and-front-doors.md) D2, D5, D6
+**Status (2026-11-04). DONE — W1, W2, W3 (by reference to phase-528 W4) and
+W4 done; the first chapter's probe measured 1m48s against the 30-minute
+field budget.** Implements
+[RFC-0116](../../design/0116-adoption-purposes-and-front-doors.md) D2, D5, D6
 and D7 on QEMU mps2-an385 first, so nothing here waits on hardware or on an
 emulator twin. Independent of phase-522 (the registry) and phase-524 (the
-emulator twins); [phase-523](phase-523-education-labs-adoption-probes.md)
+emulator twins); [phase-523](../phase-523-education-labs-adoption-probes.md)
 depends on W3 here.
 
 ---
@@ -40,7 +41,7 @@ help of `nros run`, five board crate descriptions `nros board list` prints, and
 board list/show, `doctor --report`) needs the in-tree CLI and reports NOT
 VERIFIED through the skip ledger without one.
 
-**Sequenced after [phase-526](archived/phase-526-cli-two-tier-restructure.md) W5
+**Sequenced after [phase-526](phase-526-cli-two-tier-restructure.md) W5
 (2026-11-01).** The command tree is restructured first (RFC-0117), and W5
 there moves the help text's ids into `//` comments. This item then adds the
 gate and sweeps the refusal strings and the book, once, over the final verb
@@ -62,7 +63,7 @@ names.
 Acceptance: the gate runs in `just check fast` with a baseline of zero and no
 allowlist; `nros --help` contains no internal id; the sweep's commit message
 carries the sweep command.
-Carried from [phase-522](archived/phase-522-support-registry-primitives.md) W5:
+Carried from [phase-522](phase-522-support-registry-primitives.md) W5:
 the gate's subject includes `nros board list`, `nros board show` and
 `nros doctor --report`, and it finds no tier number (`tier 1`, `tier 2`,
 `tier 3`) in their output.
@@ -159,7 +160,7 @@ needs the workspace shape, say), the scaffold still writes one package and
 
 ### W3 — `nros run` (D7)
 
-**Done by reference (2026-11-03): [phase-528](phase-528-run-on-host-and-emulator.md)
+**Done by reference (2026-11-03): [phase-528](../phase-528-run-on-host-and-emulator.md)
 W4 landed.** RFC-0118 amends RFC-0116 D7: `nros run` covers host and
 emulator targets and refuses on hardware, naming `nros flash --monitor`
 (phase-529). `nros run --expect` passed on the mps2-an385 QEMU talker and the
@@ -189,7 +190,61 @@ Decision step: a board whose run cannot be expressed by `nros run` (no
 emulator, no flash runner, no host binary) does not get a getting-started
 chapter (RFC-0115 D4); it stays on the evidence page as build-only.
 
-### W4 — The serial-first first chapter on QEMU, timed (D5, D1)
+### W4 — The serial-first first chapter on QEMU, timed (D5, D1) — DONE (2026-11-04)
+
+Landed: `book/src/getting-started/first-project.md` is the mps2-an385 QEMU
+chapter. `nros setup mps2-an385-baremetal --rmw zenoh`, `nros new
+sensor_node --board mps2-an385-baremetal --template talker`, one appended
+`locator = "serial/UART_0#baudrate=115200"` line, `nros sync`, `nros run
+--expect 'Publishing:'`, then `nros run` beside `ros2 topic echo`. The old
+first chapter (the Linux two-node workspace) moved, unchanged apart from its
+opening, to `multi-node-linux.md`; SUMMARY lists it second and the `linux`
+probe track follows it (now weekly, with its own `just probe linux`). The
+installed track's default is the new `first-project` track, and
+`[[probe]] budget_minutes = 30` times it: `extract-book-steps.py
+--clock-from 'nros setup' --clock-budget` starts a wall clock before the
+first setup step and prints the elapsed time and load after every step,
+failing the step that ends past the budget.
+
+Measured, `just probe installed` (2026-11-04, newslab-server-241, 24 cores,
+load 40 to 46 during the timed part, `just check cli-tests` running beside
+it): PASS. Clock from the first `nros setup`: setup done 1m03s, scaffold
+and locator edit 1m03s, `nros sync` 1m18s, `nros run --expect` (build and
+boot included) 1m40s, `nros run` kept 1m46s, `ros2 topic echo` showing
+`data: 'Hello World: 5'` **1m48s**, against the 30-minute budget. The asset
+build and the install ran before the clock and are not counted.
+
+What the chapter needed that was not in the tree:
+
+- *A router a host ROS 2 node can reach.* A serial link's router listened on
+  the pty alone, so `ros2 topic echo` beside `nros run` saw nothing. It now
+  also listens on `tcp/127.0.0.1:7447`, the endpoint `rmw_zenoh_cpp` dials by
+  default (`run_exec::router_listen_endpoints`).
+- *A graded console that includes the board's log.* The talker template logs
+  through the board's semihosting log bridge, which QEMU writes to its
+  stderr; the runner protocol grades stdout only, so `--expect 'Publishing:'`
+  never matched while the lines scrolled past. The qemu runner now copies
+  QEMU's stderr into the console on a semihosting console.
+- *Runners in the release.* The SDK root carries the runner packages'
+  sources only, so `nros run` on an installed toolchain refused ("has no
+  built executable"). `release-nros.yml` builds `packages/runners` and stages
+  every `nros-runner-*` into `bin/` beside `nros`, where `nros run` now looks
+  first for a non-workspace runner.
+- *`nros sync` stays a line.* `nros run`'s build-if-stale step does not
+  configure (phase-530 is not started), so a fresh package refuses with
+  "has not been synced". The chapter keeps `nros sync` in its own block, to
+  be deleted when phase-530 W1 lands.
+- *The serial line is an edit.* The scaffold has no link option, so the
+  chapter appends the `locator` line to `system.toml`, in a block of its
+  own beside the scaffold block. RFC-0121 (phase-531 W8) rewrites those
+  blocks together.
+
+The issue 2169 test covers the verb: a `probe-run` block that runs `nros
+run` is compared through the QEMU line of the run plan `nros run` resolves
+for the board (`run_plan::qemu_line`), and the registry's new
+`first-project` row makes that comparison required. `check-user-surface-ids`
+and the getting-started book gates pass; the chapter names no workspace,
+bringup, launch, entry or image.
 
 - Rewrite the first getting-started chapter around W2 and W3 on mps2-an385
   QEMU: install, `nros new … --template talker`, `nros run`, `ros2 topic echo`.
@@ -232,7 +287,7 @@ native toolchains (the container path is documented instead), ESP32.
 
 ## RFC-0120 (2026-11-03): what changes for this phase
 
-[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+[RFC-0120](../../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](../phase-530-nros-configure-single-pass.md). For this phase:
 
 - **W3.** The stale-build step `nros run` takes ("the same preflight `nros build` runs") now begins with `nros configure`. `nros run` in a fresh copy needs no `nros sync`.
 - **W4.** The chapter's flow is `nros new … --template talker`, then `nros run`. It has no `nros sync` line and no `eval "$(nros dev ws env)"`; configure computes the interface search path itself.

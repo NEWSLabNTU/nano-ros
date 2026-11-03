@@ -14,7 +14,7 @@ superseded-by: null
 
 **Status:** Draft (2026-10-31). Written from the maintainer discussion of
 2026-10-31 on who adopts nano-ros and what stops them. Implemented by
-[phase-525](../roadmap/phase-525-adoption-front-doors.md) (the front doors on
+[phase-525](../roadmap/archived/phase-525-adoption-front-doors.md) (the front doors on
 QEMU, no hardware) and [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md)
 (the lab series and the adoption probes). Its two siblings are RFC-0115
 (the emulator-first board policy, phase-524) and RFC-0114 (the board support

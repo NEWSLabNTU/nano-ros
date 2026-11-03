@@ -137,7 +137,8 @@ def literal_boot_rows(rs: str) -> list[str]:
 def probe_recipe_drift(just_text: str, tracks: list[str]) -> list[str]:
     recipes = set(re.findall(r"^([a-z0-9-]+)(?:\s[^:\n]*)?:(?!=)", just_text, re.M))
     recipes -= PROBE_NON_TRACKS
-    have = set(tracks) - {"linux"}  # the default `installed` recipe replays linux
+    # The default `installed` recipe replays first-project (phase-525 W4).
+    have = set(tracks) - {"first-project"}
     errs = [f"{PROBE_JUST}: recipe `{r}` names no `[[probe]]` track in the registry"
             for r in sorted(recipes - have)]
     errs += [f"{PROBE_JUST}: `[[probe]]` track `{t}` has no `just probe {t}` recipe"
