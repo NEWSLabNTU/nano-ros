@@ -62,7 +62,7 @@ priority = 9
 # configuration per row — RFC-0066's "a configuration is a fixture axis", with no
 # second workspace directory.
 #
-# `nros sync` warns that two bringups declare a system and skips FACADE
+# `nros configure` warns that two bringups declare a system and skips FACADE
 # generation (phase-315 W1). That is a warning and a skip, not a failure: the
 # facades exist to derive cargo features for Rust entries, and this is a C entry
 # whose selection is CMake-side. Verified by building it, after first misreading

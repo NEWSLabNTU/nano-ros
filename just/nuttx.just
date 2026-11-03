@@ -97,7 +97,7 @@ build-examples:
     source scripts/build/cargo.sh
     # issue 1038 — the central `nros-patch.toml` this lane's Rust leaves
     # `include`, made EXPLICIT. This lane already got the file, but only as a
-    # side effect of `workspace-fixtures-build.sh` running `nros sync` somewhere
+    # side effect of `workspace-fixtures-build.sh` running `nros configure` somewhere
     # earlier; `threadx-riscv64` had no such neighbour and died at manifest
     # parse. An inherited artifact is a working lane, not a declared dependency.
     # Idempotent — a process spawn when the file is already current.
@@ -138,7 +138,7 @@ build-examples:
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/fixtures-build.sh nuttx rust
     # Phase 225.O follow-up (known-issue #18) — workspace Entry fixture
     # (`examples/workspaces/rust/src/qemu_nuttx_entry`). Same workspace
-    # workflow as native/freertos/threadx/esp32: `nros sync`,
+    # workflow as native/freertos/threadx/esp32: `nros configure`,
     # `nros dev codegen system`, then the cargo cross build (build-std + the
     # build.rs kernel-lib link). `NUTTX_DIR` must reach both the board
     # crate's build.rs and the entry's build.rs.

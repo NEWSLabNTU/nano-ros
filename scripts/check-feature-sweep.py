@@ -352,7 +352,7 @@ CROSS = [
 # (`packages/boards/<board>/nros-board.toml` supplies the triple, the
 # environment and any build-std, read through `cross_shape`), a bare TRIPLE,
 # `LEAF` (the root states its own target: a tracked `.cargo/config.toml`
-# `[build] target`, or a `system.toml` image `nros sync` renders), or `HOST`.
+# `[build] target`, or a `system.toml` image `nros configure` renders), or `HOST`.
 # `check_standalone_where` refuses a LEAF row whose root states no target, and
 # a row that overrides a target the root does state.
 #
@@ -361,7 +361,7 @@ CROSS = [
 #     otherwise the lock is seeded from the pin set, resolved, and held to the
 #     pins (`nros dev lock seed` / `nros dev lock check`);
 #   - a root whose manifest path-depends on a `generated/` or `build/` tree is
-#     rendered by `nros sync` first, as its fixture build does;
+#     rendered by `nros configure` first, as its fixture build does;
 #   - an explicit `[workspace] members` list is linted `--workspace`; an
 #     implicit one is the root package alone, because its other members are
 #     the `generated/` message crates sync wrote, which are not ours to judge;
@@ -767,7 +767,7 @@ def standalone_clippy(rel, where, target_dir, cli, shape=None, no_default=False)
     if shape["renders"]:
         sync = subprocess.run([cli, "sync"], cwd=d, capture_output=True, text=True)
         if sync.returncode != 0:
-            return sync.returncode, "error: `nros sync` failed\n" + sync.stdout + sync.stderr
+            return sync.returncode, "error: `nros configure` failed\n" + sync.stdout + sync.stderr
     if not shape["locked"]:
         seed = subprocess.run([cli, "ws", "seed-lock", str(d)], capture_output=True, text=True)
         if seed.returncode != 0:
@@ -1096,7 +1096,7 @@ def main():
             print(f"  {f}")
         print("  reproduce: cargo clippy -p <crate> --lib --tests --features <set> -- -D warnings")
         print(
-            "  standalone: [nros sync] [nros dev lock seed <dir>] && cargo clippy --manifest-path "
+            "  standalone: [nros configure] [nros dev lock seed <dir>] && cargo clippy --manifest-path "
             "<dir>/Cargo.toml [--locked] [--target <triple>] -- -D warnings "
             "[&& nros dev lock check <dir>] && cargo +<nightly> fmt --check -p <package>"
         )

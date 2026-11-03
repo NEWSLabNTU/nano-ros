@@ -57,7 +57,7 @@
 #
 # The second is RFC-0098 D1: a leaf that states a board gets one generated
 # settings file per image, `build/<image>/nros-cargo.toml`, carrying a per-image
-# `[build] target-dir`; `nros sync` wires it into the leaf's own (gitignored)
+# `[build] target-dir`; `nros configure` wires it into the leaf's own (gitignored)
 # `.cargo/config.toml` as an `include` (issue 1381), so a bare `cargo build`
 # inside the leaf honours it. The old predicate searched `$dir/target`
 # (absent here) and `$dir/build` at `-maxdepth 2` (the binary is four levels
@@ -210,7 +210,7 @@ build_one() {
             # The scaffold's OWN documented flow, not a bare `cargo build`.
             # Its emitted `Cargo.toml` says so: "nano-ros crates are not
             # published to crates.io (RFC-0040) -- `version = "*"` is only the
-            # patched left-hand side. Run `nros sync` (with NROS_REPO_DIR set)
+            # patched left-hand side. Run `nros configure` (with NROS_REPO_DIR set)
             # to write the nros-managed [patch.crates-io] block ... then
             # `cargo build`." Skipping it reports `no matching package named
             # \`nros\` found` against crates.io, which reads as the #378 defect

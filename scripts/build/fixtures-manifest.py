@@ -513,7 +513,7 @@ def cargo_args(entry, *, include_target_dir=True):
     # could disagree with the first; the row keeps `target` only as the
     # artifact locator's `<target_dir>/<triple>/` component.
     # phase-445 W4b — the same for a SINGLE-PACKAGE leaf that states its board
-    # in `system.toml`: `nros sync` writes the triple into the leaf's
+    # in `system.toml`: `nros configure` writes the triple into the leaf's
     # `build/<image>/nros-cargo.toml`, and `fixtures-build.sh` builds the row
     # through that file. `target` stays the locator's triple component.
     if (
@@ -1674,7 +1674,7 @@ def validate_workspace_fixture(entry):
     # that: the SystemModel is a BUILD ARTIFACT, `check-no-tracked-models`
     # rejects a committed one, and W7 deleted the last of them. That left the
     # model arm satisfiable only by an untracked build leftover, so this gate
-    # passed or failed depending on whether someone had run `nros sync` in the
+    # passed or failed depending on whether someone had run `nros configure` in the
     # tree — and disagreed with `check-no-tracked-models` about the very file
     # it was accepting. A gate a stale artifact can satisfy is worse than no
     # gate.

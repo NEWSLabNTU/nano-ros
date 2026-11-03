@@ -25,7 +25,7 @@
 //!    header, instead of racing it.
 //!  * the generated C bindings — emitted into `OUT_DIR` by `nros interface generate c`
 //!    from this package's `package.xml`. They go to `OUT_DIR`, not to the leaf's
-//!    `generated/`, because that directory belongs to `nros sync`'s RUST output
+//!    `generated/`, because that directory belongs to `nros configure`'s RUST output
 //!    and the two must not fight over it.
 //!  * the C compiler for the board's triple — `CC_thumbv7m_none_eabi`, which
 //!    the board descriptor's `cargo_config` provides.
@@ -175,7 +175,7 @@ fn main() {
     let mut bindings = build.clone();
 
     // Issue 1512 — the image's declared locator/domain, from the `[env]` rows
-    // `nros sync` renders into `build/<image>/nros-cargo.toml`. The app TU only:
+    // `nros configure` renders into `build/<image>/nros-cargo.toml`. The app TU only:
     // the generated bindings dial nothing.
     nros_cc_flags::entry_config::bake(&mut build);
     // phase-499 W3 — `nros_app_register_backends()`, generated from the RMW

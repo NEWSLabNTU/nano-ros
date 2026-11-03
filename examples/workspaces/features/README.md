@@ -38,15 +38,15 @@ is exercised inside a single workspace rather than across four copies of one.
 ## Building
 
 ```sh
-nros sync
+nros configure
 nros build                       # every [image.*]
 nros build linux_rust_qos       # or one capability at a time
 ```
 
 Each image names its own board, so each is built into its own `build/<coord>/`;
-the Zephyr images keep `west build` as their verb, with `nros sync` before it.
+the Zephyr images keep `west build` as their verb, with `nros configure` before it.
 
-A capability's model comes from its launch file — `nros sync` resolves one per
+A capability's model comes from its launch file — `nros configure` resolves one per
 entry. `[[model]]` declarations in `demo_bringup/system.toml` cover the variants
 that take launch ARGUMENTS, which cannot be derived from the launch tree alone
 (phase-330 W4.0).

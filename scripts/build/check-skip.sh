@@ -5,7 +5,7 @@
 # driver must not record OK. A CHECK is different in one way that matters: it
 # claims no artifact, and `check-fast` carries a documented property —
 #
-#   "a pristine detached worktree with no CLI, no sources and no `nros sync`
+#   "a pristine detached worktree with no CLI, no sources and no `nros configure`
 #    runs this lane green in 23s"
 #
 # — so a gate that hard-fails on a missing optional tool would break the very

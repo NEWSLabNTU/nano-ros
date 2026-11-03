@@ -194,7 +194,7 @@ None has a root build file; each carries a `.colcon_workspace` marker.
 Build, any language:
 
 ```sh
-nros sync
+nros configure
 nros build          # one Entry per [image.*]; no bringup = every package, colcon-style
 ```
 

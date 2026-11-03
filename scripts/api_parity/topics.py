@@ -143,7 +143,7 @@ TOPICS = [
     # put 316 rows in `other`, which this module calls a finding rather than a
     # rounding error -- and it was: `other` was three nameable things.
     # The source-metadata subsystem: record a component's declaration WITHOUT
-    # opening middleware, so `nros sync` and the launch resolver can read the
+    # opening middleware, so `nros configure` and the launch resolver can read the
     # entity set off the host (RFC-0043). It was split across `node` and `other`
     # by an accident of naming -- `NodeMetadata` and `NodeSlot` contain `Node`,
     # while `EntitySlot` and `CallbackSlot`, defined in the same block of the

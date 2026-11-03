@@ -197,7 +197,7 @@ def scan(root, repo=None):
                 declared += 1
             continue
         # A leaf is a package with a package.xml beside its manifest — the
-        # shape `nros sync`'s single-package mode keys on. Board and driver
+        # shape `nros configure`'s single-package mode keys on. Board and driver
         # crates carry no package.xml deployment and are not images.
         if not (p.parent / "package.xml").is_file():
             continue

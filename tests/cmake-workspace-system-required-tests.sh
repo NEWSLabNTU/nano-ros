@@ -5,7 +5,7 @@
 #
 # `nano_ros_workspace()` resolves the capability axes (`NROS_FEATURES`)
 # only from its `SYSTEM` argument, while codegen reads the same declaration
-# through `nros sync`. A root that omitted SYSTEM therefore built nros-cpp
+# through `nros configure`. A root that omitted SYSTEM therefore built nros-cpp
 # without `param-services` and generated code that calls
 # `nros_cpp_register_parameter_services`. The disagreement surfaced at LINK,
 # as an undefined symbol in a build that had configured cleanly.
@@ -154,8 +154,8 @@ printf '%s\n' '[system]' 'name = "t1261"' 'rmw = "zenoh"' 'domain_id = 0' \
     'features = ["param_services", "lifecycle"]' '' \
     '[image.zephyr]' 'board = "zephyr"' > "$W/src/demo_bringup/system.toml"
 mkdir -p "$W/src/zephyr_entry" "$TEST_TMPDIR/standalone/app"
-if ! (cd "$W" && "$NROS_BIN" sync) >"$TEST_TMPDIR/w-sync.log" 2>&1; then
-    fail "D-G: \`nros sync\` of the synthetic west workspace failed:"
+if ! (cd "$W" && "$NROS_BIN" configure) >"$TEST_TMPDIR/w-sync.log" 2>&1; then
+    fail "D-G: \`nros configure\` of the synthetic west workspace failed:"
     tail -15 "$TEST_TMPDIR/w-sync.log" >&2
 fi
 printf '%s\n' \

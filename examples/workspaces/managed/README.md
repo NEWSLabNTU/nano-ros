@@ -30,7 +30,7 @@ wiring — is generated (RFC-0098 D9).
 ## Building
 
 ```sh
-nros sync
+nros configure
 nros build linux_managed
 ```
 

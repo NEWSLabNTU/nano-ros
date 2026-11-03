@@ -18,7 +18,7 @@
 # is issue 1018 as filed: the stamp watched `nros-core/src/action.rs` and
 # NOTHING about the emitters, so an edit to `rosidl-codegen` left every cached
 # `generated/` tree in place. In `just/zephyr-ci.just` -- the one caller whose
-# `nros sync` is conditional -- that means the leaf compiles message crates the
+# `nros configure` is conditional -- that means the leaf compiles message crates the
 # previous CLI emitted.
 #
 # WHAT IS ASSERTED:

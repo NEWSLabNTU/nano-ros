@@ -208,7 +208,7 @@ if [ -n "$default_hits" ]; then
 fi
 
 # 5. phase-315 W1/W2 — a WORKSPACE entry declares none of the three axes.
-#    A workspace has a system.toml, which is the SSoT; `nros sync` generates a
+#    A workspace has a system.toml, which is the SSoT; `nros configure` generates a
 #    selection facade crate carrying the derived features and the entry depends
 #    on that. An entry that also names them by hand is a second copy free to
 #    contradict the declaration — and the edition copy fails on the WIRE, not
@@ -276,7 +276,7 @@ if [ -n "${entry_hits//[$'\n']/}" ]; then
     echo "FAIL: workspace entry package(s) restate a declared axis:"
     echo "$entry_hits" | while read -r f; do [ -n "$f" ] && note "$f"; done
     note "Depend on the generated <entry>_nros_selection facade instead;"
-    note "\`nros sync\` derives edition/RMW/capabilities from system.toml."
+    note "\`nros configure\` derives edition/RMW/capabilities from system.toml."
     fail=1
 fi
 

@@ -49,14 +49,14 @@ bm_talker/
 ├── system.toml                # WHAT this deploys to — the one file you edit
 ├── Cargo.toml                 # Rust deps only
 ├── package.xml                # ROS-style manifest (drives codegen tooling)
-├── generated/                 # message bindings `nros sync` writes
-├── build/                     # everything `nros sync` / `nros build` generate
+├── generated/                 # message bindings `nros configure` writes
+├── build/                     # everything `nros configure` / `nros build` generate
 └── src/main.rs
 ```
 
 There is no `.cargo/` to edit. The target triple, the linker script, the
 `--gc-sections` flag, the QEMU runner and the `[patch.crates-io]` rows that
-resolve nano-ros's crates all come from the board, and `nros sync` writes them
+resolve nano-ros's crates all come from the board, and `nros configure` writes them
 into `build/<image>/nros-cargo.toml` — a generated file `nros build` hands
 cargo with `--config`. The scaffold's image is
 `[image.baremetal]`.
@@ -142,7 +142,7 @@ host = 10
 `board` picks the silicon and everything that follows from it; `rmw` picks the
 backend. Everything the board implies — triple, linker script, runner, cross
 compiler, `[patch.crates-io]` — follows the `board =` line on the next
-`nros sync`, so no linker flag and no triple ever moves by hand.
+`nros configure`, so no linker flag and no triple ever moves by hand.
 
 That includes the board crate. The example's `Cargo.toml` names no board: its
 image-only dependencies (the board crate with the features its entry needs,
@@ -154,14 +154,14 @@ path dependency,
 qemu_bsp_talker_nros_selection = { path = "build/nros/selection" }
 ```
 
-which `nros sync` and `nros build` write for the image's board, and
+which `nros configure` and `nros build` write for the image's board, and
 `nros::main!` reaches the board through it. So changing `board =` to
-`"freertos"` and re-running `nros sync && nros build` builds the FreeRTOS image
+`"freertos"` and re-running `nros configure && nros build` builds the FreeRTOS image
 with no other edit. The other bare-metal, FreeRTOS, NuttX, ThreadX-Linux and
 RTIC Rust examples take the same dependency, and so do the native ones, the
 copy-out templates' Rust packages and the C/C++ apps on this board's cargo
 link root. A package that names a board crate beside it is
-refused at `nros sync`, naming the crate.
+refused at `nros configure`, naming the crate.
 In a workspace the entry is generated, so there the board line is the only
 edit.
 
@@ -181,7 +181,7 @@ or edit the `locator` above to the port you prefer.
 In the package directory (where the scaffold step left you):
 
 ```bash probe=50
-nros sync            # message bindings + build/baremetal/nros-cargo.toml
+nros configure            # message bindings + build/baremetal/nros-cargo.toml
 nros build           # builds the image `[image.baremetal]` declares
 ```
 
@@ -199,7 +199,7 @@ the board's LAN9118, so it reaches a router on the host. The command under
 I/O, and names the NIC explicitly.
 
 **Driving cargo yourself** (an IDE, a CI step, `--release`) is supported: run
-`nros sync` first, then point cargo at the generated settings file, from the
+`nros configure` first, then point cargo at the generated settings file, from the
 directory above the package (`nros build --dry-run` prints this line):
 
 ```bash
@@ -208,11 +208,11 @@ cargo build --manifest-path bm_talker/Cargo.toml \
             --config bm_talker/build/baremetal/nros-cargo.toml
 ```
 
-Skipping `nros sync` is not a mysterious failure: `nros build` stops at its
+Skipping `nros configure` is not a mysterious failure: `nros build` stops at its
 preflight with one line naming the file it could not find and telling you to
 run sync in this directory.
 
-That settings file is regenerated on every `nros sync`; never edit it, and
+That settings file is regenerated on every `nros configure`; never edit it, and
 never add a `.cargo/config.toml` of your own to carry board facts. Your own
 Rust-toolchain preferences go where cargo already looks for them — a parent
 directory or `$CARGO_HOME`. See

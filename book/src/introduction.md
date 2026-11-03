@@ -168,7 +168,7 @@ time by naming one in `system.toml`:
   with stock `rmw_cyclonedds_cpp`.
 
 Application code is identical regardless of backend — switching is editing
-`[system] rmw` and re-running `nros sync`. (Zephyr keeps Kconfig as its own
+`[system] rmw` and re-running `nros configure`. (Zephyr keeps Kconfig as its own
 front-end, as it does for every other build knob.)
 
 ## Project Status

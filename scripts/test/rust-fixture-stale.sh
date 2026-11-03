@@ -162,7 +162,7 @@ _row_artifacts() {
 # nothing), stale-and-now-rebuilt (the dir, as before — cargo self-healed it),
 # and could-not-build (a `FAILED\t` record the caller escalates to an ERROR).
 # Keep cargo's own first error line: it is the difference between "you forgot
-# `nros sync`" and a real compile break, and re-running the probe by hand to
+# `nros configure`" and a real compile break, and re-running the probe by hand to
 # find out costs minutes.
 #
 # $cargo_args / $prof_args / $tdir_flag are intentionally word-split into cargo
@@ -179,7 +179,7 @@ if [ -n "$leaf_road" ]; then
     build_rc=$?
     if [ "$build_rc" = 97 ]; then
         printf 'FAILED\t%s\t%s\n' "$dir${cargo_args:+ ($cargo_args)}${image:+ [image $image]}" \
-            "no generated settings file for this leaf (run \`nros sync\`): $(printf '%s' "$build_out" | head -3 | tr '\n' ' ')"
+            "no generated settings file for this leaf (run \`nros configure\`): $(printf '%s' "$build_out" | head -3 | tr '\n' ' ')"
         exit 0
     fi
 else

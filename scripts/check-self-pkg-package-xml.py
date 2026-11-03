@@ -6,9 +6,9 @@ refuses to bake a bringup that declares system semantics without one:
 
     `<dir>/system.toml` declares system semantics but no SystemModel was
     found. It is a BUILD ARTIFACT (phase-330 W4), so generate it rather than
-    committing one:  nros sync
+    committing one:  nros configure
 
-The only producer of that artifact is `nros sync`, and sync's package scan has
+The only producer of that artifact is `nros configure`, and sync's package scan has
 exactly two shapes (`cmd/ws.rs`): a colcon workspace (`src/<pkg>/package.xml`)
 or a single-package dir (`package.xml` at the root). A directory with NO
 `package.xml` is rejected outright —
@@ -122,7 +122,7 @@ def main():
     if bad:
         print(
             "check-self-pkg-package-xml: bringup(s) declaring `[[component]]` with no "
-            "`package.xml` — `nros sync` cannot scan them, so their SystemModel can "
+            "`package.xml` — `nros configure` cannot scan them, so their SystemModel can "
             "never be resolved and every bake refuses at configure:",
             file=sys.stderr,
         )
@@ -130,7 +130,7 @@ def main():
             print(f"  {d}", file=sys.stderr)
         print(
             "  Add a `package.xml` beside `system.toml` (see any of "
-            "`examples/zephyr/rust/*`), then `nros sync` in that directory.",
+            "`examples/zephyr/rust/*`), then `nros configure` in that directory.",
             file=sys.stderr,
         )
         return 1

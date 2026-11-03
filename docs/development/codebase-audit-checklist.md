@@ -366,7 +366,7 @@ verdict).**
   - **a duplicate** — one package under two keys, one key with two
     providers that disagree, or the same message package declared in
     `package.xml` and again as a hand-written manifest dependency (message
-    deps are path deps that `nros sync` writes, RFC-0067);
+    deps are path deps that `nros configure` writes, RFC-0067);
   - **a need `nros setup` does not meet** — a build or test that requires
     something no `[prereq.*]`/`[tool.*]`/`[source.*]` row provides
     (E11's chain, seen from the dependency side);

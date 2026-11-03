@@ -31,7 +31,7 @@ sibling's does.
 
 ```sh
 source ./activate.sh
-nros sync examples/mps2-an385-baremetal/cpp/talker
+nros configure examples/mps2-an385-baremetal/cpp/talker
 cd examples/mps2-an385-baremetal/cpp/talker && cargo build --release
 ```
 

@@ -52,7 +52,7 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
     fi
 
     # issue 1454 — the SECOND tool these rows are a function of. `stage_tree`
-    # runs `nros sync`, which spawns `nros-launch-resolve` to turn the staged
+    # runs `nros configure`, which spawns `nros-launch-resolve` to turn the staged
     # bringup's launch tree into the SystemModel the build then bakes. That
     # resolver statically links the parser, so a parser bump changes the baked
     # plan — and this signature named only `nros`, so a bumped parser moved

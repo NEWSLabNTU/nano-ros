@@ -121,7 +121,7 @@ source zephyr-workspace/env.sh
 
 cd zephyr-workspace
 
-# Rust — `nros sync` first, once per checkout location. It writes the
+# Rust — `nros configure` first, once per checkout location. It writes the
 # generated message bindings and the [patch.crates-io] table the leaf's
 # (GITIGNORED, never committed — phase-445 W6) .cargo/config.toml
 # includes. Zephyr is the one lane that still needs that file rather than
@@ -136,7 +136,7 @@ cd zephyr-workspace
 # which the configure composes into the image's pool sizes (issue 1662).
 # Without it the pools fall back to crate defaults, and the XRCE talker's
 # session no longer fits its heap (issue 2133). Do not pass `--no-metadata`.
-nros sync ../examples/zephyr/rust/talker
+nros configure ../examples/zephyr/rust/talker
 
 # Build Zephyr talker (Rust + zenoh, default backend).
 #

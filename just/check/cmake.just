@@ -454,7 +454,7 @@ probe-workspace-caps:
 # issue 1261 -- a workspace whose bringup declares a capability must pass it as
 # SYSTEM. Without it `nano_ros_workspace()` resolves no capability axes, so the
 # C/C++ libraries build without them while codegen (which reads the bringup
-# through `nros sync`) calls them, and the build fails at LINK on an undefined
+# through `nros configure`) calls them, and the build fails at LINK on an undefined
 # symbol. The refusal now fires at configure. This configures three synthetic
 # workspaces: a refusal, plus two shapes it must leave alone, so it can never
 # harden into "SYSTEM is always required". Same skip ledger and Corrosion rule

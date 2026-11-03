@@ -90,7 +90,7 @@ copy of the row above: it is the Rust spelling of node registration, the
 counterpart of a C/C++ package's
 `nros_components_register_node(<target> PLUGIN pkg::Class …)` in its
 `CMakeLists.txt` (itself ROS's `rclcpp_components_register_node`). The metadata
-pipeline reads it — `nros sync`'s probe, `nros check`'s dispatch lint — and a
+pipeline reads it — `nros configure`'s probe, `nros check`'s dispatch lint — and a
 package registers once however many bringups launch it, whereas a `[[component]]`
 row is one bringup's choice to run it. It names no namespace: that is the launch
 file's to give, as it is for a C/C++ node.
@@ -116,10 +116,10 @@ std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nr
 ```
 
 `nros` is named like a registry crate but is never fetched from one:
-`nros sync` writes a `[patch.crates-io]` row that points it at the SDK
+`nros configure` writes a `[patch.crates-io]` row that points it at the SDK
 root, into the generated `build/<image>/nros-cargo.toml` rather than into
 your package. You do not write the `std_msgs` row at all: `package.xml`
-says `<depend>std_msgs</depend>`, and `nros sync` (or `nros build`) turns
+says `<depend>std_msgs</depend>`, and `nros configure` (or `nros build`) turns
 every `<depend>` on a message package into a row tagged `# nros-managed`,
 pointing at the crate it generates under `generated/`. Adding a message
 package is one edit — the `<depend>` — and removing the `<depend>` removes
@@ -150,7 +150,7 @@ queries. A function written against `&mut nros::Node` serves both. What a
 component adds is the `DeclarativeNode` extension (bring it into scope with
 `use nros::DeclarativeNode;`): constructors that declare an entity by stable id
 and bind its callback by NAME, which is what lets the board dispatch callbacks
-from its own tasks and lets `nros sync` measure the component without running it.
+from its own tasks and lets `nros configure` measure the component without running it.
 
 Here is the essential shape, drawn from
 [`examples/workspaces/rust/src/talker_pkg/src/lib.rs`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/workspaces/rust/src/talker_pkg/src/lib.rs)
@@ -320,11 +320,11 @@ Node pkgs its launch file names:
 
 ```bash
 # From examples/workspaces/rust/ (or your workspace root):
-nros sync
+nros configure
 nros build linux
 ```
 
-`nros sync` writes the generated message crates and the build settings each
+`nros configure` writes the generated message crates and the build settings each
 image needs; run it once per workspace, and again after editing a `.msg`.
 
 No per-Node-pkg invocation is needed, and no cross-compile flags either: the

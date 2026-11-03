@@ -379,7 +379,7 @@ function(nano_ros_workspace)
         # build. That is correct for a workspace with no bringup ("workspaces
         # without a Bringup pkg are valid"), and wrong for one whose bringup
         # declares a capability: codegen reads that declaration through
-        # `nros sync`, so the generated entry calls e.g.
+        # `nros configure`, so the generated entry calls e.g.
         # `nros_cpp_register_parameter_services` while nros-cpp was built
         # without `param-services`, and the disagreement surfaced only at LINK
         # as an undefined symbol. Ask the same SSoT accessor with no `--system`

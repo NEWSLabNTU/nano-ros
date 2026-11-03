@@ -21,7 +21,7 @@ Three corrections worth knowing if you found this file from an old bookmark:
   the environment and run `nros build` — a value set in the calling environment
   wins over the generated `[env]` table, which deliberately never uses
   `force = true`.
-- `cargo build` on its own was given as the rebuild verb. Run `nros sync` first;
+- `cargo build` on its own was given as the rebuild verb. Run `nros configure` first;
   without it the generated message crates and `build/<image>/nros-cargo.toml`
   do not exist.
 - It told you to `rm -rf build/` before a `west build`. That is the

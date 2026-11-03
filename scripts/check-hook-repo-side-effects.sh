@@ -251,7 +251,7 @@ fi
 # what those scripts and every `just` recipe RUN — so a hook, or `git bisect
 # run`, hands it the same environment. Its `source_stamp::git` did not clear
 # it: under an inherited `GIT_DIR` the play_launch pin read the SUPERPROJECT's
-# HEAD and `nros sync` refused 25 consecutive bisect steps; and the store
+# HEAD and `nros configure` refused 25 consecutive bisect steps; and the store
 # provisioner's `git init <store dir>` is 0986's exact hazard in Rust.
 #
 # Wider than "builds a repository" on purpose: in the CLI a WRONG READ is the

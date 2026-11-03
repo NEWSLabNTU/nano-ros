@@ -60,7 +60,7 @@ e. **Exactly one `#[global_allocator]`, and it is `nros-platform`'s.** W8.c cut
 construction (RFC-0026 standalone copy-out projects), and the contract's whole
 point is that the user spells `std`/`alloc` at their own dep-sites. Generated
 message crates are excluded for the same reason plus a stronger one: they are
-produced per host by `nros sync` and are not tracked.
+produced per host by `nros configure` and are not tracked.
 
 Run `--self-test` to verify each clause fires on a deliberate reintroduction.
 """
@@ -118,7 +118,7 @@ def is_build_output(name):
     """A directory that holds build OUTPUT rather than authored source.
 
     One spelling, matching `example_portability`'s: `build*/` and `target*/` at
-    ANY level. This is load-bearing for clause (d) — `nros sync`'s metadata
+    ANY level. This is load-bearing for clause (d) — `nros configure`'s metadata
     probe writes real `Cargo.toml`s under `<leaf>/build/nros-metadata/`, and 58
     of them dep `nros` WITHOUT `default-features = false`. Counting those as
     authored dep-sites made clause (d) unfalsifiable: every `default` feature
@@ -438,7 +438,7 @@ def builds_a_final_artifact(doc):
 
 
 # Issue 1305 — board crates whose every IMAGE dep-site is a GENERATED selection
-# package (`<leaf>/build/nros/selection`, written by `nros sync` from the
+# package (`<leaf>/build/nros/selection`, written by `nros configure` from the
 # image's `system.toml` and the board descriptor). Those manifests are build
 # output, which this gate deliberately does not read (`is_build_output`), and
 # they name the board's features EXPLICITLY (`default-features = false,

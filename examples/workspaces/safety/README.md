@@ -53,14 +53,14 @@ the Zephyr west application around it since phase-470 W5.b2, issue 1288).
 ## Building
 
 ```sh
-nros sync
+nros configure
 nros build                              # every [image.*]
 nros build linux_rust_safety_talker    # or just one
 ```
 
-Each entry's model comes from its launch file; `nros sync` resolves one per
+Each entry's model comes from its launch file; `nros configure` resolves one per
 entry, alongside the build settings each image's board implies. The Zephyr image
-keeps `west build` as its verb, with `nros sync` before it.
+keeps `west build` as its verb, with `nros configure` before it.
 
 Do NOT pass `-DNROS_SAFETY_E2E=ON` by hand. The declaration above is the
 source of truth and reaches the build on its own (phase-323); forcing the knob

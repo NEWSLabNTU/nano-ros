@@ -66,10 +66,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")  # nros_codegen_tool_recon
 # Issue 2085 — the central `[patch.crates-io]` table, for a generated root
 # whose members name nano-ros crates by version (`nros = { version = "*" }`,
 # every example since 2085). This umbrella is its own workspace root, built in
-# a build dir that no `nros sync`-written `.cargo/config.toml` covers, so
+# a build dir that no `nros configure`-written `.cargo/config.toml` covers, so
 # without the table cargo looks the member's `nros` up on crates.io and fails
 # "no matching package named `nros` found". The table comes from the ONE
-# writer `nros sync` uses (`nros dev lock central-patch`), never restated here, so the
+# writer `nros configure` uses (`nros dev lock central-patch`), never restated here, so the
 # two cannot resolve against different crates.
 function(_nros_central_patch_table out)
     set(_file "${NROS_REPO_DIR}/nros-patch.toml")
@@ -95,7 +95,7 @@ function(_nros_central_patch_table out)
     else()
         message(STATUS
             "nano-ros: no ${_file} and no `nros` to write it — the runtime umbrella "
-            "carries no [patch.crates-io]. Run `nros sync`.")
+            "carries no [patch.crates-io]. Run `nros configure`.")
         nros_message_detail(
             "nano-ros: a workspace member that names a nano-ros crate by version "
             "(`nros = { version = \"*\" }`) resolves only through that table, so "

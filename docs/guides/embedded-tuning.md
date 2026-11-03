@@ -7,12 +7,12 @@ transport buffers.
 ## Start here: most of this you no longer set
 
 Before reaching for a knob, know which half of this page applies to you. Since
-[RFC-0098](../design/0098-generated-leaf-build-config.md), `nros sync` sizes the
+[RFC-0098](../design/0098-generated-leaf-build-config.md), `nros configure` sizes the
 pools that dominate static RAM from what the image's components **declare**, and
 writes the answers into `build/<image>/nros-cargo.toml`'s `[env]` table. Setting
 one of those by hand is an override, not a requirement.
 
-**Derived per image by `nros sync` — do not set these unless you know something
+**Derived per image by `nros configure` — do not set these unless you know something
 the declaration does not** (`nros_cli_core::leaf_entity_env`):
 
 | knob | derived from |
@@ -27,7 +27,7 @@ the declaration does not** (`nros_cli_core::leaf_entity_env`):
 | `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS` | how many subscribed types fall in the large class. Zero is an **answer**, not a floor — the pool becomes zero bytes |
 | `NROS_EXECUTOR_ARENA_SIZE` | derived in `nros-node`'s build script from the same inventory; the env var is the override |
 
-`NROS_ZENOH_MAX_QUERYABLES` is a third case: `nros sync` never states it as a count.
+`NROS_ZENOH_MAX_QUERYABLES` is a third case: `nros configure` never states it as a count.
 It carries the FACTS (the sizing descriptor's `[image]
 service_server_queryables`, `model_nodes` and `infra_families`) and
 `nros-zpico-build` adds the parameter and lifecycle costs itself, beside the
@@ -51,7 +51,7 @@ derived on their behalf:
 ```bash
 # Example: constrained Cortex-M4 with 256KB RAM
 cd <leaf>
-nros sync
+nros configure
 NROS_ZENOH_FRAG_MAX_SIZE=1400 \
 NROS_ZENOH_BATCH_UNICAST_SIZE=1024 \
 NROS_ZENOH_GET_REPLY_BUF_SIZE=1024 \
@@ -90,7 +90,7 @@ under-provisioning causes runtime failures.
 **You do not apply that rule by hand for the first three.**
 `NROS_ZENOH_MAX_PUBLISHERS` and `NROS_ZENOH_MAX_SUBSCRIBERS` are derived from the image's
 declared entities, and `NROS_ZENOH_MAX_QUERYABLES` is derived by the consumer from
-the facts `nros sync` carries — which is the only way the parameter and
+the facts `nros configure` carries — which is the only way the parameter and
 lifecycle families get counted, because a leaf picks those with cargo features
 the inventory cannot see (issue 0460). `NROS_ZENOH_MAX_LIVELINESS` and
 `NROS_ZENOH_MAX_PENDING_GETS` are still yours.
@@ -261,7 +261,7 @@ Total = Session blob (512 bytes)
 
 These are complete pictures of a working set, not shopping lists. The entity
 counts and `NROS_SUBSCRIBER_BUFFER_SIZE` in them are what a correctly declared
-image **already gets** from `nros sync` for that shape of workload — they are
+image **already gets** from `nros configure` for that shape of workload — they are
 printed here so the arithmetic below is checkable, not so you export them.
 Export only the rows this page's opening section leaves to you, and reach for a
 derived one only to override a number you disagree with.

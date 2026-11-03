@@ -80,7 +80,7 @@ DRIFT_RE='cannot update the lock file .* because --locked was passed'
 
 # Leaves that cannot resolve STANDALONE by design, so `--locked` says nothing
 # about their lock. `tests/simple-workspace` ships no `.cargo/config.toml`: its
-# `nros-core` dep is registry-style and only resolves once `nros sync` writes
+# `nros-core` dep is registry-style and only resolves once `nros configure` writes
 # the patch table, so cargo searches crates.io and never finds it. Skipping it is
 # honest; classifying it as drift would be a lie, and
 # leaving it as "broken" would make the gate permanently red.
@@ -88,7 +88,7 @@ SKIP_RE='^(tests/simple-workspace)$'
 
 # Issue 0378 — an UNSYNCED tree, told apart from a broken one.
 #
-# The leaf `.cargo/config.toml` is `nros sync`-managed (RFC-0048): it includes
+# The leaf `.cargo/config.toml` is `nros configure`-managed (RFC-0048): it includes
 # the central, gitignored `nros-patch.toml` and redirects the message crates at
 # a per-leaf `generated/` tree that `nros dev codegen rust` produces. On a host set
 # up by the BOOK's flow (bootstrap + `nros setup`) neither exists yet, so cargo
@@ -107,7 +107,7 @@ UNSYNCED_RE='failed to load config include|failed to read configuration file .*n
 # Issue 1398 — a SUBMODULE that is not checked out, told apart from both.
 #
 # The branch below reads the central `nros-patch.toml` as proof that the tree is
-# provisioned, and it is not: `nros sync` writes patch tables and `generated/`
+# provisioned, and it is not: `nros configure` writes patch tables and `generated/`
 # trees, and it does not fetch submodules. A tree can be fully synced with no
 # submodule checked out at all.
 #
@@ -121,7 +121,7 @@ UNSYNCED_RE='failed to load config include|failed to read configuration file .*n
 # With `third-party/nuttx/libc` absent, cargo says `failed to load source for
 # dependency libc` — which `UNSYNCED_RE` matches — and the patch-table branch
 # then reported "their patch tables or `generated/` trees are wrong" and sent
-# the reader to `nros sync`, which cannot fetch a submodule and, run at the repo
+# the reader to `nros configure`, which cannot fetch a submodule and, run at the repo
 # root, refuses outright.
 #
 # We check the PATH DEP TARGETS rather than the wording of cargo's error, for
@@ -377,7 +377,7 @@ if [ ${#unprovisioned[@]} -gt 0 ]; then
     echo "" >&2
     echo "       Those rows are in the TRACKED half of the leaf's cargo config, so" >&2
     echo "       they are there in a fresh clone — but the submodule they point at" >&2
-    echo "       is not. \`nros sync\` does NOT fetch submodules, so a synced tree" >&2
+    echo "       is not. \`nros configure\` does NOT fetch submodules, so a synced tree" >&2
     echo "       reaches this state too (issue 1398). Fetch them:" >&2
     echo "" >&2
     printf '           git submodule update --init --depth 1 %s\n' "${_missing_roots[*]}" >&2
@@ -387,13 +387,13 @@ fi
 
 if [ ${#unsynced[@]} -gt 0 ]; then
     # Is the TREE unsynced, or is this leaf broken on a synced tree? The central
-    # `nros-patch.toml` answers it: `nros sync` writes it, `.gitignore` excludes
+    # `nros-patch.toml` answers it: `nros configure` writes it, `.gitignore` excludes
     # it, so a fresh clone never has one.
     #
     # Issue 0466 — this used to `exit 1` either way, which made the gate
     # unrunnable in the very lane it lives in. `check-fast` is documented
     # BUILDLESS *and* SOURCE-FREE, and gate.yml deliberately does NOT
-    # provision the CLI or run `nros sync` on a push; so on every push this gate
+    # provision the CLI or run `nros configure` on a push; so on every push this gate
     # met two leaves it could not resolve and failed. Per-push CI was red
     # CONTINUOUSLY for over a day on exactly this, which also buried every other
     # signal that lane exists to give.
@@ -405,7 +405,7 @@ if [ ${#unsynced[@]} -gt 0 ]; then
     # then a real defect, and the old hard failure stands unchanged.
     #
     # Issue 1398 — "the central patch table exists" now means only what it can
-    # mean: `nros sync` ran. It says nothing about SUBMODULES, which sync does
+    # mean: `nros configure` ran. It says nothing about SUBMODULES, which sync does
     # not fetch, so those leaves are classified above and never reach here. What
     # is left is the sync-shaped gap this branch was written for, and the hard
     # failure is sound for it.
@@ -413,14 +413,14 @@ if [ ${#unsynced[@]} -gt 0 ]; then
         echo "ERROR: ${#unsynced[@]} leaf crate(s) cannot resolve on a SYNCED tree." >&2
         printf '       %s\n' "${unsynced[@]}" >&2
         echo "" >&2
-        echo "       \`nros-patch.toml\` exists, so \`nros sync\` has run here, and no" >&2
+        echo "       \`nros-patch.toml\` exists, so \`nros configure\` has run here, and no" >&2
         echo "       unprovisioned submodule explains these (that is checked first," >&2
-        echo "       issue 1398). Re-run \`nros sync\`; if they persist, their patch" >&2
+        echo "       issue 1398). Re-run \`nros configure\`; if they persist, their patch" >&2
         echo "       tables or \`generated/\` trees are wrong." >&2
         exit 1
     fi
     # issue 1184 — RECORD it, not just print it. Every CI checkout is unsynced
-    # (`nros sync` writes `nros-patch.toml` and the per-leaf `generated/` trees,
+    # (`nros configure` writes `nros-patch.toml` and the per-leaf `generated/` trees,
     # neither committed), so this branch is the one CI always takes, and it
     # exited 0 with nothing countable. Two leaves drifted for a whole phase
     # behind it: `nros-macros` gained `nros-entry-lower` and both nuttx-ffi
@@ -440,7 +440,7 @@ if [ ${#unsynced[@]} -gt 0 ]; then
     echo "       Both are produced, not committed, so a checkout set up by the book's" >&2
     echo "       install flow alone does not have them yet (issue 0378):" >&2
     echo "" >&2
-    echo "           nros sync            # writes nros-patch.toml + the leaf patch tables" >&2
+    echo "           nros configure            # writes nros-patch.toml + the leaf patch tables" >&2
     echo "           just setup all       # if the generated/ message crates are missing too" >&2
     echo "" >&2
     echo "       Every OTHER leaf lock was still checked. Run this on a synced tree" >&2

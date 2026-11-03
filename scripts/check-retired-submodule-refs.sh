@@ -66,12 +66,12 @@ EXCLUDES=(
 
 # Retired COMMAND SPELLINGS — same drift class as retired paths, but a verb
 # rather than a directory. Issue 0367: phase-265 renamed `nros ws sync` to
-# `nros sync` yet the old spelling kept re-entering new prose because greppable
+# `nros configure` yet the old spelling kept re-entering new prose because greppable
 # precedent is how text gets written here. The whole class is `\bws sync\b`
 # (issue-0196 rule: gate the class, not the exact string swept today).
 #   regex : what replaced it
 RETIRED_SPELLINGS=(
-    "\\bws sync\\b|nros sync (phase-265 renamed the verb; the \`nros ws sync\` alias is retired — issue 0367)"
+    "\\bws sync\\b|nros configure (phase-265 renamed the verb; the \`nros ws sync\` alias is retired — issue 0367)"
 )
 
 # phase-472 W8 — the "passes THROUGH the live one" exemption is RETIRED. It

@@ -4,7 +4,7 @@
 #
 # Exercises exactly the documented out-of-tree flow:
 #   1. `nros new <name> --platform <p> --lang rust`  (scaffold; emits `version = "*"`)
-#   2. NROS_REPO_DIR=<repo> + `nros sync`          (write the [patch.crates-io] block)
+#   2. NROS_REPO_DIR=<repo> + `nros configure`          (write the [patch.crates-io] block)
 #   3. `cargo tree`                                    (resolution proves the patch redirects)
 #
 # Resolution-only (no compile / no cross build-std) — like dep-chain.yml; it
@@ -64,8 +64,8 @@ if grep -nE '(nros|nros-board[a-z0-9-]*)\s*=\s*\{[^}]*version\s*=\s*"0\.1"' "$pr
     exit 1
 fi
 
-echo "::group::nros sync (NROS_REPO_DIR=${REPO})"
-( cd "$proj" && NROS_REPO_DIR="$REPO" "$NROS" sync )
+echo "::group::nros configure (NROS_REPO_DIR=${REPO})"
+( cd "$proj" && NROS_REPO_DIR="$REPO" "$NROS" configure )
 echo "::endgroup::"
 
 # Issue 1265 -- the scaffolded node must be PROBED, not degraded. Before the
@@ -74,12 +74,12 @@ echo "::endgroup::"
 # exited 0 and left `<component>.json.unprobeable`, so every pool stayed at the
 # crate default and this job PASSED. The probe's output is the artifact.
 if [ ! -s "$proj/metadata/${name}.json" ] || [ -e "$proj/metadata/${name}.json.unprobeable" ]; then
-    echo "FAIL: nros sync did not probe the scaffolded node (issue 1265):" >&2
+    echo "FAIL: nros configure did not probe the scaffolded node (issue 1265):" >&2
     ls -la "$proj/metadata" >&2 2>/dev/null || echo "      no metadata/ dir at all" >&2
     cat "$proj/metadata/${name}.json.unprobeable" >&2 2>/dev/null || true
     exit 1
 fi
-echo "  [ok] nros sync probed the scaffolded node (metadata/${name}.json)"
+echo "  [ok] nros configure probed the scaffolded node (metadata/${name}.json)"
 
 # The managed patch block must redirect `nros` to a path.
 if ! grep -q "nros = {" "$proj/Cargo.toml"; then
@@ -90,7 +90,7 @@ fi
 
 # Issue 2079: the scaffold names no board crate. It reaches the board,
 # backend and edition through the `<pkg>_nros_selection` path dep, which
-# `nros sync` generates, so check that dep and the package sync wrote.
+# `nros configure` generates, so check that dep and the package sync wrote.
 # `cargo tree` below proves the whole graph resolves.
 sel="${name}_nros_selection"
 sel_rc=0

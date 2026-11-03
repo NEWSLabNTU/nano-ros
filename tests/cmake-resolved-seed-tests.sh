@@ -527,7 +527,7 @@ $TAKE_OUT"
     fi
 }
 write_take_record 1 'b_pkg::sub::b_pkg::Sub2;z_pkg::talker::z_pkg::Talker'
-take_declines "a component registered since the resolve" "re-run \`nros sync\`"
+take_declines "a component registered since the resolve" "re-run \`nros configure\`"
 write_take_record
 : > "$TAKE_ROOT/model/other.yaml"
 take_declines "a second model (a shared runtime)" "composes over 2 models" \

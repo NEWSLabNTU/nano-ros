@@ -133,7 +133,7 @@ capability-flavour-guards:
     @python3 scripts/check-std-census.py --check-guards
 
 # A leaf `.cargo/config.toml` under `packages/` or `tests/` is tracked iff it
-# holds content `nros sync` cannot regenerate. `**/.cargo/config.toml` is
+# holds content `nros configure` cannot regenerate. `**/.cargo/config.toml` is
 # gitignored (most are pure sync output); this is the discrimination the blanket
 # rule cannot make. `examples/**` is NOT its business any more — phase-445 W6
 # gave that tree the stronger rule below.
@@ -148,14 +148,14 @@ example-cargo-dirs:
 
 # Issue 2085 (RFC-0085 amended) — every example is copy-out, workspaces too, so
 # no tracked example manifest reaches a crate by a `path` that leaves
-# `examples/`. It names the crate (`version = "*"`) and `nros sync` writes the
+# `examples/`. It names the crate (`version = "*"`) and `nros configure` writes the
 # patch. The script runs its own negative control first, every time; the 24
 # workspace manifests main carried before this gate each tripped it.
 example-path-deps:
     @python3 scripts/check-example-path-deps.py
 
 # phase-517 W8 (RFC-0098 amendment, accepted 2026-10-26) — a message `<depend>`
-# is one edit for Rust too: `nros sync` writes the `# nros-managed` path row, so
+# is one edit for Rust too: `nros configure` writes the `# nros-managed` path row, so
 # no tracked manifest hand-writes an untagged path row into `generated/`.
 managed-msg-deps:
     @python3 scripts/check-managed-msg-deps.py
@@ -302,7 +302,7 @@ rust-toolchains-list:
 # Issue 1578 — `packages/cli/probe-source-dirs.txt` must equal cargo's resolve of
 # what a metadata PROBE compiles.
 #
-# That file is the other half of every sidecar's freshness key: `nros sync`
+# That file is the other half of every sidecar's freshness key: `nros configure`
 # hashes the component's sources AND the crates this names, because what a probe
 # reports is decided by both. It used to be the component alone, and a change to
 # `nros-node`'s `in_place` classifier was measured being reused as "already

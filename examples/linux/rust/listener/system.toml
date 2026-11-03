@@ -1,13 +1,13 @@
 # What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
 # schema a workspace bringup uses. Switching board is editing `[image.*] board`
-# and re-running `nros sync`.
+# and re-running `nros configure`.
 
 
 [system]
 name = "native_listener"
 rmw = "zenoh"
 domain_id = 0
-# The image a bare `nros sync` / `nros build` / `cargo build` builds.
+# The image a bare `nros configure` / `nros build` / `cargo build` builds.
 default_images = ["linux"]
 
 [[component]]
@@ -21,8 +21,8 @@ name = "listener"
 # ONE IMAGE PER RMW × ROS EDITION (issue 1305, RFC-0031 / RFC-0056). The RMW
 # and the edition are declared here and lowered into the generated selection
 # package (`build/nros/selection`), never named as cargo features in
-# `Cargo.toml`. `nros sync` / `nros build` take the default image; name another
-# with `nros sync --image <id> && nros build <id>`. The edition images exist
+# `Cargo.toml`. `nros configure` / `nros build` take the default image; name another
+# with `nros configure --image <id> && nros build <id>`. The edition images exist
 # for `just ros_editions build-e2e-fixtures`; the id is `linux`, then `_<rmw>`
 # unless zenoh, then `_<edition>` unless humble.
 [image_defaults]

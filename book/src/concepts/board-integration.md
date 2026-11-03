@@ -35,13 +35,13 @@ families:
 
 ```toml
 # user_app/Cargo.toml — registry-style names resolved by the
-# `nros sync`-managed [patch.crates-io] table (nano-ros is source-only;
+# `nros configure`-managed [patch.crates-io] table (nano-ros is source-only;
 # nothing is on crates.io):
 [dependencies]
 nros-board-freertos = { version = "*", default-features = false }
 nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
 nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-freertos"] }
-# written by `nros sync` from package.xml's <depend>std_msgs</depend>:
+# written by `nros configure` from package.xml's <depend>std_msgs</depend>:
 std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 ```
 

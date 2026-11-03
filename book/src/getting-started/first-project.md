@@ -66,7 +66,7 @@ the board's build settings, all under `build/`. Run it again whenever you
 edit `system.toml`:
 
 ```bash probe=48 track=installed
-nros sync
+nros configure
 ```
 
 Then build and run:

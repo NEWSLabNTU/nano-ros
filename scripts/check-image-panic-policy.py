@@ -144,7 +144,7 @@ def selection_supplies(leaf_dir: Path) -> "bool | None":
     else:
         # A workspace ENTRY with no `system.toml` of its own: its image is the
         # one a sibling bringup claims for it (`[image.<id>] entry = "<pkg>"`),
-        # which is what `nros sync` writes its selection from
+        # which is what `nros configure` writes its selection from
         # (`leaf_settings::write_entry_selection`).
         claimed = claiming_image(leaf_dir, pkg.group(1))
         if claimed is None:

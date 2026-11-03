@@ -17,7 +17,7 @@ nano-ros-app/            # this repo (the west manifest repo)
 └── app/                 # the application
     ├── CMakeLists.txt   # find_package(Zephyr) + nano_ros_node_register(TYPED C)
     ├── system.toml      # the image: board + RMW (zenoh); the module renders it
-    ├── package.xml      # the package `nros sync` scans; depends on std_msgs
+    ├── package.xml      # the package `nros configure` scans; depends on std_msgs
     ├── prj.conf         # CONFIG_NROS=y + Zephyr's own settings
     └── src/Talker.c     # std_msgs/Int32 talker on /chatter (typed C component)
 ```
@@ -64,7 +64,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 ./build/zephyr/zephyr.exe            # → "Published: 1", "Published: 2", …
 ```
 
-Or let `nros` drive the same build: `cd nano-ros-app/app && nros sync && nros
+Or let `nros` drive the same build: `cd nano-ros-app/app && nros configure && nros
 build --zephyr-workspace "$PWD/../.."`. It builds `native_sim/native/64` (the
 generic `zephyr` board in `system.toml`), whose `nros-nsos` snippet the module
 adds, so nothing network-related is passed by hand.

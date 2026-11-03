@@ -77,7 +77,7 @@ node source, and no build command moves with it.
 One caveat for a **single package**: it is its own entry, so the board
 crate, its `rtic` feature, the RMW backend and the panic handler come from a
 generated `<pkg>_nros_selection` package the in-tree RTIC examples depend on
-(`nros sync` writes it for the image's board;
+(`nros configure` writes it for the image's board;
 [issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 `rtic` and the PAC stay in the package's own `[dependencies]`, because the
 `#[rtic::app]` expansion names `rtic::` and `device = mps2_an385_pac` from
@@ -245,7 +245,7 @@ std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-man
 ```
 
 Dependencies and nothing else — and the `std_msgs` row is not even yours:
-`nros sync` writes it from `<depend>std_msgs</depend>` in `package.xml`. The class name, the node name and the
+`nros configure` writes it from `<depend>std_msgs</depend>` in `package.xml`. The class name, the node name and the
 dispatch strategy are the `[[component]]` row in `system.toml`, and there
 is no root manifest to inherit `workspace = true` from.
 

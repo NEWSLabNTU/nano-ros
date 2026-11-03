@@ -1,6 +1,6 @@
 # What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
 # schema a workspace bringup uses. Switching board is editing `[image.*] board`
-# and re-running `nros sync`.
+# and re-running `nros configure`.
 #
 # ONE IMAGE PER RMW (phase-481 W3, RFC-0098 D10/D11). The nano-ros Zephyr
 # module renders the selected image into a Kconfig fragment merged after every

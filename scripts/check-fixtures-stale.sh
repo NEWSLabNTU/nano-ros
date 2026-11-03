@@ -238,7 +238,7 @@ if [ ${#rust_failed[@]} -gt 0 ]; then
     echo "  produced, so the tests that consume them will fail with" >&2
     echo "  \"Test fixture binary not prebuilt\". Build the lane before testing:" >&2
     echo "      source ./activate.sh && just build-test-fixtures lane=<the lane you will test>" >&2
-    echo "  A leaf that needs codegen also needs \`nros sync\` first (its generated/" >&2
+    echo "  A leaf that needs codegen also needs \`nros configure\` first (its generated/" >&2
     echo "  tree is not in a fresh clone). Bypass with  NROS_SKIP_FIXTURE_CHECK=1 ." >&2
     stale_families=$((stale_families + 1))
 fi

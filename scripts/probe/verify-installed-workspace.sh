@@ -4,7 +4,7 @@
 # book-extracted steps by run-bootstrap-probe.sh; runs in the same shell, in
 # the workspace the chapter scaffolded (`two_ws`).
 #
-# The chapter ran ONE bare `nros setup` and then `nros sync && nros build --all`,
+# The chapter ran ONE bare `nros setup` and then `nros configure && nros build --all`,
 # and each step must have exited 0 to get here. What is left: both images
 # really were built, a second `nros setup --check` finds nothing missing (so
 # the build did not quietly need more than the one setup provisioned), and no

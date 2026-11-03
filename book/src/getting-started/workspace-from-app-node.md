@@ -117,11 +117,11 @@ Two commands, in this order, and they are the same two everywhere in this
 group:
 
 ```bash
-nros sync      # generated message bindings + the generated build settings
+nros configure      # generated message bindings + the generated build settings
 nros build     # every [image.*]; or name one: nros build linux
 ```
 
-`nros sync` is yours to run once per workspace, and again whenever you edit
+`nros configure` is yours to run once per workspace, and again whenever you edit
 a `.msg` or move the checkout. A workspace that has never been synced makes
 `nros build` stop at preflight with one line naming it.
 
@@ -140,7 +140,7 @@ already know:
 | ROS 2 | nano-ros | Notes |
 |---|---|---|
 | `ros2 pkg create` | `nros new node <name>` | scaffolds a Node pkg and adds its `[[component]]` row |
-| `colcon build` | `nros sync` once, then `nros build <image>` | resolves the image, generates the entry and its build root under `build/`, hands off to cargo / cmake / west / idf.py |
+| `colcon build` | `nros configure` once, then `nros build <image>` | resolves the image, generates the entry and its build root under `build/`, hands off to cargo / cmake / west / idf.py |
 | `ros2 launch <pkg> <file>` | run the image's binary | the image IS the launch product; the old launch wrapper was removed in nros 0.5.0 |
 | (plan/validate) | `nros plan` → `nros check` | resolve + statically check the topology |
 | `ros2 run <pkg> <exe>` | run the image's binary | one `[image.*]` row per board |

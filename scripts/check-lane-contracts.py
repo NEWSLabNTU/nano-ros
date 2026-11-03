@@ -272,7 +272,7 @@ def ordered_setup_requirements(recipes):
 
     Complements `required_producers`, which reads a recipe's hard-failing
     remediation TEXT. Neither subsumes the other: `generate-bindings` fails
-    inside `nros sync`, a Rust binary whose message no recipe body contains, so
+    inside `nros configure`, a Rust binary whose message no recipe body contains, so
     only the ordering sees it; a recipe that hard-fails without appearing in any
     wrapper is only seen by the text rule.
     """
@@ -1442,7 +1442,7 @@ def shipped_shape_gaps(recipes, variables, gating, subjects):
 #
 # W6 (`9af7e5230`) deleted every `examples/**/.cargo/`, so the
 # `[patch.crates-io]` table that resolves `nros`, `nros-platform` and the board
-# crate is pure `nros sync` OUTPUT. A bare `cargo build` in a leaf then resolves
+# crate is pure `nros configure` OUTPUT. A bare `cargo build` in a leaf then resolves
 # `nros = { version = "*" }` against the public registry and dies
 # `no matching package named 'nros' found` — which took the merge queue's L3 job
 # down (run 34634922404) four hours after W6 landed, in `rust-rtos-link-check`,
@@ -1751,7 +1751,7 @@ def main():
     for name, leaves in sorted(leaf_gaps.items()):
         errs.append(
             f"`{name}` builds {', '.join(leaves)} with cargo and never runs "
-            f"`nros sync`.\n"
+            f"`nros configure`.\n"
             f"      phase-445 W6 deleted the leaf `.cargo/`, so the "
             f"`[patch.crates-io]` table that\n"
             f"      resolves `nros` is sync OUTPUT — without it cargo reads "
@@ -2122,7 +2122,7 @@ def selftest(verbose=False):
     chk("a leaf cargo build with no sync in the body is a finding",
         leaf_builds_without_sync(no_sync) == {"r": ["examples/x/rust/talker"]})
     with_sync = {"r": {"deps": [], "body": [
-        '    "$nros_cli" sync "$dir" >/dev/null',
+        '    "$nros_cli" configure "$dir" >/dev/null',
         "    ( cd examples/x/rust/talker && cargo build --target-dir t ) >/dev/null"]}}
     chk("the same body that syncs is clean",
         leaf_builds_without_sync(with_sync) == {})

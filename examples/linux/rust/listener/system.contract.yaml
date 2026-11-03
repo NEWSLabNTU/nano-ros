@@ -24,7 +24,7 @@
 # node is one the build refuses to match rather than guess at — it names the
 # endpoint and the image keeps its configured pools.
 #
-# `nros sync` carries this beside the launch file it synthesises from
+# `nros configure` carries this beside the launch file it synthesises from
 # `system.toml`, where the resolver's provider-sidecar channel finds it.
 
 version: 1

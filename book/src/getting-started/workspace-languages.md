@@ -8,7 +8,7 @@ per language — inside that fixed shape.
 Two commands build any of them, in this order:
 
 ```bash
-nros sync
+nros configure
 nros build
 ```
 
@@ -32,18 +32,18 @@ nros::main!(launch = "demo_bringup", spin = "forever");
 
 Two Rust-specific facts:
 
-- **`nros sync` before the first build**, and again after editing `.msg`
+- **`nros configure` before the first build**, and again after editing `.msg`
   files or moving the checkout. It generates the message crates, and — per
   image — the settings file cargo is handed with `--config`: the board's
   rustc triple, the link flags, the `[env]`, the patch rows.
   Nothing of that is written beside your packages, and cargo cannot resolve
-  the build without it. A C or C++ workspace runs `nros sync` too; what it
+  the build without it. A C or C++ workspace runs `nros configure` too; what it
   does not get from it is the message codegen, which runs inside CMake.
 - **The RMW is spelled once** — `[system] rmw = "zenoh"` in the bringup's
   `system.toml`, or `rmw =` on a single `[image.*]` row when one image
   differs. The board crate's feature and the `nros` facade feature are
   generated from it, so switching backend is a one-word edit plus
-  `nros sync`: [Switching RMW in Config](../user-guide/rmw-switching.md).
+  `nros configure`: [Switching RMW in Config](../user-guide/rmw-switching.md).
 
 ## C
 

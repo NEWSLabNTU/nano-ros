@@ -8,7 +8,7 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 ```bash
 cp -r examples/rv-virt-threadx/rust/talker ~/my-talker && cd ~/my-talker
 source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
-nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
+nros configure     # generated/ message crates + build/<image>/nros-cargo.toml
 nros build    # or: nros build rv-virt-threadx
 ```
 

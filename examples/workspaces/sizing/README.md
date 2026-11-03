@@ -8,14 +8,14 @@ node; the runtime needs six callback slots. The executor's table defaults to
 four.
 
 Before phase-307 the entry compiled cleanly and died at boot on the fifth
-timer with `code=-6 Full`. Now `nros sync` records the six timers in
+timer with `code=-6 Full`. Now `nros configure` records the six timers in
 `src/burst_pkg/metadata/burst_talker.json`, `nros::main!` reads that sidecar,
 and the entry opens the executor at the derived size.
 
 ```sh
 source ./activate.sh
 cd examples/workspaces/sizing
-nros sync            # produces the sidecar, the generated entry and its settings
+nros configure            # produces the sidecar, the generated entry and its settings
 nros build linux
 NROS_ENTRY_SPIN_MS=3000 ./build/posix-zenoh/linux_entry/target/debug/linux_entry
 ```

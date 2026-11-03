@@ -252,7 +252,7 @@ fi
 # 94.8 GiB of `examples/**` leaf builds sat in no area on newslab-118: reported
 # every sweep, reclaimed by none. Each leaf's git-ignored `build*`/`target*`
 # dir is now a unit of the fixtures area, evicted oldest-first with the caches;
-# `generated/` (a `nros sync` product a build does not recreate) is not, and is
+# `generated/` (a `nros configure` product a build does not recreate) is not, and is
 # still counted from four levels down rather than vanishing from the report.
 w5="$work/w5"
 leaf="$w5/examples/linux/rust/talker"
@@ -284,7 +284,7 @@ else
 $out10"
 fi
 if nros_grep_q -F -- "rm -rf $leaf/generated" <<<"$out10"; then
-    fail "generated/ (a nros sync product) was proposed for eviction:
+    fail "generated/ (a nros configure product) was proposed for eviction:
 $out10"
 else
     ok "a leaf's generated/ is never evicted"

@@ -32,7 +32,7 @@ WHAT IT CHECKS
 The three classes are not interchangeable:
 
   setup   `just setup <scope>` must provision it. Checked for reachability.
-  build   the BUILD verb produces it (fixtures, `nros sync` output). Provisioning
+  build   the BUILD verb produces it (fixtures, `nros configure` output). Provisioning
           must NOT do it -- compiling at setup time is a different contract.
   manual  a human decides (a submodule pointer move, deleting stray build
           output). Automating these would be wrong, not merely unimplemented.
@@ -108,7 +108,7 @@ CLASSIFICATION = {
     # gate checks — a `path =` dep into a `generated/` tree.
     "a leaf names a sync-written path": (
         "build",
-        "`nros sync` writes the generated targets; it is part of the build "
+        "`nros configure` writes the generated targets; it is part of the build "
         "stage, and the fixture builds run it.",
     ),
     "test fixtures not ready": (
@@ -163,7 +163,7 @@ TOOL_RECIPES = {
     ),
     "setup-launch-resolve": (
         "setup",
-        "in `_setup-common`: `nros sync` shells out to the resolver by absolute "
+        "in `_setup-common`: `nros configure` shells out to the resolver by absolute "
         "path beside the CLI (issue 0285), so every scope needs it.",
     ),
     # `setup-mdbook` was here and is GONE: phase-422 W2 moved mdBook into the

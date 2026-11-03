@@ -31,7 +31,7 @@ consumable from cmake, and nothing makes cmake consumable from cargo. So a mixed
 
 ```console
 $ cd my_mixed_ws              # e.g. a copy of examples/workspaces/mixed
-$ nros sync
+$ nros configure
 $ nros build linux
 ```
 
@@ -150,7 +150,7 @@ matching static libraries. The symbol keeps the legacy `component` spelling for
 ABI compatibility; the user-facing package role is still Node pkg.
 
 Note there is no `MODEL` here. The SystemModel is a build artifact resolved
-from the launch file by `nros sync`; naming it in a build file is the
+from the launch file by `nros configure`; naming it in a build file is the
 deprecated expert override, and a *committed* one is banned outright (gate
 `check-no-tracked-models`).
 

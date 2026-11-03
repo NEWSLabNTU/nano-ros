@@ -21,7 +21,7 @@ changes language-side is the cmake-fn / macro surface.
 | **Image** | `[image.linux] board = "linux"` in the bringup's `system.toml` | identical (language-agnostic) |
 | **The entry** | GENERATED into `build/<coord>/linux_entry/` — a `Cargo.toml` and a `nros::main!(launch = "demo_bringup")` | GENERATED into `build/<coord>/CMakeLists.txt` — a `nano_ros_add_executable(linux_entry BOARD … BRINGUP … LAUNCH … LANG cpp TYPED DEPLOY linux)` call, plus the `main` TU the verb emits |
 | **Workspace root** | none — the generated entry's own `Cargo.toml` is the cargo root | none — the generated `build/<coord>/CMakeLists.txt` is the cmake root, calling `nano_ros_workspace(WORKSPACE_ROOT … BACKEND zenoh PLATFORM posix SYSTEM demo_bringup SUBDIRS …)` |
-| **Build** | `nros sync` then `nros build linux` | `nros sync` then `nros build linux` |
+| **Build** | `nros configure` then `nros build linux` | `nros configure` then `nros build linux` |
 | **Boot** | `./build/posix-zenoh/linux_entry/target/debug/linux_entry` | `./build/posix-zenoh-linux/cmake/linux_entry` |
 
 The reference C++ workspace ships in-tree at
@@ -169,7 +169,7 @@ timers live: the model records a path with no `input` as the periodic callback.
 
 **A single-package example writes the same file at `<leaf>/system.contract.yaml`**,
 beside its `system.toml`. Its launch file is generated from the `[[component]]`
-rows, so there is no `launch/` directory to put a sidecar in; `nros sync` carries
+rows, so there is no `launch/` directory to put a sidecar in; `nros configure` carries
 this one to where the resolver looks. That is how a standalone leaf states its
 QoS — and stating it is worth real memory: one `sub: { chatter: { qos: { history:
 keep_last, depth: 1 } } }` row takes [`examples/linux/rust/listener`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/listener) from 273,802
@@ -182,7 +182,7 @@ remaps is one the build cannot match with certainty, so it refuses that endpoint
 by name and the image keeps its configured pools rather than being sized from a
 guess.
 
-`nros sync` folds it into the resolved SystemModel, and the entry passes that
+`nros configure` folds it into the resolved SystemModel, and the entry passes that
 model to the sizing automatically — nothing here takes an argument for it.
 Inspect the composed answer with:
 
@@ -346,7 +346,7 @@ appends it to the target's sources, and auto-links every
 ### `BRINGUP` + `LAUNCH` — name your input, never the artifact
 
 `BRINGUP` + `LAUNCH` name your *input*: the Bringup package and a launch
-selector. `nros sync` resolves that into a SystemModel build artifact (under
+selector. `nros configure` resolves that into a SystemModel build artifact (under
 `<ws>/build/nros/models/<bringup>/` — never committed; gate
 `check-no-tracked-models`), and the entry bakes from it, so the same artifact
 drives the Linux runtime and every embedded image (contracts, tiers, QoS never
@@ -354,7 +354,7 @@ drift). `MODEL` — naming the resolved artifact file directly — is a deprecat
 expert override; the two are mutually exclusive, and a *committed* model is
 banned outright.
 
-`nros sync` resolves/refreshes the model whenever the bringup's launch XML or
+`nros configure` resolves/refreshes the model whenever the bringup's launch XML or
 `system.toml` is newer than it, and `nros build` runs it for you.
 
 ### Writing the entry yourself
@@ -376,7 +376,7 @@ function generates the whole body (the `main` above), so an entry's
 ## Build + boot
 
 ```bash
-nros sync
+nros configure
 nros build linux
 ./build/posix-zenoh-linux/cmake/linux_entry
 ```
@@ -384,7 +384,7 @@ nros build linux
 `nros build` resolves the SystemModel for you (via the pinned
 `nros-launch-resolve` helper, whenever the launch XML or `system.toml` is
 newer), writes `build/<coordinate>/CMakeLists.txt`, configures, and builds. It
-does **not** run `nros sync`: a workspace that has never been synced has no
+does **not** run `nros configure`: a workspace that has never been synced has no
 generated message bindings, and `nros build` refuses at preflight naming `nros
 sync` as the remedy. Sync once per workspace; after that only a `.msg` edit
 needs it again. The coordinate directory names what it contains: platform, RMW,

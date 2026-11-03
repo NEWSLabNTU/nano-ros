@@ -50,7 +50,7 @@ On non-bare-metal platforms, serial just works by using a `serial/...` locator â
 Each board crate uses Cargo features to select the transport:
 
 ```toml
-# Board crates are registry-style names resolved by the `nros sync`
+# Board crates are registry-style names resolved by the `nros configure`
 # patch table (see examples/README.md), not path deps:
 
 # Use serial transport (disable default ethernet/wifi)
@@ -96,7 +96,7 @@ on GitHub):
 nros new serial_talker --platform baremetal --lang rust --rmw zenoh
 cd serial_talker
 # edit system.toml as below, then:
-nros sync                       # generated/ + this image's build settings
+nros configure                       # generated/ + this image's build settings
 nros build
 ```
 
@@ -109,7 +109,7 @@ board   = "mps2-an385-baremetal"
 locator = "serial/UART_0#baudrate=115200"
 ```
 
-The `serial/` scheme is also the image's LINK (RFC-0109 D6): `nros sync`
+The `serial/` scheme is also the image's LINK (RFC-0109 D6): `nros configure`
 derives the serial-only build from it (`ZPICO_NO_SMOLTCP=1`, `NROS_LINK_IP=0`,
 the board's `serial` feature), so nothing else names it. The `transport =
 "serial"` key that used to restate it is refused.
@@ -220,7 +220,7 @@ QEMU redirects the emulated UART to a host pseudo-terminal. The in-tree flow use
 ### QEMU Flags
 
 The runner is the **board's**, not the example's: the board descriptor states
-it once as `[board.run]` / `[board.run.qemu]`, and `nros sync` renders it into
+it once as `[board.run]` / `[board.run.qemu]`, and `nros configure` renders it into
 the image's generated settings file,
 `build/mps2-an385-baremetal/nros-cargo.toml`, where it reads:
 

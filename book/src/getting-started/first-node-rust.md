@@ -34,8 +34,8 @@ my_talker/
 ├── system.toml         # WHAT this deploys to — the one file you edit
 ├── Cargo.toml          # registry-style deps; no board facts
 ├── package.xml         # ROS-style manifest (drives codegen tooling)
-├── generated/          # message bindings `nros sync` writes
-├── build/              # everything `nros sync` / `nros build` generate
+├── generated/          # message bindings `nros configure` writes
+├── build/              # everything `nros configure` / `nros build` generate
 └── src/
     ├── lib.rs          # the talker node: a 1 s timer publishing /chatter
     └── main.rs         # one line, `nros::main!(spin = "forever")`
@@ -62,10 +62,10 @@ board = "linux"
 
 The `[[component]]` is the node `main.rs` boots: `nros::main!()` reads it
 and runs `lib.rs`'s `Talker`. Switching RMW or ROS edition is editing
-`rmw` or `ros_edition` here and re-running `nros sync`.
+`rmw` or `ros_edition` here and re-running `nros configure`.
 
 **You never hand-write a build setting.** No target triple, no linker
-flag, no `[patch.crates-io]` table, no `.cargo/config.toml`: `nros sync`
+flag, no `[patch.crates-io]` table, no `.cargo/config.toml`: `nros configure`
 derives every one of those from `board = "linux"` and writes them to
 `build/linux/nros-cargo.toml`, which `nros build` hands cargo with
 `--config`.
@@ -81,24 +81,24 @@ package, and it holds Rust facts only. The package is its own
 standalone Cargo root (an empty `[workspace]` table stops `cargo`
 walking up the filesystem), and nano-ros crates are declared
 **registry-style** (`version = "*"`): nothing of nano-ros is on
-crates.io, so `nros sync` generates the `[patch.crates-io]` block that
+crates.io, so `nros configure` generates the `[patch.crates-io]` block that
 resolves them into the SDK the `nros` on PATH carries, into
 `build/<image>/nros-cargo.toml` — nothing about the build is committed,
 and nothing about it is hand-edited. The manifest names no
 board crate, RMW backend or ROS edition either: it depends on
 `my_talker_nros_selection = { path = "build/nros/selection" }`, a package
-`nros sync` generates from `system.toml` that brings all three,
+`nros configure` generates from `system.toml` that brings all three,
 so the `--rmw` and `--ros-edition` you passed to `nros new` live in
 `system.toml` and nowhere else.
 
 Message packages are not listed there by hand: `package.xml`'s
-`<depend>std_msgs</depend>` is the one statement, and `nros sync` (or
+`<depend>std_msgs</depend>` is the one statement, and `nros configure` (or
 `nros build`) writes the matching `std_msgs = { path = "generated/std_msgs",
 … }  # nros-managed` row. To use another message package, add its
 `<depend>` and sync again — that is the whole change.
 
 The directory names no path into the SDK, so you can move or copy it
-anywhere and re-run `nros sync`; `--nano-ros-path <dir>` names a
+anywhere and re-run `nros configure`; `--nano-ros-path <dir>` names a
 different SDK root on the command line, never in a file.
 
 For a fuller talker to read — the same shape, with one image per RMW
@@ -124,7 +124,7 @@ table instead; see the
 ## Build
 
 ```bash probe=30
-nros sync             # writes generated/ message bindings and
+nros configure             # writes generated/ message bindings and
                       # build/linux/nros-cargo.toml from system.toml
 nros build            # builds the image `[image.linux]` declares
 ```
@@ -134,7 +134,7 @@ seconds. The binary lands at `build/linux/target/debug/my_talker` —
 under `build/`, never beside your sources.
 
 **Driving cargo yourself** (an IDE, a CI step, `--release`) is
-supported: run `nros sync` first, then point cargo at the generated
+supported: run `nros configure` first, then point cargo at the generated
 settings file, from the directory above the package:
 
 ```bash
@@ -143,7 +143,7 @@ cargo build --manifest-path my_talker/Cargo.toml \
             --config my_talker/build/linux/nros-cargo.toml
 ```
 
-That file is regenerated on every `nros sync`; never edit it, and never
+That file is regenerated on every `nros configure`; never edit it, and never
 add a `.cargo/config.toml` of your own to carry board facts. Your own
 Rust-toolchain preferences go where cargo already looks for them — a
 parent directory or `$CARGO_HOME`.
@@ -205,7 +205,7 @@ seconds:
 
 To aim the package at a board, change `[image.linux] board` in
 `system.toml` to that board's name ([Supported Boards](../reference/supported-boards.md)),
-run `nros setup <board>`, and re-run `nros sync`. The scaffold's
+run `nros setup <board>`, and re-run `nros configure`. The scaffold's
 `Cargo.toml` names the Linux board crate (`nros-board-linux`), so a
 cross build swaps that dependency too; the platform
 chapters scaffold with `--platform <freertos|nuttx|threadx|baremetal>`,

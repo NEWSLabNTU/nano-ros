@@ -130,7 +130,7 @@ description = "STM32F4 + FreeRTOS overlay on nros-board-freertos"
 repository = "https://github.com/<you>/nros-board-stm32f4-freertos"
 
 [dependencies]
-# nano-ros is source-only: these names are NOT on crates.io. `nros sync`
+# nano-ros is source-only: these names are NOT on crates.io. `nros configure`
 # writes the [patch.crates-io] rows that resolve them into the SDK root.
 nros-board-freertos = { version = "*" }
 nros-platform = { version = "*", default-features = false }

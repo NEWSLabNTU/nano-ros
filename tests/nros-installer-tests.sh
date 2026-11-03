@@ -23,7 +23,7 @@
 #                          version is ever parsed out of an asset or dir name
 #   7. codegen delta    -> `nros pin` across two installed toolchains: equal
 #                          codegen re-emits nothing and does not warn; a
-#                          different one warns, names `nros sync`, and (under
+#                          different one warns, names `nros configure`, and (under
 #                          --dry-run) has written nothing when it does
 #   8. pre-W2 asset     -> VERSION alone still installs, and the binary reports
 #                          that the release declares nothing rather than guessing
@@ -237,7 +237,7 @@ $(cat "$tmp/pin-diff.txt")"
 nros_grep_q "^warning: codegen $emitted -> $((emitted + 1))" "$tmp/pin-diff.txt" \
     || fail "7: a codegen change did not warn
 $(cat "$tmp/pin-diff.txt")"
-nros_grep_q "nros sync" "$tmp/pin-diff.txt" \
+nros_grep_q "nros configure" "$tmp/pin-diff.txt" \
     || fail "7: the warning does not name the remedy"
 # And it warned BEFORE it would have acted: --dry-run wrote nothing.
 nros_grep_q '9\.9\.9-nros7' "$proj/nros-toolchain.toml" \

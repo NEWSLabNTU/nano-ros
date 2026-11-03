@@ -46,7 +46,7 @@ Just Works. (Python `.launch.py` is not supported yet.)
 ## Build
 
 ```bash
-nros sync            # generated bindings + resolves the bringup's
+nros configure            # generated bindings + resolves the bringup's
                      # SystemModel into build/nros/models/
 nros build linux    # the `[image.linux]` declared in demo_bringup/system.toml
 ```
@@ -59,7 +59,7 @@ names — and writes every cargo setting that image needs to
 `build/posix-zenoh/linux_entry/nros-cargo.toml`. The macro walks the package
 index, reads the launch file, and emits one `<node_pkg>::register(runtime)?;`
 call per `<node>`, so the one binary boots both nodes. The Node pkgs use
-generated `std_msgs::msg::Int32`, so run `nros sync` before the first build and
+generated `std_msgs::msg::Int32`, so run `nros configure` before the first build and
 after changing message dependencies.
 
 Driving cargo yourself is the same build, named explicitly:

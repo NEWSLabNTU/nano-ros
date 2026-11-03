@@ -39,7 +39,7 @@ cmake --build build
 ```
 
 Nothing to build by hand first: `find_package(nano_ros)` builds the `nros-c`
-library the example links. No `nros sync` either — a single-package C leaf's
+library the example links. No `nros configure` either — a single-package C leaf's
 message bindings are a CMake-time output. The board, the RMW and the domain come
 from `system.toml` beside `CMakeLists.txt` (`[image.linux]` + `[system]`,
 RFC-0098 D3/D5), not from a `-D` flag.

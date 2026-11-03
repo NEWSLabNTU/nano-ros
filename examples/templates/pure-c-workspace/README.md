@@ -15,7 +15,7 @@ resolved from the launch file.
 
 ```sh
 source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
-nros sync
+nros configure
 nros build linux
 ./build/posix-zenoh-linux/cmake/linux_entry
 ```

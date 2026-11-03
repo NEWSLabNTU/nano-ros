@@ -10,7 +10,7 @@
 # Issue 1882: a leaf with a `system.toml` is not a standalone cargo project.
 # Its manifest names the `<leaf>_nros_selection` crate and the in-repo
 # `[patch.crates-io]` rows, and cargo gets its target, link set and build-std from
-# `build/<image>/nros-cargo.toml` -- all RENDERED by `nros sync` (RFC-0098 D1,
+# `build/<image>/nros-cargo.toml` -- all RENDERED by `nros configure` (RFC-0098 D1,
 # phase-445 W6), none tracked. Linted bare, 27 leaves failed at manifest parse
 # (`no matching package named nros`, `failed to load manifest for dependency
 # ..._nros_selection`) -- the red six weeks of no lane hid. So render first, and
@@ -50,12 +50,12 @@ esac
 plan="${NROS_LINT_LEAF_PLAN:-}"
 if [ -n "${NROS_CHECK_VERBOSE:-}" ] && [ -z "$plan" ]; then echo "  check $dir"; fi
 
-# `-p <leaf>`, not a bare `fmt --check`: once a developer has run `nros sync`
+# `-p <leaf>`, not a bare `fmt --check`: once a developer has run `nros configure`
 # the leaf's workspace includes the `generated/*` message crates, user-side
 # codegen output that rustfmt has no business judging.
 pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.toml" | head -1)"
 
-# Issue 1887: EVERY leaf `nros sync` can read is rendered, whatever its
+# Issue 1887: EVERY leaf `nros configure` can read is rendered, whatever its
 # platform. Since phase-445 W6 no example tracks a `.cargo/` (gate
 # `check-example-cargo-dirs`), so a leaf with `[image.<id>]` names its
 # generated `<leaf>_nros_selection` crate, and even a leaf with no `system.toml`
@@ -64,11 +64,11 @@ pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.t
 render=0
 if nros_leaf_sync_renders "$dir"; then render=1; fi
 if [ "$render" = 1 ] && [ -z "$plan" ]; then
-    # `nros sync` is idempotent; its chatter is not this gate's output, so it is
+    # `nros configure` is idempotent; its chatter is not this gate's output, so it is
     # kept for the failure path only.
     log="$(mktemp "${TMPDIR:-/tmp}/nros_lint_sync.XXXXXX")"
-    if ! (cd "$dir" && nros sync) >"$log" 2>&1; then
-        echo "linux check: \`nros sync\` failed in $dir" >&2
+    if ! (cd "$dir" && nros configure) >"$log" 2>&1; then
+        echo "linux check: \`nros configure\` failed in $dir" >&2
         cat "$log" >&2
         rm -f "$log"
         exit 1

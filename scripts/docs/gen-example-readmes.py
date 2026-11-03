@@ -197,12 +197,12 @@ def render(leaf: pathlib.Path) -> str:
     ]
 
     # The board, the RMW and the deployment identity come from `system.toml`
-    # (RFC-0098 D3/D5), so no build command here carries them: `nros sync`
+    # (RFC-0098 D3/D5), so no build command here carries them: `nros configure`
     # turns that one choice into the generated settings the build reads.
     if zephyr and is_rust:
         lines += [
             "source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH",
-            "nros sync                                # generated/ message crates",
+            "nros configure                                # generated/ message crates",
             "```",
             "",
             "Zephyr is the carve-out: the build verb is `west`, not `nros build`. The",
@@ -217,13 +217,13 @@ def render(leaf: pathlib.Path) -> str:
             "Zephyr is the carve-out: the build verb is `west`. The board is west's",
             "`-b`, and the RMW is one of this leaf's `system.toml` images",
             f"(`-DNROS_IMAGE=zephyr_<rmw>`) — see the {zephyr_readme}.",
-            "No `nros sync` here: a C/C++ leaf's message bindings are a build-system",
+            "No `nros configure` here: a C/C++ leaf's message bindings are a build-system",
             "output, generated while the project configures.",
         ]
     elif is_rust and image:
         lines += [
             "source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH",
-            "nros sync     # generated/ message crates + build/<image>/nros-cargo.toml",
+            "nros configure     # generated/ message crates + build/<image>/nros-cargo.toml",
             f"nros build    # or: nros build {image}",
             "```",
         ]
@@ -232,7 +232,7 @@ def render(leaf: pathlib.Path) -> str:
         # `[image.*]` for `nros build` to resolve — cargo still drives it.
         lines += [
             "source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH",
-            "nros sync                                # generated/ message crates",
+            "nros configure                                # generated/ message crates",
             "cargo build",
             "```",
             "",
@@ -245,7 +245,7 @@ def render(leaf: pathlib.Path) -> str:
             "cmake --build build",
             "```",
             "",
-            "No `nros sync` here: a C/C++ leaf's message bindings are a CMake-time",
+            "No `nros configure` here: a C/C++ leaf's message bindings are a CMake-time",
             "output. `-Dnano_ros_ROOT` is `find_package(nano_ros)`'s hint: it says where",
             "the checkout is, and nothing else. The board, the RMW and the domain come",
             "from `system.toml` (below), never from a `-D` flag.",
@@ -268,7 +268,7 @@ def render(leaf: pathlib.Path) -> str:
         lines += [
             f"{router}.",
             "The binary lands under `target/debug/`; `cargo run` runs it, after the",
-            "`nros sync` above.",
+            "`nros configure` above.",
         ]
     elif native and is_cmake:
         lines += [
@@ -312,7 +312,7 @@ def render(leaf: pathlib.Path) -> str:
             "",
             f"{manifest} names no board crate. The board crate, its RMW backend and",
             "its runtime crates come from the `<pkg>_nros_selection` package that",
-            "`nros sync` / `nros build` generate under `build/nros/selection/` from",
+            "`nros configure` / `nros build` generate under `build/nros/selection/` from",
             "`system.toml` (RFC-0098 D6), so switching board is the `[image.*] board`",
             "line and nothing else",
             f"([issue 1305]({GH}/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).",
@@ -362,7 +362,7 @@ def render(leaf: pathlib.Path) -> str:
             "",
             f"What the image KEEPS: `system.contract.yaml` beside `system.toml` ([RFC-0100]"
             f"({GH}/docs/design/0100-rmw-agnostic-sizing-model.md) D3) — the per-endpoint QoS",
-            "no probe of the code can answer. `nros sync` joins it onto what this leaf",
+            "no probe of the code can answer. `nros configure` joins it onto what this leaf",
             "registers and writes `build/nros/sizing/<image>.toml`, which each backend sizes",
             "its own pools from; `just mem-report <binary>` is where the difference shows.",
             "Delete the file and the image builds byte-identically to one that never had it.",

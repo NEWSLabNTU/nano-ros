@@ -8,7 +8,7 @@ says which is which. `examples/**` tracks no `.cargo/` file at all now
 `build/<image>/nros-cargo.toml` — so the `include` arm covers only the leaves
 outside `examples/`. The arm that still fronts `just format` and
 `build-test-fixtures` for an example is the SECOND one: a `path =` dep into a
-`generated/` tree that `nros sync` has not produced.
+`generated/` tree that `nros configure` has not produced.
 
 Why this needs a guard at all
 -----------------------------
@@ -16,7 +16,7 @@ A tracked leaf config reaches sync-generated content through `include`:
 
     include = ["../../../../../nros-patch.toml", "nros-managed-patch.toml"]
 
-Both targets are GITIGNORED and written by `nros sync` — the central one since
+Both targets are GITIGNORED and written by `nros configure` — the central one since
 #272, the sidecar since #457. Neither exists in a fresh clone.
 
 Two comments in `cmd/ws.rs` justified that arrangement with "cargo ignores a
@@ -33,7 +33,7 @@ frames deep, naming a path with no mention of sync:
 A fresh clone cannot build these leaves in any case — their patches point at
 `generated/` message crates that only sync produces from the USER's ament
 install. So the fix is not to make the include optional; it is to say
-"run `nros sync`" at the seam, once, instead of once per leaf in cargo's words.
+"run `nros configure`" at the seam, once, instead of once per leaf in cargo's words.
 
 A SECOND shape of the same failure
 ----------------------------------
@@ -43,7 +43,7 @@ workspace member can path-dep a crate under `generated/` too:
     freertos_realtime_entry_nros_selection = { path = "../../generated/nros-selection/..." }
 
 and cargo fails identically — during manifest parse, four frames deep, naming a
-path and never `nros sync`. Issue 0474 wired this guard ahead of `format` for
+path and never `nros configure`. Issue 0474 wired this guard ahead of `format` for
 exactly that reason, but the guard only read `include` targets, so
 `linux::format` still died on an unsynced leaf while the guard reported "OK"
 (realtime-rust, 2026-08-24). A gate whose coverage is narrower than the rule it
@@ -51,7 +51,7 @@ enforces reads as coverage — so both shapes are checked here, in ONE gate,
 rather than growing a second spelling elsewhere.
 
 Only path deps pointing INTO a `generated/` directory are checked: those have a
-known producer (`nros sync`) and a known remedy. A path dep that is merely typo'd
+known producer (`nros configure`) and a known remedy. A path dep that is merely typo'd
 is cargo's to report.
 
 Exit 0 when every include and every generated path dep resolves, 1 otherwise.
@@ -72,12 +72,12 @@ INCLUDE_RE = re.compile(r'^\s*include\s*=\s*(\[[^\]]*\])', re.M | re.S)
 STR_RE = re.compile(r'"([^"]*)"')
 
 # A path dep whose target lives under a `generated/` directory — the shape
-# `nros sync` produces. Matches `path = "…/generated/…"` in either the inline
+# `nros configure` produces. Matches `path = "…/generated/…"` in either the inline
 # table or the expanded form.
 GENERATED_PATH_RE = re.compile(r'path\s*=\s*"([^"]*\bgenerated/[^"]*)"')
 
 # ...with ONE exception, and it is about the PRODUCER rather than the shape.
-# `generated/px4_msgs` is not written by `nros sync` — issue 0510 records that
+# `generated/px4_msgs` is not written by `nros configure` — issue 0510 records that
 # px4_msgs is not an ament package, so only `nros generate-px4-msgs` can emit it,
 # from the PX4 `.msg` tree, and only `just px4 build-fixtures` runs that.
 #
@@ -184,7 +184,7 @@ def main() -> int:
             f"not required by this lane (issue 1114)."
         )
         print("      They are produced by `just px4 build-fixtures` (via "
-              "`nros generate-px4-msgs`), not by `nros sync`, and px4 has no "
+              "`nros generate-px4-msgs`), not by `nros configure`, and px4 has no "
               "`examples/fixtures.toml` row — so no tier lane builds these leaves.")
         if px4_available:
             print("      PX4 IS provisioned here, so `just px4 build-fixtures` "
@@ -212,11 +212,11 @@ def main() -> int:
         if len(gen_missing) > 5:
             print(f"  … and {len(gen_missing) - 5} more", file=sys.stderr)
         print(
-            "\n`generated/` is produced by `nros sync` from the USER's own message "
+            "\n`generated/` is produced by `nros configure` from the USER's own message "
             "packages and is\nnever committed, so a clone never has it. Cargo "
             "treats the missing manifest as a HARD\nerror during manifest parse — "
             "`cargo metadata`, `cargo fmt` and every gate that reads\nthe leaf fail "
-            "before anything mentions sync.\n\n  source ./activate.sh && nros sync"
+            "before anything mentions sync.\n\n  source ./activate.sh && nros configure"
             "\n\nBypass with NROS_SKIP_LEAF_INCLUDE_CHECK=1.\nSee docs/issues/0463-* "
             "and 0474.",
             file=sys.stderr,
@@ -234,10 +234,10 @@ def main() -> int:
     if len(missing) > 5:
         print(f"  … and {len(missing) - 5} more", file=sys.stderr)
     print(
-        "\nThese targets are gitignored and generated by `nros sync`; a clone "
+        "\nThese targets are gitignored and generated by `nros configure`; a clone "
         "never has them.\nCargo treats a missing include as a HARD error during "
         "manifest parse, so the\naffected leaves cannot even be read until sync "
-        "runs.\n\n  source ./activate.sh && nros sync\n\n"
+        "runs.\n\n  source ./activate.sh && nros configure\n\n"
         "Bypass with NROS_SKIP_LEAF_INCLUDE_CHECK=1 (the cargo error will then "
         "be yours to read).\nSee docs/issues/0463-*.",
         file=sys.stderr,

@@ -2,10 +2,10 @@
 # The ONE resolution of "which launch-resolution toolchain produced this?" —
 # issue 1454.
 #
-# `nros sync` turns a bringup's launch tree into a SystemModel by spawning
+# `nros configure` turns a bringup's launch tree into a SystemModel by spawning
 # `nros-launch-resolve`, which STATICALLY LINKS the `play_launch_parser` crate
 # from the `packages/cli/third-party/play_launch` submodule. That resolver is a
-# build input of every fixture whose staging runs `nros sync` — and nothing
+# build input of every fixture whose staging runs `nros configure` — and nothing
 # recorded it, so a parser bump left those fixtures reading fresh while they
 # held codegen evidence from the previous one (issue 1454's museum case).
 #
@@ -22,7 +22,7 @@
 # (`NROS_PLAY_LAUNCH_SHA`, reported by `--version`). Three reasons it is that
 # and not a binary hash:
 #
-#   1. it is the SAME FACT `nros sync` already stamps into every model it
+#   1. it is the SAME FACT `nros configure` already stamps into every model it
 #      resolves (`meta.resolver.version`, issue 0427) and that
 #      `model_gate::provenance_stale` already treats as staleness one layer
 #      down — so this carries an existing fact to a new consumer rather than
@@ -46,7 +46,7 @@
 
 # nros_launch_resolve_bin <repo_root>
 #
-# The resolver `nros sync` would spawn for checkout <repo_root> — issue 1850.
+# The resolver `nros configure` would spawn for checkout <repo_root> — issue 1850.
 # The ladder has ONE owner, `model_location::launch_resolver_from` (Rust), and
 # the shell READS it through `nros locate tool nros-launch-resolve`, anchored
 # on <repo_root>'s index. Never `$PATH` (issue 0285).

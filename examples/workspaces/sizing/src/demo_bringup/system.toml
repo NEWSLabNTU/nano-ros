@@ -3,7 +3,7 @@
 # One node, six timers, no subscription. The launch wiring names zero callback
 # entities for it; the runtime needs six slots. Everything about this bringup is
 # ordinary — the interesting part is that the entity count lives only in the
-# source-metadata sidecar `nros sync` produces.
+# source-metadata sidecar `nros configure` produces.
 
 [system]
 name = "sizing_demo"

@@ -18,11 +18,11 @@ Two reasons not to read the old text, rather than one:
   `./scripts/bootstrap.sh`.
 - It sold `nros dev codegen rust --config / --nano-ros-path / --nano-ros-git` as
   the way to get a leaf's `[patch.crates-io]` table. The user command is
-  **`nros sync`**. The flags still parse (`--config` is an accepted alias of
+  **`nros configure`**. The flags still parse (`--config` is an accepted alias of
   `--generate-config`), and `--nano-ros-path` is documented in the binary's own
   help as a no-op kept for back-compat — but what a leaf needs is no longer a
   hand-maintained `.cargo/config.toml`. Under
-  [RFC-0098](../design/0098-generated-leaf-build-config.md) `nros sync` writes
+  [RFC-0098](../design/0098-generated-leaf-build-config.md) `nros configure` writes
   the patch rows, the board's cargo settings and the derived `[env]` into
   `build/<image>/nros-cargo.toml`, and cargo reads that file through `--config`.
 
@@ -30,7 +30,7 @@ Two reasons not to read the old text, rather than one:
 
 ```bash
 cd <leaf>
-nros sync            # generated/ msg crates + build/<image>/nros-cargo.toml
+nros configure            # generated/ msg crates + build/<image>/nros-cargo.toml
 nros build           # or: nros build <image-id>
 ```
 

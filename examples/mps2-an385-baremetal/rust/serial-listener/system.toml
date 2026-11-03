@@ -1,6 +1,6 @@
 # What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
 # schema a workspace bringup uses. Switching board is editing `[image.*] board`
-# and re-running `nros sync`.
+# and re-running `nros configure`.
 
 
 [system]
@@ -22,5 +22,5 @@ dispatch = "deferred"
 board = "mps2-an385-baremetal"
 locator = "serial/UART_0#baudrate=115200"
 # Serial-only firmware (phase-132 / phase-204.7): the `serial/` locator is the
-# link (RFC-0109 D6) — see `serial-talker/system.toml` for what `nros sync`
+# link (RFC-0109 D6) — see `serial-talker/system.toml` for what `nros configure`
 # derives from it.

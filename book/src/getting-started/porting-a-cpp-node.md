@@ -206,7 +206,7 @@ has three roots over one stock package:
 - **FreeRTOS:** `find_package(nano_ros)`, then `add_subdirectory` for each
   package, with `system.toml` naming the board. Build with `nros build`.
 - **Zephyr:** `find_package(Zephyr)` first, then the same two lines, plus a
-  `package.xml` and the Kconfig fragments beside them. Build with `nros sync`
+  `package.xml` and the Kconfig fragments beside them. Build with `nros configure`
   and then `nros build`.
 - **posix:** the same root you already use.
 

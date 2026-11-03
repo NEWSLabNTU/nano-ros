@@ -26,7 +26,7 @@ cd "$(dirname "$0")/.."
 
 # The workspace SOURCE trees. `examples/workspaces/*/src` holds authored
 # packages; their build output belongs under the build root, not beside them.
-# `nros sync` output is EXEMPT and owned elsewhere. A synced package carries
+# `nros configure` output is EXEMPT and owned elsewhere. A synced package carries
 # `<pkg>/build/{nros,nros-metadata}/` — SystemModels and the cmake metadata
 # probe. It is build output beside source and so is genuinely R1-shaped, but
 # phase-330's `model_location` owns where it lands, not phase-344 W7. Flagging

@@ -69,7 +69,7 @@ package's own, or the workspace bringup's), and nothing else does. The
 Rust side has no `.cargo/` to edit — the `thumbv7m-none-eabi` triple,
 the `-Tmps2_an385.ld --nmagic --gc-sections` link group, the QEMU
 runner and the `[patch.crates-io]` rows all come from the board and are
-written by `nros sync` / `nros build` into the image's
+written by `nros configure` / `nros build` into the image's
 `nros-cargo.toml` under `build/`. The C / C++ leaves have no
 `<nano_ros deploy=… board=… rmw=…/>` tuple in their `package.xml`:
 `find_package(nano_ros)` reads `system.toml` instead, and derives the
@@ -134,7 +134,7 @@ host port **7800**; with no `locator` an image dials the board's default
 ## Build
 
 C / C++, in the scaffolded package (`fr_talker/`, where `nros new` left
-you). No `nros sync`: a C or C++ leaf's message bindings are a CMake-time
+you). No `nros configure`: a C or C++ leaf's message bindings are a CMake-time
 output. `nros build` passes the board's cross-toolchain file and the SDK
 root:
 
@@ -142,12 +142,12 @@ root:
 nros build
 ```
 
-Rust, in the workspace (`fr_ws/`). `nros sync` first: it writes the
+Rust, in the workspace (`fr_ws/`). `nros configure` first: it writes the
 generated message bindings and the resolved launch model the entry is
 built from. Without it the build stops at its preflight naming sync:
 
 ```bash probe=50 variant=rust
-nros sync
+nros configure
 nros build freertos
 ```
 
@@ -176,7 +176,7 @@ board's LAN9118, so it reaches a router on the host. The line under
 I/O, and names the NIC explicitly.
 
 **Driving the native tool yourself** is the escape hatch, not the path.
-For cargo (an IDE, a CI step, `--release`): run `nros sync` first, then
+For cargo (an IDE, a CI step, `--release`): run `nros configure` first, then
 point cargo at the generated settings file — `nros build freertos
 --dry-run` prints the exact `cargo build --manifest-path … --config
 …/nros-cargo.toml` line. For CMake, `nros build --dry-run` in the C /

@@ -4,7 +4,7 @@
 # A hash of the SystemModel `nros-launch-resolve` emits for a committed probe
 # launch tree, so it moves iff resolved models would.
 #
-# Why the resolver is in the fixture signature at all: `nros sync` shells out to
+# Why the resolver is in the fixture signature at all: `nros configure` shells out to
 # it (RFC-0060), and the SystemModel that comes back IS a fixture input — it is
 # committed, consumed by `nros::main!(model = …)`, and its contents change what
 # gets built. A signature blind to the resolver repeats issue #182 one layer
@@ -28,7 +28,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 repo_root="$PWD"
 
-# The resolver `nros sync` would run — the one ladder (issue 1850).
+# The resolver `nros configure` would run — the one ladder (issue 1850).
 # shellcheck source=scripts/build/launch-resolver-identity.sh
 . "$repo_root/scripts/build/launch-resolver-identity.sh"
 bin="$(nros_launch_resolve_bin "$repo_root")" || bin=""

@@ -12,7 +12,7 @@ cp -r examples/zephyr/c/listener ~/my-listener && cd ~/my-listener
 Zephyr is the carve-out: the build verb is `west`. The board is west's
 `-b`, and the RMW is one of this leaf's `system.toml` images
 (`-DNROS_IMAGE=zephyr_<rmw>`) — see the [zephyr README](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/README.md).
-No `nros sync` here: a C/C++ leaf's message bindings are a build-system
+No `nros configure` here: a C/C++ leaf's message bindings are a build-system
 output, generated while the project configures.
 
 ## Run

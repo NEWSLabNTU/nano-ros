@@ -770,7 +770,7 @@ lane-stage-reporting:
 #
 # Pure YAML + regex over `.github/workflows/`, so it belongs in the source-free
 # tier. It skips comment prose AND heredoc bodies — both false positives were
-# live in the tree (a comment mentioning `nros sync`; a pull-request comment
+# live in the tree (a comment mentioning `nros configure`; a pull-request comment
 # whose TEXT tells the author to run `just queue-triage`).
 [private]
 workflow-repo-env:
