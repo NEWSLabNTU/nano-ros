@@ -540,7 +540,8 @@ mod tests {
         });
         assert!(ok.is_empty(), "{ok:?}");
 
-        let no_cxx = |p: &str| p != "c++";
+        let absent = ["c++"];
+        let no_cxx = |p: &str| !absent.contains(&p);
         let missing = check_host_toolchain_with(&HostProbe {
             on_path: &no_cxx,
             host_target: &target_ok,
