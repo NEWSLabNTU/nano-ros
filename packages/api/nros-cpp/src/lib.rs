@@ -8463,6 +8463,37 @@ pub unsafe extern "C" fn nros_cpp_executor_set_park_primitive(
     NROS_CPP_RET_OK
 }
 
+/// Issue 2225 (RFC-0113 D9) -- the wake half of a framework's park slot.
+///
+/// `hook(ctx)` is called after every signal of this executor's wake object (a
+/// backend's arrival, an attributed entity wake), from the signalling context.
+/// A PX4 tier binds it to its work item's `ScheduleNow`, so an arrival from
+/// ANY backend schedules the tier instead of waiting for its next deadline.
+/// NULL `hook` clears it.
+///
+/// Returns `NROS_CPP_RET_UNSUPPORTED` when this build has no wake object.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL. `hook` must
+/// be thread-safe, non-blocking and O(1), and `ctx` must outlive it: clear the
+/// hook before `ctx` goes away.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_wake_hook(
+    handle: *mut c_void,
+    hook: Option<unsafe extern "C" fn(*mut c_void)>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if cpp.executor.set_wake_hook(hook, ctx) {
+        NROS_CPP_RET_OK
+    } else {
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
 /// Declare how often this executor's loop intends to come round, in
 /// microseconds. `0` (the default) falls back to the `spin_once` timeout.
 ///

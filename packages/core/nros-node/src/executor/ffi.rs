@@ -515,6 +515,9 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
         granularity_us: u64,
     );
 
+    /// The FFI entry point; see `Executor::set_wake_hook` in `spin.rs`.
+    fn set_wake_hook(&mut self, hook: Option<WakeHookFn>, ctx: *mut core::ffi::c_void) -> bool;
+
     /// The FFI entry point; see `Executor::subscription_handle` in `spin.rs`.
     #[doc(hidden)]
     unsafe fn subscription_handle(&self, entry_index: usize) -> Option<&session::RmwSubscriber>;
@@ -1437,6 +1440,11 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
         granularity_us: u64,
     ) {
         Executor::set_park_primitive(self, park, ctx, granularity_us)
+    }
+
+    #[inline]
+    fn set_wake_hook(&mut self, hook: Option<WakeHookFn>, ctx: *mut core::ffi::c_void) -> bool {
+        Executor::set_wake_hook(self, hook, ctx)
     }
 
     #[doc(hidden)]

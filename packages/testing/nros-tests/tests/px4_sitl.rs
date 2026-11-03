@@ -38,10 +38,12 @@ const WAKE_SLACK: u64 = 4;
 /// real-time priority, so the bound leaves room for a loaded hosted runner.
 const LATENCY_BOUND_US: u64 = 5_000;
 
-/// Tick jitter in PX4 time. Under lockstep that time moves in steps, and the
-/// measured jitter is exactly one step (16 000 us, every run): the bound is
-/// "within one step", not a real-time claim.
-const JITTER_BOUND_US: u64 = 20_000;
+/// Tick jitter in PX4 time: a sanity bound, not a real-time claim. Under
+/// lockstep that time moves in steps, and the step grows with host load:
+/// 16 ms on an idle host, 28-64 ms at load average 45 with the same image
+/// (measured 2026-11-03, with and without issue 2225's hook). A quarter
+/// period still catches a timer that is broken rather than coarse.
+const JITTER_BOUND_US: u64 = 250_000;
 
 /// phase-325 W2.4 — a STOCK PX4 consumer reads what nano-ros published, and
 /// nano-ros reads what PX4's commander published.

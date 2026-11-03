@@ -223,7 +223,7 @@ pub use spin::SessionSpec;
 #[cfg(any(has_rmw, test))]
 pub use spin::{
     MAX_WAKE_SOURCES, NextDeadlineFn, PARK_EXPIRED, PARK_SIGNALLED, PARK_YIELDED, ParkUntilFn,
-    RemapRefused, WakeSourceId,
+    RemapRefused, WakeHookFn, WakeSourceId,
 };
 #[cfg(any(has_rmw, test))]
 pub use storage::{

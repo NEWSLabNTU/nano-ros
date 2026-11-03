@@ -1029,3 +1029,71 @@ fn an_idle_zenoh_entry_wakes_only_for_its_deadlines(zenohd_unique: ZenohRouter) 
     let at: Vec<Duration> = fired.iter().map(|t| t.duration_since(start)).collect();
     eprintln!("idle zenoh entry: {spins} spins in {WINDOW:?}, timer dispatched at {at:?}");
 }
+
+/// Issue 2225 (RFC-0113 D9) — the wake half of a yielding park slot.
+///
+/// A framework whose tier is a scheduled item, not a parked thread (a PX4
+/// work item), never waits on the executor's wake object, so an arrival that
+/// only signals it would be dispatched at the tier's next deadline. The hook
+/// `set_wake_hook` installs is called after every signal of that object. Here
+/// a zenoh arrival must reach it with nobody spinning the executor, and a
+/// cleared hook must not be called.
+#[rstest]
+fn a_zenoh_arrival_calls_the_wake_hook_without_a_spin(zenohd_unique: ZenohRouter) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use nros_node::executor::ffi::ExecutorFfi;
+
+    static HOOKS: AtomicU32 = AtomicU32::new(0);
+    unsafe extern "C" fn hook(_ctx: *mut core::ffi::c_void) {
+        HOOKS.fetch_add(1, Ordering::SeqCst);
+    }
+
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+    let mut exec = open(&locator, "wake_hook_sub", domain);
+    let node = exec.node_builder("wake_hook_sub").build().expect("node");
+    subscribe(&mut exec, node, "/wake_hook/a");
+    let publisher = exec
+        .node_mut(node)
+        .create_publisher_raw("/wake_hook/a", TYPE, "")
+        .expect("publisher");
+
+    assert!(
+        ExecutorFfi::set_wake_hook(&mut exec, Some(hook), core::ptr::null_mut()),
+        "this build has a wake object, so the hook must install"
+    );
+    std::thread::sleep(SETTLE);
+    HOOKS.store(0, Ordering::SeqCst);
+
+    let start = Instant::now();
+    while HOOKS.load(Ordering::SeqCst) == 0 {
+        assert!(
+            start.elapsed() < ARRIVAL_BUDGET,
+            "no wake-hook call within {ARRIVAL_BUDGET:?} of publishing: a PX4 tier would hear \
+             this arrival only at its next deadline"
+        );
+        publisher.publish_serialized(PAYLOAD).expect("publish");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // Negative control: a cleared hook is not called.
+    assert!(ExecutorFfi::set_wake_hook(
+        &mut exec,
+        None,
+        core::ptr::null_mut()
+    ));
+    std::thread::sleep(SETTLE);
+    HOOKS.store(0, Ordering::SeqCst);
+    for _ in 0..5 {
+        publisher.publish_serialized(PAYLOAD).expect("publish");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::thread::sleep(SETTLE);
+    assert_eq!(
+        HOOKS.load(Ordering::SeqCst),
+        0,
+        "a cleared wake hook was still called"
+    );
+}
