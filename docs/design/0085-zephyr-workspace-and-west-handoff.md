@@ -1,5 +1,7 @@
 # RFC-0085 — Where the nano-ros workspace lives, and who calls whom on Zephyr
 
+> **Amended by [RFC-0120](0120-nros-configure-one-resolver.md) (2026-11-03).** The supplier D2 left unnamed is `nros configure`. It now WRITES (sync, census, resolve, generated files), so D14's "a query cannot loop" is no longer the reason it cannot loop. The reason is RFC-0120 D1: `nros configure` never invokes a target build tool, and a host tool never invokes `nros build`. `nros dev image facts` stays the read-only query it is, and D2's promise that `west build -b <board> <app>` works is kept.
+
 **Status:** Draft (2026-08-29)
 **Amends / refines:** RFC-0065 (`nros build`) — D5's framework-entry escape, and
 the west driver added for issue 0892.

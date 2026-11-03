@@ -6,7 +6,7 @@ type: enhancement
 area: [memory, zephyr, rmw-zenoh]
 severity: medium
 found: 2026-11-01
-related: [2201, 1122, 1125, 1324, 1033, phase-524]
+related: [2201, 1122, 1125, 1324, 1033, phase-524, phase-530]
 ---
 
 **Home:** [phase-524](../roadmap/phase-524-emulator-twins.md)
