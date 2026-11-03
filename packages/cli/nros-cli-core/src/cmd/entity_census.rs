@@ -981,16 +981,30 @@ pub(crate) fn take_leaf_census_with(
     // ran, and nothing but this verb builds `census-host`, so the census stays
     // fresh until the leaf's own sources move (issue 1252's convergence loop
     // was about a binary another build could change).
+    // A component-less leaf has no `[[component]]` to write either fix into:
+    // its loose fix is `[system] entities = "defaults"`, and its tight one
+    // needs a component first.
+    let component_less = nros_orchestration_ir::leaf_system::read(&leaf)
+        .ok()
+        .flatten()
+        .is_some_and(|s| s.components.is_empty());
+    let fixes = if component_less {
+        "It has no `[[component]]`, so either fix goes in its system.toml:\n  \
+         [system] entities = \"defaults\"   (loose, written down: the crate defaults)\n  \
+         a `[[component]]` with entities = [\"publisher:std_msgs/msg/String:/chatter\", \
+         \"timer\"]   (tight: state what it creates)"
+    } else {
+        "Either fix is one line in its system.toml `[[component]]`:\n  \
+         entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]   (tight: \
+         state what it creates)\n  \
+         entities = \"defaults\"   (loose, written down: the crate defaults)"
+    };
     let refused = |step: &str, status: std::process::ExitStatus| {
         eyre::eyre!(
             "{}: {step} of its host census build exited {status}.\n\
              This leaf is counted by its census{}: its own sources, built for the HOST and run \
              in counting mode. Sources that call an RTOS API directly (a Zephyr `k_*` call, \
-             say) cannot build for the host, so nothing can be counted. Either fix is one line \
-             in its system.toml `[[component]]`:\n  \
-             entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]   (tight: \
-             state what it creates)\n  \
-             entities = \"defaults\"   (loose, written down: the crate defaults)",
+             say) cannot build for the host, so nothing can be counted. {fixes}",
             leaf.display(),
             match source {
                 crate::leaf_census::EntitySource::Census { explicit: false } => {
@@ -2087,6 +2101,31 @@ mod tests {
             "names the loose fix: {msg}"
         );
         assert!(msg.contains("the default for a C/C++ leaf"), "{msg}");
+    }
+
+    /// Fix round 2 -- a COMPONENT-LESS leaf has no `[[component]]` to write
+    /// a fix into, so its refusal names `[system] entities = "defaults"`.
+    #[test]
+    fn a_failed_host_census_of_a_component_less_leaf_names_the_system_fix() {
+        use std::os::unix::process::ExitStatusExt;
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(td.path(), "");
+        let host = HostSteps {
+            missing: &|_| Vec::new(),
+            run: &|_| Ok(std::process::ExitStatus::from_raw(1 << 8)),
+        };
+        let msg = format!(
+            "{:#}",
+            take_leaf_census_with(td.path(), None, 5, &host).expect_err("refused")
+        );
+        assert!(
+            msg.contains("[system] entities = \"defaults\""),
+            "names the system-level fix: {msg}"
+        );
+        assert!(
+            !msg.contains("`[[component]]`:"),
+            "points at no component it does not have: {msg}"
+        );
     }
 
     /// phase-530 W2 (C3) -- a missing host tool is named, and nothing runs.

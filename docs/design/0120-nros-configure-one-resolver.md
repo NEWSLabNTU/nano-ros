@@ -245,8 +245,11 @@ Consequences:
   still applies anywhere (phase-530 W2).
 - **A leaf with no `[[component]]`** (a port that names its executable in
   CMake) is census-sized by default too when its `CMakeLists.txt` builds a
-  program (`nano_ros_add_executable`, or `add_subdirectory` of a ported
-  workspace's packages). Its opt-out is `[system] entities = "defaults"`, the
+  program (`nano_ros_add_executable`, a plain `add_executable`,
+  `nros_components_register_node(... EXECUTABLE ...)`, or `add_subdirectory`
+  of a ported workspace's packages -- never of the nano-ros tree itself,
+  `add_subdirectory("${NROS_REPO_DIR}" nano_ros)`, which adds the runtime and
+  no program). Its opt-out is `[system] entities = "defaults"`, the
   same word, because it has no component row to write it on. One with no
   component and no program has nothing a census could run, and is refused
   naming both fixes: add the `[[component]]` with its `entities`, or write
