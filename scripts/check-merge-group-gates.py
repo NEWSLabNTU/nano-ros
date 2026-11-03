@@ -25,6 +25,11 @@ So for each gate in `MERGE_GATING` below this asserts, against `gate.yml`:
      share, so a matrix that drops an entry, or a literal `2/3`, quietly drops
      work while every shard reads green. This rule covers every job in
      `SHARD_WORKFLOWS`, not just the merge-gating ones.
+  6. a merge-gating gate split into PARTS (issue 2219: a step sets a
+     `*_PART=<x>` variable) has, among the steps that run it on
+     `merge_group`, the complement of every part it names: `zephyr` needs
+     `no-zephyr` and the reverse. The parts are complements by construction,
+     so a missing side is a whole class of units nobody builds.
 
 AUTHORED, deliberately: the list is a record of decisions, and there is nothing
 to derive a decision from. Each entry names the decision that put it here.
@@ -69,6 +74,21 @@ def _events_of(guard, wf_events):
     if re.search(r"!\s*\(?\s*contains\(\s*$", g[: m.start()]):
         return set(wf_events) - named
     return named
+
+
+_PART_SET = re.compile(r"_PART=\s*(?:\"([^\"]*)\"|(\S+))")
+
+
+def _parts_of(step):
+    vals = [q or b for q, b in _PART_SET.findall(step.get("run") or "")]
+    for key, val in (step.get("env") or {}).items():
+        if str(key).endswith("_PART"):
+            vals.append(str(val))
+    return vals
+
+
+def _complement(part):
+    return part[3:] if part.startswith("no-") else "no-" + part
 
 
 _SHARD_SET = re.compile(r"_SHARD=\s*(?:\"([^\"]*)\"|(\S+))")
@@ -124,6 +144,7 @@ def check(doc, text):
             errs.append(f"`just check {gate}` is run by no job in gate.yml ({why})")
             continue
         heard = False
+        parts = set()
         for jid, job, step in hosts:
             job_ev = _events_of(job.get("if"), wf_events)
             step_ev = _events_of(step.get("if"), job_ev) & job_ev
@@ -157,6 +178,11 @@ def check(doc, text):
                             f"run there ({why})")
                 continue
             heard = True
+            parts.update(_parts_of(step))
+        for p in sorted(parts):
+            if _complement(p) not in parts:
+                errs.append(f"`{gate}` runs part `{p}` on merge_group but no job runs part "
+                            f"`{_complement(p)}` — that part's units are built by nobody ({why})")
         if not heard:
             errs.append(f"`{gate}` does not gate merge_group through the required `CI` ({why})")
     return errs
@@ -217,6 +243,28 @@ SHARDED = SAMPLE.replace(
 assert SHARDED != SAMPLE and "shard: [1, 2, 3]" in SHARDED
 
 
+# Issue 2219: the same gate as two complementary parts, each its own job.
+_PART_JOB = SAMPLE[SAMPLE.index("  check-template-copy-out:\n"):SAMPLE.index("  ci-ok:\n")]
+PARTED = SAMPLE.replace(
+    _PART_JOB,
+    _PART_JOB.replace("          just check template-copy-out\n",
+                      "          export NROS_TEMPLATE_COPY_OUT_PART=no-zephyr\n"
+                      "          just check template-copy-out\n")
+    + _PART_JOB.replace("check-template-copy-out:", "check-template-copy-out-zephyr:")
+               .replace("          just check template-copy-out\n",
+                        "          export NROS_TEMPLATE_COPY_OUT_PART=zephyr\n"
+                        "          just check template-copy-out\n"),
+).replace(
+    "      - check-template-copy-out\n",
+    "      - check-template-copy-out\n      - check-template-copy-out-zephyr\n",
+).replace(
+    '          sibling check-template-copy-out "${{ needs.check-template-copy-out.result }}" "merge_group workflow_dispatch"\n',
+    '          sibling check-template-copy-out "${{ needs.check-template-copy-out.result }}" "merge_group workflow_dispatch"\n'
+    '          sibling check-template-copy-out-zephyr "${{ needs.check-template-copy-out-zephyr.result }}" "merge_group workflow_dispatch"\n',
+)
+assert PARTED.count("_PART=") == 2 and "check-template-copy-out-zephyr.result" in PARTED
+
+
 def selftest():
     def run(text):
         doc = yaml.safe_load(text)
@@ -244,6 +292,11 @@ def selftest():
         ("a shard dropped from the matrix", SHARDED.replace("shard: [1, 2, 3]", "shard: [1, 3]"), True),
         ("a fixed shard, no matrix", SHARDED.replace("${{ matrix.shard }}/3", "2/3"), True),
         ("the matrix shorter than the spec", SHARDED.replace("}}/3", "}}/4"), True),
+        ("split into both parts", PARTED, False),
+        ("one part dropped",
+         PARTED.replace("export NROS_TEMPLATE_COPY_OUT_PART=zephyr\n", ""), True),
+        ("the complement renamed away",
+         PARTED.replace("NROS_TEMPLATE_COPY_OUT_PART=no-zephyr", "NROS_TEMPLATE_COPY_OUT_PART=host"), True),
         ("a longer gate name is not this gate",
          SAMPLE.replace("just check template-copy-out", "just check template-copy-out-extra"), True),
     ]
