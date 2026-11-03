@@ -996,7 +996,10 @@ fn an_unsynced_workspace_is_refused_before_anything_is_generated() {
     std::fs::remove_dir_all(tmp.path().join("build/nros")).unwrap();
     let e = plan_builds(&args(tmp.path(), &["linux"])).expect_err("must refuse");
     let msg = format!("{e:#}");
-    assert!(msg.contains("nros sync"), "names the exact command: {msg}");
+    assert!(
+        msg.contains("nros configure"),
+        "names the exact command: {msg}"
+    );
     assert!(msg.contains("nothing was built"), "{msg}");
 }
 
