@@ -28,11 +28,12 @@
 # (`workspace-fixtures-build.sh`, the Zephyr leaf lane) run it themselves only
 # when invoked directly, where nothing else is building concurrently.
 #
-# Issue 1556 -- and every standalone C/C++ LEAF whose `system.toml` takes a
-# component's entities from its census (`entities = "census"`): its configure
-# reads that census through `nros ws entity-facts --leaf` and `sizing-descriptor
+# Issue 1556 -- and every standalone C/C++ LEAF counted by its census
+# (`entities = "census"`, or -- RFC-0120 D4 -- a cross leaf that states no
+# `entities`): its configure reads that census through `sizing-descriptor
 # --from-leaf`, and refuses without a fresh one. `fixtures-manifest.py
-# census-leaves` lists them and `nros dev image entity-census take --leaf <dir>`
+# census-leaves` lists the candidates; `nros dev image entity-census take --leaf <dir>`
+# decides (a leaf the rule does not count is "nothing to take") and
 # builds the leaf's own `src/` for the host and runs it, into
 # `<leaf>/build/census-host` -- a tree no fixture row builds into, so this half
 # could run anywhere; it runs here for the same reason as the images: once,

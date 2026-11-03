@@ -121,9 +121,11 @@ nano-ros has no exceptions, and a few handles observe rather than own.
 6. Size the pools for a large node. A package built this way declares no
    entity counts, so each pool starts at its embedded default and start-up
    stops at the first one that fills, naming its knob. In a nano-ros
-   workspace, let the census count them: state `entities = "census"` on the
-   component row, and the configure runs the program once on the host and
-   sizes the pools from what it created:
+   workspace, let the census count them. For an image that runs on a board
+   (not on the host), this is the default: a C/C++ component that states no
+   `entities` is counted by its census, the configure running the program
+   once on the host and sizing the pools from what it created. Writing it
+   down says the same thing:
 
    ```toml
    [[component]]
@@ -132,6 +134,14 @@ nano-ros has no exceptions, and a few handles observe rather than own.
    name = "my_node"
    entities = "census"
    ```
+
+   The census build needs a host C and C++ compiler, CMake, Ninja, the host
+   Rust target and the store's Corrosion; the configure names whichever is
+   missing. A component whose sources call an RTOS API directly cannot build
+   for the host, and its configure is refused with two fixes: list its
+   entities (`entities = ["publisher:std_msgs/msg/String:/chatter",
+   "timer"]`), or write `entities = "defaults"` to keep the embedded defaults
+   on purpose.
 
    Otherwise set the knobs in the configure's environment. Autoware's
    `autoware_external_cmd_selector` (12 subscriptions, 7 publishers, a
