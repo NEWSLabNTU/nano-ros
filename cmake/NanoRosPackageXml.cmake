@@ -282,7 +282,7 @@ endfunction()
 #
 # The file is read by `nros dev image leaf-system` — the CLI front of
 # `nros_orchestration_ir::leaf_system`, the ONE reader `nros::main!` and
-# `nros sync` also use — never by a regex here: a second parser of one file is
+# `nros configure` also use — never by a regex here: a second parser of one file is
 # how a Rust and a C leaf would read it two ways. The DEPLOY token (the
 # NROS_PLATFORM axis) is derived from the board through the board catalog.
 #

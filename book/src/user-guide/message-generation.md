@@ -63,7 +63,7 @@ Declare your ROS interface dependencies in `<depend>` tags:
 
 ```bash
 cd my_project
-nros sync
+nros configure
 ```
 
 This will:
@@ -76,14 +76,14 @@ This will:
    carrying the board's triple and flags, the resolved pool budgets, and the
    `[patch.crates-io]` rows for the nano-ros runtime crates
 
-`nros sync` is the user's verb. `nros dev codegen rust` is the codegen-only
+`nros configure` is the user's verb. `nros dev codegen rust` is the codegen-only
 primitive underneath it — steps 1–4 and nothing else — and is useful when
 you want bindings without a build.
 
 **Step 3: there is no step 3 — `package.xml` is the dependency list**
 
 A generated message crate is a **path dependency** on its own directory, and
-`nros sync` (and `nros build`, before it plans) writes that row for you: one
+`nros configure` (and `nros build`, before it plans) writes that row for you: one
 per `<depend>` / `<build_depend>` / `<exec_depend>` that names a message
 package, tagged `# nros-managed`:
 
@@ -107,7 +107,7 @@ published, and a bare name resolves against the public crates.io instead
 
 The nano-ros runtime crates are the other case — `nros`,
 `nros-board-<board>`, the backends — and they *are* registry-named with
-`version = "*"`, because `nros sync` writes the `[patch.crates-io]` rows
+`version = "*"`, because `nros configure` writes the `[patch.crates-io]` rows
 that redirect them into the nano-ros SDK root.
 
 ### Why msg crates are RMW-agnostic
@@ -144,14 +144,14 @@ section 212.K.7.
 ## Where the nano-ros sources come from
 
 A project uses the SDK root the `nros` binary belongs to — a release's
-own `share/nano-ros` (`nros dev sdk root` prints it) — so a plain `nros sync`
+own `share/nano-ros` (`nros dev sdk root` prints it) — so a plain `nros configure`
 works anywhere. To name a different SDK root, pass it:
 
 ```bash
-nros sync --nano-ros-path <sdk-root>
+nros configure --nano-ros-path <sdk-root>
 ```
 
-`nros sync` then writes the `[patch.crates-io]` rows into that image's
+`nros configure` then writes the `[patch.crates-io]` rows into that image's
 generated settings file, pointing each `nros*` requirement at a directory
 in the SDK root. Nothing about the location is baked into a tracked file,
 so moving the project, or installing another release, is one re-sync, not
@@ -186,7 +186,7 @@ Options:
 
 It also still accepts `--generate-config` / `--nano-ros-path` /
 `--nano-ros-git`, which write a leaf `.cargo/config.toml` by hand. Those are
-the pre-RFC-0098 shape and are not the path to use: `nros sync` writes the
+the pre-RFC-0098 shape and are not the path to use: `nros configure` writes the
 patches into the generated settings file instead, where they are regenerated
 rather than committed.
 
@@ -287,8 +287,8 @@ is — carries its own `system.toml` and resolves on its own, so it builds
 wherever it lives. Build each from its own directory:
 
 ```bash
-cd my_talker && nros sync && nros build
-cd my_service_client && nros sync && nros build
+cd my_talker && nros configure && nros build
+cd my_service_client && nros configure && nros build
 ```
 
 ## Regenerating Bindings

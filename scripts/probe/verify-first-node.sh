@@ -38,7 +38,7 @@ cd "$ws"
 # the entry is generated from the bringup's `[image.linux]` by `nros build`.
 # No root is named: the in-tree `nros` knows the checkout it was built in
 # (RFC-0103 D6, amended 2026-10-12), exactly as the book's flow says.
-nros sync
+nros configure
 nros build
 
 bin=build/posix-cyclonedds-linux/cmake/linux_entry
@@ -68,7 +68,7 @@ kill "$entry_pid" 2>/dev/null || true
 echo "PROBE PASS: scaffolded C++ workspace published on a pristine host, no router running"
 
 # The Rust leg of the same promise: scaffold, sync, run. Exercises the path
-# the C++ leg cannot — `nros sync` + the cargo build of a cyclone workspace
+# the C++ leg cannot — `nros configure` + the cargo build of a cyclone workspace
 # on a host where the zenoh-pico source was never provisioned (the cargo
 # path does not self-provision submodules; a cyclone graph must not need
 # them).
@@ -79,7 +79,7 @@ rm -rf "$ws_rs"
 cd "$ws_rs"
 # No root is named: the in-tree `nros` knows the checkout it was built in
 # (RFC-0103 D6, amended 2026-10-12), exactly as the book's flow says.
-nros sync
+nros configure
 nros build
 # Issue 1439 (resolved): the generated entry must say `spin = "forever"`.
 # Without it the macro's hosted default is register-and-exit, and this
@@ -118,7 +118,7 @@ rm -rf "$pair"
 mkdir -p "$pair"
 for role in talker listener; do
     ( cd "$pair" && nros new "tpl_$role" --platform linux --rmw cyclonedds --template "$role" )
-    ( cd "$pair/tpl_$role" && nros sync && nros build )
+    ( cd "$pair/tpl_$role" && nros configure && nros build )
 done
 "${NROS_DEADLINE[@]}" 60 "$pair/tpl_listener/build/linux/target/debug/tpl_listener" \
     >/tmp/template_listener.log 2>&1 &

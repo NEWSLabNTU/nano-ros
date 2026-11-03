@@ -157,7 +157,7 @@ rclcpp / ament surface); `my_msgs` is not built on its own — its bindings are
 generated into the package that uses it.
 
 ```sh
-nros sync
+nros configure
 nros build
 ./build/my_app/cmake/pkg/my_app/my_app
 ```
@@ -207,7 +207,7 @@ cmake --build build -j
 
 The same msg package feeds a Rust node with no CMake involved: declare
 it in your node package's `package.xml` (`<depend>my_msgs</depend>`) and
-run `nros sync` (or `nros build`) from the workspace root — that is the
+run `nros configure` (or `nros build`) from the workspace root — that is the
 whole change. The package index finds `src/my_msgs/` by its
 `package.xml`, generates the `generated/my_msgs` crate, and writes the
 manifest row itself (`my_msgs = { path = "../../generated/my_msgs",

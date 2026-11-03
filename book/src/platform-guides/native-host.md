@@ -68,11 +68,11 @@ my_native_node/
 
 `nros new <name> --platform linux --lang <rust|c|cpp>` scaffolds that
 shape, and the examples on GitHub are copy-out ready: nothing in one names
-a path into the SDK. For Rust, run `nros sync` and `nros build` (`nros`
+a path into the SDK. For Rust, run `nros configure` and `nros build` (`nros`
 finds its own SDK; `--nano-ros-path` names another). For C/C++, run
 `nros build`, or configure a raw `cmake` with
 `-Dnano_ros_ROOT="$(nros dev sdk root)"` — a single-package C/C++
-leaf needs no `nros sync`, because
+leaf needs no `nros configure`, because
 its message bindings are a CMake-time output.
 
 ## Code Example

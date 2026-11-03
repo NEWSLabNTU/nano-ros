@@ -58,7 +58,7 @@ workspace="$repo_root/$dir"
 
     # phase-318 W1.b — the RESOLVER, for records that actually run it.
     #
-    # `nros sync` shells out to `nros-launch-resolve` and the SystemModel it
+    # `nros configure` shells out to `nros-launch-resolve` and the SystemModel it
     # emits is a committed fixture INPUT, so a signature blind to it repeats
     # #182 one layer down. Scoped to records with a bringup: a resolver rebuild
     # then invalidates the fixtures that consume a resolved model and nothing

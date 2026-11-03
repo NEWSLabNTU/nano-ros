@@ -66,7 +66,7 @@ mkdir -p "$out_root"
 # on disk now and fail loud instead of asserting real codegen evidence produced
 # by a parser nobody is running any more.
 #
-# `--resolver` is passed by the call sites whose build actually ran `nros sync`
+# `--resolver` is passed by the call sites whose build actually ran `nros configure`
 # — never blanket, because this line is an ASSERTION: recording a tool a row
 # never used would turn the next parser bump into a hard failure for a `cxx-syntax`
 # snippet that a C++ compiler alone produced. (The `.inputsig` signature takes
@@ -215,7 +215,7 @@ _cc_copy_shared_depinfo() {
 # can never be recorded against the next.
 _cc_resolver_arg=""
 
-# Rows whose build must NOT run `nros sync` — issue 1620.
+# Rows whose build must NOT run `nros configure` — issue 1620.
 #
 # `stage_tree` syncs any staged tree with a `package.xml`, because that is what a
 # user build does. Two kinds of row ask a different question and would be
@@ -234,7 +234,7 @@ _cc_row_skips_sync() {
     esac
 }
 
-# Rows whose build runs `nros-launch-resolve` OUTSIDE `nros sync` — issue 1454's
+# Rows whose build runs `nros-launch-resolve` OUTSIDE `nros configure` — issue 1454's
 # stamp question, asked of a row that skips the sync. The macro resolves the
 # bringup itself here, so the stamp must name the resolver all the same.
 _cc_row_resolves_in_macro() {
@@ -246,7 +246,7 @@ _cc_row_resolves_in_macro() {
 
 # Issue 1305 — a staged package that depends on its generated selection
 # package (`<pkg>_nros_selection = { path = "build/nros/selection" }`) cannot be
-# LOADED by cargo until that package exists. `nros sync` writes it; a row that
+# LOADED by cargo until that package exists. `nros configure` writes it; a row that
 # skips the sync (no SystemModel may exist for it) writes the selection alone,
 # the way `nros build` does: `ws leaf-system --write-settings` resolves no
 # launch file and writes no model. Only for a package with a `system.toml`
@@ -318,7 +318,7 @@ stage_tree() {
             echo "compile-check: nros CLI not found — cannot resolve staged models (just setup-cli)" >&2
             return 2
         fi
-        ( cd "$staged" && "$_sync_cli" sync >/dev/null )
+        ( cd "$staged" && "$_sync_cli" configure >/dev/null )
         # issue 1454 — this sync is where `nros-launch-resolve` ran, so THIS row
         # is a function of the launch-resolution toolchain and its stamp must
         # say so. Set here rather than guessed at the write site: the condition
@@ -486,7 +486,7 @@ _cc_verdict_prelude() {
             }
             _cc_capture "$staged" verdict.prelude "$@"
             # Past cargo's mtime resolution, then rewrite the model in place —
-            # the same bytes, a new mtime: what `nros sync` does on a re-run.
+            # the same bytes, a new mtime: what `nros configure` does on a re-run.
             sleep 1.1
             cp "$model" "$model.tmp" && mv "$model.tmp" "$model"
             ;;
@@ -637,7 +637,7 @@ build_cmake_fixture() {
     mkdir -p "$bld"
     # phase-445 W5 (RFC-0098 D9) — a WORKSPACE template has no root build file,
     # so there is nothing to `cmake -S`. It builds the way its README says and a
-    # user does: `nros sync` + `nros build`, in a STAGED copy so neither the
+    # user does: `nros configure` + `nros build`, in a STAGED copy so neither the
     # generated roots under `build/` nor sync's output touch the source tree.
     # `nros build` with no image picks the bringup's one image, or builds every
     # package when there is no bringup (package mode); its outputs land under
@@ -648,9 +648,9 @@ build_cmake_fixture() {
         cp -r "$repo_root/$src/." "$bld/"
         rm -rf "$bld/build" "$bld/generated"
         ( cd "$bld" \
-            && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" sync >/dev/null \
+            && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" configure >/dev/null \
             && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" build --workspace . --offline )
-        # issue 1454 — this branch ran `nros sync`, so this fixture is baked
+        # issue 1454 — this branch ran `nros configure`, so this fixture is baked
         # from a resolved SystemModel and is a function of the parser that
         # resolved it, exactly like the cargo rows. `require_cmake_fixture`
         # compares the stamp. The OTHER branch below does not sync, and gets no
@@ -1594,7 +1594,7 @@ if _cc_px4_selected; then
         fi
         # issue 0546 — SYNC before checking. These leaves name the runtime by
         # REGISTRY name (`nros = { version = "*" }`), which is normal for an
-        # example leaf here: `nros sync` writes the `.cargo/config.toml` whose
+        # example leaf here: `nros configure` writes the `.cargo/config.toml` whose
         # `[patch.crates-io]` redirects those names at in-repo paths (RFC-0048
         # W9). This block codegen'd `generated/px4_msgs` and then checked
         # WITHOUT syncing, so `version = "*"` resolved the only way left to it —
@@ -1613,8 +1613,8 @@ if _cc_px4_selected; then
             px4_fail_n=$((px4_fail_n + 1))
             continue
         fi
-        if ! ( cd "$repo_root/$dir" && "$px4_cli" sync >/dev/null ); then
-            echo "   nros sync FAILED for $id (no stamp)" >&2
+        if ! ( cd "$repo_root/$dir" && "$px4_cli" configure >/dev/null ); then
+            echo "   nros configure FAILED for $id (no stamp)" >&2
             px4_fail_n=$((px4_fail_n + 1))
             continue
         fi

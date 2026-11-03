@@ -132,9 +132,9 @@ while IFS=$'\t' read -r dir image; do
         *" $dir "*) ;;
         *)
             # `take` resolves the model the configure will read, and that model
-            # is what `nros sync` writes; the builders sync before they build,
+            # is what `nros configure` writes; the builders sync before they build,
             # and this runs before them.
-            ( cd "$repo_root/$dir" && "$nros_cli" sync --no-provider-index >/dev/null )
+            ( cd "$repo_root/$dir" && "$nros_cli" configure --no-provider-index >/dev/null )
             synced="$synced $dir"
             ;;
     esac

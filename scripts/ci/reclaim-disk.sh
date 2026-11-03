@@ -76,7 +76,7 @@ before_kb="$(_free_kb)"
 #    metadata probes compile into (issue 0522, which created it precisely
 #    because the per-component version measured 108 dirs / 82.4 GiB). It is
 #    scratch: a probe's product is `<component>/metadata/<name>.json` beside
-#    the component, written by `nros sync` and already on disk by the time any
+#    the component, written by `nros configure` and already on disk by the time any
 #    lane reaches the expensive step. Deleting it costs a re-probe if something
 #    later syncs again; it cannot make a wrong artifact, because there is no
 #    artifact here to get wrong.

@@ -22,7 +22,7 @@ cmake -S . -B build -Dnano_ros_ROOT=/path/to/nano-ros   # or: nros build
 cmake --build build
 ```
 
-No `nros sync` here: a C/C++ leaf's message bindings are a CMake-time
+No `nros configure` here: a C/C++ leaf's message bindings are a CMake-time
 output. `-Dnano_ros_ROOT` is `find_package(nano_ros)`'s hint: it says where
 the checkout is, and nothing else. The board, the RMW and the domain come
 from `system.toml` (below), never from a `-D` flag.

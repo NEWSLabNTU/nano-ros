@@ -5,7 +5,7 @@
 # them explicitly. Collecting the demos here keeps the language workspaces
 # ({rust,c,cpp}) free of capabilities so their embedded entries stay clean.
 #
-# ONE system, because rust cannot hold two: `nros sync` will not emit selection
+# ONE system, because rust cannot hold two: `nros configure` will not emit selection
 # facades for a multi-system workspace (phase-315 W1). `managed_bringup` is a
 # second system and is C++-only for that reason.
 

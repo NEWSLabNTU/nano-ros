@@ -298,7 +298,7 @@ while IFS= read -r record; do
     # "fixture binary not prebuilt". Same masking shape as #0510.
     #
     # Sync runs INSIDE the bringup dir, not the workspace root: these fixtures
-    # keep their packages at the root rather than under `src/`, which `nros sync`
+    # keep their packages at the root rather than under `src/`, which `nros configure`
     # rejects outright — and the shim resolves such a bringup as its OWN
     # workspace (`_nros_system_detect_self_pkg`), so `<bringup>/build/nros/models/`
     # is exactly where the configure looks.
@@ -352,9 +352,9 @@ while IFS= read -r record; do
             continue
         fi
         _wf_sync_rc=0
-        _wf_sync_out="$( cd "$_bringup" && "$_wf_cli" sync 2>&1 )" || _wf_sync_rc=$?
+        _wf_sync_out="$( cd "$_bringup" && "$_wf_cli" configure 2>&1 )" || _wf_sync_rc=$?
         if [ "$_wf_sync_rc" -ne 0 ]; then
-            echo "   nros sync FAILED in $(basename "$_bringup") (rc=$_wf_sync_rc) — this row needs its SystemModel, so the build is SKIPPED rather than left to refuse for want of one:" >&2
+            echo "   nros configure FAILED in $(basename "$_bringup") (rc=$_wf_sync_rc) — this row needs its SystemModel, so the build is SKIPPED rather than left to refuse for want of one:" >&2
             printf '%s\n' "$_wf_sync_out" | sed 's/^/     /' >&2
             _wf_sync_failed=$((_wf_sync_failed + 1))
         fi

@@ -60,7 +60,7 @@ unreadable by cargo.
 
 A package that declares a build type and has NEITHER build file. 64 of them —
 bringup packages (launch + `system.toml`), platform/board descriptor packages,
-and ROS interface packages whose build files `nros sync` generates. They are out
+and ROS interface packages whose build files `nros configure` generates. They are out
 of both lists today and stay out: participation is file presence, so a
 declaration with no file routes nowhere instead of hard-failing.
 
@@ -192,7 +192,7 @@ def is_interface_package(body: str, pkg_dir: Path) -> bool:
 
     An interface package has a `CMakeLists.txt` and must still not become a
     cmake subdirectory (issue 0862): its CMakeLists is verbatim upstream ROS,
-    and `nros sync` routes it through codegen instead. Reproduced here because
+    and `nros configure` routes it through codegen instead. Reproduced here because
     it is the one site-specific subtraction a buildless reader CAN make, and
     leaving it out would report 10 false side-changes.
     """

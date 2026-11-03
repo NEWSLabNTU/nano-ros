@@ -412,7 +412,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
               nros_leaf_settings_target_dir_flag nros_leaf_row_image \
               nros_leaf_strip_row_image nros_leaf_lock
     # Phase 214.I.2 — fail-loud prereq guard: `nros_fixture_build_one`
-    # below invokes `nros sync`, absent from the shipped 0.3.7 release.
+    # below invokes `nros configure`, absent from the shipped 0.3.7 release.
     # Probe once here in the parent before make fans out workers; pre-probe
     # avoids N copies of the `[PREREQ]` line.
     nros_require_sync "$NROS_CLI"
@@ -441,13 +441,13 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
         # cost what (the `host-tests` rust-core stage was 13 minutes of
         # `--quiet` cargo with no time anywhere in it).
         local row_t0=$SECONDS
-        # Phase 210.E.3.d.native — pre-cargo `nros sync` writes the
+        # Phase 210.E.3.d.native — pre-cargo `nros configure` writes the
         # auto-managed [patch.crates-io] block + materialises generated
         # msg crates under <dir>/build/. Replaces the legacy
         # `nros dev codegen rust --force` + per-example .cargo/config.toml
         # [patch.crates-io] chunks. Native rust adopters only — embedded
         # rust fixtures still pre-codegen separately until E.3.d.embedded.
-        # issue 0649 — the `nros sync` that used to live HERE is now a pre-pass
+        # issue 0649 — the `nros configure` that used to live HERE is now a pre-pass
         # in the parent (`nros_presync_row_dirs`, below). It ran per ROW, and a
         # workspace has many rows: measured over one `lane=linux` build, 185
         # invocations for 69 distinct targets, `examples/workspaces/features`
@@ -590,7 +590,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     #
     # This is the same move as the Node-pkg pre-pass below and for the same
     # reason, applied to the rows themselves. The per-row sync it replaces was
-    # not simulating a user procedure: a user runs `nros sync` once and then
+    # not simulating a user procedure: a user runs `nros configure` once and then
     # builds, where the loop ran it once per manifest ROW — 22 times for
     # `examples/workspaces/features`, whose 24 rows share one directory. 185
     # invocations for 69 distinct targets in one `lane=linux` build, 63 % of
@@ -620,7 +620,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
             echo "  → (row codegen) $dir"
             # Phase 214.J.2 — wipe `<dir>/generated/` if the hash of the trait
             # surface(s) tied to codegen shape (e.g. `RosAction`) has drifted
-            # since the previous `nros sync`. Prevents the stale-3-type-action
+            # since the previous `nros configure`. Prevents the stale-3-type-action
             # shape that Phase 214.J first surfaced.
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$dir"
 # phase-367 W5 — `--no-provider-index`: this driver never READS
@@ -629,7 +629,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
 # no caller points `nano_ros_load_providers(INDEX …)` at the sync-written one.
 # Writing it costs the underlay scan — 28 %% of a warm sync after W1/W2
 # (0.095 s -> 0.068 s), across ~101 syncs a build.
-            NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync --no-provider-index "$dir" >/dev/null
+            NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" configure --no-provider-index "$dir" >/dev/null
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$dir"
         done
     }
@@ -643,7 +643,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     # leaving `generated/` absent on a fresh checkout and the Entry build failing
     # to resolve the patch path. Pre-sync every Node pkg in this platform's
     # example tree, once, in the parent before the build fans out. Idempotent;
-    # nros sync only materialises crates (no compile), so syncing a Node pkg whose
+    # nros configure only materialises crates (no compile), so syncing a Node pkg whose
     # Entry is filtered out (--id / --core-only / rmw) is harmless.
     while IFS= read -r pkgxml; do
         pkgdir="$(dirname "$pkgxml")"
@@ -651,11 +651,11 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
         grep -q '^\[package\.metadata\.nros\.node\]' "$pkgdir/Cargo.toml" || continue
         echo "  → (node-pkg codegen) $pkgdir"
         NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$pkgdir"
-        NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync "$pkgdir" >/dev/null
+        NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" configure "$pkgdir" >/dev/null
         NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$pkgdir"
     # phase-300 W1.2 — tracked package.xml only, via the git index (the
     # unpruned find descended every build tree AND could pick up a
-    # package.xml staged inside build-*/ -> spurious nros sync).
+    # package.xml staged inside build-*/ -> spurious nros configure).
     done < <(git ls-files "examples/$platform/**/package.xml" "examples/$platform/package.xml")
     nros_presync_row_dirs
     # phase-485 W2 (RFC-0104 D3) — a row whose cargo root has no lock yet starts

@@ -25,7 +25,7 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
   each pkg's codegen identically regardless of which layer it lived in.
 
 * `src/rust_consumer/` — **Phase 210.D.3** Rust sibling of the C++
-  consumer. Same four-msg-family coverage. Builds via `nros sync` +
+  consumer. Same four-msg-family coverage. Builds via `nros configure` +
   plain `cargo build`. See the "Build — Rust" section below.
 
 * No root build file (RFC-0098 D9, phase-445 W5). The umbrella
@@ -41,17 +41,17 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
 
 ```sh
 source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
-nros sync
+nros configure
 nros build
 ./build/consumer/cmake/pkg/consumer/consumer   # publishes on /greetings via zenoh
 ```
 
-## Build — Rust (`nros sync` + plain cargo)
+## Build — Rust (`nros configure` + plain cargo)
 
 ```sh
 # 1) Pre-cargo step: codegen workspace msg pkgs + write
 #    [patch.crates-io] block into src/rust_consumer/Cargo.toml.
-nros sync
+nros configure
 
 # 2) Plain cargo build — no wrapper, no build.rs hack.
 cd src/rust_consumer
@@ -80,10 +80,10 @@ needs no router at all**, just `./target/debug/rust_consumer`. Note that
 scaffold yourself will *not* need the router line above; this template is the
 zenoh case.
 
-`nros sync` writes a delimited `[patch.crates-io]` block into the
+`nros configure` writes a delimited `[patch.crates-io]` block into the
 patch authority Cargo.toml (this fixture has `[workspace]` empty marker
 in `src/rust_consumer/Cargo.toml`, making it its own authority). Re-run
-sync after editing any `.msg` file; `nros sync --check` exits
+sync after editing any `.msg` file; `nros configure --check` exits
 non-zero if the generated crates are stale.
 
 ## What's exercised

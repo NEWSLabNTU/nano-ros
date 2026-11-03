@@ -19,7 +19,7 @@ came from; a plain cmake configure of a C/C++ copy-out names it with
 The RMW is part of the deployment, so it is named where the rest of the
 deployment is: `[system] rmw = "zenoh" | "xrce" | "cyclonedds"` in the example's
 `system.toml`, identically for C, C++ and Rust (RFC-0098 D3/D5). Edit that line
-and re-run `nros sync` — there is no Cargo feature and no `-D` flag to pass.
+and re-run `nros configure` — there is no Cargo feature and no `-D` flag to pass.
 
 (The `rmw-*` Cargo features still exist in the Rust manifests, and the few
 leaves that have not gained a `system.toml` yet still resolve their backend
@@ -33,11 +33,11 @@ ros2 run rmw_zenoh_cpp rmw_zenohd        # zenohd on tcp/127.0.0.1:7447
 
 # terminal 2: any leaf in this tree, same two commands
 cd examples/linux/rust/talker
-nros sync && nros build
+nros configure && nros build
 ./build/linux/target/debug/talker
 ```
 
-A C or C++ leaf skips `nros sync` — its message bindings are a CMake-time
+A C or C++ leaf skips `nros configure` — its message bindings are a CMake-time
 output — and builds with its own CMake: `cmake -B build && cmake --build build`.
 
 Contributor shortcuts inside a checkout (they drive cargo and cmake directly):

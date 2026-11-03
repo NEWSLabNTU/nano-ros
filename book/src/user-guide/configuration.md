@@ -25,7 +25,7 @@ standalone `config.toml` for hand-written `no_std` apps.
 | **`system.toml`** | **Everything about the deployment** — `[system]` (RMW, domain, capability axes like `features = ["param_services"]` and the `[safety]` block, tiers), `[[component]]` (what runs, and its entities), and one `[image.<id>]` per target (`board`, `locator`, the board network file holding its address, `os_config = ["board-net.toml"]`, and how it runs, is flashed and is watched, `[image.<id>.run]`, `[image.<id>.flash]`, `[image.<id>.console]`). One schema for Rust, C and C++, and the same file whether the project is one package or a workspace. | package, or bringup pkg |
 | `Cargo.toml` | Rust toolchain facts only: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`) the generated entry selects from. No board, no target triple, no deploy block. | Rust project |
 | `CMakeLists.txt` | C/C++ toolchain facts only: targets and language deps, via `find_package(nano_ros)` + `nano_ros_add_executable` / `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057; `nano_ros_node_register` remains as the compat spelling) / `nano_ros_entry`. No platform, board or RMW `set()`. | C/C++ project |
-| `build/<image>/nros-cargo.toml` | **GENERATED, never edited** — every cargo setting the board choice implies: `[build] target`, `[target.*]` runner and rustflags, the cross compiler, the derived pool sizes as `[env]`, the nano-ros profiles, and the `[patch.crates-io]` rows that resolve nano-ros's registry-style names into your checkout. Written by `nros sync`, passed to cargo with `--config`. | image |
+| `build/<image>/nros-cargo.toml` | **GENERATED, never edited** — every cargo setting the board choice implies: `[build] target`, `[target.*]` runner and rustflags, the cross compiler, the derived pool sizes as `[env]`, the nano-ros profiles, and the `[patch.crates-io]` rows that resolve nano-ros's registry-style names into your checkout. Written by `nros configure`, passed to cargo with `--config`. | image |
 | `package.xml` | ROS package identity + msg `<depend>`s (codegen input for `nros interface generate`) | all |
 | **`config.toml`** (standalone) | **Hand-written `no_std` direct-mode apps only** — `[node]` / `[eth0]` / `[network.<name>]` (RFC-0109 D4), compile-baked via `Config::from_toml(include_str!(…))`. Apps that use `nros::main!()` / codegen do **not** have one — they use `[image.<id>]` above. | embedded single-node app (no codegen) |
 
@@ -291,7 +291,7 @@ to = "cyclonedds:dds"
 A domain with a `config` states no `locator` (the file is its wiring), and a
 domain `config` that no `[[bridge]]` opens is refused, since nothing would
 read it. An image overrides one domain's file with a table,
-`rmw_config = { dds = "rmw/cyclonedds-lab.xml" }`: `nros sync` then writes that
+`rmw_config = { dds = "rmw/cyclonedds-lab.xml" }`: `nros configure` then writes that
 image its own bridge configuration (`nros-bridge.<image>.toml`) beside the
 bringup's, and the other images keep the shared one. At run time
 `ZENOH_SESSION_CONFIG_URI` and `CYCLONEDDS_URI` still replace a hosted
@@ -323,7 +323,7 @@ Each key is a row of the knob registry
 key where it has one (`executor.max_cbs`, `zenoh.tx.batch`); otherwise it is
 the env name without `NROS_`, split at the first `_` (`NROS_ZEPHYR_HEAP_SIZE`
 becomes `zephyr.heap_size`). An unknown key, a value of the wrong type or a
-value outside the knob's range stops `nros sync` / `nros build` with an error
+value outside the knob's range stops `nros configure` / `nros build` with an error
 that names the key. The value reaches the build exactly as the knob's
 `NROS_*` variable would: through the generated cargo config on the cargo
 road, the image env file on the cmake road, and the Kconfig defaults on west.

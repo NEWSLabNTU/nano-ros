@@ -126,7 +126,7 @@ build: build-examples
 #
 # issue 1038 — `nros_ensure_central_patch` FIRST. Every Rust leaf here reaches the
 # universal-trio patches through `include = ["…/nros-patch.toml"]`, and that
-# file is written by `nros sync`, which needs a workspace. This lane builds only
+# file is written by `nros configure`, which needs a workspace. This lane builds only
 # standalone leaves, so nothing here ever wrote it: the nightly cell died on
 # `failed to load config include ../../../../../nros-patch.toml` at MANIFEST
 # PARSE, before any compilation. Every other platform lane runs
@@ -237,7 +237,7 @@ build-fixture-extras:
     # `logging-smoke` cargo row below) fixes the include-target half of issue
     # 0463 for this lane, but talker/listener/service-{server,client}/
     # action-{server,client} each also patch a generated message crate
-    # (`std_msgs`, `builtin_interfaces`, …) that ONLY `nros sync` — not
+    # (`std_msgs`, `builtin_interfaces`, …) that ONLY `nros configure` — not
     # `ws central-patch` — materialises. They build through
     # `nros_threadx_rv64_rust_app` (Corrosion/CMake), the one seam in this repo
     # that never goes through `fixtures-build.sh`'s per-row presync, so nothing

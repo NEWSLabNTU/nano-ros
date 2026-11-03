@@ -10,4 +10,4 @@ and there is no `printf`, so log lines are built by hand and emitted through
 `rclc_log_emit_at` (issue 1512).
 
 Build with the fixture lane (`just build-test-fixtures`) or, from this
-directory, `nros sync` then `cargo build --release`.
+directory, `nros configure` then `cargo build --release`.

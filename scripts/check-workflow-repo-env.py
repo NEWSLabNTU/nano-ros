@@ -36,7 +36,7 @@ Two kinds of false positive would make this gate worse than nothing, and both
 were found in the tree while writing it:
 
 * **Prose.** Comment lines are skipped. `nightly.yml`'s CLI-build step has a
-  comment about `nros sync` and does not run it. Counting words in comments is
+  comment about `nros configure` and does not run it. Counting words in comments is
   the mistake that makes a grep-based gate useless.
 
 * **Command text inside a heredoc.** `queue-notify.yml` builds a pull-request
@@ -122,10 +122,10 @@ def self_test():
         # (name, run body, expected offender?)
         ("bare invocation", "just check fast\n", True),
         ("env-prefixed", "NROS_ZEPHYR_VERSION=3.7 just zephyr setup\n", True),
-        ("chained", "cd x && nros sync .\n", True),
+        ("chained", "cd x && nros configure .\n", True),
         ("already sourced", "source ./activate.sh\njust check fast\n", False),
         ("legacy shim sourced", "source ./setup.bash\njust test-unit\n", False),
-        ("comment prose only", "# `nros sync` refuses an unresolved model\ncargo build\n", False),
+        ("comment prose only", "# `nros configure` refuses an unresolved model\ncargo build\n", False),
         (
             "heredoc text",
             'body="$(cat <<MSG\nRun: just queue-triage 12\nMSG\n)"\ngh pr comment\n',

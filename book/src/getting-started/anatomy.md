@@ -107,7 +107,7 @@ committed — if you can regenerate it, it does not belong in git.
 packages are library crates with `nros::node!(Talker)`, the entry is a
 one-line `nros::main!(launch = "demo_bringup", spin = "forever")`, and
 the bringup directory is byte-for-byte the same idea. One difference:
-Rust message codegen runs as a pre-build step (`nros sync`) instead of
+Rust message codegen runs as a pre-build step (`nros configure`) instead of
 inside CMake.
 
 ## Next

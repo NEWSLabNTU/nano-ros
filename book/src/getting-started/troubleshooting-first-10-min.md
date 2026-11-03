@@ -13,12 +13,12 @@ one to try.
 
 ## A. Build failures (cargo / cmake)
 
-### A1. You built before `nros sync`
+### A1. You built before `nros configure`
 
 ```
 … has not been synced — missing the resolved model under `build/nros/models/`,
 the generated message crate `std_msgs` (generated/std_msgs).
-  Run `nros sync` in …, then build again.
+  Run `nros configure` in …, then build again.
 ```
 
 The example's `Cargo.toml` declares nano-ros crates registry-style
@@ -32,13 +32,13 @@ or installing a different release). Fix:
 
 ```bash
 cd <the package dir>
-nros sync        # or: nros sync --nano-ros-path <another SDK root>
+nros configure        # or: nros configure --nano-ros-path <another SDK root>
 ```
 
 Driving cargo directly skips that refusal and gets cargo's own version of it
 instead — `no matching package named 'nros' found`, or an unresolved import.
 Same cause, same fix: sync, then pass the generated file with `--config`.
-`nros sync` is what ties a copied-out example to an SDK (the `nros` binary's
+`nros configure` is what ties a copied-out example to an SDK (the `nros` binary's
 own, or the one `--nano-ros-path` names), so re-run it after moving the
 directory.
 
@@ -87,7 +87,7 @@ rustup target add thumbv7m-none-eabi
 
 The triple is the board's, not the example's — you will not find it in any
 file you wrote. Read it back from the `[build] target` line of the generated
-`build/<image-id>/nros-cargo.toml`, which `nros sync` writes from the board
+`build/<image-id>/nros-cargo.toml`, which `nros configure` writes from the board
 your `system.toml` names.
 
 ### A4. Cross linker not found
@@ -139,7 +139,7 @@ cd my_c_talker                    # a C or C++ leaf (`nros new … --lang c`)
 nros build
 ```
 
-A single-package C / C++ leaf needs no `nros sync` — its message bindings are
+A single-package C / C++ leaf needs no `nros configure` — its message bindings are
 a CMake-time output. There is no `-DNROS_RMW=` to pass: a backend selected on
 the command line disagrees with the one the rest of the build resolves from
 `system.toml`.
@@ -148,7 +148,7 @@ A Rust example does not take `--features rmw-cyclonedds` at all: its RMW is
 its image's. A leaf that declares a `linux_cyclonedds`
 image (as
 [`examples/linux/rust/talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/talker)
-does) builds it with `nros sync --image linux_cyclonedds && nros build
+does) builds it with `nros configure --image linux_cyclonedds && nros build
 linux_cyclonedds` — the board crate's `rmw-cyclonedds` builds Cyclone
 through `nros-rmw-cyclonedds-sys`.
 

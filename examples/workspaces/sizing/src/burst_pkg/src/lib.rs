@@ -7,7 +7,7 @@
 //! Sized from the model alone, `nros::main!` emits no sizing at all (a derived
 //! value at or below the build default is not worth emitting) and the fifth
 //! `create_timer_for_callback_name` returns `Full`. Sized from the
-//! `nros sync`-produced source-metadata sidecar — which records timers, because
+//! `nros configure`-produced source-metadata sidecar — which records timers, because
 //! the recorder walks the same `register` this file defines — it opens at eight.
 //!
 //! Six is chosen, not arbitrary: it is the smallest count that over-runs the

@@ -1,6 +1,6 @@
 # NanoRosSizingDescriptor.cmake — phase-454 W4, RFC-0100 D4
 #
-# The CMake side of the one sizing descriptor `nros sync` writes per entry:
+# The CMake side of the one sizing descriptor `nros configure` writes per entry:
 #
 #     <build>/nros/sizing/<entry>.toml
 #
@@ -200,7 +200,7 @@ endfunction()
 #
 # ## Why a cmake road needs its own producer
 #
-# `nros sync` writes a descriptor for a single-package cargo LEAF, where the CLI
+# `nros configure` writes a descriptor for a single-package cargo LEAF, where the CLI
 # has the leaf's `metadata/` probe and its `generated/` bound tables to hand. A
 # cmake / Zephyr west / NuttX entry has NEITHER. Its one statement of what the
 # image declares is the resolved SystemModel — so through phase-454 W12 this
@@ -388,7 +388,7 @@ endfunction()
 # declare one action server; the queryable table was sized to its three services
 # and the action server's own TRANSIENT_LOCAL `/status` publisher was the FOURTH
 # slot, so `rclc_executor_attach_action_server` returned -1 at boot. The cargo-leaf
-# road never saw it because `nros sync` writes that road a descriptor whose
+# road never saw it because `nros configure` writes that road a descriptor whose
 # `action_server` row is counted.
 #
 # So this is the third producer, and it states what a DECLARATION can: the
@@ -400,7 +400,7 @@ endfunction()
 # ## Soft on every absence, exactly like `nros_record_leaf_entity_facts`
 #
 # No `system.toml`, no CLI, a leaf that declares nothing, a leaf that is a CARGO
-# leaf (whose descriptor is `nros sync`'s, with strictly more inputs) — each
+# leaf (whose descriptor is `nros configure`'s, with strictly more inputs) — each
 # means "this configure has no leaf descriptor to carry", which is the state
 # every standalone leaf was already in. None is a configuration error, so none
 # is fatal.
@@ -979,7 +979,7 @@ endfunction()
 # Read a descriptor at CONFIGURE time and define the `NROS_SIZING_*` variables in
 # the calling scope.
 #
-# A MISSING descriptor is not an error: an image nobody has run `nros sync` for
+# A MISSING descriptor is not an error: an image nobody has run `nros configure` for
 # has none, and every consumer is required to keep its own defaults in that case.
 # It is REPORTED, because "the fallback decided" and "the declaration decided"
 # are otherwise indistinguishable in the log (issue 0973's rule). A descriptor
@@ -996,7 +996,7 @@ function(nros_sizing_descriptor_read _descriptor)
     # Registered BEFORE the existence check, deliberately. CMake re-configures
     # when a listed file appears as well as when it changes, so a build that has
     # no descriptor today picks one up on the sync that creates it — without
-    # this, the first `nros sync` after a configure would be invisible until
+    # this, the first `nros configure` after a configure would be invisible until
     # something else happened to re-configure.
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_descriptor}")
 
@@ -1004,7 +1004,7 @@ function(nros_sizing_descriptor_read _descriptor)
         if(NOT _nsd_QUIET)
             message(STATUS
                 "nano-ros: no sizing descriptor at ${_descriptor}, so every consumer keeps "
-                "its own default sizes (RFC-0100 D6). Run `nros sync` in the entry's "
+                "its own default sizes (RFC-0100 D6). Run `nros configure` in the entry's "
                 "workspace to generate one.")
         endif()
         return()
@@ -1043,7 +1043,7 @@ function(nros_sizing_descriptor_read _descriptor)
         message(FATAL_ERROR
             "nano-ros: the sizing descriptor ${_descriptor} exists and could not be read "
             "-- ${_why}\n"
-            "It is a generated artifact: re-run `nros sync` rather than editing it.")
+            "It is a generated artifact: re-run `nros configure` rather than editing it.")
     endif()
 
     # The verb writes write-if-changed, so an unchanged descriptor leaves this

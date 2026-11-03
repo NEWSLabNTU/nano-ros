@@ -242,14 +242,14 @@ setup:
 # CODEGEN FIRST — phase-413 W2, and it is issue 0992 in a second place.
 #
 # A workspace entry reaches its RMW, its ROS edition and its CAPABILITY features
-# only through the `generated/nros-selection/<entry>` facade that `nros sync`
+# only through the `generated/nros-selection/<entry>` facade that `nros configure`
 # writes. Without it `nros build` emitted the Entry with none of them — and only
 # WARNED, because an unsynced workspace was a state it was documented to
 # tolerate:
 #
 #   nros build: warning: no selection facade at …/generated/nros-selection/… —
 #   building `linux_rust_qos` without its RMW, ROS edition and capability
-#   features. Run `nros sync` first if this Entry needs them (issue 0937).
+#   features. Run `nros configure` first if this Entry needs them (issue 0937).
 #
 # That warning is GONE (issue 0831): a missing facade is now written from the
 # entry `nros build` just generated, and refused only if it cannot be. Keep the
@@ -287,7 +287,7 @@ build-fixture-rust:
     source scripts/build/cargo.sh
     # issue 1038 — the central `nros-patch.toml` this lane's Rust leaves
     # `include`, made EXPLICIT. This lane already got the file, but only as a
-    # side effect of `workspace-fixtures-build.sh` running `nros sync` somewhere
+    # side effect of `workspace-fixtures-build.sh` running `nros configure` somewhere
     # earlier; `threadx-riscv64` had no such neighbour and died at manifest
     # parse. An inherited artifact is a working lane, not a declared dependency.
     # Idempotent — a process spawn when the file is already current.
@@ -296,11 +296,11 @@ build-fixture-rust:
     source scripts/build/codegen-stamp.sh
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the loop below invokes
-    # `nros sync`, absent from the shipped 0.3.7 release. Probe once;
+    # `nros configure`, absent from the shipped 0.3.7 release. Probe once;
     # emit `[PREREQ]` + exit 0 if missing rather than cascading into
     # clap "unrecognized subcommand 'ws'" stack traces.
     nros_require_sync "$nros_cli"
-    # Phase 210.E.3.d.native — pre-cargo codegen via `nros sync` writes
+    # Phase 210.E.3.d.native — pre-cargo codegen via `nros configure` writes
     # the auto-managed [patch.crates-io] block into each example's Cargo.toml
     # + materialises generated msg crates under `<ex>/generated/`.
     # Replaces the legacy `nros dev codegen rust --force` + hand-managed
@@ -310,7 +310,7 @@ build-fixture-rust:
               action-client custom-transport-talker custom-transport-listener; do
         dir="examples/linux/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
-        "$nros_cli" sync "$dir" >/dev/null
+        "$nros_cli" configure "$dir" >/dev/null
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_write "$dir"
     done
     bash scripts/build/fixtures-build.sh linux rust
@@ -339,7 +339,7 @@ build-fixture-rust-core:
               action-client custom-transport-talker custom-transport-listener; do
         dir="examples/linux/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
-        "$nros_cli" sync "$dir" >/dev/null
+        "$nros_cli" configure "$dir" >/dev/null
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_write "$dir"
     done
     bash scripts/build/fixtures-build.sh linux rust --core-only
@@ -369,7 +369,7 @@ build-fixture-extras:
     if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: `ensure_native_rust_generated`
-    # below invokes `nros sync`. Probe once; emit `[PREREQ]` + exit 0
+    # below invokes `nros configure`. Probe once; emit `[PREREQ]` + exit 0
     # if the verb is missing (shipped 0.3.7 predates it).
     nros_require_sync "$nros_cli"
     nros_cargo_ensure_codegen_c
@@ -387,11 +387,11 @@ build-fixture-extras:
         case "$1" in
             linux/rust/talker|linux/rust/listener)
                 # Phase 210.E.3.d.native — same swap as build-fixture-role-
-                # examples: `nros sync` for the patch-table + codegen flow.
+                # examples: `nros configure` for the patch-table + codegen flow.
                 # Phase 214.J.2 — also wipe `generated/` if trait surface
                 # has drifted since the previous sync.
                 NROS_REPO_DIR="$repo_root" nros_codegen_stamp_check_or_wipe "examples/$1"
-                "$nros_cli" sync "examples/$1" >/dev/null
+                "$nros_cli" configure "examples/$1" >/dev/null
                 NROS_REPO_DIR="$repo_root" nros_codegen_stamp_write "examples/$1" ;;
         esac
     }
@@ -508,7 +508,7 @@ check JOBS="75%":
     # via the fixture-manifest / orchestration path instead, as
     # multi-package-workspace already is):
     #   - ws-sync templates: workspace msg pkgs (`extra_msgs`/`local_msgs`) only
-    #     resolve via the `[patch.crates-io]` block `nros sync` writes; cargo
+    #     resolve via the `[patch.crates-io]` block `nros configure` writes; cargo
     #     can't find them on crates.io here.
     #   - `examples/workspaces/*`: a multi-target workspace whose entry packages
     #     are cross-compiled (esp32/threadx/nuttx/freertos/zephyr) — e.g.
@@ -522,7 +522,7 @@ check JOBS="75%":
 
     # Message bindings are NOT a precondition of this lane (issue 1892). A
     # leaf's `generated/` crates, its `<leaf>_nros_selection` package and its
-    # `[patch.crates-io]` rows are all written by `nros sync`, and
+    # `[patch.crates-io]` rows are all written by `nros configure`, and
     # `lint-example-leaf.sh` runs that sync itself for every leaf it can read
     # (`nros_leaf_sync_renders`: a `system.toml` or a `package.xml`). A leaf
     # with a message `<depend>` has a `package.xml`, so it is always rendered
@@ -537,7 +537,7 @@ check JOBS="75%":
 
     # The per-leaf lint lives in ONE script, called from both branches below
     # (issue 1882: they were two hand-kept copies of the derivation, and neither
-    # rendered the board-image leaves `nros sync` owns).
+    # rendered the board-image leaves `nros configure` owns).
     check_one() { bash scripts/build/lint-example-leaf.sh "$(dirname "$1")"; }
     export -f check_one
     export NIGHTLY="{{NIGHTLY}}"
@@ -1061,7 +1061,7 @@ test-ros2-cyclone-slirp-pair verbose="":
 
 # DECLARATIVE zenoh → Cyclone DDS bridge e2e (phase-267 W-B, issues 0106 / 0107
 # / 0109). The bridge is a `linux_entry` whose `system.toml` declares the
-# `[[bridge]]`; `nros sync` bakes `nros-bridge.toml` and the macro emits the
+# `[[bridge]]`; `nros configure` bakes `nros-bridge.toml` and the macro emits the
 # pump. Only the receiver-asserting case wants a stock ROS 2 peer, and it
 # needs `rmw_cyclonedds_cpp` specifically.
 # Runs `declarative_bridge_zenoh_to_cyclonedds`; needs `rmw_zenohd` + the bridge fixtures.
@@ -1222,7 +1222,7 @@ action-client:
     cd examples/linux/rust/action-client && cargo run
 
 # Start zenohd router for native examples (override bind via $NROS_LOCATOR).
-# `just zenohd <model>` also runs the downsampling rule `nros sync` wrote
+# `just zenohd <model>` also runs the downsampling rule `nros configure` wrote
 # beside that resolved model (phase-516 W1b).
 zenohd model="":
     #!/usr/bin/env bash

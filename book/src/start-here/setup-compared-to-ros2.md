@@ -52,23 +52,23 @@ export PATH="$HOME/.nros/bin:$PATH"
 nros setup linux --rmw zenoh
 
 # 3. Scaffold, build and run something (analogous to `colcon build`):
-#    `nros sync` generates the message bindings and the build settings
+#    `nros configure` generates the message bindings and the build settings
 #    the target implies, under build/ and generated/.
 nros new my_talker --platform linux --lang rust
 cd my_talker
-nros sync
+nros configure
 nros build
 RUST_LOG=info ./build/linux/target/debug/my_talker
 ```
 
 Step 3 is the one that maps most directly onto ROS 2, and it maps
-better than it used to. `nros sync` + `nros build` plays the part
+better than it used to. `nros configure` + `nros build` plays the part
 `colcon build` plays: you declare the system once, in a file, and one
 command works out what to compile and drives the language toolchain.
 What you declare is `system.toml` — the board, the RMW, the domain,
 the components — and nothing in `Cargo.toml` or `CMakeLists.txt`
 mentions a target (RFC-0098). Changing target is editing the `board =`
-line and re-running `nros sync`.
+line and re-running `nros configure`.
 
 For embedded targets, name the board instead of `linux`; `nros setup`
 fetches the matching prebuilt cross-toolchain + emulator + SDK:
@@ -105,7 +105,7 @@ rmw  = "zenoh"                 # zenoh | cyclonedds | xrce
 board = "mps2-an385-freertos"  # the platform follows from the board
 ```
 
-Then `nros sync && nros build`. There is no cache variable to set and
+Then `nros configure && nros build`. There is no cache variable to set and
 no Cargo feature to name: the board descriptor already knows the
 triple, the linker flags and the platform module, and `nros build`
 writes them into the build root it generates. A second `[image.*]` row

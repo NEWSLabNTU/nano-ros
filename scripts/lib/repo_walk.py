@@ -3,7 +3,7 @@
 `scripts/lib/tracked.py` answers "which files does this tree TRACK" through the
 index, and that is the right tool whenever the question is about tracked
 content. This module is for the other case, where a walk is genuinely needed —
-untracked build output, a generated header, a sidecar `nros sync` wrote — and
+untracked build output, a generated header, a sidecar `nros configure` wrote — and
 answers the question a walk is easy to get wrong: WHICH REPOSITORY is it
 counting?
 

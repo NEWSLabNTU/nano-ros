@@ -132,7 +132,7 @@ locator = "tcp/10.0.2.2:8200"
 The C / C++ variants carry the same file, in the same schema — their
 `package.xml` has no `<nano_ros …/>` tuple and their `CMakeLists.txt` names no
 board. Nor does anything here name a target triple: `armv7a-nuttx-eabihf` is a
-fact about the board, and it lives in the board descriptor. Run `nros sync` in
+fact about the board, and it lives in the board descriptor. Run `nros configure` in
 the application directory after editing this file; it writes the generated
 message bindings and the build settings the board choice implies.
 
@@ -195,19 +195,19 @@ dir, which `nros build` prints:
 nros new nx_ws --workspace --lang rust --rmw zenoh
 cd nx_ws
 nros new --image nuttx --board qemu-armv7a-nuttx
-nros sync
+nros configure
 nros build nuttx
 ```
 
 **NuttX's own build — the integration shell in a NuttX-managed tree.** NuttX
 owns the build verb there, `make` from the configured kernel, the way Zephyr
-owns `west build`. `nros sync` still runs first, in the application
+owns `west build`. `nros configure` still runs first, in the application
 directory, because the generated message bindings must exist before anything
 compiles against them:
 
 ```bash
 cd my_app
-nros sync                           # bindings + settings from system.toml
+nros configure                           # bindings + settings from system.toml
 
 cd $NUTTX_DIR
 make                                # full kernel + apps build
@@ -376,7 +376,7 @@ export QEMU_SYSTEM_RISCV32="$(command -v qemu-system-riscv32)"
 nros new nx_ws --workspace --lang rust --rmw zenoh
 cd nx_ws
 nros new --image nuttx --board rv-virt-nuttx
-nros sync
+nros configure
 nros build nuttx
 ```
 

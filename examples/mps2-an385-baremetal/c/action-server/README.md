@@ -15,7 +15,7 @@ files are byte-identical to the talker's; this leaf differs in `package.xml` and
 
 ```sh
 source ./activate.sh
-nros sync examples/mps2-an385-baremetal/c/action-server
+nros configure examples/mps2-an385-baremetal/c/action-server
 cd examples/mps2-an385-baremetal/c/action-server && cargo build --release
 ```
 

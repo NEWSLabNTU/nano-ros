@@ -5,7 +5,7 @@ source scripts/build/cargo.sh
 source scripts/build/generate-rust-incremental.sh
 
 NROS="$(nros_cli_bin)"
-# `nros sync` resolves the nano-ros runtime path-deps via NROS_REPO_DIR.
+# `nros configure` resolves the nano-ros runtime path-deps via NROS_REPO_DIR.
 # Issue 1840 — an inherited value naming ANOTHER checkout is re-rooted onto
 # this one by the one rule; an out-of-tree root is kept.
 . scripts/lib/checkout-paths.sh
@@ -27,7 +27,7 @@ echo "Refreshing Rust bindings..."
 #
 #   * Cargo workspace      → ONE SHARED `generated/` at the workspace root,
 #     resolved by the workspace manifest's `[patch.crates-io]` for every member
-#     node pkg. Materialised with `nros sync` (codegen + writes the patch
+#     node pkg. Materialised with `nros configure` (codegen + writes the patch
 #     block, which is NOT committed). Member pkgs must NOT each get a per-package
 #     `generated/` — that is redundant + unreferenced.
 #
@@ -39,7 +39,7 @@ echo "Refreshing Rust bindings..."
 # carry an (empty) `[workspace]` table to stop cargo walking up to the repo root
 # (CLAUDE.md "Examples are standalone copy-out projects; no workspace walk-up"). A
 # multi-package workspace is a dir whose `src/<member>/package.xml` exists (the
-# colcon shape `nros sync` shares one root `generated/` across) — exactly the
+# colcon shape `nros configure` shares one root `generated/` across) — exactly the
 # `ws.rs` colcon heuristic. A standalone example carries its `package.xml` at the
 # cargo root (no `src/<member>/package.xml`) and owns a per-package `generated/`.
 ws_roots=()
@@ -54,7 +54,7 @@ while IFS= read -r member_pxml; do
     # code carried a second, narrower rule, and 19 colcon roots have no root
     # cargo manifest (every C/C++ workspace, six templates). Those fell through
     # to the standalone loop below, which generated a PER-LEAF `generated/` that
-    # `nros sync` neither writes nor reads: the fossils dated 2026-05-24 under
+    # `nros configure` neither writes nor reads: the fossils dated 2026-05-24 under
     # `templates/{multi-package-workspace,local-msg-package}` came from exactly
     # this path, and they masked the wrong dep spelling by making it resolve on
     # a developer tree while failing on a fresh clone.
@@ -101,11 +101,11 @@ is_workspace_member() {
     return 1
 }
 
-# --- 1. workspaces: ONE shared `generated/` at the root via `nros sync` ---
+# --- 1. workspaces: ONE shared `generated/` at the root via `nros configure` ---
 for root in "${ws_roots[@]}"; do
     # Only sync a workspace that actually declares message deps; a deps-less
     # workspace (e.g. the topic-forward bridge examples) has nothing to
-    # materialise and `nros sync` would error on it.
+    # materialise and `nros configure` would error on it.
     # `$root` is absolute (set via `cd && pwd`); git pathspecs are repo-relative.
     rel_root="${root#"$PWD"/}"
     member_deps="$(git ls-files "$rel_root" \
@@ -129,7 +129,7 @@ for root in "${ws_roots[@]}"; do
 # no caller points `nano_ros_load_providers(INDEX …)` at the sync-written one.
 # Writing it costs the underlay scan — 28 %% of a warm sync after W1/W2
 # (0.095 s -> 0.068 s), across ~101 syncs a build.
-    "$NROS" sync --no-provider-index "$root" >/dev/null
+    "$NROS" configure --no-provider-index "$root" >/dev/null
 done
 
 # --- 2. standalone examples: per-package `generated/` (skip workspace members) ---

@@ -395,7 +395,7 @@ endfunction()
 #
 #   registered  `<pkg>::<component>::<class>` per row of <metadata>, the rows
 #               THIS configure's `nano_ros_node_register()` calls wrote. The
-#               resolve read them from `nros sync`'s metadata probe; a component
+#               resolve read them from `nros configure`'s metadata probe; a component
 #               added since the last sync differs here.
 #   model       the one model this configure accumulated (issue 1600's list),
 #               by path AND content.
@@ -429,7 +429,7 @@ function(nros_resolved_entity_take _metadata _output _json _out_taken)
     # record covers the registered rows, the model and the workspace, not the
     # probe sidecars that floor the counts: a later reconfigure of this build
     # dir (`NROS_RESOLVED_DIR` is cached, so it still reaches here) may follow a
-    # `nros sync` that moved one, and must compose.
+    # `nros configure` that moved one, and must compose.
     file(SHA256 "${_rec}" _rec_sha)
     if(NOT "$ENV{NROS_RESOLVED_ENTITY_RECORD_SHA256}" STREQUAL "${_rec_sha}")
         message(STATUS "nros: entity inventory composed at configure, not read from the "
@@ -454,7 +454,7 @@ function(nros_resolved_entity_take _metadata _output _json _out_taken)
         _nros_resolved_registered_keys("${_metadata}" _keys _why)
         if(_why STREQUAL "" AND NOT "${_keys}" STREQUAL "${NROS_RESOLVED_ENTITY_REGISTERED}")
             set(_why "it registered [${NROS_RESOLVED_ENTITY_REGISTERED}] and this "
-                     "configure registers [${_keys}] -- re-run `nros sync`")
+                     "configure registers [${_keys}] -- re-run `nros configure`")
             string(CONCAT _why ${_why})
         endif()
     endif()

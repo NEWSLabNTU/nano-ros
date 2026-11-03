@@ -6,7 +6,7 @@
 descriptor's `names` is what nano-ros calls the board. Most values are in both,
 which is why the gap stayed invisible: `BoardCatalog::resolve_deploy` matched
 `names` only, so the values that were NOT there resolved to nothing and
-`nros sync` skipped those leaves — reporting a COUNT at the end, never a name.
+`nros configure` skipped those leaves — reporting a COUNT at the end, never a name.
 
 Three consumers had each grown their own directory fallback before this was
 filed. The rule now lives in one place (`resolve_deploy`: names, then the
@@ -284,7 +284,7 @@ def main():
             "    refused (`ImageBlock::board`, issue 1519).\n"
             "  * Every value must resolve to ONE descriptor — a `names` entry, the\n"
             "    directory, or the descriptor's `[board.zephyr] west_board` — or\n"
-            "    `nros sync` skips the leaf with a count rather than a name (0606).\n"
+            "    `nros configure` skips the leaf with a count rather than a name (0606).\n"
             "    (`[deploy.*].board`, which could name the downstream id, is retired:\n"
             "    phase-486 W8.)\n"
         )

@@ -94,7 +94,7 @@ else. Everything else follows the board. `threadx-linux` builds for the
 host triple (its Rust entry is still `#![no_std]`), so its
 board contributes no target triple; `rv-virt-threadx` cross-compiles,
 and its triple, link group and emulator all come from the board
-descriptor — never from your package. `nros sync` / `nros build`
+descriptor — never from your package. `nros configure` / `nros build`
 resolve the choice into the image's `nros-cargo.toml` under `build/`,
 which is what the build reads. The board crate is reached
 through a generated `<pkg>_nros_selection` package,
@@ -196,24 +196,24 @@ Slirp's default `10.0.2.2` gateway just like the FreeRTOS QEMU flow.
 ## Build
 
 C / C++, in the scaffolded package (`tx_talker/`, where `nros new` left
-you; no `nros sync` — its message bindings are a CMake-time output):
+you; no `nros configure` — its message bindings are a CMake-time output):
 
 ```bash probe=50 variant=linux-c
 nros build
 ```
 
-Rust, in the workspace (`tx_ws/`) — `nros sync` first, then the image.
+Rust, in the workspace (`tx_ws/`) — `nros configure` first, then the image.
 The hosted flavour:
 
 ```bash probe=50 variant=linux
-nros sync
+nros configure
 nros build tx_linux
 ```
 
 or the QEMU flavour:
 
 ```bash probe=50 variant=riscv64
-nros sync
+nros configure
 nros build tx_riscv
 ```
 
@@ -225,7 +225,7 @@ for `rv-virt-threadx` (`build/threadx-riscv64-zenoh/tx_riscv_entry/target/riscv6
 `nros build <image> --dry-run` prints the exact paths and the `cargo`
 line, for driving cargo yourself.
 
-Skipping `nros sync` is not a mysterious failure: `nros build` stops at its
+Skipping `nros configure` is not a mysterious failure: `nros build` stops at its
 preflight with one line naming what is missing and telling you to run sync in
 that directory. See
 [Workflow by Platform and Language](../user-guide/workflow-by-platform.md).
@@ -395,7 +395,7 @@ for the mechanics.
 - Subscriber + service + action peers in the same example tree.
 - DDS on ThreadX: Cyclone DDS is the surviving DDS backend
   (`nros-rmw-cyclonedds`) — select it with `[system] rmw = "cyclonedds"` in
-  `system.toml` and re-run `nros sync`; see
+  `system.toml` and re-run `nros configure`; see
   [Choosing an RMW Backend](../user-guide/rmw-backends.md).
 - Real hardware: same code runs against ThreadX vendor BSPs (Renesas
   Synergy, MIMXRT, etc.); replace the QEMU board crate with a vendor

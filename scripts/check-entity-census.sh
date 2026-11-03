@@ -211,7 +211,7 @@ topics:
     rate_hz: 10
 YAML
 
-# The resolved model, written the way `nros sync` writes one: it records the
+# The resolved model, written the way `nros configure` writes one: it records the
 # contract sidecar it folded in, with that file's hash. Two things ride on
 # that. The phase-460 W1 model gate re-hashes it at every door, so the model
 # has to be RE-STAMPED whenever the contract changes -- which is what a sync
@@ -419,7 +419,7 @@ topics:
     rate_hz: 10
 YAML
 
-# A contract edit is a MODEL input change: `nros sync` re-resolves and
+# A contract edit is a MODEL input change: `nros configure` re-resolves and
 # re-stamps, and the phase-460 W1 gate refuses the model until it does. The
 # census is NOT re-run -- the code did not change, and the phase doc's
 # acceptance says this move configures.

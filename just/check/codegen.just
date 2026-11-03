@@ -76,7 +76,7 @@ codegen-size-bound-golden:
 # `scripts/build/codegen-stamp.sh` decides whether a leaf's cached `generated/`
 # tree survives. It watched `nros-core/src/action.rs` and nothing about the
 # emitters, so an edit to `rosidl-codegen` left the tree in place -- and in
-# `just/zephyr-ci.just`, the one lane whose `nros sync` is conditional, the leaf
+# `just/zephyr-ci.just`, the one lane whose `nros configure` is conditional, the leaf
 # then compiled message crates the PREVIOUS CLI emitted.
 #
 # The term added is `nros codegen-fingerprint`, not the binary: 168 distinct
@@ -212,7 +212,7 @@ config-fallback-macros:
 schema-reader-provenance:
     @python3 scripts/check-schema-reader-provenance.py
 
-# `nros sync` skips the leaf with a count instead of a name. Buildless.
+# `nros configure` skips the leaf with a count instead of a name. Buildless.
 # RFC-0087 D4 / phase-420 W5 — a descriptor carries only what no convention can
 # produce, so a field it DOES state must equal the value convention derives.
 # Six of eleven rmw fields were convention written longhand; five are now gone
@@ -560,7 +560,7 @@ generated-leaf-regenerable:
     @bash scripts/check-generated-leaf-regenerable.sh
 
 # phase-330 W7.e — committed SystemModels are BANNED: the model is a build
-# artifact (generated into <ws>/build/nros/models by `nros sync`); tracking
+# artifact (generated into <ws>/build/nros/models by `nros configure`); tracking
 # one re-opens the issue-0380 hand-edit/regeneration conflict. Supersedes
 # check-model-dims (W5.b: the dim baseline protected committed files that no
 # longer exist; `nros dev image model-dims` remains for inspection).
@@ -673,7 +673,7 @@ msg-dep-is-path:
     @bash scripts/check-msg-dep-is-path.sh
 
 # Issue 0320 — committed SystemModels must be portable: no absolute host paths in
-# `meta.inputs[].path`. Buildless; regenerate with `nros sync`.
+# `meta.inputs[].path`. Buildless; regenerate with `nros configure`.
 [private]
 no-absolute-model-paths:
     @bash scripts/check-no-absolute-model-paths.sh

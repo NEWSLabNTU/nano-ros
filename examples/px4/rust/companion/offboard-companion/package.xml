@@ -9,7 +9,7 @@
 
   <!-- px4_msgs is NOT declared here: its crate is generated from the
        PX4-Autopilot .msg tree by `nros generate-px4-msgs` (just px4
-       build-fixtures), not by `nros sync` AMENT codegen. The Cargo.toml
+       build-fixtures), not by `nros configure` AMENT codegen. The Cargo.toml
        [patch.crates-io] row pins it to generated/px4_msgs. -->
 
   <export>

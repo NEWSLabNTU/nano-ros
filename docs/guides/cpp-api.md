@@ -96,7 +96,7 @@ passes this flag itself and builds into `build/<image>/cmake`
 `nros setup presets` + `cmake --preset <board>` is the other way to avoid spelling the
 path (the presets `nros setup <board>` wrote).
 
-A single-package C/C++ leaf needs **no `nros sync`**: its message bindings are
+A single-package C/C++ leaf needs **no `nros configure`**: its message bindings are
 a CMake-time output, so a clean copy of the directory configures and builds with
 no sync at all. Workspaces and Rust leaves do need it.
 

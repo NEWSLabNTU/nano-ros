@@ -82,11 +82,11 @@ carries its whole surface.
 
 ```sh
 source ./activate.sh          # puts this checkout's `nros` on PATH
-nros sync examples/mps2-an385-baremetal/c/talker
+nros configure examples/mps2-an385-baremetal/c/talker
 cd examples/mps2-an385-baremetal/c/talker && cargo build --release
 ```
 
-`nros sync` renders the board's settings into
+`nros configure` renders the board's settings into
 `build/mps2-an385-baremetal/nros-cargo.toml` (triple, QEMU runner,
 `--gc-sections`, `CC_thumbv7m_none_eabi`) and writes a gitignored
 `.cargo/config.toml` that includes it beside the `[patch.crates-io]` rows.
@@ -106,6 +106,6 @@ reaches the C TU as `NROS_ENTRY_LOCATOR` and the boot config as
 How it got there: the image used to dial `NROS_ENTRY_LOCATOR`'s empty bottom
 rung, so the backend substituted its own default (the guest's loopback). The
 leaf still derives nothing — `<rclc/detail/entry_config.h>` stays the one producer of
-that ladder (issue 0946); `nros sync` writes the image's declared values into
+that ladder (issue 0946); `nros configure` writes the image's declared values into
 `build/<image>/nros-cargo.toml` as `NROS_ENTRY_*` rows, and
 `nros_cc_flags::entry_config::bake` defines the macro from them.

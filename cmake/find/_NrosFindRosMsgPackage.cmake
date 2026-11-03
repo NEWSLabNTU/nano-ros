@@ -306,7 +306,7 @@ function(_nros_find_msg_package_root pkg out_var)
     # not something this stub can consume.
     if(DEFINED _NANO_ROS_PREFIX AND NOT _NANO_ROS_PREFIX STREQUAL "")
         # phase-327 / issue 0368 — the CODEGEN bundle (`packages/cli/
-        # interfaces/`, the same share trees `nros sync` falls back to), so
+        # interfaces/`, the same share trees `nros configure` falls back to), so
         # a ROS-less host resolves std_msgs & co. here too. Without this
         # rung the stub silently generated NOTHING for a dep package and
         # the cpp-ffi closure compiled a consumer whose embedded

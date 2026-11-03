@@ -24,7 +24,7 @@ SystemModel there (SystemModels are build artifacts — never committed).
 
 ```sh
 source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
-nros sync
+nros configure
 nros build linux
 ```
 

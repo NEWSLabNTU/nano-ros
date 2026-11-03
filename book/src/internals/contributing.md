@@ -51,7 +51,7 @@ cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.tom
 export PATH="$PWD/packages/cli/target/release:$PATH"
 ```
 
-Both builds are needed for a workspace flow: `nros sync` and `nros
+Both builds are needed for a workspace flow: `nros configure` and `nros
 build` call `nros-launch-resolve` to resolve launch files, so a bare
 `cargo build --bin nros` alone is not equivalent.
 

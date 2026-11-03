@@ -11,13 +11,13 @@ Two commands, whatever the workspace shape:
 ```bash
 # A single Rust package (`nros new my_talker --platform linux --lang rust`):
 cd my_talker
-nros sync
+nros configure
 nros build
 ./build/linux/target/debug/my_talker
 
 # A workspace — same two commands, one entry generated per [image.*]:
 cd my_robot
-nros sync
+nros configure
 nros build
 ./build/posix-cyclonedds-linux/cmake/linux_entry
 ```
@@ -55,7 +55,7 @@ makes them cross-compile:
 
 ```bash
 # Rust leaf or workspace:
-nros sync
+nros configure
 nros build                     # or: nros build <image-id>
 
 # C / C++ single package — no sync needed; `nros build` drives its CMake:
@@ -93,7 +93,7 @@ entry and hands off; it does not wrap running or flashing.)
 The embedded deploy contract is a documented three-step sequence (per
 [RFC-0003 §4](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0003-rtos-integration-pattern.md)):
 
-1. **Sync** — `nros sync` reads `system.toml` + `[image.<id>]` +
+1. **Sync** — `nros configure` reads `system.toml` + `[image.<id>]` +
    `launch/*.xml` and emits, per image, the generated message crates, the
    resolved system model and the image's build settings under
    `build/<image-id>/`. Keyed on the image, not on the board: several
@@ -122,7 +122,7 @@ receives:
 ```bash
 nros setup zephyr --rmw zenoh       # Zephyr SDK + a west workspace in the store
 cd my_robot
-nros sync
+nros configure
 nros build demo_bringup:zephyr
 west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run   # native_sim / QEMU
 west flash -d build/zephyr-zenoh/demo_bringup__zephyr_west          # a board with a flash runner

@@ -513,11 +513,11 @@ build-examples: build-sitl-cpp
 #
 # Phase 233.4 — the XRCE companion host test (`nros-tests::px4_xrce`) runs the
 # prebuilt `px4-stub` example. Generate its `px4_msgs` bindings from the PX4
-# `.msg` tree, run `nros sync` for the patch config, then build the standalone
+# `.msg` tree, run `nros configure` for the patch config, then build the standalone
 # example to `target-xrce/` where `build_example_rmw` resolves it. Companion gets
 # the same bindings so a `just px4 build-examples` copy-out builds too.
 #
-# issue 0510 — this used to say "no `nros sync` path — px4_msgs isn't an ament
+# issue 0510 — this used to say "no `nros configure` path — px4_msgs isn't an ament
 # package" and skip sync entirely. True of the CODEGEN half and false of the
 # other one: sync also writes the leaf's `[patch.crates-io]`, and these three
 # manifests registry-name their nros deps (`nros = { version = "*" }`,
@@ -553,8 +553,8 @@ build-fixtures:
         "$nros_cli" generate-px4-msgs --px4 "$PX4_DIR" --output "$dir/generated" >/dev/null
         # issue 0510 — the patch config, without which the registry-named nros
         # deps resolve against crates.io. Gitignored, so a fresh clone has none.
-        echo "  → nros sync $dir"
-        "$nros_cli" sync "$dir" >/dev/null
+        echo "  → nros configure $dir"
+        "$nros_cli" configure "$dir" >/dev/null
     done
     # phase-336 W7 — the three companion examples build into their own
     # `target-xrce/` dirs, so they are independent; run them under the jobserver

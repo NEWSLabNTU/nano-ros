@@ -49,7 +49,7 @@ Each directory beside `src/` is a root that configures the same two packages.
 | --- | --- | --- |
 | `posix/` | `add_subdirectory(<nano-ros>)` plus the ament surface include | `cmake -S posix -B build -Dnano_ros_ROOT=<nano-ros> && cmake --build build` |
 | `mps2-an385-freertos/` | `find_package(nano_ros)`; the board comes from `system.toml` | `nros build` in the directory |
-| `zephyr/` | `find_package(Zephyr)` then `find_package(nano_ros)`; the board comes from `system.toml` | `nros sync && nros build` in the directory |
+| `zephyr/` | `find_package(Zephyr)` then `find_package(nano_ros)`; the board comes from `system.toml` | `nros configure && nros build` in the directory |
 
 On Zephyr the target is `mps2/an385` under QEMU; `native_sim` cannot run a
 ported node. `system.toml` names the board package `mps2-an385-zephyr`, which

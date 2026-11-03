@@ -1,6 +1,6 @@
 # What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
 # schema a workspace bringup uses. Switching board is editing `[image.*] board`
-# and re-running `nros sync`.
+# and re-running `nros configure`.
 
 
 [system]
@@ -23,7 +23,7 @@ board = "mps2-an385-baremetal"
 locator = "custom://uart"
 # Serial-only firmware (phase-132 / phase-204.7). The `custom://` locator IS the
 # link, kind `custom` (RFC-0109 D6 derives it): XRCE framed over UART0, which
-# the board installs for `rmw = "xrce"` over `LinkKind::Custom`. `nros sync`
+# the board installs for `rmw = "xrce"` over `LinkKind::Custom`. `nros configure`
 # derives `ZPICO_NO_SMOLTCP=1` + `NROS_LINK_IP=0` from it, and
 # `NROS_LINK_IP=0` is what drops the XRCE UDP/TCP transports too
 # (`nros-rmw-xrce-cffi/build.rs`, issue 1068). Both were hand-written in this

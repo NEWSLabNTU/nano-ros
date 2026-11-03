@@ -33,7 +33,7 @@ source /opt/ros/humble/setup.bash
 #    root the consumer needs (phase-445 W5).
 cd examples/templates/workspace-shadowing
 source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
-nros sync
+nros configure
 nros build
 
 # 3. Verify the workspace copy was linked (not AMENT's) — the two symbols

@@ -11,7 +11,7 @@ board = "linux"
 — and build it by name:
 
 ```sh
-nros sync
+nros configure
 nros build linux
 ```
 
@@ -32,7 +32,7 @@ Then provision the native host (the canonical first image target; for Zephyr /
 FreeRTOS / ESP32 swap in the matching `nros setup` board):
 ```sh
 nros setup linux --rmw zenoh
-nros sync                     # generated message bindings, once per workspace
+nros configure                     # generated message bindings, once per workspace
 ```
 
 ## What a workspace looks like
@@ -147,7 +147,7 @@ launch argument. Nothing is duplicated to express any of that.
 | `entry` | The application package — **normally omitted**; see [the exception](#the-exception-when-a-framework-owns-the-application) |
 
 Switching a workspace image to another board is that one `board` line and
-`nros sync` — nothing in any package you wrote mentions a board crate, because
+`nros configure` — nothing in any package you wrote mentions a board crate, because
 the entry that depends on it is generated. A single-package leaf
 is its own entry and does not yet get that: see
 [Role reference](../user-guide/component-and-entry-pkg.md#single-package-convenience).
@@ -176,7 +176,7 @@ manifest anywhere there is nothing to walk up to, and a path dependency need not
 sit below anything. So the generated entry is the root, and the workspace keeps
 no build file of its own.
 
-Beside the generated entry sits `nros-cargo.toml`, the settings file `nros sync`
+Beside the generated entry sits `nros-cargo.toml`, the settings file `nros configure`
 writes per image: the board's rustc triple and link flags, that
 image's `target-dir`, the resolved `[env]`, and the in-repo patch rows. Cargo
 reads it through `--config`, which is why each image compiles with its own
@@ -330,7 +330,7 @@ conf  = ["prj-zenoh.conf"]
 ```
 
 ```sh
-nros sync                              # generated message bindings, once
+nros configure                              # generated message bindings, once
 nros build demo_bringup:zephyr         # resolves the app + overlays, runs west build
 nros build demo_bringup:zephyr -- -t run
 west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run   # what `nros build` prints next
@@ -438,18 +438,18 @@ nros::main!(model = "demo_bringup");
 
 `launch` and `model` are mutually exclusive. `launch` is the canonical
 spelling: it names your *input* — the bringup package and launch file — and the
-entry consumes the SystemModel that `nros sync` resolves from it. The same
+entry consumes the SystemModel that `nros configure` resolves from it. The same
 resolved artifact drives the Linux runtime (play_launch) and every embedded
 image, so contract budgets, tiers, and QoS never drift between runtimes.
 
 ```console
-$ nros sync    # resolves models into <ws>/build/nros/models/<bringup>/
+$ nros configure    # resolves models into <ws>/build/nros/models/<bringup>/
 ```
 
-`nros sync` re-resolves a model whenever a bringup's launch XML or `system.toml`
+`nros configure` re-resolves a model whenever a bringup's launch XML or `system.toml`
 is newer than it, and `nros build` runs it for you. **SystemModels are build
 artifacts — never commit one** (the `check-no-tracked-models` gate enforces
-this). Under the hood `nros sync` runs the pinned `nros-launch-resolve` helper
+this). Under the hood `nros configure` runs the pinned `nros-launch-resolve` helper
 by absolute path, never by a bare name on `$PATH`, because
 an unrelated ROS 2 `play_launch` on `PATH` used to win that race.
 
@@ -554,7 +554,7 @@ Build it, start a router if your backend needs one, run the binary:
 ```bash
 nros new my_ws --workspace --lang c --rmw zenoh
 cd my_ws
-nros sync
+nros configure
 nros build linux
 
 # in another shell, for the zenoh backend:

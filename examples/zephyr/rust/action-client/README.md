@@ -8,7 +8,7 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 ```bash
 cp -r examples/zephyr/rust/action-client ~/my-action-client && cd ~/my-action-client
 source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
-nros sync                                # generated/ message crates
+nros configure                                # generated/ message crates
 ```
 
 Zephyr is the carve-out: the build verb is `west`, not `nros build`. The

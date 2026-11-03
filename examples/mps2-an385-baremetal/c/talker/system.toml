@@ -1,6 +1,6 @@
 # What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same schema
 # the `rust/talker` sibling uses, and the same board. Switching board is editing
-# `[image.*] board` and re-running `nros sync`.
+# `[image.*] board` and re-running `nros configure`.
 
 [system]
 name = "baremetal_c_talker"

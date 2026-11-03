@@ -39,7 +39,7 @@ action-client-arena-budget:
 #
 # issue 0320 — this invokes `rustfmt` DIRECTLY, not `cargo fmt`. `cargo fmt`
 # shells out to `cargo metadata`, which loads the leaf's `.cargo/config.toml`,
-# which does `include = ["…/nros-patch.toml"]` — a file `nros sync` GENERATES
+# which does `include = ["…/nros-patch.toml"]` — a file `nros configure` GENERATES
 # and `.gitignore` excludes. A fresh checkout does not have it, so on CI every
 # leaf died with:
 #
@@ -491,7 +491,7 @@ no-tracked-models:
 
 # issue 1501 — the other half of the model rule. `no-tracked-models` bans
 # committing the artifact; this one asks whether the bringup that needs it can
-# be REACHED by the only thing that produces it. `nros sync` scans
+# be REACHED by the only thing that produces it. `nros configure` scans
 # `src/<pkg>/package.xml` or a root `package.xml` and rejects a dir with
 # neither, so a self-pkg bringup declaring `[[component]]` without a
 # `package.xml` has no producer for its model and refuses at every bake.

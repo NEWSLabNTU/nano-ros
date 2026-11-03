@@ -34,7 +34,7 @@ export PATH="$PWD/packages/cli/target/release:$PATH"
 # the first scheduled CI census (2026-10-06) reported three admitted tests as
 # NO LONGER PASSING on `nros-launch-resolve not built`, while a local image run
 # passed them only because it copied the developer's host-built resolver in.
-# The compile-check rows staged below that resolve a bringup run `nros sync`,
+# The compile-check rows staged below that resolve a bringup run `nros configure`,
 # which needs it too (issue 1656).
 just setup-launch-resolve >/dev/null 2>&1 \
     || { echo "census: the gate job's launch-resolver build failed" >&2; exit 2; }

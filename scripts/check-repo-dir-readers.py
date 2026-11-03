@@ -172,7 +172,7 @@ def self_test() -> None:
     # Docs: each input spelling fires inside a fence; prose and outside-fence lines do not.
     fenced = lambda body: "text\n```bash\n" + body + "\n```\n"
     assert len(doc_findings("a.md", fenced("export NROS_REPO_DIR=/p"))) == 1
-    assert len(doc_findings("a.md", fenced("NROS_REPO_DIR=/p nros sync"))) == 1
+    assert len(doc_findings("a.md", fenced("NROS_REPO_DIR=/p nros configure"))) == 1
     assert len(doc_findings("a.md", fenced("cmake -S . -B b -DNROS_REPO_DIR=/p"))) == 1
     assert doc_findings("a.md", fenced("cmake -S . -B b -Dnano_ros_ROOT=/p")) == []
     assert doc_findings("a.md", "Pass `-DNROS_REPO_DIR=/p` once.\n") == []

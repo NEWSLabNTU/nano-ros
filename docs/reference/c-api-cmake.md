@@ -193,7 +193,7 @@ configure, into `build/<image>/cmake`
 `nros setup presets` + `cmake --preset <board>` is the other way to avoid spelling the
 path.
 
-A single-package C/C++ leaf needs no `nros sync`: its message bindings are a
+A single-package C/C++ leaf needs no `nros configure`: its message bindings are a
 CMake-time output. The Corrosion target tree under `build/talker/cargo/` holds
 the per-build staticlib (`libnros_c.a`, `libnros_rmw_zenoh_staticlib.a`, …).
 

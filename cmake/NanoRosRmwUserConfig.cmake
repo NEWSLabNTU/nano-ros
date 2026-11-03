@@ -196,7 +196,7 @@ endfunction()
 # `NrosCppSessionSpec::properties`, `rclc_init_multi` with
 # `rclc_session_spec_t::properties`). The table is the CLI's answer
 # (`nros dev rmw session-properties`): the domain's RMW file lowered on the host
-# (RFC-0109 D8), the same rows `nros sync` writes into `nros-bridge.toml` for a
+# (RFC-0109 D8), the same rows `nros configure` writes into `nros-bridge.toml` for a
 # Rust image. Nothing about the file's format is spelled here.
 #
 #   nros_session_properties_header(

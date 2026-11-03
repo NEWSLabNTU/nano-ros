@@ -83,7 +83,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     case "{{example}}" in
     rust/*)
         echo "Zephyr: generating Rust interface crates for {{example}}"
-        # Phase 214.I.2 — fail-loud prereq guard: `nros sync` is absent
+        # Phase 214.I.2 — fail-loud prereq guard: `nros configure` is absent
         # from the shipped 0.3.7 release. Probe; emit `[PREREQ]` + exit 0
         # if missing rather than cascading into clap noise.
         nros_require_sync "$codegen_tool"
@@ -99,7 +99,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         # `DOTCONFIG` from a cmake configure this sync is the prerequisite for).
         # The flag was a blunter version of the same thing — it suppressed
         # probing for EVERY component in the workspace.
-        "$codegen_tool" sync "$src"
+        "$codegen_tool" configure "$src"
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$src"
         ;;
     esac

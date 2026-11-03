@@ -6,7 +6,7 @@
 #   ./scripts/test/isotp-ros-params.sh
 #
 # The node, with zenoh-pico's ISO-TP link (off by default, issue 2096):
-#   (cd examples/workspaces/features && nros sync && NROS_LINK_ISOTP=1 nros build linux_rust_params)
+#   (cd examples/workspaces/features && nros configure && NROS_LINK_ISOTP=1 nros build linux_rust_params)
 #
 # `ros2 param` is SIX services (get / set / list / describe / get_types /
 # set_atomically) plus the /parameter_events topic -- the widest service

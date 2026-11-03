@@ -49,7 +49,7 @@ build-fixtures:
     source scripts/build/cargo.sh
     # issue 1038 — the central `nros-patch.toml` this lane's Rust leaves
     # `include`, made EXPLICIT. This lane already got the file, but only as a
-    # side effect of `workspace-fixtures-build.sh` running `nros sync` somewhere
+    # side effect of `workspace-fixtures-build.sh` running `nros configure` somewhere
     # earlier; `threadx-riscv64` had no such neighbour and died at manifest
     # parse. An inherited artifact is a working lane, not a declared dependency.
     # Idempotent — a process spawn when the file is already current.
@@ -186,7 +186,7 @@ build-fixtures:
     echo "  → zephyr Rust generated-dir preflight"
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the preflight loop below
-    # invokes `nros sync`, absent from the shipped 0.3.7 release.
+    # invokes `nros configure`, absent from the shipped 0.3.7 release.
     # Probe once; emit `[PREREQ]` + exit 0 if missing.
     nros_require_sync "$nros_cli"
     while IFS= read -r pkg; do
@@ -212,7 +212,7 @@ build-fixtures:
             # sidecars `nros dev image west-leaf-sizing` composes from, so every leaf
             # this lane built sized its pools from crate defaults -- the XRCE
             # talker's session allocation then exceeded the heap at boot.
-            "$nros_cli" sync "$dir"
+            "$nros_cli" configure "$dir"
             NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$dir"
             # Record the CONTENT the sync was run against, so an identical
             # package.xml reads as fresh however its mtime moved.
@@ -223,7 +223,7 @@ build-fixtures:
             # The probe keeps its own freshness ("N already current", ~0.1 s,
             # no file rewritten), so asking it every time is cheap and is the
             # only reader that knows the source moved.
-            "$nros_cli" sync "$dir" >/dev/null
+            "$nros_cli" configure "$dir" >/dev/null
         fi
     # `git ls-files`, not `find` — a package.xml is tracked, so this is an index
     # lookup. See scripts/regenerate-bindings.sh for the measurement that motivated
@@ -335,7 +335,7 @@ build-fixtures:
     # workspace message bindings + system bringup glue from the workspace
     # ROOT (not the per-package `examples/zephyr/rust/*` loop above),
     # mirroring the native lane in scripts/build/workspace-fixtures-build.sh.
-    # `nros sync` is the platform-agnostic codegen step; `codegen-system`
+    # `nros configure` is the platform-agnostic codegen step; `codegen-system`
     # materializes the demo_bringup glue. The west build of the Entry leaf
     # (emitted below via --include-workspace-entry) consumes these.
     # phase-470 W5.a (issue 1288) — guarded on the WORKSPACE, not on the entry
@@ -343,9 +343,9 @@ build-fixtures:
     # GENERATED now, so `src/zephyr_entry` is gone and a guard naming it would
     # silently stop preparing a workspace that still has two Zephyr images.
     if [ -d examples/workspaces/rust ]; then
-        echo "  → workspace-entry prep (nros sync + codegen-system)"
+        echo "  → workspace-entry prep (nros configure + codegen-system)"
         ( cd examples/workspaces/rust
-          "$nros_cli" sync >/dev/null
+          "$nros_cli" configure >/dev/null
           "$nros_cli" dev codegen system --bringup src/demo_bringup --out build-fixtures/demo_bringup >/dev/null )
     fi
     # phase-276 W1/W3/W5 (#128) — the capability workspace's three Zephyr
@@ -359,41 +359,41 @@ build-fixtures:
     # applications are GENERATED now, so `src/zephyr_rust_*_entry` is gone and a
     # guard naming one would silently stop preparing a workspace that still has
     # three Zephyr images. ONE block, because the three it replaces ran the
-    # byte-identical `nros sync` on the byte-identical workspace three times.
+    # byte-identical `nros configure` on the byte-identical workspace three times.
     if [ -d examples/workspaces/features ]; then
-        echo "  → features workspace-entry prep (nros sync)"
+        echo "  → features workspace-entry prep (nros configure)"
         ( cd examples/workspaces/features
-          "$nros_cli" sync >/dev/null )
+          "$nros_cli" configure >/dev/null )
     fi
-    # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry (nros sync only).
+    # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry (nros configure only).
     # phase-470 W5.b2 — keyed on the WORKSPACE, not on `src/zephyr_rust_safety_entry`:
     # that package is GONE (its west application is generated), and a guard on a
     # deleted package drops its prep silently. W5.a's note 2.
     if [ -d examples/workspaces/safety ]; then
-        echo "  → safety workspace-entry prep (nros sync)"
+        echo "  → safety workspace-entry prep (nros configure)"
         ( cd examples/workspaces/safety
-          "$nros_cli" sync >/dev/null )
+          "$nros_cli" configure >/dev/null )
     fi
-    # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry (nros sync only).
+    # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry (nros configure only).
     # phase-470 W5.b2 — same correction, same reason: `src/zephyr_entry` is gone here too.
     if [ -d examples/workspaces/realtime-rust ]; then
-        echo "  → ws-realtime workspace-entry prep (nros sync)"
+        echo "  → ws-realtime workspace-entry prep (nros configure)"
         ( cd examples/workspaces/realtime-rust
-          "$nros_cli" sync >/dev/null )
+          "$nros_cli" configure >/dev/null )
     fi
     # issue 1575 — the derived-tier C++ workspace's Zephyr Entry. Its tier table
-    # is DERIVED from the SystemModel only `nros sync` writes; no native row
+    # is DERIVED from the SystemModel only `nros configure` writes; no native row
     # syncs this workspace as a side effect, and an unsynced configure refuses.
     if [ -d examples/workspaces/derived-tiers-cpp ]; then
-        echo "  → derived-tiers-cpp workspace-entry prep (nros sync)"
+        echo "  → derived-tiers-cpp workspace-entry prep (nros configure)"
         ( cd examples/workspaces/derived-tiers-cpp
-          "$nros_cli" sync >/dev/null )
+          "$nros_cli" configure >/dev/null )
     fi
     # phase-509 P9 -- the three-level workspace, derived the same way.
     if [ -d examples/workspaces/levels-cpp ]; then
-        echo "  → levels-cpp workspace-entry prep (nros sync)"
+        echo "  → levels-cpp workspace-entry prep (nros configure)"
         ( cd examples/workspaces/levels-cpp
-          "$nros_cli" sync >/dev/null )
+          "$nros_cli" configure >/dev/null )
     fi
 
     # Issue 1419 -- the census each contracted workspace image's configure will

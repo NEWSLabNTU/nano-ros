@@ -88,18 +88,18 @@ build-examples:
     source scripts/build/cargo.sh
     # issue 1038 — the central `nros-patch.toml` this lane's Rust leaves
     # `include`, made EXPLICIT. This lane already got the file, but only as a
-    # side effect of `workspace-fixtures-build.sh` running `nros sync` somewhere
+    # side effect of `workspace-fixtures-build.sh` running `nros configure` somewhere
     # earlier; `threadx-riscv64` had no such neighbour and died at manifest
     # parse. An inherited artifact is a working lane, not a declared dependency.
     # Idempotent — a process spawn when the file is already current.
     nros_ensure_central_patch
-    # Phase 214.J.2 — guard `nros sync` against stale `generated/` after trait
+    # Phase 214.J.2 — guard `nros configure` against stale `generated/` after trait
     # surface drift (see scripts/build/codegen-stamp.sh).
     source scripts/build/codegen-stamp.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the loop below invokes
-    # `nros sync`, which the shipped 0.3.7 release predates. Probe
+    # `nros configure`, which the shipped 0.3.7 release predates. Probe
     # once, emit `[PREREQ]` + exit 0 if absent rather than cascading
     # into clap "unrecognized subcommand 'ws'" stack traces per example.
     nros_require_sync "$nros_cli"
@@ -115,14 +115,14 @@ build-examples:
     # Codegen prep (per-platform); build options come from the SSOT manifest
     # (examples/fixtures.toml) via the shared builder. Phase 181.4.d.
     # phase-338 W2 — the sibling Entry pkgs are gone: each role package now
-    # carries BOTH the node logic and the entry, so one `nros sync` per role
+    # carries BOTH the node logic and the entry, so one `nros configure` per role
     # covers what used to need two (the `[patch.crates-io]` block and the
     # `generated/` msg crates moved in with the entry).
     for example in \
         talker listener service-server service-client action-server action-client; do
         dir="examples/mps2-an385-freertos/rust/$example"
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-        "$nros_cli" sync "$dir" >/dev/null
+        "$nros_cli" configure "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
     # phase-336 / phase-340 P2 — the profile is the `freertos-qemu` carve-out,
@@ -218,12 +218,12 @@ build-fixture-extras:
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
     source scripts/build/cargo.sh
-    # Phase 214.J.2 — codegen-stamp helpers for `nros sync` invocations below.
+    # Phase 214.J.2 — codegen-stamp helpers for `nros configure` invocations below.
     source scripts/build/codegen-stamp.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the cyclone-fixture loop
-    # below invokes `nros sync`. Probe once; emit `[PREREQ]` + exit 0
+    # below invokes `nros configure`. Probe once; emit `[PREREQ]` + exit 0
     # rather than burying the build in clap "unrecognized subcommand 'ws'"
     # stack traces (shipped 0.3.7 release predates the verb).
     nros_require_sync "$nros_cli"

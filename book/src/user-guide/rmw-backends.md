@@ -216,7 +216,7 @@ rmw = "cyclonedds"
 ```
 
 ```bash
-nros sync --image linux_cyclonedds && nros build linux_cyclonedds
+nros configure --image linux_cyclonedds && nros build linux_cyclonedds
 ```
 
 The example's `Cargo.toml` names only `<pkg>_nros_selection = { path =

@@ -5,7 +5,7 @@
 # workspace with Node packages, a Bringup package, and an Entry package. The
 # build must follow the documented user workflow:
 #
-#   nros sync
+#   nros configure
 #   nros dev codegen system --bringup <bringup> --out <codegen_out>
 #   cargo build -p <entry> ... OR cmake --build ... --target <entry>
 #
@@ -206,7 +206,7 @@ build_workspace() {
     # Dependency gate (issue 0120): a cyclonedds workspace fixture vendors C++
     # CycloneDDS from `third-party/dds/cyclonedds`. When that submodule is absent the
     # build otherwise fails DEEP and cryptically — e.g. the bridge's
-    # `nros::main!(launch=...)` finds no `nros sync`-generated `nros-bridge.toml`,
+    # `nros::main!(launch=...)` finds no `nros configure`-generated `nros-bridge.toml`,
     # falls back to a normal-launch entry, and errors `E0433: cannot find
     # nros_board_linux`. Fail LOUD + actionable here instead. Scoped to the host:
     # the embedded cyclonedds lanes (freertos/threadx/zephyr) have their own
@@ -302,7 +302,7 @@ build_workspace() {
         fi
         [ -n "$codegen_out" ] && mkdir -p "$(dirname "$codegen_out")"
 
-        # issue 0649 — the `nros sync` that used to be HERE is a pre-pass over
+        # issue 0649 — the `nros configure` that used to be HERE is a pre-pass over
         # `group_dirs` now. It ran per ROW while sync is per-WORKSPACE, and the
         # large workspaces carry many rows: measured over one `lane=linux`
         # build, `examples/workspaces/features` was synced 22 times for its 24
@@ -601,7 +601,7 @@ build_workspace() {
 
 # Group-worker re-entry (parallel fan-out below): when NROS_WS_RECORDS_FILE is
 # set, this invocation IS one group worker — build the file's records serially
-# (they share a workspace dir: one `nros sync`, one .cargo/config.toml, one
+# (they share a workspace dir: one `nros configure`, one .cargo/config.toml, one
 # cmake build tree — intra-group parallelism would race) and exit.
 if [ -n "${NROS_WS_RECORDS_FILE:-}" ]; then
     while IFS= read -r record; do
@@ -652,7 +652,7 @@ for record in "${live_records[@]}"; do
     [ "$seen" = "1" ] || group_dirs+=("$dir")
 done
 
-# issue 0649 — one `nros sync` per workspace DIRECTORY, before the rows fan out.
+# issue 0649 — one `nros configure` per workspace DIRECTORY, before the rows fan out.
 #
 # `group_dirs` already exists for the shared cargo group, and it is exactly the
 # right set: sync's outputs (generated msg crates, the patch config, resolved
@@ -660,19 +660,19 @@ done
 # per row asked the same question up to 22 times for one directory.
 #
 # Serial and in the parent, mirroring the pre-pass in `fixtures-build.sh`: a
-# user runs `nros sync` once and then builds, which is what this lane is
+# user runs `nros configure` once and then builds, which is what this lane is
 # supposed to be simulating.
 for dir in "${group_dirs[@]:-}"; do
     [ -n "$dir" ] || continue
     [ -d "$repo_root/$dir" ] || continue
-    echo "  -> nros sync $dir"
+    echo "  -> nros configure $dir"
 # phase-367 W5 — `--no-provider-index`: this driver never READS
 # `<ws>/build/nros/providers.json`. cmake keeps its own index at
 # `${CMAKE_BINARY_DIR}/nros-providers.json` and reads it THROUGH the CLI, and
 # no caller points `nano_ros_load_providers(INDEX …)` at the sync-written one.
 # Writing it costs the underlay scan — 28 %% of a warm sync after W1/W2
 # (0.095 s -> 0.068 s), across ~101 syncs a build.
-    ( cd "$repo_root/$dir" && "$nros_cli" sync --no-provider-index >/dev/null )
+    ( cd "$repo_root/$dir" && "$nros_cli" configure --no-provider-index >/dev/null )
 done
 
 # Issue 1419 -- every census this platform's cross configures will check,

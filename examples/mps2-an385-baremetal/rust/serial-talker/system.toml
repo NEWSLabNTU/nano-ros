@@ -1,6 +1,6 @@
 # What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
 # schema a workspace bringup uses. Switching board is editing `[image.*] board`
-# and re-running `nros sync`.
+# and re-running `nros configure`.
 
 
 [system]
@@ -23,7 +23,7 @@ board = "mps2-an385-baremetal"
 locator = "serial/UART_0#baudrate=115200"
 # Serial-only firmware (phase-132 / phase-204.7). The `serial/` locator IS the
 # link (RFC-0109 D6 derives it; the `transport = "serial"` key that restated it
-# beside the locator is retired). `nros sync` derives both knobs the build scripts ask for into
+# beside the locator is retired). `nros configure` derives both knobs the build scripts ask for into
 # `build/<image>/nros-cargo.toml`: `ZPICO_NO_SMOLTCP=1`, so `nros-zpico-build`
 # compiles `ZPICO_SERIAL` instead of the smoltcp glue, and `NROS_LINK_IP=0`,
 # which drops the vendor TCP/UDP link C that `--gc-sections` then removes. Both

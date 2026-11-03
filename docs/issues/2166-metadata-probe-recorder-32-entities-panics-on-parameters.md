@@ -1,6 +1,6 @@
 ---
 id: 2166
-title: "The C/C++ metadata probe's recorder holds 32 entities and every parameter is one, so a component declaring more panics and `nros sync` reports `no producer`"
+title: "The C/C++ metadata probe's recorder holds 32 entities and every parameter is one, so a component declaring more panics and `nros configure` reports `no producer`"
 status: open
 type: bug
 area: [cli, metadata, params]
@@ -78,5 +78,5 @@ should cover it.
 ## What would close it
 
 A probe test for a C++ component that declares 200 parameters plus a few
-endpoints. Its sidecar lists all of them, and `nros sync` reports it rebuilt,
+endpoints. Its sidecar lists all of them, and `nros configure` reports it rebuilt,
 not `no producer`.

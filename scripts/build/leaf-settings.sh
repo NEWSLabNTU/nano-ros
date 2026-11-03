@@ -91,7 +91,7 @@ nros_leaf_settings_prepare() {
         return 1
     fi
     if [ ! -f "$path" ]; then
-        printf 'nros_leaf_settings_path: %s is missing — run "nros sync %s" first (RFC-0098 D2)\n' \
+        printf 'nros_leaf_settings_path: %s is missing — run "nros configure %s" first (RFC-0098 D2)\n' \
             "$path" "$dir" >&2
         return 1
     fi
@@ -211,7 +211,7 @@ nros_leaf_lock() {
 # decisions are invariant under the platform directory.
 
 # nros_leaf_sync_renders <leaf-dir>
-# rc 0 when `nros sync` reads this leaf, so cargo needs it run first: a
+# rc 0 when `nros configure` reads this leaf, so cargo needs it run first: a
 # `system.toml` (its `[image.<id>]` names the generated `<leaf>_nros_selection`
 # crate the manifest depends on) or a `package.xml` (message deps; and the
 # `[patch.crates-io]` rows for a registry-named in-repo crate such as
@@ -232,7 +232,7 @@ nros_leaf_declares_image() {
 # already-rendered leaf needs to read its generated settings
 # (`build/<image>/nros-cargo.toml`), one per line; nothing when it needs none.
 #
-# `nros sync` wires the settings into the leaf's own (gitignored)
+# `nros configure` wires the settings into the leaf's own (gitignored)
 # `.cargo/config.toml` as an `include` (issue 1381), which cargo discovers from
 # the working directory. Naming the file again with `--config` would read it
 # twice, and cargo JOINS `rustflags` across files. So the flag is passed only

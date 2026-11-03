@@ -11,7 +11,7 @@
 # 0498 presented: `build-test-fixtures lane=linux` died on a sidecar that was
 # 1345 bytes and valid when inspected seconds later.
 #
-# `build-test-fixtures` fans out one `nros sync` per fixture row, and several
+# `build-test-fixtures` fans out one `nros configure` per fixture row, and several
 # rows of ONE leaf (its zenoh / xrce / cyclonedds coordinates) sync the same
 # directory. Any file keyed by something coarser than the fixture coordinate is
 # contended by construction, whatever the target-dir split does.
