@@ -2857,8 +2857,18 @@ pub type NextDeadlineFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> u
 /// Park until `deadline_us` from now, or until something signals, whichever
 /// comes first.
 ///
-/// Returns `0` when woken by an event, `1` when the deadline expired, and a
-/// negative value when this build cannot park at all.
+/// Returns [`PARK_SIGNALLED`] (`0`) when woken by an event, [`PARK_EXPIRED`]
+/// (`1`) when the deadline expired, [`PARK_YIELDED`] (`2`) when the slot did
+/// not wait but handed the wait to its framework's scheduler, and a negative
+/// value when this build cannot park at all.
+///
+/// phase-521 W8 (c) (RFC-0113 D9, ruling 2026-11-03) -- the YIELDED answer is
+/// how a tier that a framework schedules waits: a PX4 tier's slot arms its
+/// work item's `ScheduleDelayed(deadline_us)` (or `ScheduleClear()` when the
+/// bound is the caller's budget alone) and returns at once, and `spin_once`
+/// then returns to the work queue instead of blocking. An arrival reaches the
+/// tier through `ScheduleNow()`. No executor API widens for it: the bound the
+/// slot receives is the one every park receives.
 ///
 /// A DEADLINE, not a duration, and that distinction is what makes bare metal
 /// work: `nros-baremetal-common`'s own note says `wfi` with no pending
@@ -2867,6 +2877,15 @@ pub type NextDeadlineFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> u
 /// whether anyone armed an interrupt. A `ParkUntilFn` does, because the
 /// deadline is exactly what the compare is armed to.
 pub type ParkUntilFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void, deadline_us: u64) -> i8;
+
+/// [`ParkUntilFn`]: woken by an event (`NROS_PLATFORM_PARK_SIGNALLED`).
+pub const PARK_SIGNALLED: i8 = 0;
+/// [`ParkUntilFn`]: the deadline expired (`NROS_PLATFORM_PARK_EXPIRED`).
+pub const PARK_EXPIRED: i8 = 1;
+/// [`ParkUntilFn`]: the slot handed the wait to its framework's scheduler and
+/// returned without waiting (`NROS_PLATFORM_PARK_YIELDED`); `spin_once`
+/// returns without dispatching. See [`ParkUntilFn`].
+pub const PARK_YIELDED: i8 = 2;
 
 /// A registered deadline contributor.
 #[derive(Clone, Copy)]
@@ -11889,6 +11908,13 @@ impl<'s> Executor<'s> {
         };
         // SAFETY: the prelude returns holding the lock again.
         s = unsafe { &mut *this };
+        // phase-521 W8 (c) -- the park slot yielded to its framework's
+        // scheduler: nothing is due (the bound was not zero) and nothing is
+        // pending, so there is nothing to scan. The tier runs again when its
+        // work item is scheduled.
+        if core::mem::take(&mut s.worker.park_yielded) {
+            return SpinOnceResult::new();
+        }
         // phase-509 P9b item 2 -- this pass's band (every level for the
         // one-level worker) and its slots. The scan, the sweep and the drain
         // see only these, so a worker never takes another band's work.
@@ -13134,6 +13160,7 @@ impl<'s> Executor<'s> {
         // phase-509 P9b item 3 -- a shared pass parks with the lock released
         // (a window), so the band workers run while the executor's own
         // worker waits. Nothing borrowed from the executor crosses it.
+        let mut yielded = false;
         let parked = handle_parked
             || match s.worker.park_primitive {
                 Some((park, ctx)) if park_achieved_us > 0 && park_can_be_woken => {
@@ -13147,17 +13174,28 @@ impl<'s> Executor<'s> {
                     // default returns at once. Counting that as a park would
                     // drop the drain below to non-blocking and spin hot, so the
                     // spin falls back to the wait it would have had uninstalled.
-                    (unsafe { park(ctx, park_achieved_us) }) >= 0
+                    let rc = unsafe { park(ctx, park_achieved_us) };
+                    yielded = rc == PARK_YIELDED;
+                    rc >= 0
                 }
                 _ => false,
             };
+        // SAFETY: the lock is held again (the window, if any, has closed).
+        s = unsafe { &mut *this };
+        // phase-521 W8 (c) -- a YIELDED slot did not wait: its framework runs
+        // this tier again at the bound or on an arrival, so the pass returns.
+        // Not while a wake is already pending, though: then the work is here
+        // now, and the answer counts as a park that ended at once.
+        #[cfg(feature = "alloc")]
+        let pending = s.wake_flag.load(portable_atomic::Ordering::SeqCst);
+        #[cfg(not(feature = "alloc"))]
+        let pending = false;
+        s.worker.park_yielded = yielded && !pending;
 
         // Having already waited, the transport drain must not block again —
         // otherwise the park and the drive would sum, and the cadence would be
         // up to twice what was asked. Same trap as passing a period to
         // `spin_once` instead of declaring it (#648).
-        // SAFETY: the lock is held again (the window, if any, has closed).
-        s = unsafe { &mut *this };
         let timeout_ms = if parked {
             0
         } else {

@@ -238,8 +238,10 @@ a named owner, and the D2 bounds measured under the work-queue scheduler.
   park slot with the bound in microseconds. A PX4 tier's park slot arms
   `ScheduleDelayed(us)` (or `ScheduleClear()` when there is no deadline) and
   returns a "yielded" code, so `spin_once` returns to the work queue instead
-  of blocking. The code is defined in the park ABI and its header. A uORB
-  arrival's wake callback is bound to the tier's `ScheduleNow()`.
+  of blocking. The code is `NROS_PLATFORM_PARK_YIELDED` (2) in the park ABI
+  (`nros/platform.h`, `nros_node::PARK_YIELDED`); a wake already pending when
+  the slot yields keeps the pass running. A uORB arrival's wake callback is
+  bound to the tier's `ScheduleNow()`.
 - **Owner.** The maintainer owns PX4 as a Tier 1 framework (RFC-0112 D3's
   named-owner criterion), recorded here and in PX4's entry in
   `board-support.toml`.
@@ -344,6 +346,8 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Changelog
 
+- 2026-11-03 — D9: the yielding park slot's code, `NROS_PLATFORM_PARK_YIELDED`,
+  lands in the park ABI (phase-521 W8 c).
 - 2026-11-03 — D2.5's fan-out bound stated and measured
   (`tier_wake_fanout`); the open question closes. Zephyr arrival→dispatch
   measured on mps2/an385 (phase-521 W7).

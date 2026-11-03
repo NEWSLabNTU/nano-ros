@@ -694,6 +694,25 @@ onto `rate_ctrl`, `hp_default`, `nav_and_controllers`, `lp_default`, and
 refuses more tiers than queues, naming every tier. Unit-tested in
 nros-orchestration-ir.
 
+**W8 (c) — the yielding park slot (2026-11-03).** The park ABI gains its
+third answer: `NROS_PLATFORM_PARK_YIELDED` (2), beside SIGNALLED (0) and
+EXPIRED (1), in `nros/platform.h` and as `nros_node::{PARK_SIGNALLED,
+PARK_EXPIRED, PARK_YIELDED}` (bindings regenerated with the pinned bindgen;
+`the_park_answers_match_the_platform_header` holds the two sets equal). A slot
+that answers YIELDED has armed its framework's wake at the bound it received
+and not waited. The executor then returns `spin_once` before its readiness
+scan, with no executor API widened (D7 stands). A wake already pending when
+the slot answers keeps the pass running, so pending work never waits for the
+framework's next run. Two nros-node unit tests, each mutation-checked:
+- a yielding park makes `spin_once` return without running the pass, and the
+  bound it received equals `next_wake_bound` (a 10 ms timer under a 50 ms
+  budget);
+- a yield with a wake pending still runs the pass.
+
+The uORB arrival's binding to the tier's `ScheduleNow()` is PX4 glue (issue
+2218). It lands with the generated entry (b) and the examples (d), where a PX4
+build compiles it.
+
 **Assessment (2026-11-02).** SITL is provisionable here: the main checkout
 holds `third-party/px4/PX4-Autopilot` with a built
 `build/px4_sitl_default`, `just px4 setup|doctor|build-sitl-cpp|test-sitl`
