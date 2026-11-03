@@ -893,6 +893,7 @@ fn synthesise_self_bringup(
         board_config: Default::default(),
         sources: Default::default(),
         tools: Default::default(),
+        overrides: Default::default(),
         system: system_header,
         components,
         retired_deploy: Default::default(),

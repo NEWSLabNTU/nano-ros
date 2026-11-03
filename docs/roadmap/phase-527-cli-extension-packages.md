@@ -1,8 +1,8 @@
 # Phase 527 — Runner and command packages: kinds, host build, dispatch, release underlay
 
-**Status (2026-11-02). IN PROGRESS — W3, W1 and W2 landed (`packages/runners/`
-and `nros-extension`; the `runner` and `command` kinds; the host build
-role); W4 next.** Implements
+**Status (2026-11-03). IN PROGRESS — W3, W1, W2 and W2b landed
+(`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
+the host build role; declared overrides); W4 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -123,6 +123,64 @@ Status: **DONE** (2026-11-02, #3022).
   `talker_pkg/src/lib.rs` recompiled `talker_pkg` and `linux_entry`, and the
   runner binary's mtime did not move.
 
+### W2b — Declared overrides of provider packages
+
+Sequenced before W6, which puts nano-ros's runners on the search path as the
+underlay a user's runner can replace. Implements the amended RFC-0119 D4.
+
+- Keep the precedence `provider_scan::resolve_unique` already has (a later
+  root wins: nano-ros root, workspace, `package_paths`, `NROS_PACKAGE_PATH`),
+  and rewrite D4, which said the opposite.
+- `[overrides] <name> = "<package path>"` in `system.toml`, read by the one
+  `SystemToml` parser, workspace-relative and path-pinned.
+- At resolution (the W2 build edge, `run`/`flash` runner resolution, command
+  dispatch): refuse an undeclared override of a `runner` or `command`, warn
+  for other kinds, refuse an override that shares no protocol version with
+  the package it replaces, error on a stale entry, warn on an unused one. A
+  scan or a listing never refuses.
+- `--allow-overriding <name>…` on the verbs that resolve providers.
+- `nros dev ws providers` and `nros doctor` list every override.
+
+Acceptance: one test per rule: undeclared runner refused at resolution while
+a scan is silent; declared path wins; a declaration pinned to another path
+does not approve; `--allow-overriding` approves; a non-runner kind warns; a
+protocol mismatch is refused; a stale declaration errors; an unused one warns;
+the W2 build edge follows the declaration.
+
+Status: **DONE** (2026-11-03, #PRNUM).
+
+- **One lookup:** `cargo_nano_ros::provider_overrides::resolve_provider(scan,
+  kind, name, policy) -> Result<PolicyResolution, PolicyResolveError>`
+  applies precedence, `[overrides]`, `--allow-overriding`, the protocol check
+  and the stale/unused rules. Every resolution goes through it: the W2 build
+  edge, the rmw dispatch, and `extension_descriptor::resolve_runner_with` /
+  `resolve_command_with` (it plus the descriptor read), which phase-528's
+  runner lookup and W4's dispatch call. `report` is the non-refusing listing
+  over the same classification. The old `resolve_runner_in` /
+  `resolve_command_in` apply an empty policy, so with nothing declared an
+  override is refused.
+- `nros-cli-core/src/provider_overrides.rs` reads `[overrides]` from the
+  workspace's `system.toml` (the root's, else every `src/*/system.toml`; one
+  name pinned to two paths is refused) and renders the report both listings
+  print. `SystemToml` gains the `overrides` table.
+- The W2 build edge is `cmd::build::runner_edges`, which resolves each image
+  runner under the policy; `nros build --allow-overriding <name>…`.
+- `nros dev ws providers` prints an override block (and an `overrides` array
+  in `--json`); `--resolve kind:name` says what a resolution would do.
+  `nros doctor` prints the block for the current workspace and counts a stale
+  entry as a problem. `nros dev rmw dispatch` warns on an undeclared rmw
+  override.
+- Tests: `nros-cli-core/tests/provider_overrides.rs`, over the tracked
+  fixture trees under `tests/fixtures/extension_packages/overrides/` (a
+  `COLCON_IGNORE` keeps them out of the nano-ros tree's own scan).
+- Not here, because nothing resolves a runner package for `run`/`flash` yet:
+  `nros run` builds a RunPlan and names a runner but does not look its
+  package up, and `flash`/`monitor` are reserved verbs. When phase-528 W4
+  executes plans, its runner lookup calls `resolve_runner_with` (so
+  `resolve_provider`) with the workspace policy, takes `--allow-overriding`, and `--dry-run --why` prints
+  the winner and its `OverrideNote`. Command dispatch (W4) calls
+  `resolve_command_with` the same way.
+
 ### W3 — `packages/runners/` and `nros-extension`
 
 - Create `packages/runners/` as its own cargo workspace with its own lock, and
@@ -201,16 +259,17 @@ Acceptance:
   artifact carries `share/nros/packages/<package>/` for every first-party
   runner and command package: `package.xml`, descriptor, `bin/`.
 - Discovery adds that directory as the nano-ros root when nros runs from a
-  released toolchain (RFC-0119 D4); RFC-0087 D6's order and shadow report
-  are unchanged.
+  released toolchain (RFC-0119 D4); RFC-0087 D6's order is unchanged, and an
+  override of a first-party package follows W2b.
 - `just probe installed` (phase-447 A3) runs `nros run` on the native
   talker from an installed toolchain with no checkout.
 
 Acceptance:
 
 - The installed probe passes.
-- A user package announcing `runner/qemu` is shadowed and reported by
-  `nros doctor`.
+- A user package announcing `runner/qemu` replaces ours only when
+  `[overrides]` declares it (W2b); undeclared, `nros run` refuses it, and
+  `nros doctor` reports it either way.
 
 ### W7 — Scaffolds and checks
 

@@ -105,6 +105,8 @@ pub mod sizing_descriptor;
 // `include!`. One implementation: the build embeds a stamp, the runtime
 // recomputes it. Replaces the mtime comparison that fired on every rebase.
 pub mod interface_package;
+/// RFC-0119 D4 — `[overrides]` in `system.toml`, and the override report.
+pub mod provider_overrides;
 /// RFC-0094 D3 — which driver builds a package, and whether it is built here.
 /// The ONE reader of `<build_type>` for routing; the three sites call it.
 pub mod routing;

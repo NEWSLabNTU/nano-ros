@@ -164,18 +164,95 @@ How the build does it (phase-527 W2):
   edge; one provided from the nano-ros root or a released toolchain is
   already built. A dependency on a host tool is exempt from the selection's
   closure check, since leaving one out cannot break the image's root.
+- That resolution is a resolution in D4's sense: a workspace runner that
+  replaces one of ours without an `[overrides]` entry (or
+  `--allow-overriding`) refuses the build, and a declared one gains its edge.
 - With no selection, every host tool in the workspace builds. A selection
   that keeps only host tools builds no image.
 
 ### D4 — Where packages come from, and which one wins
 
 Discovery is RFC-0087 D1 and D6, unchanged: a directory with a `package.xml`,
-searched over the ordered roots. **D6's precedence is kept.** The nano-ros
-packages come first. A user package announcing the same kind and name is
-shadowed, and `nros dev ws providers` and `nros doctor` report the shadow. To
-replace one of our runners, a user copies it under a new name (`qemu-acme`)
-and selects that name at any level of RFC-0118 D5. Which `qemu` ran then never
-depends on the search order.
+searched over the ordered roots. **Precedence is colcon's overlay rule, as D6
+already implements it**: a later root overlays an earlier one, and the roots
+are, earliest first, the nano-ros root (a checkout or a released toolchain),
+the workspace, `[workspace] package_paths`, then `NROS_PACKAGE_PATH`. So a
+workspace package announcing the same kind and name as one of ours wins. The
+order is fixed and deterministic, and `provider_scan::resolve_unique`
+implements it; this RFC changes who may use that win, not who gets it.
+
+*(Amended in phase-527 W2b. The first text said the opposite: our packages
+won and the user's copy was shadowed. The code had always let the overlay
+win, and phase-527 W2's build edge follows the code, so the RFC now does
+too.)*
+
+An override is allowed, and it is never silent:
+
+1. **Declared overrides.** A workspace states which of its packages may
+   replace an underlay provider, in `system.toml`:
+
+   ```toml
+   [overrides]
+   qemu = "src/my_qemu"   # provider name -> the package path allowed to replace it
+   ```
+
+   The path is relative to the workspace root, and the declaration is pinned
+   to it, not to the name: a different package that later announces `qemu`
+   (from `package_paths`, say) does not inherit the approval. A workspace with
+   several bringups may declare entries in any of their `system.toml`s; one
+   name pinned to two paths is refused.
+2. **An undeclared override of a `runner` or `command` is refused**, because
+   those kinds run host code and flash hardware, and which package does that
+   must never be decided by search order alone. It is refused when the name
+   is *resolved*: by `run`/`flash` plan resolution, by command dispatch, or by
+   D3's image-to-runner build edge. A scan or a listing never refuses, so a
+   stray copy nobody selects never gets in the way. The message is one line
+   and the fix:
+
+   ```
+   src/my_qemu announces runner `qemu`, which nros_runner_qemu (<path>) also provides.
+     To use yours, add to system.toml:   [overrides] qemu = "src/my_qemu"
+     or for this run only:              --allow-overriding qemu
+   ```
+3. **An undeclared override of any other kind** (`rmw`, `board`, `platform`,
+   `serdes`) warns once at resolution and proceeds, as colcon does.
+4. **`--allow-overriding <name>…`**, colcon's spelling, approves by name for
+   one invocation. It is accepted by the verbs that resolve providers: `nros
+   build` today, and `run`, `flash` and `monitor` as their runner resolution
+   lands (phase-528, phase-529).
+5. **A declared override is quiet.** Visibility comes from asking instead:
+   `nros dev ws providers` and `nros doctor` list every override (name,
+   winner, the path it shadows, declared or not), and `--dry-run --why` on
+   `run`/`flash` names the runner that won and why.
+6. **Protocol.** An overriding runner or command must speak a protocol
+   version the package it replaces speaks (D6; versions are whole numbers, so
+   each is a major version). Otherwise it is refused, naming both lists, even
+   when declared.
+7. **Stale declarations.** An `[overrides]` entry whose path no longer
+   announces that name is an error at resolution, never a silent fall back to
+   the underlay. An entry that overrides nothing (no other package provides
+   the name) is a warning.
+8. **Commands.** D7's rule stays: a built-in or reserved verb cannot be
+   provided at all. Overriding a first-party command package follows rule 2.
+
+**Prior art: colcon.** Measured with colcon-override-check 0.0.1 on Humble:
+the overlay wins at runtime (an `AMENT_PREFIX_PATH` prepend). `colcon build`
+prints a WARNING and builds anyway, and only when an underlay package
+run-depends on the overridden one; overriding a leaf is silent.
+`--allow-overriding <pkg>` silences the warning by name only, and the
+extension's source says the warning "may be promoted to an error in a future
+release". `colcon list` never warns. We keep the precedence and the flag, and
+close the gaps:
+
+| colcon | nano-ros |
+| --- | --- |
+| warns only when an underlay package depends on the overridden one | every override is found, leaf or not |
+| a warning, then the build proceeds | refused for `runner` and `command`; a warning for the other kinds |
+| approval by name, so a later package of that name inherits it | `[overrides]` pins a path |
+| no committed record of an intended override | `[overrides]` in `system.toml`, reviewed with the workspace |
+| `colcon list` says nothing | `nros dev ws providers` and `nros doctor` list every override and whether it was declared |
+| an approval for a package that is gone is ignored | a stale entry is an error; an unused one warns |
+| no interface check | an overriding runner or command must share a protocol version |
 
 What "the nano-ros packages" means depends on how nros was installed:
 
@@ -354,3 +431,11 @@ CMake code when they build it, so this adds no new boundary.
   implements `run` only until `nros monitor` needs `console`. D10's
   `check-board-runner-resolves` landed for `[board.run]`; its `[board.flash]`
   half waits for the hardware runners (phase-529).
+- 2026-11 — phase-527 W2b: D4 rewritten. Precedence is colcon's overlay rule
+  (the workspace wins), as the code always did; the first text said nano-ros
+  packages won. An override is now declared and path-pinned in `system.toml`
+  `[overrides]`; an undeclared `runner` or `command` override is refused at
+  resolution, other kinds warn; `--allow-overriding` is a one-off approval;
+  an override must share the protocol of the package it replaces; stale
+  entries error and unused ones warn. Adds the colcon prior art and the
+  comparison table.

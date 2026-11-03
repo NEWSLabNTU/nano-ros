@@ -673,6 +673,15 @@ pub struct SystemToml {
     /// (cmake, `just`, shell) gets the project's toolchain.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tools: BTreeMap<String, String>,
+    /// `[overrides]` — `<provider name> = "<package path>"`, WORKSPACE-relative
+    /// (RFC-0119 D4). The workspace package at that path may replace an
+    /// underlay provider of the same name (nano-ros's own, or one on
+    /// `package_paths`). Path-pinned on purpose: another package that later
+    /// announces the name does not inherit the approval. Read by
+    /// [`crate::provider_overrides`], applied by
+    /// `cargo_nano_ros::provider_overrides`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub overrides: BTreeMap<String, String>,
     #[serde(default, rename = "domain", skip_serializing_if = "Vec::is_empty")]
     pub domains: Vec<SystemDomainEntry>,
     #[serde(default, rename = "bridge", skip_serializing_if = "Vec::is_empty")]

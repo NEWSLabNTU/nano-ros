@@ -29,7 +29,7 @@
 //! **Read only for the provider actually selected** (RFC-0087 D4): the scan
 //! reads `package.xml` alone, and [`resolve_runner_in`] /
 //! [`resolve_command_in`] read the descriptor of the one package
-//! [`resolve_unique`] picked.
+//! [`resolve_provider`] picked.
 //!
 //! The vocabularies (verbs, placeholders, protocol versions) are
 //! `nros-extension`'s, the SDK crate the runners themselves are written
@@ -49,7 +49,11 @@ use serde::Deserialize;
 
 use crate::{
     package_xml::{BuildRole, COMMAND_KIND, RUNNER_KIND, build_role_of},
-    provider_scan::{ProviderPackage, ResolveError, ScanResult, resolve_unique},
+    provider_overrides::{
+        Override, OverrideError, OverridePolicy, OverrideStatus, PolicyResolveError,
+        ProtocolConflict, resolve_provider,
+    },
+    provider_scan::{ProviderPackage, ResolveError, ScanResult},
 };
 
 /// Where a `command` verb sits in the tree (RFC-0117).
@@ -259,6 +263,10 @@ pub struct ResolvedRunner {
     pub descriptor: RunnerDescriptor,
     /// The executable's name (stated or derived).
     pub bin: String,
+    /// Set when this package replaces a lower-precedence one (RFC-0119 D4).
+    pub overrides: Option<OverrideNote>,
+    /// Policy warnings to print once (RFC-0119 D4).
+    pub warnings: Vec<String>,
 }
 
 /// A command resolved to its provider.
@@ -274,6 +282,21 @@ pub struct ResolvedCommand {
     pub descriptor: CommandDescriptor,
     /// The executable's name (stated or derived).
     pub bin: String,
+    /// Set when this package replaces a lower-precedence one (RFC-0119 D4).
+    pub overrides: Option<OverrideNote>,
+    /// Policy warnings to print once (RFC-0119 D4).
+    pub warnings: Vec<String>,
+}
+
+/// What a resolved runner or command replaces, and who approved it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverrideNote {
+    /// The package it hides (the nearest one).
+    pub shadowed_package: String,
+    /// That package's directory.
+    pub shadowed_dir: PathBuf,
+    /// Declared in `system.toml`, or allowed by `--allow-overriding`.
+    pub status: OverrideStatus,
 }
 
 /// A runner or command could not be resolved.
@@ -281,6 +304,8 @@ pub struct ResolvedCommand {
 pub enum ExtensionResolveError {
     /// No provider, or an ambiguous one.
     Scan(ResolveError),
+    /// The override policy refuses the winner (RFC-0119 D4).
+    Override(Box<OverrideError>),
     /// The provider was found and is unusable.
     Provider {
         /// The provider's directory.
@@ -294,6 +319,7 @@ impl fmt::Display for ExtensionResolveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ExtensionResolveError::Scan(e) => write!(f, "{e}"),
+            ExtensionResolveError::Override(e) => write!(f, "{e}"),
             ExtensionResolveError::Provider { dir, message } => {
                 write!(f, "provider at {}: {message}", dir.display())
             }
@@ -303,16 +329,89 @@ impl fmt::Display for ExtensionResolveError {
 
 impl std::error::Error for ExtensionResolveError {}
 
-/// What every host-tool resolution shares: pick the provider, refuse a mixed
-/// package, read the one descriptor.
+/// The protocol versions a host-tool descriptor states, read leniently: only
+/// `protocol`, and without checking that this nros speaks it. The override
+/// check compares two packages with each other, so it must not stop at the
+/// first one nros cannot talk to.
+fn stated_protocol(pkg: &ProviderPackage, kind: &str) -> Option<Vec<u32>> {
+    #[derive(Deserialize)]
+    struct OnlyProtocol {
+        #[serde(deserialize_with = "de_protocol")]
+        protocol: Vec<u32>,
+    }
+    let text = std::fs::read_to_string(pkg.descriptor_path(kind)).ok()?;
+    toml::from_str::<OnlyProtocol>(&text)
+        .ok()
+        .map(|d| d.protocol)
+}
+
+/// RFC-0119 D4 rule 6: an overriding runner or command speaks a protocol
+/// version the package it replaces speaks.
+///
+/// Protocol versions are whole numbers, each one a major version, so "the
+/// same major" is "a shared version". Skipped when either side states none
+/// readable: the winner's own descriptor is refused on its own terms right
+/// after, and a broken underlay is not the overriding package's fault.
+///
+/// # Errors
+///
+/// [`OverrideError::Protocol`] naming both packages and both lists.
+pub(crate) fn check_override_protocol(
+    o: &Override,
+    policy: &OverridePolicy,
+) -> Result<(), OverrideError> {
+    let Some(hidden) = o.shadowed.first() else {
+        return Ok(());
+    };
+    let (Some(theirs), Some(shadowed)) = (
+        stated_protocol(&o.winner, &o.kind),
+        stated_protocol(hidden, &o.kind),
+    ) else {
+        return Ok(());
+    };
+    if theirs.iter().any(|v| shadowed.contains(v)) {
+        return Ok(());
+    }
+    Err(OverrideError::Protocol(Box::new(ProtocolConflict {
+        kind: o.kind.clone(),
+        name: o.name.clone(),
+        shown: policy.shown(&o.winner.dir),
+        theirs,
+        shadowed_dir: hidden.dir.clone(),
+        shadowed,
+    })))
+}
+
+/// What every host-tool resolution shares: pick the provider through
+/// [`resolve_provider`] (which applies the whole override policy), refuse a
+/// mixed package, read the one descriptor.
+#[allow(clippy::type_complexity)]
 fn resolve_host(
     scan: &ScanResult,
     kind: &str,
     name: &str,
-) -> Result<(ProviderPackage, String, String, PathBuf), ExtensionResolveError> {
-    let pkg = resolve_unique(scan, kind, name)
-        .map_err(ExtensionResolveError::Scan)?
-        .winner;
+    policy: &OverridePolicy,
+) -> Result<
+    (
+        ProviderPackage,
+        String,
+        String,
+        PathBuf,
+        Option<OverrideNote>,
+        Vec<String>,
+    ),
+    ExtensionResolveError,
+> {
+    let resolved = resolve_provider(scan, kind, name, policy).map_err(|e| match e {
+        PolicyResolveError::Scan(e) => ExtensionResolveError::Scan(e),
+        PolicyResolveError::Override(e) => ExtensionResolveError::Override(e),
+    })?;
+    let note = resolved.overriding.as_ref().map(|o| OverrideNote {
+        shadowed_package: o.shadowed[0].package.clone(),
+        shadowed_dir: o.shadowed[0].dir.clone(),
+        status: o.status,
+    });
+    let pkg = resolved.resolution.winner;
     let fail = |message: String| ExtensionResolveError::Provider {
         dir: pkg.dir.clone(),
         message,
@@ -339,10 +438,11 @@ fn resolve_host(
             path.display()
         ))
     })?;
-    Ok((pkg, canonical, text, path))
+    Ok((pkg, canonical, text, path, note, resolved.warnings))
 }
 
-/// Resolve a runner name against a scan and read its descriptor.
+/// Resolve a runner name against a scan and read its descriptor, with no
+/// override declared or allowed: an override of a runner is refused.
 ///
 /// # Errors
 ///
@@ -351,7 +451,22 @@ pub fn resolve_runner_in(
     scan: &ScanResult,
     name: &str,
 ) -> Result<ResolvedRunner, ExtensionResolveError> {
-    let (pkg, canonical, text, path) = resolve_host(scan, RUNNER_KIND, name)?;
+    resolve_runner_with(scan, name, &OverridePolicy::default())
+}
+
+/// Resolve a runner name under a workspace's override policy (RFC-0119 D4):
+/// what `run`/`flash` plan resolution calls.
+///
+/// # Errors
+///
+/// An [`ExtensionResolveError`].
+pub fn resolve_runner_with(
+    scan: &ScanResult,
+    name: &str,
+    policy: &OverridePolicy,
+) -> Result<ResolvedRunner, ExtensionResolveError> {
+    let (pkg, canonical, text, path, overrides, warnings) =
+        resolve_host(scan, RUNNER_KIND, name, policy)?;
     let fail = |message: String| ExtensionResolveError::Provider {
         dir: pkg.dir.clone(),
         message,
@@ -365,10 +480,13 @@ pub fn resolve_runner_in(
         dir: pkg.dir.clone(),
         descriptor,
         bin,
+        overrides,
+        warnings,
     })
 }
 
-/// Resolve a command verb against a scan and read its descriptor.
+/// Resolve a command verb against a scan and read its descriptor, with no
+/// override declared or allowed: an override of a command is refused.
 ///
 /// # Errors
 ///
@@ -377,7 +495,22 @@ pub fn resolve_command_in(
     scan: &ScanResult,
     name: &str,
 ) -> Result<ResolvedCommand, ExtensionResolveError> {
-    let (pkg, canonical, text, path) = resolve_host(scan, COMMAND_KIND, name)?;
+    resolve_command_with(scan, name, &OverridePolicy::default())
+}
+
+/// Resolve a command verb under a workspace's override policy (RFC-0119 D4):
+/// what command dispatch calls.
+///
+/// # Errors
+///
+/// An [`ExtensionResolveError`].
+pub fn resolve_command_with(
+    scan: &ScanResult,
+    name: &str,
+    policy: &OverridePolicy,
+) -> Result<ResolvedCommand, ExtensionResolveError> {
+    let (pkg, canonical, text, path, overrides, warnings) =
+        resolve_host(scan, COMMAND_KIND, name, policy)?;
     let fail = |message: String| ExtensionResolveError::Provider {
         dir: pkg.dir.clone(),
         message,
@@ -391,6 +524,8 @@ pub fn resolve_command_in(
         dir: pkg.dir.clone(),
         descriptor,
         bin,
+        overrides,
+        warnings,
     })
 }
 

@@ -1,0 +1,3 @@
+# phase-527 W2b fixture: a non-host kind for the override tests.
+[serdes]
+impl = "schema"
