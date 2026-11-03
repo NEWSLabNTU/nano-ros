@@ -151,10 +151,10 @@ pub fn snapshot_or_tree(
 /// selection covered two of the three input classes. This is the third.
 ///
 /// Returns the snapshot's `include/` when it carries a `nuttx/config.h`, else
-/// the live tree's — a pre-phase-339 checkout keeps working. Emits
-/// `rerun-if-changed` on BOTH spellings whether or not they exist (issue 0477's
-/// rule): the config IS the memory map and the ABI, so a reconfigure must
-/// invalidate anything derived from it, including on the losing branch.
+/// the live tree's — a pre-phase-339 checkout keeps working. Watches the
+/// preferred snapshot spellings even when they lose (issue 0477's rule) and the
+/// shared tree only when it is the answer (issue 2227); see
+/// `nros_build_paths::nuttx_include_root`.
 pub fn include_root(nuttx_dir: &Path) -> PathBuf {
     // Issue 0525 — ONE spelling of this resolution, shared with any standalone
     // build script that cannot reach these board helpers. (`nuttx-sys`'s bindgen

@@ -200,13 +200,14 @@ pub fn run_image_link(builtins_stub: &Path) {
     println!("cargo:rerun-if-changed={}", builtins_stub.display());
     // Issue 0511 — the config header IS the memory map (it supplies
     // CONFIG_FLASH_*/CONFIG_RAM_* to the cpp pass below), so a reconfigure must
-    // invalidate this artifact. Watch BOTH spellings whether or not they exist,
-    // for 0477's reason: an edge emitted only on the path that won leaves the
-    // artifact valid forever when the other one later appears.
-    println!(
-        "cargo:rerun-if-changed={}",
-        nuttx_dir.join("include/nuttx/config.h").display()
-    );
+    // invalidate this artifact. `nuttx_export::include_root` below emits that
+    // edge on the header this script actually reads: every preferred snapshot
+    // spelling (0477's rule), and the shared tree only when it is the answer.
+    // ~~An unconditional watch on the shared `$NUTTX_DIR/include/nuttx/config.h`~~
+    // stood here (issue 2227): the shared tree holds whichever arch was
+    // configured last, so every riscv reconfigure invalidated every arm image
+    // linked from the arm snapshot. If `libc.a` is absent nothing is derived
+    // from the config yet, and the `libc.a` watch above re-runs this script.
     if !staging.join("libc.a").exists() {
         return;
     }
