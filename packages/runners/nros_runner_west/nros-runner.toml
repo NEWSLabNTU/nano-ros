@@ -2,5 +2,5 @@
 # `nros-runner-west`, so it is derived. The executable's `describe` reply
 # states the same verbs and needs; a test in src/main.rs holds the two equal.
 protocol = 1
-verbs    = ["run"]
+verbs    = ["run", "flash"]
 needs    = ["build_dir"]

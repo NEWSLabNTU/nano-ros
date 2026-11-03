@@ -25,10 +25,11 @@
 //!
 //! # Runner choice (RFC-0119 D8)
 //!
-//! `run`: a host image is `nros_runner_native`; an emulator on a west build
-//! (a Zephyr board, whose own definition selects the emulator) is
-//! `nros_runner_west`, except the FVP, which is `nros_runner_fvp`; otherwise
-//! the emulator kind names it (`qemu`, `renode`, `wokwi`). `flash`: a
+//! `run`: a host image is `nros_runner_native`; an emulator Zephyr's own build
+//! runs ([`WEST_EMULATORS`]) on a west build is `nros_runner_west`; the FVP
+//! is `nros_runner_fvp`; otherwise the emulator kind names it (`qemu`,
+//! `renode`), and a kind no package drives yet ([`RUNNERLESS_EMULATORS`]:
+//! `wokwi`, issue 2230) is refused naming its issue. `flash`: a
 //! `command` template is `nros_runner_command`, any other method is the runner
 //! package of that name. The packages are W3's and phase-529's to write; the
 //! plan names them now.
@@ -266,6 +267,21 @@ fn method_runner(method: &str) -> RunnerRef {
     runner(&format!("nros_runner_{}", method.replace('-', "_")), method)
 }
 
+/// The emulator kinds a Zephyr build runs itself: its board declares them and
+/// the build emits a `run_<kind>` target, so a Zephyr image on one goes to
+/// the `west` runner. (The FVP is Zephyr's `armfvp`, which has its own runner
+/// for the model path.) Any other kind on a west build, such as `wokwi`, is
+/// not Zephyr's to run, and is named by its own runner like on any other
+/// platform.
+pub const WEST_EMULATORS: &[&str] = &["qemu", "renode"];
+
+/// Emulator kinds no runner package drives yet, each with the issue that
+/// tracks the package. A plan for one is refused at resolve time, naming the
+/// issue, rather than handed to a runner that would refuse it after the build.
+/// `check-board-runner-resolves` reports these as known gaps and fails once a
+/// package provides the runner while the row is still here.
+pub const RUNNERLESS_EMULATORS: &[(&str, &str)] = &[("wokwi", "2230")];
+
 fn is_west(i: &Inputs<'_>) -> bool {
     matches!(i.output, Some(BuildOutput::West { .. }))
 }
@@ -329,10 +345,25 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
         .as_deref()
         .and_then(|e| e.split_once(':'))
         .map(|(k, _)| k);
+    if let Some((kind, issue)) = emu_kind.and_then(|k| {
+        RUNNERLESS_EMULATORS
+            .iter()
+            .find(|(runnerless, _)| *runnerless == k)
+    }) {
+        return Err(ResolveError::Unresolved(format!(
+            "board `{}` runs under `{}`, and no runner package drives `{kind}` yet (issue \
+             {issue}). Zephyr's west build declares no `{kind}` run target, so the `west` \
+             runner cannot boot it either.",
+            i.board,
+            target.emulator.as_deref().unwrap_or(kind),
+        )));
+    }
     let r = match (target.host, emu_kind) {
         (true, _) => runner("nros_runner_native", "native"),
         (false, Some("fvp")) => runner("nros_runner_fvp", "fvp"),
-        (false, Some(_)) if is_west(&i) => runner("nros_runner_west", "west"),
+        (false, Some(k)) if is_west(&i) && WEST_EMULATORS.contains(&k) => {
+            runner("nros_runner_west", "west")
+        }
         (false, Some(k)) => runner(&format!("nros_runner_{k}"), k),
         (false, None) => unreachable!("a target was set above"),
     };
@@ -1223,6 +1254,20 @@ mod tests {
         // A host board has no flasher.
         let linux = board(&cat, "linux");
         assert!(go(Verb::Flash, &linux, &cargo_out(None), &none, &inv).is_err());
+
+        // The Pico W's twin is Wokwi, which Zephyr's build does not run, so
+        // it is NOT handed to west (which would refuse it after the build).
+        // No runner package drives Wokwi yet: refused at plan time, naming
+        // the issue (2230). Its silicon flashes through west.
+        let pico = board(&cat, "rpi-pico-w-zephyr");
+        let e = go(Verb::Run, &pico, &out, &none, &inv).unwrap_err();
+        assert!(matches!(e, ResolveError::Unresolved(_)), "{e:?}");
+        assert!(
+            e.to_string().contains("wokwi:pi-pico-w") && e.to_string().contains("issue 2230"),
+            "{e}"
+        );
+        let p = go(Verb::Flash, &pico, &out, &none, &inv).unwrap();
+        assert_eq!(p.runner.name, "west");
     }
 
     /// The `--dry-run --why` snapshots: mps2-an385 bare metal, linux, and

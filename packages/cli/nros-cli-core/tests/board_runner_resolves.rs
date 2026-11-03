@@ -12,6 +12,17 @@
 //! no package provides fails, and so does a provider that would not accept
 //! the plan.
 //!
+//! Flash (phase-529 W2): every in-tree board stating `[board.flash]` resolves
+//! a `flash` plan through the same resolver to a package that implements
+//! `flash`, and a board whose console is `serial` finds the `serial` runner
+//! implementing `console` (the default console of `nros flash --monitor` and
+//! `nros monitor`).
+//!
+//! Known gaps: an emulator kind in `run_plan::RUNNERLESS_EMULATORS` is
+//! refused by the resolver, naming an issue. Such a row passes only while the
+//! issue is open and no package provides the runner; once one does, the
+//! exemption is stale and the gate fails.
+//!
 //! The row-to-descriptor rule is `scripts/lib/board_registry.py`'s
 //! `row_descriptor`: the row's first `board_keys` entry, else the single
 //! `[[board]]` in `packages/boards/<crate>/nros-board.toml`.
@@ -25,7 +36,7 @@ use cargo_nano_ros::{
 use nros_cli_core::{
     cmd::{
         build_next::BuildOutput,
-        run_plan::{Bench, ImageTables, Inputs, Invocation, resolve},
+        run_plan::{Bench, ImageTables, Inputs, Invocation, RUNNERLESS_EMULATORS, resolve},
     },
     orchestration::board_descriptor::{BoardCatalog, BoardDescriptor, PlatformKind},
 };
@@ -163,9 +174,25 @@ fn every_runnable_board_resolves_to_a_runner_package() {
         .filter(|e| e.path.starts_with(&runners_dir))
         .map(|e| format!("{}: {}", e.path.display(), e.message))
         .collect();
+    let mut gaps: Vec<String> = Vec::new();
     for row in &rows {
         let d = descriptor_for(&cat, row);
         let out = output_for(d);
+        let kind = d
+            .run
+            .as_ref()
+            .and_then(|r| r.emulator_parts())
+            .map(|(k, _)| k.to_string());
+        if let Some((kind, issue)) = kind
+            .as_deref()
+            .and_then(|k| RUNNERLESS_EMULATORS.iter().find(|(r, _)| *r == k))
+        {
+            match known_gap(&root, &scan, row, d, &out, kind, issue) {
+                Ok(note) => gaps.push(note),
+                Err(p) => problems.push(p),
+            }
+            continue;
+        }
         let plan = match resolve(
             Verb::Run,
             Inputs {
@@ -224,12 +251,176 @@ fn every_runnable_board_resolves_to_a_runner_package() {
             ));
         }
     }
+    for g in &gaps {
+        eprintln!("known gap: {g}");
+    }
     assert!(
         problems.is_empty(),
         "boards that do not resolve to a runner package:\n  {}",
         problems.join("\n  ")
     );
 }
+
+/// A row on a runnerless emulator kind: the resolver must refuse it naming
+/// the issue, the issue must be open, and no package may provide the runner
+/// (else the exemption is stale and the board should resolve normally).
+fn known_gap(
+    root: &Path,
+    scan: &ScanResult,
+    row: &Row,
+    d: &BoardDescriptor,
+    out: &BuildOutput,
+    kind: &str,
+    issue: &str,
+) -> Result<String, String> {
+    if let Ok(r) = lookup_runner(scan, kind) {
+        return Err(format!(
+            "{}: runner `{kind}` is now provided by {} ({}), so remove `{kind}` from \
+             run_plan::RUNNERLESS_EMULATORS and close issue {issue}",
+            row.key,
+            r.package,
+            r.dir.display()
+        ));
+    }
+    let open = std::fs::read_dir(root.join("docs/issues"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .any(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with(&format!("{issue}-"))
+        });
+    if !open {
+        return Err(format!(
+            "{}: `{kind}` is exempt for issue {issue}, which is not open in docs/issues/",
+            row.key
+        ));
+    }
+    match resolve(
+        Verb::Run,
+        Inputs {
+            image: "gate:img",
+            board: &row.names[0],
+            descriptor: d,
+            output: Some(out),
+            tables: &ImageTables::default(),
+            bench: &Bench::default(),
+            invocation: &Invocation::default(),
+        },
+    ) {
+        Err(e) if e.to_string().contains(&format!("issue {issue}")) => Ok(format!(
+            "{}: `{kind}` has no runner package (issue {issue})",
+            row.key
+        )),
+        Err(e) => Err(format!(
+            "{}: refused, but not for the `{kind}` gap (issue {issue}): {e}",
+            row.key
+        )),
+        Ok(p) => Err(format!(
+            "{}: `{kind}` is exempt for issue {issue}, yet a plan resolved to runner `{}`",
+            row.key, p.runner.name
+        )),
+    }
+}
+
+/// phase-529 W2: every in-tree board with `[board.flash]` resolves a flash
+/// plan to a runner package implementing `flash`, and its serial console to
+/// the `serial` runner implementing `console`. `port` and `probe` are the
+/// machine's (the bench, RFC-0118 D6), so a runner needing them is not held
+/// to a board-only plan.
+#[test]
+fn every_flashable_board_resolves_a_flash_runner() {
+    let root = repo_root();
+    let cat = BoardCatalog::load(&root).unwrap();
+    let scan = scan_roots(std::slice::from_ref(&root)).unwrap();
+    let boards: Vec<&BoardDescriptor> = cat
+        .descriptors()
+        .iter()
+        .filter(|d| d.flash.is_some())
+        .collect();
+    assert!(
+        boards.len() >= 2,
+        "{} in-tree boards state `[board.flash]`; the gate was written against the Nucleo \
+         and the Pico W",
+        boards.len()
+    );
+    let mut problems = Vec::new();
+    for d in boards {
+        let name = &d.names[0];
+        let out = output_for(d);
+        let plan = match resolve(
+            Verb::Flash,
+            Inputs {
+                image: "gate:img",
+                board: name,
+                descriptor: d,
+                output: Some(&out),
+                tables: &ImageTables::default(),
+                bench: &Bench::default(),
+                invocation: &Invocation::default(),
+            },
+        ) {
+            Ok(p) => p,
+            Err(e) => {
+                problems.push(format!("{name}: no flash plan resolves: {e}"));
+                continue;
+            }
+        };
+        match lookup_runner(&scan, &plan.runner.name) {
+            Ok(r) => {
+                if r.package != plan.runner.package {
+                    problems.push(format!(
+                        "{name}: the plan names package `{}` for flash runner `{}`, the \
+                         provider is `{}`",
+                        plan.runner.package, plan.runner.name, r.package
+                    ));
+                }
+                if !r.descriptor.verbs.contains(&Verb::Flash) {
+                    problems.push(format!(
+                        "{name}: runner `{}` ({}) does not implement `flash`",
+                        r.name,
+                        r.dir.display()
+                    ));
+                }
+                for need in &r.descriptor.needs {
+                    if !MACHINE_FACTS.contains(&need.as_str()) && plan.placeholder(need).is_none() {
+                        problems.push(format!(
+                            "{name}: flash runner `{}` needs `{{{need}}}`, which the board's \
+                             plan leaves empty",
+                            r.name
+                        ));
+                    }
+                }
+            }
+            Err(e) => problems.push(format!(
+                "{name}: its flash plan names runner `{}`, which resolves to no package: {e}",
+                plan.runner.name
+            )),
+        }
+        if plan.console.kind == nros_extension::plan::ConsoleKind::Serial {
+            match lookup_runner(&scan, "serial") {
+                Ok(r) if r.descriptor.verbs.contains(&Verb::Console) => {}
+                Ok(r) => problems.push(format!(
+                    "{name}: the `serial` runner ({}) does not implement `console`",
+                    r.dir.display()
+                )),
+                Err(e) => problems.push(format!(
+                    "{name}: its console is serial and no package provides the `serial` \
+                     runner: {e}"
+                )),
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "boards with `[board.flash]` that do not resolve a flash runner:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// Placeholders the machine supplies at flash time (`--port`, `--probe`, the
+/// bench file), never the board descriptor.
+const MACHINE_FACTS: &[&str] = &["port", "probe"];
 
 /// The negative control: a board whose plan names a runner nothing provides
 /// is caught, so the gate can fail.

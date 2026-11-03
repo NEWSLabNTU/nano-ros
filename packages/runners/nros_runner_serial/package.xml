@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_runner_serial</name>
+  <version>0.0.0</version>
+  <description>
+    The `serial` runner (RFC-0119 D8): the default console for `nros monitor`
+    and `nros flash --monitor`. Opens the serial port nros resolved for the
+    plan (RFC-0118 D6), sets its baud rate and raw mode, streams what the board
+    prints to stdout unmodified, and sends `--send` and stdin to the board with
+    the plan's line ending.
+
+    A runner package of the same shape as a user's: the announcement below is
+    what the provider scan reads, `nros-runner.toml` is read only when this
+    provider is the one selected, and the executable speaks RFC-0119 D6.
+  </description>
+  <maintainer email="jerry73204@gmail.com">Lin Hsiang-Jui</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="runner" name="serial"/>
+  </export>
+</package>

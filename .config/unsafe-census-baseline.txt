@@ -72,6 +72,7 @@ nros-tests                          29   0     0       0      0
 nros-transport-callbacks             9   0     0       8      0
 nros-zephyr-build                   12   0     0       0      0
 nros-zpico-build                     1   0     0       0      0
+nros_runner_serial                   1   0     0       0      0
 nvidia-ivc                          59  25     4      11      0
 pool-exhaustion-threadx-linux        2   0     0       1      0
 qemu-bsp-large-msg-test              2   0     0       0      0
