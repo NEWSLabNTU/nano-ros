@@ -66,6 +66,27 @@ Overrides that carried a retry (filter | test-group | retries):
 | `binary(=advertised_state_interop)` | host-dds-ros2-interop | 2 |
 | `binary(sched_dims_applied_e2e)` | matrix-consumers-serial | 2 |
 
+## First run (2026-11-03)
+
+All 25 lanes together, one nextest invocation, no retries, on main `75d49a3541`
+with fixtures built per family (`lane=all` itself could not build them: issue
+2226). 177 tests: 167 passed, 10 failed, 13 skipped.
+
+| Red | Cause | Race? |
+| --- | --- | --- |
+| 6 NuttX arm tests | fixture STALE: the riscv half of `just nuttx build-fixtures` rewrites the shared `config.h` (issue 2227). After `build-fixtures-arm`, the NuttX lanes ran 17 of 17 green | no |
+| `test_zephyr_workspace_entry_native_sim_e2e`, `sched_dims_applied` (6 Zephyr realtime cells), `fvp_ws_entry_two_tier_publishes`, `fvp_board_import_fixture_boots` | fixture not built: the Zephyr family stopped at issue 2224 | no |
+| `example_e2e::case_19_xrce_rust_pubsub_e2e` | heap gate read the talker's boot record as zero; listener had counted a sample. 5 of 5 solo | **yes**, issue 2228 (mechanism open) |
+
+The first attempt's run (before the disk filled) also had
+`example_e2e::case_10_cyclonedds_rust_pubsub_e2e` red the same way, beside the
+two Rust Cyclone boot smokes that start the same image on the same baked
+domain. 5 of 5 solo. That one is explained: issue 2228.
+
+Every other lane in the table was green on its first attempt, including the
+host DDS interop, XRCE, bare-metal QEMU, FreeRTOS, ThreadX (Linux and RISC-V)
+and FVP-free Zephyr groups.
+
 ## Found and fixed
 
 (none yet)
