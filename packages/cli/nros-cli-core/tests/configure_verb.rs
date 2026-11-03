@@ -412,3 +412,26 @@ fn build_args(project: &Path, image: &str) -> nros_cli_core::cmd::build::Args {
         native_args: Vec::new(),
     }
 }
+
+/// Ruling R14: the marker follows the shared output's real WRITER, not the
+/// verb. `nros build <other image>` rewrites a leaf's selection package in
+/// its stage 4 (`leaf_settings::write_selection`) without running configure,
+/// and the configured image must read stale afterwards.
+#[test]
+fn selection_written_outside_configure_moves_the_marker() {
+    setup();
+    let leaf = scratch_leaf("marker-writer");
+    let leaf_s = leaf.to_str().unwrap();
+    configure_outcome(&[leaf_s, "--image", "linux"]);
+
+    nros_cli_core::cmd::leaf_settings::write_selection(&leaf, &repo_root(), Some("linux_xrce"))
+        .expect("the xrce image's selection writes");
+
+    let out = configure_outcome(&[leaf_s, "--image", "linux"]);
+    assert!(
+        !out.up_to_date,
+        "the selection now holds `linux_xrce`, written outside configure: {out:?}"
+    );
+    assert_eq!(out.configured, ["linux"], "{out:?}");
+    cleanup(&leaf);
+}

@@ -912,6 +912,14 @@ pub fn write_selection(
     if !depends_on_selection(&img.leaf, &img.package) {
         return Ok(None);
     }
+    // phase-530 W1 (Ruling R14) -- this is where a leaf's SHARED selection
+    // package (issue 1305) changes hands, for `nros configure` and `nros
+    // build` alike, so the marker the configure stamp reads moves HERE,
+    // before the package is written. Not in `write_selection_for`, which also
+    // serves workspace entries, whose project is the workspace root, not the
+    // entry; and not for an unmigrated leaf, which writes nothing under
+    // `build/`.
+    crate::configure_stamp::record_leaf_selection(&img.leaf, &img.image_id)?;
     write_selection_for(&img, nano_ros_root).map(Some)
 }
 

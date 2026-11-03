@@ -79,7 +79,12 @@ pub fn configure(args: Args) -> Result<Outcome> {
 /// declares) unless every one is already current. `nros build` and `nros run`
 /// call this before they plan (RFC-0120 D3); `dry_run` is theirs, handed to
 /// stage 4 unchanged.
-pub fn ensure_current(project: &Path, images: &[String], dry_run: bool) -> Result<()> {
+pub fn ensure_current(
+    project: &Path,
+    images: &[String],
+    dry_run: bool,
+    offline: bool,
+) -> Result<()> {
     let project = project_root(Some(project))?;
     let mut argv = vec![
         "configure".to_string(),
@@ -92,6 +97,9 @@ pub fn ensure_current(project: &Path, images: &[String], dry_run: bool) -> Resul
     {
         argv.push("--image".to_string());
         argv.push(bare_id(one).to_string());
+    }
+    if offline {
+        argv.push("--offline".to_string());
     }
     let sync = SyncOnly::try_parse_from(&argv)
         .wrap_err("configure: building the sync arguments")?
@@ -138,8 +146,12 @@ fn configure_project(
 
     // ---- C1: what `nros sync` did -------------------------------------
     let nano_ros_path = sync.nano_ros_path.clone();
-    // Ruling R9: on a leaf, every image shares the output C1 writes, so say
-    // which image is writing it before the first byte moves.
+    let offline = sync.offline;
+    // Ruling R9/R14: which image holds a leaf's shared output. Its writer,
+    // `leaf_settings::write_selection`, records it for a leaf that has a
+    // selection package (so `nros build <other>` moves it too); configure
+    // records it as well, because a leaf without one still shares
+    // `generated/`, and before C1 writes the first byte.
     if is_leaf(project)
         && let [t] = targets.as_slice()
     {
@@ -156,6 +168,7 @@ fn configure_project(
             &t.select,
             &nano_ros_path,
             plan_dry_run,
+            offline,
         )) {
             Ok(_) => out.configured.push(t.key.clone()),
             Err(e) => match e.downcast_ref::<PreflightRefusal>() {
@@ -187,6 +200,7 @@ fn build_args(
     image: &str,
     nano_ros_path: &Option<PathBuf>,
     dry_run: bool,
+    offline: bool,
 ) -> build::Args {
     build::Args {
         images: vec![image.to_string()],
@@ -198,7 +212,7 @@ fn build_args(
         all: false,
         dry_run,
         verbose: false,
-        offline: false,
+        offline,
         selection: Default::default(),
         continue_on_error: false,
         cmake_args: Vec::new(),

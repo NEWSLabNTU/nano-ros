@@ -636,6 +636,12 @@ pub struct SyncArgs {
     // The default ladder is RFC-0103 D6; the canonical shape is Phase 212's.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
+
+    /// Never touch the network. Passed to the `cargo update --workspace`
+    /// that prunes a single-package leaf's freshly seeded `Cargo.lock`, the
+    /// one step of a sync that resolves crates (phase-530 W1, Ruling R13).
+    #[arg(long)]
+    pub offline: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -3567,6 +3573,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 
     // Captured before `args` is partially moved below (the nano_ros_path take).
     let no_metadata = args.no_metadata;
+    let offline = args.offline;
     let verbose = args.verbose;
 
     let sync_image = args.image.clone();
@@ -3824,7 +3831,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // stage 4's seed plus its `cargo update --workspace` handoff; a configure
     // that only planned stage 4 seeded without pruning.
     if single_pkg_mode && let Some(nrp) = nano_ros_path.as_deref() {
-        seed_and_prune_leaf_lock(&ws_root, nrp, sync_image.as_deref())?;
+        seed_and_prune_leaf_lock(&ws_root, nrp, sync_image.as_deref(), offline)?;
     }
 
     refresh_source_metadata(&ws_root, nano_ros_path.clone(), no_metadata, verbose)?;
@@ -3852,7 +3859,12 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 /// prune reads the leaf's generated settings (its `[patch.crates-io]` rows),
 /// so they are written first; sync writes them again, complete, after the
 /// probe.
-fn seed_and_prune_leaf_lock(leaf: &Path, nano_ros: &Path, image: Option<&str>) -> Result<()> {
+fn seed_and_prune_leaf_lock(
+    leaf: &Path,
+    nano_ros: &Path,
+    image: Option<&str>,
+    offline: bool,
+) -> Result<()> {
     use crate::orchestration::registry_pins::{Seed, seed};
     if leaf.join("Cargo.lock").exists() {
         return Ok(());
@@ -3864,22 +3876,41 @@ fn seed_and_prune_leaf_lock(leaf: &Path, nano_ros: &Path, image: Option<&str>) -
     if !matches!(seed(&img.leaf, Some(nano_ros))?, Seed::Seeded { .. }) {
         return Ok(());
     }
-    let prune = crate::cmd::build::leaf_lock_prune(&img, false);
+    prune_seeded_lock(&img, offline, |c| c.status())
+}
+
+/// Prune the lock just seeded at `img`'s leaf, running the command through
+/// `run` (injected, so a test needs no cargo and no network).
+fn prune_seeded_lock(
+    img: &crate::cmd::leaf_settings::LeafImage,
+    offline: bool,
+    run: impl FnOnce(&mut std::process::Command) -> std::io::Result<std::process::ExitStatus>,
+) -> Result<()> {
+    let lock = img.leaf.join("Cargo.lock");
+    let prune = crate::cmd::build::leaf_lock_prune(img, offline);
     println!(
-        "sync: lock → seeded {} from the pin set; pruning (cargo update --workspace)",
-        img.leaf.join("Cargo.lock").display()
+        "sync: lock → seeded {} from the pin set; pruning (cargo update --workspace{})",
+        lock.display(),
+        if offline { " --offline" } else { "" }
     );
-    let status = prune
-        .command()
-        .status()
-        .wrap_err("sync: running `cargo update --workspace` to prune the seeded lock")?;
-    if !status.success() {
-        bail!(
-            "sync: `cargo update --workspace` failed ({status}) pruning the lock seeded at {}",
-            img.leaf.join("Cargo.lock").display()
-        );
-    }
-    Ok(())
+    let failed = match run(&mut prune.command()) {
+        Ok(status) if status.success() => return Ok(()),
+        Ok(status) => format!("failed ({status})"),
+        Err(e) => format!("could not run ({e})"),
+    };
+    // Ruling R13 -- a seeded lock that was never pruned is not a lock the
+    // build may use, and a lock that EXISTS is never seeded again. Remove it,
+    // so the next configure seeds and prunes from scratch.
+    let removed = std::fs::remove_file(&lock).is_ok();
+    bail!(
+        "sync: `cargo update --workspace` {failed} pruning the lock seeded at {}{}",
+        lock.display(),
+        if removed {
+            "; the seeded lock was removed, so the next run seeds it again"
+        } else {
+            ""
+        }
+    )
 }
 
 /// phase-308 W1 — resolve the nano-ros checkout the metadata probes build
@@ -9236,6 +9267,84 @@ mod managed_msg_deps_tests {
             !fs::read_to_string(generated.join("Cargo.toml"))
                 .unwrap()
                 .contains("nros-managed")
+        );
+    }
+}
+
+#[cfg(test)]
+mod leaf_lock_prune_tests {
+    use std::os::unix::process::ExitStatusExt;
+
+    use super::*;
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap()
+            .to_path_buf()
+    }
+
+    /// The in-tree listener leaf's declaration files, copied, with a lock
+    /// standing in for the one `seed` just wrote.
+    fn seeded_leaf(tag: &str) -> crate::cmd::leaf_settings::LeafImage {
+        let src = repo_root().join("examples/linux/rust/listener");
+        let leaf = crate::test_support::scratch_dir(tag).join("listener");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        for f in ["Cargo.toml", "package.xml", "system.toml", "src/lib.rs"] {
+            std::fs::copy(src.join(f), leaf.join(f)).unwrap();
+        }
+        std::fs::write(leaf.join("Cargo.lock"), "# seeded\n").unwrap();
+        crate::cmd::leaf_settings::resolve_image(&leaf, &repo_root(), None)
+            .unwrap()
+            .expect("the listener is a cargo leaf")
+    }
+
+    fn args_of(c: &std::process::Command) -> Vec<String> {
+        c.get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// Ruling R13: `nros configure --offline` reaches the C1 prune, as
+    /// `nros build --offline` reached stage 4's.
+    #[test]
+    fn offline_configure_passes_offline_to_the_prune() {
+        let img = seeded_leaf("prune-offline");
+        for offline in [true, false] {
+            let mut seen = Vec::new();
+            prune_seeded_lock(&img, offline, |c| {
+                seen = args_of(c);
+                Ok(std::process::ExitStatus::from_raw(0))
+            })
+            .unwrap();
+            assert_eq!(&seen[..2], ["update", "--workspace"], "{seen:?}");
+            assert_eq!(
+                seen.iter().any(|a| a == "--offline"),
+                offline,
+                "offline={offline}: {seen:?}"
+            );
+        }
+    }
+
+    /// Ruling R13: a prune that fails leaves no seeded-but-unpruned lock
+    /// behind, so the next configure seeds again instead of accepting it.
+    #[test]
+    fn failed_prune_removes_the_seeded_lock() {
+        let img = seeded_leaf("prune-fails");
+        let lock = img.leaf.join("Cargo.lock");
+        let err = prune_seeded_lock(&img, true, |_| {
+            Ok(std::process::ExitStatus::from_raw(1 << 8))
+        })
+        .expect_err("a failed prune is an error");
+        assert!(
+            format!("{err}").contains("cargo update --workspace"),
+            "{err}"
+        );
+        assert!(
+            !lock.exists(),
+            "the unpruned lock at {} survived",
+            lock.display()
         );
     }
 }
