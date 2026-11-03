@@ -542,26 +542,30 @@ const INTERFACE_SEARCH_VAR: &str = "NROS_INTERFACE_SEARCH_PATH";
 
 /// The USER's `NROS_INTERFACE_SEARCH_PATH`, captured once, at the first call,
 /// before [`ensure_interface_search_path`] has ever written it.
-fn user_interface_search_path() -> Option<&'static std::ffi::OsString> {
+pub(crate) fn user_interface_search_path() -> Option<&'static std::ffi::OsString> {
     static USER: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
     USER.get_or_init(|| std::env::var_os(INTERFACE_SEARCH_VAR))
         .as_ref()
 }
 
-/// The `NROS_INTERFACE_SEARCH_PATH` a configure of `project` runs with: the
-/// user's, else the one derived from `project` (Ruling R12). The ONE spelling
-/// for the variable configure exports and for the stamp's digest input, which
-/// therefore never reads the process environment for it: that holds whichever
-/// project was configured LAST, so a stamp read it from another project in the
-/// same process and the next configure found "inputs changed" with nothing
-/// edited.
-pub(crate) fn interface_search_path_for(project: &Path) -> Option<std::ffi::OsString> {
-    if let Some(user) = user_interface_search_path() {
-        return Some(user.clone());
-    }
+/// THE default `NROS_INTERFACE_SEARCH_PATH` of `project` (Ruling R12): its
+/// interface root. One derivation for the value configure exports and for
+/// the configure stamp's digest of an unset variable
+/// (`configure_stamp::input_digest_with`), so the stamp's writer, a configure
+/// that checks it, and a reader that runs no configure (`nros locate
+/// configured`) all digest the same project alike.
+pub(crate) fn default_interface_search_path(project: &Path) -> Option<std::ffi::OsString> {
     ws::interface_search_root(project)
         .ok()
         .map(PathBuf::into_os_string)
+}
+
+/// The `NROS_INTERFACE_SEARCH_PATH` a configure of `project` runs with: the
+/// user's, else [`default_interface_search_path`].
+fn interface_search_path_for(project: &Path) -> Option<std::ffi::OsString> {
+    user_interface_search_path()
+        .cloned()
+        .or_else(|| default_interface_search_path(project))
 }
 
 #[cfg(test)]
