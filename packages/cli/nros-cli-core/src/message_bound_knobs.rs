@@ -865,7 +865,10 @@ pub fn write_leaf_west_seed(
         // A seed from an earlier configure must not outlive the inputs it was
         // composed from (the rule `write_west_seed_over` keeps on its own
         // failures).
-        for name in [RESOLVED_MESSAGE_BOUNDS_NAME, RESOLVED_MESSAGE_BOUNDS_INPUTS_NAME] {
+        for name in [
+            RESOLVED_MESSAGE_BOUNDS_NAME,
+            RESOLVED_MESSAGE_BOUNDS_INPUTS_NAME,
+        ] {
             let _ = std::fs::remove_file(resolved_dir.join(name));
         }
     }
@@ -1135,7 +1138,10 @@ mod tests {
         std::fs::write(&stale, "set(X 1)\n").unwrap();
         let err = write_leaf_west_seed(resolved.path(), leaf.path()).unwrap_err();
         assert!(!err.is_empty());
-        assert!(!stale.exists(), "a seed an earlier configure left is removed");
+        assert!(
+            !stale.exists(),
+            "a seed an earlier configure left is removed"
+        );
         assert!(
             !resolved.path().join(LEAF_CODEGEN_DIR).exists(),
             "nothing is generated for a leaf that cannot be seeded"

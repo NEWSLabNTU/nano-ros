@@ -498,6 +498,42 @@ fn cargo_target_dir(checkout: Option<&std::path::Path>) -> Result<PathBuf> {
         .ok_or_else(|| eyre::eyre!("`cargo metadata` reported no target_directory"))
 }
 
+/// `nros locate configured --project <dir> --image <key>` — phase-530 W4
+/// (RFC-0120 D2): where `nros configure` put an image's answer, located by the
+/// image's identity. Two rows: `configured` (its stamp dir) and `resolved`
+/// (the directory its resolve wrote, empty when it resolved nothing). A host
+/// configure reads these instead of being handed a path.
+fn run_configured(args: &Args, project: Option<&std::path::Path>) -> Result<()> {
+    let Some(image) = args.image.as_deref() else {
+        bail!("`nros locate configured` needs --image <id>");
+    };
+    let Some(project) = project else {
+        bail!("`nros locate configured` needs --project <dir> (or a system.toml above the cwd)");
+    };
+    let project = nros_build_paths::canonical(project);
+    let (stamp, resolved) = crate::configure_stamp::locate_resolved(&project, image)?;
+    let resolved = resolved
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let stamp = stamp.display().to_string();
+    match args.format {
+        Format::Path => {
+            println!("configured\t{stamp}");
+            println!("resolved\t{resolved}");
+        }
+        Format::Sh => {
+            let q = |v: &str| v.replace('\'', "'\\''");
+            println!("NROS_LOCATE_CONFIGURED='{}'", q(&stamp));
+            println!("NROS_LOCATE_RESOLVED='{}'", q(&resolved));
+        }
+        Format::Cmake => {
+            println!("set(NROS_LOCATE_CONFIGURED \"{stamp}\")");
+            println!("set(NROS_LOCATE_RESOLVED \"{resolved}\")");
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{refuse_placed_archive, refuse_unplaced_header, var_name};
@@ -533,40 +569,4 @@ mod tests {
             "NROS_LOCATE_MICRO_XRCE_DDS_CLIENT"
         );
     }
-}
-
-/// `nros locate configured --project <dir> --image <key>` — phase-530 W4
-/// (RFC-0120 D2): where `nros configure` put an image's answer, located by the
-/// image's identity. Two rows: `configured` (its stamp dir) and `resolved`
-/// (the directory its resolve wrote, empty when it resolved nothing). A host
-/// configure reads these instead of being handed a path.
-fn run_configured(args: &Args, project: Option<&std::path::Path>) -> Result<()> {
-    let Some(image) = args.image.as_deref() else {
-        bail!("`nros locate configured` needs --image <id>");
-    };
-    let Some(project) = project else {
-        bail!("`nros locate configured` needs --project <dir> (or a system.toml above the cwd)");
-    };
-    let project = nros_build_paths::canonical(project);
-    let (stamp, resolved) = crate::configure_stamp::locate_resolved(&project, image)?;
-    let resolved = resolved
-        .map(|p| p.display().to_string())
-        .unwrap_or_default();
-    let stamp = stamp.display().to_string();
-    match args.format {
-        Format::Path => {
-            println!("configured\t{stamp}");
-            println!("resolved\t{resolved}");
-        }
-        Format::Sh => {
-            let q = |v: &str| v.replace('\'', "'\\''");
-            println!("NROS_LOCATE_CONFIGURED='{}'", q(&stamp));
-            println!("NROS_LOCATE_RESOLVED='{}'", q(&resolved));
-        }
-        Format::Cmake => {
-            println!("set(NROS_LOCATE_CONFIGURED \"{stamp}\")");
-            println!("set(NROS_LOCATE_RESOLVED \"{resolved}\")");
-        }
-    }
-    Ok(())
 }
