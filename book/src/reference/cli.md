@@ -433,19 +433,35 @@ nros build --packages-select acme_tools         # one command package, alone
 A workspace package may replace one of nano-ros's own providers by announcing
 the same kind and name: the workspace overlays the nano-ros packages, as a
 colcon overlay does its underlay. For a runner or a command, which run host
-code and flash hardware, the replacement must be declared in `system.toml`,
-pinned to the package's path; otherwise the build or run that resolves the
-name refuses it and prints the line to add. `--allow-overriding <name>`
-approves it for one invocation, as colcon's flag does. Other kinds (an rmw, a
-board) only warn when undeclared. The replacement must speak the runner
-protocol of the one it replaces, and an entry whose path no longer provides
-the name is an error rather than a quiet return to ours. `nros dev ws
-providers` and `nros doctor` list every override and whether it was declared.
+code and flash hardware, the replacement must be declared in the workspace's
+`nros.toml`, pinned to the package's path; otherwise the build or run that
+resolves the name refuses it and prints the line to add.
+`--allow-overriding <name>` approves it for one invocation, as colcon's flag
+does. Other kinds (an rmw, a board) only warn when undeclared. The
+replacement must speak the runner protocol of the one it replaces, and an
+entry whose path no longer provides the name is an error rather than a quiet
+return to ours.
+
+The workspace's own source trees, `src/` and every `package_paths` entry, are
+peers, as colcon's base paths are: the same provider in two of them is an
+error for every kind, and the message names both paths. Declare the one you
+mean, or pass `--allow-overriding <name>` to let the later root win for one
+run. `NROS_PACKAGE_PATH` overlays everything, with a warning.
 
 ```toml
-[overrides]
-qemu = "src/my_qemu"   # this workspace's package replaces the qemu runner
+# nros.toml, at the workspace root
+[workspace]
+package_paths = ["../vendor"]
+
+[workspace.overrides]
+qemu = "src/my_qemu"   # this workspace's package answers the qemu runner
 ```
+
+Overrides are the workspace's to declare: a `system.toml` under `src/` that
+carries `[overrides]` is refused. A single-package project with no `nros.toml`
+may put the same table in its root `system.toml` as `[overrides]`. `nros dev
+ws providers` and `nros doctor` list every override, whether it was declared,
+and which file the declarations came from.
 
 `-v` / `--verbose` shows the configure's detail notes: why a re-configure
 happened, which message bounds were refused and why. Without it each is one

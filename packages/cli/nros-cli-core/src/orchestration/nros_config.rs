@@ -459,6 +459,9 @@ struct NrosTomlSearchPath {
 struct NrosTomlWorkspaceTable {
     #[serde(default)]
     package_paths: Vec<String>,
+    /// `[workspace.overrides]` — RFC-0119 D4.
+    #[serde(default)]
+    overrides: BTreeMap<String, String>,
 }
 
 /// `[workspace] package_paths` from `<ws>/nros.toml`, in authored order.
@@ -478,6 +481,26 @@ pub fn workspace_package_paths(workspace_root: &Path) -> Result<Vec<String>, Nro
         return Ok(Vec::new());
     };
     Ok(parsed.workspace.package_paths)
+}
+
+/// `[workspace.overrides]` from `<ws>/nros.toml` (RFC-0119 D4):
+/// `<provider name> = "<package path>"`, workspace-relative.
+///
+/// `Ok(None)` when the workspace has no `nros.toml` — the one case where a
+/// single-package leaf's root `system.toml [overrides]` is read instead, so
+/// the caller must be able to tell "no file" from "no entries".
+pub fn workspace_overrides(
+    workspace_root: &Path,
+) -> Result<Option<BTreeMap<String, String>>, NrosConfigError> {
+    let path = workspace_root.join("nros.toml");
+    if !path.is_file() {
+        return Ok(None);
+    }
+    Ok(Some(
+        read_nros_toml_search_path(&path)?
+            .map(|p| p.workspace.overrides)
+            .unwrap_or_default(),
+    ))
 }
 
 /// Parse the search-path view of a root `nros.toml`. `Ok(None)` ⇒ no such file.
@@ -511,11 +534,12 @@ fn read_nros_toml_search_path(path: &Path) -> Result<Option<NrosTomlSearchPath>,
 /// migration for a surface they never had.
 ///
 /// So the rule is narrowed to exactly the shape it was aimed at: a file whose
-/// only top-level table is `[workspace]` and whose only key there is
-/// `package_paths` is the new surface and is accepted; anything else — a
-/// `[system]`, a `[deploy.*]`, or the legacy `[workspace] default` sitting
-/// beside it — is still the old file and still gets the migration pointer. No
-/// legacy file can pass, because none of them consists of that key alone.
+/// only top-level table is `[workspace]` and whose keys there are
+/// `package_paths` and/or `overrides` (RFC-0119 D4's `[workspace.overrides]`)
+/// is the new surface and is accepted; anything else — a `[system]`, a
+/// `[deploy.*]`, or the legacy `[workspace] default` sitting beside them — is
+/// still the old file and still gets the migration pointer. No legacy file can
+/// pass, because none of them consists of those keys alone.
 fn nros_toml_is_search_path_only(path: &Path) -> Result<bool, NrosConfigError> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
@@ -528,15 +552,19 @@ fn nros_toml_is_search_path_only(path: &Path) -> Result<bool, NrosConfigError> {
             path: path.to_path_buf(),
             source: Box::new(source),
         })?;
-    // EXACTLY `[workspace] package_paths`, nothing more and nothing less. The
-    // "nothing less" half matters: a bare `[workspace]` with no keys declares
-    // no search path, so it is a legacy file's remnant rather than the new
-    // surface, and accepting it would silence the migration pointer for a file
-    // that still needs one.
+    // EXACTLY `[workspace]` with `package_paths` and/or `overrides`, nothing
+    // more and nothing less. The "nothing less" half matters: a bare
+    // `[workspace]` with no keys declares nothing, so it is a legacy file's
+    // remnant rather than the new surface, and accepting it would silence the
+    // migration pointer for a file that still needs one.
     let Some(workspace) = table.get("workspace").and_then(|v| v.as_table()) else {
         return Ok(false);
     };
-    Ok(table.len() == 1 && workspace.len() == 1 && workspace.contains_key("package_paths"))
+    Ok(table.len() == 1
+        && !workspace.is_empty()
+        && workspace
+            .keys()
+            .all(|k| k == "package_paths" || k == "overrides"))
 }
 
 // ---------------------------------------------------------------------------
@@ -1266,6 +1294,26 @@ board = "linux"
             workspace_package_paths(&dir).unwrap(),
             vec!["/opt/nros/packages"],
         );
+    }
+
+    /// RFC-0119 D4 — `[workspace.overrides]` sits beside `package_paths` in
+    /// the same file, alone or with it, and is the new surface too.
+    #[test]
+    fn workspace_overrides_do_not_trip_the_212_rejection() {
+        for text in [
+            "[workspace.overrides]\nqemu = \"src/my_qemu\"\n",
+            "[workspace]\npackage_paths = [\"x\"]\n\n[workspace.overrides]\nqemu = \"src/my_qemu\"\n",
+        ] {
+            let dir = scratch_dir("workspace_overrides_do_not_trip_the_212_rejection");
+            write_minimal_workspace(&dir);
+            fs::write(dir.join("nros.toml"), text).unwrap();
+            NrosConfig::from_cargo_metadata(&dir)
+                .expect("an overrides table must not refuse the workspace");
+            let o = workspace_overrides(&dir).unwrap().expect("the file exists");
+            assert_eq!(o["qemu"], "src/my_qemu");
+        }
+        let dir = scratch_dir("workspace_overrides_absent");
+        assert_eq!(workspace_overrides(&dir).unwrap(), None);
     }
 
     /// And the narrowing is NARROW: a legacy key sitting beside the new one is

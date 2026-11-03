@@ -1,9 +1,13 @@
 //! Declared overrides of provider packages (RFC-0119 D4, phase-527 W2b).
 //!
-//! The search path already decides which provider wins: a LATER root overlays
-//! an earlier one ([`crate::provider_scan::resolve_unique`]), which is colcon's
-//! overlay rule. This module decides whether that win is ALLOWED, and how loud
-//! it is.
+//! The search path has three tiers (`provider_scan::build_search_path`): the
+//! nano-ros tree is the underlay, the workspace and its `package_paths`
+//! entries are SOURCE roots, and `NROS_PACKAGE_PATH` is the overlay. Between
+//! tiers a LATER root wins ([`crate::provider_scan::resolve_unique`]), which is
+//! colcon's overlay rule; among source roots the same provider twice is
+//! refused, which is colcon's "duplicate package names not supported" among
+//! base paths. This module applies both, and decides whether a win over a
+//! lower tier is ALLOWED, and how loud it is.
 //!
 //! colcon builds an overriding package and prints a warning, and only when an
 //! underlay package depends on the overridden one; a leaf override is silent,
@@ -14,9 +18,14 @@
 //!   is REFUSED when the name is resolved. A plain scan or listing never
 //!   refuses, so a stray copy nobody selects never gets in the way.
 //! - **every other kind**: an undeclared override WARNS, as colcon does.
-//! - **a declaration is PATH-pinned** — `[overrides] qemu = "src/my_qemu"` in
-//!   `system.toml`. Another package that later claims `qemu` does not inherit
-//!   the approval.
+//! - **a declaration is PATH-pinned** — `qemu = "src/my_qemu"` under
+//!   `nros.toml [workspace.overrides]` (a single-package leaf with no
+//!   `nros.toml`: its root `system.toml [overrides]`). Another package that
+//!   later claims `qemu` does not inherit the approval.
+//! - **the same provider in two SOURCE roots** (the workspace and a
+//!   `package_paths` entry, or two entries) is REFUSED for every kind, unless
+//!   a declaration pins one of them — the pinned one wins wherever it sits —
+//!   or `--allow-overriding <name>` lets the later root win.
 //! - **`--allow-overriding <name>`** approves by name for one invocation.
 //! - **a declaration that names a path no longer announcing the name** is an
 //!   error at resolution, never a silent fall back to the underlay; one that
@@ -38,15 +47,17 @@
 //! precedence, `[overrides]`, `--allow-overriding`, the protocol check and the
 //! stale/unused rules cannot fork. Build the policy with
 //! `nros_cli_core::provider_overrides::policy(workspace, &allow_overriding)`
-//! (it reads `[overrides]` from the workspace's `system.toml`), scan with
-//! `provider_scan::scan_roots(&nros_cli_core::cmd::ws::provider_search_path(ws)?.paths())`,
+//! (it reads the declarations from the workspace's `nros.toml`), scan with
+//! `provider_scan::scan_search_path(&nros_cli_core::cmd::ws::provider_search_path(ws)?)`
+//! (the root origins are what tell a source root from the underlay),
 //! print `warnings` once on stderr, and keep `overriding` for `--why`. A
 //! runner or command caller that also needs the descriptor and executable
 //! uses `extension_descriptor::resolve_runner_with` / `resolve_command_with`,
 //! which are this call plus the descriptor read.
 //!
 //! The policy is pure: it takes the declared table and the flag as data, so
-//! the reader of `system.toml` stays in the crate that owns that schema.
+//! the readers of `nros.toml` and `system.toml` stay in the crate that owns
+//! those schemas.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -57,9 +68,47 @@ use std::{
 use crate::{
     package_xml::HOST_KINDS,
     provider_scan::{
-        ProviderPackage, Resolution, ResolveError, ScanResult, resolve_unique, shadowing,
+        ProviderPackage, Resolution, ResolveError, RootOrigin, ScanResult, candidates,
+        resolve_unique, shadowing,
     },
 };
+
+/// Where a workspace's override declarations live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OverridesFile {
+    /// `nros.toml [workspace.overrides]`, beside `package_paths`. Workspace
+    /// configuration, so no package can grant itself an override.
+    #[default]
+    NrosToml,
+    /// The root `system.toml [overrides]` of a single-package leaf that has
+    /// no `nros.toml`.
+    LeafSystemToml,
+}
+
+impl OverridesFile {
+    /// The file and table, as a user would look for them.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            OverridesFile::NrosToml => "nros.toml [workspace.overrides]",
+            OverridesFile::LeafSystemToml => "system.toml [overrides]",
+        }
+    }
+
+    /// What to paste to declare `name = "shown"`: the file, then the table
+    /// header and the entry.
+    #[must_use]
+    pub fn paste(self, name: &str, shown: &str) -> String {
+        match self {
+            OverridesFile::NrosToml => {
+                format!("nros.toml:   [workspace.overrides] {name} = \"{shown}\"")
+            }
+            OverridesFile::LeafSystemToml => {
+                format!("system.toml:   [overrides] {name} = \"{shown}\"")
+            }
+        }
+    }
+}
 
 /// One `[overrides]` entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +130,11 @@ pub struct OverridePolicy {
     pub declared: BTreeMap<String, Declared>,
     /// `--allow-overriding <name>…`, for this invocation only.
     pub allowed: BTreeSet<String>,
+    /// Which file the declarations are (or would be) written in. Messages
+    /// quote it, so the fix they print lands in the file that is read.
+    pub file: OverridesFile,
+    /// The file the declarations were read from, when one was.
+    pub declared_in: Option<PathBuf>,
 }
 
 impl OverridePolicy {
@@ -110,7 +164,17 @@ impl OverridePolicy {
             workspace: workspace.to_path_buf(),
             declared,
             allowed: allowed.iter().cloned().collect(),
+            file: OverridesFile::default(),
+            declared_in: None,
         }
+    }
+
+    /// Record where the declarations were read from.
+    #[must_use]
+    pub fn read_from(mut self, file: OverridesFile, path: Option<PathBuf>) -> Self {
+        self.file = file;
+        self.declared_in = path;
+        self
     }
 
     /// `path` as a user would write it in `[overrides]`: relative to the
@@ -147,7 +211,7 @@ pub fn refuses_undeclared(kind: &str) -> bool {
 /// How an override was approved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverrideStatus {
-    /// `[overrides]` in `system.toml` names the winner's path.
+    /// The workspace's override declarations name the winner's path.
     Declared,
     /// `--allow-overriding <name>` on this command line.
     AllowedOnce,
@@ -191,13 +255,26 @@ pub enum OverrideError {
         /// The package it hides.
         shadowed_package: String,
         shadowed_dir: PathBuf,
+        /// Where a declaration would go.
+        file: OverridesFile,
     },
-    /// `[overrides] <name> = "<path>"` names a path that announces no `<name>`.
+    /// A declaration `<name> = "<path>"` names a path that announces no `<name>`.
     Stale {
         name: String,
         as_written: String,
         /// What is at the path instead.
         found: String,
+        file: OverridesFile,
+    },
+    /// Two SOURCE roots of the workspace provide `(kind, name)`, and neither a
+    /// declaration nor `--allow-overriding` picks one.
+    SourceDuplicate {
+        kind: String,
+        name: String,
+        /// Each provider, as a declaration would name it, with the origin of
+        /// its root; highest precedence first.
+        candidates: Vec<(String, &'static str)>,
+        file: OverridesFile,
     },
     /// An overriding runner or command speaks no protocol version the
     /// package it shadows speaks.
@@ -235,23 +312,47 @@ impl fmt::Display for OverrideError {
                 shown,
                 shadowed_package,
                 shadowed_dir,
+                file,
             } => write!(
                 f,
                 "{shown} announces {kind} `{name}`, which {shadowed_package} ({}) also \
-                 provides.\n  To use yours, add to system.toml:   [overrides] {name} = \
-                 \"{shown}\"\n  or for this run only:              --allow-overriding {name}",
-                shadowed_dir.display()
+                 provides.\n  To use yours, add to {}\n  or for this run only:   \
+                 --allow-overriding {name}",
+                shadowed_dir.display(),
+                file.paste(name, shown)
             ),
             OverrideError::Stale {
                 name,
                 as_written,
                 found,
+                file,
             } => write!(
                 f,
-                "system.toml [overrides] {name} = \"{as_written}\", but {found}. Point the \
-                 entry at the package that announces `{name}`, or remove it to use the \
-                 underlay's."
+                "{} {name} = \"{as_written}\", but {found}. Point the entry at the \
+                 package that announces `{name}`, or remove it to use the underlay's.",
+                file.label()
             ),
+            OverrideError::SourceDuplicate {
+                kind,
+                name,
+                candidates,
+                file,
+            } => {
+                write!(
+                    f,
+                    "{kind} `{name}` is provided by more than one source tree of this \
+                     workspace:"
+                )?;
+                for (shown, origin) in candidates {
+                    write!(f, "\n  {shown}  ({origin})")?;
+                }
+                write!(
+                    f,
+                    "\n  A workspace builds one package per name. Pick one in {}\n  \
+                     or for this run only (the later root wins):   --allow-overriding {name}",
+                    file.paste(name, &candidates[0].0)
+                )
+            }
             OverrideError::Protocol(c) => write!(
                 f,
                 "{} overrides {} `{}` but speaks protocol {}, and the package it \
@@ -326,6 +427,7 @@ fn decl_for<'a>(
         name: name.to_string(),
         as_written: d.as_written.clone(),
         found,
+        file: policy.file,
     };
     let Some(p) = at else {
         let found = if d.path.join("package.xml").is_file() {
@@ -373,8 +475,9 @@ fn classify(
     if resolution.shadowed.is_empty() {
         if let (true, DeclFor::ThisKind(d)) = (declared_winner, &decl) {
             warnings.push(format!(
-                "system.toml [overrides] {name} = \"{}\" overrides nothing: no other package \
-                 provides {kind} `{name}`. Remove the entry.",
+                "{} {name} = \"{}\" overrides nothing: no other package provides {kind} \
+                 `{name}`. Remove the entry.",
+                policy.file.label(),
                 d.as_written
             ));
         }
@@ -399,9 +502,78 @@ fn classify(
     ))
 }
 
+fn is_source(scan: &ScanResult, p: &ProviderPackage) -> bool {
+    scan.origin(p.root_index).is_some_and(RootOrigin::is_source)
+}
+
+/// The precedence answer for `(kind, name)` with the source-root duplicate
+/// rule applied: [`resolve_unique`]'s order, except that two SOURCE roots
+/// providing the name must be settled by a declaration (the pinned package
+/// wins wherever it sits) or by `--allow-overriding` (the later root wins).
+/// The environment overlay still beats every source root.
+fn pick(
+    scan: &ScanResult,
+    kind: &str,
+    name: &str,
+    policy: &OverridePolicy,
+) -> Result<Resolution, PolicyResolveError> {
+    let resolution = resolve_unique(scan, kind, name).map_err(PolicyResolveError::Scan)?;
+    let hits = candidates(scan, kind, name);
+    let source: Vec<&ProviderPackage> = hits
+        .iter()
+        .copied()
+        .filter(|p| is_source(scan, p))
+        .collect();
+    let roots: BTreeSet<usize> = source.iter().map(|p| p.root_index).collect();
+    if roots.len() < 2 {
+        return Ok(resolution);
+    }
+    // A declaration whose path announces nothing is a stale entry, reported
+    // as such rather than as the duplicate it failed to settle.
+    decl_for(scan, kind, name, policy).map_err(|e| PolicyResolveError::Override(Box::new(e)))?;
+    let pinned = policy
+        .declared
+        .get(name)
+        .and_then(|d| source.iter().copied().find(|p| same_dir(&p.dir, &d.path)));
+    let chosen = match pinned {
+        Some(p) => p,
+        None if policy.allowed.contains(name) => source[0],
+        None => {
+            return Err(PolicyResolveError::Override(Box::new(
+                OverrideError::SourceDuplicate {
+                    kind: kind.to_string(),
+                    name: name.to_string(),
+                    candidates: source
+                        .iter()
+                        .map(|p| {
+                            (
+                                policy.shown(&p.dir),
+                                scan.origin(p.root_index).map_or("", RootOrigin::label),
+                            )
+                        })
+                        .collect(),
+                    file: policy.file,
+                },
+            )));
+        }
+    };
+    if !is_source(scan, &resolution.winner) || same_dir(&resolution.winner.dir, &chosen.dir) {
+        return Ok(resolution);
+    }
+    Ok(Resolution {
+        winner: chosen.clone(),
+        shadowed: hits
+            .iter()
+            .filter(|p| !same_dir(&p.dir, &chosen.dir))
+            .map(|p| (*p).clone())
+            .collect(),
+    })
+}
+
 /// **The one provider lookup.** Resolve `(kind, name)` on the scan and apply
-/// every rule of RFC-0119 D4: precedence (a later root wins), the
-/// `[overrides]` declaration (path-pinned), `--allow-overriding`, the
+/// every rule of RFC-0119 D4: precedence (a later root wins between tiers),
+/// the source-root duplicate refusal, the declaration (path-pinned),
+/// `--allow-overriding`, the
 /// protocol check for an overriding runner or command, and the stale and
 /// unused rules. Every resolution calls this — the build edge
 /// (`nros_cli_core::cmd::build::runner_edges`), `run`/`flash` runner lookup,
@@ -414,15 +586,16 @@ fn classify(
 /// # Errors
 ///
 /// [`PolicyResolveError::Scan`] when nothing or something ambiguous answers
-/// the name; [`PolicyResolveError::Override`] for an undeclared override of a
-/// host kind, a stale declaration, or a protocol mismatch.
+/// the name; [`PolicyResolveError::Override`] for a duplicate across source
+/// roots nobody settled, an undeclared override of a host kind, a stale
+/// declaration, or a protocol mismatch.
 pub fn resolve_provider(
     scan: &ScanResult,
     kind: &str,
     name: &str,
     policy: &OverridePolicy,
 ) -> Result<PolicyResolution, PolicyResolveError> {
-    let resolution = resolve_unique(scan, kind, name).map_err(PolicyResolveError::Scan)?;
+    let resolution = pick(scan, kind, name, policy)?;
     let (overriding, mut warnings) = classify(scan, kind, name, &resolution, policy)
         .map_err(|e| PolicyResolveError::Override(Box::new(e)))?;
     if let Some(o) = &overriding
@@ -438,14 +611,16 @@ pub fn resolve_provider(
                     shown,
                     shadowed_package: hidden.package.clone(),
                     shadowed_dir: hidden.dir.clone(),
+                    file: policy.file,
                 },
             )));
         }
         warnings.push(format!(
             "{shown} announces {kind} `{name}`, which {} ({}) also provides; yours is used. \
-             To say so and silence this, add to system.toml:   [overrides] {name} = \"{shown}\"",
+             To say so and silence this, add to {}",
             hidden.package,
-            hidden.dir.display()
+            hidden.dir.display(),
+            policy.file.paste(name, &shown)
         ));
     }
     if let Some(o) = &overriding
@@ -470,6 +645,17 @@ pub enum ReportRow {
     Stale(OverrideError),
     /// A declaration that replaces nothing.
     Unused { name: String, as_written: String },
+    /// Two source roots provide one name and nothing settles it: every
+    /// resolution of the name refuses ([`OverrideError::SourceDuplicate`]).
+    Duplicate(OverrideError),
+}
+
+impl ReportRow {
+    /// Is this row a fault a resolution of its name would refuse?
+    #[must_use]
+    pub fn is_problem(&self) -> bool {
+        matches!(self, ReportRow::Stale(_) | ReportRow::Duplicate(_))
+    }
 }
 
 /// Every override in a scan, and every declaration that is stale or unused:
@@ -478,9 +664,16 @@ pub enum ReportRow {
 pub fn report(scan: &ScanResult, policy: &OverridePolicy) -> Vec<ReportRow> {
     let mut rows = Vec::new();
     for s in shadowing(scan).into_iter().filter(|s| !s.same_root_tie) {
-        let resolution = Resolution {
-            winner: s.winner,
-            shadowed: s.shadowed,
+        let resolution = match pick(scan, &s.kind, &s.name, policy) {
+            Ok(r) => r,
+            Err(PolicyResolveError::Override(e))
+                if matches!(*e, OverrideError::SourceDuplicate { .. }) =>
+            {
+                rows.push(ReportRow::Duplicate(*e));
+                continue;
+            }
+            // Stale: reported once below, by name.
+            Err(_) => continue,
         };
         match classify(scan, &s.kind, &s.name, &resolution, policy) {
             Ok((Some(o), _)) => rows.push(ReportRow::Override(o)),

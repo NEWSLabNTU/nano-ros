@@ -985,9 +985,11 @@ fn scan_providers_for(
                 providers: idx.providers,
                 errors: Vec::new(),
                 inputs: idx.inputs,
+                ..Default::default()
             }
+            .with_origins(&search_path)
         }
-        None => provider_scan::scan_roots(&roots)?,
+        None => provider_scan::scan_search_path(&search_path)?,
     };
     // A package.xml that could not be parsed is the reason a provider the user
     // expected is missing; never bury it.
@@ -1036,7 +1038,7 @@ fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
         // An unreadable system.toml is some other command's error to report;
         // a configure must not fail here over it.
         let policy = crate::provider_overrides::policy(ws, &[]).unwrap_or_else(|e| {
-            eprintln!("warning: [overrides] not read: {e}");
+            eprintln!("warning: provider overrides not read: {e}");
             cargo_nano_ros::provider_overrides::OverridePolicy::new(ws, &Default::default(), &[])
         });
         match resolve_provider(
@@ -1506,9 +1508,11 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
                 providers: index.providers,
                 errors: Vec::new(),
                 inputs: index.inputs,
+                ..Default::default()
             }
+            .with_origins(&search_path)
         }
-        None => provider_scan::scan_roots(&roots)?,
+        None => provider_scan::scan_search_path(&search_path)?,
     };
 
     // Report failures on stderr whatever the format: a package.xml that could
@@ -1624,7 +1628,7 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
     let policy = match crate::provider_overrides::policy(&workspace, &[]) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("warning: [overrides] not read: {e}");
+            eprintln!("warning: provider overrides not read: {e}");
             cargo_nano_ros::provider_overrides::OverridePolicy::new(
                 &workspace,
                 &Default::default(),
@@ -1667,6 +1671,10 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
                 })).collect::<Vec<_>>(),
                 "packages_seen": result.packages_seen(),
                 "providers": rows,
+                // Where the declarations were read from (RFC-0119 D4): the
+                // file, and its table, so a reader knows what to edit.
+                "overrides_file": policy.file.label(),
+                "overrides_read_from": policy.declared_in,
                 "overrides": override_rows.iter().map(|r| {
                     use cargo_nano_ros::provider_overrides::ReportRow;
                     match r {
@@ -1679,6 +1687,9 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
                         }),
                         ReportRow::Stale(e) => serde_json::json!({
                             "status": "stale", "message": e.to_string(),
+                        }),
+                        ReportRow::Duplicate(e) => serde_json::json!({
+                            "status": "duplicate", "message": e.to_string(),
                         }),
                         ReportRow::Unused { name, as_written } => serde_json::json!({
                             "name": name, "declared": as_written, "status": "unused",

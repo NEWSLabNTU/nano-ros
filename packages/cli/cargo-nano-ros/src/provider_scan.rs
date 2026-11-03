@@ -175,12 +175,31 @@ pub struct ScanResult {
     /// a provider's — re-configures. A non-provider matters because ADDING a
     /// provision to it is precisely the edit that must be noticed.
     pub inputs: Vec<PathBuf>,
+    /// Where each root came from, by `root_index`. Filled by
+    /// [`scan_search_path`]; empty after a bare [`scan_roots`], which knows
+    /// paths only. The override policy reads it to tell SOURCE roots (whose
+    /// duplicates are refused, colcon's rule) from the underlay and the
+    /// environment overlay (whose shadowing is ordered) — RFC-0119 D4.
+    pub root_origins: Vec<RootOrigin>,
 }
 
 impl ScanResult {
     /// How many package.xml files the walk read.
     pub fn packages_seen(&self) -> usize {
         self.inputs.len()
+    }
+
+    /// The origin of root `root_index`, when the scan recorded origins.
+    pub fn origin(&self, root_index: usize) -> Option<RootOrigin> {
+        self.root_origins.get(root_index).copied()
+    }
+
+    /// Record the origins of `path`'s roots. For a scan built some other way
+    /// than [`scan_search_path`] — a provider index read back from disk —
+    /// against the same path.
+    pub fn with_origins(mut self, path: &SearchPath) -> Self {
+        self.root_origins = path.roots.iter().map(|r| r.origin).collect();
+        self
     }
 }
 
@@ -249,6 +268,19 @@ impl RootOrigin {
             RootOrigin::Env => PACKAGE_PATH_ENV,
             RootOrigin::BasePaths => "--base-paths",
         }
+    }
+
+    /// Is this root a SOURCE tree of the workspace — its own directory or a
+    /// `package_paths` entry?
+    ///
+    /// Source roots are peers, the way colcon's base paths are: the same
+    /// provider in two of them is refused rather than ordered (RFC-0119 D4).
+    /// The nano-ros tree is the underlay beneath them and
+    /// [`PACKAGE_PATH_ENV`] the overlay above them; both keep the ordered
+    /// rule. `--base-paths` keeps it too: it replaces the whole path, often
+    /// with an underlay among its entries, and nothing tells which.
+    pub fn is_source(self) -> bool {
+        matches!(self, RootOrigin::Workspace | RootOrigin::PackagePaths)
     }
 
     /// Is a missing root of this origin worth a warning?
@@ -326,11 +358,26 @@ impl SearchPath {
 
 /// Assemble the ordered search path from every source.
 ///
-/// **Order is precedence, and the order is: nano-ros tree, workspace,
-/// `package_paths`, then [`PACKAGE_PATH_ENV`].** [`resolve_unique`] gives the
-/// LATER root the win, so this reads underlay → overlay throughout: the
-/// nano-ros tree is what everything else overlays, and the environment overlays
-/// even the workspace's own committed configuration.
+/// **The order is: nano-ros tree, workspace, `package_paths`, then
+/// [`PACKAGE_PATH_ENV`] — three tiers, and only two of the boundaries are
+/// precedence** (RFC-0119 D4, colcon's rules):
+///
+/// - the **nano-ros tree** is the UNDERLAY. Anything above it may shadow it;
+/// - the **workspace** and its **`package_paths`** entries are SOURCE roots,
+///   peers like colcon's base paths. The same `(kind, name)` in two of them is
+///   REFUSED for every kind (colcon's "duplicate package names not
+///   supported"), unless `nros.toml [workspace.overrides]` pins one — which
+///   then wins whatever its position — or `--allow-overriding <name>` lets
+///   the later root win for one invocation;
+/// - [`PACKAGE_PATH_ENV`] is the OVERLAY, above everything, the explicit
+///   escape hatch: it may shadow anything, and says so.
+///
+/// Within that, a later root wins ([`resolve_unique`]). Whether a shadowing
+/// is ALLOWED (the host kinds need a declaration whatever tier wins) and the
+/// source-root duplicate refusal are
+/// `crate::provider_overrides::resolve_provider`'s, which reads the tiers from
+/// [`ScanResult::root_origins`] — so scan with [`scan_search_path`] when you
+/// mean to resolve.
 ///
 /// **The environment APPENDS to the config rather than replacing it, and that
 /// is a choice.** colcon's own precedent does not settle it — `COLCON_PREFIX_PATH`
@@ -479,6 +526,13 @@ fn push_root(out: &mut SearchPath, path: PathBuf, origin: RootOrigin, as_written
         exists,
         as_written,
     });
+}
+
+/// Scan a [`SearchPath`], recording each root's origin
+/// ([`ScanResult::root_origins`]). What a caller that RESOLVES providers
+/// scans with: the source-root duplicate rule needs the origins.
+pub fn scan_search_path(path: &SearchPath) -> Result<ScanResult> {
+    Ok(scan_roots(&path.paths())?.with_origins(path))
 }
 
 /// Scan an ordered search path. Earlier roots come first in the result.
@@ -905,6 +959,11 @@ pub fn candidates<'a>(scan: &'a ScanResult, kind: &str, name: &str) -> Vec<&'a P
         .collect();
     // LATER roots win — see `resolve_unique`.
     hits.sort_by(|a, b| b.root_index.cmp(&a.root_index).then(a.dir.cmp(&b.dir)));
+    // One package reached through two roots (a `package_paths` entry inside
+    // the workspace, which the workspace root also walks) is one package,
+    // never a duplicate of itself. The higher-precedence sighting stays.
+    let mut seen: HashSet<&Path> = HashSet::new();
+    hits.retain(|p| seen.insert(p.dir.as_path()));
     hits
 }
 
@@ -923,6 +982,12 @@ pub fn candidates<'a>(scan: &'a ScanResult, kind: &str, name: &str) -> Vec<&'a P
 ///
 /// Ambiguity WITHIN one root is an error: precedence between roots is defined,
 /// precedence within a root is not.
+///
+/// This is the ORDER only. Callers that resolve a provider for use go through
+/// `crate::provider_overrides::resolve_provider`, which applies RFC-0119 D4
+/// on top: a duplicate across SOURCE roots (workspace, `package_paths`) is
+/// refused unless declared or allowed, and an undeclared override of a host
+/// kind is refused (see [`build_search_path`] for the three tiers).
 pub fn resolve_unique(
     scan: &ScanResult,
     kind: &str,
