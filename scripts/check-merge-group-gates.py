@@ -18,7 +18,11 @@ So for each gate in `MERGE_GATING` below this asserts, against `gate.yml`:
      a `sibling` line whose events include `merge_group` — a job the aggregator
      does not hear is decorative (R3 of `check-default-gates-run-somewhere`);
   4. no step, job or `sibling` line admits `pull_request` — the decision was
-     "batch thorough", and a copy on the PR lane is a cost nobody agreed to.
+     "batch thorough", and a copy on the PR lane is a cost nobody agreed to;
+  5. a SHARDED host (phase-489 W8: the step sets a `*_SHARD` variable) takes
+     its shard from a matrix that lists exactly `1..n` for the `<k>/<n>` it
+     spells. Each shard builds only its share, so a matrix that drops an entry,
+     or a literal `2/3`, quietly drops units while every shard reads green.
 
 AUTHORED, deliberately: the list is a record of decisions, and there is nothing
 to derive a decision from. Each entry names the decision that put it here.
@@ -63,6 +67,33 @@ def _events_of(guard, wf_events):
     return named
 
 
+_SHARD_SET = re.compile(r"_SHARD=\s*(?:\"([^\"]*)\"|(\S+))")
+_MATRIX_SPEC = re.compile(r"^\$\{\{\s*matrix\.(\w+)\s*\}\}/(\d+)$")
+
+
+def _shard_errors(job, step, where):
+    """Rule 5: every `*_SHARD=<k>/<n>` the step sets is `${{ matrix.X }}/n`
+    over a matrix whose X is exactly 1..n."""
+    errs = []
+    specs = [q or b for q, b in _SHARD_SET.findall(step.get("run") or "")]
+    for key, val in (step.get("env") or {}).items():
+        if str(key).endswith("_SHARD"):
+            specs.append(str(val))
+    matrix = ((job.get("strategy") or {}).get("matrix")) or {}
+    for spec in specs:
+        m = _MATRIX_SPEC.match(spec)
+        if not m:
+            errs.append(f"{where} shards the gate with `{spec}`, not `${{{{ matrix.<x> }}}}/<n>` — "
+                        f"a fixed shard builds only its share and nothing builds the rest")
+            continue
+        axis, n = m.group(1), int(m.group(2))
+        vals = matrix.get(axis) if isinstance(matrix, dict) else None
+        if not isinstance(vals, list) or sorted(str(v) for v in vals) != sorted(str(k) for k in range(1, n + 1)):
+            errs.append(f"{where} spells shard `<k>/{n}` but `matrix.{axis}` is {vals!r}, not 1..{n} — "
+                        f"the missing shards' units are built by nobody")
+    return errs
+
+
 def _runs_gate(run, gate):
     return re.search(r"(?m)^\s*just\s+check\s+" + re.escape(gate) + r"(?![\w-])", run or "") is not None
 
@@ -98,6 +129,7 @@ def check(doc, text):
                             f"merge_group, not the PR lane ({why})")
             if "merge_group" not in step_ev:
                 continue
+            errs.extend(_shard_errors(job, step, where))
             if step.get("continue-on-error"):
                 errs.append(f"{where} is continue-on-error, so its red cannot eject ({why})")
                 continue
@@ -161,6 +193,17 @@ jobs:
 """
 
 
+SHARDED = SAMPLE.replace(
+    "    needs: changes\n    if:",
+    "    needs: changes\n    strategy:\n      matrix:\n        shard: [1, 2, 3]\n    if:",
+).replace(
+    "          just check template-copy-out\n",
+    "          export NROS_TEMPLATE_COPY_OUT_SHARD=\"${{ matrix.shard }}/3\"\n"
+    "          just check template-copy-out\n",
+)
+assert SHARDED != SAMPLE and "shard: [1, 2, 3]" in SHARDED
+
+
 def selftest():
     def run(text):
         return check(yaml.safe_load(text), text)
@@ -183,6 +226,10 @@ def selftest():
          SAMPLE.replace('"merge_group workflow_dispatch"\n', '"pull_request merge_group workflow_dispatch"\n'), True),
         ("made continue-on-error",
          SAMPLE.replace("        run: |\n          source", "        continue-on-error: true\n        run: |\n          source"), True),
+        ("sharded over the whole matrix", SHARDED, False),
+        ("a shard dropped from the matrix", SHARDED.replace("shard: [1, 2, 3]", "shard: [1, 3]"), True),
+        ("a fixed shard, no matrix", SHARDED.replace("${{ matrix.shard }}/3", "2/3"), True),
+        ("the matrix shorter than the spec", SHARDED.replace("}}/3", "}}/4"), True),
         ("a longer gate name is not this gate",
          SAMPLE.replace("just check template-copy-out", "just check template-copy-out-extra"), True),
     ]

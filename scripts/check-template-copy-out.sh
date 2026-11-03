@@ -96,7 +96,20 @@
 # defect did and requires this script to report FAIL. A checker that has never
 # been seen to fail is not evidence.
 #
+# ## Shards (phase-489 W8)
+#
+# `--shard <k>/<n>` builds one share of the run, so a lane can spread the gate
+# over n runners. The UNITS are every discovered project (by label), every
+# scaffold (`scaffold:<board>`) and the self-test (`@self-test`).
+# `scripts/build/gate-shard.py` splits them, and that split puts every unit in
+# exactly one shard. `.config/template-copy-out-weights.txt` decides only the
+# balance. So the n shards together build exactly what one unsharded run
+# builds, and a new template lands in some shard without anyone listing it.
+# `--preload-last <unit>` charges the last shard with work it runs outside
+# this gate (the merge-queue job's `ament-census-sizing`).
+#
 # Usage: check-template-copy-out.sh [--list | --self-test] [template-name ... | scaffold]
+#        check-template-copy-out.sh --shard <k>/<n> [--preload-last <unit>]
 #
 # `scaffold` names the single packages `nros new --board` writes (see
 # SCAFFOLD_BOARDS); with no names, templates and scaffolds are all built.
@@ -890,9 +903,22 @@ cross_self_test() {
 }
 
 mode="run"
+shard=""
+preload_last=""
 case "${1:-}" in
     --list) mode="list"; shift ;;
     --self-test) mode="self-test"; shift ;;
+    --shard)
+        shard="${2:-}"
+        [ -n "$shard" ] || { echo "check-template-copy-out: --shard needs <k>/<n>" >&2; exit 2; }
+        shift 2
+        if [ "${1:-}" = "--preload-last" ]; then
+            preload_last="${2:-}"
+            [ -n "$preload_last" ] || { echo "check-template-copy-out: --preload-last needs a unit" >&2; exit 2; }
+            shift 2
+        fi
+        [ "$#" -eq 0 ] || { echo "check-template-copy-out: --shard takes no template names" >&2; exit 2; }
+        ;;
 esac
 
 if [ "$mode" = "self-test" ]; then
@@ -964,6 +990,44 @@ if [ "${#buildable[@]}" -eq 0 ] && [ "${#wanted[@]}" -eq 0 ]; then
     exit 1
 fi
 
+scaffold_boards=("${SCAFFOLD_BOARDS[@]}")
+if [ -n "$shard" ]; then
+    units_file="$(mktemp "${TMPDIR:-/tmp}/nros-template-units.XXXXXX")" || exit 2
+    {
+        echo "@self-test"
+        for entry in "${buildable[@]}"; do
+            project_label "${entry%%$'\t'*}" "${entry#*$'\t'}"
+            echo
+        done
+        for b in "${SCAFFOLD_BOARDS[@]}"; do echo "scaffold:$b"; done
+    } > "$units_file"
+    shard_args=("$units_file" "$repo_root/.config/template-copy-out-weights.txt" "$shard")
+    [ -z "$preload_last" ] || shard_args+=(--preload-last "$preload_last")
+    rc=0
+    mine="$(python3 "$repo_root/scripts/build/gate-shard.py" "${shard_args[@]}")" || rc=$?
+    rm -f "$units_file"
+    if [ "$rc" -ne 0 ]; then
+        echo "check-template-copy-out: could not compute shard $shard (gate-shard.py rc=$rc)" >&2
+        exit 2
+    fi
+    echo "check-template-copy-out: shard $shard builds: $(printf '%s ' $mine)"
+    owned() { nros_grep_q -Fx -- "$1" <<<"$mine"; }
+    kept=()
+    for entry in "${buildable[@]}"; do
+        owned "$(project_label "${entry%%$'\t'*}" "${entry#*$'\t'}")" && kept+=("$entry")
+    done
+    buildable=("${kept[@]}")
+    scaffold_boards=()
+    for b in "${SCAFFOLD_BOARDS[@]}"; do
+        owned "scaffold:$b" && scaffold_boards+=("$b")
+    done
+    # The self-test is a unit like any other: the shard that owns it runs it
+    # first, as the unsharded recipe does, and a red control stops the shard.
+    if owned "@self-test"; then
+        bash "$repo_root/scripts/check-template-copy-out.sh" --self-test || exit 1
+    fi
+fi
+
 # Every HOST project runs `nros sync` + `nros build`; ask for their tools once,
 # before any copy is made (see `preflight_judge`).
 has_host=0
@@ -1000,7 +1064,7 @@ if [ "${#wanted[@]}" -gt 0 ]; then
     for w in "${wanted[@]}"; do [ "$w" = scaffold ] && run_scaffolds=1; done
 fi
 if [ "$run_scaffolds" -eq 1 ]; then
-    for b in "${SCAFFOLD_BOARDS[@]}"; do
+    for b in "${scaffold_boards[@]}"; do
         rc=0
         run_scaffold "$b" || rc=$?
         case "$rc" in
@@ -1035,7 +1099,11 @@ fi
 # so a run that built none of them has lost its discovery, not its SDKs. A run
 # narrowed to named templates may legitimately land only on cross projects, and
 # their skips are already in the ledger.
-if [ "$verified" -eq 0 ] && [ "${#wanted[@]}" -eq 0 ]; then
+# A shard holds that rule only when it owns a host unit: a shard of cross and
+# Zephyr projects alone may legitimately build none on a host without SDKs.
+owns_host=$has_host
+for b in "${scaffold_boards[@]}"; do [ "$b" = linux ] && owns_host=1; done
+if [ "$verified" -eq 0 ] && [ "${#wanted[@]}" -eq 0 ] && { [ -z "$shard" ] || [ "$owns_host" -eq 1 ]; }; then
     echo "check-template-copy-out: no project was BUILT — every one is NOT VERIFIED (see above)." >&2
     echo "  A lane that built nothing has verified nothing; that is not a pass." >&2
     exit 1
