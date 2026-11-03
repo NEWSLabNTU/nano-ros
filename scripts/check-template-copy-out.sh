@@ -108,8 +108,30 @@
 # `--preload-last <unit>` charges the last shard with work it runs outside
 # this gate (the merge-queue job's `ament-census-sizing`).
 #
+# ## Parts (issue 2219)
+#
+# `--part zephyr` keeps only the units that build on the Zephyr road, and
+# `--part no-zephyr` keeps every other unit. A unit's part is DERIVED by the
+# same predicate that picks its road (`cross_road`), never listed, so a new
+# Zephyr template joins the Zephyr part without anyone naming it. The two parts
+# are complements, so together they build every unit exactly once, and
+# `--shard` splits whatever part it is given. The merge queue runs the
+# Zephyr part on a runner that has a west workspace and the rest as three
+# shards on runners that do not. A project whose boards span both parts is
+# refused rather than guessed. A unit that reaches the Zephyr road inside the
+# `no-zephyr` part (a scaffold board, which has no project to classify before
+# it is scaffolded) FAILS, because a skip there is exactly the gap issue 2219
+# found: five projects NOT VERIFIED on every run, on a lane that read green.
+#
+# ## A run that built nothing
+#
+# A run that had at least one unit in scope and built none of them FAILS,
+# whatever the reason each was skipped. Every unit it skipped is already in the
+# ledger, but the lane's green would still say the copies were verified, and
+# none were (issue 2219).
+#
 # Usage: check-template-copy-out.sh [--list | --self-test] [template-name ... | scaffold]
-#        check-template-copy-out.sh --shard <k>/<n> [--preload-last <unit>]
+#        check-template-copy-out.sh [--part zephyr|no-zephyr] [--shard <k>/<n> [--preload-last <unit>]]
 #
 # `scaffold` names the single packages `nros new --board` writes (see
 # SCAFFOLD_BOARDS); with no names, templates and scaffolds are all built.
@@ -379,6 +401,62 @@ build_copy() {
     return 0
 }
 
+# The road a CROSS project takes for <board>, printed as one word: `cargo` (a
+# cargo leaf: a `Cargo.toml` and no `CMakeLists.txt`), `cmake` (the descriptor
+# names `[board.cmake] toolchain_file`), `zephyr` (`[board.zephyr] west_board`,
+# or a Zephyr platform) or `none`. In that order, so a board with both a
+# toolchain file and a west board builds by CMake. ONE predicate: `build_cross`
+# dispatches on it and `unit_part` splits the lane on it (issue 2219), so the
+# split can never disagree with the road a unit actually takes.
+cross_road() {
+    local proj="$1" board_toml="$2" board="$3" platform="$4" helper v
+    if [ -f "$proj/Cargo.toml" ] && [ ! -f "$proj/CMakeLists.txt" ]; then
+        echo cargo; return 0
+    fi
+    helper="$repo_root/scripts/lib/template_projects.py"
+    v="$(python3 "$helper" descriptor "$board_toml" "$board" cmake.toolchain_file)" || return 1
+    if [ -n "$v" ]; then echo cmake; return 0; fi
+    v="$(python3 "$helper" descriptor "$board_toml" "$board" zephyr.west_board)" || return 1
+    if [ "$platform" = "zephyr" ] || [ -n "$v" ]; then echo zephyr; return 0; fi
+    echo none
+}
+
+# The part (see "Parts" in the header) of one project of a template, from its
+# tracked tree in place: `zephyr` when its boards take the Zephyr road,
+# `no-zephyr` otherwise. A HOST project is `no-zephyr` whatever cross images it
+# also declares, because this gate builds only its host images. Prints nothing
+# and returns 1 when the board's facts cannot be read, and returns 2 for a
+# project whose boards span both parts. Either way the caller refuses the run
+# rather than guessing a side.
+unit_part() {
+    local tmpl="$1" proj="$2" pdir boards b nros facts rc road
+    local board_toml platform line zephyr=0 other=0
+    pdir="$repo_root/$templates_dir/$tmpl"
+    [ "$proj" = "." ] || pdir="$pdir/$proj"
+    boards="$(project_boards "$tmpl" "$proj")" || return 1
+    case $'\n'"$boards"$'\n' in *$'\n'linux$'\n'*) echo no-zephyr; return 0 ;; esac
+    nros="$(nros_bin)" || return 1
+    [ -n "$nros" ] || return 1
+    while IFS= read -r b; do
+        [ -n "$b" ] || continue
+        rc=0
+        facts="$("$nros" dev image board-facts "$pdir" --board "$b" 2>/dev/null)" || rc=$?
+        [ "$rc" -eq 0 ] || return 1
+        board_toml=""; platform=""
+        while IFS= read -r line; do
+            case "$line" in
+                NROS_BOARD_TOML=*) board_toml="${line#*=}" ;;
+                NROS_PLATFORM_NAME=*) platform="${line#*=}" ;;
+            esac
+        done <<< "$facts"
+        [ -n "$board_toml" ] || return 1
+        road="$(cross_road "$pdir" "$board_toml" "$b" "$platform")" || return 1
+        if [ "$road" = zephyr ]; then zephyr=1; else other=1; fi
+    done <<< "$boards"
+    if [ "$zephyr" -eq 1 ] && [ "$other" -eq 1 ]; then return 2; fi
+    if [ "$zephyr" -eq 1 ]; then echo zephyr; else echo no-zephyr; fi
+}
+
 # Build one copied-out CROSS project for <board> by the road its descriptor
 # declares (see the header). Returns 0 built, 1 failed, 3 no `nros`, and 4 when a
 # precondition is absent — in which case the skip is already RECORDED in the
@@ -447,7 +525,7 @@ build_cross() {
     # takes the triple and the rest of the board's cargo settings from the
     # descriptor (RFC-0098 D1). A board whose toolchain is absent is the build's
     # own preflight refusal, which is a missing precondition, not a defect.
-    if [ -f "$proj/Cargo.toml" ] && [ ! -f "$proj/CMakeLists.txt" ]; then
+    if [ "$(cross_road "$proj" "$board_toml" "$board" "$platform")" = cargo ]; then
         rc=0
         (cd "$proj" && "$nros" sync) >> "$log" 2>&1 || rc=$?
         if [ "$rc" -eq 0 ]; then
@@ -465,11 +543,11 @@ build_cross() {
         return 1
     fi
 
-    local helper="$repo_root/scripts/lib/template_projects.py" toolchain west_board
-    toolchain="$(python3 "$helper" descriptor "$board_toml" "$board" cmake.toolchain_file)" || return 1
-    west_board="$(python3 "$helper" descriptor "$board_toml" "$board" zephyr.west_board)" || return 1
+    local road toolchain
+    road="$(cross_road "$proj" "$board_toml" "$board" "$platform")" || return 1
 
-    if [ -n "$toolchain" ]; then
+    if [ "$road" = cmake ]; then
+        toolchain="$(python3 "$repo_root/scripts/lib/template_projects.py" descriptor "$board_toml" "$board" cmake.toolchain_file)" || return 1
         local tc="$repo_root/$toolchain" cc
         [ -f "$tc" ] || { echo "toolchain file $toolchain (from $board_toml) does not exist" >> "$log"; return 1; }
         cc="$(nros_cmake_toolchain_resolved_cc "$tc")"
@@ -489,7 +567,17 @@ build_cross() {
         return 0
     fi
 
-    if [ "$platform" = "zephyr" ] || [ -n "$west_board" ]; then
+    if [ "$road" = zephyr ]; then
+        # Issue 2219: the `no-zephyr` part runs on runners with no west
+        # workspace, so a Zephyr unit there would only ever be NOT VERIFIED.
+        # Reaching this arm in that part means the split put a Zephyr unit on
+        # the wrong side, which is a defect of the split, not a missing SDK.
+        if [ "$part" = no-zephyr ]; then
+            echo "  $label ($board): takes the Zephyr road, but this run is \`--part no-zephyr\`," >> "$log"
+            echo "  whose runners have no west workspace. Teach the part split (cross_road /" >> "$log"
+            echo "  unit_part in scripts/check-template-copy-out.sh) about this unit." >> "$log"
+            return 1
+        fi
         local zws=""
         zws="$(bash "$repo_root/scripts/lib/zephyr-workspace.sh" --absolute resolve 2>/dev/null)" || zws=""
         if [ -z "$zws" ] || [ ! -d "$zws/zephyr" ]; then
@@ -539,6 +627,19 @@ report_build_failure() {
         tail -n 40 "$log" | sed 's/^/      /' >&2
         echo "      full log: $log" >&2
     fi
+}
+
+# The verdict on a run's count: fails (and says why) when <in-scope> units were
+# asked for and <verified> of them is 0. A run with nothing in scope (a shard or
+# part that owns no unit) is not this; it has nothing to verify.
+built_nothing_verdict() {
+    local in_scope="$1" verified="$2"
+    if [ "$in_scope" -gt 0 ] && [ "$verified" -eq 0 ]; then
+        echo "check-template-copy-out: no project was BUILT — all $in_scope in scope are NOT VERIFIED (see above)." >&2
+        echo "  A lane that built nothing has verified nothing; that is not a pass." >&2
+        return 1
+    fi
+    return 0
 }
 
 # Build one PROJECT of a template from a copy of the WHOLE template. Returns 0
@@ -710,6 +811,31 @@ run_scaffold() {
     echo "  $label: OK — $n artifact(s), e.g. ${arts%%$'\n'*}" | sed "s|$pdir/||"
     rm -rf "$work"
     return 0
+}
+
+# Issue 2219's two controls. The verdict: a run with units in scope that built
+# none of them fails, and a run with nothing in scope (a shard owning no unit)
+# does not. The split: one known project per side lands in that side, so the
+# predicate `--part` filters on is seen to answer both ways. Placement needs the
+# CLI's board facts but no SDK or west workspace, so it runs on any lane that
+# runs this self-test.
+part_self_test() {
+    local bad=0 got want entry
+    built_nothing_verdict 5 0 2>/dev/null && { echo "self-test FAILED: a run that built 0 of 5 in-scope units passed." >&2; bad=1; }
+    built_nothing_verdict 1 0 2>/dev/null && { echo "self-test FAILED: a run that built 0 of 1 in-scope unit passed." >&2; bad=1; }
+    built_nothing_verdict 0 0 2>/dev/null || { echo "self-test FAILED: a run with no unit in scope failed." >&2; bad=1; }
+    built_nothing_verdict 5 1 2>/dev/null || { echo "self-test FAILED: a run that built 1 of 5 units failed." >&2; bad=1; }
+    for entry in "zephyr-byo app zephyr" "rclcpp-compat-smoke zephyr zephyr" \
+                 "rclcpp-compat-smoke mps2-an385-freertos no-zephyr" "multi-node-workspace . no-zephyr"; do
+        read -r t pr want <<< "$entry"
+        got="$(unit_part "$t" "$pr")" || got="<error rc=$?>"
+        if [ "$got" != "$want" ]; then
+            echo "self-test FAILED: unit_part $t/$pr is '$got', expected '$want'." >&2
+            bad=1
+        fi
+    done
+    [ "$bad" -eq 0 ] || return 1
+    echo "self-test OK: a run that built nothing in scope fails, and --part places a Zephyr and a non-Zephyr unit on their sides."
 }
 
 # The shape predicate's controls: a clean single package passes, and each
@@ -905,21 +1031,44 @@ cross_self_test() {
 mode="run"
 shard=""
 preload_last=""
+part=""
 case "${1:-}" in
     --list) mode="list"; shift ;;
     --self-test) mode="self-test"; shift ;;
-    --shard)
-        shard="${2:-}"
-        [ -n "$shard" ] || { echo "check-template-copy-out: --shard needs <k>/<n>" >&2; exit 2; }
-        shift 2
-        if [ "${1:-}" = "--preload-last" ]; then
-            preload_last="${2:-}"
-            [ -n "$preload_last" ] || { echo "check-template-copy-out: --preload-last needs a unit" >&2; exit 2; }
-            shift 2
-        fi
-        [ "$#" -eq 0 ] || { echo "check-template-copy-out: --shard takes no template names" >&2; exit 2; }
-        ;;
 esac
+if [ "$mode" = run ]; then
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --part)
+                part="${2:-}"
+                case "$part" in
+                    zephyr|no-zephyr) ;;
+                    *) echo "check-template-copy-out: --part needs zephyr or no-zephyr" >&2; exit 2 ;;
+                esac
+                shift 2
+                ;;
+            --shard)
+                shard="${2:-}"
+                [ -n "$shard" ] || { echo "check-template-copy-out: --shard needs <k>/<n>" >&2; exit 2; }
+                shift 2
+                ;;
+            --preload-last)
+                preload_last="${2:-}"
+                [ -n "$preload_last" ] || { echo "check-template-copy-out: --preload-last needs a unit" >&2; exit 2; }
+                shift 2
+                ;;
+            *) break ;;
+        esac
+    done
+    if [ -n "$preload_last" ] && [ -z "$shard" ]; then
+        echo "check-template-copy-out: --preload-last only balances a --shard run" >&2
+        exit 2
+    fi
+    if { [ -n "$shard" ] || [ -n "$part" ]; } && [ "$#" -gt 0 ]; then
+        echo "check-template-copy-out: --shard and --part take no template names" >&2
+        exit 2
+    fi
+fi
 
 if [ "$mode" = "self-test" ]; then
     rc=0
@@ -927,6 +1076,7 @@ if [ "$mode" = "self-test" ]; then
     projects_self_test || rc=1
     preflight_self_test || rc=1
     scaffold_shape_self_test || rc=1
+    part_self_test || rc=1
     # The host control BUILDS a copy, so it needs the host tools too: a missing
     # one is a precondition, never a pass or a fail of the control.
     if preflight_host_tools; then
@@ -991,15 +1141,50 @@ if [ "${#buildable[@]}" -eq 0 ] && [ "${#wanted[@]}" -eq 0 ]; then
 fi
 
 scaffold_boards=("${SCAFFOLD_BOARDS[@]}")
+# The self-test is the recipe's own first step on an unsplit run, so only a
+# split run (a shard or a part) owns it as a unit.
+# It builds a host copy and a CMake cross copy, so it belongs to `no-zephyr`.
+self_test_unit=0
+{ [ -n "$shard" ] || [ -n "$part" ]; } && self_test_unit=1
+if [ -n "$part" ]; then
+    kept=()
+    for entry in "${buildable[@]}"; do
+        rc=0
+        up="$(unit_part "${entry%%$'\t'*}" "${entry#*$'\t'}")" || rc=$?
+        if [ "$rc" -ne 0 ]; then
+            label="$(project_label "${entry%%$'\t'*}" "${entry#*$'\t'}")"
+            if [ "$rc" -eq 2 ]; then
+                echo "check-template-copy-out: $label has boards on both sides of --part; split the project or teach the split" >&2
+            else
+                echo "check-template-copy-out: could not read $label's board facts to place it in a part (nros dev image board-facts)" >&2
+            fi
+            exit 2
+        fi
+        [ "$up" = "$part" ] && kept+=("$entry")
+    done
+    buildable=("${kept[@]}")
+    # A scaffold has no project to classify until it is scaffolded, so every
+    # scaffold is `no-zephyr`; one that turns out to take the Zephyr road
+    # fails there (see build_cross), never skips.
+    [ "$part" = zephyr ] && scaffold_boards=()
+    [ "$part" = zephyr ] && self_test_unit=0
+    echo "check-template-copy-out: part $part keeps ${#buildable[@]} project(s) and ${#scaffold_boards[@]} scaffold(s)"
+    # A whole part with no unit is a split that lost its side, not a part with
+    # nothing to do: each part exists because some unit takes its road.
+    if [ -z "$shard" ] && [ "${#buildable[@]}" -eq 0 ] && [ "${#scaffold_boards[@]}" -eq 0 ]; then
+        echo "check-template-copy-out: --part $part holds no unit — the split or discovery broke; that is not a pass." >&2
+        exit 1
+    fi
+fi
 if [ -n "$shard" ]; then
     units_file="$(mktemp "${TMPDIR:-/tmp}/nros-template-units.XXXXXX")" || exit 2
     {
-        echo "@self-test"
+        [ "$self_test_unit" -eq 0 ] || echo "@self-test"
         for entry in "${buildable[@]}"; do
             project_label "${entry%%$'\t'*}" "${entry#*$'\t'}"
             echo
         done
-        for b in "${SCAFFOLD_BOARDS[@]}"; do echo "scaffold:$b"; done
+        for b in "${scaffold_boards[@]}"; do echo "scaffold:$b"; done
     } > "$units_file"
     shard_args=("$units_file" "$repo_root/.config/template-copy-out-weights.txt" "$shard")
     [ -z "$preload_last" ] || shard_args+=(--preload-last "$preload_last")
@@ -1017,15 +1202,17 @@ if [ -n "$shard" ]; then
         owned "$(project_label "${entry%%$'\t'*}" "${entry#*$'\t'}")" && kept+=("$entry")
     done
     buildable=("${kept[@]}")
-    scaffold_boards=()
-    for b in "${SCAFFOLD_BOARDS[@]}"; do
-        owned "scaffold:$b" && scaffold_boards+=("$b")
+    kept=()
+    for b in "${scaffold_boards[@]}"; do
+        owned "scaffold:$b" && kept+=("$b")
     done
-    # The self-test is a unit like any other: the shard that owns it runs it
-    # first, as the unsharded recipe does, and a red control stops the shard.
-    if owned "@self-test"; then
-        bash "$repo_root/scripts/check-template-copy-out.sh" --self-test || exit 1
-    fi
+    scaffold_boards=("${kept[@]}")
+    owned "@self-test" || self_test_unit=0
+fi
+# The self-test is a unit like any other: the split run that owns it runs it
+# first, as the unsplit recipe does, and a red control stops the run.
+if [ "$self_test_unit" -eq 1 ]; then
+    bash "$repo_root/scripts/check-template-copy-out.sh" --self-test || exit 1
 fi
 
 # Every HOST project runs `nros sync` + `nros build`; ask for their tools once,
@@ -1095,17 +1282,15 @@ if [ "$fail" -ne 0 ]; then
     fi
     exit 1
 fi
-# The whole-tree run always has HOST projects, which need nothing but the CLI,
-# so a run that built none of them has lost its discovery, not its SDKs. A run
-# narrowed to named templates may legitimately land only on cross projects, and
-# their skips are already in the ledger.
-# A shard holds that rule only when it owns a host unit: a shard of cross and
-# Zephyr projects alone may legitimately build none on a host without SDKs.
-owns_host=$has_host
-for b in "${scaffold_boards[@]}"; do [ "$b" = linux ] && owns_host=1; done
-if [ "$verified" -eq 0 ] && [ "${#wanted[@]}" -eq 0 ] && { [ -z "$shard" ] || [ "$owns_host" -eq 1 ]; }; then
-    echo "check-template-copy-out: no project was BUILT — every one is NOT VERIFIED (see above)." >&2
-    echo "  A lane that built nothing has verified nothing; that is not a pass." >&2
+# Issue 2219: a run that had units in scope and built none of them has
+# verified nothing, whatever each skip's reason, so it is not a pass. This used
+# to hold only for a whole-tree run or a shard owning a host unit; a run of
+# cross and Zephyr projects alone printed "OK — 0 project(s) built" on every
+# merge group while five Zephyr projects sat NOT VERIFIED. Each skip is still
+# in the ledger above; this line is about the lane's verdict.
+in_scope=${#buildable[@]}
+[ "$run_scaffolds" -eq 1 ] && in_scope=$((in_scope + ${#scaffold_boards[@]}))
+if ! built_nothing_verdict "$in_scope" "$verified"; then
     exit 1
 fi
 echo "check-template-copy-out: OK — $verified project(s) built; any NOT VERIFIED one is listed above and in the lane's skip ledger"

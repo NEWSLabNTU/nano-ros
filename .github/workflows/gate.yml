@@ -2071,9 +2071,11 @@ jobs:
   # for the C/C++ workspaces, and the ROS `std_msgs` from the image's ament
   # install. It reads no fixture stamp and no generated binding. The FreeRTOS
   # cross sub-projects are built too (pinned compiler + kernel + lwIP are
-  # provisioned below); the Zephyr ones have no copy-out road the gate can
-  # derive (issue 1782), so it records each as NOT VERIFIED in the skip
-  # ledger, by name, never as a pass.
+  # provisioned below). The Zephyr ones are NOT this job's: it runs the
+  # `no-zephyr` part, and `check-template-copy-out-zephyr` runs the complement
+  # on a runner with a west workspace (issue 2219). Until then those five were
+  # NOT VERIFIED on every merge group while this comment blamed issue 1782,
+  # which had already given them a copy-out road.
   #
   # ROUTED like `check-test-unit` (the expression is spelled ONCE and
   # `check-workflow-runner-isolation` parses it): self-hosted on
@@ -2229,8 +2231,9 @@ jobs:
       # `arm-none-eabi-gcc` (10.3): measured in issue 1453, two of the three
       # ports fail there on `std::this_thread`, which the pinned 13.2 provides.
       # QEMU, the board's fourth package, is a runtime tool nothing here runs.
-      # The Zephyr sub-projects stay NOT VERIFIED by the gate's own rule (no
-      # derivable copy-out road, issue 1782).
+      # No west workspace: these shards run the `no-zephyr` part, and the
+      # Zephyr sub-projects are built by `check-template-copy-out-zephyr`
+      # (issue 2219).
       - name: Provision the FreeRTOS cross sub-projects' toolchain + sources
         if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) }}
         run: |
@@ -2271,6 +2274,7 @@ jobs:
           echo "NROS_TEMPLATE_COPY_OUT_TMP=$RUNNER_TEMP/template-copy-out" >> "$GITHUB_ENV"
           export TMPDIR="$RUNNER_TEMP/template-copy-out"
           mkdir -p "$TMPDIR"
+          export NROS_TEMPLATE_COPY_OUT_PART=no-zephyr
           export NROS_TEMPLATE_COPY_OUT_SHARD="${{ matrix.shard }}/3"
           export NROS_TEMPLATE_COPY_OUT_PRELOAD_LAST=ament-census-sizing
           source ./activate.sh
@@ -2310,6 +2314,156 @@ jobs:
             echo "--- sccache server log (deduped) ---"
             { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
           fi
+
+  # Issue 2219 — the Zephyr PART of `template-copy-out`. The three shards above
+  # run `NROS_TEMPLATE_COPY_OUT_PART=no-zephyr` on runners with no west
+  # workspace; this job runs the complement, `zephyr`: every project whose board
+  # takes the Zephyr road (the five `*/zephyr` and `zephyr-byo/app` today,
+  # DERIVED by the script's `cross_road`, never listed). Before this job those
+  # five were NOT VERIFIED on every merge group while the lane read green.
+  #
+  # Its own job, not a fourth matrix entry, because it needs a different image
+  # (`nano-ros-zephyr-ci`, the SDK baked in, as nightly's `zephyr-copy-out`)
+  # and a west workspace the shards do not pay for. The parts are complements
+  # by construction, so the four runners build every unit exactly once;
+  # `check-merge-group-gates` rule 6 refuses a part with no complement.
+  #
+  # Zephyr 3.7, the gate's default line (`scripts/lib/zephyr-workspace.sh`) and
+  # the line the templates are documented for (`zephyr-byo/west.yml` pins
+  # v3.7.0, LTS). The image's SDK 0.17.4 builds 3.7: nightly's
+  # `zephyr 3.7 / *` cells run in this same image every night.
+  #
+  # STRICT: the workspace IS provisioned here, so a Zephyr project that
+  # reaches a NOT VERIFIED is a failure of this job, not a skip.
+  check-template-copy-out-zephyr:
+    name: check / template-copy-out [zephyr] (merge group + manual)
+    needs: changes
+    if: >-
+      ${{ always() && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)
+          && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
+    # phase-489 W2 — ROUTED, as `check-template-copy-out`; the hosted arm is the
+    # Zephyr CI image.
+    runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r6' || '' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      NROS_ZEPHYR_VERSION: "3.7"
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Start from a clean tree (self-hosted only)
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: scripts/ci/self-hosted-clean-tree.sh
+
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
+      # Same CLI cache as `check-template-copy-out`.
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries (every event)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+      - name: Build the in-tree nros CLI (every event)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          source ./activate.sh
+          just setup-cli
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      # The image's SDK, registered for this HOME — nightly `zephyr-copy-out`'s
+      # step. Outside every checkout, so the SDK guard (issue 1254) keeps it.
+      - name: Register the baked Zephyr SDK for this HOME
+        run: |
+          if [ -x /opt/zephyr-sdk/setup.sh ]; then
+            /opt/zephyr-sdk/setup.sh -c
+          else
+            echo "no /opt/zephyr-sdk on this runner; the gate below finds its own or fails (strict)"
+          fi
+
+      - name: Disk report (before Zephyr setup) — issue 1353
+        if: ${{ !cancelled() }}
+        run: scripts/ci/disk-report.sh "before Zephyr setup"
+
+      - name: Reclaim disk before Zephyr setup — issue 1353
+        if: ${{ !cancelled() }}
+        run: scripts/ci/reclaim-disk.sh "before Zephyr setup"
+
+      - name: rustup set profile minimal (avoid clippy-preview conflict)
+        run: rustup set profile minimal
+
+      - name: Provision compile-tier sources
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Set up the Zephyr 3.7 west workspace
+        env:
+          NROS_ZEPHYR_CREATE_VENV: "1"
+        run: |
+          source ./activate.sh
+          just setup zephyr --skip-sdk
+
+      - name: Fetch the pin baseline (to find submodules whose pin moved)
+        run: bash scripts/ci/pin-baseline.sh provide
+
+      - name: Init submodules whose pin moved (commits only)
+        run: bash scripts/ci/pin-baseline.sh init-moved
+
+      - name: Build nros-launch-resolve (nros sync shells out to it)
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
+      - name: just check template-copy-out (the Zephyr part, copied out)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        env:
+          NROS_CHECK_SKIP_STRICT: "1"
+        run: |
+          echo "NROS_TEMPLATE_COPY_OUT_TMP=$RUNNER_TEMP/template-copy-out" >> "$GITHUB_ENV"
+          export TMPDIR="$RUNNER_TEMP/template-copy-out"
+          mkdir -p "$TMPDIR"
+          export NROS_TEMPLATE_COPY_OUT_PART=zephyr
+          source ./activate.sh
+          just check template-copy-out
+
+      - name: Disk report (after template-copy-out) — issue 1353
+        if: ${{ always() }}
+        run: scripts/ci/disk-report.sh "after just check template-copy-out (zephyr)"
+
+      - name: Upload the failed templates' build logs
+        if: ${{ failure() && env.NROS_TEMPLATE_COPY_OUT_TMP != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-copy-out-build-logs-zephyr
+          path: ${{ env.NROS_TEMPLATE_COPY_OUT_TMP }}/nros-template-copy-out.*/build.log
+          if-no-files-found: ignore
+          retention-days: 7
 
   check-lane-contracts:
     name: check / test-lane-contracts (merge group + nightly/manual)
@@ -3484,6 +3638,7 @@ jobs:
       - check-workspace-all
       - check-test-unit
       - check-template-copy-out
+      - check-template-copy-out-zephyr
       - check-lane-contracts
       - check-build
       - warm-cache
@@ -3545,6 +3700,7 @@ jobs:
           sibling check-workspace-all  "${{ needs.check-workspace-all.result }}"  "pull_request merge_group schedule workflow_dispatch"
           sibling check-test-unit      "${{ needs.check-test-unit.result }}"      "merge_group schedule workflow_dispatch"
           sibling check-template-copy-out "${{ needs.check-template-copy-out.result }}" "merge_group workflow_dispatch"
+          sibling check-template-copy-out-zephyr "${{ needs.check-template-copy-out-zephyr.result }}" "merge_group workflow_dispatch"
           sibling check-lane-contracts "${{ needs.check-lane-contracts.result }}" "merge_group schedule workflow_dispatch"
           sibling check-build          "${{ needs.check-build.result }}"          "schedule workflow_dispatch"
           sibling warm-cache           "${{ needs.warm-cache.result }}"           "push workflow_dispatch"

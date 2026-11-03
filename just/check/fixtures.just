@@ -156,13 +156,22 @@ scaffold-builds:
 # every unit exactly once; see the script's "Shards" section. The merge-queue
 # job runs three. `NROS_TEMPLATE_COPY_OUT_PRELOAD_LAST` names work its last
 # shard runs besides, so the split can balance around it.
+# issue 2219 — `NROS_TEMPLATE_COPY_OUT_PART=zephyr|no-zephyr` keeps one of two
+# complementary parts (the units on the Zephyr road, and the rest), and
+# composes with the shard: the merge queue runs `zephyr` on a runner with a
+# west workspace and `no-zephyr` as the three shards. The self-test is a
+# `no-zephyr` unit, so the `zephyr` part never runs it.
 [private]
 template-copy-out:
     #!/usr/bin/env bash
     set -euo pipefail
+    args=()
+    [ -z "${NROS_TEMPLATE_COPY_OUT_PART:-}" ] || args+=(--part "$NROS_TEMPLATE_COPY_OUT_PART")
     if [ -n "${NROS_TEMPLATE_COPY_OUT_SHARD:-}" ]; then
-        args=(--shard "$NROS_TEMPLATE_COPY_OUT_SHARD")
+        args+=(--shard "$NROS_TEMPLATE_COPY_OUT_SHARD")
         [ -z "${NROS_TEMPLATE_COPY_OUT_PRELOAD_LAST:-}" ] || args+=(--preload-last "$NROS_TEMPLATE_COPY_OUT_PRELOAD_LAST")
+    fi
+    if [ "${#args[@]}" -gt 0 ]; then
         exec bash scripts/check-template-copy-out.sh "${args[@]}"
     fi
     bash scripts/check-template-copy-out.sh --self-test
