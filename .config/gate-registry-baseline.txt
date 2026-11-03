@@ -191,6 +191,7 @@ named-lane-fails
 nested-cargo-lock-discipline
 nested-workspace-excludes
 nextest-binary-filters
+nextest-no-retries
 no-absolute-model-paths
 no-alloc-image
 no-allow-multiple-def

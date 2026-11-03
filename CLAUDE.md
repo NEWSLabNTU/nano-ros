@@ -456,6 +456,10 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   laned targets finally ran, four were broken and one capability was entirely non-functional
   (issues 0652/0612/0667). Assert LOWER bounds on timing too: an upper-bound-only wake test
   passes a `spin_once` that never waited.
+- **No retries: a flaky start is a START RACE to fix, never re-rolled** (maintainer ruling
+  2026-11-02). `.config/nextest.toml` holds no `retries` (gate `check-nextest-no-retries`); a
+  library retry is designed from the library's goal, never sized so a test passes. Fix the
+  readiness edge or narrow the test-group's `max-threads`. Open races → issue 2221.
 - **No compilation inside tests** — never `cargo`/`cmake`/`idf.py`/`west build` at run time. Compile in
   the build stage (`build-test-fixtures` + `examples/fixtures.toml`); the test consumes the prebuilt
   fixture. "Does it compile?" intent → make it a build-step fixture and assert the artifact. "Must it FAIL to
