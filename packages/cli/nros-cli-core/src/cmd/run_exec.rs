@@ -60,6 +60,13 @@ pub struct ExecArgs {
     /// Execute this plan file as written: resolve nothing, build nothing.
     #[arg(long, value_name = "FILE")]
     pub plan: Option<PathBuf>,
+    /// Let a workspace package replace the nano-ros runner of this name, for
+    /// this run only. A replacement nobody declared is refused; to make it
+    /// permanent, add `[overrides] <name> = "<package path>"` to
+    /// `system.toml` instead.
+    // RFC-0119 D4; the same flag as `nros build`'s.
+    #[arg(long, value_name = "NAME", num_args = 1..)]
+    pub allow_overriding: Vec<String>,
 }
 
 impl ExecArgs {
@@ -390,18 +397,76 @@ pub struct Runner {
     pub exe: PathBuf,
 }
 
-/// Find the plan's runner on the provider search path and locate its built
-/// executable.
-// The one lookup for a runner package in this verb; it becomes the shared
-// provider-resolution function when that lands.
-fn locate_runner(ws: &Path, nano_ros_root: Option<&Path>, name: &str) -> Result<PathBuf, String> {
-    let path = crate::cmd::ws::provider_search_path(ws).map_err(|e| e.to_string())?;
-    let scan =
-        cargo_nano_ros::provider_scan::scan_roots(&path.paths()).map_err(|e| e.to_string())?;
-    let r = cargo_nano_ros::extension_descriptor::resolve_runner_in(&scan, name)
-        .map_err(|e| format!("runner `{name}`: {e}"))?;
+/// A runner package, resolved under the workspace's override policy, with
+/// its built executable.
+#[derive(Debug, Clone)]
+pub struct LocatedRunner {
+    /// The executable.
+    pub exe: PathBuf,
+    /// The providing package and its directory.
+    pub package: String,
+    /// The package directory.
+    pub dir: PathBuf,
+    /// The package it replaces, when the winner is a declared or allowed
+    /// override.
+    pub overrides: Option<cargo_nano_ros::extension_descriptor::OverrideNote>,
+    /// What the policy had to say (an unused or stale declaration).
+    pub warnings: Vec<String>,
+}
+
+/// Why a runner could not be located, with the verb's exit code: an override
+/// nobody declared is a plan that does not resolve (3), a runner that is not
+/// built or not found is the runner failing (2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocateError {
+    /// RFC-0118 D2's code.
+    pub code: u8,
+    /// The message.
+    pub message: String,
+}
+
+/// Find the plan's runner on the provider search path, under the workspace's
+/// override policy (`[overrides]` plus `--allow-overriding`), and locate its
+/// built executable. The one runner lookup the target verbs make: the
+/// provider choice is `resolve_runner_with`'s, never a second copy of it.
+///
+/// # Errors
+///
+/// A [`LocateError`].
+pub fn locate_runner(
+    ws: &Path,
+    nano_ros_root: Option<&Path>,
+    name: &str,
+    allowed: &[String],
+) -> Result<LocatedRunner, LocateError> {
+    use cargo_nano_ros::extension_descriptor::{ExtensionResolveError, resolve_runner_with};
+    let failed = |message: String| LocateError {
+        code: exit::RUNNER_FAILED,
+        message,
+    };
+    let policy = crate::provider_overrides::policy(ws, allowed).map_err(|e| LocateError {
+        code: exit::PLAN_UNRESOLVED,
+        message: format!("{e:#}"),
+    })?;
+    let path = crate::cmd::ws::provider_search_path(ws).map_err(|e| failed(e.to_string()))?;
+    let scan = cargo_nano_ros::provider_scan::scan_roots(&path.paths())
+        .map_err(|e| failed(e.to_string()))?;
+    let r = resolve_runner_with(&scan, name, &policy).map_err(|e| match e {
+        ExtensionResolveError::Override(_) => LocateError {
+            code: exit::PLAN_UNRESOLVED,
+            message: format!("runner `{name}`: {e}"),
+        },
+        e => failed(format!("runner `{name}`: {e}")),
+    })?;
     let dir = r.dir.canonicalize().unwrap_or(r.dir.clone());
     let ws = ws.canonicalize().unwrap_or(ws.to_path_buf());
+    let located = |exe: PathBuf| LocatedRunner {
+        exe,
+        package: r.package.clone(),
+        dir: dir.clone(),
+        overrides: r.overrides.clone(),
+        warnings: r.warnings.clone(),
+    };
     // A package of this workspace: `nros build` built it for the host.
     if dir.starts_with(&ws) {
         let triple = crate::orchestration::metadata_build::host_triple();
@@ -412,7 +477,8 @@ fn locate_runner(ws: &Path, nano_ros_root: Option<&Path>, name: &str) -> Result<
             &triple,
             &format!("runner `{name}`"),
         )
-        .map_err(|e| e.to_string());
+        .map(located)
+        .map_err(|e| failed(e.to_string()));
     }
     // A nano-ros checkout's own runner: built beside the CLI.
     if let Some(root) = nano_ros_root.and_then(|p| p.canonicalize().ok())
@@ -420,28 +486,55 @@ fn locate_runner(ws: &Path, nano_ros_root: Option<&Path>, name: &str) -> Result<
     {
         let exe = root.join("packages/runners/target/release").join(&r.bin);
         return if exe.is_file() {
-            Ok(exe)
+            Ok(located(exe))
         } else {
-            Err(format!(
+            Err(failed(format!(
                 "runner `{name}` (package `{}`) is not built (looked for {}). Build it with \
                  `just setup-cli` in {}",
                 r.package,
                 exe.display(),
                 root.display()
-            ))
+            )))
         };
     }
     // A released toolchain ships the package prebuilt, under `bin/`.
     let exe = dir.join("bin").join(&r.bin);
     if exe.is_file() {
-        Ok(exe)
+        Ok(located(exe))
     } else {
-        Err(format!(
+        Err(failed(format!(
             "runner `{name}` (package `{}` at {}) has no built executable `bin/{}`",
             r.package,
             dir.display(),
             r.bin
-        ))
+        )))
+    }
+}
+
+/// `--why`'s account of the runner: which package answers the plan's runner
+/// name, and what it overrides. Lines start with `#`, so they ride on the
+/// TOML plan as comments.
+#[must_use]
+pub fn why_runner(r: &Result<LocatedRunner, LocateError>, name: &str) -> String {
+    match r {
+        Ok(l) => {
+            let mut out = format!(
+                "# runner `{name}`: package `{}` at {} ({})\n",
+                l.package,
+                l.dir.display(),
+                l.exe.display()
+            );
+            if let Some(o) = &l.overrides {
+                out.push_str(&format!(
+                    "# it overrides package `{}` at {} ({})\n",
+                    o.shadowed_package,
+                    o.shadowed_dir.display(),
+                    o.status.label()
+                ));
+            }
+            out
+        }
+        Err(e) => format!("# runner `{name}`: {}\n", e.message.replace('\n', "\n# ")),
     }
 }
 
@@ -712,9 +805,29 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
     };
     let exe = match &x.runner {
         Some(p) => p.clone(),
-        None => match locate_runner(x.ws, x.nano_ros_root, &plan.runner.name) {
-            Ok(p) => p,
-            Err(e) => return fail(exit::RUNNER_FAILED, &e),
+        None => match locate_runner(
+            x.ws,
+            x.nano_ros_root,
+            &plan.runner.name,
+            &x.exec.allow_overriding,
+        ) {
+            Ok(l) => {
+                for w in &l.warnings {
+                    eprintln!("nros {}: warning: {w}", verb_word(plan.verb));
+                }
+                if let Some(o) = &l.overrides {
+                    eprintln!(
+                        "nros {}: runner `{}` is package `{}`, overriding `{}` ({})",
+                        verb_word(plan.verb),
+                        plan.runner.name,
+                        l.package,
+                        o.shadowed_package,
+                        o.status.label()
+                    );
+                }
+                l.exe
+            }
+            Err(e) => return fail(e.code, &e.message),
         },
     };
     if let Err(e) = check_runner(&exe, &plan.runner.name, plan.verb) {
@@ -1266,7 +1379,10 @@ mod tests {
         std::fs::rename(&script, &exe).unwrap();
         std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        assert_eq!(locate_runner(&ws, None, "w4fake").unwrap(), exe);
+        let l = locate_runner(&ws, None, "w4fake", &[]).unwrap();
+        assert_eq!(l.exe, exe);
+        assert!(l.overrides.is_none());
+        assert!(why_runner(&Ok(l), "w4fake").contains("package `w4_fake_runner`"));
 
         let mut p = plan(true, None);
         p.runner = RunnerRef {
@@ -1292,11 +1408,55 @@ mod tests {
 
         // Not built: refused with the command that builds it.
         std::fs::remove_file(&exe).unwrap();
-        let e = locate_runner(&ws, None, "w4fake").unwrap_err();
+        let e = locate_runner(&ws, None, "w4fake", &[]).unwrap_err();
+        assert_eq!(e.code, exit::RUNNER_FAILED);
+        let e = e.message;
         assert!(
             e.contains("nros build --packages-select w4_fake_runner"),
             "{e}"
         );
+    }
+
+    /// A workspace package announcing a runner name nano-ros already
+    /// provides (`native`) is an override: refused (exit 3) until declared
+    /// or allowed, and then reported by `--why`.
+    #[test]
+    fn an_undeclared_runner_override_is_refused_and_an_allowed_one_reported() {
+        let ws = tempfile::tempdir().unwrap();
+        let ws = ws.path().canonicalize().unwrap();
+        let pkg = ws.join("src/my_native");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(
+            pkg.join("package.xml"),
+            "<?xml version=\"1.0\"?><package format=\"3\"><name>my_native</name>\
+             <version>0.1.0</version><description>d</description>\
+             <maintainer email=\"a@b.c\">m</maintainer><license>MIT</license>\
+             <export><build_type>nros_cmake</build_type>\
+             <nano_ros_provides kind=\"runner\" name=\"native\"/></export></package>",
+        )
+        .unwrap();
+        std::fs::write(
+            pkg.join("nros-runner.toml"),
+            "protocol = 1\nverbs = [\"run\"]\nbin = \"my-native\"\n",
+        )
+        .unwrap();
+        let built = crate::builder::host_tool::build_dir(&ws, "my_native").join("cmake");
+        std::fs::create_dir_all(&built).unwrap();
+        std::fs::write(built.join("my-native"), "#!/bin/sh\n").unwrap();
+
+        let e = locate_runner(&ws, None, "native", &[]).unwrap_err();
+        assert_eq!(e.code, exit::PLAN_UNRESOLVED, "{}", e.message);
+
+        let l = locate_runner(&ws, None, "native", &["native".to_string()]).unwrap();
+        assert_eq!(l.package, "my_native");
+        let note = l.overrides.as_ref().expect("an override note");
+        assert_eq!(note.shadowed_package, "nros_runner_native");
+        let why = why_runner(&Ok(l), "native");
+        assert!(
+            why.contains("overrides package `nros_runner_native`"),
+            "{why}"
+        );
+        assert!(why.contains("--allow-overriding"), "{why}");
     }
 
     #[test]

@@ -173,13 +173,14 @@ Status: **DONE** (2026-11-03, #3050).
 - Tests: `nros-cli-core/tests/provider_overrides.rs`, over the tracked
   fixture trees under `tests/fixtures/extension_packages/overrides/` (a
   `COLCON_IGNORE` keeps them out of the nano-ros tree's own scan).
-- Not here, because nothing resolves a runner package for `run`/`flash` yet:
-  `nros run` builds a RunPlan and names a runner but does not look its
-  package up, and `flash`/`monitor` are reserved verbs. When phase-528 W4
-  executes plans, its runner lookup calls `resolve_runner_with` (so
-  `resolve_provider`) with the workspace policy, takes `--allow-overriding`, and `--dry-run --why` prints
-  the winner and its `OverrideNote`. Command dispatch (W4) calls
-  `resolve_command_with` the same way.
+- The runner side was phase-528 W4's, and landed with phase-529 W3 (the PR
+  that added `nros flash` and `nros monitor`). `run_exec::locate_runner`, the
+  one runner lookup of `nros run`, `nros flash` and `nros monitor`, calls
+  `resolve_runner_with` with the workspace policy. `nros run` takes
+  `--allow-overriding`. An undeclared override is refused with exit 3, and
+  the policy's warnings print once. `nros run --dry-run --why` ends with
+  the winning runner package and its `OverrideNote`. Command dispatch (W4)
+  calls `resolve_command_with` the same way.
 
 ### W3 — `packages/runners/` and `nros-extension`
 
