@@ -655,6 +655,18 @@ retired-submodule-refs:
 shared-cargo-dir-witness:
     @bash scripts/check-shared-cargo-dir-used.sh --self-test
 
+# Issue 2222 -- the SELF-TEST of `just gc-shared-cargo`'s folder rule. A shared
+# store is live while any leaf links to it, but each build dir adds its own
+# Corrosion folder there (`<build>/cargo/<root>_<5 hex>`), so a folder whose
+# build dir is gone is only visible one level down; one store grew to 410 GB.
+# The GC deletes, so its negative controls are what keep it from deleting the
+# wrong thing: an orphan folder in a live store is reported, while a folder a
+# live `build.ninja` names, a store whose linking build dir has no
+# `build.ninja`, and a store a build file names directly (the NuttX road) are
+# left alone. Synthetic tree under `tmp/`, ~0.1 s.
+gc-shared-cargo-selftest:
+    @python3 scripts/build/gc-shared-cargo.py --self-test
+
 # Issue 0570 — the vendored NuttX `libc` fork mirrors NuttX's opaque types as
 # byte blobs, but NuttX sizes several of them from Kconfig, so a mirror that is
 # too small is a stack smash at every libc call that writes the whole struct
