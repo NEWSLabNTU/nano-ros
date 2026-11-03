@@ -3808,6 +3808,9 @@ sweep-family platform drop="0":
 # by a hash of the leaf's configuration, so any key change orphans the old one.
 # Reports by default; `just gc-shared-cargo --prune` deletes. Reachability is
 # exact — a dir is live iff some leaf's `cargo` symlink resolves to it.
+# Issue 2222 -- and one level down: a Corrosion folder inside a live store is
+# live iff the `build.ninja` of a build dir linking to that store names it.
+# `--self-test` runs the negative controls (gate `check gc-shared-cargo-selftest`).
 gc-shared-cargo *ARGS:
     @python3 scripts/build/gc-shared-cargo.py {{ARGS}}
 
