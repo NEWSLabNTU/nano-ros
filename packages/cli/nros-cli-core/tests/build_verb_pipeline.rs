@@ -134,6 +134,7 @@ fn selected_args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) ->
         parallel_workers: None,
         build_base: None,
         check: None,
+        allow_overriding: Vec::new(),
         native_args: Vec::new(),
     }
 }

@@ -371,6 +371,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         board_config: Default::default(),
         sources: Default::default(),
         tools: Default::default(),
+        overrides: Default::default(),
         image,
         image_defaults: None,
         retired_network: Default::default(),

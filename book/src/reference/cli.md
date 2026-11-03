@@ -430,6 +430,23 @@ that keeps only host tools builds no image:
 nros build --packages-select acme_tools         # one command package, alone
 ```
 
+A workspace package may replace one of nano-ros's own providers by announcing
+the same kind and name: the workspace overlays the nano-ros packages, as a
+colcon overlay does its underlay. For a runner or a command, which run host
+code and flash hardware, the replacement must be declared in `system.toml`,
+pinned to the package's path; otherwise the build or run that resolves the
+name refuses it and prints the line to add. `--allow-overriding <name>`
+approves it for one invocation, as colcon's flag does. Other kinds (an rmw, a
+board) only warn when undeclared. The replacement must speak the runner
+protocol of the one it replaces, and an entry whose path no longer provides
+the name is an error rather than a quiet return to ours. `nros dev ws
+providers` and `nros doctor` list every override and whether it was declared.
+
+```toml
+[overrides]
+qemu = "src/my_qemu"   # this workspace's package replaces the qemu runner
+```
+
 `-v` / `--verbose` shows the configure's detail notes: why a re-configure
 happened, which message bounds were refused and why. Without it each is one
 line. A raw cmake run gets the same with `--log-level=VERBOSE`.

@@ -56,6 +56,7 @@ pub mod extension_descriptor;
 pub mod node_role;
 pub mod package_discovery;
 pub mod package_xml;
+pub mod provider_overrides;
 pub mod provider_scan;
 /// The `nros-rmw.toml` descriptor (phase-439 W4, RFC-0094 D5). `build.rs`
 /// shares this exact file via `include!`, so the compile-time table and the

@@ -191,6 +191,16 @@ pub struct Args {
     )]
     pub check: Option<CheckTool>,
 
+    /// Let a workspace package replace the nano-ros (or `package_paths`)
+    /// provider of this name, for this build only.
+    ///
+    /// colcon's flag. A replacement nobody declared is refused for a runner
+    /// or a command; to make it permanent, add `[overrides] <name> =
+    /// "<package path>"` to `system.toml` instead.
+    // RFC-0119 D4.
+    #[arg(long, value_name = "NAME", num_args = 1..)]
+    pub allow_overriding: Vec<String>,
+
     /// Arguments after `--` go to the native tool verbatim.
     #[arg(last = true)]
     pub native_args: Vec<String>,
@@ -256,6 +266,7 @@ impl Args {
             parallel_workers,
             build_base,
             check,
+            allow_overriding,
             native_args,
         } = rest;
         self.images.extend(images);
@@ -282,6 +293,7 @@ impl Args {
         self.continue_on_error |= continue_on_error;
         self.cmake_args.extend(cmake_args);
         self.jobs = jobs.or(self.jobs);
+        self.allow_overriding.extend(allow_overriding);
         self.parallel_workers = parallel_workers.or(self.parallel_workers);
         self.build_base = build_base.or(self.build_base);
         self.check = check.or(self.check);
@@ -3934,6 +3946,55 @@ fn image_runner_names(images: &[ResolvedBuild]) -> BTreeMap<String, BTreeSet<Str
     out
 }
 
+/// The image -> runner package edges: for each bringup, the workspace
+/// packages providing the runners its images name.
+///
+/// `wanted` is bringup -> runner names; `by_dir` maps a workspace host-tool
+/// package's directory to its name. A name is resolved on the provider search
+/// path under the workspace's override policy (RFC-0119 D4), so an undeclared
+/// workspace runner that replaces nano-ros's own is REFUSED here — this is a
+/// resolution of the name, not a listing — and a declared or allowed one gains
+/// its edge. A name with no provider, or an ambiguous one, adds no edge: the
+/// image's own run step reports it.
+///
+/// # Errors
+///
+/// An override the policy refuses (undeclared, stale declaration, protocol
+/// mismatch).
+pub fn runner_edges(
+    scan: &cargo_nano_ros::provider_scan::ScanResult,
+    wanted: &BTreeMap<String, BTreeSet<String>>,
+    by_dir: &BTreeMap<PathBuf, String>,
+    policy: &cargo_nano_ros::provider_overrides::OverridePolicy,
+) -> Result<BTreeMap<String, BTreeSet<String>>> {
+    use cargo_nano_ros::{
+        package_xml::RUNNER_KIND,
+        provider_overrides::{PolicyResolveError, resolve_provider},
+    };
+    let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (bringup, names) in wanted {
+        for name in names {
+            let r = match resolve_provider(scan, RUNNER_KIND, name, policy) {
+                Ok(r) => r,
+                Err(PolicyResolveError::Scan(_)) => continue,
+                Err(PolicyResolveError::Override(e)) => eyre::bail!("{e}"),
+            };
+            for w in &r.warnings {
+                eprintln!("warning: {w}");
+            }
+            let winner = r.resolution.winner.dir;
+            let dir = winner.canonicalize().unwrap_or(winner);
+            if let Some(pkg) = by_dir.get(&dir) {
+                edges
+                    .entry(bringup.clone())
+                    .or_default()
+                    .insert(pkg.clone());
+            }
+        }
+    }
+    Ok(edges)
+}
+
 /// Stage 4 for the host tools: every `runner` or `command` package the
 /// selection keeps, each built for the host into its own directory
 /// ([`crate::builder::host_tool`]).
@@ -3989,21 +4050,18 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
             .filter(|p| found.host.contains_key(&p.dir))
             .map(|p| (p.dir.clone(), p.name.clone()))
             .collect();
-        let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (bringup, names) in &wanted {
-            for name in names.iter().filter(|n| offered.contains(n.as_str())) {
-                let Ok(r) = provider_scan::resolve_unique(&scan, RUNNER_KIND, name) else {
-                    continue;
-                };
-                let dir = r.winner.dir.canonicalize().unwrap_or(r.winner.dir);
-                if let Some(pkg) = by_dir.get(&dir) {
-                    edges
-                        .entry(bringup.clone())
-                        .or_default()
-                        .insert(pkg.clone());
-                }
-            }
-        }
+        let policy = crate::provider_overrides::policy(&root, &args.allow_overriding)?;
+        let wanted: BTreeMap<String, BTreeSet<String>> = wanted
+            .into_iter()
+            .map(|(b, names)| {
+                let names = names
+                    .into_iter()
+                    .filter(|n| offered.contains(n.as_str()))
+                    .collect();
+                (b, names)
+            })
+            .collect();
+        let edges = runner_edges(&scan, &wanted, &by_dir, &policy)?;
         for p in &mut found.packages {
             if let Some(runners) = edges.get(&p.name) {
                 p.depends.extend(runners.iter().cloned());
@@ -7629,6 +7687,7 @@ mod selection_wiring_tests {
             parallel_workers: None,
             build_base: None,
             check: None,
+            allow_overriding: Vec::new(),
             native_args: Vec::new(),
         }
     }
@@ -8297,6 +8356,7 @@ mod single_package_tests {
             parallel_workers: None,
             build_base: None,
             check: None,
+            allow_overriding: Vec::new(),
             native_args: Vec::new(),
         }
     }

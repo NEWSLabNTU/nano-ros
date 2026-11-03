@@ -1,0 +1,5 @@
+# phase-527 W2b fixture (RFC-0119 D2). `bin` is stated: the fixture has no
+# Cargo.toml, so nothing derives it.
+protocol = 2
+verbs    = ["run"]
+bin      = "my_legacy"

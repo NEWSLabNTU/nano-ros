@@ -67,6 +67,7 @@ pub fn run(args: Args) -> Result<()> {
         parallel_workers: None,
         build_base: None,
         check: None,
+        allow_overriding: Vec::new(),
         native_args: Vec::new(),
     };
     let plans = super::build::plan_builds(&build_args)?;

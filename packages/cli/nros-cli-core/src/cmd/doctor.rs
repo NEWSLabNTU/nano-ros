@@ -347,11 +347,52 @@ pub fn run(args: Args) -> Result<()> {
         }
     };
 
-    let problems = deploy_problems.unwrap_or(0) + gate_problems + install_problems;
+    let override_problems = report_overrides();
+
+    let problems =
+        deploy_problems.unwrap_or(0) + gate_problems + install_problems + override_problems;
     if problems > 0 {
-        bail!("nros doctor: {problems} problem(s) (images + license gates + install)");
+        bail!(
+            "nros doctor: {problems} problem(s) (images + license gates + install + \
+             provider overrides)"
+        );
     }
     Ok(())
+}
+
+/// RFC-0119 D4 — every provider override in the current workspace: name,
+/// winner, what it replaces, and whether `system.toml` declared it. A stale
+/// declaration is a problem (any resolution of its name refuses it); an
+/// undeclared override is reported, not counted, because nothing has
+/// resolved it yet and a stray copy nobody selects is not a fault.
+fn report_overrides() -> usize {
+    let Ok(cwd) = std::env::current_dir() else {
+        return 0;
+    };
+    let ws = cwd.canonicalize().unwrap_or(cwd);
+    let policy = match crate::provider_overrides::policy(&ws, &[]) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("nros doctor: provider overrides ({})", ws.display());
+            eprintln!("  [!!] {e}");
+            return 1;
+        }
+    };
+    let Ok(path) = crate::cmd::ws::provider_search_path(&ws) else {
+        return 0;
+    };
+    let Ok(scan) = cargo_nano_ros::provider_scan::scan_roots(&path.paths()) else {
+        return 0;
+    };
+    let text = crate::provider_overrides::render_report(&scan, &policy);
+    if text.is_empty() {
+        return 0;
+    }
+    eprintln!("nros doctor: provider overrides ({})", ws.display());
+    for line in text.lines() {
+        eprintln!("  {line}");
+    }
+    crate::provider_overrides::stale_count(&scan, &policy)
 }
 
 /// `nros doctor --report` — the registry status of every board the bringup's

@@ -1003,6 +1003,10 @@ fn scan_providers_for(
 fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
     use cargo_nano_ros::rmw_resolver::{known_rmw_in, resolve_rmw_in};
 
+    let rmw_ws = args
+        .workspace
+        .clone()
+        .or_else(|| std::env::current_dir().ok());
     let scan = scan_providers_for(
         args.workspace,
         args.nano_ros_root,
@@ -1025,6 +1029,33 @@ fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
     let name = args.name.ok_or_else(|| {
         eyre!("`nros dev rmw dispatch` takes an rmw NAME, or `--known` to list them")
     })?;
+    // RFC-0119 D4 — an rmw override is not refused, but one nobody declared
+    // warns once, as colcon's does. A stale declaration is still an error.
+    if let Some(ws) = &rmw_ws {
+        use cargo_nano_ros::provider_overrides::{PolicyResolveError, resolve_provider};
+        // An unreadable system.toml is some other command's error to report;
+        // a configure must not fail here over it.
+        let policy = crate::provider_overrides::policy(ws, &[]).unwrap_or_else(|e| {
+            eprintln!("warning: [overrides] not read: {e}");
+            cargo_nano_ros::provider_overrides::OverridePolicy::new(ws, &Default::default(), &[])
+        });
+        match resolve_provider(
+            &scan,
+            cargo_nano_ros::rmw_descriptor::RMW_KIND,
+            &name,
+            &policy,
+        ) {
+            Ok(r) => {
+                for w in &r.warnings {
+                    eprintln!("warning: {w}");
+                }
+            }
+            Err(PolicyResolveError::Override(e)) => bail!("{e}"),
+            // Reported by the resolution below, with the known names.
+            Err(PolicyResolveError::Scan(_)) => {}
+        }
+    }
+
     let r = resolve_rmw_in(&scan, &name).map_err(|e| {
         // The known list is part of the DIAGNOSTIC, never part of the decision:
         // it is derived from this same scan, so it cannot go stale against the
@@ -1538,6 +1569,25 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
                 origin(s.root_index),
             );
         }
+        // RFC-0119 D4 — what a build or run resolving this name would do with
+        // the override. Said, not done: this is a listing.
+        if let Ok(policy) = crate::provider_overrides::policy(&workspace, &[]) {
+            use cargo_nano_ros::provider_overrides::{PolicyResolveError, resolve_provider};
+            match resolve_provider(&result, kind, name, &policy) {
+                Ok(p) => {
+                    if let Some(o) = &p.overriding {
+                        println!("  override {}", o.status.label());
+                    }
+                    for w in &p.warnings {
+                        println!("  warning  {w}");
+                    }
+                }
+                Err(PolicyResolveError::Override(e)) => {
+                    println!("  REFUSED when resolved: {e}");
+                }
+                Err(PolicyResolveError::Scan(_)) => {}
+            }
+        }
         return Ok(());
     }
 
@@ -1567,6 +1617,22 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
         .into_iter()
         .filter(|s| kind.is_none_or(|k| s.kind == k))
         .collect();
+
+    // RFC-0119 D4 — every override, with whether the workspace declared it.
+    // A listing never refuses (a stray copy nobody selects must not get in the
+    // way); it says what a resolution of each name would do.
+    let policy = match crate::provider_overrides::policy(&workspace, &[]) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("warning: [overrides] not read: {e}");
+            cargo_nano_ros::provider_overrides::OverridePolicy::new(
+                &workspace,
+                &Default::default(),
+                &[],
+            )
+        }
+    };
+    let override_rows = cargo_nano_ros::provider_overrides::report(&result, &policy);
 
     if args.json {
         let rows: Vec<serde_json::Value> = result
@@ -1601,6 +1667,24 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
                 })).collect::<Vec<_>>(),
                 "packages_seen": result.packages_seen(),
                 "providers": rows,
+                "overrides": override_rows.iter().map(|r| {
+                    use cargo_nano_ros::provider_overrides::ReportRow;
+                    match r {
+                        ReportRow::Override(o) => serde_json::json!({
+                            "kind": o.kind,
+                            "name": o.name,
+                            "winner": o.winner.dir,
+                            "shadowed": o.shadowed.iter().map(|p| &p.dir).collect::<Vec<_>>(),
+                            "status": o.status.label(),
+                        }),
+                        ReportRow::Stale(e) => serde_json::json!({
+                            "status": "stale", "message": e.to_string(),
+                        }),
+                        ReportRow::Unused { name, as_written } => serde_json::json!({
+                            "name": name, "declared": as_written, "status": "unused",
+                        }),
+                    }
+                }).collect::<Vec<_>>(),
                 "shadowing": shadowed.iter().map(|s| serde_json::json!({
                     "kind": s.kind,
                     "name": s.name,
@@ -1619,6 +1703,10 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
     print!(
         "{}",
         render_provider_listing(&search_path, &result, kind, &shadowed)
+    );
+    print!(
+        "{}",
+        crate::provider_overrides::render_report(&result, &policy)
     );
     Ok(())
 }

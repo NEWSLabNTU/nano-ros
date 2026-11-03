@@ -1,0 +1,4 @@
+# phase-527 W2b fixture (RFC-0119 D2).
+protocol = 1
+summary  = "Fixture verb for the override tests"
+bin      = "my_greet"
