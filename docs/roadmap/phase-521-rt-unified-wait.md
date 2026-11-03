@@ -635,6 +635,27 @@ first hung after one CREATE_CLIENT: Zephyr ignores `SO_RCVTIMEO` without
 `NROS_RMW_XRCE` now selects it too. Still open in W7: arrival→dispatch
 latency on the RTOS lane, and the fan-out cost on a non-attributing backend.
 
+**W7 — arrival→dispatch on the RTOS lane, and D2.5's fan-out bound
+(2026-11-03).**
+
+- **Arrival→dispatch.** The idle-wake witness's subscription moved to
+  `/chatter`, and the image stamps the last LAN9118 receive interrupt
+  (`sys_trace_isr_enter_user`, IPSR naming the IRQ) against the callback's
+  dispatch. With the native Rust talker as the host peer (its zenoh and XRCE
+  rows `serve` the two cells), `zephyr_cortex_m_qemu` asserts each sample at
+  most 5 ms (one 1 ms tick plus the receive path) and at least 1 µs.
+  Measured over five samples, three serial runs each: zenoh 435–877 µs, XRCE
+  323–647 µs.
+- **Fan-out.** The non-attributing backend in the tree is uORB (every entity
+  slot NULL); zenoh, XRCE and Cyclone attribute. `tier_wake_fanout`
+  (`required-features-tests` lane) measures both shapes over a stub backend:
+  four tiers on one session, each on its own thread.
+  - Without attribution, one low-tier arrival wakes 2.99–3.00 of the 3 high
+    tiers, at 5.0–7.5 µs of each woken tier's CPU (bound stated: 100 µs).
+  - With attribution, it wakes none of them.
+
+  RFC-0113 D2.5 states the bound, and its open question is closed.
+
 ### W8 — PX4 as a Tier 1 framework (RFC-0113 D9)
 
 - Add `px4` to `nros_orchestration_ir::FRAMEWORKS` and an `nros::main!` /

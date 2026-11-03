@@ -167,6 +167,8 @@ targets = ["trigger_conditions", "wake_latency", "ftti_detection_bounds",
            "dispatch_strategy", "signal_fd_wake", "entity_wake",
            # phase-521 W3 — a tier parked on a session's waitable handle.
            "readiness_park",
+           # phase-521 W7 — the wake fan-out bound (RFC-0113 D2.5).
+           "tier_wake_fanout",
            # phase-510 W2 — behind `component-runtime-test` since issue 0900
            # and in no lane's `--test` list, so it never ran.
            "executor_arena_advisory"]

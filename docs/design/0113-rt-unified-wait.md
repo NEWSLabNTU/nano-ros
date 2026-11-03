@@ -100,6 +100,13 @@ For every tier of a supported image:
    arrivals, that is exact (phase-397). Where it cannot, the wake fans out to
    the tiers over that session, each tier's dispatch still runs at its own
    priority, and the fan-out is documented per backend as a known cost.
+   **Its bound:** one arrival wakes at most every other tier on that session
+   (N − 1 for N tiers), and each such wake is one thread wake plus one
+   non-blocking pass that finds nothing of its own, never a wait. Measured on
+   Linux at 5–7.5 µs of the woken tier's CPU (stated bound: 100 µs); measured,
+   not asserted, at 6.8–9.4 µs over live zenoh before zenoh attributed
+   (phase-436). The non-attributing backend in the tree is uORB (all three
+   entity slots NULL); zenoh, XRCE and Cyclone attribute.
 6. **No tier blocks inside a transport.** The transport is drained
    non-blockingly after a wake.
 
@@ -294,6 +301,27 @@ receive timeout was ignored there: `CONFIG_NET_CONTEXT_RCVTIMEO` was selected
 for zenoh only (issue 2105), so the first CREATE_CLIENT's receive never
 returned. `NROS_RMW_XRCE` selects it now.
 
+Arrival→dispatch on the same board (`zephyr_cortex_m_qemu::zephyr_cortex_m_{zenoh,xrce}_arrival_is_dispatched_within_the_port_bound`,
+2026-11-03): the witness image, with a host talker publishing on `/chatter`
+at 1 Hz, stamps the last LAN9118 receive interrupt and the callback's
+dispatch on the 25 MHz cycle counter. Over five samples, three serial runs
+each: zenoh 435–877 µs (mean 697–874), XRCE 323–647 µs (mean 516–582). Every
+sample lands inside one 1 ms Zephyr tick, because an arrival ends the park
+through the wake object, not on a tick. The test states the port's bound as
+one tick plus the receive path, 5 ms, and a lower bound of 1 µs, so a stamp
+that is not measuring the receive path fails.
+
+D2.5's fan-out, measured on Linux (`tier_wake_fanout`,
+`required-features-tests` lane, 2026-11-03) over a stub backend registered
+under its own name in two shapes that differ only in the entity slot: four
+tiers share one session, each on its own thread parked in a 1 s spin, and
+200 arrivals land for the lowest. Without attribution (the slot NULL, the
+arrival a session wake, uORB's shape) one arrival wakes 2.99–3.00 of the 3
+high tiers, at 5.0–7.5 µs of each woken tier's CPU (three runs; the bound the
+test states is 100 µs). With attribution (the slot filled, the arrival
+naming its entity) it wakes none of them: each parks its whole budget, and
+the low tier is woken by its own arrival.
+
 Zephyr's serial link receives only through its interrupt-driven ring: the
 polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
@@ -312,11 +340,13 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Open questions
 
-- **Fan-out bound.** D2.5's fan-out on non-attributing backends has no stated
-  bound yet. Phase-521 W7 measures it.
+- ~~**Fan-out bound.**~~ Closed 2026-11-03 (phase-521 W7): D2.5 states it.
 
 ## Changelog
 
+- 2026-11-03 — D2.5's fan-out bound stated and measured
+  (`tier_wake_fanout`); the open question closes. Zephyr arrival→dispatch
+  measured on mps2/an385 (phase-521 W7).
 - 2026-11-03 — D9: the maintainer's rulings recorded (a PX4 tier waits
   through a yielding park slot; the maintainer owns PX4), and the work-queue
   table landed (`px4` joins `FRAMEWORKS`, phase-521 W8 a).

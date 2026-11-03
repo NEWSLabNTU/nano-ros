@@ -344,6 +344,13 @@ name = "readiness_park"
 path = "tests/readiness_park.rs"
 required-features = ["trigger-test"]
 
+# phase-521 W7 (RFC-0113 D2.5) — the wake fan-out over one session: what a
+# low-tier arrival costs the high tiers, attributing vs not.
+[[test]]
+name = "tier_wake_fanout"
+path = "tests/tier_wake_fanout.rs"
+required-features = ["trigger-test"]
+
 [[test]]
 name = "ftti_detection_bounds"
 path = "tests/ftti_detection_bounds.rs"

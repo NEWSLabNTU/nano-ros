@@ -1,7 +1,8 @@
 /// @file Witness.c
 /// @brief phase-521 W7 (RFC-0113 D2) -- the idle-wake witness for Zephyr.
 ///
-/// One subscription nobody publishes to and one 1 s timer. RFC-0113 D2 says an
+/// One subscription (on `/chatter`, which nothing publishes in the idle test)
+/// and one 1 s timer. RFC-0113 D2 says an
 /// idle executor wakes only for its deadlines and for arrivals, so over a
 /// window of WINDOW_FIRES timer periods the thread that runs the executor
 /// should be switched in about once per expiry. The count comes from
@@ -12,12 +13,22 @@
 /// The window opens at the first expiry, once the session is up, and closes
 /// WINDOW_FIRES expiries later; the result is one line the test parses:
 ///   idle-wake: switch_ins=N fires=F window_ms=W max_late_us=L max_early_us=E
+///
+/// The same subscription measures arrival→dispatch (phase-521 W7 a): with a
+/// host talker publishing on `/chatter`, the image stamps the last LAN9118
+/// receive interrupt (Zephyr's `sys_trace_isr_enter_user`, IPSR naming the
+/// IRQ) and the callback's dispatch, both on the 25 MHz cycle counter, and
+/// after LAT_SAMPLES samples prints:
+///   arrival-latency: n=N min_us=A mean_us=B max_us=C
+/// The idle test runs no talker, so for it the subscription stays idle.
 
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
+#include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
+#include <cmsis_core.h>
 
 #include <rclc/rclc.h>
 
@@ -25,6 +36,9 @@
 
 #define PERIOD_MS 1000
 #define WINDOW_FIRES 5
+#define LAT_SAMPLES 5
+/* The LAN9118's IRQ line; the exception number is 16 above it. */
+#define ETH_IRQ DT_IRQN(DT_NODELABEL(eth0))
 
 typedef struct {
     rcl_subscription_t sub;
@@ -51,14 +65,46 @@ void sys_trace_thread_switched_in_user(void) {
     }
 }
 
+/* The cycle count at the last LAN9118 receive interrupt. */
+static volatile uint32_t last_eth_cyc;
+static volatile bool eth_seen;
+
+void sys_trace_isr_enter_user(void) {
+    if ((__get_IPSR() & 0x1FFu) == 16u + (uint32_t)ETH_IRQ) {
+        last_eth_cyc = k_cycle_get_32();
+        eth_seen = true;
+    }
+}
+
+static uint32_t lat_n;
+static uint64_t lat_sum_us;
+static uint32_t lat_min_us = UINT32_MAX;
+static uint32_t lat_max_us;
+
 static int64_t now_us(void) {
     return (int64_t)k_ticks_to_us_floor64(k_uptime_ticks());
 }
 
 static void on_msg(const void* msgin, void* ctx) {
     (void)ctx;
-    const std_msgs__msg__String* msg = (const std_msgs__msg__String*)msgin;
-    printf("idle-wake: unexpected sample [%s]\n", msg->data.data);
+    (void)msgin;
+    uint32_t now = k_cycle_get_32();
+    if (!eth_seen || lat_n >= LAT_SAMPLES) {
+        return;
+    }
+    uint32_t us = k_cyc_to_us_floor32(now - last_eth_cyc);
+    lat_n++;
+    lat_sum_us += us;
+    if (us < lat_min_us) {
+        lat_min_us = us;
+    }
+    if (us > lat_max_us) {
+        lat_max_us = us;
+    }
+    if (lat_n == LAT_SAMPLES) {
+        printf("arrival-latency: n=%u min_us=%u mean_us=%u max_us=%u\n", (unsigned)lat_n,
+               (unsigned)lat_min_us, (unsigned)(lat_sum_us / lat_n), (unsigned)lat_max_us);
+    }
 }
 
 static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
@@ -97,7 +143,7 @@ static rcl_ret_t witness_configure(rcl_node_t* node, rclc_executor_t* executor, 
     std_msgs__msg__String__init_in(&self->msg, &self->msg_storage);
     self->sub = rcl_get_zero_initialized_subscription();
     rcl_ret_t rc = rclc_subscription_init_default(
-        &self->sub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "/idle_wake");
+        &self->sub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "/chatter");
     if (rc != RCL_RET_OK) {
         return rc;
     }
