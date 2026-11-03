@@ -16,8 +16,8 @@
 /// The variable that carries an image's session properties to its build.
 pub const ENV: &str = "NROS_SESSION_PROPERTIES";
 
-/// Issue 2051 — the file, in `nros build`'s resolve directory
-/// (`NROS_RESOLVED_DIR`), that carries a Zephyr RUST west application's session
+/// Issue 2051 — the file, in `nros configure`'s resolve directory (located by
+/// the image's identity, `nros locate configured`), that carries a Zephyr RUST west application's session
 /// properties: the table [`rust_table`] renders, which the `nros` crate's build
 /// copies in for `zephyr_component_main!` to install. The west lane has no
 /// `--config` seam (issue 1288), and its cargo command is an unquoted shell
