@@ -144,6 +144,11 @@ pub(crate) struct Worker {
     /// The single thing that actually blocks. Many sources say WHEN; one
     /// primitive does the waiting.
     pub(crate) park_primitive: Option<(ParkUntilFn, *mut c_void)>,
+    /// phase-521 W8 (c) (RFC-0113 D9) -- the last park answered
+    /// [`PARK_YIELDED`](super::spin::PARK_YIELDED) with no wake pending: the
+    /// park slot handed the wait to its framework's scheduler, so the pass
+    /// that ran the park returns without scanning. Cleared by that pass.
+    pub(crate) park_yielded: bool,
     /// phase-436 W7.b (issue 1242) -- the finest park the INSTALLED primitive
     /// can actually express, in microseconds. `0` = none installed, fall back
     /// to the `wake_wait_ms` ABI floor.
@@ -194,6 +199,7 @@ impl Worker {
             wake_sources: [None; MAX_WAKE_SOURCES],
             wake_source_count: 0,
             park_primitive: None,
+            park_yielded: false,
             park_granularity_declared_us: 0,
             min_stack_headroom_bytes: 0,
             stack_headroom_reported: usize::MAX,

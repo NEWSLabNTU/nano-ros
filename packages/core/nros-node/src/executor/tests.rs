@@ -2894,6 +2894,142 @@ fn spin_once_parks_through_the_registered_primitive() {
     );
 }
 
+// ===========================================================================
+// phase-521 W8 (c) (RFC-0113 D9, ruling 2026-11-03) — a park slot that yields
+// to its framework's scheduler (a PX4 work item) instead of waiting.
+// ===========================================================================
+
+/// A yielding park makes `spin_once` return at once, without dispatching, and
+/// the bound the slot received is the executor's own `next_wake_bound`: the
+/// one value the slot needs to arm `ScheduleDelayed`.
+#[test]
+fn a_yielding_park_returns_spin_once_with_the_next_wake_bound() {
+    use portable_atomic::{AtomicU32, AtomicU64, Ordering};
+    static SEEN: AtomicU64 = AtomicU64::new(u64::MAX);
+    static CALLS: AtomicU32 = AtomicU32::new(0);
+
+    unsafe extern "C" fn yielding_park(_c: *mut core::ffi::c_void, deadline_us: u64) -> i8 {
+        SEEN.store(deadline_us, Ordering::SeqCst);
+        CALLS.fetch_add(1, Ordering::SeqCst);
+        super::spin::PARK_YIELDED
+    }
+
+    SEEN.store(u64::MAX, Ordering::SeqCst);
+    CALLS.store(0, Ordering::SeqCst);
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_park_primitive(yielding_park, core::ptr::null_mut(), 1_000);
+    let fired = std::sync::Arc::new(AtomicU32::new(0));
+    let fired_cb = fired.clone();
+    executor
+        .register_timer(TimerDuration::from_millis(10), move || {
+            fired_cb.fetch_add(1, Ordering::SeqCst);
+        })
+        .unwrap();
+
+    // A component whose tick runs once per pass: the observable a yielded
+    // spin must not reach (a pass that scanned would tick it).
+    static TICKS: AtomicU32 = AtomicU32::new(0);
+    unsafe extern "C" fn tick(_: *mut core::ffi::c_void, _: *mut core::ffi::c_void) {
+        TICKS.fetch_add(1, Ordering::SeqCst);
+    }
+    unsafe extern "C" fn drop_state(_: *mut core::ffi::c_void) {}
+    // SAFETY: a null state the tick and drop never read.
+    unsafe {
+        executor
+            .enroll_component_ticking(core::ptr::null_mut(), tick, drop_state, false)
+            .expect("enroll");
+    }
+    TICKS.store(0, Ordering::SeqCst);
+
+    let budget = core::time::Duration::from_millis(50);
+    let expected =
+        executor.round_park_up_us(executor.next_wake_bound_us(budget.as_micros() as u64));
+    let result = executor.spin_once(budget);
+
+    assert_eq!(
+        CALLS.load(Ordering::SeqCst),
+        1,
+        "the park slot was not asked"
+    );
+    assert_eq!(
+        SEEN.load(Ordering::SeqCst),
+        expected,
+        "the yielding slot must be handed next_wake_bound, the deadline it arms"
+    );
+    assert_eq!(
+        expected, 10_000,
+        "the 10 ms timer, not the 50 ms budget, bounds it"
+    );
+    assert_eq!(
+        result.total(),
+        0,
+        "a yielded spin dispatches nothing: nothing was due and nothing was pending"
+    );
+    assert_eq!(fired.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        TICKS.load(Ordering::SeqCst),
+        0,
+        "the yielded spin ran its pass anyway (a component ticked)"
+    );
+}
+
+/// A wake already pending when the slot yields keeps the pass running: the
+/// work is here now, and returning would leave it waiting for the framework's
+/// next run of the tier.
+#[test]
+fn a_yielding_park_with_a_pending_wake_keeps_the_pass() {
+    use portable_atomic::{AtomicU32, Ordering};
+    static CALLS: AtomicU32 = AtomicU32::new(0);
+    static TICKS: AtomicU32 = AtomicU32::new(0);
+    unsafe extern "C" fn yielding_park(_c: *mut core::ffi::c_void, _d: u64) -> i8 {
+        CALLS.fetch_add(1, Ordering::SeqCst);
+        super::spin::PARK_YIELDED
+    }
+    unsafe extern "C" fn tick(_: *mut core::ffi::c_void, _: *mut core::ffi::c_void) {
+        TICKS.fetch_add(1, Ordering::SeqCst);
+    }
+    unsafe extern "C" fn drop_state(_: *mut core::ffi::c_void) {}
+    CALLS.store(0, Ordering::SeqCst);
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_park_primitive(yielding_park, core::ptr::null_mut(), 1_000);
+    executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+    // SAFETY: a null state the tick and drop never read.
+    unsafe {
+        executor
+            .enroll_component_ticking(core::ptr::null_mut(), tick, drop_state, false)
+            .expect("enroll");
+    }
+    TICKS.store(0, Ordering::SeqCst);
+    executor.wake_flag.store(true, Ordering::SeqCst);
+    executor.spin_once(core::time::Duration::from_millis(50));
+    assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        TICKS.load(Ordering::SeqCst),
+        1,
+        "a yield with a wake pending returned before the pass ran: the pending work \
+         would wait for the framework's next run of the tier"
+    );
+}
+
+/// The Rust constants and the C header's are one set (the header is the ABI).
+#[test]
+fn the_park_answers_match_the_platform_header() {
+    assert_eq!(
+        super::spin::PARK_SIGNALLED as i32,
+        nros_platform_cffi::generated::NROS_PLATFORM_PARK_SIGNALLED
+    );
+    assert_eq!(
+        super::spin::PARK_EXPIRED as i32,
+        nros_platform_cffi::generated::NROS_PLATFORM_PARK_EXPIRED
+    );
+    assert_eq!(
+        super::spin::PARK_YIELDED as i32,
+        nros_platform_cffi::generated::NROS_PLATFORM_PARK_YIELDED
+    );
+}
+
 /// With no primitive installed nothing changes — every existing port keeps the
 /// behaviour it has, which is what makes this seam additive.
 #[test]

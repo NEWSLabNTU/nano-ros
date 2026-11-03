@@ -51,6 +51,9 @@ pub const NROS_PLATFORM_MUTEX_STORAGE_SIZE: i32 = 256;
 pub const NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE: i32 = 256;
 pub const NROS_PLATFORM_CONDVAR_STORAGE_SIZE: i32 = 256;
 pub const NROS_PLATFORM_STORAGE_ALIGN: i32 = 8;
+pub const NROS_PLATFORM_PARK_SIGNALLED: i32 = 0;
+pub const NROS_PLATFORM_PARK_EXPIRED: i32 = 1;
+pub const NROS_PLATFORM_PARK_YIELDED: i32 = 2;
 unsafe extern "C" {
     #[doc = " Monotonic nanoseconds since a platform-defined epoch (boot, program\n  start, …). Never decreases. Wraps after ~584 years.\n\n  Must be backed by a hardware counter or the OS tick — never by a\n  software counter that only advances when polled.\n\n  Available immediately after platform init, before any other nros\n  subsystem. SHOULD be callable from an ISR; a port whose clock is not\n  ISR-safe must say so in its port documentation.\n\n  RFC-0073: this replaced the former `clock_ms` / `clock_us` pair. Ports\n  that can convert without a runtime division should — where the counter\n  frequency divides 1e9 (25/50/100/125/200/250 MHz) a compile-time\n  ns-per-cycle multiply is ~2.5x cheaper than the divide it replaces."]
     pub fn nros_platform_clock_ns() -> u64;
@@ -266,7 +269,7 @@ unsafe extern "C" {
     pub fn nros_platform_wake_signal_from_isr(w: *mut core::ffi::c_void) -> i8;
 }
 unsafe extern "C" {
-    #[doc = " phase-436 W7 — OPTIONAL microsecond park, the `ParkUntilFn` a port may\n  install through `nros_cpp_executor_set_park_primitive`.\n\n  `nros_platform_wake_wait_ms` above is the required primitive and floors\n  every wait at a millisecond through its own signature; this is the same\n  wait without that floor, for kernels whose timeout type is finer (issue\n  1242). Ports that cannot do better than a millisecond need not define it.\n\n  `w` MUST be the executor's own wake object — the backend's listener signals\n  that one, and a park on anything else cannot be broken by data arriving.\n\n  Returns 0 when signalled, 1 when the deadline expired, negative when it\n  cannot park."]
+    #[doc = " phase-436 W7 — OPTIONAL microsecond park, the `ParkUntilFn` a port may\n  install through `nros_cpp_executor_set_park_primitive`.\n\n  `nros_platform_wake_wait_ms` above is the required primitive and floors\n  every wait at a millisecond through its own signature; this is the same\n  wait without that floor, for kernels whose timeout type is finer (issue\n  1242). Ports that cannot do better than a millisecond need not define it.\n\n  `w` MUST be the executor's own wake object — the backend's listener signals\n  that one, and a park on anything else cannot be broken by data arriving.\n\n  Returns `NROS_PLATFORM_PARK_SIGNALLED` (0) when signalled,\n  `NROS_PLATFORM_PARK_EXPIRED` (1) when the deadline expired,\n  `NROS_PLATFORM_PARK_YIELDED` (2) when it did not wait but handed the wait\n  to its framework's scheduler, and negative when it cannot park.\n\n  phase-521 W8 (c) (RFC-0113 D9) — YIELDED is the answer of a park slot\n  installed for a tier a FRAMEWORK schedules (a PX4 work item): it arms the\n  framework's wake at `deadline_us` (`ScheduleDelayed`, or `ScheduleClear`\n  with no deadline) and returns at once, and the executor's `spin_once`\n  returns to the framework instead of blocking. A wake already pending when\n  it answers keeps the pass running. A port's own park never yields."]
     pub fn nros_platform_wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8;
 }
 unsafe extern "C" {

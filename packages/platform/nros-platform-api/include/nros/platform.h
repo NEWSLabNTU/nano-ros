@@ -738,9 +738,24 @@ int8_t  nros_platform_wake_signal_from_isr(void *w);
  *  `w` MUST be the executor's own wake object — the backend's listener signals
  *  that one, and a park on anything else cannot be broken by data arriving.
  *
- *  Returns 0 when signalled, 1 when the deadline expired, negative when it
- *  cannot park. */
+ *  Returns `NROS_PLATFORM_PARK_SIGNALLED` (0) when signalled,
+ *  `NROS_PLATFORM_PARK_EXPIRED` (1) when the deadline expired,
+ *  `NROS_PLATFORM_PARK_YIELDED` (2) when it did not wait but handed the wait
+ *  to its framework's scheduler, and negative when it cannot park.
+ *
+ *  phase-521 W8 (c) (RFC-0113 D9) — YIELDED is the answer of a park slot
+ *  installed for a tier a FRAMEWORK schedules (a PX4 work item): it arms the
+ *  framework's wake at `deadline_us` (`ScheduleDelayed`, or `ScheduleClear`
+ *  with no deadline) and returns at once, and the executor's `spin_once`
+ *  returns to the framework instead of blocking. A wake already pending when
+ *  it answers keeps the pass running. A port's own park never yields. */
 int8_t   nros_platform_wake_park_until_us(void *w, uint64_t deadline_us);
+
+/** The park slot's answers (`nros_platform_wake_park_until_us`, and the
+ *  `ParkUntilFn` an executor is handed). */
+#define NROS_PLATFORM_PARK_SIGNALLED 0
+#define NROS_PLATFORM_PARK_EXPIRED   1
+#define NROS_PLATFORM_PARK_YIELDED   2
 
 /** The finest park `nros_platform_wake_park_until_us` can express, in
  *  microseconds. An RTOS tick is a coarser limit than the ABI signature and a

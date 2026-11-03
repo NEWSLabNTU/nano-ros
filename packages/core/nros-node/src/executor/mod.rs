@@ -221,7 +221,10 @@ pub use spin::SessionHandle;
 #[cfg(all(any(has_rmw, test), feature = "rmw-cffi"))]
 pub use spin::SessionSpec;
 #[cfg(any(has_rmw, test))]
-pub use spin::{MAX_WAKE_SOURCES, NextDeadlineFn, ParkUntilFn, RemapRefused, WakeSourceId};
+pub use spin::{
+    MAX_WAKE_SOURCES, NextDeadlineFn, PARK_EXPIRED, PARK_SIGNALLED, PARK_YIELDED, ParkUntilFn,
+    RemapRefused, WakeSourceId,
+};
 #[cfg(any(has_rmw, test))]
 pub use storage::{
     ExecutorInlineStorage, ExecutorSizing, INLINE_BACKING_U64S, INLINE_SIZING, RegionUnit,
