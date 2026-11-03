@@ -1,0 +1,6 @@
+# RFC-0119 D2. `bin` is not stated: the package has one bin target,
+# `nros-runner-fvp`, so it is derived. The executable's `describe` reply
+# states the same verbs and needs; a test in src/main.rs holds the two equal.
+protocol = 1
+verbs    = ["run"]
+needs    = ["build_dir"]

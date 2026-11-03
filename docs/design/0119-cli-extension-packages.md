@@ -347,3 +347,10 @@ CMake code when they build it, so this adds no new boundary.
 - 2026-11 — phase-527 W2: D3's build role landed in `nros build`; D3 records
   the host build's place, profile and triple, and how the image edge
   resolves.
+- 2026-11 — phase-528 W3: D8's `native`, `qemu`, `fvp`, `west` (run) and
+  `command` runner packages landed under `packages/runners/`, speaking D6
+  protocol 1 unchanged; `qemu` takes its executable from the plan's `tools`
+  (filled by nros through the QEMU ladder) and never from `PATH`, and
+  implements `run` only until `nros monitor` needs `console`. D10's
+  `check-board-runner-resolves` landed for `[board.run]`; its `[board.flash]`
+  half waits for the hardware runners (phase-529).

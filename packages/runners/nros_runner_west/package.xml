@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_runner_west</name>
+  <version>0.0.0</version>
+  <description>
+    The `west` runner (RFC-0119 D8). Runs a Zephyr image on the emulator its west build declares
+    (`west build -t run_&lt;emulator&gt;`). Flashing through west is a later verb.
+
+    A runner package of the same shape as a user's: the announcement below is
+    what the provider scan reads, `nros-runner.toml` is read only when this
+    provider is the one selected, and the executable speaks RFC-0119 D6.
+  </description>
+  <maintainer email="jerry73204@gmail.com">Lin Hsiang-Jui</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="runner" name="west"/>
+  </export>
+</package>

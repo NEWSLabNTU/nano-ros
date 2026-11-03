@@ -21,6 +21,7 @@ runners use it too, so a runner you write takes the same path ours do.
 | `console` | the console pump and the `nros-runner: link <endpoint>` line |
 | `usb` | USB VID:PID parsing and serial-port lookup that never guesses |
 | `exit` | the exit codes |
+| `runner` | the skeleton a runner's `main` shares: `describe`, plan reading, launching |
 
 ## The runner contract, protocol 1
 

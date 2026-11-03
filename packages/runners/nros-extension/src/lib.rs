@@ -16,6 +16,7 @@
 //! | [`console`] | the console pump and the `nros-runner: link <endpoint>` line |
 //! | [`usb`] | USB VID:PID parsing and serial-port lookup |
 //! | [`exit`] | the exit codes |
+//! | [`runner`] | the skeleton a runner's `main` shares: `describe`, plan reading, launching |
 //!
 //! A runner written in another language does not need this crate: it reads
 //! and writes the same JSON.
@@ -65,4 +66,5 @@ pub mod exit;
 pub mod invocation;
 pub mod plan;
 pub mod protocol;
+pub mod runner;
 pub mod usb;

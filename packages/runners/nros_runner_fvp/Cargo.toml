@@ -1,0 +1,19 @@
+[package]
+name = "nros_runner_fvp"
+version = "0.0.0"
+description = "The `fvp` runner package for nano-ros (RFC-0119 D8)."
+publish = false
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "nros-runner-fvp"
+path = "src/main.rs"
+
+[dependencies]
+nros-extension = { path = "../nros-extension" }
+nros_runner_west = { path = "../nros_runner_west" }

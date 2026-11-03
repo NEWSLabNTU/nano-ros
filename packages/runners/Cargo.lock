@@ -27,6 +27,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-qemu-ladder"
+version = "0.6.0"
+
+[[package]]
+name = "nros_runner_command"
+version = "0.0.0"
+dependencies = [
+ "nros-extension",
+]
+
+[[package]]
+name = "nros_runner_fvp"
+version = "0.0.0"
+dependencies = [
+ "nros-extension",
+ "nros_runner_west",
+]
+
+[[package]]
+name = "nros_runner_native"
+version = "0.0.0"
+dependencies = [
+ "nros-extension",
+]
+
+[[package]]
+name = "nros_runner_qemu"
+version = "0.0.0"
+dependencies = [
+ "nros-extension",
+ "nros-qemu-ladder",
+]
+
+[[package]]
+name = "nros_runner_west"
+version = "0.0.0"
+dependencies = [
+ "nros-extension",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_runner_command</name>
+  <version>0.0.0</version>
+  <description>
+    The `command` runner (RFC-0119 D8). Executes a command template from a board or image table, expanded from
+    the plan's placeholders (RFC-0118 D5).
+
+    A runner package of the same shape as a user's: the announcement below is
+    what the provider scan reads, `nros-runner.toml` is read only when this
+    provider is the one selected, and the executable speaks RFC-0119 D6.
+  </description>
+  <maintainer email="jerry73204@gmail.com">Lin Hsiang-Jui</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="runner" name="command"/>
+  </export>
+</package>
