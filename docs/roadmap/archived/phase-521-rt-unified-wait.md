@@ -1,9 +1,9 @@
 # Phase 521 — The real-time promise and the one wait
 
-**Status (2026-11-01). Approved; W0 and W1 done; W3 done, including W3.b (issue 2198, the NuttX rv-virt link); W2's THREAD half and W4's POSIX/NuttX, lwIP, NetX and Zephyr UDP parts done; the rest of W2 and W4, and W5–W8, open. Revised the same day against RFC-0115 (phase-524): the boards the book names are Zephyr boards on a zenoh serial link, so Zephyr moves to the front of W4 and the polled UART read joins W6.** Implements
-[RFC-0113](../design/0113-rt-unified-wait.md). Amends
-[RFC-0106](../design/0106-executor-park.md) D5 and withdraws
-[RFC-0112](../design/0112-framework-support-tiers.md)'s Tier 0.
+**Status (2026-11-03). COMPLETE, archived.** W0–W8 all landed: the host-driven surface retired (W1), every backend states a readiness form and a session with none is refused at open (W3–W6), bare metal parks on its RX interrupt and a one-shot timer (W5), the promise is measured on Linux, Zephyr mps2/an385 and PX4 SITL (W7, W8 e), and PX4 is a Tier 1 framework on generated work items (W8, RFC-0112 D3). Follow-up outside this phase: issue 2225 (a networked arrival on a PX4 tier waits for its next deadline). The history below is kept as written. Implements
+[RFC-0113](../../design/0113-rt-unified-wait.md). Amends
+[RFC-0106](../../design/0106-executor-park.md) D5 and withdraws
+[RFC-0112](../../design/0112-framework-support-tiers.md)'s Tier 0.
 
 ---
 
@@ -108,7 +108,7 @@ Delete RFC-0113 D7's list in one change:
 docs, changelog fragments and RFC-0113; `just ci gate` green;
 `api-parity` and `rmw-api-parity` green.
 
-### W2 — zenoh reports real deadlines — THREAD mode DONE
+### W2 — zenoh reports real deadlines — DONE
 
 - THREAD mode (`ZPICO_DRIVE_THREAD`): `next_deadline_ms` returns `None`,
   through the new `zpico_drives_on_thread()`. Tested by
@@ -192,7 +192,7 @@ the next park change cannot repeat this.
 test parks a POSIX tier on a socket pair and measures wake on write with no
 wake callback installed.
 
-### W4 — XRCE delivers readiness on every transport — POSIX/NuttX, lwIP and NetX DONE
+### W4 — XRCE delivers readiness on every transport — DONE
 
 POSIX/NuttX half, landed with W3:
 
@@ -315,7 +315,7 @@ Remaining, in order (revised 2026-11-01 against RFC-0115):
 granularities (today ~5 ms through the slices); an idle XRCE tier makes zero
 receive calls between deadlines.
 
-### W5 — Bare metal: RX interrupt and one-shot timer as a port obligation
+### W5 — Bare metal: RX interrupt and one-shot timer as a port obligation — DONE
 
 zenoh's CALLER-mode read moves from its 1 ms idle poll to the RX Notify, and
 its `next_deadline_ms` then reports zenoh-pico's next executor wake-up instead
@@ -389,7 +389,7 @@ Still open: the board-entry refusal of a bare-metal board without an RX
 interrupt and a one-shot timer (esp32-c3 is the in-tree one), which W6's
 open-time `None` refusal delivers.
 
-### W6 — Retire the receive-blocking fallback
+### W6 — Retire the receive-blocking fallback — DONE
 
 Once W4 and W5 cover every in-tree combination: delete the receive-blocking
 wait, the guard slices and `POLL_ONLY_WAKE_SLICE_MS`; add the open-time
@@ -604,7 +604,7 @@ run caps the boot level's park at its remainder, and stopping the levels
 wakes every parked worker (`Executor::wake_all_workers`) so each sees its
 stop flag at once.
 
-### W7 — Acceptance measurements for the promise
+### W7 — Acceptance measurements for the promise — DONE
 
 Make RFC-0113 D2 a measured property, not a reading:
 
@@ -656,7 +656,7 @@ latency on the RTOS lane, and the fan-out cost on a non-attributing backend.
 
   RFC-0113 D2.5 states the bound, and its open question is closed.
 
-### W8 — PX4 as a Tier 1 framework (RFC-0113 D9)
+### W8 — PX4 as a Tier 1 framework (RFC-0113 D9) — DONE
 
 - Add `px4` to `nros_orchestration_ir::FRAMEWORKS` and an `nros::main!` /
   C++ entry branch that emits one `ScheduledWorkItem` per tier, bound to a
