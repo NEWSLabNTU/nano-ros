@@ -988,7 +988,7 @@ fn mark_unprobeable_now(
 /// a key [`probe_inputs_key`] returns (those are `fnv1a64:...` triples), so a
 /// sidecar stamped with it is re-probed on the next sync — the "never fresh"
 /// half of `None`.
-const UNKEYED: &str = "unkeyed";
+pub(crate) const UNKEYED: &str = "unkeyed";
 
 /// Issue 1593 — a marker is honoured only when its KEY matches AND the tree
 /// its probe COMPILED (the `root:` line) is the tree this sync keys on. The key
@@ -1321,6 +1321,8 @@ pub(crate) fn stale_sidecar_components(root: &Path) -> Vec<String> {
             .map(|p| p.inputs_digest);
         let current = source_digest(&decl.package_root).ok();
         let fresh = match (&recorded, &current) {
+            // R5: a sidecar stamped with no key has nothing to compare.
+            (Some(r), _) if r == UNKEYED => true,
             (Some(r), Some(c)) => r.starts_with(&format!("{c}:")),
             _ => false,
         };

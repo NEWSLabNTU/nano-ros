@@ -137,6 +137,23 @@ fn codegen_version() -> String {
 /// `sha256:<hex>` over the project's inputs, the interface search env and the
 /// codegen version.
 pub(crate) fn input_digest(project: &Path) -> Result<String> {
+    input_digest_with_env(project, &real_env())
+}
+
+/// The digest-input variables as the process sees them.
+fn real_env() -> Vec<(String, Option<String>)> {
+    ENV_INPUTS
+        .iter()
+        .map(|v| ((*v).to_string(), std::env::var(v).ok()))
+        .collect()
+}
+
+/// [`input_digest`] with the environment values injected, so a test needs no
+/// process-env mutation.
+pub(crate) fn input_digest_with_env(
+    project: &Path,
+    env: &[(String, Option<String>)],
+) -> Result<String> {
     let mut h = Sha256::new();
     let mut feed = |tag: &str, bytes: &[u8]| {
         h.update(tag.as_bytes());
@@ -151,7 +168,11 @@ pub(crate) fn input_digest(project: &Path) -> Result<String> {
         feed("body", &bytes);
     }
     for var in ENV_INPUTS {
-        let val = std::env::var(var).unwrap_or_default();
+        let val = env
+            .iter()
+            .find(|(n, _)| n == var)
+            .and_then(|(_, v)| v.clone())
+            .unwrap_or_default();
         feed(var, val.as_bytes());
     }
     feed("codegen", codegen_version().as_bytes());
@@ -201,14 +222,36 @@ fn recorded_censuses(project: &Path) -> Vec<PathBuf> {
 /// differs; a metadata sidecar's component sources moved; a recorded census is
 /// stale. An image with no recorded census is not stale on that account.
 pub(crate) fn is_current(project: &Path, image: &str) -> Result<Currency> {
+    let resolver = std::env::current_exe().ok().and_then(|exe| {
+        crate::orchestration::model_location::launch_resolver_bin_for_exe(&exe, None)
+    });
+    is_current_with(project, image, &real_env(), resolver.as_deref())
+}
+
+/// [`is_current`] with the environment and the currently resolved
+/// `nros-launch-resolve` injected.
+pub(crate) fn is_current_with(
+    project: &Path,
+    image: &str,
+    env: &[(String, Option<String>)],
+    resolver: Option<&Path>,
+) -> Result<Currency> {
     let Some(stamp) = read(project, image) else {
         return Ok(Currency::Stale("no configure stamp recorded".into()));
     };
-    let now = input_digest(project)?;
+    let now = input_digest_with_env(project, env)?;
     if stamp.digest != now {
         return Ok(Currency::Stale(format!(
             "inputs changed (recorded {}, now {now})",
             stamp.digest
+        )));
+    }
+    if stamp.launch_resolve.as_deref() != resolver {
+        let show = |p: Option<&Path>| p.map_or("none".to_string(), |p| p.display().to_string());
+        return Ok(Currency::Stale(format!(
+            "launch resolver changed: {} -> {}",
+            show(stamp.launch_resolve.as_deref()),
+            show(resolver)
         )));
     }
     if let Some(line) = stale_sidecar_components(project).into_iter().next() {
@@ -317,17 +360,22 @@ mod tests {
         let stamp = stamp_for(&p);
         record(&p, "ws:zephyr", &stamp).unwrap();
         assert_eq!(read(&p, "ws:zephyr"), Some(stamp));
-        assert_eq!(is_current(&p, "ws:zephyr").unwrap(), Currency::Current);
+        assert_eq!(
+            is_current_with(&p, "ws:zephyr", &real_env(), None).unwrap(),
+            Currency::Current
+        );
         std::fs::write(p.join("system.toml"), "[system]\nname = \"x\"\n").unwrap();
         assert!(matches!(
-            is_current(&p, "ws:zephyr").unwrap(),
+            is_current_with(&p, "ws:zephyr", &real_env(), None).unwrap(),
             Currency::Stale(why) if why.contains("inputs changed")
         ));
     }
 
-    #[test]
-    fn stale_when_metadata_sidecar_inputs_moved() {
-        let p = tmp("sidecar");
+    /// A project with one Rust component and a sidecar stamped by the real
+    /// key function. Returns (project, sidecar).
+    fn sidecar_fixture(name: &str, stamp_with: Option<&str>) -> (PathBuf, PathBuf) {
+        use crate::orchestration::metadata_refresh as mr;
+        let p = tmp(name);
         std::fs::create_dir_all(p.join("src")).unwrap();
         std::fs::create_dir_all(p.join("metadata")).unwrap();
         std::fs::write(
@@ -354,23 +402,142 @@ mod tests {
                           "source_artifacts": []}}"#,
         )
         .unwrap();
-        let digest = crate::orchestration::metadata_refresh::source_digest(&p).unwrap();
-        crate::orchestration::metadata_refresh::stamp_provenance(
-            &sidecar,
-            &format!("{digest}:closure:stamp"),
-        )
-        .unwrap();
+        // A nano-ros root the probe key can be computed against.
+        let root = tmp(&format!("{name}-nros"));
+        let list = root.join(mr::PROBE_SOURCE_DIRS);
+        std::fs::create_dir_all(list.parent().unwrap()).unwrap();
+        std::fs::write(&list, "# generated\npackages/core/probed\n").unwrap();
+        let src = root.join("packages/core/probed/src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("lib.rs"), "pub const X: bool = false;\n").unwrap();
+        let key = mr::probe_inputs_key(&p, Some(&root)).expect("keyed");
+        mr::stamp_provenance(&sidecar, stamp_with.unwrap_or(&key)).unwrap();
+        (p, sidecar)
+    }
 
-        // The sidecar lives in the project; record the stamp over it.
+    #[test]
+    fn stale_when_metadata_sidecar_inputs_moved() {
+        let (p, _) = sidecar_fixture("sidecar", None);
         record(&p, "img", &stamp_for(&p)).unwrap();
-        assert_eq!(is_current(&p, "img").unwrap(), Currency::Current);
+        assert_eq!(
+            is_current_with(&p, "img", &real_env(), None).unwrap(),
+            Currency::Current
+        );
 
-        // A component source moves; no digest input (`lib.rs`) changed, so
-        // the sidecar check is what answers.
+        // `lib.rs` is no digest input, so only the sidecar check can answer.
         std::fs::write(p.join("src/lib.rs"), "// the component, edited\n").unwrap();
-        match is_current(&p, "img").unwrap() {
+        match is_current_with(&p, "img", &real_env(), None).unwrap() {
             Currency::Stale(why) => assert!(why.contains("metadata sidecar"), "{why}"),
             Currency::Current => panic!("a moved component source must stale the stamp"),
+        }
+    }
+
+    /// R5: a sidecar stamped `UNKEYED` has nothing to compare, so it is not
+    /// stale (it was flagged on every call before).
+    #[test]
+    fn unkeyed_sidecar_is_not_stale() {
+        let (p, _) = sidecar_fixture(
+            "unkeyed",
+            Some(crate::orchestration::metadata_refresh::UNKEYED),
+        );
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        std::fs::write(p.join("src/lib.rs"), "// edited\n").unwrap();
+        assert_eq!(
+            is_current_with(&p, "img", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+    }
+
+    #[test]
+    fn digest_moves_on_env_input() {
+        let p = tmp("digest-env");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let env = |a: Option<&str>, n: Option<&str>| {
+            vec![
+                ("AMENT_PREFIX_PATH".to_string(), a.map(str::to_string)),
+                (
+                    "NROS_INTERFACE_SEARCH_PATH".to_string(),
+                    n.map(str::to_string),
+                ),
+            ]
+        };
+        let base = input_digest_with_env(&p, &env(None, None)).unwrap();
+        let a = input_digest_with_env(&p, &env(Some("/opt/ros"), None)).unwrap();
+        let n = input_digest_with_env(&p, &env(None, Some("/opt/ros"))).unwrap();
+        assert_ne!(base, a);
+        assert_ne!(base, n);
+        assert_ne!(a, n, "the variable's name is part of the input");
+        assert_eq!(base, input_digest_with_env(&p, &env(None, None)).unwrap());
+    }
+
+    /// A census beside a model, recording one source tree.
+    fn census_fixture(p: &Path) -> PathBuf {
+        use crate::orchestration::metadata_refresh as mr;
+        std::fs::create_dir_all(p.join("src/comp")).unwrap();
+        std::fs::write(p.join("src/comp/node.cpp"), "// SUB: /a\n").unwrap();
+        let digest = mr::source_digest(&p.join("src/comp")).unwrap();
+        let dir = p.join("build/nros/models/bringup");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("m.census.json");
+        let doc = serde_json::json!({
+            "schema": "x",
+            "provenance": { "inputs": [
+                { "role": "source_tree", "path": "src/comp", "digest": digest }
+            ]},
+            "census": { "version": mr::RECORDER_SCHEMA_VERSION, "nodes": [] },
+        });
+        std::fs::write(&path, doc.to_string()).unwrap();
+        path
+    }
+
+    #[test]
+    fn stale_when_recorded_census_moved() {
+        let p = tmp("census-moved");
+        census_fixture(&p);
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        assert_eq!(
+            is_current_with(&p, "img", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+        std::fs::write(p.join("src/comp/node.cpp"), "// SUB: /a\n// SUB: /b\n").unwrap();
+        match is_current_with(&p, "img", &real_env(), None).unwrap() {
+            Currency::Stale(why) => assert!(why.contains("entity census"), "{why}"),
+            Currency::Current => panic!("a moved census input must stale the stamp"),
+        }
+    }
+
+    /// R2: no census recorded anywhere is not stale on that account.
+    #[test]
+    fn no_census_record_is_not_stale() {
+        let p = tmp("no-census");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        assert!(recorded_censuses(&p).is_empty());
+        assert_eq!(
+            is_current_with(&p, "img", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+    }
+
+    #[test]
+    fn stale_when_launch_resolver_changes() {
+        let p = tmp("resolver");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let mut stamp = stamp_for(&p);
+        stamp.launch_resolve = Some(PathBuf::from("/old/nros-launch-resolve"));
+        record(&p, "img", &stamp).unwrap();
+        let old = Path::new("/old/nros-launch-resolve");
+        assert_eq!(
+            is_current_with(&p, "img", &real_env(), Some(old)).unwrap(),
+            Currency::Current
+        );
+        let new = Path::new("/new/nros-launch-resolve");
+        match is_current_with(&p, "img", &real_env(), Some(new)).unwrap() {
+            Currency::Stale(why) => assert_eq!(
+                why,
+                "launch resolver changed: /old/nros-launch-resolve -> /new/nros-launch-resolve"
+            ),
+            Currency::Current => panic!("a moved resolver must stale the stamp"),
         }
     }
 }
