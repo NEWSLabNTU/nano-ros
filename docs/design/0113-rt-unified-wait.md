@@ -261,7 +261,13 @@ EXPIRED, so it drains and dispatches without blocking, then passes until the
 park slot yields: the slot arms `ScheduleDelayed(bound)`, or
 `ScheduleClear()` when no deadline falls inside the executor's idle budget
 (`NROS_CPP_ENTRY_IDLE_BUDGET_MS`). Arrivals reach the tier through
-`TierWorkItem::notify()`, which a clear cannot lose. A node whose groups span
+`TierWorkItem::notify()`, which a clear cannot lose, and they reach `notify()`
+through the slot's wake half: `nros_cpp_executor_set_wake_hook`, a hook the
+executor's wake object calls on every signal, ahead of the platform signal
+(issue 2225, maintainer ruling 2026-11-03). Every backend's arrival therefore
+schedules the tier — uORB's from the publisher's context, zenoh's and XRCE's
+from their transport threads — and an attributed arrival signals only the
+owning tier's wake object, so only that tier runs. A node whose groups span
 two tiers is refused: a work item per tier has no shared executor to carry a
 sched context per tier.
 
@@ -293,7 +299,7 @@ deleted receive-blocking wait.
 | XRCE over a custom transport with no receive notification | **refused** at open (D5) | `readiness_park::a_session_with_no_readiness_form_is_refused_at_open` (a stub backend stating none, with and without a wake slot) |
 | RTIC images (mps2-an385, LAN9118) | Notify — an RTIC hardware task bound to `ETHERNET` posts the wake object; the run loop parks with the entry budget (SysTick one-shot at the next deadline) | idle `qemu-rtic-listener`, QEMU 9.0.2, 20 s: 0 SysTick one-shots and 2 host CPU ticks (the router's keep-alive arrives first); the retired 1 ms dual-timer tick woke it 20,000 times. `test_qemu_rtic_{pubsub,service,action,mixed_priority_pubsub}_e2e` pass |
 | uORB polling build | none: refused under D5 | host test double only |
-| uORB, PX4 glue build | Notify — each subscription's `uORB::SubscriptionCallback` (publisher's context) posts the executor's wake and calls the owning PX4 tier's `TierWorkItem::notify()` (phase-521 W8 d) | PX4 SITL: the generated `nros_uorb_demo` dispatches `vehicle_status` on arrival on its work item; `px4_uorb_interop_e2e` passes. The glue had never been linked before (issue 2218, archived) |
+| uORB, PX4 glue build | Notify — each subscription's `uORB::SubscriptionCallback` (publisher's context) fires the per-entity callback, so only the owning tier's executor wake is signalled, and that wake's hook calls the tier's `TierWorkItem::notify()` (phase-521 W8 d, issue 2225) | PX4 SITL: the generated `nros_uorb_demo` dispatches `vehicle_status` on arrival on its work item; `px4_uorb_interop_e2e` passes. The glue had never been linked before (issue 2218, archived) |
 
 Measured on Linux over `rmw_zenohd` (`entity_wake`, `required-features-tests`
 lane, 2026-11-02): an idle entry with one 1 s timer runs 4 spins in 3.5 s and
@@ -374,6 +380,12 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Changelog
 
+- 2026-11-03 — D9: the park slot gains its wake half. The executor's wake
+  object calls a hook (`nros_cpp_executor_set_wake_hook`) on every signal,
+  and a PX4 tier binds it to `notify()`, so a networked backend's arrival
+  schedules the tier instead of waiting for its next deadline. uORB's own
+  arrival target (`nros_rmw_uorb_set_arrival_target`) is retired into it
+  (issue 2225).
 - 2026-11-03 — Stable: phase-521 is complete and archived. Every
   combination in the coverage table states Notify or Waitable or is refused
   at open, and D2 is measured on Linux, Zephyr and PX4.

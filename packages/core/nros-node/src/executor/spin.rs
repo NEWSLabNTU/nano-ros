@@ -2878,6 +2878,13 @@ pub type NextDeadlineFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> u
 /// deadline is exactly what the compare is armed to.
 pub type ParkUntilFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void, deadline_us: u64) -> i8;
 
+/// Issue 2225 (RFC-0113 D9) -- the wake half of a framework's park slot:
+/// called after every signal of the executor's wake object, from the
+/// signalling context. A framework whose tier is a scheduled item rather than
+/// a parked thread (a PX4 work item) re-schedules the tier here. Must be
+/// thread-safe, non-blocking and O(1).
+pub type WakeHookFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void);
+
 /// [`ParkUntilFn`]: woken by an event (`NROS_PLATFORM_PARK_SIGNALLED`).
 pub const PARK_SIGNALLED: i8 = 0;
 /// [`ParkUntilFn`]: the deadline expired (`NROS_PLATFORM_PARK_EXPIRED`).
@@ -4393,6 +4400,27 @@ impl<'s> Executor<'s> {
     ) {
         self.worker.park_primitive = Some((park, ctx));
         self.worker.park_granularity_declared_us = granularity_us;
+    }
+
+    /// Issue 2225 (RFC-0113 D9) -- install (`Some`) or clear (`None`) the hook
+    /// the executor's wake object calls after every signal: a backend's
+    /// arrival callback, an attributed entity wake, the signal-fd worker. The
+    /// wake half of a yielding park slot, for a tier that never waits on the
+    /// object itself. Returns `false` when this build has no wake object.
+    ///
+    /// `ctx` must outlive the hook: clear it before `ctx` goes away.
+    pub(crate) fn set_wake_hook(
+        &mut self,
+        hook: Option<WakeHookFn>,
+        ctx: *mut core::ffi::c_void,
+    ) -> bool {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if let Some(w) = self.node_wake.as_ref() {
+            w.set_hook(hook, ctx);
+            return true;
+        }
+        let _ = (hook, ctx);
+        false
     }
 
     /// The wake primitive a port must hand its `ParkUntilFn` as `ctx`, or NULL

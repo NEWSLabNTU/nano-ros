@@ -58,22 +58,15 @@ struct SubscriberState {
     // destroy to decide whether to unregister.
     bool callback_active;
     // phase-521 W8 (d), issue 2218 — who hears an arrival, besides `ready`:
-    // the session's executor wake (its `backend_data`), the per-entity
-    // callback when the runtime registered one (phase-397: it names this
-    // subscription, so only the owning tier wakes), and the arrival target
-    // `nros_rmw_uorb_set_arrival_target` named when this was created (a PX4
-    // tier's work item). Called from the broker's context: atomics only.
+    // the per-entity callback when the runtime registered one (phase-397: it
+    // names this subscription, so only the owning tier's executor wakes), else
+    // the session's executor wake (its `backend_data`). A PX4 tier hears
+    // either through its executor's wake hook (issue 2225). Called from the
+    // broker's context: atomics only.
     void* session;
     std::atomic<rmw_event_callback_t> on_new;
     std::atomic<const void*> on_new_ud;
-    void (*target)(void*);
-    void* target_ctx;
 };
-
-// The target the NEXT subscription takes. Set and cleared around a tier's
-// setup by the generated PX4 entry; setups never overlap (issue #144).
-void (*g_arrival_target)(void*) = nullptr;
-void* g_arrival_target_ctx = nullptr;
 
 extern "C" void subscriber_ready_callback(void* arg) {
     auto* state = static_cast<SubscriberState*>(arg);
@@ -84,19 +77,14 @@ extern "C" void subscriber_ready_callback(void* arg) {
     } else {
         session_wake(state->session);
     }
-    if (state->target != nullptr) {
-        state->target(state->target_ctx);
-    }
 }
 
 } // namespace
 
-rmw_ret_t subscription_create(const rmw_node_t* node,
-                              const rmw_message_type_support_t* /*type_support*/,
-                              const char* topic_name, uint32_t /*domain_id*/,
-                              const rmw_qos_profile_t* qos,
-                              const rmw_subscription_options_t* /*options*/,
-                              rmw_subscription_t* out) {
+rmw_ret_t
+subscription_create(const rmw_node_t* node, const rmw_message_type_support_t* /*type_support*/,
+                    const char* topic_name, uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
+                    const rmw_subscription_options_t* /*options*/, rmw_subscription_t* out) {
     // Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
     // The node carries the route to its session (our `context`).
     if (node == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -130,8 +118,6 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
     state->sub_handle = handle;
     state->callback_active = false;
     state->session = session->backend_data;
-    state->target = g_arrival_target;
-    state->target_ctx = g_arrival_target_ctx;
     // K.4.2-sub-push: try push-wake. Failure leaves callback_active
     // = false; we pin `ready` to true so take_serialized degrades
     // gracefully to the slow polling path.
@@ -293,8 +279,3 @@ rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_da
 }
 
 } // namespace nros_rmw_uorb
-
-extern "C" void nros_rmw_uorb_set_arrival_target(void (*notify)(void* ctx), void* ctx) {
-    nros_rmw_uorb::g_arrival_target = notify;
-    nros_rmw_uorb::g_arrival_target_ctx = ctx;
-}

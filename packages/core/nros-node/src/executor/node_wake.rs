@@ -63,7 +63,20 @@ unsafe extern "C" {
 /// probe (`nros_platform_wake_storage_size`).
 pub(crate) struct NodeWake {
     storage: alloc::boxed::Box<[u8]>,
+    /// Issue 2225 (RFC-0113 D9) -- a framework scheduler's wake, called after
+    /// every [`signal`](Self::signal). The other half of the yielding park
+    /// slot: a PX4 tier is a work item that never waits on this object, so an
+    /// arrival that only signals it would be dispatched at the tier's next
+    /// deadline. `hook_fn` is the `WakeHookFn` as a `usize`, 0 when unset;
+    /// `hook_ctx` is stored before it and cleared after it.
+    hook_fn: portable_atomic::AtomicUsize,
+    hook_ctx: portable_atomic::AtomicPtr<c_void>,
 }
+
+/// Issue 2225 -- the hook [`NodeWake::set_hook`] installs. Called from the
+/// signalling context (a transport thread, a publisher's context, an ISR
+/// forward), so it must be thread-safe, non-blocking and O(1).
+pub(crate) type WakeHookFn = unsafe extern "C" fn(ctx: *mut c_void);
 
 // SAFETY: per `<nros/platform.h>`'s wake contract, signal/wait are
 // callable from any thread (k_sem on Zephyr is kernel-managed).
@@ -120,7 +133,11 @@ impl NodeWake {
         if rc != 0 {
             return None;
         }
-        Some(Self { storage })
+        Some(Self {
+            storage,
+            hook_fn: portable_atomic::AtomicUsize::new(0),
+            hook_ctx: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
+        })
     }
 
     /// Block until signaled or `timeout_ms` elapses. Returns
@@ -166,11 +183,42 @@ impl NodeWake {
         }
     }
 
-    /// Wake one waiter. Safe from any thread.
+    /// Call the hook if one is installed, then wake one waiter. Safe from
+    /// any thread.
+    ///
+    /// The hook goes FIRST: a framework that installs one (a PX4 work item)
+    /// has nothing waiting on this object, so its reschedule must not queue
+    /// behind the platform signal's syscall.
     pub(crate) fn signal(&self) {
+        let f = self.hook_fn.load(portable_atomic::Ordering::Acquire);
+        if f != 0 {
+            let ctx = self.hook_ctx.load(portable_atomic::Ordering::Acquire);
+            // SAFETY: `f` was stored from a `WakeHookFn` by `set_hook`, and
+            // its caller keeps `ctx` alive until it clears the hook.
+            let hook: WakeHookFn = unsafe { core::mem::transmute::<usize, WakeHookFn>(f) };
+            unsafe { hook(ctx) };
+        }
         let ptr = self.storage.as_ptr() as *mut c_void;
         // SAFETY: see wait_ms.
         let _ = unsafe { nros_platform_wake_signal(ptr) };
+    }
+
+    /// Issue 2225 -- install (`Some`) or clear (`None`) the hook
+    /// [`signal`](Self::signal) calls. `ctx` must outlive the hook: clear it
+    /// before `ctx` goes away.
+    pub(crate) fn set_hook(&self, hook: Option<WakeHookFn>, ctx: *mut c_void) {
+        match hook {
+            Some(f) => {
+                self.hook_ctx.store(ctx, portable_atomic::Ordering::Release);
+                self.hook_fn
+                    .store(f as usize, portable_atomic::Ordering::Release);
+            }
+            None => {
+                self.hook_fn.store(0, portable_atomic::Ordering::Release);
+                self.hook_ctx
+                    .store(core::ptr::null_mut(), portable_atomic::Ordering::Release);
+            }
+        }
     }
 }
 
