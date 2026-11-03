@@ -140,6 +140,8 @@ Contract:
 
 - **One output root, per project, keyed by image.** The project is the leaf
   directory or the workspace root, the same root `nros build` uses.
+  *(Amended by [RFC-0121](0121-workspace-first-project-layout.md): the
+  project is always the workspace root, since the standalone leaf retires.)*
   - Configure writes `<project>/build/nros/configured/<image>/` with a stamp
     holding the digest of every input that image read.
   - A shared host configure (D6 case 3) gets one stamp per host-configure
