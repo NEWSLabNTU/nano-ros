@@ -317,6 +317,10 @@ did (phase-484 W8). Each step is its own change.
    - The warning names `nros configure`.
    - The W1 sweep leaves zero `nros sync` uses in the scanned tree, and
      `check-cli-old-spellings` keeps it at zero.
+   - One behaviour change rides on the alias: on a workspace, `nros sync
+     --image X` (= `nros configure --image X`) now treats X as NAMED, so a
+     preflight refusal or other failure for X is an error, where the old
+     `nros sync` ignored `--image` on a workspace and passed (final review M3).
 2. **Refusal (after one tagged release has shipped step 1).**
    - `nros sync` exits non-zero, printing `nros sync was renamed: run
      nros configure` and the same arguments spelled for configure.

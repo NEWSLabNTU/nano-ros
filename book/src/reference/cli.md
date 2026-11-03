@@ -357,8 +357,18 @@ environment variables configure reads (such as `AMENT_PREFIX_PATH`), the
 `nros-launch-resolve` path, and the content of the ROS install the generated
 message crates came from. A second run with nothing changed reads the stamps and
 exits without doing any work. An image this host cannot build is recorded as
-skipped, and is configured only when you name it. `--force` configures even when
+skipped, and is configured only when you name it. The flags that change what
+configure writes (`--ros-edition`, `--generated-base`, `--model-dir`,
+`--no-metadata`, `--base-paths`, `--nano-ros-path`, `--nano-ros-root`) and
+`NROS_MODEL_DIR` are inputs too, and a deleted output (`generated/`, a model,
+the selection package) makes the stamp stale. `--force` configures even when
 every stamp is current. `--dry-run` records no stamp.
+
+**Named images.** An image you did not name that fails to configure is reported
+on stderr (`configure: <image>: not configured — …`) and the configure still
+succeeds. An image you name with `--image`, in a workspace as in a
+single-package leaf, must configure: its failure, a missing toolchain included,
+is an error. This is new for a workspace: `nros sync` before `nros configure` ignored `--image` there.
 
 **The lock.** A per-project file lock serialises writers, so several configures
 reaching one workspace at once (a parallel fixture build) queue instead of
