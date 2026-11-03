@@ -197,7 +197,6 @@ FAMILIES = {
 # whose glob has started matching is an ERROR — the waiver is not a place to
 # park a family, and it must leave the moment it stops being true.
 BORN_EMPTY = {
-    "runner": "phase-528 W1 writes the first runner package",
     "command": "phase-527 W5 writes the first command package",
 }
 
@@ -637,9 +636,25 @@ def self_test(quiet=False):
             "states bin = 'other', but the package's only bin target is 'nros-runner-r'",
             "A8 must refuse a stated bin that differs from the derived one",
         )
-        # ... and that same descriptor is the one BORN_EMPTY's stale arm needs:
-        # the runner family now has a provider, so its waiver must go.
-        only(problems, "BORN_EMPTY says it has no provider yet", "a stale BORN_EMPTY row")
+        # BORN_EMPTY's stale arm: a family the waiver calls empty, once it has a
+        # provider, must have its waiver refused. Exercised on whichever family
+        # is still waived (the runner family left the table when phase-528 W3
+        # wrote the first runner packages); with none left, the arm guards
+        # nothing and there is nothing to test.
+        waived = sorted(BORN_EMPTY)
+        if waived:
+            fam = waived[0]
+            pattern = FAMILIES[fam][0]
+            pattern = pattern[0] if isinstance(pattern, list) else pattern
+            desc = os.path.join(tmp, pattern.replace("*", "zz"))
+            _write(os.path.join(os.path.dirname(desc), "package.xml"), _pkg_xml(fam))
+            _write(desc, _descriptor_body(fam))
+            only(
+                [p for p in scan(tmp)[0] if "BORN_EMPTY" in p],
+                "BORN_EMPTY says it has no provider yet",
+                "a stale BORN_EMPTY row",
+            )
+            shutil.rmtree(os.path.dirname(desc))
         _write(
             os.path.join(tmp, "packages/runners/r/nros-runner.toml"),
             _descriptor_body("runner") + 'bin = "nros-runner-r"\n',

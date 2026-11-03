@@ -1,0 +1,18 @@
+[package]
+name = "nros_runner_native"
+version = "0.0.0"
+description = "The `native` runner package for nano-ros (RFC-0119 D8)."
+publish = false
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "nros-runner-native"
+path = "src/main.rs"
+
+[dependencies]
+nros-extension = { path = "../nros-extension" }

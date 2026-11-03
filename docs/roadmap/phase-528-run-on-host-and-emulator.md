@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-02). IN PROGRESS — W1 and W2 landed; W3 to W5 not started.** Implements
+**Status (2026-11-03). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 and W5 not landed.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -203,6 +203,73 @@ Acceptance:
   `runs = "emulator"` resolves to one of these runners
   (`check-board-runner-resolves`, RFC-0119 D10).
 - `nros-qemu-ladder` keeps only what the build needs, with no launch line.
+
+**Landed (2026-11-03), with the items below carried.**
+
+- *Packages.* `packages/runners/nros_runner_{native,qemu,fvp,west,command}`,
+  members of the runners workspace beside `nros-extension`. Each is a runner
+  package of the user shape: a `package.xml` announcing
+  `<nano_ros_provides kind="runner" name="…"/>`, an `nros-runner.toml`
+  (`protocol`, `verbs`, `needs`; `bin` derived from the one bin target), and
+  an executable that speaks RFC-0119 D6 protocol 1 unchanged. A test in each
+  holds its `describe` reply equal to its descriptor. `just setup-cli` builds
+  them, and `cli-tests` tests and lints them.
+- *SDK helper.* `nros_extension::runner` (additive, no protocol change): the
+  `main` every runner shares (`describe`, plan reading, a refused undeclared
+  verb or a plan written for another verb), `exec` (inherited stdio; exit 0,
+  1 or 2) and `exec_tool` (a failing flasher is the runner's failure),
+  `split_words` for command templates, and `descriptor_agrees`.
+- *native.* Executes the plan's `elf` with the passthrough arguments. A
+  native_sim `zephyr.exe` gets `--seed=<n>` (the plan's `args.seed`, else one
+  from the clock and the pid) and its arguments after `-testargs`; `args.seed`
+  on any other host image is refused.
+- *qemu.* Renders the line with `nros_qemu_ladder::plan_line`, the renderer
+  the printed next step uses, and executes `plan.tools["qemu-system-<arch>"]`.
+  It never searches `PATH`; a plan without the tool is refused, naming
+  `nros setup --tool qemu` and `QEMU_SYSTEM_<ARCH>`. nros fills the tool:
+  `run_plan::attach_tools` resolves it through the QEMU ladder (a store
+  target) or, for a target the store does not build, the host's own by the
+  ladder's policy, and records `tools.<exe> = method`. `nros run --dry-run`
+  calls it.
+- *west* (run). `west build -d <build_dir> -t run_<emulator>`, the emulator
+  being the plan's kind and the target list read from the build's own
+  `build.ninja`. An unconfigured build gets `-t run`; a build that declares
+  no target for the kind is refused, naming the ones it has. Arguments
+  after `--` are refused (`west build --` hands them to CMake).
+- *fvp.* The FVP case of `build_next.rs` as a runner: west's `run_armfvp`
+  target, with `ARMFVP_BIN_PATH` taken from the plan's tool for the model
+  when it carries one. It shares the west lib's target lookup.
+- *command.* Splits `args.command` into words, then expands each from the
+  plan, so a value with spaces stays one argument; unknown placeholders are
+  refused. A failing `flash` command exits 2, a failing `run` command 1.
+- *Gate.* `check-board-runner-resolves` is
+  `nros-cli-core/tests/board_runner_resolves.rs`: for every registry row with
+  `runs = "host"` or `"emulator"` it resolves the run plan through
+  `run_plan::resolve`, resolves the plan's runner through the provider scan
+  of the nano-ros tree, and requires the provider's package to be the one
+  the plan names, to implement `run`, and to need no placeholder the plan
+  leaves empty (and, for `qemu`, args that render a line). All 13 rows
+  resolve. It runs inside `cli-tests`; `just check board-runner-resolves`
+  runs it alone. The runner lookup is one private helper, to be swapped for
+  the shared provider-resolution function (RFC-0119 D4 overrides) when that
+  lands. `check-provider-announcements`'s `runner` waiver is gone, and its
+  stale-waiver control now runs on whichever family is still waived.
+
+Carried:
+
+- *ESP32 on QEMU.* Not absorbed, and now moot: phase-521 W6 retired the
+  ESP32-C3 board, so no in-tree board has the flash-image step to absorb.
+- *`nros ws qemu-nic` as a hidden alias.* The image `nic` now reaches the
+  plan (the W1 follow-up), so the alias can print it; turning the verb into
+  that alias is not done here, since `nros run`'s own surface is W4's.
+- *`nros-qemu-ladder` with no launch line.* `board_line` is still what the
+  test harness launches with; it leaves when W5 moves the harness onto
+  `nros run --plan`.
+- The qemu runner implements `run` only. `console` (RFC-0119 D8) arrives
+  with `nros monitor` (phase-529 W3).
+- The Pico W's Wokwi twin resolves to the `west` runner, which refuses it at
+  run time: Zephyr declares no Wokwi run target. A `wokwi` runner (or a
+  resolver rule naming one) is the next step for that board.
 
 ### W4 — The `nros run` verb
 

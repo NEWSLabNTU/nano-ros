@@ -174,6 +174,17 @@ board-build-target:
 board-registry:
     @python3 scripts/check-board-registry.py
 
+# RFC-0119 D10 (phase-528 W3): every in-tree board whose registry row says
+# `runs = "host"` or `"emulator"` resolves, through the RunPlan resolver, to
+# a runner package on the provider search path that announces that runner,
+# implements `run` and needs nothing the board's plan leaves empty. A Rust
+# test, because the runner choice is `run_plan::resolve`'s and a second
+# derivation in a script would drift from it; `cli-tests` runs it with the
+# rest of the CLI suite, and this recipe runs it alone.
+[group("checks")]
+board-runner-resolves:
+    cargo test --quiet --manifest-path packages/cli/Cargo.toml -p nros-cli-core --test board_runner_resolves
+
 # A Kconfig line that a later CONF_FILE fragment overrides is a line that does
 # nothing, and nothing said so (issue 0876). A RATCHET, not a prohibition —
 # shared board fragments are legitimately an override layer. Refresh with

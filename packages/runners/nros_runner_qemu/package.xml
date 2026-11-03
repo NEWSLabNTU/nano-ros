@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_runner_qemu</name>
+  <version>0.0.0</version>
+  <description>
+    The `qemu` runner (RFC-0119 D8). Runs an image under QEMU. The machine line is rendered from the plan's QEMU
+    args by the one QEMU ladder renderer, and QEMU itself is the plan's tool,
+    resolved by nros through the SDK store, never PATH.
+
+    A runner package of the same shape as a user's: the announcement below is
+    what the provider scan reads, `nros-runner.toml` is read only when this
+    provider is the one selected, and the executable speaks RFC-0119 D6.
+  </description>
+  <maintainer email="jerry73204@gmail.com">Lin Hsiang-Jui</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="runner" name="qemu"/>
+  </export>
+</package>

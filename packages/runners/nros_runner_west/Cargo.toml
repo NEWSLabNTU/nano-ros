@@ -1,0 +1,21 @@
+[package]
+name = "nros_runner_west"
+version = "0.0.0"
+description = "The `west` runner package for nano-ros (RFC-0119 D8)."
+publish = false
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "nros-runner-west"
+path = "src/main.rs"
+
+[dependencies]
+nros-extension = { path = "../nros-extension" }

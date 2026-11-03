@@ -39,6 +39,7 @@ _gate-list-end  # the `build-serial:` terminator, a no-op, not a gate
 action-client-arena-budget  # reads BUILT IMAGES; `build-test-fixtures` runs it (phase-413 W7, issue 1001)
 api-parity  # compiles (rustdoc JSON of `nros` + deps, clang AST): gate.yml's `check-fast-compile` job runs it by name on every event `check-fast` runs on, beside it; `default:` and `just ci gate` name it (phase-489 W5)
 archive-lang-items  # needs a built CMake image link line; `build-test-fixtures` (justfile) runs it after the build, so every fixture lane reaches it (issue 1739: "no caller found" was stale)
+board-runner-resolves  # compiles the CLI test target; its test is one of `cli-tests`' (a `build-serial` gate), which runs on every event that lane does, so a second build-tier entry would only build it twice
 build  # lane verb: fans `build-serial` out through run-gates-parallel.sh
 build-serial  # the build-tier registry, still an authored dependency list
 cli-clippy  # called by `check-cli-fmt`'s body, not run standalone

@@ -745,7 +745,7 @@ pub fn run(args: Args) -> eyre::Result<()> {
     // A `run` target is a host process or an emulator: this machine's bench
     // adds nothing to it (`bench_for` answers empty for `run`).
     let bench = Bench::default();
-    let plan = match resolve(
+    let mut plan = match resolve(
         Verb::Run,
         Inputs {
             image: &one.qualified,
@@ -760,6 +760,17 @@ pub fn run(args: Args) -> eyre::Result<()> {
         Ok(p) => p,
         Err(e) => unresolved(&e.to_string()),
     };
+    // The emulator executable the runner is handed, through the QEMU ladder.
+    let root = crate::orchestration::nano_ros_root::resolve(
+        args.nano_ros_path.clone(),
+        &std::env::current_dir().unwrap_or_default(),
+    );
+    let ctx = crate::orchestration::qemu_bin::for_sdk(root.as_deref());
+    for note in attach_tools(&mut plan, &|exe| {
+        crate::orchestration::qemu_bin::locate(exe, &ctx)
+    }) {
+        eprintln!("nros run: {note}");
+    }
     print!("{}", render_plan_text(&plan, args.why, args.json));
     Ok(())
 }
@@ -808,6 +819,53 @@ pub fn render_plan_text(plan: &RunPlan, why: bool, json: bool) -> String {
 /// The plan's args name no line.
 pub fn qemu_line(plan: &RunPlan) -> Result<nros_qemu_ladder::PlanLine, String> {
     nros_qemu_ladder::plan_line(&plan.args)
+}
+
+/// Put the plan's emulator executable in `plan.tools`, where its runner reads
+/// it (RFC-0118 D5: a tool is resolved by nros, never from the runner's
+/// `PATH`). For a `qemu` plan that is `qemu-system-<arch>` through the ONE
+/// QEMU ladder (`qemu`, [`crate::orchestration::qemu_bin`]): a rung's answer
+/// is used as is, and a target the store does not build
+/// ([`QemuBin::Host`](nros_qemu_ladder::QemuBin::Host)) is the host's own,
+/// looked up on `PATH` HERE, by the ladder's policy, so the plan still names
+/// an absolute path. Returns the notes for what could not be resolved; the
+/// plan is then left without the tool and the runner refuses, naming it.
+pub fn attach_tools(
+    plan: &mut RunPlan,
+    qemu: &dyn Fn(&str) -> nros_qemu_ladder::QemuBin,
+) -> Vec<String> {
+    use nros_qemu_ladder::QemuBin;
+    let mut notes = Vec::new();
+    if plan.runner.name != "qemu" {
+        return notes;
+    }
+    let Ok(line) = qemu_line(plan) else {
+        return notes;
+    };
+    let found = match qemu(&line.exe) {
+        QemuBin::Found { path, .. } => Some(path),
+        QemuBin::Host { why } => {
+            let on_path = std::env::var_os("PATH").and_then(|p| {
+                std::env::split_paths(&p)
+                    .map(|d| d.join(&line.exe))
+                    .find(|c| c.is_file())
+            });
+            if on_path.is_none() {
+                notes.push(why);
+            }
+            on_path
+        }
+        QemuBin::Missing { why } | QemuBin::RefusedPrefix { why, .. } => {
+            notes.push(why);
+            None
+        }
+    };
+    if let Some(path) = found {
+        plan.tools.insert(line.exe.clone(), path);
+        plan.provenance
+            .insert(format!("tools.{}", line.exe), METHOD.to_string());
+    }
+    notes
 }
 
 /// The `elf` artifact of a plan, when it has one.
@@ -1287,5 +1345,51 @@ runner = "method"
             RunPlan::from_json(&render_plan_text(&sim, true, true)).is_ok(),
             "the JSON form is a plan a runner reads"
         );
+    }
+
+    /// The qemu runner reads its executable from `plan.tools`: a ladder
+    /// answer lands there under the line's own name; no answer leaves the
+    /// tool out and says why; a non-QEMU plan is untouched.
+    #[test]
+    fn attach_tools_hands_the_runner_the_ladders_qemu() {
+        use nros_qemu_ladder::QemuBin;
+        let cat = BoardCatalog::load(&repo_root()).unwrap();
+        let d = board(&cat, "mps2-an385-baremetal");
+        let none = ImageTables::default();
+        let inv = Invocation::default();
+        let mut p = go(
+            Verb::Run,
+            &d,
+            &cargo_out(Some("thumbv7m-none-eabi")),
+            &none,
+            &inv,
+        )
+        .unwrap();
+        let found = |exe: &str| QemuBin::Found {
+            path: PathBuf::from(format!("/store/qemu/bin/{exe}")),
+            rung: "store",
+        };
+        assert!(attach_tools(&mut p, &found).is_empty());
+        assert_eq!(
+            p.tools["qemu-system-arm"],
+            PathBuf::from("/store/qemu/bin/qemu-system-arm")
+        );
+        assert_eq!(p.provenance["tools.qemu-system-arm"], METHOD);
+
+        p.tools.clear();
+        let missing = |_: &str| QemuBin::Missing {
+            why: "provision it".into(),
+        };
+        assert_eq!(
+            attach_tools(&mut p, &missing),
+            vec!["provision it".to_string()]
+        );
+        assert!(p.tools.is_empty());
+
+        let mut linux = board(&cat, "linux");
+        linux.console = None;
+        let mut host = go(Verb::Run, &linux, &cargo_out(None), &none, &inv).unwrap();
+        assert!(attach_tools(&mut host, &|_: &str| -> QemuBin { unreachable!() }).is_empty());
+        assert!(host.tools.is_empty());
     }
 }

@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_runner_fvp</name>
+  <version>0.0.0</version>
+  <description>
+    The `fvp` runner (RFC-0119 D8). Runs a west-built image on an Arm Fixed Virtual Platform model, through
+    Zephyr's own FVP run target.
+
+    A runner package of the same shape as a user's: the announcement below is
+    what the provider scan reads, `nros-runner.toml` is read only when this
+    provider is the one selected, and the executable speaks RFC-0119 D6.
+  </description>
+  <maintainer email="jerry73204@gmail.com">Lin Hsiang-Jui</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="runner" name="fvp"/>
+  </export>
+</package>

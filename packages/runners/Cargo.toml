@@ -6,13 +6,20 @@
 # host tool must not share a target directory with an image root (issue 0616:
 # one target directory per workspace root).
 #
-# Members today: `nros-extension`, the SDK crate every runner, every command
-# package and the core CLI depend on. The first-party runner packages
-# (`nros_runner_native`, `nros_runner_qemu`, ...) join this list in phase-528
-# and phase-529; `just setup-cli` builds whatever is here beside the CLI.
+# Members: `nros-extension`, the SDK crate every runner, every command package
+# and the core CLI depend on, and the first-party runner packages of RFC-0119
+# D8 (phase-528 W3: native, qemu, fvp, west, command; phase-529 adds the
+# hardware ones). `just setup-cli` builds whatever is here beside the CLI.
 [workspace]
 resolver = "2"
-members = ["nros-extension"]
+members = [
+    "nros-extension",
+    "nros_runner_command",
+    "nros_runner_fvp",
+    "nros_runner_native",
+    "nros_runner_qemu",
+    "nros_runner_west",
+]
 
 [workspace.package]
 authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>"]
