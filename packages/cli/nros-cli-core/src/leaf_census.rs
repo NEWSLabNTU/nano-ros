@@ -67,11 +67,10 @@ impl EntitySource {
             format!(
                 "{}: its image is built for a board and its system.toml states no entities, so \
                  it would be counted by its census -- but it has no `[[component]]` and its \
-                 CMakeLists.txt builds no program (no `nano_ros_add_executable`, no \
-                 `add_subdirectory`), so there is nothing a census could run. Either add the \
-                 `[[component]]` with `entities = [\"publisher:std_msgs/msg/String:/chatter\", \
-                 \"timer\"]`, or write `[system] entities = \"defaults\"` (the crate defaults, \
-                 written down).",
+                 CMakeLists.txt builds no program, so there is nothing a census could run. \
+                 (Looked for: {PROGRAM_SHAPES}.) Either add the `[[component]]` with \
+                 `entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]`, or write \
+                 `[system] entities = \"defaults\"` (the crate defaults, written down).",
                 dir.display()
             )
         })
@@ -84,17 +83,120 @@ pub fn is_cmake_leaf(dir: &Path) -> bool {
     dir.join("CMakeLists.txt").is_file() && !dir.join("Cargo.toml").is_file()
 }
 
-/// Does `dir`'s `CMakeLists.txt` build a program a census could run: a
-/// `nano_ros_add_executable(` of its own, or an `add_subdirectory(` (a ported
-/// ament workspace, whose packages add their executables and which the host
-/// build's program manifest names, issue 2043)? Comments do not count.
+/// Does `dir`'s `CMakeLists.txt` build a program a census could run? Any of:
+///
+/// - `nano_ros_add_executable(` or a plain `add_executable(`;
+/// - `nros_components_register_node(... EXECUTABLE ...)` -- a component with
+///   its own `main` (without `EXECUTABLE` it is a plugin, and runs nowhere);
+/// - an `add_subdirectory(` of the leaf's own sources (a ported ament
+///   workspace, whose packages add their executables and which the host
+///   build's program manifest names, issue 2043) -- but NOT the nano-ros tree
+///   itself (`add_subdirectory("${NROS_REPO_DIR}" nano_ros)`, the host
+///   template's line), which adds the runtime and no program.
+///
+/// Comments do not count; command names match case-insensitively, as CMake's
+/// do, and a call may span lines.
 pub fn has_program(dir: &Path) -> bool {
     let Ok(raw) = std::fs::read_to_string(dir.join("CMakeLists.txt")) else {
         return false;
     };
-    raw.lines()
-        .map(|l| l.split('#').next().unwrap_or(""))
-        .any(|code| code.contains("nano_ros_add_executable(") || code.contains("add_subdirectory("))
+    cmake_calls(&raw)
+        .iter()
+        .any(|(name, args)| match name.as_str() {
+            "nano_ros_add_executable" | "add_executable" => true,
+            "nros_components_register_node" => args.iter().any(|a| a == "EXECUTABLE"),
+            "add_subdirectory" => !adds_the_nano_ros_tree(args),
+            _ => false,
+        })
+}
+
+/// What [`has_program`] looks for, for the refusal that found none.
+pub const PROGRAM_SHAPES: &str = "`nano_ros_add_executable(`, `add_executable(`, \
+     `nros_components_register_node(... EXECUTABLE ...)`, or an `add_subdirectory(` of the \
+     leaf's own sources (not `add_subdirectory(\"${NROS_REPO_DIR}\" nano_ros)`, which adds the \
+     nano-ros runtime and no program)";
+
+fn adds_the_nano_ros_tree(args: &[String]) -> bool {
+    args.first()
+        .is_some_and(|src| src.contains("${NROS_REPO_DIR}"))
+        || args.get(1).is_some_and(|bin| bin == "nano_ros")
+}
+
+/// Every command call in a CMake listing, as (lower-cased name, arguments
+/// with their quotes stripped). Enough of CMake's grammar for
+/// [`has_program`]: `#` comments, quoted arguments, nested parentheses.
+fn cmake_calls(raw: &str) -> Vec<(String, Vec<String>)> {
+    let code: String = raw
+        .lines()
+        .map(|l| {
+            // A `#` inside a quoted argument is not a comment.
+            let mut quoted = false;
+            let end = l
+                .char_indices()
+                .find(|&(_, c)| {
+                    if c == '"' {
+                        quoted = !quoted;
+                    }
+                    c == '#' && !quoted
+                })
+                .map_or(l.len(), |(i, _)| i);
+            &l[..end]
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let bytes = code.as_bytes();
+    let mut calls = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if !(c.is_ascii_alphabetic() || c == b'_') {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+            i += 1;
+        }
+        let name = code[start..i].to_ascii_lowercase();
+        let mut j = i;
+        while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+            j += 1;
+        }
+        if j >= bytes.len() || bytes[j] != b'(' {
+            continue;
+        }
+        // Collect to the matching `)`, splitting on whitespace outside quotes.
+        let (mut depth, mut quoted, mut args, mut cur) = (0usize, false, Vec::new(), String::new());
+        let mut k = j + 1;
+        while k < bytes.len() {
+            let ch = code[k..].chars().next().unwrap_or(' ');
+            match ch {
+                '"' => quoted = !quoted,
+                '(' if !quoted => {
+                    depth += 1;
+                    cur.push(ch);
+                }
+                ')' if !quoted && depth == 0 => break,
+                ')' if !quoted => {
+                    depth -= 1;
+                    cur.push(ch);
+                }
+                c if c.is_whitespace() && !quoted => {
+                    if !cur.is_empty() {
+                        args.push(std::mem::take(&mut cur));
+                    }
+                }
+                c => cur.push(c),
+            }
+            k += ch.len_utf8();
+        }
+        if !cur.is_empty() {
+            args.push(cur);
+        }
+        calls.push((name, args));
+        i = k + 1;
+    }
+    calls
 }
 
 /// [`entity_source`] with the host question answered by the caller:
@@ -310,6 +412,79 @@ mod tests {
             why.contains("[system] entities = \"defaults\"") && why.contains("[[component]]"),
             "{why}"
         );
+    }
+
+    /// Fix round 2 -- the host template's `add_subdirectory` of the nano-ros
+    /// tree itself adds the runtime, not a program: a leaf with only that
+    /// is refused by name, never sent to a census that finds 0 executables.
+    #[test]
+    fn adding_the_nano_ros_tree_is_not_a_program() {
+        for cm in [
+            "project(p C)\nadd_subdirectory(\"${NROS_REPO_DIR}\" nano_ros)\n",
+            "project(p C)\nadd_subdirectory(${NROS_REPO_DIR})\n",
+            "project(p C)\nadd_subdirectory(../../.. nano_ros)\n",
+            "project(p C)\nADD_SUBDIRECTORY(\n  \"${NROS_REPO_DIR}\"\n  nano_ros\n)\n",
+        ] {
+            assert_eq!(
+                classify(
+                    &[("CMakeLists.txt", cm), ("system.toml", HEAD)],
+                    Some(false)
+                ),
+                EntitySource::NoProgram,
+                "{cm}"
+            );
+        }
+        // The same tree beside a real program is still a program.
+        let both = "add_subdirectory(\"${NROS_REPO_DIR}\" nano_ros)\nadd_subdirectory(src/nodes)\n";
+        assert_eq!(
+            classify(
+                &[("CMakeLists.txt", both), ("system.toml", HEAD)],
+                Some(false)
+            ),
+            EntitySource::Census { explicit: false }
+        );
+    }
+
+    /// Fix round 2 -- a plain `add_executable`, and a component registered
+    /// with its own EXECUTABLE, are programs too.
+    #[test]
+    fn plain_executables_and_registered_executables_are_programs() {
+        for cm in [
+            "project(p C)\nadd_executable(talker src/main.c)\n",
+            "project(p C)\nnros_components_register_node(talker\n  PLUGIN p::Talker\n  EXECUTABLE talker_node)\n",
+        ] {
+            assert_eq!(
+                classify(
+                    &[("CMakeLists.txt", cm), ("system.toml", HEAD)],
+                    Some(false)
+                ),
+                EntitySource::Census { explicit: false },
+                "{cm}"
+            );
+        }
+        // Registered with no EXECUTABLE: a plugin, nothing a census runs.
+        let plugin = "nros_components_register_node(talker PLUGIN p::Talker)\n";
+        assert_eq!(
+            classify(
+                &[("CMakeLists.txt", plugin), ("system.toml", HEAD)],
+                Some(false)
+            ),
+            EntitySource::NoProgram
+        );
+    }
+
+    /// Fix round 2 -- the refusal says what it looked for.
+    #[test]
+    fn the_no_program_refusal_names_what_it_looked_for() {
+        let why = EntitySource::NoProgram.refusal(Path::new("/l")).unwrap();
+        for looked in [
+            "nano_ros_add_executable",
+            "add_executable",
+            "nros_components_register_node(... EXECUTABLE ...)",
+            "NROS_REPO_DIR",
+        ] {
+            assert!(why.contains(looked), "{looked} missing from: {why}");
+        }
     }
 
     /// Ruling R29 -- `[system] entities = "defaults"` opts a component-less
