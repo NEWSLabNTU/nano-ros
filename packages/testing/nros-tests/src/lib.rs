@@ -63,6 +63,8 @@ pub mod platform;
 // subscription as `valid=false`.
 pub mod port_lease;
 pub mod process;
+// phase-521 W8 (e) — a running PX4 SITL daemon, for the PX4 Tier 1 cells.
+pub mod px4_sitl;
 pub mod qemu;
 pub mod ros2;
 pub mod ros_env;

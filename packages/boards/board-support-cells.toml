@@ -1449,16 +1449,17 @@ comment = '''
 // recipe by a `Binding` and gated by `tests/matrix_fixture_coverage.rs`.
 // `matrix::CELLS` is baked/self-contained only.
 
-// ── uORB (PX4-SITL) — issue 0341 ───────────────────────────────────
+// ── uORB (PX4-SITL) — issue 0341, phase-521 W8 (e) ─────────────────
 // uORB is a declared RMW (ARCHITECTURE §2) with a real crate
-// (nros-rmw-uorb) + example (packages/testing/nros-px4-register-check), but its runtime lane
-// is a PX4-SITL build no CI runner here provides. Expressible + carved out,
-// so the gap is visible rather than inexpressible.
+// (nros-rmw-uorb). PX4 is a Tier 1 framework (RFC-0113 D9), so its runtime
+// cell runs: `tests/px4_sitl.rs`, in the hosted `px4-sitl` job of
+// nightly.yml, which builds SITL first. Gated, not Runtime, because a SITL
+// build is not a fixture row and no tier cover schedules it.
 '''
 at = ["Px4", "Cpp", "Uorb", "Pubsub", "Example"]
 status = '''
-CarveOut("uORB runs only inside a PX4-SITL build (just px4 …); no CI runner \
-                   builds SITL. `packages/testing/nros-px4-register-check` is the source of truth.")'''
+Gated("nightly.yml `px4-sitl` (hosted): `just px4 build-sitl-example`, then \
+                `cargo nextest run -p nros-tests --test px4_sitl`")'''
 
 [[cell]]
 comment = '''

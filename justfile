@@ -2784,6 +2784,10 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # FVP — no lane provisions the licensed Arm FVP and no manifest row targets
     # it (FVP support is wanted LATER; `just zephyr build-fvp-all` is manual).
     env_exclude+=("not binary(fvp_smoke) and not binary(fvp_runtime_ws) and not binary(board_import)")
+    # PX4 SITL (phase-521 W8 (e)) — its cells are Gated on the hosted
+    # `px4-sitl` nightly job, which builds SITL (`just px4 build-sitl-example`)
+    # and runs `--test px4_sitl` itself; no fixture lane builds SITL.
+    env_exclude+=("not binary(px4_sitl)")
     if [ "${#env_exclude[@]}" -gt 0 ]; then
         env_filter="${env_exclude[0]}"
         for _e in "${env_exclude[@]:1}"; do env_filter="$env_filter and $_e"; done
