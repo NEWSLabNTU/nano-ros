@@ -11,6 +11,8 @@ superseded-by: null
 
 # RFC-0072 — RTOS integration: nano-ros is an imported library
 
+> **Scope narrowed by [RFC-0120](0120-nros-configure-one-resolver.md) (2026-11-03).** "Your RTOS keeps its own build tool" is the rule for an EXISTING project adopting nano-ros. A project started with `nros new` builds through `nros build`, the recommended front door; every road, this one included, calls `nros configure`.
+
 **Status.** Draft. Grounded in a survey of six real FreeRTOS distributions
 (upstream, ESP-IDF, Raspberry Pi Pico SDK, STM32Cube, NXP MCUXpresso, Infineon
 ModusToolbox) conducted 2026-08-12, and in the three integration shells nano-ros

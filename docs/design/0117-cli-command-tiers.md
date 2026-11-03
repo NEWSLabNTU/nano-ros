@@ -12,6 +12,8 @@ superseded-by: null
 
 # RFC-0117 — CLI command tiers
 
+> **Amended by [RFC-0120](0120-nros-configure-one-resolver.md) (2026-11-03).** `configure` joins the Build group and absorbs `sync`, which stays as its alias.
+
 **Status:** Draft (2026-11-01). Written from the maintainer discussion of
 2026-10-31 and 2026-11-01 on how the `nros` command tree should look to a
 user and to a contributor. Its two siblings are
@@ -75,7 +77,7 @@ its output format, because cmake, west and `just` parse that output.
 | Group | Verbs |
 | --- | --- |
 | Start | `new` · `setup` (absorbs `init`) |
-| Build | `build` · `sync` · `clean` · `materialize` |
+| Build | `build` · `configure` (alias `sync`, RFC-0120) · `clean` · `materialize` |
 | Run on a target | `run` · `flash` · `monitor` · `bench` · `debug` (reserved) — RFC-0118 |
 | Workspace | `list` · `graph` |
 | Interfaces | `interface generate\|list\|show` |
@@ -214,3 +216,4 @@ the sweep happens once, over the final verb names.
 
 - 2026-11 — created, from the maintainer discussion of 2026-10-31 and
   2026-11-01.
+- 2026-11 — amended by RFC-0120 (`nros configure`).
