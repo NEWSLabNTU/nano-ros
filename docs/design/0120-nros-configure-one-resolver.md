@@ -26,7 +26,10 @@ verb, `nros configure`**. That covers message codegen and the metadata probe
 files (today stages 1 to 4 of `nros build`). Every road calls it:
 
 - `nros build` calls it in-process;
-- west, CMake and the NuttX `make` call it from their configure-time hooks;
+- west and CMake call it from their configure-time hooks (the NuttX
+  `apps/external` make road is a guest road: it builds only the runtime
+  archive from Kconfig and carries no nros project, so it has nothing to
+  configure; a NuttX image built as a nros project takes the CMake road);
 - an IDE or a hookless host calls it as a pre-build step.
 
 Dependencies point one way. A host tool may call `nros configure` and never
@@ -253,7 +256,7 @@ A hooked host calls `nros configure` before its first reader:
 | --- | --- |
 | Zephyr west | `nros_image_kconfig_hook`, which runs from `zephyr_module.cmake` before Kconfig |
 | CMake (`find_package(nano_ros)`, `add_subdirectory`) | the top of the package config, before any knob reader |
-| NuttX `apps/external` | a Makefile prerequisite of the app's objects |
+| NuttX `apps/external` | none: a GUEST road. Its make build compiles only the runtime archive, from Kconfig (`CONFIG_NROS_RMW_*`, `CONFIG_NROS_ROS_EDITION`, `CONFIG_NROS_*_API`), and carries no nros project (no `system.toml`, no image; the app is not an input), so layer 0 has nothing to configure and the archive is sized by its Kconfig knobs. A NuttX image built as a nros project uses the CMake leaf road, which is hooked. Making a make app a project needs a project identity and a knob channel ([issue 2236](../issues/2236-nuttx-make-app-as-project.md)) |
 
 The early readers then READ the seeds. The late producers (`nros_find_interfaces`,
 the node-register composer, `nano_ros_entry`, the sizing descriptor) still
@@ -324,7 +327,7 @@ change, never a forged timestamp.
 | adapter | calls `nros configure` | hosts |
 | --- | --- | --- |
 | driven | in-process | `nros build` |
-| hooked | in the host's configure (D5) | west (and everything that runs it: nRF Connect for VS Code, the Zephyr IDE extension, CLion, twister, sysbuild), CMake (presets, VS Code CMake Tools, CLion), NuttX make |
+| hooked | in the host's configure (D5) | west (and everything that runs it: nRF Connect for VS Code, the Zephyr IDE extension, CLion, twister, sysbuild), CMake (presets, VS Code CMake Tools, CLion; a NuttX image built as a nros project) |
 | hookless | a pre-build step the host already has | PX4, PlatformIO, Eclipse-based IDEs (STM32CubeIDE, MCUXpresso IDE, S32 Design Studio) |
 | none | once, then a drop-in | IAR, Keil (RFC-0072's emitter, not shipped) |
 
@@ -405,3 +408,9 @@ configure, is answered by D2: the stamp records it.)
 - 2026-11 — created.
 - 2026-11 — D4: the census default is for a CROSS image with at least one
   `[[component]]`; a host image keeps the hosted defaults (phase-530 W2).
+- 2026-11 — Summary, D5, D8: the NuttX `apps/external` make road is a GUEST
+  road sized by its Kconfig knobs, not a hooked host: it builds only the
+  runtime archive and carries no nros project, so there is nothing to
+  configure (phase-530 W5, Ruling R36; issue 2236 tracks making a make app a
+  project). A NuttX image built as a nros project takes the hooked CMake leaf
+  road.

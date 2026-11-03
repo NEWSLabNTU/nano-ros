@@ -1,6 +1,6 @@
 # Phase 530 — `nros configure`: one resolver for every road, tight sizing, and no fixed point
 
-**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling), W5 landed for CMake (on W4; the NuttX make road is NEEDS_CONTEXT).** Implements
+**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling), W5 landed (on W4; the NuttX make road is a guest road, Ruling R36).** Implements
 [RFC-0120](../design/0120-nros-configure-one-resolver.md) D1 to D7, D9 and
 the driven and hooked rows of D8. Meets
 [RFC-0094](../design/0094-resolve-before-configure.md) A3 as originally
@@ -482,7 +482,9 @@ against a stand-in CLI.
 
 - `find_package(nano_ros)` and `add_subdirectory(nano-ros)` call configure
   before any knob reader.
-- The NuttX `apps/external` Makefile makes it a prerequisite.
+- ~~The NuttX `apps/external` Makefile makes it a prerequisite.~~ Ruling
+  R36: that road is a GUEST road (below); a NuttX image built as a nros
+  project takes the hooked CMake leaf road.
 - **Acceptance:** a cmake leaf, a cmake workspace and a NuttX app each build
   from a clean dir in one pass, with knobs identical to `nros build`'s.
 
@@ -523,17 +525,17 @@ against a stand-in CLI.
   hand-off; the hook's configure takes a free lock. The census host build
   configure runs inside sets `NROS_LEAF_CENSUS_HOST`, which the helper
   honours first. No change was needed.
-- **NuttX `apps/external`: not done (NEEDS_CONTEXT).** The make road builds
-  only the integration shell's runtime archive, from Kconfig
-  (`CONFIG_NROS_RMW_*`, `CONFIG_NROS_ROS_EDITION`, `CONFIG_NROS_*_API`)
-  through `NanoRosImageCrate.cmake -P`. It has no project: no `system.toml`,
-  no image, and the user's application is not one of its inputs (the
-  per-example staging was retired, Phase 212.M-F.12, issue 1883). And it has
-  no channel for configure's outputs: no seed, no knob file reaches its
-  cargo build. Making configure a prerequisite needs a project identity the
-  road does not carry and a knob channel it does not have; both are design
-  choices. The NuttX app measured below is the cmake leaf, the road `nros
-  build` takes for a NuttX image.
+- **NuttX `apps/external` is a GUEST road (Ruling R36; RFC-0120 D5/D8
+  amended).** The make road builds only the integration shell's runtime
+  archive, from Kconfig (`CONFIG_NROS_RMW_*`, `CONFIG_NROS_ROS_EDITION`,
+  `CONFIG_NROS_*_API`) through `NanoRosImageCrate.cmake -P`. It carries no
+  nros project -- no `system.toml`, no image, and the user's application is
+  not one of its inputs (the per-example staging was retired, Phase
+  212.M-F.12, issue 1883) -- so layer 0 has nothing to configure, and the
+  archive is sized by its Kconfig knobs. A NuttX image built as a nros
+  project uses the CMake leaf road, which is hooked (measured below: 1
+  configure, 0 re-runs). Making a make app a project needs a project
+  identity and a knob channel: [issue 2236](../issues/2236-nuttx-make-app-as-project.md).
 
 **Acceptance (measured 2026-11-04, clean build dirs; counts are `-- Configuring
 done` over the configure and the first `ninja`, plus `Re-running CMake`).**
@@ -570,6 +572,10 @@ before the unseeded fallback in `NanoRosPromise.cmake` can be deleted.
 - Map the fifth producer first: the Cyclone C++ configure-time facts (issue
   1653; `NanoRosSizingDescriptor.cmake`'s `west-cargo.toml` settle and C++
   arm). Give it a pre-configure producer or a promise check.
+- Seed standalone cmake leaves (C5, like `configure_zephyr_leaf`) so the
+  Promise unseeded fallback can go (Ruling R37): configure resolves no image
+  dir for a standalone CMake leaf, so its readers are the last unseeded ones
+  (phase-530 W5 measured it).
 - Then delete `cmake/NanoRosReconfigure.cmake` and every call site.
 - Retire or rewrite `tests/cmake-reconfigure-tests.sh` and
   `scripts/check-knob-fixpoint.py`. The behaviour they pinned no longer
