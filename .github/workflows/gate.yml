@@ -2330,8 +2330,14 @@ jobs:
   #
   # Zephyr 3.7, the gate's default line (`scripts/lib/zephyr-workspace.sh`) and
   # the line the templates are documented for (`zephyr-byo/west.yml` pins
-  # v3.7.0, LTS). The image's SDK 0.17.4 builds 3.7: nightly's
-  # `zephyr 3.7 / *` cells run in this same image every night.
+  # v3.7.0, LTS). The image's baked SDK (0.17.4) does NOT build it for an ARM
+  # board: 3.7 pins 0.16.8, a newer SDK fails in Zephyr's own libc-hooks.c
+  # (issue 1811), and `nros build` refuses the mismatch by name — measured on
+  # this job's first dispatch, where the four `mps2-an385-zephyr` projects
+  # failed that way and only native_sim's `zephyr-byo/app` (host compiler)
+  # built. So `just setup zephyr` provisions the index's pinned SDK
+  # (`[tool.zephyr-sdk]`, 0.16.8) into the store, and the image contributes
+  # only its west/Python toolchain.
   #
   # STRICT: the workspace IS provisioned here, so a Zephyr project that
   # reaches a NOT VERIFIED is a failure of this job, not a skip.
@@ -2393,16 +2399,6 @@ jobs:
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
-      # The image's SDK, registered for this HOME — nightly `zephyr-copy-out`'s
-      # step. Outside every checkout, so the SDK guard (issue 1254) keeps it.
-      - name: Register the baked Zephyr SDK for this HOME
-        run: |
-          if [ -x /opt/zephyr-sdk/setup.sh ]; then
-            /opt/zephyr-sdk/setup.sh -c
-          else
-            echo "no /opt/zephyr-sdk on this runner; the gate below finds its own or fails (strict)"
-          fi
-
       - name: Disk report (before Zephyr setup) — issue 1353
         if: ${{ !cancelled() }}
         run: scripts/ci/disk-report.sh "before Zephyr setup"
@@ -2421,12 +2417,14 @@ jobs:
             --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
             --source micro-xrce-dds-client --source cyclonedds-src
 
-      - name: Set up the Zephyr 3.7 west workspace
+      # WITH the SDK: the image's is the wrong version for 3.7 (see the job
+      # comment), so the pinned one is installed into the store.
+      - name: Set up the Zephyr 3.7 west workspace and its pinned SDK
         env:
           NROS_ZEPHYR_CREATE_VENV: "1"
         run: |
           source ./activate.sh
-          just setup zephyr --skip-sdk
+          just setup zephyr
 
       - name: Fetch the pin baseline (to find submodules whose pin moved)
         run: bash scripts/ci/pin-baseline.sh provide
