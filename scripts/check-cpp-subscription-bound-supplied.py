@@ -274,8 +274,9 @@ def selftest():
             "`create_subscription_raw` regaining its default",
             "component.hpp",
             comp_text.replace(
-                "void* ctx, const QoS& qos, size_t rx_bytes) {",
-                "void* ctx, const QoS& qos, size_t rx_bytes = 0) {",
+                # issue 2215 added a defaulted `stamp_offset` after it
+                "void* ctx, const QoS& qos, size_t rx_bytes,",
+                "void* ctx, const QoS& qos, size_t rx_bytes = 0,",
                 1,
             ),
             "gives `rx_bytes` a DEFAULT",

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::bind_raw_subscription_stamp",
+  "verdict": "extension",
+  "why": "issue 2215: binds a C/C++ callback subscription to its topic's contracted age row, given the type's stamp offset, so its stamped takes feed the silence rule (and, with an epoch source, the age rule) as the Rust typed paths' do. rclrs has no contract monitors. One layer below the user API: the C++ shim's `nros_cpp_subscription_register` calls it after registering."
+}

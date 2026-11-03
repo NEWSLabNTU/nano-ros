@@ -1,0 +1,5 @@
+{
+  "key": "cpp:stamp_offset",
+  "verdict": "extension",
+  "why": "issue 2215: `rclcpp::stamp_offset<M>::value`, the CDR byte offset of a message type's `stamp.sec` (0 when the type carries no stamp), read off the C++ message pack's `M::STAMP_OFFSET`. rclcpp has no counterpart: its subscriptions feed no contract age monitor. The typed registrations pass it in `nros_cpp_subscription_options_t::stamp_offset` so a C++ subscription feeds its topic's contracted age row as the Rust typed paths do. Machinery a component does not name."
+}
