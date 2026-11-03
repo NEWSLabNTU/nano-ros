@@ -84,6 +84,7 @@ fn every_new_user_spelling_parses() {
         vec!["list", "--help"],
         vec!["graph", "--help"],
         vec!["clean", "--help"],
+        vec!["configure", "--help"],
     ] {
         let (ok, _, err) = run(&args);
         assert!(ok, "`nros {}` failed:\n{err}", args.join(" "));

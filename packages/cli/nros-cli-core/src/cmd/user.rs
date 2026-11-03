@@ -24,13 +24,14 @@ pub const ALIASES: &[(&str, &str)] = &[
     ("generate", "interface generate"),
     ("ws list", "list"),
     ("ws clean", "clean"),
+    ("sync", "configure"),
 ];
 
 /// The groups `nros --help` shows, in RFC-0117 D2's order. Every visible
 /// top-level verb is in exactly one group; a test holds that.
 pub const GROUPS: &[(&str, &[&str])] = &[
     ("Start", &["new", "setup"]),
-    ("Build", &["build", "sync", "clean", "materialize"]),
+    ("Build", &["build", "configure", "clean", "materialize"]),
     (
         "Run on a target",
         &["run", "flash", "monitor", "bench", "debug"],
@@ -72,6 +73,9 @@ pub fn lower(cmd: Cmd) -> Cmd {
         Cmd::Clean(a) => Cmd::Ws(ws::Args {
             command: ws::Sub::Clean(a),
         }),
+        // phase-530 W1 — the OLD spelling lowers to the new one here, the
+        // reverse of the rows above: `configure` is the verb with a handler.
+        Cmd::Sync(a) => Cmd::Configure(a),
         other => other,
     }
 }
@@ -97,6 +101,7 @@ pub fn old_spelling(cmd: &Cmd) -> Option<(&'static str, &'static str)> {
         Cmd::Ws(ws::Args {
             command: ws::Sub::Clean(_),
         }) => 6,
+        Cmd::Sync(_) => 7,
         _ => return None,
     };
     Some(ALIASES[i])
@@ -107,10 +112,30 @@ pub fn note(old: &str, new: &str) -> String {
     format!("note: `nros {old}` is now `nros {new}`; the old spelling keeps working")
 }
 
-/// Print [`note`] to `out` when `cmd` is an old user spelling and stderr is a
-/// terminal. `terminal` is a parameter so the test can drive both answers.
+/// Old spellings that are TEMPORARY and will be retired, so they warn on
+/// every run, terminal or not: a script still calling one must hear about it
+/// before it stops working. Every other row keeps RFC-0117 D5's terminal-only
+/// note. `sync` (phase-530 W1, maintainer ruling 2026-11-03).
+pub const RETIRING: &[&str] = &["sync"];
+
+/// The one line a [`RETIRING`] spelling prints.
+pub fn retiring_note(old: &str, new: &str) -> String {
+    format!(
+        "warning: `nros {old}` is a temporary alias of `nros {new}` and will be removed; \
+         use `nros {new}`"
+    )
+}
+
+/// Print the note for an old user spelling to `out`: a [`RETIRING`] one
+/// always ([`retiring_note`]), any other only when stderr is a terminal
+/// ([`note`]). `terminal` is a parameter so the test can drive both answers.
 pub fn note_old_spelling(cmd: &Cmd, terminal: bool, out: &mut impl Write) {
-    if terminal && let Some((old, new)) = old_spelling(cmd) {
+    let Some((old, new)) = old_spelling(cmd) else {
+        return;
+    };
+    if RETIRING.contains(&old) {
+        let _ = writeln!(out, "{}", retiring_note(old, new));
+    } else if terminal {
         let _ = writeln!(out, "{}", note(old, new));
     }
 }
@@ -161,8 +186,10 @@ mod tests {
     #[test]
     fn sync_names_its_generated_base() {
         use clap::Parser;
-        let dir = |argv: &[&str]| match Cli::try_parse_from(argv).map(|c| c.cmd) {
-            Ok(crate::cmd::Cmd::Sync(a)) => Ok(a.build_dir),
+        // Through the lowering: `nros sync` is `nros configure` (phase-530 W1).
+        let dir = |argv: &[&str]| match Cli::try_parse_from(argv).map(|c| crate::cmd::lower(c.cmd))
+        {
+            Ok(crate::cmd::Cmd::Configure(a)) => Ok(a.sync.build_dir),
             Ok(other) => panic!("{argv:?} parsed to {other:?}"),
             Err(e) => Err(e.kind()),
         };
@@ -218,7 +245,7 @@ mod tests {
     fn old_user_spellings_note_only_on_a_terminal() {
         use clap::Parser;
         let root = Cli::command();
-        for (old, new) in ALIASES {
+        for (old, new) in ALIASES.iter().filter(|(o, _)| !RETIRING.contains(o)) {
             let old_cmd = Cli::try_parse_from(argv(&root, old)).unwrap().cmd;
             let new_cmd = Cli::try_parse_from(argv(&root, new)).unwrap().cmd;
             let mut tty = Vec::new();
@@ -237,6 +264,35 @@ mod tests {
                 note_old_spelling(cmd, terminal, &mut buf);
                 assert!(buf.is_empty(), "`nros {old}` ({what}) printed a note");
             }
+        }
+    }
+
+    /// `nros sync` is a temporary alias (maintainer, 2026-11-03): it warns
+    /// with stderr piped too, naming `nros configure`; the new spelling never
+    /// warns.
+    #[test]
+    fn sync_alias_warns_without_a_tty() {
+        use clap::Parser;
+        let root = Cli::command();
+        for terminal in [false, true] {
+            let mut buf = Vec::new();
+            let old = Cli::try_parse_from(argv(&root, "sync")).unwrap().cmd;
+            note_old_spelling(&old, terminal, &mut buf);
+            let text = String::from_utf8(buf).unwrap();
+            assert!(
+                text.contains("`nros configure`"),
+                "terminal={terminal}: {text:?}"
+            );
+            assert_eq!(text, format!("{}\n", retiring_note("sync", "configure")));
+
+            let mut buf = Vec::new();
+            let new = Cli::try_parse_from(argv(&root, "configure")).unwrap().cmd;
+            note_old_spelling(&new, terminal, &mut buf);
+            assert!(buf.is_empty(), "`nros configure` warned");
+        }
+        // Every retiring spelling is a row of the table.
+        for r in RETIRING {
+            assert!(ALIASES.iter().any(|(o, _)| o == r), "`{r}` is no alias");
         }
     }
 

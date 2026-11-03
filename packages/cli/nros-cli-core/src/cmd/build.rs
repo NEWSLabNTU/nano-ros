@@ -869,7 +869,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             ));
         }
         if !missing.is_empty() {
-            eyre::bail!("{}", crate::builder::preflight::report(&missing));
+            return Err(crate::builder::preflight::PreflightRefusal(missing).into());
         }
         crate::cmd::setup::expose_store_tools(descriptor, nano_ros_root.as_deref());
 
@@ -2370,7 +2370,7 @@ fn plan_leaf_image(
     // build actually reads from sync is checked precisely just below.
     missing.retain(|m| m.remedy != "nros sync");
     if !missing.is_empty() {
-        eyre::bail!("{}", crate::builder::preflight::report(&missing));
+        return Err(crate::builder::preflight::PreflightRefusal(missing).into());
     }
     // RFC-0098 D2 — sync runs before the build. The two things it produces that
     // this build reads: the resolved model (the entity facts) and the generated
@@ -2650,7 +2650,7 @@ fn plan_single_package_cmake(
     };
     missing.retain(|m| m.remedy != "nros sync");
     if !missing.is_empty() {
-        eyre::bail!("{}", crate::builder::preflight::report(&missing));
+        return Err(crate::builder::preflight::PreflightRefusal(missing).into());
     }
     // Issue 2137 -- the leaf half of the workspace road's stage 3.4: a leaf
     // whose components read their entities from the census (`entities =
@@ -6330,6 +6330,20 @@ fn entry_dirs_where(
 /// `(bringup name, bringup dir, its images)` per bringup — the shape every
 /// stage after DISCOVER passes around.
 pub(crate) type Bringups = Vec<(String, PathBuf, plan::ImageSet)>;
+
+/// Stages 1-2 alone: every image a workspace's bringups declare, qualified
+/// (`<bringup>:<id>`), in [`plan::all_images`] order. No preflight, nothing
+/// written. `nros configure` enumerates with it (phase-530 W1, Ruling R3), then
+/// plans each image on its own so one refusal cannot hide the others.
+pub(crate) fn workspace_images(root: &std::path::Path) -> Result<Vec<String>> {
+    let members = discover::cargo_members_or_walk(root);
+    let found = discover::discover_in(root, &[], &members).map_err(|e| eyre::eyre!("{e}"))?;
+    let bringups = collect_images(&found.packages)?;
+    Ok(plan::all_images(&bringups)
+        .into_iter()
+        .map(|(b, _, id, _)| plan::qualified(&b, &id))
+        .collect())
+}
 
 /// Read every bringup's `[image.*]`.
 ///

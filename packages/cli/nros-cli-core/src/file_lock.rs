@@ -8,13 +8,12 @@ use std::{fs::File, io, path::Path};
 use eyre::{Result, WrapErr};
 
 /// An exclusive lock on a file, held until this value drops (the fd closes).
-// Unused until `nros configure` (phase-530 W1 later tasks) takes the lock.
-#[allow(dead_code)]
 #[derive(Debug)]
-pub(crate) struct ProjectLock(File); // held for its Drop
+pub(crate) struct ProjectLock(
+    // Never read: holding the fd IS the lock, released when it closes.
+    #[allow(dead_code)] File,
+);
 
-// Unused until `nros configure` (phase-530 W1 later tasks) takes the lock.
-#[allow(dead_code)]
 /// Create `path` (and its parent dirs) and block until we hold `LOCK_EX`.
 pub(crate) fn lock_exclusive_path(path: &Path) -> Result<ProjectLock> {
     if let Some(parent) = path.parent() {

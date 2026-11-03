@@ -223,6 +223,8 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
 fn cmd_name(cmd: &cmd::Cmd) -> &'static str {
     match cmd {
         cmd::Cmd::Sync(_) => "sync",
+        // phase-530 W1 — guarded like `sync`, which lowers to it.
+        cmd::Cmd::Configure(_) => "configure",
         cmd::Cmd::Plan(_) => "plan",
         cmd::Cmd::Ws(a) => ws_cmd_name(a),
         cmd::Cmd::Codegen(_) => "codegen",
@@ -249,7 +251,8 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
     // parses to, so the stale guard and the dispatch below see one command
     // for both spellings.
     // An old user-tier spelling notes its new one, on a terminal only
-    // (RFC-0117 D5); the lowering below erases which spelling was typed.
+    // (RFC-0117 D5), except a RETIRING one (`sync`), which warns always; the
+    // lowering below erases which spelling was typed.
     {
         use std::io::IsTerminal;
         let stderr = std::io::stderr();
@@ -297,7 +300,9 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
                  Rebuild: ./scripts/bootstrap.sh   (contributors: just setup-cli)"
             )),
         },
-        cmd::Cmd::Sync(args) => cmd::ws::run_sync(args),
+        // `Sync` lowers to `Configure` above; this arm is for a caller that
+        // dispatches without lowering.
+        cmd::Cmd::Sync(args) | cmd::Cmd::Configure(args) => cmd::configure::run(args),
         cmd::Cmd::GeneratePx4Msgs(args) => cmd::generate_px4::run(args),
         cmd::Cmd::Codegen(args) => cmd::codegen::run(args),
         cmd::Cmd::CodegenSystem(args) => cmd::codegen_system::run(args),

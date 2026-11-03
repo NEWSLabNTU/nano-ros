@@ -24,6 +24,8 @@ pub mod codegen_cyclonedds_descriptors;
 pub mod codegen_system;
 pub mod completions;
 pub mod config;
+/// phase-530 W1 — `nros configure` (RFC-0120 D2).
+pub mod configure;
 pub mod dev;
 pub mod doctor;
 pub mod emit_package_xml;
@@ -177,7 +179,21 @@ pub enum Cmd {
     /// editing `*.msg` files.
     // Phase-265 W5 — promoted from the retired `ws`-scoped `sync` alias.
     // (`nros generate-rust` stays the codegen-only primitive.)
-    Sync(ws::SyncArgs),
+    // phase-530 W1 (RFC-0120 D2): the old spelling of `nros configure`. It
+    // takes configure's arguments, so the two spellings parse alike
+    // (RFC-0117), and lowers to it.
+    #[command(hide = true)]
+    Sync(configure::Args),
+
+    /// Configure a project: generate message bindings and the cargo patch
+    /// config, then resolve and generate every image's build inputs.
+    ///
+    /// `nros sync` plus `nros build` stages 1-4 (discover, preflight, census,
+    /// resolve, generate), under a per-project lock. Runs no target build
+    /// tool. Records a stamp per image, so a rerun with nothing changed is a
+    /// no-op. An image this host cannot build is skipped unless named.
+    // phase-530 W1, RFC-0120 D2.
+    Configure(configure::Args),
 
     /// Generate CDR `px4_msgs::msg::*` from a PX4-Autopilot `.msg` tree.
     ///
