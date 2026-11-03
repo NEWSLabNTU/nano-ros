@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-03). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 landed (the serial-talker run waits on issue 2231); W5 not landed.** Implements
+**Status (2026-11-03). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance blocked by issue 2231; W5 not landed.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -314,8 +314,9 @@ Carried:
 - On a hardware image (registry `runs = "hardware"`, or a board with only
   `[board.flash]`), refuse and name `nros flash --monitor`.
 
-**Landed (2026-11-03).** The acceptance runs are recorded after the list
-below.
+**Done for host, QEMU and `native_sim` images (2026-11-03).** The
+serial-talker acceptance is **blocked by issue 2231**, which reproduces
+without `nros run`. The runs are recorded after the list below.
 
 - *Executor.* `cmd/run_exec.rs`. Unless `--plan` names a plan file, which runs
   as written, `nros run` resolves the plan (W1), builds the image through
