@@ -267,7 +267,7 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   back.
 - **Multi-entry (case 3).** Stage 3.5 resolves once per cmake coordinate,
   over the union of its images (`resolve_coordinate`, into
-  `build/<coord>/resolved/`). It uses the same registered population as the
+  `build/<coord>/resolved/<bringup>_union/`). It uses the same registered population as the
   configure (one predicate, `cmake_root::is_subdir`) and every member's model:
   `compose_image` for one model, `fold_models_for_shared_runtime` for several,
   as the verb chooses. It also writes a message-bound seed over the probe's
@@ -277,8 +277,8 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   `nros_resolved_entity_take` accepts N models, compared as a set by path and
   content (case T of `tests/cmake-resolved-seed-tests.sh`).
 - **Stamps (RFC-0120 D2).** `nros configure` records one stamp per shared
-  coordinate, `configured/@<coord>/stamp.toml`, with `covers` listing the
-  union's images. Each image's stamp names its coordinate. An image is stale
+  configure, `configured/@<bringup>__<coord>/stamp.toml`, with `covers`
+  listing the union's images. Each image's stamp names its coordinate. An image is stale
   while that stamp is missing, was recorded over other inputs, does not cover
   it, or while its union resolve is gone. `NROS_RESOLVED_DIR` stays (W4).
 
@@ -305,6 +305,45 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   `nros configure` reports "up to date" while the resolve refuses every
   sidecar as stale. The Rust measurement ran `nros configure --force` first
   for that reason.
+
+**Review rulings folded in (2026-11-04).**
+
+- **R27 + R35 — the Rust west road sizes from the SUBSCRIBED set only.** The
+  closure it can see is the workspace's `generated/` tree, which is not every
+  interface the image links (the core interface crates under
+  `packages/interfaces/*` live outside it). So the seed refuses the closure
+  basis (`SeedBasis::SubscribedOnly`: no
+  `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE`), and the image's descriptor refuses
+  `[types] max_wire_bound_bytes` (`ModelHorizon::refusing_closure_wire_bound`),
+  so `nros-node`'s `RX_BUF` keeps its crate default. The C/C++ west entry,
+  the coordinate union and the workspace cargo road keep the closure basis.
+- **R28 — a shared configure is `(bringup, coordinate)`**
+  (`SharedConfigure`), never the coordinate alone: two bringups on one
+  coordinate compose two unions. The union is composed once per plan
+  (`CoordinateUnions`), over every image on the coordinate whether or not
+  this build asked for it (`members_on_coordinate`), and takes the larger
+  member's need, never the last one's (`coordinate_union_tests`).
+
+**Boot evidence for the tightened Rust knobs (measured 2026-11-04, after
+R27/R28/R35).** Image: the `build-ws-rs-entry-zenoh` fixture
+(`examples/workspaces/rust` `demo_bringup:zephyr`, west, Zephyr 3.7,
+`native_sim/native/64`), built by `just zephyr build-fixtures` from the
+round-2 commit after `just setup-cli` and `nros configure --force` (issue
+2234). Its configure delivered `NROS_SUBSCRIBER_BUFFER_SIZE=12`,
+`NROS_ZENOH_MAX_LARGE_SUBSCRIBERS=0`,
+`NROS_SUBSCRIBED_TYPE_BOUNDS=std_msgs/msg/Int32=12` and a named
+`NROS_SIZING_DESCRIPTOR` whose `[types] max_wire_bound_bytes` is refused
+(so `RX_BUF` is the crate default); no `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE`.
+
+- **Publish:** `test_zephyr_workspace_entry_native_sim_e2e` passes — the
+  image's talker reaches an external Int32 listener.
+- **Receive:** an external Int32 publisher on `/chatter` beside the image's
+  own talker, the image run under gdb with a `dprintf` at the zenoh-pico
+  ring's oversize check and at its commit
+  (`zpico.c` `_zpico_ring_push`): **38 of 38** samples arrived at 8 bytes
+  against a 12-byte slot and were committed; **0** took the oversize drop.
+  (The same check before R35 counted 72 of 72.) The listener component
+  counts silently, which is why the count is taken at the ring.
 
 ### W4 — The Zephyr hook calls `nros configure` (cases 1 and 4)
 
