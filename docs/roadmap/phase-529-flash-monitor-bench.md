@@ -205,7 +205,7 @@ plan that verb will print.
 **Landed without hardware (2026-11-04); the acceptance runs below wait for
 a bench board (W5 and W6).**
 
-- *One target resolution.* `run_plan::resolve_target` picks the one image a
+- *One target resolution.* `run_plan::select_target` picks the one image a
   selection names, with its board descriptor, for `nros run`, `nros flash`
   and `nros monitor` alike. It is the only place the "which image" rungs
   live, so a later rung is added there once.

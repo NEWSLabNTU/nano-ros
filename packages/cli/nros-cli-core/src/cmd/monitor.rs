@@ -1,7 +1,7 @@
 //! `nros monitor`: open a running board's console (RFC-0118 D2, D6).
 //!
 //! In a workspace the console plan is the image's board's
-//! ([`run_plan::resolve_target`], the target resolution every target verb
+//! ([`run_plan::select_target`], the target resolution every target verb
 //! shares, then the `console` verb of [`run_plan::resolve`]), with the port
 //! from RFC-0118 D6's ladder. Outside one, `--port` alone is enough: a board
 //! that is already running needs no image to be watched. Either way the plan
@@ -134,7 +134,7 @@ fn resolve_plan(args: &Args) -> RunPlan {
         nano_ros_path: args.nano_ros_path.clone(),
         image: args.image.clone(),
     };
-    let one = match run_plan::resolve_target(&sel, "monitor") {
+    let one = match run_plan::select_target(&sel, "monitor") {
         Ok(one) => one,
         // No image to name the board, but a port to watch: enough.
         Err(_) if args.image.is_none() && port.is_some() => {
@@ -144,7 +144,7 @@ fn resolve_plan(args: &Args) -> RunPlan {
             "{e}. Outside a workspace, name the board's device with `--port`"
         )),
     };
-    let descriptor = one.descriptor.as_ref().expect("resolve_target checked it");
+    let descriptor = one.descriptor.as_ref().expect("select_target checked it");
     let invocation = Invocation {
         port,
         ..Invocation::default()
