@@ -2,7 +2,8 @@
 
 **Status (2026-11-03). IN PROGRESS — W3, W1, W2 and W2b landed
 (`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
-the host build role; declared overrides); W4 next.** Implements
+the host build role; declared overrides); W2c (colcon's duplicate rule among
+source roots, overrides in `nros.toml`) in review; W4 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -162,7 +163,8 @@ Status: **DONE** (2026-11-03, #3050).
 - `nros-cli-core/src/provider_overrides.rs` reads `[overrides]` from the
   workspace's `system.toml` (the root's, else every `src/*/system.toml`; one
   name pinned to two paths is refused) and renders the report both listings
-  print. `SystemToml` gains the `overrides` table.
+  print. `SystemToml` gains the `overrides` table. (W2c moves the
+  declarations to `nros.toml [workspace.overrides]`.)
 - The W2 build edge is `cmd::build::runner_edges`, which resolves each image
   runner under the policy; `nros build --allow-overriding <name>…`.
 - `nros dev ws providers` prints an override block (and an `overrides` array
@@ -180,6 +182,57 @@ Status: **DONE** (2026-11-03, #3050).
   `resolve_provider`) with the workspace policy, takes `--allow-overriding`, and `--dry-run --why` prints
   the winner and its `OverrideNote`. Command dispatch (W4) calls
   `resolve_command_with` the same way.
+
+### W2c — Source roots are peers; overrides live in `nros.toml`
+
+Two maintainer decisions on top of W2b (2026-11-03), recorded in RFC-0119 D4.
+
+- **colcon's duplicate rule among source roots.** The workspace and its
+  `package_paths` entries are source roots. The same `(kind, name)` in two of
+  them is refused for every kind, naming both paths and the line to add,
+  unless a declaration pins one (the pinned package wins wherever it sits) or
+  `--allow-overriding <name>` lets the later root win. The nano-ros root stays
+  the underlay (W2b's rules) and `NROS_PACKAGE_PATH` the overlay: it may
+  shadow anything with a warning, and a runner or command it provides still
+  needs a declaration.
+- **Where declarations are read.** `nros.toml [workspace.overrides]`, beside
+  `package_paths`. Only a workspace with no `nros.toml` (a single-package
+  leaf) falls back to its root `system.toml [overrides]`. A
+  `src/*/system.toml` is never read for overrides, and one carrying
+  `[overrides]` is refused, so a vendored package cannot grant itself an
+  override; `[overrides]` in both `nros.toml` and the root `system.toml` is
+  refused, keeping `nros.toml`.
+
+Acceptance: one test per rule — a src/`package_paths` duplicate refused; a
+pin resolves it; `--allow-overriding` resolves it; two `package_paths`
+entries refused; an env-root shadow warns; the underlay rule unchanged;
+declarations from `nros.toml`; the leaf fallback; `src/*/system.toml`
+`[overrides]` refused; both files refused. W2b's tests stay green.
+
+Status: **DONE, in review** (2026-11-03, PR pending).
+
+- Still ONE lookup: `resolve_provider` gains a private `pick` step that
+  applies the source-root rule on top of `resolve_unique`'s order, and
+  `report` uses the same step, so a listing and a resolution agree. The
+  roots' tiers come from `ScanResult::root_origins`, filled by the new
+  `provider_scan::scan_search_path` (and `ScanResult::with_origins` for an
+  index read back from disk); every resolving caller (`nros build`'s runner
+  edge, `nros dev ws providers`, `nros dev rmw dispatch`, `nros doctor`)
+  scans that way. A scan with no origins applies W2b's rules alone.
+- `candidates` treats one package reached through two roots (a
+  `package_paths` entry inside the workspace) as one package.
+- `--base-paths` keeps the ordered rule: it replaces the whole path, often
+  with an underlay among its entries, and nothing says which.
+- `nros_config::workspace_overrides` reads the table; the phase 212.I
+  `nros.toml` rejection now accepts `[workspace]` holding `package_paths`
+  and/or `overrides`. Messages quote the file the policy read
+  (`OverridesFile`), and `nros dev ws providers` (`overrides_file`,
+  `overrides_read_from` in `--json`) and `nros doctor` say where the
+  declarations came from; an unsettled duplicate is a `DUPLICATE` row and a
+  doctor problem.
+- Tests: `nros-cli-core/tests/provider_overrides.rs` (fixture
+  `late/late_acme` added) and `nros_config`'s
+  `workspace_overrides_do_not_trip_the_212_rejection`.
 
 ### W3 — `packages/runners/` and `nros-extension`
 
@@ -268,7 +321,8 @@ Acceptance:
 
 - The installed probe passes.
 - A user package announcing `runner/qemu` replaces ours only when
-  `[overrides]` declares it (W2b); undeclared, `nros run` refuses it, and
+  `nros.toml [workspace.overrides]` declares it (W2b, W2c); undeclared,
+  `nros run` refuses it, and
   `nros doctor` reports it either way.
 
 ### W7 — Scaffolds and checks

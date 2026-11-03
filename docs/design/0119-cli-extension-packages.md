@@ -165,7 +165,7 @@ How the build does it (phase-527 W2):
   already built. A dependency on a host tool is exempt from the selection's
   closure check, since leaving one out cannot break the image's root.
 - That resolution is a resolution in D4's sense: a workspace runner that
-  replaces one of ours without an `[overrides]` entry (or
+  replaces one of ours without a `[workspace.overrides]` entry (or
   `--allow-overriding`) refuses the build, and a declared one gains its edge.
 - With no selection, every host tool in the workspace builds. A selection
   that keeps only host tools builds no image.
@@ -173,34 +173,60 @@ How the build does it (phase-527 W2):
 ### D4 — Where packages come from, and which one wins
 
 Discovery is RFC-0087 D1 and D6, unchanged: a directory with a `package.xml`,
-searched over the ordered roots. **Precedence is colcon's overlay rule, as D6
-already implements it**: a later root overlays an earlier one, and the roots
-are, earliest first, the nano-ros root (a checkout or a released toolchain),
-the workspace, `[workspace] package_paths`, then `NROS_PACKAGE_PATH`. So a
-workspace package announcing the same kind and name as one of ours wins. The
-order is fixed and deterministic, and `provider_scan::resolve_unique`
-implements it; this RFC changes who may use that win, not who gets it.
+searched over the ordered roots. The roots are, earliest first, the nano-ros
+root (a checkout or a released toolchain), the workspace,
+`[workspace] package_paths`, then `NROS_PACKAGE_PATH`. They form three tiers,
+and colcon's rules decide each boundary:
+
+- **The nano-ros root is the underlay.** A package above it that announces
+  the same kind and name overlays it, as a colcon overlay does its underlay.
+- **The workspace and its `package_paths` entries are source roots**, peers
+  in the way colcon's base paths are. The same `(kind, name)` provided in two
+  of them (the workspace and an entry, or two entries) is **refused, for
+  every kind**: colcon refuses duplicate package names among its base paths,
+  and a workspace that builds one package per name has no order to appeal
+  to. A declaration (rule 1) settles it by picking the pinned package,
+  wherever it sits; `--allow-overriding <name>` settles it for one invocation
+  by letting the later root win. The error names both paths and prints the
+  line to add.
+- **`NROS_PACKAGE_PATH` is the overlay**, above everything: the explicit
+  escape hatch. It may shadow any root, and says so with a warning unless
+  declared; a `runner` or `command` it provides still needs a declaration
+  (rule 2).
+
+A repeated root is one root, and one package reached through two roots (a
+`package_paths` entry inside the workspace) is one package, not a duplicate.
+Between tiers the order is fixed and deterministic, and
+`provider_scan::resolve_unique` implements it;
+`provider_overrides::resolve_provider`, the one lookup every resolution goes
+through, applies the source-root rule and the rules below on top.
 
 *(Amended in phase-527 W2b. The first text said the opposite: our packages
 won and the user's copy was shadowed. The code had always let the overlay
 win, and phase-527 W2's build edge follows the code, so the RFC now does
-too.)*
+too. Amended again in phase-527 W2c: the source roots were ordered like the
+others, so a `package_paths` entry silently beat the workspace.)*
 
 An override is allowed, and it is never silent:
 
-1. **Declared overrides.** A workspace states which of its packages may
-   replace an underlay provider, in `system.toml`:
+1. **Declared overrides.** A workspace states which package answers a
+   contested name, in `nros.toml`, beside `package_paths`:
 
    ```toml
-   [overrides]
-   qemu = "src/my_qemu"   # provider name -> the package path allowed to replace it
+   [workspace.overrides]
+   qemu = "src/my_qemu"   # provider name -> the package path that answers it
    ```
 
    The path is relative to the workspace root, and the declaration is pinned
    to it, not to the name: a different package that later announces `qemu`
-   (from `package_paths`, say) does not inherit the approval. A workspace with
-   several bringups may declare entries in any of their `system.toml`s; one
-   name pinned to two paths is refused.
+   does not inherit the approval. Overrides are workspace configuration, so
+   they live in the workspace's file and never in a package's: a
+   `src/*/system.toml` carrying `[overrides]` is refused, naming the file and
+   the move, so a vendored package cannot grant itself an override. The one
+   exception is a single-package leaf with no `nros.toml`, whose root
+   `system.toml` `[overrides]` is read instead; a workspace with a `nros.toml`
+   whose root `system.toml` also carries `[overrides]` is refused, and the
+   `nros.toml` table is the one to keep.
 2. **An undeclared override of a `runner` or `command` is refused**, because
    those kinds run host code and flash hardware, and which package does that
    must never be decided by search order alone. It is refused when the name
@@ -211,8 +237,8 @@ An override is allowed, and it is never silent:
 
    ```
    src/my_qemu announces runner `qemu`, which nros_runner_qemu (<path>) also provides.
-     To use yours, add to system.toml:   [overrides] qemu = "src/my_qemu"
-     or for this run only:              --allow-overriding qemu
+     To use yours, add to nros.toml:   [workspace.overrides] qemu = "src/my_qemu"
+     or for this run only:   --allow-overriding qemu
    ```
 3. **An undeclared override of any other kind** (`rmw`, `board`, `platform`,
    `serdes`) warns once at resolution and proceeds, as colcon does.
@@ -222,13 +248,14 @@ An override is allowed, and it is never silent:
    lands (phase-528, phase-529).
 5. **A declared override is quiet.** Visibility comes from asking instead:
    `nros dev ws providers` and `nros doctor` list every override (name,
-   winner, the path it shadows, declared or not), and `--dry-run --why` on
+   winner, the path it shadows, declared or not) and the file the
+   declarations were read from, and `--dry-run --why` on
    `run`/`flash` names the runner that won and why.
 6. **Protocol.** An overriding runner or command must speak a protocol
    version the package it replaces speaks (D6; versions are whole numbers, so
    each is a major version). Otherwise it is refused, naming both lists, even
    when declared.
-7. **Stale declarations.** An `[overrides]` entry whose path no longer
+7. **Stale declarations.** A declared entry whose path no longer
    announces that name is an error at resolution, never a silent fall back to
    the underlay. An entry that overrides nothing (no other package provides
    the name) is a warning.
@@ -248,8 +275,9 @@ close the gaps:
 | --- | --- |
 | warns only when an underlay package depends on the overridden one | every override is found, leaf or not |
 | a warning, then the build proceeds | refused for `runner` and `command`; a warning for the other kinds |
-| approval by name, so a later package of that name inherits it | `[overrides]` pins a path |
-| no committed record of an intended override | `[overrides]` in `system.toml`, reviewed with the workspace |
+| duplicate package names among base paths are an error | the same: a name in two source roots is refused unless declared |
+| approval by name, so a later package of that name inherits it | a declaration pins a path |
+| no committed record of an intended override | `nros.toml [workspace.overrides]`, reviewed with the workspace; a package cannot declare one for itself |
 | `colcon list` says nothing | `nros dev ws providers` and `nros doctor` list every override and whether it was declared |
 | an approval for a package that is gone is ignored | a stale entry is an error; an unused one warns |
 | no interface check | an overriding runner or command must share a protocol version |
@@ -439,3 +467,16 @@ CMake code when they build it, so this adds no new boundary.
   an override must share the protocol of the package it replaces; stale
   entries error and unused ones warn. Adds the colcon prior art and the
   comparison table.
+- 2026-11-03 — phase-527 W2c, two maintainer decisions on D4. (1) The
+  workspace and its `package_paths` entries are source roots, and the same
+  provider in two of them is refused for every kind unless a declaration
+  pins one or `--allow-overriding` lets the later root win; the nano-ros root
+  stays the underlay and `NROS_PACKAGE_PATH` the overlay, both ordered as
+  before. This is colcon's rule: duplicate package names among base paths are
+  an error, and only an underlay may be overlaid. (2) Declarations move to
+  `nros.toml [workspace.overrides]`, with a single-package leaf's root
+  `system.toml [overrides]` as the fallback when it has no `nros.toml`;
+  `src/*/system.toml` is no longer read, and an `[overrides]` there is
+  refused. Overrides are workspace configuration, as colcon's flags are the
+  workspace's and never a package's, so a vendored package cannot grant
+  itself an override.

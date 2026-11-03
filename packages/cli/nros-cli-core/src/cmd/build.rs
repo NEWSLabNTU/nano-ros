@@ -191,12 +191,15 @@ pub struct Args {
     )]
     pub check: Option<CheckTool>,
 
-    /// Let a workspace package replace the nano-ros (or `package_paths`)
-    /// provider of this name, for this build only.
+    /// Let a package replace another provider of this name, for this build
+    /// only.
     ///
-    /// colcon's flag. A replacement nobody declared is refused for a runner
-    /// or a command; to make it permanent, add `[overrides] <name> =
-    /// "<package path>"` to `system.toml` instead.
+    /// colcon's flag. A replacement of the nano-ros provider nobody declared
+    /// is refused for a runner or a command, and the same name in two source
+    /// trees (the workspace and a `package_paths` entry) is refused for every
+    /// kind; with this flag the later root wins. To make a choice permanent,
+    /// add `<name> = "<package path>"` under `[workspace.overrides]` in
+    /// `nros.toml` instead.
     // RFC-0119 D4.
     #[arg(long, value_name = "NAME", num_args = 1..)]
     pub allow_overriding: Vec<String>,
@@ -4043,7 +4046,7 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
         .any(|n| offered.contains(n.as_str()))
     {
         let path = crate::cmd::ws::provider_search_path(&root)?;
-        let scan = provider_scan::scan_roots(&path.paths())?;
+        let scan = provider_scan::scan_search_path(&path)?;
         let by_dir: BTreeMap<PathBuf, String> = found
             .packages
             .iter()

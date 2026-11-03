@@ -361,10 +361,12 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 /// RFC-0119 D4 — every provider override in the current workspace: name,
-/// winner, what it replaces, and whether `system.toml` declared it. A stale
-/// declaration is a problem (any resolution of its name refuses it); an
-/// undeclared override is reported, not counted, because nothing has
-/// resolved it yet and a stray copy nobody selects is not a fault.
+/// winner, what it replaces, whether the workspace declared it, and which
+/// file the declarations were read from. A stale declaration and a name two
+/// source trees provide with nothing choosing between them are problems (any
+/// resolution of the name refuses them); an undeclared override is reported,
+/// not counted, because nothing has resolved it yet and a stray copy nobody
+/// selects is not a fault.
 fn report_overrides() -> usize {
     let Ok(cwd) = std::env::current_dir() else {
         return 0;
@@ -381,7 +383,7 @@ fn report_overrides() -> usize {
     let Ok(path) = crate::cmd::ws::provider_search_path(&ws) else {
         return 0;
     };
-    let Ok(scan) = cargo_nano_ros::provider_scan::scan_roots(&path.paths()) else {
+    let Ok(scan) = cargo_nano_ros::provider_scan::scan_search_path(&path) else {
         return 0;
     };
     let text = crate::provider_overrides::render_report(&scan, &policy);
@@ -392,7 +394,7 @@ fn report_overrides() -> usize {
     for line in text.lines() {
         eprintln!("  {line}");
     }
-    crate::provider_overrides::stale_count(&scan, &policy)
+    crate::provider_overrides::problem_count(&scan, &policy)
 }
 
 /// `nros doctor --report` — the registry status of every board the bringup's

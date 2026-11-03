@@ -295,7 +295,7 @@ pub struct OverrideNote {
     pub shadowed_package: String,
     /// That package's directory.
     pub shadowed_dir: PathBuf,
-    /// Declared in `system.toml`, or allowed by `--allow-overriding`.
+    /// Declared in the workspace's override table, or allowed by `--allow-overriding`.
     pub status: OverrideStatus,
 }
 

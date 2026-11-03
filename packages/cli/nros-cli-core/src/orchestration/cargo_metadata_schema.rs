@@ -674,10 +674,11 @@ pub struct SystemToml {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tools: BTreeMap<String, String>,
     /// `[overrides]` — `<provider name> = "<package path>"`, WORKSPACE-relative
-    /// (RFC-0119 D4). The workspace package at that path may replace an
-    /// underlay provider of the same name (nano-ros's own, or one on
-    /// `package_paths`). Path-pinned on purpose: another package that later
-    /// announces the name does not inherit the approval. Read by
+    /// (RFC-0119 D4). Read ONLY from the root `system.toml` of a single-package
+    /// leaf that has no `nros.toml`; a workspace declares overrides in
+    /// `nros.toml [workspace.overrides]`, and a `src/*/system.toml` carrying
+    /// this table is refused, so a vendored package cannot grant itself an
+    /// override. Parsed here so the table is not an unknown key; read by
     /// [`crate::provider_overrides`], applied by
     /// `cargo_nano_ros::provider_overrides`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

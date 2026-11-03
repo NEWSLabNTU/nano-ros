@@ -1,11 +1,19 @@
-//! `[overrides]` in `system.toml`: reading the declarations, and reporting
-//! every override (RFC-0119 D4, phase-527 W2b).
+//! Override declarations: reading them, and reporting every override
+//! (RFC-0119 D4, phase-527 W2b/W2c).
 //!
 //! The policy itself — what an undeclared override does, what a stale entry
-//! does — is `cargo_nano_ros::provider_overrides`, a pure function of the
-//! declared table. This module is the half that knows where the table lives:
-//! in the workspace's `system.toml`, parsed by the one strict
-//! [`SystemToml`] reader.
+//! does, what two source roots providing one name do — is
+//! `cargo_nano_ros::provider_overrides`, a pure function of the declared
+//! table. This module is the half that knows where the table lives:
+//!
+//! - `nros.toml [workspace.overrides]`, beside `package_paths` — workspace
+//!   configuration, the primary home;
+//! - the ROOT `system.toml [overrides]`, only when the workspace has no
+//!   `nros.toml` (a single-package leaf).
+//!
+//! A `src/*/system.toml` is never read for overrides: that is a package's
+//! file, and a vendored package must not grant itself an override. One that
+//! carries `[overrides]` is refused, naming the file and the move.
 
 use std::{
     collections::BTreeMap,
@@ -14,65 +22,95 @@ use std::{
 };
 
 use cargo_nano_ros::{
-    provider_overrides::{OverridePolicy, ReportRow},
+    provider_overrides::{OverridePolicy, OverridesFile, ReportRow},
     provider_scan::ScanResult,
 };
 use eyre::{Result, eyre};
 
-use crate::orchestration::cargo_metadata_schema::SystemToml;
+use crate::orchestration::{cargo_metadata_schema::SystemToml, nros_config::workspace_overrides};
 
-/// The `system.toml` files a workspace's `[overrides]` come from: the root's
-/// own (a single-package leaf), else every bringup's under `src/*/`.
-fn system_tomls(ws: &Path) -> Vec<PathBuf> {
-    let direct = ws.join("system.toml");
-    if direct.is_file() {
-        return vec![direct];
-    }
-    let mut found: Vec<PathBuf> = std::fs::read_dir(ws.join("src"))
+/// A workspace's override declarations and where they came from.
+#[derive(Debug, Clone, Default)]
+pub struct Declarations {
+    /// `name -> path as written`.
+    pub entries: BTreeMap<String, String>,
+    /// The file the declarations live in (or would be written in).
+    pub file: OverridesFile,
+    /// The file read, when there was one.
+    pub path: Option<PathBuf>,
+}
+
+/// Does this TOML file carry a top-level `[overrides]` table? Read loosely:
+/// the question is only where a declaration sits, and validating the rest of
+/// the file is its own reader's job.
+fn has_overrides_table(path: &Path) -> Result<bool> {
+    let raw =
+        std::fs::read_to_string(path).map_err(|e| eyre!("reading {}: {e}", path.display()))?;
+    let table: toml::Table =
+        toml::from_str(&raw).map_err(|e| eyre!("parsing {}: {e}", path.display()))?;
+    Ok(table.contains_key("overrides"))
+}
+
+/// The workspace's override declarations.
+///
+/// # Errors
+///
+/// A file that does not parse; `[overrides]` in a `src/*/system.toml`; or a
+/// workspace with a `nros.toml` whose root `system.toml` also carries
+/// `[overrides]`.
+pub fn declared(ws: &Path) -> Result<Declarations> {
+    let mut bringups: Vec<PathBuf> = std::fs::read_dir(ws.join("src"))
         .into_iter()
         .flatten()
         .flatten()
         .map(|e| e.path().join("system.toml"))
         .filter(|p| p.is_file())
         .collect();
-    found.sort();
-    found
-}
-
-/// Every `[overrides]` entry of the workspace, `name -> path as written`.
-///
-/// Several bringups may each declare entries; they are one workspace's
-/// declarations, so the same name pinned to two different paths is refused
-/// rather than resolved by file order.
-///
-/// # Errors
-///
-/// A `system.toml` that does not parse, or a name pinned to two paths.
-pub fn declared(ws: &Path) -> Result<BTreeMap<String, String>> {
-    let mut out: BTreeMap<String, (String, PathBuf)> = BTreeMap::new();
-    for path in system_tomls(ws) {
-        let raw =
-            std::fs::read_to_string(&path).map_err(|e| eyre!("reading {}: {e}", path.display()))?;
-        let sys: SystemToml =
-            toml::from_str(&raw).map_err(|e| eyre!("parsing {}: {e}", path.display()))?;
-        for (name, written) in sys.overrides {
-            match out.get(&name) {
-                Some((prev, from)) if prev != &written => {
-                    return Err(eyre!(
-                        "[overrides] {name} is \"{prev}\" in {} and \"{written}\" in {}; one \
-                         workspace pins a provider name to one package",
-                        from.display(),
-                        path.display()
-                    ));
-                }
-                Some(_) => {}
-                None => {
-                    out.insert(name, (written, path.clone()));
-                }
-            }
+    bringups.sort();
+    for path in &bringups {
+        if has_overrides_table(path)? {
+            return Err(eyre!(
+                "{} declares [overrides], but overrides are workspace configuration: a \
+                 package cannot grant itself one. Move the entries to {} under \
+                 [workspace.overrides].",
+                path.display(),
+                ws.join("nros.toml").display()
+            ));
         }
     }
-    Ok(out.into_iter().map(|(k, (v, _))| (k, v)).collect())
+
+    let nros_toml = ws.join("nros.toml");
+    let root_sys = ws.join("system.toml");
+    match workspace_overrides(ws).map_err(|e| eyre!("{e}"))? {
+        Some(entries) => {
+            if root_sys.is_file() && has_overrides_table(&root_sys)? {
+                return Err(eyre!(
+                    "overrides are declared in both {} [workspace.overrides] and {} \
+                     [overrides]. Keep the nros.toml table and remove the system.toml one: a \
+                     workspace with a nros.toml reads its overrides from there.",
+                    nros_toml.display(),
+                    root_sys.display()
+                ));
+            }
+            Ok(Declarations {
+                entries,
+                file: OverridesFile::NrosToml,
+                path: Some(nros_toml),
+            })
+        }
+        None if root_sys.is_file() => {
+            let raw = std::fs::read_to_string(&root_sys)
+                .map_err(|e| eyre!("reading {}: {e}", root_sys.display()))?;
+            let sys: SystemToml =
+                toml::from_str(&raw).map_err(|e| eyre!("parsing {}: {e}", root_sys.display()))?;
+            Ok(Declarations {
+                entries: sys.overrides,
+                file: OverridesFile::LeafSystemToml,
+                path: Some(root_sys),
+            })
+        }
+        None => Ok(Declarations::default()),
+    }
 }
 
 /// The workspace's override policy, with `--allow-overriding` names added.
@@ -82,16 +120,36 @@ pub fn declared(ws: &Path) -> Result<BTreeMap<String, String>> {
 /// As [`declared`].
 pub fn policy(ws: &Path, allowed: &[String]) -> Result<OverridePolicy> {
     let ws = ws.canonicalize().unwrap_or_else(|_| ws.to_path_buf());
-    Ok(OverridePolicy::new(&ws, &declared(&ws)?, allowed))
+    let d = declared(&ws)?;
+    Ok(OverridePolicy::new(&ws, &d.entries, allowed).read_from(d.file, d.path))
 }
 
 /// The override report as text, one line per row; empty when there is
 /// nothing to say. Shared by `nros dev ws providers` and `nros doctor`, so the
-/// two cannot describe one workspace differently.
+/// two cannot describe one workspace differently. The first line says where
+/// the declarations were read from.
 #[must_use]
 pub fn render_report(scan: &ScanResult, policy: &OverridePolicy) -> String {
     let rows = cargo_nano_ros::provider_overrides::report(scan, policy);
     let mut out = String::new();
+    if rows.is_empty() {
+        return out;
+    }
+    let _ = match &policy.declared_in {
+        Some(p) if !policy.declared.is_empty() => {
+            writeln!(
+                out,
+                "overrides read from {} ({})",
+                p.display(),
+                policy.file.label()
+            )
+        }
+        _ => writeln!(
+            out,
+            "no overrides declared (declare them in {})",
+            policy.file.label()
+        ),
+    };
     for row in rows {
         let _ = match row {
             ReportRow::Override(o) => writeln!(
@@ -104,21 +162,23 @@ pub fn render_report(scan: &ScanResult, policy: &OverridePolicy) -> String {
                 status = o.status.label(),
             ),
             ReportRow::Stale(e) => writeln!(out, "STALE    {e}"),
+            ReportRow::Duplicate(e) => writeln!(out, "DUPLICATE {e}"),
             ReportRow::Unused { name, as_written } => writeln!(
                 out,
-                "unused   [overrides] {name} = \"{as_written}\" replaces nothing"
+                "unused   {} {name} = \"{as_written}\" replaces nothing",
+                policy.file.label()
             ),
         };
     }
     out
 }
 
-/// How many report rows are problems: stale declarations, which a
-/// resolution of the name refuses.
+/// How many report rows are problems: stale declarations and unsettled
+/// source-root duplicates, which a resolution of the name refuses.
 #[must_use]
-pub fn stale_count(scan: &ScanResult, policy: &OverridePolicy) -> usize {
+pub fn problem_count(scan: &ScanResult, policy: &OverridePolicy) -> usize {
     cargo_nano_ros::provider_overrides::report(scan, policy)
         .iter()
-        .filter(|r| matches!(r, ReportRow::Stale(_)))
+        .filter(|r| r.is_problem())
         .count()
 }
