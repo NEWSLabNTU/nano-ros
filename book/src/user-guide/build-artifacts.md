@@ -9,7 +9,7 @@ tool would have produced had you run it yourself.
 This page answers the question the build does not: **what are you holding, and
 where is it?**
 
-## Running it: `nros run`, and no `nros flash` yet
+## Running it: `nros run` and `nros flash`
 
 `nros run` starts an image whose board is a host process or an emulator: it
 builds the image if it is stale, starts the router the image's link needs,
@@ -18,11 +18,17 @@ grades the console, `--dry-run --why` prints the plan it would execute). How a
 board is launched is stated once, in its descriptor's `[board.run]`, so the
 command `nros build` prints as its next step is the one `nros run` executes.
 
-Real silicon is not run: `nros run` refuses a hardware image and names
-`nros flash --monitor`, which is not available yet. Until it is, the
-commands quoted below are **the board tooling's**, reproduced here as a
-reference. They are not nano-ros wrappers and nano-ros does not run them for
-you.
+Real silicon is flashed, not run: `nros run` refuses a hardware image and
+names `nros flash --monitor`. `nros flash` builds the image if stale, runs the
+board's human steps (`[board.flash] prepare`), flashes through the method its
+descriptor's `[board.flash]` names (`west`, or a `command` template), and
+with `--monitor` watches the console on the same port; `--expect <text>`
+grades it as `nros run` does. `nros monitor` opens the console of a board
+that is already running. The port comes from `--port`, `NROS_PORT`, the bench
+file (`nros bench scan`) or the one attached device that matches the board.
+
+The commands quoted below are **the board tooling's**, reproduced here as a
+reference for a board no flash method covers yet.
 
 There is also no install step: `nros build` never runs `cmake --install`, writes
 no `install/` prefix and stages nothing. Whatever the native tool wrote in its

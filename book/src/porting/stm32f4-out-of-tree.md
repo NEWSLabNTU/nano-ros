@@ -202,8 +202,8 @@ run` takes the twin and `nros flash` the silicon.
 
 An image overrides any of this in its `system.toml` with
 `[image.<id>.flash]` and `[image.<id>.console]`, which take the same keys
-(see [Configuration](../user-guide/configuration.md)). `nros flash`, which
-runs these steps, is phase-529 W3.
+(see [Configuration](../user-guide/configuration.md)). `nros flash` runs
+these steps.
 
 ## What you take on
 

@@ -78,9 +78,11 @@ deployment is launching simulator with correct network setup.
 
 For a host image or an emulator, `nros run` builds the image if stale, starts
 the router its link needs and streams the console; `nros run --expect
-'<line>'` is the one-line smoke test. Real hardware is not run: there is no
-`nros flash` or `nros deploy` verb yet, so flashing runs on the **vendor's
-native tools**. See
+'<line>'` is the one-line smoke test. Real hardware is flashed:
+`nros flash --monitor --expect '<line>'` builds, runs the board's human steps,
+flashes through the board's flash method and watches the console on the same
+port, and `nros monitor` attaches to a board that is already running. A board
+with no flash method stays on the **vendor's native tools**. See
 [What `nros build` Produces](build-artifacts.md) for where each target family's
 artifact lands and which of the vendor's commands takes it from there.
 

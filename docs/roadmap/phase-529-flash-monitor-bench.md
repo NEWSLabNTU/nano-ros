@@ -202,6 +202,51 @@ plan that verb will print.
 - Both use phase-528 W4's capture, grading, router and teardown code; there
   is no second implementation.
 
+**Landed without hardware (2026-11-04); the acceptance runs below wait for
+a bench board (W5 and W6).**
+
+- *One target resolution.* `run_plan::resolve_target` picks the one image a
+  selection names, with its board descriptor, for `nros run`, `nros flash`
+  and `nros monitor` alike. It is the only place the "which image" rungs
+  live, so a later rung is added there once.
+- *The console verb resolves.* `run_plan::resolve` answers `Verb::Console`
+  with the board's flash plan turned into its console (`run_plan::console_of`):
+  same target, port, baud and console command, the `serial` runner, and no
+  prepare steps, flash command or chip. On an emulated board it refuses,
+  naming `nros run`.
+- *`nros flash`* (`cmd/flash.rs`). It resolves the plan, with the port and
+  probe from RFC-0118 D6's ladder (`run_plan::bench_for`), or reads
+  `--plan <file>` as written. It builds if stale (not under `--plan`), runs
+  `prepare::execute` (`--no-prompt`, and `--timeout` for a `wait_for`), then
+  flashes through `run_exec::execute`. With `--monitor`, the same port is
+  handed to the console plan (`flash::monitor_plan`), and `--expect`,
+  `--expect-regex`, `--timeout` and `--router` apply to that console. A failed
+  prepare or flash ends the verb before any console opens. Flags: `--runner`,
+  `--port`, `--probe`, `--no-prompt`, `--monitor`, `--plan`, `--dry-run`,
+  `--why`, `--json`, arguments after `--` (to the flasher only). `--dry-run`
+  prints the flash plan and, with `--monitor`, the console plan after it.
+- *`nros monitor`* (`cmd/monitor.rs`). In a workspace, the image's board
+  states the console. Outside one, `--port` alone is enough, because a
+  running board needs no image. `--baud` and `--send` (repeatable) are the
+  invocation rung. It starts no router: it attaches to a board that is
+  already running.
+- *One executor.* `run_exec::execute` runs flash and console plans as it runs
+  `run` plans. Its messages name the verb, and a flash writes `flash.log`, so
+  the console that `--monitor` opens next starts a clean `console.log`.
+- *Tests, compiling nothing.* The flash path runs against a shell-script fake
+  runner. It checks that `--monitor` hands the flashed port to the console,
+  that the arguments after `--` reach the flasher only, that the logs are
+  split, that a failed flash opens no console, and that a `say` step under
+  `--no-prompt` stops before the flash. The real `west` runner's flash, with
+  a fake `west` from `plan.tools`, is W2's `tests/flash.rs`. `nros monitor`
+  runs against a pty pair, with a shell console runner, `--send` and
+  `--expect`. `board_runner_resolves.rs` now also resolves, on every in-tree
+  board with `[board.flash]`, the `nros flash --dry-run --why` plan
+  (provenance names the port's rung) and the `nros monitor` plan. It checks
+  that the monitor plan equals `--monitor`'s console plan on the same port
+  and that its runner implements `console`. The resolver also refuses
+  `monitor` on an emulated board.
+
 Acceptance:
 
 - On a bench board from phase-524, `nros flash --monitor --expect '<line>'`
