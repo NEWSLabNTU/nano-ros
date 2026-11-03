@@ -1384,6 +1384,43 @@ pub struct IdleWake {
     pub max_early_us: u64,
 }
 
+/// phase-521 W7 (a) — the witness's arrival→dispatch line, printed after five
+/// samples from a host talker: `arrival-latency: n=N min_us=A mean_us=B
+/// max_us=C`. Parsed by [`parse_arrival_latency`].
+pub const ARRIVAL_LATENCY_PREFIX: &str = "arrival-latency: n=";
+
+/// The witness's arrival→dispatch result: microseconds from the last LAN9118
+/// receive interrupt to the subscription callback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArrivalLatency {
+    pub n: u32,
+    pub min_us: u32,
+    pub mean_us: u32,
+    pub max_us: u32,
+}
+
+/// Parse the first arrival-latency line in `out`, if there is one.
+pub fn parse_arrival_latency(out: &str) -> Option<ArrivalLatency> {
+    let line = out
+        .lines()
+        .find_map(|l| l.find(ARRIVAL_LATENCY_PREFIX).map(|i| &l[i..]))?;
+    let field = |name: &str| -> Option<u32> {
+        let key = format!("{name}=");
+        let start = line.find(&key)? + key.len();
+        let rest = &line[start..];
+        let end = rest
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(rest.len());
+        rest[..end].parse().ok()
+    };
+    Some(ArrivalLatency {
+        n: field("n")?,
+        min_us: field("min_us")?,
+        mean_us: field("mean_us")?,
+        max_us: field("max_us")?,
+    })
+}
+
 /// Parse the first idle-wake result line in `out`, if there is one.
 pub fn parse_idle_wake(out: &str) -> Option<IdleWake> {
     let line = out
@@ -1697,6 +1734,21 @@ fn extract_after<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_arrival_latency_reads_the_witness_line() {
+        let out = "idle-wake: armed\r\narrival-latency: n=5 min_us=310 mean_us=402 max_us=655\r\n";
+        assert_eq!(
+            parse_arrival_latency(out),
+            Some(ArrivalLatency {
+                n: 5,
+                min_us: 310,
+                mean_us: 402,
+                max_us: 655
+            })
+        );
+        assert_eq!(parse_arrival_latency("idle-wake: armed\n"), None);
+    }
 
     #[test]
     fn parse_idle_wake_reads_the_witness_line() {

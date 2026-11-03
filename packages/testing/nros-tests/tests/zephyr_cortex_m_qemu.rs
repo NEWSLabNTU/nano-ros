@@ -45,14 +45,15 @@
 use nros_tests::{
     alloc::port_of,
     fixtures::{
-        QemuProcess, RequireFixture, Rmw, XrceAgent, ZenohRouter,
-        build_zephyr_cortex_m_c_boot_report, build_zephyr_cortex_m_example,
-        build_zephyr_cortex_m_idle_wake, is_qemu_available, is_xrce_agent_available,
-        is_zenohd_available, qemu_monitor_command,
+        ManagedProcess, QemuProcess, RequireFixture, Rmw, XrceAgent, ZenohRouter,
+        build_native_talker_rmw, build_zephyr_cortex_m_c_boot_report,
+        build_zephyr_cortex_m_example, build_zephyr_cortex_m_idle_wake, is_qemu_available,
+        is_xrce_agent_available, is_zenohd_available, qemu_monitor_command,
     },
     matrix::{Lang, PlatformId, Workload},
     output::{
-        IDLE_WAKE_RESULT_PREFIX, ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER, parse_idle_wake,
+        ARRIVAL_LATENCY_PREFIX, IDLE_WAKE_ARMED_MARKER, IDLE_WAKE_RESULT_PREFIX,
+        ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER, parse_arrival_latency, parse_idle_wake,
     },
 };
 use std::{
@@ -581,6 +582,106 @@ fn run_idle_wake_cell(rmw: Rmw) {
         r.max_late_us,
         r.max_early_us
     );
+}
+
+/// phase-521 W7 (a) (RFC-0113 D2.4) — arrival→dispatch on Zephyr's own IP
+/// stack, against the port's granularity.
+///
+/// The same witness image, now with a host talker publishing on `/chatter`
+/// at 1 Hz through the cell's router or agent. The image stamps the last
+/// LAN9118 receive interrupt and the callback's dispatch on the 25 MHz cycle
+/// counter, and prints min/mean/max over five samples.
+///
+/// The bound is the port's: an arrival ends the executor's park through its
+/// wake object, not on a tick, so dispatch must land within one Zephyr tick
+/// (1 ms, `CONFIG_SYS_CLOCK_TICKS_PER_SEC=1000`) plus the receive path (the IP
+/// stack's and the RMW's threads), stated here as 5 ms. The lower bound is the
+/// sanity check: a dispatch at its interrupt's own cycle means the stamp is
+/// not measuring this path.
+fn run_arrival_latency_cell(rmw: Rmw) {
+    require_cortex_m_in_lane("a Zephyr Cortex-M arrival-latency cell");
+    if !is_qemu_available() {
+        nros_tests::unmet!("qemu-system-arm not found");
+    }
+    let binary = build_zephyr_cortex_m_idle_wake(rmw).require("the mps2_an385 idle-wake witness");
+    let talker = build_native_talker_rmw(rmw).require("the native Rust talker (the host peer)");
+
+    let (_router, _agent, locator) = match rmw {
+        Rmw::Zenoh => {
+            if !is_zenohd_available() {
+                nros_tests::unmet!("zenohd not found — run `just setup` / source ./activate.sh");
+            }
+            let port = port_of(PlatformId::ZephyrQemuCortexM, Lang::C, Workload::IdleWake);
+            let router = ZenohRouter::start_slirp(port).unwrap_or_else(|e| {
+                panic!("failed to start zenohd on {port} for the SLIRP guest: {e:?}")
+            });
+            (Some(router), None, format!("tcp/127.0.0.1:{port}"))
+        }
+        Rmw::Xrce => {
+            if !is_xrce_agent_available() {
+                nros_tests::unmet!("the Micro-XRCE-DDS agent was not found — run `just setup`");
+            }
+            let port = nros_tests::alloc::xrce_agent_port_of(
+                PlatformId::ZephyrQemuCortexM,
+                Lang::C,
+                Workload::IdleWake,
+            );
+            let agent = XrceAgent::start(port)
+                .unwrap_or_else(|e| panic!("failed to start the XRCE agent on {port}: {e:?}"));
+            (None, Some(agent), format!("127.0.0.1:{port}"))
+        }
+        other => panic!("no arrival-latency row for {other:?}"),
+    };
+
+    let mut qemu =
+        QemuProcess::start_mps2_an385_networked(&binary).expect("spawn the idle-wake witness");
+    let booted = qemu.collect_until(IDLE_WAKE_ARMED_MARKER, BOOT_BUDGET);
+    assert!(
+        booted.contains(IDLE_WAKE_ARMED_MARKER),
+        "the witness never armed its subscription.\nOutput:\n{booted}"
+    );
+    // The image bakes the cell's allocated domain (its fixture row's
+    // `west_cyclone_domain`), so the peer joins the same one.
+    let domain =
+        nros_tests::alloc::domain_of(PlatformId::ZephyrQemuCortexM, Lang::C, Workload::IdleWake);
+    let mut cmd = Command::new(talker);
+    cmd.env("NROS_LOCATOR", &locator)
+        .env("XRCE_AGENT_ADDR", &locator)
+        .env("ROS_DOMAIN_ID", domain.to_string());
+    let mut peer = ManagedProcess::spawn_command(cmd, "arrival-latency-talker")
+        .expect("spawn the host talker");
+    let rest = qemu.collect_until(ARRIVAL_LATENCY_PREFIX, Duration::from_secs(60));
+    qemu.kill();
+    peer.kill();
+    let output = format!("{booted}{rest}");
+    eprintln!("Zephyr mps2_an385 arrival-latency witness ({rmw:?}) output:\n{output}");
+
+    let r = parse_arrival_latency(&output).unwrap_or_else(|| {
+        panic!("the witness printed no `{ARRIVAL_LATENCY_PREFIX}` line.\nOutput:\n{output}")
+    });
+    assert!(r.n >= 5, "{r:?}");
+    assert!(
+        r.max_us <= 5_000,
+        "an arrival was dispatched {} us after its receive interrupt: beyond one 1 ms tick \
+         plus the receive path (RFC-0113 D2.4). Output:\n{output}",
+        r.max_us
+    );
+    assert!(
+        r.min_us >= 1,
+        "a dispatch landed {} us after its receive interrupt: the stamp is not measuring the \
+         receive path. Output:\n{output}",
+        r.min_us
+    );
+}
+
+#[test]
+fn zephyr_cortex_m_zenoh_arrival_is_dispatched_within_the_port_bound() {
+    run_arrival_latency_cell(Rmw::Zenoh);
+}
+
+#[test]
+fn zephyr_cortex_m_xrce_arrival_is_dispatched_within_the_port_bound() {
+    run_arrival_latency_cell(Rmw::Xrce);
 }
 
 #[test]

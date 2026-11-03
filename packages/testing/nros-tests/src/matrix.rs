@@ -1268,6 +1268,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("subnode_freestanding_link", NonCell::CompileCheck),
     ("system_toml_tiers_parse", NonCell::Static),
     ("tier_filter", NonCell::FeatureLane),
+    ("tier_wake_fanout", NonCell::FeatureLane),
     ("time_to_ros_msg", NonCell::Static),
     (
         "trigger_conditions",
