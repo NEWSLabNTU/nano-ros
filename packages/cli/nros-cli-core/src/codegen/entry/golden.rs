@@ -56,13 +56,19 @@ pub(super) enum Emitter {
     /// the only entry point that seeds a node's rank.
     CRanked,
     CppRanked,
+    /// phase-521 W8 (b) -- `px4::emit_px4`, the PX4 module entry.
+    Px4,
     Rust,
 }
 
 impl Emitter {
     fn ext(self) -> &'static str {
         match self {
-            Emitter::Cpp | Emitter::CppProbe | Emitter::CppMonitored | Emitter::CppRanked => "cpp",
+            Emitter::Cpp
+            | Emitter::CppProbe
+            | Emitter::CppMonitored
+            | Emitter::CppRanked
+            | Emitter::Px4 => "cpp",
             Emitter::C | Emitter::CMonitored | Emitter::CRanked => "c",
             Emitter::Rust => "rs",
         }
@@ -233,7 +239,7 @@ fn cpp_rclcpp_node(pkg: &str, exec: &str) -> PlanNode {
 ///
 /// Tier members are matched BY NODE NAME against each node's name-or-exec, so
 /// the member strings must equal the execs.
-fn cpp_tiered_plan(board: &str) -> Plan {
+pub(super) fn cpp_tiered_plan(board: &str) -> Plan {
     let mut ctrl = typed_node("ctrl_pkg", "ctrl");
     ctrl.callback_groups = vec!["ctrl_grp".into()];
     ctrl.sched_context = Some(0);
@@ -716,6 +722,22 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     };
     out.push(("node_register_linux_rclcpp", rclcpp.plan(), Emitter::Cpp));
 
+    // phase-521 W8 (b) -- the PX4 module entry: a two-tier bringup (one work
+    // item per tier, each on the queue its rank picks) and a plan with no
+    // tier table (one `default` work item holding every node).
+    out.push(("px4_tiers", cpp_tiered_plan("px4"), Emitter::Px4));
+    out.push((
+        "px4_one",
+        plan(
+            "px4",
+            vec![
+                typed_node("talker_pkg", "talker"),
+                typed_node("listener_pkg", "listener"),
+            ],
+        ),
+        Emitter::Px4,
+    ));
+
     out
 }
 
@@ -763,6 +785,7 @@ fn render(p: &Plan, emitter: Emitter) -> Result<String, String> {
             )
             .map(|(src, _)| src)
         }
+        Emitter::Px4 => super::px4::emit_px4(p, "nros_demo", &Default::default()),
         Emitter::Rust => super::emit_rust::emit(p),
     }
 }

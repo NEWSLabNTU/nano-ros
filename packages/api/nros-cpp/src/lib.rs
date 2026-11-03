@@ -4073,6 +4073,18 @@ pub unsafe extern "C" fn nros_cpp_spin_some(handle: *mut c_void, max_ms: u32) ->
     }
 }
 
+/// phase-521 W8 (b) — the budget [`nros_cpp_entry_spin_budget_ms`] answers
+/// when every source of work can end the executor's park, in milliseconds.
+///
+/// A PX4 tier's park slot reads a bound that reaches this budget as "no
+/// deadline", and clears its work item's schedule instead of arming it
+/// (RFC-0113 D9). Equal to `nros_node::ENTRY_IDLE_BUDGET` by the assertion
+/// below, so the header constant cannot drift from the executor.
+pub const NROS_CPP_ENTRY_IDLE_BUDGET_MS: i32 = 60_000;
+
+const _: () =
+    assert!(nros_node::ENTRY_IDLE_BUDGET.as_millis() == NROS_CPP_ENTRY_IDLE_BUDGET_MS as u128);
+
 /// phase-521 W6 (RFC-0113 D2) — the budget an entry loop passes to
 /// [`nros_cpp_spin_once`], in milliseconds.
 ///

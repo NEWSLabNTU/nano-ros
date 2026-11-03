@@ -713,6 +713,32 @@ The uORB arrival's binding to the tier's `ScheduleNow()` is PX4 glue (issue
 2218). It lands with the generated entry (b) and the examples (d), where a PX4
 build compiles it.
 
+**W8 (b) — the generated PX4 entry (2026-11-03).** `nros codegen entry`'s
+PX4 emitter (`nros-cli-core` `codegen/entry/px4.rs`, template
+`px4_entry.cpp.jinja`) renders a PX4 module: `ModuleBase<>` boilerplate, the
+C++ entry's node setups (same pack, same partials; the monitor statics moved
+into a shared partial, every C++ golden byte-identical), and one
+`nros_px4::TierWorkItem` subclass per tier on the queue
+`px4_work_queues` picks by priority rank. A plan with no tier table is one
+`default` tier; a group-split plan and more tiers than queues are refused.
+The runtime half, `integrations/px4/include/nros_px4/tier_work_item.hpp`
+(on the module's include path), opens the boot tier's session and borrows it
+for the rest, installs the tier's park slot, and drives `Run()`: a first pass
+whose park answers EXPIRED, then passes until the slot yields, arming
+`ScheduleDelayed(bound)` or, with no deadline inside the idle budget
+(`NROS_CPP_ENTRY_IDLE_BUDGET_MS`, new, asserted equal to
+`ENTRY_IDLE_BUDGET`), `ScheduleClear()`. Arrivals go through `notify()`,
+which re-queues a run the clear removed. Goldens `px4_tiers` (the two-tier
+bringup: `high`@`rate_ctrl`, `low`@`hp_default`) and `px4_one`; four unit
+tests (queue follows rank not table order, too many tiers, group split, bad
+`main`). Both goldens compile clean with PX4 SITL's own module flags
+(`-Wall -Wextra -Werror -Wshadow -Wfloat-equal ...`) against the real PX4
+headers, which found two things: PX4's `ERROR` macro breaks `rclcpp_lifecycle`
+unless nano-ros is included first, and `parameter_value.hpp`'s double `==`
+failed `-Wfloat-equal` for every PX4 module including `rclcpp.hpp` (now
+`std::equal_to`). The CLI flag and the cmake wiring that call the emitter land
+with (d), which builds them.
+
 **Assessment (2026-11-02).** SITL is provisionable here: the main checkout
 holds `third-party/px4/PX4-Autopilot` with a built
 `build/px4_sitl_default`, `just px4 setup|doctor|build-sitl-cpp|test-sitl`

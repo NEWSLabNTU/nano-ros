@@ -58,6 +58,7 @@ pub mod registered_node;
 /// phase-432 W3.2 — the entry pack manifests and the one routing decision.
 pub mod pack;
 pub mod priority_record;
+pub mod px4;
 mod render;
 
 /// The entry emitters' target language.

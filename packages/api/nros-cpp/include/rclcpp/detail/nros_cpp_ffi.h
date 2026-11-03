@@ -106,6 +106,17 @@
 #define NROS_CPP_DOMAIN_ID_INHERIT UINT32_MAX
 
 /**
+ * phase-521 W8 (b) — the budget [`nros_cpp_entry_spin_budget_ms`] answers
+ * when every source of work can end the executor's park, in milliseconds.
+ *
+ * A PX4 tier's park slot reads a bound that reaches this budget as "no
+ * deadline", and clears its work item's schedule instead of arming it
+ * (RFC-0113 D9). Equal to `nros_node::ENTRY_IDLE_BUDGET` by the assertion
+ * below, so the header constant cannot drift from the executor.
+ */
+#define NROS_CPP_ENTRY_IDLE_BUDGET_MS 60000
+
+/**
  * Bytes of caller storage ONE age row needs (`SubMonitorCell` +
  * `AgeMonitorSpec`); same rule as [`NROS_CPP_MONITOR_ROW_STORAGE`].
  */
