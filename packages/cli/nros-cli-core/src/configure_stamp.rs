@@ -282,7 +282,22 @@ pub(crate) fn is_current(project: &Path, image: &str, named: bool) -> Result<Cur
         &real_env(),
         current_launch_resolver().as_deref(),
         &real_ament_moved,
+        &real_preflight,
     )
+}
+
+/// Ruling R19 — would `image`'s toolchain preflight refuse it NOW? Stages 1–3
+/// as a query (`build::preflight_query`): no census, nothing generated,
+/// nothing written. `Ok(Some(reason))` still refuses; `Ok(None)` passes.
+fn real_preflight(project: &Path, image: &str) -> Result<Option<String>> {
+    let args = crate::cmd::configure::build_args(project, image, &None, false, false);
+    match crate::cmd::build::preflight_query(&args) {
+        Ok(()) => Ok(None),
+        Err(e) => match e.downcast_ref::<crate::builder::preflight::PreflightRefusal>() {
+            Some(r) => Ok(Some(r.summary())),
+            None => Err(e),
+        },
+    }
 }
 
 /// The generated message crates whose recorded ament inputs moved (RFC-0120
@@ -326,12 +341,25 @@ pub(crate) fn is_current_with(
     env: &[(String, Option<String>)],
     resolver: Option<&Path>,
 ) -> Result<Currency> {
-    currency(project, image, false, env, resolver, &real_ament_moved)
+    currency(
+        project,
+        image,
+        false,
+        env,
+        resolver,
+        &real_ament_moved,
+        &real_preflight,
+    )
 }
 
+/// What a skipped image's preflight answers now: `Some(reason)` still
+/// refuses, `None` passes.
+pub(crate) type PreflightProbe<'a> = &'a dyn Fn(&Path, &str) -> Result<Option<String>>;
+
 /// [`is_current`] with everything it observes injected: whether the image was
-/// named, the environment, the resolved `nros-launch-resolve`, and which
-/// generated crates' ament inputs moved.
+/// named, the environment, the resolved `nros-launch-resolve`, which generated
+/// crates' ament inputs moved, and (for a SKIP stamp only) the image's
+/// toolchain preflight.
 pub(crate) fn currency(
     project: &Path,
     image: &str,
@@ -339,6 +367,7 @@ pub(crate) fn currency(
     env: &[(String, Option<String>)],
     resolver: Option<&Path>,
     ament_moved: &dyn Fn(&Path) -> Result<Vec<String>>,
+    preflight: PreflightProbe<'_>,
 ) -> Result<Currency> {
     let Some(stamp) = read(project, image) else {
         return Ok(Currency::Stale("no configure stamp recorded".into()));
@@ -393,6 +422,26 @@ pub(crate) fn currency(
                     "entity census `{}` is stale: {}",
                     census.display(),
                     why.lines().next().unwrap_or("")
+                )));
+            }
+        }
+    }
+    // Ruling R19 — LAST, as the only check that consults the toolchain: a
+    // skip stamp is current only while the image's preflight still refuses.
+    // Toolchain presence is no digest input, so without this a skipped image
+    // stayed skipped after its toolchain was installed.
+    if stamp.skipped.is_some() {
+        match preflight(project, image) {
+            Ok(Some(_still_refused)) => {}
+            Ok(None) => {
+                return Ok(Currency::Stale(format!(
+                    "toolchain now present for {image}"
+                )));
+            }
+            Err(e) => {
+                return Ok(Currency::Stale(format!(
+                    "preflight of {image} could not be checked: {}",
+                    format!("{e:#}").lines().next().unwrap_or("")
                 )));
             }
         }
@@ -706,6 +755,10 @@ mod tests {
         Ok(Vec::new())
     }
 
+    fn still_refuses(_: &Path, _: &str) -> Result<Option<String>> {
+        Ok(Some("missing Rust target `x`".into()))
+    }
+
     /// RFC-0120 D7 / Ruling R17 — an `apt` upgrade moves the ament files under
     /// an unchanged `AMENT_PREFIX_PATH`, so only the generated crates' content
     /// stamps can see it, and the configure stamp must ask them.
@@ -715,12 +768,21 @@ mod tests {
         std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
         record(&p, "img", &stamp_for(&p)).unwrap();
         assert_eq!(
-            currency(&p, "img", false, &real_env(), None, &nothing_moved).unwrap(),
+            currency(
+                &p,
+                "img",
+                false,
+                &real_env(),
+                None,
+                &nothing_moved,
+                &still_refuses
+            )
+            .unwrap(),
             Currency::Current
         );
         let moved = |_: &Path| -> Result<Vec<String>> { Ok(vec!["std_msgs".to_string()]) };
         assert_eq!(
-            currency(&p, "img", false, &real_env(), None, &moved).unwrap(),
+            currency(&p, "img", false, &real_env(), None, &moved, &still_refuses).unwrap(),
             Currency::Stale("ament inputs moved: std_msgs".into())
         );
     }
@@ -735,12 +797,30 @@ mod tests {
         stamp.skipped = Some("missing Rust target `x` (run: rustup target add x)".into());
         record(&p, "ws:img", &stamp).unwrap();
         assert_eq!(
-            currency(&p, "ws:img", false, &real_env(), None, &nothing_moved).unwrap(),
+            currency(
+                &p,
+                "ws:img",
+                false,
+                &real_env(),
+                None,
+                &nothing_moved,
+                &still_refuses
+            )
+            .unwrap(),
             Currency::Current,
             "an unnamed skipped image with an unchanged digest is current"
         );
         assert_eq!(
-            currency(&p, "ws:img", true, &real_env(), None, &nothing_moved).unwrap(),
+            currency(
+                &p,
+                "ws:img",
+                true,
+                &real_env(),
+                None,
+                &nothing_moved,
+                &still_refuses
+            )
+            .unwrap(),
             Currency::Stale(
                 "image was skipped: missing Rust target `x` (run: rustup target add x)".into()
             )
@@ -758,9 +838,83 @@ mod tests {
         std::fs::create_dir_all(&models).unwrap();
         let marker = crate::model_gate::marker_path(&models.join("system_model.yaml"));
         std::fs::write(&marker, "check: x\ninput: y\n").unwrap();
-        match currency(&p, "img", false, &real_env(), None, &nothing_moved).unwrap() {
+        match currency(
+            &p,
+            "img",
+            false,
+            &real_env(),
+            None,
+            &nothing_moved,
+            &still_refuses,
+        )
+        .unwrap()
+        {
             Currency::Stale(why) => assert!(why.contains("refused"), "{why}"),
             Currency::Current => panic!("a refused model must stale the stamp"),
         }
+    }
+
+    /// Ruling R19 — a SKIP stamp stays current only while the image's
+    /// preflight still refuses; once the toolchain appears, the image
+    /// reconfigures (once: the next configure records a full stamp).
+    #[test]
+    fn skipped_image_reconfigures_once_its_toolchain_appears() {
+        let p = tmp("skip-toolchain");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let mut stamp = stamp_for(&p);
+        stamp.skipped = Some("missing Rust target `x`".into());
+        record(&p, "ws:img", &stamp).unwrap();
+        assert_eq!(
+            currency(
+                &p,
+                "ws:img",
+                false,
+                &real_env(),
+                None,
+                &nothing_moved,
+                &still_refuses
+            )
+            .unwrap(),
+            Currency::Current,
+            "still refused: the skip stands"
+        );
+        let asked = std::cell::RefCell::new(Vec::new());
+        let present = |_: &Path, image: &str| -> Result<Option<String>> {
+            asked.borrow_mut().push(image.to_string());
+            Ok(None)
+        };
+        assert_eq!(
+            currency(
+                &p,
+                "ws:img",
+                false,
+                &real_env(),
+                None,
+                &nothing_moved,
+                &present
+            )
+            .unwrap(),
+            Currency::Stale("toolchain now present for ws:img".into())
+        );
+        assert_eq!(*asked.borrow(), ["ws:img"], "the image's own preflight");
+
+        // A FULL stamp never asks the toolchain.
+        record(&p, "ws:img", &stamp_for(&p)).unwrap();
+        let never = |_: &Path, _: &str| -> Result<Option<String>> {
+            panic!("a full stamp must not run a preflight")
+        };
+        assert_eq!(
+            currency(
+                &p,
+                "ws:img",
+                false,
+                &real_env(),
+                None,
+                &nothing_moved,
+                &never
+            )
+            .unwrap(),
+            Currency::Current
+        );
     }
 }
