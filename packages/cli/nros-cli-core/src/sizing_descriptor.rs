@@ -219,6 +219,9 @@ pub struct ModelHorizon {
     unobserved: &'static str,
     /// Issue 1655 — the standalone-leaf declaration road.
     leaf_declaration: bool,
+    /// Why this road may not state `[types] max_wire_bound_bytes`, when it may
+    /// not ([`Self::refusing_closure_wire_bound`]).
+    closure_wire_bound_refused: Option<String>,
 }
 
 /// What a model-only producer reads, in the words its refusals use.
@@ -264,6 +267,7 @@ impl ModelHorizon {
             from: FROM_MODEL,
             unobserved: MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE,
             leaf_declaration: false,
+            closure_wire_bound_refused: None,
         }
     }
 
@@ -279,6 +283,7 @@ impl ModelHorizon {
             from: FROM_LEAF_DECLARATION,
             unobserved: A_DECLARATION_IS_NOT_A_CALL_SITE,
             leaf_declaration: true,
+            closure_wire_bound_refused: None,
         }
     }
 
@@ -294,7 +299,19 @@ impl ModelHorizon {
             from: FROM_LEAF_CENSUS,
             unobserved: A_DECLARATION_IS_NOT_A_CALL_SITE,
             leaf_declaration: false,
+            closure_wire_bound_refused: None,
         }
+    }
+
+    /// A road whose take buffer may be sized from the SUBSCRIBED set only, so
+    /// `[types] max_wire_bound_bytes` -- the CLOSURE maximum `RX_BUF` is sized
+    /// from -- is refused with `why` whatever the bound tables say. The Zephyr
+    /// west Rust image is one: the closure it can see is the workspace's
+    /// `generated/` tree, which is not every interface the image links, so a
+    /// maximum over it could under-size the buffer.
+    pub fn refusing_closure_wire_bound(mut self, why: impl Into<String>) -> Self {
+        self.closure_wire_bound_refused = Some(why.into());
+        self
     }
 
     /// Is this the standalone-leaf DECLARATION road (`--from-leaf`)?
@@ -2641,6 +2658,14 @@ fn write_model_descriptor(
     };
     let mut desc = desc;
     desc.tiers = tiers;
+    // A road that may size from the subscribed set only refuses the closure
+    // maximum wherever the composer answered it; an ABSENT field stays absent.
+    if let Some(why) = &img.horizon.closure_wire_bound_refused {
+        if desc.types.max_wire_bound_bytes().tag() != "absent" {
+            desc.types.set_max_wire_bound_bytes(None);
+            desc.types.refuse("max_wire_bound_bytes", why.clone());
+        }
+    }
     let body = nros_sizing_descriptor::render(&desc);
 
     // Issue 0320, the same rule the leaf road holds to and for the same reason:
@@ -5660,6 +5685,74 @@ contracts:
         assert!(
             !nros_sizing_descriptor::descriptor_path(dir.path(), "img").exists(),
             "a refused declaration wrote a descriptor"
+        );
+    }
+
+    /// A road that sizes the take buffer from the SUBSCRIBED set only (the
+    /// Zephyr west Rust image) states no `[types] max_wire_bound_bytes`: that
+    /// field is the CLOSURE maximum `RX_BUF` is sized from, and the closure this
+    /// road can see is the workspace's `generated/` tree, not every interface
+    /// the image links. Negative control: the same image on a road that does
+    /// not refuse states the closure maximum from the same table.
+    #[test]
+    fn a_road_refusing_the_closure_basis_states_no_max_wire_bound() {
+        let dir = tempfile::tempdir().unwrap();
+        let table = dir.path().join("std_msgs/nros_message_bounds.json");
+        std::fs::create_dir_all(table.parent().unwrap()).unwrap();
+        std::fs::write(
+            &table,
+            r#"{
+              "schema_version": 1,
+              "producer": "nros-codegen",
+              "package": "std_msgs",
+              "derivation": "nros_serdes::size::max_serialized_size",
+              "types": [
+                { "type_name": "std_msgs/msg/Int32", "state": "bounded",
+                  "tx_max_serialized_size": 8, "rx_max_serialized_size": 12 }
+              ]
+            }"#,
+        )
+        .unwrap();
+        let tables = vec![table];
+        let inv = inventory(vec![]);
+        let image = |build_dir, horizon| ModelImage {
+            wiring: Wiring::Composed(&inv),
+            bound_inventories: &tables,
+            horizon,
+            ..unwired(
+                build_dir,
+                "img",
+                &ParamDeclarations::Absent,
+                InfraServices::default(),
+            )
+        };
+
+        let closure = dir.path().join("closure");
+        let stated = write_for_model(&image(&closure, ModelHorizon::new("a cmake entry")))
+            .unwrap()
+            .expect("a composed inventory always writes");
+        assert!(
+            stated.desc.types.max_wire_bound_bytes().is_stated(),
+            "the control road states the closure maximum"
+        );
+
+        let subscribed = dir.path().join("subscribed");
+        let refused = write_for_model(&image(
+            &subscribed,
+            ModelHorizon::new("a Zephyr west Rust image")
+                .refusing_closure_wire_bound("only the subscribed set may size this image"),
+        ))
+        .unwrap()
+        .expect("a composed inventory always writes");
+        let f = refused.desc.types.max_wire_bound_bytes();
+        assert!(
+            !f.is_stated(),
+            "the closure basis tightened the take buffer"
+        );
+        assert!(
+            f.refusal()
+                .is_some_and(|r| r.contains("only the subscribed set")),
+            "the refusal carries the road's reason: {f:?}"
         );
     }
 

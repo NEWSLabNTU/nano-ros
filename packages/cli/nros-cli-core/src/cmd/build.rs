@@ -780,22 +780,20 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
     // images one shared configure's union resolve covers. One predicate, so
     // the root and the resolve cannot disagree about who shares a configure.
     let coordinate_members = |bringup: &str, coord: &str| -> Vec<CoordinateMember> {
-        plan::all_images(&bringups)
-            .into_iter()
-            .filter(|(b, bd, _, img)| {
-                b == bringup
-                    && crate::orchestration::image::resolve_image_board(&catalog, "", img)
-                        .map(|d| {
-                            plan::driver_for_board(
-                                d.platform.kebab(),
-                                d.entry_kind,
-                                image_has_non_rust(img, bd),
-                            ) == Ok(Driver::CMake)
-                                && cmake_coordinate(d.platform.kebab(), img, bd) == coord
-                        })
-                        .unwrap_or(false)
-            })
-            .collect()
+        members_on_coordinate(
+            plan::all_images(&bringups),
+            bringup,
+            coord,
+            |(_, bd, _, img)| {
+                let d = crate::orchestration::image::resolve_image_board(&catalog, "", img).ok()?;
+                (plan::driver_for_board(
+                    d.platform.kebab(),
+                    d.entry_kind,
+                    image_has_non_rust(img, bd),
+                ) == Ok(Driver::CMake))
+                .then(|| cmake_coordinate(d.platform.kebab(), img, bd))
+            },
+        )
     };
 
     // issue 1582 — before ANY image is generated, and over EVERY image the
@@ -823,9 +821,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
 
     let mut out = Vec::new();
     // phase-530 W3 -- each shared cmake configure's union, by
-    // `shared_configure_id`, so it is composed once per plan.
-    let mut coordinate_unions: std::collections::BTreeMap<String, Option<PathBuf>> =
-        Default::default();
+    // `SharedConfigure`, so it is composed once per plan.
+    let mut coordinate_unions = CoordinateUnions::default();
     for (bringup, bringup_dir, image_id, image) in resolved {
         let qual = plan::qualified(&bringup, &image_id);
         let want_entry = crate::builder::entry::package_name(&image_id);
@@ -1012,47 +1009,44 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         let coordinate_dir = (driver == Driver::CMake)
             .then(|| {
                 let coord = cmake_coordinate(&platform, &image, &bringup_dir);
-                let id = shared_configure_id(&bringup, &coord);
+                let id = SharedConfigure::new(&bringup, &coord);
                 // Composed once per shared configure in one plan, however many
                 // of its images were asked for.
-                if let Some(dir) = coordinate_unions.get(&id) {
-                    return dir.clone();
-                }
-                let excluded = cmake_excluded();
-                let registered: std::collections::BTreeMap<String, PathBuf> = found
-                    .packages
-                    .iter()
-                    .filter(|p| crate::builder::cmake_root::is_subdir(p, &excluded))
-                    .map(|p| (p.name.clone(), p.dir.clone()))
-                    .collect();
-                // The root's language, by the rule stage 4 writes it with.
-                let lang = if found
-                    .packages
-                    .iter()
-                    .any(|p| crate::builder::discover::holds_cpp_source(&p.dir))
-                {
-                    nros_lang::Language::Cpp
-                } else {
-                    nros_lang::Language::C
-                };
-                let dir = resolve_coordinate(
-                    &root,
-                    &id,
-                    &coordinate_members(&bringup, &coord),
-                    &registered,
-                    lang,
-                    crate::resolve::ImageIdent {
-                        bringup: bringup.clone(),
-                        entry: format!("@{coord}"),
-                        board: board.clone(),
-                        platform: platform.clone(),
-                        rmw: image.rmw.clone().unwrap_or_default(),
-                    },
-                    nano_ros_root.as_deref(),
-                    descriptor.rx,
-                );
-                coordinate_unions.insert(id, dir.clone());
-                dir
+                coordinate_unions.get_or_compose(&id, || {
+                    let excluded = cmake_excluded();
+                    let registered: std::collections::BTreeMap<String, PathBuf> = found
+                        .packages
+                        .iter()
+                        .filter(|p| crate::builder::cmake_root::is_subdir(p, &excluded))
+                        .map(|p| (p.name.clone(), p.dir.clone()))
+                        .collect();
+                    // The root's language, by the rule stage 4 writes it with.
+                    let lang = if found
+                        .packages
+                        .iter()
+                        .any(|p| crate::builder::discover::holds_cpp_source(&p.dir))
+                    {
+                        nros_lang::Language::Cpp
+                    } else {
+                        nros_lang::Language::C
+                    };
+                    resolve_coordinate(
+                        &root,
+                        &id,
+                        &coordinate_members(&bringup, &coord),
+                        &registered,
+                        lang,
+                        crate::resolve::ImageIdent {
+                            bringup: bringup.clone(),
+                            entry: format!("@{coord}"),
+                            board: board.clone(),
+                            platform: platform.clone(),
+                            rmw: image.rmw.clone().unwrap_or_default(),
+                        },
+                        nano_ros_root.as_deref(),
+                        descriptor.rx,
+                    )
+                })
             })
             .flatten();
 
@@ -1276,6 +1270,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     heap_budget_bytes: board_heap_budget(descriptor, &board, Some(nros_root)),
                     rmw: image.rmw.clone(),
                     road: "a workspace cargo image",
+                    closure_wire_bound_refused: None,
                 };
                 // Issue 1706 -- with no wiring the descriptor states the
                 // model's facts only; either way it is this road's only
@@ -5709,7 +5704,11 @@ fn write_image_descriptor(
         heap_budget_bytes: target.heap_budget_bytes,
         rmw: target.rmw.clone(),
         bound_inventories: &[],
-        horizon: crate::sizing_descriptor::ModelHorizon::new(target.road),
+        horizon: match target.closure_wire_bound_refused {
+            Some(why) => crate::sizing_descriptor::ModelHorizon::new(target.road)
+                .refusing_closure_wire_bound(why),
+            None => crate::sizing_descriptor::ModelHorizon::new(target.road),
+        },
     };
     if let Some((inv, model)) = resolved.and_then(|r| r.inventory.as_ref().zip(r.model.as_ref())) {
         // issue 1594 -- the probe sidecars' per-subscription registration
@@ -5882,6 +5881,7 @@ fn resolve_rust_west_image(
         heap_budget_bytes: heap,
         rmw: image.rmw.clone(),
         road: "a Zephyr west Rust image",
+        closure_wire_bound_refused: Some(RUST_WEST_CLOSURE_REFUSAL),
     };
     let written = write_image_descriptor(root, resolved, image_id, &target);
     if let Err(e) = write_sizing_decision(
@@ -5907,7 +5907,18 @@ struct DescriptorTarget<'a> {
     rmw: Option<String>,
     /// The road, for the descriptor's refusal prose.
     road: &'static str,
+    /// Why this road may not state `[types] max_wire_bound_bytes`, when it may
+    /// not: a road whose take buffer is sized from the subscribed set only.
+    closure_wire_bound_refused: Option<&'static str>,
 }
+
+/// Why the Zephyr west Rust image states no `[types] max_wire_bound_bytes`.
+/// The seed refuses the closure basis for the same reason; the descriptor
+/// holding the closure maximum would size `RX_BUF` from it anyway.
+pub(crate) const RUST_WEST_CLOSURE_REFUSAL: &str = "a Zephyr west Rust image sizes its take \
+     buffer from the subscribed set only: the closure this road can see is the workspace's \
+     `generated/` tree, which is not every interface the image links, so the take buffer keeps \
+     its crate default";
 
 /// phase-530 W3 (issue 2233) -- the file in a Zephyr west Rust image's resolve
 /// directory that carries C5's sizing-descriptor decision to the module
@@ -5987,23 +5998,80 @@ pub(crate) type CoordinateMember = (
     crate::orchestration::image::ImageBlock,
 );
 
-/// A shared cmake configure's identity: `<bringup>:<coord>`. The coordinate
-/// alone is not one -- two bringups may land images on the same coordinate,
-/// and each composes its own union (Ruling R28).
-pub(crate) fn shared_configure_id(bringup: &str, coord: &str) -> String {
-    format!("{bringup}:{coord}")
+/// A shared cmake configure's identity: its bringup AND its host-configure
+/// coordinate. The coordinate alone is not one -- two bringups may land images
+/// on the same coordinate, and each composes its own union (Ruling R28). Two
+/// fields rather than a joined string, so no caller can hold one half.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct SharedConfigure {
+    pub(crate) bringup: String,
+    pub(crate) coord: String,
+}
+
+impl SharedConfigure {
+    pub(crate) fn new(bringup: impl Into<String>, coord: impl Into<String>) -> Self {
+        Self {
+            bringup: bringup.into(),
+            coord: coord.into(),
+        }
+    }
+
+    /// `<bringup>:<coord>` -- the spelling the configure stamp and
+    /// `coordinate.toml` record.
+    pub(crate) fn id(&self) -> String {
+        format!("{}:{}", self.bringup, self.coord)
+    }
+
+    /// The inverse of [`Self::id`]; `None` for anything else, so a malformed
+    /// key never names some other configure's directory.
+    pub(crate) fn parse(id: &str) -> Option<Self> {
+        let (bringup, coord) = id.split_once(':')?;
+        (!bringup.is_empty() && !coord.is_empty() && !coord.contains(':'))
+            .then(|| Self::new(bringup, coord))
+    }
+}
+
+/// Every image of `bringup` on the shared configure `coord`, out of EVERY
+/// image the workspace declares -- the selection of this build never enters,
+/// so the union an image is built against does not depend on which of its
+/// siblings were asked for. `coord_of` is an image's cmake coordinate, `None`
+/// for an image no cmake configure builds.
+pub(crate) fn members_on_coordinate(
+    images: Vec<CoordinateMember>,
+    bringup: &str,
+    coord: &str,
+    coord_of: impl Fn(&CoordinateMember) -> Option<String>,
+) -> Vec<CoordinateMember> {
+    images
+        .into_iter()
+        .filter(|m| m.0 == bringup && coord_of(m).as_deref() == Some(coord))
+        .collect()
+}
+
+/// The unions one plan composed, by shared configure: each is composed once
+/// however many of its images the plan builds.
+#[derive(Default)]
+pub(crate) struct CoordinateUnions(std::collections::BTreeMap<SharedConfigure, Option<PathBuf>>);
+
+impl CoordinateUnions {
+    pub(crate) fn get_or_compose(
+        &mut self,
+        shared: &SharedConfigure,
+        compose: impl FnOnce() -> Option<PathBuf>,
+    ) -> Option<PathBuf> {
+        self.0.entry(shared.clone()).or_insert_with(compose).clone()
+    }
 }
 
 /// Where stage 3.5 writes a shared cmake configure's resolve:
-/// `build/<coord>/resolved/<bringup>/`, beside the root the configure is
+/// `build/<coord>/resolved/<bringup>_union/`, beside the root the configure is
 /// generated from (phase-530 W3, RFC-0120 D6 case 3). One per
-/// [`shared_configure_id`], whichever of its images is being built.
-pub(crate) fn coordinate_resolve_dir(root: &Path, id: &str) -> PathBuf {
-    let (bringup, coord) = id.split_once(':').unwrap_or(("", id));
+/// [`SharedConfigure`], whichever of its images is being built.
+pub(crate) fn coordinate_resolve_dir(root: &Path, shared: &SharedConfigure) -> PathBuf {
     root.join("build")
-        .join(coord)
+        .join(&shared.coord)
         .join("resolved")
-        .join(crate::resolve::dir_name_for(bringup, "union"))
+        .join(crate::resolve::dir_name_for(&shared.bringup, "union"))
 }
 
 /// The file in [`coordinate_resolve_dir`] naming the coordinate and the
@@ -6014,7 +6082,7 @@ pub(crate) const COORDINATE_MEMBERS_NAME: &str = "coordinate.toml";
 /// The coordinate and images [`resolve_coordinate`] last composed over.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CoordinateMembers {
-    /// The [`shared_configure_id`].
+    /// The [`SharedConfigure::id`].
     pub(crate) coordinate: String,
     /// Qualified `<bringup>:<id>`, sorted.
     pub(crate) images: Vec<String>,
@@ -6076,7 +6144,7 @@ fn coordinate_member_model(
 #[allow(clippy::too_many_arguments)]
 fn resolve_coordinate(
     root: &Path,
-    id: &str,
+    shared: &SharedConfigure,
     members: &[CoordinateMember],
     registered_packages: &std::collections::BTreeMap<String, PathBuf>,
     lang: nros_lang::Language,
@@ -6084,8 +6152,8 @@ fn resolve_coordinate(
     nano_ros_root: Option<&Path>,
     rx_cost: Option<crate::entity_inventory::RxFrameCost>,
 ) -> Option<PathBuf> {
-    let dir = coordinate_resolve_dir(root, id);
-    let coord = id;
+    let dir = coordinate_resolve_dir(root, shared);
+    let coord = shared.id();
     let mut images: Vec<String> = members
         .iter()
         .map(|(b, _, id, _)| plan::qualified(b, id))
@@ -9855,5 +9923,155 @@ mod board_knob_rung_tests {
         for (k, v) in board_rung_tests::expected(BoardRungCarries::BoardOnly) {
             assert_eq!(rows.get(&k), Some(&v), "{k}: {rows:?}");
         }
+    }
+}
+
+/// phase-530 W3 (RFC-0120 D6 case 3) -- a shared cmake configure's union.
+#[cfg(test)]
+mod coordinate_union_tests {
+    use super::*;
+
+    /// A one-component probe, and the listener's wiring over `n` topics.
+    fn model(n: usize) -> String {
+        let mut s = String::from("meta: { version: 1 }\nstructure:\n  topics:\n");
+        for i in 0..n {
+            s.push_str(&format!(
+                "    /t{i}:\n      type: std_msgs/msg/Int32\n      sub: [/listener/t{i}]\n"
+            ));
+        }
+        s
+    }
+
+    fn image(launch: Option<&str>) -> crate::orchestration::image::ImageBlock {
+        crate::orchestration::image::ImageBlock {
+            launch: launch.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    fn max_cbs(dir: &Path) -> String {
+        let toml = std::fs::read_to_string(dir.join(crate::resolve::RESOLVED_TOML_NAME)).unwrap();
+        toml.lines()
+            .find(|l| l.starts_with("max_cbs = "))
+            .unwrap_or_else(|| panic!("no derived max_cbs:\n{toml}"))
+            .to_string()
+    }
+
+    /// Two images on one coordinate whose models disagree: the union states
+    /// the LARGER need whichever member is listed last, and `coordinate.toml`
+    /// names both.
+    #[test]
+    fn the_union_takes_the_larger_member_and_names_every_image() {
+        let ws = tempfile::tempdir().unwrap();
+        let root = ws.path();
+        let bringup = root.join("src").join("demo_bringup");
+        std::fs::create_dir_all(bringup.join("launch")).unwrap();
+        std::fs::write(bringup.join("system.toml"), "").unwrap();
+        let models = root.join("build/nros/models/demo_bringup");
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::write(models.join("system_model.yaml"), model(3)).unwrap();
+        std::fs::write(models.join("small_model.yaml"), model(1)).unwrap();
+        let probe = metadata_probe_build_dir(root).join("nros-metadata.json");
+        std::fs::create_dir_all(probe.parent().unwrap()).unwrap();
+        std::fs::write(
+            &probe,
+            r#"{"components": [{"name": "listener", "pkg": "demo", "class": "demo::Listener"}]}"#,
+        )
+        .unwrap();
+        let registered: std::collections::BTreeMap<String, PathBuf> =
+            [("demo".to_string(), root.join("src/demo"))].into();
+
+        let shared = SharedConfigure::new("demo_bringup", "posix-zenoh-linux");
+        let compose = |members: &[CoordinateMember]| {
+            resolve_coordinate(
+                root,
+                &shared,
+                members,
+                &registered,
+                nros_lang::Language::C,
+                crate::resolve::ImageIdent {
+                    bringup: "demo_bringup".into(),
+                    entry: "@posix-zenoh-linux".into(),
+                    board: "linux".into(),
+                    platform: "posix".into(),
+                    rmw: "zenoh".into(),
+                },
+                None,
+                None,
+            )
+            .expect("the union is written")
+        };
+        let member = |id: &str, launch| -> CoordinateMember {
+            (
+                "demo_bringup".into(),
+                bringup.clone(),
+                id.into(),
+                image(launch),
+            )
+        };
+        let big = member("big", None);
+        let small = member("small", Some("small.launch.xml"));
+
+        // Each order: the larger member wins, never the last one composed.
+        for members in [
+            vec![big.clone(), small.clone()],
+            vec![small.clone(), big.clone()],
+        ] {
+            let dir = compose(&members);
+            assert_eq!(dir, coordinate_resolve_dir(root, &shared));
+            assert_eq!(max_cbs(&dir), "max_cbs = 3");
+            let m = read_coordinate_members(&dir).expect("coordinate.toml");
+            assert_eq!(m.coordinate, shared.id());
+            assert_eq!(
+                m.images,
+                vec!["demo_bringup:big", "demo_bringup:small"],
+                "every image on the coordinate, sorted"
+            );
+        }
+        // The control: each member alone states its own need.
+        assert_eq!(max_cbs(&compose(&[small])), "max_cbs = 1");
+        assert_eq!(max_cbs(&compose(&[big])), "max_cbs = 3");
+    }
+
+    /// The members are every image on the coordinate, the ones this build did
+    /// not ask for included; another bringup or coordinate is never one.
+    #[test]
+    fn the_members_are_every_image_on_the_coordinate() {
+        let m = |b: &str, id: &str, launch: &str| -> CoordinateMember {
+            (b.into(), PathBuf::from(b), id.into(), image(Some(launch)))
+        };
+        let all = vec![
+            m("demo", "asked", "here"),
+            m("demo", "not_asked", "here"),
+            m("demo", "elsewhere", "there"),
+            m("other", "same_coord", "here"),
+            m("demo", "no_cmake", "none"),
+        ];
+        let got = members_on_coordinate(all, "demo", "here", |(_, _, _, img)| {
+            match img.launch.as_deref() {
+                Some("none") => None,
+                l => l.map(str::to_string),
+            }
+        });
+        let ids: Vec<&str> = got.iter().map(|m| m.2.as_str()).collect();
+        assert_eq!(ids, ["asked", "not_asked"]);
+    }
+
+    /// One plan composes a shared configure's union once, however many of its
+    /// images it builds; a second configure is composed on its own.
+    #[test]
+    fn a_union_is_composed_once_per_plan() {
+        let mut unions = CoordinateUnions::default();
+        let mut composed = 0;
+        let a = SharedConfigure::new("demo", "posix-zenoh-linux");
+        let b = SharedConfigure::new("other", "posix-zenoh-linux");
+        for shared in [&a, &a, &b, &a] {
+            let dir = unions.get_or_compose(shared, || {
+                composed += 1;
+                Some(PathBuf::from(shared.id()))
+            });
+            assert_eq!(dir, Some(PathBuf::from(shared.id())));
+        }
+        assert_eq!(composed, 2);
     }
 }

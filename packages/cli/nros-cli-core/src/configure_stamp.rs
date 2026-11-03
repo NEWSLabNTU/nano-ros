@@ -136,7 +136,7 @@ pub(crate) fn stamp_dir(project: &Path, image: &str) -> PathBuf {
 }
 
 /// phase-530 W3 (RFC-0120 D2) — the stamp key of a shared host configure,
-/// `@<bringup>:<coord>` (`build::shared_configure_id`). `@` is in no image id,
+/// `@<bringup>:<coord>` (`build::SharedConfigure::id`). `@` is in no image id,
 /// so it cannot collide with one.
 pub(crate) fn coordinate_key(coord: &str) -> String {
     format!("@{coord}")
@@ -390,7 +390,12 @@ fn missing_output(project: &Path, image: &str, model_dir: Option<&Path>) -> Resu
     }
     // phase-530 W3 — a shared configure's output is its union resolve.
     if let Some(coord) = image.strip_prefix('@') {
-        let dir = crate::cmd::build::coordinate_resolve_dir(project, coord);
+        let Some(shared) = crate::cmd::build::SharedConfigure::parse(coord) else {
+            return Ok(Some(format!(
+                "`{coord}` names no shared configure (want `<bringup>:<coordinate>`)"
+            )));
+        };
+        let dir = crate::cmd::build::coordinate_resolve_dir(project, &shared);
         return Ok((!dir
             .join(crate::cmd::build::COORDINATE_MEMBERS_NAME)
             .is_file())
@@ -1397,7 +1402,10 @@ mod tests {
         .unwrap();
         // ...and the union it covers is gone.
         stale("union resolve of `demo:posix-zenoh-linux`");
-        let union = crate::cmd::build::coordinate_resolve_dir(&p, coord);
+        let union = crate::cmd::build::coordinate_resolve_dir(
+            &p,
+            &crate::cmd::build::SharedConfigure::parse(coord).unwrap(),
+        );
         std::fs::create_dir_all(&union).unwrap();
         std::fs::write(
             union.join(crate::cmd::build::COORDINATE_MEMBERS_NAME),
@@ -1417,16 +1425,23 @@ mod tests {
     fn two_bringups_on_one_coordinate_keep_their_own_unions() {
         let p = tmp("coordinate-two-bringups");
         let coord = "posix-zenoh-linux";
-        let a = crate::cmd::build::shared_configure_id("a_bringup", coord);
-        let b = crate::cmd::build::shared_configure_id("b_bringup", coord);
+        let a = crate::cmd::build::SharedConfigure::new("a_bringup", coord);
+        let b = crate::cmd::build::SharedConfigure::new("b_bringup", coord);
         assert_ne!(
             crate::cmd::build::coordinate_resolve_dir(&p, &a),
             crate::cmd::build::coordinate_resolve_dir(&p, &b)
         );
         assert_ne!(
-            stamp_dir(&p, &coordinate_key(&a)),
-            stamp_dir(&p, &coordinate_key(&b))
+            stamp_dir(&p, &coordinate_key(&a.id())),
+            stamp_dir(&p, &coordinate_key(&b.id()))
         );
+        // The id round-trips, and a key with no bringup names no directory.
+        assert_eq!(
+            crate::cmd::build::SharedConfigure::parse(&a.id()),
+            Some(a.clone())
+        );
+        assert_eq!(crate::cmd::build::SharedConfigure::parse(coord), None);
+        assert_eq!(crate::cmd::build::SharedConfigure::parse(":x"), None);
     }
 
     /// phase-530 W1 (I2) — `NROS_MODEL_DIR` moves where C1 writes the

@@ -235,7 +235,8 @@ fn configure_project(
     let mut out = Outcome::default();
     // phase-530 W3 (RFC-0120 D2) — the shared host-configure coordinate each
     // configured image is planned on, by stamp key.
-    let mut coordinates: std::collections::BTreeMap<String, String> = Default::default();
+    let mut coordinates: std::collections::BTreeMap<String, build::SharedConfigure> =
+        Default::default();
     for t in &targets {
         match build::plan_builds(&build_args(
             project,
@@ -288,7 +289,7 @@ fn configure_project(
             .then(|| configure_stamp::PROJECT_KEY.to_string());
         for key in out.configured.iter().chain(project_wide.iter()) {
             let image_stamp = configure_stamp::Stamp {
-                coordinate: coordinates.get(key).cloned(),
+                coordinate: coordinates.get(key).map(build::SharedConfigure::id),
                 ..stamp.clone()
             };
             configure_stamp::record(project, key, &image_stamp)?;
@@ -306,7 +307,7 @@ fn configure_project(
                 .unwrap_or_default();
             configure_stamp::record(
                 project,
-                &configure_stamp::coordinate_key(coord),
+                &configure_stamp::coordinate_key(&coord.id()),
                 &configure_stamp::Stamp {
                     covers,
                     ..stamp.clone()
@@ -358,13 +359,13 @@ pub(crate) fn build_args(
 }
 
 /// The shared host configure a plan builds on, as
-/// [`build::shared_configure_id`]: its bringup and the coordinate of its
+/// [`build::SharedConfigure`]: its bringup and the coordinate of its
 /// `build/<coord>/cmake`.
-fn shared_coordinate(plan: &build::ResolvedBuild) -> Option<String> {
+fn shared_coordinate(plan: &build::ResolvedBuild) -> Option<build::SharedConfigure> {
     let dir = plan.cmake_build_dir.as_deref()?;
     let coord = Path::new(dir).parent()?.file_name()?.to_string_lossy();
     let (bringup, _) = plan.qualified.split_once(':')?;
-    Some(build::shared_configure_id(bringup, &coord))
+    Some(build::SharedConfigure::new(bringup, coord))
 }
 
 /// The project: `dir`, else the working directory, canonical.
