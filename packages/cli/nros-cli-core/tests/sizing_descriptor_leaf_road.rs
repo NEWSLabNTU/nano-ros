@@ -77,6 +77,7 @@ fn args() -> SizingDescriptorArgs {
         from_model: Vec::new(),
         composed_entry: Vec::new(),
         from_leaf: None,
+        leaf_image: None,
         // phase-457-payload W2 -- no tables: the payload class refuses,
         // naming the missing registration (issue 1393 closed the road).
         bound_inventory: Vec::new(),

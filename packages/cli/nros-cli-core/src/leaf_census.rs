@@ -1,23 +1,27 @@
 //! RFC-0120 D4 (phase-530 W2) -- where a standalone leaf's entity counts
 //! come from. ONE rule, asked by every reader of a leaf's entities: the
 //! descriptor's composer, the leaf reader, the Kconfig rendering, `nros build`'s
-//! leaf road, and (through `nros dev image entity-census source`) the cmake
-//! and Zephyr hooks, which used to grep `system.toml` for one word.
+//! leaf road, `take --leaf`, and (through `nros dev image entity-census
+//! source`) the cmake and Zephyr hooks, which used to grep `system.toml` for
+//! one word. Always for the image the build SELECTED ([`read`]), never the
+//! leaf's default one.
 //!
 //! * a component that states `entities = [...]` -> **declared** (it wins, and
 //!   needs no census);
 //! * `entities = "census"` -> the **census**, as since issue 1556;
-//! * `entities = "defaults"` -> the crate **defaults**, written down;
+//! * `entities = "defaults"` on a component, or `[system] entities =
+//!   "defaults"` -> the crate **defaults**, written down;
 //! * nothing stated, on a C/C++ leaf (a `CMakeLists.txt` and no `Cargo.toml`)
-//!   with at least one `[[component]]`, for a CROSS image -> the **census, by
-//!   default**. A leaf is sized tight or says it is loose; nothing is silently
-//!   loose.
+//!   for a CROSS image -> the **census, by default**. That holds for a leaf
+//!   with no `[[component]]` too when its `CMakeLists.txt` builds a program
+//!   (Ruling R29); one with no component and no program has nothing a census
+//!   could run, so it is [`EntitySource::NoProgram`] and every reader refuses
+//!   it. A leaf is sized tight or says it is loose; nothing is silently loose.
 //!
 //! What stays [`EntitySource::Unstated`]: a Rust leaf (the metadata probe
-//! counts it, RFC-0120 D4's other half), a leaf with no `[[component]]` (a
-//! census records the program a component names), and a HOST image -- the
-//! census producer's own platform, sized at the hosted defaults as before,
-//! the same line `build::census_take_is_ours` draws for a workspace.
+//! counts it, RFC-0120 D4's other half) and a HOST image -- the census
+//! producer's own platform, sized at the hosted defaults as before, the same
+//! line `build::census_take_is_ours` draws for a workspace.
 
 use std::path::Path;
 
@@ -31,10 +35,12 @@ pub enum EntitySource {
     /// The leaf's census. `explicit` when `entities = "census"` is written,
     /// `false` when it is the C/C++ default.
     Census { explicit: bool },
-    /// `entities = "defaults"`.
+    /// `entities = "defaults"`, on a component or on `[system]`.
     Defaults,
-    /// Nothing stated and no default applies: a Rust leaf, a leaf with no
-    /// component, or a host image.
+    /// A cross C/C++ leaf with no `[[component]]`, no program in its
+    /// `CMakeLists.txt` and nothing stated: refused (Ruling R29).
+    NoProgram,
+    /// Nothing stated and no default applies: a Rust leaf or a host image.
     Unstated,
 }
 
@@ -45,6 +51,7 @@ impl EntitySource {
             EntitySource::Declared => "declared",
             EntitySource::Census { .. } => "census",
             EntitySource::Defaults => "defaults",
+            EntitySource::NoProgram => "no-program",
             EntitySource::Unstated => "unstated",
         }
     }
@@ -52,12 +59,42 @@ impl EntitySource {
     pub fn is_census(self) -> bool {
         matches!(self, EntitySource::Census { .. })
     }
+
+    /// The refusal a reader stops with, naming the fixes; `None` for every
+    /// source a reader can answer from.
+    pub fn refusal(self, dir: &Path) -> Option<String> {
+        (self == EntitySource::NoProgram).then(|| {
+            format!(
+                "{}: its image is built for a board and its system.toml states no entities, so \
+                 it would be counted by its census -- but it has no `[[component]]` and its \
+                 CMakeLists.txt builds no program (no `nano_ros_add_executable`, no \
+                 `add_subdirectory`), so there is nothing a census could run. Either add the \
+                 `[[component]]` with `entities = [\"publisher:std_msgs/msg/String:/chatter\", \
+                 \"timer\"]`, or write `[system] entities = \"defaults\"` (the crate defaults, \
+                 written down).",
+                dir.display()
+            )
+        })
+    }
 }
 
 /// Is `dir` a C/C++ leaf: a `CMakeLists.txt` and no `Cargo.toml`? A Rust
 /// Zephyr leaf carries both, and the probe counts it.
 pub fn is_cmake_leaf(dir: &Path) -> bool {
     dir.join("CMakeLists.txt").is_file() && !dir.join("Cargo.toml").is_file()
+}
+
+/// Does `dir`'s `CMakeLists.txt` build a program a census could run: a
+/// `nano_ros_add_executable(` of its own, or an `add_subdirectory(` (a ported
+/// ament workspace, whose packages add their executables and which the host
+/// build's program manifest names, issue 2043)? Comments do not count.
+pub fn has_program(dir: &Path) -> bool {
+    let Ok(raw) = std::fs::read_to_string(dir.join("CMakeLists.txt")) else {
+        return false;
+    };
+    raw.lines()
+        .map(|l| l.split('#').next().unwrap_or(""))
+        .any(|code| code.contains("nano_ros_add_executable(") || code.contains("add_subdirectory("))
 }
 
 /// [`entity_source`] with the host question answered by the caller:
@@ -78,23 +115,24 @@ pub fn entity_source_with(
     if system.entities_defaults() {
         return EntitySource::Defaults;
     }
-    if system.components.is_empty() || !is_cmake_leaf(dir) {
+    if !is_cmake_leaf(dir) {
         return EntitySource::Unstated;
     }
-    let host = system.board.as_deref().and_then(is_host).unwrap_or(false);
-    if host {
-        EntitySource::Unstated
-    } else {
-        EntitySource::Census { explicit: false }
+    if system.board.as_deref().and_then(is_host).unwrap_or(false) {
+        return EntitySource::Unstated;
     }
+    if system.components.is_empty() && !has_program(dir) {
+        return EntitySource::NoProgram;
+    }
+    EntitySource::Census { explicit: false }
 }
 
-/// [`entity_source`] for the leaf at `dir`, the host question answered from
-/// the board catalog of the nano-ros checkout `dir` resolves.
+/// [`entity_source_with`] for the leaf at `dir`, the host question answered
+/// from the board catalog of the nano-ros checkout `dir` resolves.
 pub fn entity_source(dir: &Path, system: &LeafSystem) -> EntitySource {
     use crate::orchestration::board_descriptor::PlatformKind;
     // Only a leaf the default could reach pays for the catalog.
-    if system.states_entities() || system.components.is_empty() || !is_cmake_leaf(dir) {
+    if system.states_entities() || !is_cmake_leaf(dir) {
         return entity_source_with(dir, system, &|_| None);
     }
     let catalog = crate::orchestration::nano_ros_root::resolve(None, dir)
@@ -107,15 +145,40 @@ pub fn entity_source(dir: &Path, system: &LeafSystem) -> EntitySource {
     entity_source_with(dir, system, &is_host)
 }
 
-/// The leaf at `dir`, read and classified. `Ok(None)` when `dir` declares no
-/// deployment.
-pub fn entity_source_of(dir: &Path, image: Option<&str>) -> eyre::Result<Option<EntitySource>> {
-    let system = match image {
+/// The leaf at `dir`, read for the SELECTED image (`None`: the leaf's own
+/// rule -- one image, or `[system] default_images`), and classified. The ONE
+/// image-aware read every leaf reader goes through. `Ok(None)` when `dir`
+/// declares no deployment.
+pub fn read(dir: &Path, image: Option<&str>) -> eyre::Result<Option<(LeafSystem, EntitySource)>> {
+    Ok(read_system(dir, image)?.map(|s| {
+        let source = entity_source(dir, &s);
+        (s, source)
+    }))
+}
+
+/// [`read`] with the host question injected (tests).
+pub fn read_with(
+    dir: &Path,
+    image: Option<&str>,
+    is_host: &dyn Fn(&str) -> Option<bool>,
+) -> eyre::Result<Option<(LeafSystem, EntitySource)>> {
+    Ok(read_system(dir, image)?.map(|s| {
+        let source = entity_source_with(dir, &s, is_host);
+        (s, source)
+    }))
+}
+
+fn read_system(dir: &Path, image: Option<&str>) -> eyre::Result<Option<LeafSystem>> {
+    match image {
         Some(id) => nros_orchestration_ir::leaf_system::read_image(dir, id),
         None => nros_orchestration_ir::leaf_system::read(dir),
     }
-    .map_err(|e| eyre::eyre!(e))?;
-    Ok(system.map(|s| entity_source(dir, &s)))
+    .map_err(|e| eyre::eyre!(e))
+}
+
+/// [`read`], the classification alone.
+pub fn entity_source_of(dir: &Path, image: Option<&str>) -> eyre::Result<Option<EntitySource>> {
+    Ok(read(dir, image)?.map(|(_, source)| source))
 }
 
 #[cfg(test)]
@@ -180,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn rust_host_and_component_less_leaves_keep_no_default() {
+    fn rust_and_host_leaves_keep_no_default() {
         let s = system("");
         // A Rust leaf: the probe counts it.
         assert_eq!(
@@ -199,13 +262,89 @@ mod tests {
             classify(&[("CMakeLists.txt", ""), ("system.toml", &s)], Some(true)),
             EntitySource::Unstated
         );
-        // No component: no program for a census to be of.
+    }
+
+    /// Ruling R29 -- a component-less cross C/C++ leaf that builds a program
+    /// (a port naming its executable in CMake, or a ported workspace adding
+    /// its packages) is counted by its census like any other.
+    #[test]
+    fn component_less_cross_leaf_with_a_program_takes_the_census() {
+        let exe = "project(p C)\nnano_ros_add_executable(minimal_publisher src/main.c ROS2_MAIN)\n";
         assert_eq!(
             classify(
-                &[("CMakeLists.txt", ""), ("system.toml", HEAD)],
+                &[("CMakeLists.txt", exe), ("system.toml", HEAD)],
                 Some(false)
+            ),
+            EntitySource::Census { explicit: false }
+        );
+        let ws = "project(p C)\nadd_subdirectory(../src/nodes nodes)\n";
+        assert_eq!(
+            classify(
+                &[("CMakeLists.txt", ws), ("system.toml", HEAD)],
+                Some(false)
+            ),
+            EntitySource::Census { explicit: false }
+        );
+        // A host image keeps the hosted defaults, component or not.
+        assert_eq!(
+            classify(
+                &[("CMakeLists.txt", exe), ("system.toml", HEAD)],
+                Some(true)
             ),
             EntitySource::Unstated
         );
+    }
+
+    /// Ruling R29 -- with no component and no program there is nothing a
+    /// census could run, and nothing stated: refused, never silently loose.
+    #[test]
+    fn component_less_leaf_with_no_program_refuses() {
+        let none = "project(p C)\n# nano_ros_add_executable(x) in a comment is not a program\n";
+        let got = classify(
+            &[("CMakeLists.txt", none), ("system.toml", HEAD)],
+            Some(false),
+        );
+        assert_eq!(got, EntitySource::NoProgram);
+        let why = got.refusal(Path::new("/l")).expect("a refusal");
+        assert!(
+            why.contains("[system] entities = \"defaults\"") && why.contains("[[component]]"),
+            "{why}"
+        );
+    }
+
+    /// Ruling R29 -- `[system] entities = "defaults"` opts a component-less
+    /// leaf out.
+    #[test]
+    fn system_level_defaults_opts_out() {
+        let exe = "nano_ros_add_executable(minimal_publisher src/main.c ROS2_MAIN)\n";
+        let body = HEAD.replace("[system]\n", "[system]\nentities = \"defaults\"\n");
+        assert_eq!(
+            classify(
+                &[("CMakeLists.txt", exe), ("system.toml", &body)],
+                Some(false)
+            ),
+            EntitySource::Defaults
+        );
+    }
+
+    /// M1 -- the SELECTED image decides, not the default one: a leaf whose
+    /// default image is the host's and which also declares a cross image is
+    /// census-sized when the cross image is built.
+    #[test]
+    fn cross_image_of_a_host_default_leaf_takes_the_census() {
+        let d = leaf(&[
+            ("CMakeLists.txt", ""),
+            (
+                "system.toml",
+                "[system]\nname = \"t\"\ndefault_images = [\"linux\"]\n\
+                 [[component]]\nname = \"n\"\n\
+                 [image.linux]\nboard = \"linux\"\n[image.rtos]\nboard = \"zephyr\"\n",
+            ),
+        ]);
+        let host = |b: &str| Some(b == "linux");
+        let read = |image: Option<&str>| read_with(d.path(), image, &host).unwrap().unwrap().1;
+        assert_eq!(read(None), EntitySource::Unstated);
+        assert_eq!(read(Some("linux")), EntitySource::Unstated);
+        assert_eq!(read(Some("rtos")), EntitySource::Census { explicit: false });
     }
 }

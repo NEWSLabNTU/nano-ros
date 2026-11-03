@@ -185,12 +185,11 @@ pub struct TakeArgs {
     /// or a bare id when one bringup declares it. Usually a cross image
     /// (`demo_bringup:threadx`); the census itself is taken by the native
     /// image generated from the same launch file.
-    #[arg(
-        long,
-        value_name = "IMAGE",
-        required_unless_present = "leaf",
-        conflicts_with = "leaf"
-    )]
+    ///
+    /// With `--leaf`: the leaf's `[image.<id>]` the build selected
+    /// (`-DNROS_IMAGE`), whose board decides whether a census is taken at all.
+    // phase-530 W2 (M1).
+    #[arg(long, value_name = "IMAGE", required_unless_present = "leaf")]
     pub image: Option<String>,
 
     /// Take the census of a standalone C/C++ leaf instead of a workspace image.
@@ -387,10 +386,15 @@ pub fn run(args: EntityCensusArgs) -> Result<()> {
         }
         Sub::Take(a) => take_census_verb(a),
         Sub::Source(a) => {
-            let word = crate::leaf_census::entity_source_of(&a.leaf, a.image.as_deref())?
-                .map_or("unstated", crate::leaf_census::EntitySource::word);
-            println!("{word}");
-            Ok(())
+            let source = crate::leaf_census::entity_source_of(&a.leaf, a.image.as_deref())?
+                .unwrap_or(crate::leaf_census::EntitySource::Unstated);
+            println!("{}", source.word());
+            // Ruling R29 -- a leaf no rule can size is refused HERE too, so
+            // a hook asking this question stops with the fixes named.
+            match source.refusal(&a.leaf) {
+                Some(why) => Err(eyre::eyre!("{why}")),
+                None => Ok(()),
+            }
         }
     }
 }
@@ -481,7 +485,7 @@ fn take_census(args: TakeArgs) -> Result<()> {
     };
 
     if let Some(leaf) = &args.leaf {
-        return take_leaf_census(leaf, args.timeout_secs);
+        return take_leaf_census(leaf, args.image.as_deref(), args.timeout_secs);
     }
     let image = args
         .image
@@ -591,6 +595,17 @@ fn take_census(args: TakeArgs) -> Result<()> {
     // standalone-leaf ones, which a generated entry never reaches. So this is
     // still the host image a person runs (`nros build <bringup>:linux` builds
     // into the same directory), built the same way.
+    // RFC-0120 C3 -- the host toolchain, before the host image is planned:
+    // the same check `take --leaf` makes, so a missing compiler is named
+    // rather than surfacing as a CMake or cargo error (phase-530 W2, M5).
+    let missing = crate::builder::preflight::check_host_toolchain(Some(&nano_ros_root));
+    if !missing.is_empty() {
+        bail!(
+            "`{asked_q}` is checked against a census, a HOST build of `{native_q}`, and this host \
+             cannot build one.\n{}",
+            crate::builder::preflight::report(&missing)
+        );
+    }
     let build_dir = root.join("build");
     let plans = crate::cmd::build::plan_builds(&crate::cmd::configure::build_args(
         &root,
@@ -664,8 +679,8 @@ pub(crate) fn take_for_build(root: &Path, qualified: &str, offline: bool) {
 /// components take their entities from its census (`take --leaf`). Same
 /// contract: a take that cannot run is reported, and the leaf's configure
 /// decides.
-pub(crate) fn take_leaf_for_build(leaf: &Path) {
-    if let Err(e) = take_leaf_census(leaf, 60) {
+pub(crate) fn take_leaf_for_build(leaf: &Path, image: &str) {
+    if let Err(e) = take_leaf_census(leaf, Some(image), 60) {
         eprintln!(
             "nros build:   {}: could not take its census ({e:#}); its configure decides",
             leaf.display()
@@ -866,7 +881,35 @@ fn write_zephyr_census_stub(build: &Path) -> Result<PathBuf> {
 /// in census mode. Every input that decides what the program creates is the
 /// cross image's own; only the board differs, and the board is not a fact the
 /// census records.
-fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
+fn take_leaf_census(leaf: &Path, image: Option<&str>, timeout_secs: u64) -> Result<()> {
+    take_leaf_census_with(leaf, image, timeout_secs, &HostSteps::real())
+}
+
+/// The two things `take --leaf` asks of the machine before it runs a census:
+/// what of the host toolchain is missing, and the exit status of each host
+/// cmake step (`configure`, `build`). A seam, so the refusals are testable
+/// without a host that lacks a compiler or sources that fail to build.
+pub(crate) struct HostSteps<'a> {
+    pub missing: &'a dyn Fn(&Path) -> Vec<crate::builder::preflight::Missing>,
+    pub run: &'a dyn Fn(&mut Command) -> std::io::Result<std::process::ExitStatus>,
+}
+
+impl HostSteps<'static> {
+    fn real() -> Self {
+        HostSteps {
+            missing: &|root| crate::builder::preflight::check_host_toolchain(Some(root)),
+            run: &|cmd| cmd.status(),
+        }
+    }
+}
+
+/// [`take_leaf_census`] over an injected [`HostSteps`].
+pub(crate) fn take_leaf_census_with(
+    leaf: &Path,
+    image: Option<&str>,
+    timeout_secs: u64,
+    host: &HostSteps<'_>,
+) -> Result<()> {
     let leaf = std::fs::canonicalize(leaf)
         .wrap_err_with(|| format!("resolving leaf {}", leaf.display()))?;
     if !leaf.join("CMakeLists.txt").is_file()
@@ -883,8 +926,11 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
     // census at all (`entities = "census"`, or the C/C++ default). A leaf
     // that declares its entities, writes `"defaults"`, or is a host image has
     // nothing to take, so every caller may ask unconditionally.
-    let source = crate::leaf_census::entity_source_of(&leaf, None)?
+    let source = crate::leaf_census::entity_source_of(&leaf, image)?
         .unwrap_or(crate::leaf_census::EntitySource::Unstated);
+    if let Some(why) = source.refusal(&leaf) {
+        bail!("{why}");
+    }
     if !source.is_census() {
         println!(
             "entity-census take --leaf {}: entities are `{}`, not counted by a census -- nothing \
@@ -917,7 +963,7 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
         .ok_or_else(|| eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
     // RFC-0120 C3 -- the host toolchain, before anything is configured, so a
     // missing compiler is named rather than surfacing as a CMake error.
-    let missing = crate::builder::preflight::check_host_toolchain(Some(&root));
+    let missing = (host.missing)(&root);
     if !missing.is_empty() {
         bail!(
             "{}: its entities are counted by its census, a HOST build of its sources, and this \
@@ -954,7 +1000,8 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
             }
         )
     };
-    let status = Command::new("cmake")
+    let mut configure = Command::new("cmake");
+    configure
         .arg("-S")
         .arg(&leaf)
         .arg("-B")
@@ -973,18 +1020,19 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
             "-DCMAKE_PROJECT_INCLUDE={}",
             zephyr_stub.join(CENSUS_PROJECT_INCLUDE).display()
         ))
-        .env(LEAF_CENSUS_HOST_ENV, "1")
-        .status()
+        .env(LEAF_CENSUS_HOST_ENV, "1");
+    let status = (host.run)(&mut configure)
         .wrap_err("running cmake (configure) for the host census build")?;
     if !status.success() {
         return Err(refused("the configure", status));
     }
-    let status = Command::new("cmake")
+    let mut build_cmd = Command::new("cmake");
+    build_cmd
         .arg("--build")
         .arg(&build)
-        .env(LEAF_CENSUS_HOST_ENV, "1")
-        .status()
-        .wrap_err("running cmake --build for the host census build")?;
+        .env(LEAF_CENSUS_HOST_ENV, "1");
+    let status =
+        (host.run)(&mut build_cmd).wrap_err("running cmake --build for the host census build")?;
     if !status.success() {
         return Err(refused("the build", status));
     }
@@ -1964,17 +2012,143 @@ mod tests {
     /// file spawns the CLI again.
     #[test]
     fn the_census_spawns_no_nros() {
-        let src = include_str!("entity_census.rs");
-        let code: String = src
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
+        // phase-530 W2 (M6): every file the census path is made of, scanned
+        // for the two ways back into layer 2 -- locating this binary again,
+        // and calling `nros build`'s own front door in-process.
         let spawn = ["current", "_exe()"].concat();
-        assert!(
-            !code.contains(&spawn),
-            "entity_census.rs locates this binary again -- a census must not run `nros build`"
+        let front_door = ["build::", "run("].concat();
+        for (name, src) in [
+            ("entity_census.rs", include_str!("entity_census.rs")),
+            ("leaf_census.rs", include_str!("../leaf_census.rs")),
+        ] {
+            let code: String = src
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            for needle in [&spawn, &front_door] {
+                assert!(
+                    !code.contains(needle.as_str()),
+                    "{name} contains `{needle}` -- a census must not run `nros build`"
+                );
+            }
+        }
+    }
+
+    /// A C/C++ leaf for a CROSS board whose one component states nothing:
+    /// counted by its census by default (RFC-0120 D4).
+    fn default_census_leaf(dir: &Path, component: &str) {
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src/main.c"), "int main(void){return 0;}\n").unwrap();
+        std::fs::write(
+            dir.join("CMakeLists.txt"),
+            "project(x C)\nnano_ros_add_executable(c_talker src/main.c)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("system.toml"),
+            format!(
+                "[system]\nname = \"x\"\nrmw = \"zenoh\"\n\n{component}\n\
+                 [image.nuttx]\nboard = \"qemu-armv7a-nuttx\"\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    /// phase-530 W2 (M6) -- a census leaf whose host build FAILS (sources
+    /// that call an RTOS API, say) is refused naming both fixes, and the
+    /// default is said to be the reason.
+    #[test]
+    fn a_failed_host_census_build_is_refused_naming_both_fixes() {
+        use std::os::unix::process::ExitStatusExt;
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(
+            td.path(),
+            "[[component]]\npkg = \"x\"\nclass = \"x::T\"\nname = \"t\"\n",
         );
+        let ran = std::cell::Cell::new(0);
+        let host = HostSteps {
+            missing: &|_| Vec::new(),
+            run: &|_| {
+                ran.set(ran.get() + 1);
+                Ok(std::process::ExitStatus::from_raw(1 << 8))
+            },
+        };
+        let err = take_leaf_census_with(td.path(), None, 5, &host).expect_err("refused");
+        let msg = format!("{err:#}");
+        assert_eq!(
+            ran.get(),
+            1,
+            "the configure failed, so nothing was built after it"
+        );
+        assert!(msg.contains("entities = [\""), "names the tight fix: {msg}");
+        assert!(
+            msg.contains("entities = \"defaults\""),
+            "names the loose fix: {msg}"
+        );
+        assert!(msg.contains("the default for a C/C++ leaf"), "{msg}");
+    }
+
+    /// phase-530 W2 (C3) -- a missing host tool is named, and nothing runs.
+    #[test]
+    fn a_missing_host_tool_refuses_before_anything_runs() {
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(
+            td.path(),
+            "[[component]]\npkg = \"x\"\nclass = \"x::T\"\nname = \"t\"\n",
+        );
+        let host = HostSteps {
+            missing: &|_| {
+                vec![crate::builder::preflight::Missing {
+                    what: "a host C++ compiler".into(),
+                    remedy: "install one".into(),
+                }]
+            },
+            run: &|_| panic!("nothing may run on a host that cannot build"),
+        };
+        let msg = format!(
+            "{:#}",
+            take_leaf_census_with(td.path(), None, 5, &host).expect_err("refused")
+        );
+        assert!(
+            msg.contains("a host C++ compiler") && msg.contains("install one"),
+            "{msg}"
+        );
+    }
+
+    /// phase-530 W2 (M6) -- the READERS apply the default, not only the
+    /// classifier: with no census taken, the leaf reader and the descriptor's
+    /// composer both refuse naming `take --leaf` (where before W2 they
+    /// answered "nothing declared" and the image was sized at the crate
+    /// defaults); a component-less leaf with a program is read the same way;
+    /// `"defaults"` on the component or on `[system]` reads nothing.
+    #[test]
+    fn the_readers_apply_the_census_default() {
+        let read = |dir: &Path| crate::leaf_entity_env::declared_entities(dir, None);
+        let compose = |dir: &Path| crate::cmd::sizing_descriptor::leaf_declaration(dir, None);
+        let component = "[[component]]\npkg = \"x\"\nclass = \"x::T\"\nname = \"t\"\n";
+        for body in [component.to_string(), String::new()] {
+            let td = tempfile::tempdir().unwrap();
+            default_census_leaf(td.path(), &body);
+            let e = format!("{:#}", read(td.path()).expect_err("no census taken"));
+            assert!(e.contains("entity-census take --leaf"), "{e}");
+            let e = format!("{:#}", compose(td.path()).err().expect("no census taken"));
+            assert!(e.contains("entity-census take --leaf"), "{e}");
+        }
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(td.path(), &format!("{component}entities = \"defaults\"\n"));
+        assert!(read(td.path()).unwrap().is_none());
+        assert!(compose(td.path()).unwrap().inventory.is_none());
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(td.path(), "");
+        std::fs::write(
+            td.path().join("system.toml"),
+            "[system]\nname = \"x\"\nrmw = \"zenoh\"\nentities = \"defaults\"\n\
+             [image.nuttx]\nboard = \"qemu-armv7a-nuttx\"\n",
+        )
+        .unwrap();
+        assert!(read(td.path()).unwrap().is_none());
+        assert!(compose(td.path()).unwrap().inventory.is_none());
     }
 
     /// Issue 1419 -- the cargo road's layout: each image is its own cargo root
@@ -2099,7 +2273,7 @@ mod tests {
         assert_eq!(ids, ["talker", "relay"]);
         assert!(nodes.iter().all(|(_, rows)| rows.len() == 1), "{nodes:?}");
 
-        let decl = crate::cmd::sizing_descriptor::leaf_declaration(leaf).unwrap();
+        let decl = crate::cmd::sizing_descriptor::leaf_declaration(leaf, None).unwrap();
         assert!(decl.census_backed);
         let cmake = decl.inventory.expect("the census answers").to_cmake();
         assert!(
@@ -2191,7 +2365,7 @@ mod tests {
         write_census();
         assert!(matches!(census_freshness(&out, leaf), Freshness::Fresh));
 
-        let read = crate::leaf_entity_env::declared_entities;
+        let read = |l: &Path| crate::leaf_entity_env::declared_entities(l, None);
         // RFC-0120 D4 -- no `entities` at all on a C/C++ cross leaf: it is
         // counted by its census by default, so the census answers.
         let got = read(leaf).unwrap().expect("the census answers by default");

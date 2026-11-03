@@ -2704,7 +2704,7 @@ fn plan_single_package_cmake(
         && crate::leaf_census::entity_source(root, &decl).is_census()
         && census_take_is_ours(descriptor.platform)
     {
-        crate::cmd::entity_census::take_leaf_for_build(root);
+        crate::cmd::entity_census::take_leaf_for_build(root, &image_id);
     }
 
     let build_dir = format!("build/{image_id}/cmake");

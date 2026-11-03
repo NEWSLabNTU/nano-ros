@@ -434,9 +434,14 @@ function(nros_sizing_descriptor_from_leaf _out_var)
     _nros_sizing_bound_args(_bound_args)
     _nros_sizing_heap_args(_heap_args)
 
+    # phase-530 W2 (M1) -- the census default depends on the SELECTED image.
+    set(_leaf_image "")
+    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
+        set(_leaf_image --leaf-image "${NROS_IMAGE}")
+    endif()
     execute_process(
         COMMAND "${_nsl_CLI}" dev image sizing-descriptor
-                --from-leaf "${_nsl_LEAF}"
+                --from-leaf "${_nsl_LEAF}" ${_leaf_image}
                 --build-dir "${_build_dir}"
                 --entry "${_nsl_ENTRY}"
                 --road "a standalone cmake leaf"

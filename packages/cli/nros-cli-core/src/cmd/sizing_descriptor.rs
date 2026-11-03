@@ -92,6 +92,12 @@ pub struct SizingDescriptorArgs {
     )]
     pub from_leaf: Option<PathBuf>,
 
+    /// `--from-leaf`: the image the build selected (`-DNROS_IMAGE`). Absent,
+    /// the leaf's own rule picks (one image, or `[system] default_images`).
+    // phase-530 W2 (M1): the census default depends on the image's board.
+    #[arg(long, value_name = "ID", requires = "from_leaf")]
+    pub leaf_image: Option<String>,
+
     /// `--from-model` / `--from-leaf`: the image's build dir. The descriptor
     /// lands at `<build-dir>/nros/sizing/<entry>.toml`.
     #[arg(long, value_name = "DIR")]
@@ -716,7 +722,7 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         system,
         inventory,
         census_backed,
-    } = leaf_declaration(&dir)?;
+    } = leaf_declaration(&dir, args.leaf_image.as_deref())?;
     let origin = system.origin_path().display().to_string();
     let image = |wiring| crate::sizing_descriptor::ModelImage {
         build_dir,
@@ -800,20 +806,21 @@ pub(crate) struct LeafDeclaration {
 /// size a C/C++ leaf from its declaration: `sizing-descriptor --from-leaf`
 /// (the `find_package(nano_ros)` and `add_subdirectory` roads) and
 /// `west-leaf-sizing` (a Zephyr application, issue 2086).
-pub(crate) fn leaf_declaration(dir: &std::path::Path) -> Result<LeafDeclaration> {
+pub(crate) fn leaf_declaration(
+    dir: &std::path::Path,
+    image: Option<&str>,
+) -> Result<LeafDeclaration> {
     use crate::entity_inventory::{ComponentEntities, Declaration, EntityDecl, EntityInventory};
 
-    let system = nros_orchestration_ir::leaf_system::read(dir)
-        .map_err(|e| eyre::eyre!(e))?
-        .ok_or_else(|| {
-            eyre::eyre!(
-                // See RFC-0098 D3.
-                "{}: declares no deployment -- write {}",
-                dir.display(),
-                dir.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
-                    .display()
-            )
-        })?;
+    let (system, source) = crate::leaf_census::read(dir, image)?.ok_or_else(|| {
+        eyre::eyre!(
+            // See RFC-0098 D3.
+            "{}: declares no deployment -- write {}",
+            dir.display(),
+            dir.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                .display()
+        )
+    })?;
 
     // The DECLARATION is the opt-in, as it was in the retired
     // ~~`cmd::entity_facts::facts_from_leaf`~~.
@@ -825,7 +832,37 @@ pub(crate) fn leaf_declaration(dir: &std::path::Path) -> Result<LeafDeclaration>
     let mut any_declared = false;
     let mut census_backed = false;
     // RFC-0120 D4 -- `entities = "census"`, or the C/C++ default.
-    let from_census = crate::leaf_census::entity_source(dir, &system).is_census();
+    if let Some(why) = source.refusal(dir) {
+        eyre::bail!("{why}");
+    }
+    let from_census = source.is_census();
+    // Ruling R29 -- a component-less leaf counted by its census: the census's
+    // nodes ARE its components (the reader below refuses a missing one).
+    if from_census
+        && system.components.is_empty()
+        && crate::leaf_entity_env::declared_entities(dir, image)?.is_some()
+    {
+        any_declared = true;
+        census_backed = true;
+        let nodes = crate::leaf_entity_env::census_node_entities(dir)?
+            .map_err(|why| eyre::eyre!("{origin}: {why}"))?;
+        let pkg = dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        for (node, decls) in nodes {
+            rows.push(ComponentEntities {
+                pkg: pkg.clone(),
+                component: node.clone(),
+                class: node,
+                declaration: if decls.is_empty() {
+                    Declaration::None
+                } else {
+                    Declaration::Stated(decls)
+                },
+            });
+        }
+    }
     for (i, c) in system.components.iter().enumerate() {
         let declaration = match &c.entities {
             // Issue 1556 -- `entities = "census"`: the leaf's census answers,
@@ -833,7 +870,7 @@ pub(crate) fn leaf_declaration(dir: &std::path::Path) -> Result<LeafDeclaration>
             // descriptor and the `NROS_DECLARED_*` carriers cannot read two
             // different things (a missing or stale census refuses there).
             None if from_census => {
-                match crate::leaf_entity_env::declared_entities(dir)? {
+                match crate::leaf_entity_env::declared_entities(dir, image)? {
                     Some(_) => {
                         any_declared = true;
                         census_backed = true;
@@ -1152,6 +1189,7 @@ mod tests {
             road: None,
             tier_record: None,
             from_leaf: None,
+            leaf_image: None,
             // phase-457-payload W2 -- no tables: the payload class refuses,
             // naming the missing registration (issue 1393 closed the road).
             bound_inventory: Vec::new(),

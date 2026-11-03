@@ -261,7 +261,11 @@ pub fn declaration_from_probe(doc_json: &str) -> Result<(String, String, Declara
 /// the same reader's fallback)", and that had been false since phase-445 W5
 /// deleted the fallback — `leaf_system::read` is `system.toml`-only. W9 retired
 /// the manifest field to match, so there is no second place to look.
-pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
+///
+/// `image` is the image the build selected (`None`: the leaf's own rule).
+/// The census default depends on that image's board (phase-530 W2, M1), so a
+/// caller that knows the image passes it.
+pub fn declared_entities(leaf: &Path, image: Option<&str>) -> Result<Option<Vec<EntityDecl>>> {
     // Issue 1556 item 4 -- the HOST census build of this leaf reads neither the
     // declaration nor a census: the producer is not sized by what it checks.
     if std::env::var_os(crate::cmd::entity_census::LEAF_CENSUS_HOST_ENV)
@@ -269,14 +273,16 @@ pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
     {
         return Ok(None);
     }
-    let Some(decl) = nros_orchestration_ir::leaf_system::read(leaf).map_err(|e| eyre::eyre!(e))?
-    else {
+    // RFC-0120 D4 -- `entities = "census"`, or a C/C++ cross leaf that states
+    // nothing (the census is its default). One rule, for the selected image:
+    // `leaf_census::read`.
+    let Some((decl, source)) = crate::leaf_census::read(leaf, image)? else {
         return Ok(None);
     };
     let origin = decl.origin_path().display().to_string();
-    // RFC-0120 D4 -- `entities = "census"`, or a C/C++ cross leaf that states
-    // nothing (the census is its default). One rule: `leaf_census`.
-    let source = crate::leaf_census::entity_source(leaf, &decl);
+    if let Some(why) = source.refusal(leaf) {
+        eyre::bail!("{why}");
+    }
     if source.is_census() {
         let said = match source {
             crate::leaf_census::EntitySource::Census { explicit: true } => {
@@ -292,7 +298,9 @@ pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
         // because falling back to "nothing declared" would size this image at
         // the hosted defaults (issue 1142's 31 KB on `cpp/action-client`)
         // without anyone having chosen that.
-        if decl.components.len() != 1 {
+        // Ruling R29 -- NO component is a program the leaf's CMake names
+        // (`leaf_census::has_program` let it through); SEVERAL is refused.
+        if decl.components.len() > 1 {
             eyre::bail!(
                 "{origin}: {said} on a leaf with {} `[[component]]` rows -- a census records \
                  ONE program, and splitting it across components would be inventing an \
@@ -548,7 +556,9 @@ pub fn inventory_for_leaf(leaf: &Path) -> Result<(EntityInventory, Vec<String>)>
     // Issue 1061 — what the leaf DECLARES, if anything. Read before the probe
     // results so it can serve both roles: the answer where nothing was probed,
     // and the cross-check where something was.
-    let declared = declared_entities(leaf)?;
+    // A Rust leaf (the probe's road): no census default reaches it, so the
+    // image does not change the answer.
+    let declared = declared_entities(leaf, None)?;
 
     let listings: Vec<std::fs::ReadDir> = dirs
         .iter()
@@ -1753,7 +1763,9 @@ nros = { version = "*", features = ["alloc", "param-services"] }
             td.path(),
             Some(r#"["publisher:std_msgs/msg/String:/chatter", "timer", "sub*2"]"#),
         );
-        let d = declared_entities(td.path()).unwrap().expect("declared");
+        let d = declared_entities(td.path(), None)
+            .unwrap()
+            .expect("declared");
         // `sub*2` is the repeat suffix -- the SHARED grammar's, not a second one.
         assert_eq!(d.len(), 4, "{d:?}");
         assert_eq!(d[0].kind, EntityKind::Publisher);
@@ -1769,21 +1781,21 @@ nros = { version = "*", features = ["alloc", "param-services"] }
     fn an_absent_key_is_none_and_an_empty_list_is_some_empty() {
         let td = tempfile::tempdir().unwrap();
         write_leaf(td.path(), None);
-        assert!(declared_entities(td.path()).unwrap().is_none());
+        assert!(declared_entities(td.path(), None).unwrap().is_none());
 
         write_leaf(td.path(), Some("[]"));
-        assert_eq!(declared_entities(td.path()).unwrap(), Some(vec![]));
+        assert_eq!(declared_entities(td.path(), None).unwrap(), Some(vec![]));
     }
 
     #[test]
     fn a_malformed_declaration_names_the_entry() {
         let td = tempfile::tempdir().unwrap();
         write_leaf(td.path(), Some("[\"nonsense\"]"));
-        let e = declared_entities(td.path()).unwrap_err().to_string();
+        let e = declared_entities(td.path(), None).unwrap_err().to_string();
         assert!(e.contains("nonsense"), "{e}");
 
         write_leaf(td.path(), Some("\"timer\""));
-        let e = declared_entities(td.path()).unwrap_err().to_string();
+        let e = declared_entities(td.path(), None).unwrap_err().to_string();
         assert!(e.contains("ARRAY"), "{e}");
     }
 
