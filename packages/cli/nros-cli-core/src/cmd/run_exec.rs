@@ -323,11 +323,31 @@ fn zenoh_router(endpoint: &str) -> Result<Command, String> {
             cmd.env("LD_LIBRARY_PATH", joined);
         }
     }
+    let listen = router_listen_endpoints(endpoint)
+        .iter()
+        .map(|e| format!("\"{e}\""))
+        .collect::<Vec<_>>()
+        .join(",");
     cmd.env(
         "ZENOH_CONFIG_OVERRIDE",
-        format!("scouting/multicast/enabled=false;listen/endpoints=[\"{endpoint}\"]"),
+        format!("scouting/multicast/enabled=false;listen/endpoints=[{listen}]"),
     );
     Ok(cmd)
+}
+
+/// What a router started for `endpoint` listens on. A serial link
+/// (`serial/<pty>`) also gets the endpoint a ROS 2 node on this host dials by
+/// default ([`ZENOH_DEFAULT_LOCATOR`]): that is what lets `ros2 topic echo`,
+/// run beside `nros run`, see the board's topics, since a router listening on
+/// the pty alone has no endpoint a host node can reach. A network link needs
+/// no second endpoint: its router already listens on a TCP port of this host.
+#[must_use]
+pub fn router_listen_endpoints(endpoint: &str) -> Vec<String> {
+    let mut eps = vec![endpoint.to_string()];
+    if endpoint.starts_with("serial/") {
+        eps.push(ZENOH_DEFAULT_LOCATOR.to_string());
+    }
+    eps
 }
 
 /// The XRCE agent: the SDK store's `MicroXRCEAgent` at the version the index
@@ -479,6 +499,16 @@ pub fn locate_runner(
         )
         .map(located)
         .map_err(|e| failed(e.to_string()));
+    }
+    // A released toolchain ships the first-party runners prebuilt in its
+    // `bin/`, beside `nros` (its SDK root carries their sources only). In a
+    // checkout nothing sits there, so the next rung answers.
+    if let Some(exe) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join(&r.bin)))
+        .filter(|e| e.is_file())
+    {
+        return Ok(located(exe));
     }
     // A nano-ros checkout's own runner: built beside the CLI.
     if let Some(root) = nano_ros_root.and_then(|p| p.canonicalize().ok())
@@ -1175,6 +1205,23 @@ mod tests {
                 zenoh: true,
                 options: "baudrate=115200".into()
             }
+        );
+    }
+
+    /// A serial link's router also listens where a ROS 2 node on this host
+    /// dials, so `ros2 topic echo` beside `nros run` joins the board's graph.
+    #[test]
+    fn a_serial_links_router_also_listens_for_host_ros_nodes() {
+        assert_eq!(
+            router_listen_endpoints("serial//dev/pts/7#baudrate=115200"),
+            vec![
+                "serial//dev/pts/7#baudrate=115200".to_string(),
+                "tcp/127.0.0.1:7447".to_string()
+            ]
+        );
+        assert_eq!(
+            router_listen_endpoints("tcp/127.0.0.1:10500"),
+            vec!["tcp/127.0.0.1:10500".to_string()]
         );
     }
 

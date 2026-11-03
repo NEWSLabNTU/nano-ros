@@ -45,7 +45,9 @@
 #                    .sha256) to <dir>, and stop — what the weekly platform
 #                    lane does once before fanning out with PROBE_ASSET
 #   PROBE_PLATFORM   installed track: which chapter is replayed after the
-#                    install — linux (default, first-project.md) | baremetal |
+#                    install — first-project (default, first-project.md: the
+#                    mps2-an385 QEMU serial chapter, timed against the
+#                    field budget) | linux (multi-node-linux.md) | baremetal |
 #                    freertos | threadx-linux | threadx-riscv64 | nuttx-arm | nuttx-riscv |
 #                    zephyr (phase-517 W10) | workspace (installation.md's
 #                    two-image workspace run, phase-517 W4; see the case table below)
@@ -144,14 +146,22 @@ nros_published_release_version() {
         awk '/^\[tool\.nros\]$/ {t = 1; next} /^\[/ {t = 0} t && !v && /^version = / {gsub(/"/, "", $3); v = $3} END {print v}'
 }
 # phase-517 W10 — the installed track replays ONE chapter per platform. The
-# default (`linux`) is first-project.md; every other value names a QEMU
+# default is first-project.md (`first-project`); every other value names a
 # chapter, replayed after the same install, against the same no-checkout
 # assertions, with the chapter's own `nros setup <board>` step provisioning.
 # `variant` selects the run of a chapter that documents several (NuttX's Arm
 # and RISC-V boots; ThreadX's two flavours) — extract-book-steps.py --variant.
 # Each chapter ends in a `probe-run` step whose `probe-expect` block is the
 # output the chapter documents; extract-book-steps.py refuses a run without one.
-PROBE_PLATFORM="${PROBE_PLATFORM:-linux}"
+# phase-525 W4 — the installed track's default is the book's first chapter,
+# first-project.md (the `first-project` track: mps2-an385 on QEMU over a
+# serial link, timed against the field budget). The checkout and zenoh tracks
+# replay no user chapter (phase-517 W2), so their row stays `linux`.
+if [[ "$PROBE_TRACK" = installed ]]; then
+    PROBE_PLATFORM="${PROBE_PLATFORM:-first-project}"
+else
+    PROBE_PLATFORM="${PROBE_PLATFORM:-linux}"
+fi
 PROBE_VARIANT=""
 # phase-522 W2 — the track table is the board registry's `[[probe]]` list,
 # generated into probe-tracks.json; probe-platforms.yml reads the same file.
@@ -171,7 +181,16 @@ PROBE_BOARD="${track_rest%%$'\t'*}"
 # phase-523 W4 — an OFFLINE track replays its chapter twice: once online to
 # stage the release asset and the SDK store, then again from that store in a
 # container with no network. See the installed-track `docker run` below.
-PROBE_OFFLINE="${track_rest#*$'\t'}"
+track_rest="${track_rest#*$'\t'}"
+PROBE_OFFLINE="${track_rest%%$'\t'*}"
+# phase-525 W4 (RFC-0116 D1) — a track with a field budget (minutes) is timed:
+# the wall clock runs from the first `nros setup` step, every step after it
+# prints the elapsed time, and the step that ends past the budget fails.
+PROBE_BUDGET_MIN="${track_rest#*$'\t'}"
+CLOCK_ARGS=()
+if [[ -n "$PROBE_BUDGET_MIN" ]]; then
+    CLOCK_ARGS=(--clock-from "nros setup" --clock-budget "$((PROBE_BUDGET_MIN * 60))")
+fi
 # phase-524 W4a — a TWIN track: a board with an emulator twin and no chapter of
 # its own yet. Its facts (board, west board, emulator, the twin's wiring, the
 # image's locator and knobs, the HAL module, what the emulator kind needs of
@@ -290,6 +309,7 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     ${PROBE_VARIANT:+--variant "$PROBE_VARIANT"} \
     ${TWIN_SUBST[@]+"${TWIN_SUBST[@]}"} \
     ${C_CD_SUBST[@]+"${C_CD_SUBST[@]}"} \
+    ${CLOCK_ARGS[@]+"${CLOCK_ARGS[@]}"} \
     "${CHAPTERS[@]/#/$REPO_ROOT/}"
 
 # The installed track's release steps, extracted here so a drift check

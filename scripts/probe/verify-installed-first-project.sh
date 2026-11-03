@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # PROBE-OWNED verification for the `installed` track (phase-447 A3, RFC-0099
 # D1). Appended after the book-extracted steps by run-bootstrap-probe.sh; runs
-# in the same shell, so cwd is the workspace first-project.md scaffolded and
+# in the same shell, so cwd is the workspace multi-node-linux.md scaffolded and
 # built.
 #
 # The book steps have already done the thing under test — install a release,
@@ -48,12 +48,12 @@ case "$cyclone_dir" in
 esac
 
 # --- the Run step, non-interactively -------------------------------------------
-# first-project.md's Run block, with the output it documents: `Published: N`
+# multi-node-linux.md's Run block, with the output it documents: `Published: N`
 # from the talker and `Received: N` from the listener, both in one process.
 # Require the SECOND tick of each, so the timer fired more than once and
 # delivery is a stream rather than a coincidence.
 bin=./build/posix-cyclonedds-linux/cmake/linux_entry
-[ -x "$bin" ] || probe_fail "the entry binary first-project.md runs is missing at $PWD/${bin#./}"
+[ -x "$bin" ] || probe_fail "the entry binary multi-node-linux.md runs is missing at $PWD/${bin#./}"
 
 log=/tmp/installed-first-project.log
 # `NROS_DEADLINE` travels at the head of the probe script with grep-q.sh (the

@@ -13,7 +13,7 @@ Depends on:
 - [phase-530](phase-530-nros-configure-single-pass.md), whose `nros configure`
   becomes the place W3's launch generation runs. W3 can land on today's `nros
   sync` first and move with phase-530;
-- [phase-525](phase-525-adoption-front-doors.md) W4 (the timed first chapter):
+- [phase-525](archived/phase-525-adoption-front-doors.md) W4 (the timed first chapter):
   it scaffolds a single package today. Its chapter text and probe move with W8
   here, so the two phases agree on the scaffold before either rewrites the
   chapter.

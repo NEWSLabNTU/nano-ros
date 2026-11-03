@@ -1,133 +1,141 @@
 # First Project
 
-> **Support level:** [the Linux host](../reference/boards/linux.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
+> **Support level:** [`mps2-an385-baremetal`](../reference/boards/mps2-an385.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
 
-One command scaffolds a working multi-node workspace; two more build and
-run it. C++ and CMake, publishing on your machine, with **nothing else
-running** — no router, no daemon, no ROS 2 installation.
+One node on one board, talking to ROS 2 over a serial cable: you scaffold a
+talker, run it, and watch its messages arrive in `ros2 topic echo`. The board
+is an Arm Cortex-M3 (MPS2-AN385) that QEMU emulates on your machine, so no
+hardware is needed, and its serial port is wired to your host the way a USB
+serial cable would be. No network is configured anywhere in this chapter.
 
-This assumes the [install](installation.md) is done: `nros` is on your
-PATH, a release installed with `scripts/install.sh`.
+This chapter assumes a Linux x86_64 host (or the
+[container](installation.md#do-i-need-ros-2-installed) the install page
+describes) with a C/C++ compiler, ROS 2 Humble with
+`ros-humble-rmw-zenoh-cpp`, and the [install](installation.md) done, so
+`nros` is on your PATH.
+WiFi is deferred to the Zephyr 4.4 line, where the Pico W's WiFi driver
+exists, so no chapter here opens over WiFi yet.
 
-## Scaffold
+## Provision the board
 
-```bash probe=50 track=installed
-nros new my_robot --workspace
-cd my_robot
+```bash probe=30 track=installed
+nros setup mps2-an385-baremetal --rmw zenoh
 ```
 
-That wrote a complete workspace, not a hello-world stub:
+This fetches what the board needs into a shared store under `~/.nros`: the
+Arm cross-compiler, the Rust target, and the QEMU that emulates the board.
+It installs no router: the router is ROS's `rmw_zenohd`, from the ROS 2
+install above.
+
+## Scaffold the talker
+
+```bash probe=40 track=installed
+nros new sensor_node --board mps2-an385-baremetal --template talker
+cd sensor_node
+```
+
+That wrote one package:
 
 ```text
-my_robot/
-├── .colcon_workspace           # marks the workspace root; there is no root build file
+sensor_node/
+├── system.toml      # what this package runs on: the board, and how it reaches ROS 2
+├── Cargo.toml       # the package manifest
+├── package.xml      # its ROS name and message dependencies
+├── README.md        # these steps, for whoever opens the package next
 └── src/
-    ├── talker_pkg/             # a C++ node: publishes std_msgs/Int32 on /chatter
-    ├── listener_pkg/           # a C++ node: subscribes to /chatter
-    └── demo_bringup/           # launch file + system.toml — no code
+    ├── lib.rs       # the talker node: publishes on /chatter once a second
+    └── main.rs      # boots the board and starts the node
 ```
 
-There is no entry package and no root `CMakeLists.txt`: the binary is
-*generated* from the bringup's `system.toml` when you build. What each
-directory is *for* is the next chapter,
-[Anatomy of What You Just Built](anatomy.md). You don't need it to run.
+The board talks to ROS 2 through a zenoh router on your host. Tell it to
+reach the router over its first serial port (`UART_0`, at 115200 baud) by
+adding one line at the end of `system.toml`:
 
-## Provision
-
-Inside the workspace, `nros setup` needs no board name. It reads every
-`[image.*]` in the workspace's `system.toml` files and installs what those
-images need: here, the Linux host build on Cyclone DDS.
-
-```bash probe=55 track=installed
-nros setup
+```bash probe=45 track=installed
+echo 'locator = "serial/UART_0#baudrate=115200"' >> system.toml
 ```
 
-If you already ran `nros setup linux --rmw cyclonedds`, it finds everything
-present and installs nothing.
+The line lands under the `board = "mps2-an385-baremetal"` line the scaffold
+wrote. Leave it out and the board looks for the router over QEMU's network
+instead, which is the [network chapter](bare-metal.md).
 
-## Build
+## Run it
 
-```bash probe=60 track=installed
+First generate what the build reads: the message code the talker uses and
+the board's build settings, all under `build/`. Run it again whenever you
+edit `system.toml`:
+
+```bash probe=48 track=installed
 nros sync
-nros build
 ```
 
-`nros sync` resolves the launch file into the system model; `nros build`
-generates the entry for each `[image.*]` in `system.toml` and drives
-CMake under `build/`. The first build compiles nano-ros's runtime into
-the build tree (~3 minutes); rebuilds are seconds. Inside a nano-ros
-checkout that checkout is used; anywhere else `nros` uses its own SDK
-(a release's `share/nano-ros`, or the checkout an in-tree `nros` was
-built in), and `--nano-ros-path <dir>` names one explicitly. Nothing is
-exported. `nros dev sdk root --explain` prints the root it would use and
-where that came from.
+Then build and run:
 
-## Run
-
-The build's last lines name what it produced and how to start it —
-`nros build: next for …`, an `artifact:` path and a `run:` command. On the
-host board the command is the program itself:
-
-```bash
-./build/posix-cyclonedds-linux/cmake/linux_entry
+```bash probe=50 probe-run=1500 track=installed
+nros run --expect 'Publishing:'
 ```
 
-```text
-Published: 0
-Received: 0
-Published: 1
-Received: 1
-Published: 2
-Received: 2
+```text probe-expect=50
+Publishing: 'Hello World: 1'
+nros run: matched after
 ```
 
-One process, two nodes: the talker publishes `std_msgs/Int32` on
-`/chatter` every 500 ms and the listener prints each one it receives —
-the interleaved `Received:` lines are your proof of delivery — exactly as a ROS 2
-composition container would run two composable nodes. `Ctrl-C` stops it.
+`nros run` does everything between your source and a running board: it
+builds the firmware (the first build compiles nano-ros for the Cortex-M3 and
+takes a few minutes; later builds take seconds), boots it in QEMU with the
+board's serial port connected to a terminal device on your host, and starts
+`rmw_zenohd` on that device. The talker's own output, `Publishing: 'Hello
+World: 1'` and on, is the board's console. With `--expect`, `nros run` stops
+everything and exits 0 the moment the console prints a line containing that
+text, and exits 1 if the board stops first, which makes it a one-line check
+that the whole path works.
 
-Why nothing else needed to be running: the default RMW is
-**CycloneDDS**, which discovers peers directly — there is no router or
-daemon in the picture. The zenoh backend (for talking to a ROS 2 system)
-and XRCE (for the smallest targets) are one page away:
-[Choosing an RMW](../user-guide/rmw-choosing.md), and switching is a
-one-word edit — [Switching RMW in Config](../user-guide/rmw-switching.md).
+Without `--expect` it keeps running until you press `Ctrl-C`. Start it that
+way in one terminal:
 
-## Same thing in Rust
-
-```bash
-nros new my_rust_robot --workspace --lang rust
-cd my_rust_robot
-nros sync
-nros build
-RUST_LOG=info ./build/posix-cyclonedds/linux_entry/target/debug/linux_entry
+```bash probe=60 probe-run=300 probe-keep track=installed
+nros run
 ```
 
-```text
-[INFO  talker_pkg] Publishing: 0
-[INFO  listener_pkg] I heard: 0
-[INFO  talker_pkg] Publishing: 1
+```text probe-expect=60
+Publishing: 'Hello World: 2'
 ```
 
-(The Rust talker ticks at 1 s.)
+## See it from ROS 2
 
-Same workspace shape, same `system.toml`, same launch file, same two
-commands — only the node implementations and the driver `nros build`
-picks (cargo instead of CMake) differ. Neither workspace has a root build
-file: the entry is generated per image under `build/`.
+In a second terminal, ask ROS 2 for the topic. The router `nros run` started
+also listens where a ROS 2 node on this machine looks for one, so nothing
+needs to be configured:
+
+```bash probe=70 probe-run=120 track=installed
+source /opt/ros/humble/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+```
+
+```text probe-expect=70
+data: 'Hello World:
+```
+
+The talker publishes best-effort, so the echo asks for best-effort too: a
+plain `ros2 topic echo` asks for reliable delivery, matches no publisher, and
+prints nothing. `Ctrl-C` in the first terminal stops QEMU and the router
+together.
 
 ## If it didn't work
 
-- `nros: RMW session open failed` on a busy machine usually means the
-  DDS port range on your `ROS_DOMAIN_ID` is contended — pick another:
-  `ROS_DOMAIN_ID=57 ./build/posix-cyclonedds-linux/cmake/linux_entry`.
+- `nros run` names what failed and the log it wrote. A router that would not
+  start usually means `rmw_zenohd` was not found (source your ROS 2 setup in
+  that terminal) or another router already holds port 7447 on this machine.
+- No `data:` lines in the second terminal: check `RMW_IMPLEMENTATION` and
+  the `--qos-reliability best_effort` flag.
 - Everything else: [Troubleshooting — First 10 Minutes](troubleshooting-first-10-min.md).
 
 ## Where to go next
 
-- **Understand the four directories** — [Anatomy](anatomy.md).
+- **The same board over a network** — [Bare-metal Cortex-M3 (QEMU)](bare-metal.md)
+  connects the talker through QEMU's network instead of the serial port.
+- **More than one node, on your Linux host** —
+  [Several Nodes on the Linux Host](multi-node-linux.md).
 - **Talk to a real ROS 2 system** — [ROS 2 Interoperability](ros2-interop.md).
-- **Put it on a board** — [How Integration Works](how-integration-works.md).
-- **Add nodes, parameters, more targets** —
-  [Project layout](workspace-from-app-node.md) and the Multi-Node
-  Projects section.
+- **Put it on another board** — [How Integration Works](how-integration-works.md).

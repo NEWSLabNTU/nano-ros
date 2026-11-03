@@ -4,7 +4,7 @@
 # they can't execute verbatim — this harness runs the QUICK START's runtime
 # non-interactively and asserts its documented output.
 #
-# What it verifies is first-project.md's whole promise: `nros new --workspace`
+# What it verifies is multi-node-linux.md's whole promise: `nros new --workspace`
 # scaffolds a C++ workspace that builds with two cmake commands and publishes
 # with NOTHING else running — no router, no daemon, no ROS 2 install. The
 # previous version of this file asserted `zenohd` on PATH after `nros setup`,
@@ -28,7 +28,7 @@ command -v nros >/dev/null || { echo "PROBE FAIL: nros not on PATH after bootstr
 nros version
 command -v cmake >/dev/null || { echo "PROBE FAIL: cmake not present — the host-prereqs block must install it"; exit 1; }
 
-# first-project.md, verbatim in spirit: scaffold outside the checkout, the
+# multi-node-linux.md, verbatim in spirit: scaffold outside the checkout, the
 # way a user would.
 ws=/tmp/probe_quickstart
 rm -rf "$ws"

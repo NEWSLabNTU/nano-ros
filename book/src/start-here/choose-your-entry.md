@@ -28,8 +28,11 @@ start:
 1. **[Install](../getting-started/installation.md)** — host toolchain,
    no ROS 2 required.
 2. **[First Project](../getting-started/first-project.md)** — scaffold
-   a two-node workspace and watch one node hear the other.
-3. **[Anatomy](../getting-started/anatomy.md)** explains what you
+   a talker, run it on an emulated board over a serial link, and watch
+   it in `ros2 topic echo`.
+3. **[Several Nodes on the Linux Host](../getting-started/multi-node-linux.md)**
+   — scaffold a two-node workspace and watch one node hear the other.
+4. **[Anatomy](../getting-started/anatomy.md)** explains what you
    built, in nano-ros's own terms.
 
 ## 🔧 I want it running on the board in my hand tonight
@@ -44,7 +47,7 @@ router.
 
 1. Check your board's row in **[Supported
    Boards](../reference/supported-boards.md)**.
-2. Take the host win: [First Project](../getting-started/first-project.md).
+2. Take the host win: [Several Nodes on the Linux Host](../getting-started/multi-node-linux.md).
 3. Then your platform's chapter under **Bring Your Own RTOS**
    (FreeRTOS / Zephyr / NuttX / ThreadX / ESP32 / bare-metal).
 
@@ -70,7 +73,7 @@ Experienced ROS 2 developer porting existing nodes to an MCU:
 Already have hardware — an ESP32, an STM32Cube or MCUXpresso project, a
 Zephyr or NuttX workspace? Two-step path:
 
-1. **Linux first** — [First Project](../getting-started/first-project.md)
+1. **Linux first** — [Several Nodes on the Linux Host](../getting-started/multi-node-linux.md)
    on your host verifies the whole stack in ~10 minutes, with no daemon
    and no ROS 2 install: `nros setup linux --rmw cyclonedds`, one
    scaffold command, then `nros sync` and `nros build`.
@@ -100,7 +103,7 @@ first, then move it to your target.
    `nros` CLI with `install.sh`, put `~/.nros/bin` on PATH, then
    `nros setup linux --rmw cyclonedds`. Those set up the machine; the
    per-project step comes next.
-2. **[First Project](../getting-started/first-project.md)** — one
+2. **[Several Nodes on the Linux Host](../getting-started/multi-node-linux.md)** — one
    scaffolded workspace, then `nros sync` and `nros build`, publishing
    with nothing else running. Rust variant on the same page: same two
    commands, same `system.toml`, only the node bodies differ.

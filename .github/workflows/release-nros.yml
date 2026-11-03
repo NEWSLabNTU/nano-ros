@@ -170,6 +170,14 @@ jobs:
           # with no native deps (serde only), so the release builds it like any
           # host tool and ships it beside `nros`.
           cargo build --release --locked -p nros-build-profile
+          # phase-525 W4 — the first-party runner packages (`packages/runners`,
+          # their own cargo workspace). `nros run` executes a plan through one,
+          # and the SDK root below carries their SOURCES only, so without the
+          # binaries the book's first chapter (`nros run` on an installed
+          # toolchain) refuses with "has no built executable". Staged into
+          # `bin/` beside `nros`, where `nros run` looks for a released runner.
+          cargo build --release --locked \
+              --manifest-path packages/runners/Cargo.toml --workspace
           # phase-429 W5 — the binary must match the checkout it was built from.
           # A release is the one artifact where nobody downstream can re-check
           # this, so it is asserted here rather than assumed.
@@ -256,6 +264,12 @@ jobs:
           cp packages/cli/nros-launch-resolve/target/release/nros-launch-resolve \
               "$stage/bin/nros-launch-resolve"
           cp target/release/nros-build-profile "$stage/bin/nros-build-profile"
+          # The runners built above, by the bin names their manifests declare.
+          for runner in packages/runners/target/release/nros-runner-*; do
+              case "$runner" in *.d) continue ;; esac
+              cp "$runner" "$stage/bin/"
+          done
+          test -x "$stage/bin/nros-runner-qemu"
           printf '%s\n' '${{ inputs.version }}' >"$stage/share/nros/VERSION"
           cp nros-sdk-index.toml "$stage/share/nros/nros-sdk-index.toml"
           # phase-440 W7 / RFC-0095 D8 job 2: the launcher fetches a pinned

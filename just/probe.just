@@ -9,7 +9,7 @@ default:
 #   1. the CHECKOUT track (ubuntu:24.04): clone + bootstrap, then the first-node
 #      chapter. What everyone does until the first release is cut.
 #   2. the INSTALLED track (phase-447 A3): install a release, then
-#      first-project.md's scaffold -> build -> run with NO checkout on the host.
+#      first-project.md (the serial QEMU chapter, timed) with NO checkout on the host.
 #      The released `nros` could not build anything and nothing noticed, because
 #      every host that ran it had a checkout the SDK-root ladder reached first.
 # ~30-60 min cold each. Knobs: PROBE_BRANCH, PROBE_CLONE_URL, PROBE_IMAGE,
@@ -55,6 +55,11 @@ platform name:
 [group("main")]
 platform-asset out="tmp/probe-asset":
     PROBE_TRACK=installed PROBE_ASSET_OUT={{out}} ./scripts/probe/run-bootstrap-probe.sh
+
+# book/src/getting-started/multi-node-linux.md — the two-node C++ workspace on
+# the Linux host (the installed track's default chapter until phase-525 W4).
+[group("main")]
+linux: (platform "linux")
 
 # book/src/getting-started/bare-metal.md — Rust talker on QEMU MPS2-AN385.
 [group("main")]

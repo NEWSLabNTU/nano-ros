@@ -2,7 +2,7 @@
 
 **Status (2026-11-04). DONE — W1 to W5 landed (W3's `-j` follow-up in #3026).** Implements
 [RFC-0117](../../design/0117-cli-command-tiers.md). Comes before
-[phase-525](../phase-525-adoption-front-doors.md) W1, so the help-text id sweep
+[phase-525](phase-525-adoption-front-doors.md) W1, so the help-text id sweep
 runs once, over the final verb names. Independent of phase-527 to phase-529,
 except that the `run`, `flash`, `monitor` and `bench` slots it reserves are
 filled there.

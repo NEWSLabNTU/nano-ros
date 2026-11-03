@@ -102,7 +102,8 @@ nros new my_robot --workspace
 cd my_robot && nros sync && nros build
 ```
 
-[First Project](./first-project.md) walks steps 3 and 4 end to end.
+[Several Nodes on the Linux Host](./multi-node-linux.md) walks steps 3 and 4 end to end;
+[First Project](./first-project.md) runs one node on an emulated board instead.
 Your project says what it deploys to with a board name in its
 `system.toml`; it does not name a path, a triple or a backend crate in
 any build file. [Consuming nano-ros](#consuming-nano-ros) below has the
@@ -251,7 +252,7 @@ nros build                     # or: nros build linux
 ```
 
 `nros new my_robot --workspace` scaffolds exactly that layout — see
-[First Project](./first-project.md). A POSIX C++ workspace that already
+[Several Nodes on the Linux Host](./multi-node-linux.md). A POSIX C++ workspace that already
 uses colcon can still be built by `colcon build`; the packages keep
 their `package.xml` and their own `CMakeLists.txt`.
 
@@ -522,7 +523,10 @@ for the one-page rewrite.
 ## Next Steps
 
 - [First Project](./first-project.md) — the Quick Start continues here:
-  scaffold a two-node workspace and run it (no ROS 2 needed)
+  scaffold a talker, run it on an emulated board over a serial link, and
+  see it in `ros2 topic echo`
+- [Several Nodes on the Linux Host](./multi-node-linux.md) — scaffold a
+  two-node workspace and run it (no ROS 2 needed)
 - [First Node — Rust](./first-node-rust.md) — build + run a Rust talker on Linux
 - [First Node — C](./first-node-c.md) — build + run a C talker on Linux
 - [First Node — C++](./first-node-cpp.md) — build + run a C++ talker on Linux

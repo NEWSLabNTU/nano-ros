@@ -36,7 +36,7 @@ use nros_extension::{
     console,
     describe::Describe,
     exit::RunnerExit,
-    plan::{LinkKind, RunPlan, Verb},
+    plan::{ConsoleKind, LinkKind, RunPlan, Verb},
     runner,
 };
 
@@ -85,6 +85,22 @@ fn command_line(plan: &RunPlan) -> Result<(std::path::PathBuf, Vec<String>), Str
     let mut argv = line.argv(&elf.display().to_string());
     argv.extend(plan.passthrough.iter().cloned());
     Ok((exe, argv))
+}
+
+/// Whether QEMU's stderr is part of the board's console. Under semihosting
+/// the guest writes to both host streams (its `stderr` — where the board's log
+/// bridge prints, `[INFO] … Publishing: …` included — lands on QEMU's), and
+/// the runner protocol grades only stdout, so on a semihosting console both
+/// streams are the console. Other consoles (QEMU's stdio mux) keep QEMU's
+/// stderr as the runner's diagnostics.
+fn console_includes_stderr(plan: &RunPlan) -> bool {
+    plan.console.kind == ConsoleKind::Semihosting
+}
+
+/// This process's stdout, as a child's stdio handle.
+fn stdout_as_stdio() -> std::io::Result<Stdio> {
+    use std::os::fd::AsFd;
+    Ok(Stdio::from(std::io::stdout().as_fd().try_clone_to_owned()?))
 }
 
 fn serial_link(plan: &RunPlan) -> bool {
@@ -177,8 +193,19 @@ fn run(plan: &RunPlan) -> RunnerExit {
         Ok(c) => c,
         Err(e) => return runner::fail(e),
     };
+    let merge = console_includes_stderr(plan);
     if !serial_link(plan) {
-        return runner::exec(Command::new(exe).args(argv));
+        let mut cmd = Command::new(exe);
+        cmd.args(argv);
+        if merge {
+            match stdout_as_stdio() {
+                Ok(s) => {
+                    cmd.stderr(s);
+                }
+                Err(e) => return runner::fail(format!("duplicating stdout: {e}")),
+            }
+        }
+        return runner::exec(&mut cmd);
     }
     // Serial: QEMU names the pty it allocated (`char device redirected to
     // ...`) on stdout or stderr depending on its version. Both streams are
@@ -203,7 +230,14 @@ fn run(plan: &RunPlan) -> RunnerExit {
     let r1 = Arc::clone(&reported);
     let t1 = std::thread::spawn(move || copy_and_scan(out, std::io::stdout(), &r1));
     let r2 = Arc::clone(&reported);
-    let t2 = std::thread::spawn(move || copy_and_scan(err, std::io::stderr(), &r2));
+    let t2 = std::thread::spawn(move || {
+        let to: Box<dyn Write> = if merge {
+            Box::new(std::io::stdout())
+        } else {
+            Box::new(std::io::stderr())
+        };
+        copy_and_scan(err, to, &r2);
+    });
     // Hold the guest until the link is reported and the router had time to
     // open the other end; a guest QEMU cannot resume is the runner failing.
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -309,6 +343,16 @@ mod tests {
             Some("/dev/pts/7")
         );
         assert_eq!(redirected_pty("qemu: something else"), None);
+    }
+
+    /// A semihosting guest's log lines reach QEMU's stderr, and the grader
+    /// reads stdout only: both streams are that console.
+    #[test]
+    fn a_semihosting_console_includes_qemus_stderr() {
+        let mut p = plan(r#"{"system":"arm","machine":"mps2-an385"}"#, "{}");
+        assert!(console_includes_stderr(&p));
+        p.console.kind = ConsoleKind::Stdio;
+        assert!(!console_includes_stderr(&p));
     }
 
     #[test]

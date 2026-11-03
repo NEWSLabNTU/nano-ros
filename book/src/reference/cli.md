@@ -173,7 +173,7 @@ refused, naming `--template`.
 **Workspace mode:** `nros new <name> --workspace [--lang <lang>] [--rmw <rmw>]`
 scaffolds a multi-node workspace instead — two node packages (`talker_pkg`,
 `listener_pkg`) and a `demo_bringup` with its `system.toml` and launch file,
-no root build file ([First Project](../getting-started/first-project.md)). It
+no root build file ([Several Nodes on the Linux Host](../getting-started/multi-node-linux.md)). It
 defaults to `--lang cpp --rmw cyclonedds`, the combination that needs no
 router, and builds for the host (`--platform linux`, the only one it accepts);
 add embedded targets afterwards with `nros new --image <name> --board <b>`.

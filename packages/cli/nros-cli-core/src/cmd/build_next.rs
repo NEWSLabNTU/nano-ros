@@ -1282,6 +1282,10 @@ mod tests {
     ///
     /// Both directions: every chapter `probe-run` block that boots QEMU must be
     /// a row here, so a new track cannot skip the comparison.
+    ///
+    /// A block that boots through `nros run` (the first chapter, phase-525 W4)
+    /// is compared through the verb: the QEMU line of the run plan `nros run`
+    /// resolves for the board must be the printed one too.
     #[test]
     fn every_probed_chapter_boot_line_is_the_printed_run_command() {
         // (chapter, block variant, board the chapter's image is built for),
@@ -1311,6 +1315,7 @@ mod tests {
         let block = regex_lite_blocks;
         let mut seen = Vec::new();
         for chapter in [
+            "first-project.md",
             "bare-metal.md",
             "freertos.md",
             "integration-nuttx.md",
@@ -1321,7 +1326,10 @@ mod tests {
                 .expect("chapter");
             for (info, body) in block(&text) {
                 let boots_qemu = body.contains("qemu-system") || body.contains("QEMU_SYSTEM_");
-                if !info.contains("probe-run") || !boots_qemu {
+                // phase-525 W4 — a chapter that boots through the verb has no
+                // QEMU line of its own: `nros run` is the line.
+                let runs_verb = body.lines().any(|l| l.trim_start().starts_with("nros run"));
+                if !info.contains("probe-run") || !(boots_qemu || runs_verb) {
                     continue;
                 }
                 let variant = info
@@ -1340,16 +1348,48 @@ mod tests {
                          packages/boards/board-support.toml carries its `qemu_board`"
                     );
                 };
-                // The executable is `"$(nros sdk-path qemu)/bin/qemu-system-…"`
-                // or `"$QEMU_SYSTEM_…"`: skip through the word naming it.
-                let book: Vec<String> = body
-                    .replace("\\\n", " ")
-                    .split_whitespace()
-                    .skip_while(|w| !w.contains("qemu-system") && !w.contains("QEMU_SYSTEM"))
-                    .skip(1)
-                    .map(str::to_string)
-                    .collect();
                 let d = descriptor(&cat, board);
+                let book: Vec<String> = if runs_verb {
+                    // The line `nros run` boots: the run plan it resolves for
+                    // this board, rendered by the one QEMU renderer the qemu
+                    // runner executes. So the verb, the printed next step and
+                    // the chapter are one line.
+                    let out = BuildOutput::Cargo {
+                        target_dir: "/ws/target".into(),
+                        triple: d.target.clone(),
+                        profile_dir: "debug".into(),
+                        bin: Some("app".into()),
+                    };
+                    let rp = crate::cmd::run_plan::resolve(
+                        nros_extension::plan::Verb::Run,
+                        crate::cmd::run_plan::Inputs {
+                            image: "demo:img",
+                            board,
+                            descriptor: &d,
+                            output: Some(&out),
+                            tables: &crate::cmd::run_plan::ImageTables::default(),
+                            bench: &crate::cmd::run_plan::Bench::default(),
+                            invocation: &crate::cmd::run_plan::Invocation::default(),
+                        },
+                    )
+                    .unwrap_or_else(|e| {
+                        panic!("{chapter}: `nros run` resolves no plan for {board}: {e:?}")
+                    });
+                    crate::cmd::run_plan::qemu_line(&rp)
+                        .unwrap_or_else(|e| {
+                            panic!("{chapter}: {board}'s run plan has no QEMU line: {e}")
+                        })
+                        .argv("K")
+                } else {
+                    // The executable is `"$(nros sdk-path qemu)/bin/qemu-system-…"`
+                    // or `"$QEMU_SYSTEM_…"`: skip through the word naming it.
+                    body.replace("\\\n", " ")
+                        .split_whitespace()
+                        .skip_while(|w| !w.contains("qemu-system") && !w.contains("QEMU_SYSTEM"))
+                        .skip(1)
+                        .map(str::to_string)
+                        .collect()
+                };
                 let p = plan(
                     board,
                     Driver::Cargo,

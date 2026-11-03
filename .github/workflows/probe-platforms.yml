@@ -1,7 +1,7 @@
 # The QEMU platform chapters, EXECUTED — phase-517 W10.
 #
 # `probe.yml` replays the Linux front doors (the checkout track and the
-# installed track's first-project.md). Every other user chapter — bare-metal,
+# installed track's first-project.md, the serial QEMU chapter). Every other user chapter — bare-metal,
 # FreeRTOS, ThreadX, NuttX, Zephyr — had only been proofread: their setup,
 # scaffold, build and run lines were checked to PLAN (`nros build --dry-run`),
 # never run on a machine without a checkout. This lane installs the release
