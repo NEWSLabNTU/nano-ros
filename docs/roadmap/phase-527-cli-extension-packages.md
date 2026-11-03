@@ -147,7 +147,7 @@ does not approve; `--allow-overriding` approves; a non-runner kind warns; a
 protocol mismatch is refused; a stale declaration errors; an unused one warns;
 the W2 build edge follows the declaration.
 
-Status: **DONE** (2026-11-03, #PRNUM).
+Status: **DONE** (2026-11-03, #3050).
 
 - **One lookup:** `cargo_nano_ros::provider_overrides::resolve_provider(scan,
   kind, name, policy) -> Result<PolicyResolution, PolicyResolveError>`
