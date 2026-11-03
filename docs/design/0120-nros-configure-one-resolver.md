@@ -174,8 +174,17 @@ Contract:
   CLAUDE.md lockfile rule.
 - **It computes the interface search path itself.** That retires the
   documented `eval "$(nros dev ws env)"` step.
-- **`nros sync` becomes an alias** of `nros configure`. RFC-0117's rule is
-  aliases, not removals.
+- **`nros sync` becomes an alias** of `nros configure`, and is then
+  **retired** (maintainer decision, 2026-11-03). This is a deliberate exception
+  to RFC-0117's "aliases instead of removals". A permanent `sync` would keep two
+  names for one verb in every chapter, script and answer a user finds. The
+  alias exists only while users and scripts move over. Retirement follows the
+  knob-spelling precedent (phase-484 W8), in three steps:
+  1. **Alias.** The alias warns on every use.
+  2. **Refusal.** `nros sync` exits non-zero naming `nros configure`.
+  3. **Removal.** The verb is gone.
+
+  Phase-530 W9 carries it.
 
 RFC-0040 rejected an automatic sync at `nros new` time, because the
 environment may not be ready at scaffold time. That reason does not reach a
