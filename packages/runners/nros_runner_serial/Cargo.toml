@@ -1,0 +1,23 @@
+[package]
+name = "nros_runner_serial"
+version = "0.0.0"
+description = "The `serial` console runner package for nano-ros (RFC-0119 D8)."
+publish = false
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "nros-runner-serial"
+path = "src/main.rs"
+
+[dependencies]
+nros-extension = { path = "../nros-extension" }
+# termios (raw mode, baud) on the port; the tests open a pty pair with it.
+libc = "0.2"

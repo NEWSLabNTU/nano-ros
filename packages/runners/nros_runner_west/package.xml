@@ -4,7 +4,9 @@
   <version>0.0.0</version>
   <description>
     The `west` runner (RFC-0119 D8). Runs a Zephyr image on the emulator its west build declares
-    (`west build -t run_&lt;emulator&gt;`). Flashing through west is a later verb.
+    (`west build -t run_&lt;emulator&gt;`), and flashes a real board through
+    Zephyr's own flash runner (`west flash`, the board's default from the
+    build's `runners.yaml` unless `--runner` names another).
 
     A runner package of the same shape as a user's: the announcement below is
     what the provider scan reads, `nros-runner.toml` is read only when this

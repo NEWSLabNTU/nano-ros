@@ -1,10 +1,17 @@
-//! `nros-runner-west`: the `west` runner (RFC-0119 D8), `run` only.
+//! `nros-runner-west`: the `west` runner (RFC-0119 D8), `run` and `flash`.
 //!
-//! Boots a Zephyr image on the emulator its plan names, through the run
-//! target the board's own west build declares: `west build -d <build_dir> -t
-//! run_<emulator>`, where `<emulator>` is the kind in the plan's
-//! `target.emulator` (`qemu:mps2-an385` boots under `run_qemu`). Zephyr owns
-//! the emulator's command line; this runner restates none of it.
+//! - `run` boots a Zephyr image on the emulator its plan names, through the
+//!   run target the board's own west build declares: `west build -d
+//!   <build_dir> -t run_<emulator>`, where `<emulator>` is the kind in the
+//!   plan's `target.emulator` (`qemu:mps2-an385` boots under `run_qemu`).
+//! - `flash` programs the board through Zephyr's own runner: `west flash -d
+//!   <build_dir> -r <runner> [-- <args>]`. The runner is the plan's
+//!   `args.runner` (`nros flash --runner jlink`), else the board's
+//!   `flash-runner` from the build's `zephyr/runners.yaml`; arguments after
+//!   `--` go to that runner unchanged. A failed flash is exit 2.
+//!
+//! Zephyr owns the emulator's command line and the flash runner's; this
+//! runner restates neither.
 
 use std::process::{Command, ExitCode};
 
@@ -15,18 +22,23 @@ use nros_extension::{
     runner,
 };
 use nros_runner_west::{
-    build_dir, no_passthrough, run_argv, run_targets, target_for, west_program,
+    build_dir, flash_argv, flash_runner, flash_runners, no_passthrough, run_argv, run_targets,
+    target_for, west_program,
 };
 
 fn describe() -> Describe {
     Describe::builder()
         .verb(Verb::Run)
+        .verb(Verb::Flash)
         .need("build_dir")
         .build()
 }
 
 fn main() -> ExitCode {
-    runner::main(&describe(), |_verb, plan| run(plan))
+    runner::main(&describe(), |verb, plan| match verb {
+        Verb::Flash => flash(plan),
+        _ => run(plan),
+    })
 }
 
 /// Zephyr's emulator name for the plan's emulator kind.
@@ -47,6 +59,19 @@ fn run(plan: &RunPlan) -> RunnerExit {
     })();
     match prepared {
         Ok(argv) => runner::exec(Command::new(west_program(plan)).args(argv)),
+        Err(e) => runner::fail(e),
+    }
+}
+
+fn flash(plan: &RunPlan) -> RunnerExit {
+    let prepared = (|| {
+        let dir = build_dir(plan)?;
+        let runners = flash_runners(&dir)?;
+        let r = flash_runner(plan.args.get("runner").map(String::as_str), &runners)?;
+        Ok::<_, String>(flash_argv(&dir, &r, &plan.passthrough))
+    })();
+    match prepared {
+        Ok(argv) => runner::exec_tool(Command::new(west_program(plan)).args(argv)),
         Err(e) => runner::fail(e),
     }
 }

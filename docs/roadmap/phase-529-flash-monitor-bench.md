@@ -1,6 +1,6 @@
 # Phase 529 — Real boards: `nros flash`, `nros monitor`, `nros bench`, and human steps
 
-**Status (2026-11-02). IN PROGRESS — W1 and W4 done; W2, W3, W5, W6 open.** Implements
+**Status (2026-11-03). IN PROGRESS — W1, W2 and W4 done (W2 with `espflash` deferred: no in-tree board flashes with it); W3, W5, W6 open.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D2, D6 and D7 for real
 silicon, and the flash and console runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -122,6 +122,74 @@ Acceptance:
 - Each runner passes `nros dev runner check`.
 - `nros flash --dry-run --why` resolves on every in-tree board that has
   `[board.flash]`.
+
+**Landed (2026-11-03): `serial` and west `flash`; `espflash` deferred.**
+
+- *`nros_runner_serial`* (`packages/runners/nros_runner_serial`), the
+  `console` runner, in the shape of phase-528 W3's packages: `package.xml`
+  announcing `runner/serial`, `nros-runner.toml` (`verbs = ["console"]`,
+  `needs = ["port"]`), one bin, protocol 1 unchanged, and a test holding
+  `describe` equal to the descriptor.
+  - It opens the plan's `console.port` raw (8N1, no echo, no newline
+    mapping, modem lines ignored) at `console.baud`, else 115200. A rate
+    the host's termios has no constant for is refused, naming the ones it
+    has. The port is nros's answer (`bench_for` and `resolve_port`); the
+    runner resolves nothing, and with no port it refuses, naming `--port`
+    and `nros bench scan`.
+  - What the board prints reaches stdout byte for byte. `args.send` (one
+    line per `\n`, for `nros monitor --send`) is sent once the port is
+    open, then stdin is forwarded. Both directions to the board translate a
+    newline to `args.line_ending` (`lf`, `cr`, `crlf`; default `lf`).
+  - A `console.command` template (`picocom -b {baud} {port}`) runs that tool
+    instead, expanded word by word as the `command` runner does.
+  - It runs until nros stops it. nros closing stdout is success; the port
+    closing or failing is the runner's failure (exit 2).
+  - Tests run against a pty pair: both directions, the line ending, `--send`,
+    a port that goes away (exit 2), and no port or a bad baud (exit 2).
+- *`nros_runner_west` gains `flash`* (`verbs = ["run", "flash"]`): `west
+  flash -d <build_dir> -r <runner> [-- <args>]`. The runner is the plan's
+  `args.runner` (`--runner`) if the build configured it, else the board's
+  `flash-runner`. Both come from the build's own `zephyr/runners.yaml`, and
+  a runner the board did not configure is refused, naming the ones it did.
+  Arguments after `--` go to Zephyr's runner (west drops the `--`). A
+  missing `runners.yaml` (an unfinished build) and a failing `west flash`
+  are exit 2. `west` is the plan's tool when nros resolved one, as for
+  `run`. A test drives the bin with a stand-in `west` from the plan's tools.
+- *`espflash`: deferred, not written.* phase-521 W6 retired the ESP32-C3
+  board, its platform crate, the `nros_tests::esp32` module and the
+  `just/esp32.just` flashing path, and ESP-IDF is gone. No in-tree board
+  states `[board.flash] method = "espflash"`, so no plan can name the
+  runner. Under RFC-0119 D8 ("a runner package is written when an in-tree
+  board needs it") it waits for an ESP32 board to return.
+  `[tool.espflash]` stays in the SDK index for that board.
+- *The Pico W's Wokwi twin* is now refused at plan time, not at run time.
+  The resolver sends only the emulators Zephyr's own build runs
+  (`run_plan::WEST_EMULATORS`: `qemu`, `renode`) to `west`, so Wokwi gets
+  its own runner name. A Wokwi runner is not small: it needs a generated
+  Wokwi project, `wokwi-cli` from the store in the plan's tools, a pty for
+  the zenoh UART that `wokwi-cli` carries on its stdio, and a token. So
+  `run_plan::RUNNERLESS_EMULATORS` lists `wokwi` with issue 2230, and the
+  resolver refuses with exit 3, naming the issue. The board's flash plan is
+  unaffected (`west`).
+- *Gate.* `check-board-runner-resolves`
+  (`nros-cli-core/tests/board_runner_resolves.rs`) gains
+  `every_flashable_board_resolves_a_flash_runner`. Every in-tree board with
+  `[board.flash]` (the Nucleo-F767ZI and the Pico W) resolves a `flash` plan
+  through `run_plan::resolve`. The runner comes from the same provider
+  lookup as the run rows, and must implement `flash` and need nothing the
+  plan leaves empty except `port`/`probe`, which are the machine's. A serial
+  console must also find the `serial` runner implementing `console`.
+  Mutation-checked: dropping `flash` from west's descriptor fails both
+  boards. A run row on a `RUNNERLESS_EMULATORS` kind passes as a reported
+  known gap only while its issue is open, the resolver refuses naming it,
+  and no package provides the runner. Once one does, the exemption is
+  stale and the gate fails.
+
+Not met here: `nros dev runner check` does not exist yet (phase-527 W7).
+The parts it would run are covered per package: the `describe`/descriptor
+test, the provider scan in the gate, and a plan each bin accepts in its own
+tests. `nros flash --dry-run --why` is W3's verb; the gate resolves the same
+plan that verb will print.
 
 ### W3 — `nros flash` and `nros monitor`
 

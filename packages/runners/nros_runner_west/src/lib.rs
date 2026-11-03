@@ -1,11 +1,16 @@
-//! The `west` runner's one question, shared with the `fvp` runner: which
-//! `west build -t <target>` boots a finished Zephyr build on a given
-//! emulator.
+//! The `west` runner's two questions.
 //!
-//! Zephyr owns the answer. A board's `board.cmake` declares the emulators it
-//! supports, and the build emits one `run_<emulator>` ninja target per
-//! emulator (plus `run`, which aliases the board's default). This crate reads
-//! them from the build's own `build.ninja` and never restates a board's list.
+//! - *run* (shared with the `fvp` runner): which `west build -t <target>`
+//!   boots a finished Zephyr build on a given emulator. A board's
+//!   `board.cmake` declares the emulators it supports, and the build emits one
+//!   `run_<emulator>` ninja target per emulator (plus `run`, which aliases the
+//!   board's default). This crate reads them from the build's own
+//!   `build.ninja`.
+//! - *flash*: which Zephyr runner `west flash` uses. The same `board.cmake`
+//!   configures the flash runners, and the build writes them, with the
+//!   board's default, to `zephyr/runners.yaml`. This crate reads that file.
+//!
+//! Zephyr owns both answers; this crate never restates a board's list.
 
 use std::path::{Path, PathBuf};
 
@@ -108,9 +113,196 @@ pub fn no_passthrough(plan: &RunPlan) -> Result<(), String> {
     }
 }
 
+/// What a finished west build's `zephyr/runners.yaml` says about flashing:
+/// the runners the board's `board.cmake` configured, and the one `west flash`
+/// uses when `--runner` is not given.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FlashRunners {
+    /// `runners:`, in file order.
+    pub runners: Vec<String>,
+    /// `flash-runner:`.
+    pub default: Option<String>,
+}
+
+/// Read the top-level `runners:` list and `flash-runner:` key of a
+/// `runners.yaml`. Zephyr writes this file itself (`runners_yaml.py`) in a
+/// fixed, flat shape, so only those two top-level keys are read; everything
+/// nested (`config:`, `args:`) is skipped.
+#[must_use]
+pub fn parse_runners_yaml(text: &str) -> FlashRunners {
+    let mut out = FlashRunners::default();
+    let mut in_runners = false;
+    for line in text.lines() {
+        let l = line.split('#').next().unwrap_or("").trim_end();
+        if l.trim().is_empty() {
+            continue;
+        }
+        let top = !l.starts_with([' ', '\t', '-']);
+        if top {
+            in_runners = false;
+            if let Some((k, v)) = l.split_once(':') {
+                let v = v.trim().trim_matches(['"', '\'']);
+                match k.trim() {
+                    "runners" => in_runners = true,
+                    "flash-runner" if !v.is_empty() => out.default = Some(v.to_string()),
+                    _ => {}
+                }
+            }
+        } else if in_runners {
+            if let Some(item) = l.trim_start().strip_prefix('-') {
+                let item = item.trim().trim_matches(['"', '\'']);
+                if !item.is_empty() {
+                    out.runners.push(item.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The flash runners of the build in `build_dir` (`zephyr/runners.yaml`).
+///
+/// # Errors
+///
+/// The file is absent (the build never finished), or unreadable.
+pub fn flash_runners(build_dir: &Path) -> Result<FlashRunners, String> {
+    let path = build_dir.join("zephyr").join("runners.yaml");
+    let text = std::fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "{}: {e}. `west flash` needs a finished build, which writes it; build the image first",
+            path.display()
+        )
+    })?;
+    Ok(parse_runners_yaml(&text))
+}
+
+/// The Zephyr runner `west flash` is given: the plan's `args.runner`
+/// (`nros flash --runner`) when the build configured it, else the board's
+/// `flash-runner`. Passing it explicitly, rather than leaving west to read the
+/// same file, keeps the choice visible in the command line nros prints.
+///
+/// # Errors
+///
+/// A requested runner the board did not configure, or a board with no
+/// default and no request; both name the runners it has.
+pub fn flash_runner(requested: Option<&str>, yaml: &FlashRunners) -> Result<String, String> {
+    let have = || {
+        if yaml.runners.is_empty() {
+            "none".to_string()
+        } else {
+            yaml.runners.join(", ")
+        }
+    };
+    match (requested, &yaml.default) {
+        (Some(r), _) if yaml.runners.iter().any(|x| x == r) => Ok(r.to_string()),
+        (Some(r), _) => Err(format!(
+            "`--runner {r}`: the board's Zephyr definition configures {} for this build \
+             (zephyr/runners.yaml)",
+            have()
+        )),
+        (None, Some(d)) => Ok(d.clone()),
+        (None, None) => Err(format!(
+            "the build's zephyr/runners.yaml names no `flash-runner`; pass `--runner` (configured: \
+             {})",
+            have()
+        )),
+    }
+}
+
+/// The `west flash -d <dir> -r <runner> [-- <args>]` argument vector, without
+/// `west`. Arguments after `--` go to the Zephyr runner itself (west drops
+/// the `--` before handing them over).
+#[must_use]
+pub fn flash_argv(build_dir: &Path, runner: &str, passthrough: &[String]) -> Vec<String> {
+    let mut v = vec![
+        "flash".to_string(),
+        "-d".to_string(),
+        build_dir.display().to_string(),
+        "-r".to_string(),
+        runner.to_string(),
+    ];
+    if !passthrough.is_empty() {
+        v.push("--".to_string());
+        v.extend(passthrough.iter().cloned());
+    }
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const RUNNERS_YAML: &str = "\
+# Available runners configured by board.cmake.
+runners:
+- openocd
+- jlink
+- stm32cubeprogrammer
+
+# Default flash runner if --runner is not given.
+flash-runner: openocd
+
+# Default debug runner if --runner is not given.
+debug-runner: openocd
+
+config:
+  board_dir: /z/boards/st/nucleo_f767zi
+  elf_file: zephyr.elf
+
+args:
+  openocd:
+    - --cmd-load
+    - flash write_image erase
+  jlink:
+    - --dt-flash=y
+";
+
+    #[test]
+    fn runners_yaml_gives_the_list_and_the_default() {
+        let y = parse_runners_yaml(RUNNERS_YAML);
+        assert_eq!(y.runners, ["openocd", "jlink", "stm32cubeprogrammer"]);
+        assert_eq!(y.default.as_deref(), Some("openocd"));
+        assert_eq!(parse_runners_yaml("runners: []\n"), FlashRunners::default());
+    }
+
+    #[test]
+    fn the_flash_runner_is_the_request_or_the_boards_default() {
+        let y = parse_runners_yaml(RUNNERS_YAML);
+        assert_eq!(flash_runner(None, &y).unwrap(), "openocd");
+        assert_eq!(flash_runner(Some("jlink"), &y).unwrap(), "jlink");
+        let e = flash_runner(Some("pyocd"), &y).unwrap_err();
+        assert!(e.contains("pyocd") && e.contains("openocd, jlink"), "{e}");
+        let none = FlashRunners {
+            runners: vec!["uf2".into()],
+            default: None,
+        };
+        assert!(flash_runner(None, &none).unwrap_err().contains("--runner"));
+    }
+
+    #[test]
+    fn flash_reads_runners_yaml_from_the_build() {
+        let dir = std::env::temp_dir().join(format!("nros-runner-west-fl-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("zephyr")).unwrap();
+        assert!(flash_runners(&dir).unwrap_err().contains("build the image"));
+        std::fs::write(dir.join("zephyr/runners.yaml"), RUNNERS_YAML).unwrap();
+        assert_eq!(
+            flash_runners(&dir).unwrap().default.as_deref(),
+            Some("openocd")
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_flash_argv_passes_arguments_to_the_zephyr_runner() {
+        assert_eq!(
+            flash_argv(Path::new("/b"), "openocd", &[]),
+            ["flash", "-d", "/b", "-r", "openocd"]
+        );
+        assert_eq!(
+            flash_argv(Path::new("/b"), "jlink", &["--speed".into(), "4000".into()]),
+            ["flash", "-d", "/b", "-r", "jlink", "--", "--speed", "4000"]
+        );
+    }
 
     #[test]
     fn run_targets_come_from_the_build_ninja() {
