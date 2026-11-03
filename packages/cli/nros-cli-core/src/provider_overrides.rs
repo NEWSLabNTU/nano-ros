@@ -38,6 +38,9 @@ pub struct Declarations {
     pub file: OverridesFile,
     /// The file read, when there was one.
     pub path: Option<PathBuf>,
+    /// Notes to print once on stderr: a declaration read from the legacy
+    /// leaf fallback says where it belongs now.
+    pub notes: Vec<String>,
 }
 
 /// Does this TOML file carry a top-level `[overrides]` table? Read loosely:
@@ -96,24 +99,45 @@ pub fn declared(ws: &Path) -> Result<Declarations> {
                 entries,
                 file: OverridesFile::NrosToml,
                 path: Some(nros_toml),
+                notes: Vec::new(),
             })
         }
-        None if root_sys.is_file() => {
-            let raw = std::fs::read_to_string(&root_sys)
-                .map_err(|e| eyre!("reading {}: {e}", root_sys.display()))?;
-            let sys: SystemToml =
-                toml::from_str(&raw).map_err(|e| eyre!("parsing {}: {e}", root_sys.display()))?;
-            Ok(Declarations {
-                entries: sys.overrides,
-                file: OverridesFile::LeafSystemToml,
-                path: Some(root_sys),
-            })
-        }
-        None => Ok(Declarations::default()),
+        None => leaf_system_toml_fallback(ws),
     }
 }
 
+/// The single-package leaf fallback: a workspace with no `nros.toml` reads
+/// its root `system.toml [overrides]`. The ONLY place that reads overrides
+/// from a `system.toml`, kept in one function so it can be retired in one
+/// edit. A non-empty table comes back with a note naming the new home.
+fn leaf_system_toml_fallback(ws: &Path) -> Result<Declarations> {
+    let root_sys = ws.join("system.toml");
+    if !root_sys.is_file() {
+        return Ok(Declarations::default());
+    }
+    let raw = std::fs::read_to_string(&root_sys)
+        .map_err(|e| eyre!("reading {}: {e}", root_sys.display()))?;
+    let sys: SystemToml =
+        toml::from_str(&raw).map_err(|e| eyre!("parsing {}: {e}", root_sys.display()))?;
+    let notes = if sys.overrides.is_empty() {
+        Vec::new()
+    } else {
+        vec![format!(
+            "{} declares [overrides]; move this to nros.toml [workspace.overrides] (create \
+             a nros.toml at the workspace root and delete the system.toml table).",
+            root_sys.display()
+        )]
+    };
+    Ok(Declarations {
+        entries: sys.overrides,
+        file: OverridesFile::LeafSystemToml,
+        path: Some(root_sys),
+        notes,
+    })
+}
+
 /// The workspace's override policy, with `--allow-overriding` names added.
+/// Prints [`Declarations::notes`] on stderr.
 ///
 /// # Errors
 ///
@@ -121,6 +145,9 @@ pub fn declared(ws: &Path) -> Result<Declarations> {
 pub fn policy(ws: &Path, allowed: &[String]) -> Result<OverridePolicy> {
     let ws = ws.canonicalize().unwrap_or_else(|_| ws.to_path_buf());
     let d = declared(&ws)?;
+    for n in &d.notes {
+        eprintln!("note: {n}");
+    }
     Ok(OverridePolicy::new(&ws, &d.entries, allowed).read_from(d.file, d.path))
 }
 
