@@ -1,5 +1,25 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-11-04). Issues 2191 and 1365 are closed; tier 2 needs one
+nightly to reach its cells.**
+
+- Runner disk and uptime are the OPERATOR's, not defects in the tree
+  (maintainer ruling, 2026-11-04). Issue 2191 is WONTFIX on that ground, as
+  1353 was; its sweep levers stay as operator tooling.
+- Issue 1365 is resolved: a job GitHub cancels after 24 h with no runner now
+  fails its coverage job (`report-interlock-coverage.sh`, via
+  `lane-stage.py --job-label`) instead of printing `cancelled` and passing.
+- Issue 2229 (board facts read the wrong dir for a west app naming
+  `NROS_IMAGE_SYSTEM_DIR`) stopped tier 1 and tier 2 in the build on
+  2026-11-03; fixed by #3059. Runner 118 runs `main` past it.
+- Issue 2113: runner 118's image (built ~2026-10-31) has
+  `/usr/bin/qemu-system-aarch64` (6.2.0, `virt` listed). The 10-28..10-30
+  UNMET reds ran on the image before it; the next nightly reaching cells is
+  the acceptance.
+
+Left: the first tier-2 run (run-matrix and nightly) that reaches its cells —
+the lane's acceptance, the W5 read, and issues 2113 and 2004.
+
 **Status (2026-11-01). `host-tests` is met; tier 2 now BUILDS on `main` and
 runs out of disk before its first cell (issue 2191).**
 
@@ -389,9 +409,9 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#1136](../issues/archived/1136-launch-args-keyword-removed-but-still-generated.md) | `host-tests`' integration job died at **Build workspace fixtures** for 30 runs because the CLI still emits the removed `LAUNCH_ARGS`. That is a scheduled lane with no verdict. |
 | [#1325](../issues/archived/1325-zephyr-fixture-filter-matches-the-checkout-path.md) | RESOLVED 2026-10-22 — the filter now matches per field, repo-relative, in both Zephyr builders (gate `check fixture-filter-fields`). |
 | [#1355](../issues/archived/1355-threadx-riscv64-builds-the-linux-threadx-port.md) | RESOLVED 2026-10-22: the port defect was long gone; the lane then went green without running its cells, because `just threadx_riscv64 test` never selected `rtos_e2e`. It does now, gated by `check platform-lane-cells`. |
-| [#2191](../issues/2191-tier2-runner-volume-below-working-set.md) | Tier 2 on `main` builds, then fills the runner volume in `check::default` and reports no verdict. The fix is operator-side (`cargo-sweep` on the runner, or a bigger volume). |
+| [#2191](../issues/archived/2191-tier2-runner-volume-below-working-set.md) | WONTFIX 2026-11-04 (runner configuration, not a project defect — as 1353). Tier 2 filled the runner volume in `check::default`; the sweep levers stay in the tree as operator tooling (#2973, #3006), and newslab-118 moved its volume. |
 | [#2223](../issues/archived/2223-nightly-gate-build-tier-fills-hosted-disk.md) | RESOLVED 2026-11-03: the scheduled `gate` run's `just check build` filled the HOSTED runner's disk. Sharded three ways, one disk each; the worst shard keeps 24 G free (run 41583320229). |
-| [#1365](../issues/1365-tier2-self-hosted-runner-unregistered.md) | Tier-2 jobs wait for a self-hosted runner that is not registered, and the lane reports nothing. Clause 2 has a report since 2026-10-23: `just runner-wait-triage` names the shape (NO RUNNER / OFFLINE / BUSY / IDLE) from the runner side. It closes once a real wait is named. |
+| [#1365](../issues/archived/1365-tier2-self-hosted-runner-unregistered.md) | RESOLVED 2026-11-04: a runner is registered (an operator matter), `just runner-wait-triage` names a wait's shape, and a job GitHub expires unclaimed now reddens its coverage job instead of passing it. |
 | [#1353](../issues/archived/1353-nightly-gate-runner-out-of-disk.md) | WONTFIX 2026-10-23 (runner configuration, not a project defect). Before it closed, the self-hosted runners ran out of disk (133 on 10-17, 118 on 10-21) because the sweep budgeted a list that missed `sizes-probe` and the west build root. Both are eviction units now (2026-10-23), and what no area holds is reported in every job log. |
 | [#1375](../issues/archived/1375-zephyr-native-sim-runner-link-misses-zpico-reply-slot.md) | RESOLVED 2026-10-23: Zephyr Rust zenoh images link, boot and pass in the nightly (39739466151). A merge-gating Zephyr link was declined; the nightly is that lane. |
 | [#1459](../issues/archived/1459-threadx-c-entry-undefined-network-wait.md) | RESOLVED 2026-10-23: the weak-reference fix holds, and the nightly `threadx_linux` job builds and passes the C images. A C-only image in L3 was declined; the nightly is that lane. |

@@ -119,6 +119,33 @@ case "$result" in
         exit 0
         ;;
     cancelled)
+        # Issue 1365 — a lane GitHub cancelled because NO runner claimed it for
+        # 24 h produced nothing, and this used to print `cancelled` and exit 0:
+        # a green coverage job over a lane that never ran. Red now, like the
+        # SKIPPED-while-ready arm below, because it is the same state seen from
+        # the other side (the job was queued, so the interlock was on). The
+        # label comes from `lane-stage.py --job-label`, which reads the wait
+        # off GitHub's own job record. A cancel before any claim that is NOT
+        # the expiry (a superseding run) is ordinary: say so, stay green.
+        case "$stage" in
+            *"GitHub expired the job"*)
+                echo "::error::$lane: $stage" >&2
+                echo "" >&2
+                echo "  No self-hosted runner picked this job up before GitHub's" >&2
+                echo "  24 h queue limit, so the lane produced no verdict. The runner" >&2
+                echo "  is offline, wedged, or busy elsewhere — an operator fix:" >&2
+                echo "" >&2
+                echo "      just runner-doctor <labels>   (on the runner's host)" >&2
+                printf '### %s: %s ❌\n\n' "$lane" "$stage" >> "$summary"
+                printf 'No runner claimed this job, so the lane did not run. Issue 1365.\n' >> "$summary"
+                exit 1
+                ;;
+            *"before any runner claimed it"*)
+                echo "::warning::$lane: $stage" >&2
+                printf '### %s: %s ⚠️\n' "$lane" "$stage" >> "$summary"
+                exit 0
+                ;;
+        esac
         if [ -n "$stage" ]; then
             echo "$lane: $stage" >&2
             printf '### %s: %s\n' "$lane" "$stage" >> "$summary"

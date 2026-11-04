@@ -1,15 +1,16 @@
 ---
 id: 2191
 title: "Tier 2 fills the runner volume in check::default: one full working set does not fit beside the unpruned host targets"
-status: open
+status: wontfix
 type: bug
 severity: high
 area: [ci, testing]
 related: [1353, 1094, 1158, 2113, 2179, 2180, phase-466]
 found: 2026-11-01
+resolved: 2026-11-04
 ---
 
-**Home:** [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
+**Home:** [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
 — a scheduled lane with no verdict.
 
 ## What
@@ -135,3 +136,18 @@ working set warm.
 A tier-2 run on `main` reaches its cells (`tier 2 — VERDICT: …` in the
 coverage job name), and the sweep at its end reports the host target dirs
 pruned or budgeted.
+
+## WONTFIX: operator-side (2026-11-04)
+
+Maintainer ruling, 2026-11-04: hosting a runner and keeping its resources,
+disk space included, is the operator's job. A runner that fills its volume is
+not a nano-ros defect, so this issue closes without the tier-2 acceptance run
+it named.
+
+What stays in the tree is the tooling an operator uses, not a fix: lever 1
+(`cargo-sweep`, run first, `--provision`), levers 2 and 3 (`examples/` leaf
+builds budgeted with the fixtures; default fixtures budget 280 GiB, capped at
+40 % of the volume; #3006), the between-jobs sweep in a container and the
+opt-in `NROS_RUNNER_MIN_FREE_GIB` floor (#2973). Lever 4 (a bigger volume)
+was done by the newslab-118 operator. Sizing a runner's disk, and reading its
+sweep lines, belong to whoever runs it.

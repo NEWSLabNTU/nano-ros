@@ -72,6 +72,7 @@ Usage::
 
 import argparse
 import collections
+import datetime
 import json
 import os
 import re
@@ -150,6 +151,15 @@ LABELS = {
     # reporter never ran — so the step is the only evidence of how far it got.
     "no-verdict-runner-lost": "NO VERDICT: runner lost mid-job",
     "cancelled": "NO VERDICT: cancelled",
+    # issue 1365. A job GitHub cancelled with NO steps never had a runner:
+    # `runner_name` is empty and `steps` is `[]`. Two causes look alike in
+    # `gh run list`, and only the wait tells them apart. A superseding
+    # workflow (post-submit, queue) cancels an older pending job within
+    # minutes; that is ordinary. GitHub's own queue limit cancels a job no
+    # runner claimed for 24 h; that is a lane with no runner, and the
+    # reporter used to print `cancelled` and exit 0 over it.
+    "unclaimed": "NO VERDICT: cancelled before any runner claimed it",
+    "unclaimed-expired": "NO VERDICT: no runner claimed it, and GitHub expired the job",
     "running": "still running",
     "did-not-start": "DID NOT START",
 }
@@ -380,10 +390,45 @@ def gh_json(args):
         return None
 
 
+# issue 1365 — GitHub cancels a job that waited 24 h for a runner. Anything
+# this long unclaimed is that expiry, not a supersede (those cancel within
+# minutes of the newer run); the margin covers GitHub's own rounding.
+UNCLAIMED_EXPIRY_S = 23 * 3600
+
+
+def _iso_s(stamp):
+    """Seconds since the epoch for one of GitHub's `...Z` timestamps, or None."""
+    try:
+        return datetime.datetime.strptime(
+            stamp, "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=datetime.timezone.utc).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def unclaimed_wait(j):
+    """Seconds a job waited before GitHub cancelled it with NO runner, or None
+    when the job is not that (it has steps, so a runner took it; or it was not
+    cancelled; or its timestamps are missing). For a job no runner claimed,
+    `startedAt` is the moment it was queued — measured on job 103881434950."""
+    if j.get("conclusion") != "cancelled" or j.get("steps"):
+        return None
+    start, done = _iso_s(j.get("startedAt")), _iso_s(j.get("completedAt"))
+    if start is None or done is None:
+        return None
+    return max(0, done - start)
+
+
 def classify_job(j):
     """One job of `gh run view --json jobs`, classified — `--history` and
     `--job-label` share it, so the run list and the coverage job's name can
     never give two answers about one job."""
+    waited = unclaimed_wait(j)
+    if waited is not None:
+        key = "unclaimed-expired" if waited >= UNCLAIMED_EXPIRY_S else "unclaimed"
+        h, m = divmod(int(waited) // 60, 60)
+        return Result("no-verdict", None, f"{LABELS[key]} (queued {h}h{m:02d}m)",
+                      "", False)
     res = classify(j.get("steps", []), j.get("conclusion"))
     # issue 1754 — a red cells step is only a verdict if a cell RAN;
     # the runner's markers in the log say whether one did.
@@ -409,7 +454,8 @@ def job_label(job_name, run_id):
     j = jobs[0]
     staged = any(stage_of(s.get("name", "")) for s in j.get("steps", []))
     res = classify_job(j)
-    if staged or res.label == LABELS["no-verdict-runner-lost"]:
+    if staged or res.label == LABELS["no-verdict-runner-lost"] \
+            or unclaimed_wait(j) is not None:
         print(res.label)
     return 0
 
@@ -1068,6 +1114,27 @@ def selftest(verbose=False):
         classify(lost, None).label != LABELS["no-verdict-runner-lost"])
     for line in _lost_runner_reach(chk):
         print(line, file=sys.stderr)
+
+    # 11. issue 1365 — NO RUNNER CLAIMED IT. Job 103881434950 (`tier 2 (1-wise
+    #     matrix)`, run-matrix 34814226310), recorded from the jobs API on
+    #     2026-11-04: cancelled, `steps` empty, `runner_name` empty, queued
+    #     2026-09-14T06:37:05Z and cancelled exactly 24 h later. Its coverage
+    #     job printed `cancelled` and passed.
+    expired = {"name": "tier 2 (1-wise matrix)", "conclusion": "cancelled",
+               "startedAt": "2026-09-14T06:37:05Z",
+               "completedAt": "2026-09-15T06:37:06Z", "steps": []}
+    got = classify_job(expired)
+    chk("103881434950: a job GitHub expired unclaimed says so, with the wait",
+        got.label.startswith(LABELS["unclaimed-expired"])
+        and "(queued 24h00m)" in got.label and not got.reached_cells)
+    superseded = dict(expired, completedAt="2026-09-14T06:49:05Z")
+    chk("a job superseded before a runner claimed it is NOT an expiry",
+        classify_job(superseded).label.startswith(LABELS["unclaimed"] + " ("))
+    chk("a cancelled job WITH steps had a runner, so it is not unclaimed",
+        unclaimed_wait(dict(expired, steps=[{"name": "Set up job",
+                                             "conclusion": "success"}])) is None)
+    chk("a job with no timestamps is not measured as unclaimed (nobody said)",
+        unclaimed_wait(dict(expired, completedAt=None)) is None)
 
     for line in _runner_marker_contract(chk):
         print(line, file=sys.stderr)
