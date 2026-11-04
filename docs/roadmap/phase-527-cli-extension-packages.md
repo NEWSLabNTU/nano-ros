@@ -5,7 +5,7 @@
 the host build role; declared overrides; colcon's duplicate rule among
 source roots, overrides in `nros.toml`), W2d (one `--base-paths` meaning,
 #3088) and W2e (a duplicate inside one root is refused too, #3113); W4
-(command dispatch) in review; W5, W6 next.** Implements
+(command dispatch) in review (#3116); W5, W6 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -432,7 +432,7 @@ Acceptance:
   and the three variables, and its exit status passes through.
 - A fixture command named `build` is refused at discovery.
 
-Status: **DONE, in review** (2026-11-04, #PR).
+Status: **DONE, in review** (2026-11-04, #3116).
 
 - `nros-cli-core/src/cmd/extension.rs` holds dispatch. `nros-cli`'s `main`
   calls it only when clap reports an unknown subcommand, so a built-in always
