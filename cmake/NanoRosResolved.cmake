@@ -83,6 +83,7 @@ function(nros_configured_locate _project _image)
         "nros configure ${_project} --image ${_image}")
     # TRUE only once a CURRENT answer is published below.
     set_property(GLOBAL PROPERTY NROS_CONFIGURED_LOCATED_CURRENT FALSE)
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_INPUTS "")
     nros_resolve_cli(_nros OPTIONAL CONTEXT "locating ${_image}'s configured answer")
     if(NOT _nros OR NOT EXISTS "${_nros}")
         set_property(GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR "")
@@ -97,6 +98,10 @@ function(nros_configured_locate _project _image)
         message(FATAL_ERROR
             "nano-ros: `nros locate configured --project ${_project} --image ${_image}` "
             "failed:\n${_err}")
+    endif()
+    # Ruling R38 -- the files the stamp's digest covered (`;`-separated).
+    if(_out MATCHES "set\\(NROS_LOCATE_INPUTS \"([^\"]*)\"\\)")
+        set_property(GLOBAL PROPERTY NROS_CONFIGURED_INPUTS "${CMAKE_MATCH_1}")
     endif()
     set(_dir "")
     if(_out MATCHES "set\\(NROS_LOCATE_RESOLVED \"([^\"]*)\"\\)")

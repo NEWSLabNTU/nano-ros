@@ -25,6 +25,12 @@
 #   F  NROS_LEAF_CENSUS_HOST set   no CLI call at all (configure's own producer)
 #   L  locate reports STALE        not CURRENT, so readers stay unseeded (R33)
 #   G  configure fails             the host configure FAILS, quoting it
+#   M  re-configure, same dir      `nros configure` runs again (the guard is
+#                                  per configure, never cached)
+#   N  image order                 CONFIGURED_IMAGE > NROS_IMAGE > default
+#   O  R31 walk-up                 only a generated app walks up to <ws>
+#   P  R38 input edges             editing a digested launch file re-runs the
+#                                  host configure and `nros configure`
 #   H  REACH                       every hooked entry point calls the helper, and
 #                                  nothing else under cmake/ or zephyr/ spells
 #                                  the `configure` command
@@ -78,6 +84,7 @@ printf '%s\n' \
     'case "$1 $2 $3" in' \
     '  "dev image leaf-system") echo "NROS_LEAF_IMAGE=default_img" ;;' \
     '  "locate configured "*) echo "set(NROS_LOCATE_RESOLVED \"\")"' \
+    '     if [ -n "${STANDIN_INPUTS:-}" ]; then echo "set(NROS_LOCATE_INPUTS \"$STANDIN_INPUTS\")"; fi' \
     '     if [ -n "${STANDIN_STALE:-}" ]; then echo "set(NROS_LOCATE_STALE \"edited\")";' \
     '     else echo "set(NROS_LOCATE_CURRENT TRUE)"; fi ;;' \
     '  *) if [ "$1" = configure ]; then' \
@@ -259,6 +266,109 @@ if [ "$RC" -ne 0 ] && nros_grep_q 'configure: boom' <<<"$OUT"; then
 else
     fail "case G: rc=$RC
 $OUT"
+fi
+
+# ---------------------------------------------------------------------------
+log_header "M. a re-configure of the same build dir configures again"
+# The once-per-configure guard is a GLOBAL property: it must not survive into
+# the next configure of the same build dir (a CACHE spelling would, and the
+# second configure would read a stale answer with no `nros configure` first).
+run_case m 1 -DPROBE_IMAGE=x
+: > "$CALLS"
+RC=0
+OUT="$(STANDIN_LOG="$CALLS" NROS_CLI="$STANDIN" cmake "$SRC_DIR/build" 2>&1)" || RC=$?
+LOG="$(cat "$CALLS")"
+check
+if [ "$RC" -eq 0 ] && [ "$(count "^configure $SRC_DIR --image x\$")" -eq 1 ]; then
+    log_success "the second configure ran \`nros configure\` again"
+else
+    fail "case M: the guard survived into the re-configure (rc=$RC):
+$LOG"
+fi
+
+# ---------------------------------------------------------------------------
+log_header "N. one image-selection order: CONFIGURED_IMAGE, then NROS_IMAGE"
+# `nros_configure_hook_image` is the order the root CMakeLists.txt and
+# `nano_ros_workspace()` share.
+N_SRC="$TEST_TMPDIR/n"
+mkdir -p "$N_SRC"
+printf '%s\n' \
+    'cmake_minimum_required(VERSION 3.20)' \
+    'project(n NONE)' \
+    "include(\"$HOOK_MODULE\")" \
+    'nros_configure_hook_image(_img)' \
+    'message(STATUS "PROBE_IMG=${_img}")' > "$N_SRC/CMakeLists.txt"
+img_of() { cmake -S "$N_SRC" -B "$N_SRC/b-$1" "${@:2}" 2>&1 | sed -n 's/.*PROBE_IMG=//p'; }
+check
+a="$(img_of 1 -DNROS_CONFIGURED_IMAGE=b:c -DNROS_IMAGE=i)"
+b="$(img_of 2 -DNROS_IMAGE=i)"
+c="$(img_of 3)"
+if [ "$a" = "b:c" ] && [ "$b" = "i" ] && [ -z "$c" ]; then
+    log_success "CONFIGURED_IMAGE > NROS_IMAGE > (the caller's default)"
+else
+    fail "case N: got '$a' / '$b' / '$c' (want b:c / i / empty)"
+fi
+
+# ---------------------------------------------------------------------------
+log_header "O. R31: only a generated application walks up to its workspace"
+# The Zephyr hook's caller decides the project (RFC-0085 D14): a generated
+# application (NROS_IMAGE_SYSTEM_DIR stated) configures the workspace that owns
+# its bringup; a standalone leaf that happens to sit under `src/` is itself.
+O_WS="$TEST_TMPDIR/o-ws"
+mkdir -p "$O_WS/src/leaf" "$O_WS/src/bringup"
+touch "$O_WS/src/leaf/system.toml" "$O_WS/src/bringup/system.toml"
+o_project() { # <dir> <generated>
+    : > "$CALLS"
+    printf '%s\n' \
+        "include(\"$PROJECT_ROOT/zephyr/cmake/nros_image_kconfig.cmake\")" \
+        "_nros_image_kconfig_configure(\"$STANDIN\" \"\${DIR}\" img \"\${GEN}\")" \
+        > "$TEST_TMPDIR/o.cmake"
+    STANDIN_LOG="$CALLS" cmake -DDIR="$1" -DGEN="$2" -P "$TEST_TMPDIR/o.cmake" >/dev/null 2>&1
+    sed -n 's/^configure \([^ ]*\) --image img$/\1/p' "$CALLS" | head -1
+}
+check
+got_leaf="$(o_project "$O_WS/src/leaf" FALSE)"
+got_gen="$(o_project "$O_WS/src/bringup" TRUE)"
+if [ "$got_leaf" = "$O_WS/src/leaf" ] && [ "$got_gen" = "$O_WS" ]; then
+    log_success "standalone leaf -> itself; generated app -> its workspace"
+else
+    fail "case O: leaf '$got_leaf' (want $O_WS/src/leaf), generated '$got_gen' (want $O_WS)"
+fi
+
+# ---------------------------------------------------------------------------
+log_header "P. R38: an edit to a digested input re-runs the host configure"
+# `nros locate configured` names the files the stamp's digest covered; the
+# hook makes each a configure dependency, so editing a launch file (not
+# system.toml / package.xml) re-runs the configure, and its hook re-runs
+# `nros configure`.
+if ! command -v ninja >/dev/null 2>&1; then
+    fail "ninja is not on PATH -- case P cannot report a verdict without it"
+else
+    P_SRC="$TEST_TMPDIR/p"
+    write_project "$P_SRC"
+    printf '[system]\nname = "probe"\n' > "$P_SRC/system.toml"
+    mkdir -p "$P_SRC/launch"
+    printf '<launch/>\n' > "$P_SRC/launch/talk.launch.xml"
+    : > "$CALLS"
+    P_RC=0
+    STANDIN_LOG="$CALLS" NROS_CLI="$STANDIN" STANDIN_INPUTS="$P_SRC/launch/talk.launch.xml" \
+        cmake -G Ninja -S "$P_SRC" -B "$P_SRC/build" -DPROBE_IMAGE=x >/dev/null 2>&1 || P_RC=$?
+    sleep 1
+    printf '<launch><node/></launch>\n' > "$P_SRC/launch/talk.launch.xml"
+    : > "$CALLS"
+    P_OUT="$(STANDIN_LOG="$CALLS" NROS_CLI="$STANDIN" \
+        STANDIN_INPUTS="$P_SRC/launch/talk.launch.xml" ninja -C "$P_SRC/build" 2>&1)" || P_RC=$?
+    LOG="$(cat "$CALLS")"
+    SRC_DIR="$P_SRC"
+    check
+    if [ "$P_RC" -eq 0 ] && nros_grep_q 'Re-running CMake' <<<"$P_OUT" \
+        && [ "$(count "^configure $P_SRC --image x\$")" -eq 1 ]; then
+        log_success "launch-file edit -> host re-configure -> nros configure"
+    else
+        fail "case P: rc=$P_RC, no re-configure on a digested input's edit:
+$P_OUT
+$LOG"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
