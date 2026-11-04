@@ -51,6 +51,14 @@ fn manifest_row(manifest: &toml::Value, fixture_id: &str) -> Option<toml::Value>
     })
 }
 
+/// A string field of `fixture_id`'s manifest row (`target`, …), or `None`
+/// when the row or the field is absent.
+pub fn row_str(fixture_id: &str, key: &str) -> Option<String> {
+    let manifest = read_doc(&crate::project_root().join("examples/fixtures.toml")).ok()?;
+    let row = manifest_row(&manifest, fixture_id)?;
+    str_at(&row, &[key]).map(str::to_owned)
+}
+
 /// `[image.<id>] locator` over `[image_defaults]`, then `[system]` —
 /// `nros_orchestration_ir::leaf_system`'s precedence, the same reading
 /// `scripts/lib/image_locator.py` gives. (RFC-0109 D6 retired the network

@@ -2389,6 +2389,58 @@ pub fn current_workspace_fixture_record(fixture_id: &str) -> TestResult<String> 
         })
 }
 
+/// Phase-535 W2 — every `[[workspace_fixture]]` row that builds a generated
+/// image, as `(id, dir, bringup, image)`, from the same cached records the
+/// resolvers read.
+pub fn workspace_fixture_images() -> Vec<(String, String, String, String)> {
+    let Ok(records) = workspace_fixture_records().as_ref() else {
+        return Vec::new();
+    };
+    records
+        .iter()
+        .filter_map(|r| {
+            let f: Vec<&str> = r.split('\x1f').collect();
+            let image = f.get(13).filter(|s| !s.is_empty())?;
+            Some((
+                f[0].to_owned(),
+                f.get(2)?.trim_end_matches('/').to_owned(),
+                f.get(3)?.trim_end_matches('/').to_owned(),
+                (*image).to_owned(),
+            ))
+        })
+        .collect()
+}
+
+/// Phase-535 W2 — the one `[[workspace_fixture]]` row that builds `image` of
+/// `bringup` in workspace `dir` (`fixtures::workspace_image::row_id`). Zero or
+/// several rows is an error naming the image: a resolver must never pick one.
+pub fn workspace_fixture_id_for_image(dir: &str, bringup: &str, image: &str) -> TestResult<String> {
+    let records = workspace_fixture_records()
+        .as_ref()
+        .map_err(|e| TestError::BuildFailed(e.clone()))?;
+    let hits: Vec<&str> = records
+        .iter()
+        .filter_map(|r| {
+            let f: Vec<&str> = r.split('\x1f').collect();
+            (f.get(2).map(|d| d.trim_end_matches('/')) == Some(dir.trim_end_matches('/'))
+                && f.get(3).map(|b| b.trim_end_matches('/')) == Some(bringup.trim_end_matches('/'))
+                && f.get(13) == Some(&image))
+            .then_some(f[0])
+        })
+        .collect();
+    match hits.as_slice() {
+        [one] => Ok((*one).to_owned()),
+        [] => Err(TestError::BuildFailed(format!(
+            "no [[workspace_fixture]] row builds {dir} {bringup} image {image:?} — \
+             add the image row to examples/fixtures.toml (phase-535)"
+        ))),
+        many => Err(TestError::BuildFailed(format!(
+            "{} rows build {dir} {bringup} image {image:?}: {many:?} — one image, one row",
+            many.len()
+        ))),
+    }
+}
+
 /// Every workspace row's record, read once (issue 1984). A failure is kept
 /// too, so each caller reports the same cause rather than re-running it.
 fn workspace_fixture_records() -> &'static Result<Vec<String>, String> {
@@ -2538,6 +2590,26 @@ pub fn build_workspace_rust_entry(
     // row's identity spelt as a directory.
     let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
     let binary_path = target_dir.join(format!("{}/{}", cargo_target_profile_dir(), binary_name));
+    require_prebuilt_workspace_binary(
+        fixture_id,
+        &binary_path,
+        &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
+    )
+}
+
+/// [`build_workspace_rust_entry`] for a CROSS row: the row's `target` triple
+/// sits between the target dir and the profile, as cargo lays it out.
+pub fn build_workspace_rust_cross_entry(
+    fixture_id: &str,
+    triple: &str,
+    binary_name: &str,
+) -> TestResult<PathBuf> {
+    assert_generated_entry_name(fixture_id, binary_name)?;
+    let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
+    let binary_path = target_dir.join(format!(
+        "{triple}/{}/{binary_name}",
+        cargo_target_profile_dir()
+    ));
     require_prebuilt_workspace_binary(
         fixture_id,
         &binary_path,

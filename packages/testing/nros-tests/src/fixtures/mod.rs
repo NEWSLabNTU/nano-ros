@@ -14,6 +14,7 @@ pub mod lane;
 pub mod require;
 pub mod staleness;
 pub mod tls_certs;
+pub mod workspace_image;
 #[allow(hidden_glob_reexports)] // rstest fixture creates a module matching the fn name
 mod xrce_agent;
 mod zenohd_router;
