@@ -474,6 +474,12 @@ pub struct ProvidersArgs {
     // phase-348 W5.
     #[arg(long, value_name = "KIND:NAME")]
     pub resolve: Option<String>,
+
+    /// `--base-paths`, as on `nros build`, `nros list` and `nros sync`: list
+    /// the providers the search path holds with these as its source roots.
+    // phase-527 W2d.
+    #[command(flatten)]
+    pub sources: crate::cmd::build::BasePathsArgs,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -578,24 +584,12 @@ pub struct SyncArgs {
     #[arg(long)]
     pub nano_ros_root: Option<PathBuf>,
 
-    /// Provider search roots, replacing the default (nano-ros tree, then this
-    /// workspace), as colcon's `--base-paths`.
-    ///
-    /// The default puts the whole nano-ros checkout in front of every
-    /// workspace, and it is rescanned per sync. A caller that already knows
-    /// the underlay has not moved — a build script looping over workspaces —
-    /// can say so here rather than pay for the rediscovery each time.
-    ///
-    /// Repeatable; order is search order, as with colcon. Naming a root that
-    /// holds no provider is not an error (the same is true of the default
-    /// workspace root when someone builds nano-ros on its own), but dropping a
-    /// root that DOES hold one makes its boards unresolvable — so this is an
-    /// override for a caller that knows the tree, not a tuning knob.
-    // Issue 0646. Measured on `examples/workspaces/mixed`, 1570 of the 1590
-    // directories visited are the underlay, and `regenerate-bindings.sh` runs
-    // 22 syncs.
-    #[arg(long = "base-paths", value_name = "PATH", num_args = 1..)]
-    pub base_paths: Vec<PathBuf>,
+    /// `--base-paths`: the same flag, with the same meaning, as on `nros
+    /// build` and `nros list` — the source roots the provider index is built
+    /// over. The nano-ros underlay and `NROS_PACKAGE_PATH` stay.
+    // Issue 0646 introduced the flag here; phase-527 W2d gave it one meaning.
+    #[command(flatten)]
+    pub sources: crate::cmd::build::BasePathsArgs,
 
     /// Skip the provider index entirely (`<ws>/build/nros/providers.json`).
     ///
@@ -673,7 +667,7 @@ impl ListArgs {
             || self.names_only
             || self.paths_only
             || !s.selection().is_empty()
-            || !s.base_paths.is_empty()
+            || !s.sources.base_paths.is_empty()
     }
 }
 
@@ -962,7 +956,7 @@ fn scan_providers_for(
     let search_path = match nano_ros_root {
         Some(r) => {
             let r = r.canonicalize().unwrap_or(r);
-            provider_search_path_with(Some(&r), &workspace)?
+            provider_search_path_with(Some(&r), &workspace, &[])?
         }
         None => provider_search_path(&workspace)?,
     };
@@ -1285,37 +1279,110 @@ pub fn provider_index_path(ws_root: &Path) -> PathBuf {
 /// the two ambient sources, so that function stays a pure one and every test of
 /// it can name its inputs.
 pub fn provider_search_path(workspace: &Path) -> Result<provider_scan::SearchPath> {
-    let nano_ros_root = crate::abi_guard::find_monorepo_root(workspace)
+    provider_search_path_for(workspace, &[])
+}
+
+/// [`provider_search_path`] with `--base-paths`: the flag replaces the SOURCE
+/// roots ([`source_roots`]) and leaves the nano-ros underlay and
+/// `NROS_PACKAGE_PATH` in place (RFC-0119 D4, phase-527 W2d).
+///
+/// # Errors
+///
+/// A `--base-paths` entry that is not a directory, or an unreadable
+/// `nros.toml`.
+pub fn provider_search_path_for(
+    workspace: &Path,
+    base_paths: &[PathBuf],
+) -> Result<provider_scan::SearchPath> {
+    provider_search_path_with(
+        nano_ros_underlay(workspace).as_deref(),
+        workspace,
+        base_paths,
+    )
+}
+
+/// The nano-ros tree that is root 0: the checkout the workspace sits in, else
+/// this binary's own SDK root.
+fn nano_ros_underlay(workspace: &Path) -> Option<PathBuf> {
+    crate::abi_guard::find_monorepo_root(workspace)
         // Then this binary's own SDK root (RFC-0103 D6, amended 2026-10-12):
         // the checkout an in-tree `nros` was built in, or a released one's
         // `share/nano-ros` (phase-447 A2). The providers under
         // `packages/interfaces/` are what let `std_msgs` and friends resolve,
         // so without this rung a released `nros` finds no message packages.
-        .or_else(nros_launcher::checkout::own_sdk_root);
-    provider_search_path_with(nano_ros_root.as_deref(), workspace)
+        .or_else(nros_launcher::checkout::own_sdk_root)
 }
 
-/// [`provider_search_path`] with the nano-ros root already decided — the shape
-/// `--nano-ros-root` and `nros sync` need, and the one place the config file and
-/// the environment are read.
+/// **The workspace's source roots — the one list** every verb uses
+/// (RFC-0119 D4, phase-527 W2d): build discovery for `nros build`, `nros
+/// list` and the build inside `nros run`/`flash`/`monitor`, and the source
+/// tier of the provider search path for `nros sync` and every resolution.
+///
+/// Without `--base-paths`: the workspace and its `nros.toml [workspace]
+/// package_paths`. With it: exactly those directories, relative to the
+/// workspace. Composition is [`provider_scan::source_roots`]; the only thing
+/// done here is reading `package_paths`.
+///
+/// # Errors
+///
+/// A `--base-paths` entry that is not a directory, or an unreadable
+/// `nros.toml`.
+pub fn source_roots(workspace: &Path, base_paths: &[PathBuf]) -> Result<provider_scan::SearchPath> {
+    let package_paths = if base_paths.is_empty() {
+        crate::orchestration::nros_config::workspace_package_paths(workspace).wrap_err_with(
+            || {
+                format!(
+                    "reading [workspace] package_paths from {}",
+                    workspace.join("nros.toml").display()
+                )
+            },
+        )?
+    } else {
+        Vec::new()
+    };
+    provider_scan::source_roots(workspace, &package_paths, base_paths)
+        .map_err(|e| eyre::eyre!("{e}"))
+}
+
+/// [`provider_search_path_for`] with the nano-ros root already decided — the
+/// shape `--nano-ros-root` and `nros sync` need, and the one place the
+/// environment is read.
 fn provider_search_path_with(
     nano_ros_root: Option<&Path>,
     workspace: &Path,
+    base_paths: &[PathBuf],
 ) -> Result<provider_scan::SearchPath> {
-    let package_paths = crate::orchestration::nros_config::workspace_package_paths(workspace)
-        .wrap_err_with(|| {
-            format!(
-                "reading [workspace] package_paths from {}",
-                workspace.join("nros.toml").display()
-            )
-        })?;
+    let sources = source_roots(workspace, base_paths)?;
     let env = std::env::var(provider_scan::PACKAGE_PATH_ENV).ok();
-    Ok(provider_scan::build_search_path(
+    Ok(provider_scan::search_path_over(
         nano_ros_root,
+        &sources,
         workspace,
-        &package_paths,
         env.as_deref(),
     ))
+}
+
+/// The source roots that lie outside the workspace, one line each — what
+/// `nros doctor` and `nros run --why` print so a root the user did not expect
+/// is never silent (phase-527 W2d).
+#[must_use]
+pub fn render_outside_roots(workspace: &Path, path: &provider_scan::SearchPath) -> String {
+    use std::fmt::Write as _;
+    let ws = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.to_path_buf());
+    let mut out = String::new();
+    for r in path.roots.iter().filter(|r| r.origin.is_source()) {
+        if !r.path.starts_with(&ws) {
+            let _ = writeln!(
+                out,
+                "source root {} ({}) is outside the workspace",
+                r.path.display(),
+                r.origin.label()
+            );
+        }
+    }
+    out
 }
 
 /// Print every configured root that is not a directory, once, on stderr.
@@ -1352,29 +1419,22 @@ fn warn_missing_roots(path: &provider_scan::SearchPath) {
 /// The provider search roots for one `nros sync`, honouring the colcon-style
 /// scope flags (issue 0646).
 ///
-/// Precedence, most explicit first:
-///
-/// 1. `--base-paths` — REPLACES the search path outright, like colcon's;
-/// 2. `--nano-ros-root` — replaces only the underlay root, keeping the
-///    workspace, and matches `nros ws providers`' flag of the same name;
-/// 3. the default — `provider_search_path`, the one implementation shared with
-///    that command.
+/// - `--base-paths` replaces the SOURCE roots, the same list `nros build`
+///   walks ([`source_roots`]); the underlay and `NROS_PACKAGE_PATH` stay
+///   (phase-527 W2d — until then it replaced the whole path, underlay
+///   included, which no other verb did);
+/// - `--nano-ros-root` replaces only the underlay root, and matches `nros ws
+///   providers`' flag of the same name;
+/// - the default — [`provider_search_path`], the one implementation shared
+///   with that command.
 fn provider_roots_for_sync(
     ws_root: &Path,
     base_paths: &[PathBuf],
     nano_ros_root: Option<&Path>,
 ) -> Result<provider_scan::SearchPath> {
-    if !base_paths.is_empty() {
-        // `--base-paths` REPLACES, so nothing else contributes — not the
-        // config file, not the environment. That is the deliberate difference
-        // from `NROS_PACKAGE_PATH`, which only ever appends: a flag is typed
-        // per invocation, an exported variable is not. See
-        // `provider_scan::build_search_path`.
-        return Ok(provider_scan::SearchPath::from_base_paths(base_paths));
-    }
     match nano_ros_root {
-        Some(root) => provider_search_path_with(Some(root), ws_root),
-        None => provider_search_path(ws_root),
+        Some(root) => provider_search_path_with(Some(root), ws_root, base_paths),
+        None => provider_search_path_for(ws_root, base_paths),
     }
 }
 
@@ -1437,12 +1497,13 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
     // fallback, and `nros sync` calls the SAME function: an index written
     // against a different root list is rejected on read, so two spellings of
     // "which roots" would make every cached read fail.
+    let base_paths = &args.sources.base_paths;
     let search_path = match args.nano_ros_root {
         Some(r) => {
             let r = r.canonicalize().unwrap_or(r);
-            provider_search_path_with(Some(&r), &workspace)?
+            provider_search_path_with(Some(&r), &workspace, base_paths)?
         }
-        None => provider_search_path(&workspace)?,
+        None => provider_search_path_for(&workspace, base_paths)?,
     };
     // phase-420 W6 — before anything is reported ABOUT the roots, report the
     // roots that are not there. A configured root that silently contributes
@@ -1668,6 +1729,10 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
                     "origin": r.origin.label(),
                     "exists": r.exists,
                     "as_written": r.as_written,
+                    // phase-527 W2d — a source root outside the workspace is
+                    // allowed, and never silent.
+                    "outside_workspace": r.origin.is_source()
+                        && !r.path.starts_with(&workspace),
                 })).collect::<Vec<_>>(),
                 "packages_seen": result.packages_seen(),
                 "providers": rows,
@@ -1715,6 +1780,7 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
         "{}",
         render_provider_listing(&search_path, &result, kind, &shadowed)
     );
+    print!("{}", render_outside_roots(&workspace, &search_path));
     print!(
         "{}",
         crate::provider_overrides::render_report(&result, &policy)
@@ -3454,7 +3520,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // Captured before `args.workspace` is moved below; the scope flags are read
     // near the END of sync, and a partial move would otherwise force the whole
     // struct to be cloned.
-    let base_paths = args.base_paths.clone();
+    let base_paths = args.sources.base_paths.clone();
     let nano_ros_root = args.nano_ros_root.clone();
     let ws_root: PathBuf = match args.workspace {
         Some(p) => std::fs::canonicalize(&p).wrap_err_with(|| format!("sync: {}", p.display()))?,
@@ -6828,8 +6894,9 @@ fn run_list_colcon(args: &ListArgs) -> Result<()> {
         None => std::env::current_dir()?,
     };
     let members = discover::cargo_members_or_walk(&root);
-    let found = discover::discover_in(&root, &args.selection.base_paths, &members)
-        .map_err(|e| eyre::eyre!("{e}"))?;
+    let sources = source_roots(&root, &args.selection.sources.base_paths)?;
+    let found =
+        discover::discover_in(&root, &sources, &members, None).map_err(|e| eyre::eyre!("{e}"))?;
     for w in &found.warnings {
         eprintln!("nros list: warning: {w}");
     }
@@ -8642,7 +8709,7 @@ mod search_path_tests {
         )
         .unwrap();
 
-        let path = provider_search_path_with(Some(&nano_ros), &workspace)
+        let path = provider_search_path_with(Some(&nano_ros), &workspace, &[])
             .expect("the search path assembles");
         assert_eq!(
             path.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
@@ -8684,7 +8751,7 @@ mod search_path_tests {
         )
         .unwrap();
 
-        let path = provider_search_path_with(None, &workspace).unwrap();
+        let path = provider_search_path_with(None, &workspace, &[]).unwrap();
         let scan = provider_scan::scan_roots(&path.paths()).unwrap();
         let r = provider_scan::resolve_unique(&scan, "serdes", "flatbuf").unwrap();
         assert_eq!(r.winner.package, "from_second", "the later root wins");
@@ -8695,6 +8762,33 @@ mod search_path_tests {
                 .collect::<Vec<_>>(),
             vec!["from_first"],
         );
+    }
+
+    /// phase-527 W2d — `nros sync --base-paths` writes its index over the
+    /// same root list every other verb uses: the underlay stays, and the
+    /// flag's entries are the source tier.
+    #[test]
+    fn sync_base_paths_keep_the_underlay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nano = tmp.path().join("nano");
+        let ws = tmp.path().join("ws");
+        std::fs::create_dir_all(&nano).unwrap();
+        std::fs::create_dir_all(ws.join("src")).unwrap();
+        let base = [PathBuf::from("src")];
+        let path = provider_roots_for_sync(&ws, &base, Some(&nano)).unwrap();
+        assert_eq!(
+            path.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
+            vec![
+                provider_scan::RootOrigin::NanoRosTree,
+                provider_scan::RootOrigin::BasePaths
+            ],
+        );
+        assert_eq!(
+            path.roots[1].path,
+            source_roots(&ws, &base).unwrap().roots[0].path,
+            "the root `nros build --base-paths src` walks"
+        );
+        assert!(provider_roots_for_sync(&ws, &[PathBuf::from("nope")], Some(&nano)).is_err());
     }
 
     /// The report NAMES the hidden provider — on the winner's row, and again on
@@ -8708,7 +8802,7 @@ mod search_path_tests {
         write_provider(&under.join("shipped"), "shipped_zenoh", "rmw", "zenoh");
         write_provider(&over.join("patched"), "patched_zenoh", "rmw", "zenoh");
 
-        let path = provider_scan::SearchPath::from_base_paths(&[under.clone(), over.clone()]);
+        let path = provider_scan::build_search_path(Some(&under), &over, &[], None);
         let scan = provider_scan::scan_roots(&path.paths()).unwrap();
         let shadowed = provider_scan::shadowing(&scan);
         let text = render_provider_listing(&path, &scan, None, &shadowed);
@@ -8740,7 +8834,7 @@ mod search_path_tests {
         write_provider(&root.join("a"), "acme_a", "rmw", "acme");
         write_provider(&root.join("b"), "acme_b", "rmw", "acme");
 
-        let path = provider_scan::SearchPath::from_base_paths(&[root]);
+        let path = provider_scan::build_search_path(None, &root, &[], None);
         let scan = provider_scan::scan_roots(&path.paths()).unwrap();
         let shadowed = provider_scan::shadowing(&scan);
         let text = render_provider_listing(&path, &scan, None, &shadowed);
@@ -8786,7 +8880,7 @@ mod search_path_tests {
         )
         .unwrap();
 
-        let path = provider_search_path_with(None, &workspace)
+        let path = provider_search_path_with(None, &workspace, &[])
             .expect("a missing root must not fail the assembly");
         assert_eq!(path.missing().len(), 1, "{:?}", path.roots);
 

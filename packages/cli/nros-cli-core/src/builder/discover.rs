@@ -35,7 +35,8 @@ use std::{
 
 use cargo_nano_ros::{
     package_xml::{BuildRole, Provision, build_role_of},
-    provider_scan::{self, WorkspacePackage},
+    provider_overrides::OverridePolicy,
+    provider_scan::{self, RootOrigin, SearchPath, WorkspacePackage},
 };
 
 /// What stage 1 found.
@@ -87,7 +88,8 @@ impl Discovered {
     }
 }
 
-/// Discover the workspace at `root`.
+/// Discover the workspace at `root`, over its default source roots: the
+/// workspace and its `nros.toml` `package_paths` ([`crate::cmd::ws::source_roots`]).
 ///
 /// `cargo_members` is the caller's list of Cargo workspace member directories.
 /// Passed IN rather than read here, deliberately: reading it means either
@@ -96,59 +98,64 @@ impl Discovered {
 /// depends on whether the caller already holds one. Stage 1 should not make
 /// that decision for every caller.
 pub fn discover(root: &Path, cargo_members: &[PathBuf]) -> Result<Discovered, String> {
-    discover_in(root, &[], cargo_members)
+    let sources = crate::cmd::ws::source_roots(root, &[]).map_err(|e| format!("{e:#}"))?;
+    discover_in(root, &sources, cargo_members, None)
 }
 
-/// [`discover`], looking for packages only under `base_paths` — colcon's
-/// `--base-paths`. Empty means the workspace root, which is [`discover`].
+/// [`discover`] over the SOURCE roots `sources` — the one list
+/// [`crate::cmd::ws::source_roots`] makes, so `--base-paths` means the same
+/// thing to `nros build`, `nros list`, the build inside `nros run` and the
+/// provider search path (RFC-0119 D4, phase-527 W2d).
 ///
-/// A relative base path is taken against `root`, the workspace the build is
-/// for, because that is the directory a `--workspace` caller named; colcon has
-/// no `--workspace` and takes it against the cwd, which is the same directory
-/// whenever `--workspace` is left out.
+/// colcon's model. The roots are peers, walked recursively; a package reached
+/// through two overlapping roots is one package; the SAME NAME in two
+/// directories is an error that names both, with the root each came from —
+/// the old `select` kept whichever its map met last, silently. A duplicate is
+/// settled the way RFC-0119 D4 settles a provider duplicate: a declaration in
+/// `nros.toml [workspace.overrides]` pinning one of the two directories keeps
+/// that one, and `--allow-overriding <name>` keeps the later root's. `policy`
+/// is the caller's (with its `--allow-overriding`); `None` reads the
+/// workspace's declarations only when a duplicate needs them.
 ///
-/// A cargo-only member outside every base path is left out too: colcon finds
-/// nothing outside its base paths, and a member that a kept package needs then
-/// fails loudly in cargo rather than being added back on a guess.
+/// A source root that is not a directory (a `package_paths` entry; a missing
+/// `--base-paths` entry is refused earlier, by `source_roots`) and one that
+/// holds no package are warnings.
+///
+/// A cargo-only member outside every root is left out when the workspace
+/// itself is not a root (`--base-paths`): colcon finds nothing outside its
+/// base paths, and a member that a kept package needs then fails loudly in
+/// cargo rather than being added back on a guess.
 pub fn discover_in(
     root: &Path,
-    base_paths: &[PathBuf],
+    sources: &SearchPath,
     cargo_members: &[PathBuf],
+    policy: Option<&OverridePolicy>,
 ) -> Result<Discovered, String> {
-    let bases: Vec<PathBuf> = if base_paths.is_empty() {
-        vec![root.to_path_buf()]
-    } else {
-        let mut v = Vec::new();
-        for b in base_paths {
-            let abs = if b.is_absolute() {
-                b.clone()
-            } else {
-                root.join(b)
-            };
-            let abs = abs.canonicalize().map_err(|e| {
-                format!(
-                    "--base-paths {}: {e} (resolved to {})",
-                    b.display(),
-                    abs.display()
-                )
-            })?;
-            v.push(abs);
-        }
-        v
-    };
-
     let mut packages: Vec<WorkspacePackage> = Vec::new();
+    // The root each package was found under, by directory.
+    let mut found_in: BTreeMap<PathBuf, String> = BTreeMap::new();
+    let mut root_rank: BTreeMap<PathBuf, usize> = BTreeMap::new();
     let mut warnings: Vec<String> = Vec::new();
     let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
     let mut host: BTreeMap<PathBuf, Vec<Provision>> = BTreeMap::new();
-    for base in &bases {
-        let (found, scan) = provider_scan::scan_workspace_packages(base)
-            .map_err(|e| format!("scanning {}: {e}", base.display()))?;
+    for (rank, base) in sources.roots.iter().enumerate() {
+        let label = root_label(root, base);
+        if !base.exists {
+            warnings.push(format!(
+                "source root {label} is not a directory — nothing was found there"
+            ));
+            continue;
+        }
+        let (found, scan) = provider_scan::scan_workspace_packages(&base.path)
+            .map_err(|e| format!("scanning {}: {e}", base.path.display()))?;
         warnings.extend(
             scan.errors
                 .iter()
                 .map(|e| format!("{}: {}", e.path.display(), e.message)),
         );
+        if found.is_empty() && base.origin != RootOrigin::Workspace {
+            warnings.push(format!("source root {label} holds no package"));
+        }
         // RFC-0119 D3 — the build role follows from the kinds. A package
         // mixing host and target kinds is a scan error above and is not
         // listed as a provider, so it is never classified as a host tool.
@@ -157,10 +164,20 @@ pub fn discover_in(
                 host.insert(p.dir.clone(), p.provides.clone());
             }
         }
-        // Overlapping base paths (`a` and `a/b`) find one package twice.
-        packages.extend(found.into_iter().filter(|p| seen.insert(p.dir.clone())));
+        // Overlapping roots (`a` and `a/b`) find one package twice.
+        for p in found {
+            if seen.insert(p.dir.clone()) {
+                found_in.insert(p.dir.clone(), label.clone());
+                root_rank.insert(p.dir.clone(), rank);
+                packages.push(p);
+            }
+        }
     }
-    let restricted = !base_paths.is_empty();
+    let restricted = !sources
+        .roots
+        .iter()
+        .any(|r| r.origin == RootOrigin::Workspace);
+    let bases: Vec<&Path> = sources.roots.iter().map(|r| r.path.as_path()).collect();
 
     let known: BTreeSet<PathBuf> = packages.iter().map(|p| p.dir.clone()).collect();
     let mut cargo_only = BTreeSet::new();
@@ -192,6 +209,10 @@ pub fn discover_in(
         // member has no ordering constraint to express HERE. The topological
         // sort orders ROS packages against each other; cargo orders crates
         // against each other.
+        found_in.insert(
+            dir.clone(),
+            format!("{} (a cargo `[workspace] members` entry)", root.display()),
+        );
         packages.push(WorkspacePackage {
             name,
             dir: dir.clone(),
@@ -205,6 +226,11 @@ pub fn discover_in(
         });
         cargo_only.insert(dir);
     }
+
+    let packages = settle_duplicates(root, packages, &found_in, &root_rank, policy, &mut warnings)?;
+    let kept: BTreeSet<&PathBuf> = packages.iter().map(|p| &p.dir).collect();
+    host.retain(|d, _| kept.contains(d));
+    cargo_only.retain(|d| kept.contains(d));
 
     let packages = provider_scan::topological_order(&packages).map_err(|cycle| {
         format!(
@@ -220,6 +246,129 @@ pub fn discover_in(
         warnings,
         host,
     })
+}
+
+/// How a source root is named in a message: its path, the origin that put it
+/// on the list (what the user would edit), and the entry as typed.
+fn root_label(workspace: &Path, r: &provider_scan::SearchRoot) -> String {
+    let outside = if r.path.starts_with(workspace) {
+        ""
+    } else {
+        ", outside the workspace"
+    };
+    match &r.as_written {
+        Some(w) => format!(
+            "{} ({}: `{w}`{outside})",
+            r.path.display(),
+            r.origin.label()
+        ),
+        None => format!("{} ({}{outside})", r.path.display(), r.origin.label()),
+    }
+}
+
+/// colcon's rule: one package name, one directory. Two directories with one
+/// name in two different source roots are refused, naming both and where each
+/// came from, unless the override policy settles it (see [`discover_in`]).
+///
+/// Two copies inside ONE root are a warning here, not an error, and `select`
+/// refuses to choose between them. That is narrower than colcon, which
+/// refuses any duplicate, and it is measured rather than assumed: in-tree
+/// templates keep per-board variants of one package side by side
+/// (`examples/templates/ament-workspace-port/{zephyr,mps2-an385-freertos}`,
+/// both `ament_workspace_port`), each built on its own, and refusing them
+/// would break discovery of a tree that never asks for that name. A selection
+/// or a `<depend>` that does name it is refused by `select`, so the old
+/// silent last-wins cannot happen either way.
+fn settle_duplicates(
+    root: &Path,
+    packages: Vec<WorkspacePackage>,
+    found_in: &BTreeMap<PathBuf, String>,
+    root_rank: &BTreeMap<PathBuf, usize>,
+    policy: Option<&OverridePolicy>,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<WorkspacePackage>, String> {
+    let mut by_name: BTreeMap<&str, Vec<&WorkspacePackage>> = BTreeMap::new();
+    for p in &packages {
+        by_name.entry(p.name.as_str()).or_default().push(p);
+    }
+    let dups: Vec<(&str, Vec<&WorkspacePackage>)> =
+        by_name.into_iter().filter(|(_, v)| v.len() > 1).collect();
+    if dups.is_empty() {
+        return Ok(packages);
+    }
+    let loaded;
+    let policy = match policy {
+        Some(p) => p,
+        None => {
+            loaded = crate::provider_overrides::policy(root, &[]).unwrap_or_default();
+            &loaded
+        }
+    };
+    let canonical = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let mut drop: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut errors: Vec<String> = Vec::new();
+    for (name, hits) in dups {
+        let pinned = hits.iter().find(|p| {
+            let dir = canonical(&p.dir);
+            policy.declared.values().any(|d| d.path == dir)
+        });
+        let rank = |p: &WorkspacePackage| root_rank.get(&p.dir).copied();
+        let later = if policy.allowed.contains(name) {
+            let best = hits.iter().filter_map(|p| rank(p)).max();
+            let at_best: Vec<_> = hits.iter().filter(|p| rank(p) == best).collect();
+            (best.is_some() && at_best.len() == 1).then(|| *at_best[0])
+        } else {
+            None
+        };
+        match pinned.copied().or(later) {
+            Some(keep) => {
+                drop.extend(
+                    hits.iter()
+                        .filter(|p| p.dir != keep.dir)
+                        .map(|p| p.dir.clone()),
+                );
+            }
+            None => {
+                let lines: Vec<String> = hits
+                    .iter()
+                    .map(|p| {
+                        format!(
+                            "  {}  — found under {}",
+                            p.dir.display(),
+                            found_in.get(&p.dir).map_or("?", String::as_str)
+                        )
+                    })
+                    .collect();
+                let text = format!("package `{name}` is in two places:\n{}", lines.join("\n"));
+                let roots: BTreeSet<usize> = hits.iter().filter_map(|p| rank(p)).collect();
+                if roots.len() > 1 {
+                    errors.push(text);
+                } else {
+                    warnings.push(format!(
+                        "{text}\n  (one source root: selecting or depending on `{name}` is \
+                         refused until one copy goes)"
+                    ));
+                }
+            }
+        }
+    }
+    if !errors.is_empty() {
+        return Err(format!(
+            "{}\n\nA package name names one package, as in colcon: the source roots \
+             (the workspace, its `nros.toml` `package_paths`, or `--base-paths`) are \
+             peers, so neither copy outranks the other. Fix it by dropping one \
+             root (`--base-paths`, or the `package_paths` entry), by removing one \
+             copy, or — for a provider package — by pinning the one you mean in \
+             `{}` or passing `--allow-overriding <name>` to keep the later \
+             root's (RFC-0119 D4).",
+            errors.join("\n"),
+            policy.file.label()
+        ));
+    }
+    Ok(packages
+        .into_iter()
+        .filter(|p| !drop.contains(&p.dir))
+        .collect())
 }
 
 /// Cargo workspace member directories declared at `root`.
@@ -502,11 +651,45 @@ pub fn select(found: &Discovered, sel: &Selection) -> Result<Discovered, String>
         return Ok(found.clone());
     }
 
-    let by_name: BTreeMap<&str, &WorkspacePackage> = found
-        .packages
-        .iter()
-        .map(|p| (p.name.as_str(), p))
+    // One name, one package. `discover_in` refuses a duplicate across source
+    // roots; two copies inside one root reach here, and this map must never
+    // pick between them (it used to keep the later one, silently). A name
+    // that is duplicated is refused as soon as a flag or a `<depend>` asks
+    // for it.
+    let mut by_name: BTreeMap<&str, &WorkspacePackage> = BTreeMap::new();
+    let mut twins: BTreeMap<&str, Vec<&WorkspacePackage>> = BTreeMap::new();
+    for p in &found.packages {
+        if let Some(prev) = by_name.insert(p.name.as_str(), p) {
+            let e = twins.entry(p.name.as_str()).or_default();
+            if e.is_empty() {
+                e.push(prev);
+            }
+            e.push(p);
+        }
+    }
+    let asked: BTreeSet<&str> = sel
+        .flags()
+        .into_iter()
+        .flat_map(|(_, names)| names.iter().map(String::as_str))
+        .chain(
+            found
+                .packages
+                .iter()
+                .flat_map(|p| p.depends.iter().map(String::as_str)),
+        )
         .collect();
+    if let Some((name, copies)) = twins.iter().find(|(n, _)| asked.contains(**n)) {
+        return Err(format!(
+            "package `{name}` is in two places: {}. A package name names one \
+             package, so a selection or a dependency naming it is ambiguous; \
+             remove one copy, or narrow the source roots with `--base-paths`.",
+            copies
+                .iter()
+                .map(|p| p.dir.display().to_string())
+                .collect::<Vec<_>>()
+                .join(" and ")
+        ));
+    }
 
     // Every flag at once: a script with two typos should learn about both.
     let mut unknown: Vec<String> = Vec::new();
@@ -1267,6 +1450,11 @@ mod tests {
         assert_eq!(n, vec!["msgs_pkg", "talker_pkg"]);
     }
 
+    fn sources(root: &Path, base_paths: &[&str]) -> SearchPath {
+        let b: Vec<PathBuf> = base_paths.iter().map(PathBuf::from).collect();
+        crate::cmd::ws::source_roots(root, &b).expect("source roots")
+    }
+
     #[test]
     fn base_paths_find_only_what_is_under_them() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1274,18 +1462,189 @@ mod tests {
         selection_workspace(root);
         let d = discover_in(
             root,
-            &[
-                PathBuf::from("src/msgs_pkg"),
-                PathBuf::from("src/other_pkg"),
-            ],
+            &sources(root, &["src/msgs_pkg", "src/other_pkg"]),
             &[root.join("src/helper")],
+            None,
         )
         .expect("discovers");
         let mut n = names(&d);
         n.sort_unstable();
         assert_eq!(n, vec!["msgs_pkg", "other_pkg"], "helper is outside them");
-        let e = discover_in(root, &[PathBuf::from("src/nope")], &[]).expect_err("missing");
-        assert!(e.contains("--base-paths src/nope"), "{e}");
+        let e =
+            crate::cmd::ws::source_roots(root, &[PathBuf::from("src/nope")]).expect_err("missing");
+        assert!(
+            format!("{e:#}").contains("--base-paths `src/nope`"),
+            "{e:#}"
+        );
+    }
+
+    // ---- phase-527 W2d — source roots are colcon's base paths -------------
+
+    /// Two roots, one package name each: refused, naming both directories
+    /// and the root each came from.
+    #[test]
+    fn a_duplicate_across_two_source_roots_names_both() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(&root.join("a/dup/package.xml"), &pkg_xml("dup", &[]));
+        write(&root.join("b/dup/package.xml"), &pkg_xml("dup", &[]));
+        let e = discover_in(root, &sources(root, &["a", "b"]), &[], None)
+            .expect_err("a duplicate is refused");
+        assert!(e.contains("package `dup` is in two places"), "{e}");
+        assert!(
+            e.contains(&format!(
+                "{}",
+                root.join("a/dup").canonicalize().unwrap().display()
+            )),
+            "{e}"
+        );
+        assert!(
+            e.contains(&format!(
+                "{}",
+                root.join("b/dup").canonicalize().unwrap().display()
+            )),
+            "{e}"
+        );
+        assert!(
+            e.contains("--base-paths: `a`"),
+            "the origin and entry of each: {e}"
+        );
+        assert!(e.contains("--base-paths: `b`"), "{e}");
+        assert!(e.contains("--allow-overriding"), "the fixes: {e}");
+    }
+
+    /// The same, from the default roots: the workspace and a `package_paths`
+    /// entry outside it.
+    #[test]
+    fn a_duplicate_between_the_workspace_and_package_paths_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("ws");
+        write(&ws.join("src/dup/package.xml"), &pkg_xml("dup", &[]));
+        write(
+            &tmp.path().join("vendor/dup/package.xml"),
+            &pkg_xml("dup", &[]),
+        );
+        write(
+            &ws.join("nros.toml"),
+            "[workspace]\npackage_paths = [\"../vendor\"]\n",
+        );
+        let e = discover(&ws, &[]).expect_err("a duplicate is refused");
+        assert!(e.contains("package `dup` is in two places"), "{e}");
+        assert!(e.contains("nros.toml [workspace] package_paths"), "{e}");
+        assert!(e.contains("outside the workspace"), "{e}");
+    }
+
+    /// `--allow-overriding <name>` keeps the later root's copy; a pin keeps
+    /// the pinned one wherever it sits.
+    #[test]
+    fn a_duplicate_is_settled_by_a_pin_or_allow_overriding() {
+        use cargo_nano_ros::provider_overrides::OverridePolicy;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(&root.join("a/dup/package.xml"), &pkg_xml("dup", &[]));
+        write(&root.join("b/dup/package.xml"), &pkg_xml("dup", &[]));
+        let src = sources(root, &["a", "b"]);
+
+        let allow = OverridePolicy::new(root, &Default::default(), &["dup".to_string()]);
+        let d = discover_in(root, &src, &[], Some(&allow)).expect("allowed");
+        assert_eq!(d.packages.len(), 1);
+        assert!(d.packages[0].dir.ends_with("b/dup"), "the later root wins");
+
+        let pin: BTreeMap<String, String> = [("dup".to_string(), "a/dup".to_string())].into();
+        let pinned = OverridePolicy::new(root, &pin, &[]);
+        let d = discover_in(root, &src, &[], Some(&pinned)).expect("pinned");
+        assert_eq!(d.packages.len(), 1);
+        assert!(d.packages[0].dir.ends_with("a/dup"), "the pinned one wins");
+    }
+
+    /// A path repeated, or inside another, counts once: no duplicate.
+    #[test]
+    fn overlapping_and_repeated_base_paths_find_each_package_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        selection_workspace(root);
+        let d = discover_in(
+            root,
+            &sources(root, &["src", "src/msgs_pkg", "src", "./src"]),
+            &[],
+            None,
+        )
+        .expect("one package each");
+        let mut n = names(&d);
+        n.sort_unstable();
+        assert_eq!(
+            n,
+            vec![
+                "entry",
+                "listener_pkg",
+                "msgs_pkg",
+                "other_pkg",
+                "talker_pkg"
+            ]
+        );
+    }
+
+    /// An existing base path with no package warns, and the rest still build.
+    #[test]
+    fn an_empty_base_path_warns() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        selection_workspace(root);
+        std::fs::create_dir_all(root.join("empty")).unwrap();
+        let d = discover_in(root, &sources(root, &["src", "empty"]), &[], None)
+            .expect("an empty root is not an error");
+        assert!(
+            d.warnings
+                .iter()
+                .any(|w| w.contains("holds no package") && w.contains("`empty`")),
+            "{:?}",
+            d.warnings
+        );
+        assert_eq!(d.packages.len(), 5);
+    }
+
+    /// `select` never picks between two same-named packages a hand-built
+    /// `Discovered` holds: the old map kept whichever it met last.
+    #[test]
+    fn select_refuses_a_duplicate_rather_than_keeping_the_last() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut d = selection_workspace(tmp.path());
+        let mut twin = d
+            .packages
+            .iter()
+            .find(|p| p.name == "other_pkg")
+            .unwrap()
+            .clone();
+        twin.dir = tmp.path().join("elsewhere");
+        d.packages.push(twin);
+        let e = select(&d, &sel(&["other_pkg"], &[])).expect_err("duplicate");
+        assert!(e.contains("is in two places"), "{e}");
+        // A selection that never names it is not ambiguous.
+        select(&d, &sel(&["msgs_pkg"], &[])).expect("unrelated selection");
+    }
+
+    /// Two copies inside ONE root (per-board variants of a template) warn,
+    /// and asking for that name is refused by `select`.
+    #[test]
+    fn a_duplicate_inside_one_root_warns_and_cannot_be_selected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(&root.join("zephyr/package.xml"), &pkg_xml("port", &[]));
+        write(&root.join("freertos/package.xml"), &pkg_xml("port", &[]));
+        write(
+            &root.join("src/lib_pkg/package.xml"),
+            &pkg_xml("lib_pkg", &[]),
+        );
+        let d = discover(root, &[]).expect("one root: a warning");
+        assert!(
+            d.warnings
+                .iter()
+                .any(|w| w.contains("package `port` is in two places")),
+            "{:?}",
+            d.warnings
+        );
+        let e = select(&d, &sel(&["port"], &[])).expect_err("ambiguous");
+        assert!(e.contains("is in two places"), "{e}");
     }
 
     // ---- phase-527 W2 — the host build role (RFC-0119 D3) ----------------

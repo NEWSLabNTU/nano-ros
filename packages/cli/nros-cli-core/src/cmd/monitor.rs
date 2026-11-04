@@ -61,6 +61,9 @@ pub struct Args {
     /// Print the plan as the JSON a runner is handed, not TOML.
     #[arg(long)]
     pub json: bool,
+    /// `--base-paths`, as `nros build` takes it (phase-527 W2d).
+    #[command(flatten)]
+    pub sources: crate::cmd::build::BasePathsArgs,
 }
 
 fn exit_with(code: u8) -> ! {
@@ -133,6 +136,7 @@ fn resolve_plan(args: &Args) -> RunPlan {
         workspace: args.workspace.clone(),
         nano_ros_path: args.nano_ros_path.clone(),
         image: args.image.clone(),
+        base_paths: args.sources.base_paths.clone(),
     };
     let one = match run_plan::select_target(&sel, "monitor") {
         Ok(one) => one,
@@ -201,6 +205,7 @@ pub fn run(args: Args) -> eyre::Result<()> {
         timeout: args.timeout,
         // A console attaches to a board already running; it starts nothing.
         router: "none".into(),
+        sources: args.sources.clone(),
         ..ExecArgs::default()
     };
     exit_with(run_exec::execute(

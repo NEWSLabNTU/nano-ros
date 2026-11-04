@@ -67,6 +67,10 @@ pub struct ExecArgs {
     // RFC-0119 D4; the same flag as `nros build`'s.
     #[arg(long, value_name = "NAME", num_args = 1..)]
     pub allow_overriding: Vec<String>,
+    /// `--base-paths`: the workspace's source roots, for the implicit build
+    /// and the runner lookup alike (phase-527 W2d).
+    #[command(flatten)]
+    pub sources: crate::cmd::build::BasePathsArgs,
 }
 
 impl ExecArgs {
@@ -458,6 +462,7 @@ pub fn locate_runner(
     nano_ros_root: Option<&Path>,
     name: &str,
     allowed: &[String],
+    base_paths: &[PathBuf],
 ) -> Result<LocatedRunner, LocateError> {
     use cargo_nano_ros::extension_descriptor::{ExtensionResolveError, resolve_runner_with};
     let failed = |message: String| LocateError {
@@ -468,8 +473,15 @@ pub fn locate_runner(
         code: exit::PLAN_UNRESOLVED,
         message: format!("{e:#}"),
     })?;
-    let path = crate::cmd::ws::provider_search_path(ws).map_err(|e| failed(e.to_string()))?;
-    let scan = cargo_nano_ros::provider_scan::scan_roots(&path.paths())
+    // The same source roots the implicit build walks (`--base-paths`), and
+    // scanned with their origins, so the source-root duplicate rule applies
+    // here as it does at the build edge (phase-527 W2d).
+    let path =
+        crate::cmd::ws::provider_search_path_for(ws, base_paths).map_err(|e| LocateError {
+            code: exit::PLAN_UNRESOLVED,
+            message: format!("{e:#}"),
+        })?;
+    let scan = cargo_nano_ros::provider_scan::scan_search_path(&path)
         .map_err(|e| failed(e.to_string()))?;
     let r = resolve_runner_with(&scan, name, &policy).map_err(|e| match e {
         ExtensionResolveError::Override(_) => LocateError {
@@ -539,6 +551,38 @@ pub fn locate_runner(
             r.bin
         )))
     }
+}
+
+/// `--why`'s line about the source roots: which ones were searched, so a
+/// `--base-paths` root, or a `package_paths` entry, outside the workspace is
+/// visible (phase-527 W2d). Empty when every root is the workspace's own.
+#[must_use]
+pub fn why_source_roots(ws: &Path, base_paths: &[PathBuf]) -> String {
+    let ws = ws.canonicalize().unwrap_or_else(|_| ws.to_path_buf());
+    let Ok(roots) = crate::cmd::ws::source_roots(&ws, base_paths) else {
+        return String::new();
+    };
+    if roots
+        .roots
+        .iter()
+        .all(|r| r.origin == cargo_nano_ros::provider_scan::RootOrigin::Workspace)
+    {
+        return String::new();
+    }
+    let mut out = String::from("# source roots:\n");
+    for r in &roots.roots {
+        let outside = if r.path.starts_with(&ws) {
+            ""
+        } else {
+            ", outside the workspace"
+        };
+        out.push_str(&format!(
+            "#   {} ({}{outside})\n",
+            r.path.display(),
+            r.origin.label()
+        ));
+    }
+    out
 }
 
 /// `--why`'s account of the runner: which package answers the plan's runner
@@ -625,16 +669,9 @@ pub fn run_dir(ws: &Path, image: &str) -> PathBuf {
 pub fn build_image(args: &crate::cmd::run_plan::Selection, image: &str) -> Result<(), String> {
     let me = std::env::current_exe().map_err(|e| format!("locating nros: {e}"))?;
     let mut cmd = Command::new(me);
-    cmd.arg("build");
-    if let Some(w) = &args.workspace {
-        cmd.arg("--workspace").arg(w);
-    }
-    if let Some(n) = &args.nano_ros_path {
-        cmd.arg("--nano-ros-path").arg(n);
-    }
-    if let Some(i) = &args.image {
-        cmd.arg(i);
-    }
+    // The arguments `select_target` planned with, so the build is of the
+    // workspace (and the `--base-paths`) the plan was resolved against.
+    cmd.arg("build").args(args.build_args());
     let stderr = io::stderr()
         .as_fd_dup()
         .map_err(|e| format!("duplicating stderr: {e}"))?;
@@ -840,6 +877,7 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
             x.nano_ros_root,
             &plan.runner.name,
             &x.exec.allow_overriding,
+            &x.exec.sources.base_paths,
         ) {
             Ok(l) => {
                 for w in &l.warnings {
@@ -1426,7 +1464,7 @@ mod tests {
         std::fs::rename(&script, &exe).unwrap();
         std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let l = locate_runner(&ws, None, "w4fake", &[]).unwrap();
+        let l = locate_runner(&ws, None, "w4fake", &[], &[]).unwrap();
         assert_eq!(l.exe, exe);
         assert!(l.overrides.is_none());
         assert!(why_runner(&Ok(l), "w4fake").contains("package `w4_fake_runner`"));
@@ -1455,7 +1493,7 @@ mod tests {
 
         // Not built: refused with the command that builds it.
         std::fs::remove_file(&exe).unwrap();
-        let e = locate_runner(&ws, None, "w4fake", &[]).unwrap_err();
+        let e = locate_runner(&ws, None, "w4fake", &[], &[]).unwrap_err();
         assert_eq!(e.code, exit::RUNNER_FAILED);
         let e = e.message;
         assert!(
@@ -1491,10 +1529,10 @@ mod tests {
         std::fs::create_dir_all(&built).unwrap();
         std::fs::write(built.join("my-native"), "#!/bin/sh\n").unwrap();
 
-        let e = locate_runner(&ws, None, "native", &[]).unwrap_err();
+        let e = locate_runner(&ws, None, "native", &[], &[]).unwrap_err();
         assert_eq!(e.code, exit::PLAN_UNRESOLVED, "{}", e.message);
 
-        let l = locate_runner(&ws, None, "native", &["native".to_string()]).unwrap();
+        let l = locate_runner(&ws, None, "native", &["native".to_string()], &[]).unwrap();
         assert_eq!(l.package, "my_native");
         let note = l.overrides.as_ref().expect("an override note");
         assert_eq!(note.shadowed_package, "nros_runner_native");
