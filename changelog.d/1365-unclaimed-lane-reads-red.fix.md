@@ -1,0 +1,1 @@
+A tier-2, nightly or queue L3 job that GitHub cancels after 24 h because no self-hosted runner claimed it now fails its coverage job, naming the wait; it used to print `cancelled` and pass. A cancel before any claim by a superseding run stays green and says no runner claimed it (issue 1365).

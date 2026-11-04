@@ -453,6 +453,15 @@ runner-bootstrap-src-sync:
 runner-wait-triage:
     @python3 scripts/ci/runner-wait-triage.py --selftest
 
+# issue 1365 — a lane GitHub cancelled because no runner claimed it for 24 h
+# reddens its coverage job instead of printing `cancelled` over a green one; a
+# cancel before any claim that is NOT the expiry (a superseding run) stays
+# green and says so. Drives the reporter through `lane-stage.py --job-label`
+# with `gh` stubbed. Buildless, tmpdir, <1 s.
+[private]
+report-interlock-coverage:
+    @bash tests/report-interlock-coverage-tests.sh
+
 # issue 1964 — the pre-push hook keeps `just check fast`'s full output and
 # per-gate verdicts in a per-user state dir, outside every checkout, so a red
 # survives the terminal and `git worktree remove`. Exercises the helper (status

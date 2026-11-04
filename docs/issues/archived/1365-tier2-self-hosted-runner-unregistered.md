@@ -3,15 +3,16 @@ id: 1365
 title: "Every tier-2 job today is waiting for a self-hosted runner that is not
   registered — three of them, the oldest queued 3h22m, and the lane reports
   nothing at all rather than reporting that"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: medium
 found: 2026-09-14
+resolved: 2026-11-04
 related: [issue-1158, issue-1360, issue-1040, issue-0878, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -924,3 +925,32 @@ runner-wait-triage`. Live on 2026-10-23: 2 runners registered (118 and 241),
 both online and busy, no self-hosted job queued.
 
 The clause closes once one of these reports has named a real wait's shape.
+
+## Resolved (2026-11-04)
+
+Both clauses are met. Clause 1 (a runner registered with the labels) has held
+since 2026-09-17; `nano-ros-runner-newslab-118-server` is online with
+`nros-qemu,nros-sdk-zephyr,nros-big` today. Keeping a runner up is the
+operator's job, not a defect in nano-ros (maintainer ruling, 2026-11-04), so
+an outage like the 2026-09-14 and 2026-09-30 ones is reported, not fixed in
+the tree.
+
+Clause 2 had two halves. The maintainer half is `just runner-wait-triage`
+(2026-10-23), which names a live wait's shape. The in-workflow half was the
+green reporter this issue measured on 2026-09-15: a job GitHub cancelled after
+24 h with no runner reached `report-interlock-coverage.sh` as `cancelled`,
+which printed that word and exited 0. Now:
+
+- `lane-stage.py` classifies a cancelled job with NO steps as unclaimed and
+  reads the wait off GitHub's own record (`startedAt` is the moment it was
+  queued; `completedAt` the cancel). 23 h or more is GitHub's queue expiry,
+  `NO VERDICT: no runner claimed it, and GitHub expired the job (queued
+  24h00m)`; less is a superseding run, `NO VERDICT: cancelled before any
+  runner claimed it`.
+- `report-interlock-coverage.sh` fails on the expiry with `::error::` and a
+  summary line (same state as its SKIPPED-while-ready arm, seen from the other
+  side), and warns but stays green on a supersede, which post-submit and the
+  queue do routinely.
+- Pinned by `just check report-interlock-coverage` (8 checks, `gh` stubbed;
+  2 of them fail against the old reporter) and 4 new `lane-stage.py
+  --selftest` cases on job 103881434950.
