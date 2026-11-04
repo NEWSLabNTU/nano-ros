@@ -16,11 +16,15 @@ namespace action_client_pkg {
 /// pumps `nros_cpp_action_client_poll` (which drains the GET-query replies into the registered
 /// callbacks) and runs a small state machine:
 ///   idle → send_goal_async(order=10) → (goal-response cb: accepted) → get_result_async →
-///   (result cb: deserialize the sequence + PRINT last element) → done.
+///   (result cb: deserialize the sequence + PRINT it) → done.
+/// Feedback samples arrive through the feedback callback and print one
+/// `Next number in sequence received: [...]` line each, as the ROS 2 tutorial client does
+/// (phase-535, RFC-0122 option B).
 /// A wait counter re-sends if a goal/result reply never arrives (the first request(s) can be
 /// dropped before the server is discovered, like the A1 client's resend guard). The server
-/// computes 0,1,1,2,3,5,8,13,21,34,55 for order = 10, so the client printing `result last=55`
-/// proves the cross-process action round-trip.
+/// computes 0,1,1,2,3,5,8,13,21,34,55 for order = 10, so the client printing
+/// `Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]` proves the cross-process action
+/// round-trip.
 ///
 /// PRINT-ONLY: the result needs only example_interfaces, so (unlike a /sum-republishing client)
 /// there is no second typed-interface archive and thus no multi-interface codegen-dedup gap.
@@ -40,13 +44,16 @@ class FibClient {
     uint8_t goal_id_[16];
     int phase_ = Idle;
     int waits_ = 0; // ticks waited in the current phase (resend guard)
+    int sends_ = 0; // goals sent so far (the first prints `Sending goal`)
 
     // Member callback bodies (the static trampolines below forward `ctx` into these).
     void on_goal_response(bool accepted, const uint8_t goal_id[16]);
+    void on_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len);
     void on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data, size_t len);
 
     // Captureless trampolines matching the FFI set_callbacks typedefs.
     static void s_goal_response(bool accepted, const uint8_t goal_id[16], void* ctx);
+    static void s_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx);
     static void s_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data, size_t len,
                          void* ctx);
 

@@ -37,10 +37,7 @@ use nros_tests::{
         build_freertos_posix_workspace_cpp_entry, freertos,
     },
     matrix::{Lang, PlatformId, Workload},
-    output::{
-        INT32_LISTENER_LOG_PREFIX, INT32_TALKER_LOG_PREFIX, LISTENER_LOG_PREFIX,
-        TALKER_PAYLOAD_PREFIX,
-    },
+    output::{LISTENER_LOG_PREFIX, TALKER_PAYLOAD_PREFIX},
 };
 use std::{path::PathBuf, process::Command, time::Duration};
 
@@ -178,8 +175,8 @@ fn freertos_posix_c_entry_delivers_over_cyclonedds() {
     // Issue 2221 — hold the baked domain so a native test steps past it.
     let _domain = nros_tests::hold_baked_domain(domain);
     let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-c");
-    // The C workspace pair is the ROS 2 tutorial pair (phase-535, RFC-0122
-    // option B); the C++ one still carries the Int32 demo.
+    // The workspace pair is the ROS 2 tutorial pair (phase-535, RFC-0122
+    // option B).
     assert_delivered(
         &out,
         TALKER_PAYLOAD_PREFIX,
@@ -204,8 +201,8 @@ fn freertos_posix_cpp_entry_delivers_over_cyclonedds() {
     let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-cpp");
     assert_delivered(
         &out,
-        INT32_TALKER_LOG_PREFIX,
-        INT32_LISTENER_LOG_PREFIX,
+        TALKER_PAYLOAD_PREFIX,
+        LISTENER_LOG_PREFIX,
         domain,
         "freertos-posix-cpp",
     );

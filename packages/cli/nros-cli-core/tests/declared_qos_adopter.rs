@@ -137,7 +137,7 @@ fn the_cpp_workspace_listener_declares_a_depth_and_asserts_against_it() {
     );
     assert!(
         h.contains(
-            "NROS_DECLARED_QOS_ROW(\"std_msgs::msg::dds_::Int32_\", \"/chatter\", 1, \
+            "NROS_DECLARED_QOS_ROW(\"std_msgs::msg::dds_::String_\", \"/chatter\", 1, \
              NROS_DQ_UNDECLARED, NROS_DQ_UNDECLARED)"
         ),
         "examples/workspaces/cpp's system.contract.yaml declares `chatter: {{ qos: {{ depth: 1 \

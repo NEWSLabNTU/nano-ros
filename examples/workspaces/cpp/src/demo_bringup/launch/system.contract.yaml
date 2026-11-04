@@ -13,7 +13,8 @@ version: 1
 
 nodes:
   talker:
-    # `Talker::on_timer` publishes one Int32 per tick. 1 Hz is the example's
+    # `Talker::on_tick` publishes one std_msgs/String per tick (the tutorial
+    # talker, phase-535). 1 Hz is the example's
     # own period, not a number invented to satisfy a mapper.
     paths:
       on_timer:
@@ -38,6 +39,6 @@ nodes:
 
 topics:
   /chatter:
-    type: std_msgs/msg/Int32
+    type: std_msgs/msg/String
     pub: [talker/chatter]
     sub: [listener/chatter]

@@ -16,13 +16,14 @@
 //!   `fibonacci_client` → `/fib_result`) and an external `int32-sink`
 //!   subscriber asserts the server-computed values (sums `1,2,3`; fib last
 //!   element `55`).
-//! - **C cells** run the ROS 2 tutorial pair (phase-535, RFC-0122 option
-//!   B): after the server's tutorial ready line, the client's own stdout must
-//!   carry `Result of add_two_ints: 5` (one request, 2 + 3) or the order-10
-//!   `Result received: [...]` with at least one feedback line.
-//! - **C++ / mixed cells** assert on the CLIENT's own stdout (`sum: N`
-//!   ×3 / `result last=55`) after waiting for the server's `server ready`
-//!   marker. The C-family clients use the POLL-model component surfaces
+//! - **C and C++ cells** run the ROS 2 tutorial pair (phase-535, RFC-0122
+//!   option B): after the server's tutorial ready line, the client's own
+//!   stdout must carry `Result of add_two_ints: 5` (one request, 2 + 3) or
+//!   the order-10 `Result received: [...]` with at least one feedback line.
+//! - **Mixed cells** (the mixed workspace keeps its own packages) assert on
+//!   the CLIENT's own stdout (`sum: N` ×3 / `result last=55`) after waiting
+//!   for the server's `server ready` marker. The C-family clients use the
+//!   POLL-model component surfaces
 //!   (`send_request`+`take_response`, `send_goal_async`/`get_result_async`
 //!   +`poll`), not Rust's blocking `call_for_name` — a component callback
 //!   must never block the executor.
@@ -82,13 +83,13 @@ enum Proof {
     /// (order 10) and its result callback republishes the LAST sequence
     /// element on `/fib_result`; an external `int32-sink` must see `55`.
     ListenerFibLast,
-    /// C-family poll-model service chain: wait for the server's
+    /// Mixed-workspace poll-model service chain: wait for the server's
     /// `server ready`, then the client's stdout must show ≥3 server-computed
     /// `sum: N` replies with values 1, 2, 3 (early pre-discovery requests
     /// may be dropped + resent, so assert the VALUES appear, not a strict
     /// prefix).
     ClientSums,
-    /// C-family poll-model action chain: wait for `server ready`, then the
+    /// Mixed-workspace poll-model action chain: wait for `server ready`, then the
     /// client's stdout must show `result last=55` (order 10 →
     /// `0,1,1,2,3,5,8,13,21,34,55`).
     ClientFibLast,
@@ -155,16 +156,17 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
         (ML::Cpp, MW::Service) => Exec {
             server: || build_native_workspace_cpp_service_server_entry().map(|p| p.to_path_buf()),
             client: || build_native_workspace_cpp_service_client_entry().map(|p| p.to_path_buf()),
-            proof: Proof::ClientSums,
-            note: "phase-263 A1 C++ projection: cpp_add_server_pkg + cpp_add_client_pkg over \
-                   the poll-model service client",
+            proof: Proof::TutorialServiceResult,
+            note: "phase-535: the C++ tutorial AddTwoInts pair (service_server_pkg + \
+                   service_client_pkg) over the poll-model service client",
         },
         (ML::Cpp, MW::Action) => Exec {
             server: || build_native_workspace_cpp_action_server_entry().map(|p| p.to_path_buf()),
             client: || build_native_workspace_cpp_action_client_entry().map(|p| p.to_path_buf()),
-            proof: Proof::ClientFibLast,
-            note: "phase-263 A4 C++ projection: cpp_fib_server_pkg + cpp_fib_client_pkg over \
-                   the raw poll-model action client (create_action_client_raw + set_callbacks)",
+            proof: Proof::TutorialActionResult,
+            note: "phase-535: the C++ tutorial Fibonacci pair (action_server_pkg + \
+                   action_client_pkg) over the raw poll-model action client \
+                   (create_action_client_raw + set_callbacks, feedback included)",
         },
         (ML::Mixed, MW::Service) => Exec {
             server: || build_native_workspace_mixed_service_server_entry().map(|p| p.to_path_buf()),

@@ -137,9 +137,28 @@ fn live_archives(archives: Vec<PathBuf>) -> Vec<PathBuf> {
 
 /// Every whitespace-separated token of the generated build files under
 /// `bin_dir`, a trailing `:` (a make target, a ninja output) dropped.
+///
+/// Under the Makefile generator a `build.make` is read only when the current
+/// graph still names its target: `CMakeFiles/Makefile2` lists every live
+/// `<dir>/CMakeFiles/<target>.dir`, while a target an earlier configure
+/// defined keeps its `build.make` on disk after it is gone. Reading that one
+/// is the same residue issue 1989 filters out one level down — measured when
+/// `bulk_listener_pkg` moved off `std_msgs` (phase-535): its old FFI target's
+/// `build.make` still named its old archive, which read as live.
 fn build_file_tokens(bin_dir: &Path) -> BTreeSet<String> {
     let mut tokens = BTreeSet::new();
     let mut files = 0usize;
+    let makefile2 = std::fs::read_to_string(bin_dir.join("CMakeFiles/Makefile2")).ok();
+    let target_is_live = |build_make: &Path| -> bool {
+        let Some(m2) = &makefile2 else {
+            return true;
+        };
+        build_make
+            .parent()
+            .and_then(|d| d.strip_prefix(bin_dir).ok())
+            .and_then(Path::to_str)
+            .is_some_and(|rel| m2.contains(rel))
+    };
     let mut stack = vec![bin_dir.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -153,7 +172,9 @@ fn build_file_tokens(bin_dir: &Path) -> BTreeSet<String> {
                 if name != "target" {
                     stack.push(path);
                 }
-            } else if name == "build.make" || (name == "build.ninja" && dir == bin_dir) {
+            } else if (name == "build.make" && target_is_live(&path))
+                || (name == "build.ninja" && dir == bin_dir)
+            {
                 files += 1;
                 let text = std::fs::read_to_string(&path)
                     .unwrap_or_else(|e| nros_tests::unmet!("read {}: {e}", path.display()));

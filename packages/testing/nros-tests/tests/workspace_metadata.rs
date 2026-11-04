@@ -192,7 +192,7 @@ fn cmake_cpp_workspace_entry_starts_prebuilt_runtime() {
 
     let output = proc
         .wait_for_output_pattern(
-            nros_tests::output::INT32_TALKER_LOG_PREFIX,
+            nros_tests::output::TALKER_PAYLOAD_PREFIX,
             Duration::from_secs(10),
         )
         .unwrap_or_else(|e| {

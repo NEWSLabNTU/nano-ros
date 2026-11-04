@@ -6,8 +6,8 @@ This workspace demonstrates C++ Node packages with a C++ native Entry package.
 cpp/
 ├── .colcon_workspace
 └── src/
-    ├── talker_pkg/      # Node pkg: publishes std_msgs/Int32 on /chatter
-    ├── listener_pkg/    # Node pkg: subscribes std_msgs/Int32 on /chatter
+    ├── talker_pkg/      # Node pkg: publishes std_msgs/String on /chatter
+    ├── listener_pkg/    # Node pkg: subscribes std_msgs/String on /chatter
     ├── demo_bringup/    # Bringup pkg: package.xml + system.toml + launch/
     └── linux_entry/    # Entry pkg: native main()
 ```

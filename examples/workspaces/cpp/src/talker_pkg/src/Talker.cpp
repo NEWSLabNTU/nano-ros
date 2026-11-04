@@ -1,24 +1,28 @@
-// Talker — typed component (RFC-0043). Real `on_tick` body bound by identity;
-// no string callback name, no synthesizing interpreter.
+// Talker — the ROS 2 tutorial talker as a typed component (RFC-0043). Real `on_tick` body
+// bound by identity; no string callback name, no synthesizing interpreter.
 
 #include "talker_pkg/Talker.hpp"
 
 #include <cstdio>
+#include <cstring>
 
 #include <rclcpp/rclcpp.hpp>
 
 namespace talker_pkg {
 
 void Talker::on_tick() {
-    std_msgs::msg::Int32 m;
-    m.data = count_++;
-    if (pub_.publish(m).ok()) {
-        std::printf("Published: %d\n", m.data);
+    // Pre-increment so the first payload is "Hello World: 1", as the ROS 2 demo talker does.
+    ++count_;
+    char payload[32];
+    std::snprintf(payload, sizeof(payload), "Hello World: %d", count_);
+    msg_.data = payload;
+    if (pub_.publish(msg_).ok()) {
+        std::printf("Publishing: '%s'\n", msg_.data.c_str());
     }
-    // A5 — log each tick via the nros-log facade. `rclc_log_default_logger()` is the built-in
+    // Log each tick via the nros-log facade. `rclc_log_default_logger()` is the built-in
     // DEFAULT_LOGGER (level Info; nullptr would DROP the record). The first emit lazy-installs the
-    // default sink → the posix platform writer → "[INFO] nros: cpp_talker logging seq=N".
-    RCLC_LOG_INFO(rclc_log_default_logger(), "cpp_talker logging seq=%d", m.data);
+    // default sink → the platform writer → "[INFO] nros: cpp_talker logging seq=N".
+    RCLC_LOG_INFO(rclc_log_default_logger(), "cpp_talker logging seq=%d", count_);
 }
 
 ::rclcpp::Result Talker::configure(::rclcpp::Node& node) {
@@ -31,7 +35,7 @@ void Talker::on_tick() {
     // assertion below fails to COMPILE, naming the topic and both values
     // (issue 1608; the listener holds its subscription the same way, 1564).
     constexpr ::rclcpp::QoS kChatterQos = ::rclcpp::QoS(1);
-    NROS_ASSERT_DECLARED_PUB_QOS(::std_msgs::msg::Int32::TYPE_NAME, "/chatter", kChatterQos,
+    NROS_ASSERT_DECLARED_PUB_QOS(::std_msgs::msg::String::TYPE_NAME, "/chatter", kChatterQos,
                                  "\"/chatter\"");
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter", kChatterQos);
     if (!r.ok()) return r;

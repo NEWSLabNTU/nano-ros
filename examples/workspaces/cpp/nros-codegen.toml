@@ -1,14 +1,23 @@
-# RFC-0033 capacity for the stock `std_msgs/String`, at WORKSPACE scope.
+# RFC-0033 capacities for stock string types, at WORKSPACE scope.
 #
-# phase-441 W6's fragmented leg (`bulk_listener_pkg`, issue 0917) receives a
-# `std_msgs/String` of ~10.6 KB — eight RTPS fragments, the island
-# trajectory's shape. The type states no bound of its own, so the consumer
-# states it. Here rather than beside the package: a stock type is generated
-# once per project, so a cap attached to one consumer would depend on which
-# reached it first (issue 1470). No other package in this workspace uses
-# `std_msgs/String`, so no other image's storage moves.
+# A stock type is generated once per project, so a cap attached to one
+# consumer would depend on which reached it first (issue 1470): the bounds live
+# here, and each type has exactly one.
 #
-# 16384 leaves room above the 10 576-byte payload the test sends; a sample
-# above it is refused by `_deserialize` and never dispatched.
+# `std_msgs/String` is the ROS 2 tutorial talker and listener's type
+# (phase-535, RFC-0122 option B). 256 is the number the standalone C and C++
+# examples and the C workspace chose: the payload is one short line
+# ("Hello World: N"), so the bound is generous rather than tight.
+#
+# `example_interfaces/String` is phase-441 W6's fragmented leg
+# (`bulk_listener_pkg`, issue 0917): a sample of ~10.6 KB, eight RTPS
+# fragments, the island trajectory's shape. 16384 leaves room above the
+# 10 576-byte payload the test sends. It is a different type from the tutorial
+# pair's on purpose: under one type, every image that runs the talker or the
+# listener would carry a 16 KiB message, and a zenoh image's largest receive
+# class is smaller than that, so the listener could not subscribe.
+#
+# A sample above its bound is refused by `_deserialize` and never dispatched.
 [fields]
-"std_msgs/String.data" = 16384
+"std_msgs/String.data" = 256
+"example_interfaces/String.data" = 16384

@@ -15,9 +15,12 @@ namespace action_server_pkg {
 /// (the trampolines are no-alloc; the goal CDR is parsed with the generated
 /// `example_interfaces::action::Fibonacci::Goal::ffi_deserialize`). The goal callback ACCEPTS the
 /// goal and stashes its UUID + order; a 500 ms timer tick — the only place the executor is free
-/// for action ops, since a component callback must never block — computes the Fibonacci sequence
-/// and completes the goal with `nros_cpp_action_server_complete_goal`. Cross-process only (issue
-/// 0096): server + client run as two entries.
+/// for action ops, since a component callback must never block — computes the Fibonacci sequence,
+/// publishing the sequence so far as feedback after each element
+/// (`nros_cpp_action_server_publish_feedback`), and completes the goal with
+/// `nros_cpp_action_server_complete_goal`. It prints the ROS 2 tutorial server's lines
+/// (phase-535, RFC-0122 option B). Cross-process only (issue 0096): server + client run as two
+/// entries.
 class FibServer {
     using Action = example_interfaces::action::Fibonacci;
 
