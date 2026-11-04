@@ -1,6 +1,6 @@
 # Phase 530 — `nros configure`: one resolver for every road, tight sizing, and no fixed point
 
-**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling), W5 landed (on W4; the NuttX make road is a guest road, Ruling R36), W6 landed for the leaf roads (on W5; the workspace road is open).** Implements
+**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling), W5 landed (on W4; the NuttX make road is a guest road, Ruling R36), W6 landed (on W5; the workspace road is checked, not re-taken: issue 2237).** Implements
 [RFC-0120](../design/0120-nros-configure-one-resolver.md) D1 to D7, D9 and
 the driven and hooked rows of D8. Meets
 [RFC-0094](../design/0094-resolve-before-configure.md) A3 as originally
@@ -582,11 +582,20 @@ before the unseeded fallback in `NanoRosPromise.cmake` can be deleted.
   decides whether `build.ninja` is stale. A fresh census returns at once; a
   moved source re-takes it (an incremental build of `build/census-host` and a
   census run). Not in `ALL` under Ninja -- the manifest check runs it once per
-  invocation, which a spike measured (in `ALL`, ninja ran it twice); in `ALL`
-  under any other generator, where the re-configure lands one build late.
-  No-op under `NROS_LEAF_CENSUS_HOST`, so the census host build has none. The
-  call is deferred to the end of the top-level directory (the Zephyr road
-  reaches it inside `find_package(Zephyr)`, before `project()`).
+  invocation, which a spike measured (in `ALL`, ninja ran it twice).
+  **Under any other generator (Ruling R40)** `cmake_check_build_system` runs
+  before any target, so the build that re-takes a census with new entities
+  would link the OLD knobs: there the step is in `ALL`, runs `take
+  --fail-if-changed`, every target of the leaf's directory depends on it, and
+  a moved digest FAILS that build before anything links ("entities changed;
+  build again"); the next build re-configures once. **One step per leaf (Ruling
+  R41)**: guard and target (`nros_census_step_<key>`) are keyed by the leaf
+  directory. No-op under `NROS_LEAF_CENSUS_HOST`, so the census host build has
+  none. The call is deferred to the end of the top-level directory (the
+  Zephyr road reaches it inside `find_package(Zephyr)`, before `project()`;
+  test case Z). A host census build that fails during a build (`take
+  --build-step`) is reported as a failed build with its directory, not as a
+  leaf whose sources call an RTOS API.
 - **Every census reader adds it, and none depends on the census FILE.**
   `nros_record_leaf_entity_facts` (the cmake leaf road) replaces its
   dependency on the census file, which re-ran the host configure on every
@@ -622,13 +631,28 @@ hook's configure said "up to date"). On a body edit the census's own host
 build (`build/census-host`) re-ran cmake once, for the same CLI rebuild; it is
 the census producer, not the target configure.
 
-**Not done: the cmake workspace road.** A workspace image's census is taken
-by `take --image`, which plans the host sibling (`build::plan_builds`) and
-builds it; run from a cross image's manifest phase that is a whole stage-1-4
-plan mid-build, writing the outputs the cross configure reads -- not a cached
-host compile. Its configure (`NanoRosEntry.cmake`) still depends on the
-census FILE beside the model. The digest is written there too, so the road
-needs an edge whose take does not re-plan; left open.
+**Re-measured on the final tree (review round 1, 2026-11-04; plain cmake
+leaf `threadx-linux/c/talker`, no CLI rebuild in between):** clean configure
++ build 1 configure, 0 re-runs; no-op 0; body edit **0** re-runs (`main.c`
+rebuilt); add a publisher **exactly 1** re-run (the hook's configure
+"configured (0 s)"), `ZPICO_MAX_PUBLISHERS` 1 -> **2**, `publisher_count`
+1 -> **2**; no-op after 0. On the body edit the census's own host build
+(`build/census-host`) re-ran its cmake once again, though no CLI moved; that
+is the producer's build inside the step, not the target's configure, and was
+not chased further.
+
+**The cmake workspace road: checked during the build (Ruling R39), not
+re-taken.** A workspace image's census is taken by `take --image`, which plans
+the host sibling (`build::plan_builds`) and builds it; run from a cross
+image's build that is a whole stage-1-4 plan mid-build, not a cached host
+compile. So that road gets a READ-ONLY edge, `nros_census_check_step`
+(`cmake/NanoRosCensusStep.cmake`, called from `NanoRosEntry.cmake`): the
+configure's own `ws entity-census check --require-fresh`, in `ALL` and before
+the entry links, on every build. A stale census FAILS the build naming
+`nros dev image entity-census take --image <bringup>:<image>` instead of
+linking the old pools (test case C). The cost: one manual take after a source
+edit of a counted component, body edits included (freshness is per source).
+The automatic re-take is [issue 2237](../issues/2237-workspace-census-retake-in-build.md).
 
 ### W7 — Delete the fixed point
 

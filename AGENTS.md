@@ -844,6 +844,10 @@ and verified.
   someone else's tree. Re-source `./activate.sh` FROM the worktree after
   entering it, and `just setup-cli` as well, for the same reason a branch switch
   needs one (issue 0466: the CLI's source stamp is what fixtures key on).
+- **A stale in-tree CLI makes the census step fail EVERY ninja run** of a
+  census-sized leaf (`nros_census_step`, phase-530 W6) until `just setup-cli`:
+  the step runs `nros` before ninja checks `build.ninja`, so a commit that
+  touches CLI sources breaks even a no-op build with "in-tree nros CLI is STALE".
 - **Write full logs of background builds/tests to files** and grep afterwards;
   `cmd | tail -N` swallows the mid-log error that explains the failure.
 - **`pkill -f <pattern>` matches your OWN wrapper shell** when the pattern
