@@ -171,6 +171,12 @@ set(NROS_PLATFORM_FREERTOS_WITH_BAREMETAL_COMPAT OFF CACHE BOOL
 # ARE the platform's threads.
 set(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE OFF CACHE BOOL
     "freertos-posix: Cyclone's receive thread is not a FreeRTOS thread (issue 1237)" FORCE)
+# Issue 2217 -- and forwards Cyclone's arrivals through the platform's
+# foreign-wake bridge instead, so the session still states Notify and an
+# arrival ends the executor's park (RFC-0113 D4). Without the bridge the
+# session would state no readiness form and be refused at open (D5).
+set(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE_BRIDGE ON CACHE BOOL
+    "Cyclone forwards arrivals through <nros/platform_foreign_wake.h> (issue 2217)" FORCE)
 
 # Read by `cmake/platform/nano-ros-freertos.cmake` BEFORE it stages the Phase
 # 186 Cyclone flags. Those set `WITH_FREERTOS`/`WITH_LWIP` on ddsrt, which

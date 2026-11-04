@@ -562,6 +562,10 @@ const nros_rmw_vtable_t kVtable = {
      * header seq) and source timestamp, as stock `rmw_cyclonedds_cpp`
      * reports them for a reply; body in `service.cpp`. */
     /*take_response_with_info*/ service_take_response_with_info,
+    /* Issue 2217 (RFC-0113 D4) — stated, not inferred from `set_wake_callback`
+     * being filled: a NO_FOREIGN_WAKE build without the platform's bridge has
+     * no wake path and is refused at open (D5). Body in `session.cpp`. */
+    /*readiness_source*/ session_readiness_source,
 };
 
 } // namespace

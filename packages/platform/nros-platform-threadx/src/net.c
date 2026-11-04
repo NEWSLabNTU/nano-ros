@@ -644,3 +644,123 @@ int8_t nros_platform_socket_wait_event(void *peers, void *mutex) {
 void nros_platform_network_poll(void) {
     /* NetX runs in dedicated threads. No user-space poll. */
 }
+
+/* ---- Foreign-thread wake bridge (issue 2217) ----
+ *
+ * `<nros/platform_foreign_wake.h>`, on the hosted Linux port only: there a
+ * host library's own threads (Cyclone's receive thread) may not enter a
+ * ThreadX service (issue 1750), so they cannot signal a wake object.
+ *
+ * The forwarder is NOT a thread of its own. The board's socket layer already
+ * runs one ThreadX thread at the lowest priority blocked in a host `poll()`
+ * (NSOS's receive notification, phase-521 W6f), and ThreadX does not
+ * time-slice that priority: a second such thread would never be scheduled
+ * while the first one blocks. So the bridge's eventfd is registered with that
+ * poller through the same fork API a socket uses
+ * (`nx_bsd_socket_set_rx_notify`, which takes any host descriptor here), and
+ * its notification forwards the posted slots in ThreadX context. The
+ * notification is edge-triggered and disarms once it fires; re-registering
+ * the same descriptor re-arms it. ThreadX mutexes nest for their owner, and
+ * the poller calls the notification under its own lock, so that call is
+ * safe. */
+#include "threadx_context.h"
+#if NROS_THREADX_HOSTED_PORT
+#  include <stdint.h>
+#  include <sys/eventfd.h>
+#  include <unistd.h>
+#  include <nros/platform_foreign_wake.h>
+
+typedef struct {
+    void (*fn)(void *);
+    void *ctx;
+    volatile UCHAR pending; /* set by any thread, taken by the forwarder */
+} nros_foreign_slot_t;
+
+static nros_foreign_slot_t s_foreign[NROS_PLATFORM_FOREIGN_WAKE_SLOTS];
+static TX_MUTEX s_foreign_lock;
+static int s_foreign_fd = -1;
+
+static void nros_foreign_forward(void *arg) {
+    (void) arg;
+    uint64_t n;
+    while (read(s_foreign_fd, &n, sizeof(n)) > 0) {
+    }
+    for (int i = 0; i < NROS_PLATFORM_FOREIGN_WAKE_SLOTS; i++) {
+        if (__atomic_exchange_n(&s_foreign[i].pending, 0, __ATOMIC_ACQ_REL) == 0) {
+            continue;
+        }
+        tx_mutex_get(&s_foreign_lock, TX_WAIT_FOREVER);
+        if (s_foreign[i].fn != NULL) {
+            s_foreign[i].fn(s_foreign[i].ctx);
+        }
+        tx_mutex_put(&s_foreign_lock);
+    }
+    /* Re-arm: the poller disarmed this descriptor when it fired. */
+    (void) nx_bsd_socket_set_rx_notify(s_foreign_fd, nros_foreign_forward, NULL);
+}
+
+static int nros_foreign_start_once(void) {
+    if (s_foreign_fd >= 0) {
+        return 0;
+    }
+    if (tx_mutex_create(&s_foreign_lock, "nros-foreign-wake", TX_INHERIT) != TX_SUCCESS) {
+        return -1;
+    }
+    int fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (fd < 0) {
+        tx_mutex_delete(&s_foreign_lock);
+        return -1;
+    }
+    s_foreign_fd = fd;
+    if (nx_bsd_socket_set_rx_notify(fd, nros_foreign_forward, NULL) != 0) {
+        close(fd);
+        s_foreign_fd = -1;
+        tx_mutex_delete(&s_foreign_lock);
+        return -1;
+    }
+    return 0;
+}
+
+int32_t nros_platform_foreign_wake_bind(void (*fn)(void *ctx), void *ctx) {
+    NROS_THREADX_KERNEL_ONLY_OR_RETURN(-1);
+    if (fn == NULL || nros_foreign_start_once() != 0) {
+        return -1;
+    }
+    tx_mutex_get(&s_foreign_lock, TX_WAIT_FOREVER);
+    int32_t slot = -1;
+    for (int i = 0; i < NROS_PLATFORM_FOREIGN_WAKE_SLOTS; i++) {
+        if (s_foreign[i].fn == NULL) {
+            s_foreign[i].ctx = ctx;
+            s_foreign[i].fn = fn;
+            slot = i;
+            break;
+        }
+    }
+    tx_mutex_put(&s_foreign_lock);
+    return slot;
+}
+
+void nros_platform_foreign_wake_unbind(int32_t slot) {
+    if (!nros_threadx_in_kernel_context()) {
+        nros_threadx_refuse_foreign(__func__, 0);
+        return;
+    }
+    if (slot < 0 || slot >= NROS_PLATFORM_FOREIGN_WAKE_SLOTS || s_foreign_fd < 0) {
+        return;
+    }
+    tx_mutex_get(&s_foreign_lock, TX_WAIT_FOREVER);
+    s_foreign[slot].fn = NULL;
+    s_foreign[slot].ctx = NULL;
+    tx_mutex_put(&s_foreign_lock);
+}
+
+void nros_platform_foreign_wake_post(int32_t slot) {
+    if (slot < 0 || slot >= NROS_PLATFORM_FOREIGN_WAKE_SLOTS || s_foreign_fd < 0) {
+        return;
+    }
+    __atomic_store_n(&s_foreign[slot].pending, 1, __ATOMIC_RELEASE);
+    uint64_t one = 1;
+    ssize_t r = write(s_foreign_fd, &one, sizeof(one));
+    (void) r; /* a saturated counter already guarantees a wake */
+}
+#endif /* NROS_THREADX_HOSTED_PORT */

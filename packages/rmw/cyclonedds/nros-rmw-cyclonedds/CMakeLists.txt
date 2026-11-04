@@ -336,6 +336,23 @@ if(NOT NROS_RMW_CYCLONEDDS_FOREIGN_WAKE)
     target_compile_definitions(nros_rmw_cyclonedds PRIVATE NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE=1)
 endif()
 
+# Issue 2217 (RFC-0113 D4) -- a board with no foreign wake still owes the
+# executor a wake. A host-simulator port supplies a bridge
+# (`<nros/platform_foreign_wake.h>`): Cyclone's receive thread POSTS a slot
+# without entering the kernel, and a port-owned kernel thread calls the wake.
+# With it the session states Notify; without it, a NO_FOREIGN_WAKE build states
+# no readiness form and is refused at open (D5) rather than parking on a wake
+# nothing posts. The board that turns the foreign wake off turns this on.
+option(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE_BRIDGE
+       "The platform supplies <nros/platform_foreign_wake.h>, through which a \
+NO_FOREIGN_WAKE build forwards Cyclone's arrivals" OFF)
+if(NOT NROS_RMW_CYCLONEDDS_FOREIGN_WAKE AND NROS_RMW_CYCLONEDDS_FOREIGN_WAKE_BRIDGE)
+    get_filename_component(_nros_cyc_platform_api_include
+        "${CMAKE_CURRENT_LIST_DIR}/../../../platform/nros-platform-api/include" ABSOLUTE)
+    target_include_directories(nros_rmw_cyclonedds PRIVATE "${_nros_cyc_platform_api_include}")
+    target_compile_definitions(nros_rmw_cyclonedds PRIVATE NROS_RMW_CYCLONEDDS_FOREIGN_WAKE_BRIDGE=1)
+endif()
+
 option(NROS_RMW_CYCLONEDDS_IPO "Enable IPO/LTO on the Cyclone RMW wrapper" OFF)
 if(NROS_RMW_CYCLONEDDS_IPO)
     include(CheckIPOSupported)

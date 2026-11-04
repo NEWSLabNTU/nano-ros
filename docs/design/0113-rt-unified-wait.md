@@ -288,7 +288,7 @@ deleted receive-blocking wait.
 |---|---|---|
 | zenoh THREAD mode (POSIX, NuttX, Zephyr, FreeRTOS) | Notify | idle Linux listener: 0 voluntary context switches in 10 s (was 1000); `entity_wake::an_idle_zenoh_entry_wakes_only_for_its_deadlines` 4 spins in 3.5 s with a 1 s timer, dispatch 0.4 ms late; Zephyr mps2/an385 (in-kernel IP stack, QEMU 11): 10 executor switch-ins over five 1 s expiries, dispatch on the tick |
 | zenoh CALLER mode, mps2-an385 (LAN9118 / UART0) | Notify (RX IRQ + SysTick one-shot) | idle listener, QEMU 9.0.2, 20 s: 41 one-shot arms (1,892 with the old 10 ms drain); under QEMU 11 `wfi` does not halt (issue 2209) |
-| Cyclone DDS | Notify (a freertos-posix build without foreign wake reads as Notify and is not: issue 2217) | — |
+| Cyclone DDS | Notify — the listener posts the executor's wake from Cyclone's receive thread; on the host-simulator boards (freertos-posix, threadx-linux), where that thread may not enter the kernel, it posts a port-owned forwarder (`nros/platform_foreign_wake.h`) that signals from kernel context. A build with neither states `None` and is refused at open (issue 2217) | threadx-linux `test_threadx_linux_cyclonedds_*` (pubsub, C++ pubsub, service, action) and freertos-posix `freertos_posix_{c,cpp}_entry_delivers_over_cyclonedds` pass with the forwarder |
 | XRCE over UDP, POSIX / NuttX | Waitable (socket fd) | phase-521 W3 |
 | XRCE over zsock, Zephyr | Waitable (`zsock_poll`) | native_sim arrival→dispatch p50 0.4–1.1 ms (was 3.2–6.3 ms); mps2/an385 (in-kernel IP stack, QEMU 11): 10 executor switch-ins over five 1 s expiries, dispatch on the tick |
 | XRCE over lwIP (FreeRTOS), NetX Duo (ThreadX) | Notify (stack receive callback) | p50 2.2–4.0 ms (was 72–253 ms); NetX 1.8 ms |
@@ -380,6 +380,9 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 
 ## Changelog
 
+- 2026-11-04 — Coverage: Cyclone states its form from its listener (a
+  `readiness_source` slot), and the host-simulator boards forward Cyclone's
+  arrival through a port-owned foreign-wake bridge (issue 2217).
 - 2026-11-03 — D9: the park slot gains its wake half. The executor's wake
   object calls a hook (`nros_cpp_executor_set_wake_hook`) on every signal,
   and a PX4 tier binds it to `notify()`, so a networked backend's arrival
