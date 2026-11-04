@@ -1,8 +1,9 @@
 # Phase 535 — Example pairs into the language workspaces, single-node witnesses, and cadence-backed CI
 
 **Status (2026-11-05). OPEN — W0 answered (issue 2253 fixed on the way,
-#3106); W1 merged (#3107); W0.b (one program per role): C merged (#3112),
-C++ merged (#3120), Rust in review; W2 next.**
+#3106); W1 merged (#3107); W0.b (one program per role) done: C (#3112),
+C++ (#3120), Rust (#3124); W2 (the resolver and the isolation lookup) in
+review.**
 Implements [RFC-0122](../design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
 D1 to D9, with its amendments to RFC-0026, RFC-0051, RFC-0061, RFC-0066,
 RFC-0114 and RFC-0121 D8.
@@ -167,6 +168,39 @@ check covers the launch file.
 - One grouped configure builds two images of one bringup, and `ninja -t
   query` shows one runtime library feeding both.
 - The resolver is unit-tested on every pair cell in `matrix::CELLS`.
+
+**Result (2026-11-05):**
+- Grouping already exists and needs no change. Measured on
+  `examples/workspaces/c/build/posix-zenoh-linux/cmake` (one configure, seven
+  images): `linux_service_server_entry` and `linux_service_client_entry` both
+  link the one `nano_ros/packages/api/nros-cpp/libnros_cpp.a` and
+  `libnros_platform_posix.a` of that configure (their `build.make` link
+  dependencies; the host lane uses the Makefiles generator, so this is the
+  `ninja -t query` question asked of make).
+- `nros_tests::fixtures::workspace_image`: `workspace_image(cell, role)` →
+  (workspace, bringup, image), `parse_image` its inverse, `row_id` the one
+  manifest row, `resolve` the binary through the existing cargo/cmake
+  resolvers (a cross Rust row adds its `target` triple). Zephyr images are left
+  to the zephyr build-dir table (W4). Unit tests over every pair cell in
+  `matrix::CELLS`: total, injective, the inverse round-trips with exactly one
+  parse, every pair image row has a cell, and a row in a pair bringup that does
+  not parse is refused.
+- The image id is `<platform>_<role>[_<rmw>][_<config>…]`. The platform part
+  reuses the spellings the workspaces already have (`threadx` for
+  threadx-linux, `riscv_threadx`, `riscv_nuttx`, `freertos_posix`) and adds
+  `zephyr_cortex_m`, `zephyr_nucleo_f767zi`, `baremetal` and `fvp`. A
+  configured cell (RFC-0051 §7a) appends its configs (`freertos_talker_lending`).
+  Chosen over deriving the prefix from the fixture token because that would
+  rename `threadx`/`riscv_*` against `demo_bringup` in the same workspace.
+- `zephyr-fixture-leaves.sh`: `workload_for_image` maps a workspace west row of
+  a behaviour bringup to its workload from the bringup, and requires the image
+  id to carry one of that bringup's role tokens (a misspelt id exits). The
+  emitted records for today's manifest are unchanged (all 87 compared).
+- The locator check: `pair_image_rows_dial_their_allocator_port` holds every
+  baked zenoh pair image row to `alloc::port_of` of the cell its id names, with
+  a negative control (`a_pair_image_dialling_another_port_is_refused`), and
+  `resolve` asserts the same per call. `check-image-locator-bake`'s docstring
+  points at it.
 
 ### W3 — Pilot: `mps2-an385-freertos`
 

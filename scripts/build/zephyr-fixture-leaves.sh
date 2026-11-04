@@ -318,6 +318,32 @@ workload_for_role() {
     esac
 }
 
+# Phase-535 W2 (RFC-0122 D7) — a workspace west row (role `entry`) is the
+# image of a pair cell when it is an image of a behaviour bringup. The bringup
+# names the workload and the image id must carry one of its two role tokens:
+# the vocabulary of `nros_tests::fixtures::workspace_image` (`bringup_of`,
+# `PairRole::token`), whose unit tests hold every pair cell to it. Argument:
+# the row's qualified `<bringup>:<image>`. Any other workspace row (a
+# `demo_bringup` entry, a feature image) has no allocator cell and returns 1;
+# a pair bringup image with no role token is a misspelt id and exits.
+workload_for_image() {
+    local bringup="${1%%:*}" image="${1#*:}" workload roles
+    case "$bringup" in
+        pubsub_bringup) workload=Pubsub roles="talker listener" ;;
+        service_bringup) workload=Service roles="service_server service_client" ;;
+        action_bringup) workload=Action roles="action_server action_client" ;;
+        *) return 1 ;;
+    esac
+    local r
+    for r in $roles; do
+        case "_${image}_" in
+            *"_${r}_"*) printf '%s\n' "$workload"; return 0 ;;
+        esac
+    done
+    echo "zephyr-fixture-leaves: image $1 is in $bringup but names neither of its roles ($roles)" >&2
+    exit 2
+}
+
 # Key: `<platform token>,<lang>,<rmw>,<Workload>` — the row's coordinate (the
 # manifest's own `row_coord`) plus the workload. Value: `<router> <agent> <domain>`,
 # `-` where the cell's RMW dials no such thing.
@@ -480,6 +506,17 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     if iso_wl="$(workload_for_role "$role")"; then
         iso_key="$row_coord,$iso_wl"
         iso_entry="${isolation[$iso_key]:-}"
+    elif [ "$role" = "entry" ] && [ -n "$row_nros_image" ]; then
+        # `workload_for_image` exits on a misspelt pair image; in a `$(...)`
+        # that is only the subshell, so the status is checked, not assumed.
+        iso_rc=0
+        iso_wl="$(workload_for_image "$row_nros_image")" || iso_rc=$?
+        if [ "$iso_rc" = 0 ]; then
+            iso_key="$row_coord,$iso_wl"
+            iso_entry="${isolation[$iso_key]:-}"
+        elif [ "$iso_rc" != 1 ]; then
+            exit 2
+        fi
     fi
 
     if [ -n "$row_zenoh_locator$row_xrce_port$row_cyclone_domain" ]; then

@@ -69,7 +69,10 @@ empty locator.
 This gate does not check the PORT against `alloc::port_of`: a manifest row
 carries no workload, so the cell is not derivable here. The fixture resolvers
 that know their cell assert that half
-(`nros_tests::fixtures::baked_locator::assert_row_dials_port`).
+(`nros_tests::fixtures::baked_locator::assert_row_dials_port`). For the pair
+images of RFC-0122 D1 (`{pubsub,service,action}_bringup`) the cell IS
+derivable from the image id, and `nros_tests::fixtures::workspace_image`'s
+`pair_image_rows_dial_their_allocator_port` checks every such row statically.
 
 Usage::
 
