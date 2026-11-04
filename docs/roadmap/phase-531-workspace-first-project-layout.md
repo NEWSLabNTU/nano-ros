@@ -1,6 +1,6 @@
 # Phase 531 — Workspace-first project layout: bringup-only `system.toml`, one build road, the leaf shape retired
 
-**Status (2026-11-03). OPEN — not started; W1 (the measurement) first.**
+**Status (2026-11-05). OPEN — W1 (the measurement) done; W2 (the gates) next.**
 Implements [RFC-0121](../design/0121-workspace-first-project-layout.md) D1 to
 D8, with its amendments to RFC-0098, RFC-0116 D6, RFC-0026/0066, RFC-0100,
 RFC-0118 D2 and RFC-0120.
@@ -45,6 +45,135 @@ three synthesisers, and the shape checks in `cmd/build.rs` and `cmd/ws.rs`.
 workspace road reaches it, and the W7 step that deletes it. It also records how
 many tracked `system.toml` sit beside code (223 on 2026-11-03), split by tree
 (`examples/`, `packages/testing/`, templates).
+
+**Status: DONE (2026-11-05, measured at `03473878d6`).** The result follows.
+
+#### How reach was measured
+
+- **Call graph.** Every function in the files below was listed with its span
+  (non-test lines only; `#[cfg(test)] mod tests` excluded), and its callers
+  were found by name across `packages/{cli,core,testing}`.
+- **Builds, with coverage.** A coverage-instrumented `nros`
+  (`cargo llvm-cov show-env`, with `nros_orchestration_ir` added to the
+  instrumented crates) was driven down both roads, and each function's
+  execution count was read per road:
+  - workspace road: `nros sync` and `nros build --dry-run --all` in
+    `examples/workspaces/{rust,c,cpp,mixed}`, a real `nros build linux` in
+    `rust` (cargo) and `c` (CMake), and the Zephyr module hook's own call
+    (`nros dev image leaf-system <bringup> --image zephyr --kconfig-out …`,
+    as `zephyr/cmake/nros_image_kconfig.cmake` issues it for a generated west
+    application). 532 profiles in total;
+  - leaf road: `nros sync`, `nros build --dry-run` and `nros build` in
+    `examples/linux/{rust,c,cpp}/talker`. 27 profiles.
+- **Reading the results.**
+  - A function that ran only on the leaf road is **leaf-only**.
+  - A function that ran on the workspace road but only to answer "this is
+    not a leaf" (it returns `None` for a directory with no `system.toml`
+    beside code) is a **probe**. A probe goes when its call sites go.
+  - A function the runs did not reach is classified by its callers. The row
+    names the caller that decides it.
+  - The proc-macro (`nros-macros`) is not in the instrumented binary, so its
+    rows rest on the call graph and on the generated entry's manifest (below).
+
+#### Tracked `system.toml` beside code
+
+262 tracked `system.toml`; **223 beside a tracked `Cargo.toml` or
+`CMakeLists.txt`** (unchanged from 2026-11-03) and 39 in bringup-only
+directories.
+
+| Tree | Beside code | of which `Cargo.toml` / `CMakeLists.txt` / both | Migrated by |
+| --- | --- | --- | --- |
+| `examples/` (excluding templates) | 162 | — | 23 in W6 (the 22 `<plat>/<lang>/talker` witnesses and `linux/c/custom-platform`); 139 in phase-535 (RFC-0122) |
+| `examples/templates/` | 11 | 2 / 9 / 0 | W6 |
+| `packages/testing/` | 50 | — | W6 |
+| **total** | **223** | 101 / 109 / 13 | |
+
+By platform directory, `examples/` holds: linux 43, mps2-an385-baremetal
+25, rv-virt-threadx 20, qemu-armv7a-nuttx 19, mps2-an385-freertos 18,
+threadx-linux 18, zephyr 18, rv-virt-nuttx 1. The 13 "both" sites are Zephyr
+and ThreadX-RISC-V Rust leaves, which are west/CMake applications with a cargo
+package inside.
+
+Node-package manifests that name a selection or board crate (W2's second
+gate, same scope): **100 rows**, of which 94 name `<pkg>_nros_selection` and 6
+name `nros-board-threadx-qemu-riscv64` (the `rv-virt-threadx/rust/*` leaves).
+Hand-written entry packages (`*_entry`, 8 of them under `packages/testing/`)
+name their selection crate too. They are out of that gate's scope: an entry
+is the platform seam, and it retires with `nros new entry` in W7 step 8.
+
+#### What retires, and what the workspace road still needs
+
+Lines are non-test lines. "WS reach" uses the classes defined above.
+
+| Item | Lines | WS reach | Evidence | W7 step |
+| --- | --- | --- | --- | --- |
+| `orchestration/nros_config.rs` `synthesise_self_bringup` + the `is_self_bringup_eligible` loop in `from_cargo_metadata`; `[package.metadata.nros.deploy.*]` schema | 198 + ~25 | none | not run on either road; no example declares `[deploy.*]` | 1 |
+| `orchestration/launch_synth.rs` `synthesise_self_model`, `enumerate_launch_files`, `is_self_bringup_eligible`; the `cmd/plan.rs` self-bringup block (lines 189–225) | 42 + ~37 | none | reached only from `nros plan <pkg-dir>` | 2 |
+| `launch_synth.rs` `discover_pkg_name`, `discover_exec_target` and their four readers | 147 | leaf-only | ran on the leaf road only, via `synthesise_leaf_launch` | 2 (W3's bringup generator reads `[[component]]` and needs none of them) |
+| `cmd/ws.rs` `synthesise_leaf_launch`, `carry_leaf_contract` | 65 + 28 | probe / leaf-only | `synthesise_leaf_launch` ran 26 times on the workspace road, each time returning `None` (no `system.toml` beside code) | **kept, moved**: W3 rewrites it to read bringups (RFC-0121 D3) |
+| `orchestration/facade.rs` `write_leaf_selection`; `leaf_system::LEAF_SELECTION_DIR` | 168 | leaf-only | the workspace road writes its facade through `write_facade` | 3 |
+| `cmd/leaf_settings.rs` `write_selection`, `write_selection_for`, `depends_on_selection`, `check_board_crate_dependency`, `check_lowered_edition_features`, `dependency_tables`, `system_toml`, `image_ros_edition` | 210 | probe / leaf-only | `write_selection` ran 7 times on the workspace road, from `run_sync`'s per-package loop, always returning `None` | 3 |
+| `cmd/build.rs` `check_leaf_selection` | 26 | leaf-only | | 3 |
+| `nros-macros` `leaf_selection_crate`, `reroot_through` (the board-path re-root) | 33 | leaf-only (call graph) | a generated entry names its board crate, so the re-root never fires for it (doc comment at `main_macro.rs:3036`) | 3 |
+| **`leaf_system::selection_crate_name`** | 3 | **live** | the generated entry depends on its own selection crate (`build/posix-zenoh/linux_entry/Cargo.toml`: `linux_entry_nros_selection = { path = … }`), and `nros-macros`'s `entry_selection_crate` names that crate through this function to register the backend (RFC-0071 D11) | **kept**, see the findings below |
+| `cmd/sizing_descriptor.rs` `write_from_leaf`, `leaf_declaration`, `is_cargo_leaf` (`--from-leaf`) | 215 | leaf-only | | 4 |
+| `sizing_descriptor.rs` `write_for_leaf`, `descriptor_path_for_leaf`, `leaf_store_infra`, `for_leaf_declaration`, `for_leaf_census`, `is_leaf_declaration` | 172 | leaf-only, except `is_leaf_declaration`, a probe (31 runs on the workspace road, each answering false) | | 4 |
+| `cmake/NanoRosSizingDescriptor.cmake` `nros_sizing_descriptor_from_leaf` and the leaf-path arm of `nros_sizing_descriptor_cargo_env` | ~120 of 1072 | leaf-only | guarded on `${LEAF}/system.toml` | 4 |
+| `cmake/NanoRosLeafEntityFacts.cmake` | 229 | leaf-only | its only carrier is `--from-leaf`; `nano_rosConfig.cmake:166` calls it for `CMAKE_CURRENT_SOURCE_DIR`, which has no `system.toml` in a generated CMake root | 4 |
+| `cmd/west_leaf_sizing.rs` (whole file) and `_nros_west_leaf_sizing` in `zephyr/cmake/nros_cargo_build.cmake` | 273 + ~60 | leaf-only (call graph) | the hook returns unless `${APPLICATION_SOURCE_DIR}/system.toml` exists, and a generated west application has none (`builder/west_app.rs:103`) | 5 |
+| `cmd/build.rs` `plan_single_package`, `plan_leaf_image`, `plan_single_package_cmake`, `unsynced_inputs`, and the two dispatch lines in `plan_for` (615–621) | 47 + 212 + 149 + 31 + 7 | probe / leaf-only | the two `plan_single_package*` functions ran 6 times each on the workspace road, each returning `None` | 5 |
+| `cmd/build.rs` `zephyr_leaf_application`, the `is_package_dir(&root)` term of `package_mode` (689) | 14 + 1 | probe | returns `None` unless the root is the bringup, which only a Zephyr leaf is | 5 |
+| `cmd/build.rs` `leaf_image_net` | 19 | live (call graph) | also called by `cmd/leaf_system.rs::run` for a bringup image whose `os_config` names board network files | **kept** (rename) |
+| `cmd/build_next.rs` `declared`'s leaf arm (605–630) and `cmake_leaf_executable` | ~25 + 19 | leaf-only | | 5 |
+| `cmd/ws.rs` `run_sync`'s `single_pkg_mode` arms (3571–3619, 3721, 3878, 3972–3976), `scan_one_pkg_dir`, `scan_one_pkg_dir_inner`, `generated_edition`, `cargo_dependency_names`, `emitted_msg_dep_closure`, `is_generated_path`; the `nros ws model-dims` twin at 6817–6830 | ~70 + 50 + 49 + ~20 | leaf-only | | 5 |
+| `cmd/leaf_settings.rs`, the leaf-only half: `settings_path`, `target_dir`, `leaf_package`, `resolve`, `resolve_west`, `resolve_west_image`, `leaf_image_from_decl`, `build_command`, `write`, `write_shared`, `settings_include_rel`, `wire_settings_into_leaf_config`, `states_its_own_build_flags`, `baked_ros_args`, `leaf_app_rung`, `image_layers`, `transport_implications`, `may_name_rmw_file` | ~560 of 1586 | probe / leaf-only | `leaf_package`, `resolve_image` and `resolve_for` ran on the workspace road only as `write_selection`'s probe | 5 |
+| `cmd/leaf_settings.rs`, the shared half: `board_fact_layer`, `board_knob_layer`, `board_rung*`, `app_rung`, `knob_env_row`, `registry_knob_of_env_row`, `refuse_retired_env_keys`, `link_build_implications`, `session_link_build_implications`, `transport_implications_of`, `image_block_layers*`, `image_layers_over`, `is_settings_include`, `resolve_claimed_entry`, `write_entry_selection` | ~620 | live | ran on every workspace `plan_for` (`cmake_image_rows`, `image_config_digest`) and in the Zephyr hook. The last two serve hand-written entries | **kept** (the file should be renamed for what it is: the image's settings layers); `resolve_claimed_entry` and `write_entry_selection` go with W7 step 8 |
+| `orchestration-ir` `leaf_system.rs`: `read`, `from_system_toml`, `declared_entities`, `board`, and the "a `system.toml` beside the entry answers first" arm of `for_entry` / `claiming_image` | 8 + 49 + 11 + 3 + ~6 | probe / leaf-only | `read` ran 613 times on the workspace road, always returning `None` | 5 |
+| `orchestration-ir` `leaf_system.rs`: `read_image`, `image_system`, `for_entry`, `claiming_image`, `entry_package_name`, `flatten_knobs`, `is_package_dir`, the key readers, `link_kind_of_locator`, `is_byte_stream_link` | ~560 | live | `for_entry` ran 5164 times and `image_system` 3444 times on the workspace road. `is_package_dir` is also the predicate RFC-0121 D7's refusal needs | **kept** (the module is the `system.toml` reader for bringups) |
+| `orchestration-ir` `refuse_retired_manifest_keys`, `retired_deployment_keys` | 40 | live | refuses `[package.metadata.nros.deploy.*]` in any package | 7, with `check-leaf-deployment-spelling` R1, once no reader of those keys remains (step 1) |
+| `cmd/leaf_system.rs` `run` / `rows` / the `board_*` and `kconfig` arms (`nros dev image leaf-system`) | ~470 of 832 | live | the Zephyr hook calls it with the bringup directory for every generated west application (measured: 473 lines ran) | **kept** |
+| `cmd/leaf_system.rs`, the `--write-settings` and `resolve_image` arms of `run` (616–639), `qemu_nic`, and the `find_package(nano_ros)` consumer `nano_ros_read_leaf_system` (`cmake/NanoRosPackageXml.cmake` 309–530) | ~24 + 43 + 222 | leaf-only | the CMake function returns unless `${DIR}/system.toml` exists; `qemu_nic` is called by `just/freertos.just` on a leaf | 5 |
+| `cmd/leaf_kconfig.rs` | 665 (whole) | live | the Zephyr hook on a bringup ran 426 lines of it (`render_over`, `defaults_text`, `fragment_text`, `write_fragment`) | **kept** |
+| `leaf_entity_env.rs`, the leaf-only half: `declared_entities`, `inventory_for_leaf`, `manifest_infra`, `leaf_infra`, `leaf_model`, `leaf_model_path`, `leaf_env`, `with_fact_infra`, `with_leaf_monitor_rows`, `env_rows` | ~386 | leaf-only | | 5 |
+| `leaf_entity_env.rs`, the shared half: `declaration_from_probe`, `source_name`, `qualified_type`, `render_env_sidecar` | ~241 | live | `render_env_sidecar` is `cmd/build.rs::derived_pool_env`'s renderer; `declaration_from_probe` ran 1019 times on the workspace road | **kept** |
+| `leaf_entity_env.rs` census readers (`census_*`) and the census arm of `leaf_kconfig::render_over` | ~60 + ~20 | none (13 leaves state `entities = "census"`, no bringup does) | | **kept, moved**: the declaration moves into the bringup's `[[component]]` row in W6 |
+| `leaf_payload_classes.rs` `leaf_bound_inventory`, `leaf_bound_rows`, `payload_classes_for_leaf`, `join`; `leaf_take_buffer.rs` `take_buffer_for_leaf` | ~104 | leaf-only | the bound-table readers (`generated_bound_tables`, `bound_rows_from_tables`, `project_bound_rows`, `take_buffer::derive`) ran on the workspace road and stay | 5 (the derivation itself moves to the model road, or W5 keeps the crate defaults there as today; see the findings below) |
+| `cmake/NanoRosLeafCache.cmake`, `cmake/NanoRosLeafCensus.cmake`, `nano_rosConfig.cmake`'s leaf-facts block | 38 + 48 + ~40 | leaf-only (call graph) | | 5 (census: moved with the census readers above) |
+| `scripts/build/leaf-settings.sh`, `scripts/build/leaf-config-includes.py`, `scripts/lib/leaf_target.py` | 252 + 249 + 126 | leaf-only | the fixture builder's leaf rows | 5, with W6's fixture rewrite |
+| `provider_overrides.rs` `leaf_system_toml_fallback` | ~32 | leaf-only | | 6 |
+| gates: `check-leaf-deployment-spelling` (R1, R3), `check-msg-dep-is-path`'s two leaf arms, `check-image-locator-bake`'s leaf-row scope, `check-image-panic-policy`'s selection lookup, the single-package exemptions in `check-workspace-root-build-files` and `check-no-tracked-workspace-roots`, `check-bringup-workspace-root`'s leaf arm | — | guard the leaf shape only | | 7 (R2 of `check-leaf-deployment-spelling`, the `package.xml` tuple, guards every package and stays) |
+| gates kept: `check-leaf-conf-nros-knobs` (covers workspace-image `.conf` files too), `check-west-leaf-vocabulary` (Zephyr build-dir names, any shape), `check-leaf-lockfiles`, `check-example-leaf-target-dirs`, `check-example-leaf-build-dirs` (in these four, "leaf" means any example directory) | — | live | | **kept** |
+
+#### Findings for later work items
+
+1. **`selection_crate_name` does not retire.** The generated workspace entry
+   has a selection crate of its own, `<entry>_nros_selection`, through which
+   `nros::main!` registers the backend (RFC-0071 D11). So W7 step 3 can
+   delete the leaf's selection crate (`LEAF_SELECTION_DIR`,
+   `write_leaf_selection`, `write_selection`, the macro's board-path re-root),
+   but not the naming function. W5's acceptance text "`rg
+   selection_crate_name` finds only the code W7 deletes" cannot hold as
+   written. One related fact: `facade::write_facade` spells the same name
+   inline (`format!("{entry_name}_nros_selection")`) rather than calling the
+   function.
+2. **Most `leaf_*` code is the workspace road's.** About 2,550 lines of
+   `leaf_settings` + `leaf_system` (both) + `leaf_kconfig` + `leaf_entity_env`
+   run for workspace images, the Zephyr hook among them. W7 step 5 is a
+   deletion of the leaf-only halves (≈1,300 lines in those files) and a
+   rename of the rest, not a deletion of the modules.
+3. **The leaf road derives two sizes the workspace road does not.** These are
+   the payload classes and the take buffer (`cmd/build.rs::derived_pool_env`
+   passes `Refused` for both). Retiring the leaf road without moving that
+   derivation would return 162 migrated examples to the crate defaults
+   (issue 1125 measured 131,072 B of `.bss` from the payload-class default
+   alone). W5's section-size tolerance check is where this would show up.
+4. **Census and `entities = "census"` are leaf-only today** (13 leaves), and
+   the declaration has to keep working after W6 moves those rows into
+   bringups.
+5. Measured total, all items above: ≈4,700 lines leaf-only or probe (about
+   3,300 Rust in `nros-cli-core` / `nros-orchestration-ir` / `nros-macros`,
+   about 760 CMake, about 630 build scripts), against ≈2,600 lines in the same
+   files that the workspace road uses and keeps.
 
 ### W2 — The rule and its gates
 
