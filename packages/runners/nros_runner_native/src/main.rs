@@ -2,8 +2,14 @@
 //!
 //! Runs a host image as a process: a Linux or POSIX native build,
 //! `threadx-linux`, `freertos-posix`, or Zephyr `native_sim`'s `zephyr.exe`.
-//! The process inherits the runner's stdio, so its console reaches nros
-//! unmodified.
+//! The process inherits the runner's stdout, so its console reaches nros
+//! unmodified, and its stderr is sent to the same stdout: a host process's
+//! console is both of its streams, as a terminal shows them, and the runner
+//! protocol grades stdout only. A Rust image's `nros_log` lines
+//! (`[INFO] … Publishing: …`) are on stderr, so without this `nros run
+//! --expect 'Publishing:'` never matched a native talker (phase-527 W6's
+//! installed probe found it). The qemu runner does the same on a semihosting
+//! console, for the same reason.
 //!
 //! A `native_sim` image gets two things a plain host binary does not:
 //!
@@ -17,7 +23,7 @@
 
 use std::{
     path::Path,
-    process::{Command, ExitCode},
+    process::{Command, ExitCode, Stdio},
 };
 
 use nros_extension::{
@@ -90,10 +96,25 @@ fn run(plan: &RunPlan) -> RunnerExit {
         Ok(a) => a,
         Err(e) => return runner::fail(e),
     };
-    match prefixed(plan, exe, args) {
-        Ok((program, args)) => runner::exec(Command::new(program).args(args)),
-        Err(e) => runner::fail(e),
+    let (program, args) = match prefixed(plan, exe, args) {
+        Ok(p) => p,
+        Err(e) => return runner::fail(e),
+    };
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+    match stdout_as_stdio() {
+        Ok(s) => {
+            cmd.stderr(s);
+        }
+        Err(e) => return runner::fail(format!("duplicating stdout: {e}")),
     }
+    runner::exec(&mut cmd)
+}
+
+/// This process's stdout, as a child's stdio handle.
+fn stdout_as_stdio() -> std::io::Result<Stdio> {
+    use std::os::fd::AsFd;
+    Ok(Stdio::from(std::io::stdout().as_fd().try_clone_to_owned()?))
 }
 
 /// `nros run --prefix <cmd>` (`args.prefix`): run the image under that

@@ -578,6 +578,16 @@ Deviations:
   nothing), beside a `Cargo.toml` whose member list now names missing
   directories; nothing builds that workspace from a release today, but W7's
   copy-out scaffold must not path-depend on it there (crates.io is the plan).
+- **The native runner now sends the image's stderr to the console**
+  (`nros_runner_native`, phase-528's package). The probe found that `nros
+  run --expect 'Publishing:'` never matched the native talker: its
+  `nros_log` lines are on stderr, and the runner protocol grades stdout only,
+  so the run printed 880 `Publishing:` lines and timed out. The qemu runner
+  already merges the two on a semihosting console for the same reason.
+- **The probe stops the chapter's kept `nros run`** before its own runs:
+  `probe-run.sh` records a `probe-keep` step's process group in
+  `NROS_PROBE_KEPT_PGIDS`, because that run's router holds port 7447 and the
+  first attempt failed with "the router exited (code 1)".
 
 ### W7 — Scaffolds and checks
 
