@@ -27,9 +27,9 @@
 //!   subscription callbacks and prints `message_callbacks=N` on exit;
 //!   N ≥ 1 proves cross-host delivery.
 //! - **Listener-stdout cells** (C/C++/mixed robot2): the listener prints one
-//!   line per delivered message (`I heard: [...]` from the C tutorial
-//!   listener, `Received: <n>` from the C++ and mixed Int32 listeners until
-//!   phase-535 unifies them); ≥3 proves delivery.
+//!   line per delivered message (`I heard: [...]` from the C and C++
+//!   tutorial listeners, `Received: <n>` from the mixed workspace's Int32
+//!   listener); ≥3 proves delivery.
 //!
 //! The zephyr_rust cell (phase-276 W6 / #102 H1) swaps robot1 for the
 //! Zephyr native_sim image of the SAME per-host entry — one embedded host +
