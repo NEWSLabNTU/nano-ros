@@ -677,7 +677,8 @@ if(NOT "$ENV{NROS_TEST_LEAF_FILE}" STREQUAL "")
     file(WRITE "${_leaf}" "schema_version = 2\n")
 endif()
 nros_sizing_descriptor_west_fragment(_frag)
-nros_sizing_descriptor_west_default("$ENV{NROS_TEST_RESOLVED}" "${_leaf}")
+# The resolver's own clean-dir arm (the module calls the same function).
+nros_sizing_descriptor_west_default_if_absent("$ENV{NROS_TEST_RESOLVED}" "${_leaf}")
 nros_promise_read("${_frag}")
 include("${_frag}")
 message(STATUS "DEFAULT=${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
@@ -738,6 +739,12 @@ check
 if ! nros_grep_q "none was written" <<<"$OUT"; then
     fail "G8: the backstop took the decision back and the end-of-configure check did \
 not report it, so THIS configure's resolver keeps the missing path silently -- $OUT"
+fi
+check
+if nros_grep_q "earlier configure" <<<"$OUT"; then
+    fail "G8: on a CLEAN build dir the promise check called the resolver's own default \
+an earlier configure's answer -- the default was not noted absent before it was \
+written (phase-530 W7 review M1) -- $OUT"
 fi
 OUT="$(run_backstop "" "" "")"
 check

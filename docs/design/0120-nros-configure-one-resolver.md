@@ -286,7 +286,10 @@ cargo. `nros_find_interfaces()` is no reader: on Zephyr the loaders already
 read both fragments, and on the CMake roads nothing reads the message-bound
 fragment at configure time (the payload classes reach cargo through the
 sizing descriptor). A producer whose answer no reader consumed is free to
-compose it.
+compose it -- unless the fragment was SEEDED: a seed is a promise in its own
+right, so recording one snapshots it and registers the end check, and a
+composer that moves a seeded fragment fails the configure whatever order the
+readers ran in.
 
 **A read with no seed** (a guest application, a host with no CLI, a configure
 whose own `nros configure` failed) is held to the same end-of-configure
@@ -294,8 +297,9 @@ comparison, and is never re-converged either:
 
 - equal → continue;
 - the reader read nothing or a placeholder (which says so on a line of its
-  own) → a status line: it used its defaults, which are loose and never
-  under-size;
+  own) → a WARNING: it used its defaults (Kconfig and crate values), which can
+  be smaller than this image needs; FATAL when the composed fragment's status
+  is `derived`, since a real answer existed and the reader did not get it;
 - the reader read a derived answer an earlier configure left, and this
   configure composed another → FATAL naming `nros configure`, because that
   answer can be smaller than this one. The fragment now holds the new answer,
@@ -441,7 +445,9 @@ configure, is answered by D2: the stamp records it.)
   configure (phase-530 W5, Ruling R36; issue 2236 tracks making a make app a
   project). A NuttX image built as a nros project takes the hooked CMake leaf
   road.
-- 2026-11 — D5, D6: a promise is owed to a reader; an unseeded read is held to
-  the same end check (defaults say so, a moved earlier answer is FATAL); the
+- 2026-11 — D5, D6: a promise is owed to a reader, and a seed is held to itself
+  whatever the reader order; an unseeded read is held to the same end check
+  (defaults WARN, FATAL over a derived answer; a moved earlier answer is
+  FATAL); the
   fifth producer (Cyclone C++ on west) is closed by deferring its read past
   its producer. `NanoRosReconfigure.cmake` is deleted (phase-530 W7).

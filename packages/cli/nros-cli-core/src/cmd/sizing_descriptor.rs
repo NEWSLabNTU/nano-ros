@@ -796,8 +796,8 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         if let Some(d) = frag.parent() {
             std::fs::create_dir_all(d).wrap_err_with(|| format!("create `{}`", d.display()))?;
         }
-        crate::atomic_file::atomic_write(frag, &inventory.to_cmake())
-            .map_err(|e| eyre::eyre!("write `{}`: {e}", frag.display()))?;
+        // Write-if-changed: the fragment is a configure dependency.
+        crate::cmd::entity_inventory::write_if_changed(frag, &inventory.to_cmake())?;
         println!("entity-fragment {}", frag.display());
     }
     Ok(())
@@ -1680,6 +1680,25 @@ board = "qemu-armv7a-nuttx"
             .unwrap()
             .to_cmake();
         assert_eq!(written, want, "one composer, one text");
+
+        // Write-if-changed: a second call with the same declaration keeps the
+        // fragment's mtime (it is a configure dependency).
+        let before = std::fs::metadata(&frag).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        run(SizingDescriptorArgs {
+            from_leaf: Some(leaf.clone()),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("e".into()),
+            host_build: true,
+            entity_cmake: Some(frag.clone()),
+            ..args()
+        })
+        .unwrap();
+        assert_eq!(
+            std::fs::metadata(&frag).unwrap().modified().unwrap(),
+            before,
+            "equal bytes were rewritten"
+        );
         assert!(
             written.contains("NROS_ENTITY_INVENTORY_STATUS \"derived\""),
             "{written}"

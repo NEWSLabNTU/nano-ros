@@ -561,9 +561,9 @@ function(_nros_load_west_sizing_descriptor)
         # it is registered as a configure dependency below, and a ninja input
         # with no producing rule is a hard error at load. It is THIS configure's
         # default, not an earlier configure's answer (the promise check's kind).
-        nros_promise_note_absent("${_frag}")
         nros_resolved_dir(_resolved)
-        nros_sizing_descriptor_west_default("${_resolved}" "${NROS_WEST_LEAF_DESCRIPTOR}")
+        nros_sizing_descriptor_west_default_if_absent(
+            "${_resolved}" "${NROS_WEST_LEAF_DESCRIPTOR}")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_frag}")
     nros_promise_read("${_frag}")

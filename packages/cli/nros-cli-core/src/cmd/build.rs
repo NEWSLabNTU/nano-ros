@@ -2132,12 +2132,28 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     // `-Dnano_ros_ROOT` still wins.
                     resolved_opt.push(crate::builder::nano_ros_root_arg(nr));
                 }
-                if !west_opts.is_empty() || !cmake_extra.is_empty() || !resolved_opt.is_empty() {
+                let mut tail: Vec<String> = Vec::new();
+                tail.extend(west_opts);
+                tail.extend(resolved_opt);
+                tail.extend(cmake_extra);
+                // Issue 2248 -- `west build` re-runs CMake whenever it is given
+                // cmake options, so passing the same ones on every `nros build`
+                // cost a configure per invocation. When the build dir's cache
+                // already holds every one of them, west gets none and ninja
+                // decides whether to re-configure, exactly as on a plain
+                // `west build -d <dir>`.
+                let west_dir = output.as_ref().and_then(|o| match o {
+                    crate::cmd::build_next::BuildOutput::West { build_dir } => build_dir.clone(),
+                    _ => None,
+                });
+                let already = west_dir.as_deref().is_some_and(|d| {
+                    std::fs::read_to_string(d.join("CMakeCache.txt"))
+                        .is_ok_and(|c| cmake_args_already_cached(&c, &tail, d))
+                });
+                if !tail.is_empty() && !already {
                     // Everything after `--` is a cmake option for the app.
                     a.push("--".to_string());
-                    a.extend(west_opts);
-                    a.extend(resolved_opt);
-                    a.extend(cmake_extra);
+                    a.extend(tail);
                 }
                 // Resolved here, ENFORCED at exec. A plan is an answer to
                 // "what would you run", and `--dry-run` must be able to answer
@@ -6284,6 +6300,61 @@ fn west_application_dir(
     }
 }
 
+/// Issue 2248 -- whether a configured build dir's `CMakeCache.txt` already
+/// holds every one of `args`, so passing them again would only re-run CMake.
+///
+/// Only `-D<NAME>[:<TYPE>]=<VALUE>` is understood, compared by exact value
+/// against the cache's `<NAME>:<TYPE>=<VALUE>`; any other argument, or a value
+/// spelled differently, answers `false` and the arguments are passed.
+///
+/// `EXTRA_CONF_FILE` is the one value the configure itself rewrites: the
+/// module hook adds the image's own fragments (`NROS_IMAGE_CONF_FILES`) and
+/// its rendering under `<build_dir>/nros/`, and strips both again on every
+/// configure (`zephyr/cmake/nros_image_kconfig.cmake`). Those entries are
+/// dropped from the cached list before the comparison.
+pub(crate) fn cmake_args_already_cached(
+    cache: &str,
+    args: &[String],
+    build_dir: &std::path::Path,
+) -> bool {
+    let entries: std::collections::BTreeMap<&str, &str> = cache
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.starts_with("//"))
+        .filter_map(|l| {
+            let (k, v) = l.split_once('=')?;
+            let name = k.split_once(':').map_or(k, |(n, _)| n);
+            Some((name, v))
+        })
+        .collect();
+    let ours_dir = build_dir.join("nros");
+    let image_confs: Vec<&str> = entries
+        .get("NROS_IMAGE_CONF_FILES")
+        .map(|v| v.split(';').filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+    args.iter().all(|a| {
+        let Some(def) = a.strip_prefix("-D") else {
+            return false;
+        };
+        let Some((k, v)) = def.split_once('=') else {
+            return false;
+        };
+        let name = k.split_once(':').map_or(k, |(n, _)| n);
+        let Some(have) = entries.get(name) else {
+            return false;
+        };
+        if name == "EXTRA_CONF_FILE" {
+            let user: Vec<&str> = have
+                .split(';')
+                .filter(|f| !f.is_empty())
+                .filter(|f| !std::path::Path::new(f).starts_with(&ours_dir))
+                .filter(|f| !image_confs.contains(f))
+                .collect();
+            return user.join(";") == v;
+        }
+        *have == v
+    })
+}
+
 /// The deploy token a package declares, from whichever file its language uses.
 ///
 /// The CMake side is matched textually rather than by evaluating cmake: the
@@ -9214,6 +9285,32 @@ mod registry_patch_spelling_tests {
 #[cfg(test)]
 mod zephyr_leaf_application_tests {
     use super::zephyr_leaf_application;
+
+    /// Issue 2248 -- a second `nros build` of a west image passes no cmake
+    /// options when the cache already holds them all, so west re-runs no
+    /// CMake.
+    #[test]
+    fn cmake_args_already_cached_only_when_every_value_matches() {
+        let cache = "# comment\n//help\nNROS_IMAGE:STRING=zephyr\nnano_ros_ROOT:PATH=/r\n\
+                     EMPTY:STRING=\n\
+                     EXTRA_CONF_FILE:STRING=/i/os.conf;/app/prj.conf;/b/nros/zephyr.conf\n\
+                     NROS_IMAGE_CONF_FILES:INTERNAL=/i/os.conf\n";
+        let b = std::path::Path::new("/b");
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let cached = |v: &[&str]| super::cmake_args_already_cached(cache, &a(v), b);
+        assert!(cached(&[
+            "-DNROS_IMAGE=zephyr",
+            "-Dnano_ros_ROOT:PATH=/r",
+            "-DEMPTY="
+        ]));
+        assert!(!cached(&["-DNROS_IMAGE=other"]));
+        assert!(!cached(&["-DMISSING=1"]));
+        assert!(!cached(&["--trace"]));
+        assert!(cached(&[]));
+        // The hook's own entries in EXTRA_CONF_FILE are not the caller's.
+        assert!(cached(&["-DEXTRA_CONF_FILE=/app/prj.conf"]));
+        assert!(!cached(&["-DEXTRA_CONF_FILE=/app/other.conf"]));
+    }
 
     /// A standalone Zephyr leaf is its own west application; a workspace
     /// bringup with an ament `CMakeLists.txt`, or one that only mentions

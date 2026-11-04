@@ -759,7 +759,8 @@ census host build is the producer and reads no seed (case H).
   delegates to the fixed point: an unseeded read is held to the same
   end-of-configure comparison. A reader that read nothing or a placeholder
   (the placeholders now carry `nros_promise_placeholder_line`) used its
-  defaults -- loose, never under-sizing -- and a status line says so; a
+  defaults, which can be smaller than the image needs, and a WARNING says
+  so (FATAL over a derived answer, R50 below); a
   reader that read an earlier configure's derived answer which this
   configure moved FAILS naming `nros configure`, since that answer can be
   smaller. Nothing re-runs cmake on its own.
@@ -791,21 +792,77 @@ Knobs are identical to `nros build` by construction on every road: the
 plain host configure and `nros build`'s are the same configure behind the
 same hook, which reports `configure: up to date` when `nros build` ran it.
 
-**One miss, not attributed.** On the workspace road the build AFTER the
-first added publisher ran one more configure (with the hook "up to date",
-and nothing printed by the promise module). It is not the fixed point --
-that module is gone and its message absent -- and it did not reproduce: a
-second added publisher (`/chatter3`) then cost exactly 1 configure, and the
-build after it 0, with no configure dependency newer than the generated
-`Makefile.cmake`. The evidence of the first was overwritten by the
-configure itself, so its cause is unknown. A second `nros build zephyr` of
-the Rust workspace re-runs west's configure (its handoff passes the cmake
-arguments again; 0 `Re-running CMake`); a plain `west build -d` re-runs
-nothing.
+**Rows added in review round 1 (same method).**
 
-Gates for this wave: `cmake-resolved-seed` (51 checks), `cmake-sizing-descriptor`
-(62), `cmake-entity-inventory` (81), `cmake-message-bounds` (106),
-`configure-hook` (20), `census-step` (18), `knob-delivery`, `knob-one-pass`.
+| road | clean | no-op | knob |
+| --- | --- | --- | --- |
+| plain `west build` `zephyr/cpp/talker` `zephyr_xrce` | 1, 0 | 0 | `NROS_EXECUTOR_MAX_CBS=1` |
+| plain `west build` `zephyr/rust/talker` `zephyr_zenoh` | 1, 0 | 0 | `NROS_MAX_PUBLISHERS=1`, `NROS_MAX_SUBSCRIBERS=0` |
+| `nros build zephyr_zenoh` `zephyr/cpp/talker` | 2 configures (census host build, then the image), 0 re-runs | **0** configures, 0 re-runs (was 1 before issue 2248's fix; measured 2026-11-05, build `z-cpp-nrosbuild-r48`) | `NROS_EXECUTOR_MAX_CBS=1`, `NROS_MAX_PUBLISHERS=1`, `NROS_MAX_SUBSCRIBERS=0` |
+| NuttX cmake leaf, via `nros build` | 2, 0 (census host + image), base 837d21e08b the same | 0 | knob dump identical to base |
+| ws `examples/workspaces/cpp` `linux_xrce` | 1, 0 | 0 | -- |
+| ws 7-image linux coordinate (`linux`) | 1, 0, no promise FATAL | 0 | -- |
+
+Knob diff, base 837d21e08b vs W7, every `NROS_*`/`ZPICO_*`/`XRCE_*` value
+the configure hands the compiler (cache + generated headers): identical
+for `threadx-linux/c/talker` (740 lines) and the NuttX talker (168 lines);
+only the hashed group-dir names differ.
+
+**The workspace's extra configure, attributed and fixed.** The build after an
+added publisher ran a second configure because the per-package
+`pkg/<pkg>/nano_ros_cpp/<msg>/nros_message_bounds.{cmake,json}` are OUTPUTS
+of the build-time codegen command and were also configure DEPENDENCIES:
+`NanoRosMessageBounds.cmake` `include()`d the `.cmake` (CMake records every
+included file in `CMAKE_MAKEFILE_DEPENDS`) and `_nros_sizing_bound_args`
+added the `.json` to `CMAKE_CONFIGURE_DEPENDS`. When codegen re-ran for a
+package (5 of them here: `action_client_pkg`, `bulk_listener_pkg`, ...) it
+rewrote identical content with a new mtime, and the Makefile generator's
+`cmake_check_build_system` re-configured. Fixed at the writer's consumer:
+the fragment is read with `file(READ)` + `cmake_language(EVAL CODE)` (no
+configure edge), and the json is only counted. The edge was never a
+correctness edge -- the content these files carry reaches the configure
+through the seeded fragment, which the promise check holds. Re-measured on
+`demo_bringup:threadx`: add a publisher = **1** configure, the build after
+it **0**, the no-op after that **0**; knob 1 -> 2.
+
+**`nros build zephyr` re-ran west's configure on every call (issue 2248,
+resolved).** The west handoff passed its `-D` arguments after `--` on every
+run, and `west build` re-runs CMake whenever it is given cmake options. It
+now passes them only when the build dir's `CMakeCache.txt` does not already
+hold every value (`cmake_args_already_cached`). Measured on
+`zephyr/cpp/talker` `zephyr_zenoh` (2026-11-05): first build 2 configures
+(census host build, then the image), second build **0** configures and 0
+re-runs, where it was 1 before the fix. `EXTRA_CONF_FILE` is the one
+value the configure itself rewrites (the module hook appends the image's
+fragments and its `<build>/nros/` rendering, and strips them again each
+configure), so those entries are dropped before the comparison.
+
+**Ruled in review round 1.**
+
+- **R47: a cmake road has no bounds seed, deliberately.** Its only
+  configure-time message-bound reader is the Zephyr module; on a CMake road
+  the payload classes reach cargo through the sizing descriptor. The leaf
+  road seeds the entity fragment only.
+- **R49: a SEEDED fragment is held to its seed whatever the reader order.**
+  `nros_promise_seeded` snapshots the basis and registers the check itself, so
+  a composer that later moves the seeded file FAILS the configure even when
+  no reader registered (`cmake-resolved-seed-tests.sh` case Y: seed ->
+  composer -> deferred flush reader; agree passes, disagree is FATAL).
+- **R50: an unseeded read is a WARNING, FATAL only over a DERIVED answer.**
+  A reader that read nothing or a placeholder used its defaults (Kconfig and
+  crate values), which CAN be smaller than the image needs; it is a CMake
+  WARNING, and FATAL when the composed fragment's `_STATUS` is `derived`,
+  since then a real answer existed and the reader did not get it (case Z).
+  Reading an earlier configure's answer that moved stays FATAL. The roads
+  that can still reach an unseeded read are listed in
+  `cmake/NanoRosPromise.cmake`'s header: a guest Zephyr app with composers,
+  no CLI, a stale stamp, and a multi-image cmake root.
+
+Gates for this wave: `cmake-resolved-seed` (58 checks, incl. a real
+`check-knob-one-pass.py` run over a dir the suite configured and a no-op
+build asserting 0 `Re-running CMake`), `cmake-sizing-descriptor`,
+`cmake-entity-inventory`, `cmake-message-bounds`, `configure-hook`,
+`census-step`, `knob-delivery`, `knob-one-pass`.
 
 ### W8 — Vocabulary and docs (RFC-0120 D9)
 
