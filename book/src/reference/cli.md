@@ -504,7 +504,7 @@ mean, or pass `--allow-overriding <name>` to let the later root win for one
 run. `NROS_PACKAGE_PATH` overlays everything, with a warning.
 
 `--base-paths <path>…` names those source trees for one invocation, and means
-the same on `nros build`, `nros list`, `nros sync`, `nros dev ws providers`
+the same on `nros build`, `nros list`, `nros configure`, `nros dev ws providers`
 and `nros run`/`flash`/`monitor` (whose build and runner lookup get it). It
 replaces the workspace (default `.`) and its `package_paths`, relative to the
 workspace, and nothing else: nano-ros's own packages and `NROS_PACKAGE_PATH`

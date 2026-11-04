@@ -196,7 +196,7 @@ and colcon's rules decide each boundary:
 
 **`--base-paths` names the source roots, and only those.** It is colcon's
 flag with colcon's meaning, the same on every verb that takes it (`nros
-build`, `nros list`, `nros sync`, `nros dev ws providers`, and the build and
+build`, `nros list`, `nros configure`, `nros dev ws providers`, and the build and
 runner lookup inside `nros run`, `flash` and `monitor`; RFC-0117 D4). Its
 entries replace the workspace (default `.`) and its `package_paths`, relative
 to the workspace; the nano-ros underlay and `NROS_PACKAGE_PATH` stay, with the
@@ -233,7 +233,7 @@ won and the user's copy was shadowed. The code had always let the overlay
 win, and phase-527 W2's build edge follows the code, so the RFC now does
 too. Amended again in phase-527 W2c: the source roots were ordered like the
 others, so a `package_paths` entry silently beat the workspace. Amended in
-phase-527 W2d: `nros sync --base-paths` replaced the whole search path,
+phase-527 W2d: `nros sync --base-paths` (now `nros configure`) replaced the whole search path,
 underlay included, while `nros build --base-paths` only narrowed discovery;
 both now mean the source roots.)*
 
