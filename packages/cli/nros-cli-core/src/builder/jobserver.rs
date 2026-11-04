@@ -25,9 +25,13 @@
 //! | ninja < 1.13 | ignored | ignored |
 //!
 //! (Measured on the pinned ninja 1.13.2 and on make 4.3 / 4.4.1.) So the FIFO
-//! form is chosen unless a CMake package would be driven by a make older than
-//! 4.4, which it would kill; then the pipe form is used and the ninja gap is
-//! said out loud. Ninja also IGNORES the pool when given an explicit `-j`,
+//! form is chosen unless the `make` a child would run is older than 4.4, which
+//! it would kill; then the pipe form is used and the ninja gap is said out
+//! loud. That is asked of the make on PATH whatever drives the package, never
+//! of the CMake generator: a Ninja build runs make too (Zephyr's native_sim
+//! links `zephyr.exe` through the native simulator's Makefile, an
+//! a CMake ExternalProject may use make, a cargo build script may), and inheriting
+//! a FIFO pool killed exactly that link under west (issue 2219). Ninja also IGNORES the pool when given an explicit `-j`,
 //! which `cmake --build` passes when `CMAKE_BUILD_PARALLEL_LEVEL` is set, so
 //! that variable is removed from every child that gets the pool.
 //!
@@ -393,14 +397,18 @@ pub const MAKE_FIFO: (u32, u32) = (4, 4);
 /// Ninja older than 1.13 reads no pool at all.
 pub const NINJA_CLIENT: (u32, u32) = (1, 13);
 
-/// Which form to create, given what drives CMake packages: the FIFO unless
-/// the `CMAKE_GENERATOR` in use is make's and that make is older than 4.4.
-/// `make` is `None` when no make runs.
+/// Which form to create, given the version of the `make` on PATH (`None`
+/// when there is none): the FIFO unless that make is older than 4.4.
+///
+/// Deliberately NOT a function of the CMake generator or of which driver
+/// runs. Any child may reach make — a Ninja build's custom command (Zephyr
+/// native_sim's runner), a CMake ExternalProject, a build script — and every one
+/// of them inherits `MAKEFLAGS`, so the pool must be one the reachable make
+/// can read (issue 2219).
 #[must_use]
-pub fn choose_style(cmake_generator: Option<&str>, make: Option<(u32, u32)>) -> Style {
-    let makefiles = cmake_generator.is_none_or(|g| g.contains("Makefiles"));
+pub fn choose_style(make: Option<(u32, u32)>) -> Style {
     match make {
-        Some(v) if makefiles && v < MAKE_FIFO => Style::Pipe,
+        Some(v) if v < MAKE_FIFO => Style::Pipe,
         _ => Style::Fifo,
     }
 }
@@ -500,14 +508,13 @@ mod tests {
     }
 
     #[test]
-    fn the_pipe_form_is_chosen_only_for_an_old_make_that_will_run() {
-        assert_eq!(choose_style(None, Some((4, 3))), Style::Pipe);
-        assert_eq!(
-            choose_style(Some("Unix Makefiles"), Some((4, 3))),
-            Style::Pipe
-        );
-        assert_eq!(choose_style(Some("Ninja"), Some((4, 3))), Style::Fifo);
-        assert_eq!(choose_style(None, Some((4, 4))), Style::Fifo);
-        assert_eq!(choose_style(None, None), Style::Fifo);
+    fn the_pipe_form_is_chosen_whenever_the_reachable_make_is_old() {
+        // An old make on PATH gets the pipe form whatever drives the build:
+        // under Ninja/west it is still reached (issue 2219).
+        assert_eq!(choose_style(Some((4, 3))), Style::Pipe);
+        assert_eq!(choose_style(Some((3, 81))), Style::Pipe);
+        assert_eq!(choose_style(Some((4, 4))), Style::Fifo);
+        assert_eq!(choose_style(Some((4, 5))), Style::Fifo);
+        assert_eq!(choose_style(None), Style::Fifo);
     }
 }

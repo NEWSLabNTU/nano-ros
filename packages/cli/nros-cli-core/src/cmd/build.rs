@@ -3160,11 +3160,10 @@ fn build_jobserver(
     let pool = match pool {
         Some(p) => p,
         None => {
-            let style = if has(Driver::CMake) {
-                js::choose_style(generator.as_deref(), js::tool_version("make"))
-            } else {
-                Style::Fifo
-            };
+            // Every driver, not only CMake: a west/Ninja build runs make
+            // too (native_sim's runner), and a FIFO pool is fatal to a make
+            // older than 4.4 (issue 2219).
+            let style = js::choose_style(js::tool_version("make"));
             match Jobserver::create(workers, style) {
                 Ok(p) => p,
                 Err(e) => {
