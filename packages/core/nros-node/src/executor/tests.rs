@@ -2899,11 +2899,16 @@ fn spin_once_parks_through_the_registered_primitive() {
 // to its framework's scheduler (a PX4 work item) instead of waiting.
 // ===========================================================================
 
+// Issue 2143's class: the exact 10 ms bound, read twice, and "the timer did not
+// fire" all assume no time passes -- a free-running clock breaks each under load.
+private_test_clock!(yielding_park_clock);
+
 /// A yielding park makes `spin_once` return at once, without dispatching, and
 /// the bound the slot received is the executor's own `next_wake_bound`: the
 /// one value the slot needs to arm `ScheduleDelayed`.
 #[test]
 fn a_yielding_park_returns_spin_once_with_the_next_wake_bound() {
+    yielding_park_clock::claim_at_us(1_000_000);
     use portable_atomic::{AtomicU32, AtomicU64, Ordering};
     static SEEN: AtomicU64 = AtomicU64::new(u64::MAX);
     static CALLS: AtomicU32 = AtomicU32::new(0);
@@ -2916,7 +2921,8 @@ fn a_yielding_park_returns_spin_once_with_the_next_wake_bound() {
 
     SEEN.store(u64::MAX, Ordering::SeqCst);
     CALLS.store(0, Ordering::SeqCst);
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), yielding_park_clock::now_us);
     executor.set_park_primitive(yielding_park, core::ptr::null_mut(), 1_000);
     let fired = std::sync::Arc::new(AtomicU32::new(0));
     let fired_cb = fired.clone();
@@ -3739,11 +3745,18 @@ fn a_timer_deadline_shortens_a_longer_caller_budget() {
     );
 }
 
+// Issue 2143's class: a free-running clock made this flake under load -- past
+// 95 ms between registering and asking, the 100 ms timer is the tighter bound
+// (measured: `got 0 us` in `just ci gate`, twice).
+private_test_clock!(budget_wins_clock);
+
 /// The budget still wins when it is the tighter of the two: capping must be a
 /// `min`, not "the timer always decides".
 #[test]
 fn a_shorter_caller_budget_wins_over_a_later_timer() {
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    budget_wins_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), budget_wins_clock::now_us);
     executor
         .register_timer(TimerDuration::from_millis(100), || {})
         .unwrap();
