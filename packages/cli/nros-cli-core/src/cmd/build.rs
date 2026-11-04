@@ -286,13 +286,13 @@ impl Args {
             packages_up_to,
             packages_above,
             packages_skip,
-            base_paths,
+            sources,
         } = selection;
         self.selection.packages_select.extend(packages_select);
         self.selection.packages_up_to.extend(packages_up_to);
         self.selection.packages_above.extend(packages_above);
         self.selection.packages_skip.extend(packages_skip);
-        self.selection.base_paths.extend(base_paths);
+        self.selection.sources.base_paths.extend(sources.base_paths);
         self.continue_on_error |= continue_on_error;
         self.cmake_args.extend(cmake_args);
         self.jobs = jobs.or(self.jobs);
@@ -349,9 +349,28 @@ pub struct SelectionArgs {
     #[arg(long, value_name = "PKG", num_args = 1..)]
     pub packages_skip: Vec<String>,
 
-    /// Look for packages only under these directories, relative to the
-    /// workspace. Default: the whole workspace.
-    #[arg(long, value_name = "PATH", num_args = 1..)]
+    /// `--base-paths`.
+    #[command(flatten)]
+    pub sources: BasePathsArgs,
+}
+
+/// `--base-paths`, colcon's flag, with ONE meaning on every verb that takes
+/// it: `nros build`, `nros list`, `nros sync`, `nros dev ws providers`, and
+/// `nros run`/`flash`/`monitor`, whose implicit build passes it on (RFC-0117
+/// D4, RFC-0119 D4, phase-527 W2d). One struct, flattened into each, so the
+/// flag cannot be spelled or documented two ways.
+#[derive(clap::Args, Debug, Clone, Default)]
+pub struct BasePathsArgs {
+    /// The workspace's source roots, relative to the workspace (default:
+    /// `.`, plus `nros.toml` `package_paths`).
+    ///
+    /// They replace the workspace and its `package_paths`, and nothing else:
+    /// the nano-ros packages and `NROS_PACKAGE_PATH` stay on the search path.
+    /// As in colcon, the roots are peers searched recursively, their order
+    /// does not matter, a path repeated or inside another counts once, and a
+    /// package name found in two of them is an error. A path that does not
+    /// exist is an error; one that holds no package is a warning.
+    #[arg(long = "base-paths", value_name = "PATH", num_args = 1..)]
     pub base_paths: Vec<PathBuf>,
 }
 
@@ -603,8 +622,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
 
     // ---- stage 1 --------------------------------------------------------
     let members = discover::cargo_members_or_walk(&root);
-    let found = discover::discover_in(&root, &args.selection.base_paths, &members)
-        .map_err(|e| eyre::eyre!("{e}"))?;
+    let found = discover_sources(args, &root, &members)?;
     for w in &found.warnings {
         eprintln!("nros build: warning: {w}");
     }
@@ -2319,6 +2337,25 @@ fn plan_single_package(
     plan_leaf_image(args, root, &nros_root, planning, img)
 }
 
+/// Stage 1 over the source roots `--base-paths` names (or the default ones):
+/// the ONE root list ([`crate::cmd::ws::source_roots`]), with the build's
+/// `--allow-overriding` settling a duplicate package (phase-527 W2d).
+fn discover_sources(
+    args: &Args,
+    root: &std::path::Path,
+    members: &[PathBuf],
+) -> Result<discover::Discovered> {
+    let sources = crate::cmd::ws::source_roots(root, &args.selection.sources.base_paths)?;
+    // Read only when the flag needs it; a duplicate reads the declarations
+    // itself, so a clean workspace never pays for (or prints notes from) it.
+    let policy = if args.allow_overriding.is_empty() {
+        None
+    } else {
+        crate::provider_overrides::policy(root, &args.allow_overriding).ok()
+    };
+    discover::discover_in(root, &sources, members, policy.as_ref()).map_err(|e| eyre::eyre!("{e}"))
+}
+
 /// The selection flags on a single-package leaf: every name must be the
 /// package, and skipping it leaves nothing. `--build-base`, `--base-paths` and
 /// more than one parallel worker have nothing to act on in one package with a
@@ -2341,7 +2378,7 @@ fn check_leaf_selection(args: &Args, root: &std::path::Path, package: &str) -> R
             root.display()
         );
     }
-    if !args.selection.base_paths.is_empty() {
+    if !args.selection.sources.base_paths.is_empty() {
         eyre::bail!(
             "`--base-paths` looks for packages in a workspace; {} is a single package.",
             root.display()
@@ -4023,8 +4060,7 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
         return Ok(Vec::new());
     }
     let members = discover::cargo_members_or_walk(&root);
-    let mut found = discover::discover_in(&root, &args.selection.base_paths, &members)
-        .map_err(|e| eyre::eyre!("{e}"))?;
+    let mut found = discover_sources(args, &root, &members)?;
     if found.host.is_empty() {
         return Ok(Vec::new());
     }
@@ -4045,7 +4081,8 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
         .flatten()
         .any(|n| offered.contains(n.as_str()))
     {
-        let path = crate::cmd::ws::provider_search_path(&root)?;
+        let path =
+            crate::cmd::ws::provider_search_path_for(&root, &args.selection.sources.base_paths)?;
         let scan = provider_scan::scan_search_path(&path)?;
         let by_dir: BTreeMap<PathBuf, String> = found
             .packages

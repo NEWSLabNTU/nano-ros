@@ -250,10 +250,11 @@ pub enum RootOrigin {
     PackagePaths,
     /// An entry of [`PACKAGE_PATH_ENV`].
     Env,
-    /// `--base-paths`, colcon's flag, which REPLACES the whole path. Its own
-    /// origin because a root that arrived this way has no default beneath it:
-    /// reporting it as a `Workspace` would imply a nano-ros tree at root 0 that
-    /// is not being scanned.
+    /// `--base-paths`, colcon's flag. It replaces the SOURCE roots only — the
+    /// workspace and its `package_paths` — and leaves the nano-ros underlay
+    /// and the [`PACKAGE_PATH_ENV`] overlay in place (RFC-0119 D4, phase-527
+    /// W2d). Its own origin so a listing says the roots came from the flag,
+    /// which is what the user would change.
     BasePaths,
 }
 
@@ -277,10 +278,13 @@ impl RootOrigin {
     /// provider in two of them is refused rather than ordered (RFC-0119 D4).
     /// The nano-ros tree is the underlay beneath them and
     /// [`PACKAGE_PATH_ENV`] the overlay above them; both keep the ordered
-    /// rule. `--base-paths` keeps it too: it replaces the whole path, often
-    /// with an underlay among its entries, and nothing tells which.
+    /// rule. A `--base-paths` entry is a source root: the flag replaces the
+    /// source roots and nothing else (phase-527 W2d).
     pub fn is_source(self) -> bool {
-        matches!(self, RootOrigin::Workspace | RootOrigin::PackagePaths)
+        matches!(
+            self,
+            RootOrigin::Workspace | RootOrigin::PackagePaths | RootOrigin::BasePaths
+        )
     }
 
     /// Is a missing root of this origin worth a warning?
@@ -327,23 +331,6 @@ impl SearchPath {
     /// take. Every root is included, missing ones too: see [`SearchRoot::exists`].
     pub fn paths(&self) -> Vec<PathBuf> {
         self.roots.iter().map(|r| r.path.clone()).collect()
-    }
-
-    /// The path a `--base-paths` flag names: exactly these roots, in this
-    /// order, and nothing else.
-    ///
-    /// colcon's semantics, and issue 0646's reason for having the flag — a
-    /// caller that already knows where the packages are should not pay to
-    /// rediscover an underlay per invocation. Nothing else contributes: not the
-    /// nano-ros tree, not the config file, not [`PACKAGE_PATH_ENV`]. A flag
-    /// that replaced everything EXCEPT the environment would be the hardest
-    /// kind of override to reason about.
-    pub fn from_base_paths(paths: &[PathBuf]) -> Self {
-        let mut out = Self::default();
-        for p in paths {
-            push_root(&mut out, p.clone(), RootOrigin::BasePaths, None);
-        }
-        out
     }
 
     /// The configured roots that are not directories, in order. Empty is the
@@ -398,8 +385,9 @@ impl SearchPath {
 /// but it can never make a configured root disappear; the search path is
 /// recorded in the [`ProviderIndex`], so an index built under a different
 /// environment is rejected on read rather than served; and every winner is
-/// printed with the root it came from. "Replace it all" keeps its verb —
-/// `nros sync --base-paths`, which is a flag, exactly like colcon's.
+/// printed with the root it came from. `--base-paths` is the flag that
+/// replaces, and it replaces only the SOURCE roots ([`source_roots`]): the
+/// underlay and the environment overlay stay (phase-527 W2d).
 ///
 /// **Relative entries resolve against the WORKSPACE, never the cwd.** RFC-0087
 /// D6's own example is `package_paths = ["src", …]`, which plainly means
@@ -428,35 +416,47 @@ pub fn build_search_path(
     package_paths: &[String],
     env_value: Option<&str>,
 ) -> SearchPath {
+    let sources = collect_source_roots(workspace, package_paths, &[]).0;
+    search_path_over(nano_ros_root, &sources, workspace, env_value)
+}
+
+/// The full search path over SOURCE roots already chosen by [`source_roots`]:
+/// the nano-ros underlay first, then `sources`, then [`PACKAGE_PATH_ENV`].
+///
+/// [`build_search_path`] is this over the default source roots; a caller
+/// holding `--base-paths` passes [`source_roots`]' answer for them, so the flag
+/// replaces the source roots and nothing else (phase-527 W2d).
+///
+/// A source root INSIDE the nano-ros tree — the workspace, or a `--base-paths`
+/// entry, of a workspace that lives in the checkout — is already walked by
+/// root 0 and is dropped, so `--base-paths .` in such a workspace is the
+/// default path. Containment and identity are different questions, so this is
+/// `starts_with` rather than [`push_root`]'s equality test. A `package_paths`
+/// entry keeps its own root even there, as it always has.
+pub fn search_path_over(
+    nano_ros_root: Option<&Path>,
+    sources: &SearchPath,
+    workspace: &Path,
+    env_value: Option<&str>,
+) -> SearchPath {
     let mut out = SearchPath::default();
 
     if let Some(r) = nano_ros_root {
         push_root(&mut out, r.to_path_buf(), RootOrigin::NanoRosTree, None);
     }
+    let underlay = out.roots.first().map(|r| r.path.clone());
 
-    // The nested case: a workspace INSIDE the nano-ros tree is already covered
-    // by root 0. Kept as `starts_with` rather than folded into `push_root`'s
-    // equality dedup, because containment and identity are different questions
-    // and only the default pair is known to nest.
-    let ws = workspace.to_path_buf();
-    if !out
-        .roots
-        .iter()
-        .any(|r| ws == r.path || ws.starts_with(&r.path))
-    {
-        push_root(&mut out, ws, RootOrigin::Workspace, None);
-    }
-
-    for entry in package_paths {
-        if entry.trim().is_empty() {
+    for root in &sources.roots {
+        let nested = matches!(root.origin, RootOrigin::Workspace | RootOrigin::BasePaths)
+            && underlay.as_ref().is_some_and(|u| root.path.starts_with(u));
+        if nested {
             continue;
         }
-        let path = resolve_entry(entry, workspace);
         push_root(
             &mut out,
-            path,
-            RootOrigin::PackagePaths,
-            Some(entry.clone()),
+            root.path.clone(),
+            root.origin,
+            root.as_written.clone(),
         );
     }
 
@@ -469,6 +469,136 @@ pub fn build_search_path(
     }
 
     out
+}
+
+/// A `--base-paths` entry that is not a directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissingBasePath {
+    /// The entry as typed.
+    pub as_written: String,
+    /// What it resolved to, against the workspace.
+    pub path: PathBuf,
+}
+
+/// `--base-paths` named something that is not there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceRootsError {
+    pub missing: Vec<MissingBasePath>,
+}
+
+impl std::fmt::Display for SourceRootsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let list = self
+            .missing
+            .iter()
+            .map(|m| format!("`{}` (resolved to {})", m.as_written, m.path.display()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        write!(
+            f,
+            "--base-paths {list}: not a directory. A base path is a source root \
+             relative to the workspace; drop it or fix the spelling"
+        )
+    }
+}
+
+impl std::error::Error for SourceRootsError {}
+
+/// **The workspace's SOURCE roots — the one list** (RFC-0119 D4, phase-527
+/// W2d). Build discovery (`nros build`, `nros list`, the build inside `nros
+/// run`/`flash`/`monitor`) walks exactly these, and the provider search path
+/// ([`search_path_over`]) puts exactly these between the nano-ros underlay
+/// and the [`PACKAGE_PATH_ENV`] overlay, so the two cannot disagree about
+/// where the workspace's packages are.
+///
+/// colcon's model: the source roots are peers, scanned recursively; the same
+/// package name in two of them is an error (the caller's — discovery and the
+/// override policy each check it); their order carries no precedence; a root
+/// repeated, or inside another, counts once.
+///
+/// - **No `base_paths`**: the workspace itself, then each `package_paths`
+///   entry of its `nros.toml` (passed in, so this stays pure). A missing
+///   `package_paths` entry is kept with `exists = false` and warned about by
+///   the caller, as RFC-0087 D6 decided.
+/// - **`base_paths`**: they REPLACE the workspace and `package_paths`, and
+///   nothing else. Relative entries resolve against the workspace, never the
+///   cwd, and `~` expands. A missing one is an ERROR: the flag is typed per
+///   invocation, so a missing directory is a typo, and building or listing
+///   past it would answer a different question than the one asked. One that
+///   holds no package is a warning, from the caller that walked it.
+///
+/// # Errors
+///
+/// A `base_paths` entry that is not a directory.
+pub fn source_roots(
+    workspace: &Path,
+    package_paths: &[String],
+    base_paths: &[PathBuf],
+) -> Result<SearchPath, SourceRootsError> {
+    let (roots, missing) = collect_source_roots(workspace, package_paths, base_paths);
+    if missing.is_empty() {
+        Ok(roots)
+    } else {
+        Err(SourceRootsError { missing })
+    }
+}
+
+fn collect_source_roots(
+    workspace: &Path,
+    package_paths: &[String],
+    base_paths: &[PathBuf],
+) -> (SearchPath, Vec<MissingBasePath>) {
+    let mut out = SearchPath::default();
+    let mut missing = Vec::new();
+    if base_paths.is_empty() {
+        push_root(
+            &mut out,
+            workspace.to_path_buf(),
+            RootOrigin::Workspace,
+            None,
+        );
+        for entry in package_paths {
+            if entry.trim().is_empty() {
+                continue;
+            }
+            let path = resolve_entry(entry, workspace);
+            push_root(
+                &mut out,
+                path,
+                RootOrigin::PackagePaths,
+                Some(entry.clone()),
+            );
+        }
+        return (out, missing);
+    }
+
+    let mut bases: Vec<(PathBuf, String)> = Vec::new();
+    for b in base_paths {
+        let written = b.display().to_string();
+        if written.trim().is_empty() {
+            continue;
+        }
+        let path = resolve_entry(&written, workspace);
+        if !path.is_dir() {
+            missing.push(MissingBasePath {
+                as_written: written,
+                path,
+            });
+            continue;
+        }
+        bases.push((path, written));
+    }
+    // Overlapping entries count once: a root inside another is walked by the
+    // outer one already. The outer root keeps its place in the list.
+    let kept: Vec<(PathBuf, String)> = bases
+        .iter()
+        .filter(|(p, _)| !bases.iter().any(|(q, _)| q != p && p.starts_with(q)))
+        .cloned()
+        .collect();
+    for (path, written) in kept {
+        push_root(&mut out, path, RootOrigin::BasePaths, Some(written));
+    }
+    (out, missing)
 }
 
 /// Turn one authored entry into an absolute path: `~` expansion, then
@@ -1118,6 +1248,14 @@ pub struct ProviderIndex {
     /// index built for a DIFFERENT search path is not stale, it is wrong —
     /// [`ProviderIndex::is_valid_for`] rejects it rather than serving it.
     pub roots: Vec<PathBuf>,
+    /// Where each of `roots` came from ([`RootOrigin::label`]), by index —
+    /// the root list the index was built from, with its provenance, so an
+    /// out-of-workspace `--base-paths` root is visible in the file as well as
+    /// in the listing (phase-527 W2d). Empty for a scan that recorded no
+    /// origins. Not part of [`ProviderIndex::is_valid_for`]: the paths are the
+    /// identity, the labels are explanation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub root_origins: Vec<String>,
     /// Every package.xml read, sorted. cmake attaches these to
     /// `CMAKE_CONFIGURE_DEPENDS` so editing one re-configures.
     pub inputs: Vec<PathBuf>,
@@ -1129,6 +1267,14 @@ impl ProviderIndex {
         Self {
             version: INDEX_VERSION,
             roots: roots.to_vec(),
+            root_origins: if scan.root_origins.len() == roots.len() {
+                scan.root_origins
+                    .iter()
+                    .map(|o| o.label().to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            },
             inputs: scan.inputs.clone(),
             providers: scan.providers.clone(),
         }
@@ -2452,23 +2598,128 @@ mod tests {
         );
     }
 
-    /// `--base-paths` REPLACES: no nano-ros tree, no workspace, no config, no
-    /// environment. That is colcon's semantics for the flag, and the deliberate
-    /// contrast with `NROS_PACKAGE_PATH`, which only ever appends.
+    /// phase-527 W2d — `--base-paths` replaces the SOURCE roots only: the
+    /// nano-ros underlay and the environment overlay stay, and the
+    /// `package_paths` entries go with the workspace they were relative to.
     #[test]
-    fn base_paths_replace_the_whole_search_path() {
-        let a = tempfile::tempdir().unwrap();
-        let b = tempfile::tempdir().unwrap();
-        let path = SearchPath::from_base_paths(&[a.path().to_path_buf(), b.path().to_path_buf()]);
+    fn base_paths_replace_only_the_source_roots() {
+        let repo = tempfile::tempdir().unwrap();
+        let ws = tempfile::tempdir().unwrap();
+        let env = tempfile::tempdir().unwrap();
+        fs::create_dir_all(ws.path().join("a")).unwrap();
+        fs::create_dir_all(ws.path().join("b")).unwrap();
+        fs::create_dir_all(ws.path().join("vendor")).unwrap();
+        let sources = source_roots(
+            ws.path(),
+            &["vendor".to_string()],
+            &[PathBuf::from("a"), PathBuf::from("b")],
+        )
+        .unwrap();
+        let path = search_path_over(
+            Some(repo.path()),
+            &sources,
+            ws.path(),
+            Some(env.path().to_str().unwrap()),
+        );
         assert_eq!(
             path.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
-            vec![RootOrigin::BasePaths, RootOrigin::BasePaths],
+            vec![
+                RootOrigin::NanoRosTree,
+                RootOrigin::BasePaths,
+                RootOrigin::BasePaths,
+                RootOrigin::Env,
+            ],
+        );
+        let canon = |p: &Path| p.canonicalize().unwrap();
+        assert_eq!(path.roots[1].path, canon(&ws.path().join("a")));
+        assert_eq!(path.roots[2].path, canon(&ws.path().join("b")));
+    }
+
+    /// The default source roots are the workspace and its `package_paths`,
+    /// and [`build_search_path`] is [`search_path_over`] those — one list.
+    #[test]
+    fn the_default_source_roots_are_the_workspace_and_package_paths() {
+        let ws = tempfile::tempdir().unwrap();
+        let sources = source_roots(ws.path(), &["vendor".to_string()], &[]).unwrap();
+        assert_eq!(
+            sources.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
+            vec![RootOrigin::Workspace, RootOrigin::PackagePaths],
         );
         assert_eq!(
-            path.paths(),
-            vec![a.path().to_path_buf(), b.path().to_path_buf()]
+            search_path_over(None, &sources, ws.path(), None),
+            build_search_path(None, ws.path(), &["vendor".to_string()], None),
         );
     }
+
+    /// A repeated base path, and one inside another, count once; the outer
+    /// root keeps its place.
+    #[test]
+    fn overlapping_and_repeated_base_paths_count_once() {
+        let ws = tempfile::tempdir().unwrap();
+        fs::create_dir_all(ws.path().join("src/inner")).unwrap();
+        fs::create_dir_all(ws.path().join("other")).unwrap();
+        let sources = source_roots(
+            ws.path(),
+            &[],
+            &[
+                PathBuf::from("src/inner"),
+                PathBuf::from("src"),
+                PathBuf::from("other"),
+                PathBuf::from("src"),
+                ws.path().join("other"),
+            ],
+        )
+        .unwrap();
+        let canon = |p: &str| ws.path().join(p).canonicalize().unwrap();
+        assert_eq!(sources.paths(), vec![canon("src"), canon("other")]);
+    }
+
+    /// A base path that is not a directory is an error naming it, as typed.
+    #[test]
+    fn a_missing_base_path_is_an_error() {
+        let ws = tempfile::tempdir().unwrap();
+        fs::create_dir_all(ws.path().join("src")).unwrap();
+        let e = source_roots(
+            ws.path(),
+            &[],
+            &[PathBuf::from("src"), PathBuf::from("nope")],
+        )
+        .unwrap_err();
+        assert_eq!(e.missing.len(), 1);
+        assert!(e.to_string().contains("`nope`"), "{e}");
+    }
+
+    /// A base path inside the nano-ros tree is walked by root 0 already, as
+    /// a nested workspace is: `--base-paths .` there is the default path.
+    #[test]
+    fn a_base_path_inside_the_underlay_is_the_underlay() {
+        let repo = tempfile::tempdir().unwrap();
+        let ws = repo.path().join("examples/ws");
+        fs::create_dir_all(&ws).unwrap();
+        let ws = ws.canonicalize().unwrap();
+        let repo = repo.path().canonicalize().unwrap();
+        let sources = source_roots(&ws, &[], &[PathBuf::from(".")]).unwrap();
+        assert_eq!(
+            search_path_over(Some(&repo), &sources, &ws, None).paths(),
+            build_search_path(Some(&repo), &ws, &[], None).paths(),
+        );
+    }
+
+    /// The index records the root list it was built from, with each root's
+    /// origin, and an index read back without the field still parses.
+    #[test]
+    fn the_index_records_its_root_origins() {
+        let ws = tempfile::tempdir().unwrap();
+        let path = build_search_path(None, ws.path(), &[], None);
+        let scan = scan_search_path(&path).unwrap();
+        let idx = ProviderIndex::from_scan(&path.paths(), &scan);
+        assert_eq!(idx.root_origins, vec!["workspace".to_string()]);
+        let bare = ProviderIndex::from_scan(&path.paths(), &scan_roots(&path.paths()).unwrap());
+        assert!(bare.root_origins.is_empty());
+        let json = serde_json::to_string(&bare).unwrap();
+        assert!(!json.contains("root_origins"), "{json}");
+    }
+
     /// phase-527 W1 — the two host-tool kinds are found by the same scan as
     /// every other kind, and a package mixing host and target kinds is refused
     /// with a scan error rather than listed (RFC-0119 D3).

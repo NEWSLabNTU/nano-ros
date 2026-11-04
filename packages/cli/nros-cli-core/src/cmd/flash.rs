@@ -84,6 +84,9 @@ pub struct Args {
     /// Arguments for the flasher, after `--`.
     #[arg(last = true)]
     pub passthrough: Vec<String>,
+    /// `--base-paths`, as `nros build` takes it (phase-527 W2d).
+    #[command(flatten)]
+    pub sources: crate::cmd::build::BasePathsArgs,
 }
 
 impl Args {
@@ -92,6 +95,7 @@ impl Args {
             workspace: self.workspace.clone(),
             nano_ros_path: self.nano_ros_path.clone(),
             image: self.image.clone(),
+            base_paths: self.sources.base_paths.clone(),
         }
     }
 
@@ -99,6 +103,7 @@ impl Args {
     fn flash_exec(&self) -> ExecArgs {
         ExecArgs {
             router: "none".into(),
+            sources: self.sources.clone(),
             ..ExecArgs::default()
         }
     }
@@ -110,6 +115,7 @@ impl Args {
             expect_regex: self.expect_regex.clone(),
             timeout: self.timeout,
             router: self.router.clone(),
+            sources: self.sources.clone(),
             ..ExecArgs::default()
         }
     }
@@ -336,6 +342,7 @@ mod tests {
             expect_regex: None,
             timeout: Some(5.0),
             router: "none".into(),
+            sources: Default::default(),
             plan: None,
             passthrough: Vec::new(),
         }

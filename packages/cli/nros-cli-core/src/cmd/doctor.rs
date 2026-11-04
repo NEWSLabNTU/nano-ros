@@ -386,6 +386,15 @@ fn report_overrides() -> usize {
     let Ok(scan) = cargo_nano_ros::provider_scan::scan_search_path(&path) else {
         return 0;
     };
+    // phase-527 W2d — a source root outside the workspace is allowed, and
+    // never silent: said here, not counted as a problem.
+    let outside = crate::cmd::ws::render_outside_roots(&ws, &path);
+    if !outside.is_empty() {
+        eprintln!("nros doctor: source roots ({})", ws.display());
+        for line in outside.lines() {
+            eprintln!("  [--] {line}");
+        }
+    }
     let text = crate::provider_overrides::render_report(&scan, &policy);
     if text.is_empty() {
         return 0;

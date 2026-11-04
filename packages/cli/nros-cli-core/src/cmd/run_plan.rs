@@ -824,10 +824,15 @@ pub fn run(args: Args) -> eyre::Result<()> {
                 root.as_deref(),
                 &plan.runner.name,
                 &args.exec.allow_overriding,
+                &args.exec.sources.base_paths,
             );
             print!(
                 "{}",
                 crate::cmd::run_exec::why_runner(&located, &plan.runner.name)
+            );
+            print!(
+                "{}",
+                crate::cmd::run_exec::why_source_roots(&ws, &args.exec.sources.base_paths)
             );
         }
         return Ok(());
@@ -845,6 +850,9 @@ pub struct Selection {
     pub nano_ros_path: Option<PathBuf>,
     /// The positional image (`<image>` or `<bringup>:<image>`).
     pub image: Option<String>,
+    /// `--base-paths`, handed to the planning and the implicit build as
+    /// `nros build` takes it (phase-527 W2d).
+    pub base_paths: Vec<PathBuf>,
 }
 
 impl From<&Args> for Selection {
@@ -853,7 +861,32 @@ impl From<&Args> for Selection {
             workspace: a.workspace.clone(),
             nano_ros_path: a.nano_ros_path.clone(),
             image: a.image.clone(),
+            base_paths: a.exec.sources.base_paths.clone(),
         }
+    }
+}
+
+impl Selection {
+    /// The `nros build` arguments this selection stands for, after the verb:
+    /// what `select_target` plans with and what the implicit build runs, so
+    /// the two cannot see different workspaces.
+    #[must_use]
+    pub fn build_args(&self) -> Vec<String> {
+        let mut v = Vec::new();
+        if let Some(w) = &self.workspace {
+            v.extend(["--workspace".into(), w.display().to_string()]);
+        }
+        if let Some(n) = &self.nano_ros_path {
+            v.extend(["--nano-ros-path".into(), n.display().to_string()]);
+        }
+        if !self.base_paths.is_empty() {
+            v.push("--base-paths".into());
+            v.extend(self.base_paths.iter().map(|p| p.display().to_string()));
+        }
+        if let Some(i) = &self.image {
+            v.push(i.clone());
+        }
+        v
     }
 }
 
@@ -870,15 +903,7 @@ pub fn select_target(
     verb: &str,
 ) -> Result<crate::cmd::build::ResolvedBuild, String> {
     let mut build_argv = vec!["build".to_string(), "--dry-run".to_string()];
-    if let Some(w) = &sel.workspace {
-        build_argv.extend(["--workspace".into(), w.display().to_string()]);
-    }
-    if let Some(n) = &sel.nano_ros_path {
-        build_argv.extend(["--nano-ros-path".into(), n.display().to_string()]);
-    }
-    if let Some(i) = &sel.image {
-        build_argv.push(i.clone());
-    }
+    build_argv.extend(sel.build_args());
     let bargs = <crate::cmd::build::Args as clap::Parser>::try_parse_from(build_argv)
         .map_err(|e| e.to_string())?;
     let mut plans = crate::cmd::build::plan_builds(&bargs).map_err(|e| format!("{e:#}"))?;
