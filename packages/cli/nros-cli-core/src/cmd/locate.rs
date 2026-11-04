@@ -404,9 +404,10 @@ fn refuse_unplaced_header(wanted: &[nros_build_paths::artifact::Artifact]) -> Re
 /// to run `nros setup --tool qemu` rather than handed the distro build.
 ///
 /// phase-524 W4c -- and `renode`, the Nucleo-F767ZI's emulator twin, through
-/// [`renode_bin`]: the one place anything asks where Renode is (the twin
-/// probe's `scripts/probe/twin/renode.sh` and the test harness's
-/// `nros_tests::renode` both print this answer).
+/// [`renode_bin`]: the one place anything asks where Renode is (`nros run`
+/// hands its answer to the `renode` runner as the plan's tool, phase-524 W4b;
+/// the test harness's `nros_tests::renode`, through
+/// `scripts/probe/twin/renode.sh`, prints it).
 fn run_tool(
     args: &Args,
     checkout: Option<&std::path::Path>,

@@ -110,6 +110,13 @@ class Registry:
         sdk_index = board_registry.load(root / SDK_INDEX)
         self.twins = {p["track"]: twin_facts(self.index, sdk_index, p)
                       for p in self.probes if p.get("twin")}
+        # phase-524 W4b — a twin track whose chapter is its board's own (the
+        # registry row's `book_run` names it) runs the twin through the
+        # chapter's `nros run` steps; any other twin track replays a shared
+        # chapter's setup and leaves the run to the probe's twin smoke script.
+        for p in self.probes:
+            if p.get("twin") and chapter_runs_twin(self.rows, p):
+                self.twins[p["track"]]["chapter_run"] = "1"
         self.stale_days = self.doc.get("manual_stale_days",
                                        board_registry.DEFAULT_STALE_DAYS)
         data = json.dumps([self.doc, self.cells_doc, self.twins], sort_keys=True).encode()
@@ -225,6 +232,14 @@ def twin_facts(index: dict, sdk_index: dict, p: dict) -> dict:
     return facts
 
 
+def chapter_runs_twin(rows: list[dict], p: dict) -> bool:
+    """Whether twin track `p` replays its board's own chapter, which boots the
+    twin itself (`nros run`): the chapter of the board row's `book_run`."""
+    row = next((r for r in rows if board_registry.row_name(r) == p.get("row")), None)
+    run = (row or {}).get("book_run") or ""
+    return bool(run) and run.split("#", 1)[0] == p.get("chapter")
+
+
 # --------------------------------------------------------------------------
 # views
 
@@ -281,14 +296,21 @@ def render_boot_rows(reg: Registry) -> str:
            "//",
            "// (chapter, block variant, board the chapter's image is built for): every",
            "// probe track whose chapter boots QEMU (`qemu_board` in the registry's",
-           "// `[[probe]]`), for issue 2169's printed-run-command test.",
+           "// `[[probe]]`) or its board's emulator twin through `nros run` (a `twin`",
+           "// track replaying the board row's `book_run` chapter), for issue 2169's",
+           "// printed-run-command test.",
            "#[rustfmt::skip]",
            "const PROBE_BOOT_ROWS: &[(&str, &str, &str)] = &["]
     for p in reg.probes:
-        if not p.get("qemu_board"):
+        # phase-524 W4b — a twin track whose chapter boots the twin through
+        # `nros run` is a row too, keyed on the twin's board.
+        board = p.get("qemu_board") or (
+            p["twin"] if getattr(reg, "twins", {}).get(p["track"], {}).get("chapter_run")
+            else None)
+        if not board:
             continue
         chapter = Path(p["chapter"]).name
-        out.append(f'    ("{chapter}", "{p.get("variant", "")}", "{p["qemu_board"]}"),')
+        out.append(f'    ("{chapter}", "{p.get("variant", "")}", "{board}"),')
     out.append("];")
     return "\n".join(out) + "\n"
 
@@ -563,6 +585,19 @@ def self_test() -> None:
         assert "issue 2194" in str(e) and "[knobs" in str(e), e
     rows = render_boot_rows(Fake())
     assert '("a.md", "v", "b"),' in rows, rows
+    # phase-524 W4b: a twin track replaying its board row's `book_run` chapter
+    # runs the twin in the chapter, and is a 2169 row keyed on the twin board.
+    board_rows = [{"crate": "c", "matrix_platform": "P",
+                   "book_run": "getting-started/n.md#run-in-the-twin"}]
+    own = {"track": "n", "chapter": "getting-started/n.md", "row": "c@P", "twin": "k"}
+    assert chapter_runs_twin(board_rows, own)
+    assert not chapter_runs_twin(board_rows, {**own, "chapter": "getting-started/z.md"})
+    assert not chapter_runs_twin([{"crate": "c", "matrix_platform": "P"}], own)
+    Fake.probes = Fake.probes + [own]
+    Fake.twins = {"n": {"chapter_run": "1"}}
+    assert '("n.md", "", "k"),' in render_boot_rows(Fake())
+    Fake.twins = {"n": {}}
+    assert '"k"' not in render_boot_rows(Fake())
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         (root / "v.rs").write_text(cells)

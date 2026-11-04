@@ -375,6 +375,7 @@ pub fn next_steps(
                             .push(("run".into(), shell_word(&elf.display().to_string())));
                     }
                 }
+                "renode" => renode_line(&p.qualified, &mut out),
                 "fvp" => {
                     out.commands
                         .push(("run on the FVP".into(), west_run.clone()));
@@ -459,6 +460,7 @@ pub fn next_steps(
                 }
                 Err(_) => unresolved = Some(no_command(&p.board)),
             },
+            "renode" => renode_line(&p.qualified, &mut out),
             // The runner is phase-528 W3's.
             other => out.notes.push(format!(
                 "`{}` runs under the `{other}` runner ({}), which this nros cannot launch yet",
@@ -485,6 +487,17 @@ fn no_command(board: &str) -> String {
         "no run or flash command is derivable for board `{board}` (its descriptor names no \
          `[board.run]`)"
     )
+}
+
+/// A Renode twin's line (phase-524 W4b): `nros run`, the one command that
+/// boots it. Renode needs a script with the board's wiring and a router on the
+/// link's pty, so there is no emulator line a person could paste instead; the
+/// `renode` runner writes both.
+fn renode_line(qualified: &str, out: &mut NextSteps) {
+    out.commands.push((
+        "run in the Renode twin".into(),
+        format!("nros run {}", shell_word(qualified)),
+    ));
 }
 
 /// A flash plan's line, for a runner that is not `west`: a command template
@@ -1270,6 +1283,34 @@ mod tests {
         }
     }
 
+    /// phase-524 W4b — a Renode twin's next step is `nros run <image>`: the
+    /// west build declares no `run_renode` for it, and the `renode` runner is
+    /// the one thing that boots it.
+    #[test]
+    fn a_renode_twin_prints_nros_run() {
+        let cat = catalog();
+        let d = descriptor(&cat, "nucleo-f767zi-zephyr");
+        let dir = tmp("renode-twin");
+        std::fs::write(dir.join("build.ninja"), "build run: phony zephyr/run\n").unwrap();
+        let p = plan(
+            "nucleo-f767zi-zephyr",
+            Driver::West,
+            BuildOutput::West {
+                build_dir: Some(dir.clone()),
+            },
+        );
+        let s = next_steps(&p, &d, &store_qemu);
+        assert_eq!(
+            s.commands.first(),
+            Some(&(
+                "run in the Renode twin".to_string(),
+                "nros run demo:nucleo-f767zi-zephyr".to_string()
+            )),
+            "{s:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // phase-522 W2 — `PROBE_BOOT_ROWS`, generated from the board registry.
     include!("probe_boot_rows.rs");
 
@@ -1321,6 +1362,7 @@ mod tests {
             "integration-nuttx.md",
             "threadx.md",
             "integration-zephyr.md",
+            "nucleo-f767zi.md",
         ] {
             let text = std::fs::read_to_string(root.join("book/src/getting-started").join(chapter))
                 .expect("chapter");
@@ -1349,6 +1391,36 @@ mod tests {
                     );
                 };
                 let d = descriptor(&cat, board);
+                // phase-524 W4b — a Renode twin has no emulator line of its
+                // own (the runner writes Renode's script from the board's
+                // wiring), so the printed command IS `nros run`, the line the
+                // chapter boots.
+                let renode = d
+                    .run
+                    .as_ref()
+                    .and_then(|r| r.emulator_parts())
+                    .is_some_and(|(k, _)| k == "renode");
+                if runs_verb && renode {
+                    let p = plan(
+                        board,
+                        Driver::West,
+                        BuildOutput::West {
+                            build_dir: Some("/ws/build/demo_west".into()),
+                        },
+                    );
+                    let s = next_steps(&p, &d, &store_qemu);
+                    let (_, printed) = s
+                        .commands
+                        .iter()
+                        .find(|(l, _)| l.starts_with("run"))
+                        .unwrap_or_else(|| panic!("{board}: no printed run command: {s:?}"));
+                    assert!(
+                        printed.starts_with("nros run "),
+                        "{chapter} `{info}` boots `nros run` and `nros build` prints \
+                         `{printed}` for {board}"
+                    );
+                    continue;
+                }
                 let book: Vec<String> = if runs_verb {
                     // The line `nros run` boots: the run plan it resolves for
                     // this board, rendered by the one QEMU renderer the qemu

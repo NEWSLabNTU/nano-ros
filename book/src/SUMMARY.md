@@ -40,6 +40,7 @@
 - [How Integration Works](./getting-started/how-integration-works.md)
 - [FreeRTOS (QEMU)](./getting-started/freertos.md)
 - [Zephyr (west module)](./getting-started/integration-zephyr.md)
+  - [Nucleo-F767ZI (Renode twin)](./getting-started/nucleo-f767zi.md)
 - [NuttX (apps/external)](./getting-started/integration-nuttx.md)
 - [ThreadX](./getting-started/threadx.md)
 - [ESP32 (esp-hal, retired)](./getting-started/esp32.md)

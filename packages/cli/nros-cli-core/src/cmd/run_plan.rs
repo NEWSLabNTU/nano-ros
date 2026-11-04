@@ -303,7 +303,14 @@ fn method_runner(method: &str) -> RunnerRef {
 /// for the model path.) Any other kind on a west build, such as `wokwi`, is
 /// not Zephyr's to run, and is named by its own runner like on any other
 /// platform.
-pub const WEST_EMULATORS: &[&str] = &["qemu", "renode"];
+///
+/// `renode` is NOT one (phase-524 W4b, measured): Zephyr 3.7's
+/// `nucleo_f767zi` declares no `run_renode` target, so the `west` runner
+/// refused the plan after the build, and a board that does declare one boots
+/// Zephyr's own `.resc`, which puts no UART on a host pty for the router. A
+/// Renode twin goes to `nros_runner_renode` on every road, which reads the
+/// board's `[board.run.renode]` wiring.
+pub const WEST_EMULATORS: &[&str] = &["qemu"];
 
 /// Emulator kinds no runner package drives yet, each with the issue that
 /// tracks the package. A plan for one is refused at resolve time, naming the
@@ -399,6 +406,18 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
     };
     prov.set("runner", METHOD);
     let mut plan = plan_shell(Verb::Run, &i, r, target);
+
+    // ---- args: the Renode twin's wiring (phase-524 W4b) ----------------------
+    if plan.runner.name == "renode"
+        && let Some(r) = d.run.as_ref().and_then(|r| r.renode.as_ref())
+    {
+        plan.args.insert("link".into(), r.link.clone());
+        prov.set("args.link", BOARD);
+        if let Some(c) = &r.console {
+            plan.args.insert("console".into(), c.clone());
+            prov.set("args.console", BOARD);
+        }
+    }
 
     // ---- args: the QEMU line's facts ----------------------------------------
     if plan.runner.name == "qemu" {
@@ -810,9 +829,16 @@ pub fn run(args: Args) -> eyre::Result<()> {
         &std::env::current_dir().unwrap_or_default(),
     );
     let ctx = crate::orchestration::qemu_bin::for_sdk(root.as_deref());
-    for note in attach_tools(&mut plan, &|exe| {
-        crate::orchestration::qemu_bin::locate(exe, &ctx)
-    }) {
+    let renode = || -> Result<PathBuf, String> {
+        let (_, index) = crate::cmd::setup::load_resolved_index(Path::new("nros-sdk-index.toml"))
+            .map_err(|e| format!("{e:#}"))?;
+        crate::cmd::locate::renode_bin(&index, &|k| std::env::var_os(k)).map(|(p, _)| p)
+    };
+    for note in attach_tools(
+        &mut plan,
+        &|exe| crate::orchestration::qemu_bin::locate(exe, &ctx),
+        &renode,
+    ) {
         eprintln!("nros run: {note}");
     }
     crate::cmd::run_exec::decorate(&mut plan, one.rmw.as_deref(), &args.exec);
@@ -996,14 +1022,28 @@ pub fn qemu_line(plan: &RunPlan) -> Result<nros_qemu_ladder::PlanLine, String> {
 /// is used as is, and a target the store does not build
 /// ([`QemuBin::Host`](nros_qemu_ladder::QemuBin::Host)) is the host's own,
 /// looked up on `PATH` HERE, by the ladder's policy, so the plan still names
-/// an absolute path. Returns the notes for what could not be resolved; the
-/// plan is then left without the tool and the runner refuses, naming it.
+/// an absolute path. For a `renode` plan it is `renode`, through `renode`
+/// ([`crate::cmd::locate::renode_bin`], the answer `nros locate tool renode`
+/// prints). Returns the notes for what could not be resolved; the plan is
+/// then left without the tool and the runner refuses, naming it.
 pub fn attach_tools(
     plan: &mut RunPlan,
     qemu: &dyn Fn(&str) -> nros_qemu_ladder::QemuBin,
+    renode: &dyn Fn() -> Result<PathBuf, String>,
 ) -> Vec<String> {
     use nros_qemu_ladder::QemuBin;
     let mut notes = Vec::new();
+    if plan.runner.name == "renode" {
+        match renode() {
+            Ok(path) => {
+                plan.tools.insert("renode".into(), path);
+                plan.provenance
+                    .insert("tools.renode".into(), METHOD.to_string());
+            }
+            Err(why) => notes.push(why),
+        }
+        return notes;
+    }
     if plan.runner.name != "qemu" {
         return notes;
     }
@@ -1361,7 +1401,9 @@ mod tests {
     }
 
     /// The verb picks the target: the Nucleo's `run` is its Renode twin through
-    /// Zephyr's west, its `flash` is the silicon through west; real silicon
+    /// the Renode runner (never west, which declares no `run_renode` for it:
+    /// phase-524 W4b), carrying the board's `[board.run.renode]` wiring; its
+    /// `flash` is the silicon through west; real silicon
     /// with no twin refuses `run`, naming `nros flash --monitor`.
     #[test]
     fn the_verb_picks_the_target() {
@@ -1374,7 +1416,12 @@ mod tests {
         let inv = Invocation::default();
         let run = go(Verb::Run, &d, &out, &none, &inv).unwrap();
         assert_eq!(run.target.emulator.as_deref(), Some("renode:nucleo_f767zi"));
-        assert_eq!(run.runner.name, "west");
+        assert_eq!(run.runner.name, "renode");
+        assert_eq!(run.runner.package, "nros_runner_renode");
+        assert_eq!(run.args["link"], "usart3");
+        assert_eq!(run.args["console"], "usart6");
+        assert_eq!(run.provenance["args.link"], BOARD);
+        assert_eq!(run.artifacts["elf"], PathBuf::from("/b/zephyr/zephyr.elf"));
         let flash = go(Verb::Flash, &d, &out, &none, &inv).unwrap();
         assert_eq!(flash.target.flasher.as_deref(), Some("west"));
         assert_eq!(flash.provenance["target.flasher"], BOARD);
@@ -1569,7 +1616,8 @@ runner = "method"
             path: PathBuf::from(format!("/store/qemu/bin/{exe}")),
             rung: "store",
         };
-        assert!(attach_tools(&mut p, &found).is_empty());
+        let no_renode = || -> Result<PathBuf, String> { unreachable!() };
+        assert!(attach_tools(&mut p, &found, &no_renode).is_empty());
         assert_eq!(
             p.tools["qemu-system-arm"],
             PathBuf::from("/store/qemu/bin/qemu-system-arm")
@@ -1581,7 +1629,7 @@ runner = "method"
             why: "provision it".into(),
         };
         assert_eq!(
-            attach_tools(&mut p, &missing),
+            attach_tools(&mut p, &missing, &no_renode),
             vec!["provision it".to_string()]
         );
         assert!(p.tools.is_empty());
@@ -1589,7 +1637,33 @@ runner = "method"
         let mut linux = board(&cat, "linux");
         linux.console = None;
         let mut host = go(Verb::Run, &linux, &cargo_out(None), &none, &inv).unwrap();
-        assert!(attach_tools(&mut host, &|_: &str| -> QemuBin { unreachable!() }).is_empty());
+        assert!(
+            attach_tools(
+                &mut host,
+                &|_: &str| -> QemuBin { unreachable!() },
+                &no_renode
+            )
+            .is_empty()
+        );
         assert!(host.tools.is_empty());
+
+        // phase-524 W4b: a Renode twin's plan gets `renode` from its ladder.
+        let nucleo = board(&cat, "nucleo-f767zi-zephyr");
+        let west = BuildOutput::West {
+            build_dir: Some("/b".into()),
+        };
+        let mut twin = go(Verb::Run, &nucleo, &west, &none, &inv).unwrap();
+        let qemu_unused = |_: &str| -> QemuBin { unreachable!() };
+        let renode = || -> Result<PathBuf, String> { Ok("/store/renode/renode".into()) };
+        assert!(attach_tools(&mut twin, &qemu_unused, &renode).is_empty());
+        assert_eq!(twin.tools["renode"], PathBuf::from("/store/renode/renode"));
+        assert_eq!(twin.provenance["tools.renode"], METHOD);
+        twin.tools.clear();
+        let gone = || -> Result<PathBuf, String> { Err("install it".into()) };
+        assert_eq!(
+            attach_tools(&mut twin, &qemu_unused, &gone),
+            vec!["install it".to_string()]
+        );
+        assert!(twin.tools.is_empty());
     }
 }
