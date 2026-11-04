@@ -186,9 +186,14 @@ jobs:
       # reached that step since it went red at `just build tier2-nightly` — so
       # an ignored test rotted unseen, and four had. Runs after a red
       # `test-unit` too: the two answer different questions.
+      # `colcon_flag_parity` (phase-526 W3) compares `nros` against colcon over
+      # the ros2_rust_examples workspace, and asserts the submodule is populated
+      # rather than skipping. Its checkout is here, not in the CLI build step,
+      # because nothing else in this job reads it.
       - name: just test-ignored
         if: success() || failure()
         run: |
+          git submodule update --init --depth 1 packages/cli/testing_workspaces/ros2_rust_examples
           source ./activate.sh
           just test-ignored
 
