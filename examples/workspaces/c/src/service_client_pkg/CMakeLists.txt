@@ -6,7 +6,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 find_package(nano_ros REQUIRED)
 find_package(example_interfaces REQUIRED)
-find_package(std_msgs REQUIRED)
 
 # phase-263 A1 (services, C projection) — typed component using the generated
 # example_interfaces/srv/AddTwoInts C bindings (deserialize request / serialize reply). The

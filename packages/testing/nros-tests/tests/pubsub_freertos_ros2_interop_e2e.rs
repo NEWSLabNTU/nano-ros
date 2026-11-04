@@ -41,8 +41,9 @@
 //!
 //! ## What it asserts
 //!
-//! The image's `demo_bringup` talker publishes a CDR `std_msgs/msg/Int32`
-//! counter on `/chatter` at 1 Hz. A stock `ros2 topic echo` (rmw_zenoh_cpp,
+//! The image's `demo_bringup` talker is the ROS 2 tutorial talker (phase-535,
+//! RFC-0122 option B): a CDR `std_msgs/msg/String` "Hello World: N" on
+//! `/chatter` at 1 Hz. A stock `ros2 topic echo` (rmw_zenoh_cpp,
 //! multicast scouting off via the session config `ros2_env_setup_with_locator`
 //! writes) must receive one. That is the nano-pub → ros2-sub direction, the same
 //! direction issue #141 found dead against a healthy publisher on Zephyr.
@@ -137,7 +138,7 @@ fn nros_freertos_mps2_publisher_reaches_ros2_topic_echo() {
     while Instant::now() < deadline {
         let deadline = nros_tests::process::deadline(12);
         let script = format!(
-            "{env} && {deadline} ros2 topic echo --once /chatter std_msgs/msg/Int32 \
+            "{env} && {deadline} ros2 topic echo --once /chatter std_msgs/msg/String \
              --no-daemon --spin-time 2 2>&1"
         );
         let out = Command::new("bash")
@@ -145,7 +146,8 @@ fn nros_freertos_mps2_publisher_reaches_ros2_topic_echo() {
             .output()
             .expect("failed to spawn bash for ros2 invocation");
         last = String::from_utf8_lossy(&out.stdout).into_owned();
-        if last.contains("data:") {
+        // `data: Hello World: N` — the payload, not just a field name.
+        if last.contains("data:") && last.contains(nros_tests::output::TUTORIAL_PAYLOAD_PREFIX) {
             delivered = true;
             break;
         }

@@ -10,8 +10,13 @@
 ///   (result cb: deserialize the sequence + PRINT last element) → done.
 /// A wait counter re-sends if a goal/result reply never arrives (the first request(s) can be
 /// dropped before the server is discovered, like the A1 client's resend guard). The server
-/// computes the order-10 Fibonacci sequence 0,1,1,2,3,5,8,13,21,34,55 → last = 55, so the
-/// client printing `result last=55` proves the cross-process action round-trip.
+/// computes the order-10 Fibonacci sequence 0,1,1,2,3,5,8,13,21,34,55, so the client printing
+/// `Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]` proves the cross-process round-trip.
+///
+/// phase-535 (RFC-0122 option B): this is the ONE C Fibonacci client — the standalone example
+/// pairs and the workspace images run the same program. It prints the tutorial client's lines:
+/// `Sending goal`, `Goal accepted by server, waiting for result`, one
+/// `Next number in sequence received: [...]` per feedback sample, and `Result received: [...]`.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -36,7 +41,33 @@ typedef struct {
     rclc_goal_uuid_t goal_id;
     int phase;
     int waits; /* ticks waited in the current phase (resend guard) */
+    int sends; /* goals sent so far (the first says "Sending goal") */
 } fib_client_t;
+
+static void print_sequence(const int32_t* data, uint32_t size) {
+    printf("[");
+    for (uint32_t i = 0; i < size; i++) {
+        printf(i > 0 ? ", %d" : "%d", data[i]);
+    }
+    printf("]");
+}
+
+/// Feedback callback: one line per sample, as the tutorial client prints.
+static void on_feedback(const rclc_goal_uuid_t* goal_id, const uint8_t* data, size_t len,
+                        void* ctx) {
+    (void)goal_id;
+    (void)ctx;
+    example_interfaces__action__Fibonacci_Feedback fb;
+    example_interfaces__action__Fibonacci_Feedback__Storage fb_storage;
+    example_interfaces__action__Fibonacci_Feedback__init_in(&fb, &fb_storage);
+    if (example_interfaces__action__Fibonacci_Feedback__deserialize(&fb, data, len) == 0) {
+        printf("Next number in sequence received: ");
+        print_sequence(fb.sequence.data, fb.sequence.size);
+        printf("\n");
+    } else {
+        fprintf(stderr, "Failed to deserialize feedback\n");
+    }
+}
 
 /// Goal-response callback: on accept, advance to request the result; on
 /// reject, fall back to idle to resend.
@@ -46,7 +77,7 @@ static void on_goal_response(const rclc_goal_uuid_t* goal_id, bool accepted, voi
         self->goal_id = *goal_id;
         self->phase = FIB_NEED_RESULT;
         self->waits = 0;
-        printf("[action_client_pkg] goal accepted\n");
+        printf("Goal accepted by server, waiting for result\n");
     } else {
         self->phase = FIB_IDLE;
     }
@@ -66,19 +97,17 @@ static void on_result(const rclc_goal_uuid_t* goal_id, rclc_goal_status_t status
     if (data && len > 0 &&
         example_interfaces__action__Fibonacci_Result__deserialize(&result, data, len) == 0 &&
         result.sequence.size > 0) {
-        printf("[action_client_pkg] result seq=[");
-        for (uint32_t i = 0; i < result.sequence.size; i++) {
-            printf(i > 0 ? ", %d" : "%d", result.sequence.data[i]);
-        }
-        printf("]\n");
-        printf("[action_client_pkg] result last=%d\n",
-               result.sequence.data[result.sequence.size - 1]);
+        printf("Result received: ");
+        print_sequence(result.sequence.data, result.sequence.size);
+        printf("\n");
         self->phase = FIB_DONE;
     }
 }
 
 static void send_goal(fib_client_t* self) {
     example_interfaces__action__Fibonacci_Goal goal = {.order = 10};
+    printf("%s\n", self->sends == 0 ? "Sending goal" : "No goal response; sending the goal again");
+    self->sends++;
     uint8_t buf[64];
     size_t n = 0;
     if (example_interfaces__action__Fibonacci_Goal__serialize(&goal, buf, sizeof(buf), &n) == 0 &&
@@ -123,9 +152,12 @@ static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
 
 static rcl_ret_t fib_client_configure(rcl_node_t* node, rclc_executor_t* executor,
                                       fib_client_t* self) {
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
     setvbuf(stdout, NULL, _IOLBF, 0);
+#endif
     self->phase = FIB_IDLE;
     self->waits = 0;
+    self->sends = 0;
 
     self->client = rcl_action_get_zero_initialized_client();
     rcl_ret_t rc = rcl_action_client_init(
@@ -135,6 +167,10 @@ static rcl_ret_t fib_client_configure(rcl_node_t* node, rclc_executor_t* executo
         return rc;
     }
     rc = rclc_action_client_set_goal_response_callback(&self->client, on_goal_response, self);
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    rc = rclc_action_client_set_feedback_callback(&self->client, on_feedback, self);
     if (rc != RCL_RET_OK) {
         return rc;
     }

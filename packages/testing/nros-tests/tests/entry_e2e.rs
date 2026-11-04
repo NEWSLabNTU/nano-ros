@@ -14,8 +14,10 @@
 //! - **EntryPubsub** (phase-263 C2a–C2d): the image's `demo_bringup` talker
 //!   delivers `/chatter` CROSS-PROCESS (issue 0096 — an entry's own listener
 //!   can't observe its in-image talker) to a SEPARATE native listener
-//!   through a host zenohd on the baked port. The C-family cells observe via
-//!   the language-agnostic C `linux_robot2_entry` listener entry
+//!   through a host zenohd on the baked port. The C cells observe via the
+//!   C `linux_robot2_entry` listener entry, the tutorial `std_msgs/String`
+//!   listener (`I heard:`); the C++ and mixed cells, whose talkers still
+//!   publish Int32 until phase-535 unifies them, via the `int32-sink`
 //!   (`Received:`); the rust nuttx cell (#130) keeps its native Rust
 //!   String listener (`I heard:`).
 //! - **Params** (phase-276 W1 / #128): the zephyr `ws-params-rust` entry
@@ -109,13 +111,19 @@ enum Boot {
 #[derive(Copy, Clone, Debug)]
 enum Proof {
     /// EntryPubsub via the C `linux_robot2_entry` listener entry: ≥3
-    /// `Received:` lines. `observer_spin_ms` / `window_secs` keep each
+    /// `I heard:` lines (the C listener is the tutorial `std_msgs/String`
+    /// listener since phase-535, RFC-0122 option B). `observer_spin_ms` / `window_secs` keep each
     /// lane's historical budgets (threadx 15 s/20 s; QEMU + native_sim
     /// 60 s/90 s cold-boot windows).
     ChatterToCListener {
         observer_spin_ms: u32,
         window_secs: u64,
     },
+    /// EntryPubsub of an image whose talker still publishes `std_msgs/Int32`
+    /// (the C++ and mixed workspaces, until phase-535 unifies them on the
+    /// tutorial shape): the `int32-sink` on `/chatter` must log ≥3
+    /// `Received:` lines.
+    ChatterToInt32Sink { window_secs: u64 },
     /// EntryPubsub via the native Rust String listener (#130 rust nuttx
     /// cell): ≥3 `I heard:` lines.
     ChatterToRustListener { window_secs: u64 },
@@ -185,16 +193,17 @@ fn proof_for(platform: MP, lang: ML, workload: MW) -> Proof {
         observer_spin_ms,
         window_secs,
     };
+    let int32_sink = |window_secs: u64| Proof::ChatterToInt32Sink { window_secs };
     match (platform, lang, workload) {
         (MP::ThreadxLinux, ML::C, MW::EntryPubsub) => chatter_c(15000, 20),
-        (MP::ThreadxLinux, ML::Cpp, MW::EntryPubsub) => chatter_c(15000, 20),
-        (MP::ThreadxLinux, ML::Mixed, MW::EntryPubsub) => chatter_c(15000, 20),
+        (MP::ThreadxLinux, ML::Cpp, MW::EntryPubsub) => int32_sink(20),
+        (MP::ThreadxLinux, ML::Mixed, MW::EntryPubsub) => int32_sink(20),
         (MP::FreertosMps2, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
-        (MP::FreertosMps2, ML::Cpp, MW::EntryPubsub) => chatter_c(60000, 90),
-        (MP::FreertosMps2, ML::Mixed, MW::EntryPubsub) => chatter_c(60000, 90),
+        (MP::FreertosMps2, ML::Cpp, MW::EntryPubsub) => int32_sink(90),
+        (MP::FreertosMps2, ML::Mixed, MW::EntryPubsub) => int32_sink(90),
         (MP::ZephyrNativeSim, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
-        (MP::ZephyrNativeSim, ML::Cpp, MW::EntryPubsub) => chatter_c(60000, 90),
-        (MP::ZephyrNativeSim, ML::Mixed, MW::EntryPubsub) => chatter_c(60000, 90),
+        (MP::ZephyrNativeSim, ML::Cpp, MW::EntryPubsub) => int32_sink(90),
+        (MP::ZephyrNativeSim, ML::Mixed, MW::EntryPubsub) => int32_sink(90),
         (MP::NuttxArm, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
         (MP::ThreadxRiscv64, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
         (MP::NuttxArm, ML::Rust, MW::EntryPubsub) => {
@@ -443,6 +452,7 @@ fn require_cell_env(cell: &Exec) {
         }
         Proof::SinkCount { .. } => {}
         Proof::ChatterToCListener { .. }
+        | Proof::ChatterToInt32Sink { .. }
         | Proof::ChatterToRustListener { .. }
         | Proof::SinkValueLine { .. } => {
             require_zenohd();
@@ -754,7 +764,7 @@ fn run_cell(pcell: &MCell) {
             let mut obs = spawn_c_listener_observer(&observer_locator, observer_spin_ms);
             let mut guest = boot_guest(&cell, &entry);
 
-            let prefix = nros_tests::output::INT32_LISTENER_LOG_PREFIX;
+            let prefix = nros_tests::output::LISTENER_LOG_PREFIX;
             let out = obs
                 .wait_for_output_count(prefix, 3, Duration::from_secs(window_secs))
                 .unwrap_or_else(|_| {
@@ -764,6 +774,34 @@ fn run_cell(pcell: &MCell) {
                     panic!(
                         "[{} {}] native observer never received the entry's /chatter ({}).{}",
                         platform, lang, cell.note, diag
+                    )
+                });
+            guest.kill();
+            obs.kill();
+
+            let n = nros_tests::count_pattern(&out, prefix);
+            assert!(
+                n >= 3,
+                "[{} {}] expected ≥3 cross-process deliveries, got {n}",
+                platform,
+                lang
+            );
+        }
+
+        Proof::ChatterToInt32Sink { window_secs } => {
+            let mut obs = spawn_int32_sink("/chatter", &observer_locator);
+            let mut guest = boot_guest(&cell, &entry);
+
+            let prefix = nros_tests::output::INT32_LISTENER_LOG_PREFIX;
+            let out = obs
+                .wait_for_output_count(prefix, 3, Duration::from_secs(window_secs))
+                .unwrap_or_else(|_| {
+                    guest.kill();
+                    obs.kill();
+                    let diag = guest_diagnosis(&mut guest);
+                    panic!(
+                        "[{} {}] int32-sink never received the entry image's /chatter ({}){diag}",
+                        platform, lang, cell.note
                     )
                 });
             guest.kill();
@@ -924,18 +962,32 @@ fn run_cell(pcell: &MCell) {
 /// only, so it needs no fixture.
 #[test]
 fn c_listener_observer_serves_every_cell_that_uses_it() {
-    let row = nros_tests::fixtures::lane::attribute_workspace_id("workspace-c-native-robot2")
-        .expect("examples/fixtures.toml has no `workspace-c-native-robot2` row");
+    assert_observer_serves_its_cells("workspace-c-native-robot2", |p| {
+        matches!(p, Proof::ChatterToCListener { .. })
+    });
+}
+
+/// The same rule for the `int32-sink` observer of the C++ and mixed
+/// `EntryPubsub` cells (phase-535: their talkers still publish Int32).
+#[test]
+fn int32_sink_observer_serves_every_cell_that_uses_it() {
+    assert_observer_serves_its_cells("int32-sink-zenoh", |p| {
+        matches!(p, Proof::ChatterToInt32Sink { .. })
+    });
+}
+
+/// `row_id`'s `serves` must equal the coordinates of the runtime `Entry`
+/// cells whose proof `uses` selects.
+fn assert_observer_serves_its_cells(row_id: &str, uses: fn(&Proof) -> bool) {
+    let row = nros_tests::fixtures::lane::manifest_rows()
+        .iter()
+        .find(|r| r.id == row_id)
+        .unwrap_or_else(|| panic!("examples/fixtures.toml has no `{row_id}` row"));
     let declared: std::collections::BTreeSet<_> = row.serves.iter().cloned().collect();
     let used: std::collections::BTreeSet<_> = nros_tests::matrix::CELLS
         .iter()
         .filter(|c| consumer_of(c) == Some(Consumer::Entry) && matches!(c.tier, MT::Runtime))
-        .filter(|c| {
-            matches!(
-                proof_for(c.platform, c.lang, c.workload),
-                Proof::ChatterToCListener { .. }
-            )
-        })
+        .filter(|c| uses(&proof_for(c.platform, c.lang, c.workload)))
         .map(|c| {
             (
                 c.platform.fixture_tokens()[0].to_string(),
@@ -944,7 +996,7 @@ fn c_listener_observer_serves_every_cell_that_uses_it() {
             )
         })
         .collect();
-    assert!(!used.is_empty(), "no cell spawns the C listener observer");
+    assert!(!used.is_empty(), "no cell spawns the `{row_id}` observer");
     let fmt = |s: &std::collections::BTreeSet<nros_tests::fixtures::lane::Coord>| {
         s.iter()
             .map(|(p, l, r)| format!("\"{p},{l},{r}\""))
@@ -955,7 +1007,7 @@ fn c_listener_observer_serves_every_cell_that_uses_it() {
     let extra: std::collections::BTreeSet<_> = declared.difference(&used).cloned().collect();
     assert!(
         missing.is_empty() && extra.is_empty(),
-        "`workspace-c-native-robot2`'s `serves` in examples/fixtures.toml does not match \
+        "`{row_id}`'s `serves` in examples/fixtures.toml does not match \
          the cells that spawn it.\n  add (these cells skip as out of lane without it): {}\n  \
          remove (no cell uses the observer there): {}",
         fmt(&missing),

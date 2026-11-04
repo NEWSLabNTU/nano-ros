@@ -1,13 +1,17 @@
 # C Workspace
 
 This workspace demonstrates C Node packages with a C native Entry package.
+Its talker, listener, AddTwoInts and Fibonacci packages are the ROS 2
+tutorial programs (`Publishing: 'Hello World: N'`, `I heard: [...]`,
+`Result of add_two_ints: 5`, `Result received: [...]`), the same programs the
+standalone examples run (phase-535, RFC-0122).
 
 ```text
 c/
 ├── .colcon_workspace
 └── src/
-    ├── talker_pkg/    # Node pkg: publishes std_msgs/Int32 on /chatter
-    ├── listener_pkg/  # Node pkg: subscribes std_msgs/Int32 on /chatter
+    ├── talker_pkg/    # Node pkg: publishes std_msgs/String "Hello World: N" on /chatter
+    ├── listener_pkg/  # Node pkg: subscribes std_msgs/String on /chatter
     ├── demo_bringup/    # Bringup pkg: package.xml + system.toml + launch/
     └── zephyr_entry/    # the ONE entry pkg — west needs a real app dir
 ```

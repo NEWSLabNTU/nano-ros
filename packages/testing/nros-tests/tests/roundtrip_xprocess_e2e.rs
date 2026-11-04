@@ -16,9 +16,13 @@
 //!   `fibonacci_client` → `/fib_result`) and an external `int32-sink`
 //!   subscriber asserts the server-computed values (sums `1,2,3`; fib last
 //!   element `55`).
-//! - **C / C++ / mixed cells** assert on the CLIENT's own stdout (`sum: N`
+//! - **C cells** run the ROS 2 tutorial pair (phase-535, RFC-0122 option
+//!   B): after the server's tutorial ready line, the client's own stdout must
+//!   carry `Result of add_two_ints: 5` (one request, 2 + 3) or the order-10
+//!   `Result received: [...]` with at least one feedback line.
+//! - **C++ / mixed cells** assert on the CLIENT's own stdout (`sum: N`
 //!   ×3 / `result last=55`) after waiting for the server's `server ready`
-//!   marker. These clients use the POLL-model component surfaces
+//!   marker. The C-family clients use the POLL-model component surfaces
 //!   (`send_request`+`take_response`, `send_goal_async`/`get_result_async`
 //!   +`poll`), not Rust's blocking `call_for_name` — a component callback
 //!   must never block the executor.
@@ -88,6 +92,14 @@ enum Proof {
     /// client's stdout must show `result last=55` (order 10 →
     /// `0,1,1,2,3,5,8,13,21,34,55`).
     ClientFibLast,
+    /// The ROS 2 tutorial service pair (phase-535, RFC-0122 option B): wait
+    /// for the server's `Waiting for service requests`, then the client's ONE
+    /// request (2 + 3) must come back as `Result of add_two_ints: 5`.
+    TutorialServiceResult,
+    /// The ROS 2 tutorial action pair: wait for `Waiting for action goals`,
+    /// then the client must print at least one feedback line and the whole
+    /// order-10 sequence as `Result received: [0, 1, …, 55]`.
+    TutorialActionResult,
 }
 
 type Resolver = fn() -> TestResult<PathBuf>;
@@ -128,16 +140,17 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
         (ML::C, MW::Service) => Exec {
             server: || build_native_workspace_c_service_server_entry().map(|p| p.to_path_buf()),
             client: || build_native_workspace_c_service_client_entry().map(|p| p.to_path_buf()),
-            proof: Proof::ClientSums,
-            note: "phase-263 A1 C projection: c_add_server_pkg + c_add_client_pkg over the \
-                   poll-model client (nros_cpp_service_client_send_request + take_response)",
+            proof: Proof::TutorialServiceResult,
+            note: "phase-535: the C tutorial AddTwoInts pair (service_server_pkg + \
+                   service_client_pkg) over the poll-model client (send_request + take_response)",
         },
         (ML::C, MW::Action) => Exec {
             server: || build_native_workspace_c_action_server_entry().map(|p| p.to_path_buf()),
             client: || build_native_workspace_c_action_client_entry().map(|p| p.to_path_buf()),
-            proof: Proof::ClientFibLast,
-            note: "phase-263 A4 C projection: c_fib_server_pkg + c_fib_client_pkg over the \
-                   poll-model action client (send_goal_async / get_result_async / poll)",
+            proof: Proof::TutorialActionResult,
+            note: "phase-535: the C tutorial Fibonacci pair (action_server_pkg + \
+                   action_client_pkg) over the poll-model action client (send_goal_async / \
+                   get_result_async / poll)",
         },
         (ML::Cpp, MW::Service) => Exec {
             server: || build_native_workspace_cpp_service_server_entry().map(|p| p.to_path_buf()),
@@ -345,6 +358,80 @@ fn run_cell(pcell: &MCell) {
                      ({}); got:\n{out}",
                     lang,
                     workload,
+                    cell.note
+                );
+            }
+        }
+
+        // Tutorial cells: the server's tutorial ready line, then the client's
+        // stdout carries the tutorial result line.
+        Proof::TutorialServiceResult | Proof::TutorialActionResult => {
+            let service = matches!(cell.proof, Proof::TutorialServiceResult);
+            let ready = if service {
+                nros_tests::output::SERVICE_SERVER_READY_MARKER
+            } else {
+                nros_tests::output::ACTION_SERVER_READY_MARKER
+            };
+            let mut srv = spawn_c_entry(&server, "roundtrip-server", &locator);
+            srv.wait_for_output_pattern(ready, Duration::from_secs(10))
+                .unwrap_or_else(|_| {
+                    srv.kill();
+                    panic!(
+                        "[{} {}] server never printed `{ready}` ({})",
+                        lang, workload, cell.note
+                    )
+                });
+            let mut cli = spawn_c_entry(&client, "roundtrip-client", &locator);
+            let prefix = if service {
+                nros_tests::output::SERVICE_RESULT_PREFIX
+            } else {
+                nros_tests::output::ACTION_RESULT_PREFIX
+            };
+            let out = cli
+                .wait_for_output_pattern(prefix, Duration::from_secs(60))
+                .unwrap_or_else(|_| {
+                    cli.kill();
+                    srv.kill();
+                    panic!(
+                        "[{} {}] client never printed `{prefix}` — the cross-process \
+                         round-trip did not complete ({})",
+                        lang, workload, cell.note
+                    )
+                });
+            cli.kill();
+            srv.kill();
+            if service {
+                // The tutorial request is 2 + 3; the server computes the sum.
+                let expected = nros_tests::output::service_result_line(5);
+                assert!(
+                    out.contains(expected.as_str()),
+                    "[{} {}] client output missing `{expected}` — server-side compute or \
+                     round-trip wrong ({}).\n{out}",
+                    lang,
+                    workload,
+                    cell.note
+                );
+            } else {
+                let expected = format!(
+                    "{} {}",
+                    nros_tests::output::ACTION_RESULT_PREFIX,
+                    nros_tests::output::FIBONACCI_ORDER_10_SEQUENCE
+                );
+                assert!(
+                    out.contains(expected.as_str()),
+                    "[{} {}] client output missing `{expected}` — server-side compute or \
+                     round-trip wrong ({}).\n{out}",
+                    lang,
+                    workload,
+                    cell.note
+                );
+                assert!(
+                    out.contains(nros_tests::output::ACTION_FEEDBACK_PREFIX),
+                    "[{} {}] the client printed its result but no feedback line (`{}`) — \
+                     the feedback topic did not reach it ({}).\n{out}",
+                    lang,
+                    workload,
+                    nros_tests::output::ACTION_FEEDBACK_PREFIX,
                     cell.note
                 );
             }

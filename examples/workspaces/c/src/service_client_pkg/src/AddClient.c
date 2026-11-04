@@ -1,15 +1,16 @@
 /// @file AddClient.c
-/// @brief pure-C workspace — A1 services: the AddTwoInts service CLIENT, typed component
+/// @brief pure-C workspace — the AddTwoInts service CLIENT, a typed component
 /// (RFC-0043 / phase-257). The C projection of the Rust `service_client_pkg`.
 ///
-/// The C component service client polls with the generated typed helpers
-/// (`example_interfaces__srv__AddTwoInts__client_{send_request,take_response}`), not a blocking
-/// call — a component callback must never block the executor. A 1 Hz timer drives the loop: poll
-/// for the in-flight reply, on success print + republish the server-computed sum on `/sum`, then
-/// send the next request. A wait counter re-sends if a reply never arrives (the first request(s)
-/// can be dropped before the server is discovered). `a` runs 0,1,2,… with `b = 1`, so the sums are
-/// 1,2,3,… (the server computes `a + b`) — proving the cross-process round-trip when the client
-/// prints them.
+/// The ROS 2 tutorial client (demo_nodes_cpp `add_two_ints_client`): ONE request, a = 2 and
+/// b = 3, and one line, `Result of add_two_ints: 5`. phase-535 made this the ONE C client: the
+/// standalone example pairs and the workspace images run the same program (RFC-0122 option B).
+///
+/// A component callback must never block the executor, so the call is not the tutorial's
+/// blocking one: a 500 ms timer sends the request with the generated typed helpers
+/// (`example_interfaces__srv__AddTwoInts__client_{send_request,take_response}`) and polls for
+/// the reply. A wait counter re-sends if a reply never arrives (the first request can be
+/// dropped before the server is discovered). After the reply the timer only idles.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -18,31 +19,35 @@
 #include <rclc/rclc.h>
 
 #include "example_interfaces.h"
-#include "std_msgs.h"
+
+/// The tutorial's request: 2 + 3.
+#define ADD_CLIENT_A 2
+#define ADD_CLIENT_B 3
 
 typedef struct {
     rcl_client_t client;
-    rcl_publisher_t pub;
     rcl_timer_t timer;
-    int64_t a;
     bool in_flight; /* a request is awaiting its reply */
+    bool done;      /* the reply arrived and was printed */
     int waits;      /* ticks waited for the current reply (resend guard) */
 } add_client_t;
 
-static void send_next(add_client_t* self) {
-    example_interfaces__srv__AddTwoInts_Request req = {.a = self->a, .b = 1};
+static void send_request(add_client_t* self) {
+    example_interfaces__srv__AddTwoInts_Request req = {.a = ADD_CLIENT_A, .b = ADD_CLIENT_B};
     uint8_t scratch[64];
     if (example_interfaces__srv__AddTwoInts__client_send_request(&self->client, &req, scratch,
                                                                  sizeof(scratch)) == RCL_RET_OK) {
         self->in_flight = true;
         self->waits = 0;
     }
-    self->a++;
 }
 
 static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
     add_client_t* self = RCLC_CONTAINER_OF(timer, add_client_t, timer);
     (void)last_call_time;
+    if (self->done) {
+        return;
+    }
 
     if (self->in_flight) {
         example_interfaces__srv__AddTwoInts_Response r;
@@ -51,26 +56,28 @@ static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
             &self->client, &r, scratch, sizeof(scratch));
         if (rc == RCL_RET_OK) {
             self->in_flight = false;
-            printf("[service_client_pkg] sum: %lld\n", (long long)r.sum);
-            /* republish the result on /sum */
-            std_msgs__msg__Int32 sum_msg = {.data = (int32_t)r.sum};
-            (void)rcl_publish(&self->pub, &sum_msg, NULL);
-        } else if (++self->waits > 6) {
+            self->done = true;
+            printf("Result of add_two_ints: %lld\n", (long long)r.sum);
+            return;
+        }
+        if (++self->waits > 6) {
             /* No reply (request dropped before discovery) — resend. */
             self->in_flight = false;
         }
     }
 
     if (!self->in_flight) {
-        send_next(self);
+        send_request(self);
     }
 }
 
 static rcl_ret_t add_client_configure(rcl_node_t* node, rclc_executor_t* executor,
                                       add_client_t* self) {
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
     setvbuf(stdout, NULL, _IOLBF, 0);
-    self->a = 0;
+#endif
     self->in_flight = false;
+    self->done = false;
     self->waits = 0;
 
     self->client = rcl_get_zero_initialized_client();
@@ -81,12 +88,6 @@ static rcl_ret_t add_client_configure(rcl_node_t* node, rclc_executor_t* executo
         return rc;
     }
     rc = rclc_executor_attach_client(executor, &self->client);
-    if (rc != RCL_RET_OK) {
-        return rc;
-    }
-    self->pub = rcl_get_zero_initialized_publisher();
-    rc = rclc_publisher_init_default(&self->pub, node,
-                                     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/sum");
     if (rc != RCL_RET_OK) {
         return rc;
     }

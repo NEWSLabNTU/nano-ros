@@ -37,7 +37,10 @@ use nros_tests::{
         build_freertos_posix_workspace_cpp_entry, freertos,
     },
     matrix::{Lang, PlatformId, Workload},
-    output::{INT32_LISTENER_LOG_PREFIX, INT32_TALKER_LOG_PREFIX, WORKSPACE_C_TALKER_LOG_PREFIX},
+    output::{
+        INT32_LISTENER_LOG_PREFIX, INT32_TALKER_LOG_PREFIX, LISTENER_LOG_PREFIX,
+        TALKER_PAYLOAD_PREFIX,
+    },
 };
 use std::{path::PathBuf, process::Command, time::Duration};
 
@@ -133,7 +136,7 @@ fn env_report(domain: u8) -> String {
            ambient CYCLONEDDS_URI                 : {}\n\
            ambient RMW_IMPLEMENTATION             : {}\n\
          Both nodes live in ONE participant in this image, so delivery needs no\n\
-         network — a total absence of `Received:` points at the participant or\n\
+         network — a total absence of a listener line points at the participant or\n\
          the domain, not the transport (issue 0737).",
         show("ROS_DOMAIN_ID"),
         show("CYCLONEDDS_URI"),
@@ -141,17 +144,23 @@ fn env_report(domain: u8) -> String {
     )
 }
 
-fn assert_delivered(out: &str, talker_marker: &str, domain: u8, label: &str) {
+fn assert_delivered(
+    out: &str,
+    talker_marker: &str,
+    listener_marker: &str,
+    domain: u8,
+    label: &str,
+) {
     let env = env_report(domain);
     let talked = out.find(talker_marker).unwrap_or_else(|| {
         panic!("{label}: no `{talker_marker}` line — the talker never published.\n{env}\n{out}")
     });
-    let heard = out.find(INT32_LISTENER_LOG_PREFIX).unwrap_or_else(|| {
-        panic!("{label}: no `{INT32_LISTENER_LOG_PREFIX}` line — nothing was delivered.\n{out}")
+    let heard = out.find(listener_marker).unwrap_or_else(|| {
+        panic!("{label}: no `{listener_marker}` line — nothing was delivered.\n{out}")
     });
     assert!(
         heard > talked,
-        "{label}: the listener's first `{INT32_LISTENER_LOG_PREFIX}` precedes the talker's \
+        "{label}: the listener's first `{listener_marker}` precedes the talker's \
          first `{talker_marker}`, so it is not evidence of delivery.\n{env}\n{out}"
     );
 }
@@ -169,11 +178,12 @@ fn freertos_posix_c_entry_delivers_over_cyclonedds() {
     // Issue 2221 — hold the baked domain so a native test steps past it.
     let _domain = nros_tests::hold_baked_domain(domain);
     let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-c");
-    // The pure-C workspace talker spells its marker differently from the C++
-    // one; both listeners agree on `Received:`.
+    // The C workspace pair is the ROS 2 tutorial pair (phase-535, RFC-0122
+    // option B); the C++ one still carries the Int32 demo.
     assert_delivered(
         &out,
-        WORKSPACE_C_TALKER_LOG_PREFIX,
+        TALKER_PAYLOAD_PREFIX,
+        LISTENER_LOG_PREFIX,
         domain,
         "freertos-posix-c",
     );
@@ -192,7 +202,13 @@ fn freertos_posix_cpp_entry_delivers_over_cyclonedds() {
     // Issue 2221 — hold the baked domain so a native test steps past it.
     let _domain = nros_tests::hold_baked_domain(domain);
     let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-cpp");
-    assert_delivered(&out, INT32_TALKER_LOG_PREFIX, domain, "freertos-posix-cpp");
+    assert_delivered(
+        &out,
+        INT32_TALKER_LOG_PREFIX,
+        INT32_LISTENER_LOG_PREFIX,
+        domain,
+        "freertos-posix-cpp",
+    );
 }
 
 /// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the

@@ -118,19 +118,6 @@ pub const CUSTOM_PLATFORM_PUBLISHER_CREATED_PREFIX: &str = "Publisher created:";
 /// the return code.
 pub const CUSTOM_PLATFORM_PUBLISHER_FAILED_PREFIX: &str = "Failed to init publisher:";
 
-/// phase-370 — the PURE-C workspace talker's publish marker
-/// (`examples/workspaces/c/src/talker_pkg/src/Talker.c`).
-///
-/// A separate constant because the two workspaces do not agree: the C++ talker
-/// prints [`INT32_TALKER_LOG_PREFIX`] (`"Published:"`) and the C one prints
-/// `"[talker_pkg] sent:"`. The doc on that constant claims it covers "the
-/// workspace demo packages", which is true of the listener side (both print
-/// `"Received:"`) and NOT of the talker side. Naming the C spelling here is
-/// cheaper than reconciling two examples' output, and it keeps the divergence
-/// written down instead of rediscovered by the next test that greps the wrong
-/// one — which is what this module exists to prevent.
-pub const WORKSPACE_C_TALKER_LOG_PREFIX: &str = "[talker_pkg] sent:";
-
 /// issue 0441 — the receive-side `MessageInfo` marker emitted by the
 /// `message-info-observer` bin (`seq=<n> gid=<hex> ts=<t>`).
 ///
@@ -358,10 +345,16 @@ pub const KERNEL_TIME_SLICING_OFF: &str = "nros: kernel time slicing OFF";
 /// See [`KERNEL_TIME_SLICING_PREFIX`]; the runners append "(issue 2017)".
 pub const KERNEL_TIME_SLICING_ON: &str = "nros: kernel time slicing ON";
 
+/// The tutorial talker's payload prefix (`"Hello World:"`, the `data` of
+/// every `std_msgs/String` it publishes). A peer that sees the payload rather
+/// than the talker's log — `ros2 topic echo` prints `data: Hello World: N` —
+/// greps this.
+pub const TUTORIAL_PAYLOAD_PREFIX: &str = "Hello World:";
+
 /// The exact talker log line for sequence value `n`
 /// (`"Publishing: 'Hello World: N'"`).
 pub fn talker_line(n: impl std::fmt::Display) -> String {
-    format!("{TALKER_LOG_PREFIX} 'Hello World: {n}'")
+    format!("{TALKER_LOG_PREFIX} '{TUTORIAL_PAYLOAD_PREFIX} {n}'")
 }
 
 // ---------------------------------------------------------------------------
@@ -940,7 +933,7 @@ fn parse_hello_world_n(rest: &str) -> Option<i64> {
         .unwrap_or(rest);
     inner
         .trim()
-        .strip_prefix("Hello World:")?
+        .strip_prefix(TUTORIAL_PAYLOAD_PREFIX)?
         .trim()
         .parse()
         .ok()
