@@ -1,7 +1,7 @@
 # Phase 533 — Hardware: the first probe runner and bench cells in the harness
 
 **Status (2026-11-04). OPEN — W1 and W2 not started. Both wait on the boards phase-524 W5 puts on the maintainer bench.** Moved from
-[phase-529](phase-529-flash-monitor-bench.md) W5 and W6 (maintainer,
+[phase-529](archived/phase-529-flash-monitor-bench.md) W5 and W6 (maintainer,
 2026-11-04), so phase-529 could close on what runs without a bench.
 Implements the probe-runner row of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8 and the hardware
@@ -9,7 +9,7 @@ cells of [RFC-0118](../design/0118-target-execution-model.md) D6.
 
 Depends on:
 
-- [phase-529](phase-529-flash-monitor-bench.md) W1 to W4: `[board.flash]`,
+- [phase-529](archived/phase-529-flash-monitor-bench.md) W1 to W4: `[board.flash]`,
   the `serial` and `west` runners, `nros flash`/`nros monitor`, and
   `nros bench`;
 - [phase-528](phase-528-run-on-host-and-emulator.md) W5, for the harness
