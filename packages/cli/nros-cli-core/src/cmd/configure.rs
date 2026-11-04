@@ -487,8 +487,7 @@ impl Drop for HeldMarker {
 pub(crate) fn held_marker_for(project: &Path) -> Option<(&'static str, std::ffi::OsString)> {
     let canon = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
     held_projects()
-        .iter()
-        .any(|p| *p == canon)
+        .contains(&canon)
         .then(|| (HELD_VAR, canon.into_os_string()))
 }
 
