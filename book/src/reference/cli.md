@@ -448,6 +448,23 @@ error for every kind, and the message names both paths. Declare the one you
 mean, or pass `--allow-overriding <name>` to let the later root win for one
 run. `NROS_PACKAGE_PATH` overlays everything, with a warning.
 
+`--base-paths <path>…` names those source trees for one invocation, and means
+the same on `nros build`, `nros list`, `nros sync`, `nros dev ws providers`
+and `nros run`/`flash`/`monitor` (whose build and runner lookup get it). It
+replaces the workspace (default `.`) and its `package_paths`, relative to the
+workspace, and nothing else: nano-ros's own packages and `NROS_PACKAGE_PATH`
+stay on the search path, so a runner nano-ros provides still resolves. As in
+colcon, the paths are peers, their order does not matter, a path repeated or
+inside another counts once, and a package name found in two of them is an
+error naming both. A path that does not exist is an error; one holding no
+package is a warning. A path outside the workspace is allowed, and `nros dev
+ws providers`, `nros doctor` and `nros run --dry-run --why` say so.
+
+```sh
+nros build --base-paths src ../vendor   # src/ and a vendor tree beside the workspace
+nros list -n --base-paths src           # what that build would see
+```
+
 ```toml
 # nros.toml, at the workspace root
 [workspace]
