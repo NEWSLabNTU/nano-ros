@@ -396,10 +396,16 @@ openocd -f board/<your-board>.cfg -c "program build/nuttx verify reset exit"
 
 - NuttX integration shell:
   [`integrations/nuttx/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/nuttx)
-- Worked NuttX QEMU examples:
-  [`examples/qemu-armv7a-nuttx/rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx/rust),
-  [`examples/qemu-armv7a-nuttx/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx/c),
-  [`examples/qemu-armv7a-nuttx/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx/cpp)
+- Copy-out NuttX QEMU talkers, one per language, each the same project as
+  the one this page scaffolds:
+  [`examples/qemu-armv7a-nuttx/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx/rust/talker),
+  [`examples/qemu-armv7a-nuttx/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx/c/talker),
+  [`examples/qemu-armv7a-nuttx/cpp/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx/cpp/talker)
+- The listener, service and action examples: the `nuttx_*` and
+  `riscv_nuttx_*` image rows of the language workspaces,
+  `examples/workspaces/{rust,c,cpp}`, under `pubsub_bringup`,
+  `service_bringup` and `action_bringup`
+  (`nros run pubsub_bringup:nuttx_listener`)
 - Kconfig schema:
   [`integrations/nuttx/Kconfig`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/nuttx/Kconfig)
 
@@ -413,3 +419,9 @@ openocd -f board/<your-board>.cfg -c "program build/nuttx verify reset exit"
   [Choosing an RMW Backend](../communicate/choosing-an-rmw.md)).
 - Build nano-ros's own NuttX QEMU tests without a NuttX-managed
   workspace: [NuttX in-tree examples (contributor)](../internals/platform/nuttx-in-tree.html).
+
+## Design background
+
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The copy-out talker per platform and language, and the paired examples as
+  image rows of behaviour bringups.

@@ -116,10 +116,12 @@ variables (`NROS_LOCATOR` — the retired `ZENOH_LOCATOR` is refused at startup 
 `[image.<id>]` table (`locator`, and the address in `net`) — the shape
 shows up under the Embedded Starters section.
 
-For a fuller talker to read — the same node, with one image per RMW
-and ROS edition — see
+This is the same project as
 [`examples/linux/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/talker)
-on GitHub.
+on GitHub, the copy-out example for Rust on Linux: one node package and a
+bringup with no launch file of its own, since the build generates it. Its
+bringup goes further than the scaffold, with one image per RMW and ROS
+edition.
 
 ## Configure
 
@@ -258,3 +260,10 @@ you.
 - Cross-compile for an RTOS: pick the right Embedded Starter from
   the next section (FreeRTOS / Zephyr / NuttX / ThreadX / ESP32 /
   Bare-metal Cortex-M3).
+
+## Design background
+
+- [RFC-0121: workspace-first project layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md)
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The copy-out talker kept for each platform and language, and the language
+  workspaces that hold the paired examples.

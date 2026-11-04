@@ -351,9 +351,15 @@ submodule is retired); cmake auto-resolves it from
 
 ### Usage
 
-See [`examples/linux/c/custom-msg/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/c/custom-msg/CMakeLists.txt) for a complete example.
+For a complete example, see the features workspace,
+[`examples/workspaces/features`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/features):
+its `custom_msgs` package defines a message, and `c_reading_talker_pkg` and
+`c_reading_listener_pkg` use the generated C bindings. The custom-message
+feature demo is a node package there, with its own image row.
 
 ## Design background
 
 - [RFC-0067: environment-invariant message dependency identity](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0067-env-invariant-msg-dep-identity.md)
 - [RFC-0048: CMake ament consumption](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0048-cmake-ament-consumption.md)
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  Feature demos as node packages of the features workspace.

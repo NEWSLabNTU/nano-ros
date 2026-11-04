@@ -259,6 +259,21 @@ bringup when there is one, or you name it: `nros plan demo_bringup`.
 `examples/workspaces/{c,cpp,rust,mixed}/` are the four canonical workspaces —
 each is exactly this shape, Zephyr images included.
 
+The language workspaces (`rust`, `c`, `cpp`) also hold the paired examples,
+one bringup per behaviour: `pubsub_bringup` (talker and listener),
+`service_bringup` (service server and client) and `action_bringup` (action
+server and client). Each holds one `[image.<platform>_<role>]` row per
+platform and role, with a `_<rmw>` suffix for any RMW other than zenoh, so
+every role stays its own image. Run one role by naming its bringup and image:
+
+```bash
+nros run pubsub_bringup:linux_listener
+```
+
+A variant with different code (a callback-style client, an RTIC listener) is
+its own node package with its own image row; a configuration (a serial link, a
+custom transport) is an image row that states the knob over the same packages.
+
 ## One node, one bringup
 
 The smallest project is still this shape, with one node package. The scaffold
@@ -298,8 +313,10 @@ builds and runs it. The node spelling means "the bringup whose only node is
 second image, name `<bringup>:<image>` instead. `--lang c` or `--lang cpp`
 writes a C or C++ node package; the bringup is the same.
 
-The copy-out examples under `examples/<platform>/<lang>/` have this shape too:
-each is a workspace with one node package and one bringup.
+The copy-out example for each platform and language,
+`examples/<platform>/<lang>/talker/`, has this shape too: one node package and
+one bringup with no `launch/`, so its launch file is generated. It is the
+project to start from; the paired examples are the image rows above.
 
 `nros build` (and `nros configure`) refuse a `system.toml` in a directory that also
 holds a `Cargo.toml` or `CMakeLists.txt`, and the message says where to move
@@ -332,3 +349,6 @@ with west) are not affected: see
 - [RFC-0057: ament-parity component registration](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0057-ament-parity-component-registration.md)
 - [RFC-0060: launch toolchain](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0060-launch-toolchain-three-layers.md)
 - [RFC-0026: example directory layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The paired examples as image rows of behaviour bringups, and the single-node
+  talker kept per platform and language.

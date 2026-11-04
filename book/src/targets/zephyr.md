@@ -1062,13 +1062,27 @@ cyclonedds submodule, not delivered through `patches.yml`.)
 
 ## Start from an example
 
-The [`examples/zephyr/<lang>/<role>/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr)
-dirs on GitHub are **copy-out clean**, with no reference back into the
-nano-ros repository, so their node sources are a starting point to copy into
-your own node packages. The release does not ship `examples/`;
-`nros new <ws> --board zephyr --template <role> --lang <c|cpp|rust>` writes the
-same roles as a workspace, as in the
-[quick start](#quick-start-a-talker-on-native_sim-from-nothing).
+The copy-out talkers under
+[`examples/zephyr/<lang>/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr)
+on GitHub, one per language, are **copy-out clean**, with no reference back
+into the nano-ros repository. Each is the same project as the
+[quick start](#quick-start-a-talker-on-native_sim-from-nothing)'s: one node
+package and a bringup with no launch file of its own, whose launch file is
+generated. Their node sources are a starting point to copy into your own node
+packages.
+
+The other roles are image rows of the language workspaces,
+`examples/workspaces/{rust,c,cpp}`, one bringup per behaviour:
+`pubsub_bringup`, `service_bringup` and `action_bringup`. A Zephyr image id is
+`zephyr_<role>`, plus `_<rmw>` for any RMW other than zenoh, so
+
+```bash
+nros run pubsub_bringup:zephyr_listener_xrce
+```
+
+builds and runs the XRCE listener. The release does not ship `examples/`;
+`nros new <ws> --board zephyr --template <role> --lang <c|cpp|rust>` writes
+any role as a workspace of your own.
 
 Cyclone `idlc` and the descriptor-gen scripts are located via the module's
 exported cache vars (`NROS_CYCLONE_IDLC`, `NROS_CYCLONE_SCRIPTS_DIR`,
@@ -1084,10 +1098,12 @@ for the canonical in-repo surface.
 
 - Zephyr module shell:
   [`zephyr/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/zephyr)
-- Worked examples:
-  [`examples/zephyr/rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/rust),
-  [`examples/zephyr/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c),
-  [`examples/zephyr/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/cpp)
+- Copy-out talkers:
+  [`examples/zephyr/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/rust/talker),
+  [`examples/zephyr/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c/talker),
+  [`examples/zephyr/cpp/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/cpp/talker)
+- The other roles: the `zephyr_*` image rows of the language workspaces'
+  `pubsub_bringup`, `service_bringup` and `action_bringup`
 - Module manifest:
   [`zephyr/module.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/module.yml)
 - Kconfig surface (canonical — every `CONFIG_NROS*`
@@ -1106,3 +1122,9 @@ for the canonical in-repo surface.
   required Kconfig deltas.
 - Build nano-ros's own Zephyr examples without west:
   [Zephyr in-tree examples (contributor)](../internals/platform/zephyr-in-tree.html).
+
+## Design background
+
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The copy-out talker per platform and language, and the paired examples as
+  image rows of behaviour bringups.

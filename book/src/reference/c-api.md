@@ -67,8 +67,9 @@ answer with `rclc_action_publish_feedback(handle, &feedback_message)` and
 Two bounds differ from rclc: a goal arriving with every handle in use is
 rejected (rclc queues it), and an accepted goal executes at once, so a result
 may be sent before the client asks for it. A component, which has no
-`rclc_support_t`, passes `NULL` for `support`. See
-`examples/linux/c/action-server`.
+`rclc_support_t`, passes `NULL` for `support`. See `action_server_pkg` in the C language
+workspace, `examples/workspaces/c`; `nros run action_bringup:linux_action_server`
+runs it on Linux.
 
 ## Async action client
 
@@ -127,8 +128,10 @@ but it follows the same async-then-spin contract.
 Canonical pattern: declare the executor, register the client, then
 either call the blocking helper or drive `rclc_executor_spin_some()`
 yourself between async calls until your callback flags the result. See
-the example layouts in `examples/linux/c/action-client/` and
-`examples/mps2-an385-freertos/c/action-client/`.
+`action_client_pkg` in the C language workspace, `examples/workspaces/c`.
+The same package runs on Linux and on FreeRTOS: its `linux_action_client`
+and `freertos_action_client` image rows in `action_bringup` differ only in
+the board.
 
 A separate L1 polling family
 (`rclc_polling_action_client_init` + the `_raw` send/recv siblings)
@@ -158,3 +161,9 @@ The **`rmw-cffi`** and **`platform-cffi`** Doxygen sites are **not** part of
 the user API — they document the C vtables for porters writing a custom RMW
 backend or platform port. See [RMW API](rmw-api.md) and
 [Platform API](platform-api.md).
+
+## Design background
+
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The paired examples as image rows of behaviour bringups in the language
+  workspaces.

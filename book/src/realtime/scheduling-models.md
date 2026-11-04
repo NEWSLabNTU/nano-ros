@@ -207,7 +207,9 @@ mod app {
 
 **nano-ros integration**: RTIC tasks call nano-ros directly — no executor
 needed. Each RTIC task can own a publisher, subscription, or service handle.
-See `examples/mps2-an385-baremetal/rust/talker-rtic/`.
+The RTIC talker in the Rust language workspace, `examples/workspaces/rust`,
+shows it: a node package of its own, built by a bare-metal image row of the
+workspace's `pubsub_bringup`.
 
 ### FreeRTOS
 
@@ -493,3 +495,5 @@ priorities.
 ## Design background
 
 - [RFC-0053: ThreadX multi-tier execution](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0053-threadx-multi-tier-execution.md)
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  Example variants as node packages with their own image rows.

@@ -54,8 +54,9 @@ data: 'Hello World: 2'
 ROS 2 publishers also work with nano-ros subscribers:
 
 Scaffold a listener node instead, the same node as
-[`examples/linux/rust/listener`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/listener);
-it subscribes to `std_msgs/String` on `/chatter`, the demo talker's topic:
+[`listener_pkg`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/rust/src/listener_pkg)
+in the Rust language workspace (`nros run pubsub_bringup:linux_listener`
+there runs it); it subscribes to `std_msgs/String` on `/chatter`, the demo talker's topic:
 
 ```bash
 # Terminal 2: a nano-ros listener
@@ -150,8 +151,8 @@ edition and builds the image; the
 something you pass. A workspace is scaffolded for one edition —
 `nros new talker_ws --board linux --template talker --ros-edition jazzy` —
 and a bringup that builds for several declares one image per edition,
-as
-[`examples/linux/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/rust/talker/system.toml)
+as the bringup of the copy-out talker,
+[`examples/linux/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/rust/talker/system.toml),
 does (`linux_jazzy`, `linux_xrce_jazzy`, …), then picks one:
 
 ```bash
@@ -185,3 +186,9 @@ and won't find the router.
 - [Architecture](../concepts/architecture.md) — understand the layer model
 - [Internals → Zenoh protocol](../internals/rmw/zenoh-protocol.html) —
   how the wire format is encoded
+
+## Design background
+
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The copy-out talker and the language workspaces that hold the paired
+  examples.
