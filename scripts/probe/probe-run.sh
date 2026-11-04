@@ -56,6 +56,9 @@ nros_probe_run_expect() {
     done
     head -40 "$log"
     if [ "$keep" = 1 ]; then
+        # Recorded so a probe-owned check after the chapter can stop it
+        # (verify-installed-underlay.sh needs the router's port back).
+        NROS_PROBE_KEPT_PGIDS="${NROS_PROBE_KEPT_PGIDS:-} $pid"
         echo "probe: step $step printed its documented output; left running for the steps after it"
         return 0
     fi

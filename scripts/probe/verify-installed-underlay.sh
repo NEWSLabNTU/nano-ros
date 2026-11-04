@@ -18,6 +18,15 @@ underlay_fail() {
     exit 1
 }
 leaf="$PWD"
+# The chapter leaves its `nros run` running for its `ros2 topic echo` step
+# (`probe-keep`); its router holds port 7447, which every run below needs.
+for pgid in ${NROS_PROBE_KEPT_PGIDS:-}; do
+    kill -- "-$pgid" 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 -- "-$pgid" 2>/dev/null || break
+        sleep 1
+    done
+done
 [ -f "$leaf/system.toml" ] || underlay_fail "expected the chapter's leaf as cwd, got $leaf"
 
 # --- 1. the underlay is the release's own ------------------------------------
