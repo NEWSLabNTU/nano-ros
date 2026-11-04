@@ -55,24 +55,53 @@
 #
 # Every hooked host runs `nros configure` first (the Zephyr hook, phase-530 W4;
 # the CMake hooks, W5), and every early reader on those roads reads a seed. A
-# read is UNSEEDED only where nothing configured the image: a guest application
-# (no `system.toml`), a host with no nros CLI, a configure whose stamp is stale
-# because its own `nros configure` failed. Issue 0991's fixed point (which
-# future-dated the fragment until ninja re-ran cmake) is deleted (phase-530
-# W7), so an unseeded read is held to the
-# same end-of-configure comparison, and its answer is never re-converged:
+# read is UNSEEDED only where nothing configured the image. With a composer
+# present (the only case where the answer can move), those roads are:
+#
+#   * a guest Zephyr application (no `system.toml`) that registers nodes or
+#     calls `nros_find_interfaces()`: the knob resolver's loaders read, the
+#     node-register composer / the bounds derivation produce;
+#   * a host with no nros CLI: the CLI-free message-bound derivation can still
+#     produce (the entity composers need the CLI);
+#   * a configure whose stamp is stale because its own `nros configure` failed;
+#   * a CMake workspace root naming several images (`nano_ros_workspace()`
+#     configures each and locates none until the coordinate is resolved as
+#     one, phase-530 W3) -- where the cmake-road readers run in the flush,
+#     after the composer, so they read its answer.
+#
+# Issue 0991's fixed point (which future-dated the fragment until ninja re-ran
+# cmake) is deleted (phase-530 W7), so an unseeded read is held to the same
+# end-of-configure comparison, and its answer is never re-converged:
 #
 #   * equal                                        -> continue;
-#   * the readers read NOTHING or a PLACEHOLDER    -> a STATUS line: they used
-#     their defaults, which are loose and never under-size, and the late answer
-#     reaches the late consumers of this configure;
+#   * the readers read NOTHING or a PLACEHOLDER    -> they used their DEFAULTS
+#     (Kconfig / crate values, which can be smaller than this image needs --
+#     issue 0460's class): a WARNING when the composed answer is not derived,
+#     a FATAL when it is (`*_STATUS "derived"`), since the readers then provably
+#     disagree with this configure's own answer;
 #   * the readers read a DERIVED answer an earlier configure left, and this
 #     configure composed another                   -> FATAL: they may have sized
-#     the image from the old one, which can be smaller. Run `nros configure`
-#     (the hooked roads run it for you) and configure again.
+#     the image from the old one, which can be smaller.
+#
+# Every FATAL leaves this configure's answer in the fragment, so the next
+# configure reads it consistently: run `nros configure` (the hooked roads run
+# it for you) and configure again.
 #
 # A placeholder says so on a line of its own (`nros_promise_placeholder_line`),
-# which is how this file tells "nothing composed yet" from an answer.
+# and a reader that wrote a default itself because the fragment was absent says
+# so with `nros_promise_note_absent` before writing it; that is how this file
+# tells "nothing composed yet" from an earlier configure's answer.
+#
+# =============================================================================
+# A SEEDED fragment is held to its seed even with no early reader
+# =============================================================================
+#
+# `nros_promise_seeded` records the seed as the basis itself. On the CMake
+# roads every consumer of the entity fragment runs in the flush, AFTER the
+# composer, so a read-recorded basis would be the composed answer and the check
+# would compare it with itself; the seed is what `nros configure`'s stamp and
+# descriptor stand behind, and a composer that disagrees with it (phase-530 W5's
+# "seed 2 nodes vs 7") must stop the configure on every road.
 
 include_guard(GLOBAL)
 
@@ -128,9 +157,31 @@ endfunction()
 # pre-reader producer that wrote it (`west-leaf-sizing`). Call it before
 # `nros_promise_read`. From here on, a producer that moves <path> fails the
 # configure instead of arming another one.
+#
+# Call it once <path> HOLDS the seed: the seed's content is the basis the final
+# answer is held to (see the header), whether or not a reader runs before the
+# producer.
 function(nros_promise_seeded _path _seed)
     _nros_promise_props("${_path}" _p)
     set_property(GLOBAL PROPERTY ${_p_SEED} "${_seed}")
+    nros_promise_snapshot("${_path}" _basis)
+    set_property(GLOBAL PROPERTY ${_p_BASIS} "${_basis}")
+    set_property(GLOBAL PROPERTY ${_p_KIND} answer)
+    _nros_promise_register("${_path}")
+    _nros_promise_queue()
+endfunction()
+
+# nros_promise_note_absent(<path>)
+#
+# A READER that is about to write a default because <path> does not exist yet
+# says so first: what its read then records is this configure's own default,
+# not an earlier configure's answer.
+function(nros_promise_note_absent _path)
+    if(EXISTS "${_path}")
+        return()
+    endif()
+    _nros_promise_props("${_path}" _p)
+    set_property(GLOBAL PROPERTY ${_p_KIND}_PRE absent)
 endfunction()
 
 # nros_promise_is_seeded(<path> <out_var>) -- TRUE when this configure's
@@ -160,7 +211,8 @@ function(nros_promise_read _path)
     nros_promise_snapshot("${_path}" _basis)
     set_property(GLOBAL PROPERTY ${_p_BASIS} "${_basis}")
     set(_kind answer)
-    if(NOT EXISTS "${_path}")
+    get_property(_pre GLOBAL PROPERTY ${_p_KIND}_PRE)
+    if(NOT EXISTS "${_path}" OR _pre STREQUAL "absent")
         set(_kind absent)
     else()
         nros_promise_placeholder_line(_line)
@@ -292,8 +344,7 @@ endfunction()
 
 # _nros_promise_check_unseeded(<path> <label>) -- the end-of-configure answer
 # to a read no `nros configure` seeded, whose fragment this configure moved.
-# See the header: defaults are loose and say so; an earlier configure's answer
-# may be smaller than this one's and stops the configure.
+# See the header.
 function(_nros_promise_check_unseeded _path _label)
     _nros_promise_props("${_path}" _p)
     get_property(_kind GLOBAL PROPERTY ${_p_KIND})
@@ -302,12 +353,29 @@ function(_nros_promise_check_unseeded _path _label)
         set(_cmd "nros configure")
     endif()
     if(_kind STREQUAL "absent" OR _kind STREQUAL "placeholder")
-        message(STATUS
+        set(_derived FALSE)
+        if(EXISTS "${_path}")
+            file(STRINGS "${_path}" _st REGEX "_STATUS \"derived\"")
+            if(_st)
+                set(_derived TRUE)
+            endif()
+        endif()
+        set(_text
             "nros: ${_label} was composed after this configure's readers ran, and no "
-            "`nros configure` seeded them, so they used their defaults (loose, never "
-            "smaller than the image needs). The late consumers of this configure read "
-            "the composed answer (${_path}). Run `${_cmd}` before the configure for "
-            "derived sizes in one pass.")
+            "`nros configure` seeded them, so they used their defaults (Kconfig and "
+            "crate values, which can be smaller than this image needs), while the late "
+            "consumers of this configure read the composed answer (${_path}).")
+        string(CONCAT _text ${_text})
+        if(_derived)
+            message(FATAL_ERROR
+                "${_text}\n"
+                "  The composed answer is DERIVED, so the two halves of this image "
+                "disagree. Run `${_cmd}`, then configure again: the fragment now holds "
+                "this configure's answer, so the next configure reads it (RFC-0120 D5).")
+        endif()
+        message(WARNING
+            "${_text} Run `${_cmd}` before the configure for derived sizes in one "
+            "pass (RFC-0120 D5).")
         return()
     endif()
     message(FATAL_ERROR

@@ -532,7 +532,16 @@ function(nros_derive_message_bound_knobs)
             continue()
         endif()
         unset(NROS_MESSAGE_BOUNDS_SCHEMA_VERSION)
-        include("${_frag}")
+        # Evaluated, not `include()`d: an included file joins the configure's
+        # dependencies, and this one is ALSO an output of the build-time codegen
+        # command, so a build that re-ran it made the NEXT build re-configure
+        # (phase-530 W7, measured on `examples/workspaces/cpp`: the build after an
+        # added publisher re-ran codegen for five packages, then one more
+        # configure). Its inputs -- the interface files, the codegen config chain
+        # and the tool -- are configure dependencies already, and the configure
+        # pre-emits it when they move (issue 1647).
+        file(READ "${_frag}" _nros_bounds_frag_text)
+        cmake_language(EVAL CODE "${_nros_bounds_frag_text}")
         if(NOT DEFINED NROS_MESSAGE_BOUNDS_SCHEMA_VERSION)
             message(FATAL_ERROR
                 "nros: ${_frag} sets no NROS_MESSAGE_BOUNDS_SCHEMA_VERSION.\n"
