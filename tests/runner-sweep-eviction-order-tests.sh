@@ -118,11 +118,22 @@ dd if=/dev/zero of="$w2/build/sizes-probe/rustc-new/k2/lib.rlib" bs=1M count=3 s
 dd if=/dev/zero of="$w2/build/zephyr-workspace-builds/3.7/build-leaf/zephyr.elf" bs=1M count=3 status=none
 dd if=/dev/zero of="$w2/examples/ws/build/app.o" bs=1M count=2 status=none
 touch -t "$old" "$w2/build/sizes-probe/rustc-old/k1/lib.rlib"
+# A west build leaf holds thousands of files. `_newest_mtime` listed them into
+# `sort | head -1`, and once that listing outgrew the pipe `sort` printed
+# `write error` into the job log for every such entry (run 41784686434, 11-04).
+# One file per entry never fills the pipe, so the Broken-pipe check below had
+# no reach until this.
+mkdir -p "$w2/build/zephyr-workspace-builds/3.7/build-leaf/objs"
+(cd "$w2/build/zephyr-workspace-builds/3.7/build-leaf/objs" && seq -f 'o%g.obj' 1 6000 | xargs touch)
 
+# SIGPIPE IGNORED, as the job step inherits it: with the default action a
+# `sort` writing into a closed pipe dies silently, and only an ignored SIGPIPE
+# turns that into the EPIPE + `write error` lines the runner printed. Run with
+# the default and this check passes over the defect.
 out2="$(NROS_RUNNER_REPO_ROOT="$w2" NROS_BUILD_ROOT="$w2/build" \
         NROS_SWEEP_BUDGET_FIXTURES_GIB=0 NROS_SWEEP_UNBUDGETED_SHOW_MIB=1 \
         NROS_SWEEP_UNBUDGETED_WARN_GIB=0 NROS_SWEEP_STATE_DIR="$w2/state" \
-        "$sweep" --check --disk 2>&1)" || true
+        bash -c 'trap "" PIPE; exec "$@"' sweep "$sweep" --check --disk 2>&1)" || true
 
 old_line="$(printf '%s\n' "$out2" | grep -n 'rm -rf .*/rustc-old/k1' | head -1 | cut -d: -f1)"
 new_line="$(printf '%s\n' "$out2" | grep -n 'rm -rf .*/rustc-new/k2' | head -1 | cut -d: -f1)"
@@ -151,7 +162,7 @@ else
     fail "no warning at a 0 GiB warn threshold:
 $out2"
 fi
-if nros_grep_q 'Broken pipe' <<<"$out2"; then
+if nros_grep_q -E 'Broken pipe|sort: write error' <<<"$out2"; then
     fail "sort wrote into a closed pipe:
 $out2"
 else
