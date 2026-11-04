@@ -312,6 +312,19 @@ status = 'BuildOnly("phase-337 W2.f — same runner gap as the C service row")'
 [[cell]]
 comment = '''
 
+// Zephyr on the Nucleo-F767ZI, run in its Renode twin -- phase-524 W4c
+// (RFC-0115 D4 "Breadth", ruling 2026-11-03). One smoke cell: the C talker's
+// serial image (zenoh over USART3 on a host pty, the router's `serial/`
+// locator) boots in Renode's `nucleo_f767zi` platform and a host listener
+// hears it. It is what the board's registry status rests on; the family's
+// breadth stays the QEMU witness's above, so there is no second row.
+'''
+at = ["ZephyrNucleoF767zi", "C", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
+
 // Zephyr native_sim — zenoh + cyclone + xrce, all three langs
 // (the zephyr.rs families; W4 bakes: cyclone domains 22–30, xrce
 // agents 2400+ — `alloc::{domain_of,xrce_agent_port_of}`).

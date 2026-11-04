@@ -551,6 +551,13 @@ slow-timeout = { period = "120s", terminate-after = 2 }
 filter = "binary(zephyr_cortex_m_qemu) or binary(pubsub_zephyr_cortex_m_ros2_interop_e2e)"
 test-group = "zephyr-cortex-m-baked-port"
 
+# phase-524 W4c -- the Nucleo-F767ZI's Renode smoke cell waits up to 120 s for
+# its first sample (Renode emulates the M7 well below real time, and the probe
+# track allows the same), past the default 60 s kill.
+[[profile.default.overrides]]
+filter = "binary(=zephyr_renode_twin)"
+slow-timeout = { period = "90s", terminate-after = 2 }
+
 # phase-441 W3 — the SECOND-KERNEL live-peer cell
 # (`freertos-mps2-pubsub-c-zenoh-n2r`). It boots the SAME `workspace-c-freertos`
 # image as `entry_e2e`'s freertos_c cell, so it starts a router on the same baked

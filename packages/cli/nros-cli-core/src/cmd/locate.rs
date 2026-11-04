@@ -178,7 +178,7 @@ pub fn run(args: Args) -> Result<()> {
         return run_artifact(&args, checkout.as_deref());
     }
     if args.names.first().map(String::as_str) == Some("tool") {
-        return run_tool(&args, checkout.as_deref(), &sdk_root);
+        return run_tool(&args, checkout.as_deref(), &sdk_root, &index);
     }
 
     let mut names = args.names.clone();
@@ -396,10 +396,16 @@ fn refuse_unplaced_header(wanted: &[nros_build_paths::artifact::Artifact]) -> Re
 /// [`crate::orchestration::qemu_bin`]: the QEMU `nros build` prints for a QEMU
 /// board. It has no `$PATH` rung, so a host with nothing provisioned is told
 /// to run `nros setup --tool qemu` rather than handed the distro build.
+///
+/// phase-524 W4c -- and `renode`, the Nucleo-F767ZI's emulator twin, through
+/// [`renode_bin`]: the one place anything asks where Renode is (the twin
+/// probe's `scripts/probe/twin/renode.sh` and the test harness's
+/// `nros_tests::renode` both print this answer).
 fn run_tool(
     args: &Args,
     checkout: Option<&std::path::Path>,
     sdk_root: &std::path::Path,
+    index: &SdkIndex,
 ) -> Result<()> {
     use crate::orchestration::model_location::{LAUNCH_RESOLVER, launch_resolver_bin_for_exe};
     let [_, name] = args.names.as_slice() else {
@@ -425,6 +431,11 @@ fn run_tool(
                 None => bail!("{why}"),
             },
         }
+    } else if name == RENODE {
+        match renode_bin(index, &|k| std::env::var_os(k)) {
+            Ok(found) => found,
+            Err(why) => bail!("{why}"),
+        }
     } else if name == LAUNCH_RESOLVER {
         let exe = std::env::current_exe()?;
         let Some(path) = launch_resolver_bin_for_exe(&exe, checkout) else {
@@ -437,7 +448,7 @@ fn run_tool(
         };
         (path, "model_location::launch_resolver_from")
     } else {
-        bail!("no tool `{name}` — known: {LAUNCH_RESOLVER}, qemu-system-<arch>");
+        bail!("no tool `{name}` — known: {LAUNCH_RESOLVER}, {RENODE}, qemu-system-<arch>");
     };
     match args.format {
         Format::Path => println!("{}", path.display()),
@@ -456,6 +467,58 @@ fn run_tool(
         eprintln!("  {:<10} {} ({rung})", "tool", path.display());
     }
     Ok(())
+}
+
+/// The `[tool.*]` key (and front name) of the Renode emulator.
+const RENODE: &str = "renode";
+
+/// The environment rung of [`renode_bin`]: an absolute path to a `renode`
+/// program, for a host (the CI runner image) whose copy is not the store's.
+pub const RENODE_ENV: &str = "NROS_RENODE";
+
+/// phase-524 W4c -- where Renode is, as `(path, rung)`, or why it is nowhere.
+///
+/// Two rungs. `$NROS_RENODE` first (the runner image installs the pinned
+/// archive outside the store, which is a volume, and names it here); then the
+/// store at the PINNED `[tool.renode]` version, `<store>/renode/<version>/
+/// <subdir>/renode`, which `nros setup --tool renode` (or `nros setup
+/// nucleo-f767zi-zephyr`) writes. No `$PATH` rung: a `renode` on PATH is
+/// whatever the host has, and the twin was measured with the pinned build
+/// only. A named path that is not a file is refused, never skipped, so a
+/// mistyped override cannot fall through to a different emulator.
+pub fn renode_bin(
+    index: &SdkIndex,
+    getenv: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+) -> std::result::Result<(PathBuf, &'static str), String> {
+    if let Some(v) = getenv(RENODE_ENV).filter(|v| !v.is_empty()) {
+        let p = PathBuf::from(v);
+        return if p.is_file() {
+            Ok((p, "$NROS_RENODE"))
+        } else {
+            Err(format!(
+                "${RENODE_ENV} names {}, which is not a file",
+                p.display()
+            ))
+        };
+    }
+    let Some(tool) = index.tool.get(RENODE) else {
+        return Err(format!("the index declares no [tool.{RENODE}]"));
+    };
+    let front = tool.front.first().map_or(RENODE, String::as_str);
+    let Some(dir) = crate::orchestration::sdk_store::tool_dir(index, RENODE) else {
+        return Err(format!("the index declares no [tool.{RENODE}]"));
+    };
+    let bin = dir.join(front);
+    if bin.is_file() {
+        Ok((bin, "store (pinned [tool.renode])"))
+    } else {
+        Err(format!(
+            "Renode {} is not installed (looked for {}, and ${RENODE_ENV} is unset); \
+             `nros setup --tool {RENODE}` installs it",
+            tool.version,
+            bin.display()
+        ))
+    }
 }
 
 /// The nano-ros workspace's cargo target dir, as cargo resolves it — so
@@ -490,8 +553,31 @@ fn cargo_target_dir(checkout: Option<&std::path::Path>) -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{refuse_placed_archive, refuse_unplaced_header, var_name};
+    use super::{RENODE_ENV, refuse_placed_archive, refuse_unplaced_header, renode_bin, var_name};
     use nros_build_paths::artifact::Artifact;
+
+    /// phase-524 W4c -- the env rung wins when it names a file, and a name that
+    /// is not a file is REFUSED rather than falling through to the store (a
+    /// mistyped override must not run a different emulator).
+    #[test]
+    fn renode_env_rung_is_taken_or_refused_never_skipped() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let index =
+            crate::orchestration::sdk_index::SdkIndex::load(&root.join("nros-sdk-index.toml"))
+                .expect("load the checkout's index");
+        // Any existing file stands in for the program: the rung asks only that.
+        let file = root.join("nros-sdk-index.toml");
+        let named = file.clone().into_os_string();
+        let (path, rung) = renode_bin(&index, &|k| (k == RENODE_ENV).then(|| named.clone()))
+            .expect("an existing file is taken");
+        assert_eq!(path, file);
+        assert_eq!(rung, "$NROS_RENODE");
+
+        let missing = std::ffi::OsString::from("/nonexistent/nros-renode-probe/renode");
+        let err = renode_bin(&index, &|k| (k == RENODE_ENV).then(|| missing.clone()))
+            .expect_err("a missing file is refused");
+        assert!(err.contains("not a file"), "{err}");
+    }
 
     #[test]
     fn placed_dir_takes_headers_and_refuses_archives() {

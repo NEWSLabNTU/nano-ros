@@ -555,7 +555,12 @@ pub(crate) fn require_prebuilt_row_binary_in(
     lane: Option<&std::collections::BTreeSet<crate::fixtures::lane::Coord>>,
     env: AbsenceEnv,
 ) -> TestResult<PathBuf> {
-    crate::fixtures::lane::require_coord_in_lane_within(&row.coord, &row.dir, lane)?;
+    crate::fixtures::lane::require_row_in_lane_within(
+        &row.coord,
+        &row.dir,
+        &row.artifact_root,
+        lane,
+    )?;
     let rel = rel_at_row_profile(row, rel);
     let binary_path = crate::fixtures::groups::row_resolved_dir(row).join(&rel);
     require_prebuilt_binary_checks_in(&binary_path, env)
@@ -5509,6 +5514,21 @@ pub fn build_zephyr_cortex_m_c_boot_report() -> TestResult<PathBuf> {
             rmw: Some(Rmw::Zenoh.cmake_value()),
             conf_files: Some(&conf_files),
         },
+    )
+}
+
+/// phase-524 W4c -- the `examples/zephyr/c/talker` serial image for the
+/// Nucleo-F767ZI (`[image.nucleo_serial]`), the
+/// (ZephyrNucleoF767zi, C, Zenoh, Pubsub) cell's fixture. The board package
+/// supplies its serial Kconfig, so the row's conf list is the leaf's own
+/// `prj.conf`; the zenoh link is USART3, which the Renode twin puts on a host
+/// pty (`crate::renode`).
+pub fn build_zephyr_nucleo_c_serial_talker() -> TestResult<PathBuf> {
+    let binary_path =
+        zephyr_build_root().join("build-nucleo-f767zi-c-talker-serial/zephyr/zephyr.elf");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/zephyr/c/talker", "c"),
     )
 }
 

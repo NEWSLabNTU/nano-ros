@@ -57,3 +57,15 @@ max_service_clients = 0
 board = "zephyr"
 rmw = "cyclonedds"
 os_config = ["prj-cyclonedds.conf"]
+
+# phase-524 W4c -- the Nucleo-F767ZI's serial image, the one its Renode smoke
+# cell boots (`tests/zephyr_renode_twin.rs`). The `[image.twin]` the
+# `renode-nucleo` probe track adds to a scaffold (board-support.toml's
+# `twin_locator`): zenoh over USART3, which is the board's base Kconfig
+# (`packages/boards/nros-board-nucleo-f767zi-zephyr/prj.conf`, merged after
+# this leaf's `prj.conf`, turns the IP stack off). No `os_config` and no knobs:
+# the board's RAM budget is its descriptor's `[knobs]` (issue 2194).
+[image.nucleo_serial]
+board = "nucleo-f767zi-zephyr"
+rmw = "zenoh"
+locator = "serial/serial@40004800#baudrate=115200"
