@@ -389,6 +389,19 @@ fixtures-manifest:
     # the emitter reads the rows. Read-only: the emitter runs no build tool.
     @python3 scripts/check-zephyr-fixture-rows.py
 
+# Phase-535 W1 (RFC-0122 D5) — moving the example pairs into the language
+# workspaces deletes directories, and a deleted directory can take the last
+# fixture exercising a (platform, lang, driver, shape, launch, entry) with it
+# while every test stays green. The floor may only grow.
+[private]
+example-coverage-ratchet:
+    @python3 scripts/check-example-coverage-ratchet.py
+
+# Phase-535 W1 — every `[image.*]`'s launch file exists, checked without a sync.
+[private]
+image-launch-files:
+    @python3 scripts/check-image-launch-files.py
+
 [private]
 lane-scope-consumers:
     @python3 scripts/check-lane-scope-consumers.py
