@@ -383,10 +383,48 @@ fn parse_just_module(text: &str) -> std::collections::BTreeMap<String, (Vec<Stri
     out
 }
 
+/// A module file's text plus every file it `import`s, recursively (resolved
+/// beside the importing file, as `just` does). phase-524 W4c: `just/zephyr.just`
+/// keeps `build-fixtures` in its imported `zephyr-ci.just`, so reading the
+/// module file alone found no root and called the module able to build nothing.
+fn module_text_with_imports(file: &std::path::Path) -> String {
+    let mut out = String::new();
+    let mut stack = vec![file.to_path_buf()];
+    let mut seen = BTreeSet::new();
+    while let Some(f) = stack.pop() {
+        if !seen.insert(f.clone()) {
+            continue;
+        }
+        let text = std::fs::read_to_string(&f).unwrap_or_default();
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("import") {
+                let name = rest
+                    .trim()
+                    .trim_start_matches('?')
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'');
+                if !name.is_empty() {
+                    stack.push(f.parent().unwrap_or(std::path::Path::new(".")).join(name));
+                }
+            }
+        }
+        out.push_str(&text);
+        out.push('\n');
+    }
+    out
+}
+
 /// Fixture platform tokens produced by the recipe graph rooted at
 /// `build-fixtures` in `just/<file>` for module `module`.
+///
+/// Two producers are recognised: the manifest builders
+/// (`[workspace-]fixtures-build.sh <platform>`), and the west leaves lane
+/// (`zephyr-fixture-leaves.sh`), which emits every `builder = "west"` row, so it
+/// produces exactly the platforms of `lane::west_leaves()` (the same
+/// `fixtures-manifest.py west-leaves` records the lane builds from).
 fn producible_tokens(module: &str, file: &std::path::Path) -> BTreeSet<String> {
-    let text = std::fs::read_to_string(file).unwrap_or_default();
+    let text = module_text_with_imports(file);
     let recipes = parse_just_module(&text);
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut stack = vec!["build-fixtures".to_string()];
@@ -408,6 +446,12 @@ fn producible_tokens(module: &str, file: &std::path::Path) -> BTreeSet<String> {
                     if let Some(tok) = rest.split_whitespace().next() {
                         tokens.insert(tok.to_string());
                     }
+                }
+            }
+            // The west leaves lane: every west row's coordinate platform.
+            if line.contains("zephyr-fixture-leaves.sh") {
+                for leaf in nros_tests::fixtures::lane::west_leaves() {
+                    tokens.insert(leaf.coord.0.clone());
                 }
             }
             // `just <module> <recipe>` — an edge to a sibling recipe.
@@ -446,18 +490,18 @@ fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
         // Platforms whose fixtures are NOT produced through the two manifest
         // builders. Same exemption set as `every_runtime_cell_has_a_fixture_row`
         // above, and for the same reason — each names its real build channel:
-        //   - ZephyrNativeSim / Fvp / ZephyrQemuCortexM: the west leaves lane
-        //     (`scripts/build/zephyr-fixture-leaves.sh`, `just zephyr build-fvp-*`),
-        //     which carries its own staleness signature and no fixtures.toml row.
+        //   - Fvp: `just zephyr build-fvp-*`, outside `build-fixtures`.
+        //     (phase-524 W4c: the west leaves lane is no longer exempt.
+        //     `producible_tokens` follows the module's imports and reads
+        //     `zephyr-fixture-leaves.sh` as producing every west row's platform,
+        //     so ZephyrNativeSim, ZephyrQemuCortexM and ZephyrNucleoF767zi are
+        //     checked, not named. Naming them is what let the new board's token
+        //     go unproduced and unnoticed until the merge queue.)
         //   - Px4: a CarveOut on every cell; no runner builds SITL, so no recipe
         //     can produce it and demanding one would be the inverse lie.
         //   - any platform with no built cell (PX4, dormant ESP32 — issue
         //     1525): `matrix::platform_is_built`, derived from `CELLS`.
-        if matches!(
-            p,
-            PlatformId::ZephyrNativeSim | PlatformId::Fvp | PlatformId::ZephyrQemuCortexM
-        ) || !nros_tests::matrix::platform_is_built(p)
-        {
+        if matches!(p, PlatformId::Fvp) || !nros_tests::matrix::platform_is_built(p) {
             continue;
         }
         let module = p.just_module();
