@@ -279,6 +279,28 @@ the W8 pass bookkeeping in `NanoRosResolved.cmake`
 If configure already ran (for example, `nros build` handed off to west), the
 hook finds the stamp current and returns.
 
+**A promise is owed to a READER.** Only a call that consumes a fragment at
+configure time records what it read: the Zephyr knob resolver's loaders, and
+on the CMake roads the entity-facts flush that hands the entity counts to
+cargo. `nros_find_interfaces()` is no reader: on Zephyr the loaders already
+read both fragments, and on the CMake roads nothing reads the message-bound
+fragment at configure time (the payload classes reach cargo through the
+sizing descriptor). A producer whose answer no reader consumed is free to
+compose it.
+
+**A read with no seed** (a guest application, a host with no CLI, a configure
+whose own `nros configure` failed) is held to the same end-of-configure
+comparison, and is never re-converged either:
+
+- equal → continue;
+- the reader read nothing or a placeholder (which says so on a line of its
+  own) → a status line: it used its defaults, which are loose and never
+  under-size;
+- the reader read a derived answer an earlier configure left, and this
+  configure composed another → FATAL naming `nros configure`, because that
+  answer can be smaller than this one. The fragment now holds the new answer,
+  so the next configure reads it.
+
 ### D6 — The four cases, closed
 
 | case | closed by |
@@ -290,8 +312,13 @@ hook finds the stamp current and returns.
 
 A fifth configure-time producer was found while mapping these: the Cyclone
 C++ facts compiled at configure time (issue 1653,
-`NanoRosSizingDescriptor.cmake`). Phase-530 maps it before deleting the fixed
-point.
+`NanoRosSizingDescriptor.cmake`). On the Zephyr road the module read
+`west-cargo.toml`'s content inside `find_package(Zephyr)`, before the entry
+copied the descriptor there, so the C++ half compiled from the previous
+configure's copy. It is closed by ordering, not by a seed: the module's read
+is deferred to the end of the top-level configure, after every entry, which is
+where the CMake road already applies it (phase-530 W7). A read after its
+producer needs neither a seed nor a promise.
 
 ### D7 — Freshness: every input reaches the next build
 
@@ -414,3 +441,7 @@ configure, is answered by D2: the stamp records it.)
   configure (phase-530 W5, Ruling R36; issue 2236 tracks making a make app a
   project). A NuttX image built as a nros project takes the hooked CMake leaf
   road.
+- 2026-11 — D5, D6: a promise is owed to a reader; an unseeded read is held to
+  the same end check (defaults say so, a moved earlier answer is FATAL); the
+  fifth producer (Cyclone C++ on west) is closed by deferring its read past
+  its producer. `NanoRosReconfigure.cmake` is deleted (phase-530 W7).

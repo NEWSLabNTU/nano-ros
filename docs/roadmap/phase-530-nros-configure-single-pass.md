@@ -712,6 +712,95 @@ census host build is the producer and reads no seed (case H).
   - every W3 to W5 measurement is re-run on the final tree;
   - `just ci gate` is green.
 
+**What landed (W7).**
+
+- **The fifth producer, mapped (issue 1653).** On the Zephyr road the module
+  compiled Cyclone's C++ TUs from `west-cargo.toml`'s CONTENT inside
+  `find_package(Zephyr)`, and the entry copies the descriptor there LATER in
+  the same configure (`nros_sizing_descriptor_record_for_west`), so the C++
+  half compiled from the previous configure's copy and the fixed point paid a
+  pass to catch up. Closed by ORDER rather than a seed: the read is deferred
+  to the end of the top-level configure
+  (`nros_sizing_descriptor_west_apply_cyclonedds_deferred`, one hop late),
+  after every entry -- where the CMake road already applies it, from the
+  entity-facts flush. `nros_sizing_descriptor_west_settle_cargo_file` and the
+  arm in `record_for_west` are gone. Test: `cmake-sizing-descriptor-tests.sh`
+  I5, whose control (the early read) misses the copy and whose deferred read
+  sees it.
+- **Standalone cmake leaves are seeded (Ruling R37).** The leaf road writes
+  the leaf's entity fragment BEFORE every reader, from its declaration
+  (`[[component]] entities` or its census), in the same CLI call that writes
+  its descriptor (`sizing-descriptor --from-leaf --entity-cmake`), with the
+  composer `west-leaf-sizing` uses for a Zephyr C/C++ leaf
+  (`leaf_declaration`). It is recorded as a seed, and the node-register
+  composer (which reads only `nros-metadata.json` and cannot see a census)
+  stands down, as on the Zephyr leaf. A leaf that declares nothing (a host
+  image keeps the hosted defaults, RFC-0120 D4) gets no fragment and keeps
+  the composer. This is the leaf road's own stage-3.5 equivalent rather than
+  a resolve dir in `plan_single_package_cmake`: the cmake road's only
+  message-bound reader is the Zephyr module, so a cmake leaf needs no bounds
+  seed (next item).
+- **A promise is owed to a READER (RFC-0120 D5, amended).**
+  `nros_find_interfaces()` stopped registering the entity and bounds
+  fragments: on Zephyr the knob resolver's loaders already read both (seeded),
+  and on the CMake roads nothing reads the bounds fragment at configure time
+  (the payload classes reach cargo through the sizing descriptor). The
+  entity-facts consumers that hand the counts to cargo
+  (`_nros_entity_budget_env`, `_nros_declared_depth_table_env`,
+  `_nros_param_store_env`) register themselves instead, so a consumer that
+  ran before the composer is caught rather than silently stale.
+- **The unseeded fallback is gone.** `cmake/NanoRosPromise.cmake` no longer
+  delegates to the fixed point: an unseeded read is held to the same
+  end-of-configure comparison. A reader that read nothing or a placeholder
+  (the placeholders now carry `nros_promise_placeholder_line`) used its
+  defaults -- loose, never under-sizing -- and a status line says so; a
+  reader that read an earlier configure's derived answer which this
+  configure moved FAILS naming `nros configure`, since that answer can be
+  smaller. Nothing re-runs cmake on its own.
+- **Deleted:** `cmake/NanoRosReconfigure.cmake`, `tests/cmake-reconfigure-tests.sh`
+  and its recipe (`reconfigure-on-change`). `scripts/check-knob-fixpoint.py`
+  is rewritten as `scripts/check-knob-one-pass.py` (`just check
+  knob-one-pass`): a configured build dir, configured again with nothing
+  changed, moves no `NROS_RESOLVED_*` -- 0 extra passes, not a bound.
+  `tests/cmake-resolved-seed-tests.sh` cases A, D and S now assert 0
+  re-configures (the readers used their defaults, and say so), and new case
+  X asserts the FATAL. `git grep nros_reconfigure_` is empty outside the
+  design history (RFC-0094/0120, this phase, archived issues and roadmaps,
+  the CHANGELOG), which names the mechanism as deleted.
+
+**Acceptance (measured 2026-11-04 on the final tree, after the CLI rebuild;
+clean build dirs; "configures" counts `-- Configuring done` in the step's log,
+"re-runs" `Re-running CMake`; no log printed issue 0991's "cmake will run once
+more", which no code can print any more).**
+
+| road | clean | no-op | body edit | add a publisher | no-op after | knob |
+| --- | --- | --- | --- | --- | --- | --- |
+| plain cmake leaf `threadx-linux/c/talker` (census, seeded by the leaf road) | 1 configure, 0 re-runs | 0 | **0** re-runs (the one configure is the census host build's own) | **exactly 1** re-run | 0 | `ZPICO_MAX_PUBLISHERS` 1 -> **2**, `publisher_count` 1 -> **2** |
+| plain cmake leaf `linux/c/talker` (host image: hosted defaults, RFC-0120 D4) | 1, 0 | 0 | 0 | 0 (no census, nothing derived to move) | 0 | 8 (the hosted default) throughout |
+| plain `west build` `zephyr/cpp/talker` `zephyr_zenoh` (4.4, `native_sim/native/64`) | 1, 0 | 0 | **0** re-runs | **exactly 1** re-run | 0 | `NROS_MAX_PUBLISHERS` and `ZPICO_MAX_PUBLISHERS` 1 -> **2** |
+| cmake workspace `examples/workspaces/cpp` `demo_bringup:threadx` (Makefiles) | `nros build`: 2 configures (the host sibling's census build, then the image) | 0 | **0** | **exactly 1** (the hook's `nros configure` "configured (52 s)"), knob 1 -> 2; see below | 1, then 0 | `ZPICO_MAX_PUBLISHERS` 1 -> 2 -> 3 |
+| `nros build zephyr`, `examples/workspaces/rust` (the generated Rust west entry) | 1, 0 | plain `west build -d`: 0 | -- | -- | -- | `NROS_MAX_PUBLISHERS=1` |
+
+Knobs are identical to `nros build` by construction on every road: the
+plain host configure and `nros build`'s are the same configure behind the
+same hook, which reports `configure: up to date` when `nros build` ran it.
+
+**One miss, not attributed.** On the workspace road the build AFTER the
+first added publisher ran one more configure (with the hook "up to date",
+and nothing printed by the promise module). It is not the fixed point --
+that module is gone and its message absent -- and it did not reproduce: a
+second added publisher (`/chatter3`) then cost exactly 1 configure, and the
+build after it 0, with no configure dependency newer than the generated
+`Makefile.cmake`. The evidence of the first was overwritten by the
+configure itself, so its cause is unknown. A second `nros build zephyr` of
+the Rust workspace re-runs west's configure (its handoff passes the cmake
+arguments again; 0 `Re-running CMake`); a plain `west build -d` re-runs
+nothing.
+
+Gates for this wave: `cmake-resolved-seed` (51 checks), `cmake-sizing-descriptor`
+(62), `cmake-entity-inventory` (81), `cmake-message-bounds` (106),
+`configure-hook` (20), `census-step` (18), `knob-delivery`, `knob-one-pass`.
+
 ### W8 — Vocabulary and docs (RFC-0120 D9)
 
 - Use "configure" for `nros configure` and "host configure" for CMake's,
