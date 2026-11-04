@@ -225,11 +225,10 @@ function(nros_resolved_seed_message_bounds _path)
     if("${_dir}" STREQUAL "" OR NOT EXISTS "${_dir}/resolved-message-bounds.cmake")
         return()
     endif()
-    _nros_resolved_seed("${_dir}/resolved-message-bounds.cmake" "${_path}"
-        "message-bound sizes" _used)
     # The producer's account of WHY it moved, from the input record configure
-    # wrote beside the seed. Queued before the reader queues the promise check,
-    # so it runs first (cmake's deferred calls are FIFO).
+    # wrote beside the seed. Queued BEFORE the seed is recorded, because
+    # recording it queues the promise check, and this must run first (cmake's
+    # deferred calls are FIFO).
     if(EXISTS "${_dir}/resolved-message-bounds-inputs.cmake")
         get_property(_queued GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_FRAG SET)
         set_property(GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_FRAG "${_path}")
@@ -238,6 +237,8 @@ function(nros_resolved_seed_message_bounds _path)
                 CALL _nros_resolved_bounds_why)
         endif()
     endif()
+    _nros_resolved_seed("${_dir}/resolved-message-bounds.cmake" "${_path}"
+        "message-bound sizes" _used)
 endfunction()
 
 # _nros_resolved_bounds_why() -- phase-439 W8, phase-530 W4
@@ -354,11 +355,12 @@ function(_nros_resolved_seed _frag _path _what _out_used)
     if(_already)
         return()
     endif()
-    nros_promise_seeded("${_path}" "${_frag}")
     file(SHA256 "${_frag}" _seed_hash)
     if(EXISTS "${_path}")
         file(SHA256 "${_path}" _have_hash)
         if(_have_hash STREQUAL _seed_hash)
+            # The fragment holds the seed: that is the promised basis.
+            nros_promise_seeded("${_path}" "${_frag}")
             return()
         endif()
     endif()
@@ -378,6 +380,7 @@ function(_nros_resolved_seed _frag _path _what _out_used)
     # `[provenance]` table beside the file this reads.
     file(READ "${_frag}" _body)
     file(WRITE "${_path}" "${_body}")
+    nros_promise_seeded("${_path}" "${_frag}")
     # The record issue 1729 kept is retired (see above); drop one a previous
     # tree left, so nothing reads it.
     file(REMOVE "${_path}.resolved-seed")

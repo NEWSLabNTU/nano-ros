@@ -21,6 +21,11 @@
 #   X  no seed, and the readers read an EARLIER configure's answer that the
 #      producer moves           the configure FAILS naming `nros configure`:
 #                               that answer can be smaller than this one
+#   Z  no seed, the readers used a placeholder, and the composed answer is
+#      DERIVED                  FAILS: the two halves of the image disagree
+#   Y  the CMake road's shape: seed, then the composer, then the reader (the
+#      entity-facts flush)      a composer that disagrees with the seed FAILS
+#                               although no reader ran before it
 #   B  seed AGREES              0 re-configures, built with the real answer
 #   C  seed DISAGREES           the configure FAILS, naming both files -- every
 #                               reader used the seed, so nothing may build on it
@@ -124,6 +129,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "\${_frag}")
 nros_promise_read("\${_frag}")
 include("\${_frag}")
 message(STATUS "PROBE_READ=\${ANSWER}")
+# What the readers resolved, as the knob resolver caches it: the subject of
+# `scripts/check-knob-one-pass.py`.
+set(NROS_RESOLVED_PROBE_ANSWER "\${ANSWER}" CACHE INTERNAL "")
 
 # ---- the PRODUCER, later in the same configure -------------------------------
 # Absent on the generated Rust Zephyr entry's road (issue 1729), where the seed
@@ -134,6 +142,9 @@ if(NOT PROBE_NO_PRODUCER)
     endif()
     nros_promise_snapshot("\${_frag}" _before)
     file(WRITE "\${_frag}" "set(ANSWER \${PROBE_ANSWER})\n")
+    if(PROBE_DERIVED)
+        file(APPEND "\${_frag}" "set(PROBE_STATUS \"derived\")\n")
+    endif()
     nros_promise_check("\${_frag}" "\${_before}" LABEL "the probe answer")
 endif()
 
@@ -234,6 +245,84 @@ $CONFIGURE_OUT"
 fi
 
 # ---------------------------------------------------------------------------
+log_header "Z. no seed, a placeholder read, a DERIVED composed answer: FATAL"
+# ---------------------------------------------------------------------------
+Z_RC=0
+CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/derived-build" \
+    -DPROBE_DERIVED=ON 2>&1)" || Z_RC=$?
+check
+if [ "$Z_RC" -ne 0 ] && nros_grep_q -F 'The composed answer is DERIVED' <<<"$CONFIGURE_OUT"; then
+    log_success "defaults read, derived answer composed: the configure STOPPED"
+else
+    fail "an unseeded placeholder read under a DERIVED answer did not stop the configure (rc=$Z_RC):
+$CONFIGURE_OUT"
+fi
+check
+if ! nros_grep_q -F 'never smaller' <<<"$CONFIGURE_OUT"; then
+    log_success "and no message claims the defaults are never too small"
+else
+    fail "a message still claims defaults never under-size:
+$CONFIGURE_OUT"
+fi
+WARN_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/warn-build" 2>&1)"
+check
+if nros_grep_q -F 'CMake Warning' <<<"$WARN_OUT" && nros_grep_q -F 'they used their defaults' <<<"$WARN_OUT"; then
+    log_success "a non-derived unseeded answer is a WARNING"
+else
+    fail "a non-derived unseeded answer did not warn:
+$WARN_OUT"
+fi
+
+# ---------------------------------------------------------------------------
+log_header "Y. the CMake road's order: seed -> composer -> reader; a disagreeing composer FAILS"
+# ---------------------------------------------------------------------------
+#
+# Phase-530 W7 review I3 (Ruling R49). On the CMake roads every reader of the
+# entity fragment runs in the flush, AFTER the composer, so a read-recorded
+# basis is the composer's own answer. The seed is the basis instead.
+YSRC="$TEST_TMPDIR/ysrc"
+mkdir -p "$YSRC"
+cat > "$YSRC/CMakeLists.txt" <<YEOF
+cmake_minimum_required(VERSION 3.20)
+project(nros_seed_road_probe NONE)
+include("$RESOLVED_MODULE")
+nros_configured_publish("\${PROBE_RESOLVED}")
+set(_frag "\${CMAKE_BINARY_DIR}/frag.cmake")
+nros_resolved_seed_entity_inventory("\${_frag}")
+# the composer: no reader has run
+nros_promise_snapshot("\${_frag}" _before)
+file(WRITE "\${_frag}" "set(ANSWER \${PROBE_ANSWER})\n")
+nros_promise_check("\${_frag}" "\${_before}" LABEL "the probe answer")
+# the flush, deferred: it reads after the composer
+function(_y_flush)
+    nros_promise_read("\${CMAKE_BINARY_DIR}/frag.cmake")
+endfunction()
+cmake_language(DEFER DIRECTORY "\${CMAKE_SOURCE_DIR}" CALL _y_flush)
+YEOF
+mkdir -p "$TEST_TMPDIR/y-resolved"
+printf 'set(ANSWER real)\n' > "$TEST_TMPDIR/y-resolved/resolved.cmake"
+Y_RC=0
+CONFIGURE_OUT="$(cmake -G Ninja -S "$YSRC" -B "$TEST_TMPDIR/y-ok" \
+    "-DPROBE_RESOLVED=$TEST_TMPDIR/y-resolved" -DPROBE_ANSWER=real 2>&1)" || Y_RC=$?
+check
+if [ "$Y_RC" -eq 0 ]; then
+    log_success "a composer that agrees with the seed configures"
+else
+    fail "an agreeing composer failed (rc=$Y_RC):
+$CONFIGURE_OUT"
+fi
+Y_RC=0
+CONFIGURE_OUT="$(cmake -G Ninja -S "$YSRC" -B "$TEST_TMPDIR/y-bad" \
+    "-DPROBE_RESOLVED=$TEST_TMPDIR/y-resolved" -DPROBE_ANSWER=other 2>&1)" || Y_RC=$?
+check
+if [ "$Y_RC" -ne 0 ] && nros_grep_q -F "over the same inputs" <<<"$CONFIGURE_OUT"; then
+    log_success "a composer that disagrees with the seed STOPPED the configure, with no early reader"
+else
+    fail "A COMPOSER DISAGREEING WITH THE SEED PASSED on the CMake road's order (rc=$Y_RC):
+$CONFIGURE_OUT"
+fi
+
+# ---------------------------------------------------------------------------
 log_header "B. the resolve phase AGREES: the extra configure is gone"
 # ---------------------------------------------------------------------------
 
@@ -269,6 +358,27 @@ if [ "$BUILD_USED" = "real" ] && [ "$BUILD_RERUNS" -eq 0 ]; then
 else
     fail "the seed did not remove the pass: used='$BUILD_USED' re-runs=$BUILD_RERUNS (want real / 0).
 $BUILD_OUT"
+fi
+run_build "$TEST_TMPDIR/ok-build"
+check
+if [ "$BUILD_RERUNS" -eq 0 ]; then
+    log_success "a no-op build after it re-runs cmake 0 times"
+else
+    fail "a no-op build re-ran cmake (re-runs=$BUILD_RERUNS):
+$BUILD_OUT"
+fi
+# phase-530 W7 review M4 -- the one-pass gate's REAL assertion, over a dir this
+# lane configured itself: a second configure with nothing changed moves no
+# resolved knob.
+ONE_PASS_RC=0
+ONE_PASS_OUT="$(python3 "$PROJECT_ROOT/scripts/check-knob-one-pass.py" "$TEST_TMPDIR/ok-build" \
+    --configure "cmake '$TEST_TMPDIR/ok-build'" 2>&1)" || ONE_PASS_RC=$?
+check
+if [ "$ONE_PASS_RC" -eq 0 ] && nros_grep_q -F 'one configure settled it' <<<"$ONE_PASS_OUT"; then
+    log_success "check-knob-one-pass: a second configure moved no resolved knob"
+else
+    fail "check-knob-one-pass failed on a seeded dir (rc=$ONE_PASS_RC):
+$ONE_PASS_OUT"
 fi
 
 # ---------------------------------------------------------------------------
