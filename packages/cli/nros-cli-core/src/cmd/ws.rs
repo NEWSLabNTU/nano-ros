@@ -2372,6 +2372,34 @@ fn synth_ament_prefix(_scan: &[WsPkg]) -> Option<(tempfile::TempDir, std::ffi::O
     None
 }
 
+/// phase-531 W2 (RFC-0121 D2/D7) — the warning for a `system.toml` beside a
+/// package's code, one line per package.
+///
+/// `system.toml` is the project layer and lives only in a bringup package
+/// (`package.xml` + `system.toml`, no build file). A `system.toml` beside a
+/// `Cargo.toml` or `CMakeLists.txt` is the standalone shape RFC-0121 retires.
+/// This is a warning while the tree migrates (phase-531 W6); W7 step 9 makes it
+/// a refusal. The predicate is `leaf_system::is_package_dir`, the one the
+/// readers use, so the warning fires exactly where the leaf road would be
+/// taken.
+fn system_toml_beside_code_warnings(dirs: &[&Path]) -> Vec<String> {
+    use nros_orchestration_ir::leaf_system;
+    dirs.iter()
+        .filter(|d| d.join(leaf_system::SYSTEM_TOML).is_file() && leaf_system::is_package_dir(d))
+        .map(|d| {
+            // `nros dev migrate-bringup` is phase-531 W6; the refusal is
+            // RFC-0121 D7 (phase-531 W7 step 9).
+            format!(
+                "sync: warning: {} sits beside the package's code; `system.toml` belongs in a \
+                 bringup package (`package.xml` + `system.toml`, no build file). Move it with \
+                 `nros dev migrate-bringup {}`. A later release refuses this layout.",
+                d.join(leaf_system::SYSTEM_TOML).display(),
+                d.display()
+            )
+        })
+        .collect()
+}
+
 /// phase-445 W3 — the launch file of a single-package leaf, synthesised from
 /// the `[[component]]` rows of its `system.toml` into
 /// `<leaf>/build/nros/launch/<leaf-dir>/system.launch.xml`.
@@ -3722,6 +3750,12 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
                 }
             }
         }
+    }
+    // phase-531 W2 — every package sync scanned, in either layout, so a leaf
+    // root and a leaf inside a workspace get the same warning.
+    let scanned: Vec<&Path> = scan.iter().map(|p| p.dir.as_path()).collect();
+    for w in system_toml_beside_code_warnings(&scanned) {
+        eprintln!("{w}");
     }
     if scan.is_empty() {
         println!("sync: no pkgs under {}", src_root.display());
@@ -7347,6 +7381,49 @@ mod per_image_bridge_config_tests {
                 "system.toml"
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod system_toml_beside_code_tests {
+    use super::system_toml_beside_code_warnings;
+
+    /// phase-531 W2 — the warning names a `system.toml` beside a
+    /// `Cargo.toml` or a `CMakeLists.txt`, the migration verb and the coming refusal,
+    /// and says nothing about a bringup or a node package.
+    #[test]
+    fn warns_only_for_a_system_toml_beside_code() {
+        let d = tempfile::tempdir().unwrap();
+        let mk = |dir: &str, files: &[&str]| {
+            let p = d.path().join(dir);
+            std::fs::create_dir_all(&p).unwrap();
+            for f in files {
+                std::fs::write(p.join(f), "").unwrap();
+            }
+            p
+        };
+        let cargo_leaf = mk("cargo_leaf", &["Cargo.toml", "package.xml", "system.toml"]);
+        let cmake_leaf = mk(
+            "cmake_leaf",
+            &["CMakeLists.txt", "package.xml", "system.toml"],
+        );
+        let bringup = mk("demo_bringup", &["package.xml", "system.toml"]);
+        let node = mk("talker", &["Cargo.toml", "package.xml"]);
+        let dirs = [
+            cargo_leaf.as_path(),
+            cmake_leaf.as_path(),
+            bringup.as_path(),
+            node.as_path(),
+        ];
+        let w = system_toml_beside_code_warnings(&dirs);
+        assert_eq!(w.len(), 2, "{w:#?}");
+        assert!(w[0].contains("cargo_leaf/system.toml"), "{}", w[0]);
+        assert!(w[1].contains("cmake_leaf/system.toml"), "{}", w[1]);
+        for line in &w {
+            assert!(line.starts_with("sync: warning: "), "{line}");
+            assert!(line.contains("nros dev migrate-bringup"), "{line}");
+            assert!(line.contains("refuses this layout"), "{line}");
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 # Phase 531 — Workspace-first project layout: bringup-only `system.toml`, one build road, the leaf shape retired
 
-**Status (2026-11-05). OPEN — W1 (the measurement) done; W2 (the gates) next.**
+**Status (2026-11-05). OPEN — W1 (the measurement) and W2 (the gates and the
+sync warning) done; W3 next.**
 Implements [RFC-0121](../design/0121-workspace-first-project-layout.md) D1 to
 D8, with its amendments to RFC-0098, RFC-0116 D6, RFC-0026/0066, RFC-0100,
 RFC-0118 D2 and RFC-0120.
@@ -189,6 +190,43 @@ Lines are non-test lines. "WS reach" uses the classes defined above.
 **Acceptance:** both gates in `just check fast` with mutation cases (a new
 `system.toml` beside a `Cargo.toml` fails; removing one allowlisted site
 without deleting its row fails the ratchet).
+
+**Status: DONE (2026-11-05).**
+
+- `just check system-toml-in-bringup` (`scripts/check-system-toml-in-bringup.py`)
+  reads the tracked set.
+  - Its allowlist, `.config/system-toml-in-bringup-baseline.txt`, holds W1's
+    223 paths.
+  - `--write-baseline` refuses to add a path.
+  - The self-test runs on every invocation, 8 cases. Among them: a new
+    `system.toml` beside a `Cargo.toml` fails, and so does one beside a
+    `CMakeLists.txt` or at the root. A migrated site, or one whose build file
+    went, fails until its row is deleted.
+- `just check node-package-selection-free`
+  (`scripts/check-node-package-selection-free.py`) covers every tracked
+  `Cargo.toml` under `examples/` and `packages/testing/` that has a
+  `package.xml` or `system.toml` beside it.
+  - Exempt: entry packages, and board, runner and command providers.
+  - It refuses a dependency key or `package =` target that is a
+    `<pkg>_nros_selection` crate or an `nros-board-*` crate. Every dependency
+    table counts, `[target.*]` included.
+  - Its allowlist, `.config/node-package-selection-free-baseline.txt`, holds
+    W1's 100 rows.
+  - The self-test has 5 cases: a renamed board crate in a target table, a
+    selection crate, a stale row, and the two exemptions.
+- Both are fast-line gates: `just/check/cargo.just`, listed in
+  `.config/gate-registry-baseline.txt`.
+- `nros sync` warns once per scanned package whose directory holds
+  `system.toml` beside a build file, in either layout. The warning names the
+  file and `nros dev migrate-bringup <dir>` (W6), and says a later release
+  refuses the layout (RFC-0121 D7). It carries no internal ids, because
+  `check-user-surface-ids` keeps those off the user surface. The helper is
+  `system_toml_beside_code_warnings` in `cmd/ws.rs`, and a unit test covers
+  it.
+  - It sits at sync's package scan, the one place that sees every package
+    before configuration is resolved. `nros configure` (phase-530) has not
+    landed, so it is not there yet.
+  - `nros build` does not warn yet. D7's refusal in `nros build` is W7 step 9.
 
 ### W3 — A missing launch file is generated, in any bringup
 
