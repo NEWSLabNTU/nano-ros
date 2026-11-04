@@ -225,6 +225,19 @@ pub struct TakeArgs {
     /// Give up on a census run that has not exited in this many seconds.
     #[arg(long, default_value = "60", value_name = "SECS")]
     pub timeout_secs: u64,
+
+    /// This take runs as a build's census step, not before a configure: a
+    /// host census build that fails is reported as a failed build, with the
+    /// directory to look in.
+    // phase-530 W6 (cmake/NanoRosCensusStep.cmake passes it).
+    #[arg(long, requires = "leaf")]
+    pub build_step: bool,
+
+    /// Exit non-zero when this take changed the census's digest: the build
+    /// running it read its knobs before the take, so it must not link.
+    // phase-530 W6, Ruling R40: the step under a non-Ninja generator.
+    #[arg(long, requires = "leaf")]
+    pub fail_if_changed: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -493,7 +506,13 @@ fn take_census(args: TakeArgs) -> Result<()> {
     };
 
     if let Some(leaf) = &args.leaf {
-        return take_leaf_census(leaf, args.timeout_secs);
+        if !args.fail_if_changed {
+            return take_leaf_census(leaf, args.timeout_secs, args.build_step);
+        }
+        let digest = census_digest_path(&leaf_census_path(leaf));
+        let before = std::fs::read_to_string(&digest).ok();
+        take_leaf_census(leaf, args.timeout_secs, args.build_step)?;
+        return refuse_if_digest_moved(&before, &std::fs::read_to_string(&digest).ok());
     }
     let image = args
         .image
@@ -664,6 +683,8 @@ pub(crate) fn take_for_build(root: &Path, qualified: &str, offline: bool) {
         offline,
         plan: false,
         timeout_secs: 60,
+        build_step: false,
+        fail_if_changed: false,
     };
     if let Err(e) = take_census(args) {
         eprintln!(
@@ -678,7 +699,7 @@ pub(crate) fn take_for_build(root: &Path, qualified: &str, offline: bool) {
 /// contract: a take that cannot run is reported, and the leaf's configure
 /// decides.
 pub(crate) fn take_leaf_for_build(leaf: &Path) {
-    if let Err(e) = take_leaf_census(leaf, 60) {
+    if let Err(e) = take_leaf_census(leaf, 60, false) {
         eprintln!(
             "nros build:   {}: could not take its census ({e:#}); its configure decides",
             leaf.display()
@@ -776,12 +797,11 @@ pub(crate) fn census_entities_digest(census: &serde_json::Value) -> String {
     strip(&mut said);
     let mut doc = serde_json::Map::new();
     doc.insert("census".into(), said);
+    // THAT it is incomplete, never the prose reason (which names the binary's
+    // path and exit status).
     doc.insert(
         INCOMPLETE_KEY.into(),
-        census
-            .get(INCOMPLETE_KEY)
-            .cloned()
-            .unwrap_or(serde_json::Value::Null),
+        serde_json::Value::Bool(census.get(INCOMPLETE_KEY).is_some_and(|v| !v.is_null())),
     );
     let doc = serde_json::Value::Object(doc);
     let mut h = sha2::Sha256::new();
@@ -805,6 +825,62 @@ pub(crate) fn write_census_digest(census: &Path) -> Result<PathBuf> {
             .map_err(|e| eyre::eyre!("cannot write `{}`: {e}", path.display()))?;
     }
     Ok(path)
+}
+
+/// Ruling R40 (phase-530 W6) -- refuse the build whose census step moved
+/// the digest. Under a non-Ninja generator that build checked its configure
+/// dependencies BEFORE the step ran, so it holds the knobs of the entities
+/// the code no longer has; the next build re-configures. No digest before
+/// the take counts as moved.
+pub(crate) fn refuse_if_digest_moved(
+    before: &Option<String>,
+    after: &Option<String>,
+) -> Result<()> {
+    if before.is_some() && before == after {
+        return Ok(());
+    }
+    bail!(
+        "entities changed; build again: this build read its pool sizes before the census \
+         step re-took the census, so it must not link them. The next build re-configures \
+         with the new counts."
+    )
+}
+
+/// What a failed host census build says. `build_step`: the take is a build's
+/// census step, so the leaf was counted before and the failure is in the
+/// build (a compile error, say) -- not the configure-time diagnosis that its
+/// sources call an RTOS API. `explicit` qualifies how the leaf came to be
+/// counted by its census.
+pub(crate) fn host_build_failure(
+    leaf: &Path,
+    build: &Path,
+    step: &str,
+    status: &str,
+    build_step: bool,
+    explicit: &str,
+) -> String {
+    if build_step {
+        return format!(
+            "{}: {step} of its host census build exited {status}. The census step re-takes \
+             the census when a source moves, by building the leaf's sources for the HOST in \
+             `{}`; that host census build failed, and its output is above (build it by hand \
+             with `cmake --build {}`). Fix the build and build again.",
+            leaf.display(),
+            build.display(),
+            build.display()
+        );
+    }
+    format!(
+        "{}: {step} of its host census build exited {status}.\n\
+         This leaf is counted by its census{explicit}: its own sources, built for the HOST and \
+         run in counting mode. Sources that call an RTOS API directly (a Zephyr `k_*` call, \
+         say) cannot build for the host, so nothing can be counted. Either fix is one line in \
+         its system.toml `[[component]]`:\n  \
+         entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]   (tight: state \
+         what it creates)\n  \
+         entities = \"defaults\"   (loose, written down: the crate defaults)",
+        leaf.display()
+    )
 }
 
 /// Issue 1556 item 4 -- set on the HOST census configure of a standalone leaf.
@@ -949,7 +1025,7 @@ fn write_zephyr_census_stub(build: &Path) -> Result<PathBuf> {
 /// in census mode. Every input that decides what the program creates is the
 /// cross image's own; only the board differs, and the board is not a fact the
 /// census records.
-fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
+fn take_leaf_census(leaf: &Path, timeout_secs: u64, build_step: bool) -> Result<()> {
     let leaf = std::fs::canonicalize(leaf)
         .wrap_err_with(|| format!("resolving leaf {}", leaf.display()))?;
     if !leaf.join("CMakeLists.txt").is_file()
@@ -1021,23 +1097,23 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
     // ran, and nothing but this verb builds `census-host`, so the census stays
     // fresh until the leaf's own sources move (issue 1252's convergence loop
     // was about a binary another build could change).
+    let explicit = match source {
+        crate::leaf_census::EntitySource::Census { explicit: false } => {
+            " (the default for a C/C++ leaf that states no `entities`)"
+        }
+        _ => "",
+    };
     let refused = |step: &str, status: std::process::ExitStatus| {
         eyre::eyre!(
-            "{}: {step} of its host census build exited {status}.\n\
-             This leaf is counted by its census{}: its own sources, built for the HOST and run \
-             in counting mode. Sources that call an RTOS API directly (a Zephyr `k_*` call, \
-             say) cannot build for the host, so nothing can be counted. Either fix is one line \
-             in its system.toml `[[component]]`:\n  \
-             entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]   (tight: \
-             state what it creates)\n  \
-             entities = \"defaults\"   (loose, written down: the crate defaults)",
-            leaf.display(),
-            match source {
-                crate::leaf_census::EntitySource::Census { explicit: false } => {
-                    " (the default for a C/C++ leaf that states no `entities`)"
-                }
-                _ => "",
-            }
+            "{}",
+            host_build_failure(
+                &leaf,
+                &build,
+                step,
+                &status.to_string(),
+                build_step,
+                explicit
+            )
         )
     };
     let status = Command::new("cmake")
@@ -2694,5 +2770,52 @@ mod tests {
         std::fs::write(&census, census_doc(2, "sha256:bb", 7).to_string()).unwrap();
         write_census_digest(&census).unwrap();
         assert_ne!(std::fs::read_to_string(&digest).unwrap(), first);
+    }
+
+    /// W6 fix round 1 -- an incomplete census digests by THAT it is incomplete,
+    /// never by the prose reason, which names the binary's path and exit
+    /// status and so moves on a rebuild that creates nothing new.
+    #[test]
+    fn an_incomplete_census_digests_by_its_flag_not_its_prose() {
+        let mut a = census_doc(1, "sha256:aa", 1);
+        a[INCOMPLETE_KEY] = serde_json::json!("the census run of `/x/a` exited 3");
+        let mut b = census_doc(1, "sha256:bb", 1);
+        b[INCOMPLETE_KEY] = serde_json::json!("the census run of `/y/b` exited 4");
+        assert_eq!(census_entities_digest(&a), census_entities_digest(&b));
+        assert_ne!(
+            census_entities_digest(&a),
+            census_entities_digest(&census_doc(1, "sha256:aa", 1))
+        );
+    }
+
+    /// Ruling R40 -- under a non-Ninja generator the census step fails the
+    /// build that moved the digest, because that build's knobs were read
+    /// before the step ran.
+    #[test]
+    fn a_moved_digest_fails_a_build_step_that_asks() {
+        let same = Some("sha256:a".to_string());
+        assert!(refuse_if_digest_moved(&same, &same).is_ok());
+        let err = refuse_if_digest_moved(&same, &Some("sha256:b".into()))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("entities changed; build again"), "{err}");
+        assert!(refuse_if_digest_moved(&None, &Some("sha256:b".into())).is_err());
+    }
+
+    /// W6 fix round 1 -- a host census build that fails DURING a build is a
+    /// broken host build (a compile error, say), not a leaf whose sources
+    /// call an RTOS API: that diagnosis belongs to the configure-time take,
+    /// where the leaf has never been counted.
+    #[test]
+    fn a_host_build_failure_mid_build_names_the_build_not_an_rtos_api() {
+        let leaf = Path::new("/p/leaf");
+        let build = Path::new("/p/leaf/build/census-host");
+        let mid = host_build_failure(leaf, build, "the build", "exit status: 1", true, "");
+        assert!(!mid.contains("RTOS API"), "{mid}");
+        assert!(mid.contains("host census build"), "{mid}");
+        assert!(mid.contains("/p/leaf/build/census-host"), "{mid}");
+        let first = host_build_failure(leaf, build, "the build", "exit status: 1", false, "");
+        assert!(first.contains("RTOS API"), "{first}");
+        assert!(first.contains("entities = \"defaults\""), "{first}");
     }
 }
