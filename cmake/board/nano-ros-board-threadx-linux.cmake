@@ -132,6 +132,12 @@ endif()
 # the truth, and it takes the poll-only path it already documents.
 set(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE OFF CACHE BOOL
     "threadx-linux: Cyclone's receive thread is not a ThreadX thread (issue 1750)" FORCE)
+# Issue 2217 -- and forwards Cyclone's arrivals through the platform's
+# foreign-wake bridge instead, so the session still states Notify and an
+# arrival ends the executor's park (RFC-0113 D4). Without the bridge the
+# session would state no readiness form and be refused at open (D5).
+set(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE_BRIDGE ON CACHE BOOL
+    "Cyclone forwards arrivals through <nros/platform_foreign_wake.h> (issue 2217)" FORCE)
 
 # ---------------------------------------------------------------------------
 # Build kernel + netstack via the layer-2 helpers. NSOS_NETX_DIR's

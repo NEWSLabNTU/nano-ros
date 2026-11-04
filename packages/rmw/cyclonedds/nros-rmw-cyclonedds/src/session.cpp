@@ -38,6 +38,21 @@
 #include <ctime> // nanosleep / timespec (POSIX spin-loop pacing)
 #endif
 
+/* Issue 2217 (RFC-0113 D4) -- whether this build attaches the participant's
+ * data_available listener, and so has a wake path at all. A build with a
+ * foreign wake calls the runtime's callback from Cyclone's thread; a build
+ * without one forwards through the platform's foreign-wake bridge when the
+ * port supplies it; a build with neither has no wake path, states no
+ * readiness form, and is refused at open (D5). */
+#if !defined(NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE)
+#define NROS_CYC_LISTENER 1
+#elif defined(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE_BRIDGE)
+#define NROS_CYC_LISTENER 1
+#include <nros/platform_foreign_wake.h>
+#else
+#define NROS_CYC_LISTENER 0
+#endif
+
 #ifdef __ZEPHYR__
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -82,6 +97,10 @@ struct SessionState {
      * every `/chatter` sample. */
     rmw_event_callback_t graph_cb{nullptr};
     const void *graph_user_data{nullptr};
+    /* Issue 2217 -- the foreign-wake bridge slot the runtime's wake is bound
+     * to on a NO_FOREIGN_WAKE build (-1: none). Written on the runtime thread,
+     * read by `on_data_available` on a Cyclone worker thread. */
+    int32_t foreign_slot{-1};
 };
 
 inline SessionState* as_state(rmw_session_t* s) {
@@ -125,7 +144,7 @@ namespace {
  * functions below, so they are compiled out rather than left as unused
  * statics. `on_data_available` has been in that position since 1237 landed;
  * phase-467 Row 8 would have added two more beside it. */
-#ifndef NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE
+#if NROS_CYC_LISTENER
 
 /// Cyclone calls this from its own receive/delivery thread the moment a reader
 /// has data. Handing that to the executor is the WHOLE point: without it
@@ -142,6 +161,18 @@ void on_data_available(dds_entity_t reader, void *arg) {
     if (state == nullptr) {
         return;
     }
+#if defined(NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE)
+    /* Issue 2217 -- this thread may not enter the kernel (issues 1237, 1750),
+     * so it posts the bridge slot and the port's forwarder calls the wake in
+     * kernel context. The graph edge is not forwarded: its install answers
+     * UNSUPPORTED on this build. */
+    (void)reader;
+    const int32_t slot = __atomic_load_n(&state->foreign_slot, __ATOMIC_ACQUIRE);
+    if (slot >= 0) {
+        nros_platform_foreign_wake_post(slot);
+    }
+    return;
+#else
     /* Read once: a concurrent clear could otherwise null it between the test
      * and the call. */
     void (*cb)(void *) = state->wake_cb;
@@ -174,6 +205,7 @@ void on_data_available(dds_entity_t reader, void *arg) {
          reader == state->graph.builtin_sub_reader)) {
         gcb(state->graph_user_data, 1);
     }
+#endif /* NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE */
 }
 
 /* The participant-level data_available listener, shared by the wake path and
@@ -221,7 +253,7 @@ bool has_listener(const SessionState* state) {
     return state->listener != nullptr;
 }
 
-#endif /* !NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE */
+#endif /* NROS_CYC_LISTENER */
 
 } // namespace
 
@@ -341,9 +373,33 @@ rmw_ret_t session_set_wake_callback(rmw_session_t* session,
      * give would drop the assert and keep the race — a quieter bug, not a
      * fixed one. The only correct answer is not to enter the scheduler from
      * that thread at all. */
+#if defined(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE_BRIDGE)
+    /* Issue 2217 -- so the callback is never called from Cyclone's thread.
+     * It is bound to a slot of the platform's foreign-wake bridge, which this
+     * thread (a kernel one) may do; `on_data_available` only posts the slot,
+     * and the port's forwarder calls the callback in kernel context. */
+    auto* state = as_state(session);
+    const int32_t old = __atomic_exchange_n(&state->foreign_slot, -1, __ATOMIC_ACQ_REL);
+    if (old >= 0) {
+        nros_platform_foreign_wake_unbind(old);
+    }
+    if (cb == nullptr) {
+        return NROS_RMW_RET_OK;
+    }
+    if (!has_listener(state)) {
+        return NROS_RMW_RET_ERROR;
+    }
+    const int32_t slot = nros_platform_foreign_wake_bind(cb, ctx);
+    if (slot < 0) {
+        return NROS_RMW_RET_ERROR;
+    }
+    __atomic_store_n(&state->foreign_slot, slot, __ATOMIC_RELEASE);
+    return NROS_RMW_RET_OK;
+#else
     (void)cb;
     (void)ctx;
     return NROS_RMW_RET_UNSUPPORTED;
+#endif
 #else
     auto* state = as_state(session);
 
@@ -618,7 +674,7 @@ if (NROS_CYC_COMPOSE_DOMAIN || user_config[0] != '\0') {
         }
     }
 
-#ifndef NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE
+#if NROS_CYC_LISTENER
     /* Issue 1963 — the listener goes on the participant as it is CREATED, so
      * every reader inherits it. See `create_session_listener`. */
     state->listener = create_session_listener(state);
@@ -732,6 +788,14 @@ rmw_ret_t session_destroy(rmw_session_t* session) {
     state->wake_ctx = nullptr;
     state->graph_cb = nullptr;
     state->graph_user_data = nullptr;
+#if defined(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE_BRIDGE)
+    {
+        const int32_t slot = __atomic_exchange_n(&state->foreign_slot, -1, __ATOMIC_ACQ_REL);
+        if (slot >= 0) {
+            nros_platform_foreign_wake_unbind(slot);
+        }
+    }
+#endif
     if (state->participant > 0) {
         // dds_delete on the participant cascades to every child
         // entity (writers, readers, topics) it owns, and waits for any
@@ -750,6 +814,27 @@ rmw_ret_t session_destroy(rmw_session_t* session) {
     }
     free_session_state(state);
     session->backend_data = nullptr;
+    return NROS_RMW_RET_OK;
+}
+
+/* Issue 2217 (RFC-0113 D4) -- the session's readiness form, stated rather than
+ * inferred from the `set_wake_callback` slot. The slot is always filled, and a
+ * NO_FOREIGN_WAKE build used to answer it UNSUPPORTED while the runtime read
+ * the slot's presence as Notify, so its executor parked on a wake nothing
+ * posted. Notify exactly when the participant's listener is attached (a
+ * foreign wake, or the platform's bridge, and the allocation succeeded); none
+ * otherwise, which the runtime refuses at open (D5). */
+rmw_ret_t session_readiness_source(const rmw_session_t* session, uint8_t* out_kind,
+                                   int32_t* /*out_handle*/) {
+    if (session == nullptr || session->backend_data == nullptr || out_kind == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+#if NROS_CYC_LISTENER
+    const auto* state = static_cast<const SessionState*>(session->backend_data);
+    *out_kind = has_listener(state) ? NROS_RMW_READINESS_NOTIFY : NROS_RMW_READINESS_NONE;
+#else
+    *out_kind = NROS_RMW_READINESS_NONE;
+#endif
     return NROS_RMW_RET_OK;
 }
 

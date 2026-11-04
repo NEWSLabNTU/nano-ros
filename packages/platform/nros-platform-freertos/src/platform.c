@@ -1300,3 +1300,119 @@ void rust_eh_personality(void);
 __attribute__((weak)) void rust_eh_personality(void) {
 }
 #endif
+
+/* ---- Foreign-thread wake bridge (issue 2217) ----
+ *
+ * `<nros/platform_foreign_wake.h>`, on the POSIX port only: there a host
+ * library's own threads (Cyclone's receive thread) are not FreeRTOS tasks and
+ * may not enter the kernel (issue 1237: `vPortYield` asserts). The port is
+ * recognised by macros only its `portmacro.h` defines, as ThreadX's hosted
+ * port is (`threadx_context.h`).
+ *
+ * The forwarder is a task at the IDLE priority blocked in a host `poll()` on
+ * an eventfd. The POSIX port counts a task blocked in a host call as running,
+ * so it may only ever sit below every other task, and at the idle priority it
+ * is reached as soon as the image is idle (`configIDLE_SHOULD_YIELD`). A
+ * higher task made ready by the tick preempts it: the port's SIGALRM handler
+ * runs on the current task's thread, interrupts the `poll()` (EINTR, retried)
+ * and switches. With nothing else ready the host CPU sleeps in `poll()`. */
+#if defined(portTICK_RATE_MICROSECONDS) && defined(portPRE_TASK_DELETE_HOOK)
+#  include <errno.h>
+#  include <poll.h>
+#  include <sys/eventfd.h>
+#  include <unistd.h>
+#  include <nros/platform_foreign_wake.h>
+
+typedef struct {
+    void (*fn)(void *);
+    void *ctx;
+    volatile uint8_t pending; /* set by any thread, taken by the forwarder */
+} nros_foreign_slot_t;
+
+static nros_foreign_slot_t s_foreign[NROS_PLATFORM_FOREIGN_WAKE_SLOTS];
+static SemaphoreHandle_t s_foreign_lock = NULL;
+static int s_foreign_fd = -1;
+
+static void nros_foreign_forwarder(void *arg) {
+    (void) arg;
+    for (;;) {
+        struct pollfd p = {.fd = s_foreign_fd, .events = POLLIN, .revents = 0};
+        if (poll(&p, 1, -1) <= 0) {
+            continue; /* EINTR: the port switched to a higher task */
+        }
+        uint64_t n;
+        while (read(s_foreign_fd, &n, sizeof(n)) > 0) {
+        }
+        for (int i = 0; i < NROS_PLATFORM_FOREIGN_WAKE_SLOTS; i++) {
+            if (__atomic_exchange_n(&s_foreign[i].pending, 0, __ATOMIC_ACQ_REL) == 0) {
+                continue;
+            }
+            (void) xSemaphoreTake(s_foreign_lock, portMAX_DELAY);
+            if (s_foreign[i].fn != NULL) {
+                s_foreign[i].fn(s_foreign[i].ctx);
+            }
+            (void) xSemaphoreGive(s_foreign_lock);
+        }
+    }
+}
+
+static int nros_foreign_start_once(void) {
+    if (s_foreign_fd >= 0) {
+        return 0;
+    }
+    s_foreign_lock = xSemaphoreCreateMutex();
+    if (s_foreign_lock == NULL) {
+        return -1;
+    }
+    int fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (fd < 0) {
+        return -1;
+    }
+    s_foreign_fd = fd;
+    if (xTaskCreate(nros_foreign_forwarder, "nros-foreign-wake", configMINIMAL_STACK_SIZE * 4,
+                    NULL, tskIDLE_PRIORITY, NULL) != pdPASS) {
+        close(fd);
+        s_foreign_fd = -1;
+        return -1;
+    }
+    return 0;
+}
+
+int32_t nros_platform_foreign_wake_bind(void (*fn)(void *ctx), void *ctx) {
+    if (fn == NULL || nros_foreign_start_once() != 0) {
+        return -1;
+    }
+    (void) xSemaphoreTake(s_foreign_lock, portMAX_DELAY);
+    int32_t slot = -1;
+    for (int i = 0; i < NROS_PLATFORM_FOREIGN_WAKE_SLOTS; i++) {
+        if (s_foreign[i].fn == NULL) {
+            s_foreign[i].ctx = ctx;
+            s_foreign[i].fn = fn;
+            slot = i;
+            break;
+        }
+    }
+    (void) xSemaphoreGive(s_foreign_lock);
+    return slot;
+}
+
+void nros_platform_foreign_wake_unbind(int32_t slot) {
+    if (slot < 0 || slot >= NROS_PLATFORM_FOREIGN_WAKE_SLOTS || s_foreign_lock == NULL) {
+        return;
+    }
+    (void) xSemaphoreTake(s_foreign_lock, portMAX_DELAY);
+    s_foreign[slot].fn = NULL;
+    s_foreign[slot].ctx = NULL;
+    (void) xSemaphoreGive(s_foreign_lock);
+}
+
+void nros_platform_foreign_wake_post(int32_t slot) {
+    if (slot < 0 || slot >= NROS_PLATFORM_FOREIGN_WAKE_SLOTS || s_foreign_fd < 0) {
+        return;
+    }
+    __atomic_store_n(&s_foreign[slot].pending, 1, __ATOMIC_RELEASE);
+    uint64_t one = 1;
+    ssize_t r = write(s_foreign_fd, &one, sizeof(one));
+    (void) r; /* a saturated counter already guarantees a wake */
+}
+#endif /* FreeRTOS POSIX port */

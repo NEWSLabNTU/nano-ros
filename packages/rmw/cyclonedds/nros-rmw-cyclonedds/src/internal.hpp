@@ -287,6 +287,12 @@ rmw_ret_t client_set_on_new_response_callback(rmw_client_t *client,
 rmw_ret_t session_set_wake_callback(rmw_session_t *session, void (*cb)(void *),
                                     void *ctx);
 
+/* Issue 2217 (RFC-0113 D4) -- the session's readiness form. Notify when the
+ * participant's listener is attached (a foreign wake, or the platform's
+ * foreign-wake bridge); none otherwise, which the runtime refuses at open. */
+rmw_ret_t session_readiness_source(const rmw_session_t *session, uint8_t *out_kind,
+                                   int32_t *out_handle);
+
 /* phase-467 Row 8 — `rmw_node_get_graph_guard_condition` under the
  * `set_wake_callback` shape: install (or clear, with a NULL callback) the
  * edge fired when the ROS graph this session can see CHANGES.
