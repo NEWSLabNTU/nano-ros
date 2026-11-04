@@ -255,12 +255,18 @@ fn run_declared_leaf(args: &WestLeafSizingArgs) -> Result<()> {
     );
 
     // ---- what the configure must watch ------------------------------------
-    // The census is an input: re-taking it (after a `src/` edit) must
-    // re-run this configure, which is what read it.
+    // The census is an input -- through its DIGEST (phase-530 W6, RFC-0120
+    // D7): the census build step re-takes the census on every source edit,
+    // and only a re-take that counts other entities moves the digest, so a
+    // body edit re-runs no configure and an added endpoint re-runs exactly
+    // one. Naming the census file itself re-ran it on every re-take.
     if census_backed {
         println!(
             "input {}",
-            crate::cmd::entity_census::leaf_census_path(leaf).display()
+            crate::cmd::entity_census::census_digest_path(
+                &crate::cmd::entity_census::leaf_census_path(leaf)
+            )
+            .display()
         );
     }
     println!(
