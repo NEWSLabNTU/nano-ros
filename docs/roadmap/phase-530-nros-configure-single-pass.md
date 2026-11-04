@@ -672,16 +672,21 @@ build/posix-zenoh-linux/cmake`, `NROS_LEAF_CENSUS_HOST=1`). Then:
   the digest did not move;
 - add a publisher (`/chatter2`, plus its `system.contract.yaml` rows -- on
   this road the census is checked against the contract, so an endpoint the
-  contract lacks is a `missing-in-contract` refusal by design): **not
-  measurable**. The contract edit re-runs the configure (Ruling R38's input
-  dependency) before the step, and that configure's hooked `nros configure`
-  composed the image over the metadata probe's `nros-metadata.json`, which
-  the incremental probe had rewritten with the one re-probed component
-  (`talker_pkg`) instead of all seven, so the promise check FATALed ("it
-  registered [talker] and this configure registers [7 components]"). That is
-  a defect of the probe's incremental composition, not of the census step,
-  and any configure re-run after editing one component of this workspace
-  meets it. Reported to the phase; not fixed here.
+  contract lacks is a `missing-in-contract` refusal by design): first
+  measured as a promise FATAL, which was [issue 2238](../issues/archived/2238-metadata-probe-partial-aggregate.md)
+  (an incremental metadata probe rewrote the aggregate with the one
+  re-probed component; Ruling R46, fixed in W6). Re-measured after the fix:
+  the build that sees the edit runs **1 configure** (the hook's `nros
+  configure` "configured (51 s)": the contract edit is a configure input,
+  Ruling R38, and that configure re-took the census), green, and
+  `ZPICO_MAX_PUBLISHERS` **1 -> 2**. The NEXT build ran **one more**
+  configure, printed by the message-bound reader: "this image's derived
+  message-bound sizes changed after the readers of this pass had run, so
+  cmake will run once more" -- the unseeded message-bound fixed point
+  (`NanoRosReconfigure.cmake`) that W7 deletes, not the census. So on this
+  road an added endpoint costs 1 census/contract-driven configure plus 1
+  fixed-point pass today: a **miss of "exactly one" by the fixed point**, to
+  close with W7. A no-op after that: 0.
 
 Found and fixed on the way: the census's own host build located the HOST
 sibling's configure stamp (`nros_resolved_dir`), which nothing had configured,
