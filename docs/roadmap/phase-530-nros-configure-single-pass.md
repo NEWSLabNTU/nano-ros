@@ -658,6 +658,36 @@ census with no record (one an older CLI took) refuses in the build, naming
 Tests: cases C (Ninja: a body edit builds green with 0 re-runs, an added
 entity re-runs once and is read) and C2 (Makefiles, R40).
 
+**Workspace road, measured (2026-11-04, `examples/workspaces/cpp`
+`demo_bringup:threadx`, the generated root under plain `cmake --build`, which
+`nros build` configures with Unix Makefiles).** `linux_xrce` is a HOST image
+and checks no census, so the cross `threadx` image was measured instead.
+`nros build demo_bringup:threadx` first: the take built the host sibling
+`demo_bringup:linux` and recorded its build step (`cmake --build
+build/posix-zenoh-linux/cmake`, `NROS_LEAF_CENSUS_HOST=1`). Then:
+
+- no-op: 0 re-configures, the step says `fresh`;
+- body edit (`Talker.cpp` printf string): **green, 0 re-configures**; the
+  step re-took the census through the recorded host build (`1 sub / 1 pub`),
+  the digest did not move;
+- add a publisher (`/chatter2`, plus its `system.contract.yaml` rows -- on
+  this road the census is checked against the contract, so an endpoint the
+  contract lacks is a `missing-in-contract` refusal by design): **not
+  measurable**. The contract edit re-runs the configure (Ruling R38's input
+  dependency) before the step, and that configure's hooked `nros configure`
+  composed the image over the metadata probe's `nros-metadata.json`, which
+  the incremental probe had rewritten with the one re-probed component
+  (`talker_pkg`) instead of all seven, so the promise check FATALed ("it
+  registered [talker] and this configure registers [7 components]"). That is
+  a defect of the probe's incremental composition, not of the census step,
+  and any configure re-run after editing one component of this workspace
+  meets it. Reported to the phase; not fixed here.
+
+Found and fixed on the way: the census's own host build located the HOST
+sibling's configure stamp (`nros_resolved_dir`), which nothing had configured,
+so every workspace census take FATALed ("has not been configured"); the
+census host build is the producer and reads no seed (case H).
+
 ### W7 — Delete the fixed point
 
 - Map the fifth producer first: the Cyclone C++ configure-time facts (issue
