@@ -49,7 +49,7 @@ include("${NROS_REPO_DIR}/integrations/px4/NanoRosPx4Module.cmake")
 # phase-521 W8 (d), RFC-0113 D9 -- the module's entry is GENERATED from the
 # bringup: one PX4 work item per tier, on the work queue its rank picks. The
 # component (`uorb_demo_pkg::UorbDemo`) is the only hand-written code; nothing
-# here schedules the executor. Run `nros sync` in `examples/px4/cpp/firmware`
+# here schedules the executor. Run `nros configure` in `examples/px4/cpp/firmware`
 # first: it writes the SystemModel the entry is generated from.
 set(_demo_ws "${CMAKE_CURRENT_LIST_DIR}/../..")
 nros_px4_add_module(

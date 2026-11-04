@@ -172,8 +172,8 @@ This directory is also a nano-ros workspace. The component
 `uorb_bridge_pkg::UorbBridge` (`src/uorb_bridge_pkg/`) is the only
 hand-written code. The PX4 module, its work item and its work queue are
 generated from `src/uorb_bridge_bringup/`:
-`nros_px4_add_module(... BRINGUP ... COMPONENTS ...)`, after `nros sync` has
-written the SystemModel. `just px4 build-bridge-example` runs `nros sync` for
+`nros_px4_add_module(... BRINGUP ... COMPONENTS ...)`, after `nros configure` has
+written the SystemModel. `just px4 build-bridge-example` runs `nros configure` for
 you.
 
 The entry opens the bringup's `rmw`, uORB, as the primary session. The

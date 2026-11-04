@@ -49,11 +49,11 @@ present and installs nothing.
 ## Build
 
 ```bash probe=60 track=installed
-nros sync
 nros build
 ```
 
-`nros sync` resolves the launch file into the system model; `nros build`
+`nros build` configures first (it resolves the launch file into the system
+model, and skips that when nothing changed), then
 generates the entry for each `[image.*]` in `system.toml` and drives
 CMake under `build/`. The first build compiles nano-ros's runtime into
 the build tree (~3 minutes); rebuilds are seconds. Inside a nano-ros
@@ -99,7 +99,6 @@ one-word edit — [Switching RMW in Config](../user-guide/rmw-switching.md).
 ```bash
 nros new my_rust_robot --workspace --lang rust
 cd my_rust_robot
-nros sync
 nros build
 RUST_LOG=info ./build/posix-cyclonedds/linux_entry/target/debug/linux_entry
 ```

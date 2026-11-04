@@ -70,7 +70,7 @@ workspace (phase-521 W8, RFC-0113 D9):
 The module's entry is GENERATED: a PX4 module with one work item per tier, on
 the work queue its rank picks. A `vehicle_status` arrival schedules that work
 item from the publisher's context and dispatches the callback, and the timer is
-its only deadline. Nothing polls `orb_check`. `nros sync` (in this directory)
+its only deadline. Nothing polls `orb_check`. `nros configure` (in this directory)
 writes the SystemModel the entry is generated from:
 
 ```cmake
