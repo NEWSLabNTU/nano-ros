@@ -12,6 +12,12 @@ superseded-by: null
 
 # RFC-0079 — Priority is allocated, not authored
 
+**Status (2026-11-04, phase 534):** play_launch's platform-file key is
+`priority_assignment:` since ros-launch-manifest v0.3.7 (the standard term
+for the policy); it was `mapper:` before, which rlm still reads for one
+release with a warning. The examples below use the new key; "mapper" in
+prose and in `chain_aware_mapper` names the algorithm, not the key.
+
 ## The problem, counted
 
 `system.toml` asks the user to write a raw kernel priority per platform. Across
@@ -658,7 +664,7 @@ platform file:
 
 ```yaml
 target: posix
-mapper: rate_monotonic          # or deadline_monotonic, chain_aware, manual
+priority_assignment: rate_monotonic  # or deadline_monotonic, chain_aware, manual
 resources:
   rt_priority_band: { min: 10, max: 40 }
   isolated_cpus: [0]
@@ -675,14 +681,14 @@ parallel it:
 | RFC-0079 | play_launch | note |
 | --- | --- | --- |
 | `pool.app` | `resources.rt_priority_band {min,max}` | same object |
-| deadline-monotonic derivation | `mapper:` — a NAMED, chosen algorithm | theirs is better; see below |
+| deadline-monotonic derivation | `priority_assignment:` — a NAMED, chosen algorithm | theirs is better; see below |
 | static pin, checked | `overrides:`, "overrides always beat derived" | same rule |
 | `[board.priority_plan]` per port | platform file per `target:` | same split |
 | `nros dev image model-dims` | `check --explain` | same need |
 
 ### Three things to take
 
-1. **`mapper:` is a named choice, not a fixed rule.** This RFC specified
+1. **`priority_assignment:` is a named choice, not a fixed rule.** This RFC specified
    deadline-monotonic as THE derivation. play_launch offers
    `rate_monotonic`, `deadline_monotonic`, `chain_aware` and `manual`, and
    picks per deployment. That is the better shape for the same reason profiles

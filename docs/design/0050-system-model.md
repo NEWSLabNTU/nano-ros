@@ -49,8 +49,9 @@ nano-ros and play_launch hold complementary halves of a real-time story:
 - play_launch's manifest redesign (ros-launch-manifest phases 34–35) gives
   declarative **timing contracts** — endpoint rates/ages/jitter, node/scope
   path latency budgets, drop budgets, QoS — with a 14-rule static checker
-  (rate-hierarchy, budget-overflow, graph-aware critical path, causal-dag,
-  drop-sanity, Z3 satisfiability, cross-scope consistency) and a Linux
+  (rate-hierarchy, latency-bound-overflow -- `budget-overflow` before rlm
+  v0.3.8 --, graph-aware critical path, causal-dag, drop-sanity, Z3
+  satisfiability, cross-scope consistency) and a Linux
   runtime monitor (rcl interception: max_age on take, rates, burstiness).
 - nano-ros RFC-0015/RFC-0047 give the **scheduling mechanism** — callback
   groups mapped to tiers, per-tier spin periods and RTOS priorities,

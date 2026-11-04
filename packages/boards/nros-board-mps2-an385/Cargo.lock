@@ -819,7 +819,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-derive"
 version = "0.4.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.5#d38f0c4c71c6671c09c34a8592b19ca69b94c8c6"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.8#2ffa582f7095ec4a52a784f59eb02c3aefb946d1"
 dependencies = [
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
@@ -829,7 +829,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-model"
 version = "0.4.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.5#d38f0c4c71c6671c09c34a8592b19ca69b94c8c6"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.8#2ffa582f7095ec4a52a784f59eb02c3aefb946d1"
 dependencies = [
  "indexmap",
  "ros-launch-manifest-sched",
@@ -842,7 +842,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-rlx"
 version = "0.4.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.5#d38f0c4c71c6671c09c34a8592b19ca69b94c8c6"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.8#2ffa582f7095ec4a52a784f59eb02c3aefb946d1"
 dependencies = [
  "sha2",
  "unicode-normalization",
@@ -851,7 +851,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-sched"
 version = "0.4.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.5#d38f0c4c71c6671c09c34a8592b19ca69b94c8c6"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.8#2ffa582f7095ec4a52a784f59eb02c3aefb946d1"
 dependencies = [
  "ros-launch-manifest-types",
  "serde",
@@ -862,7 +862,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-types"
 version = "0.4.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.5#d38f0c4c71c6671c09c34a8592b19ca69b94c8c6"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.8#2ffa582f7095ec4a52a784f59eb02c3aefb946d1"
 dependencies = [
  "ros-launch-manifest-rlx",
  "serde",

@@ -1,6 +1,6 @@
 # Phase 534 — Follow rlm's standard-names renames (v0.3.6 to v0.3.8, then model schema 4)
 
-**Status (2026-11-04). OPEN — W1 to W4 not started. Raised by the play_launch side so nano-ros knows which names are moving, and where nano-ros is on the critical path of the next step.** nano-ros pins rlm `v0.3.5`; rlm `v0.3.8` is tagged and play_launch `main` builds against it.
+**Status (2026-11-04). OPEN — W1, W2 and W4 done (rlm `v0.3.8`, play_launch 0.25.0); W3 (model schema 4) not started. Raised by the play_launch side so nano-ros knows which names are moving, and where nano-ros is on the critical path of the next step.** nano-ros pins rlm `v0.3.8` (was `v0.3.5`) and play_launch 0.25.0, the release carrying it.
 
 The design of record is rlm's
 [`docs/design/standard-names.md`](https://github.com/NEWSLabNTU/ros-launch-manifest/blob/v0.3.8/docs/design/standard-names.md)
@@ -117,6 +117,14 @@ Acceptance:
 - nano-ros `main` pins `v0.3.8` and its CI is green.
 - Tell the play_launch side when it merges: rlm's R+1 waits on it.
 
+**Done (2026-11-04).** `just bump-manifest v0.3.8` (the four manifests,
+the twelve lockfiles following), and
+`packages/cli/third-party/play_launch` to its 0.25.0 release commit
+`912c7574`. No code change: nano-ros compiles unchanged against v0.3.8.
+The `derived_settle` fixtures keep `[fault-reaction-budget]`: no test
+compares their `meta.diagnostics`, so they stay the record of the run that
+made them.
+
 ### W2 — The design docs say the new words
 
 - RFC-0074: the contract example writes `arrival_curve:`; add a status
@@ -130,6 +138,14 @@ Acceptance:
 
 Acceptance: no active design doc or book page shows a contract or platform
 file spelled with a key rlm now warns about.
+
+**Done (2026-11-04).** RFC-0074 writes `arrival_curve:` in every contract
+example and has a status line (the key was `ingress:`; the RFC's "ingress
+budget", the model field and `ingress_rate_mhz` are unchanged, W3 decides
+them). RFC-0079 writes `priority_assignment:` with a status line ("mapper"
+in prose names the algorithm). RFC-0050 says `latency-bound-overflow`.
+`git grep` over `docs/` and `book/` outside the archives finds no other
+contract or platform file spelled with an old key.
 
 ### W3 — Model schema 4: rename the mirrored fields together with rlm
 
@@ -175,3 +191,15 @@ a contract added meanwhile does not break on it.
 Acceptance: `git grep` for `guards:`, `ingress:`, `on_demand:`,
 `trigger: spontaneous` and `mapper:` in authored contracts and platform
 files (not model YAML) returns nothing.
+
+**Survey (2026-11-04, W1 branch).** No authored contract or platform file
+uses an old key or rule id. The only YAML hits are the two
+`derived_settle` fixtures (model YAML: `contracts.hazards.<h>.guards`, and
+`[fault-reaction-budget]` in `meta.diagnostics`). The Rust hits are model
+YAML in test strings (`entity_inventory.rs`, `sizing_descriptor.rs`,
+`contract_join.rs`, `codegen/entry/emit/mod.rs`, `nros-macros`
+`main_macro.rs`) or nano-ros's own names (`nros-cpp` `guards`/`n_guards`,
+`nros-entry-lower` `hazard_guards`). Two `entity_inventory.rs` messages
+tell the user a subscriber "declares `ingress: { rate_hz, burst }`"; they
+describe the model's field and move with W3. Re-run just before rlm's R+1
+bump.
