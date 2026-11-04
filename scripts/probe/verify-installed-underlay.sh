@@ -83,8 +83,8 @@ echo "probe: nros doctor reports the undeclared override"
 # Declared: the leaf's root system.toml (a leaf has no nros.toml; W2c's
 # transitional fallback, which prints a note naming nros.toml).
 printf '\n[overrides]\nqemu = "%s"\n' "$user_pkg" >>"$leaf/system.toml"
-# `system.toml` is a SystemModel input, so the edit needs a re-sync.
-nros sync || underlay_fail "\`nros sync\` after declaring the override failed"
+# `system.toml` is a SystemModel input, so the edit needs a re-configure.
+nros configure || underlay_fail "\`nros configure\` after declaring the override failed"
 why="$(nros run --dry-run --why 2>&1)" || underlay_fail "a declared user runner/qemu: \`nros run --dry-run --why\` failed: $why"
 nros_grep_q "my_qemu" <<<"$why" || underlay_fail "\`nros run --why\` does not name the declared my_qemu: $why"
 doc="$(nros doctor 2>&1 || true)"
@@ -102,7 +102,7 @@ nros setup linux --rmw zenoh || underlay_fail "\`nros setup linux --rmw zenoh\` 
 nros new native_talker --board linux --template talker \
     || underlay_fail "\`nros new native_talker --board linux --template talker\` failed"
 cd native_talker || underlay_fail "the scaffold wrote no native_talker/"
-nros sync || underlay_fail "\`nros sync\` failed in the native talker"
+nros configure || underlay_fail "\`nros configure\` failed in the native talker"
 "${NROS_DEADLINE[@]}" 900 nros run --expect 'Publishing:' \
     || underlay_fail "\`nros run --expect 'Publishing:'\` on the native talker failed"
 why="$(nros run --dry-run --why 2>&1)" || true

@@ -553,7 +553,7 @@ Status: **DONE, in review** (2026-11-04, PR pending).
   the leaf's `system.toml [overrides]` it is used by a real `nros run
   --expect` (its executable wraps ours and leaves a mark) and still reported;
   then `nros setup linux --rmw zenoh`, `nros new native_talker --board linux
-  --template talker`, `nros sync`, `nros run --expect 'Publishing:'`.
+  --template talker`, `nros configure`, `nros run --expect 'Publishing:'`.
   `release-nros.yml`'s install check also runs the installed native runner's
   `describe` and lists it through `nros dev ws providers`.
 - **Measured (2026-11-04):** `just probe installed` on this branch, the asset
