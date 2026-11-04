@@ -995,6 +995,16 @@ already red on the last three scheduled gate runs (41563531517,
 The acceptance median needs 20 merge groups after the merge; record it here
 when they exist.
 
+**The Zephyr part (2026-11-04, issue 2219).** The five Zephyr projects are no
+longer NOT VERIFIED. `check / template-copy-out [zephyr]` runs the `zephyr`
+part (`--part`, derived by `cross_road`) on a Zephyr 3.7 west workspace with
+its pinned SDK. The three shards run `no-zephyr`, and
+`check-merge-group-gates` rule 6 keeps the two parts complementary.
+`workflow_dispatch` run 41824085384 measured [zephyr] at 18.5 min with the CLI
+cache hit (setup 240 s, build 599 s) and the shards at 15.3 / 13.3 / 10.6 min.
+The SDK (7.8 G) and the workspace (2.5 G) are not cached: the repository's
+cache already held 9.18 GB of 10 GB. The issue has the full table.
+
 **Acceptance:** the `gate.yml` `merge_group` median over 20 successful
 runs is back under 25 min, which is W1's own target. The phase met it on
 2026-10-12, and nothing here changes lane membership. `template-copy-out` is no
@@ -1040,6 +1050,6 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 2223](../issues/archived/2223-nightly-gate-build-tier-fills-hosted-disk.md) — RESOLVED 2026-11-03: the scheduled gate's `just check build` filled the hosted disk; sharded three ways like W8 (run 41583320229, worst shard 24 G free)
-- [issue 2219](../issues/2219-template-copy-out-zephyr-projects-built-on-no-lane.md) — template-copy-out's five Zephyr projects are built copied out on no lane (found measuring W8)
+- [issue 2219](../issues/archived/2219-template-copy-out-zephyr-projects-built-on-no-lane.md) — RESOLVED 2026-11-04: a fourth merge-group part, `template-copy-out [zephyr]`, builds the five Zephyr projects (18.5 min with the CLI cache hit, run 41824085384)
 - [issue 1869](../issues/archived/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md) — workspace fixture rows sharing a target dir rebuilt the core crates every run (W6; resolved by RFC-0100 D13)
 - [issue 1177](../issues/archived/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — RESOLVED 2026-10-23 (Option B: the no-alloc nros-c rows run in `compile-smoke`). `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
