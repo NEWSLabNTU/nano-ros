@@ -83,6 +83,23 @@ function(nros_configure_hook_ran _out)
     endif()
 endfunction()
 
+# nros_configure_hook_image(<out_var>)
+#
+# THE order a CMake entry picks the image it configures by, when the caller
+# names one: `-DNROS_CONFIGURED_IMAGE` (the identity `nros build` passes), then
+# `-DNROS_IMAGE`; empty means "the caller's default" (the leaf's
+# `default_images`, or the images a generated workspace root states). One
+# spelling for the root `CMakeLists.txt` and `nano_ros_workspace()`.
+function(nros_configure_hook_image _out)
+    if(DEFINED NROS_CONFIGURED_IMAGE AND NOT "${NROS_CONFIGURED_IMAGE}" STREQUAL "")
+        set(${_out} "${NROS_CONFIGURED_IMAGE}" PARENT_SCOPE)
+    elseif(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
+        set(${_out} "${NROS_IMAGE}" PARENT_SCOPE)
+    else()
+        set(${_out} "" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(nros_configure_hook)
     cmake_parse_arguments(_H "ALL_IMAGES" "DIR;IMAGE;PROJECT;CLI;ROAD" "IMAGES" ${ARGN})
     if(NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
@@ -107,7 +124,7 @@ function(nros_configure_hook)
     endif()
     if("${_H_CLI}" STREQUAL "")
         nros_resolve_cli(_nros CONTEXT
-            "nano-ros: ${_H_ROAD} runs `nros configure` first (RFC-0120 D5)")
+            "nano-ros: ${_H_ROAD} runs `nros configure` first")
     else()
         set(_nros "${_H_CLI}")
     endif()
@@ -157,6 +174,15 @@ function(nros_configure_hook)
         return()
     endif()
     nros_configured_locate("${_project}" "${_images}")
+    # Ruling R38 -- every file the configure's digest covered is a dependency
+    # of THIS configure, so an edit to one (a launch file, a contract, a
+    # `.msg`) re-runs it and, through this hook, `nros configure`. The env
+    # inputs cannot be file dependencies; the next configure catches them.
+    get_property(_inputs GLOBAL PROPERTY NROS_CONFIGURED_INPUTS)
+    if(NOT "${_inputs}" STREQUAL "")
+        set_property(DIRECTORY "${CMAKE_SOURCE_DIR}" APPEND PROPERTY
+            CMAKE_CONFIGURE_DEPENDS ${_inputs})
+    endif()
     # Current only when locate published a CURRENT answer (Ruling R33):
     # configure just ran, but its stamp is what says so.
     get_property(_located_current GLOBAL PROPERTY NROS_CONFIGURED_LOCATED_CURRENT)
@@ -192,7 +218,7 @@ function(_nros_configure_hook_run _nros _project _image _road)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
             "nano-ros: `nros configure ${_what}` failed "
-            "(RFC-0120 D5: ${_road} runs it first):\n${_err}\n${_out}")
+            "(${_road} runs it before anything else):\n${_err}\n${_out}")
     endif()
     set(_said "configured")
     if(_out MATCHES "(^|\n)(configure: [^\n]*)")

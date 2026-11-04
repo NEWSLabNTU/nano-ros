@@ -657,6 +657,7 @@ mod tests {
             coordinate: None,
             covers: Vec::new(),
             resolved_dir: None,
+            inputs: Vec::new(),
         };
         configure_stamp::record(project, key, &stamp).unwrap();
     }

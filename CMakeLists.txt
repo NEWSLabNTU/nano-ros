@@ -10,14 +10,16 @@ nros_refuse_retired_names()
 # `add_subdirectory(<nano-ros>)` (no `find_package(nano_ros)`) is a hooked
 # CMake road too: `nros configure` runs for the CONSUMER's image (its
 # `system.toml` beside its top-level `CMakeLists.txt`) before any reader in
-# this tree. The image is `-DNROS_IMAGE`, else the consumer's
-# `default_images`. A no-op when `find_package(nano_ros)` or
+# this tree. The image is `-DNROS_CONFIGURED_IMAGE`, then `-DNROS_IMAGE`
+# (`nros_configure_hook_image`, the order `nano_ros_workspace()` uses too),
+# else the consumer's `default_images`. A no-op when `find_package(nano_ros)` or
 # `nano_ros_workspace()` already configured in this host configure, for a
 # guest consumer (no system.toml), and inside the census's host build.
 if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
    AND EXISTS "${CMAKE_SOURCE_DIR}/system.toml")
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosConfigureHook.cmake")
-    nros_configure_hook(DIR "${CMAKE_SOURCE_DIR}" IMAGE "${NROS_IMAGE}"
+    nros_configure_hook_image(_nros_consumer_image)
+    nros_configure_hook(DIR "${CMAKE_SOURCE_DIR}" IMAGE "${_nros_consumer_image}"
         ROAD "add_subdirectory(nano-ros)")
 endif()
 
