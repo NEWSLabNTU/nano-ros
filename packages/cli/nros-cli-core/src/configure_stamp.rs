@@ -157,6 +157,13 @@ pub(crate) struct Stamp {
     /// `NROS_RESOLVED_DIR`). `None` when the image resolved nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) resolved_dir: Option<PathBuf>,
+    /// phase-530 W5 (Ruling R38) -- the project-relative input FILES the
+    /// digest covered. `nros locate configured` hands them to the hooked host,
+    /// which makes each a configure dependency, so an edit to one re-runs the
+    /// host configure and with it `nros configure`. The env inputs cannot be
+    /// file dependencies; the next configure catches them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) inputs: Vec<PathBuf>,
 }
 
 /// Whether a recorded stamp still describes the project.
@@ -425,6 +432,15 @@ pub(crate) fn locate_resolved(project: &Path, image: &str) -> Result<(PathBuf, O
     Ok((dir, stamp.resolved_dir.filter(|d| d.is_dir())))
 }
 
+/// Ruling R38 -- the input files `image`'s stamp says its digest covered,
+/// absolute, for a hooked host to depend on. Empty when it recorded none.
+pub(crate) fn locate_inputs(project: &Path, image: &str) -> Result<Vec<PathBuf>> {
+    let key = stamp_key_for(project, image)?;
+    Ok(read(project, &key)
+        .map(|s| s.inputs.iter().map(|r| project.join(r)).collect())
+        .unwrap_or_default())
+}
+
 /// Ruling R33 -- whether `image`'s stamp is still CURRENT, by the same
 /// question `nros configure` asks before it skips (an unnamed image, every
 /// output flag at its default: the configure the Zephyr hook and `nros build`
@@ -675,6 +691,7 @@ pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
         coordinate: None,
         covers: Vec::new(),
         resolved_dir: None,
+        inputs: input_files(project),
     })
 }
 
@@ -921,6 +938,7 @@ mod tests {
             coordinate: None,
             covers: Vec::new(),
             resolved_dir: None,
+            inputs: Vec::new(),
         }
     }
 
@@ -1055,6 +1073,37 @@ mod tests {
         ));
     }
 
+    /// phase-530 W5 (Ruling R38) -- the stamp records the input FILES its
+    /// digest covered, and `nros locate configured` hands them (absolute) to
+    /// the hooked host, which makes each a configure dependency: an edit to a
+    /// launch file the digest read re-runs the host configure, whose hook
+    /// re-runs `nros configure`. A file the digest does not read is not one.
+    #[test]
+    fn the_stamp_records_the_files_it_digested() {
+        let p = tmp("stamp-inputs");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        std::fs::create_dir_all(p.join("launch")).unwrap();
+        std::fs::write(p.join("launch").join("talk.launch.xml"), "<launch/>\n").unwrap();
+        std::fs::create_dir_all(p.join("src")).unwrap();
+        std::fs::write(p.join("src").join("main.c"), "int main(void){}\n").unwrap();
+        let stamp = stamp_now(&p, &OutputFlags::defaults()).unwrap();
+        assert_eq!(
+            stamp.inputs,
+            vec![
+                PathBuf::from("launch/talk.launch.xml"),
+                PathBuf::from("system.toml")
+            ]
+        );
+        record(&p, "img", &stamp).unwrap();
+        assert_eq!(
+            locate_inputs(&p, "img").unwrap(),
+            vec![
+                p.join("launch").join("talk.launch.xml"),
+                p.join("system.toml")
+            ]
+        );
+    }
+
     /// phase-530 W4 -- the raw recorder document a census take leaves beside
     /// the census is not a census, so it never makes a stamp stale.
     #[test]
@@ -1185,6 +1234,7 @@ mod tests {
             coordinate: None,
             covers: Vec::new(),
             resolved_dir: None,
+            inputs: Vec::new(),
         };
         record(&p, "img", &stamp).unwrap();
         let at = |ament: Option<&str>, resolver: Option<&Path>| {

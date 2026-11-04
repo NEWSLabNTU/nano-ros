@@ -287,10 +287,9 @@ function(nano_ros_workspace)
     # none (hand-written) configures every image and locates none.
     # Under `nros build` it finds the stamp current and returns at once.
     if(_NRW_SYSTEM)
-        if(DEFINED NROS_CONFIGURED_IMAGE AND NOT "${NROS_CONFIGURED_IMAGE}" STREQUAL "")
-            set(_nrw_image_arg IMAGE "${NROS_CONFIGURED_IMAGE}")
-        elseif(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
-            set(_nrw_image_arg IMAGE "${NROS_IMAGE}")
+        nros_configure_hook_image(_nrw_image)
+        if(NOT "${_nrw_image}" STREQUAL "")
+            set(_nrw_image_arg IMAGE "${_nrw_image}")
         elseif(NOT "${_NRW_IMAGES}" STREQUAL "")
             set(_nrw_image_arg IMAGES ${_NRW_IMAGES})
         else()
