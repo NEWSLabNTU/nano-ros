@@ -31,6 +31,8 @@
 #                                   builds green with 0 re-runs, an added
 #                                   entity re-runs once and is read
 #   C2  the same under Makefiles    the digest-moving build fails (R40)
+#   H   NROS_LEAF_CENSUS_HOST       the census host build locates no configure
+#                                   seed (an unconfigured host sibling FATALed)
 #   R   REACH                       every census reader adds the step, and no
 #                                   reader depends on the census FILE (which
 #                                   re-ran on every re-take)
@@ -390,6 +392,27 @@ if [ "$RC" -eq 0 ] && [ "$FIRST_RC" -ne 0 ] \
 else
     fail "case C2: rc=$RC first=$FIRST_RC second=$SECOND_RC
 $FIRST"
+fi
+
+log_header "H. the census's host build reads no configure seed (it is the producer)"
+: > "$CALLS"
+HDIR="$TEST_TMPDIR/hostseed"
+mkdir -p "$HDIR"
+printf '%s\n' \
+    'cmake_minimum_required(VERSION 3.22)' \
+    'project(hostseed NONE)' \
+    "include(\"$PROJECT_ROOT/cmake/NanoRosResolved.cmake\")" \
+    'nros_resolved_dir(_d)' \
+    'message(STATUS "PROBE_DIR=[${_d}]")' > "$HDIR/CMakeLists.txt"
+RC=0
+OUT="$(NROS_LEAF_CENSUS_HOST=1 cmake -S "$HDIR" -B "$HDIR/build" \
+    -DNROS_CONFIGURED_PROJECT=/nonexistent -DNROS_CONFIGURED_IMAGE=b:linux 2>&1)" || RC=$?
+check
+if [ "$RC" -eq 0 ] && nros_grep_q 'PROBE_DIR=\[\]' <<<"$OUT" && ! nros_grep_q '^locate' <"$CALLS"; then
+    log_success "NROS_LEAF_CENSUS_HOST: no locate, no seed"
+else
+    fail "case H: rc=$RC calls: $(cat "$CALLS")
+$OUT"
 fi
 
 # ---------------------------------------------------------------------------

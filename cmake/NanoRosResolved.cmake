@@ -139,6 +139,14 @@ endfunction()
 # The directory `nros configure` resolved this image's answer into, or empty.
 # See the header: located by identity, once per configure.
 function(nros_resolved_dir _out_var)
+    # The census's own host build is the PRODUCER (RFC-0120 D4): it reads no
+    # seed. Its cmake line carries the host sibling's identity, an image no
+    # configure ran, so locating it FATALed every workspace census take
+    # (phase-530 W6).
+    if(NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
+        set(${_out_var} "" PARENT_SCOPE)
+        return()
+    endif()
     get_property(_located GLOBAL PROPERTY NROS_CONFIGURED_LOCATED)
     if(NOT _located
        AND DEFINED NROS_CONFIGURED_PROJECT AND NOT "${NROS_CONFIGURED_PROJECT}" STREQUAL ""
