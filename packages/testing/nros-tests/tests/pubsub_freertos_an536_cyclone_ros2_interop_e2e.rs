@@ -29,7 +29,7 @@
 //!
 //! [`nros_freertos_an536_cyclone_listener_keeps_receiving_a_fragmented_sample`]
 //! turns the crossing around: the same bringup's second image is a LISTENER,
-//! and the host publishes a `std_msgs/String` of [`BULK_LEN`] bytes, which
+//! and the host publishes an `example_interfaces/String` of [`BULK_LEN`] bytes, which
 //! Cyclone sends as eight `DATA_FRAG`s — the island trajectory's shape. Issue
 //! 0917 found exactly this failing on RECEIVE: the burst lands in the emulated
 //! LAN9118's 10.5 KB RX FIFO faster than a 5 ms polled drain empties it, and a
@@ -93,11 +93,12 @@ fn pair() -> CycloneSlirpPair {
     CycloneSlirpPair::new(u32::from(DOMAIN), TAG)
 }
 
-/// The counter values a `ros2 topic echo` of `std_msgs/msg/Int32` printed.
+/// The counter values a `ros2 topic echo` of `std_msgs/msg/String` printed:
+/// the `N` of each `data: 'Hello World: N'` (the tutorial talker, phase-535).
 fn received_values(echo: &str) -> Vec<i64> {
     echo.lines()
         .filter_map(|l| l.trim().strip_prefix("data:"))
-        .filter_map(|v| v.trim().parse().ok())
+        .filter_map(|v| nros_tests::output::parse_hello_world_n(v.trim()))
         .collect()
 }
 
@@ -137,7 +138,7 @@ fn nros_freertos_an536_cyclone_publisher_stays_reachable_from_ros2() {
 
     let mut echo_cmd = Command::new("bash");
     echo_cmd.args(["-c"]).arg(format!(
-        "{} && exec ros2 topic echo --no-daemon /chatter std_msgs/msg/Int32 < /dev/null",
+        "{} && exec ros2 topic echo --no-daemon /chatter std_msgs/msg/String < /dev/null",
         ros2_env_setup_cyclonedds_with_profile(
             DEFAULT_ROS_DISTRO,
             pair.domain,
@@ -180,10 +181,10 @@ fn nros_freertos_an536_cyclone_publisher_stays_reachable_from_ros2() {
 }
 
 /// The fragmented sample's `data` length: with Cyclone's 1344-byte fragment
-/// payload, a serialized `std_msgs/String` of this size is EIGHT fragments
+/// payload, a serialized `example_interfaces/String` of this size is EIGHT fragments
 /// (7 x 1344 = 9408 < 10 584 <= 10 752), the 120-point trajectory issue 0917
 /// was measured with. Within `examples/workspaces/cpp/nros-codegen.toml`'s
-/// 16384-byte bound.
+/// 16384-byte bound for `example_interfaces/String`.
 const BULK_LEN: usize = 10_576;
 
 /// The host publisher's rate, the trajectory's.
@@ -195,7 +196,7 @@ fn bulk_publisher_script() -> String {
     format!(
         "import rclpy, time\n\
          from rclpy.node import Node\n\
-         from std_msgs.msg import String\n\
+         from example_interfaces.msg import String\n\
          rclpy.init()\n\
          n = Node('nros_441_w6_bulk_pub')\n\
          p = n.create_publisher(String, '/bulk', 10)\n\

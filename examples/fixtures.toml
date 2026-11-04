@@ -629,10 +629,13 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 serves = [
     "freertos,c,zenoh",
+    "freertos,cpp,zenoh",
     "nuttx,c,zenoh",
     "threadx-linux,c,zenoh",
+    "threadx-linux,cpp,zenoh",
     "threadx-riscv64,c,zenoh",
     "zephyr,c,zenoh",
+    "zephyr,cpp,zenoh",
 ]
 
 # phase-263 B6 (custom-msg, C) — the workspace-local custom-message cross-process demo
@@ -1787,11 +1790,12 @@ dir = "packages/testing/nros-tests/bins/advertised-state-probe"
 # std_msgs/String chatter, so the Int32 side-topic observer role moved here).
 # Consumed by the service/action/param/safety/realtime e2e tests.
 #
-# phase-535: also the `/chatter` observer of `entry_e2e`'s C++ and mixed RTOS
-# `EntryPubsub` cells, whose talkers still publish Int32 while the C listener
-# observer carries the tutorial String. `serves` names those cells, and
-# `entry_e2e`'s `int32_sink_observer_serves_every_cell_that_uses_it` keeps it
-# equal to the set of cells that spawn it.
+# phase-535: also the `/chatter` observer of `entry_e2e`'s mixed RTOS
+# `EntryPubsub` cells, whose talkers publish Int32 (the mixed workspace keeps
+# its own packages) while the C listener observer carries the tutorial String.
+# `serves` names those cells, and `entry_e2e`'s
+# `int32_sink_observer_serves_every_cell_that_uses_it` keeps it equal to the
+# set of cells that spawn it.
 [[fixture]]
 id = "int32-sink-zenoh"
 platform = "linux"
@@ -1799,11 +1803,8 @@ lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/int32-sink"
 serves = [
-    "freertos,cpp,zenoh",
     "freertos,mixed,zenoh",
-    "threadx-linux,cpp,zenoh",
     "threadx-linux,mixed,zenoh",
-    "zephyr,cpp,zenoh",
     "zephyr,mixed,zenoh",
 ]
 

@@ -5633,8 +5633,8 @@ pub fn build_zephyr_workspace_c_entry() -> TestResult<PathBuf> {
     )
 }
 
-/// phase-263 C2c — the Zephyr (native_sim) C++ WORKSPACE embedded entry (talker + listener,
-/// typed `std_msgs::msg::Int32`), built by the west lane into
+/// phase-263 C2c — the Zephyr (native_sim) C++ WORKSPACE embedded entry (the tutorial talker +
+/// listener, typed `std_msgs::msg::String` since phase-535), built by the west lane into
 /// `<zephyr-build-root>/build-ws-cpp-entry-zenoh/zephyr/zephyr.exe`. Consumed by
 /// `tests/entry_e2e.rs` (zephyr_cpp cell).
 pub fn build_zephyr_workspace_cpp_entry() -> TestResult<PathBuf> {

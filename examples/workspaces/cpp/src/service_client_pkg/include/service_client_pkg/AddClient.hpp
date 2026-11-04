@@ -8,24 +8,26 @@
 
 namespace service_client_pkg {
 
-/// AddClient — A1 services (C++ projection). A typed component whose 1 Hz timer drives the
-/// POLL-model service client (`create_service_client_raw` + the raw send/try-recv FFI — a
-/// component callback must never block, so there is no blocking call): send a request, poll for
-/// its reply next tick, on success PRINT the server-computed sum. `a` runs 0,1,2,… with `b = 1`,
-/// so the sums are 1,2,3,…; the printed sums ARE the cross-process round-trip proof.
+/// AddClient — the ROS 2 tutorial service client (demo_nodes_cpp `add_two_ints_client`) as a
+/// typed component: ONE request, a = 2 and b = 3, and one line, `Result of add_two_ints: 5`.
+/// phase-535 made this the ONE C++ client: the standalone example pairs and the workspace images
+/// run the same program (RFC-0122 D1, option B).
 ///
-/// NOTE (vs the C ~~`c_add_client_pkg`~~, which also republished on `/sum`): this C++ client does
-/// NOT republish, because a single C++ node linking TWO generated typed-interface archives
-/// (std_msgs for /sum + example_interfaces for the service) double-defines the shared
-/// builtin_interfaces FFI glue at link — a codegen-dedup gap (the C path hand-rolls raw CDR, so
-/// it dodges it). Print-only keeps the demo to one interface pkg; the round-trip is still proven.
+/// A component callback must never block the executor, so the call is not the tutorial's
+/// blocking one: a 500 ms timer drives the POLL-model client (`create_service_client_raw` + the
+/// raw send/take FFI), sending the request and polling for its reply. A wait counter re-sends if
+/// a reply never arrives (the first request can be dropped before the server is discovered).
+/// After the reply the timer only idles.
 class AddClient {
     using Svc = example_interfaces::srv::AddTwoInts;
 
     ::rclcpp::ServiceClientStorage client_;
     ::rclcpp::Timer timer_;
-    int64_t a_ = 0;
+    /// The tutorial's request: 2 + 3.
+    static constexpr int64_t kA = 2;
+    static constexpr int64_t kB = 3;
     bool in_flight_ = false;
+    bool done_ = false; ///< the reply arrived and was printed
     int waits_ = 0;
     /// The id of the request in flight; a reply naming another is stale (issue 2033).
     int64_t seq_ = NROS_CPP_SEQUENCE_ID_UNKNOWN;

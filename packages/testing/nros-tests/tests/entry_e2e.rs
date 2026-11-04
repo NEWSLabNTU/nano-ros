@@ -14,12 +14,12 @@
 //! - **EntryPubsub** (phase-263 C2a–C2d): the image's `demo_bringup` talker
 //!   delivers `/chatter` CROSS-PROCESS (issue 0096 — an entry's own listener
 //!   can't observe its in-image talker) to a SEPARATE native listener
-//!   through a host zenohd on the baked port. The C cells observe via the
-//!   C `linux_robot2_entry` listener entry, the tutorial `std_msgs/String`
-//!   listener (`I heard:`); the C++ and mixed cells, whose talkers still
-//!   publish Int32 until phase-535 unifies them, via the `int32-sink`
-//!   (`Received:`); the rust nuttx cell (#130) keeps its native Rust
-//!   String listener (`I heard:`).
+//!   through a host zenohd on the baked port. The C and C++ cells observe via
+//!   the C `linux_robot2_entry` listener entry, the tutorial `std_msgs/String`
+//!   listener (`I heard:`); the mixed cells, whose talkers publish Int32
+//!   (the mixed workspace keeps its own packages, phase-535), via the
+//!   `int32-sink` (`Received:`); the rust nuttx cell (#130) keeps its native
+//!   Rust String listener (`I heard:`).
 //! - **Params** (phase-276 W1 / #128): the zephyr `ws-params-rust` entry
 //!   LIVE-reads its launch-baked `publish_period_ms` initial (250) in the
 //!   node callback and publishes it — the `int32-sink` must see
@@ -119,10 +119,9 @@ enum Proof {
         observer_spin_ms: u32,
         window_secs: u64,
     },
-    /// EntryPubsub of an image whose talker still publishes `std_msgs/Int32`
-    /// (the C++ and mixed workspaces, until phase-535 unifies them on the
-    /// tutorial shape): the `int32-sink` on `/chatter` must log ≥3
-    /// `Received:` lines.
+    /// EntryPubsub of an image whose talker publishes `std_msgs/Int32` (the
+    /// mixed workspace, which keeps its own demo packages): the `int32-sink`
+    /// on `/chatter` must log ≥3 `Received:` lines.
     ChatterToInt32Sink { window_secs: u64 },
     /// EntryPubsub via the native Rust String listener (#130 rust nuttx
     /// cell): ≥3 `I heard:` lines.
@@ -196,13 +195,13 @@ fn proof_for(platform: MP, lang: ML, workload: MW) -> Proof {
     let int32_sink = |window_secs: u64| Proof::ChatterToInt32Sink { window_secs };
     match (platform, lang, workload) {
         (MP::ThreadxLinux, ML::C, MW::EntryPubsub) => chatter_c(15000, 20),
-        (MP::ThreadxLinux, ML::Cpp, MW::EntryPubsub) => int32_sink(20),
+        (MP::ThreadxLinux, ML::Cpp, MW::EntryPubsub) => chatter_c(15000, 20),
         (MP::ThreadxLinux, ML::Mixed, MW::EntryPubsub) => int32_sink(20),
         (MP::FreertosMps2, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
-        (MP::FreertosMps2, ML::Cpp, MW::EntryPubsub) => int32_sink(90),
+        (MP::FreertosMps2, ML::Cpp, MW::EntryPubsub) => chatter_c(60000, 90),
         (MP::FreertosMps2, ML::Mixed, MW::EntryPubsub) => int32_sink(90),
         (MP::ZephyrNativeSim, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
-        (MP::ZephyrNativeSim, ML::Cpp, MW::EntryPubsub) => int32_sink(90),
+        (MP::ZephyrNativeSim, ML::Cpp, MW::EntryPubsub) => chatter_c(60000, 90),
         (MP::ZephyrNativeSim, ML::Mixed, MW::EntryPubsub) => int32_sink(90),
         (MP::NuttxArm, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
         (MP::ThreadxRiscv64, ML::C, MW::EntryPubsub) => chatter_c(60000, 90),
@@ -967,8 +966,8 @@ fn c_listener_observer_serves_every_cell_that_uses_it() {
     });
 }
 
-/// The same rule for the `int32-sink` observer of the C++ and mixed
-/// `EntryPubsub` cells (phase-535: their talkers still publish Int32).
+/// The same rule for the `int32-sink` observer of the mixed `EntryPubsub`
+/// cells (their talkers publish Int32; phase-535 kept the mixed packages).
 #[test]
 fn int32_sink_observer_serves_every_cell_that_uses_it() {
     assert_observer_serves_its_cells("int32-sink-zenoh", |p| {

@@ -1,5 +1,5 @@
-// Listener — typed component (RFC-0043). Typed member callback on the generated
-// `std_msgs::msg::Int32` (issue #218).
+// Listener — the ROS 2 tutorial listener as a typed component (RFC-0043). Typed member
+// callback on the generated `std_msgs::msg::String` (issue #218).
 
 #include "listener_pkg/Listener.hpp"
 
@@ -7,9 +7,9 @@
 
 namespace listener_pkg {
 
-void Listener::on_msg(const ::std_msgs::msg::Int32& msg) {
-    std::printf("Received: %d\n", static_cast<int>(msg.data));
+void Listener::on_msg(const ::std_msgs::msg::String& msg) {
     ++recv_;
+    std::printf("I heard: [%s]\n", msg.data.c_str());
 }
 
 ::rclcpp::Result Listener::configure(::rclcpp::Node& node) {
@@ -22,12 +22,19 @@ void Listener::on_msg(const ::std_msgs::msg::Int32& msg) {
     // ever disagree -- depth, reliability or durability -- the assertion below
     // fails to COMPILE, naming the topic and both values (issue 1564).
     constexpr ::rclcpp::QoS kChatterQos = ::rclcpp::QoS(1);
-    NROS_ASSERT_DECLARED_QOS(::std_msgs::msg::Int32::TYPE_NAME, "/chatter", kChatterQos,
+    NROS_ASSERT_DECLARED_QOS(::std_msgs::msg::String::TYPE_NAME, "/chatter", kChatterQos,
                              "\"/chatter\"");
     // Typed member binding (RFC-0044): keyexpr + deserialize come from the
-    // generated `std_msgs::msg::Int32` (issue #218 — hand-decode retired).
-    return ::rclcpp::bind_subscription<::std_msgs::msg::Int32, Listener, &Listener::on_msg>(
-        node, "/chatter", this, kChatterQos);
+    // generated `std_msgs::msg::String` (issue #218 — hand-decode retired).
+    ::rclcpp::Result r =
+        ::rclcpp::bind_subscription<::std_msgs::msg::String, Listener, &Listener::on_msg>(
+            node, "/chatter", this, kChatterQos);
+    if (r.ok()) {
+        // The readiness marker the test matrix waits on
+        // (`nros_tests::output::LISTENER_READY_MARKER`), as every tutorial listener prints it.
+        std::printf("Subscriber created for topic: %s\n", "/chatter");
+    }
+    return r;
 }
 
 } // namespace listener_pkg

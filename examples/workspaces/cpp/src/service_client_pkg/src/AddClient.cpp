@@ -1,5 +1,5 @@
-// AddClient — typed, poll-model AddTwoInts service client. The C++ projection of the Rust
-// service_client_pkg / the C c_add_client_pkg.
+// AddClient — typed, poll-model AddTwoInts service client: the ROS 2 tutorial client, one
+// request (2 + 3) and one line, `Result of add_two_ints: 5`.
 
 #include "service_client_pkg/AddClient.hpp"
 
@@ -10,6 +10,10 @@
 namespace service_client_pkg {
 
 void AddClient::on_tick() {
+    if (done_) {
+        return;
+    }
+
     if (in_flight_) {
         uint8_t resp[64];
         size_t rlen = 0;
@@ -25,7 +29,9 @@ void AddClient::on_tick() {
             Svc::Response r;
             if (Svc::Response::ffi_deserialize(resp, rlen, &r) == 0) {
                 in_flight_ = false;
-                std::printf("[service_client_pkg] sum: %lld\n", static_cast<long long>(r.sum));
+                done_ = true;
+                std::printf("Result of add_two_ints: %lld\n", static_cast<long long>(r.sum));
+                return;
             }
         } else if (++waits_ > 6) {
             // No reply (request dropped before discovery) — resend.
@@ -35,8 +41,8 @@ void AddClient::on_tick() {
 
     if (!in_flight_) {
         Svc::Request req;
-        req.a = a_;
-        req.b = 1;
+        req.a = kA;
+        req.b = kB;
         uint8_t buf[64];
         size_t written = 0;
         if (Svc::Request::ffi_serialize(&req, buf, sizeof(buf), &written) == 0 &&
@@ -44,7 +50,6 @@ void AddClient::on_tick() {
             in_flight_ = true;
             waits_ = 0;
         }
-        a_++;
     }
 }
 

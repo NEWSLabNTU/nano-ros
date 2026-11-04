@@ -6,7 +6,7 @@
 
 namespace bulk_listener_pkg {
 
-void BulkListener::on_msg(const ::std_msgs::msg::String& msg) {
+void BulkListener::on_msg(const ::example_interfaces::msg::String& msg) {
     ++recv_;
     // The leading decimal digits, up to the `:` the publisher puts after the
     // number. Parsed by hand, not with `strtoul`: under the FreeRTOS
@@ -28,7 +28,7 @@ void BulkListener::on_msg(const ::std_msgs::msg::String& msg) {
     // the path issue 0917 found stalling; depth 1 is enough for a 10 Hz
     // publisher whose every sample is printed on arrival.
     constexpr ::rclcpp::QoS kBulkQos = ::rclcpp::QoS(1);
-    return ::rclcpp::bind_subscription<::std_msgs::msg::String, BulkListener,
+    return ::rclcpp::bind_subscription<::example_interfaces::msg::String, BulkListener,
                                        &BulkListener::on_msg>(node, "/bulk", this, kBulkQos);
 }
 

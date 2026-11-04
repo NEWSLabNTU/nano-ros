@@ -1,5 +1,6 @@
-// AddServer — typed AddTwoInts service handler bound by identity (no CDR by hand). The C++
-// projection of the Rust service_server_pkg / the C c_add_server_pkg.
+// AddServer — typed AddTwoInts service handler bound by identity (no CDR by hand). The ROS 2
+// tutorial `add_two_ints_server`: prints `Incoming request` and the operands for each call.
+// phase-535 made this the ONE C++ server (RFC-0122 D1, option B).
 
 #include "service_server_pkg/AddServer.hpp"
 
@@ -11,8 +12,8 @@ example_interfaces::srv::AddTwoInts::Response
 AddServer::on_request(const example_interfaces::srv::AddTwoInts::Request& req) {
     example_interfaces::srv::AddTwoInts::Response resp;
     resp.sum = req.a + req.b;
-    std::printf("[service_server_pkg] %lld + %lld = %lld\n", static_cast<long long>(req.a),
-                static_cast<long long>(req.b), static_cast<long long>(resp.sum));
+    std::printf("Incoming request\na: %lld b: %lld\n", static_cast<long long>(req.a),
+                static_cast<long long>(req.b));
     return resp;
 }
 
@@ -22,7 +23,7 @@ AddServer::on_request(const example_interfaces::srv::AddTwoInts::Request& req) {
     ::rclcpp::Result r =
         ::rclcpp::bind_service<Svc, AddServer, &AddServer::on_request>(node, "/add_two_ints", this);
     if (r.ok()) {
-        std::printf("[service_server_pkg] add_two_ints server ready\n");
+        std::printf("Waiting for service requests\n");
     }
     return r;
 }

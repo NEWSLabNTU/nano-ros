@@ -1,5 +1,6 @@
-// FibClient — typed, poll-model Fibonacci action client. The C++ projection of the Rust
-// action_client_pkg / the C c_fib_client_pkg.
+// FibClient — typed, poll-model Fibonacci action client printing the ROS 2 tutorial client's
+// lines: one `Next number in sequence received: [...]` per feedback sample, then
+// `Result received: [...]`. phase-535 made this the ONE C++ client (RFC-0122 option B).
 
 #include "action_client_pkg/FibClient.hpp"
 
@@ -15,14 +16,27 @@ void FibClient::on_goal_response(bool accepted, const uint8_t goal_id[16]) {
         std::memcpy(goal_id_, goal_id, 16);
         phase_ = NeedResult;
         waits_ = 0;
-        std::printf("[action_client_pkg] goal accepted\n");
+        std::printf("Goal accepted by server, waiting for result\n");
     } else {
         phase_ = Idle;
     }
 }
 
-/// Result callback (fired from poll()): deserialize the Fibonacci sequence and print its last
-/// element — the cross-process round-trip proof.
+/// Feedback callback (fired from poll()): print the sequence so far.
+void FibClient::on_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len) {
+    (void)goal_id;
+    Action::Feedback fb;
+    if (data && len > 0 && Action::Feedback::ffi_deserialize(data, len, &fb) == 0) {
+        std::printf("Next number in sequence received: [");
+        for (uint32_t i = 0; i < fb.sequence.length(); i++) {
+            std::printf(i > 0 ? ", %d" : "%d", fb.sequence[i]);
+        }
+        std::printf("]\n");
+    }
+}
+
+/// Result callback (fired from poll()): deserialize the Fibonacci sequence and print it — the
+/// cross-process round-trip proof.
 void FibClient::on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data,
                           size_t len) {
     (void)goal_id;
@@ -30,13 +44,11 @@ void FibClient::on_result(const uint8_t goal_id[16], int32_t status, const uint8
     Action::Result result;
     if (data && len > 0 && Action::Result::ffi_deserialize(data, len, &result) == 0 &&
         result.sequence.length() > 0) {
-        std::printf("[action_client_pkg] result seq=[");
+        std::printf("Result received: [");
         for (uint32_t i = 0; i < result.sequence.length(); i++) {
             std::printf(i > 0 ? ", %d" : "%d", result.sequence[i]);
         }
         std::printf("]\n");
-        std::printf("[action_client_pkg] result last=%d\n",
-                    result.sequence[result.sequence.length() - 1]);
         phase_ = Done;
     }
 }
@@ -45,12 +57,18 @@ void FibClient::s_goal_response(bool accepted, const uint8_t goal_id[16], void* 
     static_cast<FibClient*>(ctx)->on_goal_response(accepted, goal_id);
 }
 
+void FibClient::s_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) {
+    static_cast<FibClient*>(ctx)->on_feedback(goal_id, data, len);
+}
+
 void FibClient::s_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data, size_t len,
                          void* ctx) {
     static_cast<FibClient*>(ctx)->on_result(goal_id, status, data, len);
 }
 
 void FibClient::send_goal() {
+    std::printf("%s\n",
+                sends_++ == 0 ? "Sending goal" : "No goal response; sending the goal again");
     Action::Goal goal;
     goal.order = 10;
     uint8_t buf[Action::Goal::SERIALIZED_SIZE_MAX];
@@ -104,7 +122,7 @@ void FibClient::on_tick() {
     }
     nros_cpp_ret_t ret =
         nros_cpp_action_client_set_callbacks(client_.bytes, &FibClient::s_goal_response,
-                                             /*feedback=*/nullptr, &FibClient::s_result, this);
+                                             &FibClient::s_feedback, &FibClient::s_result, this);
     if (ret != 0) {
         return ::rclcpp::Result(ret);
     }

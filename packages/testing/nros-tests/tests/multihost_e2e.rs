@@ -94,9 +94,11 @@ enum Proof {
 /// publishing.
 #[derive(Copy, Clone, Debug)]
 enum Robot2Ready {
-    /// The C workspace listener prints a ready marker.
+    /// The C and C++ workspace listeners (the tutorial listener, phase-535)
+    /// print `LISTENER_READY_MARKER` once subscribed.
     Marker,
-    /// The C++ listener prints no ready marker — settle on a fixed delay.
+    /// The mixed workspace's C++ listener prints no ready marker — settle on a
+    /// fixed delay.
     SettleMs(u64),
     /// Rust hosted-spin cells just start robot2 first (its spin budget
     /// absorbs the discovery window).
@@ -157,11 +159,11 @@ fn exec_for(platform: MP, lang: ML) -> Exec {
             port: None,
             boot: Boot::Native,
             proof: Proof::ListenerCount3 {
-                prefix: nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+                prefix: nros_tests::output::LISTENER_LOG_PREFIX,
             },
-            ready: Robot2Ready::SettleMs(1500),
-            note: "phase-263 Track C: C++ per-host entries; the C++ listener prints no ready \
-                   marker (only `Received:`), hence the settle delay",
+            ready: Robot2Ready::Marker,
+            note: "phase-263 Track C: C++ per-host entries running the tutorial talker and \
+                   listener (phase-535)",
         },
         (MP::Linux, ML::Mixed) => Exec {
             robot1: || build_native_workspace_mixed_entry_robot1().map(|p| p.to_path_buf()),
@@ -341,7 +343,7 @@ fn run_cell(pcell: &MCell) {
     match cell.ready {
         Robot2Ready::Marker => {
             r2.wait_for_output_pattern(
-                nros_tests::output::LISTENER_WAITING_BANNER,
+                nros_tests::output::LISTENER_READY_MARKER,
                 Duration::from_secs(10),
             )
             .unwrap_or_else(|_| {

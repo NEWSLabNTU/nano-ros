@@ -433,7 +433,7 @@ pub const HOSTED_SPIN_MESSAGE_CALLBACKS_KEY: &str = "message_callbacks=";
 /// `serial-listener` all print it, so it has exactly one spelling here. (It
 /// was `LISTENER_WAITING_BANNER` until issue 0480 converted the non-workspace
 /// sites and the workspace-only name stopped being true.) The C++ workspace
-/// listener prints NO ready marker — its observers settle on a fixed delay.
+/// listener prints [`LISTENER_READY_MARKER`] since phase-535.
 ///
 /// Prefer the role's own marker where one exists ([`LISTENER_READY_MARKER`],
 /// [`INT32_SINK_READY_MARKER`], …): this banner is printed LAST, so keying on
@@ -441,21 +441,23 @@ pub const HOSTED_SPIN_MESSAGE_CALLBACKS_KEY: &str = "message_callbacks=";
 /// line the binary prints, or when a test deliberately wants the last marker.
 pub const LISTENER_WAITING_BANNER: &str = "Waiting for messages";
 
-/// Readiness marker of the C/C++ workspace service + action SERVER
-/// components (`"server ready"`).
+/// Readiness marker of the mixed workspace's service + action SERVER
+/// components (`"server ready"`). The C and C++ workspaces run the tutorial
+/// servers since phase-535 and print [`SERVICE_SERVER_READY_MARKER`] /
+/// [`ACTION_SERVER_READY_MARKER`].
 pub const WS_SERVER_READY_MARKER: &str = "server ready";
 
-/// Per-reply prefix of the C/C++ workspace service CLIENT component
+/// Per-reply prefix of the mixed workspace's service CLIENT component
 /// (`"sum: N"` for each server-computed AddTwoInts reply).
 pub const WS_SERVICE_CLIENT_SUM_PREFIX: &str = "sum:";
 
-/// The exact C/C++ workspace service-client reply line for `sum`
+/// The exact mixed-workspace service-client reply line for `sum`
 /// (`"sum: N"`).
 pub fn ws_service_client_sum_line(sum: impl std::fmt::Display) -> String {
     format!("{WS_SERVICE_CLIENT_SUM_PREFIX} {sum}")
 }
 
-/// The C/C++ workspace action CLIENT result line for the last sequence
+/// The mixed workspace's action CLIENT result line for the last sequence
 /// element (`"result last=N"` — 55 for a Fibonacci goal of order 10).
 pub fn ws_action_result_last_line(n: impl std::fmt::Display) -> String {
     format!("result last={n}")
@@ -923,9 +925,10 @@ pub fn listener_line(n: impl std::fmt::Display) -> String {
 }
 
 /// Extract the sequence number from a chatter payload, i.e. the `N` out of
-/// `'Hello World: N'` (talker) or `[Hello World: N]` (listener). Returns
-/// `None` when the payload doesn't have the official demo shape.
-fn parse_hello_world_n(rest: &str) -> Option<i64> {
+/// `'Hello World: N'` (talker, and `ros2 topic echo`'s `data:` value) or
+/// `[Hello World: N]` (listener). Returns `None` when the payload doesn't have
+/// the official demo shape.
+pub fn parse_hello_world_n(rest: &str) -> Option<i64> {
     let inner = rest
         .strip_prefix('\'')
         .and_then(|s| s.strip_suffix('\''))

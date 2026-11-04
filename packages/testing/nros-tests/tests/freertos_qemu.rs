@@ -145,7 +145,9 @@ fn an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default() {
     let cmdline = qemu.command_line().to_string();
     qemu.kill();
 
-    let listener = nros_tests::output::INT32_LISTENER_LOG_PREFIX;
+    // The workspace listener is the tutorial `std_msgs/String` listener
+    // (phase-535, RFC-0122 option B).
+    let listener = nros_tests::output::LISTENER_LOG_PREFIX;
     let received = output.matches(listener).count();
     assert!(
         received >= 3,
