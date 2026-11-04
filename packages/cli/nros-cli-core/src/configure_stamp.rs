@@ -15,7 +15,7 @@ use walkdir::WalkDir;
 
 use crate::{
     atomic_file::atomic_write,
-    cmd::entity_census::{CENSUS_DIR, Freshness, census_freshness},
+    cmd::entity_census::{CENSUS_DIR, Freshness, census_entities_digest, census_freshness},
     orchestration::metadata_refresh::stale_sidecar_components,
 };
 
@@ -119,6 +119,13 @@ pub(crate) struct Stamp {
     /// file dependencies; the next configure catches them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) inputs: Vec<PathBuf>,
+    /// phase-530 W6 (RFC-0120 D7) — what each recorded census SAID when this
+    /// configure ran: its path under the project, and its entities digest
+    /// (`entity_census::census_entities_digest`). The census build step
+    /// re-takes a census during a build, so freshness alone would call the
+    /// stamp current over knobs derived from the old entities.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub(crate) censuses: std::collections::BTreeMap<String, String>,
 }
 
 /// Whether a recorded stamp still describes the project.
@@ -420,6 +427,30 @@ fn recorded_censuses(project: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// phase-530 W6 — every recorded census's entities digest, keyed by its
+/// path under the project. A census that cannot be read digests as
+/// `unreadable`, which no real digest equals.
+pub(crate) fn census_digests(project: &Path) -> std::collections::BTreeMap<String, String> {
+    recorded_censuses(project)
+        .into_iter()
+        .map(|path| {
+            let digest = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+                .map_or_else(
+                    || "unreadable".to_string(),
+                    |doc| census_entities_digest(&doc),
+                );
+            let key = path
+                .strip_prefix(project)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
+            (key, digest)
+        })
+        .collect()
+}
+
 /// `model_gate`'s refused-resolve markers under `build/nros/models` and,
 /// when one is set, the models dir configure wrote into instead
 /// (`--model-dir`, else `NROS_MODEL_DIR`). A models dir holds a model per
@@ -566,6 +597,7 @@ pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
         skipped: None,
         resolved_dir: None,
         inputs: input_files(project),
+        censuses: census_digests(project),
     })
 }
 
@@ -678,6 +710,26 @@ pub(crate) fn currency(
             }
         }
     }
+    // phase-530 W6 — a FRESH census that counts other entities than the
+    // ones this configure derived from (the census build step re-took it).
+    let now = census_digests(project);
+    if stamp.censuses != now {
+        let moved = now
+            .iter()
+            .find(|(k, v)| stamp.censuses.get(*k) != Some(*v))
+            .map(|(k, _)| k.clone())
+            .or_else(|| {
+                stamp
+                    .censuses
+                    .keys()
+                    .find(|k| !now.contains_key(*k))
+                    .cloned()
+            })
+            .unwrap_or_default();
+        return Ok(Currency::Stale(format!(
+            "entity census `{moved}` counts other entities than this configure read"
+        )));
+    }
     // Ruling R19 — LAST, as the only check that consults the toolchain: a
     // skip stamp is current only while the image's preflight still refuses.
     // Toolchain presence is no digest input, so without this a skipped image
@@ -721,6 +773,7 @@ mod tests {
             skipped: None,
             resolved_dir: None,
             inputs: Vec::new(),
+            censuses: census_digests(project),
         }
     }
 
@@ -1131,6 +1184,35 @@ mod tests {
         match is_current_with(&p, "img", &real_env(), None).unwrap() {
             Currency::Stale(why) => assert!(why.contains("entity census"), "{why}"),
             Currency::Current => panic!("a moved census input must stale the stamp"),
+        }
+    }
+
+    /// phase-530 W6 (RFC-0120 D7) -- the census build step re-takes a census
+    /// during a BUILD, so the census is fresh again by the time the hook's
+    /// configure asks. Freshness alone would then call the stamp current over
+    /// knobs derived from the OLD entities; the stamp records what the census
+    /// SAID, and a census that now says something else is stale. A re-take
+    /// that says the same thing (a body edit) is not.
+    #[test]
+    fn stale_when_a_fresh_census_counts_other_entities() {
+        let p = tmp("census-entities");
+        let path = census_fixture(&p);
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        let mut doc: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        // A body edit: the re-take records another binary, the same entities.
+        doc["provenance"]["tool"] = serde_json::json!("nros-cli later");
+        std::fs::write(&path, doc.to_string()).unwrap();
+        assert_eq!(
+            is_current_with(&p, "img", &real_env(), None).unwrap(),
+            Currency::Current,
+            "a re-take with the same entities staled the stamp"
+        );
+        doc["census"]["nodes"] = serde_json::json!([{ "id": "n", "publishers": [{ "id": "/a" }] }]);
+        std::fs::write(&path, doc.to_string()).unwrap();
+        match is_current_with(&p, "img", &real_env(), None).unwrap() {
+            Currency::Stale(why) => assert!(why.contains("entity census"), "{why}"),
+            Currency::Current => panic!("a census counting a new publisher left the stamp current"),
         }
     }
 

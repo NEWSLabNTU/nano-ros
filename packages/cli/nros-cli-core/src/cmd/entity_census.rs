@@ -243,6 +243,12 @@ pub struct PathArgs {
     // Issue 1556.
     #[arg(long, value_name = "DIR")]
     pub leaf: Option<PathBuf>,
+
+    /// Print the census's DIGEST file instead (phase-530 W6): what a host
+    /// configure that read the census depends on, and what the census build
+    /// step refreshes, write-if-changed.
+    #[arg(long)]
+    pub digest: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -378,10 +384,15 @@ pub fn run(args: EntityCensusArgs) -> Result<()> {
         Sub::Run(a) => run_census(a),
         Sub::Check(a) => check_census(a),
         Sub::Path(a) => {
-            match (&a.model, &a.leaf) {
-                (Some(model), _) => println!("{}", census_path_for_model(model).display()),
-                (None, Some(leaf)) => println!("{}", leaf_census_path(leaf).display()),
+            let census = match (&a.model, &a.leaf) {
+                (Some(model), _) => census_path_for_model(model),
+                (None, Some(leaf)) => leaf_census_path(leaf),
                 (None, None) => bail!("`path` needs --model <PATH> or --leaf <DIR>"),
+            };
+            if a.digest {
+                println!("{}", census_digest_path(&census).display());
+            } else {
+                println!("{}", census.display());
             }
             Ok(())
         }
@@ -549,6 +560,7 @@ fn take_census(args: TakeArgs) -> Result<()> {
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
             .is_some_and(|c| incomplete_reason(&c).is_none());
         if complete {
+            write_census_digest(&census_path)?;
             println!(
                 "entity-census take {asked_q}: fresh -> {}",
                 census_path.display()
@@ -722,6 +734,76 @@ pub(crate) fn leaf_census_path(leaf: &Path) -> PathBuf {
         .join("nros")
         .join("census")
         .join("leaf.census.json")
+}
+
+/// phase-530 W6 (RFC-0120 D7) -- where a census's DIGEST lives: beside the
+/// census (`leaf.census.json` -> `leaf.census.digest`). It is what a host
+/// configure that read the census depends on (`CMAKE_CONFIGURE_DEPENDS`), and
+/// what the census build step (`cmake/NanoRosCensusStep.cmake`) refreshes, so
+/// one path serves the configure-time reader and the build edge.
+pub(crate) fn census_digest_path(census: &Path) -> PathBuf {
+    census.with_extension("digest")
+}
+
+/// phase-530 W6 (RFC-0120 D7) -- the digest of what a census SAYS: its
+/// recorder document and whether the run completed, never its provenance.
+///
+/// Provenance (the binary's digest, the source trees) moves on every body
+/// edit, and so do recorded source positions (`source` objects naming an
+/// artifact and a line, the recorder's `trace`). None of them decides a knob,
+/// so none of them may re-run a host configure: this digest moves when an
+/// entity is added or removed, and only then.
+pub(crate) fn census_entities_digest(census: &serde_json::Value) -> String {
+    use sha2::Digest as _;
+    fn strip(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Object(map) => {
+                map.remove("trace");
+                let positional = map
+                    .get("source")
+                    .is_some_and(|s| s.get("line").is_some() || s.get("artifact").is_some());
+                if positional {
+                    map.remove("source");
+                }
+                map.values_mut().for_each(strip);
+            }
+            serde_json::Value::Array(rows) => rows.iter_mut().for_each(strip),
+            _ => {}
+        }
+    }
+    let mut said = census.get("census").unwrap_or(census).clone();
+    strip(&mut said);
+    let mut doc = serde_json::Map::new();
+    doc.insert("census".into(), said);
+    doc.insert(
+        INCOMPLETE_KEY.into(),
+        census
+            .get(INCOMPLETE_KEY)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    let doc = serde_json::Value::Object(doc);
+    let mut h = sha2::Sha256::new();
+    h.update(doc.to_string().as_bytes());
+    format!("sha256:{:x}", h.finalize())
+}
+
+/// phase-530 W6 (RFC-0120 D7) -- write `census`'s digest beside it,
+/// WRITE-IF-CHANGED: an unchanged digest keeps its mtime, so ninja's restat
+/// of the census build step sees nothing new and no host configure re-runs.
+/// Returns the digest file's path.
+pub(crate) fn write_census_digest(census: &Path) -> Result<PathBuf> {
+    let raw = std::fs::read_to_string(census)
+        .wrap_err_with(|| format!("cannot read `{}`", census.display()))?;
+    let doc: serde_json::Value = serde_json::from_str(&raw)
+        .wrap_err_with(|| format!("`{}` is not JSON", census.display()))?;
+    let path = census_digest_path(census);
+    let text = format!("{}\n", census_entities_digest(&doc));
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+        crate::atomic_file::atomic_write(&path, &text)
+            .map_err(|e| eyre::eyre!("cannot write `{}`: {e}", path.display()))?;
+    }
+    Ok(path)
 }
 
 /// Issue 1556 item 4 -- set on the HOST census configure of a standalone leaf.
@@ -904,6 +986,9 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
             .is_some_and(|c| incomplete_reason(&c).is_none());
         if complete {
+            // phase-530 W6 -- a census taken before the digest existed gets
+            // one now, so the census build step has a file to restat.
+            write_census_digest(&out)?;
             println!(
                 "entity-census take --leaf {}: fresh -> {}",
                 leaf.display(),
@@ -1587,6 +1672,9 @@ fn run_census(args: RunArgs) -> Result<()> {
     let json = serde_json::to_string_pretty(&census).wrap_err("serialize census")?;
     crate::atomic_file::atomic_write(&out, &json)
         .wrap_err_with(|| format!("cannot write `{}`", out.display()))?;
+    // phase-530 W6 -- its digest, before an incomplete run bails below: an
+    // incomplete census is still what the configure reads.
+    write_census_digest(&out)?;
 
     let counts = summarise(&census.census);
     if let Some(why) = &census.incomplete {
@@ -2528,5 +2616,82 @@ mod tests {
         assert!(line.contains("1 service server"), "{line}");
         assert!(line.contains("2 timer slot(s)"), "{line}");
         assert!(line.contains("3 parameter(s)"), "{line}");
+    }
+
+    /// phase-530 W6 (RFC-0120 D7) -- a census document with one publisher per
+    /// `pubs`, a binary digest `bin` and a callback source line `line`.
+    fn census_doc(pubs: usize, bin: &str, line: u64) -> serde_json::Value {
+        let publishers: Vec<serde_json::Value> = (0..pubs)
+            .map(|i| serde_json::json!({ "id": format!("/chatter{i}#1"), "declaration_slot": i }))
+            .collect();
+        serde_json::json!({
+            "schema": "nros.entity_census/1",
+            "entry": "t",
+            "provenance": { "tool": "nros-cli", "inputs": [
+                { "role": "binary", "path": "build/census-host/t", "digest": bin }
+            ]},
+            "census": {
+                "callbacks": [ { "id": "timer0", "kind": "timer",
+                    "source": { "artifact": "src/main.c", "line": line, "column": null } } ],
+                "nodes": [ { "id": "talker", "publishers": publishers } ],
+                "trace": { "generator": "x", "source_artifacts": [ "src/main.c" ] },
+                "version": 4
+            }
+        })
+    }
+
+    /// phase-530 W6 -- the census digest is what a host configure depends on,
+    /// so it moves with the ENTITIES and with nothing else: a body edit moves
+    /// the binary and the source lines, and must cost no re-configure.
+    #[test]
+    fn the_census_digest_moves_with_the_entities_only() {
+        let base = census_entities_digest(&census_doc(1, "sha256:aa", 10));
+        assert_eq!(
+            base,
+            census_entities_digest(&census_doc(1, "sha256:bb", 42)),
+            "a body edit (new binary, moved lines) changed the census digest"
+        );
+        assert_ne!(
+            base,
+            census_entities_digest(&census_doc(2, "sha256:aa", 10)),
+            "adding a publisher left the census digest unchanged"
+        );
+        let mut incomplete = census_doc(1, "sha256:aa", 10);
+        incomplete[INCOMPLETE_KEY] = serde_json::json!("stopped");
+        assert_ne!(
+            base,
+            census_entities_digest(&incomplete),
+            "an incomplete census digests like a complete one"
+        );
+    }
+
+    /// phase-530 W6 -- the digest file is written write-if-changed, beside the
+    /// census: an unchanged digest keeps its mtime, so ninja's restat sees no
+    /// change and runs no re-configure.
+    #[test]
+    fn the_census_digest_file_is_written_only_when_it_changes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let census = dir.path().join("leaf.census.json");
+        std::fs::write(&census, census_doc(1, "sha256:aa", 1).to_string()).unwrap();
+        let digest = write_census_digest(&census).unwrap();
+        assert_eq!(digest, dir.path().join("leaf.census.digest"));
+        let first = std::fs::read_to_string(&digest).unwrap();
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        std::fs::File::options()
+            .write(true)
+            .open(&digest)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        std::fs::write(&census, census_doc(1, "sha256:bb", 7).to_string()).unwrap();
+        write_census_digest(&census).unwrap();
+        assert_eq!(
+            std::fs::metadata(&digest).unwrap().modified().unwrap(),
+            old,
+            "an unchanged digest was rewritten"
+        );
+        std::fs::write(&census, census_doc(2, "sha256:bb", 7).to_string()).unwrap();
+        write_census_digest(&census).unwrap();
+        assert_ne!(std::fs::read_to_string(&digest).unwrap(), first);
     }
 }
