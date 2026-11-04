@@ -713,6 +713,7 @@ mod tests {
             covers: Vec::new(),
             resolved_dir: None,
             inputs: Vec::new(),
+            censuses: Default::default(),
         };
         configure_stamp::record(project, key, &stamp).unwrap();
     }
