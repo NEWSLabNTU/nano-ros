@@ -491,66 +491,23 @@ pub fn locate_runner(
         e => failed(format!("runner `{name}`: {e}")),
     })?;
     let dir = r.dir.canonicalize().unwrap_or(r.dir.clone());
-    let ws = ws.canonicalize().unwrap_or(ws.to_path_buf());
-    let located = |exe: PathBuf| LocatedRunner {
+    // The location ladder is shared with command dispatch (phase-527 W4).
+    let exe = crate::builder::host_tool::locate_built(
+        ws,
+        nano_ros_root,
+        &r.package,
+        &dir,
+        &r.bin,
+        &format!("runner `{name}`"),
+    )
+    .map_err(failed)?;
+    Ok(LocatedRunner {
         exe,
-        package: r.package.clone(),
-        dir: dir.clone(),
-        overrides: r.overrides.clone(),
-        warnings: r.warnings.clone(),
-    };
-    // A package of this workspace: `nros build` built it for the host.
-    if dir.starts_with(&ws) {
-        let triple = crate::orchestration::metadata_build::host_triple();
-        return crate::builder::host_tool::executable(
-            &ws,
-            &r.package,
-            &r.bin,
-            &triple,
-            &format!("runner `{name}`"),
-        )
-        .map(located)
-        .map_err(|e| failed(e.to_string()));
-    }
-    // A released toolchain ships the first-party runners prebuilt in its
-    // `bin/`, beside `nros` (its SDK root carries their sources only). In a
-    // checkout nothing sits there, so the next rung answers.
-    if let Some(exe) = std::env::current_exe()
-        .ok()
-        .and_then(|e| e.parent().map(|d| d.join(&r.bin)))
-        .filter(|e| e.is_file())
-    {
-        return Ok(located(exe));
-    }
-    // A nano-ros checkout's own runner: built beside the CLI.
-    if let Some(root) = nano_ros_root.and_then(|p| p.canonicalize().ok())
-        && dir.starts_with(root.join("packages/runners"))
-    {
-        let exe = root.join("packages/runners/target/release").join(&r.bin);
-        return if exe.is_file() {
-            Ok(located(exe))
-        } else {
-            Err(failed(format!(
-                "runner `{name}` (package `{}`) is not built (looked for {}). Build it with \
-                 `just setup-cli` in {}",
-                r.package,
-                exe.display(),
-                root.display()
-            )))
-        };
-    }
-    // A released toolchain ships the package prebuilt, under `bin/`.
-    let exe = dir.join("bin").join(&r.bin);
-    if exe.is_file() {
-        Ok(located(exe))
-    } else {
-        Err(failed(format!(
-            "runner `{name}` (package `{}` at {}) has no built executable `bin/{}`",
-            r.package,
-            dir.display(),
-            r.bin
-        )))
-    }
+        package: r.package,
+        dir,
+        overrides: r.overrides,
+        warnings: r.warnings,
+    })
 }
 
 /// `--why`'s line about the source roots: which ones were searched, so a

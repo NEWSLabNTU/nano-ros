@@ -200,6 +200,85 @@ pub fn executable(
     }
 }
 
+/// The built executable of a resolved host tool, wherever its provider sits:
+/// the one location ladder that runner lookup (`nros run`/`flash`/`monitor`)
+/// and command dispatch (`nros <verb>`, phase-527 W4) share.
+///
+/// - A package of the workspace `ws`: [`executable`], which `nros build`
+///   filled (RFC-0119 D3); an unbuilt one is refused naming the build.
+/// - A released toolchain: the first-party tools sit prebuilt in its `bin/`,
+///   beside `nros`.
+/// - A nano-ros checkout's own runner (`packages/runners/`): built beside the
+///   CLI by `just setup-cli`.
+/// - Otherwise a prebuilt package's own `bin/<bin>`.
+///
+/// `dir` is the provider's package directory and `wanted_for` names what the
+/// caller wanted (`runner \`qemu\``, `` `nros router` ``), so every refusal
+/// reads as an answer to it.
+///
+/// # Errors
+///
+/// A message naming where the executable was looked for and how to build it.
+pub fn locate_built(
+    ws: &Path,
+    nano_ros_root: Option<&Path>,
+    package: &str,
+    dir: &Path,
+    bin: &str,
+    wanted_for: &str,
+) -> Result<PathBuf, String> {
+    let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let ws = ws.canonicalize().unwrap_or_else(|_| ws.to_path_buf());
+    let root = nano_ros_root.and_then(|p| p.canonicalize().ok());
+    // A package of the nano-ros tree, reached from a directory that holds the
+    // whole tree (the checkout's root, say): the checkout's own build answers,
+    // not a workspace host build nobody ran.
+    let in_tree = root
+        .as_ref()
+        .is_some_and(|r| dir.starts_with(r) && r.starts_with(&ws));
+    // A package of this workspace: `nros build` built it for the host.
+    if dir.starts_with(&ws) && !in_tree {
+        let triple = crate::orchestration::metadata_build::host_triple();
+        return executable(&ws, package, bin, &triple, wanted_for).map_err(|e| e.to_string());
+    }
+    // A released toolchain ships the first-party tools prebuilt in its
+    // `bin/`, beside `nros` (its SDK root carries their sources only). In a
+    // checkout nothing sits there, so the next rung answers.
+    if let Some(exe) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join(bin)))
+        .filter(|e| e.is_file())
+    {
+        return Ok(exe);
+    }
+    // A nano-ros checkout's own runner: built beside the CLI.
+    if let Some(root) = root
+        && dir.starts_with(root.join("packages/runners"))
+    {
+        let exe = root.join("packages/runners/target/release").join(bin);
+        return if exe.is_file() {
+            Ok(exe)
+        } else {
+            Err(format!(
+                "{wanted_for} (package `{package}`) is not built (looked for {}). Build it with \
+                 `just setup-cli` in {}",
+                exe.display(),
+                root.display()
+            ))
+        };
+    }
+    // A released toolchain ships the package prebuilt, under `bin/`.
+    let exe = dir.join("bin").join(bin);
+    if exe.is_file() {
+        Ok(exe)
+    } else {
+        Err(format!(
+            "{wanted_for} (package `{package}` at {}) has no built executable `bin/{bin}`",
+            dir.display(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,6 +369,36 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn a_tree_package_reached_from_the_tree_root_is_the_checkout_s_build() {
+        // The workspace is the checkout itself (`nros run` from its root): the
+        // runner is the tree's, built by `just setup-cli`, and never a
+        // workspace host build.
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("packages/runners/nros_runner_x");
+        std::fs::create_dir_all(&dir).unwrap();
+        let locate = || {
+            locate_built(
+                root.path(),
+                Some(root.path()),
+                "nros_runner_x",
+                &dir,
+                "nros-runner-x-not-built",
+                "runner `x`",
+            )
+        };
+        let e = locate().expect_err("nothing built");
+        // The checkout's own build, never `nros build`'s workspace one.
+        assert!(e.contains("packages/runners/target/release"), "{e}");
+        assert!(!e.contains("--packages-select"), "{e}");
+        let exe = root
+            .path()
+            .join("packages/runners/target/release/nros-runner-x-not-built");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, "").unwrap();
+        assert_eq!(locate().unwrap(), exe.canonicalize().unwrap());
     }
 
     #[test]

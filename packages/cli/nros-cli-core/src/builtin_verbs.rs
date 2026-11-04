@@ -41,6 +41,27 @@ fn verb_names(cmd: &clap::Command) -> Vec<String> {
     out
 }
 
+/// The verbs a command package of `tier` may not take, read from the live
+/// clap tree: every top-level verb and the reserved ones, plus `nros dev`'s
+/// own verbs for a `tier = "dev"` command. The same rule as
+/// `check-provider-announcements` A7, which reads the rendered file instead.
+#[must_use]
+pub fn taken(root: &clap::Command, dev_tier: bool) -> std::collections::BTreeSet<String> {
+    let mut out: std::collections::BTreeSet<String> = verb_names(root).into_iter().collect();
+    out.extend(RESERVED_VERBS.iter().map(|v| (*v).to_string()));
+    if dev_tier && let Some(dev) = root.find_subcommand("dev") {
+        out.extend(verb_names(dev));
+    }
+    out
+}
+
+/// The live `nros` verb tree, as [`taken`] reads it.
+#[must_use]
+pub fn tree() -> clap::Command {
+    use clap::Subcommand;
+    crate::cmd::Cmd::augment_subcommands(clap::Command::new("nros"))
+}
+
 /// The file's content, rendered from the clap tree.
 #[must_use]
 pub fn render(root: &clap::Command) -> String {

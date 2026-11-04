@@ -1,0 +1,13 @@
+# phase-527 W4 fixture: a command package with one bin target and no
+# dependencies. The dispatch tests never build it; they place an executable
+# where `nros build` would.
+[package]
+name = "dispatch_greet"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "nros-fixture-greet"
+path = "src/main.rs"
+
+[workspace]

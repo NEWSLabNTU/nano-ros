@@ -1,0 +1,4 @@
+# phase-527 W4: keeps these fixture packages out of the nano-ros tree's own
+# provider scan, so `nros help --all` in a workspace under a checkout lists no
+# test command. The tests name a directory in here as their workspace root,
+# and a root the caller names is scanned whatever markers it holds.

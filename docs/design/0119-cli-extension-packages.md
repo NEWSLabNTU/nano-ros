@@ -403,6 +403,33 @@ speak, naming both versions.
 Dispatch happens in the toolchain's `nros`, not in the launcher
 (RFC-0097 D4). The launcher only selects the toolchain.
 
+How dispatch does it (phase-527 W4):
+
+- Only a verb clap does not know is looked up, so a built-in always wins
+  and a malformed built-in invocation keeps clap's error. When no package
+  announces the verb, clap's "unrecognized subcommand" stands.
+- The workspace is the current directory, as for every verb that takes no
+  `--workspace`, and `NROS_WS_ROOT` is its canonical path. Its packages are
+  walked only when it looks like a workspace (an `nros.toml`, a
+  `system.toml`, a `package.xml` or a `src/` directory); elsewhere only the
+  nano-ros underlay and `NROS_PACKAGE_PATH` answer, so a mistyped verb in
+  `$HOME` does not walk `$HOME`. The arguments are
+  the command's, so `nros <verb>` takes no `--allow-overriding` or
+  `--base-paths` of its own: the default source roots and the declared
+  overrides of `nros.toml [workspace.overrides]` apply.
+- The provider is resolved as every provider is (D4), and the executable is
+  found by the ladder runner lookup uses: a workspace package's host build
+  (D3), a released toolchain's `bin/`, a checkout's `packages/runners`
+  build, a prebuilt package's `bin/`. A package of the nano-ros tree reached
+  from a directory holding the whole tree (the checkout's root) is the
+  checkout's build, never a workspace host build.
+- When nros cannot start the command (not built, an override refused, the
+  verb asked for at the wrong tier, a built-in name) it prints why and exits
+  3, RFC-0118 D2's code for nros itself. Otherwise it `exec`s the command
+  on Unix, so its status and signals are the process's own.
+- `nros fixture` for a `tier = "dev"` command is refused naming the
+  spelling that works (`nros dev fixture`), and the other way round.
+
 ### D8 — First-party packages
 
 Runners, in the order the phases build them:
@@ -531,3 +558,7 @@ CMake code when they build it, so this adds no new boundary.
   naming them, to keep the in-tree template's two board roots building; those
   roots are now named apart (`ament_workspace_port_freertos`,
   `ament_workspace_port_zephyr`). The error names the ignore-marker fix.
+- 2026-11-04 — phase-527 W4: D7's dispatch landed. D7 records how: only an
+  unknown verb is looked up, the workspace is the current directory, the
+  executable ladder is shared with runner lookup, a refusal exits 3, and a
+  command reached at the wrong tier is refused naming the right spelling.
