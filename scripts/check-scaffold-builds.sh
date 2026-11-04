@@ -111,6 +111,8 @@ cd "$repo_root" || exit 2
 
 # shellcheck source=scripts/build/cargo.sh
 . "$repo_root/scripts/build/cargo.sh"
+# shellcheck source=scripts/build/gate-scratch.sh
+. "$repo_root/scripts/build/gate-scratch.sh"
 # shellcheck source=scripts/build/copy-out-cmake.sh
 . "$repo_root/scripts/build/copy-out-cmake.sh"
 # The one resolver (issue 1850): $NROS_CLI, this checkout's build, PATH, store.
@@ -315,7 +317,7 @@ own_artifacts() {
 
 run_one() {
     local variant="$1" work parent dir arts n stamp td
-    work="$(mktemp -d "${TMPDIR:-/tmp}/nros-scaffold-builds.XXXXXX")" || return 3
+    nros_gate_scratch work scaffold-builds || return 3
     parent="$work"
     dir="$parent/$variant"
 
@@ -324,6 +326,7 @@ run_one() {
             echo "  $variant: FAIL — \`nros new\` did not emit it" >&2
             sed -n '1,8p' "$work/new.log" 2>/dev/null | sed 's/^/      /' >&2
             echo "      full log: $work/new.log" >&2
+            nros_gate_scratch_failed "$work"
             return 1
         fi
     fi
@@ -340,6 +343,7 @@ run_one() {
         echo "  $variant: FAIL — the emitted project does not build" >&2
         grep -n -i -m6 'error' "$work/build.log" 2>/dev/null | sed 's/^/      /' >&2
         echo "      full log: $work/build.log" >&2
+        nros_gate_scratch_failed "$work"
         return 1
     fi
 
@@ -364,6 +368,7 @@ run_one() {
         done < <(cargo_target_dirs "$dir")
         echo "        $dir/build  (cmake, depth 2, plus CMakeFiles/*.o for src/*)" >&2
         echo "      full log: $work/build.log" >&2
+        nros_gate_scratch_failed "$work"
         return 1
     fi
     echo "  $variant: OK — $n own artifact(s), e.g. $(printf '%s' "${arts%%$'\n'*}" | sed "s|$dir/||")"
@@ -396,7 +401,7 @@ run_one() {
 # the profile directory fails 5.
 locator_self_test() {
     local work dir name td stamp got rc fails=0
-    work="$(mktemp -d "${TMPDIR:-/tmp}/nros-scaffold-locator.XXXXXX")" || return 2
+    nros_gate_scratch work scaffold-locator || return 2
     name="rust_project"
 
     # A plant is a whole scaffold shape: the package dir, the generated settings
@@ -496,7 +501,7 @@ locator_self_test() {
     [ "$fails" -eq 0 ] || return 1
     # And prove the reader can be read: the settings file is where the target
     # dir comes from, so a value that is NOT the default must be honoured.
-    work="$(mktemp -d "${TMPDIR:-/tmp}/nros-scaffold-locator.XXXXXX")" || return 2
+    nros_gate_scratch work scaffold-locator || return 2
     dir="$work/$name"
     mkdir -p "$dir/src" "$dir/build/odd" "$dir/build/odd/somewhere/else/debug"
     : > "$dir/src/main.rs"
@@ -525,7 +530,7 @@ self_test() {
     local work parent variant dir src rc
 
     locator_self_test || return $?
-    work="$(mktemp -d "${TMPDIR:-/tmp}/nros-scaffold-selftest.XXXXXX")" || return 2
+    nros_gate_scratch work scaffold-selftest || return 2
     parent="$work"
     variant="cpp_component"
     dir="$parent/$variant"
@@ -580,6 +585,11 @@ case "${1:-}" in
     # anywhere and answer in milliseconds. `--self-test` runs them too.
     --locator-self-test) mode="locator-self-test"; shift ;;
 esac
+
+# Issue 2239: every scratch tree below is owned by this run, removed on the way
+# out unless kept as failure evidence; an earlier run's leftovers of the same
+# scope are retired here.
+nros_gate_scratch_init scaffold-builds "$mode $*"
 
 if [ "$mode" = "locator-self-test" ]; then
     locator_self_test
