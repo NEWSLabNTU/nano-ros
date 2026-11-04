@@ -1,6 +1,6 @@
 # Phase 529 — Real boards: `nros flash`, `nros monitor`, `nros bench`, and human steps
 
-**Status (2026-11-03). IN PROGRESS — W1, W2 and W4 done (W2 with `espflash` deferred: no in-tree board flashes with it); W3, W5, W6 open.** Implements
+**Status (2026-11-04). IN PROGRESS — W1, W2 and W4 done (W2 with `espflash` deferred: no in-tree board flashes with it); W3 open; W5 and W6 moved to [phase-533](phase-533-hardware-probe-runner-and-bench-cells.md).** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D2, D6 and D7 for real
 silicon, and the flash and console runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -10,7 +10,7 @@ Depends on:
 - [phase-528](phase-528-run-on-host-and-emulator.md) W1 and W4, for the plan,
   the resolver and the shared verb machinery;
 - the boards [phase-524](phase-524-emulator-twins.md) buys, for the
-  hardware acceptance.
+  hardware acceptance (now phase-533's).
 
 phase-524 W5 (hardware runs) is executed with this phase's verbs.
 
@@ -248,7 +248,7 @@ Acceptance:
   so `nros run` and `nros build`'s next step pass an empty bench.
   `nros flash` (W3) calls `bench_for`.
 - *Probes.* Debug probes that are not serial devices are not enumerated.
-  `probe` is a hand-added field until W5 picks a probe runner.
+  `probe` is a hand-added field until phase-533 W1 picks a probe runner.
 - *No board states a USB id yet.* No in-tree board states `[board.console]
   usb` (the Nucleo's console is behind a USB-UART adapter), so a scan
   records nothing until a board, or the bench file by hand, names one.
@@ -261,61 +261,12 @@ Acceptance:
 - After a replug onto another `ttyACM` number it still picks the same
   board.
 
-### W5 — The first probe runner, chosen by measurement
+### W5 and W6 — moved to phase-533
 
-- Decide between `probe-rs` and `openocd` (and `picotool`/UF2 for the
-  RP2040) by the boards phase-524 W1 keeps, and by what `s32z270-freertos`
-  uses on its bench today. Write that runner package, and only that one.
-- Record the choice and its measurement in RFC-0119 D8's table.
-
-Acceptance:
-
-- The chosen runner flashes its board under `nros flash --monitor --expect`.
-- Its registry row's `last_run` is set from that run (RFC-0114 D10).
-
-Decision step: if no kept board needs a probe runner (every pick flashes
-over a bootloader `espflash` or `west` already reaches), this item closes
-with that finding, and no runner is written.
-
-### W6 — Hardware cells in the harness
-
-- Hardware cells (phase-524 W5) run through `nros flash --monitor --plan`,
-  as emulator cells run through `nros run --plan` (phase-528 W5).
-- The bench file of the runner machine supplies ports and probes. It never
-  decides whether a cell runs: a scope is a property of the lane, fixed
-  before the run, so the same lane runs the same cells on every host
-  (CLAUDE.md, issue 1758). Two parts:
-  - **Scope.** Real boards are a host capability, `bench`, added to
-    `nros_tests::lane_scope::Capability`. Every existing lane lists it in
-    `NROS_TEST_UNCLAIMED` (through `nros_lane_unclaimed` and
-    `CiLane::unclaimed`, the one place each lane's scope comes from), as it
-    does `rt-sched`. A bench lane claims it and names the boards it covers,
-    for example `just test bench boards=nucleo-f767zi-zephyr`; the board list
-    is part of the lane's declaration, not something read from the machine.
-    A hardware cell outside that scope (capability unclaimed, or its board
-    not in the lane's list) is `nros_tests::lane_skip!`, decided before any
-    probe.
-  - **Precondition.** A cell in scope looks its board up in the bench file
-    and resolves the port and probe (RFC-0118 D6). No bench entry, no
-    attached device, or two candidates is `nros_tests::unmet!` naming the
-    board and `nros bench scan`: a red, never a skip and never a pass.
-  - Unset `NROS_TEST_UNCLAIMED` claims everything, as for every other
-    capability, so a bare `cargo nextest` on a machine with no boards is red
-    on the hardware cells. That is the honest answer for a run that asked
-    for everything.
-- `check-skip-budget` and `lane_scope`'s tests cover the new capability: a
-  `lane_skip!` in a hardware cell must come from the scope predicate, and an
-  unknown board name in a lane's list is a hard error, like an unknown
-  `NROS_TEST_UNCLAIMED` token.
-
-Acceptance:
-
-- On the maintainer bench, `just test bench boards=<each phase-524 board>`
-  runs each board's smoke cell through the verb, and it passes.
-- Every existing lane deselects the hardware cells, counted as lane skips,
-  identically on a machine with boards attached and on one without.
-- In the bench lane, a board in the lane's list but unplugged is a red
-  `[UNMET PRECONDITION]` that names the board.
+The first probe runner and the hardware cells in the harness need the
+boards phase-524 W5 puts on the maintainer bench, so they moved to
+[phase-533](phase-533-hardware-probe-runner-and-bench-cells.md) (W1 and W2
+there; maintainer, 2026-11-04). This phase closes on W1 to W4.
 
 ## Acceptance
 
@@ -324,7 +275,6 @@ Acceptance:
 | W1 | a manual step is stated and fails loudly in CI | a technician's procedure is in the descriptor, not in a note | the lab sheet's "press BOOTSEL" is printed by the tool |
 | W3 | flash and console are one command | one verb at the customer site | the grading command on hardware |
 | W4 | benches with several boards stay unambiguous | a moved cable needs no edit | thirty lab machines, one file each |
-| W6 | hardware evidence comes from the user's path | — | — |
 
 ## Out of scope
 

@@ -4,7 +4,7 @@ title: "Target execution model: run, flash and monitor as separate verbs over on
 status: Draft
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: [phase-528, phase-529]
+implements-tracked-by: [phase-528, phase-529, phase-533]
 amends: [0097, 0114, 0116]
 supersedes: []
 superseded-by: null

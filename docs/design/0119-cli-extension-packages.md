@@ -4,7 +4,7 @@ title: "CLI extension packages: `runner` and `command` provider kinds, built for
 status: Draft
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: [phase-527, phase-528, phase-529]
+implements-tracked-by: [phase-527, phase-528, phase-529, phase-533]
 amends: [0087, 0097]
 supersedes: []
 superseded-by: null
