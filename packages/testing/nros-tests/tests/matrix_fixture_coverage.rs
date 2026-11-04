@@ -449,13 +449,20 @@ fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
         //   - ZephyrNativeSim / Fvp / ZephyrQemuCortexM: the west leaves lane
         //     (`scripts/build/zephyr-fixture-leaves.sh`, `just zephyr build-fvp-*`),
         //     which carries its own staleness signature and no fixtures.toml row.
+        //   - ZephyrNucleoF767zi (phase-524 W4c): the same west leaves lane. Its
+        //     one row is a `builder = "west"` row with a `west_build_name`, the
+        //     shape of the ZephyrQemuCortexM rows, so no `just zephyr` recipe
+        //     names its token either.
         //   - Px4: a CarveOut on every cell; no runner builds SITL, so no recipe
         //     can produce it and demanding one would be the inverse lie.
         //   - any platform with no built cell (PX4, dormant ESP32 — issue
         //     1525): `matrix::platform_is_built`, derived from `CELLS`.
         if matches!(
             p,
-            PlatformId::ZephyrNativeSim | PlatformId::Fvp | PlatformId::ZephyrQemuCortexM
+            PlatformId::ZephyrNativeSim
+                | PlatformId::Fvp
+                | PlatformId::ZephyrQemuCortexM
+                | PlatformId::ZephyrNucleoF767zi
         ) || !nros_tests::matrix::platform_is_built(p)
         {
             continue;
