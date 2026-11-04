@@ -107,7 +107,7 @@ pub fn run(args: WestLeafSizingArgs) -> Result<()> {
     // phase-462 W6c -- the board's per-frame receive cost, so a read-task
     // budget in the fragment derives with the same `c` the descriptor does.
     inv.set_board_rx_cost(img.rx_cost);
-    crate::sizing_descriptor::report_rx_ingress(&inv, who)?;
+    crate::sizing_descriptor::report_rx_arrival(&inv, who)?;
 
     // ---- the C lane: the fragment rung 3 reads ---------------------------
     // Written even for an EMPTY inventory: `to_cmake` then states a refusal
@@ -197,7 +197,7 @@ fn run_declared_leaf(args: &WestLeafSizingArgs) -> Result<()> {
         return Ok(());
     };
     let who = "west-leaf-sizing";
-    crate::sizing_descriptor::report_rx_ingress(&inv, who)?;
+    crate::sizing_descriptor::report_rx_arrival(&inv, who)?;
 
     // ---- the C lane: the fragment rung 3 reads ---------------------------
     if let Some(dir) = args.output_cmake.parent() {

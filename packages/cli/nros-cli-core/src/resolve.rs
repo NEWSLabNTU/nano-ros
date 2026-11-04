@@ -375,7 +375,7 @@ impl Resolved {
                     rows.push(("max_age_monitors", a));
                 }
                 // phase-462 W6b -- the read-task budget, only when a
-                // subscriber declared ingress; absent keeps the task unbounded.
+                // subscriber declared arrival curve; absent keeps the task unbounded.
                 if let Some(b) = k.rx_task_budget {
                     rows.push(("rx_task_budget_frames", b.frames));
                     rows.push(("rx_task_budget_rest_us", b.rest_us));
@@ -491,7 +491,7 @@ impl Resolved {
                 s.push('\n');
 
                 // phase-462 W6b -- the zenoh read task's frame budget, only
-                // when a subscriber declared ingress (RFC-0074).
+                // when a subscriber declared arrival curve (RFC-0074).
                 if let Some(b) = k.rx_task_budget {
                     s.push_str(
                         "# The zenoh read task's frame budget (RFC-0074): FRAMES = burst,\n\
@@ -1138,7 +1138,7 @@ mod tests {
         assert!(toml.contains("max_age_monitors = 0\n"), "{toml}");
     }
 
-    /// phase-462 W6b -- the read-task budget, which only a declared ingress
+    /// phase-462 W6b -- the read-task budget, which only a declared arrival curve
     /// states, travels on both transports with the same numbers.
     #[test]
     fn resolved_toml_and_cmake_agree_on_the_read_task_budget() {
@@ -1207,7 +1207,7 @@ mod tests {
         for (toml_key, cmake_var) in pairs {
             // phase-496 W1 -- the monitor rows are stated only with a model;
             // `resolved_toml_and_cmake_agree_on_monitor_rows` covers them,
-            // and phase-462 W6b's budget, stated only with a declared ingress,
+            // and phase-462 W6b's budget, stated only with a declared arrival curve,
             // `resolved_toml_and_cmake_agree_on_the_read_task_budget`.
             let Some(&v) = rows.get(toml_key) else {
                 assert!(

@@ -442,17 +442,17 @@ pub struct EntityDecl {
     /// gets [`crate::queue_depth::NoDefault::NoDrainRate`] rather than a depth
     /// derived from a rate nobody stated.
     pub drain_rate: Option<RateMilliHz>,
-    /// phase-519 W3b (RFC-0074) -- a SUBSCRIPTION's declared ingress rate,
-    /// from `contracts.sub_endpoints.<ep>.ingress.rate_hz`. `None` for
+    /// phase-519 W3b (RFC-0074) -- a SUBSCRIPTION's declared arrival rate,
+    /// from `contracts.sub_endpoints.<ep>.arrival_curve.rate_hz`. `None` for
     /// "nobody declared one", and on every other kind.
     ///
     /// Carried to the registration through the sizing descriptor
-    /// ([`nros_sizing_descriptor::Endpoint::ingress_rate_mhz`]), where the
+    /// ([`nros_sizing_descriptor::Endpoint::arrival_rate_mhz`]), where the
     /// executor hands it to the backend in
-    /// `rmw_subscription_options_t::ingress_rate_mhz`. The XRCE backend paces
+    /// `rmw_subscription_options_t::arrival_rate_mhz`. The XRCE backend paces
     /// its data request from it; zenoh enforces the same declaration at the
     /// router instead and ignores the field.
-    pub ingress_rate: Option<RateMilliHz>,
+    pub arrival_rate: Option<RateMilliHz>,
     /// phase-454 W12 -- the topic / service name AS THE SOURCE WRITES IT.
     ///
     /// The JOIN KEY between this row and a contract endpoint, and the reason it
@@ -573,7 +573,7 @@ impl EntityDecl {
             buffer: None,
             publish_rate: None,
             drain_rate: None,
-            ingress_rate: None,
+            arrival_rate: None,
             source_topic: None,
             contract_refusal: None,
             // phase-457 W3 -- "nobody observed this". Only the probe road sets
@@ -823,16 +823,16 @@ pub struct EntityInventory {
     /// the crate default then stands.
     monitor_rows: Option<(usize, usize)>,
     /// phase-462 W6b -- the zenoh read-task budget the contract's declared
-    /// subscriber INGRESS implies ([`RxTaskBudget::from_model`]). `None` when
+    /// subscriber ARRIVAL CURVE implies ([`RxTaskBudget::from_model`]). `None` when
     /// no subscriber declares one, or for an inventory that saw no model: no
     /// declaration means no budget, never a guessed one, and the read task
     /// stays unbounded.
     rx_task_budget: Option<RxTaskBudget>,
-    /// phase-462 W6c -- every subscriber's declared ingress, in contract key
+    /// phase-462 W6c -- every subscriber's declared arrival curve, in contract key
     /// order: what [`Self::rx_task_budget()`] was derived from, kept so a road
     /// that knows the BOARD can re-derive it with the board's per-frame cost
-    /// and check the declaration against it ([`Self::check_rx_ingress`]).
-    rx_ingress: Vec<DeclaredIngress>,
+    /// and check the declaration against it ([`Self::check_rx_arrival`]).
+    rx_arrival: Vec<DeclaredArrivalCurve>,
     /// phase-462 W6c -- the tightest authored tier's slack, the second
     /// RFC-0074 constraint's right-hand side. `None` when no tier states a
     /// deadline or a period.
@@ -1004,7 +1004,7 @@ pub struct ImageFrame {
     tiers: usize,
     monitor_rows: Option<(usize, usize)>,
     rx_task_budget: Option<RxTaskBudget>,
-    rx_ingress: Vec<DeclaredIngress>,
+    rx_arrival: Vec<DeclaredArrivalCurve>,
     tightest_tier: Option<TierSlack>,
     launched: std::collections::BTreeSet<String>,
     /// Issue 2076 -- the bringup's `[[bridge]]`s (overlay), whose nodes and
@@ -1013,7 +1013,7 @@ pub struct ImageFrame {
 }
 
 /// phase-462 W6b (RFC-0074) -- a frame budget on zenoh-pico's unicast read
-/// task, DERIVED from a subscriber's declared ingress: at most `frames` frames
+/// task, DERIVED from a subscriber's declared arrival curve: at most `frames` frames
 /// back to back, then a `rest_us` sleep. The two numbers the W6a knobs
 /// `NROS_ZENOH_RX_TASK_BUDGET_FRAMES` / `_REST_US` carry.
 ///
@@ -1030,7 +1030,7 @@ pub struct ImageFrame {
 /// burst also costs `frames x c`, the task under-admits by the per-frame cost,
 /// and the excess waits in the socket (TCP backpressure), never dropped. With
 /// the board's `c` stated, the admitted rate IS the declared one, and the two
-/// RFC-0074 constraints are checked ([`check_rx_ingress`]).
+/// RFC-0074 constraints are checked ([`check_rx_arrival`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RxTaskBudget {
     pub frames: usize,
@@ -1044,28 +1044,32 @@ impl RxTaskBudget {
     pub const REST_US_MIN: usize = 1;
     pub const REST_US_MAX: usize = 1_000_000;
 
-    /// The budget one declared `ingress: { rate_hz, burst }` implies.
+    /// The budget one declared `arrival_curve: { rate_hz, burst }` implies.
     ///
-    /// `None` for an ingress no budget can express (a non-finite or
+    /// `None` for an arrival curve no budget can express (a non-finite or
     /// non-positive rate, a zero burst -- the contract crate refuses both, so
     /// this is defence, not a second rule). Both numbers are CLAMPED into the
     /// knobs' Kconfig ranges rather than refused: a rest past 1 s
     /// (`burst x 10^6 / rate_hz > 10^6`, i.e. a rate below `burst` Hz) rests
     /// 1 s and admits MORE than declared, which a slow declared source cannot
     /// exploit; a rest below 1 us rests 1 us.
-    pub fn from_ingress(rate_hz: f64, burst: u32) -> Option<Self> {
-        Self::from_ingress_with_cost(rate_hz, burst, 0)
+    pub fn from_arrival_curve(rate_hz: f64, burst: u32) -> Option<Self> {
+        Self::from_arrival_curve_with_cost(rate_hz, burst, 0)
     }
 
-    /// phase-462 W6c -- [`Self::from_ingress`] on a board whose per-frame
+    /// phase-462 W6c -- [`Self::from_arrival_curve`] on a board whose per-frame
     /// receive cost is `frame_cost_us`: `REST = burst x (10^6/rate_hz - c)`.
     ///
-    /// `frame_cost_us = 0` is [`Self::from_ingress`] exactly (the subtraction
+    /// `frame_cost_us = 0` is [`Self::from_arrival_curve`] exactly (the subtraction
     /// of `0.0` is exact). A rate the board cannot admit at all
     /// (`rate_hz > 10^6 / c`) has a negative rest and clamps to the 1 us floor
-    /// here; [`check_rx_ingress`] is what REFUSES it, and every road that
+    /// here; [`check_rx_arrival`] is what REFUSES it, and every road that
     /// states a cost asks it first.
-    pub fn from_ingress_with_cost(rate_hz: f64, burst: u32, frame_cost_us: u32) -> Option<Self> {
+    pub fn from_arrival_curve_with_cost(
+        rate_hz: f64,
+        burst: u32,
+        frame_cost_us: u32,
+    ) -> Option<Self> {
         if !rate_hz.is_finite() || rate_hz <= 0.0 || burst == 0 {
             return None;
         }
@@ -1086,10 +1090,10 @@ impl RxTaskBudget {
     /// declared `rate_hz x burst` is LARGEST (ties keep the first endpoint in
     /// key order). One read task drains every subscriber, so it is sized for
     /// the heaviest declared source. `None` when no subscriber declares
-    /// ingress -- the image then states nothing and is byte-identical.
+    /// arrival curve -- the image then states nothing and is byte-identical.
     pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Option<Self> {
-        DeclaredIngress::heaviest(&DeclaredIngress::from_model(model))
-            .and_then(|i| Self::from_ingress(i.rate_hz, i.burst))
+        DeclaredArrivalCurve::heaviest(&DeclaredArrivalCurve::from_model(model))
+            .and_then(|i| Self::from_arrival_curve(i.rate_hz, i.burst))
     }
 
     /// The `rate x burst` this budget implies, with the admitted rate read
@@ -1115,12 +1119,12 @@ impl RxTaskBudget {
     }
 }
 
-/// phase-462 W6c -- one subscriber's declared `ingress: { rate_hz, burst }`,
+/// phase-462 W6c -- one subscriber's declared `arrival_curve: { rate_hz, burst }`,
 /// kept beside the budget it implies: the budget is a pair of numbers, and a
 /// road that later learns the board's per-frame cost needs the DECLARATION to
-/// re-derive it and to check it ([`check_rx_ingress`]).
+/// re-derive it and to check it ([`check_rx_arrival`]).
 #[derive(Debug, Clone, PartialEq)]
-pub struct DeclaredIngress {
+pub struct DeclaredArrivalCurve {
     /// The contract's subscriber key, for refusals.
     pub endpoint: String,
     /// Sustained messages per second. Finite and > 0 (filtered on entry).
@@ -1131,10 +1135,10 @@ pub struct DeclaredIngress {
 
 // `rate_hz` is finite on every value this module builds (NaN never enters), so
 // equality is total and the inventory can stay `Eq`.
-impl Eq for DeclaredIngress {}
+impl Eq for DeclaredArrivalCurve {}
 
-impl DeclaredIngress {
-    /// Every subscriber's declared ingress, in contract key order. An ingress
+impl DeclaredArrivalCurve {
+    /// Every subscriber's declared arrival curve, in contract key order. An arrival curve
     /// no budget can express (non-finite or non-positive rate, zero burst) is
     /// skipped -- the contract crate refuses both, so this is defence.
     pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Vec<Self> {
@@ -1142,7 +1146,7 @@ impl DeclaredIngress {
             .contracts
             .sub_endpoints
             .iter()
-            .filter_map(|(k, c)| c.ingress.map(|i| (k, i)))
+            .filter_map(|(k, c)| c.arrival_curve.map(|i| (k, i)))
             .filter(|(_, i)| i.rate_hz.is_finite() && i.rate_hz > 0.0 && i.burst > 0)
             .map(|(k, i)| Self {
                 endpoint: k.clone(),
@@ -1187,7 +1191,7 @@ impl DeclaredIngress {
 ///
 /// A MEASURED fact, never a knob: no compiler sees it. It enters the budget
 /// derivation (`REST = burst x (10^6/rate_hz - c)`) and the two resolve-time
-/// checks ([`check_rx_ingress`]). RFC-0074 measured worst_gap = 0.940 ms x
+/// checks ([`check_rx_arrival`]). RFC-0074 measured worst_gap = 0.940 ms x
 /// FRAMES + 11.0 ms on the FreeRTOS mps2-an385 QEMU lane, at ONE payload
 /// size; a larger payload almost certainly costs more, so one `c` per board is
 /// an approximation the RFC states and this fact inherits.
@@ -1196,7 +1200,7 @@ impl DeclaredIngress {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RxFrameCost {
-    /// `c`, in microseconds. A stated 0 is refused by [`check_rx_ingress`]:
+    /// `c`, in microseconds. A stated 0 is refused by [`check_rx_arrival`]:
     /// it is the unstated value, written as if it were a measurement.
     pub frame_cost_us: u32,
     /// The empirical floor of the worst tier gap (RFC-0074's ~11 ms: the
@@ -1269,14 +1273,14 @@ impl TierSlack {
     }
 }
 
-/// phase-462 W6c -- what [`check_rx_ingress`] checked.
+/// phase-462 W6c -- what [`check_rx_arrival`] checked.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RxIngressCheck {
+pub enum RxArrivalCheck {
     /// The board states no `[board.rx]`: `c = 0`, nothing to check.
     NoBoardCost,
-    /// The board states a cost and no subscriber declares ingress: no
+    /// The board states a cost and no subscriber declares an arrival curve: no
     /// budget, nothing to check.
-    NoIngress,
+    NoArrivalCurve,
     /// Both constraints were evaluated; the rate check held for every
     /// declared subscriber.
     Checked {
@@ -1298,9 +1302,9 @@ pub enum SlackVerdict {
     NotChecked(String),
 }
 
-impl RxIngressCheck {
+impl RxArrivalCheck {
     /// One line a road prints, `None` when there is nothing to say (no board
-    /// cost, or no ingress). A [`SlackVerdict::NotChecked`] is always said.
+    /// cost, or no arrival curve). A [`SlackVerdict::NotChecked`] is always said.
     pub fn statement(&self) -> Option<String> {
         let Self::Checked {
             budget,
@@ -1336,7 +1340,7 @@ impl RxIngressCheck {
 }
 
 /// phase-462 W6c (RFC-0074 "What validates a declaration") -- the two
-/// resolve-time constraints, as arithmetic on the declared ingress, the
+/// resolve-time constraints, as arithmetic on the declared arrival curve, the
 /// board's per-frame cost and the tightest tier's slack.
 ///
 /// 1. **Feasible at all**: `rate_hz <= 10^6 / c` for every declared
@@ -1348,16 +1352,16 @@ impl RxIngressCheck {
 ///    takes back to back.
 ///
 /// `Err` names the inputs and the remedy (RFC-0065 D2). No board cost:
-/// [`RxIngressCheck::NoBoardCost`], and nothing is refused -- the W6b image.
+/// [`RxArrivalCheck::NoBoardCost`], and nothing is refused -- the W6b image.
 /// No computable slack: constraint 2 is [`SlackVerdict::NotChecked`] with the
 /// reason, never a guessed slack.
-pub fn check_rx_ingress(
-    ingress: &[DeclaredIngress],
+pub fn check_rx_arrival(
+    arrival: &[DeclaredArrivalCurve],
     cost: Option<RxFrameCost>,
     tightest: Option<&TierSlack>,
-) -> Result<RxIngressCheck, String> {
+) -> Result<RxArrivalCheck, String> {
     let Some(cost) = cost else {
-        return Ok(RxIngressCheck::NoBoardCost);
+        return Ok(RxArrivalCheck::NoBoardCost);
     };
     let c = cost.frame_cost_us;
     if c == 0 {
@@ -1370,9 +1374,9 @@ pub fn check_rx_ingress(
         );
     }
     let ceiling_hz = 1e6 / f64::from(c);
-    if let Some(i) = ingress.iter().find(|i| i.rate_hz > ceiling_hz) {
+    if let Some(i) = arrival.iter().find(|i| i.rate_hz > ceiling_hz) {
         return Err(format!(
-            "subscriber `{}` declares `ingress: {{ rate_hz: {}, burst: {} }}`, above the \
+            "subscriber `{}` declares `arrival_curve: {{ rate_hz: {}, burst: {} }}`, above the \
              {ceiling_hz:.1} msg/s this board can receive at all (`[board.rx] frame_cost_us = \
              {c}`, so 10^6 / c): RFC-0074's REST = burst x (10^6/rate_hz - c) would be \
              negative. Lower the declared `rate_hz` to at most {ceiling_hz:.1}, pace the \
@@ -1381,10 +1385,10 @@ pub fn check_rx_ingress(
             i.endpoint, i.rate_hz, i.burst
         ));
     }
-    let Some(heavy) = DeclaredIngress::heaviest(ingress) else {
-        return Ok(RxIngressCheck::NoIngress);
+    let Some(heavy) = DeclaredArrivalCurve::heaviest(arrival) else {
+        return Ok(RxArrivalCheck::NoArrivalCurve);
     };
-    let budget = RxTaskBudget::from_ingress_with_cost(heavy.rate_hz, heavy.burst, c)
+    let budget = RxTaskBudget::from_arrival_curve_with_cost(heavy.rate_hz, heavy.burst, c)
         .expect("a filtered declaration always derives a budget");
     let floor = u64::from(cost.floor_us.unwrap_or(0));
     let occupancy_us = budget.frames as u64 * u64::from(c) + floor;
@@ -1420,7 +1424,7 @@ pub fn check_rx_ingress(
                 "no `burst` fits (the floor alone fills the slack), so ".to_string()
             };
             return Err(format!(
-                "subscriber `{}` declares `ingress: {{ rate_hz: {}, burst: {} }}`, so the read \
+                "subscriber `{}` declares `arrival_curve: {{ rate_hz: {}, burst: {} }}`, so the read \
                  task takes {} frames back to back: {} x {c} us (`[board.rx] frame_cost_us`) + \
                  {floor_note} = {occupancy_us} us, above tier `{}`'s {slack_of}. That burst \
                  misses the tier's deadline by itself (RFC-0074 constraint 2): {lower}pace the \
@@ -1436,7 +1440,7 @@ pub fn check_rx_ingress(
         }
         Some(t) => SlackVerdict::Within(t.clone()),
     };
-    Ok(RxIngressCheck::Checked {
+    Ok(RxArrivalCheck::Checked {
         budget,
         occupancy_us,
         slack,
@@ -1468,11 +1472,11 @@ impl ImageFrame {
                 _ => None,
             },
             // phase-462 W6b -- the read-task budget, from the subscribers'
-            // declared ingress; `None` when none declares one.
+            // declared arrival curve; `None` when none declares one.
             rx_task_budget: RxTaskBudget::from_model(model),
             // phase-462 W6c -- what that budget came from, and the slack the
             // second RFC-0074 constraint is checked against.
-            rx_ingress: DeclaredIngress::from_model(model),
+            rx_arrival: DeclaredArrivalCurve::from_model(model),
             tightest_tier: TierSlack::tightest(model),
             // Issue 1694 -- what the launch tree STARTS, described or not. Both
             // spellings of a node, because the two declaration-side producers
@@ -2070,7 +2074,7 @@ pub struct DerivedEntityKnobs {
     /// `NROS_ZENOH_RX_TASK_BUDGET_FRAMES` / `NROS_ZENOH_RX_TASK_BUDGET_REST_US`
     /// -- the zenoh read task's frame budget (phase-462 W6b, RFC-0074), from
     /// the subscriber with the largest declared `rate_hz x burst`. `None` when
-    /// no subscriber declares ingress: neither knob is derived and the task
+    /// no subscriber declares an arrival curve: neither knob is derived and the task
     /// stays unbounded. A DEFAULT like every other derived value -- a stated
     /// knob wins. See [`RxTaskBudget`] for the `c = 0` caveat.
     pub rx_task_budget: Option<RxTaskBudget>,
@@ -2198,7 +2202,7 @@ impl DerivedEntityKnobs {
             // phase-462 W6b -- the heaviest declared budget of any image, kept
             // as a PAIR. Not `None`-if-any like the monitor tables: a shared
             // runtime links ONE zenoh-pico, so the image that declares an
-            // ingress decides its read task for the images that declare none.
+            // arrival curve decides its read task for the images that declare none.
             rx_task_budget: per_image
                 .iter()
                 .fold(None, |acc, k| RxTaskBudget::larger(acc, k.rx_task_budget)),
@@ -3261,7 +3265,7 @@ impl EntityInventory {
             tiers: 0,
             monitor_rows: None,
             rx_task_budget: None,
-            rx_ingress: Vec::new(),
+            rx_arrival: Vec::new(),
             tightest_tier: None,
             rx_cost: None,
             launched: None,
@@ -3349,7 +3353,7 @@ impl EntityInventory {
         self.monitor_rows
     }
 
-    /// The model's declared subscriber ingress, folded onto this inventory:
+    /// The model's declared subscriber arrival curve, folded onto this inventory:
     /// the read-task budget (the heavier of the two), the declarations behind
     /// it (a union) and the tightest tier's slack the declarations are checked
     /// against (the tighter). The same fold [`Self::merged_per_kind_max`] makes,
@@ -3358,12 +3362,12 @@ impl EntityInventory {
     ///
     /// Before this, the cargo-leaf road's join replaced the probe's ROWS with
     /// the contract's and kept the probe's frame, which never saw a model, so
-    /// a leaf whose `system.contract.yaml` declared an ingress was described as
+    /// a leaf whose `system.contract.yaml` declared an arrival curve was described as
     /// declaring none: no `rx_task_budget_*`, and RFC-0074's board check never
     /// ran.
-    pub fn adopt_declared_ingress(&mut self, model: &EntityInventory) {
+    pub fn adopt_declared_arrival_curve(&mut self, model: &EntityInventory) {
         self.rx_task_budget = RxTaskBudget::larger(self.rx_task_budget, model.rx_task_budget);
-        self.rx_ingress = DeclaredIngress::union(&self.rx_ingress, &model.rx_ingress);
+        self.rx_arrival = DeclaredArrivalCurve::union(&self.rx_arrival, &model.rx_arrival);
         // RFC-0074's second check reads the tightest tier's slack beside the
         // declarations, so it travels with them.
         self.tightest_tier =
@@ -3376,7 +3380,7 @@ impl EntityInventory {
         self.rx_task_budget = budget;
     }
 
-    /// phase-462 W6b -- the read-task budget the model's declared ingress
+    /// phase-462 W6b -- the read-task budget the model's declared arrival curve
     /// implies, `None` when nothing declared one (or no model was seen).
     ///
     /// phase-462 W6c -- with the board's per-frame cost `c` when
@@ -3385,19 +3389,23 @@ impl EntityInventory {
     /// subscriber. No cost stated: exactly W6b's `c = 0` pair.
     pub fn rx_task_budget(&self) -> Option<RxTaskBudget> {
         match self.rx_cost {
-            Some(cost) => DeclaredIngress::heaviest(&self.rx_ingress)
+            Some(cost) => DeclaredArrivalCurve::heaviest(&self.rx_arrival)
                 .and_then(|i| {
-                    RxTaskBudget::from_ingress_with_cost(i.rate_hz, i.burst, cost.frame_cost_us)
+                    RxTaskBudget::from_arrival_curve_with_cost(
+                        i.rate_hz,
+                        i.burst,
+                        cost.frame_cost_us,
+                    )
                 })
                 .or(self.rx_task_budget),
             None => self.rx_task_budget,
         }
     }
 
-    /// phase-462 W6c -- the subscribers' declared ingress, in contract key
+    /// phase-462 W6c -- the subscribers' declared arrival curve, in contract key
     /// order. Empty when none declares one (or no model was seen).
-    pub fn rx_ingress(&self) -> &[DeclaredIngress] {
-        &self.rx_ingress
+    pub fn rx_arrival(&self) -> &[DeclaredArrivalCurve] {
+        &self.rx_arrival
     }
 
     /// phase-462 W6c -- state the BOARD's per-frame receive cost
@@ -3417,17 +3425,17 @@ impl EntityInventory {
     /// resolve-time constraints, against the board cost this inventory was
     /// handed. `Err` is a REFUSAL naming the inputs and the remedy (RFC-0065
     /// D2); a road fails on it rather than build an image whose declared
-    /// ingress the board cannot satisfy. `Ok` says what was checked -- and
+    /// arrival curve the board cannot satisfy. `Ok` says what was checked -- and
     /// what was NOT, which a road prints rather than leaves silent.
     ///
     /// A shared runtime's views are checked too: each image's own declaration
     /// must hold on the board, and the first that does not names its source.
-    pub fn check_rx_ingress(&self) -> Result<RxIngressCheck, String> {
+    pub fn check_rx_arrival(&self) -> Result<RxArrivalCheck, String> {
         for (src, view) in &self.image_views {
-            view.check_rx_ingress()
+            view.check_rx_arrival()
                 .map_err(|e| format!("image `{src}`: {e}"))?;
         }
-        check_rx_ingress(&self.rx_ingress, self.rx_cost, self.tightest_tier.as_ref())
+        check_rx_arrival(&self.rx_arrival, self.rx_cost, self.tightest_tier.as_ref())
     }
 
     /// Issue 1676 -- the `/diagnostics` publishers a contracted image's
@@ -3496,7 +3504,7 @@ impl EntityInventory {
     /// contract spells it `trigger: { timer: { rate_hz: N } }`, which the
     /// resolver flattens to a `node_paths` entry with no `input` key.
     ///
-    /// The flattening loses the rest of the taxonomy: `once` and `spontaneous`
+    /// The flattening loses the rest of the taxonomy: `once` and `aperiodic`
     /// triggers also arrive here as an empty `input`, and both are counted as
     /// a timer. That over-counts by one callback slot per such path, which is
     /// the SAFE direction -- an over-sized `MAX_CBS` costs bytes, an
@@ -3647,16 +3655,16 @@ impl EntityInventory {
         // `state: true` subscription. ONE translation from the model's
         // vocabulary into this crate's, beside the QoS ones, so the mapping
         // has a single spelling.
-        // phase-519 W3b -- the subscription's declared `ingress.rate_hz`, as
+        // phase-519 W3b -- the subscription's declared `arrival_curve.rate_hz`, as
         // the registration hands it to the backend. A rate no budget can
         // express (non-finite, non-positive, below one millihertz) is
-        // "nobody said", the rule `DeclaredIngress::from_model` keeps.
-        let sub_ingress_of = |ep: &str| -> Option<RateMilliHz> {
+        // "nobody said", the rule `DeclaredArrivalCurve::from_model` keeps.
+        let sub_arrival_rate_of = |ep: &str| -> Option<RateMilliHz> {
             model
                 .contracts
                 .sub_endpoints
                 .get(ep)
-                .and_then(|c| c.ingress)
+                .and_then(|c| c.arrival_curve)
                 .and_then(|i| RateMilliHz::from_hz(i.rate_hz))
         };
         let sub_buffer_of = |ep: &str| -> Option<BufferDiscipline> {
@@ -3830,7 +3838,7 @@ impl EntityInventory {
                     buffer: sub_buffer_of(ep),
                     publish_rate,
                     drain_rate: drain_rate_by_node.get(&node_of(ep)).copied(),
-                    ingress_rate: sub_ingress_of(ep),
+                    arrival_rate: sub_arrival_rate_of(ep),
                     ..EntityDecl::bare(
                         EntityKind::Subscription,
                         Some(wiring.msg_type.clone()),
@@ -3903,7 +3911,7 @@ impl EntityInventory {
         // `input.is_empty()` and NOT `trigger == Timer`, deliberately, even
         // though the trigger is now readable (issue 1339) and the drain rate
         // twenty lines up reads it. This is a COUNT that sizes a pool: a
-        // `once`, a `spontaneous` and an `Unclassified` path all land here, so
+        // `once`, an `aperiodic` and an `Unclassified` path all land here, so
         // it OVER-counts, which is the safe direction. Narrowing it to
         // `Timer` would shrink the count for exactly those paths -- an
         // UNDER-size if the runtime does create a callback for one -- so it is
@@ -4147,7 +4155,7 @@ impl EntityInventory {
         self.tiers = f.tiers;
         self.monitor_rows = f.monitor_rows;
         self.rx_task_budget = f.rx_task_budget;
-        self.rx_ingress = f.rx_ingress.clone();
+        self.rx_arrival = f.rx_arrival.clone();
         self.tightest_tier = f.tightest_tier.clone();
         self.launched = Some(f.launched.clone());
         self.bridges = f.bridges.clone();
@@ -4380,7 +4388,7 @@ impl EntityInventory {
         // phase-462 W6c -- the declarations behind it, as a union (one read
         // task drains both sides' subscribers), the tighter slack, and the
         // board fact from whichever side was handed one.
-        out.rx_ingress = DeclaredIngress::union(&self.rx_ingress, &model.rx_ingress);
+        out.rx_arrival = DeclaredArrivalCurve::union(&self.rx_arrival, &model.rx_arrival);
         out.tightest_tier =
             TierSlack::tighter(self.tightest_tier.clone(), model.tightest_tier.clone());
         out.rx_cost = self.rx_cost.or(model.rx_cost);
@@ -6173,7 +6181,7 @@ impl EntityInventory {
                     ));
                 }
                 // phase-462 W6b -- the read-task budget, only when a subscriber
-                // declared ingress: absent keeps the task unbounded.
+                // declared arrival curve: absent keeps the task unbounded.
                 if let Some(b) = k.rx_task_budget {
                     s.push_str(
                         "# zenoh read-task budget (RFC-0074): FRAMES = burst and\n\
@@ -7204,10 +7212,10 @@ mod tests {
     }
 
     /// phase-519 W3b -- each subscription row carries ITS OWN declared
-    /// ingress rate, in millihertz, and a subscription that declares none
+    /// arrival rate, in millihertz, and a subscription that declares none
     /// carries none.
     #[test]
-    fn each_subscription_row_carries_its_own_declared_ingress() {
+    fn each_subscription_row_carries_its_own_declared_arrival_curve() {
         let m: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(
             r#"
 meta: { version: 1 }
@@ -7226,7 +7234,7 @@ structure:
 contracts:
   sub_endpoints:
     /listener/fast:
-      ingress: { rate_hz: 12.5, burst: 4 }
+      arrival_curve: { rate_hz: 12.5, burst: 4 }
 "#,
         )
         .expect("model fixture parses");
@@ -7241,7 +7249,7 @@ contracts:
                 .flat_map(|c| c.declaration.entities())
                 .find(|e| e.topic() == Some(topic))
                 .unwrap_or_else(|| panic!("no row for {topic}"))
-                .ingress_rate
+                .arrival_rate
                 .map(RateMilliHz::milli_hz)
         };
         assert_eq!(rate_of("/fast"), Some(12_500));
@@ -7250,9 +7258,9 @@ contracts:
 
     /// phase-462 W6b -- the zenoh read-task budget is derived from the
     /// subscriber with the largest declared `rate_hz x burst`, and only when
-    /// one declares ingress.
+    /// one declares an arrival curve.
     #[test]
-    fn the_read_task_budget_follows_the_declared_ingress() {
+    fn the_read_task_budget_follows_the_declared_arrival_curve() {
         let m: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(
             r#"
 meta: { version: 1 }
@@ -7274,9 +7282,9 @@ structure:
 contracts:
   sub_endpoints:
     /listener/fast:
-      ingress: { rate_hz: 200, burst: 4 }
+      arrival_curve: { rate_hz: 200, burst: 4 }
     /listener/bursty:
-      ingress: { rate_hz: 50, burst: 20 }
+      arrival_curve: { rate_hz: 50, burst: 20 }
 "#,
         )
         .expect("model fixture parses");
@@ -7325,10 +7333,10 @@ contracts:
         assert_eq!(probe.rx_task_budget(), None);
         assert_eq!(probe.merged_per_kind_max(&inv).rx_task_budget(), Some(want));
 
-        // No ingress declared: nothing derived, nothing rendered.
+        // No arrival curve declared: nothing derived, nothing rendered.
         let mut bare = m.clone();
         for c in bare.contracts.sub_endpoints.values_mut() {
-            c.ingress = None;
+            c.arrival_curve = None;
         }
         let inv = EntityInventory::from_model(
             "img",
@@ -7348,15 +7356,24 @@ contracts:
     #[test]
     fn the_read_task_budget_rounds_clamps_and_merges_as_a_pair() {
         let b = |frames, rest_us| RxTaskBudget { frames, rest_us };
-        assert_eq!(RxTaskBudget::from_ingress(200.0, 4), Some(b(4, 20_000)));
-        assert_eq!(RxTaskBudget::from_ingress(3.0, 1), Some(b(1, 333_333)));
+        assert_eq!(
+            RxTaskBudget::from_arrival_curve(200.0, 4),
+            Some(b(4, 20_000))
+        );
+        assert_eq!(
+            RxTaskBudget::from_arrival_curve(3.0, 1),
+            Some(b(1, 333_333))
+        );
         // A rest past 1 s clamps to the Kconfig ceiling.
-        assert_eq!(RxTaskBudget::from_ingress(0.5, 4), Some(b(4, 1_000_000)));
+        assert_eq!(
+            RxTaskBudget::from_arrival_curve(0.5, 4),
+            Some(b(4, 1_000_000))
+        );
         // A rest under 1 us clamps to its floor.
-        assert_eq!(RxTaskBudget::from_ingress(1e9, 1), Some(b(1, 1)));
-        assert_eq!(RxTaskBudget::from_ingress(0.0, 4), None);
-        assert_eq!(RxTaskBudget::from_ingress(f64::NAN, 4), None);
-        assert_eq!(RxTaskBudget::from_ingress(10.0, 0), None);
+        assert_eq!(RxTaskBudget::from_arrival_curve(1e9, 1), Some(b(1, 1)));
+        assert_eq!(RxTaskBudget::from_arrival_curve(0.0, 4), None);
+        assert_eq!(RxTaskBudget::from_arrival_curve(f64::NAN, 4), None);
+        assert_eq!(RxTaskBudget::from_arrival_curve(10.0, 0), None);
         // 200 Hz x 4 (load 800) against 50 Hz x 20 (load 1000).
         let light = b(4, 20_000);
         let heavy = b(20, 400_000);
@@ -7366,9 +7383,9 @@ contracts:
         assert_eq!(RxTaskBudget::larger(None, None), None);
     }
 
-    /// phase-462 W6c -- a listener with two declared ingresses (the bursty one
+    /// phase-462 W6c -- a listener with two declared arrival curvees (the bursty one
     /// sizes the task) and, optionally, an authored `execution` block.
-    fn ingress_model(execution: &str) -> EntityInventory {
+    fn arrival_model(execution: &str) -> EntityInventory {
         let m: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&format!(
             r#"
 meta: {{ version: 1 }}
@@ -7387,9 +7404,9 @@ structure:
 contracts:
   sub_endpoints:
     /listener/fast:
-      ingress: {{ rate_hz: 200, burst: 4 }}
+      arrival_curve: {{ rate_hz: 200, burst: 4 }}
     /listener/bursty:
-      ingress: {{ rate_hz: 50, burst: 20 }}
+      arrival_curve: {{ rate_hz: 50, burst: 20 }}
 {execution}
 "#
         ))
@@ -7415,15 +7432,15 @@ contracts:
             frames: 20,
             rest_us: 400_000,
         };
-        let mut inv = ingress_model("");
+        let mut inv = arrival_model("");
         assert_eq!(inv.rx_task_budget(), Some(w6b));
         let before = inv.to_cmake();
         // `None` is "the board states none": nothing moves, byte for byte.
         inv.set_board_rx_cost(None);
         assert_eq!(inv.rx_task_budget(), Some(w6b));
         assert_eq!(inv.to_cmake(), before);
-        assert_eq!(inv.check_rx_ingress(), Ok(RxIngressCheck::NoBoardCost));
-        assert_eq!(RxIngressCheck::NoBoardCost.statement(), None);
+        assert_eq!(inv.check_rx_arrival(), Ok(RxArrivalCheck::NoBoardCost));
+        assert_eq!(RxArrivalCheck::NoBoardCost.statement(), None);
 
         // c = 940 us (RFC-0074's mps2-an385 lane): 20 x (20000 - 940).
         inv.set_board_rx_cost(cost(940, Some(11_000)));
@@ -7449,11 +7466,11 @@ contracts:
             Some(with_c)
         );
 
-        // `c = 0` is `from_ingress` exactly, across the clamps.
+        // `c = 0` is `from_arrival_curve` exactly, across the clamps.
         for (rate, burst) in [(200.0, 4), (3.0, 1), (0.5, 4), (1e9, 1), (33.3, 7)] {
             assert_eq!(
-                RxTaskBudget::from_ingress_with_cost(rate, burst, 0),
-                RxTaskBudget::from_ingress(rate, burst),
+                RxTaskBudget::from_arrival_curve_with_cost(rate, burst, 0),
+                RxTaskBudget::from_arrival_curve(rate, burst),
                 "{rate} Hz x {burst}"
             );
         }
@@ -7466,14 +7483,14 @@ contracts:
     #[test]
     fn a_rate_the_board_cannot_receive_is_refused_naming_the_subscriber() {
         let decl = |rate_hz| {
-            vec![DeclaredIngress {
+            vec![DeclaredArrivalCurve {
                 endpoint: "/listener/cmd".into(),
                 rate_hz,
                 burst: 1,
             }]
         };
         // c = 940 us: the board receives at most 10^6 / 940 = 1063.8 msg/s.
-        let err = check_rx_ingress(&decl(2000.0), cost(940, None), None)
+        let err = check_rx_arrival(&decl(2000.0), cost(940, None), None)
             .expect_err("2000 Hz is above what a 940 us frame cost admits");
         for want in [
             "/listener/cmd",
@@ -7485,25 +7502,25 @@ contracts:
             assert!(err.contains(want), "missing `{want}`: {err}");
         }
         // Negative control: 1000 Hz fits under the same ceiling.
-        let ok = check_rx_ingress(&decl(1000.0), cost(940, None), None).expect("1000 Hz fits");
-        let RxIngressCheck::Checked { budget, .. } = &ok else {
+        let ok = check_rx_arrival(&decl(1000.0), cost(940, None), None).expect("1000 Hz fits");
+        let RxArrivalCheck::Checked { budget, .. } = &ok else {
             panic!("expected a checked declaration, got {ok:?}");
         };
         // 1 x (1000 - 940) = 60 us.
         assert_eq!(budget.rest_us, 60);
         // ...and 2000 Hz is fine on a board that states no cost (W6b).
         assert_eq!(
-            check_rx_ingress(&decl(2000.0), None, None),
-            Ok(RxIngressCheck::NoBoardCost)
+            check_rx_arrival(&decl(2000.0), None, None),
+            Ok(RxArrivalCheck::NoBoardCost)
         );
         // A stated zero is refused, naming the table.
-        let zero = check_rx_ingress(&decl(10.0), cost(0, None), None)
+        let zero = check_rx_arrival(&decl(10.0), cost(0, None), None)
             .expect_err("a stated zero cost is refused");
         assert!(zero.contains("`[board.rx] frame_cost_us = 0`"), "{zero}");
-        // The board's cost and no ingress: nothing to check, nothing said.
+        // The board's cost and no arrival curve: nothing to check, nothing said.
         assert_eq!(
-            check_rx_ingress(&[], cost(940, None), None),
-            Ok(RxIngressCheck::NoIngress)
+            check_rx_arrival(&[], cost(940, None), None),
+            Ok(RxArrivalCheck::NoArrivalCurve)
         );
     }
 
@@ -7517,7 +7534,7 @@ contracts:
         // looser and does not bind.
         let tiers = "execution:\n  tiers:\n    ctrl: { period: 10ms, budget: 2ms }\n    \
                      slow: { period: 100ms, budget: 5ms }\n";
-        let mut inv = ingress_model(tiers);
+        let mut inv = arrival_model(tiers);
         assert_eq!(
             inv.tightest_tier,
             Some(TierSlack {
@@ -7530,7 +7547,7 @@ contracts:
         // FRAMES = 20 (the bursty subscriber): 20 x 300 + 3000 = 9000 > 8000.
         inv.set_board_rx_cost(cost(300, Some(3_000)));
         let err = inv
-            .check_rx_ingress()
+            .check_rx_arrival()
             .expect_err("a 9000 us burst cannot fit an 8000 us slack");
         for want in [
             "/listener/bursty",
@@ -7545,8 +7562,8 @@ contracts:
         }
         // Negative control: a 1000 us floor fits (20 x 300 + 1000 = 7000).
         inv.set_board_rx_cost(cost(300, Some(1_000)));
-        let ok = inv.check_rx_ingress().expect("7000 us fits 8000 us");
-        let RxIngressCheck::Checked {
+        let ok = inv.check_rx_arrival().expect("7000 us fits 8000 us");
+        let RxArrivalCheck::Checked {
             occupancy_us,
             slack,
             ..
@@ -7564,10 +7581,10 @@ contracts:
 
         // A tier with no `budget` is checked against its whole deadline -- an
         // upper bound of its slack, and SAID so.
-        let mut loose = ingress_model("execution:\n  tiers:\n    ctrl: { period: 10ms }\n");
+        let mut loose = arrival_model("execution:\n  tiers:\n    ctrl: { period: 10ms }\n");
         loose.set_board_rx_cost(cost(300, Some(3_000)));
         let line = loose
-            .check_rx_ingress()
+            .check_rx_arrival()
             .expect("9000 us fits a 10000 us deadline")
             .statement()
             .expect("stated");
@@ -7580,11 +7597,11 @@ contracts:
     /// runs.
     #[test]
     fn the_slack_check_is_stated_as_not_checked_without_tier_timing() {
-        let mut inv = ingress_model("");
+        let mut inv = arrival_model("");
         assert_eq!(inv.tightest_tier, None);
         inv.set_board_rx_cost(cost(940, Some(11_000)));
-        let check = inv.check_rx_ingress().expect("the rates fit 1063.8 msg/s");
-        let RxIngressCheck::Checked {
+        let check = inv.check_rx_arrival().expect("the rates fit 1063.8 msg/s");
+        let RxArrivalCheck::Checked {
             occupancy_us,
             slack: SlackVerdict::NotChecked(why),
             ..
@@ -7598,7 +7615,7 @@ contracts:
         let line = check.statement().expect("stated, never silent");
         assert!(line.contains("NOT CHECKED"), "{line}");
         // A tier with neither deadline nor period has no slack either.
-        let classless = ingress_model("execution:\n  tiers:\n    ctrl: { class: best_effort }\n");
+        let classless = arrival_model("execution:\n  tiers:\n    ctrl: { class: best_effort }\n");
         assert_eq!(classless.tightest_tier, None);
     }
 

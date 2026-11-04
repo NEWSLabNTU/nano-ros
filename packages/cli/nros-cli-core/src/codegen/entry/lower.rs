@@ -27,7 +27,7 @@
 use std::collections::HashMap;
 
 use nros_entry_lower::{
-    AgeRow, ComponentKind, ComponentSeam, GroupBind, HazardGuard, HazardMember, HazardRow,
+    AgeRow, ComponentKind, ComponentSeam, GroupBind, HazardMember, HazardMonitor, HazardRow,
     HazardRung, LoweredBoot, LoweredBootConfig, LoweredEntry, LoweredNode, LoweredProbe,
     LoweredRunners, LoweredSched, LoweredServices, LoweredTaskMemory, LoweredTiers,
     ModeDeadlineRow, ModeName, ModeRow, ModeVariantRows, MonitorRow, MonitorTable, NodeBind,
@@ -742,13 +742,13 @@ fn monitor_table(
         .cloned()
         .collect();
     // phase-462 W3b -- over THIS executor's slice, so a hazard lands on the
-    // one executor that holds all of its guards' monitors.
-    let member = |m: model_ingest::GuardMemberRow| match m {
-        model_ingest::GuardMemberRow::Age(r) => HazardMember {
+    // one executor that holds all of its monitors' monitors.
+    let member = |m: model_ingest::MonitorMemberRow| match m {
+        model_ingest::MonitorMemberRow::Age(r) => HazardMember {
             kind: 0,
             row: r as u16,
         },
-        model_ingest::GuardMemberRow::Rate(r) => HazardMember {
+        model_ingest::MonitorMemberRow::Rate(r) => HazardMember {
             kind: 1,
             row: r as u16,
         },
@@ -762,10 +762,10 @@ fn monitor_table(
             key: h.key,
             ftti_ms: h.ftti_ms,
             settle_ms: h.settle_ms,
-            guards: h
-                .guards
+            monitors: h
+                .monitors
                 .into_iter()
-                .map(|g| HazardGuard {
+                .map(|g| HazardMonitor {
                     all_of: g.all_of,
                     members: g.members.into_iter().map(member).collect(),
                 })
@@ -868,10 +868,10 @@ fn monitor_table(
             m.ages.clear();
         }
     }
-    let hazard_guards = hazards.iter().map(|h| h.guards.len()).sum();
+    let hazard_monitors = hazards.iter().map(|h| h.monitors.len()).sum();
     let hazard_members = hazards
         .iter()
-        .flat_map(|h| &h.guards)
+        .flat_map(|h| &h.monitors)
         .map(|g| g.members.len())
         .sum::<usize>()
         + hazards
@@ -885,7 +885,7 @@ fn monitor_table(
         deadline_sc_is_tier: matches!(sc, DeadlineSc::TierIndex(_)),
         modes,
         hazards,
-        hazard_guards,
+        hazard_monitors,
         hazard_members,
         hazard_rungs,
         rows: ir_rows

@@ -144,12 +144,12 @@
 #define NROS_CPP_HAZARD_NO_MODE UINT16_MAX
 
 /**
- * Bytes of caller storage ONE guard needs (`GuardSpec`).
+ * Bytes of caller storage ONE guard needs (`HazardMonitorSpec`).
  */
-#define NROS_CPP_HAZARD_GUARD_STORAGE 24
+#define NROS_CPP_HAZARD_MONITOR_STORAGE 24
 
 /**
- * Bytes of caller storage ONE guard member needs (`GuardRef`).
+ * Bytes of caller storage ONE guard member needs (`HazardMonitorRef`).
  */
 #define NROS_CPP_HAZARD_MEMBER_STORAGE 4
 
@@ -780,14 +780,14 @@ typedef struct nros_cpp_hazard_member_t {
  * One guard: a topic, or a redundant set that faults only when every member
  * has (`all_of` non-zero).
  */
-typedef struct nros_cpp_hazard_guard_t {
+typedef struct nros_cpp_hazard_monitor_t {
   uint8_t all_of;
   /**
    * `n_members` members, static.
    */
   const struct nros_cpp_hazard_member_t *members;
   size_t n_members;
-} nros_cpp_hazard_guard_t;
+} nros_cpp_hazard_monitor_t;
 
 /**
  * play_launch phase 96 W4.2 -- one rung of a hazard's ladder: the C spelling
@@ -840,10 +840,10 @@ typedef struct nros_cpp_hazard_row_t {
    */
   uint32_t settle_ms;
   /**
-   * `n_guards` guards, static.
+   * `n_monitors` monitors, static.
    */
-  const struct nros_cpp_hazard_guard_t *guards;
-  size_t n_guards;
+  const struct nros_cpp_hazard_monitor_t *monitors;
+  size_t n_monitors;
   /**
    * Rate-table row of the `safe_state` publisher, or
    * `NROS_CPP_HAZARD_NO_SINK`.
@@ -866,8 +866,8 @@ typedef struct nros_cpp_hazard_row_t {
 
 /**
  * One install: the rows, and one static 8-aligned buffer of at least
- * `n_rows * NROS_CPP_HAZARD_ROW_STORAGE + n_guards_total *
- * NROS_CPP_HAZARD_GUARD_STORAGE + n_members_total *
+ * `n_rows * NROS_CPP_HAZARD_ROW_STORAGE + n_monitors_total *
+ * NROS_CPP_HAZARD_MONITOR_STORAGE + n_members_total *
  * NROS_CPP_HAZARD_MEMBER_STORAGE` bytes.
  */
 typedef struct nros_cpp_hazard_table_t {

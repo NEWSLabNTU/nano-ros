@@ -1778,7 +1778,7 @@ pub(crate) fn check_age(
 /// violations keeps the two in step by construction -- a hazard cannot be
 /// detected by a rule that did not fire, nor stay detected after it recovered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GuardRef {
+pub enum HazardMonitorRef {
     /// Row index into the executor's age table.
     Age(u16),
     /// Row index into the executor's rate/latency table.
@@ -1787,12 +1787,12 @@ pub enum GuardRef {
 
 /// One fault a hazard covers: a topic, or a redundant set of topics.
 #[derive(Debug, Clone, Copy)]
-pub struct GuardSpec {
+pub struct HazardMonitorSpec {
     /// `true`: the guard faults only when EVERY member has (a redundant
     /// set). `false`: when any member has.
     pub all_of: bool,
     /// The guard's members.
-    pub members: &'static [GuardRef],
+    pub members: &'static [HazardMonitorRef],
 }
 
 /// [`HazardSpec::sink`] when the hazard's reaction states no `safe_state`
@@ -1887,7 +1887,7 @@ pub struct RungSpec {
     /// this executor does not observe that node as a detector (a rung below a
     /// window starts at the window owner, which is not a guard), and then the
     /// clock starts when the rung becomes active.
-    pub starts_at: &'static [GuardRef],
+    pub starts_at: &'static [HazardMonitorRef],
 }
 
 /// One contracted hazard (`contracts.hazards`), lowered by the bake.
@@ -1901,7 +1901,7 @@ pub struct HazardSpec {
     /// time as play_launch adds it; 0 = none.
     pub settle_ms: u32,
     /// The faults the hazard covers; any one of them is the hazard.
-    pub guards: &'static [GuardSpec],
+    pub monitors: &'static [HazardMonitorSpec],
     /// Rate-table row of the `safe_state.emits` publisher, or [`NO_SINK`].
     pub sink: u16,
     /// phase-462 W3c -- the id the reaction hook receives when this hazard is
@@ -1921,16 +1921,16 @@ const HAZARD_REACTED: u32 = 2;
 
 /// Whether `member` has faulted, and since when (ms) when the row knows.
 fn member_fault(
-    member: GuardRef,
+    member: HazardMonitorRef,
     monitor_states: &[MonitorState],
     age_states: &[AgeState],
 ) -> Option<Option<u32>> {
     match member {
-        GuardRef::Age(i) => {
+        HazardMonitorRef::Age(i) => {
             let s = age_states.get(i as usize)?;
             s.silence_reported.then_some(Some(s.last_take_ms))
         }
-        GuardRef::Rate(i) => {
+        HazardMonitorRef::Rate(i) => {
             let s = monitor_states.get(i as usize)?;
             s.violated_last_window.then_some(None)
         }
@@ -1946,7 +1946,7 @@ fn hazard_fault(
 ) -> Option<Option<u32>> {
     let mut faulted = false;
     let mut since: Option<u32> = None;
-    for g in spec.guards {
+    for g in spec.monitors {
         let mut seen = 0usize;
         let mut g_since: Option<u32> = None;
         for m in g.members {
@@ -2216,15 +2216,15 @@ mod hazard_tests {
     #[test]
     fn a_silence_guard_detects_reacts_and_recovers_once_each() {
         static CELL: HazardCell = HazardCell::new();
-        static GUARDS: [GuardSpec; 1] = [GuardSpec {
+        static MONITORS: [HazardMonitorSpec; 1] = [HazardMonitorSpec {
             all_of: false,
-            members: &[GuardRef::Age(0)],
+            members: &[HazardMonitorRef::Age(0)],
         }];
         let spec = HazardSpec {
             key: "demo.launch.xml/scan_lost",
             ftti_ms: 500,
             settle_ms: 30,
-            guards: &GUARDS,
+            monitors: &MONITORS,
             sink: 1,
             reaction_id: 0,
             rungs: &[],
@@ -2261,15 +2261,15 @@ mod hazard_tests {
     #[test]
     fn an_all_of_guard_waits_for_every_member() {
         static CELL: HazardCell = HazardCell::new();
-        static GUARDS: [GuardSpec; 1] = [GuardSpec {
+        static MONITORS: [HazardMonitorSpec; 1] = [HazardMonitorSpec {
             all_of: true,
-            members: &[GuardRef::Age(0), GuardRef::Rate(0)],
+            members: &[HazardMonitorRef::Age(0), HazardMonitorRef::Rate(0)],
         }];
         let spec = HazardSpec {
             key: "demo.launch.xml/both_lost",
             ftti_ms: 0,
             settle_ms: 0,
-            guards: &GUARDS,
+            monitors: &MONITORS,
             sink: NO_SINK,
             reaction_id: 0,
             rungs: &[],
@@ -2414,19 +2414,21 @@ mod hazard_tests {
             cell: &NROS_AGE_CELL_0,
         }];
 
-        use crate::executor::monitor::{GuardRef, GuardSpec, HazardCell, HazardSpec};
+        use crate::executor::monitor::{
+            HazardCell, HazardMonitorRef, HazardMonitorSpec, HazardSpec,
+        };
 
         static NROS_HAZARD_CELL_0: HazardCell = HazardCell::new();
-        const NROS_HAZARD_GUARDS_0: &[GuardSpec] = &[GuardSpec {
+        const NROS_HAZARD_MONITORS_0: &[HazardMonitorSpec] = &[HazardMonitorSpec {
             all_of: false,
-            members: &[GuardRef::Age(0u16), GuardRef::Rate(1u16)],
+            members: &[HazardMonitorRef::Age(0u16), HazardMonitorRef::Rate(1u16)],
         }];
 
         pub static NROS_HAZARDS: &[HazardSpec] = &[HazardSpec {
             key: "demo.launch.xml/scan_lost",
             ftti_ms: 0u32,
             settle_ms: 30u32,
-            guards: NROS_HAZARD_GUARDS_0,
+            monitors: NROS_HAZARD_MONITORS_0,
             sink: 0u16,
             reaction_id: 1u16,
             rungs: &[crate::executor::monitor::RungSpec {
@@ -2434,7 +2436,7 @@ mod hazard_tests {
                 output_row: 0u16,
                 route_ms: 25u32,
                 role: 2u8,
-                starts_at: &[GuardRef::Age(0u16)],
+                starts_at: &[HazardMonitorRef::Age(0u16)],
             }],
             cell: &NROS_HAZARD_CELL_0,
         }];
@@ -2481,15 +2483,15 @@ mod hazard_tests {
             mechanism: 0,
             cell: &RUNG_CELL,
         }];
-        static GUARDS: [GuardSpec; 1] = [GuardSpec {
+        static MONITORS: [HazardMonitorSpec; 1] = [HazardMonitorSpec {
             all_of: false,
-            members: &[GuardRef::Age(0)],
+            members: &[HazardMonitorRef::Age(0)],
         }];
         let spec = HazardSpec {
             key: "demo.launch.xml/scan_lost",
             ftti_ms: 500,
             settle_ms: 0,
-            guards: &GUARDS,
+            monitors: &MONITORS,
             sink: NO_SINK,
             reaction_id: 0,
             rungs: &[RungSpec {
@@ -2573,15 +2575,15 @@ mod hazard_tests {
     #[test]
     fn no_route_no_route_verdict() {
         static CELL: HazardCell = HazardCell::new();
-        static GUARDS: [GuardSpec; 1] = [GuardSpec {
+        static MONITORS: [HazardMonitorSpec; 1] = [HazardMonitorSpec {
             all_of: false,
-            members: &[GuardRef::Rate(0)],
+            members: &[HazardMonitorRef::Rate(0)],
         }];
         let spec = HazardSpec {
             key: "k",
             ftti_ms: 100,
             settle_ms: 0,
-            guards: &GUARDS,
+            monitors: &MONITORS,
             sink: NO_SINK,
             reaction_id: 0,
             rungs: &[RungSpec {
@@ -2625,9 +2627,9 @@ mod hazard_tests {
                 cell,
             }
         }
-        pub static GUARDS: [GuardSpec; 1] = [GuardSpec {
+        pub static MONITORS: [HazardMonitorSpec; 1] = [HazardMonitorSpec {
             all_of: false,
-            members: &[GuardRef::Age(0), GuardRef::Age(1)],
+            members: &[HazardMonitorRef::Age(0), HazardMonitorRef::Age(1)],
         }];
         /// The top rung starts at the detector the guard's age row 0 belongs
         /// to; the two below start at the window owner, which is not a guard
@@ -2638,7 +2640,7 @@ mod hazard_tests {
                 output_row: 0,
                 route_ms: 10,
                 role: RUNG_ROLE_WINDOW,
-                starts_at: &[GuardRef::Age(0)],
+                starts_at: &[HazardMonitorRef::Age(0)],
             },
             RungSpec {
                 mode: 2,
@@ -2660,7 +2662,7 @@ mod hazard_tests {
                 key: "demo.launch.xml/scan_lost",
                 ftti_ms: 0,
                 settle_ms: 0,
-                guards: &GUARDS,
+                monitors: &MONITORS,
                 sink: NO_SINK,
                 reaction_id: 0,
                 rungs: &RUNGS,
@@ -2810,15 +2812,15 @@ mod hazard_tests {
     #[test]
     fn no_sink_no_reaction() {
         static CELL: HazardCell = HazardCell::new();
-        static GUARDS: [GuardSpec; 1] = [GuardSpec {
+        static MONITORS: [HazardMonitorSpec; 1] = [HazardMonitorSpec {
             all_of: false,
-            members: &[GuardRef::Rate(0)],
+            members: &[HazardMonitorRef::Rate(0)],
         }];
         let spec = HazardSpec {
             key: "k",
             ftti_ms: 100,
             settle_ms: 0,
-            guards: &GUARDS,
+            monitors: &MONITORS,
             sink: NO_SINK,
             reaction_id: 0,
             rungs: &[],

@@ -203,11 +203,11 @@ pub fn join(
         }
     }
 
-    // The model's frame facts about ingress travel with its rows: a probe
-    // never sees a contract, so without this a leaf that declares an ingress
+    // The model's frame facts about arrival curves travel with its rows: a probe
+    // never sees a contract, so without this a leaf that declares an arrival curve
     // reads as declaring none (no read-task budget, no RFC-0074 board check).
     let mut inventory = probe.with_components(rows_out);
-    inventory.adopt_declared_ingress(&contract);
+    inventory.adopt_declared_arrival_curve(&contract);
     Joined {
         inventory,
         contract_seen: true,
@@ -362,7 +362,7 @@ fn attribute(
         buffer: c.buffer,
         publish_rate: c.publish_rate,
         drain_rate: c.drain_rate,
-        ingress_rate: c.ingress_rate,
+        arrival_rate: c.arrival_rate,
         contract_refusal: None,
         ..row.clone()
     }
@@ -671,19 +671,19 @@ mod tests {
         assert!(j.notes.is_empty(), "{:?}", j.notes);
     }
 
-    /// A contract's declared ingress reaches the joined inventory's FRAME, not
+    /// A contract's declared arrival curve reaches the joined inventory's FRAME, not
     /// only its row: the read-task budget and the declaration list. The probe
     /// side saw no model, so before the fold both were empty and the cargo
     /// leaf's descriptor refused `rx_task_budget_*` as "no subscriber
-    /// declares `ingress`".
+    /// declares `arrival_curve`".
     #[test]
-    fn a_declared_ingress_reaches_the_joined_frame() {
+    fn a_declared_arrival_curve_reaches_the_joined_frame() {
         let m = model_yaml_qos(
             "listener",
             "/chatter",
             "std_msgs/msg/String",
             "",
-            "      qos:\n        history: keep_last\n        depth: 1\n      ingress:\n        rate_hz: 50\n        burst: 4",
+            "      qos:\n        history: keep_last\n        depth: 1\n      arrival_curve:\n        rate_hz: 50\n        burst: 4",
         );
         let p = probe(
             "listener",
@@ -704,12 +704,12 @@ mod tests {
         let b = j.inventory.rx_task_budget().expect("the budget is derived");
         assert_eq!(b.frames, 4);
         assert_eq!(b.rest_us, 80_000, "4 x 10^6 / 50");
-        assert_eq!(j.inventory.rx_ingress().len(), 1);
+        assert_eq!(j.inventory.rx_arrival().len(), 1);
     }
 
-    /// Negative control: a contract with no ingress leaves the frame empty.
+    /// Negative control: a contract with no arrival curve leaves the frame empty.
     #[test]
-    fn no_declared_ingress_leaves_the_joined_frame_empty() {
+    fn no_declared_arrival_curve_leaves_the_joined_frame_empty() {
         let m = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
         let p = probe(
             "listener",
@@ -724,7 +724,7 @@ mod tests {
             &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         assert!(j.inventory.rx_task_budget().is_none());
-        assert!(j.inventory.rx_ingress().is_empty());
+        assert!(j.inventory.rx_arrival().is_empty());
     }
 
     /// MUTATION CONTROL for the key: a probe row whose written topic is NOT the

@@ -12,10 +12,10 @@ superseded-by: null
 
 # RFC-0079 — Priority is allocated, not authored
 
-**Status (2026-11-04, phase 534):** play_launch's platform-file key is
+**Status (2026-11-05, phase 534):** play_launch's platform-file key is
 `priority_assignment:` since ros-launch-manifest v0.3.7 (the standard term
-for the policy); it was `mapper:` before, which rlm still reads for one
-release with a warning. The examples below use the new key; "mapper" in
+for the policy); it was `mapper:` before, which rlm v0.3.9 refuses naming
+the new key. The examples below use the new key; "mapper" in
 prose and in `chain_aware_mapper` names the algorithm, not the key.
 
 ## The problem, counted

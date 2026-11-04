@@ -201,7 +201,7 @@ pub struct EntityInventoryArgs {
     /// The board's `[board.rx] frame_cost_us`: the per-frame receive cost.
     ///
     /// This is the cost `c` the read-task budget is derived with and the
-    /// declared ingress is checked against. Absent: `c = 0`, nothing checked.
+    /// declared arrival curve is checked against. Absent: `c = 0`, nothing checked.
     // phase-462 W6c, RFC-0074.
     #[arg(long, value_name = "US")]
     pub board_rx_frame_cost_us: Option<u32>,
@@ -308,7 +308,7 @@ pub(crate) fn check_model(model: &ros_launch_manifest_model::SystemModel) -> Res
 }
 
 /// One image's composition: the registered population with one model's wiring
-/// folded in, the board's per-frame receive cost, and the ingress check.
+/// folded in, the board's per-frame receive cost, and the arrival-curve check.
 ///
 /// phase-439 W7 -- the single-model, whole-image path of [`run`], lifted so
 /// stage 3.5 composes a C/C++ west image by THIS code rather than by a second
@@ -326,7 +326,7 @@ pub(crate) fn compose_image(
     if rx.is_some() {
         inv.set_board_rx_cost(rx);
     }
-    crate::sizing_descriptor::report_rx_ingress(&inv, who)?;
+    crate::sizing_descriptor::report_rx_arrival(&inv, who)?;
     Ok(inv)
 }
 
@@ -565,7 +565,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         if rx.is_some() {
             inv.set_board_rx_cost(rx);
         }
-        crate::sizing_descriptor::report_rx_ingress(&inv, "nros ws entity-inventory")?;
+        crate::sizing_descriptor::report_rx_arrival(&inv, "nros ws entity-inventory")?;
     }
 
     let (json_path, cmake_path) = match &args.output_dir {

@@ -1,6 +1,6 @@
 # Phase 534 — Follow rlm's standard-names renames (v0.3.6 to v0.3.8, then model schema 4)
 
-**Status (2026-11-04). OPEN — W1, W2 and W4 done (rlm `v0.3.8`, play_launch 0.25.0); W3 (model schema 4) not started. Raised by the play_launch side so nano-ros knows which names are moving, and where nano-ros is on the critical path of the next step.** nano-ros pins rlm `v0.3.8` (was `v0.3.5`) and play_launch 0.25.0, the release carrying it.
+**Status (2026-11-05). DONE — W1, W2 and W4 (rlm `v0.3.8`, play_launch 0.25.0), then W3 (rlm `v0.3.9`, model schema 4, play_launch 0.26.0). Raised by the play_launch side so nano-ros knows which names are moving, and where nano-ros is on the critical path of the next step.** nano-ros pins rlm `v0.3.9` (was `v0.3.5`, then `v0.3.8`) and play_launch 0.26.0, the release carrying it.
 
 The design of record is rlm's
 [`docs/design/standard-names.md`](https://github.com/NEWSLabNTU/ros-launch-manifest/blob/v0.3.8/docs/design/standard-names.md)
@@ -181,6 +181,39 @@ Acceptance:
 - A schema-3 model and a schema-4 model of the same system produce the
   same build artifacts (sizing descriptor, monitor tables).
 
+**Done (2026-11-05).** rlm `v0.3.9` carries schema 4 exactly as proposed
+above, and refuses the v0.3.7/v0.3.8 old contract spellings and rule ids
+(R+1); play_launch 0.26.0 is the release carrying it. `just bump-manifest
+v0.3.9`, `packages/cli/third-party/play_launch` to the 0.26.0 release
+commit, and the field reads renamed (`codegen/entry/lower.rs`,
+`contract_monitors.rs`, `ftti_budget.rs`, `entity_inventory.rs`,
+`router_rule.rs`).
+
+- **nano-ros's own names follow** (user decision 2026-11-05: one
+  vocabulary). The mapping is recorded once, in RFC-0074 "Names":
+  `guards`/`n_guards` -> `monitors`/`n_monitors` (C ABI and the executor's
+  `HazardSpec`), `GuardSpec`/`GuardRef` -> `HazardMonitorSpec`/
+  `HazardMonitorRef` (`MonitorSpec` already names the rate-monitor row),
+  `nros_cpp_hazard_guard_t` -> `nros_cpp_hazard_monitor_t`,
+  `ingress_rate_mhz` -> `arrival_rate_mhz` (the C ABI's
+  `rmw_subscription_options_t`, `TopicInfo`, the sizing descriptor), and
+  the entity inventory's `DeclaredIngress`/`rx_ingress`/`check_rx_ingress`
+  -> `DeclaredArrivalCurve`/`rx_arrival`/`check_rx_arrival`, its messages
+  saying `arrival_curve:`. "Ingress" in the transport sense (a bridge's
+  ingress format, the XRCE agent-side pacing helpers) is kept. The C ABI
+  breaks are in `changelog.d/+phase-534-w3-standard-names.breaking.md`.
+- **Non-Rust model readers:** the audit found none that reads `guards`,
+  `ingress`, `on_demand` or `spontaneous` from a model --
+  `NanoRosEntityInventory.cmake` and `NanoRosSchemaReader.cmake` read the
+  generated inventory and descriptor, never the model's contract fields,
+  and no Python tool reads them -- so nothing had to accept both spellings.
+- **Acceptance test:** `a_schema_3_model_lowers_to_the_same_tables_as_schema_4`
+  (`nros-orchestration-ir`: the rendered monitor and hazard tables and the
+  router rule) and `a_schema_3_model_and_its_schema_4_twin_size_the_same_image`
+  (`nros-cli-core`: the rendered sizing descriptor and the derived CMake
+  facts), each with a negative control that changes one input and sees the
+  artifact move.
+
 ### W4 — Nothing authored needs the R+1 refusal
 
 At rlm's R+1 the old contract keys and rule ids above become errors.
@@ -203,3 +236,11 @@ YAML in test strings (`entity_inventory.rs`, `sizing_descriptor.rs`,
 tell the user a subscriber "declares `ingress: { rate_hz, burst }`"; they
 describe the model's field and move with W3. Re-run just before rlm's R+1
 bump.
+
+**Re-run (2026-11-05, W3 branch, before the R+1 bump).** No authored
+contract or platform file uses an old key or rule id. One test string was
+an AUTHORED contract, not model YAML: `contract_join.rs`'s
+`a_declared_arrival_curve_reaches_the_joined_frame` wrote `ingress:`, which
+v0.3.9 refuses; it now writes `arrival_curve:`. The two `derived_settle`
+fixtures stay as recorded (schema-3 model YAML, read for good); the
+`entity_inventory.rs` messages say `arrival_curve:` (W3).

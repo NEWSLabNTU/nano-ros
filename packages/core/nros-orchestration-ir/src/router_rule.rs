@@ -1,7 +1,7 @@
 //! phase-516 W1a (RFC-0074 enforcement point 1, "As lowered") — the router
-//! `downsampling` rule a bringup's declared ingress lowers to.
+//! `downsampling` rule a bringup's declared arrival curve lowers to.
 //!
-//! A subscriber's `ingress: { rate_hz, burst }` is enforced in two places. The
+//! A subscriber's `arrival_curve: { rate_hz, burst }` is enforced in two places. The
 //! device half (phase-462) budgets the read task; this is the router half,
 //! which is the only place the device's CPU can be saved, because it drops
 //! the excess before the device decodes anything. The rule runs in ROS's
@@ -55,7 +55,7 @@ pub struct TopicRate {
     pub declared_by: Vec<(String, f64, u32)>,
 }
 
-/// Every topic whose subscribers declare an ingress, in topic order. A
+/// Every topic whose subscribers declare an arrival curve, in topic order. A
 /// declaration whose endpoint is wired to no topic, or a rate no rule can
 /// express (non-finite or non-positive), is skipped — the contract crate
 /// refuses both, so this is defence.
@@ -63,26 +63,26 @@ pub fn topic_rates(model: &SystemModel) -> Vec<TopicRate> {
     let mut by_topic: BTreeMap<&str, TopicRate> = BTreeMap::new();
     for (topic, wiring) in &model.structure.topics {
         for sub in &wiring.subscribers {
-            let Some(ingress) = model
+            let Some(arrival) = model
                 .contracts
                 .sub_endpoints
                 .get(sub)
-                .and_then(|c| c.ingress)
+                .and_then(|c| c.arrival_curve)
             else {
                 continue;
             };
-            if !(ingress.rate_hz.is_finite() && ingress.rate_hz > 0.0) {
+            if !(arrival.rate_hz.is_finite() && arrival.rate_hz > 0.0) {
                 continue;
             }
             let row = by_topic.entry(topic).or_insert_with(|| TopicRate {
                 topic: topic.clone(),
                 msg_type: wiring.msg_type.clone(),
-                freq: ingress.rate_hz,
+                freq: arrival.rate_hz,
                 declared_by: Vec::new(),
             });
-            row.freq = row.freq.min(ingress.rate_hz);
+            row.freq = row.freq.min(arrival.rate_hz);
             row.declared_by
-                .push((sub.clone(), ingress.rate_hz, ingress.burst));
+                .push((sub.clone(), arrival.rate_hz, arrival.burst));
         }
     }
     let mut out: Vec<TopicRate> = by_topic.into_values().collect();
@@ -208,7 +208,7 @@ pub struct RouterRule {
 }
 
 impl RouterRule {
-    /// `None` when no subscriber declares an ingress.
+    /// `None` when no subscriber declares an arrival curve.
     pub fn derive(model: &SystemModel, model_stem: &str, deployment: Deployment) -> Option<Self> {
         let rates = topic_rates(model);
         (!rates.is_empty()).then(|| Self {
@@ -322,7 +322,7 @@ fn model_stem(model_path: &Path) -> String {
 
 /// Lower the model at `model_path` with the bringup's deployment and write
 /// the rule beside it — or delete a stale one when nothing declares an
-/// ingress. `system.toml` is read only when a declaration exists, so a bringup
+/// arrival. `system.toml` is read only when a declaration exists, so a bringup
 /// that declares none is untouched by this. Write-if-changed, like the
 /// overlay. Returns the path when a file now exists.
 pub fn write_beside(
@@ -354,7 +354,7 @@ pub fn write_beside(
 }
 
 /// The rule the model at `model_path` lowers to under the bringup at
-/// `bringup_dir`, or `None` (no declared ingress, or no routed image).
+/// `bringup_dir`, or `None` (no declared arrival curve, or no routed image).
 /// `routed` as for [`Deployment::from_bringup`].
 pub fn lower(
     model_path: &Path,
@@ -378,14 +378,14 @@ pub fn lower(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ros_launch_manifest_model::{IngressContract, SubContract, TopicWiring};
+    use ros_launch_manifest_model::{ArrivalCurve, SubContract, TopicWiring};
 
-    /// `(topic, subscriber endpoint, ingress as (rate_hz, burst))`.
+    /// `(topic, subscriber endpoint, arrival as (rate_hz, burst))`.
     type Sub<'a> = (&'a str, &'a str, Option<(f64, u32)>);
 
     fn model(subs: &[Sub<'_>]) -> SystemModel {
         let mut m = SystemModel::default();
-        for (topic, ep, ingress) in subs {
+        for (topic, ep, arrival) in subs {
             m.structure
                 .topics
                 .entry((*topic).to_string())
@@ -398,7 +398,7 @@ mod tests {
             m.contracts.sub_endpoints.insert(
                 (*ep).to_string(),
                 SubContract {
-                    ingress: ingress.map(|(rate_hz, burst)| IngressContract { rate_hz, burst }),
+                    arrival_curve: arrival.map(|(rate_hz, burst)| ArrivalCurve { rate_hz, burst }),
                     ..Default::default()
                 },
             );
@@ -529,14 +529,18 @@ mod tests {
         )
         .unwrap();
         let model_path = tmp.join("sys.yaml");
-        let yaml = |ingress: &str| {
+        let yaml = |arrival: &str| {
             format!(
                 "meta: {{ version: 1 }}\nstructure:\n  topics:\n    /chatter:\n      \
                  type: std_msgs/msg/Int32\n      sub: [/listener/chatter]\n\
-                 contracts:\n  sub_endpoints:\n    /listener/chatter:\n      {ingress}\n"
+                 contracts:\n  sub_endpoints:\n    /listener/chatter:\n      {arrival}\n"
             )
         };
-        std::fs::write(&model_path, yaml("ingress: { rate_hz: 50, burst: 4 }")).unwrap();
+        std::fs::write(
+            &model_path,
+            yaml("arrival_curve: { rate_hz: 50, burst: 4 }"),
+        )
+        .unwrap();
         let written = write_beside(&model_path, &tmp, &routed).unwrap().unwrap();
         assert_eq!(written, tmp.join("sys.router.json5"));
         let text = std::fs::read_to_string(&written).unwrap();

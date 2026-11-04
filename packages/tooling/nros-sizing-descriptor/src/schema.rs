@@ -325,7 +325,7 @@ pub struct Endpoint {
     storage_bytes: Option<usize>,
     wire_bound_bytes: Option<usize>,
     reply_bound_bytes: Option<usize>,
-    ingress_rate_mhz: Option<u32>,
+    arrival_rate_mhz: Option<u32>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -340,7 +340,7 @@ impl Endpoint {
         "storage_bytes",
         "wire_bound_bytes",
         "reply_bound_bytes",
-        "ingress_rate_mhz",
+        "arrival_rate_mhz",
     ];
 
     /// A row that states nothing but its identity.
@@ -357,7 +357,7 @@ impl Endpoint {
             storage_bytes: None,
             wire_bound_bytes: None,
             reply_bound_bytes: None,
-            ingress_rate_mhz: None,
+            arrival_rate_mhz: None,
             refused: BTreeMap::new(),
         }
     }
@@ -516,18 +516,18 @@ impl Endpoint {
         fact(&self.reply_bound_bytes, "reply_bound_bytes", &self.refused)
     }
 
-    /// phase-519 W3b (RFC-0074) -- the subscription's declared ingress rate,
+    /// phase-519 W3b (RFC-0074) -- the subscription's declared arrival rate,
     /// in millihertz (`rate_hz x 1000`, rounded), from the contract's
     /// `sub.<endpoint>.ingress.rate_hz`. `Fact::Absent` where nobody declared
     /// one, which is every endpoint that is not a subscription.
     ///
     /// The registration hands it to the backend in
-    /// `rmw_subscription_options_t::ingress_rate_mhz`; the XRCE backend paces
+    /// `rmw_subscription_options_t::arrival_rate_mhz`; the XRCE backend paces
     /// its data request from it. ADDITIVE, like `reply_bound_bytes`: a file
     /// written before it has no such key and reads `Absent`, which is the true
     /// answer, so the schema version did not move.
-    pub fn ingress_rate_mhz(&self) -> Fact<u32> {
-        fact(&self.ingress_rate_mhz, "ingress_rate_mhz", &self.refused)
+    pub fn arrival_rate_mhz(&self) -> Fact<u32> {
+        fact(&self.arrival_rate_mhz, "arrival_rate_mhz", &self.refused)
     }
 
     /// Builder setters. Each takes `Option` so a caller that has no answer
@@ -564,8 +564,8 @@ impl Endpoint {
         self.reply_bound_bytes = v;
         self
     }
-    pub fn set_ingress_rate_mhz(&mut self, v: Option<u32>) -> &mut Self {
-        self.ingress_rate_mhz = v;
+    pub fn set_arrival_rate_mhz(&mut self, v: Option<u32>) -> &mut Self {
+        self.arrival_rate_mhz = v;
         self
     }
 
@@ -593,7 +593,7 @@ impl Endpoint {
             "storage_bytes" => self.storage_bytes?.to_string(),
             "wire_bound_bytes" => self.wire_bound_bytes?.to_string(),
             "reply_bound_bytes" => self.reply_bound_bytes?.to_string(),
-            "ingress_rate_mhz" => self.ingress_rate_mhz?.to_string(),
+            "arrival_rate_mhz" => self.arrival_rate_mhz?.to_string(),
             _ => return None,
         })
     }
@@ -613,7 +613,7 @@ impl Endpoint {
                 ("storage_bytes", self.storage_bytes.is_some()),
                 ("wire_bound_bytes", self.wire_bound_bytes.is_some()),
                 ("reply_bound_bytes", self.reply_bound_bytes.is_some()),
-                ("ingress_rate_mhz", self.ingress_rate_mhz.is_some()),
+                ("arrival_rate_mhz", self.arrival_rate_mhz.is_some()),
             ],
         )
     }
@@ -861,7 +861,7 @@ impl Image {
 
     /// phase-462 W6b (RFC-0074) — the zenoh read task's frame budget,
     /// `NROS_ZENOH_RX_TASK_BUDGET_FRAMES`: the `burst` of the subscriber whose
-    /// declared `ingress` has the largest `rate_hz x burst`. Stated only with
+    /// declared `arrival_curve` has the largest `rate_hz x burst`. Stated only with
     /// [`Self::rx_task_budget_rest_us`]; refused when no subscriber declares
     /// ingress, which every consumer reads as "no budget" -- an unbounded read
     /// task, the same answer as no descriptor at all.

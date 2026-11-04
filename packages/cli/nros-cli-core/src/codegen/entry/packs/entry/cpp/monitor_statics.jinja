@@ -51,15 +51,15 @@ alignas(8) static unsigned char __nros_age_storage[{{ m.ages | length }} * NROS_
  * reports hazard-detected / hazard-reaction / hazard-recovered on the same
  * drain (`nros_cpp_install_hazards`). */
 {%- for h in m.hazards %}{% set hi = loop.index0 %}
-{%- for g in h.guards %}
+{%- for g in h.monitors %}
 static const ::nros_cpp_hazard_member_t __nros_hz_members_{{ hi }}_{{ loop.index0 }}[{{ g.members | length }}] = {
 {%- for mm in g.members %}
     { {{ mm.kind }}u, {{ mm.row }}u },
 {%- endfor %}
 };
 {%- endfor %}
-static const ::nros_cpp_hazard_guard_t __nros_hz_guards_{{ hi }}[{{ h.guards | length }}] = {
-{%- for g in h.guards %}
+static const ::nros_cpp_hazard_monitor_t __nros_hz_monitors_{{ hi }}[{{ h.monitors | length }}] = {
+{%- for g in h.monitors %}
     { {% if g.all_of %}1{% else %}0{% endif %}u, __nros_hz_members_{{ hi }}_{{ loop.index0 }}, {{ g.members | length }}u },
 {%- endfor %}
 };
@@ -84,7 +84,7 @@ static const ::nros_cpp_hazard_rung_t __nros_hz_rungs_{{ hi }}[{{ h.rungs | leng
 {%- endfor %}
 static const ::nros_cpp_hazard_row_t __nros_hz_rows[{{ m.hazards | length }}] = {
 {%- for h in m.hazards %}
-    { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_guards_{{ loop.index0 }}, {{ h.guards | length }}u, {{ h.sink }}u, {{ h.reaction_id }}u, {% if h.rungs %}__nros_hz_rungs_{{ loop.index0 }}{% else %}nullptr{% endif %}, {{ h.rungs | length }}u },
+    { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_monitors_{{ loop.index0 }}, {{ h.monitors | length }}u, {{ h.sink }}u, {{ h.reaction_id }}u, {% if h.rungs %}__nros_hz_rungs_{{ loop.index0 }}{% else %}nullptr{% endif %}, {{ h.rungs | length }}u },
 {%- endfor %}
 };
 {%- if m.hazards | selectattr("reaction_id") | list %}
@@ -97,7 +97,7 @@ static const ::nros_cpp_hazard_row_t __nros_hz_rows[{{ m.hazards | length }}] = 
  */
 extern "C" void nros_app_reaction_hook(const ::nros_cpp_reaction_event_t* event, void* ctx) __attribute__((weak));
 {%- endif %}
-alignas(8) static unsigned char __nros_hz_storage[{{ m.hazards | length }} * NROS_CPP_HAZARD_ROW_STORAGE + {{ m.hazard_guards }} * NROS_CPP_HAZARD_GUARD_STORAGE + {{ m.hazard_members }} * NROS_CPP_HAZARD_MEMBER_STORAGE + {{ m.hazard_rungs }} * NROS_CPP_HAZARD_RUNG_STORAGE];
+alignas(8) static unsigned char __nros_hz_storage[{{ m.hazards | length }} * NROS_CPP_HAZARD_ROW_STORAGE + {{ m.hazard_monitors }} * NROS_CPP_HAZARD_MONITOR_STORAGE + {{ m.hazard_members }} * NROS_CPP_HAZARD_MEMBER_STORAGE + {{ m.hazard_rungs }} * NROS_CPP_HAZARD_RUNG_STORAGE];
 {%- endif %}
 {%- if m.modes %}
 /* phase-462 W4b -- the contract's modes: each mode's numbers for the rows

@@ -6031,7 +6031,7 @@ mod contract_monitor_tests {
                     pkg: d\n      exec: h\n      node_name: h\n      namespace: /\n  \
                     topics:\n    /scan:\n      type: std_msgs/msg/Empty\n      sub: [/h/scan]\n\
                     contracts:\n  sub_endpoints:\n    /h/scan:\n      max_age_ms: 100.0\n  \
-                    hazards:\n    d.launch.xml/lost:\n      guards:\n        - members: [/scan]\n";
+                    hazards:\n    d.launch.xml/lost:\n      monitors:\n        - members: [/scan]\n";
         let model = ros_launch_manifest_model::SystemModel::from_yaml_str(yaml).expect("parses");
         let ages = nros_orchestration_ir::contract_monitors::age_rows(&model).expect("ages");
         let rows = (Vec::new(), ages);

@@ -532,8 +532,8 @@ impl<'a> NodeHandle<'a> {
         );
         // phase-454 W10/W13 — see the same line in `executor/spin.rs`.
         let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
-        // phase-519 W3b — and the declared ingress rate, likewise.
-        let topic = crate::declared_qos::with_declared_ingress(topic);
+        // phase-519 W3b — and the declared arrival rate, likewise.
+        let topic = crate::declared_qos::with_declared_arrival_rate(topic);
         let handle = self
             .session
             .create_subscription(&topic, qos)
@@ -606,8 +606,8 @@ impl<'a> NodeHandle<'a> {
         // enforceable everywhere except in the images that decode bytes
         // themselves.
         let qos = crate::declared_qos::honour(topic.type_name, topic.name, qos)?;
-        // phase-519 W3b — and the declared ingress rate, likewise.
-        let topic = crate::declared_qos::with_declared_ingress(topic);
+        // phase-519 W3b — and the declared arrival rate, likewise.
+        let topic = crate::declared_qos::with_declared_arrival_rate(topic);
         let handle = self
             .session
             .create_subscription(&topic, qos)
@@ -2587,7 +2587,7 @@ impl<'e, 's> Node<'e, 's> {
     /// caller that knows the message type's bound although it registers
     /// type-erased (the declarative runtime, which recorded it at
     /// declaration). `rx_hint` reaches the backend as `rx_buffer_hint`, which
-    /// sizes zenoh-pico's receive class and, with a declared ingress, the
+    /// sizes zenoh-pico's receive class and, with a declared arrival curve, the
     /// XRCE agent's pace (RFC-0074 "On XRCE"). `None` states nothing.
     pub fn create_generic_subscription_with_qos_and_rx_hint<F>(
         &mut self,

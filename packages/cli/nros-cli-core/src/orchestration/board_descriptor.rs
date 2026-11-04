@@ -546,8 +546,8 @@ pub struct BoardDescriptor {
     /// receive cost `c` (and the optional gap floor). A fact, not a knob: no
     /// compiler reads it. It enters the zenoh read-task budget derivation
     /// (`REST = burst x (10^6/rate_hz - c)`) and the two resolve-time checks
-    /// on a declared subscriber `ingress` —
-    /// [`crate::entity_inventory::check_rx_ingress`]. Absent: `c = 0`, nothing
+    /// on a declared subscriber `arrival_curve` —
+    /// [`crate::entity_inventory::check_rx_arrival`]. Absent: `c = 0`, nothing
     /// checked, and the image is byte-identical to before the table existed.
     #[serde(default)]
     pub rx: Option<crate::entity_inventory::RxFrameCost>,

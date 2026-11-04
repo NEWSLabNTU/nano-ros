@@ -3,7 +3,7 @@ rfc: 0074
 title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Stable
 since: 2026-08
-last-reviewed: 2026-11-04
+last-reviewed: 2026-11-05
 implements-tracked-by: [phase-462, phase-516, phase-519]
 supersedes: []
 superseded-by: null
@@ -11,14 +11,47 @@ superseded-by: null
 
 # RFC-0074 — Ingress budget: the contract bounds what a device is made to receive
 
-**Status (2026-11-04, phase 534):** the contract key is `arrival_curve:`
+**Status (2026-11-05, phase 534 W3):** the contract key is `arrival_curve:`
 since ros-launch-manifest v0.3.7 (the standard term, network calculus); it
-was `ingress:` before, which rlm still reads for one release with a
-`deprecated-spelling` warning. The measurements below were taken under the
-old spelling; the key means the same. The model field
-(`SubContract.ingress`), `ingress_rate_mhz` and this RFC's name for the
-concept ("ingress budget") are unchanged; whether they follow is phase 534
-W3's decision.
+was `ingress:` before, which rlm v0.3.9 refuses naming the new key. The
+measurements below were taken under the old spelling; the key means the
+same. The model field moved with it (schema 4, `SubContract.arrival_curve`,
+type `ArrivalCurve`; a schema-3 model is still read), and nano-ros's own
+names follow, decided once (below, "Names"). The RFC keeps its title and
+file name so links hold; "ingress" in the prose below is the concept the
+arrival curve bounds, the traffic INTO the device.
+
+### Names (decided 2026-11-05, phase 534 W3)
+
+One vocabulary: where nano-ros mirrors a contract or model word it takes
+rlm's. The arrival curve is the token bucket (rate rho, burst sigma); the
+part nano-ros carries to a backend is its RATE, so a rate field is
+`arrival_rate_*`:
+
+| Was | Now |
+|---|---|
+| `rmw_subscription_options_t::ingress_rate_mhz` (C ABI) | `arrival_rate_mhz` |
+| `nros_rmw::TopicInfo::ingress_rate_mhz`, `with_ingress_rate_mhz` | `arrival_rate_mhz`, `with_arrival_rate_mhz` |
+| `nros_node::declared_qos::with_declared_ingress`, `declared_ingress_rate_mhz`, cfg `nros_declared_ingress_table` | `with_declared_arrival_rate`, `declared_arrival_rate_mhz`, `nros_declared_arrival_table` |
+| sizing descriptor `[[endpoint]] ingress_rate_mhz` (`set_ingress_rate_mhz`) | `arrival_rate_mhz` (`set_arrival_rate_mhz`) |
+| entity inventory `DeclaredIngress`, `rx_ingress`, `check_rx_ingress`, `RxIngressCheck`, `RxTaskBudget::from_ingress*`, a row's `ingress_rate` | `DeclaredArrivalCurve`, `rx_arrival`, `check_rx_arrival`, `RxArrivalCheck`, `RxTaskBudget::from_arrival_curve*`, `arrival_rate` |
+
+The hazard monitor tables take the model's `monitors` the same way (rlm
+calls a hazard's watched topics its monitored signals; `MonitorSpec` is
+already the rate-monitor row, so a hazard's entry is a `HazardMonitor*`):
+`HazardSpec.guards` / `GuardSpec` / `GuardRef` are `HazardSpec.monitors` /
+`HazardMonitorSpec` / `HazardMonitorRef`; the C ABI's
+`nros_cpp_hazard_guard_t`, `guards` / `n_guards` and
+`NROS_CPP_HAZARD_GUARD_STORAGE` are `nros_cpp_hazard_monitor_t`, `monitors`
+/ `n_monitors` and `NROS_CPP_HAZARD_MONITOR_STORAGE`; the lowering's
+`HazardGuardRow` / `GuardMemberRow` / `HazardGuard` / `hazard_guards` are
+`HazardMonitorRow` / `MonitorMemberRow` / `HazardMonitor` /
+`hazard_monitors`.
+
+Kept: "ingress" in the transport sense, which no standard term replaces --
+a bridge's ingress format (`nros-rmw-bridge`), the XRCE backend's internal
+agent-side pacing helpers, a router's ingress. The C ABI renames are
+breaking (`changelog.d`); the codegen version moves with them.
 
 ## Summary
 
@@ -90,7 +123,7 @@ figure describes bursty traffic and cannot validate a msg/s budget.
 **Status of this section: settled upstream (2026-10-17).** ros-launch-manifest
 v0.1.64 added `sub.<e>.ingress: { rate_hz, burst }` (`arrival_curve` since
 v0.3.7), both keys required, and
-play_launch carries it into the model's `SubContract.ingress`; issue 0760
+play_launch carries it into the model's `SubContract.ingress` (`arrival_curve` since schema 4); issue 0760
 (archived) records how its five points were settled. The text below is kept as
 the position this RFC took into that discussion, with the declaration updated to
 the spelling that shipped.
@@ -231,7 +264,7 @@ says THAT a rule shed, not how much.
 
 On XRCE the device itself asks for enforcement point 1, so there is no
 deployment step. A subscription that declares `arrival_curve.rate_hz` passes it to
-the backend in `rmw_subscription_options_t::ingress_rate_mhz`. The XRCE backend
+the backend in `rmw_subscription_options_t::arrival_rate_mhz`. The XRCE backend
 then asks the agent for
 
     max_bytes_per_second = rate_hz x rx_buffer_hint
@@ -291,7 +324,7 @@ second of the rate, and the wire carries no capacity.
 
 **How the declaration reaches the field (phase-519 W3b).** The contract's
 `sub.<endpoint>.arrival_curve.rate_hz` reaches the sizing descriptor as the
-subscription row's `ingress_rate_mhz`, beside its declared depth and
+subscription row's `arrival_rate_mhz`, beside its declared depth and
 policies. `nros-node`'s build script reads it into the same per-endpoint
 table the declared-QoS registration check reads (`DECLARED_QOS_ROWS`), and
 every subscription registration that builds its own `TopicInfo` looks it up

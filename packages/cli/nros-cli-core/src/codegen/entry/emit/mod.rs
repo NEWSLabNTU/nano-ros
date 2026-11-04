@@ -381,7 +381,7 @@ pub(crate) fn hazard_fixture_model_reacting(
                 pub: [/talker/chatter]\n      sub: [/listener/chatter]\n\
                 contracts:\n  pub_endpoints:\n    /talker/chatter:\n      min_rate_hz: 10.0\n  \
                 sub_endpoints:\n    /listener/chatter:\n      max_age_ms: 150.0\n  \
-                hazards:\n    d.launch.xml/chatter_lost:\n      guards:\n        \
+                hazards:\n    d.launch.xml/chatter_lost:\n      monitors:\n        \
                 - members: [/chatter]\n      ftti_ms: 400.0\n";
     let yaml = if reacting {
         yaml.replace(

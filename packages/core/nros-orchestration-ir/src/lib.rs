@@ -92,7 +92,7 @@ pub mod qos_override;
 // `[param_services]`), refused by every reader with one message.
 pub mod retired_tables;
 // phase-516 W1a (RFC-0074 enforcement point 1) — the router `downsampling`
-// rule a declared ingress lowers to, written beside the model.
+// rule a declared arrival curve lowers to, written beside the model.
 pub mod router_rule;
 // RFC-0109 D8 (phase-514 W3) — the session properties an image bakes from
 // its bringup's RMW file, as the one backend-neutral text the CLI hands the

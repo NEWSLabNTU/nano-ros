@@ -616,11 +616,11 @@ fn main() {
     if declared_publisher_qos_rows != "None" {
         println!("cargo:rustc-cfg=nros_declared_publisher_qos_table");
     }
-    // phase-519 W3b -- "...including a declared ingress rate", for the
-    // declared-image ingress test. Only the descriptor carries it.
-    println!("cargo:rustc-check-cfg=cfg(nros_declared_ingress_table)");
-    if declared_qos_rows.contains("ingress_rate_mhz: Some(") {
-        println!("cargo:rustc-cfg=nros_declared_ingress_table");
+    // phase-519 W3b -- "...including a declared arrival rate", for the
+    // declared-image arrival-rate test. Only the descriptor carries it.
+    println!("cargo:rustc-check-cfg=cfg(nros_declared_arrival_table)");
+    if declared_qos_rows.contains("arrival_rate_mhz: Some(") {
+        println!("cargo:rustc-cfg=nros_declared_arrival_table");
     }
     // Phase 104.C.2 — multi-Node-per-Executor (rclcpp `add_node`
     // pattern). Most apps run a single Node per Executor; bridge
@@ -2051,7 +2051,7 @@ fn declared_qos_rows(
             depth: Some(depth),
             reliability: None,
             durability: None,
-            ingress_rate_mhz: None,
+            arrival_rate_mhz: None,
         });
     }
     // The descriptor's rows. Subscriptions only, because that is what
@@ -2085,14 +2085,14 @@ fn declared_qos_rows(
                 nros_sizing_descriptor::Durability::Volatile => "Volatile",
                 nros_sizing_descriptor::Durability::TransientLocal => "TransientLocal",
             });
-            // phase-519 W3b -- the declared ingress rate, which the
+            // phase-519 W3b -- the declared arrival rate, which the
             // registration hands the backend (RFC-0074). The descriptor is its
             // only carrier, like the two policies.
-            let ingress_rate_mhz = ep.ingress_rate_mhz().stated().copied();
+            let arrival_rate_mhz = ep.arrival_rate_mhz().stated().copied();
             if depth.is_none()
                 && reliability.is_none()
                 && durability.is_none()
-                && ingress_rate_mhz.is_none()
+                && arrival_rate_mhz.is_none()
             {
                 continue;
             }
@@ -2106,7 +2106,7 @@ fn declared_qos_rows(
                     depth,
                     reliability,
                     durability,
-                    ingress_rate_mhz,
+                    arrival_rate_mhz,
                 });
                 continue;
             };
@@ -2126,7 +2126,7 @@ fn declared_qos_rows(
             row.depth = row.depth.or(depth);
             row.reliability = reliability;
             row.durability = durability;
-            row.ingress_rate_mhz = ingress_rate_mhz;
+            row.arrival_rate_mhz = arrival_rate_mhz;
         }
     }
     let mut rows: Vec<String> = Vec::new();
@@ -2147,12 +2147,12 @@ fn declared_qos_rows(
         for ty in spellings {
             rows.push(format!(
                 "crate::declared_qos::DeclaredEndpoint {{ type_name: {ty:?}, topic: {:?}, \
-                 depth: {}, reliability: {}, durability: {}, ingress_rate_mhz: {} }}",
+                 depth: {}, reliability: {}, durability: {}, arrival_rate_mhz: {} }}",
                 r.topic,
                 opt_u32(r.depth),
                 opt_policy("QoSReliabilityPolicy", r.reliability),
                 opt_policy("QoSDurabilityPolicy", r.durability),
-                opt_u32(r.ingress_rate_mhz),
+                opt_u32(r.arrival_rate_mhz),
             ));
         }
     }
@@ -2171,8 +2171,8 @@ struct DeclaredRow {
     depth: Option<u32>,
     reliability: Option<&'static str>,
     durability: Option<&'static str>,
-    /// phase-519 W3b -- the declared ingress rate, millihertz.
-    ingress_rate_mhz: Option<u32>,
+    /// phase-519 W3b -- the declared arrival rate, millihertz.
+    arrival_rate_mhz: Option<u32>,
 }
 
 /// `pkg/msg/Name` -> `pkg::msg::dds_::Name_`, the spelling a generated message

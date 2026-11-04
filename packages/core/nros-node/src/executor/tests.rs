@@ -17050,8 +17050,8 @@ private_test_clock!(hazard_reaction_clock);
 #[test]
 fn a_detected_hazard_starts_its_safe_state_reaction() {
     use super::monitor::{
-        AgeMonitorSpec, GuardRef, GuardSpec, HazardCell, HazardSpec, NO_SINK, ReactionEvent,
-        SubMonitorCell, rule_code,
+        AgeMonitorSpec, HazardCell, HazardMonitorRef, HazardMonitorSpec, HazardSpec, NO_SINK,
+        ReactionEvent, SubMonitorCell, rule_code,
     };
     use std::sync::Mutex;
     let _g = arming_lock();
@@ -17065,15 +17065,15 @@ fn a_detected_hazard_starts_its_safe_state_reaction() {
         cell: &SUB,
     }];
     static CELL: HazardCell = HazardCell::new();
-    static GUARDS: [GuardSpec; 1] = [GuardSpec {
+    static MONITORS: [HazardMonitorSpec; 1] = [HazardMonitorSpec {
         all_of: false,
-        members: &[GuardRef::Age(0)],
+        members: &[HazardMonitorRef::Age(0)],
     }];
     static HAZARDS: [HazardSpec; 1] = [HazardSpec {
         key: "d.launch.xml/scan_lost",
         ftti_ms: 500,
         settle_ms: 0,
-        guards: &GUARDS,
+        monitors: &MONITORS,
         sink: NO_SINK,
         reaction_id: 3,
         rungs: &[],

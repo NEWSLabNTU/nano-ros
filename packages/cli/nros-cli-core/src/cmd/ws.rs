@@ -116,7 +116,7 @@ pub enum Sub {
     ///
     /// Reads the artifact rather than re-lowering, so the router runs exactly
     /// the rule sync wrote. Fails when there is none: no subscriber declares
-    /// an ingress, no image links zenoh, or the model was never synced.
+    /// an arrival curve, no image links zenoh, or the model was never synced.
     // phase-516 W1b, RFC-0074 enforcement point 1.
     #[command(name = "router-config")]
     RouterConfig(RouterConfigArgs),
@@ -3508,7 +3508,7 @@ fn retire_generated_workspace_root(ws_root: &Path) -> Result<Option<PathBuf>> {
 
 /// The artifacts `nros sync` writes beside every resolved model, each a
 /// function of the model and its bringup's `system.toml`: the nano-ros overlay
-/// (phase-486 W1) and the router `downsampling` rule a declared ingress lowers
+/// (phase-486 W1) and the router `downsampling` rule a declared arrival curve lowers
 /// to (phase-516 W1a, RFC-0074 enforcement point 1).
 ///
 /// The router rule is NOT fatal: it is deployed with a router, never built
@@ -3529,7 +3529,7 @@ fn write_beside_model(model: &Path, system_toml: &Path, pkg_name: &str) -> Resul
             let stale = nros_orchestration_ir::router_rule::router_rule_path_for_model(model);
             let _ = std::fs::remove_file(&stale);
             eprintln!(
-                "sync: warning: no router rule for `{pkg_name}` ({e}); a declared ingress \
+                "sync: warning: no router rule for `{pkg_name}` ({e}); a declared arrival curve \
                  is then enforced on the device alone"
             );
         }
@@ -5550,7 +5550,7 @@ fn run_router_config(args: RouterConfigArgs) -> Result<()> {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => bail!(
             "router-config: no router rule at {} — no subscriber of this model declares an \
-             `ingress`, no image links zenoh, or `nros configure` has not run since it did",
+             `arrival_curve`, no image links zenoh, or `nros configure` has not run since it did",
             path.display()
         ),
         Err(e) => bail!("router-config: read {}: {e}", path.display()),

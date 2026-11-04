@@ -16,7 +16,7 @@
 //! (ros-launch-manifest `contracts.hazards`) had its present shape. This
 //! lowers what is THERE:
 //!
-//! - `contracts.hazards.<scope>/<name>`: `guards` (each one fault: topic
+//! - `contracts.hazards.<scope>/<name>`: `monitors` (each one fault: topic
 //!   FQNs, faulting when ANY member does, or every member when `all_of`),
 //!   `on` (the fault classes; empty means every class), `ftti_ms`, and
 //!   `reaction` -- a key into `contracts.modes` (whose own `reaction` is a
@@ -425,7 +425,7 @@ pub fn hazard_budgets(model: &SystemModel) -> Result<Vec<HazardBudget>, FttiBudg
         let mut detection: Option<Detector> = None;
         let mut unobserved = Vec::new();
         for kind in classes(h) {
-            for guard in &h.guards {
+            for guard in &h.monitors {
                 for member in &guard.members {
                     match detector(model, member, kind) {
                         // A guard faults on any member (or only when all of
@@ -506,7 +506,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) const AGE_100: &str = "      max_age_ms: 100.0\n";
-    pub(crate) const HAZARD: &str = "      guards:\n        - members: [/scan]\n      on: omission\n      \
+    pub(crate) const HAZARD: &str = "      monitors:\n        - members: [/scan]\n      on: omission\n      \
                           reaction: /handler/stop_path\n";
 
     fn hazard_with_ftti(ftti: &str) -> String {

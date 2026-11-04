@@ -33,7 +33,7 @@ mod node;
 pub mod zephyr_image;
 
 pub use image::{
-    AgeRow, ComponentKind, ComponentSeam, GroupBind, HazardGuard, HazardMember, HazardRow,
+    AgeRow, ComponentKind, ComponentSeam, GroupBind, HazardMember, HazardMonitor, HazardRow,
     HazardRung, LoweredBoot, LoweredBootConfig, LoweredProbe, LoweredRunners, LoweredSched,
     LoweredServices, LoweredTaskMemory, LoweredTiers, ModeDeadlineRow, ModeName, ModeRow,
     ModeVariantRows, MonitorRow, MonitorTable, NodeBind, SchedContext, SetupNode, TaskStackRow,

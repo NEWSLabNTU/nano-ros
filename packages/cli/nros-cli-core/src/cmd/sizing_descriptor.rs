@@ -406,7 +406,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     };
 
     // phase-462 W6c -- the board's per-frame receive cost, which
-    // `write_for_model` checks the declared ingress against.
+    // `write_for_model` checks the declared arrival curve against.
     let mut inventory = inventory;
     inventory.set_board_rx_cost(board_rx_cost(args));
     let tiers = tier_rows_for(args, &inventory);

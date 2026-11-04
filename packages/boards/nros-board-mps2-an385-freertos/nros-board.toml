@@ -112,7 +112,7 @@ threads = true
 # fits `0.940 ms x FRAMES + 11.0 ms` (21 / 38 / 132 ms at FRAMES = 8 / 32 / 128,
 # FreeRTOS + lwIP, ~2 kHz flood). One payload size and three budget points, so
 # an approximation: a larger payload almost certainly costs more per frame. It
-# derives a declared subscriber `ingress` into the read-task budget and refuses
+# derives a declared subscriber `arrival_curve` into the read-task budget and refuses
 # one this board cannot satisfy (`rate_hz <= 10^6 / c`,
 # `c x burst + floor <= tier slack`). A fact, not a knob: no compiler reads it.
 [board.rx]
