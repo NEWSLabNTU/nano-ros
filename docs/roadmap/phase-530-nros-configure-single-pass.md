@@ -1,6 +1,6 @@
 # Phase 530 — `nros configure`: one resolver for every road, tight sizing, and no fixed point
 
-**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling), W5 landed (on W4; the NuttX make road is a guest road, Ruling R36).** Implements
+**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling), W5 landed (on W4; the NuttX make road is a guest road, Ruling R36), W6 landed for the leaf roads (on W5; the workspace road is open).** Implements
 [RFC-0120](../design/0120-nros-configure-one-resolver.md) D1 to D7, D9 and
 the driven and hooked rows of D8. Meets
 [RFC-0094](../design/0094-resolve-before-configure.md) A3 as originally
@@ -566,6 +566,69 @@ before the unseeded fallback in `NanoRosPromise.cmake` can be deleted.
   - a body-only edit → no re-configure;
   - adding a publisher → exactly one re-configure, and the new count is
     delivered.
+
+**What landed (W6).**
+
+- **The census digest.** Every census take writes `<census>.digest` beside
+  the census (`leaf.census.json` -> `leaf.census.digest`), write-if-changed:
+  the digest of what the census SAYS -- the recorder document without
+  provenance, source positions (`source` objects naming an artifact or line)
+  or `trace`, plus the incomplete flag. A body edit moves the binary's digest,
+  never this file. `entity-census path --leaf <dir> --digest` names it.
+- **The census step** (`cmake/NanoRosCensusStep.cmake`,
+  `nros_census_step(CLI LEAF)`), W0's mechanism unchanged: the digest is a
+  `CMAKE_CONFIGURE_DEPENDS`, and a custom target runs `entity-census take
+  --leaf` with the digest as its BYPRODUCT, so ninja refreshes it before it
+  decides whether `build.ninja` is stale. A fresh census returns at once; a
+  moved source re-takes it (an incremental build of `build/census-host` and a
+  census run). Not in `ALL` under Ninja -- the manifest check runs it once per
+  invocation, which a spike measured (in `ALL`, ninja ran it twice); in `ALL`
+  under any other generator, where the re-configure lands one build late.
+  No-op under `NROS_LEAF_CENSUS_HOST`, so the census host build has none. The
+  call is deferred to the end of the top-level directory (the Zephyr road
+  reaches it inside `find_package(Zephyr)`, before `project()`).
+- **Every census reader adds it, and none depends on the census FILE.**
+  `nros_record_leaf_entity_facts` (the cmake leaf road) replaces its
+  dependency on the census file, which re-ran the host configure on every
+  re-take; `_nros_west_leaf_sizing` adds it when the leaf was sized from its
+  census, and `west-leaf-sizing`'s `input` row names the digest. Only the
+  census digest edge is W6's: the configure's digested input files are W5's
+  (Ruling R38).
+- **The stamp records what the census said** (`Stamp.censuses`, path ->
+  entities digest). The step re-takes a census during a build, so freshness
+  alone would call the stamp current over knobs derived from the old
+  entities; a census that now counts others is stale, and the hook's
+  configure re-derives.
+- Tests: three unit tests (the digest moves with the entities only; it is
+  written only when it changes; a fresh census with other entities stales
+  the stamp, a re-take with the same ones does not), and
+  `tests/cmake-census-step-tests.sh` (`just check census-step`, fast line):
+  a real CMake + Ninja build with a stand-in CLI, T1-T5, the census host,
+  and the reach.
+
+**Acceptance (measured 2026-11-04, before the rebase onto W5's 7359f43a6f;
+copies of each talker under the worktree's `tmp/`; "re-runs" are
+`Re-running CMake` of the target build, from its own log).**
+
+| road | body edit (string literal) | add a publisher (`/chatter2`) | knob before -> after |
+| --- | --- | --- | --- |
+| plain cmake leaf, `threadx-linux/c/talker` (`threadx-linux`, census-sized) | **0** re-runs; `main.c` rebuilt in the census host and the target | **exactly 1**; the hook's `nros configure` "configured (3 s)" | `ZPICO_MAX_PUBLISHERS` 1 -> **2** (zpico-sys `shim_constants.rs`); descriptor `publisher_count` 1 -> **2** |
+| Zephyr 4.4 west, `zephyr/cpp/talker` (`zephyr_zenoh`, `native_sim/native/64`) | **0** re-runs; `Talker.cpp` rebuilt, `zephyr.elf` relinked | **exactly 1**; "configured (3 s)" | `NROS_MAX_PUBLISHERS` 1 -> **2** (build.ninja), `ZPICO_MAX_PUBLISHERS` 1 -> **2** |
+
+Both: a clean configure + build is 1 configure, 0 re-runs, and a no-op build
+after the publisher edit re-runs nothing. The first build after a CLI rebuild
+re-ran once on both roads -- issue 1018's tool edge, not the census (the
+hook's configure said "up to date"). On a body edit the census's own host
+build (`build/census-host`) re-ran cmake once, for the same CLI rebuild; it is
+the census producer, not the target configure.
+
+**Not done: the cmake workspace road.** A workspace image's census is taken
+by `take --image`, which plans the host sibling (`build::plan_builds`) and
+builds it; run from a cross image's manifest phase that is a whole stage-1-4
+plan mid-build, writing the outputs the cross configure reads -- not a cached
+host compile. Its configure (`NanoRosEntry.cmake`) still depends on the
+census FILE beside the model. The digest is written there too, so the road
+needs an edge whose take does not re-plan; left open.
 
 ### W7 — Delete the fixed point
 
