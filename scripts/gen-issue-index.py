@@ -48,6 +48,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
+from issue_purpose import PURPOSES, purposes  # noqa: E402
 
 # Before the first git call, at module scope so no entry path can skip it. The
 # self-test below builds a throwaway repository, and an inherited `GIT_DIR`
@@ -124,7 +125,7 @@ def open_issues():
                 "title": field(fm, "title"),
                 "area": field(fm, "area") or "—",
                 "type": field(fm, "type"),
-                "purpose": field(fm, "purpose"),
+                "purposes": purposes(field(fm, "purpose")),
             }
         )
     return rows
@@ -149,12 +150,12 @@ def render(rows):
     for r in rows:
         lines.append(f"- **#{r['id']}** ({r['area']}) — {r['title']} See `{r['id']}-*`.")
     # RFC-0116 D9 / phase-523 W3 — adoption-probe stops, grouped by the purpose
-    # that hit them, so a round's count per purpose is read off this list.
-    purposes = ("industrial", "field", "education")
-    if any(r.get("purpose") in purposes for r in rows):
+    # that hit them, so a round's count per purpose is read off this list. A stop
+    # several probes hit lists each purpose and counts under each.
+    if any(set(r["purposes"]) & set(PURPOSES) for r in rows):
         lines += ["", "Adoption-probe stops by purpose (`purpose:` frontmatter):", ""]
-        for p in purposes:
-            ids = [f"#{r['id']}" for r in rows if r.get("purpose") == p]
+        for p in PURPOSES:
+            ids = [f"#{r['id']}" for r in rows if p in r["purposes"]]
             lines.append(f"- {p}: {', '.join(ids) if ids else 'none open'}")
     lines += ["", END]
     return "\n".join(lines)

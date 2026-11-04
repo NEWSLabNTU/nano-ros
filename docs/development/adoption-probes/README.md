@@ -49,9 +49,13 @@ related: [rfc-0116, phase-523]
 ---
 ```
 
+When several probes hit the same stop, file one issue and list every purpose
+that hit it (`purpose: [industrial, education]`). It then counts once under
+each.
+
 `just issues --purpose field` lists one purpose's open stops, and the
 generated `docs/issues/open.md` groups them under "Adoption-probe stops by
-purpose".
+purpose". Both read the field through `scripts/lib/issue_purpose.py`.
 
 ## Rounds
 
@@ -69,3 +73,12 @@ pristine container (the brief names the image), reads the published book
 `book/src/`, and writes its run log and the list of stops as its report. A
 session that has read this repository's internals is not a newcomer; do not
 reuse one.
+
+Each round's reports are kept under [`runs/`](runs/), one file per purpose and
+round, so round two can be read against round one.
+
+Before filing a stop, check it against `main`. The book is published from
+`main`, but a probe installs the newest release, so a stop can be one `main`
+has already fixed. Round one found that the release was 318 commits behind
+(issue 2255). File such a stop as the gap between book and release, not as the
+defect `main` no longer has.

@@ -35,7 +35,8 @@ SCOPE: tracked files under cmake/, just/, scripts/, zephyr/, examples/, tests/,
 book/src/ and docs/ (RFC-0117 D5), and the root justfile. Exempt:
 
   * HISTORY — every phase doc (docs/roadmap/: each W-item is a dated record of
-    what was run) and archived issues. Open issues are live: their
+    what was run), archived issues and adoption-probe run reports
+    (docs/development/adoption-probes/runs/). Open issues are live: their
     reproduction commands are instructions somebody will run;
   * a line that also names the row's NEW spelling — how an RFC, the book or a
     phase doc quotes an old spelling beside its replacement;
@@ -55,7 +56,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCOPE = ["cmake", "just", "scripts", "zephyr", "examples", "book/src", "docs", "justfile", "tests"]
-HISTORY_PREFIXES = ("docs/roadmap/", "docs/issues/archived/")
+# Adoption-probe run reports (phase-523 W3) are history too: each records what
+# a released CLI printed on a dated run, verbatim.
+HISTORY_PREFIXES = (
+    "docs/roadmap/",
+    "docs/issues/archived/",
+    "docs/development/adoption-probes/runs/",
+)
 EXEMPT_FILES = {
     "scripts/check/check-cli-old-spellings.py",
     # Generated "recently resolved" history of the issue series, frozen by

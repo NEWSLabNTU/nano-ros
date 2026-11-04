@@ -1,5 +1,14 @@
 # Phase 523 — The education lab series, the adoption probes and the industrial extras
 
+**Status (2026-11-05). W3 round one RUN for industrial and education:
+industrial 18 stops → 14 open issues, education 14 stops → 12 open issues
+(18 issues in all, 2255–2272; seven shared by both purposes). Field round one
+not run (needs a person with a board). Both probes installed the newest
+release, `nros-0.6.0-nros6`, which is 318 commits behind the `main` the book is
+published from. Their first three stops are verbs that release lacks (issue
+2255), so a release cut before round two is the cheapest fix of all. Reports:
+[runs/](../development/adoption-probes/runs/).**
+
 **Status (2026-11-01). IN PROGRESS — W4 landed (offline probe track, a delta
 page per fork, `nros doctor --report` with the toolchain); W3's briefs and the
 `purpose:` field landed, its probe rounds not yet run; W1 and W2 wait on
@@ -85,6 +94,45 @@ one each for industrial and education (run by a Claude session that has read
 nothing but the brief and the book) and one for field (run by a person with a
 board). A stop is filed with `purpose:` in its frontmatter; `just issues
 --purpose <p>` lists one purpose's, and the generated `open.md` groups them.
+
+**Round one (2026-11-05), industrial and education.** Two fresh Claude sessions
+ran the briefs. Each had only the brief, the stop definition and the book
+(markdown from `main` at `03473878d6`), in its own `ubuntu:24.04` container,
+and installed the newest release `nros-0.6.0-nros6`.
+
+| Purpose | Stops | Open issues | Tasks |
+| --- | --- | --- | --- |
+| industrial | 18 | 14 | 1–3 done with stops (first `ros2 topic echo` at +18.9 min; byte-identical image at one path; offline to the boot banner); 4 partly possible; 5 not possible from the book |
+| education | 14 | 12 | install 12 min 04 s to the promised line, but only with four off-book workarounds (the book alone stops at 7:05 on `nros run`); 1–4 done with stops; first error does not name the next command |
+
+A stop both probes hit is one issue listing both purposes
+(`purpose: [industrial, education]`; `scripts/lib/issue_purpose.py` reads it
+for `just issues` and `open.md`). One industrial stop was not refiled: offline
+cargo is fixed on `main` by issue 2197 and missing only from the release.
+Every stop was checked against `main` before filing.
+
+Issues homed here (each has a `**Home:**` line pointing here):
+
+| issue | purpose | what |
+| --- | --- | --- |
+| [#2255](../issues/2255-book-ahead-of-latest-release.md) | both | The book teaches `nros dev`, `nros run`, `nros new --board`; the latest release has none of them |
+| [#2256](../issues/2256-store-label-disagrees-with-provenance.md) | both | A store source dir is labelled with one pin and holds another; the build's zenoh-pico refusal loops |
+| [#2257](../issues/2257-setup-and-build-read-different-index.md) | both | `nros setup` provisions from `main`'s index, while build and locate read the release's; the QEMU remedy loops |
+| [#2258](../issues/2258-setup-rewrites-pinned-sdk-lock.md) | both | `nros setup` rewrites a committed `nros-sdk.lock`, so a semester pin does not hold |
+| [#2259](../issues/2259-first-project-requires-humble-on-noble.md) | both | First Project requires Humble, which Ubuntu 24.04 cannot install |
+| [#2260](../issues/2260-ros-edition-mismatch-silent-no-delivery.md) | both | An edition mismatch delivers nothing with no error, and the scaffold defaults to humble |
+| [#2261](../issues/2261-catkin-pkg-prereq-breaks-ros-apt.md) | both | The `python3-catkin-pkg` prerequisite breaks the ROS 2 apt install |
+| [#2262](../issues/2262-serial-quickstart-router-unreachable-from-ros2.md) | industrial | The serial quick-start router listens on serial only |
+| [#2263](../issues/2263-setup-rejects-board-key-nros-new-writes.md) | both | `nros setup` refuses the board key `nros new` writes |
+| [#2264](../issues/2264-airgap-recipe-omits-host-packages-and-asset-names.md) | industrial | The air-gapped recipe omits apt packages and release asset names |
+| [#2265](../issues/2265-memory-evidence-needs-source-tree.md) | industrial | Memory evidence needs a checkout; the documented heap is wrong |
+| [#2266](../issues/2266-book-has-no-third-party-inventory.md) | industrial | No third-party or patch inventory in the book |
+| [#2267](../issues/2267-book-has-no-release-provenance-report.md) | industrial | No release provenance report reachable from the book |
+| [#2268](../issues/2268-no-release-support-backport-policy.md) | industrial | No release support or backport policy; stale Jazzy line |
+| [#2269](../issues/2269-no-emulator-chapters-for-lab-topics.md) | education | Five of seven lab topics have no emulator chapter (W1's list) |
+| [#2270](../issues/2270-default-talker-prints-internal-warnings.md) | education | The default talker prints internal issue ids and a "contract violation" |
+| [#2271](../issues/2271-install-sh-no-longer-prints-path-export.md) | education | install.sh output no longer matches the install page |
+| [#2272](../issues/2272-serial-flow-needs-socat-unlisted.md) | education | The serial flow needs `socat`, which no prerequisite list names |
 Round one has not run.
 
 Acceptance: three briefs committed under `docs/development/adoption-probes/`;
