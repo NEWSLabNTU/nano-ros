@@ -361,8 +361,13 @@ def check(build_dir, road=None):
     # 1. derivation must survive the trip to the resolver -- to EVERY knob that
     #    consumes it, not to the first one a registry happened to name.
     for derived, resolved_knobs in DERIVED_PAIRS.items():
-        if derived not in frag:
-            continue  # nothing derived; rung 4 is legitimate
+        if derived not in frag or frag[derived] == "":
+            # Nothing derived; rung 4 is legitimate. An EMPTY derivation is the
+            # same rung: `_nros_resolve_derivable_knob` takes rung 3 only for
+            # `NOT "${derived}" STREQUAL ""`, so e.g. a talker's empty
+            # `NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS ""` (no subscriptions) is
+            # left unresolved by design, not dropped by a loader.
+            continue
         want = frag[derived]
         guards = road.get(derived, {})
         present = [k for k in resolved_knobs if k in cache]
@@ -467,6 +472,11 @@ def self_test(quiet=False):
         (("NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=8\n",
           CLEAN_FRAG, "cc -DZPICO_MAX_SUBSCRIBERS=8 -c x.c\n"), 1,
          "derived but never reached the resolver"),
+        # ...and its control: an EMPTY derivation is rung 4 in the resolver
+        # (`NOT "" STREQUAL ""`), so its absence from the cache is clean.
+        ((CLEAN_CACHE, CLEAN_FRAG + 'set(NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS "")\n',
+          CLEAN_NINJA), 0,
+         "an empty derivation left unresolved is clean"),
         # failure 3: unresolved knob reaches the compiler empty
         ((CLEAN_CACHE, CLEAN_FRAG, "cc -DZPICO_MAX_SUBSCRIBERS= -c x.c\n"), 1,
          "an empty define"),

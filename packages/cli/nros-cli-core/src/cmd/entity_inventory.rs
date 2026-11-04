@@ -914,11 +914,11 @@ fn narrow_to_component(inv: &EntityInventory, want: &str) -> Result<EntityInvent
 
 /// The one write discipline (issues 0498/0562): atomic, and WRITE-IF-CHANGED.
 ///
-/// Write-if-changed is load-bearing rather than tidy here: the CMake consumer
-/// registers the fragment with `CMAKE_CONFIGURE_DEPENDS`, so rewriting it with
-/// identical bytes on every configure would re-arm a re-configure forever.
-/// Same reason `_nros_message_bounds_write_output` does it.
-fn write_if_changed(path: &std::path::Path, content: &str) -> Result<()> {
+/// Write-if-changed: the CMake consumer registers the fragment with
+/// `CMAKE_CONFIGURE_DEPENDS`, so identical bytes must keep their mtime, and
+/// the promise check (`cmake/NanoRosPromise.cmake`) compares content. Same
+/// discipline as `_nros_message_bounds_write_output`.
+pub(crate) fn write_if_changed(path: &std::path::Path, content: &str) -> Result<()> {
     if let Some(dir) = path.parent() {
         if !dir.as_os_str().is_empty() {
             std::fs::create_dir_all(dir).wrap_err_with(|| format!("create `{}`", dir.display()))?;
