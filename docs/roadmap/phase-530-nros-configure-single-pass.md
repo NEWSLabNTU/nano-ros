@@ -236,3 +236,11 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   same image.
 - `NanoRosReconfigure.cmake` is gone.
 - `nros build` needs no `nros sync` typed by hand.
+
+## Issues homed here (2026-11-04)
+
+Each issue has a `**Home:**` line pointing here.
+
+| issue | work item | why it belongs here |
+| --- | --- | --- |
+| [#2166](../issues/2166-metadata-probe-recorder-32-entities-panics-on-parameters.md) | W2 | The C/C++ metadata probe's recorder holds 32 entities and every parameter is one, so a bigger component panics and `nros sync` reports `no producer`. W2 makes the census the default entity source. |

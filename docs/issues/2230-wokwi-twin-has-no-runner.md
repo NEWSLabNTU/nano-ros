@@ -5,9 +5,11 @@ status: open
 type: limitation
 severity: low
 area: [cli, runner, zephyr]
-related: [phase-529]
+related: [phase-524, phase-529]
 found: 2026-11-03
 ---
+
+**Home: [phase-524](../roadmap/phase-524-emulator-twins.md)** — homed 2026-11-04: W4b: the Pico W twin's `nros run` road; phase-529 is archived.
 
 ## What
 

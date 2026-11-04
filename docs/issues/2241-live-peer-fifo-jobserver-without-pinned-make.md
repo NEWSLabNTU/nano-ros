@@ -6,8 +6,10 @@ type: bug
 area: [build, ci, testing]
 severity: high
 found: 2026-11-04
-related: [2058, 2119]
+related: [phase-466, 2058, 2119]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the scheduled `live-peer` lane stops in its fixture build, before any cell.
 
 ## Measured
 

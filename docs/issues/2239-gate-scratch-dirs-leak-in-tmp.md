@@ -5,9 +5,11 @@ status: open
 type: tech-debt
 severity: medium
 area: [ci, tooling]
-related: [issue-2223, issue-1353]
+related: [phase-489, issue-2223, issue-1353]
 found: 2026-11-04
 ---
+
+**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md)** — homed 2026-11-04: W8 chose `/tmp` for the gate's scratch copies.
 
 ## What
 

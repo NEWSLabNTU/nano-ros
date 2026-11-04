@@ -5,9 +5,11 @@ status: open
 type: tech-debt
 severity: medium
 area: [testing, qemu, cli]
-related: [2169, 2170]
+related: [phase-528, 2169, 2170]
 found: 2026-10-31
 ---
+
+**Home: [phase-528](../roadmap/phase-528-run-on-host-and-emulator.md)** — homed 2026-11-04: W5 puts the test harness on `nros run --plan`, which leaves one QEMU line instead of three.
 
 ## What
 

@@ -1053,3 +1053,6 @@ this phase will fix it.
 - [issue 2219](../issues/archived/2219-template-copy-out-zephyr-projects-built-on-no-lane.md) — RESOLVED 2026-11-04: a fourth merge-group part, `template-copy-out [zephyr]`, builds the five Zephyr projects (18.5 min with the CLI cache hit, run 41824085384)
 - [issue 1869](../issues/archived/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md) — workspace fixture rows sharing a target dir rebuilt the core crates every run (W6; resolved by RFC-0100 D13)
 - [issue 1177](../issues/archived/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — RESOLVED 2026-10-23 (Option B: the no-alloc nros-c rows run in `compile-smoke`). `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
+
+- [issue 2239](../issues/2239-gate-scratch-dirs-leak-in-tmp.md) — homed 2026-11-04: two build gates leave their scratch trees in `/tmp` (W8 chose `/tmp` for the copy), which fills a developer host.
+- [issue 2240](../issues/2240-selftests-escape-into-enclosing-repo.md) — homed 2026-11-04: a self-test whose `TMPDIR` sits inside a git checkout runs its git commands against that checkout; the workaround for issue 2239 exposed it.

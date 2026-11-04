@@ -471,3 +471,11 @@ Nucleo-F767ZI twin, against this phase's contract), and `nros debug`.
 - **W4, "build if stale".** This is `nros build`, which now configures when its stamp is stale (RFC-0120 D3). Today the `--dry-run` path calls `plan_builds` directly; phase-530 W1 puts `configure::ensure_current` in front of it.
 - **W3, the `west` run runner** (`west build -t run`). A host configure it triggers calls `nros configure` from the module hook (phase-530 W4). With a current stamp that is a no-op, so the runner adds no pass.
 - **W5.** The harness's fixtures are configured by the fixture build. A current stamp makes every hook a no-op, so `nros run --plan` adds no configure.
+
+## Issues homed here (2026-11-04)
+
+Each issue has a `**Home:**` line pointing here.
+
+| issue | work item | why it belongs here |
+| --- | --- | --- |
+| [#2172](../issues/2172-harness-mps-lines-restate-board-runner.md) | W5 | The MPS2/MPS3 QEMU line has three spellings: the board's cargo runner, the CLI's printed line and the harness's launchers. W5 puts the harness on `nros run --plan`, which leaves one. |

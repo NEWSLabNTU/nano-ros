@@ -6,8 +6,10 @@ type: bug
 area: [cpp, workspace, testing]
 severity: medium
 found: 2026-11-04
-related: []
+related: [phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the one real failure in the scheduled tier-1 run of 2026-11-04.
 
 ## Measured
 
