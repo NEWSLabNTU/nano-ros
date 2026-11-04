@@ -22,7 +22,7 @@ into workspaces (RFC-0121). Implemented by
 RFC-0121 makes every project a workspace and migrates each standalone example
 **in place**: `examples/<plat>/<lang>/<example>/` gains a `src/` and a
 bringup. That keeps 275 example fixture rows as 275 separate workspaces, each
-with its own `nros sync`, its own configure and, on the CMake RTOS roads, its
+with its own `nros configure`, its own CMake configure and, on the CMake RTOS roads, its
 own build of the kernel, network stack, RMW and `nros-c`.
 
 This RFC moves the example **pairs** (talker/listener, service
@@ -184,7 +184,7 @@ It is derived from rows, never listed by hand, for the reason
 
 The fixture builder groups rows that share (workspace, bringup, board, rmw)
 into one configure. A CMake RTOS group builds its runtime once and links each
-entry against it, and codegen and `nros sync` run once per workspace.
+entry against it, and codegen and `nros configure` run once per workspace.
 
 Rust gains only if entries also share a cargo root. Today each generated entry
 is its own root, and a root's units are never shared (issue 0616). Grouping
@@ -233,7 +233,7 @@ has no job behind it.
 
 ## Constraints this rests on
 
-- **Multi-bringup Rust workspaces.** `nros sync` today generates no selection
+- **Multi-bringup Rust workspaces.** `nros configure` today generates no selection
   facades for a workspace with more than one bringup
   (`packages/cli/nros-cli-core/src/cmd/ws.rs`, `generate_facade_crates`).
   RFC-0121 retires the selection crate (phase-531 W7), which should remove the
