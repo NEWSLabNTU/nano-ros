@@ -52,11 +52,7 @@
 #   1700  IN FLIGHT — filed (and resolved) on PR #1707 (the shared cargo dir
 #         keyed without the entity facts). Issue 1684 cites it as what blocked
 #         the tier-1 fixture build. REMOVE THIS ROW when #1707 merges.
-#   RFC-0122 and phase-535 cite issue 2251, whose file is in PR #3098 (in the
-#   merge queue). REMOVE BOTH 2251 ROWS when #3098 merges.
 #
-docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md:2251
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
-docs/roadmap/phase-535-example-reorg-and-cadence-ci.md:2251
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
