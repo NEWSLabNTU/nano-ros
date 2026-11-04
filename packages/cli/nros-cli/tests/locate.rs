@@ -13,7 +13,8 @@ fn root(tmp: &Path) -> std::path::PathBuf {
         r.join("nros-sdk-index.toml"),
         "[source.zenoh-pico]\nenv = \"ZENOH_PICO_DIR\"\nversion = \"1.7.2\"\n\
          dest = \"third-party/zenoh-pico\"\n\n\
-         [source.rosidl]\nversion = \"humble-1\"\nlocation = \"store\"\n",
+         [source.rosidl]\nversion = \"humble-1\"\nlocation = \"store\"\n\n\
+         [tool.zephyr-sdk]\nversion = \"0.16.8\"\nsubdir = \"zephyr-sdk-{version}\"\n",
     )
     .unwrap();
     std::fs::create_dir_all(r.join("third-party/zenoh-pico")).unwrap();
@@ -176,4 +177,57 @@ fn a_project_tools_row_answers_sdk_path() {
         !run("qemuu").status.success(),
         "an unpinned tool must be refused"
     );
+}
+
+/// RFC-0103 D3 for an SDK tool: the store at the PIN, `<store>/sdk/<tool>/<pin>`
+/// (plus the row's `subdir`), constructed from the index. A newer version
+/// beside it is never the answer (issue 1546).
+#[test]
+fn an_sdk_tool_is_its_pinned_store_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let r = root(tmp.path());
+    let store = tmp.path().join("store");
+    let pinned = store.join("sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8");
+    std::fs::create_dir_all(&pinned).unwrap();
+    std::fs::create_dir_all(store.join("sdk/zephyr-sdk/0.17.0/zephyr-sdk-0.17.0")).unwrap();
+    let (ok, out, err) = locate(&r, &store, &["tool", "zephyr-sdk"], &[]);
+    assert!(ok, "{err}");
+    assert_eq!(
+        Path::new(out.trim()),
+        pinned.canonicalize().unwrap(),
+        "{out}"
+    );
+}
+
+#[test]
+fn an_sdk_tool_installed_only_at_another_version_fails_naming_setup() {
+    let tmp = tempfile::tempdir().unwrap();
+    let r = root(tmp.path());
+    let store = tmp.path().join("store");
+    std::fs::create_dir_all(store.join("sdk/zephyr-sdk/0.17.0/zephyr-sdk-0.17.0")).unwrap();
+    let (ok, out, err) = locate(&r, &store, &["tool", "zephyr-sdk"], &[]);
+    assert!(!ok, "a miss must fail, not substitute 0.17.0: {out}");
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("nros setup <board>"), "{err}");
+    assert!(err.contains("0.16.8"), "{err}");
+}
+
+#[test]
+fn an_unknown_tool_fails_naming_setup() {
+    let tmp = tempfile::tempdir().unwrap();
+    let r = root(tmp.path());
+    let (ok, _, err) = locate(&r, &tmp.path().join("store"), &["tool", "no-such-sdk"], &[]);
+    assert!(!ok);
+    assert!(err.contains("no tool `no-such-sdk`"), "{err}");
+    assert!(err.contains("nros setup <board>"), "{err}");
+}
+
+/// The bare name is a source lookup; an SDK tool there points at `tool <name>`.
+#[test]
+fn a_bare_sdk_tool_name_points_at_the_tool_form() {
+    let tmp = tempfile::tempdir().unwrap();
+    let r = root(tmp.path());
+    let (ok, _, err) = locate(&r, &tmp.path().join("store"), &["zephyr-sdk"], &[]);
+    assert!(!ok);
+    assert!(err.contains("nros locate tool zephyr-sdk"), "{err}");
 }

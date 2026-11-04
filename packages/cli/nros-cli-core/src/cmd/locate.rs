@@ -33,8 +33,9 @@ pub struct Args {
     /// `nano-ros` for the two roots. `artifact <name>…` instead locates a
     /// cargo-built artifact (`c-archive`, `cpp-archive`, `c-include`,
     /// `cpp-include`, `c-config-header`, `cpp-config-header`); `tool <name>`
-    /// a host binary (`nros-launch-resolve`, or `qemu-system-<arch>` through
-    /// the one QEMU ladder).
+    /// a host binary (`nros-launch-resolve`, `renode`, or `qemu-system-<arch>`
+    /// through the one QEMU ladder), or the install directory of an SDK tool
+    /// `nros setup <board>` provisioned (`tool zephyr-sdk`).
     pub names: Vec<String>,
 
     /// Every `[source.*]` row. A row that resolves nowhere is skipped in
@@ -218,6 +219,11 @@ pub fn run(args: Args) -> Result<()> {
             },
             _ => {
                 let Some(src) = index.source.get(name) else {
+                    // An SDK tool is a `tool <name>` (RFC-0103 §3): say so
+                    // rather than list sources it is not among.
+                    if index.tool.contains_key(name) {
+                        bail!("`{name}` is an SDK tool, not a source: `nros locate tool {name}`");
+                    }
                     let known: Vec<&str> = index.source.keys().map(String::as_str).collect();
                     bail!(
                         "no `[source.{name}]` in {} — the index has: store, nano-ros, {}",
@@ -448,7 +454,13 @@ fn run_tool(
         };
         (path, "model_location::launch_resolver_from")
     } else {
-        bail!("no tool `{name}` — known: {LAUNCH_RESOLVER}, {RENODE}, qemu-system-<arch>");
+        // RFC-0103 §3 — every other `[tool.*]` of the index (the cross gcc,
+        // `zephyr-sdk`, …) answers its install DIRECTORY, through the one
+        // resolver `nros dev sdk path` prints.
+        match sdk_tool_dir(index, name) {
+            Ok(dir) => (dir, "store (the pinned [tool.*] version)"),
+            Err(why) => bail!("{why}"),
+        }
     };
     match args.format {
         Format::Path => println!("{}", path.display()),
@@ -467,6 +479,43 @@ fn run_tool(
         eprintln!("  {:<10} {} ({rung})", "tool", path.display());
     }
     Ok(())
+}
+
+/// `nros locate tool <name>` for an SDK-index `[tool.<name>]` that `nros
+/// setup` provisions: the directory `nros dev sdk path <name> --require`
+/// answers (one resolver, [`crate::cmd::sdk_path::tool_path`]), or a refusal
+/// that names `nros setup <board>`. The path is CONSTRUCTED from the pin and
+/// the store is never enumerated (issue 1546), so another installed version
+/// of the tool is never the answer.
+fn sdk_tool_dir(index: &SdkIndex, name: &str) -> std::result::Result<PathBuf, String> {
+    crate::cmd::sdk_path::tool_path(index, name, true)
+        .map(|p| nros_build_paths::canonical(&p))
+        .map_err(|miss| tool_miss_message(name, miss))
+}
+
+/// The refusal text for a [`ToolMiss`]. Pure, so it is unit-tested.
+fn tool_miss_message(name: &str, miss: crate::cmd::sdk_path::ToolMiss) -> String {
+    use crate::{cmd::sdk_path::ToolMiss, orchestration::model_location::LAUNCH_RESOLVER};
+    match miss {
+        ToolMiss::Unknown { known } => format!(
+            "no tool `{name}`. `nros locate tool` knows {LAUNCH_RESOLVER}, {RENODE}, \
+             qemu-system-<arch>, and the SDK tools `nros setup <board>` installs: {}",
+            known.join(", ")
+        ),
+        ToolMiss::ProjectNotDir(p) => format!(
+            "{name}: the project's system.toml names {} under [tools], which is not a directory",
+            p.display()
+        ),
+        ToolMiss::NotInstalled { version, tried } => format!(
+            "{name} {version} is not installed (looked at {}). Run `nros setup <board>` for a \
+             board that uses it.",
+            tried
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
 }
 
 /// The `[tool.*]` key (and front name) of the Renode emulator.
@@ -599,6 +648,42 @@ mod tests {
             let err = refuse_unplaced_header(&[Artifact::CArchive, h]).unwrap_err();
             assert!(err.to_string().contains(h.name()), "{err}");
         }
+    }
+
+    fn checkout_index() -> crate::orchestration::sdk_index::SdkIndex {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        crate::orchestration::sdk_index::SdkIndex::load(&root.join("nros-sdk-index.toml"))
+            .expect("load the checkout's index")
+    }
+
+    /// A pinned tool with no install is a refusal that names the pin, the
+    /// paths tried and `nros setup <board>`: never another version (issue
+    /// 1546). The found case runs through the binary in `nros-cli/tests`.
+    #[test]
+    fn missing_sdk_tool_names_the_pin_and_setup() {
+        let tried = std::path::PathBuf::from("/s/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8");
+        let err = super::tool_miss_message(
+            "zephyr-sdk",
+            crate::cmd::sdk_path::ToolMiss::NotInstalled {
+                version: "0.16.8".into(),
+                tried: vec![tried.clone()],
+            },
+        );
+        assert!(err.contains("zephyr-sdk 0.16.8 is not installed"), "{err}");
+        assert!(err.contains(&tried.display().to_string()), "{err}");
+        assert!(err.contains("nros setup <board>"), "{err}");
+    }
+
+    #[test]
+    fn unknown_tool_names_setup_and_the_known_tools() {
+        let index = checkout_index();
+        let err = super::sdk_tool_dir(&index, "no-such-tool").expect_err("unknown");
+        assert!(err.contains("no tool `no-such-tool`"), "{err}");
+        assert!(err.contains("nros setup <board>"), "{err}");
+        assert!(
+            err.contains("zephyr-sdk"),
+            "the index's tools are listed: {err}"
+        );
     }
 
     #[test]
