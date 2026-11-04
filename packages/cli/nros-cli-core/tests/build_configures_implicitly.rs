@@ -104,43 +104,57 @@ fn cleanup(project: &Path) {
     let _ = fs::remove_dir_all(project.parent().unwrap());
 }
 
-/// A fresh copy has never been synced; `nros build` configures it itself.
+/// A fresh copy has never been synced; `nros build` configures it itself,
+/// through `configure::ensure_current` (the call build makes before it plans;
+/// driven directly so no test compiles an image).
 #[test]
 fn build_on_a_fresh_copy_needs_no_sync() {
     setup();
     let leaf = scratch_copy("examples/linux/rust/listener", "fresh");
     assert!(!leaf.join("build/nros/models").exists(), "a fresh copy");
-    nros(&["build", "--dry-run", "--workspace", leaf.to_str().unwrap()])
-        .unwrap_or_else(|e| panic!("`nros build --dry-run` on a fresh copy: {e}"));
+    nros_cli_core::cmd::configure::ensure_current(&leaf, &[], false, false)
+        .unwrap_or_else(|e| panic!("build's implicit configure on a fresh copy: {e:?}"));
     assert!(
         leaf.join("build/nros/models").is_dir() && leaf.join("generated/std_msgs").is_dir(),
         "the implicit configure synced: the model and the message crate exist"
     );
+    assert!(
+        stamp_file(&leaf, "linux").is_file(),
+        "it recorded its stamp"
+    );
     cleanup(&leaf);
 }
 
-/// Ruling R16 — a dry run's stage 4 writes nothing, so its configure records
-/// no stamp (the rule sync's `--check`/`--dry-run` follow): the next real
-/// build must configure.
+/// Ruling R43 — a dry run never configures, so it writes nothing: no stamp,
+/// no model, no message crate. A never-configured copy has no plan to show,
+/// and the refusal names the step that makes one.
 #[test]
 fn dry_run_records_no_stamp() {
     setup();
     let leaf = scratch_copy("examples/linux/rust/listener", "dry-stamp");
-    nros(&["build", "--dry-run", "--workspace", leaf.to_str().unwrap()])
-        .unwrap_or_else(|e| panic!("`nros build --dry-run`: {e}"));
+    let e = nros(&["build", "--dry-run", "--workspace", leaf.to_str().unwrap()])
+        .expect_err("a never-configured copy has no plan, and a dry run makes none");
+    assert!(
+        e.contains("nros configure"),
+        "the refusal names the step: {e}"
+    );
     assert!(
         !stamp_file(&leaf, "linux").exists(),
         "a dry run recorded {}",
         stamp_file(&leaf, "linux").display()
     );
+    assert!(
+        !leaf.join("build/nros/models").exists() && !leaf.join("generated").exists(),
+        "a dry run configured"
+    );
     cleanup(&leaf);
 }
 
-/// `--dry-run` reaches the implicit configure: it configures (recording no
-/// stamp, Ruling R16) but runs no native program, so a C/C++ leaf whose
-/// components read `entities = "census"` takes no census.
+/// A dry run runs no native program: a C/C++ leaf whose components read
+/// `entities = "census"` takes no census (Ruling R43: it does not configure
+/// at all, so it writes nothing either).
 #[test]
-fn build_dry_run_configures_without_census() {
+fn build_dry_run_takes_no_census() {
     setup();
     let leaf = scratch_copy("examples/qemu-armv7a-nuttx/c/talker", "census");
     let sys = fs::read_to_string(leaf.join("system.toml")).unwrap();
@@ -148,16 +162,15 @@ fn build_dry_run_configures_without_census() {
         sys.contains("entities = \"census\""),
         "the fixture states a census"
     );
-    nros(&["build", "--dry-run", "--workspace", leaf.to_str().unwrap()])
-        .unwrap_or_else(|e| panic!("`nros build --dry-run` on a census leaf: {e}"));
-    assert!(
-        leaf.join("build/nros/models").is_dir(),
-        "the implicit configure synced: the model exists"
-    );
+    let _ = nros(&["build", "--dry-run", "--workspace", leaf.to_str().unwrap()]);
     assert!(
         !leaf.join("build/census-host").exists(),
         "a dry run took a census: {} exists",
         leaf.join("build/census-host").display()
+    );
+    assert!(
+        !leaf.join("build/nros/models").exists(),
+        "a dry run configured"
     );
     cleanup(&leaf);
 }

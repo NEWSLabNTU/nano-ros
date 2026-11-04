@@ -2502,6 +2502,17 @@ fn plan_leaf_image(
         eyre::bail!("{}: {r}", root.display());
     }
     let unsynced: Vec<String> = unsynced_inputs(root, &img);
+    if !unsynced.is_empty() && args.dry_run {
+        // Ruling R43 — a dry run never configures, so it plans from the
+        // project as it stands, and a never-configured one has no plan.
+        eyre::bail!(
+            "{} is not configured (missing {}), and a dry run never configures: it writes \
+             nothing. Run `nros configure {}` first, or `nros build` without `--dry-run`.",
+            root.display(),
+            unsynced.join(", "),
+            root.display()
+        );
+    }
     if !unsynced.is_empty() {
         // RFC-0120 D3 — `nros build` configures before it plans, so an
         // unsynced leaf here means that configure did not do its job.
@@ -8611,11 +8622,21 @@ mod single_package_tests {
         let mut sys = std::fs::read_to_string(leaf.join("system.toml")).unwrap();
         sys.push_str("\n[[component]]\npkg = \"demo_talker\"\nname = \"talker\"\n");
         std::fs::write(leaf.join("system.toml"), sys).unwrap();
+        // A real build: it configured first, so an unsynced leaf is a bug.
+        let mut real = args(&leaf, &[]);
+        real.dry_run = false;
+        let e = plan_builds(&real).expect_err("no model yet").to_string();
+        assert!(
+            e.contains("configure ran and left") && e.contains("unsynced — a bug"),
+            "{e}"
+        );
+        // Ruling R43 — a dry run never configured, so it says so and names
+        // the step, rather than calling its own design a bug.
         let e = plan_builds(&args(&leaf, &[]))
             .expect_err("no model yet")
             .to_string();
         assert!(
-            e.contains("configure ran and left") && e.contains("unsynced — a bug"),
+            e.contains("a dry run never configures") && e.contains("nros configure"),
             "{e}"
         );
     }

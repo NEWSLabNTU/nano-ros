@@ -319,12 +319,12 @@ pub(crate) fn input_digest_with(
             .iter()
             .find(|(n, _)| n == var)
             .and_then(|(_, v)| v.clone());
-        // phase-530 W5 -- unset, `NROS_INTERFACE_SEARCH_PATH` is what
-        // `nros configure` sets it to before it digests
-        // (`configure::ensure_interface_search_path`): the project's
-        // interface root. Spelled here, in the digest, so a READER that runs
-        // no configure (`nros locate configured`, asked by every hooked host)
-        // digests the same project alike.
+        // phase-530 W5 -- unset, `NROS_INTERFACE_SEARCH_PATH` digests as the
+        // value configure derives for this project (the project's interface
+        // root, `configure::default_interface_search_path`). Spelled here, in
+        // the digest, so a READER that runs no configure (`nros locate
+        // configured`, asked by every hooked host) digests the same project
+        // alike.
         if *var == "NROS_INTERFACE_SEARCH_PATH" && val.is_none() {
             val = crate::cmd::configure::default_interface_search_path(project)
                 .map(|r| r.to_string_lossy().into_owned());
