@@ -46,30 +46,35 @@
 # A no-op in the census's own host build (`NROS_LEAF_CENSUS_HOST`), which is
 # the producer.
 #
-# THE WORKSPACE ROAD (Ruling R39) -- `nros_census_check_step` below. A cross
-# workspace entry's census is taken from its HOST sibling, which a build edge
-# cannot rebuild cheaply (`take --image` re-plans the image). So that road gets
-# a READ-ONLY edge instead: the configure's own `ws entity-census check
-# --require-fresh`, run before the entry links. A stale census FAILS the build
-# and names the `take --image` command, rather than linking the old pools.
+# THE WORKSPACE ROAD (Ruling R42, which superseded R39's read-only check). A
+# cross workspace entry's census sits beside its MODEL and is taken from the
+# HOST sibling. `nros_census_step(MODEL ... WORKSPACE ...)` gives it the same
+# edge: `take --model --build-step` re-runs only the host sibling's recorded
+# BUILD step (`cmake --build` / `cargo build`, incremental -- never a re-plan,
+# never a target tool) and the census run, and the digest beside the model is
+# the configure dependency.
 #
-# Callers, every reader of a leaf census:
-#   * `nros_record_leaf_entity_facts` (cmake/NanoRosLeafEntityFacts.cmake) --
-#     `find_package(nano_ros)` and the `add_subdirectory` road;
-#   * `_nros_west_leaf_sizing` (zephyr/cmake/nros_cargo_build.cmake) -- the
-#     Zephyr west road, when `west-leaf-sizing` sized the leaf from its census.
-
 include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
 
 # nros_census_step(CLI <nros> LEAF <leaf-dir>)
+# nros_census_step(CLI <nros> MODEL <model> WORKSPACE <ws-root>)
 function(nros_census_step)
-    cmake_parse_arguments(_S "" "CLI;LEAF" "" ${ARGN})
+    cmake_parse_arguments(_S "" "CLI;LEAF;MODEL;WORKSPACE" "" ${ARGN})
     if(NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
         return()
     endif()
-    get_filename_component(_leaf "${_S_LEAF}" ABSOLUTE)
+    if(NOT "${_S_MODEL}" STREQUAL "")
+        get_filename_component(_leaf "${_S_MODEL}" ABSOLUTE)
+        get_filename_component(_ws "${_S_WORKSPACE}" ABSOLUTE)
+        set(_what --model "${_leaf}")
+        set(_take --model "${_leaf}" --workspace "${_ws}")
+    else()
+        get_filename_component(_leaf "${_S_LEAF}" ABSOLUTE)
+        set(_what --leaf "${_leaf}")
+        set(_take --leaf "${_leaf}")
+    endif()
     string(MD5 _key "${_leaf}")
     string(SUBSTRING "${_key}" 0 10 _key)
     get_property(_added GLOBAL PROPERTY NROS_CENSUS_STEP_ADDED_${_key})
@@ -78,15 +83,15 @@ function(nros_census_step)
     endif()
     # Where the digest lives is the CLI's rule, asked, never spelled here.
     execute_process(
-        COMMAND "${_S_CLI}" dev image entity-census path --leaf "${_S_LEAF}" --digest
+        COMMAND "${_S_CLI}" dev image entity-census path ${_what} --digest
         OUTPUT_VARIABLE _digest
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0 OR "${_digest}" STREQUAL "")
         message(FATAL_ERROR
-            "nano-ros: ${_S_LEAF} is sized from its census, and `nros dev image "
-            "entity-census path --leaf --digest` cannot say where its digest is "
+            "nano-ros: ${_leaf} is sized from its census, and `nros dev image "
+            "entity-census path --digest` cannot say where its digest is "
             "(a CLI older than this checkout? rebuild it: ./scripts/bootstrap.sh "
             "(contributors: just setup-cli)):\n${_err}")
     endif()
@@ -104,29 +109,29 @@ function(nros_census_step)
     # The targets that must wait for it (non-Ninja) are this directory's.
     cmake_language(EVAL CODE
         "cmake_language(DEFER DIRECTORY [==[${CMAKE_SOURCE_DIR}]==] CALL
-            _nros_census_step_target [==[${_S_CLI}]==] [==[${_leaf}]==]
+            _nros_census_step_target [==[${_S_CLI}]==] [==[${_take}]==]
             [==[${_digest}]==] [==[${_key}]==] [==[${_ninja}]==]
-            [==[${CMAKE_CURRENT_SOURCE_DIR}]==])")
+            [==[${CMAKE_CURRENT_SOURCE_DIR}]==] [==[${_leaf}]==])")
     message(STATUS "nano-ros: census step -> ${_digest}")
-    nros_message_detail("nano-ros: the census step keeps ${_S_LEAF}'s census current "
+    nros_message_detail("nano-ros: the census step keeps ${_leaf}'s census current "
         "during a build; an added endpoint re-configures once, a body edit never")
 endfunction()
 
-function(_nros_census_step_target _nros _leaf _digest _key _ninja _dir)
+function(_nros_census_step_target _nros _take _digest _key _ninja _dir _what)
     set(_target "nros_census_step_${_key}")
     if(_ninja)
         add_custom_target(${_target}
-            COMMAND "${_nros}" dev image entity-census take --leaf "${_leaf}" --build-step
+            COMMAND "${_nros}" dev image entity-census take ${_take} --build-step
             BYPRODUCTS "${_digest}"
-            COMMENT "nano-ros: census step (${_leaf})"
+            COMMENT "nano-ros: census step (${_what})"
             VERBATIM)
         return()
     endif()
     add_custom_target(${_target} ALL
-        COMMAND "${_nros}" dev image entity-census take --leaf "${_leaf}" --build-step
+        COMMAND "${_nros}" dev image entity-census take ${_take} --build-step
                 --fail-if-changed
         BYPRODUCTS "${_digest}"
-        COMMENT "nano-ros: census step (${_leaf})"
+        COMMENT "nano-ros: census step (${_what})"
         VERBATIM)
     _nros_census_step_gate("${_target}" "${_dir}")
 endfunction()
@@ -148,46 +153,4 @@ function(_nros_census_step_gate _step _dir)
     foreach(_sub IN LISTS _subs)
         _nros_census_step_gate("${_step}" "${_sub}")
     endforeach()
-endfunction()
-
-# nros_census_check_step(ENTRY <target> WORKING_DIRECTORY <dir> COMMAND <cmd>...)
-#
-# Ruling R39 -- the workspace road's READ-ONLY census edge: <cmd> (the
-# configure's own `ws entity-census check --require-fresh ...`) runs before
-# <target> builds, on every build. Fresh, it says so and the build goes on;
-# stale, it exits non-zero naming `nros dev image entity-census take --image
-# <bringup>:<image>`, so the entry never links pools sized for entities the
-# code no longer has. A no-op in the census's own host build.
-function(nros_census_check_step)
-    cmake_parse_arguments(_C "" "ENTRY;WORKING_DIRECTORY" "COMMAND" ${ARGN})
-    if(NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
-        return()
-    endif()
-    set(_target "nros_census_check_${_C_ENTRY}")
-    if(TARGET ${_target})
-        return()
-    endif()
-    # In ALL, so it runs on every build even with no entry target to order.
-    add_custom_target(${_target} ALL
-        COMMAND ${_C_COMMAND}
-        WORKING_DIRECTORY "${_C_WORKING_DIRECTORY}"
-        COMMENT "nano-ros: census check (${_C_ENTRY})"
-        VERBATIM)
-    # The entry target may be created after this call (the Zephyr arm's `app`
-    # exists already; an executable's is added by the caller later), so the
-    # edge is attached at the end of the directory.
-    cmake_language(EVAL CODE
-        "cmake_language(DEFER CALL _nros_census_check_attach
-            [==[${_target}]==] [==[${_C_ENTRY}]==])")
-endfunction()
-
-function(_nros_census_check_attach _step _entry)
-    foreach(_t IN ITEMS ${_entry} app)
-        if(TARGET ${_t})
-            add_dependencies(${_t} ${_step})
-            return()
-        endif()
-    endforeach()
-    message(STATUS "nano-ros: census check for `${_entry}` runs with every build "
-        "(no `${_entry}` target to order it before)")
 endfunction()
