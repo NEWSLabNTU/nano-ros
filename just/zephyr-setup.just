@@ -137,6 +137,13 @@ setup *ARGS:
         # directory another live session's old-layout build is using.
         python3 scripts/check-zephyr-workspace-foreign-checkout.py \
             --retire-foreign-build-dirs --workspace "$WORKSPACE"
+        # issue 2249 — "already present" is about the WORKSPACE, and it skipped
+        # the MANIFEST too. The workspace reads its own copy of `west.yml`, which
+        # nothing refreshed, and no `west update` ran here, so phase-524 W2's
+        # `hal_stm32` never reached the tier-2 runner's store workspace. Gated on
+        # itself like the two repairs above: an unchanged manifest is a byte
+        # compare and no network.
+        bash scripts/zephyr/sync-workspace-manifest.sh "$WORKSPACE" "$(pwd)"
     else
         NROS_ZEPHYR_MANIFEST="{{ZEPHYR_MANIFEST}}" NROS_ZEPHYR_WORKSPACE="$WORKSPACE" ./scripts/zephyr/setup.sh $ARGS
     fi

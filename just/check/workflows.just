@@ -462,6 +462,14 @@ runner-wait-triage:
 report-interlock-coverage:
     @bash tests/report-interlock-coverage-tests.sh
 
+# issue 2249 — an existing west workspace follows the checkout's manifest:
+# a stale copy is refreshed and `west update` runs, a current one costs no
+# network, and a failed update restores the old copy so the next run retries.
+# `west` stubbed, tmpdir, <1 s.
+[private]
+zephyr-sync-workspace-manifest:
+    @bash tests/zephyr-sync-workspace-manifest-tests.sh
+
 # issue 1964 — the pre-push hook keeps `just check fast`'s full output and
 # per-gate verdicts in a per-user state dir, outside every checkout, so a red
 # survives the terminal and `git worktree remove`. Exercises the helper (status
