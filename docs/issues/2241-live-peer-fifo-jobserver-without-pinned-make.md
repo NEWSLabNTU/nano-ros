@@ -4,7 +4,7 @@ title: "live-peer: the fixture build hands out a FIFO jobserver on a runner with
 status: open
 type: bug
 area: [build, ci, testing]
-severity: medium
+severity: high
 found: 2026-11-04
 related: [2058, 2119]
 ---
@@ -33,6 +33,26 @@ The pool is `nros`'s own jobserver
 (`packages/cli/nros-cli-core/src/builder/jobserver.rs`, which names the FIFO
 `nros-jobserver-<pid>-<seq>`). GNU make 4.3, the Ubuntu 22.04 system make,
 cannot join a FIFO jobserver; 4.4 can.
+
+## Second sighting: the book's own setup flow (2026-11-04)
+
+The same night, both book probes stopped on the same line, in a pristine
+container that follows the book's steps:
+
+- Nightly run 41790118101, job 126441270473 (`bootstrap-probe`, step `Run
+  bootstrap probe`).
+- Probe run 41797511182, job 126464994275 (`book probe — checkout track`,
+  `just probe checkout`).
+
+    cyclonedds-sys: a FIFO jobserver is inherited (`--jobserver-auth=fifo:`) and the pinned make is not provisioned, so CMake uses the make on PATH
+    gmake: *** internal error: invalid --jobserver-auth string 'fifo:/tmp/nros-jobserver-37226-0/fifo'.  Stop.
+
+This happens under `/tmp/probe_quickstart_rs/build/posix-cyclonedds/linux_entry`.
+That is the reader's path, not a CI lane: a user who follows the quickstart
+on a host whose make is 4.3 (Ubuntu 22.04) reaches the same stop. So the
+second fix below is no longer only a CI convenience. The book does not tell
+the reader to provision `make`, so the first fix alone leaves the reader's
+path broken. The `bootstrap-probe` job passed on 2026-11-02 and 2026-11-03.
 
 ## What it is not
 
