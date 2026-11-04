@@ -104,6 +104,75 @@ printf 'old44\n' > "$tmp/ws/nano-ros/west-4.4.yml"; printf 'new44\n' > "$tmp/co/
 [ "$rc" -eq 0 ] && [ "$(cat "$tmp/ws/nano-ros/west-4.4.yml")" = new44 ] && [ "$(calls)" = 1 ] && r=ok || r=bad
 check "the config's manifest file is the one compared" "$r"
 
+# 9. REAL west, end to end — the runner's exact shape. Rows 1-8 stub west, so
+# they prove the script CALLS `west update`; they cannot prove that an update
+# against the refreshed manifest fetches a module the old one lacked. That is
+# west's behaviour, and the fix rests on it, so it is measured here: a
+# workspace provisioned when the imported manifest's `name-allowlist` held only
+# `modA`, then the checkout's manifest adds `modB` (phase-524 W2 adding
+# `hal_stm32`). A bare `west update` over the OLD copy must leave `modB` absent
+# (the defect, asserted so a pass means something), and the sync must fetch it.
+# Local `file://` repos, no network. Needs `west`; without it this row is
+# reported NOT VERIFIED through the skip ledger, never passed.
+source "$repo_root/scripts/build/zephyr-python.sh"
+real_py="$(NROS_PYTHON= nros_zephyr_python)"
+if [ -n "$real_py" ] && PATH="$(dirname "$real_py"):$PATH" command -v west >/dev/null 2>&1; then
+    real_bin="$(dirname "$real_py")"
+    up="$tmp/up"
+    gitq() {
+        env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+            GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
+            GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git "$@"
+    }
+    mkrepo() {   # mkrepo <name> <file> <content>
+        gitq init -q -b main "$up/$1"
+        printf '%s\n' "$3" > "$up/$1/$2"
+        gitq -C "$up/$1" add "$2"
+        gitq -C "$up/$1" commit -qm init
+    }
+    mkrepo modA f modA
+    mkrepo modB f modB
+    mkrepo zephyr west.yml "manifest:
+  projects:
+    - name: modA
+      url: file://$up/modA
+      revision: main
+    - name: modB
+      url: file://$up/modB
+      revision: main"
+    manifest() {   # manifest <allowlisted module>...
+        printf 'manifest:\n  projects:\n    - name: zephyr\n      url: file://%s/zephyr\n' "$up"
+        printf '      revision: main\n      import:\n        name-allowlist:\n'
+        for m in "$@"; do printf '          - %s\n' "$m"; done
+        printf '  self:\n    path: nano-ros\n'
+    }
+    rm -rf "$tmp/ws" "$tmp/co"
+    mkdir -p "$tmp/ws/nano-ros" "$tmp/co"
+    manifest modA > "$tmp/ws/nano-ros/west.yml"
+    west_real() { (cd "$tmp/ws" && env -u GIT_DIR -u GIT_WORK_TREE PATH="$real_bin:$PATH" west "$@"); }
+    if west_real init -l --mf west.yml nano-ros >/dev/null 2>&1 && west_real update >/dev/null 2>&1 \
+        && [ -d "$tmp/ws/modA" ]; then
+        check "real west: a workspace provisioned on the old allowlist has modA" ok
+        manifest modA modB > "$tmp/co/west.yml"
+        west_real update >/dev/null 2>&1 || true
+        [ ! -e "$tmp/ws/modB" ] && r=ok || r=bad
+        check "...a bare west update over its OWN copy never fetches modB (the defect)" "$r"
+        rc=0
+        out="$(NROS_PYTHON="$real_py" PATH="$real_bin:$PATH" env -u GIT_DIR -u GIT_WORK_TREE \
+            bash "$sync" "$tmp/ws" "$tmp/co" 2>&1)" || rc=$?
+        [ "$rc" -eq 0 ] && [ -f "$tmp/ws/modB/f" ] && r=ok || r=bad
+        check "...and the sync fetches the module the checkout's manifest added (rc=$rc)" "$r"
+        [ "$r" = ok ] || printf '%s\n' "$out" | sed 's/^/        /'
+    else
+        check "real west: could not provision the synthetic workspace" bad
+    fi
+else
+    # shellcheck source=scripts/build/check-skip.sh
+    . "$repo_root/scripts/build/check-skip.sh"
+    nros_check_skip zephyr-sync-workspace-manifest \
+        "real-west row NOT VERIFIED: no interpreter that imports west (rows 1-8 ran with west stubbed)"
+fi
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

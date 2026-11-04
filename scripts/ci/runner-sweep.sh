@@ -515,9 +515,18 @@ _hwm_put() {
 # Falls back to the directory's own mtime when the walk yields nothing (an empty
 # candidate, or an unreadable one): ordering by a stale timestamp is bad, and
 # ordering by 0 — which sorts FIRST and evicts hardest — is worse.
+#
+# The maximum is taken by `awk`, which reads its whole input, never by
+# `sort -rn | head -1`: `head` closes the pipe after one line, and the job step
+# runs with SIGPIPE IGNORED, so `sort` got EPIPE instead of dying quietly and
+# printed `write error` for every entry holding more than a pipe's worth of
+# files (a west build leaf: thousands). That was ~40 lines of noise in run
+# 41784686434 and read like a full disk; the disk had 1060G free. Issue 1353
+# fixed the same noise in `_evict` and left this second producer.
 _newest_mtime() {
     local newest=""
-    newest="$(find "$1" -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -1 || true)"
+    newest="$(find "$1" -type f -printf '%T@\n' 2>/dev/null \
+        | awk -F. 'NR == 1 || $1 + 0 > m + 0 { m = $1 } END { if (NR) print m }' || true)"
     newest="${newest%%.*}"
     case "${newest:-}" in
         ''|*[!0-9]*) stat -c '%Y' "$1" 2>/dev/null || printf '0' ;;
