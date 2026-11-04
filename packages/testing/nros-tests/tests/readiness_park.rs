@@ -26,6 +26,7 @@
 //! 4. Reporting NOTIFY, a call of the installed callback (what the stack's
 //!    receive notification does) ends the park, and the drive is still
 //!    non-blocking.
+//!
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test readiness_park`.
 
 #![cfg(all(feature = "trigger-test", unix))]

@@ -41,9 +41,9 @@ use cortex_m::peripheral::NVIC;
 use cortex_m_rt::exception;
 #[cfg(feature = "ethernet")]
 use lan9118_smoltcp::{MPS2_AN385_BASE, irq};
+use mps2_an385_pac::Interrupt;
 #[cfg(not(feature = "rtic"))]
 use mps2_an385_pac::interrupt;
-use mps2_an385_pac::Interrupt;
 
 // SysTick, by address — the PAC exposes interrupt names only, and the dual
 // timer beside it in `rtic.rs` is driven the same way.
@@ -181,8 +181,8 @@ mod uart {
         if max_us == 0 {
             return;
         }
-        let deadline_ns = nros_platform_mps2_an385::clock::clock_ns()
-            .saturating_add(max_us.saturating_mul(1000));
+        let deadline_ns =
+            nros_platform_mps2_an385::clock::clock_ns().saturating_add(max_us.saturating_mul(1000));
         super::sleep_until(deadline_ns, pending, unmask);
     }
 
@@ -233,6 +233,9 @@ pub(crate) fn install() {
     // session (CALLER mode) states `Notify` and the executor parks instead of
     // draining the link from `drive_io`.
     // An RTIC image with no ethernet installed no idle above.
-    #[cfg(all(feature = "rmw-zenoh", any(feature = "ethernet", not(feature = "rtic"))))]
+    #[cfg(all(
+        feature = "rmw-zenoh",
+        any(feature = "ethernet", not(feature = "rtic"))
+    ))]
     nros_rmw_zenoh::set_caller_rx_wakes_park(true);
 }

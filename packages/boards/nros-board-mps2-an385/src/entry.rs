@@ -213,10 +213,7 @@ where
     ));
     loop {
         let budget_ms = NodeDispatchRuntime::entry_spin_budget_ms(&runtime_inner);
-        if let Err(err) = NodeDispatchRuntime::spin_once(
-            &mut runtime_inner,
-            budget_ms,
-        ) {
+        if let Err(err) = NodeDispatchRuntime::spin_once(&mut runtime_inner, budget_ms) {
             Mps2An385::println(format_args!(""));
             Mps2An385::println(format_args!("spin_once error: {err:?}"));
             Mps2An385::exit_failure();
