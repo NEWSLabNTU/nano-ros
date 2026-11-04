@@ -6692,7 +6692,7 @@ pub(crate) type Bringups = Vec<(String, PathBuf, plan::ImageSet)>;
 /// plans each image on its own so one refusal cannot hide the others.
 pub(crate) fn workspace_images(root: &std::path::Path) -> Result<Vec<String>> {
     let members = discover::cargo_members_or_walk(root);
-    let found = discover::discover_in(root, &[], &members).map_err(|e| eyre::eyre!("{e}"))?;
+    let found = discover::discover(root, &members).map_err(|e| eyre::eyre!("{e}"))?;
     let bringups = collect_images(&found.packages)?;
     Ok(plan::all_images(&bringups)
         .into_iter()
@@ -6718,7 +6718,7 @@ pub(crate) fn workspace_model_missing(
 ) -> Result<Option<String>> {
     use nros_orchestration_ir::model_location;
     let members = discover::cargo_members_or_walk(root);
-    let found = discover::discover_in(root, &[], &members).map_err(|e| eyre::eyre!("{e}"))?;
+    let found = discover::discover(root, &members).map_err(|e| eyre::eyre!("{e}"))?;
     let bringups = collect_images(&found.packages)?;
     let Some((_, dir, _, image)) = plan::all_images(&bringups)
         .into_iter()
