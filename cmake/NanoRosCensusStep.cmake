@@ -44,6 +44,8 @@
 
 include_guard(GLOBAL)
 
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+
 # nros_census_step(CLI <nros> LEAF <leaf-dir>)
 function(nros_census_step)
     cmake_parse_arguments(_S "" "CLI;LEAF" "" ${ARGN})
@@ -65,7 +67,8 @@ function(nros_census_step)
         message(FATAL_ERROR
             "nano-ros: ${_S_LEAF} is sized from its census, and `nros dev image "
             "entity-census path --leaf --digest` cannot say where its digest is "
-            "(a CLI older than this checkout? `just setup-cli`):\n${_err}")
+            "(a CLI older than this checkout? rebuild it: ./scripts/bootstrap.sh "
+            "(contributors: just setup-cli)):\n${_err}")
     endif()
     set_property(GLOBAL PROPERTY NROS_CENSUS_STEP_ADDED TRUE)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_digest}")
@@ -82,8 +85,10 @@ function(nros_census_step)
         "cmake_language(DEFER DIRECTORY [==[${CMAKE_SOURCE_DIR}]==] CALL
             _nros_census_step_target [==[${_S_CLI}]==] [==[${_S_LEAF}]==]
             [==[${_digest}]==] [==[${_all}]==])")
-    message(STATUS "nano-ros: census step -> ${_digest} (RFC-0120 D7: an added "
-        "endpoint re-configures once, a body edit never)")
+    message(STATUS "nano-ros: census step -> ${_digest}")
+    nros_message_detail("nano-ros: the census step keeps ${_S_LEAF}'s census current "
+        "during a build; an added endpoint re-configures once, a body edit never "
+        "(RFC-0120 D7)")
 endfunction()
 
 function(_nros_census_step_target _nros _leaf _digest _all)
