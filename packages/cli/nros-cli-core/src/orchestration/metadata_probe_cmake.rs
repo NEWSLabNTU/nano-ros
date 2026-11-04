@@ -319,14 +319,28 @@ pub struct ProbeOutcome {
 /// per-component projects this replaces.
 /// `rmw` is the backend the probe project compiles beside the recording one —
 /// see [`probe_rmw`]; the probe never talks through it.
+///
+/// Issue 2238 (Ruling R46) -- `members` is every C/C++ component the workspace
+/// probes (the caller's MEMBERSHIP decision), `stale` the ones to re-probe
+/// now. The project ADDS every member, because its configure is the ONE
+/// writer of the aggregate `nros-metadata.json` (each package's own
+/// `nano_ros_node_register` rows): a project of the stale components alone
+/// wrote an aggregate of those alone, and every reader of it -- the resolve
+/// that composes an image over the registered population -- lost the rest.
+/// Only the stale components are BUILT and RUN, so the cost of a re-probe is
+/// unchanged; the members' rows come out of the same unchanged CMakeLists
+/// they always did, and the re-probed one's from its edited sources.
 pub fn run_probes(
     probe_dir: &Path,
-    comps: &[CmakeProbeOptions],
+    members: &[CmakeProbeOptions],
+    stale: &[CmakeProbeOptions],
     rmw: &str,
 ) -> Result<Vec<ProbeOutcome>> {
-    if comps.is_empty() {
+    if stale.is_empty() {
         return Ok(Vec::new());
     }
+    let project = probe_project_members(members, stale);
+    let comps: &[CmakeProbeOptions] = &project;
     std::fs::create_dir_all(probe_dir)
         .wrap_err_with(|| format!("create {}", probe_dir.display()))?;
     // issue 0562 — write-if-changed: this directory is a cmake project, so a
@@ -403,7 +417,12 @@ pub fn run_probes(
         }
     };
     configure?;
-    let comps: Vec<CmakeProbeOptions> = live.iter().map(|c| (*c).clone()).collect();
+    // Build and run only the STALE members that configured (issue 2238).
+    let comps: Vec<CmakeProbeOptions> = live
+        .iter()
+        .filter(|c| stale.iter().any(|s| same_component(s, c)))
+        .map(|c| (*c).clone())
+        .collect();
     let comps: &[CmakeProbeOptions] = &comps;
 
     // Build EVERY probe in one parallel invocation. One `cmake --build` per
@@ -440,6 +459,14 @@ pub fn run_probes(
     // fell back to the SystemModel bound with no line of output.
     for (name, why) in rejected {
         let (package, component) = name.split_once("::").unwrap_or((name.as_str(), ""));
+        // A fresh member that could not configure keeps its sidecar; it is
+        // not this run's outcome to report.
+        if !stale
+            .iter()
+            .any(|s| s.package == package && s.component == component)
+        {
+            continue;
+        }
         out.push(ProbeOutcome {
             package: package.to_string(),
             component: component.to_string(),
@@ -448,6 +475,36 @@ pub fn run_probes(
     }
     discard_cache_if_asked(&build_dir, &out);
     Ok(out)
+}
+
+/// Issue 2238 -- the components the probe project adds: every member, the
+/// re-probed (`stale`) entry in place of its member's, and a stale component
+/// the members do not name added too (a caller passing no membership).
+/// Membership is the caller's: a member that left is simply not given.
+pub fn probe_project_members(
+    members: &[CmakeProbeOptions],
+    stale: &[CmakeProbeOptions],
+) -> Vec<CmakeProbeOptions> {
+    let mut out: Vec<CmakeProbeOptions> = members
+        .iter()
+        .map(|m| {
+            stale
+                .iter()
+                .find(|s| same_component(s, m))
+                .unwrap_or(m)
+                .clone()
+        })
+        .collect();
+    for s in stale {
+        if !out.iter().any(|o| same_component(o, s)) {
+            out.push(s.clone());
+        }
+    }
+    out
+}
+
+fn same_component(a: &CmakeProbeOptions, b: &CmakeProbeOptions) -> bool {
+    a.package == b.package && a.component == b.component
 }
 
 /// Drop the probe's cmake build tree when the caller says it is not worth
@@ -1054,6 +1111,84 @@ mod tests {
                 "{t}\n{txt}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod incremental_membership_tests {
+    use super::*;
+
+    fn member(pkg: &str, class: &str) -> CmakeProbeOptions {
+        CmakeProbeOptions {
+            package: pkg.into(),
+            component: pkg.trim_end_matches("_pkg").into(),
+            executable: "e".into(),
+            class: class.into(),
+            header: "h.hpp".into(),
+            language: nros_lang::Language::Cpp,
+            shape: "configure".into(),
+            library_target: format!("{pkg}_lib"),
+            package_dir: PathBuf::from(format!("/ws/src/{pkg}")),
+            nano_ros_workspace: PathBuf::from("/nano"),
+            output_path: PathBuf::from(format!("/ws/src/{pkg}/metadata/x.json")),
+            probe_dir: PathBuf::from("/probe"),
+        }
+    }
+
+    /// Issue 2238 (phase-530 W6, Ruling R46) -- the probe project's
+    /// `nros-metadata.json` is the configure's registration over the packages
+    /// the project ADDS, so a re-probe of ONE component of a seven-component
+    /// workspace must still add all seven: the aggregate keeps every row and
+    /// the re-probed component's row is the updated one. It added only the
+    /// stale component, and the aggregate shrank to it.
+    #[test]
+    fn a_re_probe_of_one_component_keeps_every_member_in_the_aggregate() {
+        let pkgs = [
+            "talker_pkg",
+            "listener_pkg",
+            "bulk_listener_pkg",
+            "action_client_pkg",
+            "action_server_pkg",
+            "service_client_pkg",
+            "service_server_pkg",
+        ];
+        let members: Vec<CmakeProbeOptions> = pkgs
+            .iter()
+            .map(|p| member(p, &format!("{p}::Old")))
+            .collect();
+        let edited = member("talker_pkg", "talker_pkg::Edited");
+        let project = probe_project_members(&members, std::slice::from_ref(&edited));
+        assert_eq!(
+            project.len(),
+            7,
+            "{:?}",
+            project.iter().map(|c| &c.package).collect::<Vec<_>>()
+        );
+        let talker: Vec<&CmakeProbeOptions> = project
+            .iter()
+            .filter(|c| c.package == "talker_pkg")
+            .collect();
+        assert_eq!(talker.len(), 1);
+        assert_eq!(
+            talker[0].class, "talker_pkg::Edited",
+            "the re-probed row is the updated one"
+        );
+        let txt = render_probe_cmakelists(&project);
+        for p in pkgs {
+            assert!(
+                txt.contains(&format!("add_subdirectory(/ws/src/{p}")),
+                "{p}\n{txt}"
+            );
+        }
+    }
+
+    /// A component the membership no longer names is not added: the probe
+    /// keeps the members it is GIVEN, it decides no membership itself.
+    #[test]
+    fn a_member_that_left_drops_out() {
+        let members = vec![member("talker_pkg", "talker_pkg::T")];
+        let stale = vec![member("talker_pkg", "talker_pkg::T")];
+        assert_eq!(probe_project_members(&members, &stale).len(), 1);
     }
 }
 

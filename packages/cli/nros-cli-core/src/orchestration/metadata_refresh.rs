@@ -89,6 +89,10 @@ pub fn refresh_stale_sidecars(
     // Issue 0286 — resolved once, not per component.
     let host = host_triple();
     // phase-313 — C/C++ components to probe in ONE workspace-scoped project.
+    // Issue 2238 -- every C/C++ component the probe project ADDS (fresh or
+    // not), beside the stale ones it re-probes.
+    let mut cpp_members: Vec<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions> =
+        Vec::new();
     let mut cpp_batch: Vec<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions> =
         Vec::new();
 
@@ -155,9 +159,19 @@ pub fn refresh_stale_sidecars(
                         );
                     }
                 }
-                Ok(Some(opts)) => cpp_batch.push(opts),
-                // Already current — no probe needed.
-                Ok(None) => report.fresh.push(decl.source_metadata_path()),
+                Ok(Some(opts)) => {
+                    cpp_members.push(opts.clone());
+                    cpp_batch.push(opts);
+                }
+                // Already current — no probe needed, but still a MEMBER of the
+                // probe project (issue 2238): its configure writes the
+                // aggregate every member's row must stay in.
+                Ok(None) => {
+                    if let Ok(opts) = cpp_probe_member(decl, nano_ros, &probe_root) {
+                        cpp_members.push(opts);
+                    }
+                    report.fresh.push(decl.source_metadata_path())
+                }
                 Err(why) => report.unsupported.push(format!(
                     "{}::{} ({why})",
                     decl.config.package, decl.config.component
@@ -296,7 +310,12 @@ pub fn refresh_stale_sidecars(
         let rmws = workspace_image_rmws(&workspace);
         let rmw =
             crate::orchestration::metadata_probe_cmake::probe_rmw(rmws.iter().map(String::as_str));
-        match crate::orchestration::metadata_probe_cmake::run_probes(&dir, &cpp_batch, rmw) {
+        match crate::orchestration::metadata_probe_cmake::run_probes(
+            &dir,
+            &cpp_members,
+            &cpp_batch,
+            rmw,
+        ) {
             Ok(outcomes) => {
                 for (o, opts) in outcomes.iter().zip(cpp_batch.iter()) {
                     match &o.result {
@@ -377,6 +396,26 @@ fn cpp_probe_options(
     nano_ros: Option<&Path>,
     probe_root: &Path,
 ) -> Result<Option<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions>, String> {
+    // The declaration's refusals first, as before the split (issue 2238).
+    let opts = cpp_probe_member(decl, nano_ros, probe_root)?;
+    // Issue 1578 — the same key as the Rust branch; `nano_ros` is known
+    // present here (`cpp_probe_member` refused otherwise), so a `None` means
+    // only that the closure list is missing, which is never fresh.
+    if probe_inputs_key(&decl.package_root, nano_ros)
+        .is_some_and(|k| sidecar_is_fresh(&opts.output_path, &k))
+    {
+        return Ok(None);
+    }
+    Ok(Some(opts))
+}
+
+/// Issue 2238 -- the probe options of a C/C++ component whatever its
+/// freshness: a fresh one is still a member of the probe project.
+fn cpp_probe_member(
+    decl: &ComponentDeclaration,
+    nano_ros: Option<&Path>,
+    probe_root: &Path,
+) -> Result<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions, String> {
     let Some(nano_ros) = nano_ros else {
         return Err("no nano-ros path".into());
     };
@@ -389,16 +428,7 @@ fn cpp_probe_options(
     let Some(library_target) = decl.library_target.clone() else {
         return Err("no CMake library target to link".into());
     };
-
     let sidecar = decl.source_metadata_path();
-    // Issue 1578 — the same key as the Rust branch; `nano_ros` is already known
-    // present here (the `let Some` above), so a `None` means only that the
-    // closure list is missing, which is never fresh.
-    if probe_inputs_key(&decl.package_root, Some(nano_ros))
-        .is_some_and(|k| sidecar_is_fresh(&sidecar, &k))
-    {
-        return Ok(None);
-    }
 
     // Issue 1528 — the C-vs-C++ decision, with NO wildcard.
     //
@@ -426,7 +456,7 @@ fn cpp_probe_options(
                      `language != Rust` guard should have sent it to `build_metadata`"
             )
         })?;
-    Ok(Some(
+    Ok(
         crate::orchestration::metadata_probe_cmake::CmakeProbeOptions {
             package: decl.config.package.clone(),
             component: decl.config.component.clone(),
@@ -444,7 +474,7 @@ fn cpp_probe_options(
             output_path: sidecar,
             probe_dir: probe_root.to_path_buf(),
         },
-    ))
+    )
 }
 
 /// Every image's resolved RMW across the workspace's `system.toml` files (a
