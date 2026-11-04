@@ -42,7 +42,7 @@ Options:
 
 Record fields:
   kind id target board lang lang_tag role rmw src src_dir build_name build_dir
-  log xrce_agent_port zenoh_locator cyclone_domain conf_files extra_cmake_defs
+  log xrce_agent_port zenoh_locator dds_domain conf_files extra_cmake_defs
   sig sig_file best_effort eff_pristine ws_dir nros_image
 EOF
 }
@@ -258,7 +258,7 @@ emit_record() {
     local log="${13}"
     local xrce_agent_port="${14}"
     local zenoh_locator="${15}"
-    local cyclone_domain="${16}"
+    local dds_domain="${16}"
     local conf_files="${17}"
     local extra_cmake_defs="${18}"
     local sig="${19}"
@@ -273,7 +273,7 @@ emit_record() {
     local fields=(
         "$kind" "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw"
         "$src" "$src_dir" "$build_name" "$build_dir" "$log" "$xrce_agent_port"
-        "$zenoh_locator" "$cyclone_domain" "$conf_files" "$extra_cmake_defs"
+        "$zenoh_locator" "$dds_domain" "$conf_files" "$extra_cmake_defs"
         "$sig" "$sig_file" "$best_effort" "$eff_pristine" "$ws_dir" "$nros_image"
     )
     local i
@@ -423,7 +423,7 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     best_effort=0
     xrce_agent_port=""
     zenoh_locator=""
-    cyclone_domain=""
+    dds_domain=""
     extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
 
 
@@ -466,23 +466,32 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         # The row authored its isolation values (mps2 witness leaves).
         zenoh_locator="$row_zenoh_locator"
         xrce_agent_port="$row_xrce_port"
-        cyclone_domain="$row_cyclone_domain"
+        dds_domain="$row_cyclone_domain"
     elif [ "$role" != "logging-smoke" ]; then
         # The allocator formula, for the six role leaves.
         lang_offset="$(lang_offset_for_lang "$lang")"
         lang_idx="$(lang_idx_for_lang "$lang")"
         variant_offset="$(variant_offset_for_role "$role")"
         variant_idx="$(variant_idx_for_role "$role")"
+        # Issue 2221 -- the DDS domain is baked for XRCE too. An XRCE image's
+        # Agent joins the domain the CLIENT names, so two images behind two
+        # Agent ports still share one RTPS bus when they share a domain; the
+        # Agent port isolates only the client<->Agent hop. XRCE sits 9 above
+        # the Cyclone sibling of the same (variant, lang): 31-39 beside 22-30.
+        # Mirror of `alloc::dds_domain_of` / `XRCE_DOMAIN_SHIFT`.
         case "$rmw" in
-            xrce) xrce_agent_port=$((2400 + lang_offset + variant_offset)) ;;
+            xrce)
+                xrce_agent_port=$((2400 + lang_offset + variant_offset))
+                dds_domain=$((22 + 9 + variant_idx * 3 + lang_idx))
+                ;;
             zenoh) zenoh_locator="tcp/127.0.0.1:$((7400 + lang_offset + variant_offset))" ;;
-            cyclonedds) cyclone_domain=$((22 + variant_idx * 3 + lang_idx)) ;;
+            cyclonedds) dds_domain=$((22 + variant_idx * 3 + lang_idx)) ;;
         esac
     fi
 
     [ -z "$xrce_agent_port" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_XRCE_AGENT_PORT=$xrce_agent_port"
     [ -z "$zenoh_locator" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$zenoh_locator\""
-    [ -z "$cyclone_domain" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_DOMAIN_ID=$cyclone_domain"
+    [ -z "$dds_domain" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_DOMAIN_ID=$dds_domain"
     [ -z "$conf_files" ] || extra_cmake_defs="$extra_cmake_defs -DCONF_FILE=$conf_files"
     # phase-481 W3 — a single-package leaf builds ONE of its `system.toml`
     # images (one per RMW). The row selects it; the image's `rmw`, API, agent
@@ -535,13 +544,20 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     if [ -n "$row_west_image" ]; then
         sig="$(printf '%s\n%s' "$sig" "west_image=$row_west_image")"
     fi
+    # Issue 2221 -- the baked domain is an input of the image, and it was in
+    # no signature: a changed domain left the old image standing, since nothing
+    # else here sends a built leaf back through west. Same rule as above, so a
+    # leaf that bakes no domain keeps its signature.
+    if [ -n "$dds_domain" ]; then
+        sig="$(printf '%s\n%s' "$sig" "dds_domain=$dds_domain")"
+    fi
     # phase-484 W5b — same rule for the override line.
     if [ -n "$row_override_defs" ]; then
         sig="$(printf '%s\n%s' "$sig" "overrides=$row_override_defs")"
     fi
     emit_record fixture "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw" \
         "$src_rel" "$src_dir" "$build_name" "$build_dir" "$log_dir/${build_name}.log" \
-        "$xrce_agent_port" "$zenoh_locator" "$cyclone_domain" "$conf_files" \
+        "$xrce_agent_port" "$zenoh_locator" "$dds_domain" "$conf_files" \
         "$extra_cmake_defs" "$sig" "$sig_file" "$best_effort" "$pristine" \
         "$ws_dir" "$row_nros_image"
 done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaves "${coords_args[@]}")

@@ -39,7 +39,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 
 FIELDS = ("kind id target board lang lang_tag role rmw src src_dir build_name build_dir log "
-          "xrce_agent_port zenoh_locator cyclone_domain conf_files extra_cmake_defs sig "
+          "xrce_agent_port zenoh_locator dds_domain conf_files extra_cmake_defs sig "
           "sig_file best_effort eff_pristine").split()
 
 ROLES = ("talker", "listener", "service-server", "service-client",

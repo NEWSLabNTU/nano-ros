@@ -31,7 +31,7 @@
 //! `unique_ros_domain_id()` — already parallel-safe, strictly better than
 //! any static assignment.
 
-use crate::matrix::{Cell, Lang, PlatformId, Workload};
+use crate::matrix::{Cell, Lang, PlatformId, Rmw, Workload};
 
 /// Base of a platform's 400-wide zenoh/TCP router-port window.
 pub const fn platform_port_base(platform: PlatformId) -> u16 {
@@ -89,6 +89,41 @@ pub const fn domain_of(platform: PlatformId, lang: Lang, workload: Workload) -> 
 /// [`domain_of`] over a matrix cell.
 pub const fn domain(cell: &Cell) -> u8 {
     domain_of(cell.platform, cell.lang, cell.workload)
+}
+
+/// How far an XRCE cell's DDS domain sits above its [`domain_of`] slot.
+///
+/// Issue 2221 — an XRCE-DDS image does not speak DDS itself, its Agent does,
+/// and the CLIENT picks the domain the Agent's participant joins
+/// (`uxr_buffer_create_participant_bin(..., domain_id, ...)`). Two XRCE images
+/// behind DIFFERENT Agent ports therefore still meet on one RTPS bus when they
+/// bake the same domain: measured, a Rust listener behind Agent 2400 heard
+/// 23 of 23 samples from a C talker behind Agent 2500. The Agent port isolates
+/// the client↔Agent hop only.
+///
+/// Before this shift every Zephyr XRCE image baked no domain at all (domain 0
+/// for all nine native_sim cells), and the formula domain it would have taken
+/// is its Cyclone sibling's — the same `(platform, lang, workload)`. Nine is
+/// three workload slots: native_sim's XRCE cells land on 31–39, beside its
+/// Cyclone cells on 22–30. The value has no meaning beyond being free;
+/// `allocator_injective_over_matrix` below is what proves it is.
+pub const XRCE_DOMAIN_SHIFT: u8 = 9;
+
+/// The DDS domain a baked cell's image joins, for every RMW that HAS one on
+/// the wire: Cyclone's own participant, or an XRCE Agent's participant on the
+/// client's behalf (issue 2221). Zenoh has no domain on the wire; it gets
+/// [`domain_of`], which nothing reads.
+pub const fn dds_domain_of(platform: PlatformId, lang: Lang, workload: Workload, rmw: Rmw) -> u8 {
+    let base = domain_of(platform, lang, workload);
+    match rmw {
+        Rmw::Xrce => base + XRCE_DOMAIN_SHIFT,
+        _ => base,
+    }
+}
+
+/// [`dds_domain_of`] over a matrix cell.
+pub const fn dds_domain(cell: &Cell) -> u8 {
+    dds_domain_of(cell.platform, cell.lang, cell.workload, cell.rmw)
 }
 
 /// Auxiliary image slots: a few demo sets carry MORE runnable image pairs
@@ -156,8 +191,11 @@ mod tests {
                 // are real.
                 assert!(prev.rmw != c.rmw, "port collision {p}: {prev:?} vs {c:?}");
             }
-            if matches!(c.rmw, crate::matrix::Rmw::Cyclonedds) {
-                let d = domain(c);
+            // Issue 2221 — every RMW whose image puts a participant on the
+            // RTPS bus: Cyclone directly, XRCE through its Agent. Checking
+            // Cyclone alone let all nine Zephyr XRCE cells share domain 0.
+            if matches!(c.rmw, Rmw::Cyclonedds | Rmw::Xrce) {
+                let d = dds_domain(c);
                 if let Some(prev) = domains.insert(d, c) {
                     panic!("domain collision {d}: {prev:?} vs {c:?}");
                 }
@@ -192,7 +230,7 @@ mod tests {
     #[test]
     fn domains_valid() {
         for c in CELLS.iter().filter(baked) {
-            let d = domain(c);
+            let d = dds_domain(c);
             assert!((1..=232).contains(&d), "domain {d} invalid for {c:?}");
         }
     }
@@ -224,7 +262,7 @@ mod tests {
                 format!("{:?}", c.kind),
                 port(c),
                 xrce_agent_port(c),
-                domain(c)
+                dds_domain(c)
             );
         }
         println!(

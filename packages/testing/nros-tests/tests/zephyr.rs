@@ -22,9 +22,12 @@
 //!   `PlatformConfig::zenohd_port_for(variant, lang)` (the allocator's
 //!   7400-window with variant offset and lang stride since the phase-295
 //!   W4 re-bake; the west lane computes the SAME formula).
-//! - **Baked XRCE Agent port**: xrce cells start a MicroXRCEAgent on
+//! - **Baked XRCE Agent port + domain**: xrce cells start a MicroXRCEAgent on
 //!   `xrce_agent_port_for(variant, lang)` (2400 + offsets), matching the
-//!   `CONFIG_NROS_XRCE_AGENT_PORT` bake.
+//!   `CONFIG_NROS_XRCE_AGENT_PORT` bake. The port isolates only the
+//!   client↔Agent hop: the Agent is a DDS participant on the domain the
+//!   CLIENT names, so each xrce image also bakes its own
+//!   `CONFIG_NROS_DOMAIN_ID` (`alloc::dds_domain_of` — 31–39, issue 2221).
 //! - **Baked Cyclone domain**: cyclonedds cells need no router/agent — SPDP
 //!   multicast discovery on the per-(variant, lang) `CONFIG_NROS_DOMAIN_ID`
 //!   bake (`alloc::domain_of` — domains 22–30; pairs share, sets differ →
@@ -49,12 +52,15 @@
 //! (slice a family: `-E 'binary(zephyr) and test(pubsub)'`).
 
 use nros_tests::{
+    BakedDomainHold,
+    alloc::dds_domain_of,
     count_pattern,
     fixtures::{
         RequireFixture, XrceAgent, ZenohRouter, build_native_listener, build_native_service_client,
         build_native_service_server, build_native_talker, require_xrce_agent,
     },
-    matrix::{Lang, Rmw, Workload},
+    hold_baked_domain,
+    matrix::{Lang, PlatformId, Rmw, Workload},
     output, platform,
     zephyr::{
         ZephyrPlatform, ZephyrProcess, get_prebuilt_zephyr_example,
@@ -127,6 +133,24 @@ fn rmw_str(r: Rmw) -> &'static str {
 /// (rmw, lang, variant), the unit `zephyr-fixture-leaves.sh` bakes a domain /
 /// router port / Agent port for. Both roles of a pair share it, so the key is
 /// the VARIANT, never the role.
+/// Issue 2221 — hold the DDS domain a baked native_sim image joins, for the
+/// RMWs that put one on the RTPS bus (Cyclone; XRCE through its Agent), so a
+/// native test's `unique_ros_domain_id` steps past it. Zenoh images join no
+/// domain, so they hold nothing.
+fn hold_baked_dds_domain(rmw: Rmw, lang: Lang, case: &str) -> Option<BakedDomainHold> {
+    if !matches!(rmw, Rmw::Cyclonedds | Rmw::Xrce) {
+        return None;
+    }
+    let workload = match case {
+        "talker" | "listener" => Workload::Pubsub,
+        "service-server" | "service-client" => Workload::Service,
+        "action-server" | "action-client" => Workload::Action,
+        other => unreachable!("no baked zephyr example image for {other:?}"),
+    };
+    let domain = dds_domain_of(PlatformId::ZephyrNativeSim, lang, workload, rmw);
+    Some(hold_baked_domain(domain))
+}
+
 fn baked_identity_key(rmw: Rmw, lang: Lang, case: &str) -> String {
     let variant = match case {
         "talker" | "listener" => "pubsub",
@@ -196,6 +220,8 @@ enum Iso {
     BakedZenohd,
     /// MicroXRCEAgent on the image's baked UDP port —
     /// `ZEPHYR.xrce_agent_port_for(variant, lang)` (the allocator's number).
+    /// The Agent's DDS side joins the image's baked domain (31–39), which is
+    /// what keeps two xrce cells apart on RTPS (issue 2221).
     BakedXrceAgent,
     /// Nothing to spawn: Cyclone SPDP multicast on the baked
     /// per-(variant, lang) `CONFIG_NROS_DOMAIN_ID` (allocator domains 22–30).
@@ -608,6 +634,9 @@ fn example_e2e(#[case] cell: Cell) {
     // this pair is on it, or the listener counts a talker that is not ours.
     // Declared before both processes, so it is dropped after them.
     let _identity = hold_baked_identity(&baked_identity_key(cell.rmw, cell.lang, first_role));
+    // Issue 2221 — taken after the identity hold, in the same order as
+    // `boot_smoke`, so two tests waiting on both cannot hold one each.
+    let _domain = hold_baked_dds_domain(cell.rmw, cell.lang, first_role);
     let (_iso_guard, locator) = setup_isolation(&cell);
 
     // Subscriber/server first, so its declarations are live before the
@@ -833,6 +862,7 @@ fn boot_smoke(#[case] smoke: Smoke) {
     // Issue 2228 — a smoke boots the same image on the same baked identity as
     // the e2e cell of its variant; hold it so the two never share a bus.
     let _identity = hold_baked_identity(&baked_identity_key(smoke.rmw, smoke.lang, smoke.case));
+    let _domain = hold_baked_dds_domain(smoke.rmw, smoke.lang, smoke.case);
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .unwrap_or_else(|e| panic!("Failed to start {id}: {e:?}"));
 

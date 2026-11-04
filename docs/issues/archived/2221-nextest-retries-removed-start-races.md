@@ -1,7 +1,7 @@
 ---
 id: 2221
 title: "The 25 nextest `retries` overrides are gone; a red they used to mask is a start race to fix"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: [testing, ci]
@@ -95,11 +95,21 @@ and FVP-free Zephyr groups.
 - Issue 2227 (not a race): the NuttX arm fixtures read STALE after the riscv
   half of the same build. Build scripts no longer watch the shared `config.h`.
 
-## Still open
-
-- `example_e2e::case_19_xrce_rust_pubsub_e2e`: once, under load, the heap gate
-  read the talker's boot record as zero after the listener had counted a
-  sample. No XRCE Rust boot smoke exists and the Agent port is per-cell, so the
-  foreign publisher is unidentified. The baked-identity hold now covers this
-  cell too; it passed 3 of 3 loaded runs since. Re-open with a log if it
-  recurs.
+- The Zephyr XRCE pubsub e2e for Rust heard a publisher that was not its own
+  (seen once, under load). Cause: every Zephyr XRCE image baked domain 0. An
+  XRCE image does not speak DDS; its Agent does, on the domain the CLIENT
+  names (`uxr_buffer_create_participant_bin`). So two cells behind different
+  Agent ports still met on one RTPS bus. Measured with two Agents (2400, 2500)
+  and the native_sim images: the Rust listener behind 2400 heard 23 of 23
+  samples from the C talker behind 2500, and 0 before the talker started.
+  The allocator's injectivity gate checked domains for Cyclone cells only,
+  which is how nine XRCE cells sharing one passed it.
+  Fix: `alloc::dds_domain_of` gives XRCE cells their own domain (the Cyclone
+  sibling's + 9: native_sim 31-39, the Cortex-M idle-wake cell 218). The west
+  lane bakes it as `CONFIG_NROS_DOMAIN_ID`. The gate now covers Cyclone and
+  XRCE together, and fails on the old state (`domain collision 22`). The
+  domain also joined the leaf build signature: before this, a changed domain
+  left the old image standing. Baked DDS cells now take the per-domain claim
+  that `unique_ros_domain_id` uses (`hold_baked_domain`), so a native test
+  steps past a domain a baked image is on. The baked Cyclone domains 22-30
+  had the same overlap with native tests.

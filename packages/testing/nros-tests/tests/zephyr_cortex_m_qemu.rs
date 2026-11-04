@@ -50,7 +50,7 @@ use nros_tests::{
         build_zephyr_cortex_m_example, build_zephyr_cortex_m_idle_wake, is_qemu_available,
         is_xrce_agent_available, is_zenohd_available, qemu_monitor_command,
     },
-    matrix::{Lang, PlatformId, Workload},
+    matrix::{Lang, PlatformId, Rmw as MatrixRmw, Workload},
     output::{
         ARRIVAL_LATENCY_PREFIX, IDLE_WAKE_ARMED_MARKER, IDLE_WAKE_RESULT_PREFIX,
         ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER, parse_arrival_latency, parse_idle_wake,
@@ -641,9 +641,20 @@ fn run_arrival_latency_cell(rmw: Rmw) {
         "the witness never armed its subscription.\nOutput:\n{booted}"
     );
     // The image bakes the cell's allocated domain (its fixture row's
-    // `west_cyclone_domain`), so the peer joins the same one.
-    let domain =
-        nros_tests::alloc::domain_of(PlatformId::ZephyrQemuCortexM, Lang::C, Workload::IdleWake);
+    // `west_cyclone_domain`), so the peer joins the same one. Issue 2221 —
+    // per RMW: an XRCE cell's Agent puts it on the RTPS bus, so it takes the
+    // XRCE domain, apart from every other baked DDS cell.
+    let matrix_rmw = match rmw {
+        Rmw::Zenoh => MatrixRmw::Zenoh,
+        Rmw::Xrce => MatrixRmw::Xrce,
+        Rmw::Cyclonedds => MatrixRmw::Cyclonedds,
+    };
+    let domain = nros_tests::alloc::dds_domain_of(
+        PlatformId::ZephyrQemuCortexM,
+        Lang::C,
+        Workload::IdleWake,
+        matrix_rmw,
+    );
     let mut cmd = Command::new(talker);
     cmd.env("NROS_LOCATOR", &locator)
         .env("XRCE_AGENT_ADDR", &locator)
