@@ -776,9 +776,7 @@ function(nros_sizing_descriptor_west_decide _resolved _leaf)
         set(_decision "${_resolved}/resolved-sizing.cmake")
     endif()
     if(_decision STREQUAL "")
-        if(NOT EXISTS "${_frag}")
-            nros_sizing_descriptor_west_default("${_resolved}" "${_leaf}")
-        endif()
+        nros_sizing_descriptor_west_default_if_absent("${_resolved}" "${_leaf}")
         return()
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_decision}")
@@ -822,6 +820,22 @@ function(nros_sizing_descriptor_west_decide _resolved _leaf)
         file(MAKE_DIRECTORY "${_dir}")
         file(WRITE "${_frag}" "${_body}")
     endif()
+endfunction()
+
+# nros_sizing_descriptor_west_default_if_absent(<resolved_dir> <leaf_descriptor>)
+#
+# The module resolver's unseeded arm: a clean build dir has no fragment, so
+# write the default -- and say first that it is THIS configure's own default
+# (`nros_promise_note_absent`), so the promise check does not take it for an
+# earlier configure's answer when the backstop takes it back (phase-530 W7
+# review M1). One spelling for the resolver and its test.
+function(nros_sizing_descriptor_west_default_if_absent _resolved _leaf)
+    nros_sizing_descriptor_west_fragment(_frag)
+    if(EXISTS "${_frag}")
+        return()
+    endif()
+    nros_promise_note_absent("${_frag}")
+    nros_sizing_descriptor_west_default("${_resolved}" "${_leaf}")
 endfunction()
 
 # nros_sizing_descriptor_west_arm_backstop(<forwarded>) — phase-439 W6

@@ -105,6 +105,9 @@
 
 include_guard(GLOBAL)
 
+# `nros_message_detail`, which carries the RFC reference behind the WARNING below.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+
 # The line a "nothing composed yet" fragment carries, spelled once: the
 # placeholder writers (`nros_entity_inventory_seed_knobs_file`,
 # `nros_message_bounds_seed_knobs_file`) emit it, and the end-of-configure check
@@ -375,7 +378,10 @@ function(_nros_promise_check_unseeded _path _label)
         endif()
         message(WARNING
             "${_text} Run `${_cmd}` before the configure for derived sizes in one "
-            "pass (RFC-0120 D5).")
+            "pass.")
+        nros_message_detail(
+            "nros: a configure takes one pass; `nros configure` seeds the readers that "
+            "run before the composition (RFC-0120 D5).")
         return()
     endif()
     message(FATAL_ERROR
