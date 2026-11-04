@@ -53,7 +53,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")  # phase-500 W1
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLinkAppDependency.cmake")  # phase-518
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryAgreement.cmake")  # issue 1894
-include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCensusStep.cmake")  # phase-530 W6, Ruling R39
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCensusStep.cmake")  # phase-530 W6, Ruling R42
 # Shared helpers (nros_resolve_cli — issue #219). include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 # `nros_panic_policy_feature` — the ONE policy->feature mapping, shared with the
@@ -229,13 +229,14 @@ function(_nros_entry_require_fresh_census)
     # there; re-deriving `<stem>.contract.yaml` in cmake would be a second
     # spelling of a rule that already has one.
 
-    # issue 1018 -- a configure that READS an artifact registers it, even when
-    # no file exists yet, so taking a census re-configures rather than leaving
-    # the previous verdict standing.
-    get_property(_rfc_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
-    if(NOT _rfc_census STREQUAL "" AND NOT "${_rfc_census}" IN_LIST _rfc_deps)
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_rfc_census}")
-    endif()
+    # issue 1018 -- a configure that READS an artifact depends on it. Through
+    # the census's DIGEST and the census step (phase-530 W6, Ruling R42): the
+    # step re-takes the census during every build -- the host sibling's
+    # recorded build step and a census run, never a re-plan -- and the digest
+    # moves only when the entities did, so a body edit re-runs no configure
+    # and an added endpoint exactly one. (It named the census FILE, which
+    # re-ran on every re-take, and nothing re-took it during a build.)
+    nros_census_step(CLI "${_rfc_cli}" MODEL "${_RFC_MODEL}" WORKSPACE "${_rfc_ws}")
 
     execute_process(
         COMMAND "${_rfc_cli}" ${_rfc_args}
@@ -258,14 +259,6 @@ function(_nros_entry_require_fresh_census)
     elseif(NOT _rfc_out STREQUAL "")
         message(STATUS "nano-ros: ${_rfc_out}")
     endif()
-    # Ruling R39 (phase-530 W6) -- the same READ-ONLY check again on every
-    # BUILD, before the entry links: a source edit after this configure leaves
-    # the census stale, and nothing on this road re-takes it during a build
-    # (that is the host sibling's build, issue 2237). A stale census FAILS the
-    # build naming `nros dev image entity-census take --image ...`, rather
-    # than linking pools sized for the old entities.
-    nros_census_check_step(ENTRY "${_RFC_NAME}" WORKING_DIRECTORY "${_rfc_ws}"
-        COMMAND "${_rfc_cli}" ${_rfc_args})
 endfunction()
 
 function(nano_ros_entry)

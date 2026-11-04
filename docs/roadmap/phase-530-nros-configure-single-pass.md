@@ -1,6 +1,6 @@
 # Phase 530 — `nros configure`: one resolver for every road, tight sizing, and no fixed point
 
-**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling), W5 landed (on W4; the NuttX make road is a guest road, Ruling R36), W6 landed (on W5; the workspace road is checked, not re-taken: issue 2237).** Implements
+**Status (2026-11-03). OPEN — W0 done (fallback not taken), W1 landed (with W9 step 1), W2 landed, W4 landed (on the W2 branch; W3 is a sibling), W5 landed (on W4; the NuttX make road is a guest road, Ruling R36), W6 landed (on W5; every hooked road re-takes its census in the build, issue 2237 resolved).** Implements
 [RFC-0120](../design/0120-nros-configure-one-resolver.md) D1 to D7, D9 and
 the driven and hooked rows of D8. Meets
 [RFC-0094](../design/0094-resolve-before-configure.md) A3 as originally
@@ -641,18 +641,22 @@ rebuilt); add a publisher **exactly 1** re-run (the hook's configure
 is the producer's build inside the step, not the target's configure, and was
 not chased further.
 
-**The cmake workspace road: checked during the build (Ruling R39), not
-re-taken.** A workspace image's census is taken by `take --image`, which plans
-the host sibling (`build::plan_builds`) and builds it; run from a cross
-image's build that is a whole stage-1-4 plan mid-build, not a cached host
-compile. So that road gets a READ-ONLY edge, `nros_census_check_step`
-(`cmake/NanoRosCensusStep.cmake`, called from `NanoRosEntry.cmake`): the
-configure's own `ws entity-census check --require-fresh`, in `ALL` and before
-the entry links, on every build. A stale census FAILS the build naming
-`nros dev image entity-census take --image <bringup>:<image>` instead of
-linking the old pools (test case C). The cost: one manual take after a source
-edit of a counted component, body edits included (freshness is per source).
-The automatic re-take is [issue 2237](../issues/2237-workspace-census-retake-in-build.md).
+**The cmake workspace road re-takes its census too (Ruling R42, which
+superseded R39's read-only check; [issue 2237](../issues/archived/2237-workspace-census-retake-in-build.md),
+resolved).** A workspace image's census is taken from its HOST sibling, and
+`take --image` plans that image; a build edge must not re-plan. So the take
+RECORDS the host sibling's build step beside the census
+(`<stem>.census.host-build.json`: the handoff -- `cmake --build` or
+`cargo build` -- with `NROS_LEAF_CENSUS_HOST`), and the census step on this
+road is `take --model <m> --workspace <ws> --build-step`: a fresh census
+writes its digest and returns; a stale one reruns the recorded build step
+(incremental, a host tool) and the census run. `NanoRosEntry.cmake` calls
+`nros_census_step(MODEL ... WORKSPACE ...)` and no longer depends on the
+census FILE; the digest beside the model is the configure dependency. A
+census with no record (one an older CLI took) refuses in the build, naming
+`take --image`, once. The read-only check step is deleted: one mechanism.
+Tests: cases C (Ninja: a body edit builds green with 0 re-runs, an added
+entity re-runs once and is read) and C2 (Makefiles, R40).
 
 ### W7 — Delete the fixed point
 

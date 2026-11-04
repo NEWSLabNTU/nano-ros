@@ -27,8 +27,10 @@
 #   W   two census leaves (R41)     each gets its own step; an entity added to
 #                                   the SECOND re-configures once
 #   Z   called before `project()`   (the Zephyr road) the step still lands
-#   C   the workspace road (R39)    a stale census FAILS the build before the
-#                                   entry links, naming `entity-census take`
+#   C   the workspace road (R42)    the step keyed by a MODEL: a body edit
+#                                   builds green with 0 re-runs, an added
+#                                   entity re-runs once and is read
+#   C2  the same under Makefiles    the digest-moving build fails (R40)
 #   R   REACH                       every census reader adds the step, and no
 #                                   reader depends on the census FILE (which
 #                                   re-ran on every re-take)
@@ -80,28 +82,25 @@ CALLS="$TEST_TMPDIR/calls.log"
 printf '%s\n' \
     '#!/usr/bin/env bash' \
     'printf "%s\n" "$*" >> "$STANDIN_LOG"' \
-    'leaf=""; fail_if_changed=""; prev=""' \
+    'leaf=""; model=""; fail_if_changed=""; prev=""' \
     'for a in "$@"; do' \
     '  [ "$prev" = --leaf ] && leaf="$a"' \
+    '  [ "$prev" = --model ] && model="$a"' \
     '  [ "$a" = --fail-if-changed ] && fail_if_changed=1' \
     '  prev="$a"' \
     'done' \
-    'digest="$leaf/build/nros/census/leaf.census.digest"' \
+    'digest="$leaf/build/nros/census/leaf.census.digest"; src="$leaf/src/main.c"' \
+    'if [ -n "$model" ]; then digest="${model%.yaml}.census.digest"; src="$(dirname "$model")/src/main.c"; fi' \
     'case "$1 $2 $3 $4" in' \
     '  "dev image entity-census path") echo "$digest" ;;' \
     '  "dev image entity-census take")' \
-    '     new="entities=$(grep -c PUB "$leaf/src/main.c")"' \
+    '     new="entities=$(grep -c PUB "$src")"' \
     '     mkdir -p "$(dirname "$digest")"' \
     '     [ -f "$digest" ] && [ "$(cat "$digest")" = "$new" ] && exit 0' \
     '     echo "$new" > "$digest"' \
     '     if [ -n "$fail_if_changed" ]; then' \
     '       echo "entities changed; build again" >&2; exit 1' \
     '     fi ;;' \
-    '  "ws entity-census check "*)' \
-    '     if [ -f "$STANDIN_STALE" ]; then' \
-    '       echo "census stale: src moved" >&2' \
-    '       echo "    nros dev image entity-census take --image demo:cross" >&2; exit 1' \
-    '     fi; echo "census fresh" ;;' \
     'esac' > "$STANDIN"
 chmod +x "$STANDIN"
 
@@ -322,45 +321,93 @@ $OUT
 $OUT2"
 fi
 
-log_header "C. the workspace road: a stale census fails the build before linking (R39)"
+# make_ws <dir>: the WORKSPACE road's shape -- the step keyed by a MODEL (the
+# census beside it is taken from the host sibling), as NanoRosEntry calls it.
+make_ws() {
+    local dir="$1"
+    mkdir -p "$dir/src"
+    : > "$dir/m.yaml"
+    printf '%s\n' \
+        'cmake_minimum_required(VERSION 3.22)' \
+        'project(wsroad C)' \
+        "include(\"$STEP_MODULE\")" \
+        "execute_process(COMMAND \"$STANDIN\" dev image entity-census take --model \"\${CMAKE_SOURCE_DIR}/m.yaml\")" \
+        'nros_census_step(CLI "$ENV{NROS_CLI}" MODEL "${CMAKE_SOURCE_DIR}/m.yaml"' \
+        '    WORKSPACE "${CMAKE_SOURCE_DIR}")' \
+        'file(READ "${CMAKE_SOURCE_DIR}/m.census.digest" _d)' \
+        'file(APPEND "${CMAKE_SOURCE_DIR}/configures.log" "${_d}")' \
+        'add_executable(cross_entry src/main.c)' > "$dir/CMakeLists.txt"
+    set_pubs "$dir" 1 0
+}
+
+log_header "C. the workspace road re-takes its census during the build (R42)"
 CDIR="$TEST_TMPDIR/wsroad"
-mkdir -p "$CDIR"
-printf 'int main(void) { return 0; }\n' > "$CDIR/entry.c"
-printf '%s\n' \
-    'cmake_minimum_required(VERSION 3.22)' \
-    'project(wsroad C)' \
-    "include(\"$STEP_MODULE\")" \
-    'add_executable(cross_entry entry.c)' \
-    'nros_census_check_step(ENTRY cross_entry WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"' \
-    '    COMMAND "$ENV{NROS_CLI}" ws entity-census check --require-fresh --model m.yaml)' \
-    > "$CDIR/CMakeLists.txt"
-export STANDIN_STALE="$CDIR/stale"
+make_ws "$CDIR"
 RC=0
 cmake -S "$CDIR" -B "$CDIR/build" -G Ninja >/dev/null 2>&1 || RC=$?
 OUT="$(ninja -C "$CDIR/build" 2>&1)" || RC=$?
-touch "$STANDIN_STALE"
-SRC_RC=0
-OUT2="$(ninja -C "$CDIR/build" 2>&1)" || SRC_RC=$?
+set_pubs "$CDIR" 1 9
+BODY_RC=0
+BODY="$(ninja -C "$CDIR/build" 2>&1)" || BODY_RC=$?
+set_pubs "$CDIR" 2 9
+ADD_RC=0
+ADD="$(ninja -C "$CDIR/build" 2>&1)" || ADD_RC=$?
 check
-if [ "$RC" -eq 0 ] && [ "$SRC_RC" -ne 0 ] \
-    && nros_grep_q 'nros dev image entity-census take --image demo:cross' <<<"$OUT2" \
-    && ! nros_grep_q 'Linking C executable' <<<"$OUT2"; then
-    log_success "fresh: built; stale: the build fails naming the take, nothing linked"
+if [ "$RC" -eq 0 ] && [ "$BODY_RC" -eq 0 ] \
+    && ! nros_grep_q 'Re-running CMake' <<<"$BODY" \
+    && nros_grep_q 'Linking C executable' <<<"$BODY" \
+    && [ "$ADD_RC" -eq 0 ] && [ "$(grep -c 'Re-running CMake' <<<"$ADD")" -eq 1 ] \
+    && [ "$(nconf "$CDIR")" -eq 2 ] \
+    && [ "$(tail -n1 "$CDIR/configures.log")" = "entities=2" ] \
+    && nros_grep_q -- '--model' <"$CALLS"; then
+    log_success "body edit: green, 0 re-runs; added entity: 1 re-run that read entities=2"
 else
-    fail "case C: rc=$RC stale-rc=$SRC_RC
+    fail "case C: rc=$RC body=$BODY_RC add=$ADD_RC configures=$(nconf "$CDIR")
 $OUT
----
-$OUT2"
+--- body
+$BODY
+--- add
+$ADD"
 fi
-unset STANDIN_STALE
+
+log_header "C2. the workspace road under Unix Makefiles (R40)"
+C2DIR="$TEST_TMPDIR/wsmake"
+make_ws "$C2DIR"
+RC=0
+cmake -S "$C2DIR" -B "$C2DIR/build" -G "Unix Makefiles" >/dev/null 2>&1 || RC=$?
+make -C "$C2DIR/build" >/dev/null 2>&1 || RC=$?
+set_pubs "$C2DIR" 2 0
+FIRST_RC=0
+FIRST="$(make -C "$C2DIR/build" 2>&1)" || FIRST_RC=$?
+SECOND_RC=0
+make -C "$C2DIR/build" >/dev/null 2>&1 || SECOND_RC=$?
+check
+if [ "$RC" -eq 0 ] && [ "$FIRST_RC" -ne 0 ] \
+    && nros_grep_q 'entities changed; build again' <<<"$FIRST" \
+    && ! nros_grep_q 'Linking C executable' <<<"$FIRST" \
+    && [ "$SECOND_RC" -eq 0 ] && [ "$(tail -n1 "$C2DIR/configures.log")" = "entities=2" ]; then
+    log_success "first make refused before linking; the next linked entities=2"
+else
+    fail "case C2: rc=$RC first=$FIRST_RC second=$SECOND_RC
+$FIRST"
+fi
 
 # ---------------------------------------------------------------------------
 log_header "R. reach: every census reader adds the step; none watches the census file"
 check
-if nros_grep_q 'nros_census_check_step(' <"$PROJECT_ROOT/cmake/NanoRosEntry.cmake"; then
-    log_success "cmake/NanoRosEntry.cmake adds the census check step (R39)"
+if nros_grep_q 'nros_census_step(' <"$PROJECT_ROOT/cmake/NanoRosEntry.cmake" \
+    && ! nros_grep_q 'CMAKE_CONFIGURE_DEPENDS "${_rfc_census}"' <"$PROJECT_ROOT/cmake/NanoRosEntry.cmake"; then
+    log_success "cmake/NanoRosEntry.cmake adds the census step and does not watch the census file (R42)"
 else
-    fail "cmake/NanoRosEntry.cmake checks the census at configure only: a plain build after an entity change links the old pools (R39)"
+    fail "cmake/NanoRosEntry.cmake does not re-take its census during a build, or watches the census FILE (R42)"
+fi
+check
+nros_git_grep second -C "$PROJECT_ROOT" -n 'nros_census_check_step' -- 'cmake/*.cmake' 'zephyr/*.cmake'
+if [ -z "$second" ]; then
+    log_success "one mechanism: no read-only census check step remains"
+else
+    fail "a second census mechanism remains:
+$second"
 fi
 for f in cmake/NanoRosLeafEntityFacts.cmake zephyr/cmake/nros_cargo_build.cmake; do
     check
