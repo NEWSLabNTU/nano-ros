@@ -2,7 +2,7 @@
 
 **Status (2026-11-05). OPEN — W0 answered (issue 2253 fixed on the way,
 #3106); W1 merged (#3107); W0.b (one program per role): C merged (#3112),
-C++ in review, Rust next.**
+C++ merged (#3120), Rust in review; W2 next.**
 Implements [RFC-0122](../design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
 D1 to D9, with its amendments to RFC-0026, RFC-0051, RFC-0061, RFC-0066,
 RFC-0114 and RFC-0121 D8.
@@ -97,9 +97,17 @@ Decisions taken here, with the reason:
   `example_interfaces/String` (16384) and `std_msgs/String` is 256, as in the
   C workspace and the standalone examples. Measured cost of the tutorial pair
   over the Int32 demo: `linux_entry` .bss +256 B, `threadx_entry` .bss +512 B.
-- **The `int32-sink` observer stays for `mixed`.** Once C and C++ observe
-  through the C robot2 listener, the sink's `/chatter` role serves only the
-  mixed cells, whose talker still publishes Int32 (re-evaluated after Rust).
+- **The `int32-sink` observer stays.** With C, C++ and Rust on String, its
+  `/chatter` role serves only the mixed cells, whose talker publishes Int32.
+  It is also the side-topic sink of the param, safety, QoS, realtime, bridge
+  and sizing tests (`/ctrl`, `/telem`, `/safe_ok`, …), none of which
+  phase-535 touches, so retiring it is not on the table.
+- **Rust nodes are the examples' nodes.** The Rust examples' node logic is
+  already one file per role, byte-identical across platforms, so the
+  workspace packages take that logic verbatim and keep their own class and
+  node names (which the bringup, launch files and tests address). The
+  in-process service test now reads the client's own result line; it used to
+  need an `int32-sink` on `/sum`.
 
 **C++ (2026-11-05):** done. `entry_e2e`'s C++ RTOS cells observe through
 the C robot2 listener again and `serves` moved back; roundtrip, multihost,
@@ -107,6 +115,12 @@ freertos-posix, the an536 heap and both an536 Cyclone ROS 2 interop tests
 read the tutorial markers. Run green on rebuilt fixtures: linux,
 threadx-linux, freertos (mps2 zenoh, an536 Cyclone + slirp), freertos-posix
 and the two zephyr native_sim west leaves.
+
+**Rust (2026-11-05):** in review. Run green on rebuilt fixtures: linux
+(roundtrip, in-process service, deployed system, multihost, per-node graph on
+three RMWs, features, metadata) and zephyr native_sim (workspace entry,
+multihost robot1). The FreeRTOS bridge pair (`bridge_network_e2e`) needs the
+`qemu-br` host bridge and was not run here.
 
 **Acceptance:** each language's workspace tests are green on the lanes that
 build its images; no Int32 demo marker is left in a language workspace.
