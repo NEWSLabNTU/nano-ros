@@ -46,7 +46,8 @@ workspace road reaches it, and the W7 step that deletes it. It also records how
 many tracked `system.toml` sit beside code (223 on 2026-11-03), split by tree
 (`examples/`, `packages/testing/`, templates).
 
-**Status: DONE (2026-11-05, measured at `03473878d6`).** The result follows.
+**Status: DONE (2026-11-05, PR #3119, measured at `03473878d6`).** The result
+follows.
 
 #### How reach was measured
 
