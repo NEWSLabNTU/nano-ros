@@ -4,7 +4,7 @@
 landed. Issue 1271, homed below, resolved in #2091. W7 is the Autoware Safety
 Island's own end-to-end run on native, native_sim and MR-CANHUBK344, which is
 work in the island's repository. It is carried as `446-W7` in
-[phase-474](../phase-474-safety-island-board-findings.md)'s cross-repo
+[phase-474](phase-474-safety-island-board-findings.md)'s cross-repo
 section and acceptance list, beside the island's other S32K344 board runs.
 
 **Status (2026-10-12). W1–W6 and F1–F3 LANDED; W7 open.** W1 and W2 landed

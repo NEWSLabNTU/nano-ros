@@ -2,7 +2,7 @@
 
 **Status (2026-10-12). COMPLETE -- archived. Every in-tree wave has landed;
 the island's two items are carved out to
-[phase-474](../phase-474-safety-island-board-findings.md) "Cross-repo".**
+[phase-474](phase-474-safety-island-board-findings.md) "Cross-repo".**
 W0-W4 landed, and W4's `[census]` default is `refuse` (issue 1419: `nros ws
 entity-census take`, the fixture pre-pass). W5: I2, I3(a) and I3(b) gated, I1
 holds by construction, I3(c) measured on the twelve NuttX ARM images for the

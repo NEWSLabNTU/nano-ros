@@ -127,7 +127,7 @@ no hardware, and the probe tracks prove them weekly.
 - [phase-452](../roadmap/archived/phase-452-copy-out-front-door.md) made what a new user
   copies buildable by a lane (`check-template-copy-out`), and settled that
   in-tree workspaces are copy-out.
-- [phase-474](../roadmap/phase-474-safety-island-board-findings.md) and
+- [phase-474](../roadmap/archived/phase-474-safety-island-board-findings.md) and
   [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)
   are the one real adoption trace the tree owns: the Autoware safety island on
   an NXP S32K344, with the adopter's own developer-experience gap list. Its

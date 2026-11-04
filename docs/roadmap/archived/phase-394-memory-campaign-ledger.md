@@ -9,7 +9,7 @@ to [phase-460](phase-460-formal-checks-on-the-contract-chain.md),
 [issue 1808](../../issues/archived/1808-sizing-knobs-with-no-static-derivation.md) to
 [phase-400](../phase-400-unified-configuration.md),
 [issue 0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) stays with
-[phase-474](../phase-474-safety-island-board-findings.md), and
+[phase-474](phase-474-safety-island-board-findings.md), and
 [issue 1823](../../issues/archived/1823-esp32-qemu-heap-used-bytes-reports-zero.md) is
 parked with no home while ESP32 is dormant (issue 1525). The ledger below is
 kept as history; its "open" rows are not current.

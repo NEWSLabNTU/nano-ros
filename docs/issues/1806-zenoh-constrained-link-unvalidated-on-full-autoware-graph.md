@@ -6,10 +6,10 @@ type: test-gap
 area: [rmw-zenoh, interop]
 severity: low
 found: 2026-10-11
-related: [1341, 2163, phase-474]
+related: [1341, 2163, phase-474, phase-512]
 ---
 
-**Home: [phase-474](../roadmap/phase-474-safety-island-board-findings.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-512](../roadmap/phase-512-on-hardware-measurements.md)** — re-homed 2026-11-05 from phase-474 (archived): it needs the full Autoware graph against the island's board.
 
 ## Measured
 

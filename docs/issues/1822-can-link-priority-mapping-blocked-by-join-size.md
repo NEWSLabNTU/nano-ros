@@ -6,10 +6,10 @@ type: enhancement
 area: [rmw, zenoh]
 severity: low
 found: 2026-10-12
-related: [phase-378, phase-377, rfc-0080, rfc-0081, phase-474]
+related: [phase-378, phase-377, rfc-0080, rfc-0081, phase-474, phase-512]
 ---
 
-**Home: [phase-474](../roadmap/phase-474-safety-island-board-findings.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-512](../roadmap/phase-512-on-hardware-measurements.md)** — re-homed 2026-11-05 from phase-474 (archived): the CAN link runs on the island's board; it still waits on upstream.
 
 ## What is left
 
