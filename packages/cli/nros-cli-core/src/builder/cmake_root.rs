@@ -131,6 +131,57 @@ pub struct CmakeRootSpec {
 /// `NROS_IMAGE_ENV_CONFIG` (issue 1712's carrier, `NanoRosImageEnv.cmake`).
 pub const IMAGE_ENV_FILE: &str = "nros-image-env.toml";
 
+/// Whether the generated root `add_subdirectory()`s `pkg` -- the ONE
+/// predicate for its SUBDIRS and for the packages whose registrations its
+/// configure composes, which is what stage 3.5 composes the seed over
+/// (phase-530 W5, `cmd::build::RegisteredScope::RootPackages`). Two spellings
+/// would let a package's registration into one and not the other, and the
+/// promise check refuses that configure.
+pub fn is_root_subdir(
+    pkg: &cargo_nano_ros::provider_scan::WorkspacePackage,
+    excluded: &BTreeSet<PathBuf>,
+) -> bool {
+    // A cmake subdir must carry a CMakeLists. A pure-Rust package in a mixed
+    // workspace does not, and reaches the image through corrosion from a
+    // package that does -- listing it here would be a configure error.
+    //
+    // RFC-0094 D3 (phase-439 W3) -- the declaration picks the driver, file
+    // presence only decides participation. Was
+    // `!pkg.dir.join("CMakeLists.txt").is_file()`: one probe answering both
+    // questions, so a crate whose `CMakeLists.txt` is a sibling harness
+    // became a subdirectory of the workspace root on the strength of the
+    // file existing.
+    if excluded.contains(&pkg.dir) || !crate::routing::route(pkg).cmake_subdir {
+        return false;
+    }
+    // An INTERFACE package has a CMakeLists and still must not be a subdir
+    // (issue 0862). Its CMakeLists is deliberately verbatim upstream ROS --
+    // `find_package(ament_cmake REQUIRED)` on line one -- because it must
+    // also build under `colcon`. nano-ros never configures it: `nros sync`
+    // routes `rosidl_generate_interfaces` through the codegen pipeline and
+    // emits the `generated/<pkg>` crate the node packages depend on.
+    //
+    // The hand-written roots knew this and left these packages out of
+    // ~~`_ws_subdirs`~~ by hand, with a comment saying why; the derivation had
+    // only "has a CMakeLists" and swept them back in. On a host WITH ROS
+    // that configures and looks fine, which is why it landed -- it fails
+    // only where tier 1 is contracted to run, on a host with no ROS.
+    !crate::interface_package::dir_is_interface_package(&pkg.dir)
+}
+
+/// The names of the packages the generated root adds ([`is_root_subdir`]).
+pub fn root_subdir_names(
+    discovered: &Discovered,
+    excluded: &BTreeSet<PathBuf>,
+) -> BTreeSet<String> {
+    discovered
+        .packages
+        .iter()
+        .filter(|p| is_root_subdir(p, excluded))
+        .map(|p| p.name.clone())
+        .collect()
+}
+
 /// Render the root `CMakeLists.txt` written to `manifest_dir`.
 pub fn render(
     discovered: &Discovered,
@@ -146,28 +197,7 @@ pub fn render(
 
     let mut subdirs: Vec<(String, String)> = Vec::new();
     for pkg in &discovered.packages {
-        // RFC-0094 D3 (phase-439 W3) — the declaration picks the driver, file
-        // presence only decides participation. Was
-        // `!pkg.dir.join("CMakeLists.txt").is_file()`: one probe answering both
-        // questions, so a crate whose `CMakeLists.txt` is a sibling harness
-        // became a subdirectory of the workspace root on the strength of the
-        // file existing.
-        if spec.excluded.contains(&pkg.dir) || !crate::routing::route(pkg).cmake_subdir {
-            continue;
-        }
-        // An INTERFACE package has a CMakeLists and still must not be a subdir
-        // (issue 0862). Its CMakeLists is deliberately verbatim upstream ROS —
-        // `find_package(ament_cmake REQUIRED)` on line one — because it must
-        // also build under `colcon`. nano-ros never configures it: `nros sync`
-        // routes `rosidl_generate_interfaces` through the codegen pipeline and
-        // emits the `generated/<pkg>` crate the node packages depend on.
-        //
-        // The hand-written roots knew this and left these packages out of
-        // ~~`_ws_subdirs`~~ by hand, with a comment saying why; the derivation had
-        // only "has a CMakeLists" and swept them back in. On a host WITH ROS
-        // that configures and looks fine, which is why it landed — it fails
-        // only where tier 1 is contracted to run, on a host with no ROS.
-        if crate::interface_package::dir_is_interface_package(&pkg.dir) {
+        if !is_root_subdir(pkg, &spec.excluded) {
             continue;
         }
         // Relative to the WORKSPACE, not to this file.
@@ -638,6 +668,42 @@ mod tests {
         let body = render(&d, &root.join("build/posix"), &spec(root)).expect("renders");
         assert!(body.contains("c_pkg"), "{body}");
         assert!(!body.contains("rust_pkg"), "{body}");
+    }
+
+    /// phase-530 W5 review -- the packages the root `add_subdirectory()`s are
+    /// what its configure REGISTERS, so they are what stage 3.5 composes the
+    /// seed over (`RegisteredScope::RootPackages`). One predicate for both: an
+    /// excluded package (another board's entry, a framework entry), a
+    /// non-cmake package and an interface package are in neither. A second
+    /// spelling let an excluded package's registration into the seed and not
+    /// into the configure, and the promise check refused the configure.
+    #[test]
+    fn the_root_subdir_set_is_the_set_render_emits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let talker = pkg(root, "talker_pkg", true);
+        let other_entry = pkg(root, "other_board_entry", true);
+        let rust_only = pkg(root, "rust_pkg", false);
+        let msgs = pkg(root, "my_msgs", true);
+        std::fs::write(
+            msgs.dir.join("package.xml"),
+            "<package><member_of_group>rosidl_interface_packages</member_of_group></package>",
+        )
+        .unwrap();
+        let d = discovered(vec![talker, other_entry.clone(), rust_only, msgs]);
+        let mut sp = spec(root);
+        sp.excluded.insert(other_entry.dir.clone());
+
+        let names = root_subdir_names(&d, &sp.excluded);
+        assert_eq!(
+            names.into_iter().collect::<Vec<_>>(),
+            vec!["talker_pkg".to_string()]
+        );
+        let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
+        assert!(body.contains("# talker_pkg"), "{body}");
+        for gone in ["other_board_entry", "rust_pkg", "my_msgs"] {
+            assert!(!body.contains(&format!("# {gone}")), "{gone}: {body}");
+        }
     }
 
     #[test]
