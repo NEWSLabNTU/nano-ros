@@ -1,0 +1,85 @@
+# Phase-535 W1 (RFC-0122 D5) — the example coverage FLOOR.
+#
+# One line per (platform lang driver shape launch entry) that some fixture row
+# exercised when the line was added. `check-example-coverage-ratchet` fails when
+# a line here is produced by no row. ADD with
+#     python3 scripts/check-example-coverage-ratchet.py --write-floor
+# (it never removes). REMOVE a line only by hand, in a commit that says why
+# (RFC-0122 D10: a hand-written `main` that is not a manual-entry demo).
+#
+# platform lang driver shape launch entry
+baremetal c cargo single generated generated
+baremetal cpp cargo single generated generated
+baremetal rust cargo single generated generated
+baremetal rust cargo single generated manual
+freertos c cmake multi authored generated
+freertos c cmake multi generated generated
+freertos c cmake single generated manual
+freertos cpp cmake multi authored generated
+freertos cpp cmake multi generated generated
+freertos cpp cmake single generated generated
+freertos cpp cmake single generated manual
+freertos mixed cmake multi authored generated
+freertos rust cargo multi authored generated
+freertos rust cargo multi generated generated
+freertos rust cargo single generated generated
+freertos rust cargo single generated manual
+freertos-posix c cmake multi authored generated
+freertos-posix cpp cmake multi authored generated
+linux c cmake multi authored generated
+linux c cmake multi generated generated
+linux c cmake single generated manual
+linux cpp cmake multi authored generated
+linux cpp cmake multi generated generated
+linux cpp cmake single authored generated
+linux cpp cmake single generated manual
+linux mixed cmake multi authored generated
+linux rust cargo multi authored generated
+linux rust cargo multi generated generated
+linux rust cargo single authored generated
+linux rust cargo single generated generated
+linux rust cargo single generated manual
+nuttx c cmake multi authored generated
+nuttx c cmake multi generated generated
+nuttx c cmake single generated generated
+nuttx c cmake single generated manual
+nuttx cpp cmake multi generated generated
+nuttx cpp cmake single generated manual
+nuttx rust cargo multi authored generated
+nuttx rust cargo multi generated generated
+nuttx rust cargo single generated generated
+nuttx-riscv c cmake multi generated generated
+nuttx-riscv c cmake single generated manual
+nuttx-riscv cpp cmake multi generated generated
+nuttx-riscv rust cargo multi generated generated
+threadx-linux c cmake multi authored generated
+threadx-linux c cmake single generated manual
+threadx-linux cpp cmake multi authored generated
+threadx-linux cpp cmake single generated manual
+threadx-linux mixed cmake multi authored generated
+threadx-linux rust cargo multi authored generated
+threadx-linux rust cargo multi generated generated
+threadx-linux rust cargo single generated generated
+threadx-linux rust cargo single generated manual
+threadx-riscv64 c cmake multi authored generated
+threadx-riscv64 c cmake single generated generated
+threadx-riscv64 c cmake single generated manual
+threadx-riscv64 cpp cmake single generated manual
+threadx-riscv64 rust cargo single generated generated
+threadx-riscv64 rust cargo single generated manual
+threadx-riscv64 rust cmake single generated generated
+zephyr c west multi authored generated
+zephyr c west multi generated generated
+zephyr c west single generated generated
+zephyr cpp west multi authored generated
+zephyr cpp west multi generated generated
+zephyr cpp west single generated generated
+zephyr mixed west multi authored generated
+zephyr rust west multi authored generated
+zephyr rust west multi generated generated
+zephyr rust west single generated generated
+zephyr-cortex-m c west single generated generated
+zephyr-cortex-m c west single generated manual
+zephyr-cortex-m cpp west single generated generated
+zephyr-cortex-m rust west single generated generated
+zephyr-nucleo-f767zi c west single generated generated
