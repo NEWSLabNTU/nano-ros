@@ -18,7 +18,7 @@
 //! every hand-added field of an entry it already has (matched by serial).
 //!
 //! It supplies ports and probes and NOTHING ELSE: whether a test cell runs is
-//! a property of the lane (phase-529 W6, issue 1758), never of what this file
+//! a property of the lane (phase-533 W2, issue 1758), never of what this file
 //! or the USB bus happens to hold.
 //!
 //! # Port resolution (D6), first answer wins
