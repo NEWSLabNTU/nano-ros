@@ -305,6 +305,7 @@ target_type
 # QEMU and glib
 can_receive
 g_source
+icount_adjust
 lan9118_receive
 mcast_addr
 qemu_net_queue

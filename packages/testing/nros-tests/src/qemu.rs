@@ -430,6 +430,18 @@ impl QemuProcess {
         Self::spawn(mps2_an385_networked_cmd(binary)?)
     }
 
+    /// [`Self::start_mps2_an385_networked`] for a cell that asserts a bound on
+    /// the guest's own clock: a fixed `-icount` [`MPS2_AN385_CORE_ICOUNT`]
+    /// instead of `shift=auto`, so a guest-measured duration is the guest's
+    /// instruction count at the modelled core's rate (issue 2252).
+    pub fn start_mps2_an385_networked_measured(binary: &Path) -> TestResult<Self> {
+        Self::spawn(mps2_an385_cmd_with_nic_icount(
+            binary,
+            &nros_board_common::image_net::slirp_nic("lan9118"),
+            MPS2_AN385_CORE_ICOUNT,
+        )?)
+    }
+
     /// [`Self::start_mps2_an385_networked`] on the network the IMAGE states
     /// (RFC-0103 D10a, phase-497 W3): `nic` is the `-nic` value of its
     /// interface, from [`image_nic`] — QEMU's own user-mode network, a host
@@ -1333,7 +1345,28 @@ pub fn image_nic(net_file: &Path, model: &str) -> TestResult<String> {
     nros_board_common::image_net::qemu_nic(&i, model).map_err(TestError::BuildFailed)
 }
 
+/// The `-icount` value for an MPS2-AN385 cell that asserts a bound on a
+/// duration the GUEST measures (issue 2252): a fixed 2^5 = 32 ns per
+/// instruction, the nearest power of two to the board's 25 MHz Cortex-M3 at
+/// about one instruction a cycle (40 ns).
+///
+/// `shift=auto` is right for the session (it keeps virtual time near wall
+/// time, which the host's network peers run on) and wrong for a measurement:
+/// its shift is QEMU's response to how much the guest IDLES, not a property
+/// of the code. Since QEMU 11.0.0-nros8 (issue 2209) a Cortex-M `wfi` really
+/// halts, the idle guest falls behind wall time, and `icount_adjust` raises
+/// the shift to its cap of 10 — 1024 ns per instruction. The XRCE
+/// arrival→dispatch path is ~20,260 instructions in every run; under
+/// `shift=auto` it read 1.3 to 20.7 ms (nros8) or 0.65 ms (nros7, whose busy
+/// `wfi` held the shift at 5), and at a fixed shift it reads 2^shift x that
+/// count, every run. Measured in issue 2252.
+pub const MPS2_AN385_CORE_ICOUNT: &str = "shift=5";
+
 fn mps2_an385_cmd_with_nic(binary: &Path, nic: &str) -> TestResult<Command> {
+    mps2_an385_cmd_with_nic_icount(binary, nic, "shift=auto")
+}
+
+fn mps2_an385_cmd_with_nic_icount(binary: &Path, nic: &str, icount: &str) -> TestResult<Command> {
     if !binary.exists() {
         return Err(TestError::BuildFailed(format!(
             "Binary not found: {}",
@@ -1352,9 +1385,10 @@ fn mps2_an385_cmd_with_nic(binary: &Path, nic: &str) -> TestResult<Command> {
         // (default), WFI advances virtual time at wall-clock speed via
         // QEMU_CLOCK_VIRTUAL_RT instead of jumping instantly. This keeps
         // hardware timer-backed clocks (CMSDK Timer0) aligned with slirp
-        // network I/O timing.
+        // network I/O timing. A measurement cell passes a fixed shift
+        // instead (`MPS2_AN385_CORE_ICOUNT`, issue 2252).
         "-icount",
-        "shift=auto",
+        icount,
         "-semihosting-config",
         "enable=on,target=native",
         "-kernel",

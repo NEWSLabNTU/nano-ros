@@ -112,6 +112,35 @@ The same virtual-vs-wall-clock problem appears in other contexts:
 - **ESP32-C3 QEMU**: Uses `-icount 3` (fixed shift, `sleep=on` default) for
   the boot test in `justfile`.
 
+## Measuring on the guest's clock: use a fixed shift
+
+`shift=auto` keeps virtual time near wall time, which is what a session with a
+host peer needs. It makes a duration the GUEST measures meaningless, because
+the shift it picks depends on how much the guest idles rather than on the
+code being timed.
+
+Since QEMU 11.0.0-nros8 (issue 2209), a Cortex-M `wfi` really halts. An idle
+guest then falls behind wall time, and `icount_adjust` raises the shift step by
+step to its cap of 10, which charges 1024 ns per instruction. Issue 2252
+measured this on the Zephyr mps2-an385 XRCE witness. Its arrival→dispatch path
+is about 20,260 instructions on every run. What the witness reported depended
+on the shift alone:
+
+| QEMU | `-icount` | max arrival→dispatch |
+| --- | --- | --- |
+| 11.0.0-nros7 (busy `wfi`) | `shift=auto` (held at 5) | 648 µs |
+| 11.0.0-nros8 | `shift=auto` (climbs to 10) | 1,296 to 20,747 µs |
+| 11.0.0-nros8 | `shift=4` | 324 µs |
+| 11.0.0-nros8 | `shift=5` | 648 µs |
+| 11.0.0-nros8 | `shift=10` | 20,747 µs |
+
+So a cell that asserts a bound on a guest-measured duration runs with a fixed
+shift that models the board's core. For the 25 MHz MPS2-AN385 Cortex-M3, that
+is `shift=5` (32 ns, against 40 ns at one instruction a cycle):
+`nros_tests::qemu::MPS2_AN385_CORE_ICOUNT` and
+`QemuProcess::start_mps2_an385_networked_measured`. Keep `sleep=on` (the
+default) so idle time still runs at wall speed and the session survives.
+
 ## Hardware Timer Requirement
 
 With `-icount shift=auto`, the platform clock **must** be backed by a hardware
