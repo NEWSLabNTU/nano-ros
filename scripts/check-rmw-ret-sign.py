@@ -290,7 +290,6 @@ def scan_multiplexers(rel):
 BASELINE = {
     "examples/mps2-an385-baremetal/rust/action-server-rtic/src/lib.rs": 1,
     "examples/linux/cpp/parameters/src/main.cpp": 1,
-    "examples/workspaces/rust/src/action_server_pkg/src/lib.rs": 1,
     "examples/zephyr/rust/action-server/node/src/lib.rs": 1,
     "packages/api/nros/src/node_runtime.rs": 1,
     "packages/rmw/cffi/tests/request_sequence.rs": 1,
