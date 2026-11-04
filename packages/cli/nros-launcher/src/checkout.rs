@@ -73,6 +73,33 @@ pub fn is_monorepo_root(dir: &Path) -> bool {
 /// variable used to name. `scripts/stage-sdk-root.sh` writes it; this constant is what reads it.
 pub const SHIPPED_SUBDIR: &str = "share/nano-ros";
 
+/// Where a release stages its first-party runner and command packages,
+/// relative to the install prefix — RFC-0119 D4, phase-527 W6.
+///
+/// Each `<package>/` holds its `package.xml`, its descriptor (with `bin`
+/// stated, since no `Cargo.toml` ships to derive it from) and `bin/`, the
+/// prebuilt executable. `nros toolchain stage-packages` writes it; the
+/// provider search path reads it as part of the nano-ros underlay.
+pub const SHIPPED_PACKAGES_SUBDIR: &str = "share/nros/packages";
+
+/// The prebuilt packages directory of the release whose SDK root is
+/// `sdk_root`, if `sdk_root` is a shipped one (`<prefix>/share/nano-ros`) and
+/// the release carries the directory.
+///
+/// Keyed on the SDK root rather than on the running executable, so the one
+/// root-list function (`provider_scan::search_path_over`) can derive it from
+/// the nano-ros root it was handed, and a test can hand it a fake prefix. A
+/// checkout's root never ends in `share/nano-ros`, so this is `None` there.
+#[must_use]
+pub fn shipped_packages_beside(sdk_root: &Path) -> Option<PathBuf> {
+    if !sdk_root.ends_with(SHIPPED_SUBDIR) {
+        return None;
+    }
+    let prefix = sdk_root.parent()?.parent()?;
+    let dir = prefix.join(SHIPPED_PACKAGES_SUBDIR);
+    dir.is_dir().then_some(dir)
+}
+
 /// The SDK root shipped inside the release asset an `exe` belongs to, if any.
 ///
 /// A pure function of the path, so its callers' tests need no `current_exe`.
@@ -191,6 +218,21 @@ mod tests {
         let shipped = fake_root(&tmp.path().join(SHIPPED_SUBDIR));
         let exe = touch(&tmp.path().join("bin/nros"));
         assert_eq!(own_sdk_root_of(&exe, None), Some(shipped));
+    }
+
+    /// A shipped SDK root answers with its release's prebuilt packages dir
+    /// when the release carries one; a checkout, or a release without the
+    /// dir, answers nothing (phase-527 W6).
+    #[test]
+    fn a_shipped_sdk_root_finds_its_prebuilt_packages() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shipped = fake_root(&tmp.path().join(SHIPPED_SUBDIR));
+        assert_eq!(shipped_packages_beside(&shipped), None, "no dir, no root");
+        let packages = tmp.path().join(SHIPPED_PACKAGES_SUBDIR);
+        std::fs::create_dir_all(&packages).unwrap();
+        assert_eq!(shipped_packages_beside(&shipped), Some(packages));
+        let checkout = fake_root(&tmp.path().join("checkout"));
+        assert_eq!(shipped_packages_beside(&checkout), None);
     }
 
     /// An in-tree binary reads the checkout its target dir sits in.

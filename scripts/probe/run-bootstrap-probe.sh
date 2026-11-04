@@ -365,6 +365,12 @@ cat "$SCRIPT_DIR/$VERIFIER" >>"$workdir/probe.sh"
 if [[ "$VERIFIER" = verify-installed-twin.sh ]]; then
     cat "$SCRIPT_DIR/verify-installed-platform.sh" >>"$workdir/probe.sh"
 fi
+# phase-527 W6 — `just probe installed` (the default chapter) also proves the
+# release underlay: the prebuilt runners resolve, a user's runner/qemu is
+# refused undeclared and used declared, and `nros run` runs the native talker.
+if [[ "$PROBE_TRACK" = installed && "$PROBE_PLATFORM" = first-project ]]; then
+    cat "$SCRIPT_DIR/verify-installed-underlay.sh" >>"$workdir/probe.sh"
+fi
 # Parse the assembled script before any container starts: a substitution or a
 # book block that unbalances a quote otherwise surfaces as a syntax error after
 # the install, tens of minutes in (measured — an apostrophe in a substitution).

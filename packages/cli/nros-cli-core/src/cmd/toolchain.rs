@@ -61,6 +61,31 @@ pub enum Sub {
     // phase-443 W2 (RFC-0097 D7).
     #[command(hide = true)]
     Manifest(ManifestArgs),
+    /// Stage the first-party runner and command packages, prebuilt, into a
+    /// release prefix's `share/nros/packages/`.
+    // phase-527 W6 (RFC-0119 D4): what `release-nros.yml` calls after
+    // `scripts/stage-sdk-root.sh`.
+    #[command(hide = true, name = "stage-packages")]
+    StagePackages(StagePackagesArgs),
+}
+
+/// `nros toolchain stage-packages <prefix>` — the release underlay.
+///
+/// Every package in `<prefix>/share/nano-ros` that announces a host kind
+/// (`runner`, `command`) is written to `<prefix>/share/nros/packages/<pkg>/`
+/// with its `package.xml`, its descriptor (`bin` stated) and `bin/<exe>`,
+/// taken from the checkout's cargo build, and its source copy leaves the SDK
+/// root.
+#[derive(Debug, ClapArgs)]
+pub struct StagePackagesArgs {
+    /// The release prefix (holding `share/nano-ros`).
+    #[arg(value_name = "PREFIX")]
+    pub prefix: PathBuf,
+
+    /// The checkout the SDK root was staged from, where the executables were
+    /// built. Defaults to the nano-ros checkout holding the current directory.
+    #[arg(long, value_name = "DIR")]
+    pub checkout: Option<PathBuf>,
 }
 
 /// `nros toolchain manifest` — read or stamp the release manifest.
@@ -147,7 +172,38 @@ pub fn run(args: Args) -> Result<()> {
             command: crate::cmd::store::Sub::Gc(a),
         }),
         Sub::Manifest(a) => manifest(a),
+        Sub::StagePackages(a) => stage_packages(a, cwd.as_deref()),
     }
+}
+
+/// phase-527 W6 — stage the release's prebuilt runner and command packages.
+pub fn stage_packages(args: StagePackagesArgs, cwd: Option<&Path>) -> Result<()> {
+    use crate::orchestration::release_packages;
+    let checkout = match args.checkout {
+        Some(c) => c,
+        None => cwd
+            .and_then(crate::abi_guard::find_monorepo_root)
+            .ok_or_else(|| eyre::eyre!("not inside a nano-ros checkout — pass --checkout <dir>"))?,
+    };
+    let staged =
+        release_packages::stage(&args.prefix, &checkout, &release_packages::cargo_target_dir)?;
+    for s in &staged {
+        println!(
+            "staged {} ({}) -> {} [bin/{}]",
+            s.package,
+            s.provides.join(", "),
+            s.dir.display(),
+            s.bin
+        );
+    }
+    println!(
+        "{} package(s) in {}",
+        staged.len(),
+        args.prefix
+            .join(release_packages::SHIPPED_PACKAGES_SUBDIR)
+            .display()
+    );
+    Ok(())
 }
 
 /// RFC-0097 D7's file, read or written.
