@@ -150,6 +150,16 @@ scaffold-builds:
     @bash scripts/check-scaffold-builds.sh --self-test
     @bash scripts/check-scaffold-builds.sh
 
+# issue 2239 — the rule both build gates above and below use for their scratch
+# trees outside the checkout (`scripts/build/gate-scratch.sh`). A passing tree
+# goes at once. A failing one is kept until the next run of the same gate and
+# scope. An interrupted one goes on the way out, or at the next run after a
+# SIGKILL. Its negative controls need no CLI or compiler, so this runs on the
+# fast line.
+[private]
+gate-scratch:
+    @bash scripts/build/gate-scratch.sh --self-test
+
 #
 # phase-489 W8 — `NROS_TEMPLATE_COPY_OUT_SHARD=<k>/<n>` builds one share of the
 # units (projects, scaffolds, the self-test). The n shards together build

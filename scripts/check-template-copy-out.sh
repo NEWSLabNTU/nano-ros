@@ -146,6 +146,8 @@ cd "$repo_root" || exit 2
 . "$repo_root/scripts/build/check-skip.sh"
 # shellcheck source=scripts/build/gate-prune.sh
 . "$repo_root/scripts/build/gate-prune.sh"
+# shellcheck source=scripts/build/gate-scratch.sh
+. "$repo_root/scripts/build/gate-scratch.sh"
 # shellcheck source=scripts/build/cmake-cache-guard.sh
 . "$repo_root/scripts/build/cmake-cache-guard.sh"
 # shellcheck source=scripts/build/copy-out-cmake.sh
@@ -648,7 +650,7 @@ built_nothing_verdict() {
 run_one() {
     local tmpl="$1" proj="$2" label work dest log arts n
     label="$(project_label "$tmpl" "$proj")"
-    work="$(mktemp -d "${TMPDIR:-/tmp}/nros-template-copy-out.XXXXXX")" || return 3
+    nros_gate_scratch work template-copy-out || return 3
     dest="$work/copy"
     log="$work/build.log"
     if ! copy_out "$tmpl" "$dest"; then
@@ -658,7 +660,7 @@ run_one() {
     fi
     local ws="$dest/$templates_dir/$tmpl" pdir boards b
     if [ "$proj" = "." ]; then pdir="$ws"; else pdir="$ws/$proj"; fi
-    boards="$(project_boards "$tmpl" "$proj")" || { echo "  $label: FAIL — could not read its images" >&2; return 1; }
+    boards="$(project_boards "$tmpl" "$proj")" || { echo "  $label: FAIL — could not read its images" >&2; nros_gate_scratch_failed "$work"; return 1; }
 
     local brc=0 host=0 cross=()
     while IFS= read -r b; do
@@ -713,6 +715,7 @@ run_one() {
         report_build_failure "$label" "$log"
         # The log is reported above. On a lane that releases its output the
         # copy's build root goes too: it is the bulk of `$work`.
+        nros_gate_scratch_failed "$work"
         nros_gate_prune_enabled && rm -rf "$work"
         return 1
     fi
@@ -722,6 +725,7 @@ run_one() {
         echo "  $label: FAIL — build exited 0 but produced no executable" >&2
         echo "      (rc=0 with an empty artifact set is the vacuous pass this" >&2
         echo "       predicate exists to catch; full log: $log)" >&2
+        nros_gate_scratch_failed "$work"
         return 1
     fi
     echo "  $label: OK — $n artifact(s), e.g. ${arts%%$'\n'*}" | sed "s|$pdir/||"
@@ -767,19 +771,21 @@ run_scaffold() {
         echo "  $label: FAIL — no \`nros\` CLI to build with (just setup-cli)" >&2
         return 2
     fi
-    work="$(mktemp -d "${TMPDIR:-/tmp}/nros-template-copy-out.XXXXXX")" || return 3
+    nros_gate_scratch work template-copy-out || return 3
     log="$work/build.log"
     pdir="$work/sensor_node"
     rc=0
     (cd "$work" && "$nros" new sensor_node --board "$board" --template talker) > "$log" 2>&1 || rc=$?
     if [ "$rc" -ne 0 ]; then
         report_build_failure "$label" "$log"
+        nros_gate_scratch_failed "$work"
         return 1
     fi
     v="$(scaffold_shape_violations "$pdir")"
     if [ -n "$v" ]; then
         echo "  $label: FAIL — the scaffold is not one package (RFC-0116 D6):" >&2
         printf '%s\n' "$v" | sed 's/^/      - /' >&2
+        nros_gate_scratch_failed "$work"
         return 1
     fi
     if [ "$board" = "linux" ]; then
@@ -798,6 +804,7 @@ run_scaffold() {
     fi
     if [ "$rc" -ne 0 ]; then
         report_build_failure "$label" "$log"
+        nros_gate_scratch_failed "$work"
         nros_gate_prune_enabled && rm -rf "$work"
         return 1
     fi
@@ -806,6 +813,7 @@ run_scaffold() {
     n="$(printf '%s' "$arts" | grep -c . )"
     if [ "$n" -eq 0 ]; then
         echo "  $label: FAIL — build exited 0 but produced no executable (full log: $log)" >&2
+        nros_gate_scratch_failed "$work"
         return 1
     fi
     echo "  $label: OK — $n artifact(s), e.g. ${arts%%$'\n'*}" | sed "s|$pdir/||"
@@ -842,7 +850,7 @@ part_self_test() {
 # thing D6 forbids, planted alone, is reported.
 scaffold_shape_self_test() {
     local work bad=0 v
-    work="$(mktemp -d "${TMPDIR:-/tmp}/nros-template-selftest.XXXXXX")" || return 2
+    nros_gate_scratch work template-selftest || return 2
     _plant() {
         rm -rf "$work/p"; mkdir -p "$work/p/src"
         printf '[system]\nname = "p"\n\n[image.linux]\nboard = "linux"\n' > "$work/p/system.toml"
@@ -943,7 +951,7 @@ self_test() {
         return 2
     }
 
-    work="$(mktemp -d "${TMPDIR:-/tmp}/nros-template-selftest.XXXXXX")" || return 2
+    nros_gate_scratch work template-selftest || return 2
     dest="$work/copy"
     copy_out "$tmpl" "$dest" || { echo "self-test: copy failed" >&2; return 2; }
     ws="$dest/$templates_dir/$tmpl"
@@ -989,7 +997,7 @@ cross_self_test() {
             b="$(project_boards "$tmpl" "$proj" | grep -vx linux | head -n1)"
             [ -n "$b" ] && [ -f "$templates_dir/$tmpl/$proj/CMakeLists.txt" ] || continue
             label="$(project_label "$tmpl" "$proj")"
-            work="$(mktemp -d "${TMPDIR:-/tmp}/nros-template-selftest.XXXXXX")" || return 2
+            nros_gate_scratch work template-selftest || return 2
             dest="$work/copy"
             copy_out "$tmpl" "$dest" || { echo "self-test: copy failed" >&2; rm -rf "$work"; return 2; }
             pdir="$dest/$templates_dir/$tmpl/$proj"
@@ -1069,6 +1077,11 @@ if [ "$mode" = run ]; then
         exit 2
     fi
 fi
+
+# Issue 2239: every scratch tree below is owned by this run, removed on the way
+# out unless it is kept as failure evidence, and an earlier run's leftovers of
+# the same scope are retired here.
+nros_gate_scratch_init "$gate" "$mode part=$part shard=$shard $*"
 
 if [ "$mode" = "self-test" ]; then
     rc=0
