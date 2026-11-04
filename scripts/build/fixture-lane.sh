@@ -118,14 +118,15 @@ nros_lane_validate() {
 #
 # The coordinates come from `lane-coords`, the same binary `_lane-gate` uses, so
 # the build cannot compute a different selection from the gate.
-# issue 0523 — the newest prebuilt `lane-coords`, or empty when none is usable.
+# issue 0523 — the newest prebuilt nros-tests bin `<name>` (`lane-coords`,
+# `cell-isolation`), or empty when none is usable.
 #
 # Empty means "compile it": either nothing is built, or what is built predates a
 # source of `nros-tests` and would answer for a tree that no longer exists.
 # NEWEST rather than a preferred profile — preferring `nros-fast-release` picked
 # an eleven-day-old artifact on this host while `debug` was current.
-_nros_lane_coords_bin() {
-    local best="" best_t=0 b t
+_nros_tests_bin() {
+    local name="$1" best="" best_t=0 b t
     # EVERY profile dir, not a hardcoded three — issue 1314.
     #
     # This read `for p in nros-fast-release debug release`, and the repo's own
@@ -147,7 +148,7 @@ _nros_lane_coords_bin() {
     # knowledge of that table here. "Newest wins" is unchanged, and so is the
     # freshness check below — which is what keeps a foreign or museum profile
     # dir from being believed, and is why widening the scan is safe.
-    for b in target/*/lane-coords; do
+    for b in target/*/"$name"; do
         [ -x "$b" ] || continue
         t="$(stat -c %Y "$b" 2>/dev/null || echo 0)"
         if [ "$t" -gt "$best_t" ]; then
@@ -204,7 +205,7 @@ nros_lane_coords_file() {
     # eleven days back reported 12 tier-2 coordinates where the sources said 13,
     # and the mismatch surfaced as a coordinate-drift error blaming the guard.
     local bin
-    bin="$(_nros_lane_coords_bin)"
+    bin="$(_nros_tests_bin lane-coords)"
     if [ -n "$bin" ]; then
         if ! "$bin" "$lane" > "$tmp"; then
             echo "fixture-lane: $bin failed for '$lane'" >&2
@@ -226,6 +227,43 @@ nros_lane_coords_file() {
         return 1
     fi
     echo "$out"
+}
+
+# nros_cell_isolation_file — issue 2251. Write the allocator's baked isolation
+# table (`cell-isolation`, a bin of nros-tests) to a file and echo its path, for
+# `zephyr-fixture-leaves.sh --isolation-table`. The formulas live in
+# `nros_tests::alloc` alone; a build reads their VALUES from here.
+#
+# Same rules as `nros_lane_coords_file`: a current prebuilt binary if one
+# exists, `cargo run` otherwise (correct in a BUILD recipe, which is the only
+# caller), and a temp file renamed into place so a concurrent reader never sees
+# a truncated table. An empty table refuses: every lookup would then fail with
+# a message about a missing cell instead of about the table.
+nros_cell_isolation_file() {
+    local out="target/nextest/cell-isolation.tsv"
+    mkdir -p target/nextest
+    local tmp="${out}.tmp.$$"
+    local bin
+    bin="$(_nros_tests_bin cell-isolation)"
+    if [ -n "$bin" ]; then
+        if ! "$bin" > "$tmp"; then
+            echo "fixture-lane: $bin failed" >&2
+            rm -f "$tmp"
+            return 1
+        fi
+    elif ! cargo run -q -p nros-tests --bin cell-isolation > "$tmp"; then
+        echo "fixture-lane: cell-isolation failed" >&2
+        rm -f "$tmp"
+        return 1
+    fi
+    mv -f "$tmp" "$out"
+    if [ ! -s "$out" ]; then
+        echo "fixture-lane: cell-isolation printed no cells — refusing" >&2
+        rm -f "$out"
+        return 1
+    fi
+    # Absolute: the consumer is handed it as an argument and may run elsewhere.
+    echo "$PWD/$out"
 }
 
 # nros_lane_unclaimed <lane> — the host capabilities a lane does NOT claim.
@@ -273,7 +311,7 @@ nros_scope_coords_file() {
     local out="target/nextest/scope-coords-${module}.txt"
     local tmp="${out}.tmp.$$" rc=0 bin
     mkdir -p target/nextest
-    bin="$(_nros_lane_coords_bin)"
+    bin="$(_nros_tests_bin lane-coords)"
     if [ -n "$bin" ]; then
         "$bin" --scope "$module" > "$tmp" 2> "${tmp}.err" || rc=$?
     else

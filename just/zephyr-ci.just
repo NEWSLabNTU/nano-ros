@@ -403,6 +403,16 @@ build-fixtures:
     # `build-test-fixtures`, which took every census before any stage started.
     bash scripts/build/census-prepass.sh --platform zephyr
 
+    # Issue 2251 — the allocator's isolation values (router port, Agent port,
+    # DDS domain) come from `nros_tests::alloc` through `cell-isolation`; the
+    # leaves script no longer computes them. `if !` rather than a bare
+    # assignment: under `set -e` a failing `$(…)` assignment dies before any
+    # message (issue 1249).
+    source scripts/build/fixture-lane.sh
+    if ! isolation_table="$(nros_cell_isolation_file)"; then
+        echo "  ✗ could not produce the allocator's isolation table (cell-isolation)" >&2
+        exit 1
+    fi
     zephyr_leaf_args=(
         --zephyr-version "{{NROS_ZEPHYR_VERSION}}"
         --nros-root "$nros_root"
@@ -412,6 +422,7 @@ build-fixtures:
         --toolchain-cache-dir "$toolchain_cache_dir"
         --sccache-disable "$sccache_disable"
         --pristine "$pristine"
+        --isolation-table "$isolation_table"
     )
     # Same correction, and this one was the expensive half: a guard on
     # `src/zephyr_entry` decides `--include-workspace-entry` for EVERY
