@@ -55,8 +55,10 @@
 # `cmake/NanoRosConfigureHook.cmake`, for `find_package(nano_ros)`,
 # `nano_ros_workspace()` and a bare `add_subdirectory`). A configure whose
 # image configure resolved no dir for (a standalone CMake leaf) locates
-# nothing, writes the placeholder as before, and keeps the old lever, inside
-# the promise module.
+# nothing here: such a leaf's entity seed is written by the leaf road itself,
+# before every reader (`nros_record_leaf_entity_facts`, phase-530 W7), and an
+# unseeded read is held to the promise module's end check -- issue 0991's
+# fixed point is deleted.
 
 include_guard(GLOBAL)
 
@@ -114,7 +116,8 @@ function(nros_configured_locate _project _image)
         endif()
         message(STATUS
             "nano-ros: image `${_image}`'s configure is stale${_why}: this configure "
-            "reads no seed from it and composes its own answer; run "
+            "reads no seed from it and composes its own answer (held to what its "
+            "readers read, never re-converged); run "
             "`nros configure ${_project} --image ${_image}` (or `nros build`) to seed "
             "it again")
         set(_dir "")

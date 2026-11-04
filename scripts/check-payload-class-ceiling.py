@@ -19,7 +19,7 @@ If (1) or (2) is LARGER than (3), a type between them is classified `small` by
 the derivation and routed `large` at runtime — into a class the derivation may
 have just declared empty, which `alloc_payload_block` then refuses at
 `create_subscription`. That is issue 0841's defect one layer up, and neither
-`check-knob-delivery` nor `check-knob-fixpoint` can see it: every number is
+`check-knob-delivery` nor `check-knob-one-pass` can see it: every number is
 derived correctly and delivered faithfully, and they disagree about what they
 MEAN.
 

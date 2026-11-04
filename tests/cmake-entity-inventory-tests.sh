@@ -783,8 +783,8 @@ fi
 #    The join used to APPEND its answer to the fragment, for a declared road
 #    issue 1649 retired. Nothing read the appendix after that, and it was the
 #    one part of the fragment the CLI did not write: stage 3.5's seed is the
-#    CLI's text, so the hash moved on every configure and the entity arm of
-#    `nros_reconfigure_settle` cost a second cmake pass for nothing. The
+#    CLI's text, so the hash moved on every configure and issue 0991's entity arm
+#    (deleted, phase-530 W7) cost a second cmake pass for nothing. The
 #    answer, and the reason for an absent one, now live in the caller's scope.
 #
 #    The unbounded half keeps issue 1480's subject: its reason is MULTI-LINE

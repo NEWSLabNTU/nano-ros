@@ -10,7 +10,7 @@ became a zero-length array. Measured on that board, same image, one variable:
 at 0 it transmitted **0 bytes in 15 s** (no panic, no log line, core in WFI); at
 1 and at 4 it transmitted 110. Every gate stayed green through it:
 `check-knob-delivery` confirms the value ARRIVED — it did — and
-`check-knob-fixpoint` converges, because 0 is stable. Nothing in the tree asked
+`check-knob-one-pass` holds, because 0 is stable. Nothing in the tree asked
 whether the number was USABLE.
 
 WHY THIS IS NOT SIMPLY "POOLS ARE POSITIVE"

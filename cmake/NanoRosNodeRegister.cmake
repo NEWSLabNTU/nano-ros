@@ -192,7 +192,7 @@ function(_nros_node_register_compose_inventory)
     # `[[component]] entities` or its probe sidecars). This composer reads only
     # `nros-metadata.json`, which cannot see a census, and overwrote that answer
     # with a refusal on EVERY pass -- the talker never converged, stopping at
-    # NROS_RECONFIGURE_MAX_PASSES. The leaf's one derivation wins; nothing to do.
+    # issue 0991's pass bound (that fixed point is deleted). The leaf's one derivation wins; nothing to do.
     get_property(_leaf_sized GLOBAL PROPERTY NROS_ENTITY_INVENTORY_LEAF_SIZED)
     if(NOT "${_leaf_sized}" STREQUAL "")
         return()
@@ -1480,8 +1480,8 @@ endfunction()
 # So the ORDERING objection this file used to record is answered without a
 # second configure pass: the directory exists and is on the include path before
 # generate, the header lands in it later in the SAME configure, and no compile
-# happens until configure is over. Nothing here arms `nros_reconfigure_on_change`
-# -- a generated header is an ordinary compile input that ninja tracks through
+# happens until configure is over. Nothing here needs a re-configure (issue
+# 0991's fixed point is deleted) -- a generated header is an ordinary compile input that ninja tracks through
 # the depfile, so an edited table reaches the next COMPILE without a re-configure
 # (issue 1119: reconfigure passes are not free, and this one buys nothing).
 #
