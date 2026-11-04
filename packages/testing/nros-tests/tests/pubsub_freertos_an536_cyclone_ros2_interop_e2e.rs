@@ -103,6 +103,9 @@ fn received_values(echo: &str) -> Vec<i64> {
 
 #[test]
 fn nros_freertos_an536_cyclone_publisher_stays_reachable_from_ros2() {
+    // Issue 2221 — the image joins its baked domain whatever else is on it;
+    // hold it so a native test's `unique_ros_domain_id` steps past.
+    let _domain = nros_tests::hold_baked_domain(DOMAIN);
     nros_tests::fixtures::lane::require_platform_in_lane(
         &[PlatformId::FreertosMps2],
         "the FreeRTOS mps3-an536 Cyclone ROS 2 interop cell",
@@ -222,6 +225,9 @@ fn received_bulk(console: &str) -> Vec<(i64, usize)> {
 
 #[test]
 fn nros_freertos_an536_cyclone_listener_keeps_receiving_a_fragmented_sample() {
+    // Issue 2221 — the image joins its baked domain whatever else is on it;
+    // hold it so a native test's `unique_ros_domain_id` steps past.
+    let _domain = nros_tests::hold_baked_domain(DOMAIN);
     nros_tests::fixtures::lane::require_platform_in_lane(
         &[PlatformId::FreertosMps2],
         "the FreeRTOS mps3-an536 Cyclone ROS 2 interop cell",

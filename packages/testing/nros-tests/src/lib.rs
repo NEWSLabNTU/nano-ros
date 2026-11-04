@@ -563,6 +563,65 @@ fn claim_domain(_domain: u8) -> bool {
     true
 }
 
+/// Issue 2221 — a BAKED domain's hold. Drop releases it.
+#[must_use = "the domain is held only while this value lives"]
+pub struct BakedDomainHold {
+    _file: Option<std::fs::File>,
+}
+
+/// Issue 2221 — hold `domain` while a baked image is on it.
+///
+/// A baked DDS image (Cyclone, or XRCE through its Agent) joins the domain it
+/// was compiled with, whatever else is on that domain. Distinct baked cells
+/// never share one (`alloc::allocator_injective_over_matrix`), but a native
+/// test's [`unique_ros_domain_id`] draws from `1..=101`, which holds the baked
+/// Zephyr domains too, and its busy probe sees a participant only once it has
+/// bound — a native test that probed first would share the bus with the image
+/// that started after. So the baked side takes the SAME per-domain claim file,
+/// and the two meet in the kernel: while the hold lives, `claim_domain` reads
+/// the domain as taken and the native test steps past it.
+///
+/// BLOCKING where `claim_domain` is not: a baked image has no other domain to
+/// go to, so it waits for the native test that holds this one to finish. The
+/// claim file is the same one, so a native test that claimed the domain first
+/// holds it for its whole process and the wait is bounded by that test.
+///
+/// Take it once per process: `flock` locks belong to the open file
+/// DESCRIPTION, so a second hold of the same domain from the same process
+/// waits on the first forever. Degrades to no hold when the claim cannot be
+/// made, by the same rule as `claim_domain`.
+#[cfg(unix)]
+pub fn hold_baked_domain(domain: u8) -> BakedDomainHold {
+    use std::os::unix::io::AsRawFd;
+    let dir = domain_claim_dir();
+    if std::fs::create_dir_all(&dir).is_err() {
+        return BakedDomainHold { _file: None };
+    }
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join(format!("{domain}.lock")))
+    else {
+        return BakedDomainHold { _file: None };
+    };
+    loop {
+        // SAFETY: flock(2) on a descriptor this function owns and returns.
+        let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+        if rc == 0 {
+            return BakedDomainHold { _file: Some(file) };
+        }
+        if std::io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) {
+            return BakedDomainHold { _file: None };
+        }
+    }
+}
+
+#[cfg(not(unix))]
+pub fn hold_baked_domain(_domain: u8) -> BakedDomainHold {
+    BakedDomainHold { _file: None }
+}
+
 pub fn unique_ros_domain_id() -> u8 {
     let seq = DOMAIN_SEQ.fetch_add(1, Ordering::Relaxed);
     if let Some(slot) = std::env::var("NEXTEST_TEST_GLOBAL_SLOT")

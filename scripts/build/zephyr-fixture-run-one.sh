@@ -13,7 +13,7 @@ usage: scripts/build/zephyr-fixture-run-one.sh RECORD.tsv
 Runs one Zephyr fixture record. The record must contain these tab-separated
 fields:
   kind id target board lang lang_tag role rmw src src_dir build_name build_dir
-  log xrce_agent_port zenoh_locator cyclone_domain conf_files extra_cmake_defs
+  log xrce_agent_port zenoh_locator dds_domain conf_files extra_cmake_defs
   sig sig_file best_effort eff_pristine ws_dir nros_image
 
 `ws_dir` and `nros_image` are EMPTY on an unmigrated leaf and the build runs
@@ -69,13 +69,13 @@ fi
 record_us="${record//$'\t'/$'\x1f'}"
 IFS=$'\x1f' read -r \
     kind id target board lang lang_tag role rmw src src_dir build_name build_dir \
-    log xrce_agent_port zenoh_locator cyclone_domain conf_files extra_cmake_defs \
+    log xrce_agent_port zenoh_locator dds_domain conf_files extra_cmake_defs \
     sig sig_file best_effort eff_pristine ws_dir nros_image extra_field <<< "$record_us"
 
 [ -z "${extra_field:-}" ] || die "record has extra fields: $id"
 
 for field_name in kind id target board lang lang_tag role rmw src src_dir build_name build_dir \
-    log xrce_agent_port zenoh_locator cyclone_domain conf_files extra_cmake_defs \
+    log xrce_agent_port zenoh_locator dds_domain conf_files extra_cmake_defs \
     sig sig_file best_effort eff_pristine ws_dir nros_image; do
     printf -v "$field_name" '%s' "$(unescape_field "${!field_name}")"
 done
@@ -161,8 +161,8 @@ fi
 if [ -n "$zenoh_locator" ]; then
     replace_or_append_arg "-DCONFIG_NROS_ZENOH_LOCATOR" "\"$zenoh_locator\""
 fi
-if [ -n "$cyclone_domain" ]; then
-    replace_or_append_arg "-DCONFIG_NROS_DOMAIN_ID" "$cyclone_domain"
+if [ -n "$dds_domain" ]; then
+    replace_or_append_arg "-DCONFIG_NROS_DOMAIN_ID" "$dds_domain"
 fi
 if [ -n "$conf_files" ]; then
     replace_or_append_arg "-DCONF_FILE" "$conf_files"

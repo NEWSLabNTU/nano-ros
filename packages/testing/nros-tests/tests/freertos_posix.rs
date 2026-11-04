@@ -166,6 +166,8 @@ fn freertos_posix_c_entry_delivers_over_cyclonedds() {
         )
     });
     let domain = domain_of(PlatformId::FreertosPosix, Lang::C, Workload::EntryPubsub);
+    // Issue 2221 — hold the baked domain so a native test steps past it.
+    let _domain = nros_tests::hold_baked_domain(domain);
     let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-c");
     // The pure-C workspace talker spells its marker differently from the C++
     // one; both listeners agree on `Received:`.
@@ -187,6 +189,8 @@ fn freertos_posix_cpp_entry_delivers_over_cyclonedds() {
         )
     });
     let domain = domain_of(PlatformId::FreertosPosix, Lang::Cpp, Workload::EntryPubsub);
+    // Issue 2221 — hold the baked domain so a native test steps past it.
+    let _domain = nros_tests::hold_baked_domain(domain);
     let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-cpp");
     assert_delivered(&out, INT32_TALKER_LOG_PREFIX, domain, "freertos-posix-cpp");
 }
