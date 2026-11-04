@@ -168,18 +168,43 @@ fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
     );
 }
 
+/// Issue 2250 -- the entry is given a router and must OPEN its session and
+/// publish. This test used to start no router and assert only that the process
+/// was alive 300 ms in, which held because ~~`Context::connect_with_retry`~~ kept a
+/// doomed open retrying for ~3 s; issue 2207 deleted that loop, the open now
+/// fails at once against no router, and the assertion went red while the
+/// runtime was fine. "Alive at T" says nothing about the runtime, so the test
+/// now waits for what a started runtime does.
 #[test]
 fn cmake_cpp_workspace_entry_starts_prebuilt_runtime() {
+    nros_tests::fixtures::require_zenohd();
+
     let entry = nros_tests::fixtures::build_native_workspace_cpp_entry()
         .require("native C++ workspace Entry");
+    let router = nros_tests::fixtures::or_unmet(nros_tests::fixtures::ZenohRouter::start_unique());
+
+    let mut cmd = Command::new(entry);
+    cmd.env("NROS_LOCATOR", router.locator())
+        .env("NROS_SESSION_MODE", "client");
     let mut proc =
-        nros_tests::process::ManagedProcess::spawn(entry, &[], "C++ workspace linux_entry")
+        nros_tests::process::ManagedProcess::spawn_command(cmd, "C++ workspace linux_entry")
             .expect("spawn C++ workspace Entry fixture");
 
-    std::thread::sleep(Duration::from_millis(300));
+    let output = proc
+        .wait_for_output_pattern(
+            nros_tests::output::INT32_TALKER_LOG_PREFIX,
+            Duration::from_secs(10),
+        )
+        .unwrap_or_else(|e| {
+            panic!("C++ workspace Entry never published from the prebuilt binary: {e:?}")
+        });
+    assert!(
+        output.contains(nros_tests::output::SESSION_OPEN_MARKER),
+        "C++ workspace Entry published without reporting its session open; output:\n{output}"
+    );
     assert!(
         proc.is_running(),
-        "C++ workspace Entry should enter its native spin loop when started from the prebuilt binary"
+        "C++ workspace Entry should stay in its native spin loop after publishing; output:\n{output}"
     );
     proc.kill();
 }
