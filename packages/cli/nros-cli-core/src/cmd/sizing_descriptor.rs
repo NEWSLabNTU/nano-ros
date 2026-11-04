@@ -97,6 +97,16 @@ pub struct SizingDescriptorArgs {
     // phase-530 W2 (M1): the census default depends on the image's board.
     #[arg(long, value_name = "ID", requires = "from_leaf")]
     pub leaf_image: Option<String>,
+    /// `--from-leaf`: also write the leaf's entity-inventory fragment here.
+    ///
+    /// The fragment the configure's readers include, composed from the same
+    /// declaration as the descriptor, before any of them runs. Written only
+    /// when the leaf declares its entities; its path is then printed as an
+    /// `entity-fragment <path>` line after the descriptor's.
+    // phase-530 W7 (RFC-0120 D5, Ruling R37): the cmake leaf's seed, the
+    // text `west-leaf-sizing` writes for a Zephyr C/C++ leaf.
+    #[arg(long, value_name = "PATH", requires = "from_leaf")]
+    pub entity_cmake: Option<PathBuf>,
 
     /// `--from-model` / `--from-leaf`: the image's build dir. The descriptor
     /// lands at `<build-dir>/nros/sizing/<entry>.toml`.
@@ -790,6 +800,14 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
     ))?
     .expect("a composed inventory always states its wiring");
     println!("{}", written.path.display());
+    if let Some(frag) = &args.entity_cmake {
+        if let Some(d) = frag.parent() {
+            std::fs::create_dir_all(d).wrap_err_with(|| format!("create `{}`", d.display()))?;
+        }
+        crate::atomic_file::atomic_write(frag, &inventory.to_cmake())
+            .map_err(|e| eyre::eyre!("write `{}`: {e}", frag.display()))?;
+        println!("entity-fragment {}", frag.display());
+    }
     Ok(())
 }
 
@@ -1193,6 +1211,7 @@ mod tests {
             sched_task_record: None,
             from_leaf: None,
             leaf_image: None,
+            entity_cmake: None,
             // phase-457-payload W2 -- no tables: the payload class refuses,
             // naming the missing registration (issue 1393 closed the road).
             bound_inventory: Vec::new(),
@@ -1657,6 +1676,87 @@ board = "qemu-armv7a-nuttx"
             "an action server owes one cache queryable for its `/status`"
         );
         assert_eq!(desc.image.node_count().stated().copied(), Some(1));
+    }
+
+    /// phase-530 W7 (RFC-0120 D5, Ruling R37) -- a standalone cmake leaf's
+    /// entity-inventory fragment is written by the SAME call that writes its
+    /// descriptor, before any reader of the configure: `--entity-cmake` gets
+    /// exactly the text `west-leaf-sizing` writes for a Zephyr C/C++ leaf
+    /// (one composer, `leaf_declaration`), and a leaf that declares nothing
+    /// gets no fragment, so the composer that reads its metadata still runs.
+    #[test]
+    fn from_leaf_writes_the_entity_fragment_before_the_configure_reads_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let leaf = leaf_with(
+            dir.path(),
+            r#"
+[system]
+name = "leaf"
+rmw = "zenoh"
+
+[[component]]
+name = "n"
+entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]
+
+[image.i]
+board = "qemu-armv7a-nuttx"
+"#,
+        );
+        let build_dir = dir.path().join("build");
+        let frag = build_dir.join("nros/entity_inventory.cmake");
+        run(SizingDescriptorArgs {
+            from_leaf: Some(leaf.clone()),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("e".into()),
+            host_build: true,
+            entity_cmake: Some(frag.clone()),
+            ..args()
+        })
+        .unwrap();
+        let written = std::fs::read_to_string(&frag).expect("the fragment was written");
+        let want = leaf_declaration(&leaf.canonicalize().unwrap(), None)
+            .unwrap()
+            .inventory
+            .unwrap()
+            .to_cmake();
+        assert_eq!(written, want, "one composer, one text");
+        assert!(
+            written.contains("NROS_ENTITY_INVENTORY_STATUS \"derived\""),
+            "{written}"
+        );
+
+        // A leaf that declares nothing: no fragment.
+        let bare = dir.path().join("bare");
+        std::fs::create_dir_all(&bare).unwrap();
+        let bare = leaf_with(
+            &bare,
+            r#"
+[system]
+name = "bare"
+rmw = "zenoh"
+
+[[component]]
+name = "n"
+entities = "defaults"
+
+[image.i]
+board = "qemu-armv7a-nuttx"
+"#,
+        );
+        let bare_frag = dir.path().join("bare-build/nros/entity_inventory.cmake");
+        run(SizingDescriptorArgs {
+            from_leaf: Some(bare),
+            build_dir: Some(dir.path().join("bare-build")),
+            entry: Some("e".into()),
+            host_build: true,
+            entity_cmake: Some(bare_frag.clone()),
+            ..args()
+        })
+        .unwrap();
+        assert!(
+            !bare_frag.exists(),
+            "a leaf that declares nothing gets no fragment"
+        );
     }
 
     /// The payload class stays REFUSED, and the refusal names the LEAF's input
