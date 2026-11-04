@@ -749,6 +749,12 @@ census host build is the producer and reads no seed (case H).
   (`_nros_entity_budget_env`, `_nros_declared_depth_table_env`,
   `_nros_param_store_env`) register themselves instead, so a consumer that
   ran before the composer is caught rather than silently stale.
+- **A lag the fixed point had hidden, fixed.** On an image no entry
+  composes (no seed), the standalone composer and the entity-facts flush are
+  both deferred, and the flush could run first, reading the previous
+  configure's fragment; the fixed point re-ran cmake over it. `check
+  probe-shared-types` measured it once the fallback went (the FATAL below).
+  The flush now runs the composer first, once per configure.
 - **The unseeded fallback is gone.** `cmake/NanoRosPromise.cmake` no longer
   delegates to the fixed point: an unseeded read is held to the same
   end-of-configure comparison. A reader that read nothing or a placeholder
