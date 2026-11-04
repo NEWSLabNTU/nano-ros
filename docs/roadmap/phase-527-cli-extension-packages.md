@@ -3,7 +3,7 @@
 **Status (2026-11-03). IN PROGRESS — W3, W1, W2 and W2b landed
 (`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
 the host build role; declared overrides); W2c (colcon's duplicate rule among
-source roots, overrides in `nros.toml`) in review; W4 next.** Implements
+source roots, overrides in `nros.toml`) in review (#3075); W2d (one `--base-paths` meaning) next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -216,7 +216,7 @@ declarations from `nros.toml`; the leaf fallback; `src/*/system.toml`
 `[overrides]` refused; both files refused; the fallback's note. W2b's
 tests stay green.
 
-Status: **DONE, in review** (2026-11-03, PR pending).
+Status: **DONE, in review** (2026-11-03, #3075).
 
 - Still ONE lookup: `resolve_provider` gains a private `pick` step that
   applies the source-root rule on top of `resolve_unique`'s order, and
