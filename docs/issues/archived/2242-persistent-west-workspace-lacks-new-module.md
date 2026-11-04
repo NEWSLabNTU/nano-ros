@@ -1,7 +1,7 @@
 ---
 id: 2242
 title: "`just zephyr setup` skips `west update` on a present workspace, so a module newly allowlisted never reaches a persistent runner"
-status: open
+status: wontfix
 type: bug
 area: [zephyr, ci, setup]
 severity: medium
@@ -9,7 +9,9 @@ found: 2026-11-04
 related: [phase-524, 1279, 1275, 1282]
 ---
 
-**Home: [phase-524](../roadmap/phase-524-emulator-twins.md)** — homed 2026-11-04: W4c's `hal_stm32` allowlisting is the module a persistent runner never fetched.
+> **Closed 2026-11-05 as a duplicate of [#2249](2249-zephyr-workspace-manifest-never-refreshed.md)**, fixed by #3090. Read that issue for the cause and the fix; this file is kept as the record of how the symptom was first reported.
+
+**Home: [phase-524](../../roadmap/phase-524-emulator-twins.md)** — homed 2026-11-04: W4c's `hal_stm32` allowlisting is the module a persistent runner never fetched.
 
 ## Measured
 

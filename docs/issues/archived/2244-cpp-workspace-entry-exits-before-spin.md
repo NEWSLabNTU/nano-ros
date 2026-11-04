@@ -1,7 +1,7 @@
 ---
 id: 2244
 title: "The native C++ workspace Entry exits within 300 ms instead of entering its spin loop (tier 1 regression)"
-status: open
+status: wontfix
 type: bug
 area: [cpp, workspace, testing]
 severity: medium
@@ -9,7 +9,9 @@ found: 2026-11-04
 related: [phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the one real failure in the scheduled tier-1 run of 2026-11-04.
+> **Closed 2026-11-05 as a duplicate of [#2250](2250-cpp-entry-test-passed-on-retry-loop.md)**, fixed by #3091. Read that issue for the cause and the fix; this file is kept as the record of how the symptom was first reported.
+
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the one real failure in the scheduled tier-1 run of 2026-11-04.
 
 ## Measured
 
