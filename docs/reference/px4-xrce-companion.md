@@ -28,7 +28,7 @@ CDR `px4_msgs::msg::*` types come straight from the PX4 `.msg` tree — no ament
 `px4_msgs` dependency:
 
 ```bash
-nros generate-px4-msgs \
+nros px4 msgs \
   --px4 third-party/px4/PX4-Autopilot \
   --output generated
 # → generated/px4_msgs (a path-dep crate)

@@ -196,9 +196,7 @@ FAMILIES = {
 # order: a family is defined, then a package that needs it is written. A row
 # whose glob has started matching is an ERROR — the waiver is not a place to
 # park a family, and it must leave the moment it stops being true.
-BORN_EMPTY = {
-    "command": "phase-527 W5 writes the first command package",
-}
+BORN_EMPTY = {}
 
 # RFC-0119 D3 — what a package is built for follows from its kinds.
 HOST_KINDS = {"runner", "command"}
@@ -480,6 +478,11 @@ def self_test(quiet=False):
             # One minimal descriptor per family, so no family trips the
             # "refusing to pass on an empty set" arm...
             dest = os.path.join(tmp, pat.replace("*", "x"))
+            # Two families whose globs share a shape (`serdes` and `command`
+            # are both `packages/*/*/…`) would write one package.xml over the
+            # other; the later one takes a directory named after itself.
+            if os.path.exists(os.path.join(os.path.dirname(dest), "package.xml")):
+                dest = os.path.join(tmp, pat.replace("*", kind, 1).replace("*", "x"))
             _write(dest, _descriptor_body(kind))
             # ... and its announcement, so the baseline is clean and each
             # assertion below names exactly one offender.

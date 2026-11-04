@@ -284,6 +284,59 @@ pub fn dispatch(argv: &[OsString]) {
     }
 }
 
+/// A built-in spelling that a command package replaced (phase-527 W5):
+/// `nros ws router-config …` runs `nros router config …`, `nros
+/// generate-px4-msgs …` runs `nros px4 msgs …`. The old spelling stays a
+/// hidden verb whose only job is this, so its output is the package's, byte
+/// for byte, and the CLI keeps no copy of the code.
+#[derive(Debug, clap::Args)]
+pub struct AliasArgs {
+    /// Passed to the command package unchanged.
+    #[arg(
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        num_args = 0..,
+        value_name = "ARGS"
+    )]
+    pub args: Vec<OsString>,
+}
+
+/// Run the command package that replaced a built-in: `verb` with `sub`
+/// followed by `args` (RFC-0119 D7's dispatch, for a spelling clap already
+/// matched). Exits with the command's status; returns only an error.
+///
+/// # Errors
+///
+/// When no package on the provider search path announces `verb`.
+pub fn run_alias(verb: &str, sub: &str, args: Vec<OsString>, package: &str) -> eyre::Result<()> {
+    let mut all = vec![OsString::from(sub)];
+    all.extend(args);
+    let req = Request {
+        tier: CommandTier::User,
+        verb: verb.to_string(),
+        args: all,
+    };
+    let ws = workspace();
+    let root = crate::orchestration::nano_ros_root::resolve(None, &ws);
+    match lookup(&req, &ws, root.as_deref()) {
+        Lookup::NotACommand => eyre::bail!(
+            "`nros {verb} {sub}` is provided by the command package `{package}`, and no package \
+             on the provider search path announces `{verb}`. It ships with nano-ros: run this \
+             `nros` from a nano-ros checkout or a released toolchain."
+        ),
+        Lookup::Refused(m) => {
+            eprintln!("nros: {m}");
+            std::process::exit(REFUSED);
+        }
+        Lookup::Run(inv) => {
+            for w in &inv.warnings {
+                eprintln!("warning: {w}");
+            }
+            std::process::exit(execute(&inv));
+        }
+    }
+}
+
 /// Execute `inv`: `exec` on Unix, so the command's status (and a signal) is
 /// the process's own; elsewhere spawn, wait, and return its code.
 fn execute(inv: &Invocation) -> i32 {

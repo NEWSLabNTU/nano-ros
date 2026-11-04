@@ -1,6 +1,6 @@
 //! Gather the generated `px4_msgs` FFI pair into one `include!`-able file.
 //!
-//! `nros generate-px4-msgs --lang cpp` writes `<name>_types.rs` + `<name>_exports.rs`
+//! `nros px4 msgs --lang cpp` writes `<name>_types.rs` + `<name>_exports.rs`
 //! per message into `$NROS_PX4_BRIDGE_GEN/px4_msgs/msg/`. Rather than restate the
 //! topic list here (a second source for it — the thing issue 0362 warns about for
 //! the type hash), glob whatever the generator wrote: the recipe's `--topics` is
@@ -9,7 +9,7 @@ use std::{env, fs, path::PathBuf};
 
 fn main() {
     let gen_dir = PathBuf::from(env::var("NROS_PX4_BRIDGE_GEN").expect(
-        "NROS_PX4_BRIDGE_GEN must point at the `nros generate-px4-msgs --lang cpp` output",
+        "NROS_PX4_BRIDGE_GEN must point at the `nros px4 msgs --lang cpp` output",
     ))
     .join("px4_msgs")
     .join("msg");
@@ -35,7 +35,7 @@ fn main() {
     }
     assert!(
         !types.is_empty(),
-        "no *_types.rs under {} — run `nros generate-px4-msgs --lang cpp` first",
+        "no *_types.rs under {} — run `nros px4 msgs --lang cpp` first",
         gen_dir.display()
     );
     types.sort();

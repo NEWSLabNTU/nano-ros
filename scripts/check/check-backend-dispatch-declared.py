@@ -134,6 +134,10 @@ CLASSIFICATION: dict[str, tuple[str | None, tuple[str, ...], str]] = {
     "zpico-link-ivc": (None, (), "a zenoh-pico link, not a backend"),
     "zpico-serial": (None, (), "a zenoh-pico link, not a backend"),
     "zpico-platform-custom": (None, (), "platform shim for zenoh-pico"),
+    # phase-527 W5 (RFC-0119 D5): command packages live beside the domain
+    # they serve, and are host tools no image links.
+    "nros_zenoh_tools": (None, (), "the `nros router` command package, a host tool"),
+    "nros_px4_tools": (None, (), "the `nros px4` command package, a host tool"),
 }
 
 PRODUCER = "packages/cli/nros-cli-core/src/sizing_descriptor.rs"

@@ -35,7 +35,6 @@ pub mod explain;
 pub mod extension;
 pub mod flash;
 pub mod generate;
-pub mod generate_px4;
 pub mod graph;
 pub mod image_facts;
 pub mod init;
@@ -206,12 +205,17 @@ pub enum Cmd {
     // phase-530 W1, RFC-0120 D2.
     Configure(configure::Args),
 
-    /// Generate CDR `px4_msgs::msg::*` from a PX4-Autopilot `.msg` tree.
-    ///
-    /// Needs no ament dependency. Serves the XRCE companion path.
-    // Phase 233 / RFC-0039 Track B.
-    #[command(name = "generate-px4-msgs")]
-    GeneratePx4Msgs(generate_px4::Args),
+    /// The old spelling of `nros px4 msgs`, which the `nros_px4_tools` command
+    /// package provides. Runs that package with the arguments unchanged.
+    // Phase 233 / RFC-0039 Track B; moved to a command package by phase-527
+    // W5 (RFC-0119 D8). Hidden: the extension verb is the spelling to learn.
+    #[command(
+        name = "generate-px4-msgs",
+        hide = true,
+        disable_help_flag = true,
+        disable_version_flag = true
+    )]
+    GeneratePx4Msgs(extension::AliasArgs),
 
     /// Build-tool C/C++ binding generation (`--args-file` / `resolve-deps`).
     ///

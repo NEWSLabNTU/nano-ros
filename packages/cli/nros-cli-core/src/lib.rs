@@ -309,7 +309,9 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         // `Sync` lowers to `Configure` above; this arm is for a caller that
         // dispatches without lowering.
         cmd::Cmd::Sync(args) | cmd::Cmd::Configure(args) => cmd::configure::run(args),
-        cmd::Cmd::GeneratePx4Msgs(args) => cmd::generate_px4::run(args),
+        cmd::Cmd::GeneratePx4Msgs(a) => {
+            cmd::extension::run_alias("px4", "msgs", a.args, "nros_px4_tools")
+        }
         cmd::Cmd::Codegen(args) => cmd::codegen::run(args),
         cmd::Cmd::CodegenSystem(args) => cmd::codegen_system::run(args),
         cmd::Cmd::ModelPath(args) => cmd::model_path::run(args),

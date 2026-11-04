@@ -128,7 +128,7 @@ command, so start it after the bridge and the subscriber.)
 Publishing on a wire (rather than into uORB) pulls in three things the W2 demo
 needs none of:
 
-1. **Generated CDR types.** `nros generate-px4-msgs --lang cpp --topics …`
+1. **Generated CDR types.** `nros px4 msgs --lang cpp --topics …`
    (issue 0362). `rmw_zenoh` keys discovery on the **RIHS01 type hash**, so a
    hand-rolled payload with a guessed hash is either invisible to ROS 2 or —
    worse — visible and decoded as the wrong type. The hash therefore comes from

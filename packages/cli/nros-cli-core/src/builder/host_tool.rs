@@ -206,8 +206,10 @@ pub fn executable(
 ///
 /// - A package of the workspace `ws`: [`executable`], which `nros build`
 ///   filled (RFC-0119 D3); an unbuilt one is refused naming the build.
-/// - A nano-ros checkout's own runner (`packages/runners/`): built beside the
-///   CLI by `just setup-cli`.
+/// - A nano-ros checkout's own host tool (a runner under `packages/runners/`, a
+///   command package beside its domain): built beside the CLI by `just
+///   setup-cli`, into the target directory of the cargo workspace it belongs
+///   to ([`tree_target_dir`]).
 /// - Otherwise a prebuilt package's own `bin/<bin>`: a released toolchain's
 ///   `share/nros/packages/<package>/` (phase-527 W6), or a user's overlay
 ///   package placed the same way.
@@ -241,11 +243,11 @@ pub fn locate_built(
         let triple = crate::orchestration::metadata_build::host_triple();
         return executable(&ws, package, bin, &triple, wanted_for).map_err(|e| e.to_string());
     }
-    // A nano-ros checkout's own runner: built beside the CLI.
+    // A nano-ros checkout's own host tool: built beside the CLI.
     if let Some(root) = root
-        && dir.starts_with(root.join("packages/runners"))
+        && let Some(target) = tree_target_dir(&root, &dir)
     {
-        let exe = root.join("packages/runners/target/release").join(bin);
+        let exe = target.join("release").join(bin);
         return if exe.is_file() {
             Ok(exe)
         } else {
@@ -269,6 +271,26 @@ pub fn locate_built(
             dir.display(),
         ))
     }
+}
+
+/// Where `just setup-cli` puts the binaries of the in-tree host tool at
+/// `dir`: `<workspace root>/target`, the workspace root being the nearest
+/// directory from `dir` up to the nano-ros `root` (exclusive) whose
+/// `Cargo.toml` declares `[workspace]`. `packages/runners/` is one for every
+/// runner; a command package is its own. `None` when `dir` is outside `root`
+/// or no such manifest stands between them.
+#[must_use]
+pub fn tree_target_dir(root: &Path, dir: &Path) -> Option<PathBuf> {
+    if !dir.starts_with(root) {
+        return None;
+    }
+    dir.ancestors()
+        .take_while(|d| *d != root)
+        .find(|d| {
+            std::fs::read_to_string(d.join("Cargo.toml"))
+                .is_ok_and(|t| t.lines().any(|l| l.trim() == "[workspace]"))
+        })
+        .map(|d| d.join("target"))
 }
 
 #[cfg(test)]
@@ -371,6 +393,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join("packages/runners/nros_runner_x");
         std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            root.path().join("packages/runners/Cargo.toml"),
+            "[workspace]\nmembers = [\"nros_runner_x\"]\n",
+        )
+        .unwrap();
         let locate = || {
             locate_built(
                 root.path(),
@@ -391,6 +418,30 @@ mod tests {
         std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
         std::fs::write(&exe, "").unwrap();
         assert_eq!(locate().unwrap(), exe.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn a_tree_host_tool_builds_into_its_own_workspace_target() {
+        let root = tempfile::tempdir().unwrap();
+        let r = root.path();
+        let runner = r.join("packages/runners/nros_runner_x");
+        let tool = r.join("packages/rmw/zenoh/nros_zenoh_tools");
+        for d in [&runner, &tool] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(r.join("packages/runners/Cargo.toml"), "[workspace]\n").unwrap();
+        std::fs::write(runner.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        std::fs::write(
+            tool.join("Cargo.toml"),
+            "[package]\nname = \"t\"\n\n[workspace]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            tree_target_dir(r, &runner),
+            Some(r.join("packages/runners/target"))
+        );
+        assert_eq!(tree_target_dir(r, &tool), Some(tool.join("target")));
+        assert_eq!(tree_target_dir(r, Path::new("/elsewhere")), None);
     }
 
     #[test]

@@ -71,7 +71,9 @@ MUST_REACH = (
     "packages/cli/nros-cli-core/src/orchestration/planner.rs",
     "packages/cli/nros-cli-core/src/orchestration/workspace.rs",
     "packages/cli/nros-cli-core/src/cmd/codegen.rs",
-    "packages/cli/nros-cli-core/src/cmd/generate_px4.rs",
+    # phase-527 W5 moved `nros generate-px4-msgs` into the `nros px4` command
+    # package; its `--lang` dispatch moved with it.
+    "packages/rmw/xrce/nros_px4_tools/src/main.rs",
     "packages/cli/nros-cli-core/src/cmd/build.rs",
     "packages/cli/cargo-nano-ros/src/lib.rs",
 )
@@ -128,7 +130,17 @@ def scan_text(text: str, pats) -> list[tuple[int, str, str]]:
 
 def scope() -> list[str]:
     out = subprocess.run(
-        ["git", "-C", str(ROOT), "ls-files", "--", "packages/cli/*/src/*.rs"],
+        [
+            "git",
+            "-C",
+            str(ROOT),
+            "ls-files",
+            "--",
+            "packages/cli/*/src/*.rs",
+            # phase-527 W5: a first-party command package consumes nros-lang
+            # from outside the CLI workspace.
+            "packages/rmw/xrce/nros_px4_tools/src/*.rs",
+        ],
         check=True,
         capture_output=True,
         text=True,

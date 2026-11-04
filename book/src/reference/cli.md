@@ -584,7 +584,7 @@ the image's build settings; for C and C++ during the CMake configure). `interfac
 nros interface show std_msgs/msg/Header
 ```
 
-### `nros generate-px4-msgs`
+### `nros px4 msgs`
 
 Generate CDR-serializable `px4_msgs::msg::*` bindings from a PX4-Autopilot
 `.msg` tree (`--px4 <dir>`, default `$PX4_AUTOPILOT_DIR`) into `--output`.
@@ -595,8 +595,36 @@ topic name), pulling in nested types. See the
 [PX4 starter](../targets/px4.md).
 
 ```sh
-nros generate-px4-msgs --output generated/px4_msgs --topics vehicle_status
+nros px4 msgs --output generated/px4_msgs --topics vehicle_status
 ```
+
+`nros px4` is a command package (`nros_px4_tools`), not a built-in: `nros`
+runs its executable with the arguments unchanged. In a checkout `just
+setup-cli` builds it. The old spelling, `nros generate-px4-msgs`, still works
+and runs the same package.
+
+### `nros router config --model <model>`
+
+Print the zenoh router `downsampling` rule `nros configure` wrote beside a
+resolved model, as the `ZENOH_CONFIG_OVERRIDE` entry `rmw_zenohd` reads
+(`--format json5` prints the artifact itself):
+
+```sh
+ZENOH_CONFIG_OVERRIDE="$(nros router config --model build/nros/models/<bringup>/<stem>.yaml)" rmw_zenohd
+```
+
+It fails when there is no rule: no subscriber declares an `ingress`, no image
+links zenoh, or the model was never configured. Like `nros px4`, it is a
+command package (`nros_zenoh_tools`); the old spelling `nros ws router-config`
+runs the same package.
+
+### Extension commands
+
+A verb `nros` does not know is looked up as an announced `command` package
+(`<nano_ros_provides kind="command" name="<verb>"/>`). `nros help --all` lists
+every one this workspace reaches, with its summary and package. The command runs with
+`NROS_WS_ROOT`, `NROS_TOOLCHAIN` and `NROS_CLI` set, and its exit status is
+`nros`'s. A package announcing a built-in verb is refused.
 
 ## Inspect
 

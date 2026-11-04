@@ -576,3 +576,10 @@ CMake code when they build it, so this adds no new boundary.
   plus `share/nros/packages`, both underlay; the release moves the runner and
   command packages out of the SDK root into the prebuilt directory, and the
   shipped descriptor states `bin`.
+- 2026-11-05 — phase-527 W5: D8's two command packages landed,
+  `nros_zenoh_tools` (`nros router config`) and `nros_px4_tools` (`nros px4
+  msgs`), each its own cargo workspace beside its domain (D5). The old
+  built-ins stay as hidden verbs that run the package with their arguments
+  unchanged. A checkout's host tool is found in the target directory of the
+  cargo workspace it belongs to, which covers `packages/runners/` and a
+  command package alike.

@@ -1,0 +1,29 @@
+# phase-527 W5 (RFC-0119 D8) — `nros px4`, a command package.
+#
+# A host tool (RFC-0119 D3), so it is its own cargo workspace with its own
+# lock and target directory (issue 0616: one target directory per workspace
+# root). `just setup-cli` builds it beside the CLI; a released toolchain
+# ships the binary in its `bin/` (phase-527 W6). The generator itself stays
+# in `rosidl-bindgen`, which the CLI shares.
+[package]
+name = "nros_px4_tools"
+version = "0.0.0"
+edition = "2024"
+authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>"]
+rust-version = "1.87"
+license = "MIT OR Apache-2.0"
+description = "nros px4: generate px4_msgs from a PX4-Autopilot .msg tree"
+publish = false
+
+[[bin]]
+name = "nros-px4-tools"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+eyre = "0.6"
+nros-lang = { path = "../../../cli/nros-lang", features = ["std"] }
+rosidl-bindgen = { path = "../../../cli/rosidl-bindgen" }
+rosidl-codegen = { path = "../../../cli/rosidl-codegen" }
+
+[workspace]

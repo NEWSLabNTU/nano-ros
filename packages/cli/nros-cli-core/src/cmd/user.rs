@@ -37,7 +37,7 @@ pub const GROUPS: &[(&str, &[&str])] = &[
         &["run", "flash", "monitor", "bench", "debug"],
     ),
     ("Workspace", &["list", "graph"]),
-    ("Interfaces", &["interface", "generate-px4-msgs"]),
+    ("Interfaces", &["interface"]),
     (
         "Inspect",
         &["doctor", "board", "config", "plan", "check", "explain"],

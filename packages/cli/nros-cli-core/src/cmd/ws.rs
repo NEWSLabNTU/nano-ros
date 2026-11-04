@@ -109,17 +109,19 @@ pub enum Sub {
     #[command(name = "model-dims", hide = true)]
     ModelDims(ModelDimsArgs),
 
-    /// Print the router `downsampling` rule `nros sync` wrote beside a model.
-    ///
-    /// Ready to deploy:
-    /// `ZENOH_CONFIG_OVERRIDE="$(nros ws router-config --model <model>)"`.
-    ///
-    /// Reads the artifact rather than re-lowering, so the router runs exactly
-    /// the rule sync wrote. Fails when there is none: no subscriber declares
-    /// an arrival curve, no image links zenoh, or the model was never synced.
-    // phase-516 W1b, RFC-0074 enforcement point 1.
-    #[command(name = "router-config")]
-    RouterConfig(RouterConfigArgs),
+    /// The old spelling of `nros router config`, which the `nros_zenoh_tools`
+    /// command package provides. Runs that package with the arguments
+    /// unchanged.
+    // phase-516 W1b, RFC-0074 enforcement point 1; moved to a command package
+    // by phase-527 W5 (RFC-0119 D8). Hidden: the extension verb is the
+    // spelling to learn.
+    #[command(
+        name = "router-config",
+        hide = true,
+        disable_help_flag = true,
+        disable_version_flag = true
+    )]
+    RouterConfig(crate::cmd::extension::AliasArgs),
 
     // phase-341's `check-board-projections` verb lived here. RETIRED by
     // phase-445 W6 with the per-leaf `.cargo/nros-board.toml` projection it
@@ -480,24 +482,6 @@ pub struct ProvidersArgs {
     // phase-527 W2d.
     #[command(flatten)]
     pub sources: crate::cmd::build::BasePathsArgs,
-}
-
-#[derive(Debug, ClapArgs)]
-pub struct RouterConfigArgs {
-    /// The resolved SystemModel (`build/nros/models/<bringup>/<stem>.yaml`);
-    /// the rule is the `<stem>.router.json5` beside it.
-    #[arg(long, value_name = "PATH")]
-    pub model: PathBuf,
-    /// `override` (default): the `ZENOH_CONFIG_OVERRIDE` entry
-    /// `rmw_zenohd` reads. `json5`: the artifact itself, for a config file.
-    #[arg(long, value_enum, default_value_t = RouterConfigFormat::Override)]
-    pub format: RouterConfigFormat,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum RouterConfigFormat {
-    Override,
-    Json5,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -921,7 +905,9 @@ pub fn run(args: Args) -> Result<()> {
         Sub::Clean(a) => run_clean(a),
         Sub::Doctor(a) => run_doctor(a),
         Sub::ModelDims(a) => run_model_dims(a),
-        Sub::RouterConfig(a) => run_router_config(a),
+        Sub::RouterConfig(a) => {
+            crate::cmd::extension::run_alias("router", "config", a.args, "nros_zenoh_tools")
+        }
         Sub::CentralPatch(a) => run_central_patch(a),
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
         Sub::SeedLock(a) => run_seed_lock(a),
@@ -5590,29 +5576,6 @@ fn execution_tier_dims(yaml: &str) -> BTreeSet<String> {
         }
     }
     out
-}
-
-/// `nros ws router-config --model <model.yaml>` — phase-516 W1b's deploy door.
-fn run_router_config(args: RouterConfigArgs) -> Result<()> {
-    let path = nros_orchestration_ir::router_rule::router_rule_path_for_model(&args.model);
-    let text = match std::fs::read_to_string(&path) {
-        Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => bail!(
-            "router-config: no router rule at {} — no subscriber of this model declares an \
-             `arrival_curve`, no image links zenoh, or `nros configure` has not run since it did",
-            path.display()
-        ),
-        Err(e) => bail!("router-config: read {}: {e}", path.display()),
-    };
-    match args.format {
-        RouterConfigFormat::Json5 => print!("{text}"),
-        RouterConfigFormat::Override => println!(
-            "{}",
-            nros_orchestration_ir::router_rule::config_override_from_artifact(&text)
-                .map_err(|e| eyre::eyre!("router-config: {}: {e}", path.display()))?
-        ),
-    }
-    Ok(())
 }
 
 /// `nros ws model-dims <model.yaml>` — issue 0380's read-only door onto

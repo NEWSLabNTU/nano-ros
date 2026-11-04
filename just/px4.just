@@ -247,7 +247,7 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     fi
 
     echo "[1/4] generating CDR px4_msgs C++ ({{topics}})"
-    nros generate-px4-msgs --lang cpp --topics '{{topics}}' \
+    nros px4 msgs --lang cpp --topics '{{topics}}' \
         --ros-edition '{{edition}}' -o "$GEN"
 
     echo "[2/4] building the generated-message FFI staticlib"
@@ -543,14 +543,14 @@ build-fixtures:
         nros_lane_skip "PX4-Autopilot .msg tree not found at $PX4_DIR/msg — run: just px4 setup"
     fi
     nros_cli="$(nros_cli_bin)"
-    if ! "$nros_cli" generate-px4-msgs --help >/dev/null 2>&1; then
-        nros_lane_skip "'$nros_cli' lacks 'generate-px4-msgs' — rebuild the in-tree CLI (just setup-cli)"
+    if ! "$nros_cli" px4 msgs --help >/dev/null 2>&1; then
+        nros_lane_skip "'$nros_cli' cannot run 'px4 msgs' — build the in-tree command packages (just setup-cli)"
     fi
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     for ex in px4-stub offboard-companion px4-probe; do
         dir="examples/px4/rust/companion/$ex"
         echo "  → generate px4_msgs for $dir"
-        "$nros_cli" generate-px4-msgs --px4 "$PX4_DIR" --output "$dir/generated" >/dev/null
+        "$nros_cli" px4 msgs --px4 "$PX4_DIR" --output "$dir/generated" >/dev/null
         # issue 0510 — the patch config, without which the registry-named nros
         # deps resolve against crates.io. Gitignored, so a fresh clone has none.
         echo "  → nros configure $dir"

@@ -235,7 +235,7 @@ nros_router_check_locator() {
 
 # phase-516 W1b (RFC-0074 enforcement point 1) -- an optional second argument
 # names a resolved SystemModel; the router then also runs the `downsampling`
-# rule `nros configure` wrote beside it (`nros ws router-config`), so a declared
+# rule `nros configure` wrote beside it (`nros router config`), so a declared
 # ingress is enforced before the device decodes anything. Empty: no rule.
 nros_router_exec() {
     local locator="${1:?nros_router_exec: a locator is required}"
@@ -247,7 +247,7 @@ nros_router_exec() {
     local override="listen/endpoints=[\"${locator}\"];scouting/multicast/enabled=false"
     if [ -n "$model" ]; then
         local rule
-        if ! rule="$(nros ws router-config --model "$model")"; then
+        if ! rule="$(nros router config --model "$model")"; then
             return 1
         fi
         override="${override};${rule}"

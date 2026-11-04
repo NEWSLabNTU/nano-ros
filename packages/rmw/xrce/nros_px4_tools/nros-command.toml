@@ -1,0 +1,5 @@
+# RFC-0119 D2. `bin` is not stated: the package has one bin target,
+# `nros-px4-tools`, so it is derived.
+protocol = 1
+summary  = "Generate px4_msgs from a PX4-Autopilot .msg tree"
+tier     = "user"
