@@ -124,8 +124,9 @@ def selection_supplies(leaf_dir: Path) -> "bool | None":
     `None` when the leaf does not depend on its generated `<pkg>_nros_selection`
     package (its own sources are the whole answer). Otherwise whether that
     package links a provider, by the rule `facade::write_leaf_selection` writes
-    it with: the board descriptor's `crate_root_extra` goes into the package's
-    `lib.rs` unless the image states a `panic` policy other than `own`.
+    it with: the board descriptor's `own_panic_root_extra` (its panic crate)
+    goes into the package's `lib.rs` unless the image states a `panic` policy
+    other than `own` (`BoardFacts::for_image_panic`, phase-535 W0).
     """
     cargo = leaf_dir / "Cargo.toml"
     if not cargo.is_file():

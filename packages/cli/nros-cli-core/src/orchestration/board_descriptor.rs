@@ -297,6 +297,23 @@ pub struct BoardEntry {
     /// still wins.
     #[serde(default)]
     pub panic: Option<String>,
+    /// Crate-root items that ARE the board's `#[panic_handler]`
+    /// (`use panic_semihosting as _;`) — emitted only when the image's
+    /// effective panic policy is `own` (its own `panic`, else [`Self::panic`]).
+    ///
+    /// Separate from [`Self::crate_root_extra`] because the two answer
+    /// different questions: `extern crate zephyr;` is needed whatever the
+    /// policy, while a panic crate collides (`E0152`) with the handler
+    /// `nros::main!(panic = "platform" | "halt")` emits. Before this split the
+    /// leaf road cleared EVERY crate-root item for a non-`own` image (dropping
+    /// `extern crate zephyr;` with the panic crate) and the generated-entry
+    /// road cleared none, so `panic = "platform"` on mps2-an385-freertos
+    /// compiled as a leaf and failed as a workspace image (phase-535 W0).
+    #[serde(default)]
+    pub own_panic_root_extra: String,
+    /// Manifest lines for the crates [`Self::own_panic_root_extra`] names.
+    #[serde(default)]
+    pub own_panic_root_deps: Vec<String>,
     /// Builder-chain suffix appended inside the closure; empty for most boards.
     #[serde(default)]
     pub closure_extra: String,
@@ -3225,33 +3242,37 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             let Some(entry) = d.entry.as_ref() else {
                 continue;
             };
-            for line in entry.crate_root_extra.lines() {
-                let line = line.trim();
-                let Some(rest) = line.strip_prefix("use ") else {
-                    continue;
-                };
-                let krate = rest
-                    .split([' ', ';', ':'])
-                    .next()
-                    .unwrap_or_default()
-                    .trim();
-                if krate.is_empty() || krate == entry.crate_name {
-                    continue;
-                }
-                let dashed = krate.replace('_', "-");
-                let declared = entry
-                    .crate_root_deps
-                    .iter()
-                    .any(|dep| dep.split(['=', ' ']).next().unwrap_or_default().trim() == dashed);
-                assert!(
-                    declared,
-                    "board {:?}: `crate_root_extra` uses `{krate}` but \
+            for (extra, deps) in [
+                (&entry.crate_root_extra, &entry.crate_root_deps),
+                (&entry.own_panic_root_extra, &entry.own_panic_root_deps),
+            ] {
+                for line in extra.lines() {
+                    let line = line.trim();
+                    let Some(rest) = line.strip_prefix("use ") else {
+                        continue;
+                    };
+                    let krate = rest
+                        .split([' ', ';', ':'])
+                        .next()
+                        .unwrap_or_default()
+                        .trim();
+                    if krate.is_empty() || krate == entry.crate_name {
+                        continue;
+                    }
+                    let dashed = krate.replace('_', "-");
+                    let declared = deps.iter().any(|dep| {
+                        dep.split(['=', ' ']).next().unwrap_or_default().trim() == dashed
+                    });
+                    assert!(
+                        declared,
+                        "board {:?}: `crate_root_extra` uses `{krate}` but \
                      `crate_root_deps` does not declare `{dashed}`. A generated \
                      entry would emit the `use` with no dependency and fail to \
                      compile (phase-383 W9.b).",
-                    d.names
-                );
-                checked += 1;
+                        d.names
+                    );
+                    checked += 1;
+                }
             }
         }
         assert!(
