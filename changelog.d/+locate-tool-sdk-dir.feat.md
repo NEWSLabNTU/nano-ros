@@ -1,0 +1,1 @@
+`nros locate tool <name>` prints the install directory of an SDK tool that `nros setup <board>` provisioned, such as `nros locate tool zephyr-sdk` for `ZEPHYR_SDK_INSTALL_DIR`. The answer is the version this release pins, never another one installed beside it, and a tool that is not installed, or not known, fails with a message naming `nros setup <board>`.

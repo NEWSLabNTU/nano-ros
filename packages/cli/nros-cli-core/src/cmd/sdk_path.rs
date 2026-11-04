@@ -65,33 +65,85 @@ pub fn run(args: Args) -> Result<()> {
         return run_source(&index, &args);
     }
 
-    // RFC-0103 D3 rung 3 — the project's own `[tools]` row, before the pin.
-    if index.tool.contains_key(&args.tool)
-        && let Some(p) = crate::cmd::locate::project_dir(None)
-            .and_then(|d| nros_build_paths::locate::project_entry(&d, "tools", &args.tool))
-    {
-        if args.require && !p.is_dir() {
-            bail!(
-                "[tools] {} = {} (the project's system.toml) is not a directory",
-                args.tool,
-                p.display()
-            );
+    match tool_path(&index, &args.tool, args.require) {
+        Ok(p) => {
+            println!("{}", p.display());
+            Ok(())
         }
-        println!("{}", p.display());
-        return Ok(());
-    }
-
-    let Some(dir) = sdk_store::tool_dir(&index, &args.tool) else {
-        // Name what IS pinned: a typo and an unprovisioned tool look identical
-        // otherwise, and the caller is usually a cmake file that cannot explore.
-        let known: Vec<&str> = index.tool.keys().map(String::as_str).collect();
-        bail!(
+        Err(ToolMiss::Unknown { known }) => bail!(
             "no `[tool.{}]` in {} — the index pins: {}",
             args.tool,
             args.index.display(),
             known.join(", ")
-        );
+        ),
+        Err(ToolMiss::ProjectNotDir(p)) => bail!(
+            "[tools] {} = {} (the project's system.toml) is not a directory",
+            args.tool,
+            p.display()
+        ),
+        Err(ToolMiss::NotInstalled { version, tried }) => {
+            // Name every path tried. "Not installed" and "installed where I did
+            // not look" printed the same line before, and they need different
+            // fixes.
+            let tried: Vec<String> = tried.iter().map(|p| format!("  {}", p.display())).collect();
+            bail!(
+                "{} is pinned to {} but no install was found. Looked at:\n{}\n\
+                 Provision it:  nros setup --tool {}\n\
+                 (NOT substituting another version on purpose: the store is shared \
+                 between projects while the pin is per-project, so a substitution \
+                 silently gives this build another project's toolchain.)",
+                args.tool,
+                version,
+                tried.join("\n"),
+                args.tool
+            )
+        }
+    }
+}
+
+/// Why [`tool_path`] has no answer.
+#[derive(Debug)]
+pub(crate) enum ToolMiss {
+    /// The index has no `[tool.<name>]`; `known` is every tool it pins.
+    Unknown { known: Vec<String> },
+    /// The project's `[tools]` row names something that is not a directory.
+    ProjectNotDir(PathBuf),
+    /// Pinned, but neither constructed candidate is a directory.
+    NotInstalled {
+        version: String,
+        tried: Vec<PathBuf>,
+    },
+}
+
+/// Where a `[tool.<name>]` of the index is — THE answer `nros dev sdk path` and
+/// `nros locate tool <name>` both print (RFC-0103 D3 for a tool row: the
+/// project's `[tools]` row, then the store at the pin, then fail).
+///
+/// Constructed, never enumerated (issue 1546): the candidates are
+/// `<store>/<tool>/<pinned version>` and the legacy flat prefix, both built
+/// from the index. With `require`, a pinned tool that is not on disk is a miss;
+/// without it the canonical path is answered even when absent, because the
+/// caller asked where the tool GOES.
+pub(crate) fn tool_path(
+    index: &SdkIndex,
+    tool: &str,
+    require: bool,
+) -> std::result::Result<PathBuf, ToolMiss> {
+    let Some(entry) = index.tool.get(tool) else {
+        return Err(ToolMiss::Unknown {
+            known: index.tool.keys().cloned().collect(),
+        });
     };
+
+    // RFC-0103 D3 rung 3 — the project's own `[tools]` row, before the pin.
+    if let Some(p) = crate::cmd::locate::project_dir(None)
+        .and_then(|d| nros_build_paths::locate::project_entry(&d, "tools", tool))
+    {
+        if require && !p.is_dir() {
+            return Err(ToolMiss::ProjectNotDir(p));
+        }
+        return Ok(p);
+    }
 
     // Issue 0628 — answer with the layout that is actually PRESENT.
     //
@@ -103,38 +155,21 @@ pub fn run(args: Args) -> Result<()> {
     // while printing advice to install what was already installed.
     //
     // Still construction: two candidates from the same inputs, no enumeration.
-    let usable = sdk_store::tool_dir_usable(&index, &args.tool);
-
-    if args.require && usable.is_none() {
-        let version = index
-            .tool
-            .get(&args.tool)
-            .map(|t| t.version.as_str())
-            .unwrap_or("?");
-        // Name every path tried. "Not installed" and "installed where I did not
-        // look" printed the same line before, and they need different fixes.
-        let tried: Vec<String> = sdk_store::tool_dir_candidates(&index, &args.tool)
-            .iter()
-            .map(|p| format!("  {}", p.display()))
-            .collect();
-        bail!(
-            "{} is pinned to {} but no install was found. Looked at:\n{}\n\
-             Provision it:  nros setup --tool {}\n\
-             (NOT substituting another version on purpose: the store is shared \
-             between projects while the pin is per-project, so a substitution \
-             silently gives this build another project's toolchain.)",
-            args.tool,
-            version,
-            tried.join("\n"),
-            args.tool
-        );
+    if let Some(p) = sdk_store::tool_dir_usable(index, tool) {
+        return Ok(p);
     }
-
-    // Without `--require` this still prints the CANONICAL path when nothing is
-    // installed: the caller asked where the tool goes, and an empty answer is
-    // harder to act on than a path that does not exist yet.
-    println!("{}", usable.unwrap_or(dir).display());
-    Ok(())
+    if require {
+        return Err(ToolMiss::NotInstalled {
+            version: entry.version.clone(),
+            tried: sdk_store::tool_dir_candidates(index, tool),
+        });
+    }
+    // Without `require` this still answers the CANONICAL path when nothing is
+    // installed: an empty answer is harder to act on than a path that does not
+    // exist yet.
+    sdk_store::tool_dir(index, tool).ok_or(ToolMiss::Unknown {
+        known: index.tool.keys().cloned().collect(),
+    })
 }
 
 /// `--source` — the store path of a `[source.*]`, phase-440.
