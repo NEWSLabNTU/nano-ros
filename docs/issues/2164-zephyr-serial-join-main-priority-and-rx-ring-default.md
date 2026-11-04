@@ -6,12 +6,11 @@ type: limitation
 area: zenoh, zephyr, serial, scheduling
 severity: low
 found: 2026-10-30
-related: [issue-1534, issue-0852, issue-2179, phase-474, phase-478]
+related: [issue-1534, issue-0852, issue-2179, phase-474, phase-478, phase-524]
 ---
 
-**Home: [phase-474](../roadmap/phase-474-safety-island-board-findings.md)** T3 —
-the residue of issue 1534 (archived), split out when 1534's own defect, the
-tx-flush task outranking the read task, was closed on every port.
+**Home: [phase-524](../roadmap/phase-524-emulator-twins.md)** — re-homed 2026-11-05 from phase-474 T3 (archived): the measured RX-ring default waits on a serial-join lane, and the Nucleo-F767ZI serial twin (W4c) is one. It is the residue of issue 1534 (archived), split out when 1534's own
+defect, the tx-flush task outranking the read task, was closed on every port.
 
 ## What is left
 

@@ -21,7 +21,7 @@ session closes every item that board can close.
 
 **Gathered 2026-10-24:** [phase-162](archived/phase-162-rt-scheduling-harness.md) 162.C
 (H4), [phase-418](archived/phase-418-orin-safety-island-and-spe.md) 418.5 and 418.7
-(H5), the board leg of [phase-474](phase-474-safety-island-board-findings.md)
+(H5), the board leg of [phase-474](archived/phase-474-safety-island-board-findings.md)
 T4 (H6), [issue 1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md)
 (H7), and [issue 0902](../issues/archived/0902-action-goal-completion-is-variable.md)
 (H8, moved 2026-10-24). Each source phase keeps a pointer where the item was. Board reruns that
@@ -185,7 +185,7 @@ three `max-latency-runtime` verdicts in the SWD record, one per monitored
 publisher of the overrunning timer tick, for example
 `max-latency-runtime /mrm_handler/mrm_state measured=301 declared=149 (one dispatch, ms)`.
 Evidence and the other board halves (phase-474 I6, I8, I9) are recorded in
-[phase-474](phase-474-safety-island-board-findings.md), "The board halves,
+[phase-474](archived/phase-474-safety-island-board-findings.md), "The board halves,
 2026-10-26".
 
 ### H7 — the boot report's arena-exhaustion record, dumped from silicon
@@ -255,10 +255,25 @@ Both are under the 51,200 B frame. The image needed its level stack in DTCM
 overflowed 32 KiB; at 56 KiB its high-water read 55,992 B. The release main
 was not read.
 
+### H10 -- the island's 21 parameters with parameter services, on the board
+
+Moved here 2026-11-05 from [phase-474](archived/phase-474-safety-island-board-findings.md),
+which carried it as 446-W7 from the archived
+[phase-446](archived/phase-446-contract-declares-parameters.md). The island
+contract declares 21 parameters; with parameter services on, each one is an
+entity, and every service is a queryable.
+
+**Done when** the island's image builds and boots with parameter services on
+native, native_sim and the MR-CANHUBK344, the demo reads VERDICT PASS on both
+islands, and the board's heap use with the services is recorded here.
+
 ## Issues homed here
 
 | issue | why it belongs here |
 | --- | --- |
+| [#0880](../issues/0880-tcm-unused-while-sram-exhausted.md) | Re-homed 2026-11-05 from phase-474 (archived). 192 KiB of TCM sits unused while SRAM is exhausted; measured on the island's S32K344. |
+| [#1806](../issues/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md) | Re-homed 2026-11-05 from phase-474 (archived). The constrained-link zenoh changes have never run against the full Autoware graph on the island's board. |
+| [#1822](../issues/1822-can-link-priority-mapping-blocked-by-join-size.md) | Re-homed 2026-11-05 from phase-474 (archived). The CAN link's priority mapping waits on upstream: a QoS `Join` exceeds the CAN FD MTU. |
 | [#1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) | H7: resolved 2026-10-26, archived. |
 | [#0902](../issues/archived/0902-action-goal-completion-is-variable.md) | H8: not reproduced 2026-10-26, archived. |
 | [#2077](../issues/archived/2077-nros-boot-config-orphan-lands-in-s32k344-ivt-header.md) | found by batch A: typed entries did not link on the S32K344 without a local section placement. Resolved 2026-10-26 (the module places the section in rodata), archived. |

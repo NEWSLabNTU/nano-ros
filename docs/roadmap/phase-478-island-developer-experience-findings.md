@@ -14,7 +14,7 @@ nano-ros half of the developer-experience gaps the Autoware safety island
 (simple-autoware-safety-island) met while building, flashing and running its
 RTSS@Work 2026 demo on an NXP S32K344. The runtime findings of the same demo
 (the violation channel, monitor arming, the route-level check, the heap) are
-[phase-474](phase-474-safety-island-board-findings.md)'s and are cross-referenced
+[phase-474](archived/phase-474-safety-island-board-findings.md)'s and are cross-referenced
 here, not repeated. Nothing below was measured for this document except where a
 line says "checked 2026-10-05"; every other figure is quoted from the documents
 under **Source**.
@@ -26,7 +26,7 @@ number won, why a derived number is what it is, and what a refusal tells you to
 do. Different owners in the tree (the CLI, the doctor, the cmake ladder, the
 docs) and different tests, so they get their own acceptance list.
 
-**Prior:** [phase-474](phase-474-safety-island-board-findings.md) (the runtime
+**Prior:** [phase-474](archived/phase-474-safety-island-board-findings.md) (the runtime
 half), [phase-463](archived/phase-463-host-census-reconciles-contract-with-code.md)
 (contract vs code, the island's E3 experiments), phase-412 (derived entity
 knobs, liveliness), RFC-0095 and design 0014 (the shared store and
@@ -219,7 +219,7 @@ Related, and not the same: [issue 1490](../issues/1490-kconfig-knob-forwarding-g
 against the receive class. It landed as a refusal on both roads (the Zephyr
 configure, and `nros-rmw-zenoh`'s build over `zpico-sys`'s published ceiling),
 through one rule in `nros_sizing_descriptor::receive_ceiling`. The heap is
-[phase-474](phase-474-safety-island-board-findings.md) I5's: the configured
+[phase-474](archived/phase-474-safety-island-board-findings.md) I5's: the configured
 102,400 against a stale 133,952 ask is a derivation that does not yet cover the
 read path, and 474 owns making the two agree;
 [issue 1424](../issues/archived/1424-zephyr-heap-size-is-a-guess-with-a-peak-reporter-nothing-reads.md)
@@ -455,7 +455,7 @@ Every board that runs zenoh over a UART needs, today, two lines the island found
 by measurement (board conf lines 683-700): `CONFIG_MAIN_THREAD_PRIORITY=5`
 (Zephyr's 0 sits above the read task's band while main registers entities) and
 `CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES=4096` (default 1024, `zephyr/Kconfig:682-685`;
-measured 793-1024 at joins, 1,226 in a soak). [phase-474](phase-474-safety-island-board-findings.md)
+measured 793-1024 at joins, 1,226 in a soak). [phase-474](archived/phase-474-safety-island-board-findings.md)
 T3 owns closing [issue 1534](../issues/archived/1534-zephyr-tx-flush-task-outranks-the-read-task.md) (resolved 2026-10-30; residue [issue 2164](../issues/2164-zephyr-serial-join-main-priority-and-rx-ring-default.md))
 with a derived main priority and a measured ring default. This item is only the
 DX half, and it is cheap: until T3 lands, the serial-link guide and the Kconfig

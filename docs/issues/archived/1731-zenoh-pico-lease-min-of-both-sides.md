@@ -13,7 +13,7 @@ related: [phase-474, issue-1574]
 resolved_in: "zenoh-pico fork nano-ros-1.10.1 3c5cbc47 + 8d5ac2fe"
 ---
 
-**Resolved 2026-10-30** — see the last section. **Home: [phase-474](../../roadmap/phase-474-safety-island-board-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Resolved 2026-10-30** — see the last section. **Home: [phase-474](../../roadmap/archived/phase-474-safety-island-board-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## What zenoh-pico does
 

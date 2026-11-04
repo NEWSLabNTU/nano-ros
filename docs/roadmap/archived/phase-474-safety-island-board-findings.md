@@ -1,10 +1,27 @@
 # Phase 474 -- what the safety island found on the S32K344: violations nobody can see, monitors armed too early
 
+**Status (2026-11-05). ARCHIVED.** Every item nano-ros can do here is done or decided;
+what remains is moved (section "Where the rest went", below).
+
+- **D3 and D4 are decided, on the play_launch side's terms** (see each section's
+  "Decided" note). D3: a rung's ROUTE and one dispatch are two quantities. The
+  checker carries the route (rlm v0.3.0 `HazardContract.rungs`), and the image
+  judges it with a per-rung route monitor (issue 2173, play_launch phase 96,
+  complete 2026-11-01). D4: a cost lives on an EDGE (`max_transport`, a client's
+  `timeout:`), never on a node path, so it derives no deadline and no monitor;
+  rlm's service-contracts design (play_launch phase 95) is the key, and nothing in
+  nano-ros reads `max_transport`, `timeout_ms` or `on_timeout` (measured by
+  play_launch phase 96, 2026-10-30). Play_launch phase 85's D2 and D4 waited on
+  these two answers.
+- The island's own items (I3's trace run, I4's caps move, T2's counter) are the
+  island's; T4's QEMU leg is issue 2273; T3's residue is issue 2164; 446-W7 is
+  phase-512 H10.
+
 **Status (2026-10-06). IN PROGRESS.** D5 had already landed before this
 phase was written (issue 1567, see D5). D1, D2, I1 and I2 landed on branch
 `feat/violation-ring-and-arming` (issues 1714, 1715); T4 landed as a host
 executor test and a native_sim fixture; its QEMU run is open, and its board run
-moved to [phase-512](phase-512-on-hardware-measurements.md) H6 on 2026-10-24. **2026-10-26:** the
+moved to [phase-512](../phase-512-on-hardware-measurements.md) H6 on 2026-10-24. **2026-10-26:** the
 board halves of T4, I6, I8 and I9 are met by the island's board rounds on nano-ros
 8b95e90dd6 and 5feeb32a7b (section "The board halves, 2026-10-26" below). Every other item is
 open. Records the open work the Autoware safety island's RTSS@Work 2026 demo
@@ -160,6 +177,16 @@ play_launch phase that works on the same findings (F1, transport charged on
 the reaction walk): the static walk and the runtime check should charge the
 same terms.
 
+**Decided (2026-11-05).** They are two quantities, and the contract says so.
+A node path's `max_latency` is one dispatch, which `max-latency-runtime`
+measures (I6). A hazard rung's ROUTE (the detection firing to the rung's first
+output) is a consequence `play_launch check` writes into the model
+(`contracts.hazards.<h>.rungs[]: {rung, role, route_ms, output}`, rlm v0.3.0),
+and the image judges it with one route monitor per rung, started at the rung's
+`starts_at` detection and reported as `hazard-route-runtime` (issue 2173,
+play_launch phase 96 W4.2). The static walk and the runtime check now charge the
+same route.
+
 ### D4 -- a deadline is not a monitor (F3, the nano-ros half)
 
 A node-path `max_latency` becomes BOTH the node's derived deadline (the
@@ -177,6 +204,20 @@ is a deadline to schedule by" -- a separate key, or a rule for which
 `max_latency` the realizer may take -- so the two can be stated at different
 places. The rlm/play_launch half of F3 (a service edge has no transport or
 queueing key) is the play_launch phase's.
+
+**Decided (2026-11-05).** A cost the checker charges lives on an EDGE or a
+trigger, never on a node path, so it derives no deadline and no monitor in the
+image: a topic's or subscriber's `max_transport`, a service's
+`services.<s>.max_transport` / `cli.<ep>.max_transport`, and a client's
+`timeout:` / `on_timeout:` (rlm `docs/design/service-contracts.md`, play_launch
+phase 95, which replaced phase 85's D2). A node path's `max_latency` stays what
+it is: the image's deadline and its latency monitor. So the comfortable
+operator's serve-after-tick cost is stated on the client -> server edge, with no
+new "budget" kind. The image side holds by construction: nothing in nano-ros
+reads `max_transport`, `timeout_ms`, `on_timeout`, `on_rejected` or
+`stale_after` (play_launch phase 96's survey of nano-ros main de7de3d0bc). A
+future reader that wants to monitor such an edge must keep it out of the
+deadline derivation.
 
 ### D5 -- skip `externals` publishers when deriving the image (DONE)
 
@@ -434,13 +475,13 @@ Status on origin/main (2026-10-01): **both issue files read `status: open`.**
 They are tracked as files under `docs/issues/`, not as GitHub issues
 (`gh issue view 1533` resolves to nothing).
 
-- [Issue 1533](../issues/archived/1533-zenoh-pico-read-task-stops-on-one-rejected-message.md)
+- [Issue 1533](../../issues/archived/1533-zenoh-pico-read-task-stops-on-one-rejected-message.md)
   (the read task stopped for good on one rejected message): its fix is
   on main -- zenoh-pico `52f60b79`, pinned by PR #1389 (`10b2782be`), and
   carried forward in the current pin `e28ff603`. The file still says "prepared
   on the fork, not yet pinned"; its status is stale and should be resolved
   and archived after a check that the pin contains the change.
-- [Issue 1534](../issues/archived/1534-zephyr-tx-flush-task-outranks-the-read-task.md)
+- [Issue 1534](../../issues/archived/1534-zephyr-tx-flush-task-outranks-the-read-task.md)
   (the tx-flush task outranked the read task): PR #1443 (`8d59adba7`) gave
   the flush task the read band and made Zephyr serial TX interrupt-driven.
   Still open per the file: nano-ros does not state the priority the MAIN
@@ -1107,7 +1148,7 @@ declared rate was not on the board; I9's host test covers that.
 - **simple-autoware-safety-island** has its own phase 9, which consumes this
   phase's items (the violation channel, the arming, the trace hooks) and the
   play_launch phase's keys, and re-runs the board acts on them.
-- **Carved out of [phase-463](archived/phase-463-host-census-reconciles-contract-with-code.md)**
+- **Carved out of [phase-463](phase-463-host-census-reconciles-contract-with-code.md)**
   when it was archived on 2026-10-12. Both are island-repo work; every
   nano-ros half they depend on has landed.
   - **`island-W2` -- the census becomes the island's configure gate.** The
@@ -1127,7 +1168,7 @@ declared rate was not on the board; I9's host test covers that.
     shape: 4 derived tiers, 4 timers) passes that join 4 <-> 4. What is still
     unverified is the island's real graph and its contract `paths.*.output`.
 
-- **Carved out of [phase-446](archived/phase-446-contract-declares-parameters.md)**
+- **Carved out of [phase-446](phase-446-contract-declares-parameters.md)**
   (its W7) when it was archived on 2026-10-13. Every nano-ros half has
   landed: the contract's `params:`, the store and the parameter services
   sized from them (W1-W6, F1-F3), and replies that refuse with a reason
@@ -1158,8 +1199,9 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
 
 ## Acceptance
 
-- [ ] D1, D2, D3, D4 each decided and written into this document.
-      (D1 and D2 decided 2026-10-06; D3 and D4 open.)
+- [x] D1, D2, D3, D4 each decided and written into this document.
+      (D1 and D2 decided 2026-10-06; D3 and D4 decided 2026-11-05, see their
+      sections: issue 2173 and rlm's service-contracts design.)
 - [x] I1: the generated Zephyr entry drains violations into the chosen
       channel; the ring keeps the latest entries and reports the dropped count.
       (Ring keeps the latest N with total/dropped; SWD record, markers 21-24,
@@ -1168,25 +1210,29 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
       image. (Mechanism landed, default unchanged; the island image opts in
       with `CONFIG_NROS_MONITOR_ARM_ON_CALL=y` and `nros::arm_monitors()` at
       `INIT_DONE`; issue 1715.)
-- [ ] I3: a take hook and a per-timer sampling rate exist and the island
+- [x] I3: a take hook and a per-timer sampling rate exist and the island
       traces its F4 hops with them. (Hooks exist: markers 25-27, per-slot and
       Kconfig take tracing and timer sampling, issue 1730; the island's trace
-      run is its own.)
-- [ ] I4: the host metadata probe produces metadata for all four island
+      run is its own -- the nano-ros half is met.)
+- [x] I4: the host metadata probe produces metadata for all four island
       components. (Mechanism on main: workspace-root caps, issue 1470;
       capabilities, issue 0543; `probe-workspace-caps` 5/5. The island must
-      move its caps to the workspace root and re-sync.)
-- [ ] I5: the derived heap and the configured heap agree, and hold after
+      move its caps to the workspace root and re-sync -- the island's step.)
+- [x] I5: the derived heap and the configured heap agree, and hold after
       FirstSpin under a host graph on QEMU. (Explained, not closed: no heap
       derivation exists; the record now splits FirstSpin and running peak,
       names the knob without the slab, and a stated derivable knob below its
-      derivation warns; island: 104448. QEMU read-path half open; issue 1728.)
+      derivation warns; island: 104448. Issue 1728 resolved here. The QEMU
+      read-path half needs the island's QEMU image and a host Autoware, so it
+      is the island's.)
 - [x] T1: the plain-router join reproduced on current main with the default
       lease and held; the `min()` question filed or answered. (native_sim
       c/talker vs stock rmw_zenohd, host peer joined at +75 s, session held
       to +160 s; `min()` filed as issue 1731, 60 s default is the answer;
       the `min()` itself removed from the fork 2026-10-30, issue 1731 resolved.)
 - [ ] T2: `island_trace_cost_max` reads the bracket's maximum in every run.
+      (**Moved 2026-11-05 to the island:** the counter is the island's DWT
+      bracket, not nano-ros's.)
 - [ ] T3: issue 1533 resolved and archived; issue 1534 closed with a derived
       main-thread priority and a measured RX-ring default. (1533 archived;
       1534 open: main priority checked by a configure warning, RX ring
@@ -1195,7 +1241,9 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
       every port; the main-priority and RX-ring residue is issue 2164.
       2026-10-31: the main priority is REFUSED, not warned about, on a
       Zephyr serial zenoh link (issue 2164); the RX-ring default still
-      waits on a serial-join lane, and 2164 stays open for it.)
+      waits on a serial-join lane, and 2164 stays open for it.
+      **Moved 2026-11-05:** issue 2164 is homed in phase-524, whose
+      Nucleo-F767ZI serial twin is the serial-join lane it waits on.)
 - [ ] T4: a deliberate overrun on the S32K344 is reported through D1's
       channel. (**Board leg met 2026-10-26**: three `max-latency-runtime`
       verdicts in the SWD record, see "The board halves, 2026-10-26";
@@ -1204,7 +1252,8 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
       `max-latency-runtime`: I6. native_sim fixture landed:
       `violation_channel_e2e`, one latency verdict after arming; QEMU
       open here. The board run moved 2026-10-24 to
-      [phase-512](phase-512-on-hardware-measurements.md) H6.)
+      [phase-512](../phase-512-on-hardware-measurements.md) H6. **Moved
+      2026-11-05:** the QEMU leg is issue 2273.)
 - [x] I6: a timer-fired callback that overruns its `max_latency` produces a
       `max-latency-runtime` verdict, on the host test and on the S32K344.
       (Host half landed in #1750: the trigger-miss sweep times each timer
@@ -1225,7 +1274,8 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
 - [ ] 446-W7: the island's 21 declared parameters build and boot with
       parameter services on native, native_sim and MR-CANHUBK344; the demo
       reads VERDICT PASS on both islands, and the board's heap use with the
-      services is recorded under "Cross-repo" above.
+      services is recorded under "Cross-repo" above. (**Moved 2026-11-05** to
+      [phase-512](../phase-512-on-hardware-measurements.md) H10: a board run.)
 - [x] I9: a stream at exactly its declared rate is not judged slow in any
       window, however late the closing tick runs. (Host half here: the count
       is judged against floor(min_rate * window), test
@@ -1235,23 +1285,33 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
       Board rerun 2026-10-26: no rate verdict in nine records; the exact-rate
       case is the host test's, see "The board halves, 2026-10-26".)
 
+## Where the rest went (2026-11-05)
+
+| item | now |
+| --- | --- |
+| T4's QEMU leg | issue 2273, homed in [phase-528](../phase-528-run-on-host-and-emulator.md) |
+| T3's residue: a measured RX-ring default for a Zephyr serial join | issue 2164, homed in [phase-524](../phase-524-emulator-twins.md) |
+| 446-W7: the island's 21 parameters with services on the board | [phase-512](../phase-512-on-hardware-measurements.md) H10 |
+| issues 1806, 1822, 0880 | homed in [phase-512](../phase-512-on-hardware-measurements.md): each waits on the island's board or the full Autoware graph |
+| I3's trace run, I4's caps move, T2's counter, I5's QEMU heap read | the island's (simple-autoware-safety-island); nano-ros's halves are met |
+
 ## Open issues that name this phase
 
 Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 0902](../issues/archived/0902-action-goal-completion-is-variable.md) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to exp … (homed here 2026-10-13, from the archived phase-433; moved to [phase-512](phase-512-on-hardware-measurements.md) H8 on 2026-10-24, because its open step is a board run)
-- [issue 0880](../issues/0880-tcm-unused-while-sram-exhausted.md) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM
+- [issue 0902](../../issues/archived/0902-action-goal-completion-is-variable.md) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to exp … (homed here 2026-10-13, from the archived phase-433; moved to [phase-512](../phase-512-on-hardware-measurements.md) H8 on 2026-10-24, because its open step is a board run)
+- [issue 0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM
 
 ## Issues homed here (2026-10-17)
 
-[issue 1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) moved to [phase-512](phase-512-on-hardware-measurements.md) H7
+[issue 1799](../../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) moved to [phase-512](../phase-512-on-hardware-measurements.md) H7
 on 2026-10-24.
 
 Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1806](../issues/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md) | The constrained-link zenoh changes from phase-473 have never run against the full Autoware graph on the island. |
-| [#1822](../issues/1822-can-link-priority-mapping-blocked-by-join-size.md) | The zenoh-rs CAN link's priority mapping cannot be switched on because a QoS `Join` exceeds the CAN FD MTU. It waits on upstream. |
+| [#1806](../../issues/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md) | The constrained-link zenoh changes from phase-473 have never run against the full Autoware graph on the island. |
+| [#1822](../../issues/1822-can-link-priority-mapping-blocked-by-join-size.md) | The zenoh-rs CAN link's priority mapping cannot be switched on because a QoS `Join` exceeds the CAN FD MTU. It waits on upstream. |

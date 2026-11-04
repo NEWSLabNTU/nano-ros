@@ -5,10 +5,10 @@ title: "192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted �
 status: open
 type: bug
 area: platform, embedded
-related: [issue-0852, issue-0810, phase-474, phase-394]
+related: [issue-0852, issue-0810, phase-474, phase-394, phase-512]
 ---
 
-**Home: [phase-474](../roadmap/phase-474-safety-island-board-findings.md)** — re-homed 2026-10-12 from phase-392, which is archived.
+**Home: [phase-512](../roadmap/phase-512-on-hardware-measurements.md)** — re-homed 2026-11-05 from phase-474 (archived): the TCM placement is measured on the island's S32K344.
 
 ## Measurement
 

@@ -478,4 +478,5 @@ Each issue has a `**Home:**` line pointing here.
 
 | issue | work item | why it belongs here |
 | --- | --- | --- |
+| [#2273](../issues/2273-violation-channel-qemu-leg.md) | W5 | Split from phase-474 T4 (archived) 2026-11-05. The violation channel's end-to-end test runs on native_sim only; its QEMU leg is a cell on the road W5 puts the harness on. |
 | [#2172](../issues/2172-harness-mps-lines-restate-board-runner.md) | W5 | The MPS2/MPS3 QEMU line has three spellings: the board's cargo runner, the CLI's printed line and the harness's launchers. W5 puts the harness on `nros run --plan`, which leaves one. |

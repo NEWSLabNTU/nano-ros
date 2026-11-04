@@ -798,6 +798,7 @@ same commit the date lands.
 
 | issue | work item | why it belongs here |
 | --- | --- | --- |
+| [#2164](../issues/2164-zephyr-serial-join-main-priority-and-rx-ring-default.md) | W4c | Re-homed 2026-11-05 from phase-474 T3 (archived). A Zephyr board joining a live domain over serial needs a measured RX-ring default, and that needs a serial-join lane; the Nucleo-F767ZI's serial twin is one. |
 | [#2194](../issues/archived/2194-zephyr-board-knob-rung.md) | W3 | **Resolved** 2026-11-02. The Nucleo-F767ZI and Pico W descriptors now state their RAM knobs in `[knobs]`, and the Zephyr leaf road carries the board rung. Listed here because W3 is where it was found. |
 | [#2202](../issues/2202-zenoh-defaults-sized-for-big-ram.md) | W3 | An undeclared zenoh C image falls back to pool and heap defaults sized for host-scale RAM (~400 KB on a 520 KiB part). Every small board this phase adds meets them, and 2194's board rung (resolved) is where a board overrides them. |
 | [#2185](../issues/2185-zephyr-chapter-workspace-unpatched.md) | W4 (W3 for the descriptor) | The Zephyr chapter's own west workspace never gets nano-ros's patch set, so the Rust lane's carrier is silently missing. W4's chapters take the same road: they run `nros setup board --zephyr-workspace` or `nros build` refuses. The generic `zephyr` descriptor needs a `[board.provisioning]` block for that to work, which is W3's. |
