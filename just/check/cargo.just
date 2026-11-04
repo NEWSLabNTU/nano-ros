@@ -173,6 +173,20 @@ workspace-root-build-files:
 node-package-invariance:
     @python3 scripts/check-node-package-invariance.py
 
+# phase-531 W2 (RFC-0121 D2/D7) — a tracked `system.toml` lives only in a
+# bringup package, never beside a `Cargo.toml` / `CMakeLists.txt`. A ratchet
+# over phase-531 W1's measured sites
+# (`.config/system-toml-in-bringup-baseline.txt`) that may only shrink.
+system-toml-in-bringup:
+    @python3 scripts/check-system-toml-in-bringup.py
+
+# phase-531 W2 (RFC-0121 D1/D7) — a node package's `Cargo.toml` names no
+# `<pkg>_nros_selection` crate and no `nros-board-*` crate; the generated entry
+# names the board. Same shrink-only ratchet
+# (`.config/node-package-selection-free-baseline.txt`).
+node-package-selection-free:
+    @python3 scripts/check-node-package-selection-free.py
+
 # issue 1366 (RFC-0098 D9) — the ON-DISK half of the rule above. The root that
 # takes a build down is the one phase-383 W3.a GENERATED: it is gitignored, so
 # the tracked-file gate cannot see it, and it sits in every checkout that ran

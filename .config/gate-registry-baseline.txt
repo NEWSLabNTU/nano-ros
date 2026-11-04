@@ -204,6 +204,7 @@ no-tracked-models
 no-tracked-workspace-roots
 no-vacuous-tests
 node-package-invariance
+node-package-selection-free
 node-std-tests
 nros-installer
 nros-log-riscv32
@@ -301,6 +302,7 @@ submodule-pinned-locks
 submodule-pins
 subtree-guard
 sysdep-remedies
+system-toml-in-bringup
 test-domain-assignment
 test-precondition-guards
 test-scripts-have-callers
