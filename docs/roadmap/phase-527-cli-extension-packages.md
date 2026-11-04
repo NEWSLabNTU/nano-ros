@@ -4,7 +4,7 @@
 (`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
 the host build role; declared overrides; colcon's duplicate rule among
 source roots, overrides in `nros.toml`); W2d (one `--base-paths` meaning) in
-review; W4 next.** Implements
+review (#3088); W4 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -349,7 +349,7 @@ Deviations from the brief, each with its reason:
 - **The default build discovery now reads `package_paths`**, as the brief
   asks. No tracked `nros.toml` declares any, so no in-tree workspace changes.
 
-Status: **DONE, in review** (2026-11-04).
+Status: **DONE, in review** (2026-11-04, #3088).
 
 ### W3 — `packages/runners/` and `nros-extension`
 
