@@ -163,6 +163,15 @@ function(_nros_apply_default_ending)
 endfunction()
 
 function(_nros_entity_facts_flush)
+    # phase-530 W7 (RFC-0120 D5) -- the flush READS the entity fragment, and
+    # on an image no entry composes it is the standalone composer that writes
+    # it, deferred like this flush and possibly queued AFTER it. Compose first:
+    # a read after its producer. (Issue 0991's fixed point used to hide the
+    # order by re-running cmake; `check probe-shared-types` measured it.)
+    get_property(_nros_inv_scheduled GLOBAL PROPERTY NROS_ENTITY_INVENTORY_SCHEDULED)
+    if(_nros_inv_scheduled AND COMMAND _nros_node_register_compose_inventory)
+        _nros_node_register_compose_inventory()
+    endif()
     _nros_apply_default_ending()
     _nros_entity_facts_rekey_shared_cargo_dir()
     # Issue 1746 -- the shared cargo key is FINAL now; the configure-time
