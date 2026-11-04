@@ -314,6 +314,11 @@ under `examples/px4/` and adds no uORB axis value.
 
 ### Standalone examples
 
+> **Superseded 2026-11-04 by [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md) D1/D2.** A role is now an image row in a
+> language workspace, as a configuration already was; only one single-node
+> workspace per (platform, language) stays under `examples/<plat>/<lang>/`.
+> The paragraph below is the 2026-08 reading.
+
 Already conformant. `platform/lang/example` holds for the six real platforms
 (`native`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `threadx-linux`,
 `zephyr`,

@@ -213,7 +213,9 @@ workspace. It is kept in `scripts/oneshot/` once the tree is migrated.
   coordinate (`row_coord()` is unchanged), so lane membership does not move.
 
 Examples stay copy-out projects (RFC-0026). What a reader copies is now a
-workspace, `examples/<plat>/<lang>/<example>/` with `src/` inside.
+workspace, `examples/<plat>/<lang>/<example>/` with `src/` inside. **Amended
+2026-11-04 by RFC-0122:** that holds for the single-node witnesses only; the
+pairs move into the language workspaces as image rows.
 
 ## Amendments to other RFCs
 
@@ -280,3 +282,7 @@ some `leaf_*` code also serves workspace entries.
   deps) are made by `nros new --image`, made unnecessary by `build/`, and
   derived from `[[component]]`. RFC-0085 D13 is amended to match. D4 also
   gains the `<exec_depend>` row that `nros new <node> --to <bringup>` adds.
+- 2026-11-04: D8 amended by [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md). Under `examples/`, only the
+  single-node witnesses and `custom-platform` migrate in place; the pairs,
+  variants, configurations and feature demos become image rows in the language
+  and features workspaces (phase-535 replaces phase-531 W6 for them).

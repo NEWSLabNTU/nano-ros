@@ -390,6 +390,10 @@ property, built in the build stage.
 
 ## Cross-refs
 
+- **Amended 2026-11-04 by [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md) D4:** a cell's `Kind` names the TEST, not
+  where its artifact is built. Pair cells stay `Kind::Example` when their
+  images move into workspaces; the fixture resolver, not the cell, knows the
+  (workspace, bringup, image).
 - RFC-0026 (example layout — the nodes whose behavior the checker pins),
   RFC-0048 (workspace shape the workspace lanes build), phase-215
   (board-owned runner metadata), phase-289 (rtos_e2e as the proven consumer
