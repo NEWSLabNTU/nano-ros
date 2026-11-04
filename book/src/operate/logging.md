@@ -286,11 +286,11 @@ no Fatal).
 
 ## Working examples
 
-- Rust: [`examples/linux/rust/logging`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/logging)
-- C: [`examples/linux/c/logging`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/logging)
-- C++: [`examples/linux/cpp/logging`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/logging)
-
-Each demonstrates per-severity macros + the runtime threshold
+The logging demos live in the features workspace,
+[`examples/workspaces/features`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/features),
+with the other Linux feature demos: one node package per language (Rust, C
+and C++), each built by its own `linux` image row in the workspace's
+bringup. Each demonstrates per-severity macros + the runtime threshold
 filter.
 
 ## Reference
@@ -418,3 +418,5 @@ and the same rules apply.
 ## Design background
 
 - [RFC-0102: logger hierarchy](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0102-logger-hierarchy.md)
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  Feature demos as node packages of the features workspace.

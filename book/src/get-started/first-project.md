@@ -45,6 +45,12 @@ sensor_ws/
 `/chatter` once a second. `sensor_node_bringup` says what that code runs on.
 The scaffold filled it in, and this chapter never needs you to open it.
 
+This is the shape of
+[`examples/mps2-an385-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust/talker)
+in the nano-ros repository, the example kept for reading beside this chapter:
+one node package and a bringup with no launch file of its own, because
+`nros run` generates it.
+
 ## Run
 
 ROS 2 provides the router the board talks to, so source it first, then
@@ -146,4 +152,5 @@ shape, and so is every command after it.
 
 The chapter follows [RFC-0116](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0116-adoption-purposes-and-front-doors.md)
 D5 and D6 and [RFC-0121](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md)
-D4 and D5.
+D4 and D5. Its pointer to the copy-out talker follows RFC-0122 (behaviour
+bringups, single-node witnesses, and cadence-backed CI) D3.

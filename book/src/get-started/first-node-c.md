@@ -38,6 +38,11 @@ c_talker_ws/
         └── system.toml           # the board, the RMW, the node it runs
 ```
 
+This is the same project as
+[`examples/linux/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/talker)
+on GitHub, the copy-out example for C on Linux: one node package and a
+bringup with no launch file of its own, since the build generates it.
+
 ### The bringup package
 
 `c_talker_node_bringup/system.toml` is the whole deployment statement,
@@ -261,8 +266,19 @@ demo talker. If it does not appear in 30 seconds:
   adds a second node package and its component row to the bringup
   ([Growing your workspace](../build/growing-your-workspace.md)).
 - Service / action shapes, and a workspace of several C node packages:
-  [`examples/workspaces/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/c)
+  the C language workspace,
+  [`examples/workspaces/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/c).
+  The paired examples are image rows there, one bringup per behaviour
+  (`pubsub_bringup`, `service_bringup`, `action_bringup`), and
+  `nros run service_bringup:linux_service_server` runs one role.
 - Custom `.msg` / `.srv` / `.action`:
   [Message Generation](../build/message-generation.md)
 - Cross-compile for an RTOS: pick the right Embedded Starter from
   the next section.
+
+## Design background
+
+- [RFC-0121: workspace-first project layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md)
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The copy-out talker kept for each platform and language, and the language
+  workspaces that hold the paired examples.

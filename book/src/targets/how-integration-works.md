@@ -123,9 +123,9 @@ for an emulated board or `west flash -d <dir>` for one with a flash runner.
 ## Per platform
 
 The `nros setup` name to provision each platform, where its copy-out
-examples live, and its chapter:
+talkers live, and its chapter:
 
-| platform | `nros setup <board>` | examples under | chapter |
+| platform | `nros setup <board>` | copy-out talkers under | chapter |
 |---|---|---|---|
 | Linux host | `linux` | [`examples/linux`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux) | [Native host build](linux-host.md) |
 | FreeRTOS (QEMU MPS2-AN385) | `mps2-an385-freertos` | [`examples/mps2-an385-freertos`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos) | [FreeRTOS](freertos.md) |
@@ -137,8 +137,28 @@ examples live, and its chapter:
 | Bare-metal Cortex-M3 | `mps2-an385-baremetal` | [`examples/mps2-an385-baremetal`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal) | [Bare-metal](bare-metal.md) |
 | Arm FVP (Cortex-A SMP) | `zephyr` + the Arm FVP (`nros setup --tool arm-fvp`, x86_64 only) | — | [ARM FVP](arm-fvp.md) |
 
-Every example is a copy-out workspace: copy its directory anywhere and build
-it there. The multi-node workspace examples all live under
+Each platform directory holds one copy-out talker per language, at
+`<lang>/talker/`: a workspace with one node package and a bringup with no
+`launch/`, whose launch file is generated. Copy its directory anywhere and
+build it there; it is the example to start from.
+
+The paired examples are not separate directories. Talker and listener,
+service server and client, and action server and client are image rows of
+the language workspaces `examples/workspaces/{rust,c,cpp}`, under one bringup
+per behaviour: `pubsub_bringup`, `service_bringup` and `action_bringup`. An
+image id is `<platform>_<role>`, plus `_<rmw>` for any RMW other than zenoh,
+so one role on one platform is one command:
+
+```bash
+nros run pubsub_bringup:freertos_listener
+nros run service_bringup:zephyr_service_server_xrce
+```
+
+Variants with different code are node packages of their own, configurations
+such as a serial link are image rows that state the knob, and the Linux
+feature demos (logging, parameters, lifecycle, custom messages) live in
+`examples/workspaces/features`. The multi-node workspace examples all live
+under
 [`examples/workspaces`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces).
 [Coverage Matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md#coverage-matrix)
 shows which platform, language and RMW combinations have examples.
@@ -173,3 +193,9 @@ and links in as a library, the same as every other row in the table.
   [Growing your workspace](../build/growing-your-workspace.md)
 - If the first build fails:
   [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md)
+
+## Design background
+
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The copy-out talker per platform and language, and the paired examples as
+  image rows of behaviour bringups.

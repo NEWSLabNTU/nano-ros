@@ -39,6 +39,11 @@ cpp_talker_ws/
         └── system.toml             # the board, the RMW, the node it runs
 ```
 
+This is the same project as
+[`examples/linux/cpp/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/talker)
+on GitHub, the copy-out example for C++ on Linux: one node package and a
+bringup with no launch file of its own, since the build generates it.
+
 `cpp_talker_node_bringup/system.toml` is the whole deployment statement —
 `[system]` for the RMW and domain, one `[[component]]` row naming the node,
 and one `[image.<id>]` per target naming its `board`. No line of the node
@@ -240,9 +245,19 @@ talker. If it does not appear in 30 seconds:
   adds a second node package and its component row
   ([Growing your workspace](../build/growing-your-workspace.md)).
 - Services, actions and several C++ node packages in one workspace:
-  [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp)
-  and [C / C++ multi-node workspaces](../build/cpp-workspaces.md).
+  the C++ language workspace,
+  [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp),
+  where each paired example is an image row under its behaviour's bringup
+  (`pubsub_bringup`, `service_bringup`, `action_bringup`), and
+  [C / C++ multi-node workspaces](../build/cpp-workspaces.md).
 - Custom `.msg` / `.srv` / `.action`:
   [Message Generation](../build/message-generation.md)
 - Cross-compile for an RTOS: pick the right Embedded Starter from
   the next section.
+
+## Design background
+
+- [RFC-0121: workspace-first project layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md)
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The copy-out talker kept for each platform and language, and the language
+  workspaces that hold the paired examples.

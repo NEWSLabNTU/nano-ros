@@ -77,9 +77,11 @@ line — never a different board crate, and never an edit to the node package:
 | RTIC (framework-owned `#[rtic::app]`, deferred dispatch) | `"rtic-mps2-an385"` | `rtic` |
 
 The generated entry depends on the board crate with the feature its shape
-needs, so the in-tree RTIC peers (`listener-rtic/`, `service-client-rtic/`,
-`action-server-rtic/`, …) differ from their direct-exec siblings in the
-`board` line alone.
+needs, so an RTIC image differs from a direct-exec one in its `board` line.
+The RTIC examples in the Rust language workspace, `examples/workspaces/rust`
+(an RTIC talker and listener, and the RTIC service and action roles), are
+node packages of their own, each with an image row in its behaviour's
+bringup that names `rtic-mps2-an385`.
 
 The RTIC surface used to be a separate `nros-board-rtic-mps2-an385`
 crate; it was folded in here because it depended on this crate
@@ -282,7 +284,8 @@ from your board.
 
 ## GitHub source
 
-- Bare-metal talker:
+- Bare-metal talker, the copy-out example for this board and the same
+  project as the one this page builds:
   [`examples/mps2-an385-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust/talker)
 - Board crate:
   [`packages/boards/nros-board-mps2-an385/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-mps2-an385)
@@ -304,8 +307,11 @@ For Cortex-M3 with an RTOS, switch to the
 
 ## Next
 
-- Subscriber / service / action peers under the same
-  [`examples/mps2-an385-baremetal/rust`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust) tree.
+- Subscriber / service / action: the bare-metal image rows of the Rust
+  language workspace, `examples/workspaces/rust`, under `pubsub_bringup`,
+  `service_bringup` and `action_bringup`. The serial talker and listener are
+  image rows there too, stating `transport = "serial"` over the same
+  packages.
 - Wake-callback opt-in: the `wake-callback` (latency-probe) bench
   under `packages/testing/nros-bench/wake-latency-cortex-m3/` shows
   how to feed a backend's transport-notify into the cooperative
@@ -314,3 +320,9 @@ For Cortex-M3 with an RTOS, switch to the
   crate of your own and a different linker script — see
   [Worked Example — STM32F4 Out of Tree](../extending/stm32f4-out-of-tree.md),
   which takes that board through the customization ladder end to end.
+
+## Design background
+
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The copy-out talker per platform and language, and the paired examples,
+  variants and configurations as image rows of behaviour bringups.

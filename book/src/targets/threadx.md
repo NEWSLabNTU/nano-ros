@@ -331,6 +331,8 @@ for the mechanics.
 
 ## GitHub source
 
+The copy-out talkers, each the same project as the one this page scaffolds:
+
 - ThreadX-Linux Rust:
   [`examples/threadx-linux/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux/rust/talker)
 - ThreadX-Linux C:
@@ -343,7 +345,10 @@ for the mechanics.
 
 ## Next
 
-- Subscriber + service + action peers in the same example tree.
+- Subscriber, service and action: the `threadx_*` and `riscv_threadx_*`
+  image rows of the language workspaces, `examples/workspaces/{rust,c,cpp}`,
+  under `pubsub_bringup`, `service_bringup` and `action_bringup`
+  (`nros run pubsub_bringup:threadx_listener`).
 - DDS on ThreadX: Cyclone DDS is the surviving DDS backend
   (`nros-rmw-cyclonedds`) — select it with `[system] rmw = "cyclonedds"` in
   the bringup's `system.toml` and build again; see
@@ -351,3 +356,9 @@ for the mechanics.
 - Real hardware: same code runs against ThreadX vendor BSPs (Renesas
   Synergy, MIMXRT, etc.); replace the QEMU board crate with a vendor
   board crate.
+
+## Design background
+
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The copy-out talker per platform and language, and the paired examples as
+  image rows of behaviour bringups.

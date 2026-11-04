@@ -170,7 +170,7 @@ beside its `system.toml`. Its launch file is generated from the `[[component]]`
 rows, so there is no `launch/` directory to put a sidecar in; the build carries
 this one to where the resolver looks. That is how a one-node bringup states its
 QoS — and stating it is worth real memory: one `sub: { chatter: { qos: { history:
-keep_last, depth: 1 } } }` row takes [`examples/linux/rust/listener`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/listener) from 273,802
+keep_last, depth: 1 } } }` row takes a one-node Rust listener on Linux from 273,802
 to 172,298 bytes of static RAM, because the zenoh backend then sizes its payload
 pools for the one sample the image keeps instead of the four it might have.
 
@@ -423,9 +423,17 @@ live under [`examples/workspaces`](https://github.com/NEWSLabNTU/nano-ros/tree/m
 ## See also
 
 - [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp)
-  — the canonical reference workspace (talker + listener Node pkgs +
-  Bringup pkg + a table of images, all C++).
+  — the canonical reference workspace, all C++: the talker, listener,
+  service and action Node pkgs, and one bringup per behaviour
+  (`pubsub_bringup`, `service_bringup`, `action_bringup`) whose image rows
+  are the paired examples, one per platform and role.
 - [C++ Entry-pkg roadmap doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-219-cpp-entry-pkg.md)
   — full landing order + acceptance bar.
 - [Multi-node workspace layout design](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0024-multi-node-workspace-layout.md)
   §11 — LOCKED canonical shape (`Bringup + Node + Entry`).
+
+## Design background
+
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The paired examples as image rows of behaviour bringups in the language
+  workspaces.

@@ -293,7 +293,9 @@ above runs is on each board's page under
 
 ## GitHub source
 
-The full examples, to read:
+The copy-out talkers for this board, one per language. Each is the same
+project this page scaffolds: one node package and a bringup with no launch
+file of its own.
 
 - Rust: [`examples/mps2-an385-freertos/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos/rust/talker)
 - C: [`examples/mps2-an385-freertos/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos/c/talker)
@@ -301,8 +303,11 @@ The full examples, to read:
 
 ## Next
 
-- Subscriber: peer `listener/` directory next to each talker.
-- Services + actions: peer `service-*/` and `action-*/` directories.
+- Subscriber, services and actions: the `freertos_*` image rows of the
+  language workspaces, `examples/workspaces/{rust,c,cpp}`, one bringup per
+  behaviour (`pubsub_bringup`, `service_bringup`, `action_bringup`).
+  `nros run pubsub_bringup:freertos_listener` runs the listener;
+  `freertos_listener_xrce` is the same role over XRCE.
 - No RTOS: the [Bare-metal Cortex-M3](./bare-metal.md) page is the
   same board without FreeRTOS.
 - Your own board / RTOS: the
@@ -311,3 +316,9 @@ The full examples, to read:
   to the shortest bring-up path.
 - RTOS-specific debugging: [FreeRTOS LAN9118
   Debugging](../internals/testing/freertos-lan9118-debugging.html).
+
+## Design background
+
+- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+  The copy-out talker per platform and language, and the paired examples as
+  image rows of behaviour bringups.
