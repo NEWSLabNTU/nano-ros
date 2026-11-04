@@ -1,7 +1,8 @@
 # Phase 535 — Example pairs into the language workspaces, single-node witnesses, and cadence-backed CI
 
-**Status (2026-11-04). OPEN — not started; W1 and W2 (the gate and the
-measurement) first.**
+**Status (2026-11-05). OPEN — W0 answered (issue 2253 fixed on the way,
+#3106); W1 merged (#3107); W0.b (one program per role): C in review (#3112), Rust
+and C++ next.**
 Implements [RFC-0122](../design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
 D1 to D9, with its amendments to RFC-0026, RFC-0051, RFC-0061, RFC-0066,
 RFC-0114 and RFC-0121 D8.
@@ -41,6 +42,56 @@ survey.
 here, D1 uses the fallback (image rows in `demo_bringup`) for that language,
 and RFC-0122 records it.
 
+**Result (2026-11-04), both answered with a build, neither needs the
+fallback:**
+- A Rust workspace with a second bringup builds. Each image gets its own
+  selection crate (`generated/nros-selection/<entry>`) with the right RMW
+  (posix-xrce for an xrce image), and `demo_bringup` still builds beside it.
+  `nros configure`'s "selection facades not generated for multi-system
+  workspaces" warning is harmless for generated entries.
+- The C/C++ capability last-write-wins is unreachable here: no bringup
+  declares capabilities.
+- Grouping already exists for CMake: images of one (board, rmw, config hash)
+  share a configure (`build/posix-zenoh-linux/cmake` holds seven C images).
+  Each Rust entry has its own cargo target; nothing is shared beyond sccache.
+- The builder qualifies an image as `<bringup>:<image>`
+  (`scripts/build/workspace-fixtures-build.sh`); tests resolve it with
+  `build_workspace_cmake_entry(row_id, lang, "<image>_entry")` and its cargo
+  twin.
+- On the way, issue 2253: a generated entry kept the board's panic crate
+  under `panic = "platform"` (E0152). Fixed by `[board.entry]
+  own_panic_root_*` and `BoardFacts::for_image_panic`.
+
+### W0.b — One program per role (option B)
+
+Maintainer ruling 2026-11-04, recorded in RFC-0122 D1: the example pairs and
+the workspace node packages were different programs (tutorial `String`
+versus an Int32 demo). The workspace packages of `c`, `rust` and `cpp` become
+the tutorial programs, and every test, contract, sizing measurement and
+marker expectation that read the Int32 demo moves with them, through
+`nros_tests::output` constants. Order: C (one gate run), then Rust and C++,
+then the pairs move (W3).
+
+Decisions taken here, with the reason:
+- **One-shot client.** The tutorial client sends one request (2 + 3) and
+  prints `Result of add_two_ints: 5`. `roundtrip_xprocess_e2e` used to want
+  three sums from a client that called every tick; it now asserts the one
+  tutorial result, plus, for actions, the whole order-10 sequence and at
+  least one feedback line. Repeated calls were a property of the demo
+  client, not of the cross-process path the cell exists to prove.
+- **A component never blocks.** The client sends from a timer and polls for
+  the reply, with a resend guard for a request lost before discovery, and
+  prints what the blocking tutorial client prints.
+- **Observers follow the type.** While the C++ and mixed talkers still
+  publish Int32, `entry_e2e` observes them with the `int32-sink`, and that
+  row `serves` their coordinates (a second serves-equality test keeps it
+  honest); the C robot2 listener observes the C cells.
+- **`mixed` keeps its packages.** It shares none with `c`, `rust` or `cpp`,
+  and its purpose is cross-language composition.
+
+**Acceptance:** each language's workspace tests are green on the lanes that
+build its images; no Int32 demo marker is left in a language workspace.
+
 ### W1 — The coverage ratchet and the image-row check
 
 - The D5 gate: derive (platform family, language, build driver, project
@@ -63,6 +114,12 @@ and RFC-0122 records it.
   naming the tuple.
 - A mutation that adds an image with an unknown board fails the row check.
 - Both mutations are recorded in the commit.
+
+**Done (#3107).** `scripts/check-example-coverage-ratchet.py` (floor
+`.config/example-coverage-floor.txt`, 75 tuples at adoption) and
+`scripts/check-image-launch-files.py` (262 `system.toml`), both on the fast
+line. Board resolution was already `check-deploy-board-resolves`, so the row
+check covers the launch file.
 
 ### W2 — Grouping, the resolver, and the allocator lookup
 
