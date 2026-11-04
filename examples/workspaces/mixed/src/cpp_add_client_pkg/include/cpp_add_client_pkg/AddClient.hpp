@@ -14,7 +14,7 @@ namespace cpp_add_client_pkg {
 /// its reply next tick, on success PRINT the server-computed sum. `a` runs 0,1,2,… with `b = 1`,
 /// so the sums are 1,2,3,…; the printed sums ARE the cross-process round-trip proof.
 ///
-/// NOTE (vs the C `c_add_client_pkg`, which also republishes on `/sum`): this C++ client does
+/// NOTE (vs the C ~~`c_add_client_pkg`~~, which also republished on `/sum`): this C++ client does
 /// NOT republish, because a single C++ node linking TWO generated typed-interface archives
 /// (std_msgs for /sum + example_interfaces for the service) double-defines the shared
 /// builtin_interfaces FFI glue at link — a codegen-dedup gap (the C path hand-rolls raw CDR, so

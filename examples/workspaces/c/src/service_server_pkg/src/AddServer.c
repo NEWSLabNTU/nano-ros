@@ -8,6 +8,10 @@
 /// fills `sum = a + b`. Wired through the component factory the typed C Entry drives
 /// (`nros_board_native_run_components`), not a standalone `main`.
 ///
+/// phase-535 (RFC-0122 option B): this is the ONE C AddTwoInts server — the standalone
+/// example pairs and the workspace images run the same program, printing the ROS 2 tutorial's
+/// `Incoming request` lines.
+///
 /// Cross-process only (issue 0096): an in-process (same-executor) server+client can't talk, so
 /// the server runs as its OWN entry (`linux_service_server_entry`) and the client as another.
 
@@ -35,8 +39,8 @@ static void on_request(const example_interfaces__srv__AddTwoInts_Request* req,
     add_server_t* self = (add_server_t*)ctx;
     self->request_count++;
     resp->sum = req->a + req->b;
-    printf("[service_server_pkg] %lld + %lld = %lld\n", (long long)req->a, (long long)req->b,
-           (long long)resp->sum);
+    /* The ROS 2 tutorial server's two lines (demo_nodes_cpp `add_two_ints_server`). */
+    printf("Incoming request\na: %lld b: %lld\n", (long long)req->a, (long long)req->b);
 }
 
 static rcl_ret_t add_server_configure(rcl_node_t* node, rclc_executor_t* executor,
@@ -58,7 +62,7 @@ static rcl_ret_t add_server_configure(rcl_node_t* node, rclc_executor_t* executo
     rc = example_interfaces__srv__AddTwoInts__executor_add_service(executor, &self->service,
                                                                    &self->handler);
     if (rc == RCL_RET_OK) {
-        printf("[service_server_pkg] add_two_ints server ready\n");
+        printf("Waiting for service requests\n");
     }
     return rc;
 }

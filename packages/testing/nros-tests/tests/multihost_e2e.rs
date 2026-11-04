@@ -26,8 +26,10 @@
 //! - **Hosted-spin cells** (rust robot2): the env-gated hosted spin counts
 //!   subscription callbacks and prints `message_callbacks=N` on exit;
 //!   N ≥ 1 proves cross-host delivery.
-//! - **Listener-stdout cells** (C/C++/mixed robot2): the listener prints
-//!   `Received: <n>` per delivered message; ≥3 proves delivery.
+//! - **Listener-stdout cells** (C/C++/mixed robot2): the listener prints one
+//!   line per delivered message (`I heard: [...]` from the C tutorial
+//!   listener, `Received: <n>` from the C++ and mixed Int32 listeners until
+//!   phase-535 unifies them); ≥3 proves delivery.
 //!
 //! The zephyr_rust cell (phase-276 W6 / #102 H1) swaps robot1 for the
 //! Zephyr native_sim image of the SAME per-host entry — one embedded host +
@@ -83,9 +85,9 @@ enum Proof {
     /// `message_callbacks=N`; N ≥ 1 proves the listener's subscription
     /// callback fired on robot1's cross-host publishes.
     HostedSpinCallbacks,
-    /// C/C++/mixed robot2: the listener prints `Received: <n>` per
+    /// C/C++/mixed robot2: the listener prints one `prefix` line per
     /// delivered message; ≥3 proves cross-host delivery.
-    ListenerCount3,
+    ListenerCount3 { prefix: &'static str },
 }
 
 /// How the test knows robot2's subscription is live before robot1 starts
@@ -142,7 +144,9 @@ fn exec_for(platform: MP, lang: ML) -> Exec {
             robot2: || build_native_workspace_c_entry_robot2().map(|p| p.to_path_buf()),
             port: None,
             boot: Boot::Native,
-            proof: Proof::ListenerCount3,
+            proof: Proof::ListenerCount3 {
+                prefix: nros_tests::output::LISTENER_LOG_PREFIX,
+            },
             ready: Robot2Ready::Marker,
             note: "phase-326: the C entry consumes the per-host model via \
                    `nano_ros_add_executable(MODEL …)` — C parity with the Rust macro bake",
@@ -152,7 +156,9 @@ fn exec_for(platform: MP, lang: ML) -> Exec {
             robot2: || build_native_workspace_cpp_entry_robot2().map(|p| p.to_path_buf()),
             port: None,
             boot: Boot::Native,
-            proof: Proof::ListenerCount3,
+            proof: Proof::ListenerCount3 {
+                prefix: nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            },
             ready: Robot2Ready::SettleMs(1500),
             note: "phase-263 Track C: C++ per-host entries; the C++ listener prints no ready \
                    marker (only `Received:`), hence the settle delay",
@@ -162,7 +168,9 @@ fn exec_for(platform: MP, lang: ML) -> Exec {
             robot2: || build_native_workspace_mixed_entry_robot2().map(|p| p.to_path_buf()),
             port: None,
             boot: Boot::Native,
-            proof: Proof::ListenerCount3,
+            proof: Proof::ListenerCount3 {
+                prefix: nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            },
             ready: Robot2Ready::SettleMs(1500),
             note: "phase-263 Track C: genuinely mixed-language multihost — robot1 bakes the C \
                    talker + Rust heartbeat, robot2 the C++ listener",
@@ -397,10 +405,9 @@ fn run_cell(pcell: &MCell) {
                 platform, lang, cell.note
             );
         }
-        Proof::ListenerCount3 => {
-            // robot2 prints `Received: <n>` per delivered message — 3
+        Proof::ListenerCount3 { prefix } => {
+            // robot2 prints one `prefix` line per delivered message — 3
             // confirms cross-host delivery through the partitioned entries.
-            let prefix = nros_tests::output::INT32_LISTENER_LOG_PREFIX;
             let out = r2
                 .wait_for_output_count(prefix, 3, Duration::from_secs(18))
                 .unwrap_or_else(|_| {
