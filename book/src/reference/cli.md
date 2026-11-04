@@ -680,12 +680,13 @@ overwrites, so a new version lands beside the old one.
 | `list [--root <dir>]` | every entry with its version, size and when it was last read |
 | `gc --older-than <dur> [--delete] [--dry-run] [--pin-file <f>…] [--ignore-pins] [--root <dir>]` | propose removing entries not read for `<dur>` (`90d`, `12h`, `2w`); removes nothing without `--delete`, and never an entry a pin names |
 
-### `nros toolchain <uninstall|manifest>`
+### `nros toolchain <uninstall|manifest|stage-packages>`
 
 | Subcommand | Effect |
 |---|---|
 | `uninstall <version> [--dry-run] [--pin-file <f>…] [--ignore-pins] [--root <dir>]` | remove one installed nano-ros toolchain; refuses while a pin names it, or when no pin file could be consulted |
 | `manifest [--store-version <v>] [--index <date>] [--nano-ros <commit>] [--write <path>]` | read (or, with `--write`, stamp) the `share/nros/manifest.toml` a release declares it is made of |
+| `stage-packages <prefix> [--checkout <dir>]` | release-only: stage every runner and command package of `<prefix>/share/nano-ros` prebuilt into `<prefix>/share/nros/packages/<package>/` (`package.xml`, descriptor, `bin/`), the underlay a released `nros` resolves runners from |
 
 ### `nros pin [<version>] [--dir <dir>] [--root <dir>] [--dry-run]`
 

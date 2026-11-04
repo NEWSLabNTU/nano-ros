@@ -71,6 +71,11 @@
 #                                     unpacked, and must not need a TOML parser
 #                                     to do it. The workflow writes both from
 #                                     one input, so they agree by construction
+#   share/nros/packages/<package>/    the first-party runner and command
+#                                     packages, prebuilt (`package.xml`,
+#                                     descriptor, `bin/`): the nano-ros
+#                                     underlay `nros run` resolves a runner
+#                                     from (RFC-0119 D4, phase-527 W6)
 #   share/nros/nros-sdk-index.toml    a released `nros` has no checkout to find
 #                                     an index in, so `nros setup <board>` fails
 #                                     outright without this (phase-431 W5,
@@ -172,10 +177,12 @@ jobs:
           cargo build --release --locked -p nros-build-profile
           # phase-525 W4 — the first-party runner packages (`packages/runners`,
           # their own cargo workspace). `nros run` executes a plan through one,
-          # and the SDK root below carries their SOURCES only, so without the
-          # binaries the book's first chapter (`nros run` on an installed
-          # toolchain) refuses with "has no built executable". Staged into
-          # `bin/` beside `nros`, where `nros run` looks for a released runner.
+          # so without the binaries the book's first chapter (`nros run` on an
+          # installed toolchain) refuses with "has no built executable".
+          # `Stage the prefix` ships each as a prebuilt package under
+          # `share/nros/packages/` (phase-527 W6). A command package beside its
+          # domain (RFC-0119 D5) needs its own build line here; the staging
+          # step refuses a host-tool package whose executable was not built.
           cargo build --release --locked \
               --manifest-path packages/runners/Cargo.toml --workspace
           # phase-429 W5 — the binary must match the checkout it was built from.
@@ -264,12 +271,6 @@ jobs:
           cp packages/cli/nros-launch-resolve/target/release/nros-launch-resolve \
               "$stage/bin/nros-launch-resolve"
           cp target/release/nros-build-profile "$stage/bin/nros-build-profile"
-          # The runners built above, by the bin names their manifests declare.
-          for runner in packages/runners/target/release/nros-runner-*; do
-              case "$runner" in *.d) continue ;; esac
-              cp "$runner" "$stage/bin/"
-          done
-          test -x "$stage/bin/nros-runner-qemu"
           printf '%s\n' '${{ inputs.version }}' >"$stage/share/nros/VERSION"
           cp nros-sdk-index.toml "$stage/share/nros/nros-sdk-index.toml"
           # phase-440 W7 / RFC-0095 D8 job 2: the launcher fetches a pinned
@@ -294,6 +295,18 @@ jobs:
           # knew would be checked nowhere, and could not be run by a person
           # asking "what does the asset carry?".
           sh scripts/stage-sdk-root.sh "$stage"
+          # phase-527 W6 (RFC-0119 D4) — the release underlay. Every package in
+          # the SDK root that announces a `runner` or `command` becomes a
+          # PREBUILT package, `share/nros/packages/<package>/` (`package.xml`,
+          # its descriptor with `bin` stated, `bin/<exe>` from the build above),
+          # and its source copy leaves the SDK root, so the underlay announces
+          # each provider once. The set is the scan's, not a list here: a new
+          # runner ships the day it lands. The released `nros` reads the dir as
+          # part of the nano-ros root, so a user's package overlays it under
+          # the same rules as one in a checkout (W2b/W2c).
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" toolchain stage-packages "$stage"
+          test -x "$stage/share/nros/packages/nros_runner_qemu/bin/nros-runner-qemu"
+          test -x "$stage/share/nros/packages/nros_runner_native/bin/nros-runner-native"
           # Prefix-rooted, the mirror shape every other dist in the index uses,
           # so `sdk_store::execute`'s default unpack lands it unchanged.
           tar --zstd -cf "$RUNNER_TEMP/nros-linux-x86_64.tar.zst" -C "$stage" bin share
@@ -348,6 +361,11 @@ jobs:
           # exits 2 (usage), so the check is on what it prints.
           prof_help="$("$RUNNER_TEMP/probe/bin/nros-build-profile" --help 2>&1 || true)"
           grep -q "nros-build-profile" <<<"$prof_help"
+          # phase-527 W6 — the installed `nros` resolves a runner from the
+          # prebuilt underlay, and that runner starts: `describe` is the
+          # protocol's handshake (RFC-0119 D6).
+          "$RUNNER_TEMP/probe/sdk/nros/${{ inputs.version }}/share/nros/packages/nros_runner_native/bin/nros-runner-native" describe
+          "$installed" dev ws providers | grep -q "nros_runner_native"
           # RFC-0097 D7 — the manifest must survive the install and be READ back
           # by the installed binary, from the file, at the prefix it landed in.
           # An asset whose manifest the CLI cannot read is an asset for which

@@ -324,10 +324,20 @@ What "the nano-ros packages" means depends on how nros was installed:
 | Install | The nano-ros root holds | Built by |
 | --- | --- | --- |
 | a checkout | `packages/runners/*`, and command packages beside their domain (`packages/rmw/zenoh/nros_zenoh_tools`) | `just setup-cli` (the runners join the CLI build) |
-| a released toolchain | `toolchains/<v>/share/nros/packages/<package>/`: `package.xml`, descriptor, `bin/` | the release job (RFC-0097), prebuilt |
+| a released toolchain | `<prefix>/share/nros/packages/<package>/`: `package.xml`, descriptor (with `bin` stated), `bin/` | the release job (RFC-0097), prebuilt |
 
 A prebuilt package is still found by the same rule. Its `bin/` already
-exists, so it needs no build. This amends RFC-0097's release composition: the
+exists, so it needs no build. In a released toolchain the nano-ros root is
+two directories of the underlay tier, in this order: the SDK root
+(`share/nano-ros`, which holds the message, board and platform packages) and
+`share/nros/packages`. `provider_scan::search_path_over` derives the second
+from the first, so every caller of the one root-list function gets it, and
+the tiers and their order are unchanged. The release moves each runner and
+command package OUT of the SDK root when it stages it prebuilt
+(`nros toolchain stage-packages`), so the underlay announces each provider
+once. The descriptor states `bin`, because a prebuilt package ships no
+`Cargo.toml` to derive it from; the stated value is the one the source
+derives. This amends RFC-0097's release composition: the
 toolchain artifact carries the first-party runner and command packages. A
 user's packages in `src/` or on `package_paths` are built by `nros build`.
 That is the ROS underlay-and-overlay relation, kept at source time.
@@ -562,3 +572,7 @@ CMake code when they build it, so this adds no new boundary.
   unknown verb is looked up, the workspace is the current directory, the
   executable ladder is shared with runner lookup, a refusal exits 3, and a
   command reached at the wrong tier is refused naming the right spelling.
+- 2026-11-04 — phase-527 W6, D4: the released nano-ros root is the SDK root
+  plus `share/nros/packages`, both underlay; the release moves the runner and
+  command packages out of the SDK root into the prebuilt directory, and the
+  shipped descriptor states `bin`.

@@ -206,11 +206,11 @@ pub fn executable(
 ///
 /// - A package of the workspace `ws`: [`executable`], which `nros build`
 ///   filled (RFC-0119 D3); an unbuilt one is refused naming the build.
-/// - A released toolchain: the first-party tools sit prebuilt in its `bin/`,
-///   beside `nros`.
 /// - A nano-ros checkout's own runner (`packages/runners/`): built beside the
 ///   CLI by `just setup-cli`.
-/// - Otherwise a prebuilt package's own `bin/<bin>`.
+/// - Otherwise a prebuilt package's own `bin/<bin>`: a released toolchain's
+///   `share/nros/packages/<package>/` (phase-527 W6), or a user's overlay
+///   package placed the same way.
 ///
 /// `dir` is the provider's package directory and `wanted_for` names what the
 /// caller wanted (`runner \`qemu\``, `` `nros router` ``), so every refusal
@@ -241,16 +241,6 @@ pub fn locate_built(
         let triple = crate::orchestration::metadata_build::host_triple();
         return executable(&ws, package, bin, &triple, wanted_for).map_err(|e| e.to_string());
     }
-    // A released toolchain ships the first-party tools prebuilt in its
-    // `bin/`, beside `nros` (its SDK root carries their sources only). In a
-    // checkout nothing sits there, so the next rung answers.
-    if let Some(exe) = std::env::current_exe()
-        .ok()
-        .and_then(|e| e.parent().map(|d| d.join(bin)))
-        .filter(|e| e.is_file())
-    {
-        return Ok(exe);
-    }
     // A nano-ros checkout's own runner: built beside the CLI.
     if let Some(root) = root
         && dir.starts_with(root.join("packages/runners"))
@@ -267,7 +257,9 @@ pub fn locate_built(
             ))
         };
     }
-    // A released toolchain ships the package prebuilt, under `bin/`.
+    // A prebuilt package ships its executable in its own `bin/`: a released
+    // toolchain's `share/nros/packages/<package>/` (phase-527 W6), or a
+    // user's overlay package placed the same way.
     let exe = dir.join("bin").join(bin);
     if exe.is_file() {
         Ok(exe)

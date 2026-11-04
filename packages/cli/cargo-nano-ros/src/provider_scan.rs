@@ -242,7 +242,10 @@ pub const PACKAGE_PATH_ENV: &str = "NROS_PACKAGE_PATH";
 /// neither.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RootOrigin {
-    /// Root 0 — the nano-ros checkout. Not a builtin, merely first.
+    /// Root 0 — the nano-ros checkout. Not a builtin, merely first. A
+    /// released toolchain has two roots of this origin: its SDK root
+    /// (`share/nano-ros`) and its prebuilt runner and command packages
+    /// (`share/nros/packages`, phase-527 W6).
     NanoRosTree,
     /// The workspace being built.
     Workspace,
@@ -443,6 +446,13 @@ pub fn search_path_over(
 
     if let Some(r) = nano_ros_root {
         push_root(&mut out, r.to_path_buf(), RootOrigin::NanoRosTree, None);
+        // A released toolchain's first-party runner and command packages,
+        // prebuilt, beside its SDK root (RFC-0119 D4, phase-527 W6). Part of
+        // the underlay, so a user's package overlays it under the same rules
+        // as one in a checkout's `packages/runners`.
+        if let Some(packages) = nros_launcher::checkout::shipped_packages_beside(r) {
+            push_root(&mut out, packages, RootOrigin::NanoRosTree, None);
+        }
     }
     let underlay = out.roots.first().map(|r| r.path.clone());
 
@@ -1742,6 +1752,36 @@ mod tests {
             vec![outside],
             "an out-of-tree consumer with no nano-ros source still scans its own \
              workspace",
+        );
+    }
+
+    /// phase-527 W6 — a released toolchain's SDK root brings its prebuilt
+    /// packages dir with it, as a second underlay root right after it, so
+    /// the order (underlay, sources, env) is unchanged.
+    #[test]
+    fn a_released_sdk_root_adds_its_prebuilt_packages_to_the_underlay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sdk = tmp.path().join("prefix/share/nano-ros");
+        let packages = tmp.path().join("prefix/share/nros/packages");
+        let ws = tmp.path().join("ws");
+        std::fs::create_dir_all(&sdk).unwrap();
+        std::fs::create_dir_all(&ws).unwrap();
+        // The release carries no packages dir: the path is the old one.
+        assert_eq!(
+            default_search_path(Some(&sdk), &ws),
+            vec![sdk.clone(), ws.clone()]
+        );
+
+        std::fs::create_dir_all(&packages).unwrap();
+        let path = build_search_path(Some(&sdk), &ws, &[], None);
+        assert_eq!(path.paths(), vec![sdk, packages, ws]);
+        assert_eq!(
+            path.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
+            vec![
+                RootOrigin::NanoRosTree,
+                RootOrigin::NanoRosTree,
+                RootOrigin::Workspace
+            ]
         );
     }
 

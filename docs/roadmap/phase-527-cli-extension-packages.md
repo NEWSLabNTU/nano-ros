@@ -4,8 +4,9 @@
 (`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
 the host build role; declared overrides; colcon's duplicate rule among
 source roots, overrides in `nros.toml`), W2d (one `--base-paths` meaning,
-#3088) and W2e (a duplicate inside one root is refused too, #3113); W4
-(command dispatch) in review (#3116); W5, W6 next.** Implements
+#3088), W2e (a duplicate inside one root is refused too, #3113) and W4
+(command dispatch, #3116); W6 (the release underlay) in review; W5 next.**
+Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -517,6 +518,66 @@ Acceptance:
   `nros.toml [workspace.overrides]` declares it (W2b, W2c); undeclared,
   `nros run` refuses it, and
   `nros doctor` reports it either way.
+
+Status: **DONE, in review** (2026-11-04, PR pending).
+
+- **What ships.** `nros toolchain stage-packages <prefix>` (hidden, like
+  `toolchain manifest`; `nros-cli-core/src/orchestration/release_packages.rs`)
+  runs in `release-nros.yml`'s `Stage the prefix` step after
+  `scripts/stage-sdk-root.sh`. It scans the staged SDK root with the one
+  provider scan, takes every package whose announcements classify as a host
+  kind (`kind_role`, so `runner` and `command` alike; no list anywhere), and
+  writes `share/nros/packages/<package>/`: `package.xml` as is, the
+  descriptor with `bin` stated, and `bin/<exe>` from the checkout's cargo
+  target dir (`cargo metadata`). It re-scans what it wrote and resolves each
+  provision through the descriptor reader before returning. No command
+  package exists on main yet (W4/W5), so today it stages the six runners; a
+  command package is staged by the same path, and the step refuses a host
+  package whose executable was not built (so W5 adds its build line to `Build
+  the CLI from source`).
+- **Discovery.** `provider_scan::search_path_over`, the one root-list
+  function, adds `share/nros/packages` as a second `NanoRosTree` root right
+  after the nano-ros root when that root is a shipped SDK root
+  (`nros_launcher::checkout::shipped_packages_beside`). The tiers and their
+  order are unchanged; the W2b/W2c policy reads origins, so an override of a
+  released runner follows exactly the rules of one in a checkout.
+  `run_exec::locate_runner` lost its "`bin/` beside `nros`" rung (phase-525
+  W4's): the released runner is found through its package's `bin/`, the
+  rung that already existed. The release no longer copies `nros-runner-*`
+  into `bin/`.
+- **The probe.** `just probe installed` (track `first-project`) appends
+  `scripts/probe/verify-installed-underlay.sh` after the chapter: the prebuilt
+  runners are there and the SDK root carries no source copy; `nros run --why`
+  names the released qemu runner; a user `runner/qemu` on `NROS_PACKAGE_PATH`
+  is refused by `nros run` (exit 3) and reported by `nros doctor`; declared in
+  the leaf's `system.toml [overrides]` it is used by a real `nros run
+  --expect` (its executable wraps ours and leaves a mark) and still reported;
+  then `nros setup linux --rmw zenoh`, `nros new native_talker --board linux
+  --template talker`, `nros sync`, `nros run --expect 'Publishing:'`.
+  `release-nros.yml`'s install check also runs the installed native runner's
+  `describe` and lists it through `nros dev ws providers`.
+- Tests: `release_packages` unit tests (a runner and a command staged, source
+  removed, an announcement-free package kept, an unbuilt exe refused, `bin`
+  stating), `provider_scan`'s
+  `a_released_sdk_root_adds_its_prebuilt_packages_to_the_underlay`, the
+  launcher's `a_shipped_sdk_root_finds_its_prebuilt_packages`, and
+  `nros-cli-core/tests/release_underlay.rs` (the real qemu package staged;
+  resolves from the underlay; an undeclared `my_qemu` refused and listed; a
+  declared one wins, shadowing the prebuilt package, and listed).
+
+Deviations:
+
+- **The released nano-ros root is two directories**, `share/nano-ros` and
+  `share/nros/packages`, not `share/nros/packages` alone. The SDK root has
+  been root 0 of a released `nros` since phase-447 A2 (it carries the message,
+  board and platform packages), so replacing it would lose `std_msgs`.
+  RFC-0119 D4 now says so.
+- **The release moves each runner package out of the SDK root.** The SDK root
+  stages `packages/` whole, so without the move the underlay announced every
+  runner twice. `packages/runners/nros-extension` stays (it announces
+  nothing), beside a `Cargo.toml` whose member list now names missing
+  directories; nothing builds that workspace from a release today, but W7's
+  copy-out scaffold must not path-depend on it there (crates.io is the plan).
 
 ### W7 — Scaffolds and checks
 
