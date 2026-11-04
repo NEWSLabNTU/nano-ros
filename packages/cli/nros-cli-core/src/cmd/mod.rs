@@ -32,6 +32,7 @@ pub mod emit_package_xml;
 pub mod entity_census;
 pub mod entity_inventory;
 pub mod explain;
+pub mod extension;
 pub mod flash;
 pub mod generate;
 pub mod generate_px4;

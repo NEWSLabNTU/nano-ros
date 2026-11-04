@@ -99,9 +99,34 @@ fn main() -> Result<()> {
             .clone()
             .bin_name("nros dev")
             .print_help()?;
+        // RFC-0119 D7 — the extension verbs this workspace reaches, with their
+        // summary and package, and every command refused at discovery.
+        let (listed, refused) =
+            nros_cli_core::cmd::extension::discover(&nros_cli_core::cmd::extension::workspace());
+        let listing = nros_cli_core::cmd::extension::render_listing(&listed);
+        if !listing.is_empty() {
+            println!("\n{listing}");
+        }
+        for r in refused {
+            eprintln!("warning: {r}");
+        }
         return Ok(());
     }
-    let matches = grouped_help(Cli::command(), false).get_matches();
+    let matches = match grouped_help(Cli::command(), false).try_get_matches() {
+        Ok(m) => m,
+        Err(e) => {
+            // phase-527 W4 / RFC-0119 D7 — a verb with no built-in match is
+            // looked up as an announced `command`. Only an unknown
+            // SUBCOMMAND is: a built-in always wins, and a malformed built-in
+            // invocation keeps clap's own error. Returns when no package
+            // announces the verb, and clap's error then stands.
+            if e.kind() == clap::error::ErrorKind::InvalidSubcommand {
+                let argv: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+                nros_cli_core::cmd::extension::dispatch(&argv);
+            }
+            e.exit()
+        }
+    };
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if cli.codegen_version {
         println!("{}", nros_cli_core::abi_guard::EMITTED_VERSION);

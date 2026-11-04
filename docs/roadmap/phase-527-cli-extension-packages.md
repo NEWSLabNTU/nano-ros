@@ -3,9 +3,9 @@
 **Status (2026-11-04). IN PROGRESS — W3, W1, W2, W2b and W2c landed
 (`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
 the host build role; declared overrides; colcon's duplicate rule among
-source roots, overrides in `nros.toml`) and W2d (one `--base-paths` meaning,
-#3088); W2e (a duplicate inside one root is refused too) in review; W4, W6
-next.** Implements
+source roots, overrides in `nros.toml`), W2d (one `--base-paths` meaning,
+#3088) and W2e (a duplicate inside one root is refused too, #3113); W4
+(command dispatch) in review; W5, W6 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -431,6 +431,58 @@ Acceptance:
 - A fixture command package's verb runs, receives its arguments unchanged
   and the three variables, and its exit status passes through.
 - A fixture command named `build` is refused at discovery.
+
+Status: **DONE, in review** (2026-11-04, #PR).
+
+- `nros-cli-core/src/cmd/extension.rs` holds dispatch. `nros-cli`'s `main`
+  calls it only when clap reports an unknown subcommand, so a built-in always
+  wins; when no package announces the verb, clap's own error stands. The
+  provider is `resolve_command_with`'s answer over
+  `cmd::ws::provider_search_path_for` and the workspace's override policy,
+  the same call every other resolution makes; nothing here scans or orders.
+- The executable ladder moved out of `run_exec::locate_runner` into
+  `builder::host_tool::locate_built`, which `locate_runner` and dispatch both
+  call: the workspace's host build, a released toolchain's `bin/`, the
+  checkout's `packages/runners` build, a prebuilt package's `bin/`.
+- Every unknown verb reaches the scan, so the current directory's packages
+  are walked only when it looks like a workspace (`extension::is_workspace`:
+  an `nros.toml`, `system.toml` or `package.xml`, or a `src/` directory);
+  elsewhere `cmd::ws::provider_search_path_without_sources` scans the
+  underlay and `NROS_PACKAGE_PATH` only. Measured before the guard, on this
+  host under load: a provider scan rooted at `~/repos` took 1 min 47 s, which
+  every typo there would have paid.
+- `locate_built` treats a package of the nano-ros tree reached from a
+  directory holding the whole tree (`nros run` from the checkout's root) as
+  the checkout's build. Before, `run_exec::locate_runner` looked for such a
+  runner under `<checkout>/build/nros/host/` and refused it as unbuilt.
+- The command gets `NROS_WS_ROOT` (the canonical current directory),
+  `NROS_TOOLCHAIN` (this nros's version) and `NROS_CLI` (its canonical
+  path), and its arguments byte for byte. On Unix nros `exec`s it, so the
+  exit status, and a signal, pass through unchanged.
+- A refusal (not built, override refused, wrong tier, a built-in name)
+  prints why and exits 3. A `tier = "dev"` command reached as `nros <verb>`
+  is refused naming `nros dev <verb>`, and the other way round.
+- The built-in and reserved names are `builtin_verbs::taken`, read from the
+  live clap tree by the same rule as `check-provider-announcements` A7
+  (user: every top-level verb and the reserved ones; dev: those plus `nros
+  dev`'s). `nros help --all` ends with an "Extension commands (from
+  packages)" section (spelling, summary, package) and prints one warning per
+  refused command, `build` included.
+- Tests: `nros-cli/tests/command_dispatch.rs` over the new fixture workspace
+  `tests/fixtures/extension_packages/dispatch/ws` (a user-tier and a
+  dev-tier command package; the `build` one is written into the test's
+  tempdir, since A7 refuses any tracked `package.xml` announcing a built-in
+  verb, fixtures included): arguments unchanged (including `--help`
+  and an empty one), the three variables, exit 7 passed through, the tier
+  rule, the unbuilt refusal, the `build` refusal with `nros build` still the
+  built-in, the help listing, and an unknown verb keeping clap's error. The
+  "built" command is a shell script placed where `nros build` puts a CMake
+  host tool, so the tests compile nothing; W2's tests cover the build.
+- `tests/fixtures/extension_packages/` gains a `COLCON_IGNORE`. Without it
+  the nano-ros root's scan found W1's `fixture_command`, and `nros help
+  --all` in any workspace under a checkout would have listed `nros dev
+  fixture-hello`. A root the caller names is scanned whatever markers it
+  holds, so the tests that root a workspace in there are unchanged.
 
 ### W5 — The first command packages
 

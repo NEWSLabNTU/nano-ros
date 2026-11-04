@@ -1376,6 +1376,21 @@ fn provider_search_path_with(
     ))
 }
 
+/// The provider search path with NO source roots: the nano-ros underlay and
+/// `NROS_PACKAGE_PATH` only. What command dispatch scans when the current
+/// directory is not a workspace (phase-527 W4), so a mistyped verb in `$HOME`
+/// does not walk `$HOME`.
+#[must_use]
+pub fn provider_search_path_without_sources(workspace: &Path) -> provider_scan::SearchPath {
+    let env = std::env::var(provider_scan::PACKAGE_PATH_ENV).ok();
+    provider_scan::search_path_over(
+        nano_ros_underlay(workspace).as_deref(),
+        &provider_scan::SearchPath::default(),
+        workspace,
+        env.as_deref(),
+    )
+}
+
 /// The source roots that lie outside the workspace, one line each — what
 /// `nros doctor` and `nros run --why` print so a root the user did not expect
 /// is never silent (phase-527 W2d).

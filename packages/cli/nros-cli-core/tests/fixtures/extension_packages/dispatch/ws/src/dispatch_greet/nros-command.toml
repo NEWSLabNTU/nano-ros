@@ -1,0 +1,5 @@
+# phase-527 W4 fixture (RFC-0119 D2).
+protocol = 1
+summary  = "Print its arguments (a test fixture)"
+tier     = "user"
+bin      = "nros-fixture-greet"
