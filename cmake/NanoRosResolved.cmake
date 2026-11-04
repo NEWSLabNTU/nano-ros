@@ -81,8 +81,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
 # not be promised. That configure takes the unseeded road and says what to
 # run (phase-530 W5's cmake hook runs it first).
 function(nros_configured_locate _project _image)
-    set_property(GLOBAL PROPERTY NROS_CONFIGURED_COMMAND
-        "nros configure ${_project} --image ${_image}")
+    # The remedy an unseeded FATAL names (Ruling R52): published only once a
+    # CLI resolves below, so a host with no CLI is told to configure again
+    # rather than to run a command it does not have.
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_COMMAND "")
     # TRUE only once a CURRENT answer is published below.
     set_property(GLOBAL PROPERTY NROS_CONFIGURED_LOCATED_CURRENT FALSE)
     set_property(GLOBAL PROPERTY NROS_CONFIGURED_INPUTS "")
@@ -91,6 +93,8 @@ function(nros_configured_locate _project _image)
         set_property(GLOBAL PROPERTY NROS_CONFIGURED_RESOLVED_DIR "")
         return()
     endif()
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_COMMAND
+        "nros configure ${_project} --image ${_image}")
     execute_process(
         COMMAND "${_nros}" locate configured --project "${_project}" --image "${_image}"
                 --format cmake
