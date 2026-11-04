@@ -29,6 +29,9 @@
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test tier_wake_fanout`.
 
 #![cfg(all(feature = "trigger-test", unix))]
+// The executors are boxed on purpose: the low tier owns the session every
+// other tier's handle refers to, so it must not move when the `Vec` grows.
+#![allow(clippy::vec_box)]
 
 // The POSIX platform port (the wake object and its park) is force-linked by
 // `nros_tests`'s own `lib.rs`; `as _` keeps that reference without a name.
@@ -73,12 +76,13 @@ struct Sub {
     cb: AtomicUsize,
     user: AtomicUsize,
 }
-const SUB: Sub = Sub {
-    pending: AtomicBool::new(false),
-    cb: AtomicUsize::new(0),
-    user: AtomicUsize::new(0),
-};
-static SUBS: [Sub; TIERS] = [SUB; TIERS];
+static SUBS: [Sub; TIERS] = [const {
+    Sub {
+        pending: AtomicBool::new(false),
+        cb: AtomicUsize::new(0),
+        user: AtomicUsize::new(0),
+    }
+}; TIERS];
 static NEXT_SUB: AtomicUsize = AtomicUsize::new(0);
 /// The tests share the statics above; run them one at a time.
 static SERIAL: Mutex<()> = Mutex::new(());

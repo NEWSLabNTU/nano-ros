@@ -27,8 +27,8 @@ pub mod sleep;
 pub mod sporadic_timer;
 pub mod threading;
 pub mod time;
-pub mod wake;
 pub mod timing;
+pub mod wake;
 
 /// Zero-sized type implementing all platform methods for MPS2-AN385.
 ///
