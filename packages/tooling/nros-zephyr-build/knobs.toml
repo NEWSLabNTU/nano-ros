@@ -1774,8 +1774,8 @@ stall the tiers below the transport band. It defers rather than drops:
 unread bytes stay in the socket and TCP backpressures the sender.
 
 -1 (and unset) states nothing: the budget derived from the contract's
-declared subscriber ingress applies (phase-462 W6b: FRAMES = burst of
-the subscriber with the largest rate_hz x burst), and with no ingress
+declared subscriber arrival curve applies (phase-462 W6b: FRAMES = burst of
+the subscriber with the largest rate_hz x burst), and with no arrival curve
 declared the read task is unbounded, as before.
 0 is REFUSED -- a budget of zero frames is not "unlimited". Too large a
 budget is worse than none on stall COUNT (128 frames: 12.5 stalls/run
@@ -1804,7 +1804,7 @@ less than 2 ms: the executor does not wait for a wake-up 1 ms or less
 away (RFC-0110 D6).
 
 -1 (phase-462 W6b) states nothing: the value derived from the contract's
-declared subscriber ingress applies (burst x 10^6 / rate_hz of the
+declared subscriber arrival curve applies (burst x 10^6 / rate_hz of the
 subscriber with the largest rate_hz x burst), else the builtin 1000.
 Maps to Z_RX_TASK_BUDGET_REST_US.
 '''

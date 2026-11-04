@@ -1,0 +1,6 @@
+{
+  "key": "rust:HazardMonitorRef",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): one monitor member: the age or rate row whose verdict state says that topic has faulted. See `rust:HazardMonitorSpec`."
+}

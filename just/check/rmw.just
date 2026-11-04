@@ -141,7 +141,7 @@ declared-qos-header:
 #      exactly 3 here and exactly 2 on the depth-only variable -- and (issue
 #      1608) a FOURTH, a declared PUBLISHER, which only the descriptor carries
 #      and which is compiled only where a publisher row arrived, so 4 here --
-#      and (phase-519 W3b) a FIFTH, a declared ingress rate, so 5.
+#      and (phase-519 W3b) a FIFTH, a declared arrival rate, so 5.
 #      phase-454 W13:
 #      `NROS_ENTITY_DECLARED_DEPTHS` is written by the cmake entity inventory
 #      and by nothing on the leaf road, so for two waves `DECLARED_QOS_ROWS`
@@ -209,8 +209,8 @@ declared-qos-registration:
            echo "       And a FOURTH (issue 1608): a declared PUBLISHER, which only" >&2; \
            echo "       the descriptor carries and which a publisher registration" >&2; \
            echo "       is held to by declared_qos::honour_publisher." >&2; \
-           echo "       And a FIFTH (phase-519 W3b): a declared ingress rate, which" >&2; \
-           echo "       the registration hands the backend in ingress_rate_mhz." >&2; \
+           echo "       And a FIFTH (phase-519 W3b): a declared arrival rate, which" >&2; \
+           echo "       the registration hands the backend in arrival_rate_mhz." >&2; \
            echo "--- cargo said ---" >&2; echo "$_dqr_desc_out" >&2; exit 1 ;; \
     esac
     echo "  - WITHOUT either: those tests do not exist, so the cfg is load-bearing"

@@ -18,7 +18,7 @@
 # The two CLI producers that derive the zenoh read-task budget take it here:
 # `nros dev image entity-inventory` (the fragment's `NROS_DERIVED_ZENOH_RX_TASK_BUDGET_*`,
 # the Zephyr road) and `nros dev image sizing-descriptor` (`[image] rx_task_budget_*`,
-# the cargo roads). Both refuse a declared subscriber `ingress` the board
+# the cargo roads). Both refuse a declared subscriber `arrival_curve` the board
 # cannot satisfy, so a configure with an unsatisfiable declaration fails.
 # Unset: `c = 0`, nothing checked, and the image is byte-identical.
 

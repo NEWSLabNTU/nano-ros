@@ -824,7 +824,7 @@ typedef struct rmw_subscription_options_t {
      *  deleted unread — see the note where it stood in `rmw_vtable.h`. */
     uint32_t rx_buffer_hint;
     /** Phase-519 W3 (RFC-0074, "On XRCE") — the rate this subscription
-     *  DECLARED it can take, `ingress.rate_hz`, in millihertz. `0` =
+     *  DECLARED it can take, `arrival_curve.rate_hz`, in millihertz. `0` =
      *  undeclared, which is what every caller that names nothing passes, so
      *  the field took the old `_reserved[4]` bytes and the struct is the same
      *  8 bytes it was.
@@ -844,7 +844,7 @@ typedef struct rmw_subscription_options_t {
      *    plus more for every sample the agent-side reader's history holds.
      *    Measured in RFC-0074: median age 104 ms at depth 1 for a 10 Hz
      *    declaration, against 0.2 ms unpaced. */
-    uint32_t ingress_rate_mhz;
+    uint32_t arrival_rate_mhz;
 } rmw_subscription_options_t;
 
 /* ---- Standard QoS profile constants ---- */

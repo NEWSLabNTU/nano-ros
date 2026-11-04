@@ -35,11 +35,11 @@ pub struct TopicInfo<'a> {
     /// size-class their receive storage.
     pub rx_buffer_hint: usize,
     /// phase-519 W3 (RFC-0074) — the rate this subscription DECLARED it can
-    /// take (`ingress.rate_hz`), in millihertz. `0` = undeclared. Carried to
-    /// the backend in `rmw_subscription_options_t::ingress_rate_mhz`; the XRCE
+    /// take (`arrival_curve.rate_hz`), in millihertz. `0` = undeclared. Carried to
+    /// the backend in `rmw_subscription_options_t::arrival_rate_mhz`; the XRCE
     /// backend turns it into the agent's `max_bytes_per_second`, zenoh ignores
     /// it (its enforcement point 1 is the router rule). Ignored by publishers.
-    pub ingress_rate_mhz: u32,
+    pub arrival_rate_mhz: u32,
     /// phase-279 (#145) — publisher-side "express" hint: this topic's samples
     /// bypass transport tx batching (zenoh: the wire EXPRESS flag; a batching
     /// zenoh-pico session sends them immediately instead of queueing them for
@@ -59,7 +59,7 @@ impl<'a> TopicInfo<'a> {
             node_name: None,
             namespace: "/",
             rx_buffer_hint: 0,
-            ingress_rate_mhz: 0,
+            arrival_rate_mhz: 0,
             tx_express: false,
         }
     }
@@ -78,10 +78,10 @@ impl<'a> TopicInfo<'a> {
         self
     }
 
-    /// phase-519 W3 (RFC-0074) — set the declared ingress rate, millihertz
+    /// phase-519 W3 (RFC-0074) — set the declared arrival rate, millihertz
     /// (`rate_hz x 1000`). `0` leaves it undeclared.
-    pub const fn with_ingress_rate_mhz(mut self, rate_mhz: u32) -> Self {
-        self.ingress_rate_mhz = rate_mhz;
+    pub const fn with_arrival_rate_mhz(mut self, rate_mhz: u32) -> Self {
+        self.arrival_rate_mhz = rate_mhz;
         self
     }
 

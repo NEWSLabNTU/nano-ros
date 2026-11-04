@@ -905,7 +905,7 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
         namespace,
         // Publisher side — the receive-buffer hint is subscription-only.
         rx_buffer_hint: 0,
-        ingress_rate_mhz: 0,
+        arrival_rate_mhz: 0,
         // phase-301 (issue 0240) — express hint from the NULLable options
         // struct (NULL = default, not express).
         tx_express: unsafe { options.as_ref() }.is_some_and(|o| o.tx_express != 0),
@@ -1007,8 +1007,8 @@ unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
         // hint from the NULLable options struct (NULL = unset), so the backend
         // can size-class its receive storage.
         rx_buffer_hint: opts.map_or(0, |o| o.rx_buffer_hint as usize),
-        // phase-519 W3 — the declared ingress rate (RFC-0074), same struct.
-        ingress_rate_mhz: opts.map_or(0, |o| o.ingress_rate_mhz),
+        // phase-519 W3 — the declared arrival rate (RFC-0074), same struct.
+        arrival_rate_mhz: opts.map_or(0, |o| o.arrival_rate_mhz),
         // Subscription side — express is a publisher-only hint.
         tx_express: false,
     };

@@ -606,7 +606,7 @@ function(nros_derive_entity_inventory_knobs)
         set(_ws_arg --workspace "${_ws}")
     endif()
     # phase-462 W6c -- the board's per-frame receive cost: the read-task budget
-    # below is derived with it, and an ingress the board cannot satisfy fails
+    # below is derived with it, and an arrival curve the board cannot satisfy fails
     # here, naming the subscriber (RFC-0074).
     _nros_board_rx_cost_args(_rx_args)
     # phase-439 W7 (issue 1228) -- read the resolve phase's answer when it was
@@ -750,7 +750,7 @@ function(nros_derive_entity_inventory_knobs)
                   # when the fragment was composed with a model.
                   NROS_DERIVED_EXECUTOR_MAX_MONITORS NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS
                   # phase-462 W6b -- the zenoh read-task budget, present only
-                  # when a subscriber in the model declared ingress.
+                  # when a subscriber in the model declared arrival curve.
                   NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES
                   NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US
                   NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES

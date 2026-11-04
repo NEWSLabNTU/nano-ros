@@ -731,28 +731,28 @@ fn endpoint_row(
         for field in ["depth", "history", "reliability", "durability"] {
             ep.refuse(field, why.to_string());
         }
-        // phase-519 W3b -- and the declared ingress, on a subscription, the
+        // phase-519 W3b -- and the declared arrival curve, on a subscription, the
         // only kind that has one: it comes from the same attribution.
         if kind == EndpointKind::Subscription {
-            ep.refuse("ingress_rate_mhz", why.to_string());
+            ep.refuse("arrival_rate_mhz", why.to_string());
         }
     } else {
-        // phase-519 W3b (RFC-0074) -- the declared ingress rate, for the
+        // phase-519 W3b (RFC-0074) -- the declared arrival rate, for the
         // registration to hand the backend. A rate the `u32` options field
         // cannot hold (above ~4.3 MHz) is refused rather than truncated.
         if let Some(rate) = d
-            .ingress_rate
+            .arrival_rate
             .filter(|_| kind == EndpointKind::Subscription)
         {
             match u32::try_from(rate.milli_hz()) {
                 Ok(mhz) => {
-                    ep.set_ingress_rate_mhz(Some(mhz));
+                    ep.set_arrival_rate_mhz(Some(mhz));
                 }
                 Err(_) => {
                     ep.refuse(
-                        "ingress_rate_mhz",
+                        "arrival_rate_mhz",
                         format!(
-                            "ingress rate_hz = {} on subscription {topic} does not fit the \
+                            "arrival_curve rate_hz = {} on subscription {topic} does not fit the \
                              `uint32_t` millihertz field of `rmw_subscription_options_t`",
                             rate.hz()
                         ),
@@ -1439,7 +1439,7 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
                     // declaration road: no carrier ever delivered it there.
                     .set_entity_liveliness_tokens(Some(k.entity_liveliness_tokens));
                 // phase-462 W6b -- the zenoh read-task budget, from the
-                // contract's declared subscriber ingress. Refused (never a
+                // contract's declared subscriber arrival curve. Refused (never a
                 // guessed number) when none declares one; every consumer reads
                 // that as "no budget", the unbounded task.
                 match k.rx_task_budget {
@@ -1447,7 +1447,7 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
                         img.set_rx_task_budget(b.frames, b.rest_us);
                     }
                     None => {
-                        let why = "no subscriber in this image's contract declares `ingress` \
+                        let why = "no subscriber in this image's contract declares `arrival_curve` \
                                    (or no model was seen), so no read-task budget is derived \
                                    and the zenoh read task stays unbounded";
                         img.refuse("rx_task_budget_frames", why)
@@ -2055,7 +2055,7 @@ pub fn write_for_leaf(
     let inventory = match inventory {
         Some(mut inv) => {
             inv.set_board_rx_cost(img.rx_cost);
-            report_rx_ingress(&inv, &format!("{who}: board `{}`", img.board))?;
+            report_rx_arrival(&inv, &format!("{who}: board `{}`", img.board))?;
             Some(inv)
         }
         None => None,
@@ -2303,7 +2303,7 @@ pub struct QosConflict {
 }
 
 /// The per-endpoint QoS facts D12 rule 2 reduces: the four policies, and
-/// (phase-519 W3b) the declared ingress rate, which the registration applies
+/// (phase-519 W3b) the declared arrival rate, which the registration applies
 /// at run time and so must not be one entry's number in a shared runtime.
 #[derive(Clone, Copy)]
 enum QosField {
@@ -2311,7 +2311,7 @@ enum QosField {
     History,
     Reliability,
     Durability,
-    IngressRate,
+    ArrivalRate,
 }
 
 impl QosField {
@@ -2320,7 +2320,7 @@ impl QosField {
         QosField::History,
         QosField::Reliability,
         QosField::Durability,
-        QosField::IngressRate,
+        QosField::ArrivalRate,
     ];
 
     fn name(self) -> &'static str {
@@ -2329,7 +2329,7 @@ impl QosField {
             QosField::History => "history",
             QosField::Reliability => "reliability",
             QosField::Durability => "durability",
-            QosField::IngressRate => "ingress_rate_mhz",
+            QosField::ArrivalRate => "arrival_rate_mhz",
         }
     }
 
@@ -2340,7 +2340,7 @@ impl QosField {
             QosField::History => d.history.map(|v| format!("{v:?}")),
             QosField::Reliability => d.reliability.map(|v| format!("{v:?}")),
             QosField::Durability => d.durability.map(|v| format!("{v:?}")),
-            QosField::IngressRate => d.ingress_rate.map(|v| v.milli_hz().to_string()),
+            QosField::ArrivalRate => d.arrival_rate.map(|v| v.milli_hz().to_string()),
         }
     }
 
@@ -2350,7 +2350,7 @@ impl QosField {
             QosField::History => d.history = None,
             QosField::Reliability => d.reliability = None,
             QosField::Durability => d.durability = None,
-            QosField::IngressRate => d.ingress_rate = None,
+            QosField::ArrivalRate => d.arrival_rate = None,
         }
     }
 
@@ -2364,7 +2364,7 @@ impl QosField {
             QosField::History => to.history = from.history,
             QosField::Reliability => to.reliability = from.reliability,
             QosField::Durability => to.durability = from.durability,
-            QosField::IngressRate => to.ingress_rate = from.ingress_rate,
+            QosField::ArrivalRate => to.arrival_rate = from.arrival_rate,
         }
     }
 }
@@ -2580,9 +2580,9 @@ fn refuse_conflicts(desc: &mut SizingDescriptor, conflicts: &[QosConflict]) {
                 }
                 // phase-519 W3b -- a shared runtime cannot pace one endpoint
                 // at two rates, so a disagreement asks for every sample.
-                "ingress_rate_mhz" => {
-                    ep.set_ingress_rate_mhz(None)
-                        .refuse("ingress_rate_mhz", reason.clone());
+                "arrival_rate_mhz" => {
+                    ep.set_arrival_rate_mhz(None)
+                        .refuse("arrival_rate_mhz", reason.clone());
                 }
                 _ => {}
             }
@@ -2620,7 +2620,7 @@ fn write_model_descriptor(
             // phase-462 W6c -- RFC-0074's checks against the board cost the
             // caller handed the inventory (`set_board_rx_cost`); a road that
             // handed none checks nothing and derives at `c = 0`.
-            report_rx_ingress(inventory, &format!("sizing descriptor `{}`", img.entry))?;
+            report_rx_arrival(inventory, &format!("sizing descriptor `{}`", img.entry))?;
             compose_wired(img, inventory, runtime)
         }
         Wiring::Unwired {
@@ -2942,14 +2942,14 @@ fn backend_dispatch(rmw: &str) -> Option<BackendDispatch> {
 /// was handed its board's per-frame cost: a refusal is an error naming the
 /// inputs, and a constraint that could not be checked is SAID (stderr, under
 /// `who`), never left silent. Nothing is printed when the board states no
-/// cost or no subscriber declares ingress.
-pub fn report_rx_ingress(
+/// cost or no subscriber declares an arrival curve.
+pub fn report_rx_arrival(
     inv: &crate::entity_inventory::EntityInventory,
     who: &str,
 ) -> eyre::Result<()> {
     let check = inv
-        .check_rx_ingress()
-        .map_err(|e| eyre::eyre!("{who}: the declared subscriber ingress is refused: {e}"))?;
+        .check_rx_arrival()
+        .map_err(|e| eyre::eyre!("{who}: the declared subscriber arrival curve is refused: {e}"))?;
     if let Some(line) = check.statement() {
         eprintln!("{who}: {line}");
     }
@@ -4150,21 +4150,21 @@ mod tests {
         assert!(r.contains("nros configure"), "{r}");
     }
 
-    /// phase-519 W3b -- a subscription's declared ingress rate reaches its row
+    /// phase-519 W3b -- a subscription's declared arrival rate reaches its row
     /// in millihertz, survives a render/parse round trip, and is ABSENT on a
     /// row that declared none and on a publisher (negative controls).
     #[test]
-    fn a_declared_ingress_reaches_the_subscription_row_and_nothing_else() {
+    fn a_declared_arrival_curve_reaches_the_subscription_row_and_nothing_else() {
         let rate = crate::queue_depth::RateMilliHz::from_hz(12.5);
         let mut paced = sub("std_msgs/msg/String", "/paced", Some(1));
-        paced.ingress_rate = rate;
+        paced.arrival_rate = rate;
         let plain = sub("std_msgs/msg/String", "/plain", Some(1));
         let mut publisher = EntityDecl::bare(
             EntityKind::Publisher,
             Some("std_msgs/msg/String".into()),
             Some("/out".into()),
         );
-        publisher.ingress_rate = rate;
+        publisher.arrival_rate = rate;
         let inv = inventory(vec![paced, plain, publisher]);
         let d = build(&base(&inv));
         let row = |topic: &str| {
@@ -4173,32 +4173,32 @@ mod tests {
                 .find(|e| e.topic == topic)
                 .unwrap_or_else(|| panic!("no row for {topic}"))
         };
-        assert_eq!(row("/paced").ingress_rate_mhz().stated(), Some(&12_500));
+        assert_eq!(row("/paced").arrival_rate_mhz().stated(), Some(&12_500));
         assert!(matches!(
-            row("/plain").ingress_rate_mhz(),
+            row("/plain").arrival_rate_mhz(),
             nros_sizing_descriptor::Fact::Absent
         ));
         assert!(matches!(
-            row("/out").ingress_rate_mhz(),
+            row("/out").arrival_rate_mhz(),
             nros_sizing_descriptor::Fact::Absent
         ));
         let text = nros_sizing_descriptor::render(&d);
-        assert!(text.contains("ingress_rate_mhz = 12500"), "{text}");
+        assert!(text.contains("arrival_rate_mhz = 12500"), "{text}");
         let back = nros_sizing_descriptor::parse(&text, std::path::Path::new("t.toml")).unwrap();
         let paced_back = back.endpoints.iter().find(|e| e.topic == "/paced").unwrap();
-        assert_eq!(paced_back.ingress_rate_mhz().stated(), Some(&12_500));
+        assert_eq!(paced_back.arrival_rate_mhz().stated(), Some(&12_500));
     }
 
     /// phase-519 W3b -- a row the contract join could not attribute refuses
-    /// its ingress with the other contract facts, rather than stating one.
+    /// its arrival curve with the other contract facts, rather than stating one.
     #[test]
     fn an_unattributed_subscription_refuses_its_ingress() {
         let mut d = sub("std_msgs/msg/String", "/x", Some(1));
-        d.ingress_rate = crate::queue_depth::RateMilliHz::from_hz(10.0);
+        d.arrival_rate = crate::queue_depth::RateMilliHz::from_hz(10.0);
         d.contract_refusal = Some("not attributed".into());
         let desc = build(&base(&inventory(vec![d])));
         assert_eq!(
-            desc.endpoints[0].ingress_rate_mhz().refusal(),
+            desc.endpoints[0].arrival_rate_mhz().refusal(),
             Some("not attributed")
         );
     }
@@ -4328,7 +4328,7 @@ mod tests {
 
     /// phase-462 W6b -- the zenoh read-task budget is stated from the SAME
     /// derivation the Zephyr resolver reads, and refused when no subscriber
-    /// declares ingress: `nros-zpico-build` reads a refusal as no budget.
+    /// declares an arrival curve: `nros-zpico-build` reads a refusal as no budget.
     #[test]
     fn the_read_task_budget_is_stated_only_when_ingress_is_declared() {
         let mut inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
@@ -5599,7 +5599,64 @@ execution:
         assert_eq!(b.desc.image.model_nodes().stated(), Some(&2));
     }
 
-    /// phase-462 W6c -- the model road REFUSES a declared ingress the board
+    /// phase-534 W3 (acceptance) -- a model saved before rlm v0.3.9 (schema
+    /// 3: a hazard's `guards`, a subscriber's `ingress`, a publisher's
+    /// `on_demand`, trigger kind `spontaneous`) and the same system written
+    /// as schema 4 produce the same build artifacts: the sizing descriptor
+    /// and the derived CMake facts are byte-identical. The negative control
+    /// moves the arrival rate, and the descriptor moves with it.
+    #[test]
+    fn a_schema_3_model_and_its_schema_4_twin_size_the_same_image() {
+        let model = |version: u32, rate: &str, [monitors, curve, aperiodic, kind]: [&str; 4]| {
+            format!(
+                "meta: {{ version: {version} }}\nstructure:\n  nodes:\n    /listener:\n      \
+                 {{ scope: s.launch.xml, pkg: listener_pkg, exec: listener, node_name: listener }}\n    \
+                 /talker:\n      {{ scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }}\n  \
+                 topics:\n    /cmd:\n      type: std_msgs/msg/Int32\n      pub: [/talker/cmd]\n      \
+                 sub: [/listener/cmd]\ncontracts:\n  pub_endpoints:\n    /talker/cmd:\n      \
+                 {aperiodic}: true\n  sub_endpoints:\n    /listener/cmd:\n      \
+                 {curve}: {{ rate_hz: {rate}, burst: 4 }}\n  node_paths:\n    /talker/kick:\n      \
+                 output: [/talker/cmd]\n      trigger: {{ kind: {kind} }}\n  hazards:\n    \
+                 s.launch.xml/cmd_lost:\n      {monitors}:\n        - members: [/cmd]\n      \
+                 on: omission\n      ftti_ms: 500.0\n"
+            )
+        };
+        const OLD: [&str; 4] = ["guards", "ingress", "on_demand", "spontaneous"];
+        const NEW: [&str; 4] = ["monitors", "arrival_curve", "aperiodic", "aperiodic"];
+        let artifacts = |yaml: String| {
+            let m = ros_launch_manifest_model::SystemModel::from_yaml_str(&yaml)
+                .expect("model fixture parses");
+            let inv = EntityInventory::from_model(
+                "img",
+                &nros_orchestration_ir::overlay::LoadedModel::bare(m),
+            )
+            .expect("wiring described");
+            let dir = tempfile::tempdir().unwrap();
+            let w = write_for_model(&ModelImage {
+                wiring: Wiring::Composed(&inv),
+                ..unwired(
+                    dir.path(),
+                    "img",
+                    &ParamDeclarations::Absent,
+                    InfraServices::default(),
+                )
+            })
+            .unwrap()
+            .expect("a composed inventory always writes");
+            (nros_sizing_descriptor::render(&w.desc), inv.to_cmake())
+        };
+        let old = artifacts(model(3, "50", OLD));
+        let new = artifacts(model(4, "50", NEW));
+        assert!(old.0.contains("arrival_rate_mhz = 50000"), "{}", old.0);
+        assert_eq!(old, new);
+        let moved = artifacts(model(4, "25", NEW));
+        assert_ne!(
+            moved.0, new.0,
+            "the descriptor must move with the arrival rate"
+        );
+    }
+
+    /// phase-462 W6c -- the model road REFUSES a declared arrival curve the board
     /// cannot receive (RFC-0074 constraint 1): `write_for_model` fails naming
     /// the subscriber and writes no file. Negative control: the same image on
     /// a board that states no `[board.rx]` writes W6b's `c = 0` pair.
@@ -5620,7 +5677,7 @@ structure:
 contracts:
   sub_endpoints:
     /listener/cmd:
-      ingress: { rate_hz: 2000, burst: 1 }
+      arrival_curve: { rate_hz: 2000, burst: 1 }
 "#,
         )
         .expect("model fixture parses");
@@ -5864,7 +5921,7 @@ contracts:
             .flatten()
     }
 
-    /// phase-519 W3b -- D12 rule 2 for the declared ingress rate: entries
+    /// phase-519 W3b -- D12 rule 2 for the declared arrival rate: entries
     /// that agree keep it, entries that disagree refuse it on the row, so a
     /// shared runtime asks the XRCE agent for every sample rather than pacing
     /// one entry's endpoint at the other's rate.
@@ -5872,7 +5929,7 @@ contracts:
     fn a_shared_runtime_refuses_an_ingress_its_entries_disagree_on() {
         let paced = |hz: f64| {
             let mut d = sub("std_msgs/msg/Int32", "/a", Some(1));
-            d.ingress_rate = crate::queue_depth::RateMilliHz::from_hz(hz);
+            d.arrival_rate = crate::queue_depth::RateMilliHz::from_hz(hz);
             d
         };
         let a = inv_of(vec![component("l", vec![paced(10.0)])]);
@@ -5883,7 +5940,7 @@ contracts:
         );
         assert!(conflicts.is_empty(), "{conflicts:?}");
         assert_eq!(
-            build(&base(&out)).endpoints[0].ingress_rate_mhz().stated(),
+            build(&base(&out)).endpoints[0].arrival_rate_mhz().stated(),
             Some(&10_000)
         );
 
@@ -5893,14 +5950,14 @@ contracts:
             &[("a/m.yaml".into(), a.clone()), ("b/m.yaml".into(), other)],
         );
         assert!(
-            conflicts.iter().any(|c| c.field == "ingress_rate_mhz"),
+            conflicts.iter().any(|c| c.field == "arrival_rate_mhz"),
             "{conflicts:?}"
         );
         let mut desc = build(&base(&out));
         refuse_conflicts(&mut desc, &conflicts);
         let ep = &desc.endpoints[0];
-        assert_eq!(ep.ingress_rate_mhz().stated(), None);
-        assert!(ep.ingress_rate_mhz().refusal().unwrap().contains("D12"));
+        assert_eq!(ep.arrival_rate_mhz().stated(), None);
+        assert!(ep.arrival_rate_mhz().refusal().unwrap().contains("D12"));
     }
 
     /// D12 rule 2 -- two images that declare the SAME depth for one

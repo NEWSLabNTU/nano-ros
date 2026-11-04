@@ -513,7 +513,7 @@ fn hazard_sinks(model: &SystemModel) -> std::collections::BTreeMap<String, u32> 
 
 /// phase-462 W3b -- one guard member, as a row of THIS table set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-pub enum GuardMemberRow {
+pub enum MonitorMemberRow {
     /// Index into the age rows.
     Age(usize),
     /// Index into the rate/latency rows.
@@ -522,11 +522,11 @@ pub enum GuardMemberRow {
 
 /// phase-462 W3b -- one guard of a [`HazardRow`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct HazardGuardRow {
+pub struct HazardMonitorRow {
     /// Faults only when every member has.
     pub all_of: bool,
     /// The members, each a row of this table set.
-    pub members: Vec<GuardMemberRow>,
+    pub members: Vec<MonitorMemberRow>,
 }
 
 /// phase-462 W3b -- one contracted hazard, lowered onto one executor's
@@ -539,8 +539,8 @@ pub struct HazardRow {
     pub ftti_ms: u32,
     /// The reacting path's `safe_state.settle_ms`; 0 = none.
     pub settle_ms: u32,
-    /// The guards, members resolved to rows.
-    pub guards: Vec<HazardGuardRow>,
+    /// The monitors, members resolved to rows.
+    pub monitors: Vec<HazardMonitorRow>,
     /// Rate-row index of the `safe_state` publisher, when this table set has it.
     pub sink: Option<usize>,
     /// phase-462 W3c -- the id the reaction hook receives on `hazard-detected`
@@ -570,10 +570,10 @@ pub struct HazardRungRow {
     /// 0 rung, 1 window, 2 floor (rlm `LevelRole`: level, dwell, mrc; the executor's
     /// `RUNG_ROLE_*`).
     pub role: u8,
-    /// The guard members (of this hazard's lowered guards) that belong to the
+    /// The guard members (of this hazard's lowered monitors) that belong to the
     /// rung's `starts_at` node: the route clock starts at their detection.
     /// Empty when `starts_at` is not one of the guard's detectors here.
-    pub starts_at: Vec<GuardMemberRow>,
+    pub starts_at: Vec<MonitorMemberRow>,
 }
 
 /// The node FQN of an endpoint ref (`<node FQN>/<endpoint>`).
@@ -592,7 +592,7 @@ pub fn hazard_rungs(
     model: &SystemModel,
     key: &str,
     h: &ros_launch_manifest_model::HazardContract,
-    guards: &[HazardGuardRow],
+    monitors: &[HazardMonitorRow],
     rows: &[MonitorRow],
     ages: &[AgeRow],
 ) -> Vec<HazardRungRow> {
@@ -617,12 +617,12 @@ pub fn hazard_rungs(
                 LevelRole::Dwell => 1,
                 LevelRole::Mrc => 2,
             };
-            let mut starts_at: Vec<GuardMemberRow> = Vec::new();
+            let mut starts_at: Vec<MonitorMemberRow> = Vec::new();
             if let Some(node) = r.starts_at.as_deref() {
-                for m in guards.iter().flat_map(|g| &g.members) {
+                for m in monitors.iter().flat_map(|g| &g.members) {
                     let fqn = match m {
-                        GuardMemberRow::Age(i) => ages.get(*i).map(|a| a.fqn.as_str()),
-                        GuardMemberRow::Rate(i) => rows.get(*i).map(|r| r.fqn.as_str()),
+                        MonitorMemberRow::Age(i) => ages.get(*i).map(|a| a.fqn.as_str()),
+                        MonitorMemberRow::Rate(i) => rows.get(*i).map(|r| r.fqn.as_str()),
                     };
                     if fqn.is_some_and(|f| endpoint_node(f) == node) && !starts_at.contains(m) {
                         starts_at.push(*m);
@@ -644,20 +644,20 @@ pub fn hazard_rungs(
 /// The rows of `rows`/`ages` that detect a fault on `topic`: every age row on
 /// it (`silence-runtime`) and every rate row with a rate promise
 /// (`min-rate-runtime`).
-fn topic_members(topic: &str, rows: &[MonitorRow], ages: &[AgeRow]) -> Vec<GuardMemberRow> {
-    let mut out: Vec<GuardMemberRow> = ages
+fn topic_members(topic: &str, rows: &[MonitorRow], ages: &[AgeRow]) -> Vec<MonitorMemberRow> {
+    let mut out: Vec<MonitorMemberRow> = ages
         .iter()
         .enumerate()
         // A deadline-only row detects nothing the build can count on: it
         // judges only where the backend cannot, which is a run-time fact.
         .filter(|(_, a)| a.topic == topic && a.max_age_ms > 0)
-        .map(|(i, _)| GuardMemberRow::Age(i))
+        .map(|(i, _)| MonitorMemberRow::Age(i))
         .collect();
     out.extend(
         rows.iter()
             .enumerate()
             .filter(|(_, r)| r.topic == topic && r.min_rate_hz_milli > 0)
-            .map(|(i, _)| GuardMemberRow::Rate(i)),
+            .map(|(i, _)| MonitorMemberRow::Rate(i)),
     );
     out
 }
@@ -713,8 +713,8 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
         if !silence_observes(h) {
             continue;
         }
-        let mut guards = Vec::new();
-        for g in &h.guards {
+        let mut monitors = Vec::new();
+        for g in &h.monitors {
             let mut members = Vec::new();
             let mut whole = true;
             for topic in &g.members {
@@ -743,12 +743,12 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
             if members.is_empty() || (g.all_of && !whole) {
                 continue;
             }
-            guards.push(HazardGuardRow {
+            monitors.push(HazardMonitorRow {
                 all_of: g.all_of,
                 members,
             });
         }
-        if guards.is_empty() {
+        if monitors.is_empty() {
             continue;
         }
         let reaction = crate::ftti_budget::reaction_path(model, key, h)
@@ -762,14 +762,14 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
             .filter(|_| safe_state.is_some())
             .and_then(|r| ids.iter().find(|(_, name)| name == r.key))
             .map_or(0, |(id, _)| *id);
-        let rungs = hazard_rungs(model, key, h, &guards, rows, ages);
+        let rungs = hazard_rungs(model, key, h, &monitors, rows, ages);
         out.push(HazardRow {
             key: key.clone(),
             ftti_ms: h
                 .ftti_ms
                 .map_or(0, |v| v.round().max(0.0).min(u32::MAX as f64) as u32),
             settle_ms: emits.and_then(|e| sinks.get(e).copied()).unwrap_or(0),
-            guards,
+            monitors,
             sink: emits.and_then(|e| rows.iter().position(|r| r.fqn == e)),
             reaction_id,
             rungs,
@@ -790,10 +790,10 @@ fn silence_observes(h: &ros_launch_manifest_model::HazardContract) -> bool {
 }
 
 /// A guard member as the Rust literal the baked table names.
-fn member_ref(m: &GuardMemberRow) -> String {
+fn member_ref(m: &MonitorMemberRow) -> String {
     match m {
-        GuardMemberRow::Age(r) => format!("GuardRef::Age({r}u16)"),
-        GuardMemberRow::Rate(r) => format!("GuardRef::Rate({r}u16)"),
+        MonitorMemberRow::Age(r) => format!("HazardMonitorRef::Age({r}u16)"),
+        MonitorMemberRow::Rate(r) => format!("HazardMonitorRef::Rate({r}u16)"),
     }
 }
 
@@ -811,7 +811,7 @@ fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
         return out;
     }
     out.push_str(&format!(
-        "use {m}::{{GuardRef, GuardSpec, HazardCell, HazardSpec}};\n\n",
+        "use {m}::{{HazardMonitorRef, HazardMonitorSpec, HazardCell, HazardSpec}};\n\n",
         m = paths.monitor
     ));
     for (i, h) in hazards.iter().enumerate() {
@@ -819,12 +819,12 @@ fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
             "static NROS_HAZARD_CELL_{i}: HazardCell = HazardCell::new();\n"
         ));
         out.push_str(&format!(
-            "const NROS_HAZARD_GUARDS_{i}: &[GuardSpec] = &[\n"
+            "const NROS_HAZARD_MONITORS_{i}: &[HazardMonitorSpec] = &[\n"
         ));
-        for g in &h.guards {
+        for g in &h.monitors {
             let members: Vec<String> = g.members.iter().map(member_ref).collect();
             out.push_str(&format!(
-                "    GuardSpec {{ all_of: {a}, members: &[{m}] }},\n",
+                "    HazardMonitorSpec {{ all_of: {a}, members: &[{m}] }},\n",
                 a = g.all_of,
                 m = members.join(", ")
             ));
@@ -862,7 +862,7 @@ fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
             .collect();
         out.push_str(&format!(
             "    HazardSpec {{ key: {k:?}, ftti_ms: {f}u32, settle_ms: {st}u32, \
-             guards: NROS_HAZARD_GUARDS_{i}, sink: {sink}, reaction_id: {ri}u16, \
+             monitors: NROS_HAZARD_MONITORS_{i}, sink: {sink}, reaction_id: {ri}u16, \
              rungs: &[{rungs}], cell: &NROS_HAZARD_CELL_{i} }},\n",
             k = h.key,
             f = h.ftti_ms,
@@ -1170,6 +1170,55 @@ mod hazard_row_tests {
         (rows, ages, hz)
     }
 
+    /// phase-534 W3 (acceptance) -- a model saved before rlm v0.3.9 (schema
+    /// 3: a hazard's `guards`, a subscriber's `ingress`, trigger kind
+    /// `spontaneous`) lowers to the same monitor and hazard tables, and the
+    /// same router rule, as the same system written as schema 4. The
+    /// negative control drops the hazard's monitored topic and the tables
+    /// change.
+    #[test]
+    fn a_schema_3_model_lowers_to_the_same_tables_as_schema_4() {
+        let render =
+            |version: u32, monitors: &str, curve: &str, kind: &str, member: &str| {
+                let yaml = model_yaml(
+                &format!("{AGE_100}      {curve}: {{ rate_hz: 50.0, burst: 4 }}\n"),
+                &format!("{SAFE_STATE}      trigger: {{ kind: {kind} }}\n"),
+                &format!(
+                    "      {monitors}:\n        - members: [{member}]\n      on: omission\n      \
+                     reaction: /handler/stop_path\n      ftti_ms: 500.0\n"
+                ),
+                "",
+            )
+            .replacen("meta:\n  version: 1\n", &format!("meta:\n  version: {version}\n"), 1);
+                let m = parse(&yaml);
+                let rows = monitor_rows(&m).expect("rows");
+                let ages = age_rows(&m).expect("ages");
+                let hz = hazard_rows(&m, &rows, &ages);
+                (
+                    render_monitor_rs_full(&rows, &ages, &hz, RenderPaths::NROS_NODE),
+                    crate::router_rule::topic_rates(&m),
+                )
+            };
+        let old = render(3, "guards", "ingress", "spontaneous", "/scan");
+        let new = render(4, "monitors", "arrival_curve", "aperiodic", "/scan");
+        assert!(
+            old.0.contains("monitors: NROS_HAZARD_MONITORS_0"),
+            "{}",
+            old.0
+        );
+        assert_eq!(
+            old.1.len(),
+            1,
+            "the arrival curve lowers to one router rule"
+        );
+        assert_eq!(old, new);
+        let other = render(4, "monitors", "arrival_curve", "aperiodic", "/stop");
+        assert_ne!(
+            other.0, new.0,
+            "the tables must move with the monitored topic"
+        );
+    }
+
     /// phase-462 W5b -- a contract `deadline` with no age bound still gets a
     /// row, carrying the deadline in wire milliseconds and no age bound, and it
     /// is NOT a hazard guard member: whether it judges anything depends on the
@@ -1184,9 +1233,9 @@ mod hazard_row_tests {
         assert_eq!((ages[0].max_age_ms, ages[0].deadline_ms), (0, 50));
         assert!(
             hz.iter()
-                .flat_map(|h| &h.guards)
+                .flat_map(|h| &h.monitors)
                 .flat_map(|g| &g.members)
-                .all(|m| !matches!(m, GuardMemberRow::Age(_))),
+                .all(|m| !matches!(m, MonitorMemberRow::Age(_))),
             "{hz:?}"
         );
     }
@@ -1218,8 +1267,8 @@ mod hazard_row_tests {
         );
         let scan_rate = rows.iter().position(|r| r.fqn == "/sensor/scan").unwrap();
         assert_eq!(
-            h.guards[0].members,
-            vec![GuardMemberRow::Age(0), GuardMemberRow::Rate(scan_rate)]
+            h.monitors[0].members,
+            vec![MonitorMemberRow::Age(0), MonitorMemberRow::Rate(scan_rate)]
         );
         assert_eq!(ages[0].fqn, "/handler/scan");
         // phase-462 W3c -- the stop path states a safe_state, so the hazard
@@ -1250,7 +1299,7 @@ mod hazard_row_tests {
             let yaml = model_yaml(
                 AGE_100,
                 SAFE_STATE,
-                "      guards:\n        - members: [/scan]\n      on: omission\n      \
+                "      monitors:\n        - members: [/scan]\n      on: omission\n      \
                  reaction: demo.launch.xml/stop\n      ftti_ms: 500.0\n",
                 "",
             )
@@ -1333,7 +1382,7 @@ mod hazard_row_tests {
         );
         // `/handler` owns the guard's age row 0, so the window rung's clock
         // starts at its detection; `/nobody` detects nothing here.
-        assert_eq!(r[0].starts_at, vec![GuardMemberRow::Age(0)]);
+        assert_eq!(r[0].starts_at, vec![MonitorMemberRow::Age(0)]);
         let stop_row = rows.iter().position(|x| x.topic == "/stop").unwrap();
         assert_eq!(
             (r[1].mode, r[1].row, r[1].route_ms, r[1].role),
@@ -1348,7 +1397,10 @@ mod hazard_row_tests {
             )),
             "{text}"
         );
-        assert!(text.contains("starts_at: &[GuardRef::Age(0u16)]"), "{text}");
+        assert!(
+            text.contains("starts_at: &[HazardMonitorRef::Age(0u16)]"),
+            "{text}"
+        );
 
         // No rungs at all (a model before play_launch phase 96).
         let (rows, ages, hz) = lowered(AGE_100, HAZARD);
@@ -1406,7 +1458,7 @@ mod hazard_row_tests {
             text.contains("static NROS_HAZARD_CELL_0: HazardCell = HazardCell::new();"),
             "{text}"
         );
-        assert!(text.contains("GuardRef::Age(0u16)"), "{text}");
+        assert!(text.contains("HazardMonitorRef::Age(0u16)"), "{text}");
         let age = text.find("set_age_table").unwrap();
         let hzd = text.find("set_hazard_table(NROS_HAZARDS)").unwrap();
         assert!(hzd > age, "{text}");

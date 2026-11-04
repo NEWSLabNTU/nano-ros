@@ -361,7 +361,7 @@ pub struct MonitorTable {
     /// Guards and guard members across `hazards`: the counts the packs size
     /// the install's storage buffer by.
     #[serde(default)]
-    pub hazard_guards: usize,
+    pub hazard_monitors: usize,
     #[serde(default)]
     pub hazard_members: usize,
     /// play_launch phase 96 W4.2 -- rungs across `hazards` (their `starts_at`
@@ -438,7 +438,7 @@ pub struct HazardRow {
     pub key: String,
     pub ftti_ms: u32,
     pub settle_ms: u32,
-    pub guards: Vec<HazardGuard>,
+    pub monitors: Vec<HazardMonitor>,
     /// Rate-row index of the `safe_state` publisher; `0xFFFF` = none
     /// (`NROS_CPP_HAZARD_NO_SINK`).
     pub sink: u16,
@@ -471,7 +471,7 @@ pub struct HazardRung {
 
 /// phase-462 W3b -- one guard of a [`HazardRow`].
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HazardGuard {
+pub struct HazardMonitor {
     pub all_of: bool,
     pub members: Vec<HazardMember>,
 }

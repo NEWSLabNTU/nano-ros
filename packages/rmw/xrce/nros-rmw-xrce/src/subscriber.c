@@ -221,13 +221,13 @@ static rmw_ret_t xrce_subscription_create_locked(const rmw_node_t* node,
 
     /* Request continuous data delivery, paced by the agent when the
      * subscription declared an ingress rate (phase-519 W3, RFC-0074). */
-    uint32_t ingress_rate_mhz = (options != NULL) ? options->ingress_rate_mhz : 0u;
+    uint32_t arrival_rate_mhz = (options != NULL) ? options->arrival_rate_mhz : 0u;
     uint32_t ingress_bound = (options != NULL) ? options->rx_buffer_hint : 0u;
     const char* unpaced_why = NULL;
     uint16_t paced_bps =
-        xrce_ingress_max_bytes_per_second(ingress_rate_mhz, ingress_bound, &unpaced_why);
+        xrce_ingress_max_bytes_per_second(arrival_rate_mhz, ingress_bound, &unpaced_why);
     if (unpaced_why != NULL) {
-        xrce_report_ingress_unpaced(topic_name, ingress_rate_mhz, ingress_bound, unpaced_why);
+        xrce_report_ingress_unpaced(topic_name, arrival_rate_mhz, ingress_bound, unpaced_why);
     }
     uxrDeliveryControl delivery = {
         .max_samples = UXR_MAX_SAMPLES_UNLIMITED,
