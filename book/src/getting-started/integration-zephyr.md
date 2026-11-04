@@ -671,8 +671,8 @@ west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run
 *** Booting Zephyr OS build v3.7.0 ***
 <inf> nros_net_wait: Network ready (NSOS — host kernel sockets)
 <inf> rust: rustapp: nros: zephyr workspace entry up (2 nodes)
-<inf> rust: talker_pkg: talker publishing chatter seq=0
-<inf> rust: talker_pkg: talker publishing chatter seq=1
+<inf> rust: talker_pkg: Publishing: 'Hello World: 1'
+<inf> rust: talker_pkg: Publishing: 'Hello World: 2'
 ```
 
 and from a ROS 2 shell on the same router, the nodes are ordinary ROS nodes:
@@ -680,7 +680,7 @@ and from a ROS 2 shell on the same router, the nodes are ordinary ROS nodes:
 ```console
 $ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 $ ros2 topic echo /chatter --once
-data: 6
+data: 'Hello World: 6'
 ---
 ```
 
@@ -917,7 +917,7 @@ os_config = ["prj-zenoh.conf", "prj-user-extra.conf", "user-widget.overlay"]
 *** Booting Zephyr OS build v3.7.0 ***
 user_extra: out-of-tree driver init, widget-id=42
 <inf> rust: rustapp: nros: zephyr workspace entry up (2 nodes)
-<inf> rust: talker_pkg: talker publishing chatter seq=0
+<inf> rust: talker_pkg: Publishing: 'Hello World: 1'
 ```
 
 The driver's `BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(user_widget)))` is what

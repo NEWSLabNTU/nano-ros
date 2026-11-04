@@ -1,12 +1,10 @@
-//! Listener Node pkg — subscribes to `std_msgs/Int32` on `/chatter`.
+//! Listener Node pkg — the ROS 2 tutorial listener: subscribes to
+//! `std_msgs/String` on `/chatter` and logs `I heard: [<payload>]`.
 //!
-//! Board-agnostic Node pkg. The sibling Entry pkg (`linux_entry`)
-//! wires it onto a board via the `nros::main!(launch = "demo_bringup:...")`
-//! macro, which emits one `listener_pkg::register(runtime)?;` call per
-//! matching `<node>` entry in the launch file.
-//!
-//! `register()` declares the node + a subscription whose `on_message`
-//! callback decodes the incoming `std_msgs::msg::Int32` payload.
+//! phase-535 (RFC-0122 D1, option B): the node logic is the standalone example's
+//! (`examples/<platform>/rust/listener/src/lib.rs`), so the example pairs and the
+//! workspace images run one program. The workspace keeps its own class and node
+//! names, which its bringup, launch files and tests address.
 
 #![no_std]
 
@@ -14,32 +12,35 @@ use nros::{
     Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
     NodeResult,
 };
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
-/// Listener — counts the int32 messages seen on `/chatter`.
 pub struct Listener;
 
 impl Component for Listener {
     const NAME: &'static str = "listener";
 
-    // phase-391 W5-endgame step 2c (issue 0857) — exact bounds: one
-    // subscription, nothing else, so the static cell skips the eight
-    // ~1.35 KiB publisher slots the knob default would reserve.
+    // phase-391 W5-endgame (issue 0857) — exact bounds: one subscription,
+    // no publishers/services/actions, so the static cell pays ~nothing.
     const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
-        let sub_chatter =
-            node.create_subscription_for_callback_name::<Int32>("on_message", "/chatter")?;
-        node.callback_for_name("on_message")
-            .reads_entity(&sub_chatter)?;
+        let _sub =
+            node.create_subscription_for_callback_name::<StringMsg>("on_chatter", "/chatter")?;
+        // phase-338 W3 — readiness marker. `linux_api.rs` gates on
+        // "Subscriber created" (`.expect("rust-listener did not become ready")`),
+        // and the native listener could not become Node-class while only it
+        // emitted the line. Additive for embedded, whose readiness comes from
+        // the board banner; mirrors the group service-server, which already
+        // logs its own readiness inside `register`.
+        log::info!("Subscriber created for topic: /chatter");
         Ok(())
     }
 }
 
 impl ExecutableNode for Listener {
-    /// Count of messages received so far.
-    type State = u32;
+    /// Number of messages seen on `/chatter`.
+    type State = i32;
     // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
     const HAS_TICK: bool = false;
 
@@ -48,10 +49,14 @@ impl ExecutableNode for Listener {
     }
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "on_message" {
-            if ctx.message::<Int32>().is_ok() {
-                *state = state.wrapping_add(1);
-            }
+        if callback.as_str() == "on_chatter"
+            && let Ok(msg) = ctx.message::<StringMsg>()
+        {
+            *state = state.wrapping_add(1);
+            // Canonical delivery line (phase-277 W4) — the rtos e2e
+            // harness counts `I heard:` lines; without it a working
+            // listener looked silent (pre-existing gap found in T4).
+            log::info!("I heard: [{}]", msg.data);
         }
     }
 }

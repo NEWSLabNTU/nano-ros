@@ -160,7 +160,7 @@ fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
         .expect("hosted spin output should include message_callbacks counter");
     assert!(
         message_callbacks >= 1,
-        "Rust workspace should observe at least one std_msgs/Int32 subscription callback; output:\n{output}"
+        "Rust workspace should observe at least one std_msgs/String subscription callback; output:\n{output}"
     );
     assert!(
         output.contains("nros: application complete"),

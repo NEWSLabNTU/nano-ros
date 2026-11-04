@@ -1,17 +1,12 @@
-//! FibonacciClient Node pkg — calls the `example_interfaces/action/Fibonacci`
-//! server on `/fibonacci` once, then republishes the final Fibonacci number on
-//! `/fib_result`.
+//! FibonacciClient Node pkg — the ROS 2 tutorial Fibonacci action client: sends
+//! one order-10 goal to `/fibonacci`, logs each feedback sample as
+//! `Next number in sequence received: [...]` and the result as
+//! `Result received: [...]`.
 //!
-//! Declarative shape with BOTH dispatch surfaces (phase-263 A4, the first
-//! workspace example to exercise the action-CLIENT path):
-//!   - `register()` declares an action CLIENT (result + feedback callbacks) and a
-//!     `/fib_result` publisher.
-//!   - `tick(TickCtx)` sends the goal exactly once (gated by a `sent` flag) — goal
-//!     send is a tick-only op, the executor is free there.
-//!   - `on_callback("on_feedback")` observes the streamed partial sequence;
-//!     `on_callback("on_result")` reads the terminal result and publishes its last
-//!     element on `/fib_result`. Publishing (not logging) keeps the result
-//!     observable on the wire — the workspace shape inits no log sink yet (A5).
+//! phase-535 (RFC-0122 D1, option B): the node logic is the standalone example's
+//! (`examples/<platform>/rust/action-client/src/lib.rs`), so the example pairs and the
+//! workspace images run one program. The workspace keeps its own class and node
+//! names, which its bringup, launch files and tests address.
 
 #![no_std]
 
@@ -20,22 +15,8 @@ use nros::{
     Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
     NodeResult, TickCtx,
 };
-use std_msgs::msg::Int32;
 
-/// Fibonacci action client — one-shot goal, result republished on `/fib_result`.
 pub struct FibonacciClient;
-
-/// How long a goal sent BLIND (the backend cannot see servers — XRCE, issue
-/// 1686) may go without a result before it is sent again.
-const BLIND_RESEND: core::time::Duration = core::time::Duration::from_secs(5);
-
-/// When the goal was last sent, whether that send was blind, and whether a
-/// result has arrived (`examples/linux/rust/action-client` says why).
-pub struct ClientState {
-    sent_at: Option<core::time::Duration>,
-    blind: bool,
-    done: bool,
-}
 
 impl Component for FibonacciClient {
     const NAME: &'static str = "fibonacci_client";
@@ -43,7 +24,7 @@ impl Component for FibonacciClient {
     // issue 0857 — the cell registries this class fills, exactly: (publishers,
     // service servers, service clients, action clients, action servers). Undeclared
     // means `NROS_RUNTIME_MAX_CELL_ENTITIES` per kind, in `.bss`, twice over.
-    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 1, 0);
+    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 1, 0);
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_client"))?;
@@ -52,36 +33,51 @@ impl Component for FibonacciClient {
             "on_result",
             "on_feedback",
         )?;
-        let pub_result = node.create_publisher_for_topic::<Int32>("/fib_result")?;
-        node.callback_for_name("on_result")
-            .publishes_entity(&pub_result)?;
         Ok(())
     }
 }
 
+/// How long a goal sent BLIND (the backend cannot see servers) may go without
+/// a result before it is sent again. The demo server finishes order 10 in a
+/// few milliseconds, so five seconds is far past any real answer.
+const BLIND_RESEND: core::time::Duration = core::time::Duration::from_secs(5);
+
+pub struct State {
+    /// When the goal was last sent; `None` until the first send.
+    sent_at: Option<core::time::Duration>,
+    /// Whether that send was BLIND — the backend could not say whether a
+    /// server exists (`action_server_is_ready` → `Err`, XRCE: the Agent owns
+    /// the DDS graph, issue 1686). Only a blind send is ever repeated.
+    blind: bool,
+    /// Set once a result has arrived.
+    done: bool,
+    /// Issue 1918 — set once "waiting for the action server" has been logged.
+    waiting_logged: bool,
+}
+
 impl ExecutableNode for FibonacciClient {
-    type State = ClientState;
+    type State = State;
 
     fn init() -> Self::State {
-        ClientState {
+        State {
             sent_at: None,
             blind: false,
             done: false,
+            waiting_logged: false,
         }
     }
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         match callback.as_str() {
             "on_feedback" => {
-                // Partial sequence streamed mid-goal — observed, nothing to emit.
-                let _ = ctx.message::<FibonacciFeedback>();
+                if let Ok(f) = ctx.message::<FibonacciFeedback>() {
+                    log::info!("Next number in sequence received: {:?}", f.sequence);
+                }
             }
             "on_result" => {
-                if let Ok(result) = ctx.message::<FibonacciResult>() {
+                if let Ok(r) = ctx.message::<FibonacciResult>() {
                     state.done = true;
-                    let last = result.sequence.last().copied().unwrap_or(0);
-                    let msg = Int32 { data: last };
-                    let _ = ctx.publish_to_topic::<Int32, 8>("/fib_result", &msg);
+                    log::info!("Result received: {:?}", r.sequence);
                 }
             }
             _ => {}
@@ -93,29 +89,49 @@ impl ExecutableNode for FibonacciClient {
             return;
         }
         let now = nros::time::now();
-        // A confirmed send is never repeated; a BLIND one (the backend cannot
-        // see servers) is, after `BLIND_RESEND` of silence: a goal written
-        // before XRCE's Agent matched the two endpoints is dropped, and nothing
-        // else would ever re-send it.
-        if let Some(at) = state.sent_at
-            && (!state.blind || now.saturating_sub(at) < BLIND_RESEND)
-        {
-            return;
+        if let Some(at) = state.sent_at {
+            // A send the backend could CONFIRM a server for is never repeated.
+            // A blind one is: XRCE's Agent matches the client's request writer
+            // with the server's reader asynchronously, a goal written before
+            // that match is dropped, and with no answer coming back this client
+            // would wait forever (the `rust_xrce_action` cell failed ~1 run in
+            // 3 exactly so: "Goal sent", then nothing). A goal that did arrive
+            // gets its result long before `BLIND_RESEND`, so a repeat is only
+            // ever a goal that was lost.
+            if !state.blind || now.saturating_sub(at) < BLIND_RESEND {
+                return;
+            }
+            log::info!("No result yet; sending the goal again");
         }
-        // Issue 1918 — wait for the server before sending.
+        // Issue 1918 — wait for the server before sending. A goal sent before
+        // the server has declared its send_goal service is answered by nobody.
+        // `Err` means the backend cannot say (no discovery channel): send
+        // blind, and repeat on silence (above).
         let blind = match ctx.action_server_is_ready_for_name("/fibonacci") {
-            Ok(false) => return,
+            Ok(false) => {
+                if !state.waiting_logged {
+                    log::info!("Waiting for action server...");
+                    state.waiting_logged = true;
+                }
+                return;
+            }
             Ok(true) => false,
             Err(_) => true,
         };
         let goal = FibonacciGoal { order: 10 };
+        log::info!("Sending goal");
+        // 32 B is more than enough for one `i32` + CDR header.
         if ctx
             .send_goal_for_name::<FibonacciGoal, 32>("/fibonacci", &goal)
             .is_ok()
         {
             state.sent_at = Some(now);
             state.blind = blind;
+            // Issue 1918 — SENT, not accepted: `send_goal_for_name` does not
+            // wait for the server's answer, so this cannot claim one.
+            log::info!("Goal sent, waiting for result");
         }
+        // On send failure `sent_at` is unchanged — the next tick retries.
     }
 }
 

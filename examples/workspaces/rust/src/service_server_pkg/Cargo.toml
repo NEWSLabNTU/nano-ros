@@ -21,3 +21,4 @@ nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
 example_interfaces = { path = "../../generated/example_interfaces", default-features = false }  # nros-managed
+log = { version = "0.4", default-features = false }

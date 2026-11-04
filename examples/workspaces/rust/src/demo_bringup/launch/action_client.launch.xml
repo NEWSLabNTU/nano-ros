@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!-- phase-263 A4 (Track D) — the CLIENT half of the cross-process Fibonacci action
      demo (issue 0096). Boots fibonacci_client, which sends one goal to the /fibonacci
-     server and republishes the result's last sequence element on /fib_result. Run in a
+     server and prints the feedback and the result (the ROS 2 tutorial client). Run in a
      separate process from `action_server.launch.xml`. Boot with the
      `linux_action_client_entry` pkg. -->
 <launch>

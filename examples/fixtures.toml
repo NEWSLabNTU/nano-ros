@@ -196,8 +196,8 @@ target_dir = "target-fixtures"
 # issue 0096 (regression guard) — the IN-PROCESS (same-executor, same zenoh session)
 # variant of the A1 service round-trip. `linux_service_inprocess_entry` boots BOTH
 # `add_server` and `add_client` in ONE process from `service_inprocess.launch.xml`.
-# `add_client` calls `add_server` on the SAME session each tick and republishes the
-# server-computed sum on `/sum`; an external `/sum` subscriber observes 1,2,3,… ONLY if
+# `add_client` (the tutorial client, phase-535) calls `add_server` once on the SAME
+# session and prints `Result of add_two_ints: 5` ONLY if
 # same-session query→queryable delivery works (i.e. zenoh-pico's
 # `Z_FEATURE_LOCAL_QUERYABLE`/`Z_FEATURE_LOCAL_SUBSCRIBER` loopback is compiled in for the
 # host build — see nros-zpico-build). Two nodes ≈ server(1 service) + client(1 timer)
@@ -220,7 +220,7 @@ target_dir = "target-fixtures"
 # node-to-node delivery does not happen (issue 0096), so the runtime round-trip runs the
 # server and client as two pure-cargo `nros::main!` entries booting one-node launches:
 # `linux_action_server_entry` (the /fibonacci server) + `linux_action_client_entry`
-# (sends a goal, republishes the result's last sequence element — 55 — on /fib_result).
+# (the ROS 2 tutorial client: sends one order-10 goal and prints the feedback and the result).
 # Consumed by tests/roundtrip_xprocess_e2e.rs (native_rust_action cell).
 [[workspace_fixture]]
 id = "workspace-rust-native-action-server"
@@ -1475,7 +1475,10 @@ lang = "rust"
 dir = "examples/linux/rust/listener"
 # phase-524 W4c -- also the host listener of the Nucleo-F767ZI's Renode smoke
 # cell (`zephyr_renode_twin`), so the lane that builds the twin builds it too.
-serves = ["zephyr-nucleo-f767zi,c,zenoh"]
+# phase-535 W0.b -- and the observer of the Zephyr Rust workspace entry
+# (`zephyr.rs` `test_zephyr_workspace_entry_native_sim_e2e`), whose talker is
+# the tutorial String talker.
+serves = ["zephyr,rust,zenoh", "zephyr-nucleo-f767zi,c,zenoh"]
 
 [[fixture]]
 platform = "linux"

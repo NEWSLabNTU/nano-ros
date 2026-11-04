@@ -2,11 +2,10 @@
 <package format="3">
   <name>action_client_pkg</name>
   <version>0.1.0</version>
-  <description>Node pkg — calls example_interfaces/Fibonacci on /fibonacci, republishes the result on /fib_result.</description>
+  <description>Node pkg — calls example_interfaces/Fibonacci on /fibonacci (the ROS 2 tutorial action client).</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
   <depend>example_interfaces</depend>
-  <depend>std_msgs</depend>
   <export>
     <build_type>nros_cargo</build_type>
   </export>

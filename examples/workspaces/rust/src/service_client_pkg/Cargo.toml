@@ -3,7 +3,7 @@ name = "service_client_pkg"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Node pkg — calls AddTwoInts on /add_two_ints, publishes the sum on /sum."
+description = "Node pkg — calls AddTwoInts once on /add_two_ints (the ROS 2 tutorial client)."
 
 [lib]
 path = "src/lib.rs"
@@ -17,4 +17,4 @@ nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
 example_interfaces = { path = "../../generated/example_interfaces", default-features = false }  # nros-managed
-std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
+log = { version = "0.4", default-features = false }

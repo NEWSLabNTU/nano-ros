@@ -1,38 +1,36 @@
-//! Talker Node pkg — publishes `std_msgs/Int32` on `/chatter`.
+//! Talker Node pkg — the ROS 2 tutorial talker (`demo_nodes_cpp` `talker`):
+//! publishes `std_msgs/String` "Hello World: N" on `/chatter` once a second and
+//! logs `Publishing: '<payload>'`.
 //!
-//! Board-agnostic Node pkg. The sibling Entry pkg (`linux_entry`)
-//! wires it onto a board — the bringup image that claims it + the
-//! `nros::main!(launch = "demo_bringup:...")` macro, which emits one
-//! `talker_pkg::register(runtime)?;` call per `<node>` entry in the
-//! launch file.
-//!
-//! `register()` declares the node + a 1 Hz publisher + timer; the
-//! `ExecutableNode::on_callback("on_tick")` body bumps a counter and
-//! publishes a typed `std_msgs::msg::Int32`. The Entry pkg's
-//! macro-generated runtime owns `nros::init`, executor open, RMW
-//! registration, and the spin loop.
+//! phase-535 (RFC-0122 D1, option B): the node logic is the standalone example's
+//! (`examples/<platform>/rust/talker/src/lib.rs`), so the example pairs and the
+//! workspace images run one program. The workspace keeps its own class and node
+//! names, which its bringup, launch files and tests address.
 
 #![no_std]
 
+use core::fmt::Write as _;
 use nros::{
     Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
     NodeResult, TimerDuration,
 };
-use std_msgs::msg::Int32;
 
-/// Talker — counter state + chatter publish on every tick.
+use std_msgs::msg::String as StringMsg;
+
+/// Talker component — counter state + chatter publish on every tick.
 pub struct Talker;
 
 impl Component for Talker {
     const NAME: &'static str = "talker";
 
-    // phase-391 W5-endgame step 2c (issue 0857) — exact bounds: one
-    // publisher (the timer needs no registry slot).
+    // phase-391 W5-endgame (issue 0857) — exact bounds: one publisher.
+    // The per-class cell is a STATIC sized by these; the knob default
+    // (8 slots x ~1.35 KiB) collapsed the esp32 single-image stack.
     const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0, 0);
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("talker"))?;
-        let pub_chatter = node.create_publisher_for_topic::<Int32>("/chatter")?;
+        let pub_chatter = node.create_publisher_for_topic::<StringMsg>("/chatter")?;
         let _timer =
             node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
         node.callback_for_name("on_tick")
@@ -42,7 +40,7 @@ impl Component for Talker {
 }
 
 impl ExecutableNode for Talker {
-    /// Monotonic counter — the next int32 to publish.
+    /// Monotonic counter — the next sequence number to publish.
     type State = i32;
     // phase-521 W6 — no `tick`, so the entry may park past 10 ms.
     const HAS_TICK: bool = false;
@@ -53,14 +51,14 @@ impl ExecutableNode for Talker {
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_tick" {
-            let msg = Int32 { data: *state };
-            let _ = ctx.publish_to_topic::<Int32, 8>("/chatter", &msg);
-            // phase-338 W7 — the `log` facade, like every other example body.
-            // The board bridges it (nros-board-linux's stdout bridge); the
-            // marker text is unchanged, so `WS_RUST_LOGGING_MARKER` still
-            // matches.
-            log::info!("talker publishing chatter seq={}", *state);
+            // Official ROS 2 demo behavior (phase-277 W4): payload
+            // "Hello World: N" (N from 1) + the canonical `Publishing:` log
+            // line the e2e harness counts.
             *state = state.wrapping_add(1);
+            let mut msg = StringMsg::default();
+            let _ = write!(msg.data, "Hello World: {}", *state);
+            let _ = ctx.publish_to_topic::<StringMsg, 64>("/chatter", &msg);
+            log::info!("Publishing: '{}'", msg.data);
         }
     }
 }

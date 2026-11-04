@@ -1692,7 +1692,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
 // listener cannot observe the in-process talker. We therefore assert
 // delivery to a SECOND, EXTERNAL native listener — the same shape as the
 // single-node Zephyr rust pubsub E2E — which is a real cross-process
-// pub/sub observation through generated `std_msgs/Int32` on `/chatter`.
+// pub/sub observation through generated `std_msgs/String` on `/chatter`.
 // =============================================================================
 
 /// Zephyr workspace Entry boots on native_sim, brings up its launch node set
@@ -1725,26 +1725,17 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     // Entry's talker publishes `/chatter`; this listener is the observable
     // delivery endpoint (the Entry's own in-process listener sees nothing —
     // no same-session zenoh loopback).
-    // The ws demo Entry (`talker_pkg`) publishes std_msgs/Int32 on /chatter;
-    // the observability listener must subscribe the SAME type (the message type
-    // is baked into the wire keyexpr) or the router never matches it.
+    // The ws demo Entry's `talker_pkg` is the ROS 2 tutorial talker
+    // (phase-535 W0.b): std_msgs/String on /chatter. The observer is the
+    // standalone tutorial listener, which subscribes the same type (the type
+    // is baked into the wire keyexpr). Until phase-535 the talker published
+    // Int32 and this was `bins/int32-sink`.
     //
-    // phase-338 W3 — this was the EXAMPLE (`linux/rust/listener`) with a
-    // test-only ~~`NROS_SUB_TYPE=int32`~~ switch; the switch moved to
-    // `bins/int32-sink`, which subscribes Int32 natively. Readiness is
-    // unchanged ("Waiting for"); the per-message marker is not — the sink
-    // prints "Received:", the example printed "I heard:".
-    //
-    // HARD FAILURE, not a skip — issue 1124, the sibling of the `.expect()` on
-    // the Entry twenty lines up. One test, two spellings, and the skipping one
-    // hid a lane gap: the row (`int32-sink-zenoh`, `linux,rust,zenoh`) is in
-    // EVERY lane's coordinate set and in every lane's build set (measured over
-    // tier1 / tier2 / tier2-nightly), and out-of-lane never reaches this arm
-    // anyway — `require_coord_in_lane` panics `[SKIPPED:lane]` inside the
-    // resolver, before the existence check. This is issue 1112's site one file
-    // over.
-    let listener_path = nros_tests::fixtures::build_int32_sink()
-        .require("int32-sink (row `int32-sink-zenoh`)")
+    // HARD FAILURE, not a skip (issue 1124): the row (`native-rust-listener`)
+    // `serves` this cell's coordinate (`zephyr,rust,zenoh`), so the lane that
+    // runs this test builds it, and out-of-lane never reaches this arm.
+    let listener_path = nros_tests::fixtures::build_native_listener()
+        .require("native Rust listener (row `native-rust-listener`)")
         .to_path_buf();
     use nros_tests::process::ManagedProcess;
     use std::process::Command;
@@ -1756,7 +1747,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
         .expect("Failed to start listener");
     listener
         .wait_for_output_pattern(
-            nros_tests::output::INT32_SINK_READY_MARKER,
+            nros_tests::output::LISTENER_READY_MARKER,
             Duration::from_secs(5),
         )
         .expect("native listener did not become ready");
@@ -1782,7 +1773,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     // publishing past that (the lease-lapse question of issue 1013) is not
     // observed here.
     let listener_output = listener.collect_until(
-        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+        nros_tests::output::LISTENER_LOG_PREFIX,
         Duration::from_secs(40),
     );
     let entry_output = entry
@@ -1796,10 +1787,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     eprintln!("\n=== Workspace Entry output ===\n{entry_output}");
     eprintln!("\n=== Native listener output ===\n{listener_output}");
 
-    let received = count_pattern(
-        &listener_output,
-        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
-    );
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         received >= 1,
         "Workspace Entry talker delivered no messages to the external native \

@@ -476,10 +476,6 @@ pub const WS_CUSTOM_MSG_READING_PREFIX: &str = "reading seq=";
 /// proves the full CDR layout, not just a counter, survives the trip.
 pub const WS_CUSTOM_MSG_TEMP_FIELD: &str = "temp=";
 
-/// The Rust workspace `talker_pkg`'s per-tick `log_info!` line marker
-/// (`"talker publishing chatter seq=N"` — phase-263 A5 logging demo).
-pub const WS_RUST_LOGGING_MARKER: &str = "talker publishing chatter";
-
 /// The `features` workspace's `rust_before_boot_talker_pkg` per-tick line when
 /// the image's `before_boot` step ran before the node registered (RFC-0065 D5
 /// amendment, issue 1511). The other arm prints `before_boot DID NOT run`.

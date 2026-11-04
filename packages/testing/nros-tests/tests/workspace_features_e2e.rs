@@ -208,7 +208,9 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
         (ML::Rust, MW::Logging) => Exec {
             entry: || build_native_workspace_rust_entry().map(|p| p.to_path_buf()),
             peer: None,
-            proof: Proof::LoggingLines(nros_tests::output::WS_RUST_LOGGING_MARKER),
+            // phase-535 W0.b: the talker is the ROS 2 tutorial talker, and the
+            // line it logs through the `log` facade is `Publishing: '…'`.
+            proof: Proof::LoggingLines(nros_tests::output::TALKER_PAYLOAD_PREFIX),
             note: "phase-338 W7: talker_pkg logs through the `log` facade like every other \
                    example body, and nros-board-linux's stdout bridge carries it — no \
                    per-app logging init. This cell USED to prove the same for the \
