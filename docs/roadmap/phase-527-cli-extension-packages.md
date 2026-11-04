@@ -5,7 +5,7 @@
 the host build role; declared overrides; colcon's duplicate rule among
 source roots, overrides in `nros.toml`), W2d (one `--base-paths` meaning,
 #3088), W2e (a duplicate inside one root is refused too, #3113) and W4
-(command dispatch, #3116); W6 (the release underlay) in review; W5 next.**
+(command dispatch, #3116); W6 (the release underlay) in review (#3122); W5 next.**
 Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
@@ -519,7 +519,7 @@ Acceptance:
   `nros run` refuses it, and
   `nros doctor` reports it either way.
 
-Status: **DONE, in review** (2026-11-05, PR pending).
+Status: **DONE, in review** (2026-11-05, #3122).
 
 - **What ships.** `nros toolchain stage-packages <prefix>` (hidden, like
   `toolchain manifest`; `nros-cli-core/src/orchestration/release_packages.rs`)
