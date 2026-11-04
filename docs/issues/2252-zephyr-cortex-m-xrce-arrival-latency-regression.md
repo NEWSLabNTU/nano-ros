@@ -5,9 +5,11 @@ status: open
 type: bug
 severity: medium
 area: [zephyr, xrce, executor, testing]
-related: [2251, 2221]
+related: [phase-466, 2251, 2221]
 found: 2026-11-04
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: a deterministic red in the RFC-0113 arrival-latency cell; phase-521, which added the cell, is archived.
 
 ## What
 

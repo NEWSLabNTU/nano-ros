@@ -6,8 +6,10 @@ type: bug
 area: [ci, testing]
 severity: low
 found: 2026-10-26
-related: [0499, 0513, 0661]
+related: [phase-466, 0499, 0513, 0661]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: a self-test that gives two answers on the same script is a lane verdict nobody can trust.
 
 ## Measured
 

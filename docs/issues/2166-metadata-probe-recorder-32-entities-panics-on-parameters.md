@@ -6,8 +6,10 @@ type: bug
 area: [cli, metadata, params]
 severity: low
 found: 2026-10-30
-related: [1419, 1679, 1469, phase-463]
+related: [phase-530, 1419, 1679, 1469, phase-463]
 ---
+
+**Home: [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)** — homed 2026-11-04: W2 makes the census the default entity source, and the probe's recorder is the other one.
 
 ## What was measured
 

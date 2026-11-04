@@ -801,6 +801,8 @@ same commit the date lands.
 | [#2194](../issues/archived/2194-zephyr-board-knob-rung.md) | W3 | **Resolved** 2026-11-02. The Nucleo-F767ZI and Pico W descriptors now state their RAM knobs in `[knobs]`, and the Zephyr leaf road carries the board rung. Listed here because W3 is where it was found. |
 | [#2202](../issues/2202-zenoh-defaults-sized-for-big-ram.md) | W3 | An undeclared zenoh C image falls back to pool and heap defaults sized for host-scale RAM (~400 KB on a 520 KiB part). Every small board this phase adds meets them, and 2194's board rung (resolved) is where a board overrides them. |
 | [#2185](../issues/2185-zephyr-chapter-workspace-unpatched.md) | W4 (W3 for the descriptor) | The Zephyr chapter's own west workspace never gets nano-ros's patch set, so the Rust lane's carrier is silently missing. W4's chapters take the same road: they run `nros setup board --zephyr-workspace` or `nros build` refuses. The generic `zephyr` descriptor needs a `[board.provisioning]` block for that to work, which is W3's. |
+| [#2230](../issues/2230-wokwi-twin-has-no-runner.md) | W4b | Homed 2026-11-04 from archived phase-529. The Pico W's Wokwi twin has no runner package, so `nros run` refuses it. |
+| [#2242](../issues/2242-persistent-west-workspace-lacks-new-module.md) | W4c | Homed 2026-11-04. `just zephyr setup` skips `west update` on a present workspace, so the newly allowlisted `hal_stm32` never reached a persistent runner. |
 
 ## Out of scope
 

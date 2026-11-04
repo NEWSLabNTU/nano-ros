@@ -9,6 +9,8 @@ found: 2026-10-29
 related: [1651, 1500, 1353, phase-466, phase-489]
 ---
 
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the scheduled `host-tests` tier-1 gates job was cancelled at its two-hour cap, which is a run with no verdict.
+
 ## What
 
 The scheduled `host-tests` run 40810937288 (2026-10-29 03:13 UTC, `3819c97b8`)

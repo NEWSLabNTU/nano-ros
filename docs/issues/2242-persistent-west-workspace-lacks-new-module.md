@@ -6,8 +6,10 @@ type: bug
 area: [zephyr, ci, setup]
 severity: medium
 found: 2026-11-04
-related: [1279, 1275, 1282]
+related: [phase-524, 1279, 1275, 1282]
 ---
+
+**Home: [phase-524](../roadmap/phase-524-emulator-twins.md)** — homed 2026-11-04: W4c's `hal_stm32` allowlisting is the module a persistent runner never fetched.
 
 ## Measured
 

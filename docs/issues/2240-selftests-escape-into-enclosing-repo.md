@@ -5,9 +5,11 @@ status: open
 type: bug
 severity: high
 area: [ci, tooling]
-related: [issue-0986, issue-0988, issue-1465, issue-2239]
+related: [phase-489, issue-0986, issue-0988, issue-1465, issue-2239]
 found: 2026-11-04
 ---
+
+**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md)** — homed 2026-11-04: same gate self-tests as issue 2239; the TMPDIR workaround for that issue is what exposed this one.
 
 ## What
 
