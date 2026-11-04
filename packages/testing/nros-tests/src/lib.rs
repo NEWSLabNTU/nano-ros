@@ -66,6 +66,8 @@ pub mod process;
 // phase-521 W8 (e) — a running PX4 SITL daemon, for the PX4 Tier 1 cells.
 pub mod px4_sitl;
 pub mod qemu;
+// phase-524 W4c -- the Renode twin launcher, `qemu`'s sibling.
+pub mod renode;
 pub mod ros2;
 pub mod ros_env;
 pub mod sdk_tree;

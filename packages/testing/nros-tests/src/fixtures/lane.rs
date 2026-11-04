@@ -605,6 +605,37 @@ pub fn require_coord_in_lane_within(
     Ok(())
 }
 
+/// [`require_coord_in_lane_within`] for a row the caller already SELECTED
+/// (`fixtures::groups::GroupRow`), honouring the coordinates it `serves`.
+///
+/// phase-524 W4c -- issue 2139 made a peer row in lane when a cell it serves
+/// is (`is_in_lane`, and the BUILD's `row_in_coords`), but the row-keyed
+/// resolver asked about `row.coord` alone. So a lane narrowed to a consuming
+/// cell's coordinate BUILT the peer (the build reads `serves`) and the RUN
+/// skipped it as out of lane: the Nucleo Renode cell's host listener did
+/// exactly that under `NROS_TEST_COORDS=zephyr-nucleo-f767zi,c,zenoh`. The
+/// `serves` list is the `coords` record's, found by the row's identity
+/// (`artifact_root`, `dir`, coordinate), so the two sides read one field.
+pub fn require_row_in_lane_within(
+    coord: &Coord,
+    dir: &str,
+    artifact_root: &str,
+    coords: Option<&BTreeSet<Coord>>,
+) -> TestResult<()> {
+    if let Some(sel) = coords {
+        let served = manifest_rows().iter().any(|r| {
+            r.coord == *coord
+                && r.dir == dir
+                && r.artifact_root == artifact_root
+                && r.serves.iter().any(|c| sel.contains(c))
+        });
+        if served {
+            return Ok(());
+        }
+    }
+    require_coord_in_lane_within(coord, dir, coords)
+}
+
 /// [`skip_reason_for_path`] for a coordinate the caller already resolved — the
 /// decision behind [`require_coord_in_lane`], minus the environment.
 ///

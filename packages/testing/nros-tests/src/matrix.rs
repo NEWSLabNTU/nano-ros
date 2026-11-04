@@ -57,6 +57,19 @@ pub enum PlatformId {
     /// and had to measure it to find out otherwise. All three languages are
     /// live here.
     ZephyrQemuCortexM,
+    /// Zephyr on the ST Nucleo-F767ZI (Cortex-M7F), run in its Renode twin
+    /// (phase-524 W4c, RFC-0115 D4 "Breadth").
+    ///
+    /// The board is silicon; what the test lanes run is Renode 1.17.0's
+    /// `nucleo_f767zi` platform booting the SAME ELF the bench flashes, with
+    /// the zenoh link on USART3 (a host pty the router listens on as
+    /// `serial/`) and the console on USART6. It is its own platform rather
+    /// than a case of [`PlatformId::ZephyrQemuCortexM`] because the board's
+    /// registry status rests on a cell that RUNS it: borrowing the QEMU
+    /// witness would claim a boot nothing made. The one cell here is a smoke
+    /// cell (boot, link up, one message heard); the family's breadth stays the
+    /// QEMU witness's.
+    ZephyrNucleoF767zi,
     /// FreeRTOS on QEMU MPS2-AN385 (lwIP).
     FreertosMps2,
     /// FreeRTOS POSIX simulator on the build host (phase-370).
@@ -102,7 +115,11 @@ impl PlatformId {
             PlatformId::ThreadxLinux => 5,
             PlatformId::ThreadxRiscv64 => 6,
             // 7 was ~~`Esp32Qemu`~~ until phase-521 W6 (RFC-0113 D5 retired the
-            // board); left as a gap so no other platform's band moves.
+            // board), left as a gap so no other platform's band moved. phase-524
+            // W4c takes it for the Nucleo's Renode twin: it BAKES (a Runtime
+            // cell), so it needs a low index (`domain_of` runs out at 11, see
+            // `ZephyrQemuCortexM` below), and taking the gap moves no band.
+            PlatformId::ZephyrNucleoF767zi => 7,
             PlatformId::QemuBaremetal => 8,
             // 9 was ~~`Stm32F4`~~ until phase-337 W7.a. Renumbering `Fvp`/`Px4`
             // down into the gap is free: both carry ZERO Runtime cells, so no
@@ -184,6 +201,12 @@ impl PlatformId {
             // distinct rows one coordinate — and a coordinate is what every
             // lane-scoped build and the whole staleness gate select on.
             PlatformId::ZephyrQemuCortexM => &["zephyr-cortex-m"],
+            // phase-524 W4c -- a token of its own, for the reason the
+            // ZephyrQemuCortexM comment above gives: its one row spells the
+            // same `dir`, `lang` and `rmw` (`examples/zephyr/c/talker`, c,
+            // zenoh) as the native_sim and mps2 talker rows, so a shared token
+            // would give distinct rows one coordinate.
+            PlatformId::ZephyrNucleoF767zi => &["zephyr-nucleo-f767zi"],
             PlatformId::FreertosMps2 => &["freertos"],
             // A token of its own, for the reason the ZephyrQemuCortexM comment
             // above gives: the witness leaves spell the same `lang` and `rmw`
@@ -229,9 +252,10 @@ impl PlatformId {
             // All three are `just zephyr …` — one module, three boards. That is
             // the RFC-0064 shape working as intended: a board is a conf bundle
             // under a family's recipes, not a namespace of its own.
-            PlatformId::ZephyrNativeSim | PlatformId::Fvp | PlatformId::ZephyrQemuCortexM => {
-                "zephyr"
-            }
+            PlatformId::ZephyrNativeSim
+            | PlatformId::Fvp
+            | PlatformId::ZephyrQemuCortexM
+            | PlatformId::ZephyrNucleoF767zi => "zephyr",
             // One module, two boards — the RFC-0064 shape, same as the three
             // Zephyr witnesses above. `just freertos build-posix-*` owns it.
             PlatformId::FreertosMps2 | PlatformId::FreertosPosix => "freertos",
@@ -256,6 +280,7 @@ impl PlatformId {
         PlatformId::Linux,
         PlatformId::ZephyrNativeSim,
         PlatformId::ZephyrQemuCortexM,
+        PlatformId::ZephyrNucleoF767zi,
         PlatformId::FreertosMps2,
         PlatformId::FreertosPosix,
         PlatformId::NuttxArm,
@@ -833,6 +858,9 @@ pub enum Consumer {
     LinuxExampleExecutorBoundNode,
     PortTemplates,
     ZephyrCortexM,
+    /// `tests/zephyr_renode_twin.rs` -- the Nucleo-F767ZI's Renode smoke cell
+    /// (phase-524 W4c).
+    ZephyrRenodeTwin,
     Zephyr,
     RtosE2e,
     TypedCarrier,
@@ -890,6 +918,7 @@ impl Consumer {
         Consumer::LinuxExampleExecutorBoundNode,
         Consumer::PortTemplates,
         Consumer::ZephyrCortexM,
+        Consumer::ZephyrRenodeTwin,
         Consumer::Zephyr,
         Consumer::RtosE2e,
         Consumer::TypedCarrier,
@@ -930,6 +959,7 @@ impl Consumer {
             Consumer::LinuxExampleExecutorBoundNode => "linux_example_executor_bound_node_e2e",
             Consumer::PortTemplates => "port_templates_e2e",
             Consumer::ZephyrCortexM => "zephyr_cortex_m_qemu",
+            Consumer::ZephyrRenodeTwin => "zephyr_renode_twin",
             Consumer::Zephyr => "zephyr",
             Consumer::RtosE2e => "rtos_e2e",
             Consumer::TypedCarrier => "typed_carrier_e2e",
@@ -1407,6 +1437,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         (P::ZephyrQemuCortexM, _, _, W::Pubsub | W::BootReport | W::IdleWake, K::Example) => {
             Some(ZephyrCortexM)
         }
+        (P::ZephyrNucleoF767zi, L::C, R::Zenoh, W::Pubsub, K::Example) => Some(ZephyrRenodeTwin),
         (P::ZephyrNativeSim, _, _, W::Pubsub | W::Service | W::Action, K::Example) => Some(Zephyr),
         (P::ZephyrNativeSim, L::Rust, R::Zenoh, W::EntryPubsub, K::Workspace) => Some(Zephyr),
         (

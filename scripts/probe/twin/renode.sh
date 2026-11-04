@@ -31,9 +31,14 @@
 
 nros_twin_up() {
     local elf_dir="$1" run="$2"
-    local renode_bin renode_dir port=33524
-    if ! renode_bin="$(command -v renode)"; then
-        echo "PROBE FAIL: no \`renode\` on PATH; \`nros setup $NROS_TWIN_BOARD\` installs it ([tool.renode])" >&2
+    local renode_bin="${NROS_TWIN_RENODE:-}" renode_dir port="${NROS_TWIN_MONITOR_PORT:-33524}"
+    # Where Renode is has ONE answer, `nros locate tool renode` (`$NROS_RENODE`,
+    # then the store at the pinned [tool.renode]; phase-524 W4c). A caller that
+    # already asked (the test harness's `nros_tests::renode`, which must turn a
+    # miss into an unmet precondition first) passes the answer as
+    # NROS_TWIN_RENODE rather than asking twice.
+    if [ -z "$renode_bin" ] && ! renode_bin="$(nros locate tool renode)"; then
+        echo "PROBE FAIL: no Renode; \`nros setup $NROS_TWIN_BOARD\` installs it ([tool.renode])" >&2
         return 1
     fi
     # The portable build resolves `@platforms/...` against its own directory.

@@ -172,7 +172,7 @@
   - [nros-board-nuttx-qemu (NuttxRiscv)](./reference/boards/nuttx-riscv.md)
   - [nros-board-zephyr (Fvp)](./reference/boards/fvp.md)
   - [s32k344-safety-island](./reference/boards/s32k344-safety-island.md)
-  - [nros-board-nucleo-f767zi-zephyr](./reference/boards/nucleo-f767zi-zephyr.md)
+  - [nros-board-nucleo-f767zi-zephyr (ZephyrNucleoF767zi)](./reference/boards/nucleo-f767zi-zephyr.md)
   - [nros-board-rpi-pico-w-zephyr](./reference/boards/rpi-pico-w-zephyr.md)
 <!-- END GENERATED board pages -->
 - [Environment Variables](./reference/environment-variables.md)

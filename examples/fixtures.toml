@@ -1476,6 +1476,9 @@ id = "native-rust-listener"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/listener"
+# phase-524 W4c -- also the host listener of the Nucleo-F767ZI's Renode smoke
+# cell (`zephyr_renode_twin`), so the lane that builds the twin builds it too.
+serves = ["zephyr-nucleo-f767zi,c,zenoh"]
 
 [[fixture]]
 platform = "linux"
@@ -5509,6 +5512,27 @@ west_build_name = "build-cortex-m-c-talker-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10700"
 conf_files = ["prj.conf"]
 west_image = "zephyr_zenoh"
+
+# phase-524 W4c (RFC-0115 D4) -- the (ZephyrNucleoF767zi, C, Zenoh, Pubsub)
+# cell: the same talker's serial image for the Nucleo-F767ZI, booted in its
+# Renode twin by tests/zephyr_renode_twin.rs. Built through the leaf road:
+# `[image.nucleo_serial]` names the board, whose package supplies the serial
+# Kconfig (merged after this `prj.conf`), the console overlay and the RAM
+# knob (`[knobs]`, issue 2194), so the row states no knob of its own. The
+# locator is the image's, restated because a row with no authored locator gets
+# the allocator's TCP one, which would override the image's serial link. No
+# router port is baked: the image dials nothing, the router opens the link.
+[[fixture]]
+platform = "zephyr-nucleo-f767zi"
+lang = "c"
+rmw = "zenoh"
+builder = "west"
+dir = "examples/zephyr/c/talker"
+board = "nucleo_f767zi"
+west_build_name = "build-nucleo-f767zi-c-talker-serial"
+west_zenoh_locator = "serial/serial@40004800#baudrate=115200"
+conf_files = ["prj.conf"]
+west_image = "nucleo_serial"
 
 # Issue 1036 — the (ZephyrQemuCortexM, C, BootReport) cell. The same talker,
 # console-less, with an executor arena too small for its first entity: the
