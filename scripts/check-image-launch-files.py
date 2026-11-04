@@ -4,7 +4,7 @@
 An `[image.<id>] launch = "<file>"` (or the bringup's `[system]
 default_launch`) names a file in the bringup's `launch/` directory. A typo, or
 a launch file deleted while an image still names it, surfaces today only when
-`nros sync` resolves that bringup, which a lane that does not build the image
+`nros configure` resolves that bringup, which a lane that does not build the image
 never does. Phase-535 adds one image row per (platform, role, rmw) to the
 language workspaces, so this check moves to the fast line, where it costs
 nothing.
