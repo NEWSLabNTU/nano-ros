@@ -227,7 +227,7 @@ pub fn discover_in(
         cargo_only.insert(dir);
     }
 
-    let packages = settle_duplicates(root, packages, &found_in, &root_rank, policy, &mut warnings)?;
+    let packages = settle_duplicates(root, packages, &found_in, &root_rank, policy)?;
     let kept: BTreeSet<&PathBuf> = packages.iter().map(|p| &p.dir).collect();
     host.retain(|d, _| kept.contains(d));
     cargo_only.retain(|d| kept.contains(d));
@@ -267,25 +267,19 @@ fn root_label(workspace: &Path, r: &provider_scan::SearchRoot) -> String {
 }
 
 /// colcon's rule: one package name, one directory. Two directories with one
-/// name in two different source roots are refused, naming both and where each
-/// came from, unless the override policy settles it (see [`discover_in`]).
-///
-/// Two copies inside ONE root are a warning here, not an error, and `select`
-/// refuses to choose between them. That is narrower than colcon, which
-/// refuses any duplicate, and it is measured rather than assumed: in-tree
-/// templates keep per-board variants of one package side by side
-/// (`examples/templates/ament-workspace-port/{zephyr,mps2-an385-freertos}`,
-/// both `ament_workspace_port`), each built on its own, and refusing them
-/// would break discovery of a tree that never asks for that name. A selection
-/// or a `<depend>` that does name it is refused by `select`, so the old
-/// silent last-wins cannot happen either way.
+/// name are refused, naming both and the root each came from, unless the
+/// override policy settles it (see [`discover_in`]). Whether the two copies
+/// sit in one source root or in two makes no difference, as in colcon: a
+/// copy that is quiet only while nothing names it is how a stray or planted
+/// `package.xml` gets in, and a rule that depends on how the roots happen to
+/// be split is one nobody can predict. A copy that is not a package (a
+/// backup, a vendored tree) takes an ignore marker and is never walked.
 fn settle_duplicates(
     root: &Path,
     packages: Vec<WorkspacePackage>,
     found_in: &BTreeMap<PathBuf, String>,
     root_rank: &BTreeMap<PathBuf, usize>,
     policy: Option<&OverridePolicy>,
-    warnings: &mut Vec<String>,
 ) -> Result<Vec<WorkspacePackage>, String> {
     let mut by_name: BTreeMap<&str, Vec<&WorkspacePackage>> = BTreeMap::new();
     for p in &packages {
@@ -339,16 +333,10 @@ fn settle_duplicates(
                         )
                     })
                     .collect();
-                let text = format!("package `{name}` is in two places:\n{}", lines.join("\n"));
-                let roots: BTreeSet<usize> = hits.iter().filter_map(|p| rank(p)).collect();
-                if roots.len() > 1 {
-                    errors.push(text);
-                } else {
-                    warnings.push(format!(
-                        "{text}\n  (one source root: selecting or depending on `{name}` is \
-                         refused until one copy goes)"
-                    ));
-                }
+                errors.push(format!(
+                    "package `{name}` is in two places:\n{}",
+                    lines.join("\n")
+                ));
             }
         }
     }
@@ -356,9 +344,12 @@ fn settle_duplicates(
         return Err(format!(
             "{}\n\nA package name names one package, as in colcon: the source roots \
              (the workspace, its `nros.toml` `package_paths`, or `--base-paths`) are \
-             peers, so neither copy outranks the other. Fix it by dropping one \
-             root (`--base-paths`, or the `package_paths` entry), by removing one \
-             copy, or — for a provider package — by pinning the one you mean in \
+             peers, so neither copy outranks the other, and two copies inside one \
+             root are refused the same way. Fix it by renaming one package, by \
+             putting an empty `COLCON_IGNORE` (or `AMENT_IGNORE`, `NROS_IGNORE`) \
+             in the directory of the copy that is not meant to build, by dropping \
+             one root (`--base-paths`, or the `package_paths` entry), or — for a \
+             provider package — by pinning the one you mean in \
              `{}` or passing `--allow-overriding <name>` to keep the later \
              root's (RFC-0119 D4).",
             errors.join("\n"),
@@ -651,11 +642,9 @@ pub fn select(found: &Discovered, sel: &Selection) -> Result<Discovered, String>
         return Ok(found.clone());
     }
 
-    // One name, one package. `discover_in` refuses a duplicate across source
-    // roots; two copies inside one root reach here, and this map must never
-    // pick between them (it used to keep the later one, silently). A name
-    // that is duplicated is refused as soon as a flag or a `<depend>` asks
-    // for it.
+    // One name, one package. `discover_in` refuses every duplicate, so this
+    // is the backstop for a `Discovered` built another way: the map must never
+    // pick between two copies (it used to keep the later one, silently).
     let mut by_name: BTreeMap<&str, &WorkspacePackage> = BTreeMap::new();
     let mut twins: BTreeMap<&str, Vec<&WorkspacePackage>> = BTreeMap::new();
     for p in &found.packages {
@@ -1623,10 +1612,10 @@ mod tests {
         select(&d, &sel(&["msgs_pkg"], &[])).expect("unrelated selection");
     }
 
-    /// Two copies inside ONE root (per-board variants of a template) warn,
-    /// and asking for that name is refused by `select`.
+    /// Two copies inside ONE root are refused exactly like two copies in two
+    /// roots (colcon's rule), and an ignore marker on one copy settles it.
     #[test]
-    fn a_duplicate_inside_one_root_warns_and_cannot_be_selected() {
+    fn a_duplicate_inside_one_root_is_refused() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         write(&root.join("zephyr/package.xml"), &pkg_xml("port", &[]));
@@ -1635,16 +1624,19 @@ mod tests {
             &root.join("src/lib_pkg/package.xml"),
             &pkg_xml("lib_pkg", &[]),
         );
-        let d = discover(root, &[]).expect("one root: a warning");
+        let e = discover(root, &[]).expect_err("one root: still a duplicate");
+        assert!(e.contains("package `port` is in two places"), "{e}");
         assert!(
-            d.warnings
-                .iter()
-                .any(|w| w.contains("package `port` is in two places")),
-            "{:?}",
-            d.warnings
+            e.contains("COLCON_IGNORE"),
+            "the error names the marker fix: {e}"
         );
-        let e = select(&d, &sel(&["port"], &[])).expect_err("ambiguous");
-        assert!(e.contains("is in two places"), "{e}");
+        assert!(e.contains("zephyr") && e.contains("freertos"), "{e}");
+
+        write(&root.join("freertos/COLCON_IGNORE"), "");
+        let d = discover(root, &[]).expect("the marker settles it");
+        let ports: Vec<_> = d.packages.iter().filter(|p| p.name == "port").collect();
+        assert_eq!(ports.len(), 1, "{:?}", d.packages);
+        assert!(ports[0].dir.ends_with("zephyr"), "{:?}", ports[0].dir);
     }
 
     // ---- phase-527 W2 — the host build role (RFC-0119 D3) ----------------
