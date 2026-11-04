@@ -14,7 +14,7 @@
 //! * which machine, which UART carries the link, which the console: the twin
 //!   probe track's facts, `scripts/probe/probe-track.py --twin <track>`, which
 //!   reads the registry row and the board descriptor's `[board.run.renode]`;
-//! * how Renode is driven (the `.resc` script, `CreateUartPtyTerminal`, the
+//! * how Renode is driven (the `.resc` script, the pty terminal for the link, the
 //!   monitor's `start`, the process group it runs in):
 //!   `scripts/probe/twin/renode.sh`, the probe's emulator-kind file, whose four
 //!   functions this module calls through `bash`.
@@ -51,14 +51,9 @@ pub fn require_renode() -> PathBuf {
             String::from_utf8_lossy(&out.stderr).trim()
         );
     }
-    let path = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
-    if !path.is_file() {
-        crate::unmet!(
-            "`nros locate tool renode` answered {}, which is not a file",
-            path.display()
-        );
-    }
-    path
+    // The verb answers only with a file (its env rung refuses anything else,
+    // and its store rung checks the program exists), so no second probe here.
+    PathBuf::from(String::from_utf8_lossy(&out.stdout).trim())
 }
 
 /// A Renode twin booting one ELF, paused until [`RenodeTwin::start`]. Dropping

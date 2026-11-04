@@ -60,13 +60,8 @@ fn zephyr_nucleo_renode_c_zenoh_serial_pubsub_e2e() {
         nros_tests::unmet!("zenohd not found -- run `just setup` / source ./activate.sh");
     }
 
-    let elf = build_zephyr_nucleo_c_serial_talker().unwrap_or_else(|e| {
-        panic!(
-            "zephyr/c/talker for nucleo_f767zi (image nucleo_serial) did not resolve. \
-             The lane gate already asserted this fixture is built, so this is a real \
-             failure -- read the verdict before rebuilding: {e:?}"
-        )
-    });
+    let elf = build_zephyr_nucleo_c_serial_talker()
+        .require("zephyr/c/talker for nucleo_f767zi (image nucleo_serial)");
     let listener = build_native_listener()
         .map(|p| p.to_path_buf())
         .require("the native Rust listener (the host peer)");
