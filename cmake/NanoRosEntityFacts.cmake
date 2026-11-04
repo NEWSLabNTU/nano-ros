@@ -23,6 +23,7 @@
 include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPromise.cmake")
 
 # phase-486 -- `nros_record_entity_facts` / `nros_fold_entity_facts` (and the
 # `_nros_entity_fact` reader issue 1429 added for them) are RETIRED with the
@@ -281,6 +282,9 @@ function(_nros_entity_budget_env _out_var)
         return()
     endif()
     nros_entity_inventory_knobs_file(_inv)
+    # phase-530 W7 (RFC-0120 D5) -- a READER: if the composer moves the
+    # fragment after this read, the end-of-configure promise check says so.
+    nros_promise_read("${_inv}")
     if(NOT EXISTS "${_inv}")
         return()
     endif()
@@ -382,6 +386,9 @@ function(_nros_declared_depth_table_env _out_var)
         return()
     endif()
     nros_entity_inventory_knobs_file(_inv)
+    # phase-530 W7 (RFC-0120 D5) -- a READER: if the composer moves the
+    # fragment after this read, the end-of-configure promise check says so.
+    nros_promise_read("${_inv}")
     if(NOT EXISTS "${_inv}")
         return()
     endif()
@@ -430,6 +437,9 @@ function(_nros_param_store_env _out_var)
         return()
     endif()
     nros_entity_inventory_knobs_file(_inv)
+    # phase-530 W7 (RFC-0120 D5) -- a READER: if the composer moves the
+    # fragment after this read, the end-of-configure promise check says so.
+    nros_promise_read("${_inv}")
     if(NOT EXISTS "${_inv}")
         return()
     endif()
