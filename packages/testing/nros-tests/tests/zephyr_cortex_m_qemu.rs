@@ -549,8 +549,8 @@ fn run_idle_wake_cell(rmw: Rmw) {
         other => panic!("no idle-wake row for {other:?}"),
     };
 
-    let mut qemu =
-        QemuProcess::start_mps2_an385_networked(&binary).expect("spawn the idle-wake witness");
+    let mut qemu = QemuProcess::start_mps2_an385_networked_measured(&binary)
+        .expect("spawn the idle-wake witness");
     // Boot, session, the first expiry, then five 1 s periods.
     let output = qemu.collect_until(IDLE_WAKE_RESULT_PREFIX, BOOT_BUDGET);
     qemu.kill();
@@ -633,8 +633,8 @@ fn run_arrival_latency_cell(rmw: Rmw) {
         other => panic!("no arrival-latency row for {other:?}"),
     };
 
-    let mut qemu =
-        QemuProcess::start_mps2_an385_networked(&binary).expect("spawn the idle-wake witness");
+    let mut qemu = QemuProcess::start_mps2_an385_networked_measured(&binary)
+        .expect("spawn the idle-wake witness");
     let booted = qemu.collect_until(IDLE_WAKE_ARMED_MARKER, BOOT_BUDGET);
     assert!(
         booted.contains(IDLE_WAKE_ARMED_MARKER),
