@@ -51,6 +51,13 @@ and RFC-0122 records it.
   board, an existing or generated launch file, and a matrix cell.
 - Both are static, on the fast line.
 
+- The manual-entry inventory (RFC-0122 D10): every example `main` that is not
+  `nros::main!`, classified as a **manual-entry demo** (kept, with its reason
+  written down) or a **generated-entry candidate** (moves to a component).
+  Candidates so far: the port templates (`cpp-port-minimal-publisher`,
+  `rclcpp-compat-smoke`), `custom-platform`, and `custom-transport-*`. The
+  ratchet carries entry form as an axis.
+
 **Acceptance:**
 - A mutation that deletes the last witness of a tuple fails the ratchet,
   naming the tuple.
@@ -168,6 +175,9 @@ All per RFC-0122 D2.
 ### W9 — Docs
 
 - RFC-0122 flips to Stable.
+- The book teaches the generated entry (RFC-0122 D10). Coordinated with
+  phase-531 W8, which rewrites the same chapters for the workspace layout; a
+  hand-written `main` appears only in the manual-entry chapter.
 - `examples/README.md`, `examples/workspaces/README-layout.md` (the new
   bringups and the image-id vocabulary), the book's first chapters (witness
   paths), and `book/src/reference/support-status.md`.
