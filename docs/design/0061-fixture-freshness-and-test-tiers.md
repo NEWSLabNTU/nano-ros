@@ -494,6 +494,14 @@ new fixture builds are 10 FreeRTOS cargo rows and 3 workspaces at
 Adopted at that price: the alternative was a written exemption for exactly the
 cells the acceptance names.
 
+## Amendment (2026-11-04, phase-535) — each tier names the job that runs it
+
+[RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md) D8/D9. The ladder above says what each tier covers; it never said
+which CI job runs it, and two had none: tier 1's "every change" ran daily,
+and tier 3 had no workflow. Each tier, and each board `cadence` (RFC-0114),
+now names one workflow job. A promise with no affordable job is lowered in the
+registry rather than kept in prose.
+
 ## Operational corollaries
 
 These do not depend on proposals 1–2 but bound the same cost:

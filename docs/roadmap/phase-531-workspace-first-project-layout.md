@@ -102,6 +102,12 @@ finds only the code W7 deletes.
 
 ### W6 — Migrate the tree
 
+> **Scope amended 2026-11-04 ([RFC-0122](../design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md),
+> [phase-535](phase-535-example-reorg-and-cadence-ci.md)).** Under `examples/`,
+> W6 migrates only the single-node witnesses (`<plat>/<lang>/talker`) and
+> `custom-platform` in place. The pairs, variants, configurations and feature
+> demos move into the language workspaces in phase-535 instead.
+
 - `nros dev migrate-bringup <dir>`, the one-shot of RFC-0121 D8. It is tested
   on a copy of each shape: Rust, C, C++, Zephyr west, a hand-written `main`, and
   a fixture row.

@@ -130,6 +130,11 @@ Each `[[board]]` row carries, in place of `tier`:
 | `last_run` | an ISO date | Required when `cadence = "manual"`; refused otherwise, because a lane's last run is a question for the lane, not the registry. |
 | `infra` | `true` | Replaces `tier = "infra"`: shared traits, family drivers, ABI mirrors, PACs. No other evidence field is allowed on an infra row. |
 
+**Amended 2026-11-04 by [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md) D8/D9:** each `cadence` value names exactly
+one workflow job that runs the board's cells at that cadence (`merge` is the
+`merge-runtime` job on `merge_group`). A value with no such job is lowered,
+not kept: the registry may not promise a cadence the CI does not run.
+
 The status word is generated, never typed:
 
 | Status word | Condition |

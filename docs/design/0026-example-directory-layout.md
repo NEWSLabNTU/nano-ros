@@ -226,6 +226,11 @@ under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not `examples
 
 ## Changelog
 
+- 2026-11-04 — Amended by [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): `examples/<plat>/<lang>/<example>/` holds
+  only the single-node copy-out workspaces (one talker per platform and
+  language, plus `custom-platform`). The pairs and their variants are image
+  rows in `examples/workspaces/<lang>/`.
+
 - 2026-10-27 — The copy-out contract covers `examples/workspaces/` (issue
   2085). The 24 workspace packages that path-depended on `nros` through the
   repository layout name it by version; `check-example-path-deps` refuses a
