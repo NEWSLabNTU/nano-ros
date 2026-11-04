@@ -7,11 +7,11 @@ nano-ros builds `third-party/qemu/qemu` from the fork [NEWSLabNTU/qemu](https://
 | | |
 | --- | --- |
 | Upstream base | `v11.0.0` (merge base [98b060da3a4f](https://github.com/qemu/qemu/commit/98b060da3a4f92b2a994ead5b16a87e783baf77c)) |
-| Commits on top | 6 |
+| Commits on top | 7 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 3, +83/−5 |
+| Files changed | 10, +149/−22 |
 
-**Pinned commit:** `98e749c2cef6a8b231c1c105b4a8ecb6dd51d582`
+**Pinned commit:** `7689da2d98389ee9b86372d51e5380da9f847e23`
 
 ## Commits on top of upstream
 
@@ -23,9 +23,10 @@ nano-ros builds `third-party/qemu/qemu` from the fork [NEWSLabNTU/qemu](https://
 | [729262e975](https://github.com/NEWSLabNTU/qemu/commit/729262e9753d4d830153c904944b4b441088607b) | hw/net/lan9118: flush queued packets when RX is enabled |
 | [c6f4c95716](https://github.com/NEWSLabNTU/qemu/commit/c6f4c95716ca175c64d62ad3a2f296162a2e45c4) | hw/net/lan9118: a full RX fifo is back-pressure, not an error |
 | [98e749c2ce](https://github.com/NEWSLabNTU/qemu/commit/98e749c2cef6a8b231c1c105b4a8ecb6dd51d582) | hw/net/lan9118: fast-forward frees the skipped words |
+| [7689da2d98](https://github.com/NEWSLabNTU/qemu/commit/7689da2d98389ee9b86372d51e5380da9f847e23) | target/arm: teach arm_cpu_has_work about halting reasons |
 
 Reproduce:
 
 ```bash
-gh api repos/qemu/qemu/compare/v11.0.0...NEWSLabNTU:qemu:98e749c2cef6a8b231c1c105b4a8ecb6dd51d582 --jq '.ahead_by'
+gh api repos/qemu/qemu/compare/v11.0.0...NEWSLabNTU:qemu:7689da2d98389ee9b86372d51e5380da9f847e23 --jq '.ahead_by'
 ```

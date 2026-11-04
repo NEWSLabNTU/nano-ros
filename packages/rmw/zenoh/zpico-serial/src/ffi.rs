@@ -352,8 +352,8 @@ pub extern "C" fn _z_read_serial_internal(
     //
     // Both bounds are DEADLINES on the platform clock, never counts of waits
     // (issue 2231). A wait goes through the board's idle hook, which may
-    // return early for any reason; under QEMU 11 its `wfi` returns at once
-    // (issue 2209). Counting 500 such waits as "5 s" made the handshake's read
+    // return early for any reason; under the SDK's QEMU 11.0.0 before
+    // `-nros8` its `wfi` returned at once (issue 2209). Counting 500 such waits as "5 s" made the handshake's read
     // give up within milliseconds, so `_z_connect_serial` re-sent INIT to a
     // router that had already answered the first one, and the router dropped
     // the link ("Unexpected Init flag in message").

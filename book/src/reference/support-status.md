@@ -89,7 +89,7 @@ dynamic typesupport, service introspection and the
 | Rust | `1.99.0` channel (`rust-toolchain.toml`); pinned cross targets: `thumbv7m-none-eabi`, `thumbv7em-none-eabihf`, `armv7r-none-eabi`, `armv7r-none-eabihf`, `armv8r-none-eabihf`, `riscv32imc-unknown-none-elf`, `riscv64gc-unknown-none-elf`, `aarch64-unknown-none`, `armv7a-none-eabi`, `armv7a-none-eabihf`, `thumbv7em-none-eabi`, `thumbv8m.main-none-eabi`, `thumbv8m.main-none-eabihf`, `i686-unknown-linux-gnu`, `x86_64-unknown-none`, `thumbv6m-none-eabi`. `rustfmt` runs on nightly (nightly-only options). |
 | Arm GCC (`arm-none-eabi`) | `13.2-nros5` |
 | RISC-V GCC (`riscv-none-elf`) | `14.2-nros1` |
-| QEMU (patched, Arm) | `11.0.0-nros7` |
+| QEMU (patched, Arm) | `11.0.0-nros8` |
 | Corrosion (CMake↔Cargo) | `0.6.1-nros1` (≥ 0.6.0 required — older versions share one build dir across workspace roots and break the `mixed` link) |
 | OpenOCD | `0.12.0-nros2` |
 | sccache | `0.17.0-nros1` |
