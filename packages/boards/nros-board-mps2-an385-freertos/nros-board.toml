@@ -88,13 +88,13 @@ nic_model = "lan9118"
 kind = "semihosting"
 
 [board.entry]
-crate_root_extra = "use panic_semihosting as _;"
+own_panic_root_extra = "use panic_semihosting as _;"
 # The dependency the line above needs. A generated entry has no author to
 # supply it, so it travels with the item (phase-383 W9.b).
 # `exit`: a panic ends the QEMU run (semihosting exit) instead of hanging it
 # until the caller's timeout — what every hand-written mps2 Rust leaf named,
 # and what its generated selection package (issue 1305) keeps.
-crate_root_deps = ["panic-semihosting = { version = \"0.6\", features = [\"exit\"] }"]
+own_panic_root_deps = ["panic-semihosting = { version = \"0.6\", features = [\"exit\"] }"]
 # The line above IS this image's `#[panic_handler]`, so a generated entry takes
 # RFC-0077 `panic = "own"` unless its image states otherwise — without it
 # `nros::main!` emits a second handler (E0152), phase-517 W10.

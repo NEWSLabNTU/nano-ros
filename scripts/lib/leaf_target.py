@@ -106,7 +106,10 @@ def leaf_target(leaf_dir) -> "tuple[str | None, str]":
 
 
 def board_crate_root_extra(board: str) -> str:
-    """The `[board.entry] crate_root_extra` of the descriptor claiming `board`.
+    """The `[board.entry]` crate-root items of the descriptor claiming `board`:
+    `crate_root_extra` plus `own_panic_root_extra` (phase-535 W0 split the
+    panic crate out; callers here ask about an image whose policy is `own` or
+    unstated, which is when the builder emits both).
 
     Issue 1305 — a single-package leaf that depends on its generated
     `<pkg>_nros_selection` package gets these crate-root items (a panic
@@ -121,6 +124,10 @@ def board_crate_root_extra(board: str) -> str:
             names = re.search(r'^names\s*=\s*\[([^\]]*)\]', block, re.M)
             if not names or board not in re.findall(r'"([^"]+)"', names.group(1)):
                 continue
-            m = re.search(r'^crate_root_extra\s*=\s*"((?:[^"\\]|\\.)*)"', block, re.M)
-            return m.group(1).encode().decode("unicode_escape") if m else ""
+            parts = []
+            for key in ("crate_root_extra", "own_panic_root_extra"):
+                m = re.search(rf'^{key}\s*=\s*"((?:[^"\\]|\\.)*)"', block, re.M)
+                if m:
+                    parts.append(m.group(1).encode().decode("unicode_escape"))
+            return "\n".join(parts)
     return ""

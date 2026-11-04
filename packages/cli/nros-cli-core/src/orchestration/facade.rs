@@ -398,12 +398,9 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> R
     // Issue 1340 — `[image.<id>] producers = false` drops the host board's
     // census + profile producers from THIS image's selection.
     let host_producers = image.as_ref().and_then(|i| i.producers).unwrap_or(true);
-    let carries_root_items = panic.as_deref().is_none_or(|p| p == "own");
-    let mut board = spec.board.clone();
-    if !carries_root_items {
-        board.crate_root_deps.clear();
-        board.crate_root_extra.clear();
-    }
+    // The board's panic crate travels only with `panic = "own"` (or none);
+    // every other crate-root item stays whatever the policy (phase-535 W0).
+    let board = spec.board.for_image_panic(panic.as_deref());
 
     let lines = crate::builder::entry::image_dependency_lines(
         &board,
