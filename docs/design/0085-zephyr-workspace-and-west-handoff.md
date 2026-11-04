@@ -595,6 +595,14 @@ no `west config` step.
 
 ## D13 — `nros new entry`, and why it writes three files it does not own
 
+> **Amended 2026-11-04 by [RFC-0121](0121-workspace-first-project-layout.md):
+> `nros new entry` retires** (phase-531 W7). With one build road every entry is
+> generated under `build/`, so the scaffolded package duplicates what the builder
+> writes. The `[image.*]` row is written by `nros new --image`, the cargo
+> excludes are unnecessary, and the node path deps are derived from
+> `[[component]]`. An owned entry is `nros materialize <bringup>:<image>`
+> (RFC-0065 D5). The text below records why the scaffold had the shape it did.
+
 Card 1 of the remaining three. `nros new <name> --platform zephyr` refused,
 correctly: that form makes a STANDALONE project (own cargo root, copy-out-able,
 RFC-0026) and a Zephyr entry is none of those. So it is a different noun:

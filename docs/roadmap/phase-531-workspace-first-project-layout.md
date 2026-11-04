@@ -77,7 +77,9 @@ generation.
 - `nros new <ws> --board <b> --template <t>` writes `<ws>/src/<node>/` (a
   library node package) and `<ws>/src/<node>_bringup/` (`package.xml`,
   `system.toml`, no `launch/`). Inside an existing workspace, `nros new <node>
-  [--to <bringup>]` adds a package and optionally a `[[component]]` row.
+  [--to <bringup>]` adds a package and, with `--to`, a `[[component]]` row
+  and an `<exec_depend>` on the package in the bringup's `package.xml`;
+  without `--to` it touches no bringup.
 - The `run` / `flash` / `monitor` / `build --packages-up-to` target resolver
   gains RFC-0121 D5's rungs, with `--why` naming the rung and every ambiguous
   case refused with the spellings that would resolve.
@@ -135,7 +137,15 @@ order, each step with its own PR and gate run:
 7. the gates that police the retired shape (`check-leaf-deployment-spelling`,
    the leaf arm of `check-msg-dep-is-path`, and the like), each confirmed by W1
    to guard nothing that remains;
-8. W2's warning becomes a refusal.
+8. `nros new entry` (`cmd/new_entry.rs`, its `cmd/new.rs` dispatch and its
+   entry packs) retires (RFC-0121 retirements, RFC-0085 D13 as amended). First
+   prove the replacement: `nros new --image zephyr --board zephyr`, then
+   `nros materialize <bringup>:zephyr`, builds and boots on native_sim in a
+   workspace-first tree, as D13 proved the scaffold it replaces. The book
+   pages that name it (`integration-zephyr.md`, `workspace-cpp.md`,
+   `workspace-entry-pkg.md`, `user-guide/component-and-entry-pkg.md`) move to
+   that flow in W8;
+9. W2's warning becomes a refusal.
 
 Each deletion is listed in `book/src/reference/retired-names.md` with its
 replacement.
@@ -164,7 +174,12 @@ The book teaches one shape, the workspace, from the first page.
   bootstrap`, `just probe installed`, `just probe <platform>`), so the book's
   commands are executed, not just edited.
 - Coordinate the first chapter with phase-525 W4 (the timed chapter), so one
-  rewrite lands.
+  rewrite lands. Phase-525 W4 shipped the single-package chapter in PR #3076;
+  phase-532 (PR #3093, RFC-0122) rewrites it to this phase's workspace shape
+  ahead of the CLI, by the maintainer's ruling of 2026-11-04. Its `[[probe]]`
+  rows carry `awaits = ["phase-530 W1", "phase-531 W4"]` and fail as an unmet
+  precondition until then; when W4 lands, the phase-532 owner removes the
+  `awaits` lines and replays each track.
 
 **Acceptance:** `rg 'system.toml' book/src` finds no page that places it beside
 code; `just book` builds; every touched page's probe track is green.

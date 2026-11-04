@@ -155,7 +155,8 @@ sensor_ws/
 The bringup's `system.toml` names the board, the RMW, the one component and one
 image. The reader never has to open it to get output. `nros new` inside an
 existing workspace adds a package and, with `--to <bringup>`, a `[[component]]`
-row.
+row plus an `<exec_depend>` on the new package in the bringup's `package.xml`.
+Without `--to` it touches no bringup.
 
 ### D5 — `nros run <node>` and `nros flash <node>`
 
@@ -224,6 +225,7 @@ workspace, `examples/<plat>/<lang>/<example>/` with `src/` inside.
 | 0120 | "The project is the leaf directory or the workspace root" becomes "the workspace root". D6 case 1 (plain `west build` of a leaf) becomes a plain `west build` of the generated entry. D8's rust-analyzer include moves to the generated entry |
 | 0100 | The `--from-leaf` producer and `write_for_leaf` retire; every image takes `write_for_model` |
 | 0118 D2 | The target argument gains the node rung (D5) |
+| 0085 D13 | `nros new entry` retires. Its three outside writes move: the `[image.*]` row to `nros new --image`, the cargo excludes become unnecessary because the entry is generated under `build/`, and the node path deps are derived from `[[component]]`. The "own the app" case is `nros materialize` (RFC-0065 D5) |
 
 ## Retirements
 
@@ -238,6 +240,7 @@ workspace, `examples/<plat>/<lang>/<example>/` with `src/` inside.
 | plain `cargo build` of a package | RFC-0098 | `nros build`; a hooked host tool on the generated entry |
 | a "workspace package that is itself a leaf" | copy-out templates' Rust packages | a node package |
 | `[overrides]` read from a root `system.toml` | RFC-0119 D4's fallback for a project with no `nros.toml` | `nros.toml [workspace.overrides]` |
+| `nros new entry <name> --platform <p>` (an owned entry package scaffolded into `src/`) | RFC-0085 D13, `cmd/new_entry.rs` | `nros new --image <name> --board <b>` for the `[image.*]` declaration; the generated entry under `build/` (D6); `nros materialize <bringup>:<image>` when an owned entry is genuinely needed (RFC-0065 D5) |
 
 Phase-531 W1 measures what each row deletes before anything is removed, because
 some `leaf_*` code also serves workspace entries.
@@ -271,3 +274,9 @@ some `leaf_*` code also serves workspace entries.
 - 2026-11-03: Draft, from the maintainer discussion of 2026-11-03 (option C:
   a scaffolded bringup and a node-name shortcut, over a node-package or
   workspace-root `system.toml`).
+- 2026-11-04: `nros new entry` joins the retirements (maintainer ruling). Under
+  one build road it scaffolds a package the builder already generates; its
+  three outside writes (the `[image.*]` row, the cargo excludes, the node path
+  deps) are made by `nros new --image`, made unnecessary by `build/`, and
+  derived from `[[component]]`. RFC-0085 D13 is amended to match. D4 also
+  gains the `<exec_depend>` row that `nros new <node> --to <bringup>` adds.
