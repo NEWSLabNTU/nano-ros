@@ -556,6 +556,15 @@ Status: **DONE, in review** (2026-11-04, PR pending).
   --template talker`, `nros sync`, `nros run --expect 'Publishing:'`.
   `release-nros.yml`'s install check also runs the installed native runner's
   `describe` and lists it through `nros dev ws providers`.
+- **Measured (2026-11-04):** `just probe installed` on this branch, the asset
+  built by the workflow's own extracted steps on `ubuntu:22.04` (27 MB; six
+  runners staged), installed into a clean `ros:humble` container: the
+  chapter passed, then `the qemu runner resolves from
+  /root/.nros/sdk/nros/0.0.0-probe/share/nros/packages`, `undeclared user
+  runner/qemu refused (exit 3)`, `nros doctor reports the undeclared
+  override`, `a declared user runner/qemu replaces ours` (its `nros run
+  --expect` matched through the wrapper), and the native talker's `nros run`
+  matched `Publishing: 'Hello World: 1'` after 1.3 s.
 - Tests: `release_packages` unit tests (a runner and a command staged, source
   removed, an announcement-free package kept, an unbuilt exe refused, `bin`
   stating), `provider_scan`'s
