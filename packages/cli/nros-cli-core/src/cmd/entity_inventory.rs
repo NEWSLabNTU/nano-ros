@@ -281,18 +281,14 @@ pub fn inventory_from_metadata_file(path: &std::path::Path) -> Result<EntityInve
 /// the last `nros sync` makes it recompose, exactly as before.
 pub(crate) fn registered_from_probe(
     path: &std::path::Path,
-    packages: Option<&std::collections::BTreeSet<String>>,
+    packages: &std::collections::BTreeSet<String>,
 ) -> Result<EntityInventory> {
     let raw = std::fs::read_to_string(path)
         .wrap_err_with(|| format!("read metadata `{}`", path.display()))?;
     let mut doc: MetadataDoc = serde_json::from_str(&raw)
         .wrap_err_with(|| format!("parse metadata `{}`", path.display()))?;
-    // `None`: every package the probe registered (a cmake workspace root adds
-    // them all -- phase-530 W5).
-    if let Some(packages) = packages {
-        doc.components
-            .retain(|c| packages.contains(&c.pkg_or_class_prefix()));
-    }
+    doc.components
+        .retain(|c| packages.contains(&c.pkg_or_class_prefix()));
     inventory_from_metadata(&path.display().to_string(), &doc)
 }
 
