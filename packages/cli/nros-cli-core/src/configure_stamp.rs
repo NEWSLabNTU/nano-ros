@@ -74,6 +74,7 @@ impl OutputFlags {
                 .unwrap_or_default()
         };
         let base_paths: Vec<String> = sync
+            .sources
             .base_paths
             .iter()
             .map(|p| p.display().to_string())
