@@ -41,5 +41,5 @@ release's bundled interfaces, so a configure that requires
 
 Decide which is wrong: the chapter (source ROS before `nros run`), or
 configure (fall back to the toolchain's bundled interfaces when
-`AMENT_PREFIX_PATH` is unset, as `nros sync` did). Then re-run
+`AMENT_PREFIX_PATH` is unset, as the pre-configure `sync` verb did). Then re-run
 `just probe installed`.

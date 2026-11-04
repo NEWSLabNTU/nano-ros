@@ -378,3 +378,4 @@ Each issue has a `**Home:**` line pointing here.
 | issue | work item | why it belongs here |
 | --- | --- | --- |
 | [#2166](../issues/2166-metadata-probe-recorder-32-entities-panics-on-parameters.md) | W2 | The C/C++ metadata probe's recorder holds 32 entities and every parameter is one, so a bigger component panics and `nros sync` reports `no producer`. W2 makes the census the default entity source. |
+| [#2275](../issues/2275-installed-probe-configure-needs-ament.md) | W1 | `nros run`'s implicit configure refuses an unset `AMENT_PREFIX_PATH`, so `just probe installed` stops at first-project.md's `nros run`, whose reader has not sourced ROS yet (found by phase-527 W6). |
