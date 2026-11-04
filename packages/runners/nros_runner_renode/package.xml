@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_runner_renode</name>
+  <version>0.0.0</version>
+  <description>
+    The `renode` runner (RFC-0119 D8, phase-524 W4b). Boots an image in a
+    Renode machine (`[board.run] emulator = "renode:machine"`), with the
+    serial link the board's `[board.run.renode] link` names on a host pty and
+    its console UART streamed to stdout. Renode itself is the plan's tool,
+    resolved by nros (`nros locate tool renode`), never PATH.
+
+    A runner package of the same shape as a user's: the announcement below is
+    what the provider scan reads, `nros-runner.toml` is read only when this
+    provider is the one selected, and the executable speaks RFC-0119 D6.
+  </description>
+  <maintainer email="jerry73204@gmail.com">Lin Hsiang-Jui</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="runner" name="renode"/>
+  </export>
+</package>

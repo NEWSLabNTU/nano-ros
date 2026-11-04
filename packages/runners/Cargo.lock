@@ -67,6 +67,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros_runner_renode"
+version = "0.0.0"
+dependencies = [
+ "nros-extension",
+]
+
+[[package]]
 name = "nros_runner_serial"
 version = "0.0.0"
 dependencies = [

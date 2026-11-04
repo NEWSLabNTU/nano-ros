@@ -641,9 +641,10 @@ pub struct BoardRunQemu {
 }
 
 /// `[board.run.renode]` — the Renode twin's wiring (phase-524 W4a), read only
-/// by the Renode runner: today the twin probe track's emulator script
-/// (`scripts/probe/twin/renode.sh`), later the Renode runner package that
-/// phase-528 adds.
+/// by the Renode runner: `nros_runner_renode`, which `nros run` hands it as
+/// the plan's `link` and `console` args (phase-524 W4b), and the test
+/// harness's launcher (`scripts/probe/twin/renode.sh`, through
+/// `nros_tests::renode`).
 /// The platform is the emulator's machine word (`platforms/boards/<m>.repl`).
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]

@@ -191,8 +191,9 @@ CLOCK_ARGS=()
 if [[ -n "$PROBE_BUDGET_MIN" ]]; then
     CLOCK_ARGS=(--clock-from "nros setup" --clock-budget "$((PROBE_BUDGET_MIN * 60))")
 fi
-# phase-524 W4a — a TWIN track: a board with an emulator twin and no chapter of
-# its own yet. Its facts (board, west board, emulator, the twin's wiring, the
+# phase-524 W4a — a TWIN track: a board with an emulator twin, replaying either
+# a shared chapter's setup (and the probe's twin smoke run) or, since W4b, its
+# board's own chapter. Its facts (board, west board, emulator, the twin's wiring, the
 # image's locator and knobs, the HAL module, what the emulator kind needs of
 # the host) come from probe-tracks.json: the registry row and the board
 # descriptor. Empty for every other track.
@@ -200,7 +201,7 @@ if ! twin_env="$(python3 "$SCRIPT_DIR/probe-track.py" --twin "$PROBE_PLATFORM")"
     exit 2
 fi
 NROS_TWIN_KIND="" NROS_TWIN_SECRET="" NROS_TWIN_PREREQS="" NROS_TWIN_MODULES=""
-NROS_TWIN_BOARD=""
+NROS_TWIN_BOARD="" NROS_TWIN_CHAPTER_RUN=""
 eval "$twin_env"
 # A secret the emulator kind cannot run without (Wokwi's token) is a
 # precondition: the track FAILS naming it, before any asset build or container
@@ -245,9 +246,13 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         VERIFIER="verify-installed-platform.sh"
         [[ "$PROBE_PLATFORM" = workspace ]] && VERIFIER="verify-installed-workspace.sh"
         [[ "$PROBE_PLATFORM" = pinned* ]] && VERIFIER="verify-installed-pinned.sh"
-        # A twin track's chapter steps are setup only; the twin smoke run is
-        # the probe's (verify-installed-twin.sh), then the platform checks.
-        if [[ -n "$NROS_TWIN_KIND" ]]; then
+        # A twin track that replays a SHARED chapter (the Zephyr chapter's
+        # setup blocks) leaves the twin smoke run to the probe
+        # (verify-installed-twin.sh), then the platform checks. A twin track
+        # replaying its board's OWN chapter (phase-524 W4b: the row's
+        # `book_run`, NROS_TWIN_CHAPTER_RUN) runs the twin in the chapter's
+        # `nros run` steps, so it verifies like any platform chapter.
+        if [[ -n "$NROS_TWIN_KIND" && -z "$NROS_TWIN_CHAPTER_RUN" ]]; then
             VERIFIER="verify-installed-twin.sh"
             TWIN_SUBST=(
                 --subst "nros setup zephyr --rmw zenoh:::nros setup $NROS_TWIN_BOARD --rmw zenoh"

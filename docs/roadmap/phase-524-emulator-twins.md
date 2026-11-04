@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-11-04). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W4 split (maintainer, 2026-11-02): W4a done, the `renode-nucleo` and `wokwi-pico` probe tracks generated from the registry and listed by the weekly workflow (both rows stay manual: the gate needs a Runtime cell and two maintainers for weekly); W4b (chapters, `book_run`, `nros run`) waits on phase-528 W1/W3/W4 and phase-529. Wokwi left CI (maintainer, 2026-11-02, after the free plan ran out): `wokwi-pico` is no longer weekly and the workflow holds no Wokwi secret; the Pico W twin is user-run, the Renode Nucleo twin is the CI-checked one. Issue 2194 landed (#3015): the twins' RAM knobs are their descriptors' `[knobs]`. W4c added (maintainer, 2026-11-03): the Nucleo gets its own `PlatformId` and a Renode smoke cell, the route RFC-0115 D4 now records. W4c done (2026-11-04): `PlatformId::ZephyrNucleoF767zi`, the `nros_tests::renode` launcher, the Runtime cell and its fixture row, Renode through `just zephyr setup`, and the registry row naming the platform and the track; the row stays manual with one maintainer (maintainer ruling 2026-11-04). W0 (purchase) and W5 (bench runs) DEFERRED (maintainer ruling 2026-11-04: hardware work waits). The Nucleo cell's first green tier-2 run is handed to phase-466 (maintainer ruling 2026-11-04). W4b open.** Implements
+**Status (2026-11-04). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W4 split (maintainer, 2026-11-02): W4a done, the `renode-nucleo` and `wokwi-pico` probe tracks generated from the registry and listed by the weekly workflow (both rows stay manual: the gate needs a Runtime cell and two maintainers for weekly); W4b (chapters, `book_run`, `nros run`) waits on phase-528 W1/W3/W4 and phase-529. Wokwi left CI (maintainer, 2026-11-02, after the free plan ran out): `wokwi-pico` is no longer weekly and the workflow holds no Wokwi secret; the Pico W twin is user-run, the Renode Nucleo twin is the CI-checked one. Issue 2194 landed (#3015): the twins' RAM knobs are their descriptors' `[knobs]`. W4c added (maintainer, 2026-11-03): the Nucleo gets its own `PlatformId` and a Renode smoke cell, the route RFC-0115 D4 now records. W4c done (2026-11-04): `PlatformId::ZephyrNucleoF767zi`, the `nros_tests::renode` launcher, the Runtime cell and its fixture row, Renode through `just zephyr setup`, and the registry row naming the platform and the track; the row stays manual with one maintainer (maintainer ruling 2026-11-04). W0 (purchase) and W5 (bench runs) DEFERRED (maintainer ruling 2026-11-04: hardware work waits). The Nucleo cell's first green tier-2 run is handed to phase-466 (maintainer ruling 2026-11-04). W4b split (2026-11-05): the Nucleo half done, measured in the `ros2` box (the `renode` runner, because Zephyr 3.7 declares no `run_renode` for the board; the `nucleo-f767zi.md` chapter, serial first; `book_run` and the issue 2169 row; the `renode-nucleo` track replays the chapter's `nros run`); ethernet left as a follow-up (a Renode tap needs `CAP_NET_ADMIN`). The Pico W half stays open: blocked on issue 2230 (no Wokwi runner) and unverifiable here (Wokwi is out of CI and the free quota is gone).** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -652,6 +652,86 @@ generator.
   build and run; the issue 2169 rows; the bench verbs (phase-529); and the
   heap measurement W3 left (the knobs are the descriptors' `[knobs]` since
   issue 2194).
+
+**Result, W4b (2026-11-05). Split: the Nucleo-F767ZI half done; the Pico W
+half open.**
+
+- **The run path was decided by measurement: a `renode` runner, not west.**
+  `nros run` on the Nucleo talker (`nros new talker --board
+  nucleo-f767zi-zephyr --lang c`, serial locator) resolved to the `west`
+  runner (`WEST_EMULATORS` held `renode`), and the runner refused after the
+  build: "the west build declares no `run_<emulator>` target", exit 2. The
+  cause is Zephyr's: 3.7's `boards/st/nucleo_f767zi/board.cmake` includes
+  only `openocd.board.cmake` and `jlink.board.cmake`, so the build's
+  `build.ninja` has no `run_renode` edge (measured: zero `build run_` lines
+  beyond the phony `run`). A board that does declare one boots Zephyr's own
+  `.resc`, which puts no UART on a host pty, so west could not carry the
+  link even then. So `renode` left `WEST_EMULATORS`, and a Renode twin goes
+  to `nros_runner_renode` (`packages/runners/nros_runner_renode`, RFC-0119
+  D6) on every road. The resolver hands it the descriptor's
+  `[board.run.renode]` as the plan's `link` and `console` args, and
+  `tools.renode` from `nros locate tool renode`'s ladder (no second spelling
+  of where Renode is). The runner writes the `.resc` (W1's pattern: the
+  machine, `CreateUartPtyTerminal` for the link, the console UART into a
+  file, the ELF), starts Renode paused, reports `nros-runner: link <pty>`,
+  waits the same 2 s settle the qemu runner does for the router nros starts
+  on the pty, starts the simulation over the monitor port, and streams the
+  console file to stdout. `nros build` prints `nros run <image>` as the
+  twin's next step (`run in the Renode twin`).
+- **Measured, box tree, checkout CLI, the box's 3.7 workspace.** `nros run
+  --expect 'Publishing:'`: `*** Booting Zephyr OS build v3.7.0 ***`, then
+  `Publishing: 'Hello World: 1'`, matched after 8.4 s. With `nros run`
+  kept running, `ros2 topic echo /chatter --qos-reliability best_effort`
+  (RMW zenoh, no configuration: the router also listens on the default
+  locator) printed `data: 'Hello World: 28'` to `30`. RAM 351,936 B
+  (89.50 %), FLASH 526,280 B.
+- **The chapter**, `book/src/getting-started/nucleo-f767zi.md`, under the
+  Zephyr chapter in `SUMMARY.md`, in RFC-0116 D5's shape: host tools, `nros
+  setup nucleo-f767zi-zephyr --rmw zenoh` (the Zephyr SDK and Renode), a 3.7
+  west workspace with `hal_stm32` in the allowlist, `nros setup board ...
+  --zephyr-workspace .` (issue 2185's patch set), `nros new --board`, the
+  serial `locator` line, `nros run --expect` (which configures and builds), `nros run` kept,
+  `ros2 topic echo`, each with its `probe-expect` block; then the ethernet
+  paragraph and the flash section with issue 2176's "Not replayed" sentence.
+  The Zephyr chapter's "their own chapters are still to come" now links it.
+- **Registry.** The Nucleo row names `book_run =
+  "getting-started/nucleo-f767zi.md#run-in-the-twin"` and moves `book_flash`
+  to the same chapter. Cadence stays `manual` with one maintainer (ruling
+  2026-11-04). The `renode-nucleo` track now replays that chapter (variant
+  `""`); it keeps `twin` because `nros_tests::renode` reads the twin facts.
+  A twin track whose chapter is its row's `book_run` chapter is marked
+  `chapter_run` by the generator: the harness then verifies it like any
+  platform chapter (`verify-installed-platform.sh`) instead of running the
+  twin smoke script, and it is an issue 2169 row (`PROBE_BOOT_ROWS` gains
+  `("nucleo-f767zi.md", "", "nucleo-f767zi-zephyr")`). The 2169 test
+  compares a Renode twin through the verb: the printed run command must be
+  `nros run`, the line the chapter boots. `wokwi-pico` is unchanged (no
+  `book_run`, still the Zephyr chapter's setup plus `smoke.sh`).
+- **What still uses `scripts/probe/twin/renode.sh`:** the test harness's
+  launcher (`nros_tests::renode`, W4c's cell) only. It moves to `nros run
+  --plan` with phase-528 W5, and the script goes then; until then the
+  `.resc` is spelled in the runner and in that script.
+- **The probe, run in the box.** The container still cannot run from the
+  box (W4a's finding), so the chapter's own blocks ran through
+  `extract-book-steps.py --track installed` in the box
+  (`tmp/w4b/box-probe.sh`, untracked) with box substitutions only: the
+  `sudo apt-get` and `pip3` lines become no-ops, the west workspace is the
+  box's 3.7 one, and `nros setup` tolerates one box defect (the Zephyr SDK's
+  host-tools step needs `file(1)`, which the box lacks). Steps 30 to 70
+  passed; step 70 printed `data: 'Hello World: 4'`. Negative control: the
+  same run with the step 70 expected line changed to `data: 'Goodbye
+  World:` FAILED (`PROBE FAIL: step 70 did not print its documented output
+  within 120s`). The pristine-container run is the weekly lane's.
+- **Ethernet: a follow-up, not in the chapter.** W1 reached a router over
+  the ETH MAC, but through a host tap bridged to a Renode switch inside a
+  rootless network namespace (`CAP_NET_ADMIN`); the runner sets up no
+  network, and the descriptor header records the ethernet image's heap as
+  below the talker's boot peak. Not re-measured here. The chapter says so in
+  its ethernet section.
+- **The Pico W half stays open.** Its chapter, `book_run` and runner wait on
+  issue 2230 (no Wokwi runner package), and nothing here can verify it:
+  Wokwi is out of CI and the free plan's minutes are gone, so no Wokwi run
+  was made.
 
 ### W4c — A `PlatformId` and a Renode smoke cell for the Nucleo
 
