@@ -58,6 +58,9 @@ BOOK = os.path.join(ROOT, "book", "src")
 EXEMPT = {
     # Historical names the book cites AS retired (prose about the past):
     "nano_ros_deploy": "configuration.md names it as the retired predecessor",
+    # ROS package names (a `package.xml` <name>), not code identifiers:
+    "nros_px4_tools": "reference/cli.md names the `nros px4` command package (packages/rmw/xrce/nros_px4_tools)",
+    "nros_zenoh_tools": "reference/cli.md names the `nros router` command package (packages/rmw/zenoh/nros_zenoh_tools)",
     # Book-local illustrative names the reader is told to invent:
     "nros_board_myboard": "porting/overview scaffold output name",
     "nros_platform_myrtos": "porting/overview scaffold output name",

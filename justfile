@@ -4429,6 +4429,13 @@ setup-cli:
     # silent. Their binaries land in packages/runners/target/release/.
     # profile-literal-ok: host tool: builds the in-tree runner packages
     cargo build -q --release --locked --manifest-path "$root/packages/runners/Cargo.toml" --workspace
+    # phase-527 W5 (RFC-0119 D5) — the first-party command packages, beside
+    # the domain each serves, each its own workspace and target directory for
+    # the same reason. Their binaries land in <package>/target/release/.
+    # profile-literal-ok: host tool: builds the in-tree command packages
+    cargo build -q --release --locked --manifest-path "$root/packages/rmw/zenoh/nros_zenoh_tools/Cargo.toml"
+    # profile-literal-ok: host tool: builds the in-tree command packages
+    cargo build -q --release --locked --manifest-path "$root/packages/rmw/xrce/nros_px4_tools/Cargo.toml"
     if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
         # Quiet on no-op — `just setup` invokes us unconditionally.
         warn_stale_shadow

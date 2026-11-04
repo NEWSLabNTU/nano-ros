@@ -185,6 +185,14 @@ jobs:
           # step refuses a host-tool package whose executable was not built.
           cargo build --release --locked \
               --manifest-path packages/runners/Cargo.toml --workspace
+          # phase-527 W5 — the first-party command packages (`nros router`,
+          # `nros px4`), each its own cargo workspace beside its domain. The
+          # old built-ins `nros ws router-config` and `nros generate-px4-msgs`
+          # now run these, so a release without them loses both verbs.
+          cargo build --release --locked \
+              --manifest-path packages/rmw/zenoh/nros_zenoh_tools/Cargo.toml
+          cargo build --release --locked \
+              --manifest-path packages/rmw/xrce/nros_px4_tools/Cargo.toml
           # phase-429 W5 — the binary must match the checkout it was built from.
           # A release is the one artifact where nobody downstream can re-check
           # this, so it is asserted here rather than assumed.

@@ -4,9 +4,9 @@
 (`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
 the host build role; declared overrides; colcon's duplicate rule among
 source roots, overrides in `nros.toml`), W2d (one `--base-paths` meaning,
-#3088), W2e (a duplicate inside one root is refused too, #3113) and W4
-(command dispatch, #3116); W6 (the release underlay) in review (#3122); W5 next.**
-Implements
+#3088), W2e (a duplicate inside one root is refused too, #3113), W4
+(command dispatch, #3116) and W6 (the release underlay, #3122); W5 (the
+first command packages) in review (#PR); W7 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -433,7 +433,7 @@ Acceptance:
   and the three variables, and its exit status passes through.
 - A fixture command named `build` is refused at discovery.
 
-Status: **DONE, in review** (2026-11-04, #3116).
+Status: **DONE** (2026-11-04, #3116).
 
 - `nros-cli-core/src/cmd/extension.rs` holds dispatch. `nros-cli`'s `main`
   calls it only when clap reports an unknown subcommand, so a built-in always
@@ -499,6 +499,65 @@ Acceptance:
 - Both old spellings give byte-identical output to the old built-ins on the
   same inputs, measured before the code moves.
 - `nros-cli-core` has no router-config or PX4 module left.
+
+Status: **DONE, in review** (2026-11-05, #PR).
+
+- `packages/rmw/zenoh/nros_zenoh_tools` (`command/router`, bin
+  `nros-zenoh-tools`, `nros router config`) and
+  `packages/rmw/xrce/nros_px4_tools` (`command/px4`, bin `nros-px4-tools`,
+  `nros px4 msgs`). Each is its own cargo workspace with a tracked lock
+  (seeded with `nros dev lock seed`, refreshed with `just lock-update`; both
+  are `[rust] locked_roots` rows, and the registry pin set did not move).
+  Each `main` is the moved code with its messages unchanged, under a clap
+  tree named `nros router` / `nros px4`. The PX4 generator itself stays in
+  `rosidl-bindgen`, which the CLI shares.
+- `nros-cli-core/src/cmd/generate_px4.rs` and `ws.rs`'s `run_router_config`,
+  `RouterConfigArgs` and `RouterConfigFormat` are deleted. `nros
+  generate-px4-msgs` and `nros ws router-config` are hidden verbs taking
+  their arguments raw (`cmd::extension::AliasArgs`, help and version flags
+  passed through) that call `cmd::extension::run_alias`: W4's lookup, with
+  `msgs` / `config` prepended. `nros dev ws router-config` never existed, so
+  no alias was added there. The help groups drop `generate-px4-msgs`; the
+  `builtin-verbs.txt` list is unchanged, as the hidden verbs still exist.
+- `release-nros.yml` "Build the CLI from source" builds both, so W6's
+  `nros toolchain stage-packages` (which refuses a host-tool package with
+  no built executable) stages them into `share/nros/packages/`.
+- `just setup-cli` builds both packages beside the runners. The in-tree rung
+  of `builder::host_tool::locate_built` now finds a checkout's host tool in
+  the target directory of the cargo workspace it belongs to
+  (`tree_target_dir`: the nearest `Cargo.toml` with `[workspace]` below the
+  tree root), so `packages/runners/target/release` and
+  `<command package>/target/release` are one rule.
+- `check-provider-announcements` drops its `command` `BORN_EMPTY` row (the
+  family now has two providers). The book's CLI reference documents `nros
+  px4 msgs`, `nros router config` and extension commands. `just px4`,
+  `scripts/dev/zenohd.sh`, the router artifact's header comment, the PX4
+  READMEs, the bridge's CMake message and `build.rs` errors and
+  `docs/reference/px4-xrce-companion.md` use the new spellings.
+- Tests: `nros-cli/tests/command_aliases.rs` (each old spelling runs its
+  package with the arguments unchanged, `--help` included, and is hidden
+  from help; the new spellings reach the same packages), over fixture
+  packages declared as `[workspace.overrides]`, so no real build is needed;
+  `host_tool` unit tests for `tree_target_dir`.
+
+Byte identity, measured: 14 invocations (router-config `override`/`json5`,
+a missing rule, a malformed artifact, no `--model`; generate-px4-msgs rust,
+rust with `--ros-edition jazzy --crate-version`, cpp `--topics`, cpp
+humble, `--lang c`, rust `--topics`, no `--px4`, an unknown edition,
+`PX4_AUTOPILOT_DIR`), on a synthetic PX4 tree (two `msg/`, one
+`msg/versioned/`) and a hand-written router artifact. The baseline is the
+CLI built from this branch's base before any code moved. After the move,
+through the old spellings: every stdout, every exit code, and all 44
+generated files (sha256) are identical.
+
+**Deviation from the acceptance: stderr is NOT byte-identical.** It differs
+in two ways only, both on error paths:
+eyre's `Location:` line names the new source file
+(`src/main.rs:NN` instead of `nros-cli-core/src/cmd/…`), and clap's usage
+line for a missing `--model` reads `Usage: nros router config --model
+<PATH>` instead of `… ws router-config --model <PATH>`. Neither can match
+while the code lives in another binary, and the error text itself is
+unchanged.
 
 ### W6 — The release underlay
 

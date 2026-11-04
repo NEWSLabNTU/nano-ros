@@ -1,0 +1,26 @@
+# phase-527 W5 (RFC-0119 D8) — `nros router`, a command package.
+#
+# A host tool (RFC-0119 D3), so it is its own cargo workspace with its own
+# lock and target directory (issue 0616: one target directory per workspace
+# root). `just setup-cli` builds it beside the CLI; a released toolchain
+# ships the binary in its `bin/` (phase-527 W6).
+[package]
+name = "nros_zenoh_tools"
+version = "0.0.0"
+edition = "2024"
+authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>"]
+rust-version = "1.87"
+license = "MIT OR Apache-2.0"
+description = "nros router: the zenoh router configuration a bringup's router runs"
+publish = false
+
+[[bin]]
+name = "nros-zenoh-tools"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+eyre = "0.6"
+nros-orchestration-ir = { path = "../../../core/nros-orchestration-ir" }
+
+[workspace]

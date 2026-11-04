@@ -21,15 +21,15 @@ Regenerate it from the PX4 `.msg` tree before building:
 
 ```bash
 # from the repo root, for each example:
-nros generate-px4-msgs \
+nros px4 msgs \
   --px4 third-party/px4/PX4-Autopilot \
   --output examples/px4/rust/companion/offboard-companion/generated
-nros generate-px4-msgs \
+nros px4 msgs \
   --px4 third-party/px4/PX4-Autopilot \
   --output examples/px4/rust/companion/px4-stub/generated
 ```
 
-`generate-px4-msgs` emits the whole `px4_msgs` package (235 messages); the
+`nros px4 msgs` emits the whole `px4_msgs` package (235 messages); the
 examples only need `VehicleOdometry` + `OffboardControlMode`, but the extra
 modules are harmless (dead-code-allowed, compiled on demand).
 

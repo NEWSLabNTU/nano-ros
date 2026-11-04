@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_zenoh_tools</name>
+  <version>0.0.0</version>
+  <description>
+    The `router` command (RFC-0119 D8): `nros router config` prints the zenoh
+    router `downsampling` rule `nros sync` wrote beside a resolved model, ready
+    for `ZENOH_CONFIG_OVERRIDE`. It replaces the built-in `nros ws
+    router-config`, which stays as a hidden alias that executes this package.
+
+    A command package of the same shape as a user's: the announcement below is
+    what the provider scan reads, and `nros-command.toml` is read only when
+    this provider is the one selected.
+  </description>
+  <maintainer email="jerry73204@gmail.com">Lin Hsiang-Jui</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="command" name="router"/>
+  </export>
+</package>

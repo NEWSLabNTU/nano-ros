@@ -3,7 +3,7 @@
 # Two things this needs beyond the W2 demo, both consequences of publishing on a
 # WIRE rather than into uORB:
 #
-#   1. the generated `px4_msgs` C++ headers — `nros generate-px4-msgs --lang cpp`
+#   1. the generated `px4_msgs` C++ headers — `nros px4 msgs --lang cpp`
 #      (their RIHS01 type hash is what lets a ROS 2 peer match the topic), and
 #   2. the FFI staticlib holding those headers' Rust bodies. A normal CMake
 #      consumer gets it from `nros_generate_interfaces(LANGUAGE CPP)`, which a PX4
@@ -53,7 +53,7 @@ if(NOT NROS_REPO_DIR)
 endif()
 include("${NROS_REPO_DIR}/integrations/px4/NanoRosPx4Module.cmake")
 
-# Where `nros generate-px4-msgs --lang cpp` wrote `px4_msgs/msg/*.hpp`.
+# Where `nros px4 msgs --lang cpp` wrote `px4_msgs/msg/*.hpp`.
 if(DEFINED NROS_PX4_BRIDGE_GEN AND NOT "${NROS_PX4_BRIDGE_GEN}" STREQUAL "")
     set(_gen "${NROS_PX4_BRIDGE_GEN}")
 elseif(NOT "$ENV{NROS_PX4_BRIDGE_GEN}" STREQUAL "")
@@ -67,7 +67,7 @@ if(NOT EXISTS "${_gen}/px4_msgs/msg")
         "nros_uorb_bridge: generated px4_msgs C++ headers not found at\n"
         "    ${_gen}/px4_msgs/msg\n"
         "Generate them (issue 0362):\n"
-        "    nros generate-px4-msgs --lang cpp --topics debug_key_value \\\n"
+        "    nros px4 msgs --lang cpp --topics debug_key_value \\\n"
         "        --ros-edition jazzy -o ${_gen}\n"
         "or just run:  just px4 build-bridge-example")
 endif()
