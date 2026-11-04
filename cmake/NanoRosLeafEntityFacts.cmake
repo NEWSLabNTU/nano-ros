@@ -166,18 +166,12 @@ function(nros_record_leaf_entity_facts _dir)
     endif()
     if(_nros_leaf_census_optin)
         _nros_census_program_arm()
-        # Re-taking the census (after a `src/` edit) must reconfigure, because
-        # this configure is what read it. ASKED for, never spelled: the CLI
-        # owns where a leaf's census lives.
-        execute_process(
-            COMMAND "${_nros}" dev image entity-census path --leaf "${_dir}"
-            OUTPUT_VARIABLE _nros_leaf_census
-            RESULT_VARIABLE _nros_leaf_census_rc
-            OUTPUT_STRIP_TRAILING_WHITESPACE)
-        if(_nros_leaf_census_rc EQUAL 0 AND EXISTS "${_nros_leaf_census}")
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                "${_nros_leaf_census}")
-        endif()
+        # This configure read the census, so it depends on it -- through the
+        # census's DIGEST and the build edge that refreshes it (phase-530 W6,
+        # RFC-0120 D7): an added endpoint re-configures once, a body edit
+        # never. (It named the census file itself, which re-ran on every
+        # re-take.)
+        nros_census_step(CLI "${_nros}" LEAF "${_dir}")
     endif()
 
     # phase-486 -- the leaf's facts reach its consumers through its SIZING

@@ -539,6 +539,26 @@ configure-hook:
     fi
     ./tests/cmake-configure-hook-tests.sh
 
+# phase-530 W6 (RFC-0120 D7) -- the census step: a leaf census's digest is a
+# host-configure dependency refreshed by a build edge, so a body edit costs no
+# re-configure and an added endpoint exactly one. A real CMake + Ninja build
+# of a probe project with a stand-in CLI, so seconds; plus the reach (every
+# census reader adds the step). Same skip ledger as its siblings.
+census-step:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake ninja cc; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip census-step "missing host tool(s):$_missing"
+        exit 0
+    fi
+    ./tests/cmake-census-step-tests.sh
+
 # phase-530 W4 (RFC-0120 D6 case 4, issue 1699) -- a changed Kconfig default
 # reaches an EXISTING Zephyr build dir in ONE configure: the module's stamp is
 # written by the pre-Kconfig hook. A real Zephyr configure of a hello-world

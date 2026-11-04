@@ -4,6 +4,10 @@
 
 include_guard(GLOBAL)
 
+# phase-530 W6 -- `nros_census_step`, the build edge that keeps a leaf census
+# current; FILE scope, like every include a function here relies on.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCensusStep.cmake")
+
 # nros_leaf_census_source(<out-var> <cli> <leaf-dir>)
 #
 # RFC-0120 D4 (phase-530 W2) -- where this leaf's entity counts come from:

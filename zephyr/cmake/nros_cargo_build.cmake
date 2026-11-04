@@ -43,6 +43,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobEnv.cmake")
 # entry (writer) and `_nros_load_west_sizing_descriptor` (reader) name. FILE
 # scope, same reason as the three above.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosSizingDescriptor.cmake")
+# phase-530 W6 -- `nros_census_step`, the build edge that keeps a leaf census
+# current. FILE scope, same reason as its neighbours.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCensusStep.cmake")
 
 # Issues 1015 + 1033 / RFC-0100 D7 -- `_nros_c_array_pool_floor`, the ONE CMake
 # spelling of "raise a derived demand to what a fixed C array can be sized to".
@@ -517,6 +520,12 @@ function(_nros_west_leaf_sizing)
         # did, every pass, which is what kept the talker from converging).
         nros_promise_seeded("${_knobs}" "`nros dev image west-leaf-sizing` (${_basis})")
         set_property(GLOBAL PROPERTY NROS_ENTITY_INVENTORY_LEAF_SIZED "${_basis}")
+        # phase-530 W6 (RFC-0120 D7) -- the census it read stays current
+        # through a build edge, and its digest (the `input` row above) moves
+        # only when the entities do.
+        if(_basis STREQUAL "census")
+            nros_census_step(CLI "${_nros}" LEAF "${APPLICATION_SOURCE_DIR}")
+        endif()
     endif()
 endfunction()
 
