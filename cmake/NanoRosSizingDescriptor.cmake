@@ -132,8 +132,7 @@ endfunction()
 # a table is a BUILD-time output, so on a clean tree it is absent at the first
 # configure; the CLI then REFUSES the bound fields naming that table's package,
 # which is the aggregator's rule for the same list ("a promise rather than a
-# fact"). Only a table that EXISTS is added to `CMAKE_CONFIGURE_DEPENDS`: a ninja
-# input with no rule to make it is a hard `missing and no known rule` at LOAD.
+# fact"). No table is a `CMAKE_CONFIGURE_DEPENDS` (see below).
 function(_nros_sizing_bound_args _out_var)
     set(_args "")
     set(_registered 0)
@@ -145,10 +144,12 @@ function(_nros_sizing_bound_args _out_var)
             nros_message_bounds_files("${_nsba_dir}" _nsba_json _nsba_unused)
             list(APPEND _args --bound-inventory "${_nsba_json}")
             math(EXPR _registered "${_registered} + 1")
+            # Counted, never made a configure dependency (phase-530 W7): the
+            # table is an output of the build-time codegen command, so a build
+            # that re-ran it would make the next build re-configure; its inputs
+            # are configure dependencies already (`nros_generate_interfaces()`).
             if(EXISTS "${_nsba_json}")
                 math(EXPR _present "${_present} + 1")
-                set_property(DIRECTORY APPEND PROPERTY
-                    CMAKE_CONFIGURE_DEPENDS "${_nsba_json}")
             endif()
         endforeach()
     endif()
@@ -710,9 +711,9 @@ endfunction()
 #
 # The fragment's text: <named> TRUE names `west-cargo.toml`, FALSE names none.
 # One spelling for the entry (the writer) and the module's default for a
-# configure no entry has answered yet, because the arm compares BYTES: a default
-# that differs from the writer by a comment re-arms the pass this exists to
-# save (the inbox-join regression phase-439 W5 found, one fragment over).
+# configure no entry has answered yet, because the promise check compares BYTES:
+# a default that differs from the writer by a comment would fail it (the
+# inbox-join regression phase-439 W5 found, one fragment over).
 function(nros_sizing_descriptor_west_body _out_var _named)
     set(_path "")
     if(_named)
@@ -755,8 +756,9 @@ endfunction()
 # check to the end of the top-level configure. By then every entry has run
 # `nros_sizing_descriptor_record_for_west`, which copies the file there. If it
 # is still missing, nothing will write it before cargo reads it, so record
-# "none" and arm a re-configure: cargo is never handed a file that is not there
-# (RFC-0100 D6). Settled, with no arm, whenever an entry wrote the file.
+# "none", and the promise check stops this configure with the reason: cargo is
+# never handed a file that is not there (RFC-0100 D6). Nothing happens when an
+# entry wrote the file.
 function(nros_sizing_descriptor_west_arm_backstop _forwarded)
     set_property(GLOBAL PROPERTY NROS_WEST_SIZING_FORWARDED "${_forwarded}")
     cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
@@ -803,7 +805,7 @@ endfunction()
 # the entry decides one-or-none (the same rule, the same function -- RFC-0100
 # D12's "exactly one"), copies the chosen file to the fixed
 # `nros_sizing_descriptor_west_cargo_path`, records the decision in the
-# fragment, and arms a re-configure when the DECISION changes. The resolver
+# fragment, and is held to the module's decision by the promise check. The resolver
 # puts `NROS_SIZING_DESCRIPTOR` into `NROS_RESOLVED_KNOBS`, and from there it
 # rides the C lane's command exactly like every other resolved knob (issue
 # 0460: never a `set(ENV{})` on its own). It is a PATH, and nothing watches the

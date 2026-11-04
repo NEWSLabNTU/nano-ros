@@ -1433,14 +1433,15 @@ function(_nros_entry_invoke_codegen)
     # their configured `MAX_CBS` and are unaffected.
     #
     # Issue 0991, phase-530 W4 (RFC-0120 D5) -- and because it is composed
-    # HERE, every reader of it already ran: the Zephyr knob resolver during
-    # `find_package(Zephyr)`, the payload-class join at the end of each
-    # `nros_find_interfaces()`. Those readers read the answer `nros configure`
-    # composed before this configure (the seed), and this composition is HELD
-    # to it at the end of the configure: equal continues, different fails the
-    # configure naming both files, or naming the registration configure could
-    # not see. A reader with no configure in front is held to the same end
-    # check, never re-converged (cmake/NanoRosPromise.cmake).
+    # HERE, the Zephyr knob resolver already read it during
+    # `find_package(Zephyr)`, and the payload-class join at the end of each
+    # `nros_find_interfaces()` composed the bounds over it (that join's output
+    # has a configure-time consumer only on Zephyr). This composition is HELD
+    # to the answer `nros configure` seeded, on every road, whether or not a
+    # reader ran first: equal continues, different fails the configure naming
+    # both files, or naming the registration configure could not see. An
+    # unseeded read is held to the same end check, never re-converged
+    # (cmake/NanoRosPromise.cmake).
     include("${_NROS_ENTRY_DIR}/NanoRosEntityInventory.cmake")
     include("${_NROS_ENTRY_DIR}/NanoRosPromise.cmake")
     nros_entity_inventory_knobs_file(_entity_knobs_path)
@@ -1491,8 +1492,18 @@ function(_nros_entry_invoke_codegen)
     else()
         set(_nrx_colcon_ws "${_ws_root}")
     endif()
-    nros_derive_entity_inventory_knobs(CLI "${_nros_bin}" MODEL "${_NRX_MODEL}"
-        WORKSPACE "${_nrx_colcon_ws}")
+    # phase-530 W7 -- a leaf whose own declaration already wrote this image's
+    # fragment before every reader (`nros_record_leaf_entity_facts`, the seed)
+    # is composed once; the entry stands down as the node-register composer
+    # does, rather than become a second composer of one answer.
+    get_property(_nrx_leaf_sized GLOBAL PROPERTY NROS_ENTITY_INVENTORY_LEAF_SIZED)
+    if("${_nrx_leaf_sized}" STREQUAL "")
+        nros_derive_entity_inventory_knobs(CLI "${_nros_bin}" MODEL "${_NRX_MODEL}"
+            WORKSPACE "${_nrx_colcon_ws}")
+    else()
+        message(STATUS "nano_ros_entry(${_NRX_NAME}): entity inventory from the leaf's "
+            "${_nrx_leaf_sized}, written before every reader; composing nothing")
+    endif()
     nros_promise_check("${_entity_knobs_path}" "${_entity_knobs_before}"
         LABEL "this image's entity inventory")
     # issue 1084 -- the same model, for the COMPILER rather than the pools. Each

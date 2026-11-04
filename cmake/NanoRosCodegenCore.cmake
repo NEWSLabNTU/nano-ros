@@ -1499,9 +1499,14 @@ function(nros_find_interfaces)
     #      below; the resolver registered the fragment);
     #    * on the CMake roads nothing reads the bounds fragment at configure
     #      time at all: the payload classes reach cargo through the sizing
-    #      descriptor. So this function is no READER of either fragment, and
-    #      registers none -- a promise is owed to a reader, and the entity
-    #      fragment's own consumers register themselves.
+    #      descriptor.
+    #
+    #    This function READS the entity fragment (the payload-class join below
+    #    composes over it), but its output has a configure-time consumer only on
+    #    Zephyr, where the loaders registered both fragments. So it registers
+    #    nothing itself: a seeded fragment is held to its seed by
+    #    `nros_promise_seeded`, and the entity fragment's flush consumers
+    #    register themselves.
     nros_entity_inventory_knobs_file(_entity_knobs)
     # phase-439 W2 (RFC-0094 D1) -- prefer the resolve phase's answer over a
     # placeholder. Same reason as the Zephyr loader: this reader runs before the

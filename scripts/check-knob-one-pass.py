@@ -155,7 +155,9 @@ def main(argv):
     if rc:
         return rc
     build_dir = argv[1]
-    configure = "cmake -B %s" % build_dir
+    # `cmake <build-dir>` re-configures from the cached source and settings;
+    # `cmake -B <dir>` alone would take the CWD as the source.
+    configure = "cmake '%s'" % build_dir
     if "--configure" in argv:
         configure = argv[argv.index("--configure") + 1]
     problems = check(build_dir, configure)

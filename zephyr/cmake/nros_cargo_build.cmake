@@ -310,13 +310,15 @@ function(_nros_load_derived_message_bounds)
         # a hard `missing and no known rule to make it` at load. Seeding a
         # placeholder makes the dependency well-formed on the very first
         # configure, and the interfaces lane overwrites it later in this same
-        # one -- which is what makes ninja re-run cmake and pick the answer up.
+        # one; a reader that read the placeholder is known to have used its
+        # defaults (cmake/NanoRosPromise.cmake).
         nros_message_bounds_seed_knobs_file("${_knobs}")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_knobs}")
     # RFC-0120 D5 -- what this configure's readers consume. Seeded (configure
     # wrote the answer), the producer is held to it at the end of the
-    # configure; with no seed the old settle still applies (NanoRosPromise.cmake).
+    # configure; with no seed the same end check applies, never a re-converge
+    # (NanoRosPromise.cmake).
     nros_promise_read("${_knobs}")
     include("${_knobs}")
     # issue 1498 -- re-export every DERIVED fact the file sets, read off the
@@ -530,8 +532,9 @@ endfunction()
 #
 # A "named" decision whose file still does not exist when the configure ends
 # -- no entry ran, or the entry named none -- is taken back by the deferred
-# `nros_sizing_descriptor_west_arm_backstop`, which arms a re-configure so
-# cargo is never handed a file that is not there (RFC-0100 D6).
+# `nros_sizing_descriptor_west_arm_backstop`, which records "none" and has the
+# promise check stop the configure, so cargo is never handed a file that is not
+# there (RFC-0100 D6).
 function(_nros_load_west_sizing_descriptor)
     nros_sizing_descriptor_west_fragment(_frag)
     get_property(_configured GLOBAL PROPERTY NROS_CONFIGURED_CURRENT)
@@ -556,7 +559,9 @@ function(_nros_load_west_sizing_descriptor)
     elseif(NOT EXISTS "${_frag}")
         # Written rather than skipped, for the reason the bounds loader gives:
         # it is registered as a configure dependency below, and a ninja input
-        # with no producing rule is a hard error at load.
+        # with no producing rule is a hard error at load. It is THIS configure's
+        # default, not an earlier configure's answer (the promise check's kind).
+        nros_promise_note_absent("${_frag}")
         nros_resolved_dir(_resolved)
         nros_sizing_descriptor_west_default("${_resolved}" "${NROS_WEST_LEAF_DESCRIPTOR}")
     endif()
@@ -776,7 +781,7 @@ function(nros_resolve_knobs)
     # name none, so every descriptor-first consumer fell to the `NROS_DECLARED_*`
     # carriers resolved around this call. Same lag and same loader shape as the
     # two inventories above: the entry records the one-or-none decision after
-    # this has run, and arms a re-configure when it changes.
+    # this has run, and the promise check holds it to the module's decision.
     _nros_load_west_sizing_descriptor()
 
     # phase-412 W1 -- the SESSION pools, on the same ladder and with the same

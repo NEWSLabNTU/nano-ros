@@ -199,9 +199,9 @@ function(nros_record_leaf_entity_facts _dir)
     endif()
     #
     # phase-530 W7 (RFC-0120 D5, Ruling R37) -- and the leaf's ENTITY fragment,
-    # from the same declaration, here: before every reader of this configure
-    # (the payload-class join in `nros_find_interfaces()`, the cargo env at the
-    # entity-facts flush). It is this leaf's seed -- what `west-leaf-sizing`
+    # from the same declaration, here: before everything that consumes it this
+    # configure (the payload-class join in `nros_find_interfaces()` composes
+    # over it; the entity-facts flush hands its counts to cargo). It is this leaf's seed -- what `west-leaf-sizing`
     # is for a Zephyr C/C++ leaf, the one composer both call -- so the readers
     # read it and the composer that reads only `nros-metadata.json`, which
     # cannot see a census, stands down rather than overwrite it.
