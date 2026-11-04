@@ -314,7 +314,7 @@ fn no_shipping_contract_derives_a_depth() {
         .ancestors()
         .nth(3)
         .expect("repo root");
-    let contracts = shipping_contracts(&repo.join("examples"));
+    let contracts = common::tracked_files(repo, "examples/**/*.contract.yaml");
     assert!(
         !contracts.is_empty(),
         "the sweep must find the tree's contracts, or it proves nothing"
@@ -328,28 +328,6 @@ fn no_shipping_contract_derives_a_depth() {
             c.display()
         );
     }
-}
-
-/// Every `*.contract.yaml` under a directory, recursively.
-fn shipping_contracts(root: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let Ok(entries) = fs::read_dir(root) else {
-        return out;
-    };
-    for e in entries.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            out.extend(shipping_contracts(&p));
-        } else if p
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.ends_with(".contract.yaml"))
-        {
-            out.push(p);
-        }
-    }
-    out.sort();
-    out
 }
 
 /// Resolve `launch/<stem>.launch.xml` (with its `<stem>.contract.yaml`
