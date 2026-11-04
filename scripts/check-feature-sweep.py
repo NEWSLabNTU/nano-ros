@@ -84,13 +84,6 @@ ONE_OF_PREFIXES = (
 # A platform that only builds for an embedded target: linted by the CROSS half
 # below, which must hold a run for every SKIP carrying this exact reason.
 _CROSS = "an embedded target; linted by this sweep's CROSS half"
-# ESP32 is dormant (issue 1525): its board descriptor states no C compiler, so
-# the C shims nros-c compiles fall back to a riscv64 gcc that has no rv32
-# libraries. The pure-Rust `nros-platform` arm is still cross-swept.
-_ESP32_DORMANT = (
-    "ESP32 is dormant (issue 1525) and its board states no C compiler for the "
-    "C shims; nros-platform's esp32 arm is cross-swept"
-)
 # The feature set nros-c / nros-cpp ship in on an embedded target: what
 # `nros_feature_set()` (cmake/NanoRosFeatureSet.cmake) assembles for RMW none,
 # plus the default panic handler a staticlib needs to build at all.
@@ -157,7 +150,6 @@ CRATES = {
         # handler stands down for `panic-halt`, so the pair composes.
         "expected": {},
         "skip": {
-            "platform-esp32-qemu": _ESP32_DORMANT,
             "platform-freertos": _CROSS,
             "platform-mps2-an385": _CROSS,
             "platform-nuttx": _CROSS,
@@ -176,7 +168,6 @@ CRATES = {
         # handler stands down for `panic-halt`, so the pair composes.
         "expected": {},
         "skip": {
-            "platform-esp32-qemu": _ESP32_DORMANT,
             "platform-freertos": _CROSS,
             "platform-mps2-an385": _CROSS,
             "platform-nuttx": _CROSS,
@@ -240,7 +231,6 @@ CRATES = {
             **{
                 p: _CROSS
                 for p in (
-                    "platform-esp32-qemu",
                     "platform-freertos",
                     "platform-mps2-an385",
                     "platform-stm32f4",
@@ -312,7 +302,6 @@ CROSS = [
     ("nros-platform", "platform-freertos", "alloc", "nros-board-mps2-an385-freertos"),
     ("nros-platform", "platform-mps2-an385", "alloc", "thumbv7m-none-eabi"),
     ("nros-platform", "platform-stm32f4", "alloc", "thumbv7em-none-eabihf"),
-    ("nros-platform", "platform-esp32-qemu", "alloc", "riscv32imc-unknown-none-elf"),
     ("nros-platform", "platform-threadx", "alloc", "nros-board-threadx-qemu-riscv64"),
     ("nros-platform", "platform-zephyr", "alloc", "thumbv7m-none-eabi"),
     ("nros-rmw-zenoh", "platform-freertos", "alloc", "nros-board-mps2-an385-freertos"),
@@ -385,7 +374,6 @@ STANDALONE = {
     # issue 1309's set: no lock of their own, no [workspace]
     "packages/platform/nros-platform-mps2-an385": "thumbv7m-none-eabi",
     "packages/platform/nros-platform-stm32f4": "thumbv7em-none-eabihf",
-    "packages/platform/nros-platform-esp32-qemu": "riscv32imc-unknown-none-elf",
     "packages/testing/qemu-smoltcp-bridge": "nros-board-mps2-an385",
     # issue 1960 — own [workspace], fixture binaries
     "packages/testing/nros-bench/executor-fairness": HOST,
@@ -399,12 +387,10 @@ STANDALONE = {
     "packages/testing/nros-tests/bins/lan9118-qemu": LEAF,
     # own [workspace] (+ tracked lock)
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo": LEAF,
-    "packages/testing/nros-smoke/esp32-hello-world": LEAF,
     "packages/boards/nros-board-nuttx-qemu": "nros-board-nuttx-qemu",
     "packages/boards/nros-board-zephyr": "thumbv7m-none-eabi",
     # tracked lock (a `locked_roots` entry)
     "packages/drivers/net/nros-smoltcp": "nros-board-mps2-an385",
-    "packages/drivers/net/openeth-smoltcp": "riscv32imc-unknown-none-elf",
     "packages/drivers/serial/cmsdk-uart": "nros-board-mps2-an385",
     "packages/drivers/serial/stm32f4-usart": "thumbv7em-none-eabihf",
     "packages/rmw/zenoh/zpico-serial": "nros-board-mps2-an385",
@@ -429,11 +415,6 @@ STANDALONE_SKIP = {
         "builds it (`cfg(verus_keep_ghost)`), so plain rustc cannot resolve the "
         "spec functions its modules import; it is checked by `just verify-verus` "
         "with the SDK-store Verus this sweep does not provision"
-    ),
-    "packages/boards/nros-board-esp32-qemu": (
-        "ESP32 is dormant (issue 1525), and this board resolves three crates the "
-        "pin set does not name (esp-alloc, allocator-api2, linked_list_allocator); "
-        "pinning them for a board nothing builds is a pin-set change with no user"
     ),
 }
 
