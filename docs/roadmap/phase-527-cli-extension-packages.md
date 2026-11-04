@@ -1,9 +1,10 @@
 # Phase 527 — Runner and command packages: kinds, host build, dispatch, release underlay
 
-**Status (2026-11-03). IN PROGRESS — W3, W1, W2 and W2b landed
+**Status (2026-11-04). IN PROGRESS — W3, W1, W2, W2b and W2c landed
 (`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
-the host build role; declared overrides); W2c (colcon's duplicate rule among
-source roots, overrides in `nros.toml`) in review (#3075); W2d (one `--base-paths` meaning) next.** Implements
+the host build role; declared overrides; colcon's duplicate rule among
+source roots, overrides in `nros.toml`); W2d (one `--base-paths` meaning) in
+review; W4 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -216,7 +217,7 @@ declarations from `nros.toml`; the leaf fallback; `src/*/system.toml`
 `[overrides]` refused; both files refused; the fallback's note. W2b's
 tests stay green.
 
-Status: **DONE, in review** (2026-11-03, #3075).
+Status: **DONE** (2026-11-03, #3075).
 
 - Still ONE lookup: `resolve_provider` gains a private `pick` step that
   applies the source-root rule on top of `resolve_unique`'s order, and
@@ -228,8 +229,8 @@ Status: **DONE, in review** (2026-11-03, #3075).
   scans that way. A scan with no origins applies W2b's rules alone.
 - `candidates` treats one package reached through two roots (a
   `package_paths` entry inside the workspace) as one package.
-- `--base-paths` keeps the ordered rule: it replaces the whole path, often
-  with an underlay among its entries, and nothing says which.
+- `--base-paths` kept the ordered rule here, because it replaced the whole
+  path; W2d makes its entries source roots.
 - `nros_config::workspace_overrides` reads the table; the phase 212.I
   `nros.toml` rejection now accepts `[workspace]` holding `package_paths`
   and/or `overrides`. Messages quote the file the policy read
@@ -240,6 +241,115 @@ Status: **DONE, in review** (2026-11-03, #3075).
 - Tests: `nros-cli-core/tests/provider_overrides.rs` (fixture
   `late/late_acme` added) and `nros_config`'s
   `workspace_overrides_do_not_trip_the_212_rejection`.
+
+### W2d — One meaning for `--base-paths`, colcon's
+
+Maintainer decision (2026-11-04), recorded in RFC-0119 D4 and RFC-0117 D4:
+respect colcon, fix the UX and security issues, one meaning in every verb.
+colcon's `--base-paths` lists the SOURCE roots; they are scanned recursively
+as peers, a duplicate package name is an error, order is irrelevant, and an
+overlapping or repeated path counts once. Underlays are separate
+(`AMENT_PREFIX_PATH`). Before this, `nros build` and `nros list` narrowed
+discovery to the base paths (and never read `package_paths`), while `nros
+sync --base-paths` replaced the whole provider search path, underlay
+included; and `discover::select` kept the LAST of two same-named packages,
+silently.
+
+- One flag struct, `cmd::build::BasePathsArgs`, flattened into `nros build`
+  and `nros list` (through `SelectionArgs`), `nros sync`, `nros dev ws
+  providers`, `nros flash`, `nros monitor`, and `nros run` (through
+  `ExecArgs`). Relative to the workspace; default `.` plus `package_paths`.
+- One root-list function: `provider_scan::source_roots(workspace,
+  package_paths, base_paths)`, read through `cmd::ws::source_roots`. Build
+  discovery (`discover::discover_in` now takes its `SearchPath`) and the
+  provider search path (`provider_scan::search_path_over`, which
+  `build_search_path` now is over the default roots) both use it. The flag
+  replaces the source roots only; the nano-ros underlay and
+  `NROS_PACKAGE_PATH` stay, with W2b/W2c's precedence, and a `--base-paths`
+  root is a source root (`RootOrigin::is_source`). `SearchPath::from_base_paths`,
+  the whole-path replacement, is gone.
+- `nros run`/`flash`/`monitor` pass the flag to the planning and the
+  implicit build through one `run_plan::Selection::build_args`, and to the
+  runner lookup: `run_exec::locate_runner` takes it, and now scans with root
+  origins, so the source-root duplicate rule applies there as it does at the
+  build edge.
+- A package name in two directories is an error from discovery that names
+  both, the root each came from (origin and entry as typed, and whether it is
+  outside the workspace) and the fixes. A pin in `nros.toml
+  [workspace.overrides]` naming one of the two directories, or
+  `--allow-overriding <name>` (the later root wins), settles it, as for a
+  provider. `select` refuses a duplicate in a hand-built `Discovered` rather
+  than keep the last.
+- A missing `--base-paths` entry is an error; an existing root holding no
+  package, and a `package_paths` entry that is not a directory, are warnings.
+  Repeated and nested base paths count once (the outer root stays).
+- Visibility: `nros dev ws providers` prints each source root outside the
+  workspace (and `outside_workspace` in `--json`), `nros doctor` lists them,
+  `nros run --dry-run --why` prints the source roots when any is not the
+  workspace itself, and `providers.json` records each root's origin
+  (`root_origins`, beside `roots`; not part of the validity check).
+- Tests: `nros-cli-core/tests/base_paths_one_meaning.rs` (every verb parses
+  the flag to the same list and `nros run`'s implicit build receives it;
+  discovery and the search path share the list; the underlay's `native`
+  runner still resolves; an out-of-workspace root shows in the listing and
+  `--why`; missing errors, empty warns; `nros build` refuses a duplicate
+  across two base paths), `discover.rs` unit tests (duplicate across roots
+  and between the workspace and `package_paths`, settled by a pin or the
+  flag, overlap dedup, empty warning, `select`'s refusal), `provider_scan`
+  unit tests (`source_roots`, `search_path_over`, the index's origins) and
+  `ws.rs`'s `sync_base_paths_keep_the_underlay`.
+
+Measured on `examples/workspaces/mixed`, warm (`nros sync <ws>` after one
+warm-up), 5 runs each, median:
+
+| binary | `nros sync <ws>` | `nros sync <ws> --base-paths <ws>/src` |
+| --- | --- | --- |
+| before (base `3519b10b2b`; the flag replaced the whole path) | 0.188 s | 0.186 s |
+| after (the flag replaces the source roots; the underlay stays) | 0.174 s | 0.182 s |
+
+Dropping the old underlay-replacing behaviour cost nothing measurable: the
+`--base-paths` sync is 0.182 s against 0.186 s before, inside the run-to-run
+spread (0.171 to 0.190 s across all four columns), and it is within 8 ms
+(about 5 %) of the default sync it now matches. That agrees with issue 0646,
+which put the underlay walk at about 0.02 s of a 0.194 s sync. No in-tree
+caller uses `nros sync --base-paths` (`scripts/regenerate-bindings.sh` passes
+`--no-provider-index`). Neither threshold (5 % over the old `--base-paths`
+time, or 50 ms) is crossed, so **no underlay-scan cache was added**.
+
+Deviations from the brief, each with its reason:
+
+- **Two copies of one package inside ONE source root warn instead of
+  erroring**, and `select` refuses any flag or `<depend>` that names the
+  duplicated name. A duplicate across two roots is the error the brief asks
+  for. colcon refuses both, but the in-tree template
+  `examples/templates/ament-workspace-port` keeps per-board variants side by
+  side (`zephyr/` and `mps2-an385-freertos/`, both `ament_workspace_port`,
+  each built on its own), and `declared_depends_resolve` discovers every
+  in-tree workspace, so the stricter rule turned that test red. The silent
+  last-wins is gone either way. For the maintainer: rename the variants, or
+  keep this narrower rule.
+- **`nros sync`'s own package walk is unchanged.** It reads `src/<pkg>/`
+  one level deep, a different walk from build discovery; on `sync` the flag
+  sets the source roots of the provider index it writes, which is what
+  `provider_roots_for_sync` did before. Making sync's package walk follow the
+  source roots belongs with phase-530's `nros configure` and is not done here.
+- **A `--base-paths` entry inside the nano-ros tree** is dropped from the
+  provider search path, as a workspace nested in the tree already was: root
+  0 walks it, so `--base-paths .` in an in-tree workspace is the default path.
+  Build discovery still walks it as a source root.
+- **A pin settles a discovery duplicate by path**: any `[workspace.overrides]`
+  entry naming one of the two directories keeps it. Declarations are keyed by
+  provider name, and a plain package has none, so matching on the key would
+  leave a non-provider duplicate with no pin to use.
+- **`run_exec::locate_runner` now scans with root origins**
+  (`scan_search_path` rather than `scan_roots`), so the W2c source-root
+  duplicate rule reaches `nros run`/`flash`/`monitor` as it reaches the build
+  edge. Before, a runner duplicated across two source roots resolved by
+  order there.
+- **The default build discovery now reads `package_paths`**, as the brief
+  asks. No tracked `nros.toml` declares any, so no in-tree workspace changes.
+
+Status: **DONE, in review** (2026-11-04).
 
 ### W3 — `packages/runners/` and `nros-extension`
 

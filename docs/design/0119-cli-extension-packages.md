@@ -194,6 +194,33 @@ and colcon's rules decide each boundary:
   declared; a `runner` or `command` it provides still needs a declaration
   (rule 2).
 
+**`--base-paths` names the source roots, and only those.** It is colcon's
+flag with colcon's meaning, the same on every verb that takes it (`nros
+build`, `nros list`, `nros sync`, `nros dev ws providers`, and the build and
+runner lookup inside `nros run`, `flash` and `monitor`; RFC-0117 D4). Its
+entries replace the workspace (default `.`) and its `package_paths`, relative
+to the workspace; the nano-ros underlay and `NROS_PACKAGE_PATH` stay, with the
+precedence above. colcon's underlay is `AMENT_PREFIX_PATH`, which its
+`--base-paths` does not touch either. One function,
+`provider_scan::source_roots` (read through `nros_cli_core::cmd::ws::source_roots`),
+makes the list, and build discovery and the provider search path both use
+it, so they cannot disagree about where the workspace's packages are. Within
+it, as in colcon:
+
+- the roots are peers and are walked recursively; their order carries no
+  precedence;
+- a root repeated, or inside another, counts once;
+- a package NAME in two directories is an error for build discovery, naming
+  both paths and the root each came from, with the fixes (drop one root,
+  remove a copy, or for a provider pin one under rule 1 or pass
+  `--allow-overriding`), which settle it the same way they settle a provider
+  duplicate;
+- a `--base-paths` entry that does not exist is an error; one that holds no
+  package is a warning;
+- a root outside the workspace is allowed and shown: `nros dev ws providers`
+  marks it, `nros doctor` lists it, `nros run --dry-run --why` names it, and
+  the provider index records each root's origin beside its path.
+
 A repeated root is one root, and one package reached through two roots (a
 `package_paths` entry inside the workspace) is one package, not a duplicate.
 Between tiers the order is fixed and deterministic, and
@@ -205,7 +232,10 @@ through, applies the source-root rule and the rules below on top.
 won and the user's copy was shadowed. The code had always let the overlay
 win, and phase-527 W2's build edge follows the code, so the RFC now does
 too. Amended again in phase-527 W2c: the source roots were ordered like the
-others, so a `package_paths` entry silently beat the workspace.)*
+others, so a `package_paths` entry silently beat the workspace. Amended in
+phase-527 W2d: `nros sync --base-paths` replaced the whole search path,
+underlay included, while `nros build --base-paths` only narrowed discovery;
+both now mean the source roots.)*
 
 An override is allowed, and it is never silent:
 
@@ -482,3 +512,11 @@ CMake code when they build it, so this adds no new boundary.
   refused. Overrides are workspace configuration, as colcon's flags are the
   workspace's and never a package's, so a vendored package cannot grant
   itself an override.
+- 2026-11-04 — phase-527 W2d, D4: `--base-paths` follows colcon's model and
+  means the same thing on every verb. It replaces the source roots (the
+  workspace and `package_paths`) and nothing else; build discovery and the
+  provider scan share one root-list function; a package name in two source
+  roots is an error naming both (it was a silent last-wins); a missing base
+  path is an error and an empty one a warning; an out-of-workspace root is
+  shown in the providers listing, `nros doctor`, `--why` and the provider
+  index.
