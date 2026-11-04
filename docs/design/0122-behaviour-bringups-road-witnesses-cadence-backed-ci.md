@@ -38,7 +38,9 @@ The tests do not change. A cell's `Kind` says what the test does, not where
 its image is built, so every test file and rstest case name stays. Only the
 fixture resolver learns to find an image in a workspace. A coverage ratchet
 derived from the manifest refuses any change that drops the last witness of
-a (platform, language, driver, project shape, launch origin).
+a (platform, language, driver, project shape, launch origin, entry form). Every
+example uses the generated entry; a hand-written `main` stays only where an
+example exists to demonstrate one (D10).
 
 The CI half binds each support cadence of RFC-0114 to a named workflow job,
 because today two of them have none. `cadence = "merge"` (linux, zephyr
@@ -151,6 +153,31 @@ What only these show, and the merged images cannot:
 Each one runs, not only builds. A new `road_witness_e2e` pairs each witness
 talker with the workspace listener of the same (platform, language, rmw).
 
+### D10 — Examples use generated entries; a hand-written `main` survives only to demonstrate one
+
+Maintainer ruling 2026-11-04. Phase-535 W0 found that the C and C++
+standalone examples carry a hand-written `main` running the whole user
+lifecycle:
+- C: `rclc_support_init`, `rclc_node_init_default`, `rclc_executor_init` /
+  `spin_period` / `cancel` / `fini`, `rclc_support_fini`;
+- C++: `rclcpp::init`, `create_node`, `spin_once`.
+
+The workspace components call none of it, because the generated entry sets
+up the node. Rust examples already use `nros::main!` and are unaffected.
+
+The ruling: every example uses the generated entry, and the book teaches it.
+A hand-written `main` stays only in an example whose PURPOSE is to show a
+manual entry: porting existing rclcpp code, a user-supplied platform, a
+caller-supplied link. Phase-535 W1 lists that set, each with its reason, and
+the D5 ratchet carries entry form (generated or manual) as an axis, so the
+last manual-entry demo of a (platform family, language) cannot vanish
+unnoticed.
+
+The cost, stated rather than smoothed over: the rclc/rclcpp lifecycle runs on
+an RTOS only where a manual-entry demo runs on it. Everywhere else it is
+covered by host tests. This is RFC-0121 D8's direction ("any other `main` is
+reported for a person to move"), made a decision for the examples.
+
 ### D4 — A cell's `Kind` is the test's, not the build's
 
 Pair cells stay `Kind::Example`. The fixture resolver maps (cell, role) to
@@ -173,7 +200,8 @@ A gate on the fast line derives, from the manifest rows, the set of
 exercised by at least one runtime cell:
 
 - project shape: single-node or multi-image bringup;
-- launch origin: generated or authored.
+- launch origin: generated or authored;
+- entry form: generated, or a manual `main` (D10).
 
 The set may only grow. Its floor is the tree at adoption. Deleting a
 directory that was the last witness of a tuple goes red, naming the tuple.
@@ -289,3 +317,6 @@ has no job behind it.
 
 - 2026-11-04: Draft, from the maintainer discussion of 2026-11-04 (behaviour
   bringups, single-node witnesses, cell `Kind` kept, cadence-backed CI).
+- 2026-11-04: D10 (maintainer ruling): examples use generated entries, and the
+  book follows. A hand-written `main` stays only in a manual-entry demo. The
+  ratchet gains the entry-form axis.
