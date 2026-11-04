@@ -2805,8 +2805,8 @@ pub fn build_native_workspace_rust_service_server_entry() -> TestResult<&'static
 }
 
 /// phase-263 A1 (Track D) — the client half of the cross-process AddTwoInts
-/// service demo (cached). `add_client` calls the server entry and republishes
-/// the server-computed sum on /sum; the `roundtrip_xprocess_e2e` native_rust_service cell asserts it.
+/// service demo (cached). `add_client` calls the server entry once and prints the
+/// server-computed sum; the `roundtrip_xprocess_e2e` native_rust_service cell asserts it.
 pub fn build_native_workspace_rust_service_client_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_SERVICE_CLIENT_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -2821,9 +2821,9 @@ pub fn build_native_workspace_rust_service_client_entry() -> TestResult<&'static
 
 /// issue 0096 (regression guard) — the in-process service entry (cached). Boots
 /// `add_server` AND `add_client` in ONE process/session; `add_client` calls `add_server`
-/// on the SAME executor and republishes the sum on `/sum`. Two nodes stay under the
+/// on the SAME executor and prints the sum. Two nodes stay under the
 /// default `MAX_CBS = 4`, so it shares `target-fixtures` via the standard builder.
-/// `service_roundtrip_inprocess_e2e` asserts the same-session round-trip reaches `/sum`.
+/// `service_roundtrip_inprocess_e2e` asserts the same-session round-trip's result line.
 pub fn build_native_workspace_rust_service_inprocess_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_SERVICE_INPROCESS_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -2851,8 +2851,8 @@ pub fn build_native_workspace_rust_action_server_entry() -> TestResult<&'static 
 }
 
 /// phase-263 A4 (Track D) — the client half of the cross-process Fibonacci action
-/// demo (cached). Sends a goal and republishes the result's last element on
-/// `/fib_result`, which the `roundtrip_xprocess_e2e` native_rust_action cell asserts.
+/// demo (cached). The tutorial client: sends one goal and prints the feedback and the
+/// result, which the `roundtrip_xprocess_e2e` native_rust_action cell asserts.
 pub fn build_native_workspace_rust_action_client_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_ACTION_CLIENT_ENTRY_BINARY
         .get_or_try_init(|| {

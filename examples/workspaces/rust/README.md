@@ -7,8 +7,8 @@ pure Rust packages.
 rust/
 ├── .colcon_workspace     # the tracked marker that this dir IS a workspace root
 └── src/
-    ├── talker_pkg/       # Node pkg: publishes std_msgs/Int32 on /chatter
-    ├── listener_pkg/     # Node pkg: subscribes std_msgs/Int32 on /chatter
+    ├── talker_pkg/       # Node pkg: publishes std_msgs/String on /chatter
+    ├── listener_pkg/     # Node pkg: subscribes std_msgs/String on /chatter
     └── demo_bringup/     # Bringup pkg: package.xml + system.toml + launch/,
         └── boards/       #   plus the per-board Kconfig each Zephyr image names
 ```
@@ -26,7 +26,7 @@ west application — `CMakeLists.txt`, `build.rs`, the staticlib manifest and
 `src/demo_bringup/boards/native_sim_native_64/`, which is what `nros build`
 passes as `APPLICATION_CONFIG_DIR`.
 
-The Node packages use generated `std_msgs::msg::Int32` directly.
+The Node packages use generated `std_msgs::msg::String` directly: they are the ROS 2 tutorial programs, the same node logic the standalone `examples/<platform>/rust/` examples run.
 
 From the repository root:
 

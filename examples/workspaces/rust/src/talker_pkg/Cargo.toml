@@ -3,7 +3,7 @@ name = "talker_pkg"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Node pkg — publishes std_msgs/Int32 on /chatter."
+description = "Node pkg — publishes std_msgs/String on /chatter (the ROS 2 tutorial talker)."
 
 # Node pkg shape — lib only, no [[bin]], no main.rs. `nros::node!()`
 # exports the register / init / dispatch trampolines; the sibling

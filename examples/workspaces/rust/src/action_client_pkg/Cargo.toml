@@ -3,7 +3,7 @@ name = "action_client_pkg"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Node pkg — calls example_interfaces/Fibonacci on /fibonacci, republishes the result on /fib_result."
+description = "Node pkg — calls example_interfaces/Fibonacci on /fibonacci (the ROS 2 tutorial action client)."
 
 # Node pkg shape — lib only. `nros::node!()` exports the register / init /
 # dispatch trampolines; the sibling Entry pkg brings up the executor + spin.
@@ -21,4 +21,4 @@ nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
 example_interfaces = { path = "../../generated/example_interfaces", default-features = false }  # nros-managed
-std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
+log = { version = "0.4", default-features = false }

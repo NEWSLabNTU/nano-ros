@@ -11,15 +11,11 @@
 //! reply/result → client.
 //!
 //! Two observation styles, preserved from the per-cell files ([`Proof`]):
-//! - **Rust cells** observe via a THIRD process: the declarative client
-//!   republishes what the server computed (`add_client` → `/sum`,
-//!   `fibonacci_client` → `/fib_result`) and an external `int32-sink`
-//!   subscriber asserts the server-computed values (sums `1,2,3`; fib last
-//!   element `55`).
-//! - **C and C++ cells** run the ROS 2 tutorial pair (phase-535, RFC-0122
-//!   option B): after the server's tutorial ready line, the client's own
-//!   stdout must carry `Result of add_two_ints: 5` (one request, 2 + 3) or
+//! - **Rust, C and C++ cells** run the ROS 2 tutorial pair (phase-535,
+//!   RFC-0122 option B): after the server's tutorial ready line, the client's
+//!   own stdout must carry `Result of add_two_ints: 5` (one request, 2 + 3) or
 //!   the order-10 `Result received: [...]` with at least one feedback line.
+//!   A Rust entry spins for a bounded `NROS_ENTRY_SPIN_MS`.
 //! - **Mixed cells** (the mixed workspace keeps its own packages) assert on
 //!   the CLIENT's own stdout (`sum: N` ×3 / `result last=55`) after waiting
 //!   for the server's `server ready` marker. The C-family clients use the
@@ -75,14 +71,6 @@ use std::{path::PathBuf, process::Command, time::Duration};
 /// pre-consolidation files.
 #[derive(Copy, Clone, Debug)]
 enum Proof {
-    /// Rust declarative service chain: `add_client` calls `add_server`
-    /// (a=0,1,2,…, b=1) and republishes each reply on `/sum`; an external
-    /// `int32-sink` must see the server-computed sums `1, 2, 3`.
-    ListenerSums,
-    /// Rust declarative action chain: `fibonacci_client` sends one goal
-    /// (order 10) and its result callback republishes the LAST sequence
-    /// element on `/fib_result`; an external `int32-sink` must see `55`.
-    ListenerFibLast,
     /// Mixed-workspace poll-model service chain: wait for the server's
     /// `server ready`, then the client's stdout must show ≥3 server-computed
     /// `sum: N` replies with values 1, 2, 3 (early pre-discovery requests
@@ -126,17 +114,16 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
         (ML::Rust, MW::Service) => Exec {
             server: || build_native_workspace_rust_service_server_entry().map(|p| p.to_path_buf()),
             client: || build_native_workspace_rust_service_client_entry().map(|p| p.to_path_buf()),
-            proof: Proof::ListenerSums,
-            note: "phase-263 A1: declarative AddTwoInts chain — client `call_for_name` → \
-                   server `on_callback` sum → reply → client republish on /sum",
+            proof: Proof::TutorialServiceResult,
+            note: "phase-535: the Rust tutorial AddTwoInts pair — client `call_for_name` from \
+                   `tick` → server `on_callback` sum → reply",
         },
         (ML::Rust, MW::Action) => Exec {
             server: || build_native_workspace_rust_action_server_entry().map(|p| p.to_path_buf()),
             client: || build_native_workspace_rust_action_client_entry().map(|p| p.to_path_buf()),
-            proof: Proof::ListenerFibLast,
-            note: "phase-263 A4: declarative Fibonacci chain — send_goal → accept in \
-                   on_callback → feedback+result in tick → auto-delivered result callback \
-                   republishes the last element on /fib_result",
+            proof: Proof::TutorialActionResult,
+            note: "phase-535: the Rust tutorial Fibonacci pair — send_goal → accept in \
+                   on_callback → feedback+result in tick → result + feedback callbacks",
         },
         (ML::C, MW::Service) => Exec {
             server: || build_native_workspace_c_service_server_entry().map(|p| p.to_path_buf()),
@@ -288,85 +275,6 @@ fn run_cell(pcell: &MCell) {
     let locator = router.locator();
 
     match cell.proof {
-        // Rust cells: external observer on the client's republish topic.
-        Proof::ListenerSums | Proof::ListenerFibLast => {
-            let (topic, spin_ms) = match cell.proof {
-                Proof::ListenerSums => ("/sum", 16000),
-                _ => ("/fib_result", 20000),
-            };
-            let mut listener = nros_tests::fixtures::spawn_int32_sink(Some(topic), &locator);
-            let mut srv = spawn_rust_entry(&server, "roundtrip-server", &locator, spin_ms);
-            // Give the server a moment to register its queryable/action
-            // before the client calls (pre-consolidation shape).
-            std::thread::sleep(Duration::from_millis(1000));
-            let mut cli = spawn_rust_entry(&client, "roundtrip-client", &locator, spin_ms);
-
-            if matches!(cell.proof, Proof::ListenerSums) {
-                // add_client calls at 1 Hz with a = 0,1,2,… → the server
-                // returns 1,2,3,…; the third confirms ≥3 round-trips.
-                let out = listener
-                    .wait_for_output_count(
-                        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
-                        3,
-                        Duration::from_secs(22),
-                    )
-                    .unwrap_or_else(|_| {
-                        cli.kill();
-                        srv.kill();
-                        listener.kill();
-                        panic!(
-                            "[{} {}] {topic} subscriber never saw 3 server-computed sums — \
-                             the cross-process round-trip did not complete ({})",
-                            lang, workload, cell.note
-                        )
-                    });
-                cli.kill();
-                srv.kill();
-                listener.kill();
-                // The first three sums must be exactly the server-computed
-                // 1, 2, 3 (a=0,1,2 + b=1).
-                for n in [1, 2, 3] {
-                    let expected = nros_tests::output::int32_listener_line(n);
-                    assert!(
-                        out.contains(expected.as_str()),
-                        "[{} {}] expected server-computed sum line {expected:?} on {topic} \
-                         ({}); got:\n{out}",
-                        lang,
-                        workload,
-                        cell.note
-                    );
-                }
-            } else {
-                // The result's last sequence element is 55 (fib, order 10).
-                let expected = nros_tests::output::int32_listener_line(55);
-                let out = listener
-                    .wait_for_output_pattern(expected.as_str(), Duration::from_secs(25))
-                    .unwrap_or_else(|_| {
-                        cli.kill();
-                        srv.kill();
-                        listener.kill();
-                        panic!(
-                            "[{} {}] {topic} never saw the server-computed result (55) — \
-                             the cross-process round-trip did not complete ({})",
-                            lang, workload, cell.note
-                        )
-                    });
-                cli.kill();
-                srv.kill();
-                listener.kill();
-                assert!(
-                    out.contains(expected.as_str()),
-                    "[{} {}] expected the Fibonacci result last element 55 on {topic} \
-                     ({}); got:\n{out}",
-                    lang,
-                    workload,
-                    cell.note
-                );
-            }
-        }
-
-        // Tutorial cells: the server's tutorial ready line, then the client's
-        // stdout carries the tutorial result line.
         Proof::TutorialServiceResult | Proof::TutorialActionResult => {
             let service = matches!(cell.proof, Proof::TutorialServiceResult);
             let ready = if service {
@@ -374,7 +282,16 @@ fn run_cell(pcell: &MCell) {
             } else {
                 nros_tests::output::ACTION_SERVER_READY_MARKER
             };
-            let mut srv = spawn_c_entry(&server, "roundtrip-server", &locator);
+            // A Rust entry spins for a bounded time (`NROS_ENTRY_SPIN_MS`); the C
+            // and C++ entries spin until killed.
+            let spawn = |entry: &PathBuf, label: &'static str| {
+                if pcell.lang == ML::Rust {
+                    spawn_rust_entry(entry, label, &locator, 70_000)
+                } else {
+                    spawn_c_entry(entry, label, &locator)
+                }
+            };
+            let mut srv = spawn(&server, "roundtrip-server");
             srv.wait_for_output_pattern(ready, Duration::from_secs(10))
                 .unwrap_or_else(|_| {
                     srv.kill();
@@ -383,7 +300,7 @@ fn run_cell(pcell: &MCell) {
                         lang, workload, cell.note
                     )
                 });
-            let mut cli = spawn_c_entry(&client, "roundtrip-client", &locator);
+            let mut cli = spawn(&client, "roundtrip-client");
             let prefix = if service {
                 nros_tests::output::SERVICE_RESULT_PREFIX
             } else {
