@@ -856,9 +856,26 @@ configure), so those entries are dropped before the comparison.
   Reading an earlier configure's answer that moved stays FATAL. The roads
   that can still reach an unseeded read are listed in
   `cmake/NanoRosPromise.cmake`'s header: a guest Zephyr app with composers,
-  no CLI, a stale stamp, and a multi-image cmake root.
+  no CLI, a stale stamp, and a multi-image cmake root. "Derived" is the
+  fragment's TOP-LEVEL status (`NROS_ENTITY_INVENTORY_STATUS` /
+  `NROS_MESSAGE_BOUNDS_STATUS`); a derived sub-field under a refused top level
+  only WARNS (review round 2, N2).
 
-Gates for this wave: `cmake-resolved-seed` (58 checks, incl. a real
+**Ruled in review round 2.**
+
+- **R51: a west build dir is "already configured" only with its build
+  system.** A failed first configure leaves `CMakeCache.txt` holding every
+  `-D` but no `build.ninja`, and `west build` handed no options then skips
+  cmake and dies at ninja. `west_build_dir_already_configured` requires the
+  generator's own build file (`build.ninja`, or `Makefile`; any other
+  generator answers "not configured"), so the options are passed and west
+  configures again.
+- **R52: an unseeded FATAL names the road's own remedy.** `nros configure ...`
+  only where a CLI drives the road (`nros_configured_locate` publishes
+  `NROS_CONFIGURED_COMMAND` only once a CLI resolves); otherwise re-run this
+  build's configure, `cmake <build-dir>` or `west build -d <build-dir>`.
+
+Gates for this wave: `cmake-resolved-seed` (60 checks, incl. a real
 `check-knob-one-pass.py` run over a dir the suite configured and a no-op
 build asserting 0 `Re-running CMake`), `cmake-sizing-descriptor`,
 `cmake-entity-inventory`, `cmake-message-bounds`, `configure-hook`,

@@ -77,15 +77,23 @@
 #   * the readers read NOTHING or a PLACEHOLDER    -> they used their DEFAULTS
 #     (Kconfig / crate values, which can be smaller than this image needs --
 #     issue 0460's class): a WARNING when the composed answer is not derived,
-#     a FATAL when it is (`*_STATUS "derived"`), since the readers then provably
-#     disagree with this configure's own answer;
+#     a FATAL when it is, since the readers then provably disagree with this
+#     configure's own answer. "Derived" is the fragment's TOP-LEVEL status
+#     (`NROS_ENTITY_INVENTORY_STATUS` / `NROS_MESSAGE_BOUNDS_STATUS`, review
+#     N2): a sub-field such as `NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS "derived"`
+#     under a refused top level is not a derived answer, and a fragment with no
+#     top-level status (the sizing descriptor's) is never one;
 #   * the readers read a DERIVED answer an earlier configure left, and this
 #     configure composed another                   -> FATAL: they may have sized
 #     the image from the old one, which can be smaller.
 #
 # Every FATAL leaves this configure's answer in the fragment, so the next
-# configure reads it consistently: run `nros configure` (the hooked roads run
-# it for you) and configure again.
+# configure reads it consistently. The remedy it names is the ROAD's own
+# (Ruling R52): `nros configure ...` where the CLI drives the road (the
+# `NROS_CONFIGURED_COMMAND` property, which `nros_configured_locate` publishes
+# only once it has resolved a CLI), and otherwise -- a guest application, a host
+# with no CLI -- re-running this build's configure (`cmake <build-dir>`, or
+# `west build -d <build-dir>` on Zephyr).
 #
 # A placeholder says so on a line of its own (`nros_promise_placeholder_line`),
 # and a reader that wrote a default itself because the fragment was absent says
@@ -345,20 +353,40 @@ function(_nros_promise_check_one _path)
         "configure used the seed, so the build is not allowed to proceed on it.")
 endfunction()
 
+# _nros_promise_unseeded_remedy(<cmd_out> <again_out>) -- Ruling R52. <cmd_out>
+# is the command to run before configuring again, empty when no CLI drives this
+# road; <again_out> is how THIS build configures again.
+function(_nros_promise_unseeded_remedy _cmd_out _again_out)
+    get_property(_cmd GLOBAL PROPERTY NROS_CONFIGURED_COMMAND)
+    if(DEFINED ZEPHYR_BASE AND NOT "${ZEPHYR_BASE}" STREQUAL "")
+        set(_again "west build -d ${CMAKE_BINARY_DIR}")
+    else()
+        set(_again "cmake ${CMAKE_BINARY_DIR}")
+    endif()
+    set(${_cmd_out} "${_cmd}" PARENT_SCOPE)
+    set(${_again_out} "${_again}" PARENT_SCOPE)
+endfunction()
+
 # _nros_promise_check_unseeded(<path> <label>) -- the end-of-configure answer
 # to a read no `nros configure` seeded, whose fragment this configure moved.
 # See the header.
 function(_nros_promise_check_unseeded _path _label)
     _nros_promise_props("${_path}" _p)
     get_property(_kind GLOBAL PROPERTY ${_p_KIND})
-    get_property(_cmd GLOBAL PROPERTY NROS_CONFIGURED_COMMAND)
+    _nros_promise_unseeded_remedy(_cmd _again)
     if("${_cmd}" STREQUAL "")
-        set(_cmd "nros configure")
+        set(_fix "Re-run this build's configure (`${_again}`)")
+        set(_fix_before "Configure again (`${_again}`) to read the composed answer")
+    else()
+        set(_fix "Run `${_cmd}`, then configure again (`${_again}`)")
+        set(_fix_before "Run `${_cmd}` before the configure for derived sizes in one pass")
     endif()
     if(_kind STREQUAL "absent" OR _kind STREQUAL "placeholder")
         set(_derived FALSE)
         if(EXISTS "${_path}")
-            file(STRINGS "${_path}" _st REGEX "_STATUS \"derived\"")
+            # The TOP-LEVEL status only (review N2), never a sub-field's.
+            file(STRINGS "${_path}" _st REGEX
+                "^set\\((NROS_ENTITY_INVENTORY_STATUS|NROS_MESSAGE_BOUNDS_STATUS) \"derived\"\\)")
             if(_st)
                 set(_derived TRUE)
             endif()
@@ -373,12 +401,10 @@ function(_nros_promise_check_unseeded _path _label)
             message(FATAL_ERROR
                 "${_text}\n"
                 "  The composed answer is DERIVED, so the two halves of this image "
-                "disagree. Run `${_cmd}`, then configure again: the fragment now holds "
-                "this configure's answer, so the next configure reads it (RFC-0120 D5).")
+                "disagree. ${_fix}: the fragment now holds this configure's answer, so "
+                "the next configure reads it (RFC-0120 D5).")
         endif()
-        message(WARNING
-            "${_text} Run `${_cmd}` before the configure for derived sizes in one "
-            "pass.")
+        message(WARNING "${_text} ${_fix_before}.")
         nros_message_detail(
             "nros: a configure takes one pass; `nros configure` seeds the readers that "
             "run before the composition (RFC-0120 D5).")
@@ -389,7 +415,7 @@ function(_nros_promise_check_unseeded _path _label)
         "`nros configure` seeded them: they read the answer an earlier configure "
         "composed, which can be smaller than this one.\n"
         "  fragment: ${_path}\n"
-        "  Run `${_cmd}`, then configure again. The fragment now holds this "
+        "  ${_fix}. The fragment now holds this "
         "configure's answer, so the next configure reads it; nothing re-runs cmake "
         "on its own (RFC-0120 D5).")
 endfunction()

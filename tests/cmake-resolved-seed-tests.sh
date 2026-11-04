@@ -19,10 +19,13 @@
 #                               defaults (a placeholder) and say so -- issue
 #                               0991's fixed point is deleted (phase-530 W7)
 #   X  no seed, and the readers read an EARLIER configure's answer that the
-#      producer moves           the configure FAILS naming `nros configure`:
-#                               that answer can be smaller than this one
+#      producer moves           the configure FAILS naming this road's own
+#                               remedy (no CLI here: re-run `cmake <dir>`,
+#                               Ruling R52): that answer can be smaller
 #   Z  no seed, the readers used a placeholder, and the composed answer is
-#      DERIVED                  FAILS: the two halves of the image disagree
+#      DERIVED                  FAILS: the two halves of the image disagree;
+#                               a DERIVED sub-field under a refused top-level
+#                               status only WARNS (review N2)
 #   Y  the CMake road's shape: seed, then the composer, then the reader (the
 #      entity-facts flush)      a composer that disagrees with the seed FAILS
 #                               although no reader ran before it
@@ -142,8 +145,15 @@ if(NOT PROBE_NO_PRODUCER)
     endif()
     nros_promise_snapshot("\${_frag}" _before)
     file(WRITE "\${_frag}" "set(ANSWER \${PROBE_ANSWER})\n")
+    # The fragment's TOP-LEVEL status, as the entity inventory writes it.
     if(PROBE_DERIVED)
-        file(APPEND "\${_frag}" "set(PROBE_STATUS \"derived\")\n")
+        file(APPEND "\${_frag}" "set(NROS_ENTITY_INVENTORY_STATUS \"derived\")\n")
+    endif()
+    # Review N2: only a SUB-field is derived, as the real bounds fragment of a
+    # talker is (PAYLOAD derived, the whole refused).
+    if(PROBE_SUBFIELD_DERIVED)
+        file(APPEND "\${_frag}" "set(NROS_MESSAGE_BOUNDS_STATUS \"refused\")\n"
+            "set(NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS \"derived\")\n")
     endif()
     nros_promise_check("\${_frag}" "\${_before}" LABEL "the probe answer")
 endif()
@@ -168,6 +178,10 @@ run_build() {
 
 SRC="$TEST_TMPDIR/src"
 write_project "$SRC"
+
+# CMake wraps a message's text at ~80 columns, so a phrase can straddle two
+# lines: match remedy text against the output with whitespace flattened.
+flat() { tr -s ' \n' '  ' <<<"$1"; }
 
 # ---------------------------------------------------------------------------
 log_header "A. no configure in front: 0 re-configures, the readers used their defaults"
@@ -227,8 +241,9 @@ $CONFIGURE_OUT"
 fi
 check
 if [ "$X_RC" -ne 0 ] && nros_grep_q -F 'can be smaller than this one' <<<"$CONFIGURE_OUT" \
-   && nros_grep_q -F 'nros configure' <<<"$CONFIGURE_OUT"; then
-    log_success "the producer moved an answer the readers used: the configure STOPPED, naming nros configure"
+   && nros_grep_q -F "Re-run this build's configure (\`cmake $TEST_TMPDIR/none-build\`)" <<<"$(flat "$CONFIGURE_OUT")" \
+   && ! nros_grep_q -F 'Run `nros configure' <<<"$(flat "$CONFIGURE_OUT")"; then
+    log_success "the producer moved an answer the readers used: the configure STOPPED, naming this road's re-configure (no CLI drives it)"
 else
     fail "AN UNSEEDED READER OF A MOVED ANSWER DID NOT STOP THE CONFIGURE (rc=$X_RC):
 $CONFIGURE_OUT"
@@ -251,8 +266,10 @@ Z_RC=0
 CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/derived-build" \
     -DPROBE_DERIVED=ON 2>&1)" || Z_RC=$?
 check
-if [ "$Z_RC" -ne 0 ] && nros_grep_q -F 'The composed answer is DERIVED' <<<"$CONFIGURE_OUT"; then
-    log_success "defaults read, derived answer composed: the configure STOPPED"
+if [ "$Z_RC" -ne 0 ] && nros_grep_q -F 'The composed answer is DERIVED' <<<"$CONFIGURE_OUT" \
+   && nros_grep_q -F "Re-run this build's configure (\`cmake $TEST_TMPDIR/derived-build\`)" <<<"$(flat "$CONFIGURE_OUT")" \
+   && ! nros_grep_q -F 'Run `nros configure' <<<"$(flat "$CONFIGURE_OUT")"; then
+    log_success "defaults read, derived answer composed: the configure STOPPED, naming this road's re-configure"
 else
     fail "an unseeded placeholder read under a DERIVED answer did not stop the configure (rc=$Z_RC):
 $CONFIGURE_OUT"
@@ -271,6 +288,31 @@ if nros_grep_q -F 'CMake Warning' <<<"$WARN_OUT" && nros_grep_q -F 'they used th
 else
     fail "a non-derived unseeded answer did not warn:
 $WARN_OUT"
+fi
+# Review N2 -- a derived SUB-field under a refused top-level status is not a
+# derived answer: WARNING, never the FATAL.
+SUB_RC=0
+SUB_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/subfield-build" \
+    -DPROBE_SUBFIELD_DERIVED=ON 2>&1)" || SUB_RC=$?
+check
+if [ "$SUB_RC" -eq 0 ] && nros_grep_q -F 'they used their defaults' <<<"$SUB_OUT" \
+   && ! nros_grep_q -F 'The composed answer is DERIVED' <<<"$SUB_OUT"; then
+    log_success "a derived sub-field under a refused fragment WARNS and configures"
+else
+    fail "a derived SUB-field stopped the configure as if the answer were derived (rc=$SUB_RC):
+$SUB_OUT"
+fi
+# Ruling R52 -- on Zephyr (no CLI) the remedy is the west re-configure.
+ZW_RC=0
+ZW_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/zw-build" \
+    -DPROBE_DERIVED=ON -DZEPHYR_BASE=/zephyr 2>&1)" || ZW_RC=$?
+check
+if [ "$ZW_RC" -ne 0 ] && nros_grep_q -F "Re-run this build's configure (\`west build -d $TEST_TMPDIR/zw-build\`)" <<<"$(flat "$ZW_OUT")" \
+   && ! nros_grep_q -F 'Run `nros configure' <<<"$(flat "$ZW_OUT")"; then
+    log_success "a Zephyr build with no CLI is told to re-run west build"
+else
+    fail "the Zephyr no-CLI remedy is not \`west build -d <dir>\` (rc=$ZW_RC):
+$ZW_OUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -931,7 +973,7 @@ CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/stale-build" \
     -DNROS_CONFIGURED_PROJECT=/proj -DNROS_CONFIGURED_IMAGE=img 2>&1)" || STALE_RC=$?
 check
 if [ "$STALE_RC" -eq 0 ] && nros_grep_q 'PROBE_READ=placeholder' <<<"$CONFIGURE_OUT" \
-   && nros_grep_q -F 'nros configure /proj --image img' <<<"$CONFIGURE_OUT"; then
+   && nros_grep_q -F 'Run `nros configure /proj --image img` before the configure' <<<"$(flat "$CONFIGURE_OUT")"; then
     log_success "a stale configure seeds nothing, and the configure says what to run"
 else
     fail "A STALE CONFIGURE WAS PROMISED (rc=$STALE_RC): the cmake road must seed only

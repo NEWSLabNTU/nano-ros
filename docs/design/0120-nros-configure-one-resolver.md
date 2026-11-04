@@ -282,10 +282,12 @@ hook finds the stamp current and returns.
 **A promise is owed to a READER.** Only a call that consumes a fragment at
 configure time records what it read: the Zephyr knob resolver's loaders, and
 on the CMake roads the entity-facts flush that hands the entity counts to
-cargo. `nros_find_interfaces()` is no reader: on Zephyr the loaders already
-read both fragments, and on the CMake roads nothing reads the message-bound
-fragment at configure time (the payload classes reach cargo through the
-sizing descriptor). A producer whose answer no reader consumed is free to
+cargo. `nros_find_interfaces()` records no read of its own: it READS the
+entity fragment (the payload-class join composes over it), but its output has
+a configure-time consumer only on Zephyr, where the loaders already registered
+both fragments; on the CMake roads nothing reads the message-bound fragment at
+configure time (the payload classes reach cargo through the sizing
+descriptor). A producer whose answer no reader consumed is free to
 compose it -- unless the fragment was SEEDED: a seed is a promise in its own
 right, so recording one snapshots it and registers the end check, and a
 composer that moves a seeded fragment fails the configure whatever order the
@@ -298,12 +300,20 @@ comparison, and is never re-converged either:
 - equal → continue;
 - the reader read nothing or a placeholder (which says so on a line of its
   own) → a WARNING: it used its defaults (Kconfig and crate values), which can
-  be smaller than this image needs; FATAL when the composed fragment's status
-  is `derived`, since a real answer existed and the reader did not get it;
+  be smaller than this image needs; FATAL when the composed fragment's
+  TOP-LEVEL status (`NROS_ENTITY_INVENTORY_STATUS` /
+  `NROS_MESSAGE_BOUNDS_STATUS`) is `derived`, since a real answer existed and
+  the reader did not get it. A derived sub-field under a refused top level is
+  not a derived answer;
 - the reader read a derived answer an earlier configure left, and this
-  configure composed another → FATAL naming `nros configure`, because that
-  answer can be smaller than this one. The fragment now holds the new answer,
-  so the next configure reads it.
+  configure composed another → FATAL, because that answer can be smaller than
+  this one. The fragment now holds the new answer, so the next configure
+  reads it.
+
+Each of these names the road's own remedy: `nros configure ...` where the CLI
+drives the road (`nros_configured_locate` resolved a CLI), and otherwise -- a
+guest application, a host with no CLI -- re-running this build's configure
+(`cmake <build-dir>`, or `west build -d <build-dir>` on Zephyr).
 
 ### D6 — The four cases, closed
 

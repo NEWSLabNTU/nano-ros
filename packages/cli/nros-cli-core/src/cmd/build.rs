@@ -2146,10 +2146,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     crate::cmd::build_next::BuildOutput::West { build_dir } => build_dir.clone(),
                     _ => None,
                 });
-                let already = west_dir.as_deref().is_some_and(|d| {
-                    std::fs::read_to_string(d.join("CMakeCache.txt"))
-                        .is_ok_and(|c| cmake_args_already_cached(&c, &tail, d))
-                });
+                let already = west_dir
+                    .as_deref()
+                    .is_some_and(|d| west_build_dir_already_configured(d, &tail));
                 if !tail.is_empty() && !already {
                     // Everything after `--` is a cmake option for the app.
                     a.push("--".to_string());
@@ -6300,6 +6299,36 @@ fn west_application_dir(
     }
 }
 
+/// Issue 2248 -- whether `west build -d <build_dir>` can be handed no cmake
+/// options: the dir's `CMakeCache.txt` holds every one of `args` AND its
+/// generator wrote the build system (ruling R51).
+///
+/// The second half is what a FAILED first configure lacks: cmake writes the
+/// cache, `CMAKE_PROJECT_NAME` and every `-D` included, but no `build.ninja`.
+/// `west build` re-runs cmake only when given options, when there is no cache,
+/// or when the cache has no `CMAKE_PROJECT_NAME`, so skipping the options there
+/// sends it straight to `cmake --build`, which fails on the missing
+/// `build.ninja` instead of configuring again. A generator whose build file is
+/// not known here answers `false`, so the options are passed.
+pub(crate) fn west_build_dir_already_configured(
+    build_dir: &std::path::Path,
+    args: &[String],
+) -> bool {
+    let Ok(cache) = std::fs::read_to_string(build_dir.join("CMakeCache.txt")) else {
+        return false;
+    };
+    let generator = cache.lines().find_map(|l| {
+        let (k, v) = l.split_once('=')?;
+        (k.split_once(':').map_or(k, |(n, _)| n) == "CMAKE_GENERATOR").then_some(v)
+    });
+    let build_file = match generator {
+        Some(g) if g.starts_with("Ninja") => "build.ninja",
+        Some(g) if g.ends_with("Makefiles") => "Makefile",
+        _ => return false,
+    };
+    build_dir.join(build_file).is_file() && cmake_args_already_cached(&cache, args, build_dir)
+}
+
 /// Issue 2248 -- whether a configured build dir's `CMakeCache.txt` already
 /// holds every one of `args`, so passing them again would only re-run CMake.
 ///
@@ -9310,6 +9339,51 @@ mod zephyr_leaf_application_tests {
         // The hook's own entries in EXTRA_CONF_FILE are not the caller's.
         assert!(cached(&["-DEXTRA_CONF_FILE=/app/prj.conf"]));
         assert!(!cached(&["-DEXTRA_CONF_FILE=/app/other.conf"]));
+    }
+
+    /// Ruling R51 -- a failed first configure leaves `CMakeCache.txt` holding
+    /// every `-D` but no `build.ninja`; that dir is NOT configured, so the
+    /// options are passed and west configures again.
+    #[test]
+    fn a_cache_without_its_build_file_is_not_configured() {
+        let td = tempfile::tempdir().unwrap();
+        let d = td.path();
+        let args = vec!["-DNROS_IMAGE=zephyr".to_string()];
+        assert!(
+            !super::west_build_dir_already_configured(d, &args),
+            "no cache"
+        );
+        std::fs::write(
+            d.join("CMakeCache.txt"),
+            "CMAKE_GENERATOR:INTERNAL=Ninja\nCMAKE_PROJECT_NAME:STATIC=app\n\
+             NROS_IMAGE:STRING=zephyr\n",
+        )
+        .unwrap();
+        assert!(
+            !super::west_build_dir_already_configured(d, &args),
+            "cache present, build.ninja absent: a failed first configure"
+        );
+        std::fs::write(d.join("build.ninja"), "").unwrap();
+        assert!(super::west_build_dir_already_configured(d, &args));
+        assert!(!super::west_build_dir_already_configured(
+            d,
+            &["-DNROS_IMAGE=other".to_string()]
+        ));
+        // Makefiles: its own file; an unknown generator: never configured.
+        std::fs::write(
+            d.join("CMakeCache.txt"),
+            "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\nNROS_IMAGE:STRING=zephyr\n",
+        )
+        .unwrap();
+        assert!(!super::west_build_dir_already_configured(d, &args));
+        std::fs::write(d.join("Makefile"), "").unwrap();
+        assert!(super::west_build_dir_already_configured(d, &args));
+        std::fs::write(
+            d.join("CMakeCache.txt"),
+            "CMAKE_GENERATOR:INTERNAL=Xcode\nNROS_IMAGE:STRING=zephyr\n",
+        )
+        .unwrap();
+        assert!(!super::west_build_dir_already_configured(d, &args));
     }
 
     /// A standalone Zephyr leaf is its own west application; a workspace
