@@ -3,13 +3,22 @@ rfc: 0074
 title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Stable
 since: 2026-08
-last-reviewed: 2026-11-01
+last-reviewed: 2026-11-04
 implements-tracked-by: [phase-462, phase-516, phase-519]
 supersedes: []
 superseded-by: null
 ---
 
 # RFC-0074 — Ingress budget: the contract bounds what a device is made to receive
+
+**Status (2026-11-04, phase 534):** the contract key is `arrival_curve:`
+since ros-launch-manifest v0.3.7 (the standard term, network calculus); it
+was `ingress:` before, which rlm still reads for one release with a
+`deprecated-spelling` warning. The measurements below were taken under the
+old spelling; the key means the same. The model field
+(`SubContract.ingress`), `ingress_rate_mhz` and this RFC's name for the
+concept ("ingress budget") are unchanged; whether they follow is phase 534
+W3's decision.
 
 ## Summary
 
@@ -79,7 +88,8 @@ figure describes bursty traffic and cannot validate a msg/s budget.
 ## The declaration — settled in ros-launch-manifest (issue 0760)
 
 **Status of this section: settled upstream (2026-10-17).** ros-launch-manifest
-v0.1.64 added `sub.<e>.ingress: { rate_hz, burst }`, both keys required, and
+v0.1.64 added `sub.<e>.ingress: { rate_hz, burst }` (`arrival_curve` since
+v0.3.7), both keys required, and
 play_launch carries it into the model's `SubContract.ingress`; issue 0760
 (archived) records how its five points were settled. The text below is kept as
 the position this RFC took into that discussion, with the declaration updated to
@@ -104,7 +114,7 @@ nodes:
   controller:
     sub:
       control_cmd:
-        ingress: { rate_hz: 200, burst: 4 }
+        arrival_curve: { rate_hz: 200, burst: 4 }
 ```
 
 - `rate_hz` — sustained inbound messages per second the device
@@ -168,7 +178,7 @@ downsampling.rs`), not a choice.
    timestamp per rule and per transport and drops a message that arrives less
    than `1/freq` after the last one it passed: a minimum interval, which is a
    token bucket whose depth is fixed at one. There is no burst field. So
-   `ingress: { rate_hz, burst }` lowers to `freq = rate_hz` and the burst is
+   `arrival_curve: { rate_hz, burst }` lowers to `freq = rate_hz` and the burst is
    NOT carried. That sheds messages inside a burst the device declared it
    could absorb — safe for the device, lossy for the sender. This does not
    contradict "a pure rate cap, no burst term" under Rejected alternatives:
@@ -220,7 +230,7 @@ says THAT a rule shed, not how much.
 ### On XRCE — the agent's byte pace (amendment 2026-11-01, phase-519 W3)
 
 On XRCE the device itself asks for enforcement point 1, so there is no
-deployment step. A subscription that declares `ingress.rate_hz` passes it to
+deployment step. A subscription that declares `arrival_curve.rate_hz` passes it to
 the backend in `rmw_subscription_options_t::ingress_rate_mhz`. The XRCE backend
 then asks the agent for
 
@@ -280,7 +290,7 @@ this way. `burst` has no XRCE meaning. The bucket's burst is always one
 second of the rate, and the wire carries no capacity.
 
 **How the declaration reaches the field (phase-519 W3b).** The contract's
-`sub.<endpoint>.ingress.rate_hz` reaches the sizing descriptor as the
+`sub.<endpoint>.arrival_curve.rate_hz` reaches the sizing descriptor as the
 subscription row's `ingress_rate_mhz`, beside its declared depth and
 policies. `nros-node`'s build script reads it into the same per-endpoint
 table the declared-QoS registration check reads (`DECLARED_QOS_ROWS`), and
@@ -299,8 +309,8 @@ backend now logs that rather than staying silent. The declarative Rust
 issue 2208: it registers type-erased, so the type's bound is now recorded in
 the entity's metadata at declaration and handed to the backend as the hint.
 Measured on that shape (a `Component` subscribing `builtin_interfaces/msg/Time`,
-`ingress: { rate_hz: 10 }`): 10.34 Hz, median age 100.5 ms, against 100.07 Hz
-and 0.4 ms with no `ingress`.
+`arrival_curve: { rate_hz: 10 }`): 10.34 Hz, median age 100.5 ms, against 100.07 Hz
+and 0.4 ms with no `arrival_curve`.
 
 **Measured 2026-11-01, end to end** on a nano-ros image (native, `rmw =
 "xrce"`, a typed executor subscription to `builtin_interfaces/msg/Time`,
@@ -309,8 +319,8 @@ wire bound 16 bytes, contract depth 1), against a ROS 2 Humble publisher at
 
 | contract | received | median age | 90th pct age |
 | --- | --- | --- | --- |
-| `ingress: { rate_hz: 10 }` | 10.34 Hz | 100.5 ms | 100.6 ms |
-| no `ingress` (control) | 100.07 Hz | 0.4 ms | 0.5 ms |
+| `arrival_curve: { rate_hz: 10 }` | 10.34 Hz | 100.5 ms | 100.6 ms |
+| no `arrival_curve` (control) | 100.07 Hz | 0.4 ms | 0.5 ms |
 
 The paced image asks the agent for `10 x 16 = 160` bytes a second. That it
 receives slightly more than 10 Hz is the rule above: a sample smaller than
