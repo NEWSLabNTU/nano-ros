@@ -1,6 +1,6 @@
 # Phase 529 — Real boards: `nros flash`, `nros monitor`, `nros bench`, and human steps
 
-**Status (2026-11-04). IN PROGRESS — W1, W2 and W4 done (W2 with `espflash` deferred: no in-tree board flashes with it); W3 open; W5 and W6 moved to [phase-533](phase-533-hardware-probe-runner-and-bench-cells.md).** Implements
+**Status (2026-11-04). IN PROGRESS — W1, W2 and W4 done (W2 with `espflash` deferred: no in-tree board flashes with it); W3 done (its bench-board acceptance is phase-533's, with W5 and W6); W5 and W6 moved to [phase-533](phase-533-hardware-probe-runner-and-bench-cells.md).** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D2, D6 and D7 for real
 silicon, and the flash and console runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -202,8 +202,8 @@ plan that verb will print.
 - Both use phase-528 W4's capture, grading, router and teardown code; there
   is no second implementation.
 
-**Landed without hardware (2026-11-04); the acceptance runs below wait for
-a bench board (W5 and W6).**
+**Done (2026-11-04), without hardware.** The bench-board acceptance runs
+below are phase-533's, with W5 and W6.
 
 - *One target resolution.* `run_plan::select_target` picks the one image a
   selection names, with its board descriptor, for `nros run`, `nros flash`
