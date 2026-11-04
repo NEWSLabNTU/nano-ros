@@ -625,9 +625,11 @@ fn build_args(project: &Path, image: &str) -> nros_cli_core::cmd::build::Args {
         selection: Default::default(),
         continue_on_error: false,
         cmake_args: Vec::new(),
+        jobs: None,
         parallel_workers: None,
         build_base: None,
         check: None,
+        allow_overriding: Vec::new(),
         native_args: Vec::new(),
     }
 }

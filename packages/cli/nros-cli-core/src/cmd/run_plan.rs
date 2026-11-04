@@ -763,8 +763,12 @@ pub fn run(args: Args) -> eyre::Result<()> {
         return crate::cmd::run_exec::run_plan_file(&args, file);
     }
     // RFC-0120 D3 -- configure implicitly first, as `nros build` does; never
-    // from inside planning, which configure itself runs under its lock.
-    let bargs = selection_build_args(&Selection::from(&args)).map_err(|e| eyre::eyre!(e))?;
+    // from inside planning, which configure itself runs under its lock. The
+    // configure takes the RUN's `--dry-run` (R43: a dry run writes nothing),
+    // never the planning arguments' own, which are always dry: a fresh
+    // project's `nros run` configures, then plans.
+    let mut bargs = selection_build_args(&Selection::from(&args)).map_err(|e| eyre::eyre!(e))?;
+    bargs.dry_run = args.dry_run;
     crate::cmd::build::configure_implicitly(&bargs)?;
     let one = match select_target(&Selection::from(&args), "run") {
         Ok(one) => one,

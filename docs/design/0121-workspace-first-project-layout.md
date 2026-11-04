@@ -120,7 +120,7 @@ shape, and retires with it (phase-531 W7).
 ### D3 — A missing launch file is generated, in every bringup
 
 If a bringup has no `launch/` directory, `nros configure` (RFC-0120 D2; today
-`nros sync`) writes `<ws>/build/nros/launch/<bringup>/system.launch.xml` from its
+`nros configure`) writes `<ws>/build/nros/launch/<bringup>/system.launch.xml` from its
 `[[component]]` rows and resolves it as if it were authored. This is the one
 generation step that differs by project size; the resolver, the model, the
 entry generator, sizing and the run plan see an authored and a generated launch

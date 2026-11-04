@@ -166,7 +166,7 @@ nros_px4_add_module(
 	BACKENDS uorb ${_rmw}
 	# phase-521 W8 (d), RFC-0113 D9 -- the module's entry is GENERATED from
 	# the bringup (one PX4 work item per tier); `uorb_bridge_pkg::UorbBridge`
-	# is the only hand-written code. `nros sync` in `examples/px4/cpp/bridge`
+	# is the only hand-written code. `nros configure` in `examples/px4/cpp/bridge`
 	# writes the SystemModel first (`just px4 build-bridge-example` runs it).
 	BRINGUP  ${_bridge_ws}/uorb_bridge_bringup
 	COMPONENTS uorb_bridge_pkg:uorb_bridge:uorb_bridge_pkg::UorbBridge:uorb_bridge_pkg/UorbBridge.hpp
