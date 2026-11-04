@@ -173,6 +173,13 @@ function(_nros_node_register_schedule_inventory)
 endfunction()
 
 function(_nros_node_register_compose_inventory)
+    # Once per configure: the entity-facts flush calls this first (phase-530
+    # W7), so its own deferred call may find the work done.
+    get_property(_done GLOBAL PROPERTY NROS_ENTITY_INVENTORY_STANDALONE_DONE)
+    if(_done)
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY NROS_ENTITY_INVENTORY_STANDALONE_DONE TRUE)
     get_property(_composed GLOBAL PROPERTY NROS_ENTITY_INVENTORY_COMPOSED)
     if(_composed)
         # An entry already composed, after its own registrations. Re-composing
