@@ -114,4 +114,39 @@ pub fn isolate_model_discovery() {
 
 /// issue 1426 — the `examples/workspaces/derived-tiers-cpp` fixture harness,
 /// one spelling for every test that drives it.
+/// The files git TRACKS under `repo` that match `pathspec`, as absolute paths,
+/// sorted.
+///
+/// "What does the tree ship" is a question about the index, never the disk
+/// (issue 1565): a filesystem walk of `examples/` also descends into every
+/// leaf's untracked `build/`, `target*/` and `generated/` output, which both
+/// answers a different question (a contract `nros configure` synthesised into
+/// a build dir is not a shipped one) and, on a saturated disk, took 47
+/// minutes inside `just ci gate`. The index answers in milliseconds.
+///
+/// Spawned through the shared `nros_git_command` (issue 1659), so a run from a
+/// linked worktree or a hook lists THIS checkout (issues 0986/1336).
+pub fn tracked_files(repo: &std::path::Path, pathspec: &str) -> Vec<PathBuf> {
+    let out = nros_build_paths::git_env::nros_git_command("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["ls-files", "-z", "--", pathspec])
+        .output()
+        .expect("spawn git ls-files");
+    assert!(
+        out.status.success(),
+        "git ls-files {pathspec} failed in {}: {}",
+        repo.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut files: Vec<PathBuf> = out
+        .stdout
+        .split(|b| *b == 0)
+        .filter(|f| !f.is_empty())
+        .map(|f| repo.join(String::from_utf8_lossy(f).as_ref()))
+        .collect();
+    files.sort();
+    files
+}
+
 pub mod derived_tiers;
