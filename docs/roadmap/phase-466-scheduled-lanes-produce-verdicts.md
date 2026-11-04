@@ -1,5 +1,28 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-11-04, later). Tonight's tier-2 run stopped in the zephyr
+build on a stale runner workspace (issue 2249, fixed); tier 1's one red was a
+test defect (issue 2250, fixed); W6 handed over from phase-524.**
+
+- run-matrix 41784686434 (06:18Z, `main` at 8c49a148): tier 2 `NO VERDICT:
+  stopped in the build`, on one west row, `build-nucleo-f767zi-c-talker-serial`
+  (`st/f7/stm32f767zitx-pinctrl.dtsi: No such file or directory`). The runner's
+  store workspace never followed the manifest after phase-524 W2 added
+  `hal_stm32`. Issue 2249 (PR #3090): an existing workspace now re-syncs when its
+  manifest copy differs from the checkout's.
+- The 11-02 and 11-03 zephyr-stage failures (41399708559, 41589064854) were
+  NOT this: both are `NanoRosBoardFacts.cmake:209` on 3 of 5 west rows, i.e.
+  issue 2229, fixed by #3059.
+- Tier 1 of the same run: one real failure,
+  `cmake_cpp_workspace_entry_starts_prebuilt_runtime`. The test started no
+  router and passed only while issue 2207's deleted connect-retry loop kept the
+  doomed open alive. Issue 2250 (PR #3091); the runtime was fine.
+- W6 (new, below): the Nucleo-F767ZI Renode cell's first green run in its
+  scheduled lane, handed over by phase-524 (maintainer ruling, 2026-11-04).
+
+Left: the first tier-2 run reaching its cells — the lane's acceptance, the W5
+read, W6, and issues 2113, 2004 and 2193.
+
 **Status (2026-11-04). Issues 2191 and 1365 are closed; tier 2 needs one
 nightly to reach its cells.**
 
@@ -290,6 +313,7 @@ are diagnosis waves, and what a wave ends up editing depends on what it finds.
 | `phase-466-W3` | LANDED (#1210). THREE independent bugs: the missing `-DZEPHYR_EXTRA_MODULES`, the runner's absent rosidl python deps (1457, kept open -- not fixable in this repository), and a missing `mkdir -p` at `fixture-lane.sh:343` that silently lost issue 0499's lower bound | done |
 | `phase-466-W4` | LANDED (#1212). Both lanes die in ONE step on a full disk (issue 1353). A survivable disk-report channel plus `scripts/ci/reclaim-disk.sh`, with `live-peer.yml`'s inline copy folded into it | done |
 | `phase-466-W5` | OPEN (2026-10-14, handed over by the archived phase-330). The RTOS half of phase-330's two last acceptance boxes: build the RTOS realtime workspace fixtures and get a verdict from `realtime_tiers_e2e` and `sched_dims_applied_e2e` on them. See "W5 -- the RTOS realtime cells" below | READ 2026-10-31 from the tier-2 nightly junit: 13 realtime rows and 14 sched-dims cells executed on Zephyr, NuttX, FreeRTOS and threadx-linux; one cell red on a missing `qemu-system-aarch64` (issue 2113), seven C++ cells selected by no scheduled lane. See the 2026-10-31 status |
+| `phase-466-W6` | OPEN (2026-11-04, handed over by phase-524 W4c, maintainer ruling). The Nucleo-F767ZI Renode twin cell's first green run in its SCHEDULED lane: one Runtime cell `(ZephyrNucleoF767zi, C, Zenoh, Pubsub, Example)`, test `tests/zephyr_renode_twin.rs`, west row `build-nucleo-f767zi-c-talker-serial` (`examples/zephyr/c/talker`, image `nucleo_serial`), lanes tier 2 and tier-2 nightly (not merge-gating). Renode reaches the runner through `just zephyr setup` -> `nros setup --tool renode` (store, not image). Passed locally in 7.8 s (#3079). First scheduled attempt (41784686434) stopped in the build on issue 2249; Renode itself provisioned | waits on the next tier-2 run past #3090 |
 
 W1 and W3 may collide on the Zephyr image: if W3's `msg2idl.py` failure turns
 out to be another missing package in that image, the Dockerfile edit belongs
