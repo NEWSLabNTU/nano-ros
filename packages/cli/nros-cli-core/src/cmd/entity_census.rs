@@ -188,7 +188,7 @@ pub struct TakeArgs {
     #[arg(
         long,
         value_name = "IMAGE",
-        required_unless_present = "leaf",
+        required_unless_present_any = ["leaf", "model"],
         conflicts_with = "leaf"
     )]
     pub image: Option<String>,
@@ -203,6 +203,13 @@ pub struct TakeArgs {
     // Issue 1556 item 4.
     #[arg(long, value_name = "DIR")]
     pub leaf: Option<PathBuf>,
+
+    /// In a build (`--build-step`): re-take the census beside this
+    /// SystemModel -- a workspace image's -- through the host sibling's
+    /// build step the last take recorded, without planning anything.
+    // phase-530 W6, Ruling R42.
+    #[arg(long, value_name = "PATH", conflicts_with_all = ["leaf", "image"], requires = "build_step")]
+    pub model: Option<PathBuf>,
 
     /// Workspace root. Defaults to the current directory.
     #[arg(long, value_name = "DIR")]
@@ -230,13 +237,13 @@ pub struct TakeArgs {
     /// host census build that fails is reported as a failed build, with the
     /// directory to look in.
     // phase-530 W6 (cmake/NanoRosCensusStep.cmake passes it).
-    #[arg(long, requires = "leaf")]
+    #[arg(long)]
     pub build_step: bool,
 
     /// Exit non-zero when this take changed the census's digest: the build
     /// running it read its knobs before the take, so it must not link.
     // phase-530 W6, Ruling R40: the step under a non-Ninja generator.
-    #[arg(long, requires = "leaf")]
+    #[arg(long, requires = "build_step")]
     pub fail_if_changed: bool,
 }
 
@@ -505,6 +512,13 @@ fn take_census(args: TakeArgs) -> Result<()> {
         orchestration::board_descriptor::{BoardCatalog, PlatformKind},
     };
 
+    if let Some(model) = &args.model {
+        let ws = match &args.workspace {
+            Some(w) => w.clone(),
+            None => std::env::current_dir().wrap_err("no current directory")?,
+        };
+        return take_model_in_build(model, &ws, args.timeout_secs, args.fail_if_changed);
+    }
     if let Some(leaf) = &args.leaf {
         if !args.fail_if_changed {
             return take_leaf_census(leaf, args.timeout_secs, args.build_step);
@@ -637,6 +651,40 @@ fn take_census(args: TakeArgs) -> Result<()> {
             || format!("building the host image `{native_q}`; no census can be taken without it"),
         )?;
     }
+    // Ruling R42 -- the BUILD step of what was just built, beside the census,
+    // so the census step can re-take it during a build without a re-plan.
+    let record = HostBuildRecord {
+        workspace: root.clone(),
+        build_dir: build_dir.clone(),
+        entry: entry.clone(),
+        steps: plans
+            .iter()
+            .filter_map(|p| p.handoff.as_ref())
+            .map(|h| HostBuildStep {
+                program: h.program.to_string_lossy().into_owned(),
+                args: h
+                    .args
+                    .iter()
+                    .map(|a| a.to_string_lossy().into_owned())
+                    .collect(),
+                cwd: h.cwd.clone(),
+                env: h
+                    .env
+                    .iter()
+                    .map(|(k, v)| {
+                        (
+                            k.to_string_lossy().into_owned(),
+                            v.to_string_lossy().into_owned(),
+                        )
+                    })
+                    .chain(std::iter::once((
+                        LEAF_CENSUS_HOST_ENV.to_string(),
+                        "1".to_string(),
+                    )))
+                    .collect(),
+            })
+            .collect(),
+    };
     let binary = locate_entry_binary(&build_dir, &entry).wrap_err_with(|| {
         format!(
             "the host build of `{native_q}` succeeded but left no `{entry}` binary under its \
@@ -653,7 +701,8 @@ fn take_census(args: TakeArgs) -> Result<()> {
         nros_orchestration_ir::model_location::ensure_model(&bringup_dir, &model_rel)
             .map_err(|e| eyre::eyre!("cannot resolve the SystemModel of `{asked_q}`: {e}"))?;
 
-    run_census(RunArgs {
+    let census = census_path_for_model(&model_path);
+    let taken = run_census(RunArgs {
         entry,
         workspace: Some(root.clone()),
         build_dir,
@@ -661,7 +710,11 @@ fn take_census(args: TakeArgs) -> Result<()> {
         model: Some(model_path),
         out: None,
         timeout_secs: args.timeout_secs,
-    })
+    });
+    if census.is_file() {
+        write_host_build_record(&census, &record)?;
+    }
+    taken
 }
 
 /// Issue 2137 -- `nros build`'s own `take`, for a CROSS image, before its
@@ -682,6 +735,7 @@ pub(crate) fn take_for_build(root: &Path, qualified: &str, offline: bool) {
         workspace: Some(root.to_path_buf()),
         offline,
         plan: false,
+        model: None,
         timeout_secs: 60,
         build_step: false,
         fail_if_changed: false,
@@ -881,6 +935,123 @@ pub(crate) fn host_build_failure(
          entities = \"defaults\"   (loose, written down: the crate defaults)",
         leaf.display()
     )
+}
+
+/// Ruling R42 (phase-530 W6) -- the host sibling's BUILD step a workspace
+/// take ran, recorded beside the census it produced, so the census step can
+/// re-take that census during a build: rerun these steps (an incremental
+/// `cmake --build` or `cargo build` of a build dir that already exists) and
+/// the census run, and never re-plan the image. Planning is the configure's.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct HostBuildRecord {
+    pub(crate) workspace: PathBuf,
+    pub(crate) build_dir: PathBuf,
+    pub(crate) entry: String,
+    pub(crate) steps: Vec<HostBuildStep>,
+}
+
+/// One recorded host-tool command.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct HostBuildStep {
+    pub(crate) program: String,
+    pub(crate) args: Vec<String>,
+    pub(crate) cwd: Option<PathBuf>,
+    pub(crate) env: Vec<(String, String)>,
+}
+
+/// `<stem>.census.json` -> `<stem>.census.host-build.json`.
+pub(crate) fn host_build_record_path(census: &Path) -> PathBuf {
+    census.with_extension("host-build.json")
+}
+
+pub(crate) fn write_host_build_record(census: &Path, rec: &HostBuildRecord) -> Result<()> {
+    let path = host_build_record_path(census);
+    let text = serde_json::to_string_pretty(rec).wrap_err("serialize the host build record")?;
+    crate::atomic_file::atomic_write(&path, &text)
+        .map_err(|e| eyre::eyre!("cannot write `{}`: {e}", path.display()))
+}
+
+pub(crate) fn read_host_build_record(census: &Path) -> Option<HostBuildRecord> {
+    let raw = std::fs::read_to_string(host_build_record_path(census)).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// Ruling R42 -- `take --model <m> --build-step`: the census step of a cross
+/// WORKSPACE image. A fresh census writes its digest and returns. A stale one
+/// is re-taken through the host sibling's recorded build step (incremental,
+/// a host tool) and a census run; with no record (a census an older CLI
+/// took) it refuses naming the `take` that records one. `fail_if_changed`:
+/// Ruling R40, for a non-Ninja generator.
+pub(crate) fn take_model_in_build(
+    model: &Path,
+    ws: &Path,
+    timeout_secs: u64,
+    fail_if_changed: bool,
+) -> Result<()> {
+    let census = census_path_for_model(model);
+    let digest = census_digest_path(&census);
+    let before = std::fs::read_to_string(&digest).ok();
+    let why = match census_freshness(&census, ws) {
+        Freshness::Fresh => {
+            let complete = std::fs::read_to_string(&census)
+                .ok()
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+                .is_some_and(|c| incomplete_reason(&c).is_none());
+            if complete {
+                write_census_digest(&census)?;
+                println!("entity-census take --model {}: fresh", model.display());
+                return refuse_if_moved_when(fail_if_changed, &before, &digest);
+            }
+            "incomplete".to_string()
+        }
+        Freshness::Stale(why) | Freshness::Missing(why) => why,
+    };
+    let Some(rec) = read_host_build_record(&census) else {
+        bail!(
+            "the census `{}` is stale ({}), and no host build is recorded beside it to re-take \
+             it during a build.\n{}",
+            census.display(),
+            why.lines().next().unwrap_or(""),
+            census_remedy(None, Some(model))
+        );
+    };
+    for step in &rec.steps {
+        let mut cmd = Command::new(&step.program);
+        cmd.args(&step.args);
+        if let Some(cwd) = &step.cwd {
+            cmd.current_dir(cwd);
+        }
+        cmd.envs(step.env.iter().map(|(k, v)| (k, v)));
+        let shown = format!("{} {}", step.program, step.args.join(" "));
+        let status = cmd
+            .status()
+            .wrap_err_with(|| format!("running the host census build `{shown}`"))?;
+        if !status.success() {
+            bail!(
+                "the census step re-takes `{}`'s census by rebuilding its host sibling, and \
+                 `{shown}` exited {status}; its output is above. Fix the build and build again.",
+                model.display()
+            );
+        }
+    }
+    let binary = locate_entry_binary(&rec.build_dir, &rec.entry)?;
+    run_census(RunArgs {
+        entry: rec.entry.clone(),
+        workspace: Some(rec.workspace.clone()),
+        build_dir: rec.build_dir.clone(),
+        binary: Some(binary),
+        model: Some(model.to_path_buf()),
+        out: None,
+        timeout_secs,
+    })?;
+    refuse_if_moved_when(fail_if_changed, &before, &digest)
+}
+
+fn refuse_if_moved_when(on: bool, before: &Option<String>, digest: &Path) -> Result<()> {
+    if !on {
+        return Ok(());
+    }
+    refuse_if_digest_moved(before, &std::fs::read_to_string(digest).ok())
 }
 
 /// Issue 1556 item 4 -- set on the HOST census configure of a standalone leaf.
@@ -2817,5 +2988,81 @@ mod tests {
         let first = host_build_failure(leaf, build, "the build", "exit status: 1", false, "");
         assert!(first.contains("RTOS API"), "{first}");
         assert!(first.contains("entities = \"defaults\""), "{first}");
+    }
+
+    /// Ruling R42 -- a workspace census beside its model, recording one
+    /// component source tree, written as `run` writes it.
+    fn model_census_fixture(ws: &Path) -> PathBuf {
+        use crate::orchestration::metadata_refresh as mr;
+        std::fs::create_dir_all(ws.join("src/comp")).unwrap();
+        std::fs::write(ws.join("src/comp/node.cpp"), "// PUB /a\n").unwrap();
+        let digest = mr::source_digest(&ws.join("src/comp")).unwrap();
+        let dir = ws.join("build/nros/models/bringup");
+        std::fs::create_dir_all(&dir).unwrap();
+        let model = dir.join("m.yaml");
+        std::fs::write(&model, "").unwrap();
+        let doc = serde_json::json!({
+            "schema": CENSUS_SCHEMA,
+            "entry": "linux_entry",
+            "provenance": { "tool": "x", "inputs": [
+                { "role": "source_tree", "path": "src/comp", "digest": digest }
+            ]},
+            "census": { "version": mr::RECORDER_SCHEMA_VERSION, "nodes": [] },
+        });
+        std::fs::write(census_path_for_model(&model), doc.to_string()).unwrap();
+        model
+    }
+
+    /// Ruling R42 -- where a workspace take records the host sibling's build
+    /// step, and that the record round-trips. It is not a census.
+    #[test]
+    fn the_host_build_record_sits_beside_the_census_and_round_trips() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let census = dir.path().join("m.census.json");
+        assert_eq!(
+            host_build_record_path(&census),
+            dir.path().join("m.census.host-build.json")
+        );
+        let rec = HostBuildRecord {
+            workspace: dir.path().to_path_buf(),
+            build_dir: dir.path().join("build"),
+            entry: "linux_entry".into(),
+            steps: vec![HostBuildStep {
+                program: "cmake".into(),
+                args: vec!["--build".into(), "build/x".into()],
+                cwd: Some(dir.path().to_path_buf()),
+                env: vec![("NROS_LEAF_CENSUS_HOST".into(), "1".into())],
+            }],
+        };
+        write_host_build_record(&census, &rec).unwrap();
+        assert_eq!(read_host_build_record(&census), Some(rec));
+    }
+
+    /// Ruling R42 -- in a build, a FRESH workspace census costs no host build:
+    /// the take writes the digest beside the model and returns.
+    #[test]
+    fn a_fresh_model_census_in_a_build_runs_nothing_and_writes_its_digest() {
+        let ws = tempfile::tempdir().expect("tempdir");
+        let model = model_census_fixture(ws.path());
+        take_model_in_build(&model, ws.path(), 5, false).unwrap();
+        assert!(census_digest_path(&census_path_for_model(&model)).is_file());
+    }
+
+    /// Ruling R42 -- a STALE workspace census with no recorded host build
+    /// (taken by an older CLI) refuses, naming the take that records one.
+    #[test]
+    fn a_stale_model_census_with_no_recorded_host_build_names_the_take() {
+        let ws = tempfile::tempdir().expect("tempdir");
+        let model = model_census_fixture(ws.path());
+        std::fs::write(
+            ws.path().join("src/comp/node.cpp"),
+            "// PUB /a\n// PUB /b\n",
+        )
+        .unwrap();
+        let err = format!(
+            "{:#}",
+            take_model_in_build(&model, ws.path(), 5, false).unwrap_err()
+        );
+        assert!(err.contains("entity-census take --image"), "{err}");
     }
 }
