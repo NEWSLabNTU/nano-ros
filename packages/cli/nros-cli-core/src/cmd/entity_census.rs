@@ -244,9 +244,10 @@ pub struct PathArgs {
     #[arg(long, value_name = "DIR")]
     pub leaf: Option<PathBuf>,
 
-    /// Print the census's DIGEST file instead (phase-530 W6): what a host
-    /// configure that read the census depends on, and what the census build
-    /// step refreshes, write-if-changed.
+    /// Print the census's DIGEST file instead: what a host configure that
+    /// read the census depends on, and what the census build step
+    /// refreshes, write-if-changed.
+    // phase-530 W6 (RFC-0120 D7).
     #[arg(long)]
     pub digest: bool,
 }
