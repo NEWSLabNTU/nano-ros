@@ -881,6 +881,15 @@ pub fn bundled_interface_packages() -> std::collections::BTreeSet<String> {
 /// Public: `nros sync` (nros-cli-core) resolves external msg deps through
 /// this too, so a host without ROS 2 still generates std_msgs (#204).
 pub fn load_index_with_fallback(verbose: bool) -> Result<AmentIndex> {
+    let search_path = std::env::var("NROS_INTERFACE_SEARCH_PATH").ok();
+    load_index_with_search_path(search_path.as_deref(), verbose)
+}
+
+/// [`load_index_with_fallback`] with the interface search path an ARGUMENT
+/// (phase-530 W1, Ruling R45): `nros configure` derives it per project and
+/// hands it here, so a process configuring two projects never reads the
+/// other's path from the environment. `None` is no workspace layer.
+pub fn load_index_with_search_path(search_path: Option<&str>, verbose: bool) -> Result<AmentIndex> {
     // Phase 293 / issue #212 — workspace-local interface packages. Mirror the
     // cmake smart-stub layering (`_NrosFindRosMsgPackage.cmake`): entries of
     // `NROS_INTERFACE_SEARCH_PATH` (colon/semicolon-separated colcon-`src/`
@@ -889,7 +898,7 @@ pub fn load_index_with_fallback(verbose: bool) -> Result<AmentIndex> {
     // node whose package.xml depends on a sibling workspace msg pkg resolved
     // nothing, so the C/C++ verbs never generated typed bindings for it.
     let mut index = AmentIndex::from_path_string("")?;
-    if let Ok(search_path) = std::env::var("NROS_INTERFACE_SEARCH_PATH") {
+    if let Some(search_path) = search_path {
         for root in search_path
             .split([':', ';'])
             .filter(|s| !s.is_empty())

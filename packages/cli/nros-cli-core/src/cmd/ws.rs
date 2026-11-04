@@ -637,6 +637,12 @@ pub struct SyncArgs {
     /// one step of a sync that resolves crates.
     #[arg(long)]
     pub offline: bool,
+
+    /// Ruling R45 — the interface search path this sync resolves interface
+    /// packages over: an ARGUMENT, set by configure from its one derivation
+    /// (`configure::interface_search_path_for`), never a process variable.
+    #[arg(skip)]
+    pub interface_search_path: Option<std::ffi::OsString>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -707,8 +713,9 @@ pub struct ManagedDepsArgs {
 }
 
 fn run_managed_deps(a: ManagedDepsArgs) -> Result<()> {
-    let (_, scan, build_root) = scan_for_query(a.workspace.as_deref(), &a.build_dir)?;
-    let changed = write_managed_msg_deps(&scan, &build_root, a.check)?;
+    let (ws_root, scan, build_root) = scan_for_query(a.workspace.as_deref(), &a.build_dir)?;
+    let search = crate::cmd::configure::interface_search_path_for(&ws_root);
+    let changed = write_managed_msg_deps(&scan, search.as_deref(), &build_root, a.check)?;
     for m in &changed {
         let verb = if a.check { "would change" } else { "wrote" };
         println!("managed-deps: {verb} {}", m.display());
@@ -3553,6 +3560,13 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         Some(p) => std::fs::canonicalize(&p).wrap_err_with(|| format!("sync: {}", p.display()))?,
         None => std::env::current_dir()?,
     };
+    // Ruling R45 — the interface search path is configure's argument; a
+    // caller that set none gets the same derivation configure makes.
+    let search_owned = args
+        .interface_search_path
+        .clone()
+        .or_else(|| crate::cmd::configure::interface_search_path_for(&ws_root));
+    let search = search_owned.as_deref();
     // Issue 1304 — the probes' nano-ros path asks the ONE ladder
     // (`orchestration::nano_ros_root`), so an installed toolchain answers out of
     // its own `share/nano-ros`. Both rungs of the old two-rung chain were a
@@ -3564,8 +3578,10 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // BELOW `ws_root` (phase-308 W1 captured it above) because the walk-up rung
     // starts there. `args.workspace` is already moved, so this reads the one
     // field it needs rather than borrowing `args` as a whole.
-    let nano_ros_for_probes =
-        crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &ws_root);
+    let nano_ros_for_probes = crate::orchestration::metadata_refresh::probe_nano_ros_root(
+        &ws_root,
+        args.nano_ros_path.clone(),
+    );
     // phase-429 W2 — the codegen version guard, before the first write. `sync`
     // emits generated msg crates and rewrites every consumer's
     // `.cargo/config.toml`; a mismatched emitter's output is what the user then
@@ -3761,6 +3777,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         codegen_ament_deps_for(
             &pkg.deps,
             &scan,
+            search,
             &build_root,
             edition,
             &mut emitted,
@@ -3768,7 +3785,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         )?;
         // Now generate the workspace pkg itself directly from its dir.
         if !emitted.contains(name) {
-            codegen_workspace_pkg(pkg, &scan, &build_root, edition, args.verbose)?;
+            codegen_workspace_pkg(pkg, &scan, search, &build_root, edition, args.verbose)?;
             emitted.insert(name.clone());
         }
     }
@@ -3778,6 +3795,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         codegen_ament_deps_for(
             &c.deps,
             &scan,
+            search,
             &build_root,
             edition,
             &mut emitted,
@@ -3792,7 +3810,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // row. AFTER codegen, so the crates the rows name exist; BEFORE anything
     // below runs cargo on a consumer's manifest (the metadata probe), which
     // must already see them.
-    for m in write_managed_msg_deps(&scan, &build_root, false)? {
+    for m in write_managed_msg_deps(&scan, search, &build_root, false)? {
         println!("sync: message dependencies → {}", m.display());
     }
 
@@ -4338,25 +4356,43 @@ fn resolve_sync_edition(
     Ok(RosEdition::Humble)
 }
 
-// The interface index (ament, when a ROS 2 env is sourced, merged over the
-// bundled share dirs at packages/cli/interfaces/) — loaded once per process.
-// Used both to codegen AMENT dep pkgs and, on Iron+, to resolve cross-package
-// nested `.msg` types for the REP-2011 type hash.
-fn interface_index() -> Option<&'static rosidl_bindgen::ament::AmentIndex> {
-    static AMENT_INDEX: std::sync::OnceLock<Option<rosidl_bindgen::ament::AmentIndex>> =
-        std::sync::OnceLock::new();
-    AMENT_INDEX
-        .get_or_init(|| cargo_nano_ros::load_index_with_fallback(false).ok())
-        .as_ref()
+// The interface index over `search` (the run's interface search path, then
+// ament when a ROS 2 env is sourced, then the bundled share dirs at
+// packages/cli/interfaces/) — loaded once per process PER SEARCH PATH, never
+// once per process: a process-wide cache froze the first project's path for
+// every later project (Ruling R45). Used both to codegen AMENT dep pkgs and,
+// on Iron+, to resolve cross-package nested `.msg` types for the REP-2011
+// type hash.
+pub(crate) fn interface_index(
+    search: Option<&std::ffi::OsStr>,
+) -> Option<&'static rosidl_bindgen::ament::AmentIndex> {
+    type Cached = (
+        Option<std::ffi::OsString>,
+        Option<&'static rosidl_bindgen::ament::AmentIndex>,
+    );
+    static CACHE: std::sync::Mutex<Vec<Cached>> = std::sync::Mutex::new(Vec::new());
+    let mut cache = CACHE.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some((_, idx)) = cache.iter().find(|(k, _)| k.as_deref() == search) {
+        return *idx;
+    }
+    let search_s = search.map(|s| s.to_string_lossy().into_owned());
+    let idx = cargo_nano_ros::load_index_with_search_path(search_s.as_deref(), false)
+        .ok()
+        .map(|i| &*Box::leak(Box::new(i)));
+    cache.push((search.map(std::ffi::OsStr::to_os_string), idx));
+    idx
 }
 
 // A cross-package `.msg` resolver over the interface index (RIHS01 type-hash
 // DAG closure). `generate_package` resolves same-package nested types itself;
 // this covers `std_msgs` / `builtin_interfaces` / etc. Consulted only on Iron+
 // (Humble emits a placeholder hash and never calls it).
-fn ament_msg_resolver() -> impl Fn(&str) -> Option<rosidl_parser::Message> {
+fn ament_msg_resolver(
+    search: Option<&std::ffi::OsStr>,
+) -> impl Fn(&str) -> Option<rosidl_parser::Message> + use<> {
+    let idx = interface_index(search);
     move |fqn: &str| {
-        let idx = interface_index()?;
+        let idx = idx?;
         let mut parts = fqn.split('/');
         let pkg = parts.next()?;
         let name = parts.next_back()?;
@@ -4371,6 +4407,7 @@ fn ament_msg_resolver() -> impl Fn(&str) -> Option<rosidl_parser::Message> {
 fn codegen_workspace_pkg(
     pkg: &WsPkg,
     scan: &[WsPkg],
+    search: Option<&std::ffi::OsStr>,
     build_root: &Path,
     edition: RosEdition,
     verbose: bool,
@@ -4391,7 +4428,7 @@ fn codegen_workspace_pkg(
         .wrap_err_with(|| format!("sync: read pkg {}", pkg.dir.display()))?;
     // Per-field capacity config (RFC-0033), discovered from the pkg source dir.
     let resolver = rosidl_codegen::CapacityResolver::discover(&pkg.dir, None)?;
-    let msg_resolve = ament_msg_resolver();
+    let msg_resolve = ament_msg_resolver(search);
     rosidl_bindgen::generator::generate_package(
         &package,
         out_dir,
@@ -4400,7 +4437,7 @@ fn codegen_workspace_pkg(
         &msg_resolve,
     )
     .wrap_err_with(|| format!("sync: generate_package failed for {}", pkg.name))?;
-    record_generated_stamp(&package, out_dir, scan)?;
+    record_generated_stamp(&package, out_dir, scan, search)?;
     // Codegen emits <out_dir>/<pkg>/{Cargo.toml,src/} with sibling `path =
     // "../<dep>"` deps. We keep that flat layout (no extra `rust/`
     // nesting) so the relative paths between generated crates resolve
@@ -4417,6 +4454,7 @@ fn codegen_workspace_pkg(
 fn codegen_ament_pkg(
     amented: &Package,
     scan: &[WsPkg],
+    search: Option<&std::ffi::OsStr>,
     build_root: &Path,
     edition: RosEdition,
     verbose: bool,
@@ -4433,10 +4471,10 @@ fn codegen_ament_pkg(
         println!("sync: codegen {}", amented.name);
     }
     let resolver = rosidl_codegen::CapacityResolver::discover(&amented.share_dir, None)?;
-    let msg_resolve = ament_msg_resolver();
+    let msg_resolve = ament_msg_resolver(search);
     rosidl_bindgen::generator::generate_package(amented, out_dir, edition, &resolver, &msg_resolve)
         .wrap_err_with(|| format!("sync: generate_package failed for {}", amented.name))?;
-    record_generated_stamp(amented, out_dir, scan)
+    record_generated_stamp(amented, out_dir, scan, search)
 }
 
 // RFC-0104 D5 — where an interface package's inputs live, by name, resolved the
@@ -4444,21 +4482,28 @@ fn codegen_ament_pkg(
 // generated from its own directory), then the interface index (ament env +
 // bundled). The fingerprint's dependency closure walks through this, so it
 // covers exactly what generation reads.
-fn ament_lookup(scan: &[WsPkg]) -> impl Fn(&str) -> Option<PathBuf> + '_ {
+fn ament_lookup<'a>(
+    scan: &'a [WsPkg],
+    search: Option<&std::ffi::OsStr>,
+) -> impl Fn(&str) -> Option<PathBuf> + 'a {
+    let idx = interface_index(search);
     move |name: &str| {
         if let Some(p) = scan.iter().find(|p| p.is_msg_pkg && p.name == name) {
             return Some(p.dir.clone());
         }
-        interface_index()?
-            .find_package(name)
-            .map(|p| p.share_dir.clone())
+        idx?.find_package(name).map(|p| p.share_dir.clone())
     }
 }
 
 // RFC-0104 D5 — write `<build_root>/<pkg>/nros-generated.toml`, the record of
 // the ament inputs this generated crate came from.
-fn record_generated_stamp(package: &Package, build_root: &Path, scan: &[WsPkg]) -> Result<()> {
-    let lookup = ament_lookup(scan);
+fn record_generated_stamp(
+    package: &Package,
+    build_root: &Path,
+    scan: &[WsPkg],
+    search: Option<&std::ffi::OsStr>,
+) -> Result<()> {
+    let lookup = ament_lookup(scan, search);
     let stamp =
         rosidl_codegen::ament_stamp::Stamp::current(&package.name, &package.share_dir, &lookup)
             .wrap_err_with(|| format!("sync: fingerprint the ament inputs of {}", package.name))?;
@@ -4504,8 +4549,9 @@ fn moved_generated(
     ws_root: &Path,
     build_root: &Path,
     scan: &[WsPkg],
+    search: Option<&std::ffi::OsStr>,
 ) -> Result<(Vec<MovedGenerated>, Vec<String>)> {
-    let lookup = ament_lookup(scan);
+    let lookup = ament_lookup(scan, search);
     let mut moved = Vec::new();
     let mut unresolved = Vec::new();
     let Ok(entries) = std::fs::read_dir(build_root) else {
@@ -4558,7 +4604,10 @@ struct GeneratedScan {
     unresolved: Vec<String>,
 }
 
-fn scan_generated(ws_root: &Path) -> Result<Option<GeneratedScan>> {
+fn scan_generated(
+    ws_root: &Path,
+    search: Option<&std::ffi::OsStr>,
+) -> Result<Option<GeneratedScan>> {
     if !ws_root.join("generated").is_dir() {
         return Ok(None);
     }
@@ -4566,7 +4615,7 @@ fn scan_generated(ws_root: &Path) -> Result<Option<GeneratedScan>> {
     else {
         return Ok(None);
     };
-    let (moved, unresolved) = moved_generated(&ws_root, &build_root, &scan)?;
+    let (moved, unresolved) = moved_generated(&ws_root, &build_root, &scan, search)?;
     Ok(Some(GeneratedScan {
         ws_root,
         scan,
@@ -4580,8 +4629,11 @@ fn scan_generated(ws_root: &Path) -> Result<Option<GeneratedScan>> {
 /// issue 1780: the generated message crates under `<ws_root>/generated` whose
 /// recorded ament inputs moved. The SAME comparison [`refresh_generated`]
 /// acts on, so the two can never disagree about what moved.
-pub(crate) fn ament_moved_packages(ws_root: &Path) -> Result<Vec<MovedGenerated>> {
-    Ok(scan_generated(ws_root)?
+pub(crate) fn ament_moved_packages(
+    ws_root: &Path,
+    search: Option<&std::ffi::OsStr>,
+) -> Result<Vec<MovedGenerated>> {
+    Ok(scan_generated(ws_root, search)?
         .map(|g| g.moved)
         .unwrap_or_default())
 }
@@ -4597,14 +4649,18 @@ pub(crate) fn ament_moved_packages(ws_root: &Path) -> Result<Vec<MovedGenerated>
 /// sync uses, then the same dependency walk, so a dependency the upgraded
 /// `package.xml` newly names is generated too. A root with no `generated/` (or
 /// that sync cannot scan) has nothing sync generated, and is left alone.
-pub(crate) fn refresh_generated(ws_root: &Path, dry_run: bool) -> Result<Vec<String>> {
+pub(crate) fn refresh_generated(
+    ws_root: &Path,
+    search: Option<&std::ffi::OsStr>,
+    dry_run: bool,
+) -> Result<Vec<String>> {
     let Some(GeneratedScan {
         ws_root,
         scan,
         build_root,
         moved,
         unresolved,
-    }) = scan_generated(ws_root)?
+    }) = scan_generated(ws_root, search)?
     else {
         return Ok(Vec::new());
     };
@@ -4649,10 +4705,10 @@ pub(crate) fn refresh_generated(ws_root: &Path, dry_run: bool) -> Result<Vec<Str
         .unwrap_or_default();
     for name in &names {
         let deps = if let Some(pkg) = scan.iter().find(|p| p.is_msg_pkg && &p.name == name) {
-            codegen_workspace_pkg(pkg, &scan, &build_root, edition, false)?;
+            codegen_workspace_pkg(pkg, &scan, search, &build_root, edition, false)?;
             pkg.deps.clone()
         } else {
-            let Some(amented) = interface_index().and_then(|i| i.find_package(name)) else {
+            let Some(amented) = interface_index(search).and_then(|i| i.find_package(name)) else {
                 eyre::bail!(
                     // See RFC-0104 D5.
                     "nros build: {name} moved and then could not be resolved to regenerate it; \
@@ -4660,12 +4716,20 @@ pub(crate) fn refresh_generated(ws_root: &Path, dry_run: bool) -> Result<Vec<Str
                     ws_root.display()
                 );
             };
-            codegen_ament_pkg(amented, &scan, &build_root, edition, false)?;
+            codegen_ament_pkg(amented, &scan, search, &build_root, edition, false)?;
             std::fs::read_to_string(amented.share_dir.join("package.xml"))
                 .map(|b| extract_pkg_deps(&b))
                 .unwrap_or_default()
         };
-        codegen_ament_deps_for(&deps, &scan, &build_root, edition, &mut emitted, false)?;
+        codegen_ament_deps_for(
+            &deps,
+            &scan,
+            search,
+            &build_root,
+            edition,
+            &mut emitted,
+            false,
+        )?;
     }
     eprintln!(
         // See RFC-0104 D5.
@@ -4680,6 +4744,7 @@ pub(crate) fn refresh_generated(ws_root: &Path, dry_run: bool) -> Result<Vec<Str
 fn codegen_ament_deps_for(
     deps: &[String],
     scan: &[WsPkg],
+    search: Option<&std::ffi::OsStr>,
     build_root: &Path,
     edition: RosEdition,
     emitted: &mut HashSet<String>,
@@ -4690,7 +4755,7 @@ fn codegen_ament_deps_for(
     // packages/cli/interfaces/ — so a host WITHOUT ROS 2 still resolves
     // std_msgs/builtin_interfaces instead of letting cargo fall through to
     // crates.io's yanked ROS crates (#204 probe finding).
-    let Some(idx) = interface_index() else {
+    let Some(idx) = interface_index(search) else {
         return Ok(());
     };
 
@@ -4709,7 +4774,7 @@ fn codegen_ament_deps_for(
             // AMENT doesn't know — silently skip (smart-stub semantics).
             continue;
         };
-        codegen_ament_pkg(&amented, scan, build_root, edition, verbose)?;
+        codegen_ament_pkg(&amented, scan, search, build_root, edition, verbose)?;
         emitted.insert(amented.name.clone());
         // Queue this pkg's own deps (parse its package.xml).
         let pxml = amented.share_dir.join("package.xml");
@@ -4991,10 +5056,33 @@ fn extract_pkg_deps_tagged(body: &str, tags: &[&str]) -> Vec<String> {
 /// The same three sources generation reads, in its order: a workspace
 /// interface package, a crate already generated under `build_root`, then the
 /// interface index (ament env merged over the bundled set).
-fn resolves_to_message_package(name: &str, scan: &[WsPkg], build_root: &Path) -> bool {
+fn resolves_to_message_package(
+    name: &str,
+    scan: &[WsPkg],
+    search: Option<&std::ffi::OsStr>,
+    build_root: &Path,
+) -> bool {
     scan.iter().any(|p| p.is_msg_pkg && p.name == name)
         || is_generated_msg_crate(&build_root.join(name))
-        || interface_index().is_some_and(|i| i.find_package(name).is_some())
+        || interface_index(search).is_some_and(|i| i.find_package(name).is_some())
+}
+
+/// Ruling R44 — does a sync of `project` have a message package to generate:
+/// a workspace interface package, or a `<depend>` sync's own predicate
+/// ([`resolves_to_message_package`]) resolves to one? Only such a C1 needs
+/// an ament install; a project with no message dependency configures with
+/// none, on any host.
+pub(crate) fn has_messages_to_generate(project: &Path, search: Option<&std::ffi::OsStr>) -> bool {
+    let Ok((_, scan, build_root)) = scan_for_query(Some(project), Path::new("generated")) else {
+        // No package layout sync can scan: nothing for it to generate.
+        return false;
+    };
+    let in_workspace: HashSet<&str> = scan.iter().map(|p| p.name.as_str()).collect();
+    scan.iter().any(|p| p.is_msg_pkg)
+        || scan.iter().flat_map(|p| p.deps.iter()).any(|d| {
+            !in_workspace.contains(d.as_str())
+                && resolves_to_message_package(d, &scan, search, &build_root)
+        })
 }
 
 /// Does `src` hold a C or C++ translation unit (by the ONE extension table,
@@ -5026,6 +5114,7 @@ fn compiles_c_family_sources(src: &Path) -> bool {
 /// manifests whose bytes changed (would change, under `dry_run`).
 fn write_managed_msg_deps(
     scan: &[WsPkg],
+    search: Option<&std::ffi::OsStr>,
     build_root: &Path,
     dry_run: bool,
 ) -> Result<Vec<PathBuf>> {
@@ -5056,7 +5145,7 @@ fn write_managed_msg_deps(
                 .collect();
         let desired: std::collections::BTreeMap<String, String> = declared
             .iter()
-            .filter(|d| resolves_to_message_package(d, scan, &build_root))
+            .filter(|d| resolves_to_message_package(d, scan, search, &build_root))
             .map(|d| {
                 let target = build_root.join(d);
                 let rel = pathdiff::diff_paths(&target, &dir).unwrap_or(target);
@@ -9043,7 +9132,7 @@ mod generated_freshness_tests {
 
         let (_, scan, _) = scan_for_query(Some(root), Path::new("generated")).unwrap();
         {
-            let lookup = ament_lookup(&scan);
+            let lookup = ament_lookup(&scan, None);
             Stamp::current("my_msgs", &pkg, &lookup)
                 .unwrap()
                 .write(&Stamp::path_in(&out))
@@ -9053,7 +9142,7 @@ mod generated_freshness_tests {
     }
 
     fn moved_in(root: &Path, scan: &[WsPkg]) -> (Vec<MovedGenerated>, Vec<String>) {
-        moved_generated(root, &root.join("generated"), scan).unwrap()
+        moved_generated(root, &root.join("generated"), scan, None).unwrap()
     }
 
     #[test]
@@ -9175,7 +9264,7 @@ mod generated_freshness_tests {
     #[test]
     fn refresh_is_a_no_op_without_a_generated_tree() {
         let t = tempfile::tempdir().unwrap();
-        assert!(refresh_generated(t.path(), false).unwrap().is_empty());
+        assert!(refresh_generated(t.path(), None, false).unwrap().is_empty());
     }
 
     #[test]
@@ -9189,7 +9278,10 @@ mod generated_freshness_tests {
             "int32 a\nint32 b\n",
         )
         .unwrap();
-        assert_eq!(refresh_generated(t.path(), true).unwrap(), ["my_msgs"]);
+        assert_eq!(
+            refresh_generated(t.path(), None, true).unwrap(),
+            ["my_msgs"]
+        );
         assert_eq!(fs::read_to_string(&record).unwrap(), before);
     }
 }
@@ -9309,7 +9401,7 @@ mod managed_msg_deps_tests {
 
     fn sync_rows(root: &Path) -> Vec<PathBuf> {
         let (_, scan, build_root) = scan_for_query(Some(root), Path::new("generated")).unwrap();
-        write_managed_msg_deps(&scan, &build_root, false).unwrap()
+        write_managed_msg_deps(&scan, None, &build_root, false).unwrap()
     }
 
     #[test]

@@ -55,6 +55,11 @@ pub(crate) struct OutputFlags {
     pairs: Vec<(&'static str, String)>,
     /// `--model-dir`: where C1 writes the models.
     pub(crate) model_dir: Option<PathBuf>,
+    /// Ruling R45: the interface search path the run uses, as configure
+    /// derived it (`configure::interface_search_path_for`) — an argument,
+    /// never read from the process environment. `None`: the caller has
+    /// none, so the stamp derives the same default.
+    pub(crate) interface_search_path: Option<std::ffi::OsString>,
     /// `--nano-ros-path`: the explicit rung of the nano-ros root the probe
     /// sidecars are keyed against (`metadata_refresh::probe_inputs_key`),
     /// resolved per project the way sync's metadata refresh resolves it.
@@ -88,6 +93,7 @@ impl OutputFlags {
             ],
             model_dir: sync.model_dir.clone(),
             nano_ros_path: sync.nano_ros_path.clone(),
+            interface_search_path: sync.interface_search_path.clone(),
         }
     }
 
@@ -238,28 +244,39 @@ pub(crate) fn input_digest(project: &Path) -> Result<String> {
     input_digest_with_env(project, &real_env())
 }
 
-/// The digest-input variables for a test that injects them: what
-/// [`project_env`] gives, so a test's stamp and its check agree with the
-/// production pair whatever the shell exported.
+/// The digest-input variables for a test that injects them: the user's
+/// search path (unset digests as configure's default, as [`project_env`]
+/// gives it), so a test's stamp and its check agree with production.
 #[cfg(test)]
 fn real_env() -> Vec<(String, Option<String>)> {
-    project_env()
-}
-
-/// The digest-input variables a configure's stamp is written and checked
-/// with. `NROS_INTERFACE_SEARCH_PATH` is the USER's value only, never the
-/// process's: configure writes the process value for whichever project it
-/// configured LAST, so reading it back digested another project's path (the
-/// gate's `cargo test` runs configures of different projects on threads of
-/// one process). Unset, [`input_digest_with`] digests configure's default for
-/// THIS project.
-fn project_env() -> Vec<(String, Option<String>)> {
     ENV_INPUTS
         .iter()
         .map(|v| {
             let val = if *v == "NROS_INTERFACE_SEARCH_PATH" {
                 crate::cmd::configure::user_interface_search_path()
                     .map(|p| p.to_string_lossy().into_owned())
+            } else {
+                std::env::var(v).ok()
+            };
+            ((*v).to_string(), val)
+        })
+        .collect()
+}
+
+/// The digest-input variables a configure's stamp is written and checked
+/// with. `NROS_INTERFACE_SEARCH_PATH` is the ARGUMENT configure derived
+/// (Ruling R45), else the same derivation for `project` — never the
+/// process's value, which another project's run may have written.
+fn project_env(project: &Path, flags: &OutputFlags) -> Vec<(String, Option<String>)> {
+    let search = flags
+        .interface_search_path
+        .clone()
+        .or_else(|| crate::cmd::configure::interface_search_path_for(project));
+    ENV_INPUTS
+        .iter()
+        .map(|v| {
+            let val = if *v == "NROS_INTERFACE_SEARCH_PATH" {
+                search.as_ref().map(|p| p.to_string_lossy().into_owned())
             } else {
                 std::env::var(v).ok()
             };
@@ -454,7 +471,7 @@ pub(crate) fn is_current(
         project,
         image,
         named,
-        &project_env(),
+        &project_env(project, flags),
         flags,
         current_launch_resolver().as_deref(),
         &real_ament_moved,
@@ -479,10 +496,13 @@ fn real_preflight(project: &Path, image: &str) -> Result<Option<String>> {
 /// The generated message crates whose recorded ament inputs moved (RFC-0120
 /// D7, issue 1780): `ws`'s own comparison, never a second one.
 fn real_ament_moved(project: &Path) -> Result<Vec<String>> {
-    Ok(crate::cmd::ws::ament_moved_packages(project)?
-        .into_iter()
-        .map(|m| m.package)
-        .collect())
+    let search = crate::cmd::configure::interface_search_path_for(project);
+    Ok(
+        crate::cmd::ws::ament_moved_packages(project, search.as_deref())?
+            .into_iter()
+            .map(|m| m.package)
+            .collect(),
+    )
 }
 
 /// The `nros-launch-resolve` this process resolves: the lookup
@@ -499,7 +519,7 @@ pub(crate) fn current_launch_resolver() -> Option<PathBuf> {
 /// inputs as they are NOW (after it wrote), and the environment it ran in.
 pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
     Ok(Stamp {
-        digest: input_digest_with(project, &project_env(), flags)?,
+        digest: input_digest_with(project, &project_env(project, flags), flags)?,
         codegen_version: codegen_version(),
         ament_prefix: std::env::var(AMENT_VAR).ok(),
         launch_resolve: current_launch_resolver(),
@@ -635,8 +655,10 @@ pub(crate) fn currency(
     // The WHOLE probe key the resolve compares (component
     // sources, this CLI's source stamp, the crates the probe compiles), keyed
     // against the nano-ros root sync's metadata refresh keys against.
-    let nano_ros =
-        crate::orchestration::nano_ros_root::resolve(flags.nano_ros_path.clone(), project);
+    let nano_ros = crate::orchestration::metadata_refresh::probe_nano_ros_root(
+        project,
+        flags.nano_ros_path.clone(),
+    );
     if let Some(line) = stale_sidecar_components(project, nano_ros.as_deref())
         .into_iter()
         .next()
@@ -818,7 +840,8 @@ mod tests {
         // Capture the user's value (the process's, before any write) FIRST,
         // the way a configure process captures it before it exports.
         let _ = crate::cmd::configure::user_interface_search_path();
-        // configure's own serialised writer, the one the race went through.
+        // The process value is no stamp input at all (Ruling R45): writing it
+        // between the record and the check must change nothing.
         let set = |v: Option<&std::ffi::OsStr>| crate::cmd::configure::set_env(VAR, v);
         // Another project's configure exported its path while this one's
         // stamp was written...
@@ -1049,6 +1072,34 @@ mod tests {
             Currency::Stale(why) => assert!(why.contains("metadata sidecar"), "{why}"),
             Currency::Current => panic!("a moved probe closure left the stamp current"),
         }
+    }
+
+    /// Ruling R45 — `--nano-ros-path` keys the stamp's sidecar check AND the
+    /// resolve's read (`nros build`'s C5, `fresh_probe_rows`) through ONE
+    /// root, `probe_nano_ros_root`. The resolve used the ladder alone, so a
+    /// sidecar sync stamped against an explicit root read "up to date" to
+    /// the stamp and stale to the resolve, which then dropped its counts.
+    #[test]
+    fn explicit_nano_ros_path_keys_the_stamp_and_the_resolve_alike() {
+        use crate::orchestration::metadata_refresh as mr;
+        let (p, _, root) = sidecar_fixture("sidecar-explicit-root", None);
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        // The stamp, under `--nano-ros-path <root>`.
+        assert_eq!(sidecar_currency(&p, &root), Currency::Current);
+        // The resolve, through the same derivation: the sidecar is read.
+        let explicit = mr::probe_nano_ros_root(&p, Some(root.clone()));
+        let (rows, read, notes) = mr::fresh_probe_rows(&p, explicit.as_deref()).unwrap();
+        assert_eq!((rows.len(), read.len()), (1, 1), "{notes:?}");
+        // The ladder alone (what the resolve asked before) keys it against
+        // another root, and refuses it.
+        let ladder = mr::probe_nano_ros_root(&p, None);
+        assert_ne!(ladder, explicit);
+        let (rows, _, notes) = mr::fresh_probe_rows(&p, ladder.as_deref()).unwrap();
+        assert!(
+            rows.is_empty(),
+            "the ladder's key read a sidecar keyed elsewhere"
+        );
+        assert!(notes.iter().any(|n| n.contains("stale")), "{notes:?}");
     }
 
     /// R5: a sidecar stamped `UNKEYED` has nothing to compare, so it is not

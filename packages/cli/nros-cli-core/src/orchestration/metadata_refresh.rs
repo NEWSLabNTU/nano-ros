@@ -1294,6 +1294,15 @@ fn collect_sources(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<()
     Ok(())
 }
 
+/// phase-530 W1 (Ruling R45) -- THE nano-ros root a project's probe sidecars
+/// are keyed against ([`probe_inputs_key`]): the explicit `--nano-ros-path`,
+/// else the one ladder. Sync's refresh stamps with it, the configure stamp
+/// checks with it, and `nros build`'s resolve reads with it, so the three
+/// can never key one sidecar against two roots.
+pub fn probe_nano_ros_root(project: &Path, explicit: Option<PathBuf>) -> Option<PathBuf> {
+    crate::orchestration::nano_ros_root::resolve(explicit, project)
+}
+
 /// phase-530 W1 -- the sidecars under `root` the resolve would refuse as
 /// stale, as one line each. Freshness is the resolve's own
 /// predicate ([`fresh_probe_rows`]) — [`sidecar_is_fresh`] against the WHOLE

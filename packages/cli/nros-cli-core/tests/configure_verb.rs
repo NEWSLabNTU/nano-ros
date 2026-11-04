@@ -37,23 +37,13 @@ fn parse(argv: &[&str]) -> Cmd {
         .cmd
 }
 
-/// One in-process verb at a time. `cargo test` (the `just ci gate` lane)
-/// runs these tests as THREADS of one process, and a configure writes the
-/// process environment for as long as it runs: the per-project
-/// `NROS_INTERFACE_SEARCH_PATH` its sync scans (Ruling R12) and the
-/// `NROS_CONFIGURE_HELD` marker (R20). A CLI is one configure per process, so
-/// two at once on threads is a shape no user runs: another thread's search
-/// path made a sync codegen from the wrong tree, and its marker made an
-/// explicit configure refuse (R25). nextest (one process per test) never
-/// shared either.
-fn verb_lock() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    LOCK.lock().unwrap_or_else(|p| p.into_inner())
-}
-
 /// The full dispatch, exactly as the binary runs it (lowering included).
+///
+/// `cargo test` (the `just ci gate` lane) runs these tests as THREADS of one
+/// process, in parallel. Configure writes nothing they share into the process
+/// environment (Ruling R45): the interface search path is an argument and the
+/// held marker is handed to the one child that needs it.
 fn nros(argv: &[&str]) -> Result<(), String> {
-    let _one = verb_lock();
     nros_cli_core::run(parse(argv)).map_err(|e| format!("{e:?}"))
 }
 
@@ -64,7 +54,6 @@ fn configure_outcome(argv: &[&str]) -> configure::Outcome {
     let Cmd::Configure(args) = parse(&full) else {
         panic!("`nros configure` did not parse to Cmd::Configure");
     };
-    let _one = verb_lock();
     configure::configure(args).unwrap_or_else(|e| panic!("configure failed: {e:?}"))
 }
 
@@ -304,10 +293,6 @@ fn second_concurrent_configure_finds_stamp_current() {
                 .args(["configure_child", "--exact", "--ignored", "--nocapture"])
                 .env(CHILD_LEAF, &leaf)
                 .env_remove("NROS_CONFIGURE_HELD")
-                // What a configure on another thread of THIS process exported
-                // for its own project (see `verb_lock`); a child derives its
-                // own, like a user who never exported one.
-                .env_remove("NROS_INTERFACE_SEARCH_PATH")
                 .stdout(std::process::Stdio::piped())
                 .spawn()
                 .expect("spawn a configure child")
@@ -364,6 +349,48 @@ fn configure_child() {
 /// phase-530 W1 (I1): an OUTPUT configure wrote is gone and every input is
 /// unchanged. The stamp used to say "up to date", and the next `nros build`
 /// then failed with an internal error.
+/// Ruling R43: `nros build --dry-run` never configures, so it writes
+/// nothing. A stale stamp is reported ("would configure"); the plan is made
+/// from the project as it stands. Before this, a dry run ran C1 -- message
+/// codegen, models, the lock seed -- and only skipped recording the stamp.
+#[test]
+fn dry_run_build_on_a_stale_project_writes_no_stamp_and_no_generated() {
+    setup();
+    let leaf = scratch_leaf("dry-run-stale");
+    let leaf_s = leaf.to_str().unwrap();
+    configure_outcome(&[leaf_s]);
+    let stamp = stamp_file(&leaf, "linux");
+    let recorded = mtime(&stamp);
+    // Stale: an output configure wrote is gone.
+    fs::remove_dir_all(leaf.join("generated")).unwrap();
+
+    let _ = nros(&["build", "--dry-run", "--workspace", leaf_s]);
+    assert!(
+        !leaf.join("generated").exists(),
+        "a dry run regenerated `generated/`"
+    );
+    assert_eq!(mtime(&stamp), recorded, "a dry run rewrote the stamp");
+    cleanup(&leaf);
+}
+
+/// Ruling R45: configure takes the interface search path as an argument and
+/// never writes it into the process environment. It exported it before, and
+/// on the gate's `cargo test` every configure on another thread then read
+/// the last project's path (issue: inputs changed with nothing edited).
+#[test]
+fn configure_leaves_the_interface_search_path_env_alone() {
+    setup();
+    let leaf = scratch_leaf("env-untouched");
+    let before = std::env::var_os("NROS_INTERFACE_SEARCH_PATH");
+    configure_outcome(&[leaf.to_str().unwrap()]);
+    assert_eq!(
+        std::env::var_os("NROS_INTERFACE_SEARCH_PATH"),
+        before,
+        "configure wrote NROS_INTERFACE_SEARCH_PATH into the process env"
+    );
+    cleanup(&leaf);
+}
+
 #[test]
 fn deleted_generated_dir_reconfigures() {
     setup();

@@ -554,8 +554,11 @@ pub fn observe_workspace_registrations(
     target: &EntityInventory,
     model: &nros_orchestration_ir::overlay::LoadedModel,
     ws_root: &std::path::Path,
+    nano_ros_path: Option<std::path::PathBuf>,
 ) -> eyre::Result<(EntityInventory, Vec<std::path::PathBuf>, Vec<String>)> {
-    let nano_ros = crate::orchestration::nano_ros_root::resolve(None, ws_root);
+    // Ruling R45: the root sync stamped the sidecars against.
+    let nano_ros =
+        crate::orchestration::metadata_refresh::probe_nano_ros_root(ws_root, nano_ros_path);
     let (probe, read, mut notes) = crate::orchestration::metadata_refresh::fresh_probe_inventory(
         ws_root,
         nano_ros.as_deref(),
