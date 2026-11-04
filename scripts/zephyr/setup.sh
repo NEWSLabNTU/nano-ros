@@ -506,8 +506,12 @@ if [ -d "$WORKSPACE_DIR/.west" ]; then
         # is already a plain directory is left alone.
         bash "$NROS_REPO_DIR/scripts/zephyr/unbind-manifest-project.sh" \
             "$WORKSPACE_DIR" "$NANO_ROS_NAME" "$MANIFEST" "$NROS_REPO_DIR"
+        # issue 2249 — a bare `west update` here read the workspace's OWN copy
+        # of the manifest, which unbind writes only when missing, so it fetched
+        # against whatever manifest the workspace was created with.
+        bash "$NROS_REPO_DIR/scripts/zephyr/sync-workspace-manifest.sh" \
+            "$WORKSPACE_DIR" "$NROS_REPO_DIR"
         cd "$WORKSPACE_DIR"
-        west update
 
         log_success "Update complete"
 
