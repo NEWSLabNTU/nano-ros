@@ -56,6 +56,11 @@ ported node. `system.toml` names the board package `mps2-an385-zephyr`, which
 lowers to `west build -b mps2_an385` and carries the QEMU network Kconfig, so a
 copy of this template names nothing outside itself (issue 1782).
 
+The two board roots are packages too, so each has its own name:
+`ament_workspace_port_freertos` and `ament_workspace_port_zephyr`. A package
+name names one package across every source root, as in colcon, so two roots
+sharing a name would make the whole workspace refuse to build (RFC-0119 D4).
+
 ## Run
 
 The router is ROS 2's `rmw_zenohd`, listening where the image's locator points

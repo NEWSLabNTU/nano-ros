@@ -210,11 +210,16 @@ it, as in colcon:
 - the roots are peers and are walked recursively; their order carries no
   precedence;
 - a root repeated, or inside another, counts once;
-- a package NAME in two directories is an error for build discovery, naming
-  both paths and the root each came from, with the fixes (drop one root,
-  remove a copy, or for a provider pin one under rule 1 or pass
-  `--allow-overriding`), which settle it the same way they settle a provider
-  duplicate;
+- a package NAME in two directories is an error for build discovery,
+  whether the two sit in one source root or in two, naming both paths and the
+  root each came from, with the fixes (rename one, put an ignore marker —
+  `COLCON_IGNORE`, `AMENT_IGNORE` or `NROS_IGNORE` — in the copy that is not
+  meant to build, drop one root, or for a provider pin one under rule 1 or
+  pass `--allow-overriding`), which settle it the same way they settle a
+  provider duplicate. There is no quieter case for two copies in one root: a
+  copy that is harmless only while nothing names it is how a stray or planted
+  `package.xml` gets in, and whether a duplicate is fatal must not depend on
+  how the roots happen to be split;
 - a `--base-paths` entry that does not exist is an error; one that holds no
   package is a warning;
 - a root outside the workspace is allowed and shown: `nros dev ws providers`
@@ -520,3 +525,9 @@ CMake code when they build it, so this adds no new boundary.
   path is an error and an empty one a warning; an out-of-workspace root is
   shown in the providers listing, `nros doctor`, `--why` and the provider
   index.
+- 2026-11-04 — phase-527 W2e, D4: two copies of one package name inside ONE
+  source root are refused like two copies in two roots, as colcon refuses
+  them. W2d had let them warn, and refused only a selection or a `<depend>`
+  naming them, to keep the in-tree template's two board roots building; those
+  roots are now named apart (`ament_workspace_port_freertos`,
+  `ament_workspace_port_zephyr`). The error names the ignore-marker fix.

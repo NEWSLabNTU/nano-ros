@@ -3,8 +3,9 @@
 **Status (2026-11-04). IN PROGRESS — W3, W1, W2, W2b and W2c landed
 (`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
 the host build role; declared overrides; colcon's duplicate rule among
-source roots, overrides in `nros.toml`); W2d (one `--base-paths` meaning) in
-review (#3088); W4 next.** Implements
+source roots, overrides in `nros.toml`) and W2d (one `--base-paths` meaning,
+#3088); W2e (a duplicate inside one root is refused too) in review; W4, W6
+next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -318,16 +319,10 @@ time, or 50 ms) is crossed, so **no underlay-scan cache was added**.
 
 Deviations from the brief, each with its reason:
 
-- **Two copies of one package inside ONE source root warn instead of
-  erroring**, and `select` refuses any flag or `<depend>` that names the
-  duplicated name. A duplicate across two roots is the error the brief asks
-  for. colcon refuses both, but the in-tree template
-  `examples/templates/ament-workspace-port` keeps per-board variants side by
-  side (`zephyr/` and `mps2-an385-freertos/`, both `ament_workspace_port`,
-  each built on its own), and `declared_depends_resolve` discovers every
-  in-tree workspace, so the stricter rule turned that test red. The silent
-  last-wins is gone either way. For the maintainer: rename the variants, or
-  keep this narrower rule.
+- **Two copies of one package inside ONE source root warned instead of
+  erroring** in #3088, to keep `examples/templates/ament-workspace-port`'s
+  two board roots (both `ament_workspace_port`) discoverable. Reversed by
+  W2e below: the maintainer chose colcon's rule.
 - **`nros sync`'s own package walk is unchanged.** It reads `src/<pkg>/`
   one level deep, a different walk from build discovery; on `sync` the flag
   sets the source roots of the provider index it writes, which is what
@@ -349,7 +344,36 @@ Deviations from the brief, each with its reason:
 - **The default build discovery now reads `package_paths`**, as the brief
   asks. No tracked `nros.toml` declares any, so no in-tree workspace changes.
 
-Status: **DONE, in review** (2026-11-04, #3088).
+Status: **DONE** (2026-11-04, #3088).
+
+### W2e — A duplicate inside one source root is refused too
+
+The maintainer's call on W2d's first deviation: colcon's rule, everywhere.
+colcon checks the whole discovered set and refuses any repeated name; which
+base path a copy came from makes no difference.
+
+- `discover::settle_duplicates` refuses two copies of one name whether they
+  sit in one source root or in two. The in-root warning, and the deferred
+  refusal in `select`, are gone; `select` keeps its check only as a backstop
+  for a hand-built `Discovered`.
+- The error names every fix, the ignore marker first among the cheap ones:
+  rename one package, put an empty `COLCON_IGNORE` (or `AMENT_IGNORE`,
+  `NROS_IGNORE`) in the copy that is not meant to build, drop a root, or pin
+  a provider. Ignore-marked directories were already never walked, so a
+  backup or vendored copy never reaches the check.
+- The template's two board roots get their own package names,
+  `ament_workspace_port_freertos` and `ament_workspace_port_zephyr` (the
+  `project()` names and the `[system] name` are unchanged; nothing keys on
+  the package name). A copy of the template is now a workspace colcon would
+  also accept.
+
+Why not keep the narrower rule: a duplicate that is quiet until something
+names it is how a stray or planted `package.xml` gets in, and a rule that
+depends on how the roots are split is one nobody can predict. The cost — a
+user who keeps two same-named copies in one root gets an error — is one
+`touch COLCON_IGNORE`, the same as colcon asks.
+
+Status: **DONE, in review** (2026-11-04).
 
 ### W3 — `packages/runners/` and `nros-extension`
 
