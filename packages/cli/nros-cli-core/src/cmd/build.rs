@@ -1260,7 +1260,10 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     // row unobserved, which refuses `registration_path` (the
                     // over-size, never the under-size).
                     let observed = match crate::contract_join::observe_workspace_registrations(
-                        inv, model, &root,
+                        inv,
+                        model,
+                        &root,
+                        args.nano_ros_path.clone(),
                     ) {
                         Ok((observed, _, notes)) => {
                             for n in notes {
@@ -2908,7 +2911,8 @@ pub fn run(args: Args) -> Result<()> {
     // planning reads it, never compiled stale. The cmake and west roads ask
     // the same question of their own generated trees at configure (`nros
     // codegen --ament-witness`).
-    let regenerated = crate::cmd::ws::refresh_generated(&root, args.dry_run)?;
+    let search = crate::cmd::configure::interface_search_path_for(&root);
+    let regenerated = crate::cmd::ws::refresh_generated(&root, search.as_deref(), args.dry_run)?;
     if !args.dry_run {
         observe_system(&args, &regenerated);
     }

@@ -91,7 +91,7 @@ pub(crate) fn configure_with(args: Args, held: Option<&std::ffi::OsStr>) -> Resu
         return Ok(Outcome::default());
     }
     let named: Vec<String> = args.sync.image.iter().cloned().collect();
-    configure_project(&project, args.sync, &named, args.force, false)
+    configure_project(&project, args.sync, &named, args.force)
 }
 
 /// Configure `project` for `images` (empty: every image the project
@@ -155,7 +155,39 @@ pub(crate) fn ensure_current_with(
     let sync = SyncOnly::try_parse_from(&argv)
         .wrap_err("configure: building the sync arguments")?
         .sync;
-    configure_project(&project, sync, images, false, dry_run).map(|_| ())
+    // Ruling R43: a dry run never configures, so it writes nothing (no C1
+    // codegen, model, lock seed or stamp). It says what a real run would do,
+    // and the caller plans from the project as it stands.
+    if dry_run {
+        for (key, why) in would_configure(&project, &sync, images)? {
+            eprintln!("nros build: --dry-run: would configure {key}: {why}");
+        }
+        return Ok(());
+    }
+    configure_project(&project, sync, images, false).map(|_| ())
+}
+
+/// Ruling R43 — the `(stamp key, reason)` of every image a configure of
+/// `project` would run for, by the same currency check, writing nothing.
+fn would_configure(
+    project: &Path,
+    sync: &ws::SyncArgs,
+    named: &[String],
+) -> Result<Vec<(String, String)>> {
+    let flags = configure_stamp::OutputFlags::of(sync);
+    let targets = targets(project, named)?;
+    let keys: Vec<(String, bool)> = if targets.is_empty() {
+        vec![(configure_stamp::PROJECT_KEY.to_string(), false)]
+    } else {
+        targets.iter().map(|t| (t.key.clone(), t.named)).collect()
+    };
+    let mut out = Vec::new();
+    for (key, named) in keys {
+        if let Currency::Stale(why) = configure_stamp::is_current(project, &key, named, &flags)? {
+            out.push((key, why));
+        }
+    }
+    Ok(out)
 }
 
 /// `SyncArgs` with every default, the way the parser would build them.
@@ -176,17 +208,18 @@ struct SyncOnly {
 /// The shared body of [`configure`] and [`ensure_current`].
 fn configure_project(
     project: &Path,
-    sync: ws::SyncArgs,
+    mut sync: ws::SyncArgs,
     named: &[String],
     force: bool,
-    plan_dry_run: bool,
 ) -> Result<Outcome> {
-    ensure_interface_search_path(project);
+    // Ruling R45: the interface search path is an ARGUMENT, derived once
+    // here, and never read from or written to the process environment.
+    sync.interface_search_path = interface_search_path_for(project);
     let flags = configure_stamp::OutputFlags::of(&sync);
     let _lock = lock_exclusive_path(&configure_stamp::lock_path(project))?;
     // Declared AFTER `_lock`, so it drops first: the marker never outlives
     // the lock it announces.
-    let _held = HeldMarker::export(project);
+    let _held = HeldMarker::hold(project);
 
     let targets = targets(project, named)?;
     // Ruling R15: a project that declares no image (a bringup-less workspace)
@@ -200,8 +233,9 @@ fn configure_project(
     // see the environment this configure runs with — the recorded one where
     // the caller's leaves it unset.
     let stamp_keys: Vec<&str> = keys.iter().map(|(k, _)| *k).collect();
-    for (var, value) in recorded_env_to_restore(
+    for (var, value) in recorded_env_to_restore_with(
         project,
+        sync.interface_search_path.as_deref(),
         &stamp_keys,
         std::env::var_os(configure_stamp::AMENT_VAR).is_some(),
         std::env::var_os(configure_stamp::LAUNCH_RESOLVE_VAR).is_some()
@@ -251,7 +285,7 @@ fn configure_project(
             project,
             &t.select,
             &nano_ros_path,
-            plan_dry_run,
+            false,
             offline,
         )) {
             Ok(_) => out.configured.push(t.key.clone()),
@@ -279,9 +313,7 @@ fn configure_project(
     }
 
     // ---- the stamps: inputs as they are AFTER this configure wrote -----
-    // Ruling R16: a dry run's stage 4 wrote nothing, so it records nothing —
-    // the rule `--check`/`--dry-run` already follow.
-    if !plan_dry_run {
+    {
         let stamp = configure_stamp::stamp_now(project, &flags)?;
         let project_wide = targets
             .is_empty()
@@ -316,8 +348,26 @@ fn configure_project(
 /// nothing to reuse, so configure refuses, naming the setup step. A stamp
 /// that recorded no prefix (a run that had none) is a record: nothing to
 /// restore, and no refusal.
+#[cfg(test)]
 pub(crate) fn recorded_env_to_restore(
     project: &Path,
+    keys: &[&str],
+    ament_set: bool,
+    resolver_found: bool,
+) -> Result<Vec<(&'static str, std::ffi::OsString)>> {
+    recorded_env_to_restore_with(
+        project,
+        interface_search_path_for(project).as_deref(),
+        keys,
+        ament_set,
+        resolver_found,
+    )
+}
+
+/// [`recorded_env_to_restore`] with the interface search path the run uses.
+pub(crate) fn recorded_env_to_restore_with(
+    project: &Path,
+    search: Option<&std::ffi::OsStr>,
     keys: &[&str],
     ament_set: bool,
     resolver_found: bool,
@@ -326,7 +376,9 @@ pub(crate) fn recorded_env_to_restore(
         return Ok(Vec::new());
     }
     let Some(stamp) = keys.iter().find_map(|k| configure_stamp::read(project, k)) else {
-        if !ament_set {
+        // Ruling R44: only a C1 with a message package to generate needs
+        // ament; a project with none configures on any host.
+        if !ament_set && ws::has_messages_to_generate(project, search) {
             // RFC-0120 D2: no record → refuse, naming the setup step.
             eyre::bail!(
                 "configure: `{}` is unset and no configure of `{}` has recorded one to reuse. \
@@ -401,38 +453,59 @@ fn held_by_parent(project: &Path, marker: Option<&std::ffi::OsStr>) -> bool {
     canon(Path::new(marker)) == canon(project)
 }
 
-/// Ruling R20: [`HELD_VAR`] set to the project for as long as this value
-/// lives, so every process configure spawns inherits it; the previous value
-/// (a configure of ANOTHER project further up) comes back on drop.
-struct HeldMarker(Option<std::ffi::OsString>);
+/// Ruling R20: the projects whose configure lock THIS process holds, for as
+/// long as the value lives. In memory, never in the process environment
+/// (Ruling R45): the one child that needs it — the census `nros build` a
+/// configure spawns — is handed [`HELD_VAR`] on its own command
+/// ([`held_marker_for`]), so a configure on another thread of the same
+/// process never sees it.
+struct HeldMarker(PathBuf);
+
+fn held_projects() -> std::sync::MutexGuard<'static, Vec<PathBuf>> {
+    static HELD: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+    HELD.lock().unwrap_or_else(|p| p.into_inner())
+}
 
 impl HeldMarker {
-    fn export(project: &Path) -> Self {
-        let previous = std::env::var_os(HELD_VAR);
-        set_env(HELD_VAR, Some(project.as_os_str()));
-        HeldMarker(previous)
+    fn hold(project: &Path) -> Self {
+        held_projects().push(project.to_path_buf());
+        HeldMarker(project.to_path_buf())
     }
 }
 
 impl Drop for HeldMarker {
     fn drop(&mut self) {
-        set_env(HELD_VAR, self.0.take().as_deref());
+        let mut held = held_projects();
+        if let Some(i) = held.iter().position(|p| *p == self.0) {
+            held.remove(i);
+        }
     }
 }
 
+/// `(HELD_VAR, project)` for a child process this process spawns for
+/// `project` while it holds that project's configure lock, else `None`.
+pub(crate) fn held_marker_for(project: &Path) -> Option<(&'static str, std::ffi::OsString)> {
+    let canon = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
+    held_projects()
+        .iter()
+        .any(|p| *p == canon)
+        .then(|| (HELD_VAR, canon.into_os_string()))
+}
+
 /// The ONE place configure writes the process environment: `Some` sets
-/// `var`, `None` removes it. Every writer serialises on one mutex. Writers:
-/// the held marker, the interface search path, and the recorded environment
-/// a stamp restores (RFC-0120 D2).
+/// `var`, `None` removes it. Every writer serialises on one mutex. Its only
+/// writer is the recorded environment a stamp restores for a caller that
+/// lacks it (RFC-0120 D2, Ruling R32): `AMENT_PREFIX_PATH` and
+/// `NROS_LAUNCH_RESOLVE`, read by C1's ament index and every child it spawns.
 pub(crate) fn set_env(var: &str, value: Option<&std::ffi::OsStr>) {
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     // SAFETY: edition 2024 makes these unsafe because another thread may be
-    // reading the environment. Configure's writers (the held marker, the
-    // interface search path) all come through here and are serialised on
-    // ENV_LOCK; the CLI runs configure on one thread, and the readers are
-    // this CLI's own verbs and the processes configure spawns from that
-    // thread, which inherit a consistent copy.
+    // reading the environment. Configure's one writer (the recorded
+    // environment) comes through here and is serialised on ENV_LOCK; the
+    // CLI runs configure on one thread, and the readers are this CLI's own
+    // verbs and the processes configure spawns from that thread, which
+    // inherit a consistent copy.
     unsafe {
         match value {
             Some(v) => std::env::set_var(var, v),
@@ -522,26 +595,10 @@ fn targets(project: &Path, named: &[String]) -> Result<Vec<Target>> {
     Ok(out)
 }
 
-/// RFC-0120 D2: configure computes the interface search path itself, which
-/// retires `eval "$(nros dev ws env)"`. A caller's own path wins: one set before
-/// the process started is left alone. A project with no package layout has none.
-///
-/// Derived per PROJECT on every call (Ruling R12): a process that configures
-/// two projects must not hand the second the first one's path. Whether the
-/// USER set it is captured once, at the first call, before this function has
-/// ever written it.
-fn ensure_interface_search_path(project: &Path) {
-    if user_interface_search_path().is_some() {
-        return;
-    }
-    let root = interface_search_path_for(project);
-    set_env(INTERFACE_SEARCH_VAR, root.as_deref());
-}
-
 const INTERFACE_SEARCH_VAR: &str = "NROS_INTERFACE_SEARCH_PATH";
 
-/// The USER's `NROS_INTERFACE_SEARCH_PATH`, captured once, at the first call,
-/// before [`ensure_interface_search_path`] has ever written it.
+/// The USER's `NROS_INTERFACE_SEARCH_PATH`: the one read of the variable,
+/// once, at the edge. Configure never writes it (Ruling R45).
 pub(crate) fn user_interface_search_path() -> Option<&'static std::ffi::OsString> {
     static USER: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
     USER.get_or_init(|| std::env::var_os(INTERFACE_SEARCH_VAR))
@@ -549,7 +606,7 @@ pub(crate) fn user_interface_search_path() -> Option<&'static std::ffi::OsString
 }
 
 /// THE default `NROS_INTERFACE_SEARCH_PATH` of `project` (Ruling R12): its
-/// interface root. One derivation for the value configure exports and for
+/// interface root. One derivation for the value configure hands sync and for
 /// the configure stamp's digest of an unset variable
 /// (`configure_stamp::input_digest_with`), so the stamp's writer, a configure
 /// that checks it, and a reader that runs no configure (`nros locate
@@ -560,9 +617,12 @@ pub(crate) fn default_interface_search_path(project: &Path) -> Option<std::ffi::
         .map(PathBuf::into_os_string)
 }
 
-/// The `NROS_INTERFACE_SEARCH_PATH` a configure of `project` runs with: the
-/// user's, else [`default_interface_search_path`].
-fn interface_search_path_for(project: &Path) -> Option<std::ffi::OsString> {
+/// The interface search path a configure of `project` runs with, passed as
+/// an argument to sync, the stamp and `nros build` (Ruling R45): the user's,
+/// else [`default_interface_search_path`]. RFC-0120 D2: configure computes it
+/// itself, which retires `eval "$(nros dev ws env)"`. Derived per PROJECT
+/// (Ruling R12): a process that configures two projects hands each its own.
+pub(crate) fn interface_search_path_for(project: &Path) -> Option<std::ffi::OsString> {
     user_interface_search_path()
         .cloned()
         .or_else(|| default_interface_search_path(project))
@@ -685,6 +745,8 @@ mod tests {
         let p = crate::test_support::scratch_dir("configure-no-ament");
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).unwrap();
+        // A package with a message dependency: C1 has messages to generate.
+        std::fs::write(p.join("package.xml"), package_xml("talker", &["std_msgs"])).unwrap();
         let err = recorded_env_to_restore(&p, &["linux"], false, true)
             .expect_err("no record and no AMENT_PREFIX_PATH must refuse");
         let msg = format!("{err:#}");
@@ -701,6 +763,34 @@ mod tests {
         assert!(
             recorded_env_to_restore(&p, &["linux"], false, true)
                 .unwrap()
+                .is_empty()
+        );
+    }
+
+    fn package_xml(name: &str, deps: &[&str]) -> String {
+        let deps: String = deps
+            .iter()
+            .map(|d| format!("<depend>{d}</depend>"))
+            .collect();
+        format!(
+            "<package format=\"3\"><name>{name}</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license>{deps}</package>"
+        )
+    }
+
+    /// Ruling R44: R32's refusal is for a C1 that NEEDS ament — one with a
+    /// message package to generate. A project with no message dependency
+    /// configures with no `AMENT_PREFIX_PATH` and no record, on any host.
+    #[test]
+    fn a_project_with_no_messages_configures_without_ament() {
+        let p = crate::test_support::scratch_dir("configure-no-msgs");
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        std::fs::write(p.join("package.xml"), package_xml("plain", &["rclrs"])).unwrap();
+        assert!(
+            recorded_env_to_restore(&p, &["linux"], false, true)
+                .expect("no message to generate, so nothing needs ament")
                 .is_empty()
         );
     }

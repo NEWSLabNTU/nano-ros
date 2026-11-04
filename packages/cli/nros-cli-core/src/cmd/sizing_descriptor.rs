@@ -383,7 +383,9 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         // descriptor over an observation would be the regression RFC-0100 D6
         // forbids. Every row then stays unobserved, which refuses.
         Some(ws) => {
-            match crate::contract_join::observe_workspace_registrations(&inventory, &model, ws) {
+            match crate::contract_join::observe_workspace_registrations(
+                &inventory, &model, ws, None,
+            ) {
                 Ok((inv, read, notes)) => {
                     for n in notes {
                         eprintln!("nros ws sizing-descriptor: {n}");

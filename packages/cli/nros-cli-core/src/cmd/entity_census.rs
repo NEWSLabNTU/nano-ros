@@ -545,10 +545,15 @@ fn take_census(args: TakeArgs) -> Result<()> {
     let mut binary = None;
     for attempt in 1..=TAKE_MAX_BUILDS {
         // phase-530 W2 (RFC-0120 D1) retires this spawn: configure must not
-        // run `nros build`. Until then, under a configure this child inherits
-        // NROS_CONFIGURE_HELD and its implicit configure returns at once
-        // instead of waiting on the lock its parent holds (Ruling R20).
+        // run `nros build`. Until then, under a configure this child is handed
+        // NROS_CONFIGURE_HELD on its own command (never through this
+        // process's environment, Ruling R45), so its implicit configure
+        // returns at once instead of waiting on the lock its parent holds
+        // (Ruling R20).
         let mut cmd = Command::new(&nros);
+        if let Some((var, project)) = crate::cmd::configure::held_marker_for(&root) {
+            cmd.env(var, project);
+        }
         cmd.arg("build")
             .arg(&native_q)
             .arg("--workspace")
