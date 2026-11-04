@@ -54,6 +54,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")  # phase-500 W1
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLinkAppDependency.cmake")  # phase-518
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryAgreement.cmake")  # issue 1894
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")  # issue 2332
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCensusStep.cmake")  # phase-530 W6, Ruling R39
 # Shared helpers (nros_resolve_cli — issue #219). include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 # `nros_panic_policy_feature` — the ONE policy->feature mapping, shared with the
@@ -262,6 +263,14 @@ function(_nros_entry_require_fresh_census)
         # build works, not something to act on: shown under `nros build -v`.
         nros_message_detail("nano-ros: ${_rfc_out}")
     endif()
+    # Ruling R39 (phase-530 W6) -- the same READ-ONLY check again on every
+    # BUILD, before the entry links: a source edit after this configure leaves
+    # the census stale, and nothing on this road re-takes it during a build
+    # (that is the host sibling's build, issue 2237). A stale census FAILS the
+    # build naming `nros dev image entity-census take --image ...`, rather
+    # than linking pools sized for the old entities.
+    nros_census_check_step(ENTRY "${_RFC_NAME}" WORKING_DIRECTORY "${_rfc_ws}"
+        COMMAND "${_rfc_cli}" ${_rfc_args})
 endfunction()
 
 function(nano_ros_entry)
