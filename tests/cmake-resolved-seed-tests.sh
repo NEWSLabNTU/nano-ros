@@ -15,8 +15,12 @@
 # The claim under test is about the PASS COUNT, and about what happens when the
 # late producer disagrees with the seed (RFC-0120 D5's promise check):
 #
-#   A  no configure in front    1 re-configure, built with the real answer
-#                               (the old lever, kept until phase-530 W5/W7)
+#   A  no configure in front    0 re-configures; the readers used their
+#                               defaults (a placeholder) and say so -- issue
+#                               0991's fixed point is deleted (phase-530 W7)
+#   X  no seed, and the readers read an EARLIER configure's answer that the
+#      producer moves           the configure FAILS naming `nros configure`:
+#                               that answer can be smaller than this one
 #   B  seed AGREES              0 re-configures, built with the real answer
 #   C  seed DISAGREES           the configure FAILS, naming both files -- every
 #                               reader used the seed, so nothing may build on it
@@ -47,7 +51,6 @@ source "$SCRIPT_DIR/lib/common.sh"
 # shellcheck source=../scripts/lib/grep-q.sh
 source "$PROJECT_ROOT/scripts/lib/grep-q.sh"
 
-RECONFIGURE_MODULE="$PROJECT_ROOT/cmake/NanoRosReconfigure.cmake"
 PROMISE_MODULE="$PROJECT_ROOT/cmake/NanoRosPromise.cmake"
 RESOLVED_MODULE="$PROJECT_ROOT/cmake/NanoRosResolved.cmake"
 
@@ -63,7 +66,7 @@ check() {
     CHECKS=$((CHECKS + 1))
 }
 
-for _m in "$RECONFIGURE_MODULE" "$PROMISE_MODULE" "$RESOLVED_MODULE"; do
+for _m in "$PROMISE_MODULE" "$RESOLVED_MODULE"; do
     if [ ! -f "$_m" ]; then
         fail "module not found: $_m"
         exit 1
@@ -113,7 +116,9 @@ set(_frag "\${CMAKE_BINARY_DIR}/frag.cmake")
 # 1729: the function itself decides whether the resolve moved.
 nros_resolved_seed_entity_inventory("\${_frag}")
 if(NOT EXISTS "\${_frag}")
-    file(WRITE "\${_frag}" "set(ANSWER placeholder)\n")
+    # The production placeholders' marker line (nros_promise_placeholder_line).
+    nros_promise_placeholder_line(_ph)
+    file(WRITE "\${_frag}" "\${_ph}set(ANSWER placeholder)\n")
 endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "\${_frag}")
 nros_promise_read("\${_frag}")
@@ -124,8 +129,11 @@ message(STATUS "PROBE_READ=\${ANSWER}")
 # Absent on the generated Rust Zephyr entry's road (issue 1729), where the seed
 # is the fragment's only producer: -DPROBE_NO_PRODUCER=ON.
 if(NOT PROBE_NO_PRODUCER)
+    if(NOT DEFINED PROBE_ANSWER)
+        set(PROBE_ANSWER real)
+    endif()
     nros_promise_snapshot("\${_frag}" _before)
-    file(WRITE "\${_frag}" "set(ANSWER real)\n")
+    file(WRITE "\${_frag}" "set(ANSWER \${PROBE_ANSWER})\n")
     nros_promise_check("\${_frag}" "\${_before}" LABEL "the probe answer")
 endif()
 
@@ -151,27 +159,78 @@ SRC="$TEST_TMPDIR/src"
 write_project "$SRC"
 
 # ---------------------------------------------------------------------------
-log_header "A. no configure in front: the old lever, one extra configure"
+log_header "A. no configure in front: 0 re-configures, the readers used their defaults"
 # ---------------------------------------------------------------------------
 
 CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/none-build" 2>&1)"
 check
 if nros_grep_q 'PROBE_READ=placeholder' <<<"$CONFIGURE_OUT"; then
-    log_success "with nothing located the first pass reads the placeholder"
+    log_success "with nothing located the reader reads the placeholder"
 else
-    fail "expected the placeholder on pass 1 with no resolve phase:
+    fail "expected the placeholder with no resolve phase:
+$CONFIGURE_OUT"
+fi
+check
+if nros_grep_q -F 'they used their defaults' <<<"$CONFIGURE_OUT"; then
+    log_success "and the configure SAYS the readers used their defaults"
+else
+    fail "an unseeded reader of a placeholder left no status line:
 $CONFIGURE_OUT"
 fi
 
 run_build "$TEST_TMPDIR/none-build"
 check
-if [ "$BUILD_USED" = "real" ] && [ "$BUILD_RERUNS" -eq 1 ]; then
-    log_success "no resolve phase: 1 re-configure, built with the real answer (baseline)"
+if [ "$BUILD_USED" = "placeholder" ] && [ "$BUILD_RERUNS" -eq 0 ]; then
+    log_success "no resolve phase: 0 re-configures (the fixed point is gone), defaults used"
 else
-    fail "the baseline moved: used='$BUILD_USED' re-runs=$BUILD_RERUNS (want real / 1).
-  This case asserts that a lane which ran NO resolve phase is unchanged. If it
-  fails, the seed is reaching a lane that never asked for it.
+    fail "an unseeded configure re-ran or changed its answer: used='$BUILD_USED' re-runs=$BUILD_RERUNS (want placeholder / 0).
+  Issue 0991's fixed point is deleted (phase-530 W7): nothing may re-run cmake
+  to converge an answer.
 $BUILD_OUT"
+fi
+run_build "$TEST_TMPDIR/none-build"
+check
+if [ "$BUILD_RERUNS" -eq 0 ]; then
+    log_success "and a no-op build after it re-runs nothing"
+else
+    fail "a no-op build re-configured (re-runs=$BUILD_RERUNS):
+$BUILD_OUT"
+fi
+
+# ---------------------------------------------------------------------------
+log_header "X. no seed, an earlier configure's answer the producer moves: FATAL"
+# ---------------------------------------------------------------------------
+#
+# The one unseeded case that can UNDER-size: the readers read an answer an
+# earlier configure composed, and this configure composes another. Nothing
+# re-converges; the configure stops and names what to run.
+X_RC=0
+CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/none-build" \
+    -DPROBE_ANSWER=moved 2>&1)" || X_RC=$?
+check
+if nros_grep_q 'PROBE_READ=real' <<<"$CONFIGURE_OUT"; then
+    log_success "the reader read the earlier configure's answer"
+else
+    fail "case X did not set up:
+$CONFIGURE_OUT"
+fi
+check
+if [ "$X_RC" -ne 0 ] && nros_grep_q -F 'can be smaller than this one' <<<"$CONFIGURE_OUT" \
+   && nros_grep_q -F 'nros configure' <<<"$CONFIGURE_OUT"; then
+    log_success "the producer moved an answer the readers used: the configure STOPPED, naming nros configure"
+else
+    fail "AN UNSEEDED READER OF A MOVED ANSWER DID NOT STOP THE CONFIGURE (rc=$X_RC):
+$CONFIGURE_OUT"
+fi
+X_RC=0
+CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/none-build" \
+    -DPROBE_ANSWER=moved 2>&1)" || X_RC=$?
+check
+if [ "$X_RC" -eq 0 ] && nros_grep_q 'PROBE_READ=moved' <<<"$CONFIGURE_OUT"; then
+    log_success "and the configure after it reads the new answer and passes"
+else
+    fail "the configure after the refusal did not read the new answer (rc=$X_RC):
+$CONFIGURE_OUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -279,7 +338,7 @@ fi
 
 run_build "$TEST_TMPDIR/refused-build"
 check
-if [ "$BUILD_USED" = "real" ] && [ "$BUILD_RERUNS" -eq 1 ]; then
+if [ "$BUILD_USED" = "placeholder" ] && [ "$BUILD_RERUNS" -eq 0 ]; then
     log_success "and the build is byte-for-byte case A's outcome"
 else
     fail "a refused resolve changed the baseline: used='$BUILD_USED' re-runs=$BUILD_RERUNS.
@@ -730,8 +789,9 @@ log_header "S. the cmake road locates a STALE configure: no seed, no promise"
 # project (a new `find_package(<msg>)`) then `cmake --build` re-runs cmake with
 # no `nros configure` in front: the stamp is STALE, and a seed composed before
 # the edit must not be promised. `nros locate configured` says so
-# (`NROS_LOCATE_CURRENT`), and the configure falls to the unseeded road, which
-# converges -- the base's behaviour -- instead of FATAL-ing.
+# (`NROS_LOCATE_CURRENT`), and the configure falls to the unseeded road: its
+# readers use their defaults, and it says what to run -- never a re-converge
+# (the fixed point is deleted, phase-530 W7).
 FAKE_CLI="$TEST_TMPDIR/fake-nros"
 cat > "$FAKE_CLI" <<'EOF'
 #!/usr/bin/env bash
@@ -770,10 +830,10 @@ $CONFIGURE_OUT"
 fi
 run_build "$TEST_TMPDIR/stale-build"
 check
-if [ "$BUILD_USED" = "real" ] && [ "$BUILD_RC" -eq 0 ]; then
-    log_success "and the edit-then-rebuild converges with the real answer (re-runs=$BUILD_RERUNS)"
+if [ "$BUILD_USED" = "placeholder" ] && [ "$BUILD_RC" -eq 0 ] && [ "$BUILD_RERUNS" -eq 0 ]; then
+    log_success "and the build uses the defaults with 0 re-configures"
 else
-    fail "edit-then-rebuild did not converge: used='$BUILD_USED' rc=$BUILD_RC.
+    fail "a stale configure re-ran or failed: used='$BUILD_USED' rc=$BUILD_RC re-runs=$BUILD_RERUNS (want placeholder / 0 / 0).
 $BUILD_OUT"
 fi
 

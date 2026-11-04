@@ -284,40 +284,15 @@ set(NROS_KNOB_DERIVE_SENTINEL -1)
 # to fail at LINK on a clean build dir, naming 103160 bytes and no knob.
 #
 # The dependency is still registered (it is what makes a hand re-configure pick
-# the file up, and what keeps the ninja input well-formed), but the closing is
-# now done by `nros_reconfigure_on_change` at the producer. See
-# `cmake/NanoRosReconfigure.cmake`.
-#
-# So the honest statement of the lag is: an image whose interface closure has
-# just changed configures once at its previous sizes, re-configures inside the
-# same build, and builds at the derived ones. It is never SILENT: the status
-# line below says which of the two happened, and the re-configure announces
-# itself.
-#
-# Issue 1002 -- and "re-configures" is PLURAL on a clean build dir, because the
-# producers are a chain rather than one file. This loader reads the message-
-# bound sizes; those are derived from the ENTITY inventory, which is written
-# later still. So the answer that reaches HERE settles on the third configure:
-#
-#   pass 1  entity=placeholder  ->  sizes derived over the linked CLOSURE
-#   pass 2  entity=real         ->  sizes re-derived over the SUBSCRIBED set
-#   pass 3                          this loader finally reads them
-#
-# Issue 1119 -- FIXED, and the cause was not ninja. Measured on the safety
-# island 2026-09-06, a clean `west build` got TWO configures against three
-# arming requests and linked with the pass-2 value: 70296 bytes of arena where
-# 46272 is correct. `nros_find_interfaces()` is called ONCE PER PACKAGE that
-# declares an interface dependency -- the island's image has six -- and
-# `NanoRosReconfigure.cmake` kept its state per CALL, so the second call
-# settled the future date the first had armed and measured itself against the
-# bytes the first had written. The arm was raised and then taken back inside
-# one configure, so `build.ninja` came out newer than the fragment and ninja
-# had nothing stale to re-run cmake for.
-#
-# The baseline and the arm are per PASS now, so the three passes above happen
-# inside one `west build` however many packages call the verb. Case J of
-# `tests/cmake-reconfigure-tests.sh` is the control: it reproduces the island's
-# 2-configures/1496 on the old module and requires 3/880 on this one.
+# the file up, and what keeps the ninja input well-formed). What closed the lag
+# for issues 0991/1002/1119 was a fixed point that future-dated the fragment
+# until ninja re-ran cmake -- up to THREE configures on a clean build dir, since
+# the producers are a chain (the entity inventory feeds the bounds). It is
+# deleted (phase-530 W7, RFC-0120 D5): `nros configure` runs before this
+# configure (the module hook) and writes the answer as a SEED, this loader
+# reads it, and the producer is held to it at the end of the configure. A read
+# with no seed is held to the same check and never re-converged
+# (cmake/NanoRosPromise.cmake).
 #
 # `check-knob-delivery <build-dir>` still answers "did the value ARRIVE" for a
 # build dir directly, and is the thing to run before trusting a size out of one.
@@ -376,8 +351,8 @@ endfunction()
 # `nano_ros_entry()` rather than `nros_find_interfaces()` -- an entity count is
 # a property of the registered COMPONENTS, so it is composed at the point every
 # `nano_ros_node_register()` has run -- but from this module's seat both are
-# "later in this configure than I am", and issue 0991's
-# `nros_reconfigure_on_change` at those producers is what closes it. The
+# "later in this configure than I am", and the seed `nros configure` writes
+# before this configure is what closes it (RFC-0120 D5). The
 # `CMAKE_CONFIGURE_DEPENDS` registration is NOT that mechanism and never was;
 # see the note on the loader above.
 function(_nros_load_derived_entity_inventory)

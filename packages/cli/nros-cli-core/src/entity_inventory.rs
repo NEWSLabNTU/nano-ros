@@ -5894,10 +5894,10 @@ impl EntityInventory {
         ));
         // WHERE THE COMPOSITION SOURCE WENT, AND WHY IT IS NOT HERE (issue 1228).
         //
-        // These BYTES are hashed. `nros_reconfigure_snapshot` compares this
-        // file's content to decide whether the mid-configure producer's answer
-        // differs from the one this pass's readers already consumed, and a
-        // difference costs a whole extra configure pass.
+        // These BYTES are hashed. The promise check (`cmake/NanoRosPromise.cmake`)
+        // compares this file's content to decide whether the mid-configure
+        // producer's answer differs from the one this configure's readers
+        // already consumed, and a difference stops the configure.
         //
         // Two renderings here depended on WHICH COMPOSER ran rather than on the
         // image, and MEASURED on `demo_bringup:zephyr` (native_sim/native/64)

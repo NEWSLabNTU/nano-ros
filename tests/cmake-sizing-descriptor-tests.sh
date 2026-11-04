@@ -670,7 +670,6 @@ mkdir -p "$BPROJ"
 cat > "$BPROJ/CMakeLists.txt" <<'EOF'
 cmake_minimum_required(VERSION 3.20)
 project(nros_sizing_descriptor_west_backstop_test NONE)
-include("$ENV{NROS_TEST_RECONFIGURE}")
 include("$ENV{NROS_TEST_MODULE}")
 set(_leaf "")
 if(NOT "$ENV{NROS_TEST_LEAF_FILE}" STREQUAL "")
@@ -679,7 +678,7 @@ if(NOT "$ENV{NROS_TEST_LEAF_FILE}" STREQUAL "")
 endif()
 nros_sizing_descriptor_west_fragment(_frag)
 nros_sizing_descriptor_west_default("$ENV{NROS_TEST_RESOLVED}" "${_leaf}")
-nros_reconfigure_settle("${_frag}")
+nros_promise_read("${_frag}")
 include("${_frag}")
 message(STATUS "DEFAULT=${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
 # The entry's half, when the case has one: an entry that names a descriptor
@@ -706,7 +705,6 @@ EOF
 # run_backstop <resolved-dir-or-empty> <leaf-file:1|empty> <entry-writes:1|empty>
 run_backstop() {
     rm -rf "$BPROJ/build"
-    NROS_TEST_RECONFIGURE="$PROJECT_ROOT/cmake/NanoRosReconfigure.cmake" \
     NROS_TEST_MODULE="$MODULE" \
     NROS_TEST_RESOLVED="$1" \
     NROS_TEST_LEAF_FILE="$2" \
@@ -738,8 +736,8 @@ cargo would be handed a file that is not there (RFC-0100 D6) -- $OUT"
 fi
 check
 if ! nros_grep_q "none was written" <<<"$OUT"; then
-    fail "G8: the backstop took the decision back without arming a re-configure, so \
-THIS pass's resolver keeps the missing path -- $OUT"
+    fail "G8: the backstop took the decision back and the end-of-configure check did \
+not report it, so THIS configure's resolver keeps the missing path silently -- $OUT"
 fi
 OUT="$(run_backstop "" "" "")"
 check
@@ -843,7 +841,37 @@ if(NOT "$ENV{NROS_TEST_RUNTIME}" STREQUAL "")
     set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_INVENTORY_MODELS "$ENV{NROS_TEST_MODEL}")
     set_property(GLOBAL APPEND PROPERTY NROS_SIZING_RUNTIME_RMWS "cyclonedds")
 endif()
-if("$ENV{NROS_TEST_WEST}" STREQUAL "")
+if(NOT "$ENV{NROS_TEST_WEST_DEFERRED}" STREQUAL "")
+    # phase-530 W7 -- the module's call happens inside `find_package(Zephyr)`,
+    # BEFORE the entry copies the descriptor to `west-cargo.toml`. `early` is
+    # the retired shape (read now), `deferred` the fix (read at the end).
+    add_library(nros STATIC "${CMAKE_BINARY_DIR}/cyc.c")
+    if("$ENV{NROS_TEST_WEST_DEFERRED}" STREQUAL "early")
+        nros_sizing_descriptor_west_fragment(_wf)
+        set(NROS_SIZING_DESCRIPTOR_FOR_CARGO "")
+        if(EXISTS "${_wf}")
+            include("${_wf}")
+        endif()
+        set(_wd "")
+        if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL ""
+           AND EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+            set(_wd "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+        endif()
+        nros_sizing_descriptor_apply_cyclonedds(TARGET nros DESCRIPTOR "${_wd}")
+    else()
+        nros_sizing_descriptor_west_apply_cyclonedds_deferred(nros)
+    endif()
+    # ... then the ENTRY, later in the configure: it copies its descriptor to
+    # the fixed path and records "named" (`nros_sizing_descriptor_record_for_west`).
+    nros_sizing_descriptor_west_cargo_path(_wc)
+    configure_file("$ENV{NROS_TEST_DESCRIPTOR}" "${_wc}" COPYONLY)
+    nros_sizing_descriptor_west_fragment(_wf)
+    nros_sizing_descriptor_west_body(_wb TRUE)
+    file(WRITE "${_wf}" "${_wb}")
+    file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/nros-defs.txt"
+        CONTENT "$<TARGET_PROPERTY:nros,COMPILE_DEFINITIONS>\n")
+    set(_defs "(see nros-defs.txt)")
+elseif("$ENV{NROS_TEST_WEST}" STREQUAL "")
     nros_sizing_descriptor_apply_cyclonedds()
     nros_sizing_descriptor_apply_cyclonedds()
     get_target_property(_defs nros_rmw_cyclonedds COMPILE_DEFINITIONS)
@@ -956,6 +984,26 @@ check
 if nros_grep_q "CYC_OTHER_TARGET=.*NROS_CYCLONEDDS_" <<<"$OUT"; then
     fail "I4: TARGET nros was asked for and nros_rmw_cyclonedds got the facts -- $OUT"
 fi
+log_info "I5. the west road reads west-cargo.toml AFTER the entry copies it (phase-530 W7, issue 1653)"
+# The fifth configure-time producer RFC-0120 D6 names. Read where the module is
+# processed, the C++ half compiled from the PREVIOUS configure's copy (a clean
+# build dir: from nothing), and issue 0991's fixed point paid a pass to catch
+# up. Deferred to the end of the configure, the read follows the write.
+OUT="$(NROS_TEST_WEST_DEFERRED=early run_cyc "$CYC_BODY" "talker" "")"
+check
+if nros_grep_q "NROS_CYCLONEDDS_" "$CYC_PROJ/build/nros-defs.txt"; then
+    fail "I5 control: an EARLY read saw the copy the entry wrote after it -- the case \
+below proves nothing -- $(cat "$CYC_PROJ/build/nros-defs.txt")"
+fi
+OUT="$(NROS_TEST_WEST_DEFERRED=deferred run_cyc "$CYC_BODY" "talker" "")"
+check
+if ! nros_grep_q "NROS_CYCLONEDDS_HEAP_BUDGET_BYTES=65536" "$CYC_PROJ/build/nros-defs.txt" \
+   || ! nros_grep_q "NROS_CYCLONEDDS_MAX_KINDS=5" "$CYC_PROJ/build/nros-defs.txt"; then
+    fail "I5: the deferred west apply did not read the descriptor the entry copied in \
+this configure, so the Cyclone C++ half lags a configure behind its Rust half -- \
+$(cat "$CYC_PROJ/build/nros-defs.txt" 2>/dev/null) -- $OUT"
+fi
+
 log_info "I4b. the west road named NO descriptor: nothing, even though cargo_env has one"
 OUT="$(NROS_TEST_WEST=1 NROS_TEST_WEST_DESCRIPTOR= run_cyc "$CYC_BODY" "talker" "")"
 check

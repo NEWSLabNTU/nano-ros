@@ -552,19 +552,17 @@ declared-fact-carriers:
 knob-delivery:
     @python3 scripts/check-knob-delivery.py --self-test
 
-# Issue 1002 — a configure sequence must reach a FIXPOINT, and the pass count
-# is not the instrument. 0991's remedy says configure TWICE; the receive
-# payload class needed THREE, and four island builds shipped the stale value
-# because the stale one is LARGER and therefore silent. This configures until
-# nothing moves rather than counting, so a knob that gains a longer chain fails
-# here instead of over-sizing for a month.
+# phase-530 W7 (RFC-0120 D5) — a configure takes ONE pass. Issue 1002's
+# fixpoint gate configured until nothing moved; the fixed point that made
+# several passes necessary is deleted, so this asks the stronger question: a
+# second configure with nothing changed moves no resolved knob.
 #
 # Self-test only in the fast tier: the real assertion needs a configured build
 # dir. Point it at one by hand:
-#     python3 scripts/check-knob-fixpoint.py <build-dir> --configure "<cmd>"
+#     python3 scripts/check-knob-one-pass.py <build-dir> --configure "<cmd>"
 [private]
-knob-fixpoint:
-    @python3 scripts/check-knob-fixpoint.py --self-test
+knob-one-pass:
+    @python3 scripts/check-knob-one-pass.py --self-test
 
 # Issue 1015 — a knob that SIZES A FIXED C ARRAY states its smallest legal
 # value, and the floor is applied by the CONSUMER that names the knob.
@@ -572,7 +570,7 @@ knob-fixpoint:
 # `MAX_QUERYABLES` derived 0 on an image declaring no service servers, and the
 # board then transmitted 0 bytes in 15 s: no panic, no log, core in WFI. Every
 # knob gate stayed green — `check-knob-delivery` confirms the value ARRIVED
-# (it did) and `check-knob-fixpoint` converges (0 is stable). None asked
+# (it did) and `check-knob-one-pass` holds (0 is stable). None asked
 # whether the number was USABLE.
 #
 # "Pools are positive" would be the wrong rule: issue 1033 lowered the XRCE

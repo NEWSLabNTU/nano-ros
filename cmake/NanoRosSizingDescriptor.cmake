@@ -52,8 +52,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")  # issue 2200
 # phase-462 W6c -- `_nros_board_rx_cost_args`, the board's `[board.rx]`.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardRxCost.cmake")
 # phase-530 W4 (RFC-0120 D5) -- the west decision fragment is held to the
-# module's decision by a promise check. (The Cyclone C++ facts' cargo-file arm,
-# issue 1653, still uses NanoRosReconfigure.cmake directly: phase-530 W7 maps it.)
+# module's decision by a promise check.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPromise.cmake")
 
 # nros_sizing_descriptor_path(<out_var> <build_dir> <entry>)
@@ -413,9 +412,15 @@ endfunction()
 # census (`entities = "census"`) has no other statement to fall back on, so
 # degrading to the backend's guess there is issue 1142's 31 KB chosen by nobody
 # (issue 1556).
+#
+# `ENTITY_CMAKE <path>` (phase-530 W7, RFC-0120 D5) also writes the leaf's
+# entity-inventory fragment there, from the same declaration, and sets
+# `<out_var>_ENTITY_FRAGMENT` to it when one was written (a leaf that declares
+# nothing gets none).
 function(nros_sizing_descriptor_from_leaf _out_var)
-    cmake_parse_arguments(_nsl "REQUIRED" "CLI;LEAF;ENTRY;BUILD_DIR" "" ${ARGN})
+    cmake_parse_arguments(_nsl "REQUIRED" "CLI;LEAF;ENTRY;BUILD_DIR;ENTITY_CMAKE" "" ${ARGN})
     set(${_out_var} "" PARENT_SCOPE)
+    set(${_out_var}_ENTITY_FRAGMENT "" PARENT_SCOPE)
 
     if(NOT _nsl_LEAF OR NOT EXISTS "${_nsl_LEAF}/system.toml")
         return()
@@ -437,6 +442,10 @@ function(nros_sizing_descriptor_from_leaf _out_var)
     _nros_sizing_target_args(_host_arg)
     _nros_sizing_bound_args(_bound_args)
     _nros_sizing_heap_args(_heap_args)
+    set(_entity_arg "")
+    if(_nsl_ENTITY_CMAKE)
+        set(_entity_arg --entity-cmake "${_nsl_ENTITY_CMAKE}")
+    endif()
 
     execute_process(
         COMMAND "${_nsl_CLI}" dev image sizing-descriptor
@@ -444,6 +453,7 @@ function(nros_sizing_descriptor_from_leaf _out_var)
                 --build-dir "${_build_dir}"
                 --entry "${_nsl_ENTRY}"
                 --road "a standalone cmake leaf"
+                ${_entity_arg}
                 ${_host_arg} ${_heap_args} ${_bound_args}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
@@ -461,6 +471,10 @@ function(nros_sizing_descriptor_from_leaf _out_var)
             "nano-ros: no sizing descriptor written for leaf `${_nsl_LEAF}` -- ${_why}. "
             "Every consumer keeps its own default sizes (RFC-0100 D6).")
         return()
+    endif()
+    if(_out MATCHES "\nentity-fragment ([^\n]+)$")
+        set(${_out_var}_ENTITY_FRAGMENT "${CMAKE_MATCH_1}" PARENT_SCOPE)
+        string(REGEX REPLACE "\nentity-fragment [^\n]+$" "" _out "${_out}")
     endif()
     if(_out STREQUAL "")
         # The leaf declares nothing, or is a cargo leaf. The CLI said which.
@@ -774,28 +788,6 @@ function(_nros_sizing_descriptor_west_backstop)
         LABEL "the sizing descriptor this image names to cargo (none was written)")
 endfunction()
 
-# nros_sizing_descriptor_west_settle_cargo_file() — phase-439 W6
-#
-# Called by the module wherever it READS `west-cargo.toml`'s content at
-# configure time (Cyclone's C++ facts, issue 1653), before the entry rewrites
-# it. Records what this pass consumed -- including "nothing", which is what a
-# clean build dir has -- so the entry can arm a re-configure when the content
-# it copies differs. `nros_reconfigure_settle` takes no baseline for a missing
-# file, and without one a clean Cyclone image would compile its C++ half from
-# the defaults with nothing to say so.
-function(nros_sizing_descriptor_west_settle_cargo_file)
-    nros_sizing_descriptor_west_cargo_path(_f)
-    if(EXISTS "${_f}")
-        nros_reconfigure_settle("${_f}")
-        return()
-    endif()
-    _nros_reconfigure_pass_props("${_f}" _basis_prop _armed_prop)
-    get_property(_have GLOBAL PROPERTY ${_basis_prop} SET)
-    if(NOT _have)
-        set_property(GLOBAL PROPERTY ${_basis_prop} "")
-    endif()
-endfunction()
-
 # nros_sizing_descriptor_record_for_west() — issue 1407
 #
 # The Zephyr WEST road's half of `nros_sizing_descriptor_cargo_env()` above.
@@ -857,26 +849,12 @@ function(nros_sizing_descriptor_record_for_west)
     # `nros configure`'s answer, at the end of this configure.
     nros_promise_check("${_frag}" "${_before}"
         LABEL "the sizing descriptor this image names to cargo")
-    # Issue 1653 (west half) -- the module ALSO compiled Cyclone's C++ TUs from
-    # this descriptor's CONTENT, at configure time and before this entry
-    # rewrote it (`nros_sizing_descriptor_apply_cyclonedds` in
-    # `zephyr/CMakeLists.txt`, which records what it read through
-    # `nros_sizing_descriptor_west_settle_cargo_file`). The Rust half re-reads it
-    # at build time and needs nothing; the C++ half does, or a board-heap edit
-    # lands one configure late -- measured: the image kept the old
-    # `HEAP_BUDGET_BYTES` while the descriptor stated the new one. Armed only
-    # when the module read it this pass: a descriptor nobody settled has no
-    # basis, and measuring it against "nothing" would arm every configure. The
-    # module records an ABSENT file as read, so a clean Cyclone image arms here
-    # -- that pass is real, since the C++ half is compiled at configure time.
-    if(COMMAND nros_reconfigure_on_change AND COMMAND _nros_reconfigure_pass_props)
-        _nros_reconfigure_pass_props("${_cargo_file}" _basis_prop _armed_prop)
-        get_property(_module_read GLOBAL PROPERTY ${_basis_prop} SET)
-        if(_module_read)
-            nros_reconfigure_on_change("${_cargo_file}" ""
-                LABEL "the sizing descriptor the module compiled Cyclone from")
-        endif()
-    endif()
+    # Issue 1653 (west half) -- the Cyclone C++ TUs the module compiles into
+    # `nros` read THIS file's content too, and the module applies them from a
+    # deferred call at the end of the top-level configure
+    # (`nros_sizing_descriptor_west_apply_cyclonedds_deferred`), i.e. after
+    # this copy: a read after its producer, so no pass and no promise
+    # (phase-530 W7 retired the re-configure arm that used to stand here).
 endfunction()
 
 # nros_sizing_descriptor_apply_cyclonedds() — issues 1653 + 1661, RFC-0100 D5/D11
@@ -980,6 +958,48 @@ function(nros_sizing_descriptor_apply_cyclonedds)
     message(STATUS
         "nano-ros: Cyclone sized from the runtime's sizing descriptor -- ${_defs} "
         "-> ${_nac_TARGET} (RFC-0100 D5/D11, issues 1653/1661)")
+endfunction()
+
+# nros_sizing_descriptor_west_apply_cyclonedds_deferred(<target>) — issue 1653,
+# phase-530 W7
+#
+# The Zephyr WEST road's Cyclone half, read AFTER its producer. The module is
+# processed inside `find_package(Zephyr)`, before any `nano_ros_entry()`, and
+# the descriptor it compiles from is the one the entry copies to
+# `west-cargo.toml` (`nros_sizing_descriptor_record_for_west`). Reading it
+# there compiled the C++ half from the PREVIOUS configure's copy -- the fifth
+# configure-time producer RFC-0120 D6 names -- and issue 0991's fixed point
+# paid a pass for it. Deferred to the end of the top-level directory instead,
+# where every entry has run (each runs synchronously inside the configure), the
+# read follows the write: the cmake road already applies it from the deferred
+# entity-facts flush for the same reason. One hop late, so it also follows
+# every deferred call queued before it (the descriptor backstop among them).
+function(nros_sizing_descriptor_west_apply_cyclonedds_deferred _target)
+    set_property(GLOBAL PROPERTY NROS_WEST_CYCLONEDDS_TARGET "${_target}")
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+        CALL _nros_sizing_descriptor_west_apply_cyclonedds)
+endfunction()
+
+function(_nros_sizing_descriptor_west_apply_cyclonedds)
+    get_property(_hop GLOBAL PROPERTY NROS_WEST_CYCLONEDDS_HOP)
+    if(NOT _hop)
+        set_property(GLOBAL PROPERTY NROS_WEST_CYCLONEDDS_HOP TRUE)
+        cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+            CALL _nros_sizing_descriptor_west_apply_cyclonedds)
+        return()
+    endif()
+    get_property(_target GLOBAL PROPERTY NROS_WEST_CYCLONEDDS_TARGET)
+    nros_sizing_descriptor_west_fragment(_frag)
+    set(NROS_SIZING_DESCRIPTOR_FOR_CARGO "")
+    if(EXISTS "${_frag}")
+        include("${_frag}")
+    endif()
+    set(_descriptor "")
+    if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL ""
+       AND EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+        set(_descriptor "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+    endif()
+    nros_sizing_descriptor_apply_cyclonedds(TARGET "${_target}" DESCRIPTOR "${_descriptor}")
 endfunction()
 
 # nros_sizing_descriptor_read(<descriptor> [QUIET])

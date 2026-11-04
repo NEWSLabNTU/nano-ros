@@ -1439,8 +1439,8 @@ function(_nros_entry_invoke_codegen)
     # composed before this configure (the seed), and this composition is HELD
     # to it at the end of the configure: equal continues, different fails the
     # configure naming both files, or naming the registration configure could
-    # not see. With no configure in front (a plain cmake road until phase-530
-    # W5) the old re-configure lever still applies; see NanoRosPromise.cmake.
+    # not see. A reader with no configure in front is held to the same end
+    # check, never re-converged (cmake/NanoRosPromise.cmake).
     include("${_NROS_ENTRY_DIR}/NanoRosEntityInventory.cmake")
     include("${_NROS_ENTRY_DIR}/NanoRosPromise.cmake")
     nros_entity_inventory_knobs_file(_entity_knobs_path)

@@ -165,7 +165,7 @@ just-recipe-refs
 kconfig-knob-forwarding
 kconfig-overridden-values
 knob-delivery
-knob-fixpoint
+knob-one-pass
 knob-resolved-once
 knob-single-reader
 lane-contracts
@@ -239,7 +239,6 @@ python
 qos-profile-ssot
 queue-notify-decision
 readiness-marker-literals
-reconfigure-on-change
 reconfigure-stale
 release-manifest
 repr-memory-agreement

@@ -13,7 +13,6 @@
     "cmake/NanoRosMessageBounds.cmake": 1,
     "cmake/NanoRosPackageXml.cmake": 2,
     "cmake/NanoRosPoolFloor.cmake": 1,
-    "cmake/NanoRosReconfigure.cmake": 2,
     "cmake/NanoRosRustTool.cmake": 2,
     "cmake/NanoRosSharedCargoLink.cmake": 1,
     "cmake/NanoRosSizingDescriptor.cmake": 10,

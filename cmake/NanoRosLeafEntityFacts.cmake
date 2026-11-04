@@ -39,6 +39,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityFacts.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSizingDescriptor.cmake")
 # Issue 2086 -- `nros_leaf_census_take`, shared with the Zephyr module.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLeafCensus.cmake")
+# phase-530 W7 -- `nros_entity_inventory_knobs_file` and the promise module,
+# for the leaf's entity seed below.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityInventory.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPromise.cmake")
 
 # Issue 2043 — the program a HOST census build of a leaf runs, written as
 # `<build>/nros/census-program.txt` at generate time:
@@ -193,11 +197,33 @@ function(nros_record_leaf_entity_facts _dir)
     if(_nros_leaf_census_optin)
         set(_nros_leaf_required REQUIRED)
     endif()
+    #
+    # phase-530 W7 (RFC-0120 D5, Ruling R37) -- and the leaf's ENTITY fragment,
+    # from the same declaration, here: before every reader of this configure
+    # (the payload-class join in `nros_find_interfaces()`, the cargo env at the
+    # entity-facts flush). It is this leaf's seed -- what `west-leaf-sizing`
+    # is for a Zephyr C/C++ leaf, the one composer both call -- so the readers
+    # read it and the composer that reads only `nros-metadata.json`, which
+    # cannot see a census, stands down rather than overwrite it.
+    nros_entity_inventory_knobs_file(_nros_leaf_entity_frag)
     nros_sizing_descriptor_from_leaf(_nros_leaf_descriptor ${_nros_leaf_required}
         CLI       "${_nros}"
         LEAF      "${_dir}"
         ENTRY     "${CMAKE_PROJECT_NAME}"
-        BUILD_DIR "${CMAKE_BINARY_DIR}")
+        BUILD_DIR "${CMAKE_BINARY_DIR}"
+        ENTITY_CMAKE "${_nros_leaf_entity_frag}")
+    if(NOT "${_nros_leaf_descriptor_ENTITY_FRAGMENT}" STREQUAL "")
+        set(_nros_leaf_basis "system.toml declaration")
+        if(_nros_leaf_census_optin)
+            set(_nros_leaf_basis "census")
+        endif()
+        nros_promise_seeded("${_nros_leaf_entity_frag}"
+            "the leaf's ${_nros_leaf_basis} (`sizing-descriptor --from-leaf`)")
+        set_property(GLOBAL PROPERTY NROS_ENTITY_INVENTORY_LEAF_SIZED "${_nros_leaf_basis}")
+        message(STATUS
+            "nano-ros: entity inventory from ${_dir}/system.toml's ${_nros_leaf_basis}, "
+            "before every reader -- ${_nros_leaf_entity_frag}")
+    endif()
     if(_nros_leaf_descriptor)
         message(STATUS
             "nano-ros: sizing descriptor written from ${_dir}/system.toml — "

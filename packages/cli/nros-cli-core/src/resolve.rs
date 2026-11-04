@@ -27,8 +27,8 @@
 //! `zephyr/cmake/nros_cargo_build.cmake` exists to paper over: the entity
 //! inventory's producer (`nano_ros_entry()`) runs LATER in a configure than its
 //! reader (`nros_resolve_knobs()`, inside `find_package(Zephyr)`). A producer
-//! that runs BEFORE the configure has no such lag, which is what makes the
-//! future-mtime arm in `cmake/NanoRosReconfigure.cmake` deletable.
+//! that runs BEFORE the configure has no such lag, which is what made issue
+//! 0991's future-mtime arm deletable (deleted, phase-530 W7).
 //!
 //! # Why the metadata probe cannot be the source
 //!
@@ -1240,9 +1240,9 @@ mod tests {
     /// projection and the mid-configure producer's write the SAME NUMBERS and
     /// the SAME BYTES when they see the same wiring.
     ///
-    /// `nros_reconfigure_snapshot` hashes CONTENT, so the CMake seed
-    /// (`nros_resolved_seed_entity_inventory`) removes a configure pass only
-    /// when the producer that follows it writes what the seed already wrote —
+    /// The promise check (`cmake/NanoRosPromise.cmake`) hashes CONTENT, so the
+    /// CMake seed (`nros_resolved_seed_entity_inventory`) holds only when the
+    /// producer that follows it writes what the seed already wrote —
     /// case B of `tests/cmake-resolved-seed-tests.sh`, which measures exactly
     /// that on a five-line project.
     ///
@@ -1311,7 +1311,7 @@ mod tests {
              can under-size an image and `nros_resolved_seed_entity_inventory` is unsafe"
         );
 
-        // And the BYTES, which is what `nros_reconfigure_snapshot` compares. A
+        // And the BYTES, which is what the promise check compares. A
         // whole-string equality rather than a diff of interesting lines: the
         // class is "content that depends on which composer ran" — a path, an
         // ordering, a package spelling, a banner — not one named field.

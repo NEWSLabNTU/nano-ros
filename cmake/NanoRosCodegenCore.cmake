@@ -1488,18 +1488,20 @@ function(nros_find_interfaces)
     #    resolver already has against this file.
     #
     #    Issue 0991 -- that lag used to be described here as closing itself
-    #    through `CMAKE_CONFIGURE_DEPENDS` plus a write-if-changed producer.
-    #    MEASURED: it never did, because `build.ninja` is written AFTER the
-    #    fragment and ninja's regeneration rule fires only on an input that is
-    #    NEWER. `NanoRosReconfigure.cmake` is the mechanism that actually
-    #    re-runs cmake, and the calls below are its two halves: SETTLE before
-    #    the read (clear a date a previous pass armed) and, further down, arm on
-    #    change around the write.
+    #    through `CMAKE_CONFIGURE_DEPENDS` plus a write-if-changed producer. It
+    #    never did (`build.ninja` is written AFTER the fragment), and the fixed
+    #    point that did close it (a future-dated fragment) is deleted
+    #    (phase-530 W7, RFC-0120 D5). Nothing here needs it:
     #
-    #    So the honest statement remains what it always claimed to be: an image
-    #    whose declaration has just changed configures once at its old payload
-    #    classes, re-configures, and builds at the derived ones -- and it is
-    #    never silent, since the status line says which basis was used.
+    #    * on the Zephyr road the knob resolver READ both fragments before this
+    #      ran -- seeded by `nros configure` -- and this derivation is held to
+    #      the bounds seed at the end of the configure (`nros_promise_check`
+    #      below; the resolver registered the fragment);
+    #    * on the CMake roads nothing reads the bounds fragment at configure
+    #      time at all: the payload classes reach cargo through the sizing
+    #      descriptor. So this function is no READER of either fragment, and
+    #      registers none -- a promise is owed to a reader, and the entity
+    #      fragment's own consumers register themselves.
     nros_entity_inventory_knobs_file(_entity_knobs)
     # phase-439 W2 (RFC-0094 D1) -- prefer the resolve phase's answer over a
     # placeholder. Same reason as the Zephyr loader: this reader runs before the
@@ -1509,18 +1511,11 @@ function(nros_find_interfaces)
     nros_entity_inventory_seed_knobs_file("${_entity_knobs}")
     set_property(DIRECTORY APPEND PROPERTY
         CMAKE_CONFIGURE_DEPENDS "${_entity_knobs}")
-    nros_promise_read("${_entity_knobs}")
     nros_message_bounds_knobs_file(_bounds_knobs)
-    # phase-530 W4 -- on a road whose module loader did not run first (a cmake
-    # leaf), this is the first reader of the bounds fragment, so it is where
-    # `nros configure`'s seed is copied in.
-    nros_resolved_seed_message_bounds("${_bounds_knobs}")
-    nros_promise_read("${_bounds_knobs}")
-    # The digest of what the readers of THIS configure consumed. The Zephyr
-    # knob resolver already read this file during `find_package(Zephyr)`; the
-    # derivation below is held to it (RFC-0120 D5): at the end of the configure,
-    # after the LAST producer call, because an earlier call sees fewer tables
-    # and legitimately differs.
+    # Where the Zephyr knob resolver read this file during
+    # `find_package(Zephyr)`, the derivation below is held to what it read
+    # (RFC-0120 D5): at the end of the configure, after the LAST producer call,
+    # because an earlier call sees fewer tables and legitimately differs.
     nros_promise_snapshot("${_bounds_knobs}" _bounds_before)
     nros_derive_message_bound_knobs(
         OUTPUT_FILE "${_bounds_knobs}"

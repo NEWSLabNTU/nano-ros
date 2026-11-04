@@ -1181,32 +1181,14 @@ nros_defer_generated_app_check()
 # Issue 1653 (west half) -- the Cyclone facts the image's sizing descriptor
 # states (`[target] heap_budget_bytes`, `[types]`) reach the C++ TUs this
 # module compiles into `nros`, as they reach `nros_rmw_cyclonedds` on the cmake
-# road. The descriptor is the one this configure names to CARGO, recorded by the
-# entry on the previous pass (issue 1407's fragment, which
-# `_nros_load_west_sizing_descriptor` has already registered as a configure
-# dependency) -- so the C++ and Rust halves of one image read one file. LAST,
-# for the reason the check above is: `nros_resolve_cli`, which the reader needs,
-# comes from `NanoRosCodegenCore.cmake`.
+# road. The descriptor is the one this configure names to CARGO, which the
+# entry copies to `west-cargo.toml` LATER in this configure -- so the read is
+# deferred to the end of the top-level directory, after that copy (phase-530
+# W7: it was read here, from the previous configure's copy, and issue 0991's
+# fixed point paid a pass to catch up). The C++ and Rust halves of one image
+# read one file.
 if(CONFIG_NROS_RMW_CYCLONEDDS)
-    nros_sizing_descriptor_west_fragment(_nros_west_sizing_frag)
-    set(NROS_SIZING_DESCRIPTOR_FOR_CARGO "")
-    if(EXISTS "${_nros_west_sizing_frag}")
-        include("${_nros_west_sizing_frag}")
-    endif()
-    # Record what this pass compiles from, so the entry -- which rewrites the
-    # descriptor AFTER this runs -- can arm another configure when the content
-    # moved (`nros_sizing_descriptor_record_for_west`). phase-439 W6: the path
-    # is fixed and may be named before the entry has written it, so an ABSENT
-    # file is recorded as read too, and the defaults apply this pass.
-    set(_nros_west_cyc_descriptor "")
-    if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL "")
-        nros_sizing_descriptor_west_settle_cargo_file()
-        if(EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
-            set(_nros_west_cyc_descriptor "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
-        endif()
-    endif()
-    nros_sizing_descriptor_apply_cyclonedds(
-        TARGET nros DESCRIPTOR "${_nros_west_cyc_descriptor}")
+    nros_sizing_descriptor_west_apply_cyclonedds_deferred(nros)
 endif()
 
 endif() # CONFIG_NROS
