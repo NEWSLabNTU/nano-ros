@@ -37,6 +37,13 @@ Options:
                             variable narrows the west [[compile_check_fixture]]
                             rows in west-fixtures.sh (issue 1536). Selecting no
                             leaf exits 3.
+  --isolation-table FILE    the allocator's baked isolation values, as printed
+                            by `cell-isolation` (nros-tests; issue 2251). A
+                            leaf whose router port / Agent port / domain is
+                            the allocator's takes it from here. Without it the
+                            emit is READ-ONLY: those fields read UNRESOLVED,
+                            and zephyr-fixture-run-one.sh refuses to build
+                            such a record.
   --include-workspace-entry also emit the Zephyr workspace-Entry leaf
   -h, --help                show this help
 
@@ -61,6 +68,7 @@ sccache_disable="${NROS_ZEPHYR_SCCACHE_DISABLE:-0}"
 pristine="${NROS_ZEPHYR_PRISTINE:-auto}"
 fixture_filter="${NROS_ZEPHYR_FIXTURE_FILTER:-}"
 include_workspace_entry=0
+isolation_table=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -116,6 +124,11 @@ while [ "$#" -gt 0 ]; do
             ;;
         --include-workspace-entry)
             include_workspace_entry=1
+            ;;
+        --isolation-table)
+            shift
+            [ "$#" -gt 0 ] || { usage; exit 2; }
+            isolation_table="$1"
             ;;
         -h|--help)
             usage
@@ -286,41 +299,39 @@ emit_record() {
     printf '\n'
 }
 
-variant_offset_for_role() {
+# Issue 2251 — the allocator's isolation values come from `nros_tests::alloc`,
+# printed by the `cell-isolation` bin, never recomputed here. This script used
+# to carry the formulas a second time (`2400 + lang_offset + variant_offset`,
+# `22 + variant_idx * 3 + lang_idx`, and issue 2221's `+ 9`), and nothing
+# compared the two: a formula edit in Rust would have left every image baking
+# the old numbers while the injectivity gate went on proving the new ones.
+#
+# What stays here is VOCABULARY, not arithmetic: which matrix workload a west
+# role is an image of. A role this does not name has no allocator cell.
+workload_for_role() {
     case "$1" in
-        talker|listener) printf '%s\n' 0 ;;
-        service-server|service-client) printf '%s\n' 10 ;;
-        action-server|action-client) printf '%s\n' 20 ;;
-        *) echo "unknown Zephyr fixture role: $1" >&2; return 2 ;;
+        talker|listener) printf '%s\n' Pubsub ;;
+        service-server|service-client) printf '%s\n' Service ;;
+        action-server|action-client) printf '%s\n' Action ;;
+        idle-wake) printf '%s\n' IdleWake ;;
+        *) return 1 ;;
     esac
 }
 
-variant_idx_for_role() {
-    case "$1" in
-        talker|listener) printf '%s\n' 0 ;;
-        service-server|service-client) printf '%s\n' 1 ;;
-        action-server|action-client) printf '%s\n' 2 ;;
-        *) echo "unknown Zephyr fixture role: $1" >&2; return 2 ;;
-    esac
-}
-
-lang_offset_for_lang() {
-    case "$1" in
-        rust) printf '%s\n' 0 ;;
-        c) printf '%s\n' 100 ;;
-        cpp) printf '%s\n' 200 ;;
-        *) echo "unknown Zephyr fixture language: $1" >&2; return 2 ;;
-    esac
-}
-
-lang_idx_for_lang() {
-    case "$1" in
-        rust) printf '%s\n' 0 ;;
-        c) printf '%s\n' 1 ;;
-        cpp) printf '%s\n' 2 ;;
-        *) echo "unknown Zephyr fixture language: $1" >&2; return 2 ;;
-    esac
-}
+# Key: `<platform token>,<lang>,<rmw>,<Workload>` — the row's coordinate (the
+# manifest's own `row_coord`) plus the workload. Value: `<router> <agent> <domain>`,
+# `-` where the cell's RMW dials no such thing.
+declare -A isolation=()
+if [ -n "$isolation_table" ]; then
+    if [ ! -s "$isolation_table" ]; then
+        echo "zephyr-fixture-leaves: --isolation-table $isolation_table is missing or empty" >&2
+        exit 2
+    fi
+    while IFS=$'\t' read -r iso_tok iso_lang iso_rmw iso_wl iso_router iso_agent iso_domain; do
+        [ -n "$iso_tok" ] || continue
+        isolation["$iso_tok,$iso_lang,$iso_rmw,$iso_wl"]="$iso_router $iso_agent $iso_domain"
+    done < "$isolation_table"
+fi
 
 # phase-350 W1 — the leaf table is `examples/fixtures.toml`, read through
 # `fixtures-manifest.py west-leaves`.
@@ -374,13 +385,14 @@ while IFS=$'\x1f' read -r ov_id ov_kv; do
 done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-overrides)
 
 selected=0
-# `_row_coord` is read but unused HERE: this script's narrowing already happened
-# in `--coords-from` above, on the same `row_coord`. It is named so the trailing
-# field cannot be absorbed by `row_nros_image` — `read` puts the remainder in the
-# last variable, so an unnamed column silently corrupts the one before it.
+# `row_coord` (the manifest's `row_coord()`, `platform,lang,rmw`) is the
+# leaf's coordinate. The narrowing already happened in `--coords-from` above;
+# here it keys the allocator lookup (issue 2251). It is also the LAST field, and
+# `read` puts the remainder in the last variable, so an unnamed column would
+# silently corrupt the one before it.
 while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     row_zenoh_locator row_xrce_port row_cyclone_domain row_conf_files row_west_image \
-    row_ws_dir row_nros_image _row_coord; do
+    row_ws_dir row_nros_image row_coord; do
     [ -n "$board" ] || continue
 
     # Host gating, unchanged: cyclonedds leaves need an idlc. The manifest lists
@@ -462,30 +474,69 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         fi
     fi
 
+    # Issue 2251 — this leaf's allocator cell, when it is the image of one.
+    iso_key=""
+    iso_entry=""
+    if iso_wl="$(workload_for_role "$role")"; then
+        iso_key="$row_coord,$iso_wl"
+        iso_entry="${isolation[$iso_key]:-}"
+    fi
+
     if [ -n "$row_zenoh_locator$row_xrce_port$row_cyclone_domain" ]; then
-        # The row authored its isolation values (mps2 witness leaves).
+        # The row authored its isolation values (the mps2 leaves: their SLIRP
+        # host is 10.0.2.2, and several are not the image of any cell). When
+        # the row IS a cell's image, every value it states must be the
+        # allocator's — the test starts its router/Agent and joins its domain
+        # from the allocator, so a row that disagrees builds an image no test
+        # can reach.
         zenoh_locator="$row_zenoh_locator"
         xrce_agent_port="$row_xrce_port"
         dds_domain="$row_cyclone_domain"
+        if [ -n "$iso_entry" ]; then
+            read -r iso_router iso_agent iso_domain <<< "$iso_entry"
+            iso_bad=""
+            case "$row_zenoh_locator" in
+                tcp/*:*) [ "${row_zenoh_locator##*:}" = "$iso_router" ] ||
+                    iso_bad="$iso_bad west_zenoh_locator=$row_zenoh_locator (router port $iso_router);" ;;
+            esac
+            if [ -n "$row_xrce_port" ] && [ "$row_xrce_port" != "$iso_agent" ]; then
+                iso_bad="$iso_bad west_xrce_agent_port=$row_xrce_port (agent port $iso_agent);"
+            fi
+            if [ -n "$row_cyclone_domain" ] && [ "$row_cyclone_domain" != "$iso_domain" ]; then
+                iso_bad="$iso_bad west_cyclone_domain=$row_cyclone_domain (domain $iso_domain);"
+            fi
+            if [ -n "$iso_bad" ]; then
+                echo "zephyr-fixture-leaves: row $id is the image of allocator cell $iso_key, and states values the allocator does not give it:$iso_bad fix the row in examples/fixtures.toml (issue 2251)" >&2
+                exit 2
+            fi
+        fi
     elif [ "$role" != "logging-smoke" ]; then
-        # The allocator formula, for the six role leaves.
-        lang_offset="$(lang_offset_for_lang "$lang")"
-        lang_idx="$(lang_idx_for_lang "$lang")"
-        variant_offset="$(variant_offset_for_role "$role")"
-        variant_idx="$(variant_idx_for_role "$role")"
-        # Issue 2221 -- the DDS domain is baked for XRCE too. An XRCE image's
-        # Agent joins the domain the CLIENT names, so two images behind two
-        # Agent ports still share one RTPS bus when they share a domain; the
-        # Agent port isolates only the client<->Agent hop. XRCE sits 9 above
-        # the Cyclone sibling of the same (variant, lang): 31-39 beside 22-30.
-        # Mirror of `alloc::dds_domain_of` / `XRCE_DOMAIN_SHIFT`.
+        # The six role leaves take the allocator's values whole.
+        if [ -z "$iso_key" ]; then
+            echo "zephyr-fixture-leaves: row $id: role '$role' is the image of no allocator cell, and the row states no isolation values" >&2
+            exit 2
+        fi
+        if [ -z "$isolation_table" ]; then
+            # Read-only emit (the inventory gates): no values, and a record
+            # that says so rather than one that looks buildable.
+            iso_router=UNRESOLVED
+            iso_agent=UNRESOLVED
+            iso_domain=UNRESOLVED
+        elif [ -n "$iso_entry" ]; then
+            read -r iso_router iso_agent iso_domain <<< "$iso_entry"
+        else
+            echo "zephyr-fixture-leaves: row $id: no baked allocator cell $iso_key in $isolation_table — add the cell to matrix::CELLS, or give the row its values" >&2
+            exit 2
+        fi
+        # Issue 2221 — XRCE bakes a domain too: its Agent joins the domain the
+        # CLIENT names, so the Agent port isolates only the client<->Agent hop.
         case "$rmw" in
             xrce)
-                xrce_agent_port=$((2400 + lang_offset + variant_offset))
-                dds_domain=$((22 + 9 + variant_idx * 3 + lang_idx))
+                xrce_agent_port="$iso_agent"
+                dds_domain="$iso_domain"
                 ;;
-            zenoh) zenoh_locator="tcp/127.0.0.1:$((7400 + lang_offset + variant_offset))" ;;
-            cyclonedds) dds_domain=$((22 + variant_idx * 3 + lang_idx)) ;;
+            zenoh) zenoh_locator="tcp/127.0.0.1:$iso_router" ;;
+            cyclonedds) dds_domain="$iso_domain" ;;
         esac
     fi
 
@@ -572,7 +623,7 @@ done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaves "${
 # flag with the duplicate builder it existed for: the leaf is ordinary now.
 
 # Phase 225.P.6 — workspace-Entry leaf (Approach A). Constructed directly,
-# bypassing variant_offset_for_role (role="entry" is unknown to it). The
+# bypassing the role-to-cell lookup (role="entry" is unknown to it). The
 # proven zephyr-fixture-run-one.sh west path builds it unchanged — through
 # `nros build demo_bringup:zephyr` since phase-383 W9.b, and since phase-470
 # W5.a (issue 1288) over an application `nros build` GENERATES under

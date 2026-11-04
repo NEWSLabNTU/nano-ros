@@ -87,6 +87,13 @@ done
 [ -n "$build_dir" ] || die "record build_dir is empty: $id"
 [ -n "$log" ] || die "record log is empty: $id"
 [ -n "$sig_file" ] || die "record sig_file is empty: $id"
+# Issue 2251 — a record emitted without `--isolation-table` is an inventory
+# record: its allocator values were never looked up. Building it would bake the
+# word into an image, so refuse here, before any west or cmake line exists.
+case "$xrce_agent_port $zenoh_locator $dds_domain" in
+    *UNRESOLVED*)
+        die "record $id has no isolation values (emitted without --isolation-table); emit build records with zephyr-fixture-leaves.sh --isolation-table \"\$(nros_cell_isolation_file)\"" ;;
+esac
 case "$best_effort" in
     0|1) ;;
     *) die "invalid best_effort=$best_effort for $id" ;;

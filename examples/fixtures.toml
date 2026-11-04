@@ -5681,15 +5681,16 @@ conf_files = ["prj.conf", "prj-zenoh.conf", "../../../../packages/boards/nros-bo
 # phase-521 W7 (RFC-0113 D2) -- the RTOS idle-wake witness, the
 # (ZephyrQemuCortexM, C, {Zenoh, Xrce}, IdleWake) cells. One idle subscription
 # and one 1 s timer; the image counts its executor thread's switch-ins over five
-# periods and prints them. Port 10784 = `alloc::port_of(ZephyrQemuCortexM, C,
-# IdleWake)`, agent port 5784 = `alloc::xrce_agent_port_of(...)`; the agent
-# ADDRESS (10.0.2.2, QEMU's user-network host) is the leaf's own `system.toml`,
-# since the leaf exists only for this board. Domain =
-# `alloc::dds_domain_of(ZephyrQemuCortexM, C, IdleWake, rmw)`: 209 for zenoh,
-# 218 for XRCE (issue 2221 -- an XRCE image's Agent joins the client's domain,
-# so XRCE cells take their own); the arrival-latency test's host talker joins
-# it (`west_cyclone_domain` sets CONFIG_NROS_DOMAIN_ID for any RMW). The XRCE
-# row is the first XRCE
+# periods and prints them. The XRCE row states NO isolation values: its Agent
+# port (5784) and domain (218) are the allocator's, read by the west lane from
+# `cell-isolation` (issue 2251); the agent ADDRESS (10.0.2.2, QEMU's
+# user-network host) is the leaf's own `system.toml`, since the leaf exists only
+# for this board. The zenoh row must state its locator, because its host is the
+# SLIRP gateway rather than the native_sim 127.0.0.1, and with it the domain
+# (209) its host peer joins (`west_cyclone_domain` sets CONFIG_NROS_DOMAIN_ID for
+# any RMW). Both are checked against `alloc` at emit time: a row that is a
+# cell's image and states a value the allocator does not give it refuses to
+# build. The XRCE row is the first XRCE
 # image on an RTOS QEMU board. Consumed by tests/zephyr_cortex_m_qemu.rs.
 [[fixture]]
 platform = "zephyr-cortex-m"
@@ -5714,8 +5715,6 @@ dir = "packages/testing/nros-tests/bins/idle-wake-zephyr-mps2"
 board = "mps2/an385"
 west_role = "idle-wake"
 west_build_name = "build-cortex-m-c-idle-wake-xrce"
-west_cyclone_domain = 218
-west_xrce_agent_port = 5784
 conf_files = ["prj.conf"]
 west_image = "zephyr_xrce"
 

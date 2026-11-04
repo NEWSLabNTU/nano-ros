@@ -9,13 +9,15 @@
 //! fixtures.toml literals).
 //!
 //! Since the phase-295 W4 re-bake, the formula's numbers ARE the baked
-//! numbers everywhere: `examples/fixtures.toml` locator/domain columns,
-//! the per-example Cargo `[package.metadata.nros.deploy]` locators, the
-//! zephyr west lane (`scripts/build/zephyr-fixture-leaves.sh`), the
-//! threadx cyclone domain bakes (`just/threadx-*.just`), and
-//! [`crate::platform::PlatformConfig`]'s bases are all derived from (or
-//! verified against) these functions. Changing a formula here re-bakes
-//! the world — rebuild every affected fixture family after editing.
+//! numbers everywhere. The zephyr west lane READS them: it asks the
+//! `cell-isolation` bin ([`isolation_table`]) instead of recomputing them,
+//! and a west row that states its own values is checked against it at emit
+//! time (issue 2251). Elsewhere they are still spelled by hand — the
+//! `examples/fixtures.toml` locator/domain columns, the threadx cyclone
+//! domain bakes (`just/threadx-*.just`) — and
+//! [`crate::fixtures::baked_locator`] verifies the locator rows it names.
+//! Changing a formula here re-bakes the world — rebuild every affected
+//! fixture family after editing.
 //!
 //! Band layout: `7000 + platform.index() * 400` gives each platform a
 //! 400-wide TCP window; within it `workload.port_offset()` (0..=92) +
@@ -159,21 +161,117 @@ pub const BAREMETAL_LARGE_MSG_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 2)
 /// and `baked_locator`'s test holds the two equal.
 pub const BAREMETAL_RTIC_RUN_PLAN_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 3);
 
+/// Does this cell's image BAKE its isolation values at build time?
+///
+/// Native cells are ephemeral (runtime ports, `unique_ros_domain_id`); every
+/// other runtime cell bakes. The one predicate both the injectivity gate and
+/// [`isolation_table`] select by, so the table the build reads is exactly the
+/// set the gate proved collision-free.
+pub fn is_baked(cell: &Cell) -> bool {
+    use crate::matrix::{Kind, Tier};
+    !matches!(cell.platform, PlatformId::Linux)
+        && matches!(cell.tier, Tier::Runtime)
+        && !matches!(cell.kind, Kind::Interop)
+        // phase-510 — a CONFIGURED cell shares its default-build sibling's
+        // (platform, lang, workload) and so its formula port; its image is
+        // a different fixture, which carries its own locator.
+        && cell.config.is_empty()
+}
+
+/// The `rmw = "..."` token `examples/fixtures.toml` spells an RMW with.
+///
+/// Local to the table on purpose: `matrix::Rmw` has no blessed spelling
+/// (`Cyclonedds` is `"cyclone"` to the native example consumers), and this is
+/// the MANIFEST's vocabulary, the one a fixture row and the leaf builder use.
+const fn manifest_rmw_token(rmw: Rmw) -> &'static str {
+    match rmw {
+        Rmw::Zenoh => "zenoh",
+        Rmw::Cyclonedds => "cyclonedds",
+        Rmw::Xrce => "xrce",
+        Rmw::Uorb => "uorb",
+    }
+}
+
+/// Issue 2251 — every baked cell's isolation values, for a BUILD to read.
+///
+/// One line per (fixture platform token, lang, rmw, workload), tab-separated:
+///
+/// ```text
+/// <platform-token>  <lang>  <rmw>  <Workload>  <router port>  <xrce agent port>  <dds domain>
+/// ```
+///
+/// The router port is `-` unless the RMW is zenoh, the Agent port `-` unless it
+/// is XRCE. The domain is always stated: Cyclone and XRCE put it on the RTPS
+/// bus, and a zenoh image still bakes it (rmw_zenoh scopes key expressions by
+/// it, which is why a host peer must join the same one).
+///
+/// This is how the formulas above reach a fixture build without a second
+/// spelling: `zephyr-fixture-leaves.sh` used to recompute them in bash
+/// (`2400 + lang_offset + variant_offset`, `22 + variant_idx * 3 + lang_idx`),
+/// and nothing compared the two, so a formula edit here would have left every
+/// image baking the old numbers while the injectivity gate kept proving the
+/// new ones. The build now asks `cell-isolation`, which prints this.
+///
+/// Sorted and de-duplicated, so the output is stable and a key appears once.
+pub fn isolation_table() -> String {
+    use std::{collections::BTreeSet, fmt::Write as _};
+    let mut lines = BTreeSet::new();
+    for c in crate::matrix::CELLS.iter().filter(|c| is_baked(c)) {
+        for token in c.platform.fixture_tokens() {
+            // A column the cell's RMW does not dial is `-`, so no build can
+            // bake a router port into a DDS image or an Agent port into a
+            // zenoh one and have it look meaningful.
+            let router = match c.rmw {
+                Rmw::Zenoh => port(c).to_string(),
+                _ => "-".to_string(),
+            };
+            let agent = match c.rmw {
+                Rmw::Xrce => xrce_agent_port(c).to_string(),
+                _ => "-".to_string(),
+            };
+            lines.insert(format!(
+                "{token}\t{}\t{}\t{:?}\t{router}\t{agent}\t{}",
+                c.lang.as_str(),
+                manifest_rmw_token(c.rmw),
+                c.workload,
+                dds_domain(c),
+            ));
+        }
+    }
+    let mut out = String::new();
+    for l in lines {
+        let _ = writeln!(out, "{l}");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::matrix::{CELLS, Kind, PlatformId, Tier};
+    use crate::matrix::CELLS;
     use std::collections::HashMap;
 
     fn baked(cell: &&Cell) -> bool {
-        // Native = ephemeral; everything else bakes.
-        !matches!(cell.platform, PlatformId::Linux)
-            && matches!(cell.tier, Tier::Runtime)
-            && !matches!(cell.kind, Kind::Interop)
-            // phase-510 — a CONFIGURED cell shares its default-build sibling's
-            // (platform, lang, workload) and so its formula port; its image is
-            // a different fixture, which carries its own locator.
-            && cell.config.is_empty()
+        is_baked(cell)
+    }
+
+    /// Issue 2251 — a key the build looks up appears ONCE. Two lines for one
+    /// (token, lang, rmw, workload) would make the build's answer depend on
+    /// which line it read last.
+    #[test]
+    fn isolation_table_keys_are_unique() {
+        let table = isolation_table();
+        let mut seen = std::collections::HashSet::new();
+        for line in table.lines() {
+            let key: Vec<&str> = line.split('\t').take(4).collect();
+            assert!(seen.insert(key.clone()), "duplicate isolation key {key:?}");
+        }
+        assert!(
+            table
+                .lines()
+                .any(|l| l.starts_with("zephyr\trust\txrce\tPubsub\t")),
+            "the native_sim role leaves' cells are missing from the table:\n{table}"
+        );
     }
 
     /// THE RFC-0051 guarantee: the allocator is injective over every

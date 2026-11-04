@@ -223,8 +223,9 @@ pub const THREADX_LINUX: PlatformConfig = PlatformConfig {
 ///
 /// The compile-time `CONFIG_NROS_XRCE_AGENT_PORT` /
 /// `CONFIG_NROS_ZENOH_LOCATOR` Kconfigs are baked at `west build` time per
-/// (variant, lang) — see `scripts/build/zephyr-fixture-leaves.sh`, which
-/// computes the SAME formula.
+/// (variant, lang) by `scripts/build/zephyr-fixture-leaves.sh`, which reads the
+/// values from `alloc::isolation_table` (the `cell-isolation` bin) rather than
+/// computing them — issue 2251.
 pub const ZEPHYR: PlatformConfig = PlatformConfig {
     name: "zephyr",
     zenohd_port: platform_port_base(PlatformId::ZephyrNativeSim),
