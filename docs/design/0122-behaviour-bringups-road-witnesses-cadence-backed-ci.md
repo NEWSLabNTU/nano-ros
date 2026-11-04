@@ -67,8 +67,13 @@ workspace or a template:
 
 Every RTOS platform carries the same six role directories per language.
 `examples/workspaces/rust/src/` already holds `talker_pkg`, `listener_pkg`,
-`service_{server,client}_pkg` and `action_{server,client}_pkg`. **So the node
-code is already shared, and what is duplicated is the build around it.**
+`service_{server,client}_pkg` and `action_{server,client}_pkg`. The roles
+match, but **the programs do not** (amended 2026-11-04, option B below): the
+examples are the ROS 2 tutorial programs (`std_msgs/String` "Hello World: N",
+a one-shot `add_two_ints` client, an action client that streams feedback), and
+the workspace packages are an Int32 demo (`sent: N`, a client calling every
+tick, a result-only action client). So the build around the node code is
+duplicated, and the node code itself is two programs per role.
 
 The precedent is RFC-0066's own measurement (2026-08-03). Folding 35 sync and
 configure cycles into 15 made the native stage **21.5 % faster per fixture**
@@ -119,6 +124,18 @@ pass 100. It also keeps any shared-runtime descriptor fold (RFC-0100 D12)
 inside one behaviour. `demo_bringup`'s existing `linux_service_*` and
 `linux_action_*` images move into the behaviour bringups, so each image exists
 once.
+
+**One program per role (option B, maintainer ruling 2026-11-04).** Before any
+pair moves, the workspace node packages of `rust`, `c` and `cpp` are rewritten
+as the tutorial programs the examples run, and every workspace test, contract
+(`system.contract.yaml`), sizing measurement and marker expectation that
+reads the old Int32 demo moves with them. The examples' shape wins because it
+is what a ROS 2 user expects and what `ros2 topic echo` and the interop cells
+already read. A component may not block its executor, so a client sends its
+one request from a timer and polls for the reply; it prints the same line the
+blocking tutorial client prints. The `mixed` workspace keeps its own packages:
+it shares none with the three language workspaces, and its purpose is the
+cross-language composition, not the tutorial.
 
 ### D2 — What each non-pair row becomes
 
@@ -320,3 +337,6 @@ has no job behind it.
 - 2026-11-04: D10 (maintainer ruling): examples use generated entries, and the
   book follows. A hand-written `main` stays only in a manual-entry demo. The
   ratchet gains the entry-form axis.
+- 2026-11-04: Option B (maintainer ruling): the node code was not already
+  shared. D1 now unifies the workspace node packages on the tutorial programs
+  before the pairs move; Problem amended to say so.
