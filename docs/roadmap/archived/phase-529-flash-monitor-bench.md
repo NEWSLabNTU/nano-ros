@@ -1,15 +1,15 @@
 # Phase 529 — Real boards: `nros flash`, `nros monitor`, `nros bench`, and human steps
 
-**Status (2026-11-04). IN PROGRESS — W1, W2 and W4 done (W2 with `espflash` deferred: no in-tree board flashes with it); W3 done (its bench-board acceptance is phase-533's, with W5 and W6); W5 and W6 moved to [phase-533](phase-533-hardware-probe-runner-and-bench-cells.md).** Implements
-[RFC-0118](../design/0118-target-execution-model.md) D2, D6 and D7 for real
+**Status (2026-11-04). DONE — W1 to W4 done (W2 with `espflash` deferred: no in-tree board flashes with it; W3's bench-board acceptance moved with W5 and W6). W5 and W6 moved to [phase-533](../phase-533-hardware-probe-runner-and-bench-cells.md).** Implements
+[RFC-0118](../../design/0118-target-execution-model.md) D2, D6 and D7 for real
 silicon, and the flash and console runners of
-[RFC-0119](../design/0119-cli-extension-packages.md) D8.
+[RFC-0119](../../design/0119-cli-extension-packages.md) D8.
 
 Depends on:
 
-- [phase-528](phase-528-run-on-host-and-emulator.md) W1 and W4, for the plan,
+- [phase-528](../phase-528-run-on-host-and-emulator.md) W1 and W4, for the plan,
   the resolver and the shared verb machinery;
-- the boards [phase-524](phase-524-emulator-twins.md) buys, for the
+- the boards [phase-524](../phase-524-emulator-twins.md) buys, for the
   hardware acceptance (now phase-533's).
 
 phase-524 W5 (hardware runs) is executed with this phase's verbs.
@@ -310,7 +310,7 @@ Acceptance:
 
 The first probe runner and the hardware cells in the harness need the
 boards phase-524 W5 puts on the maintainer bench, so they moved to
-[phase-533](phase-533-hardware-probe-runner-and-bench-cells.md) (W1 and W2
+[phase-533](../phase-533-hardware-probe-runner-and-bench-cells.md) (W1 and W2
 there; maintainer, 2026-11-04). This phase closes on W1 to W4.
 
 ## Acceptance
@@ -328,7 +328,7 @@ bought, and power-switch hardware beyond the `run` step and `power_cycle`.
 
 ## RFC-0120 (2026-11-03): what changes for this phase
 
-[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+[RFC-0120](../../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](../phase-530-nros-configure-single-pass.md). For this phase:
 
 - **W3, `nros flash`'s "build if stale".** This goes through `nros configure` like `nros run`'s. A `west flash` after `nros build` runs no configure: the build directory is current.
 - **The serial-first chapter's flash line.** It needs no `nros sync` before it. On Zephyr boards, a reader who uses `west build` / `west flash` directly gets the same tight sizing in one pass (phase-530 W4).

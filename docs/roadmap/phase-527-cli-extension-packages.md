@@ -6,7 +6,7 @@ the host build role; declared overrides); W4 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
-[phase-529](phase-529-flash-monitor-bench.md), which depend on W1 to W3 here.
+[phase-529](archived/phase-529-flash-monitor-bench.md), which depend on W1 to W3 here.
 W4 depends on [phase-526](archived/phase-526-cli-two-tier-restructure.md) W2 for the
 reserved-verb list.
 

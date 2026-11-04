@@ -20,7 +20,7 @@ flasher, and how the result is distributed. Siblings:
 Implemented by [phase-527](../roadmap/phase-527-cli-extension-packages.md)
 (the kinds, the build role, dispatch, the first command packages), with the
 first-party runners in [phase-528](../roadmap/phase-528-run-on-host-and-emulator.md)
-and [phase-529](../roadmap/phase-529-flash-monitor-bench.md).
+and [phase-529](../roadmap/archived/phase-529-flash-monitor-bench.md).
 
 ## Summary
 
