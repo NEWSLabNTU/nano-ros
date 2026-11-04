@@ -338,7 +338,13 @@ notes = "NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a 921,600-
 # `breadth` inherits the Zephyr Cortex-M witness (RFC-0115 D4, RFC-0114 D11):
 # the twin adds one smoke run (boot, link up, one message heard) on the
 # family's code path and asserts no matrix of its own, so it is not a witness.
-# No `matrix_platform`: no `PlatformId` runs it, which a manual row may say.
+#
+# phase-524 W4c (RFC-0115 D4 "Breadth", ruling 2026-11-03): that smoke run is
+# a Runtime cell on the board's OWN platform, `ZephyrNucleoF767zi`
+# (`tests/zephyr_renode_twin.rs`), and `probe` names the weekly twin track.
+# The cadence stays `manual` with its date: an automated cadence earns
+# "Verified", which D10 refuses with one maintainer, and the flip also waits
+# on the cell's first green lane run.
 #
 # `real_hardware = true` because the board is silicon that is FLASHED (the
 # twin is the evidence, not the product), so the row names its flash section;
@@ -350,6 +356,8 @@ real_hardware = true
 book_flash = "getting-started/integration-zephyr.md#flash-a-real-board"
 runs = "emulator"
 hardware = "nucleo-f767zi"
+matrix_platform = "ZephyrNucleoF767zi"
+probe = ["renode-nucleo"]
 cadence = "manual"
 last_run = "2026-11-01"
 breadth = "inherits ZephyrQemuCortexM"
@@ -657,7 +665,7 @@ track = "renode-nucleo"
 chapter = "getting-started/integration-zephyr.md"
 variant = "zephyr-twin"
 weekly = true
-row = "nros-board-nucleo-f767zi-zephyr@-"
+row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
 twin = "nucleo-f767zi-zephyr"
 twin_locator = "serial/serial@40004800#baudrate=115200"
 notes = "phase-524 W4a — the Nucleo-F767ZI's Renode twin: zenoh over USART3 on a host pty, the console on USART6. The RAM knob is the board descriptor's `[knobs]` (issue 2194)."

@@ -219,6 +219,7 @@ RUNNERS = ("host", "board", "board-zephyr", "board-ci", "all")
 BOARD_IMAGES: "dict[str, str]" = {
     "ZephyrNativeSim": "zephyr",
     "ZephyrQemuCortexM": "zephyr",
+    "ZephyrNucleoF767zi": "zephyr",
     "FreertosMps2": "ci",
     "FreertosPosix": "ci",
     "NuttxArm": "ci",
@@ -247,6 +248,10 @@ BOARD_IMAGES: "dict[str, str]" = {
 BOARD_SCOPES: "dict[str, dict[str, tuple[str, ...]] | None]" = {
     "ZephyrNativeSim": {"setup": ("zephyr",), "build": ("zephyr",)},
     "ZephyrQemuCortexM": {"setup": ("zephyr", "qemu"), "build": ("zephyr",)},
+    # phase-524 W4c -- the Renode twin: `just zephyr setup` provisions Renode
+    # (`nros setup --tool renode`) with the rest of the scope, so no second
+    # scope is named.
+    "ZephyrNucleoF767zi": {"setup": ("zephyr",), "build": ("zephyr",)},
     "FreertosMps2": {"setup": ("freertos", "qemu"), "build": ("freertos",)},
     "FreertosPosix": {"setup": ("freertos",), "build": ("freertos",)},
     "NuttxArm": {"setup": ("nuttx", "qemu"), "build": ("nuttx",)},

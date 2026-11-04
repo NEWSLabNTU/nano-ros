@@ -415,7 +415,7 @@ impl ZenohRouter {
         port: u16,
         log_filter: Option<&str>,
     ) -> TestResult<Self> {
-        Self::start_on_with(bind_addr, port, log_filter, &[])
+        Self::start_on_with(bind_addr, port, log_filter, &[], &[])
     }
 
     /// phase-516 W1c — a loopback router on a leased port that also runs
@@ -429,9 +429,19 @@ impl ZenohRouter {
     pub fn start_unique_with_overrides(extra: &[String], log_filter: &str) -> TestResult<Self> {
         let lease = lease_ephemeral_port()
             .map_err(|e| TestError::ProcessFailed(format!("Failed to lease port: {}", e)))?;
-        let mut router = Self::start_on_with("127.0.0.1", lease.port(), Some(log_filter), extra)?;
+        let mut router =
+            Self::start_on_with("127.0.0.1", lease.port(), Some(log_filter), extra, &[])?;
         router._lease = Some(lease);
         Ok(router)
+    }
+
+    /// phase-524 W4c -- a loopback router on `port` that ALSO listens on the
+    /// serial device `pty` (`serial/<pty>#baudrate=115200`): an emulator twin's
+    /// zenoh UART on one side, host peers over TCP on the other. Ready when the
+    /// TCP port accepts, as [`start`](Self::start) is.
+    pub fn start_with_serial(port: u16, pty: &std::path::Path) -> TestResult<Self> {
+        let serial = format!("serial/{}#baudrate=115200", pty.display());
+        Self::start_on_with("127.0.0.1", port, None, &[], &[serial])
     }
 
     fn start_on_with(
@@ -439,6 +449,7 @@ impl ZenohRouter {
         port: u16,
         log_filter: Option<&str>,
         extra: &[String],
+        extra_listen: &[String],
     ) -> TestResult<Self> {
         if !crate::process::is_local_tcp_listener_available() {
             return Err(TestError::ProcessFailed(
@@ -453,7 +464,12 @@ impl ZenohRouter {
 
         let locator = format!("tcp/{}:{}", bind_addr, port);
 
-        let mut overrides = vec![format!("listen/endpoints=[\"{locator}\"]")];
+        let endpoints = std::iter::once(&locator)
+            .chain(extra_listen)
+            .map(|e| format!("\"{e}\""))
+            .collect::<Vec<_>>()
+            .join(",");
+        let mut overrides = vec![format!("listen/endpoints=[{endpoints}]")];
         overrides.extend_from_slice(extra);
         let mut cmd = router_command(&overrides)?;
         // Diagnostic log capture per port — opt-in, unified dir. Enabled by

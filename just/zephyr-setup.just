@@ -29,6 +29,16 @@ setup *ARGS:
     source scripts/build/platform-rmws.sh
     # phase-500 W5 retired the `native` alias, and `nros setup` now refuses it.
     nros_setup_board_rmws linux zephyr
+    # phase-524 W4c -- the Nucleo-F767ZI's Renode twin is a platform of this
+    # scope (`PlatformId::ZephyrNucleoF767zi`, `just_module = "zephyr"`), so
+    # the emulator its cell boots is this scope's to provision, the way
+    # `qemu` provisions QEMU for the Cortex-M witness. ONE producer: the store,
+    # at the pinned `[tool.renode]`, which `nros locate tool renode` answers.
+    # No root and no system package (the index's `[tool.renode]` has no
+    # `system` rows), so a CI runner gets it here, into its store volume, and
+    # not from an image layer.
+    echo "[zephyr setup] provisioning Renode (the Nucleo-F767ZI twin)..."
+    "$nros_bin" setup --tool renode --index "$(pwd)/nros-sdk-index.toml"
     if [ -d "$WORKSPACE/zephyr" ] && [[ "$ARGS" != *--force* ]]; then
         echo "Zephyr workspace already present at $WORKSPACE"
         echo "To reinstall, run: just zephyr setup --force"

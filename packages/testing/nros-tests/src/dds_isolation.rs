@@ -481,14 +481,16 @@ pub fn default_route_interface() -> Option<String> {
 ///
 /// Host processes do: Linux itself, Zephyr native_sim (NSOS offloads sockets to
 /// the host), the FreeRTOS POSIX and ThreadX Linux simulators (host sockets),
-/// and PX4 SITL. Every QEMU guest sits behind slirp, and the FVP behind its own
-/// emulated NIC: none of them is on the host's loopback.
+/// and PX4 SITL. Every QEMU guest sits behind slirp, the FVP behind its own
+/// emulated NIC, and the Nucleo's Renode twin behind a serial link: none of
+/// them is on the host's loopback.
 #[must_use]
 pub const fn shares_host_network_stack(platform: crate::matrix::PlatformId) -> bool {
     use crate::matrix::PlatformId as P;
     match platform {
         P::Linux | P::ZephyrNativeSim | P::FreertosPosix | P::ThreadxLinux | P::Px4 => true,
         P::ZephyrQemuCortexM
+        | P::ZephyrNucleoF767zi
         | P::FreertosMps2
         | P::NuttxArm
         | P::NuttxRiscv

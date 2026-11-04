@@ -38,9 +38,15 @@
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 21 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 19 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 45 | 39 | 75 % |
-//! | tier 3 | everything | 256 | 52 | 100 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 12 | 11 | 21 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 46 | 40 | 75 % |
+//! | tier 3 | everything | 257 | 53 | 100 % |
+//!
+//! Re-measured 2026-11-04 (phase-524 W4c): `ZephyrNucleoF767zi` joined with one
+//! cell (the Renode smoke cell) on its own coordinate
+//! (`zephyr-nucleo-f767zi,c,zenoh`). Tier 2 and nightly each take it, as a new
+//! platform value: 11 / 10 -> 12 / 11 and 45 / 39 -> 46 / 40; tier 3 256 -> 257
+//! cells over 52 -> 53 coordinates; tier 1 (host platforms only) did not move.
 //!
 //! Re-measured 2026-11-03 (phase-521 W7): the `IdleWake` workload joined with
 //! two Zephyr Cortex-M cells, C over zenoh and C over XRCE. The XRCE one is a
@@ -1127,8 +1133,8 @@ _tier-build:
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
             (CiLane::Tier1, 25, 11),
-            (CiLane::Tier2, 11, 10),
-            (CiLane::Tier2Nightly, 45, 39),
+            (CiLane::Tier2, 12, 11),
+            (CiLane::Tier2Nightly, 46, 40),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -1150,12 +1156,12 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 256,
-            "the table's tier-3 cell count (256) is stale; recomputed {total_cells}"
+            total_cells, 257,
+            "the table's tier-3 cell count (257) is stale; recomputed {total_cells}"
         );
         assert_eq!(
-            total_coords, 52,
-            "the table's tier-3 denominator (52 coordinates) is stale; recomputed \
+            total_coords, 53,
+            "the table's tier-3 denominator (53 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }
