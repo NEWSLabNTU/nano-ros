@@ -1,10 +1,14 @@
 # Phase 535 — Example pairs into the language workspaces, single-node witnesses, and cadence-backed CI
 
-**Status (2026-11-05). STOPPED at W3 for a maintainer decision.** W0
+**Status (2026-11-05). STOPPED at W3 for a maintainer decision, again.** W0
 answered (issue 2253 fixed on the way, #3106). W1 merged (#3107). W0.b done:
 C (#3112), C++ (#3120), Rust (#3124). W2 merged (#3125). The W3 pilot was
 measured; it saves build CPU but costs wall clock, which is under the 10 %
-bar (data below). The pilot itself is draft PR #3129.
+bar (data below). The maintainer chose option 1: the workspace fixture builder
+now fans out by build unit (and issue 2284, a jobserver hang the fan-out
+exposed, is fixed). Re-measured on that builder, the pilot is 3.8 % SLOWER in
+wall clock and 17 % cheaper in CPU, so it is still under the bar. The pilot
+itself is draft PR #3129.
 Implements [RFC-0122](../design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
 D1 to D9, with its amendments to RFC-0026, RFC-0051, RFC-0061, RFC-0066,
 RFC-0114 and RFC-0121 D8.
@@ -246,6 +250,28 @@ analysis: [phase-535-w3-pilot.md](data/phase-535-w3-pilot.md).
     `check-example-build-coverage` enforces.
 - **The pilot works.** `rtos_e2e`'s 10 FreeRTOS cells passed on the pilot
   fixtures with unchanged case names.
+
+**Re-measure (2026-11-05), option 1 taken: still under the bar.** The
+builder now fans out by build unit
+(`scripts/build/workspace-fixture-units.py`). Rows of one cmake configure, one
+cargo target dir or one generated entry stay serial, and everything else runs
+at once. Both trees use the new builder. Before is 2 runs and after is 3; one
+before run is discarded for host load. Table, loads and method:
+[phase-535-w3-pilot.md](data/phase-535-w3-pilot.md#re-measure-with-the-fan-out-builder).
+
+| | before (mean) | after (mean) | change |
+| --- | --- | --- | --- |
+| wall | 816 s | 846 s | **+3.8 %** |
+| CPU (user+sys) | 4501 s | 3738 s | **-17 %** |
+
+- The fan-out took the pilot's wall clock from 1258 s to 846 s. It did not take
+  it below the leaves'. The critical path is the serial rows of one configure:
+  about 205 s for the first C/C++ image, then six images one after another for
+  about 130 s more.
+- Further levers, each a decision: one `cmake --build` for all the images of a
+  configure; the workspace stage beside the leaf stage in `build-examples`; a
+  Rust target shared per (board, rmw) behind D6's gate.
+- By the rule above, W4 does not start.
 
 ### W4 — The merge boards: linux, zephyr native_sim, threadx-linux
 
