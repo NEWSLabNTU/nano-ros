@@ -1,21 +1,30 @@
 # Phase 489 — CI build speed-up: the required gate first, then the build-bound lanes
 
-**Status (2026-11-03). The required gate has REGRESSED past W1's target:
-`gate.yml` on `merge_group` has a median of 37.1 min (range 24.4–41.5) over its
-last 20 successful runs (41381715200 … 41496872163, all on 2026-11-02). Each run
-is measured from `createdAt` to `updatedAt` with
-`gh run list --workflow gate.yml --event merge_group --status success -L 20`,
-and per job and per step with `gh run view <id> --json jobs`. The critical path in
-EVERY one of those runs is `check / template-copy-out` (job median 36.9 min,
-range 23.8–41.2). It joined the merge queue on 2026-10-17 (eda59e4126,
-issue 1453), after this phase's last measurement, and the next-slowest jobs are
-11–18 min (`test-lane-contracts` 15.3, `workspace-all` 14.7, `cli-tests` 14.1,
-`fast` 13.1). W8 below is that job. W1 and W3 met their acceptance. W4 met it
-on a hit and halved the miss path. W5 landed, but its CI acceptance is still not
-met: `check / fast` takes 8–15 min on pull_request against the 6-min target. W2
-is OFF (`NROS_GATE_SELF_HOSTED` unset), and only ONE self-hosted runner is
-registered now (`nano-ros-runner-newslab-118-server`), so it stays off. W6 met
-its acceptance locally. W7 is moot because its runner is no longer registered.**
+**Status (2026-11-05). The required gate is back under W1's target:
+`gate.yml` on `merge_group` has a median of 20.1 min (range 16.1–37.5) over
+the 20 successful runs after W8's last part landed (41874153706 …
+41931428840, 2026-11-04/05), against 37.1 min before W8. Measured as below:
+`createdAt` to `updatedAt` per run, jobs from `gh run view <id> --json jobs`.
+The critical path is now split between two jobs of about the same length,
+`check / template-copy-out [zephyr]` (median 19.5 min, longest in 14 of 20)
+and `check / cli-tests + node-std-tests + launch-resolve-fresh` (19.1 min,
+longest in the other 6). W1, W3 and W8's time target are met; W8's
+"not the longest job in most runs" half is not, and is not worth chasing
+(see W8). W4 met its acceptance on a hit and halved the miss path. W5's CI
+acceptance is still not met: `check / fast` has a merge-group median of
+12.1 min against the 6-min target. W2 is OFF (`NROS_GATE_SELF_HOSTED`
+unset), and only one self-hosted runner is registered
+(`nano-ros-runner-newslab-118-server`), so it stays off. W6 met its acceptance
+locally; its CI no-change number is still unmeasured. W7 is moot because its
+runner is no longer registered. Issues 2219, 2223 and 2239 are resolved;
+2240 and 2254 are open.**
+
+Status (2026-11-03), kept for history: the required gate had regressed to a
+37.1 min `merge_group` median (range 24.4–41.5, runs 41381715200 …
+41496872163, 2026-11-02), with `check / template-copy-out` the critical path
+in every run (job median 36.9 min). It had joined the merge queue on
+2026-10-17 (eda59e4126, issue 1453), after this phase's last measurement. W8
+was opened for it.
 
 Status (2026-10-15), kept for history: W1 and W3 met their acceptance; W4 met
 it on a hit and cut the miss path by half; W5 landed, CI acceptance NOT met (PR
@@ -992,8 +1001,8 @@ because of `check / build tier + no-std (nightly/manual only)`, which runs on
 already red on the last three scheduled gate runs (41563531517,
 41375507503, 41263488044).
 
-The acceptance median needs 20 merge groups after the merge; record it here
-when they exist.
+The acceptance median was recorded after 20 merge groups; see "Measured
+after the Zephyr part" below.
 
 **The Zephyr part (2026-11-04, issue 2219).** The five Zephyr projects are no
 longer NOT VERIFIED. `check / template-copy-out [zephyr]` runs the `zephyr`
@@ -1010,6 +1019,31 @@ runs is back under 25 min, which is W1's own target. The phase met it on
 2026-10-12, and nothing here changes lane membership. `template-copy-out` is no
 longer the longest job in the majority of those runs. Validated first with a
 `workflow_dispatch` run of `gate.yml` on the branch.
+
+**Measured after the Zephyr part (2026-11-05).** The 20 successful
+`merge_group` runs after the Zephyr part landed (8a299683e1), runs 41874153706 to 41931428840:
+
+| | median | range |
+| --- | --- | --- |
+| gate wall time | **20.1 min** | 16.1–37.5 |
+| `template-copy-out [zephyr]` | 19.5 min | 13.6–26.6 |
+| `cli-tests + node-std-tests + launch-resolve-fresh` | 19.1 min | 12.4–22.8 |
+| `template-copy-out [1/3]`, `[3/3]`, `[2/3]` | 15.6, 15.3, 14.6 min | 10.1–20.0 |
+| `test-lane-contracts` | 13.2 min | 8.4–18.7 |
+| `fast` | 12.1 min | 7.3–20.0 |
+
+- **Time half: MET.** 20.1 min against the 25-min target, from 37.1.
+- **Longest-job half: NOT met.** `template-copy-out` (its Zephyr part) is the
+  longest job in 14 of 20 runs; `cli-tests` is in the other 6.
+
+The second half is not worth chasing. The Zephyr part and `cli-tests` are
+0.4 min apart at the median. Splitting the Zephyr part, or sharing one CLI
+build across the parts, would hand the critical path to `cli-tests` and buy
+under a minute of median wall time. The Zephyr part's spread (to 26.6 min)
+is its CLI cache missing whenever a batch carries a CLI change; that miss is
+the one lever left on this job, and it moves `cli-tests` too, so it belongs to
+a change that builds the CLI once per merge group for every job, not to W8.
+W8 is closed on its time target, with the second half recorded as not met.
 
 ## Self-hosted runner cache observations (2026-10-09..14)
 
