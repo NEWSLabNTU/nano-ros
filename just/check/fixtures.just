@@ -160,6 +160,15 @@ scaffold-builds:
 gate-scratch:
     @bash scripts/build/gate-scratch.sh --self-test
 
+# phase-535 W3 — the rule `workspace-fixtures-build.sh` fans its rows out by:
+# rows that write a common cmake configure, cargo target dir or generated
+# entry are one build unit and stay serial; units run at once. Buildless, so
+# the fast line. `workspace-fixtures-build.sh <platform> --plan` prints the
+# partition over the real manifest.
+[private]
+workspace-fixture-units:
+    @python3 scripts/build/workspace-fixture-units.py --self-test
+
 #
 # phase-489 W8 — `NROS_TEMPLATE_COPY_OUT_SHARD=<k>/<n>` builds one share of the
 # units (projects, scaffolds, the self-test). The n shards together build

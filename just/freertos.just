@@ -143,16 +143,14 @@ build-examples:
     # `target-zenoh` half was the dead one), and the loop is gone.
     NROS_CARGO_PROFILE="$(nros_cargo_platform_profile freertos)" \
         bash scripts/build/fixtures-build.sh freertos rust zenoh
-    bash scripts/build/workspace-fixtures-build.sh freertos rust
-    # phase-263 C2b — the embedded C workspace LAUNCH entry (issue 0097), consumed by
-    # tests/entry_e2e.rs (freertos_c cell). Own build-subdir (one board per CMake configure).
-    bash scripts/build/workspace-fixtures-build.sh freertos c
-    # phase-263 C2c — the embedded C++ workspace LAUNCH entry, consumed by
-    # tests/entry_e2e.rs (freertos_cpp cell).
-    bash scripts/build/workspace-fixtures-build.sh freertos cpp
-    # phase-263 C2c — the embedded MIXED (C+C++ + no_std Rust) workspace LAUNCH entry,
-    # consumed by tests/entry_e2e.rs (freertos_mixed cell).
-    bash scripts/build/workspace-fixtures-build.sh freertos mixed
+    # Every `freertos` workspace row, ALL languages, in ONE call (phase-535 W3):
+    # the builder fans its rows out by build unit (one cmake configure, or one
+    # cargo target dir — `scripts/build/workspace-fixture-units.py`) under one
+    # token pool. It used to be four calls, rust/c/cpp/mixed, each waiting for
+    # the last, so the four languages never overlapped. The rows include the
+    # embedded C/C++/mixed LAUNCH entries tests/entry_e2e.rs consumes
+    # (phase-263 C2b/C2c, issue 0097).
+    bash scripts/build/workspace-fixtures-build.sh freertos
     # phase-370 — the freertos-posix board variant. Its two `[[workspace_fixture]]`
     # rows carry `platform = "freertos-posix"`, a DIFFERENT fixture token from the
     # `freertos` rows above, so nothing here built them: the coordinate was
@@ -161,8 +159,7 @@ build-examples:
     # gate names. The board still lives under `just freertos` (PlatformId
     # ::FreertosPosix maps to this module), so the calls belong here rather than in
     # a module of their own.
-    bash scripts/build/workspace-fixtures-build.sh freertos-posix c
-    bash scripts/build/workspace-fixtures-build.sh freertos-posix cpp
+    bash scripts/build/workspace-fixtures-build.sh freertos-posix
     echo "FreeRTOS QEMU examples built!"
 
 # phase-370 W3 — the POSIX-simulator board's C and C++ cyclonedds workspace
@@ -193,8 +190,7 @@ build-fixtures-posix:
             "FreeRTOS kernel not found at $FREERTOS_DIR (run: just setup freertos)"
         exit 0
     fi
-    bash scripts/build/workspace-fixtures-build.sh freertos-posix c
-    bash scripts/build/workspace-fixtures-build.sh freertos-posix cpp
+    bash scripts/build/workspace-fixtures-build.sh freertos-posix
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
 [group("full-matrix")]
