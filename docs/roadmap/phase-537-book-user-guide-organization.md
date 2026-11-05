@@ -13,8 +13,9 @@ Depends on:
   here) and every Tutorial chapter (W5);
 - [phase-535](phase-535-example-reorg-and-cadence-ci.md), for the example
   pointers of the platform pages (W9);
-- a probe track for PX4 SITL (Principle 3), for whether its page stays in the
-  user book.
+- [issue 2289](../issues/2289-px4-release-ships-no-posix-archives.md) (the
+  release ships no PX4 POSIX archives), for PX4's probe track to replay. Its
+  page stays in Platforms meanwhile (maintainer ruling, 2026-11-05).
 
 ---
 
@@ -186,7 +187,7 @@ how-to, level 1, depending only on Install.
   `WOKWI_CLI_TOKEN`, failing loudly where it isn't set.
 - Serial first; ethernet as the "next" step where the row has it; WiFi stated
   as deferred (Principle 12).
-- PX4 SITL gets a starter only when its probe track exists.
+- PX4 SITL gets a starter only when its probe track replays (issue 2289).
 
 **Depends on:** phase-531 W4 (the scaffold); W2 (tabs, where a starter shows
 more than one language).
