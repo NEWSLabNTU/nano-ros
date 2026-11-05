@@ -414,6 +414,37 @@ mod tests {
         std::fs::remove_dir_all(&ws).unwrap();
     }
 
+    /// A C or C++ node package names no `DEPLOY`: `nros build` reads that
+    /// token as the board a package is for, and the `DEPLOY linux` the
+    /// standalone scaffold writes left the node out of every non-Linux cmake
+    /// root ("no cmake packages in this workspace", the NuttX and FreeRTOS C
+    /// chapters).
+    #[test]
+    fn a_c_or_cpp_node_package_names_no_deploy_target() {
+        for lang in [nros_lang::Language::C, nros_lang::Language::Cpp] {
+            let ws = tmp(&format!("deploy-{lang:?}"));
+            let mut node = talker("nx_node");
+            node.lang = lang;
+            scaffold_project(&WorkspaceProject {
+                dir: ws.clone(),
+                node,
+                board: "qemu-armv7a-nuttx",
+                image_id: "nuttx",
+                rmw: "zenoh",
+                ros_edition: "humble",
+                locator: None,
+            })
+            .unwrap();
+            let cmake = std::fs::read_to_string(ws.join("src/nx_node/CMakeLists.txt")).unwrap();
+            assert!(cmake.contains("nano_ros_add_node("), "{lang:?}: {cmake}");
+            assert!(
+                !cmake.lines().any(|l| l.trim_start().starts_with("DEPLOY")),
+                "{lang:?}: {cmake}"
+            );
+            std::fs::remove_dir_all(&ws).unwrap();
+        }
+    }
+
     /// `nros new <node> --to <bringup>` adds the package, its component row
     /// and its `<exec_depend>`; without `--to` no bringup changes.
     #[test]
