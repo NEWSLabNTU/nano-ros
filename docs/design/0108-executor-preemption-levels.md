@@ -114,7 +114,7 @@ The Autoware safety island (S32K344, Zephyr) runs three components with three
 distinct ranks [M] (`nros_priority_plan.json` of the island board build,
 2026-10-16): `mrm_handler` 5, `mrm_emergency_stop_operator` 7,
 `mrm_comfortable_stop_operator` 8 (pool `app [5,14]`, transport `[4,4]`,
-smaller is more urgent). The island authors one tier, `[tiers.mrm]`, and binds
+smaller is more urgent). The island authors one tier, `[tasks.mrm]`, and binds
 all three components to it. That is rule 2 of tier derivation
 (`packages/core/nros-orchestration-ir/src/derive.rs:611-680`): one tier, one
 thread, at the most urgent member's priority.
@@ -1225,8 +1225,8 @@ do not depend on RFC-0107 steps 4-6; P6 onward do.
    planning act PASS on the unchanged image.
 2. **I2. Pin bump to P1-P3.** Still one thread; dispatch is now in rank order.
    Board: acts PASS; measure the handler's tick jitter against 14.84 ms [M].
-3. **I3. Pin bump to P5 and P9.** Remove the authored `[tiers.mrm]` and the
-   `group_tiers`; expect three levels at 5, 7 and 8, no rule-2 degradation.
+3. **I3. Pin bump to P5 and P9.** Remove the authored `[tasks.mrm]` and the
+   `group_tasks`; expect three levels at 5, 7 and 8, no rule-2 degradation.
    Record DTCM and SRAM [M] in place of this RFC's estimates. **The 2-level
    fallback is decided:** if the margins are thin, `max_levels = 2` gives
    {`mrm_handler`} | {emergency operator, comfortable operator}. This keeps

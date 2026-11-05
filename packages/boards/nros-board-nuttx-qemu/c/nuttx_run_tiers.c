@@ -15,7 +15,7 @@
  *     a 16 KiB default — the executor working set is heap-allocated via
  *     `nros_platform_alloc`, so the tier stack only carries call frames) and
  *     `SCHED_FIFO` + `pthread_attr_setschedparam` at the tier's RAW NuttX
- *     priority (`[tiers.*.nuttx].priority` verbatim), with
+ *     priority (`[tasks.*.nuttx].priority` verbatim), with
  *     `PTHREAD_EXPLICIT_SCHED` so the attr's policy/priority actually take;
  *   - the boot tier adopts its declared RAW priority on the caller thread via
  *     `pthread_setschedparam(pthread_self(), SCHED_FIFO, …)` (the spawned tiers
@@ -107,7 +107,7 @@ extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
  * The borrowed executor's working set (the executor block above, which is the
  * caller's storage — issue 1568 — plus zenoh-pico's heap buffers) lives off
  * the stack, so a tier pthread's stack only
- * carries call frames — 16 KiB is a sane default. `[tiers.*.nuttx].stack_bytes`
+ * carries call frames — 16 KiB is a sane default. `[tasks.*.nuttx].stack_bytes`
  * overrides it when set. NOTE (mirrors the freertos seam's stack note): this
  * default is untuned for the full run_tiers path under QEMU; runtime-proving
  * (the next wave) may need to raise it. */

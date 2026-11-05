@@ -126,9 +126,9 @@ impl Fixture {
     /// Append to the fixture's `system.toml`, and optionally bind one group of
     /// each named component to `tier`.
     ///
-    /// `bind` names the components that get `group_tiers = { main = "<tier>" }`
+    /// `bind` names the components that get `group_tasks = { main = "<tier>" }`
     /// on their `[[component]]` row; `append` is written verbatim at the end
-    /// (the `[tiers.*]` the test is about).
+    /// (the `[tasks.*]` the test is about).
     pub fn author(&self, tier: &str, bind: &[&str], append: &str) {
         let path = self.bringup().join("system.toml");
         let mut raw = fs::read_to_string(&path).expect("read system.toml");
@@ -140,7 +140,7 @@ impl Fixture {
             );
             raw = raw.replace(
                 &row,
-                &format!("{row}\ngroup_tiers = {{ main = \"{tier}\" }}"),
+                &format!("{row}\ngroup_tasks = {{ main = \"{tier}\" }}"),
             );
         }
         fs::write(&path, format!("{raw}\n{append}\n")).expect("author system.toml");
@@ -196,7 +196,7 @@ fn copy_tree(from: &Path, to: &Path) {
 /// artifact, so the test makes one. Returns the model's path.
 ///
 /// `with_system` folds the bringup's `system.toml` into the model, which is
-/// what carries `[tiers.*]` and `group_tiers` across — the same `--system`
+/// what carries `[tasks.*]` and `group_tasks` across — the same `--system`
 /// `nros sync` passes whenever the file exists (`cmd/ws.rs`). The zero-grammar
 /// derived road does not need it: its `system.toml` states no tier at all.
 pub fn resolve_model_path(bringup: &Path, with_system: bool) -> PathBuf {

@@ -249,7 +249,7 @@ fn every_declared_component_language_has_a_producer() {
 /// `examples/workspaces/derived-tiers-cpp` mirrors the Autoware Safety Island:
 /// four `SHAPE rclcpp` C++ components, one wall timer each, two at 30 Hz and
 /// two at 10 Hz, `CALLBACK_GROUPS main` on every registration, and NO
-/// `[tiers.*]` or `group_tiers` in its `system.toml`. Issue 1426 measured that
+/// `[tasks.*]` or `group_tasks` in its `system.toml`. Issue 1426 measured that
 /// on such a workspace the rate-monotonic derivation is unreachable from any
 /// authored input; W1 and W2 make it reachable, and their gates run here.
 ///
@@ -328,7 +328,11 @@ fn derived_tiers_cpp_fixture_declares_four_groupful_components_and_resolves() {
     let authored: Vec<&str> = system
         .lines()
         .map(|l| l.split('#').next().unwrap_or("").trim())
-        .filter(|l| l.starts_with("[tiers.") || l.starts_with("group_tiers"))
+        .filter(|l| {
+            ["[tasks.", "[tiers.", "group_tasks", "group_tiers"]
+                .iter()
+                .any(|k| l.starts_with(k))
+        })
         .collect();
     assert!(
         authored.is_empty(),

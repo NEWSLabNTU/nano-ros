@@ -1266,7 +1266,7 @@ fn report_tiers_above_transport<B: BoardPrint>(
     if offenders > 0 {
         B::println(format_args!(
             "  Intended? then nothing to do. Both numbers above are RAW FreeRTOS \
-             units, the same ones a `[tiers.<name>.freertos] priority` is written in. \
+             units, the same ones a `[tasks.<name>.freertos] priority` is written in. \
              If NOT intended: starving the RX drain stalls publishers on lwIP \
              retransmission, which costs far more than the deadline it was meant to \
              protect (issues 0506, 0623)."

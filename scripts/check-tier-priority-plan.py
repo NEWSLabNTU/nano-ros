@@ -3,7 +3,7 @@
 
 Two checks, and the second is the one that keeps the first honest:
 
-1. **Pins against the plan.** A `[tiers.<name>.<platform>] priority = N` that
+1. **Pins against the plan.** A `[tasks.<name>.<platform>] priority = N` that
    lands in a RESERVED band is an ERROR — it puts an application tier on top of
    a system task that has to keep running for the application to work. A pin
    that is more urgent than a reserved band is a WARNING today: RFC-0079 makes
@@ -145,7 +145,7 @@ def main():
                         f"by it (issue 0623, measured again in 0736).\n"
                         f"      Either move it into the pool "
                         f"{plan['pool']}, or state the choice on the tier:\n"
-                        f"          [tiers.{tier}]\n"
+                        f"          [tasks.{tier}]\n"
                         f"          above = \"{name}\"")
 
     for d in declared:

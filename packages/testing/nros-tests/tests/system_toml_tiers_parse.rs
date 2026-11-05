@@ -1,9 +1,9 @@
-//! Every tracked `system.toml`'s `[tiers.*]` must parse through the REAL
+//! Every tracked `system.toml`'s `[tasks.*]` must parse through the REAL
 //! schema type — being valid TOML is not the property that matters.
 //!
-//! `[tiers.*]` has TWO parsers: `nros_orchestration_ir::TierDef` (this one,
+//! `[tasks.*]` has TWO parsers: `nros_orchestration_ir::TierDef` (this one,
 //! `deny_unknown_fields`) and the resolver's
-//! `ros_launch_manifest_sched::TierPlatformSpec`. They are separate mirrors of
+//! `ros_launch_manifest_sched::TaskPlatformSpec`. They are separate mirrors of
 //! one block, and when they disagree the NARROWER one silently defines what a
 //! user may write — the failure mode issue 0380 was filed for, and the one the
 //! rlm v0.1.11 key rename reproduced: rlm renamed `spin_period_us` →
@@ -60,7 +60,8 @@ fn every_tracked_system_toml_tiers_parse() {
                 continue;
             }
         };
-        let Some(tiers) = doc.get("tiers") else {
+        // Phase 536 W1: `[tasks.*]`; the pre-rename `[tiers.*]` still reads.
+        let Some(tiers) = doc.get("tasks").or_else(|| doc.get("tiers")) else {
             continue;
         };
         with_tiers += 1;
@@ -69,16 +70,16 @@ fn every_tracked_system_toml_tiers_parse() {
             .try_into::<BTreeMap<String, nros_orchestration_ir::TierDef>>()
         {
             bad.push(format!(
-                "{f}: [tiers.*] rejected by nros_orchestration_ir::TierDef: {e}"
+                "{f}: [tasks.*] rejected by nros_orchestration_ir::TierDef: {e}"
             ));
         }
     }
 
-    // Same reason as the file-count floor: if `[tiers.*]` stopped being written
+    // Same reason as the file-count floor: if `[tasks.*]` stopped being written
     // the loop body would never run and this would report success.
     assert!(
         with_tiers >= 7,
-        "expected system.toml files carrying [tiers.*], saw {with_tiers}"
+        "expected system.toml files carrying [tasks.*], saw {with_tiers}"
     );
     assert!(
         bad.is_empty(),

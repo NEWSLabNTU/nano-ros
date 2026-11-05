@@ -11,6 +11,8 @@ superseded-by: null
 
 # RFC-0066 — Example and fixture consolidation
 
+> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` still read this release with a `deprecated-spelling` warning, and rlm R+1 refuses them. The prose and nano-ros's own names move in W2.
+
 ## Summary
 
 The example tree has two populations that have grown into each other's jobs.
@@ -273,11 +275,11 @@ Result: three workspaces become zero, with strictly more coverage.
 on a low tier — and projects it onto each RTOS's native scheduler:
 
 ```toml
-[[component]] group_tiers = { ctrl = "high" }
-[tiers.high]        spin_period = "10000us"
-[tiers.high.posix]  priority = 80        # POSIX priority
-[tiers.high.zephyr] priority = 5         # RAW Zephyr priority, k_thread per tier
-[tiers.high.nuttx]  ...                  # SCHED_FIFO
+[[component]] group_tasks = { ctrl = "high" }
+[tasks.high]        spin_period = "10000us"
+[tasks.high.posix]  priority = 80        # POSIX priority
+[tasks.high.zephyr] priority = 5         # RAW Zephyr priority, k_thread per tier
+[tasks.high.nuttx]  ...                  # SCHED_FIFO
 ```
 
 That is the PLATFORM axis applied to scheduling. It follows that the `-mps2` and

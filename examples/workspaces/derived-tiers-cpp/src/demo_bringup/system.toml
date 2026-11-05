@@ -6,7 +6,7 @@ domain_id = 0
 # phase-459 W0 - the derived-tiers fixture. Four C++ components in the shape
 # of the Autoware Safety Island: one wall timer each, two at 30 Hz and two at
 # 10 Hz. Every component declares `CALLBACK_GROUPS main` in its CMakeLists
-# and NOTHING here: no `group_tiers`, no `[tiers.*]`. The rates are in
+# and NOTHING here: no `group_tasks`, no `[tasks.*]`. The rates are in
 # launch/system.contract.yaml. The tier table is what the rate-monotonic
 # derivation produces from those two inputs, not what an author wrote three
 # times (compare realtime-cpp, the authored-tier neighbour).

@@ -9,7 +9,7 @@ description = "Node pkg — telemetry on the low-priority tier (100 ms)."
 path = "src/lib.rs"
 
 # phase-263 B2 — telemetry runs on the `low` tier, bound like ctrl_pkg's group
-# in the bringup's `system.toml` (`group_tiers`); the two nodes resolve to two
+# in the bringup's `system.toml` (`group_tasks`); the two nodes resolve to two
 # POSIX-priority tasks.
 [package.metadata.nros.node]
 class = "telem_pkg::Telem"

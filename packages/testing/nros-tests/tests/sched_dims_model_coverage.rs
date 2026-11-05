@@ -13,7 +13,7 @@
 //!
 //! Post phase-330 (RFC-0063) the SystemModel is a BUILD ARTIFACT — never
 //! committed — so the dims are authored in `system.toml`'s
-//! `[tiers.<tier>.<rtos>]` blocks (and lower into the model from there). THAT file
+//! `[tasks.<tier>.<rtos>]` blocks (and lower into the model from there). THAT file
 //! is the SSoT this gate reads. A stripped dim now fails HERE, in a tier-1 host
 //! test that runs before any QEMU boot, instead of silently no-op'ing downstream.
 //!
@@ -58,7 +58,7 @@ fn workspace_system_toml(lang: Lang, dim: SchedDim) -> PathBuf {
         .join(bringup)
 }
 
-/// The `[tiers.<tier>.<rtos>]` sub-table key a platform's kernel dims live under.
+/// The `[tasks.<tier>.<rtos>]` sub-table key a platform's kernel dims live under.
 fn rtos_key(p: PlatformId) -> &'static str {
     match p {
         PlatformId::ZephyrNativeSim => "zephyr",
@@ -70,7 +70,7 @@ fn rtos_key(p: PlatformId) -> &'static str {
         // what we support, the platform layer names the software stack.
         PlatformId::Linux => "posix",
         other => panic!(
-            "SCHED_CELLS carries platform {other:?} with no [tiers.*.<rtos>] key mapping — \
+            "SCHED_CELLS carries platform {other:?} with no [tasks.*.<rtos>] key mapping — \
              add it to `rtos_key`"
         ),
     }
@@ -132,9 +132,9 @@ fn dim_keys(d: SchedDim) -> &'static [&'static [&'static str]] {
 fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) -> Vec<String> {
     let bringup = system_toml.parent().expect("system.toml has a parent");
     let mut out = Vec::new();
-    if doc.get("tiers").is_some() {
+    if doc.get("tasks").or_else(|| doc.get("tiers")).is_some() {
         out.push(format!(
-            "{} declares a `[tiers]` table — the macro would READ it and never derive",
+            "{} declares a `[tasks]` table — the macro would READ it and never derive",
             system_toml.display()
         ));
     }
@@ -155,12 +155,13 @@ fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) ->
     }
     for c in &components {
         let grouped = c
-            .get("group_tiers")
+            .get("group_tasks")
+            .or_else(|| c.get("group_tiers"))
             .and_then(|g| g.as_table())
             .is_some_and(|g| !g.is_empty());
         if !grouped {
             out.push(format!(
-                "component {:?} names no callback group (`group_tiers`) — it would get no \
+                "component {:?} names no callback group (`group_tasks`) — it would get no \
                  derived tier",
                 c.get("name").and_then(|n| n.as_str()).unwrap_or("?")
             ));
@@ -201,21 +202,26 @@ fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) ->
 }
 
 /// Is `key` declared for `rtos` anywhere in the parsed system.toml — either under
-/// a `[tiers.<tier>.<rtos>]` sub-table (kernel-scoped) or directly on a
-/// `[tiers.<tier>]` table (generic, applies to every platform)?
+/// a `[tasks.<tier>.<rtos>]` sub-table (kernel-scoped) or directly on a
+/// `[tasks.<tier>]` table (generic, applies to every platform)?
 fn key_declared(doc: &toml::Value, rtos: &str, key: &str) -> bool {
-    let Some(tiers) = doc.get("tiers").and_then(|t| t.as_table()) else {
+    // Phase 536 W1: `[tasks.*]`; the pre-rename `[tiers.*]` still reads.
+    let Some(tiers) = doc
+        .get("tasks")
+        .or_else(|| doc.get("tiers"))
+        .and_then(|t| t.as_table())
+    else {
         return false;
     };
     for (_tier_name, tier) in tiers {
         let Some(tier_tbl) = tier.as_table() else {
             continue;
         };
-        // Generic dim on [tiers.<tier>] — applies to all platforms.
+        // Generic dim on [tasks.<tier>] — applies to all platforms.
         if tier_tbl.get(key).is_some() {
             return true;
         }
-        // Kernel-scoped dim on [tiers.<tier>.<rtos>].
+        // Kernel-scoped dim on [tasks.<tier>.<rtos>].
         if tier_tbl
             .get(rtos)
             .and_then(|r| r.as_table())
@@ -282,7 +288,7 @@ fn sched_dims_are_declared_in_authored_system_toml() {
                     .join(" or ");
                 missing.push(format!(
                     "  - {:?}/{:?}/{:?}: dim {:?} needs {spellings} under \
-                     [tiers.*.{rtos}] (or a generic [tiers.*]) in ws-realtime-{} — \
+                     [tasks.*.{rtos}] (or a generic [tasks.*]) in ws-realtime-{} — \
                      it is ABSENT (stripped model? issue 0380)",
                     cell.dim, cell.platform, cell.lang, cell.dim, ws
                 ));

@@ -330,7 +330,7 @@ accepted it with a warning).
 
 RT/stack/priority for a single-node embedded app comes from **board-crate
 Cargo features + Kconfig** (`prj*.conf` on Zephyr), not a config file.
-Multi-node RT is declared in `system.toml` (`[tiers.<name>.<rtos>]` +
+Multi-node RT is declared in `system.toml` (`[tasks.<name>.<rtos>]` +
 `[[node_overrides]]`).
 
 ### Periodic timers after a stall

@@ -262,7 +262,7 @@ Keep a raw escape (`NROS_PLATFORM_TASK_PRIORITY_RAW(n)`) for expert use, because
 tuning a specific RTOS against its own documentation is legitimate and the
 normalised band should not make it impossible. The tier vocabulary in
 `system.toml` targets the normalised band; a per-platform override stays
-per-platform, which is what `[tiers.<name>.nuttx] priority` already does.
+per-platform, which is what `[tasks.<name>.nuttx] priority` already does.
 
 ### C5 — Generate the export macro's symbol list from the header — **UNNECESSARY (see D4)**
 

@@ -61,7 +61,7 @@ threads = true
 # RFC-0079 — the PORT's priority address plan.
 #
 # `tier_key` because the pin key and the board platform differ here: bringups
-# write `[tiers.<name>.threadx]` while this board's platform is
+# write `[tasks.<name>.threadx]` while this board's platform is
 # `threadx-linux`. FreeRTOS and NuttX happened to match; stating it is cheaper
 # than relying on that.
 #

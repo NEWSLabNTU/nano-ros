@@ -214,7 +214,7 @@ Contract differences from `run` (and *why*):
   primitive (`nros_platform_task_init` / `nros_freertos_create_task` / …).
 - **`TierSpec`** (`nros-platform`) carries `{name, groups: &[&str], priority:
   i64, stack_bytes, spin_period_us}`. `priority` is the **raw per-RTOS** value
-  the author wrote in `[tiers.<name>.<rtos>].priority` (already in the kernel's
+  the author wrote in `[tasks.<name>.<rtos>].priority` (already in the kernel's
   scale; `i64` admits Zephyr negative coop) — passed straight to the spawn call.
   The RFC-0016 `*_priority_for` mappers are a separate utility for authors who
   prefer a normalized 0–31 scale; the codegen path uses the raw value.
@@ -243,7 +243,7 @@ corrected RFC-0015 §2.3/§7.1, which had claimed MT=0 for FreeRTOS/NuttX/Thread
 
 The emitter chooses the path on **tier presence**:
 
-- system has no `[tiers.*]` **or** the resolved table `is_single_tier()` (one
+- system has no `[tasks.*]` **or** the resolved table `is_single_tier()` (one
   synthesized `default` tier) → emit the **unchanged `BoardEntry::run`** path.
   Every example today takes this branch; output is byte-identical to pre-228.
 - otherwise → emit `run_tiers(&[TierSpec{…}, …], run_plan)` with a register-only
@@ -273,7 +273,7 @@ serde + thiserror only) owns the tier schema (`TierDef`, `TierRtosSpec`,
 - `nros-cli-core` path-deps it (re-exports the types; `codegen-system` calls it).
 - `nros-macros` path-deps it (same workspace) and calls the *same* function at
   expansion. The archived GitHub `nros-build` git-dep is untouched — the macro
-  reads `system.toml` (`[[component]] group_tiers`, RFC-0047) itself and feeds
+  reads `system.toml` (`[[component]] group_tasks`, RFC-0047) itself and feeds
   the shared resolver. (The node manifest's `[package.metadata.nros.node]
   callback_groups`, the binding's original home, is retired and refused at
   parse.)
@@ -285,7 +285,7 @@ so the leaf crate stays free of the full CLI config type. The macro derives
 `freertos`, …).
 
 ```
-launch tree + system.toml (tiers + group_tiers)
+launch tree + system.toml (tiers + group_tasks)
         │
         ├── nros dev codegen system ──► resolve_tiers ──► nros-plan.json (bake / RFC-0003)
         └── nros::main! (expand) ──► resolve_tiers ──► run / run_tiers emit
@@ -297,7 +297,7 @@ launch tree + system.toml (tiers + group_tiers)
 
 ## 7. Invariants
 
-- **Single-tier byte-identical.** No `[tiers.*]` ⇒ the `run` emit is unchanged.
+- **Single-tier byte-identical.** No `[tasks.*]` ⇒ the `run` emit is unchanged.
   (Phase 228 keeps a parity check.)
 - **One node-set SSoT.** Both Rust emitters + the C bake resolve the launch tree
   identically; none invents nodes.
@@ -306,10 +306,10 @@ launch tree + system.toml (tiers + group_tiers)
 - **Node-pinned-to-tier (v1).** A node's callback groups must all resolve to one
   tier (enforced in the resolver). Cross-tier data is `[[shared_state]]`
   (RFC-0015 §8). v2 relaxes with multi-task state-sync.
-- **Raw per-RTOS priority.** Authored in `[tiers.<name>.<rtos>].priority`, emitted
+- **Raw per-RTOS priority.** Authored in `[tasks.<name>.<rtos>].priority`, emitted
   verbatim into the spawn call; codegen does not auto-flip direction.
 - **Instance identity.** Group → tier bindings are per-*instance*
-  (`system.toml [[component]] group_tiers`, RFC-0047 — they were per-*package*
+  (`system.toml [[component]] group_tasks`, RFC-0047 — they were per-*package*
   manifest metadata until phase-273, a form now refused at parse); tiers +
   `[[node_overrides]]` key by node *instance* name too. The emitter applies
   bindings and overrides by name, and **requires the launch `<node name=…>` to

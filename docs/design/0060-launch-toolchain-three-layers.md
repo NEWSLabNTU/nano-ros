@@ -43,7 +43,7 @@ name the owner: "nano-ros `[lifecycle]`", "nano-ros `[param_services]`",
 | `[lifecycle] autostart` (system-wide, `none\|configure\|active`) | each lifecycle node's `lifecycle_autostart` (copied by play_launch's resolver, `resolve/src/model.rs`, not by `apply_to_launch`) | **the TABLE fails; the per-node FIELD passes.** Managed nodes are ROS; Jazzy `launch_ros` `LifecycleNode(autostart=True)` drives one node to `active` (verified against the `jazzy` branch). Humble has no `autostart` at all. A system-wide default is nano-ros boot policy |
 | `[deploy.<n>]` `board` / `kind` / `framework` / `profile` / `optimize` / `features` / `[deploy.<n>.nros]` | `execution.deploy.<n>.target = mcu:<board>`, `.extra` | **fails.** These describe a build. rlm's own comment says so ("describes a BUILD"), and nano-ros already moved them out of placement: `[image.*]` (phase-383, RFC-0065 D6) and `[board_config.*]` (RFC-0072 §5). No tracked `system.toml` writes `[deploy.*]` today (0 of 189) |
 | `[host.<n>]` (`nodes`/`launch` scoping, `domain_id`, `locator`) | `execution.deploy.<n>` `domain` / `locator` / `rmw` | **passes** — which machine runs which node, on which bus, is topology. The table's KEY (`extra.host_name`) is read by nothing and leaves with `extra` |
-| `[tiers.*]`, `[[component]] group_tiers` | `execution.tiers`, `execution.bindings` | **passes** — scheduling, in the shared `sched` schema |
+| `[tasks.*]`, `[[component]] group_tasks` | `execution.tiers`, `execution.bindings` | **passes** — scheduling, in the shared `sched` schema |
 | `[[component]] params` / `params_files` | `structure.nodes[].params` | **passes** — ROS parameter values |
 | `[system] rmw` / `domain_id` / `locator`, `[[transport]]` (both retired by [RFC-0109](0109-network-config-layers.md); sessions are `[[domain]]`), `[[bridge]]` | `execution.deploy`, `transports`, `bridges` | **passes** — ROS environment and topology |
 
@@ -114,7 +114,7 @@ DEFAULT is.
 *Revised 2026-10-12.* rlm is agnostic to its realizers, so its
 `SystemConfigToml` stops being a lax copy of nano-ros's file (issue 0293's
 two parsers for one file) and becomes rlm's own format for the SHARED layers
-only: `[system]` `rmw`/`domain_id`/`locator`, `[host.*]`, `[tiers.*]`,
+only: `[system]` `rmw`/`domain_id`/`locator`, `[host.*]`, `[tasks.*]`,
 `[[component]]`, `[[transport]]`, `[[bridge]]`. **Every other table is
 ignored by design**, and rlm's doc comments name no realizer (rlm
 `docs/model-boundary.md`, revised the same day).
@@ -147,7 +147,7 @@ restates the file rule over both inputs and retires the exception.
 
 `[host.*]` placement and play_launch's `<arg>` + `if=` + `host:=` are two
 spellings of one topology fact; both pass the test, and reconciling them is
-out of scope here. `[tiers.<n>.<rtos>]` sub-tables carry platform numbers into
+out of scope here. `[tasks.<n>.<rtos>]` sub-tables carry platform numbers into
 the model where play_launch keeps them in per-target platform files
 (`<stem>.system.<target>.yaml`); scheduling is in the model by this rule, and
 moving nano-ros onto platform files is play_launch's Phase 41.6, not this

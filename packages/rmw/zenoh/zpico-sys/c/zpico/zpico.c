@@ -1912,7 +1912,7 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
  *
  * Separate function on purpose. The Zephyr helper takes a NORMALISED 0-31
  * priority and maps it across `CONFIG_NUM_PREEMPT_PRIORITIES`; NuttX tier
- * priorities are authored RAW (`[tiers.*.nuttx] priority = 110`) and go
+ * priorities are authored RAW (`[tasks.*.nuttx] priority = 110`) and go
  * verbatim into `pthread_attr_setschedparam`, which is the vocabulary issue
  * 0623 settled on after a normalised scale silently inverted a tier against
  * the transport band. Two scales through one function is how that happened;

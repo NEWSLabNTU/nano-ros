@@ -8,12 +8,12 @@ domain_id = 0
 # reads.
 #
 # Same two node packages, same launch, and no schedule authored here: no
-# `[tiers.*]`, no priority. The rates are in launch/system.contract.yaml, and
+# `[tasks.*]`, no priority. The rates are in launch/system.contract.yaml, and
 # the macro derives a rate-monotonic table from them (ctrl 100 Hz above telem
 # 10 Hz). Compare demo_bringup, the authored-tier neighbour, whose
-# `[tiers.*.zephyr]` pins cannot exercise the derivation at all.
+# `[tasks.*.zephyr]` pins cannot exercise the derivation at all.
 #
-# `group_tiers` is here only to NAME each node's callback group: the model's
+# `group_tasks` is here only to NAME each node's callback group: the model's
 # group bindings are the one group input `nros::main!` reads, and a node with no
 # group gets no derived tier (it stays on the default executor, and nothing is
 # derived at all). The tier it binds, `derived`, is declared nowhere; the
@@ -28,13 +28,13 @@ domain_id = 0
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
-group_tiers = { ctrl = "derived" }
+group_tasks = { ctrl = "derived" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
-group_tiers = { telem = "derived" }
+group_tasks = { telem = "derived" }
 
 [image_defaults]
 rmw = "zenoh"

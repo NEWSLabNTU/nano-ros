@@ -106,7 +106,7 @@ names no board, no RMW and no selection crate.
 
 A bringup package is `package.xml` plus `system.toml`, and nothing else is
 required. Its schema is unchanged: `[system]`, `[[component]]`, `[image.<id>]`,
-`[host.*]`, `[tiers.*]` and the knob tables. A workspace may hold several
+`[host.*]`, `[tasks.*]` and the knob tables. A workspace may hold several
 bringups, as it does today.
 
 A fact about the WORKSPACE, not about one system, does not go in a bringup. Two

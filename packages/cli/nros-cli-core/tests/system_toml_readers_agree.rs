@@ -13,7 +13,7 @@
 //! struct is rlm's view of the file and not nano-ros's schema. So for every
 //! tracked `system.toml`, each SHARED key must mean the same to both:
 //! `[system] rmw / domain_id / locator`, `[[component]]` identity, tier
-//! binding and parameters, `[[bridge]]`, `[host.*]`, `[tiers.*]`.
+//! binding and parameters, `[[bridge]]`, `[host.*]`, `[tasks.*]`.
 //!
 //! It also keeps W7's boundary: rlm's own projection (`apply_to_launch`) puts
 //! no capability switch into the model, and the overlay carries every
@@ -60,7 +60,7 @@ struct Shared {
     rmw: Option<String>,
     domain_id: Option<u32>,
     locator: Option<String>,
-    /// name, pkg, class, group_tiers, params, params_files
+    /// name, pkg, class, group_tasks, params, params_files
     components: Vec<String>,
     bridges: Vec<String>,
     hosts: Vec<String>,
@@ -82,7 +82,7 @@ fn rlm_view(text: &str) -> Result<Shared, String> {
             .map(|b| {
                 format!(
                     "{:?} {:?} {:?} {:?} {:?} {:?}",
-                    b.name, b.pkg, b.class, b.group_tiers, b.params, b.params_files
+                    b.name, b.pkg, b.class, b.group_tasks, b.params, b.params_files
                 )
             })
             .collect(),
@@ -98,7 +98,7 @@ fn rlm_view(text: &str) -> Result<Shared, String> {
             .collect(),
         hosts: c.host.iter().map(|(k, h)| format!("{k} {h:?}")).collect(),
         tiers: c
-            .tiers
+            .tasks
             .iter()
             .map(|(k, t)| {
                 format!(

@@ -11,12 +11,14 @@ superseded-by: null
 
 # RTOS Orchestration via Launch Tree + Manifest Codegen
 
+> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` still read this release with a `deprecated-spelling` warning, and rlm R+1 refuses them. The prose and nano-ros's own names move in W2.
+
 > **Canonical path (phase-296 R3/R4).** Tier tables, bindings, and budgets
 > now come from the play_launch-resolved **SystemModel** (RFC-0050/0052):
 > `codegen-system --model` / `nano_ros_add_executable(... MODEL …)` /
 > `nros::main!(model = …)` resolve the tiers through the shared
 > `nros_orchestration_ir::tier_from_model` + `resolve_tiers`. The launch-tree
-> + `system.toml [tiers.*]` orchestration this RFC describes is
+> + `system.toml [tasks.*]` orchestration this RFC describes is
 > **transitional** — deprecated in R3, removed in R4 once consumers migrate.
 > The tier *schema* and resolver are unchanged; only the input surface moves
 > from `system.toml` to `execution.tiers` in the resolved model.
@@ -31,7 +33,7 @@ superseded-by: null
 > - **Callback groups** are declared by the *node* (it owns its callbacks):
 >   `[package.metadata.nros.node]` (Rust) / `nano_ros_node_register(...)` (C/C++).
 > - **Tier definitions + group→tier reassignment** are *deployment*-owned, in
->   `system.toml`: `[tiers.<name>.<rtos>]` (priority/stack) + `[[node_overrides]]`
+>   `system.toml`: `[tasks.<name>.<rtos>]` (priority/stack) + `[[node_overrides]]`
 >   (the node declares each group's default tier; the system overrides per deploy).
 > - **Shared state** → `system.toml [[shared_state]]`, codegen-emitted accessors.
 >
@@ -53,7 +55,7 @@ superseded-by: null
 > **reconciled onto Model 1** — C/C++ get per-tier executors too. The **user surface
 > is the callback-group model of RFC-0047 / phase-273** (code-declared
 > `create_callback_group("id")` + `create_*_in`, group→tier in `system.toml
-> [[component]].group_tiers`), identical across languages; only the backend
+> [[component]].group_tasks`), identical across languages; only the backend
 > converges. **`sched_context` is re-scoped** (2026-07): it is NOT the tiering
 > mechanism under Model 1 (the *tier task* is), but an **optional intra-tier fine-
 > scheduling knob** (sporadic-server / per-callback priority *within* one tier task,
@@ -237,7 +239,7 @@ Codegen requires exactly **one system manifest** per build target. Node manifest
 
 > **Superseded binding (RFC-0047).** The symbolic `tier` on a node manifest's callback group,
 > shown below, is the original design. phase-273 moved the group → tier binding to the
-> deployment — `system.toml` `[[component]] group_tiers = { <id> = "<tier>" }` — so a node package
+> deployment — `system.toml` `[[component]] group_tasks = { <id> = "<tier>" }` — so a node package
 > names no tier. The Cargo spelling of this field (`[package.metadata.nros.node] callback_groups`)
 > was honoured for one release with a warning and is now refused at parse.
 
@@ -285,39 +287,39 @@ group = "telemetry"
 # packages/my_system/nros.toml
 schema = "nano-ros/orchestration/v1"
 kind = "system"
-target_rtos = "freertos"         # selects which [tiers.<X>.<rtos>] sub-table is consumed
+target_rtos = "freertos"         # selects which [tasks.<X>.<rtos>] sub-table is consumed
 
 # Symbolic tier table. Each tier MUST have a sub-table for the active target_rtos.
-[tiers.high]
+[tasks.high]
 spin_period = "1000us"
-[tiers.high.freertos]
+[tasks.high.freertos]
 priority = 5                     # FreeRTOS: higher = higher
 stack_bytes = 8192
-[tiers.high.threadx]
+[tasks.high.threadx]
 priority = 5                     # ThreadX: lower = higher (note inversion)
 preempt_threshold = 5
 stack_bytes = 8192
-[tiers.high.nuttx]
+[tasks.high.nuttx]
 priority = 200
 sched_class = "SCHED_FIFO"
 stack_bytes = 8192
-[tiers.high.zephyr]
+[tasks.high.zephyr]
 priority = 0                     # K_PRIO_PREEMPT(0)
 stack_bytes = 8192
-[tiers.high.posix]
+[tasks.high.posix]
 priority = 80
 sched_class = "SCHED_FIFO"
 
-[tiers.normal]
+[tasks.normal]
 spin_period = "10000us"
-[tiers.normal.freertos]
+[tasks.normal.freertos]
 priority = 3
 stack_bytes = 4096
 # ... (other RTOS sub-tables analogous)
 
-[tiers.low]
+[tasks.low]
 spin_period = "100000us"
-[tiers.low.freertos]
+[tasks.low.freertos]
 priority = 1
 stack_bytes = 4096
 
@@ -360,8 +362,8 @@ target_param = "control_node.gain"
 ### 4.3 Invariants enforced by codegen
 
 - Every node in launch tree (`record.json`) must have a discoverable node manifest, OR an implicit default applied (`tier = "normal"`, single MutuallyExclusive group covering all entities).
-- Every callback group's symbolic `tier` must resolve in system manifest's `[tiers.*]` table.
-- For the active `target_rtos`, every `[tiers.<X>]` must have a `[tiers.<X>.<target_rtos>]` sub-table.
+- Every callback group's symbolic `tier` must resolve in system manifest's `[tasks.*]` table.
+- For the active `target_rtos`, every `[tasks.<X>]` must have a `[tasks.<X>.<target_rtos>]` sub-table.
 - Tier task `spin_period_us` must be ≤ tightest timer period in its group set.
 - `startup_order` entries must exist in launch tree.
 - Binding entity names (`timers.name`, `subscriptions.topic`, `services.name`) reconciled with launch tree at build time; mismatches reported as build errors.

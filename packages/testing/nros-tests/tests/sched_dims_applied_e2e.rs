@@ -395,7 +395,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
         // tier-priority marker in either language, so #579 was enforced on
         // NuttX alone and the boot task's missing adopt had nothing watching
         // it. Three tiers here, not two: `mid` declares a
-        // `[tiers.mid.freertos] priority` where it declares no NuttX one, so
+        // `[tasks.mid.freertos] priority` where it declares no NuttX one, so
         // the FreeRTOS projection keeps all three.
         (SD::TierPriority, MP::FreertosMps2, ML::Cpp) => Exec {
             resolver: || build_freertos_workspace_cpp_realtime_entry().map(|p| p.to_path_buf()),
@@ -416,7 +416,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             // Same seam TU (freertos_run_tiers.c serves the C and C++ entries
             // alike) but a DIFFERENT bringup, and the tier list follows the
             // bringup, not the seam: `realtime-c/src/demo_bringup` declares
-            // only `high` and `low` — there is no `[tiers.mid]` there at all,
+            // only `high` and `low` — there is no `[tasks.mid]` there at all,
             // where `realtime-cpp` has one. Asserting the C++ cell's three
             // tiers here fails on a `mid` that was never emitted, which is a
             // broken expectation and not a dropped dim. Read the emitted
@@ -981,7 +981,7 @@ fn dotconfig_has_line(dotconfig: &Path, line: &str) -> bool {
 /// Issue 2018 -- a NuttX level that overruns its declared budget is throttled
 /// by the KERNEL, and only by the kernel.
 ///
-/// The `ws-realtime-{cpp,rust}` images declare `[tiers.high.nuttx]` budget
+/// The `ws-realtime-{cpp,rust}` images declare `[tasks.high.nuttx]` budget
 /// 5 ms per 10 ms, and their `high` member runs one tick in fifty for 8 ms on
 /// NuttX. The assertions, from the guest console:
 ///

@@ -44,7 +44,7 @@ pub const fn to_freertos_priority(normalized: u8) -> u32 {
 }
 
 /// Priorities are **RAW FreeRTOS** — `0..configMAX_PRIORITIES-1`, higher = more
-/// urgent — the same units a `[tiers.<name>.freertos] priority` is written in
+/// urgent — the same units a `[tasks.<name>.freertos] priority` is written in
 /// (issue 0623).
 ///
 /// They were on a normalized 0–31 scale, and that was the defect: a tier and a
@@ -190,7 +190,7 @@ pub const fn app_stack_bytes(kb: Option<&str>) -> u32 {
 /// App-sized task stacks the default heap budgets for.
 ///
 /// Three: the boot task plus two spawned tiers. `app_stack_bytes` is charged
-/// **per TASK** — a tier whose `[tiers.*] stack_bytes` is 0 takes the app
+/// **per TASK** — a tier whose `[tasks.*] stack_bytes` is 0 takes the app
 /// default too — so a tiered image multiplies this term rather than sharing it.
 /// The deepest in-tree image (`examples/workspaces/realtime-rust`) declares two
 /// tiers; three is one more than anything shipped, and a deeper image raises

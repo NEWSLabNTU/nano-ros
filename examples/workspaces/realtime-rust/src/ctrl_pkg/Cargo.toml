@@ -10,8 +10,8 @@ path = "src/lib.rs"
 
 # phase-263 B2 — the control node's code declares its callback group with
 # `node.callback_group("ctrl")`; WHICH tier that group runs on is deployment
-# policy, bound in the bringup's `system.toml` (`[[component]] group_tiers`,
-# RFC-0047), which `nros::main!()` resolves against `[tiers.<tier>]` to emit
+# policy, bound in the bringup's `system.toml` (`[[component]] group_tasks`,
+# RFC-0047), which `nros::main!()` resolves against `[tasks.<tier>]` to emit
 # `run_tiers` (RFC-0015 / RFC-0032).
 [package.metadata.nros.node]
 class = "ctrl_pkg::Control"

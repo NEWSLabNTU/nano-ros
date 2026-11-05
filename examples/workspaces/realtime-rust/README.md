@@ -7,7 +7,7 @@ declared in config, no node-code change to retune.
 ```
 src/ctrl_pkg/      — Node pkg, 10 ms control loop, callback group `ctrl` → tier `high`.
 src/telem_pkg/     — Node pkg, 100 ms telemetry,  callback group `telem` → tier `low`.
-src/demo_bringup/  — Bringup: system.toml declares [tiers.high] / [tiers.low],
+src/demo_bringup/  — Bringup: system.toml declares [tasks.high] / [tasks.low],
                      and boards/native_sim_native_64/ holds the Zephyr image's
                      Kconfig (RFC-0065 D4).
 src/derived_bringup/ — Bringup for the SAME two nodes with NO authored tiers:
@@ -23,13 +23,13 @@ entry at all — not `linux_entry`, and since phase-470 W5.b2 (issue 1288) not
 `zephyr_entry` either: `nros build` writes the west application around the
 generated staticlib under `build/<coord>/`.
 
-The Zephyr image is also where the `[tiers.*]` block below stops being only a
+The Zephyr image is also where the `[tasks.*]` block below stops being only a
 runtime schedule and becomes a BUILD input. `nros-board-zephyr` keeps
 `ZephyrBoard::run_tiers` behind a `tiers` cargo feature and the kernel-EDF call
 behind `zephyr-edf`; the deleted entry named both by hand, and the generated one
 derives them from this file — `tiers` from the table not collapsing to the single
-`default` tier, `zephyr-edf` from `[tiers.high]` being `class = "real_time"` with
-a `[tiers.high.zephyr] deadline`. Same predicates their consumers key on, so
+`default` tier, `zephyr-edf` from `[tasks.high]` being `class = "real_time"` with
+a `[tasks.high.zephyr] deadline`. Same predicates their consumers key on, so
 there is nothing to keep in step.
 
 ## How tiers are declared
@@ -43,7 +43,7 @@ there is nothing to keep in step.
    pkg = "ctrl_pkg"
    class = "ctrl_pkg::Control"
    name = "control_node"
-   group_tiers = { ctrl = "high" }
+   group_tasks = { ctrl = "high" }
    ```
 
    …and the node labels its entities at runtime: `node.callback_group("ctrl")?`.
@@ -55,9 +55,9 @@ there is nothing to keep in step.
 
    ```toml
    # demo_bringup/system.toml
-   [tiers.high]
+   [tasks.high]
    spin_period_us = 1000
-   [tiers.high.posix]
+   [tasks.high.posix]
    priority = 80
    ```
 

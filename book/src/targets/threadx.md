@@ -319,7 +319,7 @@ pieces to reuse; it is then flashed with that board vendor's tooling.
 ## Multi-tier scheduling
 
 ThreadX supports the multi-tier workspace scheduling model: declare per-tier ThreadX priorities in the bringup's
-`system.toml` with `[tiers.<name>.threadx]` priority tables, and
+`system.toml` with `[tasks.<name>.threadx]` priority tables, and
 the generated entry routes the app onto `run_tiers` — one executor per
 tier, all sharing one session, with per-tier stacks carved from the
 ThreadX byte pool. ThreadX priorities follow the native convention:

@@ -5,10 +5,10 @@
 //! The `subnode_pkg::SubNode` component is IDENTICAL to the sub-node fixture
 //! (`realtime-cpp`) but this workspace uses DIFFERENT tier names:
 //!
-//!   - `[tiers.fast]` (10 ms, priority 80)  instead of `[tiers.high]`
-//!   - `[tiers.bulk]` (100 ms, priority 10) instead of `[tiers.low]`
+//!   - `[tasks.fast]` (10 ms, priority 80)  instead of `[tasks.high]`
+//!   - `[tasks.bulk]` (100 ms, priority 10) instead of `[tasks.low]`
 //!
-//! `deploy_bringup/system.toml group_tiers = { ctrl = "fast", telem = "bulk" }` — no
+//! `deploy_bringup/system.toml group_tasks = { ctrl = "fast", telem = "bulk" }` — no
 //! change to the package source. This proves the RFC-0047 coupling is removed: a
 //! group-using component package can be deployed with any tier names by changing only
 //! `system.toml`. The entry emits:

@@ -623,7 +623,7 @@ static int zephyr_spawn_next_tier(void* scheduler, const nros_tier_spec_t* remai
     ctx->level = zephyr_tier_level(t);
 
     /* RAW Zephyr priority from the tier spec (the system.toml
-     * [tiers.*.zephyr].priority is the numeric Zephyr value verbatim —
+     * [tasks.*.zephyr].priority is the numeric Zephyr value verbatim —
      * negatives are cooperative). Clamp to int32 range. The shim manages the
      * tier's stack from its static pool (NROS_ZEPHYR_TIER_STACK_SIZE);
      * t->stack_bytes rides along so the shim can print LOUD when the

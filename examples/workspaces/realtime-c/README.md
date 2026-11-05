@@ -6,7 +6,7 @@ The C projection of the scheduling-tiers differentiator (RFC-0015 §4.2):
 `ctrl_node` (`ctrl_pkg::Ctrl`) publishes `/ctrl` every 10 ms on the `high`
 tier (posix prio 80); `telem_node` (`telem_pkg::Telem`) publishes `/telem`
 every 100 ms on the `low` tier (prio 10). Tier definitions and the
-group → tier bindings (`[[component]].group_tiers`) live entirely in
+group → tier bindings (`[[component]].group_tasks`) live entirely in
 `src/demo_bringup/system.toml` — the node code carries no priorities. The
 generated entry emits `nros_cpp_create_sched_context` +
 `nros_cpp_bind_group_sched`.

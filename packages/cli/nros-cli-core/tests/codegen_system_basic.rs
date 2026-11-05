@@ -353,7 +353,7 @@ fn codegen_system_picks_deploy_target_overlay() {
 
 /// RFC-0052 / phase-296 W1 — a SystemModel-driven bake produces a
 /// byte-identical `nros-plan.json` to the same execution config authored
-/// in `system.toml` ([tiers.*] + group_tiers). Same resolver by
+/// in `system.toml` ([tasks.*] + group_tasks). Same resolver by
 /// construction; this pins the conversion seam.
 #[test]
 fn codegen_system_model_mode_plan_matches_system_toml() {
@@ -365,7 +365,7 @@ fn codegen_system_model_mode_plan_matches_system_toml() {
     let mut t = fs::read_to_string(&system_toml).unwrap();
     t = t.replace(
         "[[component]]\npkg = \"talker_pkg\"\nclass = \"talker_pkg::TalkerNode\"\nname = \"talker\"",
-        "[[component]]\npkg = \"talker_pkg\"\nclass = \"talker_pkg::TalkerNode\"\nname = \"talker\"\ngroup_tiers = { ctrl = \"high\" }",
+        "[[component]]\npkg = \"talker_pkg\"\nclass = \"talker_pkg::TalkerNode\"\nname = \"talker\"\ngroup_tasks = { ctrl = \"high\" }",
     );
     fs::write(&system_toml, &t).unwrap();
 

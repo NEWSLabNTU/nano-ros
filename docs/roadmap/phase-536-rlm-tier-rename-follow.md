@@ -1,10 +1,13 @@
 # Phase 536 -- Follow rlm's tier rename
 
-**Status (2026-11-05). PLANNED -- waits on the new word (play_launch phase 99
-T0) and on rlm's release R. Raised by the play_launch side, as phase 534 was,
-so nano-ros knows what is moving, what it owns, and where it is on the
-critical path.** Decided (user, 2026-11-05): `tier` is renamed, in its own
-phase on both sides.
+**Status (2026-11-05). IN PROGRESS -- W1 in review; W0, W2-W4 not started.
+Raised by the play_launch side, as phase 534 was, so nano-ros knows what is
+moving, what it owns, and where it is on the critical path.** Decided (user,
+2026-11-05): `tier` is renamed, in its own phase on both sides. **The word
+(play_launch phase 99 T0, decided by the user 2026-11-05): `task`** -- below,
+`<new>` reads `task`: `[tasks.<name>]`, `group_tasks`, `TaskDef`,
+`execution.tasks`. rlm's release R is `v0.3.10`; the play_launch release
+carrying it is 0.27.0.
 
 The design of record is rlm's
 [`docs/design/standard-names.md`](https://github.com/NEWSLabNTU/ros-launch-manifest/blob/v0.3.9/docs/design/standard-names.md)
@@ -144,6 +147,22 @@ Acceptance: RFC-0052 has the table; RFC-0047 and RFC-0108 carry a status
 line naming the rename; this phase's W2 links it.
 
 ### W1 -- Bump to rlm R; migrate the authored files
+
+**Progress (2026-11-05): done in its pull request.** rlm `v0.3.10`,
+`packages/cli/third-party/play_launch` at 0.27.0 (`b5243446`, a fast-forward
+of the old pin). `play_launch migrate --write` rewrote the nine bringups that
+author keys (85 edits; `levels-cpp`'s writes none, only comments name them),
+and comments, the book, example READMEs and the RFCs that show a
+`system.toml` (0015, 0027, 0047, 0066, 0079, with a status line) write the
+new keys. nano-ros's own strict reader (`cargo_metadata_schema::SystemToml`)
+reads `tasks` / `group_tasks` with the old keys as serde aliases; its Rust
+fields keep their names until W2. `scripts/lib/priority_plan.py` reads a pin
+under either key. Not covered by the aliases: rlm renamed
+`ResolvedTaskTable`'s field `tiers` to `tasks` (a field cannot be aliased),
+so `rtos_realizer.rs`'s two literals and its test reads move here, and the
+rlm-qualified type names nano-ros names (`TierDef`, `TierPlatformSpec`,
+`ResolvedTier`, `ResolvedTierTable`) take the new names so no build carries a
+deprecation warning.
 
 - `just bump-manifest <R>` and `packages/cli/third-party/play_launch` to the
   play_launch release carrying R, as phase 534 W1 did.

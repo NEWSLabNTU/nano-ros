@@ -11,6 +11,8 @@ superseded-by: null
 
 # ROS 2 User Workflow for nano-ros
 
+> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` still read this release with a `deprecated-spelling` warning, and rlm R+1 refuses them. The prose and nano-ros's own names move in W2.
+
 **Status:** Stable (origin/rationale doc — current layout authority is RFC-0024/0025)
 **Related:** [Phase 123](../roadmap/archived/phase-123-build-and-api-revision.md), [RTOS orchestration](0015-rtos-orchestration.md), [Colcon build type](archived/colcon-nano-ros-build-type.md)
 **Related repo:** `~/repos/play_launch`
@@ -1183,10 +1185,10 @@ target_rtos = "freertos"
 launch = "launch/system.launch.py"
 manifest_dir = "manifests"
 
-[tiers.high]
+[tasks.high]
 spin_period = "1000us"
 
-[tiers.high.freertos]
+[tasks.high.freertos]
 priority = 5
 stack_bytes = 8192
 
@@ -1347,7 +1349,7 @@ target_rtos = "freertos"
 target_board = "mps2-an385"
 platform_overlay = "config/freertos.toml"
 
-[tiers.control]
+[tasks.control]
 executor = "control_exec"
 spin_period = "1000us"
 
@@ -1370,7 +1372,7 @@ sched_context = "control_loop"
 Suggested platform overlay:
 
 ```toml
-[tiers.control.freertos]
+[tasks.control.freertos]
 task_priority = 5
 stack_bytes = 8192
 core = 0

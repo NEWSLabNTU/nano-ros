@@ -4,8 +4,8 @@
 //! The fixture is `examples/workspaces/derived-tiers-cpp` (phase-459 W0): four
 //! `SHAPE rclcpp` C++ components in the shape of the Autoware Safety Island,
 //! one wall timer each, two at 30 Hz and two at 10 Hz, `CALLBACK_GROUPS main`
-//! on every registration, and a `system.toml` that authors no `group_tiers`
-//! and no `[tiers.*]`.
+//! on every registration, and a `system.toml` that authors no `group_tasks`
+//! and no `[tasks.*]`.
 //!
 //! What issue 1426 measured: even with the groups reaching `codegen-system`
 //! (W1), the ENTRY still emitted `run_components`. `codegen entry` built its
@@ -40,7 +40,7 @@ use nros_cli_core::codegen::entry::{
 
 /// The board key the entry bakes for. The fixture's `[image.zephyr]` names
 /// `zephyr`; `codegen entry` is given the FAMILY key, which is
-/// what selects the `[tiers.*.zephyr]` sub-table and `ZephyrBoard::run_tiers`.
+/// what selects the `[tasks.*.zephyr]` sub-table and `ZephyrBoard::run_tiers`.
 const BOARD: &str = "zephyr";
 
 /// The Zephyr application pool this board's Kconfig resolves to (RFC-0079
@@ -187,7 +187,7 @@ fn without_the_keyword_the_entry_derives_nothing_and_keeps_run_components() {
 /// This test used to assert `plan.tiers.keys() == ["ctrl"]` - "the authored
 /// table is the whole table; nothing was derived beside it" - which is the
 /// defect issue 1426 names in its second bullet, written down as an
-/// expectation. One component binding to one `[tiers.ctrl.zephyr]` disabled the
+/// expectation. One component binding to one `[tasks.ctrl.zephyr]` disabled the
 /// derivation for the other three, so three nodes with 30/10 Hz contracts and a
 /// declared group landed on the synthesised default tier at Zephyr priority 0,
 /// i.e. ABOVE the transport threads that feed them (issue 1427's inversion,
@@ -207,7 +207,7 @@ fn an_authored_placement_wins_only_for_the_node_that_authored_it() {
     fixture.author(
         "ctrl",
         &["mrm_handler"],
-        "[tiers.ctrl]\n[tiers.ctrl.zephyr]\npriority = 7\n",
+        "[tasks.ctrl]\n[tasks.ctrl.zephyr]\npriority = 7\n",
     );
 
     let model = resolve_model_path(&bringup, true);
@@ -267,9 +267,9 @@ fn an_authored_placement_wins_only_for_the_node_that_authored_it() {
 }
 
 /// Issue 1537 follow-up - the RUST shape of a derived image: no cmake metadata
-/// at all, the groups stated only through `[[component]] group_tiers` (the
+/// at all, the groups stated only through `[[component]] group_tasks` (the
 /// model's `execution.bindings`, the one group input `nros::main!` reads), and
-/// still no `[tiers.*]`.
+/// still no `[tasks.*]`.
 ///
 /// Before the fix the entry derived NOTHING here - `derive_entry_tiers` keyed
 /// on cmake groups alone - so resolution failed on the bindings' tier names,
@@ -286,7 +286,7 @@ fn a_group_tiers_only_image_derives_like_the_macro_does() {
     for name in FAST.iter().chain(SLOW.iter()) {
         raw = raw.replace(
             &format!("name = \"{name}\""),
-            &format!("name = \"{name}\"\ngroup_tiers = {{ main = \"bound\" }}"),
+            &format!("name = \"{name}\"\ngroup_tasks = {{ main = \"bound\" }}"),
         );
     }
     fs::write(&system, raw).expect("bind each component's group");
@@ -317,7 +317,7 @@ fn a_group_tiers_only_image_derives_like_the_macro_does() {
 }
 
 /// RFC-0079's table, the `spin_period_us` row - the safety island's shape: one
-/// authored, unplaced tier holding every component (`group_tiers`), with no
+/// authored, unplaced tier holding every component (`group_tasks`), with no
 /// `spin_period`. The tier's spin period is its fastest member's release, the
 /// 30 Hz pair's 33,333 us, not the C runner's 1 ms floor.
 fn one_tier_plan(fixture: &Fixture, tier_toml: &str) -> eyre::Result<Plan> {
@@ -344,7 +344,7 @@ fn the_tier(plan: &Plan) -> &nros_orchestration_ir::ResolvedTier {
 #[test]
 fn an_unset_spin_period_is_derived_from_the_fastest_member() {
     let fixture = Fixture::copy("spin-derived");
-    let plan = one_tier_plan(&fixture, "[tiers.app]\n").expect("resolve");
+    let plan = one_tier_plan(&fixture, "[tasks.app]\n").expect("resolve");
     assert_eq!(the_tier(&plan).spin_period_us, Some(33_333));
     let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
@@ -356,14 +356,14 @@ fn an_unset_spin_period_is_derived_from_the_fastest_member() {
 #[test]
 fn a_faster_authored_spin_period_is_kept() {
     let fixture = Fixture::copy("spin-override");
-    let plan = one_tier_plan(&fixture, "[tiers.app]\nspin_period = \"10ms\"\n").expect("resolve");
+    let plan = one_tier_plan(&fixture, "[tasks.app]\nspin_period = \"10ms\"\n").expect("resolve");
     assert_eq!(the_tier(&plan).spin_period_us, Some(10_000));
 }
 
 #[test]
 fn a_slower_authored_spin_period_is_refused() {
     let fixture = Fixture::copy("spin-too-slow");
-    let err = one_tier_plan(&fixture, "[tiers.app]\nspin_period = \"50ms\"\n")
+    let err = one_tier_plan(&fixture, "[tasks.app]\nspin_period = \"50ms\"\n")
         .expect_err("a spin period slower than the 30 Hz members is refused");
     let msg = format!("{err:#}");
     assert!(
@@ -382,7 +382,7 @@ fn a_one_tier_entry_seeds_each_nodes_rank() {
     let fixture = Fixture::copy("rank-seeded");
     let meta = fixture.configure(&["main"]);
     let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
-    fixture.author("app", &all, "[tiers.app]\n");
+    fixture.author("app", &all, "[tasks.app]\n");
     let model = resolve_model_path(&fixture.bringup(), true);
     let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan");
     let index = metadata::ComponentIndex::load(&meta).expect("metadata");

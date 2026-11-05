@@ -174,7 +174,7 @@ impl PlatformKind {
             .is_some_and(nros_entry_lower::BoardFamily::honors_entry_sizing)
     }
 
-    /// The `[tiers.<name>.<rtos>]` key this platform's images read.
+    /// The `[tasks.<name>.<rtos>]` key this platform's images read.
     /// [`NO_RTOS_TIER_KEY`](nros_entry_lower::NO_RTOS_TIER_KEY) for a
     /// platform with no RTOS.
     pub fn tier_rtos_key(self) -> &'static str {

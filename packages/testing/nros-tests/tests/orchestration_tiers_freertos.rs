@@ -1,7 +1,7 @@
 //! Multi-tier `nros::main!()` on FreeRTOS QEMU (mps2-an385) — `run_tiers`
 //! executes on device (Phase 228.G).
 //!
-//! The fixture's `system.toml` declares `[tiers.*]`, so the macro emits
+//! The fixture's `system.toml` declares `[tasks.*]`, so the macro emits
 //! `<Mps2An385>::run_tiers(TIERS, run_plan)`. Booting the firmware proves the
 //! emit links with the kernel and the run_tiers path runs on device (the
 //! `(multi-tier)` banner + network bringup). A second test brings up a host

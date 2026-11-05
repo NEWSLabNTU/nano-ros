@@ -1,13 +1,13 @@
 //! Multi-tier `nros::main!()` emit round-trip (RFC-0032 §5).
 //!
-//! When `system.toml` declares `[tiers.*]`, the macro resolves a tier table and
+//! When `system.toml` declares `[tasks.*]`, the macro resolves a tier table and
 //! emits `<LinuxBoard>::run_tiers(TIERS, run_plan)`; with the tier blocks
 //! stripped it falls back to the legacy single-tier `BoardEntry::run`.
 //!
 //! Both shapes are **build-stage fixtures** (`compile-check-fixtures.sh`, run by
 //! `build-test-fixtures`): `orch_tiers_multi` (verbatim fixture) and
 //! `orch_tiers_single` (the same fixture with the `cases/orch_tiers_single/`
-//! overlay, a bringup `system.toml` without the `[tiers.*]` tables). The tests assert/run the prebuilt `demo_entry` binaries instead of
+//! overlay, a bringup `system.toml` without the `[tasks.*]` tables). The tests assert/run the prebuilt `demo_entry` binaries instead of
 //! running `cargo build` at run time (issue 0034 / AGENTS.md "No compilation
 //! inside tests"). The boot lifecycle (no router) or the per-tier run marker
 //! (live router) is the proof the emitted code took the right branch.
@@ -130,7 +130,7 @@ fn multi_tier_binary_runs_both_tiers_with_router() -> nros_tests::TestResult<()>
 
 #[test]
 fn single_tier_system_takes_the_legacy_boardentry_run_path() -> nros_tests::TestResult<()> {
-    // The `[tiers.*]`-stripped variant must fall back to the legacy single-tier
+    // The `[tasks.*]`-stripped variant must fall back to the legacy single-tier
     // `BoardEntry::run` emit (macro gate G.4): it emits NO `multi-tier` marker
     // (the branch-distinguishing invariant) AND reaches the lifecycle — either
     // `application complete` (a router was reachable → ran to completion) or
@@ -160,7 +160,7 @@ fn single_tier_system_takes_the_legacy_boardentry_run_path() -> nros_tests::Test
 /// The `orch_tiers_single` overlay (`cases/orch_tiers_single/`, a file since
 /// issue 1656 — it was a `sed` inside `compile-check-fixtures.sh`, outside the
 /// row's signature) is the template's bringup `system.toml` up to its first
-/// `[tiers.` table and nothing else, so the two rows differ ONLY in the tier
+/// `[tasks.` table and nothing else, so the two rows differ ONLY in the tier
 /// tables. Reads sources only.
 #[test]
 fn single_tier_overlay_is_the_template_without_its_tier_tables() {
@@ -172,16 +172,16 @@ fn single_tier_overlay_is_the_template_without_its_tier_tables() {
     let template = read("src/demo_bringup/system.toml");
     let overlay = read("cases/orch_tiers_single/src/demo_bringup/system.toml.case");
     let (head, _tiers) = template
-        .split_once("\n[tiers.")
-        .expect("the multi-tier template declares `[tiers.*]` tables");
+        .split_once("\n[tasks.")
+        .expect("the multi-tier template declares `[tasks.*]` tables");
     assert_eq!(
         overlay.trim_end(),
         head.trim_end(),
         "the single-tier overlay drifted from src/demo_bringup/system.toml: it must be \
-         the template up to (not including) its first `[tiers.` table"
+         the template up to (not including) its first `[tasks.` table"
     );
     assert!(
-        !overlay.lines().any(|l| l.starts_with("[tiers.")),
+        !overlay.lines().any(|l| l.starts_with("[tasks.")),
         "the single-tier overlay declares a tier table"
     );
 }

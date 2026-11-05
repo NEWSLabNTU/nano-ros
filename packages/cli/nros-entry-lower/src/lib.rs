@@ -296,7 +296,7 @@ impl BoardFamily {
     }
 
     /// The key a tier's per-RTOS sub-table is read under:
-    /// `[tiers.<name>.<rtos>]`, rlm's `TierDef::platform`, and
+    /// `[tasks.<name>.<rtos>]`, rlm's `TierDef::platform`, and
     /// `nros-orchestration-ir`'s `rtos_spec`.
     ///
     /// This is `as_str()` for every family but the host, which is spelled
@@ -689,7 +689,7 @@ pub fn board_family(board: &str) -> Result<BoardFamily, UnknownBoard> {
 }
 
 /// The tier key a board with NO RTOS family resolves to: the empty string,
-/// which names no `[tiers.<name>.<rtos>]` sub-table.
+/// which names no `[tasks.<name>.<rtos>]` sub-table.
 ///
 /// Issue 1285 follow-up. Each lenient caller used to spell its own fallback.
 /// `plan_from_model` wrote `""`, while the proc-macro and the CLI's
@@ -704,7 +704,7 @@ pub fn board_family(board: &str) -> Result<BoardFamily, UnknownBoard> {
 ///   for each node it would have placed.
 pub const NO_RTOS_TIER_KEY: &str = "";
 
-/// The `[tiers.<name>.<rtos>]` key for an entry board key, for a caller where
+/// The `[tasks.<name>.<rtos>]` key for an entry board key, for a caller where
 /// an UNKNOWN key is legal.
 ///
 /// Read from [`BOARD_KEYS`]. A key the table does not know gets

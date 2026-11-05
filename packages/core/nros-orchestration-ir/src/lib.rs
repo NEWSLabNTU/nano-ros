@@ -15,7 +15,7 @@
 //! host code (serde + thiserror); it carries no runtime/`no_std`
 //! dependencies.
 //!
-//! The all-default-tier degenerate case (no `[tiers.*]`, no callback
+//! The all-default-tier degenerate case (no `[tasks.*]`, no callback
 //! groups) resolves to a single synthesized `"default"` tier — the
 //! single-task shape that ships today.
 //!
@@ -480,11 +480,11 @@ pub fn board_path_keys() -> impl Iterator<Item = &'static str> {
 // system.toml schema (tier subset)
 // =============================================================================
 
-/// Read a µs-valued `[tiers.*]` duration key: a duration string WITH a unit
+/// Read a µs-valued `[tasks.*]` duration key: a duration string WITH a unit
 /// (`spin_period = "1000us"`, `"2ms"`), nothing else.
 ///
-/// `system.toml` `[tiers.*]` has TWO parsers — this struct and the resolver's
-/// `ros_launch_manifest_sched::TierPlatformSpec` (see the drift note on
+/// `system.toml` `[tasks.*]` has TWO parsers — this struct and the resolver's
+/// `ros_launch_manifest_sched::TaskPlatformSpec` (see the drift note on
 /// `TierRtosSpec`). rlm v0.3.0 (play_launch phase 96 W2.2) removed the
 /// deprecated `_us` spellings and the leniency that read a bare number as µs,
 /// so this mirror refuses both too: the legacy key is an `unknown field`
@@ -537,9 +537,9 @@ where
     }
 }
 
-/// `[tiers.<name>]` — a symbolic priority tier (RFC-0015 §4.2). Carries the
+/// `[tasks.<name>]` — a symbolic priority tier (RFC-0015 §4.2). Carries the
 /// RTOS-agnostic `spin_period` plus a per-RTOS sub-table
-/// (`[tiers.<name>.<rtos>]`) giving the concrete priority/stack for each target.
+/// (`[tasks.<name>.<rtos>]`) giving the concrete priority/stack for each target.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TierDef {
@@ -614,7 +614,7 @@ pub struct TierDef {
     pub posix: Option<TierRtosSpec>,
 }
 
-/// `[tiers.<name>.<rtos>]` — concrete per-RTOS task knobs. One shape for all
+/// `[tasks.<name>.<rtos>]` — concrete per-RTOS task knobs. One shape for all
 /// RTOSes; `priority` is `i64` to admit Zephyr's negative coop priorities.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -646,15 +646,15 @@ pub struct TierRtosSpec {
     // overrides, and the distinction is the point: a generic head turns the
     // policy on EVERYWHERE, while a sub-table entry engages one kernel's
     // mechanism and lowers to `None` elsewhere. A generic `budget_us` flips
-    // every executor into cooperative sporadic gating; `[tiers.high.nuttx]
+    // every executor into cooperative sporadic gating; `[tasks.high.nuttx]
     // .budget_us` engages only NuttX's SCHED_SPORADIC.
     //
     // Their ABSENCE here is why issue 0380 happened: this struct is the schema
     // `system.toml` is parsed against, so a scoped dim could not be written in
     // the inputs and lived only in the committed model YAML — a file whose
     // documented maintenance procedure is "delete and re-resolve". The shared
-    // `ros_launch_manifest_sched::TierPlatformSpec`, which the resolver parses
-    // the SAME `[tiers.*]` block into, has had these all along: two mirrors
+    // `ros_launch_manifest_sched::TaskPlatformSpec`, which the resolver parses
+    // the SAME `[tasks.*]` block into, has had these all along: two mirrors
     // drifted and the narrower one defined what users could write.
     /// CPU core to pin this tier's task to on THIS platform (SMP).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -690,7 +690,7 @@ pub struct TierRtosSpec {
 
 /// One callback group and the tier it runs on (Phase 228.A, RFC-0015 §4.1).
 ///
-/// Authored as `[[component]] group_tiers = { <id> = "<tier>" }` in
+/// Authored as `[[component]] group_tasks = { <id> = "<tier>" }` in
 /// `system.toml` (RFC-0047) or, at the default tier, by the cmake
 /// `CALLBACK_GROUPS` keyword. Its original spelling — a node manifest's
 /// `callback_groups = [{ id, tier }]` — is retired and refused at parse.
@@ -704,7 +704,7 @@ pub struct CallbackGroupDecl {
     /// the future multi-worker executor.
     #[serde(default = "default_cbg_type")]
     pub r#type: String,
-    /// Symbolic tier name resolved against the system's `[tiers.*]`.
+    /// Symbolic tier name resolved against the system's `[tasks.*]`.
     #[serde(default = "default_tier_name")]
     pub tier: String,
 }
@@ -741,10 +741,10 @@ pub struct CallbackGroupOverride {
 // =============================================================================
 
 /// The synthesized tier used when a callback group names no tier (or none are
-/// declared at all). It needs no `[tiers.default]` table.
+/// declared at all). It needs no `[tasks.default]` table.
 pub const DEFAULT_TIER: &str = "default";
 
-/// issue 1426 — install an ALLOCATED `[tiers.<name>.<rtos>]` on a tier whose
+/// issue 1426 — install an ALLOCATED `[tasks.<name>.<rtos>]` on a tier whose
 /// head the AUTHOR wrote.
 ///
 /// One spelling for all three roads that patch a tier table
@@ -844,7 +844,7 @@ impl ResolvedTierTable {
     }
 
     /// True when at least one node has callback groups on MORE THAN ONE tier
-    /// (the RFC-0047 sub-node capability: `group_tiers = { ctrl = "high",
+    /// (the RFC-0047 sub-node capability: `group_tasks = { ctrl = "high",
     /// telem = "low" }`). Such a node cannot be expressed by the run_tiers
     /// shape (per-tier executors construct whole nodes), so entry codegen must
     /// keep the single-executor sched-context path (`bind_group_sched`) for
@@ -869,7 +869,7 @@ impl ResolvedTierTable {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum TierResolveError {
     #[error(
-        "callback group `{node}/{group}` names tier `{tier}`, which has no `[tiers.{tier}]` definition"
+        "callback group `{node}/{group}` names tier `{tier}`, which has no `[tasks.{tier}]` definition"
     )]
     UnknownTier {
         node: String,
@@ -882,9 +882,9 @@ pub enum TierResolveError {
     /// tier DOES author placement, for other targets, and the author has to say
     /// which of the two they meant.
     #[error(
-        "tier `{tier}` has no `[tiers.{tier}.{rtos}]` sub-table for the target RTOS. \
+        "tier `{tier}` has no `[tasks.{tier}.{rtos}]` sub-table for the target RTOS. \
          It does carry a sub-table for another platform, so its priority is AUTHORED \
-         and this target was left out - add `[tiers.{tier}.{rtos}]`, or remove every \
+         and this target was left out - add `[tasks.{tier}.{rtos}]`, or remove every \
          platform sub-table to have the priority allocated from the contract instead \
          (RFC-0079). (If no member of this tier carries a rate in the contract, there \
          is nothing to allocate from either.)"
@@ -892,11 +892,11 @@ pub enum TierResolveError {
     MissingRtosSpec { tier: String, rtos: String },
     /// Issue 1285 follow-up. The target board has no RTOS family (tier key
     /// `""`, `nros_entry_lower::NO_RTOS_TIER_KEY`). This is its own variant
-    /// because `MissingRtosSpec` would print `[tiers.x.]` and advise adding a
+    /// because `MissingRtosSpec` would print `[tasks.x.]` and advise adding a
     /// sub-table that does not exist.
     #[error(
         "tier `{tier}` is declared, but the target board has no RTOS family, so there \
-         is no `[tiers.{tier}.<rtos>]` sub-table to read and no task to run the tier \
+         is no `[tasks.{tier}.<rtos>]` sub-table to read and no task to run the tier \
          on. Tiers need a board whose platform is an RTOS or the host."
     )]
     NoRtosFamily { tier: String },
@@ -922,12 +922,12 @@ fn rtos_spec<'a>(def: &'a TierDef, rtos: &str) -> Option<&'a TierRtosSpec> {
 /// Inputs are the decomposed `system.toml` pieces so both the CLI (which
 /// holds a full `SystemToml`) and the proc-macro (which parses a leaner
 /// view) can call this without sharing the whole config type:
-/// - `tiers` — the `[tiers.*]` table.
+/// - `tiers` — the `[tasks.*]` table.
 /// - `node_overrides` — the `[[node_overrides]]` rows.
 /// - `component_names` — the system's component *instance* names, used to
 ///   validate override targets.
 /// - `callback_groups` — component-instance-name → its declared groups
-///   (`[[component]] group_tiers`, or the cmake `CALLBACK_GROUPS` keyword).
+///   (`[[component]] group_tasks`, or the cmake `CALLBACK_GROUPS` keyword).
 pub fn resolve_tiers(
     tiers: &BTreeMap<String, TierDef>,
     node_overrides: &[NodeOverride],
@@ -980,7 +980,7 @@ pub fn resolve_tiers(
     for (name, mut members) in members_by_tier {
         members.sort();
         if name == DEFAULT_TIER && !tiers.contains_key(DEFAULT_TIER) {
-            // The default tier needs no `[tiers.default]` table.
+            // The default tier needs no `[tasks.default]` table.
             out.push(default_tier(members));
             continue;
         }
@@ -1150,7 +1150,7 @@ pub fn validate_tier_platform_applicability(
         if t.preempt_threshold.is_some() && target_rtos != "threadx" {
             return Err(format!(
                 "tier '{}': preempt_threshold is ThreadX-only, but the selected \
-                 target is '{target_rtos}' — remove it from [tiers.{}.{target_rtos}] \
+                 target is '{target_rtos}' — remove it from [tasks.{}.{target_rtos}] \
                  (other platforms' sub-tables may keep theirs)",
                 t.name, t.name
             ));
@@ -1163,7 +1163,7 @@ pub fn validate_tier_platform_applicability(
             return Err(format!(
                 "tier '{}': time_slice_us is ThreadX-only today (per-thread \
                  round-robin), but the selected target is '{target_rtos}' — remove \
-                 it from [tiers.{}.{target_rtos}] (other RTOSes' time-slicing is a \
+                 it from [tasks.{}.{target_rtos}] (other RTOSes' time-slicing is a \
                  global kernel config, not a per-tier knob; issue #0266)",
                 t.name, t.name
             ));
@@ -1208,13 +1208,13 @@ pub fn validate_tier_platform_applicability(
 // ---------------------------------------------------------------------------
 // RFC-0052 — SystemModel → orchestration-ir tier conversion.
 //
-// The resolved model's tier schema (`ros_launch_manifest_sched::TierDef`)
+// The resolved model's tier schema (`ros_launch_manifest_sched::TaskDef`)
 // differs from this crate's `TierDef` in two deliberate seams; conversion is
 // the contract. Both the CLI's `codegen-system --model` and the
 // `nros::main!(model = …)` proc-macro call this, so the mapping has ONE home.
 // ---------------------------------------------------------------------------
 
-fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> TierRtosSpec {
+fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TaskPlatformSpec) -> TierRtosSpec {
     TierRtosSpec {
         priority: spec.priority,
         stack_bytes: spec.stack_bytes,
@@ -1241,7 +1241,7 @@ fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> T
 ///   hoisted from the SELECTED target's sub-table.
 /// - a per-platform `deadline_us` override (model) tightens the generic head
 ///   deadline.
-pub fn tier_from_model(t: &ros_launch_manifest_sched::TierDef, target_rtos: &str) -> TierDef {
+pub fn tier_from_model(t: &ros_launch_manifest_sched::TaskDef, target_rtos: &str) -> TierDef {
     let selected = t.platform(target_rtos);
     TierDef {
         spin_period_us: t.spin_period.map(|d| d.as_micros()),
@@ -1332,7 +1332,7 @@ mod tests {
     /// tripwire — extend the conversion AND this fixture together.
     #[test]
     fn tier_from_model_covers_every_field() {
-        use ros_launch_manifest_sched::{TierDef as ModelTierDef, TierPlatformSpec};
+        use ros_launch_manifest_sched::{TaskDef as ModelTierDef, TaskPlatformSpec};
         use ros_launch_manifest_types::duration::Duration;
         let model_tier = ModelTierDef {
             class: Some("real_time".to_string()),
@@ -1342,7 +1342,7 @@ mod tests {
             deadline_policy: Some("skip".to_string()),
             spin_period: Some(Duration::from_micros(250)),
             above: Some(ros_launch_manifest_sched::ReservedBand::Transport),
-            posix: Some(TierPlatformSpec {
+            posix: Some(TaskPlatformSpec {
                 priority: 80,
                 stack_bytes: Some(65536),
                 core: Some(2),
@@ -1353,7 +1353,7 @@ mod tests {
                 period: Some(Duration::from_micros(900)),
                 time_slice: None,
             }),
-            freertos: Some(TierPlatformSpec {
+            freertos: Some(TaskPlatformSpec {
                 priority: 5,
                 stack_bytes: Some(32768),
                 core: None,
@@ -1365,7 +1365,7 @@ mod tests {
                 time_slice: None,
             }),
             zephyr: None,
-            threadx: Some(TierPlatformSpec {
+            threadx: Some(TaskPlatformSpec {
                 priority: 4,
                 stack_bytes: None,
                 core: Some(1),
@@ -1491,7 +1491,7 @@ mod tests {
         );
     }
 
-    /// Phase 256 W4 (decision A) — a `[tiers.<name>]` carrying the RTOS-agnostic
+    /// Phase 256 W4 (decision A) — a `[tasks.<name>]` carrying the RTOS-agnostic
     /// real-time policy parses, and `resolve_tiers` carries those fields onto the
     /// `ResolvedTier` (the data the planner lowers to a `PlanSchedContext`).
     #[test]
@@ -1578,13 +1578,13 @@ mod tests {
         assert_eq!(parse(r#"deadline = "0us""#).unwrap().deadline_us, Some(0));
     }
 
-    /// Only the canonical spelling of a `[tiers.*]` duration key parses, and
+    /// Only the canonical spelling of a `[tasks.*]` duration key parses, and
     /// only with a unit: rlm v0.3.0 (play_launch phase 96 W2.2) removed the
     /// deprecated `_us` keys and the leniency that read a bare number as µs.
     ///
-    /// This is the drift guard for the OTHER mirror. `system.toml` `[tiers.*]`
+    /// This is the drift guard for the OTHER mirror. `system.toml` `[tasks.*]`
     /// is parsed twice — here, and by the resolver's
-    /// `ros_launch_manifest_sched::TierPlatformSpec`. When rlm renamed these
+    /// `ros_launch_manifest_sched::TaskPlatformSpec`. When rlm renamed these
     /// keys, only the resolver learned the new spelling, so a user writing the
     /// documented form hit `unknown field` from THIS parser while the resolver
     /// accepted it. Now that rlm refuses the old forms, this mirror must refuse

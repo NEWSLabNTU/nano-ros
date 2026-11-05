@@ -2,7 +2,7 @@
 //!
 //! `nros codegen-system --model system_model.yaml` consumes the checked
 //! artifact play_launch `resolve` emits (RFC-0050): the model's execution
-//! layer REPLACES the bringup's `[tiers.*]` + `[[node_overrides]]` before
+//! layer REPLACES the bringup's `[tasks.*]` + `[[node_overrides]]` before
 //! the existing `resolve_system_tiers` pipeline runs — same resolver, same
 //! `nros-plan.json`, same `run_tiers` output as the `system.toml`-authored
 //! equivalent, by construction.
@@ -85,7 +85,7 @@ fn bare(fqn: &str) -> &str {
 }
 
 /// Apply the model's execution layer onto the bringup system: tiers
-/// replace `[tiers.*]`, bindings become `[[node_overrides]]` rows.
+/// replace `[tasks.*]`, bindings become `[[node_overrides]]` rows.
 ///
 /// Binding keys are `<node FQN>` (whole node → every declared group) or
 /// `<node FQN>/<callback group>`. Fail-loud (RFC-0052): a binding that
@@ -166,7 +166,7 @@ pub fn apply_model_execution(
     // ISSUE 0398 — the other direction, which was silent.
     //
     // A binding that names no component already bails above. The reverse never
-    // did: a `[[component]]` that declares `group_tiers` and matches NO launch
+    // did: a `[[component]]` that declares `group_tasks` and matches NO launch
     // node produces no binding at all, so there is nothing here to reject, and
     // the node quietly runs on the default tier.
     //
@@ -175,7 +175,7 @@ pub fn apply_model_execution(
     // name — phase-331's consolidation made all 20 of `features/`'s component
     // names differ from all 8 of its launch node names. The params projection
     // survived only because rlm v0.1.2 added a package-based fallback and emits
-    // a diagnostic when even that misses; `group_tiers` has neither. The first
+    // a diagnostic when even that misses; `group_tasks` has neither. The first
     // consolidated workspace to declare one would have lost its tiers with no
     // trace.
     //
@@ -213,7 +213,7 @@ pub fn apply_model_execution(
         .collect();
     if !renamed.is_empty() {
         bail!(
-            "these `[[component]]`s declare `group_tiers` that reached no node, while a node \
+            "these `[[component]]`s declare `group_tasks` that reached no node, while a node \
              of the SAME PACKAGE is in the resolved model: {}. A component binds to a launch \
              node by NAME (`[[component]].name` vs the node's `name=`), so a component renamed \
              for workspace-wide uniqueness stops matching its own node and its tiers fall back \
@@ -238,7 +238,7 @@ pub fn apply_model_execution(
 /// path: when the model declares NO `execution.tiers`, derive per-node tiers
 /// from the contract layer (`node_paths` + criticality) via the shared
 /// platform-agnostic core + the RTOS realizer, and synthesize them into the
-/// bringup as ordinary `[tiers.*]` + `[[node_overrides]]` rows so the ENTIRE
+/// bringup as ordinary `[tasks.*]` + `[[node_overrides]]` rows so the ENTIRE
 /// existing pipeline (resolve_system_tiers → validation → plan → run_tiers)
 /// consumes them unchanged.
 ///
@@ -324,7 +324,7 @@ pub fn derive_execution_in_plan(
     // person who wrote the number is the one who needs to see what it beat.
     for s in &derived.shadowed {
         let reason = format!(
-            "`[tiers.{}]` authors priority {} for this board, so it wins; the \
+            "`[tasks.{}]` authors priority {} for this board, so it wins; the \
              contract's rank would have allocated {}. Remove every platform \
              sub-table from that tier to have the priority allocated instead \
              (RFC-0079).",

@@ -289,7 +289,7 @@ of a session; a `[[transport]]` there panics at boot naming the new spelling.
 
 > **In practice (2026-06).** Single-node RT/stack/priority is set via **board-crate
 > Cargo features + Kconfig** (`prj*.conf` on Zephyr), not an `nros.toml [node.rt]`
-> block (0 examples). Multi-node RT is `system.toml` `[tiers.<name>.<rtos>]` +
+> block (0 examples). Multi-node RT is `system.toml` `[tasks.<name>.<rtos>]` +
 > `[[node_overrides]]` (below). The `[node.rt]` schema here is retained as the
 > conceptual node-RT model; the `nros.toml` file carrying it is part of the retired
 > surface.
@@ -311,7 +311,7 @@ In planned mode this maps to the `PlanSchedContext` the planner carries
 (RFC-0015/0016). **Multi-node RT home (decided 2026-06):** the *node* declares its
 callback groups (`[package.metadata.nros.node]` / `nano_ros_node_register`);
 `system.toml` owns tier definitions + group→tier assignment
-(`[tiers.<name>.<rtos>]` priority/stack + `[[node_overrides]]` deploy-time tier reassignment) and
+(`[tasks.<name>.<rtos>]` priority/stack + `[[node_overrides]]` deploy-time tier reassignment) and
 `[[shared_state]]`. See RFC-0015 (Phase 212 reconciliation). Schema/loader is
 tracked by phase-227; the per-tier codegen by phase-228.
 

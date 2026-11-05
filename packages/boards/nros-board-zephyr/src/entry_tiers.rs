@@ -7,7 +7,7 @@
 //! `Executor`, runs the boot tier's setup, then CHAIN-spawns the remaining
 //! tiers (issue #144) through the module's `nros_zephyr_tier_task_create`
 //! shim (`k_thread_create` on a static pool, RAW Zephyr priority — negatives
-//! = cooperative, exactly the `[tiers.<name>.zephyr].priority` value), and
+//! = cooperative, exactly the `[tasks.<name>.zephyr].priority` value), and
 //! then runs `tiers[0]` itself. NOTE (issue 0251): `resolve_tiers` sorts
 //! descending by RAW number without inverting per RTOS direction, and Zephyr
 //! is lower-number-wins — so `tiers[0]`, the boot tier, is the

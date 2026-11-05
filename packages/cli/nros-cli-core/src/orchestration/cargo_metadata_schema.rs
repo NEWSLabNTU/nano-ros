@@ -337,7 +337,7 @@ pub struct ComponentMetadata {
     pub remaps: Vec<RemapRule>,
     /// `callback_groups = [{ id, tier }]` — RETIRED. Phase 228.A put the
     /// group → tier binding here; phase-273 W2 (RFC-0047) moved it to
-    /// `system.toml`'s `[[component]] group_tiers`, and the manifest form was
+    /// `system.toml`'s `[[component]] group_tasks`, and the manifest form was
     /// honoured with a `[WARN]` for one release by a fallback rung in
     /// `tier_resolver::collect_callback_groups`. That rung is gone, so the key
     /// is accepted by the schema only so the reader can REFUSE it by name
@@ -703,10 +703,20 @@ pub struct SystemToml {
     /// so this schema and `model_location` cannot read a row two ways.
     #[serde(default, rename = "model", skip_serializing_if = "Vec::is_empty")]
     pub models: Vec<nros_orchestration_ir::system_launch::ModelDecl>,
-    /// Phase 228.A (RFC-0015 §4.2) — `[tiers.<name>]` priority/scheduling tiers.
-    /// The system owner maps the symbolic tier names a node's callback groups
-    /// reference to per-RTOS task knobs. Empty → the single-tier degenerate case.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    /// Phase 228.A (RFC-0015 §4.2) — `[tasks.<name>]` scheduling tasks.
+    /// The system owner maps the symbolic task names a node's callback groups
+    /// reference to per-RTOS task knobs. Empty → the single-task degenerate case.
+    ///
+    /// Phase 536 W1 (rlm v0.3.10): the key is `[tasks.*]`; the pre-rename
+    /// `[tasks.*]` is still read this release (rlm's resolver warns
+    /// `deprecated-spelling` and `play_launch migrate` rewrites it), and rlm
+    /// R+1 refuses it. The Rust field keeps its name until W2.
+    #[serde(
+        default,
+        rename = "tasks",
+        alias = "tiers",
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
     pub tiers: BTreeMap<String, TierDef>,
     /// Phase 228.A — `[[node_overrides]]` deployment-time tier reassignment of a
     /// node's callback groups (RFC-0015 §4.2), without touching the node package.
@@ -1095,7 +1105,7 @@ fn refuse_retired_param_services<'de, D: serde::Deserializer<'de>>(
 /// The refusal message for a manifest `callback_groups` (see
 /// [`ComponentMetadata::retired_callback_groups`]). `decls` is what the key
 /// held, when it parsed as `{ id, tier }` rows: the message then spells the
-/// exact `group_tiers` line to write instead of a template.
+/// exact `group_tasks` line to write instead of a template.
 pub fn retired_callback_groups_message(decls: Option<&[CallbackGroupDecl]>) -> String {
     let binding = match decls {
         Some(d) if !d.is_empty() => d
@@ -1109,7 +1119,7 @@ pub fn retired_callback_groups_message(decls: Option<&[CallbackGroupDecl]>) -> S
         "`callback_groups` in a node package's `[package.metadata.nros]` is RETIRED \
          (RFC-0047, phase-273 W2): nothing reads it any more, so the tier binding it states \
          would be dropped. Move each `{{ id, tier }}` to the component's entry in the \
-         bringup's `system.toml`:\n\n    [[component]]\n    group_tiers = {{ {binding} }}\n\n\
+         bringup's `system.toml`:\n\n    [[component]]\n    group_tasks = {{ {binding} }}\n\n\
          and delete the manifest key."
     )
 }
@@ -1833,7 +1843,16 @@ pub struct SystemComponentEntry {
     /// refused at parse). A group with no entry runs on the default tier. Empty ⇒
     /// a cmake component's `CALLBACK_GROUPS` keyword, if any, at the default tier
     /// (`tier_resolver::collect_callback_groups`).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    ///
+    /// Phase 536 W1 (rlm v0.3.10): the key is `group_tasks`; the pre-rename
+    /// `group_tasks` is still read this release. The Rust field keeps its
+    /// name until W2.
+    #[serde(
+        default,
+        rename = "group_tasks",
+        alias = "group_tiers",
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
     pub group_tiers: BTreeMap<String, String>,
     /// phase-330 W4 — deployment-time parameter values for this component's
     /// node, equivalent to an inline `<param>` in the launch file.
@@ -2950,18 +2969,18 @@ pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
 
-[tiers.high]
+[tasks.high]
 spin_period = "1000us"
-[tiers.high.freertos]
+[tasks.high.freertos]
 priority = 5
 stack_bytes = 8192
-[tiers.high.zephyr]
+[tasks.high.zephyr]
 priority = -1
-[tiers.high.posix]
+[tasks.high.posix]
 priority = 80
 sched_class = "SCHED_FIFO"
 
-[tiers.low.freertos]
+[tasks.low.freertos]
 priority = 1
 
 [[node_overrides]]
@@ -3110,7 +3129,7 @@ bogus = true
 
     /// RFC-0047 — the retired manifest `callback_groups` tier binding is
     /// refused BY NAME in every shape a node table can take, and the refusal
-    /// spells the `group_tiers` line that replaces it. Removing the
+    /// spells the `group_tasks` line that replaces it. Removing the
     /// `deserialize_with` makes this fail twice over: the key would either
     /// parse silently (field kept) or reach serde's generic "unknown field".
     #[test]
@@ -3130,7 +3149,7 @@ bogus = true
             );
             assert!(
                 s.contains("[[component]]")
-                    && s.contains("group_tiers = { ctrl = \"high\", telem = \"low\" }"),
+                    && s.contains("group_tasks = { ctrl = \"high\", telem = \"low\" }"),
                 "{table}: the refusal must spell the replacement: {s}"
             );
             assert!(!s.contains("unknown field"), "{table}: {s}");
@@ -3145,7 +3164,7 @@ bogus = true
         let err = toml::from_str::<PackageMetadataNros>(raw).expect_err("must not parse");
         let s = err.to_string();
         assert!(
-            s.contains("RETIRED") && s.contains("group_tiers = { <id> = \"<tier>\" }"),
+            s.contains("RETIRED") && s.contains("group_tasks = { <id> = \"<tier>\" }"),
             "{s}"
         );
     }

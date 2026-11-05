@@ -7,15 +7,15 @@ domain_id = 0
 # The ctrl node publishes /ctrl every 10 ms (high tier);
 # the telem node publishes /telem every 100 ms (low tier).
 # Phase 273 W2 (RFC-0047): group→tier binding moved from [[node_overrides]] to
-# [[component]].group_tiers (deployment config, not package manifest).
-# CALLBACK_GROUPS in cmake declares the group IDs; group_tiers here assigns
+# [[component]].group_tasks (deployment config, not package manifest).
+# CALLBACK_GROUPS in cmake declares the group IDs; group_tasks here assigns
 # them to the named tiers. nros dev codegen emits NodeBuilder::sched() calls so
 # each node binds to its posix-priority sched context.
 [[component]]
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Ctrl"
 name = "ctrl_node"
-group_tiers = { ctrl = "high" }
+group_tasks = { ctrl = "high" }
 
 # issue 0395 / phase-144 (#144) — the mid tier's node. Listed in the catalog;
 # the shared `system.launch.xml` stays 2-node, and `freertos_system.launch.xml`
@@ -24,34 +24,34 @@ group_tiers = { ctrl = "high" }
 # mid -> low — so mid is spawned BY a spawned tier, which is the tier<->tier
 # declare race the chained-spawn fix closes. `realtime_tiers_e2e`'s
 # `freertos_cpp` cell asserts SerialTicks(ctrl, aux, telem) on exactly this.
-# issue 1509 — `group_tiers` below is the WHOLE binding, and it is declared only
+# issue 1509 — `group_tasks` below is the WHOLE binding, and it is declared only
 # here. aux_pkg's own comments used to restate it as a FreeRTOS task priority;
 # that restatement had already drifted — it said 3, which is the `high` tier's
 # number, not this node's. The node now names the tier and nothing else, which
 # is also what makes it true off FreeRTOS: the same `mid` lands on
-# `[tiers.mid.posix]` when this bringup is built for a posix image.
+# `[tasks.mid.posix]` when this bringup is built for a posix image.
 [[component]]
 pkg = "aux_pkg"
 class = "aux_pkg::Aux"
 name = "aux_node"
-group_tiers = { aux = "mid" }
+group_tasks = { aux = "mid" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
-group_tiers = { telem = "low" }
+group_tasks = { telem = "low" }
 
-[tiers.high]
+[tasks.high]
 # phase-330 W2 (RFC-0063) — authored HERE, not in the generated model.
 class = "real_time"
 spin_period = "10000us"
-[tiers.high.posix]
+[tasks.high.posix]
 priority = 80
 # phase-281 W3b — RAW Zephyr priority (preemptive; lower number = higher priority).
-# Consumed by the zephyr_entry projection: [tiers.*.zephyr] flips the codegen onto
+# Consumed by the zephyr_entry projection: [tasks.*.zephyr] flips the codegen onto
 # ZephyrBoard::run_tiers (RFC-0015 Model 1), one k_thread per tier.
-[tiers.high.zephyr]
+[tasks.high.zephyr]
 # RFC-0079 §4.1 — allocated from the DERIVED pool.app, strictly less urgent
 # than the transport band. Zephyr's band is not a literal: the zenoh read/lease
 # tasks are pthreads whose Kconfig band maps through Zephyr's POSIX layer to a
@@ -65,20 +65,20 @@ priority = 9
 # ZEPHYR-SCOPED: kernel EDF here, lowers to None (Fifo) elsewhere.
 deadline = "10000us"
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
-# priority; verbatim into pthread_attr_setschedparam). `[tiers.*.nuttx]` flips the
+# priority; verbatim into pthread_attr_setschedparam). `[tasks.*.nuttx]` flips the
 # C++ codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
 # phase-331 W6 / issue 0395 — RAW FreeRTOS priority (0–7 for
 # configMAX_PRIORITIES=8 on MPS2). Restored: the W6 consolidation retargeted the
 # `workspace-cpp-freertos-realtime` fixture onto this bringup but left these
 # behind, so the freertos bake had no tier priorities at all.
-[tiers.high.freertos]
+[tasks.high.freertos]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
 # reserved transport band. A tier that outranks the link cannot be drained
 # or refilled by it (issue 0623, measured again in 0736); a tier that needs
 # the other side must SAY so with `above = "transport"` on the tier.
 priority = 3
 
-[tiers.high.nuttx]
+[tasks.high.nuttx]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
 # reserved transport band. A tier that outranks the link cannot be drained
 # or refilled by it (issue 0623, measured again in 0736); a tier that needs
@@ -92,12 +92,12 @@ period = "10000us"
 # it folded ws-realtime-cpp-mps2 in, and the two-tier reading looked right only
 # because the fixture row's comment was stale (it said 2-tier while the row
 # pointed at the 3-node mps2 bringup).
-[tiers.mid]
+[tasks.mid]
 spin_period = "50000us"
-[tiers.mid.posix]
+[tasks.mid.posix]
 priority = 40
-[tiers.mid.freertos]
-# `[tiers.*.freertos]` flips the C++ codegen onto FreertosBoard::run_tiers
+[tasks.mid.freertos]
+# `[tasks.*.freertos]` flips the C++ codegen onto FreertosBoard::run_tiers
 # (RFC-0015 Model 1), one FreeRTOS task per tier — so the `priority` below is
 # what `aux_node` runs at on the mps2 image. Stated once, here (issue 1509):
 # read it, do not copy it into a node.
@@ -107,14 +107,14 @@ priority = 40
 # the other side must SAY so with `above = "transport"` on the tier.
 priority = 2
 
-[tiers.low]
+[tasks.low]
 spin_period = "100000us"
-[tiers.low.posix]
+[tasks.low.posix]
 priority = 10
 # FREERTOS-SCOPED SMP core pin. `tests/freertos_core_pin_applied.rs` asserts
 # this exact dim reaches the tier spawn — "the realtime-cpp `low` tier pins to
 # core 0" — so dropping it silently is the failure that test exists to catch.
-[tiers.low.freertos]
+[tasks.low.freertos]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
 # reserved transport band. A tier that outranks the link cannot be drained
 # or refilled by it (issue 0623, measured again in 0736); a tier that needs
@@ -122,9 +122,9 @@ priority = 10
 priority = 1
 core = 0
 
-[tiers.low.zephyr]
+[tasks.low.zephyr]
 priority = 10
-[tiers.low.nuttx]
+[tasks.low.nuttx]
 # RFC-0079 — 99, not 100. 100 is the priority zenoh-pico's read and lease
 # threads INHERIT from the thread that opens the session (app_main's
 # SCHED_PRIORITY_DEFAULT), so a tier at 100 shares a priority with the link it

@@ -2,7 +2,7 @@
 """RFC-0079 evidence: what would a priority ALLOCATOR say about the pins we
 already have?
 
-Every `[tiers.<name>.<platform>] priority = N` in the tree is a STATIC LEASE in
+Every `[tasks.<name>.<platform>] priority = N` in the tree is a STATIC LEASE in
 RFC-0079's terms — a hand-chosen address in a space that also holds system
 tasks nobody enumerated. This reports each pin against the system bands we can
 actually cite from code, so the migration section argues from counted

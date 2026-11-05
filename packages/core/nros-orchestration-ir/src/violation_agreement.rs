@@ -137,7 +137,7 @@ impl fmt::Display for Disagreement {
         )?;
         writeln!(
             f,
-            "  tier table : `[tiers.{}] deadline_policy = \"{}\"`",
+            "  tier table : `[tasks.{}] deadline_policy = \"{}\"`",
             self.tier, self.declared
         )?;
         write!(
