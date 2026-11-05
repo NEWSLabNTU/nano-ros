@@ -331,6 +331,26 @@ pub fn project_name(workspace: &Path, image_id: &str) -> String {
     format!("nros_{}_{}", sanitize(ws), sanitize(image_id))
 }
 
+/// Whether `dir` is a Zephyr application in its own right: its
+/// `CMakeLists.txt` calls `find_package(Zephyr)` outside a comment.
+///
+/// That call is what makes a directory a west application (every
+/// `examples/zephyr/<lang>/<example>/` has one, and so does a `nros new
+/// --board <zephyr board>` package), and it is also what a HOST CMake
+/// configure cannot get past: Zephyr's boilerplate stops at "BOARD is not
+/// being defined" (issue 2280). A workspace node package or bringup is an
+/// ament package and never names Zephyr; a directory with no
+/// `CMakeLists.txt` is not an application at all.
+#[must_use]
+pub fn cmakelists_finds_zephyr(dir: &Path) -> bool {
+    std::fs::read_to_string(dir.join("CMakeLists.txt")).is_ok_and(|cmake| {
+        cmake
+            .lines()
+            .map(|l| l.split('#').next().unwrap_or(""))
+            .any(|l| l.contains("find_package(Zephyr"))
+    })
+}
+
 /// Derive the west-application facts for one image.
 ///
 /// `rmw` is the image's effective backend (`[image.<id>] rmw`, already folded
