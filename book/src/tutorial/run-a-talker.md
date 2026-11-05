@@ -81,9 +81,11 @@ console prints a line containing that text, and exits 1 if the board stops
 first, which makes it a one-line check that the whole path works.
 
 Without `--expect` it keeps streaming until you press Ctrl-C, which stops
-QEMU and the router together. Start it that way in one terminal:
+QEMU and the router together. Start it that way in one terminal (source ROS 2
+first if it is a new one, because the router comes from ROS 2):
 
 ```bash probe=55 probe-run=300 probe-keep track=installed variant=qemu
+source /opt/ros/humble/setup.bash
 nros run sensor_node
 ```
 
