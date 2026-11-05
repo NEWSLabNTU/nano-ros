@@ -9,8 +9,8 @@ only happen in their topic:
 - First build and first run: [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md)
 - ROS 2 side sees nothing (domain ID, QoS, `rmw_zenoh_cpp` client mode, edition):
   [ROS 2 Interop](../../tutorial/talk-to-ros2.md#troubleshooting)
-- Serial links (handshake timeouts, baud rate, UART pins):
-  [Serial Transport](../rmw/use-a-serial-link.md#troubleshooting)
+- Serial links (session timeouts, baud rate, a shared UART):
+  [Use a serial link](../rmw/use-a-serial-link.md#if-it-doesnt-work)
 - Multi-backend binaries: [Cross-backend Bridges](../rmw/bridge-between-backends.md#troubleshooting)
 
 ## zenoh-pico Multiple Client Issues
