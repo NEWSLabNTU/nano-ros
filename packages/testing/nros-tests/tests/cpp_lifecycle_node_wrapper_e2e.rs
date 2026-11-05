@@ -48,7 +48,7 @@ fn managed_node_wrapper_reaches_active_and_publishes(zenohd_unique: ZenohRouter)
         .env("NROS_ENTRY_SPIN_MS", "8000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     let mut node =
-        ManagedProcess::spawn_command(cmd, "managed-lifecycle").expect("spawn managed entry");
+        ManagedProcess::spawn_image(cmd, "managed-lifecycle").expect("spawn managed entry");
 
     // The gated `Published:` line only appears once on_activate flipped the gate, so
     // waiting for it proves the whole wrapper chain ran (register + configure + activate).
@@ -118,8 +118,8 @@ fn a_parameter_declared_through_the_lifecycle_node_reaches_ros2(zenohd_unique: Z
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", "30000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
-    let mut node = ManagedProcess::spawn_command(cmd, "managed-lifecycle-params")
-        .expect("spawn managed entry");
+    let mut node =
+        ManagedProcess::spawn_image(cmd, "managed-lifecycle-params").expect("spawn managed entry");
 
     // The node's OWN report first: it declared the parameter and read back the
     // value in effect. If this line is missing the wire assertion below would

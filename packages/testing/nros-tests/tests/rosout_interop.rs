@@ -92,7 +92,7 @@ fn spawn_probe(bin: &Path, locator: &str, records: usize) -> ManagedProcess {
         .env("NROS_LOCATOR", locator)
         .env("ROSOUT_PROBE_RECORDS", records.to_string())
         .env("ROSOUT_PROBE_PERIOD_MS", "250");
-    ManagedProcess::spawn_command(cmd, "rosout-talker")
+    ManagedProcess::spawn_image(cmd, "rosout-talker")
         .unwrap_or_else(|e| panic!("spawn rosout-talker: {e}"))
 }
 

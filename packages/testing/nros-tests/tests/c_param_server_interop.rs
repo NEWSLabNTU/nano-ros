@@ -40,7 +40,7 @@ fn start_node(locator: &str) -> ManagedProcess {
         .env("NROS_SESSION_MODE", "client")
         // Long enough for every query below; the process is killed on drop.
         .env("NROS_SPIN_MS", "120000");
-    let mut node = ManagedProcess::spawn_command(cmd, "c-parameters").expect("spawn c-parameters");
+    let mut node = ManagedProcess::spawn_image(cmd, "c-parameters").expect("spawn c-parameters");
     // The OK line is printed after the local roundtrip and before the spin
     // that answers the services.
     node.wait_for_output_pattern("OK verbose=", Duration::from_secs(10))

@@ -142,13 +142,12 @@ impl Language {
     }
 }
 
-/// Wrap a native binary with `stdbuf -oL -eL` to force line-buffered
-/// stdout/stderr. Both C's `printf` and C++'s `std::printf` fully-buffer
-/// when the output is a pipe, which breaks `wait_for_output_pattern`.
-fn stdbuf_command(binary: &Path) -> Command {
-    let mut cmd = Command::new("stdbuf");
-    cmd.args(["-oL", "-eL"]).arg(binary);
-    cmd
+/// The image's command. It runs line-buffered — `stdbuf -oL -eL`, stated as
+/// the plan's `prefix` ([`nros_tests::run::LINE_BUFFERED`]) at the spawn —
+/// because C's `printf` fully-buffers when stdout is a pipe, which breaks
+/// `wait_for_output_pattern`.
+fn image_command(binary: &Path) -> Command {
+    Command::new(binary)
 }
 
 /// Skip-guard shared by every test in this file.
@@ -179,10 +178,11 @@ fn require_native_env() {
 // =============================================================================
 
 fn spawn_native(binary: &Path, lang: Language, kind: &str, locator: &str) -> ManagedProcess {
-    let mut cmd = stdbuf_command(binary);
+    let mut cmd = image_command(binary);
     cmd.env("NROS_LOCATOR", locator);
     let name = format!("{}-{}", lang.tag(), kind);
-    ManagedProcess::spawn_command(cmd, &name).unwrap_or_else(|_| panic!("Failed to start {name}"))
+    ManagedProcess::spawn_image_with(cmd, nros_tests::run::LINE_BUFFERED, &name)
+        .unwrap_or_else(|_| panic!("Failed to start {name}"))
 }
 
 #[rstest]
@@ -418,11 +418,15 @@ fn test_service_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter)
 /// logs via `env_logger`, so `RUST_LOG=info` is required to surface the
 /// `Result of add_two_ints:` marker.
 fn spawn_rust_callback_client(binary: &Path, locator: &str) -> ManagedProcess {
-    let mut cmd = stdbuf_command(binary);
+    let mut cmd = image_command(binary);
     cmd.env("NROS_LOCATOR", locator);
     cmd.env("RUST_LOG", "info");
-    ManagedProcess::spawn_command(cmd, "rust-service-client-callback")
-        .expect("Failed to start rust-service-client-callback")
+    ManagedProcess::spawn_image_with(
+        cmd,
+        nros_tests::run::LINE_BUFFERED,
+        "rust-service-client-callback",
+    )
+    .expect("Failed to start rust-service-client-callback")
 }
 
 /// Rust callback client ↔ a C / C++ service server. Extends the 239.15 matrix to
@@ -742,13 +746,17 @@ fn test_cpp_action_goal_rejection(zenohd_unique: ZenohRouter) {
         )
         .expect("cpp-action-server did not become ready");
 
-    let mut client_cmd = stdbuf_command(&client_bin);
+    let mut client_cmd = image_command(&client_bin);
     client_cmd.env("NROS_LOCATOR", &locator);
     // Order 100 > 64 triggers the server's goal callback to return
     // `GoalResponse::Reject`.
     client_cmd.env("NROS_TEST_GOAL_ORDER", "100");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "cpp-action-client")
-        .expect("Failed to start cpp-action-client");
+    let mut client = ManagedProcess::spawn_image_with(
+        client_cmd,
+        nros_tests::run::LINE_BUFFERED,
+        "cpp-action-client",
+    )
+    .expect("Failed to start cpp-action-client");
 
     let client_output = client.collect_until(ACTION_GOAL_REJECTED_PREFIX, Duration::from_secs(20));
 
@@ -807,7 +815,7 @@ fn native_rust_pubsub_interop(lang: Language, locator: &str) {
     let mut listener_cmd = Command::new(&rust_listener);
     listener_cmd.env("NROS_LOCATOR", locator);
     listener_cmd.env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "rust-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "rust-listener")
         .expect("Failed to start Rust listener");
 
     // Rust listener logs "Subscriber created" once
@@ -914,7 +922,7 @@ fn rust_cyclone_listener_binary() -> PathBuf {
 }
 
 fn spawn_cyclone_binary(binary: &Path, name: &str, domain_id: &str) -> ManagedProcess {
-    let mut cmd = stdbuf_command(binary);
+    let mut cmd = image_command(binary);
     cmd.env("ROS_DOMAIN_ID", domain_id);
     cmd.env("RUST_LOG", "info");
     let cyclone_lib = nros_tests::project_root().join("build/install/lib");
@@ -927,7 +935,8 @@ fn spawn_cyclone_binary(binary: &Path, name: &str, domain_id: &str) -> ManagedPr
         _ => cyclone_lib.into_os_string(),
     };
     cmd.env("LD_LIBRARY_PATH", ld_library_path);
-    ManagedProcess::spawn_command(cmd, name).unwrap_or_else(|_| panic!("Failed to start {name}"))
+    ManagedProcess::spawn_image_with(cmd, nros_tests::run::LINE_BUFFERED, name)
+        .unwrap_or_else(|_| panic!("Failed to start {name}"))
 }
 
 /// Issue 1750 — a threadx-linux Cyclone image must keep every host thread it
@@ -1289,7 +1298,7 @@ fn native_rust_service_interop(lang: Language, locator: &str) {
     let mut client_cmd = Command::new(&rust_client);
     client_cmd.env("NROS_LOCATOR", locator);
     client_cmd.env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "rust-service-client")
+    let mut client = ManagedProcess::spawn_image(client_cmd, "rust-service-client")
         .expect("Failed to start Rust service client");
 
     let client_output = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(30));
@@ -1589,6 +1598,8 @@ fn test_threadx_linux_c_image_ends_on_one_sigterm(#[case] rmw: Rmw) {
     if let Some(router) = &router {
         cmd.env("NROS_LOCATOR", router.locator());
     }
+    // Direct, not `spawn_image`: this measures the IMAGE's own signal handling
+    // and exit status through its pid, which `nros run` would stand in front of.
     let mut server = ManagedProcess::spawn_command(cmd, "threadx-linux-c-service-server")
         .expect("spawn the threadx-linux c service-server");
     server
@@ -1720,6 +1731,8 @@ fn test_threadx_linux_c_image_exit_status_is_the_apps() {
     let router = zenohd_unique();
     let mut cmd = Command::new(&bin);
     cmd.env("NROS_LOCATOR", router.locator());
+    // Direct, not `spawn_image`: this measures the IMAGE's own signal handling
+    // and exit status through its pid, which `nros run` would stand in front of.
     let mut server = ManagedProcess::spawn_command(cmd, "threadx-linux-c-service-server")
         .expect("spawn the threadx-linux c service-server");
     server

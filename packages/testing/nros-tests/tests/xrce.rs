@@ -57,7 +57,7 @@ fn test_xrce_talker_starts(xrce_talker_binary: PathBuf) {
     let mut cmd = Command::new(&xrce_talker_binary);
     set_xrce_udp_locator(&mut cmd, &addr, &domain);
     let mut talker =
-        ManagedProcess::spawn_command(cmd, "xrce-talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(cmd, "xrce-talker").expect("Failed to start talker");
 
     // Wait for readiness (talker prints "Publishing" after setup)
     match talker.wait_for_output_pattern(
@@ -92,7 +92,7 @@ fn test_xrce_listener_starts(xrce_listener_binary: PathBuf) {
     let mut cmd = Command::new(&xrce_listener_binary);
     set_xrce_udp_locator(&mut cmd, &addr, &domain).env("XRCE_MSG_COUNT", "1"); // Just test that it starts
     let mut listener =
-        ManagedProcess::spawn_command(cmd, "xrce-listener").expect("Failed to start listener");
+        ManagedProcess::spawn_image(cmd, "xrce-listener").expect("Failed to start listener");
 
     // Wait for readiness (listener prints "Waiting for" after setup)
     match listener.wait_for_output_pattern(
@@ -134,7 +134,7 @@ fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
 
     let mut cmd = Command::new(&xrce_large_msg_test_binary);
     set_xrce_udp_locator(&mut cmd, &addr, &domain);
-    let mut test_proc = ManagedProcess::spawn_command(cmd, "xrce-large-msg-test")
+    let mut test_proc = ManagedProcess::spawn_image(cmd, "xrce-large-msg-test")
         .expect("Failed to start large-msg-test");
 
     // Wait for the test to complete (prints "ALL PASSED" or "SOME FAILED")
@@ -171,7 +171,7 @@ fn test_xrce_serial_talker_starts(xrce_serial_talker_binary: PathBuf) {
     let mut cmd = Command::new(&xrce_serial_talker_binary);
     cmd.env("XRCE_SERIAL_PTY", agent.client_pty_path(0))
         .env("ROS_DOMAIN_ID", &domain);
-    let mut talker = ManagedProcess::spawn_command(cmd, "xrce-serial-talker")
+    let mut talker = ManagedProcess::spawn_image(cmd, "xrce-serial-talker")
         .expect("Failed to start serial talker");
 
     match talker.wait_for_output_pattern(
@@ -210,7 +210,7 @@ fn test_xrce_serial_listener_starts(xrce_serial_listener_binary: PathBuf) {
     cmd.env("XRCE_SERIAL_PTY", agent.client_pty_path(0))
         .env("XRCE_MSG_COUNT", "1")
         .env("ROS_DOMAIN_ID", &domain);
-    let mut listener = ManagedProcess::spawn_command(cmd, "xrce-serial-listener")
+    let mut listener = ManagedProcess::spawn_image(cmd, "xrce-serial-listener")
         .expect("Failed to start serial listener");
 
     match listener.wait_for_output_pattern(
@@ -258,7 +258,7 @@ fn test_xrce_serial_communication(
         .env("XRCE_SERIAL_PTY", agent.client_pty_path(0))
         .env("XRCE_MSG_COUNT", "3")
         .env("ROS_DOMAIN_ID", &domain);
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-serial-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "xrce-serial-listener")
         .expect("Failed to start serial listener");
 
     // Wait for listener to be ready
@@ -275,7 +275,7 @@ fn test_xrce_serial_communication(
     talker_cmd
         .env("XRCE_SERIAL_PTY", agent.client_pty_path(1))
         .env("ROS_DOMAIN_ID", &domain);
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "xrce-serial-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "xrce-serial-talker")
         .expect("Failed to start serial talker");
 
     // Wait for listener to receive messages

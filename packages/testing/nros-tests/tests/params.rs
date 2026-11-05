@@ -37,7 +37,7 @@ fn test_talker_uses_default_param(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
+    let mut proc = ManagedProcess::spawn_image(cmd, "talker").expect("Failed to start talker");
 
     // Wait for talker to start publishing (ensures parameters are loaded)
     let early_output = proc.collect_until("Publishing", Duration::from_secs(5));
@@ -83,7 +83,7 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
+    let mut proc = ManagedProcess::spawn_image(cmd, "talker").expect("Failed to start talker");
 
     // Wait directly for the line we're going to assert on. Earlier
     // the test waited for "Publishing" (5 s window) then killed and
@@ -135,7 +135,7 @@ fn start_talker_with_params(locator: &str) -> ManagedProcess {
         .env("NROS_LOCATOR", locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut talker = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
+    let mut talker = ManagedProcess::spawn_image(cmd, "talker").expect("Failed to start talker");
 
     // Wait for talker to start publishing (ensures parameter services are registered)
     let _ = talker.wait_for_output_pattern(
@@ -380,7 +380,7 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
+    let mut proc = ManagedProcess::spawn_image(cmd, "talker").expect("Failed to start");
 
     // Wait for the first timer publish, not just the startup log.
     let early_output = proc.collect_until(
@@ -436,7 +436,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
-    let mut listener = ManagedProcess::spawn_command(lis_cmd, "listener").expect("spawn listener");
+    let mut listener = ManagedProcess::spawn_image(lis_cmd, "listener").expect("spawn listener");
     listener
         .wait_for_output_pattern(
             nros_tests::output::INT32_SINK_READY_MARKER,
@@ -456,7 +456,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
         .env("NROS_ENTRY_SPIN_MS", "25000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     let mut entry =
-        ManagedProcess::spawn_command(entry_cmd, "param_talker").expect("spawn param_talker");
+        ManagedProcess::spawn_image(entry_cmd, "param_talker").expect("spawn param_talker");
 
     // The RESOLVED initial must be on the wire first (node up + publishing live
     // reads). This waited for 250 until issue 0409: 250 is the INLINE value, and

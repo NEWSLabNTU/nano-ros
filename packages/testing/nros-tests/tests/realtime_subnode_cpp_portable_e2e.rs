@@ -51,7 +51,7 @@ fn realtime_subnode_cpp_portable_two_groups_bind_renamed_sched_tasks(zenohd_uniq
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", "12000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "5");
-    let mut proc = ManagedProcess::spawn_command(cmd, "realtime-cpp-subnode-portable")
+    let mut proc = ManagedProcess::spawn_image(cmd, "realtime-cpp-subnode-portable")
         .expect("spawn realtime-cpp-subnode-portable entry");
 
     // Wait for the slow tier (bulk/100 ms) to publish 5 times.

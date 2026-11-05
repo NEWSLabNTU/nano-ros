@@ -37,7 +37,7 @@ fn test_zero_copy_listener_starts(zenohd_unique: ZenohRouter) {
 
     let mut cmd = Command::new(listener_path);
     cmd.env("NROS_LOCATOR", &locator).env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(cmd, "zero-copy-listener")
+    let mut listener = ManagedProcess::spawn_image(cmd, "zero-copy-listener")
         .expect("Failed to start zero-copy listener");
 
     match listener.wait_for_output_pattern(
@@ -79,7 +79,7 @@ fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
     listener_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "zero-copy-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "zero-copy-listener")
         .expect("Failed to start zero-copy listener");
 
     listener
@@ -95,7 +95,7 @@ fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let _talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(talker_cmd, "talker").expect("Failed to start talker");
 
     let output = listener
         .wait_for_output_count(
@@ -140,7 +140,7 @@ fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
     listener_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "trace");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "zero-copy-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "zero-copy-listener")
         .expect("Failed to start zero-copy listener");
 
     listener
@@ -154,7 +154,7 @@ fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
     let mut talker_cmd = Command::new(talker_path);
     talker_cmd.env("NROS_LOCATOR", &locator);
     let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(talker_cmd, "talker").expect("Failed to start talker");
 
     let output = listener
         .wait_for_output_count(

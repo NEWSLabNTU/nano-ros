@@ -70,6 +70,7 @@ pub mod qemu;
 pub mod renode;
 pub mod ros2;
 pub mod ros_env;
+pub mod run;
 pub mod sdk_tree;
 pub mod treewalk;
 pub mod zephyr;

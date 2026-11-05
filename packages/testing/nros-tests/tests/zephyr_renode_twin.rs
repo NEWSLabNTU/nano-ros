@@ -85,7 +85,7 @@ fn zephyr_nucleo_renode_c_zenoh_serial_pubsub_e2e() {
         let mut cmd = Command::new(&listener);
         cmd.env("NROS_LOCATOR", format!("tcp/127.0.0.1:{port}"))
             .env("RUST_LOG", "info");
-        ManagedProcess::spawn_command(cmd, "native-listener")
+        ManagedProcess::spawn_image(cmd, "native-listener")
             .unwrap_or_else(|e| panic!("spawn native listener: {e}"))
     };
     obs.wait_for_output_pattern(LISTENER_READY_MARKER, Duration::from_secs(10))

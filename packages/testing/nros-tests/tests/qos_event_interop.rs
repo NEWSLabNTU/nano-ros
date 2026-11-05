@@ -284,7 +284,7 @@ fn c_matched_and_liveliness_callbacks_follow_stock_ros2_peers() {
     let mut cmd = Command::new(&bin);
     cmd.env("NROS_LOCATOR", &locator)
         .env("MATCHED_EVENTS_PROBE_TIMEOUT_MS", "90000");
-    let mut probe = ManagedProcess::spawn_command(cmd, "matched-events-probe-c")
+    let mut probe = ManagedProcess::spawn_image(cmd, "matched-events-probe-c")
         .unwrap_or_else(|e| panic!("spawn matched-events-probe-c: {e}"));
 
     let mut transcript = String::new();

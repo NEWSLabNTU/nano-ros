@@ -19,7 +19,7 @@ use nros_tests::{
     },
     output::{ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER},
     platform,
-    process::{ManagedProcess, kill_process_group},
+    process::ManagedProcess,
 };
 use rstest::rstest;
 use std::{
@@ -158,7 +158,7 @@ impl RtosProcess {
     fn kill(&mut self) {
         match self {
             RtosProcess::Qemu(p) => p.kill(),
-            RtosProcess::Managed(p) => kill_process_group(p.handle_mut()),
+            RtosProcess::Managed(p) => p.kill(),
         }
     }
 

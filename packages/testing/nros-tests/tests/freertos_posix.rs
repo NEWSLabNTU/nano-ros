@@ -77,7 +77,7 @@ fn run_entry(entry: &PathBuf, domain: u8, label: &str) -> String {
     let mut cmd = Command::new(entry);
     cmd.env("ROS_DOMAIN_ID", domain.to_string());
     cmd.env("NROS_ENTRY_SPIN_MS", SPIN_MS);
-    let mut proc = ManagedProcess::spawn_command(cmd, label)
+    let mut proc = ManagedProcess::spawn_image(cmd, label)
         .unwrap_or_else(|e| panic!("spawn the {label} image at {}: {e}", entry.display()));
     // stdout AND stderr: the board's assert and abort reports go to stderr.
     let out = proc

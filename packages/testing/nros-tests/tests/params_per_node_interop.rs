@@ -84,7 +84,7 @@ fn start_two_node_image(locator: &str) -> TwoNodeImage {
         .env("NROS_SESSION_MODE", "client");
 
     let mut proc =
-        ManagedProcess::spawn_command(cmd, "param-two-node").expect("failed to start fixture");
+        ManagedProcess::spawn_image(cmd, "param-two-node").expect("failed to start fixture");
 
     let (output, diag) =
         proc.collect_until_count(PARAM_SERVICE_NODE_PREFIX, 2, Duration::from_secs(20));
@@ -440,7 +440,7 @@ fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<
         .env("NROS_RMW", "cyclonedds");
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "param-two-node-cyclone")
+    let mut proc = ManagedProcess::spawn_image(cmd, "param-two-node-cyclone")
         .expect("failed to start fixture");
     let (output, diag) =
         proc.collect_until_count(PARAM_SERVICE_NODE_PREFIX, 2, Duration::from_secs(20));
@@ -609,7 +609,7 @@ fn xrce_set_parameters_naming_25_declared_lands() -> nros_tests::TestResult<()> 
     // `check-dds-isolation-symmetry` asks it of every spawn in a file whose
     // other cases pair a DDS image with a pinned peer.
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
-    let mut proc = ManagedProcess::spawn_command(cmd, "params-xrce").expect("failed to start");
+    let mut proc = ManagedProcess::spawn_image(cmd, "params-xrce").expect("failed to start");
 
     // The names the contract declares: `param_NN_` padded with `x` to 35 bytes.
     let params: Vec<String> = (0..25)

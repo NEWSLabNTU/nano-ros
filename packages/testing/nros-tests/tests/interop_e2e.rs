@@ -199,7 +199,7 @@ fn start_zenoh_router() -> ZenohRouter {
 fn spawn_nano_zenoh(bin: &Path, name: &str, locator: &str) -> ManagedProcess {
     let mut cmd = Command::new(bin);
     cmd.env("RUST_LOG", "info").env("NROS_LOCATOR", locator);
-    ManagedProcess::spawn_command(cmd, name).unwrap_or_else(|e| panic!("spawn {name}: {e}"))
+    ManagedProcess::spawn_image(cmd, name).unwrap_or_else(|e| panic!("spawn {name}: {e}"))
 }
 
 /// Resolve (building if needed) a native Cyclone C example binary, or skip
@@ -233,7 +233,7 @@ fn spawn_nano_cyclone(binary: &Path, name: &str, domain_id: u8) -> ManagedProces
     // discovered nothing at all. "Pin both sides or neither" is 1009's own
     // conclusion, and this is the other side.
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
-    ManagedProcess::spawn_command(cmd, name).unwrap_or_else(|_| panic!("Failed to start {name}"))
+    ManagedProcess::spawn_image(cmd, name).unwrap_or_else(|_| panic!("Failed to start {name}"))
 }
 
 /// Run `ros2 <subcommand>` against `locator` (rmw_zenoh overlay); return
@@ -613,7 +613,7 @@ fn interop(#[case] cell: Cell) {
                 .env("RUST_LOG", "info")
                 .env("NROS_LOCATOR", &locator)
                 .env("NROS_SESSION_MODE", "client");
-            let mut sub = ManagedProcess::spawn_command(sub_cmd, "nros-string-sub")
+            let mut sub = ManagedProcess::spawn_image(sub_cmd, "nros-string-sub")
                 .expect("spawn nano-ros sub");
             sub.wait_for_output_pattern(
                 nros_tests::output::LISTENER_READY_MARKER,
@@ -887,7 +887,7 @@ fn interop(#[case] cell: Cell) {
                     .env("CLP_WINDOW_MS", "6000")
                     .env("CLP_GRAPH_MS", "10000");
                 let name = format!("constrained-link-probe graph={graph_discovery} {durability}");
-                let mut probe = ManagedProcess::spawn_command(cmd, &name)
+                let mut probe = ManagedProcess::spawn_image(cmd, &name)
                     .unwrap_or_else(|e| panic!("spawn {name}: {e}"));
                 let out = probe.collect_until(output::CLP_DONE_MARKER, Duration::from_secs(40));
                 probe.kill();

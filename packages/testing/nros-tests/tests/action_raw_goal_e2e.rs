@@ -61,7 +61,7 @@ fn action_raw_goal_ships_one_cdr_header(
     let mut scmd = Command::new(&c_action_server_binary);
     scmd.env("NROS_LOCATOR", &locator);
     scmd.env("ROS_DOMAIN_ID", &domain_id);
-    let mut server = ManagedProcess::spawn_command(scmd, "c-action-server-raw-goal")
+    let mut server = ManagedProcess::spawn_image(scmd, "c-action-server-raw-goal")
         .expect("spawn the C action server");
 
     server
@@ -72,7 +72,7 @@ fn action_raw_goal_ships_one_cdr_header(
     pcmd.env("NROS_LOCATOR", &locator);
     pcmd.env("ROS_DOMAIN_ID", &domain_id);
     let mut probe_proc =
-        ManagedProcess::spawn_command(pcmd, "action-raw-goal-probe").expect("spawn the raw probe");
+        ManagedProcess::spawn_image(pcmd, "action-raw-goal-probe").expect("spawn the raw probe");
 
     let probe_log = probe_proc
         .wait_for_all_output(PROBE_TIMEOUT)

@@ -202,14 +202,14 @@ fn spawn_rust_entry(
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", spin_ms.to_string())
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
-    ManagedProcess::spawn_command(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
+    ManagedProcess::spawn_image(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
 }
 
 /// Spawn a C/C++/mixed workspace entry (spins on its own; only the locator).
 fn spawn_c_entry(entry: &PathBuf, label: &'static str, locator: &str) -> ManagedProcess {
     let mut cmd = Command::new(entry);
     cmd.env("NROS_LOCATOR", locator);
-    ManagedProcess::spawn_command(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
+    ManagedProcess::spawn_image(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
 }
 
 // =============================================================================

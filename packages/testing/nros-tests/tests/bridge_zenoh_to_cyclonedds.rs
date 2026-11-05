@@ -93,7 +93,7 @@ fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
     // loopback-only `CYCLONEDDS_URI` since issue 1009; a participant without it
     // sits on a different interface and discovers nothing.
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
-    ManagedProcess::spawn_command(cmd, "nano-cyclone-listener-bridge-e2e")
+    ManagedProcess::spawn_image(cmd, "nano-cyclone-listener-bridge-e2e")
         .expect("spawn nano cyclone listener")
 }
 
@@ -106,7 +106,7 @@ fn spawn_bridge(bin: &Path, locator: &str, domain: u8, label: &'static str) -> M
     // Issue 1137 — the bridge's Cyclone EGRESS is a DDS participant, so it needs
     // the same loopback pin the listener and the `ros2 topic echo` peer get.
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
-    let mut bridge = ManagedProcess::spawn_command(cmd, label).expect("spawn bridge");
+    let mut bridge = ManagedProcess::spawn_image(cmd, label).expect("spawn bridge");
     bridge
         .wait_for_output_pattern("Spinning", Duration::from_secs(10))
         .expect("bridge did not finish session setup (zenoh + cyclonedds egress)");
@@ -116,7 +116,7 @@ fn spawn_bridge(bin: &Path, locator: &str, domain: u8, label: &'static str) -> M
 fn spawn_zenoh_talker(bin: &Path, locator: &str, label: &'static str) -> ManagedProcess {
     let mut cmd = Command::new(bin);
     cmd.env("RUST_LOG", "info").env("NROS_LOCATOR", locator);
-    let mut talker = ManagedProcess::spawn_command(cmd, label).expect("spawn talker");
+    let mut talker = ManagedProcess::spawn_image(cmd, label).expect("spawn talker");
     talker
         .wait_for_output_pattern(
             nros_tests::output::TALKER_LOG_PREFIX,
@@ -152,7 +152,7 @@ fn test_zenoh_to_cyclonedds_bridge_e2e(zenohd_unique: ZenohRouter, talker_binary
         .env("ROS_DOMAIN_ID", domain.to_string());
     // Issue 1137 — same bus as the Cyclone listener this feeds.
     nros_tests::dds_isolation::apply_to_command(&mut bridge_cmd);
-    let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "bridge-zenoh-to-cyclonedds-fwd")
+    let mut bridge = ManagedProcess::spawn_image(bridge_cmd, "bridge-zenoh-to-cyclonedds-fwd")
         .expect("spawn bridge");
     bridge
         .wait_for_output_pattern("Spinning", Duration::from_secs(10))
@@ -164,9 +164,8 @@ fn test_zenoh_to_cyclonedds_bridge_e2e(zenohd_unique: ZenohRouter, talker_binary
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &zenoh_locator);
-    let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-cyclonedds-bridge")
-            .expect("spawn talker");
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "native-rs-talker-cyclonedds-bridge")
+        .expect("spawn talker");
     talker
         .wait_for_output_pattern(
             nros_tests::output::TALKER_LOG_PREFIX,

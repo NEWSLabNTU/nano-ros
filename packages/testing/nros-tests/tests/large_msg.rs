@@ -42,7 +42,7 @@ fn test_zenoh_large_publish_sizes(zenohd_unique: ZenohRouter, zenoh_stress_test_
             .env("PAYLOAD_SIZE", size.to_string())
             .env("PUBLISH_COUNT", "3")
             .env("PUBLISH_INTERVAL_MS", "10");
-        let mut proc = ManagedProcess::spawn_command(cmd, format!("zenoh-stress-{}", size))
+        let mut proc = ManagedProcess::spawn_image(cmd, format!("zenoh-stress-{}", size))
             .expect("Failed to start stress test");
 
         let output = proc.collect_until("PUBLISH_DONE:", Duration::from_secs(15));
@@ -77,7 +77,7 @@ fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary
         .env("PAYLOAD_SIZE", "512")
         .env("EXPECTED_COUNT", "20")
         .env("TIMEOUT_SECS", "20");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "zenoh-stress-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "zenoh-stress-listener")
         .expect("Failed to start listener");
 
     listener
@@ -92,7 +92,7 @@ fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary
         .env("PAYLOAD_SIZE", "512")
         .env("PUBLISH_COUNT", "20")
         .env("PUBLISH_INTERVAL_MS", "50");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "zenoh-stress-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "zenoh-stress-talker")
         .expect("Failed to start talker");
 
     // Wait for listener to receive messages
@@ -144,9 +144,8 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
         // timeout, then prints the RECV_DONE summary. Keep it short; the test's
         // RECV_DONE wait below must exceed it.
         .env("TIMEOUT_SECS", "8");
-    let mut listener =
-        ManagedProcess::spawn_command(listener_cmd, "zenoh-stress-overflow-listener")
-            .expect("Failed to start listener");
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "zenoh-stress-overflow-listener")
+        .expect("Failed to start listener");
 
     listener
         .wait_for_output_pattern("Ready: listening", Duration::from_secs(5))
@@ -160,7 +159,7 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
         .env("PAYLOAD_SIZE", "2048")
         .env("PUBLISH_COUNT", "5")
         .env("PUBLISH_INTERVAL_MS", "100");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "zenoh-stress-overflow-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "zenoh-stress-overflow-talker")
         .expect("Failed to start talker");
 
     // Wait for the listener's RECV_DONE summary. It prints only after the
@@ -243,7 +242,7 @@ fn test_zenoh_e2e_large_receive(
         .env("PAYLOAD_SIZE", "4096")
         .env("EXPECTED_COUNT", "10")
         .env("TIMEOUT_SECS", "20");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "zenoh-large-recv-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "zenoh-large-recv-listener")
         .expect("spawn listener");
 
     listener
@@ -259,7 +258,7 @@ fn test_zenoh_e2e_large_receive(
         .env("PUBLISH_COUNT", "10")
         .env("PUBLISH_INTERVAL_MS", "50");
     let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "zenoh-large-recv-talker").expect("spawn talker");
+        ManagedProcess::spawn_image(talker_cmd, "zenoh-large-recv-talker").expect("spawn talker");
 
     let output = listener.collect_until("RECV_DONE:", Duration::from_secs(20));
 
@@ -303,7 +302,7 @@ fn xrce_roundtrip(binary: &std::path::Path, payload: &str, topic: &str) -> Strin
         .env("PAYLOAD_SIZE", payload)
         .env("EXPECTED_COUNT", "10")
         .env("TIMEOUT_SECS", "20");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-ring-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "xrce-ring-listener")
         .expect("Failed to start listener");
     listener
         .wait_for_output_pattern("Ready: listening", Duration::from_secs(10))
@@ -317,7 +316,7 @@ fn xrce_roundtrip(binary: &std::path::Path, payload: &str, topic: &str) -> Strin
         .env("PAYLOAD_SIZE", payload)
         .env("PUBLISH_COUNT", "10")
         .env("PUBLISH_INTERVAL_MS", "100");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "xrce-ring-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "xrce-ring-talker")
         .expect("Failed to start talker");
 
     let output = listener.collect_until("RECV_DONE:", Duration::from_secs(25));
@@ -479,7 +478,7 @@ fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
         .env("PAYLOAD_SIZE", "64")
         .env("EXPECTED_COUNT", "100")
         .env("TIMEOUT_SECS", "15");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "zenoh-100hz-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "zenoh-100hz-listener")
         .expect("Failed to start listener");
 
     listener
@@ -494,7 +493,7 @@ fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
         .env("PAYLOAD_SIZE", "64")
         .env("PUBLISH_COUNT", "100")
         .env("PUBLISH_INTERVAL_MS", "10");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "zenoh-100hz-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "zenoh-100hz-talker")
         .expect("Failed to start talker");
 
     let listener_output = listener.collect_until("RECV_DONE:", Duration::from_secs(15));
@@ -533,7 +532,7 @@ fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
         .env("PAYLOAD_SIZE", "64")
         .env("EXPECTED_COUNT", "100")
         .env("TIMEOUT_SECS", "15");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "zenoh-burst-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "zenoh-burst-listener")
         .expect("Failed to start listener");
 
     listener
@@ -548,7 +547,7 @@ fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
         .env("PAYLOAD_SIZE", "64")
         .env("PUBLISH_COUNT", "100")
         .env("PUBLISH_INTERVAL_MS", "0");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "zenoh-burst-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "zenoh-burst-talker")
         .expect("Failed to start talker");
 
     // Wait longer for burst messages to propagate
@@ -595,7 +594,7 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
         .env("PAYLOAD_SIZE", "512")
         .env("EXPECTED_COUNT", "20")
         .env("TIMEOUT_SECS", "20");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-stress-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "xrce-stress-listener")
         .expect("Failed to start listener");
 
     listener
@@ -611,7 +610,7 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
         .env("PAYLOAD_SIZE", "512")
         .env("PUBLISH_COUNT", "20")
         .env("PUBLISH_INTERVAL_MS", "100");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "xrce-stress-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "xrce-stress-talker")
         .expect("Failed to start talker");
 
     let listener_output = listener.collect_until("RECV_DONE:", Duration::from_secs(25));
@@ -662,7 +661,7 @@ fn test_xrce_large_publish_sizes(xrce_stress_test_binary: PathBuf) {
             .env("PAYLOAD_SIZE", size.to_string())
             .env("PUBLISH_COUNT", "3")
             .env("PUBLISH_INTERVAL_MS", "50");
-        let mut proc = ManagedProcess::spawn_command(cmd, format!("xrce-stress-{}", size))
+        let mut proc = ManagedProcess::spawn_image(cmd, format!("xrce-stress-{}", size))
             .expect("Failed to start stress test");
 
         let output = proc.collect_until("PUBLISH_DONE:", Duration::from_secs(15));
@@ -701,7 +700,7 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
         .env("PAYLOAD_SIZE", "64")
         .env("EXPECTED_COUNT", "100")
         .env("TIMEOUT_SECS", "20");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-100hz-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "xrce-100hz-listener")
         .expect("Failed to start listener");
 
     listener
@@ -716,7 +715,7 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
         .env("PAYLOAD_SIZE", "64")
         .env("PUBLISH_COUNT", "100")
         .env("PUBLISH_INTERVAL_MS", "10");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "xrce-100hz-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "xrce-100hz-talker")
         .expect("Failed to start talker");
 
     let listener_output = listener.collect_until("RECV_DONE:", Duration::from_secs(20));
@@ -759,7 +758,7 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
         .env("PAYLOAD_SIZE", "64")
         .env("EXPECTED_COUNT", "100")
         .env("TIMEOUT_SECS", "20");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-burst-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "xrce-burst-listener")
         .expect("Failed to start listener");
 
     listener
@@ -774,7 +773,7 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
         .env("PAYLOAD_SIZE", "64")
         .env("PUBLISH_COUNT", "100")
         .env("PUBLISH_INTERVAL_MS", "0");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "xrce-burst-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "xrce-burst-talker")
         .expect("Failed to start talker");
 
     let listener_output = listener.collect_until("RECV_DONE:", Duration::from_secs(20));

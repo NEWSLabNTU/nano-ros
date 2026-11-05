@@ -860,7 +860,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         cmd.env("NROS_LOCATOR", router.locator())
             .env("NROS_SESSION_MODE", "client")
             .env("NROS_ENTRY_SPIN_MS", "4000");
-        let mut guest = ManagedProcess::spawn_command(cmd, "levels-entry")
+        let mut guest = ManagedProcess::spawn_image(cmd, "levels-entry")
             .unwrap_or_else(|e| panic!("spawn native levels entry: {e}"));
         let console = guest
             .wait_for_all_output(Duration::from_secs(20))
@@ -918,7 +918,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         cmd.env("NROS_LOCATOR", router.locator())
             .env("NROS_SESSION_MODE", "client")
             .env("NROS_ENTRY_SPIN_MS", "4000");
-        let mut guest = ManagedProcess::spawn_command(cmd, "derived-sched-tasks-entry")
+        let mut guest = ManagedProcess::spawn_image(cmd, "derived-sched-tasks-entry")
             .unwrap_or_else(|e| panic!("spawn native derived-tiers entry: {e}"));
         let console = guest
             .wait_for_all_output(Duration::from_secs(20))
@@ -1061,7 +1061,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 .env("NROS_ENTRY_SPIN_MS", "12000")
                 .env("NROS_ENTRY_SPIN_STEP_MS", "5");
             Guest::Managed(
-                ManagedProcess::spawn_command(cmd, "realtime-entry")
+                ManagedProcess::spawn_image(cmd, "realtime-entry")
                     .unwrap_or_else(|e| panic!("spawn native realtime entry: {e}")),
             )
         }
@@ -1083,7 +1083,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             let mut cmd = Command::new(&entry);
             cmd.env("RUST_LOG", "info");
             Guest::Managed(
-                ManagedProcess::spawn_command(cmd, "realtime-threadx-entry")
+                ManagedProcess::spawn_image(cmd, "realtime-threadx-entry")
                     .unwrap_or_else(|e| panic!("spawn threadx-linux realtime entry: {e}")),
             )
         }

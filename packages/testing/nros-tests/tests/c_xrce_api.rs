@@ -23,12 +23,12 @@ use std::{
     time::Duration,
 };
 
-/// Create a Command that wraps a C binary with `stdbuf -oL -eL` to force
-/// line-buffered stdout/stderr. C's printf fully-buffers when piped.
-fn stdbuf_command(binary: &Path) -> Command {
-    let mut cmd = Command::new("stdbuf");
-    cmd.args(["-oL", "-eL"]).arg(binary);
-    cmd
+/// The image's command. It runs line-buffered — `stdbuf -oL -eL`, stated as
+/// the plan's `prefix` ([`nros_tests::run::LINE_BUFFERED`]) at the spawn —
+/// because C's `printf` fully-buffers when stdout is a pipe, which breaks
+/// `wait_for_output_pattern`.
+fn image_command(binary: &Path) -> Command {
+    Command::new(binary)
 }
 
 // =============================================================================
@@ -51,10 +51,11 @@ fn test_c_xrce_talker_starts(c_xrce_talker_binary: PathBuf) {
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
 
-    let mut cmd = stdbuf_command(&c_xrce_talker_binary);
+    let mut cmd = image_command(&c_xrce_talker_binary);
     cmd.env("NROS_LOCATOR", &addr);
     let mut talker =
-        ManagedProcess::spawn_command(cmd, "c-xrce-talker").expect("Failed to start c-xrce-talker");
+        ManagedProcess::spawn_image_with(cmd, nros_tests::run::LINE_BUFFERED, "c-xrce-talker")
+            .expect("Failed to start c-xrce-talker");
 
     // Phase-277 W5.C1 slimmed linux/c/talker to the official-demo shape,
     // which dropped the "Support initialized" print — the publish line is
@@ -85,10 +86,11 @@ fn test_c_xrce_listener_starts(c_xrce_listener_binary: PathBuf) {
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
 
-    let mut cmd = stdbuf_command(&c_xrce_listener_binary);
+    let mut cmd = image_command(&c_xrce_listener_binary);
     cmd.env("NROS_LOCATOR", &addr);
-    let mut listener = ManagedProcess::spawn_command(cmd, "c-xrce-listener")
-        .expect("Failed to start c-xrce-listener");
+    let mut listener =
+        ManagedProcess::spawn_image_with(cmd, nros_tests::run::LINE_BUFFERED, "c-xrce-listener")
+            .expect("Failed to start c-xrce-listener");
 
     let output = listener
         .wait_for_output_count("Support initialized", 1, Duration::from_secs(5))
@@ -120,10 +122,14 @@ fn test_c_xrce_talker_listener_communication(
     let addr = agent.addr();
 
     // Start listener first (subscribe before publishing)
-    let mut listener_cmd = stdbuf_command(&c_xrce_listener_binary);
+    let mut listener_cmd = image_command(&c_xrce_listener_binary);
     listener_cmd.env("NROS_LOCATOR", &addr);
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "c-xrce-listener")
-        .expect("Failed to start c-xrce-listener");
+    let mut listener = ManagedProcess::spawn_image_with(
+        listener_cmd,
+        nros_tests::run::LINE_BUFFERED,
+        "c-xrce-listener",
+    )
+    .expect("Failed to start c-xrce-listener");
 
     let init_output = listener
         .wait_for_output_count("Support initialized", 1, Duration::from_secs(5))
@@ -131,10 +137,14 @@ fn test_c_xrce_talker_listener_communication(
     eprintln!("C XRCE listener initialized:\n{}", init_output);
 
     // Start talker
-    let mut talker_cmd = stdbuf_command(&c_xrce_talker_binary);
+    let mut talker_cmd = image_command(&c_xrce_talker_binary);
     talker_cmd.env("NROS_LOCATOR", &addr);
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "c-xrce-talker")
-        .expect("Failed to start c-xrce-talker");
+    let mut talker = ManagedProcess::spawn_image_with(
+        talker_cmd,
+        nros_tests::run::LINE_BUFFERED,
+        "c-xrce-talker",
+    )
+    .expect("Failed to start c-xrce-talker");
 
     let message_output = listener
         .wait_for_output_count(
@@ -197,20 +207,28 @@ fn test_c_xrce_service_request_response() {
     let addr = agent.addr();
 
     let server_bin = nano_c_xrce("service-server", "c_service_server");
-    let mut server_cmd = stdbuf_command(&server_bin);
+    let mut server_cmd = image_command(&server_bin);
     server_cmd.env("NROS_LOCATOR", &addr);
-    let mut server = ManagedProcess::spawn_command(server_cmd, "c-xrce-service-server")
-        .expect("start c-xrce-service-server");
+    let mut server = ManagedProcess::spawn_image_with(
+        server_cmd,
+        nros_tests::run::LINE_BUFFERED,
+        "c-xrce-service-server",
+    )
+    .expect("start c-xrce-service-server");
     let _ = server.wait_for_output_pattern(
         nros_tests::output::SERVICE_SERVER_READY_MARKER,
         Duration::from_secs(15),
     );
 
     let client_bin = nano_c_xrce("service-client", "c_service_client");
-    let mut client_cmd = stdbuf_command(&client_bin);
+    let mut client_cmd = image_command(&client_bin);
     client_cmd.env("NROS_LOCATOR", &addr);
-    let mut client = ManagedProcess::spawn_command(client_cmd, "c-xrce-service-client")
-        .expect("start c-xrce-service-client");
+    let mut client = ManagedProcess::spawn_image_with(
+        client_cmd,
+        nros_tests::run::LINE_BUFFERED,
+        "c-xrce-service-client",
+    )
+    .expect("start c-xrce-service-client");
 
     let client_output = client.collect_until(
         nros_tests::output::SERVICE_RESULT_PREFIX,
@@ -246,20 +264,28 @@ fn test_c_xrce_action_fibonacci() {
     let addr = agent.addr();
 
     let server_bin = nano_c_xrce("action-server", "c_action_server");
-    let mut server_cmd = stdbuf_command(&server_bin);
+    let mut server_cmd = image_command(&server_bin);
     server_cmd.env("NROS_LOCATOR", &addr);
-    let mut server = ManagedProcess::spawn_command(server_cmd, "c-xrce-action-server")
-        .expect("start c-xrce-action-server");
+    let mut server = ManagedProcess::spawn_image_with(
+        server_cmd,
+        nros_tests::run::LINE_BUFFERED,
+        "c-xrce-action-server",
+    )
+    .expect("start c-xrce-action-server");
     let _ = server.wait_for_output_pattern(
         nros_tests::output::ACTION_SERVER_READY_MARKER,
         Duration::from_secs(15),
     );
 
     let client_bin = nano_c_xrce("action-client", "c_action_client");
-    let mut client_cmd = stdbuf_command(&client_bin);
+    let mut client_cmd = image_command(&client_bin);
     client_cmd.env("NROS_LOCATOR", &addr);
-    let mut client = ManagedProcess::spawn_command(client_cmd, "c-xrce-action-client")
-        .expect("start c-xrce-action-client");
+    let mut client = ManagedProcess::spawn_image_with(
+        client_cmd,
+        nros_tests::run::LINE_BUFFERED,
+        "c-xrce-action-client",
+    )
+    .expect("start c-xrce-action-client");
 
     let client_output = client.collect_until(
         nros_tests::output::ACTION_RESULT_PREFIX,

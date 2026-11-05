@@ -61,7 +61,7 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
         .env("NROS_CUSTOM_TCP_TARGET", &tcp_target)
         .env("NROS_LISTENER_SECS", "20");
     let mut listener =
-        ManagedProcess::spawn_command(listener_cmd, "listener").expect("spawn listener");
+        ManagedProcess::spawn_image(listener_cmd, "listener").expect("spawn listener");
 
     // Wait for the subscription declaration to complete instead of a fixed
     // sleep — the listener's readiness marker (Phase 179.G; the custom-link
@@ -80,7 +80,7 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
         .env("RUST_LOG", "info")
         .env("NROS_CUSTOM_TCP_TARGET", &tcp_target)
         .env("NROS_TALKER_COUNT", "20");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "talker").expect("spawn talker");
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "talker").expect("spawn talker");
 
     // Talker must publish at least one message.
     let talker_out = talker

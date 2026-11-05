@@ -659,8 +659,8 @@ fn run_arrival_latency_cell(rmw: Rmw) {
     cmd.env("NROS_LOCATOR", &locator)
         .env("XRCE_AGENT_ADDR", &locator)
         .env("ROS_DOMAIN_ID", domain.to_string());
-    let mut peer = ManagedProcess::spawn_command(cmd, "arrival-latency-talker")
-        .expect("spawn the host talker");
+    let mut peer =
+        ManagedProcess::spawn_image(cmd, "arrival-latency-talker").expect("spawn the host talker");
     let rest = qemu.collect_until(ARRIVAL_LATENCY_PREFIX, Duration::from_secs(60));
     qemu.kill();
     peer.kill();

@@ -65,7 +65,7 @@ fn test_service_server_starts(zenohd_unique: ZenohRouter, service_server_binary:
     let mut cmd = Command::new(&service_server_binary);
     cmd.env("NROS_LOCATOR", &locator);
     cmd.env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(cmd, "native-rs-service-server")
+    let mut server = ManagedProcess::spawn_image(cmd, "native-rs-service-server")
         .expect("Failed to start service server");
 
     // Wait for server readiness. Marker found → fall through to test
@@ -112,7 +112,7 @@ fn test_service_client_starts_without_server(
     let mut cmd = Command::new(&service_client_binary);
     cmd.env("NROS_LOCATOR", &locator);
     cmd.env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(cmd, "native-rs-service-client")
+    let mut client = ManagedProcess::spawn_image(cmd, "native-rs-service-client")
         .expect("Failed to start service client");
 
     // Without a server the client must SAY SO and send nothing. That is the
@@ -179,7 +179,7 @@ fn test_service_multiple_sequential_calls(
     let mut server_cmd = Command::new(&service_server_binary);
     server_cmd.env("NROS_LOCATOR", &locator);
     server_cmd.env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "service-server")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "service-server")
         .expect("Failed to start service server");
 
     // Wait for server readiness
@@ -200,7 +200,7 @@ fn test_service_multiple_sequential_calls(
         let mut client_cmd = Command::new(&service_client_binary);
         client_cmd.env("NROS_LOCATOR", &locator);
         client_cmd.env("RUST_LOG", "info");
-        let mut client = ManagedProcess::spawn_command(client_cmd, "service-client")
+        let mut client = ManagedProcess::spawn_image(client_cmd, "service-client")
             .expect("Failed to start service client");
 
         // Wait for the client's single result line (event-driven)
@@ -241,7 +241,7 @@ fn test_service_client_timeout(zenohd_unique: ZenohRouter, service_client_binary
     let mut client_cmd = Command::new(&service_client_binary);
     client_cmd.env("NROS_LOCATOR", &locator);
     client_cmd.env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "service-client-timeout")
+    let mut client = ManagedProcess::spawn_image(client_cmd, "service-client-timeout")
         .expect("Failed to start service client");
 
     // What this test is FOR, restated after issue 1026 and phase-428 W13: a
@@ -314,7 +314,7 @@ fn test_service_server_multiple_clients(
     let mut server_cmd = Command::new(&service_server_binary);
     server_cmd.env("NROS_LOCATOR", &locator);
     server_cmd.env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "service-server")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "service-server")
         .expect("Failed to start service server");
 
     // Wait for server readiness
@@ -330,7 +330,7 @@ fn test_service_server_multiple_clients(
     let mut client1_cmd = Command::new(&service_client_binary);
     client1_cmd.env("NROS_LOCATOR", &locator);
     client1_cmd.env("RUST_LOG", "info");
-    let mut client1 = ManagedProcess::spawn_command(client1_cmd, "service-client-1")
+    let mut client1 = ManagedProcess::spawn_image(client1_cmd, "service-client-1")
         .expect("Failed to start client 1");
 
     // Stagger client 2 start by 2 seconds so both clients don't race
@@ -340,7 +340,7 @@ fn test_service_server_multiple_clients(
     let mut client2_cmd = Command::new(&service_client_binary);
     client2_cmd.env("NROS_LOCATOR", &locator);
     client2_cmd.env("RUST_LOG", "info");
-    let mut client2 = ManagedProcess::spawn_command(client2_cmd, "service-client-2")
+    let mut client2 = ManagedProcess::spawn_image(client2_cmd, "service-client-2")
         .expect("Failed to start client 2");
 
     // Wait for both clients' single result line (event-driven)

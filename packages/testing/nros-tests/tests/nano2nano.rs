@@ -58,7 +58,7 @@ fn test_native_talker_starts(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     let mut cmd = Command::new(&talker_binary);
     cmd.env("NROS_LOCATOR", &locator);
     let mut talker =
-        ManagedProcess::spawn_command(cmd, "native-rs-talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(cmd, "native-rs-talker").expect("Failed to start talker");
 
     // Wait for readiness (talker prints "Publishing" after setup)
     match talker.wait_for_output_pattern(
@@ -93,7 +93,7 @@ fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: Path
     let mut cmd = Command::new(&listener_binary);
     cmd.env("NROS_LOCATOR", &locator);
     let mut listener =
-        ManagedProcess::spawn_command(cmd, "native-rs-listener").expect("Failed to start listener");
+        ManagedProcess::spawn_image(cmd, "native-rs-listener").expect("Failed to start listener");
 
     // Wait for readiness (listener prints its `Subscriber created` line)
     match listener.wait_for_output_pattern(
@@ -179,7 +179,7 @@ fn test_peer_mode_communication() -> nros_tests::TestResult<()> {
         .env("NROS_SESSION_MODE", "peer")
         .env("ZENOH_LISTEN", listen)
         .env("NROS_DOMAIN_ID", &domain);
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener-peer")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "native-rs-listener-peer")
         .expect("Failed to start listener in peer mode");
 
     let startup = listener
@@ -214,7 +214,7 @@ fn test_peer_mode_communication() -> nros_tests::TestResult<()> {
         .env("NROS_SESSION_MODE", "peer")
         .env("ZENOH_LISTEN", listen)
         .env("NROS_DOMAIN_ID", &domain);
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-peer")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "native-rs-talker-peer")
         .expect("Failed to start talker in peer mode");
 
     assert!(
@@ -277,14 +277,14 @@ fn capture_publisher_msginfo_trace(
     // The listener is the peer that makes this a real pair; it is not observed.
     let mut listener_cmd = Command::new(listener_binary);
     listener_cmd.env("NROS_LOCATOR", locator);
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
 
     let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("NROS_LOCATOR", locator)
         .env("RUST_LOG", "trace");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
     // phase-342 W8 — wait for the publishes this helper's callers need (≥2 for
@@ -448,7 +448,7 @@ fn test_tls_talker_listener_communication(
         .env("NROS_LOCATOR", &locator)
         .env("ZENOH_TLS_ROOT_CA_CERTIFICATE", &cert_path)
         .env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener-tls")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "native-rs-listener-tls")
         .expect("Failed to start TLS listener");
 
     // Wait for listener to be ready
@@ -462,7 +462,7 @@ fn test_tls_talker_listener_communication(
     talker_cmd
         .env("NROS_LOCATOR", &locator)
         .env("ZENOH_TLS_ROOT_CA_CERTIFICATE", &cert_path);
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-tls")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "native-rs-talker-tls")
         .expect("Failed to start TLS talker");
 
     // Wait for listener to receive messages
@@ -515,7 +515,7 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
     listener_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "rtic-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "rtic-listener")
         .expect("Failed to start rtic-listener");
 
     // Wait for listener readiness
@@ -529,7 +529,7 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
     talker_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "rtic-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "rtic-talker")
         .expect("Failed to start rtic-talker");
 
     // Wait for talker to publish messages
@@ -577,7 +577,7 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
     server_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "rtic-service-server")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "rtic-service-server")
         .expect("Failed to start rtic-service-server");
 
     // Wait for server readiness
@@ -591,7 +591,7 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
     client_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "rtic-service-client")
+    let mut client = ManagedProcess::spawn_image(client_cmd, "rtic-service-client")
         .expect("Failed to start rtic-service-client");
 
     // Wait for the client's single result line
@@ -637,7 +637,7 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
     server_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "rtic-action-server")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "rtic-action-server")
         .expect("Failed to start rtic-action-server");
 
     // Wait for server readiness
@@ -651,7 +651,7 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
     client_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "rtic-action-client")
+    let mut client = ManagedProcess::spawn_image(client_cmd, "rtic-action-client")
         .expect("Failed to start rtic-action-client");
 
     // Wait for the client to report acceptance

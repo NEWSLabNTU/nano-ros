@@ -49,7 +49,7 @@ fn inprocess_service_roundtrip_publishes_server_computed_sums(zenohd_unique: Zen
         .env("NROS_ENTRY_SPIN_MS", "20000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     let mut entry_proc =
-        ManagedProcess::spawn_command(cmd, "service-inprocess").expect("spawn in-process entry");
+        ManagedProcess::spawn_image(cmd, "service-inprocess").expect("spawn in-process entry");
 
     let out = entry_proc
         .wait_for_output_pattern(

@@ -28,7 +28,7 @@ fn test_action_server_starts(zenohd_unique: ZenohRouter, action_server_binary: P
     let mut cmd = Command::new(&action_server_binary);
     cmd.env("NROS_LOCATOR", &locator);
     cmd.env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(cmd, "native-rs-action-server")
+    let mut server = ManagedProcess::spawn_image(cmd, "native-rs-action-server")
         .expect("Failed to start action server");
 
     // Wait for server readiness. Marker found → fall through to test
@@ -68,7 +68,7 @@ fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: P
     let mut cmd = Command::new(&action_client_binary);
     cmd.env("NROS_LOCATOR", &locator);
     cmd.env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(cmd, "native-rs-action-client")
+    let mut client = ManagedProcess::spawn_image(cmd, "native-rs-action-client")
         .expect("Failed to start action client");
 
     // Issue 0711's class — this used to discard the wait result and then print
@@ -153,7 +153,7 @@ fn goal_order_reaches_the_server(
     let mut scmd = Command::new(&action_server_binary);
     scmd.env("NROS_LOCATOR", &locator);
     let mut server =
-        ManagedProcess::spawn_command(scmd, "action-server-order").expect("spawn action server");
+        ManagedProcess::spawn_image(scmd, "action-server-order").expect("spawn action server");
     server
         .wait_for_output_pattern(
             nros_tests::output::ACTION_SERVER_READY_MARKER,
@@ -164,7 +164,7 @@ fn goal_order_reaches_the_server(
     let mut ccmd = Command::new(&action_client_binary);
     ccmd.env("NROS_LOCATOR", &locator);
     let mut client =
-        ManagedProcess::spawn_command(ccmd, "action-client-order").expect("spawn action client");
+        ManagedProcess::spawn_image(ccmd, "action-client-order").expect("spawn action client");
 
     let server_out = server.collect_until(
         nros_tests::output::ACTION_GOAL_REQUEST_PREFIX,

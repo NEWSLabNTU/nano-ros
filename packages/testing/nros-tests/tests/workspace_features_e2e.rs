@@ -359,7 +359,7 @@ const LOG_LEVEL_TAG: &str = "[INFO]";
 fn spawn_locator_only(entry: &PathBuf, label: &'static str, locator: &str) -> ManagedProcess {
     let mut cmd = Command::new(entry);
     cmd.env("NROS_LOCATOR", locator);
-    ManagedProcess::spawn_command(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
+    ManagedProcess::spawn_image(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
 }
 
 /// Spawn a hosted-spin entry (`nros::main!` / generated C entry) with the
@@ -380,7 +380,7 @@ fn spawn_spinning(
     if let Some(step) = step_ms {
         cmd.env("NROS_ENTRY_SPIN_STEP_MS", step.to_string());
     }
-    ManagedProcess::spawn_command(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
+    ManagedProcess::spawn_image(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
 }
 
 /// Run `ros2 <subcommand>` against `locator`; return combined stdout+stderr.

@@ -99,7 +99,7 @@ fn an_executor_bound_node_creates_its_eager_publisher_and_publishes() {
     let mut cmd = Command::new(&binary);
     cmd.env("NROS_LOCATOR", router.locator())
         .env("RUST_LOG", "info");
-    let mut demo = ManagedProcess::spawn_command(cmd, "custom-platform-demo")
+    let mut demo = ManagedProcess::spawn_image(cmd, "custom-platform-demo")
         .unwrap_or_else(|e| panic!("spawn custom-platform: {e}"));
 
     // The demo publishes every 500 ms, so three lines is ~1.5 s of a 30 s

@@ -72,7 +72,7 @@ fn c_riscv_nuttx_talker_delivers_cross_process() {
             format!("tcp/127.0.0.1:{C_RISCV_NUTTX_TALKER_PORT}"),
         )
         .env("RUST_LOG", "info");
-        ManagedProcess::spawn_command(cmd, "native-listener")
+        ManagedProcess::spawn_image(cmd, "native-listener")
             .unwrap_or_else(|e| panic!("spawn native listener: {e}"))
     };
     obs.wait_for_output_pattern(

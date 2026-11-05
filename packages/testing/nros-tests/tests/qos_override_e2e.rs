@@ -139,7 +139,7 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
         // report "never discovered" for a publisher that had simply stopped.
         .env("NROS_ENTRY_SPIN_MS", "45000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
-    let mut talker = ManagedProcess::spawn_command(cmd, "qos_talker").expect("spawn qos entry");
+    let mut talker = ManagedProcess::spawn_image(cmd, "qos_talker").expect("spawn qos entry");
 
     // Issue 0761 — poll, do not sleep-then-ask-once.
     //
@@ -266,7 +266,7 @@ fn every_parameter_service_is_visible_to_a_ros2_peer(zenohd_unique: ZenohRouter)
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", "45000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
-    let mut image = ManagedProcess::spawn_command(cmd, "qos_entry").expect("spawn qos entry");
+    let mut image = ManagedProcess::spawn_image(cmd, "qos_entry").expect("spawn qos entry");
 
     // The six REP parameter services, on each node the launch file names.
     const PARAM_SERVICES: [&str; 6] = [
@@ -335,7 +335,7 @@ fn a_late_joiner_receives_the_declared_history(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", "60000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
-    let mut talker = ManagedProcess::spawn_command(cmd, "qos_entry").expect("spawn qos entry");
+    let mut talker = ManagedProcess::spawn_image(cmd, "qos_entry").expect("spawn qos entry");
 
     // Late, by construction: the talker has published more than the depth
     // before the subscriber exists.
