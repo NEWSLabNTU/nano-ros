@@ -1,184 +1,193 @@
-# Introduction
+# Welcome
 
 <!-- type: explanation · level: 1 -->
 
-nano-ros is a lightweight ROS 2 client library for embedded real-time systems.
-It runs on bare-metal microcontrollers, FreeRTOS, NuttX, ThreadX, and Zephyr,
-as well as Linux hosts. The entire core stack is `no_std` compatible.
+nano-ros runs ROS 2 nodes on microcontrollers and real-time operating
+systems, and those nodes talk to an ordinary ROS 2 system on your computer.
+In your first hour you install the `nros` command, scaffold a talker for an
+Arm Cortex-M3 board, run it in an emulator, and watch its messages arrive in
+`ros2 topic echo`. You need no board and you write no code to get there.
 
-```mermaid
-flowchart TB
-    App["<b>Application</b><br/>Rust / C / C++ node code"]
-    Core["<b>nano-ros core</b><br/>Executor · Node · pub/sub · services · actions · CDR"]
-    RMW["<b>RMW backend</b><br/>Zenoh · XRCE-DDS · Cyclone DDS · custom"]
-    Plat["<b>Platform</b><br/>clock · heap · threads · sleep · sockets · libc"]
-    Wire(["ROS 2 / DDS / Zenoh wire"])
-    App --> Core --> RMW --> Plat
-    RMW -. wire-compatible .-> Wire
-```
+## The talker you will run
 
-Four layers, swappable independently: the same node code runs over any RMW
-backend on any platform. Here is a complete Linux publisher — register a
-backend, open the executor, publish `std_msgs/String` (`Hello World: N`)
-on `/chatter` once a second:
+The first Tutorial chapter scaffolds a workspace with one node package. Its
+code is a ROS 2 talker. This excerpt is the part that does the work:
 
 ```rust
-use core::fmt::Write as _;
-use nros::prelude::*;
-use std_msgs::msg::String as StringMsg;
+fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+    let mut node = ctx.create_node(nros::NodeOptions::new("talker"))?;
+    node.create_publisher_for_topic::<StringMsg>("/chatter")?;
+    node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
+    Ok(())
+}
 
-fn main() {
-    // Pick the backend at compile time; this one line registers it.
-    nros_rmw_zenoh::register().unwrap();
-
-    let config = ExecutorConfig::new("tcp/127.0.0.1:7447").node_name("talker");
-    let mut executor: Executor = Executor::open(&config).unwrap();
-
-    let mut node = executor.create_node("talker").unwrap();
-    let publisher = node.create_publisher::<StringMsg>("/chatter").unwrap();
-
-    let mut count = 0i32;
-    node.create_timer_repeating(core::time::Duration::from_millis(1000), move || {
-        count += 1;
+fn on_callback(state: &mut i32, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+    if callback.as_str() == "on_tick" {
+        *state = state.wrapping_add(1);
         let mut msg = StringMsg::default();
-        let _ = write!(msg.data, "Hello World: {count}");
-        publisher.publish(&msg).unwrap();
-    })
-    .unwrap();
-
-    executor.spin(SpinOptions::default()).unwrap();
-    // This is the imperative Layer-2 API; the starters use the
-    // declarative `nros::node!` / `nros::main!` form — both are
-    // first-class (see Concepts → Two-Layer API).
+        let _ = write!(msg.data, "Hello World: {}", *state);
+        if ctx.publish_to_topic::<StringMsg, 64>("/chatter", &msg).is_ok() {
+            log::info!("Publishing: '{}'", msg.data);
+        }
+    }
 }
 ```
 
-The same program in C and C++ is in the First Node guides:
-[Rust](../tutorial/add-a-second-node.md) ·
-[C](../tutorial/add-a-second-node-c.md) ·
-[C++](../tutorial/add-a-second-node-cpp.md).
-When a project grows beyond one node, continue with
-[Multi-Node Project Layout](../tutorial/grow-your-workspace.md).
+The node creates a publisher on `/chatter` and a one-second timer. Each tick
+publishes a `std_msgs/String`. You run it with `nros run sensor_node`, which
+builds the firmware, boots it in QEMU, and prints the board's console:
+
+```text
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
+Publishing: 'Hello World: 3'
+```
+
+In a second terminal, the ROS 2 command line sees the same messages:
+
+```text
+data: 'Hello World: 2'
+---
+data: 'Hello World: 3'
+---
+```
+
+Nothing on the ROS 2 side knows that the talker is firmware on an emulated
+microcontroller. It is a ROS 2 node publishing a ROS 2 message type, and the
+ROS 2 tools you already use receive it. The same chapter also runs the talker
+as a process on your Linux host, for when you have no emulator set up.
+
+## Who nano-ros is for
+
+nano-ros serves three kinds of work. Each has a budget that the book is
+written and tested against:
+
+- **Education.** Courses and labs on robotics and embedded systems. The
+  install takes 15 minutes, a lab fits a two-hour session, and every seat
+  gets the same result.
+- **Field solutions.** Engineers and technicians who build a system for each
+  customer, often on a board they were handed. The target is 30 minutes from
+  an unopened box to `ros2 topic echo` showing the board's data.
+- **Industrial.** Teams who build products where safety and robustness
+  matter. The same inputs give the same image, every fact about a board is on
+  a page, and a build runs with no network.
+
+Two more readers use the book: ROS 2 developers moving existing nodes onto a
+microcontroller, and porters who add a board or a platform.
+[Choose your path](choose-your-path.md) gives each of the five a route
+through the book, in order, with its budget.
 
 ## What you get
 
-- **One node, any board.** You write a node once. Moving it to another board
-  is one line, the `board =` in the image's `system.toml`. The target triple,
-  linker flags, backend and pool sizes all follow from that line, so neither
-  your code nor your build files change.
-- **Talk to ROS 2 as it is.** Your nodes join a stock ROS 2 graph: over Zenoh
-  with `rmw_zenoh_cpp`, or over plain RTPS with `rmw_cyclonedds_cpp`. Topics,
-  services and actions work in both directions.
-- **Pick the middleware, keep the code.** Zenoh (no agent), XRCE-DDS (agent,
-  micro-ROS compatible) or Cyclone DDS (RTPS). Switching is one line in
-  `system.toml`, then build again.
-- **Fits a microcontroller.** The core is `no_std`, with the `alloc` and
-  `std` features opt-in, and runs on a bare-metal Cortex-M3. Whether your
-  image needs an allocator depends on the backend you choose: [Choosing an RMW Backend](../tutorial/pick-the-rmw.md)
-  says which does.
-- **Rust, C or C++.** The core is Rust, with C and C++ APIs over it; the C
-  API follows rclc conventions. One workspace can mix all three.
-- **Your ROS 2 install's messages.** Message bindings are generated from the
-  message definitions of the ROS 2 install you build against, so the types and
-  their hashes match your ROS 2 peers. Source ROS 2 once for a project's first
-  build; later builds reuse what it recorded.
-- **Real-time you can reason about.** Fixed-size pools sized at build time,
-  plus scheduling and safety features for RTOS targets: see
-  [Real-Time and Safety](../background/rtos-cooperation.md).
-- **Checked, not only tested.** Serialization, scheduling and the safety
-  protocol are covered by model checking and machine-checked proofs, and
-  every example is held identical across platforms by a test.
+- **One node, any supported board.** You write a node once. Moving it to
+  another board is one line in the workspace's configuration, the board's
+  name. The cross-compiler, linker flags, middleware and memory sizes follow
+  from that line, so neither your code nor your build files change.
+- **Your ROS 2 graph as it is.** Your nodes join a stock ROS 2 system over
+  Zenoh, through `rmw_zenoh_cpp`, or over DDS, through `rmw_cyclonedds_cpp`.
+  Topics, services and actions work in both directions.
+- **The middleware you choose, with the same code.** Zenoh needs no agent.
+  XRCE-DDS works with the micro-ROS agent. Cyclone DDS speaks plain RTPS.
+  Switching between them is a one-line change and a rebuild.
+- **A fit for a small microcontroller.** The core runs with no operating
+  system, and the heap is optional: whether an image needs one depends on the
+  middleware you choose. Memory for nodes, topics and messages is sized when
+  you build, in fixed pools.
+- **Rust, C or C++.** The core is Rust, with C and C++ APIs over it. The C
+  API follows `rclc` conventions, and the C++ API uses `rclcpp`'s names. One
+  workspace can mix all three.
+- **Messages that match your peers.** Message bindings are generated from
+  the ROS 2 install you build against, so the types and their hashes are the
+  ones your ROS 2 nodes use.
+- **Claims you can check.** Each board's support level, where it runs, and
+  how often it is tested come from one registry. The book prints them on
+  generated pages, and `nros board show <board>` prints the same facts from
+  the `nros` you installed.
 
-## Does it work on the board I have?
+## Where nano-ros differs from ROS 2
 
-Each board's support status, where it runs (host, emulator or hardware) and
-how often it is checked come from the board registry, and the book shows them
-on generated pages: [Supported Boards](../reference/supported-boards.md) lists
-every board, [Board support levels](../reference/board-support-levels.md)
-says what each status means, and each board has its own evidence page.
-`nros board list` and `nros board show <board>` print the same facts from the
-`nros` you installed.
+nano-ros keeps ROS 2's vocabulary (nodes, publishers, subscriptions,
+services, actions, timers, parameters, QoS) and its wire format. It is not a
+port of `rclcpp`, and some things you rely on in ROS 2 work differently:
 
-A board that is not in the registry can still run nano-ros through the
-customization ladder: the [out-of-tree STM32F4 worked
-example](../extending/stm32f4-out-of-tree.md) shows the pattern, and the PX4
-module template brings nano-ros into PX4 firmware as an external module
-([PX4](../guide/platforms/px4.md); C++ only, because PX4's uORB binding is
-C++-only). MPS2-AN385 bare-metal is Rust-only: the C and C++ APIs need an
-RTOS for libc and a heap.
+- **Choices happen at build time.** The middleware, the board and the memory
+  sizes are fixed when you build. A running image cannot load a different
+  middleware or create more topics than it was built for.
+- **The executor comes first.** An executor opens the middleware session and
+  owns the nodes, instead of a global `init` followed by nodes.
+- **A node is code you build into an image.** On a microcontroller there is
+  no process to start with `ros2 run`. The workspace says which board each
+  image runs on, and `nros run` builds and boots it.
+- **Parameters are smaller.** Each node keeps its own parameter store, with
+  no descriptors or change callbacks yet.
+- **Some ROS 2 tools need the host.** `ros2 topic echo` and `ros2 node list`
+  run on your computer and see the board's nodes. Runtime introspection on the
+  board itself is limited.
 
-The ESP32 (both the ESP-IDF component and the esp-hal bare-metal board) is
-retired: [ESP32 — retired](../migrating/esp32.md).
+[Differences from standard ROS 2](../background/differences-from-ros2.md)
+gives each difference and its reason, and
+[nano-ros vs micro-ROS](../background/vs-micro-ros.md) compares nano-ros with
+the other ROS 2 stack for microcontrollers.
 
-## Supported platforms (by RTOS)
+## Does it run on my board?
 
-| Platform   | RTOS          | Network Stack  | Targets                      |
-|------------|---------------|----------------|------------------------------|
-| POSIX      | Linux         | OS sockets     | x86-64, aarch64              |
-| Bare-metal | None          | smoltcp        | Cortex-M3                    |
-| FreeRTOS   | FreeRTOS      | lwIP           | Cortex-M3 (QEMU)             |
-| NuttX      | NuttX         | BSD sockets    | Cortex-A7 (QEMU), RISC-V32 (QEMU rv-virt) |
-| ThreadX    | ThreadX       | NetX Duo       | RISC-V 64 (QEMU), Linux sim  |
-| Zephyr     | Zephyr        | Zephyr sockets | Various boards               |
+[Supported Boards](../reference/supported-boards.md) lists every board the
+release knows, with its support level and where it runs: on your host, in an
+emulator, or on hardware. [Board support levels](../reference/board-support-levels.md)
+says what each level means. These pages are generated from the board
+registry, so they always match the release.
 
-`posix` there is the *platform* layer, which is genuinely POSIX-clean. The
-host *board* is named `linux`, and that is the narrower claim: only Linux is
-tested, and `nros-board-linux::apply_sched_task_affinity` calls `sched_setaffinity`
-with `cpu_set_t`, which libc does not define for macOS. **macOS is not
-supported**.
+Every board in this book has a way to run without its hardware: on your
+host, in an emulator, or in an emulated twin of the board. The first chapter uses
+QEMU's model of the MPS2-AN385, an Arm Cortex-M3 board, because it boots in
+seconds and needs nothing but your computer. Boards with a hardware twin, such
+as the [Nucleo-F767ZI](../starters/nucleo-f767zi.md), run the same firmware in
+an emulator first and then on the board.
 
-## RMW Backends
+A board that is not in the registry can still run nano-ros. You add it from
+your own tree, without changing nano-ros: [Extending nano-ros](../extending/overview.md)
+shows how.
 
-nano-ros supports several middleware backends, selected at compile
-time by naming one in `system.toml`:
+## How this book is organized
 
-- **Zenoh** (`nros-rmw-zenoh`) — peer-to-peer via zenoh-pico. No agent
-  process. Compatible with ROS 2 `rmw_zenoh_cpp`.
-- **XRCE-DDS** (`nros-rmw-xrce-cffi`) — agent-based via Micro-XRCE-DDS.
-  Compatible with micro-ROS agent.
-- **Cyclone DDS** (`nros-rmw-cyclonedds`) — C++ shim; full RTPS wire-compat
-  with stock `rmw_cyclonedds_cpp`.
+The sidebar follows what you are doing:
 
-Application code is identical regardless of backend — switching is editing
-`[system] rmw` and building again. (Zephyr keeps Kconfig as its own
-front-end, as it does for every other build knob.)
+- **Start here:** this page, [Choose your path](choose-your-path.md) and
+  [Install](install.md).
+- **Get started on your board:** one page per board, from install to
+  `ros2 topic echo`.
+- **Tutorial:** one project, built up chapter by chapter, starting with
+  [the talker above](../tutorial/run-a-talker.md).
+- **User guide:** task pages, grouped by area: communication, contracts and
+  sizing, build and configuration, platforms, real-time, deployment, and
+  porting from ROS 2.
+- **Background:** why nano-ros works the way it does.
+- **Reference:** the CLI, the APIs, configuration keys and the boards,
+  generated from their sources where possible.
+- **Extending nano-ros:** adding a board, a platform, a transport or a
+  middleware backend.
+- **Releases:** moving from an older release.
 
-## Project Status
+Each page shows its kind and level under its title. Level 1 pages assume
+nothing beyond this section. A page at a higher level assumes the levels
+below it:
 
-nano-ros is under active development. Core capabilities are functional and
-exercised in CI; see the platform chapters for per-target detail.
-
-| Capability       | Status   |
-|------------------|----------|
-| Pub/Sub          | Complete |
-| Services         | Complete |
-| Actions          | Complete |
-| Parameters       | Complete |
-| ROS 2 interop    | Complete |
-| Zenoh backend    | Complete |
-| XRCE-DDS backend | Complete |
-| Cyclone DDS backend | Complete (native + embedded; some embedded action paths in progress) |
-| Zephyr support   | Complete |
-| QEMU bare-metal  | Complete |
-| C API            | Complete |
-| C++ API          | Complete |
-| Message codegen  | Complete |
-
-## How This Book Is Organized
-
-- **Get Started:** install, build and run your first project.
-- **Build a Project:** workspace layout, messages, configuration, build
-  profiles.
-- **Run on a Target:** `nros run`, and each platform's setup.
-- **Communicate:** choosing a backend, QoS, ROS 2 interop, transports.
-- **Real-Time and Safety:** execution model, scheduling, static memory,
-  production readiness.
-- **Operate and Debug:** logging, time, diagnostics.
-- **Concepts and Rationale:** why nano-ros is shaped the way it is.
-- **Extending nano-ros:** add a board, a platform or an RMW backend from
-  outside the tree.
-- **Reference:** the CLI, APIs, boards, configuration.
-- **Migrating:** moving from an older release.
+| Level | What it covers |
+| --- | --- |
+| 1. First contact | install, a board's first run, the first Tutorial chapters |
+| 2. Building real applications | your own messages, services, launch files, ROS 2 interop |
+| 3. Production and tuning | configuration, offline builds, deployment, timing and memory |
+| 4. Extending nano-ros | new boards, platforms, transports and middleware |
 
 Changing nano-ros itself is a different job, with its own book:
 [nano-ros Internals](../internals/orientation/start-here.html).
+
+## Next
+
+Go to [Choose your path](choose-your-path.md) to find the route for your
+work, or go straight to [Install](install.md).
+
+## Design background
+
+The three purposes and their budgets are RFC-0116 D1. The book's sections,
+page types and topic levels are RFC-0124.
