@@ -574,6 +574,9 @@ notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cor
 #   track       the `just probe <track>` / PROBE_PLATFORM name
 #   chapter     the book page under book/src/
 #   variant     the chapter blocks' `variant=` the track replays ("" = none)
+#   lang        the language tab (rust | c | cpp) the track replays when its
+#               chapter shows a step in language tabs (phase-537 W2); absent
+#               for a chapter with no tabbed probe step
 #   weekly      true when `probe-platforms.yml` replays it every Monday
 #   row         the board row (crate@platform) whose evidence this is, if any
 #   qemu_board  the board the image is built for, when the run step boots QEMU;

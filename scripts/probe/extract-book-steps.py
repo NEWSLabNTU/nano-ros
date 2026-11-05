@@ -22,17 +22,29 @@ the assertion (phase-517 W10; scripts/probe/probe-run.sh). `probe-keep` leaves
 it running for the steps after it. `variant=<v>` selects one of several runs a
 chapter documents (`--variant`).
 
+A block inside a language tab group (`<!-- tabs -->` … `<!-- /tabs -->`,
+scripts/lib/book_tabs.py) belongs to its tab's language: a tabbed page holds
+one step per language under one `probe=NN`, and `--lang rust|c|cpp` picks the
+track's. Untabbed blocks apply to every language. A tabbed step with no
+`--lang`, or a `--lang` that selects no tabbed block, is an error.
+
 Usage:
   extract-book-steps.py --out probe-steps.sh \
-      [--subst 'OLD:::NEW' ...] [--variant V] [--prelude FILE ...] \
+      [--subst 'OLD:::NEW' ...] [--variant V] [--lang L] [--prelude FILE ...] \
       chapter1.md chapter2.md ...
+  extract-book-steps.py --self-test
 """
 
 import argparse
 import re
 import shlex
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import book_tabs  # noqa: E402  the language tab groups (RFC-0124 D9)
 
 FENCE_RE = re.compile(r"^```+\s*(\S.*)?$")
 PROBE_TOKEN_RE = re.compile(r"(?:^|\s)probe=(\d+)(?:\s|$)")
@@ -101,7 +113,12 @@ def extract_blocks(path: Path):
     in_fence = False
     cur = None
     body = []
-    for lineno, line in enumerate(path.read_text().splitlines(), 1):
+    text = path.read_text()
+    try:
+        langs = book_tabs.line_langs(text)
+    except book_tabs.TabError as e:
+        sys.exit(f"{path}:{e.line}: {e}")
+    for lineno, line in enumerate(text.splitlines(), 1):
         m = FENCE_RE.match(line)
         if not in_fence:
             info = m.group(1) if (m and m.group(1)) else None
@@ -113,6 +130,7 @@ def extract_blocks(path: Path):
                 in_fence = True
                 cur = _tokens(info, path, lineno)
                 cur["lineno"] = lineno
+                cur["lang"] = langs[lineno - 1]
                 if tok:
                     cur["kind"] = "step"
                     cur["order"] = int(tok.group(1))
@@ -156,6 +174,9 @@ def extract_blocks(path: Path):
 
 
 def main():
+    if sys.argv[1:] == ["--self-test"]:
+        self_test()
+        return
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--subst", action="append", default=[],
@@ -177,6 +198,11 @@ def main():
     ap.add_argument("--variant", default=None,
                     help="which documented run of a multi-run chapter; blocks "
                          "tagged variant=<other> are skipped, untagged ones kept")
+    # phase-537 W2 (RFC-0124 D9) — the language a track replays a tabbed page
+    # in. Blocks in another language's tab are skipped; untabbed ones kept.
+    ap.add_argument("--lang", default=None, choices=sorted(book_tabs.LABELS.values()),
+                    help="which language tab of a tabbed page; blocks in another "
+                         "language's tab are skipped, untabbed ones kept")
     # phase-517 W10 — shell text placed after `set -euo pipefail`, ahead of
     # every step: the helpers the emitted run steps call. The container has no
     # checkout to source them from, so they travel inside the script.
@@ -208,12 +234,21 @@ def main():
     expects = {}  # order -> (file, lineno, lines)
     skipped = {}  # order -> distros it IS tagged for, when filtered out
     variant_seen = False
+    lang_seen = False
+    lang_unpicked = []  # tabbed blocks met with no --lang
     for f in args.files:
         p = Path(f)
         if not p.is_file():
             sys.exit(f"probe extract: no such chapter: {f}")
         file_steps, file_expects = extract_blocks(p)
         for e in file_expects:
+            if e["lang"] is not None:
+                if args.lang is None:
+                    lang_unpicked.append(f"{f}:{e['lineno']}")
+                    continue
+                if args.lang != e["lang"]:
+                    continue
+                lang_seen = True
             if e["variants"] is not None:
                 if args.variant not in e["variants"]:
                     continue
@@ -226,6 +261,13 @@ def main():
             distros, tracks, variants = b["distros"], b["tracks"], b["variants"]
             if tracks is not None and args.track not in tracks:
                 continue
+            if b["lang"] is not None:
+                if args.lang is None:
+                    lang_unpicked.append(f"{f}:{lineno}")
+                    continue
+                if args.lang != b["lang"]:
+                    continue
+                lang_seen = True
             if variants is not None:
                 if args.variant not in variants:
                     continue
@@ -246,6 +288,16 @@ def main():
         sys.exit(
             f"probe extract: --variant {args.variant} selects no block in "
             f"{args.files} — a typo here would silently probe the default run"
+        )
+    if lang_unpicked:
+        sys.exit(
+            f"probe extract: block(s) at {', '.join(lang_unpicked)} sit in a language "
+            "tab, and no --lang picks one — set the track's `lang` in the registry"
+        )
+    if args.lang is not None and not lang_seen:
+        sys.exit(
+            f"probe extract: --lang {args.lang} selects no tabbed block in "
+            f"{args.files} — the track names a language its chapter does not tab"
         )
     if not steps:
         sys.exit(
@@ -356,6 +408,49 @@ def main():
 
     Path(args.out).write_text(script)
     print(f"probe extract: {len(steps)} steps -> {args.out}")
+
+
+def self_test() -> None:
+    """A tabbed chapter extracts each language's step and output under one
+    order; an untabbed chapter is untouched by --lang's absence; the misuses
+    fail."""
+    book_tabs.self_test()
+    tabbed = (
+        "# T\n\n```bash probe=10\nnros setup linux\n```\n\n<!-- tabs -->\n\n#### Rust\n\n"
+        "```bash probe=20\ncargo build\n```\n\n```bash probe=30 probe-run=5\n./rust-talker\n```\n\n"
+        "```text probe-expect=30\nrust says hi\n```\n\n#### C\n\n```bash probe=20\ncmake --build build\n```\n\n"
+        "```bash probe=30 probe-run=5\n./build/c-talker\n```\n\n```text probe-expect=30\nc says hi\n```\n\n"
+        "<!-- /tabs -->\n\n```bash probe=40\necho done\n```\n"
+    )
+    plain = "# P\n\n```bash probe=10\necho one\n```\n"
+    me = Path(__file__).resolve()
+
+    def extract(text: str, *args: str) -> tuple[int, str]:
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "c.md").write_text(text)
+            r = subprocess.run([sys.executable, str(me), "--out", f"{d}/o.sh", *args, f"{d}/c.md"],
+                               capture_output=True, text=True)
+            out = (Path(d) / "o.sh").read_text() if r.returncode == 0 else r.stderr
+            return r.returncode, out.replace(d, "<d>")
+
+    rc, rust = extract(tabbed, "--lang", "rust")
+    assert rc == 0, rust
+    assert "cargo build" in rust and "./rust-talker" in rust and "'rust says hi'" in rust, rust
+    assert "cmake" not in rust and "c-talker" not in rust and "c says hi" not in rust, rust
+    assert "nros setup linux" in rust and "echo done" in rust
+    rc, c = extract(tabbed, "--lang", "c")
+    assert rc == 0 and "cmake --build build" in c and "'c says hi'" in c and "cargo" not in c, c
+    rc, err = extract(tabbed)
+    assert rc != 0 and "sit in a language tab" in err, err
+    rc, err = extract(tabbed, "--lang", "cpp")
+    assert rc != 0 and "selects no tabbed block" in err, err
+    rc, err = extract(plain, "--lang", "rust")
+    assert rc != 0 and "selects no tabbed block" in err, err
+    rc, one = extract(plain)
+    assert rc == 0 and "echo one" in one, one
+    rc, err = extract("<!-- tabs -->\n#### Go\n```bash probe=1\nx\n```\n<!-- /tabs -->\n")
+    assert rc != 0 and "c.md:2:" in err and "is not one of" in err, err
+    print("extract-book-steps: self-test OK")
 
 
 if __name__ == "__main__":

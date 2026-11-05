@@ -62,6 +62,10 @@ def selftest() -> None:
         if r.returncode == 0 or "probe-expect" not in r.stderr:
             sys.exit("check-book-probe-tracks: SELFTEST FAILED — a run step with no "
                      f"expected-output block extracted (rc={r.returncode}): {r.stderr}")
+    # phase-537 W2: a language-tabbed chapter extracts one language per track.
+    r = subprocess.run([sys.executable, str(EXTRACTOR), "--self-test"], capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f"check-book-probe-tracks: SELFTEST FAILED — the extractor's own: {r.stderr}{r.stdout}")
 
 
 def main() -> int:
