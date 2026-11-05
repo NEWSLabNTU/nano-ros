@@ -426,15 +426,19 @@ fn check_name(name: &str) -> Result<()> {
 }
 
 /// Where the package goes: `--destination-directory/<name>`, else
-/// `src/<name>` inside a workspace, else `<name>`.
+/// `<ws>/src/<name>` inside a workspace (run from its root or any directory
+/// below it), else `<name>`.
 fn target_dir(args: &crate::cmd::new::Args, name: &str, cwd: &Path) -> PathBuf {
     if args.destination_directory.is_some() {
         return crate::cmd::new::package_dir(args, name);
     }
-    if cwd.join("src").is_dir() && crate::cmd::extension::is_workspace(cwd) {
-        return PathBuf::from("src").join(name);
+    // One workspace detector for every `nros new` (phase-531 W4): the node
+    // rung and the extension kinds agree on what "inside a workspace" means.
+    match crate::cmd::new_workspace::enclosing_workspace(cwd) {
+        Some(ws) if ws == cwd => PathBuf::from("src").join(name),
+        Some(ws) => ws.join("src").join(name),
+        None => PathBuf::from(name),
     }
-    PathBuf::from(name)
 }
 
 /// `nros new <name> --kind runner|command`.
@@ -555,6 +559,34 @@ mod tests {
             &f.iter().find(|(p, _)| p == "nros-runner.toml").unwrap().1,
         )
         .unwrap();
+    }
+
+    /// `nros new x --kind runner` lands in `<ws>/src/x` from the workspace
+    /// root and from any directory below it, and in `./x` outside one — the
+    /// same detector the node rung uses.
+    #[test]
+    fn an_extension_lands_in_the_enclosing_workspaces_src() {
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: crate::cmd::new::Args,
+        }
+        use clap::Parser;
+        let args = Cli::try_parse_from(["nros-new", "x", "--kind", "runner"])
+            .unwrap()
+            .args;
+        let t = tempfile::tempdir().unwrap();
+        let ws = t.path().join("ws");
+        let pkg = ws.join("src/talker_node");
+        std::fs::create_dir_all(pkg.join("src")).unwrap();
+        std::fs::write(pkg.join("package.xml"), "<package/>").unwrap();
+
+        assert_eq!(target_dir(&args, "x", &ws), PathBuf::from("src/x"));
+        assert_eq!(target_dir(&args, "x", &pkg.join("src")), ws.join("src/x"));
+        assert_eq!(target_dir(&args, "x", &ws.join("src")), ws.join("src/x"));
+        let outside = t.path().join("elsewhere");
+        std::fs::create_dir_all(&outside).unwrap();
+        assert_eq!(target_dir(&args, "x", &outside), PathBuf::from("x"));
     }
 
     #[test]

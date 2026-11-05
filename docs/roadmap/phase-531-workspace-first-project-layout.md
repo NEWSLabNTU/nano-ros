@@ -318,6 +318,24 @@ passes on QEMU. A workspace with two bringups naming one node refuses `nros run
   `scripts/ci/scaffold-journey-check.sh` build and resolve the scaffolded
   workspace instead of the retired single package.
 
+**W4 follow-ups** (found by replaying the target chapters on the installed
+track):
+
+- **A C/C++ node package names no `DEPLOY`.** The component scaffold wrote
+  `nano_ros_add_node(... DEPLOY linux)`, the standalone package's carrier ELF.
+  `nros build` reads a `DEPLOY` token as the board a package is for
+  (`entries_for_other_boards`), so on every non-Linux board the node was left
+  out and the cmake root refused: "no cmake packages in this workspace … A
+  pure-Rust workspace builds through the cargo root". Reproduced with
+  `--board qemu-armv7a-nuttx --lang c` and `--board mps2-an385-freertos
+  --lang c`. A workspace member is now registered carrier-less (RFC-0121 D4:
+  a node package names no board), and when every cmake package was left out
+  the refusal names them instead of calling the workspace pure Rust.
+- **One workspace detector.** `nros new <x> --kind runner|command` places the
+  package through `new_workspace::enclosing_workspace`, the node rung's
+  detector, so from any directory below a workspace it lands in
+  `<ws>/src/<x>`.
+
 ### W5 — One build road
 
 Every image builds through the generated entry. A node package is a library;

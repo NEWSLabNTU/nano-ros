@@ -719,6 +719,26 @@ source_metadata = "metadata/{module}.json"
     Ok(())
 }
 
+/// The `DEPLOY` a C/C++ node package's `nano_ros_add_node` names, with the
+/// comment that explains it.
+///
+/// A standalone component also builds a single-node Linux ELF through the
+/// typed carrier. A WORKSPACE member names no deploy target at all (RFC-0121
+/// D4: a node package names no board): the bringup's image is the deployment,
+/// and `nros build` reads a `DEPLOY` token as the board the package belongs
+/// to, so a member saying `DEPLOY linux` was left out of every non-Linux
+/// cmake root ("no cmake packages in this workspace").
+fn node_deploy(cfg: &ComponentScaffoldConfig) -> (&'static str, &'static str) {
+    if cfg.workspace_member {
+        ("", "")
+    } else {
+        (
+            " `DEPLOY linux` also builds a\n# standalone runnable single-node ELF via the typed carrier.",
+            "\n    DEPLOY  linux",
+        )
+    }
+}
+
 /// Scaffold a **C++ Node pkg** — typed component (RFC-0043). Emits the
 /// RFC-0048 ament surface (`find_package(nano_ros)` + `nano_ros_add_node`) and a
 /// `<UserClass>::configure(::rclcpp::Node&)` real-callback body in the
@@ -749,6 +769,7 @@ fn scaffold_component_cpp(dir: &Path, cfg: &ComponentScaffoldConfig) -> Result<(
     let class_name = cfg.template.class();
     let node_name = &component_node_name(cfg)?;
     let iface = cfg.template.interface_package();
+    let (deploy_note, deploy_arg) = node_deploy(cfg);
 
     fs::write(
         dir.join("package.xml"),
@@ -775,11 +796,9 @@ find_package({iface} REQUIRED)
 
 # Typed component. No add_executable, no `main()`; the linked
 # Entry pkg's typed runtime constructs this class + calls `configure(node)`
-# on the real executor. `DEPLOY linux` also builds a standalone runnable
-# single-node ELF via the typed native carrier.
+# on the real executor.{deploy_note}
 nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name}
-    SOURCES src/{class_name}.cpp
-    DEPLOY  linux)
+    SOURCES src/{class_name}.cpp{deploy_arg})
 
 # The verb generated the package.xml `<depend>` closure as INTERFACE libs
 # (`{iface}__nano_ros_cpp` etc.) carrying the generated headers' include
@@ -849,6 +868,7 @@ fn scaffold_component_c(dir: &Path, cfg: &ComponentScaffoldConfig) -> Result<()>
     let class_name = cfg.template.class();
     let node_name = &component_node_name(cfg)?;
     let iface = cfg.template.interface_package();
+    let (deploy_note, deploy_arg) = node_deploy(cfg);
 
     fs::write(
         dir.join("package.xml"),
@@ -874,11 +894,9 @@ find_package(nano_ros REQUIRED)
 find_package({iface} REQUIRED)
 
 # Typed C component, written against the C API with the generated
-# `{iface}` bindings (declared in package.xml). `DEPLOY linux` also builds a
-# standalone runnable single-node ELF via the typed C carrier.
+# `{iface}` bindings (declared in package.xml).{deploy_note}
 nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
-    SOURCES src/{class_name}.c
-    DEPLOY  linux)
+    SOURCES src/{class_name}.c{deploy_arg})
 "#,
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;

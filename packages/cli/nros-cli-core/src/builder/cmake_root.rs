@@ -145,6 +145,9 @@ pub fn render(
     crate::routing::check_declarations(&discovered.packages)?;
 
     let mut subdirs: Vec<(String, String)> = Vec::new();
+    // cmake packages the spec left out (another board's entries, a
+    // framework's), named when nothing is left so the refusal says why.
+    let mut left_out: Vec<&str> = Vec::new();
     for pkg in &discovered.packages {
         // RFC-0094 D3 (phase-439 W3) — the declaration picks the driver, file
         // presence only decides participation. Was
@@ -152,7 +155,11 @@ pub fn render(
         // questions, so a crate whose `CMakeLists.txt` is a sibling harness
         // became a subdirectory of the workspace root on the strength of the
         // file existing.
-        if spec.excluded.contains(&pkg.dir) || !crate::routing::route(pkg).cmake_subdir {
+        if !crate::routing::route(pkg).cmake_subdir {
+            continue;
+        }
+        if spec.excluded.contains(&pkg.dir) {
+            left_out.push(&pkg.name);
             continue;
         }
         // An INTERFACE package has a CMakeLists and still must not be a subdir
@@ -182,6 +189,16 @@ pub fn render(
         // wants to see: `src/talker_pkg`, not `../../src/talker_pkg`.
         let rel = super::paths::relative_or_err(&spec.workspace, &pkg.dir)?;
         subdirs.push((rel, pkg.name.clone()));
+    }
+    if subdirs.is_empty() && !left_out.is_empty() {
+        return Err(format!(
+            "no cmake package of this workspace belongs to this image: {} {} left out as \
+             another board's or a framework's entry (a `DEPLOY <target>` in a package's \
+             CMakeLists.txt names the board it is for). A node package a bringup deploys \
+             names no `DEPLOY`.",
+            left_out.join(", "),
+            if left_out.len() == 1 { "was" } else { "were" }
+        ));
     }
     if subdirs.is_empty() {
         return Err(
@@ -507,6 +524,20 @@ mod tests {
             excluded: Default::default(),
             entries: Vec::new(),
         }
+    }
+
+    /// When every cmake package was left out as another board's entry, the
+    /// refusal names them instead of calling the workspace pure Rust.
+    #[test]
+    fn a_root_whose_packages_were_all_left_out_names_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let node = pkg(root, "nx_node", true);
+        let mut sp = spec(root);
+        sp.excluded.insert(node.dir.clone());
+        let e = render(&discovered(vec![node]), &root.join("build/nuttx"), &sp).unwrap_err();
+        assert!(e.contains("nx_node was left out"), "{e}");
+        assert!(!e.contains("pure-Rust"), "{e}");
     }
 
     #[test]
