@@ -304,7 +304,10 @@ devices to a Cyclone DDS stack, or XRCE devices to a Zenoh network — see
 [Bridge between backends](../guide/rmw/bridge-between-backends.md).
 
 Once you have picked, [Switch the RMW per image](../guide/rmw/switch-the-rmw-per-image.md)
-shows the exact edits per build system.
+shows the edits, and [Configure zenoh](../guide/rmw/configure-zenoh.md),
+[Use Cyclone DDS](../guide/rmw/use-cyclone-dds.md) and
+[Use XRCE-DDS](../guide/rmw/use-xrce-dds.md) show what each backend needs
+after that.
 
 ## Design background
 
