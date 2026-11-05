@@ -92,8 +92,8 @@ you need it publishing data that a ROS 2 system can see, quickly.
    says where it runs and which chapter covers it. Then read your platform's
    chapter (FreeRTOS, Zephyr, NuttX, ThreadX or bare-metal). Every embedded
    chapter has a QEMU flow that works without hardware.
-3. **Run it on the target.** [The target model](../targets/target-model.md)
-   and [`nros run`](../targets/run.md) for a host process or an emulator.
+3. **Run it on the target.** [The target model](../guide/deploy/deploy-to-production.md#the-target-model)
+   and [`nros run`](../guide/deploy/deploy-to-production.md#running-an-image-nros-run) for a host process or an emulator.
 4. **Talk to ROS 2.** [Choosing an RMW](../tutorial/pick-the-rmw.md)
    and [ROS 2 Interoperability](../tutorial/talk-to-ros2.md). Cyclone DDS
    talks to `rmw_cyclonedds_cpp` directly, with no router. Zenoh needs the

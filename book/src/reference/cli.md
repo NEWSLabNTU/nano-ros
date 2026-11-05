@@ -510,14 +510,14 @@ nros run linux --expect 'Received: 2' --timeout 30
 ```
 
 A board with no host process or emulator is real silicon; `nros run` refuses
-it and names the flashing step. See [Running an Image](../targets/run.md).
+it and names the flashing step. See [Running an Image](../guide/deploy/deploy-to-production.md#running-an-image-nros-run).
 
 ### `nros flash`
 
 Flash an image onto a board. **Reserved: not available in this version.**
 It exits with an error that says so. Until it ships, flash with the command
 `nros build` prints after a successful build. See
-[Flash and Monitor](../targets/flash-and-monitor.md).
+[Flash and Monitor](../guide/deploy/deploy-to-production.md#flashing-and-monitoring-a-board).
 
 ### `nros monitor`
 
@@ -531,7 +531,7 @@ which board, matching each device against the USB id a board descriptor's
 `[board.console] usb` states, in `$NROS_HOME/bench.toml` (`--dry-run` prints
 what it would record). `nros bench list` prints that file and whether each
 device is attached now. The bench file supplies ports and probes; it never
-decides what is tested. See [Your Bench](../targets/bench.md).
+decides what is tested. See [Your Bench](../guide/deploy/deploy-to-production.md#your-bench-nros-bench).
 
 ```sh
 nros bench scan --dry-run

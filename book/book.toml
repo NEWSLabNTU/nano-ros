@@ -23,6 +23,14 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/build/build-and-configure.html" = "../guide/build/configure-an-image.html#building-and-configuring"
+"/targets/target-model.html" = "../guide/deploy/deploy-to-production.html#the-target-model"
+"/targets/run.html" = "../guide/deploy/deploy-to-production.html#running-an-image-nros-run"
+"/targets/run-plans.html" = "../guide/deploy/deploy-to-production.html#run-plans"
+"/targets/flash-and-monitor.html" = "../guide/deploy/deploy-to-production.html#flashing-and-monitoring-a-board"
+"/targets/bench.html" = "../guide/deploy/deploy-to-production.html#your-bench-nros-bench"
+"/extending/runner-packages.html" = "overview.html#runner-packages"
+"/extending/command-packages.html" = "overview.html#command-packages"
 "/concepts/platform-model.html" = "../extending/platform-model.html"
 "/extending/platform-c-abi.html" = "../reference/platform-c-abi.html"
 "/build/message-generation.html" = "../reference/message-generation.html"
