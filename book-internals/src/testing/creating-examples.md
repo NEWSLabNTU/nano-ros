@@ -327,7 +327,7 @@ Artifacts land under `<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>`
 `build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker`.
 
 Per-platform deep-dives — toolchain setup, Kconfig variables,
-runner scripts — live in the [Platform Guides](../../../book/src/targets/).
+runner scripts — live in the [Platform Guides](../../../book/src/guide/platforms/).
 
 ## See Also
 
