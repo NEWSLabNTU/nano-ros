@@ -47,20 +47,20 @@ with no network.
   from the board registry. `nros doctor --report` prints the status of every
   board your bringup's images name, as a report you can file.
 - **Pinning and offline builds.**
-  [Pinning a version](../get-started/installation-details.md#pinning-a-version)
+  [Pinning a version](../guide/build/install-options.md#pinning-a-version)
   (`nros pin`), and
-  [Integrating into a Vendored Tree](../build/vendored-tree.md)
+  [Integrating into a Vendored Tree](../guide/build/existing-cmake-or-vendor-tree.md)
   for a company tree with air-gapped CI. `nros build --offline` fails,
   naming what is missing, rather than fetching it.
 - **Your RTOS and your build tool.**
   [How Integration Works](../targets/how-integration-works.md):
   your RTOS keeps its own build tool (west, make, CMake, your IDE) and
   nano-ros plugs into it. [Build as a CMake
-  subdirectory](../build/cmake-subdirectory.md) covers a tree
+  subdirectory](../guide/build/cmake-subdirectory.md) covers a tree
   with no `system.toml`.
 - **Real-time and memory bounds.**
   [Execution Model and Two-Layer API](../concepts/two-layer-api.md),
-  [Scheduling Models](../realtime/scheduling-models.md) and the generated
+  [Scheduling Models](../guide/realtime/pick-a-scheduling-model.md) and the generated
   [Scheduling Wiring Matrix](../reference/sched-matrix.md),
   [`no_std`, `alloc`, and `std`](../concepts/no-std.md),
   [Dispatch Strategy](../realtime/dispatch-strategy.md), and the
@@ -68,7 +68,7 @@ with no network.
 - **Safety and adoption gates.**
   [Safety Protocol](../realtime/safety-protocol.md) (E2E CRC, EN 50159
   mapping) and the
-  [Production Readiness Checklist](../realtime/production-readiness.md).
+  [Production Readiness Checklist](../guide/deploy/production-readiness.md).
 - **Your own board or BSP.**
   [Custom Board Package](../extending/custom-board.md),
   [Vendor Overlay](../extending/vendor-overlay.md) and the
@@ -100,14 +100,14 @@ you need it publishing data that a ROS 2 system can see, quickly.
    ROS 2 router (`rmw_zenoh_cpp`) on the host.
 5. **Grow the system.** More nodes, parameters and images:
    [Growing your workspace](../tutorial/grow-your-workspace.md),
-   and [Mixed-language workspaces](../build/mixed-language.md) for
+   and [Mixed-language workspaces](../guide/build/mix-languages.md) for
    other languages. Bridging several networks:
-   [Cross-backend Bridges](../communicate/bridges.md).
+   [Cross-backend Bridges](../guide/rmw/bridge-between-backends.md).
 6. **Coming from rclcpp or rclpy?**
-   [Setup Compared to Standard ROS 2](../from-ros2/setup-compared.md),
-   [Porting a ROS 2 C++ node](../from-ros2/porting-a-cpp-node.md),
-   [C / C++ multi-node workspaces](../build/cpp-workspaces.md) and
-   the [Migration Guide](../from-ros2/migration-guide.md).
+   [Setup Compared to Standard ROS 2](../guide/port/setup-compared.md),
+   [Porting a ROS 2 C++ node](../guide/port/port-a-cpp-node.md),
+   [C / C++ multi-node workspaces](../guide/contracts/cpp-workspaces.md) and
+   the [Migration Guide](../guide/port/move-a-ros2-project.md).
 
 ## Education: labs that fit a session
 
@@ -125,8 +125,8 @@ install must be short, and each lab must fit one session.
    [Execution Model and Two-Layer API](../concepts/two-layer-api.md).
 4. **Embedded labs without hardware.** Each platform chapter runs its
    example under QEMU, for example
-   [FreeRTOS](../targets/freertos.md) or
-   [bare-metal](../targets/bare-metal.md).
+   [FreeRTOS](../guide/platforms/freertos.md) or
+   [bare-metal](../guide/platforms/bare-metal.md).
 5. **Labs that talk to ROS 2.**
    [Choosing an RMW](../tutorial/pick-the-rmw.md); Cyclone DDS needs no
    router, which keeps a lab machine simple.

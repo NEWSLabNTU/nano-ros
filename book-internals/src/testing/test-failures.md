@@ -2,7 +2,7 @@
 
 Failures in the repository's own test suites and checkout builds. The
 user-facing troubleshooting page is the user book's
-[Troubleshooting](../../operate/troubleshooting.html).
+[Troubleshooting](../../guide/deploy/troubleshoot.html).
 
 ## Checkout: zenoh-pico submodule not found
 

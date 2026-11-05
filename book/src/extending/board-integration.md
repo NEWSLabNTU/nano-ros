@@ -16,10 +16,10 @@ The architecture behind the matrix lives in
 | Profile | Workflow | Recommended path |
 |---|---|---|
 | **Cargo-first Rust user (have RTOS sources)** | `cargo build --target <triple>` produces a single ELF. RTOS kernel built in-tree by Cargo. | [Generic board crate](#generic-board-crate) + env vars pointing at `FREERTOS_DIR` / `THREADX_DIR` / etc. |
-| **Vendor-IDE user (STM32CubeIDE, MCUXpresso IDE, etc.)** | Vendor's existing FreeRTOS / ThreadX project; nano-ros as an `add_subdirectory()` library. | [`add_subdirectory(third_party/nano-ros)`](../build/cmake-subdirectory.md) from the vendor's project. |
-| **Zephyr user (any board)** | `west` + DTS overlays. Vendor HALs come as Zephyr modules. | [Zephyr integration shell](../targets/zephyr.md) — `projects:` entry in your `west.yml`. |
-| **NuttX user (any board)** | NuttX `apps/external/` + Kconfig. | [NuttX integration shell](../targets/nuttx.md) — symlink under `apps/external/`. |
-| **PX4 user** | PX4 build pipeline. | [PX4 integration shell](../targets/px4.md) — `EXTERNAL_MODULES_LOCATION`. |
+| **Vendor-IDE user (STM32CubeIDE, MCUXpresso IDE, etc.)** | Vendor's existing FreeRTOS / ThreadX project; nano-ros as an `add_subdirectory()` library. | [`add_subdirectory(third_party/nano-ros)`](../guide/build/cmake-subdirectory.md) from the vendor's project. |
+| **Zephyr user (any board)** | `west` + DTS overlays. Vendor HALs come as Zephyr modules. | [Zephyr integration shell](../guide/platforms/zephyr.md) — `projects:` entry in your `west.yml`. |
+| **NuttX user (any board)** | NuttX `apps/external/` + Kconfig. | [NuttX integration shell](../guide/platforms/nuttx.md) — symlink under `apps/external/`. |
+| **PX4 user** | PX4 build pipeline. | [PX4 integration shell](../guide/platforms/px4.md) — `EXTERNAL_MODULES_LOCATION`. |
 | **Niche RTOS / vendor fork** | Stock RTOS kernel + vendor driver SDK. Cargo-driven build. | Generic board crate + **vendor overlay crate** (~50 LOC). See the [Vendor Overlay cookbook](vendor-overlay.md). |
 
 ## Generic board crate
@@ -123,7 +123,7 @@ two-and-a-half rows at the top + bottom of the matrix.
   overlay cookbook.
 - [Custom Board Package](custom-board.md) — older guide
   covering monolithic board crates (legacy pattern).
-- [`add_subdirectory(third_party/nano-ros)`](../build/cmake-subdirectory.md)
+- [`add_subdirectory(third_party/nano-ros)`](../guide/build/cmake-subdirectory.md)
   — root CMake entry for vendor-IDE consumers.
 - [Platform Model](../concepts/platform-model.md) — Boards vs Platforms;
   Layer 1's `<nros/platform_*.h>` contract overlays sit on top of.

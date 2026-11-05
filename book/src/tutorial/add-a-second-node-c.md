@@ -75,7 +75,7 @@ On native, locator + domain come from env vars (`NROS_LOCATOR`,
 `ROS_DOMAIN_ID`) with built-in defaults; an embedded image declares
 them in its own `[image.<id>]` table (`locator`, and its address in the board
 network file `os_config` names) and they are baked at build time (see
-[Configuration](../build/configuration.md)).
+[Configuration](../guide/build/configure-an-image.md)).
 
 ### The node package
 
@@ -181,7 +181,7 @@ Three runtime knobs:
 
 On an embedded image the same knobs are compile-baked from that image's
 `[image.<id>]` table in `system.toml` (see
-[Configuration](../build/configuration.md)).
+[Configuration](../guide/build/configure-an-image.md)).
 
 ## Build
 
@@ -221,7 +221,7 @@ nros configure
 
 For a CMake tree that is
 not a nano-ros workspace at all, see
-[Build as a CMake subdirectory](../build/cmake-subdirectory.md).
+[Build as a CMake subdirectory](../guide/build/cmake-subdirectory.md).
 
 The first configure pulls and builds nano-ros's Rust staticlibs
 (~3 minutes). Re-builds finish in seconds.

@@ -151,7 +151,7 @@ def selftest(verbose: bool = False) -> int:
           "book/src/migrating/esp32.md": "```sh\njust esp32 build\n```\n"}, False),
         ("a user page not marked dormant is read",
          {"book/src/SUMMARY.md": "- [ESP32 (esp-hal, dormant)](./migrating/esp32.md)\n",
-          "book/src/targets/zephyr.md": "```sh\njust zephyr build\n```\n"}, True),
+          "book/src/guide/platforms/zephyr.md": "```sh\njust zephyr build\n```\n"}, True),
     ]
     failed = 0
     for name, pages, want_fail in cases:

@@ -2,7 +2,7 @@
 
 > **Audience.** Contributors working on the repo build/test matrix. End users
 > never need this — they consume nano-ros with a single
-> [`add_subdirectory(<repo-root>)`](../../build/cmake-subdirectory.html),
+> [`add_subdirectory(<repo-root>)`](../../guide/build/cmake-subdirectory.html),
 > no install step, no `find_package`. This handbook documents the **other**
 > build world: the in-repo `just` orchestration that builds + tests every
 > platform × RMW, and the caching that keeps it incremental and correct.

@@ -6,7 +6,7 @@ Every nano-ros binary picks its RMW (ROS Middleware) backend at **build
 time**. There are three: **Cyclone DDS**, **Zenoh** (zenoh-pico), and
 **XRCE-DDS**. This page helps you pick one and explains how each backend
 connects your device to a ROS 2 network. The mechanics of changing your
-pick are in [Switching RMW Backends](../communicate/switching-rmw.md).
+pick are in [Switching RMW Backends](../guide/rmw/switch-the-rmw-per-image.md).
 
 ## Start with Cyclone DDS
 
@@ -60,7 +60,7 @@ Choose the **XRCE-DDS** backend when:
   their number follows the entities you declare.)
 - You need a **serial (UART)** transport — the only backend that works
   on an MCU with no networking hardware. See
-  [Serial Transport](../communicate/serial-transport.md).
+  [Serial Transport](../guide/rmw/use-a-serial-link.md).
 - You are joining an existing micro-ROS / DDS deployment: the agent
   bridges to any DDS-based RMW.
 
@@ -235,7 +235,7 @@ On `native_sim`, Zephyr's offloaded-sockets driver does not forward
 `IP_ADD_MEMBERSHIP` to the host kernel, so multicast discovery does not
 work there. The `native_sim` configuration discovers peers by unicast to
 `127.0.0.1` instead (see
-[Troubleshooting](../operate/troubleshooting.md#cyclone-dds-two-native_sim-nodes-never-discover-each-other));
+[Troubleshooting](../guide/deploy/troubleshoot.md#cyclone-dds-two-native_sim-nodes-never-discover-each-other));
 use `qemu_cortex_a9` to exercise multicast DDS on Zephyr.
 
 ### FreeRTOS + lwIP
@@ -301,9 +301,9 @@ integration with ROS 2 desktop nodes, and development under QEMU.
 You do not have to pick exactly one per system: a single binary can
 link **multiple backends** and bridge between them, for example zenoh
 devices to a Cyclone DDS stack, or XRCE devices to a Zenoh network — see
-[Cross-backend Bridges](../communicate/bridges.md).
+[Cross-backend Bridges](../guide/rmw/bridge-between-backends.md).
 
-Once you have picked, [Switching RMW Backends](../communicate/switching-rmw.md)
+Once you have picked, [Switching RMW Backends](../guide/rmw/switch-the-rmw-per-image.md)
 shows the exact edits per build system.
 
 ## Design background

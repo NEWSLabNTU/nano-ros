@@ -10,12 +10,12 @@ configuration to get there.
 
 **What this assumes:** a Linux host with ROS 2 Humble and its Zenoh
 middleware (`ros-humble-rmw-zenoh-cpp`) installed, or the container from
-[Installation Details](../get-started/installation-details.md#ros-2-and-the-zenoh-router),
+[Installation Details](../guide/build/install-options.md#ros-2-and-the-zenoh-router),
 and the [install](../start/install.md) done, so `nros` is on your PATH.
 
 **What it leaves for later:** the board talks to your machine over its serial
 port, the way a real board's first program does. The network comes in the
-board's own chapter, [Bare-metal Cortex-M3](../targets/bare-metal.md). WiFi is not
+board's own chapter, [Bare-metal Cortex-M3](../guide/platforms/bare-metal.md). WiFi is not
 covered yet: it arrives with the Zephyr 4.4 line.
 
 ## Provision the board
@@ -159,7 +159,7 @@ shape, and so is every command after it.
   and what `nros run` generated.
 - [Growing your workspace](grow-your-workspace.md): add a second
   node, another board, or a launch file.
-- [Bare-metal Cortex-M3](../targets/bare-metal.md): the same board over its network.
+- [Bare-metal Cortex-M3](../guide/platforms/bare-metal.md): the same board over its network.
 
 ## Design background
 

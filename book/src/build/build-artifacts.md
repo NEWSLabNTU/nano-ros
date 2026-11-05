@@ -125,11 +125,11 @@ into `debug`).
 
 For a QEMU board, the generated settings file also carries that board's
 `runner`, so `cargo run` through the same `--config` boots the image —
-see [Build Profiles](build-profiles.md) for driving cargo yourself.
+see [Build Profiles](../guide/build/build-profiles.md) for driving cargo yourself.
 
 A multi-process zenoh example also needs a router; that is ROS's `rmw_zenohd`,
 not something nano-ros ships — see
-[Deployment Workflow](../operate/deployment.md) and
+[Deployment Workflow](../guide/deploy/deploy-to-production.md) and
 [Install](../start/install.md#do-i-need-ros-2-installed).
 
 ## C, C++ and mixed workspaces (cmake)

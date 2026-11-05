@@ -212,11 +212,11 @@ fn chapter(d: &BoardDescriptor) -> Option<&'static str> {
 
 fn platform_chapter(platform: &PlatformKind) -> Option<&'static str> {
     Some(match platform {
-        PlatformKind::Freertos => "book/src/targets/freertos.md",
-        PlatformKind::BareMetal => "book/src/targets/bare-metal.md",
-        PlatformKind::Nuttx => "book/src/targets/nuttx.md",
-        PlatformKind::Zephyr => "book/src/targets/zephyr.md",
-        PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => "book/src/targets/threadx.md",
+        PlatformKind::Freertos => "book/src/guide/platforms/freertos.md",
+        PlatformKind::BareMetal => "book/src/guide/platforms/bare-metal.md",
+        PlatformKind::Nuttx => "book/src/guide/platforms/nuttx.md",
+        PlatformKind::Zephyr => "book/src/guide/platforms/zephyr.md",
+        PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => "book/src/guide/platforms/threadx.md",
         _ => return None,
     })
 }
@@ -312,7 +312,7 @@ pub fn next_steps(
     let see_chapter = |out: &mut NextSteps, why: &str| {
         out.notes.push(match chapter(d) {
             Some(c) => format!("{why} — see {c}"),
-            None => format!("{why} — see the platform chapters under book/src/targets/"),
+            None => format!("{why} — see the platform chapters under book/src/guide/platforms/"),
         });
     };
     let Some(output) = &p.output else {
@@ -1063,7 +1063,7 @@ mod tests {
         );
         assert!(s.commands.is_empty(), "{:?}", s.commands);
         assert!(
-            s.notes[0].contains("book/src/targets/freertos.md"),
+            s.notes[0].contains("book/src/guide/platforms/freertos.md"),
             "{:?}",
             s.notes
         );
@@ -1354,15 +1354,15 @@ mod tests {
         let cat = catalog();
         let block = regex_lite_blocks;
         let mut seen = Vec::new();
-        // Book-relative paths (phase-532 moved the chapters out of
+        // Book-relative paths (phase-532 and phase-537 W1 moved the chapters out of
         // `getting-started/`); ROWS names each by its file name.
         for path in [
             "tutorial/run-a-talker.md",
-            "targets/bare-metal.md",
-            "targets/freertos.md",
-            "targets/nuttx.md",
-            "targets/threadx.md",
-            "targets/zephyr.md",
+            "guide/platforms/bare-metal.md",
+            "guide/platforms/freertos.md",
+            "guide/platforms/nuttx.md",
+            "guide/platforms/threadx.md",
+            "guide/platforms/zephyr.md",
             "starters/nucleo-f767zi.md",
         ] {
             let chapter = path.rsplit('/').next().unwrap();

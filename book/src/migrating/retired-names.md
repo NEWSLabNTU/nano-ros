@@ -133,7 +133,7 @@ dials the default router and reads as "no delivery".
 
 | Retired | Use instead | What happens now |
 |---|---|---|
-| `nros new entry <name> --platform zephyr` | `nros materialize <bringup>:<image>`, which writes the image's generated entry into your workspace as a package you own under `src/`; or, for an application that owns its west build, [A Zephyr App You Build with West](../targets/zephyr-west-app.md) | the book no longer teaches it: a workspace generates the entry for each image, so there is nothing to scaffold by hand |
+| `nros new entry <name> --platform zephyr` | `nros materialize <bringup>:<image>`, which writes the image's generated entry into your workspace as a package you own under `src/`; or, for an application that owns its west build, [A Zephyr App You Build with West](../guide/platforms/zephyr-west-app.md) | the book no longer teaches it: a workspace generates the entry for each image, so there is nothing to scaffold by hand |
 
 ## A build directory from an older release
 

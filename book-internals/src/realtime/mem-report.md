@@ -1,7 +1,7 @@
 # The memory report
 
 > What the report shows and how to read it is
-> [Measuring Static Memory](../../realtime/static-memory.html) in
+> [Measuring Static Memory](../../guide/contracts/measure-static-memory.html) in
 > the nano-ros Book. This page is how to run it: the tool is
 > `scripts/nros-mem-report.py` in this repository and has no `nros` verb
 > yet, so a user of an installed release cannot run it.

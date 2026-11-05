@@ -44,7 +44,7 @@ A run that claims `rt-sched` on a host without the capability fails with
 ## WCET benchmark harness
 
 The DWT cycle-count harness described in
-[Real-Time Analysis](../../realtime/rt-analysis.html) is the in-tree
+[Real-Time Analysis](../../guide/realtime/analyze-timing.html) is the in-tree
 `rs-wcet-bench` QEMU fixture:
 
 ```bash

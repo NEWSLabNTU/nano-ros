@@ -51,7 +51,7 @@ Fedora and Arch ship no rosidl packages, so install the Python side with pip
 pip install --user catkin_pkg 'empy==3.3.4' lark PyYAML
 ```
 
-macOS is not supported. [Installation Details](../get-started/installation-details.md#host-packages)
+macOS is not supported. [Installation Details](../guide/build/install-options.md#host-packages)
 says what each package is for.
 
 ## Install the `nros` CLI
@@ -117,14 +117,14 @@ ROS 2 also provides:
 - `ros2 topic echo` and `ros2 node list`, to watch your nodes;
 - the existing ROS 2 graph your nodes interoperate with.
 
-[Installation Details](../get-started/installation-details.md#ros-2-and-the-zenoh-router)
+[Installation Details](../guide/build/install-options.md#ros-2-and-the-zenoh-router)
 covers the router and the XRCE agent.
 
 ## Next steps
 
 - [First Project](../tutorial/run-a-talker.md): scaffold a talker, run it in QEMU,
   and see it in ROS 2.
-- [Installation Details](../get-started/installation-details.md): other install options,
+- [Installation Details](../guide/build/install-options.md): other install options,
   provisioning in depth, pinning a project to a release, and using nano-ros
   from your own build.
 - First Node in [Rust](../tutorial/add-a-second-node.md), [C](../tutorial/add-a-second-node-c.md) or

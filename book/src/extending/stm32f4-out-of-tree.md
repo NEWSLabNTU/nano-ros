@@ -204,7 +204,7 @@ run` takes the twin and `nros flash` the silicon.
 
 An image overrides any of this in its `system.toml` with
 `[image.<id>.flash]` and `[image.<id>.console]`, which take the same keys
-(see [Configuration](../build/configuration.md)). `nros flash` runs
+(see [Configuration](../guide/build/configure-an-image.md)). `nros flash` runs
 these steps.
 
 ## What you take on

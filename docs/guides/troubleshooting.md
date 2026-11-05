@@ -1,7 +1,7 @@
 # Troubleshooting
 
 **Moved.** The troubleshooting guide now lives in the book:
-[Troubleshooting](../../book/src/operate/troubleshooting.md).
+[Troubleshooting](../../book/src/guide/deploy/troubleshoot.md).
 
 This file is kept only so that older links do not 404 — the root `README.md`
 points here. The book page carries every section this one did (the
@@ -36,5 +36,5 @@ Three corrections worth knowing if you found this file from an old bookmark:
 
 ## See Also
 
-- [Troubleshooting](../../book/src/operate/troubleshooting.md) — the live page
+- [Troubleshooting](../../book/src/guide/deploy/troubleshoot.md) — the live page
 - [embedded-tuning.md](embedded-tuning.md) — what each transport knob costs in RAM

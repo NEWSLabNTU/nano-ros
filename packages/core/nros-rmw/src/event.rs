@@ -10,7 +10,7 @@
 //! both against a per-spin cap, ~~`max_callbacks_per_spin`~~; the executor has
 //! no such cap now.)
 //!
-//! See `book/src/communicate/qos-status-events.md` for the user-facing
+//! See `book/src/guide/rmw/qos-status-events.md` for the user-facing
 //! patterns and `book/src/extending/rmw-vs-upstream.md` Section 8 for
 //! the design rationale.
 //!

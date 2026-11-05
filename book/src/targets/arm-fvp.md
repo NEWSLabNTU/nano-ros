@@ -7,7 +7,7 @@ Cortex-A SMP profile under Zephyr 3.7 (board id
 `fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`). The FVP is the
 canonical local proxy for the safety-island reference platforms
 that follow the same `hwv2` Zephyr shape; pair this chapter with
-the [Zephyr (west module)](zephyr.md) starter for
+the [Zephyr (west module)](../guide/platforms/zephyr.md) starter for
 the build half.
 
 > **Status.** The run half — invoking `FVP_BaseR_AEMv8R` and piping
@@ -38,7 +38,7 @@ the build half.
   promoting to a hardware bench.
 
 The FVP is **not** a replacement for QEMU on Cortex-M (`mps2-an385`,
-`mps3-an547`); those targets are covered by [FreeRTOS (QEMU)](./freertos.md)
+`mps3-an547`); those targets are covered by [FreeRTOS (QEMU)](../guide/platforms/freertos.md)
 and the Zephyr starter. The FVP is also **not** the same surface
 as Corellium's AVH cloud FVP — AVH packages firmware as `.coreimg`
 and provisions via a remote API; local FVP loads a raw ELF via
@@ -47,7 +47,7 @@ and provisions via a remote API; local FVP loads a raw ELF via
 ## Prereqs
 
 - A working Zephyr 3.7 workspace — run `nros setup zephyr` once if
-  you haven't (see the [Zephyr starter](zephyr.md)).
+  you haven't (see the [Zephyr starter](../guide/platforms/zephyr.md)).
 - The Arm `Base_RevC AEMv8R` Fast Models binary. **nano-ros fetches it:**
 
   ```sh
@@ -114,7 +114,7 @@ contributor who is not working on the FVP should not be blocked by its absence;
 
 The FVP is a Zephyr board, `fvp-aemv8r-smp`, so an image names it in its
 bringup's `system.toml` and `nros build` hands it to `west` like any Zephyr
-image ([the Zephyr chapter](zephyr.md#nros-build-on-zephyr-it-hands-off-it-does-not-take-over)
+image ([the Zephyr chapter](../guide/platforms/zephyr.md#nros-build-on-zephyr-it-hands-off-it-does-not-take-over)
 has the workspace flow). The worked example is
 [`examples/workspaces/realtime-cpp`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/realtime-cpp/src/demo_bringup)'s
 `[image.fvp]`, a Cyclone DDS image:
@@ -190,7 +190,7 @@ interop contract (byte-compatible with `rmw_cyclonedds_cpp`).
 
 - [Environment Variables — `ARM_FVP_DIR` / `ARMFVP_BIN_PATH`](../reference/environment-variables.md)
   — the discovery contract.
-- [Zephyr (west module)](zephyr.md) — the parent
+- [Zephyr (west module)](../guide/platforms/zephyr.md) — the parent
   Zephyr starter; the FVP is a board-target slice of it.
 - [`examples/workspaces/realtime-cpp/src/demo_bringup/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/realtime-cpp/src/demo_bringup)
   — the workspace image (`[image.fvp]`) this chapter builds and boots. Its

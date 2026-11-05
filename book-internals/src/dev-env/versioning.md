@@ -87,7 +87,7 @@ The tag publishes **no artifacts** — nano-ros is a source distribution
 deleted). A tag is the consumer's pin: it fixes the runtime source, the
 CLI the tree builds (`nros version` lockstep), and the toolchain
 versions in the committed `nros-sdk-index.toml`. See the book's
-[Pinning a version](../../get-started/installation-details.html#pinning-a-version)
+[Pinning a version](../../guide/build/install-options.html#pinning-a-version)
 section.
 
 ## ABI guard (Phase 218.E)

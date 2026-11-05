@@ -7,7 +7,7 @@ attaches to its console. Both read how to do it from the board's descriptor.
 
 *This page is coming soon.* Until those verbs are available for your board,
 flash with the board vendor's own tools; see
-[Deployment Workflow](../operate/deployment.md).
+[Deployment Workflow](../guide/deploy/deploy-to-production.md).
 
 ## Design background
 

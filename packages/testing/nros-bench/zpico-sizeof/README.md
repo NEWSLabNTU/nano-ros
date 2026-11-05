@@ -4,7 +4,7 @@ Two standalone `gcc`-compiled probes that print `sizeof()` of every zpico /
 zenoh-pico entity struct. It populated the "Measured Memory Footprint" section
 of the old embedded-tuning guide; that table went stale and the book now points
 users at the image's memory report instead
-([Static memory](../../../../book/src/realtime/static-memory.md)).
+([Static memory](../../../../book/src/guide/contracts/measure-static-memory.md)).
 
 ## Usage
 

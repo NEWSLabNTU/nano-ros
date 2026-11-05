@@ -585,9 +585,9 @@ The mask actually advertised by each backend's
   Zenoh-pico fills the gap with shim-side emulation. uORB is intra-process
   only.
 
-See [Status events](../communicate/qos-status-events.md) for how the
+See [Status events](../guide/rmw/qos-status-events.md) for how the
 deadline / liveliness / message-lost policies translate into
-runtime events, and [User guide → Configuration](../build/configuration.md)
+runtime events, and [User guide → Configuration](../guide/build/configure-an-image.md)
 for code examples.
 
 ## 8. Status events: callback-on-entity, core subset
