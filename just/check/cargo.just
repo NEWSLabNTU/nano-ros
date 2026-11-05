@@ -281,6 +281,17 @@ cargo-profile-mirror:
 cargo-target-spelling:
     @bash packages/testing/nros-tests/tests/cargo_target_spelling.sh
 
+# issue 2281 — every `nros_cargo_build()` package of one workspace root gets
+# its own `--target-dir`. nros-c and nros-cpp are two cargo invocations that
+# unify features differently; in one directory each rebuilt the other's units
+# and every `ninja` of a Zephyr C/C++ image relinked with no source change. The
+# gate configures a NONE-language project against the Zephyr module and asks
+# `_nros_root_cargo_dir()` for both packages, in the default and the shared
+# mode. Buildless: no compiler, no cargo, no fixtures.
+[private]
+zephyr-api-cargo-target-dirs:
+    @bash packages/testing/nros-tests/tests/zephyr_api_cargo_target_dirs.sh
+
 # issue 0478 — every cc::Build must name the nano-ros cc policy helper
 # (the strict diagnostics of 0383, and the clang-only frame-pointer flag gcc
 # rejects). Both classes escaped once through an unrouted call site.

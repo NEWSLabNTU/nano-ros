@@ -169,6 +169,58 @@ fn a_zephyr_image_resolves_to_west_and_needs_no_generated_root() {
 /// the first Zephyr image configured into nros's own `build/` and the second
 /// image of the workspace was refused. A caller's `-- -d <dir>` (the fixture
 /// lanes pass one) still wins, and then no second `-d` is added.
+/// Issue 2281 -- a repeat of the same `nros build` on a finished west
+/// configure builds it without re-configuring: `west build` re-runs CMake
+/// whenever it is handed CMake arguments, and every Zephyr re-configure
+/// relinks the image. The configure records its command's digest in the CMake
+/// cache; the next plan finds it and hands off `cmake --build <dir>`. A
+/// caller's own west options still go to west.
+#[test]
+fn a_repeated_west_build_does_not_configure_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let hand = plans[0].handoff.as_ref().expect("handoff");
+    assert_eq!(hand.program, "west");
+    let rec = hand
+        .args
+        .last()
+        .map(|a| a.to_string_lossy().into_owned())
+        .expect("args");
+    let digest = rec
+        .strip_prefix("-DNROS_WEST_CONFIGURE_SHA256=")
+        .unwrap_or_else(|| panic!("the configure records its digest last: {}", hand.display()));
+
+    let dir = tmp
+        .path()
+        .join("build/zephyr-zenoh/demo_bringup__zephyr_west");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("build.ninja"), "").unwrap();
+    std::fs::write(
+        dir.join("CMakeCache.txt"),
+        format!("NROS_WEST_CONFIGURE_SHA256:UNINITIALIZED={digest}\n"),
+    )
+    .unwrap();
+
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let hand = plans[0].handoff.as_ref().expect("handoff");
+    let line = hand.display();
+    assert_eq!(hand.program, "cmake", "{line}");
+    assert!(
+        line.ends_with(&format!("cmake --build {}", dir.display())),
+        "a repeat builds the configured dir: {line}"
+    );
+
+    let mut a = args(tmp.path(), &["zephyr"]);
+    a.native_args = vec!["-t".into(), "run".into()];
+    let plans = plan_builds(&a).expect("resolves");
+    assert_eq!(
+        plans[0].handoff.as_ref().expect("handoff").program,
+        "west",
+        "a caller's west option goes to west"
+    );
+}
+
 #[test]
 fn a_west_image_builds_in_its_own_dir_unless_the_caller_names_one() {
     let tmp = tempfile::tempdir().unwrap();

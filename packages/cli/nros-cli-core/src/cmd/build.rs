@@ -2112,6 +2112,13 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     );
                 }
                 a.push(app.display().to_string());
+                // Issue 2281 -- the dir a repeat of the same command may build
+                // without re-configuring: only nros's own dir, and only when
+                // the caller handed west nothing of its own (a `-p`, a `-t`,
+                // a `-d` are west's to act on).
+                let reuse_dir = west_extra
+                    .is_empty()
+                    .then(|| west_build_dir(&root, &platform, &image, &bringup, &image_id));
                 // AFTER the application path, which looks unusual and is the
                 // point. `-p`/`--pristine` takes an OPTIONAL value
                 // (`nargs='?'`), so argparse greedily reads whatever follows —
@@ -2239,15 +2246,19 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // cannot tell them apart). The record covers the registered
                 // rows, the model and the workspace, not the probe sidecars that
                 // floor the counts, and those can move between two builds.
-                Some(
-                    match resolved_dir
-                        .as_ref()
-                        .and_then(|d| crate::resolve::entity_record_digest(d))
-                    {
-                        Some(digest) => h.with_env(crate::resolve::ENTITY_RECORD_ENV, digest),
-                        None => h,
-                    },
-                )
+                let h = match resolved_dir
+                    .as_ref()
+                    .and_then(|d| crate::resolve::entity_record_digest(d))
+                {
+                    Some(digest) => h.with_env(crate::resolve::ENTITY_RECORD_ENV, digest),
+                    None => h,
+                };
+                // Issue 2281 -- last, so the digest covers the whole command,
+                // the record digest above included.
+                Some(crate::builder::zephyr::configure_once(
+                    h,
+                    reuse_dir.as_deref(),
+                ))
             }
         };
 
