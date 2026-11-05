@@ -97,6 +97,18 @@ const REGISTRY: &[Entry] = &[
                  cached artifact would prove the resolver ran once, not that it resolves \
                  the same way in every scope cmake presents",
     },
+    // Issue 2281 -- the same shape as `cargo_target_spelling.sh` above.
+    Entry {
+        file: "zephyr_api_cargo_target_dirs.sh",
+        kind: Kind::RuntimeException,
+        tool: "cmake (configure only)",
+        reason: "asserts the Zephyr module gives nros-c and nros-cpp different cargo \
+                 target dirs, in the default mode and with a shared cargo root. The \
+                 answer is what `_nros_root_cargo_dir()` returns inside a configure \
+                 that includes the module, so the configure IS the assertion: a \
+                 NONE-language project, it compiles nothing, and a prebuilt artifact \
+                 could show only the one directory a single image used",
+    },
     // ---- FAIL-PATH diagnostics ----
     // None left (issue 1656). Issue 1620 moved every plain must-fail cargo/cmake
     // compile to a verdict row; 1656 moved the last three — the platform-header

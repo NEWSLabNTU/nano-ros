@@ -1974,7 +1974,7 @@ function(nros_resolve_cargo_dirs)
         "per-image root of the generated nros config headers (phase-400 W5.a)")
 endfunction()
 
-# _nros_root_cargo_dir(<out_var> <features>)
+# _nros_root_cargo_dir(<out_var> <features> <package>)
 #
 # phase-400 W5.b — where cargo's DEPENDENCY MASS goes for the nros root
 # workspace. Shareable across images; `${CMAKE_BINARY_DIR}/nros-rust` unless a
@@ -1994,8 +1994,10 @@ endfunction()
 # configurations sharing a directory overwrite each other's.
 #
 #   triple, profile   the artifact's target and optimisation
-#   features          this package's resolved set, which is what keys nros-c and
-#                     nros-cpp apart — their archives genuinely differ
+#   package           which API crate this is (`nros-c`, `nros-cpp`) — see
+#                     "ONE DIRECTORY PER PACKAGE" below
+#   features          this package's resolved set — nros-c and nros-cpp's
+#                     archives genuinely differ
 #   knobs             every `NROS_RESOLVED_*`, because they reach compiled code
 #                     through the build-script environment. Issue 0528 measured
 #                     what omitting them costs: two leaves at the same (target,
@@ -2009,7 +2011,23 @@ endfunction()
 # needing cargo's `--artifact-dir`, which requires `-Z unstable-options` — this
 # lane forces nightly only for `armv7a|thumbv|riscv32`, so native_sim is on
 # stable and the NuttX eviction mechanism is unavailable here.
-function(_nros_root_cargo_dir out_var features)
+#
+# ONE DIRECTORY PER PACKAGE (issue 2281), in both modes. nros-c and nros-cpp
+# are two custom targets, each its own `cargo build -p <one>` of one workspace,
+# and cargo unifies features PER INVOCATION: measured with `--unit-graph`, the
+# nros-cpp build turns on `nros/log`, `nros/macros`, `nros-rmw/log` and
+# `nros-platform/alloc`, which the nros-c build does not. In one directory both
+# compile `nros-c` into the SAME fingerprint directory against different
+# dependency units, so each rebuilt what the other had just built and every
+# `ninja` relinked `zephyr.elf` with no source change. Matching the two
+# feature strings by hand (issues 1100, 1156) aligns what each passes to
+# nros-c and cannot align the transitive set, which is cargo's. The price is
+# the units the two builds did resolve identically (third-party crates and
+# build dependencies), compiled once per directory on a cold build; the nros
+# crates their unification splits were already compiled twice. nros-c keeps
+# `<build>/nros-rust`, the per-image header root (`nros_resolve_cargo_dirs`),
+# which does not move.
+function(_nros_root_cargo_dir out_var features package)
     set(_dir "")
     # phase-400 W5.c — the refusal that stood here is LIFTED, because the
     # reason for it is gone rather than tolerated.
@@ -2031,7 +2049,7 @@ function(_nros_root_cargo_dir out_var features)
                 "has to separate on (issue 0528). Resolve the knobs first.")
         endif()
         set(_key "triple=${NROS_RUST_TARGET}" "profile=${NROS_CARGO_PROFILE}"
-                 "features=${features}")
+                 "package=${package}" "features=${features}")
         # phase-439 W1 — the knob loop that stood here moved into
         # `nros_knob_key_fields()` so the `nros-c` and NuttX lanes get the SAME
         # rule rather than a second copy of it (RFC-0094 D4). Road 1 of that
@@ -2046,7 +2064,12 @@ function(_nros_root_cargo_dir out_var features)
         nros_shared_cargo_dir(_dir KEY ${_key})
     endif()
     if(NOT _dir)
-        set(_dir "${CMAKE_BINARY_DIR}/nros-rust")
+        if(package STREQUAL "nros-c")
+            set(_dir "${CMAKE_BINARY_DIR}/nros-rust")
+        else()
+            string(REGEX REPLACE "^nros-" "" _short "${package}")
+            set(_dir "${CMAKE_BINARY_DIR}/nros-rust-${_short}")
+        endif()
     endif()
     set(${out_var} "${_dir}" PARENT_SCOPE)
 endfunction()
@@ -2252,7 +2275,7 @@ function(nros_cargo_build)
     # this package's features, so it is resolved here rather than at the branch
     # that chose it. A foreign workspace root keeps its own dir (issue 0616).
     if(_nros_defer_root_cargo_dir)
-        _nros_root_cargo_dir(CARGO_TARGET_DIR "${ARG_FEATURES}")
+        _nros_root_cargo_dir(CARGO_TARGET_DIR "${ARG_FEATURES}" "${_nros_cb_ident}")
     endif()
 
     # The invariant, enforced rather than described (issue 0616). A naming

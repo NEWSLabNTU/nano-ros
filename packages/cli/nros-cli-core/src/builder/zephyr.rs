@@ -384,6 +384,93 @@ pub struct ToolchainInputs<'a> {
     pub home: Option<&'a Path>,
 }
 
+/// The CMake cache variable a west configure records its own command in
+/// (issue 2281), as [`configure_digest`] of everything that went into it.
+pub const WEST_CONFIGURE_DIGEST_VAR: &str = "NROS_WEST_CONFIGURE_SHA256";
+
+/// A digest of a west handoff: the program, every argument, and the
+/// environment it adds (sorted, so the order the planner added them in does
+/// not count).
+#[must_use]
+pub fn configure_digest(h: &super::handoff::Handoff) -> String {
+    use sha2::{Digest as _, Sha256};
+    let mut d = Sha256::new();
+    d.update(h.program.as_encoded_bytes());
+    for a in &h.args {
+        d.update([0]);
+        d.update(a.as_encoded_bytes());
+    }
+    let mut env: Vec<_> = h.env.iter().collect();
+    env.sort();
+    for (k, v) in env {
+        d.update([1]);
+        d.update(k.as_encoded_bytes());
+        d.update(b"=");
+        d.update(v.as_encoded_bytes());
+    }
+    format!("{:x}", d.finalize())
+}
+
+/// Whether `build_dir` is a finished configure of exactly `digest`: it has a
+/// `build.ninja`, and its `CMakeCache.txt` records the digest under
+/// [`WEST_CONFIGURE_DIGEST_VAR`].
+#[must_use]
+pub fn configured_with(build_dir: &Path, digest: &str) -> bool {
+    if !build_dir.join("build.ninja").is_file() {
+        return false;
+    }
+    let Ok(cache) = std::fs::read_to_string(build_dir.join("CMakeCache.txt")) else {
+        return false;
+    };
+    cache.lines().any(|l| {
+        l.split_once('=').is_some_and(|(key, value)| {
+            key.split(':').next() == Some(WEST_CONFIGURE_DIGEST_VAR) && value == digest
+        })
+    })
+}
+
+/// Configure a west build ONCE per distinct command (issue 2281).
+///
+/// `west build` re-runs CMake whenever it is handed CMake arguments, and
+/// `nros build` always hands it some (the overlays, the module, the board's
+/// facts). Zephyr's configure always touches
+/// `misc/generated/syscalls_subdirs.trigger` (`subfolder_list.py`: "Always
+/// touch trigger file to ensure json files are updated"), so every re-run
+/// regenerated the syscall headers and relinked `zephyr.elf`: every `nros
+/// build`, and every `nros run` (which builds first), relinked with no source
+/// change.
+///
+/// So the command records its own digest in the cache
+/// (`-DNROS_WEST_CONFIGURE_SHA256=`), and when `build_dir` is already a
+/// finished configure of the same command the handoff becomes `cmake --build
+/// <build_dir>`, which is what `west build` runs once it has decided not to
+/// configure. The configure's own inputs (system.toml, the board files, the
+/// resolve record, the CLI) are on `CMAKE_CONFIGURE_DEPENDS`, so ninja re-runs
+/// CMake itself when one moves -- what a plain repeated `west build` relies
+/// on too -- and a changed board, overlay, module or environment changes the
+/// digest. `build_dir` is `None` when the caller named the dir or passed west
+/// options of its own: those go to west, as before.
+#[must_use]
+pub fn configure_once(
+    mut h: super::handoff::Handoff,
+    build_dir: Option<&Path>,
+) -> super::handoff::Handoff {
+    let digest = configure_digest(&h);
+    if !h.args.iter().any(|a| a == "--") {
+        h.args.push("--".into());
+    }
+    h.args
+        .push(format!("-D{WEST_CONFIGURE_DIGEST_VAR}={digest}").into());
+    match build_dir {
+        Some(dir) if configured_with(dir, &digest) => super::handoff::Handoff {
+            program: "cmake".into(),
+            args: vec!["--build".into(), dir.into()],
+            ..h
+        },
+        _ => h,
+    }
+}
+
 fn is_native_sim(board: &str) -> bool {
     board.starts_with("native_sim")
 }
@@ -943,5 +1030,75 @@ mod toolchain_tests {
                 Some(want)
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod configure_once_tests {
+    use super::{WEST_CONFIGURE_DIGEST_VAR, configure_digest, configure_once};
+    use crate::builder::handoff::Handoff;
+
+    fn west(board: &str) -> Handoff {
+        Handoff::new(
+            "west",
+            ["build", "-b", board, "-d", "/b", "/app", "--", "-DX=1"],
+        )
+        .with_env("ZEPHYR_BASE", "/z")
+    }
+
+    /// Issue 2281 -- the first build of a command configures (west, with the
+    /// command's digest recorded), a repeat of the SAME command in a finished
+    /// configure builds it (`cmake --build`), and any change to the command
+    /// or its environment configures again.
+    #[test]
+    fn a_repeated_west_command_builds_without_configuring_again() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path();
+
+        let first = configure_once(west("nucleo_f767zi"), Some(dir));
+        assert_eq!(first.program, "west", "nothing configured yet");
+        let digest = configure_digest(&west("nucleo_f767zi"));
+        let rec = format!("-D{WEST_CONFIGURE_DIGEST_VAR}={digest}");
+        assert_eq!(
+            first.args.last().map(|a| a.to_string_lossy().into_owned()),
+            Some(rec.clone()),
+            "the digest rides the configure, in CMake's zone"
+        );
+
+        // What that configure leaves behind.
+        std::fs::write(dir.join("build.ninja"), "").unwrap();
+        std::fs::write(
+            dir.join("CMakeCache.txt"),
+            format!("// x\nBOARD:STRING=nucleo_f767zi\n{WEST_CONFIGURE_DIGEST_VAR}:UNINITIALIZED={digest}\n"),
+        )
+        .unwrap();
+
+        let again = configure_once(west("nucleo_f767zi"), Some(dir));
+        assert_eq!(again.program, "cmake");
+        assert_eq!(
+            again.args,
+            vec![std::ffi::OsString::from("--build"), dir.into()]
+        );
+        assert_eq!(
+            again.env,
+            west("nucleo_f767zi").env,
+            "the environment stays"
+        );
+
+        // A different board, environment, or a dir the caller owns: west.
+        assert_eq!(
+            configure_once(west("native_sim"), Some(dir)).program,
+            "west"
+        );
+        let other_env = west("nucleo_f767zi").with_env("ZEPHYR_TOOLCHAIN_VARIANT", "zephyr");
+        assert_eq!(configure_once(other_env, Some(dir)).program, "west");
+        assert_eq!(configure_once(west("nucleo_f767zi"), None).program, "west");
+
+        // A configure that never finished (no build.ninja) configures again.
+        std::fs::remove_file(dir.join("build.ninja")).unwrap();
+        assert_eq!(
+            configure_once(west("nucleo_f767zi"), Some(dir)).program,
+            "west"
+        );
     }
 }

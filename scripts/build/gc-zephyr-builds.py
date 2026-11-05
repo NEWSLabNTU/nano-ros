@@ -120,19 +120,24 @@ def main() -> int:
     rows = []
     skipped = 0
     for build_dir in sorted(ws.glob("build-*")):
-        rust = build_dir / "nros-rust"
-        if not rust.is_dir():
+        # Issue 2281 -- nros-cpp builds into its own `nros-rust-cpp/` beside
+        # nros-c's `nros-rust/` (one target dir per package), with the same
+        # profile layout.
+        rusts = [d for d in [build_dir / "nros-rust", *sorted(build_dir.glob("nros-rust-*"))]
+                 if d.is_dir()]
+        if not rusts:
             continue
         cur = live_profile(build_dir)
         if cur is None:
             skipped += 1
             continue
-        for entry in profile_dirs(rust):
-            if entry.name == cur:
-                continue
-            mb = du_mb(entry)
-            rows.append((entry, cur, mb))
-            total += mb
+        for rust in rusts:
+            for entry in profile_dirs(rust):
+                if entry.name == cur:
+                    continue
+                mb = du_mb(entry)
+                rows.append((entry, cur, mb))
+                total += mb
 
     if skipped:
         print(f"gc-zephyr-builds: skipped {skipped} build dir(s) with no readable "
