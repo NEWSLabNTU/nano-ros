@@ -42,7 +42,7 @@ Parked under Phase 162 (privileged scheduling harness + hardware):
   + scenario catalogue
 
 **2026-10-25:** the chapter is
-[The Real-Time Execution Model](../../../book/src/realtime/execution-model.md),
+[The Real-Time Execution Model](../../../book/src/background/execution-model.md),
 with the scenario catalogue's measured status. Phase 162 rebuilt S1 and the
 `SCHED_DEADLINE` verification on executor levels (RFC-0108), which replaced
 110.D's multi-executor design; 110.F's PiCAS items were dropped with

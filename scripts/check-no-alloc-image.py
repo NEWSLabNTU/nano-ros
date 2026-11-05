@@ -275,35 +275,35 @@ HEAP_FREE_POC = "packages/testing/nros-tests/bins/heap-free-poc-mps2"
 
 BOOK_CLAIMS = (
     {
-        "file": "book/src/concepts/no-std.md",
+        "file": "book/src/background/static-memory-and-pools.md",
         "text": "The core `ParameterServer` API works without alloc",
         "kind": "image",
         "backed_by": HEAP_FREE_POC,
         "covers": "ParameterServer::new_in/declare/set/get over ParameterStorage<4>",
     },
     {
-        "file": "book/src/concepts/client-library.md",
+        "file": "book/src/background/client-library.md",
         "text": "reach a `no_std` no-alloc target",
         "kind": "image",
         "backed_by": HEAP_FREE_POC,
         "covers": "Executor::spin_once, spin_some and spin_forever are all linked",
     },
     {
-        "file": "book/src/realtime/dispatch-strategy.md",
+        "file": "book/src/background/dispatch-strategy.md",
         "text": "keeping dispatch heap-free",
         "kind": "image",
         "backed_by": HEAP_FREE_POC,
         "covers": "the executor open + component install + spin path",
     },
     {
-        "file": "book/src/realtime/dispatch-strategy.md",
+        "file": "book/src/background/dispatch-strategy.md",
         "text": "(Heap-free here is a checked property of the",
         "kind": "image",
         "backed_by": HEAP_FREE_POC,
         "covers": "the scoping sentence itself: executor path yes, transport no",
     },
     {
-        "file": "book/src/realtime/dispatch-strategy.md",
+        "file": "book/src/background/dispatch-strategy.md",
         "text": "`heap-free-poc-mps2`",
         "kind": "image",
         "backed_by": HEAP_FREE_POC,
@@ -317,27 +317,27 @@ BOOK_CLAIMS = (
         "which was false: every XRCE entity is a nros_xrce_calloc)",
     },
     {
-        "file": "book/src/concepts/no-std.md",
+        "file": "book/src/background/static-memory-and-pools.md",
         "text": "heap-free and not *proof* of it",
         "kind": "disclaimer",
         "why": "the sentence that says a feature list is not proof — the "
         "warning this gate exists to act on",
     },
     {
-        "file": "book/src/concepts/no-std.md",
+        "file": "book/src/background/static-memory-and-pools.md",
         "text": "check-no-alloc-image.py",
         "kind": "tool",
         "why": "this tool's own name",
     },
     {
-        "file": "book/src/concepts/no-std.md",
+        "file": "book/src/background/static-memory-and-pools.md",
         "text": "allocation-free promise, borrows client's reply slot",
         "kind": "type-level",
         "why": "where one type keeps its state (a borrowed slot), true of the "
         "type whatever the image links",
     },
     {
-        "file": "book/src/from-ros2/differences.md",
+        "file": "book/src/background/differences-from-ros2.md",
         "text": "an array parameter, with no heap",
         "kind": "type-level",
         "why": "`Seq<T, N>` is inline storage; a property of the value type",
@@ -350,7 +350,7 @@ BOOK_CLAIMS = (
         "created, by construction of the call",
     },
     {
-        "file": "book/src/realtime/dispatch-strategy.md",
+        "file": "book/src/background/dispatch-strategy.md",
         "text": "task's stack frame, no heap, no boxing",
         "kind": "type-level",
         "why": "where an inline closure's captures live (the spin task's "

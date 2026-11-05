@@ -145,7 +145,7 @@ the platform-correct sleep happens transparently underneath.
 - [RMW API: Differences from upstream `rmw.h`](../extending/rmw-vs-upstream.md)
   Section 4 — the `drive_io` vs `rmw_wait` comparison this page
   expands on.
-- [no_std Support](../concepts/no-std.md) — heap and threading constraints that
+- [no_std Support](static-memory-and-pools.md) — heap and threading constraints that
   shape the cooperative model.
 
 ## Design background

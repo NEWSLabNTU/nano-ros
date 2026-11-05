@@ -17,7 +17,7 @@ contributes one spin task and (optionally) one callback-dispatch task.
 
 For the underlying design — why per-Node dispatch strategies, why tags
 instead of closures, why no `AsyncNode` trait yet — see the user book's
-[Dispatch Strategy](../../realtime/dispatch-strategy.html).
+[Dispatch Strategy](../../background/dispatch-strategy.html).
 
 ## The board key chooses RTIC
 
@@ -505,7 +505,7 @@ at the cost of flexibility: ARM Cortex-M only, no dynamic task creation.
 
 ## See also
 
-- [Dispatch Strategy](../../realtime/dispatch-strategy.html) —
+- [Dispatch Strategy](../../background/dispatch-strategy.html) —
   the trichotomy and the per-Node-vs-per-callback rationale.
 - [Role reference](../../guide/build/roles.html) —
   the package roles in full.

@@ -53,20 +53,20 @@ with no network.
   for a company tree with air-gapped CI. `nros build --offline` fails,
   naming what is missing, rather than fetching it.
 - **Your RTOS and your build tool.**
-  [How Integration Works](../targets/how-integration-works.md):
+  [How Integration Works](../background/how-a-build-becomes-an-image.md):
   your RTOS keeps its own build tool (west, make, CMake, your IDE) and
   nano-ros plugs into it. [Build as a CMake
   subdirectory](../guide/build/cmake-subdirectory.md) covers a tree
   with no `system.toml`.
 - **Real-time and memory bounds.**
-  [Execution Model and Two-Layer API](../concepts/two-layer-api.md),
+  [Execution Model and Two-Layer API](../background/two-layer-api.md),
   [Scheduling Models](../guide/realtime/pick-a-scheduling-model.md) and the generated
   [Scheduling Wiring Matrix](../reference/sched-matrix.md),
-  [`no_std`, `alloc`, and `std`](../concepts/no-std.md),
-  [Dispatch Strategy](../realtime/dispatch-strategy.md), and the
+  [`no_std`, `alloc`, and `std`](../background/static-memory-and-pools.md),
+  [Dispatch Strategy](../background/dispatch-strategy.md), and the
   [Static Pool Inventory](../reference/static-pool-inventory.md).
 - **Safety and adoption gates.**
-  [Safety Protocol](../realtime/safety-protocol.md) (E2E CRC, EN 50159
+  [Safety Protocol](../background/safety.md) (E2E CRC, EN 50159
   mapping) and the
   [Production Readiness Checklist](../guide/deploy/production-readiness.md).
 - **Your own board or BSP.**
@@ -76,8 +76,8 @@ with no network.
   A board of yours lives in your tree (`NROS_EXTRA_BOARD_PATH`). A new
   platform (a new RTOS) still means changing nano-ros itself.
 - **Comparisons.** [Differences from Standard ROS
-  2](../from-ros2/differences.md),
-  [nano-ros vs micro-ROS](../from-ros2/vs-micro-ros.md),
+  2](../background/differences-from-ros2.md),
+  [nano-ros vs micro-ROS](../background/vs-micro-ros.md),
   [Choosing an RMW Backend](../tutorial/pick-the-rmw.md) and the
   generated [Per-RMW Feature Matrix](../reference/rmw-feature-matrix.md).
 
@@ -121,8 +121,8 @@ install must be short, and each lab must fit one session.
    page, in Rust. The output it prints is the result to check on every seat.
 3. **Concepts for the lecture.**
    [Anatomy](../tutorial/what-you-just-built.md),
-   [Architecture Overview](../concepts/architecture.md) and
-   [Execution Model and Two-Layer API](../concepts/two-layer-api.md).
+   [Architecture Overview](../background/architecture.md) and
+   [Execution Model and Two-Layer API](../background/two-layer-api.md).
 4. **Embedded labs without hardware.** Each platform chapter runs its
    example under QEMU, for example
    [FreeRTOS](../guide/platforms/freertos.md) or

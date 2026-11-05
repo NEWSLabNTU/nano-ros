@@ -167,7 +167,7 @@ not a nano-ros workspace at all, see
 [Build as a CMake subdirectory](../build/cmake-subdirectory.md).
 
 See
-[When `nros build` drives the build](../../targets/how-integration-works.md#when-nros-build-drives-the-build)
+[When `nros build` drives the build](../../background/how-a-build-becomes-an-image.md#when-nros-build-drives-the-build)
 for which tool builds each image.
 
 ## Run on QEMU

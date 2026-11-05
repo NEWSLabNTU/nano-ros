@@ -31,7 +31,7 @@ each part. This page is a reading order for it, not a second copy.
    ([RFC-0119](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0119-cli-extension-packages.md)).
 
 The user-facing view of the same system, with fewer moving parts, is the
-Book's [Architecture Overview](../../concepts/architecture.html).
+Book's [Architecture Overview](../../background/architecture.html).
 
 ## What backs the Book's claims
 

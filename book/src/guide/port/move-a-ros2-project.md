@@ -42,8 +42,8 @@ ROS 2 applications typically call `rclcpp::init()`, create nodes, then
 spin. nano-ros opens an executor first; the executor owns the session,
 arena, and runtime budget. Nodes and entities are created from it.
 
-See [Differences from Standard ROS 2](../../from-ros2/differences.md)
-and [Execution Model and Two-Layer API](../../concepts/two-layer-api.md).
+See [Differences from Standard ROS 2](../../background/differences-from-ros2.md)
+and [Execution Model and Two-Layer API](../../background/two-layer-api.md).
 
 ## Publishers and Subscriptions
 

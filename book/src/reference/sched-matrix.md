@@ -57,7 +57,7 @@ with zero sites is a type, not a behavior.
 - [Scheduling Models](../guide/realtime/pick-a-scheduling-model.md) — the
   narrative: how sched tasks, transport priorities, and these classes
   land on each kernel
-- [RTOS Cooperation](../realtime/rtos-cooperation.md) — spin-loop
+- [RTOS Cooperation](../background/rtos-cooperation.md) — spin-loop
   shapes per execution model
 - [Support Status](support-status.md) · [Per-RMW Feature
   Matrix](rmw-feature-matrix.md)

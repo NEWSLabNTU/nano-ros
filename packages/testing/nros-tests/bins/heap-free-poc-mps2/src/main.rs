@@ -20,7 +20,7 @@
 //!
 //! Issue 0816 — it also declares, reads and sets a parameter through the core
 //! `ParameterServer` over caller-owned `ParameterStorage`, because the book
-//! (`concepts/no-std.md`) says that API "works without alloc" and this image is
+//! (`background/static-memory-and-pools.md`) says that API "works without alloc" and this image is
 //! the only thing that can make that a checked property rather than a claim.
 //! The value read back is printed, so the parameter path cannot be optimised
 //! out of the image the gate reads.

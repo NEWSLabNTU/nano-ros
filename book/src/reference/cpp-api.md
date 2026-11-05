@@ -58,7 +58,7 @@ public surface a user application needs.
 - [`rclcpp::PollingActionServer<A>`](../api/cpp/classrclcpp_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classrclcpp_1_1PollingActionClient.html) — L1 polling model. Caller drives `take_*` / `accept_goal` / `complete_goal` from a spin loop.
 - [`rclcpp::Future<T>`](../api/cpp/classrclcpp_1_1Future.html) — async result handle
 - [`rclcpp::Executor`](../api/cpp/classrclcpp_1_1Executor.html), [`Timer`](../api/cpp/classrclcpp_1_1Timer.html), [`GuardCondition`](../api/cpp/classrclcpp_1_1GuardCondition.html)
-- Parameters are methods ON the node — `declare_parameter<T>` / `get_parameter<T>` / `set_parameter<T>` / `has_parameter`, upstream's names, forwarding to the one store the `rcl_interfaces` services read. [`rclcpp::Seq<T, N>`](../api/cpp/classrclcpp_1_1Seq.html) is the array VALUE a freestanding node declares with (`std::vector<T>` under `NROS_CPP_STD`). There is no standalone `rclcpp::ParameterServer`: a second store would be invisible to `ros2 param get`. See [Differences from ROS 2 §9](../from-ros2/differences.md#9-parameters-node-local-server-no-descriptors-no-callbacks-yet) for what is intentionally smaller than `rclcpp`, and [Parameters](#parameters-and-parameter_events) below.
+- Parameters are methods ON the node — `declare_parameter<T>` / `get_parameter<T>` / `set_parameter<T>` / `has_parameter`, upstream's names, forwarding to the one store the `rcl_interfaces` services read. [`rclcpp::Seq<T, N>`](../api/cpp/classrclcpp_1_1Seq.html) is the array VALUE a freestanding node declares with (`std::vector<T>` under `NROS_CPP_STD`). There is no standalone `rclcpp::ParameterServer`: a second store would be invisible to `ros2 param get`. See [Differences from ROS 2 §9](../background/differences-from-ros2.md#9-parameters-node-local-server-no-descriptors-no-callbacks-yet) for what is intentionally smaller than `rclcpp`, and [Parameters](#parameters-and-parameter_events) below.
 
 > **Two-layer API.** The `rclcpp::ActionServer<A>` / `ActionClient<A>`
 > templates are L2 callback handles, dispatched by the executor. The
@@ -66,7 +66,7 @@ public surface a user application needs.
 > templates with the same typed serialization glue but caller-driven control
 > flow. Subscriptions, services and service clients have both shapes too
 > (`Subscription` / `PollSubscription`, and so on). See
-> [Two-Layer API](../concepts/two-layer-api.md) for the per-layer rationale.
+> [Two-Layer API](../background/two-layer-api.md) for the per-layer rationale.
 
 > **Event-driven wake callbacks.** `PollingActionServer<A>` and
 > `PollingActionClient<A>` expose a nested `WakeState` POD and
@@ -489,7 +489,7 @@ executor.spin_for(5000, 50);    // bounded; executor.spin() blocks until shutdow
 ```
 
 How spinning maps onto RTOS tasks and priorities is the subject of
-[Execution Model](../realtime/execution-model.md).
+[Execution Model](../background/execution-model.md).
 
 ### Parameters and `/parameter_events`
 

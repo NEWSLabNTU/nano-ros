@@ -2,7 +2,7 @@
 
 > The user-facing description of `DispatchStrategy`, the tag API and the
 > `__nros_node_<pkg>_dispatch_strategy()` symbol is
-> [Dispatch Strategy](../../realtime/dispatch-strategy.html) in the nano-ros
+> [Dispatch Strategy](../../background/dispatch-strategy.html) in the nano-ros
 > Book. This page keeps the implementation history behind it: which phase
 > built which piece, and which slots are still open.
 

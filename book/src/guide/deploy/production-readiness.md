@@ -215,7 +215,7 @@ quality on every axis where nano-ros can be validated externally.
 - [Real-Time Analysis](../realtime/analyze-timing.md) — RT scheduling
   background + response-time formulas.
 - [Formal Verification](../../internals/testing/verification.html) — Kani + Verus harnesses.
-- [Safety Protocol](../../realtime/safety-protocol.md) — E2E CRC + sequence tracking.
+- [Safety Protocol](../../background/safety.md) — E2E CRC + sequence tracking.
 - [Choosing an RMW Backend](../../tutorial/pick-the-rmw.md) — backend
   capability matrix.
 - [Supported Boards](../../reference/supported-boards.md) — per-board
