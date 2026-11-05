@@ -27,6 +27,7 @@ status word.
 | `s32k344-safety-island` | Boots on hardware, manual (2026-10-26); reads *Builds* from 2027-02-24 | `mr-canhubk344` | [evidence page](boards/s32k344-safety-island.md) |
 | `nros-board-nucleo-f767zi-zephyr` (ZephyrNucleoF767zi) | Boots, manual (2026-11-01); reads *Builds* from 2027-03-02 | `renode:nucleo_f767zi`, `nucleo-f767zi` (target) | [evidence page](boards/nucleo-f767zi-zephyr.md) |
 | `nros-board-rpi-pico-w-zephyr` | Boots, manual (2026-11-01); reads *Builds* from 2027-03-02 | `wokwi:pi-pico-w`, `rpi-pico-w` (target) | [evidence page](boards/rpi-pico-w-zephyr.md) |
+| `px4-sitl` (Px4) | Boots, manual (2026-11-03); reads *Builds* from 2027-03-04 | host executable | [evidence page](boards/px4-sitl.md) |
 <!-- END GENERATED registry rows -->
 
 ## Other boards and how you would approach them

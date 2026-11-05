@@ -1,5 +1,7 @@
 # PX4 Autopilot (external module)
 
+> **Support level:** [`px4_sitl_default`](../reference/boards/px4-sitl.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
+
 Single-node starter on PX4 Autopilot via the **external-module
 copy-out template**. PX4's `EXTERNAL_MODULES_LOCATION` pattern lets
 downstream firmware drop in nano-ros without forking PX4 itself.

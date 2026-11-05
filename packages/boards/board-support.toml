@@ -462,6 +462,50 @@ maintainers = ["jerry73204"]
 #   in our CI (maintainer ruling 2026-11-02).
 notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, serial only. Its Wokwi twin boots the C talker over UART0 (the Wokwi serial monitor), with the console on UART1. The image needs `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs, which are the descriptor's `[knobs]` and every image inherits. Each twin run needs your own `WOKWI_CLI_TOKEN` and spends that account's simulation minutes, so the twin is run by users and not in nano-ros CI."
 
+# PX4 SITL — the board PX4 is a Tier 1 framework on (RFC-0113 D9, RFC-0112
+# D3, phase-521 W8). RFC-0113 D9 names this row as where PX4's owner is
+# recorded; phase-521 W8 (f) kept the admission record in RFC-0112 D3's list,
+# and this row adds the EVIDENCE only, never a rank.
+#
+# The board is PX4's own `px4_sitl_default`, built from the pinned
+# third-party/px4/PX4-Autopilot with the uORB example as its
+# EXTERNAL_MODULES_LOCATION. Its package lives in PX4-Autopilot, not under
+# packages/boards/ (nano-ros's side is `integrations/px4/`, a CMake module,
+# not a board package), so the row is `external`. No in-tree `nros-board.toml`
+# names it, so there are no `board_keys`. SITL is a host process, so
+# `runs = "host"`; it is its own family on `PlatformId::Px4`, so `witness`.
+#
+# Why `manual`, not `daily`, although nightly.yml's `px4-sitl` job runs the
+# cell every 07:00 cron (RFC-0122 D8/D9: a cadence must name a job that keeps
+# it, and a value with no such job is lowered):
+#   - the `(Px4, Cpp, Uorb, Pubsub, Example)` cell is `Gated`, not `Runtime`
+#     (a SITL build is not a fixture row and no tier cover schedules it), so
+#     the D10 predicate "an automated cadence needs a Runtime cell" refuses
+#     any automated cadence here; and `px4` is not a `nightly_token` of the
+#     per-platform sweep: `px4-sitl` is its own job.
+#   - the job has been red on every scheduled run so far: 41790118101
+#     (2026-11-04) and 41985062052 (2026-11-05), each time one of the two
+#     booting tests losing a race to boot a second SITL in the same build dir
+#     (issue 2243, open). Each test passed in one of the two runs; neither run
+#     was green. A job that has not kept a cadence does not earn one.
+# `last_run` is the hand run phase-521 W8 (e)/(f) recorded on 2026-11-03: a
+# stock PX4 `listener` read a nano-ros publication, and the work-queue tier
+# test measured 30 runs for 10 deadlines and 20 arrivals in each of three
+# runs, arrival->dispatch 14-29 us. The row moves to `daily` (with a gate that
+# accepts the `px4-sitl` job as its lane) once issue 2243 is fixed and the
+# cell's lane is green.
+[[board]]
+crate = "px4-sitl"
+external = "PX4-Autopilot"
+matrix_platform = "Px4"
+book_run = "targets/px4.md#run-on-the-sitl-simulator"
+runs = "host"
+cadence = "manual"
+last_run = "2026-11-03"
+breadth = "witness"
+maintainers = ["jerry73204"]
+notes = "PX4's own SITL board, `px4_sitl_default`, built from PX4-Autopilot with the nano-ros uORB example as an external module. A maintainer ran it on the date shown: a stock PX4 `listener` read a nano-ros publication over uORB, and each work-queue tier ran only for its deadlines and arrivals (arrival to dispatch 14 to 29 µs). The nightly CI job that runs the same tests is not yet passing, so the cadence stays manual. Real PX4 flight controllers build from the same module, but nano-ros has no run on one."
+
 # ===== infra — not boards ==================================================
 
 [[board]]

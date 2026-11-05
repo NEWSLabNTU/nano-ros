@@ -922,6 +922,14 @@ batch = "w4-reference"
 generated = "scripts/gen-board-support.py"
 
 [[page]]
+old = "reference/boards/px4-sitl.md"
+book = "user"
+path = "reference/boards/px4-sitl.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
 old = "reference/boards/rpi-pico-w-zephyr.md"
 book = "user"
 path = "reference/boards/rpi-pico-w-zephyr.md"

@@ -156,6 +156,7 @@
   - [s32k344-safety-island](./reference/boards/s32k344-safety-island.md)
   - [nros-board-nucleo-f767zi-zephyr (ZephyrNucleoF767zi)](./reference/boards/nucleo-f767zi-zephyr.md)
   - [nros-board-rpi-pico-w-zephyr](./reference/boards/rpi-pico-w-zephyr.md)
+  - [px4-sitl (Px4)](./reference/boards/px4-sitl.md)
 <!-- END GENERATED board pages -->
 
 # Migrating from Older Releases
