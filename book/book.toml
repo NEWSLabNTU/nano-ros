@@ -23,6 +23,9 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/start/introduction.html" = "welcome.html"
+"/start/choose-by-purpose.html" = "choose-your-path.html"
+"/get-started/installation.html" = "../start/install.html"
 "/user-guide/rtic-integration.html" = "../internals/realtime/rtic.html"
 "/user-guide/embassy-integration.html" = "../realtime/rtos-cooperation.html"
 "/realtime/rtic.html" = "../internals/realtime/rtic.html"
@@ -52,7 +55,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/user-guide/build-artifacts.html" = "../build/build-artifacts.html"
 "/getting-started/vendored-tree.html" = "../build/vendored-tree.html"
 "/getting-started/build-as-subdirectory.html" = "../build/cmake-subdirectory.html"
-"/getting-started/installation.html" = "../get-started/installation.html"
+"/getting-started/installation.html" = "../start/install.html"
 "/getting-started/installation-details.html" = "../get-started/installation-details.html"
 "/getting-started/first-project.html" = "../get-started/first-project.html"
 "/getting-started/anatomy.html" = "../get-started/anatomy.html"
@@ -113,8 +116,8 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/user-guide/cross-backend-bridges.html" = "../communicate/bridges.html"
 "/user-guide/serial-transport.html" = "../communicate/serial-transport.html"
 "/user-guide/tx-tuning.html" = "../communicate/tx-tuning.html"
-"/introduction.html" = "start/introduction.html"
-"/start-here/choose-your-entry.html" = "../start/choose-by-purpose.html"
+"/introduction.html" = "start/welcome.html"
+"/start-here/choose-your-entry.html" = "../start/choose-your-path.html"
 "/internals/contributing.html" = "orientation/contributing.html"
 "/reference/build-commands.html" = "../internals/dev-env/build-commands.html"
 "/internals/cli-in-monorepo.html" = "dev-env/cli-in-monorepo.html"

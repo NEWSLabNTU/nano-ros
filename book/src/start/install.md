@@ -51,7 +51,7 @@ Fedora and Arch ship no rosidl packages, so install the Python side with pip
 pip install --user catkin_pkg 'empy==3.3.4' lark PyYAML
 ```
 
-macOS is not supported. [Installation Details](installation-details.md#host-packages)
+macOS is not supported. [Installation Details](../get-started/installation-details.md#host-packages)
 says what each package is for.
 
 ## Install the `nros` CLI
@@ -107,7 +107,7 @@ That first configure records the ROS 2 prefix in the project, so later
 builds and runs of that project work from a shell that has not sourced ROS.
 Without a sourced ROS 2 and without that record, the build stops with
 `` `AMENT_PREFIX_PATH` is unset and no configure of … has recorded one to
-reuse``; [Troubleshooting](first-10-minutes.md#a10-ament_prefix_path-is-unset)
+reuse``; [Troubleshooting](../get-started/first-10-minutes.md#a10-ament_prefix_path-is-unset)
 has the fix.
 
 ROS 2 also provides:
@@ -117,15 +117,15 @@ ROS 2 also provides:
 - `ros2 topic echo` and `ros2 node list`, to watch your nodes;
 - the existing ROS 2 graph your nodes interoperate with.
 
-[Installation Details](installation-details.md#ros-2-and-the-zenoh-router)
+[Installation Details](../get-started/installation-details.md#ros-2-and-the-zenoh-router)
 covers the router and the XRCE agent.
 
 ## Next steps
 
-- [First Project](./first-project.md): scaffold a talker, run it in QEMU,
+- [First Project](../get-started/first-project.md): scaffold a talker, run it in QEMU,
   and see it in ROS 2.
-- [Installation Details](installation-details.md): other install options,
+- [Installation Details](../get-started/installation-details.md): other install options,
   provisioning in depth, pinning a project to a release, and using nano-ros
   from your own build.
-- First Node in [Rust](./first-node-rust.md), [C](./first-node-c.md) or
-  [C++](./first-node-cpp.md): a single talker on Linux.
+- First Node in [Rust](../get-started/first-node-rust.md), [C](../get-started/first-node-c.md) or
+  [C++](../get-started/first-node-cpp.md): a single talker on Linux.

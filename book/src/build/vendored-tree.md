@@ -212,5 +212,5 @@ build after a pin move regenerates it; there is no separate step to remember.
 - [Vendor Overlay Board Crate](../extending/vendor-overlay.md) — board
   glue that lives in *your* tree
 - [Worked Example — STM32F4 Out of Tree](../extending/stm32f4-out-of-tree.md)
-- [Install](../get-started/installation.md) — the interactive first-time flow this
+- [Install](../start/install.md) — the interactive first-time flow this
   page assumes you are automating

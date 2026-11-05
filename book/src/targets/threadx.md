@@ -42,7 +42,7 @@ Packages are prebuilt where the index has a binary for your host and built from
 source otherwise. `--dry-run` prints the plan for your host. See
 [Installation Details](../get-started/installation-details.md#provisioning-with-nros-setup) for the full explanation.
 
-With the `nros` CLI on PATH ([Installation](../get-started/installation.md) —
+With the `nros` CLI on PATH ([Installation](../start/install.md) —
 `install.sh` puts it in `~/.nros/bin`), provision the ThreadX flavour you
 need (+ the RMW; `--rmw` defaults to zenoh). The POSIX-sim flavour:
 

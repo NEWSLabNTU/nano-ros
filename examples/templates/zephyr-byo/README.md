@@ -76,7 +76,7 @@ see the book.
 
 > **No nano-ros release has been cut yet**, so `install.sh` will tell you so and
 > point you at the book's
-> [Install](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/get-started/installation.md)
+> [Install](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/start/install.md)
 > page. Until one exists, the way to obtain `nros` is a *separate* nano-ros
 > checkout with `./scripts/bootstrap.sh` — separate on purpose: a nano-ros
 > checkout's own build is only correct against that checkout (RFC-0090), and

@@ -2,9 +2,9 @@
 
 # Start here
 
-- [Introduction](./start/introduction.md)
-- [Choose Your Entry](./start/choose-by-purpose.md)
-- [Install](./get-started/installation.md)
+- [Introduction](./start/welcome.md)
+- [Choose Your Entry](./start/choose-your-path.md)
+- [Install](./start/install.md)
 
 # Get started on your board
 

@@ -11,7 +11,7 @@ configuration to get there.
 **What this assumes:** a Linux host with ROS 2 Humble and its Zenoh
 middleware (`ros-humble-rmw-zenoh-cpp`) installed, or the container from
 [Installation Details](installation-details.md#ros-2-and-the-zenoh-router),
-and the [install](installation.md) done, so `nros` is on your PATH.
+and the [install](../start/install.md) done, so `nros` is on your PATH.
 
 **What it leaves for later:** the board talks to your machine over its serial
 port, the way a real board's first program does. The network comes in the

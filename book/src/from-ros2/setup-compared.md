@@ -182,7 +182,7 @@ Multi-RMW bridges (one binary, two or more backends) use
 
 ## Next Step
 
-Continue with [Installation](../get-started/installation.md), then
+Continue with [Installation](../start/install.md), then
 run the [ROS 2 Interoperability](../communicate/ros2-interop.md)
 example before moving to a platform-specific guide.
 

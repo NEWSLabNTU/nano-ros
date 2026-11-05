@@ -18,7 +18,7 @@ for the policy.
 > it's more ergonomic and produces smaller code overall.
 
 > **Prereqs.** Install the `nros` CLI once per machine (`scripts/install.sh`,
-> see [Installation](../get-started/installation.md)), then provision this board.
+> see [Installation](../start/install.md)), then provision this board.
 > `nros setup` fetches a prebuilt bare-metal toolchain
 > (`arm-none-eabi-gcc`, `qemu-system-arm`) plus the Rust
 > `thumbv7m-none-eabi` target into a shared store — no manual

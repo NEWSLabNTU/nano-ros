@@ -98,7 +98,7 @@ store; the base version is the upstream release.
 
 ## Related
 
-- [Install](../get-started/installation.md) — how these get onto
+- [Install](../start/install.md) — how these get onto
   a machine (`nros setup`, prebuilt-vs-source rules)
 - [Per-RMW Feature Matrix](rmw-feature-matrix.md)
 - [Board Support Levels](board-support-levels.md) (generated) ·
