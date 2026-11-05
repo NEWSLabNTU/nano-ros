@@ -6358,11 +6358,7 @@ fn zephyr_leaf_application(
     if root != bringup_dir {
         return None;
     }
-    let cmake = std::fs::read_to_string(bringup_dir.join("CMakeLists.txt")).ok()?;
-    cmake
-        .lines()
-        .map(|l| l.split('#').next().unwrap_or(""))
-        .any(|l| l.contains("find_package(Zephyr"))
+    crate::builder::west_app::cmakelists_finds_zephyr(bringup_dir)
         .then(|| bringup_dir.to_path_buf())
 }
 

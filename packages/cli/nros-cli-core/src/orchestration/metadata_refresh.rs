@@ -377,6 +377,22 @@ fn cpp_probe_options(
     nano_ros: Option<&Path>,
     probe_root: &Path,
 ) -> Result<Option<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions>, String> {
+    // Issue 2280 -- a package whose CMakeLists.txt calls
+    // `find_package(Zephyr)` is a west application, and the probe adds it to a
+    // HOST CMake project, where Zephyr's boilerplate refuses with "BOARD is not
+    // being defined" (or, without ZEPHYR_BASE, cannot find Zephyr at all). That
+    // failure printed a CMake error into every first `nros configure` of such a
+    // leaf, poisoned the configure of every other component in the batch, and
+    // ended in the same `unprobeable` answer this returns without running
+    // cmake. RFC-0120 names the census, not the probe, as what sizes it.
+    if crate::builder::west_app::cmakelists_finds_zephyr(&decl.package_root) {
+        return Err(
+            "a west application (its CMakeLists.txt calls find_package(Zephyr)), which a host \
+             CMake probe cannot configure; RFC-0120 sizes such a leaf from its census or its \
+             declared entities"
+                .into(),
+        );
+    }
     let Some(nano_ros) = nano_ros else {
         return Err("no nano-ros path".into());
     };
@@ -1644,6 +1660,53 @@ mod tests {
             why.contains("cargo metadata harness"),
             "the refusal must say where a Rust component is produced instead: {why}"
         );
+    }
+
+    /// Issue 2280 -- a C/C++ package that is its own west application
+    /// (`find_package(Zephyr)` in its CMakeLists.txt) is never handed to the
+    /// host CMake probe, which would print Zephyr's "BOARD is not being
+    /// defined" and fail the whole batch. An ament package, and a CMakeLists
+    /// that names Zephyr only in a comment, still probe.
+    #[test]
+    fn a_west_application_is_not_handed_to_the_host_cmake_probe() {
+        let dir = tmp("probe-west-leaf");
+        let nano_ros = dir.join("nano-ros");
+        let probe_root = dir.join("probe");
+        let cmake = dir.join("CMakeLists.txt");
+
+        std::fs::write(
+            &cmake,
+            "cmake_minimum_required(VERSION 3.20)\n\
+             find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})\n\
+             project(talker)\n",
+        )
+        .unwrap();
+        for language in [ComponentLanguage::C, ComponentLanguage::Cpp] {
+            let why = cpp_probe_options(
+                &probeable_decl(&dir, language),
+                Some(&nano_ros),
+                &probe_root,
+            )
+            .expect_err("a west application cannot be configured for the host");
+            assert!(
+                why.contains("find_package(Zephyr)") && why.contains("census"),
+                "the refusal names the cause and what sizes the leaf instead: {why}"
+            );
+        }
+
+        for text in [
+            "cmake_minimum_required(VERSION 3.20)\nfind_package(ament_cmake REQUIRED)\n",
+            "# unlike find_package(Zephyr), this is an ament package\nproject(demo_pkg)\n",
+        ] {
+            std::fs::write(&cmake, text).unwrap();
+            cpp_probe_options(
+                &probeable_decl(&dir, ComponentLanguage::Cpp),
+                Some(&nano_ros),
+                &probe_root,
+            )
+            .unwrap_or_else(|why| panic!("an ament package still probes: {why}"))
+            .expect("no sidecar exists, so a probe is needed");
+        }
     }
 
     #[test]
