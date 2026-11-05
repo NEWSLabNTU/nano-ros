@@ -791,7 +791,9 @@ pub struct ManagedProcess {
     cmdline: String,
     /// The plan directory of an image launched through `nros run --plan`
     /// ([`ManagedProcess::spawn_image`]); removed after the process is killed.
-    _run: Option<crate::run::HostRun>,
+    /// Boxed: a `Command` is large, and `ManagedProcess` sits beside small
+    /// variants in callers' enums (`clippy::large_enum_variant`).
+    _run: Option<Box<crate::run::HostRun>>,
 }
 
 impl ManagedProcess {
@@ -843,7 +845,7 @@ impl ManagedProcess {
         let command = run.take_command();
         let mut p = Self::spawn_grouped(command, name.into(), true)?;
         p.cmdline = format!("{}  # image: {}", p.cmdline, run.image_line);
-        p._run = Some(run);
+        p._run = Some(Box::new(run));
         Ok(p)
     }
 

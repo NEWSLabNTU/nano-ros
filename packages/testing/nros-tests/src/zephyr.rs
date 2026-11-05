@@ -182,7 +182,7 @@ pub struct ZephyrProcess {
     image: PathBuf,
     /// phase-528 W5 — a native_sim image's `nros run --plan` directory, kept
     /// until the process is gone.
-    _run: Option<crate::run::HostRun>,
+    _run: Option<Box<crate::run::HostRun>>,
 }
 
 /// The file a native_sim image is exec'd from: the board's `runners.yaml`
@@ -341,7 +341,7 @@ impl ZephyrProcess {
                 // it before the verb, and a dying test binary SIGTERMs the verb.
                 #[cfg(unix)]
                 crate::process::set_orphan_group_suicide(&mut cmd);
-                host_run = Some(run);
+                host_run = Some(Box::new(run));
                 cmd.spawn()?
             }
             ZephyrPlatform::QemuArm => {
