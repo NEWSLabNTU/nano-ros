@@ -298,14 +298,31 @@ need -f nros-sdk-index.toml "the Corrosion + cross-toolchain pins, read from the
 # `git archive` above staged. (Fixture templates spell it
 # `@NROS_REPO_DIR@/packages/cli/...`; that is not a cargo path dep and belongs to
 # no workspace, so the relative form is the right pattern to key on.)
+#
+# A HOST package (a runner or command package: it carries `nros-runner.toml` or
+# `nros-command.toml`, RFC-0119) is not a runtime crate and is exempt. The
+# release job builds it from source, and `nros toolchain stage-packages`, which
+# runs right after this script, ships it prebuilt in `share/nros/packages/` and
+# DELETES its source copy from this root (phase-527 W6). So no build ever loads
+# its manifest from here. `nros_px4_tools` path-deps the CLI's codegen crates on
+# purpose (phase-527 W5 moved that code out of the CLI); carving those into
+# every user's SDK root to satisfy a check about runtime crates would ship the
+# CLI's source for nothing.
 missing=""
+host_excludes=""
+for d in $(git -C "$repo" ls-tree -r --name-only HEAD \
+    | grep -E '(^|/)nros-(runner|command)\.toml$' | sed -e 's|/[^/]*$||' | sort -u); do
+    host_excludes="$host_excludes :(exclude)$d"
+done
 # Exit 1 is "no runtime crate path-deps into cli"; anything else is a git grep
 # that did not search, which must not read as that answer (issue 1816). POSIX
 # sh, so the bash helper `nros_git_grep` is out of reach and this is its
 # contract spelled inline.
 gg_rc=0
+# shellcheck disable=SC2086
+# Word-splitting is intended: newline/space-separated pathspecs, no whitespace.
 cli_deps="$(git -C "$repo" grep -h -o -E 'path = "(\.\./)+cli/[A-Za-z0-9_.-]+"' HEAD \
-    -- '*Cargo.toml' ':(exclude)packages/cli')" || gg_rc=$?
+    -- '*Cargo.toml' ':(exclude)packages/cli' $host_excludes)" || gg_rc=$?
 if [ "$gg_rc" -gt 1 ]; then
     echo "nano-ros: git grep for packages/cli path deps failed (rc=$gg_rc)" >&2
     exit 2
