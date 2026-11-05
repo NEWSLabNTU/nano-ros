@@ -105,7 +105,7 @@ fn model(yaml: &str) -> SystemModel {
 /// the same code the entry bake runs.
 fn tier_defs(m: &SystemModel) -> BTreeMap<String, TierDef> {
     m.execution
-        .tiers
+        .tasks
         .iter()
         .map(|(name, t)| (name.clone(), tier_from_model(t, "posix")))
         .collect()
