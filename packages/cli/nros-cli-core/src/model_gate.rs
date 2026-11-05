@@ -358,7 +358,10 @@ pub fn provenance_stale_with(
             if recorded.is_absolute() {
                 return Some(format!("non-portable absolute input path `{}`", input.path));
             }
-            let resolved = bringup_dir.join(recorded);
+            // phase-531 W3 — a generated launch tree's inputs are under its
+            // mirror root; `system.toml` is always the bringup's own.
+            let resolved =
+                nros_orchestration_ir::model_location::recorded_input_path(bringup_dir, recorded);
             let Ok(bytes) = std::fs::read(&resolved) else {
                 return Some(format!("recorded input missing `{}`", input.path));
             };
@@ -412,7 +415,13 @@ fn launch_tree_unrecorded(
         Ok(None) => return None,
         Err(e) => return Some(e),
     };
-    let launch_dir = bringup_dir.join("launch");
+    // phase-531 W3 — a bringup's generated launch file is checked like an
+    // authored one; a leaf's keeps the rule below (its inputs are recorded).
+    let launch_dir = if nros_orchestration_ir::leaf_system::is_package_dir(bringup_dir) {
+        bringup_dir.join("launch")
+    } else {
+        nros_orchestration_ir::model_location::launch_dir(bringup_dir)
+    };
     let launch = launch_dir.join(&launch_file);
     if !launch.is_file() {
         // A cargo leaf's launch file is SYNTHESISED under `build/`; its
@@ -436,7 +445,13 @@ fn launch_tree_unrecorded(
         .meta
         .inputs
         .iter()
-        .filter_map(|i| std::fs::canonicalize(bringup_dir.join(&i.path)).ok())
+        .filter_map(|i| {
+            std::fs::canonicalize(nros_orchestration_ir::model_location::recorded_input_path(
+                bringup_dir,
+                Path::new(&i.path),
+            ))
+            .ok()
+        })
         .collect();
     let mut named: Vec<PathBuf> = Vec::new();
     let mut xmls = vec![launch.clone()];

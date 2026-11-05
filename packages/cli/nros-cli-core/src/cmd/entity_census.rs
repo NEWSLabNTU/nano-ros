@@ -1805,7 +1805,10 @@ fn collect_inputs(ws: &Path, binary: &Path, model: Option<&Path>) -> Result<Vec<
     let bringup = crate::model_gate::infer_bringup_dir(model_path);
     for input in &system.meta.inputs {
         let path = match &bringup {
-            Some(dir) => rel(&dir.join(&input.path)),
+            Some(dir) => rel(&nros_orchestration_ir::model_location::recorded_input_path(
+                dir,
+                std::path::Path::new(&input.path),
+            )),
             None => input.path.clone(),
         };
         inputs.push(Input {

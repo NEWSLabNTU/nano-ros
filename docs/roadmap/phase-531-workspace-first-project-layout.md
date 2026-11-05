@@ -1,9 +1,10 @@
 # Phase 531 — Workspace-first project layout: bringup-only `system.toml`, one build road, the leaf shape retired
 
-**Status (2026-11-05). OPEN — W1 (the measurement) and W2 (the gates and the
-sync warning) done; W3 and W4 in progress; W5 step 1 (the design: the
-generated entry drops its selection package, an owned entry keeps a renamed
-adapter) in review.**
+**Status (2026-11-05). OPEN — W1 (the measurement), W2 (the gates and the
+sync warning), W3 (the generated launch file) and W4 (the workspace scaffold
+and the node rung) done; W5 step 1 (the design: the generated entry drops its
+selection package, an owned entry keeps a renamed adapter) merged; the rest of
+W5 (one build road) next.**
 Implements [RFC-0121](../design/0121-workspace-first-project-layout.md) D1 to
 D8, with its amendments to RFC-0098, RFC-0116 D6, RFC-0026/0066, RFC-0100,
 RFC-0118 D2 and RFC-0120.
@@ -242,6 +243,30 @@ same SystemModel as the same workspace with the generated file copied into
 `launch/` (models compared byte for byte); deleting `launch/` returns to
 generation.
 
+**Status: DONE with W4 (2026-11-05, PR TBD).** W4's scaffold needs it: its
+bringup has no `launch/`. `synthesise_bringup_launch` (`cmd/ws.rs`) writes the
+file from the `[[component]]` rows under a mirror root,
+`<ws>/build/nros/launch/<bringup>/` holding `launch/system.launch.xml` and a
+copy of `system.toml`, and the resolve is given that root as its
+`--bringup-root`. So `meta.inputs` records `launch/system.launch.xml` and
+`system.toml` exactly as for an authored file, and the model is portable. A
+recorded input is read back through `model_location::recorded_input_path`,
+which reads `system.toml` from the bringup itself, so an edit to it is still
+seen. Every reader of a bringup's launch file asks
+`model_location::launch_dir` (`ensure_model`, `validate_image_launch`,
+`launch_node_pkgs`, `workspace_model_missing`, the model gate, the plan's
+`launch_file`). A bringup with neither `launch/` nor a row gets a warning
+naming both remedies and resolves no model, as before: the refusal waits for
+W7 step 8, because a bringup whose image boots a hand-written entry package
+(`tests/cmake-workspace-system-required-tests.sh`'s west workspace) names
+neither today. No tracked bringup is in that state.
+
+Measured on the W4 acceptance workspace: the generated model, the model
+resolved with the generated file copied into `launch/`, and the model after
+`launch/` was deleted again are byte-identical. `nros plan explain` is not a
+verb (`nros plan <bringup>` writes `nros-plan.json`, `nros explain` renders
+one), so "marks it generated" is not done here.
+
 ### W4 — `nros new` writes a workspace; `nros run <node>`
 
 - `nros new <ws> --board <b> --template <t>` writes `<ws>/src/<node>/` (a
@@ -258,6 +283,40 @@ generation.
 talker && cd sensor_ws && nros run sensor_node --expect 'Publishing: 0'`
 passes on QEMU. A workspace with two bringups naming one node refuses `nros run
 <node>` and lists both.
+
+**Status: DONE (2026-11-05, PR TBD).**
+
+- `nros new <ws> --board <b>` (`cmd/new_workspace.rs`) writes `src/<node>/`
+  (the component scaffold with `workspace_member`: no `[workspace]` table, no
+  `nros.toml`) and `src/<node>_bringup/`. The names, the image id and the
+  serial locator (`[board.net] host_serial`, new, stated by
+  `mps2-an385-baremetal`) are recorded in RFC-0121 D4. The single-package
+  project branch of `nros new` is gone; `--workspace`, `--from` and
+  `--component` are unchanged.
+- Inside a workspace (`new_workspace::enclosing_workspace`), `nros new <node>
+  [--to <bringup>]` adds the package, and with `--to` its row and
+  `<exec_depend>`.
+- The rungs are `builder::plan::name_target`; `run_plan::name_target` rewrites
+  the target word before configure, planning and the implicit build, so
+  `run`, `flash` and `monitor` all take a node. `nros run --why` names the
+  rung (the `image` provenance row); `nros build --packages-up-to <node>` uses
+  rung 3 only where the bare build would have refused.
+- `nros new` writes a board's `[board.net] host_serial` into the image as a
+  `serial/` locator, and the generated entry's facade now takes the board's
+  link feature from that locator (`serial` in place of `ethernet` on the
+  mps2 bare-metal crate), as a leaf's selection package already did.
+- The acceptance's `--expect 'Publishing: 0'` cannot match the talker, which
+  prints `Publishing: 'Hello World: N'` from 1. It was run with `--expect
+  'Publishing:'`, as the first chapter (PR #3093) does: on QEMU (ROS 2 Humble
+  sourced, `nros setup --tool qemu`), `nros run sensor_node` matched
+  `Publishing: 'Hello World: 1'` 3.3 s after boot. The chapter's host track
+  (`nros new host_ws --board linux --lang cpp --rmw cyclonedds`, `nros run
+  host_node`) matched after 1.3 s. With a second bringup
+  naming `sensor_node`, `nros run sensor_node` exits 3 listing
+  `other_bringup:host` and `sensor_node_bringup:baremetal`.
+- `scripts/check-template-copy-out.sh` (the scaffold arm) and
+  `scripts/ci/scaffold-journey-check.sh` build and resolve the scaffolded
+  workspace instead of the retired single package.
 
 ### W5 — One build road
 

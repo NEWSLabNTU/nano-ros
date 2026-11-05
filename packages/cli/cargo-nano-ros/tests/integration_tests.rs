@@ -741,6 +741,7 @@ mod component_scaffold {
             meta: Default::default(),
             lang: nros_lang::Language::Rust,
             force: false,
+            workspace_member: false,
         });
         std::env::set_current_dir(&prev).unwrap();
         result.expect("scaffold_component");
@@ -817,6 +818,7 @@ mod component_scaffold {
             meta: Default::default(),
             lang: nros_lang::Language::Rust,
             force: false,
+            workspace_member: false,
         });
         std::env::set_current_dir(&prev).unwrap();
         result.expect("scaffold_component");
@@ -855,6 +857,7 @@ mod component_scaffold {
             meta: Default::default(),
             lang: nros_lang::Language::C,
             force: false,
+            workspace_member: false,
         });
         std::env::set_current_dir(&prev).unwrap();
         result.expect("scaffold_component c");
@@ -910,6 +913,7 @@ mod component_scaffold {
             meta: Default::default(),
             lang: nros_lang::Language::Cpp,
             force: false,
+            workspace_member: false,
         });
         std::env::set_current_dir(&prev).unwrap();
         result.expect("scaffold_component cpp");

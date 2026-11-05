@@ -627,7 +627,10 @@ pub fn build_image(args: &crate::cmd::run_plan::Selection, image: &str) -> Resul
     let me = std::env::current_exe().map_err(|e| format!("locating nros: {e}"))?;
     let mut cmd = Command::new(me);
     // The arguments `select_target` planned with, so the build is of the
-    // workspace (and the `--base-paths`) the plan was resolved against.
+    // workspace (and the `--base-paths`) the plan was resolved against, and
+    // of the image it resolved: the user's word may be a node name (RFC-0121
+    // D5), which `nros build` does not take, so it is named the one way first.
+    let (args, _) = crate::cmd::run_plan::name_target(args)?;
     cmd.arg("build").args(args.build_args());
     let stderr = io::stderr()
         .as_fd_dup()

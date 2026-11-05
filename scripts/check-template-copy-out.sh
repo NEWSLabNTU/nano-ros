@@ -133,7 +133,7 @@
 # Usage: check-template-copy-out.sh [--list | --self-test] [template-name ... | scaffold]
 #        check-template-copy-out.sh [--part zephyr|no-zephyr] [--shard <k>/<n> [--preload-last <unit>]]
 #
-# `scaffold` names the single packages `nros new --board` writes (see
+# `scaffold` names the workspaces `nros new --board` writes (see
 # SCAFFOLD_BOARDS); with no names, templates and scaffolds are all built.
 set -uo pipefail
 
@@ -735,12 +735,12 @@ run_one() {
     return 0
 }
 
-# ## The single package `nros new` writes (phase-525 W2, RFC-0116 D6)
+# ## The workspace `nros new` writes (phase-531 W4, RFC-0121 D4)
 #
 # The first chapter does not copy a template, it scaffolds one: `nros new
-# <name> --board <board> --template talker`. That package is the copy-out a
-# reader gets, so it is built here by the same arms as a template — scaffolded
-# into a scratch dir outside the checkout, which is where a reader has it.
+# <ws> --board <board> --template talker`. That workspace is the copy-out a
+# reader gets, so it is built here as a reader builds it, `nros configure` +
+# `nros build` at its root, scaffolded into a scratch dir outside the checkout.
 #
 # The boards are the first chapter's: the host, and the QEMU board RFC-0116
 # measures the field budget on. A board is added here when a getting-started
@@ -753,19 +753,26 @@ run_one() {
 # `run_scaffold` hands it to `run_runner_package`.
 SCAFFOLD_BOARDS=(linux mps2-an385-baremetal runner-package)
 
-# What D6 promises the package does NOT hold, one line per violation: a
-# `.cargo/` directory, a workspace root, a bringup or launch file, or more than
-# one `[image.*]`. Asked of the freshly scaffolded tree, before any build
-# writes into it.
+# What RFC-0121 D4 promises the workspace holds, one line per violation: a
+# library node package and a bringup of `package.xml` + `system.toml` only
+# (no `launch/`, which is generated), one `[image.*]`, and no root build file
+# or `system.toml` beside code. Asked of the freshly scaffolded tree, before
+# any build writes into it.
 scaffold_shape_violations() {
-    local pdir="$1" n
-    [ -e "$pdir/.cargo" ] && echo "a .cargo/ directory (the board's cargo settings are generated under build/)"
-    [ -e "$pdir/.colcon_workspace" ] && echo "a workspace root marker"
-    [ -d "$pdir/src" ] && [ -n "$(ls "$pdir"/src/*/system.toml 2>/dev/null)" ] && echo "a bringup under src/"
-    [ -n "$(ls "$pdir"/launch "$pdir"/*.launch.* 2>/dev/null)" ] && echo "a launch file"
-    n="$(grep -c '^\[image\.[^].]*\]' "$pdir/system.toml" 2>/dev/null)" || n=0
-    [ "$n" -eq 1 ] || echo "$n [image.*] tables in system.toml (one is the promise)"
-    [ -f "$pdir/README.md" ] || echo "no README.md (the scaffold's README is the first chapter's text)"
+    # Two statements: `local`'s words are all expanded before any is assigned.
+    local ws="$1" f n
+    local node="$ws/src/sensor_node" bringup="$ws/src/sensor_node_bringup"
+    for f in Cargo.toml CMakeLists.txt system.toml; do
+        [ -e "$ws/$f" ] && echo "a $f at the workspace root"
+    done
+    [ -f "$node/package.xml" ] || echo "no node package at src/sensor_node"
+    [ -e "$node/system.toml" ] && echo "a system.toml beside the node's code"
+    [ -e "$node/src/main.rs" ] && echo "a main.rs in the node package (a node package is a library)"
+    [ -e "$bringup/launch" ] && echo "a launch/ in the bringup (its launch file is generated)"
+    n="$(ls -A "$bringup" 2>/dev/null | grep -v -x -e package.xml -e system.toml | wc -l)"
+    [ "$n" -eq 0 ] || echo "$n file(s) in the bringup beyond package.xml and system.toml"
+    n="$(grep -c '^\[image\.[^].]*\]' "$bringup/system.toml" 2>/dev/null)" || n=0
+    [ "$n" -eq 1 ] || echo "$n [image.*] tables in the bringup's system.toml (one is the promise)"
     return 0
 }
 
@@ -820,7 +827,7 @@ run_runner_package() {
     return 0
 }
 
-# Scaffold one package for <board> and build it. Returns as `run_one` does.
+# Scaffold one workspace for <board> and build it. Returns as `run_one` does.
 run_scaffold() {
     # Two statements: `local`'s words are all expanded before any is assigned.
     local board="$1"
@@ -836,9 +843,9 @@ run_scaffold() {
     fi
     nros_gate_scratch work template-copy-out || return 3
     log="$work/build.log"
-    pdir="$work/sensor_node"
+    pdir="$work/sensor_ws"
     rc=0
-    (cd "$work" && "$nros" new sensor_node --board "$board" --template talker) > "$log" 2>&1 || rc=$?
+    (cd "$work" && "$nros" new sensor_ws --board "$board" --template talker) > "$log" 2>&1 || rc=$?
     if [ "$rc" -ne 0 ]; then
         report_build_failure "$label" "$log"
         nros_gate_scratch_failed "$work"
@@ -846,24 +853,29 @@ run_scaffold() {
     fi
     v="$(scaffold_shape_violations "$pdir")"
     if [ -n "$v" ]; then
-        echo "  $label: FAIL — the scaffold is not one package (RFC-0116 D6):" >&2
+        echo "  $label: FAIL — the scaffold is not the RFC-0121 D4 workspace:" >&2
         printf '%s\n' "$v" | sed 's/^/      - /' >&2
         nros_gate_scratch_failed "$work"
         return 1
     fi
-    if [ "$board" = "linux" ]; then
-        if nros_gate_prune_enabled; then
-            local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
-            copy_cache_vars "$work"
+    if nros_gate_prune_enabled; then
+        local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
+        copy_cache_vars "$work"
+    fi
+    (cd "$pdir" && "$nros" configure) >> "$log" 2>&1 || rc=$?
+    [ "$rc" -eq 0 ] && { (cd "$pdir" && "$nros" build) >> "$log" 2>&1 || rc=$?; }
+    if [ "$rc" -ne 0 ] && [ "$board" != linux ]; then
+        # A board whose toolchain is absent is the build's own preflight
+        # refusal: a missing precondition, not a defect of the scaffold.
+        local pre_rc=0 what
+        nros_grep_q 'missing prerequisites for this build' "$log" || pre_rc=$?
+        if [ "$pre_rc" -eq 0 ]; then
+            what="$(sed -n 's/^  - //p' "$log" | paste -sd ';' -)"
+            nros_check_unverified "$gate" "$label ($board): toolchain not provisioned — ${what:-see the preflight in the log} (nros setup $board)" || { rm -rf "$work"; return 6; }
+            echo "  $label: NOT VERIFIED — see [SKIPPED] above"
+            rm -rf "$work"
+            return 4
         fi
-        (cd "$pdir" && "$nros" configure) >> "$log" 2>&1 || rc=$?
-        [ "$rc" -eq 0 ] && { (cd "$pdir" && "$nros" build) >> "$log" 2>&1 || rc=$?; }
-    else
-        build_cross "$pdir" "$board" "$log" "$label" || rc=$?
-        case "$rc" in
-            4) echo "  $label: NOT VERIFIED — see [SKIPPED] above"; rm -rf "$work"; return 4 ;;
-            5) rm -rf "$work"; return 6 ;;
-        esac
     fi
     if [ "$rc" -ne 0 ]; then
         report_build_failure "$label" "$log"
@@ -909,29 +921,34 @@ part_self_test() {
     echo "self-test OK: a run that built nothing in scope fails, and --part places a Zephyr and a non-Zephyr unit on their sides."
 }
 
-# The shape predicate's controls: a clean single package passes, and each
-# thing D6 forbids, planted alone, is reported.
+# The shape predicate's controls: a clean scaffolded workspace passes, and
+# each thing RFC-0121 D4 forbids, planted alone, is reported.
 scaffold_shape_self_test() {
     local work bad=0 v
     nros_gate_scratch work template-selftest || return 2
     _plant() {
-        rm -rf "$work/p"; mkdir -p "$work/p/src"
-        printf '[system]\nname = "p"\n\n[image.linux]\nboard = "linux"\n' > "$work/p/system.toml"
-        printf '# p\n' > "$work/p/README.md"
+        rm -rf "$work/p"
+        mkdir -p "$work/p/src/sensor_node/src" "$work/p/src/sensor_node_bringup"
+        : > "$work/p/src/sensor_node/package.xml"
+        : > "$work/p/src/sensor_node/src/lib.rs"
+        : > "$work/p/src/sensor_node_bringup/package.xml"
+        printf '[system]\nname = "p"\n\n[image.linux]\nboard = "linux"\n' \
+            > "$work/p/src/sensor_node_bringup/system.toml"
     }
     _plant
     v="$(scaffold_shape_violations "$work/p")"
-    [ -z "$v" ] || { echo "self-test FAILED: a clean single package reported: $v" >&2; bad=1; }
+    [ -z "$v" ] || { echo "self-test FAILED: a clean scaffolded workspace reported: $v" >&2; bad=1; }
     local case_
-    for case_ in cargo marker bringup launch two-images readme; do
+    for case_ in root-cargo leaf-system main launch extra two-images no-node; do
         _plant
         case "$case_" in
-            cargo) mkdir "$work/p/.cargo" ;;
-            marker) : > "$work/p/.colcon_workspace" ;;
-            bringup) mkdir -p "$work/p/src/b"; : > "$work/p/src/b/system.toml" ;;
-            launch) mkdir "$work/p/launch" ;;
-            two-images) printf '\n[image.other]\nboard = "linux"\n' >> "$work/p/system.toml" ;;
-            readme) rm "$work/p/README.md" ;;
+            root-cargo) : > "$work/p/Cargo.toml" ;;
+            leaf-system) : > "$work/p/src/sensor_node/system.toml" ;;
+            main) : > "$work/p/src/sensor_node/src/main.rs" ;;
+            launch) mkdir "$work/p/src/sensor_node_bringup/launch" ;;
+            extra) : > "$work/p/src/sensor_node_bringup/CMakeLists.txt" ;;
+            two-images) printf '\n[image.other]\nboard = "linux"\n' >> "$work/p/src/sensor_node_bringup/system.toml" ;;
+            no-node) rm -rf "$work/p/src/sensor_node" ;;
         esac
         v="$(scaffold_shape_violations "$work/p")"
         [ -n "$v" ] || { echo "self-test FAILED: a scaffold with a planted $case_ passed the shape check" >&2; bad=1; }
@@ -939,7 +956,7 @@ scaffold_shape_self_test() {
     unset -f _plant
     rm -rf "$work"
     [ "$bad" -eq 0 ] || return 1
-    echo "self-test OK: the single-package shape check passes a clean package and catches each planted violation."
+    echo "self-test OK: the workspace shape check passes a clean scaffold and catches each planted violation."
     return 0
 }
 
@@ -1204,7 +1221,7 @@ if [ "$mode" = "list" ]; then
     done
     echo "skipped (no [image.*] — nothing for \`nros build\` to build):"
     printf '  %s\n' "${skipped[@]}"
-    echo "scaffolded single packages (\`nros new sensor_node --board <b> --template talker\`):"
+    echo "scaffolded workspaces (\`nros new sensor_ws --board <b> --template talker\`):"
     printf '  %s\n' "${SCAFFOLD_BOARDS[@]}"
     exit 0
 fi
@@ -1319,7 +1336,7 @@ for entry in "${buildable[@]}"; do
         *) fail=1; fail_build=1 ;;
     esac
 done
-# The scaffolded single packages: every run, unless the caller named templates
+# The scaffolded workspaces: every run, unless the caller named templates
 # and not `scaffold`.
 run_scaffolds=1
 if [ "${#wanted[@]}" -gt 0 ]; then

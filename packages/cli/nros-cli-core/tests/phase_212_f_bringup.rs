@@ -44,6 +44,7 @@ fn default_new_args(
         component_name: Vec::new(),
         workspace_root: None,
         into: None,
+        to: None,
         no_config: false,
         no_readme: false,
         platform: None,

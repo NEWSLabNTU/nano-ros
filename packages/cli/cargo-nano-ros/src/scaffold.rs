@@ -565,6 +565,12 @@ pub struct ComponentScaffoldConfig {
     /// phase-469 — the enum, for the same reason [`ScaffoldConfig::lang`] is.
     pub lang: Language,
     pub force: bool,
+    /// phase-531 W4 (RFC-0121 D4) — the package is written into a workspace's
+    /// `src/` by `nros new`, whose builder generates the cargo root: no empty
+    /// `[workspace]` table (it would make the package a root of its own), no
+    /// folded `nros.toml`, and no standalone "Next steps" (the caller prints
+    /// the workspace's).
+    pub workspace_member: bool,
 }
 
 /// Scaffold a **planned-mode component** — a reusable nano-ros node compiled as
@@ -629,11 +635,7 @@ name = "{name}"
 version = "0.1.0"
 edition = "2024"
 
-# Standalone-buildable: an empty [workspace] makes this its own Cargo root even
-# when dropped under a colcon workspace's src/.
-[workspace]
-
-# Node pkg shape — a library, with no binary target. `nros::node!()` exports the
+{workspace_table}# Node pkg shape — a library, with no binary target. `nros::node!()` exports the
 # register / init / dispatch trampolines; an Entry pkg brings up the executor and
 # spin loop via `nros::main!()`.
 [lib]
@@ -662,12 +664,21 @@ nros-log = {{ version = "*", default-features = false }}
 # `nros build`). Edit package.xml, not this table.
 "#,
         name = cfg.name,
+        workspace_table = if cfg.workspace_member {
+            ""
+        } else {
+            "# Standalone-buildable: an empty [workspace] makes this its own Cargo root even\n\
+             # when dropped under a colcon workspace's src/.\n[workspace]\n\n"
+        },
     );
     fs::write(dir.join("Cargo.toml"), cargo_toml)?;
 
     // The role's node (phase-517 W12) — the same template every Rust scaffold
     // writes, so a component and a package of one role are one program.
     fs::write(dir.join("src/lib.rs"), rust_node_lib(cfg.template, module))?;
+    if cfg.workspace_member {
+        return Ok(());
+    }
 
     // Folded `[component]` manifest (Phase 172 W.1). Minimal — no `[linkage]`
     // (derived) and no `[overrides]` (defaults to empty). The `crate::module`
@@ -793,6 +804,9 @@ target_link_libraries({pkg_sym}_{node_name}_component
     )?;
     write_codegen_caps(&dir, cfg.template)?;
 
+    if cfg.workspace_member {
+        return Ok(());
+    }
     println!("✓ Created nano-ros C++ Node pkg '{}'", cfg.name);
     println!("  Class     : {pkg_sym}::{class_name}");
     println!("  Node      : {node_name}");
@@ -882,6 +896,9 @@ nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
     )?;
     write_codegen_caps(&dir, cfg.template)?;
 
+    if cfg.workspace_member {
+        return Ok(());
+    }
     println!("✓ Created nano-ros C Node pkg '{}'", cfg.name);
     println!("  Class     : {pkg_sym}::{class_name}");
     println!("  Node      : {node_name}");

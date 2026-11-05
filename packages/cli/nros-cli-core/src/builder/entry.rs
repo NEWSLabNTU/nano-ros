@@ -445,11 +445,10 @@ pub const IP_LINK_FEATURE: &str = "ethernet";
 /// Only a feature the crate DECLARES is named (`declares`), so a board whose
 /// link is not a feature choice (the RTOS crates) is left as it was.
 ///
-/// Called for a single-package leaf's selection package only. A generated
-/// workspace entry gets the board's defaults from its facade crate
-/// (`facade::derive`, which knows no image), so a serial workspace image on
-/// this board would still need the facade to drop `ethernet`; no in-tree
-/// workspace image declares a serial transport.
+/// Called for a single-package leaf's selection package and, since phase-531
+/// W4, for a generated workspace entry's facade (`facade::write_facade`, from
+/// the claimed image's locator): the workspace scaffold's first image on this
+/// board dials the router over its UART.
 pub fn image_link_features(
     transport: Option<&str>,
     rmw: &str,

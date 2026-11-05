@@ -686,6 +686,26 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             .into_iter()
             .map(|(b, _, i, _)| plan::qualified(&b, &i))
             .collect()
+    } else if args.images.is_empty()
+        && let [node] = args.selection.packages_up_to.as_slice()
+        && plan::resolve(&bringups, &[]).is_err()
+    {
+        // RFC-0121 D5 — `--packages-up-to <node>` with no image named, in a
+        // workspace whose images need one: the node rung names it, through
+        // the resolver every target verb uses. Only where the bare build
+        // would have refused, so no build that resolves today changes; a
+        // node no rung answers alone falls through to that refusal.
+        let components = bringup_components(&bringups)?;
+        match plan::name_target(&bringups, &components, Some(node)) {
+            Ok((Some(q), rung @ plan::TargetRung::Node { .. })) => {
+                eprintln!(
+                    "nros build: --packages-up-to {node} selects `{q}` ({})",
+                    rung.describe()
+                );
+                vec![q]
+            }
+            _ => Vec::new(),
+        }
     } else {
         args.images.clone()
     };
@@ -6722,6 +6742,45 @@ pub(crate) fn workspace_images(root: &std::path::Path) -> Result<Vec<String>> {
         .collect())
 }
 
+/// The packages each bringup's `[[component]]` rows name, keyed by bringup
+/// (RFC-0121 D5's node rung reads it). A row with no `pkg` is skipped.
+pub(crate) fn bringup_components(
+    bringups: &Bringups,
+) -> Result<std::collections::BTreeMap<String, Vec<String>>> {
+    let mut out = std::collections::BTreeMap::new();
+    for (name, dir, _) in bringups {
+        let path = dir.join("system.toml");
+        let text = std::fs::read_to_string(&path)
+            .wrap_err_with(|| format!("reading {}", path.display()))?;
+        let doc: toml::Table =
+            toml::from_str(&text).wrap_err_with(|| format!("parsing {}", path.display()))?;
+        let mut pkgs: Vec<String> = doc
+            .get("component")
+            .and_then(|c| c.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|row| row.get("pkg").and_then(|p| p.as_str()).map(str::to_string))
+            .collect();
+        pkgs.sort();
+        pkgs.dedup();
+        out.insert(name.clone(), pkgs);
+    }
+    Ok(out)
+}
+
+/// RFC-0121 D5 — the `<bringup>:<image>` the target word names in the
+/// workspace at `root`, and the rung that named it ([`plan::name_target`]).
+pub(crate) fn name_workspace_target(
+    root: &std::path::Path,
+    word: Option<&str>,
+) -> Result<std::result::Result<(Option<String>, plan::TargetRung), String>> {
+    let members = discover::cargo_members_or_walk(root);
+    let found = discover::discover(root, &members).map_err(|e| eyre::eyre!("{e}"))?;
+    let bringups = collect_images(&found.packages)?;
+    let components = bringup_components(&bringups)?;
+    Ok(plan::name_target(&bringups, &components, word))
+}
+
 /// phase-530 W1 — the resolved model a workspace image `key`
 /// (`<bringup>:<id>`) plans from, when configure should have written it and
 /// it is absent. The model is looked for where `generate_entry` reads it
@@ -6755,7 +6814,7 @@ pub(crate) fn workspace_model_missing(
             Err(_) => return Ok(None),
         },
     };
-    if !dir.join("launch").join(&launch).is_file() {
+    if !model_location::launch_dir(&dir).join(&launch).is_file() {
         return Ok(None);
     }
     let args: Vec<(String, String)> = image

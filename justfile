@@ -3916,8 +3916,7 @@ colcon-parity:
     file install/lib/consumer/consumer
 
 # acceptance (local, from-source): scaffold + build + run a fresh project with the
-# in-tree nros CLI — proves the documented user flow (bootstrap → new → sync →
-# cargo build → run). The prebuilt fresh-machine CI twin died with release.yml
+# in-tree nros CLI — proves the documented user flow (bootstrap → new → run). The prebuilt fresh-machine CI twin died with release.yml
 # (phase-288 D1/D2: source distribution, no prebuilt nros). Work dir under tmp/
 # (gitignored). Note: the pre-288 recipe drove the Phase-222-removed `nros build`
 # verb — builds go through the platform tool (cargo here), never `nros`.
@@ -3934,14 +3933,13 @@ acceptance: setup-cli
     nros="$(nros_cli_bin)"
     work="$repo/tmp/acceptance"
     rm -rf "$work"; mkdir -p "$work"; cd "$work"
-    "$nros" new accept_app --platform linux --lang rust --template talker
-    cd accept_app
-    "$nros" configure
-    cargo build
-    # profile-literal-ok: unprofiled: accept_app is a plain `cargo build` smoke binary
-    # issue 1741 — the image is bounded by a deadline that ESCALATES.
+    # phase-531 W4 (RFC-0121 D4/D5) — `nros new` writes a workspace, and
+    # `nros run <node>` builds and runs its one image. Cyclone needs no router.
+    "$nros" new accept_ws --board linux --lang rust --template talker --rmw cyclonedds
+    cd accept_ws
+    # issue 1741 — the run is bounded by a deadline that ESCALATES.
     . "$repo/scripts/lib/deadline.sh"
-    "${NROS_DEADLINE[@]}" 10 target/debug/accept_app 2>&1 | grep -q "accept_app"
+    "${NROS_DEADLINE[@]}" 900 "$nros" run accept_node --expect 'Publishing:' --timeout 120
     echo "acceptance OK."
 
 

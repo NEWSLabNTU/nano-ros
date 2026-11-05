@@ -67,6 +67,10 @@ interfaces = { eth0 = "ethernet" }
 stack = "board"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp", "serial"]
+# phase-531 W4 (RFC-0121 D4) — the CMSDK UART0 is the port brought out to the
+# host (QEMU wires it to a host pty), at the rate the board's serial link runs.
+# `nros new` scaffolds a first image that reaches the router over it.
+host_serial = "UART_0#baudrate=115200"
 
 # phase-528 W2 (RFC-0118 D4) — how this board runs, stated ONCE. `nros build`
 # prints its next step from it, the generated cargo settings give it to cargo

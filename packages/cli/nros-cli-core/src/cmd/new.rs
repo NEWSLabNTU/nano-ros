@@ -9,16 +9,14 @@
 //! `--destination-directory`. `--build-type` is not taken (`--lang` decides
 //! it) and neither is `--library-name` (`--component` is the library shape).
 
-use cargo_nano_ros::scaffold::{
-    ComponentScaffoldConfig, PackageMeta, Role, ScaffoldConfig, scaffold_component_at,
-    scaffold_package_at,
-};
+use cargo_nano_ros::scaffold::{ComponentScaffoldConfig, PackageMeta, Role, scaffold_component_at};
 use clap::Args as ClapArgs;
 use eyre::{Result, bail};
 use std::path::PathBuf;
 
 use crate::cmd::{
     new_system::{BringupScaffold, scaffold_bringup},
+    new_workspace,
     scaffold_deploy::{DeployScaffold, ScaffoldTable, scaffold_deploy},
 };
 
@@ -261,6 +259,16 @@ pub struct Args {
     /// when the workspace exposes more than one.
     #[arg(long)]
     pub bringup: Option<String>,
+
+    /// Inside a workspace: the bringup that runs the new node package.
+    ///
+    /// `nros new <node> --to <bringup>` adds the package under `src/`, a
+    /// `[[component]]` row for it in the bringup's `system.toml` and an
+    /// `<exec_depend>` in its `package.xml`. Without `--to` no bringup is
+    /// touched.
+    // phase-531 W4 (RFC-0121 D4).
+    #[arg(long, value_name = "BRINGUP")]
+    pub to: Option<String>,
 
     /// Deploy mode: also set the bringup `[system].default_launch` (bootstrap)
     #[arg(long)]
@@ -888,151 +896,159 @@ pub fn run(args: Args) -> Result<()> {
                 meta,
                 lang,
                 force: args.force,
+                workspace_member: false,
             },
         );
     }
 
-    // Project mode.
+    // phase-531 W4 (RFC-0121 D4) — inside a workspace, `nros new <node>`
+    // adds a node package under `src/` (and, with `--to`, its component row);
+    // outside one it writes a workspace. There is no single-package shape.
     let (template, node_name, meta) = package_args(&args)?;
-    let dir = package_dir(&args, &name);
-    let lang = language_arg(args.lang.as_deref(), nros_lang::Language::Rust)?;
+    let cwd = std::env::current_dir()?;
+    let lang_given = args.lang.as_deref();
+    if args.destination_directory.is_none()
+        && let Some(ws) = new_workspace::enclosing_workspace(&cwd)
+    {
+        let given: Vec<&str> = [
+            args.board.as_ref().map(|_| "--board"),
+            args.platform.as_ref().map(|_| "--platform"),
+            args.rmw.as_ref().map(|_| "--rmw"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        if !given.is_empty() {
+            bail!(
+                "nros new: {} cannot be given inside the workspace {}: a node package names no \
+                 board or RMW. `nros new {name}` adds the package; a board is an \
+                 image in a bringup (`nros new --image <id> --board <board>`). To start a \
+                 separate workspace, run this outside {}.",
+                given.join(", "),
+                ws.display(),
+                ws.display()
+            );
+        }
+        let lang = language_arg(lang_given, nros_lang::Language::Rust)?;
+        let node = new_workspace::NodePackage {
+            name: &name,
+            template,
+            node_name: node_name.as_deref(),
+            meta,
+            lang,
+            force: args.force,
+        };
+        let edited = new_workspace::scaffold_into_workspace(&ws, &node, args.to.as_deref())?;
+        println!(
+            "nros new: added the node package src/{name}/ ({}, {}) to {}",
+            template.name(),
+            lang.as_str(),
+            ws.display()
+        );
+        match edited {
+            Some(b) => {
+                println!(
+                    "  declared it in {}: a [[component]] row and an <exec_depend>",
+                    b.display()
+                );
+                if b.join("launch").is_dir() {
+                    println!(
+                        "  {} has its own launch/: add a <node pkg=\"{name}\" .../> there for \
+                         it to run",
+                        b.display()
+                    );
+                }
+            }
+            None => {
+                println!("  no bringup runs it yet: `--to <bringup>` adds its [[component]] row")
+            }
+        }
+        return Ok(());
+    }
+    if let Some(to) = &args.to {
+        bail!(
+            "nros new: `--to {to}` adds a node to a bringup of an existing workspace, and {} is \
+             in none (no `src/` holding packages, no `nros.toml` above it)",
+            cwd.display()
+        );
+    }
+
+    // Outside a workspace: `nros new <ws> --board <b>` writes one.
+    //
     // phase-525 W2 (RFC-0116 D6) — `--board` alone is the front door: the
     // platform is the board's, read from the board catalog, so a reader names
     // the thing they hold and never a platform word. `--platform` still works,
-    // with the platform's own default board.
-    let from_board = match (&args.platform, &args.board) {
-        (None, Some(word)) => {
-            let catalog = load_catalog()?;
-            Some(board_platform(&catalog, word)?)
-        }
-        _ => None,
-    };
-    let platform = match (&args.platform, &from_board) {
-        (Some(p), _) => p.clone(),
-        (None, Some((p, _))) => p.clone(),
+    // with the platform's own default board (phase-517 W2: resolved through
+    // the board catalog, the join every road that builds it reads).
+    let lang = language_arg(lang_given, nros_lang::Language::Rust)?;
+    let (root, catalog) = load_root_catalog()?;
+    let (platform, board) = match (&args.platform, &args.board) {
+        (None, Some(word)) => board_platform(&catalog, word)?,
+        (Some(p), b) => (p.clone(), project_board(&catalog, p, b.as_deref())?),
         (None, None) => bail!(
-            "`nros new <name>` requires `--board <board>` (`nros board list` names them), or \
-             `--platform <p>`"
+            "`nros new <workspace>` requires `--board <board>` (`nros board list` names them), \
+             or `--platform <p>`"
         ),
     };
-    // phase-517 W2 — a C/C++ project's image board is resolved through the
-    // board catalog, the join every road that builds it reads. The platform
-    // word it used to write (`freertos`) reached the cmake road as its own
-    // deploy token and configured with no board module.
-    let board = match lang {
-        nros_lang::Language::Rust => {
-            if RUST_WORKSPACE_PLATFORMS.contains(&platform.as_str()) {
-                let cwd = std::env::current_dir()?;
-                let root =
-                    crate::orchestration::nano_ros_root::resolve(None, &cwd).ok_or_else(|| {
-                        eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help())
-                    })?;
-                let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
-                    .map_err(|e| eyre::eyre!("board catalog under {}: {e}", root.display()))?;
-                let lines = rust_workspace_commands(&catalog, &name, &platform);
-                bail!(
-                    "nros new: a Rust node on --platform {platform} is built as a workspace — a \
-                     node package plus an entry the image is built from — not as a single \
-                     package. Start one with:\n\n{}\n\n(book: targets/{}.md)",
-                    lines
-                        .iter()
-                        .map(|l| format!("  {l}"))
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                    match platform.as_str() {
-                        "baremetal" => "bare-metal",
-                        "linux" => "linux-host",
-                        p => p,
-                    }
-                );
-            }
-            // A Rust project's board defaults to its template's own key; a
-            // `--board` is resolved like an image board and must belong to the
-            // platform, as for C/C++.
-            match (&from_board, args.board.as_deref()) {
-                (Some((_, b)), _) => Some(b.clone()),
-                (None, Some(word)) => Some(project_board(&load_catalog()?, &platform, Some(word))?),
-                (None, None) => None,
-            }
-        }
-        nros_lang::Language::C | nros_lang::Language::Cpp => match &from_board {
-            Some((_, b)) => Some(b.clone()),
-            None => Some(project_board(
-                &load_catalog()?,
-                &platform,
-                args.board.as_deref(),
-            )?),
-        },
+    let image = crate::orchestration::image::ImageBlock {
+        board: Some(board.clone()),
+        ..Default::default()
     };
-    let image_board = board.clone();
-    scaffold_package_at(
-        &dir,
-        &ScaffoldConfig {
-            name: name.clone(),
-            lang,
-            platform: platform.clone(),
-            rmw: args.rmw.unwrap_or_else(|| "zenoh".to_string()),
-            ros_edition: args.ros_edition,
+    let descriptor = crate::orchestration::image::resolve_image_board(&catalog, &board, &image)
+        .map_err(|e| eyre::eyre!("nros new: {e}"))?;
+    // The board's host-side serial port, when it states one: the first
+    // image reaches the router over it, as a real board's first program does.
+    let locator = crate::cmd::build::descriptor_board_net(descriptor, &board, Some(&root))?
+        .host_serial
+        .map(|s| format!("serial/{s}"));
+    let ws_dir = package_dir(&args, &name);
+    let node_pkg = new_workspace::node_package_name(&name);
+    let rmw = args.rmw.clone().unwrap_or_else(|| "zenoh".to_string());
+    let bringup = new_workspace::scaffold_project(&new_workspace::WorkspaceProject {
+        dir: ws_dir.clone(),
+        node: new_workspace::NodePackage {
+            name: &node_pkg,
             template,
-            node_name,
+            node_name: node_name.as_deref(),
             meta,
+            lang,
             force: args.force,
-            board,
         },
-    )?;
-    write_package_files(
-        &dir,
-        &name,
-        template,
-        lang,
-        &platform,
-        image_board.as_deref(),
-    )
-}
-
-/// The README a scaffolded package carries (phase-525 W2): the first
-/// chapter's text, filled with the image the package's `system.toml` declares.
-/// Plus a `.gitignore` naming what sync and build write into the package, so
-/// a reader's first commit holds only what they wrote.
-fn write_package_files(
-    dir: &std::path::Path,
-    name: &str,
-    role: cargo_nano_ros::scaffold::Role,
-    lang: nros_lang::Language,
-    platform: &str,
-    board: Option<&str>,
-) -> Result<()> {
-    use cargo_nano_ros::single_package::{ReadmeFacts, render_readme, sole_image};
-    let system = std::fs::read_to_string(dir.join("system.toml"))?;
-    let (image_id, written_board) = sole_image(&system).ok_or_else(|| {
-        eyre::eyre!(
-            "nros new: {} does not declare exactly one [image.<id>]",
-            dir.join("system.toml").display()
-        )
+        board: &board,
+        image_id: &platform,
+        rmw: &rmw,
+        ros_edition: &args.ros_edition,
+        locator,
     })?;
-    let readme = render_readme(&ReadmeFacts {
-        name,
-        role,
-        image_id: &image_id,
-        board: board.unwrap_or(&written_board),
-        lang,
-        platform,
-    });
-    std::fs::write(dir.join("README.md"), readme)?;
-    std::fs::write(
-        dir.join(".gitignore"),
-        "/build/\n/generated/\n/target/\n/.cargo/\n/Cargo.lock\n",
-    )?;
+    let bringup_name = bringup
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    println!("✓ Created the workspace {}", ws_dir.display());
+    println!(
+        "  src/{node_pkg}/   the node: a {} {} (library)",
+        lang.as_str(),
+        template.name()
+    );
+    println!("  src/{bringup_name}/   what it runs on: `{board}`, image `{platform}`, {rmw}");
+    println!();
+    println!("Next steps:");
+    println!("  cd {}", ws_dir.display());
+    println!("  nros run {node_pkg}");
     Ok(())
 }
 
-/// The board catalog of the nano-ros tree `nros` builds against.
-fn load_catalog() -> Result<crate::orchestration::board_descriptor::BoardCatalog> {
+/// The nano-ros tree `nros` builds against, and its board catalog.
+fn load_root_catalog() -> Result<(
+    PathBuf,
+    crate::orchestration::board_descriptor::BoardCatalog,
+)> {
     let cwd = std::env::current_dir()?;
     let root = crate::orchestration::nano_ros_root::resolve(None, &cwd)
         .ok_or_else(|| eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
-    crate::orchestration::board_descriptor::BoardCatalog::load(&root)
-        .map_err(|e| eyre::eyre!("board catalog under {}: {e}", root.display()))
+    let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+        .map_err(|e| eyre::eyre!("board catalog under {}: {e}", root.display()))?;
+    Ok((root, catalog))
 }
 
 /// `--board <word>` alone (phase-525 W2): the `--platform` word the board's
@@ -1075,51 +1091,6 @@ pub(crate) fn package_dir(args: &Args, name: &str) -> PathBuf {
     args.destination_directory
         .as_ref()
         .map_or_else(|| PathBuf::from(name), |d| d.join(name))
-}
-
-/// The platforms whose Rust image is a node library plus an entry crate, so
-/// `nros new --lang rust` writes no single package for them (phase-517 W13).
-const RUST_WORKSPACE_PLATFORMS: [&str; 4] = ["freertos", "nuttx", "threadx", "zephyr"];
-
-/// phase-517 W13 — what `nros new <name> --platform <p> --lang rust` says for
-/// a platform whose Rust image is a workspace: the commands that start one,
-/// with the platform's boards filled in from the catalog. The refusal used to
-/// name an in-tree example directory, which a user with no checkout does not
-/// have.
-pub(crate) fn rust_workspace_commands(
-    catalog: &crate::orchestration::board_descriptor::BoardCatalog,
-    name: &str,
-    platform: &str,
-) -> Vec<String> {
-    let mut v = vec![
-        format!("nros new {name} --workspace --lang rust"),
-        format!("cd {name}"),
-    ];
-    if platform == "zephyr" {
-        v.push("nros new entry zephyr_entry --platform zephyr".to_string());
-        return v;
-    }
-    let boards: Vec<String> = match catalog.default_board_for_platform(platform) {
-        Ok(d) => vec![d.canonical_name().to_string()],
-        // Several boards (threadx): one line each, the reader picks.
-        Err(_) => catalog
-            .boards_for_platform(platform)
-            .into_iter()
-            .map(|d| d.canonical_name().to_string())
-            .collect(),
-    };
-    // One board: the image is named after the platform. Several: one image
-    // per board, named after it, so the lines can all be run.
-    let several = boards.len() > 1;
-    for b in boards {
-        let id = if several {
-            b.replace('-', "_")
-        } else {
-            platform.to_string()
-        };
-        v.push(format!("nros new --image {id} --board {b}"));
-    }
-    v
 }
 
 /// The `board` a C/C++ project scaffold for `--platform <platform>` writes
@@ -1192,17 +1163,25 @@ mod single_package_tests {
         assert!(board_platform(&cat, "no-such-board").is_err());
     }
 
-    /// phase-525 W2 (RFC-0116 D6) — `nros new <name> --board <b> --template
-    /// talker` writes one package: one `[image.*]` naming the board, the node,
-    /// a README, and no `.cargo/`, workspace marker, bringup or launch file.
+    /// phase-531 W4 (RFC-0121 D4) — `nros new <ws> --board <b> --template
+    /// talker` writes a workspace: a library node package named for the
+    /// workspace and its bringup, whose image names the board (and, for a
+    /// board that states `[board.net] host_serial`, its serial locator).
     #[test]
-    fn the_front_door_writes_one_package() {
-        for board in ["linux", "mps2-an385-baremetal"] {
+    fn the_front_door_writes_a_workspace() {
+        for (board, id, locator) in [
+            ("linux", "linux", None),
+            (
+                "mps2-an385-baremetal",
+                "baremetal",
+                Some("serial/UART_0#baudrate=115200"),
+            ),
+        ] {
             let t = tempfile::tempdir().unwrap();
             let dest = t.path().to_str().unwrap();
             let cli = Cli::try_parse_from([
                 "nros-new",
-                "sensor_node",
+                "sensor_ws",
                 "--board",
                 board,
                 "--template",
@@ -1212,18 +1191,23 @@ mod single_package_tests {
             ])
             .unwrap();
             run(cli.args).unwrap_or_else(|e| panic!("{board}: {e}"));
-            let pkg = t.path().join("sensor_node");
-            let system = std::fs::read_to_string(pkg.join("system.toml")).unwrap();
-            let (_, written) = cargo_nano_ros::single_package::sole_image(&system)
-                .unwrap_or_else(|| panic!("{board}: not one [image.*]:\n{system}"));
-            assert_eq!(written, board, "{system}");
-            for absent in [".cargo", "nros.toml", ".colcon_workspace", "launch"] {
-                assert!(!pkg.join(absent).exists(), "{board}: wrote {absent}");
+            let ws = t.path().join("sensor_ws");
+            assert!(ws.join("src/sensor_node/src/lib.rs").is_file(), "{board}");
+            let bringup = ws.join("src/sensor_node_bringup");
+            assert!(!bringup.join("launch").exists(), "{board}: wrote launch/");
+            let system: toml::Table =
+                toml::from_str(&std::fs::read_to_string(bringup.join("system.toml")).unwrap())
+                    .unwrap();
+            let images = system["image"].as_table().unwrap();
+            assert_eq!(images.len(), 1, "{board}: {images:?}");
+            assert_eq!(images[id]["board"].as_str(), Some(board));
+            assert_eq!(images[id].get("locator").and_then(|l| l.as_str()), locator);
+            for absent in ["Cargo.toml", "CMakeLists.txt", "system.toml"] {
+                assert!(
+                    !ws.join(absent).exists(),
+                    "{board}: wrote {absent} at the root"
+                );
             }
-            assert!(pkg.join("src/lib.rs").is_file(), "{board}: no node");
-            let readme = std::fs::read_to_string(pkg.join("README.md")).unwrap();
-            assert!(readme.contains(&format!("board = \"{board}\"")), "{readme}");
-            assert!(!readme.contains('@'), "{readme}");
         }
     }
 
@@ -1465,47 +1449,5 @@ mod project_board_tests {
             .unwrap_err()
             .to_string();
         assert!(e.contains("ambiguous"), "{e}");
-    }
-
-    /// phase-517 W13 — `nros new --platform <p> --lang rust` on a workspace
-    /// platform prints the commands that start one, with the catalog's boards
-    /// filled in: one board where the platform has one, each where it has
-    /// several, and the entry scaffold on Zephyr. Every printed board must
-    /// resolve back to a descriptor of that platform.
-    #[test]
-    fn a_rust_workspace_platform_prints_the_commands_with_catalog_boards() {
-        let cat = BoardCatalog::load(&repo_root()).expect("catalog");
-        for p in RUST_WORKSPACE_PLATFORMS {
-            let lines = rust_workspace_commands(&cat, "my_ws", p);
-            assert_eq!(lines[0], "nros new my_ws --workspace --lang rust", "{p}");
-            assert_eq!(lines[1], "cd my_ws", "{p}");
-            if p == "zephyr" {
-                assert_eq!(
-                    lines[2..],
-                    ["nros new entry zephyr_entry --platform zephyr"]
-                );
-                continue;
-            }
-            let images: Vec<&String> = lines[2..].iter().collect();
-            assert!(!images.is_empty(), "{p}: no --image line");
-            for l in images {
-                let board = l
-                    .strip_prefix("nros new --image ")
-                    .and_then(|rest| rest.split_once(" --board "))
-                    .map(|(_, b)| b)
-                    .unwrap_or_else(|| panic!("{p}: not an --image line: {l}"));
-                assert_eq!(
-                    project_board(&cat, p, Some(board)).unwrap(),
-                    board,
-                    "{p}: printed board {board} does not resolve to itself"
-                );
-            }
-        }
-        let threadx = rust_workspace_commands(&cat, "w", "threadx");
-        assert!(threadx.len() >= 4, "threadx has two boards: {threadx:?}");
-        assert_eq!(
-            rust_workspace_commands(&cat, "w", "freertos")[2],
-            "nros new --image freertos --board mps2-an385-freertos"
-        );
     }
 }

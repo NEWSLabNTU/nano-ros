@@ -3,9 +3,11 @@
 # the source-release dependency convention (RFC-0040), not crates.io.
 #
 # Exercises exactly the documented out-of-tree flow:
-#   1. `nros new <name> --platform <p> --lang rust`  (scaffold; emits `version = "*"`)
-#   2. NROS_REPO_DIR=<repo> + `nros configure`          (write the [patch.crates-io] block)
-#   3. `cargo tree`                                    (resolution proves the patch redirects)
+#   1. `nros new <ws> --platform <p> --lang rust`  (scaffold a workspace, phase-531 W4;
+#                                                   the node emits `version = "*"`)
+#   2. NROS_REPO_DIR=<repo> + `nros configure`      (write the [patch.crates-io] block,
+#                                                   the generated entry and its selection)
+#   3. `cargo tree` on the generated entry          (resolution proves the patch redirects)
 #
 # Resolution-only (no compile / no cross build-std) — like dep-chain.yml; it
 # catches the regression class this convention fixes (a scaffolded `version =
@@ -22,40 +24,18 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 
-# An embedded cell.
-#
-# This used to say `--platform native` "scaffolds nros commented out (a stub),
-# so it would not exercise the patch block". That premise is STALE (issue 0916)
-# — the Hosted template emits an ACTIVE `nros` dep, and the commented-out form
-# was retired. Measured:
-#
-#   $ nros new probe --platform native --lang rust
-#   nros = { version = "*", default-features = false, features = [...] }
-#   nros-board-linux = { version = "*", default-features = false }
-#
-# So `native` would satisfy this check today. The choice below is NOT that
-# reason; it is the one immediately after, which still holds.
-#
-# `baremetal`, not `freertos`: since `fix(#333)` (2026-07-28) `nros new` REFUSES
-# freertos for Rust —
-#
-#   nros new: a Rust node on --platform freertos is built as a workspace (the
-#   refusal prints the `nros new --workspace` and `--image` commands)
-#
-# which is deliberate (that shape has no single-package template), but this job
-# was not moved with it and has failed on every run since. Any platform the CLI
-# still scaffolds and that emits ACTIVE deps satisfies this check; baremetal,
-# esp32 and posix all do. Verified with `nros new`: each yields an uncommented
-# `nros` dep and a board dep.
-#
-# If freertos scaffolding lands, moving back is fine — the check is about the
-# dependency convention, not about which platform carries it.
+# An embedded cell: a cross board's generated entry is what resolves here,
+# which a host cell would not exercise (no board crate, no build-std).
 plat="baremetal"
-name="uj_demo"
+ws_name="uj_ws"
+# phase-531 W4 (RFC-0121 D4) — `nros new <ws>` writes a workspace whose node
+# package is `<ws minus _ws>_node`, deployed by `<node>_bringup`.
+name="uj_node"
 
-echo "::group::nros new ${name} --platform ${plat}"
-( cd "$scratch" && "$NROS" new "$name" --platform "$plat" --lang rust )
-proj="$scratch/$name"
+echo "::group::nros new ${ws_name} --platform ${plat}"
+( cd "$scratch" && "$NROS" new "$ws_name" --platform "$plat" --lang rust )
+ws="$scratch/$ws_name"
+proj="$ws/src/$name"
 echo "::endgroup::"
 
 # Guard: no stale crates.io `version = "0.1"` nros/board dep leaked into the scaffold.
@@ -63,9 +43,14 @@ if grep -nE '(nros|nros-board[a-z0-9-]*)\s*=\s*\{[^}]*version\s*=\s*"0\.1"' "$pr
     echo "FAIL: scaffold emitted a crates.io version = \"0.1\" dep (RFC-0040 violation)" >&2
     exit 1
 fi
+# A node package names no board crate and no selection crate (RFC-0121 D1).
+if grep -nE '^(nros-board[a-z0-9-]*|[a-z0-9_]*_nros_selection)\s*=' "$proj/Cargo.toml"; then
+    echo "FAIL: the scaffolded node package names a board or selection crate (RFC-0121 D1)" >&2
+    exit 1
+fi
 
 echo "::group::nros configure (NROS_REPO_DIR=${REPO})"
-( cd "$proj" && NROS_REPO_DIR="$REPO" "$NROS" configure )
+( cd "$ws" && NROS_REPO_DIR="$REPO" "$NROS" configure )
 echo "::endgroup::"
 
 # Issue 1265 -- the scaffolded node must be PROBED, not degraded. Before the
@@ -82,35 +67,35 @@ fi
 echo "  [ok] nros configure probed the scaffolded node (metadata/${name}.json)"
 
 # The managed patch block must redirect `nros` to a path.
-if ! grep -q "nros = {" "$proj/Cargo.toml"; then
-    echo "FAIL: 'nros = {' not patched into the [patch.crates-io] block after sync" >&2
-    sed -n '/BEGIN nros-managed/,/END nros-managed/p' "$proj/Cargo.toml" >&2
+if ! grep -q "^nros = {" "$ws/.cargo/config.toml" 2>/dev/null; then
+    echo "FAIL: 'nros = {' not patched into the workspace's [patch.crates-io] block after sync" >&2
+    cat "$ws/.cargo/config.toml" >&2 2>/dev/null || echo "      no .cargo/config.toml at the workspace root" >&2
     exit 1
 fi
 
-# Issue 2079: the scaffold names no board crate. It reaches the board,
-# backend and edition through the `<pkg>_nros_selection` path dep, which
-# `nros configure` generates, so check that dep and the package sync wrote.
-# `cargo tree` below proves the whole graph resolves.
-sel="${name}_nros_selection"
-sel_rc=0
-nros_grep_q "^${sel} = " "$proj/Cargo.toml" || sel_rc=$?
-if [ "$sel_rc" -ne 0 ] || [ ! -s "$proj/build/nros/selection/Cargo.toml" ]; then
-    echo "FAIL: '${sel}' is not a dependency, or sync wrote no build/nros/selection/Cargo.toml" >&2
-    grep -n "nros_selection" "$proj/Cargo.toml" >&2 || echo "      no selection dep in Cargo.toml" >&2
-    ls -la "$proj/build/nros/selection" >&2 2>/dev/null || echo "      no build/nros/selection/ dir" >&2
+# The generated entry reaches the board, backend and edition through its
+# `<entry>_nros_selection` crate, which `nros configure` generates.
+entry=""
+for c in "$ws"/build/*/*_entry/Cargo.toml; do
+    [ -f "$c" ] && { entry="$c"; break; }
+done
+edir="$(dirname "${entry:-/nonexistent/x}")"
+sel="$ws/generated/nros-selection/$(basename "$edir")/Cargo.toml"
+if [ -z "$entry" ] || [ ! -s "$sel" ] || [ ! -s "$edir/nros-cargo.toml" ]; then
+    echo "FAIL: configure wrote no generated entry, selection crate or cargo settings:" >&2
+    echo "      entry=${entry:-<none>} selection=$sel" >&2
     exit 1
 fi
 
 echo "::group::cargo tree (resolution)"
-if ( cd "$proj" && cargo tree -e no-dev >/dev/null 2>&1 ); then
-    echo "  [ok] scaffolded project resolves via the source-release patch block"
+if ( cd "$ws" && cargo tree -e no-dev --manifest-path "$entry" --config "$edir/nros-cargo.toml" >/dev/null 2>&1 ); then
+    echo "  [ok] scaffolded workspace's entry resolves via the source-release patch block"
 else
-    echo "FAIL: cargo tree did not resolve the scaffolded project:" >&2
+    echo "FAIL: cargo tree did not resolve the scaffolded workspace's entry:" >&2
     # Keep stderr, do not pattern-match the merged stream -- see the note at
     # the same site in dep-chain-check.sh: a crate called `thiserror` matches
     # `grep -i error`, so the tree is printed and the cause is lost.
-    ( cd "$proj" && cargo tree -e no-dev 2>&1 1>/dev/null | head -10 | sed 's/^/      /' ) >&2
+    ( cd "$ws" && cargo tree -e no-dev --manifest-path "$entry" --config "$edir/nros-cargo.toml" 2>&1 1>/dev/null | head -10 | sed 's/^/      /' ) >&2
     exit 1
 fi
 echo "::endgroup::"
