@@ -31,6 +31,12 @@ pages, issue 1525) is skipped, with the same SUMMARY derivation
 `check-book-links.py` and `check-book-board-names.py` use; today the ESP32 row
 is `runs = "none"` anyway, which this check does not read.
 
+A model or host row the user book does not admit (RFC-0115 D4 as RFC-0124
+D8 states it: not Verified, and no emulator twin of a named board) keeps
+only its generated reference page, so it may name no run block; its steps
+live in nano-ros Internals (the Arm FVP, phase-537 W1). A row that does
+name one is still checked.
+
 The commands themselves are not executed here; that is phase-517 W10's
 per-chapter probe.
 
@@ -52,6 +58,9 @@ except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
     import tomli as tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import board_registry  # noqa: E402
+import book_charter  # noqa: E402
 REGISTRY = "packages/boards/board-support.toml"
 SUMMARY = "book/src/SUMMARY.md"
 
@@ -147,6 +156,9 @@ def run(registry: dict, pages: dict[str, str]) -> tuple[list[str], int]:
         real = row.get("real_hardware")
         if row.get("infra") or (row.get("runs") in (None, "none") and real is not True):
             continue  # a row that runs nowhere has no Run section to name
+        if (real is not True and "book_run" not in row and "book_flash" not in row
+                and not book_charter.admitted(row, board_registry.status_word(row, True))):
+            continue  # RFC-0124 D8: not admitted; its generated reference page only
         where = f"{REGISTRY}: {row.get('crate', '<no crate>')}@{row.get('matrix_platform') or '-'}"
         refs = [row.get(k) for k in ("book_run", "book_flash")]
         chapters = {r.split("#", 1)[0] for r in refs if isinstance(r, str)}
@@ -218,6 +230,15 @@ def selftest(verbose: bool = False) -> int:
          errs([{k: v for k, v in hw.items() if k != "real_hardware"}]), True),
         ("a model (runs emulator, real_hardware=false) needs a run block",
          errs([{"crate": "f", "runs": "emulator", "real_hardware": False}]), True),
+        ("a model the user book does not admit (manual, no twin) needs none",
+         errs([{"crate": "f", "runs": "emulator", "real_hardware": False,
+                "cadence": "manual", "last_run": "2026-09-06"}]), False),
+        ("a manual emulator twin of a named board still needs one",
+         errs([{"crate": "t", "runs": "emulator", "real_hardware": False, "cadence": "manual",
+                "last_run": "2026-09-06", "emulator": "renode", "hardware": "nucleo"}]), True),
+        ("an unadmitted row that names a run block is still checked",
+         errs([{"crate": "f", "runs": "emulator", "cadence": "manual", "last_run": "2026-09-06",
+                "book_run": "getting-started/z.md#run-on-qemu"}]), True),
         ("silicon nothing runs (real_hardware, runs none) needs its flash block",
          errs([{"crate": "s", "runs": "none", "real_hardware": True}]), True),
         ("an unlisted chapter fails",

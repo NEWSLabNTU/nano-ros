@@ -142,7 +142,7 @@ the platform-correct sleep happens transparently underneath.
 
 - [RMW API Design](../extending/rmw-design.md) — the architectural reasons
   the runtime / RMW boundary is shaped the way it is.
-- [RMW API: Differences from upstream `rmw.h`](../extending/rmw-vs-upstream.md)
+- [RMW API: Differences from upstream `rmw.h`](../internals/rmw/rmw-vs-upstream.html)
   Section 4 — the `drive_io` vs `rmw_wait` comparison this page
   expands on.
 - [no_std Support](static-memory-and-pools.md) — heap and threading constraints that

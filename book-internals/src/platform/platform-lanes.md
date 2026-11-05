@@ -145,7 +145,7 @@ just setup zephyr --force
 
 ## Arm FVP
 
-Lanes for [ARM FVP (`FVP_BaseR_AEMv8R`)](../../targets/arm-fvp.html).
+Lanes for [ARM FVP (`FVP_BaseR_AEMv8R`)](arm-fvp.md).
 
 Doctor: `nros doctor --board fvp-aemv8r-smp` runs the FVP resolution
 cross-check (it delegates part of its report to `just doctor`, so it

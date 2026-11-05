@@ -7,7 +7,7 @@ These symbols are provided by `zpico-sys`'s C alias translation unit
 (`c/zpico/platform_aliases.c`, built by the default-on `platform-aliases`
 feature), which forwards each `z_*` / `_z_*` call to the canonical
 `nros_platform_*` ABI. When porting to a new platform, you implement an
-`nros-platform-<name>` crate (see [Custom Platform](custom-platform.md))
+`nros-platform-<name>` crate (see [Custom Platform](../../../book/src/extending/custom-platform.md))
 that supplies the `nros_platform_*` symbols — you do **not** provide the
 `z_*` symbols directly.
 
@@ -281,17 +281,17 @@ pub unsafe fn clear_network_state();
 ## Step-by-step procedure
 
 1. **Create the platform crate** (`nros-platform-<name>`) -- see
-   [Custom Platform](custom-platform.md) for the full guide
+   [Custom Platform](../../../book/src/extending/custom-platform.md) for the full guide
 2. **Implement and verify the clock** — this is the #1 cause of porting
    failures. Print `clock_ms()` in a loop and verify monotonic advance
 3. **Implement remaining primitives** — memory, random, sleep, time,
    threading, sockets. Each module is independent
 4. **Wire into `nros-platform`** — add a feature and `ConcretePlatform` alias
-5. **Create the board crate** — see [Custom Board Package](custom-board.md)
+5. **Create the board crate** — see [Custom Board Package](../../../book/src/extending/custom-board.md)
 6. **Add the platform feature** to `nros` with mutual exclusivity checks
-7. **Write an example** — see [Creating Examples](../internals/testing/creating-examples.html)
+7. **Write an example** — see [Creating Examples](../testing/creating-examples.md)
 8. **Add test infrastructure** — for an in-tree platform, see
-   [Internals → Per-platform contributor lanes](../internals/platform/platform-lanes.html)
+   [Internals → Per-platform contributor lanes](../platform/platform-lanes.md)
 
 ## Platform capability summary
 
@@ -308,6 +308,6 @@ pub unsafe fn clear_network_state();
 
 ## Common pitfalls
 
-See [Platform Porting Pitfalls](porting-pitfalls.md) for
+See [Platform Porting Pitfalls](../../../book/src/extending/porting-pitfalls.md) for
 detailed failure modes including poll-driven clocks, DMA buffer placement,
 QEMU I/O starvation, recursive mutexes, stack sizing, and heap sizing.

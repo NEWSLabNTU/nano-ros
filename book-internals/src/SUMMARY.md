@@ -33,6 +33,9 @@
 - [RMW API vs upstream — every symbol](./rmw/rmw-api-comparison.md)
 - [RMW vs upstream: the decision ledger](./rmw/rmw-vs-upstream-ledger.md)
 - [The cyclonedds fork: what it carries, and why](./rmw/cyclonedds-fork-delta.md)
+- [RMW API: Differences from upstream `rmw.h`](./rmw/rmw-vs-upstream.md)
+- [Zenoh-pico Symbol Reference](./rmw/zenoh-pico-symbols.md)
+- [XRCE-DDS Symbol Reference](./rmw/xrce-dds-symbols.md)
 
 # Platform Internals
 
@@ -44,6 +47,7 @@
 - [`board.cmake` schema](./platform/board-cmake-schema.md)
 - [Zephyr patch upstreaming (Phase 205.B)](./platform/zephyr-upstreaming.md)
 - [Zephyr version support](./platform/zephyr-version-support.md)
+- [ARM FVP (`FVP_BaseR_AEMv8R`)](./platform/arm-fvp.md)
 
 # Real-Time Internals
 

@@ -11,7 +11,7 @@
 //! no such cap now.)
 //!
 //! See `book/src/guide/rmw/qos-status-events.md` for the user-facing
-//! patterns and `book/src/extending/rmw-vs-upstream.md` Section 8 for
+//! patterns and `book-internals/src/rmw/rmw-vs-upstream.md` Section 8 for
 //! the design rationale.
 //!
 //! ### Matched and incompatible-type (issue 1972)

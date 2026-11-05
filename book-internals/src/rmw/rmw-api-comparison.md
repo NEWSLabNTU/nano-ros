@@ -11,7 +11,7 @@ signature extract, the nano-ros ABI headers, and the authored reason map
 so a slot changing shape moves this page in the same commit or fails the gate.
 
 For the prose rationale behind the big divergences, see
-[RMW API: Differences from upstream `rmw.h`](../../extending/rmw-vs-upstream.html).
+[RMW API: Differences from upstream `rmw.h`](rmw-vs-upstream.md).
 
 ## How to read a row
 

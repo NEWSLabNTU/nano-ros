@@ -2,12 +2,18 @@
 
 <!-- type: how-to · level: 2 -->
 
+> **For maintainers.** The Arm FVP is maintainer-run: its board row is
+> `cadence = "manual"` and no probe track replays this page. So the nano-ros
+> Book does not teach it (RFC-0115 D4, RFC-0124 D8); its generated board page
+> stays in the Book's reference. What follows is how to run it, for whoever
+> maintains it or gives it a replaying track.
+
 Run nano-ros on Arm's `Base_RevC AEMv8-R` Fast Models — the
 Cortex-A SMP profile under Zephyr 3.7 (board id
 `fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`). The FVP is the
 canonical local proxy for the safety-island reference platforms
 that follow the same `hwv2` Zephyr shape; pair this chapter with
-the [Zephyr (west module)](../guide/platforms/zephyr.md) starter for
+the [Zephyr (west module)](../../../book/src/guide/platforms/zephyr.md) starter for
 the build half.
 
 > **Status.** The run half — invoking `FVP_BaseR_AEMv8R` and piping
@@ -23,7 +29,7 @@ the build half.
 > image by hand (the recipe is in the contributor lanes linked below), and no
 > installed probe track replays this chapter. `fvp-aemv8r-smp`'s status
 > and the date of its last boot are on
-> [its evidence page](../reference/boards/fvp.md); a probe track follows
+> [its evidence page](../../reference/boards/fvp.html); a probe track follows
 > an automated run, not the other way round. Read the output below as what a
 > maintainer last saw, not as a gate.
 
@@ -38,7 +44,7 @@ the build half.
   promoting to a hardware bench.
 
 The FVP is **not** a replacement for QEMU on Cortex-M (`mps2-an385`,
-`mps3-an547`); those targets are covered by [FreeRTOS (QEMU)](../guide/platforms/freertos.md)
+`mps3-an547`); those targets are covered by [FreeRTOS (QEMU)](../../../book/src/guide/platforms/freertos.md)
 and the Zephyr starter. The FVP is also **not** the same surface
 as Corellium's AVH cloud FVP — AVH packages firmware as `.coreimg`
 and provisions via a remote API; local FVP loads a raw ELF via
@@ -47,7 +53,7 @@ and provisions via a remote API; local FVP loads a raw ELF via
 ## Prereqs
 
 - A working Zephyr 3.7 workspace — run `nros setup zephyr` once if
-  you haven't (see the [Zephyr starter](../guide/platforms/zephyr.md)).
+  you haven't (see the [Zephyr starter](../../../book/src/guide/platforms/zephyr.md)).
 - The Arm `Base_RevC AEMv8R` Fast Models binary. **nano-ros fetches it:**
 
   ```sh
@@ -108,13 +114,13 @@ hard-fails — when it can't. A warning rather than an error because a
 contributor who is not working on the FVP should not be blocked by its absence;
 `nros setup --tool arm-fvp` is the fix when they are.
 
-> Changing this in the tree: see [Internals → per-platform lanes](../internals/platform/platform-lanes.html#arm-fvp).
+> Changing this in the tree: see [Internals → per-platform lanes](platform-lanes.md#arm-fvp).
 
 ## Build
 
 The FVP is a Zephyr board, `fvp-aemv8r-smp`, so an image names it in its
 bringup's `system.toml` and `nros build` hands it to `west` like any Zephyr
-image ([the Zephyr chapter](../guide/platforms/zephyr.md#nros-build-on-zephyr-it-hands-off-it-does-not-take-over)
+image ([the Zephyr chapter](../../../book/src/guide/platforms/zephyr.md#nros-build-on-zephyr-it-hands-off-it-does-not-take-over)
 has the workspace flow). The worked example is
 [`examples/workspaces/realtime-cpp`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/realtime-cpp/src/demo_bringup)'s
 `[image.fvp]`, a Cyclone DDS image:
@@ -188,9 +194,9 @@ interop contract (byte-compatible with `rmw_cyclonedds_cpp`).
 
 ## Cross-references
 
-- [Environment Variables — `ARM_FVP_DIR` / `ARMFVP_BIN_PATH`](../reference/environment-variables.md)
+- [Environment Variables — `ARM_FVP_DIR` / `ARMFVP_BIN_PATH`](../../reference/environment-variables.html)
   — the discovery contract.
-- [Zephyr (west module)](../guide/platforms/zephyr.md) — the parent
+- [Zephyr (west module)](../../../book/src/guide/platforms/zephyr.md) — the parent
   Zephyr starter; the FVP is a board-target slice of it.
 - [`examples/workspaces/realtime-cpp/src/demo_bringup/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/realtime-cpp/src/demo_bringup)
   — the workspace image (`[image.fvp]`) this chapter builds and boots. Its

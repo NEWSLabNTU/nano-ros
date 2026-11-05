@@ -228,7 +228,7 @@ See [Status events](../guide/rmw/qos-status-events.md) for the runtime-event
 side of liveliness, deadline, and message-lost.
 
 **Per-backend coverage** is documented in
-[RMW vs upstream § 7](../extending/rmw-vs-upstream.md#7-qos-full-dds-shaped-profile-per-backend-support-advertised).
+[RMW vs upstream § 7](../internals/rmw/rmw-vs-upstream.html#7-qos-full-dds-shaped-profile-per-backend-support-advertised).
 
 ### 8. No runtime backend swap, no runtime introspection
 

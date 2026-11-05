@@ -20,7 +20,7 @@
  * thread, same priority, same constraints as message callbacks. No
  * waitset, no take-event polling. See
  * `book/src/guide/rmw/qos-status-events.md` and
- * `book/src/extending/rmw-vs-upstream.md` Section 8 for the design.
+ * `book-internals/src/rmw/rmw-vs-upstream.md` Section 8 for the design.
  *
  * **Matched and incompatible-type events (issue 1972).** Iron/Jazzy's
  * RMW_EVENT_{PUBLICATION,SUBSCRIPTION}_MATCHED and

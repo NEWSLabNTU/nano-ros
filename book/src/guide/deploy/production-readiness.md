@@ -66,7 +66,7 @@ may differ.
       workspace pin.
 - [ ] **All required QoS policies supported** by your backend. The
       per-policy table is in
-      [RMW API: Differences from upstream rmw.h §7](../../extending/rmw-vs-upstream.md);
+      [RMW API: Differences from upstream rmw.h §7](../../internals/rmw/rmw-vs-upstream.html);
       the authoritative source is each backend's `supported_qos_policies()`.
 - [ ] **Discovery stability** over your network topology.
       Zenoh-pico in client mode needs the router reachable; loss of
