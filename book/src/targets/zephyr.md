@@ -1013,7 +1013,7 @@ in 30 seconds:
 The boards above are `native_sim` and QEMU machines, and the ARM FVP is a
 model ([its chapter](./arm-fvp.md)). The hardware boards nano-ros ships a
 package for are the Nucleo-F767ZI (`board = "nucleo-f767zi-zephyr"`), whose
-Renode twin boots the same image ([its chapter](./nucleo-f767zi.md)), and the
+Renode twin boots the same image ([its chapter](../starters/nucleo-f767zi.md)), and the
 Raspberry Pi Pico W (`board = "rpi-pico-w-zephyr"`), whose Wokwi twin does;
 the Pico W's own chapter is still to come. Any board Zephyr supports is reached with a
 board package that names it (`west_board`, see
