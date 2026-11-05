@@ -1,7 +1,9 @@
 # Summary
 
-[Introduction](./start/introduction.md)
-[Choose Your Entry](./start/choose-by-purpose.md)
+# Start
+
+- [Introduction](./start/introduction.md)
+- [Choose Your Entry](./start/choose-by-purpose.md)
 
 # Get Started
 

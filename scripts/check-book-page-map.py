@@ -71,8 +71,8 @@ def main() -> int:
     known: set[pathlib.Path] = set()
     for p in pages:
         known.add(p.target.resolve())
-        if p.old:
-            known.add((book_pages.BOOKS["user"] / p.old).resolve())
+        for f in p.formers:
+            known.add((book_pages.BOOKS["user"] / f).resolve())
 
     files = book_pages.book_files()
     for src in book_pages.BOOKS.values():
