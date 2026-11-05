@@ -32,6 +32,8 @@ The numeric representation is stable and used by the
 
 ## Quick start
 
+<!-- tabs -->
+
 ### Rust
 
 ```rust
@@ -111,6 +113,8 @@ int main() {
     return 0;
 }
 ```
+
+<!-- /tabs -->
 
 The first `NROS_LOG_*` emit auto-installs `PlatformSink` so C/C++
 call sites work without an explicit init step.
