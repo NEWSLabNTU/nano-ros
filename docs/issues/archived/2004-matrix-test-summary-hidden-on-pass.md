@@ -1,15 +1,16 @@
 ---
 id: 2004
 title: "A matrix test that PASSES over cells it did not run prints which ones, and nextest throws that away"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [ci, testing]
 related: [0571, 0445, 1758, phase-466]
 found: 2026-10-23
+resolved: 2026-11-05
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — it is what keeps W5 from being decided.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — it is what keeps W5 from being decided.
 
 ## Measured
 
@@ -110,3 +111,17 @@ naming that line.
 What would close it is unchanged: the next scheduled tier-2 run whose LOG
 (not only its junit) carries an `executed (` summary line for
 `realtime_tiers` and `sched_dims`.
+
+## Resolved (2026-11-05)
+
+The closing condition is met. run-matrix 41979554190 (schedule, 2026-11-05
+06:18Z, `main` at 1d287ef1), job `tier 2 (1-wise matrix)`, reached its cells
+(`tier 2 — VERDICT: cells ran and passed`, `Real failures: 0`), and its job
+LOG carries the summary lines, not only its junit:
+
+```
+realtime_tiers: 4 row(s) executed (4 passed, 0 failed), 18 out of lane, 0 skipped
+sched_dims: 1 cell(s) executed (1 passed, 0 failed), 16 out of lane, 0 skipped
+```
+
+along with `entry_matrix`, `multihost` and `roundtrip_xprocess`.
