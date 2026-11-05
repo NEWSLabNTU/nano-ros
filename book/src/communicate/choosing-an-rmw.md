@@ -1,5 +1,7 @@
 # Choosing an RMW
 
+<!-- type: tutorial · level: 1 -->
+
 Every nano-ros binary picks its RMW (ROS Middleware) backend at **build
 time**. There are three: **Cyclone DDS**, **Zenoh** (zenoh-pico), and
 **XRCE-DDS**. This page helps you pick one and explains how each backend

@@ -1,5 +1,7 @@
 # Choose Your Entry
 
+<!-- type: how-to · level: 1 -->
+
 This book is organized around what you are trying to do with nano-ros, not
 around who you are. Pick the purpose closest to yours. Each section lists the
 pages to read, in order.

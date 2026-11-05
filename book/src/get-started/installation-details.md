@@ -1,5 +1,7 @@
 # Installation Details
 
+<!-- type: how-to · level: 3 -->
+
 [Installation](installation.md) is the short path. This page is the rest:
 what each host package is for, other ways to install, provisioning in depth,
 ROS 2 and the RMW daemons, pinning a project to a release, and using nano-ros

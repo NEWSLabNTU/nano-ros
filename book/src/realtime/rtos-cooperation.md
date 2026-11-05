@@ -1,5 +1,7 @@
 # RTOS Cooperation
 
+<!-- type: explanation · level: 3 -->
+
 nano-ros runs on platforms that span pure cooperative bare-metal
 through multi-task preemptive RTOS. The executor's spin loop has to
 cooperate with each of these without imposing a single execution model

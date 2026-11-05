@@ -1,5 +1,7 @@
 # Troubleshooting — First 10 Minutes
 
+<!-- type: reference · level: 1 -->
+
 Every first build of a project needs ROS 2 sourced, because the messages are
 generated from it ([A10](#a10-ament_prefix_path-is-unset)). The
 [First Project](first-project.md) runs a talker in QEMU over Zenoh, so it

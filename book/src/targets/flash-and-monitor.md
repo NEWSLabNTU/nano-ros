@@ -1,5 +1,7 @@
 # Flashing and Monitoring a Board
 
+<!-- type: how-to · level: 2 -->
+
 `nros flash` programs a real board with a built image, and `nros monitor`
 attaches to its console. Both read how to do it from the board's descriptor.
 

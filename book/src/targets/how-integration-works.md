@@ -1,5 +1,7 @@
 # How integration works
 
+<!-- type: explanation · level: 3 -->
+
 You already have an RTOS project that builds and runs — an STM32Cube or
 NXP MCUXpresso tree, a Pico SDK app, an ESP-IDF project, a vendored
 Zephyr or NuttX workspace. This section is about adding nano-ros to

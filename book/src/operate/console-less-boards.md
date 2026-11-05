@@ -1,5 +1,7 @@
 # Observing a Board With No Console
 
+<!-- type: how-to · level: 2 -->
+
 Some boards have no console a human can read. On the NXP MR-CANHUBK344 the
 console UART is not wired, and the one UART that is carries the zenoh serial
 link. A log line written there either goes nowhere or corrupts the transport's

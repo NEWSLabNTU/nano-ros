@@ -1,5 +1,7 @@
 # Growing your workspace
 
+<!-- type: tutorial · level: 2 -->
+
 [First Project](../get-started/first-project.md) left you with a workspace of
 two packages: a node and the bringup that says what it runs on. A project
 grows from there by one path, in four steps, and you take only the ones you

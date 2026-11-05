@@ -1,5 +1,7 @@
 # Platform Differences
 
+<!-- type: reference · level: 3 -->
+
 
 > This page covers **OS-port** differences (clock, allocator,
 > threading, sockets). For per-RMW *feature* coverage — services,

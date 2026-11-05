@@ -1,5 +1,7 @@
 # TX Throughput & Latency Tuning
 
+<!-- type: how-to · level: 3 -->
+
 *(zenoh-pico RMW — Zephyr, FreeRTOS, NuttX, ThreadX, POSIX)*
 
 Every nano-ros language front-end (Rust, C, C++) publishes through the same

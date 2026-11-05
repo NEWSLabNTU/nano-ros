@@ -1,5 +1,7 @@
 # std and alloc Requirements
 
+<!-- type: explanation · level: 3 -->
+
 This document maps which parts of the nano-ros API require the `std` or `alloc`
 Cargo features. All core crates are `#![no_std]` by default and gate
 std/alloc-dependent code behind feature flags.

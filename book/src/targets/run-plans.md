@@ -1,5 +1,7 @@
 # Run Plans
 
+<!-- type: how-to · level: 2 -->
+
 Before it runs anything, `nros run` resolves a **run plan**: which launcher
 or flasher, which console and which link, and where each fact came from. The
 facts come from five levels, highest first: the command line, the image, your

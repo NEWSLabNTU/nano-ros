@@ -1,5 +1,7 @@
 # The `Board` Trait Family
 
+<!-- type: reference · level: 4 -->
+
 The `Board` trait family is the **porting surface for a new MCU or host target**. It lives in `packages/platform/nros-platform/src/board/` and pins the contract every board crate (`nros-board-<board>` or a user-authored crate in a downstream Entry pkg) implements. Earlier prototypes used `nros-board-common::board_init::*`; that legacy trait family no longer exists.
 
 > **Board crates implement `nros-platform::board`.**

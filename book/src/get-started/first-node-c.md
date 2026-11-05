@@ -1,5 +1,7 @@
 # First Node — C (Linux)
 
+<!-- type: tutorial · level: 1 -->
+
 Build, run, and verify a single nano-ros publisher node on Linux from
 C. The node is a C library built with CMake; the program around it is
 generated. Uses the Zenoh backend.

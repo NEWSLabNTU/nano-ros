@@ -1,5 +1,7 @@
 # Nucleo-F767ZI (Zephyr, Renode twin)
 
+<!-- type: how-to · level: 1 -->
+
 > **Support level:** [`nucleo-f767zi-zephyr`](../reference/boards/nucleo-f767zi-zephyr.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
 
 One talker on an ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7) running Zephyr

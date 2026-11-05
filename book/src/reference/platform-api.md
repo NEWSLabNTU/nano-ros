@@ -1,5 +1,7 @@
 # Platform API
 
+<!-- type: reference · level: 4 -->
+
 The platform API is the porting boundary between nano-ros and a
 concrete OS / RTOS / bare-metal target. Each platform provides a
 clock, optionally a heap, optionally threading, optionally

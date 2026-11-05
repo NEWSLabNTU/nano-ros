@@ -1,5 +1,7 @@
 # Production Readiness Checklist
 
+<!-- type: how-to · level: 3 -->
+
 A copy-out checklist for teams piloting nano-ros toward production
 deployment. Each box is a concrete validation step, not a marketing
 claim. The book documents the framework's intent + plumbing; this

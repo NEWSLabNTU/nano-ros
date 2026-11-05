@@ -1,5 +1,7 @@
 # Setup Compared to Standard ROS 2
 
+<!-- type: how-to · level: 3 -->
+
 This page is for ROS 2 users who already know the normal desktop flow:
 install a ROS distro, create a workspace, run `rosdep`, build with
 `colcon`, and select an RMW at runtime with `RMW_IMPLEMENTATION`.

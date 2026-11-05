@@ -1,5 +1,7 @@
 # Your own message package
 
+<!-- type: tutorial · level: 2 -->
+
 You write a ROS 2 msg package **once**. The same `src/my_msgs/` directory
 builds under both:
 

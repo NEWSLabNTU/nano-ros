@@ -1,5 +1,7 @@
 # Dispatch Strategy
 
+<!-- type: explanation · level: 3 -->
+
 > Design rationale. This chapter explains *why*
 > `DispatchStrategy` is shaped the way it is — the trichotomy, the
 > per-Node granularity, the tag-based callback API, the

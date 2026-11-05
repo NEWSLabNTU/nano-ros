@@ -1,5 +1,7 @@
 # Running an Image: `nros run`
 
+<!-- type: how-to · level: 2 -->
+
 `nros run` builds the image if it is stale, starts what its link needs, and
 streams the console, for host images and emulators. `nros run --expect
 '<line>'` exits successfully when that line appears, which makes it a

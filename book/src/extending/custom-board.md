@@ -1,5 +1,7 @@
 # Custom Board Package
 
+<!-- type: how-to · level: 4 -->
+
 A board crate is the top-level, batteries-included package that application code depends on. It provides three things:
 
 1. **`Config` struct** -- network settings (IP, MAC, gateway), transport selection (Ethernet, serial, or WiFi via Cargo features), and a zenoh locator string.

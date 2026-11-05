@@ -1,5 +1,7 @@
 # RMW API
 
+<!-- type: reference · level: 4 -->
+
 The RMW (ROS middleware) vtable is the porting boundary between
 nano-ros and a concrete pub/sub transport (zenoh-pico, XRCE-DDS,
 Cyclone DDS, uORB, …). RMW is **internal** — user

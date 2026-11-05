@@ -1,5 +1,7 @@
 # Runner packages
 
+<!-- type: how-to · level: 4 -->
+
 A runner package teaches `nros run`, `nros flash` and `nros monitor` to drive
 a launcher, flasher or console that nano-ros does not ship a runner for. It is
 an ordinary package in your workspace, with a `package.xml` and a small

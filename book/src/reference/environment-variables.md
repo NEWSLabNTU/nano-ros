@@ -1,5 +1,7 @@
 # Environment Variables Reference
 
+<!-- type: reference · level: 3 -->
+
 Set a runtime variable in the shell that starts the program. Set a
 build-time knob in the shell before `nros build`, or per image in
 `system.toml` (an `[image.<id>] env` row, or the knob-registry table where

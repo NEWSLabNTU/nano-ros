@@ -1,5 +1,7 @@
 # A Zephyr App You Build with West
 
+<!-- type: how-to · level: 2 -->
+
 > **Support level:** [`native_sim`](../reference/boards/zephyr-native-sim.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
 
 In this chapter you add a ROS 2 talker to a Zephyr application that you

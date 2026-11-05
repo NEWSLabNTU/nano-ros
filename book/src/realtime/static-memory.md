@@ -1,5 +1,7 @@
 # Measuring Static Memory
 
+<!-- type: how-to · level: 3 -->
+
 The [Static Pool Inventory](../reference/static-pool-inventory.md) tells you
 which knobs exist and what each one costs: a byte figure at its default where
 the pool is a plain product of knobs, and otherwise *where* its bytes go — a

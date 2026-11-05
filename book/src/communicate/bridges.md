@@ -1,5 +1,7 @@
 # Cross-backend bridges
 
+<!-- type: how-to · level: 3 -->
+
 Most nano-ros applications pick one RMW backend at compile
 time and never look back. A cross-backend bridge is the one
 case where a single binary needs **two** backends in parallel

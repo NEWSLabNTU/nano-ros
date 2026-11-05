@@ -1,5 +1,7 @@
 # Build Profiles
 
+<!-- type: how-to · level: 3 -->
+
 nano-ros builds both C/C++ and Rust code on your behalf. You choose the
 optimization level **once**, and nano-ros propagates it to every crate and
 library it builds for you.
