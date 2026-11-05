@@ -60,7 +60,7 @@ Choose the **XRCE-DDS** backend when:
   their number follows the entities you declare.)
 - You need a **serial (UART)** transport — the only backend that works
   on an MCU with no networking hardware. See
-  [Serial Transport](../guide/rmw/use-a-serial-link.md).
+  [Use a serial link](../guide/rmw/use-a-serial-link.md).
 - You are joining an existing micro-ROS / DDS deployment: the agent
   bridges to any DDS-based RMW.
 

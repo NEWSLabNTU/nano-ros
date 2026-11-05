@@ -29,7 +29,7 @@
   - [Use Cyclone DDS](./guide/rmw/use-cyclone-dds.md)
   - [Use XRCE-DDS](./guide/rmw/use-xrce-dds.md)
   - [Switch the RMW per image](./guide/rmw/switch-the-rmw-per-image.md)
-  - [Serial Transport](./guide/rmw/use-a-serial-link.md)
+  - [Use a serial link](./guide/rmw/use-a-serial-link.md)
   - [Cross-backend Bridges](./guide/rmw/bridge-between-backends.md)
   - [TX Throughput & Latency Tuning](./guide/rmw/tune-throughput-and-latency.md)
   - [QoS, Status Events, and Discovery](./guide/rmw/qos-status-events.md)
