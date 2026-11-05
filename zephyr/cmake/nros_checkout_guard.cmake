@@ -170,8 +170,13 @@ function(nros_assert_sdk_not_foreign module_root sdk_dir)
     if(NOT _module_checkout OR _sdk_checkout STREQUAL _module_checkout)
         return() # a vendored module, or row 2
     endif()
-    # Ruling R53: a command that re-runs cmake on this dir.
-    nros_reconfigure_remedy(_cfg _again)
+    # Ruling R55: PRISTINE -- the configure that reached this CACHED the foreign
+    # ZEPHYR_SDK_INSTALL_DIR (FindZephyr-sdk) and its toolchain; the cache
+    # outranks the environment, so a re-configure would meet the same SDK.
+    nros_reconfigure_remedy(_cfg _again KIND PRISTINE ALTERNATIVE _alt)
+    if(NOT "${_alt}" STREQUAL "")
+        set(_alt "    (${_alt}, after removing it)\n")
+    endif()
     message(FATAL_ERROR
         "nano-ros: the Zephyr SDK belongs to ANOTHER nano-ros checkout (phase-478 I2).\n"
         "  SDK in use:    ${_sdk_real}\n"
@@ -186,9 +191,10 @@ function(nros_assert_sdk_not_foreign module_root sdk_dir)
         "    just zephyr setup\n"
         "or point the build at the store copy:\n"
         "    export ZEPHYR_SDK_INSTALL_DIR=\"$(bash scripts/lib/zephyr-sdk.sh resolve)\"\n"
-        "then configure this build again (a bare `west build -d` would skip cmake "
-        "here):\n"
+        "then configure this build from scratch, since this configure cached the "
+        "foreign SDK and its toolchain, and the cache outranks the environment:\n"
         "    ${_again}\n"
+        "${_alt}"
         "\n"
         "-DNROS_ALLOW_FOREIGN_SDK=ON downgrades this to a warning. Say why.")
 endfunction()

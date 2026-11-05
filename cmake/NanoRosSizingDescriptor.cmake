@@ -1089,13 +1089,13 @@ function(nros_sizing_descriptor_read _descriptor)
         # Ruling R53: a command that re-runs cmake on this dir.
         nros_reconfigure_remedy(_cfg _again)
         if("${_cfg}" STREQUAL "")
-            set(_cfg "nros configure")
+            set(_cfg "`nros configure`")
         endif()
         message(FATAL_ERROR
             "nano-ros: the sizing descriptor ${_descriptor} exists and could not be read "
             "-- ${_why}\n"
-            "It is a generated artifact: re-run `${_cfg}` rather than editing it, then "
-            "`${_again}`.")
+            "It is a generated artifact: re-run ${_cfg} rather than editing it, then "
+            "${_again}.")
     endif()
 
     # The verb writes write-if-changed, so an unchanged descriptor leaves this

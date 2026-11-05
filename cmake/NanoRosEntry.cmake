@@ -548,9 +548,12 @@ function(nano_ros_entry)
                         "entity facts, no census check and no model-sized pools.")
                 else()
                     # Ruling R53: a command that re-runs cmake on this dir.
-                    nros_reconfigure_remedy(_cfg _again)
+                    nros_reconfigure_remedy(_cfg _again ALTERNATIVE _alt)
                     if("${_cfg}" STREQUAL "")
-                        set(_cfg "nros configure")
+                        set(_cfg "`nros configure`")
+                    endif()
+                    if(NOT "${_alt}" STREQUAL "")
+                        set(_alt "  ${_alt}\n")
                     endif()
                     message(FATAL_ERROR
                         "nano_ros_entry(${_NRA_NAME}): the SystemModel for bringup "
@@ -561,6 +564,7 @@ function(nano_ros_entry)
                         "this build again:\n"
                         "  ${_cfg}\n"
                         "  ${_again}\n"
+                        "${_alt}"
                         "Configuring without it used to derive no tiers and size no "
                         "pools, silently (issue 1575). To configure anyway, knowing "
                         "that, pass -DNROS_ALLOW_UNSYNCED_MODEL=ON.")

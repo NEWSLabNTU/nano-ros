@@ -887,7 +887,35 @@ configure), so those entries are dropped before the comparison.
   `nano_ros_entry()`, the unreadable sizing descriptor, and the foreign-SDK
   checkout guard.
 
-Gates for this wave: `cmake-resolved-seed` (63 checks, incl. a real
+**Ruled in review round 3.**
+
+- **R54: the repair configures the dir that failed.** `nros_reconfigure_remedy`
+  always names `west build -d <dir> --cmake` (Zephyr) or `cmake <dir>` for
+  `CMAKE_BINARY_DIR`, preceded by `nros configure ...` where the CLI drives the
+  road. `nros build --workspace <p> <i>` has no build-dir flag and configures
+  its own dir, so it appears only as the alternative ("or rebuild with ...,
+  which uses its own build dir"); on a hooked plain `west build -d <dir>` road
+  it would have left `<dir>` broken.
+- **R55: a cached cause needs a PRISTINE configure.** The helper takes
+  `KIND RECONFIGURE|PRISTINE`. The foreign-SDK guard is PRISTINE: the failing
+  configure cached `ZEPHYR_SDK_INSTALL_DIR` (FindZephyr-sdk) and its toolchain,
+  and `zephyr_get` reads the cache before the environment, so `--cmake` would
+  meet the same SDK. PRISTINE prints `west build -p always -d <dir> -b
+  <board> <source>` plus "the cmake options it was first configured with
+  after `--`" (Zephyr; the board is `CACHED_BOARD`, the user's spelling) or
+  "remove `<dir>` and configure it from scratch" (plain cmake), after the
+  store / `just zephyr setup` advice. Measured (`tmp/w7-westprobe/pristine.sh`,
+  Zephyr 4.4, mps2/an385 hello_world with the module, foreign SDK hard-linked
+  into a fake checkout): the guard fires and caches the foreign SDK; with the
+  environment fixed, `--cmake` fires it again; a bare `west build -p always -d
+  <dir>` from another cwd refuses (the wipe loses the source); the printed
+  command run literally from `/`, plus the first run's `-D` options, configures
+  with the store SDK cached (rc 0).
+- **N8:** the generated-application FATAL (`NanoRosImageAgreement.cmake`, a
+  file rewritten mid-configure, which the next configure reads) uses the
+  helper, kind RECONFIGURE.
+
+Gates for this wave: `cmake-resolved-seed` (67 checks, incl. a real
 `check-knob-one-pass.py` run over a dir the suite configured and a no-op
 build asserting 0 `Re-running CMake`), `cmake-sizing-descriptor`,
 `cmake-entity-inventory`, `cmake-message-bounds`, `configure-hook`,

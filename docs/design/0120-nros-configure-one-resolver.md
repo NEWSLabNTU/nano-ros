@@ -311,14 +311,19 @@ comparison, and is never re-converged either:
   reads it.
 
 Each of these names the road's own remedy, and the remedy is a command that
-re-runs cmake on that dir. These FATALs nearly always fire in a clean dir's
+re-configures THAT dir. These FATALs nearly always fire in a clean dir's
 failed FIRST configure, which leaves a cache with `CMAKE_PROJECT_NAME` and no
 `build.ninja`; a bare `west build -d <dir>` then passes no cmake options, skips
-cmake and fails at ninja. So: where the CLI drives the road
-(`nros_configured_locate` resolved a CLI), `nros configure ...` then
-`nros build ...`, which re-passes the image's cmake options when `build.ninja`
-is absent; otherwise -- a guest application, a host with no CLI --
-`cmake <build-dir>`, or `west build -d <build-dir> --cmake` on Zephyr.
+cmake and fails at ninja. So the repair is `west build -d <dir> --cmake` on
+Zephyr, else `cmake <dir>`, preceded by `nros configure ...` where the CLI
+drives the road (`nros_configured_locate` resolved a CLI). `nros build ...` is
+offered only as an alternative: it configures its own build dir, not the one
+that failed. A FATAL whose cause is a value the configure CACHED (the
+foreign-SDK guard: `ZEPHYR_SDK_INSTALL_DIR` and the toolchain, which outrank
+the environment) asks for a PRISTINE configure instead,
+`west build -p always -d <dir> -b <board> <source>` with the first run's cmake
+options, or removing the dir. One helper spells all
+of it: `nros_reconfigure_remedy` (`cmake/NanoRosDiagnostics.cmake`).
 
 ### D6 — The four cases, closed
 

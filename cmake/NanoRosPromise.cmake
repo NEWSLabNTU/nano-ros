@@ -93,13 +93,13 @@
 # R53): the FATAL nearly always fires in a clean dir's FAILED FIRST configure,
 # which leaves a cache with `CMAKE_PROJECT_NAME` and no `build.ninja`, where a
 # plain `west build -d <dir>` passes no cmake options, skips cmake and dies at
-# ninja. So: where the CLI drives the road (`NROS_CONFIGURED_COMMAND` /
-# `NROS_CONFIGURED_BUILD_COMMAND`, which `nros_configured_locate` publishes only
-# once it has resolved a CLI), `nros configure ...` then `nros build ...` (which
-# re-passes the image's cmake options when `build.ninja` is absent, R51);
-# otherwise -- a guest application, a host with no CLI -- `cmake <build-dir>`,
-# or `west build -d <build-dir> --cmake` on Zephyr. Spelled once, in
-# `nros_reconfigure_remedy` (cmake/NanoRosDiagnostics.cmake).
+# ninja. So the repair always configures THIS dir (R54): `west build -d <dir>
+# --cmake` on Zephyr, else `cmake <dir>` -- preceded by `nros configure ...`
+# where the CLI drives the road (`NROS_CONFIGURED_COMMAND`, which
+# `nros_configured_locate` publishes only once it has resolved a CLI), with
+# `nros build ...` offered only as the alternative, since it uses its own build
+# dir. Spelled once, in `nros_reconfigure_remedy`
+# (cmake/NanoRosDiagnostics.cmake).
 #
 # A placeholder says so on a line of its own (`nros_promise_placeholder_line`),
 # and a reader that wrote a default itself because the fragment was absent says
@@ -343,9 +343,12 @@ function(_nros_promise_check_one _path)
             "second pass would build with whichever answer came last (RFC-0120 D5). "
             "`diff` the two files and report it.")
     endif()
-    nros_reconfigure_remedy(_cmd _again)
+    nros_reconfigure_remedy(_cmd _again ALTERNATIVE _alt)
     if("${_cmd}" STREQUAL "")
-        set(_cmd "nros configure")
+        set(_cmd "`nros configure`")
+    endif()
+    if(NOT "${_alt}" STREQUAL "")
+        set(_alt " (${_alt})")
     endif()
     message(FATAL_ERROR
         "nros: ${_label} differs from the answer `nros configure` composed before "
@@ -355,7 +358,7 @@ function(_nros_promise_check_one _path)
         "  configure: ${_path}\n"
         "  Declare it where `nros configure` reads it (the package's `package.xml`, "
         "the leaf's `system.toml` / `[[component]] entities`, or the launch contract), "
-        "then run `${_cmd}`, then `${_again}` (RFC-0120 D5). Every reader of this "
+        "then run ${_cmd}, then ${_again}${_alt} (RFC-0120 D5). Every reader of this "
         "configure used the seed, so the build is not allowed to proceed on it.")
 endfunction()
 
@@ -365,13 +368,16 @@ endfunction()
 function(_nros_promise_check_unseeded _path _label)
     _nros_promise_props("${_path}" _p)
     get_property(_kind GLOBAL PROPERTY ${_p_KIND})
-    nros_reconfigure_remedy(_configure _again)
+    nros_reconfigure_remedy(_configure _again ALTERNATIVE _alt)
+    if(NOT "${_alt}" STREQUAL "")
+        set(_alt " (${_alt})")
+    endif()
     if("${_configure}" STREQUAL "")
-        set(_fix "Re-run this build's configure (`${_again}`)")
-        set(_fix_before "Configure again (`${_again}`) to read the composed answer")
+        set(_fix "Re-run this build's configure (${_again})")
+        set(_fix_before "Configure again (${_again}) to read the composed answer")
     else()
-        set(_fix "Run `${_configure}`, then `${_again}`")
-        set(_fix_before "Run `${_configure}`, then `${_again}`, for derived sizes in one pass")
+        set(_fix "Run ${_configure}, then ${_again}${_alt}")
+        set(_fix_before "Run ${_configure}, then ${_again}${_alt}, for derived sizes in one pass")
     endif()
     if(_kind STREQUAL "absent" OR _kind STREQUAL "placeholder")
         set(_derived FALSE)

@@ -116,6 +116,11 @@ include("$RESOLVED_MODULE")
 if(DEFINED PROBE_RESOLVED)
     nros_configured_publish("\${PROBE_RESOLVED}")
 endif()
+# A hooked road whose CLI resolved, as nros_configured_locate publishes it.
+if(PROBE_CLI)
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_COMMAND "nros configure /p --image i")
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_BUILD_COMMAND "nros build --workspace /p i")
+endif()
 
 set(_frag "\${CMAKE_BINARY_DIR}/frag.cmake")
 
@@ -332,6 +337,79 @@ if [ "$ZW_RC" -ne 0 ] && nros_grep_q -F "Re-run this build's configure (\`west b
 else
     fail "the Zephyr no-CLI remedy is not \`west build -d <dir> --cmake\` (rc=$ZW_RC):
 $ZW_OUT"
+fi
+# Ruling R54 -- a HOOKED plain-west road (the CLI resolved, so both commands are
+# published): the step that repairs the dir is still \`west build -d <dir>
+# --cmake\` for THIS dir; \`nros build\` (its own dir) is only the alternative.
+HW_RC=0
+HW_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/hw-build" \
+    -DPROBE_DERIVED=ON -DZEPHYR_BASE=/zephyr -DPROBE_CLI=ON 2>&1)" || HW_RC=$?
+check
+if [ "$HW_RC" -ne 0 ] \
+   && nros_grep_q -F "Run \`nros configure /p --image i\`, then \`west build -d $TEST_TMPDIR/hw-build --cmake\` (or rebuild with \`nros build --workspace /p i\`, which uses its own build dir)" <<<"$(flat "$HW_OUT")"; then
+    log_success "a hooked plain-west road repairs ITS dir with west build --cmake; nros build is the alternative"
+else
+    fail "the hooked plain-west remedy does not name \`west build -d <its dir> --cmake\` as the repair (rc=$HW_RC):
+$HW_OUT"
+fi
+
+# Ruling R55 -- a FATAL whose cause the configure CACHED needs a PRISTINE
+# configure. The foreign-SDK guard, over two synthetic checkouts.
+GUARD_ROOT="$TEST_TMPDIR/guard"
+for c in a b; do
+    mkdir -p "$GUARD_ROOT/$c/packages/core/nros-core" "$GUARD_ROOT/$c/zephyr" "$GUARD_ROOT/$c/sdk"
+    : > "$GUARD_ROOT/$c/packages/core/nros-core/Cargo.toml"
+done
+mkdir -p "$GUARD_ROOT/src"
+cat > "$GUARD_ROOT/src/CMakeLists.txt" <<GEOF
+cmake_minimum_required(VERSION 3.20)
+project(nros_guard_probe NONE)
+include("$PROJECT_ROOT/zephyr/cmake/nros_checkout_guard.cmake")
+nros_assert_sdk_not_foreign("$GUARD_ROOT/a/zephyr/.." "$GUARD_ROOT/b/sdk")
+GEOF
+for road in zephyr cmake; do
+    G_RC=0
+    if [ "$road" = zephyr ]; then
+        G_OUT="$(cmake -S "$GUARD_ROOT/src" -B "$GUARD_ROOT/build-$road" -DZEPHYR_BASE=/zephyr \
+            -DBOARD=mps2/an385 "-DAPPLICATION_SOURCE_DIR=$GUARD_ROOT/src" 2>&1)" || G_RC=$?
+        # The board and source are named: a pristine run wipes the cache west
+        # would read them from (measured, tmp/w7-westprobe/pristine.sh).
+        want="\`west build -p always -d $GUARD_ROOT/build-$road -b mps2/an385 $GUARD_ROOT/src\`, with the cmake options it was first configured with after \`--\`"
+    else
+        G_OUT="$(cmake -S "$GUARD_ROOT/src" -B "$GUARD_ROOT/build-$road" 2>&1)" || G_RC=$?
+        want="remove \`$GUARD_ROOT/build-$road\` and configure it from scratch (\`cmake -S $GUARD_ROOT/src -B $GUARD_ROOT/build-$road\`"
+    fi
+    check
+    if [ "$G_RC" -ne 0 ] && nros_grep_q -F "$want" <<<"$(flat "$G_OUT")" \
+       && ! nros_grep_q -F -- "--cmake" <<<"$G_OUT"; then
+        log_success "the foreign-SDK FATAL ($road road) names a PRISTINE configure"
+    else
+        fail "the foreign-SDK FATAL ($road road) does not name a pristine configure (want: $want; rc=$G_RC):
+$G_OUT"
+    fi
+done
+
+# Review N8 -- the generated-app FATAL (NanoRosImageAgreement) names the
+# re-configure for THIS dir.
+GA_ROOT="$TEST_TMPDIR/genapp"
+mkdir -p "$GA_ROOT/app" "$GA_ROOT/src"
+printf 'set(NROS_GENERATED_APP_DIGEST bbbb)\n' > "$GA_ROOT/app/CMakeLists.txt"
+cat > "$GA_ROOT/src/CMakeLists.txt" <<GAEOF
+cmake_minimum_required(VERSION 3.20)
+project(nros_genapp_probe NONE)
+include("$PROJECT_ROOT/cmake/NanoRosImageAgreement.cmake")
+set(NROS_GENERATED_APP_DIGEST aaaa)
+set(APPLICATION_SOURCE_DIR "$GA_ROOT/app")
+nros_check_generated_app_current()
+GAEOF
+GA_RC=0
+GA_OUT="$(cmake -S "$GA_ROOT/src" -B "$GA_ROOT/build" -DZEPHYR_BASE=/zephyr 2>&1)" || GA_RC=$?
+check
+if [ "$GA_RC" -ne 0 ] && nros_grep_q -F "\`west build -d $GA_ROOT/build --cmake\`" <<<"$(flat "$GA_OUT")"; then
+    log_success "the generated-app FATAL names west build --cmake for its dir"
+else
+    fail "the generated-app FATAL does not name \`west build -d <dir> --cmake\` (rc=$GA_RC):
+$GA_OUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -915,8 +993,8 @@ fi
 prom_run -DPROBE_ANSWER=other -DPROBE_CLI=ON
 check
 if [ "$PROM_RC" -ne 0 ] \
-   && nros_grep_q -F 'then run `nros configure /p --image i`, then `nros build --workspace /p i`' <<<"$(flat "$PROM_OUT")"; then
-    log_success "on a CLI-driven road the seeded FATAL names nros configure, then nros build"
+   && nros_grep_q -F "then run \`nros configure /p --image i\`, then \`cmake $PROM_ROOT/build\` (or rebuild with \`nros build --workspace /p i\`, which uses its own build dir)" <<<"$(flat "$PROM_OUT")"; then
+    log_success "on a CLI-driven road the seeded FATAL repairs ITS dir (cmake <dir>); nros build is the alternative"
 else
     fail "the seeded FATAL on a CLI-driven road does not name \`nros build\` (rc=$PROM_RC):
 $PROM_OUT"
@@ -1016,7 +1094,7 @@ CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/stale-build" \
     -DNROS_CONFIGURED_PROJECT=/proj -DNROS_CONFIGURED_IMAGE=img 2>&1)" || STALE_RC=$?
 check
 if [ "$STALE_RC" -eq 0 ] && nros_grep_q 'PROBE_READ=placeholder' <<<"$CONFIGURE_OUT" \
-   && nros_grep_q -F 'Run `nros configure /proj --image img`, then `nros build --workspace /proj img`' <<<"$(flat "$CONFIGURE_OUT")"; then
+   && nros_grep_q -F "Run \`nros configure /proj --image img\`, then \`cmake $TEST_TMPDIR/stale-build\` (or rebuild with \`nros build --workspace /proj img\`, which uses its own build dir)" <<<"$(flat "$CONFIGURE_OUT")"; then
     log_success "a stale configure seeds nothing, and the configure says what to run"
 else
     fail "A STALE CONFIGURE WAS PROMISED (rc=$STALE_RC): the cmake road must seed only
