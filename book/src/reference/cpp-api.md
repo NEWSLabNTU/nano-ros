@@ -32,9 +32,9 @@ internal.
 
 To build and run a first C++ node, start with
 [First Node — C++](../tutorial/add-a-second-node-cpp.md); to grow it into a
-workspace, see [C++ in a workspace](../build/cpp-workspaces.md). To
+workspace, see [C++ in a workspace](../guide/contracts/cpp-workspaces.md). To
 bring an existing ROS 2 node across, see
-[Porting a ROS 2 C++ node](../from-ros2/porting-a-cpp-node.md). This page is
+[Porting a ROS 2 C++ node](../guide/port/port-a-cpp-node.md). This page is
 the API itself.
 
 ## API reference
@@ -119,7 +119,7 @@ RCLCPP_TRY(pub.publish(msg));
 ```
 
 A publisher can be marked express (it bypasses transmit batching) through its
-QoS profile; see [TX Throughput & Latency Tuning](../communicate/tx-tuning.md#per-publisher-express-tx_express).
+QoS profile; see [TX Throughput & Latency Tuning](../guide/rmw/tune-throughput-and-latency.md#per-publisher-express-tx_express).
 
 ### Subscription
 
@@ -643,7 +643,7 @@ answer.
 `NROS_CPP_STD=1` on every target its `ament_*` verbs create, and
 `find_package(rclcpp)` sets it on whatever links `rclcpp::rclcpp`, so a ported
 package already has the surface it needs; see
-[Porting a ROS 2 C++ node](../from-ros2/porting-a-cpp-node.md).
+[Porting a ROS 2 C++ node](../guide/port/port-a-cpp-node.md).
 
 ### The ported shape
 
@@ -699,7 +699,7 @@ the comments of `rclcpp/detail/std_detect.hpp`.
 
 A Zephyr application reaches the C++ API through the nano-ros Zephyr module.
 The module, the image's `system.toml` and the `prj.conf` split are covered in
-[Zephyr integration](../targets/zephyr.md); the RMW,
+[Zephyr integration](../guide/platforms/zephyr.md); the RMW,
 locator and domain come from the image, never from `CONFIG_NROS_*` lines in
 `prj.conf`. The C++ side needs `CONFIG_CPP=y` and `CONFIG_STD_CPP14=y` in
 `prj.conf` (Zephyr's own settings), and the application's `CMakeLists.txt`

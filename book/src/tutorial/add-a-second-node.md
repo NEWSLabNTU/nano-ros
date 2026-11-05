@@ -140,7 +140,7 @@ Three runtime knobs, each an env override on a built-in default:
 On native these stay environment variables — `[image.linux]` declares
 no `locator`. An embedded image bakes them from its own `[image.<id>]`
 table instead; see the
-[Configuration Guide](../build/configuration.md).
+[Configuration Guide](../guide/build/configure-an-image.md).
 
 ## Build
 

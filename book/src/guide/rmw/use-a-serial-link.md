@@ -1,0 +1,366 @@
+# Serial Transport
+
+<!-- type: how-to · level: 2 -->
+
+This guide covers using serial (UART) transport with nros on embedded targets. Serial transport connects an MCU directly to a zenoh router over UART, without needing an IP stack.
+
+## Overview
+
+nros supports two transport mechanisms for connecting embedded devices to a zenoh network:
+
+| Transport | Crate | Use Case |
+|-----------|-------|----------|
+| TCP/UDP (Ethernet/WiFi) | `zpico-smoltcp` | MCUs with Ethernet MAC or WiFi radio |
+| Serial (UART) | `zpico-serial` | MCUs with only UART, or point-to-point links |
+
+Serial transport uses zenoh-pico's built-in COBS framing protocol over UART. No IP stack is required — the MCU sends and receives zenoh frames directly over a serial link to a host running the zenoh router (`rmw_zenohd`).
+
+### When to Use Serial
+
+- **Small MCUs** — Cortex-M0/M0+ with no Ethernet MAC and insufficient RAM for smoltcp
+- **Point-to-point** — Direct UART connection to a host, no network infrastructure needed
+- **Debugging** — Serial output is visible in any terminal, easy to inspect
+- **Mixed topology** — Some nodes on Ethernet, others on serial, all bridged through the router
+
+### Architecture
+
+```
+┌──────────┐     UART      ┌──────────────┐     TCP      ┌──────────┐
+│   MCU    │───────────────│  rmw_zenohd  │─────────────│  ROS 2   │
+│  (nros)  │  COBS frames  │  (router)    │  zenoh net   │  node    │
+└──────────┘               └──────────────┘              └──────────┘
+```
+
+The MCU connects to the zenoh router using a `serial/...` locator. The router bridges serial-connected nodes to the rest of the zenoh network (including ROS 2 nodes using rmw_zenoh).
+
+## Platform Support
+
+Serial transport support varies by platform:
+
+| Platform | Serial Implementation | Extra Crate Needed |
+|----------|----------------------|--------------------|
+| Bare-metal (MPS2-AN385) | `zpico-serial` + UART driver | Yes |
+| ESP32-QEMU (esp-hal, no IDF) | **Not wired** — see [ESP32 Serial — not wired](#esp32-serial--not-wired) | — |
+| Zephyr | zenoh-pico built-in; interrupt-driven RX ring (`CONFIG_UART_INTERRUPT_DRIVEN`, selected by the serial link). The polled path is retired | No |
+| FreeRTOS / NuttX | zenoh-pico built-in (POSIX `/dev/ttyXXX`) | No |
+| ThreadX | zenoh-pico built-in (HAL DMA) | No |
+
+On non-bare-metal platforms, serial just works by using a `serial/...` locator — no extra crates needed. `zpico-serial` only fills the gap for bare-metal targets where custom FFI symbols replace zenoh-pico's system layer.
+
+## Board Crate Feature Selection
+
+Each board crate uses Cargo features to select the transport. These are the
+rows the generated entry carries for the image; you do not write them:
+
+```toml
+# Board crates are registry-style names resolved by the generated
+# patch table, not path deps:
+
+# Use serial transport (disable default ethernet/wifi)
+nros-board-mps2-an385 = { version = "*", default-features = false, features = ["serial"] }
+
+# Use ethernet transport (default)
+nros-board-mps2-an385 = { version = "*" }
+
+# Both transports (runtime selection via locator string)
+nros-board-mps2-an385 = { version = "*", features = ["serial"] }
+```
+
+### Available Features by Board
+
+| Board Crate | Default | Alternative | Both |
+|-------------|---------|-------------|------|
+| `nros-board-mps2-an385` | `ethernet` | `serial` | `ethernet,serial` |
+
+When both features are enabled, the transport is selected at runtime by the
+`[image.<id>] locator` in `system.toml`:
+- `"tcp/192.0.3.1:7448"` → Ethernet/WiFi
+- `"serial/UART_0#baudrate=115200"` → Serial
+
+The entry, and with it the board-crate dependency, is generated from the
+image, so there is no manifest of yours to put the feature in: the
+`serial/` locator selects it.
+
+## Quick Start: QEMU Serial Example
+
+This mirrors what the in-tree serial e2e test
+(`packages/testing/nros-tests/tests/emulator.rs`) actually does: a
+**socat PTY pair** links QEMU's UART to the router, so both ends exist
+before either side starts.
+
+### 1. Scaffold and run
+
+The mps2-an385 bare-metal scaffold already talks over its serial port:
+
+```bash
+nros new serial_ws --board mps2-an385-baremetal --template talker --lang rust --rmw zenoh
+cd serial_ws
+source /opt/ros/humble/setup.bash      # nros run starts ROS's router on the serial link
+nros run serial_node
+```
+
+`nros run` builds the image, creates the PTY pair, starts the router on one
+end, boots QEMU with UART0 on the other, and streams the console. It needs
+`rmw_zenoh_cpp` findable — ROS 2 sourced, or `NROS_RMW_ZENOHD` naming the
+router; otherwise it exits with status 2 and names the router it could not
+find. The steps below are what it does, for doing them by hand.
+
+The serial locator is part of the image's identity, so it is stated in the
+bringup's `system.toml` (`src/serial_node_bringup/system.toml`) rather than
+passed to the build:
+
+```toml
+[image.baremetal]
+board   = "mps2-an385-baremetal"
+locator = "serial/UART_0#baudrate=115200"
+```
+
+The `serial/` scheme is also the image's LINK: `nros build`
+derives the serial-only build from it (`ZPICO_NO_SMOLTCP=1`, `NROS_LINK_IP=0`,
+the board's `serial` feature), so nothing else names it. The `transport =
+"serial"` key that used to restate it is refused.
+
+### 2. Create the PTY pair and start the router
+
+```bash
+# Two linked PTYs; QEMU gets one end, the router the other:
+socat -d -d pty,raw,echo=0,link=/tmp/nros-serial-qemu \
+            pty,raw,echo=0,link=/tmp/nros-serial-router &
+
+# Router LISTENS on its end of the pair:
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["serial//tmp/nros-serial-router#baudrate=115200"]' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd &
+```
+
+> The router is ROS 2's `rmw_zenohd` (nano-ros ships no `zenohd` of
+> its own). It takes **no** command-line configuration — argv is not
+> parsed, so a `--connect` flag is not rejected, it is simply unread.
+> Configuration travels in `ZENOH_CONFIG_OVERRIDE`, and the router
+> **listens** on the serial endpoint; the MCU side dials it.
+
+### 3. Boot QEMU with UART0 on the other end
+
+The board's `cargo run` runner uses semihosting only (no serial
+device) — boot QEMU explicitly, wiring UART0 to the pair, on the ELF path
+`nros build` printed:
+
+```bash
+"$(nros locate tool qemu-system-arm)" -cpu cortex-m3 -machine mps2-an385 \
+    -display none -monitor none \
+    -icount shift=auto -semihosting-config enable=on,target=native \
+    -chardev serial,id=ser0,path=/tmp/nros-serial-qemu \
+    -serial chardev:ser0 \
+    -kernel <elf>
+```
+
+(`-display none -monitor none`, not `-nographic` — `-nographic`
+implies `-serial mon:stdio`, which hijacks UART0 for the monitor.)
+
+### 4. Subscribe from Host
+
+```bash
+# From a ROS 2 node (the talker publishes best-effort; force the QoS
+# or a RELIABLE echo silently receives nothing):
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+```
+
+## Configuration
+
+### Serial Config
+
+Board crates provide a `serial_default()` constructor:
+
+```rust
+use nros_board_mps2_an385::{Config, run};
+
+let config = Config::serial_default();
+// Defaults: baudrate=115200, locator="serial/UART_0#baudrate=115200"
+
+run(config, |config| {
+    let exec_config = ExecutorConfig::new(config.zenoh_locator)
+        .domain_id(config.domain_id);
+    let mut executor = Executor::open(&exec_config)?;
+    // ...
+    Ok(())
+})
+```
+
+### Custom Baud Rate
+
+```rust
+let config = Config::serial_default()
+    .with_baudrate(921600)
+    .with_locator("serial/UART_0#baudrate=921600");
+```
+
+### Locator Format
+
+Serial locators follow zenoh-pico convention:
+
+| Format | Example | Use Case |
+|--------|---------|----------|
+| `serial/<dev>#baudrate=<baud>` | `serial/UART_0#baudrate=115200` | Device name (Zephyr, bare-metal) |
+| `serial/<tx>.<rx>#baudrate=<baud>` | `serial/0.1#baudrate=115200` | Pin numbers (Arduino) |
+
+## QEMU PTY Testing
+
+### How It Works
+
+QEMU redirects the emulated UART to a host pseudo-terminal. The in-tree flow uses a socat PTY *pair* (rather than QEMU's `-serial pty`) so both endpoints exist before either process starts — the router listens on one end, QEMU's UART0 is wired to the other, enabling full end-to-end testing without physical hardware.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                       Host                               │
+│  ┌─────────┐    ┌───────────┐    ┌────────────────────┐  │
+│  │rmw_zenohd◄──►│ socat PTY │◄──►│ QEMU MPS2-AN385   │  │
+│  │ (listen)│    │   pair    │    │ -serial chardev:…   │  │
+│  └────┬────┘    └───────────┘    │ UART0 ──► firmware  │  │
+│       │                         └────────────────────┘  │
+│       │ zenoh network                                    │
+│  ┌────▼────┐                                             │
+│  │  ROS 2  │                                             │
+│  │  echo   │                                             │
+│  └─────────┘                                             │
+└──────────────────────────────────────────────────────────┘
+```
+
+### QEMU Flags
+
+The runner is the **board's**, not the example's: the board descriptor states
+it once as `[board.run]` / `[board.run.qemu]`, and the build renders it into
+the image's generated settings file (`nros-cargo.toml` under `build/`), where
+it reads:
+
+```toml
+[target.thumbv7m-none-eabi]
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -icount shift=auto -semihosting-config enable=on,target=native -nic user,model=lan9118 -kernel"
+```
+
+Key flags:
+- `-nographic` — No display window
+- `-semihosting-config enable=on,target=native` — Debug output via semihosting (separate from UART)
+- `-icount shift=auto` — keeps the guest clock on wall-clock time (below)
+- `-nic user,model=lan9118` — the board's Ethernet on QEMU's user network;
+  a serial-transport image does not use it
+
+That runner wires **no serial device**: it is the board's general-purpose
+one, good for `cargo run` on any image for this board, and it is generated —
+editing it in place is overwritten by the next sync. The serial-specific
+flags (`-chardev` / `-serial chardev:…`) go on the explicit QEMU command
+line above, which is why step 3 boots QEMU by hand rather than through
+`cargo run`.
+
+### `-icount shift=auto`
+
+For reliable serial communication, add `-icount shift=auto` to synchronize
+QEMU's virtual clock with wall-clock time. Without this, QEMU runs the CPU at
+full speed, which can cause timing-sensitive serial handshakes to fail. The
+explicit command line in step 3 already carries it.
+
+### Automated Testing
+
+The integration test `test_qemu_serial_pubsub_e2e` in `packages/testing/nros-tests/tests/emulator.rs` automates the full workflow:
+
+1. Build the serial-talker example (prebuilt fixture)
+2. Create socat PTY pairs (both ends exist before either process)
+3. Start the router with `listen/endpoints=["serial/<pty>#baudrate=115200"]`
+4. Boot QEMU via `start_mps2_an385_with_serial` (UART0 → the pair;
+   `-display none -monitor none`)
+5. Subscribe and verify message delivery
+
+> Changing this in the tree: see [Internals → per-platform lanes](../../internals/platform/platform-lanes.html#serial-transport-qemu).
+
+## Baud Rate Tuning
+
+### Recommended Rates
+
+| Baud Rate | Use Case |
+|-----------|----------|
+| 115200 | Default, safe for all hardware |
+| 460800 | Higher throughput, most USB-serial adapters |
+| 921600 | Maximum for many MCU UARTs |
+
+Higher baud rates increase throughput but may cause framing errors on noisy or long cables. QEMU ignores the baud rate (infinite speed), so rate tuning only matters on physical hardware.
+
+### Buffer Sizing
+
+zenoh-pico serial uses a 1500-byte MTU with COBS framing. The maximum wire frame is 1516 bytes. `zpico-serial` uses a 2048-byte RX ring buffer per port, which accommodates one full frame plus overhead.
+
+For high-throughput scenarios, ensure the MCU's UART FIFO is drained frequently by calling `executor.spin_once(0)` in a tight loop. The budget argument is required: `0` drains what is ready and returns, which is what a tight loop wants; a millisecond value sleeps until work arrives or the budget expires.
+
+### Zephyr: a board that joins over a UART
+
+Two settings decide whether a Zephyr board can join a domain whose peers are
+already sending, and neither default is right for a serial link yet. The
+safety island found both by measurement:
+
+```
+CONFIG_MAIN_THREAD_PRIORITY=5
+CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES=4096
+```
+
+- **Main thread below the read task.** Zephyr's default main priority, 0,
+  outranks zenoh-pico's read task while `main` registers entities. The UART
+  ISR then fills the receive ring while the read task cannot run, and the
+  frames lost to the overflow carry the router's replies to the publishers'
+  interests. The island's joins into a live domain failed 3 of 3 at 0 and
+  passed at 5. On a serial link the configure REFUSES an image whose main
+  thread is not below the read task, and the error names the number to use
+  (5 on the default 15 preempt priorities).
+- **Receive ring.** The default 1024 bytes is 11 ms of line at 921600 baud.
+  The island measured a high water of 815–1024 bytes at a join, and one join
+  in five overflowed. Read `_z_zephyr_serial_stats.ring_high_water` and
+  `ring_overflows` on your board and size the ring from them; the RAM is
+  static.
+
+A board that only joins an idle domain stays well inside the ring default.
+The ring default may change once a serial join has been measured;
+the main priority stays a stated value, because Kconfig cannot derive
+`read task + 1` from two symbol values.
+
+## Troubleshooting
+
+Serial-specific failures are below. For general problems (build failures,
+oversized messages, zenoh-pico error codes), see
+[Troubleshooting](../deploy/troubleshoot.md).
+
+### "Session open failed" or Handshake Timeout
+
+The zenoh serial handshake (Init → Ack) must complete within zenoh-pico's timeout. Common causes:
+
+- **Wrong PTY path** — Check the router's listen endpoint names the same PTY link your QEMU `-chardev` uses
+- **Baud rate mismatch** — MCU and router must use the same baud rate
+- **QEMU timing** — Add `-icount shift=auto` to slow down QEMU's CPU clock
+
+### No Messages Received
+
+- **Locator mismatch** — Ensure the MCU's `zenoh_locator` matches what zenohd expects
+- **Domain ID** — Both sides must use the same ROS 2 domain ID (see
+  [ROS 2 Interop](../../tutorial/talk-to-ros2.md#troubleshooting) for the other
+  ROS 2-side checks)
+- **zenohd not bridging** — Verify zenohd is connected to the serial port and also listening on TCP for subscribers
+
+### UART Pin Conflicts
+
+On physical hardware, ensure the UART TX/RX pins aren't shared with the debug console. Some boards use UART0 for debug output — use a different UART for zenoh transport, or disable debug prints.
+
+### ESP32 Serial — not wired
+
+**ESP32 serial does not work today.** The
+`serial` feature on `nros-board-esp32-qemu` exists and declares a locator, but
+the configuration does not compile:
+
+```
+$ cargo build --no-default-features --features serial --target riscv32imc-unknown-none-elf
+error[E0609]: no field `mac_addr` on type `&config::Config`
+error[E0609]: no field `ip` on type `&config::Config`
+```
+
+and even with that repaired it has no serial backend to link: the feature is
+`serial = []`, pulling neither `zpico-serial` nor a UART driver, and ESP32-QEMU
+is a bare-metal target, which is precisely the case `zpico-serial` says
+zenoh-pico has no built-in serial backend for. Nothing in the tree builds this
+combination, which is why it went unnoticed.
+
+Use the ethernet transport on ESP32-QEMU; serial on this board is not
+planned.

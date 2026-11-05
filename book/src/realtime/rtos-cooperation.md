@@ -90,7 +90,7 @@ WCET, not the sum across all ready callbacks.
 If max-callback dispatch latency is still too high in this profile
 (e.g., a single callback is slow), the remaining bound is that one
 callback's WCET — split the slow callback, or move it to its own
-tier/task (see [Scheduling Models](scheduling-models.md)).
+tier/task (see [Scheduling Models](../guide/realtime/pick-a-scheduling-model.md)).
 
 ### WCET-bounded real-time
 

@@ -114,7 +114,7 @@ crate = "nros-board-zephyr"
 matrix_platform = "ZephyrNativeSim"
 board_keys = ["zephyr"]
 nightly_token = "zephyr"
-book_run = "targets/zephyr.md#run-on-native_sim"
+book_run = "guide/platforms/zephyr.md#run-on-native_sim"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -153,7 +153,7 @@ crate = "nros-board-mps2-an385-freertos"
 matrix_platform = "FreertosMps2"
 nightly_token = "freertos"
 link_check_example = "examples/mps2-an385-freertos/rust/talker"
-book_run = "targets/freertos.md#run-on-qemu"
+book_run = "guide/platforms/freertos.md#run-on-qemu"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -182,7 +182,7 @@ crate = "nros-board-s32z270-freertos"
 # board yet. Give it a real PlatformId when it gets a witness, not the
 # neighbour's.
 real_hardware = true
-book_flash = "targets/freertos.md#flash-a-real-board"
+book_flash = "guide/platforms/freertos.md#flash-a-real-board"
 runs = "none"
 hardware = "s32z270"
 breadth = "inherits FreertosMps2"
@@ -199,7 +199,7 @@ matrix_platform = "NuttxArm"
 board_keys = ["nuttx", "qemu-armv7a-nuttx"]
 nightly_token = "nuttx"
 link_check_example = "examples/qemu-armv7a-nuttx/rust/talker"
-book_run = "targets/nuttx.md#run-on-qemu-arm-virt"
+book_run = "guide/platforms/nuttx.md#run-on-qemu-arm-virt"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -210,7 +210,7 @@ crate = "nros-board-threadx-linux"
 matrix_platform = "ThreadxLinux"
 nightly_token = "threadx_linux"
 link_check_example = "examples/threadx-linux/rust/talker"
-book_run = "targets/threadx.md#run-on-the-linux-simulator"
+book_run = "guide/platforms/threadx.md#run-on-the-linux-simulator"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -227,7 +227,7 @@ matrix_platform = "FreertosPosix"
 # `just freertos build-posix-*`. The old token named no module, which nothing
 # asked about until `cadence = "daily"` did (phase-522 W1).
 nightly_token = "freertos"
-book_run = "targets/freertos.md#run-on-the-posix-simulator"
+book_run = "guide/platforms/freertos.md#run-on-the-posix-simulator"
 runs = "host"
 cadence = "daily"
 breadth = "inherits FreertosMps2"
@@ -238,7 +238,7 @@ maintainers = []
 crate = "nros-board-threadx-qemu-riscv64"
 matrix_platform = "ThreadxRiscv64"
 nightly_token = "threadx_riscv64"
-book_run = "targets/threadx.md#run-on-qemu-risc-v-64"
+book_run = "guide/platforms/threadx.md#run-on-qemu-risc-v-64"
 runs = "emulator"
 cadence = "daily"
 breadth = "inherits ThreadxLinux"
@@ -249,7 +249,7 @@ notes = "All three Action rows are BuildOnly by a deliberate wall-clock choice (
 crate = "nros-board-mps2-an385"
 matrix_platform = "QemuBaremetal"
 nightly_token = "qemu"
-book_run = "targets/bare-metal.md#run-on-qemu"
+book_run = "guide/platforms/bare-metal.md#run-on-qemu"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -279,7 +279,7 @@ notes = "One crate; the book's entry shape is direct execution (the `board-entry
 crate = "nros-board-mps2-an385-zephyr"
 matrix_platform = "ZephyrQemuCortexM"
 nightly_token = "zephyr"
-book_run = "targets/zephyr.md#run-on-qemu-mps2-an385"
+book_run = "guide/platforms/zephyr.md#run-on-qemu-mps2-an385"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -302,7 +302,7 @@ crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxRiscv"
 board_keys = ["nuttx-riscv", "rv-virt-nuttx"]
 nightly_token = "nuttx"
-book_run = "targets/nuttx.md#run-on-qemu-risc-v-rv-virt"
+book_run = "guide/platforms/nuttx.md#run-on-qemu-risc-v-rv-virt"
 runs = "emulator"
 cadence = "daily"
 breadth = "inherits NuttxArm"
@@ -358,7 +358,7 @@ notes = "Runtime is run by a maintainer, hence `cadence = \"manual\"`. The model
 crate = "s32k344-safety-island"
 external = "simple-autoware-safety-island"
 real_hardware = true
-book_flash = "targets/zephyr.md#flash-a-real-board"
+book_flash = "guide/platforms/zephyr.md#flash-a-real-board"
 runs = "hardware"
 hardware = "mr-canhubk344"
 cadence = "manual"
@@ -446,7 +446,7 @@ notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7
 crate = "nros-board-rpi-pico-w-zephyr"
 board_keys = ["rpi-pico-w-zephyr"]
 real_hardware = true
-book_flash = "targets/zephyr.md#flash-a-real-board"
+book_flash = "guide/platforms/zephyr.md#flash-a-real-board"
 runs = "emulator"
 hardware = "rpi-pico-w"
 cadence = "manual"
@@ -605,7 +605,7 @@ notes = "The first chapter's \"run it on this machine\" section: the same scaffo
 
 [[probe]]
 track = "baremetal"
-chapter = "targets/bare-metal.md"
+chapter = "guide/platforms/bare-metal.md"
 variant = ""
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -614,7 +614,7 @@ qemu_board = "mps2-an385-baremetal"
 
 [[probe]]
 track = "offline"
-chapter = "targets/bare-metal.md"
+chapter = "guide/platforms/bare-metal.md"
 variant = ""
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -624,7 +624,7 @@ notes = "phase-523 W4 (RFC-0116 industrial): the bare-metal chapter twice — on
 
 [[probe]]
 track = "freertos"
-chapter = "targets/freertos.md"
+chapter = "guide/platforms/freertos.md"
 variant = "rust"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -634,7 +634,7 @@ notes = "phase-517 W17 — one track per language road the chapter documents: th
 
 [[probe]]
 track = "freertos-c"
-chapter = "targets/freertos.md"
+chapter = "guide/platforms/freertos.md"
 variant = "c"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -643,7 +643,7 @@ qemu_board = "mps2-an385-freertos"
 
 [[probe]]
 track = "threadx-linux"
-chapter = "targets/threadx.md"
+chapter = "guide/platforms/threadx.md"
 variant = "linux"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -651,7 +651,7 @@ row = "nros-board-threadx-linux@ThreadxLinux"
 
 [[probe]]
 track = "threadx-riscv64"
-chapter = "targets/threadx.md"
+chapter = "guide/platforms/threadx.md"
 variant = "riscv64"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -660,7 +660,7 @@ qemu_board = "rv-virt-threadx"
 
 [[probe]]
 track = "threadx-linux-c"
-chapter = "targets/threadx.md"
+chapter = "guide/platforms/threadx.md"
 variant = "linux-c"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -668,7 +668,7 @@ row = "nros-board-threadx-linux@ThreadxLinux"
 
 [[probe]]
 track = "nuttx-arm"
-chapter = "targets/nuttx.md"
+chapter = "guide/platforms/nuttx.md"
 variant = "arm"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -677,7 +677,7 @@ qemu_board = "qemu-armv7a-nuttx"
 
 [[probe]]
 track = "nuttx-arm-rust"
-chapter = "targets/nuttx.md"
+chapter = "guide/platforms/nuttx.md"
 variant = "arm-rust"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -686,7 +686,7 @@ qemu_board = "qemu-armv7a-nuttx"
 
 [[probe]]
 track = "nuttx-riscv"
-chapter = "targets/nuttx.md"
+chapter = "guide/platforms/nuttx.md"
 variant = "riscv"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -695,7 +695,7 @@ qemu_board = "rv-virt-nuttx"
 
 [[probe]]
 track = "nuttx-riscv-rust"
-chapter = "targets/nuttx.md"
+chapter = "guide/platforms/nuttx.md"
 variant = "riscv-rust"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -704,7 +704,7 @@ qemu_board = "rv-virt-nuttx"
 
 [[probe]]
 track = "zephyr"
-chapter = "targets/zephyr.md"
+chapter = "guide/platforms/zephyr.md"
 variant = "native-sim"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -712,7 +712,7 @@ row = "nros-board-zephyr@ZephyrNativeSim"
 
 [[probe]]
 track = "zephyr-rust"
-chapter = "targets/zephyr.md"
+chapter = "guide/platforms/zephyr.md"
 variant = "native-sim-rust"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -720,7 +720,7 @@ row = "nros-board-zephyr@ZephyrNativeSim"
 
 [[probe]]
 track = "zephyr-west-app"
-chapter = "targets/zephyr-west-app.md"
+chapter = "guide/platforms/zephyr-west-app.md"
 variant = "west-app"
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
@@ -728,7 +728,7 @@ notes = "phase-532 (RFC-0123) — a guest Zephyr application (RFC-0121 D6, RFC-0
 
 [[probe]]
 track = "zephyr-west-app-cpp"
-chapter = "targets/zephyr-west-app.md"
+chapter = "guide/platforms/zephyr-west-app.md"
 variant = "west-app-cpp"
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
@@ -736,7 +736,7 @@ notes = "phase-532 (RFC-0123) — the same guest application as `zephyr-west-app
 
 [[probe]]
 track = "zephyr-west-app-flash"
-chapter = "targets/zephyr-west-app.md"
+chapter = "guide/platforms/zephyr-west-app.md"
 variant = "west-app-flash"
 weekly = true
 row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
@@ -748,7 +748,7 @@ notes = "phase-532 (RFC-0123) — the guest application's flash section: the cha
 
 [[probe]]
 track = "zephyr-west-app-rust"
-chapter = "targets/zephyr-west-app.md"
+chapter = "guide/platforms/zephyr-west-app.md"
 variant = "west-app-rust"
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
@@ -756,7 +756,7 @@ notes = "phase-532 (RFC-0123) — the guest application in Rust: zephyr-lang-rus
 
 [[probe]]
 track = "workspace"
-chapter = "get-started/installation-details.md"
+chapter = "guide/build/install-options.md"
 variant = "workspace"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
@@ -764,7 +764,7 @@ notes = "phase-517 W4 — not a platform: installation-details.md's \"Provision 
 
 [[probe]]
 track = "pinned"
-chapter = "get-started/installation-details.md"
+chapter = "guide/build/install-options.md"
 variant = "pinned"
 awaits = ["phase-530 W1 in a release to pin: the pinned release predates nros configure, and the book no longer shows its separate sync step"]
 weekly = true
@@ -772,7 +772,7 @@ notes = "phase-517 W11/W16 — installation-details.md's \"Pinning a version\": 
 
 [[probe]]
 track = "pinned-newer"
-chapter = "get-started/installation-details.md"
+chapter = "guide/build/install-options.md"
 variant = "pinned"
 awaits = ["phase-530 W1 in a release to pin: the pinned release predates nros configure, and the book no longer shows its separate sync step"]
 weekly = true
@@ -809,7 +809,7 @@ notes = "phase-524 W4a — the Nucleo-F767ZI's Renode twin: zenoh over USART3 on
 
 [[probe]]
 track = "wokwi-pico"
-chapter = "targets/zephyr.md"
+chapter = "guide/platforms/zephyr.md"
 variant = "zephyr-twin"
 weekly = false
 row = "nros-board-rpi-pico-w-zephyr@-"

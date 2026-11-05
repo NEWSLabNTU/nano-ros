@@ -56,7 +56,7 @@ The project integrates formal verification (Kani bounded model checking, CBMC fo
 
 nano-ros is distributed as **source** — nothing is published to crates.io.
 Consumers either build in-tree (below) or add a path dependency (see
-[Rust-only consumers](book/src/get-started/installation-details.md#rust-only-consumers)).
+[Rust-only consumers](book/src/guide/build/install-options.md#rust-only-consumers)).
 
 ### 1. Get the `nros` CLI
 
@@ -185,7 +185,7 @@ nano-ros is consumable as a Zephyr **module** from your own west workspace,
 on both **Zephyr 3.7 LTS and 4.x**: import via `west.yml`, apply patches
 (`west patch apply` on 4.x), pick an RMW (`-S nros-<rmw>` snippet on 4.x),
 and copy out a worked example. See
-[Zephyr (west module)](book/src/targets/zephyr.md) for
+[Zephyr (west module)](book/src/guide/platforms/zephyr.md) for
 the version-spanning consumption guide + compatibility matrix.
 
 ## ROS 2 Interoperability

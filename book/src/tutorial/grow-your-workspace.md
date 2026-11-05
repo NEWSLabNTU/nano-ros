@@ -418,7 +418,7 @@ rmw = "zenoh"
 The RMW, like the board, is chosen at build time; embedded targets have no
 `RMW_IMPLEMENTATION` switch. On a Linux image, `ROS_DOMAIN_ID` and
 `NROS_LOCATOR` still work at run time; an embedded image bakes the values from
-its block. See [Configuration](../build/configuration.md).
+its block. See [Configuration](../guide/build/configure-an-image.md).
 
 ### Naming what to run
 
@@ -455,10 +455,10 @@ src/sensor_node_bringup/boards/native_sim_native_64/
 
 `nros build` writes the Zephyr application itself under `build/` and runs
 `west build` on it. The board id is still nano-ros's (`zephyr`), never
-Zephyr's spelling. [Configuring an image](../targets/zephyr.md#configuring-an-image-systemtoml-not-prjconf)
+Zephyr's spelling. [Configuring an image](../guide/platforms/zephyr.md#configuring-an-image-systemtoml-not-prjconf)
 has the rest. A Zephyr application that keeps its own `CMakeLists.txt` and
 `prj.conf` and is built with plain `west build` is not a workspace image; it
-has [its own chapter](../targets/zephyr-west-app.md).
+has [its own chapter](../guide/platforms/zephyr-west-app.md).
 
 ## What `nros build` generates
 
@@ -550,8 +550,8 @@ Several processes are several images.
 
 Nothing on this page is Rust-specific except the node's source file. C and
 C++ node packages, and workspaces that mix languages, are
-[C / C++ multi-node workspaces](../build/cpp-workspaces.md) and
-[Mixed-language workspaces](../build/mixed-language.md). [Role reference](../build/roles.md)
+[C / C++ multi-node workspaces](../guide/contracts/cpp-workspaces.md) and
+[Mixed-language workspaces](../guide/build/mix-languages.md). [Role reference](../guide/build/roles.md)
 lists every field of the three roles.
 
 ## Design background

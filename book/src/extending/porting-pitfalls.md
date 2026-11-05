@@ -73,7 +73,7 @@ address. If C code stored a pointer to the original location (e.g., during
 from an init function.
 
 **Fix:** Use static storage, `Box::pin()`, or index-based references instead of
-raw pointers. See [Troubleshooting: Subscriber Callback Crashes](../operate/troubleshooting.md#subscriber-callback-crashes).
+raw pointers. See [Troubleshooting: Subscriber Callback Crashes](../guide/deploy/troubleshoot.md#subscriber-callback-crashes).
 
 ## Clock Sources
 
@@ -250,7 +250,7 @@ cmake::Config::new(&zenoh_pico_path)
 
 `Z_FEATURE_MATCHING` depends on `Z_FEATURE_INTEREST` — both must be disabled.
 
-See [Troubleshooting: zenoh-pico Multiple Client Issues](../operate/troubleshooting.md#zenoh-pico-multiple-client-issues).
+See [Troubleshooting: zenoh-pico Multiple Client Issues](../guide/deploy/troubleshoot.md#zenoh-pico-multiple-client-issues).
 
 ### Blocking TCP reads in cooperative schedulers
 

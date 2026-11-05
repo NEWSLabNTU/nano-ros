@@ -400,7 +400,7 @@ branch in the "after" version — same code, hoisted to a method.
 
 - [RTOS Cooperation](rtos-cooperation.md) — the supported execution
   shapes, and why Embassy is not one.
-- [Scheduling Models](./scheduling-models.md) — the real-time
+- [Scheduling Models](../guide/realtime/pick-a-scheduling-model.md) — the real-time
   scheduling backdrop against which dispatch strategy choices are
   made.
 - `packages/platform/nros-platform/src/board/dispatch.rs` — the

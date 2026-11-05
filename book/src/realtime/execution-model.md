@@ -5,7 +5,7 @@
 This chapter is about one question: when does a nano-ros callback meet its
 deadline, and what does the runtime do to make it? The design records are
 listed under [Design background](#design-background) at the end of this page.
-[Scheduling Models](./scheduling-models.md) covers the RTOS
+[Scheduling Models](../guide/realtime/pick-a-scheduling-model.md) covers the RTOS
 schedulers underneath.
 
 ## One level does not preempt

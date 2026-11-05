@@ -143,7 +143,7 @@ The publisher and timer are typed wrappers over the C ABI, and every call
 returns a `Result` rather than throwing: every nano-ros build is
 `-fno-exceptions`. `configure` returns the first failure, and the generated
 entry halts naming the node that failed, so there is no unchecked
-construction to forget. [Porting a ROS 2 C++ node](../from-ros2/porting-a-cpp-node.md)
+construction to forget. [Porting a ROS 2 C++ node](../guide/port/port-a-cpp-node.md)
 covers the rclcpp-shaped constructors, `shared_from_this()` and
 `rclcpp::TimerBase`.
 
@@ -202,7 +202,7 @@ nros configure
 
 For a CMake tree that is
 not a nano-ros workspace at all, see
-[Build as a CMake subdirectory](../build/cmake-subdirectory.md).
+[Build as a CMake subdirectory](../guide/build/cmake-subdirectory.md).
 
 First configure builds nano-ros's Rust staticlibs (~3 minutes).
 Re-builds finish in seconds.
@@ -256,7 +256,7 @@ talker. If it does not appear in 30 seconds:
   [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp),
   where each paired example is an image row under its behaviour's bringup
   (`pubsub_bringup`, `service_bringup`, `action_bringup`), and
-  [C / C++ multi-node workspaces](../build/cpp-workspaces.md).
+  [C / C++ multi-node workspaces](../guide/contracts/cpp-workspaces.md).
 - Custom `.msg` / `.srv` / `.action`:
   [Message Generation](../build/message-generation.md)
 - Cross-compile for an RTOS: pick the right Embedded Starter from

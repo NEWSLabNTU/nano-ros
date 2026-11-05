@@ -111,7 +111,7 @@ The scaffold names the image after the board's platform: `[image.baremetal]`,
 `system.toml` lives only in a bringup, and `nros build` refuses one beside a
 `Cargo.toml` or `CMakeLists.txt`, naming where to move it. Zephyr is no
 exception: `nros build` and `nros run` generate the Zephyr application under
-`build/` from the image ([the Zephyr chapter](../targets/zephyr.md)), and
+`build/` from the image ([the Zephyr chapter](../guide/platforms/zephyr.md)), and
 [`nros materialize`](#nros-materialize) turns it into a package of yours when
 you need to edit it.
 
@@ -134,7 +134,7 @@ Packages are prebuilt where the index has a binary for your host and built
 from source otherwise; the vendored submodules (`zenoh-pico`, `mbedtls`,
 RTOS sources) are the source builds. `--dry-run` prints the plan without
 fetching. Full explanation:
-[Installation](../get-started/installation-details.md#provisioning-with-nros-setup).
+[Installation](../guide/build/install-options.md#provisioning-with-nros-setup).
 
 Note `setup` does **not** provision a zenoh router: the router is
 ROS's `rmw_zenoh_cpp/rmw_zenohd`, so a zenoh run needs a ROS 2 install;
@@ -594,7 +594,7 @@ Generate CDR-serializable `px4_msgs::msg::*` bindings from a PX4-Autopilot
 `--lang cpp` writes headers and FFI glue for an in-firmware PX4 module.
 `--topics` keeps only the messages a bridge carries (by message name or uORB
 topic name), pulling in nested types. See the
-[PX4 starter](../targets/px4.md).
+[PX4 starter](../guide/platforms/px4.md).
 
 ```sh
 nros px4 msgs --output generated/px4_msgs --topics vehicle_status

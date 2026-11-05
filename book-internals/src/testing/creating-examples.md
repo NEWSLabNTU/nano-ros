@@ -331,7 +331,7 @@ runner scripts — live in the [Platform Guides](../../../book/src/targets/).
 
 ## See Also
 
-- [Build as a CMake subdirectory](../../build/cmake-subdirectory.html)
+- [Build as a CMake subdirectory](../../guide/build/cmake-subdirectory.html)
 - [Message Generation](../../build/message-generation.html)
 - [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)
   — coverage matrix + intentionally-empty cells

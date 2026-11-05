@@ -93,7 +93,7 @@ see the book.
   generate their crate-patch config with
   `nros dev codegen rust --generate-config --nano-ros-path <ws>/modules/nano-ros/packages/core`.
 - Full reference: the book's *Getting Started → Zephyr (west module)*
-  (`book/src/targets/zephyr.md`) and
+  (`book/src/guide/platforms/zephyr.md`) and
   `modules/nano-ros/examples/zephyr/` for the multi-RMW examples.
 - Verified end-to-end (Phase 202): this flow builds `app` to `zephyr.exe` and runs
   to `Published: 1` on a fresh BYO workspace.

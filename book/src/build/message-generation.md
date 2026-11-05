@@ -132,7 +132,7 @@ nros     = { version = "*" }
 Transport choice and message schema are orthogonal concerns and the
 manifest reflects that. (Which backend you actually get is
 `[system] rmw` in the bringup's `system.toml`, not a feature you pick here — see
-[Switching RMW in Config](../communicate/switching-rmw.md).) This matches upstream rclcpp + rclrs, which
+[Switching RMW in Config](../guide/rmw/switch-the-rmw-per-image.md).) This matches upstream rclcpp + rclrs, which
 both ship msg packages RMW-agnostic and let the RMW pick which
 descriptor representation it wants at runtime.
 

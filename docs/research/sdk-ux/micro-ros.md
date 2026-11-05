@@ -668,7 +668,7 @@ Rust core.
 | `examples/mps2-an385-freertos/c/zenoh/talker/config.toml:1-22`                          | TOML knobs                        |
 | `examples/zephyr/c/talker/src/main.c:25-95`                                           | nros-c Zephyr hello-world         |
 | `examples/zephyr/c/talker/prj.conf:54-62`                                             | nros Zephyr Kconfig               |
-| `book/src/targets/freertos.md:51-103`                                         | nano-ros FreeRTOS user docs       |
+| `book/src/guide/platforms/freertos.md:51-103`                                         | nano-ros FreeRTOS user docs       |
 | `book/src/getting-started/zephyr.md:55-170`                                           | nano-ros Zephyr user docs         |
 | `book/src/reference/c-api.md`                                                         | nros-c surface index              |
 | `justfile:38-54`                                                                      | top-level just modules            |

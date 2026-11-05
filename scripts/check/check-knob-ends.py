@@ -68,8 +68,8 @@ CLAIM_DOCS = (
     "book/src/reference/environment-variables.md",
     # phase-532 W7: the tuning guide folded into these two pages; the docs/
     # copies are moved-stubs and claim nothing.
-    "book/src/communicate/tx-tuning.md",
-    "book/src/realtime/static-memory.md",
+    "book/src/guide/rmw/tune-throughput-and-latency.md",
+    "book/src/guide/contracts/measure-static-memory.md",
     ".env.example",
 )
 CLAIM_DOC_GLOBS = (

@@ -116,7 +116,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 2: Reconcile the cookbook to the 3-role model
 
 **Files:**
-- Modify: `book/src/build/roles.md` (whole file)
+- Modify: `book/src/guide/build/roles.md` (whole file)
 - Modify: `book/src/SUMMARY.md` (line 33 title)
 
 This file is the reference cookbook. Apply the fact-sheet model. Keep it reference-voice (the new tutorial pages link here).
@@ -197,13 +197,13 @@ Rename "single-Component convenience" → "single-Node convenience"; "One Compon
 
 - [ ] **Step 10: Verify no stale terms remain in the file**
 
-Run: `grep -n 'Component pkg\|nros::component\|metadata.nros.component\|retired Bringup' book/src/build/roles.md`
+Run: `grep -n 'Component pkg\|nros::component\|metadata.nros.component\|retired Bringup' book/src/guide/build/roles.md`
 Expected: **no output**.
 
 - [ ] **Step 11: Commit**
 
 ```bash
-git add book/src/build/roles.md book/src/SUMMARY.md
+git add book/src/guide/build/roles.md book/src/SUMMARY.md
 git commit -m "docs(book): reconcile cookbook to 3-role model (Node/Bringup/Entry)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -214,7 +214,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 3: Terminology drift sweep across other pages
 
 **Files:**
-- Modify (as hits dictate): `book/src/tutorial/grow-your-workspace.md`, `book/src/operate/deployment.md`, `book/src/extending/board-trait.md`, `book/src/from-ros2/vs-micro-ros.md`, any other hit.
+- Modify (as hits dictate): `book/src/tutorial/grow-your-workspace.md`, `book/src/guide/deploy/deploy-to-production.md`, `book/src/extending/board-trait.md`, `book/src/from-ros2/vs-micro-ros.md`, any other hit.
 
 - [ ] **Step 1: Find all remaining stale terms book-wide**
 
@@ -316,12 +316,12 @@ Tutorial voice. Required content:
 | `ros2 run <pkg> <exe>` | run the Entry pkg binary (`cargo run`) | one Entry pkg per board |
 ```
 
-- A "Where to go next" list linking the next three pages + the [Node, Bringup & Entry Packages](../../../book/src/build/roles.md) reference.
+- A "Where to go next" list linking the next three pages + the [Node, Bringup & Entry Packages](../../../book/src/guide/build/roles.md) reference.
 - Note the app-node shape stays perfectly valid for single-node work — don't make a workspace until you need one.
 
 - [ ] **Step 2: Verify cited paths exist**
 
-Run: `ls examples/native/rust/talker/ book/src/build/roles.md`
+Run: `ls examples/native/rust/talker/ book/src/guide/build/roles.md`
 Expected: both exist.
 
 - [ ] **Step 3: Commit**
@@ -361,7 +361,7 @@ default_namespace = "/"
 - A minimal `src/lib.rs` skeleton showing `nros::node!(Talker);` and the `Node`/`ExecutableNode` impl shape (cite `examples/stm32f4/rust/talker_pkg/src/lib.rs` for the full worked version; show ~15 lines, not the whole thing).
 - State: **no `fn main()`** in a Node pkg (it's a lib linked into an Entry pkg); codegen owns the spin loop.
 - Build: `cargo build` from the workspace root builds all Node pkgs.
-- Link to the [Node, Bringup & Entry Packages](../../../book/src/build/roles.md) reference for the full API.
+- Link to the [Node, Bringup & Entry Packages](../../../book/src/guide/build/roles.md) reference for the full API.
 
 - [ ] **Step 2: Verify the cited example + macro line**
 

@@ -61,7 +61,7 @@ platform-asset out="tmp/probe-asset":
 [group("main")]
 linux: (platform "linux")
 
-# book/src/targets/bare-metal.md — Rust talker on QEMU MPS2-AN385.
+# book/src/guide/platforms/bare-metal.md — Rust talker on QEMU MPS2-AN385.
 [group("main")]
 baremetal: (platform "baremetal")
 
@@ -71,56 +71,56 @@ baremetal: (platform "baremetal")
 [group("main")]
 offline: (platform "offline")
 
-# book/src/targets/freertos.md — Rust workspace image on QEMU MPS2-AN385.
+# book/src/guide/platforms/freertos.md — Rust workspace image on QEMU MPS2-AN385.
 [group("main")]
 freertos: (platform "freertos")
 
-# book/src/targets/freertos.md — the C package on the same board
+# book/src/guide/platforms/freertos.md — the C package on the same board
 # (phase-517 W17: the chapter's other language road).
 [group("main")]
 freertos-c: (platform "freertos-c")
 
-# book/src/targets/threadx.md — the Linux simulator flavour.
+# book/src/guide/platforms/threadx.md — the Linux simulator flavour.
 [group("main")]
 threadx-linux: (platform "threadx-linux")
 
-# book/src/targets/threadx.md — the RISC-V 64 QEMU flavour.
+# book/src/guide/platforms/threadx.md — the RISC-V 64 QEMU flavour.
 [group("main")]
 threadx-riscv64: (platform "threadx-riscv64")
 
-# book/src/targets/threadx.md — the C package on the Linux simulator
+# book/src/guide/platforms/threadx.md — the C package on the Linux simulator
 # (phase-517 W17).
 [group("main")]
 threadx-linux-c: (platform "threadx-linux-c")
 
-# book/src/targets/nuttx.md — QEMU Arm `virt`.
+# book/src/guide/platforms/nuttx.md — QEMU Arm `virt`.
 [group("main")]
 nuttx-arm: (platform "nuttx-arm")
 
-# book/src/targets/nuttx.md — the Rust workspace image on
+# book/src/guide/platforms/nuttx.md — the Rust workspace image on
 # Arm virt (issue 2149).
 [group("main")]
 nuttx-arm-rust: (platform "nuttx-arm-rust")
 
-# book/src/targets/nuttx.md — QEMU RISC-V `rv-virt`.
+# book/src/guide/platforms/nuttx.md — QEMU RISC-V `rv-virt`.
 [group("main")]
 nuttx-riscv: (platform "nuttx-riscv")
 
-# book/src/targets/nuttx.md — the Rust workspace image on
+# book/src/guide/platforms/nuttx.md — the Rust workspace image on
 # rv-virt (issue 2178).
 [group("main")]
 nuttx-riscv-rust: (platform "nuttx-riscv-rust")
 
-# book/src/targets/zephyr.md — native_sim.
+# book/src/guide/platforms/zephyr.md — native_sim.
 [group("main")]
 zephyr: (platform "zephyr")
 
-# book/src/targets/zephyr.md — the Rust workspace on
+# book/src/guide/platforms/zephyr.md — the Rust workspace on
 # native_sim (phase-517 W17; issues 2151, 2152).
 [group("main")]
 zephyr-rust: (platform "zephyr-rust")
 
-# book/src/targets/zephyr-west-app.md — a Zephyr application built with
+# book/src/guide/platforms/zephyr-west-app.md — a Zephyr application built with
 # plain west (no workspace, no system.toml), on native_sim.
 [group("main")]
 zephyr-west-app: (platform "zephyr-west-app")
@@ -153,7 +153,7 @@ wokwi-pico: (platform "wokwi-pico")
 
 # phase-517 W4: not a platform chapter, but it rides the same harness. One bare
 # `nros setup` for a Linux and a FreeRTOS image, then `nros build --all`.
-# book/src/get-started/installation-details.md — "Provision a whole workspace".
+# book/src/guide/build/install-options.md — "Provision a whole workspace".
 [group("main")]
 workspace: (platform "workspace")
 

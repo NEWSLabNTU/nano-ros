@@ -53,7 +53,7 @@ and `cargo`/`cmake` build the workspace examples under `examples/workspaces/`.
 
 ## FreeRTOS
 
-Lanes for [FreeRTOS (QEMU MPS2-AN385)](../../targets/freertos.html).
+Lanes for [FreeRTOS (QEMU MPS2-AN385)](../../guide/platforms/freertos.html).
 
 The prebuilt *test fixtures* bake per-language allocator ports instead
 of 7447 (the copy-out examples' port) so suites run in parallel;
@@ -79,7 +79,7 @@ ESP32 support is **dormant** (issue 1525): the board, platform crate and example
 ## NuttX
 
 Lanes for [NuttX (QEMU)](./nuttx-in-tree.md) and
-[Integration: NuttX external app](../../targets/nuttx.html).
+[Integration: NuttX external app](../../guide/platforms/nuttx.html).
 
 Build (arm QEMU):
 
@@ -109,12 +109,12 @@ starts the router on the fixture port (8200) and `just nuttx talker`
 wraps `qemu-system-arm` with the right wiring. `talker` there is the
 Rust variant; the C / C++ variants boot through the `make`-driven path
 described under "Auto-configure glue" in
-[Integration: NuttX external app](../../targets/nuttx.html).
+[Integration: NuttX external app](../../guide/platforms/nuttx.html).
 
 ## Zephyr
 
 Lanes for [Zephyr (native_sim)](./zephyr-in-tree.md) and
-[Zephyr Integration (west module)](../../targets/zephyr.html).
+[Zephyr Integration (west module)](../../guide/platforms/zephyr.html).
 
 E2E testing:
 
@@ -206,7 +206,7 @@ Exit cleanly with `Ctrl-C`.
 
 ## ThreadX
 
-Lanes for [ThreadX (Linux sim / RISC-V64 QEMU)](../../targets/threadx.html).
+Lanes for [ThreadX (Linux sim / RISC-V64 QEMU)](../../guide/platforms/threadx.html).
 
 `just <flavour> build-fixtures` produces `threadx_cpp_*` and
 `riscv64_threadx_cpp_*` binaries alongside the Rust + C ones:
@@ -237,7 +237,7 @@ just cyclonedds test        # run the CTest harness
 
 ## Serial transport (QEMU)
 
-Lane for [Serial Transport](../../communicate/serial-transport.html): the
+Lane for [Serial Transport](../../guide/rmw/use-a-serial-link.html): the
 integration test `test_qemu_serial_pubsub_e2e` in
 `packages/testing/nros-tests/tests/emulator.rs` automates the full
 QEMU serial pub/sub workflow. Run it with:

@@ -96,7 +96,7 @@ them, and the build carries them from there. They are not user inputs.
 ## Buffer Tuning
 
 All optional -- platform-appropriate defaults apply if unset. See
-[Configuration](../build/configuration.md) for deployment-scenario
+[Configuration](../guide/build/configure-an-image.md) for deployment-scenario
 guidance and platform guides for target-specific sizing.
 
 ### Zenoh-pico (`NROS_ZENOH_*`)

@@ -10,7 +10,7 @@ instead.
 
 *This page is coming soon.* Until then, see `nros run` in the
 [`nros` CLI reference](../reference/cli.md) and
-[Deployment Workflow](../operate/deployment.md).
+[Deployment Workflow](../guide/deploy/deploy-to-production.md).
 
 ## Design background
 

@@ -663,7 +663,7 @@ fn nros_main() -> ! {
 
 ## 10. RTOS execution model mapping
 
-Tier-task → RTOS task spawn rules. See `book/src/realtime/scheduling-models.md` for full per-RTOS scheduling details.
+Tier-task → RTOS task spawn rules. See `book/src/guide/realtime/pick-a-scheduling-model.md` for full per-RTOS scheduling details.
 
 ### 10.1 Per-RTOS quick reference
 
@@ -822,7 +822,7 @@ Components with no existing infrastructure to reuse:
 - nano-ros `ffi-sync`: `packages/rmw/zenoh/nros-rmw-zenoh/src/zpico.rs:38–45`, Phase 61 archive
 - nano-ros `PlatformYield` (Phase 79 abstraction pattern, mirror for mutex): `packages/core/nros-rmw/src/traits.rs`
 - nano-ros C++ template-static-member pattern (Phase 89.13 NuttX gotcha): `docs/roadmap/archived/phase-89.md` + memory `project_nuttx_cpp_pic_fix.md`
-- nano-ros scheduling-models (per-RTOS priority/scheduler/mutex): `book/src/realtime/scheduling-models.md`
+- nano-ros scheduling-models (per-RTOS priority/scheduler/mutex): `book/src/guide/realtime/pick-a-scheduling-model.md`
 - nano-ros executor fairness analysis (single-slot semantics, LET mode): `docs/reference/executor-fairness-analysis.md`
 - Phase 76 (FreeRTOS scheduling configuration via cargo config.toml): `docs/roadmap/archived/phase-76*.md`
 - Phase 77.22 (planned `PlatformYield` trait + FreeRTOS C shim for `taskYIELD`): see CLAUDE.md "Spin/Yield Wake Primitives"

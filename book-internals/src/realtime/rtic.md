@@ -498,7 +498,7 @@ Shared resources are guarded by the Stack Resource Policy (Baker, T.P.
 (1991), "Stack-Based Scheduling of Realtime Processes", *Real-Time Systems*
 3(1), 67–99): a compile-time ceiling with zero runtime overhead, so priority
 inversion is impossible by construction. Compared with the RTOS models in
-[Scheduling Models](../../realtime/scheduling-models.html), RTIC gives the
+[Scheduling Models](../../guide/realtime/pick-a-scheduling-model.html), RTIC gives the
 best determinism (hardware scheduling, 12-cycle worst-case latency on a
 Cortex-M3 tail-chain) and the lowest RAM overhead (no task control blocks),
 at the cost of flexibility: ARM Cortex-M only, no dynamic task creation.
@@ -507,11 +507,11 @@ at the cost of flexibility: ARM Cortex-M only, no dynamic task creation.
 
 - [Dispatch Strategy](../../realtime/dispatch-strategy.html) —
   the trichotomy and the per-Node-vs-per-callback rationale.
-- [Role reference](../../build/roles.html) —
+- [Role reference](../../guide/build/roles.html) —
   the package roles in full.
-- [Bare-metal Cortex-M3](../../targets/bare-metal.html) — the MPS2-AN385 board
+- [Bare-metal Cortex-M3](../../guide/platforms/bare-metal.html) — the MPS2-AN385 board
   and the direct-exec entry shape the book teaches.
-- [Scheduling Models](../../realtime/scheduling-models.html) —
+- [Scheduling Models](../../guide/realtime/pick-a-scheduling-model.html) —
   the scheduling models of the supported targets; the RTIC one is
   [below](#the-rtic-scheduling-model).
 

@@ -923,7 +923,7 @@ the generated `.config`, so the image's fragment reached a Kconfig symbol that
 only the user's module defines.
 
 The scratch module was reverted after the run; the transcript is in
-`book/src/targets/zephyr.md`. A permanent worked example
+`book/src/guide/platforms/zephyr.md`. A permanent worked example
 was deliberately NOT added to `examples/workspaces/rust`: that workspace backs
 fixture rows, and giving it an extra module would change what every one of
 those legs compiles.
@@ -934,7 +934,7 @@ those legs compiles.
   the framework locating itself; nothing equivalent for the workspace.
 * `zephyr/cmake/nros_cargo_build.cmake:600–634` — the existing
   custom-target-plus-IMPORTED-library supplier shape.
-* `book/src/targets/zephyr.md` — the documented layout
+* `book/src/guide/platforms/zephyr.md` — the documented layout
   (`my_zephyr_ws/{.west,zephyr,modules/nano-ros,apps/my_app}`) and the
   `nros build` handoff added for 0892.
 * issue 0892 — why the driver could not work, and the three-rung workspace

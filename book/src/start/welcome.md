@@ -103,7 +103,7 @@ A board that is not in the registry can still run nano-ros through the
 customization ladder: the [out-of-tree STM32F4 worked
 example](../extending/stm32f4-out-of-tree.md) shows the pattern, and the PX4
 module template brings nano-ros into PX4 firmware as an external module
-([PX4](../targets/px4.md); C++ only, because PX4's uORB binding is
+([PX4](../guide/platforms/px4.md); C++ only, because PX4's uORB binding is
 C++-only). MPS2-AN385 bare-metal is Rust-only: the C and C++ APIs need an
 RTOS for libc and a heap.
 

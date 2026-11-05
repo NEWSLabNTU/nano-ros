@@ -165,7 +165,7 @@ nros build linux_jazzy
 
 These are the interop-specific failures. For problems that are not about
 the ROS 2 side (build failures, sessions that never open, transport
-errors), see [Troubleshooting](../operate/troubleshooting.md); for a
+errors), see [Troubleshooting](../guide/deploy/troubleshoot.md); for a
 first run, see
 [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md).
 

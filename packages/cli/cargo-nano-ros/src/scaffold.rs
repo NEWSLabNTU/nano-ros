@@ -1249,7 +1249,7 @@ fn write_typed_component(
 }
 
 /// phase-517 — a Zephyr C/C++ project is a stock Zephyr application
-/// (`book/src/targets/zephyr-west-app.md`), never
+/// (`book/src/guide/platforms/zephyr-west-app.md`), never
 /// the host-shaped `main()` the other platforms get: `find_package(Zephyr)`
 /// FIRST (it loads the nano-ros module, which defines the `nano_ros` package
 /// `find_package(nano_ros)` then reads), a TYPED component the module's
@@ -1289,7 +1289,7 @@ fn scaffold_zephyr(name: &str, lang: Language, dir: &Path, role: Role, node: &st
         ),
     };
     let cmake = format!(
-        r#"# A stock Zephyr application (book: targets/zephyr.md).
+        r#"# A stock Zephyr application (book: guide/platforms/zephyr.md).
 # `find_package(Zephyr)` loads the nano-ros module (named on the `west build`
 # line: -DZEPHYR_EXTRA_MODULES="$(nros locate nano-ros)"); CONFIG_NROS=y in prj.conf
 # switches it on. Board, RMW and the component live in system.toml.
@@ -1806,7 +1806,7 @@ mod scaffold_flow_tests {
     #[test]
     fn zephyr_c_and_cpp_scaffold_a_stock_zephyr_app() {
         let book =
-            fs::read_to_string(repo_root().join("book/src/targets/zephyr-west-app.md")).unwrap();
+            fs::read_to_string(repo_root().join("book/src/guide/platforms/zephyr-west-app.md")).unwrap();
         for (lang, src) in [
             (Language::C, "src/Talker.c"),
             (Language::Cpp, "src/Talker.cpp"),
@@ -1876,7 +1876,7 @@ mod scaffold_flow_tests {
     #[test]
     fn next_steps_follow_the_books_flow_per_language_and_platform() {
         let book =
-            fs::read_to_string(repo_root().join("book/src/targets/zephyr-west-app.md")).unwrap();
+            fs::read_to_string(repo_root().join("book/src/guide/platforms/zephyr-west-app.md")).unwrap();
         let platforms = [
             "linux",
             "baremetal",

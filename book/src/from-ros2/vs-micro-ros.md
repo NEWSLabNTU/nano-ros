@@ -99,9 +99,9 @@ nano-ros calls them too. The migration is a rename only where the shape differs.
   embedded DDS, and Arduino-ROS.
 - [Choosing an RMW Backend](../tutorial/pick-the-rmw.md) — the
   backend capability matrix.
-- [Production Readiness Checklist](../realtime/production-readiness.md)
+- [Production Readiness Checklist](../guide/deploy/production-readiness.md)
   — pilot-deployment validation.
 - [Supported Boards](../reference/supported-boards.md) — per-board
   status.
-- [Migration Guide](migration-guide.md) — for
+- [Migration Guide](../guide/port/move-a-ros2-project.md) — for
   porters coming from rclcpp / rclrs / rclc.

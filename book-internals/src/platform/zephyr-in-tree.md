@@ -3,7 +3,7 @@
 > **Looking for the user-facing path?** This page covers building
 > nano-ros's own Zephyr examples from this repository.
 > If you're consuming nano-ros as a Zephyr module in YOUR Zephyr
-> workspace, see [Integration: Zephyr (`west` module)](../../targets/zephyr.html)
+> workspace, see [Integration: Zephyr (`west` module)](../../guide/platforms/zephyr.html)
 > instead.
 
 Complete setup procedure for Zephyr `native_sim` testing. Networking uses
@@ -68,7 +68,7 @@ need ROS 2 installed.
 Packages are prebuilt where the index has a binary for your host and built from
 source otherwise — `zenohd` is the notable source build, and zenoh is the default
 `--rmw`. `--dry-run` prints the plan for your host. See
-[Installation](../../get-started/installation-details.html#provisioning-with-nros-setup) for the full explanation.
+[Installation](../../guide/build/install-options.html#provisioning-with-nros-setup) for the full explanation.
 
 ## Step 1: Initialize Workspace (One-Time)
 
@@ -156,7 +156,7 @@ west build -b native_sim/native/64 ../examples/zephyr/rust/talker
 
 How an image's `system.toml` becomes the Zephyr build's Kconfig — and why a
 `prj*.conf` never carries a `CONFIG_NROS_*` line — is user material:
-[Zephyr (west module) § Configuring an image](../../targets/zephyr.html#configuring-an-image-systemtoml-not-prjconf).
+[Zephyr (west module) § Configuring an image](../../guide/platforms/zephyr.html#configuring-an-image-systemtoml-not-prjconf).
 For the in-tree examples, each leaf's `system.toml` declares one image per
 RMW; pick one with `-DNROS_IMAGE=<id>`:
 
@@ -311,7 +311,7 @@ lowercased (`transport_mtu = 512`, `subscriber_ring_depth = 1`) — not in
 
 The copy-out, snippet, patch-apply, and dual-line (Zephyr 3.7 LTS and
 4.x) build flows the user book's
-[Zephyr chapter](../../targets/zephyr.html) describes are
+[Zephyr chapter](../../guide/platforms/zephyr.html) describes are
 exercised in CI by `just zephyr ci-both` and `just zephyr check-copy-out`.
 
 ## ARM FVP resolution

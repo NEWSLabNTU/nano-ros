@@ -54,7 +54,7 @@ with zero sites is a type, not a behavior.
 
 ## Related
 
-- [Scheduling Models](../realtime/scheduling-models.md) — the
+- [Scheduling Models](../guide/realtime/pick-a-scheduling-model.md) — the
   narrative: how tiers, transport priorities, and these classes
   land on each kernel
 - [RTOS Cooperation](../realtime/rtos-cooperation.md) — spin-loop
