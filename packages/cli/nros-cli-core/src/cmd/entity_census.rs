@@ -903,6 +903,25 @@ impl HostSteps<'static> {
     }
 }
 
+/// The compiler variables a CMake configure EXPORTS to every process it
+/// spawns. CMake sets `CC`/`CXX` (and `ASM` when that language is enabled) to
+/// the compiler it chose, so a census taken from a CROSS leaf's
+/// `find_package(nano_ros)` hook inherits the cross compiler, and the host
+/// census build's `project()` fails its compiler check (measured:
+/// `arm-none-eabi-gcc` linking a host test program, `undefined reference to
+/// _exit`). The census build is for the HOST, so it never takes them.
+const CROSS_COMPILER_ENV: [&str; 3] = ["CC", "CXX", "ASM"];
+
+/// A `cmake` command for the HOST census build, with the enclosing
+/// configure's compiler variables ([`CROSS_COMPILER_ENV`]) removed.
+fn host_cmake() -> Command {
+    let mut cmd = Command::new("cmake");
+    for var in CROSS_COMPILER_ENV {
+        cmd.env_remove(var);
+    }
+    cmd
+}
+
 /// [`take_leaf_census`] over an injected [`HostSteps`].
 pub(crate) fn take_leaf_census_with(
     leaf: &Path,
@@ -1014,7 +1033,7 @@ pub(crate) fn take_leaf_census_with(
             }
         )
     };
-    let mut configure = Command::new("cmake");
+    let mut configure = host_cmake();
     configure
         .arg("-S")
         .arg(&leaf)
@@ -1040,7 +1059,7 @@ pub(crate) fn take_leaf_census_with(
     if !status.success() {
         return Err(refused("the configure", status));
     }
-    let mut build_cmd = Command::new("cmake");
+    let mut build_cmd = host_cmake();
     build_cmd
         .arg("--build")
         .arg(&build)
@@ -2104,6 +2123,40 @@ mod tests {
             "names the loose fix: {msg}"
         );
         assert!(msg.contains("the default for a C/C++ leaf"), "{msg}");
+    }
+
+    /// A census taken from a CROSS configure's hook inherits the `CC`/`CXX`
+    /// that CMake exports to its children; the host census build must not
+    /// compile with them (template-copy-out's mps2-an385-freertos copy did).
+    #[test]
+    fn the_host_census_build_drops_the_enclosing_configures_compiler() {
+        use std::os::unix::process::ExitStatusExt;
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(
+            td.path(),
+            "[[component]]\npkg = \"x\"\nclass = \"x::T\"\nname = \"t\"\n",
+        );
+        let removed = std::cell::RefCell::new(Vec::new());
+        let host = HostSteps {
+            missing: &|_| Vec::new(),
+            run: &|cmd| {
+                let gone: Vec<String> = cmd
+                    .get_envs()
+                    .filter(|(_, v)| v.is_none())
+                    .map(|(k, _)| k.to_string_lossy().into_owned())
+                    .collect();
+                removed.borrow_mut().push(gone);
+                Ok(std::process::ExitStatus::from_raw(1 << 8))
+            },
+        };
+        let _ = take_leaf_census_with(td.path(), None, 5, &host);
+        let removed = removed.into_inner();
+        assert!(!removed.is_empty(), "the host configure ran");
+        for gone in &removed {
+            for var in CROSS_COMPILER_ENV {
+                assert!(gone.iter().any(|g| g == var), "{var} not removed: {gone:?}");
+            }
+        }
     }
 
     /// Fix round 2 -- a COMPONENT-LESS leaf has no `[[component]]` to write
