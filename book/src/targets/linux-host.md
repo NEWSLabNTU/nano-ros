@@ -103,9 +103,9 @@ impl Component for Talker {
 nros::node!(Talker);
 ```
 
-Use the full [First Node — Rust](../get-started/first-node-rust.md)
+Use the full [First Node — Rust](../tutorial/add-a-second-node.md)
 walkthrough for generated messages and runnable commands, and
-[Growing your workspace](../build/growing-your-workspace.md#srclibrs) for each
+[Growing your workspace](../tutorial/grow-your-workspace.md#srclibrs) for each
 line of `lib.rs`.
 
 ## Build and Run
@@ -148,7 +148,7 @@ platform-specific configuration files. See
 
 Host deployment is normal process deployment: install the workspace,
 source `install/setup.bash`, set environment, and run the binary. For
-ROS 2 interop, run [ROS 2 Interoperability](../communicate/ros2-interop.md)
+ROS 2 interop, run [ROS 2 Interoperability](../tutorial/talk-to-ros2.md)
 and set the ROS side to `rmw_zenoh_cpp`.
 
 ## Design background

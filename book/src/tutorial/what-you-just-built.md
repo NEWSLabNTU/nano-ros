@@ -92,10 +92,10 @@ regenerate it, it does not belong in git.
 
 ## Next
 
-- [Your own message package](your-own-msg-package.md)
-- [Growing your workspace](../build/growing-your-workspace.md): a second
+- [Your own message package](your-own-message.md)
+- [Growing your workspace](grow-your-workspace.md): a second
   node, a second board, a launch file.
-- [First Node in C or C++](first-node-cpp.md): the same node package in
+- [First Node in C or C++](add-a-second-node-cpp.md): the same node package in
   another language.
 
 ## Design background

@@ -204,5 +204,5 @@ console, USART6, is on the board's pins rather than on the USB cable.
 ## Where to go next
 
 - **What each Zephyr piece is** - [Zephyr (west module)](../targets/zephyr.md).
-- **The same talker on QEMU, with no Zephyr** - [First Project](../get-started/first-project.md).
-- **Talk to a real ROS 2 system** - [ROS 2 Interoperability](../communicate/ros2-interop.md).
+- **The same talker on QEMU, with no Zephyr** - [First Project](../tutorial/run-a-talker.md).
+- **Talk to a real ROS 2 system** - [ROS 2 Interoperability](../tutorial/talk-to-ros2.md).

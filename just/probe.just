@@ -9,7 +9,7 @@ default:
 #   1. the CHECKOUT track (ubuntu:24.04): clone + bootstrap, then the first-node
 #      chapter. What everyone does until the first release is cut.
 #   2. the INSTALLED track (phase-447 A3): install a release, then
-#      first-project.md (the serial QEMU chapter, timed) with NO checkout on the host.
+#      run-a-talker.md (the serial QEMU chapter, timed) with NO checkout on the host.
 #      The released `nros` could not build anything and nothing noticed, because
 #      every host that ran it had a checkout the SDK-root ladder reached first.
 # ~30-60 min cold each. Knobs: PROBE_BRANCH, PROBE_CLONE_URL, PROBE_IMAGE,
@@ -31,7 +31,7 @@ checkout:
 
 # The installed track alone: build the asset `release-nros.yml` would publish
 # (its own steps, extracted, on its own `runs-on` image), install it into a
-# second pristine container with nothing else mounted, and run first-project.md.
+# second pristine container with nothing else mounted, and run run-a-talker.md.
 # PROBE_ASSET=<dir> installs a prebuilt asset instead — e.g. a `release nros`
 # run's artifact, `gh run download <id> -n nros-linux-x86_64 -D <dir>`.
 [group("main")]
@@ -56,7 +56,7 @@ platform name:
 platform-asset out="tmp/probe-asset":
     PROBE_TRACK=installed PROBE_ASSET_OUT={{out}} ./scripts/probe/run-bootstrap-probe.sh
 
-# book/src/get-started/first-project.md's "run it on this machine" section —
+# book/src/tutorial/run-a-talker.md's "run it on this machine" section —
 # the same scaffold on the Linux host over Cyclone DDS (weekly).
 [group("main")]
 linux: (platform "linux")

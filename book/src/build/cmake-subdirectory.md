@@ -7,8 +7,8 @@ nano-ros package or workspace, you state the board once in
 the bringup's `system.toml` and let `nros build` drive CMake — you
 never set a cache variable by hand, because the build root it generates
 sets them from that one board name. Start at
-[First Project](../get-started/first-project.md) and
-[Growing your workspace](growing-your-workspace.md) instead.
+[First Project](../tutorial/run-a-talker.md) and
+[Growing your workspace](../tutorial/grow-your-workspace.md) instead.
 
 This page is for the C or C++ project that is **not** a nano-ros
 workspace: an existing CMake tree with its own layout and its own

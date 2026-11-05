@@ -29,7 +29,7 @@
 #                    invocation, the nano-ros talker, and `ros2 topic echo`
 #                    proving cross-stack delivery.
 #                    `installed` is the USER's path (phase-447 A3, RFC-0099
-#                    D1): install a release, provision, then first-project.md's
+#                    D1): install a release, provision, then run-a-talker.md's
 #                    scaffold -> build -> run, on a host with NO checkout. See
 #                    "THE INSTALLED TRACK" below.
 #   PROBE_ASSET=<dir>  installed track: install the `nros-linux-x86_64.tar.zst`
@@ -45,7 +45,7 @@
 #                    .sha256) to <dir>, and stop — what the weekly platform
 #                    lane does once before fanning out with PROBE_ASSET
 #   PROBE_PLATFORM   installed track: which chapter is replayed after the
-#                    install — first-project (default, first-project.md: the
+#                    install — first-project (default, run-a-talker.md: the
 #                    mps2-an385 QEMU serial chapter, timed against the
 #                    field budget) | linux (multi-node-linux.md) | baremetal |
 #                    freertos | threadx-linux | threadx-riscv64 | nuttx-arm | nuttx-riscv |
@@ -59,7 +59,7 @@
 # The released `nros` could not build anything, and it survived because the
 # only people who could notice were the only people it could not affect: every
 # contributor has a checkout the SDK-root ladder reaches first, and this probe
-# stopped at the bootstrap — first-project.md, the scaffold -> build -> run
+# stopped at the bootstrap — run-a-talker.md, the scaffold -> build -> run
 # page, carried no `probe=` block. This track runs that page on a machine where
 # no checkout exists, and verify-installed-first-project.sh ASSERTS that rather
 # than trusting the docker invocation.
@@ -146,7 +146,7 @@ nros_published_release_version() {
         awk '/^\[tool\.nros\]$/ {t = 1; next} /^\[/ {t = 0} t && !v && /^version = / {gsub(/"/, "", $3); v = $3} END {print v}'
 }
 # phase-517 W10 — the installed track replays ONE chapter per platform. The
-# default is first-project.md (`first-project`); every other value names a
+# default is run-a-talker.md (`first-project`); every other value names a
 # chapter, replayed after the same install, against the same no-checkout
 # assertions, with the chapter's own `nros setup <board>` step provisioning.
 # `variant` selects the run of a chapter that documents several (NuttX's Arm
@@ -154,7 +154,7 @@ nros_published_release_version() {
 # Each chapter ends in a `probe-run` step whose `probe-expect` block is the
 # output the chapter documents; extract-book-steps.py refuses a run without one.
 # phase-525 W4 — the installed track's default is the book's first chapter,
-# first-project.md (the `first-project` track: mps2-an385 on QEMU over a
+# run-a-talker.md (the `first-project` track: mps2-an385 on QEMU over a
 # serial link, timed against the field budget). The checkout and zenoh tracks
 # replay no user chapter (phase-517 W2), so their row stays `linux`.
 if [[ "$PROBE_TRACK" = installed ]]; then
@@ -292,7 +292,7 @@ elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
     CHAPTERS=(
         book/src/start/install.md
         book-internals/src/orientation/contributing.md
-        book/src/get-started/first-node-rust.md
+        book/src/tutorial/add-a-second-node.md
     )
     PROBE_RMW="zenoh"
     VERIFIER="verify-zenoh-interop.sh"
@@ -300,7 +300,7 @@ else
     CHAPTERS=(
         book/src/start/install.md
         book-internals/src/orientation/contributing.md
-        book/src/get-started/first-node-c.md
+        book/src/tutorial/add-a-second-node-c.md
     )
     PROBE_RMW="cyclonedds"
     VERIFIER="verify-first-node.sh"

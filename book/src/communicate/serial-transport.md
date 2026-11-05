@@ -336,7 +336,7 @@ The zenoh serial handshake (Init → Ack) must complete within zenoh-pico's time
 
 - **Locator mismatch** — Ensure the MCU's `zenoh_locator` matches what zenohd expects
 - **Domain ID** — Both sides must use the same ROS 2 domain ID (see
-  [ROS 2 Interop](ros2-interop.md#troubleshooting) for the other
+  [ROS 2 Interop](../tutorial/talk-to-ros2.md#troubleshooting) for the other
   ROS 2-side checks)
 - **zenohd not bridging** — Verify zenohd is connected to the serial port and also listening on TCP for subscribers
 

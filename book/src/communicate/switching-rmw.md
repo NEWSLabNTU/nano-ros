@@ -6,7 +6,7 @@ nano-ros selects its RMW backend at **build time** — there is no
 `RMW_IMPLEMENTATION` environment variable to flip at runtime the way
 desktop ROS 2 does. Which edit you make depends on how your project is
 built. This page lists the exact change per builder; for help picking a
-backend in the first place, see [Choosing an RMW](choosing-an-rmw.md).
+backend in the first place, see [Choosing an RMW](../tutorial/pick-the-rmw.md).
 
 Backend names are the same everywhere: `zenoh`, `xrce`, `cyclonedds`.
 When nothing selects a backend, the default is `zenoh`.
@@ -115,7 +115,7 @@ os_config = ["prj-cyclonedds.conf"]
 
 A Cyclone DDS image also needs multicast-capable networking on the
 target; the per-platform settings are in
-[Choosing an RMW](choosing-an-rmw.md#cyclone-dds-network-configuration-per-platform).
+[Choosing an RMW](../tutorial/pick-the-rmw.md#cyclone-dds-network-configuration-per-platform).
 
 See the platform guides for the concrete per-platform workflow:
 

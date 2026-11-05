@@ -122,10 +122,10 @@ covers the router and the XRCE agent.
 
 ## Next steps
 
-- [First Project](../get-started/first-project.md): scaffold a talker, run it in QEMU,
+- [First Project](../tutorial/run-a-talker.md): scaffold a talker, run it in QEMU,
   and see it in ROS 2.
 - [Installation Details](../get-started/installation-details.md): other install options,
   provisioning in depth, pinning a project to a release, and using nano-ros
   from your own build.
-- First Node in [Rust](../get-started/first-node-rust.md), [C](../get-started/first-node-c.md) or
-  [C++](../get-started/first-node-cpp.md): a single talker on Linux.
+- First Node in [Rust](../tutorial/add-a-second-node.md), [C](../tutorial/add-a-second-node-c.md) or
+  [C++](../tutorial/add-a-second-node-cpp.md): a single talker on Linux.

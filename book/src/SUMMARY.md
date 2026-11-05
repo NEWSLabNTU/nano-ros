@@ -12,15 +12,15 @@
 
 # Tutorial
 
-- [First Project](./get-started/first-project.md)
-- [Anatomy of What You Just Built](./get-started/anatomy.md)
-- [First Node — Rust](./get-started/first-node-rust.md)
-- [First Node — C](./get-started/first-node-c.md)
-- [First Node — C++](./get-started/first-node-cpp.md)
-- [Choosing an RMW Backend](./communicate/choosing-an-rmw.md)
-- [Your own message package](./get-started/your-own-msg-package.md)
-- [Project layout](./build/growing-your-workspace.md)
-- [ROS 2 Interoperability](./communicate/ros2-interop.md)
+- [First Project](./tutorial/run-a-talker.md)
+- [Anatomy of What You Just Built](./tutorial/what-you-just-built.md)
+- [First Node — Rust](./tutorial/add-a-second-node.md)
+- [First Node — C](./tutorial/add-a-second-node-c.md)
+- [First Node — C++](./tutorial/add-a-second-node-cpp.md)
+- [Choosing an RMW Backend](./tutorial/pick-the-rmw.md)
+- [Your own message package](./tutorial/your-own-message.md)
+- [Project layout](./tutorial/grow-your-workspace.md)
+- [ROS 2 Interoperability](./tutorial/talk-to-ros2.md)
 
 # User guide
 

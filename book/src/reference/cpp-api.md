@@ -31,7 +31,7 @@ The headers live in the SDK's C++ include directory at upstream's paths:
 internal.
 
 To build and run a first C++ node, start with
-[First Node — C++](../get-started/first-node-cpp.md); to grow it into a
+[First Node — C++](../tutorial/add-a-second-node-cpp.md); to grow it into a
 workspace, see [C++ in a workspace](../build/cpp-workspaces.md). To
 bring an existing ROS 2 node across, see
 [Porting a ROS 2 C++ node](../from-ros2/porting-a-cpp-node.md). This page is

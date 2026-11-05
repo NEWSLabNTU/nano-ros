@@ -311,7 +311,7 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
             // `share/nano-ros` (RFC-0099 D3, the ladder in
             // `orchestration::nano_ros_root`). Advertising the export made the
             // first documented command unrunnable for exactly the reader who
-            // installed a release. Same commands as first-project.md.
+            // installed a release. Same commands as run-a-talker.md.
             //
             // phase-532 W9: run with `nros run`, which starts the image
             // `nros build` names, rather than a build-tree path; and point at

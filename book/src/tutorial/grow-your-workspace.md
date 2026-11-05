@@ -2,7 +2,7 @@
 
 <!-- type: tutorial · level: 2 -->
 
-[First Project](../get-started/first-project.md) left you with a workspace of
+[First Project](run-a-talker.md) left you with a workspace of
 two packages: a node and the bringup that says what it runs on. A project
 grows from there by one path, in four steps, and you take only the ones you
 need:
@@ -418,7 +418,7 @@ rmw = "zenoh"
 The RMW, like the board, is chosen at build time; embedded targets have no
 `RMW_IMPLEMENTATION` switch. On a Linux image, `ROS_DOMAIN_ID` and
 `NROS_LOCATOR` still work at run time; an embedded image bakes the values from
-its block. See [Configuration](configuration.md).
+its block. See [Configuration](../build/configuration.md).
 
 ### Naming what to run
 
@@ -475,7 +475,7 @@ commit:
 `nros build` then runs that host tool, so compiler errors are the compiler's.
 `nros build --dry-run` prints the command for an image, and running it
 yourself works too. Where each binary lands is
-[What `nros build` Produces](build-artifacts.md).
+[What `nros build` Produces](../build/build-artifacts.md).
 
 ## Customising an entry
 
@@ -550,8 +550,8 @@ Several processes are several images.
 
 Nothing on this page is Rust-specific except the node's source file. C and
 C++ node packages, and workspaces that mix languages, are
-[C / C++ multi-node workspaces](cpp-workspaces.md) and
-[Mixed-language workspaces](mixed-language.md). [Role reference](roles.md)
+[C / C++ multi-node workspaces](../build/cpp-workspaces.md) and
+[Mixed-language workspaces](../build/mixed-language.md). [Role reference](../build/roles.md)
 lists every field of the three roles.
 
 ## Design background
