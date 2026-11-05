@@ -1,6 +1,6 @@
 ---
 rfc: 0124
-title: "The Book as a user guide: organized by what the reader is doing, one type per page, concepts at the point of need"
+title: "The nano-ros Book charter: principles, topic levels and a user-guide organization"
 status: Draft
 since: 2026-11
 last-reviewed: 2026-11
@@ -9,15 +9,23 @@ supersedes: []
 superseded-by: null
 ---
 
-# RFC-0124 — The Book as a user guide: organized by what the reader is doing, one type per page, concepts at the point of need
+# RFC-0124 — The nano-ros Book charter: principles, topic levels and a user-guide organization
 
 **Amends [RFC-0123](0123-two-books-by-audience.md) D2** (the user book's parts
 no longer follow the CLI's user-tier groups; a page's directory is still its
-part). **Follows** [RFC-0116](0116-adoption-purposes-and-front-doors.md)
-D1 (the three adoption purposes and their budgets),
-[RFC-0114](0114-board-support-registry-primitives.md) D10 (the generated
-status word) and [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
-(the example layout). Work: [phase-537](../roadmap/phase-537-book-user-guide-organization.md).
+part) and **D4** (one topic, one page per type). **Consolidates** the book
+rules of [RFC-0116](0116-adoption-purposes-and-front-doors.md) (D1, D2, D5,
+D6, D7, D9), [RFC-0115](0115-emulator-first-board-policy.md) (D4, D8),
+[RFC-0114](0114-board-support-registry-primitives.md) (D10, D12),
+[RFC-0117](0117-cli-command-tiers.md),
+[RFC-0103](0103-one-owner-per-fact.md),
+[RFC-0089](0089-ros2-api-adoption-and-the-compile-or-conform-rule.md),
+[RFC-0121](0121-workspace-first-project-layout.md),
+[RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md) (D3)
+and [RFC-0123](0123-two-books-by-audience.md) into one checklist: the
+Principles and Topic levels below. Each principle cites the decision that
+stays authoritative for it. Work:
+[phase-537](../roadmap/phase-537-book-user-guide-organization.md).
 
 ## Summary
 
@@ -80,6 +88,97 @@ What a reader meets:
    beside writing a custom RMW backend.
 6. **Claims outrun the support levels.** A chapter can teach a board or feature
    with no registry row. RTIC had none and was removed (#3145); PX4 has none yet.
+
+## Principles
+
+Every page of the user book, and every change to its organization, follows
+these principles. Each one cites the decision that holds it; this list is the
+one place they are read together. A principle marked **gated** is checked by
+`check-book-audience` or a sibling gate (phase-537 W0, W9).
+
+**Who and why**
+
+1. **Three purposes, stated budgets.** Every user-facing surface is accepted
+   against education, field solutions and industrial, with their budgets, and
+   adoption probes measure it. (RFC-0116 D1, D9)
+2. **Two books by reader.** Application developers and porters read the Book;
+   contributors read Internals. (RFC-0123 D1)
+
+**What may be in the book**
+
+3. **A board enters the book only with an emulator twin.** The twin boots the
+   same ELF the bench board runs, or the board has a track that replays its
+   chapter. QEMU mps2-an385 is the concepts board, deliberately with no
+   hardware twin. (RFC-0115 D4) **Gated.**
+4. **Claims follow the registry.** Board facts and status words are generated,
+   never typed. A board, feature or integration with no registry row gets no
+   user page. (RFC-0114 D10, D12; RFC-0123 D9; RFC-0115 D8) **Gated.**
+5. **Only the user tier.** No `nros dev`, no checkout steps, no internal ids in
+   prose. RFC numbers appear only in a closing "Design background". (RFC-0116
+   D2; RFC-0117; RFC-0123 D3) **Gated.**
+
+**How it is organized**
+
+6. **Sections follow what the reader is doing:** Start, Get started on your
+   board, Tutorial, User guide, Background, Reference, Extending, Releases.
+   (D1)
+7. **One topic, one page per type.** Tutorial, how-to, explanation and
+   reference are separate pages, linked to each other. A topic has at most one
+   page of each type. (RFC-0123 D4 as amended; D2) **Gated.**
+8. **Starters before depth.** Every admitted board has a starter that depends
+   only on Install, with twin-and-hardware boards first. (D12)
+9. **Reference is generated from its owner:** the contract format, the CLI,
+   the APIs, `system.toml`, boards. (RFC-0103; D6, D7)
+
+**How it is written**
+
+10. **Procedure first.** A task page gives steps, each a command or edit with
+    its expected output, and a complete working example. (D5)
+11. **Concepts at the point of need.** Explain only what is uncommon outside
+    nano-ros and central inside it, starting from an example. Link to the ROS 2
+    documentation for what a ROS 2 user knows. (D4)
+12. **The simplest working path first.** Serial before ethernet, with WiFi
+    stated as deferred. The first chapter names no launch file, image or entry.
+    One run verb, with `nros flash --monitor` on hardware. (RFC-0116 D5, D6,
+    D7; RFC-0118 D2; RFC-0121)
+13. **Say plainly where nano-ros differs from ROS 2,** and never imply a
+    symmetry that is not there. (RFC-0089)
+14. **Every runnable step is probed** on the row's evidence. A step that cannot
+    run yet fails loudly with an `awaits` line; nothing is skipped. (RFC-0116
+    D9; phase-532; D3) **Gated.**
+15. **Budgets:** a length per type, nothing under 300 words, and languages in
+    tabs, not parallel pages. (D9) **Gated.**
+
+## Topic levels
+
+Every user page declares one level (D2). A page may assume only topics at its
+own level or below, and links to them as prerequisites. A level 1 page never
+requires a level 3 idea. **Gated:** a page's "needs first" links may point
+only at pages of the same or a lower level.
+
+| Level | Topics | Where | Needs first |
+| --- | --- | --- | --- |
+| **1. First contact** | install; a board starter; run a talker; what you built (node package, bringup, image); add a node; pick and configure the RMW | Start, starters, Tutorial 1–4 | nothing |
+| **2. Building real applications** | your own message; services and actions; parameters and launch files; the contract and sizing; the same project on another target; talking to ROS 2 and QoS; a serial link; logging; workspace layout; mixing languages | Tutorial 5–10, User guide | level 1 |
+| **3. Production and tuning** | configuring an image; build profiles; offline and vendored builds; deploying; static memory; scheduling and timing; throughput tuning; bridges; porting a ROS 2 node | User guide, Background | level 2 |
+| **4. Extending nano-ros** | adding a board, platform or transport; a custom RMW backend; runner and command packages; API design | Extending, then Internals | level 3 and the Background pages |
+
+Reference pages carry the level of the most advanced topic they describe, and
+anyone may look them up.
+
+## Reconciled RFCs
+
+| RFC | Book decisions | Status after this RFC |
+| --- | --- | --- |
+| 0116 | D1, D2, D5, D6, D7, D9 | authoritative; read through Principles 1, 5, 12, 14 |
+| 0115 | D4 (board admission), D8 (evidence page) | authoritative; Principles 3, 4. Admission is D4's; D8 below only places what D4 admits |
+| 0114 | D10 (status word), D12 (generated facts) | authoritative; Principle 4 |
+| 0117 | the user tier | authoritative; Principle 5 |
+| 0103 | one owner per fact | authoritative; Principle 9 |
+| 0089 | upstream include paths; asymmetries stated | authoritative; Principle 13 |
+| 0121, 0122 D3 | workspace from the first page; first chapters point at the copy-out talker | authoritative; Principle 12, D3 |
+| 0123 | D1, D3, D5, D6, D7, D8, D9 | authoritative; D2 amended (D1 here); D4 amended to "one topic, one page per type" (Principle 7) |
+| 0064 | its book rows (a porting-guide todo, the tier page) | superseded for the book by RFC-0114, RFC-0115 and this RFC |
 
 ## Design
 
@@ -236,23 +335,31 @@ rustdoc and Doxygen output.
 A generated reference is either built in the docs job, or committed and kept
 current by a gate. The board pages already work the second way.
 
-### D8 — Platform pages follow the support levels
+### D8 — Admission by RFC-0115 D4, placement by the status word
 
-The registry's generated status word (RFC-0114 D10) decides where a platform
-appears and what its page may claim:
+Two questions, two owners:
 
-| Status word | In the book |
+- **Admission: may a board have a user page?** RFC-0115 D4 decides. The board
+  needs an emulator twin that boots its ELF (the QEMU concepts board,
+  Renode, Wokwi), or a track that replays its chapter. Host boards (Linux,
+  native_sim, the ThreadX and FreeRTOS simulators) run as host executables
+  and qualify the same way. A board that fails this test keeps only its
+  generated reference page. Arm FVP is maintainer-run with no replaying track
+  (RFC-0115 D4), so `targets/arm-fvp.md` leaves the user book (phase-537 W1)
+  until a track replays it.
+- **Placement: where does an admitted board go, and what may it claim?** The
+  registry's generated status word (RFC-0114 D10) decides:
+
+| Status word, for an admitted board | In the book |
 | --- | --- |
-| Verified on host / in emulator / on hardware | a User guide platform page; eligible for Tutorial steps (D3) |
-| Boots, manual (date), with an emulator twin **and** `hardware` | a board starter (D12), first in the list, showing the date; never a Tutorial step |
-| Boots, manual (date), otherwise | a User guide platform page under "Checked by hand", showing the date; never a Tutorial step |
-| Builds | the generated board reference page only |
-| Not supported | the generated board reference page only |
+| Verified on host / in emulator / on hardware | a starter (D12) and a User guide platform page; eligible for Tutorial steps (D3) |
+| Boots, manual (date), with an emulator twin **and** `hardware` | a starter (D12), first in the list, showing the date, and a User guide platform page; never a Tutorial step |
+| Builds, or Not supported | the generated board reference page only |
 | no registry row | no user page; contributor material goes to Internals |
 
 - **Platform pages are grouped by status, not by OS.** Today one `zephyr.md`
-  covers a host-verified board, an emulator-verified board and a hand-checked
-  one. It splits so that each page's generated header is honest. When a status
+  covers a host-verified board, an emulator-verified board and a board with
+  no replaying track. It splits so that each page's generated header is honest. When a status
   changes, for example when a manual check goes stale after
   `manual_stale_days` or a hardware runner lands, the page moves group on
   regeneration.
@@ -271,6 +378,7 @@ appears and what its page may claim:
 Applied so far:
 - RTIC (no row) moved to Internals in #3145.
 - PX4 waits for a registry row that states its SITL evidence.
+- Arm FVP leaves the user book (no replaying track, RFC-0115 D4).
 
 ### D9 — Length budgets, no stubs, languages in tabs
 
@@ -437,7 +545,7 @@ no current source.
      Verified in emulator: Bare-metal Cortex-M3 · FreeRTOS on mps2-an385 · Zephyr on mps2-an385 ·
        NuttX Arm and RISC-V · ThreadX RISC-V 64
      Twin and hardware: Nucleo-F767ZI · Raspberry Pi Pico W
-     Checked by hand: Arm FVP
+     (Arm FVP: out of the user book until a track replays it, RFC-0115 D4)
      A Zephyr app you build with west (← targets/zephyr-west-app) · Flash a real board (**new**)
      (← targets/{linux-host,bare-metal,freertos,zephyr,nuttx,threadx,arm-fvp,nucleo-f767zi},
         targets/{run,flash-and-monitor,bench,run-plans,target-model} as sections)
@@ -483,6 +591,11 @@ task for every language.
 
 ## Changelog
 
+- 2026-11 — Retitled as the book charter. Principles, Topic levels and
+  Reconciled RFCs added, consolidating the book rules of RFC-0116, 0115, 0114,
+  0117, 0103, 0089, 0121, 0122 and 0123. D8 now admits by RFC-0115 D4 and
+  places by status word, so Arm FVP leaves the user book. RFC-0123 D4 is
+  amended to "one topic, one page per type".
 - 2026-11 — D12 added (maintainer review): a concrete starter for every
   supported board, twin-and-hardware boards first. The D8 table gives those
   rows a starter.

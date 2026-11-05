@@ -11,6 +11,8 @@ superseded-by: null
 
 # RFC-0064 — Board support organization
 
+> **Book rows superseded (2026-11):** what this RFC said about book pages (the porting-guide row, the tier page) is superseded by RFC-0114 (the generated support pages), RFC-0115 (board admission) and [RFC-0124](0124-book-user-guide-organization.md) (the book charter).
+
 > **Live document.** Written while bringing the Autoware safety island up on an
 > NXP MR-CANHUBK3 (S32K344 + FreeRTOS) — a board that is out-of-tree by
 > necessity. **[OPEN]** marks unresolved points. The **Exploration log** records
