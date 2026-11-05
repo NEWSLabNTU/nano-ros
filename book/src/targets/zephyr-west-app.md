@@ -11,7 +11,7 @@ keeps its own `CMakeLists.txt` and `prj.conf`; nano-ros joins it as one more
 Zephyr module.
 
 **What this assumes:** a Linux host with ROS 2 Humble and its Zenoh
-middleware (`ros-humble-rmw-zenoh-cpp`), the [install](../get-started/installation.md)
+middleware (`ros-humble-rmw-zenoh-cpp`), the [install](../start/install.md)
 done so `nros` is on your PATH, and some familiarity with west: a manifest,
 `west update`, `west build -b <board>`.
 

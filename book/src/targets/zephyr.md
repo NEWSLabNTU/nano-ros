@@ -93,7 +93,7 @@ way. It provides **no zenoh router**: that is ROS's `rmw_zenohd`
 (see [the RMW design](../extending/rmw-design.md)); Cyclone DDS needs no daemon at all.
 
 1. **Get the `nros` CLI** — install a release with `scripts/install.sh`
-   ([Installation](../get-started/installation.md)); it lands in `~/.nros/bin`.
+   ([Installation](../start/install.md)); it lands in `~/.nros/bin`.
 2. **Provision the board + RMW**:
    ```bash
    nros setup zephyr --rmw zenoh       # Zephyr SDK + zenoh-pico + mbedtls

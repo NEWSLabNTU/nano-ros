@@ -228,7 +228,7 @@ if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
     exit 2
 fi
 if [[ "$PROBE_TRACK" = "installed" ]]; then
-    CHAPTERS=(book/src/get-started/installation.md)
+    CHAPTERS=(book/src/start/install.md)
     # installation.md is the install every track starts from. A track whose
     # own chapter is installation.md would list it twice and extract every
     # step twice. (The workspace and pinned runs moved to
@@ -290,7 +290,7 @@ elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
     # cargo build` is exactly what a reader on the interop path runs, and it
     # needs the zenoh-pico source that only `--rmw zenoh` provisions.
     CHAPTERS=(
-        book/src/get-started/installation.md
+        book/src/start/install.md
         book-internals/src/orientation/contributing.md
         book/src/get-started/first-node-rust.md
     )
@@ -298,7 +298,7 @@ elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
     VERIFIER="verify-zenoh-interop.sh"
 else
     CHAPTERS=(
-        book/src/get-started/installation.md
+        book/src/start/install.md
         book-internals/src/orientation/contributing.md
         book/src/get-started/first-node-c.md
     )

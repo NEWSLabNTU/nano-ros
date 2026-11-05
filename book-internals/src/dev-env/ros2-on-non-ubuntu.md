@@ -1,7 +1,7 @@
 # ROS 2 on a non-Ubuntu host (Arch, Fedora, NixOS …)
 
 nano-ros itself needs **no** ROS 2 (see
-[installation.md](../../get-started/installation.html#do-i-need-ros-2-installed)):
+[installation.md](../../start/install.html#do-i-need-ros-2-installed)):
 setup, `nros sync`, codegen and the first-node flows all work without it. ROS 2
 is required only for the interop side — `ros2` CLI verification, the
 `rmw_zenoh_cpp` / cyclone / fastrtps interop cells, and the ROS-bridging lanes

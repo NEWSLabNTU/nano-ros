@@ -418,7 +418,7 @@ end-to-end.
 
 ## See also
 
-- [Install + first build](./installation.md) — full setup walkthrough
+- [Install + first build](../start/install.md) — full setup walkthrough
 - [First Node — Rust](./first-node-rust.md) — the canonical Rust starter
 - [Troubleshooting](../operate/troubleshooting.md) — broader
   issue-by-issue reference for post-first-build problems

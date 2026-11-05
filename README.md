@@ -123,7 +123,7 @@ it names no board crate either: its image-only dependencies come from a `<pkg>_n
 `nros sync` generates for the image's board, so there too the board line is the
 whole edit ([issue 1305](docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
-See [Installation](book/src/get-started/installation.md) and
+See [Installation](book/src/start/install.md) and
 [First Node — Rust](book/src/get-started/first-node-rust.md) for the
 complete walkthrough.
 
@@ -244,7 +244,7 @@ nano-ros generates its bindings from ROS 2 `.msg`/`.srv`/`.action` packages — 
 
 | Topic                  | Location                                                     |
 |------------------------|--------------------------------------------------------------|
-| Getting started        | [book/src/get-started/installation.md](book/src/get-started/installation.md) |
+| Getting started        | [book/src/start/install.md](book/src/start/install.md) |
 | Message generation     | [docs/guides/message-generation.md](docs/guides/message-generation.md)     |
 | ROS 2 interop protocol | [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md)       |
 | Testing                | [tests/README.md](tests/README.md)                           |

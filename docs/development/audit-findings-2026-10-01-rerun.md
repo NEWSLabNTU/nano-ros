@@ -109,7 +109,7 @@ run's.
 |  | `check-build-profile-literals.sh` · path-in-pkg-cmake | `packages/api/nros-c/cmake/nros-nuttx-depfile.cmake` += set(_rerun_p "${CMAKE_BINARY_DIR}/target/thumbv7m-none-eabi/release/li | 0 | 1 | fails now |
 | P2 | `check-cargo-dir-knob-key.sh` | `packages/api/nros-c/cmake/nros-nuttx.cmake`: set(_nnbe_knob_fields "") | 0 | 0 | **HOLE** (W7, #1616); control rc 1 |
 | P2 | `check-cmake-verb-reachable.py` | new `cmake/NanoRosRerunDead.cmake`; new `docs/development/rerun-mention.md` | 0 | 0 | **HOLE** (W3, #1617); control rc 1 |
-| P2 | `check-book-identifiers.py` | `book/src/start/introduction.md` += Call `nros_rerun_fiction_ident` to start.; `packages/core/nros-core/src/lib.rs` += // nros_rerun_fiction_ident is mentioned in a comment only | 0 | 1 | fails now |
+| P2 | `check-book-identifiers.py` | `book/src/start/welcome.md` += Call `nros_rerun_fiction_ident` to start.; `packages/core/nros-core/src/lib.rs` += // nros_rerun_fiction_ident is mentioned in a comment only | 0 | 1 | fails now |
 | P2 | `check-board-cargo-config-shape.py` | `packages/boards/nros-board-nuttx-qemu/nros-board.toml`: runnner = "q" | 0 | 1 | fails now |
 | P2 | `check-board-name-reach.py` | `packages/boards/nros-board-nuttx-qemu/nros-board.toml`: names = ["riscv-qemu", "nuttx-riscv", | 0 | 0 | **HOLE** (W5, #1614); control rc 1 |
 | P2 | `check-cc-build-policy.sh` | `examples/zephyr/rust/action-client/build.rs` += fn _rerun() { let _ = cc::Build::new(); } | 0 | 1 | fails now |
@@ -121,7 +121,7 @@ run's.
 | P3 | `check-capability-slot-counts.sh` | `packages/core/nros-node/src/lifecycle_services.rs`: pub(crate) rerun_extra: LcSrv<GetState>, | 0 | 0 | **HOLE** (W6, #1615); control rc 1 |
 | P3 | `check-cbindgen-pin.sh` | `packages/boards/nros-board-freertos/Cargo.toml` += [target.'cfg(any())'.build-dependencies] | 0 | 0 | **HOLE** (W6, #1615); control rc 1 |
 | P3 | `check-cmake-find-program-shadowed.py` | `cmake/NanoRosSdkPin.cmake` += set(_NROS_RERUN_PROG "no CACHE here") | 0 | 0 | **HOLE** (W8, #1617); control rc 1 |
-| P3 | `check-book-links.py` | `book/src/start/introduction.md` += See [the guide][rerunref]. | 0 | 0 | **HOLE** (W6, #1615); control rc 1 |
+| P3 | `check-book-links.py` | `book/src/start/welcome.md` += See [the guide][rerunref]. | 0 | 0 | **HOLE** (W6, #1615); control rc 1 |
 | P3 | `check-build-tool-verbs-exempt.py` · top-verb | `cmake/NanoRosLink.cmake` += execute_process(COMMAND "${_NROS_CLI}" rerun-verb) | 0 | 0 | **HOLE** (W5, #1614); control rc 1 |
 |  | `check-build-tool-verbs-exempt.py` · zephyr-ws | `zephyr/cmake/nros_generate_interfaces.cmake` += execute_process(COMMAND "${_NROS_CLI}" ws rerun-sub) | 0 | 0 | **HOLE** (W5, #1614); control rc 1 |
 | DEAD | `check-board-manifest-drift.sh` | — (gate deleted since the audit) | 0 | — | N/A |
@@ -138,7 +138,7 @@ run's.
 | P2 | `check-workflow-runner-isolation.py` | `.github/workflows/gate.yml`: runs-on: ${{ inputs.runner }} | 0 | 1 | fails now |
 | P2 | `check-third-party-is-submodules.sh` | `zephyr/CMakeLists.txt` += set(_rerun_tp "${NROS_REPO_DIR}/third-party/ninja") | 0 | 1 | fails now |
 | P2 | `check-test-domain-assignment.sh` | `packages/testing/nros-tests/tests/qos.rs` += const RERUN_DOMAIN: &str = "export ROS_DOMAIN_ID=117 && ros2 topic ech | 0 | 0 | **HOLE** (W6, #1615); control rc 1 |
-| P2 | `check-zenohd-flag-invocations.py` | `book/src/start/introduction.md` += Run `a rmw_zenohd router started with a listen flag` first. | 0 | 0 | **HOLE** → fixed here (rc 1 after fix); control rc 1 |
+| P2 | `check-zenohd-flag-invocations.py` | `book/src/start/welcome.md` += Run `a rmw_zenohd router started with a listen flag` first. | 0 | 0 | **HOLE** → fixed here (rc 1 after fix); control rc 1 |
 | P2 | `check-sched-task-priority-plan-image.py` | — | 0 | — | N/A — needs built Zephyr images (build-*/zephyr/.config) — none on this host |
 | P2 | `check-zephyr-module-binding.py` | `justfile` += # rerun probe | 0 | 1 | fails now |
 | P3 | `check-workflow-setup-spelling.py` | `.github/actions/setup-nros-cli/action.yml` += the module spelling of the zephyr setup recipe | 0 | 1 | fails now |

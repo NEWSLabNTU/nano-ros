@@ -2533,7 +2533,7 @@ check = { cmd = "cargo-asm" }
 # `clang-format` are EXEMPT BY MEASUREMENT, written down, not overlooked.
 #
 # dnf / pacman / brew are deliberately NOT mapped. The book measured that Fedora
-# and Arch ship no rosidl packages (`book/src/get-started/installation.md`
+# and Arch ship no rosidl packages (`book/src/start/install.md`
 # pip-installs these four there on purpose, saying so), and nothing here has
 # measured the rest. A GUESSED mapping prints a command that fails; an absent
 # one falls to pip, which is what those hosts already do — so absence is the

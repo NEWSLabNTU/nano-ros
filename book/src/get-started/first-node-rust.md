@@ -14,7 +14,7 @@ you need ROS 2 sourced for the first build.
 
 ## Prereqs
 
-The `nros` CLI on PATH ([Installation](./installation.md) — `install.sh`
+The `nros` CLI on PATH ([Installation](../start/install.md) — `install.sh`
 puts it in `~/.nros/bin`), then provision the Linux host (installs the
 zenoh client stack into a shared store; the router itself comes from
 your ROS 2 install):

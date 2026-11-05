@@ -3,14 +3,14 @@
 This is **nano-ros Internals**, the book for people who change nano-ros
 itself. If you want to *use* nano-ros (write nodes, bring up a board, add a
 board or an RMW backend from outside the tree), read the
-[nano-ros Book](../../start/introduction.html) instead. Everything there works
+[nano-ros Book](../../start/welcome.html) instead. Everything there works
 from an installed release, while everything here assumes a checkout.
 
 ## The two books and the records
 
 | You want… | Read |
 | --- | --- |
-| To use nano-ros, or to port it to a board, platform, transport or RMW | the [nano-ros Book](../../start/introduction.html) |
+| To use nano-ros, or to port it to a board, platform, transport or RMW | the [nano-ros Book](../../start/welcome.html) |
 | How the tree is built, tested, generated and released | this book |
 | Why a decision was made | an RFC in [`docs/design/`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/README.md) |
 | What is being worked on, and its acceptance | a phase doc in [`docs/roadmap/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/docs/roadmap) |

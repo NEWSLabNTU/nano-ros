@@ -265,7 +265,7 @@ def self_test():
     # this whole gate exists to prevent.
     paths = doc_paths()
     assert "book-internals/src/platform/zephyr-in-tree.md" in paths, "Internals book not scanned"
-    assert "book/src/start/introduction.md" in paths, "user book not scanned"
+    assert "book/src/start/welcome.md" in paths, "user book not scanned"
     assert "AGENTS.md" in paths, "AGENTS.md not scanned"
     assert "examples/README.md" in paths, "READMEs not scanned"
     assert not any(p.startswith("docs/roadmap/") for p in paths), "roadmap scanned"
