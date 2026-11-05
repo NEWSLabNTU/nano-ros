@@ -304,7 +304,13 @@ def main():
             clock_on = True
         if run is None:
             out.append(f"echo '=== probe step {order} ({f}:{lineno}) ==='")
+            # No `-u` inside a step either, for the run blocks' reason below: a
+            # step that sources a ROS `setup.bash` (which reads unset variables
+            # such as AMENT_TRACE_SETUP_FILES) must work as it does in a
+            # reader's terminal. The harness's own lines keep `-u`.
+            out.append("set +u")
             out.append(body)
+            out.append("set -u")
         else:
             ef, eline, lines = expects[order]
             out.append(
