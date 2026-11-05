@@ -17,6 +17,12 @@ command = "mdbook-mermaid"
 [preprocessor.board-status]
 command = "python3 ../scripts/mdbook-board-status.py"
 
+# RFC-0124 D9: a step shown in Rust, C and C++ is one tab group in the source
+# (`<!-- tabs -->` … `<!-- /tabs -->`, scripts/lib/book_tabs.py); this renders
+# the groups as tabs. Python only, like the preprocessor above.
+[preprocessor.lang-tabs]
+command = "python3 ../scripts/mdbook-lang-tabs.py"
+
 [output.html]
 git-repository-url = "https://github.com/NEWSLabNTU/nano-ros"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
