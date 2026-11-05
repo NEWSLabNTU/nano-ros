@@ -12,9 +12,8 @@ Every language front end, Rust, C and C++, publishes through the same
 zenoh-pico transmit path, so these settings apply to all three. They matter
 most on Zephyr, whose socket layer serializes sends and receives on one
 socket: the zenoh-pico read task holds the session socket for a whole
-receive window (`NROS_ZENOH_SOCKET_TIMEOUT_MS`, 100 ms by default), so an
-untuned image sends about one batch per window, about 9 messages a second,
-however many publishers it has. All of these are build-time settings; an
+receive window, 100 ms by default, so an untuned image sends about once per
+window, about 9 messages a second, however many publishers it has. All of these are build-time settings; an
 embedded image has no run-time configuration.
 
 ## Before you start
@@ -114,12 +113,6 @@ auto pub = node.create_publisher<Twist>("/cmd_vel", rclcpp::QoS().tx_express(tru
 
 Do not mark a stream express on Zephyr: each express sample waits for the
 socket window on its own.
-
-6. If every topic is latency-critical at a high rate, shorten the socket
-   receive window, `NROS_ZENOH_SOCKET_TIMEOUT_MS` (on Zephyr
-   `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS`), to 5 ms or so. That gives
-   more send windows a second at the cost of more read-task wake-ups, and
-   batching still works on top.
 
 ### Set the wire buffers
 
