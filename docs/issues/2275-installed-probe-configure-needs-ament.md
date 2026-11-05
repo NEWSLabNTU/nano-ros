@@ -5,7 +5,7 @@ status: open
 type: bug
 area: probe, cli, book
 purpose: [education]
-related: [phase-530, phase-527, phase-447]
+related: [phase-530, phase-527, phase-447, phase-532]
 found: 2026-11-05
 ---
 
