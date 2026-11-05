@@ -2,7 +2,7 @@
 
 This page is for anyone who writes or reorganizes a page of the nano-ros Book,
 the user book under `book/src/`. It is the charter of
-RFC-0124 put as a checklist, followed by one template for each kind of page. Read the
+[RFC-0124](../../../docs/design/0124-book-user-guide-organization.md) put as a checklist, followed by one template for each kind of page. Read the
 checklist before you open a template, and check your page against it before
 you ask for review.
 
