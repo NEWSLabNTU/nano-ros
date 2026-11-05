@@ -1,108 +1,66 @@
-# QoS, Status Events, and Discovery
+# Use QoS, status events and discovery
 
 <!-- type: how-to · level: 2 -->
 
-This page covers runtime event behavior that application authors need
-after choosing an RMW backend: liveliness, deadline misses, lost
-messages, and the places where nano-ros deliberately differs from
-standard ROS 2 waitset-style event handling.
+**Needs first:** [Talk to ROS 2](../../tutorial/talk-to-ros2.md)
 
-Transport-level status events let an application observe conditions
-the underlying middleware detects: a remote node going silent, a
-publisher missing its rate, a subscriber dropping samples. nano-ros
-exposes a core subset useful for embedded RTOS deployments —
-liveliness changes, deadline misses, and message loss.
+Use status events when a node must react to what its middleware sees: a
+publisher it depends on going silent, a periodic topic missing its deadline,
+samples lost to a slow consumer, or the first subscriber appearing.
 
-This page describes the event surface, the dispatch model, and the
-patterns that motivate having events at all on RTOS targets.
+The events are the ones ROS 2 defines, with the
+[QoS](https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html)
+policies behind them. Two things differ in nano-ros. A callback you register
+runs from inside `spin_once`, on the executor thread, like a message
+callback; there is no waitset to poll. And an incompatible QoS pair is not an
+event: it fails at `create_publisher` or `create_subscription` with
+`NROS_RMW_RET_INCOMPATIBLE_QOS`, so you see it at start-up.
 
-## The event kinds
+| Event | Side | Fires when |
+| --- | --- | --- |
+| `LivelinessChanged` | subscription | a matched publisher starts or stops asserting liveliness |
+| `RequestedDeadlineMissed` | subscription | no sample arrived within the deadline |
+| `MessageLost` | subscription | the backend dropped samples |
+| `LivelinessLost` | publisher | this publisher missed its own liveliness deadline |
+| `OfferedDeadlineMissed` | publisher | this publisher fell behind its offered rate |
+| `PublicationMatched`, `SubscriptionMatched` | either | an endpoint on the other side appears or leaves |
+| `PublisherIncompatibleType`, `SubscriptionIncompatibleType` | either | the same topic name appears with another type |
 
-Nine event kinds: the five core kinds below, plus Iron's matched and
-incompatible-type pairs ([below](#matched-and-incompatible-type-iron)).
-Three core kinds on subscribers, two on publishers.
+## Before you start
 
-### Subscriber events
+- A node package whose subscription or publisher you want to watch.
+- Its backend. Not every backend generates every event; the
+  [Per-RMW feature matrix](../../reference/rmw-feature-matrix.md) lists
+  which ones each backend implements.
 
-| Kind | Fires when | Use |
-|------|-----------|-----|
-| `LivelinessChanged` | A tracked publisher's liveliness state changes (publisher started asserting / stopped) | Safety-island fail-over: trigger MRM when remote control node goes silent |
-| `RequestedDeadlineMissed` | An expected sample didn't arrive within the configured deadline | Periodic-sensor pattern: 100 Hz topic with 15 ms deadline; fire alarm when late |
-| `MessageLost` | The backend dropped one or more samples (typically: ring-buffer overflow, slow consumer) | Diagnostic + adaptive: log, drop more aggressively, coalesce |
+## Steps
 
-### Publisher events
+1. Ask the backend first, if the node must run on more than one. A
+   registration the backend cannot serve answers `Unsupported`:
 
-| Kind | Fires when | Use |
-|------|-----------|-----|
-| `LivelinessLost` | This publisher missed its own liveliness assertion deadline | Self-monitoring: detect own task starvation |
-| `OfferedDeadlineMissed` | This publisher promised X Hz, fell behind | Self-monitoring: detect overrunning compute |
+   ```rust
+   if sub.supports_event(EventKind::RequestedDeadlineMissed) {
+       sub.on_requested_deadline_missed(Duration::from_millis(15), on_late)?;
+   } else {
+       // fall back to a timeout of your own
+   }
+   ```
 
-### Matched and incompatible type (Iron+)
+2. Register a subscription callback. The callback runs from `spin_once`,
+   counts as one callback against the executor's per-spin limit, and never
+   runs after the subscription is finalized.
 
-Both pairs have one kind per side.
-
-| Kind | Side | Fires when | Payload |
-|------|------|-----------|---------|
-| `PublicationMatched` | publisher | a subscription starts or stops matching it | `MatchedStatus` |
-| `SubscriptionMatched` | subscription | a publisher starts or stops matching it | `MatchedStatus` |
-| `PublisherIncompatibleType` | publisher | a subscription on the same topic name with another type appears | `IncompatibleTypeStatus` |
-| `SubscriptionIncompatibleType` | subscription | a publisher on the same topic name with another type appears | `IncompatibleTypeStatus` |
-
-`MatchedStatus` is upstream's `rmw_matched_status_t` — `total_count`,
-`total_count_change`, `current_count`, `current_count_change` (signed: an
-endpoint leaving is `-1`). The typical use is "start publishing once somebody
-listens":
-
-```rust
-pub_.on_matched(|s| {
-    if s.current_count > 0 { LISTENER_PRESENT.store(true, Ordering::Release); }
-})?;
-// Publisher-side events are observed on the publisher's poll points, so a
-// publisher that is not publishing yet gives it one:
-while !LISTENER_PRESENT.load(Ordering::Acquire) {
-    let _ = pub_.assert_liveliness();
-    executor.spin_once(Duration::from_millis(50));
-}
-```
-
-C: `rclc_publisher_set_matched_callback`,
-`rclc_publisher_set_incompatible_type_callback`,
-`rclc_subscription_set_matched_callback` and
-`rclc_subscription_set_incompatible_type_callback` (the subscription must
-be added to an executor first), payloads `rclc_matched_status_t` /
-`rclc_incompatible_type_status_t`. C++: `Publisher::on_matched` /
-`on_incompatible_type` and the same pair on `PollSubscription`, taking
-rclcpp's `MatchedInfo` / `IncompatibleTypeInfo` through a function pointer
-plus `user_context`. Like the five core C/C++ setters below, they keep
-the registration in one process-wide 16-slot table shared by C and C++.
-
-## Registering callbacks
-
-Same shape as message callbacks. Register at construction time;
-callback fires from inside `spin_once` when the backend detects the
-event.
+<!-- tabs -->
 
 ### Rust
 
 ```rust
-use core::time::Duration;
-
 let mut sub = node.create_polling_subscription::<SensorReading>("/sensor")?;
-
-// Liveliness — fires when the publisher comes / goes
 sub.on_liveliness_changed(|status| {
     if status.alive_count == 0 {
         log::warn!("sensor publisher went silent");
-        trigger_failover();
     }
 })?;
-
-// Deadline — fires when no sample within 15 ms
-sub.on_requested_deadline_missed(Duration::from_millis(15), |status| {
-    metric_inc(&LATE_SAMPLE_COUNT, status.total_count_change);
-})?;
-
-// Message lost — fires when backend drops a sample
 sub.on_message_lost(|status| {
     log::warn!("dropped {} samples", status.total_count_change);
 })?;
@@ -111,41 +69,21 @@ sub.on_message_lost(|status| {
 ### C
 
 ```c
-static void on_liveliness_changed(
-        rcl_subscription_t *sub,
-        rclc_liveliness_changed_status_t status,
-        void *user_context) {
+static void on_liveliness_changed(rcl_subscription_t *sub,
+                                  rclc_liveliness_changed_status_t status,
+                                  void *user_context) {
     if (status.alive_count == 0) {
         trigger_failover();
     }
 }
 
-rclc_subscription_set_liveliness_changed_callback(
-    sub, on_liveliness_changed, NULL);
+/* After rclc_executor_add_subscription(): */
+rcl_ret_t rc = rclc_subscription_set_liveliness_changed_callback(
+    &sub, on_liveliness_changed, NULL);
 ```
 
-Same shape on the four other event kinds.
-
-Every setter returns `RCL_RET_OK` once the backend holds the
-registration, and `RCL_RET_UNSUPPORTED` when the backend does not generate
-that event (XRCE-DDS and uORB carry none; zenoh-pico has no
-`LivelinessChanged` on bare metal). That answer comes from the backend, never
-from the C layer. The other returns:
-
-- `RCL_RET_NOT_INIT` — for the three subscription setters, the subscription
-  has not been added to an executor yet (`rclc_executor_add_subscription*`).
-  The executor owns the subscriber, so before that there is nothing to
-  register on. Register after the add.
-- `RCLC_RET_FULL` — the process-wide event-slot table is full. It holds 16
-  registrations across every C and C++ entity; one publisher with all four of
-  its kinds plus one subscription with all five take nine.
-
-`deadline_ms` on the two deadline setters reaches the backend: zenoh uses it
-when the entity's QoS states no deadline of its own, Cyclone DDS takes the
-deadline from the QoS profile and ignores the argument. Registering the same
-kind again replaces the earlier callback, and a callback never runs after
-`rcl_publisher_fini` / `rcl_subscription_fini` (or
-`rclc_executor_remove_subscription`), even if the backend fires late.
+The C setters return `RCL_RET_OK`, or `RCL_RET_UNSUPPORTED` when the backend
+does not generate the event.
 
 ### C++
 
@@ -156,181 +94,112 @@ static void on_liveliness_changed(void* storage,
     if (status.alive_count == 0) trigger_failover();
 }
 
-// On `rclcpp::PollingSubscription` / `rclcpp::Publisher`.
+// On an rclcpp::PollingSubscription:
 sub.on_liveliness_changed(on_liveliness_changed, nullptr);
 sub.on_requested_deadline_missed(15 /* ms */, on_deadline_missed, nullptr);
 ```
 
-C function pointers + `user_context` only; there are no lambda or
-`std::function` overloads. The subscription-side setters exist on
-`PollingSubscription` alone. The first callback argument is the entity's
-storage, and it follows the object through a C++ move. Same answers as C:
-`ErrorCode::Unsupported` where the backend does not generate the event,
-`ErrorCode::Full` when the shared 16-slot table is full.
+The C++ setters take a function pointer and a `user_context`, not a lambda,
+and the subscription setters exist on `PollingSubscription` only.
+`ErrorCode::Unsupported` means the backend does not generate the event.
 
-## How dispatch works
+<!-- /tabs -->
 
-Events fire from inside `drive_io` on the executor thread, the same
-way message callbacks do:
+3. Start publishing once someone listens. A matched callback on the
+   publisher reports the subscribers it matches; publisher-side events are
+   noticed when the publisher publishes or asserts liveliness, so a
+   publisher that is not publishing yet asserts liveliness while it waits:
 
-```text
-spin_once(timeout)
- └─ session.drive_io(...)
-       ├─ backend RX worker detects message → fires message callback
-       ├─ backend RX worker detects liveliness change → fires liveliness callback
-       ├─ backend timer expires (deadline) → fires deadline callback
-       └─ return
-```
+   ```rust
+   pub_.on_matched(|s| {
+       if s.current_count > 0 { LISTENER_PRESENT.store(true, Ordering::Release); }
+   })?;
+   while !LISTENER_PRESENT.load(Ordering::Acquire) {
+       let _ = pub_.assert_liveliness();
+       executor.spin_once(Duration::from_millis(50));
+   }
+   ```
 
-Same execution context, same priority, same constraints as message
-callbacks. The `max_callbacks_per_spin` knob (see
-[RTOS Cooperation](../../background/rtos-cooperation.md)) covers events too — an
-event callback counts as one against the cap.
+   When the subscriber goes away, `current_count_change` is `-1`.
 
-This means events get the same scheduling treatment as messages.
-`max_callbacks_per_spin = 1` will fire either one message OR one
-event per `spin_once`, whichever the backend has ready first.
+4. Watch a periodic topic's deadline. Set the deadline to the period plus
+   the jitter you accept; for a 100 Hz topic, 15 ms:
 
-## Why a callback model, not a waitset
+   ```rust
+   let mut sub = node.create_polling_subscription::<SensorReading>("/imu")?;
+   sub.on_requested_deadline_missed(Duration::from_millis(15), |status| {
+       if status.total_count_change > 0 {
+           log::error!("IMU late: {} missed deadlines", status.total_count_change);
+       }
+   })?;
+   ```
 
-Upstream `rmw.h` exposes events via a waitset — register an
-`rmw_event_t` handle in a waitset, call `rmw_wait`, then `rmw_take_event`
-to pull payload. nano-ros doesn't have a waitset (see
-[RMW vs upstream](../../internals/rmw/rmw-vs-upstream.html) Section 4).
+   On zenoh the argument is the deadline unless the subscription's QoS
+   states one. On Cyclone DDS the deadline comes from the QoS profile and the
+   argument is ignored.
 
-Reusing the existing message-callback path avoids introducing the
-waitset. Trade-off: applications can't bulk-poll for events. For the
-core set this isn't load-bearing — events are rare, callbacks
-are cheap.
+## What each backend generates
 
-## Backend support is uneven
+- **zenoh** generates the five core events and both matched and
+  incompatible-type pairs. Liveliness is per publisher (`alive_count` is 0
+  or 1), and there is no `LivelinessChanged` on bare metal. Matched counts
+  come from the graph cache, as in `rmw_zenoh_cpp`.
+- **Cyclone DDS** generates the same set by polling: the runtime asks Cyclone
+  on the entity's own data path. A publisher that stops publishing stops
+  being asked, so its events arrive with its next publish or
+  `assert_liveliness`.
+- **XRCE-DDS** generates the two deadline events only, by a clock check on
+  the client. The agent's DDS entity keeps an infinite deadline, so a DDS
+  peer matching on deadline sees none.
 
-Not every backend can generate every event. Apps must handle
-`Unsupported` errors when registering:
+A subscription with any status callback is asked on every spin, not only
+when data arrives, so a publisher leaving is noticed at the next spin after
+the backend sees it. A subscription with no status callback costs an idle
+executor nothing.
 
-| Backend | `LivelinessChanged` / `Lost` | `DeadlineMissed` | `MessageLost` |
-|---------|------------------------------|------------------|---------------|
-| Cyclone DDS | ✅ Polled `dds_get_liveliness_changed_status` / `_liveliness_lost_status` | ✅ Polled `dds_get_{requested,offered}_deadline_missed_status` (deadline comes from the QoS profile, not the `on_*` argument) | ✅ Polled `dds_get_sample_lost_status` |
-| XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✅ Client-side clock check against the last takeable arrival / last publish, fired from `drive_io`. The Agent's DDS entity keeps an infinite deadline — `uxrQoS_t` has no field for one — so a peer matching on deadline still sees infinite | ✗ Not exposed |
-| zenoh-pico | ✅ Poll-based via zenoh tokens (alive_count ∈ {0,1}) | ✅ Shim-side clock check (`<P as PlatformClock>::clock_ms`) | ✅ Seq-gap detection from RMW attachment |
-| uORB | ✗ No wire-level liveliness | ✗ No rate concept | ✗ Not wired: the C++ backend (`nros-rmw-uorb`) fills no event slot. The retired Rust uORB backend's publish-counter `MessageLost` did not carry over |
+## Example
 
-Matched / incompatible type: **Cyclone DDS** (its own matched status;
-builtin-topic type comparison) and **zenoh-pico** (the graph cache's
-liveliness tokens, as `rmw_zenoh_cpp` does) carry both pairs; **XRCE-DDS**
-and **uORB** answer `Unsupported`. On zenoh the counts are snapshots of the
-graph cache, so `total_count` counts increases seen between polls, and an
-image built with graph discovery off (`ZPICO_GRAPH_DISCOVERY=0`) refuses the
-registration.
-
-✅ = wired. ✗ = not wired (registration answers `Unsupported`). The
-slot-level view is generated from the backend sources in the
-[per-RMW feature matrix](../../reference/rmw-feature-matrix.md).
-
-Cyclone DDS carries the whole core set, as zenoh-pico does, but
-it does it by POLLING rather than by calling you back: the backend
-fills the ABI's `*_take_event` slots instead of `*_event_init`, and
-the runtime drains them from the entity's ordinary data path
-(`has_data` / `take_serialized` on a subscription; `publish` /
-`assert_liveliness` on a publisher). That is invisible from the
-application API — you still register with `on_*` and are still called
-back — but it has one consequence worth knowing: a publisher that
-stops publishing stops polling, so a publisher-side event is observed
-on the next publish. Apps should still call
-`Subscriber::supports_event(kind)` first or design for graceful
-fallback.
-
-The subscription side has no such limit. Its statuses are also
-polled from `has_data`, and a subscription with an arrival waker is normally
-asked only after something arrives. Registering any status callback on a
-subscription changes that: the executor then asks it on every spin, arrival or
-not. So once the last publisher has gone, the matched count falls, the
-liveliness count drops, and `RequestedDeadlineMissed` fires, on the next spin
-after the backend notices. On zenoh that is within one liveliness query and one
-graph walk (at most every 50 ms). The interop cell
-`native-qos-event-c-zenoh-bidir` measures both falls against stock ROS 2. A
-subscription with no status callback is still asked only after an arrival, so
-it costs an idle executor nothing. On Cyclone DDS, whose `has_data` always
-answers "maybe", a subscription with a status callback is dispatched on every
-spin; when nothing is waiting, the take finds nothing and the callback does not
-run.
-
-The `Subscriber::supports_event(kind)` query lets applications check
-support before registering:
+A subscription that fails over when its publisher goes silent and counts
+late samples, on any backend:
 
 ```rust
-if sub.supports_event(EventKind::RequestedDeadlineMissed) {
-    sub.on_requested_deadline_missed(...)?;
-} else {
-    // fallback: app-side timeout monitoring
-}
-```
+use core::time::Duration;
 
-Apps that need cross-backend portability code defensively. Apps
-pinned to one backend can call register-and-unwrap.
-
-## What's deliberately skipped
-
-One upstream event type is intentionally absent from the API (`*_MATCHED`
-and `*_INCOMPATIBLE_TYPE` are supported; see above):
-
-### `*_QOS_INCOMPATIBLE`
-
-Fires when publisher and subscriber QoS profiles can't be
-reconciled. nano-ros surfaces this synchronously at `create_publisher`
-/ `create_subscription` time as `NROS_RMW_RET_INCOMPATIBLE_QOS`. No
-runtime event needed; the failure is visible at startup.
-
-## Patterns
-
-### Drone-bridge fail-over on liveliness loss
-
-```rust
 let mut sub = node.create_polling_subscription::<VehicleAttitude>("/vehicle_attitude")?;
 sub.on_liveliness_changed(|status| {
     if status.alive_count == 0 {
-        // PX4 commander.cpp went silent — trigger MRM
         request_minimum_risk_manoeuvre();
     } else if status.alive_count_change > 0 {
-        // commander came back online; clear MRM if appropriate
         clear_failover();
     }
 })?;
+if sub.supports_event(EventKind::RequestedDeadlineMissed) {
+    sub.on_requested_deadline_missed(Duration::from_millis(15), |status| {
+        LATE.fetch_add(status.total_count_change as u32, Ordering::Relaxed);
+    })?;
+}
 ```
 
-This pairs with the cross-backend bridge example pattern.
+## If it doesn't work
 
-### 100 Hz sensor with deadline alarm
-
-```rust
-let mut sub = node.create_polling_subscription::<SensorReading>("/imu")?;
-sub.on_requested_deadline_missed(
-    Duration::from_millis(15),    // expected 100 Hz, allow 15 ms deadline
-    |status| {
-        if status.total_count_change > 0 {
-            log::error!("IMU late: {} missed deadlines", status.total_count_change);
-            // Optional: enter degraded-mode controller
-        }
-    },
-)?;
-```
-
-### Slow-consumer logging
-
-```rust
-let mut sub = node.create_polling_subscription::<Pointcloud>("/lidar")?;
-sub.on_message_lost(|status| {
-    log::warn!("dropped {} pointcloud frames (total: {})",
-               status.total_count_change, status.total_count);
-    // Tighten downstream filter, reduce work, coalesce, etc.
-})?;
-```
+- **A C subscription setter returns `RCL_RET_NOT_INIT`.** The subscription
+  is not in an executor yet. Register after
+  `rclc_executor_add_subscription`.
+- **A C or C++ setter returns `RCLC_RET_FULL` or `ErrorCode::Full`.** The
+  process-wide table holds 16 registrations across every C and C++ entity.
+  One publisher with all four of its kinds and one subscription with all
+  five take nine.
+- **A registration answers `Unsupported`.** The backend does not generate
+  that event; see the list above. Use `supports_event` and a fallback.
+- **A publisher-side event never fires.** The publisher is not publishing.
+  Call `assert_liveliness` from its loop.
 
 ## See also
 
-- [RMW API: Differences from upstream `rmw.h`](../../internals/rmw/rmw-vs-upstream.html)
-  Section 8 — the design comparison this page expands on.
-- [RTOS Cooperation](../../background/rtos-cooperation.md) — `max_callbacks_per_spin`
-  treatment of event callbacks.
-- [Differences from ROS 2](../../background/differences-from-ros2.md) — broader surface
-  comparison.
+- [Per-RMW feature matrix](../../reference/rmw-feature-matrix.md): the
+  generated list of events and QoS policies per backend.
+- [Talk to ROS 2](../../tutorial/talk-to-ros2.md): QoS on the wire
+  between nano-ros and ROS 2.
+- [RTOS cooperation](../../background/rtos-cooperation.md): the per-spin
+  callback limit that event callbacks share.
+- [How nano-ros differs from ROS 2](../../background/differences-from-ros2.md).
