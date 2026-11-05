@@ -12,6 +12,12 @@ real but costs wall time: the builder serialises a workspace's rows (see
 below). By the phase doc's rule, the phase stops here for a maintainer
 decision.
 
+**Re-measured with the builder fanned out (option 1, the maintainer's
+choice): still under the bar.** The fan-out recovered most of the wall clock
+the pilot lost: 846 s against 1258 s with the serial builder. But it is still
+3.8 % slower than the leaves on the same builder, while CPU stays 17 % lower.
+See "Re-measure with the fan-out builder" below.
+
 ## Method
 
 `scripts/dev/measure-fixture-build.sh --platform freertos --no-sccache`, which
@@ -118,7 +124,112 @@ None of these was tried; each is a design change, not a pilot.
   taken much of the saving RFC-0122 D6 hoped for. On Rust, the shared cargo
   groups had taken all of it.
 
+## Re-measure with the fan-out builder
+
+Captured 2026-11-05, after the maintainer chose option 1.
+
+### What changed in the builder
+
+`workspace-fixtures-build.sh` now fans out by **build unit**, not by workspace
+directory (`scripts/build/workspace-fixture-units.py`). Rows that write a common
+cmake configure, cargo target dir or generated entry are one unit and stay
+serial. Units run at once under the same make fifo jobserver.
+`just freertos build-examples` makes one builder call for every `freertos` row
+instead of one per language, so the languages overlap too. On the pilot tree
+the 32 `freertos` workspace rows form 19 units. The longest are the C and C++
+`freertos-zenoh-mps2-an385` configures, 7 rows each.
+
+The fan-out found a hang on the way: issue 2284. An sccache server started
+inside a make jobserver keeps its tokens, and the make never exits. The
+CycloneDDS units hit it on their first run under a pool. It is fixed in the
+same pull request, and it is very likely issue 1403's cause.
+
+### Method
+
+Same script and flags as above (`measure-fixture-build.sh --platform freertos
+--no-sccache`; the copy from #3129 on the BEFORE tree, whose own copy lacks
+`--platform`). Every run cold (24 to 31 trees wiped). Runs alternated on one
+host. Load was sampled every 30 s through each run, besides `uptime` before and
+after.
+
+The two trees, chosen on purpose to differ ONLY in the layout:
+
+- **Before:** `main` + the fan-out builder + the issue 2284 fix (this
+  pull request's code).
+  The 18 pair leaves, 40 rows.
+- **After:** #3129 rebased onto that, plus one fix: its
+  `build-examples` still ran `nros configure` over five retired Rust leaf
+  directories. This passed only on a checkout that still had them on disk. 43
+  rows.
+
+`--no-sccache` clears the rustc wrapper only. `ProvideCycloneDDS.cmake` still
+caches CycloneDDS's C/C++ through sccache, on both trees alike.
+
+### Numbers
+
+| run | tree | wall | CPU (user+sys) | 1-min load: start / peak / mean | kept |
+| --- | --- | --- | --- | --- | --- |
+| f2-1 | before | 2239 s | 4407 s | 29.2 / ~52 / — | **no** |
+| f2-2 | after | 1123 s | 3744 s | 20.9 / 43.7 / 25.5 | yes |
+| f2-3 | before | 896 s | 4465 s | 24.3 / 41.2 / 27.1 | yes |
+| f2-4 | after | 719 s | 3699 s | 22.9 / 32.3 / 20.4 | yes |
+| f3-1 | before | 735 s | 4537 s | 27.9 / 46.4 / 25.1 | yes |
+| f3-2 | after | 697 s | 3770 s | 15.3 / 45.0 / 24.1 | yes |
+
+Every run exited 0.
+
+f2-1 is discarded. Its 1-min load reached 41 to 52 mid-run, more than 2 x
+nproc (20 threads). For minutes, another session's `cargo test` held the
+user-wide cargo package-cache lock while blocked in a btrfs log commit (state
+D). Every cargo in this build queued behind it, and units finished in
+lock-step batches (362/362, 690/690, 816/816/816 s).
+
+The other peaks reach 41 to 46 for single 30 s samples. That is about 2 x
+nproc, and the build's own pool contributes to it. Their means stay at 20 to
+27, so they are kept. A strict cut at 40 would keep only f2-4, which leaves
+no comparison at all.
+
+| | before (f2-3, f3-1) | after (f2-2, f2-4, f3-2) | change of the means |
+| --- | --- | --- | --- |
+| wall | 816 s | 846 s | **+3.8 %** |
+| CPU | 4501 s | 3738 s | **-17 %** |
+
+The interleaved pairs: f2-3/f2-4 is -20 % wall, and f3-1/f3-2 is -5 %. The
+first after run of the series (f2-2) followed the discarded run and is the
+slowest. Without it, after is 708 s, -13 %. Dropping it would be choosing runs
+for their result, so the decision uses the means above.
+
+Against the serial-builder numbers above, the fan-out cut the pilot's wall
+clock from 1258 s to 846 s (-33 %). The leaf tree gained nothing (771 s to
+816 s, within noise): its rows were already parallel leaves.
+
+### Where the wall clock still goes
+
+From the row times in f3-1 and f3-2:
+
+- The workspace stage got longer: about 150 s before, about 350 s after. The
+  leaf stage got shorter by about as much, because it has fewer leaves.
+- **The critical path is one configure's rows, which are serial by design.**
+  In the C and C++ `mps2-an385` configures the first image takes about 205 s.
+  The other six follow one after another: 52 + 10 + 24 + 10 + 24 + 8 s, about
+  130 s. Each is its own `nros build` and `cmake --build`.
+- **The CMake units do not overlap as much as the unit count suggests.** In the
+  BEFORE runs, the 9 cmake units finished within 30 s of each other (f3-1: 117 to 145 s). Every
+  FreeRTOS configure builds its Rust half into the one Corrosion target
+  (`build/corrosion-cargo/freertos`), and cargo locks a target dir.
+- The leaf stage and the workspace stage still run one after the other in
+  `build-examples`.
+
+What would move it further. None of these was tried; each needs a decision:
+
+1. Build all the images of one configure in one `cmake --build` (one ninja
+   graph, all entries), not one `nros build` per row.
+2. Start the workspace builder beside the leaf builder in `build-examples`.
+3. Share a Rust target across the images of one (board, rmw), as in the
+   section above.
+
 ## Raw logs
 
 Not committed (`tmp/` is gitignored). They are the `tmp/p535/w3-*.md` and
-`tmp/p535/w3-*-build.log` files in the measuring checkout.
+`tmp/p535/w3-*-build.log` files in the measuring checkout. The re-measure is `tmp/p535/fo-f2-*`, `tmp/p535/fo-f3-*`
+(`.md`, `.meta` with `uptime`, `-build.log`) and `tmp/p535/load-f{2,3}.log`.
