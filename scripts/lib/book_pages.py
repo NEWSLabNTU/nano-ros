@@ -32,19 +32,16 @@ BOOKS = {"user": ROOT / "book" / "src", "internals": ROOT / "book-internals" / "
 
 # RFC-0123 D2: a page's directory is its part. Order is SUMMARY order.
 PARTS = {
+    # RFC-0124 D1 (amends RFC-0123 D2): eight sections by what the reader is doing.
     "user": [
-        ("start", "Start"),
-        ("get-started", "Get Started"),
-        ("build", "Build a Project"),
-        ("targets", "Run on a Target"),
-        ("communicate", "Communicate"),
-        ("realtime", "Real-Time and Safety"),
-        ("operate", "Operate and Debug"),
-        ("from-ros2", "Coming from ROS 2"),
-        ("concepts", "Concepts and Rationale"),
-        ("extending", "Extending nano-ros"),
+        ("start", "Start here"),
+        ("starters", "Get started on your board"),
+        ("tutorial", "Tutorial"),
+        ("guide", "User guide"),
+        ("background", "Background"),
         ("reference", "Reference"),
-        ("migrating", "Migrating from Older Releases"),
+        ("extending", "Extending nano-ros"),
+        ("migrating", "Releases"),
     ],
     "internals": [
         ("orientation", "Orientation"),
@@ -250,7 +247,7 @@ def relink(text: str, seeded_old: str) -> str:
         if row is None:
             return m.group(0)
         dest_rel = row.arg if row.verb == "merge-into" else None
-        dest = page_file(rel) if dest_rel is None else next(
+        dest = page_file(row.old or rel) if dest_rel is None else next(
             (q.current() for q in pages if q.book == "user" and q.path == dest_rel and q.verb != "merge-into"), None)
         if dest is None:
             return m.group(0)
