@@ -56,7 +56,7 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
-        ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
+        ManagedProcess::spawn_image(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
         .wait_for_output_pattern(
@@ -73,7 +73,7 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener_output = listener
         .wait_for_output_count(
@@ -143,7 +143,7 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
-        ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
+        ManagedProcess::spawn_image(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
         .wait_for_output_pattern(
@@ -160,7 +160,7 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener_output = listener
         .wait_for_output_count(
@@ -238,7 +238,7 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
-        ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
+        ManagedProcess::spawn_image(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
         .wait_for_output_pattern(
@@ -255,7 +255,7 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener_output = listener
         .wait_for_output_count(
@@ -316,7 +316,7 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
-        ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
+        ManagedProcess::spawn_image(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
         .wait_for_output_pattern(
@@ -333,7 +333,7 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener_output = listener
         .wait_for_output_count(
@@ -394,10 +394,10 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut listener1 = ManagedProcess::spawn_command(listener1_cmd, "listener1")
-        .expect("Failed to start listener1");
-    let mut listener2 = ManagedProcess::spawn_command(listener2_cmd, "listener2")
-        .expect("Failed to start listener2");
+    let mut listener1 =
+        ManagedProcess::spawn_image(listener1_cmd, "listener1").expect("Failed to start listener1");
+    let mut listener2 =
+        ManagedProcess::spawn_image(listener2_cmd, "listener2").expect("Failed to start listener2");
 
     listener1
         .wait_for_output_pattern(
@@ -420,7 +420,7 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener1_output = listener1
         .wait_for_output_count(
@@ -483,7 +483,7 @@ fn test_qos_keyexpr_encoding(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
+    let mut proc = ManagedProcess::spawn_image(cmd, "talker").expect("Failed to start talker");
 
     // Wait for talker to publish (ensures liveliness keyexpr is logged)
     let early_output = proc.collect_until("Publishing", Duration::from_secs(5));

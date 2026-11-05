@@ -180,6 +180,9 @@ pub struct ZephyrProcess {
     // the boot record's address from the SAME file the process was exec'd
     // from (a relinked image read at a stale address decodes as garbage).
     image: PathBuf,
+    /// phase-528 W5 — a native_sim image's `nros run --plan` directory, kept
+    /// until the process is gone.
+    _run: Option<crate::run::HostRun>,
 }
 
 /// The file a native_sim image is exec'd from: the board's `runners.yaml`
@@ -297,6 +300,7 @@ impl ZephyrProcess {
             )));
         }
 
+        let mut host_run = None;
         let mut handle = match platform {
             ZephyrPlatform::NativeSim => {
                 // phase-295 W5.a — native_sim direct-exec IS the framework
@@ -324,19 +328,20 @@ impl ZephyrProcess {
                     .subsec_nanos();
                 let offset = SEED_COUNTER.fetch_add(10000, std::sync::atomic::Ordering::Relaxed);
                 let seed = base.wrapping_add(offset);
-                let mut cmd = Command::new(&launch_bin);
-                cmd.arg(format!("--seed={}", seed))
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped());
-                // #166 — everything after `-testargs` goes to the native-sim
-                // "test args" argv (bypassing native_sim's own option parser,
-                // which would abort on an unregistered `--nros-locator`).
-                if !testargs.is_empty() {
-                    cmd.arg("-testargs");
-                    cmd.args(testargs);
-                }
+                // phase-528 W5 — launched through `nros run --plan` with the
+                // native runner, which renders the seed as `--seed=` and puts
+                // the image's own arguments after `-testargs` (#166: native_sim's
+                // option parser aborts on an unregistered `--nros-locator`).
+                let mut image = Command::new(&launch_bin);
+                image.args(testargs);
+                let mut run = crate::run::host_image(&image, &[("seed", &seed.to_string())])?;
+                let mut cmd = run.take_command();
+                cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+                // `nros run` owns a group of its own: `crate::run::stop` kills
+                // it before the verb, and a dying test binary SIGTERMs the verb.
                 #[cfg(unix)]
-                set_new_process_group(&mut cmd);
+                crate::process::set_orphan_group_suicide(&mut cmd);
+                host_run = Some(run);
                 cmd.spawn()?
             }
             ZephyrPlatform::QemuArm => {
@@ -455,6 +460,7 @@ impl ZephyrProcess {
             reader_done,
             reader_threads,
             image,
+            _run: host_run,
         })
     }
 
@@ -549,6 +555,7 @@ impl ZephyrProcess {
             reader_done,
             reader_threads,
             image: binary.to_path_buf(),
+            _run: None,
         })
     }
 
@@ -652,7 +659,7 @@ impl ZephyrProcess {
 
         // Kill the process if still running. The reader thread exits
         // on stdout EOF, which the kill will cause.
-        kill_process_group(&mut self.handle);
+        self.kill();
         let _ = markers_seen;
 
         let guard = self.output.lock().expect("output mutex poisoned");
@@ -719,7 +726,20 @@ impl ZephyrProcess {
                 Some((a, l.parse::<usize>().ok()?))
             })
             .ok_or_else(|| format!("heap gate: unreadable --addr-only line `{line}`"))?;
-        let blob = read_process_memory(self.handle.id(), at, len)?;
+        // Through `nros run` the child is the verb; the image is its
+        // descendant (verb -> runner -> image), and the record lives there.
+        let pid = if self._run.is_some() {
+            crate::run::image_pid(self.handle.id(), &self.image).ok_or_else(|| {
+                format!(
+                    "heap gate: no running {} under `nros run` (pid {})",
+                    self.image.display(),
+                    self.handle.id()
+                )
+            })?
+        } else {
+            self.handle.id()
+        };
+        let blob = read_process_memory(pid, at, len)?;
         let dump =
             tempfile::NamedTempFile::new().map_err(|e| format!("heap gate: no temp file: {e}"))?;
         std::fs::write(dump.path(), &blob).map_err(|e| format!("heap gate: write dump: {e}"))?;
@@ -752,7 +772,11 @@ impl ZephyrProcess {
 
     /// Kill the Zephyr process
     pub fn kill(&mut self) {
-        kill_process_group(&mut self.handle);
+        if self._run.is_some() {
+            crate::run::stop(&mut self.handle);
+        } else {
+            kill_process_group(&mut self.handle);
+        }
     }
 
     /// Check if process is still running
@@ -836,7 +860,7 @@ pub fn hold_baked_identity(key: &str) -> BakedIdentityHold {
 
 impl Drop for ZephyrProcess {
     fn drop(&mut self) {
-        kill_process_group(&mut self.handle);
+        self.kill();
         for thread in std::mem::take(&mut self.reader_threads) {
             let _ = thread.join();
         }

@@ -36,7 +36,7 @@ fn spawn_entry(path: PathBuf, label: &str, locator: &str, spin_ms: u32) -> Manag
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", spin_ms.to_string())
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
-    ManagedProcess::spawn_command(cmd, label).expect("spawn entry")
+    ManagedProcess::spawn_image(cmd, label).expect("spawn entry")
 }
 
 /// C component reads the launch-baked initial (250) LIVE via rclc_parameter_get_int.

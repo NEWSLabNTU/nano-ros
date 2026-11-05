@@ -56,7 +56,7 @@ fn full_goal_table_rejects_rather_than_acknowledging(
     let mut server_cmd = Command::new(&action_server_concurrent_binary);
     server_cmd.env("NROS_LOCATOR", &locator);
     server_cmd.env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "action-server-concurrent")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "action-server-concurrent")
         .expect("Failed to start concurrent action server");
 
     // issue 1044 — a readiness check that tolerates "no banner, still running"
@@ -79,7 +79,7 @@ fn full_goal_table_rejects_rather_than_acknowledging(
     let mut client_cmd = Command::new(&action_client_multigoal_binary);
     client_cmd.env("NROS_LOCATOR", &locator);
     client_cmd.env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "action-client-multigoal")
+    let mut client = ManagedProcess::spawn_image(client_cmd, "action-client-multigoal")
         .expect("Failed to start multi-goal action client");
 
     // The client sends all six goals then prints one summary line, so a
@@ -217,7 +217,7 @@ fn every_accepted_goal_returns_a_result_and_no_reply_slot_is_refused(
     let mut server_cmd = Command::new(&action_server_concurrent_binary);
     server_cmd.env("NROS_LOCATOR", &locator);
     server_cmd.env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "action-server-concurrent")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "action-server-concurrent")
         .expect("Failed to start concurrent action server");
 
     let server_boot = server.collect_until("Waiting for action", Duration::from_secs(10));
@@ -256,7 +256,7 @@ fn every_accepted_goal_returns_a_result_and_no_reply_slot_is_refused(
         peer_cmd.env("RUST_LOG", "info");
         peer_cmd.env("NROS_MULTIGOAL_GOALS", "0");
         peer_cmd.env("NROS_MULTIGOAL_SOAK_MS", "1000");
-        let mut peer = ManagedProcess::spawn_command(peer_cmd, format!("multigoal-peer-{cycle}"))
+        let mut peer = ManagedProcess::spawn_image(peer_cmd, format!("multigoal-peer-{cycle}"))
             .expect("Failed to start the liveliness peer");
         let peer_out = peer.collect_until(MULTIGOAL_SUMMARY_PREFIX, Duration::from_secs(30));
         assert!(
@@ -273,7 +273,7 @@ fn every_accepted_goal_returns_a_result_and_no_reply_slot_is_refused(
     client_cmd.env("RUST_LOG", "info");
     client_cmd.env("NROS_MULTIGOAL_GOALS", GOALS.to_string());
     client_cmd.env("NROS_MULTIGOAL_SOAK_MS", SOAK_MS.to_string());
-    let mut client = ManagedProcess::spawn_command(client_cmd, "action-client-multigoal")
+    let mut client = ManagedProcess::spawn_image(client_cmd, "action-client-multigoal")
         .expect("Failed to start multi-goal action client");
 
     // Generous: the soak, then GOALS handshakes, then GOALS results at ~4 s of

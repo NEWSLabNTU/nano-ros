@@ -45,7 +45,7 @@ fn probe_line(bin: &std::path::Path, locator: &str, label: &str) -> String {
     let mut cmd = Command::new(bin);
     cmd.env("NROS_LOCATOR", locator);
     let mut p =
-        ManagedProcess::spawn_command(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"));
+        ManagedProcess::spawn_image(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"));
     let out = p
         .wait_for_output_pattern(output::IMAGE_CONFIG_PROBE_LINE, Duration::from_secs(20))
         .unwrap_or_else(|e| panic!("{label} never printed its probe line: {e}"));

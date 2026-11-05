@@ -86,7 +86,7 @@ fn spawn_publisher(bin: &Path, domain: u8, run_ms: u64) -> ManagedProcess {
         // remove the participant, and a listener that stopped ticking because
         // its peer vanished would prove nothing.
         .env("NROS_SIM_IDLE_MS", "6000");
-    ManagedProcess::spawn_command(cmd, "sim-clock-publisher").expect("spawn sim clock publisher")
+    ManagedProcess::spawn_image(cmd, "sim-clock-publisher").expect("spawn sim clock publisher")
 }
 
 fn spawn_listener(bin: &Path, domain: u8, observe_ms: u64) -> ManagedProcess {
@@ -95,7 +95,7 @@ fn spawn_listener(bin: &Path, domain: u8, observe_ms: u64) -> ManagedProcess {
         .env("RUST_LOG", "info")
         .env("NROS_SIM_PERIOD_MS", PERIOD_MS.to_string())
         .env("NROS_SIM_OBSERVE_MS", observe_ms.to_string());
-    ManagedProcess::spawn_command(cmd, "sim-clock-listener").expect("spawn sim clock listener")
+    ManagedProcess::spawn_image(cmd, "sim-clock-listener").expect("spawn sim clock listener")
 }
 
 /// A node with `use_sim_time` true follows a `/clock` publisher, and stops when

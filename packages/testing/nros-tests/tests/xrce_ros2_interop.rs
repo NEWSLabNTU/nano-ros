@@ -98,7 +98,7 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string());
     let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "xrce-talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(talker_cmd, "xrce-talker").expect("Failed to start talker");
 
     // Wait for talker to publish
     let _ = talker.wait_for_output_pattern(
@@ -169,7 +169,7 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
         .env("XRCE_MSG_COUNT", "3")
         // nros_tests::output::INT32_LISTENER_LOG_PREFIX logs at INFO — surface them so the test can see receipt.
         .env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "xrce-listener")
         .expect("Failed to start listener");
 
     // Wait for listener to be ready
@@ -291,7 +291,7 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_TIMEOUT", "30");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-service-server")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "xrce-service-server")
         .expect("Failed to start service server");
 
     // Wait for the server to SAY it is ready, and KEEP what it said.
@@ -488,7 +488,7 @@ fn test_xrce_service_reports_the_stock_clients_request_id(
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_TIMEOUT", "30")
         .env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-service-info-server")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "xrce-service-info-server")
         .expect("Failed to start service-info-server");
     let server_startup = server
         .wait_for_output_pattern(
@@ -680,7 +680,7 @@ fn test_xrce_service_endpoints_hold_the_requested_qos(
         .env("XRCE_TIMEOUT", "30")
         .env(nros_tests::output::SERVICE_INFO_SERVER_QOS_ENV, qos)
         .env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-service-info-server")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "xrce-service-info-server")
         .expect("Failed to start service-info-server");
     let server_startup = server
         .wait_for_output_pattern(
@@ -807,7 +807,7 @@ fn test_xrce_publisher_gid_is_the_one_a_stock_graph_reports() {
         .env("GRAPH_PROBE_GID_SUB_TOPIC", "/nros_xrce_gid_in")
         .env("GRAPH_PROBE_TIMEOUT_MS", "40000");
     let mut probe =
-        ManagedProcess::spawn_command(cmd, "graph-probe-gid-xrce").expect("spawn the gid probe");
+        ManagedProcess::spawn_image(cmd, "graph-probe-gid-xrce").expect("spawn the gid probe");
     let ready = probe
         .wait_for_output_pattern(
             nros_tests::output::GRAPH_PROBE_GID_READY,
@@ -979,7 +979,7 @@ fn xrce_a_peer_leaving_fires_the_graph_change_guard() {
         .env("GRAPH_PROBE_WATCH_CHANGE", "1")
         .env("GRAPH_PROBE_TIMEOUT_MS", "20000")
         .env("ROS_DOMAIN_ID", domain.to_string());
-    let mut probe = ManagedProcess::spawn_command(cmd, "graph-probe-change-xrce")
+    let mut probe = ManagedProcess::spawn_image(cmd, "graph-probe-change-xrce")
         .expect("spawn the XRCE graph-change probe");
     let armed = probe
         .wait_for_output_pattern(
@@ -1037,7 +1037,7 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_TIMEOUT", "30");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-action-server")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "xrce-action-server")
         .expect("Failed to start xrce action server");
     let _ = server.wait_for_output_pattern("Action server ready", Duration::from_secs(8));
     std::thread::sleep(Duration::from_secs(1));
@@ -1108,7 +1108,7 @@ fn test_xrce_action_ros2_concurrent(xrce_action_server_concurrent_binary: PathBu
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_TIMEOUT", "40")
         .env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-action-server-concurrent")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "xrce-action-server-concurrent")
         .expect("Failed to start xrce action server");
     let _ = server.wait_for_output_pattern("Action server ready", Duration::from_secs(8));
     std::thread::sleep(Duration::from_secs(1));
@@ -1226,7 +1226,7 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
         .env("XRCE_TIMEOUT", "30")
         // Action result / status logs are INFO-level — surface them.
         .env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-action-client")
+    let mut client = ManagedProcess::spawn_image(client_cmd, "xrce-action-client")
         .expect("Failed to start xrce action client");
     // The example streams `Next number in sequence received: [...]` feedback
     // and ends with the terminal `Result received: [...]` line.
@@ -1340,7 +1340,7 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
         // so the assert below can see the reply (without this the test can't
         // tell success from failure).
         .env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-service-client")
+    let mut client = ManagedProcess::spawn_image(client_cmd, "xrce-service-client")
         .expect("Failed to start xrce service client");
     let client_output = client.collect_until(
         nros_tests::output::SERVICE_RESULT_PREFIX,

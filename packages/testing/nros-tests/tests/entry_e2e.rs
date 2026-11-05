@@ -521,7 +521,7 @@ fn spawn_c_listener_observer(locator: &str, spin_ms: u32) -> ManagedProcess {
     cmd.env("NROS_LOCATOR", locator)
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", spin_ms.to_string());
-    let mut obs = ManagedProcess::spawn_command(cmd, "native-observer")
+    let mut obs = ManagedProcess::spawn_image(cmd, "native-observer")
         .unwrap_or_else(|e| panic!("spawn observer: {e}"));
     obs.wait_for_output_pattern(
         nros_tests::output::LISTENER_WAITING_BANNER,
@@ -543,7 +543,7 @@ fn spawn_rust_listener_observer(locator: &str) -> ManagedProcess {
         .require("native Rust listener");
     let mut cmd = Command::new(observer);
     cmd.env("RUST_LOG", "info").env("NROS_LOCATOR", locator);
-    let mut obs = ManagedProcess::spawn_command(cmd, "native-observer")
+    let mut obs = ManagedProcess::spawn_image(cmd, "native-observer")
         .unwrap_or_else(|e| panic!("spawn observer: {e}"));
     obs.wait_for_output_pattern(
         nros_tests::output::LISTENER_READY_MARKER,
@@ -567,7 +567,7 @@ fn spawn_int32_sink(topic: &'static str, locator: &str) -> ManagedProcess {
         .env("NROS_LOCATOR", locator)
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_SUB_TOPIC", topic);
-    let mut obs = ManagedProcess::spawn_command(cmd, "int32-sink")
+    let mut obs = ManagedProcess::spawn_image(cmd, "int32-sink")
         .unwrap_or_else(|e| panic!("spawn int32-sink: {e}"));
     obs.wait_for_output_pattern(
         nros_tests::output::INT32_SINK_READY_MARKER,
@@ -589,7 +589,7 @@ fn boot_guest(cell: &Exec, entry: &PathBuf) -> Guest {
             let mut cmd = Command::new(entry);
             cmd.env("NROS_ENTRY_SPIN_MS", "12000");
             Guest::Managed(
-                ManagedProcess::spawn_command(cmd, "threadx-entry")
+                ManagedProcess::spawn_image(cmd, "threadx-entry")
                     .unwrap_or_else(|e| panic!("spawn threadx entry: {e}")),
             )
         }

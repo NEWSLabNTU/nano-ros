@@ -38,7 +38,7 @@ use std::{process::Command, time::Duration};
 fn zenoh_pool_exhaustion_reports_full_and_says_why_on_firmware() {
     let bin = build_pool_exhaustion_threadx_linux().require("pool-exhaustion");
 
-    let mut proc = ManagedProcess::spawn_command(Command::new(bin), "pool-exhaustion")
+    let mut proc = ManagedProcess::spawn_image(Command::new(bin), "pool-exhaustion")
         .expect("spawn the pool-exhaustion image");
     let out = proc.collect_until(POOL_EXHAUSTION_VERDICT, Duration::from_secs(30));
     proc.kill();

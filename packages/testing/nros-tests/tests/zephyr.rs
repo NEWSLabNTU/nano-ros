@@ -949,7 +949,7 @@ fn test_zephyr_to_native_e2e() {
     listener_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
 
     listener
@@ -1063,7 +1063,7 @@ fn test_native_to_zephyr_e2e() {
     talker_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
     // Wait for communication
@@ -1170,7 +1170,7 @@ fn test_bidirectional_native_zephyr_e2e() {
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut native_listener =
-        ManagedProcess::spawn_command(native_listener_cmd, "native-rs-listener")
+        ManagedProcess::spawn_image(native_listener_cmd, "native-rs-listener")
             .expect("Failed to start native listener");
 
     // Note: Running multiple Zephyr processes simultaneously can cause issues
@@ -1197,7 +1197,7 @@ fn test_bidirectional_native_zephyr_e2e() {
     native_talker_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut native_talker = ManagedProcess::spawn_command(native_talker_cmd, "native-rs-talker")
+    let mut native_talker = ManagedProcess::spawn_image(native_talker_cmd, "native-rs-talker")
         .expect("Failed to start native talker");
 
     let mut zephyr_talker = ZephyrProcess::start_with_locator(
@@ -1327,7 +1327,7 @@ fn test_native_server_zephyr_client() {
     server_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
+    let mut server = ManagedProcess::spawn_image(server_cmd, "native-rs-service-server")
         .expect("Failed to start native service server");
 
     server
@@ -1461,7 +1461,7 @@ fn test_zephyr_server_native_client() {
     client_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
+    let mut client = ManagedProcess::spawn_image(client_cmd, "native-rs-service-client")
         .expect("Failed to start native service client");
 
     // Get outputs
@@ -1544,7 +1544,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
     listener_cmd.env("NROS_LOCATOR", &locator);
     listener_cmd.env("RUST_LOG", "info");
     let mut listener =
-        nros_tests::fixtures::ManagedProcess::spawn_command(listener_cmd, "native-listener")
+        nros_tests::fixtures::ManagedProcess::spawn_image(listener_cmd, "native-listener")
             .expect("Failed to start native listener");
 
     listener
@@ -1631,9 +1631,8 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     let mut talker_cmd = std::process::Command::new(&native_talker);
     talker_cmd.env("NROS_LOCATOR", &locator);
     talker_cmd.env("RUST_LOG", "info");
-    let mut talker =
-        nros_tests::fixtures::ManagedProcess::spawn_command(talker_cmd, "native-talker")
-            .expect("Failed to start native talker");
+    let mut talker = nros_tests::fixtures::ManagedProcess::spawn_image(talker_cmd, "native-talker")
+        .expect("Failed to start native talker");
 
     // Probe for the 3rd sample line on the Zephyr side (early-exits
     // instead of the old 8 s+3 s blind sleep that couldn't keep
@@ -1743,7 +1742,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     listener_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
     listener
         .wait_for_output_pattern(
@@ -1931,7 +1930,7 @@ fn zephyr_rust_zenoh_action_goal_completion_rate() {
         peer_cmd.env("RUST_LOG", "info");
         peer_cmd.env("NROS_MULTIGOAL_GOALS", "0");
         peer_cmd.env("NROS_MULTIGOAL_SOAK_MS", "1000");
-        let mut peer = ManagedProcess::spawn_command(peer_cmd, format!("multigoal-peer-{cycle}"))
+        let mut peer = ManagedProcess::spawn_image(peer_cmd, format!("multigoal-peer-{cycle}"))
             .expect("Failed to start the liveliness peer");
         let peer_out = peer.collect_until(MULTIGOAL_SUMMARY_PREFIX, Duration::from_secs(30));
         assert!(
@@ -1948,7 +1947,7 @@ fn zephyr_rust_zenoh_action_goal_completion_rate() {
     client_cmd.env("RUST_LOG", "info");
     client_cmd.env("NROS_MULTIGOAL_GOALS", GOALS.to_string());
     client_cmd.env("NROS_MULTIGOAL_SOAK_MS", SOAK_MS.to_string());
-    let mut client = ManagedProcess::spawn_command(client_cmd, "action-client-multigoal")
+    let mut client = ManagedProcess::spawn_image(client_cmd, "action-client-multigoal")
         .expect("Failed to start the multi-goal probe");
 
     // Generous on purpose: the soak, then GOALS handshakes, then GOALS results

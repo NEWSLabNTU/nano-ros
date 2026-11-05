@@ -265,7 +265,7 @@ fn run_cell(cell: &MCell) {
     };
 
     // Listener first, so its subscription is live before the talker publishes.
-    let mut listener_proc = ManagedProcess::spawn_command(listener_cmd, "native-example-listener")
+    let mut listener_proc = ManagedProcess::spawn_image(listener_cmd, "native-example-listener")
         .unwrap_or_else(|e| panic!("[{}] spawn listener: {e}", rmw_str(cell.rmw)));
     // Cyclone/xrce discovery is slower — wait for the listener's ready marker,
     // then let the subscription propagate before the talker publishes.
@@ -279,7 +279,7 @@ fn run_cell(cell: &MCell) {
         );
         std::thread::sleep(Duration::from_secs(2));
     }
-    let mut talker_proc = ManagedProcess::spawn_command(talker_cmd, "native-example-talker")
+    let mut talker_proc = ManagedProcess::spawn_image(talker_cmd, "native-example-talker")
         .unwrap_or_else(|e| {
             listener_proc.kill();
             panic!("[{}] spawn talker: {e}", rmw_str(cell.rmw))
@@ -353,9 +353,9 @@ fn native_zenoh_session_config_file_is_the_route(#[case] lang: ML) {
         .env_remove("NROS_LOCATOR")
         .env("ZENOH_SESSION_CONFIG_URI", &config);
 
-    let mut listener_proc = ManagedProcess::spawn_command(listener_cmd, "session-config-listener")
+    let mut listener_proc = ManagedProcess::spawn_image(listener_cmd, "session-config-listener")
         .unwrap_or_else(|e| panic!("spawn listener: {e}"));
-    let mut talker_proc = ManagedProcess::spawn_command(talker_cmd, "session-config-talker")
+    let mut talker_proc = ManagedProcess::spawn_image(talker_cmd, "session-config-talker")
         .unwrap_or_else(|e| {
             listener_proc.kill();
             panic!("spawn talker: {e}")

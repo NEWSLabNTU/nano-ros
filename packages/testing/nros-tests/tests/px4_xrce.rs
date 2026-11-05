@@ -41,7 +41,7 @@ fn test_px4_msgs_roundtrip_over_agent(px4_stub_binary: PathBuf) {
         .env("PX4_STUB_TICKS", "200")
         .env("RUST_LOG", "info");
     let mut stub =
-        ManagedProcess::spawn_command(cmd, "px4-stub-loopback").expect("Failed to start px4-stub");
+        ManagedProcess::spawn_image(cmd, "px4-stub-loopback").expect("Failed to start px4-stub");
 
     // Require several round-tripped samples — proves the px4_msgs CDR + the
     // px4() QoS profile + the XRCE pub/sub path work end-to-end over the agent.
@@ -78,8 +78,8 @@ fn test_px4_companion_cross_session_receive(
         .env("ROS_DOMAIN_ID", &domain)
         .env("PX4_COMPANION_TICKS", "400")
         .env("RUST_LOG", "info");
-    let mut companion = ManagedProcess::spawn_command(comp_cmd, "px4-companion")
-        .expect("Failed to start companion");
+    let mut companion =
+        ManagedProcess::spawn_image(comp_cmd, "px4-companion").expect("Failed to start companion");
     let _ = companion.wait_for_output_pattern("companion wired", Duration::from_secs(20));
     std::thread::sleep(Duration::from_secs(2));
 
@@ -89,7 +89,7 @@ fn test_px4_companion_cross_session_receive(
         .env("ROS_DOMAIN_ID", &domain)
         .env("PX4_STUB_TICKS", "400");
     let _stub =
-        ManagedProcess::spawn_command(stub_cmd, "px4-stub").expect("Failed to start px4-stub");
+        ManagedProcess::spawn_image(stub_cmd, "px4-stub").expect("Failed to start px4-stub");
 
     companion
         .wait_for_output_count("odometry:", 5, Duration::from_secs(40))

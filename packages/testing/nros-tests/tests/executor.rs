@@ -41,7 +41,7 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
+    let mut proc = ManagedProcess::spawn_image(cmd, "talker").expect("Failed to start talker");
 
     // Wait for ~5 messages at 1Hz (event-driven: wait for "Published: 4" which means 5 publishes)
     let output = proc.collect_until(
@@ -81,7 +81,7 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
+    let mut proc = ManagedProcess::spawn_image(cmd, "talker").expect("Failed to start talker");
 
     // Wait for at least 2 sequential messages (N counts from 1 — the official
     // ROS 2 demo behavior since phase-277 W4)
@@ -126,7 +126,7 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
-        ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
+        ManagedProcess::spawn_image(listener_cmd, "listener").expect("Failed to start listener");
 
     // Wait for listener readiness
     listener
@@ -144,7 +144,7 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(talker_cmd, "talker").expect("Failed to start talker");
 
     // Wait for listener to receive messages (event-driven)
     let listener_output = listener.collect_until(
@@ -191,7 +191,7 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut listener =
-        ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
+        ManagedProcess::spawn_image(listener_cmd, "listener").expect("Failed to start listener");
 
     // Wait for listener readiness
     listener
@@ -209,7 +209,7 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
+        ManagedProcess::spawn_image(talker_cmd, "talker").expect("Failed to start talker");
 
     // Wait for listener to receive messages (event-driven)
     let listener_output = listener.collect_until(
@@ -269,7 +269,7 @@ fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
+    let mut proc = ManagedProcess::spawn_image(cmd, "talker").expect("Failed to start");
 
     // Wait for at least one publish (event-driven)
     let output = proc.collect_until(
@@ -319,9 +319,9 @@ fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
 
     let mut talker1 =
-        ManagedProcess::spawn_command(talker1_cmd, "talker1").expect("Failed to start talker1");
+        ManagedProcess::spawn_image(talker1_cmd, "talker1").expect("Failed to start talker1");
     let mut talker2 =
-        ManagedProcess::spawn_command(talker2_cmd, "talker2").expect("Failed to start talker2");
+        ManagedProcess::spawn_image(talker2_cmd, "talker2").expect("Failed to start talker2");
 
     // Wait for both to publish at least once (event-driven)
     let output1 = talker1.collect_until(
@@ -369,7 +369,7 @@ fn test_spin_result_timers_fired(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
+    let mut proc = ManagedProcess::spawn_image(cmd, "talker").expect("Failed to start");
 
     // Wait for at least one publish (event-driven)
     let output = proc.collect_until(

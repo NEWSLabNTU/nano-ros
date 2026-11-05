@@ -177,7 +177,7 @@ fn spawn_probe(probe: &Path, domain: u8, hold: Duration) -> ManagedProcess {
         _ => cyclone_lib.into_os_string(),
     };
     cmd.env("LD_LIBRARY_PATH", ld);
-    ManagedProcess::spawn_command(cmd, "advertised-state-probe").expect("spawn probe")
+    ManagedProcess::spawn_image(cmd, "advertised-state-probe").expect("spawn probe")
 }
 
 /// Wait for the probe's READY line and return everything it printed up to it —

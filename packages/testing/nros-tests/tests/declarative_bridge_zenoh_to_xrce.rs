@@ -96,7 +96,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
             format!("NROS_BRIDGE_{XRCE_NODE}_DOMAIN"),
             domain.to_string(),
         );
-    let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "bridge-xrce-linux_entry")
+    let mut bridge = ManagedProcess::spawn_image(bridge_cmd, "bridge-xrce-linux_entry")
         .expect("spawn declarative xrce bridge entry");
     std::thread::sleep(Duration::from_secs(2));
 
@@ -120,7 +120,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
         .env("ROS_DOMAIN_ID", domain.to_string())
         .env("NROS_LOCATOR", format!("udp/{xrce_locator}"));
     let mut listener =
-        ManagedProcess::spawn_command(listener_cmd, "xrce-listener-declarative-bridge")
+        ManagedProcess::spawn_image(listener_cmd, "xrce-listener-declarative-bridge")
             .expect("spawn xrce listener");
     listener
         .wait_for_output_pattern(
@@ -140,7 +140,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &zenoh_locator);
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-xrce-bridge")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "native-rs-talker-xrce-bridge")
         .expect("spawn talker");
     talker
         .wait_for_output_pattern(

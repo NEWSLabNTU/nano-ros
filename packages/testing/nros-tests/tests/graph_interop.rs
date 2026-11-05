@@ -315,7 +315,7 @@ fn a_peer_leaving_fires_the_graph_change_guard() {
         .env("GRAPH_PROBE_EXPECT_NODE", "talker")
         .env("GRAPH_PROBE_WATCH_CHANGE", "1")
         .env("GRAPH_PROBE_TIMEOUT_MS", CHANGE_BUDGET_MS);
-    let mut probe = ManagedProcess::spawn_command(cmd, "graph-probe-change")
+    let mut probe = ManagedProcess::spawn_image(cmd, "graph-probe-change")
         .expect("spawn the graph-change probe");
 
     let armed = probe
@@ -383,7 +383,7 @@ fn cyclone_a_peer_leaving_fires_the_graph_change_guard() {
     // profile), so our half is pinned here, at the spawn site whose peer is a
     // host `ros2` process.
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
-    let mut probe = ManagedProcess::spawn_command(cmd, "graph-probe-change-cyclone")
+    let mut probe = ManagedProcess::spawn_image(cmd, "graph-probe-change-cyclone")
         .expect("spawn the cyclone graph-change probe");
     let armed = probe
         .wait_for_output_pattern(output::GRAPH_PROBE_CHANGE_ARMED, CHANGE_WAIT)
@@ -534,7 +534,7 @@ fn zenoh_publisher_gid_is_the_one_a_stock_peer_reads_and_reports() {
         .env("GRAPH_PROBE_GID_SUB_TOPIC", GID_SUB_TOPIC)
         .env("GRAPH_PROBE_TIMEOUT_MS", GID_PROBE_BUDGET_MS);
     let mut probe =
-        ManagedProcess::spawn_command(cmd, "graph-probe-gid").expect("spawn the gid probe");
+        ManagedProcess::spawn_image(cmd, "graph-probe-gid").expect("spawn the gid probe");
     let ready = probe
         .wait_for_output_pattern(output::GRAPH_PROBE_GID_READY, GID_WAIT)
         .expect("the probe must create its publisher and subscription");
@@ -672,7 +672,7 @@ fn cyclone_take_gid_is_the_publishers_graph_gid() {
         .env("NROS_DOMAIN_ID", domain.to_string());
     // Issue 1137 — the same bus as the stock side.
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
-    let mut probe = ManagedProcess::spawn_command(cmd, "graph-probe-gid-cyclone")
+    let mut probe = ManagedProcess::spawn_image(cmd, "graph-probe-gid-cyclone")
         .expect("spawn the cyclone gid probe");
     let ready = probe
         .wait_for_output_pattern(output::GRAPH_PROBE_GID_READY, GID_WAIT)

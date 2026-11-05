@@ -113,7 +113,7 @@ fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
     // loopback-only `CYCLONEDDS_URI` since issue 1009, and half a pin is no
     // discovery.
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
-    ManagedProcess::spawn_command(cmd, "nano-cyclone-listener-declarative-bridge")
+    ManagedProcess::spawn_image(cmd, "nano-cyclone-listener-declarative-bridge")
         .expect("spawn nano cyclone listener")
 }
 
@@ -124,7 +124,7 @@ fn spawn_zenoh_talker(bin: &Path, locator: &str) -> ManagedProcess {
     // that switch moved to `bins/header-chatter-talker`, which publishes Int32 on
     // /chatter natively, so the example can drop its test-only branching.
     cmd.env("RUST_LOG", "info").env("NROS_LOCATOR", locator);
-    let mut talker = ManagedProcess::spawn_command(cmd, "native-rs-talker-declarative-bridge")
+    let mut talker = ManagedProcess::spawn_image(cmd, "native-rs-talker-declarative-bridge")
         .expect("spawn talker");
     talker
         .wait_for_output_pattern(
@@ -188,7 +188,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener() {
         );
     // Issue 1137 — the Cyclone egress is a DDS participant; same bus as its peer.
     nros_tests::dds_isolation::apply_to_command(&mut bridge_cmd);
-    let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "bridge-cyclonedds-linux_entry")
+    let mut bridge = ManagedProcess::spawn_image(bridge_cmd, "bridge-cyclonedds-linux_entry")
         .expect("spawn declarative bridge entry");
     std::thread::sleep(Duration::from_secs(2));
 
@@ -267,7 +267,7 @@ fn declarative_zenoh_to_cyclonedds_nested_header_to_ros2() {
     // `ros2 topic echo` peer below.
     nros_tests::dds_isolation::apply_to_command(&mut bridge_cmd);
     let mut bridge =
-        ManagedProcess::spawn_command(bridge_cmd, "bridge-cyclonedds-linux_entry-nested")
+        ManagedProcess::spawn_image(bridge_cmd, "bridge-cyclonedds-linux_entry-nested")
             .expect("spawn declarative bridge entry");
     std::thread::sleep(Duration::from_secs(2));
 
@@ -275,7 +275,7 @@ fn declarative_zenoh_to_cyclonedds_nested_header_to_ros2() {
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &zenoh_locator);
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-header-bridge")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "native-rs-talker-header-bridge")
         .expect("spawn header talker");
     talker
         .wait_for_output_pattern("Published Header", Duration::from_secs(8))

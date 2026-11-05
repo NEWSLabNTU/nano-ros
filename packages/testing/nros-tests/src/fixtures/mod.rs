@@ -90,7 +90,7 @@ pub fn spawn_int32_sink(topic: Option<&str>, locator: &str) -> crate::process::M
         cmd.env("NROS_SUB_TOPIC", t);
     }
 
-    let mut proc = crate::process::ManagedProcess::spawn_command(cmd, &label)
+    let mut proc = crate::process::ManagedProcess::spawn_image(cmd, &label)
         .unwrap_or_else(|e| panic!("spawn {label}: {e}"));
     proc.wait_for_output_pattern(
         crate::output::INT32_SINK_READY_MARKER,

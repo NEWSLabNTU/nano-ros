@@ -72,7 +72,7 @@ fn cpp_port_minimal_publisher_publishes(zenohd_unique: ZenohRouter) {
 
     let mut cmd = std::process::Command::new(bin);
     cmd.env("NROS_LOCATOR", zenohd_unique.locator());
-    let mut node = ManagedProcess::spawn_command(cmd, "cpp-port-minimal-publisher")
+    let mut node = ManagedProcess::spawn_image(cmd, "cpp-port-minimal-publisher")
         .expect("spawn the ported node");
 
     // The template logs through the rclcpp compat surface's `RCLCPP_INFO`, so a
@@ -309,9 +309,7 @@ impl PortPlatform {
             PortPlatform::Linux => {
                 let mut cmd = std::process::Command::new(bin);
                 cmd.env("NROS_LOCATOR", locator);
-                Guest::Host(
-                    ManagedProcess::spawn_command(cmd, name).expect("spawn the ported node"),
-                )
+                Guest::Host(ManagedProcess::spawn_image(cmd, name).expect("spawn the ported node"))
             }
             PortPlatform::Freertos => Guest::Qemu(
                 QemuProcess::start_mps2_an385_networked(bin).expect("spawn the FreeRTOS port"),
@@ -347,7 +345,7 @@ fn spawn_peer(bin: &Path, name: &str, locator: &str, envs: &[(&str, &str)]) -> M
     for (k, v) in envs {
         cmd.env(k, v);
     }
-    ManagedProcess::spawn_command(cmd, name.to_string()).expect("spawn a host peer fixture")
+    ManagedProcess::spawn_image(cmd, name.to_string()).expect("spawn a host peer fixture")
 }
 
 /// Read `peer` until every one of `patterns` has appeared, or `budget`

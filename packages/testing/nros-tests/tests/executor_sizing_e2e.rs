@@ -40,7 +40,7 @@ fn spawn_sizing_entry(locator: &str, spin_ms: u32) -> ManagedProcess {
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", spin_ms.to_string())
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
-    ManagedProcess::spawn_command(cmd, "burst_talker").expect("spawn burst_talker entry")
+    ManagedProcess::spawn_image(cmd, "burst_talker").expect("spawn burst_talker entry")
 }
 
 /// Boot lane. A four-slot executor cannot hold six timers, so reaching the
@@ -90,7 +90,7 @@ fn six_timer_node_delivers_to_a_separate_process(zenohd_unique: ZenohRouter) {
     cmd.env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
-    let mut listener = ManagedProcess::spawn_command(cmd, "listener").expect("spawn listener");
+    let mut listener = ManagedProcess::spawn_image(cmd, "listener").expect("spawn listener");
     listener
         .wait_for_output_pattern(
             nros_tests::output::INT32_SINK_READY_MARKER,

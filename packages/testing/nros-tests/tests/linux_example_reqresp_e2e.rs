@@ -311,13 +311,13 @@ fn run_cell(cell: &MCell) {
     }
 
     // Server first; wait its ready marker so the client's request finds it.
-    let mut srv = ManagedProcess::spawn_command(server_cmd, "native-example-server")
+    let mut srv = ManagedProcess::spawn_image(server_cmd, "native-example-server")
         .unwrap_or_else(|e| panic!("[{}] spawn server: {e}", rmw_str(cell.rmw)));
     let _ = srv.wait_for_output_pattern(ready, Duration::from_secs(30));
     std::thread::sleep(Duration::from_secs(1));
 
-    let mut cli = ManagedProcess::spawn_command(client_cmd, "native-example-client")
-        .unwrap_or_else(|e| {
+    let mut cli =
+        ManagedProcess::spawn_image(client_cmd, "native-example-client").unwrap_or_else(|e| {
             srv.kill();
             panic!("[{}] spawn client: {e}", rmw_str(cell.rmw))
         });
@@ -425,7 +425,7 @@ fn xrce_action_goal_sent_before_its_server_is_resent(#[case] lang: ML) {
     }
 
     // Client FIRST: its first goal goes out with no server on the graph.
-    let mut cli = ManagedProcess::spawn_command(client_cmd, "xrce-blind-client")
+    let mut cli = ManagedProcess::spawn_image(client_cmd, "xrce-blind-client")
         .unwrap_or_else(|e| panic!("[{}/xrce] spawn client: {e}", lang.as_str()));
     let mut out = cli
         .wait_for_output_pattern(ACTION_SENDING_GOAL_MARKER, Duration::from_secs(30))
@@ -434,11 +434,10 @@ fn xrce_action_goal_sent_before_its_server_is_resent(#[case] lang: ML) {
     // Agent so the first goal is written while there is still no reader.
     std::thread::sleep(Duration::from_secs(1));
 
-    let mut srv =
-        ManagedProcess::spawn_command(server_cmd, "xrce-late-server").unwrap_or_else(|e| {
-            cli.kill();
-            panic!("[{}/xrce] spawn server: {e}", lang.as_str())
-        });
+    let mut srv = ManagedProcess::spawn_image(server_cmd, "xrce-late-server").unwrap_or_else(|e| {
+        cli.kill();
+        panic!("[{}/xrce] spawn server: {e}", lang.as_str())
+    });
     srv.expect_ready(DemoRole::ActionServer, lang, Duration::from_secs(30));
 
     // Rust re-sends after 5 s of silence, C after its 15 s goal-response

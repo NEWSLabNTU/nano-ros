@@ -40,7 +40,7 @@ fn spawn_param_entry(locator: &str, spin_ms: u32) -> ManagedProcess {
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", spin_ms.to_string())
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
-    ManagedProcess::spawn_command(cmd, "param_talker").expect("spawn param_talker entry")
+    ManagedProcess::spawn_image(cmd, "param_talker").expect("spawn param_talker entry")
 }
 
 /// W4c + the parameter-resolution rules, end to end on a binary that ran.

@@ -89,8 +89,8 @@ fn test_zenoh_to_xrce_bridge_e2e(
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &zenoh_locator)
         .env("XRCE_LOCATOR", &xrce_locator);
-    let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "bridge-zenoh-to-xrce-fwd")
-        .expect("spawn bridge");
+    let mut bridge =
+        ManagedProcess::spawn_image(bridge_cmd, "bridge-zenoh-to-xrce-fwd").expect("spawn bridge");
     bridge
         .wait_for_output_pattern("Spinning", Duration::from_secs(8))
         .expect("bridge did not finish session setup");
@@ -109,7 +109,7 @@ fn test_zenoh_to_xrce_bridge_e2e(
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", format!("udp/{xrce_locator}"));
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener-bridge-e2e")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "xrce-listener-bridge-e2e")
         .expect("spawn xrce listener");
     listener
         .wait_for_output_pattern(
@@ -123,7 +123,7 @@ fn test_zenoh_to_xrce_bridge_e2e(
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &zenoh_locator);
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-bridge-e2e")
+    let mut talker = ManagedProcess::spawn_image(talker_cmd, "native-rs-talker-bridge-e2e")
         .expect("spawn talker");
     talker
         .wait_for_output_pattern(

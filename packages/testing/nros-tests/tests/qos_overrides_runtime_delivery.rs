@@ -77,7 +77,7 @@ fn qos_override_best_effort_honored_and_delivers(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Subscriber first so its declaration precedes the publisher's samples.
-    let mut listener = ManagedProcess::spawn_command(
+    let mut listener = ManagedProcess::spawn_image(
         qos_cmd(&bin, "listener", &locator, Some("reliability=best_effort")),
         "qos-listener",
     )
@@ -102,7 +102,7 @@ fn qos_override_best_effort_honored_and_delivers(zenohd_unique: ZenohRouter) {
         "subscriber did not log the BestEffort override on its live entity:\n{ready}"
     );
 
-    let mut talker = ManagedProcess::spawn_command(
+    let mut talker = ManagedProcess::spawn_image(
         qos_cmd(&bin, "talker", &locator, Some("reliability=best_effort")),
         "qos-talker",
     )
@@ -150,7 +150,7 @@ fn qos_default_without_override_is_reliable(zenohd_unique: ZenohRouter) {
         .to_path_buf();
     let locator = zenohd_unique.locator();
 
-    let mut talker = ManagedProcess::spawn_command(
+    let mut talker = ManagedProcess::spawn_image(
         qos_cmd(&bin, "talker", &locator, None),
         "qos-talker-default",
     )

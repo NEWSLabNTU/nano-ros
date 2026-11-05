@@ -244,7 +244,7 @@ fn spawn_native_entry(
     if expect_callbacks {
         cmd.env("NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS", "1");
     }
-    ManagedProcess::spawn_command(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
+    ManagedProcess::spawn_image(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
 }
 
 // =============================================================================

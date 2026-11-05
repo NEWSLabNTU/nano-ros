@@ -133,7 +133,7 @@ fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
         .env("NROS_ENTRY_SPIN_MS", "8000")
         .env("NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS", "1");
     let mut proc =
-        nros_tests::process::ManagedProcess::spawn_command(cmd, "rust workspace linux_entry")
+        nros_tests::process::ManagedProcess::spawn_image(cmd, "rust workspace linux_entry")
             .expect("spawn Rust workspace Entry fixture");
 
     std::thread::sleep(Duration::from_millis(700));
@@ -143,7 +143,7 @@ fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
         .env("NROS_LOCATOR", router.locator())
         .env("NROS_SESSION_MODE", "client");
     let mut talker_proc =
-        nros_tests::process::ManagedProcess::spawn_command(talker_cmd, "native talker publisher")
+        nros_tests::process::ManagedProcess::spawn_image(talker_cmd, "native talker publisher")
             .expect("spawn native talker publisher");
 
     let mut output = proc
@@ -187,7 +187,7 @@ fn cmake_cpp_workspace_entry_starts_prebuilt_runtime() {
     cmd.env("NROS_LOCATOR", router.locator())
         .env("NROS_SESSION_MODE", "client");
     let mut proc =
-        nros_tests::process::ManagedProcess::spawn_command(cmd, "C++ workspace linux_entry")
+        nros_tests::process::ManagedProcess::spawn_image(cmd, "C++ workspace linux_entry")
             .expect("spawn C++ workspace Entry fixture");
 
     let output = proc

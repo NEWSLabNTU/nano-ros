@@ -62,7 +62,7 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
     let mut listener =
-        ManagedProcess::spawn_command(listener_cmd, "listener").expect("spawn listener");
+        ManagedProcess::spawn_image(listener_cmd, "listener").expect("spawn listener");
     listener
         .wait_for_output_pattern(
             nros_tests::output::LISTENER_READY_MARKER,
@@ -82,7 +82,7 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
         .env("NROS_ENTRY_SPIN_MS", "10000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     let mut deploy =
-        ManagedProcess::spawn_command(entry_cmd, "linux_entry").expect("spawn linux_entry");
+        ManagedProcess::spawn_image(entry_cmd, "linux_entry").expect("spawn linux_entry");
 
     let listener_output = listener
         .wait_for_output_count(

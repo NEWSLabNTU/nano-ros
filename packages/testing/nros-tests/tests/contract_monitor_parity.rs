@@ -70,7 +70,7 @@ fn spawn(
     for (k, v) in envs {
         cmd.env(k, v);
     }
-    ManagedProcess::spawn_command(cmd, name.to_string()).expect("spawn contract-monitor bin")
+    ManagedProcess::spawn_image(cmd, name.to_string()).expect("spawn contract-monitor bin")
 }
 
 /// Violating pair: the slow + stale publisher trips the rate contract and the

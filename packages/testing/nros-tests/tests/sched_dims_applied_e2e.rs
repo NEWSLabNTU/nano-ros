@@ -712,7 +712,7 @@ fn run_cell(cell: &SchedCell) {
                     cmd.env("RUST_LOG", "info");
                 }
             }
-            let mut g = ManagedProcess::spawn_command(cmd, "sched-dim-entry")
+            let mut g = ManagedProcess::spawn_image(cmd, "sched-dim-entry")
                 .unwrap_or_else(|e| panic!("[{platform} {lang}] spawn entry: {e}"));
             let l = g.wait_for_output_pattern(ex.stem, timeout);
             g.kill();

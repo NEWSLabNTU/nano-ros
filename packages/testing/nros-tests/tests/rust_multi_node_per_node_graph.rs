@@ -120,8 +120,8 @@ fn rust_multi_node_entry_per_node_graph_nodes(
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", "20000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
-    let mut deploy = ManagedProcess::spawn_command(cmd, "rust-native-entry")
-        .expect("failed to start linux_entry");
+    let mut deploy =
+        ManagedProcess::spawn_image(cmd, "rust-native-entry").expect("failed to start linux_entry");
 
     let node_list = poll_for_expected_set(Duration::from_secs(15), || {
         ros2_node_list(&locator, DEFAULT_ROS_DISTRO).unwrap_or_default()
@@ -158,7 +158,7 @@ fn rust_multi_node_entry_per_node_graph_nodes_cyclonedds() -> nros_tests::TestRe
         .env("NROS_ENTRY_SPIN_MS", "20000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
-    let mut deploy = ManagedProcess::spawn_command(cmd, "rust-native-cyclonedds-entry")
+    let mut deploy = ManagedProcess::spawn_image(cmd, "rust-native-cyclonedds-entry")
         .expect("failed to start linux_cyclonedds_entry");
 
     let node_list = poll_for_expected_set(Duration::from_secs(20), || {
@@ -220,6 +220,8 @@ fn rust_multi_node_entry_per_node_graph_nodes_xrce() -> nros_tests::TestResult<(
         .env("NROS_RMW", "xrce")
         .env("NROS_ENTRY_SPIN_MS", "25000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
+    // Direct, not `spawn_image`: this measures the IMAGE's own signal handling
+    // and exit status through its pid, which `nros run` would stand in front of.
     let mut deploy = ManagedProcess::spawn_command(cmd, "rust-native-xrce-entry")
         .expect("failed to start linux_xrce_entry");
 
@@ -343,6 +345,8 @@ fn xrce_entry_leaves_the_graph(entry: &std::path::Path, ending: Ending) {
         // The generated entry says `spin = "forever"`: unset is unbounded.
         Ending::Sigterm => cmd.env_remove("NROS_ENTRY_SPIN_MS"),
     };
+    // Direct, not `spawn_image`: this measures the IMAGE's own signal handling
+    // and exit status through its pid, which `nros run` would stand in front of.
     let mut deploy = ManagedProcess::spawn_command(cmd, "rust-native-xrce-entry")
         .expect("failed to start linux_xrce_entry");
 

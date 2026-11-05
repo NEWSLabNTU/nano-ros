@@ -46,7 +46,7 @@ fn test_custom_msg_serialization() {
 
     // Run without zenoh - tests serialization only
     let cmd = Command::new(&binary);
-    let mut proc = ManagedProcess::spawn_command(cmd, "custom_msg").expect("Failed to start");
+    let mut proc = ManagedProcess::spawn_image(cmd, "custom_msg").expect("Failed to start");
 
     // Wait for completion marker (no network, finishes quickly)
     let output = proc
@@ -101,7 +101,7 @@ fn test_custom_msg_pub_sub(zenohd_unique: ZenohRouter) {
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "custom_msg").expect("Failed to start");
+    let mut proc = ManagedProcess::spawn_image(cmd, "custom_msg").expect("Failed to start");
 
     // Wait for completion marker (runs serialization + pub/sub then exits)
     let output = proc
@@ -159,8 +159,8 @@ fn test_custom_msg_pub_sub(zenohd_unique: ZenohRouter) {
 fn test_sensor_reading_structure() {
     let binary = build_native_custom_msg_no_zenoh().require("fixture");
 
-    let mut proc = ManagedProcess::spawn_command(Command::new(&binary), "custom_msg")
-        .expect("Failed to start");
+    let mut proc =
+        ManagedProcess::spawn_image(Command::new(&binary), "custom_msg").expect("Failed to start");
 
     // Wait for completion (no network, finishes quickly)
     let output = proc
@@ -191,8 +191,8 @@ fn test_sensor_reading_structure() {
 fn test_status_message_with_string() {
     let binary = build_native_custom_msg_no_zenoh().require("fixture");
 
-    let mut proc = ManagedProcess::spawn_command(Command::new(&binary), "custom_msg")
-        .expect("Failed to start");
+    let mut proc =
+        ManagedProcess::spawn_image(Command::new(&binary), "custom_msg").expect("Failed to start");
 
     // Wait for completion (no network, finishes quickly)
     let output = proc
@@ -227,7 +227,7 @@ fn test_custom_msg_no_router() {
         .env("NROS_LOCATOR", "tcp/127.0.0.1:19999") // Non-existent port
         .env("NROS_SESSION_MODE", "client");
 
-    let mut proc = ManagedProcess::spawn_command(cmd, "custom_msg").expect("Failed to start");
+    let mut proc = ManagedProcess::spawn_image(cmd, "custom_msg").expect("Failed to start");
 
     // Wait for serialization tests to pass (those don't need network)
     let output = proc

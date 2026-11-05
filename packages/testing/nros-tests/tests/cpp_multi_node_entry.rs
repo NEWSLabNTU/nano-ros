@@ -177,7 +177,7 @@ fn multi_node_workspace_cpp_typed_pubsub_e2e(
         cmd.env("NROS_LOCATOR", &locator)
             .env("NROS_SESSION_MODE", "client")
             .env("NROS_ENTRY_SPIN_MS", "20000");
-        ManagedProcess::spawn_command(cmd, name.to_string())
+        ManagedProcess::spawn_image(cmd, name.to_string())
     };
 
     let mut a = spawn("entry_a")?;
@@ -249,7 +249,7 @@ fn multi_node_workspace_cpp_per_node_graph_nodes(
         .env("NROS_SESSION_MODE", "client")
         .env("NROS_ENTRY_SPIN_MS", "20000");
     let mut entry =
-        ManagedProcess::spawn_command(cmd, "cpp-robot-entry").expect("failed to start robot_entry");
+        ManagedProcess::spawn_image(cmd, "cpp-robot-entry").expect("failed to start robot_entry");
 
     let node_list = poll_until_contains(Duration::from_secs(15), "listener", || {
         ros2_node_list(&locator, DEFAULT_ROS_DISTRO).unwrap_or_default()

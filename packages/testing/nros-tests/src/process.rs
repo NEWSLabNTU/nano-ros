@@ -789,6 +789,9 @@ pub struct ManagedProcess {
     /// The exact command this process was started with — see
     /// [`ManagedProcess::command_line`].
     cmdline: String,
+    /// The plan directory of an image launched through `nros run --plan`
+    /// ([`ManagedProcess::spawn_image`]); removed after the process is killed.
+    _run: Option<crate::run::HostRun>,
 }
 
 impl ManagedProcess {
@@ -809,7 +812,39 @@ impl ManagedProcess {
     ) -> Result<Self, TestError> {
         let mut cmd = Command::new(binary);
         cmd.args(args);
-        Self::spawn_command(cmd, name)
+        Self::spawn_image(cmd, name)
+    }
+
+    /// Spawn a built host IMAGE the way a user runs it: `nros run --plan`
+    /// with the native runner (phase-528 W5, [`crate::run::host_image`]).
+    ///
+    /// `image` is configured exactly as for [`Self::spawn_command`] — the
+    /// executable, its arguments, environment and working directory — and the
+    /// harness's own concerns (leased ports, domain ids, the DDS pin) reach the
+    /// image through it unchanged. The console is the verb's stdout, so every
+    /// `wait_for_*` reads what it read before; the verb's own lines go to
+    /// stderr, prefixed `nros run:`.
+    ///
+    /// Use [`Self::spawn_command`] for everything that is NOT a built image:
+    /// a router, an agent, a `ros2` peer, a shell.
+    pub fn spawn_image(image: Command, name: impl Into<String>) -> Result<Self, TestError> {
+        Self::spawn_image_with(image, &[], name)
+    }
+
+    /// [`Self::spawn_image`] with plan `args` for the runner — `prefix`, a
+    /// command the image runs under (`stdbuf -oL -eL`), as `nros run --prefix`
+    /// states it.
+    pub fn spawn_image_with(
+        image: Command,
+        plan_args: &[(&str, &str)],
+        name: impl Into<String>,
+    ) -> Result<Self, TestError> {
+        let mut run = crate::run::host_image(&image, plan_args)?;
+        let command = run.take_command();
+        let mut p = Self::spawn_grouped(command, name.into(), true)?;
+        p.cmdline = format!("{}  # image: {}", p.cmdline, run.image_line);
+        p._run = Some(run);
+        Ok(p)
     }
 
     /// Spawn a process from a Command builder
@@ -830,11 +865,30 @@ impl ManagedProcess {
     /// is applied at the spawn sites whose peer is a host `ros2` process, and
     /// `check-dds-isolation-symmetry` is what keeps a new such site from
     /// forgetting.
-    pub fn spawn_command(mut command: Command, name: impl Into<String>) -> Result<Self, TestError> {
-        let name = name.into();
+    pub fn spawn_command(command: Command, name: impl Into<String>) -> Result<Self, TestError> {
+        Self::spawn_grouped(command, name.into(), false)
+    }
+
+    /// `nros_run`: the command is `nros run`, which owns a process group of
+    /// its own (the runner and the image). The test stops it with
+    /// [`crate::run::stop`], which kills that group before the verb. A test
+    /// binary that dies cannot, so the verb is told by SIGTERM
+    /// ([`set_orphan_group_suicide`]), which it turns into a teardown of its
+    /// group; a bare SIGKILL would end the verb and leave the image running.
+    fn spawn_grouped(
+        mut command: Command,
+        name: String,
+        nros_run: bool,
+    ) -> Result<Self, TestError> {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
-        set_new_process_group(&mut command);
+        if nros_run {
+            set_orphan_group_suicide(&mut command);
+        } else {
+            set_new_process_group(&mut command);
+        }
+        #[cfg(not(unix))]
+        let _ = nros_run;
         let cmdline = crate::qemu::render_command(&command);
         let handle = command
             .spawn()
@@ -844,6 +898,7 @@ impl ManagedProcess {
             handle,
             name,
             cmdline,
+            _run: None,
         })
     }
 
@@ -920,7 +975,7 @@ impl ManagedProcess {
 
         loop {
             if start.elapsed() > timeout {
-                kill_process_group(&mut self.handle);
+                self.kill();
                 if output.is_empty() {
                     return Err(TestError::Timeout);
                 }
@@ -1384,7 +1439,11 @@ impl ManagedProcess {
 
     /// Kill the process group and wait for it to exit
     pub fn kill(&mut self) {
-        kill_process_group(&mut self.handle);
+        if self._run.is_some() {
+            crate::run::stop(&mut self.handle);
+        } else {
+            kill_process_group(&mut self.handle);
+        }
     }
 
     /// Wait for output with timeout, capturing both stdout and stderr
@@ -1427,7 +1486,7 @@ impl ManagedProcess {
 
         loop {
             if start.elapsed() > timeout {
-                kill_process_group(&mut self.handle);
+                self.kill();
                 if output.is_empty() {
                     return Err(TestError::Timeout);
                 }

@@ -36,7 +36,7 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
     listener_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "safety-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "safety-listener")
         .expect("Failed to start safety listener");
 
     // Wait for listener readiness
@@ -52,7 +52,7 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
     talker_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let _talker = ManagedProcess::spawn_command(talker_cmd, "safety-talker")
+    let _talker = ManagedProcess::spawn_image(talker_cmd, "safety-talker")
         .expect("Failed to start safety talker");
 
     // Wait for listener to receive multiple safety-validated messages.
@@ -116,7 +116,7 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
     listener_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "std-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "std-listener")
         .expect("Failed to start standard listener");
 
     listener
@@ -131,7 +131,7 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
     talker_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let _talker = ManagedProcess::spawn_command(talker_cmd, "safety-talker")
+    let _talker = ManagedProcess::spawn_image(talker_cmd, "safety-talker")
         .expect("Failed to start safety talker");
 
     let output = listener
@@ -184,7 +184,7 @@ fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRoute
     listener_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "decl-safety-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "decl-safety-listener")
         .expect("Failed to start declarative safety listener");
     listener
         .wait_for_output_pattern(
@@ -198,7 +198,7 @@ fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRoute
     talker_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let _talker = ManagedProcess::spawn_command(talker_cmd, "safety-talker")
+    let _talker = ManagedProcess::spawn_image(talker_cmd, "safety-talker")
         .expect("Failed to start safety talker");
 
     // The declarative callback logs, per message:
@@ -262,7 +262,7 @@ fn test_c_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
 
     let mut listener_cmd = Command::new(&listener);
     listener_cmd.env("NROS_LOCATOR", &locator);
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "c-safety-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "c-safety-listener")
         .expect("Failed to start C safety listener");
     listener
         .wait_for_output_pattern(
@@ -275,7 +275,7 @@ fn test_c_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
     talker_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let _talker = ManagedProcess::spawn_command(talker_cmd, "safety-talker")
+    let _talker = ManagedProcess::spawn_image(talker_cmd, "safety-talker")
         .expect("Failed to start safety talker");
 
     let output = listener
@@ -310,7 +310,7 @@ fn test_cpp_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
 
     let mut listener_cmd = Command::new(&listener);
     listener_cmd.env("NROS_LOCATOR", &locator);
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "cpp-safety-listener")
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "cpp-safety-listener")
         .expect("Failed to start C++ safety listener");
     listener
         .wait_for_output_pattern(
@@ -323,7 +323,7 @@ fn test_cpp_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
     talker_cmd
         .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
-    let _talker = ManagedProcess::spawn_command(talker_cmd, "safety-talker")
+    let _talker = ManagedProcess::spawn_image(talker_cmd, "safety-talker")
         .expect("Failed to start safety talker");
 
     let output = listener
