@@ -145,7 +145,7 @@
 - [Adding a Platform (CMake)](./extending/add-a-platform.md)
 - [Platform Porting Pitfalls](./extending/porting-pitfalls.md)
 - [Platform API Design](./extending/platform-api-design.md)
-- [Platform Model](./concepts/platform-model.md)
+- [Platform Model](./extending/platform-model.md)
 - [Custom Transport](./extending/custom-transport.md)
 - [Custom RMW Backend](./extending/custom-rmw.md)
 - [RMW API Design](./extending/rmw-design.md)
