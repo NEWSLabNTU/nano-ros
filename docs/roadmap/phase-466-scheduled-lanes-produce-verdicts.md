@@ -1,5 +1,32 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-11-05). Tier 2 (run-matrix) reached its cells and PASSED; W6 is
+met and issue 2004 is resolved. The tier-2 NIGHTLY still stops in the zephyr
+build, on a false preflight refusal (fixed in PR #3153).**
+
+- run-matrix 41979554190 (06:18Z, `main` at 1d287ef1): `tier 2 — VERDICT:
+  cells ran and passed`, `Real failures: 0`. The first tier-2 verdict this
+  phase has had.
+  - **W6 met:** `zephyr_renode_twin zephyr_nucleo_renode_c_zenoh_serial_pubsub_e2e`
+    PASS (6.3 s), in its scheduled lane.
+  - **Issue 2004 resolved:** the job log prints `realtime_tiers: 4 row(s)
+    executed (4 passed …)` and `sched_dims: 1 cell(s) executed (1 passed …)`.
+  - **W5 read (tier 2, 1-wise):** realtime_tiers 4 passed / 18 out of lane,
+    sched_dims 1 passed / 16 out of lane. `CorePinPlacement/zephyr/c` is out of
+    the 1-wise lane, so issue 2113 still waits on the pairwise nightly.
+- Same run, tier 1: one real failure, phase-535's new C++ Fibonacci action
+  cell (`roundtrip_xprocess` cpp/action), whose client output stops mid-line.
+  Reported to that phase's owner.
+- Tier-2 nightly 41985062052 (07:07Z): issue 2249's fix worked
+  (`build-nucleo-f767zi-c-talker-serial` [ok]), then the zephyr stage refused
+  three Rust native_sim entries on a FALSE preflight: rustup was asked from the
+  west workspace's cwd, so it answered for the default toolchain, not the
+  checkout's pin (PR #3153). The job log quoted only the recipe
+  line, not the refusal: issue 2193's class, still open.
+
+Left: the pairwise nightly reaching its cells (2113, the rest of W5), issue
+2193, and the acceptance.
+
 **Status (2026-11-04, later). Tonight's tier-2 run stopped in the zephyr
 build on a stale runner workspace (issue 2249, fixed); tier 1's one red was a
 test defect (issue 2250, fixed); W6 handed over from phase-524.**
@@ -313,7 +340,7 @@ are diagnosis waves, and what a wave ends up editing depends on what it finds.
 | `phase-466-W3` | LANDED (#1210). THREE independent bugs: the missing `-DZEPHYR_EXTRA_MODULES`, the runner's absent rosidl python deps (1457, kept open -- not fixable in this repository), and a missing `mkdir -p` at `fixture-lane.sh:343` that silently lost issue 0499's lower bound | done |
 | `phase-466-W4` | LANDED (#1212). Both lanes die in ONE step on a full disk (issue 1353). A survivable disk-report channel plus `scripts/ci/reclaim-disk.sh`, with `live-peer.yml`'s inline copy folded into it | done |
 | `phase-466-W5` | OPEN (2026-10-14, handed over by the archived phase-330). The RTOS half of phase-330's two last acceptance boxes: build the RTOS realtime workspace fixtures and get a verdict from `realtime_tiers_e2e` and `sched_dims_applied_e2e` on them. See "W5 -- the RTOS realtime cells" below | READ 2026-10-31 from the tier-2 nightly junit: 13 realtime rows and 14 sched-dims cells executed on Zephyr, NuttX, FreeRTOS and threadx-linux; one cell red on a missing `qemu-system-aarch64` (issue 2113), seven C++ cells selected by no scheduled lane. See the 2026-10-31 status |
-| `phase-466-W6` | OPEN (2026-11-04, handed over by phase-524 W4c, maintainer ruling). The Nucleo-F767ZI Renode twin cell's first green run in its SCHEDULED lane: one Runtime cell `(ZephyrNucleoF767zi, C, Zenoh, Pubsub, Example)`, test `tests/zephyr_renode_twin.rs`, west row `build-nucleo-f767zi-c-talker-serial` (`examples/zephyr/c/talker`, image `nucleo_serial`), lanes tier 2 and tier-2 nightly (not merge-gating). Renode reaches the runner through `just zephyr setup` -> `nros setup --tool renode` (store, not image). Passed locally in 7.8 s (#3079). First scheduled attempt (41784686434) stopped in the build on issue 2249; Renode itself provisioned | waits on the next tier-2 run past #3090 |
+| `phase-466-W6` | DONE (opened 2026-11-04, handed over by phase-524 W4c, maintainer ruling). The Nucleo-F767ZI Renode twin cell's first green run in its SCHEDULED lane: one Runtime cell `(ZephyrNucleoF767zi, C, Zenoh, Pubsub, Example)`, test `tests/zephyr_renode_twin.rs`, west row `build-nucleo-f767zi-c-talker-serial` (`examples/zephyr/c/talker`, image `nucleo_serial`), lanes tier 2 and tier-2 nightly (not merge-gating). Renode reaches the runner through `just zephyr setup` -> `nros setup --tool renode` (store, not image). Passed locally in 7.8 s (#3079). First scheduled attempt (41784686434) stopped in the build on issue 2249; Renode itself provisioned | MET 2026-11-05: PASS (6.3 s) in run-matrix 41979554190, tier 2 |
 
 W1 and W3 may collide on the Zephyr image: if W3's `msg2idl.py` failure turns
 out to be another missing package in that image, the Dockerfile edit belongs
@@ -455,7 +482,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#1898](../issues/archived/1898-metadata-harness-excerpt-drops-cargo-cause.md) | The tier-2 nightly stopped in `generate-bindings` on a git dependency it could not fetch, and the excerpt dropped the reason. |
 | [#1899](../issues/archived/1899-tier2-nightly-fixture-compilers-sigkilled.md) | WONTFIX 2026-10-23: runner memory is configuration. A killed compile now names itself in the log (`log-first-errors.sh`); no recurrence in 35 jobs since 2026-10-15. |
 | [#1981](../issues/1981-live-peer-narrowing-alternation-is-one-workspace-id.md) | Homed 2026-10-23 from phase-441, which was archived that day. The `live-peer` board job joins two `NROS_FIXTURE_ID` narrowings with `\|`, and the workspace builder reads the result as one id. So the lane cannot run the fragmented-sample cell phase-441 W6 recorded. |
-| [#2004](../issues/2004-matrix-test-summary-hidden-on-pass.md) | A matrix test that passes over cells it did not run prints which ones, and nextest discards that output on PASS, so W5 could not be read off the 2026-10-22 tier-2 run. |
+| [#2004](../issues/archived/2004-matrix-test-summary-hidden-on-pass.md) | A matrix test that passes over cells it did not run prints which ones, and nextest discards that output on PASS, so W5 could not be read off the 2026-10-22 tier-2 run. |
 | [#2100](../issues/archived/2100-hosted-runner-gates-outgrow-disk.md) | **Resolved** 2026-10-29 (PR #2754). `host-tests`' tier-1 gates ran out of disk on the GitHub-hosted runner (4 of 7 nights). The three largest gates now release their output on CI, and the 2026-10-28 run passed with 48 G free. |
 | [#2095](../issues/archived/2095-zephyr-native-sim-two-rust-archives-duplicate-popcountdi2.md) | RESOLVED 2026-10-29 as a duplicate of issue 2092 (`44eab11c22`); tier-2 nightly 40648207713 passed the Zephyr C++ xrce cells. Filed 2026-10-27. Every Zephyr native_sim C++ image fails to link on `__popcountdi2`, defined by two Rust staticlibs. Issue 2032's second route hid it. It stops the Zephyr family of `run-matrix` and the tier-2 nightly. |
 | [#2112](../issues/archived/2112-freertos-loan-copy-sub-fixture-missing-in-lane.md) | **Resolved** 2026-10-31. Tier 2 reported the FreeRTOS lending cell's `loan-copy-sub` MISSING every night from 10-27. The build had correctly omitted the out-of-lane row; the run could not attribute a shared group-dir path and failed closed. `require_in_lane` now attributes a group-dir binary to its producing row. |
