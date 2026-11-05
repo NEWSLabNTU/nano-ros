@@ -1453,10 +1453,9 @@ fn render_plan_json(
         })
         .or_else(|| {
             // Fall back to the conventional path.
-            let candidate = bringup
-                .manifest_path
-                .parent()
-                .map(|p| p.join("launch").join("system.launch.xml"));
+            let candidate = bringup.manifest_path.parent().map(|p| {
+                nros_orchestration_ir::model_location::launch_dir(p).join("system.launch.xml")
+            });
             candidate.and_then(|c| c.exists().then(|| c.to_string_lossy().into_owned()))
         });
 

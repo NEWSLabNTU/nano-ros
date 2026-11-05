@@ -98,6 +98,104 @@ pub fn model_search_paths(bringup_dir: &Path, model_rel: &str) -> Vec<PathBuf> {
     out
 }
 
+/// phase-531 W3 (RFC-0121 D3) — the root `nros sync` generates a launchless
+/// bringup's launch tree under: `<ws>/build/nros/launch/<bringup>/`, beside
+/// the models' own build root (`<ws>` is `bringup_dir/../..`, the
+/// conventional `<ws>/src/<bringup>` layout [`model_search_paths`] already
+/// derives).
+///
+/// The root MIRRORS the bringup's own layout: the launch file is at
+/// `<root>/launch/system.launch.xml` and a copy of `system.toml` at
+/// `<root>/system.toml`, and the resolver is handed `<root>` as the bringup
+/// root. So a generated launch file and the same file authored at
+/// `<bringup>/launch/` resolve the SAME model, byte for byte (`meta.inputs`
+/// records `launch/system.launch.xml` and `system.toml` either way), and the
+/// model stays portable. A recorded input is read back through
+/// [`recorded_input_path`], which reads `system.toml` from the bringup itself,
+/// so the copy can never stand in for an edited original.
+///
+/// `None` for a single-package leaf (its own root, see
+/// [`generated_launch_dir`]) and for a bringup outside that layout.
+#[must_use]
+pub fn generated_launch_root(bringup_dir: &Path) -> Option<PathBuf> {
+    if crate::leaf_system::is_package_dir(bringup_dir) {
+        return None;
+    }
+    let name = bringup_dir.file_name()?;
+    let ws_root = bringup_dir.parent()?.parent()?;
+    Some(ws_root.join("build").join("nros").join("launch").join(name))
+}
+
+/// phase-531 W3 — where the generated launch file of `bringup_dir` lives:
+/// `<generated_launch_root>/launch/` for a bringup. A single-package leaf (a
+/// `system.toml` beside code, retiring in phase-531 W7) is its own workspace
+/// root, so its file is under `<leaf>/build/nros/launch/<leaf>/`, where its
+/// sync has always written it (phase-445 W3).
+#[must_use]
+pub fn generated_launch_dir(bringup_dir: &Path) -> Option<PathBuf> {
+    if crate::leaf_system::is_package_dir(bringup_dir) {
+        let name = bringup_dir.file_name()?;
+        return Some(
+            bringup_dir
+                .join("build")
+                .join("nros")
+                .join("launch")
+                .join(name),
+        );
+    }
+    generated_launch_root(bringup_dir).map(|r| r.join("launch"))
+}
+
+/// phase-531 W3 (RFC-0121 D3) — the directory a bringup's launch files are
+/// read from: its authored `launch/` when it has one, else the generated one
+/// ([`generated_launch_dir`]). The ONE answer every reader of "the bringup's
+/// launch file" asks, so an authored and a generated launch file are seen
+/// identically, and adding `launch/` replaces the generated file.
+#[must_use]
+pub fn launch_dir(bringup_dir: &Path) -> PathBuf {
+    let authored = bringup_dir.join("launch");
+    if authored.is_dir() {
+        return authored;
+    }
+    generated_launch_dir(bringup_dir).unwrap_or(authored)
+}
+
+/// The root a bringup's model records its inputs relative to, and the
+/// `--bringup-root` its resolve is given: the bringup itself, or its
+/// [`generated_launch_root`] when its launch file is generated.
+#[must_use]
+pub fn launch_root(bringup_dir: &Path) -> PathBuf {
+    if bringup_dir.join("launch").is_dir() {
+        return bringup_dir.to_path_buf();
+    }
+    generated_launch_root(bringup_dir).unwrap_or_else(|| bringup_dir.to_path_buf())
+}
+
+/// The `system.toml` a bringup's resolve is handed: its own, or the copy in
+/// its [`generated_launch_root`] (which the resolver records as
+/// `system.toml`, as it records the bringup's own).
+#[must_use]
+pub fn resolve_system_toml(bringup_dir: &Path) -> PathBuf {
+    launch_root(bringup_dir).join("system.toml")
+}
+
+/// The file a model's recorded input `rel` names, for `bringup_dir`:
+/// `system.toml` is always the bringup's own, every other input is under
+/// [`launch_root`]. An absolute `rel` is returned as is.
+#[must_use]
+pub fn recorded_input_path(bringup_dir: &Path, rel: &Path) -> PathBuf {
+    if rel == Path::new("system.toml") {
+        return bringup_dir.join("system.toml");
+    }
+    launch_root(bringup_dir).join(rel)
+}
+
+/// Whether [`launch_dir`] answers with a generated directory for `bringup_dir`.
+#[must_use]
+pub fn launch_is_generated(bringup_dir: &Path) -> bool {
+    !bringup_dir.join("launch").is_dir() && generated_launch_dir(bringup_dir).is_some()
+}
+
 /// The model path a consumer should read.
 ///
 /// Returns the first candidate that exists. When none does, returns the LAST
@@ -616,7 +714,7 @@ pub fn ensure_model(
             system_toml.display(),
         )
     })?;
-    let launch_path = bringup_dir.join("launch").join(&launch_file);
+    let launch_path = launch_dir(bringup_dir).join(&launch_file);
     let inputs = vec![system_toml.clone(), launch_path.clone()];
 
     if let Some(marker) = refused_marker_for(bringup_dir, model_rel) {
@@ -700,10 +798,11 @@ pub fn ensure_model(
     for (k, v) in &args {
         cmd.arg(format!("{k}:={v}"));
     }
+    // phase-531 W3 — a generated launch tree resolves from its mirror root.
     cmd.arg("--bringup-root")
-        .arg(bringup_dir)
+        .arg(launch_root(bringup_dir))
         .arg("--system")
-        .arg(&system_toml)
+        .arg(resolve_system_toml(bringup_dir))
         .arg("-o")
         .arg(&out);
     let output = cmd

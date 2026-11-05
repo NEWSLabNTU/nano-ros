@@ -220,7 +220,7 @@ pub fn write_facade(
     let edition = sys.image_ros_edition(claimed_image_id(entry_name, sys).as_deref())?;
     let Derived {
         nros_features,
-        board_features,
+        mut board_features,
         backend_features,
     } = derive(
         entry_name,
@@ -231,6 +231,29 @@ pub fn write_facade(
         &nros_path,
         deps.board.as_ref().map(|(_, p)| p.as_path()),
     )?;
+    // phase-531 W4 — the link the image's locator names is a board feature
+    // choice on the mps2 bare-metal crate (`serial` instead of `ethernet`),
+    // exactly as for a leaf's selection package: the workspace scaffold's
+    // first image dials the router over the board's UART.
+    if let Some((_, bd)) = &deps.board {
+        let image = claimed_image_id(entry_name, sys).and_then(|id| sys.image.get(&id).cloned());
+        let base = sys.image_defaults.clone().unwrap_or_default();
+        let locator = image
+            .map(|i| i.with_base(&base))
+            .and_then(|i| i.locator)
+            .or_else(|| sys.system.locator.clone());
+        let transport = locator
+            .as_deref()
+            .and_then(nros_orchestration_ir::leaf_system::link_kind_of_locator);
+        crate::builder::entry::image_link_features(
+            transport,
+            &declared_rmw,
+            &mut board_features,
+            |f| crate_declares_feature(bd, f),
+        );
+        board_features.sort();
+        board_features.dedup();
+    }
 
     // ---- render ------------------------------------------------------------
     let crate_name = format!("{entry_name}_nros_selection");

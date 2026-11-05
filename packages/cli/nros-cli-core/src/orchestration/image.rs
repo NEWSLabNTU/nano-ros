@@ -1050,11 +1050,13 @@ pub fn validate_image_launch(
     if launch == "default" {
         return Ok(());
     }
-    let path = bringup_dir.join("launch").join(launch);
+    // phase-531 W3 — the authored `launch/`, or the generated one.
+    let launch_dir = nros_orchestration_ir::model_location::launch_dir(bringup_dir);
+    let path = launch_dir.join(launch);
     if path.is_file() {
         return Ok(());
     }
-    let mut have: Vec<String> = std::fs::read_dir(bringup_dir.join("launch"))
+    let mut have: Vec<String> = std::fs::read_dir(&launch_dir)
         .map(|rd| {
             rd.flatten()
                 .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -1090,7 +1092,9 @@ pub fn launch_node_pkgs(image: &ImageBlock, bringup_dir: &std::path::Path) -> Ve
     let Some(launch) = image.launch.as_deref() else {
         return Vec::new();
     };
-    let Ok(xml) = std::fs::read_to_string(bringup_dir.join("launch").join(launch)) else {
+    let Ok(xml) = std::fs::read_to_string(
+        nros_orchestration_ir::model_location::launch_dir(bringup_dir).join(launch),
+    ) else {
         return Vec::new();
     };
     let mut out: Vec<String> = Vec::new();

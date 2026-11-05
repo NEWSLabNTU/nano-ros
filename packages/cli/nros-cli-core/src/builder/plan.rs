@@ -284,6 +284,158 @@ fn ambiguity_message(all: &[(String, PathBuf, String, ImageBlock)]) -> String {
     )
 }
 
+/// The rung of RFC-0121 D5's target ladder that named the image a target verb
+/// (`run`, `flash`, `monitor`) acts on. `--why` prints [`TargetRung::describe`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetRung {
+    /// Rung 1: `<bringup>:<image>`, the full spelling.
+    Qualified,
+    /// Rung 2: `<image>`, declared by exactly one bringup.
+    Image { bringup: String },
+    /// Rung 3: `<node>`, the one bringup whose `[[component]]` rows name only
+    /// that node's package, with that bringup's only image.
+    Node { node: String, bringup: String },
+    /// Rung 4: nothing named, the workspace's only image (or its declared
+    /// `default_images`).
+    Sole,
+}
+
+impl TargetRung {
+    /// The rung, in words, for `--why`.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Qualified => "rung 1, `<bringup>:<image>` as written".to_string(),
+            Self::Image { bringup } => {
+                format!("rung 2, `<image>`: declared by one bringup, `{bringup}`")
+            }
+            Self::Node { node, bringup } => format!(
+                "rung 3, `<node>`: `{node}` is the only component of `{bringup}`, \
+                 whose only image this is"
+            ),
+            Self::Sole => "rung 4, no target named: the workspace's only image".to_string(),
+        }
+    }
+}
+
+/// RFC-0121 D5 — the image a target verb's word names, and the rung that
+/// named it. `components` maps each bringup to the packages its
+/// `[[component]]` rows name.
+///
+/// Returns the `<bringup>:<image>` spelling (or `None` for rung 4, which
+/// [`resolve`] answers with no argument). Every case no rung answers alone is
+/// refused, listing the `<bringup>:<image>` spellings that would resolve, so
+/// a shortcut never picks one candidate out of several.
+pub fn name_target(
+    bringups: &[(String, PathBuf, ImageSet)],
+    components: &std::collections::BTreeMap<String, Vec<String>>,
+    word: Option<&str>,
+) -> Result<(Option<String>, TargetRung), String> {
+    let Some(word) = word else {
+        return Ok((None, TargetRung::Sole));
+    };
+    if word.contains(':') {
+        return Ok((Some(word.to_string()), TargetRung::Qualified));
+    }
+    let all = all_images(bringups);
+    let image_hits: Vec<&(String, PathBuf, String, ImageBlock)> =
+        all.iter().filter(|(_, _, id, _)| id == word).collect();
+    if let [(b, _, id, _)] = image_hits.as_slice() {
+        return Ok((
+            Some(qualified(b, id)),
+            TargetRung::Image { bringup: b.clone() },
+        ));
+    }
+    let spellings_of = |bringup: &str| -> Vec<String> {
+        all.iter()
+            .filter(|(b, _, _, _)| b == bringup)
+            .map(|(b, _, i, _)| qualified(b, i))
+            .collect()
+    };
+    // Bringups whose rows name only `word`, and those that name it among
+    // others (offered as spellings, never picked).
+    let only: Vec<&String> = components
+        .iter()
+        .filter(|(_, pkgs)| !pkgs.is_empty() && pkgs.iter().all(|p| p == word))
+        .map(|(b, _)| b)
+        .collect();
+    let among: Vec<&String> = components
+        .iter()
+        .filter(|(_, pkgs)| pkgs.iter().any(|p| p == word))
+        .map(|(b, _)| b)
+        .collect();
+    if let [b] = only.as_slice()
+        && image_hits.is_empty()
+    {
+        let spellings = spellings_of(b);
+        return match spellings.as_slice() {
+            [one] => Ok((
+                Some(one.clone()),
+                TargetRung::Node {
+                    node: word.to_string(),
+                    bringup: (*b).clone(),
+                },
+            )),
+            [] => Err(format!(
+                "`{word}` is the only component of `{b}`, which declares no `[image.*]`. \
+                 Add `[image.<id>] board = \"<board>\"` to its system.toml."
+            )),
+            many => Err(format!(
+                "`{word}` is the only component of `{b}`, which declares {} images; name \
+                 one:\n  {}",
+                many.len(),
+                many.join("\n  ")
+            )),
+        };
+    }
+    // Refused: list every spelling that would resolve.
+    let mut spellings: Vec<String> = image_hits
+        .iter()
+        .map(|(b, _, i, _)| qualified(b, i))
+        .collect();
+    for b in &among {
+        spellings.extend(spellings_of(b));
+    }
+    spellings.sort();
+    spellings.dedup();
+    let why = match (image_hits.len(), only.len(), among.len()) {
+        (0, 0, 0) => {
+            let mut known: Vec<String> = all.iter().map(|(b, _, i, _)| qualified(b, i)).collect();
+            known.sort();
+            return Err(format!(
+                "no image or node `{word}`: no bringup declares an image `{word}` and no \
+                 bringup's `[[component]]` rows name a package `{word}`. Declared: {}",
+                if known.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    known.join(", ")
+                }
+            ));
+        }
+        (0, 0, _) => format!(
+            "`{word}` is a component of {}, but never the only one, so it names no one image",
+            among
+                .iter()
+                .map(|b| format!("`{b}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        (0, _, _) => format!(
+            "`{word}` is the only component of {} bringups ({})",
+            only.len(),
+            only.iter()
+                .map(|b| format!("`{b}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        (n, 0, 0) => format!("`{word}` is an image declared by {n} bringups"),
+        (n, _, _) => {
+            format!("`{word}` is an image declared by {n} bringups, and also a node package")
+        }
+    };
+    Err(format!("{why}; name one:\n  {}", spellings.join("\n  ")))
+}
+
 /// Resolve the bringup directory an image belongs to, for stage 4.
 #[must_use]
 pub fn bringup_of(plan: &BuildPlan) -> &Path {
@@ -318,6 +470,111 @@ mod tests {
             .iter()
             .map(|(n, s)| ((*n).to_string(), PathBuf::from("/ws").join(n), s.clone()))
             .collect()
+    }
+
+    fn comps(rows: &[(&str, &[&str])]) -> std::collections::BTreeMap<String, Vec<String>> {
+        rows.iter()
+            .map(|(b, p)| {
+                (
+                    (*b).to_string(),
+                    p.iter().map(|s| (*s).to_string()).collect(),
+                )
+            })
+            .collect()
+    }
+
+    /// RFC-0121 D5 — each rung answers its own case and says which it was.
+    #[test]
+    fn each_target_rung_names_its_image() {
+        let b = ws(&[
+            (
+                "sensor_node_bringup",
+                set(&[("baremetal", "mps2-an385-baremetal")], &[]),
+            ),
+            (
+                "demo_bringup",
+                set(&[("linux", "linux"), ("freertos", "f")], &[]),
+            ),
+        ]);
+        let c = comps(&[
+            ("sensor_node_bringup", &["sensor_node"]),
+            ("demo_bringup", &["talker_pkg", "listener_pkg"]),
+        ]);
+        assert_eq!(name_target(&b, &c, None).unwrap(), (None, TargetRung::Sole));
+        assert_eq!(
+            name_target(&b, &c, Some("demo_bringup:linux")).unwrap(),
+            (Some("demo_bringup:linux".into()), TargetRung::Qualified)
+        );
+        assert_eq!(
+            name_target(&b, &c, Some("freertos")).unwrap(),
+            (
+                Some("demo_bringup:freertos".into()),
+                TargetRung::Image {
+                    bringup: "demo_bringup".into()
+                }
+            )
+        );
+        let (q, rung) = name_target(&b, &c, Some("sensor_node")).unwrap();
+        assert_eq!(q.as_deref(), Some("sensor_node_bringup:baremetal"));
+        assert_eq!(
+            rung,
+            TargetRung::Node {
+                node: "sensor_node".into(),
+                bringup: "sensor_node_bringup".into()
+            }
+        );
+        assert!(rung.describe().contains("rung 3"), "{}", rung.describe());
+    }
+
+    /// Two bringups naming one node refuse, listing both; so does a node
+    /// whose one bringup has several images, a node that is never the only
+    /// component, and a word nothing declares.
+    #[test]
+    fn every_ambiguous_target_is_refused_with_its_spellings() {
+        let b = ws(&[
+            ("a_bringup", set(&[("linux", "linux")], &[])),
+            ("b_bringup", set(&[("baremetal", "m")], &[])),
+            ("c_bringup", set(&[("x", "linux"), ("y", "linux")], &[])),
+            ("d_bringup", set(&[("z", "linux")], &[])),
+        ]);
+        let c = comps(&[
+            ("a_bringup", &["sensor_node"]),
+            ("b_bringup", &["sensor_node"]),
+            ("c_bringup", &["cam_node"]),
+            ("d_bringup", &["cam_node", "other_node"]),
+        ]);
+        let e = name_target(&b, &c, Some("sensor_node")).unwrap_err();
+        assert!(
+            e.contains("a_bringup:linux") && e.contains("b_bringup:baremetal"),
+            "{e}"
+        );
+        assert!(e.contains("2 bringups"), "{e}");
+
+        let e = name_target(&b, &c, Some("cam_node")).unwrap_err();
+        assert!(
+            e.contains("c_bringup:x") && e.contains("c_bringup:y"),
+            "{e}"
+        );
+
+        let e = name_target(&b, &c, Some("other_node")).unwrap_err();
+        assert!(
+            e.contains("never the only one") && e.contains("d_bringup:z"),
+            "{e}"
+        );
+
+        let e = name_target(&b, &c, Some("nope")).unwrap_err();
+        assert!(e.contains("no image or node `nope`"), "{e}");
+
+        // An image two bringups declare is refused, listing both spellings.
+        let b2 = ws(&[
+            ("a_bringup", set(&[("linux", "linux")], &[])),
+            ("b_bringup", set(&[("linux", "linux")], &[])),
+        ]);
+        let e = name_target(&b2, &comps(&[]), Some("linux")).unwrap_err();
+        assert!(
+            e.contains("a_bringup:linux") && e.contains("b_bringup:linux"),
+            "{e}"
+        );
     }
 
     #[test]

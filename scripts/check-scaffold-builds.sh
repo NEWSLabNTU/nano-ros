@@ -188,12 +188,28 @@ scaffold_one() {
 }
 
 # Build road, DISCOVERED from what the scaffold emitted.
+#
+# phase-531 W4 (RFC-0121 D4): project mode now writes a WORKSPACE, `src/` with
+# a node package and its bringup and no root build file, which `nros build`
+# builds through the generated entry.
 road_of() {
     local dir="$1"
     if [ -f "$dir/CMakeLists.txt" ]; then printf 'cmake'
     elif [ -f "$dir/Cargo.toml" ]; then printf 'cargo'
+    elif ls "$dir"/src/*/package.xml >/dev/null 2>&1; then printf 'workspace'
     else printf 'unknown'
     fi
+}
+
+# The node package a scaffolded workspace holds (`nros new <ws>` names it
+# `<ws minus _ws>_node`); empty for a single package.
+workspace_node() {
+    local dir="$1" name
+    [ "$(road_of "$dir")" = workspace ] || return 0
+    name="$(basename "$dir")"
+    name="${name%_ws}"
+    case "$name" in *_node) ;; *) name="${name}_node" ;; esac
+    printf '%s' "$name"
 }
 
 build_one() {
@@ -221,8 +237,14 @@ build_one() {
             [ "$rc" -eq 0 ] || return 1
             ( cd "$dir" && cargo build ) >> "$log" 2>&1 || rc=$?
             ;;
+        workspace)
+            # The workspace's documented flow: configure, then build.
+            ( cd "$dir" && NROS_REPO_DIR="$repo_root" "$(nros_bin)" configure ) >> "$log" 2>&1 || rc=$?
+            [ "$rc" -eq 0 ] || return 1
+            ( cd "$dir" && NROS_REPO_DIR="$repo_root" "$(nros_bin)" build ) >> "$log" 2>&1 || rc=$?
+            ;;
         *)
-            echo "no build road: neither CMakeLists.txt nor Cargo.toml" > "$log"
+            echo "no build road: neither CMakeLists.txt nor Cargo.toml nor src/" > "$log"
             return 2
             ;;
     esac
@@ -281,7 +303,23 @@ own_artifacts() {
     # remove: `c_project` reported 40 "own" artifacts, the example being
     # `builtin_interfaces__nano_ros_c.dir/.../builtin_interfaces_msg_duration.c.o`
     # -- a GENERATED message TU that compiles whatever the template says.
-    local src rel
+    local src rel node
+    node="$(workspace_node "$dir")"
+    if [ -n "$node" ]; then
+        # A workspace: the node package's own sources, compiled into the
+        # generated entry's build under `build/`. cmake writes
+        # `<target>.dir/<path-to-source>.o`; cargo writes the node crate's
+        # `deps/lib<node>-<hash>.rlib`. Both are build-dir scans.
+        {
+            for src in "$dir/src/$node"/src/*.c "$dir/src/$node"/src/*.cpp; do
+                [ -f "$src" ] || continue
+                rel="$(basename "$src")"
+                find "$dir/build" -path '*CMakeFiles*' -name "$rel.o" -newer "$stamp" 2>/dev/null
+            done
+            find "$dir/build" -path '*/deps/*' -name "lib${node}-*.rlib" -newer "$stamp" 2>/dev/null
+        } | sed '/^$/d' | sort -u
+        return 0
+    fi
     {
         # A GLOB over the scaffold's own `src/`, not a `find` walk: the set is
         # one directory the scaffold just wrote, and `check-no-tracked-file-find`

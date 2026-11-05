@@ -3314,6 +3314,16 @@ pub struct BoardNet {
     /// image dialled `192.0.3.1` on a network that is `10.0.2.0/24`.
     #[serde(default)]
     pub kernel_config: Option<String>,
+    /// phase-531 W4 (RFC-0121 D4) — the serial port this board brings out to
+    /// its host, as the part of a `serial/` locator after the scheme
+    /// (`UART_0#baudrate=115200`). A fact of the hardware (which UART is
+    /// wired to the host side, at what rate), not a selection: the locator
+    /// stays the image's. `nros new` reads it to write a first image that
+    /// reaches the router over that port, the way a real board's first
+    /// program does. `None`: the scaffold writes no locator, and the image
+    /// takes the board's network default.
+    #[serde(default)]
+    pub host_serial: Option<String>,
     /// RFC-0103 D10g (phase-497 W2) — the board-level single-interface
     /// identity, RETIRED: an address is the image's, a gateway and netmask the
     /// network's, and a MAC the image's (or derived per image from the

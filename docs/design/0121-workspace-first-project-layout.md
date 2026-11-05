@@ -137,6 +137,15 @@ file identically.
 `synthesise_leaf_launch` is that step, moved to read bringups. The other two
 synthesisers are deleted.
 
+As implemented (phase-531 W3): `<ws>/build/nros/launch/<bringup>/` mirrors a
+bringup's layout, holding `launch/system.launch.xml` and a copy of
+`system.toml`, and is the resolve's `--bringup-root`. The model records the
+same inputs as for an authored file (`launch/system.launch.xml`,
+`system.toml`), so the two models are byte-identical; a consumer reads a
+recorded `system.toml` from the bringup itself, never from the copy. Until phase-531 W7 retires the hand-written entry package, a bringup
+with neither `launch/` nor a row is warned about rather than refused, since an
+image booting its own entry names neither.
+
 ### D4 — The scaffold writes the bringup
 
 ```bash
@@ -153,7 +162,25 @@ sensor_ws/
 ```
 
 The bringup's `system.toml` names the board, the RMW, the one component and one
-image. The reader never has to open it to get output. `nros new` inside an
+image. The reader never has to open it to get output.
+
+**Names (settled by phase-531 W4, 2026-11-05).** The node package is the
+workspace name less a `_ws` suffix, plus `_node` (`sensor_ws` → `sensor_node`,
+`demo` → `demo_node`), and the bringup is `<node>_bringup`. `<node>_bringup`
+was chosen over a bare `bringup` because it survives a second node without a
+rename (a second bringup beside `bringup` would need one), it is the ROS
+convention a reader already knows, and the first chapter never has to open it
+(D4), so its length costs that chapter nothing. The image is named for the
+board's platform (`[image.baremetal]`, `[image.linux]`), as the
+single-package scaffold named it. A board that states `[board.net]
+host_serial` (the port it brings out to its host) gets `locator =
+"serial/<host_serial>"` on that image, so the first program reaches the router
+over the board's serial port; any other board takes its network default.
+
+"Inside an existing workspace" is the current directory or its nearest
+ancestor holding a `nros.toml`, or a `src/` with a package one level below.
+There `--board`, `--platform` and `--rmw` are refused: a node package names
+none of them (D1). `nros new` inside an
 existing workspace adds a package and, with `--to <bringup>`, a `[[component]]`
 row plus an `<exec_depend>` on the new package in the bringup's `package.xml`.
 Without `--to` it touches no bringup.
@@ -173,6 +200,14 @@ Any other case refuses and lists the `<bringup>:<image>` spellings that would
 resolve, so a shortcut never picks one candidate out of several. `--why` names
 the rung that resolved. The same resolver serves `nros build --packages-up-to`
 when it is given a node name.
+
+As implemented (phase-531 W4): the rungs are `builder::plan::name_target`,
+reached from `run_plan::name_target` / `select_target`, which rewrite the word
+to its `<bringup>:<image>` before configure, planning and the implicit build
+see it. A word that is an image of exactly one bringup takes rung 2 even when
+it is also a node. `nros build --packages-up-to <node>` consults rung 3 only
+where the bare build would have refused for want of an image, so no build that
+resolved before changes.
 
 ### D6 — One build road
 
@@ -279,9 +314,6 @@ some `leaf_*` code also serves workspace entries.
 
 ## Open questions
 
-- Whether `nros new <ws>` names the bringup `<node>_bringup` or `bringup`. The
-  former survives a second node without a rename; the latter reads better in the
-  first chapter.
 - How rust-analyzer finds a node package's settings when the cargo root is the
   generated entry (RFC-0120 D8 left the include for a later phase).
 
@@ -306,3 +338,6 @@ some `leaf_*` code also serves workspace entries.
   carries the backend registration; RFC-0071 gains D13 and RFC-0098 D6 loses
   the package. An owned entry keeps a generated adapter crate, renamed
   `<entry>_nros_derived`, so RFC-0065 D5's live derivation holds (option A).
+- 2026-11-05: phase-531 W4. The open question on bringup naming is settled
+  (`<node>_bringup`, D4), D4 records the node-package name and the serial
+  locator from `[board.net] host_serial`, and D5 records where the rungs live.

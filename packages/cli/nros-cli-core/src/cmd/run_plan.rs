@@ -813,13 +813,22 @@ pub fn run(args: Args) -> eyre::Result<()> {
     // configure takes the RUN's `--dry-run` (R43: a dry run writes nothing),
     // never the planning arguments' own, which are always dry: a fresh
     // project's `nros run` configures, then plans.
-    let mut bargs = selection_build_args(&Selection::from(&args)).map_err(|e| eyre::eyre!(e))?;
+    //
+    // The target word is named FIRST (RFC-0121 D5), so a node name reaches
+    // configure as the image it names.
+    // The rung is the one that named the USER's word; planning re-reads the
+    // rewritten `<bringup>:<image>`, which is rung 1 by construction.
+    let (named, rung) = name_target(&Selection::from(&args)).unwrap_or_else(|e| unresolved(&e));
+    let mut bargs = selection_build_args(&named).map_err(|e| eyre::eyre!(e))?;
     bargs.dry_run = args.dry_run;
     crate::cmd::build::configure_implicitly(&bargs)?;
-    let one = match select_target(&Selection::from(&args), "run") {
+    let one = match select_target(&named, "run") {
         Ok(one) => one,
         Err(e) => unresolved(&e),
     };
+    if args.why && !args.dry_run {
+        eprintln!("nros run: target `{}`: {}", one.qualified, rung.describe());
+    }
     let one = &one;
     let descriptor = one.descriptor.as_ref().expect("select_target checked it");
     let invocation = Invocation {
@@ -869,6 +878,8 @@ pub fn run(args: Args) -> eyre::Result<()> {
         eprintln!("nros run: {note}");
     }
     crate::cmd::run_exec::decorate(&mut plan, one.rmw.as_deref(), &args.exec);
+    // `--why` names the target rung too (RFC-0121 D5).
+    plan.provenance.insert("image".into(), rung.describe());
     if args.dry_run {
         print!("{}", render_plan_text(&plan, args.why, args.json));
         // `--why` also names the package that answers the runner name, and
@@ -971,6 +982,70 @@ pub fn select_target(
     sel: &Selection,
     verb: &str,
 ) -> Result<crate::cmd::build::ResolvedBuild, String> {
+    select_target_why(sel, verb).map(|(one, _)| one)
+}
+
+/// RFC-0121 D5 — the selection with its target word rewritten to the
+/// `<bringup>:<image>` it names, and the rung that named it. Everything that
+/// builds or configures for a target verb uses the rewritten selection, so a
+/// node name never reaches `nros build` or `nros configure` as an image.
+///
+/// A directory that is not a workspace of bringups (a single-package leaf, or
+/// nothing to discover) is left to [`select_target`]'s planning to answer.
+///
+/// # Errors
+///
+/// The word names no image alone: the message lists the spellings that would.
+pub fn name_target(
+    sel: &Selection,
+) -> Result<(Selection, crate::builder::plan::TargetRung), String> {
+    use crate::builder::plan::TargetRung;
+    let as_given = |sel: &Selection| {
+        let rung = match &sel.image {
+            None => TargetRung::Sole,
+            Some(_) => TargetRung::Qualified,
+        };
+        (sel.clone(), rung)
+    };
+    let Some(root) = sel
+        .workspace
+        .clone()
+        .or_else(|| std::env::current_dir().ok())
+    else {
+        return Ok(as_given(sel));
+    };
+    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    if nros_orchestration_ir::leaf_system::is_package_dir(&root) {
+        return Ok(as_given(sel));
+    }
+    let Ok(named) = crate::cmd::build::name_workspace_target(&root, sel.image.as_deref()) else {
+        return Ok(as_given(sel));
+    };
+    let (image, rung) = named?;
+    let mut out = sel.clone();
+    if image.is_some() {
+        out.image = image;
+    }
+    Ok((out, rung))
+}
+
+/// [`select_target`], also answering the rung that named the image (`--why`).
+///
+/// # Errors
+///
+/// As [`select_target`].
+pub fn select_target_why(
+    sel: &Selection,
+    verb: &str,
+) -> Result<
+    (
+        crate::cmd::build::ResolvedBuild,
+        crate::builder::plan::TargetRung,
+    ),
+    String,
+> {
+    let (sel, rung) = name_target(sel)?;
+    let sel = &sel;
     let bargs = selection_build_args(sel)?;
     let mut plans = crate::cmd::build::plan_builds(&bargs).map_err(|e| format!("{e:#}"))?;
     let one = match plans.len() {
@@ -993,7 +1068,7 @@ pub fn select_target(
             one.qualified
         ));
     }
-    Ok(one)
+    Ok((one, rung))
 }
 
 fn unresolved(msg: &str) -> ! {
