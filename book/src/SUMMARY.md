@@ -32,7 +32,7 @@
   - [Use a serial link](./guide/rmw/use-a-serial-link.md)
   - [Bridge between backends](./guide/rmw/bridge-between-backends.md)
   - [Tune throughput and latency](./guide/rmw/tune-throughput-and-latency.md)
-  - [QoS, Status Events, and Discovery](./guide/rmw/qos-status-events.md)
+  - [Use QoS, status events and discovery](./guide/rmw/qos-status-events.md)
 - [Contracts and sizing]()
   - [C / C++ multi-node workspaces](./guide/contracts/cpp-workspaces.md)
   - [Measuring Static Memory](./guide/contracts/measure-static-memory.md)
