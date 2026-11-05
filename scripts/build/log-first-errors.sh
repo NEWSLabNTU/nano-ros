@@ -43,7 +43,15 @@ first_errors() {
         printf '  the error lines below are what the kills caused. Likely memory (issue 1899):\n'
         printf '  lower the build budget, or read the host kernel log for oom-kill.\n'
     fi
-    matches="$(grep -n -m "$max" -E "$pattern" "$log" 2>/dev/null || true)"
+    # just's own `error: recipe `X` failed` is a CONSEQUENCE: every recipe the
+    # failure unwinds through prints one, so in a stage log it is the line that
+    # matches first and says least (issue 2193: the job log quoted
+    # `295:error: recipe `build-fixtures` failed` and nothing about the leaf).
+    # It is printed only when nothing else matched.
+    matches="$(grep -n -E "$pattern" "$log" 2>/dev/null | grep -v -E "$consequence" | head -n "$max" || true)"
+    if [ -z "$matches" ]; then
+        matches="$(grep -n -m "$max" -E "$pattern" "$log" 2>/dev/null || true)"
+    fi
     if [ -n "$matches" ]; then
         printf 'first error line(s) in %s:\n' "$log"
         printf '%s\n' "$matches" | cut -c1-400 | sed 's/^/  /'
@@ -59,9 +67,21 @@ first_errors() {
 #   west        `FATAL ERROR: ...`
 #   ld          `undefined reference to ...`
 #   our gates   `[FAIL] ...`
+#   nros/eyre   `Error: ...` -- a Rust `main` returning `eyre::Result` reports
+#               with a capital E. `nros build`'s preflight refusal is one, and
+#               it matched nothing until issue 2193 (tier-2 nightly 41985062052:
+#               "no error line matched" over a log whose line 1 was
+#               `Error: missing prerequisites for this build:`).
+#   drivers     `zephyr-fixture-make-driver: <leaf> failed`,
+#               `zephyr-fixture-run-one: ... failed for <image> (...)` -- the
+#               line that NAMES the failing leaf, so a stage summary says which
+#               one without opening a log.
 # `[-Werror=...]` inside a warning does not match: the pattern needs `error`
-# followed by `:` or `[`.
-pattern='(^|[^A-Za-z_-])(fatal )?error(\[E[0-9]+\])?:|CMake Error|FATAL ERROR|undefined reference to|\[FAIL\]'
+# followed by `:` or `[`. A class name like `ValueError:` does not match
+# either: the character before `Error` must not be a letter.
+pattern='(^|[^A-Za-z_-])(fatal )?[eE]rror(\[E[0-9]+\])?:|CMake Error|FATAL ERROR|undefined reference to|\[FAIL\]|fixture-(make-driver|run-one): .*failed'
+consequence='error: recipe `[^`]*` failed'
+
 
 selftest() {
     local d fail=0 out
@@ -70,6 +90,12 @@ selftest() {
     printf 'sccache: Compiler killed by signal 9\nerror: could not compile core (lib)\n' > "$d/kill.log"
     printf 'process didn'"'"'t exit successfully: rustc (signal: 9, SIGKILL: kill)\n' > "$d/cargo.log"
     printf 'note: Killed\nwarning: y\n' > "$d/bare.log"
+    # Issue 2193, verbatim from tier-2 nightly 41985062052's leaf log.
+    printf 'Error: missing prerequisites for this build:\n  - Rust target `x86_64-unknown-none` (a Rust image on board `zephyr`)\n      run: rustup target add x86_64-unknown-none\nzephyr-fixture-run-one: nros build --dry-run failed for demo_bringup:zephyr (zephyr/native_sim/native/64/workspace-entry)\n' > "$d/refusal.log"
+    # A stage log: the driver's lines first, just's unwinding last.
+    printf 'zephyr-fixture-make-driver: build-ws-rs-entry-zenoh failed\n  1:Error: missing prerequisites for this build:\nerror: recipe `build-fixtures` failed with exit code 2\n' > "$d/stage.log"
+    printf 'error: recipe `build-fixtures` failed with exit code 2\n' > "$d/recipe-only.log"
+    printf 'ValueError: not ours\nwarning: y\n' > "$d/classname.log"
     out="$(first_errors "$d/plain.log" 12)"
     case "$out" in *KILLED*) echo "selftest: a plain error read as a kill" >&2; fail=1 ;; esac
     case "$out" in *"error: boom"*) ;; *) echo "selftest: the plain error line is missing" >&2; fail=1 ;; esac
@@ -80,11 +106,23 @@ selftest() {
     case "$out" in *KILLED*) ;; *) echo "selftest: cargo's SIGKILL is not named" >&2; fail=1 ;; esac
     out="$(first_errors "$d/bare.log" 12)"
     case "$out" in *KILLED*) echo "selftest: a bare Killed read as a compile kill" >&2; fail=1 ;; esac
+    out="$(first_errors "$d/refusal.log" 12)"
+    case "$out" in *"Error: missing prerequisites"*"failed for demo_bringup:zephyr"*) ;;
+        *) echo "selftest: an eyre refusal and its leaf line are not quoted: $out" >&2; fail=1 ;; esac
+    out="$(first_errors "$d/stage.log" 12)"
+    case "$out" in *"build-ws-rs-entry-zenoh failed"*"Error: missing prerequisites"*) ;;
+        *) echo "selftest: the stage summary does not name the leaf and its error: $out" >&2; fail=1 ;; esac
+    case "$out" in *"error: recipe"*) echo "selftest: just's recipe line outranked the real error: $out" >&2; fail=1 ;; esac
+    out="$(first_errors "$d/recipe-only.log" 12)"
+    case "$out" in *"error: recipe"*) ;;
+        *) echo "selftest: with nothing else, the recipe line must still print: $out" >&2; fail=1 ;; esac
+    out="$(first_errors "$d/classname.log" 12)"
+    case "$out" in *ValueError*) echo "selftest: a class name read as an error line" >&2; fail=1 ;; esac
     out="$(first_errors "$d/absent.log" 12)"
     [ -z "$out" ] || { echo "selftest: a missing log printed something" >&2; fail=1; }
     rm -f "$d"/*.log && rmdir "$d"
     [ "$fail" -eq 0 ] || return 1
-    echo "log-first-errors --selftest: OK (6 cases)"
+    echo "log-first-errors --selftest: OK (10 cases)"
 }
 
 if [ "${1:-}" = "--selftest" ]; then

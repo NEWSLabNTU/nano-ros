@@ -60,3 +60,31 @@ The failing image is not named anywhere in the job log:
    `build-test-fixtures-*` log directory as an artifact.
 2. Then fix the Zephyr image that fails. The acceptance test is a tier-2
    nightly that reaches `ci matrix-nightly`.
+
+## Part 1 fixed (2026-11-05): the job log names the leaf and its error
+
+Seen again in tier-2 nightly 41985062052 (2026-11-05 07:07Z). The leaf logs
+did reach the `tier2-nightly-junit` artifact; issue 1842 added them after
+this issue was filed. The job log still said nothing useful, for two reasons,
+both in `scripts/build/log-first-errors.sh`, the one printer every fixture
+driver uses:
+
+1. The failing leaf's log began `Error: missing prerequisites for this
+   build:`. That is `nros build`'s preflight refusal, reported by eyre with a
+   capital E, and the pattern only knew lowercase `error:`. The driver
+   printed `no error line matched in …/build-ws-rs-entry-zenoh.log`.
+2. In the stage log, the first match was just's own `error: recipe
+   `build-fixtures` failed`. Every recipe the failure unwinds through prints
+   that line, so it always matches first and says least.
+
+Fix: the pattern also matches `Error:` (but not a class name like
+`ValueError:`) and the drivers' `fixture-make-driver: <leaf> failed` /
+`fixture-run-one: … failed for <image>` lines. just's recipe lines print only
+when nothing else matched. On today's stage-shaped log, the old script printed
+only `3:error: recipe `build-fixtures` failed`; the new one prints the leaf's
+name and its `Error: missing prerequisites` line. The selftest grew from 6 to
+10 cases, two of them verbatim from the nightly's leaf log.
+
+The image that failed this time was a false preflight refusal (PR #3153).
+The acceptance below is unchanged: a tier-2 nightly that reaches `ci
+matrix-nightly`.
