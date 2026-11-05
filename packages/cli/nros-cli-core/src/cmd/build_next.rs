@@ -1363,7 +1363,7 @@ mod tests {
             "targets/nuttx.md",
             "targets/threadx.md",
             "targets/zephyr.md",
-            "targets/nucleo-f767zi.md",
+            "starters/nucleo-f767zi.md",
         ] {
             let chapter = path.rsplit('/').next().unwrap();
             let text = std::fs::read_to_string(root.join("book/src").join(path))

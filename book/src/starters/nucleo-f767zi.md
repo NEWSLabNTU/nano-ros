@@ -16,7 +16,7 @@ This chapter assumes a Linux x86_64 host (or the
 describes) with a C/C++ compiler, ROS 2 Humble with
 `ros-humble-rmw-zenoh-cpp`, and the [install](../start/install.md) done, so
 `nros` is on your PATH. It uses Zephyr's own tools the way
-[the Zephyr chapter](zephyr.md) does; read that one for what each
+[the Zephyr chapter](../targets/zephyr.md) does; read that one for what each
 piece is.
 WiFi is deferred to the Zephyr 4.4 line, where the Pico W's WiFi driver
 exists, so no chapter here opens over WiFi yet.
@@ -203,6 +203,6 @@ console, USART6, is on the board's pins rather than on the USB cable.
 
 ## Where to go next
 
-- **What each Zephyr piece is** - [Zephyr (west module)](zephyr.md).
+- **What each Zephyr piece is** - [Zephyr (west module)](../targets/zephyr.md).
 - **The same talker on QEMU, with no Zephyr** - [First Project](../get-started/first-project.md).
 - **Talk to a real ROS 2 system** - [ROS 2 Interoperability](../communicate/ros2-interop.md).
