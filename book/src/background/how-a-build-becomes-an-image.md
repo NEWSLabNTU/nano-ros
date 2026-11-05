@@ -137,7 +137,7 @@ talkers live, and its chapter:
 | ThreadX (QEMU RISC-V 64) | `rv-virt-threadx` | [`examples/rv-virt-threadx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/rv-virt-threadx) | [ThreadX](../guide/platforms/threadx.md) |
 | Zephyr | `zephyr` | [`examples/zephyr`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr) | [Zephyr](../guide/platforms/zephyr.md) |
 | Bare-metal Cortex-M3 | `mps2-an385-baremetal` | [`examples/mps2-an385-baremetal`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal) | [Bare-metal](../guide/platforms/bare-metal.md) |
-| Arm FVP (Cortex-A SMP) | `zephyr` + the Arm FVP (`nros setup --tool arm-fvp`, x86_64 only) | — | [ARM FVP](../targets/arm-fvp.md) |
+| Arm FVP (Cortex-A SMP) | `zephyr` + the Arm FVP (`nros setup --tool arm-fvp`, x86_64 only) | — | [ARM FVP](../internals/platform/arm-fvp.html) |
 
 Each platform directory holds one copy-out talker per language, at
 `<lang>/talker/`: a workspace with one node package and a bringup with no

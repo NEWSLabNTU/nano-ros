@@ -316,7 +316,10 @@ matrix_platform = "Fvp"
 board_keys = ["fvp-aemv8r-smp"]
 sdk = "arm-fvp"  # `[tool.arm-fvp]` since 2026-09-06 — fetched, not gated
 real_hardware = false
-book_run = "targets/arm-fvp.md#run-on-the-fvp"
+# No `book_run`: maintainer-run with no replaying track, so the user book
+# does not admit it (RFC-0115 D4, RFC-0124 D8) and it keeps only its generated
+# reference page. Its run steps moved to nano-ros Internals,
+# book-internals/src/platform/arm-fvp.md (phase-537 W1).
 runs = "emulator"
 cadence = "manual"
 last_run = "2026-09-06"

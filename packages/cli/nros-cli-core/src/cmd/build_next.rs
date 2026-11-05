@@ -380,7 +380,7 @@ pub fn next_steps(
                     out.notes.push(
                         "the FVP model must be resolvable when the build CONFIGURES (Zephyr \
                          caches it): `nros setup board fvp-aemv8r-smp`, or ARMFVP_BIN_PATH — see \
-                         book/src/targets/arm-fvp.md"
+                         book-internals/src/platform/arm-fvp.md"
                             .into(),
                     );
                     return out;

@@ -1,6 +1,6 @@
 # RMW vs upstream: the decision ledger
 
-The user page [RMW API: Differences from upstream `rmw.h`](../../extending/rmw-vs-upstream.html)
+The user page [RMW API: Differences from upstream `rmw.h`](rmw-vs-upstream.md)
 states what is true of the vtable today. This page keeps the trail behind
 those statements: which phase, issue or RFC made each decision, and what the
 page used to say before the decision landed. Read it before changing a

@@ -196,7 +196,7 @@ event per `spin_once`, whichever the backend has ready first.
 Upstream `rmw.h` exposes events via a waitset — register an
 `rmw_event_t` handle in a waitset, call `rmw_wait`, then `rmw_take_event`
 to pull payload. nano-ros doesn't have a waitset (see
-[RMW vs upstream](../../extending/rmw-vs-upstream.md) Section 4).
+[RMW vs upstream](../../internals/rmw/rmw-vs-upstream.html) Section 4).
 
 Reusing the existing message-callback path avoids introducing the
 waitset. Trade-off: applications can't bulk-poll for events. For the
@@ -328,7 +328,7 @@ sub.on_message_lost(|status| {
 
 ## See also
 
-- [RMW API: Differences from upstream `rmw.h`](../../extending/rmw-vs-upstream.md)
+- [RMW API: Differences from upstream `rmw.h`](../../internals/rmw/rmw-vs-upstream.html)
   Section 8 — the design comparison this page expands on.
 - [RTOS Cooperation](../../background/rtos-cooperation.md) — `max_callbacks_per_spin`
   treatment of event callbacks.

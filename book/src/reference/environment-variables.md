@@ -51,7 +51,7 @@ Not license-gated: `nros setup --tool arm-fvp` fetches the model from a pinned
 Arm CDN permalink (`[tool.arm-fvp]` in `nros-sdk-index.toml`, digest-checked) into
 the SDK store. Arm publishes it for **x86_64 Linux only**. You need none of the
 variables below unless you installed a model yourself. See the
-[ARM FVP getting-started chapter](../targets/arm-fvp.md) for the
+[ARM FVP getting-started chapter](../internals/platform/arm-fvp.html) for the
 end-to-end build+run walk-through.
 
 | Variable          | Description                                                                          | Default |
