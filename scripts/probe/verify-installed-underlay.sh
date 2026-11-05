@@ -30,6 +30,14 @@ for pgid in ${NROS_PROBE_KEPT_PGIDS:-}; do
     done
 done
 [ -d "$ws/src/$node" ] || underlay_fail "expected the chapter's workspace as cwd (with src/$node), got $ws"
+# The chapter sourced ROS 2 only inside its `nros run` steps' own sessions,
+# and every `nros run` below starts the zenoh router ROS 2 provides (the
+# image's serial link), so source it here the way the chapter tells a reader
+# to. setup.bash reads unset variables, hence the `+u` around it.
+set +u
+# shellcheck disable=SC1091
+source /opt/ros/humble/setup.bash
+set -u
 
 # --- 1. the underlay is the release's own ------------------------------------
 sdk_root="$(nros dev sdk root)" || underlay_fail "\`nros dev sdk root\` failed"
@@ -104,11 +112,8 @@ nros setup linux --rmw zenoh || underlay_fail "\`nros setup linux --rmw zenoh\` 
 nros new native_ws --board linux --template talker \
     || underlay_fail "\`nros new native_ws --board linux --template talker\` failed"
 cd native_ws || underlay_fail "the scaffold wrote no native_ws/"
-# A new project's first configure generates std_msgs from ROS 2 (issue 2275).
-# The chapter sourced ROS only inside its `nros run` steps' own sessions, so
-# this shell has not; source it the way the chapter tells a reader to.
-# shellcheck disable=SC1091
-source /opt/ros/humble/setup.bash
+# ROS 2 is sourced above: a new project's first configure generates std_msgs
+# from it (issue 2275).
 nros configure || underlay_fail "\`nros configure\` failed in the native talker"
 "${NROS_DEADLINE[@]}" 900 nros run native_node --expect 'Publishing:' \
     || underlay_fail "\`nros run native_node --expect 'Publishing:'\` on the native talker failed"
