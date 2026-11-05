@@ -232,6 +232,17 @@ fn signal_group(pgid: i32, sig: libc::c_int) {
 /// a test asserts after Ctrl-C.
 #[must_use]
 pub fn group_members(pgid: i32) -> Vec<i32> {
+    // A group with no process left at all (not even a zombie) answers ESRCH,
+    // and that is the common case at teardown: one syscall instead of a stat
+    // read per process on the host (phase-528 W5 measured ~8k syscalls per
+    // `nros run` exit, twice, on a host running ~2,000 processes).
+    #[cfg(unix)]
+    // SAFETY: signal 0 delivers nothing; it only asks whether the group exists.
+    if unsafe { libc::kill(-pgid, 0) } != 0
+        && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+    {
+        return Vec::new();
+    }
     let Ok(dir) = std::fs::read_dir("/proc") else {
         return Vec::new();
     };
