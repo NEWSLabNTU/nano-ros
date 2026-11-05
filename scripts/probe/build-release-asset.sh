@@ -35,7 +35,9 @@ set -euo pipefail
 echo '=== release builder: runner-image shim ==='
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq git curl ca-certificates build-essential pkg-config \
+# `cmake`: the hosted image ships it, and `Stage the prefix` builds
+# `libnros_platform_posix.a` with it (phase-541, scripts/stage-px4-posix-archives.sh).
+apt-get install -y -qq git curl ca-certificates build-essential pkg-config cmake \
     python3 python3-dev python3-tomli zstd >/dev/null
 if [ ! -x "$HOME/.cargo/bin/cargo" ]; then
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \

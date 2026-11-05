@@ -138,6 +138,15 @@
 #                       (an `if(EXISTS)`), and the degradation is `E0463: can't
 #                       find crate for core` several minutes into a build.
 #
+#   prebuilt/px4-posix/
+#                      NOT written by this script: it is build output, not a
+#                       `git archive` path. `scripts/stage-px4-posix-archives.sh`
+#                       builds it into this same root, right after this script
+#                       and `nros toolchain stage-packages`, in the release's
+#                       `Stage the prefix` step (phase-541, RFC-0097 D13). It is
+#                       named here so a reader asking "what is in the SDK root?"
+#                       finds it.
+#
 #   (no pins file) the URL and COMMIT of every submodule source used to be
 #                       WRITTEN here as `nros-submodule-pins.toml` (issue 1304:
 #                       `git archive` drops gitlinks, so an installed `nros

@@ -3,8 +3,8 @@ rfc: 0039
 title: "PX4 integration architecture (uORB in-firmware + companion XRCE; 1.16 message versioning)"
 status: Draft
 since: 2026-06
-last-reviewed: 2026-06
-implements-tracked-by: [phase-232, phase-233]
+last-reviewed: 2026-11
+implements-tracked-by: [phase-232, phase-233, phase-541]
 supersedes: []
 superseded-by: null
 ---
@@ -133,6 +133,22 @@ piece that must track this struct.
 - **Versioned-message resolution:** v1.16 relocated live topics into
   `msg/versioned/`; the codegen must search there (see revision opportunity #1).
 
+### Installed toolchain: the POSIX archives ship prebuilt
+
+*Decision (maintainer, 2026-11-06; phase-541, issue 2289).* A PX4 SITL module
+built against an installed nros toolchain needs no nano-ros build step. The
+release ships `libnros_cpp.a` (uORB feature set), `libnros_platform_posix.a` and
+the placed config headers under `<sdk-root>/prebuilt/px4-posix/`, and
+`NanoRosPx4Module.cmake` reads them when its root is an SDK root. A checkout
+builds them as before. What ships, where, and why it cannot drift from the
+toolchain are RFC-0097 D13.
+
+Two limits are deliberate. The shipped archive is uORB-only, so a module that
+names a networked `BACKENDS` (a bridge) is refused and told to build its own
+archive from a checkout. And only the POSIX host target ships; prebuilt NuttX
+archives for `px4_fmu-*` boards are per-board cross builds, not decided here.
+The archives hold no PX4 code, so this does not narrow which PX4 versions work.
+
 ## Revision opportunities (PX4 1.16+)
 
 Ordered by real impact (severity re-scoped after confirming the canonical-metadata
@@ -215,3 +231,5 @@ resolution):
 - 2026-06 — **decision: support both uORB and XRCE as first-class** (not
   transitional). Recorded the per-path maintenance contracts (uORB reactive to PX4
   releases; XRCE additive) and the two parallel roadmap tracks.
+- 2026-11-06 — **decision: the PX4 POSIX archives and headers ship prebuilt in the
+  release** ("Installed toolchain" above; RFC-0097 D13; phase-541, issue 2289).
