@@ -1,6 +1,13 @@
 # Phase 532 — Two books by audience: the nano-ros Book and nano-ros Internals
 
-**Status (2026-11-04). IN PROGRESS — W0 to W3 and W6 to W10 done; W4 (seven of ten batches) and W5 (four of seven merges) done except what waits for phase-525 W4, phase-528 W4 and phase-531 W8.** Implements
+**Status (2026-11-05). DONE except what waits on other phases.** W0 to W10
+are done: every page-map row has run (`book-move.py --plan`: nothing
+pending), the book merged in #3093 and is published, with follow-ups #3131
+(RFC-0122's example layout) and #3132 (issue 2275: ROS sourced before the
+first build). Left, owned elsewhere: the `awaits` lines on 17 probe tracks
+lift when phase-531 W4 lands; the example pointers settle when phase-535
+moves the pairs; the pinned tracks wait for a release with `nros configure`;
+issue 2278 decides the CMake road's bundled fallback. Implements
 [RFC-0123](../design/0123-two-books-by-audience.md) D1 to D9. Amends the
 scope of [RFC-0116](../design/0116-adoption-purposes-and-front-doors.md) D2's
 gate (W3).

@@ -164,6 +164,6 @@ backend or platform port. See [RMW API](rmw-api.md) and
 
 ## Design background
 
-- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+- [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): behaviour bringups, single-node witnesses, and cadence-backed CI.
   The paired examples as image rows of behaviour bringups in the language
   workspaces.

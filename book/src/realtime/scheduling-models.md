@@ -495,5 +495,5 @@ priorities.
 ## Design background
 
 - [RFC-0053: ThreadX multi-tier execution](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0053-threadx-multi-tier-execution.md)
-- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+- [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): behaviour bringups, single-node witnesses, and cadence-backed CI.
   Example variants as node packages with their own image rows.
