@@ -301,7 +301,7 @@ integration with ROS 2 desktop nodes, and development under QEMU.
 You do not have to pick exactly one per system: a single binary can
 link **multiple backends** and bridge between them, for example zenoh
 devices to a Cyclone DDS stack, or XRCE devices to a Zenoh network — see
-[Cross-backend Bridges](../guide/rmw/bridge-between-backends.md).
+[Bridge between backends](../guide/rmw/bridge-between-backends.md).
 
 Once you have picked, [Switch the RMW per image](../guide/rmw/switch-the-rmw-per-image.md)
 shows the exact edits per build system.
