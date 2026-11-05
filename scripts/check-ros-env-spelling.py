@@ -225,6 +225,11 @@ ALLOWLIST = {
         "twin probe track (phase-524 W4a): runs in the probe's ros:humble "
         "container with NO checkout, so the nros-tests harness is not there; "
         "it starts the router and echo the way a reader's terminal does",
+    "scripts/probe/verify-installed-underlay.sh":
+        "installed-track probe (issue 2275): runs in the probe's ros:humble "
+        "container against an installed toolchain with no nros-tests harness, "
+        "and sources ROS the way the chapter tells a reader to before the "
+        "first configure",
     "scripts/probe/verify-zenoh-interop.sh":
         "book-flow probe: reproduces what the BOOK tells a user to type, so it "
         "must not go through the harness",
