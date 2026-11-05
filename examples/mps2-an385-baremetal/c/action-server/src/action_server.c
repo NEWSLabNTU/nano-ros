@@ -1,7 +1,7 @@
 /// @file action_server.c
 /// @brief C Fibonacci action server for the PURE BARE-METAL MPS2-AN385.
 ///
-/// The same program as `examples/mps2-an385-freertos/c/action-server`, minus
+/// The same program as `examples/workspaces/c/src/action_server_pkg`, minus
 /// what a board with no RTOS does not have (the `c/talker` sibling's file header
 /// has the long form, issue 1512): no libc and no `printf` substitution, so
 /// records are built by hand and emitted through `rclc_log_emit_at`.

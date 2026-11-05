@@ -2,7 +2,7 @@
 /// @brief C++ AddTwoInts service client for the PURE BARE-METAL MPS2-AN385 —
 ///        asks 2 + 3 once and logs the sum.
 ///
-/// The same program as `examples/mps2-an385-freertos/cpp/service-client/src/main.cpp`,
+/// The same program as `examples/workspaces/cpp/src/service_client_pkgpp`,
 /// minus the argv/strtoll operands (there is no command line on bare metal).
 /// What differs is having no RTOS (issue 1512) — see the `talker` sibling's
 /// header: no libc or C++ runtime and no `printf`.

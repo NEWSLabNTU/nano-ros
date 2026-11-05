@@ -1,7 +1,7 @@
 # Bare-metal C++ action client (MPS2-AN385, no RTOS)
 
 Sends one `example_interfaces/Fibonacci` goal (order 10) to `/fibonacci` and logs feedback and the result, from an ordinary nano-ros **C++** application on a Cortex-M3 with **no
-RTOS at all** — the same program as `examples/mps2-an385-freertos/cpp/action-client/`.
+RTOS at all** — the same program as `examples/workspaces/cpp/src/action_client_pkg/`.
 
 Same shape as [`../talker`](../talker/README.md), whose README explains it: the
 link root is Rust (`src/main.rs` boots the board and calls `nros_app_main()`),
