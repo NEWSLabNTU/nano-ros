@@ -3,7 +3,7 @@
 # Start here
 
 - [Welcome](./start/welcome.md)
-- [Choose Your Entry](./start/choose-your-path.md)
+- [Choose your path](./start/choose-your-path.md)
 - [Install](./start/install.md)
 
 # Get started on your board
