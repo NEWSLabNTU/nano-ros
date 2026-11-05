@@ -20,7 +20,8 @@ care of the rest.
 > [Prerequisites](#prerequisites) below) — it provisions the Zephyr
 > west workspace + Zephyr SDK bits, the emulator, and your RMW's host
 > daemon into the shared store. No hand-installed Zephyr SDK, `west`,
-> or cross-toolchain, and no ROS 2 install required.
+> or cross-toolchain. `nros build` generates the messages from your ROS 2
+> install, so its first build of a workspace needs ROS 2 sourced.
 > **Python: 3.10+ on Zephyr 3.7 LTS, but ≥ 3.12 on Zephyr 4.x**
 > (4.x's `find_package(Python3)` requires 3.12 — see the version
 > matrix below). nano-ros's imported west fragment
@@ -100,10 +101,12 @@ way. It provides **no zenoh router**: that is ROS's `rmw_zenohd`
    `export ZEPHYR_SDK_INSTALL_DIR="$(nros locate tool zephyr-sdk)"`, which
    prints where `nros setup` installed it (or register it via the SDK's
    `setup.sh -c`).
-4. **Message definitions need no setup.** `find_package(<pkg>)` resolves a
-   message package from `NROS_INTERFACE_SEARCH_PATH`, then `AMENT_PREFIX_PATH`,
-   then the definitions bundled with the release, so
-   `std_msgs` and the other stock packages build with no ROS install.
+4. **Source ROS 2 for the first build.** `nros build` generates the message
+   bindings from your ROS 2 install's definitions, `std_msgs` included, so
+   the types match your ROS 2 peers:
+   `source /opt/ros/humble/setup.bash` before the first `nros build`,
+   `nros run` or `nros configure` of a workspace. That configure records
+   the prefix, so later shells need not source ROS.
 
 The zenoh router must be **running** before an example connects
 (`ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false'
@@ -176,7 +179,12 @@ Without it `native_sim` tries to create one (`eth_posix: Cannot create zeth`),
 which needs privileges a container or an ordinary user does not have, and the
 image never reaches the router.
 
+The first build generates the message bindings from your ROS 2 install, so
+source it in this shell first. It records the ROS 2 prefix in the workspace,
+so later builds and runs of it need no sourced shell.
+
 ```bash probe=40 variant=native-sim
+source /opt/ros/humble/setup.bash
 export NROS_ZEPHYR_WORKSPACE="$PWD"
 cd ..
 nros new c_ws --board zephyr --template talker --lang c --rmw zenoh
@@ -237,6 +245,7 @@ clang and libclang, for the bindings it generates from Zephyr's headers.
 command.
 
 ```bash probe=40 variant=native-sim-rust
+source /opt/ros/humble/setup.bash
 . "$HOME/.cargo/env"     # the cargo `nros setup` installed (Installation)
 export NROS_ZEPHYR_WORKSPACE="$PWD"
 cd ..
@@ -862,9 +871,11 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
    layout** before the first `west build`, which does not run nano-ros's
    preparation for a Rust app. From your app dir, run (after the
    [Prerequisites](#prerequisites) `nros setup`, which provides the codegen
-   toolchain + message sources):
+   toolchain), in a shell that has sourced ROS 2 (the message definitions
+   come from it; this configure records the prefix for later runs):
 
    ```bash
+   source /opt/ros/humble/setup.bash
    nros configure
    ```
 

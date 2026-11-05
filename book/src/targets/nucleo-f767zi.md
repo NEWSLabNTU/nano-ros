@@ -100,9 +100,13 @@ gives USART3 to zenoh; its console is USART6.
 
 ## Run in the twin
 
-Build and run:
+Source ROS 2, then build and run. ROS 2 provides the router, and its message
+definitions are what the build generates the talker's `std_msgs` code from.
+This first run records the ROS 2 prefix in the workspace, so later runs of it
+need no sourced shell:
 
 ```bash probe=50 probe-run=1500 track=installed
+source /opt/ros/humble/setup.bash
 nros run nucleo_node --expect 'Publishing:'
 ```
 

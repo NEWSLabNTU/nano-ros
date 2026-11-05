@@ -29,8 +29,9 @@ then provision the native host. For a host build there is no cross-toolchain to 
 setup linux` installs the client stack (and for xrce the
 Micro-XRCE-DDS agent) into a shared store. The zenoh router is NOT
 installed: it comes from a ROS 2 install
-(`ros2 run rmw_zenoh_cpp rmw_zenohd`). No ROS 2 on this
-machine? Use `--rmw cyclonedds` — it needs no daemon.
+(`ros2 run rmw_zenoh_cpp rmw_zenohd`). Rather not run a router? Use
+`--rmw cyclonedds` — it needs no daemon. Either way the first build
+generates the messages from your ROS 2 install, so it needs ROS 2 sourced.
 
 With the `nros` CLI on PATH ([Installation](../get-started/installation.md) —
 `install.sh` puts it in `~/.nros/bin`):
@@ -114,9 +115,12 @@ zenoh:
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
-Then build and run the node from the workspace root:
+Then build and run the node from the workspace root, in a shell that has
+sourced ROS 2. The first build generates the messages from it and records
+the prefix, so later runs need no sourced shell:
 
 ```bash
+source /opt/ros/humble/setup.bash
 nros run host_node
 ```
 

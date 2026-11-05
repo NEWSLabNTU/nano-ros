@@ -190,10 +190,15 @@ Slirp's default `10.0.2.2` gateway just like the FreeRTOS QEMU flow.
 
 ## Build
 
+The build generates the message bindings from your ROS 2 install, so source
+it in this shell first. This first build records the ROS 2 prefix in the
+workspace, so later builds and runs of it need no sourced shell.
+
 In the workspace root (`tx_ws/`, where `nros new` left you), whatever the
 language and flavour:
 
 ```bash probe=50
+source /opt/ros/humble/setup.bash
 nros build
 ```
 

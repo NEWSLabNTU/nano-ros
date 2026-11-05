@@ -150,11 +150,12 @@ entry points; see the [spelling table](../build/message-generation.md#which-cmak
 type definitions *into your build tree*. No `_msgs` library, no ament
 overlay, no colcon workspace required.
 
-**Why.** Embedded cross-builds without a hosted ROS 2 install need to
-generate message types from `package.xml` + `.msg` files alone. The
-codegen tool ships its own bundled rosidl-flavoured `.msg` set inside
-the `nros` CLI, so you
-don't even need the upstream message packages on disk.
+**Why.** An embedded cross-build has no ROS 2 runtime to link against, so
+the types are generated into the build instead of installed as libraries.
+The message *definitions* still come from your ROS 2 install: `nros build`
+reads them through `AMENT_PREFIX_PATH`, which you source once per project
+(the first configure records it), so the generated layouts and type hashes
+are the ones your ROS 2 peers use.
 
 ### 7. QoS profile is the full DDS field set; backends advertise per-policy support
 

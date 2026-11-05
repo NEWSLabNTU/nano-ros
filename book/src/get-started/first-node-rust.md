@@ -3,8 +3,10 @@
 Build, run, and verify a single nano-ros publisher node on Linux in
 about ten minutes. Uses the canonical Zenoh backend. The zenoh router comes from ROS 2
 (`ros2 run rmw_zenoh_cpp rmw_zenohd`) — nano-ros no longer ships one.
-No ROS 2 on this machine? Use `--rmw cyclonedds` instead: it needs no
+Rather not run a router? Use `--rmw cyclonedds` instead: it needs no
 router at all (see [Choosing an RMW](../communicate/choosing-an-rmw.md)).
+Either way the build generates its messages from your ROS 2 install, so
+you need ROS 2 sourced for the first build.
 
 > **Stuck?** See [Troubleshooting — First 10 Minutes](first-10-minutes.md) for the common first-build errors.
 
@@ -140,7 +142,12 @@ table instead; see the
 
 ## Build
 
+The build generates `std_msgs` from your ROS 2 install, so source it first.
+This first build records the ROS 2 prefix in the workspace; later builds and
+runs of `talker_ws` need no sourced shell.
+
 ```bash probe=30
+source /opt/ros/humble/setup.bash
 nros build            # builds the image `[image.linux]` declares
 ```
 

@@ -76,9 +76,10 @@ When a project grows beyond one node, continue with
   says which does.
 - **Rust, C or C++.** The core is Rust, with C and C++ APIs over it; the C
   API follows rclc conventions. One workspace can mix all three.
-- **No ROS 2 install to build.** Message bindings come from interface
-  definitions the release bundles. You need ROS 2 only to run against a ROS 2
-  graph.
+- **Your ROS 2 install's messages.** Message bindings are generated from the
+  message definitions of the ROS 2 install you build against, so the types and
+  their hashes match your ROS 2 peers. Source ROS 2 once for a project's first
+  build; later builds reuse what it recorded.
 - **Real-time you can reason about.** Fixed-size pools sized at build time,
   plus scheduling and safety features for RTOS targets: see
   [Real-Time and Safety](../realtime/rtos-cooperation.md).

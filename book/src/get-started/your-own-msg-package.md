@@ -4,9 +4,11 @@ You write a ROS 2 msg package **once**. The same `src/my_msgs/` directory
 builds under both:
 
 * a nano-ros build — `rosidl_generate_interfaces(...)` is intercepted by
-  nano-ros's wrapper and routed through nano-ros codegen. **No ROS 2
-  install needed** — even the `rclcpp`-shaped consumer below compiles
-  against nano-ros's own `rclcpp` CMake package.
+  nano-ros's wrapper and routed through nano-ros codegen. No ROS 2
+  build tools run: even the `rclcpp`-shaped consumer below compiles
+  against nano-ros's own `rclcpp` CMake package. `nros build` still reads
+  message definitions from your ROS 2 install, so source it for the first
+  build (below).
 * `colcon build` — upstream `rosidl_default_generators` produces the
   upstream-ROS bindings (this half, and only this half, needs a ROS 2
   install; it is the optional cross-build proof at the end).
@@ -156,7 +158,12 @@ to be hand-written (nano-ros, `NROS_INTERFACE_SEARCH_PATH` at `./src/`, the
 rclcpp / ament surface); `my_msgs` is not built on its own — its bindings are
 generated into the package that uses it.
 
+The first `nros build` of the workspace needs ROS 2 sourced: it generates
+the bindings against your ROS 2 install's message definitions, and refuses
+without one. It records the prefix, so later builds need no sourced shell.
+
 ```sh
+source /opt/ros/humble/setup.bash
 nros build
 ./build/my_app/cmake/pkg/my_app/my_app
 ```

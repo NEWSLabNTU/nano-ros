@@ -34,9 +34,13 @@ consumable from cmake, and nothing makes cmake consumable from cargo. So a mixed
 
 ```console
 $ cd my_mixed_ws              # e.g. a copy of examples/workspaces/mixed
+$ source /opt/ros/humble/setup.bash   # the first build generates messages from ROS 2
 $ nros build linux
 $ nros run linux
 ```
+
+The first build records the ROS 2 prefix in the workspace, so later shells
+need not source ROS 2.
 
 `nros build` writes a `CMakeLists.txt` — a `nano_ros_workspace(…)` call listing
 the discovered packages, plus one `nano_ros_add_executable(…)` per image on

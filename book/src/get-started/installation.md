@@ -79,7 +79,7 @@ nros setup <board> --rmw <zenoh|xrce|cyclonedds>
 ```
 
 For a first project on Linux, use Cyclone DDS. It runs in-process, so it
-needs no router, no agent and no ROS 2:
+needs no router and no agent:
 
 ```sh
 nros setup linux --rmw cyclonedds
@@ -91,17 +91,32 @@ what a board pulls without fetching anything. Inside a workspace, a bare
 
 ## Do I need ROS 2 installed?
 
-**Not to build.** Setup, message generation and compiling need no ROS 2:
-the release bundles the interface definitions. You need ROS 2 for:
+**Yes, to build.** `nros build`, `nros run` and `nros configure` generate
+your project's message bindings from the message definitions of your ROS 2
+install, so the types and their hashes match the ROS 2 nodes you talk to.
+Every talker uses `std_msgs`, so install ROS 2 (the book uses Humble) and
+source it before the first build of a project:
 
-- running two Zenoh nodes, because the Zenoh router is ROS's `rmw_zenohd`
+```sh
+source /opt/ros/humble/setup.bash
+```
+
+That first configure records the ROS 2 prefix in the project, so later
+builds and runs of that project work from a shell that has not sourced ROS.
+Without a sourced ROS 2 and without that record, the build stops with
+`` `AMENT_PREFIX_PATH` is unset and no configure of … has recorded one to
+reuse``; [Troubleshooting](first-10-minutes.md#a10-ament_prefix_path-is-unset)
+has the fix.
+
+ROS 2 also provides:
+
+- the Zenoh router, ROS's `rmw_zenohd`, which two Zenoh nodes meet through
   (Cyclone DDS needs no router);
-- watching your nodes with `ros2 topic echo` or `ros2 node list`;
-- interop with an existing ROS 2 graph.
+- `ros2 topic echo` and `ros2 node list`, to watch your nodes;
+- the existing ROS 2 graph your nodes interoperate with.
 
-If you have ROS 2, source its `setup.bash` first. [Installation
-Details](installation-details.md#ros-2-and-the-zenoh-router) covers the
-router, the XRCE agent, and hosts without ROS 2 packages.
+[Installation Details](installation-details.md#ros-2-and-the-zenoh-router)
+covers the router and the XRCE agent.
 
 ## Next steps
 

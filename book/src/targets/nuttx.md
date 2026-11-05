@@ -166,7 +166,12 @@ it composed for your package manager (`sudo apt-get install -y python3-venv
 unzip` here) before the download starts. Leave `--sudo` off and it only prints
 that command, and never runs `sudo` for you.
 
+The build generates the message bindings from your ROS 2 install, so source
+it in this shell first. This first build records the ROS 2 prefix in the
+workspace, so later builds and runs of it need no sourced shell.
+
 ```bash probe=40 variant=arm
+source /opt/ros/humble/setup.bash
 nros new nx_ws --board qemu-armv7a-nuttx --template talker --lang c    # or --lang cpp
 cd nx_ws
 nros build
@@ -178,6 +183,7 @@ same step the C/C++ road runs inside its configure; a current export is a
 no-op), then builds the entry with the board's pinned nightly:
 
 ```bash probe=40 variant=arm-rust
+source /opt/ros/humble/setup.bash
 nros new nx_ws --board qemu-armv7a-nuttx --template talker --lang rust
 cd nx_ws
 nros build
@@ -309,6 +315,7 @@ it; without it the printed line asks `nros locate tool qemu-system-riscv32`,
 which then has nothing to answer. Scaffold for this board and build:
 
 ```bash probe=40 variant=riscv
+source /opt/ros/humble/setup.bash
 nros new nx_ws --board rv-virt-nuttx --template talker --lang c
 cd nx_ws
 export QEMU_SYSTEM_RISCV32="$(command -v qemu-system-riscv32)"
@@ -320,6 +327,7 @@ uses rv-virt's own defconfig, and the target is the board's
 `riscv32imac-unknown-nuttx-elf` spec, built with `build-std`:
 
 ```bash probe=40 variant=riscv-rust
+source /opt/ros/humble/setup.bash
 export QEMU_SYSTEM_RISCV32="$(command -v qemu-system-riscv32)"
 nros new nx_ws --board rv-virt-nuttx --template talker --lang rust
 cd nx_ws

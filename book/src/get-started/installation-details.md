@@ -114,9 +114,12 @@ One `nros setup` provisions both boards:
 nros setup
 ```
 
-Then every image builds, with nothing else to install:
+Then every image builds. The first build generates the message bindings
+from your ROS 2 install, so source it in that shell; the build records the
+prefix, and later builds of the workspace need no sourced shell:
 
 ```bash probe=50 track=installed variant=workspace
+source /opt/ros/humble/setup.bash
 nros build --all
 ```
 
@@ -204,30 +207,40 @@ Zephyr, NuttX, …) for the board's build + run steps.
 
 ## ROS 2 and the Zenoh router
 
-**Building, no. Running two zenoh nodes, yes — or use Cyclone.** `nros
-build` generates the message bindings from interface sources the release
-bundles, so nothing about setup, codegen or compilation needs ROS 2.
+**Building, yes, once per project. Running two zenoh nodes, yes, or use
+Cyclone.** `nros build`, `nros run` and `nros configure` generate the message
+bindings from the message definitions of the ROS 2 install you sourced, so the
+generated layouts and type hashes are the ones your ROS 2 peers use. A
+release does not fall back to a copy of its own: that would pick a ROS 2
+distro for you without saying so.
+
+Source ROS 2 before the first build, run or configure of a project:
+
+```bash
+source /opt/ros/humble/setup.bash
+```
+
+That configure records the prefix (`AMENT_PREFIX_PATH`) in the project, and
+every later configure of the same project reuses it, so a later shell, an
+IDE or a CI step that has not sourced ROS still builds. A project whose
+packages depend on no message package at all configures without ROS 2. With
+neither a sourced shell nor a record, configure stops and names the setup
+step; see
+[Troubleshooting](first-10-minutes.md#a10-ament_prefix_path-is-unset).
 
 Running is where it splits, and the reason is the **router**. zenoh-pico
 connects in client mode, so any two-process example needs a zenoh router
 — and that router is
 `rmw_zenoh_cpp/rmw_zenohd`, which ships with ROS 2. nano-ros does not
-vendor one. So on a host with no ROS 2:
+vendor one. So:
 
-* **`--rmw cyclonedds` works standalone** — Cyclone is in-process, there
-  is no daemon to start. This is the ROS-less path.
-* **`--rmw zenoh` (the default) has no router.** Either install
+* **`--rmw cyclonedds` needs no router** — Cyclone is in-process, there
+  is no daemon to start.
+* **`--rmw zenoh` (the default) needs ROS's router.** Either install
   `ros-<distro>-rmw-zenoh-cpp`, or point `NROS_RMW_ZENOHD` at a
   `rmw_zenohd` you obtained another way.
 
-If you do have ROS 2, **source its setup first** — that is what makes the router
-findable:
-
-```bash
-source /opt/ros/<distro>/setup.bash
-```
-
-nano-ros reads `AMENT_PREFIX_PATH` from that, so a ROS installed anywhere works,
+The same sourced setup is what makes the router findable. nano-ros reads `AMENT_PREFIX_PATH` from that, so a ROS installed anywhere works,
 including one you built from source or a colcon overlay — it is not assumed to be
 under `/opt/ros`.
 
@@ -260,17 +273,19 @@ remove it.
 
 | Task | Needs a ROS 2 install? |
 |---|---|
-| `nros setup`, message codegen | **No** — interface sources are bundled |
-| Building any node (Rust / C / C++), any RMW | **No** |
-| Embedded targets (Zephyr, FreeRTOS, NuttX, ThreadX) | **No** |
-| Cyclone DDS backend, build *and* run | **No** — `idlc` comes from the index dist, and there is no daemon |
+| `nros setup` | **No** |
+| The first `nros build` / `nros run` / `nros configure` of a project with messages | **Yes**, sourced: the bindings are generated from it |
+| Later builds and runs of that project | **No** sourced shell: the first configure recorded the prefix |
+| Building any node (Rust / C / C++), any RMW, any board | **Yes**, as above: every talker uses `std_msgs` |
+| Running a Cyclone DDS example | **No** router: Cyclone is in-process |
 | **Running a multi-process zenoh example** | **Yes** — the router is ROS's `rmw_zenohd` (or set `NROS_RMW_ZENOHD`) |
 | Verifying with `ros2 topic echo` / `ros2 node list` | **Yes** |
 | Interop against `rmw_zenoh_cpp` / a real ROS 2 graph | **Yes** |
 
-If you *do* want the ROS 2 side and your distro has no Humble packages
-(Arch, for example), a container is the usual answer — nano-ros itself
-stays on the host.
+If your distro has no ROS 2 packages (Arch, for example), install ROS 2
+from source or from a container image, and source its `setup.bash` (or
+your overlay's `install/setup.bash`) the same way: nano-ros reads only
+`AMENT_PREFIX_PATH`, wherever the install is.
 
 ## Pinning a version
 
