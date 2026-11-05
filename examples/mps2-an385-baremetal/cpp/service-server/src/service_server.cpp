@@ -1,7 +1,7 @@
 /// @file service_server.cpp
 /// @brief C++ AddTwoInts service server for the PURE BARE-METAL MPS2-AN385.
 ///
-/// The same program as `examples/mps2-an385-freertos/cpp/service-server/src/main.cpp`.
+/// The same program as `examples/workspaces/cpp/src/service_server_pkgpp`.
 /// What differs is having no RTOS (issue 1512) — see the `talker` sibling's
 /// header: no libc or C++ runtime (`-ffreestanding`) and no `printf`, so log
 /// lines are built by hand and emitted through `rclc_log_emit_at`.

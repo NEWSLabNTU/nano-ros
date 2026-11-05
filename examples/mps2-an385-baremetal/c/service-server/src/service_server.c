@@ -1,7 +1,7 @@
 /// @file service_server.c
 /// @brief C AddTwoInts service server for the PURE BARE-METAL MPS2-AN385.
 ///
-/// The same program as `examples/mps2-an385-freertos/c/service-server`, minus
+/// The same program as `examples/workspaces/c/src/service_server_pkg`, minus
 /// what a board with no RTOS does not have (the `c/talker` sibling's file header
 /// has the long form, issue 1512): no libc and no `printf` substitution, so
 /// records are built by hand and emitted through `rclc_log_emit_at`.

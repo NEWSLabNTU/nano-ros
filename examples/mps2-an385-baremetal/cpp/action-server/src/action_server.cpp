@@ -1,7 +1,7 @@
 /// @file action_server.cpp
 /// @brief C++ Fibonacci action server for the PURE BARE-METAL MPS2-AN385.
 ///
-/// The same program as `examples/mps2-an385-freertos/cpp/action-server/src/main.cpp`.
+/// The same program as `examples/workspaces/cpp/src/action_server_pkgpp`.
 /// What differs is having no RTOS (issue 1512) — see the `talker` sibling's
 /// header: no libc or C++ runtime and no `printf`.
 

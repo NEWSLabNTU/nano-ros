@@ -3,7 +3,7 @@
 ///        `std_msgs/String` on `/chatter` and logs each one.
 ///
 /// The application is ordinary nano-ros C++, the same program as
-/// `examples/mps2-an385-freertos/cpp/listener/src/main.cpp`. What differs is a
+/// `examples/workspaces/cpp/src/listener_pkgpp`. What differs is a
 /// property of having no RTOS, not of the C++ API (issue 1512) — see the
 /// `talker` sibling's header: no libc or C++ runtime (`-ffreestanding`), and no
 /// `printf`, so log lines are built by hand and emitted through

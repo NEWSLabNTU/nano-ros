@@ -2,7 +2,7 @@
 /// @brief C listener for the PURE BARE-METAL MPS2-AN385 — subscribes to
 ///        `std_msgs/String` on `/chatter`.
 ///
-/// The same program as `examples/mps2-an385-freertos/c/listener/src/main.c`,
+/// The same program as `examples/workspaces/c/src/listener_pkg`,
 /// minus the two things a board with no RTOS does not have (the `c/talker`
 /// sibling's file header has the long form, issue 1512): no libc (`stdio`,
 /// `getenv`, `signal`), and no `printf` substitution — so records are built by

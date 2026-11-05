@@ -1,7 +1,7 @@
 # Bare-metal C++ listener (MPS2-AN385, no RTOS)
 
 Subscribes to `std_msgs/String` on `/chatter` and logs `I heard: [...]` for each message, from an ordinary nano-ros **C++** application on a Cortex-M3 with **no
-RTOS at all** — the same program as `examples/mps2-an385-freertos/cpp/listener/`.
+RTOS at all** — the same program as `examples/workspaces/cpp/src/listener_pkg/`.
 
 Same shape as [`../talker`](../talker/README.md), whose README explains it: the
 link root is Rust (`src/main.rs` boots the board and calls `nros_app_main()`),

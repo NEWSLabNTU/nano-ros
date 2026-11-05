@@ -2,7 +2,7 @@
 /// @brief C AddTwoInts service client for the PURE BARE-METAL MPS2-AN385 —
 ///        one `2 + 3` call, then the image ends.
 ///
-/// The same program as `examples/mps2-an385-freertos/c/service-client`, minus
+/// The same program as `examples/workspaces/c/src/service_client_pkg`, minus
 /// what a board with no RTOS does not have (the `c/talker` sibling's file header
 /// has the long form, issue 1512): no libc — so no `argv` parsing with
 /// `strtoll` — and no `printf` substitution, so records are built by hand and

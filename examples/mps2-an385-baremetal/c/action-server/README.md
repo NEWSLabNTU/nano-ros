@@ -1,7 +1,7 @@
 # Bare-metal C action server (MPS2-AN385, no RTOS)
 
 Serves `example_interfaces/Fibonacci` on `/fibonacci`. An ordinary nano-ros **C** application on a Cortex-M3 with **no RTOS at
-all** — the same program as `examples/mps2-an385-freertos/c/action-server/`.
+all** — the same program as `examples/workspaces/c/src/action_server_pkg/`.
 
 Same shape as [`../talker`](../talker/README.md), whose README explains it: the
 link root is Rust (`src/main.rs` boots the board and calls `nros_app_main()`), and

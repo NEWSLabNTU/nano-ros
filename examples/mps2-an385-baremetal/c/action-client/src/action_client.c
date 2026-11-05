@@ -2,7 +2,7 @@
 /// @brief C Fibonacci action client for the PURE BARE-METAL MPS2-AN385 — sends
 ///        one `order = 10` goal, prints the feedback and the result.
 ///
-/// The same program as `examples/mps2-an385-freertos/c/action-client`, minus
+/// The same program as `examples/workspaces/c/src/action_client_pkg`, minus
 /// what a board with no RTOS does not have (the `c/talker` sibling's file header
 /// has the long form, issue 1512): no libc and no `printf` substitution, so
 /// records are built by hand and emitted through `rclc_log_emit_at`.

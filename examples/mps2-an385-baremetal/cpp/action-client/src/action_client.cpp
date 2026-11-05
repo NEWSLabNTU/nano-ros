@@ -2,7 +2,7 @@
 /// @brief C++ Fibonacci action client for the PURE BARE-METAL MPS2-AN385 —
 ///        sends one goal (order 10), logs feedback and the result.
 ///
-/// The same program as `examples/mps2-an385-freertos/cpp/action-client/src/main.cpp`,
+/// The same program as `examples/workspaces/cpp/src/action_client_pkgpp`,
 /// minus the `NROS_TEST_GOAL_ORDER` getenv (there is no environment on bare
 /// metal). What differs is having no RTOS (issue 1512) — see the `talker`
 /// sibling's header: no libc or C++ runtime and no `printf`.
