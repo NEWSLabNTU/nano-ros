@@ -6,7 +6,7 @@ nros uses generated Rust bindings for ROS 2 message types. `nros build` generate
 
 The binding generator is part of the `nros` CLI and provides:
 - Pure Rust, `no_std` compatible output using `heapless` types
-- Automatic dependency resolution via ament index or bundled interfaces
+- Automatic dependency resolution through your ROS 2 install's ament index
 - the `[patch.crates-io]` rows that point the nano-ros runtime crates at
   the SDK root, written into the image's generated build settings
 
@@ -39,14 +39,19 @@ The binding generator is part of the `nros` CLI and provides:
    See [Installation](../get-started/installation.md) for the full
    walkthrough.
 
-3. **ROS 2 environment** (optional for standard types)
+3. **A ROS 2 install, sourced for the first build**
 
-   Standard interfaces (`std_msgs`, `builtin_interfaces`) are bundled with nros
-   and work without ROS 2. For additional packages (e.g., `geometry_msgs`, `sensor_msgs`),
-   source a ROS 2 environment:
+   The bindings are generated from the message definitions of your ROS 2
+   install, `std_msgs` included, so the generated layouts and type hashes
+   match the ROS 2 nodes you talk to. Source it before the first
+   `nros build`, `nros run` or `nros configure` of a project:
    ```bash
    source /opt/ros/humble/setup.bash
    ```
+   That configure records the prefix (`AMENT_PREFIX_PATH`) in the project,
+   and later configures reuse it, so later shells need not source ROS. With
+   neither, configure refuses and names this step. A project whose packages
+   depend on no message package at all needs no ROS 2.
 
 ## Workflow
 
@@ -62,12 +67,13 @@ Declare your ROS interface dependencies in `<depend>` tags:
 
 ```bash
 cd my_ws
+source /opt/ros/humble/setup.bash   # the first build of the workspace only
 nros build
 ```
 
 Before it builds, this will:
 1. Parse `package.xml` to find dependencies
-2. Resolve transitive dependencies (ament index + bundled interfaces)
+2. Resolve transitive dependencies through the ament index
 3. Filter to interface packages (those with msg/srv/action)
 4. Generate bindings into the workspace's `generated/` directory
 5. Resolve the bringup's launch file into the system model
@@ -295,22 +301,26 @@ To regenerate after ROS package updates or dependency changes:
 nros interface generate rust --force
 ```
 
-## Bundled Interfaces
+## Where the definitions come from
 
-nros ships standard `.msg` files for common packages so codegen works without a
-ROS 2 environment:
-
-- `std_msgs` (Bool, Int32, String, Header, etc.)
-- `builtin_interfaces` (Time, Duration)
-
-These are located at `packages/cli/interfaces/`. When a ROS 2 environment is sourced,
-the ament index takes precedence over bundled files.
+`nros build` reads message definitions from the ROS 2 install you sourced
+(or the one the project's first configure recorded), through
+`AMENT_PREFIX_PATH`. The release carries copies of a few standard packages,
+but they only fill gaps under a ROS 2 install, never stand in for one: with
+no prefix set and none recorded, configure refuses rather than build from
+them, because they would silently fix a ROS 2 distro and the types would
+stop matching a peer on another one. A message package in your own
+workspace shadows the installed one of the same name.
 
 ## Troubleshooting
 
+**"`AMENT_PREFIX_PATH` is unset and no configure of … has recorded one to reuse"**
+- This shell has not sourced ROS 2, and this project has never been
+  configured from one that had. Run `source /opt/ros/humble/setup.bash`
+  (or your overlay's `install/setup.bash`), then build again.
+
 **"Package 'X' not found in ament index or bundled interfaces"**
-- For standard types (`std_msgs`, `builtin_interfaces`): should work without ROS 2
-- For other packages: source ROS 2 environment: `source /opt/ros/humble/setup.bash`
+- Source the ROS 2 environment: `source /opt/ros/humble/setup.bash`
 - Check package is installed: `ros2 pkg list | grep X`
 - Install if missing: `sudo apt install ros-humble-X`
 

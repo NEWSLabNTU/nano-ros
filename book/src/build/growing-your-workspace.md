@@ -227,9 +227,13 @@ It also added `<exec_depend>monitor_node</exec_depend>` to the bringup's
 `package.xml`. To add a row by hand (for a node package you copied in), write
 both.
 
-Run the system:
+Run the system. The workspace's first build, in First Project, recorded
+your ROS 2 prefix, so a shell that has not sourced ROS 2 builds it too; a
+workspace you start fresh needs ROS 2 sourced for its first build, because
+the messages are generated from it:
 
 ```bash
+source /opt/ros/humble/setup.bash   # only needed for a fresh workspace's first build
 nros run
 ```
 

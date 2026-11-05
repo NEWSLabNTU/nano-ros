@@ -183,7 +183,12 @@ On an embedded image the same knobs are compile-baked from that image's
 
 ## Build
 
+The build generates `std_msgs` from your ROS 2 install, so source it first.
+This first build records the ROS 2 prefix in the workspace; later builds and
+runs of `c_talker_ws` need no sourced shell.
+
 ```bash probe=40
+source /opt/ros/humble/setup.bash
 nros build
 ```
 

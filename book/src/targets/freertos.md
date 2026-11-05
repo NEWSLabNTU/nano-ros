@@ -120,10 +120,15 @@ Ports: read your image's own `locator`. The image above dials host port
 
 ## Build
 
+The build generates the message bindings from your ROS 2 install, so source
+it in this shell first. This first build records the ROS 2 prefix in the
+workspace, so later builds and runs of it need no sourced shell.
+
 In the workspace root (`fr_ws/`, where `nros new` left you), whatever the
 language:
 
 ```bash probe=50
+source /opt/ros/humble/setup.bash
 nros build
 ```
 

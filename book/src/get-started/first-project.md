@@ -53,8 +53,11 @@ one node package and a bringup with no launch file of its own, because
 
 ## Run
 
-ROS 2 provides the router the board talks to, so source it first, then
-build and run:
+Source ROS 2 first, then build and run. ROS 2 provides the router the board
+talks to, and its message definitions are what `nros run` generates the
+talker's `std_msgs` bindings from. This first build records the ROS 2
+prefix in the workspace, so a later build of it needs no sourced shell
+(the router still does):
 
 ```bash probe=50 probe-run=1500 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
@@ -109,12 +112,15 @@ Open `src/sensor_node/src/lib.rs`, change the `"Hello World"` text, and run
 `nros run sensor_node` again. It rebuilds what changed and boots the new
 image.
 
-## No QEMU, no ROS 2: run it on this machine
+## No QEMU, no router: run it on this machine
 
 The same flow runs on your Linux host. Cyclone DDS needs no router, so
-nothing else has to be running:
+nothing else has to be running. The build still generates the messages from
+ROS 2, so source it before the first run (later runs of `host_ws` need no
+sourced shell):
 
 ```bash probe=30 track=installed variant=linux
+source /opt/ros/humble/setup.bash
 nros setup linux --rmw cyclonedds
 nros new host_ws --board linux --template talker --lang cpp --rmw cyclonedds
 cd host_ws
@@ -126,6 +132,9 @@ shape, and so is every command after it.
 
 ## If nothing appears
 
+- **`nros run` stops at once and names `AMENT_PREFIX_PATH`:** this
+  shell has not sourced ROS 2, and no earlier build of the workspace
+  recorded it. Run `source /opt/ros/humble/setup.bash` and run again.
 - **`nros run` stops at once and names the router:** it could not find
   the Zenoh router. Source ROS 2 in that shell (and install
   `ros-humble-rmw-zenoh-cpp` if it is missing), or point `NROS_RMW_ZENOHD`

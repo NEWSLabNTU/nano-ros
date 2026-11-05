@@ -424,9 +424,12 @@ node `"std_msgs.hpp"`.
 
 The message definitions come from the first of these that has the package:
 the directories in `NROS_INTERFACE_SEARCH_PATH`, then a sourced ROS 2
-install (`AMENT_PREFIX_PATH`), then the definitions bundled with nano-ros. So
-`std_msgs`, `geometry_msgs`, `sensor_msgs` and the other stock packages need
-no ROS install at all. For your own messages, keep them in a ROS 2 interface
+install (`AMENT_PREFIX_PATH`), then copies nano-ros carries of a few
+standard packages. Those copies are one ROS 2 distro's, so build from a shell
+that has sourced your ROS 2 install (`source /opt/ros/humble/setup.bash`):
+the types then match your ROS 2 peers. A Rust application's `nros configure`
+([below](#a-rust-application)) does not fall back to the copies at all. For
+your own messages, keep them in a ROS 2 interface
 package (its `package.xml` and `msg/` directory) anywhere on disk, add the
 directory that holds it to `NROS_INTERFACE_SEARCH_PATH`, and depend on it like
 any other.
@@ -728,9 +731,13 @@ come from. `nros configure`, run in the application directory, generates the
 Rust types for the message packages `package.xml` lists, under `generated/`,
 and writes `.cargo/config.toml`, which points the nano-ros crates at your
 nano-ros install and the message crates at `generated/`. Run it before the
-first `west build`, and again when `package.xml` changes:
+first `west build`, and again when `package.xml` changes. It generates the
+types from your ROS 2 install, so source it first; the configure records the
+prefix, and a later `nros configure` of the application needs no sourced
+shell:
 
 ```bash probe=49 track=installed variant=west-app-rust
+source /opt/ros/humble/setup.bash
 cd apps/my_app && nros configure && cd ../..
 ```
 

@@ -165,7 +165,12 @@ file `os_config` names, and bakes them at build time.
 
 ## Build
 
+The build generates `std_msgs` from your ROS 2 install, so source it first.
+This first build records the ROS 2 prefix in the workspace; later builds and
+runs of `cpp_talker_ws` need no sourced shell.
+
 ```bash
+source /opt/ros/humble/setup.bash
 nros build
 ```
 

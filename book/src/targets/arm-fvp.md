@@ -123,9 +123,14 @@ board = "fvp-aemv8r-smp"
 rmw = "cyclonedds"
 ```
 
+The build generates the messages from your ROS 2 install, so the first one
+runs in a shell that has sourced it; it records the prefix, so later builds
+need no sourced shell:
+
 ```bash
 nros setup zephyr --rmw cyclonedds     # the Zephyr workspace + SDK
 nros setup fvp-aemv8r-smp              # the model (x86_64 Linux only)
+source /opt/ros/humble/setup.bash
 nros build demo_bringup:fvp
 ```
 

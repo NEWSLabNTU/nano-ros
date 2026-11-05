@@ -1,7 +1,9 @@
 # Troubleshooting — First 10 Minutes
 
-The [First Project](first-project.md) runs a talker in QEMU over Zenoh, so
-it needs ROS 2 sourced for the router; its Linux section runs on Cyclone DDS,
+Every first build of a project needs ROS 2 sourced, because the messages are
+generated from it ([A10](#a10-ament_prefix_path-is-unset)). The
+[First Project](first-project.md) runs a talker in QEMU over Zenoh, so it
+also needs ROS 2 for the router; its Linux section runs on Cyclone DDS,
 where no router exists, so "no output" there is never a router problem. The
 First Node pages run on Linux over Zenoh and assume `nros setup linux --rmw
 zenoh` has run and the ROS 2 router (`ros2 run rmw_zenoh_cpp rmw_zenohd`) is
@@ -200,6 +202,31 @@ passes these to cargo from the board's settings, so a build driven by
 `nros build` — or by cargo with the generated `--config` file — does not
 hit it. If a cargo command you drive yourself does, you skipped the
 `--config build/<image>/nros-cargo.toml` argument.
+
+### A10. `AMENT_PREFIX_PATH` is unset
+
+`nros build`, `nros run` or `nros configure` stops before building anything:
+
+```
+Error: configure: `AMENT_PREFIX_PATH` is unset and no configure of `/home/you/sensor_ws` has recorded one to reuse. Run the setup step once from a shell that has ROS 2: `source /opt/ros/<distro>/setup.bash` (or your overlay's `install/setup.bash`), then `nros configure`; later runs without a sourced shell reuse what it records.
+```
+
+The project has messages to generate (every talker uses `std_msgs`), and
+nano-ros generates them from the message definitions of your ROS 2 install,
+so the types and their hashes match your ROS 2 peers. This shell has not
+sourced ROS 2, and no earlier configure of the project ran in one that had.
+It happens on every board and every RMW, Linux and Cyclone DDS included.
+
+Source ROS 2 once, in this shell, and run the same command again:
+
+```bash
+source /opt/ros/humble/setup.bash   # or your overlay's install/setup.bash
+nros build
+```
+
+That configure records the prefix in the project. Later builds and runs of
+the same project reuse it, from any shell, an IDE or a CI step. A new
+project records its own, so its first build needs a sourced shell again.
 
 ## B. Binary runs but no output
 
