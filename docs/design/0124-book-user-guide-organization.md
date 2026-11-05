@@ -94,7 +94,7 @@ What a reader meets:
 Every page of the user book, and every change to its organization, follows
 these principles. Each one cites the decision that holds it; this list is the
 one place they are read together. A principle marked **gated** is checked by
-`check-book-audience` or a sibling gate (phase-537 W0, W9).
+`check-book-audience` or a sibling gate (phase-537 W0, W13).
 
 **Who and why**
 
@@ -229,7 +229,7 @@ A page's section must match its type. A page that needs a second type is split,
 and the halves link to each other.
 
 `check-book-audience` reads the declaration. It starts as a report and becomes a
-refusal once the moves land (phase-537 W9).
+refusal once the moves land (phase-537 W13).
 
 ### D3 — One tutorial path, one project, on Verified rows only
 
