@@ -191,7 +191,7 @@ Lines are non-test lines. "WS reach" uses the classes defined above.
 `system.toml` beside a `Cargo.toml` fails; removing one allowlisted site
 without deleting its row fails the ratchet).
 
-**Status: DONE (2026-11-05).**
+**Status: DONE (2026-11-05, PR #3128).**
 
 - `just check system-toml-in-bringup` (`scripts/check-system-toml-in-bringup.py`)
   reads the tracked set.
