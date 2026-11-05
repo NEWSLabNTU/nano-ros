@@ -169,10 +169,21 @@ fn image_backends(entry_name: &str, sys: &SystemToml) -> Vec<String> {
     out
 }
 
-/// Derive the selection for one entry and write its facade crate.
+/// Derive the selection for one OWNED entry and write its adapter crate,
+/// `<entry>_nros_derived` (RFC-0071 D13).
+///
+/// An owned entry is one a person keeps: from `nros materialize` or `nros new
+/// entry`. A generated entry states the same features itself
+/// ([`entry_selection`]) and gets no adapter.
 ///
 /// `bringup_dir` is the bringup `sys` was read from: an entry is the package
 /// one of its images CLAIMS (`leaf_system::claiming_image`, issue 1289).
+///
+/// `generated_root` is the workspace's generated tree; the adapter goes in
+/// [`nros_orchestration_ir::entry_names::ADAPTER_DIR`] under it. An entry whose
+/// manifest still names the previous spelling (`<entry>_nros_selection`) gets
+/// its adapter under THAT name and directory, with a warning naming the
+/// rename, so it keeps building while it migrates.
 ///
 /// `sdk_root` is the nano-ros root `nros sync`'s patch table points into. A
 /// registry-style runtime dependency (`nros = { version = "*" }`, the shape
@@ -187,7 +198,7 @@ pub fn write_facade(
     entry_manifest: &Path,
     bringup_dir: &Path,
     sys: &SystemToml,
-    facade_root: &Path,
+    generated_root: &Path,
     sdk_root: Option<&Path>,
 ) -> Result<Option<Facade>> {
     // Not an entry ⇒ nothing to select for. Node packages stay silent about all
@@ -231,33 +242,39 @@ pub fn write_facade(
         &nros_path,
         deps.board.as_ref().map(|(_, p)| p.as_path()),
     )?;
-    // phase-531 W4 — the link the image's locator names is a board feature
-    // choice on the mps2 bare-metal crate (`serial` instead of `ethernet`),
-    // exactly as for a leaf's selection package: the workspace scaffold's
-    // first image dials the router over the board's UART.
     if let Some((_, bd)) = &deps.board {
-        let image = claimed_image_id(entry_name, sys).and_then(|id| sys.image.get(&id).cloned());
-        let base = sys.image_defaults.clone().unwrap_or_default();
-        let locator = image
-            .map(|i| i.with_base(&base))
-            .and_then(|i| i.locator)
-            .or_else(|| sys.system.locator.clone());
-        let transport = locator
-            .as_deref()
-            .and_then(nros_orchestration_ir::leaf_system::link_kind_of_locator);
-        crate::builder::entry::image_link_features(
-            transport,
-            &declared_rmw,
-            &mut board_features,
-            |f| crate_declares_feature(bd, f),
-        );
-        board_features.sort();
-        board_features.dedup();
+        apply_image_link(entry_name, sys, &declared_rmw, bd, &mut board_features);
     }
 
     // ---- render ------------------------------------------------------------
-    let crate_name = format!("{entry_name}_nros_selection");
-    let dir = facade_root.join(entry_name);
+    use nros_orchestration_ir::entry_names as names;
+    let legacy = names::legacy_adapter_crate_name(entry_name);
+    // Only the facade's own previous home counts: the seven fixture entries
+    // name the same spelling for the LEAF-shaped package at
+    // `build/nros/selection`, which is not this crate (phase-531 W7 step 3).
+    let legacy_home = format!("{}/{entry_name}", names::LEGACY_ADAPTER_DIR);
+    let (crate_name, dir) = if dependency_path(&manifest, &legacy)
+        .is_some_and(|p| p.trim_end_matches('/').ends_with(&legacy_home))
+    {
+        eprintln!(
+            "sync: `{entry_name}` depends on `{legacy}`, the adapter's previous name. \
+             Rename the dependency to `{new} = {{ path = \"<ws>/generated/{dir}/{entry_name}\" }}`; \
+             the old name is written only while entries migrate.",
+            new = names::adapter_crate_name(entry_name),
+            dir = names::ADAPTER_DIR,
+        );
+        (
+            legacy,
+            generated_root
+                .join(names::LEGACY_ADAPTER_DIR)
+                .join(entry_name),
+        )
+    } else {
+        (
+            names::adapter_crate_name(entry_name),
+            generated_root.join(names::ADAPTER_DIR).join(entry_name),
+        )
+    };
     let body = render_manifest(
         &crate_name,
         &dir,
@@ -306,6 +323,70 @@ pub fn write_facade(
         },
         changed,
     }))
+}
+
+/// RFC-0071 D13 — what a GENERATED entry states itself, with no selection
+/// package between it and the crates it selects.
+///
+/// The same derivation [`write_facade`] writes into a package ([`derive`]),
+/// handed back for `builder::entry` to put on the entry's own dependency lines,
+/// plus the registration macros a selection package's `lib.rs` used to hold,
+/// rendered crate-local for the entry's source.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EntrySelection {
+    /// Features on the `nros` umbrella: edition, capabilities and the
+    /// type-descriptor marker.
+    pub nros_features: Vec<String>,
+    /// Features on the board crate: its non-RMW defaults, one `rmw-<x>` per
+    /// linked backend, and the edition when the board forwards it.
+    pub board_features: Vec<String>,
+    /// Features on a direct `nros-rmw-*` dependency: the edition and the
+    /// backend capabilities. Each is named only where that crate declares it.
+    pub backend_features: Vec<String>,
+    /// `__nros_register_backends!` and `__nros_register_type!`, as crate-local
+    /// `macro_rules!` for the entry's crate root.
+    pub registration: String,
+}
+
+/// Derive [`EntrySelection`] for the generated entry `entry_name` of the
+/// bringup `sys` (RFC-0071 D13).
+///
+/// `board_dir` is the board crate the entry depends on, `None` for a board
+/// with no crate.
+pub fn entry_selection(
+    entry_name: &str,
+    sys: &SystemToml,
+    nano_ros_root: &Path,
+    board_dir: Option<&Path>,
+) -> Result<EntrySelection> {
+    let nros_path = nano_ros_root.join("packages/api/nros");
+    let declared_rmw = image_rmw(entry_name, sys).unwrap_or_else(|| sys.system.rmw.clone());
+    let edition = sys.image_ros_edition(claimed_image_id(entry_name, sys).as_deref())?;
+    let backends = image_backends(entry_name, sys);
+    let Derived {
+        nros_features,
+        mut board_features,
+        backend_features,
+    } = derive(
+        entry_name,
+        sys,
+        edition,
+        &declared_rmw,
+        &backends,
+        &nros_path,
+        board_dir,
+    )?;
+    if let Some(bd) = board_dir {
+        apply_image_link(entry_name, sys, &declared_rmw, bd, &mut board_features);
+    }
+    let mut linked = backends;
+    linked.push(declared_rmw);
+    Ok(EntrySelection {
+        nros_features,
+        board_features,
+        backend_features,
+        registration: render_backend_macros_local(&linked),
+    })
 }
 
 /// What [`write_leaf_selection`] needs about one single-package leaf image.
@@ -546,17 +627,26 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> R
 /// * `__nros_register_type!("<rmw>", T)` stages `T` with a backend that needs
 ///   per-type descriptors, and expands to nothing for any other backend.
 fn render_backend_macros(backends: &[String]) -> String {
-    render_backend_macros_inner(backends, false)
+    render_backend_macros_inner(backends, false, true)
+}
+
+/// [`render_backend_macros`] for a generated entry's own source (RFC-0071
+/// D13): crate-local `macro_rules!`, not exported, which `nros::main!` reaches
+/// by bare name because they are defined above it. `unused_macros` is allowed
+/// because only the Zephyr arm and a `[[bridge]]` entry call them; every other
+/// board registers its backend in its boot path.
+fn render_backend_macros_local(backends: &[String]) -> String {
+    render_backend_macros_inner(backends, false, false)
 }
 
 /// [`render_backend_macros`] with BOTH arms gated on the entry's own
 /// `rmw-<x>` feature — for a selection shared by several images, whose
 /// backend set is the union of theirs.
 fn render_backend_macros_gated(backends: &[String]) -> String {
-    render_backend_macros_inner(backends, true)
+    render_backend_macros_inner(backends, true, true)
 }
 
-fn render_backend_macros_inner(backends: &[String], always_gated: bool) -> String {
+fn render_backend_macros_inner(backends: &[String], always_gated: bool, exported: bool) -> String {
     let mut rows: Vec<cargo_nano_ros::rmw_resolver::ResolvedRmw> = backends
         .iter()
         .filter_map(|b| cargo_nano_ros::rmw_resolver::resolve_rmw(b).ok())
@@ -577,9 +667,12 @@ fn render_backend_macros_inner(backends: &[String], always_gated: bool) -> Strin
             )
         })
         .collect();
-    let mut out = String::from(
-        "#[doc(hidden)]\n#[macro_export]\nmacro_rules! __nros_register_backends {\n    () => {{\n",
-    );
+    let attrs = if exported {
+        "#[doc(hidden)]\n#[macro_export]\n"
+    } else {
+        "#[allow(unused_macros)]\n"
+    };
+    let mut out = format!("{attrs}macro_rules! __nros_register_backends {{\n    () => {{{{\n");
     for (feature, call) in &calls {
         if always_gated {
             out.push_str(&format!(
@@ -596,7 +689,7 @@ fn render_backend_macros_inner(backends: &[String], always_gated: bool) -> Strin
         ));
     }
     out.push_str("    }};\n}\n\n");
-    out.push_str("#[doc(hidden)]\n#[macro_export]\nmacro_rules! __nros_register_type {\n");
+    out.push_str(&format!("{attrs}macro_rules! __nros_register_type {{\n"));
     for r in rows.iter().filter(|r| !r.type_register_crate.is_empty()) {
         out.push_str(&format!(
             "    ({:?}, $t:ty) => {{{{\n        let _ = ::{}::register::<$t>();\n    }}}};\n",
@@ -812,6 +905,35 @@ fn crate_default_features(dir: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// phase-531 W4 — the link the image's locator names is a board feature
+/// choice on the mps2 bare-metal crate (`serial` instead of `ethernet`),
+/// exactly as for a leaf's selection package: the workspace scaffold's first
+/// image dials the router over the board's UART. ONE spelling for both the
+/// generated entry ([`entry_selection`]) and an owned entry's adapter
+/// ([`write_facade`]), so the two cannot disagree about the link.
+fn apply_image_link(
+    entry_name: &str,
+    sys: &SystemToml,
+    declared_rmw: &str,
+    board_dir: &Path,
+    board_features: &mut Vec<String>,
+) {
+    let image = claimed_image_id(entry_name, sys).and_then(|id| sys.image.get(&id).cloned());
+    let base = sys.image_defaults.clone().unwrap_or_default();
+    let locator = image
+        .map(|i| i.with_base(&base))
+        .and_then(|i| i.locator)
+        .or_else(|| sys.system.locator.clone());
+    let transport = locator
+        .as_deref()
+        .and_then(nros_orchestration_ir::leaf_system::link_kind_of_locator);
+    crate::builder::entry::image_link_features(transport, declared_rmw, board_features, |f| {
+        crate_declares_feature(board_dir, f)
+    });
+    board_features.sort();
+    board_features.dedup();
+}
+
 /// Does the crate at `dir` declare `feature` in its `[features]` table?
 ///
 /// Read from the manifest rather than assumed from the crate's name: the board
@@ -876,6 +998,23 @@ fn board_feature_passthrough(board_crate: &str, board_dir: &Path, dep_keys: &[&s
         out.push_str(&format!("\"{f}\" = [\"{board_crate}/{f}\"]\n"));
     }
     out
+}
+
+/// The `path` of the dependency `name` (hyphens folded) in any dependency
+/// table of `manifest`, target-scoped ones included.
+fn dependency_path(manifest: &toml::Value, name: &str) -> Option<String> {
+    let scopes = std::iter::once(manifest).chain(
+        manifest
+            .get("target")
+            .and_then(|t| t.as_table())
+            .into_iter()
+            .flat_map(|t| t.values()),
+    );
+    scopes
+        .filter_map(|s| s.get("dependencies").and_then(|d| d.as_table()))
+        .flat_map(|deps| deps.iter())
+        .find(|(k, _)| k.replace('-', "_") == name)
+        .and_then(|(_, v)| v.get("path")?.as_str().map(str::to_string))
 }
 
 /// Pull the `nros`, `nros-board-*` and `nros-rmw-*` deps out of the entry's
@@ -1077,6 +1216,25 @@ mod tests {
         assert!(!out.contains("uorb"), "{out}");
     }
 
+    /// RFC-0071 D13 — the generated entry's copy of the macros is crate-local:
+    /// the same calls, not exported.
+    #[test]
+    fn an_entrys_registration_is_crate_local() {
+        let backends = ["zenoh".to_string(), "cyclonedds".to_string()];
+        let exported = render_backend_macros(&backends);
+        let local = render_backend_macros_local(&backends);
+        assert!(!local.contains("#[macro_export]"), "{local}");
+        assert_eq!(
+            local.matches("#[allow(unused_macros)]").count(),
+            2,
+            "{local}"
+        );
+        assert_eq!(
+            local.replace("#[allow(unused_macros)]\n", ""),
+            exported.replace("#[doc(hidden)]\n#[macro_export]\n", ""),
+        );
+    }
+
     #[test]
     fn rel_from_walks_up_then_down() {
         assert_eq!(
@@ -1180,7 +1338,7 @@ mod tests {
             .unwrap();
             d
         };
-        let facades = root.join("build/nros-selection");
+        let generated = root.join("generated");
         let write = |name: &str, dir: &Path| {
             write_facade(
                 name,
@@ -1188,7 +1346,7 @@ mod tests {
                 &dir.join("Cargo.toml"),
                 &bringup,
                 &sys,
-                &facades,
+                &generated,
                 None,
             )
             .unwrap()
@@ -1203,6 +1361,27 @@ mod tests {
         let claimed = pkg("linux_entry", "");
         let f = write("linux_entry", &claimed).expect("an image claims it: a facade");
         assert_eq!(f.entry, "linux_entry");
+        // RFC-0071 D13 — the adapter's one name and home.
+        assert_eq!(f.crate_name, "linux_entry_nros_derived");
+        assert_eq!(f.dir, generated.join("nros-derived/linux_entry"));
+        // A manifest still naming the previous spelling keeps it while it
+        // migrates.
+        let legacy = pkg(
+            "linux_entry",
+            "\n[target.'cfg(unix)'.dependencies]\n\
+             linux_entry_nros_selection = { path = \"../../generated/nros-selection/linux_entry\" }\n",
+        );
+        let f = write("linux_entry", &legacy).expect("still an entry");
+        assert_eq!(f.crate_name, "linux_entry_nros_selection");
+        assert_eq!(f.dir, generated.join("nros-selection/linux_entry"));
+        // The same spelling for the LEAF-shaped package is not this crate.
+        let leafish = pkg(
+            "linux_entry",
+            "\n[target.'cfg(unix)'.dependencies]\n\
+             linux_entry_nros_selection = { path = \"build/nros/selection\" }\n",
+        );
+        let f = write("linux_entry", &leafish).expect("still an entry");
+        assert_eq!(f.crate_name, "linux_entry_nros_derived");
     }
 
     #[test]

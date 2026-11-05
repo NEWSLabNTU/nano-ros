@@ -19,9 +19,13 @@
 //! Narrower than it looks. A generated entry is a one-line
 //! `nros::main!(launch = …)`, and that macro reads the launch XML **at
 //! expansion time** (its tracked inputs are "launch.xml, every `package.xml`
-//! the pkg-index walked"). RMW and capability selection flow through the
-//! `*_nros_selection` facade `nros sync` regenerates. So adding a node to a
-//! launch file reaches a materialised entry on the next compile: **the
+//! the pkg-index walked"). RMW and capability selection flow through the owned
+//! entry's adapter crate, `<entry>_nros_derived`, which `nros configure`
+//! regenerates (RFC-0071 D13). A generated entry states those features on its
+//! own lines, marked, and carries its registration macros in its source;
+//! materialising hands both back to the adapter ([`owned_manifest`],
+//! [`owned_source`]). So adding a node to a launch file, or switching the
+//! image's RMW, reaches a materialised entry on the next compile: **the
 //! derivation stays live.**
 //!
 //! What freezes is the SHELL — `#![no_std]` / `#![no_main]`, the panic policy,
@@ -303,9 +307,149 @@ pub fn rebase_manifest_paths(text: &str, from_dir: &Path, to_dir: &Path) -> Resu
     Ok(doc.to_string())
 }
 
+/// RFC-0071 D13 — turn a GENERATED entry's manifest into an OWNED one.
+///
+/// A generated entry states the features its image's declarations imply on
+/// its own dependency lines, marked [`super::entry::DERIVED_FEATURES_MARKER`].
+/// An owned entry must not freeze them: RFC-0065 D5 keeps its derivation live.
+/// So each marked feature is removed from its line, and the entry depends on
+/// its adapter crate instead (`<entry>_nros_derived`, at `adapter_rel` from the
+/// entry), which `nros configure` regenerates with exactly those features.
+/// Unmarked lines and features are left as written.
+pub fn owned_manifest(text: &str, entry: &str, adapter_rel: &str) -> String {
+    let marker = super::entry::DERIVED_FEATURES_MARKER;
+    // Nothing marked, nothing derived to hand over: an entry this generator
+    // did not write (one cut before D13 already names its facade) is kept as
+    // written, and gains no dependency on a crate nobody would write for it.
+    if !text.contains(marker) {
+        return text.to_string();
+    }
+    let adapter = nros_orchestration_ir::entry_names::adapter_crate_name(entry);
+    let mut out = String::new();
+    for line in text.lines() {
+        if let Some((body, names)) = line.split_once(&format!(" {marker}")) {
+            let mut body = body.to_string();
+            for name in names.split_whitespace() {
+                let q = format!("\"{name}\"");
+                for pat in [format!("{q}, "), format!(", {q}"), q.clone()] {
+                    if body.contains(&pat) {
+                        body = body.replacen(&pat, "", 1);
+                        break;
+                    }
+                }
+            }
+            out.push_str(&body.replace(", features = []", ""));
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+        if line.trim() == "[dependencies]" {
+            out.push_str(&format!(
+                "# The features this image's declarations imply, and the backend\n\
+                 # registration, come from this adapter, which `nros configure`\n\
+                 # regenerates (RFC-0071 D13). Edit `system.toml`, not this line.\n\
+                 {adapter} = {{ path = \"{adapter_rel}\" }}\n"
+            ));
+        }
+    }
+    out
+}
+
+/// RFC-0071 D13 — drop a generated entry's own registration macros, which
+/// an owned entry takes from its adapter instead (see [`owned_manifest`]).
+pub fn owned_source(text: &str) -> String {
+    let (begin, end) = (
+        super::entry::DERIVED_SOURCE_BEGIN,
+        super::entry::DERIVED_SOURCE_END,
+    );
+    let mut out = String::new();
+    let mut skipping = false;
+    let mut after_block = false;
+    for line in text.lines() {
+        if line.trim() == begin {
+            skipping = true;
+            continue;
+        }
+        if skipping {
+            if line.trim() == end {
+                skipping = false;
+                after_block = true;
+            }
+            continue;
+        }
+        // The blank line that separated the block from `nros::main!`.
+        if after_block && line.trim().is_empty() {
+            after_block = false;
+            continue;
+        }
+        after_block = false;
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// RFC-0071 D13 / RFC-0065 D5 — materialising hands the derived features
+    /// and the registration back to the adapter, and keeps the rest.
+    #[test]
+    fn a_materialised_entry_takes_its_derivation_from_the_adapter() {
+        let manifest = "\
+[dependencies]
+nros = { path = \"../n\", default-features = false, features = [\"alloc\", \"rmw-cffi\", \"macros\", \"ros-humble\"] } # nros-derived: ros-humble
+nros-board-linux = { path = \"../b\", default-features = false, features = [\"rmw-zenoh\", \"ros-humble\", \"census\", \"profile\"] } # nros-derived: rmw-zenoh ros-humble
+nros-rmw-zenoh = { path = \"../z\", features = [\"ros-humble\"] } # nros-derived: ros-humble
+talker_pkg = { path = \"../t\", default-features = false }
+";
+        let out = owned_manifest(
+            manifest,
+            "linux_entry",
+            "../../generated/nros-derived/linux_entry",
+        );
+        assert!(!out.contains("nros-derived:"), "{out}");
+        assert!(!out.contains("ros-humble"), "{out}");
+        assert!(!out.contains("rmw-zenoh\""), "{out}");
+        assert!(
+            out.contains("features = [\"alloc\", \"rmw-cffi\", \"macros\"]"),
+            "{out}"
+        );
+        assert!(
+            out.contains("features = [\"census\", \"profile\"]"),
+            "{out}"
+        );
+        assert!(
+            out.contains("nros-rmw-zenoh = { path = \"../z\" }"),
+            "{out}"
+        );
+        assert!(
+            out.contains(
+                "linux_entry_nros_derived = { path = \"../../generated/nros-derived/linux_entry\" }"
+            ),
+            "{out}"
+        );
+        let doc: toml::Value = toml::from_str(&out).expect("still a manifest");
+        assert!(doc["dependencies"].get("talker_pkg").is_some());
+        // Nothing marked: kept as written, no adapter dependency added.
+        let plain = "[dependencies]\ntalker_pkg = { path = \"../t\" }\n";
+        assert_eq!(owned_manifest(plain, "linux_entry", "x"), plain);
+
+        let source = "\
+#![no_std]
+
+// nros-derived: begin
+macro_rules! __nros_register_backends { () => {{}}; }
+// nros-derived: end
+
+nros::main!(launch = \"b\");
+";
+        assert_eq!(
+            owned_source(source),
+            "#![no_std]\n\nnros::main!(launch = \"b\");\n"
+        );
+    }
 
     fn stamp(kind: &str, board: &str) -> Stamp {
         Stamp {

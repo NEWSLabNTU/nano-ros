@@ -57,6 +57,9 @@ pub mod ftti_budget;
 // deletable fallback), shared by the proc-macro and the CLI.
 // Issue 1766 — which capability axes its `[system] features` declares, and
 // what each lowers to on a Form-1 entry.
+/// RFC-0071 D13 — the entry package's name and an owned entry's adapter
+/// crate name, shared by the CLI and `nros::main!`.
+pub mod entry_names;
 pub mod leaf_capabilities;
 pub mod leaf_system;
 /// phase-509 P5 (RFC-0108 D3/D4) -- preemption levels derived from the ranks,

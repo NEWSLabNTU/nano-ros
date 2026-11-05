@@ -76,8 +76,11 @@ pub struct EntrySpec {
     pub nodes: Vec<(String, PathBuf)>,
     /// The nano-ros checkout, for `nros` / board / platform crate paths.
     pub nano_ros_root: PathBuf,
-    /// The generated selection facade's directory, when one exists.
-    pub facade_dir: Option<PathBuf>,
+    /// The features and backend registration this image's declarations imply
+    /// (RFC-0071 D13), stated on the entry's own dependency lines and in its
+    /// own source. `None` writes an entry with neither, which only a unit test
+    /// wants: the caller derives it for every image.
+    pub selection: Option<crate::orchestration::facade::EntrySelection>,
     /// Dependencies the BRINGUP implies, as `name = { … }` manifest lines.
     ///
     /// A declaration in `system.toml` can make the macro emit code that needs a
@@ -446,9 +449,11 @@ pub const IP_LINK_FEATURE: &str = "ethernet";
 /// link is not a feature choice (the RTOS crates) is left as it was.
 ///
 /// Called for a single-package leaf's selection package and, since phase-531
-/// W4, for a generated workspace entry's facade (`facade::write_facade`, from
-/// the claimed image's locator): the workspace scaffold's first image on this
-/// board dials the router over its UART.
+/// W4, for every workspace entry through `facade::apply_image_link`: the
+/// generated entry (`facade::entry_selection`) and an owned entry's adapter
+/// (`facade::write_facade`) both take the link from the claimed image's
+/// locator, so the workspace scaffold's first image on this board dials the
+/// router over its UART.
 pub fn image_link_features(
     transport: Option<&str>,
     rmw: &str,
@@ -474,8 +479,9 @@ pub fn image_link_features(
 /// (`orchestration::facade::write_leaf_selection`) both emit them through
 /// here; before, the leaf hand-wrote its own copy and a board switch had to
 /// edit it. `extra_board_features` is what the caller derives on top of the
-/// descriptor (the leaf's selection adds the RMW and entry-surface features,
-/// which a workspace entry gets from its separate facade crate instead).
+/// descriptor: the RMW, edition and non-RMW defaults (`facade::derive`, for
+/// both roads since RFC-0071 D13), plus the entry-surface and link features
+/// on the leaf's.
 /// Paths are relative to `from_dir`, the directory of the manifest the lines
 /// go into.
 ///
@@ -526,17 +532,17 @@ pub fn image_dependency_lines(
                     .join(", ")
             )
         };
-        // `default-features = false`, because the SELECTION FACADE is the one
-        // place that names the board's RMW (issue 0831). A bare dep here
-        // re-enables `default = ["rmw-zenoh"]` and cargo unions it with the
-        // facade's `rmw-cyclonedds`: the image gets two backends and the
-        // runtime refuses to pick one. Cargo cannot subtract a default (issue
-        // 0270), so BOTH declarations have to be silent about it.
+        // `default-features = false`, because the derived selection
+        // (`facade::derive`, carried in `extra_board_features`) is the one
+        // place that names the board's RMW (issue 0831). The default
+        // `["rmw-zenoh"]` would union with a declared `rmw-cyclonedds`: the
+        // image gets two backends and the runtime refuses to pick one. Cargo
+        // cannot subtract a default (issue 0270).
         //
-        // Nothing is lost. The facade re-supplies the board's non-RMW defaults
-        // (`ethernet` on the mps2/esp32 boards, `image-runtime` — two lang
-        // items — on the NuttX ones), and `board_features` above still names
-        // whatever this entry needs in its own right.
+        // Nothing is lost. The derivation re-supplies the board's non-RMW
+        // defaults (`ethernet` on the mps2/esp32 boards, `image-runtime` — two
+        // lang items — on the NuttX ones), and `board_features` above still
+        // names whatever this entry needs in its own right.
         out.push(format!(
             "{krate} = {{ path = \"{rel}\", default-features = false{feats} }}"
         ));
@@ -665,31 +671,66 @@ pub fn render_manifest(
 
     out.push_str("[dependencies]\n");
 
-    // The selection facade carries the RMW, edition and capability features so
-    // cargo unifies them onto `nros` and the board crate. Absent when the
-    // workspace has not been synced.
-    if let Some(facade) = &spec.facade_dir {
-        let rel = relative_or_err(entry_dir, facade)?;
-        out.push_str(&format!("{pkg}_nros_selection = {{ path = \"{rel}\" }}\n"));
-    }
+    // RFC-0071 D13 — the features this image's declarations imply are stated
+    // HERE, on the entry's own lines. There is no selection package: it kept a
+    // hand-written manifest stable across a board, RMW or edition switch, and
+    // this manifest is regenerated per image.
+    let selection = spec.selection.clone().unwrap_or_default();
 
     // The umbrella names neither the platform nor the RMW — the board crate
-    // brings both, and the facade unifies the axes (phase-248 C6a).
+    // brings both (phase-248 C6a). It carries the edition, the capabilities
+    // and the type-descriptor marker.
     let nros_rel = relative_or_err(entry_dir, &spec.nano_ros_root.join("packages/api/nros"))?;
-    out.push_str(&format!(
-        "nros = {{ path = \"{nros_rel}\", default-features = false, \
-         features = [\"alloc\", \"rmw-cffi\", \"macros\"] }}\n"
-    ));
+    let mut nros_features: Vec<String> = ["alloc", "rmw-cffi", "macros"]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    nros_features.extend(selection.nros_features.iter().cloned());
+    let mut seen = std::collections::BTreeSet::new();
+    nros_features.retain(|f| seen.insert(f.clone()));
+    let nros_line = format!(
+        "nros = {{ path = \"{nros_rel}\", default-features = false, features = [{}] }}",
+        quoted_list(&nros_features)
+    );
+    out.push_str(&mark_derived(&nros_line, &selection.nros_features));
+    out.push('\n');
 
     let board = &board.for_image_panic(spec.panic.as_deref());
-    for line in image_dependency_lines(board, &spec.nano_ros_root, entry_dir, &[], true)? {
-        out.push_str(&line);
+    // Only what the derivation ADDED is marked: a feature the descriptor names
+    // in its own right stays when the entry is materialised.
+    let board_derived: Vec<String> = selection
+        .board_features
+        .iter()
+        .filter(|f| !board.board_features.contains(f))
+        .cloned()
+        .collect();
+    for line in image_dependency_lines(
+        board,
+        &spec.nano_ros_root,
+        entry_dir,
+        &selection.board_features,
+        true,
+    )? {
+        let is_board = board
+            .board_crate
+            .as_ref()
+            .is_some_and(|k| line.starts_with(&format!("{k} = ")));
+        if is_board {
+            out.push_str(&mark_derived(&line, &board_derived));
+        } else {
+            out.push_str(&line);
+        }
         out.push('\n');
     }
 
-    // What the BRINGUP's own declarations require — see `bringup_deps`.
+    // What the BRINGUP's own declarations require — see `bringup_deps`. A
+    // backend crate named here gets the edition and backend capabilities too.
     for dep in &spec.bringup_deps {
-        out.push_str(dep);
+        out.push_str(&with_backend_features_marked(
+            dep,
+            entry_dir,
+            &selection.backend_features,
+        ));
         out.push('\n');
     }
 
@@ -724,7 +765,13 @@ pub fn render_manifest(
     // reach cargo through this file instead (`builder::west_app`).
     if let Some(west) = &spec.west {
         for dep in &west.deps {
-            out.push_str(dep);
+            out.push_str(&with_backend_features_marked(
+                dep,
+                entry_dir,
+                spec.selection
+                    .as_ref()
+                    .map_or(&[][..], |s| s.backend_features.as_slice()),
+            ));
             out.push('\n');
         }
         if !west.build_deps.is_empty() {
@@ -748,6 +795,109 @@ pub fn render_manifest(
         }
     }
     Ok(out)
+}
+
+/// `"a", "b"` — a TOML array body.
+fn quoted_list(items: &[String]) -> String {
+    items
+        .iter()
+        .map(|f| format!("\"{f}\""))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The trailing comment that marks the features on a dependency line as
+/// DERIVED from the image's declarations (RFC-0071 D13). `nros materialize`
+/// reads it to hand exactly those features back to the owned entry's adapter
+/// crate, so a materialised entry's derivation stays live (RFC-0065 D5).
+pub const DERIVED_FEATURES_MARKER: &str = "# nros-derived:";
+
+/// The lines that bracket the registration macros in a generated entry's
+/// source, for the same reason as [`DERIVED_FEATURES_MARKER`].
+pub const DERIVED_SOURCE_BEGIN: &str = "// nros-derived: begin";
+/// See [`DERIVED_SOURCE_BEGIN`].
+pub const DERIVED_SOURCE_END: &str = "// nros-derived: end";
+
+/// `line`, with [`DERIVED_FEATURES_MARKER`] naming `derived` when any is
+/// present on it.
+fn mark_derived(line: &str, derived: &[String]) -> String {
+    let named: Vec<&str> = derived
+        .iter()
+        .filter(|f| line.contains(&format!("\"{f}\"")))
+        .map(String::as_str)
+        .collect();
+    if named.is_empty() {
+        line.to_string()
+    } else {
+        format!("{line} {DERIVED_FEATURES_MARKER} {}", named.join(" "))
+    }
+}
+
+/// [`with_backend_features`], marked with what it added.
+fn with_backend_features_marked(line: &str, entry_dir: &Path, features: &[String]) -> String {
+    let out = with_backend_features(line, entry_dir, features);
+    if out == line {
+        return out;
+    }
+    let added: Vec<String> = features
+        .iter()
+        .filter(|f| !line.contains(&format!("\"{f}\"")))
+        .cloned()
+        .collect();
+    mark_derived(&out, &added)
+}
+
+/// A dependency line with the backend features added, when it names an
+/// `nros-rmw-*` crate (RFC-0071 D13).
+///
+/// The selection package carried these on its own line for the same crate and
+/// let cargo unify them; the entry states them on the line it already has.
+/// Each feature is named only where that crate DECLARES it
+/// ([`crate::orchestration::facade::crate_declares_feature`]): a bridge links
+/// two backends and the edition or a capability may exist on one of them only.
+/// Any other line, or a line this cannot read, is returned unchanged.
+fn with_backend_features(line: &str, entry_dir: &Path, features: &[String]) -> String {
+    let Some((key, _)) = line.split_once('=') else {
+        return line.to_string();
+    };
+    let key = key.trim();
+    if features.is_empty() || !key.starts_with("nros-rmw-") {
+        return line.to_string();
+    }
+    let Some(dir) = toml::from_str::<toml::Table>(line)
+        .ok()
+        .and_then(|t| t.get(key)?.get("path")?.as_str().map(str::to_string))
+        .map(|rel| super::paths::lexical_normalize(&entry_dir.join(rel)))
+    else {
+        return line.to_string();
+    };
+    let named: Vec<String> = features
+        .iter()
+        .filter(|f| crate::orchestration::facade::crate_declares_feature(&dir, f))
+        .filter(|f| !line.contains(&format!("\"{f}\"")))
+        .cloned()
+        .collect();
+    if named.is_empty() {
+        return line.to_string();
+    }
+    if let Some(at) = line.find("features = [") {
+        let at = at + "features = [".len();
+        let sep = if line[at..].starts_with(']') {
+            ""
+        } else {
+            ", "
+        };
+        return format!("{}{}{sep}{}", &line[..at], quoted_list(&named), &line[at..]);
+    }
+    match line.rfind('}') {
+        Some(at) => format!(
+            "{}, features = [{}] {}",
+            line[..at].trim_end(),
+            quoted_list(&named),
+            &line[at..]
+        ),
+        None => line.to_string(),
+    }
 }
 
 /// Render `src/main.rs` (or `src/lib.rs` for a Zephyr staticlib).
@@ -781,6 +931,20 @@ pub fn render_source(spec: &EntrySpec, board: &BoardFacts) -> String {
     // `esp_app_desc!()` both arrive here without this file knowing either.
     if !board.crate_root_extra.is_empty() {
         out.push_str(board.crate_root_extra.trim_end());
+        out.push_str("\n\n");
+    }
+
+    // RFC-0071 D13 — the backend registration `nros::main!` expands, defined
+    // above it so the expansion reaches it by bare name. It used to live in
+    // the image's selection package.
+    if let Some(sel) = &spec.selection
+        && !sel.registration.is_empty()
+    {
+        out.push_str(DERIVED_SOURCE_BEGIN);
+        out.push('\n');
+        out.push_str(sel.registration.trim_end());
+        out.push('\n');
+        out.push_str(DERIVED_SOURCE_END);
         out.push_str("\n\n");
     }
 
@@ -896,6 +1060,77 @@ mod tests {
         assert!(!m.contains("deploy"), "{m}");
     }
 
+    /// RFC-0071 D13 — the entry states the derived features itself and names
+    /// no selection package; the registration macros sit above `nros::main!`.
+    #[test]
+    fn the_entry_states_its_own_selection_and_registration() {
+        let mut s = spec();
+        s.selection = Some(crate::orchestration::facade::EntrySelection {
+            nros_features: vec!["needs-type-descriptors".into(), "ros-humble".into()],
+            board_features: vec!["rmw-cyclonedds".into(), "ros-humble".into()],
+            backend_features: vec!["ros-humble".into()],
+            registration:
+                "#[allow(unused_macros)]\nmacro_rules! __nros_register_backends { () => {{}}; }\n"
+                    .into(),
+        });
+        let m = render_manifest(
+            &s,
+            &hosted(),
+            Path::new("/ws/build/posix-cyclonedds/linux_entry"),
+        )
+        .unwrap();
+        assert!(!m.contains("_nros_selection"), "{m}");
+        assert!(
+            m.contains(
+                "features = [\"alloc\", \"rmw-cffi\", \"macros\", \"needs-type-descriptors\", \"ros-humble\"]"
+            ),
+            "{m}"
+        );
+        assert!(
+            m.contains("default-features = false, features = [\"rmw-cyclonedds\", \"ros-humble\""),
+            "{m}"
+        );
+        let src = render_source(&s, &hosted());
+        let reg = src
+            .find("macro_rules! __nros_register_backends")
+            .expect("registration");
+        assert!(reg < src.find("nros::main!(").unwrap(), "{src}");
+    }
+
+    /// A backend dependency line gains the backend features its crate
+    /// declares; any other line is left alone.
+    #[test]
+    fn a_backend_line_gains_only_the_features_its_crate_declares() {
+        let t = tempfile::tempdir().unwrap();
+        let be = t.path().join("rmw/nros-rmw-zenoh");
+        std::fs::create_dir_all(&be).unwrap();
+        std::fs::write(
+            be.join("Cargo.toml"),
+            "[package]\nname = \"nros-rmw-zenoh\"\n[features]\nros-humble = []\n",
+        )
+        .unwrap();
+        let entry = t.path().join("e");
+        let feats = vec!["ros-humble".to_string(), "safety-e2e".to_string()];
+        assert_eq!(
+            with_backend_features(
+                "nros-rmw-zenoh = { path = \"../rmw/nros-rmw-zenoh\", default-features = false, optional = true }",
+                &entry,
+                &feats,
+            ),
+            "nros-rmw-zenoh = { path = \"../rmw/nros-rmw-zenoh\", default-features = false, optional = true, features = [\"ros-humble\"] }"
+        );
+        assert_eq!(
+            with_backend_features(
+                "nros-rmw-zenoh = { path = \"../rmw/nros-rmw-zenoh\", features = [\"platform-zephyr\"] }",
+                &entry,
+                &feats,
+            ),
+            "nros-rmw-zenoh = { path = \"../rmw/nros-rmw-zenoh\", features = [\"ros-humble\", \"platform-zephyr\"] }"
+        );
+        let other = "zephyr = \"0.1.0\"";
+        assert_eq!(with_backend_features(other, &entry, &feats), other);
+    }
+
     fn spec() -> EntrySpec {
         EntrySpec {
             image_id: "linux".to_string(),
@@ -914,7 +1149,7 @@ mod tests {
                 ),
             ],
             nano_ros_root: PathBuf::from("/nros"),
-            facade_dir: Some(PathBuf::from("/ws/build/nros/nros-selection/linux_entry")),
+            selection: None,
             bringup_deps: Vec::new(),
             west: None,
         }

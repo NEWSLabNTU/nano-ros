@@ -251,10 +251,10 @@ setup:
 #   building `linux_rust_qos` without its RMW, ROS edition and capability
 #   features. Run `nros configure` first if this Entry needs them (issue 0937).
 #
-# That warning is GONE (issue 0831): a missing facade is now written from the
-# entry `nros build` just generated, and refused only if it cannot be. Keep the
-# codegen step anyway — sync is also what produces the generated message crates,
-# and healing per image is a repair, not the intended order.
+# That warning is GONE (issue 0831), and since RFC-0071 D13 (phase-531 W5) so
+# is the facade for a generated entry: the entry states its own features. Keep
+# the codegen step anyway — sync is also what produces the generated message
+# crates.
 #
 # `host-tests` called this recipe directly and ran NO codegen step anywhere in
 # the job, so the facades never existed there. The features workspace declares

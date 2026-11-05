@@ -275,7 +275,7 @@ PY
 if [ -n "${entry_hits//[$'\n']/}" ]; then
     echo "FAIL: workspace entry package(s) restate a declared axis:"
     echo "$entry_hits" | while read -r f; do [ -n "$f" ] && note "$f"; done
-    note "Depend on the generated <entry>_nros_selection facade instead;"
+    note "Depend on the generated <entry>_nros_derived adapter instead;"
     note "\`nros configure\` derives edition/RMW/capabilities from system.toml."
     fail=1
 fi

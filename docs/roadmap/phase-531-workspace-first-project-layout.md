@@ -3,8 +3,10 @@
 **Status (2026-11-05). OPEN — W1 (the measurement), W2 (the gates and the
 sync warning), W3 (the generated launch file) and W4 (the workspace scaffold
 and the node rung) done; W5 step 1 (the design: the generated entry drops its
-selection package, an owned entry keeps a renamed adapter) merged; the rest of
-W5 (one build road) next.**
+selection package, an owned entry keeps a renamed adapter) done; W5 step 2
+(its implementation, with section sizes measured identical) in review; W5
+step 3 measured (finding 3 already holds on the workspace road; finding 4
+open).**
 Implements [RFC-0121](../design/0121-workspace-first-project-layout.md) D1 to
 D8, with its amendments to RFC-0098, RFC-0116 D6, RFC-0026/0066, RFC-0100,
 RFC-0118 D2 and RFC-0120.
@@ -369,6 +371,80 @@ Steps, each its own pull request:
   (`entry_names::adapter_crate_name`), and a materialised entry still follows
   an RMW or edition change in `system.toml` on its next build;
 - `selection_crate_name` survives only for the leaf road W7 step 3 deletes.
+
+**Status: step 1 done (PR #3147); step 2 in review (PR #3149, 2026-11-05).**
+Step 2 does the following:
+
+- `builder::entry` states `facade::entry_selection` on the entry's own lines.
+  Each derived feature is marked `# nros-derived:`, and the two macros sit
+  between `// nros-derived: begin` / `end` markers.
+- `nros::main!` has one call shape, through `registration_source`. Its two
+  definers are the entry's own source and a `use` from an adapter the
+  manifest names.
+- The facade heal and refresh are gone from `cmd/build.rs`.
+- `write_facade` writes `<entry>_nros_derived` under `generated/nros-derived/`,
+  named by `nros_orchestration_ir::entry_names::adapter_crate_name`. That
+  module also holds `entry_package_name`, re-exported from `leaf_system`. A
+  manifest still naming `<entry>_nros_selection` keeps that spelling and gets
+  a warning.
+- `nros materialize` hands the marked features and the macros back to the
+  adapter (`builder::materialize::owned_manifest` / `owned_source`).
+- `nros build` writes an owned entry's adapter before cargo runs. This was
+  measured to be needed: `nros configure` finds no materialised entry, because
+  `generate_facade_crates` reads cargo workspace members and a workspace has
+  no root `Cargo.toml` (RFC-0098 D9). A materialised entry used to build only
+  because the generated entry's facade had the same directory.
+- `nros new entry` names the adapter.
+- `check-node-package-selection-free` refuses the adapter spelling in a node
+  package.
+
+Section sizes were compared before and after, with the CLI at main against
+this change (`size -A`, debug profile, `nros build <image>`). The images are
+from `examples/workspaces/rust` unless noted:
+
+| image | .text | .rodata | .data | .bss | before = after |
+| --- | --- | --- | --- | --- | --- |
+| `linux` (zenoh) | 958,147 | 158,932 | 95,768 | 260,090 | identical |
+| `linux_cyclonedds` | 1,289,859 | 198,964 | 113,056 | 53,642 | identical |
+| `linux_xrce` | 666,931 | 100,484 | 94,000 | 35,442 | identical |
+| `freertos` (mps2-an385, thumbv7m) | 572,520 | — | 5,064 | 1,058,096 | identical |
+| `threadx` (threadx-linux) | 540,019 | 90,315 | 3,608 | 4,462,160 | identical |
+| `bridge-cyclonedds:linux` (zenoh + cyclonedds, registration from the entry's own macros) | 1,654,227 | 271,452 | 38,832 | 302,018 | identical |
+| `zephyr` (native_sim/native/64, Zephyr 3.7 west; `(gated)` registration; berkeley `size`) | 962,710 text | — | 51,351 | 1,844,656 | identical |
+| `linux`, materialised (`nros materialize linux`, then `nros build linux` through `linux_entry_nros_derived`) | 958,147 | 158,932 | 95,768 | 260,090 | identical to the generated entry |
+
+NuttX cannot build on the measuring host: the NuttX kernel export fails
+before any change is involved. Its comparison is left to the tier-2 matrix
+run on CI, and nothing is claimed for it here.
+
+**Step 3, measured (2026-11-05).** W1 finding 3 described the leaf road's
+`[env]` sidecar: the workspace road passes `Refused` for the payload classes
+and the take buffer there. That sidecar is not the workspace road's carrier.
+A workspace image with a composed inventory writes a sizing descriptor
+(`write_for_model`, phase-457-payload W2), and `nros-rmw-zenoh` sizes its
+pools from it. The descriptor states `subscriber_count` and
+`subscription_entities`; `max_wire_bound_bytes` is derived, or refused with
+its reason. Derivation was measured through the `[env]` rows as well, with
+the leaf road's `join` and `take_buffer::derive` over the same inventory and
+the `<ws>/generated/` bound tables:
+
+- `linux_service_server` (subscribes to nothing) now states
+  `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS = "0"`. Its `.bss` stays 110,514 B with
+  and without that row, because the descriptor had already sized
+  `LARGE_PAYLOADS` to zero;
+- every image subscribing to `std_msgs/msg/String` refuses on both carriers
+  (an unbounded member);
+- the take buffer refuses on both, over the workspace's whole `generated/`
+  closure (38 unbounded types).
+
+So that change was dropped: a second carrier for a fact the descriptor
+already delivers is what CLAUDE.md's "never re-carry a fact through an env
+knob" forbids. What remains is a precision gap, not a regression. The take
+buffer's closure is the workspace's `generated/` tree, not the image's own,
+so an image can refuse because a type it does not link is unbounded. W1
+finding 4 (`entities = "census"` from a bringup row) is open. Its 13 sites
+are NuttX C/C++ leaves (12) and one `packages/testing` bin, which move in
+W6 / phase-535, and NuttX cannot build on this host.
 
 ### W6 — Migrate the tree
 

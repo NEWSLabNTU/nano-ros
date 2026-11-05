@@ -120,8 +120,32 @@ pub fn run(args: Args) -> Result<()> {
         .wrap_err_with(|| format!("reading {}", manifest.display()))?;
     let rebased = crate::builder::materialize::rebase_manifest_paths(&text, &src, &dest)
         .map_err(|e| eyre::eyre!("{}: {e}", manifest.display()))?;
+    // RFC-0071 D13 / RFC-0065 D5 — the derived features and the registration
+    // move to the owned entry's adapter crate, which `nros configure`
+    // regenerates, so the derivation stays live. `dest` is `<ws>/src/<entry>`.
+    let adapter_rel = format!(
+        "../../generated/{}/{pkg}",
+        nros_orchestration_ir::entry_names::ADAPTER_DIR
+    );
+    let rebased = crate::builder::materialize::owned_manifest(&rebased, &pkg, &adapter_rel);
+    for name in ["main.rs", "lib.rs"] {
+        let path = dest.join("src").join(name);
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            std::fs::write(&path, crate::builder::materialize::owned_source(&text))
+                .wrap_err_with(|| format!("writing {}", path.display()))?;
+        }
+    }
     std::fs::write(&manifest, rebased)
         .wrap_err_with(|| format!("writing {}", manifest.display()))?;
+    // Write the adapter now, so the manifest resolves before the next build
+    // (an editor's cargo loads it at once). `nros build` rewrites it each time.
+    write_adapter_now(
+        &root,
+        &plan.qualified,
+        &pkg,
+        &dest,
+        args.nano_ros_path.as_deref(),
+    );
 
     crate::builder::materialize::Stamp::current(
         &image_id,
@@ -141,6 +165,59 @@ pub fn run(args: Args) -> Result<()> {
          `nros build` warns if the shape this was cut for moves."
     );
     Ok(())
+}
+
+/// RFC-0071 D13 — write the owned entry's adapter crate straight away.
+///
+/// Best effort, and only a note when it cannot: `nros build` writes the same
+/// adapter before its cargo step, so a miss here costs an editor's first load,
+/// never a build. The bringup is the package named before the `:` of the
+/// qualified image, found among `src/*` by directory or `package.xml` name.
+fn write_adapter_now(
+    root: &std::path::Path,
+    qualified: &str,
+    pkg: &str,
+    dest: &std::path::Path,
+    sdk_root: Option<&std::path::Path>,
+) {
+    let bringup = qualified.split(':').next().unwrap_or_default();
+    let found = std::fs::read_dir(root.join("src"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|d| d.join("system.toml").is_file())
+        .find(|d| {
+            d.file_name().is_some_and(|n| n == bringup)
+                || std::fs::read_to_string(d.join("package.xml"))
+                    .is_ok_and(|x| x.contains(&format!("<name>{bringup}</name>")))
+        });
+    let result = found
+        .ok_or_else(|| format!("no bringup `{bringup}` under src/"))
+        .and_then(|dir| {
+            let raw =
+                std::fs::read_to_string(dir.join("system.toml")).map_err(|e| e.to_string())?;
+            let sys =
+                toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+                    .map_err(|e| e.to_string())?;
+            crate::orchestration::facade::write_facade(
+                pkg,
+                dest,
+                &dest.join("Cargo.toml"),
+                &dir,
+                &sys,
+                &root.join("generated"),
+                sdk_root,
+            )
+            .map_err(|e| format!("{e:#}"))
+        });
+    match result {
+        Ok(Some(f)) => println!("wrote {}", f.dir.display()),
+        Ok(None) => {}
+        Err(why) => {
+            println!("note: the adapter crate was not written here ({why}); `nros build` writes it")
+        }
+    }
 }
 
 /// The `entry_kind` token recorded in the stamp.

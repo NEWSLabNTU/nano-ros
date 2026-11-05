@@ -1831,8 +1831,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         .as_deref()
         .and(leaf_decl.as_ref())
         .and_then(|leaf| leaf.rmw.as_ref())
-        .map(|_| match entry_selection_crate(&manifest_dir) {
-            Some(sel) => quote! { ::#sel::__nros_register_backends!(gated); },
+        .map(|_| match registration_source(&manifest_dir) {
+            Some(import) => quote! {
+                #import
+                __nros_register_backends!(gated);
+            },
             None => no_selection_error("this Zephyr entry's backend registration"),
         })
         .unwrap_or_default();
@@ -2881,15 +2884,20 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         let (register_calls, typed_register_calls): (
             Vec<proc_macro2::TokenStream>,
             Vec<proc_macro2::TokenStream>,
-        ) = match entry_selection_crate(&manifest_dir) {
-            Some(sel) => (
-                vec![quote! { ::#sel::__nros_register_backends!(); }],
+        ) = match registration_source(&manifest_dir) {
+            // RFC-0071 D13 — one call shape: the macros are the generated
+            // entry's own, or imported from an owned entry's adapter.
+            Some(import) => (
+                vec![quote! {
+                    #import
+                    __nros_register_backends!();
+                }],
                 read_register_types(cfg_path)
                     .into_iter()
                     .filter_map(|(rust_path, rmw)| {
                         syn::parse_str::<SynPath>(&rust_path)
                             .ok()
-                            .map(|path| quote! { ::#sel::__nros_register_type!(#rmw, #path); })
+                            .map(|path| quote! { __nros_register_type!(#rmw, #path); })
                     })
                     .collect(),
             ),
@@ -3077,43 +3085,86 @@ fn reroot_through(path: &SynPath, sel: &Ident) -> SynPath {
     p
 }
 
-/// `Some(<pkg>_nros_selection)` when the entry's manifest names its generated
-/// selection package in any dependency table — whether or not it also names
-/// its board crate (unlike [`leaf_selection_crate`], which re-roots the board
-/// path and so must defer to a direct board dependency).
+/// RFC-0071 D13 — where an entry's registration macros come from, as the
+/// tokens that bring them into scope.
 ///
-/// RFC-0071 D11: the selection package is where an image's backend
-/// registration is generated, so this is the only route by which the macro
-/// can register a backend without naming it.
-fn entry_selection_crate(manifest_dir: &Path) -> Option<Ident> {
+/// * an OWNED entry whose manifest names its adapter crate
+///   (`<entry>_nros_derived`, or the migrating `<entry>_nros_selection`):
+///   `use ::<adapter>::{__nros_register_backends, __nros_register_type};`;
+/// * a GENERATED entry, whose own source defines both above `nros::main!`:
+///   nothing to import;
+/// * neither: `None`, and the caller emits [`no_selection_error`].
+///
+/// Either way the expansion calls `__nros_register_backends!(…)` by bare name,
+/// so there is one call shape and two definers. `#[allow(unused_imports)]`
+/// because the Zephyr arm uses only the first macro.
+fn registration_source(manifest_dir: &Path) -> Option<proc_macro2::TokenStream> {
+    if let Some(adapter) = entry_adapter_crate(manifest_dir) {
+        return Some(quote! {
+            #[allow(unused_imports)]
+            use ::#adapter::{__nros_register_backends, __nros_register_type};
+        });
+    }
+    entry_defines_registration(manifest_dir).then(proc_macro2::TokenStream::new)
+}
+
+/// `Some(<adapter>)` when the entry's manifest names its generated adapter
+/// crate in any dependency table: `<entry>_nros_derived`
+/// ([`nros_orchestration_ir::entry_names::adapter_crate_name`]), or the
+/// previous spelling `<entry>_nros_selection` while an owned entry migrates.
+/// The leaf-shaped selection package of the seven fixture entries carries the
+/// macros under that spelling too, until phase-531 W7 step 3.
+fn entry_adapter_crate(manifest_dir: &Path) -> Option<Ident> {
     let pkg = entry_env("CARGO_PKG_NAME")?.into_string().ok()?;
     let raw = std::fs::read_to_string(manifest_dir.join("Cargo.toml")).ok()?;
     let doc: toml::Table = toml::from_str(&raw).ok()?;
-    let sel = nros_orchestration_ir::leaf_system::selection_crate_name(&pkg);
+    let names = [
+        nros_orchestration_ir::entry_names::adapter_crate_name(&pkg),
+        nros_orchestration_ir::entry_names::legacy_adapter_crate_name(&pkg),
+    ];
     let scopes = std::iter::once(&doc).chain(
         doc.get("target")
             .and_then(|t| t.as_table())
             .into_iter()
             .flat_map(|t| t.values().filter_map(|v| v.as_table())),
     );
-    let mut found = false;
+    let mut keys: Vec<String> = Vec::new();
     for scope in scopes {
         if let Some(deps) = scope.get("dependencies").and_then(|d| d.as_table()) {
-            found |= deps.keys().any(|k| k.replace('-', "_") == sel);
+            keys.extend(deps.keys().map(|k| k.replace('-', "_")));
         }
     }
-    found.then(|| Ident::new(&sel, Span::call_site()))
+    names
+        .into_iter()
+        .find(|n| keys.contains(n))
+        .map(|n| Ident::new(&n, Span::call_site()))
 }
 
-/// A registration that has no selection package to come from is a build
-/// error naming the fix, never a silent omission: without it the cffi registry
-/// stays empty and `Executor::open` fails at run time with `NoBackend`.
+/// RFC-0071 D13 — does the entry's own source define the registration
+/// macros? A generated entry (`builder::entry::render_source`) writes
+/// `__nros_register_backends!` and `__nros_register_type!` at crate root,
+/// above its `nros::main!`, so the expansion calls them by bare name.
+///
+/// Asked of the file rather than assumed, so that a hand-written entry with
+/// neither the macros nor a selection package gets [`no_selection_error`]'s
+/// message instead of rustc's "cannot find macro".
+fn entry_defines_registration(manifest_dir: &Path) -> bool {
+    ["src/main.rs", "src/lib.rs"].iter().any(|f| {
+        std::fs::read_to_string(manifest_dir.join(f))
+            .is_ok_and(|s| s.contains("macro_rules! __nros_register_backends"))
+    })
+}
+
+/// A registration that has no source to come from is a build error naming
+/// the fix, never a silent omission: without it the cffi registry stays empty
+/// and `Executor::open` fails at run time with `NoBackend`.
 fn no_selection_error(what: &str) -> proc_macro2::TokenStream {
     let msg = format!(
-        "nros::main!: {what} comes from the image's generated selection package \
-         (`<package>_nros_selection`, RFC-0071 D11), and this entry's Cargo.toml \
-         does not depend on it. Run `nros sync` (or `nros build`), which writes \
-         the package and the dependency."
+        "nros::main!: {what} is generated by `nros build` into the image's \
+         generated entry (RFC-0071 D13), or, for an entry you own, into its \
+         adapter crate (`<package>_nros_derived`). This entry has neither. \
+         Build it with `nros build`; an owned entry depends on its adapter \
+         at `generated/nros-derived/<package>`, which `nros configure` writes."
     );
     quote! { ::core::compile_error!(#msg); }
 }
@@ -5478,8 +5529,69 @@ mod bridge_rmw_tests {
     fn a_missing_selection_package_is_a_build_error_naming_the_fix() {
         let ts = no_selection_error("this bridge entry's backend registration").to_string();
         assert!(ts.contains("compile_error"), "{ts}");
-        assert!(ts.contains("nros sync"), "{ts}");
-        assert!(ts.contains("_nros_selection"), "{ts}");
+        assert!(ts.contains("nros build"), "{ts}");
+        assert!(ts.contains("_nros_derived"), "{ts}");
+        assert!(ts.contains("nros configure"), "{ts}");
+    }
+
+    /// RFC-0071 D13 — an owned entry imports the macros from the adapter its
+    /// manifest names, under either spelling; the new one wins.
+    #[test]
+    fn an_owned_entry_imports_from_its_adapter() {
+        let dir = std::env::temp_dir().join(format!("nros-macros-adapter-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        super::ENTRY_ENV_OVERRIDE.with(|m| {
+            m.borrow_mut()
+                .insert("CARGO_PKG_NAME".into(), "demo_entry".into());
+        });
+        let write = |deps: &str| {
+            std::fs::write(
+                dir.join("Cargo.toml"),
+                format!("[package]\nname = \"demo_entry\"\n\n[dependencies]\n{deps}"),
+            )
+            .unwrap();
+        };
+        write("demo_entry_nros_derived = { path = \"x\" }\n");
+        let ts = super::registration_source(&dir)
+            .expect("adapter")
+            .to_string();
+        assert!(ts.contains("use :: demo_entry_nros_derived ::"), "{ts}");
+        write("demo_entry_nros_selection = { path = \"x\" }\n");
+        let ts = super::registration_source(&dir)
+            .expect("legacy")
+            .to_string();
+        assert!(ts.contains("use :: demo_entry_nros_selection ::"), "{ts}");
+        write("");
+        assert!(super::registration_source(&dir).is_none());
+        std::fs::write(
+            dir.join("src/main.rs"),
+            "macro_rules! __nros_register_backends { () => {{}}; }\n",
+        )
+        .unwrap();
+        assert!(
+            super::registration_source(&dir)
+                .expect("generated")
+                .is_empty()
+        );
+        super::ENTRY_ENV_OVERRIDE.with(|m| m.borrow_mut().clear());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// RFC-0071 D13 — the macros a generated entry defines in its own source
+    /// are found; an entry without them is not.
+    #[test]
+    fn a_generated_entry_defines_its_registration_in_its_source() {
+        let dir = std::env::temp_dir().join(format!("nros-macros-d13-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src/main.rs"), "nros::main!(launch = \"b\");\n").unwrap();
+        assert!(!super::entry_defines_registration(&dir));
+        std::fs::write(
+            dir.join("src/main.rs"),
+            "macro_rules! __nros_register_backends { () => {{}}; }\nnros::main!(launch = \"b\");\n",
+        )
+        .unwrap();
+        assert!(super::entry_defines_registration(&dir));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
 

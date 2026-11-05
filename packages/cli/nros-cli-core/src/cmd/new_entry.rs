@@ -385,15 +385,15 @@ fn render_package_xml(name: &str, bringup: &str, components: &[String]) -> Strin
     )
 }
 
-/// Where `nros sync` writes this entry's selection package
-/// (`<ws>/generated/nros-selection/<entry>`, `generate_facade_crates`), as a
+/// Where `nros configure` writes this entry's adapter crate
+/// (`<ws>/generated/nros-derived/<entry>`, `generate_facade_crates`), as a
 /// path from the entry directory. `nros::main!` takes the image's backend
-/// registration from that package, so the entry must depend on it (RFC-0071
-/// D11, issue 2152).
+/// registration from that crate, so the entry must depend on it (RFC-0071
+/// D11/D13, issue 2152).
 fn selection_rel(workspace_root: &Path, entry_dir: &Path, name: &str) -> String {
     let target = workspace_root
         .join("generated")
-        .join("nros-selection")
+        .join(nros_orchestration_ir::entry_names::ADAPTER_DIR)
         .join(name);
     let rel = pathdiff::diff_paths(&target, entry_dir).unwrap_or(target);
     rel.components()
@@ -459,10 +459,10 @@ default = ["rmw-{rmw}"]
 rmw-{rmw} = ["dep:nros-rmw-{rmw}"]
 
 [dependencies]
-# The image's selection package, which `nros configure` writes from the bringup:
+# This entry's adapter crate, which `nros configure` writes from the bringup:
 # the RMW, edition and capability features, and the backend registration
 # `nros::main!` expands. It does not exist until the first `nros configure`.
-{name}_nros_selection = {{ path = "{selection}" }}
+{name}_nros_derived = {{ path = "{selection}" }}
 nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }}
 nros-board-zephyr = {{ version = "*" }}
 nros-platform = {{ version = "*", default-features = false, features = ["platform-zephyr"] }}
@@ -644,19 +644,19 @@ CONFIG_MAX_PTHREAD_MUTEX_COUNT=64
 mod tests {
     use super::*;
 
-    /// Issue 2152 — the entry depends on the selection package `nros sync`
-    /// writes for it, at the place sync writes it; `nros::main!` takes the
-    /// backend registration from there.
+    /// Issue 2152 / RFC-0071 D13 — the entry depends on the adapter crate
+    /// `nros configure` writes for it, at the place it writes it;
+    /// `nros::main!` takes the backend registration from there.
     #[test]
-    fn the_entry_depends_on_its_selection_package() {
+    fn the_entry_depends_on_its_adapter_crate() {
         let ws = std::path::Path::new("/ws");
         let rel = selection_rel(ws, &ws.join("src/zephyr_entry"), "zephyr_entry");
-        assert_eq!(rel, "../../generated/nros-selection/zephyr_entry");
+        assert_eq!(rel, "../../generated/nros-derived/zephyr_entry");
         let toml = render_cargo_toml("zephyr_entry", "native_sim", "zenoh", &[], &rel);
         let v: toml::Value = toml::from_str(&toml).expect("valid manifest");
         assert_eq!(
-            v["dependencies"]["zephyr_entry_nros_selection"]["path"].as_str(),
-            Some("../../generated/nros-selection/zephyr_entry")
+            v["dependencies"]["zephyr_entry_nros_derived"]["path"].as_str(),
+            Some("../../generated/nros-derived/zephyr_entry")
         );
     }
 
