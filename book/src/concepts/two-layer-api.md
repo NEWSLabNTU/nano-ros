@@ -7,12 +7,12 @@ nano-ros exposes the same communication primitives — subscriptions, publishers
 | **Verb** | `Node::create_polling_*` (receive side), `Node::create_publisher` / `create_client` | `Executor::register_*`, or rclrs's `Node::create_subscription(topic, callback)` / `create_service(name, callback)` |
 | **Returns** | Owned handle | Handle ID + dispatched closure |
 | **Receive shape** | `take()` / `call()` → `Promise<T>` / `try_accept_goal(...)` | Closure runs on rx / reply / timer fire |
-| **Scheduler** | Caller (RTIC, embassy, app loop) | `Executor::spin_once` |
-| **Typical use** | RTIC tasks, single-task FreeRTOS, RT-bounded loops | Callback-shaped apps, multi-handler servers |
+| **Scheduler** | Caller (app loop, RTOS task) | `Executor::spin_once` |
+| **Typical use** | Single-task FreeRTOS, RT-bounded loops | Callback-shaped apps, multi-handler servers |
 
 ## Rationale
 
-Embedded callers want both. RTIC owns scheduling and refuses to hand its loop to a library; a FreeRTOS task-per-entity port wants tight `take` polling. None of those fit the L2 callback model.
+Embedded callers want both. A bare-metal loop that owns its scheduling will not hand that loop to a library; a FreeRTOS task-per-entity port wants tight `take` polling. None of those fit the L2 callback model.
 
 But a posix app that handles a dozen topics + a couple of services + an action server wants L2 — write one closure per entity and let `spin_once()` route events. Forcing it through L1 means writing a manual dispatcher.
 
@@ -69,7 +69,7 @@ let publisher = {
 ## Picking the right layer
 
 **Use L1 (`Node::create_*`) when:**
-- The caller has its own scheduling primitive (RTIC dispatcher, embassy task, FreeRTOS task per entity).
+- The caller has its own scheduling primitive (a FreeRTOS task per entity, a bare-metal loop).
 - The flow is fundamentally request-response — service-client `Promise<Reply>` and action-client `send_goal` → `get_result` work this way.
 - The receive logic isn't simple enough to express as a one-shot closure — e.g. a Fibonacci server that publishes feedback in a loop after accepting a goal.
 - You want no executor arena overhead (the L2 path stores the closure + its captures inline in the arena; the arena byte budget is per-build-tunable but non-zero).

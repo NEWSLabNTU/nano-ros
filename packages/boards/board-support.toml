@@ -258,7 +258,10 @@ maintainers = []
 # book's board page — phase-532 W3, RFC-0123 D3):
 #   Was: phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic`
 #   feature — one crate, two entry shapes (direct-exec + RTIC), one witness row.
-notes = "One crate, two entry shapes: direct execution and RTIC (the `rtic` feature)."
+#   The RTIC shape has no evidence row of its own (no probe track, no book
+#   run), so the user-facing note names only the direct-exec entry (RFC-0114
+#   D10); RTIC is documented in nano-ros Internals, realtime/rtic.md.
+notes = "One crate; the book's entry shape is direct execution (the `board-entry` feature)."
 
 # phase-337 W2 — the Zephyr Cortex-M witness: a real 32-bit Cortex-M3 running
 # Zephyr's OWN IP stack over `eth_smsc911x`. There is NO board crate — the

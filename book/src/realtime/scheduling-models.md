@@ -28,8 +28,8 @@ Two key concepts recur across all models:
 | **Soft** | Deadline should rarely be missed | Degraded quality (dropped frame, late message) |
 
 nano-ros targets **soft real-time** by default (bounded message latency,
-bounded memory). Hard real-time is achievable on RTIC and with careful
-priority assignment on RTOS platforms.
+bounded memory). Hard real-time is achievable with careful priority
+assignment on RTOS platforms.
 
 ## Scheduling Algorithms
 
@@ -65,7 +65,7 @@ Where `C_i` is worst-case execution time, `T_j` is the period of
 higher-priority task `j`. The task meets its deadline if `R_i ≤ D_i`.
 
 **Used by**: FreeRTOS, ThreadX, NuttX (SCHED_FIFO), Zephyr (preemptive
-threads), RTIC.
+threads).
 
 ### Round-Robin (Time-Sliced)
 
@@ -132,7 +132,7 @@ This is the most deterministic scheduling model — no jitter from software
 task switching, no priority inversion, and worst-case latency is bounded by
 the longest critical section that disables interrupts.
 
-**Used by**: RTIC (exclusively), bare-metal interrupt handlers.
+**Used by**: bare-metal interrupt handlers.
 
 ### Earliest Deadline First (EDF)
 
@@ -163,53 +163,6 @@ is decided by the realizer — see the generated
 [Scheduling Wiring Matrix](../reference/sched-matrix.md).
 
 ## Platform Scheduling Comparison
-
-### RTIC (ARM Cortex-M)
-
-RTIC is not an RTOS — it is a concurrency framework that compiles directly
-to hardware interrupt handlers. There is no scheduler, no task control
-blocks, and no context switch overhead.
-
-| Property | Value |
-|----------|-------|
-| **Model** | Interrupt-driven (NVIC hardware scheduling) |
-| **Preemption** | Yes — hardware interrupt nesting |
-| **Priority levels** | 4–16 (depends on Cortex-M variant) |
-| **Priority direction** | Lower number = higher priority (ARM convention) |
-| **Context switch** | 12 cycles (Cortex-M3 tail-chain) |
-| **Mutual exclusion** | Stack Resource Policy (SRP) — compile-time deadlock-free |
-| **Scheduling analysis** | Fully static — all priorities and resources known at compile time |
-
-RTIC's key innovation is the **Stack Resource Policy (SRP)**: shared
-resources are protected by ceiling-based priority elevation, not locks. The
-compiler proves at build time that no deadlock or unbounded priority
-inversion can occur. This gives interrupt-driven scheduling the safety of a
-cooperative model.
-
-```rust
-#[rtic::app(device = stm32f4xx_hal::pac)]
-mod app {
-    #[task(priority = 2, shared = [sensor_data])]
-    async fn read_sensor(mut ctx: read_sensor::Context) {
-        ctx.shared.sensor_data.lock(|data| {
-            *data = read_adc();  // runs at ceiling priority
-        });
-    }
-
-    #[task(priority = 1, shared = [sensor_data])]
-    async fn publish(mut ctx: publish::Context) {
-        ctx.shared.sensor_data.lock(|data| {
-            node.publish(*data);  // cannot deadlock — SRP guarantee
-        });
-    }
-}
-```
-
-**nano-ros integration**: RTIC tasks call nano-ros directly — no executor
-needed. Each RTIC task can own a publisher, subscription, or service handle.
-The RTIC talker in the Rust language workspace, `examples/workspaces/rust`,
-shows it: a node package of its own, built by a bare-metal image row of the
-workspace's `pubsub_bringup`.
 
 ### FreeRTOS
 
@@ -444,7 +397,6 @@ The classic example (from the Mars Pathfinder incident, 1997):
 |----------|----------|-----------|
 | **Priority inheritance** | Mutex holder inherits highest waiter's priority | FreeRTOS, ThreadX, NuttX, Zephyr |
 | **Priority ceiling** | Mutex has fixed ceiling; holder runs at ceiling | NuttX (`PTHREAD_PRIO_PROTECT`) |
-| **SRP (Stack Resource Policy)** | Compile-time ceiling, zero runtime overhead | RTIC |
 | **Preemption-threshold** | Limit which tasks can preempt | ThreadX |
 | **Lock-free design** | Avoid shared resources entirely | nano-ros single-slot buffers |
 
@@ -455,17 +407,14 @@ single task, eliminating inter-task resource sharing for most use cases.
 
 ## Choosing a Scheduling Model
 
-| Criterion | RTIC | FreeRTOS | ThreadX | NuttX | Zephyr |
-|-----------|------|----------|---------|-------|--------|
-| **Determinism** | Best (hardware) | Good (FPP) | Good (FPP+threshold) | Good (POSIX FPP) | Good (FPP+coop+EDF) |
-| **Worst-case latency** | 12 cycles | ~80 cycles | ~60 cycles | Kernel-dependent | ~100 cycles |
-| **Priority inversion** | Impossible (SRP) | Inheritance | Inheritance + threshold | Inheritance + ceiling | Inheritance |
-| **Analysis tools** | Compile-time proofs | RMA/RTA | RMA/RTA + threshold | POSIX standard RMA | RMA + EDF analysis |
-| **Flexibility** | Low (ARM only) | Medium | Medium-High | High (POSIX) | Highest |
-| **RAM overhead** | Lowest (no TCBs) | Low | Low (threshold reduces stacks) | Medium (kernel) | Medium (kernel) |
-
-**Use RTIC** when: you need hard real-time on ARM Cortex-M, want
-compile-time scheduling proofs, and can live without dynamic task creation.
+| Criterion | FreeRTOS | ThreadX | NuttX | Zephyr |
+|-----------|----------|---------|-------|--------|
+| **Determinism** | Good (FPP) | Good (FPP+threshold) | Good (POSIX FPP) | Good (FPP+coop+EDF) |
+| **Worst-case latency** | ~80 cycles | ~60 cycles | Kernel-dependent | ~100 cycles |
+| **Priority inversion** | Inheritance | Inheritance + threshold | Inheritance + ceiling | Inheritance |
+| **Analysis tools** | RMA/RTA | RMA/RTA + threshold | POSIX standard RMA | RMA + EDF analysis |
+| **Flexibility** | Medium | Medium-High | High (POSIX) | Highest |
+| **RAM overhead** | Low | Low (threshold reduces stacks) | Medium (kernel) | Medium (kernel) |
 
 **Use FreeRTOS** when: you need a widely supported RTOS with a small
 footprint and a large ecosystem. Good for projects where portability across
@@ -488,7 +437,6 @@ priorities.
 
 - Liu, C.L. and Layland, J.W. (1973). "Scheduling Algorithms for Multiprogramming in a Hard-Real-Time Environment." *Journal of the ACM*, 20(1), 46–61. — The foundational paper for Rate-Monotonic Analysis.
 - Sha, L., Rajkumar, R., and Lehoczky, J.P. (1990). "Priority Inheritance Protocols: An Approach to Real-Time Synchronization." *IEEE Transactions on Computers*, 39(9), 1175–1185. — Priority inheritance and priority ceiling protocols.
-- Baker, T.P. (1991). "Stack-Based Scheduling of Realtime Processes." *Real-Time Systems*, 3(1), 67–99. — The Stack Resource Policy used by RTIC.
 - Wang, Y. and Saksena, M. (1999). "Scheduling Fixed-Priority Tasks with Preemption Threshold." *RTCSA*. — The theoretical basis for ThreadX's preemption-threshold.
 - Buttazzo, G.C. (2011). *Hard Real-Time Computing Systems: Predictable Scheduling Algorithms and Applications*. Springer. — Comprehensive textbook covering FPP, EDF, and hybrid approaches.
 

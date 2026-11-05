@@ -162,7 +162,7 @@ On bare-metal without an RTC, return monotonic time or zeros.
 
 ### Threading
 
-For single-threaded platforms (bare-metal, RTIC), provide no-op stubs.
+For single-threaded platforms (bare-metal), provide no-op stubs.
 For RTOS platforms, implement real task/mutex/condvar operations.
 
 **Task operations:**

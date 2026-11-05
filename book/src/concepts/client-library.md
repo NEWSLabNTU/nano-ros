@@ -54,7 +54,7 @@ In nano-ros, the same `Promise` carries a borrow of the standalone service clien
 
 ## No internal spin
 
-`rclcpp::spin(node)` blocks the calling thread inside the library and owns the dispatch loop. This works on Linux but cannot work on bare-metal: there is no thread to give up, and the application loop must remain in user code (for power management, interrupt servicing, smoltcp polling, RTIC integration).
+`rclcpp::spin(node)` blocks the calling thread inside the library and owns the dispatch loop. This works on Linux but cannot work on bare-metal: there is no thread to give up, and the application loop must remain in user code (for power management, interrupt servicing, smoltcp polling).
 
 nano-ros never owns the spin loop. The user *always* writes the loop:
 

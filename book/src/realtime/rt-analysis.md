@@ -259,7 +259,7 @@ Clippy cannot prove a loop terminates. A custom Dylint lint can check that:
 
 1. every `loop` block has a reachable `break` or `return`;
 2. every `while` condition involves a variable that the loop body modifies;
-3. a loop inside an RTIC `#[task]` function has an explicit iteration limit.
+3. a loop inside a task function has an explicit iteration limit.
 
 ## Detecting Recursion
 
@@ -350,7 +350,7 @@ impl<'tcx> LateLintPass<'tcx> for BlockingInAsync {
 | Lint | Purpose |
 |------|---------|
 | `blocking_in_async` | Detect std::thread::sleep, blocking I/O in async |
-| `unbounded_loop_in_task` | Flag loops without bounds in RTIC tasks |
+| `unbounded_loop_in_task` | Flag loops without bounds in task functions |
 | `heap_in_interrupt` | Detect allocation in `#[interrupt]` handlers |
 | `mutex_in_interrupt` | Flag std::sync::Mutex in interrupt context |
 | `float_in_isr` | Warn about FP operations in ISRs (soft-float targets) |
@@ -532,4 +532,3 @@ For certification (ISO 26262 ASIL C/D, DO-178C DAL A/B), dynamic measurement is 
 - [MIRAI Abstract Interpreter](https://github.com/facebookexperimental/MIRAI)
 - [heapless Crate](https://docs.rs/heapless)
 - [Embedded Rust Book](https://docs.rust-embedded.org/book/)
-- [RTIC Book](https://rtic.rs/)

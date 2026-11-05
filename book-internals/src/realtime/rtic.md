@@ -1,5 +1,13 @@
 # RTIC Integration
 
+> **For implementers.** This page documents a feature with no support-level
+> evidence row: RTIC is the `rtic` feature of the `nros-board-mps2-an385`
+> crate, it has no row of its own in `packages/boards/board-support.toml`, and
+> no probe track or book run exercises it. So the nano-ros Book does not teach
+> it (RFC-0114 D10: the book claims only what the registry backs). What
+> follows is the integration as built, for whoever maintains it or gives it a
+> registry row.
+
 RTIC ([Real-Time Interrupt-driven Concurrency](https://rtic.rs)) is a
 concurrency framework for ARM Cortex-M that compiles tasks directly to
 hardware interrupt handlers — no RTOS kernel, no task control blocks, no
@@ -7,10 +15,9 @@ software scheduler. nano-ros runs on top of RTIC by letting the framework
 own `fn main`, the scheduler, and the dispatchers, while nano-ros
 contributes one spin task and (optionally) one callback-dispatch task.
 
-This chapter is the user-facing tutorial for that integration. For the
-underlying design — why per-Node dispatch strategies, why tags instead of
-closures, why no `AsyncNode` trait yet — see the sibling internals page
-[Dispatch Strategy](dispatch-strategy.md).
+For the underlying design — why per-Node dispatch strategies, why tags
+instead of closures, why no `AsyncNode` trait yet — see the user book's
+[Dispatch Strategy](../../realtime/dispatch-strategy.html).
 
 ## The board key chooses RTIC
 
@@ -32,7 +39,7 @@ rtic_ws/
 ```
 
 `nros run` builds the image, boots it in QEMU and starts the router, as in
-[First Project](../get-started/first-project.md). The bringup's `system.toml`
+[First Project](../../get-started/first-project.html). The bringup's `system.toml`
 is the only place RTIC is named:
 
 ```toml
@@ -172,7 +179,7 @@ std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nr
 
 Dependencies and the class registration, nothing else. The `std_msgs` row is
 not even yours: the build writes it from `<depend>std_msgs</depend>` in
-`package.xml` ([The manifests](../build/growing-your-workspace.md#the-manifests)).
+`package.xml` ([The manifests](../../build/growing-your-workspace.html#the-manifests)).
 No board crate, no `rtic`, no PAC: those are the generated entry's.
 
 ## `DispatchStrategy::Inline` vs `Deferred`
@@ -305,14 +312,14 @@ through the first three:
 
 1. **An `[image.*]` key** — `panic`, `profile`, `features`: anything the
    image already declares. See
-   [Customising an entry](../build/growing-your-workspace.md#customising-an-entry).
+   [Customising an entry](../../build/growing-your-workspace.html#customising-an-entry).
 2. **`before_boot`** — not on RTIC. RTIC's `#[init]` owns the first statement,
    so the build refuses `before_boot` on an RTIC image; put pre-boot work in
    the board package (step 3) or in your own `#[init]` (step 4).
 3. **A board package** — hardware setup every image on the board needs
    (clocks, DMA, the monotonic) and the dispatcher list belong in the board's
    `init_hardware` and its RTIC support, in a
-   [board package](../extending/board-trait.md).
+   [board package](../../extending/board-trait.html).
 4. **`nros materialize <bringup>:<image>`** — the last resort, for hand-written tasks.
 
 `nros materialize` writes the image's generated entry into
@@ -440,16 +447,73 @@ Use one of these instead:
 - **RTIC**, as described on this page. RTIC's scheduling is analysable and
   `nros::main!` generates the task mapping, so the promise holds.
 
+## The RTIC scheduling model
+
+RTIC is not an RTOS — it is a concurrency framework that compiles directly
+to hardware interrupt handlers. There is no scheduler, no task control
+blocks, and no context switch overhead.
+
+| Property | Value |
+|----------|-------|
+| **Model** | Interrupt-driven (NVIC hardware scheduling) |
+| **Preemption** | Yes — hardware interrupt nesting |
+| **Priority levels** | 4–16 (depends on Cortex-M variant) |
+| **Priority direction** | Lower number = higher priority (ARM convention) |
+| **Context switch** | 12 cycles (Cortex-M3 tail-chain) |
+| **Mutual exclusion** | Stack Resource Policy (SRP) — compile-time deadlock-free |
+| **Scheduling analysis** | Fully static — all priorities and resources known at compile time |
+
+RTIC's key innovation is the **Stack Resource Policy (SRP)**: shared
+resources are protected by ceiling-based priority elevation, not locks. The
+compiler proves at build time that no deadlock or unbounded priority
+inversion can occur. This gives interrupt-driven scheduling the safety of a
+cooperative model.
+
+```rust
+#[rtic::app(device = stm32f4xx_hal::pac)]
+mod app {
+    #[task(priority = 2, shared = [sensor_data])]
+    async fn read_sensor(mut ctx: read_sensor::Context) {
+        ctx.shared.sensor_data.lock(|data| {
+            *data = read_adc();  // runs at ceiling priority
+        });
+    }
+
+    #[task(priority = 1, shared = [sensor_data])]
+    async fn publish(mut ctx: publish::Context) {
+        ctx.shared.sensor_data.lock(|data| {
+            node.publish(*data);  // cannot deadlock — SRP guarantee
+        });
+    }
+}
+```
+
+**nano-ros integration**: RTIC tasks call nano-ros directly — no executor
+needed. Each RTIC task can own a publisher, subscription, or service handle.
+The RTIC talker in the Rust language workspace, `examples/workspaces/rust`,
+shows it: a node package of its own, built by a bare-metal image row of the
+workspace's `pubsub_bringup`.
+
+Shared resources are guarded by the Stack Resource Policy (Baker, T.P.
+(1991), "Stack-Based Scheduling of Realtime Processes", *Real-Time Systems*
+3(1), 67–99): a compile-time ceiling with zero runtime overhead, so priority
+inversion is impossible by construction. Compared with the RTOS models in
+[Scheduling Models](../../realtime/scheduling-models.html), RTIC gives the
+best determinism (hardware scheduling, 12-cycle worst-case latency on a
+Cortex-M3 tail-chain) and the lowest RAM overhead (no task control blocks),
+at the cost of flexibility: ARM Cortex-M only, no dynamic task creation.
+
 ## See also
 
-- [Dispatch Strategy (internals)](dispatch-strategy.md) —
+- [Dispatch Strategy](../../realtime/dispatch-strategy.html) —
   the trichotomy and the per-Node-vs-per-callback rationale.
-- [Role reference](../build/roles.md) —
+- [Role reference](../../build/roles.html) —
   the package roles in full.
-- [Bare-metal Cortex-M3](../targets/bare-metal.md) — the MPS2-AN385 board
-  and its two entry shapes.
-- [Scheduling Models](scheduling-models.md#rtic-arm-cortex-m) —
-  the RTIC scheduling model in real-time-systems terms.
+- [Bare-metal Cortex-M3](../../targets/bare-metal.html) — the MPS2-AN385 board
+  and the direct-exec entry shape the book teaches.
+- [Scheduling Models](../../realtime/scheduling-models.html) —
+  the scheduling models of the supported targets; the RTIC one is
+  [below](#the-rtic-scheduling-model).
 
 ## Design background
 

@@ -65,36 +65,21 @@ suffix — this is the bare-metal variant) which provides:
 - LAN9118 driver for smoltcp
 - `BoardIdle::wfi()` for cooperative wait
 
-### Direct-exec or RTIC — one crate, two entry shapes
+### The entry shape
 
-The same crate serves both bare-metal entry models. Both are names of the
-*same* board descriptor, so you pick the entry shape with the image's `board`
-line — never a different board crate, and never an edit to the node package:
+The image's `board` line names the board, and the generated entry depends on
+the board crate with the feature that shape needs. Pick it there — never a
+different board crate, and never an edit to the node package:
 
 | Entry shape | `[image.<id>] board =` | board crate feature the entry enables |
 |---|---|---|
 | direct-exec (inline spin loop) | `"mps2-an385-baremetal"` | `board-entry` |
-| RTIC (framework-owned `#[rtic::app]`, deferred dispatch) | `"rtic-mps2-an385"` | `rtic` |
-
-The generated entry depends on the board crate with the feature its shape
-needs, so an RTIC image differs from a direct-exec one in its `board` line.
-The RTIC examples in the Rust language workspace, `examples/workspaces/rust`
-(an RTIC talker and listener, and the RTIC service and action roles), are
-node packages of their own, each with an image row in its behaviour's
-bringup that names `rtic-mps2-an385`.
-
-The RTIC surface used to be a separate `nros-board-rtic-mps2-an385`
-crate; it was folded in here because it depended on this crate
-and re-declared its `Config` — the two copies had drifted to different
-default IPs, which nothing catches until a node fails to reach the
-router.
 
 Which network the defaults describe is stated by the board: its
 `nros-board.toml` says `[board.net] network = "qemu"`, so `Config::default()`
 sits on QEMU's own user-mode network (`10.0.2.15/24`, gateway and router
 `10.0.2.2`) — the network every QEMU board shares. `Config::qemu_slirp()` is
-the same network at the RTIC entry's own address (`10.0.2.10`, router port
-`7450`). Either way, an image that sets its `locator` in its `[image.<id>]`
+the same network at a second address (`10.0.2.10`, router port `7450`). Either way, an image that sets its `locator` in its `[image.<id>]`
 and its address in a board network file (`[eth0] network = "qemu"`, `host = N`)
 table overrides the default — which every in-tree example
 does, and which you should too. The address goes in the image's board network

@@ -23,6 +23,9 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/user-guide/rtic-integration.html" = "../internals/realtime/rtic.html"
+"/user-guide/embassy-integration.html" = "../realtime/rtos-cooperation.html"
+"/realtime/rtic.html" = "../internals/realtime/rtic.html"
 "/getting-started/workspace-node-pkgs.html" = "../build/growing-your-workspace.html"
 "/getting-started/workspace-bringup.html" = "../build/growing-your-workspace.html"
 "/getting-started/workspace-entry-pkg.html" = "../build/growing-your-workspace.html"
@@ -102,10 +105,8 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/internals/measuring-static-memory.html" = "../realtime/static-memory.html"
 "/internals/safety.html" = "../realtime/safety-protocol.html"
 "/internals/production-readiness.html" = "../realtime/production-readiness.html"
-"/user-guide/rtic-integration.html" = "../realtime/rtic.html"
 "/user-guide/rmw-choosing.html" = "../communicate/choosing-an-rmw.html"
 "/user-guide/rmw-backends.html" = "../communicate/choosing-an-rmw.html"
-"/user-guide/embassy-integration.html" = "../realtime/rtic.html#embassy"
 "/user-guide/rmw-switching.html" = "../communicate/switching-rmw.html"
 "/concepts/status-events.html" = "../communicate/qos-status-events.html"
 "/getting-started/ros2-interop.html" = "../communicate/ros2-interop.html"

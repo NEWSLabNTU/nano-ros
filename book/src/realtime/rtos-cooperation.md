@@ -21,7 +21,7 @@ translate that choice into bounded behaviour from `drive_io`.
 |-------|-------------|-----------------|
 | **Cooperative single-task** | One task / thread does all ROS work. No preemption from other tasks (there are none, or they're all lower priority). Yielding happens at task boundaries. | Bare-metal MPS2-AN385, single FreeRTOS task, single Zephyr thread |
 | **Preemptive priority** | ROS task runs at a fixed priority. Higher-priority tasks preempt mid-call by the kernel. ROS-internal entities (subs, timers, services, GCs) all share that priority — they don't preempt each other. | Typical FreeRTOS / ThreadX / Zephyr deployment with worker tasks |
-| **WCET-bounded real-time** | Each "task" has a provable worst-case execution time. Tasks are dispatched directly from interrupts; no spin loops in the hot path. | RTIC, avionics WCET-validated code |
+| **WCET-bounded real-time** | Each "task" has a provable worst-case execution time. Tasks are dispatched directly from interrupts; no spin loops in the hot path. | Avionics WCET-validated code |
 | **Time-triggered cyclic** | Fixed schedule. Each cycle does a fixed amount of work in a fixed time slot; ROS gets a fraction of the cycle and must yield. | DO-178C / IEC 61508 controller frames |
 
 ## How `drive_io` behaves by default
@@ -90,12 +90,12 @@ If max-callback dispatch latency is still too high in this profile
 callback's WCET — split the slow callback, or move it to its own
 tier/task (see [Scheduling Models](scheduling-models.md)).
 
-### WCET-bounded real-time (RTIC)
+### WCET-bounded real-time
 
-Don't hand-write the spin loop. `nros::main!` generates the RTIC app: each
-callback becomes an RTIC task at the priority nano-ros derives for it, and
-the executor's deferred-dispatch queue hands ready callbacks to those tasks.
-Per-task WCET analysis applies to each RTIC task, not to a spin loop.
+Don't hand-write the spin loop. Give each callback that needs its own bound a
+tier of its own in the launch contracts: `nros::main!` runs every tier as a
+task at the priority nano-ros derives for it. WCET analysis then applies to
+each tier's callbacks, not to one spin loop that serves them all.
 
 ### Time-triggered cyclic
 

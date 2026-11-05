@@ -93,7 +93,7 @@ nano-ros runs in three modes that map onto target capability:
 |------|----------------|------------|
 | `std` | `std` (default on POSIX) | Everything. POSIX threading, full async runtime. |
 | `no_std + alloc` | `alloc` + a `#[global_allocator]` | Everything except features that need `std::sync::Mutex`. Used by FreeRTOS / NuttX / ThreadX / Zephyr. |
-| `no_std` cooperative | no `std`/`alloc` platform threading (bare-metal board crates, RTIC apps) | Cooperative single-task — no threading at all. Used by bare-metal MPS2-AN385, single-core RTIC. |
+| `no_std` cooperative | no `std`/`alloc` platform threading (bare-metal board crates) | Cooperative single-task — no threading at all. Used by bare-metal MPS2-AN385. |
 
 **Why.** Heap presence is not a binary "embedded yes/no" — it is a
 spectrum. Stm32-class boards have a heap; Cortex-M0+-class might not.

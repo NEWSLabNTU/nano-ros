@@ -509,7 +509,7 @@ The entry calls it first, before the board does anything, so nothing has
 booted when it runs: no executor, no session, and on bare metal no hardware
 setup yet. Returning `Err("reason")` stops the image with that reason. It
 works in Rust images only; a C or C++ image that sets it is refused, and so
-is an RTIC or Embassy board, whose framework owns the first statement. The
+is a board whose framework owns the first statement. The
 worked example is image `linux_rust_before_boot` in
 [`examples/workspaces/features`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/features).
 

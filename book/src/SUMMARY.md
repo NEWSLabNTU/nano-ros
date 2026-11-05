@@ -68,7 +68,6 @@
 - [Measuring Static Memory](./realtime/static-memory.md)
 - [Safety Protocol](./realtime/safety-protocol.md)
 - [Production Readiness Checklist](./realtime/production-readiness.md)
-- [RTIC Integration](./realtime/rtic.md)
 
 # Operate and Debug
 

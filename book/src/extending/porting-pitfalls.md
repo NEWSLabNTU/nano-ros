@@ -31,13 +31,13 @@ static mut ETH_DMA_DESC: MaybeUninit<[u32; 256]> = MaybeUninit::uninit();
 
 ### Stack sizing
 
-Bare-metal and RTIC applications share a single stack. FreeRTOS/Zephyr give each
+Bare-metal applications share a single stack. FreeRTOS/Zephyr give each
 task its own stack. In both cases, zenoh-pico's internal processing needs
 significant stack space:
 
 | Context | Minimum stack |
 |---------|---------------|
-| Bare-metal / RTIC main stack | 8 KB |
+| Bare-metal main stack | 8 KB |
 | FreeRTOS zenoh read task | 2 KB |
 | FreeRTOS zenoh lease task | 1 KB |
 | Zephyr zpico work queue thread | 2 KB |
@@ -88,8 +88,9 @@ A poll-driven clock causes:
   (waiting for network I/O, sleeping between spins) are invisible to the timeout logic.
 - **Timeout storms:** After a long idle period, the next poll advances the clock by a large
   jump, causing multiple timeouts to fire simultaneously.
-- **Broken RTIC integration:** RTIC tasks yield with `Mono::delay()` between spins. A
-  poll-driven clock doesn't advance during the delay, making all timeouts effectively infinite.
+- **Broken idle waits:** a loop that sleeps between spins (`wfi()`, a timer delay) gets
+  no clock advance from a poll-driven clock during the sleep, making all timeouts
+  effectively infinite.
 
 ### Platform clock status
 
@@ -167,20 +168,22 @@ event loop, and the TAP file descriptor is never serviced.
 Services and actions time out. Pub/sub may appear to work because subscriber
 callbacks fire inline during `zp_read()`.
 
-**Fix:** In RTIC, yield between `spin_once()` calls:
+**Fix:** reach WFI between `spin_once()` calls:
 
 ```rust
-// CORRECT — yields to idle task → WFI → QEMU processes TAP
-cx.local.executor.spin_once(0);
-Mono::delay(10.millis()).await;
+// CORRECT — idles between spins → WFI → QEMU processes TAP
+loop {
+    executor.spin_once(core::time::Duration::from_millis(0));
+    cortex_m::asm::wfi();
+}
 
 // WRONG — busy-loops, starving QEMU I/O
 loop {
-    cx.local.executor.spin_once(0);
+    executor.spin_once(core::time::Duration::from_millis(0));
 }
 ```
 
-In bare-metal (no RTIC), call `cortex_m::asm::wfi()` in your idle loop.
+A board that implements `BoardIdle` does this for you in the generated loop.
 
 ### TAP device assignment
 
@@ -250,7 +253,7 @@ See [Troubleshooting: zenoh-pico Multiple Client Issues](../operate/troubleshoot
 ### Blocking TCP reads in cooperative schedulers
 
 `_z_read_tcp()` can block for up to `SOCKET_TIMEOUT_MS` (default 10 seconds).
-In cooperative schedulers (RTIC, bare-metal main loop), this blocks the entire
+In a cooperative scheduler (a bare-metal main loop), this blocks the entire
 system since C FFI cannot yield.
 
 **Impact:** Pub/sub works (callbacks fire inline during `zp_read()`), but
@@ -259,8 +262,9 @@ services and actions fail because `z_get()` query replies need multiple
 blocks.
 
 **Current status:** `zpico_spin_once(0)` is non-blocking (`single_read=true`),
-but the underlying `z_get()` timeout is still 5 seconds. RTIC service/action E2E
-tests are `#[ignore]`d pending a fully non-blocking TCP read path.
+but the underlying `z_get()` timeout is still 5 seconds, so a service or action
+call from a cooperative loop can still time out this way until the TCP read path
+is fully non-blocking.
 
 ### Version pinning
 

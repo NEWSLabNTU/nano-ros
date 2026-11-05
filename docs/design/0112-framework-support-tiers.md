@@ -191,8 +191,9 @@ kept as a seam that nothing exercises. Today:
 - **`embassy`** failed 1, 2 and arguably 3. An async task can drive the
   executor once D2.2's notifier exists. The maintainer ruled to demote it
   (issue 2134, 2026-10-30): the branch and its trait are deleted, and
-  `framework = "embassy"` is refused with a pointer to the hand-driven shape
-  in `book/src/realtime/rtic.md`.
+  `framework = "embassy"` is refused with a pointer to
+  `book/src/realtime/rtos-cooperation.md`, which says why Embassy is not a
+  supported shape.
 
 ### D4 — Recipes, not branches
 
