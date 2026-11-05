@@ -211,4 +211,4 @@ than wrapping.
 
 For the generation side of this — which root file is written, why the entry is
 derived rather than hand-written, and what the coordinate directory holds — see
-[What `nros build` generates](growing-your-workspace.md#what-nros-build-generates).
+[What `nros build` generates](../tutorial/grow-your-workspace.md#what-nros-build-generates).

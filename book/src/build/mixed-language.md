@@ -6,7 +6,7 @@ Languages mix per package, not per file. A bringup's `[[component]]` row
 names a package and a class whatever language implements it, and node
 packages are linked through a C ABI register trampoline, so one image can
 compose node packages written in C, C++ and Rust. The
-[workspace shape](growing-your-workspace.md) does not change with the
+[workspace shape](../tutorial/grow-your-workspace.md) does not change with the
 language. The native reference shape is:
 
 - C Node pkgs for C code you want to keep in C.

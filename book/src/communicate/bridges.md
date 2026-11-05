@@ -360,7 +360,7 @@ session at all, oversized messages and other general problems, see
 
 ## See also
 
-- [Choosing an RMW Backend](choosing-an-rmw.md) — single-
+- [Choosing an RMW Backend](../tutorial/pick-the-rmw.md) — single-
   backend selection criteria.
 - [RMW Backends — Host-Language
   Policy](../internals/rmw/backend-host-language-policy.html) — registry +

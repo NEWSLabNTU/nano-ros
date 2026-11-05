@@ -21,9 +21,9 @@ files in the msg package.
 > **Where this fits.** This chapter uses ROS 2 vocabulary
 > (`ament_cmake`, `rosidl`, `rclcpp`) because its point is that stock
 > ROS shapes work unchanged. If you came straight from
-> [First Project](first-project.md) and none of that means anything
+> [First Project](run-a-talker.md) and none of that means anything
 > yet, you can skim to "The Rust side" below or skip ahead to
-> [First Node — Rust](first-node-rust.md) and return later. The
+> [First Node — Rust](add-a-second-node.md) and return later. The
 > standalone tree here is for clarity — in your scaffolded `my_robot`
 > workspace the same drop-in applies: put `src/my_msgs/` next to your
 > node packages.
@@ -314,6 +314,6 @@ dep between them, plus a consumer node). Use it as a copy-out template.
 ## Next
 
 - Something broke on the way here? [Troubleshooting — First 10
-  Minutes](first-10-minutes.md).
-- Single-node deep dive: [First Node — Rust](./first-node-rust.md).
-- Grow the workspace: [Add a node package](../build/growing-your-workspace.md#1-add-a-node-package).
+  Minutes](../get-started/first-10-minutes.md).
+- Single-node deep dive: [First Node — Rust](add-a-second-node.md).
+- Grow the workspace: [Add a node package](grow-your-workspace.md#1-add-a-node-package).

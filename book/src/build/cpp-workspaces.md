@@ -2,7 +2,7 @@
 
 <!-- type: how-to · level: 2 -->
 
-[Growing your workspace](growing-your-workspace.md) describes the canonical
+[Growing your workspace](../tutorial/grow-your-workspace.md) describes the canonical
 node pkgs + bringup pkg + `[image.*]` shape against the Rust path
 (`nros::node!(…)` + `nros::main!(launch = …)`). This chapter shows the
 **C and C++ path** through the same shape, role-for-role.
@@ -54,7 +54,7 @@ No entry package, and nothing at the root: a workspace is a directory of
 packages. `nros build <image>` writes a `CMakeLists.txt` and the
 entry's `nano_ros_add_executable(…)` call into `build/<coordinate>/`, configures
 that into `build/<coordinate>/cmake/`, and builds — see
-[What `nros build` generates](growing-your-workspace.md#what-nros-build-generates). The exception is a Zephyr application,
+[What `nros build` generates](../tutorial/grow-your-workspace.md#what-nros-build-generates). The exception is a Zephyr application,
 which keeps a package because west needs a real application directory.
 
 ## The generated cmake root
@@ -287,7 +287,7 @@ From the workspace root this adds `src/my_talker/` (class
 ## Bringup pkg
 
 Language-agnostic — copy verbatim from the
-[bringup steps](growing-your-workspace.md#2-add-a-component-row). `package.xml` +
+[bringup steps](../tutorial/grow-your-workspace.md#2-add-a-component-row). `package.xml` +
 `system.toml`, and `launch/system.launch.xml` when you want one (without it the
 launch file is generated from the `[[component]]` rows). No `Cargo.toml`, no
 `CMakeLists.txt`. Stock ROS 2 launch.xml from nav2 / Autoware /

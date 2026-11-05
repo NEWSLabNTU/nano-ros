@@ -83,7 +83,7 @@ neither `launch/` nor a `[[component]]` row is refused.
 `$(find <pkg>)` / `$(var)` / `$(env)` substitutions. Stock nav2/Autoware
 XML pastes in and Just Works; Python `.launch.py` files are resolved by
 the build too (the launch resolver executes them).
-See [Add a launch file](growing-your-workspace.md#3-add-a-launch-file-when-you-need-one).
+See [Add a launch file](../tutorial/grow-your-workspace.md#3-add-a-launch-file-when-you-need-one).
 
 ## Image
 
@@ -201,7 +201,7 @@ macro bakes from it. `launch` and `model` are mutually exclusive.
 runtime starts; the board's `init_hardware` for hardware every image on that
 board needs; and, last, `nros materialize <bringup>:<image>`, which copies the generated
 entry to `src/<image_id>_entry/` for you to own. See
-[Customising an entry](growing-your-workspace.md#customising-an-entry).
+[Customising an entry](../tutorial/grow-your-workspace.md#customising-an-entry).
 
 **C++ / C analogue:** the generated cmake root emits one
 `nano_ros_add_executable(<name> BOARD … BRINGUP … LAUNCH … LANG … TYPED DEPLOY …)`

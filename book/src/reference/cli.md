@@ -48,7 +48,7 @@ sensor_ws/
 The node package is named from the workspace (`<x>_ws` gives `<x>_node`), and
 the bringup is `<node>_bringup`. Its `system.toml` names the board, the RMW, the
 one component and one image, so `nros run <node>` runs it with nothing edited
-([First Project](../get-started/first-project.md)).
+([First Project](../tutorial/run-a-talker.md)).
 
 Inside a workspace, `nros new <name>` adds a node package under `src/` instead:
 

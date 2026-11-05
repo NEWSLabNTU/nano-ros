@@ -386,13 +386,13 @@ nros build                     # or: nros build linux
 ```
 
 `nros new my_robot_ws --board linux --template talker` scaffolds that layout
-with one node package — see [First Project](./first-project.md) — and
+with one node package — see [First Project](../tutorial/run-a-talker.md) — and
 `nros new <pkg> --to <bringup>` adds the next. A POSIX C++ workspace that already
 uses colcon can still be built by `colcon build`; the packages keep
 their `package.xml` and their own `CMakeLists.txt`.
 
 A single node is the same shape with one node package; `--lang <rust|c|cpp>`
-picks its language (the [First Node](./first-node-rust.md) chapters).
+picks its language (the [First Node](../tutorial/add-a-second-node.md) chapters).
 `system.toml` lives only in the bringup, never beside a `Cargo.toml` or
 `CMakeLists.txt`.
 

@@ -39,7 +39,7 @@ rtic_ws/
 ```
 
 `nros run` builds the image, boots it in QEMU and starts the router, as in
-[First Project](../../get-started/first-project.html). The bringup's `system.toml`
+[First Project](../../tutorial/run-a-talker.html). The bringup's `system.toml`
 is the only place RTIC is named:
 
 ```toml
@@ -179,7 +179,7 @@ std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nr
 
 Dependencies and the class registration, nothing else. The `std_msgs` row is
 not even yours: the build writes it from `<depend>std_msgs</depend>` in
-`package.xml` ([The manifests](../../build/growing-your-workspace.html#the-manifests)).
+`package.xml` ([The manifests](../../tutorial/grow-your-workspace.html#the-manifests)).
 No board crate, no `rtic`, no PAC: those are the generated entry's.
 
 ## `DispatchStrategy::Inline` vs `Deferred`
@@ -312,7 +312,7 @@ through the first three:
 
 1. **An `[image.*]` key** — `panic`, `profile`, `features`: anything the
    image already declares. See
-   [Customising an entry](../../build/growing-your-workspace.html#customising-an-entry).
+   [Customising an entry](../../tutorial/grow-your-workspace.html#customising-an-entry).
 2. **`before_boot`** — not on RTIC. RTIC's `#[init]` owns the first statement,
    so the build refuses `before_boot` on an RTIC image; put pre-boot work in
    the board package (step 3) or in your own `#[init]` (step 4).

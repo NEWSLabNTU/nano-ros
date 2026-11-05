@@ -10,7 +10,7 @@ configuration to get there.
 
 **What this assumes:** a Linux host with ROS 2 Humble and its Zenoh
 middleware (`ros-humble-rmw-zenoh-cpp`) installed, or the container from
-[Installation Details](installation-details.md#ros-2-and-the-zenoh-router),
+[Installation Details](../get-started/installation-details.md#ros-2-and-the-zenoh-router),
 and the [install](../start/install.md) done, so `nros` is on your PATH.
 
 **What it leaves for later:** the board talks to your machine over its serial
@@ -149,13 +149,13 @@ shape, and so is every command after it.
 - **`ros2 topic echo` prints nothing:** check the `--qos-reliability
   best_effort` flag and the `RMW_IMPLEMENTATION` line.
 
-[First 10 Minutes](first-10-minutes.md) has the rest.
+[First 10 Minutes](../get-started/first-10-minutes.md) has the rest.
 
 ## Next
 
-- [Anatomy of What You Just Built](anatomy.md): what each package is for,
+- [Anatomy of What You Just Built](what-you-just-built.md): what each package is for,
   and what `nros run` generated.
-- [Growing your workspace](../build/growing-your-workspace.md): add a second
+- [Growing your workspace](grow-your-workspace.md): add a second
   node, another board, or a launch file.
 - [Bare-metal Cortex-M3](../targets/bare-metal.md): the same board over its network.
 

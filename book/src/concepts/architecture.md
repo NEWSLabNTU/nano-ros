@@ -61,7 +61,7 @@ link multiple backends and bridge between them — see
 [Cross-backend Bridges](../communicate/bridges.md).
 
 For user-facing backend selection, see
-[Choosing an RMW Backend](../communicate/choosing-an-rmw.md). For design
+[Choosing an RMW Backend](../tutorial/pick-the-rmw.md). For design
 rationale, see [RMW API Design](../extending/rmw-design.md).
 
 ## Platform Layer

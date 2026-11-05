@@ -6,7 +6,7 @@ Build, run, and verify a single nano-ros publisher node on Linux from
 C. The node is a C library built with CMake; the program around it is
 generated. Uses the Zenoh backend.
 
-> **Stuck?** See [Troubleshooting — First 10 Minutes](first-10-minutes.md) for the common first-build errors.
+> **Stuck?** See [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md) for the common first-build errors.
 
 ## Prereqs
 
@@ -264,14 +264,14 @@ demo talker. If it does not appear in 30 seconds:
 2. Wrong locator / unreachable host → same `-4` signature in stderr.
    Reachable host but mismatched port → talker hangs on session-open
    handshake rather than returning a code.
-3. See [Troubleshooting — First 10 Minutes](first-10-minutes.md).
+3. See [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md).
 
 ## Next
 
 - Add a subscriber: from the workspace root,
   `nros new c_listener_node --lang c --template listener --to c_talker_node_bringup`
   adds a second node package and its component row to the bringup
-  ([Growing your workspace](../build/growing-your-workspace.md)).
+  ([Growing your workspace](grow-your-workspace.md)).
 - Service / action shapes, and a workspace of several C node packages:
   the C language workspace,
   [`examples/workspaces/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/c).

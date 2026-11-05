@@ -359,7 +359,7 @@ The copy-out talkers, each the same project as the one this page scaffolds:
 - DDS on ThreadX: Cyclone DDS is the surviving DDS backend
   (`nros-rmw-cyclonedds`) — select it with `[system] rmw = "cyclonedds"` in
   the bringup's `system.toml` and build again; see
-  [Choosing an RMW Backend](../communicate/choosing-an-rmw.md).
+  [Choosing an RMW Backend](../tutorial/pick-the-rmw.md).
 - Real hardware: same code runs against ThreadX vendor BSPs (Renesas
   Synergy, MIMXRT, etc.); replace the QEMU board crate with a vendor
   board crate.

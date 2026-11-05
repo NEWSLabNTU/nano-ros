@@ -124,7 +124,7 @@ it names no board crate either: its image-only dependencies come from a `<pkg>_n
 whole edit ([issue 1305](docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
 See [Installation](book/src/start/install.md) and
-[First Node — Rust](book/src/get-started/first-node-rust.md) for the
+[First Node — Rust](book/src/tutorial/add-a-second-node.md) for the
 complete walkthrough.
 
 ## Quick Start (C API)
@@ -177,7 +177,7 @@ name  = "talker"
 board = "linux"
 ```
 
-See [First Node — C](book/src/get-started/first-node-c.md) for a complete C walkthrough.
+See [First Node — C](book/src/tutorial/add-a-second-node-c.md) for a complete C walkthrough.
 
 ## On Zephyr (west module)
 

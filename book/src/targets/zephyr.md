@@ -305,7 +305,7 @@ west.
 Then nano-ros's half of the configuration goes in the bringup's
 `system.toml`, and Zephyr's own half in `prj.conf` fragments (in a workspace,
 under the bringup's `boards/<board>/`, as
-[Growing your workspace](../build/growing-your-workspace.md#zephyr-images) shows):
+[Growing your workspace](../tutorial/grow-your-workspace.md#zephyr-images) shows):
 
 ```toml
 # src/c_node_bringup/system.toml
@@ -553,7 +553,7 @@ That writes the generated application into `src/zephyr_entry/` as a package of
 yours, and from then on `nros build` builds that copy and does not regenerate
 it. Deleting `src/zephyr_entry/` returns the image to generation. It is the
 last resort, for the reasons
-[Customising an entry](../build/growing-your-workspace.md#customising-an-entry)
+[Customising an entry](../tutorial/grow-your-workspace.md#customising-an-entry)
 gives.
 
 #### The whole flow, end to end
@@ -1131,7 +1131,7 @@ for the canonical in-repo surface.
 - Pick a real board (Nordic, NXP, STM32, …): a board package naming its
   `west_board`, then [Flash a real board](#flash-a-real-board).
 - Cyclone DDS on Cortex-A/R: see the DDS section of
-  [Choosing an RMW Backend](../communicate/choosing-an-rmw.md) for the
+  [Choosing an RMW Backend](../tutorial/pick-the-rmw.md) for the
   required Kconfig deltas.
 - Build nano-ros's own Zephyr examples without west:
   [Zephyr in-tree examples (contributor)](../internals/platform/zephyr-in-tree.html).

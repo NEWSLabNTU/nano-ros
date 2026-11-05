@@ -1357,7 +1357,7 @@ mod tests {
         // Book-relative paths (phase-532 moved the chapters out of
         // `getting-started/`); ROWS names each by its file name.
         for path in [
-            "get-started/first-project.md",
+            "tutorial/run-a-talker.md",
             "targets/bare-metal.md",
             "targets/freertos.md",
             "targets/nuttx.md",

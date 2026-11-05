@@ -8,7 +8,7 @@ only happen in their topic:
 
 - First build and first run: [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md)
 - ROS 2 side sees nothing (domain ID, QoS, `rmw_zenoh_cpp` client mode, edition):
-  [ROS 2 Interop](../communicate/ros2-interop.md#troubleshooting)
+  [ROS 2 Interop](../tutorial/talk-to-ros2.md#troubleshooting)
 - Serial links (handshake timeouts, baud rate, UART pins):
   [Serial Transport](../communicate/serial-transport.md#troubleshooting)
 - Multi-backend binaries: [Cross-backend Bridges](../communicate/bridges.md#troubleshooting)
