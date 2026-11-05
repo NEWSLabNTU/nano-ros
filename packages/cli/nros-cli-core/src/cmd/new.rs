@@ -1033,9 +1033,37 @@ pub fn run(args: Args) -> Result<()> {
     println!("  src/{bringup_name}/   what it runs on: `{board}`, image `{platform}`, {rmw}");
     println!();
     println!("Next steps:");
-    println!("  cd {}", ws_dir.display());
-    println!("  nros run {node_pkg}");
+    for line in workspace_next_steps(&ws_dir, &node_pkg, &board, descriptor) {
+        println!("  {line}");
+    }
     Ok(())
+}
+
+/// The next steps `nros new <ws> --board <b>` prints (issue 2282): `cd` into
+/// the workspace, then the verb that starts the image on THIS board, from its
+/// descriptor (`run_plan::start_verb`, the resolver's own choice). A board
+/// with no target `nros` can start an image on gets the build and a line
+/// that says so, never a `nros run` that refuses.
+fn workspace_next_steps(
+    ws_dir: &std::path::Path,
+    node_pkg: &str,
+    board: &str,
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+) -> Vec<String> {
+    use nros_extension::plan::Verb;
+    let mut v = vec![format!("cd {}", ws_dir.display())];
+    match crate::cmd::run_plan::start_verb(descriptor) {
+        Some(Verb::Flash) => v.push(format!("nros flash {node_pkg}")),
+        Some(_) => v.push(format!("nros run {node_pkg}")),
+        None => {
+            v.push("nros build".to_string());
+            v.push(format!(
+                "# `{board}` states no target `nros` can start the image on (no runnable \
+                 [board.run], no [board.flash]); run it the way its chapter shows"
+            ));
+        }
+    }
+    v
 }
 
 /// The nano-ros tree `nros` builds against, and its board catalog.
@@ -1161,6 +1189,39 @@ mod single_package_tests {
             );
         }
         assert!(board_platform(&cat, "no-such-board").is_err());
+    }
+
+    /// Issue 2282 -- the next steps start the image the way the board says:
+    /// `nros run` only where the resolver would run it, `nros flash` for a
+    /// board it flashes (the Pico W, whose wokwi twin no runner drives yet),
+    /// and the build plus a note where the board names neither.
+    #[test]
+    fn the_next_steps_start_the_image_the_way_the_board_says() {
+        use nros_extension::plan::Verb;
+        let cat = catalog();
+        let ws = std::path::Path::new("my_ws");
+        for d in cat.descriptors() {
+            let board = d.canonical_name();
+            let lines = workspace_next_steps(ws, "my_node", board, d);
+            assert_eq!(lines[0], "cd my_ws", "{board}");
+            let want = match crate::cmd::run_plan::start_verb(d) {
+                Some(Verb::Run) => "nros run my_node",
+                Some(Verb::Flash) => "nros flash my_node",
+                _ => "nros build",
+            };
+            assert_eq!(lines[1], want, "{board}: {lines:?}");
+        }
+        let line = |b: &str| {
+            let d = cat
+                .descriptors()
+                .iter()
+                .find(|d| d.canonical_name() == b)
+                .unwrap_or_else(|| panic!("{b}"));
+            workspace_next_steps(ws, "my_node", b, d)[1].clone()
+        };
+        assert_eq!(line("nucleo-f767zi-zephyr"), "nros run my_node");
+        assert_eq!(line("rpi-pico-w-zephyr"), "nros flash my_node");
+        assert_eq!(line("linux"), "nros run my_node");
     }
 
     /// phase-531 W4 (RFC-0121 D4) — `nros new <ws> --board <b> --template

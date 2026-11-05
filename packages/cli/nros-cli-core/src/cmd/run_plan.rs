@@ -333,6 +333,38 @@ pub const WEST_EMULATORS: &[&str] = &["qemu"];
 /// package provides the runner while the row is still here.
 pub const RUNNERLESS_EMULATORS: &[(&str, &str)] = &[("wokwi", "2230")];
 
+/// The verb that starts an image built for `d`, from the board's facts alone:
+/// [`Verb::Run`] for a host process or an emulator a runner drives,
+/// [`Verb::Flash`] for silicon, `None` when the board states neither in a form
+/// `nros` can act on. It is the board half of [`resolve`]'s choice, in its
+/// order (`resolve_run`: host, then emulator, refused for a
+/// [`RUNNERLESS_EMULATORS`] kind; `resolve_flash`: `[board.flash]`, or a
+/// Zephyr board's own west runner), for a caller that has no build to plan
+/// against yet: `nros new`'s next steps (issue 2282).
+/// `start_verb_agrees_with_the_resolver` holds the two together over the
+/// catalog.
+#[must_use]
+pub fn start_verb(d: &BoardDescriptor) -> Option<Verb> {
+    let runnerless = |kind: &str| RUNNERLESS_EMULATORS.iter().any(|(k, _)| *k == kind);
+    match d.run.as_ref() {
+        Some(r) if r.host => return Some(Verb::Run),
+        Some(r) => {
+            if let Some((kind, _)) = r.emulator_parts()
+                && !runnerless(kind)
+            {
+                return Some(Verb::Run);
+            }
+        }
+        None => {}
+    }
+    let flashes = d
+        .flash
+        .as_ref()
+        .is_some_and(|f| f.method.is_some() || f.command.is_some())
+        || d.platform == PlatformKind::Zephyr;
+    flashes.then_some(Verb::Flash)
+}
+
 fn is_west(i: &Inputs<'_>) -> bool {
     matches!(i.output, Some(BuildOutput::West { .. }))
 }
@@ -1234,6 +1266,63 @@ mod tests {
                 invocation: inv,
             },
         )
+    }
+
+    /// Issue 2282 -- [`start_verb`] is [`resolve`]'s choice, read off the
+    /// board alone: for every board in the catalog, the verb it names
+    /// resolves, `run` is refused where it names `flash`, and a board it gives
+    /// no verb resolves neither.
+    #[test]
+    fn start_verb_agrees_with_the_resolver() {
+        let cat = BoardCatalog::load(&repo_root()).unwrap();
+        let tables = ImageTables::default();
+        let inv = Invocation::default();
+        let (mut run, mut flash, mut none) = (0, 0, 0);
+        for d in cat.descriptors() {
+            let out = if d.platform == PlatformKind::Zephyr {
+                BuildOutput::West {
+                    build_dir: Some("/ws/build/b_west".into()),
+                }
+            } else {
+                cargo_out(d.target.as_deref().map(triple_of_build_target))
+            };
+            let name = &d.names[0];
+            let r = go(Verb::Run, d, &out, &tables, &inv);
+            let f = go(Verb::Flash, d, &out, &tables, &inv);
+            match start_verb(d) {
+                Some(Verb::Run) => {
+                    run += 1;
+                    assert!(r.is_ok(), "{name}: start_verb says run, resolve: {r:?}");
+                }
+                Some(Verb::Flash) => {
+                    flash += 1;
+                    assert!(r.is_err(), "{name}: start_verb says flash, run resolved");
+                    assert!(f.is_ok(), "{name}: start_verb says flash, resolve: {f:?}");
+                }
+                None => {
+                    none += 1;
+                    assert!(
+                        r.is_err() && f.is_err(),
+                        "{name}: no verb, yet one resolved"
+                    );
+                }
+                Some(other) => panic!("{name}: {other:?}"),
+            }
+        }
+        assert!(
+            run > 0 && flash > 0,
+            "run {run}, flash {flash}, none {none}"
+        );
+        // The reported shape: a Renode twin runs; a board whose emulator no
+        // runner drives yet (wokwi, issue 2230) is flashed.
+        assert_eq!(
+            start_verb(&board(&cat, "nucleo-f767zi-zephyr")),
+            Some(Verb::Run)
+        );
+        assert_eq!(
+            start_verb(&board(&cat, "rpi-pico-w-zephyr")),
+            Some(Verb::Flash)
+        );
     }
 
     /// phase-527 W7 — `[image.<id>.run] method` beats the runner the board's
