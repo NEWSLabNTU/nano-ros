@@ -156,6 +156,9 @@ are.
 
 ### D2 — The user surface names an action, never an internal id
 
+> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principle 5 (2026-11).**
+
+
 > **Amended by [RFC-0123](0123-two-books-by-audience.md) D3 (2026-11):** the
 > gate's book subject is the whole user book (`book/page-map.toml`), not
 > `book/src/getting-started/`, and the contributor-block exemption is
@@ -186,6 +189,9 @@ exempts it (a "**Contributors:**" lead within eight lines).
 
 ### D5 — Serial first, ethernet second, WiFi stated as deferred
 
+> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principle 12 (2026-11);** board starters (RFC-0124 D12) open over serial.
+
+
 Every board's getting-started path opens over USB serial: the cable the
 vendor's own getting-started uses, the console the board already enumerates,
 and nano-ros's serial transport, which on Zephyr, FreeRTOS, NuttX and ThreadX
@@ -204,6 +210,9 @@ and on a WiFi board asks for credentials the lab or the shop floor may not
 hand out.
 
 ### D6 — A single-package front door before the workspace vocabulary
+
+> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principle 12 (2026-11).**
+
 
 > **Amended by [RFC-0121](0121-workspace-first-project-layout.md) (2026-11-03):**
 > the scaffold writes a workspace holding a node package and a bringup, and the
@@ -231,6 +240,9 @@ before they have seen a line of output. Industrial adopters tolerate the
 workspace shape but do not need it to evaluate the runtime.
 
 ### D7 — One verb runs what was built
+
+> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principle 12 (2026-11).**
+
 
 > **Amended by [RFC-0118](0118-target-execution-model.md) D2 (2026-11):** `nros run`
 > covers host processes and emulators. On a hardware image it refuses and

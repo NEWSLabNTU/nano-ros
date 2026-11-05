@@ -103,6 +103,9 @@ and an ESP32 revival are dropped for now, each for a stated reason.
 
 ### D4 — A board enters the book only with an emulator twin
 
+> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principle 3 (2026-11):** this decision stays authoritative for board admission; RFC-0124 D8 places an admitted board by its status word.
+
+
 - **Twin** means: the same ELF `nros build` produces for the bench board boots
   in the emulator, reaches a router on the host, and prints the chapter's
   expected output. Not a "similar" machine, not a different board id.

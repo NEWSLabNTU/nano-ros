@@ -142,6 +142,9 @@ these pages are spread across Concepts, User Guide and Internals.
 
 ### D3 — Contributor blocks are retired; the gates cover the whole user book
 
+> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principle 5 (2026-11).**
+
+
 A user-book page carries no contributor material. A block that is now marked
 "**Contributors:**" moves to the matching Internals page, and the user page
 keeps at most one line linking to it ("Changing this in the tree: see
@@ -166,6 +169,9 @@ This keeps the rationale one click away for the porter who needs it, without
 putting ids in the text.
 
 ### D4 — One topic, one page
+
+> **Amended by [RFC-0124](0124-book-user-guide-organization.md) Principle 7 (2026-11):** one topic, one page **per type**. A topic may have a tutorial chapter, a how-to, an explanation and a reference page, each linked to the others, but never two pages of the same type.
+
 
 Each topic has one owning page, and other pages link to it rather than
 restating it. The merges are listed in phase-532 W5. They cover workspace
@@ -227,6 +233,9 @@ exempt `reference/retired-names.md` (`check-retired-knob-spellings`,
 
 ### D8 — Gate: `check-book-audience`
 
+> **Extended by [RFC-0124](0124-book-user-guide-organization.md) D2 and phase-537 W0/W9 (2026-11):** the gate also reads each page's type and level declaration and checks the gated principles.
+
+
 On the fast line:
 
 - every page in a SUMMARY lives in that book's directory for its part (D2),
@@ -236,6 +245,9 @@ On the fast line:
 - every page-map row resolves.
 
 ### D9 — The book follows the CLI design and the board registry
+
+> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principles 4 and 5 (2026-11);** board admission is RFC-0115 D4 (RFC-0124 D8).
+
 
 The book teaches the tool as it is designed now. It does not describe how the
 tool used to work, and it is not cut along nano-ros's internal layering.
@@ -415,3 +427,4 @@ Internals (`book-internals/src/`):
   project is a workspace, and the four workspace pages become one.
 - 2026-11 — D9 added: the book follows the CLI tiers, the target model, `nros configure` and the board registry.
 - 2026-11 — D2 amended by RFC-0124: the user book's parts follow the reader's task, not the CLI groups.
+- 2026-11 — D4 amended and D3, D8, D9 consolidated by RFC-0124 (the book charter).

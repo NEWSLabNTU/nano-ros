@@ -1,8 +1,8 @@
-# Phase 537 — The Book as a user guide
+# Phase 537 — The Book charter: principles, topic levels and a user-guide organization
 
 **Status (2026-11-05). OPEN — not started; W0 (the RFC's tooling, the style guide and the type declarations) first.**
-Implements [RFC-0124](../design/0124-book-user-guide-organization.md) D1 to
-D12. Follows [phase-532](phase-532-two-books-by-audience.md), whose page map
+Implements [RFC-0124](../design/0124-book-user-guide-organization.md): its
+Principles, Topic levels and D1 to D12. Follows [phase-532](phase-532-two-books-by-audience.md), whose page map
 and `book-move` tooling it reuses.
 
 Depends on:
@@ -45,10 +45,20 @@ more section-sized PRs, rebased onto main rather than merging main in
   reference page.
 - A `<!-- type: … · level: … -->` declaration on every user page (D2), set from
   Appendix A of the RFC.
-- `check-book-audience` reports, without refusing:
+- `check-book-audience` reports, without refusing, every gated principle of
+  RFC-0124:
   - pages with no declaration;
-  - a type that doesn't match the page's section;
-  - pages outside the length budget (D9).
+  - a type that doesn't match the page's section (Principle 7);
+  - two pages of the same type for one topic (Principle 7);
+  - pages outside the length budget (Principle 15);
+  - a "needs first" link to a page of a higher level (Topic levels);
+  - a board page for a board RFC-0115 D4 does not admit (Principle 3);
+  - a board fact or status word typed by hand (Principle 4);
+  - an internal id outside "Design background", `nros dev`, or a checkout
+    step (Principle 5; these already refuse today);
+  - a runnable step with neither a probe fence nor an `awaits` (Principle 14).
+- The "Writing the Book" page in Internals opens with RFC-0124's Principles and
+  Topic levels, so a writer reads the checklist before the templates.
 
 **Acceptance:** every user page declares a type and level, and the report runs
 on the fast line.
@@ -62,6 +72,9 @@ on the fast line.
 - The seven stubs under 130 words fold into their parent pages.
 - `rmw-vs-upstream`, `zenoh-pico-symbols` and `xrce-dds-symbols` move to
   Internals.
+- `targets/arm-fvp.md` leaves the user book (RFC-0115 D4: no replaying track),
+  for Internals or the board's generated reference page. It comes back when a
+  track replays it.
 - **Fix `book-move` first,** so it remaps the board registry's book-relative
   fields (`chapter`, `book_run`, `book_flash`). phase-532 did that by hand,
   twice.
@@ -202,7 +215,8 @@ splits); W4 (tabs, where a starter shows more than one language).
 
 ### W9 — Tighten the gates (S)
 
-W0's report becomes a refusal:
+W0's report becomes a refusal for every gated principle and the level rule.
+In particular:
 - a missing or mismatched type;
 - a page under 300 words;
 - a page outside Reference over its budget;
