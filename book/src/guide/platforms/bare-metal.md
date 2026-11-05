@@ -239,7 +239,7 @@ talker. If no `Publishing:` line:
 3. Cooperative spin starvation — if you added a long-running
    callback, the entire executor stalls; bare-metal has no
    preemption.
-4. See [Troubleshooting — First 10 Minutes](../../get-started/first-10-minutes.md).
+4. See [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md).
 
 ## Flash a real board
 

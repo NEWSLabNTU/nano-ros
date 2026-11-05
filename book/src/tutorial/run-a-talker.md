@@ -151,7 +151,7 @@ shape, and so is every command after it.
 - **`ros2 topic echo` prints nothing:** check the `--qos-reliability
   best_effort` flag and the `RMW_IMPLEMENTATION` line.
 
-[First 10 Minutes](../get-started/first-10-minutes.md) has the rest.
+[First 10 Minutes](../reference/troubleshooting-index.md) has the rest.
 
 ## Next
 

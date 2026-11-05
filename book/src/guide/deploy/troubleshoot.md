@@ -6,7 +6,7 @@ Common issues and solutions when working with nros. This page owns
 troubleshooting; a few chapters keep a short section for failures that
 only happen in their topic:
 
-- First build and first run: [Troubleshooting — First 10 Minutes](../../get-started/first-10-minutes.md)
+- First build and first run: [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md)
 - ROS 2 side sees nothing (domain ID, QoS, `rmw_zenoh_cpp` client mode, edition):
   [ROS 2 Interop](../../tutorial/talk-to-ros2.md#troubleshooting)
 - Serial links (handshake timeouts, baud rate, UART pins):

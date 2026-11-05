@@ -107,7 +107,7 @@ That first configure records the ROS 2 prefix in the project, so later
 builds and runs of that project work from a shell that has not sourced ROS.
 Without a sourced ROS 2 and without that record, the build stops with
 `` `AMENT_PREFIX_PATH` is unset and no configure of … has recorded one to
-reuse``; [Troubleshooting](../get-started/first-10-minutes.md#a10-ament_prefix_path-is-unset)
+reuse``; [Troubleshooting](../reference/troubleshooting-index.md#a10-ament_prefix_path-is-unset)
 has the fix.
 
 ROS 2 also provides:

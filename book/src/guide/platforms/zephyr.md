@@ -995,7 +995,7 @@ in 30 seconds:
    in `prj.conf` — Zephyr networking is opt-in.
 3. Confirm `zenohd` reachable from the simulated network (Slirp
    needs `10.0.2.2:7447` on QEMU; native_sim uses host loopback).
-4. See [Troubleshooting — First 10 Minutes](../../get-started/first-10-minutes.md).
+4. See [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md).
 
 **Zephyr 4.x build gotchas.**
 - `Could NOT find Python3 ... required is at least "3.12"` — 4.x needs

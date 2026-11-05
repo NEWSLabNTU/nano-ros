@@ -10,7 +10,7 @@ router at all (see [Choosing an RMW](pick-the-rmw.md)).
 Either way the build generates its messages from your ROS 2 install, so
 you need ROS 2 sourced for the first build.
 
-> **Stuck?** See [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md) for the common first-build errors.
+> **Stuck?** See [Troubleshooting — First 10 Minutes](../reference/troubleshooting-index.md) for the common first-build errors.
 
 ## Prereqs
 
@@ -233,7 +233,7 @@ seconds:
    blocks on `Executor::open` indefinitely.
 3. Re-run with `RUST_LOG=debug` and look for "RMW session open
    failed" — usually a wrong locator or wrong port.
-4. See [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md).
+4. See [Troubleshooting — First 10 Minutes](../reference/troubleshooting-index.md).
 
 ## Retargeting
 
@@ -265,7 +265,7 @@ you.
   from the workspace root adds a second node package and its component row
   ([Growing your workspace](grow-your-workspace.md)).
 - Generate bindings for custom `.msg` / `.srv` / `.action` files:
-  [Message Generation](../build/message-generation.md)
+  [Message Generation](../reference/message-generation.md)
 - Cross-compile for an RTOS: pick the right Embedded Starter from
   the next section (FreeRTOS / Zephyr / NuttX / ThreadX / ESP32 /
   Bare-metal Cortex-M3).

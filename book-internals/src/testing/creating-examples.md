@@ -270,7 +270,7 @@ nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 nano_ros_generate_interfaces(... LANGUAGE C)
 ```
 
-See [Message Generation](../../build/message-generation.html) for the
+See [Message Generation](../../reference/message-generation.html) for the
 full reference + `package.xml` schema.
 
 ## Adding a new example — checklist
@@ -332,7 +332,7 @@ runner scripts — live in the [Platform Guides](../../../book/src/targets/).
 ## See Also
 
 - [Build as a CMake subdirectory](../../guide/build/cmake-subdirectory.html)
-- [Message Generation](../../build/message-generation.html)
+- [Message Generation](../../reference/message-generation.html)
 - [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)
   — coverage matrix + intentionally-empty cells
 - [`examples/templates/multi-package-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace)

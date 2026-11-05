@@ -33,7 +33,7 @@ transport that moves the bytes. nano-ros is a small implementation of that
 model for microcontrollers.
 
 If anything goes wrong in the first steps, see
-[Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md).
+[Troubleshooting — First 10 Minutes](../reference/troubleshooting-index.md).
 
 ## Industrial: reproducible, auditable, offline
 

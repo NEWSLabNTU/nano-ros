@@ -77,7 +77,7 @@ the router its link needs and streams the console; `nros run --expect
 flashes through the board's flash method and watches the console on the same
 port, and `nros monitor` attaches to a board that is already running. A board
 with no flash method stays on the **vendor's native tools**. See
-[What `nros build` Produces](../../build/build-artifacts.md) for where each target family's
+[What `nros build` Produces](../../reference/build-outputs.md) for where each target family's
 artifact lands and which of the vendor's commands takes it from there.
 
 (`nros build` itself *does* exist. It generates the root build file and the

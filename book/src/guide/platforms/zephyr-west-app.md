@@ -783,7 +783,7 @@ with no stated maximum needs one. Put it in an `nros-codegen.toml` beside
 "3.12"`.** Zephyr 4.x needs Python 3.12 or newer for west and its build
 scripts.
 
-For anything else, [Troubleshooting: First 10 Minutes](../../get-started/first-10-minutes.md)
+For anything else, [Troubleshooting: First 10 Minutes](../../reference/troubleshooting-index.md)
 walks through the common failures.
 
 ## Design background

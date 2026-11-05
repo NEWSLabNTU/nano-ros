@@ -194,7 +194,7 @@ and links in as a library, the same as every other row in the table.
 - A project with several nodes or boards:
   [Growing your workspace](../tutorial/grow-your-workspace.md)
 - If the first build fails:
-  [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md)
+  [Troubleshooting — First 10 Minutes](../reference/troubleshooting-index.md)
 
 ## Design background
 
