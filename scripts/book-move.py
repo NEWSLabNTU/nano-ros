@@ -280,6 +280,8 @@ def render_summary(book: str, pages: list[bp.Page], titles: dict[pathlib.Path, s
             cur = p.current()
             if cur is None or cur.resolve() in placed:
                 continue
+            if src.resolve() not in cur.resolve().parents:
+                continue  # still in the other book: listed once its batch moves it
             placed.add(cur.resolve())
             rows.append((p, cur))
         # RFC-0124 D1: a part with groups (the User guide) lists its loose
