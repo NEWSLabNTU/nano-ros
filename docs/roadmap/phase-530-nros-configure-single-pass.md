@@ -880,9 +880,14 @@ configure), so those entries are dropped before the comparison.
   ninja. Zephyr with no CLI: `west build -d <dir> --cmake`; plain cmake:
   `cmake <dir>`; CLI-driven: `nros configure ...` then `nros build ...`
   (R51 re-passes the cmake options there). `cmake-resolved-seed` case Z runs
-  the printed `cmake <dir>` on that state and asserts it configures.
+  the printed `cmake <dir>` on that state and asserts it configures. The
+  rule covers EVERY configure-time FATAL whose remedy is a re-configure, through
+  one helper, `nros_reconfigure_remedy` (`cmake/NanoRosDiagnostics.cmake`): the
+  promise FATALs, seeded and unseeded, the missing-SystemModel FATAL in
+  `nano_ros_entry()`, the unreadable sizing descriptor, and the foreign-SDK
+  checkout guard.
 
-Gates for this wave: `cmake-resolved-seed` (61 checks, incl. a real
+Gates for this wave: `cmake-resolved-seed` (63 checks, incl. a real
 `check-knob-one-pass.py` run over a dir the suite configured and a no-op
 build asserting 0 `Re-running CMake`), `cmake-sizing-descriptor`,
 `cmake-entity-inventory`, `cmake-message-bounds`, `configure-hook`,

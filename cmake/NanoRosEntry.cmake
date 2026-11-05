@@ -49,6 +49,7 @@ set(_NROS_ENTRY_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "nano_ros_entry m
 # definitions. `NanoRosNodeRegister.cmake` is the SSoT for those
 # (it predates this module). The include is guarded inside that file,
 # so re-including is a no-op when callers already loaded it.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")  # nros_reconfigure_remedy
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")  # phase-500 W1
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLinkAppDependency.cmake")  # phase-518
@@ -546,13 +547,20 @@ function(nano_ros_entry)
                         "and NROS_ALLOW_UNSYNCED_MODEL is set -- the image gets no "
                         "entity facts, no census check and no model-sized pools.")
                 else()
+                    # Ruling R53: a command that re-runs cmake on this dir.
+                    nros_reconfigure_remedy(_cfg _again)
+                    if("${_cfg}" STREQUAL "")
+                        set(_cfg "nros configure")
+                    endif()
                     message(FATAL_ERROR
                         "nano_ros_entry(${_NRA_NAME}): the SystemModel for bringup "
                         "${_NRA_BRINGUP} (launch '${_NRA_LAUNCH}') does not exist:\n"
                         "  ${_NRA_MODEL}\n"
                         "It is a BUILD ARTIFACT that only `nros configure` writes "
-                        "(phase-330 W4.a). Run it in the workspace, then re-configure:\n"
-                        "  nros configure\n"
+                        "(phase-330 W4.a). Run it in the workspace, then configure "
+                        "this build again:\n"
+                        "  ${_cfg}\n"
+                        "  ${_again}\n"
                         "Configuring without it used to derive no tiers and size no "
                         "pools, silently (issue 1575). To configure anyway, knowing "
                         "that, pass -DNROS_ALLOW_UNSYNCED_MODEL=ON.")

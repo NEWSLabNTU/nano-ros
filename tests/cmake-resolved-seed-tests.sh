@@ -832,6 +832,11 @@ include("$PROJECT_ROOT/cmake/NanoRosEntityInventory.cmake")
 include("$PROJECT_ROOT/cmake/NanoRosMessageBounds.cmake")
 include("$RESOLVED_MODULE")
 nros_configured_publish("$PROM_ROOT/resolve")
+# A CLI-driven road, as nros_configured_locate publishes it (Ruling R53).
+if(PROBE_CLI)
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_COMMAND "nros configure /p --image i")
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_BUILD_COMMAND "nros build --workspace /p i")
+endif()
 nros_entity_inventory_knobs_file(_e)
 configure_file("$PROM_ROOT/entity.cmake" "\${_e}" COPYONLY)
 nros_message_bounds_knobs_file(_frag)
@@ -895,6 +900,25 @@ if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "could not see" <<<"$PROM_OUT" \
     log_success "a moved table: the configure stops naming the table set, never re-converges"
 else
     fail "a table configure did not see did not stop the configure by name (rc=$PROM_RC):
+$PROM_OUT"
+fi
+# Ruling R53 -- the seeded FATAL's remedy re-runs cmake on this dir: no CLI
+# property here, so `cmake <dir>`; never the bare "configure again".
+check
+if nros_grep_q -F "then run \`nros configure\`, then \`cmake $PROM_ROOT/build\`" <<<"$(flat "$PROM_OUT")" \
+   && ! nros_grep_q -F "and configure again" <<<"$(flat "$PROM_OUT")"; then
+    log_success "the seeded FATAL names a re-configure that runs cmake (\`cmake <dir>\`)"
+else
+    fail "the seeded FATAL does not name \`cmake <dir>\` as its re-configure:
+$PROM_OUT"
+fi
+prom_run -DPROBE_ANSWER=other -DPROBE_CLI=ON
+check
+if [ "$PROM_RC" -ne 0 ] \
+   && nros_grep_q -F 'then run `nros configure /p --image i`, then `nros build --workspace /p i`' <<<"$(flat "$PROM_OUT")"; then
+    log_success "on a CLI-driven road the seeded FATAL names nros configure, then nros build"
+else
+    fail "the seeded FATAL on a CLI-driven road does not name \`nros build\` (rc=$PROM_RC):
 $PROM_OUT"
 fi
 write_prom_record "" 4096

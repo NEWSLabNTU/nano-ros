@@ -53,7 +53,12 @@ mod="$tmp/a/zephyr/.."
 # STATUS line must make a `refuse` row FAIL here. Without it, a harness that
 # could not tell a refusal from an acceptance would print eight `ok`s.
 selftest() {
-    local broken="$tmp/broken_guard.cmake" saved=$fail
+    # In the guard's own layout, so its `../../cmake/` include still resolves:
+    # the copy must differ from the guard by the downgrade alone.
+    local copy="$tmp/guard-copy" broken saved=$fail
+    mkdir -p "$copy/zephyr/cmake"
+    ln -s "$ROOT/cmake" "$copy/cmake"
+    broken="$copy/zephyr/cmake/broken_guard.cmake"
     sed 's/message(FATAL_ERROR/message(STATUS/' "$GUARD" > "$broken"
     row "selftest: downgraded guard" refuse \
         "nros_assert_sdk_not_foreign(\"$mod\" \"$tmp/b/toolchains/sdk\")" \

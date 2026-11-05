@@ -46,6 +46,9 @@
 # how parallel sessions are run here — which is exactly the population this
 # defect was found in.
 
+# `nros_reconfigure_remedy` (phase-530 W7, Ruling R53).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosDiagnostics.cmake")
+
 # The nano-ros checkout a path belongs to, or "" when it belongs to none.
 # Purely lexical, so it attributes a directory that has not been provisioned.
 function(_nros_checkout_root_of path out_var)
@@ -167,6 +170,8 @@ function(nros_assert_sdk_not_foreign module_root sdk_dir)
     if(NOT _module_checkout OR _sdk_checkout STREQUAL _module_checkout)
         return() # a vendored module, or row 2
     endif()
+    # Ruling R53: a command that re-runs cmake on this dir.
+    nros_reconfigure_remedy(_cfg _again)
     message(FATAL_ERROR
         "nano-ros: the Zephyr SDK belongs to ANOTHER nano-ros checkout (phase-478 I2).\n"
         "  SDK in use:    ${_sdk_real}\n"
@@ -177,10 +182,13 @@ function(nros_assert_sdk_not_foreign module_root sdk_dir)
         "This image would be compiled by whatever toolchain that other tree "
         "installed. The SDK belongs in the shared store, where every checkout "
         "finds the version its own index pins (issue 1254). Re-register it from "
-        "THIS checkout, then reconfigure:\n"
+        "THIS checkout:\n"
         "    just zephyr setup\n"
         "or point the build at the store copy:\n"
         "    export ZEPHYR_SDK_INSTALL_DIR=\"$(bash scripts/lib/zephyr-sdk.sh resolve)\"\n"
+        "then configure this build again (a bare `west build -d` would skip cmake "
+        "here):\n"
+        "    ${_again}\n"
         "\n"
         "-DNROS_ALLOW_FOREIGN_SDK=ON downgrades this to a warning. Say why.")
 endfunction()
