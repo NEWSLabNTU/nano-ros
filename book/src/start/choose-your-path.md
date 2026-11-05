@@ -1,140 +1,157 @@
-# Choose Your Entry
+# Choose your path
 
 <!-- type: how-to · level: 1 -->
 
-This book is organized around what you are trying to do with nano-ros, not
-around who you are. Pick the purpose closest to yours. Each section lists the
-pages to read, in order.
+Pick the card that matches your work and follow its route in order. Each
+step needs only the steps above it, so you never read a page that assumes
+one you skipped. Each card also states its budget: the time or the property
+the route is written and tested to meet.
 
-## Everyone: your first project
+Every route starts with [Install](install.md). If you are not sure which card
+fits, start with Education: its first chapters are the common start of every
+other route.
 
-Every purpose starts the same way:
+<style>
+.nros-path-card { border: 1px solid var(--table-border-color); border-left: 4px solid var(--links);
+  border-radius: 6px; padding: 0.1em 1.2em 0.4em; margin: 1.4em 0; }
+.nros-path-card h2 { margin-top: 0.6em; }
+</style>
 
-1. **[Install](install.md)** the `nros` CLI.
-2. **[First Project](../tutorial/run-a-talker.md)** scaffolds a talker
-   for a Cortex-M3 board, runs it in QEMU and shows its messages in ROS 2:
+<div class="nros-path-card">
 
-   ```bash
-   nros setup mps2-an385-baremetal --rmw zenoh
-   nros new sensor_ws --board mps2-an385-baremetal --template talker
-   cd sensor_ws
-   nros run sensor_node
-   ```
+## Education
 
-   No QEMU or ROS 2? The same chapter runs it on your Linux host.
-3. **[Anatomy of What You Just Built](../tutorial/what-you-just-built.md)**
-   explains the workspace in nano-ros's own terms. You do not need to open
-   the bringup package before you have seen it run.
+**For:** instructors and students in a course or lab on robotics or
+embedded systems.
 
-New to ROS entirely? Two ideas carry the whole book. A **node** is a unit
-that computes, and nodes talk through named **topics** (publish/subscribe)
-and request/reply **services**. An **RMW** ("ROS MiddleWare") backend is the
-transport that moves the bytes. nano-ros is a small implementation of that
-model for microcontrollers.
+**Budget:** a 15-minute install on each seat, labs that fit a two-hour
+session, and the same result on every seat.
 
-If anything goes wrong in the first steps, see
-[Troubleshooting — First 10 Minutes](../reference/troubleshooting-index.md).
+**Route:**
 
-## Industrial: reproducible, auditable, offline
+1. [Install](install.md) on each seat.
+2. [Run a talker on an emulated board](../tutorial/run-a-talker.md). The
+   output it prints is the result to check on every seat.
+3. [What you just built](../tutorial/what-you-just-built.md): the node
+   package and the workspace around it.
+4. [Add a second node](../tutorial/add-a-second-node.md), in Rust,
+   [C](../tutorial/add-a-second-node-c.md) or
+   [C++](../tutorial/add-a-second-node-cpp.md).
+5. [Pick and configure the RMW](../tutorial/pick-the-rmw.md). Cyclone DDS
+   needs no router, which keeps a lab machine simple.
+6. [Your own message](../tutorial/your-own-message.md).
+7. Services and actions: the `server`, `client` and action templates in
+   [the C node chapter](../tutorial/add-a-second-node-c.md#the-node-package).
+8. [Parameters and launch files](../tutorial/grow-your-workspace.md).
+9. The lab's board: its page under Get started on your board, such as
+   [Nucleo-F767ZI](../starters/nucleo-f767zi.md), or its entry in
+   [Supported Boards](../reference/supported-boards.md).
 
-You build products where safety and robustness matter. You need the same
-inputs to give the same image, every fact on a page, and an install that runs
-with no network.
+</div>
 
-- **What is supported, and how it is checked.**
-  [Supported Boards](../reference/supported-boards.md) and
-  [Board support levels](../reference/board-support-levels.md) are generated
-  from the board registry. `nros doctor --report` prints the status of every
-  board your bringup's images name, as a report you can file.
-- **Pinning and offline builds.**
-  [Pinning a version](../guide/build/install-options.md#pinning-a-version)
-  (`nros pin`), and
-  [Integrating into a Vendored Tree](../guide/build/existing-cmake-or-vendor-tree.md)
-  for a company tree with air-gapped CI. `nros build --offline` fails,
-  naming what is missing, rather than fetching it.
-- **Your RTOS and your build tool.**
-  [How Integration Works](../background/how-a-build-becomes-an-image.md):
-  your RTOS keeps its own build tool (west, make, CMake, your IDE) and
-  nano-ros plugs into it. [Build as a CMake
-  subdirectory](../guide/build/cmake-subdirectory.md) covers a tree
-  with no `system.toml`.
-- **Real-time and memory bounds.**
-  [Execution Model and Two-Layer API](../background/two-layer-api.md),
-  [Scheduling Models](../guide/realtime/pick-a-scheduling-model.md) and the generated
-  [Scheduling Wiring Matrix](../reference/sched-matrix.md),
-  [`no_std`, `alloc`, and `std`](../background/static-memory-and-pools.md),
-  [Dispatch Strategy](../background/dispatch-strategy.md), and the
-  [Static Pool Inventory](../reference/static-pool-inventory.md).
-- **Safety and adoption gates.**
-  [Safety Protocol](../background/safety.md) (E2E CRC, EN 50159
-  mapping) and the
-  [Production Readiness Checklist](../guide/deploy/production-readiness.md).
-- **Your own board or BSP.**
-  [Custom Board Package](../extending/custom-board.md),
-  [Vendor Overlay](../extending/vendor-overlay.md) and the
-  [STM32F4 out-of-tree worked example](../extending/stm32f4-out-of-tree.md).
-  A board of yours lives in your tree (`NROS_EXTRA_BOARD_PATH`). A new
-  platform (a new RTOS) still means changing nano-ros itself.
-- **Comparisons.** [Differences from Standard ROS
-  2](../background/differences-from-ros2.md),
-  [nano-ros vs micro-ROS](../background/vs-micro-ros.md),
-  [Choosing an RMW Backend](../tutorial/pick-the-rmw.md) and the
-  generated [Per-RMW Feature Matrix](../reference/rmw-feature-matrix.md).
+<div class="nros-path-card">
 
-## Field solutions: a working system per customer
+## Field solutions
 
-You build a system for each customer, often on a board you were handed, and
-you need it publishing data that a ROS 2 system can see, quickly.
+**For:** engineers and technicians who build a system for each customer,
+often on a board they were handed.
 
-1. **Your first project** (above), on the host.
-2. **Your board.** Find it in
-   [Supported Boards](../reference/supported-boards.md); its evidence page
-   says where it runs and which chapter covers it. Then read your platform's
-   chapter (FreeRTOS, Zephyr, NuttX, ThreadX or bare-metal). Every embedded
-   chapter has a QEMU flow that works without hardware.
-3. **Run it on the target.** [The target model](../guide/deploy/deploy-to-production.md#the-target-model)
-   and [`nros run`](../guide/deploy/deploy-to-production.md#running-an-image-nros-run) for a host process or an emulator.
-4. **Talk to ROS 2.** [Choosing an RMW](../tutorial/pick-the-rmw.md)
-   and [ROS 2 Interoperability](../tutorial/talk-to-ros2.md). Cyclone DDS
-   talks to `rmw_cyclonedds_cpp` directly, with no router. Zenoh needs the
-   ROS 2 router (`rmw_zenoh_cpp`) on the host.
-5. **Grow the system.** More nodes, parameters and images:
-   [Growing your workspace](../tutorial/grow-your-workspace.md),
-   and [Mixed-language workspaces](../guide/build/mix-languages.md) for
-   other languages. Bridging several networks:
-   [Cross-backend Bridges](../guide/rmw/bridge-between-backends.md).
-6. **Coming from rclcpp or rclpy?**
-   [Setup Compared to Standard ROS 2](../guide/port/setup-compared.md),
-   [Porting a ROS 2 C++ node](../guide/port/port-a-cpp-node.md),
-   [C / C++ multi-node workspaces](../guide/contracts/cpp-workspaces.md) and
-   the [Migration Guide](../guide/port/move-a-ros2-project.md).
+**Budget:** 30 minutes from an unopened box to `ros2 topic echo` showing the
+board's data.
 
-## Education: labs that fit a session
+**Route:**
 
-You teach a course or run a lab. Every seat needs the same result, the
-install must be short, and each lab must fit one session.
+1. [Install](install.md).
+2. Your board's page under Get started on your board. It runs the board's
+   emulated twin first, then the board itself:
+   [Nucleo-F767ZI](../starters/nucleo-f767zi.md). For any other board, find
+   it in [Supported Boards](../reference/supported-boards.md); its page
+   names the chapter that runs it.
+3. [Talk to ROS 2](../tutorial/talk-to-ros2.md): the board's topics in your
+   ROS 2 graph, in both directions.
 
-1. **Install once per seat**:
-   [Installation](install.md). Nothing in the first
-   project needs ROS 2, a router or hardware.
-2. **The first lab** is the first project (above), in C++ or, on the same
-   page, in Rust. The output it prints is the result to check on every seat.
-3. **Concepts for the lecture.**
-   [Anatomy](../tutorial/what-you-just-built.md),
-   [Architecture Overview](../background/architecture.md) and
-   [Execution Model and Two-Layer API](../background/two-layer-api.md).
-4. **Embedded labs without hardware.** Each platform chapter runs its
-   example under QEMU, for example
-   [FreeRTOS](../guide/platforms/freertos.md) or
-   [bare-metal](../guide/platforms/bare-metal.md).
-5. **Labs that talk to ROS 2.**
-   [Choosing an RMW](../tutorial/pick-the-rmw.md); Cyclone DDS needs no
-   router, which keeps a lab machine simple.
+</div>
 
-## Still not sure?
+<div class="nros-path-card">
 
-Read the **[Introduction](welcome.md)** for the one-page overview.
+## Industrial
+
+**For:** teams who build products where safety and robustness matter.
+
+**Budget:** reproducible, auditable and offline. The same inputs give the
+same image, every fact about a board is on a page, and the build runs with no
+network.
+
+**Route:**
+
+1. [Install](install.md).
+2. Background: [the execution model](../background/execution-model.md),
+   [static memory and pools](../background/static-memory-and-pools.md) and
+   [safety](../background/safety.md).
+3. User guide: [pin a release and work offline](../guide/build/install-options.md#pinning-a-version),
+   [build inside a vendor tree](../guide/build/existing-cmake-or-vendor-tree.md)
+   for air-gapped CI, and [deploy to production](../guide/deploy/deploy-to-production.md).
+4. Reference: [board support levels](../reference/board-support-levels.md)
+   and [the configuration keys](../reference/configuration-surface.md).
+   `nros doctor --report` prints the support level of every board your
+   images name, as a report you can file with a review.
+
+</div>
+
+<div class="nros-path-card">
+
+## ROS 2 developer porting nodes
+
+**For:** developers with existing `rclcpp` nodes who want them on a
+microcontroller.
+
+**Budget:** Install's 15 minutes, then the first chapter's run. The port
+itself depends on your node, so this route sets no time for it.
+
+**Route:**
+
+1. [Install](install.md).
+2. [Run a talker on an emulated board](../tutorial/run-a-talker.md), to see
+   the toolchain work before your own code is in it.
+3. [How nano-ros differs from ROS 2](../background/differences-from-ros2.md).
+4. [Port a C++ node](../guide/port/port-a-cpp-node.md).
+5. [Move a ROS 2 project over](../guide/port/move-a-ros2-project.md).
+
+</div>
+
+<div class="nros-path-card">
+
+## Board porter
+
+**For:** developers who bring nano-ros to a board, a platform or a
+transport it does not support yet.
+
+**Budget:** Install's 15 minutes, then the first chapter's run. Porting is
+development work, so this route sets no time for it.
+
+**Route:**
+
+1. [Install](install.md).
+2. [Run a talker on an emulated board](../tutorial/run-a-talker.md) and
+   [What you just built](../tutorial/what-you-just-built.md).
+3. [How a build becomes an image](../background/how-a-build-becomes-an-image.md).
+4. [Extending nano-ros](../extending/overview.md), then
+   [a custom board package](../extending/custom-board.md). A board of yours
+   lives in your own tree.
+5. [nano-ros Internals](../internals/orientation/start-here.html), when the
+   port needs a change inside nano-ros itself, such as a new platform.
+
+</div>
+
+## If none of these fit
+
+Read [Welcome](welcome.md) for what nano-ros is and what it is not, then
+follow the Education route as far as you need. Its first two chapters are the
+shortest way to see nano-ros run. If a step fails,
+[Troubleshooting](../reference/troubleshooting-index.md) lists the problems
+readers meet in their first ten minutes.
 
 ## Design background
 
-- [RFC-0116: adoption purposes and front doors](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0116-adoption-purposes-and-front-doors.md) — the three purposes this page routes by
+The three purposes and their budgets are RFC-0116 D1. The five cards are
+RFC-0124 D10.
