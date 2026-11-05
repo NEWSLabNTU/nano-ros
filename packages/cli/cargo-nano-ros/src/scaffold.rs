@@ -1806,7 +1806,8 @@ mod scaffold_flow_tests {
     #[test]
     fn zephyr_c_and_cpp_scaffold_a_stock_zephyr_app() {
         let book =
-            fs::read_to_string(repo_root().join("book/src/guide/platforms/zephyr-west-app.md")).unwrap();
+            fs::read_to_string(repo_root().join("book/src/guide/platforms/zephyr-west-app.md"))
+                .unwrap();
         for (lang, src) in [
             (Language::C, "src/Talker.c"),
             (Language::Cpp, "src/Talker.cpp"),
@@ -1876,7 +1877,8 @@ mod scaffold_flow_tests {
     #[test]
     fn next_steps_follow_the_books_flow_per_language_and_platform() {
         let book =
-            fs::read_to_string(repo_root().join("book/src/guide/platforms/zephyr-west-app.md")).unwrap();
+            fs::read_to_string(repo_root().join("book/src/guide/platforms/zephyr-west-app.md"))
+                .unwrap();
         let platforms = [
             "linux",
             "baremetal",
