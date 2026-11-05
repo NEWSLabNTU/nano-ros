@@ -37,6 +37,7 @@
   - [C / C++ multi-node workspaces](./guide/contracts/cpp-workspaces.md)
   - [Declare QoS in a contract](./guide/contracts/declare-qos-in-a-contract.md)
   - [Size an image from its contract](./guide/contracts/size-an-image-from-its-contract.md)
+  - [Contracts for a bringup with no launch file](./guide/contracts/contracts-for-a-bringup-with-no-launch-file.md)
   - [Measure static memory](./guide/contracts/measure-static-memory.md)
 - [Build and configure]()
   - [Organize a larger workspace](./guide/build/organize-a-larger-workspace.md)

@@ -252,6 +252,13 @@ batch = "p537-w7"
 note = "Size an image from its contract (W7): a how-to for every language, from the contract sections of guide/contracts/cpp-workspaces"
 
 [[page]]
+book = "user"
+path = "guide/contracts/contracts-for-a-bringup-with-no-launch-file.md"
+action = "new phase-537"
+batch = "p537-w7"
+note = "Contracts for a bringup with no launch file (W7): a how-to for every language, from the contract sections of guide/contracts/cpp-workspaces"
+
+[[page]]
 old = "internals/measuring-static-memory.md"
 book = "user"
 path = "guide/contracts/measure-static-memory.md"
