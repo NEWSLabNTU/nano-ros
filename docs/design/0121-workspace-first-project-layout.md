@@ -5,7 +5,7 @@ status: Draft
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-531]
-amends: [0098, 0116, 0026, 0066, 0120]
+amends: [0071, 0098, 0116, 0026, 0066, 0120]
 supersedes: []
 superseded-by: null
 ---
@@ -184,6 +184,19 @@ supported user flow. `nros build` is the front door (RFC-0116, RFC-0120 D1
 layer 2). The hooked host-tool roads of RFC-0120 D8 are kept, against the
 generated entry, which records its bringup so the hook needs no directory walk.
 
+The generated entry needs no selection package (amended 2026-11-05,
+maintainer decision). That package kept a hand-written manifest unchanged
+across a board, RMW or edition switch; the generated entry's manifest and
+`main` are regenerated per image, so they state the board crate, the backend
+crates and their features themselves, and the backend registration of
+RFC-0071 D11 is written into the entry's source (RFC-0071 D13). An entry a
+person owns (`nros materialize`, RFC-0065 D5) keeps a generated adapter crate,
+`<entry>_nros_derived`, so its derivation stays live. A node package names no
+board, RMW, selection or adapter crate (D1, enforced by
+`check-node-package-selection-free`). C and C++ images never used either
+crate: their registration is the generated `nros_app_register_backends()` and
+their backend arrives through the per-configure umbrella crate (RFC-0071 D9).
+
 Out of scope, unchanged: projects that own their build and have no
 `system.toml`. That means a guest Zephyr application (RFC-0085 D14), a CMake
 `add_subdirectory` consumer, and a vendor-SDK project (RFC-0064).
@@ -221,6 +234,7 @@ pairs move into the language workspaces as image rows.
 
 | RFC | Amendment |
 | --- | --- |
+| 0071 | D3 and D11: a generated entry states its features and registration itself; an owned entry gets them from the adapter crate `<entry>_nros_derived` (D13, 2026-11-05) |
 | 0098 | The 2026-10-11 "Rejected: making every single-package leaf a generated entry" is reversed (D6). The selection-package section retires with the shape |
 | 0116 D6 | The first chapter still names no launch file, image or entry. It now shows a workspace holding two packages, both written by the scaffold (D4). "Grows into a workspace by `nros new --workspace`" becomes "grows by adding a package" |
 | 0026, 0066 | An example is a copy-out WORKSPACE. A feature is still a node package and a configuration is still a fixture axis (RFC-0066); a single-package example is one node package plus one bringup |
@@ -234,7 +248,7 @@ pairs move into the language workspaces as image rows.
 | What | Where | Replaced by |
 | --- | --- | --- |
 | standalone package shape | 223 `system.toml` beside code | node package plus bringup (D8) |
-| `<pkg>_nros_selection` crate | `leaf_system::selection_crate_name`, `LEAF_SELECTION_DIR` | the generated entry names the board |
+| `<pkg>_nros_selection` crate, for a leaf and a generated entry | `leaf_system::selection_crate_name`, `LEAF_SELECTION_DIR`, `facade::write_leaf_selection`, `leaf_settings::write_selection` / `write_entry_selection`, the macro's `leaf_selection_crate` / `reroot_through` | the generated entry names the board, the backend and their features, and carries its own registration (D6, RFC-0071 D13), from phase-531 W5. The leaf's half goes with its shape (W7 step 3). An owned entry keeps the workspace facade, renamed `<entry>_nros_derived` (RFC-0071 D13) |
 | `synthesise_self_bringup`, `[deploy.*]` manifest metadata | `orchestration/nros_config.rs` | D3 |
 | `synthesise_self_model` | `orchestration/launch_synth.rs` | D3 |
 | `--from-leaf`, `write_for_leaf` | sizing descriptor, `cmake/NanoRosSizingDescriptor.cmake` | `write_for_model` |
@@ -286,3 +300,9 @@ some `leaf_*` code also serves workspace entries.
   single-node witnesses and `custom-platform` migrate in place; the pairs,
   variants, configurations and feature demos become image rows in the language
   and features workspaces (phase-535 replaces phase-531 W6 for them).
+- 2026-11-05: D6 — the selection package retires for generated workspace
+  entries too, not only for leaves (maintainer decision, option b). The
+  generated entry names the board and backend crates with their features and
+  carries the backend registration; RFC-0071 gains D13 and RFC-0098 D6 loses
+  the package. An owned entry keeps a generated adapter crate, renamed
+  `<entry>_nros_derived`, so RFC-0065 D5's live derivation holds (option A).

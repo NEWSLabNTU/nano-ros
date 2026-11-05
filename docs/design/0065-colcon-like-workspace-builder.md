@@ -505,8 +505,9 @@ builder afterwards uses that package rather than regenerating it.
 looks.** A materialised entry is a one-line `nros::main!(launch = "…")`, and
 that macro reads the launch XML **at expansion time** (its tracked inputs are
 "launch.xml, every `package.xml` the pkg-index walked"). The RMW and capability
-selection likewise flows through the `*_nros_selection` facade that `nros configure`
-regenerates. So adding a node to a launch file reaches a materialised entry on
+selection likewise flows through the owned entry's adapter crate,
+`<entry>_nros_derived` (RFC-0071 D13; `*_nros_selection` before 2026-11-05),
+which `nros configure` regenerates. So adding a node to a launch file reaches a materialised entry on
 the next compile: **the derivation stays live.**
 
 What freezes is the *shell* — `#![no_std]` / `#![no_main]`, the panic handler,
@@ -1230,6 +1231,10 @@ rejected here, because neither has a derivation to perform.
 
 ## Changelog
 
+- **2026-11-05** — D5 names the owned entry's adapter crate,
+  `<entry>_nros_derived` (RFC-0071 D13, phase-531 W5). A generated entry
+  states its features itself; a materialised one keeps the adapter, so its
+  derivation stays live as D5 says. Nothing else in D5 changes.
 - **2026-10-24** — D5 amended (issue 1511): `[image.<id>] before_boot`, a
   pre-boot step declared on the image and forwarded to `nros::main!`. It is
   Rust only; the C/C++ roads, RTIC and Embassy refuse it. Materialising stays

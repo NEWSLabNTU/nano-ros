@@ -3,8 +3,8 @@ rfc: 0071
 title: "RMW backend descriptor: a backend declares itself, core names none"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-10
-implements-tracked-by: [phase-347, phase-348, phase-506]
+last-reviewed: 2026-11
+implements-tracked-by: [phase-347, phase-348, phase-506, phase-531]
 supersedes: []
 superseded-by: null
 ---
@@ -136,6 +136,10 @@ backends:
 feeds (`MessageForRmw`, `register_type_descriptor`) is already generic.
 
 ### D3 — the selection facade carries the lowering
+
+> **Amended 2026-11-05 (D13 below, phase-531 W5):** a generated entry carries
+> these features in its own manifest. An entry a person owns gets them from a
+> generated adapter crate, `<entry>_nros_derived`, the renamed facade.
 
 The translation point already exists and is already generated. `nros configure`
 writes `<entry>_nros_selection` (RFC-0031's lowering made concrete), which today
@@ -429,6 +433,11 @@ naming their replacement.
 
 ### D11 — the descriptor states how to register; the selection facade calls it
 
+> **Amended 2026-11-05 (D13 below, phase-531 W5):** the two macros are
+> generated into the entry's own source, or, for an entry a person owns, into
+> its adapter crate `<entry>_nros_derived`. `nros::main!` calls them with one
+> call shape either way.
+
 Two descriptor fields, filled per backend:
 
 ```toml
@@ -454,6 +463,120 @@ backend depends on `nros-rmw` directly, as every in-tree backend already does
 (measured: one use of the seam through `nros::` outside the facade). What the
 macros expand into moves to a doc-hidden `nros::__macro`, and the executor's raw
 registration surface to the existing `nros::internals`.
+
+## Amendment 2026-11-05 — the generated entry carries its own selection (phase-531 W5)
+
+### D13 — registration and features are generated into the entry, or into an owned entry's adapter
+
+RFC-0121 D6 builds every image through a generated entry whose `Cargo.toml`
+and `main` are regenerated per image. The selection package existed so that a
+HAND-WRITTEN manifest would never change on a board, RMW or edition switch.
+A generated manifest has no such constraint, so for a generated entry the
+indirection has no job left (maintainer decision, 2026-11-05).
+
+* **Features.** The entry generator (`builder::entry::render_manifest`) asks
+  the same derivation the facade asks (`facade::derive`) and writes its result
+  on the entry's own dependency lines: the edition, the capabilities and
+  `needs-type-descriptors` on `nros`; the board's non-RMW defaults plus one
+  `rmw-<x>` per linked backend and the edition on the board crate
+  (`default-features = false`, as before, issue 0831); the edition and backend
+  capabilities on a direct backend dependency (the Zephyr west entry).
+  Nothing changes for cargo: the features reach the same packages, by the
+  entry's own edge instead of by unification through a second crate.
+* **Registration.** `__nros_register_backends!` and `__nros_register_type!`
+  (D11) are rendered from the descriptors into the generated `main.rs` /
+  `lib.rs`, at crate root above `nros::main!`, as crate-local `macro_rules!`.
+  `nros::main!` calls them by bare name, so the macro still names no backend.
+  Only two arms call them: the Zephyr arm (`(gated)`) and a `[[bridge]]` entry.
+  Every other Rust board registers its backend in the board's boot path
+  through the board crate's `rmw-<x>` feature, which the manifest now names
+  directly.
+* **An entry a person owns keeps a generated adapter crate.** An owned
+  entry (one from `nros materialize`, one from `nros new entry`, the seven
+  tracked fixture `*_entry` packages) cannot be regenerated, and RFC-0065 D5
+  promises that materialising freezes only the SHELL while the derivation
+  stays live. So it depends on an adapter crate that `nros configure`
+  regenerates: the same features on `nros`, the board crate and a direct
+  backend, and the same two macros, `#[macro_export]`ed. A change of RMW,
+  edition or capability reaches an owned entry on its next build, as it does
+  today. The adapter is the old selection facade with a name for its one role:
+  **`<entry>_nros_derived`**, at `<ws>/generated/nros-derived/<entry>/`. The
+  name rule is one function in `nros-orchestration-ir`
+  (`entry_names::adapter_crate_name`, beside `entry_package_name`, which moves
+  there too; not in `leaf_system`, whose leaf half phase-531 W7 retires).
+  `facade::write_facade` calls it rather than spelling the name inline. An owned manifest that still names the
+  previous spelling, `<entry>_nros_selection` at `generated/nros-selection/`,
+  keeps getting its adapter under that spelling, with a warning naming the
+  rename, until that migration is no longer needed.
+* **One call shape, two definers.** `nros::main!` always expands
+  `__nros_register_backends!(…)` / `__nros_register_type!(…)` by bare name. A
+  generated entry defines them in its own source. For an owned entry whose
+  manifest names the adapter, the macro emits `use ::<adapter>::{…};` first.
+  An entry with neither is a build error naming both remedies, as today.
+* **What W7 still deletes is the leaf's half only**: `LEAF_SELECTION_DIR`,
+  `write_leaf_selection`, `leaf_settings::write_selection` and the macro's
+  board-path re-root (`leaf_selection_crate`, `reroot_through`). The seven
+  fixture entries reach their board through that re-root today, so phase-531
+  W7 step 3 moves them onto the adapter (they name their board crate, and
+  depend on `<entry>_nros_derived`), where they stay as owned-entry coverage.
+* **C and C++ images are unaffected.** They never used the Rust selection
+  package: a CMake configure (Zephyr's C/C++ west applications included)
+  registers through the generated strong `nros_app_register_backends()`
+  (`cmake/NanoRosLink.cmake`) and gets its backend crate from the
+  per-configure umbrella crate (D9).
+
+Worked example, `[image.linux_cyclonedds]` on `linux`, ROS Humble. Before,
+the entry depended on its selection package and the package carried the
+features:
+
+```toml
+# build/posix-cyclonedds/linux_cyclonedds_entry/Cargo.toml (before)
+linux_cyclonedds_entry_nros_selection = { path = "../../../generated/nros-selection/linux_cyclonedds_entry" }
+nros = { path = "…/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
+nros-board-linux = { path = "…/packages/boards/nros-board-linux", default-features = false }
+
+# generated/nros-selection/linux_cyclonedds_entry/Cargo.toml (before)
+nros = { path = "…", default-features = false, features = ["needs-type-descriptors", "ros-humble"] }
+nros-board-linux = { path = "…", default-features = false, features = ["rmw-cyclonedds", "ros-humble"] }
+```
+
+After, the entry states them and there is no second package:
+
+```toml
+# build/posix-cyclonedds/linux_cyclonedds_entry/Cargo.toml (after)
+nros = { path = "…/packages/api/nros", default-features = false, features = ["alloc", "macros", "needs-type-descriptors", "rmw-cffi", "ros-humble"] }
+nros-board-linux = { path = "…/packages/boards/nros-board-linux", default-features = false, features = ["rmw-cyclonedds", "ros-humble"] }
+```
+
+and a Zephyr or bridge entry's source opens with the registration the
+selection package's `lib.rs` used to hold:
+
+```rust
+// build/<coord>/<entry>/src/main.rs (after; a bridge linking zenoh + cyclonedds)
+macro_rules! __nros_register_backends {
+    () => {{ let _ = ::nros_rmw_cyclonedds_sys::register(); let _ = ::nros_rmw_zenoh::register(); }};
+    (gated) => {{ #[cfg(feature = "rmw-cyclonedds")] { let _ = ::nros_rmw_cyclonedds_sys::register(); } /* … */ }};
+}
+macro_rules! __nros_register_type {
+    ("cyclonedds", $t:ty) => {{ let _ = ::nros_rmw_cyclonedds::register::<$t>(); }};
+    ($rmw:literal, $t:ty) => {{}};
+}
+nros::main!(launch = "demo_bringup:system.launch.xml");
+```
+
+Rejected, for generated entries: keeping the selection package. It is a
+second generated crate per image whose only content is a feature list the
+entry's own generated manifest can state, and it needed its own heal and
+refresh in `nros build` (issue 1962: a stale facade without the macros stopped
+the bridge entries compiling).
+
+Rejected, for owned entries (maintainer decision, 2026-11-05):
+
+- freezing the features into a materialised manifest and warning on drift.
+  That contradicts RFC-0065 D5, which keeps the derivation live and freezes
+  only the shell (the Expo lesson D5 records);
+- an `include!` of generated registration. Features cannot reach cargo
+  without a manifest, so this solves half the problem.
 
 ## What this does NOT change
 
@@ -601,3 +724,10 @@ encoding the bug into the declaration format.
 The cheap ordering: land 0493's measurement, then Q2/Q2b (pure deletions and a
 rename, no new mechanism), then D1/D5, then D4 last as the only genuinely new
 machinery.
+
+## Changelog
+
+- 2026-11-05: D13 — a generated entry carries its features and backend
+  registration itself. An owned entry keeps a generated adapter crate, renamed
+  `<entry>_nros_derived`, which carries both (maintainer decision, option A;
+  phase-531 W5). D3 and D11 carry pointers.
