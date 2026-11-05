@@ -85,6 +85,7 @@ function(nros_configured_locate _project _image)
     # CLI resolves below, so a host with no CLI is told to configure again
     # rather than to run a command it does not have.
     set_property(GLOBAL PROPERTY NROS_CONFIGURED_COMMAND "")
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_BUILD_COMMAND "")
     # TRUE only once a CURRENT answer is published below.
     set_property(GLOBAL PROPERTY NROS_CONFIGURED_LOCATED_CURRENT FALSE)
     set_property(GLOBAL PROPERTY NROS_CONFIGURED_INPUTS "")
@@ -95,6 +96,10 @@ function(nros_configured_locate _project _image)
     endif()
     set_property(GLOBAL PROPERTY NROS_CONFIGURED_COMMAND
         "nros configure ${_project} --image ${_image}")
+    # Ruling R53 -- `nros build` re-runs cmake even after a failed first
+    # configure (R51 re-passes the image's cmake options with no build.ninja).
+    set_property(GLOBAL PROPERTY NROS_CONFIGURED_BUILD_COMMAND
+        "nros build --workspace ${_project} ${_image}")
     execute_process(
         COMMAND "${_nros}" locate configured --project "${_project}" --image "${_image}"
                 --format cmake
