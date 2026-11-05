@@ -17,5 +17,10 @@ src = "src"
 [build]
 build-dir = "book"
 
+# The user book's language tabs (RFC-0124 D9), so a page here can use them and
+# "Writing the Book" shows them rendered.
+[preprocessor.lang-tabs]
+command = "python3 ../scripts/mdbook-lang-tabs.py"
+
 [output.html]
 git-repository-url = "https://github.com/NEWSLabNTU/nano-ros"
