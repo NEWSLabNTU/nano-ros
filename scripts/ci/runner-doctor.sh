@@ -619,7 +619,7 @@ _nros_runner_check_ros2() {
         _nros_runner_fix "source the setup before invoking this script. nano-ros does not"
         _nros_runner_fix "install ROS: it is a system package and needs root."
         _nros_runner_fix "Ubuntu:      https://docs.ros.org/ — then apt install ros-<distro>-desktop"
-        _nros_runner_fix "Other hosts: docs/development/ros2-on-non-ubuntu.md (Ubuntu distrobox)"
+        _nros_runner_fix "Other hosts: book-internals/src/dev-env/ros2-on-non-ubuntu.md (Ubuntu distrobox)"
         return 1   # nothing below can resolve without a prefix
     fi
 

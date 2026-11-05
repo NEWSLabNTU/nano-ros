@@ -96,7 +96,7 @@ if [ "$fail" -ne 0 ]; then
     cat >&2 <<'EOF'
 
 The NuttX integration Makefile is broken for the flow in
-book/src/getting-started/integration-nuttx.md, and no lane builds it.
+book/src/targets/nuttx.md, and no lane builds it.
 
   paths:  a repo layout move (packages/core -> packages/api) does not
           reach this file automatically — it names paths as text.

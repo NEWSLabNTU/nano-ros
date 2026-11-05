@@ -10,8 +10,8 @@
 //! both against a per-spin cap, ~~`max_callbacks_per_spin`~~; the executor has
 //! no such cap now.)
 //!
-//! See `book/src/concepts/status-events.md` for the user-facing
-//! patterns and `book/src/design/rmw-vs-upstream.md` Section 8 for
+//! See `book/src/communicate/qos-status-events.md` for the user-facing
+//! patterns and `book/src/extending/rmw-vs-upstream.md` Section 8 for
 //! the design rationale.
 //!
 //! ### Matched and incompatible-type (issue 1972)

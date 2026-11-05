@@ -2,8 +2,8 @@
   "key": "cpp:Client::send_goal_future",
   "disposition": "adopt-bounded",
   "envelope": {
-    "file": "docs/guides/cpp-api.md",
-    "text": "return a `Future<T>` keyed by its goal"
+    "file": "book/src/reference/cpp-api.md",
+    "text": "`Future<T>` keyed by its goal"
   },
   "verdict": "divergence",
   "retired_names": [

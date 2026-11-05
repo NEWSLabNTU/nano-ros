@@ -11,7 +11,7 @@ lie that reads as a working knob.
 Two rules, one per missing end.
 
 RULE 1 — nothing may be DOCUMENTED or SET that nothing reads. The env references
-(`book/`, `docs/reference/`, `docs/guides/embedded-tuning.md`, `.env.example`,
+(`book/`, `docs/reference/`, the tuning pages, `.env.example`,
 the API crates' config pages) and the build inputs (`examples/fixtures.toml`
 `env = {}` rows, tracked `.cargo/config.toml` `[env]` keys) are CLAIMS; each
 claimed `NROS_*`/`ZPICO_*` name must be read by a real read IDIOM somewhere.
@@ -66,8 +66,10 @@ NAME = r"(?:NROS|ZPICO)_[A-Z0-9_]*[A-Z0-9]"
 # phase docs and issues describe history and are not a promise that a knob works.
 CLAIM_DOCS = (
     "book/src/reference/environment-variables.md",
-    "docs/reference/environment-variables.md",
-    "docs/guides/embedded-tuning.md",
+    # phase-532 W7: the tuning guide folded into these two pages; the docs/
+    # copies are moved-stubs and claim nothing.
+    "book/src/communicate/tx-tuning.md",
+    "book/src/realtime/static-memory.md",
     ".env.example",
 )
 CLAIM_DOC_GLOBS = (

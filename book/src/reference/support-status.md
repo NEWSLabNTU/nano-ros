@@ -20,8 +20,8 @@ actually installs.
 | **3** | `ci-full` (pre-release) | The whole matrix | Everything the tree claims, verified together. |
 
 Per-board support levels are generated on their own page:
-[Board Support Levels](board-support-levels.md). The hand-maintained
-procurement view (including boards with no in-tree crate) is
+[Board Support Levels](board-support-levels.md). The
+procurement view, including parts with no board package, is
 [Supported Boards](supported-boards.md).
 
 ## RTOS / platform source pins
@@ -41,15 +41,15 @@ procurement view (including boards with no in-tree crate) is
 
 These pins are **decisions, not lags** — they move only with a
 reason, tested together (see
-[Integrating into a Vendored Tree](../getting-started/vendored-tree.md)).
+[Integrating into a Vendored Tree](../build/vendored-tree.md)).
 
 ## RMW backends — versions and interop pairing
 
 | Backend | Client side (pinned) | Host side | Pairing rule |
 |---|---|---|---|
-| **Zenoh** | zenoh-pico `1.10.1` (vendored submodule) | Router = the one **ROS ships**: `ros2 run rmw_zenoh_cpp rmw_zenohd` — nano-ros deliberately vendors no router (RFC-0075) | zenoh-pico's wire protocol is stable across zenoh 1.x, so the pinned client interops with a newer ROS-shipped router (issue 0291) |
+| **Zenoh** | zenoh-pico `1.10.1` (vendored submodule) | Router = the one **ROS ships**: `ros2 run rmw_zenoh_cpp rmw_zenohd` — nano-ros deliberately vendors no router | zenoh-pico's wire protocol is stable across zenoh 1.x, so the pinned client interops with a newer ROS-shipped router |
 | **XRCE-DDS** | Micro-XRCE-DDS client `3.0.1` + Micro-CDR `2.0.2` | Agent `2.4.3-nros1` (installed by `nros setup … --rmw xrce`) | Client and agent are pinned independently and are NOT the same upstream release; they meet at the DDS-XRCE wire protocol |
-| **Cyclone DDS** | fork `0.10.5-nros1` — upstream 0.10.5 + carried patches ([fork delta](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/cyclonedds-fork-delta.md)) | Talks RTPS directly to `rmw_cyclonedds_cpp` | Pinned to the Cyclone **ROS ships** (`ros-humble-cyclonedds` 0.10.5) — upstream 11.x is deliberately NOT a rebase target until a distro migration (issue 0507) |
+| **Cyclone DDS** | fork `0.10.5-nros1` — upstream 0.10.5 + carried patches ([fork delta](https://github.com/NEWSLabNTU/nano-ros/blob/main/book-internals/src/rmw/cyclonedds-fork-delta.md)) | Talks RTPS directly to `rmw_cyclonedds_cpp` | Pinned to the Cyclone **ROS ships** (`ros-humble-cyclonedds` 0.10.5) — upstream 11.x is deliberately NOT a rebase target until a distro migration |
 
 Per-feature coverage across the three backends:
 [Per-RMW Feature Matrix](rmw-feature-matrix.md).
@@ -60,23 +60,22 @@ Per-feature coverage across the three backends:
 |---|---|---|---|
 | Humble | `ros-humble` (default) | Supported | `TypeHashNotSupported` key expressions, XCDR1. No `rmw_zenoh_cpp` apt package — zenoh interop on Humble needs a source overlay, or use Cyclone DDS. |
 | Iron | `ros-iron` | Supported | RIHS01 type hashes. Same zenoh-apt caveat as Humble. |
-| Jazzy | `ros-jazzy` | Supported | RIHS01; ships `ros-jazzy-rmw-zenoh-cpp` — the zenoh-interop reference edition. XCDR2/appendable is tracked separately (phase-303). |
+| Jazzy | `ros-jazzy` | Supported | RIHS01; ships `ros-jazzy-rmw-zenoh-cpp` — the zenoh-interop reference edition. A default Jazzy peer encodes XCDR1/FINAL, which nano-ros speaks; per-type XCDR2 (`@appendable`) is not enabled. |
 
 Pick the edition of the ROS system you interop with — mismatched
 editions discover nothing (different key expressions).
 
-**Supported means WIRE interop, not API parity.** The API comparison
-(`just check api-parity`, `rmw-api-parity`, `rmw-abi-shape`) runs against
-**Humble and Jazzy** — Jazzy from pinned upstream sources
-(`docs/reference/editions/jazzy/`), since it cannot be installed beside
-Humble. Iron is not compared on its own; what it added and Jazzy kept is
+**Supported means WIRE interop, not API parity.** nano-ros's API is
+compared against **Humble and Jazzy** — Jazzy from pinned upstream
+sources, since it cannot be installed beside Humble
+([how the comparison runs](../internals/rmw/rmw-api-comparison.html)). Iron is not compared on its own; what it added and Jazzy kept is
 covered there. Jazzy's additions over Humble are each RULED, not each implemented:
-matched/incompatible-type events (issue 1972), timer call info
-(issue 1974), the small rclcpp accessors (issue 1975),
+matched/incompatible-type events, timer call info,
+the small rclcpp accessors,
 `count_clients`/`count_services`, the client GID and
-`event_type_is_supported` (issue 1978) are implemented;
+`event_type_is_supported` are implemented;
 `BEST_AVAILABLE` QoS is implemented,
-resolved at creation against the discovered graph (issue 1973);
+resolved at creation against the discovered graph;
 dynamic typesupport, service introspection and the
 `~/get_type_description` service are declined on RAM/flash grounds;
 `rmw_discovery_options_t` is answered by the session locator and
@@ -99,10 +98,10 @@ store; the base version is the upstream release.
 
 ## Related
 
-- [Install](../getting-started/installation.md) — how these get onto
+- [Install](../get-started/installation.md) — how these get onto
   a machine (`nros setup`, prebuilt-vs-source rules)
 - [Per-RMW Feature Matrix](rmw-feature-matrix.md)
 - [Board Support Levels](board-support-levels.md) (generated) ·
   [Supported Boards](supported-boards.md) (procurement view)
-- [Integrating into a Vendored Tree](../getting-started/vendored-tree.md)
+- [Integrating into a Vendored Tree](../build/vendored-tree.md)
   — pinning and upgrading these from a company tree

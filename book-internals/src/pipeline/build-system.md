@@ -1,0 +1,251 @@
+# Build System & Caching
+
+> **Audience.** Contributors working on the repo build/test matrix. End users
+> never need this — they consume nano-ros with a single
+> [`add_subdirectory(<repo-root>)`](../../build/cmake-subdirectory.html),
+> no install step, no `find_package`. This handbook documents the **other**
+> build world: the in-repo `just` orchestration that builds + tests every
+> platform × RMW, and the caching that keeps it incremental and correct.
+>
+> Canonical sources this page summarises: `CLAUDE.md` ("Build", "Build tiers",
+> "Build parallelism"), Phase 176 (unified jobserver), Phase 181 (fixture SSOT
+> + Ninja), Phase 177.9 (staleness probes).
+
+## TL;DR cheat-sheet
+
+```bash
+just setup                 # one-time SDK/toolchain install (tiered; see CLAUDE.md)
+direnv allow               # once after clone — else zpico-sys/build.rs panics
+
+just build                 # workspace + transports (fast inner loop)
+just build-examples        # + every example
+just build-all             # + test fixtures (everything test-all consumes)
+just build-test-fixtures   # just the fixtures + writes the test-all stamp
+just build-test-fixtures lane=linux   # only what the tier-1 lane (`just ci`) runs
+
+just test-unit             # ~5s          ⊂
+just test-integration      # ~30s         ⊂
+just test                  #              ⊂
+just test-all              # heavy QEMU/Zephyr/ROS-interop/miri/codegen
+
+just <plat> build|build-all|test|ci   # narrow to one platform first
+NROS_BUILD_JOBS=8 just build-all       # cap parallelism
+```
+
+**Rule of thumb:** a platform-specific failure → run the narrow
+`just <plat> build-all` (or closest `build`/`build-examples`/`build-fixtures`)
+*before* the root `just build-all`. Always `just ci` after a task. Never `sudo`
+— if a step needs it, tell the user.
+
+## Generators — Ninja by default
+
+The repo's CMake builds use **Ninja** (`-G Ninja`), falling back to Make only
+when `ninja` is absent. Ninja gives reliable incremental rebuilds and fits the
+Phase 176 fifo jobserver; Make was dropped from the staleness path because
+`make -q` mis-reported up-to-dateness.
+
+- Configure-once: `scripts/build/cmake-incremental.sh::nros_cmake_configure_if_needed`
+  configures a build dir only when its `CMakeCache.txt` / generated build system
+  is missing; `cmake --build` then handles reconfigure on `CMakeLists` changes.
+- Generator-mismatch wipe: a dir configured with the *other* generator is
+  `rm -rf`'d and reconfigured (you can't switch generators in place).
+- Pinned tools: the unified jobserver needs `make ≥ 4.4` + `ninja ≥ 1.13`
+  (apt's 4.3/1.10 lack the fifo jobserver). Both are SDK-store tools —
+  `nros setup --tool make` (source tarball; upstream ships no binary) and
+  `nros setup --tool ninja` (upstream prebuilt zip) — and
+  `scripts/sdk-path-tools.txt` puts them on `PATH` (incl. a `gmake` → make-4.4
+  alias). Resolve an exact path with `nros dev sdk path <tool>`.
+
+## Per-RMW build dirs = cache isolation
+
+Each example builds into a **per-RMW** directory with its **own** cargo target
+dir:
+
+```
+examples/<plat>/<lang>/<example>/
+  build-zenoh/       cargo/   …   # -DNROS_RMW=zenoh
+  build-xrce/        cargo/   …   # -DNROS_RMW=xrce
+  build-cyclonedds/  cargo/   …   # -DNROS_RMW=cyclonedds
+```
+
+Because each RMW (and its Corrosion cargo target dir) is physically separate,
+selecting a different RMW **cannot** collide with another RMW's cache — there is
+no shared target dir to invalidate. Platform is fixed per build dir
+(`-DNROS_PLATFORM=<plat>` at configure). This layout is why the old manual
+cache-invalidation idea (archived Phase 145) was retired: the directory shape
+makes it unnecessary. (Rust-only examples build via plain `cargo` into
+`target-<rmw>/`; the per-RMW principle is the same.)
+
+## Parallelism — `NROS_BUILD_JOBS` + the unified jobserver
+
+One knob scales every parallel recipe:
+
+```bash
+NROS_BUILD_JOBS=8 just build-all     # default: nproc
+```
+
+**Unified jobserver (Phase 176).** `just build-all` auto-routes to
+`build-all-jobserver` when the pinned `make 4.4` + `ninja 1.13` are present: a
+single GNU-make fifo jobserver spans cargo + build-script `cc` + ninja-via-west
++ cmake, allocating tokens dynamically instead of a static per-tool split. Under
+the jobserver (`NROS_JOBSERVER=1`) recipes drop their explicit
+`-j`/`--parallel`/`CMAKE_BUILD_PARALLEL_LEVEL` so the tools inherit the pool.
+
+- Same artifacts either way; without the pinned tools it falls back to a static
+  split.
+- `NROS_NO_JOBSERVER=1` forces the static path.
+- Never re-introduce a hardcoded `parallel --jobs <n>` without threading
+  `${NROS_BUILD_JOBS:-N}` through.
+
+**Stall watchdog (issue 1403).** Every fixture/jobserver `make` (the fixture
+make drivers, `fixtures-build.sh`, `workspace-fixtures-build.sh`, the
+`jobserver-pool`, `build-all-jobserver`) runs under
+`scripts/build/make-stall-watchdog.py`. If make sits with **no live child and
+no CPU** for `NROS_JOBSERVER_STALL_SECS` (default `600`; `0` disables; sampled
+every `NROS_JOBSERVER_STALL_POLL_SECS`, default `15`), the watchdog writes
+`jobserver-stall-<pid>-<time>.txt` into that build's log dir (make's
+wchan/syscall/status or stack, its fds, the jobserver FIFO and its FIONREAD
+token count, every other process holding a jobserver, a `gdb` backtrace when
+ptrace allows), kills make and its descendants — by pid, nothing else — and
+exits **75** with `NO VERDICT: jobserver stall — <file>`. That is a lane that
+never answered, not a build failure; `just nightly-triage` counts it as NO
+VERDICT. Attach the file to issue 1403. A normal build is untouched: same exit
+status, no output.
+
+See `docs/roadmap/archived/phase-176-unified-jobserver-build-orchestration.md`.
+
+## Build & test tiers
+
+Each tier is a strict superset of the previous:
+
+| Build | contains |
+|-------|----------|
+| `build` | workspace + transports |
+| `build-examples` | ⊃ build + every example |
+| `build-all` | ⊃ build-examples + test fixtures |
+
+| Test | wall-clock | contains |
+|------|-----------|----------|
+| `test-unit` | ~5 s | unit |
+| `test-integration` | ~30 s | ⊃ + integration |
+| `test` | — | ⊃ |
+| `test-all` | minutes | ⊃ + heavy QEMU/Zephyr/ROS-interop + doc + miri + C codegen |
+
+Per-platform: `just <plat> build ⊂ build-examples ⊂ build-fixtures ⊂ build-all`
+and `just <plat> test|test-all|ci`. `<plat>` = target families
+(`qemu`, `zephyr`, board groups). Support services (`zenohd`, `cyclonedds`) are
+**not** platform scopes. Orchestration lives in `justfile` + `just/*.just`.
+
+## Fixture SSOT — `examples/fixtures.toml`
+
+Per-fixture build options (features, `--target-dir`, env, per-RMW variants,
+cmake `-D` defs, cross target) live in **one manifest**,
+[`examples/fixtures.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/fixtures.toml),
+consumed by **both** the build recipes and the test-all staleness probe — so the
+build and the probe use identical options (no feature-thrash).
+
+- Reader: `scripts/build/fixtures-manifest.py list --platform <p> --lang <l> [--rmw <r>] [--for-probe]`.
+  Emits `\x1f`-separated records (unit-separator, not tab — tab is IFS-whitespace).
+- Builder: `scripts/build/fixtures-build.sh <plat> [lang] [rmw]` — one shared loop;
+  rust cells go through `cargo build`, C/C++ cells through `cmake --build`
+  (configure-once + per-RMW dir). Platform-wide `-D` defs (toolchain, codegen
+  tool, SDK dirs) are injected by the recipe via `NROS_CMAKE_EXTRA_DEFS`.
+- Cross-toolchain platforms inject `RUSTUP_TOOLCHAIN` / SDK env via the recipe
+  (e.g. ESP32-C3 = riscv32imc on the workspace nightly + build-std).
+
+## Staleness discipline
+
+A prebuilt fixture that's silently stale would let `test-all` run against the
+wrong binary. The discipline:
+
+- **Coverage gate.** `build-test-fixtures` stamps `target/nextest/.fixtures-built`
+  with the **lane and the fixture coordinates it built**, not just a timestamp;
+  `test-all`'s `_require-fixtures` fast-fails (~1 s) if the stamp is absent *or
+  does not cover* the **run** implied by `NROS_FIXTURE_LANE` (bypass:
+  `NROS_SKIP_FIXTURE_CHECK=1`). So a `lane=linux` build satisfies `just ci`
+  (the tier-1 lane) and is correctly rejected by an unscoped `test-all`. A pre-issue-0393
+  timestamp-only stamp is read as `lane=all`, which is what it meant.
+
+  Note "the run", not "the lane" (issue 0482). A lane's coordinates are what it
+  keeps **fresh**; what must **exist** is decided by which tests the recipe
+  executes. The two are answered separately, and `nros_lane_build_lane` is the
+  mapping between them (`CiLane::run_scope` is the declaration;
+  `lane-coords <lane> --build-lane` prints it).
+
+  Every lane narrows its run by fixture COORDINATE (`NROS_TEST_COORDS`), and
+  each is its own build lane. The tier-1 lane used to narrow by test/binary NAME
+  (`NROS_TEST_SCOPE=linux`); phase-395 W19 moved it to coordinates, and issue
+  1900 retired the name filter's reader, which no runner had set since. Each
+  test asks the lane BEFORE it probes the host, so a test of a platform the lane
+  did not select reports `[SKIPPED:lane]` on every host;
+  `scripts/test/check-out-of-lane-deselected.py` proves it on the `just ci gate`
+  lane.
+
+  A name filter could never have expressed the tier-2 lane anyway: it is 1-wise over
+  platform, every platform is in the lane, so a platform-token filter excludes nothing, and the
+  saving is in lang × rmw *within* a platform, which test names do not encode
+  (issues 0357, 0482). So the narrowing happens in the fixture **resolver**
+  (phase-340 W3, `nros_tests::fixtures::lane`): a resolved artifact is
+  attributed back to its `examples/fixtures.toml` row through
+  `row_artifact_root()`, and a row outside the lane reports **SKIPPED** instead
+  of missing. Build and run then apply the same `row_coord()` predicate to the
+  same coordinate file, so `just build-test-fixtures lane=tier2 && just
+  ci-matrix` is a coherent pair. Before W3 the tier-2 lane ran the whole suite, and a
+  `lane=tier2` build satisfied the preflight for a run that then failed STALE on
+  34 unbuilt coordinates.
+
+  The skip is keyed on the coordinate, never on the artifact being absent: an
+  **in-lane** fixture that is missing or stale still fails hard, and a path the
+  manifest cannot attribute (Zephyr west leaves, the compile-check lane — both
+  built module-level, so nothing is omitted) is never skipped.
+
+  The preflight enforces the pairing rather than trusting it: accepting a
+  build **narrower than `all`** requires `NROS_TEST_COORDS` to be set and to hold
+  exactly that lane's coordinates, so a hand-run `NROS_FIXTURE_LANE=tier2 just
+  test-all` is refused instead of reproducing issue 0482. A full build needs no
+  narrowing, so `NROS_FIXTURE_LANE=tier2` on top of `lane=all` still works —
+  scope the freshness gate, keep the run wide.
+- **Rust cells.** `scripts/test/rust-fixture-stale.sh` reuses cargo's own
+  fingerprint — `cargo build … --message-format=json` reports `"fresh":false`
+  for a stale unit, so the probe both detects **and** self-heals.
+- **C/C++ cells.** `scripts/test/cmake-fixture-stale.sh` runs the incremental
+  `cmake --build` (near-no-op when fresh) and flags cells that actually rebuilt.
+  (`ninja -n` is unusable here — Corrosion's cargo step is an always-run custom
+  command, so it always reports pending.)
+- **Probe opt-out.** Cells needing a recipe-injected toolchain the probe can't
+  supply (e.g. the ESP32 nightly + build-std) set `skip_probe = true`; the reader's
+  `--for-probe` omits them so they don't toolchain-thrash.
+- **Source-list / drift gates.** `zpico-sys` (vendored zenoh-pico, Phase 136.6)
+  and `nros-rmw-xrce-cffi` (vendored uxr/micro-cdr, Phase 145.4) verify each
+  vendored source root resolves to a real dir with `.c` files and panic with a
+  `git submodule update --init` hint on drift. cbindgen build scripts
+  (`nros-c`, `nros-cpp`, `zpico-sys`) emit `cargo:rerun-if-changed=cbindgen.toml`
+  + `src/`.
+- **Probe runs in preflight.** `_check-fixtures-stale` runs both probes (rust +
+  cmake) over the manifest before the `test-all` nextest stage; it warns +
+  self-heals rather than hard-failing.
+
+## Patched QEMU
+
+QEMU networked tests use a patched `qemu-system-arm` (icount + MPS2 fixes) built
+by `just qemu setup-qemu` into `build/qemu/bin/`. The harness picks it up
+automatically (`nros_tests::qemu::qemu_system_arm_cmd()`); the system binary is
+the fallback. See [Patched qemu-system-arm](../testing/qemu-patched-binary.md).
+
+## Cyclone DDS in the tree
+
+`nros_provide_cyclonedds()` self-provisions Cyclone from the pinned
+`third-party/dds/cyclonedds` submodule when no prebuilt install is given, so a
+bare `cmake`/`cargo` build needs no pre-step. `just cyclonedds` is a
+contributor-only recipe that builds it ahead of time. On a tier without the
+cross toolchain, the embedded-Cyclone tests are filtered out of `test-all`
+(*skipped*, not *failed*). Details: `book-internals/src/dev-env/sdk-tiers.md`
+§ "CycloneDDS — self-provisioned in CMake".
+
+## See also
+
+- [Build Commands](../dev-env/build-commands.md) — the user-facing quick reference.
+- [zpico-sys Build Architecture](../rmw/zpico-build.md) — the zenoh-pico cross-compile.
+- `CLAUDE.md` — the authoritative build/test-tier + parallelism policy.
+- Phase docs (`docs/roadmap/archived/`): 176 (jobserver), 181 (fixture SSOT +
+  Ninja), 177.9 (staleness probes).

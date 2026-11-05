@@ -212,13 +212,11 @@ fn chapter(d: &BoardDescriptor) -> Option<&'static str> {
 
 fn platform_chapter(platform: &PlatformKind) -> Option<&'static str> {
     Some(match platform {
-        PlatformKind::Freertos => "book/src/getting-started/freertos.md",
-        PlatformKind::BareMetal => "book/src/getting-started/bare-metal.md",
-        PlatformKind::Nuttx => "book/src/getting-started/integration-nuttx.md",
-        PlatformKind::Zephyr => "book/src/getting-started/integration-zephyr.md",
-        PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => {
-            "book/src/getting-started/threadx.md"
-        }
+        PlatformKind::Freertos => "book/src/targets/freertos.md",
+        PlatformKind::BareMetal => "book/src/targets/bare-metal.md",
+        PlatformKind::Nuttx => "book/src/targets/nuttx.md",
+        PlatformKind::Zephyr => "book/src/targets/zephyr.md",
+        PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => "book/src/targets/threadx.md",
         _ => return None,
     })
 }
@@ -314,7 +312,7 @@ pub fn next_steps(
     let see_chapter = |out: &mut NextSteps, why: &str| {
         out.notes.push(match chapter(d) {
             Some(c) => format!("{why} — see {c}"),
-            None => format!("{why} — see the platform chapters under book/src/getting-started/"),
+            None => format!("{why} — see the platform chapters under book/src/targets/"),
         });
     };
     let Some(output) = &p.output else {
@@ -382,7 +380,7 @@ pub fn next_steps(
                     out.notes.push(
                         "the FVP model must be resolvable when the build CONFIGURES (Zephyr \
                          caches it): `nros setup board fvp-aemv8r-smp`, or ARMFVP_BIN_PATH — see \
-                         book/src/getting-started/arm-fvp.md"
+                         book/src/targets/arm-fvp.md"
                             .into(),
                     );
                     return out;
@@ -1064,7 +1062,7 @@ mod tests {
         );
         assert!(s.commands.is_empty(), "{:?}", s.commands);
         assert!(
-            s.notes[0].contains("book/src/getting-started/freertos.md"),
+            s.notes[0].contains("book/src/targets/freertos.md"),
             "{:?}",
             s.notes
         );
@@ -1355,17 +1353,20 @@ mod tests {
         let cat = catalog();
         let block = regex_lite_blocks;
         let mut seen = Vec::new();
-        for chapter in [
-            "first-project.md",
-            "bare-metal.md",
-            "freertos.md",
-            "integration-nuttx.md",
-            "threadx.md",
-            "integration-zephyr.md",
-            "nucleo-f767zi.md",
+        // Book-relative paths (phase-532 moved the chapters out of
+        // `getting-started/`); ROWS names each by its file name.
+        for path in [
+            "get-started/first-project.md",
+            "targets/bare-metal.md",
+            "targets/freertos.md",
+            "targets/nuttx.md",
+            "targets/threadx.md",
+            "targets/zephyr.md",
+            "targets/nucleo-f767zi.md",
         ] {
-            let text = std::fs::read_to_string(root.join("book/src/getting-started").join(chapter))
-                .expect("chapter");
+            let chapter = path.rsplit('/').next().unwrap();
+            let text = std::fs::read_to_string(root.join("book/src").join(path))
+                .unwrap_or_else(|e| panic!("chapter {path}: {e}"));
             for (info, body) in block(&text) {
                 let boots_qemu = body.contains("qemu-system") || body.contains("QEMU_SYSTEM_");
                 // phase-525 W4 — a chapter that boots through the verb has no
@@ -1382,9 +1383,19 @@ mod tests {
                 // A QEMU block with no row is also refused statically, before
                 // anything compiles, by `check-board-registry` (phase-522 W3):
                 // the rows are the registry's `[[probe]]` tracks.
-                let Some((_, _, board)) =
-                    ROWS.iter().find(|(c, v, _)| *c == chapter && *v == variant)
-                else {
+                // `variant=a,b` runs in each listed track, and a block with no
+                // `variant=` in every track of its chapter (extract-book-
+                // steps.py); any matching row carries its board.
+                let Some((_, _, board)) = ROWS.iter().find(|(c, v, _)| {
+                    *c == chapter && (variant.is_empty() || variant.split(',').any(|w| w == *v))
+                }) else {
+                    // `nros run` on a board that boots no QEMU (the ThreadX
+                    // Linux simulator, native_sim) has no row and no line to
+                    // compare; only a literal QEMU line must have one.
+                    if !boots_qemu {
+                        seen.pop();
+                        continue;
+                    }
                     panic!(
                         "{chapter} `{info}` boots QEMU and no `[[probe]]` track in \
                          packages/boards/board-support.toml carries its `qemu_board`"
@@ -1492,7 +1503,9 @@ mod tests {
         }
         for (c, v, _) in ROWS {
             assert!(
-                seen.iter().any(|(sc, sv)| sc == c && sv == v),
+                seen.iter().any(|(sc, sv)| {
+                    sc == c && (sv.is_empty() || sv.split(',').any(|w| w == *v))
+                }),
                 "row ({c}, {v}) names no probe-run QEMU block"
             );
         }

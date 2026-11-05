@@ -18,8 +18,6 @@ Per-platform behaviour comparison. The [Doxygen reference](../api/platform-cffi/
 | **ThreadX** | `tx_time_get` | `tx_byte_allocate` | ThreadX threads | NetX Duo BSD `network.c` (C) | — | `tx_time_get` fallback | Multicast gated on NetX Duo `nx_igmp_*` (untested). |
 | **Bare-metal (MPS2-AN385)** | CMSDK Timer0 | bump allocator | single-threaded | nros-smoltcp (Rust) | Yes (smoltcp 0.12 IGMP) | monotonic fallback | Cortex-M3 QEMU. |
 | **Bare-metal (STM32F4)** | DWT cycle counter | bump allocator | single-threaded | nros-smoltcp (Rust) | Yes | monotonic fallback | Cortex-M4F. |
-| **Bare-metal (ESP32-S3)** | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) | Yes | monotonic fallback | Xtensa LX7 (build-only board crate). |
-| **Bare-metal (ESP32-C3 QEMU)** | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) | Yes | monotonic fallback | RISC-V. |
 
 > **Canonical interface contract.** What "Yes" / "—" / specific functions mean — buffer ownership, blocking allowance, valid value ranges — is in the [platform-cffi Doxygen reference](../api/platform-cffi/index.html). This page is a comparison table, not a spec.
 
@@ -34,7 +32,6 @@ All ports surface a monotonic clock. Resolution varies:
 - **Zephyr**: `k_uptime_get` ms + `k_cyc_to_us_floor64(k_cycle_get_64())` µs.
 - **ThreadX**: `tx_time_get` ticks (default 100 Hz; bump via `TX_TIMER_TICKS_PER_SECOND` for finer resolution).
 - **Bare-metal (Cortex-M)**: hardware timer counter (CMSDK Timer0, DWT cycle counter). µs is the native resolution; ms is `µs / 1000`.
-- **Bare-metal (ESP32)**: `esp_timer_get_time` returns µs natively.
 
 The clock is monotonic and wraparound-free from init to shutdown. Platforms with 32-bit timers run a software extender on overflow.
 
@@ -75,8 +72,8 @@ zenoh-pico uses `strlen`, `memcpy`, `errno`, etc. directly. Bare-metal targets t
 
 ## Common pitfalls
 
-For platform-specific gotchas (DMA buffer placement, ephemeral port conflicts, picolibc errno TLS, QEMU clock synchronization, Z_FEATURE_INTEREST mutex exhaustion, etc.), see [Platform Porting Pitfalls](../internals/platform-porting-pitfalls.md).
+For platform-specific gotchas (DMA buffer placement, ephemeral port conflicts, picolibc errno TLS, QEMU clock synchronization, Z_FEATURE_INTEREST mutex exhaustion, etc.), see [Platform Porting Pitfalls](../extending/porting-pitfalls.md).
 
-For the design rationale (why these trait groups, why both ms and µs, why split `PlatformNetworkPoll`), see [Platform API Design](../design/platform-api.md).
+For the design rationale (why these trait groups, why both ms and µs, why split `PlatformNetworkPoll`), see [Platform API Design](../extending/platform-api-design.md).
 
-For writing a new port, see [Custom Platform](../porting/custom-platform.md). For the canonical interface spec, see the [Doxygen reference](../api/platform-cffi/index.html).
+For writing a new port, see [Custom Platform](../extending/custom-platform.md). For the canonical interface spec, see the [Doxygen reference](../api/platform-cffi/index.html).

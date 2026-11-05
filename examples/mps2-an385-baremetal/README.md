@@ -72,4 +72,4 @@ its `system.toml`, so there is no runtime lane yet — see issue 1512.
 ## Gotchas
 
 - QEMU needs `-icount shift=auto` for clock/network sync — the run recipes and
-  `nros_tests::qemu` helpers already pass it (`docs/reference/qemu-icount.md`).
+  `nros_tests::qemu` helpers already pass it (`book-internals/src/testing/qemu-icount.md`).

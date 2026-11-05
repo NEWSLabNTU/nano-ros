@@ -192,7 +192,7 @@ kept as a seam that nothing exercises. Today:
   executor once D2.2's notifier exists. The maintainer ruled to demote it
   (issue 2134, 2026-10-30): the branch and its trait are deleted, and
   `framework = "embassy"` is refused with a pointer to the hand-driven shape
-  in `book/src/user-guide/embassy-integration.md`.
+  in `book/src/realtime/rtic.md`.
 
 ### D4 — Recipes, not branches
 

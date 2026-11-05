@@ -103,6 +103,17 @@ book-links:
     @python3 scripts/gen-config-surface.py >/dev/null
     @python3 scripts/check-book-links.py
 
+# phase-532 W8 (RFC-0123 D8) — each book holds only its reader's pages. Folds
+# the page-map check (every page of either book has one row in
+# `book/page-map.toml`; both SUMMARY.md files are what the map renders) and
+# adds: no user page under `internals/` (the Internals book's URL prefix), no
+# contributor lead or heading in the user book, and the two GITIGNORED
+# generated user pages rendered in memory (`--stdout`, so parallel gates never
+# race on the file) and held to the user-surface rules. Buildless.
+[private]
+book-audience:
+    @python3 scripts/check-book-audience.py
+
 # phase-517 W1 — every board the book names is one `nros` accepts: an index
 # `[board.*]` key or a board descriptor's `names` alias, both DERIVED per run.
 # The retired host-board words (`RETIRED_BOARD_KEYS`, harvested from

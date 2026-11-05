@@ -30,7 +30,7 @@ and integration-shell (`integration-*.md`) pages landed in
 Phase 142 forward ref: smoke tests for `esp_idf` and `px4` run on
 `just setup tier=extended` boxes; `tier=default` skips them cleanly
 because the underlying SDKs are opt-in. See
-[`docs/development/sdk-tiers.md`](../../development/sdk-tiers.md)
+[`docs/development/sdk-tiers.md`](../../../book-internals/src/dev-env/sdk-tiers.md)
 for the tier policy.
 
 **Priority.** P2 — usability win, not a correctness blocker. Phase 137 + 138 are functional without 139; 139 lets a Zephyr / ESP-IDF / PlatformIO user `west update` / `idf.py add-dependency` / Library Manager-install nano-ros without manually wiring `add_subdirectory`.

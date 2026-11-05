@@ -43,7 +43,7 @@ command and the measured one disagree. The `runner` is right only for
   launchers from it, each adding only its network: `user`, `socket,mcast`,
   or none.
 * Carry `-icount shift=auto` wherever the image uses SLIRP. The
-  `docs/reference/qemu-icount.md` rule says why.
+  `book-internals/src/testing/qemu-icount.md` rule says why.
 * Issue 2169's per-board check of the printed command would have caught the
   missing NIC; land that check against this board too.
 

@@ -22,7 +22,7 @@ examples/
 > the rack and QEMU models no STM32 MAC), so an in-tree example set read as a
 > support promise nobody verified. The same board, reached through RFC-0064's
 > customization ladder, is
-> [`book/src/porting/stm32f4-out-of-tree.md`](../book/src/porting/stm32f4-out-of-tree.md).
+> [`book/src/extending/stm32f4-out-of-tree.md`](../book/src/extending/stm32f4-out-of-tree.md).
 > Cortex-M stays witnessed here by `mps2-an385-baremetal` and
 > `mps2-an385-freertos`, both of which a lane actually boots.
 
@@ -388,7 +388,7 @@ bridge is a `[[bridge]]` row in a workspace's `system.toml`:
 [`workspaces/bridge-cyclonedds/`](workspaces/bridge-cyclonedds/) and
 [`workspaces/bridge-xrce/`](workspaces/bridge-xrce/) below, both built and
 e2e-tested. See
-[`book/src/user-guide/cross-backend-bridges.md`](../book/src/user-guide/cross-backend-bridges.md)
+[`book/src/communicate/bridges.md`](../book/src/communicate/bridges.md)
 for the model and the build knobs.
 
 ### `workspaces/` — product-shaped multi-package workspaces
@@ -464,23 +464,23 @@ Each is a standalone Cargo package with an empty `[workspace]` table (they nest 
 ## Consumption profile per platform
 
 Each `examples/<plat>/` tree maps to one of the seven consumption
-profiles from [`book/src/concepts/board-integration.md`](../book/src/concepts/board-integration.md).
+profiles from [`book/src/extending/board-integration.md`](../book/src/extending/board-integration.md).
 The mapping tells you which guide to read when porting one of these
 examples to your own board.
 
 | `examples/<plat>/` | Profile | Guide |
 |---|---|---|
 | `linux/` | Host (Linux) | `nros configure` + `nros build` — no integration shell needed. |
-| `mps2-an385-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-baremetal-cortex-m`) |
-| `mps2-an385-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
-| `qemu-armv7a-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/getting-started/integration-nuttx.md) — `apps/external/nano-ros/`. |
+| `mps2-an385-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/extending/board-integration.md#generic-board-crate) (`nros-board-baremetal-cortex-m`) |
+| `mps2-an385-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/extending/board-integration.md#generic-board-crate) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/extending/vendor-overlay.md). |
+| `qemu-armv7a-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/targets/nuttx.md) — `apps/external/nano-ros/`. |
 | `esp32-c3-baremetal/` | Cargo-first bare-metal | Bare-metal `esp-hal` path; same generic-crate flow as `mps2-an385-baremetal`. |
-| `rv-virt-threadx/` | Cargo-first ThreadX | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-threadx`); reference overlay `nros-board-threadx-qemu-riscv64`. For Renesas Synergy / STM32 X-CUBE-AZRTOS / NXP MCUXpresso ThreadX, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
+| `rv-virt-threadx/` | Cargo-first ThreadX | [Generic board crate](../book/src/extending/board-integration.md#generic-board-crate) (`nros-board-threadx`); reference overlay `nros-board-threadx-qemu-riscv64`. For Renesas Synergy / STM32 X-CUBE-AZRTOS / NXP MCUXpresso ThreadX, write a [vendor overlay](../book/src/extending/vendor-overlay.md). |
 | `threadx-linux/` | Linux sim (CI) | Same as `rv-virt-threadx` but with NSOS host-kernel sockets shim. |
-| `zephyr/` | Zephyr native shell | [Zephyr integration shell](../book/src/getting-started/integration-zephyr.md) — `projects:` entry in your `west.yml`. |
-| `px4/` | PX4 native shell | [PX4 integration shell](../book/src/getting-started/integration-px4.md) — `EXTERNAL_MODULES_LOCATION`. |
+| `zephyr/` | Zephyr native shell | [Zephyr integration shell](../book/src/targets/zephyr.md) — `projects:` entry in your `west.yml`. |
+| `px4/` | PX4 native shell | [PX4 integration shell](../book/src/targets/px4.md) — `EXTERNAL_MODULES_LOCATION`. |
 
-When in doubt, read [Board Integration](../book/src/concepts/board-integration.md)
+When in doubt, read [Board Integration](../book/src/extending/board-integration.md)
 first — it explains why each profile exists and which one fits your
 project's build system.
 
@@ -541,7 +541,7 @@ For DDS-side interop (cyclonedds), see `docs/reference/rmw_zenoh_interop.md`.
 ## See also
 
 - [`CLAUDE.md`](../CLAUDE.md) — development guidelines, "Examples = Standalone Projects" section
-- [`docs/guides/zephyr-setup.md`](../docs/guides/zephyr-setup.md) — Zephyr workspace bootstrap
+- [`book-internals/src/testing/zephyr-dev-setup.md`](../book-internals/src/testing/zephyr-dev-setup.md) — Zephyr workspace bootstrap
 - [`docs/reference/rmw_zenoh_interop.md`](../docs/reference/rmw_zenoh_interop.md) — ROS 2 wire protocol
 - [`docs/roadmap/archived/phase-118-example-matrix-coverage.md`](../docs/roadmap/archived/phase-118-example-matrix-coverage.md) — coverage-gap fill plan
 - [`docs/roadmap/archived/phase-131-examples-tree-revision.md`](../docs/roadmap/archived/phase-131-examples-tree-revision.md) — this tree's restructuring history

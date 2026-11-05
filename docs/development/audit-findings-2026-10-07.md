@@ -101,7 +101,7 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `board-name-reach` | a TARGET-pinned board's name names a part/machine | freertos-posix overlay gains a linker-script pin | 1 | — | — | **CLEAN** |
 | `board-vocabulary` | every board=/deploy= value a workspace states resolves to a known board | esp32-c3 listener system.toml board -> esp32-c3-baremetalx | 1 | — | — | **CLEAN** |
 | `book-identifiers` | every code identifier the book quotes exists in the tree | book quotes `nros_audit_never_existed_fn` | 1 | — | — | **CLEAN** |
-| `book-links` | every relative link in the book resolves | dead relative link in book/src/introduction.md | 1 | — | — | **CLEAN** |
+| `book-links` | every relative link in the book resolves | dead relative link in book/src/start/introduction.md | 1 | — | — | **CLEAN** |
 | `build-profile-literals` | no build site names a cargo profile literal | `cargo build --release` in a just/check recipe body | 1 | — | — | **CLEAN** |
 | `build-script-path-resolution` | a build.rs resolving a path-valued SDK var uses nros_build_paths | bare std::env::var("THREADX_DIR") in nros-board-threadx/build.rs | 1 | — | — | **CLEAN** |
 | `build-tool-verbs-exempt` | every nros verb cmake invokes is exempt from the workspace check | drop RmwDispatch from ws_cmd_name's ws-build arm | 1 | — | — | **CLEAN** |
@@ -160,7 +160,7 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `deploy-board-resolves` | every [deploy.*]/[image.*].board in a system.toml resolves to one descriptor | esp32-c3 talker system.toml image board -> esp32-c3-baremetalz | 1 | — | — | **CLEAN** |
 | `dist-floors` | every dist row declares a measured floor | drop the qemu linux-x86_64 floor | 1 | — | — | **CLEAN** |
 | `dist-runtime-deps` | a dist's system=[..] covers every library its programs need | qemu system = [libselinux1, libpcre2] -> [libpcre2] | 1 | — | — | **CLEAN** |
-| `doc-recipe-refs` | every `just <recipe>` in a doc names a recipe that exists | docs/development/ci-conventions.md names a recipe that does not exist (zz-audit-nonexistent) | 1 | — | — | **CLEAN** |
+| `doc-recipe-refs` | every `just <recipe>` in a doc names a recipe that exists | book-internals/src/dev-env/ci-conventions.md names a recipe that does not exist (zz-audit-nonexistent) | 1 | — | — | **CLEAN** |
 | `emitter-just-spelling` | user-reachable tool messages never prescribe a bare just recipe | message(FATAL_ERROR "run: just setup-cli") in cmake/NanoRosCodegenCore.cmake | 1 | — | — | **CLEAN** |
 | `entity-census` | the census runs and refuses by content (stale / missing-in-contract) | CLI freshness_verdict never refuses (`if false && policy.refuses()`), CLI rebuilt | 1 | — | — | **CLEAN** |
 | `entity-slot-costs` | the CLI's per-kind callback slot cost matches nros-node's registration | EntityKind::Publisher => 0 -> 1 in entity_inventory.rs | 1 | — | — | **CLEAN** |
@@ -229,7 +229,7 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `ledger-orphan-refs` | a ledger row never cites a file that does not exist | action.json file: action_server.hpp -> action_serverx.hpp | 1 | — | — | **CLEAN** |
 | `literal-domain-id` | no entity declared with a literal domain | executor/action.rs .with_domain(self.domain_id) -> .with_domain(0) | 1 | — | — | **CLEAN** |
 | `make-stall-watchdog` | the jobserver stall watchdog fires on a stall, and only on a stall | watchdog never reaches the stall branch (`if now - idle_since < stall:` -> `if True:`) | 1 | — | — | **CLEAN** |
-| `markdown-links` | a markdown link resolves exactly | docs/development/ci-conventions.md links ../design/9999-audit-gone.md | 1 | — | — | **CLEAN** |
+| `markdown-links` | a markdown link resolves exactly | book-internals/src/dev-env/ci-conventions.md links ../design/9999-audit-gone.md | 1 | — | — | **CLEAN** |
 | `message-crate-identity` | a generated message crate's version is the constant 0.0.0 | nros-builtin-interfaces version 0.0.0 -> 0.1.0 | 1 | — | — | **CLEAN** |
 | `msg-dep-is-path` | a message crate is a path dep, never registry-named | examples/native/rust/talker gains std_msgs = "*" | 1 | — | — | **CLEAN** |
 | `named-lane-fails` | a named platform lane may not skip its way to green (sourced protocol) | just/esp32.just recipe calls nros_lane_skip without sourcing lane-skip.sh | 1 | — | — | **CLEAN** |

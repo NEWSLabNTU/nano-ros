@@ -28,7 +28,7 @@ So the two gates split by what the reference IS, not by where it points:
 
 SCOPE, and why each exclusion is here rather than in a list of special cases:
 
-  * `book/` has `check-book-links`, which knows about mdBook's `SUMMARY.md` and
+  * `book/` and `book-internals/` have `check-book-links`, which knows about mdBook's `SUMMARY.md` and
     the generated `api/` trees this gate would flag wrongly.
   * `**/archived/**` is a HISTORICAL RECORD. A link in an archived document
     pointing at where a file was when that document was written is not a defect
@@ -130,7 +130,7 @@ def dead_links(root, files, tracked, dirs):
 def partition(tracked):
     live, archived = [], []
     for f in sorted(tracked):
-        if not f.endswith(".md") or f.startswith("book/"):
+        if not f.endswith(".md") or f.startswith(("book/", "book-internals/")):
             continue
         (archived if "/archived/" in f else live).append(f)
     return live, archived

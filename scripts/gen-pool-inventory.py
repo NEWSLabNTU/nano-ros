@@ -47,7 +47,11 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
-OUT = os.path.join(ROOT, "book", "src", "reference", "static-pool-inventory.md")
+# Where the page lives is the page map's answer (RFC-0123 D7), not this script's.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import book_pages  # noqa: E402
+
+OUT = str(book_pages.page_file("reference/static-pool-inventory.md"))
 
 # The spellings a knob is read by. Each yields (NAME, default-literal).
 #
@@ -501,9 +505,9 @@ def pool_bytes(expr, knobs):
 # row stale, no named symbol undefined) and `main` fails on any of them.
 KNOB_COSTS = "scripts/pool-inventory-knobs.txt"
 COST_KINDS = {
-    "pool": "sizes these statics — exact per image: `just mem-report`",
-    "executor": "sizes the executor's storage — `[executor storage]` in `just mem-report`",
-    "component": "sizes the per-component storage — `[component storage]` in `just mem-report`",
+    "pool": "sizes these statics — exact per image: the memory report",
+    "executor": "sizes the executor's storage — `[executor storage]` in the memory report",
+    "component": "sizes the per-component storage — `[component storage]` in the memory report",
     "heap": "heap bytes",
     "stack": "stack bytes",
     "element": "sizes an element; paid wherever that type is stored",
@@ -664,8 +668,8 @@ def render(knobs, pools, costs=None, derived=frozenset()):
         "Every build-time sizing knob nano-ros reads, with the default it uses when",
         "you do not set it. Set them as environment variables at BUILD time.",
         "",
-        "This page exists because knowing a knob exists is the hard part. Issue 0271",
-        "audited a 256 KB image that already tuned nine of these and still carried",
+        "This page exists because knowing a knob exists is the hard part. An audit",
+        "of a 256 KB image found it already tuned nine of these and still carried",
         "~145 KB of defaults it did not know to change — every knob it needed was",
         "already there. Four separate features had each added a static pool with a",
         "knob, silently.",
@@ -706,7 +710,7 @@ def render(knobs, pools, costs=None, derived=frozenset()):
         "These statics move with the knobs beside them, but their element is a",
         "struct (or the region is a heap), so no formula over defaults can state",
         "their size exactly — and a guessed multiplier is the defect this page",
-        "exists to avoid. `just mem-report <image>` reports each one's exact bytes",
+        "exists to avoid. The memory report ([Static memory](../realtime/static-memory.md)) gives each one's exact bytes",
         "in the image you built, beside the knobs listed here.",
         "",
         "| symbol | kind | sized by |",
@@ -741,8 +745,8 @@ def render(knobs, pools, costs=None, derived=frozenset()):
             "## Conflicting defaults",
             "",
             "These knobs are read in more than one place with DIFFERENT defaults, so",
-            "setting one moves only part of the tree — the issue-0135 split-brain",
-            "shape one layer up.",
+            "setting one moves only part of the tree: one setting, two values in the",
+            "same image.",
             "",
         ]
         lines += [f"* `{n}`" for n in sorted(conflicts)]
@@ -1030,7 +1034,12 @@ def main():
             "measured ~145 KB of exactly that.\n"
         )
         sys.exit(1)
-    text = render(knobs, pools, costs, scan_derived())
+    text = book_pages.scrub_ids(book_pages.relink(render(knobs, pools, costs, scan_derived()), "reference/static-pool-inventory.md"))
+    if "--stdout" in sys.argv:
+        # phase-532 W8: check-book-audience reads the page without writing it,
+        # so parallel gates never race on the gitignored file.
+        sys.stdout.write(text)
+        return
     if "--check" in sys.argv:
         try:
             with open(OUT, encoding="utf8") as fh:

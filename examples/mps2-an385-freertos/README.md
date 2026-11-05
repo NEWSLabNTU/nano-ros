@@ -45,6 +45,6 @@ shape); the underscore naming is an interim exception (RFC-0026, phase-275).
 
 - App task stack must stay large (64 KB) — the executor arena lives on the
   task stack; too small manifests as lwIP "Invalid mbox" (see
-  `docs/reference/platform-implementation-notes.md`).
+  `book-internals/src/platform/implementation-notes.md`).
 - Build skips with a clear message if `$FREERTOS_DIR/include` is missing —
   run `just setup freertos`.

@@ -6,7 +6,7 @@ Scope: the three *workflow* axes — **how you get a binary** (build), **how you
 set RMW / transport / QoS / params / RT** (configuration), **how the binary
 ships and runs** (deployment) — across the embedded-ROS / embedded-pub-sub
 landscape. Feature-level parity is covered separately in
-`book/src/concepts/comparison-vs-microros.md`; UX (project creation,
+`book/src/from-ros2/vs-micro-ros.md`; UX (project creation,
 distribution) in `docs/research/sdk-ux/{micro-ros,platformio-arduino-mbed}.md`.
 This doc evaluates against the **Phase 172** nano-ros model (root `nros.toml`,
 `nros deploy`, the two-form entry lib, build-ownership axis), which supersedes
@@ -191,7 +191,7 @@ one-size meta-build:
 
 ## See also
 
-- `book/src/concepts/comparison-vs-microros.md` — feature parity (some Build-row
+- `book/src/from-ros2/vs-micro-ros.md` — feature parity (some Build-row
   entries predate Phase 172; corrected alongside this doc).
 - `docs/research/sdk-ux/micro-ros.md` — the one-CLI / precompiled-artifact UX gap.
 - `docs/roadmap/phase-172-orchestration-deferred.md` — the deployment model this

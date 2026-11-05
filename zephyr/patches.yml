@@ -15,7 +15,7 @@
 #   west patch clean      # roll back to manifest checkout
 #
 # UPSTREAMING: patches flagged `upstreamable: true` are generic Zephyr fixes
-# staged for upstream PRs — see docs/development/zephyr-upstreaming.md (Phase
+# staged for upstream PRs — see book-internals/src/platform/zephyr-upstreaming.md (Phase
 # 205.B) for the per-patch commit message, target, repro, and the post-merge
 # "drop from here" procedure. PRs are human follow-up (Zephyr CLA + fork).
 #
@@ -164,7 +164,7 @@ patches:
       phase-346 W2 (issue 0432). Both halves are generic zephyr-lang-rust bugs,
       not nano-ros-specific: a fixed-arity constructor fed a variable number of
       devicetree cells, and an augment missing the `cfg:` its siblings have.
-      UPSTREAMABLE: yes — human follow-up per docs/development/zephyr-upstreaming.md.
+      UPSTREAMABLE: yes — human follow-up per book-internals/src/platform/zephyr-upstreaming.md.
       VERIFIED by building `examples/zephyr/rust/talker` for `mps2_an385`
       (Zephyr 3.7): 4 x E0061 before, a 449876-byte .text ELF after.
 
@@ -216,4 +216,4 @@ patches:
       libclang 14: 18 x "argument to '__builtin_arm_cdp' must be a constant
       integer" for mps2/an385 and xiao_rp2350/rp2350a/m33 before, both images
       link after. Zephyr 3.7's bindings are byte-identical with and without it.
-      UPSTREAMABLE: yes — human follow-up per docs/development/zephyr-upstreaming.md.
+      UPSTREAMABLE: yes — human follow-up per book-internals/src/platform/zephyr-upstreaming.md.

@@ -66,13 +66,14 @@ EXEMPT = {}
 # --- prose arm ---------------------------------------------------------------
 
 # Instructional prose: files a reader copies commands out of. `book/` is the
-# user-facing manual, `AGENTS.md`/`CLAUDE.md` are the agent-facing one, the
+# user-facing manual, `book-internals/` the contributor one (RFC-0123), `AGENTS.md`/`CLAUDE.md` are the agent-facing one, the
 # `docs/` subtrees named here are living reference (RFCs are explicitly living
 # documents in this repo's convention), and a README is instructional wherever
 # it sits.
 DOC_FILES = ("AGENTS.md", "CLAUDE.md")
 DOC_DIRS = (
     "book",
+    "book-internals",
     "docs/design",
     "docs/development",
     "docs/guides",
@@ -97,7 +98,7 @@ PRUNE_DIRS = {
 # onto a different line. Checked in both directions.
 DOC_EXEMPT = {
     (
-        "docs/development/zephyr-version-support.md",
+        "book-internals/src/platform/zephyr-version-support.md",
         "`NROS_ZEPHYR_VERSION=4.4 just zephyr setup` exited 0 and produced a",
     ): (
         "Past-tense incident report: this run happened, with this spelling, and "
@@ -263,7 +264,8 @@ def self_test():
     # really are scanned -- a scan set that silently narrows is the failure
     # this whole gate exists to prevent.
     paths = doc_paths()
-    assert "book/src/internals/zephyr-in-tree.md" in paths, "book not scanned"
+    assert "book-internals/src/platform/zephyr-in-tree.md" in paths, "Internals book not scanned"
+    assert "book/src/start/introduction.md" in paths, "user book not scanned"
     assert "AGENTS.md" in paths, "AGENTS.md not scanned"
     assert "examples/README.md" in paths, "READMEs not scanned"
     assert not any(p.startswith("docs/roadmap/") for p in paths), "roadmap scanned"

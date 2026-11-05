@@ -1,0 +1,102 @@
+# Migration Guide for ROS 2 Users
+
+This page maps standard ROS 2 concepts to their nano-ros equivalents.
+It is not an API reference; use it as a checklist when moving an
+existing `rclcpp`, `rclc`, or `rclrs` node toward nano-ros.
+
+## Concept map
+
+| You have (ROS 2) | You get (nano-ros) | Where |
+|---|---|---|
+| colcon workspace (`src/*`) | nano-ros workspace: Node pkgs + one declarative Bringup pkg, whose `system.toml` carries one `[image.<id>]` row per deploy target. The binary is generated, not written | [Growing your workspace](../build/growing-your-workspace.md) |
+| `package.xml` | kept, verbatim. What it deploys to is not in it — that is the bringup's `system.toml` | [Anatomy](../get-started/anatomy.md) |
+| `.launch.xml` / `.launch.py` | kept — `nros configure` resolves them into a SystemModel the image bakes in | [Add a launch file](../build/growing-your-workspace.md#3-add-a-launch-file-when-you-need-one) |
+| `ros2 launch pkg file` | `nros build <image>`, then run its binary — the launch product is compiled in | [Add an image](../build/growing-your-workspace.md#4-add-an-image) |
+| `colcon build` | `nros build <image>` — it generates the root and hands off to `cmake` / `cargo` / `west`. Running those yourself still works when you point them at the generated build root, and `colcon build` still works for POSIX C++ workspaces | [C/C++ workspaces](../build/cpp-workspaces.md) |
+| `rosdep install` | `nros setup <board> --rmw <rmw>` | [Install](../get-started/installation.md) |
+| `RMW_IMPLEMENTATION=…` at runtime | compile-time backend, one line: `[system] rmw = "…"` in the bringup's `system.toml`, then `nros build` | [Switching RMW](../communicate/switching-rmw.md) |
+| generated msg packages (ament index) | `nros build` writes `generated/` crates; the cargo patch table goes in the generated settings under `build/`, not in your package | [Message Generation](../build/message-generation.md) |
+| `find_package(rclcpp)` | `find_package(nano_ros)` — ament-shaped, source-backed | [Porting a C++ node](porting-a-cpp-node.md) |
+| `ament_target_dependencies(t std_msgs)` | kept, verbatim (nano-ros's ament verbs + find modules) | same page |
+
+## Setup
+
+Standard ROS 2 usually starts from a distro install and a runtime RMW
+choice. nano-ros starts from an installed release of the `nros` CLI + a
+compile-time target tuple:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
+nros setup linux --rmw zenoh       # Linux host, zenoh quick start
+```
+
+Read [Setup Compared to Standard ROS 2](setup-compared.md)
+before changing package code.
+
+## Node Lifecycle
+
+ROS 2 applications typically call `rclcpp::init()`, create nodes, then
+spin. nano-ros opens an executor first; the executor owns the session,
+arena, and runtime budget. Nodes and entities are created from it.
+
+See [Differences from Standard ROS 2](differences.md)
+and [Execution Model and Two-Layer API](../concepts/two-layer-api.md).
+
+## Publishers and Subscriptions
+
+Topic names, message names, and CDR wire encoding stay ROS-shaped.
+The main porting decision is whether to use:
+
+- polling handles from `Node::create_*`, or
+- callback registration through `Executor::register_*`.
+
+Use polling for RTIC, Embassy, or tight RT loops. Use callbacks for
+desktop-style event-driven nodes.
+
+## Services and Actions
+
+Service and action names map cleanly, but nano-ros exposes request /
+reply and goal / feedback / result paths through explicit handles and
+promises. Manual-poll paths may require explicit result handling in
+RTOS loops.
+
+Start with the native examples, then check platform-specific examples
+for FreeRTOS, Zephyr, or bare-metal timing constraints.
+
+## QoS and Events
+
+nano-ros keeps DDS-shaped QoS profile fields, but each backend advertises
+the policies it can enforce. Unsupported QoS is reported at entity
+creation instead of being silently downgraded.
+
+See [QoS, Status Events, and Discovery](../communicate/qos-status-events.md)
+and [Choosing an RMW Backend](../communicate/choosing-an-rmw.md).
+
+## Message Generation
+
+Standard ROS 2 builds generated message libraries as sibling packages.
+nano-ros generates Rust, C, or C++ bindings into the workspace or build
+tree and can use a shared generation cache.
+
+See [Message Binding Generation](../build/message-generation.md).
+
+## Backend Selection
+
+Replace runtime `RMW_IMPLEMENTATION=...` with a compile-time selection:
+
+- `zenoh` for ROS 2 interop through `rmw_zenoh_cpp` (default).
+- `xrce` for agent-based micro-ROS-style deployments.
+- `cyclonedds` for direct DDS/RTPS interop with `rmw_cyclonedds_cpp` —
+  no router or agent process at all — where the platform supports the
+  required networking and memory model.
+
+## Common Porting Traps
+
+- Assuming the backend can change without rebuilding.
+- Creating heap-heavy callbacks on `no_std` targets without `alloc`.
+- Expecting ROS 2 graph introspection APIs on constrained targets.
+- Forgetting to match ROS domain ID, QoS reliability, or zenoh router
+  mode during interop tests.
+- Treating a platform guide as optional when cross-compiling for RTOS
+  or bare-metal targets.

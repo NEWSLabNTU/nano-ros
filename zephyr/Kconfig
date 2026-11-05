@@ -1323,7 +1323,7 @@ config NROS_EXECUTOR_ACTION_CLIENTS
       Set it to 0 on an image with no action client: at the defaults that takes
       the arena from 74240 bytes to 16384. The arena is INLINE ON THE TASK
       STACK, not in .bss, so this is stack headroom -- see the FreeRTOS
-      "Invalid mbox" note in docs/reference/platform-implementation-notes.md.
+      "Invalid mbox" note in book-internals/src/platform/implementation-notes.md.
 
       Too small fails at REGISTRATION with BufferTooSmall, not at link. The
       executor reports what it actually used on its first spin, so build once,

@@ -1,19 +1,16 @@
-"""The book's contributor-block exemption, in one place.
+"""The book's verbatim-text escape, in one place.
 
-A user-track page may carry contributor material, and a gate about what a user
-reads must not count it. `check-book-no-just` defined what "contributor-marked"
-means first; `check-user-surface-ids` reuses the same rule, so the two cannot
-drift apart. A line's context is contributor-marked when any of these holds
-(checked in this order):
+Until phase-532 W3 this module licensed CONTRIBUTOR material inside user
+chapters: a "contributor" within eight lines, a heading saying so, or a table
+column saying so exempted a line from the user-surface gates. RFC-0123 D3
+retired that. Contributor material lives in the Internals book
+(`book-internals/`), the user-surface gates read every user page, and nothing
+on a user page is exempt for its audience.
 
-* the line itself or any of the LOOKBACK lines above it contains
-  "contributor" (case-insensitive), or one of the caller's extra markers;
-* the nearest preceding markdown heading contains "contributor", so a
-  "## Contributor setup" section licenses its whole body;
-* for a table row: the current table's header row contains "contributor".
-
-A marker at the top of the page does NOT exempt the page; only the nearest
-heading does, and only when the heading itself says so.
+What remains is the escape for VERBATIM text: a caller's explicit marker
+(`check-book-no-just` passes `no-just-ok`, an HTML comment that marks quoted
+tool output) within LOOKBACK lines above, or in the nearest heading, or in the
+current table's header row. The word "contributor" is not a marker.
 """
 
 from __future__ import annotations
@@ -25,7 +22,6 @@ from dataclasses import dataclass
 LOOKBACK = 8
 HEADING = re.compile(r"^#{1,6}\s")
 TABLE_ROW = re.compile(r"^\s*\|")
-CONTRIBUTOR = "contributor"
 
 
 @dataclass
@@ -40,7 +36,8 @@ def walk(lines: list[str], extra_markers: tuple[str, ...] = ()) -> Iterator[Line
     """Yield every line of a markdown page that is not a fence delimiter,
     with whether it sits in a fence and whether its context is
     contributor-marked."""
-    marker = re.compile("|".join([CONTRIBUTOR, *map(re.escape, extra_markers)]), re.I)
+    # RFC-0123 D3: only the caller's explicit verbatim markers; no audience marker.
+    marker = re.compile("|".join(map(re.escape, extra_markers)) or r"(?!)", re.I)
     in_fence = False
     heading = ""
     table_head = ""

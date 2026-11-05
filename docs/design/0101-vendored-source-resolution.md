@@ -371,7 +371,7 @@ BSP developers"*.
 * **The cmake and west roads.** A cmake consumer resolves Cyclone through
   `just/cyclonedds.just` and the SDK store; a west build resolves modules
   through `west.yml`. Those are RFC-0072's and RFC-0085's ground, and
-  [canonical-build-path.md](../reference/canonical-build-path.md) is where the
+  [canonical-build-path.md](../../book-internals/src/pipeline/canonical-build-path.md) is where the
   three roads meet. A tree resolved on two roads is resolved twice by
   construction; that is a known cost of having three roads, not something D1
   can forbid.

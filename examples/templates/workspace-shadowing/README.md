@@ -76,7 +76,7 @@ fixture is the smoke proof for the Layer 1 > Layer 2 case.
 * Layered resolver — `cmake/find/_NrosFindRosMsgPackage.cmake`.
 * Bulk codegen orchestrator — `cmake/NanoRosGenerateInterfaces.cmake`'s
   `nros_workspace_interfaces()` (handles intra-workspace shadowing).
-* Book — `book/src/getting-started/your-own-msg-package.md` §Shadowing
+* Book — `book/src/get-started/your-own-msg-package.md` §Shadowing
   contract.
 * Regression test —
   `packages/testing/nros-tests/tests/phase210_f4_shadowing.rs`.

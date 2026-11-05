@@ -26,7 +26,7 @@
 #
 # Step 2 is what makes "source setup.bash, then run the lanes" true, and
 # `/opt/ros` alone did not: a ROS install need not be there. This repo documents
-# building one on Arch/Fedora/NixOS (docs/development/ros2-on-non-ubuntu.md), and
+# building one on Arch/Fedora/NixOS (book-internals/src/dev-env/ros2-on-non-ubuntu.md), and
 # a colcon overlay is a prefix wherever the user chose. AMENT_PREFIX_PATH is the
 # sourced environment's own answer to which prefixes are active, so neither case
 # needs this code to guess a layout.

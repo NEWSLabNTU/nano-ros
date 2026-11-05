@@ -68,4 +68,4 @@ Backends: zenoh + xrce across all six roles per language; cyclonedds partial
   `CONFIG_MAX_PTHREAD_COND_COUNT=16` (zenoh-pico exhausts the default 5) —
   already set in the shipped `prj-zenoh.conf` files.
 - The Zephyr line is selectable: `NROS_ZEPHYR_VERSION=4.4 just zephyr …`
-  (default 3.7 LTS). See `docs/development/zephyr-version-support.md`.
+  (default 3.7 LTS). See `book-internals/src/platform/zephyr-version-support.md`.

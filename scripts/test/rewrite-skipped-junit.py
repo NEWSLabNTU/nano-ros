@@ -34,7 +34,7 @@ Usage::
 Exit code 0 even when the file is absent or has no ``[SKIPPED]`` entries —
 the rewriter is idempotent and safe to chain at the tail of any test recipe.
 
-See ``docs/development/test-harness.md`` for the surrounding skip/tally
+See ``book-internals/src/testing/test-harness.md`` for the surrounding skip/tally
 semantics (Phase 214.R).
 """
 

@@ -51,7 +51,7 @@ is propagated through the feature chain but does not add any API surface.
 - `executor.spin_once(timeout_ms)` -- single spin iteration
 - `executor.spin_period(period)` -- periodic spin without `std::thread::sleep`
 
-**Two-layer API.** Phase 122 unified the verb discipline:
+**Two-layer API.** Every entity kind follows one verb discipline:
 
 - **Layer 1 (caller polls)** -- `Node::create_*` returns an owned
   handle. Caller drives `take` / `call` / `try_accept_goal` /
@@ -95,7 +95,7 @@ Both layers share the same session; mix per entity.
 **Promises:**
 - `Promise<'a, T, Cli>` -- allocation-free promise, borrows client's reply slot
 - `Promise::take()` -- non-blocking poll for reply, while the executor spins
-- No async runtime drives the executor: RFC-0113 retired `spin_async`, because a foreign scheduler, not nano-ros, would decide when callbacks run
+- No async runtime drives the executor: `spin_async` is retired, because a foreign scheduler, not nano-ros, would decide when callbacks run
 
 **Timers:**
 - `TimerHandle` with function pointer callbacks (`fn()`)
@@ -142,7 +142,7 @@ Both layers share the same session; mix per entity.
 | `param-services` heap fallback                   | nros-node/executor/spin.rs      | Store + service state when the backing carves none    |
 | Argv parameter overrides (`-p`, `--params-file`) | nros-node/ros_args.rs           | Owned override strings from the hosted edge           |
 
-**Parameter services detail:** since issue 1812 the `param-services` feature
+**Parameter services detail:** the `param-services` feature
 does not need `alloc`. The six handlers stream requests and replies, and the
 parameter store, the service state, the shared request/reply buffers and the
 slot a remote set decodes its value into are all carved from the executor
@@ -152,7 +152,7 @@ bringup; capacity `NROS_MAX_PARAMETERS`). Without `alloc`, a build that carves
 no store is refused at compile time and the message names `NROS_PARAM_STORE`.
 With `alloc`, such a build falls back to the heap as before.
 The core `ParameterServer` API works without alloc (its operations are
-reached through `nros_params::ParameterServerOps` since phase-515 R10).
+reached through `nros_params::ParameterServerOps`).
 
 ### Requires `std`
 
@@ -169,7 +169,7 @@ reached through `nros_params::ParameterServerOps` since phase-515 R10).
 
 ## Typical Configurations
 
-Phase 208 decoupled the `nros` umbrella from concrete RMW crates.
+The `nros` umbrella does not depend on concrete RMW crates.
 A consuming `Cargo.toml` lists **three** path deps: `nros` (with
 `rmw-cffi` + a `platform-*` feature), the chosen backend crate
 (`nros-rmw-zenoh` / `nros-rmw-xrce-cffi`), and —
@@ -244,7 +244,12 @@ heaps (`k_malloc`, `pvPortMalloc`, `tx_byte_allocate`, `kmm_malloc`,
 `heap_caps_malloc`) — reporting for each whether the image *calls* it or
 *contains* it. `--tier unified` takes `--objects` instead and enforces the
 weaker rule that allocation may happen only inside the `nros_platform_*`
-backend (RFC-0034 D6).
+backend.
 
 None of the examples shipped in this repo are built this way today — they all
 enable `alloc` — so run it against your own image, not against one of ours.
+
+## Design background
+
+- [RFC-0113: RT unified wait (why `spin_async` is retired)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0113-rt-unified-wait.md)
+- [RFC-0034: platform layer split](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0034-platform-layer-split.md)

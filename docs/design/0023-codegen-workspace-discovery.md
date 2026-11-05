@@ -27,7 +27,7 @@ superseded-by: null
 > a MESSAGE language's Rust is a filter set (`rosidl_codegen::filters`) plus a generator per kind
 > (RFC-0068 **Amendment 2**), and an ENTRY language needs a Rust emitter of its own
 > (RFC-0091 §8). What a pack can and cannot see is RFC-0091 **§6b**; the procedure for adding one
-> is `book/src/internals/codegen-packs.md`.
+> is `book-internals/src/pipeline/codegen-packs.md`.
 
 **Goal.** A msg package authored against the ROS 2 convention (verbatim
 `package.xml` + `msg/*.msg` + the standard `rosidl_generate_interfaces(...)`

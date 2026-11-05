@@ -1,7 +1,7 @@
 # Message Binding Generation
 
 **Moved.** The message-generation reference now lives in the book:
-[Message Binding Generation](../../book/src/user-guide/message-generation.md).
+[Message Binding Generation](../../book/src/build/message-generation.md).
 
 This file is kept only so that older links do not 404 — `README.md`, `CLAUDE.md`
 and the `nros` crate's rustdoc all point here. The book page carries everything
@@ -36,7 +36,7 @@ nros build           # or: nros build <image-id>
 
 ## See Also
 
-- [Message Binding Generation](../../book/src/user-guide/message-generation.md) — the live page
+- [Message Binding Generation](../../book/src/build/message-generation.md) — the live page
 - [RFC-0023](../design/0023-codegen-workspace-discovery.md) — the design
 - [RFC-0098](../design/0098-generated-leaf-build-config.md) — where a leaf's
   build settings come from

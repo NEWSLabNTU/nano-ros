@@ -64,7 +64,7 @@ declaration moves. These are the two 64 KiB heaps, 48 KiB of stacks, and the
   83,880 of its 83,895 "unattributed" bytes are
   `rclcpp::Node::GlobalStorageHolder<0>::storage`. That symbol is weak (`nm`
   type `V`) and lives in the `rclcpp::` namespace.
-  `book/src/internals/measuring-static-memory.md` says it is filed under
+  `book/src/realtime/static-memory.md` says it is filed under
   `[executor storage]` as `Node::GlobalStorageHolder<0>::storage`. It is not
   filed there, so the biggest movable pool on the image does not appear in the
   report's top list.

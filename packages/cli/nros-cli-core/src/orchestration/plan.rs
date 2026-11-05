@@ -792,7 +792,7 @@ pub struct PlanBuildOptions {
 /// Issue 2153 — what a plan carrying a retired build-tuning key is told.
 ///
 /// nano-ros has no per-layer compiler-flag carrier on any build road (see
-/// `docs/reference/canonical-build-path.md`), so the remedy names the build
+/// `book-internals/src/pipeline/canonical-build-path.md`), so the remedy names the build
 /// tool's own knobs rather than a nano-ros one.
 pub const RETIRED_BUILD_TUNING_REMEDY: &str = "the plan build keys `optimize`, \
      `cargo` and `cc` (phase-204.15's `[build.cargo]` / `[build.cc]`) are retired \

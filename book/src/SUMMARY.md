@@ -1,152 +1,129 @@
 # Summary
 
-[Introduction](./introduction.md)
-[Choose Your Entry](./start-here/choose-your-entry.md)
+[Introduction](./start/introduction.md)
+[Choose Your Entry](./start/choose-by-purpose.md)
 
-# Quick Start
+# Get Started
 
-- [Install](./getting-started/installation.md)
-- [First Project](./getting-started/first-project.md)
-- [Several Nodes on the Linux Host](./getting-started/multi-node-linux.md)
-- [Anatomy of What You Just Built](./getting-started/anatomy.md)
-- [Your own message package](./getting-started/your-own-msg-package.md)
-- [Troubleshooting — First 10 Minutes](./getting-started/troubleshooting-first-10-min.md)
+- [Install](./get-started/installation.md)
+- [Installation Details](./get-started/installation-details.md)
+- [First Project](./get-started/first-project.md)
+- [Anatomy of What You Just Built](./get-started/anatomy.md)
+- [First Node — Rust](./get-started/first-node-rust.md)
+- [First Node — C](./get-started/first-node-c.md)
+- [First Node — C++](./get-started/first-node-cpp.md)
+- [Your own message package](./get-started/your-own-msg-package.md)
+- [Troubleshooting — First 10 Minutes](./get-started/first-10-minutes.md)
 
-# Single-Node Examples
+# Build a Project
 
-- [First Node — Rust](./getting-started/first-node-rust.md)
-- [First Node — C](./getting-started/first-node-c.md)
-- [First Node — C++](./getting-started/first-node-cpp.md)
+- [Building and Configuring](./build/build-and-configure.md)
+- [Project layout](./build/growing-your-workspace.md)
+- [C / C++ multi-node workspaces](./build/cpp-workspaces.md)
+- [Mixed-language workspaces](./build/mixed-language.md)
+- [Role reference](./build/roles.md)
+- [Message Generation](./build/message-generation.md)
+- [Configuration](./build/configuration.md)
+- [Build Profiles](./build/build-profiles.md)
+- [What `nros build` Produces](./build/build-artifacts.md)
+- [Integrating into a Vendored Tree](./build/vendored-tree.md)
+- [Build as a CMake subdirectory](./build/cmake-subdirectory.md)
 
-# Choosing an RMW
+# Run on a Target
 
-- [Choosing an RMW Backend](./user-guide/rmw-choosing.md)
-- [Switching RMW in Config](./user-guide/rmw-switching.md)
-- [Backend Reference](./user-guide/rmw-backends.md)
+- [The Target Model](./targets/target-model.md)
+- [Running an Image: `nros run`](./targets/run.md)
+- [Flashing and Monitoring a Board](./targets/flash-and-monitor.md)
+- [Your Bench: `nros bench`](./targets/bench.md)
+- [Run Plans](./targets/run-plans.md)
+- [How Integration Works](./targets/how-integration-works.md)
+- [Native host build (reference)](./targets/linux-host.md)
+- [FreeRTOS (QEMU)](./targets/freertos.md)
+- [Zephyr (west module)](./targets/zephyr.md)
+- [A Zephyr App You Build with West](./targets/zephyr-west-app.md)
+- [Nucleo-F767ZI (Zephyr, Renode twin)](./targets/nucleo-f767zi.md)
+- [NuttX (apps/external)](./targets/nuttx.md)
+- [ThreadX](./targets/threadx.md)
+- [Bare-metal Cortex-M3](./targets/bare-metal.md)
+- [PX4 Autopilot](./targets/px4.md)
+- [ARM FVP (Cortex-A SMP)](./targets/arm-fvp.md)
 
-# Growing Your Project
+# Communicate
 
-- [Project layout](./getting-started/workspace-from-app-node.md)
-- [Node packages](./getting-started/workspace-node-pkgs.md)
-- [Bringup packages](./getting-started/workspace-bringup.md)
-- [Images](./getting-started/workspace-entry-pkg.md)
-- [C / C++ multi-node workspaces](./getting-started/workspace-cpp.md)
-- [Mixed-language workspaces](./getting-started/workspace-mixed-language.md)
-- [Rust, C, and Mixed — per-language notes](./getting-started/workspace-languages.md)
-- [Role reference](./user-guide/component-and-entry-pkg.md)
+- [Choosing an RMW Backend](./communicate/choosing-an-rmw.md)
+- [Switching RMW in Config](./communicate/switching-rmw.md)
+- [QoS, Status Events, and Discovery](./communicate/qos-status-events.md)
+- [ROS 2 Interoperability](./communicate/ros2-interop.md)
+- [Cross-backend Bridges](./communicate/bridges.md)
+- [Serial Transport](./communicate/serial-transport.md)
+- [TX Throughput & Latency Tuning](./communicate/tx-tuning.md)
 
-# Bring Your Own RTOS
+# Real-Time and Safety
 
-- [How Integration Works](./getting-started/how-integration-works.md)
-- [FreeRTOS (QEMU)](./getting-started/freertos.md)
-- [Zephyr (west module)](./getting-started/integration-zephyr.md)
-  - [Nucleo-F767ZI (Renode twin)](./getting-started/nucleo-f767zi.md)
-- [NuttX (apps/external)](./getting-started/integration-nuttx.md)
-- [ThreadX](./getting-started/threadx.md)
-- [ESP32 (esp-hal, retired)](./getting-started/esp32.md)
-- [ESP32 (ESP-IDF component, retired)](./getting-started/integration-esp-idf.md)
-- [Bare-metal Cortex-M3](./getting-started/bare-metal.md)
-- [PX4 Autopilot](./getting-started/px4.md)
-  - [PX4 (integration shell)](./getting-started/integration-px4.md)
-- [ARM FVP (Cortex-A SMP)](./getting-started/arm-fvp.md)
-- [Native host build (reference)](./platform-guides/native-host.md)
+- [RTOS Cooperation](./realtime/rtos-cooperation.md)
+- [Scheduling Models](./realtime/scheduling-models.md)
+- [The Real-Time Execution Model](./realtime/execution-model.md)
+- [Dispatch Strategy](./realtime/dispatch-strategy.md)
+- [Real-Time Analysis](./realtime/rt-analysis.md)
+- [Measuring Static Memory](./realtime/static-memory.md)
+- [Safety Protocol](./realtime/safety-protocol.md)
+- [Production Readiness Checklist](./realtime/production-readiness.md)
+- [RTIC Integration](./realtime/rtic.md)
 
-# User Guide
+# Operate and Debug
 
-- [Workflow by Platform and Language](./user-guide/workflow-by-platform.md)
-- [Application Workflow](./user-guide/workflow.md)
-- [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
-- [Integrating into a Vendored Tree](./getting-started/vendored-tree.md)
-- [Message Generation](./user-guide/message-generation.md)
-- [Configuration](./user-guide/configuration.md)
-- [Logging](./user-guide/logging.md)
-- [Simulated Time](./user-guide/simulated-time.md)
-- [Build Profiles](./user-guide/build-profiles.md)
-- [What `nros build` Produces](./user-guide/build-artifacts.md)
-- [Profiling Your Build](./user-guide/build-profiling.md)
-- [Deployment Workflow](./user-guide/deployment.md)
-- [Cross-backend Bridges](./user-guide/cross-backend-bridges.md)
-- [QoS, Status Events, and Discovery](./concepts/status-events.md)
-- [TX Throughput & Latency Tuning](./user-guide/tx-tuning.md)
-- [Serial Transport](./user-guide/serial-transport.md)
-- [Observing a Board With No Console](./user-guide/console-less-boards.md)
-- [RTIC Integration](./user-guide/rtic-integration.md)
-- [Embassy Integration](./user-guide/embassy-integration.md)
-- [Troubleshooting](./user-guide/troubleshooting.md)
+- [Logging](./operate/logging.md)
+- [Simulated Time](./operate/simulated-time.md)
+- [Deployment Workflow](./operate/deployment.md)
+- [Observing a Board With No Console](./operate/console-less-boards.md)
+- [Profiling Your Build](./operate/build-profiling.md)
+- [Troubleshooting](./operate/troubleshooting.md)
 
-# Coming From ROS 2
+# Coming from ROS 2
 
-- [Setup Compared to Standard ROS 2](./start-here/setup-compared-to-ros2.md)
-- [Porting a ROS 2 C++ node](./getting-started/porting-a-cpp-node.md)
-- [ROS 2 Interoperability](./getting-started/ros2-interop.md)
-- [Differences from Standard ROS 2](./concepts/ros2-comparison.md)
-- [nano-ros vs micro-ROS](./concepts/comparison-vs-microros.md)
-- [Migration Guide](./start-here/migration-guide.md)
+- [Setup Compared to Standard ROS 2](./from-ros2/setup-compared.md)
+- [Porting a ROS 2 C++ node](./from-ros2/porting-a-cpp-node.md)
+- [Differences from Standard ROS 2](./from-ros2/differences.md)
+- [nano-ros vs micro-ROS](./from-ros2/vs-micro-ros.md)
+- [Migration Guide](./from-ros2/migration-guide.md)
 
-# Concepts
+# Concepts and Rationale
 
 - [Architecture Overview](./concepts/architecture.md)
 - [Execution Model and Two-Layer API](./concepts/two-layer-api.md)
 - [Platform Model](./concepts/platform-model.md)
-- [Board Integration](./concepts/board-integration.md)
 - [`no_std`, `alloc`, and `std`](./concepts/no-std.md)
-- [RTOS Cooperation](./concepts/rtos-cooperation.md)
+- [Overview](./concepts/design-overview.md)
+- [Client Library Model](./concepts/client-library.md)
 
-# Porting Guide
+# Extending nano-ros
 
-- [Overview](./porting/overview.md)
-- [The `Board` Trait Family](./porting/board-trait.md)
-- [Custom Board Package](./porting/custom-board.md)
-- [Adding a FreeRTOS Board](./porting/freertos-board.md)
-- [Vendor Overlay Board Crate](./porting/vendor-overlay.md)
-- [Worked Example — STM32F4 Out of Tree](./porting/stm32f4-out-of-tree.md)
-- [Importing a Board Crate](./porting/board-crate-import.md)
-- [Custom Platform](./porting/custom-platform.md)
-- [Adding a Platform (CMake)](./porting/add-a-platform.md)
-- [Custom Transport](./porting/custom-transport.md)
-- [Custom RMW Backend](./porting/custom-rmw.md)
-- [Platform Porting Pitfalls](./internals/platform-porting-pitfalls.md)
-
-# Design Rationale
-
-- [Overview](./design/overview.md)
-- [Client Library Model](./design/client-library.md)
-- [RMW API Design](./design/rmw.md)
-- [RMW API: Differences from upstream rmw.h](./design/rmw-vs-upstream.md)
-- [Platform API Design](./design/platform-api.md)
-
-# Internals
-
-- [Codegen — the pack pipeline](./internals/codegen-packs.md)
-- [Canonical Platform C ABI](./internals/platform-c-abi.md)
-- [Measuring Static Memory](./internals/measuring-static-memory.md)
-- [RMW Backends — Host-Language Policy](./internals/rmw-backends.md)
-- [RMW Zenoh Protocol](./internals/rmw-zenoh-protocol.md)
-- [FreeRTOS LAN9118 Debugging](./internals/freertos-lan9118-debugging.md)
-- [Patched qemu-system-arm](./internals/qemu-patched-binary.md)
-- [Opaque Storage Sizing](./internals/opaque-storage-sizing.md)
-- [Scheduling Models](./internals/scheduling-models.md)
-- [Dispatch Strategy](./internals/dispatch-strategy.md)
-- [Real-Time Analysis](./internals/realtime-analysis.md)
-- [The Real-Time Execution Model](./internals/rt-execution-model.md)
-- [Build System & Caching](./internals/build-system.md)
-- [CLI Lives in the Monorepo (Phase 218)](./internals/cli-in-monorepo.md)
-- [zpico-sys Build Architecture](./internals/zpico-build.md)
-- [Formal Verification](./internals/verification.md)
-- [Safety Protocol](./internals/safety.md)
-- [Production Readiness Checklist](./internals/production-readiness.md)
-- [Zenoh-pico Symbol Reference](./internals/porting-platform/zenoh-pico.md)
-- [XRCE-DDS Symbol Reference](./internals/porting-platform/xrce-dds.md)
-- [Creating Examples](./internals/creating-examples.md)
-- [Per-Platform Contributor Lanes](./internals/platform-lanes.md)
-  - [Zephyr in-tree examples (contributor)](./internals/zephyr-in-tree.md)
-  - [NuttX in-tree examples (contributor)](./internals/nuttx-in-tree.md)
-- [Contributing](./internals/contributing.md)
+- [Overview](./extending/overview.md)
+- [The `Board` Trait Family](./extending/board-trait.md)
+- [Custom Board Package](./extending/custom-board.md)
+- [Adding a FreeRTOS Board](./extending/freertos-board.md)
+- [Vendor Overlay Board Crate](./extending/vendor-overlay.md)
+- [Worked Example — STM32F4 Out of Tree](./extending/stm32f4-out-of-tree.md)
+- [Importing a Board Crate](./extending/board-crate-import.md)
+- [Board Integration](./extending/board-integration.md)
+- [Adding a Board to the Registry](./extending/adding-a-board-to-the-registry.md)
+- [Custom Platform](./extending/custom-platform.md)
+- [Adding a Platform (CMake)](./extending/add-a-platform.md)
+- [Canonical Platform C ABI](./extending/platform-c-abi.md)
+- [Platform API Design](./extending/platform-api-design.md)
+- [Custom Transport](./extending/custom-transport.md)
+- [Custom RMW Backend](./extending/custom-rmw.md)
+- [RMW API Design](./extending/rmw-design.md)
+- [RMW API: Differences from upstream rmw.h](./extending/rmw-vs-upstream.md)
+- [Zenoh-pico Symbol Reference](./extending/zenoh-pico-symbols.md)
+- [XRCE-DDS Symbol Reference](./extending/xrce-dds-symbols.md)
+- [Platform Porting Pitfalls](./extending/porting-pitfalls.md)
+- [Runner packages](./extending/runner-packages.md)
+- [Command packages](./extending/command-packages.md)
 
 # Reference
 
 - [`nros` CLI](./reference/cli.md)
-- [Retired names](./reference/retired-names.md)
 - [Rust API](./reference/rust-api.md)
 - [C API](./reference/c-api.md)
 - [C++ API](./reference/cpp-api.md)
@@ -154,10 +131,13 @@
 - [Platform API](./reference/platform-api.md)
 - [Platform Differences](./reference/platform-differences.md)
 - [Support Status](./reference/support-status.md)
-- [RMW API vs upstream — every symbol](./reference/rmw-api-comparison.md)
 - [Per-RMW Feature Matrix](./reference/rmw-feature-matrix.md)
 - [Scheduling Wiring Matrix](./reference/sched-matrix.md)
 - [Supported Boards](./reference/supported-boards.md)
+- [Environment Variables](./reference/environment-variables.md)
+- [`nros-bridge.toml` Schema](./reference/nros-bridge-toml.md)
+- [Static Pool Inventory](./reference/static-pool-inventory.md)
+- [Configuration Surface](./reference/configuration-surface.md)
 <!-- BEGIN GENERATED by scripts/gen-board-support.py: board pages -->
 - [Board Support Levels](./reference/board-support-levels.md)
   - [nros-board-linux (Linux)](./reference/boards/linux.md)
@@ -177,12 +157,10 @@
   - [nros-board-nucleo-f767zi-zephyr (ZephyrNucleoF767zi)](./reference/boards/nucleo-f767zi-zephyr.md)
   - [nros-board-rpi-pico-w-zephyr](./reference/boards/rpi-pico-w-zephyr.md)
 <!-- END GENERATED board pages -->
-- [Environment Variables](./reference/environment-variables.md)
-- [Static Pool Inventory](./reference/static-pool-inventory.md)
-- [Configuration Surface](./reference/configuration-surface.md)
-- [Build Commands](./reference/build-commands.md)
-- [`nros-bridge.toml` Schema](./reference/nros-bridge-toml.md)
 
-# Release Notes
+# Migrating from Older Releases
 
-- [Migrating off `install-local`](./release/migration-install-local-removal.md)
+- [Retired names](./migrating/retired-names.md)
+- [Migrating off `install-local`](./migrating/install-local-removal.md)
+- [ESP32 (esp-hal, retired)](./migrating/esp32.md)
+- [Retired Configuration Files](./migrating/retired-config-files.md)

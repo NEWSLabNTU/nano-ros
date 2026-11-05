@@ -56,7 +56,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
-OUT = os.path.join(ROOT, "book", "src", "reference", "configuration-surface.md")
+# Where the page lives is the page map's answer (RFC-0123 D7), not this script's.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import book_pages  # noqa: E402
+
+OUT = str(book_pages.page_file("reference/configuration-surface.md"))
 KCONFIG = os.path.join(ROOT, "zephyr", "Kconfig")
 CMAKE_FORWARD = os.path.join(ROOT, "zephyr", "cmake", "nros_cargo_build.cmake")
 
@@ -86,8 +90,8 @@ FACTS = [
         "ssot": "`[system].domain_id` in `system.toml`",
         "carriers": ["CONFIG_NROS_DOMAIN_ID", "CONFIG_NROS_CYCLONE_DOMAIN_ID"],
         "note": "`CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults FROM `NROS_DOMAIN_ID` — "
-                "the one derivation edge in this cluster. Pinning it to a literal "
-                "is the phase-180 split-brain (CLAUDE.md).",
+                "the one derivation edge in this cluster. Do not pin it to a literal: "
+                "a Cyclone DDS image would then run on that domain whatever `domain_id` says.",
     },
     {
         "fact": "Router / agent endpoint",
@@ -123,7 +127,7 @@ FACTS = [
         ],
         "note": "On Zephyr the Kconfig spelling IS how a user sets these — it is "
                 "a carrier only in the sense that the env var is what the build "
-                "script reads. Issue 0460 is what happens when the bridge breaks.",
+                "script reads, so the Kconfig value must reach the build environment.",
     },
 ]
 
@@ -141,9 +145,9 @@ RATCHET = 0
 # documented, so "provided" cannot become a place to hide a symbol nobody uses.
 PROVIDED = {
     "CONFIG_NROS_INIT_DELAY_MS":
-        "`docs/guides/cpp-api.md` shows an application calling "
+        "`book/src/reference/cpp-api.md` (its Zephyr section) shows an application calling "
         "`nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS)` from its own "
-        "`main()`; `docs/guides/zephyr-setup.md:220` documents it as a knob.",
+        "`main()`; `book-internals/src/testing/zephyr-dev-setup.md:220` documents it as a knob.",
 }
 
 DEAD = {}
@@ -307,7 +311,7 @@ def render(symbols, forwarded, classes, kinds, kconfig_refs, unclassified):
     L.append("One fact can be spelled several ways. Only one of them is a place to make\n"
              "a decision; the rest carry that decision across a layer boundary. This page\n"
              "separates the two, because a list that does not is a list of nine ways to\n"
-             "set a locator (issue 0934).\n")
+             "set a locator.\n")
     L.append("**Every symbol on this page is one a user may set.** Kconfig says so\n"
              "itself: each carries a PROMPT, which is what a prompt means. An earlier\n"
              "draft split these into public and carrier by asking who read them, and got\n"
@@ -410,7 +414,11 @@ def main():
     has_prompt = prompted(syms)
     krefs = kconfig_internal_refs(syms)
     classes, unclassified = classify(syms, kinds, fwd, has_prompt, krefs)
-    body = render(syms, fwd, classes, kinds, krefs, unclassified)
+    body = book_pages.relink(render(syms, fwd, classes, kinds, krefs, unclassified), "reference/configuration-surface.md")
+    if "--stdout" in sys.argv:
+        # phase-532 W8: check-book-audience reads the page without writing it.
+        sys.stdout.write(body)
+        return 0
     if "--check" in sys.argv:
         # Ratchet BEFORE freshness: a new unclassified knob is the failure this
         # exists to catch, and it should be named as such rather than as

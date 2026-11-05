@@ -21,11 +21,16 @@ Gate: just check support-status
 """
 
 import os
+import pathlib
 import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "book", "src", "reference", "support-status.md")
+# Where the page lives is the page map's answer (RFC-0123 D7), not this script's.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import book_pages  # noqa: E402
+
+OUT = str(book_pages.page_file("reference/support-status.md"))
 INDEX = os.path.join(ROOT, "nros-sdk-index.toml")
 
 
@@ -143,8 +148,8 @@ def render():
         "| **3** | `ci-full` (pre-release) | The whole matrix | Everything the tree claims, verified together. |",
         "",
         "Per-board support levels are generated on their own page:",
-        "[Board Support Levels](board-support-levels.md). The hand-maintained",
-        "procurement view (including boards with no in-tree crate) is",
+        "[Board Support Levels](board-support-levels.md). The",
+        "procurement view, including parts with no board package, is",
         "[Supported Boards](supported-boards.md).",
         "",
         "## RTOS / platform source pins",
@@ -170,9 +175,9 @@ def render():
         "",
         "| Backend | Client side (pinned) | Host side | Pairing rule |",
         "|---|---|---|---|",
-        f"| **Zenoh** | zenoh-pico `{zp_idx}` (vendored submodule) | Router = the one **ROS ships**: `ros2 run rmw_zenoh_cpp rmw_zenohd` — nano-ros deliberately vendors no router (RFC-0075) | zenoh-pico's wire protocol is stable across zenoh 1.x, so the pinned client interops with a newer ROS-shipped router (issue 0291) |",
+        f"| **Zenoh** | zenoh-pico `{zp_idx}` (vendored submodule) | Router = the one **ROS ships**: `ros2 run rmw_zenoh_cpp rmw_zenohd` — nano-ros deliberately vendors no router | zenoh-pico's wire protocol is stable across zenoh 1.x, so the pinned client interops with a newer ROS-shipped router |",
         f"| **XRCE-DDS** | Micro-XRCE-DDS client `{v(ver,'micro-xrce-dds-client')}` + Micro-CDR `{v(ver,'micro-cdr')}` | Agent `{v(ver,'xrce-agent')}` (installed by `nros setup … --rmw xrce`) | Client and agent are pinned independently and are NOT the same upstream release; they meet at the DDS-XRCE wire protocol |",
-        f"| **Cyclone DDS** | fork `{v(ver,'cyclonedds-src')}` — upstream 0.10.5 + carried patches ([fork delta](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/cyclonedds-fork-delta.md)) | Talks RTPS directly to `rmw_cyclonedds_cpp` | Pinned to the Cyclone **ROS ships** (`ros-humble-cyclonedds` 0.10.5) — upstream 11.x is deliberately NOT a rebase target until a distro migration (issue 0507) |",
+        f"| **Cyclone DDS** | fork `{v(ver,'cyclonedds-src')}` — upstream 0.10.5 + carried patches ([fork delta](https://github.com/NEWSLabNTU/nano-ros/blob/main/book-internals/src/rmw/cyclonedds-fork-delta.md)) | Talks RTPS directly to `rmw_cyclonedds_cpp` | Pinned to the Cyclone **ROS ships** (`ros-humble-cyclonedds` 0.10.5) — upstream 11.x is deliberately NOT a rebase target until a distro migration |",
         "",
         "Per-feature coverage across the three backends:",
         "[Per-RMW Feature Matrix](rmw-feature-matrix.md).",
@@ -183,23 +188,22 @@ def render():
         "|---|---|---|---|",
         "| Humble | `ros-humble` (default) | Supported | `TypeHashNotSupported` key expressions, XCDR1. No `rmw_zenoh_cpp` apt package — zenoh interop on Humble needs a source overlay, or use Cyclone DDS. |",
         "| Iron | `ros-iron` | Supported | RIHS01 type hashes. Same zenoh-apt caveat as Humble. |",
-        "| Jazzy | `ros-jazzy` | Supported | RIHS01; ships `ros-jazzy-rmw-zenoh-cpp` — the zenoh-interop reference edition. XCDR2/appendable is tracked separately (phase-303). |",
+        "| Jazzy | `ros-jazzy` | Supported | RIHS01; ships `ros-jazzy-rmw-zenoh-cpp` — the zenoh-interop reference edition. A default Jazzy peer encodes XCDR1/FINAL, which nano-ros speaks; per-type XCDR2 (`@appendable`) is not enabled. |",
         "",
         "Pick the edition of the ROS system you interop with — mismatched",
         "editions discover nothing (different key expressions).",
         "",
-        "**Supported means WIRE interop, not API parity.** The API comparison",
-        "(`just check api-parity`, `rmw-api-parity`, `rmw-abi-shape`) runs against",
-        "**Humble and Jazzy** — Jazzy from pinned upstream sources",
-        "(`docs/reference/editions/jazzy/`), since it cannot be installed beside",
-        "Humble. Iron is not compared on its own; what it added and Jazzy kept is",
+        "**Supported means WIRE interop, not API parity.** nano-ros's API is",
+        "compared against **Humble and Jazzy** — Jazzy from pinned upstream",
+        "sources, since it cannot be installed beside Humble",
+        f"([how the comparison runs]({book_pages.link(pathlib.Path(OUT), book_pages.page_file('reference/rmw-api-comparison.md'))})). Iron is not compared on its own; what it added and Jazzy kept is",
         "covered there. Jazzy's additions over Humble are each RULED, not each implemented:",
-        "matched/incompatible-type events (issue 1972), timer call info",
-        "(issue 1974), the small rclcpp accessors (issue 1975),",
+        "matched/incompatible-type events, timer call info,",
+        "the small rclcpp accessors,",
         "`count_clients`/`count_services`, the client GID and",
-        "`event_type_is_supported` (issue 1978) are implemented;",
+        "`event_type_is_supported` are implemented;",
         "`BEST_AVAILABLE` QoS is implemented,",
-        "resolved at creation against the discovered graph (issue 1973);",
+        "resolved at creation against the discovered graph;",
         "dynamic typesupport, service introspection and the",
         "`~/get_type_description` service are declined on RAM/flash grounds;",
         "`rmw_discovery_options_t` is answered by the session locator and",
@@ -236,7 +240,7 @@ def render():
 
 def main():
     self_test()
-    content = render()
+    content = book_pages.relink(render(), "reference/support-status.md")
     if "--check" in sys.argv:
         on_disk = open(OUT, encoding="utf8").read() if os.path.exists(OUT) else ""
         if on_disk != content:

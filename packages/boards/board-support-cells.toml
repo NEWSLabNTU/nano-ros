@@ -899,7 +899,7 @@ comment = '''
 // coverage: `check-board-tiers` requires a Runtime cell for tier 1/2 and
 // this platform could never have one (no hardware in the rack, no QEMU
 // model of the F4 MAC). The board is now
-// `book/src/porting/stm32f4-out-of-tree.md`.
+// `book/src/extending/stm32f4-out-of-tree.md`.
 
 // FVP — Cyclone, cpp + rust.
 // Issue 0232 / phase-320 W1.a — these were `Runtime`, which no lane could

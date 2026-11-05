@@ -629,7 +629,7 @@ pub struct BoardRunQemu {
     /// `-cpu`, when the machine's default CPU is not the one.
     #[serde(default)]
     pub cpu: Option<String>,
-    /// `-icount <value>` (`shift=auto`: docs/reference/qemu-icount.md).
+    /// `-icount <value>` (`shift=auto`: book-internals/src/testing/qemu-icount.md).
     #[serde(default)]
     pub icount: Option<String>,
     /// `-semihosting-config enable=on,target=native`.

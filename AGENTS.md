@@ -6,7 +6,7 @@ nano-ros is a Rust workspace for a `no_std` ROS 2 client stack with C/C++ integr
 
 **Supported hosts: Linux (primary) and *BSD (POSIX path). macOS is NOT supported** (dropped 2026-06-18, phase-260): no macOS CI runner means macOS-specific link/section paths ship un-run, so the project does not carry them. Do not add `APPLE`/`target_os = "macos"`/`env::consts::OS == "macos"`/`*-apple-darwin` branches to nano-ros source, CMake, or CI (issue 0916 — the `"macos"` string spelling survived phase-260's sweep because its acceptance named only `apple`/`darwin`/`APPLE`); embedded RTOS targets + the Linux host are the supported surface.
 
-Reference and contributor docs live in `docs/`; user-facing mdBook docs live in `book/src/`; build orchestration lives in `justfile` and `just/*.just`.
+Reference and contributor docs live in `docs/`; user-facing mdBook docs (the nano-ros Book: users and porters) live in `book/src/`, and contributor docs (nano-ros Internals) in `book-internals/src/` (RFC-0123); build orchestration lives in `justfile` and `just/*.just`.
 
 ## Design Documents (RFCs)
 

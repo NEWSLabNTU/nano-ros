@@ -30,8 +30,8 @@ cargo doc --no-deps -p nros --open
 
 These crates are **not** part of the user API. They surface only when writing a
 custom RMW backend or porting to a new platform — see
-[Custom RMW Backend](../porting/custom-rmw.md) /
-[Custom Platform](../porting/custom-platform.md).
+[Custom RMW Backend](../extending/custom-rmw.md) /
+[Custom Platform](../extending/custom-platform.md).
 
 - [`nros_rmw`](../api/rust/nros_rmw/index.html) — RMW trait surface (porters)
 - [`nros_platform_api`](../api/rust/nros_platform_api/index.html) — platform abstraction traits (porters)

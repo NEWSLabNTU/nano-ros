@@ -10,12 +10,12 @@ Cargo.toml templates for host-ecosystem projects that consume nano-ros.
 
 The three STM32F4 templates (`cargo-{rtic,embassy,polling}-stm32f4.toml`) left
 with their board crates in phase-337 W7.a. The board is now a worked
-out-of-tree example — [`book/src/porting/stm32f4-out-of-tree.md`][oot] carries
+out-of-tree example — [`book/src/extending/stm32f4-out-of-tree.md`][oot] carries
 the descriptor, the memory map and the `Config` shape, which is more than the
 templates did: a template is a file to copy, not a path through the
 customization ladder.
 
-[oot]: ../book/src/porting/stm32f4-out-of-tree.md
+[oot]: ../book/src/extending/stm32f4-out-of-tree.md
 
 ## Usage
 

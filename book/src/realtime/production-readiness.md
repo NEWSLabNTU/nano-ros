@@ -1,0 +1,220 @@
+# Production Readiness Checklist
+
+A copy-out checklist for teams piloting nano-ros toward production
+deployment. Each box is a concrete validation step, not a marketing
+claim. The book documents the framework's intent + plumbing; this
+page is what **your team** needs to confirm on **your target** before
+shipping.
+
+> **Why a separate checklist?** nano-ros is production-capable, but
+> some acceptance items are hardware-gated (P99 latency on real
+> Cortex-M3, multicast on real silicon, NuttX SCHED_SPORADIC under
+> kernel config) and can't be validated in CI. The checklist gives
+> you the steps to close those gaps for your deployment.
+
+## 1. Real-time metrics (hardware-validated)
+
+The book intentionally quotes almost no latency numbers, because the
+in-tree harnesses run under QEMU, where DWT cycle counters read zero
+and wall-clock percentiles track host load. **For production claims,
+measure on your actual silicon.**
+
+- [ ] **End-to-end P99 latency** (publisher → executor callback)
+      on your target MCU at its production clock + load. Target:
+      ≤ design budget. Tooling: `wake-latency-cortex-m3` bench at
+      `packages/testing/nros-bench/wake-latency-cortex-m3/`.
+- [ ] **Worst-case stack depth** per task. Tool:
+      `cargo-call-stack`, `cargo-stack-sizes`, or the ARM
+      stack-analyzer for C/C++.
+- [ ] **Heap fragmentation pattern** over 24 h at nominal load.
+      Spot-check with `mallinfo` or your RTOS's heap-stats API.
+- [ ] **Wake latency** (transport-rx interrupt → first user
+      callback dispatched). Required if you use the async / poll-
+      blocked spin path.
+- [ ] **Spin-loop budget overrun rate** under sustained pub load.
+      `Executor::spin_once(timeout)` returns the overrun count.
+
+## 2. Platform-specific validation
+
+Per-RTOS gaps that the book documents as "tested in CI" cover
+**reference boards** — your actual board / kernel-config combination
+may differ.
+
+- [ ] **Multicast / IGMP** if using DDS (RTPS). Confirm SPDP
+      discovery actually fires on your RTOS + driver. Untested on
+      FreeRTOS + ThreadX as of writing.
+- [ ] **Clock wraparound + extension correctness** on long-running
+      deployments. The platform's `nros_platform_clock_ns` must
+      extend a narrower hardware counter (a u32 millisecond count wraps
+      at 49.7 days) to a monotonic u64.
+- [ ] **Allocator behavior under memory pressure**. Boot-time alloc
+      OK on most RTOSes; mid-run alloc only on `std` POSIX. Confirm
+      your hot paths don't allocate.
+- [ ] **Network packet loss recovery**. Drop 5% of packets in your
+      lab and confirm the talker / listener recovers.
+- [ ] **Critical-section regions** are short. The platform's
+      `nros_platform_critical_section_*` ABI is the IRQ-disable
+      surface; long critical sections starve other ISRs.
+
+## 3. RMW backend certification
+
+- [ ] **Backend version pinned** to a tested tuple. Zenoh-pico
+      1.8.0 (wire-compatible with `rmw_zenoh_cpp` across zenoh 1.x). Cyclone DDS 0.10.5 (matches
+      `ros-humble-cyclonedds`). XRCE-DDS Micro-Client at its
+      workspace pin.
+- [ ] **All required QoS policies supported** by your backend. The
+      per-policy table is in
+      [RMW API: Differences from upstream rmw.h §7](../extending/rmw-vs-upstream.md);
+      the authoritative source is each backend's `supported_qos_policies()`.
+- [ ] **Discovery stability** over your network topology.
+      Zenoh-pico in client mode needs the router reachable; loss of
+      router = lost routing but local node lives. XRCE needs
+      Agent uptime. Cyclone DDS discovers via multicast SPDP.
+- [ ] **Bridge stability** if multi-backend. Confirm no memory
+      bloat over 72 h with two registered RMWs running.
+- [ ] **Cyclone DDS limitations checked.** Status events and some
+      stock-ROS interop slices are still in progress; embedded RTOS
+      ports remain gated on a hosted Cyclone runtime.
+
+## 4. Safety + formal verification
+
+- [ ] **Kani harnesses clean** for the nano-ros release you ship.
+      148 bounded harnesses; non-trivial coverage of CDR +
+      scheduling + RMW glue.
+- [ ] **Verus proofs clean** for that release. 83 deductive proofs.
+      Running both in the tree: see
+      [Internals → Formal Verification](../internals/testing/verification.html).
+- [ ] **CRC32 attached** if using `safety-e2e` feature. The
+      37-byte attachment is transparent to stock ROS 2 (ignored
+      gracefully) and detected by other nano-ros nodes.
+- [ ] **Timeout bounds on every blocking call.** `spin_once`
+      timeout, `Promise::wait_for(timeout)`, `recv_timeout`. No
+      `WAIT_FOREVER`.
+- [ ] **Parameter store capacity** ≥ declared parameter count
+      ([`param-services`] feature gate).
+- [ ] **Stack overflow detection** enabled by your platform
+      (FreeRTOS `configCHECK_FOR_STACK_OVERFLOW`, Zephyr stack
+      sentinels, NuttX `CONFIG_DEBUG_STACK`).
+
+## 5. Interop testing
+
+- [ ] **Publish from nano-ros, subscribe with stock ROS 2.**
+      `RMW_IMPLEMENTATION=rmw_zenoh_cpp` for Zenoh,
+      `rmw_cyclonedds_cpp` for Cyclone, `rmw_fastrtps_cpp` for DDS
+      (interop tier).
+- [ ] **Message type compatibility** for any custom `.msg` you've
+      added. Round-trip a sample message through ROS 2's
+      `rosbag2` to confirm wire-level parity.
+- [ ] **QoS profile matching.** Mismatched reliability /
+      durability / history kill discovery silently on DDS / RTPS.
+- [ ] **Lifecycle callbacks** fire on node startup / shutdown if
+      you've opted into `lifecycle-services`.
+- [ ] **Cross-RTOS interop**: if your fleet mixes RTOSes (e.g.
+      Zephyr sensor + FreeRTOS actuator + POSIX coordinator),
+      confirm all three sides see each other.
+
+## 6. Failure recovery
+
+- [ ] **Agent / router restart**: kill `zenohd` (Zenoh) or
+      `MicroXRCEAgent` (XRCE) mid-run. Confirm reconnection. For
+      DDS / Cyclone this is N/A (no central process).
+- [ ] **Network partition → reconnection.** Block the talker's
+      egress with `iptables` for 30 s, then unblock. Verify the
+      listener resumes within your design SLA.
+- [ ] **Heap exhaustion** path: graceful degradation OR clean
+      crash + restart? If hosted-RTOS + watchdog, restart is
+      usually correct. If bare-metal, you probably have no
+      restart story — confirm your design assumes this.
+- [ ] **Stack overflow detection** triggers a panic / fault
+      rather than silent corruption.
+- [ ] **Power loss mid-write** (if persisting state). Not
+      nano-ros's concern, but mention it in your design review.
+
+## 7. Operational concerns
+
+- [ ] **Bootloader + OTA strategy.** Out of scope for nano-ros but
+      mandatory for fleet deployments — name it explicitly in
+      your project plan.
+- [ ] **Log / diagnostics exfiltration.** `nros-log` provides the
+      logging surface; pick a sink (UART, RTT, semihosting, or
+      ROS 2 `/rosout` over the wire — the last is Rust-only and costs `.bss`: see
+      [Logging](../operate/logging.md#rosout)).
+- [ ] **Time synchronization** (NTP, PTP, RTC). nano-ros doesn't
+      ship a time-sync layer; your fleet design must.
+- [ ] **Watchdog coverage**: the executor's `spin_period` reports
+      overruns, but it doesn't pet a hardware watchdog. Wire one
+      manually.
+
+## 8. License + governance
+
+- [ ] **License**: MIT OR Apache 2.0 (dual). Both permissive, no
+      GPL copyleft, OK for proprietary firmware. Confirm your
+      legal team is comfortable.
+- [ ] **Third-party dependencies**: zenoh-pico (Eclipse), Cyclone
+      DDS (Eclipse), Micro-XRCE-DDS-Client (Apache-2). Vendored
+      dependencies carry license files in each `third-party/*/LICENSE`.
+- [ ] **Patent grant**: Apache 2.0 carries an explicit patent
+      grant; MIT does not. Most adopters rely on the Apache half.
+- [ ] **Support model**: nano-ros has **no commercial support
+      entity** as of writing. Plan accordingly — either staff
+      in-house expertise or contract a consultancy.
+- [ ] **Roadmap visibility**: track the project's roadmap
+      directory in the upstream repo. Items are numbered and
+      dated.
+
+## 9. Maintainability pledge
+
+The single-maintainer signal in §8 is a real adoption risk. Add
+explicit mitigations to your project plan rather than treating
+"open-source" as the answer:
+
+- [ ] **Maintenance horizon**: record the date you adopted and
+      the upstream commit cadence (e.g. `git log --since=…
+      --oneline | wc -l` over the last 90 days). Re-check
+      quarterly.
+- [ ] **Escalation path**: identify the primary maintainer
+      contact (from `Cargo.toml` `authors` + GitHub commit
+      history). For CVEs, use a public GitHub security
+      advisory.
+- [ ] **Governance model**: nano-ros is BDFL-style
+      (benevolent-dictator-for-life) with no formal RFC / vote
+      process. Major design decisions are documented in the
+      roadmap directory; align your expectations accordingly.
+- [ ] **Fork mitigation**: the dual MIT / Apache-2.0 license
+      lets your team fork and maintain independently if upstream
+      goes dormant. Budget for that **possibility**, not the
+      assumption that it will happen.
+- [ ] **Distro tracking**: nano-ros targets ROS 2 Humble today.
+      Iron / Jazzy support depends on the type-hash work tracked
+      in the upstream roadmap (no public ETA yet). If your
+      product must ship on Iron / Jazzy at launch, plan to
+      contribute the type-hash port or wait for upstream.
+
+## Scoring rubric
+
+For each section above, count `[x]` boxes as your readiness score.
+Suggested gates:
+
+Sections carry 4–6 boxes each (45 total):
+
+| Score per section | Status |
+|---|---|
+| All boxes | Production-ready for that axis |
+| Missing one | Pilot deployment OK; close the gap before scale |
+| Missing two | Lab / prototype only |
+| Missing three+ | Block on these items first |
+
+Sum across all 9 sections (§1–9). Below ~32 / 45 you have
+foundational work to do; above ~40 / 45 you're at production
+quality on every axis where nano-ros can be validated externally.
+
+## See also
+
+- [Real-Time Analysis](rt-analysis.md) — RT scheduling
+  background + response-time formulas.
+- [Formal Verification](../internals/testing/verification.html) — Kani + Verus harnesses.
+- [Safety Protocol](safety-protocol.md) — E2E CRC + sequence tracking.
+- [Choosing an RMW Backend](../communicate/choosing-an-rmw.md) — backend
+  capability matrix.
+- [Supported Boards](../reference/supported-boards.md) — per-board
+  status + caveats.

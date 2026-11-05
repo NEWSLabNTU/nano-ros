@@ -7,7 +7,7 @@ issue, a pull request or an RFC: the reader has no tree to look the id up in,
 so an id where a sentence or a command belongs is a dead end. The phase or
 issue that built a verb belongs in a `//` comment above its help string; a
 refusal names the next command; a chapter states the fact the issue holds, or
-moves the citation into a contributor block.
+moves the citation to the Internals book or a `## Design background` section.
 
 Subjects, all checked on every run:
 
@@ -15,7 +15,9 @@ Subjects, all checked on every run:
   every Rust string literal outside comments and `#[cfg(test)]` modules (the
   `bail!`/`eyre!`/`anyhow!` texts, `println!`/`eprintln!` lines, and anything
   a refusal is built from);
-* `book/src/getting-started/*.md`, with the contributor-block exemption
+* every page of the user book (`book/page-map.toml`, RFC-0123 D3), with the
+  `## Design background` allowance for RFC ids. Nothing is exempt for its
+  audience: contributor material belongs in the Internals book
   `check-book-no-just` uses (`scripts/lib/book_contributor.py`, one rule for
   both gates). HTML comments do not render and are not read;
 * the RENDERED help: `nros --help`, `nros help --all`, and `--help` of every
@@ -47,11 +49,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 import book_contributor  # noqa: E402
+import book_pages  # noqa: E402
 import check_skip  # noqa: E402
 
 NAME = "check-user-surface-ids"
 CMD_DIR = "packages/cli/nros-cli-core/src/cmd"
-BOOK_GLOB = "book/src/getting-started/*.md"
+# The user book, as the page map assigns it (RFC-0123 D3, phase-532 W3).
+BOOK_SCOPE = "the user book"
+# RFC-0123 D3: a page may end with one `## Design background` section listing
+# RFC links. RFC ids are allowed there and nowhere else; phase, issue and PR
+# ids are never allowed.
+DESIGN_BACKGROUND = re.compile(r"^##\s+Design background\s*$")
+RFC_ONLY = re.compile(r"^RFC-?\d{4}$")
 
 ID = re.compile(
     r"\b[Pp]hase[- ]\d{2,4}\b"
@@ -173,18 +182,21 @@ def book_page_hits(rel: str, text: str) -> list[str]:
     # Blank out HTML comments (they do not render), keeping line numbers.
     text = HTML_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), text)
     bad = []
+    in_background = False
     for ln in book_contributor.walk(text.splitlines()):
+        if not ln.in_fence and ln.text.startswith("#"):
+            in_background = bool(DESIGN_BACKGROUND.match(ln.text))
         if ln.exempt:
             continue
         for tok in ids(LINK_TARGET.sub("]", ln.text)):
+            if in_background and RFC_ONLY.match(tok):
+                continue
             bad.append(f"{rel}:{ln.number}: {tok!r} in {ln.text.strip()[:90]!r}")
     return bad
 
 
 def book_hits() -> list[str]:
-    files = subprocess.run(
-        ["git", "ls-files", BOOK_GLOB], cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.split()
+    files = book_pages.tracked_user_pages()
     bad = []
     for rel in files:
         bad += book_page_hits(rel, (ROOT / rel).read_text())
@@ -316,7 +328,13 @@ def self_test() -> None:
         "## Contributor notes\n\nphase-525 is fine here.\n\n## Use\n\n" + "x\n" * 9 + "RFC-0116 [doc](../phase-100.md)\n"
     )
     hits = book_page_hits("p.md", page)
-    assert len(hits) == 2 and "p.md:3:" in hits[0] and "RFC-0116" in hits[1], f"self-test: {hits}"
+    # RFC-0123 D3: a "Contributor" heading no longer exempts its body.
+    assert len(hits) == 3 and "p.md:3:" in hits[0] and "p.md:8:" in hits[1] and "RFC-0116" in hits[2], \
+        f"self-test: {hits}"
+    # RFC-0123 D3: `## Design background` licenses RFC ids, and nothing else.
+    bg = "# T\n\n## Design background\n\n- [x](a.md) RFC-0123\n- see issue 1043\n\n## After\n\nRFC-0001\n"
+    hits = book_page_hits("b.md", bg)
+    assert len(hits) == 2 and "issue 1043" in hits[0] and "b.md:10:" in hits[1], f"self-test: background {hits}"
     assert subcommands("Usage: x\n\nCommands:\n  new   make\n  help  h\n\nOptions:\n") == ["new"]
     assert subcommands(
         "Quick start:\n  nros new\n\nUsage: nros\n\nBuild:\n  build  b\n  sync   s\n\n"
@@ -350,8 +368,9 @@ def main() -> int:
         print(
             "\nThe reader has no tree to look an id up in. Help says what the verb\n"
             "does (move the id to a `//` comment above the string); a refusal names\n"
-            "the next command; a chapter states the fact, or moves the citation into\n"
-            "a contributor block. If the only remedy is \"read issue N\", state the\n"
+            "the next command; a chapter states the fact, moves contributor material\n"
+            "to the Internals book, or lists an RFC under `## Design background`.\n"
+            "If the only remedy is \"read issue N\", state the\n"
             "fact and file the refusal as a front-door issue. There is no allowlist.",
             file=sys.stderr,
         )
@@ -360,7 +379,7 @@ def main() -> int:
         return check_skip.unverified(
             NAME, f"no in-tree nros CLI (`just setup-cli`); {rendered} not read"
         )
-    print(f"{NAME}: OK (cmd/ strings, {BOOK_GLOB}, {rendered})")
+    print(f"{NAME}: OK (cmd/ strings, {BOOK_SCOPE}, {rendered})")
     return 0
 
 

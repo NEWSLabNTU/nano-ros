@@ -76,7 +76,7 @@ see the book.
 
 > **No nano-ros release has been cut yet**, so `install.sh` will tell you so and
 > point you at the book's
-> [Install](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/getting-started/installation.md)
+> [Install](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/get-started/installation.md)
 > page. Until one exists, the way to obtain `nros` is a *separate* nano-ros
 > checkout with `./scripts/bootstrap.sh` — separate on purpose: a nano-ros
 > checkout's own build is only correct against that checkout (RFC-0090), and
@@ -93,7 +93,7 @@ see the book.
   generate their crate-patch config with
   `nros dev codegen rust --generate-config --nano-ros-path <ws>/modules/nano-ros/packages/core`.
 - Full reference: the book's *Getting Started → Zephyr (west module)*
-  (`book/src/getting-started/integration-zephyr.md`) and
+  (`book/src/targets/zephyr.md`) and
   `modules/nano-ros/examples/zephyr/` for the multi-RMW examples.
 - Verified end-to-end (Phase 202): this flow builds `app` to `zephyr.exe` and runs
   to `Published: 1` on a fresh BYO workspace.

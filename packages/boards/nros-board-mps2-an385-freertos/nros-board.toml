@@ -71,7 +71,7 @@ links = ["tcp", "udp"]
 # prints its next step from it, the generated cargo settings give it to cargo
 # as the triple's `runner`, and the support registry reads `emulator` from it.
 # Issue 2172 — the line its chapters boot on the installed probe track
-# (`-icount shift=auto`: docs/reference/qemu-icount.md; the LAN9118 NIC on
+# (`-icount shift=auto`: book-internals/src/testing/qemu-icount.md; the LAN9118 NIC on
 # QEMU's SLIRP network). It used to be a `runner` string in `cargo_config`.
 [board.run]
 emulator = "qemu:mps2-an385"

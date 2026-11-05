@@ -1,0 +1,1300 @@
+# The page map (RFC-0123 D2, phase-532 W0): one row per page of either book.
+# `old` = path under book/src today (absent for a new page); `book` + `path` =
+# where it lives after phase-532 (path relative to that book's src/).
+# `action`: keep | move | merge-into <user-path> | split <internals-path> |
+#           new <owner phase>.  `batch` = the work item that performs it.
+# Read it through scripts/lib/book_pages.py; never hand-parse it.
+
+schema = 1
+
+[[page]]
+old = "introduction.md"
+book = "user"
+path = "start/introduction.md"
+action = "move"
+batch = "w4-start"
+note = "Key Features rewritten as user benefits (W10)"
+
+[[page]]
+old = "start-here/choose-your-entry.md"
+book = "user"
+path = "start/choose-by-purpose.md"
+action = "move"
+batch = "w4-start"
+note = "re-cut by RFC-0116 D1 purposes (W9)"
+
+[[page]]
+old = "getting-started/installation.md"
+book = "user"
+path = "get-started/installation.md"
+action = "move"
+batch = "w4-get-started"
+note = "common path + host-specific page (W10)"
+
+[[page]]
+old = "getting-started/installation-details.md"
+book = "user"
+path = "get-started/installation-details.md"
+action = "move"
+batch = "w4-get-started"
+note = "written by W10 (the depth installation.md's common path leaves out); its batch is held, so it starts at its old path"
+
+[[page]]
+old = "getting-started/first-project.md"
+book = "user"
+path = "get-started/first-project.md"
+action = "move"
+batch = "w4-get-started"
+note = "content owned by phase-525 W4"
+
+[[page]]
+old = "getting-started/anatomy.md"
+book = "user"
+path = "get-started/anatomy.md"
+action = "move"
+batch = "w4-get-started"
+
+[[page]]
+old = "getting-started/first-node-rust.md"
+book = "user"
+path = "get-started/first-node-rust.md"
+action = "move"
+batch = "w4-get-started"
+
+[[page]]
+old = "getting-started/first-node-c.md"
+book = "user"
+path = "get-started/first-node-c.md"
+action = "move"
+batch = "w4-get-started"
+
+[[page]]
+old = "getting-started/first-node-cpp.md"
+book = "user"
+path = "get-started/first-node-cpp.md"
+action = "move"
+batch = "w4-get-started"
+
+[[page]]
+old = "getting-started/your-own-msg-package.md"
+book = "user"
+path = "get-started/your-own-msg-package.md"
+action = "move"
+batch = "w4-get-started"
+
+[[page]]
+old = "getting-started/troubleshooting-first-10-min.md"
+book = "user"
+path = "get-started/first-10-minutes.md"
+action = "move"
+batch = "w4-get-started"
+
+[[page]]
+book = "user"
+path = "build/build-and-configure.md"
+action = "new phase-530"
+batch = "w4-build"
+
+[[page]]
+old = "getting-started/workspace-from-app-node.md"
+book = "user"
+path = "build/growing-your-workspace.md"
+action = "move"
+batch = "w4-build"
+
+[[page]]
+old = "getting-started/workspace-node-pkgs.md"
+book = "user"
+path = "build/growing-your-workspace.md"
+action = "merge-into build/growing-your-workspace.md"
+batch = "w4-build"
+
+[[page]]
+old = "getting-started/workspace-bringup.md"
+book = "user"
+path = "build/growing-your-workspace.md"
+action = "merge-into build/growing-your-workspace.md"
+batch = "w4-build"
+
+[[page]]
+old = "getting-started/workspace-entry-pkg.md"
+book = "user"
+path = "build/growing-your-workspace.md"
+action = "merge-into build/growing-your-workspace.md"
+batch = "w4-build"
+note = "migration section -> migrating/ (W6)"
+
+[[page]]
+old = "getting-started/workspace-cpp.md"
+book = "user"
+path = "build/cpp-workspaces.md"
+action = "move"
+batch = "w4-build"
+
+[[page]]
+old = "getting-started/workspace-mixed-language.md"
+book = "user"
+path = "build/mixed-language.md"
+action = "move"
+batch = "w4-build"
+
+[[page]]
+old = "getting-started/workspace-languages.md"
+book = "user"
+path = "build/mixed-language.md"
+action = "merge-into build/mixed-language.md"
+batch = "w4-build"
+
+[[page]]
+old = "user-guide/component-and-entry-pkg.md"
+book = "user"
+path = "build/roles.md"
+action = "move"
+batch = "w4-build"
+
+[[page]]
+old = "user-guide/workflow.md"
+book = "user"
+path = "build/growing-your-workspace.md"
+action = "merge-into build/growing-your-workspace.md"
+batch = "w4-build"
+
+[[page]]
+old = "user-guide/message-generation.md"
+book = "user"
+path = "build/message-generation.md"
+action = "move"
+batch = "w4-build"
+
+[[page]]
+old = "user-guide/configuration.md"
+book = "user"
+path = "build/configuration.md"
+action = "move"
+batch = "w4-build"
+note = "Retired files section -> migrating/retired-config-files.md (W6)"
+
+[[page]]
+old = "user-guide/build-profiles.md"
+book = "user"
+path = "build/build-profiles.md"
+action = "move"
+batch = "w4-build"
+
+[[page]]
+old = "user-guide/build-artifacts.md"
+book = "user"
+path = "build/build-artifacts.md"
+action = "move"
+batch = "w4-build"
+
+[[page]]
+old = "getting-started/vendored-tree.md"
+book = "user"
+path = "build/vendored-tree.md"
+action = "move"
+batch = "w4-build"
+
+[[page]]
+old = "getting-started/build-as-subdirectory.md"
+book = "user"
+path = "build/cmake-subdirectory.md"
+action = "split testing/creating-examples.md"
+batch = "w4-build"
+
+[[page]]
+book = "user"
+path = "targets/target-model.md"
+action = "new phase-528"
+batch = "w4-targets"
+
+[[page]]
+book = "user"
+path = "targets/run.md"
+action = "new phase-528"
+batch = "w4-targets"
+
+[[page]]
+book = "user"
+path = "targets/flash-and-monitor.md"
+action = "new phase-529"
+batch = "w4-targets"
+
+[[page]]
+book = "user"
+path = "targets/bench.md"
+action = "new phase-529"
+batch = "w4-targets"
+
+[[page]]
+book = "user"
+path = "targets/run-plans.md"
+action = "new phase-528"
+batch = "w4-targets"
+
+[[page]]
+old = "getting-started/how-integration-works.md"
+book = "user"
+path = "targets/how-integration-works.md"
+action = "move"
+batch = "w4-targets"
+
+[[page]]
+old = "user-guide/workflow-by-platform.md"
+book = "user"
+path = "targets/how-integration-works.md"
+action = "merge-into targets/how-integration-works.md"
+batch = "w4-targets"
+note = "contributor recipe column -> internals dev-env/build-commands.md"
+
+[[page]]
+old = "platform-guides/native-host.md"
+book = "user"
+path = "targets/linux-host.md"
+action = "move"
+batch = "w4-targets"
+
+[[page]]
+old = "getting-started/freertos.md"
+book = "user"
+path = "targets/freertos.md"
+action = "move"
+batch = "w4-targets"
+
+[[page]]
+old = "getting-started/integration-zephyr.md"
+book = "user"
+path = "targets/zephyr.md"
+action = "split platform/zephyr-in-tree.md"
+batch = "w4-targets"
+
+[[page]]
+book = "user"
+path = "targets/zephyr-west-app.md"
+action = "new phase-532"
+batch = "w4-targets"
+note = "a guest Zephyr app (no system.toml) built with plain west; takes over zephyr.md's \"Driving west yourself\""
+
+[[page]]
+book = "user"
+path = "targets/nucleo-f767zi.md"
+action = "new phase-524"
+batch = "w4-targets"
+note = "the Nucleo-F767ZI chapter (phase-524 W4b, #3093's merge of main); its Renode twin runs the workspace talker"
+
+[[page]]
+old = "getting-started/integration-nuttx.md"
+book = "user"
+path = "targets/nuttx.md"
+action = "move"
+batch = "w4-targets"
+
+[[page]]
+old = "getting-started/threadx.md"
+book = "user"
+path = "targets/threadx.md"
+action = "move"
+batch = "w4-targets"
+
+[[page]]
+old = "getting-started/bare-metal.md"
+book = "user"
+path = "targets/bare-metal.md"
+action = "move"
+batch = "w4-targets"
+
+[[page]]
+old = "getting-started/px4.md"
+book = "user"
+path = "targets/px4.md"
+action = "move"
+batch = "w4-targets"
+
+[[page]]
+old = "getting-started/integration-px4.md"
+book = "user"
+path = "targets/px4.md"
+action = "merge-into targets/px4.md"
+batch = "w4-targets"
+
+[[page]]
+old = "getting-started/arm-fvp.md"
+book = "user"
+path = "targets/arm-fvp.md"
+action = "move"
+batch = "w4-targets"
+
+[[page]]
+old = "user-guide/rmw-choosing.md"
+book = "user"
+path = "communicate/choosing-an-rmw.md"
+action = "move"
+batch = "w4-communicate"
+
+[[page]]
+old = "user-guide/rmw-backends.md"
+book = "user"
+path = "communicate/choosing-an-rmw.md"
+action = "merge-into communicate/choosing-an-rmw.md"
+batch = "w4-communicate"
+
+[[page]]
+old = "user-guide/rmw-switching.md"
+book = "user"
+path = "communicate/switching-rmw.md"
+action = "move"
+batch = "w4-communicate"
+
+[[page]]
+old = "concepts/status-events.md"
+book = "user"
+path = "communicate/qos-status-events.md"
+action = "move"
+batch = "w4-communicate"
+
+[[page]]
+old = "getting-started/ros2-interop.md"
+book = "user"
+path = "communicate/ros2-interop.md"
+action = "move"
+batch = "w4-communicate"
+
+[[page]]
+old = "user-guide/cross-backend-bridges.md"
+book = "user"
+path = "communicate/bridges.md"
+action = "move"
+batch = "w4-communicate"
+
+[[page]]
+old = "user-guide/serial-transport.md"
+book = "user"
+path = "communicate/serial-transport.md"
+action = "move"
+batch = "w4-communicate"
+
+[[page]]
+old = "user-guide/tx-tuning.md"
+book = "user"
+path = "communicate/tx-tuning.md"
+action = "move"
+batch = "w4-communicate"
+
+[[page]]
+old = "concepts/rtos-cooperation.md"
+book = "user"
+path = "realtime/rtos-cooperation.md"
+action = "move"
+batch = "w4-realtime"
+
+[[page]]
+old = "internals/scheduling-models.md"
+book = "user"
+path = "realtime/scheduling-models.md"
+action = "move"
+batch = "w4-realtime"
+
+[[page]]
+old = "internals/rt-execution-model.md"
+book = "user"
+path = "realtime/execution-model.md"
+action = "split realtime/running-rt-tests.md"
+batch = "w4-realtime"
+
+[[page]]
+old = "internals/dispatch-strategy.md"
+book = "user"
+path = "realtime/dispatch-strategy.md"
+action = "split realtime/dispatch-abi-history.md"
+batch = "w4-realtime"
+
+[[page]]
+old = "internals/realtime-analysis.md"
+book = "user"
+path = "realtime/rt-analysis.md"
+action = "move"
+batch = "w4-realtime"
+
+[[page]]
+old = "internals/measuring-static-memory.md"
+book = "user"
+path = "realtime/static-memory.md"
+action = "move"
+batch = "w4-realtime"
+
+[[page]]
+old = "internals/safety.md"
+book = "user"
+path = "realtime/safety-protocol.md"
+action = "move"
+batch = "w4-realtime"
+
+[[page]]
+old = "internals/production-readiness.md"
+book = "user"
+path = "realtime/production-readiness.md"
+action = "move"
+batch = "w4-realtime"
+
+[[page]]
+old = "user-guide/rtic-integration.md"
+book = "user"
+path = "realtime/rtic.md"
+action = "move"
+batch = "w4-realtime"
+
+[[page]]
+old = "user-guide/embassy-integration.md"
+book = "user"
+path = "realtime/rtic.md"
+action = "merge-into realtime/rtic.md"
+batch = "w4-realtime"
+
+[[page]]
+old = "user-guide/logging.md"
+book = "user"
+path = "operate/logging.md"
+action = "move"
+batch = "w4-operate"
+
+[[page]]
+old = "user-guide/simulated-time.md"
+book = "user"
+path = "operate/simulated-time.md"
+action = "move"
+batch = "w4-operate"
+
+[[page]]
+old = "user-guide/deployment.md"
+book = "user"
+path = "operate/deployment.md"
+action = "move"
+batch = "w4-operate"
+
+[[page]]
+old = "user-guide/console-less-boards.md"
+book = "user"
+path = "operate/console-less-boards.md"
+action = "move"
+batch = "w4-operate"
+
+[[page]]
+old = "user-guide/build-profiling.md"
+book = "user"
+path = "operate/build-profiling.md"
+action = "move"
+batch = "w4-operate"
+
+[[page]]
+old = "user-guide/troubleshooting.md"
+book = "user"
+path = "operate/troubleshooting.md"
+action = "split testing/test-failures.md"
+batch = "w4-operate"
+
+[[page]]
+old = "start-here/setup-compared-to-ros2.md"
+book = "user"
+path = "from-ros2/setup-compared.md"
+action = "move"
+batch = "w4-from-ros2"
+
+[[page]]
+old = "getting-started/porting-a-cpp-node.md"
+book = "user"
+path = "from-ros2/porting-a-cpp-node.md"
+action = "move"
+batch = "w4-from-ros2"
+
+[[page]]
+old = "concepts/ros2-comparison.md"
+book = "user"
+path = "from-ros2/differences.md"
+action = "move"
+batch = "w4-from-ros2"
+
+[[page]]
+old = "concepts/comparison-vs-microros.md"
+book = "user"
+path = "from-ros2/vs-micro-ros.md"
+action = "move"
+batch = "w4-from-ros2"
+
+[[page]]
+old = "start-here/migration-guide.md"
+book = "user"
+path = "from-ros2/migration-guide.md"
+action = "move"
+batch = "w4-from-ros2"
+
+[[page]]
+old = "concepts/architecture.md"
+book = "user"
+path = "concepts/architecture.md"
+action = "keep"
+batch = "w4-concepts"
+
+[[page]]
+old = "concepts/two-layer-api.md"
+book = "user"
+path = "concepts/two-layer-api.md"
+action = "keep"
+batch = "w4-concepts"
+
+[[page]]
+old = "concepts/platform-model.md"
+book = "user"
+path = "concepts/platform-model.md"
+action = "keep"
+batch = "w4-concepts"
+
+[[page]]
+old = "concepts/no-std.md"
+book = "user"
+path = "concepts/no-std.md"
+action = "keep"
+batch = "w4-concepts"
+
+[[page]]
+old = "design/overview.md"
+book = "user"
+path = "concepts/design-overview.md"
+action = "move"
+batch = "w4-concepts"
+
+[[page]]
+old = "design/client-library.md"
+book = "user"
+path = "concepts/client-library.md"
+action = "move"
+batch = "w4-concepts"
+
+[[page]]
+old = "porting/overview.md"
+book = "user"
+path = "extending/overview.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "porting/board-trait.md"
+book = "user"
+path = "extending/board-trait.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "porting/custom-board.md"
+book = "user"
+path = "extending/custom-board.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "porting/freertos-board.md"
+book = "user"
+path = "extending/freertos-board.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "porting/vendor-overlay.md"
+book = "user"
+path = "extending/vendor-overlay.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "porting/stm32f4-out-of-tree.md"
+book = "user"
+path = "extending/stm32f4-out-of-tree.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "porting/board-crate-import.md"
+book = "user"
+path = "extending/board-crate-import.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "concepts/board-integration.md"
+book = "user"
+path = "extending/board-integration.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+book = "user"
+path = "extending/adding-a-board-to-the-registry.md"
+action = "new phase-532"
+batch = "w4-extending"
+
+[[page]]
+old = "porting/custom-platform.md"
+book = "user"
+path = "extending/custom-platform.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "porting/add-a-platform.md"
+book = "user"
+path = "extending/add-a-platform.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "internals/platform-c-abi.md"
+book = "user"
+path = "extending/platform-c-abi.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "design/platform-api.md"
+book = "user"
+path = "extending/platform-api-design.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "porting/custom-transport.md"
+book = "user"
+path = "extending/custom-transport.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "porting/custom-rmw.md"
+book = "user"
+path = "extending/custom-rmw.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "design/rmw.md"
+book = "user"
+path = "extending/rmw-design.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "design/rmw-vs-upstream.md"
+book = "user"
+path = "extending/rmw-vs-upstream.md"
+action = "split rmw/rmw-vs-upstream-ledger.md"
+batch = "w4-extending"
+
+[[page]]
+old = "internals/porting-platform/zenoh-pico.md"
+book = "user"
+path = "extending/zenoh-pico-symbols.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "internals/porting-platform/xrce-dds.md"
+book = "user"
+path = "extending/xrce-dds-symbols.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+old = "internals/platform-porting-pitfalls.md"
+book = "user"
+path = "extending/porting-pitfalls.md"
+action = "move"
+batch = "w4-extending"
+
+[[page]]
+book = "user"
+path = "extending/runner-packages.md"
+action = "new phase-527"
+batch = "w4-extending"
+
+[[page]]
+book = "user"
+path = "extending/command-packages.md"
+action = "new phase-527"
+batch = "w4-extending"
+
+[[page]]
+old = "reference/cli.md"
+book = "user"
+path = "reference/cli.md"
+action = "keep"
+batch = "w4-reference"
+
+[[page]]
+old = "reference/rust-api.md"
+book = "user"
+path = "reference/rust-api.md"
+action = "keep"
+batch = "w4-reference"
+
+[[page]]
+old = "reference/c-api.md"
+book = "user"
+path = "reference/c-api.md"
+action = "keep"
+batch = "w4-reference"
+
+[[page]]
+old = "reference/cpp-api.md"
+book = "user"
+path = "reference/cpp-api.md"
+action = "keep"
+batch = "w4-reference"
+
+[[page]]
+old = "reference/rmw-api.md"
+book = "user"
+path = "reference/rmw-api.md"
+action = "keep"
+batch = "w4-reference"
+
+[[page]]
+old = "reference/platform-api.md"
+book = "user"
+path = "reference/platform-api.md"
+action = "keep"
+batch = "w4-reference"
+
+[[page]]
+old = "reference/platform-differences.md"
+book = "user"
+path = "reference/platform-differences.md"
+action = "keep"
+batch = "w4-reference"
+
+[[page]]
+old = "reference/support-status.md"
+book = "user"
+path = "reference/support-status.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-support-status.py"
+
+[[page]]
+old = "reference/rmw-feature-matrix.md"
+book = "user"
+path = "reference/rmw-feature-matrix.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-rmw-feature-matrix.py"
+
+[[page]]
+old = "reference/sched-matrix.md"
+book = "user"
+path = "reference/sched-matrix.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-sched-matrix.py"
+
+[[page]]
+old = "reference/supported-boards.md"
+book = "user"
+path = "reference/supported-boards.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/board-support-levels.md"
+book = "user"
+path = "reference/board-support-levels.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/environment-variables.md"
+book = "user"
+path = "reference/environment-variables.md"
+action = "keep"
+batch = "w4-reference"
+
+[[page]]
+old = "reference/nros-bridge-toml.md"
+book = "user"
+path = "reference/nros-bridge-toml.md"
+action = "keep"
+batch = "w4-reference"
+
+[[page]]
+old = "reference/static-pool-inventory.md"
+book = "user"
+path = "reference/static-pool-inventory.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-pool-inventory.py"
+note = "gitignored; written by `just book` before mdbook"
+
+[[page]]
+old = "reference/configuration-surface.md"
+book = "user"
+path = "reference/configuration-surface.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-config-surface.py"
+note = "gitignored; written by `just book` before mdbook"
+
+[[page]]
+old = "reference/boards/freertos-posix.md"
+book = "user"
+path = "reference/boards/freertos-posix.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/fvp.md"
+book = "user"
+path = "reference/boards/fvp.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/linux.md"
+book = "user"
+path = "reference/boards/linux.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/mps2-an385-freertos.md"
+book = "user"
+path = "reference/boards/mps2-an385-freertos.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/mps2-an385-zephyr.md"
+book = "user"
+path = "reference/boards/mps2-an385-zephyr.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/mps2-an385.md"
+book = "user"
+path = "reference/boards/mps2-an385.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/mps3-an536-freertos.md"
+book = "user"
+path = "reference/boards/mps3-an536-freertos.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/nucleo-f767zi-zephyr.md"
+book = "user"
+path = "reference/boards/nucleo-f767zi-zephyr.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/nuttx-arm.md"
+book = "user"
+path = "reference/boards/nuttx-arm.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/nuttx-riscv.md"
+book = "user"
+path = "reference/boards/nuttx-riscv.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/rpi-pico-w-zephyr.md"
+book = "user"
+path = "reference/boards/rpi-pico-w-zephyr.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/s32k344-safety-island.md"
+book = "user"
+path = "reference/boards/s32k344-safety-island.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/s32z270-freertos.md"
+book = "user"
+path = "reference/boards/s32z270-freertos.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/threadx-linux.md"
+book = "user"
+path = "reference/boards/threadx-linux.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/threadx-qemu-riscv64.md"
+book = "user"
+path = "reference/boards/threadx-qemu-riscv64.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/boards/zephyr-native-sim.md"
+book = "user"
+path = "reference/boards/zephyr-native-sim.md"
+action = "keep"
+batch = "w4-reference"
+generated = "scripts/gen-board-support.py"
+
+[[page]]
+old = "reference/retired-names.md"
+book = "user"
+path = "migrating/retired-names.md"
+action = "move"
+batch = "w6"
+
+[[page]]
+old = "release/migration-install-local-removal.md"
+book = "user"
+path = "migrating/install-local-removal.md"
+action = "move"
+batch = "w6"
+
+[[page]]
+old = "getting-started/esp32.md"
+book = "user"
+path = "migrating/esp32.md"
+action = "move"
+batch = "w6"
+
+[[page]]
+old = "getting-started/integration-esp-idf.md"
+book = "user"
+path = "migrating/esp32.md"
+action = "merge-into migrating/esp32.md"
+batch = "w6"
+
+[[page]]
+book = "user"
+path = "migrating/retired-config-files.md"
+action = "new phase-532"
+batch = "w6"
+
+[[page]]
+book = "internals"
+path = "orientation/start-here.md"
+action = "new phase-532"
+batch = "w1"
+
+[[page]]
+book = "internals"
+path = "orientation/architecture.md"
+action = "new phase-532"
+batch = "w1"
+
+[[page]]
+book = "internals"
+path = "orientation/repo-map.md"
+action = "new phase-532"
+batch = "w1"
+
+[[page]]
+old = "internals/contributing.md"
+book = "internals"
+path = "orientation/contributing.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "reference/build-commands.md"
+book = "internals"
+path = "dev-env/build-commands.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/cli-in-monorepo.md"
+book = "internals"
+path = "dev-env/cli-in-monorepo.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/build-system.md"
+book = "internals"
+path = "pipeline/build-system.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/codegen-packs.md"
+book = "internals"
+path = "pipeline/codegen-packs.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/rmw-backends.md"
+book = "internals"
+path = "rmw/backend-host-language-policy.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/zpico-build.md"
+book = "internals"
+path = "rmw/zpico-build.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/rmw-zenoh-protocol.md"
+book = "internals"
+path = "rmw/zenoh-protocol.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "reference/rmw-api-comparison.md"
+book = "internals"
+path = "rmw/rmw-api-comparison.md"
+action = "move"
+batch = "w2"
+generated = "scripts/gen-rmw-api-comparison.py"
+
+[[page]]
+old = "internals/opaque-storage-sizing.md"
+book = "internals"
+path = "platform/opaque-storage-sizing.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/platform-lanes.md"
+book = "internals"
+path = "platform/platform-lanes.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/zephyr-in-tree.md"
+book = "internals"
+path = "platform/zephyr-in-tree.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/nuttx-in-tree.md"
+book = "internals"
+path = "platform/nuttx-in-tree.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/creating-examples.md"
+book = "internals"
+path = "testing/creating-examples.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/verification.md"
+book = "internals"
+path = "testing/verification.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/qemu-patched-binary.md"
+book = "internals"
+path = "testing/qemu-patched-binary.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+old = "internals/freertos-lan9118-debugging.md"
+book = "internals"
+path = "testing/freertos-lan9118-debugging.md"
+action = "move"
+batch = "w2"
+
+[[page]]
+book = "internals"
+path = "dev-env/cli-dev-tier.md"
+action = "new phase-532"
+batch = "w9"
+
+[[page]]
+book = "internals"
+path = "realtime/running-rt-tests.md"
+action = "new phase-532"
+batch = "w3"
+note = "receives a split half"
+
+[[page]]
+book = "internals"
+path = "realtime/dispatch-abi-history.md"
+action = "new phase-532"
+batch = "w3"
+note = "receives a split half"
+
+[[page]]
+book = "internals"
+path = "rmw/rmw-vs-upstream-ledger.md"
+action = "new phase-532"
+batch = "w3"
+note = "receives a split half"
+
+[[page]]
+book = "internals"
+path = "testing/test-failures.md"
+action = "new phase-532"
+batch = "w3"
+note = "receives a split half"
+
+[[page]]
+book = "internals"
+path = "realtime/mem-report.md"
+action = "new phase-532"
+batch = "w3"
+note = "receives a split half of internals/measuring-static-memory.md"
+
+# phase-532 W7 (RFC-0123 D6): narrative documents imported from docs/.
+# The old path keeps a one-line "moved" stub (book-move.py import_doc).
+
+[[page]]
+book = "internals"
+path = "dev-env/sdk-tiers.md"
+action = "import docs/development/sdk-tiers.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "dev-env/versioning.md"
+action = "import docs/development/versioning.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "dev-env/ci-conventions.md"
+action = "import docs/development/ci-conventions.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "dev-env/ros2-on-non-ubuntu.md"
+action = "import docs/development/ros2-on-non-ubuntu.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "pipeline/canonical-build-path.md"
+action = "import docs/reference/canonical-build-path.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "pipeline/codegen-type-mapping.md"
+action = "import docs/reference/codegen-type-mapping.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "rmw/cyclonedds-fork-delta.md"
+action = "import docs/reference/cyclonedds-fork-delta.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "platform/implementation-notes.md"
+action = "import docs/reference/platform-implementation-notes.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "platform/board-cmake-schema.md"
+action = "import docs/reference/board-cmake-schema.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "platform/zephyr-upstreaming.md"
+action = "import docs/development/zephyr-upstreaming.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "platform/zephyr-version-support.md"
+action = "import docs/development/zephyr-version-support.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "testing/test-harness.md"
+action = "import docs/development/test-harness.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "testing/qemu-icount.md"
+action = "import docs/reference/qemu-icount.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "testing/verus-verification.md"
+action = "import docs/guides/verus-verification.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "testing/freertos-dev-setup.md"
+action = "import docs/guides/freertos-setup.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "testing/threadx-dev-setup.md"
+action = "import docs/guides/threadx-setup.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "testing/zephyr-dev-setup.md"
+action = "import docs/guides/zephyr-setup.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "testing/qemu-bare-metal.md"
+action = "import docs/guides/qemu-bare-metal.md"
+batch = "w7"
+
+[[page]]
+book = "internals"
+path = "testing/lan9118-reference.md"
+action = "import docs/guides/freertos-lan9118-debugging.md"
+batch = "w7"

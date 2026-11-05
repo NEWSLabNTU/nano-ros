@@ -2,7 +2,7 @@
 """Print the build wiring inventory: roads, carriers, producers, readers.
 
 Why this is a SCRIPT and not a table in the reference doc: every count here
-moves. `docs/reference/canonical-build-path.md` explains the roads and why
+moves. `book-internals/src/pipeline/canonical-build-path.md` explains the roads and why
 their carriers differ — prose that stays true — and defers every NUMBER to this
 command. A hand-authored census is the failure mode this repository has
 recorded more than any other (CLAUDE.md's "Gated" note on the package list, the
@@ -724,7 +724,7 @@ def main() -> int:
             print(f"    {v:>4}  {k}")
         print()
         print("  Ladder order is RFC-0049's: builtin < platform < board < env.")
-        print("  The map and the rationale: docs/reference/canonical-build-path.md")
+        print("  The map and the rationale: book-internals/src/pipeline/canonical-build-path.md")
 
     return 0
 

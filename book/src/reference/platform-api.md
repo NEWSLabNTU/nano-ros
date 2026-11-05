@@ -11,8 +11,7 @@ the platform vtable directly.
 
 The SSoT C headers in
 `packages/platform/nros-platform-api/include/nros/` (`platform.h` +
-`platform_net.h`, `platform_timer.h`, `platform_zephyr.h`; RFC-0054 —
-Rust consumes committed bindgen output from them) are the source of
+`platform_net.h`, `platform_timer.h`, `platform_zephyr.h`; Rust consumes committed bindgen output from them) are the source of
 truth. Every symbol's brief, parameter docs, ownership rules,
 blocking / non-blocking classification, and ISR-safe contract live in
 the Doxygen compiled from those headers.
@@ -21,11 +20,8 @@ the Doxygen compiled from those headers.
 |---|---|
 | **platform ABI Doxygen** (canonical) | [HTML](../api/platform-cffi/index.html) · [headers](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platform/nros-platform-api/include/nros) |
 
-To regenerate locally:
-
-```bash
-just doc-platform-cffi   # produces target/doxygen/platform-cffi/
-```
+Regenerating the Doxygen in the tree: see
+[Internals → Build Commands](../internals/dev-env/build-commands.html#api-documentation).
 
 This page does **not** duplicate the interface specification — read
 the Doxygen for that.
@@ -50,6 +46,10 @@ The POSIX implementation is the canonical reference port.
 
 ## Writing a custom platform
 
-- Conceptual walkthrough: [Custom Platform](../porting/custom-platform.md).
+- Conceptual walkthrough: [Custom Platform](../extending/custom-platform.md).
 - Per-platform behaviour matrix:
   [Platform Differences](./platform-differences.md).
+
+## Design background
+
+- [RFC-0054: C header ABI single source of truth](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0054-c-header-abi-ssot.md) — why the C headers are canonical and Rust uses generated bindings

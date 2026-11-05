@@ -13,7 +13,7 @@
  * pokes and a hand-assembled ARP frame, duplicated into the retired
  * `startup.c` as well, and called from no path in either lane. The technique
  * it demonstrated is written up in
- * `docs/guides/freertos-lan9118-debugging.md`, which is where a debugging aid
+ * `book-internals/src/testing/lan9118-reference.md`, which is where a debugging aid
  * belongs.
  */
 

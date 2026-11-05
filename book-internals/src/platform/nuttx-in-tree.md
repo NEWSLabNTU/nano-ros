@@ -1,0 +1,181 @@
+# NuttX (contributor / in-tree workflow)
+
+> **Looking for the user-facing path?** This page covers building
+> nano-ros's own NuttX examples on QEMU from this repository.
+> If you're integrating nano-ros into YOUR NuttX app at
+> `apps/external/nano-ros/`, see
+> [Integration: NuttX external app](../../targets/nuttx.html) instead.
+
+nano-ros runs on NuttX, targeting QEMU ARM virt (Cortex-A7 + virtio-net).
+NuttX provides POSIX-compatible BSD sockets, which makes it the most
+straightforward RTOS port -- zenoh-pico uses the same socket API as on Linux.
+
+## Overview
+
+The NuttX platform uses:
+
+- **NuttX RTOS** -- POSIX-compliant real-time OS with BSD socket support
+- **BSD sockets** -- standard socket API provided by NuttX's network stack
+- **zenoh-pico** -- Zenoh transport over NuttX sockets (same code path as POSIX)
+- **virtio-net** -- NuttX built-in Ethernet driver (no custom driver needed)
+
+Board crate: `nros-board-nuttx-qemu` (in `packages/boards/`) — ONE crate serves
+both QEMU NuttX boards, arm virt and rv-virt. Everything that differs between
+them is data (a defconfig, a toolchain file, a target triple); nothing in the
+Rust or C sources is arch-conditional.
+
+### Why NuttX Is Simpler Than FreeRTOS
+
+NuttX is the simplest RTOS platform to port because of its strong POSIX
+compliance (POSIX.1-2008: pthreads, BSD sockets, `select()`,
+`clock_gettime()`):
+
+| Aspect           | NuttX                          | FreeRTOS                             |
+|------------------|--------------------------------|--------------------------------------|
+| zenoh-pico layer | Reuses `unix/` platform        | Dedicated `freertos/` platform       |
+| Networking       | Built-in BSD sockets           | External lwIP                        |
+| Ethernet driver  | NuttX virtio-net (built-in)    | Custom LAN9118 lwIP netif            |
+| Rust target      | `armv7a-nuttx-eabi` with `std` | `thumbv7m-none-eabi` (`no_std`)      |
+| Build integration| NuttX build system + cargo     | cc crate compiles FreeRTOS + lwIP    |
+| QEMU machine     | `virt` (Cortex-A7)             | `mps2-an385` (Cortex-M3)            |
+
+Because NuttX supports Rust `std`, examples use standard `fn main()` entry
+points and `println!` -- no semihosting or custom panic handlers needed.
+
+## Setup
+
+`nros setup qemu-armv7a-nuttx` provisions everything this board needs —
+the NuttX cross-compiler, `qemu-system-arm`, the NuttX source tree,
+and the RMW host daemon — into the shared store at `~/.nros/sdk`. No
+hand-installed cross-toolchain and no ROS 2 install required.
+
+Build the in-tree `nros` CLI (Phase 218), then provision the board
+(`--rmw` defaults to `zenoh`):
+
+```bash
+./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+nros setup qemu-armv7a-nuttx --rmw zenoh
+```
+
+As a contributor, `just setup nuttx` remains available and now
+delegates to `nros setup qemu-armv7a-nuttx` for the toolchain/SDK
+provisioning while also staging the external apps.
+
+The NuttX sources land in `third-party/nuttx/nuttx/` and
+`third-party/nuttx/nuttx-apps/`. Override the paths with environment
+variables if your sources are elsewhere:
+
+| Variable         | Default              | Description          |
+|------------------|----------------------|----------------------|
+| `NUTTX_DIR`      | `third-party/nuttx/nuttx`     | NuttX RTOS source    |
+| `NUTTX_APPS_DIR` | `third-party/nuttx/nuttx-apps`| NuttX apps source    |
+
+### Prerequisites
+
+The `nros setup qemu-armv7a-nuttx` step above provisions the
+`qemu-system-arm` emulator and the `arm-none-eabi-gcc` cross-compiler
+used for NuttX kernel compilation. The one host-side tool you still
+supply yourself:
+
+- Rust nightly toolchain (NuttX targets are Rust tier-3 targets, so they need `-Z build-std`)
+
+## Building
+
+> **Contributors:** the in-tree build lanes for this platform are in
+> [Per-Platform Contributor Lanes](platform-lanes.md#nuttx).
+
+The examples link against NuttX's POSIX
+layer, which provides sockets, pthreads, and standard I/O.
+
+### Available Examples
+
+All examples are in `examples/qemu-armv7a-nuttx/rust/`:
+
+| Example          | Description                                      |
+|------------------|--------------------------------------------------|
+| `talker`         | Publishes `std_msgs/String` on `/chatter`        |
+| `listener`       | Subscribes to `std_msgs/String` on `/chatter`    |
+| `service-server` | Serves `AddTwoInts` on `/add_two_ints`           |
+| `service-client` | Calls `AddTwoInts` on `/add_two_ints`            |
+| `action-server`  | Serves `Fibonacci` action on `/fibonacci`        |
+| `action-client`  | Sends `Fibonacci` goal on `/fibonacci`           |
+
+## RISC-V (`rv-virt`, riscv32)
+
+The same NuttX path also runs on QEMU's RISC-V `rv-virt` board
+(rv32imac, `riscv32imac-unknown-nuttx-elf`), proving the provisioning
+path is arch-agnostic. Provision and build with:
+
+```bash
+nros setup rv-virt-nuttx --rmw zenoh
+```
+
+> **Contributors:** the in-tree RISC-V fixture build lanes are in
+> [Per-Platform Contributor Lanes](platform-lanes.md#nuttx).
+
+Board crate: `nros-board-nuttx-qemu` (in `packages/boards/`) — the same crate as
+the arm board above, selected by `deploy = "nuttx-riscv"`, which picks the
+rv-virt `[[board]]` entry of its `nros-board.toml` (riscv toolchain, riscv
+defconfig, `riscv32imac-unknown-nuttx-elf`).
+The C pub/sub pair is exercised end-to-end under
+`qemu-system-riscv32`, and Rust / C / C++ realtime-tiers workspace
+runtime lanes cover the multi-tier scheduling path on this board.
+
+## Testing
+
+> **Contributors:** the in-tree test lanes for this platform are in
+> [Per-Platform Contributor Lanes](platform-lanes.md#nuttx).
+
+Tests run under `qemu-system-arm -M virt` with TAP networking. Each QEMU
+instance connects to the host bridge (`br-qemu`) via TAP devices for
+zenohd communication. The test infrastructure builds a NuttX kernel image
+with the example app embedded, boots it in QEMU, and verifies message
+exchange.
+
+### Network Configuration
+
+NuttX QEMU instances use the same IP scheme as other QEMU board crates:
+
+| Role             | IP Address    | TAP Device  |
+|------------------|---------------|-------------|
+| Talker/Publisher | 192.0.3.10    | tap-qemu0   |
+| Listener/Sub     | 192.0.3.11    | tap-qemu1   |
+| Service Server   | 192.0.3.12    | tap-qemu0   |
+| Service Client   | 192.0.3.13    | tap-qemu1   |
+| zenohd (host)    | 192.0.3.1     | br-qemu     |
+
+## Architecture
+
+### Board Crate
+
+The `nros-board-nuttx-qemu` board crate follows the standard `Config` / `run()` pattern documented in the [Custom Board Package](../../extending/custom-board.html) guide.
+
+Unlike bare-metal and FreeRTOS board crates, there is no custom hardware
+initialization, no network stack setup, and no task creation. NuttX's kernel
+boots the hardware, initializes virtio-net, and starts the application
+before `main()` runs. NuttX owns the network (RFC-0109 D2): `eth0` takes the
+address the defconfig's `CONFIG_NETINIT_*` states, and the board only reads it
+back — every image prints `nros: eth0 <addr> (kernel-owned, RFC-0109 D2)` at
+boot. An image that needs a different address changes the kernel
+configuration; nothing in nano-ros writes the interface. Because NuttX supports Rust `std`, examples use standard
+`fn main()` entry points.
+
+### NuttX Defconfig
+
+The QEMU board configuration lives in
+`packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig`
+(the rv-virt one sits beside it under `riscv/`) and enables:
+
+- `CONFIG_NET` -- networking subsystem
+- `CONFIG_NET_TCP` / `CONFIG_NET_UDP` -- TCP/UDP protocols
+- `CONFIG_DRIVERS_VIRTIO` + `CONFIG_DRIVERS_VIRTIO_NET` -- virtio Ethernet
+- `CONFIG_PTHREAD_MUTEX_TYPES` -- POSIX mutex types (for zenoh-pico)
+- `CONFIG_DEV_URANDOM` -- `/dev/urandom` for session ID generation
+- `CONFIG_DEFAULT_TASK_STACKSIZE=8192` -- adequate stack for nros apps
+- `CONFIG_BUILD_FLAT` -- flat memory model (no MMU protection)
+
+## Status
+
+NuttX platform support is complete: feature flags, build integration,
+six Rust examples, E2E network tests, and documentation.

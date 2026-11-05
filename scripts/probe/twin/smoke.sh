@@ -25,6 +25,10 @@
 # (probe-run.sh), the helper the chapter's own run steps use.
 NROS_TWIN_ROUTER_READY="Started Zenoh router with id"
 NROS_TWIN_HEARD="data: 'Hello World:"
+# The type `ros2 topic echo` subscribes with. A track whose chapter builds its
+# own image states both this and the line it must hear (`twin_echo`,
+# `twin_heard`), and its facts, assigned after this prelude, replace them.
+NROS_TWIN_ECHO="std_msgs/msg/String"
 
 # The board's west-workspace provisioning (its Zephyr line's patch set and its
 # Rust target): what the chapter's own `nros setup board` step does for the
@@ -79,7 +83,7 @@ nros_twin_hear() {
         'source /opt/ros/humble/setup.bash' \
         "RMW_IMPLEMENTATION=rmw_zenoh_cpp ZENOH_ROUTER_CHECK_ATTEMPTS=-1 \\" \
         "ZENOH_CONFIG_OVERRIDE='connect/endpoints=[\"tcp/127.0.0.1:$port\"];scouting/multicast/enabled=false' \\" \
-        '    exec ros2 topic echo --no-daemon /chatter std_msgs/msg/String' >"$run/echo.sh"
+        "    exec ros2 topic echo --no-daemon /chatter $NROS_TWIN_ECHO" >"$run/echo.sh"
     if ! (nros_probe_run_expect twin-echo "${NROS_TWIN_HEAR_SECS:-120}" 0 \
         "$run/echo.sh" "$NROS_TWIN_HEARD"); then
         nros_twin_console "$run"

@@ -18,11 +18,8 @@ loaned slots live in the Doxygen output.
 |---|---|
 | **rmw-cffi Doxygen** (canonical) | [HTML](../api/rmw-cffi/index.html) · [header](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/core/nros-rmw-abi/include/nros/rmw_vtable.h) |
 
-To regenerate locally:
-
-```bash
-just doc-rmw-cffi   # produces target/doxygen/rmw-cffi/
-```
+Regenerating the Doxygen in the tree: see
+[Internals → Quick Reference § API documentation](../internals/dev-env/build-commands.html#api-documentation).
 
 This page does **not** duplicate the interface specification — read
 the Doxygen for that.
@@ -43,8 +40,8 @@ The zenoh-pico shim is the canonical reference port.
 
 ## Writing a custom backend
 
-- Conceptual walkthrough: [Custom RMW Backend](../porting/custom-rmw.md).
+- Conceptual walkthrough: [Custom RMW Backend](../extending/custom-rmw.md).
 - Coming from upstream `rmw.h`?
-  → [RMW API: Differences from upstream `rmw.h`](../design/rmw-vs-upstream.md).
+  → [RMW API: Differences from upstream `rmw.h`](../extending/rmw-vs-upstream.md).
 - Coverage status vs upstream `rmw.h`:
   [`docs/research/rmw-c-abi-coverage.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/research/rmw-c-abi-coverage.md).

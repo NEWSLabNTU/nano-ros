@@ -39,7 +39,7 @@ took, and its longest stretch off the CPU. `tests/rt_sched_levels_e2e.rs`
 reads both. It runs only on a lane that claims `rt-sched`, because without
 `CAP_SYS_NICE` the kernel refuses every level's priority and budget. The test
 runs each image in a docker container granted it, so no `sudo`; the book's
-[Real-Time Execution Model](../../../book/src/internals/rt-execution-model.md)
+[Real-Time Execution Model](../../../book/src/realtime/execution-model.md)
 chapter says how to run it.
 
 They share one bringup, not one each, because every Linux cmake image of a

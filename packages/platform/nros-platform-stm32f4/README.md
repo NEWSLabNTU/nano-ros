@@ -38,5 +38,5 @@ networking shipped from the board crate via
 
 ## See also
 
-- [Custom Platform porting guide](../../../book/src/porting/custom-platform.md)
+- [Custom Platform porting guide](../../../book/src/extending/custom-platform.md)
 - Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platform/nros-platform-stm32f4>

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A CI doc must not cite a workflow file that does not exist — phase-395.
 
-`docs/development/ci-conventions.md` named six workflow files, and all six had
+`book-internals/src/dev-env/ci-conventions.md` named six workflow files, and all six had
 been consolidated away by the phase-253 reorg. Its GUIDANCE was still correct —
 that is what made it worth keeping and also what made it misleading: a reader
 who cannot open `zephyr-dual-line.yml` goes looking for the file instead of for
@@ -38,7 +38,7 @@ WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
 _REAL_ROOT = ROOT
 
 DOCS = (
-    "docs/development/ci-conventions.md",
+    "book-internals/src/dev-env/ci-conventions.md",
     "docs/development/ci-workflow-reorg.md",
     "docs/development/multi-agent-ci-workflow.md",
 )

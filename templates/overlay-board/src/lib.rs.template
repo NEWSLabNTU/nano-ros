@@ -6,7 +6,7 @@
 //! vendor HAL initialisation via `#[no_mangle]` hooks the generic
 //! crate's C glue calls during boot.
 //!
-//! See `book/src/porting/vendor-overlay.md` for the contract.
+//! See `book/src/extending/vendor-overlay.md` for the contract.
 
 #![no_std]
 

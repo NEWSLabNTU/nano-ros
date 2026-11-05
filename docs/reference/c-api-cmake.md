@@ -22,7 +22,7 @@ nros_platform_link_app(my_app)
 
 This wires include dirs, RMW staticlib, platform shim, and per-build
 config header automatically. See
-[build-as-subdirectory.md](../../book/src/getting-started/build-as-subdirectory.md)
+[build-as-subdirectory.md](../../book/src/build/cmake-subdirectory.md)
 for the full walkthrough.
 
 **RMW backend selection:** Pass `-DNROS_RMW=<zenoh|dds|xrce|cyclonedds>` to cmake.
@@ -235,7 +235,7 @@ consumer:
   `<rclcpp/rclcpp.hpp>` through `find_package(rclcpp)` and `cmake/find/Findrclcpp.cmake` is
   therefore already on the std surface with no line of its own — which is why
   the ported-package `CMakeLists.txt` in
-  [book/src/getting-started/porting-a-cpp-node.md](../../book/src/getting-started/porting-a-cpp-node.md)
+  [book/src/from-ros2/porting-a-cpp-node.md](../../book/src/from-ros2/porting-a-cpp-node.md)
   still carries zero nano-ros lines.
 - **`examples/px4/cpp/bridge/src/modules/nros_uorb_bridge/CMakeLists.txt`** sets
   it directly, on one module of a larger PX4 image — PX4 SITL is real POSIX with
