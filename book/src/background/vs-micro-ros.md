@@ -31,7 +31,7 @@ comparison.
 | **Multi-executor preemption** | `Executor::open_threaded` per-RTOS via `PlatformScheduler` trait | Single executor per process |
 | **Multi-backend bridge in one binary** | Yes — `Executor::open_with_rmw` + multi-Node | No (single XRCE session per process) |
 | **Discovery** | Zenoh liveliness, RTPS SPDP, XRCE-via-Agent | XRCE-via-Agent |
-| **QoS support** | Backend-dependent — per-policy table in [RMW vs upstream §7](../extending/rmw-vs-upstream.md) | Subset of XRCE QoS |
+| **QoS support** | Backend-dependent — per-policy table in [RMW vs upstream §7](../internals/rmw/rmw-vs-upstream.html) | Subset of XRCE QoS |
 | **Formal verification** | 148 Kani harnesses + 83 Verus proofs (CDR, scheduling, RMW glue) | None published |
 | **E2E safety protocol** | CRC-32/ISO-HDLC + sequence tracking, EN 50159-mapped (`safety-e2e` feature) | None |
 | **ROS 2 distro coverage** | Humble, Iron, Jazzy (`[image.<id>] ros_edition`, lowered to `ros-<edition>` features) | Humble, Iron, Jazzy |

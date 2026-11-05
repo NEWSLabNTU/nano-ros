@@ -25,7 +25,7 @@ work in Rust; this page sticks to the C-vtable surface throughout.
 > divergences worth understanding before writing a backend. The complete
 > table, every upstream symbol with both signatures side by side and the
 > reason for each difference, is
-> [RMW API vs upstream — every symbol](../internals/rmw/rmw-api-comparison.html),
+> [RMW API vs upstream — every symbol](rmw-api-comparison.md),
 > and it is GENERATED, so it cannot drift from the headers the way prose can.
 
 ## TL;DR
@@ -336,7 +336,7 @@ regardless of whether it's a sub, service, timer, or guard
 condition."
 
 For the per-RTOS-model recommendations (which knobs to set, which
-defaults to use), see the [RTOS Cooperation](../background/rtos-cooperation.md)
+defaults to use), see the [RTOS Cooperation](../../../book/src/background/rtos-cooperation.md)
 concepts page.
 
 **Why drive_io and not rmw_wait.** Cooperative single-task runtimes
@@ -585,9 +585,9 @@ The mask actually advertised by each backend's
   Zenoh-pico fills the gap with shim-side emulation. uORB is intra-process
   only.
 
-See [Status events](../guide/rmw/qos-status-events.md) for how the
+See [Status events](../../../book/src/guide/rmw/qos-status-events.md) for how the
 deadline / liveliness / message-lost policies translate into
-runtime events, and [User guide → Configuration](../guide/build/configure-an-image.md)
+runtime events, and [User guide → Configuration](../../../book/src/guide/build/configure-an-image.md)
 for code examples.
 
 ## 8. Status events: callback-on-entity, core subset
@@ -1050,16 +1050,16 @@ What an application sees on the client side:
 
 ## See also
 
-- [RMW API Design](rmw-design.md) — deeper architectural rationale (heap,
+- [RMW API Design](../../../book/src/extending/rmw-design.md) — deeper architectural rationale (heap,
   threading, dispatch model) shared across all the points above.
-- [Custom RMW Backend](custom-rmw.md) — step-by-step guide
+- [Custom RMW Backend](../../../book/src/extending/custom-rmw.md) — step-by-step guide
   to writing a backend in C against this vtable.
 - [`<nros/rmw_vtable.h>` Doxygen](../api/rmw-cffi/index.html) — full
   C reference for every function pointer above.
 - [`packages/rmw/zenoh/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/zenoh/nros-rmw-zenoh)
   — canonical reference port. Read the source for a worked example.
 - Changing a divergence in the tree: see
-  [Internals → RMW vs upstream: the decision ledger](../internals/rmw/rmw-vs-upstream-ledger.html)
+  [Internals → RMW vs upstream: the decision ledger](rmw-vs-upstream-ledger.md)
   for the decision behind each one.
 
 ## Design background

@@ -23,6 +23,10 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/extending/rmw-vs-upstream.html" = "../internals/rmw/rmw-vs-upstream.html"
+"/extending/zenoh-pico-symbols.html" = "../internals/rmw/zenoh-pico-symbols.html"
+"/extending/xrce-dds-symbols.html" = "../internals/rmw/xrce-dds-symbols.html"
+"/targets/arm-fvp.html" = "../internals/platform/arm-fvp.html"
 "/build/build-and-configure.html" = "../guide/build/configure-an-image.html#building-and-configuring"
 "/targets/target-model.html" = "../guide/deploy/deploy-to-production.html#the-target-model"
 "/targets/run.html" = "../guide/deploy/deploy-to-production.html#running-an-image-nros-run"
@@ -113,7 +117,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/getting-started/threadx.html" = "../guide/platforms/threadx.html"
 "/getting-started/bare-metal.html" = "../guide/platforms/bare-metal.html"
 "/getting-started/px4.html" = "../guide/platforms/px4.html"
-"/getting-started/arm-fvp.html" = "../targets/arm-fvp.html"
+"/getting-started/arm-fvp.html" = "../internals/platform/arm-fvp.html"
 "/getting-started/workspace-from-app-node.html" = "../tutorial/grow-your-workspace.html"
 "/getting-started/workspace-cpp.html" = "../guide/contracts/cpp-workspaces.html"
 "/getting-started/workspace-mixed-language.html" = "../guide/build/mix-languages.html"
@@ -152,9 +156,9 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/porting/custom-transport.html" = "../extending/custom-transport.html"
 "/porting/custom-rmw.html" = "../extending/custom-rmw.html"
 "/design/rmw.html" = "../extending/rmw-design.html"
-"/design/rmw-vs-upstream.html" = "../extending/rmw-vs-upstream.html"
-"/internals/porting-platform/zenoh-pico.html" = "../../extending/zenoh-pico-symbols.html"
-"/internals/porting-platform/xrce-dds.html" = "../../extending/xrce-dds-symbols.html"
+"/design/rmw-vs-upstream.html" = "../internals/rmw/rmw-vs-upstream.html"
+"/internals/porting-platform/zenoh-pico.html" = "../rmw/zenoh-pico-symbols.html"
+"/internals/porting-platform/xrce-dds.html" = "../rmw/xrce-dds-symbols.html"
 "/internals/platform-porting-pitfalls.html" = "../extending/porting-pitfalls.html"
 "/design/overview.html" = "../background/design-overview.html"
 "/design/client-library.html" = "../background/client-library.html"

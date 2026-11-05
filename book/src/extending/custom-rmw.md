@@ -553,10 +553,10 @@ onto each backend:
   QoS profiles, error types, configuration structs.
 - [RMW API Design](rmw-design.md) -- architectural motivation and
   comparison with the ROS 2 rmw interface.
-- [RMW API: Differences from upstream `rmw.h`](rmw-vs-upstream.md)
+- [RMW API: Differences from upstream `rmw.h`](../internals/rmw/rmw-vs-upstream.html)
   -- side-by-side C-API comparison for porters coming from upstream
   ROS 2 RMW backends; covers the renames, the collapses, and the
   reason for each.
-- [Zenoh-pico Symbol Reference](zenoh-pico-symbols.md)
+- [Zenoh-pico Symbol Reference](../internals/rmw/zenoh-pico-symbols.html)
   -- FFI symbol mapping for the zenoh-pico backend (useful as a reference
   for how an existing backend is structured).

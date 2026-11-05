@@ -73,7 +73,7 @@ entity creation loudly (`INCOMPATIBLE_QOS`) — **no silent
 downgrade**. Each column is that backend's OWN answer: the zenoh
 shim's `Session::supported_qos_policies`, and for a C backend the
 function its vtable puts in the `supported_qos_policies` slot.
-Per-policy semantics: [RMW vs upstream §7](../extending/rmw-vs-upstream.md).
+Per-policy semantics: [RMW vs upstream §7](../internals/rmw/rmw-vs-upstream.html).
 
 | Policy | Zenoh | XRCE-DDS | Cyclone DDS | uORB |
 |---|---|---|---|---|
