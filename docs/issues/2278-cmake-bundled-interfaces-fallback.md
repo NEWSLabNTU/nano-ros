@@ -5,7 +5,7 @@ status: open
 type: enhancement
 area: cli, cmake, zephyr, book
 purpose: [education, industrial]
-related: [2275, phase-530]
+related: [2275, phase-530, phase-532]
 found: 2026-11-05
 ---
 
